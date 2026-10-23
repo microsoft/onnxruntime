@@ -2,11 +2,15 @@
 // Licensed under the MIT License.
 
 #include <atomic>
+#include <array>
 #include <chrono>
+#include <cmath>
 #include <condition_variable>
+#include <limits>
 #include <mutex>
 
 #include "contrib_ops/cuda/moe/kernel_pilot_moe_expert_selection_cuda.h"
+#include "contrib_ops/cuda/moe/moe_kernels.h"
 #include "core/providers/cuda/cuda_allocator.h"
 #include "gtest/gtest.h"
 #include "test/util/include/asserts.h"
@@ -84,6 +88,189 @@ class KernelPilotMoeExpertSelectionCudaTest : public ::testing::Test {
   cudaStream_t stream_{nullptr};
   int* device_ids_{nullptr};
 };
+
+TEST_F(KernelPilotMoeExpertSelectionCudaTest, GpuCountersMatchBinaryAndWeightedHostUpdates) {
+  struct Snapshot {
+    double counters[4];
+    int64_t first_routes[4];
+    float probabilities[4];
+  };
+  void* device_snapshot = nullptr;
+  float* device_scales = nullptr;
+  ASSERT_EQ(cudaMalloc(&device_snapshot, sizeof(Snapshot)), cudaSuccess);
+  ASSERT_EQ(cudaMalloc(&device_scales, 4 * sizeof(float)), cudaSuccess);
+  auto release = gsl::finally([&]() {
+    EXPECT_EQ(cudaFree(device_snapshot), cudaSuccess);
+    EXPECT_EQ(cudaFree(device_scales), cudaSuccess);
+  });
+  const std::array<int, 4> ids{1, 3, 1, 0};
+  const std::array<float, 4> scales{0.2f, 0.7f, 0.8f, 0.1f};
+  const std::array<double, 4> initial{0.4, 0.25, 0.6, 0.0};
+  ASSERT_EQ(cudaMemcpyAsync(device_ids_, ids.data(), sizeof(ids), cudaMemcpyHostToDevice, stream_), cudaSuccess);
+  ASSERT_EQ(cudaMemcpyAsync(device_scales, scales.data(), sizeof(scales), cudaMemcpyHostToDevice, stream_), cudaSuccess);
+  auto* counters = static_cast<double*>(device_snapshot);
+  auto* first_routes = reinterpret_cast<int64_t*>(counters + 4);
+  auto* probabilities = reinterpret_cast<float*>(first_routes + 4);
+  for (double alpha : {0.0, 0.9, 1.0}) {
+    for (double weight : {0.0, 0.5, 1.0}) {
+      SCOPED_TRACE(MakeString("alpha=", alpha, ", weight=", weight));
+      ASSERT_EQ(cudaMemcpyAsync(counters, initial.data(), sizeof(initial), cudaMemcpyHostToDevice, stream_), cudaSuccess);
+      contrib::cuda::LaunchUpdateMoeExpertCounters(device_ids_, device_scales, ids.size(),
+                                                   counters, probabilities, first_routes, 4, alpha, weight, stream_);
+      Snapshot snapshot;
+      ASSERT_EQ(cudaMemcpyAsync(&snapshot, device_snapshot, sizeof(snapshot), cudaMemcpyDeviceToHost, stream_), cudaSuccess);
+      ASSERT_EQ(cudaStreamSynchronize(stream_), cudaSuccess);
+      const std::array<float, 4> expected_probabilities{0.1f, 0.8f, -1.0f, 0.7f};
+      const std::array<int64_t, 4> expected_first_routes{3, 0, -1, 1};
+      for (size_t expert = 0; expert < 4; ++expert) {
+        const double contribution = expected_probabilities[expert] >= 0.0f
+                                        ? (1.0 - weight) + weight * expected_probabilities[expert]
+                                        : 0.0;
+        EXPECT_NEAR(snapshot.counters[expert], alpha * initial[expert] + (1.0 - alpha) * contribution, 1e-12);
+        EXPECT_EQ(snapshot.probabilities[expert], expected_probabilities[expert]);
+        EXPECT_EQ(snapshot.first_routes[expert], expected_first_routes[expert]);
+      }
+    }
+  }
+}
+
+TEST_F(KernelPilotMoeExpertSelectionCudaTest, LargeAndTiledGpuCountersMatchHostUpdates) {
+  constexpr size_t expert_count = 257;
+  constexpr size_t max_routes = 32768 * 8;
+  struct Snapshot {
+    double counters[expert_count];
+    int64_t first_routes[expert_count];
+    float probabilities[expert_count];
+  };
+  Snapshot* device_snapshot = nullptr;
+  int* device_ids = nullptr;
+  float* device_scales = nullptr;
+  ASSERT_EQ(cudaMalloc(&device_snapshot, sizeof(Snapshot)), cudaSuccess);
+  ASSERT_EQ(cudaMalloc(&device_ids, max_routes * sizeof(int)), cudaSuccess);
+  ASSERT_EQ(cudaMalloc(&device_scales, max_routes * sizeof(float)), cudaSuccess);
+  auto release = gsl::finally([&]() {
+    EXPECT_EQ(cudaFree(device_snapshot), cudaSuccess);
+    EXPECT_EQ(cudaFree(device_ids), cudaSuccess);
+    EXPECT_EQ(cudaFree(device_scales), cudaSuccess);
+  });
+  InlinedVector<int> ids;
+  InlinedVector<float> scales;
+  ids.reserve(max_routes);
+  scales.reserve(max_routes);
+  for (size_t route = 0; route < max_routes; ++route) {
+    ids.push_back(static_cast<int>(route % (expert_count - 1)));
+    scales.push_back(static_cast<float>(route % 19) / 20.0f);
+  }
+  ASSERT_EQ(cudaMemcpyAsync(device_ids, ids.data(), ids.size() * sizeof(int),
+                            cudaMemcpyHostToDevice, stream_),
+            cudaSuccess);
+  for (bool invalid : {false, true}) {
+    scales[0] = invalid ? std::numeric_limits<float>::quiet_NaN() : 0.0f;
+    ASSERT_EQ(cudaMemcpyAsync(device_scales, scales.data(), scales.size() * sizeof(float),
+                              cudaMemcpyHostToDevice, stream_),
+              cudaSuccess);
+    for (size_t route_count : {size_t{1024}, size_t{1025}, max_routes}) {
+      for (bool tiled : {false, true}) {
+        for (double weight : {0.0, 0.5, 1.0}) {
+          SCOPED_TRACE(MakeString("routes=", route_count, ", tiled=", tiled, ", weight=", weight,
+                                  ", invalid=", invalid));
+          Snapshot expected;
+          for (size_t expert = 0; expert < expert_count; ++expert) {
+            expected.counters[expert] = 0.25;
+            expected.probabilities[expert] = -1.0f;
+            expected.first_routes[expert] = -1;
+          }
+          for (size_t route = 0; route < route_count; ++route) {
+            const int expert = ids[route];
+            if (expected.first_routes[expert] < 0) {
+              expected.first_routes[expert] = static_cast<int64_t>(route);
+            }
+            if (weight > 0.0 && !std::isfinite(scales[route])) {
+              expected.probabilities[expert] = std::numeric_limits<float>::quiet_NaN();
+            } else if (!std::isnan(expected.probabilities[expert])) {
+              expected.probabilities[expert] = std::fmax(expected.probabilities[expert], std::fmax(scales[route], 0.0f));
+            }
+          }
+          constexpr double alpha = 0.9;
+          Snapshot actual{};
+          for (size_t expert = 0; expert < expert_count; ++expert) {
+            actual.counters[expert] = 0.25;
+            actual.probabilities[expert] = 1.0f;
+          }
+          ASSERT_EQ(cudaMemcpyAsync(device_snapshot, &actual, sizeof(actual),
+                                    cudaMemcpyHostToDevice, stream_),
+                    cudaSuccess);
+          const auto update = [&](size_t begin, size_t end, bool finalize) {
+            contrib::cuda::LaunchUpdateMoeExpertCounters(
+                device_ids + begin, device_scales + begin, end - begin,
+                device_snapshot->counters, device_snapshot->probabilities, device_snapshot->first_routes,
+                expert_count, begin, finalize, alpha, weight, stream_);
+          };
+          if (tiled) {
+            update(0, 8, false);
+            update(8, route_count - 8, false);
+            update(route_count - 8, route_count, true);
+          } else {
+            update(0, route_count, true);
+          }
+          ASSERT_EQ(cudaMemcpyAsync(&actual, device_snapshot, sizeof(actual),
+                                    cudaMemcpyDeviceToHost, stream_),
+                    cudaSuccess);
+          ASSERT_EQ(cudaStreamSynchronize(stream_), cudaSuccess);
+          for (size_t expert = 0; expert < expert_count; ++expert) {
+            const float probability = expected.probabilities[expert];
+            if (std::isnan(probability)) {
+              EXPECT_TRUE(std::isnan(actual.probabilities[expert]));
+            } else {
+              EXPECT_EQ(actual.probabilities[expert], probability);
+            }
+            EXPECT_EQ(actual.first_routes[expert], expected.first_routes[expert]);
+            const double contribution = probability >= 0.0f ? (1.0 - weight) + weight * probability : 0.0;
+            EXPECT_NEAR(actual.counters[expert], alpha * 0.25 + (1.0 - alpha) * contribution, 1e-12);
+          }
+        }
+      }
+    }
+  }
+}
+
+TEST_F(KernelPilotMoeExpertSelectionCudaTest, EmptyDecodeCpuRoutingReleasesDeviceWaitWithoutHostWorker) {
+#if CUDA_VERSION < 11070
+  CUdevice device;
+  ASSERT_STATUS_OK(CU_CALL(cuDeviceGet(&device, 0)));
+  int supported = 0;
+  ASSERT_STATUS_OK(CU_CALL(cuDeviceGetAttribute(&supported, CU_DEVICE_ATTRIBUTE_CAN_USE_STREAM_MEM_OPS, device)));
+  if (!supported) {
+    GTEST_SKIP() << "CUDA stream memory operations are unavailable.";
+  }
+#endif
+  auto completion = IAllocator::MakeUniquePtr<uint32_t>(PinnedAllocator(), 1);
+  ASSERT_NE(completion, nullptr);
+  *completion = 0;
+  void* device_completion = nullptr;
+  ASSERT_EQ(cudaHostGetDevicePointer(&device_completion, completion.get(), 0), cudaSuccess);
+  half* device_input = nullptr;
+  float* device_scales = nullptr;
+  ASSERT_EQ(cudaMalloc(&device_input, 32 * sizeof(half)), cudaSuccess);
+  ASSERT_EQ(cudaMalloc(&device_scales, 2 * sizeof(float)), cudaSuccess);
+  auto release = gsl::finally([&]() {
+    EXPECT_EQ(cudaFree(device_input), cudaSuccess);
+    EXPECT_EQ(cudaFree(device_scales), cudaSuccess);
+  });
+  const std::array<int, 8> ids_map{0, 0, -1, 0, 0, 0, 0, 0};
+  const float scale = 1.0f;
+  ASSERT_EQ(cudaMemcpyAsync(device_ids_, ids_map.data(), sizeof(ids_map), cudaMemcpyHostToDevice, stream_), cudaSuccess);
+  ASSERT_EQ(cudaMemcpyAsync(device_scales, &scale, sizeof(scale), cudaMemcpyHostToDevice, stream_), cudaSuccess);
+  contrib::cuda::LaunchPackMoeCpuRows(device_input, device_ids_, device_scales, device_ids_ + 1,
+                                      device_input + 16, device_ids_ + 5, device_scales + 1,
+                                      device_ids_ + 4, reinterpret_cast<uint32_t*>(device_ids_ + 3),
+                                      static_cast<uint32_t*>(device_completion), 1, 16, 1, stream_);
+  ASSERT_STATUS_OK(CU_CALL(cuStreamWaitValue32(reinterpret_cast<CUstream>(stream_),
+                                               reinterpret_cast<CUdeviceptr>(device_completion), 1,
+                                               CU_STREAM_WAIT_VALUE_GEQ)));
+  ASSERT_EQ(cudaStreamSynchronize(stream_), cudaSuccess);
+  EXPECT_EQ(*completion, 1U);
+}
 
 TEST_F(KernelPilotMoeExpertSelectionCudaTest, CollectsWhileLaterDeviceWorkIsPending) {
   KernelPilotMoeExpertSelection usage;

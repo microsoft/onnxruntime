@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #if !defined(ORT_MINIMAL_BUILD)
+#include <limits>
 #include <numeric>
 
 #include "core/framework/kernel_pilot_moe_expert_selection.h"
@@ -17,6 +18,13 @@ void ExpectSelectedExperts(const KernelPilotMoeExpertSelection& usage, const Inl
   EXPECT_EQ((InlinedVector<int>{selected.begin(), selected.end()}), expected);
 }
 
+void ExpectSelectedProbabilities(const KernelPilotMoeExpertSelection& usage,
+                                 const InlinedVector<float>& expected) {
+  gsl::span<const float> probabilities;
+  ASSERT_STATUS_OK(usage.GetSelectedExpertProbabilities(probabilities));
+  EXPECT_EQ((InlinedVector<float>{probabilities.begin(), probabilities.end()}), expected);
+}
+
 TEST(KernelPilotMoeExpertSelectionTest, RejectsUninitializedCollection) {
   KernelPilotMoeExpertSelection usage;
   EXPECT_FALSE(usage.IsInitialized());
@@ -25,6 +33,8 @@ TEST(KernelPilotMoeExpertSelectionTest, RejectsUninitializedCollection) {
   gsl::span<const int> selected = sentinel;
   EXPECT_FALSE(usage.GetSelectedExperts(selected).IsOK());
   EXPECT_EQ(selected.data(), sentinel);
+  gsl::span<const float> probabilities;
+  EXPECT_FALSE(usage.GetSelectedExpertProbabilities(probabilities).IsOK());
   EXPECT_FALSE(usage.BeginInvocation(0).IsOK());
   EXPECT_FALSE(usage.IsInitialized());
 }
@@ -40,6 +50,51 @@ TEST(KernelPilotMoeExpertSelectionTest, UnionsSelectedExpertsAcrossBatches) {
   ASSERT_STATUS_OK(usage.Collect(second));
   ASSERT_STATUS_OK(usage.Collect({}));
   ExpectSelectedExperts(usage, {0, 2, 3});
+  ExpectSelectedProbabilities(usage, {});
+}
+
+TEST(KernelPilotMoeExpertSelectionTest, RetainsMaximumProbabilityForRepeatedExperts) {
+  KernelPilotMoeExpertSelection usage;
+  ASSERT_STATUS_OK(usage.BeginInvocation(4));
+  const int first_ids[] = {0, 2, 0};
+  const float first_probabilities[] = {0.6f, 0.2f, 0.8f};
+  ASSERT_STATUS_OK(usage.CollectWeighted(first_ids, first_probabilities));
+  const int second_ids[] = {2, 3};
+  const float second_probabilities[] = {0.1f, 0.4f};
+  ASSERT_STATUS_OK(usage.CollectWeighted(second_ids, second_probabilities));
+  ExpectSelectedExperts(usage, {0, 2, 3});
+  ExpectSelectedProbabilities(usage, {0.8f, 0.2f, 0.4f});
+}
+
+TEST(KernelPilotMoeExpertSelectionTest, ValidatesWeightedCollection) {
+  KernelPilotMoeExpertSelection usage;
+  ASSERT_STATUS_OK(usage.BeginInvocation(4));
+  const int ids[] = {0, 2};
+  const float one_probability[] = {0.5f};
+  EXPECT_FALSE(usage.CollectWeighted(ids, one_probability).IsOK());
+  ExpectSelectedExperts(usage, {});
+
+  for (const float invalid_probability : {
+           -0.1f,
+           1.1f,
+           std::numeric_limits<float>::infinity(),
+           std::numeric_limits<float>::quiet_NaN()}) {
+    const float probabilities[] = {0.5f, invalid_probability};
+    EXPECT_FALSE(usage.CollectWeighted(ids, probabilities).IsOK());
+    ExpectSelectedExperts(usage, {});
+  }
+
+  const int invalid_ids[] = {0, 4};
+  const float valid_probabilities[] = {0.5f, 0.5f};
+  EXPECT_FALSE(usage.CollectWeighted(invalid_ids, valid_probabilities).IsOK());
+  ExpectSelectedExperts(usage, {});
+
+  ASSERT_STATUS_OK(usage.CollectWeighted(ids, valid_probabilities));
+  EXPECT_FALSE(usage.Collect(ids).IsOK());
+
+  ASSERT_STATUS_OK(usage.BeginInvocation(4));
+  ASSERT_STATUS_OK(usage.Collect(ids));
+  EXPECT_FALSE(usage.CollectWeighted(ids, valid_probabilities).IsOK());
 }
 
 TEST(KernelPilotMoeExpertSelectionTest, ResetsSelectionAndReusesStorage) {

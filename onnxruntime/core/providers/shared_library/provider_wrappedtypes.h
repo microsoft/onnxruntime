@@ -1365,6 +1365,11 @@ struct OpKernelContext final {
   KernelPilot* GetKernelPilot() const {
     return g_host->OpKernelContext__GetKernelPilot(this);
   }
+#if !defined(ORT_MINIMAL_BUILD)
+  concurrency::ThreadPool* GetOperatorThreadPool() const {
+    return g_host->OpKernelContext__GetOperatorThreadPool(this);
+  }
+#endif
 
   PROVIDER_DISALLOW_ALL(OpKernelContext)
 };
@@ -1440,6 +1445,7 @@ struct OpKernelInfo final {
   TensorShapeVector GetAttrsOrDefault(const std::string& name, const TensorShapeVector& default_value = TensorShapeVector{}) const;
 
   bool TryGetConstantInput(int input_index, const Tensor** constant_input_value) const { return g_host->OpKernelInfo__TryGetConstantInput(this, input_index, constant_input_value); }
+  bool TryGetConstantInput(int input_index, const OrtValue** constant_input_value) const { return g_host->OpKernelInfo__TryGetConstantInputOrtValue(this, input_index, constant_input_value); }
 
   const DataTransferManager& GetDataTransferManager() const noexcept { return g_host->OpKernelInfo__GetDataTransferManager(this); }
   const KernelDef& GetKernelDef() const { return g_host->OpKernelInfo__GetKernelDef(this); }

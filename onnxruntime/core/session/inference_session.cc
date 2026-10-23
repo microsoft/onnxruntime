@@ -2782,9 +2782,18 @@ common::Status InferenceSession::Initialize() {
       if (((option == kOrtSessionOptionsConfigEnableMoeExpertCounting ||
             option == kOrtSessionOptionsConfigEnableMoeExpertStatistics) &&
            value != "0") ||
+          (option == kOrtSessionOptionsConfigMoeCpuOffloadExperts &&
+           (value.empty() || value.find_first_not_of('0') != std::string::npos)) ||
           option == kOrtSessionOptionsConfigMoeExpertCounterStateFile ||
+          option == kOrtSessionOptionsConfigMoeExpertPopularityFile ||
           option == kOrtSessionOptionsConfigMoeExpertCounterAlpha ||
-          option == kOrtSessionOptionsConfigMoeExpertCounterBeta) {
+          option == kOrtSessionOptionsConfigMoeExpertCounterProbabilityWeight ||
+          option == kOrtSessionOptionsConfigMoeCpuOffloadStrategy ||
+          option == kOrtSessionOptionsConfigMoeCpuOffloadGpuRatio ||
+          option == kOrtSessionOptionsConfigMoeCpuOffloadLayerOrder ||
+          option == kOrtSessionOptionsConfigMoeCpuOffloadOnDemandThreshold ||
+          option == kOrtSessionOptionsConfigMoeExpertSwapEpsilon ||
+          option == kOrtSessionOptionsConfigMoeMaxInFlightSwapsPerDevice) {
         return ORT_MAKE_STATUS(
             ONNXRUNTIME, INVALID_ARGUMENT, key, " is not supported in a minimal build.");
       }
@@ -2803,31 +2812,133 @@ common::Status InferenceSession::Initialize() {
     ORT_RETURN_IF_NOT(enable_moe_counting == "0" || enable_moe_counting == "1",
                       kOrtSessionOptionsConfigEnableMoeExpertCounting, " must be \"0\" or \"1\".");
     const bool enable_moe_expert_counting = enable_moe_counting == "1";
+    const auto moe_cpu_offload_experts = session_options_.config_options.GetConfigOrDefault(
+        kOrtSessionOptionsConfigMoeCpuOffloadExperts, "0");
+    int64_t moe_cpu_offload_expert_count = -1;
+    ORT_RETURN_IF_NOT(
+        TryParseStringWithClassicLocale(moe_cpu_offload_experts, moe_cpu_offload_expert_count) &&
+            moe_cpu_offload_expert_count >= 0,
+        kOrtSessionOptionsConfigMoeCpuOffloadExperts,
+        " must be a non-negative integer. Received: \"", moe_cpu_offload_experts, "\".");
+    const bool enable_moe_cpu_offload = moe_cpu_offload_expert_count > 0;
+    const auto moe_cpu_offload_strategy = session_options_.config_options.GetConfigOrDefault(
+        kOrtSessionOptionsConfigMoeCpuOffloadStrategy, "adaptive");
+    ORT_RETURN_IF_NOT(moe_cpu_offload_strategy == "adaptive" || moe_cpu_offload_strategy == "basic" ||
+                          moe_cpu_offload_strategy == "layered",
+                      kOrtSessionOptionsConfigMoeCpuOffloadStrategy,
+                      " must be adaptive, basic or layered. Received: ", moe_cpu_offload_strategy);
+    const auto moe_gpu_ratio =
+        session_options_.config_options.GetConfigEntry(kOrtSessionOptionsConfigMoeCpuOffloadGpuRatio);
+    const auto moe_on_demand_threshold =
+        session_options_.config_options.GetConfigEntry(kOrtSessionOptionsConfigMoeCpuOffloadOnDemandThreshold);
+    if (moe_on_demand_threshold) {
+      int64_t threshold = -1;
+      ORT_RETURN_IF_NOT(TryParseStringWithClassicLocale(*moe_on_demand_threshold, threshold) && threshold >= 0,
+                        kOrtSessionOptionsConfigMoeCpuOffloadOnDemandThreshold,
+                        " must be a non-negative integer. Received: \"", *moe_on_demand_threshold, "\".");
+      ORT_RETURN_IF(threshold > 0 && (!enable_moe_cpu_offload || moe_cpu_offload_strategy == "basic"),
+                    kOrtSessionOptionsConfigMoeCpuOffloadOnDemandThreshold,
+                    " requires CPU offload with the adaptive or layered strategy.");
+    }
+    const auto moe_layer_order =
+        session_options_.config_options.GetConfigEntry(kOrtSessionOptionsConfigMoeCpuOffloadLayerOrder);
+    if (moe_layer_order) {
+      ORT_RETURN_IF_NOT(moe_cpu_offload_strategy == "basic" || moe_cpu_offload_strategy == "layered",
+                        kOrtSessionOptionsConfigMoeCpuOffloadLayerOrder, " requires the basic or layered strategy.");
+      ORT_RETURN_IF_NOT(*moe_layer_order == "first" || *moe_layer_order == "last" || *moe_layer_order == "middle",
+                        kOrtSessionOptionsConfigMoeCpuOffloadLayerOrder,
+                        " must be first, last or middle. Received: ", *moe_layer_order);
+    }
+    if (moe_gpu_ratio) {
+      double gpu_ratio = 0.0;
+      ORT_RETURN_IF_NOT(moe_cpu_offload_strategy == "layered",
+                        kOrtSessionOptionsConfigMoeCpuOffloadGpuRatio, " requires the layered strategy.");
+      ORT_RETURN_IF_NOT(TryParseStringWithClassicLocale(*moe_gpu_ratio, gpu_ratio) &&
+                            std::isfinite(gpu_ratio) && gpu_ratio > 0.0 && gpu_ratio <= 1.0,
+                        kOrtSessionOptionsConfigMoeCpuOffloadGpuRatio,
+                        " must be finite and in (0, 1]. Received: \"", *moe_gpu_ratio, "\".");
+    }
+    const auto moe_popularity_file =
+        session_options_.config_options.GetConfigEntry(kOrtSessionOptionsConfigMoeExpertPopularityFile);
+    if (moe_popularity_file) {
+      ORT_RETURN_IF(moe_popularity_file->empty(),
+                    kOrtSessionOptionsConfigMoeExpertPopularityFile, " must not be empty.");
+    }
+    const bool enable_moe_popularity_output = moe_popularity_file.has_value();
+    if (!enable_moe_cpu_offload &&
+        (enable_moe_expert_counting || enable_moe_expert_statistics || enable_moe_popularity_output)) {
+      LOGS(*session_logger_, WARNING)
+          << "MoE expert counting, statistics and popularity output are disabled because CPU offload is not enabled.";
+    }
+    const auto moe_counter_probability_weight =
+        session_options_.config_options.GetConfigEntry(kOrtSessionOptionsConfigMoeExpertCounterProbabilityWeight);
+    if (moe_counter_probability_weight) {
+      double probability_weight = -1.0;
+      ORT_RETURN_IF_NOT(enable_moe_cpu_offload,
+                        kOrtSessionOptionsConfigMoeExpertCounterProbabilityWeight,
+                        " requires MoE CPU offload to be enabled.");
+      ORT_RETURN_IF_NOT(TryParseStringWithClassicLocale(*moe_counter_probability_weight, probability_weight) &&
+                            std::isfinite(probability_weight) &&
+                            probability_weight >= 0.0 && probability_weight <= 1.0,
+                        kOrtSessionOptionsConfigMoeExpertCounterProbabilityWeight,
+                        " must be finite and in [0, 1]. Received: \"", *moe_counter_probability_weight, "\".");
+    }
+    const auto moe_swap_epsilon =
+        session_options_.config_options.GetConfigEntry(kOrtSessionOptionsConfigMoeExpertSwapEpsilon);
+    if (moe_swap_epsilon) {
+      double swap_epsilon = -1.0;
+      ORT_RETURN_IF_NOT(enable_moe_cpu_offload,
+                        kOrtSessionOptionsConfigMoeExpertSwapEpsilon,
+                        " requires MoE CPU offload to be enabled.");
+      ORT_RETURN_IF_NOT(TryParseStringWithClassicLocale(*moe_swap_epsilon, swap_epsilon) &&
+                            std::isfinite(swap_epsilon) && swap_epsilon >= 0.0,
+                        kOrtSessionOptionsConfigMoeExpertSwapEpsilon,
+                        " must be finite and non-negative. Received: \"", *moe_swap_epsilon, "\".");
+    }
+    const auto moe_max_in_flight_swaps =
+        session_options_.config_options.GetConfigEntry(kOrtSessionOptionsConfigMoeMaxInFlightSwapsPerDevice);
+    if (moe_max_in_flight_swaps) {
+      int64_t max_in_flight_swaps = -1;
+      ORT_RETURN_IF_NOT(enable_moe_cpu_offload,
+                        kOrtSessionOptionsConfigMoeMaxInFlightSwapsPerDevice,
+                        " requires MoE CPU offload to be enabled.");
+      ORT_RETURN_IF_NOT(TryParseStringWithClassicLocale(*moe_max_in_flight_swaps, max_in_flight_swaps) &&
+                            max_in_flight_swaps >= 0,
+                        kOrtSessionOptionsConfigMoeMaxInFlightSwapsPerDevice,
+                        " must be a non-negative integer. Received: \"", *moe_max_in_flight_swaps, "\".");
+    }
     const auto moe_counter_state_file =
         session_options_.config_options.GetConfigEntry(kOrtSessionOptionsConfigMoeExpertCounterStateFile);
     if (moe_counter_state_file) {
-      ORT_RETURN_IF_NOT(enable_moe_expert_counting || enable_moe_expert_statistics,
+      ORT_RETURN_IF_NOT(enable_moe_expert_counting || enable_moe_expert_statistics ||
+                            enable_moe_cpu_offload || enable_moe_popularity_output,
                         kOrtSessionOptionsConfigMoeExpertCounterStateFile,
-                        " requires expert counting or statistics logging to be enabled.");
+                        " requires expert counting, statistics logging, popularity output, or MoE CPU offload.");
       ORT_RETURN_IF(moe_counter_state_file->empty(),
                     kOrtSessionOptionsConfigMoeExpertCounterStateFile, " must not be empty.");
     }
-    for (const char* key : {kOrtSessionOptionsConfigMoeExpertCounterAlpha,
-                            kOrtSessionOptionsConfigMoeExpertCounterBeta}) {
+    for (const char* key : {kOrtSessionOptionsConfigMoeExpertCounterAlpha}) {
       ORT_RETURN_IF(session_options_.config_options.GetConfigEntry(key).has_value() &&
-                        !enable_moe_expert_counting && !enable_moe_expert_statistics,
-                    key, " requires expert counting or statistics logging to be enabled.");
+                        !enable_moe_expert_counting && !enable_moe_expert_statistics &&
+                        !enable_moe_cpu_offload && !enable_moe_popularity_output,
+                    key, " requires expert counting, statistics logging, popularity output, or MoE CPU offload.");
+      if (const auto value = session_options_.config_options.GetConfigEntry(key)) {
+        double alpha = -1.0;
+        ORT_RETURN_IF_NOT(TryParseStringWithClassicLocale(*value, alpha) &&
+                              std::isfinite(alpha) && alpha >= 0.0 && alpha <= 1.0,
+                          key, " must be finite and in [0, 1]. Received: \"", *value, "\".");
+      }
     }
-    if (enable_moe_expert_counting) {
+    if (enable_moe_cpu_offload) {
       for (const auto& execution_provider : execution_providers_) {
         ORT_RETURN_IF(execution_provider->Type() == kCudaExecutionProvider &&
                           execution_provider->GetOrtEp() != nullptr,
-                      "MoE expert counting is not supported by the CUDA plugin execution provider.");
+                      "MoE expert counting and CPU offload are not supported by the CUDA plugin execution provider.");
         ORT_RETURN_IF(execution_provider->IsGraphCaptureEnabled(),
-                      "MoE expert counting is not supported when graph capture is enabled.");
+                      "MoE expert counting and CPU offload are not supported when graph capture is enabled.");
       }
     }
-    if (enable_moe_expert_statistics) {
+    if (enable_moe_cpu_offload && enable_moe_expert_statistics) {
       for (const auto& execution_provider : execution_providers_) {
         if (execution_provider->Type() == kCudaExecutionProvider &&
             execution_provider->GetOrtEp() != nullptr) {
@@ -3731,12 +3842,9 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
     run_profiler->StartProfiling(profile_file);
   }
 
+  // Failed-run cleanup can log deferred MoE usage, so its guard must be destroyed first.
+  std::unique_ptr<logging::Logger> owned_run_logger;
 #if !defined(ORT_MINIMAL_BUILD)
-  const bool track_moe_experts =
-      session_options_.config_options.GetConfigOrDefault(
-          kOrtSessionOptionsConfigEnableMoeExpertCounting, "0") == "1" ||
-      session_options_.config_options.GetConfigOrDefault(
-          kOrtSessionOptionsConfigEnableMoeExpertStatistics, "0") == "1";
   const bool collect_moe_statistics =
       session_options_.config_options.GetConfigOrDefault(
           kOrtSessionOptionsConfigEnableMoeExpertStatistics, "0") == "1";
@@ -3744,7 +3852,21 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
   bool moe_run_active = false;
   auto end_moe_run = gsl::finally([&]() {
     if (moe_run_active) {
-      ORT_IGNORE_RETURN_VALUE(moe_expert_state->EndRun());
+      moe_run_active = false;
+      ORT_TRY {
+        const Status status = moe_expert_state->EndRun(false);
+        if (!status.IsOK()) {
+          LOGS(*session_logger_, ERROR) << "MoE failed-run cleanup failed: " << status.ErrorMessage();
+        }
+      }
+      ORT_CATCH(const std::exception& ex) {
+        ORT_HANDLE_EXCEPTION([&]() {
+          LOGS(*session_logger_, ERROR) << "MoE failed-run cleanup threw: " << ex.what();
+        });
+      }
+      ORT_CATCH(...) {
+        LOGS(*session_logger_, ERROR) << "Unknown exception during MoE failed-run cleanup.";
+      }
     }
   });
 #endif  // !defined(ORT_MINIMAL_BUILD)
@@ -3837,15 +3959,11 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
         LOGS(*session_logger_, INFO) << "Running with tag: " << run_options.run_tag;
       }
 
-      // scope of owned_run_logger is just the call to Execute.
-      // If Execute ever becomes async we need a different approach
-      std::unique_ptr<logging::Logger> owned_run_logger;
       const auto& run_logger = CreateLoggerForRun(run_options, owned_run_logger);
 
 #if !defined(ORT_MINIMAL_BUILD)
-      if (track_moe_experts) {
-        moe_expert_state = session_state_->GetMoeExpertState();
-        ORT_RETURN_IF_NOT(moe_expert_state, "MoE expert state is unavailable.");
+      moe_expert_state = session_state_->GetMoeExpertState();
+      if (moe_expert_state != nullptr) {
         ORT_RETURN_IF_ERROR_SESSIONID_(moe_expert_state->BeginRun(
             run_options.run_tag, collect_moe_statistics ? &run_logger : nullptr));
         moe_run_active = true;
@@ -3914,8 +4032,8 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
 
 #if !defined(ORT_MINIMAL_BUILD)
       if (moe_run_active) {
-        const Status moe_run_status = moe_expert_state->EndRun();
         moe_run_active = false;
+        const Status moe_run_status = moe_expert_state->EndRun(retval.IsOK());
         if (retval.IsOK() && !moe_run_status.IsOK()) {
           retval = moe_run_status;
         }

@@ -1,0 +1,249 @@
+{
+  "measured_on": "2026-10-19",
+  "source": {
+    "base_commit": "314bc93103c4735466852270c6036f7616ca8242",
+    "uncommitted_beta_implementation": true,
+    "benchmark_source_patch_sha256": "932b61d3856c4f9806036506b002c60fbdd5adf397b6c06407a0b47944762884",
+    "runtime_sha256": "d2b7353a3f383d0ae0749ee463c6a86f0ab95a126a7821d368010dd71f3b15f8",
+    "cuda_provider_sha256": "4b22a61f43f30f80ed455fe16aba2861de610b98cfe34f5bb54115dacaf9ff5f"
+  },
+  "hardware": {
+    "gpu": "NVIDIA H200",
+    "physical_gpu_index": 1,
+    "driver": "580.105.08",
+    "cpu": "Intel Xeon Platinum 8480C",
+    "physical_cpu_cores": 96
+  },
+  "configuration": {
+    "model": "Qwen3.5-35B-A3B INT4",
+    "qmoe_layers": 40,
+    "experts_per_layer": 256,
+    "top_k": 8,
+    "strategy": "layered",
+    "gpu_ratio": 0.6,
+    "layer_order": "last",
+    "counter_alpha": 0.9,
+    "swap_epsilon": 0.1,
+    "max_in_flight_swaps_per_device": 5,
+    "on_demand_threshold": 0,
+    "swap": true,
+    "counter_log": false,
+    "cuda_graph": false,
+    "max_new_tokens_per_prompt": 256,
+    "warmup_prompt_indices": [
+      1,
+      2
+    ],
+    "measured_prompt_indices": [
+      3,
+      4,
+      5
+    ],
+    "measured_prompt_tokens": [
+      25,
+      28,
+      31
+    ],
+    "prefill_throughput": "84 input tokens / total measured prefill seconds, equivalent to 28000 / measurements.prefill_ms for these three prompts.",
+    "prompts_sha256": "9b61ca014dc699b2bd02fc3247edfbdecbf9aad281f7fa20feb63350cec71ecf",
+    "execution": "Fresh process per configuration; serial paired runs with beta=1 before beta=0.5 for each K."
+  },
+  "limitations": [
+    "Single run per configuration on a shared host.",
+    "No external GPU compute processes at run starts; continuous isolation was not enforced.",
+    "K=10240 has no CUDA-resident experts, so it is an all-CPU-expert overhead control.",
+    "Performance measurements only; generation quality was not compared."
+  ],
+  "runs": [
+    {
+      "name": "layered60-last-k6144-beta1",
+      "cpu_offload_experts": 6144,
+      "placement_beta": 1,
+      "raw_result_sha256": "4f3168bef98c5e95c2b0afcea0276c618076ea4e9a68afbe2846f57868c90a9d",
+      "model_load_seconds": 64.17473351862282,
+      "measurements": {
+        "prompt_indices": [
+          3,
+          4,
+          5
+        ],
+        "prefill_ms": 223.34439090142646,
+        "decoded_tokens": 762,
+        "decoded_tokens_per_second": 38.35886995682055,
+        "peak_gpu_used_mib": 30349.8125,
+        "peak_cpu_rss_mib": 25915.2734375
+      }
+    },
+    {
+      "name": "layered60-last-k6144-beta0.5",
+      "cpu_offload_experts": 6144,
+      "placement_beta": 0.5,
+      "raw_result_sha256": "e7d0cbb6cb1f916e9a92c80e92746d38afbc80b76e6d331a97195d5dadc1fa9e",
+      "model_load_seconds": 25.084934120997787,
+      "measurements": {
+        "prompt_indices": [
+          3,
+          4,
+          5
+        ],
+        "prefill_ms": 279.60062585771084,
+        "decoded_tokens": 762,
+        "decoded_tokens_per_second": 32.93497847561409,
+        "peak_gpu_used_mib": 30317.8125,
+        "peak_cpu_rss_mib": 25934.0703125
+      }
+    },
+    {
+      "name": "layered60-last-k7168-beta1",
+      "cpu_offload_experts": 7168,
+      "placement_beta": 1,
+      "raw_result_sha256": "8c5333c24c2210dfa7a3c6f4175d2162df86244beb87529d4e932eb99602274c",
+      "model_load_seconds": 26.437539163976908,
+      "measurements": {
+        "prompt_indices": [
+          3,
+          4,
+          5
+        ],
+        "prefill_ms": 282.27981956054765,
+        "decoded_tokens": 762,
+        "decoded_tokens_per_second": 33.50936668140575,
+        "peak_gpu_used_mib": 28711.8125,
+        "peak_cpu_rss_mib": 29579.38671875
+      }
+    },
+    {
+      "name": "layered60-last-k7168-beta0.5",
+      "cpu_offload_experts": 7168,
+      "placement_beta": 0.5,
+      "raw_result_sha256": "5089ae4ade61b270f51873c8f69989c2a583d4ab12c3aef030626674c1b99601",
+      "model_load_seconds": 28.312455900013447,
+      "measurements": {
+        "prompt_indices": [
+          3,
+          4,
+          5
+        ],
+        "prefill_ms": 357.20654918501776,
+        "decoded_tokens": 762,
+        "decoded_tokens_per_second": 28.51321990613469,
+        "peak_gpu_used_mib": 28663.8125,
+        "peak_cpu_rss_mib": 29599.99609375
+      }
+    },
+    {
+      "name": "layered60-last-k8192-beta1",
+      "cpu_offload_experts": 8192,
+      "placement_beta": 1,
+      "raw_result_sha256": "fdf4a679b86fab6674ac0755cbc26621fd35e13f2343985ba1d9e88ec453a143",
+      "model_load_seconds": 28.812373576685786,
+      "measurements": {
+        "prompt_indices": [
+          3,
+          4,
+          5
+        ],
+        "prefill_ms": 412.2338987266024,
+        "decoded_tokens": 762,
+        "decoded_tokens_per_second": 34.419513455274846,
+        "peak_gpu_used_mib": 26841.8125,
+        "peak_cpu_rss_mib": 33237.74609375
+      }
+    },
+    {
+      "name": "layered60-last-k8192-beta0.5",
+      "cpu_offload_experts": 8192,
+      "placement_beta": 0.5,
+      "raw_result_sha256": "f0c873526e41e2cfc31df9414455792c329ca6806b7e21b426c65b4bc065226e",
+      "model_load_seconds": 28.601475610397756,
+      "measurements": {
+        "prompt_indices": [
+          3,
+          4,
+          5
+        ],
+        "prefill_ms": 418.85283185789984,
+        "decoded_tokens": 762,
+        "decoded_tokens_per_second": 32.67898461373944,
+        "peak_gpu_used_mib": 26905.8125,
+        "peak_cpu_rss_mib": 33258.484375
+      }
+    },
+    {
+      "name": "layered60-last-k9216-beta1",
+      "cpu_offload_experts": 9216,
+      "placement_beta": 1,
+      "raw_result_sha256": "b35b734521d119b3aa1ef511deff51fb3932914a9c9fbd4bef28703e624a7c44",
+      "model_load_seconds": 32.284705152735114,
+      "measurements": {
+        "prompt_indices": [
+          3,
+          4,
+          5
+        ],
+        "prefill_ms": 483.17600941906375,
+        "decoded_tokens": 762,
+        "decoded_tokens_per_second": 32.48632997089952,
+        "peak_gpu_used_mib": 25053.8125,
+        "peak_cpu_rss_mib": 36898.1484375
+      }
+    },
+    {
+      "name": "layered60-last-k9216-beta0.5",
+      "cpu_offload_experts": 9216,
+      "placement_beta": 0.5,
+      "raw_result_sha256": "3a2d9143163feee80c30fd6267393ac53131f55762e0c537a59f74d1a937d1c5",
+      "model_load_seconds": 31.971936218440533,
+      "measurements": {
+        "prompt_indices": [
+          3,
+          4,
+          5
+        ],
+        "prefill_ms": 546.293604808549,
+        "decoded_tokens": 762,
+        "decoded_tokens_per_second": 29.21853036575446,
+        "peak_gpu_used_mib": 25115.8125,
+        "peak_cpu_rss_mib": 36919.71875
+      }
+    },
+    {
+      "name": "layered60-last-k10240-beta1",
+      "cpu_offload_experts": 10240,
+      "placement_beta": 1,
+      "raw_result_sha256": "0723456299e68f18bc5c5ffe31471bf7278573ced722428ae37d0dfdabddffee",
+      "model_load_seconds": 34.18404487799853,
+      "measurements": {
+        "prompt_indices": [
+          3,
+          4,
+          5
+        ],
+        "prefill_ms": 647.6123106355468,
+        "decoded_tokens": 762,
+        "decoded_tokens_per_second": 27.630126049347133,
+        "peak_gpu_used_mib": 23201.8125,
+        "peak_cpu_rss_mib": 40485.74609375
+      }
+    },
+    {
+      "name": "layered60-last-k10240-beta0.5",
+      "cpu_offload_experts": 10240,
+      "placement_beta": 0.5,
+      "raw_result_sha256": "10432c79f888f08e512764a7764552c81aa83012a9dbc862aef0a379fbc8880d",
+      "model_load_seconds": 31.411874664016068,
+      "measurements": {
+        "prompt_indices": [
+          3,
+          4,
+          5
+        ],
+        "prefill_ms": 676.7251522590717,
+        "decoded_tokens": 762,
+        "decoded_tokens_per_second": 25.963154012959397,
+        "peak_gpu_used_mib": 22177.8125,
+        "peak_cpu_rss_mib": 40473.58203125
+      }
+    }
+  ]
+}

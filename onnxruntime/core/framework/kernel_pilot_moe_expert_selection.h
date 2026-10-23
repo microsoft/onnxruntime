@@ -51,6 +51,15 @@ class IKernelPilotMoeExpertSelection {
   // Sets expert_ids to a view of the unique local expert IDs selected during this invocation.
   // The view remains owned by the implementation and is valid until its next non-const operation.
   virtual Status GetSelectedExperts(gsl::span<const int>& expert_ids) const = 0;
+
+  // Adds local expert IDs and their routing probabilities. Repeated experts retain their maximum
+  // probability, matching Collect's invocation-level deduplication.
+  virtual Status CollectWeighted(gsl::span<const int> expert_ids,
+                                 gsl::span<const float> routing_probabilities) = 0;
+
+  // Returns probabilities aligned with GetSelectedExperts(), or an empty span if CollectWeighted()
+  // was not used for this invocation.
+  virtual Status GetSelectedExpertProbabilities(gsl::span<const float>& routing_probabilities) const = 0;
 };
 
 // Collects the union of local expert IDs selected across one MoE kernel invocation,
@@ -76,7 +85,12 @@ class KernelPilotMoeExpertSelection final : public IKernelPilotMoeExpertSelectio
   // membership mask.
   Status Collect(gsl::span<const int> expert_ids) override;
 
+  Status CollectWeighted(gsl::span<const int> expert_ids,
+                         gsl::span<const float> routing_probabilities) override;
+
   Status GetSelectedExperts(gsl::span<const int>& expert_ids) const override;
+
+  Status GetSelectedExpertProbabilities(gsl::span<const float>& routing_probabilities) const override;
 
  private:
   friend class KernelPilot;
@@ -85,6 +99,8 @@ class KernelPilotMoeExpertSelection final : public IKernelPilotMoeExpertSelectio
 
   size_t expert_count_{0};
   InlinedVector<int> selected_experts_;
+  InlinedVector<float> selected_expert_probabilities_;
+  bool has_routing_probabilities_{false};
   bool invocation_pending_{false};
 };
 

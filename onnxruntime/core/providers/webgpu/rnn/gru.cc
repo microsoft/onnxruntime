@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 
+#include "core/providers/webgpu/math/unary_elementwise_ops.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 
@@ -24,7 +25,7 @@ std::string ActivationToWgslFn(const std::string& activation) {
     lower.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
   }
   if (lower == "sigmoid") return "sigmoid_f";
-  if (lower == "tanh") return "tanh_f";
+  if (lower == "tanh") return "tanh_v";
   if (lower == "relu") return "relu_f";
   ORT_THROW("Unsupported GRU activation for WebGPU: ", activation);
 }
@@ -32,13 +33,10 @@ std::string ActivationToWgslFn(const std::string& activation) {
 // WGSL helpers shared by both compute passes.
 void AppendActivationImpl(ShaderHelper& shader) {
   shader.AdditionalImplementation()
+      << TanhImpl
       << "fn sigmoid_f(v: f32) -> f32 {\n"
       << "  let clamped = clamp(v, -20.0, 20.0);\n"
       << "  return 1.0 / (1.0 + exp(-clamped));\n"
-      << "}\n"
-      << "fn tanh_f(v: f32) -> f32 {\n"
-      << "  let clamped = clamp(v, -10.0, 10.0);\n"
-      << "  return tanh(clamped);\n"
       << "}\n"
       << "fn relu_f(v: f32) -> f32 { return max(0.0, v); }\n\n";
 }
@@ -116,7 +114,7 @@ Status GruStateCopyProgram::GenerateShaderCode(ShaderHelper& shader) const {
 // GruGateProgram - compute update (z) and reset (r) gates for the whole [batch, H].
 // ===========================================================================
 Status GruGateProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  shader.AddInput("x", ShaderUsage::UseElementTypeAlias);
+  shader.AddInput("x", ShaderUsage::UseElementTypeAlias | ShaderUsage::UseValueTypeAlias);
   shader.AddInput("w", ShaderUsage::UseElementTypeAlias);
   shader.AddInput("r", ShaderUsage::UseElementTypeAlias);
   shader.AddInput("h_prev", ShaderUsage::UseElementTypeAlias);
@@ -193,7 +191,7 @@ Status GruGateProgram::GenerateShaderCode(ShaderHelper& shader) const {
 // GruHiddenProgram - compute hidden gate (h) and new hidden state.
 // ===========================================================================
 Status GruHiddenProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  shader.AddInput("x", ShaderUsage::UseElementTypeAlias);
+  shader.AddInput("x", ShaderUsage::UseElementTypeAlias | ShaderUsage::UseValueTypeAlias);
   shader.AddInput("w", ShaderUsage::UseElementTypeAlias);
   shader.AddInput("r", ShaderUsage::UseElementTypeAlias);
   shader.AddInput("h_prev", ShaderUsage::UseElementTypeAlias);

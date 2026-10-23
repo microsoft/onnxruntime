@@ -4,6 +4,8 @@
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #include "core/framework/execution_providers.h"
+#include "core/framework/fallback_cpu_capability.h"
+#include "core/framework/op_kernel.h"
 #include "core/framework/ortmemoryinfo.h"
 #include "core/framework/layering_annotations.h"
 #include "core/session/abi_devices.h"
@@ -11,6 +13,7 @@
 #include "core/framework/ortdevice.h"
 #include "core/graph/constants.h"
 #include "core/graph/model.h"  // For Model, Graph
+#include "core/graph/graph_utils.h"
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 
@@ -1232,6 +1235,86 @@ LayeringIndex CreateTwoEpIndex(const Graph& graph,
 }
 
 }  // namespace
+
+TEST(LayeringIndexPartitionerTest, CpuFallbackRespectsFilteredGraphBoundaries) {
+  class KernelLookup final : public IExecutionProvider::IKernelLookup {
+   public:
+    KernelLookup()
+        : shape_info_(KernelDefBuilder()
+                          .SetName("Shape")
+                          .Provider(kCudaExecutionProvider)
+                          .OutputMemoryType(OrtMemTypeCPUOutput, 0)
+                          .Build(),
+                      nullptr),
+          identity_info_(KernelDefBuilder().SetName("Identity").Provider(kCudaExecutionProvider).Build(), nullptr) {}
+
+    const KernelCreateInfo* LookUpKernel(const Node& node) const override {
+      if (node.OpType() == "Shape") {
+        return &shape_info_;
+      }
+      if (node.OpType() == "Identity") {
+        return &identity_info_;
+      }
+      return nullptr;
+    }
+
+   private:
+    KernelCreateInfo shape_info_;
+    KernelCreateInfo identity_info_;
+  } kernel_lookup;
+
+  Model model("cpu_fallback_filtered_graph", false, DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+  ONNX_NAMESPACE::TypeProto input_type;
+  input_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  input_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(2);
+  ONNX_NAMESPACE::TypeProto shape_type;
+  shape_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  shape_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+  auto& input = graph.GetOrCreateNodeArg("input", &input_type);
+  auto& shape_output = graph.GetOrCreateNodeArg("shape_output", &shape_type);
+  auto& shape = graph.AddNode("shape", "Shape", "", {&input}, {&shape_output});
+  InlinedVector<NodeIndex> node_indices{shape.Index()};
+  NodeArg* previous = &shape_output;
+  for (int i = 1; i < 4; ++i) {
+    auto& output = graph.GetOrCreateNodeArg("identity_output_" + std::to_string(i), &shape_type);
+    auto& node = graph.AddNode("identity_" + std::to_string(i), "Identity", "", {previous}, {&output});
+    node_indices.push_back(node.Index());
+    previous = &output;
+  }
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  struct TestCase {
+    const char* name;
+    InlinedVector<NodeIndex> visible;
+    InlinedVector<NodeIndex> supported;
+    InlinedVector<NodeIndex> expected_cpu;
+  };
+  const TestCase cases[] = {
+      {"excluded_seed_consumer", {node_indices[0], node_indices[2], node_indices[3]}, {node_indices[0], node_indices[2], node_indices[3]}, {}},
+      {"excluded_cpu_preferred_consumer", {node_indices[0], node_indices[1], node_indices[3]}, {node_indices[0], node_indices[1], node_indices[3]}, {node_indices[1]}},
+      {"excluded_unclaimed_consumer", {node_indices[0], node_indices[1], node_indices[3]}, {node_indices[0], node_indices[3]}, {}},
+      {"unfiltered_chain", node_indices, node_indices, {node_indices[1], node_indices[2], node_indices[3]}},
+  };
+  for (const auto& test_case : cases) {
+    SCOPED_TRACE(test_case.name);
+    InlinedVector<const Node*> visible_nodes;
+    visible_nodes.reserve(test_case.visible.size());
+    for (auto index : test_case.visible) {
+      visible_nodes.push_back(graph.GetNode(index));
+    }
+    std::unique_ptr<IndexedSubGraph> subgraph;
+    ASSERT_STATUS_OK(graph_utils::CreateFilteredIndexedGraph(visible_nodes, graph, subgraph));
+    GraphViewer viewer(graph, *subgraph);
+    const auto preferred = GetCpuPreferredNodes(
+        viewer, kernel_lookup, test_case.supported, DefaultLoggingManager().DefaultLogger());
+    EXPECT_EQ(preferred.size(), test_case.expected_cpu.size());
+    for (auto index : test_case.expected_cpu) {
+      EXPECT_EQ(preferred.count(index), 1u);
+    }
+  }
+}
 
 TEST(LayeringIndexPartitionerTest, FilteredGraphViewerExcludesOtherEpNodes) {
   // Validates the filtering logic in create_graph_viewer (GetCapabilityForEP):

@@ -1,0 +1,895 @@
+{
+  "status": "stopped_by_user",
+  "planned_configurations": 45,
+  "completed_configurations": 33,
+  "last_completed_at": "2026-10-19T16:11:55Z",
+  "configuration": {
+    "started_at": "2026-10-19T15:31:49.432938+00:00",
+    "base_commit": "314bc93103c4735466852270c6036f7616ca8242",
+    "uncommitted_implementation": true,
+    "source_patch_sha256": "a86382378eb3089288d3dea29fcb62fd12cd13b90f11e9f24c5aba075e4fad68",
+    "model": "/datadisks/disk1/xadupre/examples/models/qwen/qwen3.5-35b-cuda-int4",
+    "benchmark_script": "tools/python/benchmark_moe_cpu_offload.py",
+    "physical_gpu_index": 1,
+    "strategy": "layered",
+    "layer_order": "last",
+    "gpu_ratios": [
+      0.6,
+      0.7,
+      0.8
+    ],
+    "placement_betas": [
+      1,
+      0.5,
+      0.1
+    ],
+    "cpu_offload_experts": [
+      6144,
+      7168,
+      8192,
+      9216,
+      10240
+    ],
+    "counter_alpha": 0.9,
+    "swap_epsilon": 0.1,
+    "max_in_flight_swaps_per_device": 5,
+    "on_demand_threshold": 0,
+    "swap": true,
+    "counter_log": false,
+    "cuda_graph": false,
+    "max_new_tokens_per_prompt": 256,
+    "warmup_prompt_indices": [
+      1,
+      2
+    ],
+    "measured_prompt_indices": [
+      3,
+      4,
+      5
+    ],
+    "execution": "33 completed fresh processes out of 45 planned, serial on H200 GPU 1; order K, GPU ratio, beta.",
+    "runtime": "/datadisks/disk1/xadupre/github/onnxruntime/build/linux_cuda/Release/onnxruntime/capi/libonnxruntime.so.1.32.0",
+    "limitations": [
+      "Single run per configuration on a shared host; no statistical confidence intervals.",
+      "Require no other GPU-1 compute process before each run; continuous isolation is not enforced.",
+      "The beta<1 implementation eagerly completes QMoE CPU/CUDA work, reducing overlap.",
+      "K=10240 has no GPU-resident experts and is an overhead control, not a placement comparison.",
+      "Performance only; generated quality is not compared."
+    ],
+    "input_sha256": {
+      "libonnxruntime.so.1.32.0": "d2b7353a3f383d0ae0749ee463c6a86f0ab95a126a7821d368010dd71f3b15f8",
+      "libonnxruntime_providers_cuda.so": "4b22a61f43f30f80ed455fe16aba2861de610b98cfe34f5bb54115dacaf9ff5f",
+      "benchmark_moe_cpu_offload.py": "d08c99a31d3d1c0865b436f61e54d00088b1031ae978abf040f9927fe89f7999",
+      "qmoe_prompt_runner.py": "a25afd75b3751d4db379701714cdcd3cc24a76aa1d3cb01bf5a9f2c7ea3e2d1a",
+      "benchmark-prompts.json": "9b61ca014dc699b2bd02fc3247edfbdecbf9aad281f7fa20feb63350cec71ecf"
+    },
+    "measured_prompt_tokens": [
+      25,
+      28,
+      31
+    ]
+  },
+  "runs": [
+    {
+      "name": "layered-0.6-last-k6144-beta1",
+      "cpu_offload_experts": 6144,
+      "gpu_ratio": 0.6,
+      "placement_beta": 1.0,
+      "raw_result_sha256": "b517722b336489dd86c9ab12fb6f961466f7598fa393b0f0662e6f8073a263ad",
+      "prefill_tokens_per_second": 124.71494059197043,
+      "decode_tokens_per_second": 35.123025515784605,
+      "peak_gpu_gib": 29.63848876953125,
+      "peak_cpu_rss_gib": 25.307884216308594,
+      "measurements": {
+        "prompt_indices": [
+          3,
+          4,
+          5
+        ],
+        "prefill_ms": 224.51199404895306,
+        "decoded_tokens": 762,
+        "decoded_tokens_per_second": 35.123025515784605,
+        "peak_gpu_used_mib": 30349.8125,
+        "peak_cpu_rss_mib": 25915.2734375
+      }
+    },
+    {
+      "name": "layered-0.6-last-k6144-beta0.5",
+      "cpu_offload_experts": 6144,
+      "gpu_ratio": 0.6,
+      "placement_beta": 0.5,
+      "raw_result_sha256": "e48b397964f2187af8b83301c99aabe39baeda9178ef4fc82fb87280a83e27f9",
+      "prefill_tokens_per_second": 112.5863456948956,
+      "decode_tokens_per_second": 34.55772490074394,
+      "peak_gpu_gib": 29.60723876953125,
+      "peak_cpu_rss_gib": 25.32654571533203,
+      "measurements": {
+        "prompt_indices": [
+          3,
+          4,
+          5
+        ],
+        "prefill_ms": 248.69800886760154,
+        "decoded_tokens": 762,
+        "decoded_tokens_per_second": 34.55772490074394,
+        "peak_gpu_used_mib": 30317.8125,
+        "peak_cpu_rss_mib": 25934.3828125
+      }
+    },
+    {
+      "name": "layered-0.6-last-k6144-beta0.1",
+      "cpu_offload_experts": 6144,
+      "gpu_ratio": 0.6,
+      "placement_beta": 0.1,
+      "raw_result_sha256": "c0339bdd407d1da93149b6948c4d30f161530ab04e382506f935e8468906e31b",
+      "prefill_tokens_per_second": 114.81663684973634,
+      "decode_tokens_per_second": 31.606118043331197,
+      "peak_gpu_gib": 29.58770751953125,
+      "peak_cpu_rss_gib": 25.326801300048828,
+      "measurements": {
+        "prompt_indices": [
+          3,
+          4,
+          5
+        ],
+        "prefill_ms": 243.86709773292145,
+        "decoded_tokens": 762,
+        "decoded_tokens_per_second": 31.606118043331197,
+        "peak_gpu_used_mib": 30297.8125,
+        "peak_cpu_rss_mib": 25934.64453125
+      }
+    },
+    {
+      "name": "layered-0.7-last-k6144-beta1",
+      "cpu_offload_experts": 6144,
+      "gpu_ratio": 0.7,
+      "placement_beta": 1.0,
+      "raw_result_sha256": "7fb7033bdda4cc33980ae2e966984633b994011ed37914e28fd8721b5135fd63",
+      "prefill_tokens_per_second": 131.80681502553543,
+      "decode_tokens_per_second": 42.16092715802761,
+      "peak_gpu_gib": 29.67559814453125,
+      "peak_cpu_rss_gib": 25.310020446777344,
+      "measurements": {
+        "prompt_indices": [
+          3,
+          4,
+          5
+        ],
+        "prefill_ms": 212.43211130301157,
+        "decoded_tokens": 762,
+        "decoded_tokens_per_second": 42.16092715802761,
+        "peak_gpu_used_mib": 30387.8125,
+        "peak_cpu_rss_mib": 25917.4609375
+      }
+    },
+    {
+      "name": "layered-0.7-last-k6144-beta0.5",
+      "cpu_offload_experts": 6144,
+      "gpu_ratio": 0.7,
+      "placement_beta": 0.5,
+      "raw_result_sha256": "5a5e9d348bb542fbe6b4af76d1c7cecf62427b9d076c3ff2abd5b58069a53baa",
+      "prefill_tokens_per_second": 112.30352559454003,
+      "decode_tokens_per_second": 31.363685206063195,
+      "peak_gpu_gib": 29.62872314453125,
+      "peak_cpu_rss_gib": 25.327117919921875,
+      "measurements": {
+        "prompt_indices": [
+          3,
+          4,
+          5
+        ],
+        "prefill_ms": 249.32431864241758,
+        "decoded_tokens": 762,
+        "decoded_tokens_per_second": 31.363685206063195,
+        "peak_gpu_used_mib": 30339.8125,
+        "peak_cpu_rss_mib": 25934.96875
+      }
+    },
+    {
+      "name": "layered-0.7-last-k6144-beta0.1",
+      "cpu_offload_experts": 6144,
+      "gpu_ratio": 0.7,
+      "placement_beta": 0.1,
+      "raw_result_sha256": "d2e393a2fbf291f1c6859cbc2949614ec4f61b6e3b3666598855e9fc3769bbf5",
+      "prefill_tokens_per_second": 115.60360385043232,
+      "decode_tokens_per_second": 31.837688220087653,
+      "peak_gpu_gib": 29.67169189453125,
+      "peak_cpu_rss_gib": 25.32839584350586,
+      "measurements": {
+        "prompt_indices": [
+          3,
+          4,
+          5
+        ],
+        "prefill_ms": 242.2069820264975,
+        "decoded_tokens": 762,
+        "decoded_tokens_per_second": 31.837688220087653,
+        "peak_gpu_used_mib": 30383.8125,
+        "peak_cpu_rss_mib": 25936.27734375
+      }
+    },
+    {
+      "name": "layered-0.8-last-k6144-beta1",
+      "cpu_offload_experts": 6144,
+      "gpu_ratio": 0.8,
+      "placement_beta": 1.0,
+      "raw_result_sha256": "37122b335fea5dc7f0096cb4bc99e1f555788f9219e1bbf8dc7bcdf7aad3fc0f",
+      "prefill_tokens_per_second": 78.76340161230728,
+      "decode_tokens_per_second": 40.20812527825123,
+      "peak_gpu_gib": 29.61114501953125,
+      "peak_cpu_rss_gib": 25.310813903808594,
+      "measurements": {
+        "prompt_indices": [
+          3,
+          4,
+          5
+        ],
+        "prefill_ms": 355.4950576896469,
+        "decoded_tokens": 762,
+        "decoded_tokens_per_second": 40.20812527825123,
+        "peak_gpu_used_mib": 30321.8125,
+        "peak_cpu_rss_mib": 25918.2734375
+      }
+    },
+    {
+      "name": "layered-0.8-last-k6144-beta0.5",
+      "cpu_offload_experts": 6144,
+      "gpu_ratio": 0.8,
+      "placement_beta": 0.5,
+      "raw_result_sha256": "40c977ed786085fa27b532f9a81b93ca283a8a5e2117dfa6b2eb0887c1e939e2",
+      "prefill_tokens_per_second": 87.11121482356178,
+      "decode_tokens_per_second": 36.02341622027069,
+      "peak_gpu_gib": 29.55059814453125,
+      "peak_cpu_rss_gib": 25.32770538330078,
+      "measurements": {
+        "prompt_indices": [
+          3,
+          4,
+          5
+        ],
+        "prefill_ms": 321.42818874369067,
+        "decoded_tokens": 762,
+        "decoded_tokens_per_second": 36.02341622027069,
+        "peak_gpu_used_mib": 30259.8125,
+        "peak_cpu_rss_mib": 25935.5703125
+      }
+    },
+    {
+      "name": "layered-0.8-last-k6144-beta0.1",
+      "cpu_offload_experts": 6144,
+      "gpu_ratio": 0.8,
+      "placement_beta": 0.1,
+      "raw_result_sha256": "d57bf2355913e8e611468e5801a594fab1de617a4748e6ad6bb3c5b086ae415f",
+      "prefill_tokens_per_second": 103.44969269030913,
+      "decode_tokens_per_second": 35.84273252266843,
+      "peak_gpu_gib": 29.56427001953125,
+      "peak_cpu_rss_gib": 25.328224182128906,
+      "measurements": {
+        "prompt_indices": [
+          3,
+          4,
+          5
+        ],
+        "prefill_ms": 270.66295966506004,
+        "decoded_tokens": 762,
+        "decoded_tokens_per_second": 35.84273252266843,
+        "peak_gpu_used_mib": 30273.8125,
+        "peak_cpu_rss_mib": 25936.1015625
+      }
+    },
+    {
+      "name": "layered-0.6-last-k7168-beta1",
+      "cpu_offload_experts": 7168,
+      "gpu_ratio": 0.6,
+      "placement_beta": 1.0,
+      "raw_result_sha256": "de9bf605cc0acb7f17c4add9788b42b9490c74190431d5b1dbbbfdb3089d7145",
+      "prefill_tokens_per_second": 94.38525467549937,
+      "decode_tokens_per_second": 34.84172771200474,
+      "peak_gpu_gib": 27.91192626953125,
+      "peak_cpu_rss_gib": 28.883224487304688,
+      "measurements": {
+        "prompt_indices": [
+          3,
+          4,
+          5
+        ],
+        "prefill_ms": 296.6565073778232,
+        "decoded_tokens": 762,
+        "decoded_tokens_per_second": 34.84172771200474,
+        "peak_gpu_used_mib": 28581.8125,
+        "peak_cpu_rss_mib": 29576.421875
+      }
+    },
+    {
+      "name": "layered-0.6-last-k7168-beta0.5",
+      "cpu_offload_experts": 7168,
+      "gpu_ratio": 0.6,
+      "placement_beta": 0.5,
+      "raw_result_sha256": "e68a6eb1b1dbf19dfcd1bc3b95c58010347632e753664741960c097780c5d5c1",
+      "prefill_tokens_per_second": 74.30511423130122,
+      "decode_tokens_per_second": 30.640972199275758,
+      "peak_gpu_gib": 27.88458251953125,
+      "peak_cpu_rss_gib": 28.90245819091797,
+      "measurements": {
+        "prompt_indices": [
+          3,
+          4,
+          5
+        ],
+        "prefill_ms": 376.8246679877241,
+        "decoded_tokens": 762,
+        "decoded_tokens_per_second": 30.640972199275758,
+        "peak_gpu_used_mib": 28553.8125,
+        "peak_cpu_rss_mib": 29596.1171875
+      }
+    },
+    {
+      "name": "layered-0.6-last-k7168-beta0.1",
+      "cpu_offload_experts": 7168,
+      "gpu_ratio": 0.6,
+      "placement_beta": 0.1,
+      "raw_result_sha256": "14c905ea88b36f93f26226b9c1fee735a5a623c1ac4af27c780cb3c7451fba1b",
+      "prefill_tokens_per_second": 63.22811880859458,
+      "decode_tokens_per_second": 28.781618239433573,
+      "peak_gpu_gib": 27.87677001953125,
+      "peak_cpu_rss_gib": 28.901939392089844,
+      "measurements": {
+        "prompt_indices": [
+          3,
+          4,
+          5
+        ],
+        "prefill_ms": 442.8409468382597,
+        "decoded_tokens": 762,
+        "decoded_tokens_per_second": 28.781618239433573,
+        "peak_gpu_used_mib": 28545.8125,
+        "peak_cpu_rss_mib": 29595.5859375
+      }
+    },
+    {
+      "name": "layered-0.7-last-k7168-beta1",
+      "cpu_offload_experts": 7168,
+      "gpu_ratio": 0.7,
+      "placement_beta": 1.0,
+      "raw_result_sha256": "2e1f8dab70debd606cba59f8b5518282694678788cb0e7a28d6aa4033a54a3ac",
+      "prefill_tokens_per_second": 76.49893157290175,
+      "decode_tokens_per_second": 35.994022139290934,
+      "peak_gpu_gib": 27.94317626953125,
+      "peak_cpu_rss_gib": 28.884613037109375,
+      "measurements": {
+        "prompt_indices": [
+          3,
+          4,
+          5
+        ],
+        "prefill_ms": 366.0181838398178,
+        "decoded_tokens": 762,
+        "decoded_tokens_per_second": 35.994022139290934,
+        "peak_gpu_used_mib": 28613.8125,
+        "peak_cpu_rss_mib": 29577.84375
+      }
+    },
+    {
+      "name": "layered-0.7-last-k7168-beta0.5",
+      "cpu_offload_experts": 7168,
+      "gpu_ratio": 0.7,
+      "placement_beta": 0.5,
+      "raw_result_sha256": "24cf8c8e85de99048a6371ce035d569884b58411185556bf5a544b2a3b90a39f",
+      "prefill_tokens_per_second": 80.10418244479588,
+      "decode_tokens_per_second": 32.001344801127665,
+      "peak_gpu_gib": 27.89630126953125,
+      "peak_cpu_rss_gib": 28.902145385742188,
+      "measurements": {
+        "prompt_indices": [
+          3,
+          4,
+          5
+        ],
+        "prefill_ms": 349.5447946091493,
+        "decoded_tokens": 762,
+        "decoded_tokens_per_second": 32.001344801127665,
+        "peak_gpu_used_mib": 28565.8125,
+        "peak_cpu_rss_mib": 29595.796875
+      }
+    },
+    {
+      "name": "layered-0.7-last-k7168-beta0.1",
+      "cpu_offload_experts": 7168,
+      "gpu_ratio": 0.7,
+      "placement_beta": 0.1,
+      "raw_result_sha256": "2a21e1bc0bdeeaaf8d5d010c8de129303b36585e92f2f6c20d72568919a5e386",
+      "prefill_tokens_per_second": 70.72052534279973,
+      "decode_tokens_per_second": 32.586268069933354,
+      "peak_gpu_gib": 27.95098876953125,
+      "peak_cpu_rss_gib": 28.9034423828125,
+      "measurements": {
+        "prompt_indices": [
+          3,
+          4,
+          5
+        ],
+        "prefill_ms": 395.92466068764526,
+        "decoded_tokens": 762,
+        "decoded_tokens_per_second": 32.586268069933354,
+        "peak_gpu_used_mib": 28621.8125,
+        "peak_cpu_rss_mib": 29597.125
+      }
+    },
+    {
+      "name": "layered-0.8-last-k7168-beta1",
+      "cpu_offload_experts": 7168,
+      "gpu_ratio": 0.8,
+      "placement_beta": 1.0,
+      "raw_result_sha256": "fb63b81d91fa9a61b0141f6f162a562e79a5f45e90c73342a88f8731372bbc04",
+      "prefill_tokens_per_second": 67.60610463600052,
+      "decode_tokens_per_second": 36.53350924384594,
+      "peak_gpu_gib": 27.82794189453125,
+      "peak_cpu_rss_gib": 28.88351058959961,
+      "measurements": {
+        "prompt_indices": [
+          3,
+          4,
+          5
+        ],
+        "prefill_ms": 414.163782261312,
+        "decoded_tokens": 762,
+        "decoded_tokens_per_second": 36.53350924384594,
+        "peak_gpu_used_mib": 28495.8125,
+        "peak_cpu_rss_mib": 29576.71484375
+      }
+    },
+    {
+      "name": "layered-0.8-last-k7168-beta0.5",
+      "cpu_offload_experts": 7168,
+      "gpu_ratio": 0.8,
+      "placement_beta": 0.5,
+      "raw_result_sha256": "4e9334160d3e827a56e766b7eca38670d3780fd7bc68c1333babb94d64aff527",
+      "prefill_tokens_per_second": 68.90227997069617,
+      "decode_tokens_per_second": 33.6263278732596,
+      "peak_gpu_gib": 27.82794189453125,
+      "peak_cpu_rss_gib": 28.90192413330078,
+      "measurements": {
+        "prompt_indices": [
+          3,
+          4,
+          5
+        ],
+        "prefill_ms": 406.3726194823782,
+        "decoded_tokens": 762,
+        "decoded_tokens_per_second": 33.6263278732596,
+        "peak_gpu_used_mib": 28495.8125,
+        "peak_cpu_rss_mib": 29595.5703125
+      }
+    },
+    {
+      "name": "layered-0.8-last-k7168-beta0.1",
+      "cpu_offload_experts": 7168,
+      "gpu_ratio": 0.8,
+      "placement_beta": 0.1,
+      "raw_result_sha256": "fabda07461716df86378759ce0fcb7b37179148d333173ebf301ab0a71cc25a8",
+      "prefill_tokens_per_second": 67.24307126389742,
+      "decode_tokens_per_second": 34.71796284585297,
+      "peak_gpu_gib": 27.82794189453125,
+      "peak_cpu_rss_gib": 28.90176773071289,
+      "measurements": {
+        "prompt_indices": [
+          3,
+          4,
+          5
+        ],
+        "prefill_ms": 416.39977879822254,
+        "decoded_tokens": 762,
+        "decoded_tokens_per_second": 34.71796284585297,
+        "peak_gpu_used_mib": 28495.8125,
+        "peak_cpu_rss_mib": 29595.41015625
+      }
+    },
+    {
+      "name": "layered-0.6-last-k8192-beta1",
+      "cpu_offload_experts": 8192,
+      "gpu_ratio": 0.6,
+      "placement_beta": 1.0,
+      "raw_result_sha256": "12c3c1b54732adc51f1a674a27bdb7a626352e92b394627cdc3e9ff63396246f",
+      "prefill_tokens_per_second": 63.7930223121322,
+      "decode_tokens_per_second": 36.306110475243884,
+      "peak_gpu_gib": 26.15020751953125,
+      "peak_cpu_rss_gib": 32.45624923706055,
+      "measurements": {
+        "prompt_indices": [
+          3,
+          4,
+          5
+        ],
+        "prefill_ms": 438.91947716474533,
+        "decoded_tokens": 762,
+        "decoded_tokens_per_second": 36.306110475243884,
+        "peak_gpu_used_mib": 26777.8125,
+        "peak_cpu_rss_mib": 33235.19921875
+      }
+    },
+    {
+      "name": "layered-0.6-last-k8192-beta0.5",
+      "cpu_offload_experts": 8192,
+      "gpu_ratio": 0.6,
+      "placement_beta": 0.5,
+      "raw_result_sha256": "bd1d5cf9c05d71ee60651d216f5069efd719420858bc61f2ea95b6370058d664",
+      "prefill_tokens_per_second": 65.92512525337429,
+      "decode_tokens_per_second": 30.521379940789863,
+      "peak_gpu_gib": 26.15216064453125,
+      "peak_cpu_rss_gib": 32.475284576416016,
+      "measurements": {
+        "prompt_indices": [
+          3,
+          4,
+          5
+        ],
+        "prefill_ms": 424.7242594137788,
+        "decoded_tokens": 762,
+        "decoded_tokens_per_second": 30.521379940789863,
+        "peak_gpu_used_mib": 26779.8125,
+        "peak_cpu_rss_mib": 33254.69140625
+      }
+    },
+    {
+      "name": "layered-0.6-last-k8192-beta0.1",
+      "cpu_offload_experts": 8192,
+      "gpu_ratio": 0.6,
+      "placement_beta": 0.1,
+      "raw_result_sha256": "b759c264fe5d39072e6f2ae9fa102da92045d5826c97616a6c71bd05360f96cb",
+      "prefill_tokens_per_second": 61.08571211245838,
+      "decode_tokens_per_second": 31.27980485305879,
+      "peak_gpu_gib": 26.16778564453125,
+      "peak_cpu_rss_gib": 32.47606658935547,
+      "measurements": {
+        "prompt_indices": [
+          3,
+          4,
+          5
+        ],
+        "prefill_ms": 458.3723268782099,
+        "decoded_tokens": 762,
+        "decoded_tokens_per_second": 31.27980485305879,
+        "peak_gpu_used_mib": 26795.8125,
+        "peak_cpu_rss_mib": 33255.4921875
+      }
+    },
+    {
+      "name": "layered-0.7-last-k8192-beta1",
+      "cpu_offload_experts": 8192,
+      "gpu_ratio": 0.7,
+      "placement_beta": 1.0,
+      "raw_result_sha256": "319504c3ea26788a58b23dbde08c5fb3eb5b3a3fad9d49785a326f4bb67c8363",
+      "prefill_tokens_per_second": 63.549089994797434,
+      "decode_tokens_per_second": 35.795908700498465,
+      "peak_gpu_gib": 26.20098876953125,
+      "peak_cpu_rss_gib": 32.45893478393555,
+      "measurements": {
+        "prompt_indices": [
+          3,
+          4,
+          5
+        ],
+        "prefill_ms": 440.60426360617083,
+        "decoded_tokens": 762,
+        "decoded_tokens_per_second": 35.795908700498465,
+        "peak_gpu_used_mib": 26829.8125,
+        "peak_cpu_rss_mib": 33237.94921875
+      }
+    },
+    {
+      "name": "layered-0.7-last-k8192-beta0.5",
+      "cpu_offload_experts": 8192,
+      "gpu_ratio": 0.7,
+      "placement_beta": 0.5,
+      "raw_result_sha256": "9d9f601ee000f2a70c829d9ae8cb74e7e8d4d0ef7c69550b42adfc25b7f468e1",
+      "prefill_tokens_per_second": 82.17754591845767,
+      "decode_tokens_per_second": 32.40742621028042,
+      "peak_gpu_gib": 26.15411376953125,
+      "peak_cpu_rss_gib": 32.47589874267578,
+      "measurements": {
+        "prompt_indices": [
+          3,
+          4,
+          5
+        ],
+        "prefill_ms": 340.72567739834386,
+        "decoded_tokens": 762,
+        "decoded_tokens_per_second": 32.40742621028042,
+        "peak_gpu_used_mib": 26781.8125,
+        "peak_cpu_rss_mib": 33255.3203125
+      }
+    },
+    {
+      "name": "layered-0.7-last-k8192-beta0.1",
+      "cpu_offload_experts": 8192,
+      "gpu_ratio": 0.7,
+      "placement_beta": 0.1,
+      "raw_result_sha256": "3cdffebba7fd058eff8f02bdee4d1c89f0326aefc11daae071c74b19347160a8",
+      "prefill_tokens_per_second": 59.81212640649068,
+      "decode_tokens_per_second": 30.454989998760436,
+      "peak_gpu_gib": 26.20294189453125,
+      "peak_cpu_rss_gib": 32.477603912353516,
+      "measurements": {
+        "prompt_indices": [
+          3,
+          4,
+          5
+        ],
+        "prefill_ms": 468.1324955696861,
+        "decoded_tokens": 762,
+        "decoded_tokens_per_second": 30.454989998760436,
+        "peak_gpu_used_mib": 26831.8125,
+        "peak_cpu_rss_mib": 33257.06640625
+      }
+    },
+    {
+      "name": "layered-0.8-last-k8192-beta1",
+      "cpu_offload_experts": 8192,
+      "gpu_ratio": 0.8,
+      "placement_beta": 1.0,
+      "raw_result_sha256": "1e281550bce55bd7958bcb1236dd09bc67426319172cdb050e5c2f1b36eac259",
+      "prefill_tokens_per_second": 59.32968453247257,
+      "decode_tokens_per_second": 33.01397742185566,
+      "peak_gpu_gib": 26.10528564453125,
+      "peak_cpu_rss_gib": 32.45769500732422,
+      "measurements": {
+        "prompt_indices": [
+          3,
+          4,
+          5
+        ],
+        "prefill_ms": 471.93913503239554,
+        "decoded_tokens": 762,
+        "decoded_tokens_per_second": 33.01397742185566,
+        "peak_gpu_used_mib": 26731.8125,
+        "peak_cpu_rss_mib": 33236.6796875
+      }
+    },
+    {
+      "name": "layered-0.8-last-k8192-beta0.5",
+      "cpu_offload_experts": 8192,
+      "gpu_ratio": 0.8,
+      "placement_beta": 0.5,
+      "raw_result_sha256": "298fca25453b8cd6f8fe54562a08790b35875300a275450e9ce3021a50c5ba75",
+      "prefill_tokens_per_second": 59.441072304046806,
+      "decode_tokens_per_second": 30.60093928933015,
+      "peak_gpu_gib": 26.12091064453125,
+      "peak_cpu_rss_gib": 32.47632598876953,
+      "measurements": {
+        "prompt_indices": [
+          3,
+          4,
+          5
+        ],
+        "prefill_ms": 471.05475918700296,
+        "decoded_tokens": 762,
+        "decoded_tokens_per_second": 30.60093928933015,
+        "peak_gpu_used_mib": 26747.8125,
+        "peak_cpu_rss_mib": 33255.7578125
+      }
+    },
+    {
+      "name": "layered-0.8-last-k8192-beta0.1",
+      "cpu_offload_experts": 8192,
+      "gpu_ratio": 0.8,
+      "placement_beta": 0.1,
+      "raw_result_sha256": "daf65ed9bf258186cee9a84ea66d05359ecfda7ad7a39b95276893cec2c5e8d7",
+      "prefill_tokens_per_second": 61.88741170112251,
+      "decode_tokens_per_second": 28.45881356986406,
+      "peak_gpu_gib": 26.12091064453125,
+      "peak_cpu_rss_gib": 32.47574234008789,
+      "measurements": {
+        "prompt_indices": [
+          3,
+          4,
+          5
+        ],
+        "prefill_ms": 452.4344972645243,
+        "decoded_tokens": 762,
+        "decoded_tokens_per_second": 28.45881356986406,
+        "peak_gpu_used_mib": 26747.8125,
+        "peak_cpu_rss_mib": 33255.16015625
+      }
+    },
+    {
+      "name": "layered-0.6-last-k9216-beta1",
+      "cpu_offload_experts": 9216,
+      "gpu_ratio": 0.6,
+      "placement_beta": 1.0,
+      "raw_result_sha256": "0d231ca7e9bc721620d94ecd184b6c985c59458338b99780b16569d7082008e1",
+      "prefill_tokens_per_second": 47.916931893999916,
+      "decode_tokens_per_second": 31.594921236761806,
+      "peak_gpu_gib": 24.40411376953125,
+      "peak_cpu_rss_gib": 36.031681060791016,
+      "measurements": {
+        "prompt_indices": [
+          3,
+          4,
+          5
+        ],
+        "prefill_ms": 584.3445916349689,
+        "decoded_tokens": 762,
+        "decoded_tokens_per_second": 31.594921236761806,
+        "peak_gpu_used_mib": 24989.8125,
+        "peak_cpu_rss_mib": 36896.44140625
+      }
+    },
+    {
+      "name": "layered-0.6-last-k9216-beta0.5",
+      "cpu_offload_experts": 9216,
+      "gpu_ratio": 0.6,
+      "placement_beta": 0.5,
+      "raw_result_sha256": "098517e3d434a2c8e5dea789423548f0d753e31605e238a7baf46a01435afa69",
+      "prefill_tokens_per_second": 59.58447083301692,
+      "decode_tokens_per_second": 29.328862857860678,
+      "peak_gpu_gib": 24.46661376953125,
+      "peak_cpu_rss_gib": 36.05202865600586,
+      "measurements": {
+        "prompt_indices": [
+          3,
+          4,
+          5
+        ],
+        "prefill_ms": 469.92109871159,
+        "decoded_tokens": 762,
+        "decoded_tokens_per_second": 29.328862857860678,
+        "peak_gpu_used_mib": 25053.8125,
+        "peak_cpu_rss_mib": 36917.27734375
+      }
+    },
+    {
+      "name": "layered-0.6-last-k9216-beta0.1",
+      "cpu_offload_experts": 9216,
+      "gpu_ratio": 0.6,
+      "placement_beta": 0.1,
+      "raw_result_sha256": "5390f829071931e0dbfc50455e43d019165812d43d60a9bb79f37498b4b79c2d",
+      "prefill_tokens_per_second": 52.8116061081614,
+      "decode_tokens_per_second": 27.6186173413838,
+      "peak_gpu_gib": 24.40411376953125,
+      "peak_cpu_rss_gib": 36.05001449584961,
+      "measurements": {
+        "prompt_indices": [
+          3,
+          4,
+          5
+        ],
+        "prefill_ms": 530.1864886035522,
+        "decoded_tokens": 762,
+        "decoded_tokens_per_second": 27.6186173413838,
+        "peak_gpu_used_mib": 24989.8125,
+        "peak_cpu_rss_mib": 36915.21484375
+      }
+    },
+    {
+      "name": "layered-0.7-last-k9216-beta1",
+      "cpu_offload_experts": 9216,
+      "gpu_ratio": 0.7,
+      "placement_beta": 1.0,
+      "raw_result_sha256": "dce24f0b67445d9f18d3cbd9dd106b2f024de28ff6ba276bbd01ec465fd842c5",
+      "prefill_tokens_per_second": 52.53206836275539,
+      "decode_tokens_per_second": 30.590969593867673,
+      "peak_gpu_gib": 24.40020751953125,
+      "peak_cpu_rss_gib": 36.0300407409668,
+      "measurements": {
+        "prompt_indices": [
+          3,
+          4,
+          5
+        ],
+        "prefill_ms": 533.0077583591143,
+        "decoded_tokens": 762,
+        "decoded_tokens_per_second": 30.590969593867673,
+        "peak_gpu_used_mib": 24985.8125,
+        "peak_cpu_rss_mib": 36894.76171875
+      }
+    },
+    {
+      "name": "layered-0.7-last-k9216-beta0.5",
+      "cpu_offload_experts": 9216,
+      "gpu_ratio": 0.7,
+      "placement_beta": 0.5,
+      "raw_result_sha256": "ee155bfe84934dff641074a0247aace47fadc8ddd634a57f2fed043647a05a9c",
+      "prefill_tokens_per_second": 50.40094550312056,
+      "decode_tokens_per_second": 27.063416940446956,
+      "peak_gpu_gib": 24.41778564453125,
+      "peak_cpu_rss_gib": 36.05045700073242,
+      "measurements": {
+        "prompt_indices": [
+          3,
+          4,
+          5
+        ],
+        "prefill_ms": 555.5451335385442,
+        "decoded_tokens": 762,
+        "decoded_tokens_per_second": 27.063416940446956,
+        "peak_gpu_used_mib": 25003.8125,
+        "peak_cpu_rss_mib": 36915.66796875
+      }
+    },
+    {
+      "name": "layered-0.7-last-k9216-beta0.1",
+      "cpu_offload_experts": 9216,
+      "gpu_ratio": 0.7,
+      "placement_beta": 0.1,
+      "raw_result_sha256": "1e00fb2a910db56227fbd9bb53c16043e895865f82c46dc84e4778dc1ca72b73",
+      "prefill_tokens_per_second": 50.78841362628979,
+      "decode_tokens_per_second": 26.93385500493407,
+      "peak_gpu_gib": 24.41778564453125,
+      "peak_cpu_rss_gib": 36.0502815246582,
+      "measurements": {
+        "prompt_indices": [
+          3,
+          4,
+          5
+        ],
+        "prefill_ms": 551.3068434471885,
+        "decoded_tokens": 762,
+        "decoded_tokens_per_second": 26.93385500493407,
+        "peak_gpu_used_mib": 25003.8125,
+        "peak_cpu_rss_mib": 36915.48828125
+      }
+    }
+  ],
+  "missing_configurations": [
+    {
+      "cpu_offload_experts": 9216,
+      "gpu_ratio": 0.8,
+      "placement_beta": 0.1
+    },
+    {
+      "cpu_offload_experts": 9216,
+      "gpu_ratio": 0.8,
+      "placement_beta": 0.5
+    },
+    {
+      "cpu_offload_experts": 9216,
+      "gpu_ratio": 0.8,
+      "placement_beta": 1
+    },
+    {
+      "cpu_offload_experts": 10240,
+      "gpu_ratio": 0.6,
+      "placement_beta": 0.1
+    },
+    {
+      "cpu_offload_experts": 10240,
+      "gpu_ratio": 0.6,
+      "placement_beta": 0.5
+    },
+    {
+      "cpu_offload_experts": 10240,
+      "gpu_ratio": 0.6,
+      "placement_beta": 1
+    },
+    {
+      "cpu_offload_experts": 10240,
+      "gpu_ratio": 0.7,
+      "placement_beta": 0.1
+    },
+    {
+      "cpu_offload_experts": 10240,
+      "gpu_ratio": 0.7,
+      "placement_beta": 0.5
+    },
+    {
+      "cpu_offload_experts": 10240,
+      "gpu_ratio": 0.7,
+      "placement_beta": 1
+    },
+    {
+      "cpu_offload_experts": 10240,
+      "gpu_ratio": 0.8,
+      "placement_beta": 0.1
+    },
+    {
+      "cpu_offload_experts": 10240,
+      "gpu_ratio": 0.8,
+      "placement_beta": 0.5
+    },
+    {
+      "cpu_offload_experts": 10240,
+      "gpu_ratio": 0.8,
+      "placement_beta": 1
+    }
+  ]
+}

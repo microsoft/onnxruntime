@@ -4,6 +4,12 @@
 #pragma once
 
 #include "core/common/common.h"
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+#include "core/framework/kernel_pilot.h"
+#include "core/framework/kernel_pilot_moe_expert_cache.h"
+#include "core/framework/kernel_pilot_moe_expert_usage.h"
+#include "core/framework/ort_value.h"
+#endif
 #include "core/providers/cuda/cuda_kernel.h"
 #include "contrib_ops/cuda/moe/moe_base.h"
 #include "contrib_ops/cuda/moe/qmoe_row_tiling.h"
@@ -11,8 +17,13 @@
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemm_profiler.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemv_fp4.h"
 
+#include <array>
+#include <atomic>
+#include <condition_variable>
 #include <mutex>
+#include <thread>
 #include <unordered_map>
+#include <vector>
 
 namespace onnxruntime {
 namespace contrib {
@@ -26,14 +37,80 @@ constexpr const char* kQMoERowTileSizeConfig = "ep.cuda.qmoe_row_tile_size";
 constexpr const char* kQMoEIntDequantMaxScratchBytes = "ORT_QMOE_INT_DEQUANT_MAX_SCRATCH_BYTES";
 constexpr const char* kQMoEIntDequantMaxScratchBytesConfig = "ep.cuda.qmoe_int_dequant_max_scratch_bytes";
 
-class QMoE final : public CudaKernel, public MoEBase {
+class QMoE final : public CudaKernel, public MoEBase
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+    ,
+                   public IKernelPilotMoeExpertCache,
+                   public IKernelPilotMoeExpertUsage
+#endif
+{
  public:
   explicit QMoE(const OpKernelInfo& op_kernel_info);
+  ~QMoE() override;
   Status ComputeInternal(OpKernelContext* ctx) const override;
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  bool& is_packed, PrePackedWeights* prepacked_weights) override;
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+  Status InitializeKernelPilot(KernelPilot* pilot);
+#endif
 
  private:
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+  struct CanonicalInput {
+    TensorShape shape;
+    std::vector<uint8_t> data;
+    int32_t element_type{ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED};
+    bool present{false};
+  };
+
+  enum class ResidentTensorKind {
+    Fc1Weights,
+    Fc2Weights,
+    Fc1Scales,
+    Fc2Scales,
+    Fc1QuantBias,
+    Fc2QuantBias,
+    Fc1Bias,
+    Fc2Bias,
+  };
+
+  struct ResidentTensor {
+    ResidentTensorKind kind;
+    size_t expert_bytes{0};
+    size_t swap_offset{0};
+    std::vector<uint8_t> cpu_data;
+  };
+
+  Status InitializeCpuOffload(gsl::span<const int> cuda_experts);
+  Status InitializeCpuExpert(size_t cpu_slot, int expert_id) const;
+  Status ComputeCpuOffloadChunk(
+      const void* input, const int* route_experts, const float* route_scales,
+      size_t num_rows, size_t hidden_size, size_t inter_size,
+      void* output, concurrency::ThreadPool* thread_pool) const;
+  Status PrepareCpuTask(OpKernelContext* context, size_t num_rows, size_t hidden_size,
+                        size_t inter_size) const;
+  Status ComputeCpuTask() const;
+  void RunCpuWorker() const;
+  static void CUDART_CB NotifyCpuWorker(void* context);
+  void ReleaseCpuResources() noexcept;
+  Status PrepareUsage(OpKernelContext* context, KernelPilot* pilot, size_t expert_count) const;
+  bool HasPendingUsage() const noexcept override { return usage_pending_; }
+  Status CompleteUsage(KernelPilotMoeExpertUsageSnapshot& snapshot) override;
+  IAllocatorUniquePtr<void>& ResidentDeviceBuffer(ResidentTensorKind kind);
+  const IAllocatorUniquePtr<void>& ResidentDeviceBuffer(ResidentTensorKind kind) const;
+  Status PrepareExpertSwapForInvocation(cudaStream_t stream) const;
+  Status CompleteExpertSwapSynchronously(cudaStream_t stream);
+  Status SwapRequiredExperts(gsl::span<const uint8_t> required, cudaStream_t stream,
+                             size_t& missing_experts, size_t& swapped_experts);
+  void InitializeSwapCpuExpert(int expert_id) const;
+  void RunSwapWorker() const;
+  void ReleaseSwapResources() noexcept;
+  int DeviceId() const noexcept override { return device_id_; }
+  bool HasPendingSwap() const noexcept override;
+  Status ReclaimCompletedSwap() override;
+  Status StartSwap(int cuda_expert_id, int cpu_expert_id) override;
+#endif
+
   // PrePack helpers - each handles one category of input tensor.
   void PrePackTransposeAndPack(const Tensor& tensor, cudaStream_t stream, AllocatorPtr alloc,
                                IAllocatorUniquePtr<void>& packed_buf, bool& is_packed);
@@ -145,6 +222,8 @@ class QMoE final : public CudaKernel, public MoEBase {
   IAllocatorUniquePtr<void> packed_fc1_bias_;
   IAllocatorUniquePtr<void> packed_fc2_scales_;
   IAllocatorUniquePtr<void> packed_fc2_bias_;
+  IAllocatorUniquePtr<void> packed_fc1_explicit_bias_;
+  IAllocatorUniquePtr<void> packed_fc2_explicit_bias_;
   // Decode-only [E, K_blocks, N] scale caches for INT2/mixed-width packed GEMV.
   // The canonical initializer inputs remain live for validation and dense prefill fallback.
   IAllocatorUniquePtr<void> gemv_int_fc1_scales_;
@@ -271,6 +350,114 @@ class QMoE final : public CudaKernel, public MoEBase {
 
   mutable onnxruntime::llm::kernels::cutlass_kernels::MoeGemmProfiler mGemmProfiler;
   mutable std::mutex mGemmProfilerMutex;
+
+  bool cpu_offload_enabled_{false};
+  static constexpr size_t kCpuActivationChunkRows = 256;
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+  KernelPilotInitializer kernel_pilot_initializer_;
+  KernelPilot* moe_pilot_{nullptr};
+  size_t cpu_offload_on_demand_threshold_{0};
+  mutable IAllocatorUniquePtr<int> on_demand_host_routes_;
+  int device_id_{0};
+  AllocatorPtr cuda_allocator_;
+  cudaStream_t cpu_offload_stream_{nullptr};
+  cudaEvent_t last_expert_use_event_{nullptr};
+  mutable std::array<CanonicalInput, 19> canonical_inputs_;
+  mutable InlinedVector<int> cuda_experts_;
+  mutable InlinedVector<int> expert_map_;
+  mutable InlinedVector<int> cpu_experts_;
+  mutable InlinedVector<int> cpu_expert_map_;
+  IAllocatorUniquePtr<void> device_expert_map_;
+  mutable std::vector<ResidentTensor> resident_tensors_;
+  size_t swap_staging_bytes_{0};
+  IAllocatorUniquePtr<void> swap_pinned_buffer_;
+  IAllocatorUniquePtr<void> swap_outgoing_pinned_buffer_;
+  IAllocatorUniquePtr<void> swap_cuda_staging_;
+  mutable IAllocatorUniquePtr<void> cpu_device_input_;
+  mutable IAllocatorUniquePtr<void> cpu_device_output_;
+  mutable IAllocatorUniquePtr<int> cpu_device_rows_;
+  mutable IAllocatorUniquePtr<int> cpu_device_ids_;
+  mutable IAllocatorUniquePtr<float> cpu_device_scales_;
+  mutable IAllocatorUniquePtr<uint32_t> cpu_device_count_;
+  mutable IAllocatorUniquePtr<void> cpu_completion_storage_;
+  mutable std::atomic<uint32_t>* cpu_completion_{nullptr};
+  mutable CUdeviceptr cpu_device_completion_{0};
+  mutable IAllocatorUniquePtr<void> cpu_host_input_;
+  mutable IAllocatorUniquePtr<void> cpu_host_output_;
+  mutable IAllocatorUniquePtr<int> cpu_host_ids_;
+  mutable IAllocatorUniquePtr<float> cpu_host_scales_;
+  mutable IAllocatorUniquePtr<uint32_t> cpu_host_count_;
+  mutable cudaEvent_t cpu_routes_ready_event_{nullptr};
+  mutable cudaEvent_t cpu_input_ready_event_{nullptr};
+  mutable std::thread cpu_worker_;
+  mutable std::mutex cpu_worker_mutex_;
+  mutable std::condition_variable cpu_worker_condition_;
+  mutable bool cpu_task_ready_{false};
+  mutable bool cpu_task_finished_{true};
+  mutable bool cpu_callback_scheduled_{false};
+  mutable bool stop_cpu_worker_{false};
+  mutable Status cpu_task_status_;
+  mutable size_t cpu_task_num_rows_{0};
+  mutable size_t cpu_task_hidden_size_{0};
+  mutable size_t cpu_task_inter_size_{0};
+  mutable concurrency::ThreadPool* cpu_task_thread_pool_{nullptr};
+  mutable bool usage_pending_{false};
+  mutable bool usage_recorded_{false};
+  mutable cudaStream_t usage_stream_{nullptr};
+  mutable cudaEvent_t usage_complete_event_{nullptr};
+  mutable IAllocatorUniquePtr<void> device_usage_;
+  mutable IAllocatorUniquePtr<void> host_usage_;
+  mutable std::vector<MLFloat16> cpu_fc1_half_;
+  mutable std::vector<MLFloat16> cpu_fc2_half_;
+  mutable std::vector<float> cpu_fc1_float_;
+  mutable std::vector<float> cpu_fc2_float_;
+  mutable std::vector<MLFloat16> cpu_fc1_bias_half_;
+  mutable std::vector<MLFloat16> cpu_fc2_bias_half_;
+  mutable std::vector<BFloat16> cpu_fc1_bias_bfloat_;
+  mutable std::vector<BFloat16> cpu_fc2_bias_bfloat_;
+  bool cpu_qnbit_enabled_{false};
+  size_t cpu_fc1_qnbit_bytes_{0};
+  size_t cpu_fc2_qnbit_bytes_{0};
+  size_t cpu_fc1_scale_count_{0};
+  size_t cpu_fc2_scale_count_{0};
+  size_t cpu_fc1_zero_bytes_{0};
+  size_t cpu_fc2_zero_bytes_{0};
+  mutable std::vector<std::byte> cpu_fc1_qnbit_;
+  mutable std::vector<std::byte> cpu_fc2_qnbit_;
+  mutable std::vector<float> cpu_fc1_qnbit_scales_;
+  mutable std::vector<float> cpu_fc2_qnbit_scales_;
+  mutable std::vector<uint8_t> cpu_fc1_qnbit_zero_;
+  mutable std::vector<uint8_t> cpu_fc2_qnbit_zero_;
+  int64_t cpu_num_experts_{0};
+  int64_t cpu_hidden_size_{0};
+  int64_t cpu_inter_size_{0};
+  int64_t cpu_fc1_output_size_{0};
+  mutable cudaStream_t swap_d2h_stream_{nullptr};
+  mutable cudaStream_t swap_h2d_stream_{nullptr};
+  mutable cudaEvent_t swap_d2h_complete_event_{nullptr};
+  mutable cudaEvent_t swap_transfer_complete_event_{nullptr};
+  mutable cudaEvent_t swap_publication_complete_event_{nullptr};
+  mutable IAllocatorUniquePtr<void> swap_qnbit_output_;
+  mutable IAllocatorUniquePtr<void> swap_qnbit_fc1_pinned_;
+  mutable IAllocatorUniquePtr<void> swap_qnbit_fc2_pinned_;
+  enum class SwapPhase {
+    Idle,
+    TransferInFlight,
+    PublicationInFlight,
+  };
+  mutable SwapPhase swap_phase_{SwapPhase::Idle};
+  mutable int swap_cuda_expert_{-1};
+  mutable int swap_cpu_expert_{-1};
+  mutable size_t swap_cuda_slot_{0};
+  mutable size_t swap_cpu_slot_{0};
+  mutable std::thread swap_worker_;
+  mutable std::mutex swap_worker_mutex_;
+  mutable std::condition_variable swap_worker_condition_;
+  mutable bool swap_task_ready_{false};
+  mutable bool swap_task_finished_{true};
+  mutable bool stop_swap_worker_{false};
+  mutable Status swap_task_status_;
+#endif
 
   struct Fp4GemvTuneKey {
     bool is_fp16 = false;

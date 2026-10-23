@@ -3,6 +3,7 @@
 
 #include "core/providers/shared_library/provider_api.h"
 #include "shared_inc/cuda_call.h"
+#include <cuda.h>
 #ifdef BUILD_CUDA_EP_AS_PLUGIN
 #include "ep/adapters.h"
 #include "plugin/provider_api_shims.h"
@@ -42,6 +43,14 @@ const char* CudaErrString<cudaError_t>(cudaError_t x) {
 }
 
 #ifndef USE_CUDA_MINIMAL
+template <>
+const char* CudaErrString<CUresult>(CUresult error) {
+  const char* message = nullptr;
+  return cuGetErrorString(error, &message) == CUDA_SUCCESS && message != nullptr
+             ? message
+             : "Unknown CUDA driver error";
+}
+
 template <>
 const char* CudaErrString<cublasStatus_t>(cublasStatus_t e) {
   cudaDeviceSynchronize();
@@ -166,6 +175,8 @@ std::conditional_t<THRW, void, Status> CudaCall(
 template Status CudaCall<cudaError, false>(cudaError retCode, const char* exprString, const char* libName, cudaError successCode, const char* msg, const char* file, const int line);
 template void CudaCall<cudaError, true>(cudaError retCode, const char* exprString, const char* libName, cudaError successCode, const char* msg, const char* file, const int line);
 #ifndef USE_CUDA_MINIMAL
+template Status CudaCall<CUresult, false>(CUresult retCode, const char* exprString, const char* libName, CUresult successCode, const char* msg, const char* file, const int line);
+template void CudaCall<CUresult, true>(CUresult retCode, const char* exprString, const char* libName, CUresult successCode, const char* msg, const char* file, const int line);
 template Status CudaCall<cublasStatus_t, false>(cublasStatus_t retCode, const char* exprString, const char* libName, cublasStatus_t successCode, const char* msg, const char* file, const int line);
 template void CudaCall<cublasStatus_t, true>(cublasStatus_t retCode, const char* exprString, const char* libName, cublasStatus_t successCode, const char* msg, const char* file, const int line);
 template Status CudaCall<cudnnStatus_t, false>(cudnnStatus_t retCode, const char* exprString, const char* libName, cudnnStatus_t successCode, const char* msg, const char* file, const int line);

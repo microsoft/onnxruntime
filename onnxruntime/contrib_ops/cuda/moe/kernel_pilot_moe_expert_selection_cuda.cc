@@ -45,9 +45,22 @@ Status KernelPilotMoeExpertSelectionCuda::Collect(gsl::span<const int> expert_id
   return usage_->Collect(expert_ids);
 }
 
+Status KernelPilotMoeExpertSelectionCuda::CollectWeighted(
+    gsl::span<const int> expert_ids,
+    gsl::span<const float> routing_probabilities) {
+  ORT_RETURN_IF_NOT(usage_, "MoE expert selection is not attached.");
+  return usage_->CollectWeighted(expert_ids, routing_probabilities);
+}
+
 Status KernelPilotMoeExpertSelectionCuda::GetSelectedExperts(gsl::span<const int>& expert_ids) const {
   ORT_RETURN_IF_NOT(usage_, "MoE expert selection is not attached.");
   return usage_->GetSelectedExperts(expert_ids);
+}
+
+Status KernelPilotMoeExpertSelectionCuda::GetSelectedExpertProbabilities(
+    gsl::span<const float>& routing_probabilities) const {
+  ORT_RETURN_IF_NOT(usage_, "MoE expert selection is not attached.");
+  return usage_->GetSelectedExpertProbabilities(routing_probabilities);
 }
 
 Status KernelPilotMoeExpertSelectionCuda::Capture(const int* expert_ids, size_t count, cudaStream_t stream) {

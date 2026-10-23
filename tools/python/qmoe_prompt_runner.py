@@ -2,14 +2,15 @@
 """Run prompts with ONNX Runtime GenAI and collect MoE expert counter logs."""
 
 import argparse
+import importlib
 import json
+import math
 import os
+import subprocess
 import sys
 import time
 from contextlib import contextmanager
 from pathlib import Path
-
-import onnxruntime_genai as og
 
 COUNTER_MARKER = "moe_expert_counters "
 COUNTER_COMPLETE_MARKER = "moe_expert_counters_complete "
@@ -47,11 +48,47 @@ def parse_args():
         choices=("cuda", "cpu", "follow_config"),
         default="cuda",
     )
-    parser.add_argument("--max-new-tokens", type=int, default=256)
+    parser.add_argument(
+        "--cuda-sdpa-kernel",
+        type=int,
+        default=1,
+        help="CUDA attention backend bitmask. Defaults to Flash Attention to keep MoE benchmarks independent of cuDNN.",
+    )
+    generation_limit = parser.add_mutually_exclusive_group()
+    generation_limit.add_argument("--max-new-tokens", type=int, default=256)
+    generation_limit.add_argument(
+        "--until-eos",
+        action="store_true",
+        help="Generate until EOS without an artificial token limit; the model context length remains the hard limit.",
+    )
     parser.add_argument(
         "--raw-prompts",
         action="store_true",
         help="Do not apply the tokenizer chat template.",
+    )
+    parser.add_argument(
+        "--moe-cpu-offload-experts",
+        type=int,
+        default=0,
+        help="Total number of FP16/BF16 MoE experts to offload to CPU.",
+    )
+    parser.add_argument(
+        "--moe-expert-counter-alpha",
+        type=float,
+        default=0.75,
+        help="MoE expert popularity counter decay coefficient.",
+    )
+    parser.add_argument(
+        "--moe-expert-counter-probability-weight",
+        type=float,
+        default=0.0,
+        help="Blend between binary selection and routing-probability expert counter contributions.",
+    )
+    parser.add_argument(
+        "--moe-max-in-flight-swaps-per-device",
+        type=int,
+        default=4,
+        help="Maximum number of concurrent adaptive expert swaps per CUDA device.",
     )
     return parser.parse_args()
 
@@ -91,27 +128,83 @@ def redirect_native_stderr(path):
             os.close(saved_stderr)
 
 
-def create_model(model_path, provider):
-    config = og.Config(str(model_path))
+def parse_free_gpu_indices(output):
+    free_gpu_indices = []
+    for line in output.splitlines():
+        if not line.strip():
+            continue
+        fields = [field.strip() for field in line.split(",")]
+        if len(fields) != 2:
+            raise ValueError(f"Unexpected nvidia-smi output: {line!r}")
+        gpu_index, memory_used = map(int, fields)
+        if memory_used == 0:
+            free_gpu_indices.append(gpu_index)
+    return sorted(free_gpu_indices)
+
+
+def first_free_gpu_index(free_gpu_indices):
+    if not free_gpu_indices:
+        raise RuntimeError("No free GPU found.")
+    return min(free_gpu_indices)
+
+
+def select_first_free_gpu():
+    result = subprocess.run(
+        [
+            "nvidia-smi",
+            "--query-gpu=index,memory.used",
+            "--format=csv,noheader,nounits",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    gpu_index = first_free_gpu_index(parse_free_gpu_indices(result.stdout))
+    os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_index)
+    return gpu_index
+
+
+def configure_provider(config, provider, cuda_sdpa_kernel):
     if provider != "follow_config":
         config.clear_providers()
         if provider != "cpu":
             config.append_provider(provider)
+            config.set_provider_option(provider, "sdpa_kernel", str(cuda_sdpa_kernel))
+
+
+def create_model(
+    genai,
+    model_path,
+    provider,
+    cuda_sdpa_kernel,
+    cpu_offload_experts,
+    counter_alpha,
+    counter_probability_weight,
+    max_in_flight_swaps_per_device,
+):
+    config = genai.Config(str(model_path))
+    configure_provider(config, provider, cuda_sdpa_kernel)
+    session_options = {
+        "log_severity_level": 1,
+        "session.enable_moe_expert_statistics": "1",
+        "session.moe_cpu_offload_experts": str(cpu_offload_experts),
+        "session.moe_expert_counter_alpha": str(counter_alpha),
+    }
+    if cpu_offload_experts > 0:
+        session_options["session.moe_expert_counter_probability_weight"] = str(counter_probability_weight)
+        session_options["session.moe_max_in_flight_swaps_per_device"] = str(max_in_flight_swaps_per_device)
     config.overlay(
         json.dumps(
             {
                 "model": {
                     "decoder": {
-                        "session_options": {
-                            "log_severity_level": 1,
-                            "session.enable_moe_expert_statistics": "1",
-                        }
+                        "session_options": session_options,
                     }
                 }
             }
         )
     )
-    return og.Model(config)
+    return genai.Model(config)
 
 
 def format_prompt(tokenizer, prompt, raw_prompt):
@@ -124,22 +217,31 @@ def format_prompt(tokenizer, prompt, raw_prompt):
     )
 
 
-def generate(model, tokenizer, prompt, max_new_tokens, raw_prompt):
+def generation_search_options(prompt_token_count, max_new_tokens):
+    options = {"do_sample": False}
+    if max_new_tokens is not None:
+        options["max_length"] = prompt_token_count + max_new_tokens
+    return options
+
+
+def generate(genai, model, tokenizer, prompt, max_new_tokens, raw_prompt):
     formatted_prompt = format_prompt(tokenizer, prompt, raw_prompt)
     prompt_tokens = tokenizer.encode(formatted_prompt)
-    params = og.GeneratorParams(model)
-    params.set_search_options(
-        max_length=len(prompt_tokens) + max_new_tokens,
-        do_sample=False,
-    )
-    generator = og.Generator(model, params)
+    params = genai.GeneratorParams(model)
+    params.set_search_options(**generation_search_options(len(prompt_tokens), max_new_tokens))
+    generator = genai.Generator(model, params)
+    print("[qmoe_prompt_runner] prefill 0", file=sys.stderr, flush=True)
     generator.append_tokens(prompt_tokens)
 
     generated_tokens = []
+    iteration = 0
     start = time.perf_counter()
     while not generator.is_done():
+        if iteration:
+            print(f"[qmoe_prompt_runner] decode {iteration}", file=sys.stderr, flush=True)
         generator.generate_next_token()
         generated_tokens.extend(generator.get_next_tokens().tolist())
+        iteration += 1
     duration = time.perf_counter() - start
 
     return {
@@ -158,16 +260,43 @@ def count_counter_records(path):
 
 def main():
     args = parse_args()
-    if args.max_new_tokens <= 0:
+    if not args.until_eos and args.max_new_tokens <= 0:
         raise ValueError("--max-new-tokens must be positive.")
+    if args.cuda_sdpa_kernel < 0:
+        raise ValueError("--cuda-sdpa-kernel must be non-negative.")
+    if args.moe_cpu_offload_experts < 0:
+        raise ValueError("--moe-cpu-offload-experts must be non-negative.")
+    if not math.isfinite(args.moe_expert_counter_alpha) or not 0 <= args.moe_expert_counter_alpha <= 1:
+        raise ValueError("--moe-expert-counter-alpha must be finite and in [0, 1].")
+    if (
+        not math.isfinite(args.moe_expert_counter_probability_weight)
+        or not 0 <= args.moe_expert_counter_probability_weight <= 1
+    ):
+        raise ValueError("--moe-expert-counter-probability-weight must be finite and in [0, 1].")
+    if args.moe_max_in_flight_swaps_per_device < 0:
+        raise ValueError("--moe-max-in-flight-swaps-per-device must be non-negative.")
     if args.output.resolve() == args.counter_log.resolve():
         raise ValueError("--output and --counter-log must refer to different files.")
     prompts = load_prompts(args.prompts_file) if args.prompts_file else args.prompts
     args.output.parent.mkdir(parents=True, exist_ok=True)
 
+    if args.provider == "cuda":
+        gpu_index = select_first_free_gpu()
+        print(f"[qmoe_prompt_runner] using GPU {gpu_index}")
+    genai = importlib.import_module("onnxruntime_genai")
+
     with redirect_native_stderr(args.counter_log):
-        model = create_model(args.model, args.provider)
-        tokenizer = og.Tokenizer(model)
+        model = create_model(
+            genai,
+            args.model,
+            args.provider,
+            args.cuda_sdpa_kernel,
+            args.moe_cpu_offload_experts,
+            args.moe_expert_counter_alpha,
+            args.moe_expert_counter_probability_weight,
+            args.moe_max_in_flight_swaps_per_device,
+        )
+        tokenizer = genai.Tokenizer(model)
         results = []
         for prompt_index, prompt in enumerate(prompts, start=1):
             print(
@@ -176,10 +305,11 @@ def main():
                 flush=True,
             )
             result = generate(
+                genai,
                 model,
                 tokenizer,
                 prompt,
-                args.max_new_tokens,
+                None if args.until_eos else args.max_new_tokens,
                 args.raw_prompts,
             )
             results.append(

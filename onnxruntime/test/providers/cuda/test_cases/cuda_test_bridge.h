@@ -52,5 +52,7 @@ std::optional<size_t> EstimateMatMulNBitsWorkspaceForTest(
 common::Status LoadCudaExternalDataForTest(
     const void* loader, const Env& env, const std::filesystem::path& path,
     FileOffsetType offset, SafeInt<size_t> length, void* tensor);
+common::Status LoadCudaExpertsFromHostForTest(
+    const void* loader, const void* source, gsl::span<const int> experts, void* tensor);
 
 }  // namespace onnxruntime::test

@@ -20,6 +20,9 @@
 #include "core/framework/error_code_helper.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/fallback_cpu_capability.h"
+#if !defined(ORT_MINIMAL_BUILD)
+#include "core/framework/kernel_pilot.h"
+#endif
 #include "core/framework/kernel_registry.h"
 #include "core/framework/model_metadef_id_generator.h"
 #include "core/framework/murmurhash3.h"
@@ -33,6 +36,8 @@
 #include "core/framework/sparse_utils.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/tensor_external_data_info.h"
+#include "core/mlas/inc/mlas.h"
+#include "core/mlas/inc/mlas_qnbit.h"
 #include "core/framework/TensorSeq.h"
 #include "core/graph/constants.h"
 #include "core/graph/graph_proto_serializer.h"
@@ -1663,6 +1668,69 @@ struct ProviderHostImpl : ProviderHost {
   KernelPilot* OpKernelContext__GetKernelPilot(const OpKernelContext* p) override {
     return p->GetKernelPilot();
   }
+#if !defined(ORT_MINIMAL_BUILD)
+  void KernelPilotInitializer__Register(
+      KernelPilotInitializer* p, const OpKernel* kernel,
+      std::function<Status(KernelPilot*)> callback) override {
+    p->Register(kernel, std::move(callback));
+  }
+  void KernelPilotInitializer__destruct(KernelPilotInitializer* p) override {
+    p->~KernelPilotInitializer();
+  }
+
+  void MlasHalfGemmBatch__Run(
+      size_t M, size_t N, size_t K, size_t batch_size,
+      const void* data, concurrency::ThreadPool* thread_pool) override {
+    MlasHalfGemmBatch(M, N, K, batch_size,
+                      static_cast<const MLAS_HALF_GEMM_DATA_PARAMS*>(data), thread_pool);
+  }
+  bool MlasQ4GemmFp32__IsAvailable(size_t block_size) override {
+#if defined(MLAS_TARGET_AMD64_IX86)
+    return MlasIsQNBitGemmAvailable(4, block_size, SQNBIT_CompFp32);
+#else
+    ORT_UNUSED_PARAMETER(block_size);
+    return false;
+#endif
+  }
+  size_t MlasQ4GemmFp32__PackBSize(size_t N, size_t K, size_t block_size,
+                                   bool has_zero_point) override {
+    return MlasQNBitGemmPackQuantBDataSize(
+        N, K, 4, block_size, has_zero_point, SQNBIT_CompFp32, nullptr);
+  }
+  size_t MlasQ4GemmFp32__WorkspaceSize(size_t M, size_t N, size_t K,
+                                       size_t block_size, bool has_zero_point) override {
+    return MlasQNBitGemmBatchWorkspaceSize(
+        M, N, K, 1, 4, block_size, has_zero_point, SQNBIT_CompFp32, nullptr);
+  }
+  void MlasQ4GemmFp32__Run(size_t M, size_t N, size_t K, size_t block_size,
+                           const float* A, const void* packed_b,
+                           const float* scales, const void* zero_points,
+                           const float* bias, float* C, void* workspace,
+                           concurrency::ThreadPool* thread_pool) override {
+    MLAS_QNBIT_GEMM_DATA_PARAMS<float> params{};
+    params.A = A;
+    params.lda = K;
+    params.QuantBDataWorkspace = packed_b;
+    params.PackedQuantBData = static_cast<const std::byte*>(packed_b);
+    params.QuantBScale = scales;
+    params.QuantBZeroPoint = static_cast<const uint8_t*>(zero_points);
+    params.Bias = bias;
+    params.C = C;
+    params.ldc = N;
+    MlasQNBitGemmBatch<float>(
+        M, N, K, 1, 4, block_size, SQNBIT_CompFp32, &params,
+        workspace, thread_pool, nullptr);
+  }
+  concurrency::ThreadPool* OpKernelContext__GetOperatorThreadPool(const OpKernelContext* p) override {
+    return p->GetOperatorThreadPool();
+  }
+  void MlasGemmBatch__Run(
+      size_t M, size_t N, size_t K, size_t batch_size,
+      const void* data, concurrency::ThreadPool* thread_pool) override {
+    MlasGemmBatch(CblasNoTrans, CblasNoTrans, M, N, K,
+                  static_cast<const MLAS_SGEMM_DATA_PARAMS*>(data), batch_size, thread_pool, nullptr);
+  }
+#endif
   // OpKernelInfo (wrapped)
   std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info) override { return onnxruntime::CopyOpKernelInfo(info); }
   void OpKernelInfo__operator_delete(OpKernelInfo* p) override { delete p; }
@@ -1682,6 +1750,7 @@ struct ProviderHostImpl : ProviderHost {
   const DataTransferManager& OpKernelInfo__GetDataTransferManager(const OpKernelInfo* p) noexcept override { return p->GetDataTransferManager(); }
   const KernelDef& OpKernelInfo__GetKernelDef(const OpKernelInfo* p) override { return p->GetKernelDef(); }
   bool OpKernelInfo__TryGetConstantInput(const OpKernelInfo* p, int input_index, const Tensor** constant_input_value) override { return p->TryGetConstantInput(input_index, constant_input_value); }
+  bool OpKernelInfo__TryGetConstantInputOrtValue(const OpKernelInfo* p, int input_index, const OrtValue** constant_input_value) override { return p->TryGetConstantInput(input_index, constant_input_value); }
 
   uint32_t OpKernelInfo__GetInputCount(const OpKernelInfo* p) override { return p->GetInputCount(); }
   uint32_t OpKernelInfo__GetOutputCount(const OpKernelInfo* p) override { return p->GetOutputCount(); }

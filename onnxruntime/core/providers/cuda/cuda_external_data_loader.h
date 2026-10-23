@@ -4,6 +4,7 @@
 #pragma once
 
 #include <array>
+#include <functional>
 #include <memory>
 #include <mutex>
 
@@ -79,7 +80,12 @@ class ExternalDataLoader final : public IExternalDataLoader {
                             SafeInt<size_t> data_length,
                             Tensor& tensor) const override;
 
+  // Gather host-resident experts into a compact CUDA tensor using the same bounded upload buffers.
+  common::Status LoadTensorFromHost(const Tensor& source, gsl::span<const int> experts, Tensor& tensor) const;
+
  private:
+  using ReadFn = std::function<common::Status(size_t, gsl::span<char>)>;
+  common::Status LoadTensorWithReader(const ReadFn& read, Tensor& tensor, bool little_endian_source) const;
   common::Status EnsureResources() const;
   void ReleaseResources() const noexcept;
 

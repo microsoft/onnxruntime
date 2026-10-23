@@ -26,7 +26,10 @@ class KernelPilotMoeExpertSelectionCuda final : public IKernelPilotMoeExpertSele
   bool IsInitialized() const noexcept override;
   size_t ExpertCount() const noexcept override;
   Status Collect(gsl::span<const int> expert_ids) override;
+  Status CollectWeighted(gsl::span<const int> expert_ids,
+                         gsl::span<const float> routing_probabilities) override;
   Status GetSelectedExperts(gsl::span<const int>& expert_ids) const override;
+  Status GetSelectedExpertProbabilities(gsl::span<const float>& routing_probabilities) const override;
 
   Status Capture(const int* expert_ids, size_t count, cudaStream_t stream);
 
