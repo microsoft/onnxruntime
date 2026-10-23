@@ -426,14 +426,15 @@ BilinearParams SetupUpsampleBilinear(const int32_t input_height,
   // For each index in the output height and output width, cache its corresponding indices in the input
   // while multiplying it with the input stride for that dimension (cache because we don't have to re-compute
   // each time we come across the output width/ output height value while iterating the output image tensor
-  const SafeInt<size_t> idx_buffer_size = SafeInt<size_t>(2) * sizeof(int32_t) * (output_height + output_width);
+  const SafeInt<size_t> output_dimension_sum = SafeInt<size_t>(output_height) + output_width;
+  const SafeInt<size_t> idx_buffer_size = SafeInt<size_t>(2) * sizeof(int32_t) * output_dimension_sum;
 
   // For each index in the output height and output width, cache its corresponding "weights/scales" for its
   // corresponding indices in the input which proportionately indicates how much they will influence the final
   // pixel value in the output
   // (cache because we don't have to re-compute each time we come across the output width/output height
   // value while iterating the output image tensor
-  const SafeInt<size_t> scale_buffer_size = SafeInt<size_t>(2) * sizeof(float) * (output_height + output_width);
+  const SafeInt<size_t> scale_buffer_size = SafeInt<size_t>(2) * sizeof(float) * output_dimension_sum;
 
   // Limit number of allocations to just 1
   const auto inx_scale_data_buffer = alloc->Alloc(idx_buffer_size + scale_buffer_size);
@@ -447,7 +448,7 @@ BilinearParams SetupUpsampleBilinear(const int32_t input_height,
   p.input_width_mul_y2 = p.input_width_mul_y1 + output_height;
 
   // stride for width is 1 (no multiplication needed)
-  const auto output_height_x2 = output_height * 2;  // this is to make prefast happy
+  const size_t output_height_x2 = static_cast<size_t>(output_height) * 2;
   p.in_x1 = p.input_width_mul_y1 + output_height_x2;
   p.in_x2 = p.in_x1 + output_width;
 
@@ -513,6 +514,33 @@ BilinearParams SetupUpsampleBilinear(const int32_t input_height,
   return p;
 }
 
+Status ValidateBilinearDimensionsForInt32Indexing(int64_t batch_size,
+                                                  int64_t num_channels,
+                                                  int64_t input_height,
+                                                  int64_t input_width,
+                                                  int64_t output_height,
+                                                  int64_t output_width) {
+  ORT_RETURN_IF_NOT(batch_size >= 0 && num_channels >= 0 &&
+                        input_height >= 0 && input_width >= 0 &&
+                        output_height >= 0 && output_width >= 0,
+                    "Resize: dimensions must be non-negative.");
+
+  auto validate_element_count = [&](int64_t height, int64_t width, const char* tensor_name) -> Status {
+    int64_t element_count = 0;
+    ORT_RETURN_IF_NOT(SafeMultiply(batch_size, num_channels, element_count) &&
+                          SafeMultiply(element_count, height, element_count) &&
+                          SafeMultiply(element_count, width, element_count) &&
+                          element_count <= std::numeric_limits<int32_t>::max(),
+                      "Resize: ", tensor_name,
+                      " element count exceeds supported int32 indexing range for CPU linear mode.");
+    return Status::OK();
+  };
+
+  ORT_RETURN_IF_ERROR(validate_element_count(input_height, input_width, "input"));
+  ORT_RETURN_IF_ERROR(validate_element_count(output_height, output_width, "output"));
+  return Status::OK();
+}
+
 // Same as above, but doesn't use any floating-point for the coefficient (i.e., d*_scale_10) computation
 BilinearParamsInteger SetupUpsampleBilinearInteger(const int32_t input_height,
                                                    const int32_t input_width,
@@ -532,14 +560,15 @@ BilinearParamsInteger SetupUpsampleBilinearInteger(const int32_t input_height,
   // For each index in the output height and output width, cache its corresponding indices in the input
   // while multiplying it with the input stride for that dimension (cache because we don't have to re-compute
   // each time we come across the output width/ output height value while iterating the output image tensor
-  const SafeInt<size_t> idx_buffer_size = SafeInt<size_t>(2) * sizeof(int32_t) * (output_height + output_width);
+  const SafeInt<size_t> output_dimension_sum = SafeInt<size_t>(output_height) + output_width;
+  const SafeInt<size_t> idx_buffer_size = SafeInt<size_t>(2) * sizeof(int32_t) * output_dimension_sum;
 
   // For each index in the output height and output width, cache its corresponding "weights/scales" for its
   // corresponding indices in the input which proportionately indicates how much they will influence the final
   // pixel value in the output
   // (cache because we don't have to re-compute each time we come across the output width/output height
   // value while iterating the output image tensor
-  const SafeInt<size_t> scale_buffer_size = SafeInt<size_t>(2) * sizeof(int32_t) * (output_height + output_width);
+  const SafeInt<size_t> scale_buffer_size = SafeInt<size_t>(2) * sizeof(int32_t) * output_dimension_sum;
 
   // Limit number of allocations to just 1
   const auto inx_scale_data_buffer = alloc->Alloc(idx_buffer_size + scale_buffer_size);
@@ -553,7 +582,7 @@ BilinearParamsInteger SetupUpsampleBilinearInteger(const int32_t input_height,
   p.input_width_mul_y2 = p.input_width_mul_y1 + output_height;
 
   // stride for width is 1 (no multiplication needed)
-  const auto output_height_x2 = output_height * 2;  // this is to make prefast happy
+  const size_t output_height_x2 = static_cast<size_t>(output_height) * 2;
   p.in_x1 = p.input_width_mul_y1 + output_height_x2;
   p.in_x2 = p.in_x1 + output_width;
 
@@ -1184,6 +1213,13 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                               is_valid_non_negative_int32(output_height_i64) &&
                               is_valid_non_negative_int32(output_width_i64),
                           "Resize: dimensions exceed supported int32 range for CPU linear mode.");
+
+        if (!antialias_) {
+          ORT_RETURN_IF_ERROR(ValidateBilinearDimensionsForInt32Indexing(
+              batch_size_i64, num_channels_i64,
+              input_height_i64, input_width_i64,
+              output_height_i64, output_width_i64));
+        }
 
         batch_size = static_cast<int32_t>(batch_size_i64);
         num_channels = static_cast<int32_t>(num_channels_i64);

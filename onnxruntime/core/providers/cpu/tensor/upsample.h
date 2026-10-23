@@ -81,6 +81,13 @@ BilinearParams SetupUpsampleBilinear(const int32_t input_height,
                                      const GetOriginalCoordinateFunc& get_original_coordinate,
                                      const bool is_nchw);
 
+Status ValidateBilinearDimensionsForInt32Indexing(int64_t batch_size,
+                                                  int64_t num_channels,
+                                                  int64_t input_height,
+                                                  int64_t input_width,
+                                                  int64_t output_height,
+                                                  int64_t output_width);
+
 template <typename T>
 void UpsampleBilinear(const int32_t batch_size,
                       const int32_t num_channels,
@@ -159,7 +166,7 @@ void NhwcUpsampleBilinear(const int32_t batch_size,
     T* const Ydata = YdataBase + n * (output_height * output_width) * num_channels;
     concurrency::ThreadPool::TryParallelFor(
         tp, static_cast<std::ptrdiff_t>(output_height) * output_width,
-        static_cast<double>(num_channels * 2),
+        static_cast<double>(num_channels) * 2,
         [&](std::ptrdiff_t first, std::ptrdiff_t last) {
           for (std::ptrdiff_t i = first; i < last; ++i) {
             const int32_t x = static_cast<int32_t>(i % output_width);
@@ -256,7 +263,7 @@ void NhwcUpsampleBilinearInteger(const int32_t batch_size,
     T* const Ydata = YdataBase + n * (output_height * output_width) * num_channels;
     concurrency::ThreadPool::TryParallelFor(
         tp, static_cast<std::ptrdiff_t>(output_height) * output_width,
-        static_cast<double>(num_channels * 2),
+        static_cast<double>(num_channels) * 2,
         [&](std::ptrdiff_t first, std::ptrdiff_t last) {
           for (std::ptrdiff_t i = first; i < last; ++i) {
             const int32_t x = static_cast<int32_t>(i % output_width);
