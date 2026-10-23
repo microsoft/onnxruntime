@@ -89,6 +89,18 @@ static const char* const kOrtSessionOptionsDisableQDQConstantFolding =
 // Its default value is "0"
 static const char* const kOrtSessionOptionsDisableDoubleQDQRemover = "session.disable_double_qdq_remover";
 
+// If set to "1", strips activation Q->DQ pairs from QDQ models after compute-op fusions
+// (QLinearMatMul, QLinearConv, etc.) have been applied. This skips QDQ fusion for data-movement ops
+// (Reshape, Transpose, etc.) and removes eligible remaining activation Q->DQ pairs, allowing unfused ops to
+// run in float precision while preserving quantized compute where fused kernels are available. Also
+// enables DQ -> MatMul/Gemm -> MatMulNBits fusion for patterns that become eligible after activation
+// Q/DQ removal, and constant-folds remaining weight DQ nodes into float initializers unless
+// session.disable_qdq_constant_folding is enabled. Pairs feeding implicit subgraph inputs are preserved.
+// Removing quantization can change model accuracy; validate the result for the target workload.
+// This is only supported in a full build. It has no effect in a minimal build.
+// The default value is "0"
+static const char* const kOrtSessionOptionsQDQStripActivations = "session.qdq_strip_activations";
+
 // If set to "1", enables the removal of QuantizeLinear/DequantizeLinear node pairs once all QDQ handling has been
 // completed. e.g. If after all QDQ handling has completed and we have -> FloatOp -> Q -> DQ -> FloatOp -> the
 // Q -> DQ could potentially be removed. This will provide a performance benefit by avoiding going from float to
