@@ -766,7 +766,7 @@ bool MatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node&
 // - Per-channel (axis=1): scale is 1D with shape [N], weight is 2D [K,N], no block_size attribute
 // In all cases: weight type is 2/4/8-bit int, scale type is float or float16,
 // weight/scale/zp are constant initializers.
-static bool ValidateDQForMatMulNBits(const Graph& graph, const Node& dq_node) {
+static bool ValidateDQForMatMulNBits(const Graph& graph, const Node& dq_node, bool transpose_weight) {
   const auto* weight_arg = dq_node.InputDefs()[0];
   const auto* scale_arg = dq_node.InputDefs()[1];
   const auto* zero_point_arg = dq_node.InputDefs().size() == 3 ? dq_node.InputDefs()[2] : nullptr;
@@ -805,6 +805,10 @@ static bool ValidateDQForMatMulNBits(const Graph& graph, const Node& dq_node) {
   const bool has_block_size = block_size_iter != dq_attrs.end() && block_size_iter->second.i() > 0;
 
   if (has_block_size) {
+    // The transposed path currently handles per-tensor/per-output-channel weights only.
+    if (transpose_weight) {
+      return false;
+    }
     // --- Blockwise path (existing logic) ---
     if (const auto a_iter = dq_attrs.find("axis"); a_iter == dq_attrs.end() || a_iter->second.i() != 0) {
       return false;
@@ -829,7 +833,8 @@ static bool ValidateDQForMatMulNBits(const Graph& graph, const Node& dq_node) {
   } else {
     // --- Per-tensor or per-channel path ---
     int scale_rank = scale_tensor_proto->dims_size();
-    auto N = weight_tensor_proto->dims()[1];
+    const int channel_axis = transpose_weight ? 0 : 1;
+    auto N = weight_tensor_proto->dims()[channel_axis];
 
     if (scale_rank == 0) {
       // Per-tensor: scalar scale, optional scalar zp
@@ -837,10 +842,10 @@ static bool ValidateDQForMatMulNBits(const Graph& graph, const Node& dq_node) {
         return false;
       }
     } else if (scale_rank == 1 && scale_tensor_proto->dims()[0] == N) {
-      // Per-channel (axis=1): scale shape [N], axis must be 1
+      // Per-output-channel scale, before the optional Gemm weight transpose.
       const auto a_iter = dq_attrs.find("axis");
-      // DQ default axis is 1, so absent axis is OK
-      if (a_iter != dq_attrs.end() && a_iter->second.i() != 1) {
+      const int64_t axis = a_iter == dq_attrs.end() ? 1 : a_iter->second.i();
+      if ((axis < 0 ? axis + 2 : axis) != channel_axis) {
         return false;
       }
       if (zp_tensor_proto && (zp_tensor_proto->dims_size() != 1 || zp_tensor_proto->dims()[0] != N)) {
@@ -856,7 +861,7 @@ static bool ValidateDQForMatMulNBits(const Graph& graph, const Node& dq_node) {
 }
 
 // Validate Gemm attributes for DQ->MatMulNBits fusion.
-// Gemm must be equivalent to MatMul: alpha=1, transA=0, transB=0.
+// Gemm must have alpha=1 and transA=0; transB is handled while packing weights.
 // If bias exists, beta must be 1 and bias shape must be [N].
 static bool ValidateGemmForDQMatMulNBits(const Graph& graph, const Node& gemm_node, const Node& weight_dq_node) {
   if (const auto* alpha_attr = graph_utils::GetNodeAttribute(gemm_node, "alpha");
@@ -865,9 +870,10 @@ static bool ValidateGemmForDQMatMulNBits(const Graph& graph, const Node& gemm_no
   if (const auto* trans_a = graph_utils::GetNodeAttribute(gemm_node, "transA");
       trans_a && trans_a->i() != 0)
     return false;
-  if (const auto* trans_b = graph_utils::GetNodeAttribute(gemm_node, "transB");
-      trans_b && trans_b->i() != 0)
+  const auto* trans_b = graph_utils::GetNodeAttribute(gemm_node, "transB");
+  if (trans_b && trans_b->i() != 0 && trans_b->i() != 1)
     return false;
+  const int channel_axis = trans_b && trans_b->i() == 1 ? 0 : 1;
 
   const auto& inputs = gemm_node.InputDefs();
   if (inputs.size() > 2 && inputs[2] && inputs[2]->Exists()) {
@@ -876,7 +882,7 @@ static bool ValidateGemmForDQMatMulNBits(const Graph& graph, const Node& gemm_no
         beta_attr && std::abs(beta_attr->f() - 1.0f) > 1e-6f)
       return false;
 
-    // Bias shape must be [N] where N = weight dim 1. Prefer reading N and
+    // Bias shape must be [N]. Prefer reading N and
     // bias length from constant initializers when available, and fall back to
     // NodeArg::Shape().
     const auto* weight_arg = weight_dq_node.InputDefs()[0];
@@ -887,14 +893,14 @@ static bool ValidateGemmForDQMatMulNBits(const Graph& graph, const Node& gemm_no
       if (weight_initializer->dims_size() != 2) {
         return false;
       }
-      N = weight_initializer->dims(1);
+      N = weight_initializer->dims(channel_axis);
     } else {
       const auto* weight_shape = weight_arg->Shape();
       if (!weight_shape || weight_shape->dim_size() != 2 ||
-          !utils::HasDimValue(weight_shape->dim(1))) {
+          !utils::HasDimValue(weight_shape->dim(channel_axis))) {
         return false;
       }
-      N = weight_shape->dim(1).dim_value();
+      N = weight_shape->dim(channel_axis).dim_value();
     }
 
     const auto* bias_arg = inputs[2];
@@ -925,25 +931,13 @@ bool DQMatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Nod
     return false;
   }
 
-  // Should not have any Q nodes
-  if (!q_nodes.empty()) {
-    return false;
-  }
-
   const auto& graph = graph_viewer.GetGraph();
   const bool is_gemm = node.OpType() == "Gemm";
-
-  if (is_gemm) {
-    // Gemm: accept 1 DQ (weight only) or 2 DQs (weight + bias).
-    if (dq_nodes.size() < 1 || dq_nodes.size() > 2) {
-      return false;
-    }
-  } else {
-    // MatMul: exactly 1 DQ input
-    if (dq_nodes.size() != 1) {
-      return false;
-    }
+  if (node.InputDefs().size() < 2 || dq_nodes.empty()) {
+    return false;
   }
+  const auto* trans_b = is_gemm ? graph_utils::GetNodeAttribute(node, "transB") : nullptr;
+  const bool transpose_weight = trans_b && trans_b->i() == 1;
 
   // Find the weight DQ node — the one feeding input 1 (B)
   const Node* weight_dq = nullptr;
@@ -956,6 +950,18 @@ bool DQMatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Nod
 
   if (!weight_dq) {
     return false;
+  }
+
+  const bool has_activation_dq = std::any_of(dq_nodes.begin(), dq_nodes.end(), [&](const Node* dq) {
+    return node.InputDefs()[0] == dq->OutputDefs()[0];
+  });
+  if (transpose_weight || has_activation_dq || !q_nodes.empty()) {
+    // Do not steal existing int8 QLinearMatMul/QGemm patterns or broaden GPU fusion.
+    const auto weight_type = weight_dq->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+    if (!Is4BitIntType(weight_type) ||
+        (!node.GetExecutionProviderType().empty() && node.GetExecutionProviderType() != kCpuExecutionProvider)) {
+      return false;
+    }
   }
 
   // Weight DQ must have exactly 1 output edge and not be a graph output
@@ -979,22 +985,12 @@ bool DQMatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Nod
   }
 
   if (is_gemm) {
-    // If there's a second DQ node (for bias), it must feed input 2
-    if (dq_nodes.size() == 2) {
-      const Node* bias_dq = (dq_nodes[0] == weight_dq) ? dq_nodes[1] : dq_nodes[0];
-      if (node.InputDefs().size() <= 2 || !node.InputDefs()[2] ||
-          node.InputDefs()[2] != bias_dq->OutputDefs()[0]) {
-        return false;
-      }
-    }
-
-    // Validate Gemm attributes (alpha=1, transA=0, transB=0, beta=1 if bias)
     if (!ValidateGemmForDQMatMulNBits(graph, node, *weight_dq)) {
       return false;
     }
   }
 
-  return ValidateDQForMatMulNBits(graph, *weight_dq);
+  return ValidateDQForMatMulNBits(graph, *weight_dq, transpose_weight);
 }
 
 // Check if a QDQ node's scale/zero_point shape is scalar or 1D with a compatible size.
@@ -1151,11 +1147,20 @@ void GemmSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) const {
   builder.input_nodes.resize(3, NodesToOptimizeIndices::kEmptyNodeIndex);
 }
 
-void DQMatMulToMatMulNBitsSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) const {
-  // Keep only the weight DQ (first entry). If a Gemm has a bias DQ, it will be in
-  // position 1 — trim it so RemoveNodes does not delete it. The bias DQ's output
-  // is wired to MatMulNBits input 5 in ProcessNewNode.
-  builder.input_nodes.resize(1);
+std::optional<NodesToOptimizeIndices> DQMatMulToMatMulNBitsSelector::Select(
+    const GraphViewer& graph_viewer, const Node& node) const {
+  if (!BaseSelector::Select(graph_viewer, node).has_value()) {
+    return std::nullopt;
+  }
+
+  // Parent discovery order is not the operand order. Select B explicitly and leave
+  // activation/bias DQ and output Q nodes connected to the replacement's float edges.
+  const auto* weight_dq = graph_viewer.GetGraph().GetProducerNode(node.InputDefs()[1]->Name());
+  ORT_ENFORCE(weight_dq != nullptr);
+  NodesToOptimizeIndicesBuilder builder;
+  builder.input_nodes.push_back(weight_dq->Index());
+  builder.target_node = node.Index();
+  return builder.Build();
 }
 
 bool WhereNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,

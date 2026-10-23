@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <array>
 #include <unordered_map>
 #include <utility>
 
@@ -12,11 +13,17 @@
 #include "core/graph/graph_utils.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/mlas/inc/mlas_q4.h"
+#include "core/providers/cpu/tensor/transpose.h"
 
 namespace onnxruntime {
 namespace QDQ {
 
 namespace {
+bool IsTransposedGemm(const Node& node) {
+  const auto* trans_b = graph_utils::GetNodeAttribute(node, "transB");
+  return node.OpType() == "Gemm" && trans_b && trans_b->i() == 1;
+}
+
 // Derive MatMulNBits 'bits' attribute from the DQ weight element type.
 int64_t DQWeightBits(int32_t dt_weight) {
   using TensorProto = ONNX_NAMESPACE::TensorProto;
@@ -79,7 +86,8 @@ int64_t ComputeEffectiveBlockSize(int64_t session_block_size, int64_t K) {
 }
 
 // Get the DQ block_size: from the attribute if blockwise, or computed for per-tensor/per-channel.
-int64_t GetEffectiveBlockSize(const Node& dq_node, int64_t block_size_for_non_blockwise) {
+int64_t GetEffectiveBlockSize(const Node& dq_node, int64_t block_size_for_non_blockwise,
+                              bool transpose_weight) {
   const auto& dq_attrs = dq_node.GetAttributes();
   const auto bs_iter = dq_attrs.find("block_size");
   if (bs_iter != dq_attrs.end() && bs_iter->second.i() > 0) {
@@ -93,8 +101,9 @@ int64_t GetEffectiveBlockSize(const Node& dq_node, int64_t block_size_for_non_bl
   const auto* weight_arg = dq_node.InputDefs()[0];
   if (weight_arg != nullptr) {
     const auto* shape = weight_arg->Shape();
-    if (shape != nullptr && shape->dim_size() > 0 && shape->dim(0).has_dim_value()) {
-      K = static_cast<int64_t>(shape->dim(0).dim_value());
+    const int reduction_axis = transpose_weight ? 1 : 0;
+    if (shape != nullptr && shape->dim_size() > reduction_axis && shape->dim(reduction_axis).has_dim_value()) {
+      K = static_cast<int64_t>(shape->dim(reduction_axis).dim_value());
     }
   }
 
@@ -122,6 +131,7 @@ Status TransposeDQWeightsForMatMulNBits(
     const std::string& default_zp_name_prefix,
     concurrency::ThreadPool* intra_op_thread_pool,
     int64_t effective_block_size,
+    bool transpose_weight,
     TransposedQuantizedTensors& result) {
   const auto* weight_arg = dq_node.InputDefs()[0];
   const auto* scale_arg = dq_node.InputDefs()[1];
@@ -140,8 +150,8 @@ Status TransposeDQWeightsForMatMulNBits(
 
   ORT_RETURN_IF_NOT(weight_tensor_proto->dims_size() >= 2,
                     "Weight tensor for node ", dq_node.Name(), " must be at least 2D.");
-  auto K = weight_tensor_proto->dims(0);
-  auto N = weight_tensor_proto->dims(1);
+  auto K = weight_tensor_proto->dims(transpose_weight ? 1 : 0);
+  auto N = weight_tensor_proto->dims(transpose_weight ? 0 : 1);
   auto block_size = effective_block_size;
   int32_t dt_weight = weight_arg->TypeAsProto()->tensor_type().elem_type();
   auto bits = DQWeightBits(dt_weight);
@@ -157,6 +167,15 @@ Status TransposeDQWeightsForMatMulNBits(
 
   std::optional<Initializer> zp_src;
   auto cpu_allocator = CPUAllocator::DefaultInstance();
+  std::optional<Tensor> columnwise_weight;
+  if (transpose_weight) {
+    const auto* weight_type = DataTypeImpl::TensorTypeFromONNXEnum(dt_weight)->GetElementType();
+    Tensor weight_view(weight_type, TensorShape{N, K}, weight_src.mutable_data_raw(), cpu_allocator->Info());
+    columnwise_weight.emplace(weight_type, TensorShape{K, N}, cpu_allocator);
+    const std::array<size_t, 2> permutation{1, 0};
+    ORT_RETURN_IF_ERROR(TransposeBase::DoTranspose(
+        permutation, weight_view, *columnwise_weight, nullptr, intra_op_thread_pool));
+  }
 
   // Determine if scale/zp need expansion from per-tensor/per-channel to blockwise [quant_num, N].
   const bool is_blockwise = (scale_tensor_proto->dims_size() == 2);
@@ -280,7 +299,9 @@ Status TransposeDQWeightsForMatMulNBits(
   auto transpose = [&](auto* scale_data, auto* scale_dst_data) {
     using ScaleType = std::remove_const_t<std::remove_pointer_t<decltype(scale_data)>>;
     bool is_signed = IsDQWeightSigned(dt_weight);
-    const uint8_t* src_w = weight_src.DataAsByteSpan().data();
+    const uint8_t* src_w = columnwise_weight
+                               ? static_cast<const uint8_t*>(columnwise_weight->DataRaw())
+                               : weight_src.DataAsByteSpan().data();
     const uint8_t* src_zp = nullptr;
     if (expanded_zp.has_value()) {
       src_zp = expanded_zp->Data<uint8_t>();
@@ -620,16 +641,17 @@ DQMatMulToMatMulNBitsAction::ExtraAttributes(const RuntimeState& runtime_state) 
   NodeAttributes extra_attributes;
 
   const auto* dq_node = runtime_state.selected_nodes.Input(0);
+  const bool transpose_weight = IsTransposedGemm(runtime_state.selected_nodes.Target());
   const auto* weight_shape = dq_node->InputDefs()[0]->Shape();
   ORT_ENFORCE(weight_shape != nullptr && weight_shape->dim_size() >= 2,
               "Weight shape unavailable for DQ node ", dq_node->Name());
 
-  utils::SetNodeAttribute(utils::MakeAttribute("K", weight_shape->dim(0).dim_value()), extra_attributes);
-  utils::SetNodeAttribute(utils::MakeAttribute("N", weight_shape->dim(1).dim_value()), extra_attributes);
+  utils::SetNodeAttribute(utils::MakeAttribute("K", weight_shape->dim(transpose_weight ? 1 : 0).dim_value()), extra_attributes);
+  utils::SetNodeAttribute(utils::MakeAttribute("N", weight_shape->dim(transpose_weight ? 0 : 1).dim_value()), extra_attributes);
   utils::SetNodeAttribute(utils::MakeAttribute("accuracy_level", accuracy_level_), extra_attributes);
   int32_t dt_weight = dq_node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   utils::SetNodeAttribute(utils::MakeAttribute("bits", DQWeightBits(dt_weight)), extra_attributes);
-  int64_t effective_bs = GetEffectiveBlockSize(*dq_node, block_size_for_non_blockwise_);
+  int64_t effective_bs = GetEffectiveBlockSize(*dq_node, block_size_for_non_blockwise_, transpose_weight);
   utils::SetNodeAttribute(utils::MakeAttribute("block_size", effective_bs), extra_attributes);
 
   return extra_attributes;
@@ -639,6 +661,8 @@ Status DQMatMulToMatMulNBitsAction::ProcessNewNode(Graph& graph,
                                                    const NodesToOptimize& selected_nodes,
                                                    Node& replacement_node) const {
   const auto* dq_node = selected_nodes.Input(0);
+  const auto& target = selected_nodes.Target();
+  const bool transpose_weight = IsTransposedGemm(target);
 
   // Graph::Resolve fills in the schema default (block_size = 0) for DQ nodes that do not declare
   // one, so presence of the attribute alone does not mean the DQ is blockwise. Only a positive
@@ -653,7 +677,7 @@ Status DQMatMulToMatMulNBitsAction::ProcessNewNode(Graph& graph,
                       "] for MatMulNBits fusion. Got: ", block_size);
   }
 
-  const int64_t effective_bs = GetEffectiveBlockSize(*dq_node, block_size_for_non_blockwise_);
+  const int64_t effective_bs = GetEffectiveBlockSize(*dq_node, block_size_for_non_blockwise_, transpose_weight);
   ORT_RETURN_IF_NOT(IsValidMatMulNBitsBlockSize(effective_bs),
                     "Effective block_size must be a power-of-two in [",
                     kMatMulNBitsMinBlockSize, ", ", kMatMulNBitsMaxBlockSize,
@@ -661,7 +685,7 @@ Status DQMatMulToMatMulNBitsAction::ProcessNewNode(Graph& graph,
 
   TransposedQuantizedTensors transposed;
   ORT_RETURN_IF_ERROR(TransposeDQWeightsForMatMulNBits(
-      graph, *dq_node, "fused_DQ_MatMul", intra_op_thread_pool_, effective_bs, transposed));
+      graph, *dq_node, "fused_DQ_MatMul", intra_op_thread_pool_, effective_bs, transpose_weight, transposed));
 
   // Cross-session sharing identity for the generated B weight; computed before it is moved.
   const auto* weight_arg = dq_node->InputDefs()[0];
@@ -671,7 +695,8 @@ Status DQMatMulToMatMulNBitsAction::ProcessNewNode(Graph& graph,
   const int64_t bits = DQWeightBits(weight_arg->TypeAsProto()->tensor_type().elem_type());
   const std::string share_id = ComputeMatMulNBitsSharingId(
       transposed.weight, transposed.scale, transposed.zero_point,
-      weight_shape->dim(1).dim_value(), weight_shape->dim(0).dim_value(),
+      weight_shape->dim(transpose_weight ? 0 : 1).dim_value(),
+      weight_shape->dim(transpose_weight ? 1 : 0).dim_value(),
       effective_bs, bits, accuracy_level_);
 
   auto& input_defs = replacement_node.MutableInputDefs();
@@ -692,7 +717,6 @@ Status DQMatMulToMatMulNBitsAction::ProcessNewNode(Graph& graph,
 
   // If the target was Gemm, strip Gemm-specific attributes from the replacement MatMulNBits node
   // and wire the bias (if present) to MatMulNBits input 5.
-  const auto& target = selected_nodes.Target();
   if (target.OpType() == "Gemm") {
     replacement_node.ClearAttribute("alpha");
     replacement_node.ClearAttribute("beta");
