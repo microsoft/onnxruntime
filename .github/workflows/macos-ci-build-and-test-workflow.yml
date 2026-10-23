@@ -142,7 +142,8 @@ jobs:
         shell: bash
         working-directory: ${{ github.workspace }}
         run: |
-          python ./tools/ci_build/build.py --build ${{ env.build_flags }}
+          python ./tools/ci_build/build.py --build ${{ env.build_flags }} \
+            ${{ inputs.use_webgpu && matrix.build_config == 'Debug' && '--parallel 2' || '' }}
 
       - name: Install
         shell: bash
