@@ -7,6 +7,7 @@
 #include <latch>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include "gtest/gtest.h"
 #include "core/framework/op_kernel.h"
@@ -67,6 +68,29 @@ TEST(WebGpuContextTest, FillZeroClearsSessionBuffer) {
   for (auto value : data) {
     EXPECT_EQ(value, 0u);
   }
+
+  std::vector<webgpu::CapturedCommand> commands;
+  context.CaptureBegin(&commands, webgpu_ep.BufferManager(), recording);
+  compute_context.FillZero(tensor);
+  ASSERT_STATUS_OK(context.Flush(webgpu_ep.BufferManager(), recording));
+  context.CaptureEnd(recording);
+  ASSERT_EQ(commands.size(), 1u);
+
+  // The captured clear must retain the buffer even without a dispatch or copy.
+  WGPUBuffer captured_buffer = buffer.Get();
+  buffer = nullptr;
+  for (uint32_t run = 1; run <= 3; ++run) {
+    data.fill(run);
+    webgpu_ep.BufferManager().Upload(recording, data.data(), captured_buffer, sizeof(data));
+    context.Replay(commands, webgpu_ep.BufferManager(), recording);
+    webgpu_ep.BufferManager().Download(recording, captured_buffer, data.data(), sizeof(data));
+    for (auto value : data) {
+      EXPECT_EQ(value, 0u);
+    }
+    EXPECT_EQ(recording.num_pending_dispatches, 0u);
+  }
+  context.ReleaseGraphResources(commands);
+  EXPECT_TRUE(commands.empty());
 }
 
 TEST(WebGpuContextTest, SharedDeviceErrorScopesRemainThreadLocal) {
