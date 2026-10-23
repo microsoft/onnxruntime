@@ -392,6 +392,22 @@ Status PackedSparseAttentionIndexer<T, TState>::ComputeQsa(OpKernelContext* cont
   }
 
   PackedSparseAttentionIndexerParams params;
+  Tensor* mid_buffers[2]{};
+  Tensor* mid_lengths[2]{};
+  for (int prefix = 0; prefix < 2; ++prefix) {
+    const int buffer_index = psai::kMidKvBuffer2 + prefix * 2;
+    const int length_index = buffer_index + 1;
+    if (context->OutputCount() > buffer_index)
+      mid_buffers[prefix] = context->Output(buffer_index, TensorShape({batch_size, buffer_capacity, head_size}));
+    if (context->OutputCount() > length_index)
+      mid_lengths[prefix] = context->Output(length_index, TensorShape({batch_size, psai::kStateLengthColumns}));
+    ORT_RETURN_IF((mid_buffers[prefix] == nullptr) != (mid_lengths[prefix] == nullptr),
+                  "PackedSparseAttentionIndexer: every prefix buffer requires its matching lengths");
+  }
+  params.mid_kv_buffer2 = mid_buffers[0] ? mid_buffers[0]->MutableData<T>() : nullptr;
+  params.mid_state_lengths2 = mid_lengths[0] ? mid_lengths[0]->MutableData<int32_t>() : nullptr;
+  params.mid_kv_buffer3 = mid_buffers[1] ? mid_buffers[1]->MutableData<T>() : nullptr;
+  params.mid_state_lengths3 = mid_lengths[1] ? mid_lengths[1]->MutableData<int32_t>() : nullptr;
   params.batch_size = static_cast<int>(batch_size);
   params.total_tokens = static_cast<int>(total_tokens);
   params.num_heads = static_cast<int>(num_heads);
@@ -654,6 +670,8 @@ Status PackedSparseAttentionIndexer<T, TState>::ComputeCsa(OpKernelContext* cont
 
 template <typename T, typename TState>
 Status PackedSparseAttentionIndexer<T, TState>::ComputeReuse(OpKernelContext* context) const {
+  ORT_RETURN_IF(context->OutputCount() > psai::kMidKvBuffer2,
+                "PackedSparseAttentionIndexer: additional prefix outputs require refresh, not IndexShare reuse");
   for (int index : {psai::kMidKvBuffer, psai::kMidStateLengths, psai::kValidationStatus}) {
     Tensor* output = context->OutputCount() > index ? context->Output(index, TensorShape({0})) : nullptr;
     ORT_RETURN_IF(output != nullptr,

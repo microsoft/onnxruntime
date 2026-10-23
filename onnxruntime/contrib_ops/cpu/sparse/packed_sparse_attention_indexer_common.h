@@ -75,8 +75,12 @@ enum OutputIndex : int {
   kMidKvBuffer = 9,        // qsa only, optional: snapshot after the first request token
   kMidStateLengths = 10,   // qsa only, optional: lengths after the first request token
   kValidationStatus = 11,  // qsa only, optional: per-request validation status
+  kMidKvBuffer2 = 12,
+  kMidStateLengths2 = 13,
+  kMidKvBuffer3 = 14,
+  kMidStateLengths3 = 15,
   kOutputCount = 9,
-  kMaxOutputCount = 12,
+  kMaxOutputCount = 16,
 };
 
 // Values of the optional state_status output. They follow the status convention of

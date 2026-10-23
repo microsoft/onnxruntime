@@ -583,7 +583,7 @@ TEST(DynamicSparseAttentionTest, FloatingCacheGroupedSingleSplitWorkspace_CUDA) 
 }
 
 TEST(DynamicSparseAttentionTest, Int8CacheGroupedDecode_CUDA) {
-  for (int sequence_length : {1, 2}) {
+  for (int sequence_length : {1, 2, 3, 4}) {
     for (bool auxiliary : {false, true}) {
       SCOPED_TRACE("sequence_length=" + std::to_string(sequence_length) +
                    ", auxiliary=" + std::to_string(auxiliary));
@@ -603,7 +603,7 @@ TEST(DynamicSparseAttentionTest, Int8CacheGroupedDecodeFloat16_CUDA) {
 }
 
 TEST(DynamicSparseAttentionTest, Int8CacheGroupedDecodeVectorStagingChannels_CUDA) {
-  for (int sequence_length : {1, 2}) {
+  for (int sequence_length : {1, 2, 3, 4}) {
     for (bool auxiliary : {false, true}) {
       SCOPED_TRACE("sequence_length=" + std::to_string(sequence_length) +
                    ", auxiliary=" + std::to_string(auxiliary));

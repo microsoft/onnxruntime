@@ -2953,6 +2953,18 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
     propagateElemTypeFromInputToOutput(ctx, psai::kPastKvBuffer, psai::kMidKvBuffer);
     propagateShapeFromInputToOutput(ctx, psai::kPastKvBuffer, psai::kMidKvBuffer);
   }
+  for (int prefix = 0; prefix < 2; ++prefix) {
+    const int buffer = psai::kMidKvBuffer2 + 2 * prefix;
+    const int lengths = buffer + 1;
+    if (ctx.hasOutput(buffer) != ctx.hasOutput(lengths))
+      fail_shape_inference("PackedSparseAttentionIndexer: prefix buffer and lengths must be connected together");
+    if (!ctx.hasOutput(buffer)) continue;
+    if (!is_qsa) fail_shape_inference("PackedSparseAttentionIndexer: prefix outputs require policy_mode='qsa'");
+    propagateElemTypeFromInputToOutput(ctx, psai::kPastKvBuffer, buffer);
+    propagateShapeFromInputToOutput(ctx, psai::kPastKvBuffer, buffer);
+    updateOutputElemType(ctx, lengths, ONNX_NAMESPACE::TensorProto_DataType_INT32);
+    propagateShapeFromInputToOutput(ctx, psai::kPastStateLengths, lengths);
+  }
   if (!is_qsa) {
     // present_gate_buffer keeps its fixed positional slot (with an empty name) for policy_mode
     // 'qsa'; only propagate its type/shape when it is actually produced.
@@ -3496,6 +3508,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Output(11, "validation_status",
                 "Only for CUDA policy_mode 'qsa' refresh: per-request overflow status; two-token rejection is encoded as 0x99. "
                 "Not supported in IndexShare reuse mode.",
+                "M", OpSchema::Optional)
+        .Output(12, "mid_kv_buffer2", "CUDA QSA pending-buffer snapshot after at most two request tokens.",
+                "T", OpSchema::Optional)
+        .Output(13, "mid_state_lengths2", "CUDA QSA state lengths after at most two request tokens.",
+                "M", OpSchema::Optional)
+        .Output(14, "mid_kv_buffer3", "CUDA QSA pending-buffer snapshot after at most three request tokens.",
+                "T", OpSchema::Optional)
+        .Output(15, "mid_state_lengths3", "CUDA QSA state lengths after at most three request tokens.",
                 "M", OpSchema::Optional)
         .TypeConstraint("T",
                         {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},

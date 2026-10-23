@@ -5326,7 +5326,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Merged device status [N].</dd>
 </dl>
 
-#### Outputs (5 - 12)
+#### Outputs (5 - 16)
 
 <dl>
 <dt><tt>selected_indices</tt> : M</dt>
@@ -5353,6 +5353,14 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Only for CUDA policy_mode 'qsa' refresh: state lengths after the first token of each request. Not supported in IndexShare reuse mode.</dd>
 <dt><tt>validation_status</tt> (optional) : M</dt>
 <dd>Only for CUDA policy_mode 'qsa' refresh: per-request overflow status; two-token rejection is encoded as 0x99. Not supported in IndexShare reuse mode.</dd>
+<dt><tt>mid_kv_buffer2</tt> (optional) : T</dt>
+<dd>CUDA QSA pending-buffer snapshot after at most two request tokens.</dd>
+<dt><tt>mid_state_lengths2</tt> (optional) : M</dt>
+<dd>CUDA QSA state lengths after at most two request tokens.</dd>
+<dt><tt>mid_kv_buffer3</tt> (optional) : T</dt>
+<dd>CUDA QSA pending-buffer snapshot after at most three request tokens.</dd>
+<dt><tt>mid_state_lengths3</tt> (optional) : M</dt>
+<dd>CUDA QSA state lengths after at most three request tokens.</dd>
 </dl>
 
 #### Type Constraints
