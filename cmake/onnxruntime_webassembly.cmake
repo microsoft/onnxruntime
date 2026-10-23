@@ -283,12 +283,20 @@ else()
       #       build time. See https://emscripten.org/docs/porting/asyncify.html for more details.
       #
       # if any of the above is enabled, we need to use the asyncify library
+      #
+      # asyncify_remove.txt lists code that never reaches an async import (graph construction, ONNX schema and shape
+      # inference, protobuf parsing). Asyncify instruments it anyway because it makes indirect calls, which roughly
+      # doubles some large functions; WebKit's optimizing wasm tier then needs several GB to compile them.
       target_link_options(onnxruntime_webassembly PRIVATE
         "SHELL:--pre-js \"${ONNXRUNTIME_ROOT}/wasm/pre-async.js\""
         "SHELL:-s ASYNCIFY=1"
         "SHELL:-s ASYNCIFY_STACK_SIZE=65536"
+        "SHELL:-s ASYNCIFY_REMOVE=@${ONNXRUNTIME_ROOT}/wasm/asyncify_remove.txt"
       )
-      list(APPEND onnxruntime_webassembly_script_deps "${ONNXRUNTIME_ROOT}/wasm/pre-async.js")
+      list(APPEND onnxruntime_webassembly_script_deps
+        "${ONNXRUNTIME_ROOT}/wasm/pre-async.js"
+        "${ONNXRUNTIME_ROOT}/wasm/asyncify_remove.txt"
+      )
     endif()
   endif()
 
