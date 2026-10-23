@@ -2227,6 +2227,23 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
 
       auto launch_fc1 = [&](auto* weight_type) {
         using WeightType = std::remove_pointer_t<decltype(weight_type)>;
+        if constexpr (std::is_same_v<T, half> && std::is_same_v<WeightType, cutlass::uint2b_t>) {
+          if (onnxruntime::GetEnvironmentVar("ORT_QMOE_INT2_PREQUANTIZED_FC1") == "1" &&
+              fc1_bias == nullptr && (block_size_ == 64 || block_size_ == 128)) {
+            const size_t input_elements = SafeInt<size_t>(num_rows) * SafeInt<size_t>(hidden);
+            auto quantized_input = GetScratchBuffer<int8_t>(input_elements, GetComputeStream(context));
+            auto input_scales = GetScratchBuffer<float>(input_elements / 16, GetComputeStream(context));
+            gemv::launch_moe_quantize_input16_experiment(
+                reinterpret_cast<const half*>(input->DataRaw()), quantized_input.get(), input_scales.get(),
+                SafeInt<int>(num_rows), SafeInt<int>(hidden), stream);
+            gemv::launch_moe_prequantized_int2_swiglu_experiment(
+                quantized_input.get(), input_scales.get(), static_cast<const uint8_t*>(packed_fc1_weights_.get()),
+                static_cast<const half*>(p_fc1_scales), fc1_output, p_exp, p_r2u, num_experts,
+                SafeInt<int>(expanded), SafeInt<int>(num_rows), SafeInt<int>(inter), SafeInt<int>(hidden),
+                static_cast<int>(block_size_), act_params, stream);
+            return;
+          }
+        }
         gemv::launch_moe_gemv_int_symmetric_interleaved_swiglu<T, WeightType>(
             reinterpret_cast<const T*>(input->DataRaw()),
             static_cast<const WeightType*>(packed_fc1_weights_.get()),
