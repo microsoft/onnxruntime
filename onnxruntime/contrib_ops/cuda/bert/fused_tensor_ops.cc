@@ -29,35 +29,12 @@ REGISTER_ARGMAX_LAST_AXIS(BFloat16)
 #undef REGISTER_ARGMAX_LAST_AXIS
 
 ONNX_OPERATOR_KERNEL_EX(
-    EmbeddingRMSNorm, kMSDomain, 1, kCudaExecutionProvider,
-    (*KernelDefBuilder::Create())
-        .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
-        .TypeConstraint("I32", DataTypeImpl::GetTensorType<int32_t>())
-        .TypeConstraint("TT", BuildKernelDefConstraints<BFloat16, int8_t>())
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<BFloat16>())
-        .TypeConstraint("F", DataTypeImpl::GetTensorType<float>()),
-    EmbeddingRMSNorm);
-
-ONNX_OPERATOR_KERNEL_EX(
-    RowSelect, kMSDomain, 1, kCudaExecutionProvider,
-    (*KernelDefBuilder::Create())
-        .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<BFloat16>()),
-    RowSelect);
-
-ONNX_OPERATOR_KERNEL_EX(
     SigmoidGateMul, kMSDomain, 1, kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", DataTypeImpl::GetTensorType<BFloat16>())
         .TypeConstraint("TI", DataTypeImpl::GetTensorType<int32_t>())
         .InputMemoryType(OrtMemTypeCPUInput, 3),
     SigmoidGateMul);
-
-ONNX_OPERATOR_KERNEL_EX(
-    UntileHyperConnectionWeights, kMSDomain, 1, kCudaExecutionProvider,
-    (*KernelDefBuilder::Create())
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<BFloat16>()),
-    UntileHyperConnectionWeights);
 
 template <typename T>
 ArgMaxLastAxis<T>::ArgMaxLastAxis(const OpKernelInfo& info)
@@ -82,84 +59,6 @@ Status ArgMaxLastAxis<T>::ComputeInternal(OpKernelContext* context) const {
   return LaunchArgMaxLastAxis(Stream(context), reinterpret_cast<const CudaT*>(input->Data<T>()),
                               input->GetElementType(), rows, width,
                               output->MutableData<int64_t>(), partial_values.get(), partial_indices.get());
-}
-
-EmbeddingRMSNorm::EmbeddingRMSNorm(const OpKernelInfo& info)
-    : CudaKernel(info), epsilon_(info.GetAttrOrDefault<float>("epsilon", 1e-6f)) {
-  ORT_ENFORCE(epsilon_ >= 0.0f, "EmbeddingRMSNorm epsilon must be non-negative");
-}
-
-Status EmbeddingRMSNorm::ComputeInternal(OpKernelContext* context) const {
-  const Tensor* ids = context->Input<Tensor>(0);
-  const Tensor* table = context->Input<Tensor>(1);
-  const Tensor* weight = context->Input<Tensor>(2);
-  const Tensor* committed = context->InputCount() > 3 ? context->Input<Tensor>(3) : nullptr;
-  ORT_RETURN_IF_NOT(table->Shape().NumDimensions() == 2,
-                    "EmbeddingRMSNorm table must have shape [vocabulary, hidden]");
-  const int64_t vocab_size = table->Shape()[0];
-  const int64_t hidden_size = table->Shape()[1];
-  ORT_RETURN_IF_NOT(weight->Shape().NumDimensions() == 1 &&
-                        weight->Shape()[0] == hidden_size,
-                    "EmbeddingRMSNorm weight must match the embedding hidden size");
-  const int64_t rows = ids->Shape().Size();
-  TensorShapeVector output_dims(ids->Shape().GetDims().begin(), ids->Shape().GetDims().end());
-  output_dims.push_back(hidden_size);
-  Tensor* output = context->Output(0, TensorShape(output_dims));
-  int64_t* slot_ids_ptr = nullptr;
-  int32_t* seqlens_k_ptr = nullptr;
-  int32_t* cu_seqlens_ptr = nullptr;
-  if (context->OutputCount() > 1) {
-    Tensor* slot_ids = context->Output(1, TensorShape({1, rows}));
-    if (slot_ids != nullptr) slot_ids_ptr = slot_ids->MutableData<int64_t>();
-  }
-  if (context->OutputCount() > 2) {
-    Tensor* seqlens_k = context->Output(2, TensorShape({1}));
-    if (seqlens_k != nullptr) seqlens_k_ptr = seqlens_k->MutableData<int32_t>();
-  }
-  if (context->OutputCount() > 3) {
-    Tensor* cu_seqlens = context->Output(3, TensorShape({2}));
-    if (cu_seqlens != nullptr) cu_seqlens_ptr = cu_seqlens->MutableData<int32_t>();
-  }
-  const int32_t* committed_ptr = committed != nullptr ? committed->Data<int32_t>() : nullptr;
-  if (table->IsDataType<int8_t>()) {
-    const int8_t* table_i8 = table->Data<int8_t>();
-    const float* row_scales = reinterpret_cast<const float*>(table_i8 + vocab_size * hidden_size);
-    return LaunchEmbeddingRMSNormInt8(Stream(context), ids->Data<int64_t>(), table_i8, row_scales,
-                                      weight->Data<float>(), epsilon_,
-                                      reinterpret_cast<uint16_t*>(output->MutableData<BFloat16>()),
-                                      rows, vocab_size, hidden_size,
-                                      committed_ptr, slot_ids_ptr, seqlens_k_ptr, cu_seqlens_ptr);
-  }
-  return LaunchEmbeddingRMSNorm(Stream(context), ids->Data<int64_t>(),
-                                reinterpret_cast<const uint16_t*>(table->Data<BFloat16>()),
-                                weight->Data<float>(), epsilon_,
-                                reinterpret_cast<uint16_t*>(output->MutableData<BFloat16>()),
-                                rows, vocab_size, hidden_size,
-                                committed_ptr, slot_ids_ptr, seqlens_k_ptr, cu_seqlens_ptr);
-}
-
-Status RowSelect::ComputeInternal(OpKernelContext* context) const {
-  const Tensor* selection = context->Input<Tensor>(0);
-  ORT_RETURN_IF_NOT(selection->Shape().Size() == 1, "RowSelect selection must have one element");
-  std::array<const uint16_t*, 3> inputs{};
-  std::array<uint16_t*, 3> outputs{};
-  std::array<int64_t, 3> row_sizes{};
-  int64_t num_rows = 2;
-  for (int i = 0; i < 3; ++i) {
-    const Tensor* input = context->Input<Tensor>(i + 1);
-    const auto& shape = input->Shape();
-    ORT_RETURN_IF_NOT(shape.NumDimensions() >= 2 && shape[0] == 1 && shape[1] >= 1,
-                      "RowSelect inputs must have shape [1, R, ...]");
-    num_rows = shape[1];
-    row_sizes[i] = shape.Size() / shape[1];
-    TensorShapeVector output_dims(shape.GetDims().begin(), shape.GetDims().end());
-    output_dims[1] = 1;
-    Tensor* output = context->Output(i, TensorShape(output_dims));
-    inputs[i] = reinterpret_cast<const uint16_t*>(input->Data<BFloat16>());
-    outputs[i] = reinterpret_cast<uint16_t*>(output->MutableData<BFloat16>());
-  }
-  return LaunchRowSelect(Stream(context), selection->Data<int64_t>(), inputs.data(),
-                         outputs.data(), row_sizes.data(), num_rows);
 }
 
 SigmoidGateMul::SigmoidGateMul(const OpKernelInfo& info)
@@ -265,22 +164,6 @@ Status SigmoidGateMul::ComputeInternal(OpKernelContext* context) const {
       q_stride_, tok_stride_, q_offset_, gate_row_width,
       residual == nullptr ? nullptr : reinterpret_cast<const uint16_t*>(residual->Data<BFloat16>()),
       dense_prefill ? false : sigmoid_in_fp32_, silu_gate_);
-}
-
-UntileHyperConnectionWeights::UntileHyperConnectionWeights(const OpKernelInfo& info)
-    : CudaKernel(info), kind_(static_cast<int>(info.GetAttrOrDefault<int64_t>("kind", -1))) {
-  ORT_ENFORCE(kind_ == 0 || kind_ == 1, "UntileHyperConnectionWeights kind must be 0 or 1");
-}
-
-Status UntileHyperConnectionWeights::ComputeInternal(OpKernelContext* context) const {
-  const Tensor* input = context->Input<Tensor>(0);
-  ORT_RETURN_IF_NOT(input->Shape() == TensorShape({160, 20480}),
-                    "UntileHyperConnectionWeights input must have shape [160, 20480]");
-  const TensorShape output_shape = kind_ == 0 ? TensorShape({10240, 320}) : TensorShape({320, 10240});
-  Tensor* output = context->Output(0, output_shape);
-  return LaunchUntileHyperConnectionWeights(
-      Stream(context), reinterpret_cast<const uint16_t*>(input->Data<BFloat16>()),
-      reinterpret_cast<uint16_t*>(output->MutableData<BFloat16>()), kind_);
 }
 
 template class ArgMaxLastAxis<float>;

@@ -15,19 +15,6 @@ Status LaunchArgMaxLastAxis(cudaStream_t stream, const void* input, int input_ty
 inline int64_t GetArgMaxLastAxisPartitions(int64_t width) {
   return 1 + (width - 1) / 4096;
 }
-Status LaunchEmbeddingRMSNorm(cudaStream_t stream, const int64_t* ids, const uint16_t* table,
-                              const float* weight, float epsilon, uint16_t* output,
-                              int64_t rows, int64_t vocab_size, int64_t hidden_size,
-                              const int32_t* committed = nullptr, int64_t* slot_ids = nullptr,
-                              int32_t* seqlens_k = nullptr, int32_t* cu_seqlens = nullptr);
-Status LaunchEmbeddingRMSNormInt8(cudaStream_t stream, const int64_t* ids, const int8_t* table_i8,
-                                  const float* row_scales, const float* weight, float epsilon,
-                                  uint16_t* output, int64_t rows, int64_t vocab_size, int64_t hidden_size,
-                                  const int32_t* committed = nullptr, int64_t* slot_ids = nullptr,
-                                  int32_t* seqlens_k = nullptr, int32_t* cu_seqlens = nullptr);
-Status LaunchRowSelect(cudaStream_t stream, const int64_t* selection,
-                       const uint16_t* const* inputs, uint16_t* const* outputs,
-                       const int64_t* row_sizes, int64_t num_rows = 2);
 Status LaunchSigmoidGateMul(cudaStream_t stream, const uint16_t* attention,
                             const uint16_t* projection, uint16_t* output, int64_t count,
                             int head_dim, int heads, int q_stride,
@@ -40,11 +27,9 @@ Status LaunchProjectedSigmoidGateMul(cudaStream_t stream, const uint16_t* attent
                                      int64_t rows, int64_t input_width, int64_t output_width,
                                      bool sigmoid_in_fp32);
 Status LaunchPrepareSharedExpert(cudaStream_t stream, const uint16_t* up, const uint16_t* silu_gate,
-                                 const uint16_t* activation, const uint16_t* weight,
-                                 uint16_t* prepared, float* row_gates,
-                                 int rows, int width, int input_width);
-Status LaunchUntileHyperConnectionWeights(cudaStream_t stream, const uint16_t* input,
-                                          uint16_t* output, int kind);
+                                const uint16_t* activation, const uint16_t* weight,
+                                uint16_t* prepared, float* row_gates,
+                                int rows, int width, int input_width);
 
 template <typename T>
 class ArgMaxLastAxis final : public onnxruntime::cuda::CudaKernel {
@@ -54,21 +39,6 @@ class ArgMaxLastAxis final : public onnxruntime::cuda::CudaKernel {
 
  private:
   bool keepdims_;
-};
-
-class EmbeddingRMSNorm final : public onnxruntime::cuda::CudaKernel {
- public:
-  explicit EmbeddingRMSNorm(const OpKernelInfo& info);
-  Status ComputeInternal(OpKernelContext* context) const override;
-
- private:
-  float epsilon_;
-};
-
-class RowSelect final : public onnxruntime::cuda::CudaKernel {
- public:
-  explicit RowSelect(const OpKernelInfo& info) : CudaKernel(info) {}
-  Status ComputeInternal(OpKernelContext* context) const override;
 };
 
 class SigmoidGateMul final : public onnxruntime::cuda::CudaKernel {
@@ -85,15 +55,6 @@ class SigmoidGateMul final : public onnxruntime::cuda::CudaKernel {
   bool broadcast_gate_;
   bool sigmoid_in_fp32_;
   bool silu_gate_;
-};
-
-class UntileHyperConnectionWeights final : public onnxruntime::cuda::CudaKernel {
- public:
-  explicit UntileHyperConnectionWeights(const OpKernelInfo& info);
-  Status ComputeInternal(OpKernelContext* context) const override;
-
- private:
-  int kind_;
 };
 
 }  // namespace onnxruntime::contrib::cuda

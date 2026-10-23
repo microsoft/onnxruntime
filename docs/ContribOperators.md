@@ -35,7 +35,6 @@ Do not modify directly.*
   * <a href="#com.microsoft.DynamicTimeWarping">com.microsoft.DynamicTimeWarping</a>
   * <a href="#com.microsoft.EPContext">com.microsoft.EPContext</a>
   * <a href="#com.microsoft.EmbedLayerNormalization">com.microsoft.EmbedLayerNormalization</a>
-  * <a href="#com.microsoft.EmbeddingRMSNorm">com.microsoft.EmbeddingRMSNorm</a>
   * <a href="#com.microsoft.EngramGate">com.microsoft.EngramGate</a>
   * <a href="#com.microsoft.ExpandDims">com.microsoft.ExpandDims</a>
   * <a href="#com.microsoft.FastGelu">com.microsoft.FastGelu</a>
@@ -121,7 +120,6 @@ Do not modify directly.*
   * <a href="#com.microsoft.RestorePadding">com.microsoft.RestorePadding</a>
   * <a href="#com.microsoft.Rfft">com.microsoft.Rfft</a>
   * <a href="#com.microsoft.RotaryEmbedding">com.microsoft.RotaryEmbedding</a>
-  * <a href="#com.microsoft.RowSelect">com.microsoft.RowSelect</a>
   * <a href="#com.microsoft.SampleOp">com.microsoft.SampleOp</a>
   * <a href="#com.microsoft.Sampling">com.microsoft.Sampling</a>
   * <a href="#com.microsoft.ScaledSiLU">com.microsoft.ScaledSiLU</a>
@@ -140,7 +138,6 @@ Do not modify directly.*
   * <a href="#com.microsoft.Trilu">com.microsoft.Trilu</a>
   * <a href="#com.microsoft.UnfoldTensor">com.microsoft.UnfoldTensor</a>
   * <a href="#com.microsoft.Unique">com.microsoft.Unique</a>
-  * <a href="#com.microsoft.UntileHyperConnectionWeights">com.microsoft.UntileHyperConnectionWeights</a>
   * <a href="#com.microsoft.VarlenCausalConvWithState">com.microsoft.VarlenCausalConvWithState</a>
   * <a href="#com.microsoft.VarlenNGramHashMapping">com.microsoft.VarlenNGramHashMapping</a>
   * <a href="#com.microsoft.WhisperBeamSearch">com.microsoft.WhisperBeamSearch</a>
@@ -2078,51 +2075,6 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
-### <a name="com.microsoft.EmbeddingRMSNorm"></a><a name="com.microsoft.embeddingrmsnorm">**com.microsoft.EmbeddingRMSNorm**</a>
-
-  CUDA contrib operators for fused tensor operations used by transformer models.
-
-#### Version
-
-This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
-
-#### Attributes
-
-<dl>
-<dt><tt>epsilon</tt> : float</dt>
-<dd>RMS normalization epsilon.</dd>
-</dl>
-
-#### Inputs
-
-<dl>
-<dt><tt>ids</tt> : I</dt>
-<dd>Embedding row indices with any shape. Negative indices in [-vocabulary, -1] count from the end. Out-of-range indices produce NaN output rows.</dd>
-<dt><tt>table</tt> : T</dt>
-<dd>BF16 embedding matrix [vocabulary, hidden].</dd>
-<dt><tt>weight</tt> : F</dt>
-<dd>FP32 RMS normalization weight [hidden].</dd>
-</dl>
-
-#### Outputs
-
-<dl>
-<dt><tt>normalized</tt> : T</dt>
-<dd>BF16 normalized embeddings [shape(ids), hidden].</dd>
-</dl>
-
-#### Type Constraints
-
-<dl>
-<dt><tt>I</tt> : tensor(int64)</dt>
-<dd>Indices use int64.</dd>
-<dt><tt>T</tt> : tensor(bfloat16)</dt>
-<dd>Embedding and result use BF16.</dd>
-<dt><tt>F</tt> : tensor(float)</dt>
-<dd>Normalization weight uses FP32.</dd>
-</dl>
-
-
 ### <a name="com.microsoft.EngramGate"></a><a name="com.microsoft.engramgate">**com.microsoft.EngramGate**</a>
 
   Fuses the Engram gate.
@@ -2151,7 +2103,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
-<dt><tt>epsilon</tt> : float (default is 1e-05)</dt>
+<dt><tt>epsilon</tt> : float</dt>
 <dd>Epsilon used by both RMS normalization steps. Default is 1e-5.</dd>
 </dl>
 
@@ -2159,11 +2111,11 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>key</tt> : T</dt>
-<dd>Projected Engram keys with shape (batch_size, sequence_length, hc_mult, hidden_size) or (total_tokens, hc_mult, hidden_size).</dd>
+<dd>Projected Engram keys with shape (batch_size, sequence_length, hc_mult, hidden_size).</dd>
 <dt><tt>query</tt> : T</dt>
-<dd>Hidden-state queries with the same shape as key.</dd>
+<dd>Hidden-state queries with shape (batch_size, sequence_length, hc_mult, hidden_size).</dd>
 <dt><tt>value</tt> : T</dt>
-<dd>Projected Engram value shared by every hyper-connection, with shape (batch_size, sequence_length, hidden_size) or (total_tokens, hidden_size).</dd>
+<dd>Projected Engram value shared by every hyper-connection, with shape (batch_size, sequence_length, hidden_size).</dd>
 <dt><tt>key_norm_scale</tt> : T</dt>
 <dd>RMSNorm scale for keys with shape (hc_mult, hidden_size).</dd>
 <dt><tt>query_norm_scale</tt> : T</dt>
@@ -2176,9 +2128,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>output</tt> : T</dt>
-<dd>Gated value tensor with the same shape as key.</dd>
+<dd>Gated value tensor with shape (batch_size, sequence_length, hc_mult, hidden_size).</dd>
 <dt><tt>gated_value_normed</tt> (optional) : T</dt>
-<dd>Optional RMS-normalized gated value tensor with shape (batch_size, sequence_length, hc_mult, hidden_size) or (total_tokens, hc_mult, hidden_size).</dd>
+<dd>Optional RMS-normalized gated value tensor with shape (batch_size, sequence_length, hc_mult, hidden_size).</dd>
 </dl>
 
 #### Type Constraints
@@ -7383,48 +7335,6 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
-### <a name="com.microsoft.RowSelect"></a><a name="com.microsoft.rowselect">**com.microsoft.RowSelect**</a>
-
-  CUDA contrib operators for fused tensor operations used by transformer models.
-
-#### Version
-
-This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
-
-#### Inputs
-
-<dl>
-<dt><tt>selection</tt> : I</dt>
-<dd>Scalar-like int64 row selector; zero selects row 0.</dd>
-<dt><tt>x0</tt> : T</dt>
-<dd>BF16 tensor with shape [1, 2, ...].</dd>
-<dt><tt>x1</tt> : T</dt>
-<dd>BF16 tensor with shape [1, 2, ...].</dd>
-<dt><tt>x2</tt> : T</dt>
-<dd>BF16 tensor with shape [1, 2, ...].</dd>
-</dl>
-
-#### Outputs
-
-<dl>
-<dt><tt>y0</tt> : T</dt>
-<dd>Selected BF16 tensor with shape [1, 1, ...].</dd>
-<dt><tt>y1</tt> : T</dt>
-<dd>Selected BF16 tensor with shape [1, 1, ...].</dd>
-<dt><tt>y2</tt> : T</dt>
-<dd>Selected BF16 tensor with shape [1, 1, ...].</dd>
-</dl>
-
-#### Type Constraints
-
-<dl>
-<dt><tt>I</tt> : tensor(int64)</dt>
-<dd>Selector uses int64.</dd>
-<dt><tt>T</tt> : tensor(bfloat16)</dt>
-<dd>Inputs and outputs use BF16.</dd>
-</dl>
-
-
 ### <a name="com.microsoft.SampleOp"></a><a name="com.microsoft.sampleop">**com.microsoft.SampleOp**</a>
 
   Sample echo operator.
@@ -7613,7 +7523,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Per-token stride in the packed projection.</dd>
 </dl>
 
-#### Inputs (2 - 3)
+#### Inputs (2 - 5)
 
 <dl>
 <dt><tt>attention</tt> : T</dt>
@@ -7622,6 +7532,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>BF16 packed projection containing gate values.</dd>
 <dt><tt>residual</tt> (optional) : T</dt>
 <dd>Optional BF16 residual with the attention shape.</dd>
+<dt><tt>prefill_numerics</tt> (optional) : TI</dt>
+<dd>Optional CPU int32 scalar 0/1.</dd>
+<dt><tt>gate_weight</tt> (optional) : T</dt>
+<dd>Optional BF16 projected-gate weight [input_width,1], requires broadcast_gate.</dd>
 </dl>
 
 #### Outputs
@@ -7636,6 +7550,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(bfloat16)</dt>
 <dd>Inputs and output use BF16.</dd>
+<dt><tt>TI</tt> : tensor(int32)</dt>
+<dd>CPU numerical control.</dd>
 </dl>
 
 
@@ -8544,45 +8460,6 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
-### <a name="com.microsoft.UntileHyperConnectionWeights"></a><a name="com.microsoft.untilehyperconnectionweights">**com.microsoft.UntileHyperConnectionWeights**</a>
-
-  CUDA contrib operators for fused tensor operations used by transformer models.
-
-#### Version
-
-This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
-
-#### Attributes
-
-<dl>
-<dt><tt>kind</tt> : int</dt>
-<dd>Untile layout kind, either 0 or 1.</dd>
-</dl>
-
-#### Inputs (1 - 2)
-
-<dl>
-<dt><tt>tiled</tt> : T</dt>
-<dd>Tiled BF16 weight [160, 20480].</dd>
-<dt><tt>unused</tt> (optional) : T</dt>
-<dd>Reserved optional input retained for exporter compatibility.</dd>
-</dl>
-
-#### Outputs
-
-<dl>
-<dt><tt>untiled</tt> : T</dt>
-<dd>Untiled BF16 weight.</dd>
-</dl>
-
-#### Type Constraints
-
-<dl>
-<dt><tt>T</tt> : tensor(bfloat16)</dt>
-<dd>Input and output use BF16.</dd>
-</dl>
-
-
 ### <a name="com.microsoft.VarlenCausalConvWithState"></a><a name="com.microsoft.varlencausalconvwithstate">**com.microsoft.VarlenCausalConvWithState**</a>
 
   Stateful causal depthwise convolution over a packed, token-major batch of variable-length
@@ -9067,3 +8944,4 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
+

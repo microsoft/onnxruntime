@@ -4616,17 +4616,16 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               1.0e-5f)
         .Input(0,
                "key",
-               "Projected Engram keys with shape (batch_size, sequence_length, hc_mult, hidden_size) "
-               "or (total_tokens, hc_mult, hidden_size).",
+               "Projected Engram keys with shape (batch_size, sequence_length, hc_mult, hidden_size).",
                "T")
         .Input(1,
                "query",
-               "Hidden-state queries with the same shape as key.",
+               "Hidden-state queries with shape (batch_size, sequence_length, hc_mult, hidden_size).",
                "T")
         .Input(2,
                "value",
                "Projected Engram value shared by every hyper-connection, with shape "
-               "(batch_size, sequence_length, hidden_size) or (total_tokens, hidden_size).",
+               "(batch_size, sequence_length, hidden_size).",
                "T")
         .Input(3,
                "key_norm_scale",
@@ -4644,12 +4643,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Output(0,
                 "output",
-                "Gated value tensor with the same shape as key.",
+                "Gated value tensor with shape (batch_size, sequence_length, hc_mult, hidden_size).",
                 "T")
         .Output(1,
                 "gated_value_normed",
                 "Optional RMS-normalized gated value tensor with shape "
-                "(batch_size, sequence_length, hc_mult, hidden_size) or (total_tokens, hc_mult, hidden_size).",
+                "(batch_size, sequence_length, hc_mult, hidden_size).",
                 "T",
                 OpSchema::Optional)
         .TypeConstraint("T",
@@ -4663,8 +4662,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
 
           if (hasInputShape(ctx, 0)) {
             const auto& key_shape = getInputShape(ctx, 0);
-            if (key_shape.dim_size() != 3 && key_shape.dim_size() != 4) {
-              fail_shape_inference("EngramGate: key must have rank 3 or 4");
+            if (key_shape.dim_size() != 4) {
+              fail_shape_inference("EngramGate: key must have rank 4");
             }
             propagateShapeFromInputToOutput(ctx, 0, 0);
             if (ctx.getNumOutputs() > 1) {
@@ -4673,21 +4672,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           }
           if (hasInputShape(ctx, 1)) {
             const auto& query_shape = getInputShape(ctx, 1);
-            if (query_shape.dim_size() != 3 && query_shape.dim_size() != 4) {
-              fail_shape_inference("EngramGate: query must have rank 3 or 4");
-            }
-            if (hasInputShape(ctx, 0) && query_shape.dim_size() != getInputShape(ctx, 0).dim_size()) {
-              fail_shape_inference("EngramGate: query rank must match key rank");
+            if (query_shape.dim_size() != 4) {
+              fail_shape_inference("EngramGate: query must have rank 4");
             }
           }
           if (hasInputShape(ctx, 2)) {
             const auto& value_shape = getInputShape(ctx, 2);
-            if (value_shape.dim_size() != 2 && value_shape.dim_size() != 3) {
-              fail_shape_inference("EngramGate: value must have rank 2 or 3");
-            }
-            if ((hasInputShape(ctx, 0) && value_shape.dim_size() + 1 != getInputShape(ctx, 0).dim_size()) ||
-                (hasInputShape(ctx, 1) && value_shape.dim_size() + 1 != getInputShape(ctx, 1).dim_size())) {
-              fail_shape_inference("EngramGate: value rank must be one lower than key and query rank");
+            if (value_shape.dim_size() != 3) {
+              fail_shape_inference("EngramGate: value must have rank 3");
             }
           }
         }));
@@ -5763,75 +5755,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
-    EmbeddingRMSNorm, 1,
-    OpSchema()
-        .SetDoc(FusedTensorOps_ver1_doc)
-        .Attr("epsilon", "RMS normalization epsilon.", AttributeProto::FLOAT)
-        .Input(0, "ids",
-               "Embedding row indices with any shape. Negative indices in [-vocabulary, -1] "
-               "count from the end. Out-of-range indices produce NaN output rows.",
-               "I")
-        .Input(1, "table", "BF16 or INT8 embedding matrix [vocabulary, hidden].", "TT")
-        .Input(2, "weight", "FP32 RMS normalization weight [hidden].", "F")
-        .Input(3, "committed_length", "Optional int32[1] committed length for head capture.", "I32", OpSchema::Optional)
-        .Output(0, "normalized", "BF16 normalized embeddings [shape(ids), hidden].", "T")
-        .Output(1, "slot_ids", "Optional int64[1, R] slot ids.", "I", OpSchema::Optional)
-        .Output(2, "seqlens_k", "Optional int32[1] seqlens_k.", "I32", OpSchema::Optional)
-        .Output(3, "cumulative_sequence_lengths", "Optional int32[2] cumulative sequence lengths.", "I32", OpSchema::Optional)
-        .TypeConstraint("I", {"tensor(int64)"}, "Indices use int64.")
-        .TypeConstraint("I32", {"tensor(int32)"}, "Committed length and sequence lengths use int32.")
-        .TypeConstraint("TT", {"tensor(bfloat16)", "tensor(int8)"}, "Embedding table uses BF16 or INT8.")
-        .TypeConstraint("T", {"tensor(bfloat16)"}, "Normalized result uses BF16.")
-        .TypeConstraint("F", {"tensor(float)"}, "Normalization weight uses FP32.")
-        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-          updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16);
-          if (ctx.getNumOutputs() > 1 && ctx.hasOutput(1)) {
-            updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto_DataType_INT64);
-          }
-          if (ctx.getNumOutputs() > 2 && ctx.hasOutput(2)) {
-            updateOutputElemType(ctx, 2, ONNX_NAMESPACE::TensorProto_DataType_INT32);
-          }
-          if (ctx.getNumOutputs() > 3 && ctx.hasOutput(3)) {
-            updateOutputElemType(ctx, 3, ONNX_NAMESPACE::TensorProto_DataType_INT32);
-          }
-          if (!hasInputShape(ctx, 0) || !hasInputShape(ctx, 1)) return;
-          const auto& ids_shape = getInputShape(ctx, 0);
-          const auto& table_shape = getInputShape(ctx, 1);
-          if (table_shape.dim_size() != 2) {
-            fail_shape_inference("EmbeddingRMSNorm: table must have rank two");
-          }
-          ONNX_NAMESPACE::TensorShapeProto output_shape = ids_shape;
-          *output_shape.add_dim() = table_shape.dim(1);
-          updateOutputShape(ctx, 0, output_shape);
-        }));
-
-ONNX_MS_OPERATOR_SET_SCHEMA(
-    RowSelect, 1,
-    OpSchema()
-        .SetDoc(FusedTensorOps_ver1_doc)
-        .Input(0, "selection", "Scalar-like int64 row selector; zero selects row 0.", "I")
-        .Input(1, "x0", "BF16 tensor with shape [1, 2, ...].", "T")
-        .Input(2, "x1", "BF16 tensor with shape [1, 2, ...].", "T")
-        .Input(3, "x2", "BF16 tensor with shape [1, 2, ...].", "T")
-        .Output(0, "y0", "Selected BF16 tensor with shape [1, 1, ...].", "T")
-        .Output(1, "y1", "Selected BF16 tensor with shape [1, 1, ...].", "T")
-        .Output(2, "y2", "Selected BF16 tensor with shape [1, 1, ...].", "T")
-        .TypeConstraint("I", {"tensor(int64)"}, "Selector uses int64.")
-        .TypeConstraint("T", {"tensor(bfloat16)"}, "Inputs and outputs use BF16.")
-        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-          for (int i = 0; i < 3; ++i) {
-            propagateElemTypeFromInputToOutput(ctx, i + 1, i);
-            if (!hasInputShape(ctx, i + 1)) continue;
-            ONNX_NAMESPACE::TensorShapeProto output_shape = getInputShape(ctx, i + 1);
-            if (output_shape.dim_size() < 2) {
-              fail_shape_inference("RowSelect: inputs must have rank at least two");
-            }
-            output_shape.mutable_dim(1)->set_dim_value(1);
-            updateOutputShape(ctx, i, output_shape);
-          }
-        }));
-
-ONNX_MS_OPERATOR_SET_SCHEMA(
     SigmoidGateMul, 1,
     OpSchema()
         .SetDoc(FusedTensorOps_ver1_doc)
@@ -5867,29 +5790,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
           if (hasInputShape(ctx, 0)) updateOutputShape(ctx, 0, getInputShape(ctx, 0));
-        }));
-
-ONNX_MS_OPERATOR_SET_SCHEMA(
-    UntileHyperConnectionWeights, 1,
-    OpSchema()
-        .SetDoc(FusedTensorOps_ver1_doc)
-        .Attr("kind", "Untile layout kind, either 0 or 1.", AttributeProto::INT)
-        .Input(0, "tiled", "Tiled BF16 weight [160, 20480].", "T")
-        .Input(1, "unused", "Reserved optional input retained for exporter compatibility.", "T",
-               OpSchema::Optional)
-        .Output(0, "untiled", "Untiled BF16 weight.", "T")
-        .TypeConstraint("T", {"tensor(bfloat16)"}, "Input and output use BF16.")
-        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-          propagateElemTypeFromInputToOutput(ctx, 0, 0);
-          if (!hasInputShape(ctx, 0)) return;
-          const int64_t kind = getAttribute(ctx, "kind", static_cast<int64_t>(-1));
-          if (kind != 0 && kind != 1) {
-            fail_shape_inference("UntileHyperConnectionWeights: kind must be zero or one");
-          }
-          ONNX_NAMESPACE::TensorShapeProto output_shape;
-          output_shape.add_dim()->set_dim_value(kind == 0 ? 10240 : 320);
-          output_shape.add_dim()->set_dim_value(kind == 0 ? 320 : 10240);
-          updateOutputShape(ctx, 0, output_shape);
         }));
 
 constexpr const char* LinearAttentionGate_ver1_doc = R"DOC(
