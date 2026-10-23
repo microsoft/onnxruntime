@@ -291,7 +291,7 @@ else()
         "SHELL:--pre-js \"${ONNXRUNTIME_ROOT}/wasm/pre-async.js\""
         "SHELL:-s ASYNCIFY=1"
         "SHELL:-s ASYNCIFY_STACK_SIZE=65536"
-        "SHELL:-s ASYNCIFY_REMOVE=@${ONNXRUNTIME_ROOT}/wasm/asyncify_remove.txt"
+        "SHELL:-s ASYNCIFY_REMOVE=@\"${ONNXRUNTIME_ROOT}/wasm/asyncify_remove.txt\""
       )
       list(APPEND onnxruntime_webassembly_script_deps
         "${ONNXRUNTIME_ROOT}/wasm/pre-async.js"
