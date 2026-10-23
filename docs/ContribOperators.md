@@ -3327,8 +3327,16 @@ This version of the operator has been available since version 1 of the 'com.micr
   **Cache Format:**
   The past and present KV cache tensors are expected in a BNSH format: `(batch_size, num_heads, cache_sequence_length, head_size)`, where `cache_sequence_length` is the length of the cached key/value sequences, or the maximum sequence length when past and present buffer sharing is used.
   
+  **Right-padded query chunks (`right_padded_query` attribute, CUDA only):**
+  Set `right_padded_query=1` for causal attention when a query chunk may contain right-padding.
+  Let `S` be the padded query length and `P` the number of valid past tokens. Supply
+  `total_sequence_length=P+S` (not the cache capacity) and `seqlens_k[b]=P+valid_query_length[b]-1`.
+  The kernel appends only valid K/V rows and aligns causal attention and RoPE at `P`.
+  Padding output rows are unspecified. This supports both full-length and windowed caches.
+  The default is 0, preserving callers that supply the allocated capacity as `total_sequence_length`.
+  
   **Windowed KV Cache (`sliding_window_cache` attribute):**
-  When `sliding_window_cache` is 1, the past/present buffers are window-sized instead of full-length and the operator evicts internally. Let `C` be the cache capacity (dimension 2 of `past_key`, which is also the sequence dimension of `present_key`), `W` be `local_window_size`, and `T` be the absolute number of tokens processed so far by this batch entry, i.e. `seqlens_k[b] + 1`. The scalar `total_sequence_length` input is only the batch maximum of `T`; the layout below is per batch entry, so a ragged batch gets a different resident range per entry. `C` must be at least `W`.
+  When `sliding_window_cache` is 1, the past/present buffers are window-sized instead of full-length and the operator evicts internally. Let `C` be the cache capacity (dimension 2 of `past_key`, which is also the sequence dimension of `present_key`), `W` be `local_window_size`, and `T` be the absolute number of tokens processed so far by this batch entry, i.e. `seqlens_k[b] + 1`. Unless `right_padded_query=1`, the scalar `total_sequence_length` input is the batch maximum of `T`; the layout below is per batch entry, so a ragged batch gets a different resident range per entry. `C` must be at least `W`.
   
   After a step, rows `[0, L)` of `present_key` and `present_value` hold the `L` most recent positions in increasing position order, so row `i` holds absolute position `T - L + i`. The retained positions are always physically contiguous and start at row 0; the layout never wraps around, so a ring-buffer layout cannot be exposed through these outputs. Rows `[L, C)` are unspecified. The resident count `L` is a function of `T` alone:
   
@@ -3388,6 +3396,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Epsilon used by the per-head RMS norm applied to Q and K when q_norm_weight and k_norm_weight inputs are provided. Default value is 1e-6.</dd>
 <dt><tt>qk_output</tt> : int</dt>
 <dd>Output values of QK matrix multiplication before (1) or after (2) softmax normalization. Default value is 0 (don't output).</dd>
+<dt><tt>right_padded_query</tt> : int</dt>
+<dd>CUDA only. Set to 1 for causal right-padded query chunks. total_sequence_length must be the valid past length plus the padded query length, not the cache capacity; seqlens_k contains valid past plus valid query length minus one. Requires new K/V. Padding output rows are unspecified. Must be 0 or 1. Default is 0, preserving capacity-valued callers.</dd>
 <dt><tt>rotary_interleaved</tt> : int</dt>
 <dd>Rotate using interleaved pattern. Default value is 0 (False).</dd>
 <dt><tt>scale</tt> : float</dt>
@@ -9245,5 +9255,4 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
-
 
