@@ -1166,6 +1166,15 @@ bool WhereNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& 
     return false;
   }
 
+  // QLinearWhere requires scale and zero_point to be scalar or 1D with size 1.
+  for (const Node* qdq_node : {dq_nodes[0], dq_nodes[1], q_nodes[0]}) {
+    const auto& input_defs = qdq_node->InputDefs();
+    if (!IsScalarOr1DWithSizeOneOrN(input_defs[1]) ||
+        (input_defs.size() > 2 && !IsScalarOr1DWithSizeOneOrN(input_defs[2]))) {
+      return false;
+    }
+  }
+
   const int32_t dt_input_1 = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   const int32_t dt_input_2 = dq_nodes[1]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   const int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
