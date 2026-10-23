@@ -1524,9 +1524,13 @@ bool IsFileBackedReadOnlyMapping(const void* data, size_t bytes) noexcept {
     const std::string path = line.substr(static_cast<size_t>(path_pos));
     if (path.empty() || path[0] != '/') return false;
     struct stat st{};
-    if (stat(path.c_str(), &st) != 0 || !S_ISREG(st.st_mode) ||
-        static_cast<uint64_t>(st.st_ino) != inode ||
-        major(st.st_dev) != major_id || minor(st.st_dev) != minor_id) {
+    if (stat(path.c_str(), &st) != 0 || !S_ISREG(st.st_mode)) {
+      return false;
+    }
+    // Stacked filesystems (e.g. overlayfs in containers) report a different device/inode via stat() than
+    // /proc/self/maps shows for the underlying file, so identity can only be verified when the devices agree.
+    if (major(st.st_dev) == major_id && minor(st.st_dev) == minor_id &&
+        static_cast<uint64_t>(st.st_ino) != inode) {
       return false;
     }
     const uint64_t file_size = static_cast<uint64_t>(st.st_size);
