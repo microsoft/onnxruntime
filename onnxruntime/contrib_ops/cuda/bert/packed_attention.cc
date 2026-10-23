@@ -267,6 +267,16 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(PackedAttentionWorkspaceStatusToStatus(workspace_result.status));
   const PackedAttentionWorkspaceRecipe& workspace_recipe = workspace_result.recipe;
 
+  if (problem.backend == PackedAttentionBackend::Unfused) {
+    auto validation_flag = this->template GetScratchBuffer<int32_t>(
+        1, this->GetComputeStream(context));
+    ORT_RETURN_IF_ERROR(ValidatePackedAttentionTokenOffset(
+        token_offset->Data<int32_t>(),
+        parameters.batch_size * parameters.sequence_length,
+        validation_flag.get(),
+        this->Stream(context)));
+  }
+
   auto gemm_buffer = this->template GetScratchBuffer<void>(
       workspace_recipe.projection_bytes, this->GetComputeStream(context));
   const int m = workspace_recipe.projection_m;

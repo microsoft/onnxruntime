@@ -541,14 +541,26 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, cons
   // We move K and V to the last block.
   const int bidb_cache = params.cache_batch_idx == nullptr ? bidb : params.cache_batch_idx[bidb];
   const int* block_table = params.block_table == nullptr ? nullptr : params.block_table + bidb * params.block_table_batch_stride;
+  const auto page_id = [block_table](int index) {
+    return block_table[index] < 0 ? 0 : block_table[index];
+  };
+  const auto mask_unmapped_page = [block_table, &params](auto& scores, int block) {
+    if (block_table != nullptr &&
+        block_table[block * kBlockN / params.page_block_size] < 0) {
+#pragma unroll
+      for (int i = 0; i < size(scores); ++i) {
+        scores(i) = -kInfinity;
+      }
+    }
+  };
   const int block_table_idx = block_table == nullptr ? 0 : (n_block_max - 1) * kBlockN / params.page_block_size;
   const int block_table_offset = block_table == nullptr ? 0 : (n_block_max - 1) * kBlockN - block_table_idx * params.page_block_size;
   const index_t row_offset_k = block_table == nullptr
                                    ? binfo.k_offset(params.k_batch_stride, params.k_row_stride, bidb_cache) + (n_block_max - 1) * kBlockN * params.k_row_stride + (bidh / params.h_h_k_ratio) * params.k_head_stride
-                                   : block_table[block_table_idx] * params.k_batch_stride + block_table_offset * params.k_row_stride + (bidh / params.h_h_k_ratio) * params.k_head_stride;
+                                   : page_id(block_table_idx) * params.k_batch_stride + block_table_offset * params.k_row_stride + (bidh / params.h_h_k_ratio) * params.k_head_stride;
   const index_t row_offset_v = block_table == nullptr
                                    ? binfo.k_offset(params.v_batch_stride, params.v_row_stride, bidb_cache) + (n_block_max - 1) * kBlockN * params.v_row_stride + (bidh / params.h_h_k_ratio) * params.v_head_stride
-                                   : block_table[block_table_idx] * params.v_batch_stride + block_table_offset * params.v_row_stride + (bidh / params.h_h_k_ratio) * params.v_head_stride;
+                                   : page_id(block_table_idx) * params.v_batch_stride + block_table_offset * params.v_row_stride + (bidh / params.h_h_k_ratio) * params.v_head_stride;
 
   Tensor mQ = make_tensor(make_gmem_ptr(reinterpret_cast<Element*>(params.q_ptr) + binfo.q_offset(params.q_batch_stride, params.q_row_stride, bidb)),
                           make_shape(binfo.actual_seqlen_q, params.h, params.d),
@@ -579,6 +591,13 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, cons
   Tensor tKsK = gmem_thr_copy_QKV.partition_D(sK);
   Tensor tVgV = gmem_thr_copy_QKV.partition_S(gV);  // (VCPY, VCPY_N, VCPY_K)
   Tensor tVsV = gmem_thr_copy_QKV.partition_D(sV);
+  const auto clear_unmapped_v = [block_table, &params, &tVsV](int block) {
+    if (block_table != nullptr &&
+        block_table[block * kBlockN / params.page_block_size] < 0) {
+      clear(tVsV);
+      __syncthreads();
+    }
+  };
 
   typename Kernel_traits::TiledMma tiled_mma;
   auto thr_mma = tiled_mma.get_thread_slice(tidx);
@@ -721,7 +740,7 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, cons
           const int block_table_offset_cur = n_block * kBlockN - block_table_idx_cur * params.page_block_size;
           const int block_table_idx_next = (n_block - 1) * kBlockN / params.page_block_size;
           const int block_table_offset_next = (n_block - 1) * kBlockN - block_table_idx_next * params.page_block_size;
-          const int table_diff = block_table[block_table_idx_next] - block_table[block_table_idx_cur];
+          const int table_diff = page_id(block_table_idx_next) - page_id(block_table_idx_cur);
           const int offset_diff = block_table_offset_next - block_table_offset_cur;
           tVgV.data() = tVgV.data() + table_diff * params.v_batch_stride + offset_diff * params.v_row_stride;
           tKgK.data() = tKgK.data() + table_diff * params.k_batch_stride + offset_diff * params.k_row_stride;
@@ -815,7 +834,7 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, cons
         const int block_table_offset_cur = (n_block + 1) * kBlockN - block_table_idx_cur * params.page_block_size;
         const int block_table_idx_next = n_block * kBlockN / params.page_block_size;
         const int block_table_offset_next = n_block * kBlockN - block_table_idx_next * params.page_block_size;
-        tVgV.data() = tVgV.data() + (block_table[block_table_idx_next] - block_table[block_table_idx_cur]) * params.v_batch_stride + (block_table_offset_next - block_table_offset_cur) * params.v_row_stride;
+        tVgV.data() = tVgV.data() + (page_id(block_table_idx_next) - page_id(block_table_idx_cur)) * params.v_batch_stride + (block_table_offset_next - block_table_offset_cur) * params.v_row_stride;
       }
       FLASH_NAMESPACE::copy</*Is_even_MN=*/true, Is_even_K>(gmem_tiled_copy_QKV, tVgV, tVsV, tKVcKV, tKVpKV);
     } else {
@@ -835,9 +854,11 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, cons
 
     mask.template apply_mask<Is_causal, Is_even_MN>(
         acc_s, n_block * kBlockN, m_block * kBlockM + (tidx / 32) * 16 + (tidx % 32) / 4, kNWarps * 16);
+    mask_unmapped_page(acc_s, n_block);
 
     FLASH_NAMESPACE::cp_async_wait<0>();
     __syncthreads();
+    clear_unmapped_v(n_block);
     // if (tidx == 0 && blockIdx.y == 0 && blockIdx.z == 0) { print(tVsV); }
     // __syncthreads();
 
@@ -850,7 +871,7 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, cons
         const int block_table_offset_cur = n_block * kBlockN - block_table_idx_cur * params.page_block_size;
         const int block_table_idx_next = (n_block - 1) * kBlockN / params.page_block_size;
         const int block_table_offset_next = (n_block - 1) * kBlockN - block_table_idx_next * params.page_block_size;
-        tKgK.data() = tKgK.data() + (block_table[block_table_idx_next] - block_table[block_table_idx_cur]) * params.k_batch_stride + (block_table_offset_next - block_table_offset_cur) * params.k_row_stride;
+        tKgK.data() = tKgK.data() + (page_id(block_table_idx_next) - page_id(block_table_idx_cur)) * params.k_batch_stride + (block_table_offset_next - block_table_offset_cur) * params.k_row_stride;
       }
       FLASH_NAMESPACE::copy</*Is_even_MN=*/true, Is_even_K>(gmem_tiled_copy_QKV, tKgK, tKsK, tKVcKV, tKVpKV);
       // This cp_async_fence needs to be in the if block, otherwise the synchronization
@@ -859,9 +880,19 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, cons
     }
 
     // We have key_padding_mask so we'll need to Check_inf
-    masking_step == 0
-        ? softmax.template softmax_rescale_o</*Is_first=*/true, /*Check_inf=*/Is_causal || Is_local || !Is_even_MN>(acc_s, acc_o, params.scale_softmax_log2)
-        : softmax.template softmax_rescale_o</*Is_first=*/false, /*Check_inf=*/Is_causal || Is_local || !Is_even_MN>(acc_s, acc_o, params.scale_softmax_log2);
+    if (block_table != nullptr) {
+      masking_step == 0
+          ? softmax.template softmax_rescale_o</*Is_first=*/true, /*Check_inf=*/true>(
+                acc_s, acc_o, params.scale_softmax_log2)
+          : softmax.template softmax_rescale_o</*Is_first=*/false, /*Check_inf=*/true>(
+                acc_s, acc_o, params.scale_softmax_log2);
+    } else {
+      masking_step == 0
+          ? softmax.template softmax_rescale_o</*Is_first=*/true, /*Check_inf=*/Is_causal || Is_local || !Is_even_MN>(
+                acc_s, acc_o, params.scale_softmax_log2)
+          : softmax.template softmax_rescale_o</*Is_first=*/false, /*Check_inf=*/Is_causal || Is_local || !Is_even_MN>(
+                acc_s, acc_o, params.scale_softmax_log2);
+    }
     // if (cute::thread0()) { print(scores_max); print(scores_sum); print(scores); }
 
     // Convert acc_s from fp32 to fp16/bf16
@@ -893,7 +924,7 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, cons
       const int block_table_offset_cur = (n_block + 1) * kBlockN - block_table_idx_cur * params.page_block_size;
       const int block_table_idx_next = n_block * kBlockN / params.page_block_size;
       const int block_table_offset_next = n_block * kBlockN - block_table_idx_next * params.page_block_size;
-      tVgV.data() = tVgV.data() + (block_table[block_table_idx_next] - block_table[block_table_idx_cur]) * params.v_batch_stride + (block_table_offset_next - block_table_offset_cur) * params.v_row_stride;
+      tVgV.data() = tVgV.data() + (page_id(block_table_idx_next) - page_id(block_table_idx_cur)) * params.v_batch_stride + (block_table_offset_next - block_table_offset_cur) * params.v_row_stride;
     }
     FLASH_NAMESPACE::copy</*Is_even_MN=*/true, Is_even_K>(gmem_tiled_copy_QKV, tVgV, tVsV, tKVcKV, tKVpKV);
     cute::cp_async_fence();
@@ -907,6 +938,7 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, cons
 
     FLASH_NAMESPACE::cp_async_wait<0>();
     __syncthreads();
+    clear_unmapped_v(n_block);
     if (n_block > n_block_min) {
       // Advance gK
       if (block_table == nullptr) {
@@ -916,7 +948,7 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, cons
         const int block_table_offset_cur = n_block * kBlockN - block_table_idx_cur * params.page_block_size;
         const int block_table_idx_next = (n_block - 1) * kBlockN / params.page_block_size;
         const int block_table_offset_next = (n_block - 1) * kBlockN - block_table_idx_next * params.page_block_size;
-        tKgK.data() = tKgK.data() + (block_table[block_table_idx_next] - block_table[block_table_idx_cur]) * params.k_batch_stride + (block_table_offset_next - block_table_offset_cur) * params.k_row_stride;
+        tKgK.data() = tKgK.data() + (page_id(block_table_idx_next) - page_id(block_table_idx_cur)) * params.k_batch_stride + (block_table_offset_next - block_table_offset_cur) * params.k_row_stride;
       }
       FLASH_NAMESPACE::copy</*Is_even_MN=*/true, Is_even_K>(gmem_tiled_copy_QKV, tKgK, tKsK, tKVcKV, tKVpKV);
       // This cp_async_fence needs to be in the if block, otherwise the synchronization
@@ -926,7 +958,14 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, cons
 
     mask.template apply_mask</*Causal_mask=*/false>(
         acc_s, n_block * kBlockN, m_block * kBlockM + (tidx / 32) * 16 + (tidx % 32) / 4, kNWarps * 16);
-    softmax.template softmax_rescale_o</*Is_first=*/false, /*Check_inf=*/Is_local>(acc_s, acc_o, params.scale_softmax_log2);
+    mask_unmapped_page(acc_s, n_block);
+    if (block_table != nullptr) {
+      softmax.template softmax_rescale_o</*Is_first=*/false, /*Check_inf=*/true>(
+          acc_s, acc_o, params.scale_softmax_log2);
+    } else {
+      softmax.template softmax_rescale_o</*Is_first=*/false, /*Check_inf=*/Is_local>(
+          acc_s, acc_o, params.scale_softmax_log2);
+    }
 
     Tensor rP = FLASH_NAMESPACE::convert_type<Element>(acc_s);
     // Reshape rP from (MMA=4, MMA_M, MMA_N) to ((4, 2), MMA_M, MMA_N / 2)

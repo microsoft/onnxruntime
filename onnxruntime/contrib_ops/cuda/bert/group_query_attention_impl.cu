@@ -224,7 +224,7 @@ Status PrepareQKV(
     const T* q_rope_input = data.query;
     if (parameters.use_qk_norm) {
       ORT_RETURN_IF_ERROR((LaunchPerHeadRMSNorm<T>(
-          stream, q_out, data.query, data.q_norm_weight, parameters.qk_norm_epsilon,
+          stream, q_out, data.query, data.q_norm_weight, parameters.q_norm_epsilon,
           batch_size, sequence_length, num_heads, head_size, max_threads_per_block)));
       // RoPE (if any) runs in-place on the normalized Q; the rotary kernel handles in-place safely.
       q_rope_input = q_out;
@@ -270,7 +270,7 @@ Status PrepareQKV(
         reinterpret_cast<const T*>(data.cos_cache), reinterpret_cast<const T*>(data.sin_cache),
         parameters.rotary_dim, data.position_ids, parameters.rotary_interleaved,
         is_cache_bnsh, parameters.k_quant_type,
-        data.q_norm_weight, data.k_norm_weight, parameters.qk_norm_epsilon,
+        data.q_norm_weight, data.k_norm_weight, parameters.q_norm_epsilon, parameters.k_norm_epsilon,
         stream, max_threads_per_block, valid_cache_seq_lens)));
   }
 
@@ -1040,7 +1040,7 @@ Status ExtremeDecoding(
       parameters.rotary_interleaved,
       !past_bsnh,  // is_cache_bnsh
       parameters.k_quant_type,
-      data.q_norm_weight, data.k_norm_weight, parameters.qk_norm_epsilon,
+      data.q_norm_weight, data.k_norm_weight, parameters.q_norm_epsilon, parameters.k_norm_epsilon,
       stream,
       device_prop.maxThreadsPerBlock,
       valid_cache_seq_lens)));
@@ -1287,7 +1287,7 @@ Status DequantizeFlashAttentionFallback(
       parameters.rotary_dim, data.position_ids, parameters.rotary_interleaved,
       (parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BNSH),
       parameters.k_quant_type,
-      data.q_norm_weight, data.k_norm_weight, parameters.qk_norm_epsilon,
+      data.q_norm_weight, data.k_norm_weight, parameters.q_norm_epsilon, parameters.k_norm_epsilon,
       stream, device_prop.maxThreadsPerBlock, valid_cache_seq_lens)));
 
   // Step 2: Dequantize Entire Cache
@@ -1373,7 +1373,7 @@ Status FlashAttentionAndQuantizeKV(
       parameters.rotary_dim, data.position_ids, parameters.rotary_interleaved,
       false,  // BSNH for scratch
       KVQuantizationType::NONE,
-      data.q_norm_weight, data.k_norm_weight, parameters.qk_norm_epsilon,
+      data.q_norm_weight, data.k_norm_weight, parameters.q_norm_epsilon, parameters.k_norm_epsilon,
       stream, max_threads_per_block, data.total_seq_lens)));
 
   // 2. Run Float Flash Attention

@@ -895,6 +895,9 @@ PackedSparseAttentionIndexer::PackedSparseAttentionIndexer(const OpKernelInfo& i
 Status PackedSparseAttentionIndexer::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
   ORT_RETURN_IF(context.InputCount() > psai::kIndexShareMode && context.Input(psai::kIndexShareMode),
                 "PackedSparseAttentionIndexer IndexShare requires the CUDA provider");
+  ORT_RETURN_IF(
+      context.OutputCount() > psai::kStateStatus && context.Output(psai::kStateStatus, TensorShape({0})) != nullptr,
+      "PackedSparseAttentionIndexer state_status requires the CUDA provider");
   const bool is_qsa = policy_ == psai::Policy::kQsa;
   constexpr int kCsaOnlyInputs[] = {psai::kGate, psai::kPositionBias, psai::kHeadWeights};
   for (int index : kCsaOnlyInputs) {
