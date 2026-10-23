@@ -227,19 +227,15 @@ Pattern pattern("(x:float[M] | float[M,N]) => return Identity(x)");
 Pattern optional("(x,low:float | None) => return Clip(x,low)");
 ```
 
-Alternatives are tried left to right, with annotated variables processed in
-definition order. A call inserts its callee's ordered constraint occurrences
-at the call site, preserving callee order even when actual arguments are
-reordered or aliased to the same value. Matching finds the first **globally consistent** combination:
+Type alternatives are tried left to right, with annotated variables processed
+in definition order. Matching finds the first **globally consistent** combination:
 if a later constraint conflicts with a tentative dimension or element-type
 binding, earlier annotation alternatives are reconsidered. Failed alternatives
 leave no bindings behind. Variables mentioned only in unchosen alternatives
 remain unbound. Check-and-bind callbacks run once after a consistent combination is selected;
 Callback rejection does not trigger another combination.
 
-This bounded search applies only to type/shape annotations, not graph structure:
-there is still no search over producers or operand permutations. The product
-of alternative counts across annotations is limited to 64 at parse time.
+The product of alternative counts across annotations is limited to 64 at parse time.
 Empty branches, duplicate constraints, and `None` alone are rejected.
 `None | float[M]` is also accepted, but `None` is permitted only for header tensor
 inputs, not assigned outputs or attribute captures. Replacements remain untyped.
@@ -886,7 +882,9 @@ Two instances do not share a capture just because its local spelling is the
 same. Formal inputs and returned aliases bind to the caller's actual
 `NodeArg`s; no integer handle from another definition is reused.
 Caller and callee annotations are conjunctive, while alternatives within
-one annotation remain disjunctive.
+one annotation remain disjunctive. A call inserts its callee's ordered
+constraint occurrences at the call site, preserving callee order even when
+actual arguments are reordered or aliased to the same value.
 An annotation classified as a tensor in a compiled callee stays a tensor
 after composition. A caller cannot turn that mapped value into an attribute
 through a later keyword capture or attribute-formal call; this unsupported
@@ -921,6 +919,13 @@ alternative of a later rule. Search is bounded enumeration, not a recursive
 producer/permutation matcher. Replacement or callback errors propagate;
 they never cause a retry. Match-only statistics count passing concrete plans,
 so multiple alternatives of one logical rule can contribute matches.
+
+Graph alternatives and type alternatives have different retry behavior.
+For each concrete graph candidate, the bounded annotation search selects the
+first globally consistent type/shape combination. Checker rejection does not
+try another annotation combination for that candidate; it advances to the
+next concrete graph candidate. Neither search permutes operands or explores
+different producers.
 
 ### Instance binding views and handwritten C++ structs
 
