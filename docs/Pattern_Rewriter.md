@@ -1,20 +1,5 @@
 # Writing C++ graph rewrite rules
 
-The experimental `onnxruntime::rewrite::PatternRewriter` replaces connected
-operator patterns with semantically equivalent graphs. Include
-`core/optimizer/pattern_rewriter.h`. Construct `Pattern` and `Replacement` from
-text; programmatic builders and mutable replacement recipes are not public APIs.
-Check-and-bind callbacks and replacement callbacks remain ordinary C++ functions.
-
-A `Rule` takes `(name, pattern, replacement, check_and_bind, opset_requirements)`.
-The pattern may be text or a parsed `Pattern`; the replacement may be text,
-a parsed `Replacement`, or a callback returning one. Text accepts string literals,
-`std::string`, and `std::string_view` and is parsed once during rule construction;
-syntax errors are reported immediately. Parsed definitions own their data, so
-the original text need not outlive the rule. Rules remain copyable and movable.
-The matcher establishes structural and deletion safety. **The rule author must establish
-semantic equivalence, supported types, and kernel compatibility.**
-
 ## Example: HardSigmoid followed by Mul
 
 This complete rule recognizes the HardSwish decomposition with the exact
@@ -28,7 +13,7 @@ using namespace onnxruntime::rewrite;
 
 Rule MakeHardSwishRule() {
   const auto* pattern = R"(
-    (x:float[]) => {
+    (x:float[...]) => {
       sigmoid = HardSigmoid(x, alpha=0.16666667, beta=0.5)
       return Mul(sigmoid, x)
     }
@@ -39,7 +24,7 @@ Rule MakeHardSwishRule() {
 ```
 
 Both occurrences of `x` must bind the **same `NodeArg`**, not just tensors with
-equal shapes or contents. `float[]` checks that `x` is a float32 tensor of any
+equal shapes or contents. `float[...]` checks that `x` is a float32 tensor of any
 rank, including unknown rank (`float` alone would require a scalar);
 resolved schemas establish the corresponding intermediate and output types.
 It does not require every matched value to have the same element type.
@@ -59,6 +44,23 @@ actually invoked, so an empty callback contributes zero.
 These opset bounds are a conservative supported range for this example, not an
 automatic statement about every schema version. Floating-point rewrites can
 change evaluation order; validate equivalence within the intended tolerance.
+
+## Constructing rules
+
+The experimental `onnxruntime::rewrite::PatternRewriter` replaces connected
+operator patterns with semantically equivalent graphs. Include
+`core/optimizer/pattern_rewriter.h`. Construct `Pattern` and `Replacement` from
+text; programmatic builders and mutable replacement recipes are not public APIs.
+Check-and-bind callbacks and replacement callbacks remain ordinary C++ functions.
+
+A `Rule` takes `(name, pattern, replacement, check_and_bind, opset_requirements)`.
+The pattern may be text or a parsed `Pattern`; the replacement may be text,
+a parsed `Replacement`, or a callback returning one. Text accepts string literals,
+`std::string`, and `std::string_view` and is parsed once during rule construction;
+syntax errors are reported immediately. Parsed definitions own their data, so
+the original text need not outlive the rule. Rules remain copyable and movable.
+The matcher establishes structural and deletion safety. **The rule author must establish
+semantic equivalence, supported types, and kernel compatibility.**
 
 ## Pattern and replacement syntax
 
