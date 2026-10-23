@@ -19,6 +19,7 @@ namespace kernels {
 namespace moe_gemv {
 
 inline constexpr int64_t kMaxProfiledExpandedRows = 8;
+inline constexpr int64_t kMaxProfiledExpandedRowsSm120 = 64;
 inline constexpr int64_t kMaxProfiledExpandedRowsForSmallProblemDim = 4;
 inline constexpr int64_t kMinProfiledProblemDim = 512;
 // Lowered from 704 to 512 so block-wise decode shapes (e.g. Qwen top_k=8,
@@ -26,9 +27,17 @@ inline constexpr int64_t kMinProfiledProblemDim = 512;
 // with inter_size in [512, 704); both bands are gated by ORT_DISABLE_MOE_GEMV.
 inline constexpr int64_t kMinProfiledProblemDimForExpandedRowsAbove4 = 512;
 
+constexpr int64_t MaxProfiledExpandedRows(int sm) {
+  return sm >= 120 ? kMaxProfiledExpandedRowsSm120 : kMaxProfiledExpandedRows;
+}
+
+constexpr bool IsProfiledExpandedRowCount(int sm, int64_t expanded_num_rows) {
+  return expanded_num_rows > 0 && expanded_num_rows <= MaxProfiledExpandedRows(sm);
+}
+
 // Returns true if the batched MoE GEMV fast path supports this problem shape.
-// Requirements: FP16/BF16 activations, sm >= 80, small expanded_num_rows, supported
-// INT weight type, supported group size, and n divisible by the kernel tile width.
+// Requirements: FP16/BF16 activations, sm >= 80, an architecture-qualified expanded row count,
+// supported INT weight type, supported group size, and n divisible by the kernel tile width.
 bool is_moe_gemv_supported(int sm, int64_t expanded_num_rows, int64_t n, int64_t k,
                            int weight_bits, int group_size);
 
