@@ -250,6 +250,7 @@ option(onnxruntime_DISABLE_FLOAT8_TYPES "Disable float 8 types" OFF)
 option(onnxruntime_DISABLE_FLOAT4_TYPES "Disable float 4 types" OFF)
 option(onnxruntime_DISABLE_STRING_TYPE "Disable string type" OFF)
 option(onnxruntime_DISABLE_DEVICE_DISCOVERY "Do not probe the platform for hardware devices; only the CPU device is reported." OFF)
+option(onnxruntime_DISABLE_STREAM "Disable multi-stream execution support. Execution providers that use device streams (e.g. CUDA, TensorRT) need it." OFF)
 option(onnxruntime_MINIMAL_BUILD "Exclude as much as possible from the build. Support ORT format models. No support for ONNX format models." OFF)
 option(onnxruntime_CLIENT_PACKAGE_BUILD "Enables default settings that are more appropriate for client/on-device workloads." OFF)
 option(onnxruntime_ENABLE_SESSION_THREADPOOL_CALLBACKS "Enable per-session thread pool work callbacks." OFF)
@@ -388,6 +389,10 @@ if (onnxruntime_ENABLE_TRAINING_APIS)
     message(FATAL_ERROR "Standalone On-Device Training build is not supported with Python bindings! "
     "Please use the --enable_training flag instead of the --enable_training_apis flag.")
   endif()
+endif()
+
+if (onnxruntime_DISABLE_STREAM AND onnxruntime_ENABLE_TRAINING)
+  message(FATAL_ERROR "onnxruntime_DISABLE_STREAM=ON is not supported with onnxruntime_ENABLE_TRAINING=ON.")
 endif()
 
 
@@ -1199,8 +1204,8 @@ function(onnxruntime_set_compile_flags target_name)
     if(onnxruntime_ENABLE_LAZY_TENSOR)
       target_compile_definitions(${target_name} PRIVATE ENABLE_LAZY_TENSOR)
     endif()
-	# Enable stream for all the non-minimal build
-    if (NOT onnxruntime_MINIMAL_BUILD)
+	# Enable stream for all the non-minimal build unless disabled
+    if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_DISABLE_STREAM)
       target_compile_definitions(${target_name} PRIVATE ORT_ENABLE_STREAM)
     endif()
 	if (onnxruntime_REDUCED_OPS_BUILD)

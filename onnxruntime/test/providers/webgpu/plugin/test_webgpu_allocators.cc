@@ -196,93 +196,6 @@ class WebGpuPluginSharedAllocatorTest : public ::testing::Test {
   std::vector<const OrtEpDevice*> ep_devices_;
 };
 
-void CheckSessionInputUploads(Ort::Env& env, Ort::ConstEpDevice ep_device,
-                              gsl::span<const int64_t> input_sizes) {
-  ONNX_NAMESPACE::ModelProto model;
-  model.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
-  model.add_opset_import()->set_version(18);
-  auto* graph = model.mutable_graph();
-  graph->set_name("webgpu_batched_session_inputs");
-  auto* node = graph->add_node();
-  node->set_op_type("Concat");
-  node->add_output("Y");
-  auto* axis = node->add_attribute();
-  axis->set_name("axis");
-  axis->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
-  axis->set_i(0);
-  InlinedVector<std::string> names;
-  names.reserve(input_sizes.size());
-  int64_t output_size = 0;
-  for (size_t i = 0; i < input_sizes.size(); ++i) {
-    names.push_back("X" + std::to_string(i));
-    node->add_input(names.back());
-    auto* input = graph->add_input();
-    input->set_name(names.back());
-    auto* type = input->mutable_type()->mutable_tensor_type();
-    type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-    type->mutable_shape()->add_dim()->set_dim_value(input_sizes[i]);
-    output_size += input_sizes[i];
-  }
-  auto* output = graph->add_output();
-  output->set_name("Y");
-  auto* output_type = output->mutable_type()->mutable_tensor_type();
-  output_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-  output_type->mutable_shape()->add_dim()->set_dim_value(output_size);
-
-  Ort::SessionOptions options;
-  options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_DISABLE_ALL);
-  options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
-  options.AppendExecutionProvider_V2(env, {ep_device}, Ort::KeyValuePairs{});
-  const auto model_bytes = model.SerializeAsString();
-  Ort::Session session(env, model_bytes.data(), model_bytes.size(), options);
-  const auto cpu_memory = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
-  InlinedVector<InlinedVector<float>> input_data;
-  InlinedVector<Ort::Value> inputs;
-  InlinedVector<const char*> input_names;
-  input_data.reserve(input_sizes.size());
-  inputs.reserve(input_sizes.size());
-  input_names.reserve(input_sizes.size());
-  for (size_t i = 0; i < input_sizes.size(); ++i) {
-    input_data.emplace_back(static_cast<size_t>(input_sizes[i]));
-    inputs.push_back(Ort::Value::CreateTensor<float>(cpu_memory, input_data.back().data(), input_data.back().size(),
-                                                     &input_sizes[i], 1));
-    input_names.push_back(names[i].c_str());
-  }
-  const char* output_names[] = {"Y"};
-  // Change every input on the second run to catch stale copies or a reused
-  // buffer being cleared after its upload.
-  for (int iteration = 0; iteration < 2; ++iteration) {
-    SCOPED_TRACE(iteration);
-    for (size_t i = 0; i < input_data.size(); ++i) {
-      for (size_t j = 0; j < input_data[i].size(); ++j) {
-        input_data[i][j] = static_cast<float>(iteration * 100 + i * 10 + j % 7);
-      }
-    }
-    auto outputs = session.Run(Ort::RunOptions{nullptr}, input_names.data(), inputs.data(), inputs.size(),
-                               output_names, 1);
-    ASSERT_EQ(outputs[0].GetTensorTypeAndShapeInfo().GetElementCount(), static_cast<size_t>(output_size));
-    const float* actual = outputs[0].GetTensorData<float>();
-    size_t offset = 0;
-    for (size_t i = 0; i < input_data.size(); ++i) {
-      const auto& values = input_data[i];
-      EXPECT_TRUE(std::equal(values.begin(), values.end(), actual + offset)) << "input " << i;
-      offset += values.size();
-    }
-  }
-}
-
-TEST_F(WebGpuPluginSharedAllocatorTest, SessionInputUploadsPreserveData) {
-  for (const auto& sizes : {
-           InlinedVector<int64_t>{0, 16, 0, 16},  // Empty and nonempty inputs in one batch.
-           {1310721, 1310721, 1310721, 1310721},  // Cross the 16 MiB staging-chunk boundary.
-           {4194305, 16},                         // One input larger than a staging chunk.
-           {16},                                  // Single-input fallback.
-       }) {
-    SCOPED_TRACE(testing::PrintToString(sizes));
-    ASSERT_NO_FATAL_FAILURE(CheckSessionInputUploads(Env(), EpDevice(), sizes));
-  }
-}
-
 #if !defined(USE_EXTERNAL_DAWN)
 #if !defined(BUILD_DAWN_SHARED_LIBRARY)
 namespace {
@@ -593,6 +506,119 @@ int VerifyInstanceNormScratchAllocationsStayBatched(Ort::Env& env, Ort::ConstEpD
   return 0;
 }
 
+int VerifySessionInputUploadBatching(Ort::Env& env, Ort::ConstEpDevice ep_device,
+                                     gsl::span<const int64_t> input_sizes, size_t expected_submissions) {
+  ONNX_NAMESPACE::ModelProto model;
+  model.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  model.add_opset_import()->set_version(18);
+  auto* graph = model.mutable_graph();
+  graph->set_name("webgpu_batched_session_inputs");
+  auto* node = graph->add_node();
+  node->set_op_type("Concat");
+  node->add_output("Y");
+  auto* axis = node->add_attribute();
+  axis->set_name("axis");
+  axis->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+  axis->set_i(0);
+  InlinedVector<std::string> names;
+  names.reserve(input_sizes.size());
+  int64_t output_size = 0;
+  for (size_t i = 0; i < input_sizes.size(); ++i) {
+    names.push_back("X" + std::to_string(i));
+    node->add_input(names.back());
+    auto* input = graph->add_input();
+    input->set_name(names.back());
+    auto* type = input->mutable_type()->mutable_tensor_type();
+    type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    type->mutable_shape()->add_dim()->set_dim_value(input_sizes[i]);
+    output_size += input_sizes[i];
+  }
+  auto* output = graph->add_output();
+  output->set_name("Y");
+  auto* output_type = output->mutable_type()->mutable_tensor_type();
+  output_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  output_type->mutable_shape()->add_dim()->set_dim_value(output_size);
+
+  struct SubmissionProbe {
+    SubmissionProbe() = default;
+    ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SubmissionProbe);
+
+    bool armed{false};
+    bool saw_program{false};
+    size_t baseline{0};
+    size_t input_submissions{0};
+
+    static void ORT_API_CALL Log(void* param, OrtLoggingLevel, const char*, const char*, const char*,
+                                 const char* message) {
+      auto& probe = *static_cast<SubmissionProbe*>(param);
+      if (probe.armed && !probe.saw_program &&
+          std::string_view{message}.find("Starting program") != std::string_view::npos) {
+        probe.saw_program = true;
+        probe.input_submissions = nonempty_queue_submissions.load(std::memory_order_relaxed) - probe.baseline;
+      }
+    }
+  } probe;
+  auto procs = dawn::native::GetProcs();
+  procs.queueSubmit = CountNonemptyQueueSubmissions;
+  dawnProcSetProcs(&procs);
+  Ort::SessionOptions options;
+  options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_DISABLE_ALL);
+  options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
+  options.SetLogSeverityLevel(ORT_LOGGING_LEVEL_INFO);
+  Ort::ThrowOnError(Ort::GetApi().SetUserLoggingFunction(options, SubmissionProbe::Log, &probe));
+  options.AppendExecutionProvider_V2(
+      env, {ep_device}, {{"dawnProcTable", std::to_string(reinterpret_cast<uintptr_t>(&procs))}});
+  const auto model_bytes = model.SerializeAsString();
+  Ort::Session session(env, model_bytes.data(), model_bytes.size(), options);
+  const auto cpu_memory = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
+  InlinedVector<InlinedVector<float>> input_data;
+  InlinedVector<Ort::Value> inputs;
+  InlinedVector<const char*> input_names;
+  input_data.reserve(input_sizes.size());
+  inputs.reserve(input_sizes.size());
+  input_names.reserve(input_sizes.size());
+  for (size_t i = 0; i < input_sizes.size(); ++i) {
+    input_data.emplace_back(static_cast<size_t>(input_sizes[i]));
+    inputs.push_back(Ort::Value::CreateTensor<float>(cpu_memory, input_data.back().data(), input_data.back().size(),
+                                                     &input_sizes[i], 1));
+    input_names.push_back(names[i].c_str());
+  }
+  const char* output_names[] = {"Y"};
+  // Warm pipelines/caches, then measure actual input submissions before the first program.
+  // Changing every input also catches stale uploads and clears submitted after the copy.
+  for (int iteration = 0; iteration < 6; ++iteration) {
+    for (size_t i = 0; i < input_data.size(); ++i) {
+      for (size_t j = 0; j < input_data[i].size(); ++j) {
+        input_data[i][j] = static_cast<float>(iteration * 100 + i * 10 + j % 7);
+      }
+    }
+    probe.baseline = nonempty_queue_submissions.load(std::memory_order_relaxed);
+    probe.saw_program = false;
+    probe.armed = true;
+    auto outputs = session.Run(Ort::RunOptions{nullptr}, input_names.data(), inputs.data(), inputs.size(),
+                               output_names, 1);
+    probe.armed = false;
+    if (iteration >= 3 && (!probe.saw_program || probe.input_submissions != expected_submissions)) {
+      std::fprintf(stderr, "Input batching failed: saw_program=%d, submissions=%zu, expected=%zu\n",
+                   static_cast<int>(probe.saw_program), probe.input_submissions, expected_submissions);
+      return 11;
+    }
+    if (outputs[0].GetTensorTypeAndShapeInfo().GetElementCount() != static_cast<size_t>(output_size)) return 12;
+    const float* actual = outputs[0].GetTensorData<float>();
+    size_t offset = 0;
+    for (const auto& values : input_data) {
+      for (float expected : values) {
+        if (actual[offset++] != expected) {
+          std::fputs("Batched Session input data was corrupted or stale\n", stderr);
+          return 13;
+        }
+      }
+    }
+  }
+  std::fputs("Session input uploads preserved data and expected submission count\n", stderr);
+  return 0;
+}
+
 WGPUBufferMapState InjectMappedBufferOnFree(WGPUBuffer buffer) {
   if (buffer == free_failure_buffer) {
     ++free_failure_probes;
@@ -711,6 +737,58 @@ TEST_F(WebGpuSessionAllocatorDeathTest, WarmedInstanceNormalizationScratchAlloca
   ASSERT_EXIT(
       std::_Exit(VerifyInstanceNormScratchAllocationsStayBatched(Env(), EpDevice())),
       ::testing::ExitedWithCode(0), "Warmed InstanceNormalization scratch allocations retained a single Run submission");
+#endif
+}
+
+TEST_F(WebGpuSessionAllocatorDeathTest, SessionInputUploadsAreBatched) {
+#if defined(BUILD_DAWN_SHARED_LIBRARY)
+  GTEST_SKIP() << "Shared Dawn calls bypass the replaceable proc table required for submission counting.";
+#else
+  ASSERT_EXIT(
+      std::_Exit(VerifySessionInputUploadBatching(Env(), EpDevice(), std::array<int64_t, 4>{16, 16, 16, 16}, 1)),
+      ::testing::ExitedWithCode(0), "Session input uploads preserved data and expected submission count");
+#endif
+}
+
+TEST_F(WebGpuSessionAllocatorDeathTest, SessionInputUploadsSpanMultipleChunks) {
+#if defined(BUILD_DAWN_SHARED_LIBRARY)
+  GTEST_SKIP() << "Shared Dawn calls bypass the replaceable proc table required for submission counting.";
+#else
+  // Four 5 MiB + 4 byte inputs require two staging chunks at the 16 MiB limit.
+  ASSERT_EXIT(
+      std::_Exit(VerifySessionInputUploadBatching(
+          Env(), EpDevice(), std::array<int64_t, 4>{1310721, 1310721, 1310721, 1310721}, 2)),
+      ::testing::ExitedWithCode(0), "Session input uploads preserved data and expected submission count");
+#endif
+}
+
+TEST_F(WebGpuSessionAllocatorDeathTest, SessionInputUploadsIncludeEmptyTensors) {
+#if defined(BUILD_DAWN_SHARED_LIBRARY)
+  GTEST_SKIP() << "Shared Dawn calls bypass the replaceable proc table required for submission counting.";
+#else
+  ASSERT_EXIT(
+      std::_Exit(VerifySessionInputUploadBatching(Env(), EpDevice(), std::array<int64_t, 4>{0, 16, 0, 16}, 1)),
+      ::testing::ExitedWithCode(0), "Session input uploads preserved data and expected submission count");
+#endif
+}
+
+TEST_F(WebGpuSessionAllocatorDeathTest, SessionInputUploadsHandleOversizedTensor) {
+#if defined(BUILD_DAWN_SHARED_LIBRARY)
+  GTEST_SKIP() << "Shared Dawn calls bypass the replaceable proc table required for submission counting.";
+#else
+  ASSERT_EXIT(
+      std::_Exit(VerifySessionInputUploadBatching(Env(), EpDevice(), std::array<int64_t, 2>{4194305, 16}, 2)),
+      ::testing::ExitedWithCode(0), "Session input uploads preserved data and expected submission count");
+#endif
+}
+
+TEST_F(WebGpuSessionAllocatorDeathTest, SessionSingleInputUploadRetainsFallback) {
+#if defined(BUILD_DAWN_SHARED_LIBRARY)
+  GTEST_SKIP() << "Shared Dawn calls bypass the replaceable proc table required for submission counting.";
+#else
+  ASSERT_EXIT(
+      std::_Exit(VerifySessionInputUploadBatching(Env(), EpDevice(), std::array<int64_t, 1>{16}, 1)),
+      ::testing::ExitedWithCode(0), "Session input uploads preserved data and expected submission count");
 #endif
 }
 

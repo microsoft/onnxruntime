@@ -1315,11 +1315,13 @@ TEST(QAttentionTest, InvalidHiddenSizeNotDivisibleByNumHeads) {
 // Regression test: num_heads attribute exceeding INT_MAX must be rejected by the narrow<int>
 // conversion in AttentionBase's constructor rather than silently truncating. gsl::narrowing_error
 // is thrown during session init; its what() returns the literal "narrowing_error".
+#ifndef ORT_NO_EXCEPTIONS
 TEST(QAttentionTest, InvalidNumHeadsOverflowsInt) {
   RunQAttentionExpectFailure(/*hidden_size_x3=*/12,
                              /*num_heads_attr=*/static_cast<int64_t>(std::numeric_limits<int>::max()) + 1,
                              "narrowing_error");
 }
+#endif  // ORT_NO_EXCEPTIONS
 
 }  // namespace test
 }  // namespace onnxruntime

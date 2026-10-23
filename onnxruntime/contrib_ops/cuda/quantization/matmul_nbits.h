@@ -21,7 +21,9 @@
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#if USE_FPA_INTB_GEMM
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_profiler.h"
+#endif
 #include "contrib_ops/cuda/quantization/matmul_nbits_workspace_estimate.h"
 #include "contrib_ops/cuda/quantization/matmul_nbits_sm90_validation.h"
 #include "contrib_ops/cuda/quantization/matmul_nbits_unaligned4.h"
@@ -38,6 +40,47 @@ using namespace onnxruntime::cuda;
 constexpr const char* kForceChunkedEnvVar = "ORT_MATMULNBITS_FORCE_CHUNKED";
 constexpr const char* kChunkSizeEnvVar = "ORT_MATMULNBITS_CHUNK_SIZE";
 constexpr int64_t kDefaultChunkTargetRows = 32768;
+constexpr size_t kMatMulNBitsLegacyScratchLimitBytes = 256 * 1024 * 1024;
+constexpr int64_t kMatMulNBitsWeightNotPrepacked = 0;
+constexpr int64_t kMatMulNBitsWeightPrepackedSm80 = 1;
+constexpr int64_t kMatMulNBitsWeightPrepackedSm90 = 2;
+
+struct MatMulNBitsLegacyWorkspacePlan {
+  int64_t k_padded = 0;
+  int64_t scratch_rows = 0;
+  size_t workspace_bytes = 0;
+  bool use_chunked = false;
+};
+
+inline std::optional<MatMulNBitsLegacyWorkspacePlan> ComputeMatMulNBitsLegacyWorkspacePlan(
+    int64_t n, int64_t k, int64_t block_size, size_t element_size,
+    bool can_chunk, bool force_chunked, int64_t chunk_target_rows) {
+  if (n < 0 || k < 0 || block_size <= 0 || element_size == 0 ||
+      chunk_target_rows <= 0) {
+    return std::nullopt;
+  }
+
+  try {
+    const int64_t k_padded = static_cast<int64_t>(
+        ((SafeInt<int64_t>(k) + block_size - 1) / block_size) * block_size);
+    const size_t full_workspace_bytes = static_cast<size_t>(
+        SafeInt<size_t>(n) * SafeInt<size_t>(k_padded) * element_size);
+    const int64_t minimum_n_for_chunking =
+        static_cast<int64_t>(SafeInt<int64_t>(chunk_target_rows) * 2);
+    const bool use_chunked =
+        can_chunk &&
+        (force_chunked ||
+         (full_workspace_bytes > kMatMulNBitsLegacyScratchLimitBytes &&
+          n > minimum_n_for_chunking));
+    const int64_t scratch_rows = use_chunked ? chunk_target_rows : n;
+    const size_t workspace_bytes = static_cast<size_t>(
+        SafeInt<size_t>(scratch_rows) * SafeInt<size_t>(k_padded) * element_size);
+    return MatMulNBitsLegacyWorkspacePlan{
+        k_padded, scratch_rows, workspace_bytes, use_chunked};
+  } catch (const OnnxRuntimeException&) {
+    return std::nullopt;
+  }
+}
 
 #if USE_FPA_INTB_GEMM
 using onnxruntime::llm::kernels::cutlass_kernels::CutlassFpAIntBGemmRunner;
@@ -58,10 +101,6 @@ constexpr const char* kMChunkSizeEnvVar = "ORT_MATMULNBITS_M_CHUNK_SIZE";
 // M chunking applies only when the M x (N + K) profiler buffers (A and C) would exceed this size.
 constexpr int64_t kMChunkMinBytes = 256 * 1024 * 1024;
 
-constexpr int64_t kMatMulNBitsWeightNotPrepacked = 0;
-constexpr int64_t kMatMulNBitsWeightPrepackedSm80 = 1;
-constexpr int64_t kMatMulNBitsWeightPrepackedSm90 = 2;
-
 // Computes the prepack portion of the Level-1 estimate from model metadata only.
 // Persistent bytes describe newly allocated packed weight/scale/zero-point
 // destinations. An offline-prepacked weight is already a CUDA initializer and
@@ -70,7 +109,9 @@ constexpr int64_t kMatMulNBitsWeightPrepackedSm90 = 2;
 inline std::optional<Level1MemoryEstimate> ComputeMatMulNBitsPrepackMemoryEstimate(
     int64_t n, int64_t k, int64_t nbits, int64_t block_size,
     int64_t weight_prepacked, bool has_zero_points) {
-  if (n <= 0 || k <= 0 || (nbits != 4 && nbits != 8) || block_size <= 0) {
+  if (n <= 0 || k <= 0 ||
+      (nbits != 2 && nbits != 4 && nbits != 8) ||
+      block_size <= 0) {
     return std::nullopt;
   }
 
@@ -150,6 +191,38 @@ inline int64_t FpAIntBProfileSafeMCap(int64_t max_m) {
   return profile_m;
 }
 
+inline int64_t ComputeMatMulNBitsFpAIntBChunkMinRows(
+    int64_t n, int64_t k, size_t element_size) {
+  const int64_t profile_elements_per_row =
+      static_cast<int64_t>(SafeInt<int64_t>(n) + k);
+  const int64_t scratch_elements_limit =
+      static_cast<int64_t>(kMChunkMinBytes / element_size);
+  return FpAIntBProfileSafeMCap(
+      scratch_elements_limit / std::max<int64_t>(1, profile_elements_per_row));
+}
+
+inline int64_t MatMulNBitsFpAIntBRowsPerLaunch(
+    int64_t m, int m_chunk_size, int64_t m_chunk_min_rows,
+    bool force_chunked) {
+  const bool chunk =
+      m_chunk_size > 0 && m > m_chunk_size &&
+      (force_chunked || m > m_chunk_min_rows);
+  return chunk ? m_chunk_size : m;
+}
+
+inline int64_t MatMulNBitsFpAIntBMaxRowsPerLaunch(
+    int64_t max_m, int m_chunk_size, int64_t m_chunk_min_rows,
+    bool force_chunked) {
+  if (m_chunk_size <= 0) {
+    return max_m;
+  }
+
+  const int64_t maximum_unchunked_rows =
+      force_chunked ? m_chunk_size
+                    : std::max<int64_t>(m_chunk_size, m_chunk_min_rows);
+  return std::min(max_m, maximum_unchunked_rows);
+}
+
 // Architecture selector for fpA_intB packing and workspace sizing. Native SM90 weights need the
 // Hopper layout and workspace formula; all non-Hopper kernels share the SM80 layout and workspace
 // formula, including compact runners targeting SM75 or SM89.
@@ -227,10 +300,8 @@ class MatMulNBits final : public CudaKernel {
     m_chunk_size_ = ParseMatMulNBitsMChunkSize(ResolveFpAIntBConfigOrEnv(
         info, kOrtSessionOptionsCudaMatMulNBitsMChunkSize, kMChunkSizeEnvVar));
     m_chunk_size_ = static_cast<int>(FpAIntBProfileSafeMCap(m_chunk_size_));
-    const int64_t profile_elements_per_row = SafeInt<int64_t>(N_) + SafeInt<int64_t>(K_);
-    const int64_t scratch_elements_limit = kMChunkMinBytes / static_cast<int64_t>(sizeof(T));
-    const int64_t memory_gate_rows = scratch_elements_limit / std::max<int64_t>(1, profile_elements_per_row);
-    m_chunk_min_rows_ = FpAIntBProfileSafeMCap(memory_gate_rows);
+    m_chunk_min_rows_ =
+        ComputeMatMulNBitsFpAIntBChunkMinRows(N_, K_, sizeof(T));
     if (weight_prepacked_ == kMatMulNBitsWeightPrepackedSm90) {
       // See matmul_nbits_sm90_validation.h / matmul_nbits.cc for the validation logic (extracted
       // into a pure function of (sm, block_size) so it can be unit-tested without a Hopper GPU).
@@ -383,8 +454,8 @@ class MatMulNBits final : public CudaKernel {
   int64_t RequiredWeightPrepackedFormat() const;
 
   int64_t FpAIntBRowsPerLaunch(int64_t m) const {
-    const bool chunk = m_chunk_size_ > 0 && m > m_chunk_size_ && (force_chunked_ || m > m_chunk_min_rows_);
-    return chunk ? m_chunk_size_ : m;
+    return MatMulNBitsFpAIntBRowsPerLaunch(
+        m, m_chunk_size_, m_chunk_min_rows_, force_chunked_);
   }
 
   void InitGemmProfiler(int sm);
