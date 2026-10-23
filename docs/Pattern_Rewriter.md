@@ -708,6 +708,11 @@ groups using the model node as the prospective pattern root. Structurally
 identical patterns can share a traversal, followed by their rule-specific check-and-bind callbacks;
 patterns with attribute predicates or type/shape annotations are kept separate. The earliest passing
 rule wins even across groups, and lower-priority work is skipped when possible.
+Structural results are cached per group and candidate node, but callbacks
+run in global registration order, not group order. Rewrite mode stops at
+the first accepted rule without invoking lower-priority callbacks; match-only
+mode visits all matching rules in that same order. Group signatures use
+locale-independent serialization.
 With `indexed=false`, the reference mode instead tries all opset-applicable
 rules in registration order at each node. Match-only mode processes one batch,
 counts all passing rules, and never applies replacements.
@@ -781,7 +786,9 @@ the same value through different output names. Callable bodies may still
 export multiple aliases of the same value. An entry violation raises a
 use-time diagnostic naming the requested entry. Inherited interface inputs
 and mapped outputs must remain tensor bindings, checked during library
-construction; extra body-only inputs may capture attributes. Thus a library
+construction; extra body-only inputs may capture attributes. Mapped interface
+outputs are always required to be present, even when unannotated and aliased
+to an optional input. Thus a library
 may contain useful callable patterns that cannot independently serve as rules:
 
 ```text

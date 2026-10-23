@@ -4,6 +4,7 @@
 #include <cmath>
 #include <iostream>
 #include <limits>
+#include <locale>
 #include <sstream>
 #include <type_traits>
 #include <unordered_map>
@@ -4600,6 +4601,164 @@ TEST(PatternRewriterTests, InterfacePortsCannotBecomeAttributes) {
     pattern C(x) { p=P(x); return Identity(p.y) }
   )")
                       .GetPattern("C"));
+}
+
+namespace {
+class CommaDecimalPoint : public std::numpunct<char> {
+ protected:
+  char do_decimal_point() const override { return ','; }
+};
+
+class ScopedGlobalLocale {
+ public:
+  explicit ScopedGlobalLocale(const std::locale& locale) : previous_(std::locale::global(locale)) {}
+  ~ScopedGlobalLocale() { std::locale::global(previous_); }
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ScopedGlobalLocale);
+
+ private:
+  std::locale previous_;
+};
+}  // namespace
+
+TEST(PatternRewriterTests, GroupSignaturesAreIndependentOfGlobalLocale) {
+  for (bool indexed : {false, true}) {
+    for (bool match_only : {false, true}) {
+      for (bool second_constant : {false, true}) {
+        TestGraph test;
+        auto& b = test.builder;
+        auto* x = b.MakeInput<float>({2}, -1.0f, 1.0f);
+        auto* constant = b.MakeInitializer<float>({2}, second_constant ? std::vector<float>{1.0f, 5.5f}
+                                                                       : std::vector<float>{1.5f, 5.0f});
+        b.AddNode("Add", {x, constant}, {b.MakeOutput()});
+        b.SetGraphOutputs();
+        ASSERT_STATUS_OK(test.graph.Resolve());
+        InlinedVector<int> callbacks;
+        Rules rules;
+        rules.emplace_back("First", "(x)=>return Add(x,[1.5,5.0])", "(x)=>Identity(x)", [&](const Graph&, Match&) {callbacks.push_back(0); return true; }, InlinedVector<OpsetRequirement, 1>{{kOnnxDomain, 17, 17}});
+        rules.emplace_back("Second", "(x)=>return Add(x,[1.0,5.5])", "(x)=>Identity(x)", [&](const Graph&, Match&) {callbacks.push_back(1); return true; }, InlinedVector<OpsetRequirement, 1>{{kOnnxDomain, 17, 17}});
+        Statistics stats;
+        {
+          const ScopedGlobalLocale locale{std::locale(std::locale::classic(), new CommaDecimalPoint)};
+          ASSERT_EQ(std::use_facet<std::numpunct<char>>(std::locale()).decimal_point(), ',');
+          ASSERT_STATUS_OK(PatternRewriter(std::move(rules), {.match_only = match_only, .indexed = indexed, .max_iterations = 1})
+                               .Run(test.graph, stats));
+        }
+        ASSERT_EQ(callbacks.size(), 1u);
+        EXPECT_EQ(callbacks[0], second_constant ? 1 : 0);
+        EXPECT_EQ(stats.matches, 1u);
+        EXPECT_EQ(stats.rewrites, match_only ? 0u : 1u);
+        ASSERT_STATUS_OK(test.graph.Resolve());
+      }
+    }
+  }
+}
+
+TEST(PatternRewriterTests, UnannotatedInterfaceOutputAliasesMustBePresent) {
+  const PatternLibrary library(R"(
+    interface I(v:float | None) -> (y)
+    pattern P implements I { return (y=v) }
+    pattern Alias=P
+    pattern Wrapped implements I { p=Alias(v);return (y=p.y) }
+    pattern Entry(x,v:float | None) { p=P(v);return Clip(x,p.y) }
+    pattern Nested(x,v:float | None) { p=Wrapped(v);return Clip(x,p.y) }
+  )");
+  for (const char* entry : {"Entry", "Nested"}) {
+    for (bool indexed : {false, true}) {
+      for (int scenario = 0; scenario < 3; ++scenario) {
+        TestGraph test;
+        auto& b = test.builder;
+        auto* x = b.MakeInput<float>({2}, -1.0f, 1.0f);
+        std::vector<NodeArg*> inputs{x};
+        const NodeArg* minimum = nullptr;
+        if (scenario == 1) inputs.push_back(b.MakeOptionalTensor());
+        if (scenario == 2) {
+          auto* value = b.MakeScalarInitializer<float>(0.0f);
+          inputs.push_back(value);
+          minimum = value;
+        }
+        b.AddNode("Clip", inputs, {b.MakeOutput()});
+        b.SetGraphOutputs();
+        ASSERT_STATUS_OK(test.graph.Resolve());
+        int checks = 0;
+        auto check = [&](const Graph&, Match& match) {
+          ++checks;
+          EXPECT_NE(match.instance("p").valueOf("y"), nullptr);
+          EXPECT_EQ(match.instance("p").valueOf("y"), minimum);
+          return true;
+        };
+        Rule rule{"RequiredOutput", library.GetPattern(entry), "(x)=>Identity(x)", check, {{kOnnxDomain, 17, 17}}};
+        Statistics stats;
+        ASSERT_STATUS_OK(PatternRewriter({rule}, {.match_only = true, .indexed = indexed}).Run(test.graph, stats));
+        EXPECT_EQ(checks, scenario == 2 ? 1 : 0);
+        EXPECT_EQ(stats.matches, scenario == 2 ? 1u : 0u);
+      }
+    }
+  }
+}
+
+TEST(PatternRewriterTests, InterleavedGroupsDispatchCallbacksInRegistrationOrder) {
+  for (bool indexed : {false, true}) {
+    for (bool match_only : {false, true}) {
+      for (bool throw_late : {false, true}) {
+        TestGraph test;
+        auto& b = test.builder;
+        auto* x = b.MakeInput<float>({2}, -1.0f, 1.0f);
+        auto* y = b.MakeInput<float>({2}, -1.0f, 1.0f);
+        auto* a = b.MakeIntermediate();
+        b.AddNode("Identity", {x}, {a});
+        auto& root = b.AddNode("Add", {a, y}, {b.MakeOutput()});
+        const NodeIndex index = root.Index();
+        b.SetGraphOutputs();
+        ASSERT_STATUS_OK(test.graph.Resolve());
+        InlinedVector<int> callbacks;
+        InlinedVector<std::string> rejected;
+        auto reject = [&](const Graph&, Match& match) {
+          callbacks.push_back(0);
+          ONNX_NAMESPACE::AttributeProto extra;
+          extra.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+          extra.set_i(99);
+          match.update("candidate_only", std::move(extra));
+          return match.Reject("first rejects");
+        };
+        auto accept = [&](const Graph&, Match& match) {
+          callbacks.push_back(1);
+          EXPECT_THROW(match.attributeOf("candidate_only"), OnnxRuntimeException);
+          return true;
+        };
+        auto later = [&](const Graph&, Match& match) {
+          callbacks.push_back(2);
+          EXPECT_THROW(match.attributeOf("candidate_only"), OnnxRuntimeException);
+          ORT_ENFORCE(!throw_late, "lower priority callback");
+          return true;
+        };
+        Rule first{"First", "(x,y)=>return Add(x,y)", "(x,y)=>Add(x,y)", reject, {{kOnnxDomain, 17, 17}}};
+        Rule middle{"Middle", "(x,y)=>{a=Identity(x);return Add(a,y)}", "(x,y)=>Add(x,y)", accept, {{kOnnxDomain, 17, 17}}};
+        Rule last{"Last", "(x,y)=>return Add(x,y)", "(x,y)=>Add(x,y)", later, {{kOnnxDomain, 17, 17}}};
+        Options options{.match_only = match_only, .indexed = indexed, .max_iterations = 1};
+        options.on_failure = [&](const MatchFailure& failure) {
+          if (failure.root == index && failure.stage == FailureStage::CheckAndBind) rejected.push_back(failure.rule);
+        };
+        Statistics stats;
+        PatternRewriter rewriter({first, middle, last}, options);
+        if (match_only && throw_late) {
+          EXPECT_THROW(rewriter.Run(test.graph, stats), OnnxRuntimeException);
+        } else {
+          ASSERT_STATUS_OK(rewriter.Run(test.graph, stats));
+          EXPECT_EQ(stats.rewrites, match_only ? 0u : 1u);
+          EXPECT_EQ(stats.matches, match_only ? 2u : 1u);
+        }
+        ASSERT_EQ(callbacks.size(), match_only ? 3u : 2u);
+        EXPECT_EQ(callbacks[0], 0);
+        EXPECT_EQ(callbacks[1], 1);
+        if (match_only) EXPECT_EQ(callbacks[2], 2);
+        ASSERT_EQ(rejected.size(), 1u);
+        EXPECT_EQ(rejected[0], "First");
+        // Indexed mode shares First/Last's traversal even when other groups intervene.
+        EXPECT_EQ(stats.structural_checks, indexed ? 2u : (match_only ? 6u : 5u));
+        ASSERT_STATUS_OK(test.graph.Resolve());
+      }
+    }
+  }
 }
 
 }  // namespace test

@@ -8,6 +8,7 @@
 #include <cmath>
 #include <iterator>
 #include <limits>
+#include <locale>
 #include <optional>
 #include <sstream>
 #include <type_traits>
@@ -26,6 +27,7 @@ std::string Key(const std::string& op, const std::string& domain) { return domai
 
 std::string Signature(const Pattern& pattern) {
   std::ostringstream stream;
+  stream.imbue(std::locale::classic());
   stream << pattern.ValueCount() << ':';
   for (Value output : pattern.Outputs()) stream << 'r' << output.handle << ',';
   for (int id = 0; id < static_cast<int>(pattern.ValueCount()); ++id)
@@ -1627,6 +1629,7 @@ class PatternModule {
           for (Value output : plan.outputs_)
             ORT_ENFORCE(!plan.IsAttribute(output),
                         "Interface output must remain a tensor in pattern ", definition.name);
+          for (Value output : plan.outputs_) plan.optional_inputs_.erase(output.handle);
         }
         if (definition.interface_name.empty()) {
           InlinedVector<Port> outputs;
@@ -2046,57 +2049,68 @@ Status PatternRewriter::Run(Graph& graph, Statistics& statistics) const {
       size_t winner = std::numeric_limits<size_t>::max();
       Match winning_match;
       const Pattern* winning_pattern = nullptr;
-      auto consider = [&](const Pattern& pattern, gsl::span<const size_t> rule_ids) {
-        statistics.candidates += rule_ids.size();
-        ++statistics.structural_checks;
+      struct CandidateMatch {
         Match match;
         FailureStage stage = FailureStage::Structure;
         std::string_view reason;
-        if (!MatchPattern(pattern, graph, *root, producers, match, stage, reason)) {
-          for (size_t id : rule_ids) report(id, root->Index(), stage, reason);
+        bool matched = false;
+      };
+      auto match_group = [&](const Pattern& pattern, CandidateMatch& candidate) {
+        ++statistics.structural_checks;
+        candidate.matched = MatchPattern(pattern, graph, *root, producers, candidate.match,
+                                         candidate.stage, candidate.reason);
+        if (candidate.matched && !CanRewritePartition(candidate.match, options_)) {
+          candidate.matched = false;
+          candidate.stage = FailureStage::ExecutionProvider;
+          candidate.reason = "Mixed or unsupported execution providers.";
+        }
+      };
+      auto consider = [&](size_t id, const CandidateMatch& candidate) {
+        ++statistics.candidates;
+        if (!candidate.matched) {
+          report(id, root->Index(), candidate.stage, candidate.reason);
           return;
         }
-        if (!CanRewritePartition(match, options_)) {
-          for (size_t id : rule_ids)
-            report(id, root->Index(), FailureStage::ExecutionProvider, "Mixed or unsupported execution providers.");
-          return;
+        Match rule_match = candidate.match;
+        rule_match.pattern = &rules_[id].pattern;
+        if (rules_[id].check_and_bind) {
+          ++statistics.check_and_bind_calls;
+          if (!rules_[id].check_and_bind(graph, rule_match)) {
+            report(id, root->Index(), FailureStage::CheckAndBind,
+                   rule_match.RejectionReason().empty() ? std::string_view("Check-and-bind rejected match.")
+                                                        : rule_match.RejectionReason());
+            return;
+          }
         }
-        for (size_t id : rule_ids) {
-          if (!options_.match_only && id >= winner) break;
-          Match rule_match = match;
-          rule_match.pattern = &rules_[id].pattern;
-          if (rules_[id].check_and_bind) {
-            ++statistics.check_and_bind_calls;
-            if (!rules_[id].check_and_bind(graph, rule_match)) {
-              report(id, root->Index(), FailureStage::CheckAndBind,
-                     rule_match.RejectionReason().empty() ? std::string_view("Check-and-bind rejected match.")
-                                                          : rule_match.RejectionReason());
-              continue;
-            }
-          }
-          if (options_.match_only) ++statistics.matches;
-          if (id < winner) {
-            winner = id;
-            winning_match = std::move(rule_match);
-            winning_pattern = winning_match.pattern;
-          }
-          if (!options_.match_only) break;
+        if (options_.match_only) ++statistics.matches;
+        if (id < winner) {
+          winner = id;
+          winning_match = std::move(rule_match);
+          winning_pattern = winning_match.pattern;
         }
       };
       if (options_.indexed) {
         auto it = roots_.find(Key(root->OpType(), root->Domain()));
         if (it != roots_.end()) {
-          for (size_t id : it->second) {
-            const auto& group = groups_[id];
-            const auto& ids = applicable_groups[id];
-            if (ids.empty() || (!options_.match_only && ids.front() >= winner)) continue;
-            consider(group.pattern, ids);
+          InlinedVector<std::pair<size_t, size_t>> candidates;
+          for (size_t group : it->second)
+            for (size_t id : applicable_groups[group]) candidates.emplace_back(id, group);
+          std::sort(candidates.begin(), candidates.end());
+          InlinedHashMap<size_t, CandidateMatch> cache;
+          // Share structural work, but never run a lower-priority callback before an earlier rule.
+          for (const auto& [id, group] : candidates) {
+            auto [cached, inserted] = cache.try_emplace(group);
+            if (inserted) match_group(groups_[group].pattern, cached->second);
+            consider(id, cached->second);
+            if (!options_.match_only && winning_pattern) break;
           }
         }
       } else {
         for (size_t id : applicable_rules) {
-          consider(rules_[id].pattern, gsl::span<const size_t>(&id, 1));
-          if (!options_.match_only && winner != std::numeric_limits<size_t>::max()) break;
+          CandidateMatch candidate;
+          match_group(rules_[id].pattern, candidate);
+          consider(id, candidate);
+          if (!options_.match_only && winning_pattern) break;
         }
       }
       if (options_.match_only || !winning_pattern) continue;

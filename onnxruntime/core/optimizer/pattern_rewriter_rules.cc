@@ -11,6 +11,7 @@
 namespace onnxruntime {
 namespace rewrite {
 namespace {
+#ifndef DISABLE_CONTRIB_OPS
 ONNX_NAMESPACE::AttributeProto FloatAttribute(const char* name, float value) {
   ONNX_NAMESPACE::AttributeProto attr;
   attr.set_name(name);
@@ -18,6 +19,7 @@ ONNX_NAMESPACE::AttributeProto FloatAttribute(const char* name, float value) {
   attr.set_f(value);
   return attr;
 }
+#endif
 
 bool IsFloat32(const NodeArg& value) {
   const auto* type = value.TypeAsProto();
@@ -25,6 +27,7 @@ bool IsFloat32(const NodeArg& value) {
          type->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
 }
 
+#ifndef DISABLE_CONTRIB_OPS
 std::optional<float> Scalar(const Graph& graph, const NodeArg& value) {
   const auto* tensor = graph_utils::GetConstantInitializer(graph, value.Name());
   if (!tensor || tensor->data_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
@@ -42,6 +45,7 @@ bool Integer(const Node& node, const char* name, int64_t value) {
   return it != node.GetAttributes().end() && it->second.type() == ONNX_NAMESPACE::AttributeProto_AttributeType_INT &&
          it->second.i() == value;
 }
+#endif
 }  // namespace
 
 Rules MakeExampleRules() {
