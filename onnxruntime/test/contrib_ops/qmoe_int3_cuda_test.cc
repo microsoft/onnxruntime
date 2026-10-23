@@ -294,11 +294,13 @@ TEST(QMoEInt3CudaTest, RejectsMalformedDeviceContent) {
 }
 
 TEST(QMoEInt3CudaTest, PartialPrepackKeepsIndependentDynamicInputs) {
-  for (auto bits : {std::pair{3, 3}, std::pair{3, 4}, std::pair{4, 3}}) {
-    for (int dynamic_index : {2, 3, 5, 6, 11, 12}) {
-      SCOPED_TRACE(::testing::Message() << bits.first << "/" << bits.second << ":" << dynamic_index);
-      RunInt3CudaCase<MLFloat16>(64, bits.first, bits.second, false, true, 0, dynamic_index);
-      RunInt3CudaCase<BFloat16>(64, bits.first, bits.second, true, true, 0, dynamic_index);
+  for (int block : {32, 64, 128}) {
+    for (auto bits : {std::pair{3, 3}, std::pair{3, 4}, std::pair{4, 3}}) {
+      for (int dynamic_index : {2, 3, 5, 6, 11, 12}) {
+        SCOPED_TRACE(::testing::Message() << block << ":" << bits.first << "/" << bits.second << ":" << dynamic_index);
+        RunInt3CudaCase<MLFloat16>(block, bits.first, bits.second, false, true, 0, dynamic_index);
+        RunInt3CudaCase<BFloat16>(block, bits.first, bits.second, true, true, 0, dynamic_index);
+      }
     }
   }
   for (auto malformed : {std::pair{1, 3}, std::pair{2, 6}, std::pair{3, 11}, std::pair{4, 11}}) {
