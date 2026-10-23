@@ -17,6 +17,42 @@ class FusionLayerNormalization(Fusion):
         self.check_constant_and_dimension = check_constant_and_dimension
         self.force = force
 
+    def get_unambiguous_constant_value(self, name):
+        if name in self.model.get_graphs_input_names():
+            # Graph inputs can override initializers, including in nested scopes.
+            return None
+        # Lookup is model-wide. Do not substitute a value that has multiple bindings.
+        definitions = sum(
+            sum(tensor.name == name for tensor in graph.initializer)
+            + sum(tensor.values.name == name for tensor in graph.sparse_initializer)
+            + sum(name in producer.output for producer in graph.node)
+            for graph in self.model.graphs()
+        )
+        return self.model.get_constant_value(name) if definitions == 1 else None
+
+    def is_last_axis_reduction(self, node, rank: int | None) -> bool:
+        # The replacement has axis=-1 and retains reduced dimensions in its statistics.
+        if self.model.get_node_attribute(node, "keepdims") == 0:
+            return False
+
+        axes = self.model.get_node_attribute(node, "axes")
+        if len(node.input) > 1 and node.input[1]:
+            axes = self.get_unambiguous_constant_value(node.input[1])
+        if axes is None or len(axes) != 1:
+            return False
+
+        return bool(axes[0] == -1 or (rank is not None and axes[0] == rank - 1))
+
+    def get_scalar_constant(self, name, rank: int | None):
+        value = self.get_unambiguous_constant_value(name)
+        if value is None or value.size != 1:
+            return None
+        # A one-element tensor can still expand the rank through broadcasting.
+        # A valid last-axis reduction already requires an input rank of at least one.
+        if value.ndim > (rank if rank is not None else 1):
+            return None
+        return value.item()
+
     def fuse(self, node, input_name_to_nodes: dict, output_name_to_node: dict):
         """
         Fuse Layer Normalization subgraph into one node LayerNormalization:
@@ -45,6 +81,20 @@ class FusionLayerNormalization(Fusion):
             return
 
         root_input = node.input[0]
+        input_shape = self.model.get_shape(root_input)
+        # Shape lookup describes the top-level graph. A nested definition of the
+        # same name cannot use that rank to prove a positive axis is last.
+        if any(
+            any(value.name == root_input for value in graph.input)
+            or any(tensor.name == root_input for tensor in graph.initializer)
+            or any(tensor.values.name == root_input for tensor in graph.sparse_initializer)
+            or any(root_input in producer.output for producer in graph.node)
+            for graph in self.model.graphs()[1:]
+        ):
+            input_shape = None
+        rank = len(input_shape) if input_shape is not None else None
+        if not self.is_last_axis_reduction(node, rank):
+            return
 
         if children[0].op_type != "Sub" or children[0].input[0] != root_input:
             return
@@ -81,18 +131,21 @@ class FusionLayerNormalization(Fusion):
         if parent_nodes is None:
             return
 
+        if not self.is_last_axis_reduction(parent_nodes[2], rank):
+            return
+
         sub_node = parent_nodes[-1]
         if sub_node not in children:
             return
 
         add_eps_node = parent_nodes[1]
-        i, epsilon = self.model.get_constant_input(add_eps_node)
+        epsilon = self.get_scalar_constant(add_eps_node.input[1], rank)
         if epsilon is None or epsilon <= 0 or epsilon > 1.0e-4:
             logger.debug(f"skip SkipLayerNormalization fusion since epsilon value is not expected: {epsilon}")
             return
 
         pow_node = parent_nodes[3]
-        if self.model.find_constant_input(pow_node, 2.0) != 1:
+        if self.get_scalar_constant(pow_node.input[1], rank) != 2.0:
             return
 
         if div_node.output[0] not in input_name_to_nodes:
