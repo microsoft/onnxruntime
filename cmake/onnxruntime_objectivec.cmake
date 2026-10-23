@@ -147,4 +147,29 @@ if(onnxruntime_BUILD_UNIT_TESTS)
 
     set_property(TEST XCTest.onnxruntime_objc_test APPEND PROPERTY
         ENVIRONMENT "DYLD_LIBRARY_PATH=$<TARGET_FILE_DIR:onnxruntime>")
+    if(CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND NOT onnxruntime_MINIMAL_BUILD)
+        set(encryption_test_root "${ONNXRUNTIME_ROOT}/test/platform/apple")
+        xctest_add_bundle(onnxruntime_objc_encryption_test onnxruntime_objc
+            "${encryption_test_root}/ort_encrypted_ep_context_test.mm"
+            "${encryption_test_root}/ort_ep_context_fixture.h"
+            "${encryption_test_root}/ort_ep_context_fixture.mm")
+        onnxruntime_configure_target(onnxruntime_objc_encryption_test)
+        find_library(SECURITY_LIB Security REQUIRED)
+        target_link_libraries(onnxruntime_objc_encryption_test PRIVATE onnxruntime ${SECURITY_LIB})
+        target_include_directories(onnxruntime_objc_encryption_test PRIVATE "${OBJC_ROOT}")
+        set_target_properties(onnxruntime_objc_encryption_test PROPERTIES
+            FOLDER "ONNXRuntimeTest"
+            XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO")
+        add_dependencies(onnxruntime_objc_encryption_test example_plugin_ep)
+        add_custom_command(TARGET onnxruntime_objc_encryption_test POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E make_directory
+                "$<TARGET_BUNDLE_CONTENT_DIR:onnxruntime_objc_encryption_test>/Resources"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${ONNXRUNTIME_ROOT}/test/testdata/encrypted_ep_context_mul.onnx"
+                "$<TARGET_BUNDLE_CONTENT_DIR:onnxruntime_objc_encryption_test>/Resources")
+        xctest_add_test(XCTest.onnxruntime_objc_encryption_test onnxruntime_objc_encryption_test)
+        set_property(TEST XCTest.onnxruntime_objc_encryption_test APPEND PROPERTY
+            ENVIRONMENT "DYLD_LIBRARY_PATH=$<TARGET_FILE_DIR:onnxruntime>"
+                        "ORT_ENCRYPTION_PLUGIN_LIBRARY=$<TARGET_FILE:example_plugin_ep>")
+    endif()
 endif()
