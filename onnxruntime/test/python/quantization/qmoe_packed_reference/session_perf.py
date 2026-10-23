@@ -1,3 +1,6 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
 """Host-side reproducible CUDA Session performance experiment (no runtime edits)."""
 
 import argparse

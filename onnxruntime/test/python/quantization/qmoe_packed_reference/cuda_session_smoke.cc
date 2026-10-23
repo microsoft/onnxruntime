@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #define ORT_API_MANUAL_INIT
 #include "onnxruntime_cxx_api.h"
 

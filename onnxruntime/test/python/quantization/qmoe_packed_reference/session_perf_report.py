@@ -1,3 +1,6 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
 """Validate session_perf output and generate a self-contained analysis and report."""
 
 import argparse

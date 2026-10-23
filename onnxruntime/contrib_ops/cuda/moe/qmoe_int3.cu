@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "contrib_ops/cuda/moe/qmoe_int3.h"
 #include "contrib_ops/cuda/moe/packed_code.cuh"
 
