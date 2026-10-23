@@ -3476,70 +3476,58 @@ constexpr const char* RotaryEmbedding_ver1_doc = R"DOC(
 RotaryEmbedding is the implementation of rotary positional embeddings (RoPE). The positions are represented as rotation matrices
 that are multiplied to query and key before the inner product of query and key is taken.
 )DOC";
-static OpSchema RotaryEmbeddingSchema() {
-  return OpSchema()
-      .SetDoc(RotaryEmbedding_ver1_doc)
-      .Attr("scale",
-            "Custom scale will be used if specified. Default value is 1.0",
-            AttributeProto::FLOAT,
-            OPTIONAL_VALUE)
-      .Attr("interleaved",
-            "Indicates whether the input has real and imaginary parts interleaved. "
-            "Default value is 0 (False), meaning the first half of the input consists of real values "
-            "and the second half consists of imaginary values.",
-            AttributeProto::INT,
-            OPTIONAL_VALUE)
-      .Attr("rotary_embedding_dim",
-            "Rotary embedding dimension. Default value is 0.",
-            AttributeProto::INT,
-            OPTIONAL_VALUE)
-      .Attr("num_heads",
-            "Number of attention heads. Default value is 0. Must use with rotary_embedding_dim",
-            AttributeProto::INT,
-            OPTIONAL_VALUE)
-      .Attr("is_packed_batching",
-            "ragged batch inputs or not. Default value is 0",
-            AttributeProto::INT,
-            OPTIONAL_VALUE)
-      .Input(0,
-             "input",
-             "3D tensor with shape (batch_size, sequence_length, hidden_size) or 4D with shape (batch_size, num_heads, sequence_length, head_size)",
-             "T")
-      .Input(1,
-             "position_ids",
-             "1D tensor with shape (1) or 2D tensor with shape (batch_size, sequence_length)",
-             "M")
-      .Input(2,
-             "cos_cache",
-             "2D tensor with shape (max_sequence_length, head_size / 2) or (max_sequence_length, rotary_embedding_dim / 2)",
-             "T")
-      .Input(3,
-             "sin_cache",
-             "2D tensor with shape (max_sequence_length, head_size / 2) or (max_sequence_length, rotary_embedding_dim / 2)",
-             "T")
-      .Input(4, "prefill_numerics", "Optional CPU int32 scalar 0/1; one enables dense prefill arithmetic.", "TI", OpSchema::Optional)
-      .Output(0,
-              "output",
-              "tensor with same shape as input.",
-              "T")
-      .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output types to float tensors.")
-      .TypeConstraint("M", {"tensor(int64)"}, "Constrain input and output types to integer tensors")
-      .TypeConstraint("TI", {"tensor(int32)"}, "CPU numerical control.")
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        propagateElemTypeFromInputToOutput(ctx, 0, 0);
-        propagateShapeFromInputToOutput(ctx, 0, 0);
-      });
-}
-
-ONNX_MS_OPERATOR_SET_SCHEMA(RotaryEmbedding, 1, RotaryEmbeddingSchema());
 ONNX_MS_OPERATOR_SET_SCHEMA(
-    RotaryEmbedding, 2,
-    RotaryEmbeddingSchema()
-        .Attr("use_fp32_arithmetic",
-              "Widen input and cache values to float32, round each multiplication and addition in float32, "
-              "then convert the result to the input type. Values are 0 (legacy arithmetic) or 1. "
-              "Currently supported by CUDA only.",
-              AttributeProto::INT, static_cast<int64_t>(0)));
+    RotaryEmbedding, 1,
+    OpSchema()
+        .SetDoc(RotaryEmbedding_ver1_doc)
+        .Attr("scale",
+              "Custom scale will be used if specified. Default value is 1.0",
+              AttributeProto::FLOAT,
+              OPTIONAL_VALUE)
+        .Attr("interleaved",
+              "Indicates whether the input has real and imaginary parts interleaved. "
+              "Default value is 0 (False), meaning the first half of the input consists of real values "
+              "and the second half consists of imaginary values.",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
+        .Attr("rotary_embedding_dim",
+              "Rotary embedding dimension. Default value is 0.",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
+        .Attr("num_heads",
+              "Number of attention heads. Default value is 0. Must use with rotary_embedding_dim",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
+        .Attr("is_packed_batching",
+              "ragged batch inputs or not. Default value is 0",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
+        .Input(0,
+               "input",
+               "3D tensor with shape (batch_size, sequence_length, hidden_size) or 4D with shape (batch_size, num_heads, sequence_length, head_size)",
+               "T")
+        .Input(1,
+               "position_ids",
+               "1D tensor with shape (1) or 2D tensor with shape (batch_size, sequence_length)",
+               "M")
+        .Input(2,
+               "cos_cache",
+               "2D tensor with shape (max_sequence_length, head_size / 2) or (max_sequence_length, rotary_embedding_dim / 2)",
+               "T")
+        .Input(3,
+               "sin_cache",
+               "2D tensor with shape (max_sequence_length, head_size / 2) or (max_sequence_length, rotary_embedding_dim / 2)",
+               "T")
+        .Output(0,
+                "output",
+                "tensor with same shape as input.",
+                "T")
+        .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output types to float tensors.")
+        .TypeConstraint("M", {"tensor(int64)"}, "Constrain input and output types to integer tensors")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          propagateShapeFromInputToOutput(ctx, 0, 0);
+        }));
 
 constexpr const char* MRotaryEmbedding_ver1_doc = R"DOC(
 MRotaryEmbedding is the fused implementation of Multimodal Rotary Positional Embeddings (M-RoPE) used by the

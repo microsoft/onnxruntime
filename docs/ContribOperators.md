@@ -111,6 +111,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.QuantizeLinear">com.microsoft.QuantizeLinear</a>
   * <a href="#com.microsoft.QuantizeWithOrder">com.microsoft.QuantizeWithOrder</a>
   * <a href="#com.microsoft.QuickGelu">com.microsoft.QuickGelu</a>
+  * <a href="#com.microsoft.RMSNormRotary">com.microsoft.RMSNormRotary</a>
   * <a href="#com.microsoft.Range">com.microsoft.Range</a>
   * <a href="#com.microsoft.ReduceSumInteger">com.microsoft.ReduceSumInteger</a>
   * <a href="#com.microsoft.RelativePositionBias">com.microsoft.RelativePositionBias</a>
@@ -925,13 +926,15 @@ Other versions of this operator: com.microsoft.BranchwiseRMSNorm-1
 <dd>Use explicit FP32 mean/sqrt/divide/multiply arithmetic instead of reciprocal RMS. Supported values are 0 (default) and 1.</dd>
 </dl>
 
-#### Inputs (1 - 2)
+#### Inputs (1 - 3)
 
 <dl>
 <dt><tt>X</tt> : T</dt>
 <dd>Grouped (..., C, H) or flattened (..., C * H) input.</dd>
 <dt><tt>scale</tt> (optional) : M</dt>
 <dd>Optional scale with shape (C * H), (C, H), or (H).</dd>
+<dt><tt>prefill_numerics</tt> (optional) : TI</dt>
+<dd>Optional CPU int32 scalar 0/1; one enables dense prefill arithmetic.</dd>
 </dl>
 
 #### Outputs (1 - 2)
@@ -952,6 +955,8 @@ Other versions of this operator: com.microsoft.BranchwiseRMSNorm-1
 <dd>Constrain scale to floating-point tensors.</dd>
 <dt><tt>F</tt> : tensor(float)</dt>
 <dd>Widened output is float32.</dd>
+<dt><tt>TI</tt> : tensor(int32)</dt>
+<dd>CPU numerical control.</dd>
 </dl>
 
 
@@ -6942,6 +6947,71 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.RMSNormRotary"></a><a name="com.microsoft.rmsnormrotary">**com.microsoft.RMSNormRotary**</a>
+
+  CUDA BF16 ONNX-arithmetic RMS normalization followed by non-interleaved partial RoPE. Input is [B,S,heads,stride]; a contiguous last-axis slice is normalized with FP32 scale. Normalization rounds to BF16 before rotation. Output is flattened [B,S,heads*width]. Width 256 and more than one row use one kernel for FP32 decode rotary or prefill; other shapes and BF16 decode rotary reuse existing CUDA kernels. Prefill mode uses reciprocal-multiply normalization and BF16 rotary intermediates; decode uses division normalization and the selected rotary arithmetic.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>epsilon</tt> : float (default is 1e-06)</dt>
+<dd>Finite nonnegative RMS epsilon.</dd>
+<dt><tt>flatten_batch</tt> : int (default is 0)</dt>
+<dd>One flattens B*S to sequence and outputs [1,B*S,heads*width].</dd>
+<dt><tt>input_start</tt> : int (default is 0)</dt>
+<dd>Nonnegative start of normalized last-axis slice.</dd>
+<dt><tt>input_width</tt> : int (default is 0)</dt>
+<dd>Normalized width; zero uses the full last dimension.</dd>
+<dt><tt>rotary_embedding_dim</tt> : int</dt>
+<dd>Positive even rotary width, no larger than normalized width.</dd>
+<dt><tt>use_fp32_arithmetic</tt> : int (default is 1)</dt>
+<dd>Decode rotary FP32 (1) or BF16 intermediates (0).</dd>
+</dl>
+
+#### Inputs (5 - 6)
+
+<dl>
+<dt><tt>X</tt> : T</dt>
+<dd>BF16 input [B,S,heads,stride].</dd>
+<dt><tt>scale</tt> : F</dt>
+<dd>FP32 RMS scale [width].</dd>
+<dt><tt>position_ids</tt> : I</dt>
+<dd>One base position or [B,S] positions.</dd>
+<dt><tt>cosine</tt> : T</dt>
+<dd>BF16 cache [cache_rows,rotary_embedding_dim/2].</dd>
+<dt><tt>sine</tt> : T</dt>
+<dd>Same shape/type as cosine.</dd>
+<dt><tt>prefill_numerics</tt> (optional) : TI</dt>
+<dd>Optional CPU int32 scalar 0/1.</dd>
+</dl>
+
+#### Outputs (1 - 2)
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>Normalized and rotated [B,S,heads*width].</dd>
+<dt><tt>normalized_fp32</tt> (optional) : F</dt>
+<dd>Optional BF16-rounded normalized values widened to FP32, before rotation, [B,S,heads,width].</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(bfloat16)</dt>
+<dd>BF16 data.</dd>
+<dt><tt>F</tt> : tensor(float)</dt>
+<dd>FP32 scale and optional normalized output.</dd>
+<dt><tt>I</tt> : tensor(int64)</dt>
+<dd>Position indices.</dd>
+<dt><tt>TI</tt> : tensor(int32)</dt>
+<dd>Numerical control.</dd>
+</dl>
+
+
 ### <a name="com.microsoft.Range"></a><a name="com.microsoft.range">**com.microsoft.Range**</a>
 
   Creates a sequence of numbers that begins at `start` and extends by increments of `delta`
@@ -7197,9 +7267,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 #### Version
 
-This version of the operator has been available since version 2 of the 'com.microsoft' operator set.
-
-Other versions of this operator: com.microsoft.RotaryEmbedding-1
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
 
 #### Attributes
 
@@ -7214,8 +7282,6 @@ Other versions of this operator: com.microsoft.RotaryEmbedding-1
 <dd>Rotary embedding dimension. Default value is 0.</dd>
 <dt><tt>scale</tt> : float</dt>
 <dd>Custom scale will be used if specified. Default value is 1.0</dd>
-<dt><tt>use_fp32_arithmetic</tt> : int (default is 0)</dt>
-<dd>Widen input and cache values to float32, round each multiplication and addition in float32, then convert the result to the input type. Values are 0 (legacy arithmetic) or 1. Currently supported by CUDA only.</dd>
 </dl>
 
 #### Inputs
