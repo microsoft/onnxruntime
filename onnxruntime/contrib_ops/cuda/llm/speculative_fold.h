@@ -3,33 +3,21 @@
 
 #pragma once
 
-#include <cuda_bf16.h>
 #include <cuda_runtime.h>
-
 #include <cstdint>
-
 #include "core/common/status.h"
 
-namespace onnxruntime {
-namespace contrib {
-namespace cuda {
-namespace speculative_fold {
+namespace onnxruntime::contrib::cuda::speculative_fold {
 
-Status LaunchFoldMid2(const int64_t* next_tokens, const int64_t* input_ids,
-                      const int32_t* status, int status_count, const int64_t* ctl,
-                      const int64_t* ctx_commit, const int64_t* ctx_a, const int64_t* ctx_b,
-                      const int64_t* ptrs, const __nv_bfloat16* cos_cache,
-                      const __nv_bfloat16* sin_cache, int64_t* head_ids,
-                      int32_t* head_c, int64_t* slot_ids, int32_t* seqlens,
-                      __nv_bfloat16* cos_out, __nv_bfloat16* sin_out,
-                      int64_t* sel, int64_t* updated_ctl, int64_t* updated_ctx_commit,
-                      int64_t cache_positions, cudaStream_t stream);
+Status LaunchMid(const int64_t* tokens, const int64_t* ids, const int32_t* status, int status_count,
+                 int64_t* ctl, int64_t* context, const int64_t* prefixes, const int64_t* prefix2,
+                 const int64_t* ptrs, const uint16_t* cosine, const uint16_t* sine,
+                 int64_t* head_ids, int32_t* head_c, int64_t* slots, int32_t* lengths,
+                 uint16_t* head_cos, uint16_t* head_sin, int64_t* selection,
+                 const uint16_t* hidden, uint16_t* head_hidden, int64_t hidden_width,
+                 int rows, int head_rows, int rope_rows, int rope_width, int capacity, cudaStream_t stream);
 
-Status LaunchFoldTail(const int64_t* next_token, const int32_t* status,
-                      int status_count, const int64_t* ctl, int32_t* done, int64_t* updated_ctl,
-                      cudaStream_t stream);
+Status LaunchTail(const int64_t* token, const int32_t* status, int status_count, int64_t* ctl,
+                  const int64_t* ptrs, int32_t* done, int slot, cudaStream_t stream);
 
-}  // namespace speculative_fold
-}  // namespace cuda
-}  // namespace contrib
-}  // namespace onnxruntime
+}  // namespace onnxruntime::contrib::cuda::speculative_fold

@@ -1,9 +1,9 @@
-# CUDA speculative fold operators (version 2)
+# CUDA speculative fold operators
 
-`com.microsoft::FoldMid2` and `FoldTail` version 2 implement batch-one
+`com.microsoft::FoldMid2` and `FoldTail` schema version 1 implement batch-one
 speculative acceptance and result publication without a custom-op library.
-They extend the two-row version-1 design for two through four head rows,
-variable rotary width, configurable cache capacity, optional hidden-state
+This replaces the earlier two-row schema and supports two through four head
+rows, variable rotary width, configurable cache capacity, optional hidden-state
 padding, and deferred publication after downstream validation.
 
 `FoldMid2` takes verifier token predictions, input token IDs, status words,
@@ -19,7 +19,7 @@ and prefix contexts contain four pairs of int64 words.
 result-ring metadata. It returns a dependency token and updated control.
 The latter aliases input 2. `ctl_slot` selects word 2, 8, or 9. The tail writes
 the ring's sequence word only after a system fence, so host polling cannot
-observe a partial record. This differs from version 1, which published in mid.
+observe a partial record.
 
 The ring metadata is `[device_accessible_address, positive_record_capacity]`.
 Each record has eight int64 words. Its address must be aligned and its allocation
@@ -27,7 +27,10 @@ must hold the declared number of records; allocation ownership remains with
 the caller. Invalid length, rotary position, or ring metadata sets error bits
 4, 8, or 16, mutes control, and avoids unsafe ring access. Muted prefill uses
 zero positions/cache length and does not commit contexts or access ring metadata.
-The kernels do not allocate or synchronize the stream and support CUDA graph replay.
+Muted prefill may contain more verifier rows than `head_rows`; non-muted
+verification is limited to `head_rows`. The tail unions its downstream status
+with the verifier status stored by the mid stage. The kernels do not allocate
+or synchronize the stream and support CUDA graph replay.
 
 ## Migrating legacy packages
 
@@ -39,9 +42,12 @@ are available in the rebuilt ORT stack. Keep the required GenAI data-plane
 library: it is a runtime helper, not a custom-op registration library.
 
 Build ORT with CUDA and contrib operators enabled. The plugin build registers
-both schemas in the core and both kernels in the CUDA provider. Rebuild both,
+the schemas in the core and the kernels in the CUDA provider. Rebuild both,
 not just the provider. Ordinary upstream wheels do not contain these additions.
 
-`FoldContribV2Test.*` in `onnxruntime_provider_test` covers all S1-S4 prefix
+`FoldContribTest.*` in `onnxruntime_provider_test` covers all S1-S4 prefix
 lengths, hidden-row padding, deferred/wrapped publication, muted prefill, invalid
-metadata, status aggregation, tail slots, and captured-graph replay.
+metadata, verifier/downstream status union, tail slots, and captured-graph replay.
+`SpeculativeFoldTest.InferenceSessionLoadsVersionOneAndAcceptsMutedPrefillRows`
+loads and runs the version-1 schemas through `InferenceSession`, including
+muted prefill batches larger than `head_rows`.

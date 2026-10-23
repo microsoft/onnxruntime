@@ -35,7 +35,7 @@ namespace onnxruntime {
 namespace contrib {
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
-    FoldMid2, 2,
+    FoldMid2, 1,
     OpSchema()
         .SetDoc("Commits a batch-one speculative prefix and prepares rotary/head inputs for two through four head rows. "
                 "Control and committed-context outputs must alias their inputs on CUDA. This is stateful: callers "
@@ -105,7 +105,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
-    FoldTail, 2,
+    FoldTail, 1,
     OpSchema()
         .SetDoc("Updates the selected draft-control slot and publishes the result-ring sequence after validation. "
                 "updated_ctl must alias ctl on CUDA. Muted calls do not access the ring. Invalid ring metadata "

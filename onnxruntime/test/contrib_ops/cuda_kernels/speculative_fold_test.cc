@@ -1,329 +1,222 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <cuda_bf16.h>
 #include <cuda_runtime.h>
 #include <gtest/gtest.h>
-
 #include <algorithm>
-#include <array>
 #include <cstdint>
+#include <cstdio>
+#include <utility>
 #include <stdexcept>
 #include <vector>
-
 #include "contrib_ops/cuda/llm/speculative_fold.h"
 
-namespace onnxruntime {
-namespace test {
+namespace onnxruntime::test {
 namespace {
+namespace fold = contrib::cuda::speculative_fold;
 
-void CheckCuda(cudaError_t error) {
-  if (error != cudaSuccess) {
-    throw std::runtime_error(cudaGetErrorString(error));
-  }
+void Check(cudaError_t status) {
+  if (status != cudaSuccess) throw std::runtime_error(cudaGetErrorString(status));
 }
 
-class DeviceBuffer {
- public:
-  explicit DeviceBuffer(size_t size) {
-    CheckCuda(cudaMalloc(&data_, size));
+template <typename T>
+struct Buffer {
+  explicit Buffer(size_t count) : count(count) { Check(cudaMalloc(&data, count * sizeof(T))); }
+  ~Buffer() {
+    if (cudaFree(data) != cudaSuccess) std::fprintf(stderr, "Fold test cudaFree failed\n");
   }
-  ~DeviceBuffer() {
-    if (data_ != nullptr) {
-      cudaFree(data_);
-    }
+  Buffer(const Buffer&) = delete;
+  Buffer& operator=(const Buffer&) = delete;
+  void Upload(const std::vector<T>& values) {
+    ASSERT_EQ(values.size(), count);
+    Check(cudaMemcpy(data, values.data(), count * sizeof(T), cudaMemcpyHostToDevice));
   }
-  DeviceBuffer(const DeviceBuffer&) = delete;
-  DeviceBuffer& operator=(const DeviceBuffer&) = delete;
-
-  template <typename T>
-  T* As() const {
-    return reinterpret_cast<T*>(data_);
+  std::vector<T> Read() const {
+    std::vector<T> values(count);
+    Check(cudaMemcpy(values.data(), data, count * sizeof(T), cudaMemcpyDeviceToHost));
+    return values;
   }
-  void Upload(const void* source, size_t size) {
-    CheckCuda(cudaMemcpy(data_, source, size, cudaMemcpyHostToDevice));
-  }
-  void Download(void* destination, size_t size) const {
-    CheckCuda(cudaMemcpy(destination, data_, size, cudaMemcpyDeviceToHost));
-  }
-
- private:
-  void* data_ = nullptr;
+  T* data{};
+  size_t count;
 };
 
-class MappedRing {
- public:
-  explicit MappedRing(size_t element_count) : element_count_(element_count) {
-    CheckCuda(cudaHostAlloc(reinterpret_cast<void**>(&host_data_),
-                            element_count * sizeof(int64_t),
-                            cudaHostAllocMapped));
-    CheckCuda(cudaHostGetDevicePointer(reinterpret_cast<void**>(&device_data_),
-                                       host_data_, 0));
-    std::fill(host_data_, host_data_ + element_count_, int64_t{0});
-  }
-  ~MappedRing() {
-    if (host_data_ != nullptr) {
-      cudaFreeHost(host_data_);
+struct Fixture {
+  Buffer<int64_t> tokens{8}, ids{8}, ctl{16}, context{2}, prefixes{8}, prefix2{2}, ptrs{2}, ring{16};
+  Buffer<int32_t> status{2}, head_c{1}, lengths{1}, done{1};
+  Buffer<int64_t> head_ids{4}, slots{4}, selection{1};
+  Buffer<uint16_t> cosine{16 * 3}, sine{16 * 3}, head_cos{12}, head_sin{12}, hidden{24}, out_hidden{12};
+
+  void Reset(int rows, int accepted, bool muted = false, int64_t sequence = 0) {
+    std::vector<int64_t> predictions{10, 20, 30, 40, 50, 60, 70, 80};
+    std::vector<int64_t> input(8, -1);
+    input[0] = 99;
+    for (int i = 0; i < accepted; ++i) input[i + 1] = predictions[i];
+    tokens.Upload(predictions);
+    ids.Upload(input);
+    std::vector<int64_t> control(16, 0);
+    control[1] = 3;
+    control[3] = muted ? 1 : 0;
+    control[4] = sequence;
+    control[7] = 2;
+    ctl.Upload(control);
+    context.Upload({-1, -2});
+    prefixes.Upload({100, 101, 200, 201, 300, 301, 400, 401});
+    prefix2.Upload({200, 201});
+    ptrs.Upload({reinterpret_cast<int64_t>(ring.data), 2});
+    ring.Upload(std::vector<int64_t>(16, -7));
+    status.Upload({0, 0});
+    std::vector<uint16_t> cos(48), sin(48), h(24);
+    for (size_t i = 0; i < cos.size(); ++i) {
+      cos[i] = static_cast<uint16_t>(i + 1);
+      sin[i] = static_cast<uint16_t>(i + 100);
     }
+    for (size_t i = 0; i < h.size(); ++i) h[i] = static_cast<uint16_t>(i + 200);
+    cosine.Upload(cos);
+    sine.Upload(sin);
+    hidden.Upload(h);
+    (void)rows;
   }
-  MappedRing(const MappedRing&) = delete;
-  MappedRing& operator=(const MappedRing&) = delete;
 
-  int64_t* DeviceData() const { return device_data_; }
-  int64_t* HostData() const { return host_data_; }
-
- private:
-  size_t element_count_;
-  int64_t* host_data_ = nullptr;
-  int64_t* device_data_ = nullptr;
+  Status Mid(int rows, int heads, cudaStream_t stream = nullptr) {
+    return fold::LaunchMid(tokens.data, ids.data, status.data, 2, ctl.data, context.data,
+                           prefixes.data, prefix2.data, ptrs.data, cosine.data, sine.data,
+                           head_ids.data, head_c.data, slots.data, lengths.data, head_cos.data, head_sin.data,
+                           selection.data, hidden.data, out_hidden.data, 3, rows, heads, 16, 3, 16, stream);
+  }
+  Status Tail(int slot = 2, cudaStream_t stream = nullptr) {
+    return fold::LaunchTail(tokens.data, status.data, 2, ctl.data, ptrs.data, done.data, slot, stream);
+  }
 };
 
-std::vector<__nv_bfloat16> MakeCache(int positions, float base) {
-  std::vector<__nv_bfloat16> cache(static_cast<size_t>(positions) * 32);
-  for (int position = 0; position < positions; ++position) {
-    for (int feature = 0; feature < 32; ++feature) {
-      cache[static_cast<size_t>(position) * 32 + feature] =
-          __float2bfloat16(base + static_cast<float>(position * 32 + feature));
+class FoldContribTest : public testing::Test {
+ protected:
+  void SetUp() override {
+    int devices = 0;
+    if (cudaGetDeviceCount(&devices) != cudaSuccess || devices == 0) GTEST_SKIP() << "CUDA is required";
+  }
+};
+
+TEST_F(FoldContribTest, AllPrefixLengthsAndDeferredRingPublication) {
+  Fixture f;
+  for (int rows : {1, 2, 3, 4}) {
+    const int heads = std::max(2, rows);
+    for (int accepted = 0; accepted < rows; ++accepted) {
+      SCOPED_TRACE(testing::Message() << rows << "/" << accepted);
+      f.Reset(rows, accepted, false, 3);
+      ASSERT_TRUE(f.Mid(rows, heads).IsOK());
+      Check(cudaDeviceSynchronize());
+      EXPECT_EQ(f.selection.Read()[0], accepted);
+      EXPECT_EQ(f.context.Read(), (std::vector<int64_t>{100 * (accepted + 1), 100 * (accepted + 1) + 1}));
+      const auto ctl = f.ctl.Read();
+      EXPECT_EQ(ctl[0], 10 * (accepted + 1));
+      EXPECT_EQ(ctl[1], 4 + accepted);
+      EXPECT_EQ(ctl[7], 3 + accepted);
+      EXPECT_EQ(ctl[4], 4);
+      EXPECT_EQ(ctl[6], accepted);
+      auto record = f.ring.Read();
+      EXPECT_EQ(record[8], -7);
+      EXPECT_EQ(record[11], accepted);
+      EXPECT_EQ(record[13], 10 * (accepted + 1));
+      EXPECT_EQ(record[14], 4 + accepted);
+      if (rows > 2) {
+        const uint64_t packed = 30 | (rows > 3 ? uint64_t{40} << 32 : 0);
+        EXPECT_EQ(static_cast<uint64_t>(record[15]), packed);
+      }
+      ASSERT_TRUE(f.Tail().IsOK());
+      Check(cudaDeviceSynchronize());
+      EXPECT_EQ(f.ring.Read()[8], 4);
+      EXPECT_EQ(f.done.Read()[0], 0);
+      const auto cos = f.head_cos.Read();
+      EXPECT_EQ(cos[0], 13);
+      EXPECT_EQ(cos[3 * heads - 1], 12 + 3 * heads);
+      const auto hidden = f.out_hidden.Read();
+      for (int row = 0; row < heads; ++row)
+        for (int col = 0; col < 3; ++col)
+          EXPECT_EQ(hidden[row * 3 + col], 200 + std::min(row, rows - 1) * 3 + col);
     }
   }
-  return cache;
 }
 
-TEST(CUDA_EP_Unittest, FoldMid2AcceptCommitsStateAndPublishesRingRecord) {
-  using onnxruntime::contrib::cuda::speculative_fold::LaunchFoldMid2;
+TEST_F(FoldContribTest, MutedPrefillDoesNotAccessRingOrCommitContext) {
+  Fixture f;
+  f.Reset(8, 0, true);
+  f.ptrs.Upload({0, 0});
+  ASSERT_TRUE(f.Mid(8, 4).IsOK());
+  ASSERT_TRUE(f.Tail().IsOK());
+  Check(cudaDeviceSynchronize());
+  EXPECT_EQ(f.context.Read(), (std::vector<int64_t>{-1, -2}));
+  EXPECT_EQ(f.ctl.Read()[1], 3);
+  EXPECT_EQ(f.ctl.Read()[4], 0);
+  EXPECT_EQ(f.head_c.Read()[0], 0);
+  EXPECT_EQ(f.head_cos.Read()[0], 4);
+  EXPECT_EQ(f.selection.Read()[0], 0);
+}
 
-  constexpr int64_t kRingSize = 4;
-  const std::array<int64_t, 2> next_tokens = {7, 8};
-  const std::array<int64_t, 2> input_ids = {0, 7};
-  const std::array<int32_t, 2> status = {0, 4};
-  const std::array<int64_t, 8> ctl = {0, 10, 99, 0, 2, 0, 0, 5};
-  const std::array<int64_t, 2> ctx_commit = {1, 2};
-  const std::array<int64_t, 2> ctx_a = {11, 12};
-  const std::array<int64_t, 2> ctx_b = {21, 22};
-  MappedRing ring(kRingSize * 8);
-  const std::array<int64_t, 2> ptrs = {
-      static_cast<int64_t>(reinterpret_cast<intptr_t>(ring.DeviceData())),
-      kRingSize};
-  const auto cos_cache = MakeCache(16, 1000.0f);
-  const auto sin_cache = MakeCache(16, 2000.0f);
+TEST_F(FoldContribTest, InvalidDeviceMetadataMutesBeforeRingAccess) {
+  Fixture f;
+  for (int kind = 0; kind < 4; ++kind) {
+    f.Reset(4, 3);
+    auto ctl = f.ctl.Read();
+    const int bit = kind < 2 ? 16 : (kind == 2 ? 8 : 4);
+    if (kind == 0) f.ptrs.Upload({0, 0});
+    if (kind == 1) ctl[4] = INT64_MAX;
+    if (kind == 2) ctl[1] = INT64_MAX;
+    if (kind == 3) ctl[7] = -1;
+    f.ctl.Upload(ctl);
+    ASSERT_TRUE(f.Mid(4, 4).IsOK());
+    ASSERT_TRUE(f.Tail().IsOK());
+    Check(cudaDeviceSynchronize());
+    EXPECT_EQ(f.selection.Read()[0], -1);
+    EXPECT_EQ(f.ctl.Read()[5] & bit, bit);
+    EXPECT_EQ(f.ctl.Read()[3], 1);
+    EXPECT_EQ(f.context.Read(), (std::vector<int64_t>{-1, -2}));
+    EXPECT_EQ(f.ring.Read(), std::vector<int64_t>(16, -7));
+  }
+}
 
-  DeviceBuffer d_next_tokens(sizeof(next_tokens));
-  DeviceBuffer d_input_ids(sizeof(input_ids));
-  DeviceBuffer d_status(sizeof(status));
-  DeviceBuffer d_ctl(sizeof(ctl));
-  DeviceBuffer d_ctx_commit(sizeof(ctx_commit));
-  DeviceBuffer d_ctx_a(sizeof(ctx_a));
-  DeviceBuffer d_ctx_b(sizeof(ctx_b));
-  DeviceBuffer d_ptrs(sizeof(ptrs));
-  DeviceBuffer d_cos_cache(cos_cache.size() * sizeof(__nv_bfloat16));
-  DeviceBuffer d_sin_cache(sin_cache.size() * sizeof(__nv_bfloat16));
-  DeviceBuffer d_head_ids(2 * sizeof(int64_t));
-  DeviceBuffer d_head_c(sizeof(int32_t));
-  DeviceBuffer d_slot_ids(2 * sizeof(int64_t));
-  DeviceBuffer d_seqlens(sizeof(int32_t));
-  DeviceBuffer d_cos_out(2 * 32 * sizeof(__nv_bfloat16));
-  DeviceBuffer d_sin_out(2 * 32 * sizeof(__nv_bfloat16));
-  DeviceBuffer d_sel(sizeof(int64_t));
-
-  d_next_tokens.Upload(next_tokens.data(), sizeof(next_tokens));
-  d_input_ids.Upload(input_ids.data(), sizeof(input_ids));
-  d_status.Upload(status.data(), sizeof(status));
-  d_ctl.Upload(ctl.data(), sizeof(ctl));
-  d_ctx_commit.Upload(ctx_commit.data(), sizeof(ctx_commit));
-  d_ctx_a.Upload(ctx_a.data(), sizeof(ctx_a));
-  d_ctx_b.Upload(ctx_b.data(), sizeof(ctx_b));
-  d_ptrs.Upload(ptrs.data(), sizeof(ptrs));
-  d_cos_cache.Upload(cos_cache.data(), cos_cache.size() * sizeof(__nv_bfloat16));
-  d_sin_cache.Upload(sin_cache.data(), sin_cache.size() * sizeof(__nv_bfloat16));
-
-  const Status launch_status = LaunchFoldMid2(
-      d_next_tokens.As<int64_t>(), d_input_ids.As<int64_t>(),
-      d_status.As<int32_t>(), static_cast<int>(status.size()),
-      d_ctl.As<int64_t>(), d_ctx_commit.As<int64_t>(),
-      d_ctx_a.As<int64_t>(), d_ctx_b.As<int64_t>(), d_ptrs.As<int64_t>(),
-      d_cos_cache.As<__nv_bfloat16>(), d_sin_cache.As<__nv_bfloat16>(),
-      d_head_ids.As<int64_t>(), d_head_c.As<int32_t>(),
-      d_slot_ids.As<int64_t>(), d_seqlens.As<int32_t>(),
-      d_cos_out.As<__nv_bfloat16>(), d_sin_out.As<__nv_bfloat16>(),
-      d_sel.As<int64_t>(), d_ctl.As<int64_t>(), d_ctx_commit.As<int64_t>(), 16, nullptr);
-  ASSERT_TRUE(launch_status.IsOK()) << launch_status.ErrorMessage();
-  CheckCuda(cudaStreamSynchronize(nullptr));
-
-  std::array<int64_t, 8> actual_ctl{};
-  std::array<int64_t, 2> actual_ctx_commit{};
-  std::array<int64_t, 2> actual_head_ids{};
-  std::array<int64_t, 2> actual_slot_ids{};
-  std::array<int64_t, 1> actual_sel{};
-  std::array<int32_t, 1> actual_head_c{};
-  std::array<int32_t, 1> actual_seqlens{};
-  std::array<__nv_bfloat16, 64> actual_cos{};
-  std::array<__nv_bfloat16, 64> actual_sin{};
-  d_ctl.Download(actual_ctl.data(), sizeof(actual_ctl));
-  d_ctx_commit.Download(actual_ctx_commit.data(), sizeof(actual_ctx_commit));
-  d_head_ids.Download(actual_head_ids.data(), sizeof(actual_head_ids));
-  d_head_c.Download(actual_head_c.data(), sizeof(actual_head_c));
-  d_slot_ids.Download(actual_slot_ids.data(), sizeof(actual_slot_ids));
-  d_seqlens.Download(actual_seqlens.data(), sizeof(actual_seqlens));
-  d_cos_out.Download(actual_cos.data(), sizeof(actual_cos));
-  d_sin_out.Download(actual_sin.data(), sizeof(actual_sin));
-  d_sel.Download(actual_sel.data(), sizeof(actual_sel));
-
-  EXPECT_EQ(actual_head_ids, (std::array<int64_t, 2>{7, 8}));
-  EXPECT_EQ(actual_head_c[0], 5);
-  EXPECT_EQ(actual_slot_ids, (std::array<int64_t, 2>{5, 6}));
-  EXPECT_EQ(actual_seqlens[0], 6);
-  EXPECT_EQ(actual_sel[0], 1);
-  EXPECT_EQ(actual_ctx_commit, (std::array<int64_t, 2>{21, 22}));
-  EXPECT_EQ(actual_ctl[0], 8);
-  EXPECT_EQ(actual_ctl[1], 12);
-  EXPECT_EQ(actual_ctl[4], 3);
-  EXPECT_EQ(actual_ctl[5], 2);
-  EXPECT_EQ(actual_ctl[6], 1);
-  EXPECT_EQ(actual_ctl[7], 7);
-
-  for (int row = 0; row < 2; ++row) {
-    for (int feature = 0; feature < 32; ++feature) {
-      const size_t index = static_cast<size_t>(row) * 32 + feature;
-      EXPECT_EQ(__bfloat162float(actual_cos[index]),
-                __bfloat162float(cos_cache[static_cast<size_t>(11 + row) * 32 + feature]));
-      EXPECT_EQ(__bfloat162float(actual_sin[index]),
-                __bfloat162float(sin_cache[static_cast<size_t>(11 + row) * 32 + feature]));
+TEST_F(FoldContribTest, TailSlotsAndValidationArePublished) {
+  Fixture f;
+  for (int slot : {2, 8, 9}) {
+    for (const auto& statuses : {std::pair{std::vector<int32_t>{0, 0}, std::vector<int32_t>{4, 8}},
+                                 std::pair{std::vector<int32_t>{1, 4}, std::vector<int32_t>{0, 8}}}) {
+      f.Reset(4, 2);
+      f.status.Upload(statuses.first);
+      ASSERT_TRUE(f.Mid(4, 4).IsOK());
+      Check(cudaDeviceSynchronize());
+      f.status.Upload(statuses.second);
+      ASSERT_TRUE(f.Tail(slot).IsOK());
+      Check(cudaDeviceSynchronize());
+      const int32_t combined = statuses.first[0] | statuses.first[1] | statuses.second[0] | statuses.second[1];
+      EXPECT_EQ(f.ctl.Read()[slot], 10);
+      EXPECT_EQ(f.ctl.Read()[5], combined ? 2 : 0);
+      EXPECT_EQ(f.ring.Read()[4], combined | (combined ? 2 : 0));
+      EXPECT_EQ(f.ring.Read()[0], 1);
     }
   }
-
-  const int64_t* record = ring.HostData() + 8 * 2;
-  EXPECT_EQ(record[0], 3);
-  EXPECT_EQ(record[1], 7);
-  EXPECT_EQ(record[2], 8);
-  EXPECT_EQ(record[3], 1);
-  EXPECT_EQ(record[4], 4);
-  EXPECT_EQ(record[5], 8);
-  EXPECT_EQ(record[6], 12);
 }
 
-TEST(CUDA_EP_Unittest, FoldMid2MutedRejectDoesNotCommitState) {
-  using onnxruntime::contrib::cuda::speculative_fold::LaunchFoldMid2;
-
-  const std::array<int64_t, 2> next_tokens = {5, 6};
-  const std::array<int64_t, 2> input_ids = {0, 7};
-  const std::array<int32_t, 1> status = {0};
-  const std::array<int64_t, 8> ctl = {0, 4, 9, 1, 1, 0, 0, 2};
-  const std::array<int64_t, 2> ctx_commit = {31, 32};
-  const std::array<int64_t, 2> ctx_a = {41, 42};
-  const std::array<int64_t, 2> ctx_b = {51, 52};
-  MappedRing ring(8 * 8);
-  std::fill(ring.HostData(), ring.HostData() + 8 * 8, int64_t{-1});
-  const std::array<int64_t, 2> ptrs = {
-      static_cast<int64_t>(reinterpret_cast<intptr_t>(ring.DeviceData())), 8};
-  const auto cos_cache = MakeCache(16, 1000.0f);
-  const auto sin_cache = MakeCache(16, 2000.0f);
-
-  DeviceBuffer d_next_tokens(sizeof(next_tokens));
-  DeviceBuffer d_input_ids(sizeof(input_ids));
-  DeviceBuffer d_status(sizeof(status));
-  DeviceBuffer d_ctl(sizeof(ctl));
-  DeviceBuffer d_ctx_commit(sizeof(ctx_commit));
-  DeviceBuffer d_ctx_a(sizeof(ctx_a));
-  DeviceBuffer d_ctx_b(sizeof(ctx_b));
-  DeviceBuffer d_ptrs(sizeof(ptrs));
-  DeviceBuffer d_cos_cache(cos_cache.size() * sizeof(__nv_bfloat16));
-  DeviceBuffer d_sin_cache(sin_cache.size() * sizeof(__nv_bfloat16));
-  DeviceBuffer d_head_ids(2 * sizeof(int64_t));
-  DeviceBuffer d_head_c(sizeof(int32_t));
-  DeviceBuffer d_slot_ids(2 * sizeof(int64_t));
-  DeviceBuffer d_seqlens(sizeof(int32_t));
-  DeviceBuffer d_cos_out(2 * 32 * sizeof(__nv_bfloat16));
-  DeviceBuffer d_sin_out(2 * 32 * sizeof(__nv_bfloat16));
-  DeviceBuffer d_sel(sizeof(int64_t));
-
-  d_next_tokens.Upload(next_tokens.data(), sizeof(next_tokens));
-  d_input_ids.Upload(input_ids.data(), sizeof(input_ids));
-  d_status.Upload(status.data(), sizeof(status));
-  d_ctl.Upload(ctl.data(), sizeof(ctl));
-  d_ctx_commit.Upload(ctx_commit.data(), sizeof(ctx_commit));
-  d_ctx_a.Upload(ctx_a.data(), sizeof(ctx_a));
-  d_ctx_b.Upload(ctx_b.data(), sizeof(ctx_b));
-  d_ptrs.Upload(ptrs.data(), sizeof(ptrs));
-  d_cos_cache.Upload(cos_cache.data(), cos_cache.size() * sizeof(__nv_bfloat16));
-  d_sin_cache.Upload(sin_cache.data(), sin_cache.size() * sizeof(__nv_bfloat16));
-
-  const Status launch_status = LaunchFoldMid2(
-      d_next_tokens.As<int64_t>(), d_input_ids.As<int64_t>(),
-      d_status.As<int32_t>(), static_cast<int>(status.size()),
-      d_ctl.As<int64_t>(), d_ctx_commit.As<int64_t>(),
-      d_ctx_a.As<int64_t>(), d_ctx_b.As<int64_t>(), d_ptrs.As<int64_t>(),
-      d_cos_cache.As<__nv_bfloat16>(), d_sin_cache.As<__nv_bfloat16>(),
-      d_head_ids.As<int64_t>(), d_head_c.As<int32_t>(),
-      d_slot_ids.As<int64_t>(), d_seqlens.As<int32_t>(),
-      d_cos_out.As<__nv_bfloat16>(), d_sin_out.As<__nv_bfloat16>(),
-      d_sel.As<int64_t>(), d_ctl.As<int64_t>(), d_ctx_commit.As<int64_t>(), 16, nullptr);
-  ASSERT_TRUE(launch_status.IsOK()) << launch_status.ErrorMessage();
-  CheckCuda(cudaStreamSynchronize(nullptr));
-
-  std::array<int64_t, 8> actual_ctl{};
-  std::array<int64_t, 2> actual_ctx_commit{};
-  std::array<int64_t, 2> actual_head_ids{};
-  std::array<int64_t, 2> actual_slot_ids{};
-  std::array<int64_t, 1> actual_sel{};
-  d_ctl.Download(actual_ctl.data(), sizeof(actual_ctl));
-  d_ctx_commit.Download(actual_ctx_commit.data(), sizeof(actual_ctx_commit));
-  d_head_ids.Download(actual_head_ids.data(), sizeof(actual_head_ids));
-  d_slot_ids.Download(actual_slot_ids.data(), sizeof(actual_slot_ids));
-  d_sel.Download(actual_sel.data(), sizeof(actual_sel));
-
-  EXPECT_EQ(actual_ctl, ctl);
-  EXPECT_EQ(actual_ctx_commit, ctx_commit);
-  EXPECT_EQ(actual_head_ids, (std::array<int64_t, 2>{5, 6}));
-  EXPECT_EQ(actual_slot_ids, (std::array<int64_t, 2>{2, 3}));
-  EXPECT_EQ(actual_sel[0], 0);
-  EXPECT_TRUE(std::all_of(ring.HostData(), ring.HostData() + 8 * 8,
-                          [](int64_t value) { return value == -1; }));
+TEST_F(FoldContribTest, CapturedGraphReplaysWithFreshAcceptance) {
+  Fixture f;
+  cudaStream_t stream{};
+  cudaGraph_t graph{};
+  cudaGraphExec_t executable{};
+  Check(cudaStreamCreate(&stream));
+  f.Reset(4, 0);
+  Check(cudaStreamBeginCapture(stream, cudaStreamCaptureModeThreadLocal));
+  ASSERT_TRUE(f.Mid(4, 4, stream).IsOK());
+  ASSERT_TRUE(f.Tail(2, stream).IsOK());
+  Check(cudaStreamEndCapture(stream, &graph));
+  Check(cudaGraphInstantiate(&executable, graph, nullptr, nullptr, 0));
+  for (int accepted : {0, 3, 1, 2}) {
+    f.Reset(4, accepted);
+    Check(cudaGraphLaunch(executable, stream));
+    Check(cudaStreamSynchronize(stream));
+    EXPECT_EQ(f.selection.Read()[0], accepted);
+    EXPECT_EQ(f.ring.Read()[0], 1);
+  }
+  Check(cudaGraphExecDestroy(executable));
+  Check(cudaGraphDestroy(graph));
+  Check(cudaStreamDestroy(stream));
 }
-
-TEST(CUDA_EP_Unittest, FoldTailUpdatesDraftAndHonorsMute) {
-  using onnxruntime::contrib::cuda::speculative_fold::LaunchFoldTail;
-
-  const int64_t next_token = 42;
-  const std::array<int32_t, 2> status = {0, 4};
-  std::array<int64_t, 8> ctl = {0, 10, 9, 0, 3, 1, 0, 5};
-  DeviceBuffer d_next_token(sizeof(next_token));
-  DeviceBuffer d_status(sizeof(status));
-  DeviceBuffer d_ctl(sizeof(ctl));
-  DeviceBuffer d_done(sizeof(int32_t));
-  d_next_token.Upload(&next_token, sizeof(next_token));
-  d_status.Upload(status.data(), sizeof(status));
-  d_ctl.Upload(ctl.data(), sizeof(ctl));
-
-  Status launch_status = LaunchFoldTail(
-      d_next_token.As<int64_t>(), d_status.As<int32_t>(),
-      static_cast<int>(status.size()), d_ctl.As<int64_t>(),
-      d_done.As<int32_t>(), d_ctl.As<int64_t>(), nullptr);
-  ASSERT_TRUE(launch_status.IsOK()) << launch_status.ErrorMessage();
-  CheckCuda(cudaStreamSynchronize(nullptr));
-
-  std::array<int64_t, 8> actual_ctl{};
-  int32_t done = 0;
-  d_ctl.Download(actual_ctl.data(), sizeof(actual_ctl));
-  d_done.Download(&done, sizeof(done));
-  EXPECT_EQ(done, 1);
-  EXPECT_EQ(actual_ctl[2], 42);
-  EXPECT_EQ(actual_ctl[5], 3);
-
-  ctl[2] = 17;
-  ctl[3] = 1;
-  d_ctl.Upload(ctl.data(), sizeof(ctl));
-  launch_status = LaunchFoldTail(
-      d_next_token.As<int64_t>(), d_status.As<int32_t>(),
-      static_cast<int>(status.size()), d_ctl.As<int64_t>(),
-      d_done.As<int32_t>(), d_ctl.As<int64_t>(), nullptr);
-  ASSERT_TRUE(launch_status.IsOK()) << launch_status.ErrorMessage();
-  CheckCuda(cudaStreamSynchronize(nullptr));
-  d_ctl.Download(actual_ctl.data(), sizeof(actual_ctl));
-  d_done.Download(&done, sizeof(done));
-  EXPECT_EQ(done, 0);
-  EXPECT_EQ(actual_ctl, ctl);
-}
-
 }  // namespace
-}  // namespace test
-}  // namespace onnxruntime
+}  // namespace onnxruntime::test

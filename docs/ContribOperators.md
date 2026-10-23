@@ -2104,117 +2104,129 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.FoldMid2"></a><a name="com.microsoft.foldmid2">**com.microsoft.FoldMid2**</a>
 
-  Combines speculative-token acceptance, recurrent-state commit bookkeeping, and head rotary-cache lookup for a
-  two-token verification step. Updated control and committed context are returned explicitly; CUDA may reuse
-  their input buffers. When ctl[3] is nonzero, state is preserved unless validation fails.
-  The pointer tensor contains the device-accessible result-ring address and its positive record capacity;
-  ctl[4] must be a nonnegative record counter below INT64_MAX. The caller must supply an aligned device-accessible
-  allocation holding capacity * 8 int64 elements. Both rotary positions ctl[1]+1 and ctl[1]+2 must be in range.
-  Invalid head-cache length, rotary positions, or ring metadata set error bits 4, 8, or 16 respectively in
-  updated_ctl[5], set updated_ctl[3]=1 (muted), and return sel=-1 with zero head/rotary outputs, without committing
-  context or accessing the ring. Ring metadata is not accessed on muted calls.
+  Commits a batch-one speculative prefix and prepares rotary/head inputs for two through four head rows. Control and committed-context outputs must alias their inputs on CUDA. This is stateful: callers must serialize access to these buffers. The result-ring address must identify a device-accessible, aligned allocation of capacity*8 int64 words. The mid stage writes the payload; FoldTail publishes its sequence word after downstream validation. Muted prefill calls prepare inputs without committing state or touching ring metadata. Invalid device metadata sets error bits and mutes execution.
 
 #### Version
 
 This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
 
-#### Inputs
+#### Attributes
+
+<dl>
+<dt><tt>head_capacity</tt> : int (default is 33028)</dt>
+<dd>Maximum head-cache token capacity.</dd>
+<dt><tt>head_rows</tt> : int (default is 2)</dt>
+<dd>Fixed number of head rows, 2 through 4.</dd>
+</dl>
+
+#### Inputs (10 - 11)
 
 <dl>
 <dt><tt>next_tokens</tt> : I64</dt>
-<dd>Two predicted token IDs.</dd>
+<dd>Verifier predictions, batch one.</dd>
 <dt><tt>input_ids</tt> : I64</dt>
-<dd>Two input token IDs; input_ids[1] is the draft token.</dd>
+<dd>Verifier input IDs.</dd>
 <dt><tt>status</tt> : I32</dt>
-<dd>Status values aggregated into the result record.</dd>
+<dd>Verifier status words.</dd>
 <dt><tt>ctl</tt> : I64</dt>
-<dd>Eight-element control state.</dd>
+<dd>Mutable control state: at least 8 words for S2, 16 for S3/S4.</dd>
 <dt><tt>ctx_commit</tt> : I64</dt>
-<dd>Two-element committed context.</dd>
-<dt><tt>ctx_a</tt> : I64</dt>
-<dd>Context selected when the draft is rejected.</dd>
-<dt><tt>ctx_b</tt> : I64</dt>
-<dd>Context selected when the draft is accepted.</dd>
+<dd>Mutable committed context, two words.</dd>
+<dt><tt>prefixes</tt> : I64</dt>
+<dd>Two-word context for each accepted-prefix length; S2 needs only the first.</dd>
+<dt><tt>prefix2</tt> : I64</dt>
+<dd>Two-word context for acceptance length one.</dd>
 <dt><tt>ptrs</tt> : I64</dt>
-<dd>Device pointers containing the result-ring address and capacity.</dd>
+<dd>Result ring address and positive record capacity.</dd>
 <dt><tt>cos_cache</tt> : B</dt>
-<dd>BFloat16 rotary cosine cache with shape [positions, 32].</dd>
+<dd>Rotary cosine cache [positions, width].</dd>
 <dt><tt>sin_cache</tt> : B</dt>
-<dd>BFloat16 rotary sine cache with shape [positions, 32].</dd>
+<dd>Rotary sine cache [positions, width].</dd>
+<dt><tt>hidden</tt> (optional) : B</dt>
+<dd>Optional hidden states [1, verifier_rows, ...].</dd>
 </dl>
 
 #### Outputs
 
 <dl>
 <dt><tt>head_ids</tt> : I64</dt>
-<dd>Two token IDs consumed by the head.</dd>
+<dd>Head token IDs [1, head_rows].</dd>
 <dt><tt>head_c</tt> : I32</dt>
-<dd>Current head-cache length.</dd>
+<dd>Head committed length [1].</dd>
 <dt><tt>slot_ids</tt> : I64</dt>
-<dd>Two consecutive head-cache slots.</dd>
+<dd>Head slots [1, head_rows].</dd>
 <dt><tt>seqlens</tt> : I32</dt>
-<dd>Head sequence length.</dd>
+<dd>Head sequence length [1].</dd>
 <dt><tt>cos_out</tt> : B</dt>
-<dd>Two rows of rotary cosine values.</dd>
+<dd>Gathered rotary cosine [1, head_rows, width].</dd>
 <dt><tt>sin_out</tt> : B</dt>
-<dd>Two rows of rotary sine values.</dd>
+<dd>Gathered rotary sine [1, head_rows, width].</dd>
 <dt><tt>sel</tt> : I64</dt>
-<dd>Selected row: one when accepted, zero when rejected, or -1 on invalid metadata.</dd>
+<dd>Accepted-prefix length, or -1 on invalid metadata.</dd>
+<dt><tt>head_hidden</tt> (optional) : B</dt>
+<dd>Hidden rows, repeating the last source row when necessary.</dd>
 <dt><tt>updated_ctl</tt> : I64</dt>
-<dd>Updated control state with the same shape as ctl.</dd>
+<dd>Updated control state, aliases ctl.</dd>
 <dt><tt>updated_ctx_commit</tt> : I64</dt>
-<dd>Updated committed context with the same shape as ctx_commit.</dd>
+<dd>Updated context, aliases ctx_commit.</dd>
 </dl>
 
 #### Type Constraints
 
 <dl>
 <dt><tt>I64</tt> : tensor(int64)</dt>
-<dd>Constrain control and token tensors to int64.</dd>
+<dd>Token and control words.</dd>
 <dt><tt>I32</tt> : tensor(int32)</dt>
-<dd>Constrain status and sequence tensors to int32.</dd>
+<dd>Status and sequence lengths.</dd>
 <dt><tt>B</tt> : tensor(bfloat16)</dt>
-<dd>Constrain rotary cache tensors to bfloat16.</dd>
+<dd>Rotary and hidden tensors.</dd>
 </dl>
 
 
 ### <a name="com.microsoft.FoldTail"></a><a name="com.microsoft.foldtail">**com.microsoft.FoldTail**</a>
 
-  Updates the next speculative draft token and aggregate error bit from the head result. The eight-element control
-  tensor is returned as updated_ctl, with supported CUDA input-buffer reuse. When ctl[3] is zero, the draft token
-  is updated and nonzero status sets error bit 2; muted calls return done=0 and preserve the control state.
+  Updates the selected draft-control slot and publishes the result-ring sequence after validation. updated_ctl must alias ctl on CUDA. Muted calls do not access the ring. Invalid ring metadata sets error bit 16 and mutes execution. done is a dependency output initialized to zero.
 
 #### Version
 
 This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
 
+#### Attributes
+
+<dl>
+<dt><tt>ctl_slot</tt> : int (default is 2)</dt>
+<dd>Draft-control slot: 2, 8 or 9.</dd>
+</dl>
+
 #### Inputs
 
 <dl>
 <dt><tt>next_token</tt> : I64</dt>
-<dd>Next draft token ID.</dd>
+<dd>Next draft token (or ignored selector in DFlash).</dd>
 <dt><tt>status</tt> : I32</dt>
-<dd>Head status values.</dd>
+<dd>Downstream validation status words.</dd>
 <dt><tt>ctl</tt> : I64</dt>
-<dd>Eight-element control state.</dd>
+<dd>Mutable control state.</dd>
+<dt><tt>ptrs</tt> : I64</dt>
+<dd>Result ring address and record capacity.</dd>
 </dl>
 
 #### Outputs
 
 <dl>
 <dt><tt>done</tt> : I32</dt>
-<dd>One when the control state was updated; zero for muted calls.</dd>
+<dd>Dependency output [1].</dd>
 <dt><tt>updated_ctl</tt> : I64</dt>
-<dd>Updated control state with the same shape as ctl.</dd>
+<dd>Updated control state, aliases ctl.</dd>
 </dl>
 
 #### Type Constraints
 
 <dl>
 <dt><tt>I64</tt> : tensor(int64)</dt>
-<dd>Constrain token and control tensors to int64.</dd>
+<dd>Token and control words.</dd>
 <dt><tt>I32</tt> : tensor(int32)</dt>
-<dd>Constrain status and output tensors to int32.</dd>
+<dd>Status and dependency output.</dd>
 </dl>
 
 
