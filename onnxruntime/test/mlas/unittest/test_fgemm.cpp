@@ -40,6 +40,11 @@ static size_t FGemmRegistLongExecute() {
     count += MlasLongExecuteTests<MlasFgemmTest<float, true, true>>::RegisterLongExecute();
   }
 
+#if defined(MLAS_USE_SVE)
+  count += MlasLongExecuteTests<MlasFgemmTest<float, false, false, true>>::RegisterLongExecute();
+  count += MlasLongExecuteTests<MlasFgemmTest<float, true, false, true>>::RegisterLongExecute();
+#endif
+
 #ifdef MLAS_SUPPORTS_GEMM_DOUBLE
 
   count += MlasLongExecuteTests<MlasFgemmTest<double, false, false>>::RegisterLongExecute();
@@ -62,6 +67,15 @@ static size_t FGemmRegistShortExecute() {
     count += FgemmShortExecuteTest<float, false, true>::RegisterShortExecuteTests();
     count += FgemmShortExecuteTest<float, true, true>::RegisterShortExecuteTests();
   }
+
+#if defined(MLAS_USE_SVE)
+  count += FgemmShortExecuteTest<float, false, false, true>::RegisterShortExecuteTests();
+  count += FgemmShortExecuteTest<float, true, false, true>::RegisterShortExecuteTests();
+  if (GetMlasThreadPool() != nullptr) {
+    count += FgemmShortExecuteTest<float, false, true, true>::RegisterShortExecuteTests();
+    count += FgemmShortExecuteTest<float, true, true, true>::RegisterShortExecuteTests();
+  }
+#endif
 
 #ifdef MLAS_SUPPORTS_GEMM_DOUBLE
 

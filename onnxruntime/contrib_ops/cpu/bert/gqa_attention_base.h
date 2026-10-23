@@ -1281,6 +1281,7 @@ class GQAAttentionBase {
       args.attention_bias_broadcast_head = attention_bias_broadcast_head;
       args.flash_decoding_partials = partials_ptr;
       args.kv_chunk_count = kv_chunk_count;
+      args.BackendKernelSelectorConfig = &mlas_backend_kernel_selector_config_;
 
       MlasFlashAttentionGQA(&args, tp);
     } else {
@@ -1338,6 +1339,7 @@ class GQAAttentionBase {
         args.attention_bias_broadcast_head = attention_bias_broadcast_head;
         args.flash_decoding_partials = nullptr;  // per-batch doesn't use flash decoding
         args.kv_chunk_count = 0;
+        args.BackendKernelSelectorConfig = &mlas_backend_kernel_selector_config_;
 
         MlasFlashAttentionGQA(&args, tp);
       }

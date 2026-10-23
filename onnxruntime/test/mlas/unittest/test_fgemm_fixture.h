@@ -11,15 +11,15 @@
 //
 // Short Execute() test helper to register each test separately by all parameters.
 //
-template <typename T, bool Packed, bool Threaded>
-class FgemmShortExecuteTest : public MlasTestFixture<MlasFgemmTest<T, Packed, Threaded>> {
+template <typename T, bool Packed, bool Threaded, bool Sve = false>
+class FgemmShortExecuteTest : public MlasTestFixture<MlasFgemmTest<T, Packed, Threaded, Sve>> {
  public:
   explicit FgemmShortExecuteTest(bool trans_a, bool trans_b, size_t M, size_t N, size_t K, size_t BatchSize, float alpha, float beta)
       : trans_a_(trans_a), trans_b_(trans_b), M_(M), N_(N), K_(K), Batch_(BatchSize), alpha_(alpha), beta_(beta) {
   }
 
   void TestBody() override {
-    MlasTestFixture<MlasFgemmTest<T, Packed, Threaded>>::mlas_tester->Test(
+    MlasTestFixture<MlasFgemmTest<T, Packed, Threaded, Sve>>::mlas_tester->Test(
         trans_a_, trans_b_, M_, N_, K_, Batch_, alpha_, beta_);
   }
 
@@ -33,15 +33,15 @@ class FgemmShortExecuteTest : public MlasTestFixture<MlasFgemmTest<T, Packed, Th
     auto test_name = ss.str();
 
     testing::RegisterTest(
-        MlasFgemmTest<T, Packed, Threaded>::GetTestSuiteName(),
+        MlasFgemmTest<T, Packed, Threaded, Sve>::GetTestSuiteName(),
         test_name.c_str(),
         nullptr,
         test_name.c_str(),
         __FILE__,
         __LINE__,
         // Important to use the fixture type as the return type here.
-        [=]() -> MlasTestFixture<MlasFgemmTest<T, Packed, Threaded>>* {
-          return new FgemmShortExecuteTest<T, Packed, Threaded>(
+        [=]() -> MlasTestFixture<MlasFgemmTest<T, Packed, Threaded, Sve>>* {
+          return new FgemmShortExecuteTest<T, Packed, Threaded, Sve>(
               trans_a, trans_b, M, N, K, BatchSize, alpha, beta);
         });
     return 1;
@@ -93,6 +93,15 @@ class FgemmShortExecuteTest : public MlasTestFixture<MlasFgemmTest<T, Packed, Th
       test_registered += RegisterTestTransposeABProduct(1, 64, 31, batch_size, 0.0f, -1.0f);
       test_registered += RegisterTestTransposeABProduct(64, 1, 31, batch_size, 0.5f, 0.5f);
       test_registered += RegisterTestTransposeABProduct(1, 1, 31, batch_size, 0.0f, 0.25f);
+    }
+
+    // Small K with N wide enough for the SVE small-K kernel at any vector
+    // length and past its column block (1024 floats at K == 8, 2048 at
+    // K == 4), five rows for a partial four-row block, and each beta mode.
+    for (size_t k : {1u, 4u, 8u}) {
+      test_registered += RegisterTestTransposeABProduct(5, 2100, k, 1, 1.0f, 0.0f);
+      test_registered += RegisterTestTransposeABProduct(5, 2100, k, 1, 0.5f, 1.0f);
+      test_registered += RegisterTestTransposeABProduct(5, 2100, k, 1, 1.0f, 0.25f);
     }
 
     return test_registered;

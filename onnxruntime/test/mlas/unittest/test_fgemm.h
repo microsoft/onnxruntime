@@ -40,7 +40,8 @@ class FgemmPackedContext<float, false> {
       const float beta,
       float* C,
       size_t ldc,
-      MLAS_THREADPOOL* threadpool) {
+      MLAS_THREADPOOL* threadpool,
+      const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* config = nullptr) {
     std::vector<MLAS_SGEMM_DATA_PARAMS> data(BatchSize);
     for (size_t i = 0; i < BatchSize; i++) {
       data[i].A = A + M * K * i;
@@ -52,7 +53,7 @@ class FgemmPackedContext<float, false> {
       data[i].alpha = alpha;
       data[i].beta = beta;
     }
-    MlasGemmBatch(TransA, TransB, M, N, K, data.data(), BatchSize, threadpool, nullptr);
+    MlasGemmBatch(TransA, TransB, M, N, K, data.data(), BatchSize, threadpool, config);
   }
 };
 
@@ -75,7 +76,8 @@ class FgemmPackedContext<double, false> {
       double beta,
       double* C,
       size_t ldc,
-      MLAS_THREADPOOL* threadpool) {
+      MLAS_THREADPOOL* threadpool,
+      const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* config = nullptr) {
     std::vector<MLAS_DGEMM_DATA_PARAMS> data(BatchSize);
     for (size_t i = 0; i < BatchSize; i++) {
       data[i].A = A + M * K * i;
@@ -87,6 +89,7 @@ class FgemmPackedContext<double, false> {
       data[i].alpha = alpha;
       data[i].beta = beta;
     }
+    (void)config;
     MlasGemmBatch(TransA, TransB, M, N, K, data.data(), BatchSize, threadpool);
   }
 };
@@ -111,12 +114,13 @@ class FgemmPackedContext<float, true> {
       const float beta,
       float* C,
       size_t ldc,
-      MLAS_THREADPOOL* threadpool) {
-    size_t PackedBSize = MlasGemmPackBSize(TransA, TransB, N, K, nullptr);
+      MLAS_THREADPOOL* threadpool,
+      const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* config = nullptr) {
+    size_t PackedBSize = MlasGemmPackBSize(TransA, TransB, N, K, config);
     void* PackedB = BufferBPacked.GetBuffer(PackedBSize * BatchSize, true);
     std::vector<MLAS_SGEMM_DATA_PARAMS> data(BatchSize);
     for (size_t i = 0; i < BatchSize; i++) {
-      MlasGemmPackB(TransA, TransB, N, K, B + K * N * i, ldb, (uint8_t*)PackedB + PackedBSize * i, nullptr);
+      MlasGemmPackB(TransA, TransB, N, K, B + K * N * i, ldb, (uint8_t*)PackedB + PackedBSize * i, config);
       data[i].BIsPacked = true;
       data[i].A = A + M * K * i;
       data[i].lda = lda;
@@ -127,28 +131,35 @@ class FgemmPackedContext<float, true> {
       data[i].alpha = alpha;
       data[i].beta = beta;
     }
-    MlasGemmBatch(TransA, TransB, M, N, K, data.data(), BatchSize, threadpool, nullptr);
+    MlasGemmBatch(TransA, TransB, M, N, K, data.data(), BatchSize, threadpool, config);
   }
 
  private:
   MatrixGuardBuffer<uint8_t> BufferBPacked;
 };
 
-template <typename T, bool Packed, bool Threaded>
+// Sve opts the run into the SVE SGEMM kernels, which are otherwise off by default.
+template <typename T, bool Packed, bool Threaded, bool Sve = false>
 class MlasFgemmTest : public MlasTestBase {
  private:
   MLAS_THREADPOOL* threadpool_;
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG config_;
 
  public:
   static const char* GetTestSuiteName() {
     static const std::string suite_name = std::string(GetGemmTestSuitePrefix<T>()) +
                                           (Packed ? "_Packed" : "_NoPack") +
-                                          (Threaded ? "_Threaded" : "_SingleThread");
+                                          (Threaded ? "_Threaded" : "_SingleThread") +
+                                          (Sve ? "_Sve" : "");
 
     return suite_name.c_str();
   }
 
-  MlasFgemmTest() : threadpool_(Threaded ? GetMlasThreadPool() : nullptr) {}
+  MlasFgemmTest() : threadpool_(Threaded ? GetMlasThreadPool() : nullptr) {
+    config_.enable_sve_sgemm = Sve;
+    // Otherwise KleidiAI claims the non-transposed A cases on SME parts first.
+    config_.use_kleidiai = !Sve;
+  }
 
   void Test(size_t M, size_t N, size_t K, size_t BatchSize, T alpha, T beta) {
     Test(false, false, M, N, K, BatchSize, alpha, beta);
@@ -195,7 +206,8 @@ class MlasFgemmTest : public MlasTestBase {
     std::fill_n(C, M * N * BatchSize, -0.5f);
     std::fill_n(CReference, M * N * BatchSize, -0.5f);
 
-    PackedContext.TestGemm(TransA, TransB, M, N, K, BatchSize, alpha, A, lda, B, ldb, beta, C, ldc, threadpool_);
+    PackedContext.TestGemm(TransA, TransB, M, N, K, BatchSize, alpha, A, lda, B, ldb, beta, C, ldc, threadpool_,
+                           Sve ? &config_ : nullptr);
     ReferenceGemm(TransA, TransB, M, N, K, BatchSize, alpha, A, lda, B, ldb, beta, CReference, ldc);
 
     for (size_t batch = 0, f = 0; batch < BatchSize; batch++) {
