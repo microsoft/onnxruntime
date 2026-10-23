@@ -26,7 +26,8 @@
     "rebuildd": "tsc && node ./script/build --rebuild --config=Debug",
     "buildd": "tsc && node ./script/build --config=Debug",
     "build": "tsc && node ./script/build",
-    "test": "tsc --build ../scripts && node ../scripts/prepare-onnx-node-tests && mocha ./test/test-main",
+    "test": "npm run test:install && tsc --build ../scripts && node ../scripts/prepare-onnx-node-tests && mocha ./test/test-main",
+    "test:install": "node --test ./script/install-utils.test.js",
     "prepack": "node ./script/prepack",
     "rebuildr": "tsc && node ./script/build --rebuild --config=RelWithDebInfo"
   },
