@@ -98,12 +98,12 @@ __device__ __forceinline__ float RoundedBf16Sigmoid(float value, bool sigmoid_in
   using namespace onnxruntime::cuda;
   const BFloat16 a(value);
   return static_cast<float>(a > BFloat16(0.0f)
-                               ? BFloat16(1.0f) / (BFloat16(1.0f) + _Exp(-a))
-                               : BFloat16(1.0f) - BFloat16(1.0f) / (BFloat16(1.0f) + _Exp(a)));
+                                ? BFloat16(1.0f) / (BFloat16(1.0f) + _Exp(-a))
+                                : BFloat16(1.0f) - BFloat16(1.0f) / (BFloat16(1.0f) + _Exp(a)));
 }
 
 __device__ float ProjectedRowGate(const __nv_bfloat16* activation, const __nv_bfloat16* weight,
-                                int64_t row, int64_t input_width, bool sigmoid_in_fp32) {
+                                  int64_t row, int64_t input_width, bool sigmoid_in_fp32) {
   using Reduce = cub::BlockReduce<float, kThreads>;
   __shared__ typename Reduce::TempStorage reduction;
   __shared__ float gate;
@@ -255,9 +255,9 @@ Status LaunchArgMaxLastAxis(cudaStream_t stream, const void* input, int input_ty
 }
 
 Status LaunchPrepareSharedExpert(cudaStream_t stream, const uint16_t* up, const uint16_t* silu_gate,
-                                const uint16_t* activation, const uint16_t* weight,
-                                uint16_t* prepared, float* row_gates,
-                                int rows, int width, int input_width) {
+                                 const uint16_t* activation, const uint16_t* weight,
+                                 uint16_t* prepared, float* row_gates,
+                                 int rows, int width, int input_width) {
   ORT_RETURN_IF_NOT(rows >= 0 && width > 0 && input_width > 0,
                     "Shared expert preparation requires nonnegative rows and positive widths");
   if (rows == 0) return Status::OK();
