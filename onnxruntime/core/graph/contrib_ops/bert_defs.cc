@@ -5997,6 +5997,113 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           propagateShapeFromInputToOutput(ctx, 0, 0);
         }));
 
+constexpr const char* HyperConnectionLowRankMix_ver1_doc = R"DOC(
+One hyper-connection block with a low-rank gate network, fused into one operator. C = num_branches streams of
+width H are kept as one flattened (..., C * H) tensor. With the optional prologue the operator first applies the
+post-mix of the previous block (identity stream mix):
+
+  S[..., c, h] = streams[..., c, h] + prev_post_gate[..., c] * prev_block_output[..., h]
+
+and otherwise S = streams. It then computes, with `rms` taken per branch over H:
+
+  hn[..., c, h] = S[..., c, h] / sqrt(mean_h(S[..., c, :]^2) + epsilon) * norm_scale[c, h]
+  d             = ScaledSiLU(hn @ down_weight, silu_alpha)                   (..., R)
+  g[..., c, h]  = sigmoid(d @ up_weight)                                    per stream and feature
+  pre_output    = reduction_scale * sum_c(hn[..., c, h] * g[..., c, h])     (..., H)
+  post_gate     = sigmoid((hn @ inject_weight) / gate_div) * gate_mul         (..., C)
+
+pre_output is the input of the next transformer block and post_gate is prev_post_gate of the next call.
+streams_out is S (the streams after the prologue; a copy of streams when there is no prologue).
+
+Numerics contract. Matrix products and reductions accumulate in float32. The result of every step is rounded
+to T once, as the output of the equivalent standard operator would be:
+S = cast_T(streams + prev_post_gate * prev_block_output), hn = cast_T(S * inv_rms * norm_scale),
+down = cast_T(hn @ down_weight), Z = cast_T(silu_alpha * down), SG = cast_T(sigmoid(Z)), hidden = cast_T(Z * SG),
+up = cast_T(hidden @ up_weight), g = cast_T(sigmoid(up)), pre_output = cast_T(reduction_scale * sum_c(hn * g)),
+inject = cast_T(hn @ inject_weight), post_gate = cast_T(cast_T(sigmoid(cast_T(inject / gate_div))) * gate_mul).
+sigmoid is evaluated in float32 with expf and rounded once to T; it does not reproduce a Sigmoid kernel that
+rounds to T after every elementary operation. The accumulation order of the matrix products is fixed, so the
+results are deterministic, but they are not bitwise identical to cuBLAS.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    HyperConnectionLowRankMix, 1,
+    OpSchema()
+        .SetDoc(HyperConnectionLowRankMix_ver1_doc)
+        .Attr("num_branches", "Number of residual streams C. The last dimension of streams is C * H.",
+              AttributeProto::INT, true)
+        .Attr("epsilon", "Epsilon added to the mean square of each branch before the reciprocal square root.",
+              AttributeProto::FLOAT, 1e-5f)
+        .Attr("reduction_scale", "Multiplier applied to the sum over branches of pre_output.",
+              AttributeProto::FLOAT, 1.0f)
+        .Attr("silu_alpha", "Scale of the ScaledSiLU between the down and up projections.",
+              AttributeProto::FLOAT, 1.0f)
+        .Attr("gate_div", "Divisor applied to the inject logits before the sigmoid. Must not be zero.",
+              AttributeProto::FLOAT, 1.0f)
+        .Attr("gate_mul", "Multiplier applied to the sigmoid of the inject logits.",
+              AttributeProto::FLOAT, 1.0f)
+        .Input(0, "streams",
+               "Flattened streams (..., C * H). With the prologue these are the streams before the previous "
+               "block's post-mix.",
+               "T")
+        .Input(1, "norm_scale", "Per-branch RMS norm weight with shape (C * H).", "T")
+        .Input(2, "down_weight", "Down projection with shape (C * H, R), row-major [K, N].", "T")
+        .Input(3, "up_weight", "Up projection with shape (R, C * H), row-major [K, N].", "T")
+        .Input(4, "inject_weight", "Post-gate projection with shape (C * H, C), row-major [K, N].", "T")
+        .Input(5, "prev_block_output",
+               "Optional output of the previous block with shape (..., H). Provide together with prev_post_gate.",
+               "T", OpSchema::Optional)
+        .Input(6, "prev_post_gate",
+               "Optional post-mix gate of the previous block with shape (..., C). Provide together with "
+               "prev_block_output.",
+               "T", OpSchema::Optional)
+        .Output(0, "pre_output", "Block input with shape (..., H).", "T")
+        .Output(1, "post_gate", "Post-mix gate for the next call with shape (..., C).", "T")
+        .Output(2, "streams_out",
+                "Optional streams after the prologue, with the same shape as streams. Equal to streams when the "
+                "prologue inputs are absent.",
+                "T", OpSchema::Optional)
+        .TypeConstraint("T",
+                        {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain all floating-point inputs and outputs to the same type.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          propagateElemTypeFromInputToOutput(ctx, 0, 1);
+          if (ctx.getNumOutputs() > 2) {
+            propagateElemTypeFromInputToOutput(ctx, 0, 2);
+          }
+          if (!hasInputShape(ctx, 0)) {
+            return;
+          }
+          const auto branches = getAttribute(ctx, "num_branches", 0);
+          if (branches < 1) {
+            fail_shape_inference("num_branches must be positive.");
+          }
+          const auto& input_shape = getInputShape(ctx, 0);
+          const int rank = input_shape.dim_size();
+          if (rank < 1) {
+            fail_shape_inference("streams must have rank at least 1.");
+          }
+          auto* pre_shape = getOutputShape(ctx, 0);
+          auto* gate_shape = getOutputShape(ctx, 1);
+          for (int i = 0; i < rank - 1; ++i) {
+            *pre_shape->add_dim() = input_shape.dim(i);
+            *gate_shape->add_dim() = input_shape.dim(i);
+          }
+          auto* hidden = pre_shape->add_dim();
+          const auto& last = input_shape.dim(rank - 1);
+          if (last.has_dim_value()) {
+            if (last.dim_value() % branches != 0) {
+              fail_shape_inference("The last dimension of streams must be divisible by num_branches.");
+            }
+            hidden->set_dim_value(last.dim_value() / branches);
+          }
+          gate_shape->add_dim()->set_dim_value(branches);
+          if (ctx.getNumOutputs() > 2) {
+            propagateShapeFromInputToOutput(ctx, 0, 2);
+          }
+        }));
+
 constexpr const char* GatedAdd_ver1_doc = R"DOC(
 Adds one tensor to another tensor scaled by a per-row gate:
 

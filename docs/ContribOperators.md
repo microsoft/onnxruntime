@@ -56,6 +56,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.GridSample">com.microsoft.GridSample</a>
   * <a href="#com.microsoft.GroupNorm">com.microsoft.GroupNorm</a>
   * <a href="#com.microsoft.GroupQueryAttention">com.microsoft.GroupQueryAttention</a>
+  * <a href="#com.microsoft.HyperConnectionLowRankMix">com.microsoft.HyperConnectionLowRankMix</a>
   * <a href="#com.microsoft.HyperConnectionPostMix">com.microsoft.HyperConnectionPostMix</a>
   * <a href="#com.microsoft.HyperConnectionPreMix">com.microsoft.HyperConnectionPreMix</a>
   * <a href="#com.microsoft.Inverse">com.microsoft.Inverse</a>
@@ -3400,6 +3401,94 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain KV cache scale types.</dd>
 <dt><tt>M</tt> : tensor(int32)</dt>
 <dd>Constrain mask to int tensor.</dd>
+</dl>
+
+
+### <a name="com.microsoft.HyperConnectionLowRankMix"></a><a name="com.microsoft.hyperconnectionlowrankmix">**com.microsoft.HyperConnectionLowRankMix**</a>
+
+  One hyper-connection block with a low-rank gate network, fused into one operator. C = num_branches streams of
+  width H are kept as one flattened (..., C * H) tensor. With the optional prologue the operator first applies the
+  post-mix of the previous block (identity stream mix):
+  
+    S[..., c, h] = streams[..., c, h] + prev_post_gate[..., c] * prev_block_output[..., h]
+  
+  and otherwise S = streams. It then computes, with `rms` taken per branch over H:
+  
+    hn[..., c, h] = S[..., c, h] / sqrt(mean_h(S[..., c, :]^2) + epsilon) * norm_scale[c, h]
+    d             = ScaledSiLU(hn @ down_weight, silu_alpha)                   (..., R)
+    g[..., c, h]  = sigmoid(d @ up_weight)                                    per stream and feature
+    pre_output    = reduction_scale * sum_c(hn[..., c, h] * g[..., c, h])     (..., H)
+    post_gate     = sigmoid((hn @ inject_weight) / gate_div) * gate_mul         (..., C)
+  
+  pre_output is the input of the next transformer block and post_gate is prev_post_gate of the next call.
+  streams_out is S (the streams after the prologue; a copy of streams when there is no prologue).
+  
+  Numerics contract. Matrix products and reductions accumulate in float32. The result of every step is rounded
+  to T once, as the output of the equivalent standard operator would be:
+  S = cast_T(streams + prev_post_gate * prev_block_output), hn = cast_T(S * inv_rms * norm_scale),
+  down = cast_T(hn @ down_weight), Z = cast_T(silu_alpha * down), SG = cast_T(sigmoid(Z)), hidden = cast_T(Z * SG),
+  up = cast_T(hidden @ up_weight), g = cast_T(sigmoid(up)), pre_output = cast_T(reduction_scale * sum_c(hn * g)),
+  inject = cast_T(hn @ inject_weight), post_gate = cast_T(cast_T(sigmoid(cast_T(inject / gate_div))) * gate_mul).
+  sigmoid is evaluated in float32 with expf and rounded once to T; it does not reproduce a Sigmoid kernel that
+  rounds to T after every elementary operation. The accumulation order of the matrix products is fixed, so the
+  results are deterministic, but they are not bitwise identical to cuBLAS.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>epsilon</tt> : float</dt>
+<dd>Epsilon added to the mean square of each branch before the reciprocal square root.</dd>
+<dt><tt>gate_div</tt> : float</dt>
+<dd>Divisor applied to the inject logits before the sigmoid. Must not be zero.</dd>
+<dt><tt>gate_mul</tt> : float</dt>
+<dd>Multiplier applied to the sigmoid of the inject logits.</dd>
+<dt><tt>num_branches</tt> : int (required)</dt>
+<dd>Number of residual streams C. The last dimension of streams is C * H.</dd>
+<dt><tt>reduction_scale</tt> : float</dt>
+<dd>Multiplier applied to the sum over branches of pre_output.</dd>
+<dt><tt>silu_alpha</tt> : float</dt>
+<dd>Scale of the ScaledSiLU between the down and up projections.</dd>
+</dl>
+
+#### Inputs (5 - 7)
+
+<dl>
+<dt><tt>streams</tt> : T</dt>
+<dd>Flattened streams (..., C * H). With the prologue these are the streams before the previous block's post-mix.</dd>
+<dt><tt>norm_scale</tt> : T</dt>
+<dd>Per-branch RMS norm weight with shape (C * H).</dd>
+<dt><tt>down_weight</tt> : T</dt>
+<dd>Down projection with shape (C * H, R), row-major [K, N].</dd>
+<dt><tt>up_weight</tt> : T</dt>
+<dd>Up projection with shape (R, C * H), row-major [K, N].</dd>
+<dt><tt>inject_weight</tt> : T</dt>
+<dd>Post-gate projection with shape (C * H, C), row-major [K, N].</dd>
+<dt><tt>prev_block_output</tt> (optional) : T</dt>
+<dd>Optional output of the previous block with shape (..., H). Provide together with prev_post_gate.</dd>
+<dt><tt>prev_post_gate</tt> (optional) : T</dt>
+<dd>Optional post-mix gate of the previous block with shape (..., C). Provide together with prev_block_output.</dd>
+</dl>
+
+#### Outputs (2 - 3)
+
+<dl>
+<dt><tt>pre_output</tt> : T</dt>
+<dd>Block input with shape (..., H).</dd>
+<dt><tt>post_gate</tt> : T</dt>
+<dd>Post-mix gate for the next call with shape (..., C).</dd>
+<dt><tt>streams_out</tt> (optional) : T</dt>
+<dd>Optional streams after the prologue, with the same shape as streams. Equal to streams when the prologue inputs are absent.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain all floating-point inputs and outputs to the same type.</dd>
 </dl>
 
 

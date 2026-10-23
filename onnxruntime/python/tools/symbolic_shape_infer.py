@@ -217,6 +217,7 @@ class SymbolicShapeInference:
             "GroupNorm": self._infer_GroupNorm,
             "GroupNormalization": self._infer_GroupNorm,
             "GroupQueryAttention": self._infer_GroupQueryAttention,
+            "HyperConnectionLowRankMix": self._infer_HyperConnectionLowRankMix,
             "HyperConnectionPostMix": self._infer_HyperConnectionPostMix,
             "HyperConnectionPreMix": self._infer_HyperConnectionPreMix,
             "LayerNormalization": self._infer_LayerNormalization,
@@ -2497,6 +2498,17 @@ class SymbolicShapeInference:
 
     def _infer_BranchwiseRMSNorm(self, node):  # noqa: N802
         self._propagate_shape_and_type(node)
+
+    def _infer_HyperConnectionLowRankMix(self, node):  # noqa: N802
+        branches = get_attribute(node, "num_branches", 0)
+        assert branches > 0, "num_branches must be positive"
+        self._infer_HyperConnectionPreMix(node)
+        input_shape = self._get_shape(node, 0)
+        output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+        vi = self.known_vi_[node.output[1]]
+        vi.CopyFrom(helper.make_tensor_value_info(node.output[1], output_dtype, [*input_shape[:-1], branches]))
+        if len(node.output) > 2 and node.output[2]:
+            self._propagate_shape_and_type(node, output_index=2)
 
     def _infer_HyperConnectionPostMix(self, node):  # noqa: N802
         self._propagate_shape_and_type(node)
