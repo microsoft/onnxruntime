@@ -1810,6 +1810,12 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     runtime_ = std::unique_ptr<nvinfer1::IRuntime>(nvinfer1::createInferRuntime(GetTensorrtLogger(detailed_build_log_)));
   }
 
+  // Set DLA core on the runtime before any deserializeCudaEngine() calls.
+  // Without this, deserialized engines always dispatch to DLA core 0
+  // regardless of the trt_dla_core provider option.
+  if (dla_enable_ && dla_core_ >= 0) {
+    runtime_->setDLACore(dla_core_);
+  }
   trt_version_ = getInferLibVersion();
   CUDA_CALL_THROW(cudaRuntimeGetVersion(&cuda_version_));
 
