@@ -5,15 +5,14 @@
 #import <Security/Security.h>
 #import <XCTest/XCTest.h>
 
-#import "ort_env_internal.h"
-#import "ort_session_internal.h"
+#import "ort_env.h"
+#import "ort_ep_context_fixture.h"
+#import "ort_session.h"
 #import "ort_value.h"
 #import "test/assertion_utils.h"
 
-#include <algorithm>
 #include <cstring>
 #include <stdexcept>
-#include <vector>
 
 namespace {
 NSData* RandomData(size_t size) {
@@ -76,11 +75,6 @@ NSData* Decrypt(NSData* record, NSString* name, NSData* encryptionKey, NSData* a
                encryptionKey, [record subdataWithRange:NSMakeRange(0, kCCBlockSizeAES128)]);
 }
 
-struct Context {
-  std::string name;
-  std::vector<uint8_t> bytes;
-};
-
 NSData* DecryptOrReport(NSData* record, NSString* name, NSData* encryptionKey,
                         NSData* authenticationKey, NSError** error) {
   try {
@@ -95,58 +89,79 @@ NSData* DecryptOrReport(NSData* record, NSString* name, NSData* encryptionKey,
   }
 }
 
-OrtStatus* WriteContext(void* state, const char* name, const void* data, size_t size) noexcept {
-  try {
-    auto& context = *static_cast<Context*>(state);
-    if (!context.name.empty()) {
-      throw std::runtime_error("Expected exactly one external context write");
-    }
-    context.name = name;
-    const auto* bytes = static_cast<const uint8_t*>(data);
-    context.bytes.assign(bytes, bytes + size);
-    return nullptr;
-  } catch (const std::exception& error) {
-    return Ort::GetApi().CreateStatus(ORT_FAIL, error.what());
-  }
-}
 }  // namespace
 
 @interface ORTEncryptedEpContextTest : XCTestCase
 @end
 
+@interface ORTFailingUnregisterFixture : ORTEpContextFixture
+@end
+
+@implementation ORTFailingUnregisterFixture
+- (void)unregister {
+  throw std::runtime_error("Injected fixture unregistration failure");
+}
+@end
+
 @implementation ORTEncryptedEpContextTest
+
+- (void)cleanupFixture:(ORTEpContextFixture*)fixture directory:(NSString*)directory {
+  @try {
+    [fixture unregister];
+  } @finally {
+    NSError* cleanupError = nil;
+    XCTAssertTrue([NSFileManager.defaultManager removeItemAtPath:directory error:&cleanupError]);
+    XCTAssertNil(cleanupError);
+  }
+}
+
+- (void)testCleanupRemovesPlaintextWhenUnregisterThrows {
+  self.continueAfterFailure = NO;
+  NSString* directory = [NSTemporaryDirectory() stringByAppendingPathComponent:NSUUID.UUID.UUIDString];
+  NSError* error = nil;
+  XCTAssertTrue([NSFileManager.defaultManager createDirectoryAtPath:directory
+                                        withIntermediateDirectories:NO
+                                                         attributes:nil
+                                                              error:&error]);
+  XCTAssertNil(error);
+  @try {
+    NSString* plaintext = [directory stringByAppendingPathComponent:@"compiled.onnx"];
+    XCTAssertTrue([[@"test plaintext" dataUsingEncoding:NSUTF8StringEncoding] writeToFile:plaintext
+                                                                                  options:NSDataWritingAtomic
+                                                                                    error:&error]);
+    XCTAssertNil(error);
+    bool failed = false;
+    try {
+      [self cleanupFixture:[[ORTFailingUnregisterFixture alloc] init] directory:directory];
+    } catch (const std::runtime_error& failure) {
+      failed = std::strstr(failure.what(), "Injected fixture unregistration failure") != nullptr;
+    }
+    XCTAssertTrue(failed);
+    XCTAssertFalse([NSFileManager.defaultManager fileExistsAtPath:directory]);
+  } @finally {
+    if ([NSFileManager.defaultManager fileExistsAtPath:directory]) {
+      XCTAssertTrue([NSFileManager.defaultManager removeItemAtPath:directory error:&error]);
+      XCTAssertNil(error);
+    }
+  }
+}
 
 - (void)testEncryptedCompiledContextInference {
   NSString* plugin = NSProcessInfo.processInfo.environment[@"ORT_ENCRYPTION_PLUGIN_LIBRARY"];
-  XCTSkipIf(plugin.length == 0, @"Set ORT_ENCRYPTION_PLUGIN_LIBRARY to run the example EP integration");
   self.continueAfterFailure = NO;
+  XCTAssertGreaterThan(plugin.length, NSUInteger{0}, @"The encryption test target must provision its example EP");
   NSError* error = nil;
   ORTEnv* env = [[ORTEnv alloc] initWithLoggingLevel:ORTLoggingLevelWarning error:&error];
   ORTAssertNullableResultSuccessful(env, error);
-  auto& nativeEnv = [env CXXAPIOrtEnv];
-  const char* registration = "objc_encryption_test";
   NSString* directory = [NSTemporaryDirectory() stringByAppendingPathComponent:NSUUID.UUID.UUIDString];
   BOOL created = [NSFileManager.defaultManager createDirectoryAtPath:directory
                                          withIntermediateDirectories:NO
                                                           attributes:nil
                                                                error:&error];
   ORTAssertBoolResultSuccessful(created, error);
-  bool registered = false;
+  ORTEpContextFixture* fixture = nil;
   @try {
-    nativeEnv.RegisterExecutionProviderLibrary(registration, plugin.fileSystemRepresentation);
-    registered = true;
-    auto configure = [&](ORTSessionOptions* options) {
-      auto& native = [options CXXAPIOrtSessionOptions];
-      auto devices = nativeEnv.GetEpDevices();
-      auto device = std::find_if(devices.begin(), devices.end(), [&](const auto& candidate) {
-        return std::strcmp(candidate.EpName(), registration) == 0;
-      });
-      if (device == devices.end()) {
-        throw std::runtime_error("Registered test EP device was not found");
-      }
-      native.AddConfigEntry("ep.example.test_execute_ep_context", "1");
-      native.AppendExecutionProvider_V2(nativeEnv, {*device}, {});
-    };
+    fixture = [[ORTEpContextFixture alloc] initWithEnv:env pluginPath:plugin];
     NSData* encryptionKey = RandomData(kCCKeySizeAES256);
     NSData* authenticationKey = RandomData(CC_SHA256_DIGEST_LENGTH);
     NSString* modelName = @"compiled.onnx";
@@ -156,31 +171,16 @@ OrtStatus* WriteContext(void* state, const char* name, const void* data, size_t 
     @autoreleasepool {
       ORTSessionOptions* options = [[ORTSessionOptions alloc] initWithError:&error];
       ORTAssertNullableResultSuccessful(options, error);
-      configure(options);
-      Ort::ModelCompilationOptions compilation(nativeEnv, [options CXXAPIOrtSessionOptions]);
+      [fixture configureSessionOptions:options];
       NSString* source = [[NSBundle bundleForClass:self.class] pathForResource:@"encrypted_ep_context_mul" ofType:@"onnx"];
       XCTAssertNotNil(source);
-      compilation.SetInputModelPath(source.fileSystemRepresentation);
-      compilation.SetEpContextEmbedMode(false);
-      compilation.SetEpContextBinaryInformation([[directory stringByAppendingString:@"/"] fileSystemRepresentation],
-                                                modelName.fileSystemRepresentation);
-      compilation.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
-      Context context;
-      compilation.SetEpContextDataWriteFunc(WriteContext, &context);
-      // The write callback avoids an allocator-owned model buffer on assertion/error paths.
-      NSMutableData* model = [NSMutableData data];
-      compilation.SetOutputModelWriteFunc(
-          [](void* state, const void* data, size_t size) -> OrtStatus* {
-            [(__bridge NSMutableData*)state appendBytes:data length:size];
-            return nullptr;
-          },
-          (__bridge void*)model);
-      auto status = Ort::CompileModel(nativeEnv, compilation);
-      XCTAssertTrue(status.IsOK(), @"%s", status.GetErrorMessage().c_str());
-      XCTAssertEqual(context.bytes.size(), std::strlen("ort-test-mul-float32-v1"));
-      XCTAssertEqual(std::memcmp(context.bytes.data(), "ort-test-mul-float32-v1", context.bytes.size()), 0);
-      contextName = [NSString stringWithUTF8String:context.name.c_str()];
-      NSData* contextData = [NSData dataWithBytes:context.bytes.data() length:context.bytes.size()];
+      NSData* contextData = nil;
+      NSData* model = [fixture compileModelAtPath:source
+                                  outputDirectory:directory
+                                   sessionOptions:options
+                                      contextData:&contextData
+                                      contextName:&contextName];
+      XCTAssertEqualObjects(contextData, [@"ort-test-mul-float32-v1" dataUsingEncoding:NSUTF8StringEncoding]);
       XCTAssertTrue([Encrypt(model, modelName, encryptionKey, authenticationKey)
           writeToFile:encryptedModelPath
               options:NSDataWritingAtomic
@@ -226,7 +226,7 @@ OrtStatus* WriteContext(void* state, const char* name, const void* data, size_t 
     @autoreleasepool {
       ORTSessionOptions* options = [[ORTSessionOptions alloc] initWithError:&error];
       ORTAssertNullableResultSuccessful(options, error);
-      configure(options);
+      [fixture configureSessionOptions:options];
       __block NSUInteger calls = 0;
       BOOL set = [options
           setEpContextDataReadBlock:^NSData*(NSString* name, NSError** callbackError) {
@@ -281,7 +281,7 @@ OrtStatus* WriteContext(void* state, const char* name, const void* data, size_t 
         NSError* loadError = nil;
         ORTSessionOptions* options = [[ORTSessionOptions alloc] initWithError:&loadError];
         ORTAssertNullableResultSuccessful(options, loadError);
-        configure(options);
+        [fixture configureSessionOptions:options];
         if (block != nil) {
           BOOL set = [options setEpContextDataReadBlock:block maxDataSize:1024 error:&loadError];
           ORTAssertBoolResultSuccessful(set, loadError);
@@ -314,12 +314,7 @@ OrtStatus* WriteContext(void* state, const char* name, const void* data, size_t 
     },
                @"payload");
   } @finally {
-    if (registered) {
-      nativeEnv.UnregisterExecutionProviderLibrary(registration);
-    }
-    NSError* cleanupError = nil;
-    XCTAssertTrue([NSFileManager.defaultManager removeItemAtPath:directory error:&cleanupError]);
-    XCTAssertNil(cleanupError);
+    [self cleanupFixture:fixture directory:directory];
   }
 }
 @end

@@ -94,14 +94,18 @@ numerical input cases. Wrong authentication keys, tampering, name mismatches,
 missing callbacks, callback authentication errors, and invalid payloads are
 negative controls.
 
-Build `onnxruntime_objc_test` on an Apple runner with matching ORT native libraries
-and the example plugin. Full macOS CMake/CTest builds automatically build and
-provision the plugin path. For other Apple runners, set
-`ORT_ENCRYPTION_PLUGIN_LIBRARY` to the absolute path
-of the matching loadable plugin and run
-`ctest --test-dir <build directory> -C Release -R '^XCTest.onnxruntime_objc_test$' --output-on-failure`.
-The integration explicitly skips when the variable is absent; ordinary green
-XCTest CI is not evidence that this opt-in workflow executed.
+Full macOS CMake/CTest builds create the separate `onnxruntime_objc_encryption_test`
+target and provision its example plugin and model automatically. Run
+`ctest --test-dir <build directory> -C Release -R '^XCTest.onnxruntime_objc_encryption_test$' --output-on-failure`.
+The target fails if its required plugin path is missing. Its sources live under
+`onnxruntime/test/platform/apple`, outside the `objectivec/` tree copied to the
+Swift package repository. The ordinary `onnxruntime_objc_test` target has no example
+plugin dependency and does not establish encrypted-workflow coverage.
+
+The test-only `ORTEpContextFixture` adapter confines native registration, device
+selection, and compilation to fixture setup because those operations lack public
+Objective-C APIs. The test itself uses the public Objective-C session/read-block
+and tensor APIs for loading and inference; it does not add new binding APIs.
 
 Compilation/persistence writes only ciphertext, but the public Objective-C session
 constructor accepts only a model path. The test therefore temporarily writes the
