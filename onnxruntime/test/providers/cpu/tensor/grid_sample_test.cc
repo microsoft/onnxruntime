@@ -1,4 +1,6 @@
 #include "gtest/gtest.h"
+#include "core/framework/execution_provider.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 
@@ -33,7 +35,11 @@ std::vector<std::unique_ptr<IExecutionProvider>> GetExecutionProviders() {
 template <typename T>
 void RunTests(T& test, std::vector<std::unique_ptr<IExecutionProvider>>&& execution_providers) {
   for (size_t idx = 0; idx < execution_providers.size(); ++idx) {
-    test.ConfigEp(std::move(execution_providers[idx])).RunWithConfig();
+    SessionOptions options;
+    if (execution_providers[idx] && execution_providers[idx]->Type() == kCudaExecutionProvider) {
+      ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    }
+    test.Config(options).ConfigEp(std::move(execution_providers[idx])).RunWithConfig();
   }
   execution_providers.clear();
 }
