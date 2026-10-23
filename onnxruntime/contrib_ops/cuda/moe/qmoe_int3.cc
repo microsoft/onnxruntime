@@ -32,11 +32,20 @@ Status QMoE::PrePackInt3(const Tensor& tensor, int input_idx, AllocatorPtr alloc
                                : fc2_expert_weight_bits_);
   entry.block_size = block_size_;
   CUDA_RETURN_IF_ERROR(cudaGetDevice(&entry.device));
-  cudaDeviceProp properties{};
-  CUDA_RETURN_IF_ERROR(cudaGetDeviceProperties(&properties, entry.device));
-  entry.device_uuid = properties.uuid;
+  entry.device_uuid = GetDeviceProp().uuid;
+  struct PrepackStream {
+    cudaStream_t handle = nullptr;
+    ~PrepackStream() {
+      if (handle) {
+        cudaStreamSynchronize(handle);
+        cudaStreamDestroy(handle);
+      }
+    }
+  } prepack_stream;
+  CUDA_RETURN_IF_ERROR(cudaStreamCreateWithFlags(&prepack_stream.handle, cudaStreamNonBlocking));
+  const auto stream = prepack_stream.handle;
   bool copied = false;
-  PrePackCopyToGpu(tensor, nullptr, alloc, entry.data, copied);
+  PrePackCopyToGpu(tensor, stream, alloc, entry.data, copied);
   if (weight) {
     const int64_t logical_k = SafeInt<int64_t>(shape[2]) * 8 / entry.bits;
     ORT_RETURN_IF_NOT(logical_k > 0 && logical_k % block_size_ == 0 &&
@@ -45,8 +54,8 @@ Status QMoE::PrePackInt3(const Tensor& tensor, int input_idx, AllocatorPtr alloc
     auto packed = IAllocator::MakeUniquePtr<void>(alloc, tensor.SizeInBytes(), true);
     CUDA_RETURN_IF_ERROR(PackInt3MoeWeights(static_cast<const uint8_t*>(entry.data.get()),
                                             static_cast<uint8_t*>(packed.get()), SafeInt<size_t>(shape[0]) * shape[1],
-                                            narrow<int>(logical_k), entry.bits, nullptr));
-    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(nullptr));
+                                            narrow<int>(logical_k), entry.bits, stream));
+    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
     entry.data = std::move(packed);
     entry.layout_version = 1;
   }
@@ -59,12 +68,13 @@ Status QMoE::PrePackInt3(const Tensor& tensor, int input_idx, AllocatorPtr alloc
     check.bits = narrow<int>(projection ? fc2_expert_weight_bits_ : fc1_expert_weight_bits_);
     if (scales.data && !scales.validated) {
       check.scales = scales.data.get();
-      CUDA_RETURN_IF_ERROR(cudaMemset(invalid.get(), 0, sizeof(int)));
-      CUDA_RETURN_IF_ERROR(ValidateInt3MoeContent(check, narrow<size_t>(scales.shape.Size()),
-                                                  narrow<int>(block_size_), narrow<int>(block_size_), !is_fp16_,
-                                                  invalid.get(), nullptr));
+      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(invalid.get(), 0, sizeof(int), stream));
+      CUDA_RETURN_IF_ERROR(ValidateInt3MoeContent(check, SafeInt<size_t>(scales.shape[0]) * scales.shape[1],
+                                                  narrow<int>(SafeInt<int64_t>(scales.shape[2]) * block_size_), narrow<int>(block_size_), !is_fp16_,
+                                                  invalid.get(), stream));
       int result = 0;
-      CUDA_RETURN_IF_ERROR(cudaMemcpy(&result, invalid.get(), sizeof(int), cudaMemcpyDeviceToHost));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(&result, invalid.get(), sizeof(int), cudaMemcpyDeviceToHost, stream));
+      CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
       ORT_RETURN_IF_NOT(!result, "INT3 QMoE requires finite nonnegative scales and INT3 zero points equal to 4 with zero padding.");
       scales.validated = true;
     }
@@ -75,11 +85,12 @@ Status QMoE::PrePackInt3(const Tensor& tensor, int input_idx, AllocatorPtr alloc
                         "INT3 QMoE zero-point shape mismatch.");
       check.scales = nullptr;
       check.zeros = static_cast<const uint8_t*>(zeros.data.get());
-      CUDA_RETURN_IF_ERROR(cudaMemset(invalid.get(), 0, sizeof(int)));
+      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(invalid.get(), 0, sizeof(int), stream));
       CUDA_RETURN_IF_ERROR(ValidateInt3MoeContent(check, SafeInt<size_t>(zeros.shape[0]) * zeros.shape[1],
-                                                  narrow<int>(logical_k), narrow<int>(block_size_), !is_fp16_, invalid.get(), nullptr));
+                                                  narrow<int>(logical_k), narrow<int>(block_size_), !is_fp16_, invalid.get(), stream));
       int result = 0;
-      CUDA_RETURN_IF_ERROR(cudaMemcpy(&result, invalid.get(), sizeof(int), cudaMemcpyDeviceToHost));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(&result, invalid.get(), sizeof(int), cudaMemcpyDeviceToHost, stream));
+      CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
       ORT_RETURN_IF_NOT(!result, "INT3 QMoE requires finite nonnegative scales and INT3 zero points equal to 4 with zero padding.");
       zeros.validated = true;
     }
@@ -188,7 +199,8 @@ Status QMoE::ComputeInt3(OpKernelContext* context) const {
   params.beta = activation_beta_;
   params.limit = swiglu_limit_;
   params.is_bfloat16 = !input->IsDataType<MLFloat16>();
-  const auto stream = Stream(context);
+  auto* compute_stream = GetComputeStream(context);
+  const auto stream = compute_stream ? static_cast<cudaStream_t>(compute_stream->GetHandle()) : nullptr;
   auto first_check = params.fc1;
   auto second_check = params.fc2;
   if (int3_inputs_[3].validated) first_check.scales = nullptr;
@@ -197,7 +209,7 @@ Status QMoE::ComputeInt3(OpKernelContext* context) const {
   if (int3_inputs_[12].validated) second_check.zeros = nullptr;
   if (first_check.scales || second_check.scales ||
       (first_check.zeros && first_check.bits == 3) || (second_check.zeros && second_check.bits == 3)) {
-    auto invalid = GetScratchBuffer<int>(1, GetComputeStream(context));
+    auto invalid = GetScratchBuffer<int>(1, compute_stream);
     CUDA_RETURN_IF_ERROR(cudaMemsetAsync(invalid.get(), 0, sizeof(int), stream));
     CUDA_RETURN_IF_ERROR(ValidateInt3MoeContent(first_check, SafeInt<size_t>(experts) * first_rows,
                                                 params.hidden, params.block_size, params.is_bfloat16, invalid.get(), stream));
@@ -220,10 +232,10 @@ Status QMoE::ComputeInt3(OpKernelContext* context) const {
                                               std::max({hidden, static_cast<int64_t>(SafeInt<int64_t>(k_) * intermediate), experts}));
   ORT_RETURN_IF_NOT(tile_rows > 0, "INT3 QMoE dimensions exceed launch limits.");
   const size_t routes = SafeInt<size_t>(tile_rows) * k_;
-  auto selected = GetScratchBuffer<int>(routes, GetComputeStream(context));
-  auto scales = GetScratchBuffer<float>(routes, GetComputeStream(context));
-  auto source_rows = GetScratchBuffer<int>(routes, GetComputeStream(context));
-  auto activation = GetScratchBuffer<void>(SafeInt<size_t>(routes) * intermediate * element_size, GetComputeStream(context));
+  auto selected = GetScratchBuffer<int>(routes, compute_stream);
+  auto scales = GetScratchBuffer<float>(routes, compute_stream);
+  auto source_rows = GetScratchBuffer<int>(routes, compute_stream);
+  auto activation = GetScratchBuffer<void>(SafeInt<size_t>(routes) * intermediate * element_size, compute_stream);
   params.activation = activation.get();
   params.experts = selected.get();
   params.routing_scales = scales.get();

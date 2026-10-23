@@ -179,6 +179,10 @@ cudaError_t PackInt3MoeWeights(const uint8_t* source, uint8_t* destination,
 
 cudaError_t LaunchInt3Moe(const Int3MoeParams& params, cudaStream_t stream) {
   if (params.rows == 0) return cudaSuccess;
+  if (!params.fc1.scales || !params.fc2.scales || !params.fc1.weights || !params.fc2.weights ||
+      !params.input || !params.output || !params.activation || !params.experts || !params.routing_scales) {
+    return cudaErrorInvalidValue;
+  }
   if ((params.fc1.bits != 3 && params.fc1.bits != 4) ||
       (params.fc2.bits != 3 && params.fc2.bits != 4) || params.hidden <= 0 ||
       params.intermediate <= 0 || params.top_k <= 0 || params.block_size <= 0 ||

@@ -165,12 +165,12 @@ void RunInt3CudaCase(int block, int fc1_bits, int fc2_bits, bool separate_routin
   std::vector<T> second_bias(experts * hidden, T(0.0078125f));
   for (int64_t row = 0; row < experts * inter * 2; ++row) {
     for (int64_t feature = 0; feature < hidden; ++feature) {
-      PackInt3TestCode(first, row, hidden, feature, fc1_bits, (row * 5 + feature * 3) % (1 << fc1_bits));
+      PackInt3TestCode(first, row, hidden, feature, fc1_bits, (row * 5 + feature * 3) % (int64_t{1} << fc1_bits));
     }
   }
   for (int64_t row = 0; row < experts * hidden; ++row) {
     for (int64_t feature = 0; feature < inter; ++feature) {
-      PackInt3TestCode(second, row, inter, feature, fc2_bits, (row * 3 + feature * 5) % (1 << fc2_bits));
+      PackInt3TestCode(second, row, inter, feature, fc2_bits, (row * 3 + feature * 5) % (int64_t{1} << fc2_bits));
     }
   }
   std::vector<T> expected(rows * hidden);
@@ -184,8 +184,8 @@ void RunInt3CudaCase(int block, int fc1_bits, int fc2_bits, bool separate_routin
         float up = first_bias[weight_row + 1].ToFloat();
         for (int64_t feature = 0; feature < hidden; ++feature) {
           const float value = input[token * hidden + feature].ToFloat();
-          gate += value * (((weight_row * 5 + feature * 3) % (1 << fc1_bits)) - (1 << (fc1_bits - 1))) * scale;
-          up += value * ((((weight_row + 1) * 5 + feature * 3) % (1 << fc1_bits)) - (1 << (fc1_bits - 1))) * scale;
+          gate += value * (((weight_row * 5 + feature * 3) % (int64_t{1} << fc1_bits)) - (int64_t{1} << (fc1_bits - 1))) * scale;
+          up += value * ((((weight_row + 1) * 5 + feature * 3) % (int64_t{1} << fc1_bits)) - (int64_t{1} << (fc1_bits - 1))) * scale;
         }
         activation[column] = T(gate / (1 + std::exp(-gate)) * up);
       }
@@ -194,7 +194,7 @@ void RunInt3CudaCase(int block, int fc1_bits, int fc2_bits, bool separate_routin
         float value = 0;
         for (int64_t feature = 0; feature < inter; ++feature) {
           value += activation[feature].ToFloat() *
-                   (((weight_row * 3 + feature * 5) % (1 << fc2_bits)) - (1 << (fc2_bits - 1))) * scale;
+                   (((weight_row * 3 + feature * 5) % (int64_t{1} << fc2_bits)) - (int64_t{1} << (fc2_bits - 1))) * scale;
         }
         value += second_bias[weight_row].ToFloat();
         const float routing_weight = separate_routing ? external_routing[token * experts + expert].ToFloat() : 0.5f;
