@@ -695,6 +695,22 @@ bool CompatiblePorts(const InlinedVector<Port>& a, const InlinedVector<Port>& b)
   return true;
 }
 
+// Reconcile declaration metadata without adding constraints to any concrete plan.
+bool MergeResultPorts(InlinedVector<Port>& target, const InlinedVector<Port>& results, bool require_names) {
+  if (target.size() != results.size()) return false;
+  for (size_t i = 0; i < results.size(); ++i) {
+    if (require_names && target[i].name != results[i].name) return false;
+    if (target[i].constraints.empty()) {
+      target[i].constraints = results[i].constraints;
+    } else if (!results[i].constraints.empty()) {
+      auto a = target[i], b = results[i];
+      a.name = b.name = "";
+      if (!CompatiblePorts({a}, {b})) return false;
+    }
+  }
+  return true;
+}
+
 class PatternParser {
  public:
   explicit PatternParser(std::string_view text, InlinedVector<NodeAttributes, 1>* attributes = nullptr,
@@ -1577,6 +1593,7 @@ Status PatternParser::Declarations(InlinedVector<Definition, 1>& definitions) {
         }
         Pattern contract;
         for (const auto* port_list : {&definition.inputs, &definition.outputs}) {
+          if (definition.kind != Definition::Kind::Interface && port_list == &definition.inputs) continue;
           for (const auto& port : *port_list) {
             for (const auto& type : port.constraints)
               ORT_RETURN_IF(!type.tensor_type, Error("interface ports must be tensors"));
@@ -1831,16 +1848,8 @@ class PatternModule {
           auto [it, inserted] = expression_results.emplace(position, results);
           if (!inserted) {
             ORT_ENFORCE(it->second.size() == results.size(), "Expression alternative output arity mismatch in ", definition.name);
-            for (size_t i = 0; i < results.size(); ++i) {
-              if (it->second[i].constraints.empty()) {
-                it->second[i] = results[i];
-                continue;
-              }
-              if (results[i].constraints.empty()) continue;
-              auto a = it->second[i], b = results[i];
-              a.name = b.name = "";
-              ORT_ENFORCE(CompatiblePorts({a}, {b}), "Expression alternative output type mismatch in ", definition.name);
-            }
+            ORT_ENFORCE(MergeResultPorts(it->second, results, false),
+                        "Expression alternative output type mismatch in ", definition.name);
           }
         }
         if (!definition.interface_name.empty()) {
@@ -1877,7 +1886,8 @@ class PatternModule {
           if (definition.outputs.empty())
             definition.outputs = std::move(outputs);
           else
-            ORT_ENFORCE(CompatiblePorts(definition.outputs, outputs), "Pattern alternatives change output ports: ", definition.name);
+            ORT_ENFORCE(MergeResultPorts(definition.outputs, outputs, true),
+                        "Pattern alternatives change output ports: ", definition.name);
         }
         {
           ORT_ENFORCE(plan.outputs_.size() == definition.outputs.size(),
@@ -1888,6 +1898,9 @@ class PatternModule {
             const auto local = std::find_if(plan.values_.begin(), plan.values_.end(),
                                             [&](const auto& value) { return value.name == port.name; });
             ORT_ENFORCE(local == plan.values_.end() || local->handle == output.handle,
+                        "Output port shadows a different local value in pattern ", definition.name, ": ", port.name);
+            const auto alias = plan.aliases_.find(port.name);
+            ORT_ENFORCE(alias == plan.aliases_.end() || alias->second.handle == output.handle,
                         "Output port shadows a different local value in pattern ", definition.name, ": ", port.name);
             plan.aliases_.insert_or_assign(port.name, output);
             if ((!definition.interface_name.empty() || definition.explicit_outputs) && !port.constraints.empty()) {

@@ -772,7 +772,19 @@ multiple results use `return first,second`. Output annotations constrain the
 returned values and share the definition's dimension variables with inputs;
 they do not manufacture shape evidence. Output names must not shadow a
 different local value. Without an output signature, names and annotations
-are inferred from returned variables as before.
+are inferred from returned variables. An alias may inherit an input annotation
+while another expression branch returns an unannotated operator result; these
+are compatible unconstrained-result alternatives. Each selected plan keeps
+only its actual annotation occurrences, so reconciliation does not create
+additional repeated-dimension constraints.
+
+Ordinary inputs retain their tensor/attribute classification from use, including
+typed attribute formals such as
+`pattern P(x,axis:int)->(y){y=Softmax(x,axis=axis);return y}`.
+Adding an output signature does not impose an interface's all-tensor input
+contract. Declared outputs themselves must be tensors. Output labels cannot
+replace a different existing tensor binding, including a direct alias or a
+positional call result; reusing a label for the same handle remains valid.
 
 `product=activation(g,u,alpha)` binds a tensor directly. For multiple results
 write `first,second=Pair(x)`, just as for a multi-output ONNX operator.

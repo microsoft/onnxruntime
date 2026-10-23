@@ -5962,6 +5962,170 @@ TEST(PatternRewriterTests, ExpressionPlanAndNestingBounds) {
   }
 }
 
+TEST(PatternRewriterTests, InferredExpressionOutputsAllowUnconstrainedBranches) {
+  for (bool alias_first : {false, true}) {
+    const std::string text = std::string(R"(
+      pattern Fixed(x:float[2]) { y=)") +
+                             (alias_first ? "x | Identity(x)" : "Identity(x) | x") + R"(;return y }
+      pattern Symbolic(x:float[M]) { y=)" +
+                             (alias_first ? "x | Identity(x)" : "Identity(x) | x") + R"(;return y }
+      pattern FixedEntry(x) { y=Fixed(x);return Sigmoid(y) }
+      pattern Nested(x) { y=Symbolic(x);return y }
+      pattern SymbolicEntry(x) { y=Nested(x);return Sigmoid(y) }
+    )";
+    const PatternLibrary library(text);
+    for (bool indexed : {false, true}) {
+      for (bool match_only : {false, true}) {
+        for (const char* entry : {"FixedEntry", "SymbolicEntry"}) {
+          TestGraph test;
+          auto& b = test.builder;
+          auto* x = std::string_view(entry) == "FixedEntry"
+                        ? b.MakeInput<float>({2}, -1.0f, 1.0f)
+                        : b.MakeSymbolicInput<float>({std::string{}});
+          auto* identity = b.MakeIntermediate();
+          b.AddNode("Identity", {x}, {identity});
+          b.AddNode("Sigmoid", {identity}, {b.MakeOutput()});
+          b.SetGraphOutputs();
+          ASSERT_STATUS_OK(test.graph.Resolve());
+          int checks = 0;
+          auto check = [&](const Graph&, Match& match) {
+            ++checks;
+            EXPECT_EQ(match.valueOf("y"), identity);
+            if (std::string_view(entry) == "SymbolicEntry")
+              EXPECT_TRUE(std::holds_alternative<std::monostate>(
+                  match.instance("y").instance("y").dimensionOf("M")));
+            return true;
+          };
+          Rule rule{"Inferred", library.GetPattern(entry), "(x)=>Sigmoid(x)", check, {{kOnnxDomain, 17, 17}}};
+          Statistics stats;
+          ASSERT_STATUS_OK(PatternRewriter({rule}, {.match_only = match_only, .indexed = indexed, .max_iterations = 1})
+                               .Run(test.graph, stats));
+          EXPECT_EQ(checks, match_only ? 2 : 1);
+          EXPECT_EQ(stats.matches, match_only ? 2u : 1u);
+          EXPECT_EQ(stats.rewrites, match_only ? 0u : 1u);
+          ASSERT_STATUS_OK(test.graph.Resolve());
+        }
+      }
+    }
+  }
+}
+
+TEST(PatternRewriterTests, DeclaredOutputsCannotShadowAliasesOrPositionalCallResults) {
+  const std::string copy = "pattern Copy(x)->(y){return x} ";
+  for (const char* body : {"a=x;return Identity(a)", "a=Copy(x);return Identity(a)",
+                           "a,b=Pair(x);return Identity(a)"}) {
+    const std::string text = copy +
+                             "pattern Pair(x)->(first,second){first=x;second=x;return first,second} "
+                             "pattern E(x:float[2])->(a){" +
+                             body + "}";
+    try {
+      const PatternLibrary library(text);
+      FAIL() << "Accepted an output name that shadows an alias: " << body;
+    } catch (const OnnxRuntimeException& error) {
+      EXPECT_NE(std::string(error.what()).find("Output port shadows a different local value"), std::string::npos)
+          << body << ": " << error.what();
+    }
+  }
+  for (const char* body : {"a=x;return a", "a=Copy(x);return a"}) {
+    const PatternLibrary library(copy + "pattern F(x:float[2])->(a){" + body +
+                                 "} "
+                                 "pattern E(x){a=F(x);return Identity(a)}");
+    for (bool indexed : {false, true}) {
+      for (bool match_only : {false, true}) {
+        TestGraph test;
+        auto& b = test.builder;
+        auto* x = b.MakeInput<float>({2}, -1.0f, 1.0f);
+        b.AddNode("Identity", {x}, {b.MakeOutput()});
+        b.SetGraphOutputs();
+        ASSERT_STATUS_OK(test.graph.Resolve());
+        auto check = [&](const Graph&, Match& match) {
+          EXPECT_EQ(match.valueOf("a"), x);
+          EXPECT_EQ(match.instance("a").valueOf("a"), x);
+          if (std::string_view(body).find("Copy") != std::string_view::npos)
+            EXPECT_EQ(match.instance("a").instance("a").valueOf("y"), x);
+          return true;
+        };
+        Rule rule{"SameHandle", library.GetPattern("E"), "(x)=>Identity(x)", check, {{kOnnxDomain, 17, 17}}};
+        Statistics stats;
+        ASSERT_STATUS_OK(PatternRewriter({rule}, {.match_only = match_only, .indexed = indexed, .max_iterations = 1})
+                             .Run(test.graph, stats));
+        EXPECT_EQ(stats.matches, 1u);
+      }
+    }
+  }
+}
+
+TEST(PatternRewriterTests, OrdinaryOutputSignaturesPreserveTypedAttributeInputs) {
+  const PatternLibrary library(R"(
+    pattern Int(x,axis:int)->(y){y=Softmax(x,axis=axis);return y}
+    pattern Ints(x,axes:ints)->(y){y=Transpose(x,perm=axes);return y}
+    pattern Float(x,alpha:float)->(y){y=LeakyRelu(x,alpha=alpha);return y}
+    pattern NestedInt(x,axis:int)->(y){y=Int(x,axis);return y}
+    pattern NestedInts(x,axes:ints)->(y){y=Ints(x,axes);return y}
+    pattern NestedFloat(x,alpha:float)->(y){y=Float(x,alpha);return y}
+  )");
+  for (bool indexed : {false, true}) {
+    for (bool match_only : {false, true}) {
+      for (bool nested : {false, true}) {
+        for (const char* kind : {"Int", "Ints", "Float"}) {
+          TestGraph test;
+          auto& b = test.builder;
+          auto* x = b.MakeInput<float>({2, 3}, -1.0f, 1.0f);
+          const std::string_view type(kind);
+          auto& node = b.AddNode(type == "Int" ? "Softmax" : type == "Ints" ? "Transpose"
+                                                                            : "LeakyRelu",
+                                 {x}, {b.MakeOutput()});
+          if (type == "Int")
+            node.AddAttribute("axis", int64_t{1});
+          else if (type == "Ints")
+            node.AddAttribute("perm", std::vector<int64_t>{1, 0});
+          else
+            node.AddAttribute("alpha", 0.25f);
+          b.SetGraphOutputs();
+          ASSERT_STATUS_OK(test.graph.Resolve());
+          int checks = 0;
+          auto check = [&](const Graph&, Match& match) {
+            ++checks;
+            const auto view = nested ? match.instance("y") : match.bindings();
+            if (type == "Int") {
+              EXPECT_EQ(match.attributeOf("axis").i(), 1);
+              EXPECT_EQ(view.attributeOf("axis").i(), 1);
+            } else if (type == "Ints") {
+              EXPECT_EQ(match.attributeOf("axes").ints_size(), 2);
+              EXPECT_EQ(view.attributeOf("axes").ints(0), 1);
+            } else {
+              EXPECT_FLOAT_EQ(match.attributeOf("alpha").f(), 0.25f);
+              EXPECT_FLOAT_EQ(view.attributeOf("alpha").f(), 0.25f);
+            }
+            return true;
+          };
+          const std::string entry = std::string(nested ? "Nested" : "") + kind;
+          const char* recipe = type == "Int"    ? "(x,axis)=>Softmax(x,axis=axis)"
+                               : type == "Ints" ? "(x,axes)=>Transpose(x,perm=axes)"
+                                                : "(x,alpha)=>LeakyRelu(x,alpha=alpha)";
+          Rule rule{"Attribute", library.GetPattern(entry), recipe, check, {{kOnnxDomain, 17, 17}}};
+          Statistics stats;
+          ASSERT_STATUS_OK(PatternRewriter({rule}, {.match_only = match_only, .indexed = indexed, .max_iterations = 1})
+                               .Run(test.graph, stats));
+          EXPECT_EQ(checks, 1);
+          EXPECT_EQ(stats.matches, 1u);
+          EXPECT_EQ(stats.rewrites, match_only ? 0u : 1u);
+          ASSERT_STATUS_OK(test.graph.Resolve());
+        }
+      }
+    }
+  }
+  for (const char* text : {
+           "interface I(x,axis:int)->(y)",
+           "pattern P(x)->(y:ints){y=Identity(x);return y}",
+           "pattern P(x,a:int|None)->(y){y=Softmax(x,axis=a);return y}",
+           "pattern P(x,a:int)->(y){y=Softmax(x,axis=a);return y} "
+           "pattern E(x){y=P(x,_);return y}"}) {
+    SCOPED_TRACE(text);
+    EXPECT_THROW((void)PatternLibrary(text), OnnxRuntimeException);
+  }
+}
+
 TEST(PatternRewriterTests, FactoredOptionalScalingNumericalRewrite) {
   const PatternLibrary library(R"(
     pattern activation(g:float[M,N],u:float[M,N],alpha:float[...] | None) -> (product:float[M,N]) {
