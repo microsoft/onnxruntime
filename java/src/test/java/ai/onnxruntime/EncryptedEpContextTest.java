@@ -23,17 +23,18 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
+import org.junit.jupiter.api.io.TempDir;
 
 public class EncryptedEpContextTest {
   private static final SecureRandom RANDOM = new SecureRandom();
 
   @Test
   @EnabledOnOs(OS.WINDOWS)
-  public void encryptedCompiledModelAndContextRunInference() throws Exception {
+  public void encryptedCompiledModelAndContextRunInference(@TempDir Path directory)
+      throws Exception {
     OrtEnvironment env = OrtEnvironment.getEnvironment();
     String epName = "java_encrypted_ep_context";
     String library = TestHelpers.getResourcePath("/example_plugin_ep.dll").toString();
-    Path directory = Files.createTempDirectory("encrypted_ep_context");
     Path plaintextModel = directory.resolve("compiled.onnx");
     Path modelFile = directory.resolve("model.aesgcm");
     Path contextFile = directory.resolve("context.aesgcm");
@@ -49,12 +50,13 @@ public class EncryptedEpContextTest {
               .filter(candidate -> candidate.getEpName().equals(epName))
               .findFirst()
               .orElseThrow(() -> new AssertionError("Registered EP device was not found"));
-      OnnxMl.ModelProto.Builder original =
+      OnnxMl.ModelProto original =
           OnnxMl.ModelProto.parseFrom(
-              Files.readAllBytes(TestHelpers.getResourcePath("/mul_1.onnx")))
-              .toBuilder();
-      OnnxMl.GraphProto.Builder graph = original.getGraphBuilder();
+              Files.readAllBytes(TestHelpers.getResourcePath("/encrypted_ep_context_mul.onnx")));
+      OnnxMl.GraphProto graph = original.getGraph();
       Assertions.assertEquals(1, graph.getNodeCount());
+      Assertions.assertEquals(0, graph.getInitializerCount());
+      Assertions.assertEquals(2, graph.getInputCount());
       OnnxMl.NodeProto mul = graph.getNode(0);
       Assertions.assertEquals("Mul", mul.getOpType());
       OnnxMl.TypeProto inputType = graph.getInput(0).getType();
@@ -67,11 +69,7 @@ public class EncryptedEpContextTest {
         Assertions.assertTrue(dimension > 0);
         count = Math.multiplyExact(count, Math.toIntExact(dimension));
       }
-      graph.clearInitializer().clearInput();
-      for (String name : mul.getInputList()) {
-        graph.addInput(OnnxMl.ValueInfoProto.newBuilder().setName(name).setType(inputType));
-      }
-      byte[] inputModel = original.build().toByteArray();
+      byte[] inputModel = original.toByteArray();
       try (SessionOptions options = options(device);
           OrtModelCompilationOptions compile =
               OrtModelCompilationOptions.createFromSessionOptions(env, options)) {
@@ -156,6 +154,23 @@ public class EncryptedEpContextTest {
         try (SessionOptions options = options(device)) {
           Assertions.assertThrows(OrtException.class, () -> env.createSession(restored, options));
         }
+        Files.write(
+            contextFile,
+            encrypt("invalid".getBytes(StandardCharsets.UTF_8), key, contextName.get()));
+        try (SessionOptions options = options(device)) {
+          options.setEpContextDataReadCallback(
+              name -> {
+                Assertions.assertEquals(contextName.get(), name);
+                reads.incrementAndGet();
+                return decrypt(Files.readAllBytes(contextFile), key, name);
+              },
+              1024);
+          OrtException failure =
+              Assertions.assertThrows(
+                  OrtException.class, () -> env.createSession(restored, options));
+          Assertions.assertTrue(failure.getMessage().contains("Invalid compiled test Mul payload"));
+        }
+        Assertions.assertEquals(2, reads.get());
         Assertions.assertFalse(Files.exists(plaintextModel));
         Assertions.assertFalse(Files.exists(directory.resolve(contextName.get())));
         try (java.util.stream.Stream<Path> files = Files.list(directory)) {
@@ -165,12 +180,8 @@ public class EncryptedEpContextTest {
         Arrays.fill(restored, (byte) 0);
       }
     } finally {
-      env.unregisterExecutionProviderLibrary(epName);
       Arrays.fill(key, (byte) 0);
-      Files.deleteIfExists(plaintextModel);
-      Files.deleteIfExists(modelFile);
-      Files.deleteIfExists(contextFile);
-      Files.delete(directory);
+      env.unregisterExecutionProviderLibrary(epName);
     }
   }
 
