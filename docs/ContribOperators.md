@@ -1048,7 +1048,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Carry state from previous step. For ndim=1: (batch_size, channels, state_length), or (W, batch_size, channels, state_length) when state_window = W > 0, in which case only slot W-1 is read, where state_length = (k_1 - 1) * dilation. When channels_last = 1 each slot is (batch_size, state_length, d_1, ..., d_n) instead. The state_length and state_channels_last attributes may override the length and layout for the CUDA extended path. If not provided, padding is zero.</dd>
 </dl>
 
-#### Outputs (2 - 3)
+#### Outputs (2 - 5)
 
 <dl>
 <dt><tt>output</tt> : T</dt>
@@ -1057,6 +1057,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Updated carry state. For ndim=1: (batch_size, channels, state_length), or (W, batch_size, channels, state_length) when state_window = W > 0, and (batch_size, state_length, d_1, ..., d_n) per slot when channels_last = 1. Slot W-1 contains the last state_length values from the virtual input along the causal axis; slot j contains the same for the prefix ending at position (seq_len - W + j). Extended attributes override the state length and layout as for past_state.</dd>
 <dt><tt>first_state</tt> (optional) : T</dt>
 <dd>Optional carry state after the first input position, with the same layout and length as present_state. CUDA only; requires rank-3 channels-last input and state_window=0.</dd>
+<dt><tt>second_state</tt> (optional) : T</dt>
+<dd>Optional carry state after at most two input positions, with the same layout and length as present_state.</dd>
+<dt><tt>third_state</tt> (optional) : T</dt>
+<dd>Optional carry state after at most three input positions, with the same layout and length as present_state.</dd>
 </dl>
 
 #### Type Constraints
@@ -2565,7 +2569,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>CPU int32 control with shape (1). Zero disables transition capture, ignores capture_count, and produces a zero-filled state_update. Omission is conservative.</dd>
 </dl>
 
-#### Outputs (1 - 3)
+#### Outputs (1 - 5)
 
 <dl>
 <dt><tt>output</tt> : T</dt>
@@ -2574,6 +2578,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>State after the last token of each request, shape (batch_size, num_heads_v, head_size_v, head_size_qk)</dd>
 <dt><tt>state_update</tt> (optional) : TS</dt>
 <dd>Struct-of-arrays transition factors when state_output='state_update', or the state after the first token when state_output='mid_state'.</dd>
+<dt><tt>mid_state2</tt> (optional) : TS</dt>
+<dd>CUDA state after at most two request tokens; requires state_output='mid_state'.</dd>
+<dt><tt>mid_state3</tt> (optional) : TS</dt>
+<dd>CUDA state after at most three request tokens; requires state_output='mid_state'.</dd>
 </dl>
 
 #### Type Constraints

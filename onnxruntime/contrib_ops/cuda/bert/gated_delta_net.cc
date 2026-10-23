@@ -337,9 +337,15 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
 
   Tensor* state_update = nullptr;
   Tensor* mid_state = nullptr;
+  Tensor* mid_state2 = nullptr;
+  Tensor* mid_state3 = nullptr;
   if (mid_state_output_) {
     mid_state = context->Output(2, state_shape);
+    if (context->OutputCount() > 3) mid_state2 = context->Output(3, state_shape);
+    if (context->OutputCount() > 4) mid_state3 = context->Output(4, state_shape);
   } else {
+    ORT_RETURN_IF_NOT(context->OutputCount() <= 3,
+                      "additional prefix states require state_output='mid_state'");
     const int64_t state_update_width = static_cast<int64_t>(state_update_capacity_) *
                                        (num_heads_v + num_heads_k * head_size_qk +
                                         num_heads_v * head_size_v);
@@ -483,6 +489,8 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
   pack.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
   pack.final_state = final_state != nullptr ? final_state->MutableData<float>() : nullptr;
   pack.mid_state = mid_state != nullptr ? mid_state->MutableData<float>() : nullptr;
+  pack.mid_state2 = mid_state2 != nullptr ? mid_state2->MutableData<float>() : nullptr;
+  pack.mid_state3 = mid_state3 != nullptr ? mid_state3->MutableData<float>() : nullptr;
   pack.state_update = state_update != nullptr ? state_update->MutableData<float>() : nullptr;
 
   // Only the inactive case is cleared. While capture is active the kernels write just the
