@@ -20,6 +20,7 @@
 #include "core/common/logging/logging.h"
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/common/json_utils.h"
+#include "core/framework/compute_estimate_report.h"
 #endif
 #include "core/common/parse_string.h"
 #include "core/common/path_string.h"
@@ -3220,6 +3221,9 @@ common::Status InferenceSession::Initialize() {
     // output via optimized_model_filepath. We still log the session-creation telemetry and record the
     // end-of-initialization bookkeeping that the normal path emits, so neither is lost by returning early.
     if (session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionCompileOnly, "0") == "1") {
+      if (!session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsComputeEstimateReportPath, "").empty()) {
+        LOGS(*session_logger_, WARNING) << "Compute estimate report export is unsupported in a compile-only session.";
+      }
       LOGS(*session_logger_, INFO)
           << "Compile-only session: skipping session-state finalization. The session is not runnable.";
 #if defined(ORT_USE_TELEMETRY)
@@ -3294,6 +3298,20 @@ common::Status InferenceSession::Initialize() {
       ort_format_model_bytes_ = gsl::span<const uint8_t>();
       std::vector<uint8_t>().swap(ort_format_model_bytes_data_holder_);
       ort_format_model_mapped_memory_.reset();
+    }
+
+    // Estimate before pruning attributes needed by operator metadata adapters.
+    const auto compute_report_path = session_options_.config_options.GetConfigOrDefault(
+        kOrtSessionOptionsComputeEstimateReportPath, "");
+    if (!compute_report_path.empty()) {
+#if !defined(ORT_MINIMAL_BUILD)
+      const auto report_status = WriteComputeEstimateReport(graph, compute_report_path);
+      if (!report_status.IsOK()) {
+        LOGS(*session_logger_, WARNING) << report_status.ErrorMessage();
+      }
+#else
+      LOGS(*session_logger_, WARNING) << "Compute estimate report export is unsupported in a minimal build.";
+#endif
     }
 
     // once the model is saved, we may remove unnecessary attributes for inference

@@ -600,6 +600,16 @@ static const char* const kOrtSessionOptionsMaxShapeOverride = "session.max_shape
 static const char* const kOrtSessionOptionsStrictWorkspaceVerification =
     "session.strict_workspace_verification";
 
+// Opt-in static compute-estimation JSON report, written after successful session initialization
+// and before removable attributes are pruned. Value is a UTF-8 file path; empty/unset disables reporting.
+// Existing files are overwritten. Parent directories are not created. Use distinct paths for concurrent sessions
+// and do not use the model or optimized-model path. Reports include node names and canonical input shapes.
+// Currently estimates only MatMulNBits core dense-equivalent operations. Subgraphs have separate summaries,
+// not a combined per-run total. Unknown/unsupported counts are explicit report entries.
+// Report failures log a warning without failing initialization. Minimal builds warn that export is unsupported.
+// No profiling run, additional device synchronization, or new public API is required.
+static const char* const kOrtSessionOptionsComputeEstimateReportPath = "session.compute_estimate_report_path";
+
 // Enable EP context feature to dump the partitioned graph which includes the EP context into Onnx file.
 // The dumped Onnx model with EP context can be used for future inference to avoid the EP graph partitioning/compile overhead.
 // "0": disable. (default)
