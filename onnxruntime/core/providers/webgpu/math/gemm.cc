@@ -3,7 +3,7 @@
 
 #include "core/providers/webgpu/math/gemm.h"
 #include "core/providers/webgpu/math/gemm_packed.h"
-#include "core/providers/webgpu/vendor/intel/math/gemm.h"
+#include "core/providers/webgpu/vendor/intel/math/intel_gemm.h"
 
 #include <vector>
 

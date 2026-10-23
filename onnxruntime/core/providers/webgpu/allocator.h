@@ -24,7 +24,7 @@ inline OrtDevice WebGpuDevice(int context_id) {
 // Shared allocation implementation for native and plugin builds. Session getters borrow the EP;
 // plugin Env allocators have no Session recording. The returned objects
 // must remain alive throughout allocator use and tensor frees. BufferManager synchronizes deferred
-// releases when plugin Session allocators are used concurrently. Plugin ABI wrappers live in ep/allocator.h.
+// releases when plugin Session allocators are used concurrently. Plugin ABI wrappers live in ep/session_allocator.h.
 class GpuBufferAllocator : public IAllocator {
  public:
   // Calls buffer_manager_getter on every Alloc/Free to obtain the current

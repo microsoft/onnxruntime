@@ -11,7 +11,7 @@ Introduce `MatMulAlgorithm` with six concrete values:
 - `SubgroupMatrix`: the common subgroup-matrix implementation in `subgroup_matrix_matmul.cc`.
 - `Gemv`: the vendor-neutral FP16 specialization for packed M dimensions 1–8 in `MatMulGemvProgram`.
 - `Naive`: `MatMulNaiveProgram`.
-- `Subgroup`: the common subgroup implementation currently located in `vendor/intel/math/matmul.cc`.
+- `Subgroup`: the common subgroup implementation currently located in `vendor/intel/math/matmul_subgroup.cc`.
 - `Packed`: the generic packed `MatMulProgram` without Split-K.
 - `PackedSplitK`: the same packed program with Split-K initialization and atomic accumulation.
 

@@ -4,7 +4,7 @@ The current folder contains the implementation of EP ABI adapter for WebGPU.
 
 The Session stream and notification bridge lives in `sync_stream.h` and `sync_stream.cc`.
 The Session allocator ABI wrapper and plugin-only stream allocation implementation live in
-`allocator.h` and `allocator.cc` in this folder.
+`session_allocator.h` and `session_allocator.cc` in this folder.
 Shared buffer management and data-transfer implementations remain in the parent directory.
 Native builds exclude this folder.
 

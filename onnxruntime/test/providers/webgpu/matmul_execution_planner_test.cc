@@ -10,7 +10,7 @@
 #include "core/providers/webgpu/math/matmul_execution_planner.h"
 #include "core/providers/webgpu/math/matmul_compute_dispatcher.h"
 #include "core/providers/webgpu/vendor/intel/math/gemm_subgroup_utils.h"
-#include "core/providers/webgpu/vendor/intel/math/matmul_execution_planner.h"
+#include "core/providers/webgpu/vendor/intel/math/intel_matmul_execution_planner.h"
 #include "core/providers/webgpu/vendor/intel/math/split_k_config.h"
 
 namespace onnxruntime {

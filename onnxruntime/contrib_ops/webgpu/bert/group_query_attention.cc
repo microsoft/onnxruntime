@@ -7,7 +7,7 @@
 #include "contrib_ops/webgpu/bert/attention_common.h"
 #include "contrib_ops/webgpu/bert/group_query_attention.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
-#include "contrib_ops/webgpu/bert/rotary_embedding.h"
+#include "contrib_ops/webgpu/bert/contrib_rotary_embedding.h"
 #include "contrib_ops/webgpu/bert/flash_attention.h"
 #include "contrib_ops/webgpu/bert/kv_cache_quantization.h"
 

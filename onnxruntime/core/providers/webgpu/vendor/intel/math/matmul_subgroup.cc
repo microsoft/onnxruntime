@@ -6,7 +6,7 @@
 #include "core/providers/webgpu/math/matmul_utils.h"
 #include "core/providers/webgpu/vendor/intel/math/gemm_subgroup.h"
 #include "core/providers/webgpu/math/gemm_utils.h"
-#include "core/providers/webgpu/vendor/intel/math/matmul.h"
+#include "core/providers/webgpu/vendor/intel/math/matmul_subgroup.h"
 
 namespace onnxruntime {
 namespace webgpu {

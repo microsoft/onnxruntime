@@ -3,7 +3,7 @@
 
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/llm/rotary_embedding.h"
-#include "contrib_ops/webgpu/bert/rotary_embedding.h"
+#include "contrib_ops/webgpu/bert/contrib_rotary_embedding.h"
 #include "core/providers/webgpu/generator/range.h"
 
 namespace onnxruntime {
