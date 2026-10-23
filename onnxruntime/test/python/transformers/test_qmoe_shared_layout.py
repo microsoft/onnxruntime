@@ -313,11 +313,12 @@ class SharedLayoutTest(unittest.TestCase):
         lib.qmoe_shared_half_bits_to_float_row(all_bits.ctypes.data, simd_out.ctypes.data, 65536, 0)
         ref_out = all_bits.view(np.float16).astype(np.float32)
         non_nan = ~np.isnan(ref_out)
-        np.testing.assert_array_equal(scalar_out[non_nan], ref_out[non_nan])
-        np.testing.assert_array_equal(simd_out[non_nan], ref_out[non_nan])
+        np.testing.assert_array_equal(scalar_out[non_nan].view(np.uint32), ref_out[non_nan].view(np.uint32))
+        np.testing.assert_array_equal(simd_out[non_nan].view(np.uint32), ref_out[non_nan].view(np.uint32))
         self.assertTrue(np.all(np.isnan(scalar_out[~non_nan])))
         self.assertTrue(np.all(np.isnan(simd_out[~non_nan])))
 
+    @unittest.skipUnless(sys.platform == "linux", "Mapped expert-store backing discovery requires Linux.")
     def test_file_expert_store_heap_eviction_preserves_weights(self):
         lib = load_lib()
         self.assertEqual(lib.qmoe_file_store_test_heap_eviction_safety(), 1)

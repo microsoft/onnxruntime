@@ -23,6 +23,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 
 #if !defined(QMOE_COMPILER_SUPPORTS_AVX512)
@@ -35,13 +36,18 @@
 
 #if QMOE_COMPILER_SUPPORTS_AVX512
 
-#if defined(__GNUC__) && defined(__x86_64__) && !defined(__AVX512F__)
+#if defined(__GNUC__) && !defined(__clang__) && defined(__x86_64__) && !defined(__AVX512F__)
 #pragma GCC push_options
 #pragma GCC target("avx512f,avx512bw,avx512dq,avx512vl,fma,f16c")
 #define QMOE_SHARED_POP_GCC_TARGET 1
 #endif
 
 #include <immintrin.h>
+
+#if defined(__clang__) && defined(__x86_64__) && !defined(__AVX512F__)
+#pragma clang attribute push(__attribute__((target("avx512f,avx512bw,avx512dq,avx512vl,fma,f16c"))), apply_to = function)
+#define QMOE_SHARED_POP_CLANG_TARGET 1
+#endif
 
 namespace onnxruntime {
 namespace contrib {
@@ -61,25 +67,18 @@ inline float Avx512RoundFp16(float v) noexcept {
   return _mm_cvtss_f32(_mm_cvtph_ps(half_bits));
 }
 
-inline float Avx512RoundBf16(float v) noexcept {
-  uint32_t bits;
-  std::memcpy(&bits, &v, sizeof(bits));
-  if ((bits & 0x7F800000u) != 0x7F800000u) {
-    bits += 0x7FFFu + ((bits >> 16) & 1u);
-  }
-  bits &= 0xFFFF0000u;
-  float out;
-  std::memcpy(&out, &bits, sizeof(out));
-  return out;
-}
-
 inline __m512 Avx512RoundBf16Vec(__m512 v) noexcept {
   const __m512i fbits = _mm512_castps_si512(v);
   const __m512i bias = _mm512_set1_epi32(0x7FFFu);
   const __m512i one = _mm512_set1_epi32(1);
+  const __m512i exp_mask = _mm512_set1_epi32(0x7F800000);
+  const __m512i magnitude = _mm512_and_epi32(fbits, _mm512_set1_epi32(0x7FFFFFFF));
+  const __mmask16 finite = _mm512_cmplt_epi32_mask(magnitude, exp_mask);
+  const __mmask16 nan = _mm512_cmpgt_epi32_mask(magnitude, exp_mask);
   const __m512i lsb = _mm512_and_epi32(_mm512_srli_epi32(fbits, 16), one);
-  const __m512i rounded = _mm512_add_epi32(fbits, _mm512_add_epi32(bias, lsb));
-  return _mm512_castsi512_ps(_mm512_and_epi32(rounded, _mm512_set1_epi32(static_cast<int>(0xFFFF0000u))));
+  const __m512i rounded = _mm512_mask_add_epi32(fbits, finite, fbits, _mm512_add_epi32(bias, lsb));
+  const __m512i canonical = _mm512_mask_mov_epi32(rounded, nan, _mm512_set1_epi32(0x7FC10000));
+  return _mm512_castsi512_ps(_mm512_and_epi32(canonical, _mm512_set1_epi32(static_cast<int>(0xFFFF0000u))));
 }
 
 inline __m512 Avx512RoundFp16Vec(__m512 v) noexcept {
@@ -537,14 +536,8 @@ void Avx512BFloat16BitsToFloatRow(const uint16_t* src, float* dst, int64_t count
 
 void Avx512FloatToBFloat16BitsRow(const float* src, uint16_t* dst, int64_t count) {
   int64_t i = 0;
-  const __m512i bias = _mm512_set1_epi32(0x7FFFu);
-  const __m512i one = _mm512_set1_epi32(1);
-  const __m512i exp_mask = _mm512_set1_epi32(0x7F800000);
   for (; i + 16 <= count; i += 16) {
-    const __m512i fbits = _mm512_castps_si512(_mm512_loadu_ps(src + i));
-    const __mmask16 not_inf_nan = _mm512_cmpneq_epi32_mask(_mm512_and_epi32(fbits, exp_mask), exp_mask);
-    const __m512i lsb = _mm512_and_epi32(_mm512_srli_epi32(fbits, 16), one);
-    const __m512i rounded = _mm512_mask_add_epi32(fbits, not_inf_nan, fbits, _mm512_add_epi32(bias, lsb));
+    const __m512i rounded = _mm512_castps_si512(Avx512RoundBf16Vec(_mm512_loadu_ps(src + i)));
     const __m256i out16 = _mm512_cvtepi32_epi16(_mm512_srli_epi32(rounded, 16));
     _mm256_storeu_si256(reinterpret_cast<__m256i*>(dst + i), out16);
   }
@@ -559,6 +552,11 @@ void Avx512FloatToBFloat16BitsRow(const float* src, uint16_t* dst, int64_t count
 #if defined(QMOE_SHARED_POP_GCC_TARGET)
 #pragma GCC pop_options
 #undef QMOE_SHARED_POP_GCC_TARGET
+#endif
+
+#if defined(QMOE_SHARED_POP_CLANG_TARGET)
+#pragma clang attribute pop
+#undef QMOE_SHARED_POP_CLANG_TARGET
 #endif
 
 #endif  // QMOE_COMPILER_SUPPORTS_AVX512

@@ -132,7 +132,8 @@ class FileExpertStore {
   void Shutdown() noexcept;
 
   // Linux file-backed banks, read directly into the cache without repacking a second weight file.
-  // All banks must refer to immutable, readable regular-file mappings for their full E * bytes range.
+  // Banks must remain immutable during initialization. Without an explicit file path, read-only
+  // mappings are discovered via /proc/self/maps; heap banks up to 4 MiB are copied into owned backing.
   bool InitializeMapped(const MappedBank* banks, size_t bank_count, int64_t num_experts,
                         size_t expert_stride, size_t cache_slots,
                         uint64_t model_content_id = 0) noexcept;
@@ -286,6 +287,7 @@ void FloatToHalfBitsRow(const float* src, uint16_t* dst, int64_t count, bool for
 void BFloat16BitsToFloatRow(const uint16_t* src, float* dst, int64_t count, bool force_scalar = false);
 void FloatToBFloat16BitsRow(const float* src, uint16_t* dst, int64_t count, bool force_scalar = false);
 
+// Ranges use [n_begin, n_end); out points at the first requested column, with out_stride between rows.
 void GemmRange(const uint8_t* weights, const uint16_t* scales, const uint16_t* bias, int64_t n_total,
                int64_t k, const float* a, int64_t m, float* out, int64_t out_stride, int64_t n_begin,
                int64_t n_end, bool force_scalar = false);
@@ -298,6 +300,8 @@ void Fc2Range(const ExpertBlockLayout& layout, const uint8_t* block, const float
               int64_t m, float* out, int64_t n_begin, int64_t n_end, bool force_scalar = false,
               bool apply_bias = true);
 
+// Convenience forward with owned scratch allocations. Inference callers should use the range
+// kernels above with preallocated activation buffers.
 bool ExpertForward(const ExpertBlockLayout& layout, const uint8_t* block, const float* x, int64_t m,
                    const SwiGluParams& swiglu, float* out, bool force_scalar = false, bool apply_fc2_bias = true,
                    bool fp16_boundaries = false);
@@ -326,6 +330,7 @@ void Nvfp4Fc2Range(int64_t hidden, int64_t inter, const Nvfp4ExpertView& view,
                    int64_t n_begin, int64_t n_end, bool force_scalar = false,
                    bool apply_bias = false, bool round_scale_bf16 = true);
 
+// Convenience forward with owned scratch allocations, not for the allocation-free inference path.
 bool Nvfp4ExpertForward(int64_t hidden, int64_t inter, const Nvfp4ExpertView& view,
                         const float* x, int64_t m, const SwiGluParams& swiglu, float* out,
                         bool force_scalar = false, bool apply_fc2_bias = false,

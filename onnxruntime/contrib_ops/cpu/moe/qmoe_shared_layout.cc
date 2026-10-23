@@ -186,15 +186,7 @@ void ScalarGemmRange(const uint8_t* weights, const uint16_t* scales, const uint1
 }
 
 inline float RoundBf16Fast(float v) noexcept {
-  uint32_t bits;
-  std::memcpy(&bits, &v, sizeof(bits));
-  if ((bits & 0x7F800000u) != 0x7F800000u) {
-    bits += 0x7FFFu + ((bits >> 16) & 1u);
-  }
-  bits &= 0xFFFF0000u;
-  float out;
-  std::memcpy(&out, &bits, sizeof(out));
-  return out;
+  return BoundaryBFloat16::Round(v);
 }
 
 void ScalarNvfp4GemmRange(const uint8_t* weights, const uint8_t* block_scales, float global_scale,
@@ -1415,6 +1407,7 @@ bool ValidateExpertStorageRange(int64_t num_experts, size_t stride, uint64_t ext
   }
   size_t total = 0;
   if (!CheckedMulSize(static_cast<size_t>(num_experts), stride, &total)) return false;
+  if (external_offset > std::numeric_limits<uint64_t>::max() - total) return false;
   if (external_length != 0) {
     if (external_length != static_cast<uint64_t>(total)) return false;
     if (external_offset > std::numeric_limits<uint64_t>::max() - external_length) return false;
@@ -1600,7 +1593,7 @@ float HalfToFloat(uint16_t h) {
   const uint32_t sign = (h >> 15) & 1u;
   const uint32_t exp = (h >> 10) & 0x1Fu;
   const uint32_t man = h & 0x3FFu;
-  uint32_t bits = 0;
+  uint32_t bits = sign << 31;
   if (exp == 0) {
     if (man != 0) {
       uint32_t m = man;
@@ -1676,7 +1669,7 @@ void GemmRange(const uint8_t* weights, const uint16_t* scales, const uint16_t* b
                int64_t k, const float* a, int64_t m, float* out, int64_t out_stride, int64_t n_begin,
                int64_t n_end, bool force_scalar) {
 #if QMOE_COMPILER_SUPPORTS_AVX512
-  if (!force_scalar && CpuHasAvx512()) {
+  if (!force_scalar && n_begin % kColumnsInterleaved == 0 && n_end % kColumnsInterleaved == 0 && CpuHasAvx512()) {
     detail::Avx512GemmRange(weights, scales, bias, n_total, k, a, m, out, out_stride, n_begin, n_end);
     return;
   }
