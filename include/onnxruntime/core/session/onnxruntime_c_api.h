@@ -5148,10 +5148,12 @@ struct OrtApi {
   ORT_API2_STATUS(GetTensorRTProviderOptionsByName, _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options, _In_ const char* key, _Outptr_ void** ptr);
 
   /**
-   * Update CUDA EP provider option where its data type is pointer, for example 'user_compute_stream'.
+   * Update CUDA EP pointer options: 'user_compute_stream' or 'default_memory_arena_cfg'.
    * If the data type of the provider option can be represented by string please use UpdateCUDAProviderOptions.
    *
    * Note: It's caller's responsibility to properly manage the lifetime of the instance pointed by this pointer.
+   * The arena configuration is copied when the execution provider is appended to session options.
+   * The arena configuration pointer is preserved by UpdateCUDAProviderOptions; use a null value here to clear it.
    *
    * \param cuda_options - OrtCUDAProviderOptionsV2 instance
    * \param key - Name of the provider option
