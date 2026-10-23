@@ -29,6 +29,12 @@ constexpr int kFusedRouteExperts = 512;  // the kernel is specialised for exactl
 constexpr int kFusedRouteThreads = 128;
 static_assert(kFusedRouteMaxRows * kFusedRouteMaxK <= 64);
 
+constexpr int kFusedRoute256MaxRows = 8;
+constexpr int kFusedRoute256MaxK = 8;
+constexpr int kFusedRoute256Experts = 256;
+constexpr int kFusedRoute256Threads = 256;
+static_assert(kFusedRoute256MaxRows * kFusedRoute256MaxK <= 64);
+
 __device__ __forceinline__ uint32_t FusedRouteKey(float logit, int index, bool valid) {
   const uint32_t bits = logit == 0.0f ? 0u : __float_as_uint(logit);
   const uint32_t sortable = (bits & 0x80000000u) ? ~bits : (bits | 0x80000000u);
@@ -212,6 +218,113 @@ __global__ void __launch_bounds__(kFusedRouteThreads) FusedSoftmaxTopKMapsKernel
 #pragma unroll
   for (int i = 0; i < 5; ++i) {
     const int e = static_cast<int>(threadIdx.x) + i * kFusedRouteThreads;
+    if (e <= num_experts) {
+      expert_first_token_offset[e] = count[i];
+    }
+  }
+}
+
+// 256-expert specialization supporting 1..8 rows and k <= 8 (num_rows * k <= 64).
+// Uses 8 warps (256 threads), one warp per row. Lane l owns strided experts j * 32 + l (j = 0..7),
+// reproducing SoftmaxTopKWarpTopKKernel<T, 8, 4>'s WarpReduceMax / WarpReduceSum reduction order
+// operation-for-operation while using k rounds of warp-wide __reduce_max_sync for top-k selection
+// and building the (expert, token)-sorted expert maps in the same CTA.
+template <typename T, int K>
+__global__ void __launch_bounds__(kFusedRoute256Threads) FusedSoftmaxTopKMaps256Kernel(
+    const T* logits, float* topk_scales, int* topk_indices, int* permuted_row_to_unpermuted_row,
+    int* unpermuted_row_to_permuted_row, int* permuted_expert, int64_t* expert_first_token_offset, int num_rows,
+    int k_runtime, bool normalize_scales) {
+  constexpr int num_experts = kFusedRoute256Experts;
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900)
+  asm volatile("griddepcontrol.wait;" ::: "memory");
+  asm volatile("griddepcontrol.launch_dependents;");
+#endif
+  constexpr int kMaxSel = K > 0 ? K : kFusedRoute256MaxK;
+  const int k = K > 0 ? K : k_runtime;
+  __shared__ int s_key[kFusedRoute256MaxRows * kFusedRoute256MaxK];
+  __shared__ int s_sorted[128];
+
+  const int warp = static_cast<int>(threadIdx.x) >> 5;
+  const int lane = static_cast<int>(threadIdx.x) & 31;
+  if (threadIdx.x < 128) {
+    s_sorted[threadIdx.x] = INT_MAX;
+  }
+
+  if (warp < num_rows) {
+    const T* row_logits = logits + static_cast<size_t>(warp) * num_experts;
+    uint64_t keys[8];
+    float local_max = onnxruntime::cuda::topk::kNegativeInfinity;
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      const int idx = j * 32 + lane;
+      const float logit = static_cast<float>(row_logits[idx]);
+      keys[j] = onnxruntime::cuda::topk::PackStableSortKey(logit, idx);
+      local_max = fmaxf(local_max, logit);
+    }
+
+    const float max_val = onnxruntime::cuda::topk::WarpReduceMax(local_max);
+    float local_sum = 0.0f;
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      local_sum += expf(onnxruntime::cuda::topk::UnpackStableSortScore(keys[j]) - max_val);
+    }
+    const float inv_sum = onnxruntime::cuda::topk::SafeInvSum(onnxruntime::cuda::topk::WarpReduceSum(local_sum));
+
+    onnxruntime::cuda::topk::WarpBitonicTopN<8>(keys);
+
+    float probs[8];
+    float scale_sum = 0.0f;
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      probs[j] = onnxruntime::cuda::topk::SoftmaxScale(
+          onnxruntime::cuda::topk::UnpackStableSortScore(keys[j]), max_val, inv_sum);
+      if (j < k) scale_sum += probs[j];
+    }
+    const float denom = onnxruntime::cuda::topk::TopKNormalizeDenom(normalize_scales, scale_sum);
+
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      if (lane == j && j < k) {
+        const int expert = onnxruntime::cuda::topk::UnpackStableSortIndex(keys[j]);
+        topk_scales[static_cast<size_t>(warp) * k + j] = normalize_scales ? (probs[j] / denom) : probs[j];
+        topk_indices[static_cast<size_t>(warp) * k + j] = expert;
+        s_key[warp * k + j] = (expert << 3) | warp;  // 3 bits for token index (0..7)
+      }
+    }
+  }
+  const int num_pairs = num_rows * k;
+  __syncthreads();
+
+  if (static_cast<int>(threadIdx.x) < num_pairs) {
+    const int p = static_cast<int>(threadIdx.x);
+    const int key = s_key[p];
+    int rank = 0;
+    for (int q = 0; q < num_pairs; ++q) {
+      rank += s_key[q] < key ? 1 : 0;
+    }
+    const int token = key & 7;
+    const int unpermuted_row = (p - token * k) * num_rows + token;
+    const int expert = key >> 3;
+    permuted_row_to_unpermuted_row[rank] = unpermuted_row;
+    unpermuted_row_to_permuted_row[unpermuted_row] = rank;
+    permuted_expert[rank] = expert;
+    s_sorted[rank] = expert;
+  }
+  __syncthreads();
+
+  int count[2];
+#pragma unroll
+  for (int i = 0; i < 2; ++i) {
+    const int e = static_cast<int>(threadIdx.x) + i * kFusedRoute256Threads;
+    count[i] = 0;
+#pragma unroll
+    for (int step = 64; step >= 1; step >>= 1) {
+      count[i] += s_sorted[count[i] + step - 1] < e ? step : 0;
+    }
+  }
+#pragma unroll
+  for (int i = 0; i < 2; ++i) {
+    const int e = static_cast<int>(threadIdx.x) + i * kFusedRoute256Threads;
     if (e <= num_experts) {
       expert_first_token_offset[e] = count[i];
     }

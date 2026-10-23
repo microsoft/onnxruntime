@@ -44,7 +44,8 @@ void LaunchSoftmaxTopK(
 
 // Decode-only fused routing: softmax + top-k (bit-identical to LaunchSoftmaxTopK) and the (expert, token)-sorted expert
 // maps of fusedBuildExpertMapsSortFirstToken in one single-CTA launch. Returns false (nothing launched) outside its
-// envelope: 1..4 rows, exactly 512 experts, k in {1, 2, 4, 6, 8, 10}, 8-byte aligned logits.
+// envelope: (1..4 rows, 512 experts, k in {1, 2, 4, 6, 8, 10}) or (1..8 rows, 256 experts, k in {1, 2, 4, 6, 8}),
+// 8-byte aligned logits.
 bool LaunchFusedRouteMaps(const half* logits, float* topk_scales, int* topk_indices, int* permuted_row_to_unpermuted_row,
                           int* unpermuted_row_to_permuted_row, int* permuted_expert, int64_t* expert_first_token_offset,
                           int num_rows, int num_experts, int k, bool normalize_scales, bool pdl, cudaStream_t stream);
