@@ -7414,6 +7414,195 @@ TEST_F(GraphTransformationTests, ReshapeFusionContiguousReshapesWithZeroDimExecu
   EXPECT_EQ(output_shape[2], 4);
 }
 
+TEST_F(GraphTransformationTests, ReshapeFusionPreservesDynamicBatchDuringSpatialFlatten) {
+  auto build_spatial_flatten = [](ModelTestBuilder& builder, int opset, int64_t batch, bool dynamic_batch) {
+    const std::vector<int64_t> input_shape{batch, 20, 30, 40};
+    std::vector<float> input_data(static_cast<size_t>(batch * 20 * 30 * 40), 1.0f);
+    auto* input = builder.MakeInput<float>(input_shape, input_data);
+
+    if (dynamic_batch) {
+      ONNX_NAMESPACE::TensorShapeProto graph_input_shape;
+      graph_input_shape.add_dim()->set_dim_param("batch");
+      for (int64_t dim : {20, 30, 40}) {
+        graph_input_shape.add_dim()->set_dim_value(dim);
+      }
+      input->SetShape(graph_input_shape);
+    }
+
+    auto* input_dims = builder.MakeIntermediate();
+    auto* batch_scalar = builder.MakeIntermediate();
+    auto* channel_scalar = builder.MakeIntermediate();
+    auto* batch_vector = builder.MakeIntermediate();
+    auto* channel_vector = builder.MakeIntermediate();
+    auto* spatial_dim_2_slice = builder.MakeIntermediate();
+    auto* spatial_dim_3_slice = builder.MakeIntermediate();
+    auto* spatial_dim_2 = builder.MakeIntermediate();
+    auto* spatial_dim_3 = builder.MakeIntermediate();
+    auto* spatial_product = builder.MakeIntermediate();
+    auto* spatial_vector = builder.MakeIntermediate();
+    auto* target_shape = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("Shape", {input}, {input_dims});
+    builder.AddNode("Gather", {input_dims, builder.MakeScalarInitializer<int64_t>(0)}, {batch_scalar});
+    builder.AddNode("Gather", {input_dims, builder.MakeScalarInitializer<int64_t>(1)}, {channel_scalar});
+
+    auto* axis_zero = builder.Make1DInitializer<int64_t>({0});
+    auto add_unsqueeze = [&](NodeArg* scalar, NodeArg* vector) {
+      if (opset < 13) {
+        builder.AddNode("Unsqueeze", {scalar}, {vector}).AddAttribute("axes", std::vector<int64_t>{0});
+      } else {
+        builder.AddNode("Unsqueeze", {scalar, axis_zero}, {vector});
+      }
+    };
+    add_unsqueeze(batch_scalar, batch_vector);
+    add_unsqueeze(channel_scalar, channel_vector);
+
+    auto* start_2 = builder.Make1DInitializer<int64_t>({2});
+    auto* end_2 = builder.Make1DInitializer<int64_t>({3});
+    auto* start_3 = builder.Make1DInitializer<int64_t>({3});
+    auto* end_3 = builder.Make1DInitializer<int64_t>({4});
+    auto* slice_axis = builder.Make1DInitializer<int64_t>({0});
+    auto* slice_step = builder.Make1DInitializer<int64_t>({1});
+    builder.AddNode("Slice", {input_dims, start_2, end_2, slice_axis, slice_step}, {spatial_dim_2_slice});
+    builder.AddNode("Slice", {input_dims, start_3, end_3, slice_axis, slice_step}, {spatial_dim_3_slice});
+
+    auto add_squeeze = [&](NodeArg* sliced, NodeArg* scalar) {
+      if (opset < 13) {
+        builder.AddNode("Squeeze", {sliced}, {scalar}).AddAttribute("axes", std::vector<int64_t>{0});
+      } else {
+        builder.AddNode("Squeeze", {sliced, axis_zero}, {scalar});
+      }
+    };
+    add_squeeze(spatial_dim_2_slice, spatial_dim_2);
+    add_squeeze(spatial_dim_3_slice, spatial_dim_3);
+    builder.AddNode("Mul", {spatial_dim_2, spatial_dim_3}, {spatial_product});
+    add_unsqueeze(spatial_product, spatial_vector);
+
+    builder.AddNode("Concat", {batch_vector, channel_vector, spatial_vector}, {target_shape})
+        .AddAttribute("axis", int64_t{0});
+    builder.AddNode("Reshape", {input, target_shape}, {output});
+  };
+
+  auto check_shape_initializer = [](bool expect_fused, const std::vector<int64_t>& expected_shape) {
+    return [=](InferenceSessionWrapper& session) {
+      const Graph& graph = session.GetGraph();
+      const Node* reshape = nullptr;
+      for (const Node& node : graph.Nodes()) {
+        if (node.OpType() == "Reshape") {
+          ASSERT_EQ(reshape, nullptr);
+          reshape = &node;
+        }
+      }
+      ASSERT_NE(reshape, nullptr);
+      ASSERT_EQ(reshape->InputDefs().size(), 2U);
+
+      const std::string& shape_name = reshape->InputDefs()[1]->Name();
+      const auto& session_state = session.GetSessionState();
+      const auto& value_name_to_index = session_state.GetOrtValueNameIdxMap();
+      const auto& initialized_tensors = session_state.GetInitializedTensors();
+      int shape_index = -1;
+      const auto shape_index_status = value_name_to_index.GetIdx(shape_name, shape_index);
+      if (!expect_fused) {
+        ASSERT_TRUE(shape_index_status.IsOK());
+        EXPECT_EQ(initialized_tensors.count(shape_index), 0U);
+        const Node* shape_producer = graph.GetProducerNode(shape_name);
+        ASSERT_NE(shape_producer, nullptr);
+        EXPECT_EQ(shape_producer->OpType(), "Concat");
+        return;
+      }
+
+      ASSERT_TRUE(shape_index_status.IsOK());
+      const auto shape_tensor = initialized_tensors.find(shape_index);
+      ASSERT_NE(shape_tensor, initialized_tensors.end());
+      const auto& tensor = shape_tensor->second.Get<Tensor>();
+      ASSERT_EQ(tensor.Shape().NumDimensions(), 1U);
+      ASSERT_EQ(tensor.Shape()[0], static_cast<int64_t>(expected_shape.size()));
+      const auto* actual_shape = tensor.Data<int64_t>();
+      ASSERT_NE(actual_shape, nullptr);
+      for (size_t i = 0; i < expected_shape.size(); ++i) {
+        EXPECT_EQ(actual_shape[i], expected_shape[i]) << "shape index " << i;
+      }
+    };
+  };
+
+  for (int opset : {12, 21}) {
+    for (int64_t batch : {0, 1, 2}) {
+      SCOPED_TRACE(::testing::Message() << "opset=" << opset << ", runtime batch=" << batch);
+      auto build_test_case = [=](ModelTestBuilder& builder) { build_spatial_flatten(builder, opset, batch, true); };
+      TransformerTester(build_test_case,
+                        check_shape_initializer(false, {}),
+                        TransformerLevel::Default,
+                        TransformerLevel::Level1,
+                        opset,
+                        0.0,
+                        0.0,
+                        std::make_unique<ReshapeFusion>());
+    }
+  }
+
+  // A statically zero batch dimension also leaves the synthesized -1 ambiguous.
+  auto build_static_zero = [=](ModelTestBuilder& builder) { build_spatial_flatten(builder, 12, 0, false); };
+  {
+    SCOPED_TRACE("static zero batch");
+    TransformerTester(build_static_zero,
+                      check_shape_initializer(false, {}),
+                      TransformerLevel::Default,
+                      TransformerLevel::Level1,
+                      12,
+                      0.0,
+                      0.0,
+                      std::make_unique<ReshapeFusion>());
+  }
+
+  // A statically positive copied batch dimension still makes the synthesized -1 unambiguous.
+  auto build_static_positive = [=](ModelTestBuilder& builder) { build_spatial_flatten(builder, 12, 2, false); };
+  {
+    SCOPED_TRACE("static positive batch");
+    TransformerTester(build_static_positive,
+                      check_shape_initializer(true, {0, 0, -1}),
+                      TransformerLevel::Default,
+                      TransformerLevel::Level1,
+                      12,
+                      0.0,
+                      0.0,
+                      std::make_unique<ReshapeFusion>());
+  }
+
+  // An original literal -1 remains a legal fused target because it is not synthesized by fusion.
+  auto build_literal_minus_one = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({2, 20, 30, 40}, std::vector<float>(2 * 20 * 30 * 40, 1.0f));
+    ONNX_NAMESPACE::TensorShapeProto graph_input_shape;
+    graph_input_shape.add_dim()->set_dim_param("batch");
+    for (int64_t dim : {20, 30, 40}) {
+      graph_input_shape.add_dim()->set_dim_value(dim);
+    }
+    input->SetShape(graph_input_shape);
+    auto* input_dims = builder.MakeIntermediate();
+    auto* batch_scalar = builder.MakeIntermediate();
+    auto* batch_vector = builder.MakeIntermediate();
+    auto* target_shape = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+    builder.AddNode("Shape", {input}, {input_dims});
+    builder.AddNode("Gather", {input_dims, builder.MakeScalarInitializer<int64_t>(0)}, {batch_scalar});
+    builder.AddNode("Unsqueeze", {batch_scalar}, {batch_vector}).AddAttribute("axes", std::vector<int64_t>{0});
+    auto* literal_tail = builder.Make1DInitializer<int64_t>({20, -1});
+    builder.AddNode("Concat", {batch_vector, literal_tail}, {target_shape}).AddAttribute("axis", int64_t{0});
+    builder.AddNode("Reshape", {input, target_shape}, {output});
+  };
+  {
+    SCOPED_TRACE("literal minus one with symbolic batch");
+    TransformerTester(build_literal_minus_one,
+                      check_shape_initializer(true, {0, 20, -1}),
+                      TransformerLevel::Default,
+                      TransformerLevel::Level1,
+                      12,
+                      0.0,
+                      0.0,
+                      std::make_unique<ReshapeFusion>());
+  }
+}
+
 // Two chained Reshapes where the first Reshape's shape input is computed by a Where node.
 // The fusion collapses them into a single Reshape with the constant shape {6} and deletes
 // the Where, whose only consumer is the removed shape input.
