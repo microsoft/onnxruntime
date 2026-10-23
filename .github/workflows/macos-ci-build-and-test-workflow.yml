@@ -53,7 +53,7 @@ jobs:
     runs-on: ${{ matrix.machine == 'x86_64' && 'macos-15-intel' || 'macos-15' }}
     timeout-minutes: 120
     env:
-      build_flags: >
+      build_flags: >-
         --build_dir ./build
         --skip_submodule_sync
         --parallel
