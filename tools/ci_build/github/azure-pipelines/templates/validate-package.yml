@@ -9,6 +9,7 @@ parameters:
   workingDirectory: "$(Build.BinariesDirectory)"
 
 steps:
+    # PythonScript below needs a version of python to use as its interpreter
     - task: UsePythonVersion@0
       inputs:
         versionSpec: '3.12'
