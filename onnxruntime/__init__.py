@@ -61,6 +61,7 @@ try:
         get_version_string,  # noqa: F401
         has_collective_ops,  # noqa: F401
         register_execution_provider_library,
+        set_default_logger_callback,  # noqa: F401
         set_default_logger_severity,  # noqa: F401
         set_default_logger_verbosity,  # noqa: F401
         set_global_thread_pool_sizes,  # noqa: F401
