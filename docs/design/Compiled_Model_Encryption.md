@@ -115,7 +115,10 @@ Without this opt-in, it is explicitly skipped. Host Jest crypto/configuration
 tests and native-header syntax checks do **not** establish device coverage.
 The React Native CI Android emulator and iOS simulator jobs enable this opt-in automatically.
 The Android build job cross-compiles the plugin for the emulator's x86_64 ABI using
-the same checkout as the ORT AAR. The app packages it in `jniLibs` and loads it by
+the same checkout as the ORT AAR. The test plugin links a private static libc++
+and exports only the existing EP/test-hook ABI, so it does not require newer C++
+symbols from React Native's packaged `libc++_shared.so`. CI checks that the plugin
+has no shared-libc++ dependency. The app packages it in `jniLibs` and loads it by
 library name through Android's linker namespace, avoiding executable code in
 writable app data. The model/configuration are APK assets; the app copies the
 source model into the per-run document subdirectory before compilation and removes

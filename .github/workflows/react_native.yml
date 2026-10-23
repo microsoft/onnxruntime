@@ -72,9 +72,16 @@ jobs:
           set -e -x
           cmake -S js/react_native/cpp/test -B "${{ runner.temp }}/android-encryption-plugin" -G Ninja \
             -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_ROOT/build/cmake/android.toolchain.cmake" \
-            -DANDROID_ABI=x86_64 -DANDROID_PLATFORM=android-24 -DANDROID_STL=c++_shared \
+            -DANDROID_ABI=x86_64 -DANDROID_PLATFORM=android-24 -DANDROID_STL=c++_static \
             -DCMAKE_BUILD_TYPE=Release -DORT_RN_BUILD_ENCRYPTION_PLUGIN=ON
           cmake --build "${{ runner.temp }}/android-encryption-plugin" --target example_plugin_ep --parallel
+          "$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf" --dynamic \
+            "${{ runner.temp }}/android-encryption-plugin/libexample_plugin_ep.so" \
+            > "${{ runner.temp }}/android-encryption-plugin/dynamic.txt"
+          if grep -q 'libc++_shared.so' "${{ runner.temp }}/android-encryption-plugin/dynamic.txt"; then
+            echo "The test plugin must not depend on the app's React Native C++ runtime."
+            exit 1
+          fi
           fixture="${{ runner.temp }}/artifacts/ort-encryption"
           mkdir -p "$fixture"
           cp "${{ runner.temp }}/android-encryption-plugin/libexample_plugin_ep.so" "$fixture/"
@@ -122,8 +129,8 @@ jobs:
           node-version: '24.x'
           registry-url: 'https://packagefeedproxy.microsoft.io/npm/'
 
-      - name: Install ninja
-        run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - name: Install ninja and emulator runtime dependencies
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libpulse0
 
       - name: Download Android AAR artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
