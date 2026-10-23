@@ -27,6 +27,8 @@ struct PrePackedWeights final {
   // Produces a hash of the buffers stored in the given instance of this class
   HashValue GetHash() const;
 
+  bool IsEquivalentTo(const PrePackedWeights& other) const noexcept;
+
   // The function creates a copy with non-owning BufferUniquePtrs.
   PrePackedWeights CreateReferringCopy() const;
 };
