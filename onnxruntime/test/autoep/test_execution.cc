@@ -1014,6 +1014,27 @@ TEST(OrtEpLibrary, PluginEp_LoadEpContextModel_ExternalDataUsesReadCallback) {
   EXPECT_EQ(read_callback_state.read_file_name, write_callback_state.write_file_name);
 }
 
+TEST(OrtEpLibrary, PluginEp_BooleanConfigRejectsInvalidValues) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice device(example_ep.get());
+  for (const char* key : {"ep.context_enable", "ep.context_embed_mode", "ep.enable_weightless_ep_context_nodes",
+                          "ep.example_ep.test_ep_context_data_support", "ep.example.use_default_cpu_allocator",
+                          "ep.example.test_read_ep_context_during_compile", "ep.example.test_execute_ep_context"}) {
+    SCOPED_TRACE(key);
+    Ort::SessionOptions options;
+    options.AddConfigEntry(key, "invalid");
+    options.AppendExecutionProvider_V2(*ort_env, {device}, std::unordered_map<std::string, std::string>{});
+    try {
+      Ort::Session session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), options);
+      FAIL() << "Invalid boolean configuration was accepted";
+    } catch (const Ort::Exception& error) {
+      EXPECT_THAT(error.what(), ::testing::HasSubstr(key));
+      EXPECT_THAT(error.what(), ::testing::HasSubstr("must be '0' or '1'"));
+    }
+  }
+}
+
 TEST(OrtEpLibrary, PluginEp_ExecutableExternalContextRoundTrip) {
   RegisteredEpDeviceUniquePtr example_ep;
   ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));

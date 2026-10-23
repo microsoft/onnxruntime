@@ -68,6 +68,7 @@ class ExampleEp : public OrtEp, public ApiPtrs {
     bool advertise_ep_context_data_support = true;
     bool use_default_cpu_allocator = false;
     bool test_read_ep_context_during_compile = false;
+    // External-only float32 Mul fixture: writes a versioned marker and restores a kernel only for that marker.
     bool test_execute_ep_context = false;
     std::string ep_context_output_model_path;
     // Other EP configs (typically extracted from OrtSessionOptions or OrtHardwareDevice(s))
