@@ -30,6 +30,7 @@ beforeEach(() => {
   Platform.OS = 'ios';
   RNFS.readFileAssets.mockReset();
   RNFS.copyFileAssets.mockClear();
+  RNFS.unlink.mockClear();
   InferenceSession.create.mockReset();
   InferenceSession.create.mockResolvedValue({ release: jest.fn().mockResolvedValue(undefined) });
 });
@@ -92,14 +93,48 @@ test('Android passes APK model and packaged library paths to the compile hook', 
   };
   await expect(runEncryptedEpContextWorkflow()).rejects.toThrow('Android compilation fixture reached');
   expect(RNFS.readFileAssets).toHaveBeenCalledWith('ort-encryption/config.json', 'utf8');
-  expect(RNFS.copyFileAssets).toHaveBeenCalledWith('ort-encryption/model.onnx', '/test/ort-encryption-source.onnx');
-  expect(InferenceSession.create).toHaveBeenCalledWith('/test/ort-encryption-source.onnx');
+  const directory = compile.mock.calls[0][3];
+  expect(RNFS.copyFileAssets).toHaveBeenCalledWith('ort-encryption/model.onnx', `${directory}/source.onnx`);
+  expect(InferenceSession.create).toHaveBeenCalledWith(`${directory}/source.onnx`);
   expect(compile).toHaveBeenCalledWith(
     'libexample_plugin_ep.so',
     'rn_encryption_test',
-    '/test/ort-encryption-source.onnx',
+    `${directory}/source.onnx`,
     expect.stringMatching(/^\/test\/ort-encryption-\d+$/),
   );
+  expect(RNFS.unlink).toHaveBeenCalledWith(directory);
+});
+
+test('Android cleans its copied source directory if binding warmup fails', async () => {
+  Platform.OS = 'android';
+  RNFS.exists.mockResolvedValue(false);
+  RNFS.readFileAssets.mockResolvedValue(
+    JSON.stringify({ plugin: 'libexample_plugin_ep.so', sourceModel: 'model.onnx' }),
+  );
+  InferenceSession.create.mockRejectedValueOnce(new Error('Warmup failed'));
+  await expect(runEncryptedEpContextWorkflow()).rejects.toThrow('Warmup failed');
+  const source = RNFS.copyFileAssets.mock.calls[0][1];
+  expect(RNFS.unlink).toHaveBeenCalledWith(source.substring(0, source.lastIndexOf('/')));
+});
+
+test('Android removes the source after compilation and cleans up even if removal fails', async () => {
+  Platform.OS = 'android';
+  RNFS.exists.mockResolvedValue(false);
+  RNFS.readFileAssets.mockResolvedValue(
+    JSON.stringify({ plugin: 'libexample_plugin_ep.so', sourceModel: 'model.onnx' }),
+  );
+  const compile = jest.fn(() => ({}));
+  const unregister = jest.fn();
+  globalThis.OrtApi = {
+    __testCompileEpContextModel: compile,
+    __testUnregisterEpContextPlugin: unregister,
+  };
+  RNFS.unlink.mockRejectedValueOnce(new Error('Source removal failed'));
+  await expect(runEncryptedEpContextWorkflow()).rejects.toThrow('Source removal failed');
+  const directory = compile.mock.calls[0][3];
+  expect(RNFS.unlink).toHaveBeenNthCalledWith(1, `${directory}/source.onnx`);
+  expect(unregister).toHaveBeenCalledWith('rn_encryption_test');
+  expect(RNFS.unlink).toHaveBeenNthCalledWith(2, directory);
 });
 
 test('Android missing APK assets fail rather than skip the encrypted workflow', async () => {

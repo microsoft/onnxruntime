@@ -118,7 +118,9 @@ The Android build job cross-compiles the plugin for the emulator's x86_64 ABI us
 the same checkout as the ORT AAR. The app packages it in `jniLibs` and loads it by
 library name through Android's linker namespace, avoiding executable code in
 writable app data. The model/configuration are APK assets; the app copies the
-source model into its document directory before compilation. Gradle enables the
+source model into the per-run document subdirectory before compilation and removes
+it before checking ciphertext-only persistence. The same directory cleanup runs
+if asset copying, binding warmup, or compilation fails. Gradle enables the
 native test hooks only when `ORT_RN_TEST_EP_CONTEXT=1`. Missing assets, plugin load
 errors, or unavailable hooks fail the mandatory Detox test rather than skip it.
 

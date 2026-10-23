@@ -49,32 +49,36 @@ export const runEncryptedEpContextWorkflow = async (): Promise<string> => {
   }
   // Android resolves packaged native libraries through the app's linker namespace, not writable app data.
   const plugin = bundled && !androidAssets ? `${bundleDirectory}/${config.plugin}` : config.plugin;
+  const directory = `${RNFS.DocumentDirectoryPath}/ort-encryption-${Date.now()}`;
   const sourceModel = androidAssets
-    ? `${RNFS.DocumentDirectoryPath}/ort-encryption-source.onnx`
+    ? `${directory}/source.onnx`
     : bundled
       ? `${bundleDirectory}/${config.sourceModel}`
       : config.sourceModel;
-  if (androidAssets) {
-    await RNFS.copyFileAssets(`ort-encryption/${config.sourceModel}`, sourceModel);
-  }
-  // Metro can defer installing the native API until the first session is created.
-  const warmup = await InferenceSession.create(sourceModel);
-  await warmup.release();
-  const api = globalThis.OrtApi as typeof globalThis.OrtApi & Partial<TestApi>;
-  // eslint-disable-next-line no-underscore-dangle
-  const compile = api?.__testCompileEpContextModel;
-  // eslint-disable-next-line no-underscore-dangle
-  const unregister = api?.__testUnregisterEpContextPlugin;
-  if (!compile || !unregister) {
-    throw new Error('Rebuild the mobile binding with ORT_RN_TEST_EP_CONTEXT=1');
-  }
-  const directory = `${RNFS.DocumentDirectoryPath}/ort-encryption-${Date.now()}`;
   await RNFS.mkdir(directory);
   const registration = 'rn_encryption_test';
   let registered = false;
+  let unregister: TestApi['__testUnregisterEpContextPlugin'] | undefined;
   try {
+    if (androidAssets) {
+      await RNFS.copyFileAssets(`ort-encryption/${config.sourceModel}`, sourceModel);
+    }
+    // Metro can defer installing the native API until the first session is created.
+    const warmup = await InferenceSession.create(sourceModel);
+    await warmup.release();
+    const api = globalThis.OrtApi as typeof globalThis.OrtApi & Partial<TestApi>;
+    // eslint-disable-next-line no-underscore-dangle
+    const compile = api?.__testCompileEpContextModel;
+    // eslint-disable-next-line no-underscore-dangle
+    unregister = api?.__testUnregisterEpContextPlugin;
+    if (!compile || !unregister) {
+      throw new Error('Rebuild the mobile binding with ORT_RN_TEST_EP_CONTEXT=1');
+    }
     const compiled = compile(plugin, registration, sourceModel, directory);
     registered = true;
+    if (androidAssets) {
+      await RNFS.unlink(sourceModel);
+    }
     // A new native-generated key per compilation permits distinct per-asset counter nonces.
     const key = compiled.key;
     const assetName = (name: string) => Uint8Array.from(Buffer.from(name, 'utf8'));
@@ -193,7 +197,7 @@ export const runEncryptedEpContextWorkflow = async (): Promise<string> => {
     return 'Encrypted compiled model/context: two inference cases and all negative controls passed';
   } finally {
     try {
-      if (registered) {
+      if (registered && unregister) {
         unregister(registration);
       }
     } finally {
