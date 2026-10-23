@@ -1,0 +1,870 @@
+{
+  "schema_version": 1,
+  "measurement_source": "docs/design/int3-qmoe-pr3-session-results.json",
+  "measurement_sha256": "e615e55a88d771f75dfca99aae9f9e4bf6a6863c7cb2e72df4b53f831ca735df",
+  "provenance": {
+    "started_utc": "2026-10-23T04:00:53Z",
+    "command": "python3 /datadisks/disk1/jiafa/accuracy/ort-int3-pr2-pr3/onnxruntime/test/python/quantization/qmoe_packed_reference/session_perf.py --work /datadisks/disk1/jiafa/accuracy/int3-session-perf-full-scratch --output /datadisks/disk1/jiafa/accuracy/ort-int3-pr2-pr3/docs/design/int3-qmoe-pr3-session-results.json",
+    "parameters": {
+      "container": "jiafa-dev",
+      "build_dir": "/tmp/int3-pr2-pr3-clean/Release",
+      "work": "/datadisks/disk1/jiafa/accuracy/int3-session-perf-full-scratch",
+      "output": "/datadisks/disk1/jiafa/accuracy/ort-int3-pr2-pr3/docs/design/int3-qmoe-pr3-session-results.json",
+      "hidden": 2048,
+      "intermediate": 768,
+      "experts": 128,
+      "top_k": 8,
+      "block": 64,
+      "repeats": 4,
+      "warmup": 10,
+      "samples": 30,
+      "quick": false
+    },
+    "git_head": "96dd9658a6c6d3ac60c0c03b1ead1cea1ba9f1f1",
+    "git_status": "A  docs/design/int3-qmoe-cuda-baseline-results.json\nA  docs/design/int3-qmoe-cuda-baseline-results.md\nMM onnxruntime/contrib_ops/cuda/moe/moe_quantization.cc\nMM onnxruntime/contrib_ops/cuda/moe/moe_quantization.h\nA  onnxruntime/contrib_ops/cuda/moe/packed_code.cuh\nAM onnxruntime/contrib_ops/cuda/moe/qmoe_int3.cc\nAM onnxruntime/contrib_ops/cuda/moe/qmoe_int3.cu\nAM onnxruntime/contrib_ops/cuda/moe/qmoe_int3.h\nAM onnxruntime/test/contrib_ops/cuda_kernels/qmoe_int3_test.cu\nA  onnxruntime/test/contrib_ops/cuda_kernels/qmoe_packed_code_test.cu\nAM onnxruntime/test/contrib_ops/qmoe_int3_cuda_test.cc\nA  onnxruntime/test/python/quantization/qmoe_packed_reference/cuda_session_smoke.cc\nA  onnxruntime/test/python/quantization/qmoe_packed_reference/make_cuda_session_smoke.py\n?? docs/design/int3-qmoe-pr3-kernel-results.jsonl\n?? docs/design/int3-qmoe-pr3-session-results.json\n?? docs/design/int3-qmoe-pr3-session-smoke.json\n?? onnxruntime/test/contrib_ops/cuda_kernels/qmoe_int3_benchmark.cu\n?? onnxruntime/test/python/quantization/qmoe_packed_reference/session_perf.cc\n?? onnxruntime/test/python/quantization/qmoe_packed_reference/session_perf.py",
+    "onnx_source_head": "ee3ccbd2b2344299d3a4506c2954a47b2181a485",
+    "onnx_pinned_gitlink": "160000 commit e1ac8e74b620bbdc7ba07f0440806bd93f651a28\tcmake/external/onnx",
+    "python_dependencies": {
+      "numpy": "2.4.2",
+      "onnx": "1.19.1",
+      "ml_dtypes": "0.5.3"
+    },
+    "gpu_inventory": "index, name, uuid, driver_version, memory.used [MiB]\n0, NVIDIA A100-SXM4-80GB, GPU-739515b2-62b4-f900-86a2-50f55272a810, 580.159.04, 0 MiB\n1, NVIDIA A100-SXM4-80GB, GPU-1d6c259c-3f83-8046-c0b6-cbeb9e062c8d, 580.159.04, 0 MiB\n2, NVIDIA A100-SXM4-80GB, GPU-adfa5486-33ff-cb0d-5472-3b968f2a8259, 580.159.04, 17637 MiB\n3, NVIDIA A100-SXM4-80GB, GPU-2d928287-bd2c-7788-3af4-87901070ea38, 580.159.04, 50897 MiB\n4, NVIDIA A100-SXM4-80GB, GPU-630e9db2-c115-0a2d-789f-4a76ccb92ecc, 580.159.04, 0 MiB\n5, NVIDIA A100-SXM4-80GB, GPU-6e426297-d942-119e-2133-0379ba37440c, 580.159.04, 0 MiB\n6, NVIDIA A100-SXM4-80GB, GPU-11437cd6-cf80-c4ff-cd96-31b15c9ee949, 580.159.04, 0 MiB\n7, NVIDIA A100-SXM4-80GB, GPU-ef3c1a70-d297-933c-0c37-dbaad2136a57, 580.159.04, 0 MiB",
+    "source_sha256": {
+      "onnxruntime/test/python/quantization/qmoe_packed_reference/session_perf.py": "a2aeddc3dee0488262641a214c45abbdbfb2bc7467a2205a72fee3a2fde5734d",
+      "onnxruntime/test/python/quantization/qmoe_packed_reference/session_perf.cc": "ed838d0ebb5d8ab275a04dd0af2c4706d40f9c9c603c77d6521fc559b6c44b69",
+      "onnxruntime/contrib_ops/cuda/moe/qmoe_int3.cc": "864cab940474232826abe98408d8b21199db2481f7feb1bfdf4c12e5c2a751ff",
+      "onnxruntime/contrib_ops/cuda/moe/qmoe_int3.cu": "ae44411bf9fd13afeaa6c93ead8d4cc254e238905012836450f9ad187a6d1af0",
+      "onnxruntime/contrib_ops/cuda/moe/moe_quantization.cc": "d0598a6ad0f03ca53ca39ed59c8ea8f7f5924258a3b34ee37acf20475eb80bcf"
+    },
+    "binary_sha256": "03349564a3c516767df8b847813b3e451c4d1ded502c62b3ebc78106d166973f  /datadisks/disk1/jiafa/accuracy/int3-session-perf-full-scratch/session_perf\n78e89885d9f3aca8b0e51a5f4c2a75167ed8c77e67f05d79073dbb707bc99709  /tmp/int3-pr2-pr3-clean/Release/libonnxruntime_session.a\n4b430b18ab02b31e0f299858999c25026178528740ac592ca95905f5cf9bd9cc  /tmp/int3-pr2-pr3-clean/Release/libonnxruntime_providers_cuda.so\n9836a8dcc066e6e3ca2c02cd150052134aa02484e90e3f003c84a6a4f713c3d3  /tmp/int3-pr2-pr3-clean/Release/CMakeCache.txt"
+  },
+  "device": {
+    "device": "NVIDIA A100-SXM4-80GB",
+    "uuid_hex": "739515b262b4f90086a250f55272a810",
+    "cuda_runtime": 13000,
+    "cuda_driver": 13000,
+    "ort_version": "1.32.0"
+  },
+  "limitations_and_method": [
+    "One QMoE node, synthetic deterministic repeated-pattern nonzero weights, fixed input/router, rows=1; not a full model, prefill, MMLU, or quality evaluation.",
+    "Constant and dynamic graphs use identical numerical tensors but different control paths. No historical runtime or old full-model baseline is used.",
+    "Init is synchronized Session construction: model file read/parse, CPU initialization, allocation, host-to-device initializer copies, private transforms, validation and synchronization. It is prepack-inclusive, not an isolated prepack timer.",
+    "GPU feed setup (disk read, host allocation and H2D copies) is outside init and reported separately; graph generation, CUDA context/provider setup and process startup are outside both. Total setup is feed setup plus init, not process startup latency.",
+    "First run includes lazy loading, allocations, validation if dynamic, routing, compute and small CPU output copy. Steady is synchronized CPU wall time per Run, not CUDA event kernel time. Session optimization is disabled and CPU EP fallback forbidden.",
+    "Dynamic metadata retains private weight layouts but bypasses cached metadata validation. Its delta includes validation kernels, host synchronization and dynamic-feed bookkeeping; it is not a pure validation-kernel timer. Layout effects are only isolated by the separate existing kernel benchmark.",
+    "All three modes execute the same SoftmaxTopK routing. No routing speedup or launch-count reduction was independently measured; no routing savings are claimed.",
+    "cudaMemGetInfo snapshots are device-wide, synchronized sampled residency, not allocator counters or allocation peaks. Baseline is after CUDA/provider setup. Before-feed to steady includes device feeds and ORT arenas; after-destroy retains device feeds. Other GPU processes can perturb deltas. No NVML per-process or transient GPU-peak sampling was performed.",
+    "Peak host RSS uses Linux getrusage and covers the process, including model loading and feed staging; it is not incremental host prepack memory.",
+    "Four fresh processes per mode, alternating forward/reverse order; 10 warmups and 30 samples/process. Pooled medians and per-process medians are descriptive, not confidence intervals. Clocks are not locked, file cache is not flushed, and init/first-run variability is retained in raw data.",
+    "Correctness means exact finite nonzero output agreement across modes/repetitions, not an independent mathematical oracle or new runtime correctness test.",
+    "Clean core/provider build only, not whole CI. Static Session archives and the clean shared CUDA provider are linked without pybind. ONNX source override differs from the pinned gitlink; no global headers, runtime sources or dependencies were edited by this experiment.",
+    "Existing kernel results are read-only contextual data supplied before this run, not rerun here and not proven to share the exact measured binary. Their GPU-event timings cannot be subtracted from new Session wall timings.",
+    "No full-model throughput, memory or target-performance completion claim follows from these results."
+  ],
+  "cases": [
+    {
+      "bits": [
+        3,
+        3
+      ],
+      "dtype": "fp16",
+      "modes": {
+        "constant": {
+          "init_median_ms": 654.3396855,
+          "first_run_median_ms": 3.9936095,
+          "steady_median_ms": 0.4778655,
+          "steady_min_ms": 0.476467,
+          "steady_max_ms": 0.561116,
+          "per_process_steady_medians_ms": [
+            0.47785,
+            0.4780505,
+            0.47775999999999996,
+            0.477785
+          ],
+          "resident_increment_median_bytes": 811597824.0,
+          "feed_setup_median_ms": 0.505091,
+          "feed_plus_init_median_ms": 654.8558370000001,
+          "host_peak_rss_median_bytes": 713627648.0,
+          "memory_stage_median_bytes": {
+            "before_feeds": 445513728.0,
+            "before_init": 447610880.0,
+            "after_init": 1246625792.0,
+            "after_first": 1257111552.0,
+            "after_steady": 1257111552.0,
+            "after_destroy": 453902336.0
+          },
+          "init_increment_median_bytes": 799014912.0
+        },
+        "dynamic_metadata": {
+          "init_median_ms": 530.5112,
+          "first_run_median_ms": 7.3268685,
+          "steady_median_ms": 0.7275,
+          "steady_min_ms": 0.720131,
+          "steady_max_ms": 0.735831,
+          "per_process_steady_medians_ms": [
+            0.727595,
+            0.7253769999999999,
+            0.7281215,
+            0.7280614999999999
+          ],
+          "resident_increment_median_bytes": 811597824.0,
+          "steady_speedup_constant_over_mode": 1.5223948998201378,
+          "feed_setup_median_ms": 19.159579,
+          "feed_plus_init_median_ms": 549.670779,
+          "host_peak_rss_median_bytes": 698820608.0,
+          "memory_stage_median_bytes": {
+            "before_feeds": 445513728.0,
+            "before_init": 470679552.0,
+            "after_init": 1246625792.0,
+            "after_first": 1257111552.0,
+            "after_steady": 1257111552.0,
+            "after_destroy": 476971008.0
+          },
+          "init_increment_median_bytes": 775946240.0
+        },
+        "dynamic_all": {
+          "init_median_ms": 11.680042,
+          "first_run_median_ms": 4.6605965000000005,
+          "steady_median_ms": 0.7350645,
+          "steady_min_ms": 0.71932,
+          "steady_max_ms": 0.748103,
+          "per_process_steady_medians_ms": [
+            0.726699,
+            0.7367425,
+            0.7354295,
+            0.737223
+          ],
+          "resident_increment_median_bytes": 276824064.0,
+          "steady_speedup_constant_over_mode": 1.538224667819711,
+          "feed_setup_median_ms": 223.339274,
+          "feed_plus_init_median_ms": 235.23107549999997,
+          "host_peak_rss_median_bytes": 454340608.0,
+          "memory_stage_median_bytes": {
+            "before_feeds": 445513728.0,
+            "before_init": 697171968.0,
+            "after_init": 709754880.0,
+            "after_first": 722337792.0,
+            "after_steady": 722337792.0,
+            "after_destroy": 703463424.0
+          },
+          "init_increment_median_bytes": 12582912.0
+        }
+      },
+      "validation_path_wall_saving_ms": 0.24963450000000004,
+      "output_max_abs_difference": 0.0
+    },
+    {
+      "bits": [
+        3,
+        3
+      ],
+      "dtype": "bf16",
+      "modes": {
+        "constant": {
+          "init_median_ms": 649.410763,
+          "first_run_median_ms": 3.9673995,
+          "steady_median_ms": 0.478972,
+          "steady_min_ms": 0.476738,
+          "steady_max_ms": 0.497597,
+          "per_process_steady_medians_ms": [
+            0.479308,
+            0.4778,
+            0.47909199999999996,
+            0.4813515
+          ],
+          "resident_increment_median_bytes": 819986432.0,
+          "feed_setup_median_ms": 0.49561350000000004,
+          "feed_plus_init_median_ms": 649.9063765,
+          "host_peak_rss_median_bytes": 713953280.0,
+          "memory_stage_median_bytes": {
+            "before_feeds": 445513728.0,
+            "before_init": 447610880.0,
+            "after_init": 1255014400.0,
+            "after_first": 1265500160.0,
+            "after_steady": 1265500160.0,
+            "after_destroy": 453902336.0
+          },
+          "init_increment_median_bytes": 807403520.0
+        },
+        "dynamic_metadata": {
+          "init_median_ms": 588.362198,
+          "first_run_median_ms": 7.360805,
+          "steady_median_ms": 0.732334,
+          "steady_min_ms": 0.724439,
+          "steady_max_ms": 0.780174,
+          "per_process_steady_medians_ms": [
+            0.7346535,
+            0.7314225,
+            0.7294134999999999,
+            0.7325695
+          ],
+          "resident_increment_median_bytes": 811597824.0,
+          "steady_speedup_constant_over_mode": 1.5289703782267023,
+          "feed_setup_median_ms": 20.4785955,
+          "feed_plus_init_median_ms": 608.3138974999999,
+          "host_peak_rss_median_bytes": 698755072.0,
+          "memory_stage_median_bytes": {
+            "before_feeds": 445513728.0,
+            "before_init": 470679552.0,
+            "after_init": 1246625792.0,
+            "after_first": 1257111552.0,
+            "after_steady": 1257111552.0,
+            "after_destroy": 476971008.0
+          },
+          "init_increment_median_bytes": 775946240.0
+        },
+        "dynamic_all": {
+          "init_median_ms": 11.5565845,
+          "first_run_median_ms": 4.6713565,
+          "steady_median_ms": 0.7363109999999999,
+          "steady_min_ms": 0.70311,
+          "steady_max_ms": 0.761919,
+          "per_process_steady_medians_ms": [
+            0.7117755,
+            0.7406895,
+            0.7118815000000001,
+            0.74333
+          ],
+          "resident_increment_median_bytes": 276824064.0,
+          "steady_speedup_constant_over_mode": 1.5372735775786475,
+          "feed_setup_median_ms": 248.9043435,
+          "feed_plus_init_median_ms": 260.348651,
+          "host_peak_rss_median_bytes": 454938624.0,
+          "memory_stage_median_bytes": {
+            "before_feeds": 445513728.0,
+            "before_init": 697171968.0,
+            "after_init": 709754880.0,
+            "after_first": 722337792.0,
+            "after_steady": 722337792.0,
+            "after_destroy": 703463424.0
+          },
+          "init_increment_median_bytes": 12582912.0
+        }
+      },
+      "validation_path_wall_saving_ms": 0.25336200000000003,
+      "output_max_abs_difference": 0.0
+    },
+    {
+      "bits": [
+        3,
+        4
+      ],
+      "dtype": "fp16",
+      "modes": {
+        "constant": {
+          "init_median_ms": 781.6451689999999,
+          "first_run_median_ms": 5.6174215,
+          "steady_median_ms": 0.468943,
+          "steady_min_ms": 0.460658,
+          "steady_max_ms": 0.485304,
+          "per_process_steady_medians_ms": [
+            0.46938500000000005,
+            0.46358900000000003,
+            0.46943999999999997,
+            0.46293249999999997
+          ],
+          "resident_increment_median_bytes": 836763648.0,
+          "feed_setup_median_ms": 0.500778,
+          "feed_plus_init_median_ms": 782.1600334999999,
+          "host_peak_rss_median_bytes": 738637824.0,
+          "memory_stage_median_bytes": {
+            "before_feeds": 445513728.0,
+            "before_init": 447610880.0,
+            "after_init": 1271791616.0,
+            "after_first": 1282277376.0,
+            "after_steady": 1282277376.0,
+            "after_destroy": 453902336.0
+          },
+          "init_increment_median_bytes": 824180736.0
+        },
+        "dynamic_metadata": {
+          "init_median_ms": 661.362386,
+          "first_run_median_ms": 7.955276,
+          "steady_median_ms": 0.6893705,
+          "steady_min_ms": 0.678856,
+          "steady_max_ms": 5.663699,
+          "per_process_steady_medians_ms": [
+            0.689474,
+            0.690502,
+            0.6898150000000001,
+            0.686491
+          ],
+          "resident_increment_median_bytes": 702545920.0,
+          "steady_speedup_constant_over_mode": 1.4700517973399752,
+          "feed_setup_median_ms": 20.8436035,
+          "feed_plus_init_median_ms": 682.2059895,
+          "host_peak_rss_median_bytes": 724443136.0,
+          "memory_stage_median_bytes": {
+            "before_feeds": 445513728.0,
+            "before_init": 470679552.0,
+            "after_init": 1137573888.0,
+            "after_first": 1148059648.0,
+            "after_steady": 1148059648.0,
+            "after_destroy": 476971008.0
+          },
+          "init_increment_median_bytes": 666894336.0
+        },
+        "dynamic_all": {
+          "init_median_ms": 11.415953,
+          "first_run_median_ms": 4.7329705,
+          "steady_median_ms": 0.695225,
+          "steady_min_ms": 0.68178,
+          "steady_max_ms": 0.738967,
+          "per_process_steady_medians_ms": [
+            0.69543,
+            0.6954005,
+            0.6891885,
+            0.69781
+          ],
+          "resident_increment_median_bytes": 301989888.0,
+          "steady_speedup_constant_over_mode": 1.4825362570717548,
+          "feed_setup_median_ms": 281.848568,
+          "feed_plus_init_median_ms": 293.264521,
+          "host_peak_rss_median_bytes": 454942720.0,
+          "memory_stage_median_bytes": {
+            "before_feeds": 445513728.0,
+            "before_init": 722337792.0,
+            "after_init": 734920704.0,
+            "after_first": 747503616.0,
+            "after_steady": 747503616.0,
+            "after_destroy": 728629248.0
+          },
+          "init_increment_median_bytes": 12582912.0
+        }
+      },
+      "validation_path_wall_saving_ms": 0.2204275,
+      "output_max_abs_difference": 0.0
+    },
+    {
+      "bits": [
+        3,
+        4
+      ],
+      "dtype": "bf16",
+      "modes": {
+        "constant": {
+          "init_median_ms": 778.0982994999999,
+          "first_run_median_ms": 5.2586815,
+          "steady_median_ms": 0.47698850000000004,
+          "steady_min_ms": 0.443566,
+          "steady_max_ms": 0.490684,
+          "per_process_steady_medians_ms": [
+            0.477544,
+            0.4462965,
+            0.478186,
+            0.476393
+          ],
+          "resident_increment_median_bytes": 836763648.0,
+          "feed_setup_median_ms": 0.511042,
+          "feed_plus_init_median_ms": 778.612377,
+          "host_peak_rss_median_bytes": 739387392.0,
+          "memory_stage_median_bytes": {
+            "before_feeds": 445513728.0,
+            "before_init": 447610880.0,
+            "after_init": 1271791616.0,
+            "after_first": 1282277376.0,
+            "after_steady": 1282277376.0,
+            "after_destroy": 453902336.0
+          },
+          "init_increment_median_bytes": 824180736.0
+        },
+        "dynamic_metadata": {
+          "init_median_ms": 686.191372,
+          "first_run_median_ms": 8.0422075,
+          "steady_median_ms": 0.693036,
+          "steady_min_ms": 0.685016,
+          "steady_max_ms": 5.790618,
+          "per_process_steady_medians_ms": [
+            0.693036,
+            0.691979,
+            0.6938525,
+            0.6922595
+          ],
+          "resident_increment_median_bytes": 836763648.0,
+          "steady_speedup_constant_over_mode": 1.4529406893457597,
+          "feed_setup_median_ms": 21.1501455,
+          "feed_plus_init_median_ms": 707.3415175,
+          "host_peak_rss_median_bytes": 724436992.0,
+          "memory_stage_median_bytes": {
+            "before_feeds": 445513728.0,
+            "before_init": 470679552.0,
+            "after_init": 1271791616.0,
+            "after_first": 1282277376.0,
+            "after_steady": 1282277376.0,
+            "after_destroy": 476971008.0
+          },
+          "init_increment_median_bytes": 801112064.0
+        },
+        "dynamic_all": {
+          "init_median_ms": 11.316502,
+          "first_run_median_ms": 4.704579,
+          "steady_median_ms": 0.690511,
+          "steady_min_ms": 0.654118,
+          "steady_max_ms": 0.71391,
+          "per_process_steady_medians_ms": [
+            0.677968,
+            0.7004045,
+            0.6608510000000001,
+            0.7021175
+          ],
+          "resident_increment_median_bytes": 301989888.0,
+          "steady_speedup_constant_over_mode": 1.4476470606733705,
+          "feed_setup_median_ms": 287.505787,
+          "feed_plus_init_median_ms": 298.9178265,
+          "host_peak_rss_median_bytes": 454938624.0,
+          "memory_stage_median_bytes": {
+            "before_feeds": 445513728.0,
+            "before_init": 722337792.0,
+            "after_init": 734920704.0,
+            "after_first": 747503616.0,
+            "after_steady": 747503616.0,
+            "after_destroy": 728629248.0
+          },
+          "init_increment_median_bytes": 12582912.0
+        }
+      },
+      "validation_path_wall_saving_ms": 0.21604749999999995,
+      "output_max_abs_difference": 0.0
+    },
+    {
+      "bits": [
+        4,
+        3
+      ],
+      "dtype": "fp16",
+      "modes": {
+        "constant": {
+          "init_median_ms": 883.3053395,
+          "first_run_median_ms": 3.9854095000000003,
+          "steady_median_ms": 0.47804599999999997,
+          "steady_min_ms": 0.475596,
+          "steady_max_ms": 0.484081,
+          "per_process_steady_medians_ms": [
+            0.476683,
+            0.47820050000000003,
+            0.4780505,
+            0.47891249999999996
+          ],
+          "resident_increment_median_bytes": 874512384.0,
+          "feed_setup_median_ms": 0.506508,
+          "feed_plus_init_median_ms": 883.800041,
+          "host_peak_rss_median_bytes": 814487552.0,
+          "memory_stage_median_bytes": {
+            "before_feeds": 445513728.0,
+            "before_init": 447610880.0,
+            "after_init": 1309540352.0,
+            "after_first": 1320026112.0,
+            "after_steady": 1320026112.0,
+            "after_destroy": 453902336.0
+          },
+          "init_increment_median_bytes": 861929472.0
+        },
+        "dynamic_metadata": {
+          "init_median_ms": 923.9579065,
+          "first_run_median_ms": 7.530248,
+          "steady_median_ms": 0.6627645,
+          "steady_min_ms": 0.650141,
+          "steady_max_ms": 0.684095,
+          "per_process_steady_medians_ms": [
+            0.6599345,
+            0.6658105000000001,
+            0.655671,
+            0.6655599999999999
+          ],
+          "resident_increment_median_bytes": 861929472.0,
+          "steady_speedup_constant_over_mode": 1.3864031913246844,
+          "feed_setup_median_ms": 22.225254,
+          "feed_plus_init_median_ms": 946.2431770000001,
+          "host_peak_rss_median_bytes": 800268288.0,
+          "memory_stage_median_bytes": {
+            "before_feeds": 445513728.0,
+            "before_init": 470679552.0,
+            "after_init": 1296957440.0,
+            "after_first": 1307443200.0,
+            "after_steady": 1307443200.0,
+            "after_destroy": 476971008.0
+          },
+          "init_increment_median_bytes": 826277888.0
+        },
+        "dynamic_all": {
+          "init_median_ms": 11.2874525,
+          "first_run_median_ms": 4.575037999999999,
+          "steady_median_ms": 0.6601445,
+          "steady_min_ms": 0.638269,
+          "steady_max_ms": 0.677041,
+          "per_process_steady_medians_ms": [
+            0.645302,
+            0.661397,
+            0.6611615,
+            0.662624
+          ],
+          "resident_increment_median_bytes": 327155712.0,
+          "steady_speedup_constant_over_mode": 1.3809225472025706,
+          "feed_setup_median_ms": 308.54524449999997,
+          "feed_plus_init_median_ms": 319.8165265,
+          "host_peak_rss_median_bytes": 505274368.0,
+          "memory_stage_median_bytes": {
+            "before_feeds": 445513728.0,
+            "before_init": 747503616.0,
+            "after_init": 760086528.0,
+            "after_first": 772669440.0,
+            "after_steady": 772669440.0,
+            "after_destroy": 753795072.0
+          },
+          "init_increment_median_bytes": 12582912.0
+        }
+      },
+      "validation_path_wall_saving_ms": 0.1847185,
+      "output_max_abs_difference": 0.0
+    },
+    {
+      "bits": [
+        4,
+        3
+      ],
+      "dtype": "bf16",
+      "modes": {
+        "constant": {
+          "init_median_ms": 892.1411965,
+          "first_run_median_ms": 4.0357579999999995,
+          "steady_median_ms": 0.48589000000000004,
+          "steady_min_ms": 0.479191,
+          "steady_max_ms": 0.563739,
+          "per_process_steady_medians_ms": [
+            0.485058,
+            0.4861895,
+            0.48464799999999997,
+            0.48631599999999997
+          ],
+          "resident_increment_median_bytes": 861929472.0,
+          "feed_setup_median_ms": 0.5083365,
+          "feed_plus_init_median_ms": 892.650309,
+          "host_peak_rss_median_bytes": 815341568.0,
+          "memory_stage_median_bytes": {
+            "before_feeds": 445513728.0,
+            "before_init": 447610880.0,
+            "after_init": 1296957440.0,
+            "after_first": 1307443200.0,
+            "after_steady": 1307443200.0,
+            "after_destroy": 453902336.0
+          },
+          "init_increment_median_bytes": 849346560.0
+        },
+        "dynamic_metadata": {
+          "init_median_ms": 885.7213320000001,
+          "first_run_median_ms": 7.3528365,
+          "steady_median_ms": 0.6677995,
+          "steady_min_ms": 0.658987,
+          "steady_max_ms": 4.001556,
+          "per_process_steady_medians_ms": [
+            0.663907,
+            0.666094,
+            0.6686350000000001,
+            0.6692365
+          ],
+          "resident_increment_median_bytes": 794820608.0,
+          "steady_speedup_constant_over_mode": 1.3743841198625202,
+          "feed_setup_median_ms": 21.738385,
+          "feed_plus_init_median_ms": 907.5288675,
+          "host_peak_rss_median_bytes": 800264192.0,
+          "memory_stage_median_bytes": {
+            "before_feeds": 445513728.0,
+            "before_init": 470679552.0,
+            "after_init": 1229848576.0,
+            "after_first": 1240334336.0,
+            "after_steady": 1240334336.0,
+            "after_destroy": 476971008.0
+          },
+          "init_increment_median_bytes": 759169024.0
+        },
+        "dynamic_all": {
+          "init_median_ms": 11.513672,
+          "first_run_median_ms": 4.5934325000000005,
+          "steady_median_ms": 0.664067,
+          "steady_min_ms": 0.654059,
+          "steady_max_ms": 0.701437,
+          "per_process_steady_medians_ms": [
+            0.6632605,
+            0.663411,
+            0.666622,
+            0.663937
+          ],
+          "resident_increment_median_bytes": 327155712.0,
+          "steady_speedup_constant_over_mode": 1.3667023400358105,
+          "feed_setup_median_ms": 273.84694249999995,
+          "feed_plus_init_median_ms": 285.494551,
+          "host_peak_rss_median_bytes": 505063424.0,
+          "memory_stage_median_bytes": {
+            "before_feeds": 445513728.0,
+            "before_init": 747503616.0,
+            "after_init": 760086528.0,
+            "after_first": 772669440.0,
+            "after_steady": 772669440.0,
+            "after_destroy": 753795072.0
+          },
+          "init_increment_median_bytes": 12582912.0
+        }
+      },
+      "validation_path_wall_saving_ms": 0.18190949999999995,
+      "output_max_abs_difference": 0.0
+    }
+  ],
+  "contextual_kernel_results": {
+    "path": "docs/design/int3-qmoe-pr3-kernel-results.jsonl",
+    "sha256": "1e5b9b319390bb8399495ed38e6a95c6b47359a3d4deafe6a1b05c056789dc5b",
+    "metadata": {
+      "device": "NVIDIA A100-SXM4-80GB",
+      "ordinal": 0,
+      "runtime": 13000,
+      "driver": 13000,
+      "uuid_hex": "739515b262b4f90086a250f55272a810",
+      "warmup": 10,
+      "samples": 9,
+      "launches_per_sample": 20,
+      "layout_version": 1
+    },
+    "decode_rows": [
+      {
+        "dtype": "fp16",
+        "rows": 1,
+        "hidden": 2048,
+        "intermediate": 768,
+        "experts": 128,
+        "top_k": 8,
+        "block": 64,
+        "bits": [
+          3,
+          3
+        ],
+        "weight_bytes": 226492416,
+        "private_weight_bytes": 226492416,
+        "coexist_weight_bytes": 452984832,
+        "prepack_gpu_ms": 16.425983,
+        "first_private_gpu_ms": 0.334848,
+        "canonical_median_ms": 0.29143,
+        "private_median_ms": 0.281958,
+        "canonical_min_ms": 0.291277,
+        "canonical_max_ms": 0.291533,
+        "private_min_ms": 0.281907,
+        "private_max_ms": 0.282061
+      },
+      {
+        "dtype": "bf16",
+        "rows": 1,
+        "hidden": 2048,
+        "intermediate": 768,
+        "experts": 128,
+        "top_k": 8,
+        "block": 64,
+        "bits": [
+          3,
+          3
+        ],
+        "weight_bytes": 226492416,
+        "private_weight_bytes": 226492416,
+        "coexist_weight_bytes": 452984832,
+        "prepack_gpu_ms": 16.101376,
+        "first_private_gpu_ms": 0.335872,
+        "canonical_median_ms": 0.294195,
+        "private_median_ms": 0.282778,
+        "canonical_min_ms": 0.294093,
+        "canonical_max_ms": 0.2944,
+        "private_min_ms": 0.282624,
+        "private_max_ms": 0.284723
+      },
+      {
+        "dtype": "fp16",
+        "rows": 1,
+        "hidden": 2048,
+        "intermediate": 768,
+        "experts": 128,
+        "top_k": 8,
+        "block": 64,
+        "bits": [
+          3,
+          4
+        ],
+        "weight_bytes": 251658240,
+        "private_weight_bytes": 251658240,
+        "coexist_weight_bytes": 503316480,
+        "prepack_gpu_ms": 14.656512,
+        "first_private_gpu_ms": 0.249856,
+        "canonical_median_ms": 0.234957,
+        "private_median_ms": 0.226048,
+        "canonical_min_ms": 0.234803,
+        "canonical_max_ms": 0.235008,
+        "private_min_ms": 0.225894,
+        "private_max_ms": 0.226202
+      },
+      {
+        "dtype": "bf16",
+        "rows": 1,
+        "hidden": 2048,
+        "intermediate": 768,
+        "experts": 128,
+        "top_k": 8,
+        "block": 64,
+        "bits": [
+          3,
+          4
+        ],
+        "weight_bytes": 251658240,
+        "private_weight_bytes": 251658240,
+        "coexist_weight_bytes": 503316480,
+        "prepack_gpu_ms": 13.693952,
+        "first_private_gpu_ms": 0.253952,
+        "canonical_median_ms": 0.236288,
+        "private_median_ms": 0.228045,
+        "canonical_min_ms": 0.236186,
+        "canonical_max_ms": 0.236339,
+        "private_min_ms": 0.227942,
+        "private_max_ms": 0.228198
+      },
+      {
+        "dtype": "fp16",
+        "rows": 1,
+        "hidden": 2048,
+        "intermediate": 768,
+        "experts": 128,
+        "top_k": 8,
+        "block": 64,
+        "bits": [
+          4,
+          3
+        ],
+        "weight_bytes": 276824064,
+        "private_weight_bytes": 276824064,
+        "coexist_weight_bytes": 553648128,
+        "prepack_gpu_ms": 13.692928,
+        "first_private_gpu_ms": 0.274432,
+        "canonical_median_ms": 0.233933,
+        "private_median_ms": 0.235008,
+        "canonical_min_ms": 0.23383,
+        "canonical_max_ms": 0.233984,
+        "private_min_ms": 0.234906,
+        "private_max_ms": 0.235162
+      },
+      {
+        "dtype": "bf16",
+        "rows": 1,
+        "hidden": 2048,
+        "intermediate": 768,
+        "experts": 128,
+        "top_k": 8,
+        "block": 64,
+        "bits": [
+          4,
+          3
+        ],
+        "weight_bytes": 276824064,
+        "private_weight_bytes": 276824064,
+        "coexist_weight_bytes": 553648128,
+        "prepack_gpu_ms": 13.718528,
+        "first_private_gpu_ms": 0.2816,
+        "canonical_median_ms": 0.237568,
+        "private_median_ms": 0.238131,
+        "canonical_min_ms": 0.237414,
+        "canonical_max_ms": 0.238643,
+        "private_min_ms": 0.238029,
+        "private_max_ms": 0.240333
+      },
+      {
+        "dtype": "fp16",
+        "rows": 1,
+        "hidden": 256,
+        "intermediate": 384,
+        "experts": 3,
+        "top_k": 2,
+        "block": 32,
+        "bits": [
+          3,
+          3
+        ],
+        "weight_bytes": 331776,
+        "private_weight_bytes": 331776,
+        "coexist_weight_bytes": 663552,
+        "prepack_gpu_ms": 0.03072,
+        "first_private_gpu_ms": 0.036864,
+        "canonical_median_ms": 0.025446,
+        "private_median_ms": 0.025139,
+        "canonical_min_ms": 0.025395,
+        "canonical_max_ms": 0.025498,
+        "private_min_ms": 0.025088,
+        "private_max_ms": 0.025242
+      },
+      {
+        "dtype": "bf16",
+        "rows": 1,
+        "hidden": 256,
+        "intermediate": 384,
+        "experts": 3,
+        "top_k": 2,
+        "block": 32,
+        "bits": [
+          3,
+          3
+        ],
+        "weight_bytes": 331776,
+        "private_weight_bytes": 331776,
+        "coexist_weight_bytes": 663552,
+        "prepack_gpu_ms": 0.024576,
+        "first_private_gpu_ms": 0.036864,
+        "canonical_median_ms": 0.025446,
+        "private_median_ms": 0.025037,
+        "canonical_min_ms": 0.025395,
+        "canonical_max_ms": 0.025498,
+        "private_min_ms": 0.024986,
+        "private_max_ms": 0.025088
+      },
+      {
+        "dtype": "fp16",
+        "rows": 1,
+        "hidden": 256,
+        "intermediate": 384,
+        "experts": 3,
+        "top_k": 2,
+        "block": 128,
+        "bits": [
+          3,
+          3
+        ],
+        "weight_bytes": 331776,
+        "private_weight_bytes": 331776,
+        "coexist_weight_bytes": 663552,
+        "prepack_gpu_ms": 0.024576,
+        "first_private_gpu_ms": 0.03072,
+        "canonical_median_ms": 0.026266,
+        "private_median_ms": 0.026214,
+        "canonical_min_ms": 0.026214,
+        "canonical_max_ms": 0.026317,
+        "private_min_ms": 0.026214,
+        "private_max_ms": 0.026266
+      },
+      {
+        "dtype": "bf16",
+        "rows": 1,
+        "hidden": 256,
+        "intermediate": 384,
+        "experts": 3,
+        "top_k": 2,
+        "block": 128,
+        "bits": [
+          3,
+          3
+        ],
+        "weight_bytes": 331776,
+        "private_weight_bytes": 331776,
+        "coexist_weight_bytes": 663552,
+        "prepack_gpu_ms": 0.024576,
+        "first_private_gpu_ms": 0.03072,
+        "canonical_median_ms": 0.026522,
+        "private_median_ms": 0.026266,
+        "canonical_min_ms": 0.02647,
+        "canonical_max_ms": 0.026573,
+        "private_min_ms": 0.026214,
+        "private_max_ms": 0.026317
+      }
+    ]
+  }
+}

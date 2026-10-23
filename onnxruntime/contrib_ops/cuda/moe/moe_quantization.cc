@@ -363,15 +363,16 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
               int_dequant_max_scratch_bytes_source, " must be greater than 0, got ",
               int_dequant_max_scratch_bytes_, ".");
   ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("expert_weight_bits", &expert_weight_bits_).IsOK());
-  ORT_ENFORCE(expert_weight_bits_ == 8 || expert_weight_bits_ == 4 || expert_weight_bits_ == 2,
-              "expert_weight_bits must be 2, 4, or 8, but got ", expert_weight_bits_);
+  ORT_ENFORCE(expert_weight_bits_ == 8 || expert_weight_bits_ == 4 || expert_weight_bits_ == 3 || expert_weight_bits_ == 2,
+              "expert_weight_bits must be 2, 3, 4, or 8, but got ", expert_weight_bits_);
   fc1_expert_weight_bits_ = op_kernel_info.GetAttrOrDefault<int64_t>("fc1_expert_weight_bits", expert_weight_bits_);
   fc2_expert_weight_bits_ = op_kernel_info.GetAttrOrDefault<int64_t>("fc2_expert_weight_bits", expert_weight_bits_);
   fc3_expert_weight_bits_ = op_kernel_info.GetAttrOrDefault<int64_t>("fc3_expert_weight_bits", expert_weight_bits_);
-  ORT_ENFORCE((fc1_expert_weight_bits_ == 2 || fc1_expert_weight_bits_ == 4 || fc1_expert_weight_bits_ == 8) &&
-                  (fc2_expert_weight_bits_ == 2 || fc2_expert_weight_bits_ == 4 || fc2_expert_weight_bits_ == 8) &&
-                  (fc3_expert_weight_bits_ == 2 || fc3_expert_weight_bits_ == 4 || fc3_expert_weight_bits_ == 8),
-              "FC-specific expert weight bits must be 2, 4, or 8.");
+  ORT_ENFORCE(((fc1_expert_weight_bits_ >= 2 && fc1_expert_weight_bits_ <= 4) || fc1_expert_weight_bits_ == 8) &&
+                  ((fc2_expert_weight_bits_ >= 2 && fc2_expert_weight_bits_ <= 4) || fc2_expert_weight_bits_ == 8) &&
+                  ((fc3_expert_weight_bits_ >= 2 && fc3_expert_weight_bits_ <= 4) || fc3_expert_weight_bits_ == 8),
+              "FC-specific expert weight bits must be 2, 3, 4, or 8.");
+  has_int3_ = fc1_expert_weight_bits_ == 3 || fc2_expert_weight_bits_ == 3 || fc3_expert_weight_bits_ == 3;
   ORT_ENFORCE(swiglu_fusion_ == 0 || fc3_expert_weight_bits_ == fc1_expert_weight_bits_,
               "Fused SwiGLU requires FC1 and FC3 expert weight bits to match.");
   const bool is_mixed_width = fc1_expert_weight_bits_ != expert_weight_bits_ ||
@@ -456,6 +457,22 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
   bool is_fp16 = input_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16;
 #endif
   is_fp16_ = is_fp16;
+  if (has_int3_) {
+    ORT_ENFORCE(quant_type_ == "int" && weights_prepacked_mode == 0,
+                "INT3 CUDA QMoE requires quant_type='int' and weights_prepacked=0.");
+    ORT_ENFORCE((fc1_expert_weight_bits_ == 3 || fc1_expert_weight_bits_ == 4) &&
+                    (fc2_expert_weight_bits_ == 3 || fc2_expert_weight_bits_ == 4),
+                "INT3 CUDA QMoE currently supports (3,3), (3,4), and (4,3).");
+    ORT_ENFORCE(swiglu_fusion_ == 1 &&
+                    activation_type_ == onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Swiglu,
+                "INT3 CUDA QMoE requires interleaved fused SwiGLU.");
+    ORT_ENFORCE(block_size_ == 32 || block_size_ == 64 || block_size_ == 128,
+                "INT3 CUDA QMoE requires block_size 32, 64, or 128.");
+    ORT_ENFORCE(input_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16 ||
+                    input_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16,
+                "INT3 CUDA QMoE requires FP16 or BF16 input.");
+    return;
+  }
   enable_int2_prefill_ = quant_type_ == "int" && sm_ >= 80 &&
                          (block_size_ == 32 || block_size_ == 64 || block_size_ == 128) &&
                          (fc1_expert_weight_bits_ == 2 || fc1_expert_weight_bits_ == 4) &&
@@ -757,6 +774,7 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
 }
 
 Status QMoE::ComputeInternal(OpKernelContext* context) const {
+  if (has_int3_) return ComputeInt3(context);
   const bool is_fp4 = (quant_type_ == "fp4");
   const bool is_nvfp4 = (quant_type_ == "nvfp4");
   // NVFP4 shares the E2M1 4-bit weight format, [E,K,N/2] weight layout, and the per-expert
@@ -2982,6 +3000,7 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                      bool& is_packed, PrePackedWeights* prepacked_weights) {
   ORT_UNUSED_PARAMETER(prepacked_weights);
   is_packed = false;
+  if (has_int3_) return PrePackInt3(tensor, input_idx, alloc, is_packed);
   if (nvfp4_weights_row_major_ && (input_idx == 2 || input_idx == 5 ||
                                    (use_fp4_dequant_fallback_ && (input_idx == 3 || input_idx == 6)))) {
     return Status::OK();

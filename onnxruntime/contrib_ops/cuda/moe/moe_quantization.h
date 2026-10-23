@@ -11,6 +11,7 @@
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemm_profiler.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemv_fp4.h"
 
+#include <array>
 #include <mutex>
 #include <unordered_map>
 
@@ -34,6 +35,21 @@ class QMoE final : public CudaKernel, public MoEBase {
                  bool& is_packed, PrePackedWeights* prepacked_weights) override;
 
  private:
+  Status ComputeInt3(OpKernelContext* context) const;
+  Status PrePackInt3(const Tensor& tensor, int input_idx, AllocatorPtr alloc, bool& is_packed);
+  struct Int3PackedInput {
+    IAllocatorUniquePtr<void> data;
+    TensorShape shape;
+    MLDataType dtype = nullptr;
+    int layout_version = 0;
+    int device = -1;
+    int bits = 0;
+    int64_t block_size = 0;
+    cudaUUID_t device_uuid{};
+    bool validated = false;
+  };
+  std::array<Int3PackedInput, 13> int3_inputs_;
+  bool has_int3_ = false;
   // PrePack helpers - each handles one category of input tensor.
   void PrePackTransposeAndPack(const Tensor& tensor, cudaStream_t stream, AllocatorPtr alloc,
                                IAllocatorUniquePtr<void>& packed_buf, bool& is_packed);
