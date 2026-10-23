@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <stdexcept>
+#include <unordered_map>
 
 #include "ort_singleton_data.h"
 
@@ -37,7 +38,7 @@ Napi::Value CompileTestEpContext(const Napi::CallbackInfo& info) {
       }
       Ort::SessionOptions options;
       options.AddConfigEntry("ep.example.test_execute_ep_context", "1");
-      options.AppendExecutionProvider_V2(objects->env, {*device}, {});
+      options.AppendExecutionProvider_V2(objects->env, {*device}, std::unordered_map<std::string, std::string>{});
       Ort::ModelCompilationOptions compile(objects->env, options);
       auto input = info[2].As<Napi::Buffer<uint8_t>>();
       compile.SetInputModelFromBuffer(input.Data(), input.Length());
@@ -104,9 +105,12 @@ Napi::Value UnregisterTestEpContext(const Napi::CallbackInfo& info) {
   if (info.Length() != 1 || !info[0].IsString()) {
     throw Napi::TypeError::New(info.Env(), "Expected an EP registration name.");
   }
+  auto* objects = OrtSingletonData::GetOrtObjects();
+  if (!objects) {
+    throw Napi::Error::New(info.Env(), "ONNX Runtime must be initialized before unregistering the fixture.");
+  }
   try {
-    OrtSingletonData::GetOrtObjects()->env.UnregisterExecutionProviderLibrary(
-        info[0].As<Napi::String>().Utf8Value().c_str());
+    objects->env.UnregisterExecutionProviderLibrary(info[0].As<Napi::String>().Utf8Value().c_str());
   } catch (const std::exception& error) {
     throw Napi::Error::New(info.Env(), error.what());
   }

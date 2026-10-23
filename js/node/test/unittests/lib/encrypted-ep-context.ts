@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 import assert from 'assert';
+import { execFileSync } from 'child_process';
 import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
 import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
@@ -14,6 +15,24 @@ import { onnx } from '../../ort-schema/protobuf/onnx';
 const pluginPath = process.env.ORT_ENCRYPTION_PLUGIN_LIBRARY;
 
 describe('Encrypted external EPContext inference', () => {
+  it('rejects plugin unregistration before runtime initialization', function () {
+    // eslint-disable-next-line no-underscore-dangle
+    if (!binding.__testUnregisterEpContextPlugin) {
+      assert(!pluginPath, 'Rebuild with ORT_NODEJS_TEST_EP_CONTEXT=ON to run this test.');
+      // eslint-disable-next-line no-invalid-this
+      this.skip();
+    }
+    const script = `
+      const assert = require('assert');
+      const { binding } = require(${JSON.stringify(require.resolve('../../../lib/binding'))});
+      assert.throws(
+        () => binding.__testUnregisterEpContextPlugin('not_registered'),
+        /must be initialized before unregistering the fixture/
+      );
+    `;
+    execFileSync(process.execPath, ['-e', script], { timeout: 10000 });
+  });
+
   it('compiles, encrypts, persists, decrypts and runs the restored context', async function () {
     if (!pluginPath) {
       // eslint-disable-next-line no-invalid-this

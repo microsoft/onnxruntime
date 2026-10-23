@@ -222,7 +222,7 @@ void ParseSessionOptions(const Napi::Object options, Ort::SessionOptions& sessio
     });
     ORT_NAPI_THROW_ERROR_IF(device == devices.end(), options.Env(), "Test EP device was not found.");
     sessionOptions.AddConfigEntry("ep.example.test_execute_ep_context", "1");
-    sessionOptions.AppendExecutionProvider_V2(env, {*device}, {});
+    sessionOptions.AppendExecutionProvider_V2(env, {*device}, std::unordered_map<std::string, std::string>{});
   }
 #endif
   // Execution provider
