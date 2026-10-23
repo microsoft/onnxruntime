@@ -645,6 +645,7 @@ WGPUBuffer BufferManager::Create(CommandRecordingState& recording, size_t size, 
 
   {
     std::lock_guard<std::mutex> lock{mutex_};
+    owned_buffers_.insert(buffer);
     GetCacheManager(usage).RegisterBuffer(buffer, size);
   }
   return buffer;
@@ -676,6 +677,23 @@ void BufferManager::Release(WGPUBuffer buffer, const CommandRecordingState* reco
   }
 
   cache.ReleaseBuffer(buffer);
+}
+
+bool BufferManager::TryRelease(WGPUBuffer buffer, const CommandRecordingState* recording) const {
+  std::lock_guard<std::mutex> lock{mutex_};
+  if (!owned_buffers_.contains(buffer)) {
+    return false;
+  }
+  EnforceBufferUnmapped(context_, buffer);
+  auto& cache = GetCacheManager(buffer);
+  if (cache.SupportsBufferReuse() && recording != nullptr &&
+      recording->has_unsubmitted_work.load(std::memory_order_relaxed)) {
+    pending_buffers_[recording].emplace_back(wgpu::Buffer::Acquire(buffer));
+    return true;
+  }
+
+  cache.ReleaseBuffer(buffer);
+  return true;
 }
 
 void BufferManager::Download(CommandRecordingState& recording, WGPUBuffer src, void* dst, size_t size) const {
@@ -755,13 +773,24 @@ void BufferManager::DiscardPendingBuffers(CommandRecordingState& recording) cons
 
 std::vector<std::pair<size_t, WGPUBuffer>> BufferManager::ExtractCachedBuffers(wgpu::BufferUsage usage) {
   std::lock_guard<std::mutex> lock{mutex_};
-  return GetCacheManager(usage).ExtractCachedBuffers();
+  auto extracted = GetCacheManager(usage).ExtractCachedBuffers();
+  for (const auto& entry : extracted) {
+    if (entry.second) {
+      owned_buffers_.erase(entry.second);
+    }
+  }
+  return extracted;
 }
 
 void BufferManager::AbsorbCachedBuffers(
     wgpu::BufferUsage usage,
     std::vector<std::pair<size_t, WGPUBuffer>>&& buffers) {
   std::lock_guard<std::mutex> lock{mutex_};
+  for (const auto& entry : buffers) {
+    if (entry.second) {
+      owned_buffers_.insert(entry.second);
+    }
+  }
   GetCacheManager(usage).AbsorbCachedBuffers(std::move(buffers));
 }
 

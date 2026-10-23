@@ -107,6 +107,7 @@ class BufferManager {
   bool SupportsUMA() const;  // Check if CreateUMA is supported (i.e., the device has BufferMapExtendedUsages feature)
   // A null recording releases directly to the cache (e.g., plugin Env allocations).
   void Release(WGPUBuffer buffer, const CommandRecordingState* recording = nullptr) const;
+  bool TryRelease(WGPUBuffer buffer, const CommandRecordingState* recording = nullptr) const;
   void Download(CommandRecordingState& recording, WGPUBuffer src, void* dst, size_t size) const;
   void RefreshPendingBuffers(CommandRecordingState& recording, GraphCaptureState graph_capture_state) const;
   // Drop retained references when a recording is abandoned instead of submitted.
@@ -120,7 +121,7 @@ class BufferManager {
   IBufferCacheManager& GetCacheManager(wgpu::BufferUsage usage) const;
   IBufferCacheManager& GetCacheManager(WGPUBuffer buffer) const;
   WebGpuContext& context_;
-  // Protects both the caches and pending_buffers_.
+  // Protects the caches, pending_buffers_, and owned_buffers_.
   mutable std::mutex mutex_;
   std::unique_ptr<IBufferCacheManager> storage_cache_;
   std::unique_ptr<IBufferCacheManager> uniform_cache_;
@@ -128,6 +129,8 @@ class BufferManager {
   std::unique_ptr<IBufferCacheManager> default_cache_;
   // Created on release, only for reusable buffers waiting for this recording's submission.
   mutable InlinedHashMap<const CommandRecordingState*, InlinedVector<wgpu::Buffer>> pending_buffers_;
+  // Tracks buffers currently owned by this manager (used by per-graph managers to route Free).
+  mutable InlinedHashSet<WGPUBuffer> owned_buffers_;
 };
 
 class BufferManagerFactory {
