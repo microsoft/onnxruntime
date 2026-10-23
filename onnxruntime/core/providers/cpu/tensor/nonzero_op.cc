@@ -59,43 +59,42 @@ Status NonZero<T>::Compute(OpKernelContext* context) const {
   const auto& X_shape = X->Shape();
   assert(X_shape.Size() >= 0);
 
-  const Eigen::Index coordinate_size = X_shape.IsScalar() ? 1 : onnxruntime::narrow<Eigen::Index>(X_shape.NumDimensions());
+  const Eigen::Index coordinate_size = onnxruntime::narrow<Eigen::Index>(X_shape.NumDimensions());
+  const T* data = X->Data<T>();
+
+  if (X_shape.IsScalar()) {
+    const int64_t num_non_zero_values = *data != T{} ? 1 : 0;
+    context->Output(0, {0, num_non_zero_values});
+    return Status::OK();
+  }
+
   std::vector<int64_t> non_zero_indices_buffer{};
   // reserve enough space for indices for every element of X
   non_zero_indices_buffer.reserve(SafeInt<size_t>(X_shape.Size()) * coordinate_size);
 
-  const T* data = X->Data<T>();
+  std::vector<int64_t> coordinate(coordinate_size, 0);
 
-  if (X_shape.IsScalar()) {
-    const T& value = *data;
+  // as we iterate the entries, increment the coordinate for the current entry
+  // e.g. if shape is {2,2}, we start with 0,0 increment to 0,1 increment to 1,0 and finally 1,1
+  auto increment_coordinate = [&coordinate, &coordinate_size, &X_shape]() {
+    for (Eigen::Index idx = coordinate_size - 1; idx >= 0; --idx) {
+      int64_t& cur_coord = coordinate[idx];
+      if (cur_coord != X_shape[idx] - 1) {
+        ++cur_coord;
+        break;
+      }
+      cur_coord = 0;
+    }
+  };
+
+  for (size_t i = 0, end = onnxruntime::narrow<size_t>(X_shape.Size()); i < end; ++i) {
+    const T& value = *data++;
     if (value != T{}) {
-      non_zero_indices_buffer.push_back(0);
+      non_zero_indices_buffer.insert(non_zero_indices_buffer.end(),
+                                     coordinate.begin(), coordinate.end());
     }
-  } else {
-    std::vector<int64_t> coordinate(coordinate_size, 0);
 
-    // as we iterate the entries, increment the coordinate for the current entry
-    // e.g. if shape is {2,2}, we start with 0,0 increment to 0,1 increment to 1,0 and finally 1,1
-    auto increment_coordinate = [&coordinate, &coordinate_size, &X_shape]() {
-      for (Eigen::Index idx = coordinate_size - 1; idx >= 0; --idx) {
-        int64_t& cur_coord = coordinate[idx];
-        if (cur_coord != X_shape[idx] - 1) {
-          ++cur_coord;
-          break;
-        }
-        cur_coord = 0;
-      }
-    };
-
-    for (size_t i = 0, end = onnxruntime::narrow<size_t>(X_shape.Size()); i < end; ++i) {
-      const T& value = *data++;
-      if (value != T{}) {
-        non_zero_indices_buffer.insert(non_zero_indices_buffer.end(),
-                                       coordinate.begin(), coordinate.end());
-      }
-
-      increment_coordinate();
-    }
+    increment_coordinate();
   }
 
   const Eigen::Index num_non_zero_values = onnxruntime::narrow<Eigen::Index>(non_zero_indices_buffer.size()) / coordinate_size;
