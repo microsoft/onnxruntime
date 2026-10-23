@@ -751,7 +751,11 @@ Return Value:
     this->ConvSymU8S8Dispatch = &MlasConvSymU8DispatchNeon;
     this->ConvSymS8S8Dispatch = &MlasConvSymS8DispatchNeon;
     this->RopeDispatch = &MlasRopeDispatchNeon;
-    this->HGemmDispatch = &MlasHGemmDispatchNeon;
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
+    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasFp16VectorAcceleration()) {
+        this->HGemmDispatch = &MlasHGemmDispatchNeon;
+    }
+#endif
     this->SoftmaxDispatch = &MlasSoftmaxDispatchNeon;
     this->EltwiseDispatch = &MlasEltwiseDispatchNeon;
     this->KVQuantGemmDispatch = &MlasKVQuantGemmDispatchNeon;

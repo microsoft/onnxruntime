@@ -16,6 +16,8 @@ Abstract:
 
 #include <arm_neon.h>
 
+#include <algorithm>
+
 #include "halfgemm.h"
 #include "fp16_common.h"
 
@@ -509,12 +511,15 @@ void HPackB_B_Kernel(
         MlasStoreFloat16x4(PackedB_data, v0);
         MlasStoreFloat16x4(PackedB_data + 4, v1);
     } else if (CountN > 0) {
+        const float16x4_t zero_v4 = MlasZeroFloat16x4();
         float16x4_t v0 = MlasLoadPartialFloat16x4(B_data, CountN);
         for (; CountK >= 2; B_data += ldb, PackedB_data += 8, --CountK) {
             MlasStoreFloat16x4(PackedB_data, v0);
+            MlasStoreFloat16x4(PackedB_data + 4, zero_v4);
             v0 = MlasLoadPartialFloat16x4(B_data + ldb, CountN);
         }
         MlasStoreFloat16x4(PackedB_data, v0);
+        MlasStoreFloat16x4(PackedB_data + 4, zero_v4);
     }
 }
 
@@ -1085,6 +1090,13 @@ void HGemm_B_Kernel_Complicated(
     _mlas_fp16_ alpha,
     _mlas_fp16_ beta
 ) {
+    // C may be uninitialized when beta == 0, and the beta term below still reads it.
+    if (beta == MLAS_FP16(0.0f).val) {
+        for (size_t m = 0; m < static_cast<size_t>(CountM); ++m) {
+            std::fill_n(C_data + m * ldc, CountN, static_cast<_mlas_fp16_>(0));
+        }
+    }
+
     const size_t ldb4 = ldb * 4;
     float16x8_t alpha_v8 = MlasBroadcastFloat16x8(alpha);
     float16x8_t beta_v8 = MlasBroadcastFloat16x8(beta);
