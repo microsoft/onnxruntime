@@ -122,6 +122,8 @@ Session Run uses a different recording, so the transfer must submit its copy fir
 device queue orders it before later Session work.
 
 Streamless GPU-to-GPU vectors on one WebGPU context use one recording and one submission.
+This path is available with or without `ORT_ENABLE_STREAM`; explicit Session streams require
+a stream-enabled host.
 Copies are encoded in array order, including dependencies between entries. Empty tensors
 enqueue no work. Single copies, CPU transfers, explicit Session streams, and vectors spanning
 contexts keep their existing paths; mixed contexts are not merged. The recording and retained
