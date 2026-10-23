@@ -282,7 +282,8 @@ static void RunGQACausalMaskTest(
     const std::vector<float>& expected_output,
     OpTester::ExpectResult expect = OpTester::ExpectResult::kExpectSuccess,
     const std::string& expected_message = "",
-    std::optional<int64_t> local_window_size = std::nullopt) {
+    std::optional<int64_t> local_window_size = std::nullopt,
+    std::optional<int64_t> right_padded_query = std::nullopt) {
   constexpr int batch_size = 1;
   constexpr int sequence_length = 2;
   constexpr int num_heads = 1;
@@ -312,6 +313,9 @@ static void RunGQACausalMaskTest(
   }
   if (local_window_size.has_value()) {
     tester.AddAttribute<int64_t>("local_window_size", *local_window_size);
+  }
+  if (right_padded_query.has_value()) {
+    tester.AddAttribute<int64_t>("right_padded_query", *right_padded_query);
   }
 
   std::vector<float> query(sequence_length * hidden_size, 0.0f);
@@ -787,6 +791,29 @@ TEST(GroupQueryAttentionTest, InvalidCausalValue_CUDA) {
   RunGQACausalMaskTest<MLFloat16>(
       GqaTargetEp::kCuda, 2, std::vector<float>(16, 0.0f),
       OpTester::ExpectResult::kExpectFailure, "causal must be 0 or 1.");
+}
+
+TEST(GroupQueryAttentionTest, RightPaddedQueryRejected_CPU) {
+  RunGQACausalMaskTest<float>(
+      GqaTargetEp::kCpu, 1, std::vector<float>(16, 0.0f),
+      OpTester::ExpectResult::kExpectFailure,
+      "right_padded_query is only supported by the CUDA execution provider.", std::nullopt, 1);
+}
+
+TEST(GroupQueryAttentionTest, InvalidRightPaddedQueryValue_CUDA) {
+  for (int64_t value : {-1, 2}) {
+    RunGQACausalMaskTest<MLFloat16>(
+        GqaTargetEp::kCuda, 1, std::vector<float>(16, 0.0f),
+        OpTester::ExpectResult::kExpectFailure,
+        "right_padded_query must be 0 or 1.", std::nullopt, value);
+  }
+}
+
+TEST(GroupQueryAttentionTest, RightPaddedQueryBidirectionalRejected_CUDA) {
+  RunGQACausalMaskTest<MLFloat16>(
+      GqaTargetEp::kCuda, 0, std::vector<float>(16, 0.0f),
+      OpTester::ExpectResult::kExpectFailure,
+      "right_padded_query=1 requires causal=1.", std::nullopt, 1);
 }
 
 #ifdef USE_WEBGPU
@@ -4187,7 +4214,8 @@ static void RunGQACudaCacheAliasingTest(
     std::optional<int32_t> decode_seqlens_k = std::nullopt,
     bool shared_cache_only = false,
     bool enable_flash_fast_decode = false,
-    bool packed_qkv = false) {
+    bool packed_qkv = false,
+    bool right_padded_query = false) {
   ScopedEnvironmentVariables scoped_env_vars{{
       {"ORT_DISABLE_FLASH_ATTENTION", use_flash ? "0" : "1"},
       {"ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION", "1"},
@@ -4240,6 +4268,9 @@ static void RunGQACudaCacheAliasingTest(
   auto& node = graph.AddNode("gqa", "GroupQueryAttention", "", inputs, outputs, nullptr, kMSDomain);
   node.AddAttribute("num_heads", static_cast<int64_t>(num_heads));
   node.AddAttribute("kv_num_heads", static_cast<int64_t>(kv_num_heads));
+  if (right_padded_query) {
+    node.AddAttribute("right_padded_query", int64_t{1});
+  }
   if (sliding_window_cache) {
     node.AddAttribute("sliding_window_cache", int64_t{1});
     node.AddAttribute("local_window_size", int64_t{cache_capacity});
@@ -4552,10 +4583,12 @@ TEST(GroupQueryAttentionTest, CudaWindowedRightPaddedChunkPrefill) {
   // total_length is 257 (past_length = 254, padded chunk = 3). Passing seqlens_k = 254 means
   // total_valid_tokens = 255 (1 valid query token and 2 right-padding tokens in the chunk).
   constexpr int32_t right_padded_seqlens_k = 254;
-  RunGQACudaCacheAliasingTest(false, true, sequence_length, nullptr, right_padded_seqlens_k);
+  RunGQACudaCacheAliasingTest(false, true, sequence_length, nullptr, right_padded_seqlens_k,
+                              false, false, false, true);
 #if USE_FLASH_ATTENTION
   if (HasCudaEnvironment(800)) {
-    RunGQACudaCacheAliasingTest(true, true, sequence_length, nullptr, right_padded_seqlens_k);
+    RunGQACudaCacheAliasingTest(true, true, sequence_length, nullptr, right_padded_seqlens_k,
+                                false, false, false, true);
   }
 #endif
 }
