@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef USE_WEBGPU
+#if defined(ORT_UNIT_TEST_HAS_WEBGPU_PLUGIN_EP)
 
 #include <algorithm>
 #include <filesystem>
@@ -24,11 +24,8 @@ extern std::unique_ptr<Ort::Env> ort_env;
 
 namespace {
 
-// Append WebGPU EP to session options, handling both built-in and plugin builds.
 void AppendWebGpuEp(Env& env, SessionOptions& session_options,
                     const std::unordered_map<std::string, std::string>& provider_options) {
-#if defined(ORT_USE_EP_API_ADAPTERS)
-  // Plugin build: find the WebGPU EpDevice and use V2 API
   auto ep_devices = env.GetEpDevices();
   std::vector<ConstEpDevice> webgpu_devices;
   for (const auto& device : ep_devices) {
@@ -39,10 +36,6 @@ void AppendWebGpuEp(Env& env, SessionOptions& session_options,
   }
   ASSERT_FALSE(webgpu_devices.empty()) << "No WebGPU EP device found after plugin registration";
   session_options.AppendExecutionProvider_V2(env, webgpu_devices, provider_options);
-#else
-  static_cast<void>(env);
-  session_options.AppendExecutionProvider("WebGPU", provider_options);
-#endif
 }
 
 // Build a model: Y = MatMul(Relu(MatMul(A, B)), C)
@@ -617,4 +610,4 @@ TEST(GraphCaptureTests, TestReleaseCapturedGraph) {
 
 }  // namespace
 
-#endif  // USE_WEBGPU
+#endif  // defined(ORT_UNIT_TEST_HAS_WEBGPU_PLUGIN_EP)

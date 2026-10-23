@@ -546,11 +546,6 @@ if (onnxruntime_USE_CUDA AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN AND NOT onnxrun
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_cuda_plugin_src})
 endif()
 
-# These public API tests exercise both built-in and plugin WebGPU EPs.
-if (onnxruntime_USE_WEBGPU AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
-  list(APPEND onnxruntime_test_providers_src "${TEST_SRC_DIR}/providers/webgpu/graph_capture_test.cc")
-endif()
-
 if (onnxruntime_USE_WEBGPU AND onnxruntime_USE_EP_API_ADAPTERS AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
   file(GLOB onnxruntime_test_providers_webgpu_plugin_src CONFIGURE_DEPENDS
     "${TEST_SRC_DIR}/providers/webgpu/plugin/*.cc"
@@ -824,7 +819,6 @@ if(onnxruntime_USE_WEBGPU AND NOT onnxruntime_USE_EP_API_ADAPTERS)
   file(GLOB_RECURSE onnxruntime_test_providers_webgpu_src CONFIGURE_DEPENDS
     "${TEST_SRC_DIR}/providers/webgpu/*.cc"
     "${TEST_SRC_DIR}/providers/webgpu/*.h")
-  list(REMOVE_ITEM onnxruntime_test_providers_webgpu_src "${TEST_SRC_DIR}/providers/webgpu/graph_capture_test.cc")
 
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_webgpu_src})
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_webgpu)
