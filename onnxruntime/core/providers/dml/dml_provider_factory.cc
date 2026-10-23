@@ -512,7 +512,13 @@ Microsoft::WRL::ComPtr<ID3D12Device> DMLProviderFactoryCreator::CreateD3D12Devic
     ORT_THROW_IF_FAILED(CreateDXGIFactory2(0, IID_GRAPHICS_PPV_ARGS(dxgi_factory.ReleaseAndGetAddressOf())));
 
     ComPtr<IDXGIAdapter1> adapter;
-    ORT_THROW_IF_FAILED(dxgi_factory->EnumAdapters1(device_id, &adapter));
+    const HRESULT enumerate_adapter_hr = dxgi_factory->EnumAdapters1(device_id, &adapter);
+    if (FAILED(enumerate_adapter_hr)) {
+      // WIL includes the localized system message in exceptions from ORT_THROW_IF_FAILED. Those messages may use
+      // the active Windows code page, while Python exception messages must be UTF-8.
+      ORT_THROW("Failed to enumerate DirectML adapter with device_id ", device_id,
+                ". HRESULT: ", static_cast<uint32_t>(enumerate_adapter_hr));
+    }
 
     // Disallow using DML with the software adapter (Microsoft Basic Display Adapter) because CPU evaluations are much
     // faster. Some scenarios though call for EP initialization without this check (as execution will not actually occur
