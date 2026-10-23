@@ -42,6 +42,7 @@ class GatherND final : public OpKernel, protected GatherNDBase {
  public:
   explicit GatherND(const OpKernelInfo& info) : OpKernel(info) {
     info.GetAttrOrDefault("batch_dims", &batch_dims_, static_cast<int64_t>(0));
+    ORT_ENFORCE(batch_dims_ >= 0, "GatherND: attribute 'batch_dims' must not be negative. Got: ", batch_dims_);
   }
   Status Compute(OpKernelContext* context) const override;
 

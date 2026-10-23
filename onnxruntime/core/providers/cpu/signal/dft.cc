@@ -424,6 +424,8 @@ static Status discrete_fourier_transform(OpKernelContext* ctx, int64_t axis, boo
   const auto* X = ctx->Input<Tensor>(0);
   const auto* dft_length = ctx->Input<Tensor>(1);
   const auto& X_shape = X->Shape();
+  ORT_RETURN_IF(X_shape.NumDimensions() < 2,
+                "DFT: input must have rank >= 2 (signal and real/imag dimensions). Got: ", X_shape);
   const auto is_real_valued = X_shape[X_shape.NumDimensions() - 1] == 1;
   const auto is_complex_valued = X_shape[X_shape.NumDimensions() - 1] == 2;
 
@@ -524,7 +526,10 @@ Status DFT::Compute(OpKernelContext* ctx) const {
   int64_t axis = axis_;
   if (opset_ >= 20 && ctx->InputCount() >= 3) {
     const Tensor* axes_tensor = ctx->Input<Tensor>(2);
-    axis = axes_tensor->Data<int64_t>()[0];
+    if (axes_tensor != nullptr) {
+      ORT_RETURN_IF_NOT(axes_tensor->Shape().Size() == 1, "DFT: 'axis' input must contain exactly one element.");
+      axis = axes_tensor->Data<int64_t>()[0];
+    }
   }
 
   ORT_RETURN_IF_ERROR(discrete_fourier_transform(ctx, axis, is_onesided_, is_inverse_));
@@ -549,6 +554,8 @@ static Status short_time_fourier_transform(OpKernelContext* ctx, bool is_oneside
 
   // Get input signal shape
   const auto& signal_shape = signal->Shape();
+  ORT_RETURN_IF(signal_shape.NumDimensions() < 2 || signal_shape.NumDimensions() > 3,
+                "STFT: signal must have rank 2 or 3. Got: ", signal_shape);
   const auto batch_size = signal_shape[0];
   const auto signal_size = signal_shape[1];
   const auto signal_components = signal_shape.NumDimensions() == 2   ? 1
@@ -642,6 +649,7 @@ Status STFT::Compute(OpKernelContext* ctx) const {
   // Get signal shape
   const auto* signal = ctx->Input<Tensor>(0);
   const auto& signal_shape = signal->Shape();
+  ORT_RETURN_IF(signal_shape.NumDimensions() < 2, "STFT: signal must have rank 2 or 3. Got: ", signal_shape);
   const auto is_real_valued = signal_shape.NumDimensions() == 2 || signal_shape[signal_shape.NumDimensions() - 1] == 1;
   const auto is_complex_valued = signal_shape.NumDimensions() > 2 && signal_shape[signal_shape.NumDimensions() - 1] == 2;
 
