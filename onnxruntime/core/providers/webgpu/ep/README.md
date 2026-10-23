@@ -121,6 +121,15 @@ without a stream submit before returning, but do not wait for GPU completion. A 
 Session Run uses a different recording, so the transfer must submit its copy first; the shared
 device queue orders it before later Session work.
 
+Streamless GPU-to-GPU vectors on one WebGPU context use one recording and one submission.
+Copies are encoded in array order, including dependencies between entries. Empty tensors
+enqueue no work. Single copies, CPU transfers, explicit Session streams, and vectors spanning
+contexts keep their existing paths; mixed contexts are not merged. The recording and retained
+context are local to the call, so independent streamless vectors can run concurrently in
+concurrent mode. A failed call reports an error, may leave destinations partially updated,
+and does not retain unsubmitted commands for a later call. This uses the existing
+`OrtApi::CopyTensors` API (available since ORT 1.23); it adds no public API or ABI.
+
 Stream flush and notification activation submit the owning Session's recording without a CPU
 wait. Submission is still needed before streamless readbacks, such as node I/O dumps, use a
 different recording. GPU consumers rely on the shared queue's submission order, and CPU
