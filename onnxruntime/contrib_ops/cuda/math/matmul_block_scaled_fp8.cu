@@ -541,6 +541,50 @@ __device__ __forceinline__ T Fp8RoundOutput(float value, int row, int col, int n
   return rounded;
 }
 
+__device__ __forceinline__ float Fp8SharedExpertRoundedBf16Sigmoid(float value) {
+  using namespace onnxruntime::cuda;
+  const BFloat16 a(value);
+  return static_cast<float>(a > BFloat16(0.0f)
+                                ? BFloat16(1.0f) / (BFloat16(1.0f) + _Exp(-a))
+                                : BFloat16(1.0f) - BFloat16(1.0f) / (BFloat16(1.0f) + _Exp(a)));
+}
+
+__device__ __forceinline__ __nv_bfloat16 Fp8SharedExpertSwiGLU(__nv_bfloat16 up, __nv_bfloat16 silu_gate) {
+  const float value = __bfloat162float(silu_gate);
+  const __nv_bfloat16 silu = __float2bfloat16_rn(value * Fp8SharedExpertRoundedBf16Sigmoid(value));
+  return __float2bfloat16_rn(__bfloat162float(up) * __bfloat162float(silu));
+}
+
+__device__ __forceinline__ void Fp8SharedExpertSwiGLU16(uint4& up_raw, const uint4& gate_raw) {
+  __nv_bfloat16* u = reinterpret_cast<__nv_bfloat16*>(&up_raw);
+  const __nv_bfloat16* g = reinterpret_cast<const __nv_bfloat16*>(&gate_raw);
+#pragma unroll
+  for (int i = 0; i < 8; ++i) {
+    u[i] = Fp8SharedExpertSwiGLU(u[i], g[i]);
+  }
+}
+
+constexpr int kSharedExpertGateThreads = 256;
+
+__global__ void ComputeSharedExpertGatesKernel(const __nv_bfloat16* __restrict__ activation,
+                                               const __nv_bfloat16* __restrict__ weight,
+                                               float* __restrict__ row_gates,
+                                               int input_width) {
+  using Reduce = cub::BlockReduce<float, kSharedExpertGateThreads>;
+  __shared__ typename Reduce::TempStorage reduction;
+  const int64_t row = blockIdx.x;
+  float dot = 0.0f;
+  for (int64_t k = threadIdx.x; k < input_width; k += kSharedExpertGateThreads) {
+    dot = fmaf(__bfloat162float(activation[row * input_width + k]),
+               __bfloat162float(weight[k]), dot);
+  }
+  const float total = Reduce(reduction).Sum(dot);
+  if (threadIdx.x == 0) {
+    const float value = __bfloat162float(__float2bfloat16_rn(total));
+    row_gates[row] = Fp8SharedExpertRoundedBf16Sigmoid(value);
+  }
+}
+
 template <int KSplit, int MTiles, bool SplitOutput, typename AType, bool PerColumnS2 = false,
           bool SharedExpert = false>
 __device__ __forceinline__ void Fp8MmaGemvBody(AType* __restrict__ output,
@@ -624,6 +668,14 @@ __device__ __forceinline__ void Fp8MmaGemvBody(AType* __restrict__ output,
         const uint4* ap = reinterpret_cast<const uint4*>(input_a + a_off[mt] + k0);
         a_raw[mt][0] = ap[0];
         a_raw[mt][1] = ap[1];
+        if constexpr (SharedExpert) {
+          if (epilogue.silu_gate != nullptr) {
+            const uint4* gp = reinterpret_cast<const uint4*>(
+                static_cast<const __nv_bfloat16*>(epilogue.silu_gate) + a_off[mt] + k0);
+            Fp8SharedExpertSwiGLU16(a_raw[mt][0], gp[0]);
+            Fp8SharedExpertSwiGLU16(a_raw[mt][1], gp[1]);
+          }
+        }
         if (act_qdq) {
           Fp8ActQdq16<AType>(a_raw[mt][0], a_inv_scale, a_scale);
           Fp8ActQdq16<AType>(a_raw[mt][1], a_inv_scale, a_scale);
@@ -826,6 +878,29 @@ int Fp8MmaGemvDispatchMaxM() {
 
 int ApplyFp8MmaKSplitOverride(int k_split, int m, int n, int k);
 
+Status LaunchComputeSharedExpertGates(cudaStream_t stream, const uint16_t* activation,
+                                      const uint16_t* weight, float* row_gates,
+                                      int rows, int input_width) {
+#if !defined(DISABLE_FLOAT8_TYPES) && defined(CUDA_VERSION) && CUDA_VERSION >= 11080
+  ORT_RETURN_IF_NOT(rows >= 0 && input_width > 0 && activation && weight && row_gates,
+                    "Shared expert gate computation requires nonnegative rows, positive input_width and valid buffers");
+  if (rows == 0) return Status::OK();
+  ComputeSharedExpertGatesKernel<<<rows, kSharedExpertGateThreads, 0, stream>>>(
+      reinterpret_cast<const __nv_bfloat16*>(activation),
+      reinterpret_cast<const __nv_bfloat16*>(weight),
+      row_gates, input_width);
+  return CUDA_CALL(cudaGetLastError());
+#else
+  ORT_UNUSED_PARAMETER(stream);
+  ORT_UNUSED_PARAMETER(activation);
+  ORT_UNUSED_PARAMETER(weight);
+  ORT_UNUSED_PARAMETER(row_gates);
+  ORT_UNUSED_PARAMETER(rows);
+  ORT_UNUSED_PARAMETER(input_width);
+  return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Shared expert requires FP8 support.");
+#endif
+}
+
 Status LaunchFp8SharedExpertEpilogue(void* y, const Fp8SharedExpertEpilogue& epilogue,
                                     int m, int n, cudaStream_t stream) {
 #if !defined(DISABLE_FLOAT8_TYPES) && defined(CUDA_VERSION) && CUDA_VERSION >= 11080
@@ -851,9 +926,9 @@ Status LaunchMatMulFp8SharedExpert(void* y, const void* a, const void* weight,
                                   const Fp8SharedExpertEpilogue& epilogue,
                                   const cudaDeviceProp& device_prop, cudaStream_t stream) {
 #if !defined(DISABLE_FLOAT8_TYPES) && defined(CUDA_VERSION) && CUDA_VERSION >= 11080
-  ORT_RETURN_IF_NOT(m >= 1 && m <= 2 && k >= 256 && k % 64 == 0 && block_size % 64 == 0 &&
+  ORT_RETURN_IF_NOT(m >= 1 && m <= 8 && k >= 256 && k % 64 == 0 && block_size % 64 == 0 &&
                         device_prop.major >= 8 && epilogue.row_gates && epilogue.residual,
-                    "Shared expert fused GEMV requires SM80+, M <= 2 and aligned K/block size");
+                    "Shared expert fused GEMV requires SM80+, M <= 8 and aligned K/block size");
   const int selected = PickGenericFp8MmaKSplit(n, k / 64);
   const int k_split = ApplyFp8MmaKSplitOverride(selected, m, n, k);
   static const int per_column_s2 =

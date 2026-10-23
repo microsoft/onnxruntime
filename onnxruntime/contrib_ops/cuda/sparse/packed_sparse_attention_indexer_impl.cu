@@ -198,6 +198,10 @@ __global__ void QsaUpdateStateKernel(const T* key, const T* key_norm_weight, con
       present_state_lengths[b * 2 + psai::kKeyStateLength] = old_key_len + new_block_count;
       present_state_lengths[b * 2 + psai::kBufferLength] = new_buf_len;
       overflow_flags[b] = rejected ? 1 : 0;
+      if (params.validation_status != nullptr) {
+        const int request_length = req_end - req_start;
+        params.validation_status[b] = !rejected ? 0 : (request_length >= 2 ? 0x99 : 9);
+      }
     }
 
     if (params.mid_kv_buffer != nullptr && params.mid_state_lengths != nullptr) {
@@ -1635,35 +1639,6 @@ size_t GetCsaPackedWorkspaceFloatCount(const PackedSparseAttentionIndexerParams&
   if (params.state_only) return 0;
   const size_t rows = static_cast<size_t>(params.total_tokens);
   return rows * params.num_heads * params.head_size + rows * static_cast<size_t>(std::max(params.state_capacity, 1));
-}
-
-__global__ void MapQsaValidationStatusKernel(
-    const int32_t* cumulative_sequence_lengths,
-    const int32_t* overflow_flags,
-    int batch_size,
-    int32_t* validation_status) {
-  const int batch = static_cast<int>(blockIdx.x) * blockDim.x + threadIdx.x;
-  if (batch >= batch_size) {
-    return;
-  }
-  const int request_length = cumulative_sequence_lengths[batch + 1] - cumulative_sequence_lengths[batch];
-  validation_status[batch] = overflow_flags[batch] == 0 ? 0 : (request_length >= 2 ? 0x99 : 9);
-}
-
-Status LaunchMapQsaValidationStatus(
-    cudaStream_t stream,
-    const int32_t* cumulative_sequence_lengths,
-    const int32_t* overflow_flags,
-    int batch_size,
-    int32_t* validation_status) {
-  if (batch_size <= 0) {
-    return Status::OK();
-  }
-  constexpr int kStatusThreads = 128;
-  const int blocks = (batch_size + kStatusThreads - 1) / kStatusThreads;
-  MapQsaValidationStatusKernel<<<blocks, kStatusThreads, 0, stream>>>(
-      cumulative_sequence_lengths, overflow_flags, batch_size, validation_status);
-  return CUDA_CALL(cudaGetLastError());
 }
 
 template <typename T, typename TState>

@@ -256,12 +256,8 @@ Status DynamicSparseAttention<T>::ComputeInternal(OpKernelContext* context) cons
     ORT_RETURN_IF_ERROR(ValidateDynamicSparseAttentionOnDevice(
         stream, data.selected_indices, data.selected_counts, data.seqlens_k,
         data.position_ids, parameters, validation_error, validation_workspace.get(),
-        GetDeviceProp().sharedMemPerBlock, strict_validation_, data.key_scale, data.value_scale));
-    if (committed_length != nullptr) {
-      ORT_RETURN_IF_ERROR(ValidateDynamicSparseAttentionCursor(
-          stream, data.seqlens_k, committed_length->Data<int32_t>(),
-          parameters.sequence_length, parameters.cache_capacity, validation_error));
-    }
+        GetDeviceProp().sharedMemPerBlock, strict_validation_, data.key_scale, data.value_scale,
+        committed_length == nullptr ? nullptr : committed_length->Data<int32_t>()));
   }
 
   const size_t attention_workspace_elements =

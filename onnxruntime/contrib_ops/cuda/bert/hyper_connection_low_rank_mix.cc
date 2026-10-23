@@ -4,6 +4,7 @@
 #include "contrib_ops/cuda/bert/hyper_connection_low_rank_mix.h"
 
 #include <limits>
+#include <type_traits>
 
 #include "contrib_ops/cpu/hyper_connection_helper.h"
 #include "contrib_ops/cuda/bert/hyper_connection_low_rank_mix_impl.h"
@@ -35,11 +36,21 @@ HyperConnectionLowRankMix<T>::HyperConnectionLowRankMix(const OpKernelInfo& info
       gate_mul_(info.GetAttrOrDefault<float>("gate_mul", 1.0f)) {
   ORT_ENFORCE(num_branches_ > 0, "HyperConnectionLowRankMix requires a positive num_branches");
   ORT_ENFORCE(gate_div_ != 0.0f, "gate_div must be non-zero");
+  const Tensor* constant_input = nullptr;
+  weights_are_constant_ = info.TryGetConstantInput(1, &constant_input) &&
+                          info.TryGetConstantInput(2, &constant_input) &&
+                          info.TryGetConstantInput(3, &constant_input) &&
+                          info.TryGetConstantInput(4, &constant_input);
 }
 
 template <typename T>
 Status HyperConnectionLowRankMix<T>::ComputeInternal(OpKernelContext* context) const {
   using CudaT = typename onnxruntime::cuda::OrtToCudaType<T>::type;
+
+  if constexpr (std::is_same_v<T, BFloat16>) {
+    ORT_RETURN_IF_NOT(GetDeviceProp().major >= 8,
+                      "HyperConnectionLowRankMix with BFloat16 requires CUDA compute capability 8.0 or higher");
+  }
 
   const Tensor* streams = context->Input<Tensor>(0);
   const Tensor* norm_scale = context->Input<Tensor>(1);
@@ -144,7 +155,7 @@ Status HyperConnectionLowRankMix<T>::ComputeInternal(OpKernelContext* context) c
     auto scratch = GetScratchBuffer<float>(HyperConnectionLowRankMixFusedScratchElements(config),
                                            GetComputeStream(context));
     return LaunchHyperConnectionLowRankMixFused<CudaT>(device_prop, Stream(context), config, tensors,
-                                                       scratch.get());
+                                                       scratch.get(), weights_are_constant_);
   }
 
   const size_t rows = static_cast<size_t>(params.rows);

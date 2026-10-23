@@ -49,8 +49,12 @@ struct Fp8GemvOutputSplit {
 struct Fp8SharedExpertEpilogue {
   const float* row_gates = nullptr;
   const void* residual = nullptr;
+  const void* silu_gate = nullptr;
 };
 
+Status LaunchComputeSharedExpertGates(cudaStream_t stream, const uint16_t* activation,
+                                      const uint16_t* weight, float* row_gates,
+                                      int rows, int input_width);
 Status LaunchMatMulFp8SharedExpert(void* y, const void* a, const void* weight,
                                   const float* scales, int m, int n, int k, int block_size,
                                   const Fp8SharedExpertEpilogue& epilogue,

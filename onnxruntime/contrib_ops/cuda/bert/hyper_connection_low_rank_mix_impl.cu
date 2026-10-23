@@ -11,7 +11,11 @@
 //   HcUpPreKernel grid (ceil(H / 16), 1, row groups)
 //                 reduces the partials in a fixed order, then ScaledSiLU, up GEMV, sigmoid, pre-mix and the
 //                 inject gate.
-// Both kernels use ordinary stream-ordered launches: their weights may be outputs of preceding nodes.
+// When the weight inputs (norm_scale, down_weight, up_weight, inject_weight) are constant initializers, both
+// kernels are launched with programmatic dependent launch on sm_90+ (plain launches otherwise). Each one
+// triggers its dependents immediately and prefetches its constant weights into shared memory before
+// griddepcontrol.wait; everything that consumes another kernel's output comes after the wait, so correctness
+// never depends on the trigger position.
 // Every intermediate is rounded to T at the points where the unfused ONNX subgraph rounds; the GEMVs
 // accumulate in fp32 in a fixed (deterministic) order.
 //
@@ -21,11 +25,12 @@
 
 #include <cuda_bf16.h>
 #include <cuda_fp16.h>
-#include <cub/block/block_reduce.cuh>
 #include <algorithm>
 #include <limits>
 #include <type_traits>
 
+#include "core/platform/env_var_utils.h"
+#include "core/providers/cuda/cu_inc/cub.cuh"
 #include "core/providers/cuda/cu_inc/cuda_type_helper.cuh"
 #include "core/providers/cuda/cuda_common.h"
 
@@ -235,15 +240,15 @@ __global__ void __launch_bounds__(kThreads)
 #pragma unroll
     for (int i = 0; i < kMaxVecIters; ++i) {
       const int qi = tid + kThreads * i;
-      sv[r][i] = qi < nvec ? sp[qi] : make_uint4(0u, 0u, 0u, 0u);
+      sv[r][i] = qi < nvec ? __ldcg(sp + qi) : make_uint4(0u, 0u, 0u, 0u);
     }
     if constexpr (kPost) {
-      gate_c[r] = to_float<T>(prev_gate[row_idx[r] * branches + c]);
+      gate_c[r] = BitsToFloat<T>(__ldcg(reinterpret_cast<const uint16_t*>(prev_gate + row_idx[r] * branches + c)));
       const uint4* bp = reinterpret_cast<const uint4*>(prev_out + row_idx[r] * hidden);
 #pragma unroll
       for (int i = 0; i < kMaxVecIters; ++i) {
         const int qi = tid + kThreads * i;
-        bv[r][i] = qi < nvec ? bp[qi] : make_uint4(0u, 0u, 0u, 0u);
+        bv[r][i] = qi < nvec ? __ldcg(bp + qi) : make_uint4(0u, 0u, 0u, 0u);
       }
     }
   }
@@ -455,8 +460,9 @@ __global__ void __launch_bounds__(kThreads)
         nw[b] = to_float<T>(norm_w[static_cast<int64_t>(b) * hidden + h0 + hl]);
 #pragma unroll
         for (int r = 0; r < ROWS; ++r) {
-          xv[r][b] = to_float<T>(streams[row_idx[r] * K + static_cast<int64_t>(b) * hidden + h0 + hl]);
-          inv[r][b] = inv_rms_in[row_idx[r] * branches + b];
+          xv[r][b] = BitsToFloat<T>(__ldcg(reinterpret_cast<const uint16_t*>(
+              streams + row_idx[r] * K + static_cast<int64_t>(b) * hidden + h0 + hl)));
+          inv[r][b] = __ldcg(inv_rms_in + row_idx[r] * branches + b);
         }
       }
     }
@@ -476,7 +482,7 @@ __global__ void __launch_bounds__(kThreads)
 #pragma unroll
         for (int r = 0; r < ROWS; ++r) {
           pq[u][r] = sp0 + u < p.splits
-                         ? __ldca(reinterpret_cast<const float4*>(
+                         ? __ldcg(reinterpret_cast<const float4*>(
                                partial + (row_idx[r] * p.splits + sp0 + u) * p.partial_stride + cq))
                          : make_float4(0.f, 0.f, 0.f, 0.f);
         }
@@ -508,7 +514,9 @@ __global__ void __launch_bounds__(kThreads)
     const int r = tid / branches;
     const int t = tid % branches;
     float v = 0.0f;
-    for (int sp = 0; sp < p.splits; ++sp) v += partial[(row_idx[r] * p.splits + sp) * p.partial_stride + rank + t];
+    for (int sp = 0; sp < p.splits; ++sp) {
+      v += __ldcg(partial + (row_idx[r] * p.splits + sp) * p.partial_stride + rank + t);
+    }
     const float inject = Rnd<T>(v);
     const float u = Rnd<T>(SigmoidF32(Rnd<T>(inject / p.gate_div)));
     if (row_ok[r]) gate_out[row_idx[r] * branches + t] = from_float<T>(u * p.gate_mul);
@@ -615,7 +623,9 @@ __global__ void NormKernel(const T* __restrict__ streams, const T* __restrict__ 
     float v = to_float<T>(streams[base + h]);
     if constexpr (kPost) {
       v = Rnd<T>(fmaf(gate_c, to_float<T>(prev_out[row * hidden + h]), v));
-      streams_out[base + h] = from_float<T>(v);
+      if (streams_out != nullptr) {
+        streams_out[base + h] = from_float<T>(v);
+      }
     }
     sum_sq += v * v;
   }
@@ -703,6 +713,36 @@ constexpr cudaDataType_t CudaDataType() {
   }
 }
 
+// Disallows reduced-precision split-K reductions (and TF32 tensor op math) around the unfused GEMMs,
+// restoring the caller's cuBLAS math mode on scope exit including on failure.
+class ScopedCublasMathMode {
+ public:
+  ScopedCublasMathMode() = default;
+  ScopedCublasMathMode(const ScopedCublasMathMode&) = delete;
+  ScopedCublasMathMode& operator=(const ScopedCublasMathMode&) = delete;
+
+  Status Set(cublasHandle_t cublas, cublasMath_t mode) {
+    CUBLAS_RETURN_IF_ERROR(cublasGetMathMode(cublas, &prev_mode_));
+    if (prev_mode_ != mode) {
+      CUBLAS_RETURN_IF_ERROR(cublasSetMathMode(cublas, mode));
+      handle_ = cublas;
+      restore_ = true;
+    }
+    return Status::OK();
+  }
+
+  ~ScopedCublasMathMode() {
+    if (restore_) {
+      (void)cublasSetMathMode(handle_, prev_mode_);
+    }
+  }
+
+ private:
+  cublasHandle_t handle_ = nullptr;
+  cublasMath_t prev_mode_ = CUBLAS_DEFAULT_MATH;
+  bool restore_ = false;
+};
+
 // Row-major C[m, n] = A[m, k] * B[k, n] with fp32 accumulation and T output.
 template <typename T>
 Status Gemm(cublasHandle_t cublas, int64_t m, int64_t n, int64_t k, const T* a, const T* b, T* c) {
@@ -755,7 +795,16 @@ Status LaunchWithProgrammaticSerialization(bool use_pdl, Kernel kernel, dim3 gri
     launch_config.stream = stream;
     launch_config.attrs = &attribute;
     launch_config.numAttrs = 1;
-    return CUDA_CALL(cudaLaunchKernelEx(&launch_config, kernel, args...));
+    const cudaError_t status = cudaLaunchKernelEx(&launch_config, kernel, args...);
+    if (status == cudaSuccess) {
+      return Status::OK();
+    }
+    // An older driver can reject the programmatic serialization attribute; plain launches are always correct.
+    if (status != cudaErrorInvalidValue && status != cudaErrorNotSupported &&
+        status != cudaErrorCallRequiresNewerDriver) {
+      return CUDA_CALL(status);
+    }
+    (void)cudaGetLastError();
   }
 #else
   ORT_UNUSED_PARAMETER(use_pdl);
@@ -764,10 +813,48 @@ Status LaunchWithProgrammaticSerialization(bool use_pdl, Kernel kernel, dim3 gri
   return CUDA_CALL(cudaGetLastError());
 }
 
+// griddepcontrol is compiled only for sm_90+; a kernel image JIT-compiled from older PTX would not contain it,
+// so programmatic dependent launch must not be requested for such an image (or for a driver older than 12.3).
+template <typename T, int ROWS>
+bool IsProgrammaticLaunchAvailable() {
+#if defined(CUDART_VERSION) && CUDART_VERSION >= 12030
+  static thread_local int cached_device = -1;
+  static thread_local bool cached_available = false;
+  int device = -1;
+  if (cudaGetDevice(&device) != cudaSuccess) {
+    (void)cudaGetLastError();
+    return false;
+  }
+  if (device != cached_device) {
+    int driver_version = 0;
+    int sm_major = 0;
+    bool available = cudaDriverGetVersion(&driver_version) == cudaSuccess && driver_version >= 12030 &&
+                     cudaDeviceGetAttribute(&sm_major, cudaDevAttrComputeCapabilityMajor, device) == cudaSuccess &&
+                     sm_major >= 9;
+    auto image_has_griddepcontrol = [](auto kernel) {
+      cudaFuncAttributes attributes{};
+      return cudaFuncGetAttributes(&attributes, kernel) == cudaSuccess && attributes.ptxVersion >= 90 &&
+             attributes.binaryVersion >= 90;
+    };
+    available = available && image_has_griddepcontrol(HcDownKernel<T, true, ROWS>) &&
+                image_has_griddepcontrol(HcDownKernel<T, false, ROWS>) &&
+                image_has_griddepcontrol(HcUpPreKernel<T, ROWS>) &&
+                image_has_griddepcontrol(HcUpPreKernel<T, ROWS, 4, 320>);
+    (void)cudaGetLastError();
+    cached_device = device;
+    cached_available = available;
+  }
+  return cached_available;
+#else
+  return false;
+#endif
+}
+
 template <typename T, int ROWS>
 Status LaunchFusedRows(bool use_pdl, cudaStream_t stream, const HyperConnectionLowRankMixConfig& config,
                        const HyperConnectionLowRankMixTensors<T>& tensors, const FusedGeometry& g, float* partial,
                        float* inv_rms, const DownParams& down, const UpParams& up) {
+  use_pdl = use_pdl && IsProgrammaticLaunchAvailable<T, ROWS>();
   const unsigned row_groups = static_cast<unsigned>((config.rows + ROWS - 1) / ROWS);
   const dim3 down_grid(g.col_tiles + 1, g.splits, row_groups);
   const dim3 up_grid((config.hidden + kUpTile - 1) / kUpTile, 1, row_groups);
@@ -825,17 +912,20 @@ template <typename T>
 Status LaunchHyperConnectionLowRankMixFused(const cudaDeviceProp& device_prop, cudaStream_t stream,
                                             const HyperConnectionLowRankMixConfig& config,
                                             const HyperConnectionLowRankMixTensors<T>& tensors,
-                                            float* scratch) {
+                                            float* scratch, bool weights_are_constant) {
   if constexpr (sizeof(T) != 2) {
     ORT_UNUSED_PARAMETER(device_prop);
     ORT_UNUSED_PARAMETER(stream);
     ORT_UNUSED_PARAMETER(config);
     ORT_UNUSED_PARAMETER(tensors);
     ORT_UNUSED_PARAMETER(scratch);
+    ORT_UNUSED_PARAMETER(weights_are_constant);
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "fused HyperConnectionLowRankMix requires a 16-bit type");
   } else {
     ORT_RETURN_IF_NOT(CanUseFusedHyperConnectionLowRankMix<T>(device_prop, config),
                       "unsupported problem for the fused HyperConnectionLowRankMix path");
+    ORT_RETURN_IF_NOT(tensors.prev_block_output == nullptr || tensors.streams_out != nullptr,
+                      "fused HyperConnectionLowRankMix requires streams_out buffer when prologue is present");
     const FusedGeometry g = GetFusedGeometry(config);
     float* partial = scratch;
     float* inv_rms = scratch + static_cast<size_t>(config.rows) * g.splits * g.partial_stride;
@@ -844,9 +934,17 @@ Status LaunchHyperConnectionLowRankMixFused(const cudaDeviceProp& device_prop, c
                     g.splits, g.partial_stride, config.epsilon};
     UpParams up{config.rows, config.branches, config.hidden, config.rank, g.splits, g.partial_stride,
                 config.silu_alpha, config.reduction_scale, config.gate_div, config.gate_mul};
-    // Weights can be produced by preceding nodes, so no input prefetch may overlap their execution.
-    const bool use_pdl = false;
+    static const bool enable_pdl =
+        onnxruntime::ParseEnvironmentVariableWithDefault<bool>("ORT_HYPER_CONNECTION_PDL", false);
+    const bool use_pdl = enable_pdl && device_prop.major >= 9 && weights_are_constant;
     if (config.rows == 1) {
+      return LaunchFusedRows<T, 1>(use_pdl, stream, config, tensors, g, partial, inv_rms, down, up);
+    }
+    static const int decode_rows =
+        onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_HC_DECODE_ROWS", 1);
+    ORT_ENFORCE(decode_rows == 1 || decode_rows == 2,
+                "ORT_HC_DECODE_ROWS must be 1 or 2");
+    if (config.rows == 4 && decode_rows == 1) {
       return LaunchFusedRows<T, 1>(use_pdl, stream, config, tensors, g, partial, inv_rms, down, up);
     }
     return LaunchFusedRows<T, 2>(use_pdl, stream, config, tensors, g, partial, inv_rms, down, up);
@@ -874,10 +972,17 @@ Status LaunchHyperConnectionLowRankMixUnfused(cublasHandle_t cublas, cudaStream_
   }
   ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
 
+  ScopedCublasMathMode math_mode;
+  if constexpr (std::is_same_v<T, half>) {
+    ORT_RETURN_IF_ERROR(math_mode.Set(cublas, CUBLAS_MATH_DISALLOW_REDUCED_PRECISION_REDUCTION));
+  }
+
   ORT_RETURN_IF_ERROR(Gemm<T>(cublas, rows, config.rank, K, hn, tensors.down_weight, down));
   (void)inject;
 
   const int64_t down_count = rows * config.rank;
+  ORT_RETURN_IF_NOT(BlocksFor(down_count) <= std::numeric_limits<int>::max(),
+                    "CUDA launch requires too many blocks");
   ScaledSiluKernel<T><<<static_cast<int>(BlocksFor(down_count)), kThreads, 0, stream>>>(
       down, down_count, config.silu_alpha);
   ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
@@ -899,7 +1004,7 @@ Status LaunchHyperConnectionLowRankMixUnfused(cublasHandle_t cublas, cudaStream_
                                                         const HyperConnectionLowRankMixConfig&); \
   template Status LaunchHyperConnectionLowRankMixFused<T>(                                       \
       const cudaDeviceProp&, cudaStream_t, const HyperConnectionLowRankMixConfig&,               \
-      const HyperConnectionLowRankMixTensors<T>&, float*);                                       \
+      const HyperConnectionLowRankMixTensors<T>&, float*, bool);                                 \
   template Status LaunchHyperConnectionLowRankMixUnfused<T>(                                     \
       cublasHandle_t, cudaStream_t, const HyperConnectionLowRankMixConfig&,                      \
       const HyperConnectionLowRankMixTensors<T>&, T*, T*, T*, T*);

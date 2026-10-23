@@ -36,7 +36,7 @@ struct HyperConnectionLowRankMixTensors {
   const T* prev_post_gate = nullptr;
   T* pre_output = nullptr;
   T* post_gate = nullptr;
-  T* streams_out = nullptr;  // written when the prologue is present; must then be non-null
+  T* streams_out = nullptr;  // optional on the unfused path; required on the fused path when the prologue is present
 };
 
 // Rows up to this value use the two-kernel fused path; larger inputs use the cuBLAS based path.
@@ -50,11 +50,12 @@ bool CanUseFusedHyperConnectionLowRankMix(const cudaDeviceProp& device_prop,
 // Number of float elements of scratch memory the fused path needs.
 size_t HyperConnectionLowRankMixFusedScratchElements(const HyperConnectionLowRankMixConfig& config);
 
+// Programmatic dependent launch is enabled on sm_90+ only when the weight inputs are constant initializers.
 template <typename T>
 Status LaunchHyperConnectionLowRankMixFused(const cudaDeviceProp& device_prop, cudaStream_t stream,
                                             const HyperConnectionLowRankMixConfig& config,
                                             const HyperConnectionLowRankMixTensors<T>& tensors,
-                                            float* scratch);
+                                            float* scratch, bool weights_are_constant = false);
 
 // General path built from cuBLAS GEMMs and elementwise kernels. Scratch buffers (in elements of T):
 // hn [rows, C * H], down [rows, R], up [rows, C * H], inject [rows, C].

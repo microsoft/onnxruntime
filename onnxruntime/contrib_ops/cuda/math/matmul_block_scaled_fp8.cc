@@ -306,7 +306,7 @@ Status MatMulBlockQuantizedFp8Weight::ComputeImpl(OpKernelContext* context) cons
   // A fused warp-per-column kernel reads the FP8 weight directly, avoiding both the [N, K]
   // dequant scratch buffer and the cuBLAS GEMM (which is underutilized at M == 1).
   if (use_gemv) {
-    if (shared_expert_ && m_i <= 2 && GetDeviceProp().major >= 8 &&
+    if (shared_expert_ && m_i <= 8 && GetDeviceProp().major >= 8 &&
         MatMulBlockScaledFp8GemvSupportsSplitOutput(m_i, k_i, SafeInt<int>(block_size_), GetDeviceProp())) {
       ORT_RETURN_IF_ERROR(LaunchMatMulFp8SharedExpert(
           y_data, a_ptr, b->DataRaw(), b_scale->Data<float>(), m_i, n_i, k_i,
