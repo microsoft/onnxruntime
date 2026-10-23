@@ -323,8 +323,5 @@ class PatternRewriter final : public GraphTransformer {
   Options options_;
 };
 
-// Float32 examples adapted from genuine ONNXScript rules; EP eligibility is controlled by Options.
-Rules MakeExampleRules();
-
 }  // namespace rewrite
 }  // namespace onnxruntime

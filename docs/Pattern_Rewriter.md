@@ -510,7 +510,11 @@ it reports safe rewrite eligibility, not arbitrary structural occurrences.
 
 ### Types in the supplied examples
 
-`MakeExampleRules()` supplies six rules when contrib operators are enabled:
+The test-local `MakeExampleRules()` in
+`onnxruntime/test/optimizer/pattern_rewriter_test.cc` constructs six examples
+when contrib operators are enabled. These illustrate rule authoring and are
+not a public factory or part of the default optimizer pipeline. Production
+callers construct their own `Rules` and pass them to `PatternRewriter`.
 
 | Rule | Explicit float32 checks |
 |---|---|
@@ -529,7 +533,7 @@ width and a matching one-dimensional scale, with pre-opset-18 attribute axes.
 TransposeMatMul requires a known rank of at least two and exactly the last-two-axis
 swap. Division examples require a finite scaling result. Consult the rule
 definitions and correctness tests before extending their supported ranges.
-Contrib-disabled builds supply only the two HardSwish rules.
+Contrib-disabled tests construct only the two HardSwish examples.
 
 ## Opset and execution-provider applicability
 
