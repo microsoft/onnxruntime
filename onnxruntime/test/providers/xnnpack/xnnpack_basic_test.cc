@@ -698,6 +698,40 @@ TEST(XnnpackEP, DISABLED_TestResize_u8_and_s8_NHWC_pytorch_half_pixel) {  // [ON
                {ExpectedEPNodeAssignment::Some, 1e-2f /* fp32_abs_err */});
 }
 
+TEST(XnnpackEP, TestGemmAndMatMulThreadPool) {
+  for (const std::string op_type : {"Gemm", "MatMul"}) {
+    for (int num_threads : {1, 4}) {
+      SCOPED_TRACE(MakeString(op_type, ", threads=", num_threads));
+      Model model("xnnpack_threadpool", false, DefaultLoggingManager().DefaultLogger());
+      ModelTestBuilder builder(model.MainGraph());
+      auto* input_a = builder.MakeInput<float>({64, 128}, -1.f, 1.f);
+      auto* input_b = builder.MakeInitializer<float>({128, 96}, -1.f, 1.f);
+      auto* output = builder.MakeOutput();
+      auto& node = builder.AddNode(op_type, {input_a, input_b}, {output});
+      if (op_type == "Gemm") {
+        node.AddAttribute("alpha", 1.0f);
+        node.AddAttribute("beta", 1.0f);
+        node.AddAttribute("transA", int64_t{0});
+        node.AddAttribute("transB", int64_t{0});
+      }
+      builder.SetGraphOutputs();
+      ASSERT_STATUS_OK(model.MainGraph().Resolve());
+
+      std::string model_data;
+      model.ToProto().SerializeToString(&model_data);
+      XnnpackExecutionProviderInfo info;
+      info.xnn_thread_pool_size = num_threads;
+      auto ep = std::make_unique<XnnpackExecutionProvider>(info);
+      ASSERT_EQ(ep->GetPrivateThreadPool() != nullptr, num_threads > 1);
+      EPVerificationParams params;
+      params.ep_node_assignment = ExpectedEPNodeAssignment::All;
+      params.fp32_abs_err = 1e-4f;
+      RunAndVerifyOutputsWithEP(AsByteSpan(model_data.data(), model_data.size()),
+                                "xnnpack_threadpool", std::move(ep), builder.feeds_, params);
+    }
+  }
+}
+
 // Regression test for https://github.com/microsoft/onnxruntime/issues/28541.
 // A two-input Gemm (no optional C bias) used to dereference a null NodeArg pointer in
 // Gemm::IsOnnxNodeSupported, segfaulting InferenceSession::Initialize before any kernel
