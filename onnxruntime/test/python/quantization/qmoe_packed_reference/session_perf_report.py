@@ -33,13 +33,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("results", type=Path)
     parser.add_argument("--prefix", type=Path, required=True)
+    parser.add_argument("--kernel-results", type=Path, help="Optional kernel benchmark JSONL for contextual comparison")
     args = parser.parse_args()
     data = json.loads(args.results.read_text())
     parameters = data["parameters"]
     for path, expected in data["source_sha256"].items():
         assert digest(ROOT / path) == expected, f"Source changed since measurement: {path}"
-    kernel_path = ROOT / "docs/design/int3-qmoe-pr3-kernel-results.jsonl"
-    kernel_rows = [json.loads(line) for line in kernel_path.read_text().splitlines()]
+    kernel_path = args.kernel_results
+    kernel_rows = [json.loads(line) for line in kernel_path.read_text().splitlines()] if kernel_path else []
     cases = []
     for case in data["cases"]:
         assert case["output_max_abs_difference"] == 0 and case["output_nonzero_count"] > 0
@@ -78,7 +79,7 @@ def main():
     device = data["cases"][0]["records"][0]
     analysis = {
         "schema_version": 1,
-        "measurement_source": str(args.results.relative_to(ROOT)),
+        "measurement_source": str(args.results.resolve()),
         "measurement_sha256": digest(args.results),
         "provenance": {
             key: data[key]
@@ -100,9 +101,9 @@ def main():
         "limitations_and_method": LIMITS,
         "cases": cases,
         "contextual_kernel_results": {
-            "path": str(kernel_path.relative_to(ROOT)),
-            "sha256": digest(kernel_path),
-            "metadata": kernel_rows[0],
+            "path": str(kernel_path.resolve()) if kernel_path else None,
+            "sha256": digest(kernel_path) if kernel_path else None,
+            "metadata": kernel_rows[0] if kernel_rows else None,
             "decode_rows": [row for row in kernel_rows[1:] if row["rows"] == 1],
         },
     }
@@ -146,13 +147,14 @@ def main():
         lines.append(
             f"| {'/'.join(map(str, case['bits']))} {case['dtype']} | {case['validation_path_wall_saving_ms']:.6f} | {case['modes']['dynamic_all']['steady_median_ms'] / case['modes']['constant']['steady_median_ms']:.3f}x |"
         )
-    lines += [
-        "",
-        "Read-only existing kernel benchmark, same nominal decode shape; not rerun here, CUDA-event timings only:",
-        "",
-        "| Bits / Dtype | Canonical (ms) | Private (ms) | GPU Transform (ms) |",
-        "|---|---:|---:|---:|",
-    ]
+    if kernel_rows:
+        lines += [
+            "",
+            "Read-only existing kernel benchmark, same nominal decode shape; not rerun here, CUDA-event timings only:",
+            "",
+            "| Bits / Dtype | Canonical (ms) | Private (ms) | GPU Transform (ms) |",
+            "|---|---:|---:|---:|",
+        ]
     for row in analysis["contextual_kernel_results"]["decode_rows"]:
         lines.append(
             f"| {'/'.join(map(str, row['bits']))} {row['dtype']} | {row['canonical_median_ms']:.6f} | {row['private_median_ms']:.6f} | {row['prepack_gpu_ms']:.3f} |"
@@ -184,10 +186,10 @@ def main():
         "```bash",
         "python3 onnxruntime/test/python/quantization/qmoe_packed_reference/session_perf.py \\",
         "  --work /datadisks/disk1/jiafa/accuracy/int3-session-perf-full-scratch \\",
-        "  --output docs/design/int3-qmoe-pr3-session-results.json",
+        "  --output /tmp/int3-qmoe-pr3-session-results.json",
         "python3 onnxruntime/test/python/quantization/qmoe_packed_reference/session_perf_report.py \\",
-        "  docs/design/int3-qmoe-pr3-session-results.json \\",
-        "  --prefix docs/design/int3-qmoe-pr3-session-analysis",
+        "  /tmp/int3-qmoe-pr3-session-results.json \\",
+        "  --prefix /tmp/int3-qmoe-pr3-session-analysis",
         "```",
         "",
         "For a quick probe append `--quick --hidden 128 --intermediate 64 --experts 8 --top-k 2 --repeats 2 --warmup 2 --samples 3` and use a different output path. The runner links a standalone C++17 client using the clean provider-test link dependencies; provider library symlinks are created only in scratch. It does not build or modify runtime. Generated fixtures/raw worker files remain in scratch; final JSON is self-contained.",
