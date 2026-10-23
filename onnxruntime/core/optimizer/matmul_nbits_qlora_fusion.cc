@@ -23,13 +23,31 @@ bool Private(const Graph& graph, const Node& node) {
   return !graph.NodeProducesGraphOutput(node) && optimizer_utils::CheckOutputEdges(graph, node, 1);
 }
 
-bool Shape(const NodeArg& arg, std::initializer_list<int64_t> expected) {
+bool Shape(const NodeArg& arg, std::initializer_list<int64_t> expected, int empty_axis = -1) {
   const auto* shape = arg.Shape();
   if (!shape || shape->dim_size() != static_cast<int>(expected.size())) return false;
   int index = 0;
   for (auto value : expected) {
-    const auto& dim = shape->dim(index++);
+    const auto& dim = shape->dim(index);
+    if (index++ == empty_axis && (!dim.has_dim_value() || dim.dim_value() == 0)) continue;
     if (!dim.has_dim_value() || dim.dim_value() != value) return false;
+  }
+  return true;
+}
+
+bool AdapterShape(const Graph& graph, const NodeArg& arg, std::initializer_list<int64_t> expected, int empty_axis) {
+  // K/N attributes establish the logical rank even when an overridable default
+  // is empty. Only the axis used by the QLoRA empty-adapter convention may vary.
+  if (!Shape(arg, expected, empty_axis)) return false;
+  const ONNX_NAMESPACE::TensorProto* init = nullptr;
+  if (graph.GetInitializedTensor(arg.Name(), init)) {
+    if (init->dims_size() != static_cast<int>(expected.size())) return false;
+    int index = 0;
+    for (auto value : expected) {
+      const auto dim = init->dims(index);
+      if (dim != value && !(index == empty_axis && dim == 0)) return false;
+      ++index;
+    }
   }
   return true;
 }
@@ -52,6 +70,7 @@ bool ZeroDefault(const Graph& graph, const NodeArg& q, const NodeArg& scales) {
   Initializer qdata(graph, *qp, graph.ModelPath());
   Initializer sdata(graph, *sp, graph.ModelPath());
   const auto bytes = qdata.DataAsByteSpan();
+  if (!bytes.empty() && sdata.DataAsByteSpan().empty()) return false;
   if (!std::all_of(bytes.begin(), bytes.end(), [](uint8_t value) { return value == 128; })) return false;
   if (sp->data_type() == ONNX_NAMESPACE::TensorProto::FLOAT) {
     const auto values = sdata.DataAsSpan<float>();
@@ -120,8 +139,9 @@ Status MatMulNBitsQLoRAFusion::ApplyImpl(Graph& graph, bool& modified, int graph
       types_ok &= type && type->has_tensor_type() && type->tensor_type().elem_type() == expected;
     }
     if (!types_ok || !inputs[0]->Shape() || inputs[0]->Shape()->dim_size() < 2 || !Shape(*inputs[1], {n, k / 32, 16}) ||
-        !Shape(*inputs[3], {32, k / 32, 32}) || !Shape(*inputs[4], {32, k / 32}) || !Shape(*inputs[5], {n, 1, 32}) ||
-        !Shape(*inputs[6], {n, 1}))
+        !AdapterShape(graph, *inputs[3], {32, k / 32, 32}, 0) ||
+        !AdapterShape(graph, *inputs[4], {32, k / 32}, 0) ||
+        !AdapterShape(graph, *inputs[5], {n, 1, 32}, 1) || !AdapterShape(graph, *inputs[6], {n, 1}, 1))
       continue;
     const auto* s = inputs[2]->Shape();
     const bool flat_scales = s && s->dim_size() == 1 && s->dim(0).has_dim_value() &&

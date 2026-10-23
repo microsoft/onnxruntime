@@ -3870,13 +3870,20 @@ It is a fusion of two operations:
    dequantized_weight = (quantized_weight - zero_point) * scale
 2. Matrix multiplication between the input matrix A and the dequantized weight matrix.
 
-The weight matrix is a 2D constant matrix with the input feature count and output feature count specified by attributes 'K' and 'N'.
+The logical weight matrix is 2D, with the input feature count and output feature count specified by attributes 'K' and 'N'.
 It is quantized block-wise along the K dimension with a block size specified by the 'block_size' attribute.
 The block size must be a power of 2 and not smaller than 16 (e.g., 16, 32, 64, 128). Each block has its own scale and zero-point.
 The quantization is performed using a bit-width specified by the 'bits' attribute, which can take values from 2 to 8.
 
 The quantized weights are stored in a bit-packed format along the K dimension, with each block being represented by a blob of uint8.
 For example, for 4 bits, the first 4 bits are stored in the lower 4 bits of a byte, and the second 4 bits are stored in the higher 4 bits of a byte.
+
+When weight_prepacked is 0, B may represent an omitted projection by replacing one or more dimensions of its
+packed shape (N, k_blocks, blob_size) with 0. All remaining dimensions must retain their normal values.
+In this case, Y is filled with zeros (or the broadcast bias, if provided). Its shape is still determined by A, K and N.
+The contents of A, scales, zero_points and g_idx are not used; the quantization parameters may also be empty.
+This permits zero-sized defaults for optional weights, with dynamic input dimensions allowing nonempty overrides.
+Empty packed weights are currently supported by the CPU and WebGPU execution providers.
 )DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(MatMulNBits)
@@ -3907,6 +3914,7 @@ For example, for 4 bits, the first 4 bits are stored in the lower 4 bits of a by
       .Input(1, "B",
              "Packed uint8 tensor of shape (N, k_blocks, blob_size), "
              "where k_blocks = ceil(K / block_size) and blob_size = (block_size * bits / 8). "
+             "With weight_prepacked=0, one or more dimensions may be 0 to omit the projection as described above. "
              "The quantized weights are stored in a bit-packed format along the K dimension, packed within each block_size.",
              "T2")
       .Input(2, "scales", "Per-block scaling factors for dequantization with shape (N, k_blocks) and same data type as input A.", "T1")

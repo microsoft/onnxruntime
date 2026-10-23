@@ -15,7 +15,8 @@ namespace {
 
 template <typename T = MLFloat16, bool ExactBase = false>
 void BuildQLoRA(ModelTestBuilder& builder, int64_t m = 1, int64_t k = 2048, int64_t n = 128, int64_t batch = 1,
-                bool expose = false, bool different_x = false, bool zero_base = false, int64_t adapter_accuracy = 0) {
+                bool expose = false, bool different_x = false, bool zero_base = false, int64_t adapter_accuracy = 0,
+                bool empty_defaults = false) {
   auto* x = builder.MakeInput<T>({batch, m, k}, T(-0.5f), T(0.5f));
   // Integer random ranges exclude the upper bound, even for constant weights.
   const uint8_t base_weight_min = zero_base ? uint8_t{0x88} : (ExactBase ? uint8_t{0x99} : uint8_t{0});
@@ -41,6 +42,14 @@ void BuildQLoRA(ModelTestBuilder& builder, int64_t m = 1, int64_t k = 2048, int6
     } else {
       const std::vector<T> ones(static_cast<size_t>(count), T(1.0f));
       init.set_raw_data(ones.data(), ones.size() * sizeof(T));
+    }
+    if (empty_defaults) {
+      const int axis = arg == aq || arg == as ? 0 : 1;
+      init.set_dims(axis, 0);
+      init.clear_raw_data();
+      auto shape = *arg->Shape();
+      shape.mutable_dim(axis)->Clear();
+      arg->SetShape(shape);
     }
     builder.graph_.AddInitializedTensor(init);
   }
@@ -224,7 +233,7 @@ TEST_F(GraphTransformationTests, MatMulNBitsQLoRAFusionRejectsDifferentAdapterAc
 }
 
 template <typename T>
-void RunQLoRASerializedEmptyDefaults(const logging::Logger& logger, int64_t k = 64) {
+void RunQLoRASerializedEmptyDefaults(const logging::Logger& logger, int64_t k = 64, bool raw_empty_defaults = false) {
   if (!DefaultWebGpuExecutionProvider()) GTEST_SKIP() << "WebGPU unavailable.";
   for (int64_t m : {1, 2, 37}) {
     SCOPED_TRACE(m);
@@ -234,7 +243,7 @@ void RunQLoRASerializedEmptyDefaults(const logging::Logger& logger, int64_t k = 
     ModelTestBuilder builder(graph);
     // A random base can round differently when the subgroup kernel accumulates
     // adapter-up into it. Keep this state/capture test exact; Numerics covers rounding.
-    BuildQLoRA<T, true>(builder, m, k);
+    BuildQLoRA<T, true>(builder, m, k, 128, 1, false, false, false, 0, raw_empty_defaults);
     builder.SetGraphOutputs();
     ASSERT_STATUS_OK(graph.Resolve());
     const auto adapters = graph.GetOverridableInitializers();
@@ -255,7 +264,7 @@ void RunQLoRASerializedEmptyDefaults(const logging::Logger& logger, int64_t k = 
     }
     ASSERT_FALSE(a_name.empty());
     ASSERT_FALSE(b_name.empty());
-    std::vector<OrtValue> expected;
+    std::vector<OrtValue> expected(7);
     // Compare unfused, load-time fusion, and serialized fusion using the same
     // partial-override states and exact reference values.
     for (int mode : {0, 1, 2}) {
@@ -286,6 +295,7 @@ void RunQLoRASerializedEmptyDefaults(const logging::Logger& logger, int64_t k = 
       ASSERT_TRUE(proto.SerializeToString(&data));
       SessionOptions options;
       options.graph_optimization_level = TransformerLevel::Level1;
+      ASSERT_STATUS_OK(options.config_options.AddConfigEntry("session.disable_cpu_ep_fallback", "1"));
       InferenceSessionWrapper session(options, GetEnvironment());
       ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultWebGpuExecutionProvider()));
       ASSERT_STATUS_OK(session.Load(data.data(), static_cast<int>(data.size())));
@@ -298,6 +308,8 @@ void RunQLoRASerializedEmptyDefaults(const logging::Logger& logger, int64_t k = 
       ASSERT_STATUS_OK(CheckQLoRACount(session.GetGraph(), fused ? 1 : 0));
       // Off, A only, B only, scales only, packed weights only, all, off again.
       for (int state = 0; state < 7; ++state) {
+        // Empty scale defaults cannot be used with nonempty packed overrides.
+        if (raw_empty_defaults && (state == 1 || state == 2 || state == 4)) continue;
         SCOPED_TRACE(state);
         auto feeds = builder.feeds_;
         for (const auto* input : adapters) {
@@ -320,7 +332,7 @@ void RunQLoRASerializedEmptyDefaults(const logging::Logger& logger, int64_t k = 
                                 [base_value, delta](T value) { return value == T(base_value + delta); }))
             << "Expected every output to equal " << base_value + delta;
         if (!fused) {
-          expected.push_back(std::move(output[0]));
+          expected[state] = std::move(output[0]);
         } else {
           const auto comparison = CompareOrtValue(output[0], expected[state], 0.0, 0.0, false);
           EXPECT_EQ(comparison.first, COMPARE_RESULT::SUCCESS) << comparison.second;
@@ -401,6 +413,28 @@ TEST_F(GraphTransformationTests, MatMulNBitsQLoRAFusionSerializedEmptyDefaultsFp
 
 TEST_F(GraphTransformationTests, MatMulNBitsQLoRAFusionJointDP4ACapture) {
   RunQLoRASerializedEmptyDefaults<float>(*logger_, 2048);
+}
+
+TEST_F(GraphTransformationTests, MatMulNBitsQLoRAFusionFromEmptyRawDefaults) {
+  RunQLoRASerializedEmptyDefaults<MLFloat16>(*logger_, 64, true);
+  RunQLoRASerializedEmptyDefaults<float>(*logger_, 64, true);
+}
+
+TEST_F(GraphTransformationTests, MatMulNBitsQLoRAFusionRejectsInvalidDefaultRank) {
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      [](ModelTestBuilder& b) {
+        BuildQLoRA(b, 1, 64, 128, 1, false, false, false, 0, true);
+        auto* arg = b.graph_.GetInputsIncludingInitializers()[1];
+        const ONNX_NAMESPACE::TensorProto* original = nullptr;
+        ORT_ENFORCE(b.graph_.GetInitializedTensor(arg->Name(), original));
+        auto invalid = *original;
+        invalid.set_dims(0, 16);
+        invalid.set_raw_data(std::string(16 * 2 * 32, static_cast<char>(128)));
+        b.graph_.RemoveInitializedTensor(arg->Name());
+        b.graph_.AddInitializedTensor(invalid);
+      },
+      21, *logger_, std::make_unique<MatMulNBitsQLoRAFusion>(), TransformerLevel::Level2, 1, nullptr,
+      [](const Graph& g) { return CheckQLoRACount(g, 0); }));
 }
 
 #endif
