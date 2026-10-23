@@ -106,7 +106,10 @@ class D3D12FileBufferLoaderTest : public ::testing::Test {
     D3D12_RESOURCE_DESC description{};
     description.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
     description.Width = total;
-    description.Height = description.DepthOrArraySize = description.MipLevels = description.SampleDesc.Count = 1;
+    description.Height = 1;
+    description.DepthOrArraySize = 1;
+    description.MipLevels = 1;
+    description.SampleDesc.Count = 1;
     description.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
     ComPtr<ID3D12Resource> readback;
     ASSERT_TRUE(SUCCEEDED(device_->CreateCommittedResource(

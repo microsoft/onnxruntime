@@ -1385,7 +1385,12 @@ TEST(WebGpuContextTest, UMAWeightLoadingDoesNotEnableAcceleration) {
     ASSERT_STATUS_OK(options.AddConfigEntry(kEnableUMAWeightLoading, value));
     auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
     ASSERT_NE(ep, nullptr);
+#if defined(__wasm__)
+    // WebAssembly retains its ordinary external-data loader.
+    EXPECT_NE(ep->GetExternalDataLoader(), nullptr);
+#else
     EXPECT_EQ(ep->GetExternalDataLoader(), nullptr);
+#endif
   }
 }
 
