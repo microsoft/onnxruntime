@@ -4,6 +4,7 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
 
+#include <algorithm>
 #include <charconv>
 #include <memory>
 #include <sstream>
@@ -2724,6 +2725,61 @@ common::Status InferenceSession::HasInvalidCombinationOfExecutionProviders() con
   return Status::OK();
 }
 
+// Validates the "ep.enable_weightless_mode" session option before the model is partitioned. Plugin EPs check it again
+// when they are created and when they compile nodes, but those checks don't run if the session uses no plugin EP or
+// compiles no nodes.
+static Status ValidateWeightlessMode(const SessionOptions& session_options) {
+  const std::optional<std::string> weightless_mode_entry =
+      session_options.config_options.GetConfigEntry(kOrtSessionOptionEpEnableWeightlessMode);
+  if (!weightless_mode_entry.has_value()) {
+    return Status::OK();
+  }
+
+  // An explicitly empty value is invalid.
+  OrtWeightlessSupport weightless_mode = OrtWeightlessSupport_NONE;
+  return epctx::ParseWeightlessMode(*weightless_mode_entry, weightless_mode);
+}
+
+#if !defined(ORT_MINIMAL_BUILD)
+// Warns if a model that may depend on the source model is loaded without one. The "external_dependencies" metadata
+// records whether a compiled model depends on the source model: e.g., an EP that loads the initializer data itself in
+// weightless mode OrtWeightlessSupport_ALL needs it, while an EP that lets ORT provide the initializers doesn't. Models
+// without that metadata (e.g., compiled by an earlier version) may depend on the source model if they were compiled
+// with OrtWeightlessSupport_ALL. An EP may still locate the source model via the "onnx_model_filename" EPContext node
+// attribute, so this is not an error.
+static void CheckWeightlessSourceModel(const SessionOptions& session_options, const Model& model,
+                                       const logging::Logger& logger) {
+  const auto& model_metadata = model.MetaData();
+  std::string reason;
+  if (auto it = model_metadata.find(kOrtModelMetadata_ExternalDependencies); it != model_metadata.end()) {
+    const auto dependencies = utils::SplitString(it->second, ";");
+    if (std::find(dependencies.begin(), dependencies.end(), "source_model") == dependencies.end()) {
+      return;
+    }
+    reason = MakeString("The model depends on the source model ('", kOrtModelMetadata_ExternalDependencies,
+                        "' metadata = '", it->second, "')");
+  } else {
+    it = model_metadata.find(kOrtModelMetadata_WeightlessMode);
+    if (it == model_metadata.end() || it->second != std::to_string(static_cast<int>(OrtWeightlessSupport_ALL))) {
+      return;
+    }
+    reason =
+        "The model was compiled with weightless mode OrtWeightlessSupport_ALL, so depending on the EP, it may "
+        "depend on the source model";
+  }
+
+  const bool has_source_model_path =
+      !session_options.config_options.GetConfigOrDefault(kOrtSessionOptionEpContextSourceModelPath, "").empty();
+  const bool has_source_model_buffer = session_options.weightless_source_model_data != nullptr;
+  if (!has_source_model_path && !has_source_model_buffer) {
+    LOGS(logger, WARNING)
+        << reason << ", but neither the '" << kOrtSessionOptionEpContextSourceModelPath
+        << "' session option nor a source model buffer (SessionOptionsSetWeightlessSourceModelBuffer) is set. "
+        << "An EP that needs it will try to locate it via the 'onnx_model_filename' EPContext node attribute.";
+  }
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
 common::Status InferenceSession::Initialize() {
   const auto start_timing = [this]() {
     TimePoint start_time{};
@@ -2776,6 +2832,10 @@ common::Status InferenceSession::Initialize() {
   ORT_TRY {
     ORT_TELEMETRY_CAPTURE_STATUS_BEGIN(status)
     LOGS(*session_logger_, INFO) << "Initializing session.";
+    ORT_RETURN_IF_ERROR(ValidateWeightlessMode(session_options_));
+#if !defined(ORT_MINIMAL_BUILD)
+    CheckWeightlessSourceModel(session_options_, *model_, *session_logger_);
+#endif  // !defined(ORT_MINIMAL_BUILD)
 #if defined(ORT_MINIMAL_BUILD)
     for (const auto& [key, value] : session_options_.config_options.GetConfigOptionsMap()) {
       const std::string_view option = key;

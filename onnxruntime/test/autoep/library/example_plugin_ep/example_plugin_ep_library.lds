@@ -8,6 +8,14 @@ VERS_1.0.0 {
   ExampleEpTestHooks_GetPreallocatedOutputQueryResult;
   ExampleEpTestHooks_GetPreallocatedOutputBadIndexRejected;
   ExampleEpTestHooks_SetCreateDataTransferFailure;
+  ExampleEpTestHooks_ResetEnableWeightlessOption;
+  ExampleEpTestHooks_GetEnableWeightlessOption;
+  ExampleEpTestHooks_GetEnableWeightlessEpContextNodesOption;
+  ExampleEpTestHooks_ResetSavedInitializerCount;
+  ExampleEpTestHooks_GetSavedInitializerCount;
+  ExampleEpTestHooks_ResetWeightlessSourceModelBuffer;
+  ExampleEpTestHooks_GetWeightlessSourceModelBuffer;
+  ExampleEpTestHooks_SetLegacyWeightlessSupportMetadata;
  local:
     *;
 };
