@@ -61,6 +61,7 @@ Selected attributes:
 | `softcap` | Optional logit soft-capping value. `0` disables it. |
 | `local_window_size` | Left window size for causal local attention. `-1` means global attention and is required when `causal=0`. |
 | `sliding_window_cache` | Set to `1` when using a windowed (sliding-window) KV cache instead of full-length. When enabled, the operator keeps the most recent positions contiguously at cache rows `[0, L)` and evicts internally. Requires `local_window_size > 0`; the CUDA kernel additionally requires the cache capacity to equal `local_window_size`. Defaults to `0` (full-length cache). See [the CPU notes](../cpu/gqa.md#windowed-sliding-window-kv-cache) for the normative layout, eviction and rollback contract. |
+| `right_padded_query` | CUDA-only opt-in for causal right-padded chunks. Must be `0` (default) or `1`; see below for the required length inputs. |
 | `do_rotary` / `rotary_interleaved` | Enable RoPE and select interleaved vs. half-rotary layout. |
 | `smooth_softmax` | Add a smooth factor to the softmax denominator. |
 | `qk_norm_epsilon` | Epsilon for the fused per-head Q/K RMSNorm (QK-Norm) prologue. Defaults to `1e-6`. |
@@ -82,6 +83,22 @@ Selected inputs (see the schema for the full list and shapes):
 | 14, 15 | `q_norm_weight`, `k_norm_weight` | `(head_size,)` per-head Q/K RMSNorm weights (QK-Norm, see §3). Both must be present together. |
 
 Outputs are `output`, `present_key`, `present_value`, and optional `output_qk`.
+
+### Right-padded prefill chunks
+
+For a chunk with `P` valid past tokens, `S` padded query rows, and `Q` valid query rows,
+set `right_padded_query=1`, `total_sequence_length=P+S`, and `seqlens_k=P+Q-1`.
+Do not pass the allocated cache capacity as `total_sequence_length` in this mode.
+This opt-in supports both first and subsequent chunks, full-length and windowed caches,
+and requires `causal=1` and new K/V inputs. Only valid tokens advance the resident cache;
+causal masks and implicit RoPE positions use the true past offset. Padding output rows
+are unspecified and must be ignored.
+Padded chunks use FlashAttention, MemoryEfficientAttention, or the unfused backend;
+the cuDNN SDPA path is disabled for this mode because it assumes unpadded subsequent queries.
+
+Leave the attribute at `0` for existing unpadded callers, including those that supply
+cache capacity rather than the running total. These callers continue deriving the
+past offset from `seqlens_k + 1 - sequence_length`.
 
 ## 3. Input Formats
 

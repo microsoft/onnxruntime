@@ -60,6 +60,7 @@ Status LaunchGetSequenceLengths(
     const int max_total_sequence_length,
     const int kv_cache_capacity,
     const int kv_cache_real_capacity,
+    const bool right_padded_query,
     cudaStream_t stream,
     const int max_threads_per_block);
 

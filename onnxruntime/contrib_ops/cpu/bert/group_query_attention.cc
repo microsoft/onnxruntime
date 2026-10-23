@@ -200,6 +200,8 @@ REGISTER_KERNEL_TYPED(MLFloat16)
 template <typename T>
 GroupQueryAttention<T>::GroupQueryAttention(const OpKernelInfo& info)
     : OpKernel(info), GQAAttentionBase(info, true) {
+  ORT_ENFORCE(info.GetAttrOrDefault<int64_t>("right_padded_query", 0) == 0,
+              "right_padded_query is only supported by the CUDA execution provider.");
   sliding_window_cache_ = info.GetAttrOrDefault<int64_t>("sliding_window_cache", 0) == 1;
   ORT_ENFORCE(!sliding_window_cache_ || local_window_size_ > 0,
               "GroupQueryAttention (CPU): sliding_window_cache=1 requires local_window_size > 0.");

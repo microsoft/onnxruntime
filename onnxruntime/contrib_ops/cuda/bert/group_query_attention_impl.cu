@@ -656,7 +656,8 @@ __global__ void GetSequenceLengths(const int* total_seq_lens_minus_one,
                                    const bool is_first_prompt,
                                    const int max_total_sequence_length,
                                    const int kv_cache_capacity,
-                                   const int kv_cache_real_capacity) {
+                                   const int kv_cache_real_capacity,
+                                   const bool right_padded_query) {
   int i = threadIdx.x + blockIdx.x * blockDim.x;
   if (i < batch_size) {
     // seqlens_k is untrusted device input; clamp it before deriving lengths and offsets.
@@ -666,13 +667,10 @@ __global__ void GetSequenceLengths(const int* total_seq_lens_minus_one,
     total_seq_lens[i] = total_len;
     int past_len = 0;
     if (!is_first_prompt) {
-      // For a subsequent prefill chunk (sequence_length > 1, batch_size == 1),
-      // max_total_sequence_length is past_len + sequence_length while total_len is
-      // past_len + valid_q_len, so derive past_len from max_total_sequence_length when
-      // the chunk is right-padded (valid_q_len < sequence_length).
-      const int chunk_past_len = max_total_sequence_length - sequence_length;
-      if (sequence_length > 1 && chunk_past_len >= 0 && chunk_past_len < total_len) {
-        past_len = chunk_past_len;
+      // Opt-in callers supply past + padded query length. Otherwise the scalar may be
+      // the allocated capacity, so only seqlens_k determines the append offset.
+      if (right_padded_query && sequence_length > 1) {
+        past_len = max_total_sequence_length - sequence_length;
       } else {
         past_len = total_len - sequence_length;
         past_len = past_len > 0 ? past_len : 0;
@@ -726,6 +724,7 @@ Status LaunchGetSequenceLengths(
     const int max_total_sequence_length,
     const int kv_cache_capacity,
     const int kv_cache_real_capacity,
+    const bool right_padded_query,
     cudaStream_t stream,
     const int max_threads_per_block) {
   int blocks = (batch_size + max_threads_per_block - 1) / max_threads_per_block;
@@ -733,7 +732,7 @@ Status LaunchGetSequenceLengths(
       total_seq_lens_minus_one, past_seq_lens, total_seq_lens, padded_seq_lens,
       cache_past_seq_lens, cache_total_seq_lens, evict_counts,
       batch_size, sequence_length, is_first_prompt, max_total_sequence_length,
-      kv_cache_capacity, kv_cache_real_capacity);
+      kv_cache_capacity, kv_cache_real_capacity, right_padded_query);
   return CUDA_CALL(cudaGetLastError());
 }
 

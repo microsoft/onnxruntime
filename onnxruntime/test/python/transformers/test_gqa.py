@@ -264,7 +264,7 @@ class CaptureStdout:
         os.close(self._duped_fd)
 
 
-def get_sdpa_kernel_from_debug_info(run_func):
+def get_sdpa_kernel_from_debug_info(run_func, all_kernels=False):
     captured_text = None
     with scoped_env_var("ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO", "1"):
         with CaptureStdout() as captured:
@@ -272,6 +272,8 @@ def get_sdpa_kernel_from_debug_info(run_func):
         captured_text = captured.output.decode(errors="replace")
 
     if captured_text is not None:
+        if all_kernels:
+            return re.findall(r"SdpaKernel=([A-Z_]+)", captured_text)
         match = re.search(r"SdpaKernel=(?P<kernel>[A-Z_]+)", captured_text)
         if match is not None:
             return match.group("kernel")
@@ -300,6 +302,7 @@ class GQAConfig:
     # Slack above local_window_size is worth allocating anyway: it lets the append point drift, so
     # the CPU kernel compacts once every C - W + 1 steps instead of on every step.
     sliding_window_cache: int = 0
+    right_padded_query: bool = False
     # Length of the cos/sin caches. 0 means "same as buffer_sequence_length". A windowed KV cache is
     # shorter than the sequence, so RoPE positions must be driven by a separately sized rotary cache.
     rope_cache_length: int = 0
@@ -549,6 +552,7 @@ def create_gqa_node_and_io(
         causal=1 if config.causal else 0,
         smooth_softmax=1 if config.use_smooth_softmax else 0,
         qk_output=output_qk,
+        **({"right_padded_query": 1} if config.right_padded_query else {}),
         **quantization_attributes,
         **qk_norm_attributes,
         **windowed_cache_attributes,
@@ -4388,6 +4392,7 @@ def _windowed_run_steps(
     k_scale=None,
     v_scale=None,
     providers=None,
+    use_capacity_bound=False,
 ):
     """Drives a GroupQueryAttention node token-chunk by token-chunk over a shared past/present buffer.
 
@@ -4418,6 +4423,7 @@ def _windowed_run_steps(
         config.past_kv_sequence_length = past_length
         config.buffer_sequence_length = buffer_sequence_length
         config.sliding_window_cache = sliding_window_cache
+        config.right_padded_query = any(isinstance(item, tuple) for item in step_lengths)
 
         if step_length not in sessions:
             sessions[step_length] = _windowed_make_session(config, ort_type, providers=providers)
@@ -4450,7 +4456,8 @@ def _windowed_run_steps(
         bind_tensor(io_binding, "seqlens_k", seqlens_k, device, TensorProto.INT32)
         cpu_device = torch.device("cpu")
         # Keep a reference: io_binding only records the data pointer, so a temporary would be freed.
-        total_sequence_length = torch.tensor([padded_total_length], dtype=torch.int32, device=cpu_device)
+        length_bound = buffer_sequence_length if use_capacity_bound else padded_total_length
+        total_sequence_length = torch.tensor([length_bound], dtype=torch.int32, device=cpu_device)
         bind_tensor(
             io_binding,
             "total_sequence_length",
@@ -4534,7 +4541,16 @@ class TestGQAWindowedKvCache(unittest.TestCase):
             setattr(config, name, value)
         return config
 
-    def _check_parity(self, base_config, step_lengths, rtol=1e-3, atol=1e-3, buffer_sequence_length=None):
+    def _check_parity(
+        self,
+        base_config,
+        step_lengths,
+        rtol=1e-3,
+        atol=1e-3,
+        buffer_sequence_length=None,
+        full_cache_length_bound=None,
+        full_cache_only=False,
+    ):
         self._require_ep()
 
         device = self.device
@@ -4612,8 +4628,14 @@ class TestGQAWindowedKvCache(unittest.TestCase):
             # reinterprets the quantized cache as unquantized and produces NaN for both the
             # windowed and the full-length run, so there is nothing to compare.
             self.skipTest("quantized prefill needs a build with flash attention enabled")
-        if step_lengths != unpadded_steps:
-            padded_full, padded_full_k, padded_full_v = _windowed_run_steps(base_config, self.max_length, 0, **common)
+        if step_lengths != unpadded_steps or full_cache_length_bound is not None:
+            padded_full, padded_full_k, padded_full_v = _windowed_run_steps(
+                base_config,
+                full_cache_length_bound or self.max_length,
+                0,
+                **common,
+                use_capacity_bound=full_cache_length_bound is not None,
+            )
             for step_index, (expected, actual) in enumerate(zip(reference, padded_full, strict=True)):
                 numpy.testing.assert_allclose(
                     actual.float().cpu().numpy(),
@@ -4631,6 +4653,8 @@ class TestGQAWindowedKvCache(unittest.TestCase):
                     reference_cache[:, :, :total_length].cpu().numpy(),
                     err_msg=f"{name} full-cache padded valid range mismatch (T={total_length})",
                 )
+        if full_cache_only:
+            return
         windowed, cache_k, cache_v = _windowed_run_steps(base_config, capacity, 1, **common)
 
         for step_index, (expected, actual) in enumerate(zip(reference, windowed, strict=True)):
@@ -4693,16 +4717,75 @@ class TestGQAWindowedKvCache(unittest.TestCase):
                 scoped_env_var("ORT_ENABLE_XQA", "0"),
                 scoped_env_var("ORT_DISABLE_FLASH_DECODE", "1"),
             ):
-                kernel = get_sdpa_kernel_from_debug_info(
-                    lambda: self._check_parity(self._base_config(batch_size=1, rotary=True), steps)
+                kernels = get_sdpa_kernel_from_debug_info(
+                    lambda: self._check_parity(self._base_config(batch_size=1, rotary=True), steps),
+                    all_kernels=True,
                 )
-                self.assertEqual(kernel, expected_kernel)
+                self.assertEqual(set(kernels), {expected_kernel})
+
+    def test_right_padded_global_prefill_cudnn_fallback(self):
+        if self.device != "cuda":
+            self.skipTest("CUDA right-padded cuDNN fallback regression")
+        with (
+            scoped_env_var("ORT_ENABLE_CUDNN_FLASH_ATTENTION", "1"),
+            scoped_env_var("ORT_ENABLE_XQA", "0"),
+            scoped_env_var("ORT_DISABLE_FLASH_DECODE", "1"),
+        ):
+            self._check_parity(
+                self._base_config(batch_size=1, rotary=True, local_window_size=-1),
+                [128, (1, 128), (7, 128), 1],
+                full_cache_only=True,
+            )
+
+    def test_unpadded_chunked_prefill_capacity_bound(self):
+        if self.device != "cuda":
+            self.skipTest("CUDA capacity-valued length regression")
+        # At the second step, capacity - query_length = 384 is not the true past (300).
+        for disable_flash, disable_mea in (("0", "0"), ("1", "0"), ("1", "1")):
+            with (
+                scoped_env_var("ORT_DISABLE_FLASH_ATTENTION", disable_flash),
+                scoped_env_var("ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION", disable_mea),
+                scoped_env_var("ORT_ENABLE_CUDNN_FLASH_ATTENTION", "0"),
+                scoped_env_var("ORT_ENABLE_XQA", "0"),
+                scoped_env_var("ORT_DISABLE_FLASH_DECODE", "1"),
+            ):
+                self._check_parity(
+                    self._base_config(batch_size=1, rotary=True),
+                    [300, 128, 1],
+                    full_cache_length_bound=512,
+                )
+
+    def test_right_padded_mode_ragged_single_token_decode(self):
+        if self.device != "cuda":
+            self.skipTest("CUDA right-padded mode regression")
+        self._require_ep()
+        with (
+            scoped_env_var("ORT_ENABLE_XQA", "0"),
+            scoped_env_var("ORT_DISABLE_FLASH_DECODE", "1"),
+        ):
+            parity_check_gqa_past(
+                config=self._base_config(
+                    batch_size=2,
+                    past_kv_sequence_length=300,
+                    buffer_sequence_length=512,
+                    rope_cache_length=512,
+                    right_padded_query=True,
+                    rotary=True,
+                ),
+                ep="CUDAExecutionProvider",
+                device="cuda",
+                torch_type=torch.float16,
+                ort_type=TensorProto.FLOAT16,
+                causal=True,
+                rtol=1e-3,
+                atol=1e-3,
+            )
 
     @unittest.skipIf(not has_quantized_kv_cache(), "Quantized KV cache is not available, skipping test.")
     def test_right_padded_chunked_prefill_int8(self):
         if self.device != "cuda":
             self.skipTest("CUDA right-padded quantized chunked prefill test")
-        steps = [128, (1, 128), (5, 128), 1, 1]
+        steps = [(1, 128), 128, (1, 128), (5, 128), 1, 1]
         self._check_parity(
             self._base_config(
                 batch_size=1,
