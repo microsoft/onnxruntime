@@ -151,6 +151,8 @@ Do not modify directly.*
   The weights for input projection of Q, K and V are merged. The data is stacked on the second dimension. Its shape
   is (input_hidden_size, hidden_size + hidden_size + v_hidden_size). Here hidden_size is the hidden dimension of Q and K,
   and v_hidden_size is that of V.
+  Q, K and V hidden sizes must be positive multiples of num_heads. Their sum must match the weights' second dimension.
+  When qkv_hidden_sizes is omitted, the weights' second dimension must be divisible by three.
   
   The mask_index is optional. Besides raw attention mask with shape (batch_size, total_sequence_length)
   or (batch_size, sequence_length, total_sequence_length) with value 0 for masked and 1 otherwise,
@@ -6361,6 +6363,21 @@ This version of the operator has been available since version 1 of the 'com.micr
         When swiglu_fusion=1, two GEMMs are fused so that g and l are computed in a single GEMM (FC1), and g and l are interleaved on each row of size 2 * inter_size.
         When swiglu_fusion=2, two GEMMs are fused, and g and l are concatenated on each row.
         
+    The raw INT3 profile extends version 1; execution support is provider-specific.
+    For INT3, the requirements below supersede the legacy format descriptions above.
+    Effective widths are 2, 3, 4, or 8. Models without INT3 retain the legacy format contracts.
+    With INT3, use quant_type='int' (the default), and explicitly set activation_type='swiglu', weights_prepacked=0, swiglu_fusion=1,
+    and block_size=32, 64, or 128. Effective FC3 must equal FC1 after independent inheritance.
+    H comes from input and I from half the FC1 row count; both must be divisible by block_size.
+    Weights are uint8 [E,N,ceil(K*bits/8)], row-local LSB-first bitstreams, without per-block padding.
+    Scales are required [E,N,K/block_size], matching FP16/BF16 activations.
+    INT3 codes dequantize as (u-4)*scale; scales must be finite and nonnegative.
+    Optional INT3 zero points are uint8 [E,N,ceil(3*(K/block_size)/8)]. Each unpacked 3-bit
+    zero-point code must equal 4 (binary 100), the unsigned offset representing logical zero;
+    this does not mean each packed byte is 4. Omission implies the same zero point 4.
+    Unused high padding bits must be zero. INT2/4/8 projections retain their zero-point semantics.
+    FC1 rows are interleaved gate/up; FC2 is [E,H,ceil(I*fc2_bits/8)].
+    Separate FC3, global scales, and activation scales are not accepted by the INT3 profile.
 
 #### Version
 
@@ -6380,7 +6397,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>block_size</tt> : int</dt>
 <dd>For integer quantization, size of each quantization block along the K (input feature) dimension. Must be power of two and ≥ 16 (e.g., 16, 32, 64, 128). For integer and FP4 quantization, both hidden_size and inter_size must be divisible by the block size. FP8 with block_size=128 supports partial 128x128 tiles. The FP4 modes always use blocking: MXFP4 ('fp4'/'wfp4afp8') is normalized to block_size 32 and NVFP4 ('nvfp4') to block_size 16, even when block_size is omitted. For FP8 ('fp8'), a positive value instead specifies square blocks along both N and K, with floating-point scales shaped [E, ceil(N/block_size), ceil(K/block_size)]; partial blocks are allowed. Without a positive value, FP8 uses per-expert global scales. For integer quantization ('int'), omitting block_size means there is no blocking and a whole column shares one scaling factor. </dd>
 <dt><tt>expert_weight_bits</tt> : int</dt>
-<dd>Number of bits used in quantized weights. Supported values are 2, 4, and 8. Default is 4 bits</dd>
+<dd>Number of bits used in quantized weights: 2, 3, 4, or 8. Default is 4 bits.</dd>
 <dt><tt>fc1_expert_weight_bits</tt> : int</dt>
 <dd>Optional FC1 override for expert_weight_bits. Inherits expert_weight_bits when omitted.</dd>
 <dt><tt>fc2_expert_weight_bits</tt> : int</dt>
@@ -6392,7 +6409,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>normalize_routing_weights</tt> : int</dt>
 <dd>Whether to normalize routing weights</dd>
 <dt><tt>quant_type</tt> : string</dt>
-<dd>Quantization type: 'int' for integer quantization (default), 'fp4' for MXFP4 quantization, 'nvfp4' for NVFP4 quantization, 'fp8' for FP8 e4m3 weight-only quantization, or 'wfp4afp8' for MXFP4 weight with FP8 activation. When quant_type is 'fp4' or 'nvfp4', weights are stored in E2M1 FP4 format (2 values per byte), fc*_scales inputs contain the FP4 block scales, and fc*_global_scale inputs must be provided. 'fp4' uses Float8E8M0 block scales with block_size 32; 'nvfp4' uses Float8E4M3FN block scales with block_size 16. 'fp8' uses float8e4m3fn weights and, when block_size > 0, float32, float16, or bfloat16 square-block scales in fc*_scales instead of fc*_global_scale.</dd>
+<dd>Quantization type: 'int' for integer quantization (default), 'fp4' for MXFP4 quantization, 'nvfp4' for NVFP4 quantization, 'fp8' for FP8 e4m3 weight-only quantization, or 'wfp4afp8' for MXFP4 weight with FP8 activation. When quant_type is 'fp4' or 'nvfp4', weights are stored in E2M1 FP4 format (2 values per byte), fc*_scales inputs contain the FP4 block scales, and fc*_global_scale inputs must be provided. 'fp4' uses Float8E8M0 block scales with block_size 32; 'nvfp4' uses Float8E4M3FN block scales with block_size 16. 'fp8' uses float8e4m3fn weights and, when block_size > 0, float32, float16, or bfloat16 square-block scales in fc*_scales instead of fc*_global_scale. The INT3 profile requires integer quantization.</dd>
 <dt><tt>swiglu_fusion</tt> : int</dt>
 <dd>0: not fused, 1: fused and interleaved. 2: fused and not interleaved.</dd>
 <dt><tt>swiglu_limit</tt> : float</dt>
@@ -8842,4 +8859,5 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
+
 

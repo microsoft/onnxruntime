@@ -1605,6 +1605,17 @@ void WebGpuContext::CopyBuffer(WGPUBuffer source, WGPUBuffer destination, uint64
   }
 }
 
+void WebGpuContext::ClearBuffer(WGPUBuffer buffer, uint64_t size, CommandRecordingState& recording) {
+  // Materialize earlier deferred dispatches before inserting the clear into either command sequence.
+  ORT_THROW_IF_ERROR(EncodeDeferredDispatches(recording));
+  EndComputePass(recording);
+  GetCommandEncoder(recording).ClearBuffer(buffer, 0, size);
+  if (recording.graph_capture_state == GraphCaptureState::Capturing) {
+    ORT_ENFORCE(recording.external_captured_commands != nullptr);
+    recording.external_captured_commands->push_back({CapturedBufferClear{wgpu::Buffer{buffer}, size}});
+  }
+}
+
 void WebGpuContext::CaptureBegin(std::vector<webgpu::CapturedCommand>* captured_commands,
                                  const webgpu::BufferManager& buffer_manager,
                                  CommandRecordingState& recording) {
@@ -1632,6 +1643,10 @@ void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommand>& captured_
     const auto& operation = captured_commands[i].operation;
     if (const auto* copy = std::get_if<CapturedBufferCopy>(&operation)) {
       CopyBuffer(copy->source.Get(), copy->destination.Get(), copy->size, recording);
+      continue;
+    }
+    if (const auto* clear = std::get_if<CapturedBufferClear>(&operation)) {
+      ClearBuffer(clear->buffer.Get(), clear->size, recording);
       continue;
     }
     const auto& command = std::get<DispatchCommandInfo>(operation);
