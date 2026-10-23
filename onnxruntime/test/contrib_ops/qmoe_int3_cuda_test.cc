@@ -131,11 +131,11 @@ void RunInt3RepeatedSession(std::unique_ptr<Int3CudaSessionTester> tester, Sessi
   }
 }
 
-void PackInt3TestCode(std::vector<uint8_t>& packed, int row, int count, int index, int bits, int code) {
-  const int bytes = (count * bits + 7) / 8;
+void PackInt3TestCode(std::vector<uint8_t>& packed, int64_t row, int64_t count, int64_t index, int bits, int64_t code) {
+  const int64_t bytes = (count * bits + 7) / 8;
   for (int bit = 0; bit < bits; ++bit) {
-    const int position = index * bits + bit;
-    packed[row * bytes + position / 8] |= ((code >> bit) & 1) << (position % 8);
+    const int64_t position = index * bits + bit;
+    packed[row * bytes + position / 8] |= static_cast<uint8_t>(((code >> bit) & 1) << (position % 8));
   }
 }
 
