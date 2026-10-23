@@ -77,7 +77,6 @@ class FoldMid2 final : public CudaKernel {
     if (context->OutputCount() > 8) {
       auto* updated_ctl = context->Output(8, ctl->Shape());
       if (updated_ctl) {
-        ORT_ENFORCE(updated_ctl->DataRaw() == ctl->DataRaw(), "FoldMid2 requires aliased control output");
         ctl_ptr = updated_ctl->MutableData<int64_t>();
         publish_ring = false;
       }
@@ -85,7 +84,6 @@ class FoldMid2 final : public CudaKernel {
     if (context->OutputCount() > 9) {
       auto* updated_context = context->Output(9, committed->Shape());
       if (updated_context) {
-        ORT_ENFORCE(updated_context->DataRaw() == committed->DataRaw(), "FoldMid2 requires aliased context output");
         context_ptr = updated_context->MutableData<int64_t>();
       }
     }
@@ -101,7 +99,7 @@ class FoldMid2 final : public CudaKernel {
         hidden ? reinterpret_cast<const uint16_t*>(hidden->Data<BFloat16>()) : nullptr,
         head_hidden ? reinterpret_cast<uint16_t*>(head_hidden->MutableData<BFloat16>()) : nullptr, width,
         static_cast<int>(rows), head_rows_, static_cast<int>(rope[0]), static_cast<int>(rope[1]), capacity_, Stream(context),
-        publish_ring);
+        publish_ring, ctl->Data<int64_t>(), static_cast<int>(ctl->Shape().Size()), committed->Data<int64_t>());
   }
 
  private:
@@ -131,14 +129,14 @@ class FoldTail final : public CudaKernel {
     if (context->OutputCount() > 1) {
       auto* updated_ctl = context->Output(1, ctl->Shape());
       if (updated_ctl) {
-        ORT_ENFORCE(updated_ctl->DataRaw() == ctl->DataRaw(), "FoldTail requires aliased control output");
         ctl_ptr = updated_ctl->MutableData<int64_t>();
       }
     }
     return speculative_fold::LaunchTail(token->Data<int64_t>(), status->Data<int32_t>(),
                                         static_cast<int>(status->Shape().Size()), ctl_ptr,
                                         ptrs ? ptrs->Data<int64_t>() : nullptr,
-                                        done->MutableData<int32_t>(), slot_, Stream(context));
+                                        done->MutableData<int32_t>(), slot_, Stream(context),
+                                        ctl->Data<int64_t>(), static_cast<int>(ctl->Shape().Size()));
   }
 
  private:
@@ -149,8 +147,8 @@ class FoldTail final : public CudaKernel {
 ONNX_OPERATOR_KERNEL_EX(
     FoldMid2, kMSDomain, 1, kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
-        .Alias(3, 8)
-        .Alias(4, 9)
+        .MayInplace(3, 8)
+        .MayInplace(4, 9)
         .TypeConstraint("I64", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("I32", DataTypeImpl::GetTensorType<int32_t>())
         .TypeConstraint("B", DataTypeImpl::GetTensorType<BFloat16>()),
@@ -159,7 +157,7 @@ ONNX_OPERATOR_KERNEL_EX(
 ONNX_OPERATOR_KERNEL_EX(
     FoldTail, kMSDomain, 1, kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
-        .Alias(2, 1)
+        .MayInplace(2, 1)
         .TypeConstraint("I64", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("I32", DataTypeImpl::GetTensorType<int32_t>()),
     FoldTail);

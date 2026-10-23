@@ -15,7 +15,9 @@ __device__ bool ValidRing(const int64_t* ptrs, int64_t sequence) {
 }
 
 __global__ void MidKernel(const int64_t* tokens, const int64_t* ids, const int32_t* status, int status_count,
-                          int64_t* ctl, int64_t* context, const int64_t* prefixes, const int64_t* prefix2,
+                          const int64_t* input_ctl, int64_t* ctl, int ctl_count,
+                          const int64_t* input_context, int64_t* context,
+                          const int64_t* prefixes, const int64_t* prefix2,
                           const int64_t* ptrs, const uint16_t* cosine, const uint16_t* sine,
                           int64_t* head_ids, int32_t* head_c, int64_t* slots, int32_t* lengths,
                           uint16_t* head_cos, uint16_t* head_sin, int64_t* selection,
@@ -26,6 +28,13 @@ __global__ void MidKernel(const int64_t* tokens, const int64_t* ids, const int32
   __shared__ int64_t errors;
   __shared__ bool muted;
   if (threadIdx.x == 0) {
+    if (input_ctl != nullptr && input_ctl != ctl) {
+      for (int i = 0; i < ctl_count; ++i) ctl[i] = input_ctl[i];
+    }
+    if (input_context != nullptr && input_context != context) {
+      context[0] = input_context[0];
+      context[1] = input_context[1];
+    }
     muted = ctl[3] != 0;
     length = muted ? 0 : ctl[1];
     cache_length = muted ? 0 : ctl[7];
@@ -102,9 +111,13 @@ __global__ void HiddenKernel(const uint16_t* source, uint16_t* output, int64_t w
   }
 }
 
-__global__ void TailKernel(const int64_t* token, const int32_t* status, int count, int64_t* ctl,
+__global__ void TailKernel(const int64_t* token, const int32_t* status, int count,
+                           const int64_t* input_ctl, int64_t* ctl, int ctl_count,
                            const int64_t* ptrs, int32_t* done, int slot) {
   if (threadIdx.x != 0) return;
+  if (input_ctl != nullptr && input_ctl != ctl) {
+    for (int i = 0; i < ctl_count; ++i) ctl[i] = input_ctl[i];
+  }
   done[0] = 0;
   if (ctl[3] != 0) return;
   if (ptrs != nullptr && (ctl[4] <= 0 || !ValidRing(ptrs, ctl[4] - 1))) {
@@ -138,8 +151,9 @@ Status LaunchMid(const int64_t* tokens, const int64_t* ids, const int32_t* statu
                  uint16_t* head_cos, uint16_t* head_sin, int64_t* selection,
                  const uint16_t* hidden, uint16_t* head_hidden, int64_t hidden_width,
                  int rows, int head_rows, int rope_rows, int rope_width, int capacity, cudaStream_t stream,
-                 bool publish_ring) {
-  MidKernel<<<1, 256, 0, stream>>>(tokens, ids, status, status_count, ctl, context, prefixes, prefix2, ptrs,
+                 bool publish_ring, const int64_t* input_ctl, int ctl_count, const int64_t* input_context) {
+  MidKernel<<<1, 256, 0, stream>>>(tokens, ids, status, status_count, input_ctl, ctl, ctl_count,
+                                   input_context, context, prefixes, prefix2, ptrs,
                                    cosine, sine, head_ids, head_c, slots, lengths, head_cos, head_sin, selection,
                                    rows, head_rows, rope_rows, rope_width, capacity, publish_ring);
   ORT_RETURN_IF_ERROR(LaunchStatus(cudaGetLastError()));
@@ -151,8 +165,9 @@ Status LaunchMid(const int64_t* tokens, const int64_t* ids, const int32_t* statu
 }
 
 Status LaunchTail(const int64_t* token, const int32_t* status, int status_count, int64_t* ctl,
-                  const int64_t* ptrs, int32_t* done, int slot, cudaStream_t stream) {
-  TailKernel<<<1, 32, 0, stream>>>(token, status, status_count, ctl, ptrs, done, slot);
+                  const int64_t* ptrs, int32_t* done, int slot, cudaStream_t stream,
+                  const int64_t* input_ctl, int ctl_count) {
+  TailKernel<<<1, 32, 0, stream>>>(token, status, status_count, input_ctl, ctl, ctl_count, ptrs, done, slot);
   return LaunchStatus(cudaGetLastError());
 }
 }  // namespace onnxruntime::contrib::cuda::speculative_fold
