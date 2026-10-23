@@ -632,6 +632,8 @@ int VerifyDeviceCopyBatching(Ort::Env& env, Ort::ConstEpDevice ep_device, bool u
   Ort::Session session(env, ORT_TSTR("testdata/mul_1.onnx"), options);
   auto allocator = env.GetSharedAllocator(ep_device.GetMemoryInfo(OrtDeviceMemoryType_DEFAULT));
   ORT_ENFORCE(allocator != nullptr, "Expected a WebGPU shared allocator.");
+  OrtSyncStream* copy_stream = nullptr;
+#ifdef ORT_ENABLE_STREAM
   const auto& session_state = reinterpret_cast<InferenceSession*>(static_cast<OrtSession*>(session))->GetSessionState();
   auto streams = session_state.AcquireDeviceStreamCollection();
   Stream* stream = nullptr;
@@ -643,7 +645,9 @@ int VerifyDeviceCopyBatching(Ort::Env& env, Ort::ConstEpDevice ep_device, bool u
       }
     }
     ORT_ENFORCE(stream != nullptr, "Expected a Session-owned WebGPU stream.");
+    copy_stream = reinterpret_cast<OrtSyncStream*>(stream);
   }
+#endif
   const auto cpu_memory = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
   // Empty tensors, rounded copy sizes and repeated destination/source dependencies.
   for (const int64_t size : {0, 1, 3, 16, 65, 1048579}) {
@@ -659,20 +663,24 @@ int VerifyDeviceCopyBatching(Ort::Env& env, Ort::ConstEpDevice ep_device, bool u
       Ort::ThrowOnError(env.CopyTensor(input, a, nullptr));
       const auto before = nonempty_queue_submissions.load(std::memory_order_relaxed);
       Ort::ThrowOnError(Ort::GetApi().CopyTensors(
-          env, sources, destinations, reinterpret_cast<OrtSyncStream*>(stream), 2));
+          env, sources, destinations, copy_stream, 2));
       const auto after = nonempty_queue_submissions.load(std::memory_order_relaxed);
       const size_t expected = size == 0 || use_stream ? 0 : 1;
       ORT_ENFORCE(after - before == expected, "Unexpected vector copy submission count: ", after - before,
                   ", expected ", expected);
+#ifdef ORT_ENABLE_STREAM
       if (stream) stream->Flush();
+#endif
       std::vector<uint8_t> actual(data.size());
       auto output = Ort::Value::CreateTensor<uint8_t>(cpu_memory, actual.data(), actual.size(), &size, 1);
       Ort::ThrowOnError(env.CopyTensor(c, output, nullptr));
       ORT_ENFORCE(actual == data, "Vector copies lost data or dependency ordering.");
     }
   }
+#ifdef ORT_ENABLE_STREAM
   ORT_THROW_IF_ERROR(streams->CleanUp(true));
   session_state.RecycleDeviceStreamCollection(std::move(streams));
+#endif
   std::fputs("Device copy vectors preserved routing, data and submission count\n", stderr);
   return 0;
 }
@@ -818,6 +826,7 @@ TEST_F(WebGpuSessionAllocatorDeathTest, StreamlessDeviceCopyVectorUsesOneSubmiss
 #endif
 }
 
+#ifdef ORT_ENABLE_STREAM
 TEST_F(WebGpuSessionAllocatorDeathTest, ExplicitStreamDeviceCopyVectorDoesNotSubmit) {
 #if defined(BUILD_DAWN_SHARED_LIBRARY)
   GTEST_SKIP() << "Shared Dawn calls bypass the proc table required for submission counting.";
@@ -827,6 +836,7 @@ TEST_F(WebGpuSessionAllocatorDeathTest, ExplicitStreamDeviceCopyVectorDoesNotSub
       ::testing::ExitedWithCode(0), "Device copy vectors preserved routing, data and submission count");
 #endif
 }
+#endif
 
 TEST_F(WebGpuSessionAllocatorDeathTest, SessionInputUploadsSpanMultipleChunks) {
 #if defined(BUILD_DAWN_SHARED_LIBRARY)
