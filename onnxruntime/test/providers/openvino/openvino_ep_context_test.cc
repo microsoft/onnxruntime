@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <array>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <span>
@@ -17,9 +18,11 @@
 #include "test/util/include/test_utils.h"
 #include "test/util/include/test/test_environment.h"
 #include "test/util/include/default_providers.h"
+#include "test/util/include/file_util.h"
 #include "test/unittest_util/qdq_test_utils.h"
 
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/inference_session.h"
 #include "core/graph/model_saving_options.h"
@@ -47,6 +50,64 @@ bool IsIntelCPU() {
   return onnxruntime::CPUIDInfo::GetCPUIDInfo().GetCPUVendor() == "Intel";
 }
 
+class ScopedOpenVINOPluginRegistration {
+ public:
+  explicit ScopedOpenVINOPluginRegistration(Ort::Env& env) : env_(env) {
+    const auto library_path =
+        onnxruntime::test::GetSharedLibraryFileName(ORT_TSTR("onnxruntime_providers_openvino"));
+    if (!std::filesystem::exists(library_path)) {
+      return;
+    }
+    library_found_ = true;
+
+    try {
+      env_.RegisterExecutionProviderLibrary(kRegistrationName, library_path.c_str());
+      registered_ = true;
+    } catch (const Ort::Exception& ex) {
+      registration_error_ = ex.what();
+    }
+  }
+
+  ~ScopedOpenVINOPluginRegistration() {
+    if (!registered_) {
+      return;
+    }
+
+    try {
+      env_.UnregisterExecutionProviderLibrary(kRegistrationName);
+    } catch (const Ort::Exception& ex) {
+      ADD_FAILURE() << "Failed to unregister OpenVINO EP plugin library: " << ex.what();
+    }
+  }
+
+  bool LibraryFound() const { return library_found_; }
+  bool IsRegistered() const { return registered_; }
+  const std::string& RegistrationError() const { return registration_error_; }
+
+ private:
+  static constexpr const char* kRegistrationName = "OpenVINOWeightlessSupportTest";
+
+  Ort::Env& env_;
+  bool library_found_{false};
+  bool registered_{false};
+  std::string registration_error_;
+};
+
+Ort::ConstEpDevice FindOpenVINOCpuDevice(Ort::Env& env) {
+  for (const auto& device : env.GetEpDevices()) {
+    if (std::strcmp(device.EpName(), "OpenVINOExecutionProvider") != 0) {
+      continue;
+    }
+
+    const char* ov_device = device.EpMetadata().GetValue("ov_device");
+    if (ov_device != nullptr && std::strcmp(ov_device, "CPU") == 0) {
+      return device;
+    }
+  }
+
+  return Ort::ConstEpDevice{nullptr};
+}
+
 // Runs a mul_1-style model (X[3,2] -> Y[3,2], Y = X * {1,2,3,4,5,6}) with
 // X = all 2.0f and validates that Y == {2,4,6,8,10,12}.
 void RunAndValidate(Ort::Session& session) {
@@ -69,6 +130,27 @@ void RunAndValidate(Ort::Session& session) {
   const float* out_data = output_tensors[0].GetTensorData<float>();
   EXPECT_THAT(std::vector<float>(out_data, out_data + 6),
               ::testing::ElementsAre(2.f, 4.f, 6.f, 8.f, 10.f, 12.f));
+}
+
+void RunConvQdqExternalInitializerModel(Ort::Session& session, std::vector<float>& result) {
+  const std::array<int64_t, 4> input_shape = {1, 3, 24, 24};
+  std::vector<float> input_data(3 * 24 * 24, 0.5f);
+  Ort::MemoryInfo memory_info =
+      Ort::MemoryInfo::CreateCpu(OrtAllocatorType::OrtDeviceAllocator, OrtMemTypeDefault);
+  Ort::Value input_tensor = Ort::Value::CreateTensor<float>(
+      memory_info, input_data.data(), input_data.size(), input_shape.data(), input_shape.size());
+
+  const std::array<const char*, 1> input_names = {"input"};
+  const std::array<const char*, 1> output_names = {"output"};
+  auto outputs = session.Run(Ort::RunOptions{nullptr}, input_names.data(), &input_tensor, 1,
+                             output_names.data(), output_names.size());
+
+  ASSERT_EQ(outputs.size(), 1u);
+  auto type_and_shape = outputs[0].GetTensorTypeAndShapeInfo();
+  ASSERT_EQ(type_and_shape.GetElementType(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
+  const size_t output_size = type_and_shape.GetElementCount();
+  const float* output_data = outputs[0].GetTensorData<float>();
+  result.assign(output_data, output_data + output_size);
 }
 
 void AddFloat16Initializer(ONNX_NAMESPACE::GraphProto* graph,
@@ -183,6 +265,23 @@ class OVEPEPContextTests : public ::testing::Test {
 namespace onnxruntime {
 namespace test {
 
+TEST(OpenVINOWeightlessSupportTest, CpuDeviceAdvertisesAll) {
+  ScopedOpenVINOPluginRegistration registration(*ort_env);
+  if (!registration.LibraryFound()) {
+    GTEST_SKIP() << "OpenVINO EP plugin library is not available.";
+  }
+  ASSERT_TRUE(registration.IsRegistered()) << registration.RegistrationError();
+
+  Ort::ConstEpDevice cpu_device = FindOpenVINOCpuDevice(*ort_env);
+  if (!cpu_device) {
+    GTEST_SKIP() << "No OpenVINO CPU OrtEpDevice was found.";
+  }
+
+  EXPECT_STREQ(
+      cpu_device.EpMetadata().GetValue(kOrtEpDevice_EpMetadataKey_WeightlessSupport),
+      "all");
+}
+
 // Test if folder path given to ep_context_file_path throws an error
 TEST_F(OVEPEPContextTests, OVEPEPContextFolderPath) {
   Ort::SessionOptions sessionOptions;
@@ -221,6 +320,181 @@ TEST_F(OVEPEPContextTests, OVEPEPContextFolderPath) {
     ASSERT_EQ(excpt.GetOrtErrorCode(), ORT_INVALID_ARGUMENT);
     ASSERT_THAT(excpt.what(), testing::HasSubstr("context_file_path should not point to a folder."));
   }
+}
+
+TEST_F(OVEPEPContextTests, WeightlessCompileAndReload) {
+  if (!IsIntelCPU()) {
+    GTEST_SKIP() << "OpenVINO weightless EPContext is only validated on Intel CPUs.";
+  }
+
+  const std::filesystem::path source_model = ORT_TSTR("testdata/mul_1.onnx");
+  const std::filesystem::path output_dir = "openvino_weightless_epctx";
+  const std::filesystem::path compiled_model = output_dir / "mul_1_ctx.onnx";
+
+  std::error_code ec;
+  std::filesystem::remove_all(output_dir, ec);
+  ec.clear();
+  std::filesystem::create_directories(output_dir, ec);
+  ASSERT_FALSE(ec) << "Failed to create output directory: " << ec.message();
+
+  {
+    Ort::SessionOptions session_options;
+    std::unordered_map<std::string, std::string> ov_options = {{"device_type", "CPU"}};
+    session_options.AppendExecutionProvider_OpenVINO_V2(ov_options);
+
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
+    compile_options.SetInputModelPath(source_model.c_str());
+    compile_options.SetOutputModelPath(compiled_model.c_str());
+    compile_options.SetEpContextEmbedMode(true);
+    compile_options.SetWeightlessEnabled(true);
+
+    Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+    ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
+  }
+
+  ASSERT_TRUE(std::filesystem::exists(compiled_model));
+
+  ONNX_NAMESPACE::ModelProto compiled_model_proto;
+  ASSERT_STATUS_OK(Model::Load(compiled_model.c_str(), compiled_model_proto));
+  bool found_source_model_attribute = false;
+  for (const auto& node : compiled_model_proto.graph().node()) {
+    if (node.op_type() != "EPContext") {
+      continue;
+    }
+
+    for (const auto& attribute : node.attribute()) {
+      if (attribute.name() == "onnx_model_filename") {
+        EXPECT_EQ(attribute.s(), source_model.filename().string());
+        found_source_model_attribute = true;
+      }
+    }
+  }
+  EXPECT_TRUE(found_source_model_attribute);
+
+  const std::filesystem::path fallback_source_model = output_dir / source_model.filename();
+  std::filesystem::copy_file(source_model, fallback_source_model,
+                             std::filesystem::copy_options::overwrite_existing, ec);
+  ASSERT_FALSE(ec) << "Failed to copy source model for attribute fallback: " << ec.message();
+  {
+    Ort::SessionOptions session_options;
+    session_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightless, "1");
+    session_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
+    std::unordered_map<std::string, std::string> ov_options = {{"device_type", "CPU"}};
+    session_options.AppendExecutionProvider_OpenVINO_V2(ov_options);
+
+    Ort::Session session(*ort_env, compiled_model.c_str(), session_options);
+    RunAndValidate(session);
+  }
+  std::filesystem::remove(fallback_source_model, ec);
+  ASSERT_FALSE(ec) << "Failed to remove fallback source model: " << ec.message();
+
+  {
+    Ort::SessionOptions session_options;
+    session_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightless, "1");
+    session_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
+    session_options.AddConfigEntry(kOrtSessionOptionEpContextSourceModelPath,
+                                   source_model.string().c_str());
+    std::unordered_map<std::string, std::string> ov_options = {{"device_type", "CPU"}};
+    session_options.AppendExecutionProvider_OpenVINO_V2(ov_options);
+
+    Ort::Session session(*ort_env, compiled_model.c_str(), session_options);
+    RunAndValidate(session);
+  }
+
+  {
+    std::ifstream source_model_stream(source_model, std::ios::binary);
+    ASSERT_TRUE(source_model_stream);
+    std::vector<char> source_model_data{
+        std::istreambuf_iterator<char>(source_model_stream),
+        std::istreambuf_iterator<char>()};
+    ASSERT_FALSE(source_model_data.empty());
+
+    Ort::SessionOptions session_options;
+    session_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightless, "1");
+    session_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
+    Ort::ThrowOnError(Ort::GetApi().SessionOptionsSetWeightlessSourceModelBuffer(
+        session_options, source_model_data.data(), source_model_data.size()));
+    std::unordered_map<std::string, std::string> ov_options = {{"device_type", "CPU"}};
+    session_options.AppendExecutionProvider_OpenVINO_V2(ov_options);
+
+    Ort::Session session(*ort_env, compiled_model.c_str(), session_options);
+    RunAndValidate(session);
+  }
+
+  std::filesystem::remove_all(output_dir, ec);
+}
+
+TEST_F(OVEPEPContextTests, WeightlessExternalInitializersCompileAndReload) {
+  if (!IsIntelCPU()) {
+    GTEST_SKIP() << "OpenVINO weightless EPContext is only validated on Intel CPUs.";
+  }
+
+  const std::filesystem::path original_model =
+      ORT_TSTR("testdata/conv_qdq_external_ini.onnx");
+  const std::filesystem::path external_data_folder =
+      std::filesystem::absolute(ORT_TSTR("testdata"));
+  const std::filesystem::path output_dir = "openvino_weightless_external_epctx";
+  const std::filesystem::path source_model = output_dir / original_model.filename();
+  const std::filesystem::path compiled_model = output_dir / "conv_qdq_ctx.onnx";
+
+  std::error_code ec;
+  std::filesystem::remove_all(output_dir, ec);
+  ec.clear();
+  std::filesystem::create_directories(output_dir, ec);
+  ASSERT_FALSE(ec) << "Failed to create output directory: " << ec.message();
+  std::filesystem::copy_file(original_model, source_model,
+                             std::filesystem::copy_options::overwrite_existing, ec);
+  ASSERT_FALSE(ec) << "Failed to copy source model: " << ec.message();
+
+  std::vector<float> expected_output;
+  {
+    Ort::SessionOptions session_options;
+    Ort::Session session(*ort_env, original_model.c_str(), session_options);
+    RunConvQdqExternalInitializerModel(session, expected_output);
+  }
+
+  const std::string external_data_folder_utf8 =
+      PathToUTF8String(external_data_folder.native());
+  {
+    Ort::SessionOptions session_options;
+    session_options.AddConfigEntry(kOrtSessionOptionsModelExternalInitializersFileFolderPath,
+                                   external_data_folder_utf8.c_str());
+    std::unordered_map<std::string, std::string> ov_options = {{"device_type", "CPU"}};
+    session_options.AppendExecutionProvider_OpenVINO_V2(ov_options);
+
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
+    compile_options.SetInputModelPath(source_model.c_str());
+    compile_options.SetOutputModelPath(compiled_model.c_str());
+    compile_options.SetEpContextEmbedMode(true);
+    compile_options.SetWeightlessEnabled(true);
+
+    Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+    ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
+  }
+
+  ASSERT_TRUE(std::filesystem::exists(compiled_model));
+
+  std::vector<float> actual_output;
+  {
+    Ort::SessionOptions session_options;
+    session_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightless, "1");
+    session_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
+    session_options.AddConfigEntry(kOrtSessionOptionEpContextSourceModelPath,
+                                   PathToUTF8String(source_model.native()).c_str());
+    session_options.AddConfigEntry(kOrtSessionOptionsModelExternalInitializersFileFolderPath,
+                                   external_data_folder_utf8.c_str());
+    std::unordered_map<std::string, std::string> ov_options = {{"device_type", "CPU"}};
+    session_options.AppendExecutionProvider_OpenVINO_V2(ov_options);
+
+    Ort::Session session(*ort_env, compiled_model.c_str(), session_options);
+    RunConvQdqExternalInitializerModel(session, actual_output);
+  }
+
+  EXPECT_THAT(actual_output,
+              ::testing::Pointwise(::testing::FloatNear(1e-4f), expected_output));
+  std::filesystem::remove_all(output_dir, ec);
 }
 
 // Runs an existing OVIR-encapsulated EP context model: "mul_1_ep_ctx_ovir.onnx"

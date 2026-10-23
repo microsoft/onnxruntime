@@ -63,6 +63,12 @@ struct ProviderInfo {
   bool so_share_ep_contexts{false};        // ORT session option
   bool so_stop_share_ep_contexts{false};   // ORT session option
   fs::path so_context_file_path{};         // ORT session option
+
+  bool so_weightless_enabled{false};  // ORT session option
+  fs::path so_context_source_model_path{};
+  fs::path external_initializers_file_folder_path{};
+  const void* weightless_source_model_data{nullptr};
+  size_t weightless_source_model_data_size{0};
   const ConfigOptions* config_options{NULL};
   const std::unordered_set<std::string> valid_provider_keys = {"device_type", "device_id", "device_luid", "cache_dir", "precision",
                                                                "load_config", "context", "num_of_threads", "model_priority", "num_streams", "enable_opencl_throttling", "enable_qdq_optimizer",
@@ -131,6 +137,7 @@ struct SubGraphContext {
   std::string model_precision;
   bool is_ep_ctx_graph = false;
   bool is_ep_ctx_ovir_encapsulated = false;
+  fs::path weightless_source_model_path;
 };
 
 }  // namespace openvino_ep
