@@ -485,11 +485,9 @@ OrtStatus* ORT_API_CALL ExampleEp::CompileImpl(_In_ OrtEp* this_ptr, _In_ const 
         std::string ep_cache_context;
         RETURN_IF_ERROR(ep_cache_context_attr.GetValue(ep_cache_context));
 
-        // This example only exercises the load-side read flow (callback first, file fallback otherwise) to show how
-        // an EP retrieves EPContext binary data during compile. A real EP would consume `ep_context_data` (e.g.,
-        // initialize a kernel/engine from it via ep_context_data.data()/size()); here it is intentionally read and
-        // then discarded. ReadEpContextData returns an owning EpContextData buffer that adopts the callback-provided
-        // memory instead of copying it.
+        // Read through the callback first, falling back to a file. Default mode discards the payload; the opt-in
+        // executable Mul fixture validates its marker and restores a kernel below. ReadEpContextData adopts the
+        // callback-provided memory without copying it.
         ep_context_data_utils::EpContextData ep_context_data;
         RETURN_IF_ERROR(ep_context_data_utils::ReadEpContextData(
             ep->ort_api, ep->ep_context_config_, ep_cache_context.c_str(), ort_graphs[0],
@@ -533,23 +531,20 @@ OrtStatus* ORT_API_CALL ExampleEp::CompileImpl(_In_ OrtEp* this_ptr, _In_ const 
         RETURN_IF_ERROR(ep->TrySaveConstantInitializer(node_inputs[1]));
       }
 
-      // Create MulKernel for Mul nodes
-      ep->mul_kernels_.emplace(fused_node_name,
-                               std::make_unique<MulKernel>(ep->ort_api, ep->logger_,
-                                                           ep->float_initializers_,
-                                                           node_inputs[0].GetName(),
-                                                           node_inputs[1].GetName()));
-
-      // Use ExampleNodeComputeInfo for Mul nodes
-      auto node_compute_info = std::make_unique<ExampleNodeComputeInfo>(*ep);
-      node_compute_infos[0] = node_compute_info.release();
-
       // Create EpContext nodes for the fused nodes we compiled (only for Mul, not EPContext).
       if (ep->config_.enable_ep_context) {
         assert(ep_context_nodes != nullptr);
         RETURN_IF_ERROR(ep->CreateEpContextNodes(ort_graphs[0], gsl::span<const OrtNode*>(fused_nodes, count),
                                                  gsl::span<OrtNode*>(ep_context_nodes, count)));
       }
+
+      ep->mul_kernels_.emplace(fused_node_name,
+                               std::make_unique<MulKernel>(ep->ort_api, ep->logger_,
+                                                           ep->float_initializers_,
+                                                           node_inputs[0].GetName(),
+                                                           node_inputs[1].GetName()));
+      auto node_compute_info = std::make_unique<ExampleNodeComputeInfo>(*ep);
+      node_compute_infos[0] = node_compute_info.release();
     }
   } catch (const Ort::Exception& ex) {
     Ort::Status status(ex);
