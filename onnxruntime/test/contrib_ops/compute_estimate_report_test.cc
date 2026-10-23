@@ -8,6 +8,7 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -51,13 +52,20 @@ class ComputeEstimateReportTest : public ::testing::Test {
   }
 
   Node& AddMatMul(std::optional<std::vector<int64_t>> shape = std::vector<int64_t>{2, 3, 64},
-                  bool add_identity = false) {
+                  bool add_identity = false, bool bias = false) {
     auto* a = builder_.MakeInput<float>(shape);
     auto* b = builder_.MakeInitializer<uint8_t>({32, 2, 16}, std::vector<uint8_t>(1024, 0x88));
     auto* scales = builder_.MakeInitializer<float>({32, 2}, std::vector<float>(64, 1.0f));
     auto* output = add_identity ? builder_.MakeIntermediate() : builder_.MakeOutput();
+    std::vector<NodeArg*> inputs{a, b, scales};
+    if (bias) {
+      auto& missing = builder_.graph_.GetOrCreateNodeArg("", nullptr);
+      inputs.push_back(&missing);
+      inputs.push_back(&missing);
+      inputs.push_back(builder_.MakeInitializer<float>({32}, std::vector<float>(32, 1.0f)));
+    }
     auto& node = builder_.graph_.AddNode(builder_.graph_.GenerateNodeName("projection \"quoted\"\\\n"),
-                                         "MatMulNBits", "", {a, b, scales}, {output}, nullptr, kMSDomain);
+                                         "MatMulNBits", "", inputs, {output}, nullptr, kMSDomain);
     node.AddAttribute("K", int64_t{64});
     node.AddAttribute("N", int64_t{32});
     node.AddAttribute("bits", int64_t{4});
@@ -112,8 +120,8 @@ TEST_F(ComputeEstimateReportTest, ComponentContractAndDeterminism) {
   auto& node = AddMatMul();
   ASSERT_STATUS_OK(model_.MainGraph().Resolve());
   const auto report = Report();
-  EXPECT_EQ(report["schema_version"], 1);
-  EXPECT_EQ(report["estimator_support"], "matmul_nbits_core_only");
+  EXPECT_EQ(report["schema_version"], 2);
+  EXPECT_EQ(report["estimator_support"], "matmul_nbits_core_and_bias");
   ASSERT_EQ(report["nodes"].size(), 1u);
   const auto& entry = report["nodes"][0];
   EXPECT_EQ(entry["node_name"], node.Name());
@@ -131,7 +139,101 @@ TEST_F(ComputeEstimateReportTest, ComponentContractAndDeterminism) {
   EXPECT_EQ(report["summary"]["known_dense_equivalent_ops"], "24576");
   EXPECT_EQ(report["summary"]["complete_for_declared_graph_and_component_scope"], true);
   EXPECT_EQ(report["summary"]["whole_operator_work_complete"], false);
+  ASSERT_EQ(entry["components"].size(), 2u);
+  const auto& bias = entry["components"][1];
+  EXPECT_EQ(bias["component"], "bias");
+  EXPECT_EQ(bias["metric"], "floating_point_ops");
+  EXPECT_EQ(bias["operation_count"], "0");
+  EXPECT_EQ(bias["input_basis"], "optional_input_absent");
+  EXPECT_EQ(bias["convention_version"], "bias_add_v1");
   EXPECT_EQ(report, Report());
+}
+
+TEST_F(ComputeEstimateReportTest, BiasIsSeparateFromCoreSubtotal) {
+  AddMatMul(std::vector<int64_t>{2, 3, 64}, false, true);
+  ASSERT_STATUS_OK(model_.MainGraph().Resolve());
+  const auto report = Report();
+  const auto& bias = report["nodes"][0]["components"][1];
+  EXPECT_EQ(bias["operation_count"], "192");
+  EXPECT_EQ(bias["input_basis"], "static_concrete");
+  EXPECT_EQ(bias["basis"], "logical_semantics");
+  EXPECT_EQ(bias["execution_phase"], "per_invocation");
+  EXPECT_EQ(report["summary"]["known_dense_equivalent_ops"], "24576");
+  const auto& summary = report["summary"]["component_summaries"][1];
+  EXPECT_EQ(summary["component"], "bias");
+  EXPECT_EQ(summary["known_operation_count"], "192");
+  EXPECT_EQ(summary["estimated_component_count"], 1);
+  EXPECT_EQ(summary["unavailable_component_count"], 0);
+  EXPECT_EQ(summary["complete_for_declared_component_scope"], true);
+  EXPECT_EQ(report["summary"]["whole_operator_work_complete"], false);
+}
+
+TEST_F(ComputeEstimateReportTest, UnknownBiasGeometryHasExplicitCoverageGap) {
+  AddMatMul(std::vector<int64_t>{-1, 64}, false, true);
+  ASSERT_STATUS_OK(model_.MainGraph().Resolve());
+  const auto report = Report();
+  const auto& entry = report["nodes"][0];
+  EXPECT_EQ(entry["availability"], "unavailable");
+  EXPECT_EQ(entry["components"][1]["unavailable_reason"], "unknown_shape");
+  EXPECT_FALSE(entry["components"][1].contains("operation_count"));
+  const auto& summary = report["summary"]["component_summaries"][1];
+  EXPECT_EQ(summary["known_operation_count"], "0");
+  EXPECT_EQ(summary["unavailable_component_count"], 1);
+  EXPECT_EQ(summary["unavailable_reason_counts"]["unknown_shape"], 1);
+  EXPECT_EQ(summary["complete_for_declared_component_scope"], false);
+}
+
+TEST_F(ComputeEstimateReportTest, EmptyOutputHasZeroBias) {
+  AddMatMul(std::vector<int64_t>{0, 64}, false, true);
+  ASSERT_STATUS_OK(model_.MainGraph().Resolve());
+  const auto report = Report();
+  EXPECT_EQ(report["nodes"][0]["components"][1]["operation_count"], "0");
+  EXPECT_EQ(report["summary"]["complete_for_declared_graph_and_component_scope"], true);
+}
+
+TEST_F(ComputeEstimateReportTest, CoreOverflowRetainsKnownBias) {
+  auto& node = AddMatMul(std::vector<int64_t>{1, std::numeric_limits<int64_t>::max()}, false, true);
+  node.AddAttribute("K", std::numeric_limits<int64_t>::max());
+  ASSERT_STATUS_OK(model_.MainGraph().Resolve());
+  const auto report = Report();
+  EXPECT_EQ(report["nodes"][0]["availability"], "partial");
+  EXPECT_EQ(report["nodes"][0]["components"][0]["unavailable_reason"], "overflow");
+  EXPECT_EQ(report["nodes"][0]["components"][1]["operation_count"], "32");
+  EXPECT_EQ(report["summary"]["partially_estimated_node_count"], 1);
+  EXPECT_EQ(report["summary"]["known_dense_equivalent_ops"], "0");
+  EXPECT_EQ(report["summary"]["component_summaries"][1]["known_operation_count"], "32");
+  EXPECT_EQ(report["summary"]["complete_for_declared_graph_and_component_scope"], false);
+}
+
+TEST_F(ComputeEstimateReportTest, BiasSubtotalOverflowIsSeparateAndExplicit) {
+  for (int i = 0; i < 3; ++i) {
+    auto& node = AddMatMul(std::vector<int64_t>{std::numeric_limits<int64_t>::max() / 32, 0}, false, true);
+    node.AddAttribute("K", int64_t{0});
+  }
+  ASSERT_STATUS_OK(model_.MainGraph().Resolve());
+  const auto report = Report();
+  EXPECT_EQ(report["summary"]["known_dense_equivalent_ops"], "0");
+  const auto& summary = report["summary"]["component_summaries"][1];
+  EXPECT_EQ(summary["subtotal_availability"], "unavailable");
+  EXPECT_EQ(summary["subtotal_unavailable_reason"], "overflow");
+  EXPECT_FALSE(summary.contains("known_operation_count"));
+  EXPECT_EQ(report["summary"]["complete_for_declared_graph_and_component_scope"], false);
+}
+
+TEST_F(ComputeEstimateReportTest, KnownCoreDoesNotHideBiasOverflow) {
+  auto& node = AddMatMul(std::vector<int64_t>{std::numeric_limits<int64_t>::max(), 0}, false, true);
+  node.AddAttribute("K", int64_t{0});
+  ASSERT_STATUS_OK(model_.MainGraph().Resolve());
+  const auto report = Report();
+  const auto& entry = report["nodes"][0];
+  EXPECT_EQ(entry["availability"], "partial");
+  EXPECT_EQ(entry["unavailable_reason"], "overflow");
+  EXPECT_EQ(entry["components"][0]["operation_count"], "0");
+  EXPECT_EQ(entry["components"][1]["unavailable_reason"], "overflow");
+  EXPECT_FALSE(entry["components"][1].contains("operation_count"));
+  EXPECT_EQ(report["summary"]["known_dense_equivalent_ops"], "0");
+  EXPECT_EQ(report["summary"]["component_summaries"][1]["unavailable_component_count"], 1);
+  EXPECT_EQ(report["summary"]["complete_for_declared_graph_and_component_scope"], false);
 }
 
 TEST_F(ComputeEstimateReportTest, UnknownShapesHaveNoCount) {
@@ -140,6 +242,9 @@ TEST_F(ComputeEstimateReportTest, UnknownShapesHaveNoCount) {
   const auto report = Report();
   const auto& entry = report["nodes"][0];
   EXPECT_EQ(entry["unavailable_reason"], "unknown_shape");
+  EXPECT_EQ(entry["availability"], "partial");
+  EXPECT_EQ(entry["components"][1]["operation_count"], "0");
+  EXPECT_EQ(report["summary"]["partially_estimated_node_count"], 1);
   EXPECT_FALSE(entry["components"][0].contains("operation_count"));
   EXPECT_EQ(entry["input_shapes"][0]["dimensions"], Json::array({nullptr, 64}));
   EXPECT_EQ(report["summary"]["unavailable_reason_counts"]["unknown_shape"], 1);
@@ -244,7 +349,7 @@ TEST_F(ComputeEstimateReportTest, NestedGraphsAreSeparateScopes) {
 }
 
 TEST_F(ComputeEstimateReportTest, SessionExportsFinalGraphAndRetainsInference) {
-  AddMatMul(std::vector<int64_t>{2, 3, 64}, true);
+  AddMatMul(std::vector<int64_t>{2, 3, 64}, true, true);
   ASSERT_STATUS_OK(model_.MainGraph().Resolve());
   auto options = ReportOptions();
   options.graph_optimization_level = TransformerLevel::Level1;
@@ -255,6 +360,7 @@ TEST_F(ComputeEstimateReportTest, SessionExportsFinalGraphAndRetainsInference) {
   EXPECT_EQ(report["summary"]["reported_node_count"], 1);
   EXPECT_EQ(report["summary"]["known_dense_equivalent_ops"], "24576");
   EXPECT_EQ(report["nodes"][0]["provider"], kCpuExecutionProvider);
+  EXPECT_EQ(report["nodes"][0]["components"][1]["operation_count"], "192");
   RecordProperty("compute_estimate_report", report.dump(2));
 
   const auto& input_name = session.GetGraph().GetInputs()[0]->Name();
@@ -271,7 +377,7 @@ TEST_F(ComputeEstimateReportTest, SessionExportsFinalGraphAndRetainsInference) {
   const auto& result = outputs[0].Get<Tensor>();
   EXPECT_EQ(result.Shape(), TensorShape({2, 3, 32}));
   for (size_t i = 0; i < 2 * 3 * 32; ++i) {
-    EXPECT_EQ(result.Data<float>()[i], 0.0f);
+    EXPECT_EQ(result.Data<float>()[i], 1.0f);
   }
 }
 

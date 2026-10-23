@@ -45,6 +45,8 @@ const char* ReasonName(contrib::ComputeEstimateUnavailableReason reason) {
       return "invalid_metadata";
     case contrib::ComputeEstimateUnavailableReason::Overflow:
       return "overflow";
+    case contrib::ComputeEstimateUnavailableReason::MissingSemanticValue:
+      return "missing_semantic_value";
   }
   ORT_THROW("Invalid compute estimate reason.");
 }
@@ -116,6 +118,42 @@ Json EstimateNode(const Node& node, std::optional<uint64_t>& operation_count) {
       result["unavailable_reason"] = component["unavailable_reason"];
     }
     result["components"] = Json::array({std::move(component)});
+    Json bias{{"component", "bias"},
+              {"metric", "floating_point_ops"},
+              {"scope", "bias"},
+              {"convention_version", "bias_add_v1"},
+              {"input_basis", "canonical_graph_metadata"},
+              {"basis", "logical_semantics"},
+              {"execution_phase", "per_invocation"},
+              {"excluded_components", Json::array({"matmul_core", "dequantization", "packing", "conversion",
+                                                   "padding", "route_specific_extra_work"})}};
+#if !defined(DISABLE_CONTRIB_OPS)
+    const auto bias_estimate = contrib::EstimateMatMulNBitsBias(node);
+    if (const auto* count = std::get_if<contrib::MatMulNBitsBiasEstimate>(&bias_estimate)) {
+      const auto& inputs = node.InputDefs();
+      bias["input_basis"] = inputs.size() > 5 && inputs[5] != nullptr && inputs[5]->Exists()
+                                ? "static_concrete"
+                                : "optional_input_absent";
+      bias["availability"] = "available";
+      bias["estimate_kind"] = "exact_under_convention";
+      bias["operation_count"] = std::to_string(count->floating_point_ops);
+    } else {
+      bias["availability"] = "unavailable";
+      bias["unavailable_reason"] = ReasonName(std::get<contrib::ComputeEstimateUnavailableReason>(bias_estimate));
+    }
+#else
+    bias["availability"] = "unavailable";
+    bias["unavailable_reason"] = "estimators_disabled";
+#endif
+    const bool core_available = operation_count.has_value();
+    const bool bias_available = bias["availability"] == "available";
+    result["availability"] = core_available && bias_available   ? "available"
+                             : core_available || bias_available ? "partial"
+                                                                : "unavailable";
+    if (!bias_available && core_available) {
+      result["unavailable_reason"] = bias["unavailable_reason"];
+    }
+    result["components"].push_back(std::move(bias));
   }
   if (!result.contains("components")) {
     result["components"] = Json::array();
@@ -143,6 +181,18 @@ void AppendGraph(const Graph& graph, const std::string& path, Json& report) {
   bool subtotal_overflow = false;
   size_t estimated_count = 0;
   size_t unavailable_count = 0;
+  size_t partial_count = 0;
+  struct ComponentSubtotal {
+    std::string name;
+    std::string metric;
+    std::string convention;
+    uint64_t count = 0;
+    size_t estimated = 0;
+    size_t unavailable = 0;
+    bool overflow = false;
+    Json reasons = Json::object();
+  };
+  InlinedVector<ComponentSubtotal> component_subtotals;
   bool has_subgraphs = false;
   Json reasons = Json::object();
   const auto graph_index = report["graphs"].size();
@@ -160,14 +210,41 @@ void AppendGraph(const Graph& graph, const std::string& path, Json& report) {
     std::optional<uint64_t> operation_count;
     entry.update(EstimateNode(node, operation_count));
     if (operation_count.has_value()) {
-      ++estimated_count;
       if (!subtotal_overflow && !SafeAdd(known_ops, *operation_count, known_ops)) {
         subtotal_overflow = true;
       }
+    }
+    if (entry["availability"] == "available") {
+      ++estimated_count;
     } else {
-      ++unavailable_count;
+      if (entry["availability"] == "partial") {
+        ++partial_count;
+      } else {
+        ++unavailable_count;
+      }
       const std::string reason = entry["unavailable_reason"].get<std::string>();
       reasons[reason] = reasons.value(reason, size_t{0}) + 1;
+    }
+    for (const auto& component : entry["components"]) {
+      const auto name = component["component"].get<std::string>();
+      auto it = std::find_if(component_subtotals.begin(), component_subtotals.end(),
+                             [&](const auto& subtotal) { return subtotal.name == name; });
+      if (it == component_subtotals.end()) {
+        component_subtotals.push_back({name, component["metric"].get<std::string>(),
+                                       component["convention_version"].get<std::string>()});
+        it = component_subtotals.end() - 1;
+      }
+      if (component["availability"] == "available") {
+        ++it->estimated;
+        const auto count = std::stoull(component["operation_count"].get<std::string>());
+        if (!it->overflow && !SafeAdd(it->count, count, it->count)) {
+          it->overflow = true;
+        }
+      } else {
+        ++it->unavailable;
+        const auto reason = component["unavailable_reason"].get<std::string>();
+        it->reasons[reason] = it->reasons.value(reason, size_t{0}) + 1;
+      }
     }
     report["nodes"].push_back(std::move(entry));
 
@@ -185,13 +262,37 @@ void AppendGraph(const Graph& graph, const std::string& path, Json& report) {
     }
   }
 
-  Json summary{{"reported_node_count", estimated_count + unavailable_count},
+  Json component_summaries = Json::array();
+  bool component_overflow = false;
+  for (const auto& subtotal : component_subtotals) {
+    Json value{{"component", subtotal.name},
+               {"metric", subtotal.metric},
+               {"convention_version", subtotal.convention},
+               {"basis", "logical_semantics"},
+               {"execution_phase", "per_invocation"},
+               {"estimated_component_count", subtotal.estimated},
+               {"unavailable_component_count", subtotal.unavailable},
+               {"unavailable_reason_counts", subtotal.reasons},
+               {"subtotal_availability", subtotal.overflow ? "unavailable" : "available"},
+               {"complete_for_declared_component_scope", subtotal.unavailable == 0 && !subtotal.overflow}};
+    if (subtotal.overflow) {
+      component_overflow = true;
+      value["subtotal_unavailable_reason"] = "overflow";
+    } else {
+      value["known_operation_count"] = std::to_string(subtotal.count);
+    }
+    component_summaries.push_back(std::move(value));
+  }
+  Json summary{{"reported_node_count", estimated_count + partial_count + unavailable_count},
                {"estimated_node_count", estimated_count},
+               {"partially_estimated_node_count", partial_count},
                {"unavailable_node_count", unavailable_count},
+               {"component_summaries", std::move(component_summaries)},
                {"unavailable_reason_counts", std::move(reasons)},
                {"subtotal_availability", subtotal_overflow ? "unavailable" : "available"},
                {"contains_subgraphs", has_subgraphs},
-               {"complete_for_declared_graph_and_component_scope", unavailable_count == 0 && !subtotal_overflow},
+               {"complete_for_declared_graph_and_component_scope",
+                unavailable_count == 0 && partial_count == 0 && !subtotal_overflow && !component_overflow},
                {"whole_operator_work_complete", false},
                {"count_scope", "direct_nodes_only"},
                {"per_run_total_available", false}};
@@ -208,7 +309,7 @@ void AppendGraph(const Graph& graph, const std::string& path, Json& report) {
 Status BuildComputeEstimateReport(const Graph& graph, std::string& report) {
   Status status;
   ORT_TRY {
-    Json value{{"schema_version", 1},
+    Json value{{"schema_version", 2},
                {"convention_version", "core_arithmetic_v1"},
                {"graph_scope", "optimized_executable"},
                {"nodes", Json::array()},
@@ -216,7 +317,7 @@ Status BuildComputeEstimateReport(const Graph& graph, std::string& report) {
 #if defined(DISABLE_CONTRIB_OPS)
     value["estimator_support"] = "disabled";
 #else
-    value["estimator_support"] = "matmul_nbits_core_only";
+    value["estimator_support"] = "matmul_nbits_core_and_bias";
 #endif
     AppendGraph(graph, "main", value);
     value["summary"] = value["graphs"][0]["summary"];

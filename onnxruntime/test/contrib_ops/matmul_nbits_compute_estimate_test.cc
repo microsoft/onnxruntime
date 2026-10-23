@@ -25,9 +25,81 @@ namespace test {
 namespace {
 
 using contrib::ComputeEstimateUnavailableReason;
+using contrib::EstimateMatMulNBitsBias;
 using contrib::EstimateMatMulNBitsCompute;
+using contrib::MatMulNBitsBiasEstimate;
+using contrib::MatMulNBitsBiasEstimateResult;
 using contrib::MatMulNBitsComputeEstimate;
 using contrib::MatMulNBitsComputeEstimateResult;
+
+void ExpectBiasCount(const MatMulNBitsBiasEstimateResult& result, uint64_t expected) {
+  const auto* estimate = std::get_if<MatMulNBitsBiasEstimate>(&result);
+  ASSERT_NE(estimate, nullptr);
+  EXPECT_EQ(estimate->floating_point_ops, expected);
+}
+
+void ExpectBiasUnavailable(const MatMulNBitsBiasEstimateResult& result, ComputeEstimateUnavailableReason expected) {
+  const auto* reason = std::get_if<ComputeEstimateUnavailableReason>(&result);
+  ASSERT_NE(reason, nullptr);
+  EXPECT_EQ(*reason, expected);
+}
+
+TEST(MatMulNBitsBiasEstimateTest, MatrixBatchedAndRankOneCounts) {
+  ExpectBiasCount(EstimateMatMulNBitsBias(std::array<int64_t, 2>{3, 64}, 64, 32, true), 96);
+  ExpectBiasCount(EstimateMatMulNBitsBias(std::array<int64_t, 3>{2, 3, 64}, 64, 32, true), 192);
+  ExpectBiasCount(EstimateMatMulNBitsBias(std::array<int64_t, 1>{64}, 64, 32, true), 32);
+}
+
+TEST(MatMulNBitsBiasEstimateTest, AbsentBiasDoesNotRequireGeometry) {
+  ExpectBiasCount(EstimateMatMulNBitsBias({}, 64, 32, false), 0);
+  ExpectBiasCount(EstimateMatMulNBitsBias(std::array<int64_t, 2>{-1, 64}, 64, 32, false), 0);
+}
+
+TEST(MatMulNBitsBiasEstimateTest, UnknownPresenceIsNotZero) {
+  ExpectBiasUnavailable(EstimateMatMulNBitsBias(std::array<int64_t, 2>{0, 64}, 64, 32, std::nullopt),
+                        ComputeEstimateUnavailableReason::MissingSemanticValue);
+}
+
+TEST(MatMulNBitsBiasEstimateTest, UnknownGeometryIsNotZero) {
+  ExpectBiasUnavailable(EstimateMatMulNBitsBias({}, 64, 32, true),
+                        ComputeEstimateUnavailableReason::InvalidMetadata);
+  for (const auto& shape : {std::array<int64_t, 3>{2, -1, 64}, std::array<int64_t, 3>{0, -1, 64},
+                            std::array<int64_t, 3>{2, 3, -1}}) {
+    ExpectBiasUnavailable(EstimateMatMulNBitsBias(shape, 64, 32, true),
+                          ComputeEstimateUnavailableReason::UnknownShape);
+  }
+}
+
+TEST(MatMulNBitsBiasEstimateTest, InvalidGeometry) {
+  ExpectBiasUnavailable(EstimateMatMulNBitsBias(std::array<int64_t, 2>{-2, 64}, 64, 32, true),
+                        ComputeEstimateUnavailableReason::InvalidMetadata);
+  ExpectBiasUnavailable(EstimateMatMulNBitsBias(std::array<int64_t, 2>{3, 63}, 64, 32, true),
+                        ComputeEstimateUnavailableReason::InvalidMetadata);
+  ExpectBiasUnavailable(EstimateMatMulNBitsBias(std::array<int64_t, 2>{3, 64}, -1, 32, true),
+                        ComputeEstimateUnavailableReason::InvalidMetadata);
+  ExpectBiasUnavailable(EstimateMatMulNBitsBias(std::array<int64_t, 2>{3, 64}, 64, -1, true),
+                        ComputeEstimateUnavailableReason::InvalidMetadata);
+}
+
+TEST(MatMulNBitsBiasEstimateTest, EmptyOutputAndZeroReduction) {
+  ExpectBiasCount(EstimateMatMulNBitsBias(std::array<int64_t, 2>{0, 64}, 64, 32, true), 0);
+  ExpectBiasCount(EstimateMatMulNBitsBias(std::array<int64_t, 2>{3, 64}, 64, 0, true), 0);
+  ExpectBiasCount(EstimateMatMulNBitsBias(std::array<int64_t, 2>{3, 0}, 0, 32, true), 96);
+}
+
+TEST(MatMulNBitsBiasEstimateTest, ZeroPrecedesOverflow) {
+  constexpr auto max = std::numeric_limits<int64_t>::max();
+  ExpectBiasCount(EstimateMatMulNBitsBias(std::array<int64_t, 4>{max, max, 0, 64}, 64, max, true), 0);
+}
+
+TEST(MatMulNBitsBiasEstimateTest, OverflowAndIndependentCoreCount) {
+  constexpr auto max = std::numeric_limits<int64_t>::max();
+  ExpectBiasCount(EstimateMatMulNBitsBias(std::array<int64_t, 2>{max, 64}, 64, 2, true),
+                  std::numeric_limits<uint64_t>::max() - 1);
+  ExpectBiasUnavailable(EstimateMatMulNBitsBias(std::array<int64_t, 2>{max, 64}, 64, 3, true),
+                        ComputeEstimateUnavailableReason::Overflow);
+  ExpectBiasCount(EstimateMatMulNBitsBias(std::array<int64_t, 1>{max}, max, 32, true), 32);
+}
 
 void ExpectCount(const MatMulNBitsComputeEstimateResult& result, uint64_t expected) {
   const auto* estimate = std::get_if<MatMulNBitsComputeEstimate>(&result);
@@ -114,16 +186,16 @@ class MatMulNBitsComputeEstimateGraphTest : public ::testing::Test {
 
   template <typename T = float>
   Node& AddMatMul(std::optional<std::vector<int64_t>> shape = std::vector<int64_t>{2, 3, 64},
-                  int64_t bits = 4, bool bias = false) {
+                  int64_t bits = 4, bool bias = false, bool explicit_absent_bias = false) {
     NodeArg* a = builder_.MakeInput<T>(shape);
     NodeArg* b = builder_.MakeInput<uint8_t>(std::vector<int64_t>{32, 2, 32 * bits / 8});
     NodeArg* scales = builder_.MakeInput<T>(std::vector<int64_t>{32, 2});
     std::vector<NodeArg*> inputs{a, b, scales};
-    if (bias) {
+    if (bias || explicit_absent_bias) {
       auto& missing = builder_.graph_.GetOrCreateNodeArg("", nullptr);
       inputs.push_back(&missing);
       inputs.push_back(&missing);
-      inputs.push_back(builder_.MakeInput<T>(std::vector<int64_t>{32}));
+      inputs.push_back(bias ? builder_.MakeInput<T>(std::vector<int64_t>{32}) : &missing);
     }
     auto* output = builder_.MakeOutput<T>(std::nullopt);
     auto& node = builder_.AddNode("MatMulNBits", inputs, {output}, kMSDomain);
@@ -143,6 +215,43 @@ TEST_F(MatMulNBitsComputeEstimateGraphTest, ResolvedGraph) {
   auto& node = AddMatMul();
   ASSERT_STATUS_OK(model_.MainGraph().Resolve());
   ExpectCount(EstimateMatMulNBitsCompute(node), 24576);
+}
+
+TEST_F(MatMulNBitsComputeEstimateGraphTest, BiasPresentAndCoreUnchanged) {
+  auto& node = AddMatMul(std::vector<int64_t>{2, 3, 64}, 4, true);
+  ASSERT_STATUS_OK(model_.MainGraph().Resolve());
+  ExpectBiasCount(EstimateMatMulNBitsBias(node), 192);
+  ExpectCount(EstimateMatMulNBitsCompute(node), 24576);
+}
+
+TEST_F(MatMulNBitsComputeEstimateGraphTest, BiasAbsentWithUnknownRank) {
+  auto& node = AddMatMul(std::nullopt);
+  ASSERT_STATUS_OK(model_.MainGraph().Resolve());
+  ExpectBiasCount(EstimateMatMulNBitsBias(node), 0);
+}
+
+TEST_F(MatMulNBitsComputeEstimateGraphTest, ExplicitlyOmittedBiasWithUnknownRank) {
+  auto& node = AddMatMul(std::nullopt, 4, false, true);
+  ASSERT_STATUS_OK(model_.MainGraph().Resolve());
+  ExpectBiasCount(EstimateMatMulNBitsBias(node), 0);
+}
+
+TEST_F(MatMulNBitsComputeEstimateGraphTest, BiasPresentWithUnknownRank) {
+  auto& node = AddMatMul(std::nullopt, 4, true);
+  ASSERT_STATUS_OK(model_.MainGraph().Resolve());
+  ExpectBiasUnavailable(EstimateMatMulNBitsBias(node), ComputeEstimateUnavailableReason::UnknownShape);
+}
+
+TEST_F(MatMulNBitsComputeEstimateGraphTest, BiasPresentWithSymbolicShape) {
+  auto& node = AddMatMul(std::vector<int64_t>{-1, 64}, 4, true);
+  ASSERT_STATUS_OK(model_.MainGraph().Resolve());
+  ExpectBiasUnavailable(EstimateMatMulNBitsBias(node), ComputeEstimateUnavailableReason::UnknownShape);
+}
+
+TEST_F(MatMulNBitsComputeEstimateGraphTest, BiasHalfPrecisionTwoBit) {
+  auto& node = AddMatMul<MLFloat16>(std::vector<int64_t>{2, 3, 64}, 2, true);
+  ASSERT_STATUS_OK(model_.MainGraph().Resolve());
+  ExpectBiasCount(EstimateMatMulNBitsBias(node), 192);
 }
 
 TEST_F(MatMulNBitsComputeEstimateGraphTest, RankOneGraph) {
@@ -186,6 +295,7 @@ TEST_F(MatMulNBitsComputeEstimateGraphTest, MissingAttribute) {
   ASSERT_STATUS_OK(model_.MainGraph().Resolve());
   node.ClearAttribute("K");
   ExpectUnavailable(EstimateMatMulNBitsCompute(node), ComputeEstimateUnavailableReason::InvalidMetadata);
+  ExpectBiasUnavailable(EstimateMatMulNBitsBias(node), ComputeEstimateUnavailableReason::InvalidMetadata);
 }
 
 TEST_F(MatMulNBitsComputeEstimateGraphTest, WrongAttributeType) {
@@ -205,6 +315,7 @@ TEST_F(MatMulNBitsComputeEstimateGraphTest, UnsupportedVersion) {
   ASSERT_STATUS_OK(model_.MainGraph().Resolve());
   node.SetSinceVersion(2);
   ExpectUnavailable(EstimateMatMulNBitsCompute(node), ComputeEstimateUnavailableReason::UnsupportedVersion);
+  ExpectBiasUnavailable(EstimateMatMulNBitsBias(node), ComputeEstimateUnavailableReason::UnsupportedVersion);
 }
 
 TEST_F(MatMulNBitsComputeEstimateGraphTest, EmptyGraphWorkload) {
@@ -218,6 +329,7 @@ TEST_F(MatMulNBitsComputeEstimateGraphTest, UnsupportedDomain) {
   auto* output = builder_.MakeOutput<float>(std::nullopt);
   auto& node = builder_.AddNode("MatMulNBits", {input}, {output}, "other.domain");
   ExpectUnavailable(EstimateMatMulNBitsCompute(node), ComputeEstimateUnavailableReason::UnsupportedOperator);
+  ExpectBiasUnavailable(EstimateMatMulNBitsBias(node), ComputeEstimateUnavailableReason::UnsupportedOperator);
 }
 
 TEST_F(MatMulNBitsComputeEstimateGraphTest, UnsupportedOperator) {

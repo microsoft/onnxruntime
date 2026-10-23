@@ -4,6 +4,7 @@
 #include "contrib_ops/cpu/quantization/matmul_nbits_compute_estimate.h"
 
 #include <algorithm>
+#include <type_traits>
 
 #include "core/common/safeint.h"
 
@@ -15,8 +16,9 @@
 
 namespace onnxruntime {
 namespace contrib {
+namespace {
 
-MatMulNBitsComputeEstimateResult EstimateMatMulNBitsCompute(
+std::optional<ComputeEstimateUnavailableReason> ValidateGeometry(
     gsl::span<const int64_t> input_a_shape, int64_t k, int64_t n) {
   if (input_a_shape.empty() || k < 0 || n < 0 ||
       std::any_of(input_a_shape.begin(), input_a_shape.end(), [](int64_t dim) { return dim < -1; })) {
@@ -29,6 +31,17 @@ MatMulNBitsComputeEstimateResult EstimateMatMulNBitsCompute(
 
   if (std::find(input_a_shape.begin(), input_a_shape.end(), -1) != input_a_shape.end()) {
     return ComputeEstimateUnavailableReason::UnknownShape;
+  }
+
+  return std::nullopt;
+}
+
+}  // namespace
+
+MatMulNBitsComputeEstimateResult EstimateMatMulNBitsCompute(
+    gsl::span<const int64_t> input_a_shape, int64_t k, int64_t n) {
+  if (const auto reason = ValidateGeometry(input_a_shape, k, n)) {
+    return *reason;
   }
 
   if (n == 0 || std::find(input_a_shape.begin(), input_a_shape.end(), 0) != input_a_shape.end()) {
@@ -50,8 +63,36 @@ MatMulNBitsComputeEstimateResult EstimateMatMulNBitsCompute(
   return MatMulNBitsComputeEstimate{count};
 }
 
+MatMulNBitsBiasEstimateResult EstimateMatMulNBitsBias(
+    gsl::span<const int64_t> input_a_shape, int64_t k, int64_t n, std::optional<bool> bias_present) {
+  if (!bias_present.has_value()) {
+    return ComputeEstimateUnavailableReason::MissingSemanticValue;
+  }
+  if (!*bias_present) {
+    return MatMulNBitsBiasEstimate{0};
+  }
+  if (const auto reason = ValidateGeometry(input_a_shape, k, n)) {
+    return *reason;
+  }
+
+  const auto leading_dimensions = input_a_shape.first(input_a_shape.size() - 1);
+  if (n == 0 || std::find(leading_dimensions.begin(), leading_dimensions.end(), 0) != leading_dimensions.end()) {
+    return MatMulNBitsBiasEstimate{0};
+  }
+  uint64_t count = static_cast<uint64_t>(n);
+  for (int64_t dim : leading_dimensions) {
+    if (!SafeMultiply(count, static_cast<uint64_t>(dim), count)) {
+      return ComputeEstimateUnavailableReason::Overflow;
+    }
+  }
+  return MatMulNBitsBiasEstimate{count};
+}
+
 #if !defined(ORT_MINIMAL_BUILD)
-MatMulNBitsComputeEstimateResult EstimateMatMulNBitsCompute(const Node& node) {
+namespace {
+template <bool Bias>
+auto EstimateFromNode(const Node& node)
+    -> std::conditional_t<Bias, MatMulNBitsBiasEstimateResult, MatMulNBitsComputeEstimateResult> {
   if (node.Domain() != kMSDomain || node.OpType() != "MatMulNBits") {
     return ComputeEstimateUnavailableReason::UnsupportedOperator;
   }
@@ -75,6 +116,13 @@ MatMulNBitsComputeEstimateResult EstimateMatMulNBitsCompute(const Node& node) {
     return ComputeEstimateUnavailableReason::InvalidMetadata;
   }
 
+  if constexpr (Bias) {
+    // Bias is the sixth schema input; trailing omitted inputs need not have placeholders.
+    if (inputs.size() <= 5 || inputs[5] == nullptr || !inputs[5]->Exists()) {
+      return MatMulNBitsBiasEstimate{0};
+    }
+  }
+
   const auto* shape = inputs[0]->Shape();
   if (shape == nullptr) {
     return ComputeEstimateUnavailableReason::UnknownShape;
@@ -93,7 +141,20 @@ MatMulNBitsComputeEstimateResult EstimateMatMulNBitsCompute(const Node& node) {
     }
   }
 
-  return EstimateMatMulNBitsCompute(dimensions, k_it->second.i(), n_it->second.i());
+  if constexpr (Bias) {
+    return EstimateMatMulNBitsBias(dimensions, k_it->second.i(), n_it->second.i(), true);
+  } else {
+    return EstimateMatMulNBitsCompute(dimensions, k_it->second.i(), n_it->second.i());
+  }
+}
+}  // namespace
+
+MatMulNBitsComputeEstimateResult EstimateMatMulNBitsCompute(const Node& node) {
+  return EstimateFromNode<false>(node);
+}
+
+MatMulNBitsBiasEstimateResult EstimateMatMulNBitsBias(const Node& node) {
+  return EstimateFromNode<true>(node);
 }
 #endif
 
