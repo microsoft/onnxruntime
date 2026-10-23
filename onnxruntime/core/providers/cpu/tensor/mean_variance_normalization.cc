@@ -96,10 +96,8 @@ Status ComputeMeanVarianceNormalization2D(size_t M, size_t N,
   Y_array = X_array.rowwise() - X_array.colwise().mean();
 
   if (normalize_variance) {
-    // for each column, compute Y' = (X - E[X]) / ( E[ (X - E[X])^2 ] )^(1/2)
-    //   we start with Y = X - E[X],
-    //   so Y' = Y / ( E[ Y^2 ] )^(1/2)
-    Y_array = (Y_array.rowwise() / (Y_array.square().colwise().mean().sqrt())).eval();
+    // ONNX adds epsilon to the standard deviation, not the variance.
+    Y_array = (Y_array.rowwise() / (Y_array.square().colwise().mean().sqrt() + 1e-9f)).eval();
   }
 
   return Status::OK();
