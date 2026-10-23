@@ -43,6 +43,14 @@ The Phase-2 preview adds a static JSON report via the existing session configura
 instrumentation, new public API function, or inference-policy change. The estimator sources are included by the
 existing CPU contrib source glob, independently of CUDA.
 
+Increment 2a adds a separate `bias` component: `MN` logical floating-point additions when the sixth schema input
+is present, or zero when it is omitted. Known absence does not require concrete input shapes; present bias with
+unknown required geometry is unavailable. The pure helper accepts unknown presence and returns
+`missing_semantic_value`; a resolved graph identifies presence from its optional input slot. A zero reduction
+dimension `K` makes the core count zero but does not make bias additions zero if the output is nonempty.
+Core arithmetic and its convention remain unchanged. Runtime invocation counts and route-specific executed FLOPs
+are not implemented by this increment.
+
 ### Generating a review artifact
 
 Set `session.compute_estimate_report_path` to a UTF-8 JSON file path before creating a session:
@@ -73,16 +81,32 @@ fail session initialization. Minimal builds and compile-only sessions warn that 
 with contrib ops disabled can export coverage reports but label the MatMulNBits estimator unavailable.
 The unset/empty option performs no report traversal or file I/O.
 
-The developer-facing schema is version 1. `nodes` contains per-node components and positional input shapes
+The developer-facing schema is version 2. It replaces the core-only version-1 preview, adding bias and
+component-level subtotals and introducing partial node availability. `estimator_support` is
+`matmul_nbits_core_and_bias` when enabled. `nodes` contains per-node components and positional input shapes
 (unknown dimensions are `null`, omitted optional inputs have state `missing`). `graphs` contains separate summaries
 for `main` and each nested graph. Nested identities use `main/<node_index>/<attribute_name>`, recursively;
 attribute segments escape `~` as `~0` and `/` as `~1`. The top-level summary covers only direct nodes in `main`.
 Counts never aggregate alternative branches or unknown loop iteration counts into a per-run total.
 
+Node availability is `available` when both declared components are available, `partial` when only one is
+available, and `unavailable` when neither is available (or the operator is unsupported).
+The three node counts in each summary are disjoint: `estimated_node_count` means fully estimated within the
+declared component scope, `partially_estimated_node_count` means partially estimated, and `unavailable_node_count`
+means no component is available. Reason counts include partial nodes.
+Each `component_summaries` entry reports its metric, convention, logical basis, per-invocation phase,
+estimated/unavailable component counts, unavailable reasons, checked `known_operation_count`, and completeness.
+An overflowing component subtotal omits its count and reports overflow. These subtotals cover declared components
+of supported direct nodes, not unsupported nodes or complete operator work.
+The existing `known_dense_equivalent_ops` and `subtotal_availability` remain core-only; bias is never added to that
+subtotal. Overall declared-scope completeness also requires no partial nodes or component-subtotal overflow.
+Core still lists bias among its exclusions; bias has its own `floating_point_ops` metric and `bias_add_v1`
+convention. Neither component claims route-specific executed work or whole-operator completeness.
+
 Run the targeted tests after rebuilding:
 
 ```text
-onnxruntime_provider_test --gtest_filter="ComputeEstimateReportTest.*:MatMulNBitsComputeEstimate*"
+onnxruntime_provider_test --gtest_filter="ComputeEstimateReportTest.*:MatMulNBitsComputeEstimate*:MatMulNBitsBiasEstimate*"
 ```
 
 ## 2. Motivation and boundaries
@@ -203,6 +227,41 @@ total executed FLOPs. Known-component subtotals must retain exclusions and incom
 Adding components improves coverage; validated route attribution improves fidelity to execution. Neither makes
 the quantized core a hardware instruction count or predicts latency without measurement.
 
+### 4.4 From logical workload to estimated executed FLOPs
+
+Provide two distinct results rather than progressively relabeling the existing core count:
+
+- **Logical FLOP-equivalent workload:** the dense-equivalent core plus explicitly declared, non-overlapping
+  logical floating-point components under a common workload convention. For the example above, core plus a
+  present bias is `24576 + 192 = 24768` FLOP-equivalent operations. This scope excludes reconstruction unless
+  a separate reconstruction scenario is declared; it is not a complete executed-work total.
+- **Estimated executed FLOPs:** floating-point arithmetic attributed to a validated implementation route for a
+  specified workload and lifecycle phase. Integer/bitwise work, conversions, and bytes moved remain separate.
+  An FMA counts as two FLOPs; this is an arithmetic estimate, not a hardware instruction count.
+
+The transition requires the following work within Increment 3a, before the MatMulNBits completion gate:
+
+1. Select a bounded route, initially a CPU path exercised by the pilot tests, and confirm the actual kernel
+   selected. Record relevant algorithm, dtypes, quantization settings, and preparation state. Reuse actual route
+   decisions rather than introducing a parallel dispatch predictor.
+2. Audit the route end to end, including library calls. Establish floating-point versus integer core arithmetic,
+   retained/eliminated reconstruction, bias/epilogues, padded processing, repetitions, and additional reductions.
+   Do not treat `2MNK` as executed FLOPs when the selected route performs integer dot products.
+3. Establish initialization, first-use, and per-invocation lifetimes, including cached/shared preparation.
+   Distinguish cold and warm invocations; do not charge shared or one-time work repeatedly.
+4. Implement checked formulas from validated processed geometry and execution frequency. Count padding and
+   repetition within the affected component, without adding them again as overlapping extra work.
+5. Validate with independent reference cases and route-boundary, padding, reuse, and lifecycle tests. Use backend
+   documentation, generated-code inspection, and interpretable hardware counters where needed. An opaque library
+   call is not sufficient evidence for its internal arithmetic count.
+6. Report logical and executed metrics side by side with route identity, phase, convention, precision, assumptions,
+   and coverage. Runtime shapes alone do not establish an executed-FLOP count.
+
+For one invocation, the executed estimate sums only validated floating-point core, reconstruction, epilogue,
+and other arithmetic performed for that invocation. If any applicable component is unknown, expose a
+known-component subtotal with explicit gaps, not a complete executed-FLOP total. Enable the executed metric only
+for validated routes; adding ancillary logical estimates alone does not qualify a route as supported.
+
 ## 5. Proposed architecture and report
 
 ```text
@@ -233,12 +292,13 @@ per-node result -> coverage-aware report -> optional timing correlation
 7. Defer public C/C++/Python APIs and plugin registration until the internal contract stabilizes.
 
 The result type should make contradictory states impossible: an available estimate has a count, and an unavailable
-estimate has a reason rather than a numeric placeholder. The following is an abbreviated version-1 report;
+estimate has a reason rather than a numeric placeholder. The following is an abbreviated version-2 report
+for a node without bias;
 the implementation also emits positional input metadata, estimator support, and per-graph summaries:
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "convention_version": "core_arithmetic_v1",
   "graph_scope": "optimized_executable",
   "nodes": [
@@ -267,6 +327,21 @@ the implementation also emits positional input metadata, estimator support, and 
           "excluded_components": [
             "dequantization", "bias", "packing", "conversion", "padding", "route_specific_extra_work"
           ]
+        },
+        {
+          "component": "bias",
+          "scope": "bias",
+          "metric": "floating_point_ops",
+          "convention_version": "bias_add_v1",
+          "estimate_kind": "exact_under_convention",
+          "input_basis": "optional_input_absent",
+          "basis": "logical_semantics",
+          "execution_phase": "per_invocation",
+          "availability": "available",
+          "operation_count": "0",
+          "excluded_components": [
+            "matmul_core", "dequantization", "packing", "conversion", "padding", "route_specific_extra_work"
+          ]
         }
       ]
     }
@@ -274,6 +349,7 @@ the implementation also emits positional input metadata, estimator support, and 
   "summary": {
     "reported_node_count": 1,
     "estimated_node_count": 1,
+    "partially_estimated_node_count": 0,
     "unavailable_node_count": 0,
     "known_dense_equivalent_ops": "24576",
     "subtotal_availability": "available",
@@ -290,7 +366,8 @@ Serialize counts as decimal strings to preserve integer precision in JSON consum
 `operation_count` and includes a reason such as `unsupported_version`, `unknown_shape`, `invalid_metadata`, `overflow`,
 or `estimators_disabled`. Unsupported operators and opaque partitions have unavailable node entries with empty
 components. Control-flow nodes use `runtime_execution_required`; their nested graphs are reported separately.
-`missing_semantic_value` is reserved for future runtime-dependent components.
+`missing_semantic_value` indicates unknown semantic information such as bias presence in the pure helper.
+The static resolved-graph adapter can determine bias presence without runtime data.
 If a graph subtotal overflows, omit it and report `subtotal_unavailable_reason: overflow`; never wrap or silently
 drop a node's count. A zero known subtotal with unavailable nodes is not a zero-work model.
 
@@ -379,6 +456,8 @@ or relaxing the gate to begin Attention is not the planned rollout.
   Keep this initial contract small; the core-only report does not require speculative route-estimation machinery.
 
 ### Increment 2a: shape-based ancillary work
+
+Initial bias implementation is available for review in the version-2 report described above.
 
 - Add optional bias as a separate `MN` logical floating-point-addition count, leaving `matmul_core` unchanged.
 - Distinguish absent bias from unknown optional-input metadata; use checked arithmetic and existing unavailable states.
