@@ -25,6 +25,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <new>
 
 #if !defined(QMOE_COMPILER_SUPPORTS_AVX512)
 #if defined(__AVX512F__) || (defined(__GNUC__) && defined(__x86_64__))
@@ -160,6 +161,156 @@ void Avx512GemmRange(const uint8_t* weights, const uint16_t* scales, const uint1
   }
 }
 
+template <int RT, bool WeightsPrepacked, bool ScalesBlockMajor>
+void Int4Group4Avx512(const uint8_t* w_base, const uint8_t* next_w_base, const uint16_t* scales,
+                      bool scale_is_bf16, int64_t n_total, int64_t n0, int64_t k,
+                      const float* a_reordered, float (&result)[4][RT]) {
+  const int64_t blocks = k / kBlockSize;
+  const int64_t raw_w_stride = k / 2;
+  const __m128i mask = _mm_set1_epi8(0x0F);
+  const __m512i eight = _mm512_set1_epi32(8);
+  __m512 acc[4][RT];
+  for (int c = 0; c < 4; ++c)
+    for (int r = 0; r < RT; ++r) acc[c][r] = _mm512_setzero_ps();
+
+  for (int64_t kb = 0; kb < blocks; ++kb) {
+    const uint8_t* tile = WeightsPrepacked ? (w_base + (kb >> 1) * 128 + (kb & 1) * 16) : nullptr;
+    if (next_w_base != nullptr) {
+      if constexpr (WeightsPrepacked) {
+        _mm_prefetch(reinterpret_cast<const char*>(next_w_base + kb * 64), _MM_HINT_T0);
+      } else if ((kb & 3) == 0) {
+        const int64_t byte_off = kb * 16;
+        for (int c = 0; c < 4; ++c) {
+          _mm_prefetch(reinterpret_cast<const char*>(next_w_base + c * raw_w_stride + byte_off), _MM_HINT_T0);
+        }
+      }
+    }
+    __m512 al[RT];
+    __m512 ah[RT];
+    for (int r = 0; r < RT; ++r) {
+      al[r] = _mm512_loadu_ps(a_reordered + r * k + kb * kBlockSize);
+      ah[r] = _mm512_loadu_ps(a_reordered + r * k + kb * kBlockSize + 16);
+    }
+    for (int c = 0; c < 4; ++c) {
+      const uint8_t* byte_ptr = WeightsPrepacked ? (tile + c * 32) : (w_base + c * raw_w_stride + kb * 16);
+      const __m128i x = _mm_loadu_si128(reinterpret_cast<const __m128i*>(byte_ptr));
+      const __m128i lo = _mm_and_si128(x, mask);
+      const __m128i hi = _mm_and_si128(_mm_srli_epi16(x, 4), mask);
+      const __m512 wl = _mm512_cvtepi32_ps(_mm512_sub_epi32(_mm512_cvtepu8_epi32(lo), eight));
+      const __m512 wh = _mm512_cvtepi32_ps(_mm512_sub_epi32(_mm512_cvtepu8_epi32(hi), eight));
+      const uint16_t s_bits = ScalesBlockMajor ? scales[kb * n_total + n0 + c] : scales[(n0 + c) * blocks + kb];
+      const float s_val = scale_is_bf16 ? BFloat16ToFloat(s_bits) : Avx512HalfBitsToFloat(s_bits);
+      const __m512 s = _mm512_set1_ps(s_val);
+      for (int r = 0; r < RT; ++r) {
+        const __m512 prod = _mm512_fmadd_ps(wl, al[r], _mm512_mul_ps(wh, ah[r]));
+        acc[c][r] = _mm512_fmadd_ps(prod, s, acc[c][r]);
+      }
+    }
+  }
+  for (int c = 0; c < 4; ++c)
+    for (int r = 0; r < RT; ++r) result[c][r] = _mm512_reduce_add_ps(acc[c][r]);
+}
+
+template <int RT>
+void Int4RowTileAvx512(const uint8_t* weights, const uint16_t* scales, const uint16_t* bias,
+                       bool scales_are_block_major, bool weights_are_prepacked,
+                       bool scale_is_bf16, bool bias_is_bf16,
+                       int64_t n_total, int64_t k, const float* a_reordered,
+                       float* out, int64_t out_stride, int64_t n_begin, int64_t n_end) {
+  if (n_begin >= n_end) return;
+  if (weights_are_prepacked) {
+    const int64_t aligned_begin = (n_begin + kColumnsInterleaved - 1) & ~(kColumnsInterleaved - 1);
+    const int64_t aligned_end = n_end & ~(kColumnsInterleaved - 1);
+    if (aligned_begin >= aligned_end) {
+      Int4GemmRange(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
+                    scale_is_bf16, bias_is_bf16, n_total, k, a_reordered, RT,
+                    out, out_stride, n_begin, n_end, /*force_scalar=*/true);
+      return;
+    }
+    if (n_begin < aligned_begin) {
+      Int4GemmRange(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
+                    scale_is_bf16, bias_is_bf16, n_total, k, a_reordered, RT,
+                    out, out_stride, n_begin, aligned_begin, /*force_scalar=*/true);
+    }
+    const int64_t group_stride = kColumnsInterleaved * k / 2;
+    for (int64_t n0 = aligned_begin; n0 < aligned_end; n0 += kColumnsInterleaved) {
+      const uint8_t* group = weights + (n0 / kColumnsInterleaved) * group_stride;
+      const uint8_t* next_group = (n0 + kColumnsInterleaved < aligned_end) ? (group + group_stride) : nullptr;
+      float result[4][RT];
+      if (scales_are_block_major) {
+        Int4Group4Avx512<RT, true, true>(group, next_group, scales, scale_is_bf16, n_total, n0, k, a_reordered, result);
+      } else {
+        Int4Group4Avx512<RT, true, false>(group, next_group, scales, scale_is_bf16, n_total, n0, k, a_reordered, result);
+      }
+      for (int c = 0; c < 4; ++c) {
+        const float b = (bias != nullptr)
+                            ? (bias_is_bf16 ? BFloat16ToFloat(bias[n0 + c]) : Avx512HalfBitsToFloat(bias[n0 + c]))
+                            : 0.0f;
+        for (int r = 0; r < RT; ++r) out[r * out_stride + (n0 + c - n_begin)] = result[c][r] + b;
+      }
+    }
+    if (aligned_end < n_end) {
+      Int4GemmRange(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
+                    scale_is_bf16, bias_is_bf16, n_total, k, a_reordered, RT,
+                    out + (aligned_end - n_begin), out_stride, aligned_end, n_end, /*force_scalar=*/true);
+    }
+  } else {
+    const int64_t raw_w_stride = k / 2;
+    int64_t n0 = n_begin;
+    for (; n0 + 4 <= n_end; n0 += 4) {
+      const uint8_t* w_base = weights + n0 * raw_w_stride;
+      const uint8_t* next_w = (n0 + 8 <= n_end) ? (weights + (n0 + 4) * raw_w_stride) : nullptr;
+      float result[4][RT];
+      if (scales_are_block_major) {
+        Int4Group4Avx512<RT, false, true>(w_base, next_w, scales, scale_is_bf16, n_total, n0, k, a_reordered, result);
+      } else {
+        Int4Group4Avx512<RT, false, false>(w_base, next_w, scales, scale_is_bf16, n_total, n0, k, a_reordered, result);
+      }
+      for (int c = 0; c < 4; ++c) {
+        const float b = (bias != nullptr)
+                            ? (bias_is_bf16 ? BFloat16ToFloat(bias[n0 + c]) : Avx512HalfBitsToFloat(bias[n0 + c]))
+                            : 0.0f;
+        for (int r = 0; r < RT; ++r) out[r * out_stride + (n0 + c - n_begin)] = result[c][r] + b;
+      }
+    }
+    if (n0 < n_end) {
+      Int4GemmRange(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
+                    scale_is_bf16, bias_is_bf16, n_total, k, a_reordered, RT,
+                    out + (n0 - n_begin), out_stride, n0, n_end, /*force_scalar=*/true);
+    }
+  }
+}
+
+void Avx512Int4GemmRange(const uint8_t* weights, const uint16_t* scales, const uint16_t* bias,
+                         bool scales_are_block_major, bool weights_are_prepacked,
+                         bool scale_is_bf16, bool bias_is_bf16,
+                         int64_t n_total, int64_t k, const float* a_reordered, int64_t m,
+                         float* out, int64_t out_stride, int64_t n_begin, int64_t n_end) {
+  int64_t r = 0;
+  while (r < m) {
+    const int64_t left = m - r;
+    const float* ar = a_reordered + r * k;
+    float* orow = out + r * out_stride;
+    if (left >= 4) {
+      Int4RowTileAvx512<4>(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
+                           scale_is_bf16, bias_is_bf16, n_total, k, ar, orow, out_stride, n_begin, n_end);
+      r += 4;
+    } else if (left == 3) {
+      Int4RowTileAvx512<3>(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
+                           scale_is_bf16, bias_is_bf16, n_total, k, ar, orow, out_stride, n_begin, n_end);
+      r += 3;
+    } else if (left == 2) {
+      Int4RowTileAvx512<2>(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
+                           scale_is_bf16, bias_is_bf16, n_total, k, ar, orow, out_stride, n_begin, n_end);
+      r += 2;
+    } else {
+      Int4RowTileAvx512<1>(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
+                           scale_is_bf16, bias_is_bf16, n_total, k, ar, orow, out_stride, n_begin, n_end);
+      r += 1;
+    }
+  }
+}
+
 const float* GetAvx512E4M3Table() noexcept {
   static const auto table = []() {
     std::array<float, 256> t{};
@@ -183,39 +334,86 @@ struct ScaleFp4LutCacheEntry {
   alignas(64) __m512 lut_2d[256];
 };
 
+struct ScaleFp4LutTlsCache {
+  static constexpr size_t kCacheWays = 16;
+  void* raw_ways[kCacheWays]{};
+  ScaleFp4LutCacheEntry* ways[kCacheWays]{};
+
+  ~ScaleFp4LutTlsCache() noexcept {
+    for (size_t i = 0; i < kCacheWays; ++i) {
+      std::free(raw_ways[i]);
+    }
+  }
+
+  ScaleFp4LutCacheEntry* GetOrAllocateWay(size_t slot) noexcept {
+    if (ways[slot] != nullptr) return ways[slot];
+    void* raw = std::malloc(sizeof(ScaleFp4LutCacheEntry) + 64);
+    if (raw == nullptr) return nullptr;
+    const uintptr_t addr = (reinterpret_cast<uintptr_t>(raw) + 63u) & ~uintptr_t{63u};
+    auto* entry = new (reinterpret_cast<void*>(addr)) ScaleFp4LutCacheEntry();
+    raw_ways[slot] = raw;
+    ways[slot] = entry;
+    return entry;
+  }
+};
+
+struct ScaleFp4LutTlsHandle {
+  ScaleFp4LutTlsCache* ptr = nullptr;
+  ~ScaleFp4LutTlsHandle() noexcept { delete ptr; }
+};
+
+inline ScaleFp4LutTlsCache* GetScaleFp4TlsCache() noexcept {
+  thread_local ScaleFp4LutTlsHandle handle{};
+  if (handle.ptr == nullptr) {
+    handle.ptr = new (std::nothrow) ScaleFp4LutTlsCache();
+  }
+  return handle.ptr;
+}
+
+inline void PopulateScaleFp4Lut2D(const float* base_lut, float global_scale, bool round_scale_bf16,
+                                  __m512 (&lut_2d)[256]) noexcept {
+  const __m512 fp4_v = _mm512_load_ps(kAvx512Fp4E2M1Table);
+  const __m512 gs_v = _mm512_set1_ps(global_scale);
+  alignas(64) float rounded_scales[256];
+  for (int i = 0; i < 256; i += 16) {
+    const __m512 raw_v = _mm512_mul_ps(_mm512_loadu_ps(base_lut + i), gs_v);
+    const __m512 rnd_v = round_scale_bf16 ? Avx512RoundBf16Vec(raw_v) : Avx512RoundFp16Vec(raw_v);
+    _mm512_store_ps(rounded_scales + i, rnd_v);
+  }
+  if (round_scale_bf16) {
+    for (int i = 0; i < 256; ++i) {
+      lut_2d[i] = Avx512RoundBf16Vec(_mm512_mul_ps(fp4_v, _mm512_set1_ps(rounded_scales[i])));
+    }
+  } else {
+    for (int i = 0; i < 256; ++i) {
+      lut_2d[i] = Avx512RoundFp16Vec(_mm512_mul_ps(fp4_v, _mm512_set1_ps(rounded_scales[i])));
+    }
+  }
+}
+
 template <bool IsMxfp4>
 const __m512 (&GetScaleFp4Lut2D(float global_scale, bool round_scale_bf16))[256] {
-  static constexpr size_t kCacheWays = 64;
-  thread_local ScaleFp4LutCacheEntry tls_cache[kCacheWays];
   uint32_t gs_bits = 0;
   std::memcpy(&gs_bits, &global_scale, sizeof(gs_bits));
   const uint64_t key = (static_cast<uint64_t>(gs_bits) << 2) |
                        (static_cast<uint64_t>(round_scale_bf16 ? 1 : 0) << 1) |
                        static_cast<uint64_t>(IsMxfp4 ? 1 : 0);
-  const size_t slot = ((gs_bits >> 5) ^ (gs_bits >> 13) ^ (gs_bits >> 21) ^ (round_scale_bf16 ? 0x1Fu : 0u)) & (kCacheWays - 1);
-  auto& entry = tls_cache[slot];
-  if (entry.key != key) {
-    const float* base_lut = IsMxfp4 ? GetAvx512E8M0Table() : GetAvx512E4M3Table();
-    const __m512 fp4_v = _mm512_load_ps(kAvx512Fp4E2M1Table);
-    const __m512 gs_v = _mm512_set1_ps(global_scale);
-    alignas(64) float rounded_scales[256];
-    for (int i = 0; i < 256; i += 16) {
-      const __m512 raw_v = _mm512_mul_ps(_mm512_loadu_ps(base_lut + i), gs_v);
-      const __m512 rnd_v = round_scale_bf16 ? Avx512RoundBf16Vec(raw_v) : Avx512RoundFp16Vec(raw_v);
-      _mm512_store_ps(rounded_scales + i, rnd_v);
-    }
-    if (round_scale_bf16) {
-      for (int i = 0; i < 256; ++i) {
-        entry.lut_2d[i] = Avx512RoundBf16Vec(_mm512_mul_ps(fp4_v, _mm512_set1_ps(rounded_scales[i])));
+  const size_t slot = ((gs_bits >> 5) ^ (gs_bits >> 13) ^ (gs_bits >> 21) ^
+                       (round_scale_bf16 ? 0x1Fu : 0u) ^ (IsMxfp4 ? 0x07u : 0u)) &
+                      (ScaleFp4LutTlsCache::kCacheWays - 1);
+  const float* base_lut = IsMxfp4 ? GetAvx512E8M0Table() : GetAvx512E4M3Table();
+  if (ScaleFp4LutTlsCache* cache = GetScaleFp4TlsCache()) {
+    if (ScaleFp4LutCacheEntry* entry = cache->GetOrAllocateWay(slot)) {
+      if (entry->key != key) {
+        PopulateScaleFp4Lut2D(base_lut, global_scale, round_scale_bf16, entry->lut_2d);
+        entry->key = key;
       }
-    } else {
-      for (int i = 0; i < 256; ++i) {
-        entry.lut_2d[i] = Avx512RoundFp16Vec(_mm512_mul_ps(fp4_v, _mm512_set1_ps(rounded_scales[i])));
-      }
+      return entry->lut_2d;
     }
-    entry.key = key;
   }
-  return entry.lut_2d;
+  alignas(64) static __m512 fallback_lut[256];
+  PopulateScaleFp4Lut2D(base_lut, global_scale, round_scale_bf16, fallback_lut);
+  return fallback_lut;
 }
 
 template <int RT, bool IsMxfp4>

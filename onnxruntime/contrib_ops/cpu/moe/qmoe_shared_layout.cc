@@ -17,14 +17,21 @@
 #include <cstdio>
 #include <memory>
 #include <sstream>
-#include <deque>
 #include <fstream>
 #include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
 
-#if !defined(_WIN32)
+#if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#else
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <unistd.h>
@@ -69,6 +76,11 @@ namespace qmoe_shared {
 namespace detail {
 void Avx512GemmRange(const uint8_t* weights, const uint16_t* scales, const uint16_t* bias, int64_t n_total, int64_t k,
                      const float* a, int64_t m, float* out, int64_t out_stride, int64_t n_begin, int64_t n_end);
+void Avx512Int4GemmRange(const uint8_t* weights, const uint16_t* scales, const uint16_t* bias,
+                         bool scales_are_block_major, bool weights_are_prepacked,
+                         bool scale_is_bf16, bool bias_is_bf16,
+                         int64_t n_total, int64_t k, const float* a_reordered, int64_t m,
+                         float* out, int64_t out_stride, int64_t n_begin, int64_t n_end);
 void Avx512Nvfp4GemmRange(const uint8_t* weights, const uint8_t* block_scales, float global_scale,
                           const uint16_t* bias, bool bias_is_bf16, int64_t n_total, int64_t k,
                           const float* a_reordered, int64_t m, float* out, int64_t out_stride,
@@ -181,6 +193,43 @@ void ScalarGemmRange(const uint8_t* weights, const uint16_t* scales, const uint1
       }
       if (bias != nullptr) acc += HalfToFloat(bias[n]);
       out[r * out_stride + (n - n_begin)] = acc;
+    }
+  }
+}
+
+void ScalarInt4GemmRange(const uint8_t* weights, const uint16_t* scales, const uint16_t* bias,
+                         bool scales_are_block_major, bool weights_are_prepacked,
+                         bool scale_is_bf16, bool bias_is_bf16,
+                         int64_t n_total, int64_t k, const float* a_reordered, int64_t m,
+                         float* out, int64_t out_stride, int64_t n_begin, int64_t n_end) {
+  const int64_t blocks = k / kBlockSize;
+  const int64_t raw_w_stride = k / 2;
+  for (int64_t n = n_begin; n < n_end; ++n) {
+    const uint8_t* group = weights_are_prepacked
+                               ? (weights + (n / kColumnsInterleaved) * (kColumnsInterleaved * k / 2))
+                               : nullptr;
+    const int64_t c = n % kColumnsInterleaved;
+    const uint8_t* raw_w_row = weights_are_prepacked ? nullptr : (weights + n * raw_w_stride);
+    const float b_val = (bias != nullptr)
+                            ? (bias_is_bf16 ? BoundaryBFloat16::FromBits(bias[n]) : HalfToFloat(bias[n]))
+                            : 0.0f;
+    for (int64_t r = 0; r < m; ++r) {
+      float acc = 0.0f;
+      for (int64_t kb = 0; kb < blocks; ++kb) {
+        const uint8_t* bytes = weights_are_prepacked
+                                   ? (group + (kb >> 1) * 128 + c * 32 + (kb & 1) * 16)
+                                   : (raw_w_row + kb * 16);
+        const float* ar = a_reordered + r * k + kb * kBlockSize;
+        float sum = 0.0f;
+        for (int b = 0; b < 16; ++b) {
+          sum += static_cast<float>((bytes[b] & 0x0F) - 8) * ar[b];
+          sum += static_cast<float>((bytes[b] >> 4) - 8) * ar[16 + b];
+        }
+        const uint16_t s_bits = scales_are_block_major ? scales[kb * n_total + n] : scales[n * blocks + kb];
+        const float s_val = scale_is_bf16 ? BoundaryBFloat16::FromBits(s_bits) : HalfToFloat(s_bits);
+        acc += sum * s_val;
+      }
+      out[r * out_stride + (n - n_begin)] = acc + b_val;
     }
   }
 }
@@ -361,7 +410,7 @@ size_t ComputePointerAlignment(const void* ptr) noexcept {
   const uintptr_t addr = reinterpret_cast<uintptr_t>(ptr);
   if (addr == 0) return 0;
   const uintptr_t low_bit = addr & (~addr + 1);
-  return static_cast<size_t>(std::min<uintptr_t>(low_bit, 4096));
+  return static_cast<size_t>(low_bit);
 }
 
 bool MakeExpertBlockLease(const void* ptr, size_t length, size_t min_required_alignment,
@@ -378,6 +427,9 @@ bool MakeExpertBlockLease(const void* ptr, size_t length, size_t min_required_al
 
 bool TensorExpertStore::Initialize(const void* base_ptr, size_t total_bytes, int64_t num_experts, size_t expert_stride,
                                    size_t min_required_alignment, uint64_t model_content_id) noexcept {
+  if (base_ptr == nullptr || total_bytes == 0) {
+    return false;
+  }
   size_t expected_total = 0;
   if (!ValidateExpertStorageRange(num_experts, expert_stride, 0, total_bytes, &expected_total)) {
     return false;
@@ -435,16 +487,18 @@ struct FileExpertStore::Impl {
     kLoading = 1,
     kReady = 2,
   };
-  struct PrefetchReq {
-    int32_t expert_id = -1;
-    uint64_t generation = 0;
-  };
 
-#if !defined(_WIN32)
+#if defined(_WIN32)
+  HANDLE file_handle = INVALID_HANDLE_VALUE;
+#else
   int fd = -1;
 #endif
   struct ReadBank {
+#if defined(_WIN32)
+    HANDLE file_handle = INVALID_HANDLE_VALUE;
+#else
     int fd = -1;
+#endif
     uint64_t offset = 0;
     size_t bytes = 0;
     size_t destination = 0;
@@ -456,7 +510,9 @@ struct FileExpertStore::Impl {
     // initialization so page eviction or caller buffer reuse cannot corrupt uncached reads.
     std::vector<uint8_t> resident;
     ~ReadBank() {
-#if !defined(_WIN32)
+#if defined(_WIN32)
+      if (file_handle != INVALID_HANDLE_VALUE) CloseHandle(file_handle);
+#else
       if (fd >= 0) close(fd);
 #endif
     }
@@ -485,7 +541,10 @@ struct FileExpertStore::Impl {
   std::vector<uint8_t> slot_prefetched;
   uint64_t lru_clock = 0;
 
-  std::deque<PrefetchReq> prefetch_queue;
+  // Bounded, coalesced pending prefetch queue (capacity pre-reserved to cache_slots).
+  std::vector<int32_t> pending_experts;
+  std::vector<uint8_t> expert_pending;
+  std::vector<uint64_t> expert_pending_gen;
   uint64_t latest_generation = 0;
   bool worker_busy = false;
   bool stop_worker = false;
@@ -500,6 +559,26 @@ struct FileExpertStore::Impl {
 
   bool drop_page_cache = false;
   bool read_opt = true;
+
+#if defined(_WIN32)
+  static bool ReadFromWinHandleAt(HANDLE handle, uint64_t offset, uint8_t* dst, size_t total_bytes) noexcept {
+    if (handle == INVALID_HANDLE_VALUE) return false;
+    size_t done = 0;
+    while (done < total_bytes) {
+      const uint64_t cur_offset = offset + done;
+      const DWORD to_read = static_cast<DWORD>(std::min<size_t>(total_bytes - done, size_t{1} << 30));
+      OVERLAPPED ov{};
+      ov.Offset = static_cast<DWORD>(cur_offset & 0xFFFFFFFFULL);
+      ov.OffsetHigh = static_cast<DWORD>((cur_offset >> 32) & 0xFFFFFFFFULL);
+      DWORD got = 0;
+      if (!ReadFile(handle, dst + done, to_read, &got, &ov) || got == 0) {
+        return false;
+      }
+      done += static_cast<size_t>(got);
+    }
+    return true;
+  }
+#endif
 
   bool ReadExpertFromDisk(int32_t expert_id, uint8_t* dst) noexcept {
     const auto read_begin = std::chrono::steady_clock::now();
@@ -533,6 +612,16 @@ struct FileExpertStore::Impl {
           bytes_copied_from_memory.fetch_add(bank->bytes, std::memory_order_relaxed);
           continue;
         }
+#if defined(_WIN32)
+        if (bank->file_handle != INVALID_HANDLE_VALUE) {
+          const uint64_t bank_offset = bank->offset + static_cast<uint64_t>(expert_id) * bank->bytes;
+          if (!ReadFromWinHandleAt(bank->file_handle, bank_offset, dst + bank->destination, bank->bytes)) {
+            return false;
+          }
+          bytes_read.fetch_add(bank->bytes, std::memory_order_relaxed);
+          continue;
+        }
+#endif
         if (bank->mapped_ptr != nullptr) {
           std::memcpy(dst + bank->destination, bank->mapped_ptr + static_cast<size_t>(expert_id) * bank->bytes,
                       bank->bytes);
@@ -573,13 +662,55 @@ struct FileExpertStore::Impl {
       bytes_read.fetch_add(expert_stride, std::memory_order_relaxed);
       return true;
     }
+#else
+    if (file_handle != INVALID_HANDLE_VALUE) {
+      if (!ReadFromWinHandleAt(file_handle, offset, dst, expert_stride)) {
+        return false;
+      }
+      bytes_read.fetch_add(expert_stride, std::memory_order_relaxed);
+      return true;
+    }
 #endif
-    std::ifstream in(file_path, std::ios::binary);
-    if (!in) return false;
-    in.seekg(static_cast<std::streamoff>(offset));
-    if (!in.read(reinterpret_cast<char*>(dst), static_cast<std::streamsize>(expert_stride))) return false;
-    bytes_read.fetch_add(expert_stride, std::memory_order_relaxed);
-    return true;
+    return false;
+  }
+
+  bool HasEmptySlotLocked() const noexcept {
+    for (size_t s = 0; s < cache_slots; ++s) {
+      if (slot_state[s] == kEmpty && slot_pins[s] == 0) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  void RemovePendingExpertLocked(int32_t e) noexcept {
+    if (e < 0 || static_cast<int64_t>(e) >= num_experts || expert_pending[static_cast<size_t>(e)] == 0) {
+      return;
+    }
+    expert_pending[static_cast<size_t>(e)] = 0;
+    for (size_t i = 0; i < pending_experts.size(); ++i) {
+      if (pending_experts[i] == e) {
+        pending_experts.erase(pending_experts.begin() + static_cast<ptrdiff_t>(i));
+        break;
+      }
+    }
+  }
+
+  void PrunePendingLocked() noexcept {
+    const bool has_empty = HasEmptySlotLocked();
+    size_t write_idx = 0;
+    for (size_t i = 0; i < pending_experts.size(); ++i) {
+      const int32_t e = pending_experts[i];
+      if (e < 0 || static_cast<int64_t>(e) >= num_experts || expert_to_slot[static_cast<size_t>(e)] >= 0 ||
+          (!has_empty && expert_pending_gen[static_cast<size_t>(e)] < latest_generation)) {
+        if (e >= 0 && static_cast<int64_t>(e) < num_experts) {
+          expert_pending[static_cast<size_t>(e)] = 0;
+        }
+        continue;
+      }
+      pending_experts[write_idx++] = e;
+    }
+    pending_experts.resize(write_idx);
   }
 
   int SelectVictimSlotLocked() noexcept {
@@ -613,49 +744,51 @@ struct FileExpertStore::Impl {
   void WorkerLoop() {
     std::unique_lock<std::mutex> lock(mutex);
     while (!stop_worker) {
-      if (prefetch_queue.empty()) {
+      PrunePendingLocked();
+      if (pending_experts.empty()) {
         worker_busy = false;
         cv.notify_all();
-        worker_cv.wait(lock, [this] { return stop_worker || !prefetch_queue.empty(); });
+        worker_cv.wait(lock, [this] { return stop_worker || !pending_experts.empty(); });
         continue;
       }
       worker_busy = true;
-      const PrefetchReq req = prefetch_queue.front();
-      prefetch_queue.pop_front();
-      if (req.expert_id < 0 || static_cast<int64_t>(req.expert_id) >= num_experts) {
-        continue;
-      }
-      if (expert_to_slot[req.expert_id] >= 0) {
-        continue;
-      }
-      bool has_empty_slot = false;
-      for (size_t s = 0; s < cache_slots; ++s) {
-        if (slot_state[s] == kEmpty) {
-          has_empty_slot = true;
-          break;
+      // Pop the earliest pending request from the newest generation.
+      size_t best_idx = 0;
+      uint64_t best_gen = expert_pending_gen[static_cast<size_t>(pending_experts[0])];
+      for (size_t i = 1; i < pending_experts.size(); ++i) {
+        const uint64_t g = expert_pending_gen[static_cast<size_t>(pending_experts[i])];
+        if (g > best_gen) {
+          best_gen = g;
+          best_idx = i;
         }
       }
-      if (!has_empty_slot && req.generation < latest_generation) {
+      const int32_t req_expert = pending_experts[best_idx];
+      pending_experts.erase(pending_experts.begin() + static_cast<ptrdiff_t>(best_idx));
+      expert_pending[static_cast<size_t>(req_expert)] = 0;
+      if (expert_to_slot[req_expert] >= 0) {
+        continue;
+      }
+      if (!HasEmptySlotLocked() && best_gen < latest_generation) {
         continue;
       }
       const int victim = SelectVictimSlotLocked();
       if (victim < 0) {
         continue;
       }
-      expert_to_slot[req.expert_id] = victim;
-      slot_expert[victim] = req.expert_id;
+      expert_to_slot[req_expert] = victim;
+      slot_expert[victim] = req_expert;
       slot_state[victim] = kLoading;
       slot_prefetched[victim] = 1;
       uint8_t* dst = aligned_base + static_cast<size_t>(victim) * expert_stride;
       lock.unlock();
-      const bool ok = ReadExpertFromDisk(req.expert_id, dst);
+      const bool ok = ReadExpertFromDisk(req_expert, dst);
       lock.lock();
-      if (ok && slot_expert[victim] == req.expert_id) {
+      if (ok && slot_expert[victim] == req_expert) {
         slot_state[victim] = kReady;
         slot_lru[victim] = ++lru_clock;
       } else {
-        if (slot_expert[victim] == req.expert_id) {
-          expert_to_slot[req.expert_id] = -1;
+        if (slot_expert[victim] == req_expert) {
+          expert_to_slot[req_expert] = -1;
           slot_expert[victim] = -1;
           slot_state[victim] = kEmpty;
           slot_prefetched[victim] = 0;
@@ -677,13 +810,18 @@ void FileExpertStore::Shutdown() noexcept {
   {
     std::lock_guard<std::mutex> lock(impl_->mutex);
     impl_->stop_worker = true;
-    impl_->prefetch_queue.clear();
+    impl_->pending_experts.clear();
   }
   impl_->worker_cv.notify_all();
   if (impl_->worker_thread.joinable()) {
     impl_->worker_thread.join();
   }
-#if !defined(_WIN32)
+#if defined(_WIN32)
+  if (impl_->file_handle != INVALID_HANDLE_VALUE) {
+    CloseHandle(impl_->file_handle);
+    impl_->file_handle = INVALID_HANDLE_VALUE;
+  }
+#else
   if (impl_->fd >= 0) {
     close(impl_->fd);
     impl_->fd = -1;
@@ -804,7 +942,7 @@ bool FileExpertStore::InitializeStorage(const char* file_path, uint64_t file_off
           if (std::sscanf(line.c_str(), "%llx-%llx %4s %llx %x:%x %llu %n", &lo, &hi, perms,
                           &offset, &major_id, &minor_id, &inode, &path_pos) != 7 ||
               address < lo || address + length > hi || perms[0] != 'r' || perms[1] != '-' ||
-              (perms[3] != 's' && perms[3] != 'p') || inode == 0) continue;
+              perms[3] != 's' || inode == 0) continue;
           const std::string path = line.substr(static_cast<size_t>(path_pos));
           bank->fd = open(path.c_str(), O_RDONLY | O_CLOEXEC);
           if (bank->fd < 0) return false;
@@ -827,9 +965,9 @@ bool FileExpertStore::InitializeStorage(const char* file_path, uint64_t file_off
         }
       }
       if (bank->fd < 0) {
-        // Small external initializers (< 1 MiB) or embedded initializers are deserialized into CPU heap
-        // memory rather than mmap'd. Copy into independent resident backing storage so anonymous page
-        // eviction on the caller buffer can never zero uncached expert weights.
+        // Small external initializers (< 1 MiB), modified/private mappings, or embedded initializers are
+        // copied into independent resident backing storage so page eviction or caller buffer reuse can never
+        // corrupt uncached expert weights.
         if (length <= (4ULL << 20) && read_opt_enabled) {
           bank->mapped_ptr = static_cast<const uint8_t*>(source.data);
           bank->bytes = source.expert_bytes;
@@ -848,7 +986,22 @@ bool FileExpertStore::InitializeStorage(const char* file_path, uint64_t file_off
     bank->mapped_ptr = static_cast<const uint8_t*>(source.data);
     bank->bytes = source.expert_bytes;
     bank->destination = source.block_offset;
-    if (source.file_path != nullptr) bank->resolved_path = source.file_path;
+    if (source.file_path != nullptr && source.file_path[0] != '\0') {
+      bank->file_handle = CreateFileA(
+          source.file_path, GENERIC_READ,
+          FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+          nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+      if (bank->file_handle == INVALID_HANDLE_VALUE) return false;
+      LARGE_INTEGER file_size{};
+      if (GetFileType(bank->file_handle) != FILE_TYPE_DISK ||
+          !GetFileSizeEx(bank->file_handle, &file_size) || file_size.QuadPart < 0 ||
+          source.file_offset > static_cast<uint64_t>(file_size.QuadPart) ||
+          length > static_cast<uint64_t>(file_size.QuadPart) - source.file_offset) {
+        return false;
+      }
+      bank->resolved_path = source.file_path;
+      bank->is_file_backed = true;
+    }
     bank->offset = source.file_offset;
     if (source.expert_bytes <= 64 && read_opt_enabled) {
       bank->resident.assign(static_cast<const uint8_t*>(source.data),
@@ -876,11 +1029,20 @@ bool FileExpertStore::InitializeStorage(const char* file_path, uint64_t file_off
     }
   }
 #else
+  HANDLE file_handle = INVALID_HANDLE_VALUE;
   if (file_path) {
-    std::ifstream check_in(file_path, std::ios::binary | std::ios::ate);
-    if (!check_in) return false;
-    const auto file_len = check_in.tellg();
-    if (file_len < 0 || static_cast<uint64_t>(file_len) < file_offset + static_cast<uint64_t>(total_expert_bytes)) return false;
+    file_handle = CreateFileA(
+        file_path, GENERIC_READ,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (file_handle == INVALID_HANDLE_VALUE) return false;
+    LARGE_INTEGER file_len{};
+    if (GetFileType(file_handle) != FILE_TYPE_DISK ||
+        !GetFileSizeEx(file_handle, &file_len) || file_len.QuadPart < 0 ||
+        static_cast<uint64_t>(file_len.QuadPart) < file_offset + static_cast<uint64_t>(total_expert_bytes)) {
+      CloseHandle(file_handle);
+      return false;
+    }
   } else if (read_banks.empty()) {
     return false;
   }
@@ -889,7 +1051,9 @@ bool FileExpertStore::InitializeStorage(const char* file_path, uint64_t file_off
   uint8_t* raw = static_cast<uint8_t*>(std::malloc(alloc_bytes));
   if (!raw) {
 #if !defined(_WIN32)
-    close(fd);
+    if (fd >= 0) close(fd);
+#else
+    if (file_handle != INVALID_HANDLE_VALUE) CloseHandle(file_handle);
 #endif
     return false;
   }
@@ -900,12 +1064,16 @@ bool FileExpertStore::InitializeStorage(const char* file_path, uint64_t file_off
   if (!impl) {
     std::free(raw);
 #if !defined(_WIN32)
-    close(fd);
+    if (fd >= 0) close(fd);
+#else
+    if (file_handle != INVALID_HANDLE_VALUE) CloseHandle(file_handle);
 #endif
     return false;
   }
 #if !defined(_WIN32)
   impl->fd = fd;
+#else
+  impl->file_handle = file_handle;
 #endif
 #if defined(__cpp_exceptions) && !defined(ORT_NO_EXCEPTIONS)
   try {
@@ -952,6 +1120,9 @@ bool FileExpertStore::InitializeStorage(const char* file_path, uint64_t file_off
     impl->slot_pins.assign(eff_slots, 0);
     impl->slot_lru.assign(eff_slots, 0);
     impl->slot_prefetched.assign(eff_slots, 0);
+    impl->pending_experts.reserve(eff_slots);
+    impl->expert_pending.assign(static_cast<size_t>(num_experts), 0);
+    impl->expert_pending_gen.assign(static_cast<size_t>(num_experts), 0);
     if (model_content_id == 0) {
       uint64_t h = 14695981039346656037ULL;
       auto mix_u64 = [&h](uint64_t v) {
@@ -983,6 +1154,8 @@ bool FileExpertStore::InitializeStorage(const char* file_path, uint64_t file_off
   } catch (...) {
 #if !defined(_WIN32)
     if (impl->fd >= 0) close(impl->fd);
+#else
+    if (impl->file_handle != INVALID_HANDLE_VALUE) CloseHandle(impl->file_handle);
 #endif
     std::free(raw);
     delete impl;
@@ -1043,6 +1216,7 @@ bool FileExpertStore::AcquireReady(int32_t expert_id, ExpertBlockLease* out_leas
       continue;
     }
     impl_->ssd_misses.fetch_add(1, std::memory_order_relaxed);
+    impl_->RemovePendingExpertLocked(expert_id);
     impl_->expert_to_slot[expert_id] = victim;
     impl_->slot_expert[victim] = expert_id;
     impl_->slot_state[victim] = Impl::kLoading;
@@ -1106,6 +1280,7 @@ uint8_t* FileExpertStore::BeginReplace(int32_t old_id, int32_t new_id) noexcept 
       impl_->slot_pins[slot] != 0) {
     return nullptr;
   }
+  impl_->RemovePendingExpertLocked(new_id);
   impl_->expert_to_slot[old_id] = -1;
   impl_->expert_to_slot[new_id] = slot;
   impl_->slot_expert[slot] = new_id;
@@ -1177,6 +1352,10 @@ bool FileExpertStore::TryAcquireGroupCached(const int32_t* expert_ids, size_t co
     if (slot < 0 || impl_->slot_state[slot] != Impl::kReady) {
       return false;
     }
+    const uint8_t* ptr = impl_->aligned_base + static_cast<size_t>(slot) * expert_stride_;
+    if (ComputePointerAlignment(ptr) < impl_->min_alignment) {
+      return false;
+    }
   }
   for (size_t i = 0; i < count; ++i) {
     const int32_t e = expert_ids[i];
@@ -1192,7 +1371,7 @@ bool FileExpertStore::TryAcquireGroupCached(const int32_t* expert_ids, size_t co
     const uint8_t* ptr = impl_->aligned_base + static_cast<size_t>(slot) * expert_stride_;
     out_leases[i].data = ptr;
     out_leases[i].length = expert_stride_;
-    out_leases[i].alignment = impl_->min_alignment;
+    out_leases[i].alignment = ComputePointerAlignment(ptr);
     out_leases[i].content_id = model_content_id_;
   }
   return true;
@@ -1238,12 +1417,39 @@ bool FileExpertStore::Prefetch(const int32_t* expert_ids, size_t count, uint64_t
     if (generation > impl_->latest_generation) {
       impl_->latest_generation = generation;
     }
+    impl_->PrunePendingLocked();
     for (size_t i = 0; i < count; ++i) {
       const int32_t e = expert_ids[i];
-      if (impl_->expert_to_slot[e] < 0) {
-        impl_->prefetch_queue.push_back({e, generation});
-        queued_any = true;
+      if (impl_->expert_to_slot[e] >= 0) {
+        continue;
       }
+      if (impl_->expert_pending[static_cast<size_t>(e)] != 0) {
+        if (generation >= impl_->expert_pending_gen[static_cast<size_t>(e)]) {
+          impl_->expert_pending_gen[static_cast<size_t>(e)] = generation;
+        }
+        continue;
+      }
+      if (impl_->pending_experts.size() >= impl_->cache_slots) {
+        size_t victim_idx = 0;
+        uint64_t min_gen = impl_->expert_pending_gen[static_cast<size_t>(impl_->pending_experts[0])];
+        for (size_t k = 1; k < impl_->pending_experts.size(); ++k) {
+          const uint64_t g = impl_->expert_pending_gen[static_cast<size_t>(impl_->pending_experts[k])];
+          if (g < min_gen) {
+            min_gen = g;
+            victim_idx = k;
+          }
+        }
+        if (min_gen > generation) {
+          continue;
+        }
+        const int32_t dropped = impl_->pending_experts[victim_idx];
+        impl_->expert_pending[static_cast<size_t>(dropped)] = 0;
+        impl_->pending_experts.erase(impl_->pending_experts.begin() + static_cast<ptrdiff_t>(victim_idx));
+      }
+      impl_->expert_pending[static_cast<size_t>(e)] = 1;
+      impl_->expert_pending_gen[static_cast<size_t>(e)] = generation;
+      impl_->pending_experts.push_back(e);
+      queued_any = true;
     }
   }
   if (queued_any) {
@@ -1255,7 +1461,7 @@ bool FileExpertStore::Prefetch(const int32_t* expert_ids, size_t count, uint64_t
 void FileExpertStore::WaitPrefetchIdle() noexcept {
   if (!initialized_ || !impl_) return;
   std::unique_lock<std::mutex> lock(impl_->mutex);
-  impl_->cv.wait(lock, [this] { return impl_->prefetch_queue.empty() && !impl_->worker_busy; });
+  impl_->cv.wait(lock, [this] { return impl_->pending_experts.empty() && !impl_->worker_busy; });
 }
 
 uint8_t* FileExpertStore::CacheBase() const noexcept {
@@ -1272,7 +1478,7 @@ bool FileExpertStore::IsBankFileBacked(size_t bank_index) const noexcept {
 #if !defined(_WIN32)
     return impl_->fd >= 0;
 #else
-    return !impl_->file_path.empty();
+    return impl_->file_handle != INVALID_HANDLE_VALUE;
 #endif
   }
   if (bank_index >= impl_->banks.size()) return false;
@@ -1285,7 +1491,7 @@ bool FileExpertStore::AreAllBanksFileBacked() const noexcept {
 #if !defined(_WIN32)
     return impl_->fd >= 0;
 #else
-    return !impl_->file_path.empty();
+    return impl_->file_handle != INVALID_HANDLE_VALUE;
 #endif
   }
   for (const auto& b : impl_->banks) {
@@ -1312,7 +1518,7 @@ bool IsFileBackedReadOnlyMapping(const void* data, size_t bytes) noexcept {
       continue;
     }
     if (address < lo || address + bytes > hi) continue;
-    if (perms[0] != 'r' || perms[1] != '-' || (perms[3] != 's' && perms[3] != 'p') || inode == 0) {
+    if (perms[0] != 'r' || perms[1] != '-' || perms[3] != 's' || inode == 0) {
       return false;
     }
     const std::string path = line.substr(static_cast<size_t>(path_pos));
@@ -1560,6 +1766,78 @@ void ReorderActivationRow(const float* src, float* dst, int64_t k) {
   }
 }
 
+void ReorderRawInt4ActivationRow(const float* src, float* dst, int64_t k) {
+  for (int64_t kb = 0; kb < k / kBlockSize; ++kb) {
+    const float* s = src + kb * kBlockSize;
+    float* d = dst + kb * kBlockSize;
+    for (int b = 0; b < 16; ++b) {
+      d[b] = s[2 * b];
+      d[16 + b] = s[2 * b + 1];
+    }
+  }
+}
+
+void PackSm80Int4Weights(const uint8_t* raw_weights, uint8_t* sm80_weights, int64_t n_total, int64_t k_total) {
+  if (!raw_weights || !sm80_weights || n_total <= 0 || k_total <= 0 ||
+      (n_total % kColumnsInterleaved) != 0 || (k_total % kRowsPerTile) != 0) {
+    return;
+  }
+  const int64_t blocks = k_total / kBlockSize;
+  const int64_t raw_row_stride = k_total / 2;
+  for (int64_t n = 0; n < n_total; ++n) {
+    const uint8_t* raw_row = raw_weights + n * raw_row_stride;
+    uint8_t* group = sm80_weights + (n / kColumnsInterleaved) * (kColumnsInterleaved * k_total / 2);
+    const int64_t c = n % kColumnsInterleaved;
+    for (int64_t kb = 0; kb < blocks; ++kb) {
+      const uint8_t* raw_blk = raw_row + kb * 16;
+      uint8_t* dst_bytes = group + (kb >> 1) * 128 + c * 32 + (kb & 1) * 16;
+      for (int b = 0; b < 16; ++b) {
+        const int k_lo = LowNibbleK(b);
+        const int k_hi = k_lo + 8;
+        const uint8_t code_lo = (raw_blk[k_lo >> 1] >> ((k_lo & 1) * 4)) & 0x0F;
+        const uint8_t code_hi = (raw_blk[k_hi >> 1] >> ((k_hi & 1) * 4)) & 0x0F;
+        dst_bytes[b] = static_cast<uint8_t>(code_lo | (code_hi << 4));
+      }
+    }
+  }
+}
+
+void UnpackSm80Int4Weights(const uint8_t* sm80_weights, uint8_t* raw_weights, int64_t n_total, int64_t k_total) {
+  if (!sm80_weights || !raw_weights || n_total <= 0 || k_total <= 0 ||
+      (n_total % kColumnsInterleaved) != 0 || (k_total % kRowsPerTile) != 0) {
+    return;
+  }
+  const int64_t blocks = k_total / kBlockSize;
+  const int64_t raw_row_stride = k_total / 2;
+  std::memset(raw_weights, 0, static_cast<size_t>(n_total * raw_row_stride));
+  for (int64_t n = 0; n < n_total; ++n) {
+    uint8_t* raw_row = raw_weights + n * raw_row_stride;
+    const uint8_t* group = sm80_weights + (n / kColumnsInterleaved) * (kColumnsInterleaved * k_total / 2);
+    const int64_t c = n % kColumnsInterleaved;
+    for (int64_t kb = 0; kb < blocks; ++kb) {
+      uint8_t* raw_blk = raw_row + kb * 16;
+      const uint8_t* src_bytes = group + (kb >> 1) * 128 + c * 32 + (kb & 1) * 16;
+      for (int b = 0; b < 16; ++b) {
+        const int k_lo = LowNibbleK(b);
+        const int k_hi = k_lo + 8;
+        const uint8_t code_lo = src_bytes[b] & 0x0F;
+        const uint8_t code_hi = src_bytes[b] >> 4;
+        raw_blk[k_lo >> 1] |= static_cast<uint8_t>(code_lo << ((k_lo & 1) * 4));
+        raw_blk[k_hi >> 1] |= static_cast<uint8_t>(code_hi << ((k_hi & 1) * 4));
+      }
+    }
+  }
+}
+
+void TransposeInt4Scales(const uint16_t* src, uint16_t* dst, int64_t rows, int64_t cols) {
+  if (!src || !dst || rows <= 0 || cols <= 0) return;
+  for (int64_t r = 0; r < rows; ++r) {
+    for (int64_t c = 0; c < cols; ++c) {
+      dst[c * rows + r] = src[r * cols + c];
+    }
+  }
+}
+
 void ReorderNvfp4ActivationRow(const float* src, float* dst, int64_t k) {
   const int64_t k_pairs = k / 32;
   for (int64_t kp = 0; kp < k_pairs; ++kp) {
@@ -1725,6 +2003,107 @@ bool ExpertForward(const ExpertBlockLayout& layout, const uint8_t* block, const 
   return true;
 }
 
+void Int4GemmRange(const uint8_t* weights, const uint16_t* scales, const uint16_t* bias,
+                   bool scales_are_block_major, bool weights_are_prepacked,
+                   bool scale_is_bf16, bool bias_is_bf16,
+                   int64_t n_total, int64_t k, const float* a_reordered, int64_t m,
+                   float* out, int64_t out_stride, int64_t n_begin, int64_t n_end,
+                   bool force_scalar) {
+#if QMOE_COMPILER_SUPPORTS_AVX512
+  if (!force_scalar && CpuHasAvx512()) {
+    detail::Avx512Int4GemmRange(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
+                                scale_is_bf16, bias_is_bf16, n_total, k, a_reordered, m,
+                                out, out_stride, n_begin, n_end);
+    return;
+  }
+#endif
+  (void)force_scalar;
+  ScalarInt4GemmRange(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
+                      scale_is_bf16, bias_is_bf16, n_total, k, a_reordered, m,
+                      out, out_stride, n_begin, n_end);
+}
+
+void Int4Fc1SwiGluRange(int64_t hidden, int64_t inter, const Int4ExpertView& view,
+                        const float* x_reordered, int64_t m, const SwiGluParams& swiglu,
+                        float* inter_reordered, int64_t n_begin, int64_t n_end,
+                        bool force_scalar, bool bf16_boundaries, bool fp16_boundaries) {
+  constexpr int64_t kChunk = 64;
+  float tmp[kMaxRowsPerCall * kChunk];
+  const int64_t n_total = 2 * inter;
+  for (int64_t nb = n_begin; nb < n_end; nb += kChunk) {
+    const int64_t ne = std::min(nb + kChunk, n_end);
+    Int4GemmRange(view.fc1_weights, view.fc1_scales, view.fc1_bias,
+                  view.scales_are_block_major, view.weights_are_prepacked,
+                  view.scale_is_bf16, view.bias_is_bf16,
+                  n_total, hidden, x_reordered, m, tmp, kChunk, nb, ne, force_scalar);
+    for (int64_t n = nb; n < ne; n += 2) {
+      const int64_t j = n / 2;
+      const int pos = view.weights_are_prepacked ? ReorderedPosition(static_cast<int>(j & 31))
+                                                 : RawInt4ReorderedPosition(static_cast<int>(j & 31));
+      for (int64_t r = 0; r < m; ++r) {
+        const float gate_projection = tmp[r * kChunk + (n - nb)];
+        const float up_projection = tmp[r * kChunk + (n - nb) + 1];
+        float gate = bf16_boundaries   ? RoundBf16Fast(gate_projection)
+                     : fp16_boundaries ? BoundaryFloat16::Round(gate_projection)
+                                       : gate_projection;
+        float value = bf16_boundaries   ? RoundBf16Fast(up_projection)
+                      : fp16_boundaries ? BoundaryFloat16::Round(up_projection)
+                                        : up_projection;
+        if (std::isfinite(swiglu.limit)) {
+          gate = std::min(gate, swiglu.limit);
+          value = std::clamp(value, -swiglu.limit, swiglu.limit);
+        }
+        const float act = gate / (1.0f + std::exp(-swiglu.alpha * gate)) * (value + swiglu.beta);
+        const float rounded_act = bf16_boundaries   ? RoundBf16Fast(act)
+                                  : fp16_boundaries ? BoundaryFloat16::Round(act)
+                                                    : act;
+        inter_reordered[r * inter + (j & ~int64_t{31}) + pos] = rounded_act;
+      }
+    }
+  }
+}
+
+void Int4Fc2Range(int64_t hidden, int64_t inter, const Int4ExpertView& view,
+                  const float* inter_reordered, int64_t m, float* out,
+                  int64_t n_begin, int64_t n_end, bool force_scalar,
+                  bool apply_bias) {
+  Int4GemmRange(view.fc2_weights, view.fc2_scales, apply_bias ? view.fc2_bias : nullptr,
+                view.scales_are_block_major, view.weights_are_prepacked,
+                view.scale_is_bf16, view.bias_is_bf16,
+                hidden, inter, inter_reordered, m, out + n_begin, hidden,
+                n_begin, n_end, force_scalar);
+}
+
+bool Int4ExpertForward(int64_t hidden, int64_t inter, const Int4ExpertView& view,
+                       const float* x, int64_t m, const SwiGluParams& swiglu, float* out,
+                       bool force_scalar, bool apply_fc2_bias,
+                       bool bf16_boundaries, bool fp16_boundaries) {
+  if (m < 1 || m > kMaxRowsPerCall || hidden <= 0 || inter <= 0 || (hidden % kBlockSize) != 0 ||
+      (inter % kBlockSize) != 0) {
+    return false;
+  }
+  if (view.weights_are_prepacked &&
+      ((hidden % kRowsPerTile) != 0 || (inter % kRowsPerTile) != 0 ||
+       ((2 * inter) % kColumnsInterleaved) != 0 || (hidden % kColumnsInterleaved) != 0)) {
+    return false;
+  }
+  if (!view.fc1_weights || !view.fc1_scales || !view.fc2_weights || !view.fc2_scales) return false;
+  std::vector<float> xr(static_cast<size_t>(m * hidden));
+  std::vector<float> inter_buf(static_cast<size_t>(m * inter));
+  for (int64_t r = 0; r < m; ++r) {
+    if (view.weights_are_prepacked) {
+      ReorderActivationRow(x + r * hidden, xr.data() + r * hidden, hidden);
+    } else {
+      ReorderRawInt4ActivationRow(x + r * hidden, xr.data() + r * hidden, hidden);
+    }
+  }
+  Int4Fc1SwiGluRange(hidden, inter, view, xr.data(), m, swiglu, inter_buf.data(),
+                     0, 2 * inter, force_scalar, bf16_boundaries, fp16_boundaries);
+  Int4Fc2Range(hidden, inter, view, inter_buf.data(), m, out,
+               0, hidden, force_scalar, apply_fc2_bias);
+  return true;
+}
+
 void Nvfp4GemmRange(const uint8_t* weights, const uint8_t* block_scales, float global_scale,
                     const uint16_t* bias, bool bias_is_bf16, int64_t n_total, int64_t k,
                     const float* a_reordered, int64_t m, float* out, int64_t out_stride,
@@ -1883,6 +2262,30 @@ int qmoe_shared_accepts_prepack_contract(int64_t weights_prepacked, int64_t bloc
 int qmoe_shared_weight_code_at(const uint8_t* weights, int64_t n_total, int64_t k_total, int64_t n,
                                int64_t k) {
   return WeightCodeAt(weights, n_total, k_total, n, k);
+}
+
+int qmoe_int4_expert_contribution(const uint8_t* fc1_w, const uint16_t* fc1_s, const uint16_t* fc1_b,
+                                  const uint8_t* fc2_w, const uint16_t* fc2_s, const uint16_t* fc2_b,
+                                  int64_t hidden, int64_t inter, const float* x, int64_t m,
+                                  float* out, float alpha, float beta, float limit,
+                                  int weights_prepacked, int is_bf16, int apply_fc2_bias, int force_scalar) {
+  Int4ExpertView view{};
+  view.fc1_weights = fc1_w;
+  view.fc1_scales = fc1_s;
+  view.fc1_bias = fc1_b;
+  view.fc2_weights = fc2_w;
+  view.fc2_scales = fc2_s;
+  view.fc2_bias = fc2_b;
+  view.scales_are_block_major = false;
+  view.weights_are_prepacked = (weights_prepacked != 0);
+  view.scale_is_bf16 = (is_bf16 != 0);
+  view.bias_is_bf16 = (is_bf16 != 0);
+  SwiGluParams params{alpha, beta, limit};
+  return Int4ExpertForward(hidden, inter, view, x, m, params, out, force_scalar != 0,
+                           apply_fc2_bias != 0, /*bf16_boundaries=*/is_bf16 != 0,
+                           /*fp16_boundaries=*/is_bf16 == 0)
+             ? 1
+             : 0;
 }
 
 int qmoe_nvfp4_expert_contribution_bf16(const uint8_t* fc1_w, const uint8_t* fc1_s, float fc1_g,

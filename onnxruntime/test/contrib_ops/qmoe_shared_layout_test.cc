@@ -5,10 +5,21 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <limits>
+#include <string>
 #include <utility>
 #include <vector>
+
+#if defined(__linux__)
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <unistd.h>
+#endif
 
 #include "gtest/gtest.h"
 #include "contrib_ops/cpu/moe/qmoe_shared_layout.h"
@@ -27,6 +38,155 @@ TEST(QMoESharedLayoutTest, StorageRangeChecksOffsetEvenWithoutExternalLength) {
   EXPECT_TRUE(shared::ValidateExpertStorageRange(2, 256, max_offset - 512, 0, &bytes));
   EXPECT_EQ(bytes, 512U);
   EXPECT_TRUE(shared::ValidateExpertStorageRange(2, 256, max_offset - 512, 512));
+}
+
+TEST(QMoESharedLayoutTest, TensorExpertStoreRejectsEmptyOrNullBuffers) {
+  std::vector<uint8_t> raw(512 + shared::kBankAlignment, 0);
+  const uintptr_t addr =
+      (reinterpret_cast<uintptr_t>(raw.data()) + shared::kBankAlignment - 1) & ~(shared::kBankAlignment - 1);
+  auto* aligned_ptr = reinterpret_cast<uint8_t*>(addr);
+  shared::TensorExpertStore store;
+  EXPECT_FALSE(store.Initialize(nullptr, 512, 2, 256, 256, 0));
+  EXPECT_FALSE(store.Initialize(nullptr, 512, 2, 256, 256, 42));
+  EXPECT_FALSE(store.Initialize(aligned_ptr, 0, 2, 256, 256, 0));
+  EXPECT_FALSE(store.Initialize(aligned_ptr, 0, 2, 256, 256, 42));
+  EXPECT_FALSE(store.Initialize(aligned_ptr, 256, 2, 256, 256, 42));
+  EXPECT_TRUE(store.Initialize(aligned_ptr, 512, 2, 256, 256, 0));
+}
+
+TEST(QMoESharedLayoutTest, LargeAlignmentRequirementsSupportedInTensorAndFileStores) {
+  constexpr size_t kLargeAlign = 8192;
+  constexpr size_t kNumExperts = 2;
+  constexpr size_t kTotalBytes = kNumExperts * kLargeAlign;
+  void* raw = std::malloc(kTotalBytes + kLargeAlign);
+  ASSERT_NE(raw, nullptr);
+  const uintptr_t addr = (reinterpret_cast<uintptr_t>(raw) + kLargeAlign - 1) & ~(kLargeAlign - 1);
+  auto* aligned_ptr = reinterpret_cast<uint8_t*>(addr);
+  std::fill_n(aligned_ptr, kLargeAlign, uint8_t{0x12});
+  std::fill_n(aligned_ptr + kLargeAlign, kLargeAlign, uint8_t{0x34});
+
+  EXPECT_GE(shared::ComputePointerAlignment(aligned_ptr), kLargeAlign);
+  shared::ExpertBlockLease lease{};
+  ASSERT_TRUE(shared::MakeExpertBlockLease(aligned_ptr, kLargeAlign, kLargeAlign, &lease));
+  EXPECT_GE(lease.alignment, kLargeAlign);
+
+  shared::TensorExpertStore tensor_store;
+  ASSERT_TRUE(tensor_store.Initialize(aligned_ptr, kTotalBytes, kNumExperts, kLargeAlign, kLargeAlign));
+  ASSERT_TRUE(tensor_store.AcquireReady(0, &lease));
+  EXPECT_GE(lease.alignment, kLargeAlign);
+  EXPECT_EQ(lease.data[0], 0x12);
+  ASSERT_TRUE(tensor_store.AcquireReady(1, &lease));
+  EXPECT_GE(lease.alignment, kLargeAlign);
+  EXPECT_EQ(lease.data[0], 0x34);
+
+  const auto tmp_path = std::filesystem::temp_directory_path() / "ort_qmoe_align8192_test.bin";
+  {
+    std::ofstream out(tmp_path, std::ios::binary | std::ios::trunc);
+    ASSERT_TRUE(out.is_open());
+    out.write(reinterpret_cast<const char*>(aligned_ptr), static_cast<std::streamsize>(kTotalBytes));
+  }
+  shared::FileExpertStore file_store;
+  ASSERT_TRUE(file_store.Initialize(tmp_path.string().c_str(), 0, kNumExperts, kLargeAlign, 2, kLargeAlign));
+  ASSERT_TRUE(file_store.AcquireReady(0, &lease));
+  EXPECT_GE(lease.alignment, kLargeAlign);
+  EXPECT_EQ(lease.data[0], 0x12);
+  file_store.ReleaseLease(0);
+  ASSERT_TRUE(file_store.TryAcquireCached(0, &lease));
+  EXPECT_GE(lease.alignment, kLargeAlign);
+  file_store.ReleaseLease(0);
+  const int32_t group_id = 0;
+  ASSERT_TRUE(file_store.TryAcquireGroupCached(&group_id, 1, &lease));
+  EXPECT_GE(lease.alignment, kLargeAlign);
+  file_store.ReleaseGroupLeases(&group_id, 1);
+  file_store.Shutdown();
+  std::filesystem::remove(tmp_path);
+  std::free(raw);
+}
+
+TEST(QMoESharedLayoutTest, FileStoreRetainsOpenHandleAcrossPathReplacement) {
+  constexpr size_t kStride = shared::kBankAlignment;
+  constexpr int64_t kNumExperts = 2;
+  const auto dir = std::filesystem::temp_directory_path();
+  const auto orig_path = dir / "ort_qmoe_handle_orig.bin";
+  const auto moved_path = dir / "ort_qmoe_handle_moved.bin";
+  std::filesystem::remove(orig_path);
+  std::filesystem::remove(moved_path);
+
+  {
+    std::vector<uint8_t> initial(kNumExperts * kStride);
+    std::fill_n(initial.data(), kStride, uint8_t{0x11});
+    std::fill_n(initial.data() + kStride, kStride, uint8_t{0x22});
+    std::ofstream out(orig_path, std::ios::binary | std::ios::trunc);
+    ASSERT_TRUE(out.is_open());
+    out.write(reinterpret_cast<const char*>(initial.data()), static_cast<std::streamsize>(initial.size()));
+  }
+
+  shared::FileExpertStore store;
+  ASSERT_TRUE(store.Initialize(orig_path.string().c_str(), 0, kNumExperts, kStride, /*cache_slots=*/1));
+  EXPECT_TRUE(store.IsBankFileBacked(0));
+  EXPECT_TRUE(store.AreAllBanksFileBacked());
+
+  shared::ExpertBlockLease lease{};
+  ASSERT_TRUE(store.AcquireReady(0, &lease));
+  EXPECT_EQ(lease.data[0], 0x11);
+  store.ReleaseLease(0);
+
+  // Rename the active file path and write a replacement file with different contents at orig_path.
+  std::error_code ec;
+  std::filesystem::rename(orig_path, moved_path, ec);
+  ASSERT_FALSE(ec) << ec.message();
+  {
+    std::vector<uint8_t> replacement(kNumExperts * kStride, uint8_t{0x99});
+    std::ofstream out(orig_path, std::ios::binary | std::ios::trunc);
+    ASSERT_TRUE(out.is_open());
+    out.write(reinterpret_cast<const char*>(replacement.data()), static_cast<std::streamsize>(replacement.size()));
+  }
+
+  // Subsequent cache miss on expert 1 must read from the retained handle (0x22), never the replacement (0x99).
+  ASSERT_TRUE(store.AcquireReady(1, &lease));
+  EXPECT_EQ(lease.data[0], 0x22);
+  store.ReleaseLease(1);
+  store.Shutdown();
+
+  std::filesystem::remove(orig_path, ec);
+  std::filesystem::remove(moved_path, ec);
+}
+
+TEST(QMoESharedLayoutTest, PrefetchCoalescesDuplicatesRefreshesGenerationAndBoundsQueue) {
+  constexpr size_t kStride = shared::kBankAlignment;
+  constexpr int64_t kNumExperts = 6;
+  const auto tmp_path = std::filesystem::temp_directory_path() / "ort_qmoe_prefetch_coalesce.bin";
+  {
+    std::vector<uint8_t> data(static_cast<size_t>(kNumExperts) * kStride);
+    for (int64_t e = 0; e < kNumExperts; ++e) {
+      std::fill_n(data.data() + static_cast<size_t>(e) * kStride, kStride, static_cast<uint8_t>(e + 10));
+    }
+    std::ofstream out(tmp_path, std::ios::binary | std::ios::trunc);
+    ASSERT_TRUE(out.is_open());
+    out.write(reinterpret_cast<const char*>(data.data()), static_cast<std::streamsize>(data.size()));
+  }
+
+  shared::FileExpertStore store;
+  ASSERT_TRUE(store.Initialize(tmp_path.string().c_str(), 0, kNumExperts, kStride, /*cache_slots=*/2));
+  const std::array<int32_t, 6> dup_batch{0, 0, 0, 1, 1, 0};
+  ASSERT_TRUE(store.Prefetch(dup_batch.data(), dup_batch.size(), 1));
+  const std::array<int32_t, 4> gen2_batch{2, 3, 2, 3};
+  ASSERT_TRUE(store.Prefetch(gen2_batch.data(), gen2_batch.size(), 2));
+  // Refresh expert 0 to generation 3 and enqueue expert 5 at generation 3.
+  const std::array<int32_t, 4> gen3_batch{0, 5, 0, 5};
+  ASSERT_TRUE(store.Prefetch(gen3_batch.data(), gen3_batch.size(), 3));
+  store.WaitPrefetchIdle();
+
+  shared::ExpertBlockLease lease{};
+  ASSERT_TRUE(store.AcquireReady(0, &lease));
+  EXPECT_EQ(lease.data[0], 10);
+  store.ReleaseLease(0);
+  ASSERT_TRUE(store.AcquireReady(5, &lease));
+  EXPECT_EQ(lease.data[0], 15);
+  store.ReleaseLease(5);
+
+  store.Shutdown();
+  std::filesystem::remove(tmp_path);
 }
 
 TEST(QMoESharedLayoutTest, HalfConversionPreservesSignedZero) {
@@ -183,7 +343,173 @@ TEST(QMoESharedLayoutTest, MappedStoreHonorsPinsAndRollsBackFailedGroups) {
   EXPECT_EQ(lease.data[0], 3);
   store.ReleaseLease(2);
 }
+
+TEST(QMoESharedLayoutTest, ModifiedPrivateReadOnlyMappingExcludedFromReloadAndEviction) {
+  const long page_raw = sysconf(_SC_PAGESIZE);
+  const size_t page_size = (page_raw > 0) ? static_cast<size_t>(page_raw) : 4096u;
+  const size_t expert_bytes = page_size * 2;
+  constexpr int64_t num_experts = 2;
+  const size_t total_bytes = static_cast<size_t>(num_experts) * expert_bytes;
+
+  const auto tmp_path = std::filesystem::temp_directory_path() / "ort_qmoe_private_map_test.bin";
+  {
+    std::vector<uint8_t> file_bytes(total_bytes, uint8_t{0x11});
+    std::ofstream out(tmp_path, std::ios::binary | std::ios::trunc);
+    ASSERT_TRUE(out.is_open());
+    out.write(reinterpret_cast<const char*>(file_bytes.data()), static_cast<std::streamsize>(file_bytes.size()));
+  }
+
+  const int fd = open(tmp_path.c_str(), O_RDONLY | O_CLOEXEC);
+  ASSERT_GE(fd, 0);
+
+  void* priv_map = mmap(nullptr, total_bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
+  ASSERT_NE(priv_map, MAP_FAILED);
+  auto* priv_bytes = static_cast<uint8_t*>(priv_map);
+  std::fill_n(priv_bytes, expert_bytes, uint8_t{0x22});
+  std::fill_n(priv_bytes + expert_bytes, expert_bytes, uint8_t{0x33});
+  ASSERT_EQ(mprotect(priv_map, total_bytes, PROT_READ), 0);
+
+  // A modified MAP_PRIVATE mapping frozen to PROT_READ (r--p) must not be treated as reloadable from file.
+  EXPECT_FALSE(shared::IsFileBackedReadOnlyMapping(priv_map, total_bytes));
+  EXPECT_EQ(shared::EvictFileBackedHostPages(priv_map, total_bytes), 0U);
+  EXPECT_EQ(priv_bytes[0], 0x22);
+  EXPECT_EQ(priv_bytes[expert_bytes], 0x33);
+
+  shared::FileExpertStore store;
+  shared::FileExpertStore::MappedBank bank{priv_map, expert_bytes, 0, nullptr, 0};
+  ASSERT_TRUE(store.InitializeMapped(&bank, 1, num_experts, expert_bytes, /*cache_slots=*/1));
+  EXPECT_FALSE(store.IsBankFileBacked(0));
+  EXPECT_EQ(store.ResidentBackingBytes(), total_bytes);
+
+  shared::ExpertBlockLease lease{};
+  ASSERT_TRUE(store.AcquireReady(0, &lease));
+  EXPECT_EQ(lease.data[0], 0x22);
+  store.ReleaseLease(0);
+  ASSERT_TRUE(store.AcquireReady(1, &lease));
+  EXPECT_EQ(lease.data[0], 0x33);
+  store.ReleaseLease(1);
+  store.Shutdown();
+
+  // Verify that a genuine shared read-only mapping (r--s) is accepted.
+  void* shared_map = mmap(nullptr, total_bytes, PROT_READ, MAP_SHARED, fd, 0);
+  ASSERT_NE(shared_map, MAP_FAILED);
+  EXPECT_TRUE(shared::IsFileBackedReadOnlyMapping(shared_map, total_bytes));
+  EXPECT_EQ(shared::EvictFileBackedHostPages(shared_map, total_bytes), total_bytes);
+
+  munmap(shared_map, total_bytes);
+  munmap(priv_map, total_bytes);
+  close(fd);
+  std::filesystem::remove(tmp_path);
+}
 #endif
+
+TEST(QMoESharedLayoutTest, CanonicalInt4ExpertViewMatchesReferenceAcrossPrepackedRawFp16AndBf16) {
+  constexpr int64_t hidden = 128;
+  constexpr int64_t inter = 64;
+  constexpr int64_t n1 = 2 * inter;
+  std::vector<uint8_t> fc1_raw(static_cast<size_t>(n1 * (hidden / 2)));
+  std::vector<uint8_t> fc2_raw(static_cast<size_t>(hidden * (inter / 2)));
+  for (size_t i = 0; i < fc1_raw.size(); ++i) fc1_raw[i] = static_cast<uint8_t>((i * 73 + 19) & 0xFF);
+  for (size_t i = 0; i < fc2_raw.size(); ++i) fc2_raw[i] = static_cast<uint8_t>((i * 41 + 7) & 0xFF);
+
+  std::vector<uint8_t> fc1_sm80(fc1_raw.size());
+  std::vector<uint8_t> fc2_sm80(fc2_raw.size());
+  shared::PackSm80Int4Weights(fc1_raw.data(), fc1_sm80.data(), n1, hidden);
+  shared::PackSm80Int4Weights(fc2_raw.data(), fc2_sm80.data(), hidden, inter);
+
+  std::vector<uint8_t> fc1_unpacked(fc1_raw.size());
+  shared::UnpackSm80Int4Weights(fc1_sm80.data(), fc1_unpacked.data(), n1, hidden);
+  EXPECT_EQ(fc1_unpacked, fc1_raw);
+  for (int64_t n = 0; n < n1; ++n) {
+    for (int64_t k = 0; k < hidden; ++k) {
+      const uint8_t raw_byte = fc1_raw[static_cast<size_t>(n * (hidden / 2) + (k / 2))];
+      const uint8_t expected_code = (k & 1) ? (raw_byte >> 4) : (raw_byte & 0x0F);
+      EXPECT_EQ(shared::WeightCodeAt(fc1_sm80.data(), n1, hidden, n, k), expected_code);
+    }
+  }
+
+  std::vector<uint16_t> fc1_s_fp16(static_cast<size_t>(n1 * (hidden / 32)));
+  std::vector<uint16_t> fc2_s_fp16(static_cast<size_t>(hidden * (inter / 32)));
+  std::vector<uint16_t> fc1_s_bf16(fc1_s_fp16.size());
+  std::vector<uint16_t> fc2_s_bf16(fc2_s_fp16.size());
+  for (size_t i = 0; i < fc1_s_fp16.size(); ++i) {
+    const float v = static_cast<float>((i % 7) + 1) / 64.0f;
+    fc1_s_fp16[i] = shared::FloatToHalf(v);
+    fc1_s_bf16[i] = shared::FloatToBFloat16(v);
+  }
+  for (size_t i = 0; i < fc2_s_fp16.size(); ++i) {
+    const float v = static_cast<float>((i % 5) + 1) / 64.0f;
+    fc2_s_fp16[i] = shared::FloatToHalf(v);
+    fc2_s_bf16[i] = shared::FloatToBFloat16(v);
+  }
+  std::vector<uint16_t> fc1_b_fp16(static_cast<size_t>(n1));
+  std::vector<uint16_t> fc2_b_fp16(static_cast<size_t>(hidden));
+  std::vector<uint16_t> fc1_b_bf16(static_cast<size_t>(n1));
+  std::vector<uint16_t> fc2_b_bf16(static_cast<size_t>(hidden));
+  for (int64_t i = 0; i < n1; ++i) {
+    const float v = static_cast<float>((i % 9) - 4) / 32.0f;
+    fc1_b_fp16[static_cast<size_t>(i)] = shared::FloatToHalf(v);
+    fc1_b_bf16[static_cast<size_t>(i)] = shared::FloatToBFloat16(v);
+  }
+  for (int64_t i = 0; i < hidden; ++i) {
+    const float v = static_cast<float>((i % 11) - 5) / 32.0f;
+    fc2_b_fp16[static_cast<size_t>(i)] = shared::FloatToHalf(v);
+    fc2_b_bf16[static_cast<size_t>(i)] = shared::FloatToBFloat16(v);
+  }
+
+  // Build legacy SharedExpertBlockV1 block to cross-check FP16 prepacked parity.
+  shared::ExpertBlockLayout blk_layout;
+  ASSERT_TRUE(shared::MakeExpertBlockLayout(hidden, inter, &blk_layout));
+  std::vector<uint8_t> blk(blk_layout.stride, 0);
+  std::memcpy(blk.data() + blk_layout.fc1_weights, fc1_sm80.data(), fc1_sm80.size());
+  shared::TransposeInt4Scales(fc1_s_fp16.data(), reinterpret_cast<uint16_t*>(blk.data() + blk_layout.fc1_scales),
+                              n1, hidden / 32);
+  std::memcpy(blk.data() + blk_layout.fc1_bias, fc1_b_fp16.data(), fc1_b_fp16.size() * sizeof(uint16_t));
+  std::memcpy(blk.data() + blk_layout.fc2_weights, fc2_sm80.data(), fc2_sm80.size());
+  shared::TransposeInt4Scales(fc2_s_fp16.data(), reinterpret_cast<uint16_t*>(blk.data() + blk_layout.fc2_scales),
+                              hidden, inter / 32);
+  std::memcpy(blk.data() + blk_layout.fc2_bias, fc2_b_fp16.data(), fc2_b_fp16.size() * sizeof(uint16_t));
+
+  constexpr int64_t rows = 5;
+  std::vector<float> x(static_cast<size_t>(rows * hidden));
+  for (size_t i = 0; i < x.size(); ++i) x[i] = static_cast<float>(static_cast<int>(i % 19) - 9) / 32.0f;
+  const shared::SwiGluParams swiglu{1.702f, 1.0f, 7.0f};
+
+  std::vector<float> ref_blk_out(static_cast<size_t>(rows * hidden));
+  ASSERT_TRUE(shared::ExpertForward(blk_layout, blk.data(), x.data(), rows, swiglu, ref_blk_out.data(),
+                                    /*force_scalar=*/true, /*apply_fc2_bias=*/true, /*fp16_boundaries=*/true));
+
+  for (bool prepacked : {true, false}) {
+    for (bool is_bf16 : {false, true}) {
+      shared::Int4ExpertView view{};
+      view.fc1_weights = prepacked ? fc1_sm80.data() : fc1_raw.data();
+      view.fc1_scales = is_bf16 ? fc1_s_bf16.data() : fc1_s_fp16.data();
+      view.fc1_bias = is_bf16 ? fc1_b_bf16.data() : fc1_b_fp16.data();
+      view.fc2_weights = prepacked ? fc2_sm80.data() : fc2_raw.data();
+      view.fc2_scales = is_bf16 ? fc2_s_bf16.data() : fc2_s_fp16.data();
+      view.fc2_bias = is_bf16 ? fc2_b_bf16.data() : fc2_b_fp16.data();
+      view.scales_are_block_major = false;
+      view.weights_are_prepacked = prepacked;
+      view.scale_is_bf16 = is_bf16;
+      view.bias_is_bf16 = is_bf16;
+
+      std::vector<float> out_scalar(static_cast<size_t>(rows * hidden));
+      std::vector<float> out_simd(static_cast<size_t>(rows * hidden));
+      ASSERT_TRUE(shared::Int4ExpertForward(hidden, inter, view, x.data(), rows, swiglu, out_scalar.data(),
+                                            /*force_scalar=*/true, /*apply_fc2_bias=*/true,
+                                            /*bf16_boundaries=*/is_bf16, /*fp16_boundaries=*/!is_bf16));
+      ASSERT_TRUE(shared::Int4ExpertForward(hidden, inter, view, x.data(), rows, swiglu, out_simd.data(),
+                                            /*force_scalar=*/false, /*apply_fc2_bias=*/true,
+                                            /*bf16_boundaries=*/is_bf16, /*fp16_boundaries=*/!is_bf16));
+      for (size_t i = 0; i < out_scalar.size(); ++i) {
+        EXPECT_NEAR(out_simd[i], out_scalar[i], 1e-5f) << "prepacked=" << prepacked << " bf16=" << is_bf16 << " i=" << i;
+        if (!is_bf16) {
+          EXPECT_NEAR(out_scalar[i], ref_blk_out[i], 1e-5f) << "prepacked=" << prepacked << " i=" << i;
+        }
+      }
+    }
+  }
+}
 
 }  // namespace
 }  // namespace onnxruntime::test

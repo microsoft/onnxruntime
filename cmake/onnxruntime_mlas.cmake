@@ -5,7 +5,9 @@ set(MLAS_ROOT ${ONNXRUNTIME_ROOT}/core/mlas)
 set(MLAS_SRC_DIR ${MLAS_ROOT}/lib)
 set(MLAS_INC_DIR ${MLAS_ROOT}/inc)
 
-option(onnxruntime_ENABLE_MLAS_QMOE_OFFLOAD "Build QMoE CPU offload kernels in MLAS" ON)
+include(CMakeDependentOption)
+cmake_dependent_option(onnxruntime_ENABLE_MLAS_QMOE_OFFLOAD "Build QMoE CPU offload kernels in MLAS" ON
+  "NOT onnxruntime_DISABLE_CONTRIB_OPS;NOT onnxruntime_MINIMAL_BUILD;NOT onnxruntime_EXTENDED_MINIMAL_BUILD;NOT onnxruntime_ORT_MINIMAL_BUILD" OFF)
 
 
 # mlas_private_compile_definitions contains compile definitions that are private to onnxruntime_mlas and targets which
@@ -96,7 +98,7 @@ if (NOT onnxruntime_ORT_MINIMAL_BUILD)
   )
 endif()
 
-if (onnxruntime_ENABLE_MLAS_QMOE_OFFLOAD AND NOT onnxruntime_ORT_MINIMAL_BUILD)
+if (onnxruntime_ENABLE_MLAS_QMOE_OFFLOAD AND NOT onnxruntime_DISABLE_CONTRIB_OPS AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD AND NOT onnxruntime_ORT_MINIMAL_BUILD)
   include(CheckCXXSourceCompiles)
   set(MLAS_QMOE_AVX512_FLAGS "")
   if (MSVC AND CMAKE_SIZEOF_VOID_P EQUAL 8 AND

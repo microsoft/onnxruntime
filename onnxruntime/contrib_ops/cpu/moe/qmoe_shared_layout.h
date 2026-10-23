@@ -230,6 +230,21 @@ struct Nvfp4ExpertBlockLayout {
 bool MakeNvfp4ExpertBlockLayout(int64_t hidden, int64_t inter, Nvfp4ExpertBlockLayout* layout);
 bool MakeMxfp4ExpertBlockLayout(int64_t hidden, int64_t inter, Nvfp4ExpertBlockLayout* layout);
 
+// Zero-copy view of one INT4 expert (works with canonical com.microsoft::QMoE bank tensors
+// or a contiguous ExpertBlockLayout block).
+struct Int4ExpertView {
+  const uint8_t* fc1_weights = nullptr;  // [2*inter, hidden/2] (SM80 prepacked or raw row-major)
+  const uint16_t* fc1_scales = nullptr;  // [2*inter, hidden/32] row-major or [hidden/32, 2*inter] block-major
+  const uint16_t* fc1_bias = nullptr;    // optional [2*inter] in FP16 or BF16
+  const uint8_t* fc2_weights = nullptr;  // [hidden, inter/2] (SM80 prepacked or raw row-major)
+  const uint16_t* fc2_scales = nullptr;  // [hidden, inter/32] row-major or [inter/32, hidden] block-major
+  const uint16_t* fc2_bias = nullptr;    // optional [hidden] in FP16 or BF16
+  bool scales_are_block_major = false;   // false = canonical QMoE [N, K/32]; true = SharedExpertBlockV1 [K/32, N]
+  bool weights_are_prepacked = true;     // true = SM80 ColumnMajorTileInterleave<64,4>; false = raw ONNX [N, K/2]
+  bool scale_is_bf16 = false;
+  bool bias_is_bf16 = false;
+};
+
 // Zero-copy view of one NVFP4 or MXFP4 expert (works with either separate bank tensors or a contiguous block).
 struct Nvfp4ExpertView {
   const uint8_t* fc1_weights = nullptr;  // [2*inter, hidden/2]
@@ -253,6 +268,19 @@ int ReorderedPosition(int k_offset_in_block);
 
 // Reorders one activation row (length k, multiple of 32) into the per-block INT4 decode order.
 void ReorderActivationRow(const float* src, float* dst, int64_t k);
+
+// Natural-order index (0..31) -> index in the raw ONNX INT4 [even16 | odd16] arrangement.
+inline int RawInt4ReorderedPosition(int k_offset_in_block) {
+  return ((k_offset_in_block & 1) << 4) + (k_offset_in_block >> 1);
+}
+
+// Reorders one activation row (length k, multiple of 32) into the raw ONNX INT4 [even16 | odd16] decode order.
+void ReorderRawInt4ActivationRow(const float* src, float* dst, int64_t k);
+
+// Converts between raw ONNX row-major INT4 [n_total, k_total/2] and SM80 ColumnMajorTileInterleave<64,4> INT4.
+void PackSm80Int4Weights(const uint8_t* raw_weights, uint8_t* sm80_weights, int64_t n_total, int64_t k_total);
+void UnpackSm80Int4Weights(const uint8_t* sm80_weights, uint8_t* raw_weights, int64_t n_total, int64_t k_total);
+void TransposeInt4Scales(const uint16_t* src, uint16_t* dst, int64_t rows, int64_t cols);
 
 // Natural-order index (0..31) -> index in the NVFP4 32-element pair-of-16-blocks arrangement:
 // lanes 0..7 = even K of block 0, lanes 8..15 = even K of block 1,
@@ -306,6 +334,31 @@ bool ExpertForward(const ExpertBlockLayout& layout, const uint8_t* block, const 
                    const SwiGluParams& swiglu, float* out, bool force_scalar = false, bool apply_fc2_bias = true,
                    bool fp16_boundaries = false);
 
+// Canonical INT4 QMoE CPU kernels (supports both row-major [N, K/32] and block-major [K/32, N] scales,
+// both SM80 prepacked and raw row-major [N, K/2] INT4 weights, and both FP16 and BF16 scales/biases/boundaries).
+void Int4GemmRange(const uint8_t* weights, const uint16_t* scales, const uint16_t* bias,
+                   bool scales_are_block_major, bool weights_are_prepacked,
+                   bool scale_is_bf16, bool bias_is_bf16,
+                   int64_t n_total, int64_t k, const float* a_reordered, int64_t m,
+                   float* out, int64_t out_stride, int64_t n_begin, int64_t n_end,
+                   bool force_scalar = false);
+
+void Int4Fc1SwiGluRange(int64_t hidden, int64_t inter, const Int4ExpertView& view,
+                        const float* x_reordered, int64_t m, const SwiGluParams& swiglu,
+                        float* inter_reordered, int64_t n_begin, int64_t n_end,
+                        bool force_scalar = false, bool bf16_boundaries = false,
+                        bool fp16_boundaries = false);
+
+void Int4Fc2Range(int64_t hidden, int64_t inter, const Int4ExpertView& view,
+                  const float* inter_reordered, int64_t m, float* out,
+                  int64_t n_begin, int64_t n_end, bool force_scalar = false,
+                  bool apply_bias = false);
+
+bool Int4ExpertForward(int64_t hidden, int64_t inter, const Int4ExpertView& view,
+                       const float* x, int64_t m, const SwiGluParams& swiglu, float* out,
+                       bool force_scalar = false, bool apply_fc2_bias = false,
+                       bool bf16_boundaries = false, bool fp16_boundaries = false);
+
 // NVFP4 and MXFP4 row-major CPU kernels (supports both BF16 and FP16 scale/boundary rounding).
 void Nvfp4GemmRange(const uint8_t* weights, const uint8_t* block_scales, float global_scale,
                     const uint16_t* bias, bool bias_is_bf16, int64_t n_total, int64_t k,
@@ -358,6 +411,11 @@ int qmoe_shared_cpu_has_avx512(void);
 int qmoe_shared_accepts_prepack_contract(int64_t weights_prepacked, int64_t block_size);
 int qmoe_shared_weight_code_at(const uint8_t* weights, int64_t n_total, int64_t k_total, int64_t n,
                                int64_t k);
+int qmoe_int4_expert_contribution(const uint8_t* fc1_w, const uint16_t* fc1_s, const uint16_t* fc1_b,
+                                  const uint8_t* fc2_w, const uint16_t* fc2_s, const uint16_t* fc2_b,
+                                  int64_t hidden, int64_t inter, const float* x, int64_t m,
+                                  float* out, float alpha, float beta, float limit,
+                                  int weights_prepacked, int is_bf16, int apply_fc2_bias, int force_scalar);
 int qmoe_nvfp4_expert_contribution_bf16(const uint8_t* fc1_w, const uint8_t* fc1_s, float fc1_g,
                                         const uint8_t* fc2_w, const uint8_t* fc2_s, float fc2_g,
                                         int64_t hidden, int64_t inter, const float* x, int64_t m,

@@ -80,6 +80,27 @@ def load_lib():
         ctypes.c_int64,
     ]
     lib.qmoe_shared_weight_code_at.restype = ctypes.c_int
+    lib.qmoe_int4_expert_contribution.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+        ctypes.c_float,
+        ctypes.c_float,
+        ctypes.c_float,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+    ]
+    lib.qmoe_int4_expert_contribution.restype = ctypes.c_int
     lib.qmoe_shared_half_bits_to_float_row.argtypes = [
         ctypes.c_void_p,
         ctypes.c_void_p,
@@ -323,8 +344,166 @@ class SharedLayoutTest(unittest.TestCase):
         lib = load_lib()
         self.assertEqual(lib.qmoe_file_store_test_heap_eviction_safety(), 1)
 
+    def test_canonical_int4_qmoe_banks_prepacked_and_raw(self):
+        rng = np.random.default_rng(20261023)
+        hidden, inter = 128, 64
+        expert = random_expert(rng, hidden, inter)
+        w1_raw = np.ascontiguousarray(ref.raw_pack(expert["fc1_codes"]))
+        w2_raw = np.ascontiguousarray(ref.raw_pack(expert["fc2_codes"]))
+        w1_pk = np.ascontiguousarray(ref.pack_sm80_w4(expert["fc1_codes"]))
+        w2_pk = np.ascontiguousarray(ref.pack_sm80_w4(expert["fc2_codes"]))
+        s1 = np.ascontiguousarray(expert["fc1_scales"].view(np.uint16))
+        s2 = np.ascontiguousarray(expert["fc2_scales"].view(np.uint16))
+        b1 = np.ascontiguousarray(expert["fc1_bias"].view(np.uint16))
+        b2 = np.ascontiguousarray(expert["fc2_bias"].view(np.uint16))
 
-def build_qmoe_model(num_experts, hidden, inter, top_k, w1, s1, b1, w2, s2, b2, prepacked):
+        lib = load_lib()
+        for rows in (1, 3, 4, 8):
+            x = (rng.standard_normal((rows, hidden)) * 0.5).astype(np.float32)
+            want_full = ref.reference_expert(x, **expert, alpha=1.702, beta=1.0, limit=7.0)
+            unbiased = dict(expert, fc2_bias=np.zeros(hidden, dtype=np.float16))
+            want_contrib = ref.reference_expert(x, **unbiased, alpha=1.702, beta=1.0, limit=7.0)
+            for prepacked, (w1, w2) in ((1, (w1_pk, w2_pk)), (0, (w1_raw, w2_raw))):
+                for force_scalar in (1, 0):
+                    got_full = np.empty((rows, hidden), dtype=np.float32)
+                    ok = lib.qmoe_int4_expert_contribution(
+                        w1.ctypes.data,
+                        s1.ctypes.data,
+                        b1.ctypes.data,
+                        w2.ctypes.data,
+                        s2.ctypes.data,
+                        b2.ctypes.data,
+                        hidden,
+                        inter,
+                        x.ctypes.data,
+                        rows,
+                        got_full.ctypes.data,
+                        1.702,
+                        1.0,
+                        7.0,
+                        prepacked,
+                        0,
+                        1,
+                        force_scalar,
+                    )
+                    self.assertEqual(ok, 1)
+                    np.testing.assert_allclose(got_full, want_full, rtol=2e-3, atol=2e-3)
+
+                    got_contrib = np.empty((rows, hidden), dtype=np.float32)
+                    ok2 = lib.qmoe_int4_expert_contribution(
+                        w1.ctypes.data,
+                        s1.ctypes.data,
+                        b1.ctypes.data,
+                        w2.ctypes.data,
+                        s2.ctypes.data,
+                        None,
+                        hidden,
+                        inter,
+                        x.ctypes.data,
+                        rows,
+                        got_contrib.ctypes.data,
+                        1.702,
+                        1.0,
+                        7.0,
+                        prepacked,
+                        0,
+                        0,
+                        force_scalar,
+                    )
+                    self.assertEqual(ok2, 1)
+                    np.testing.assert_allclose(got_contrib, want_contrib, rtol=2e-3, atol=2e-3)
+
+    def test_cpu_qmoe_prepacked_and_raw_parity(self):
+        try:
+            import onnxruntime as ort  # noqa: PLC0415
+        except ImportError:
+            self.skipTest("onnxruntime python package is not available on PYTHONPATH")
+
+        rng = np.random.default_rng(20261024)
+        hidden, inter, tokens, num_experts, top_k = 128, 64, 4, 4, 2
+        experts = [random_expert(rng, hidden, inter) for _ in range(num_experts)]
+        n1 = 2 * inter
+
+        def stack(key):
+            return np.stack([e[key] for e in experts])
+
+        raw1 = np.stack([ref.raw_pack(e["fc1_codes"]) for e in experts])
+        raw2 = np.stack([ref.raw_pack(e["fc2_codes"]) for e in experts])
+        pk1 = np.stack([ref.pack_sm80_w4(e["fc1_codes"]).reshape(n1, hidden // 2) for e in experts])
+        pk2 = np.stack([ref.pack_sm80_w4(e["fc2_codes"]).reshape(hidden, inter // 2) for e in experts])
+        pk1_legacy = pk1.reshape(num_experts, hidden, inter)
+        pk2_legacy = pk2.reshape(num_experts, inter, hidden // 2)
+        args = (num_experts, hidden, inter, top_k)
+        common = (stack("fc1_scales"), stack("fc1_bias"))
+        m_raw = build_qmoe_model(*args, raw1, common[0], common[1], raw2, stack("fc2_scales"), stack("fc2_bias"), False)
+        m_pk = build_qmoe_model(*args, pk1, common[0], common[1], pk2, stack("fc2_scales"), stack("fc2_bias"), True)
+        m_pk_legacy = build_qmoe_model(
+            *args,
+            pk1_legacy,
+            common[0],
+            common[1],
+            pk2_legacy,
+            stack("fc2_scales"),
+            stack("fc2_bias"),
+            True,
+            w1_shape=(num_experts, hidden, inter),
+            w2_shape=(num_experts, inter, hidden // 2),
+        )
+        x = (rng.standard_normal((tokens, hidden)) * 0.5).astype(np.float16)
+        router = rng.standard_normal((tokens, num_experts)).astype(np.float16)
+
+        m_invalid = build_qmoe_model(*args, raw1, common[0], common[1], raw2, stack("fc2_scales"), stack("fc2_bias"), 2)
+        try:
+            ort.InferenceSession(m_invalid, providers=["CPUExecutionProvider"])
+        except Exception:
+            pass
+        else:
+            self.skipTest(
+                "Loaded onnxruntime package predates CPU QMoE weights_prepacked support; "
+                "set PYTHONPATH to the current build directory."
+            )
+
+        for disable_prepack in ("0", "1"):
+            so = ort.SessionOptions()
+            so.add_session_config_entry("session.disable_prepacking", disable_prepack)
+            sess_raw = ort.InferenceSession(m_raw, sess_options=so, providers=["CPUExecutionProvider"])
+            sess_pk = ort.InferenceSession(m_pk, sess_options=so, providers=["CPUExecutionProvider"])
+            sess_pk_legacy = ort.InferenceSession(m_pk_legacy, sess_options=so, providers=["CPUExecutionProvider"])
+            y_raw = sess_raw.run(None, {"x": x, "router": router})[0]
+            y_pk = sess_pk.run(None, {"x": x, "router": router})[0]
+            y_pk_legacy = sess_pk_legacy.run(None, {"x": x, "router": router})[0]
+            np.testing.assert_array_equal(y_raw, y_pk)
+            np.testing.assert_array_equal(y_raw, y_pk_legacy)
+
+        lib = load_lib()
+        blocks = [ref.assemble_block(hidden, inter, **e) for e in experts]
+        want = np.zeros((tokens, hidden), dtype=np.float64)
+        for t in range(tokens):
+            top = np.argsort(-router[t].astype(np.float32), kind="stable")[:top_k]
+            logits = router[t][top].astype(np.float64)
+            w = np.exp(logits - logits.max())
+            w /= w.sum()
+            for wi, e in zip(w, top, strict=False):
+                y = run_cpu(lib, blocks[e], hidden, inter, x[t : t + 1].astype(np.float32), False)
+                want[t] += wi * y[0]
+        np.testing.assert_allclose(y_pk.astype(np.float64), want, rtol=1e-2, atol=5e-3)
+
+
+def build_qmoe_model(
+    num_experts,
+    hidden,
+    inter,
+    top_k,
+    w1,
+    s1,
+    b1,
+    w2,
+    s2,
+    b2,
+    prepacked,
+    w1_shape=None,
+    w2_shape=None,
+):
     import onnx  # noqa: PLC0415
 
     n1 = 2 * inter
@@ -332,10 +511,10 @@ def build_qmoe_model(num_experts, hidden, inter, top_k, w1, s1, b1, w2, s2, b2, 
     inits = [
         onnx.numpy_helper.from_array(np.ascontiguousarray(a).reshape(shape), name)
         for name, a, shape in [
-            ("w1", w1, (num_experts, n1, hidden // 2)),
+            ("w1", w1, w1_shape or (num_experts, n1, hidden // 2)),
             ("s1", s1, (num_experts, n1, hidden // 32)),
             ("b1", b1, (num_experts, n1)),
-            ("w2", w2, (num_experts, hidden, inter // 2)),
+            ("w2", w2, w2_shape or (num_experts, hidden, inter // 2)),
             ("s2", s2, (num_experts, hidden, inter // 32)),
             ("b2", b2, (num_experts, hidden)),
         ]
@@ -351,7 +530,7 @@ def build_qmoe_model(num_experts, hidden, inter, top_k, w1, s1, b1, w2, s2, b2, 
         normalize_routing_weights=1,
         expert_weight_bits=4,
         block_size=32,
-        weights_prepacked=0 if not prepacked else 1,
+        weights_prepacked=int(prepacked) if not isinstance(prepacked, bool) else (1 if prepacked else 0),
     )
     graph = onnx.helper.make_graph(
         [node],
