@@ -6,6 +6,7 @@
 #include "core/framework/op_kernel.h"
 #include "core/framework/data_transfer_manager.h"
 #include "core/providers/cpu/tensor/reshape_helper.h"
+#include "core/providers/webgpu/webgpu_execution_provider.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -18,6 +19,8 @@ class Reshape final : public OpKernel {
   }
 
   Status Compute(OpKernelContext* context) const override {
+    const auto& ep = *static_cast<const WebGpuExecutionProvider*>(Info().GetExecutionProvider());
+    auto compute_scope = ep.EnterKernelCompute();
     // Copy the second input tensor into the shape vector
     const Tensor* shapeTensor = context->Input<Tensor>(1);
     if (shapeTensor == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");

@@ -6,6 +6,7 @@
 
 #include <atomic>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <span>
 #include <string>
@@ -20,6 +21,7 @@
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/math/matmul_algorithm.h"
 #include "core/providers/webgpu/session_buffer_pool.h"
+#include "core/providers/webgpu/webgpu_context.h"
 #include "core/providers/webgpu/webgpu_provider_options.h"
 
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
@@ -129,8 +131,31 @@ class WebGpuExecutionProvider : public IExecutionProvider {
     return OrtGraphCaptureNodeAssignmentPolicy_ALLOW_CPU_FOR_SHAPES;
   }
   webgpu::BufferManager& BufferManager() const;
+  webgpu::BufferManager& DefaultBufferManager() const;
+  void ReleaseBuffer(WGPUBuffer buffer, const webgpu::CommandRecordingState* recording = nullptr) const;
   webgpu::BufferManager& InitializerBufferManager() const;
   webgpu::CommandRecordingState& Recording() const { return *recording_; }
+
+  class ScopedKernelCompute {
+   public:
+    explicit ScopedKernelCompute(const WebGpuExecutionProvider& ep)
+        : ep_{ep}, lock_{ep.Recording().mutex} {
+      std::lock_guard<std::mutex> graph_lock{ep_.graph_buffer_mgrs_mutex_};
+      ++ep_.kernel_compute_depth_;
+    }
+    ~ScopedKernelCompute() {
+      std::lock_guard<std::mutex> graph_lock{ep_.graph_buffer_mgrs_mutex_};
+      --ep_.kernel_compute_depth_;
+    }
+    ScopedKernelCompute(const ScopedKernelCompute&) = delete;
+    ScopedKernelCompute& operator=(const ScopedKernelCompute&) = delete;
+
+   private:
+    const WebGpuExecutionProvider& ep_;
+    std::unique_lock<std::recursive_mutex> lock_;
+  };
+
+  ScopedKernelCompute EnterKernelCompute() const { return ScopedKernelCompute{*this}; }
   AllocatorPtr PrepackAllocator() const { return prepack_allocator_; }
   std::span<const std::string> GetForceCpuNodeNames() const { return force_cpu_node_names_; }
   uint32_t MultiRotaryCacheConcatOffset() const { return multi_rotary_cache_concat_offset_; }
@@ -155,6 +180,8 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   std::vector<std::string> force_cpu_node_names_;
   bool enable_graph_capture_ = false;
   bool graph_buffer_mgr_active_ = false;
+  mutable size_t kernel_compute_depth_ = 0;
+  mutable std::mutex graph_buffer_mgrs_mutex_;
   std::atomic<bool> run_active_{false};
   bool enable_int64_ = false;
   uint32_t multi_rotary_cache_concat_offset_ = 0;

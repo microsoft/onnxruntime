@@ -6,6 +6,7 @@
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/nn/flatten.h"
 #include "core/framework/data_transfer_manager.h"
+#include "core/providers/webgpu/webgpu_execution_provider.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -17,6 +18,8 @@ class Flatten final : public OpKernel {
   }
 
   Status Compute(OpKernelContext* context) const override {
+    const auto& ep = *static_cast<const WebGpuExecutionProvider*>(Info().GetExecutionProvider());
+    auto compute_scope = ep.EnterKernelCompute();
     const Tensor* input_tensor = context->Input<Tensor>(0);
     const TensorShape& input_shape = input_tensor->Shape();
     int64_t input_rank = input_shape.NumDimensions();
