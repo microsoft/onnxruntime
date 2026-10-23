@@ -11693,6 +11693,651 @@ TEST_F(GraphTransformationTests, MatMulIntegerToFloatFusionRejectsOverlappingPat
                                         TransformerLevel::Level2, 1, {}, post_graph_checker));
 }
 
+TEST_F(GraphTransformationTests, MatMulIntegerToFloatFusion_MatrixScale_WithBias_PreservesAdd) {
+  // Test issue #33331:
+  // When weight scale has a matrix shape (e.g. [3, 3] for [2, 3] weight),
+  // scaling must be deferred until after the GEMM.
+  // Add (bias) must NOT be absorbed into MatMulIntegerToFloat, but preserved as a separate Add node.
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    std::vector<float> x_data = {-2.0f, -1.0f, 0.0f, 1.0f, 2.0f, 3.0f};
+    auto* input_x = builder.MakeInput<float>({3, 2}, x_data);
+    auto* dql_out_y = builder.MakeIntermediate();
+    auto* dql_out_scale = builder.MakeIntermediate();
+    auto* dql_out_zp = builder.MakeIntermediate();
+    builder.AddNode("DynamicQuantizeLinear", {input_x}, {dql_out_y, dql_out_scale, dql_out_zp});
+
+    std::vector<uint8_t> b_data = {120, 121, 122, 123, 124, 125};
+    auto* b_quant = builder.MakeInitializer<uint8_t>({2, 3}, b_data);
+    auto* b_zp = builder.MakeScalarInitializer<uint8_t>(127);
+
+    auto* matmul_out = builder.MakeIntermediate();
+    builder.AddNode("MatMulInteger", {dql_out_y, b_quant, dql_out_zp, b_zp}, {matmul_out});
+
+    std::vector<float> b_scale_data = {
+        0.02f, 0.0275f, 0.035f,
+        0.0425f, 0.05f, 0.0575f,
+        0.065f, 0.0725f, 0.08f};
+    auto* b_scale = builder.MakeInitializer<float>({3, 3}, b_scale_data);
+
+    auto* scale_product = builder.MakeIntermediate();
+    builder.AddNode("Mul", {dql_out_scale, b_scale}, {scale_product});
+
+    auto* cast_out = builder.MakeIntermediate();
+    builder.AddNode("Cast", {matmul_out}, {cast_out})
+        .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+
+    auto* mul_out = builder.MakeIntermediate();
+    builder.AddNode("Mul", {cast_out, scale_product}, {mul_out});
+
+    std::vector<float> bias_data = {-1.0f, 0.0f, 1.0f};
+    auto* bias = builder.Make1DInitializer<float>(bias_data);
+
+    auto* output = builder.MakeOutput();
+    builder.AddNode("Add", {mul_out, bias}, {output});
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    // MatMulInteger + Cast + Mul should be fused into MatMulIntegerToFloat
+    TEST_RETURN_IF_NOT(op_to_count["com.microsoft.MatMulIntegerToFloat"] == 1);
+    TEST_RETURN_IF_NOT(op_to_count["MatMulInteger"] == 0);
+    TEST_RETURN_IF_NOT(op_to_count["Cast"] == 0);
+    // The Add node must NOT be fused into MatMulIntegerToFloat, preserving bias addition after deferred scaling
+    TEST_RETURN_IF_NOT(op_to_count["Add"] == 1);
+    return Status::OK();
+  };
+
+  auto transformer = std::make_unique<MatMulIntegerToFloatFusion>();
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, *logger_, std::move(transformer),
+                                        TransformerLevel::Level2, 1, {}, post_graph_checker));
+}
+
+TEST_F(GraphTransformationTests, MatMulIntegerToFloatFusion_MatrixScale_NoBias) {
+  // When weight scale has a matrix shape and there is no bias, fusion should still succeed.
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    std::vector<float> x_data = {-2.0f, -1.0f, 0.0f, 1.0f, 2.0f, 3.0f};
+    auto* input_x = builder.MakeInput<float>({3, 2}, x_data);
+    auto* dql_out_y = builder.MakeIntermediate();
+    auto* dql_out_scale = builder.MakeIntermediate();
+    auto* dql_out_zp = builder.MakeIntermediate();
+    builder.AddNode("DynamicQuantizeLinear", {input_x}, {dql_out_y, dql_out_scale, dql_out_zp});
+
+    std::vector<uint8_t> b_data = {120, 121, 122, 123, 124, 125};
+    auto* b_quant = builder.MakeInitializer<uint8_t>({2, 3}, b_data);
+    auto* b_zp = builder.MakeScalarInitializer<uint8_t>(127);
+
+    auto* matmul_out = builder.MakeIntermediate();
+    builder.AddNode("MatMulInteger", {dql_out_y, b_quant, dql_out_zp, b_zp}, {matmul_out});
+
+    std::vector<float> b_scale_data = {
+        0.02f, 0.0275f, 0.035f,
+        0.0425f, 0.05f, 0.0575f,
+        0.065f, 0.0725f, 0.08f};
+    auto* b_scale = builder.MakeInitializer<float>({3, 3}, b_scale_data);
+
+    auto* scale_product = builder.MakeIntermediate();
+    builder.AddNode("Mul", {dql_out_scale, b_scale}, {scale_product});
+
+    auto* cast_out = builder.MakeIntermediate();
+    builder.AddNode("Cast", {matmul_out}, {cast_out})
+        .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+
+    auto* output = builder.MakeOutput();
+    builder.AddNode("Mul", {cast_out, scale_product}, {output});
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count["com.microsoft.MatMulIntegerToFloat"] == 1);
+    TEST_RETURN_IF_NOT(op_to_count["MatMulInteger"] == 0);
+    TEST_RETURN_IF_NOT(op_to_count["Cast"] == 0);
+    return Status::OK();
+  };
+
+  auto transformer = std::make_unique<MatMulIntegerToFloatFusion>();
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, *logger_, std::move(transformer),
+                                        TransformerLevel::Level2, 1, {}, post_graph_checker));
+}
+
+TEST_F(GraphTransformationTests, MatMulIntegerToFloatFusion_ScalarScale_WithBias_FusesAdd) {
+  // When weight scale is scalar, Add (bias) can be safely fused into MatMulIntegerToFloat.
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    std::vector<float> x_data = {-2.0f, -1.0f, 0.0f, 1.0f, 2.0f, 3.0f};
+    auto* input_x = builder.MakeInput<float>({3, 2}, x_data);
+    auto* dql_out_y = builder.MakeIntermediate();
+    auto* dql_out_scale = builder.MakeIntermediate();
+    auto* dql_out_zp = builder.MakeIntermediate();
+    builder.AddNode("DynamicQuantizeLinear", {input_x}, {dql_out_y, dql_out_scale, dql_out_zp});
+
+    std::vector<uint8_t> b_data = {120, 121, 122, 123, 124, 125};
+    auto* b_quant = builder.MakeInitializer<uint8_t>({2, 3}, b_data);
+    auto* b_zp = builder.MakeScalarInitializer<uint8_t>(127);
+
+    auto* matmul_out = builder.MakeIntermediate();
+    builder.AddNode("MatMulInteger", {dql_out_y, b_quant, dql_out_zp, b_zp}, {matmul_out});
+
+    auto* b_scale = builder.MakeScalarInitializer<float>(0.05f);
+
+    auto* scale_product = builder.MakeIntermediate();
+    builder.AddNode("Mul", {dql_out_scale, b_scale}, {scale_product});
+
+    auto* cast_out = builder.MakeIntermediate();
+    builder.AddNode("Cast", {matmul_out}, {cast_out})
+        .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+
+    auto* mul_out = builder.MakeIntermediate();
+    builder.AddNode("Mul", {cast_out, scale_product}, {mul_out});
+
+    std::vector<float> bias_data = {-1.0f, 0.0f, 1.0f};
+    auto* bias = builder.Make1DInitializer<float>(bias_data);
+
+    auto* output = builder.MakeOutput();
+    builder.AddNode("Add", {mul_out, bias}, {output});
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count["com.microsoft.MatMulIntegerToFloat"] == 1);
+    TEST_RETURN_IF_NOT(op_to_count["MatMulInteger"] == 0);
+    TEST_RETURN_IF_NOT(op_to_count["Cast"] == 0);
+    TEST_RETURN_IF_NOT(op_to_count["Add"] == 0);
+    return Status::OK();
+  };
+
+  auto transformer = std::make_unique<MatMulIntegerToFloatFusion>();
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, *logger_, std::move(transformer),
+                                        TransformerLevel::Level2, 1, {}, post_graph_checker));
+}
+
+TEST_F(GraphTransformationTests, MatMulIntegerToFloatFusion_PerColumnScale_WithBias_FusesAdd) {
+  // When weight scale is 1D per-column [N], Add (bias) can be safely fused.
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    std::vector<float> x_data = {-2.0f, -1.0f, 0.0f, 1.0f, 2.0f, 3.0f};
+    auto* input_x = builder.MakeInput<float>({3, 2}, x_data);
+    auto* dql_out_y = builder.MakeIntermediate();
+    auto* dql_out_scale = builder.MakeIntermediate();
+    auto* dql_out_zp = builder.MakeIntermediate();
+    builder.AddNode("DynamicQuantizeLinear", {input_x}, {dql_out_y, dql_out_scale, dql_out_zp});
+
+    std::vector<uint8_t> b_data = {120, 121, 122, 123, 124, 125};
+    auto* b_quant = builder.MakeInitializer<uint8_t>({2, 3}, b_data);
+    auto* b_zp = builder.MakeScalarInitializer<uint8_t>(127);
+
+    auto* matmul_out = builder.MakeIntermediate();
+    builder.AddNode("MatMulInteger", {dql_out_y, b_quant, dql_out_zp, b_zp}, {matmul_out});
+
+    std::vector<float> b_scale_data = {0.02f, 0.05f, 0.08f};
+    auto* b_scale = builder.Make1DInitializer<float>(b_scale_data);
+
+    auto* scale_product = builder.MakeIntermediate();
+    builder.AddNode("Mul", {dql_out_scale, b_scale}, {scale_product});
+
+    auto* cast_out = builder.MakeIntermediate();
+    builder.AddNode("Cast", {matmul_out}, {cast_out})
+        .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+
+    auto* mul_out = builder.MakeIntermediate();
+    builder.AddNode("Mul", {cast_out, scale_product}, {mul_out});
+
+    std::vector<float> bias_data = {-1.0f, 0.0f, 1.0f};
+    auto* bias = builder.Make1DInitializer<float>(bias_data);
+
+    auto* output = builder.MakeOutput();
+    builder.AddNode("Add", {mul_out, bias}, {output});
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count["com.microsoft.MatMulIntegerToFloat"] == 1);
+    TEST_RETURN_IF_NOT(op_to_count["MatMulInteger"] == 0);
+    TEST_RETURN_IF_NOT(op_to_count["Cast"] == 0);
+    TEST_RETURN_IF_NOT(op_to_count["Add"] == 0);
+    return Status::OK();
+  };
+
+  auto transformer = std::make_unique<MatMulIntegerToFloatFusion>();
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, *logger_, std::move(transformer),
+                                        TransformerLevel::Level2, 1, {}, post_graph_checker));
+}
+
+TEST_F(GraphTransformationTests, MatMulIntegerToFloatFusion_2DPerColumnScale_WithBias_FusesAdd) {
+  // When weight scale is multidimensional per-column [1, N], Add (bias) can be safely fused.
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    std::vector<float> x_data = {-2.0f, -1.0f, 0.0f, 1.0f, 2.0f, 3.0f};
+    auto* input_x = builder.MakeInput<float>({3, 2}, x_data);
+    auto* dql_out_y = builder.MakeIntermediate();
+    auto* dql_out_scale = builder.MakeIntermediate();
+    auto* dql_out_zp = builder.MakeIntermediate();
+    builder.AddNode("DynamicQuantizeLinear", {input_x}, {dql_out_y, dql_out_scale, dql_out_zp});
+
+    std::vector<uint8_t> b_data = {120, 121, 122, 123, 124, 125};
+    auto* b_quant = builder.MakeInitializer<uint8_t>({2, 3}, b_data);
+    auto* b_zp = builder.MakeScalarInitializer<uint8_t>(127);
+
+    auto* matmul_out = builder.MakeIntermediate();
+    builder.AddNode("MatMulInteger", {dql_out_y, b_quant, dql_out_zp, b_zp}, {matmul_out});
+
+    std::vector<float> b_scale_data = {0.02f, 0.05f, 0.08f};
+    auto* b_scale = builder.MakeInitializer<float>({1, 3}, b_scale_data);
+
+    auto* scale_product = builder.MakeIntermediate();
+    builder.AddNode("Mul", {dql_out_scale, b_scale}, {scale_product});
+
+    auto* cast_out = builder.MakeIntermediate();
+    builder.AddNode("Cast", {matmul_out}, {cast_out})
+        .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+
+    auto* mul_out = builder.MakeIntermediate();
+    builder.AddNode("Mul", {cast_out, scale_product}, {mul_out});
+
+    std::vector<float> bias_data = {-1.0f, 0.0f, 1.0f};
+    auto* bias = builder.Make1DInitializer<float>(bias_data);
+
+    auto* output = builder.MakeOutput();
+    builder.AddNode("Add", {mul_out, bias}, {output});
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count["com.microsoft.MatMulIntegerToFloat"] == 1);
+    TEST_RETURN_IF_NOT(op_to_count["MatMulInteger"] == 0);
+    TEST_RETURN_IF_NOT(op_to_count["Cast"] == 0);
+    TEST_RETURN_IF_NOT(op_to_count["Add"] == 0);
+    return Status::OK();
+  };
+
+  auto transformer = std::make_unique<MatMulIntegerToFloatFusion>();
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, *logger_, std::move(transformer),
+                                        TransformerLevel::Level2, 1, {}, post_graph_checker));
+}
+
+TEST_F(GraphTransformationTests, MatMulIntegerToFloatFusion_MatrixScale_AddSwapped_PreservesAdd) {
+  // Test bias as input 0 of Add: Add(Bias, Mul) instead of Add(Mul, Bias)
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    std::vector<float> x_data = {-2.0f, -1.0f, 0.0f, 1.0f, 2.0f, 3.0f};
+    auto* input_x = builder.MakeInput<float>({3, 2}, x_data);
+    auto* dql_out_y = builder.MakeIntermediate();
+    auto* dql_out_scale = builder.MakeIntermediate();
+    auto* dql_out_zp = builder.MakeIntermediate();
+    builder.AddNode("DynamicQuantizeLinear", {input_x}, {dql_out_y, dql_out_scale, dql_out_zp});
+
+    std::vector<uint8_t> b_data = {120, 121, 122, 123, 124, 125};
+    auto* b_quant = builder.MakeInitializer<uint8_t>({2, 3}, b_data);
+    auto* b_zp = builder.MakeScalarInitializer<uint8_t>(127);
+
+    auto* matmul_out = builder.MakeIntermediate();
+    builder.AddNode("MatMulInteger", {dql_out_y, b_quant, dql_out_zp, b_zp}, {matmul_out});
+
+    std::vector<float> b_scale_data = {
+        0.02f, 0.0275f, 0.035f,
+        0.0425f, 0.05f, 0.0575f,
+        0.065f, 0.0725f, 0.08f};
+    auto* b_scale = builder.MakeInitializer<float>({3, 3}, b_scale_data);
+
+    auto* scale_product = builder.MakeIntermediate();
+    builder.AddNode("Mul", {dql_out_scale, b_scale}, {scale_product});
+
+    auto* cast_out = builder.MakeIntermediate();
+    builder.AddNode("Cast", {matmul_out}, {cast_out})
+        .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+
+    auto* mul_out = builder.MakeIntermediate();
+    builder.AddNode("Mul", {cast_out, scale_product}, {mul_out});
+
+    std::vector<float> bias_data = {-1.0f, 0.0f, 1.0f};
+    auto* bias = builder.Make1DInitializer<float>(bias_data);
+
+    auto* output = builder.MakeOutput();
+    // Swapped: input 0 is bias, input 1 is mul_out
+    builder.AddNode("Add", {bias, mul_out}, {output});
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count["com.microsoft.MatMulIntegerToFloat"] == 1);
+    TEST_RETURN_IF_NOT(op_to_count["MatMulInteger"] == 0);
+    TEST_RETURN_IF_NOT(op_to_count["Cast"] == 0);
+    TEST_RETURN_IF_NOT(op_to_count["Add"] == 1);
+    return Status::OK();
+  };
+
+  auto transformer = std::make_unique<MatMulIntegerToFloatFusion>();
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, *logger_, std::move(transformer),
+                                        TransformerLevel::Level2, 1, {}, post_graph_checker));
+}
+
+TEST_F(GraphTransformationTests, MatMulIntegerToFloatFusion_MatrixScale_WithBias_NumericalEquivalence) {
+  // Verify numerical equivalence with MatMulIntegerToFloatFusion applied vs unfused baseline.
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    std::vector<float> x_data = {-2.0f, -1.0f, 0.0f, 1.0f, 2.0f, 3.0f};
+    auto* input_x = builder.MakeInput<float>({3, 2}, x_data);
+    auto* dql_out_y = builder.MakeIntermediate();
+    auto* dql_out_scale = builder.MakeIntermediate();
+    auto* dql_out_zp = builder.MakeIntermediate();
+    builder.AddNode("DynamicQuantizeLinear", {input_x}, {dql_out_y, dql_out_scale, dql_out_zp});
+
+    std::vector<uint8_t> b_data = {120, 121, 122, 123, 124, 125};
+    auto* b_quant = builder.MakeInitializer<uint8_t>({2, 3}, b_data);
+    auto* b_zp = builder.MakeScalarInitializer<uint8_t>(127);
+
+    auto* matmul_out = builder.MakeIntermediate();
+    builder.AddNode("MatMulInteger", {dql_out_y, b_quant, dql_out_zp, b_zp}, {matmul_out});
+
+    std::vector<float> b_scale_data = {
+        0.02f, 0.0275f, 0.035f,
+        0.0425f, 0.05f, 0.0575f,
+        0.065f, 0.0725f, 0.08f};
+    auto* b_scale = builder.MakeInitializer<float>({3, 3}, b_scale_data);
+
+    auto* scale_product = builder.MakeIntermediate();
+    builder.AddNode("Mul", {dql_out_scale, b_scale}, {scale_product});
+
+    auto* cast_out = builder.MakeIntermediate();
+    builder.AddNode("Cast", {matmul_out}, {cast_out})
+        .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+
+    auto* mul_out = builder.MakeIntermediate();
+    builder.AddNode("Mul", {cast_out, scale_product}, {mul_out});
+
+    std::vector<float> bias_data = {-1.0f, 0.0f, 1.0f};
+    auto* bias = builder.Make1DInitializer<float>(bias_data);
+
+    auto* output = builder.MakeOutput();
+    builder.AddNode("Add", {mul_out, bias}, {output});
+  };
+
+  auto check_transformed_graph = [](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["com.microsoft.MatMulIntegerToFloat"], 1);
+    EXPECT_EQ(op_to_count["Add"], 1);
+  };
+
+  TransformerTester(build_test_case, check_transformed_graph, TransformerLevel::Default,
+                    TransformerLevel::Level2, 18, 1e-4, 1e-4,
+                    std::make_unique<MatMulIntegerToFloatFusion>());
+}
+
+TEST_F(GraphTransformationTests, MatMulIntegerToFloatFusion_MatrixScale_WithBias_FullPipelineNumericalEquivalence) {
+  // Verify numerical equivalence with full Level 2 optimization pipeline (fusing into DynamicQuantizeMatMul + Add).
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    std::vector<float> x_data = {-2.0f, -1.0f, 0.0f, 1.0f, 2.0f, 3.0f};
+    auto* input_x = builder.MakeInput<float>({3, 2}, x_data);
+    auto* dql_out_y = builder.MakeIntermediate();
+    auto* dql_out_scale = builder.MakeIntermediate();
+    auto* dql_out_zp = builder.MakeIntermediate();
+    builder.AddNode("DynamicQuantizeLinear", {input_x}, {dql_out_y, dql_out_scale, dql_out_zp});
+
+    std::vector<uint8_t> b_data = {120, 121, 122, 123, 124, 125};
+    auto* b_quant = builder.MakeInitializer<uint8_t>({2, 3}, b_data);
+    auto* b_zp = builder.MakeScalarInitializer<uint8_t>(127);
+
+    auto* matmul_out = builder.MakeIntermediate();
+    builder.AddNode("MatMulInteger", {dql_out_y, b_quant, dql_out_zp, b_zp}, {matmul_out});
+
+    std::vector<float> b_scale_data = {
+        0.02f, 0.0275f, 0.035f,
+        0.0425f, 0.05f, 0.0575f,
+        0.065f, 0.0725f, 0.08f};
+    auto* b_scale = builder.MakeInitializer<float>({3, 3}, b_scale_data);
+
+    auto* scale_product = builder.MakeIntermediate();
+    builder.AddNode("Mul", {dql_out_scale, b_scale}, {scale_product});
+
+    auto* cast_out = builder.MakeIntermediate();
+    builder.AddNode("Cast", {matmul_out}, {cast_out})
+        .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+
+    auto* mul_out = builder.MakeIntermediate();
+    builder.AddNode("Mul", {cast_out, scale_product}, {mul_out});
+
+    std::vector<float> bias_data = {-1.0f, 0.0f, 1.0f};
+    auto* bias = builder.Make1DInitializer<float>(bias_data);
+
+    auto* output = builder.MakeOutput();
+    builder.AddNode("Add", {mul_out, bias}, {output});
+  };
+
+  auto check_transformed_graph = [](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["com.microsoft.DynamicQuantizeMatMul"], 1);
+    EXPECT_EQ(op_to_count["Add"], 1);
+  };
+
+  TransformerTester(build_test_case, check_transformed_graph, TransformerLevel::Default,
+                    TransformerLevel::Level2, 18, 1e-4, 1e-4,
+                    nullptr);
+}
+
+TEST_F(GraphTransformationTests, MatMulIntegerToFloatFusion_Scale1x1_WithBias_NoDQL_PreservesAdd_NumericalEquivalence) {
+  // Verifies that without DynamicQuantizeLinear, scales shaped as [1, 1] (0.5) and [N] (0.25)
+  // are not mistakenly treated as scalar A scale.
+  // FixupScaleTensor leaves their order unchanged, meaning a_scale has rank 2 [1, 1],
+  // which is not a scalar according to the kernel's IsScalarOr1ElementVector predicate.
+  // Add must be preserved outside the fusion to avoid multiplying bias by a_scale post-GEMM.
+  // Numerical equivalence proves the unoptimized calculation matches:
+  // dot_product(8) * 0.5 * 0.25 + bias(2) = 1 + 2 = 3.
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    std::vector<uint8_t> a_data = {2, 2};
+    auto* input_a = builder.MakeInput<uint8_t>({1, 2}, a_data);
+    auto* a_zp = builder.MakeScalarInitializer<uint8_t>(0);
+
+    std::vector<uint8_t> b_data = {2, 2};
+    auto* b_quant = builder.MakeInitializer<uint8_t>({2, 1}, b_data);
+    auto* b_zp = builder.MakeScalarInitializer<uint8_t>(0);
+
+    auto* matmul_out = builder.MakeIntermediate();
+    builder.AddNode("MatMulInteger", {input_a, b_quant, a_zp, b_zp}, {matmul_out});
+
+    auto* cast_out = builder.MakeIntermediate();
+    builder.AddNode("Cast", {matmul_out}, {cast_out})
+        .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+
+    auto* scale_a = builder.MakeInitializer<float>({1, 1}, {0.5f});
+    auto* scale_b = builder.Make1DInitializer<float>({0.25f});
+
+    auto* scale_product = builder.MakeIntermediate();
+    builder.AddNode("Mul", {scale_a, scale_b}, {scale_product});
+
+    auto* mul_out = builder.MakeIntermediate();
+    builder.AddNode("Mul", {cast_out, scale_product}, {mul_out});
+
+    auto* bias = builder.Make1DInitializer<float>({2.0f});
+
+    auto* output = builder.MakeOutput();
+    builder.AddNode("Add", {mul_out, bias}, {output});
+  };
+
+  auto check_transformed_graph = [](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["com.microsoft.MatMulIntegerToFloat"], 1);
+    EXPECT_EQ(op_to_count["Add"], 1);
+  };
+
+  TransformerTester(build_test_case, check_transformed_graph, TransformerLevel::Default,
+                    TransformerLevel::Level2, 18, 1e-4, 1e-4,
+                    std::make_unique<MatMulIntegerToFloatFusion>());
+}
+
+TEST_F(GraphTransformationTests,
+       MatMulIntegerToFloatFusion_Scale1x1_Reversed_WithBias_NoDQL_PreservesAdd_NumericalEquivalence) {
+  // Same as above, but with scale inputs reversed: scale 0 is [N] (0.25) and scale 1 is [1, 1] (0.5).
+  // FixupScaleTensor swaps them, selecting [1, 1] as a_scale, which is rejected by IsScalarOr1ElementVector.
+  // Add must be preserved outside the fusion, yielding correct numerical output: 3.
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    std::vector<uint8_t> a_data = {2, 2};
+    auto* input_a = builder.MakeInput<uint8_t>({1, 2}, a_data);
+    auto* a_zp = builder.MakeScalarInitializer<uint8_t>(0);
+
+    std::vector<uint8_t> b_data = {2, 2};
+    auto* b_quant = builder.MakeInitializer<uint8_t>({2, 1}, b_data);
+    auto* b_zp = builder.MakeScalarInitializer<uint8_t>(0);
+
+    auto* matmul_out = builder.MakeIntermediate();
+    builder.AddNode("MatMulInteger", {input_a, b_quant, a_zp, b_zp}, {matmul_out});
+
+    auto* cast_out = builder.MakeIntermediate();
+    builder.AddNode("Cast", {matmul_out}, {cast_out})
+        .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+
+    auto* scale_b = builder.Make1DInitializer<float>({0.25f});
+    auto* scale_a = builder.MakeInitializer<float>({1, 1}, {0.5f});
+
+    auto* scale_product = builder.MakeIntermediate();
+    builder.AddNode("Mul", {scale_b, scale_a}, {scale_product});
+
+    auto* mul_out = builder.MakeIntermediate();
+    builder.AddNode("Mul", {cast_out, scale_product}, {mul_out});
+
+    auto* bias = builder.Make1DInitializer<float>({2.0f});
+
+    auto* output = builder.MakeOutput();
+    builder.AddNode("Add", {mul_out, bias}, {output});
+  };
+
+  auto check_transformed_graph = [](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["com.microsoft.MatMulIntegerToFloat"], 1);
+    EXPECT_EQ(op_to_count["Add"], 1);
+  };
+
+  TransformerTester(build_test_case, check_transformed_graph, TransformerLevel::Default,
+                    TransformerLevel::Level2, 18, 1e-4, 1e-4,
+                    std::make_unique<MatMulIntegerToFloatFusion>());
+}
+
+TEST_F(GraphTransformationTests,
+       MatMulIntegerToFloatFusion_PartiallySymbolic_Mismatch_PreservesAdd_NumericalEquivalence) {
+  // When B is declared with symbolic batch dimension [batch, 2, 3] and B_scale has concrete [1, 1, 3],
+  // equality cannot be established at graph optimization time. If bias was fused, runtime execution with
+  // batch size 2 would reject direct scaling in IsBQuantParamSupported and scale bias post-GEMM.
+  // The guard must preserve Add outside the fusion, maintaining full numerical equivalence.
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    std::vector<uint8_t> a_data = {
+        1, 2,
+        3, 4,
+        5, 6,
+        7, 8};
+    auto* input_a = builder.MakeInput<uint8_t>({2, 2, 2}, a_data);
+    auto* a_zp = builder.MakeScalarInitializer<uint8_t>(0);
+
+    std::vector<uint8_t> b_data = {
+        1, 2, 3,
+        4, 5, 6,
+        7, 8, 9,
+        1, 2, 3};
+    auto* input_b = builder.MakeInput<uint8_t>({2, 2, 3}, b_data);
+    // Declare symbolic batch dimension for B: [batch, 2, 3]
+    ONNX_NAMESPACE::TensorShapeProto symbolic_b_shape;
+    symbolic_b_shape.add_dim()->set_dim_param("batch");
+    symbolic_b_shape.add_dim()->set_dim_value(2);
+    symbolic_b_shape.add_dim()->set_dim_value(3);
+    input_b->SetShape(symbolic_b_shape);
+
+    auto* b_zp = builder.MakeScalarInitializer<uint8_t>(0);
+
+    auto* matmul_out = builder.MakeIntermediate();
+    builder.AddNode("MatMulInteger", {input_a, input_b, a_zp, b_zp}, {matmul_out});
+
+    auto* cast_out = builder.MakeIntermediate();
+    builder.AddNode("Cast", {matmul_out}, {cast_out})
+        .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+
+    auto* a_scale = builder.MakeScalarInitializer<float>(0.5f);
+    std::vector<float> b_scale_data = {0.1f, 0.2f, 0.3f};
+    auto* b_scale = builder.MakeInitializer<float>({1, 1, 3}, b_scale_data);
+
+    auto* scale_product = builder.MakeIntermediate();
+    builder.AddNode("Mul", {a_scale, b_scale}, {scale_product});
+
+    auto* mul_out = builder.MakeIntermediate();
+    builder.AddNode("Mul", {cast_out, scale_product}, {mul_out});
+
+    std::vector<float> bias_data = {-1.0f, 0.0f, 1.0f};
+    auto* bias = builder.Make1DInitializer<float>(bias_data);
+
+    auto* output = builder.MakeOutput();
+    builder.AddNode("Add", {mul_out, bias}, {output});
+  };
+
+  auto check_transformed_graph = [](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["com.microsoft.MatMulIntegerToFloat"], 1);
+    EXPECT_EQ(op_to_count["Add"], 1);
+  };
+
+  TransformerTester(build_test_case, check_transformed_graph, TransformerLevel::Default,
+                    TransformerLevel::Level2, 18, 1e-4, 1e-4,
+                    std::make_unique<MatMulIntegerToFloatFusion>());
+}
+
+TEST_F(GraphTransformationTests, MatMulIntegerToFloatFusion_PartiallySymbolic_Matching_FusesAdd) {
+  // When B and B_scale have matching symbolic dimensions [batch, 2, 3] and [batch, 1, 3],
+  // equality is proven at graph optimization time, allowing Add to be safely fused.
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    std::vector<uint8_t> a_data = {
+        1, 2,
+        3, 4,
+        5, 6,
+        7, 8};
+    auto* input_a = builder.MakeInput<uint8_t>({2, 2, 2}, a_data);
+    auto* a_zp = builder.MakeScalarInitializer<uint8_t>(0);
+
+    std::vector<uint8_t> b_data = {
+        1, 2, 3,
+        4, 5, 6,
+        7, 8, 9,
+        1, 2, 3};
+    auto* input_b = builder.MakeInput<uint8_t>({2, 2, 3}, b_data);
+    ONNX_NAMESPACE::TensorShapeProto symbolic_b_shape;
+    symbolic_b_shape.add_dim()->set_dim_param("batch");
+    symbolic_b_shape.add_dim()->set_dim_value(2);
+    symbolic_b_shape.add_dim()->set_dim_value(3);
+    input_b->SetShape(symbolic_b_shape);
+
+    auto* b_zp = builder.MakeScalarInitializer<uint8_t>(0);
+
+    auto* matmul_out = builder.MakeIntermediate();
+    builder.AddNode("MatMulInteger", {input_a, input_b, a_zp, b_zp}, {matmul_out});
+
+    auto* cast_out = builder.MakeIntermediate();
+    builder.AddNode("Cast", {matmul_out}, {cast_out})
+        .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+
+    auto* a_scale = builder.MakeScalarInitializer<float>(0.5f);
+    std::vector<float> b_scale_data = {
+        0.1f, 0.2f, 0.3f,
+        0.4f, 0.5f, 0.6f};
+    auto* b_scale = builder.MakeInput<float>({2, 1, 3}, b_scale_data);
+    ONNX_NAMESPACE::TensorShapeProto symbolic_b_scale_shape;
+    symbolic_b_scale_shape.add_dim()->set_dim_param("batch");
+    symbolic_b_scale_shape.add_dim()->set_dim_value(1);
+    symbolic_b_scale_shape.add_dim()->set_dim_value(3);
+    b_scale->SetShape(symbolic_b_scale_shape);
+
+    auto* scale_product = builder.MakeIntermediate();
+    builder.AddNode("Mul", {a_scale, b_scale}, {scale_product});
+
+    auto* mul_out = builder.MakeIntermediate();
+    builder.AddNode("Mul", {cast_out, scale_product}, {mul_out});
+
+    std::vector<float> bias_data = {-1.0f, 0.0f, 1.0f};
+    auto* bias = builder.Make1DInitializer<float>(bias_data);
+
+    auto* output = builder.MakeOutput();
+    builder.AddNode("Add", {mul_out, bias}, {output});
+  };
+
+  auto check_transformed_graph = [](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["com.microsoft.MatMulIntegerToFloat"], 1);
+    EXPECT_EQ(op_to_count["Add"], 0);
+  };
+
+  TransformerTester(build_test_case, check_transformed_graph, TransformerLevel::Default,
+                    TransformerLevel::Level2, 18, 1e-4, 1e-4,
+                    std::make_unique<MatMulIntegerToFloatFusion>());
+}
+
 TEST_F(GraphTransformationTests, MatMulIntegerToFloatFusion_Int8Bias_Input0) {
   constexpr const ORTCHAR_T* model_uri = ORT_TSTR("testdata/matmul_integer_to_float_int8_bias_initializer_index1.onnx");
   std::shared_ptr<Model> p_model;
