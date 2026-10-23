@@ -301,6 +301,32 @@ SessionOptions
 .. autoclass:: onnxruntime.SessionOptions
     :members:
 
+Preload initializers
+""""""""""""""""""""
+
+Use ``SessionOptions.add_initializer(name, ort_value)`` to provide an initializer value when
+creating a session. The name must match an initializer in the model graph. Call the method once
+for each initializer that should be supplied.
+
+When creating values with the public ``onnxruntime.OrtValue`` wrapper, pass its underlying C value
+to ``SessionOptions.add_initializer``. Keep the wrapper objects alive for as long as any session
+created with these options is still in scope.
+
+::
+
+    import numpy as np
+    import onnxruntime as ort
+
+    sess_options = ort.SessionOptions()
+
+    weight = ort.OrtValue.ortvalue_from_numpy(np.array([1.0], dtype=np.float32))
+    bias = ort.OrtValue.ortvalue_from_numpy(np.array([0.0], dtype=np.float32))
+
+    sess_options.add_initializer("weight", weight._get_c_value())
+    sess_options.add_initializer("bias", bias._get_c_value())
+
+    session = ort.InferenceSession("model.onnx", sess_options)
+
 .. autoclass:: onnxruntime.ExecutionMode
     :members:
 
