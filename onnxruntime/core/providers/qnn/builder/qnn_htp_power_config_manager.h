@@ -39,11 +39,21 @@ class HtpPowerConfigManager {
   Status AddHtpPerformanceMode(HtpPerformanceMode htp_performance_mode,
                                uint32_t htp_power_config_client_id);
 
+  Status AddHtpPerformanceConfig(QnnHtpPerfInfrastructure_PowerConfig_t);
+
   // Takes all configs staged for update and attempts to update
   // the HTP power configurations. If there is nothing staged,
   // then no attempt will be made.
   Status SetPowerConfig(uint32_t htp_power_config_client_id,
                         const QNN_INTERFACE_VER_TYPE& qnn_interface);
+
+  Status SetRelaxedPerfPowerConfig(QnnHtpPerfInfrastructure_PowerConfig_t& power_config,
+                                   uint32_t htp_power_config_client_id,
+                                   DcvsState_t dcvsState);
+
+  Status SetReleasedPerfPowerConfig(QnnHtpPerfInfrastructure_PowerConfig_t& power_config, uint32_t htp_power_config_client_id, DcvsState_t dcvsState);
+
+  Status SetExtremeLowPerfPowerConfig(QnnHtpPerfInfrastructure_PowerConfig_t& power_config, uint32_t htp_power_config_client_id);
 
  private:
   // Sets voltage corner votes for HTP based on the given performance mode
