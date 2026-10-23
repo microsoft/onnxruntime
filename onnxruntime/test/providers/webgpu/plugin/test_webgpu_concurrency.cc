@@ -1241,6 +1241,42 @@ TEST_F(PluginEpWebGpuConcurrency, SharedAllocatorCreatesAndCopiesConcurrently) {
   ASSERT_FALSE(error.Failed()) << error.Message();
 }
 
+TEST_F(PluginEpWebGpuConcurrency, DeviceCopyVectorsDuringSessionRunsAndTeardown) {
+  auto allocator = CreateSharedAllocator();
+  ASSERT_NE(allocator, nullptr);
+  std::array<std::unique_ptr<Ort::Session>, kThreads> sessions;
+  for (auto& session : sessions) session = CreateSession();
+  FirstError error;
+  RunWorkers(error, [&](int thread_id) {
+    for (int iteration = 0; iteration < kIterations && !error.Failed(); ++iteration) {
+      const float value = static_cast<float>(thread_id * kIterations + iteration + 1);
+      const auto cpu_memory = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+      std::array<float, kElements> data;
+      data.fill(value);
+      auto input = Ort::Value::CreateTensor<float>(cpu_memory, data.data(), data.size(), kShape.data(), kShape.size());
+      auto destination = Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size());
+      {
+        auto source = Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size());
+        auto intermediate = Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size());
+        Ort::ThrowOnError(ort_env->CopyTensor(input, source, nullptr));
+        const OrtValue* sources[]{source, intermediate};
+        OrtValue* destinations[]{intermediate, destination};
+        Ort::ThrowOnError(Ort::GetApi().CopyTensors(*ort_env, sources, destinations, nullptr, 2));
+      }
+      // Release source owners immediately; later Session work must still consume the submitted copies.
+      const char* input_names[]{"X"};
+      const char* output_names[]{"Y"};
+      auto result = sessions[thread_id]->Run(
+          Ort::RunOptions{nullptr}, input_names, &destination, 1, output_names, 1);
+      std::array<float, kElements> output;
+      std::copy_n(result.front().GetTensorData<float>(), output.size(), output.begin());
+      VerifyOutput(output, value);
+      sessions[thread_id] = CreateSession();
+    }
+  });
+  ASSERT_FALSE(error.Failed()) << error.Message();
+}
+
 TEST_F(PluginEpWebGpuConcurrency, SameSessionRunsAreSerialized) {
   auto session = CreateSession();
   FirstError error;
