@@ -12,6 +12,7 @@
 #include <sstream>
 #include <type_traits>
 
+#include "core/common/parse_string.h"
 #include "core/graph/graph_utils.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/optimizer/initializer.h"
@@ -1025,8 +1026,7 @@ class PatternParser {
     if (!number.empty() && number.front() == '+') number.remove_prefix(1);
     if (number.find_first_of(".eE") != std::string_view::npos) {
       float value;
-      auto parsed = std::from_chars(number.data(), number.data() + number.size(), value);
-      ORT_RETURN_IF(parsed.ec != std::errc{} || parsed.ptr != number.data() + number.size() || !std::isfinite(value),
+      ORT_RETURN_IF(!TryParseStringWithClassicLocale(number, value) || !std::isfinite(value),
                     Error("invalid or nonfinite float literal"));
       result = value;
     } else {
@@ -1447,6 +1447,10 @@ Status PatternParser::PatternCall(const InlinedVector<std::string>& names, const
   const size_t choice = call < choices_.size() ? choices_[call] : 0;
   ORT_RETURN_IF(choice >= definition.plans.size(), Error("invalid alternative selection"));
   const Pattern& source = *definition.plans[choice];
+  // Identity-only calls still expand scoped aliases and instance metadata.
+  ORT_RETURN_IF(source.expanded_calls_ >= 256 || pattern_.expanded_calls_ >= 256 - source.expanded_calls_,
+                Error("expanded call limit of 256 exceeded"));
+  pattern_.expanded_calls_ += source.expanded_calls_ + 1;
   ORT_RETURN_IF(pattern_.Nodes().size() + source.Nodes().size() > 64, Error("expanded node limit exceeded"));
   InlinedVector<Value> map(source.ValueCount(), Value{-1});
   InlinedHashMap<std::string, std::string> attributes;
@@ -1554,9 +1558,13 @@ class PatternModule {
  private:
   static void ValidateEntry(const Pattern& plan, std::string_view name) {
     ORT_ENFORCE(!plan.Nodes().empty(), "Pattern ", name, " cannot be a rule entry: no operator root.");
-    for (Value output : plan.Outputs())
+    InlinedHashSet<int> returned;
+    for (Value output : plan.Outputs()) {
       ORT_ENFORCE(!plan.IsInput(output), "Pattern ", name,
                   " cannot be a rule entry: returned leaf/identity alias; compose it into a rooted pattern.");
+      ORT_ENFORCE(returned.insert(output.handle).second, "Pattern ", name,
+                  " cannot be a rule entry: duplicate returned value after alias expansion.");
+    }
     InlinedHashSet<int> reachable;
     for (Value value : plan.Nodes().back().outputs) reachable.insert(value.handle);
     for (auto it = plan.Nodes().rbegin(); it != plan.Nodes().rend(); ++it) {
@@ -1612,6 +1620,14 @@ class PatternModule {
         PatternParser parser(text, [&](std::string_view name) { return Resolve(name); }, choices, &definition);
         const auto status = parser.Parse(plan);
         ORT_ENFORCE(status.IsOK(), "In definition ", definition.name, ": ", status.ErrorMessage());
+        if (!definition.interface_name.empty()) {
+          for (const auto& port : definition.inputs)
+            ORT_ENFORCE(!plan.IsAttribute(plan.NamedValue(port.name)),
+                        "Interface input must remain a tensor in pattern ", definition.name, ": ", port.name);
+          for (Value output : plan.outputs_)
+            ORT_ENFORCE(!plan.IsAttribute(output),
+                        "Interface output must remain a tensor in pattern ", definition.name);
+        }
         if (definition.interface_name.empty()) {
           InlinedVector<Port> outputs;
           InlinedHashSet<std::string> names;

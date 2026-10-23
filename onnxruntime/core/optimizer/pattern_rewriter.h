@@ -113,6 +113,7 @@ class Pattern {
   InlinedVector<Value> MultiOp(Operator op, gsl::span<const Value> inputs, size_t output_count);
 
   size_t value_count_ = 0;
+  size_t expanded_calls_ = 0;
   InlinedVector<NodePattern, 1> nodes_;
   InlinedVector<Value> values_;
   InlinedHashMap<int, Literal> constants_;

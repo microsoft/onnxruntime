@@ -776,8 +776,12 @@ Every declared input must be used, and every operator must reach at least
 one returned value, but those returned values need not have a single root.
 `GetPattern(name)` validates **every fully expanded plan** as a standalone
 entry: it must have an operator root, all operators must feed that final
-operator, and returned values cannot be leaf/identity aliases. A violation
-raises a use-time diagnostic naming the requested entry. Thus a library
+operator, and returned values cannot be leaf/identity aliases or duplicate
+the same value through different output names. Callable bodies may still
+export multiple aliases of the same value. An entry violation raises a
+use-time diagnostic naming the requested entry. Inherited interface inputs
+and mapped outputs must remain tensor bindings, checked during library
+construction; extra body-only inputs may capture attributes. Thus a library
 may contain useful callable patterns that cannot independently serve as rules:
 
 ```text
@@ -852,7 +856,11 @@ one annotation remain disjunctive.
 Graph alternatives expand to at most **64 complete concrete plans per
 definition**, in source order (the rightmost call varies fastest).
 Each plan retains the existing limits of 64 nodes, 256 values and 64
-type-annotation combinations. Libraries contain at most 256 definitions.
+type-annotation combinations. Each plan also permits at most **256 expanded
+call occurrences**, counted cumulatively through nested bodies, including
+zero-node identity calls. This bounds scoped metadata even when composition
+adds no nodes or values; overflow is rejected before copying callee metadata.
+Libraries contain at most 256 definitions.
 Recursive calls, duplicate definitions/ports, missing members, incompatible
 interfaces and invalid mappings fail during construction. An unresolved
 unqualified call must name a registered standard ONNX operator; use an

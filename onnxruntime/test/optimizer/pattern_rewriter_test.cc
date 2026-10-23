@@ -4506,5 +4506,101 @@ TEST(PatternRewriterTests, UnifiedPatternsExpansionAndAnnotationThresholds) {
                OnnxRuntimeException);
 }
 
+TEST(PatternRewriterTests, PortableFloatLiteralsValidateWholeToken) {
+  for (const char* literal : {"+1.25", "-1.25", "1.25e+2", ".125", "1."}) {
+    SCOPED_TRACE(literal);
+    EXPECT_NO_THROW(Pattern(std::string("(x)=>return Add(x,") + literal + ")"));
+    EXPECT_NO_THROW(Replacement(std::string("(x)=>LeakyRelu(x,alpha=") + literal + ")"));
+  }
+  for (const char* literal : {"1e999", "1e", "1.2.3", "1e+", "1.0-2.0"}) {
+    SCOPED_TRACE(literal);
+    EXPECT_THROW(Pattern(std::string("(x)=>return Add(x,") + literal + ")"), OnnxRuntimeException);
+    EXPECT_THROW(Replacement(std::string("(x)=>LeakyRelu(x,alpha=") + literal + ")"), OnnxRuntimeException);
+  }
+}
+
+TEST(PatternRewriterTests, AliasedReturnsAreCallableButNotDuplicateEntryOutputs) {
+  const PatternLibrary library(R"(
+    pattern IdentityAlias(x) { return (y=x) }
+    pattern Duplicate(x) { y=Identity(x); return (a=y,b=y) }
+    pattern NestedDuplicate(x) { y=Identity(x); p=IdentityAlias(y); return (a=y,b=p.y) }
+    pattern Caller(x) { p=Duplicate(x); return Add(p.a,p.b) }
+    pattern NestedCaller(x) { p=NestedDuplicate(x); return Add(p.a,p.b) }
+    pattern Forms=Duplicate|NestedDuplicate
+  )");
+  for (const char* name : {"Duplicate", "NestedDuplicate", "Forms"}) {
+    SCOPED_TRACE(name);
+    try {
+      library.GetPattern(name);
+      FAIL() << "Aliased entry returns must not create duplicate replacement producers.";
+    } catch (const OnnxRuntimeException& error) {
+      EXPECT_NE(std::string(error.what()).find("duplicate returned value"), std::string::npos);
+    }
+  }
+  for (const char* name : {"Caller", "NestedCaller"}) {
+    TestGraph test;
+    auto& b = test.builder;
+    auto* x = b.MakeInput<float>({2}, 0.0f, 1.0f);
+    auto* y = b.MakeIntermediate();
+    b.AddNode("Identity", {x}, {y});
+    b.AddNode("Add", {y, y}, {b.MakeOutput()});
+    b.SetGraphOutputs();
+    ASSERT_STATUS_OK(test.graph.Resolve());
+    Rule rule{"Aliases", library.GetPattern(name), "(x)=>Identity(x)", {}, {{kOnnxDomain, 17, 17}}};
+    Options options;
+    options.max_iterations = 1;
+    Statistics stats;
+    ASSERT_STATUS_OK(PatternRewriter({rule}, options).Run(test.graph, stats));
+    EXPECT_EQ(stats.rewrites, 1u);
+    ASSERT_STATUS_OK(test.graph.Resolve());
+  }
+}
+
+TEST(PatternRewriterTests, ZeroNodeCompositionHasCumulativeCallBudget) {
+  std::string text = "pattern P0(x){return (y=x)} ";
+  for (int i = 1; i <= 7; ++i) {
+    const auto previous = "P" + std::to_string(i - 1);
+    text += "pattern P" + std::to_string(i) + "(x){a=" + previous + "(x);b=" + previous + "(a.y);return (y=b.y)} ";
+  }
+  // P7 contains 254 expanded calls; these wrappers reach exactly 256.
+  text += "pattern P8(x){a=P7(x);return (y=a.y)} pattern P9(x){a=P8(x);return (y=a.y)} ";
+  EXPECT_NO_THROW(PatternLibrary{text});
+  const std::string overflow = text + "pattern P10(x){a=P9(x);return (y=a.y)}";
+  try {
+    PatternLibrary library(overflow);
+    FAIL() << "Zero-node metadata expansion must be bounded before copying.";
+  } catch (const OnnxRuntimeException& error) {
+    EXPECT_NE(std::string(error.what()).find("expanded call limit of 256"), std::string::npos);
+  }
+  EXPECT_THROW(PatternLibrary(text + "pattern P10(x){a=P7(x);b=P7(a.y);return (y=b.y)}"),
+               OnnxRuntimeException);
+}
+
+TEST(PatternRewriterTests, InterfacePortsCannotBecomeAttributes) {
+  for (const char* text : {
+           "interface I(x,alpha:float)->(y) pattern P implements I {y=LeakyRelu(x,alpha=alpha);return y}",
+           "interface I(x)->(y,z) pattern P implements I:(alpha:float)->"
+           "{a=LeakyRelu(x,alpha=alpha);return (y=alpha,z=a)}",
+           "pattern Attr(x,alpha:float){y=LeakyRelu(x,alpha=alpha);return y} "
+           "interface I(x,alpha:float)->(y) pattern P implements I {a=Attr(x,alpha);return (y=a.y)}",
+           "interface I(x,alpha:float)->(y) "
+           "pattern A implements I {y=Mul(x,alpha);return y} "
+           "pattern B implements I {y=LeakyRelu(x,alpha=alpha);return y} pattern Forms=A|B"}) {
+    SCOPED_TRACE(text);
+    try {
+      PatternLibrary library(text);
+      FAIL() << "Interface ports must remain tensor bindings.";
+    } catch (const OnnxRuntimeException& error) {
+      EXPECT_NE(std::string(error.what()).find("must remain a tensor"), std::string::npos);
+    }
+  }
+  EXPECT_NO_THROW(PatternLibrary(R"(
+    interface I(x) -> (y)
+    pattern P implements I: (alpha:float) -> { y=LeakyRelu(x,alpha=alpha);return y }
+    pattern C(x) { p=P(x); return Identity(p.y) }
+  )")
+                      .GetPattern("C"));
+}
+
 }  // namespace test
 }  // namespace onnxruntime
