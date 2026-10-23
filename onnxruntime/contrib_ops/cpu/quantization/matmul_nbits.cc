@@ -1541,7 +1541,7 @@ Status MatMulNBits<T1>::Compute(OpKernelContext* ctx) const {
   const bool empty_weights = b != nullptr && b->Shape().Size() == 0;
   if (empty_weights) {
     ORT_RETURN_IF_ERROR(matmul_nbits_helper::CheckEmptyInputs(*b, bias, N_, K_, block_size_, nbits_,
-                                                              Info().GetAttrOrDefault<int64_t>("weight_prepacked", 0)));
+                                                              Info().template GetAttrOrDefault<int64_t>("weight_prepacked", 0)));
   } else {
     ORT_RETURN_IF_ERROR(matmul_nbits_helper::CheckInputs<Tensor>(
         a, b, scales, zero_points, reorder_idx, bias, N_, K_, block_size_, nbits_));
