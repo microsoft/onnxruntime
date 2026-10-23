@@ -866,6 +866,12 @@ same. Formal inputs and returned aliases bind to the caller's actual
 `NodeArg`s; no integer handle from another definition is reused.
 Caller and callee annotations are conjunctive, while alternatives within
 one annotation remain disjunctive.
+An annotation classified as a tensor in a compiled callee stays a tensor
+after composition. A caller cannot turn that mapped value into an attribute
+through a later keyword capture or attribute-formal call; this unsupported
+conversion fails during construction, including for ordinary identity aliases.
+Typed attribute formals already classified as attributes in the callee remain
+supported.
 
 Graph alternatives expand to at most **64 complete concrete plans per
 definition**, in source order (the rightmost call varies fastest).

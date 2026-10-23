@@ -123,6 +123,7 @@ class Pattern {
   InlinedHashMap<int, InlinedVector<TypeConstraint, 1>> type_constraints_;
   InlinedHashSet<int> attribute_inputs_;
   InlinedHashSet<int> required_tensor_bindings_;
+  InlinedHashSet<int> composed_tensor_annotations_;
   InlinedHashMap<std::string, Value> aliases_;
   InlinedHashMap<std::string, std::string> attribute_aliases_;
   InlinedVector<std::pair<int, InlinedVector<TypeConstraint, 1>>> ordered_type_constraints_;

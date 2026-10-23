@@ -4896,5 +4896,62 @@ TEST(PatternRewriterTests, ForwardDefinitionNestingHasExplicitBoundary) {
   }
 }
 
+TEST(PatternRewriterTests, ComposedTensorAnnotationsCannotBecomeAttributes) {
+  const std::string definitions = R"(
+    pattern Pass(a:float) { return (y=a) }
+    pattern Alias=Pass
+    pattern Wrapped(a) { p=Alias(a);return (y=p.y) }
+    pattern Attr(x,alpha:float) { y=LeakyRelu(x,alpha=alpha);return y }
+  )";
+  for (const char* call : {"Pass", "Alias", "Wrapped"}) {
+    for (const char* body : {
+             "p=CALL(a);return LeakyRelu(x,alpha=a)",
+             "p=CALL(a);q=Attr(x,p.y);return q.y",
+             "q=Attr(x,a);p=CALL(a);return q.y"}) {
+      std::string text = body;
+      text.replace(text.find("CALL"), 4, call);
+      for (bool indexed : {false, true}) {
+        SCOPED_TRACE(text);
+        try {
+          const PatternLibrary library(definitions + "pattern Entry(x,a){" + text + "}");
+          Rule rule{"Invalid", library.GetPattern("Entry"), "(x)=>Identity(x)", {}, {{kOnnxDomain, 17, 17}}};
+          const PatternRewriter rewriter({rule}, {.match_only = true, .indexed = indexed});
+          FAIL() << "Accepted tensor-to-attribute conversion";
+        } catch (const OnnxRuntimeException& error) {
+          EXPECT_NE(std::string(error.what()).find("Composed tensor annotation"), std::string::npos)
+              << error.what();
+        }
+      }
+    }
+  }
+  const PatternLibrary library(definitions + R"(
+    pattern Entry(x,a:float) { p=Attr(x,a);return p.y }
+    pattern Nested(x,a:float) { p=Entry(x,a);return p.y }
+  )");
+  for (const char* entry : {"Entry", "Nested"}) {
+    for (bool indexed : {false, true}) {
+      TestGraph test;
+      auto& b = test.builder;
+      auto* x = b.MakeInput<float>({2}, -1.0f, 1.0f);
+      b.AddNode("LeakyRelu", {x}, {b.MakeOutput()}).AddAttribute("alpha", 0.25f);
+      b.SetGraphOutputs();
+      ASSERT_STATUS_OK(test.graph.Resolve());
+      int checks = 0;
+      auto check = [&](const Graph&, Match& match) {
+        ++checks;
+        EXPECT_FLOAT_EQ(match.attributeOf("a").f(), 0.25f);
+        const auto child = match.instance("p");
+        EXPECT_FLOAT_EQ(child.attributeOf(std::string_view(entry) == "Entry" ? "alpha" : "a").f(), 0.25f);
+        return true;
+      };
+      Rule rule{"Valid", library.GetPattern(entry), "(x)=>Identity(x)", check, {{kOnnxDomain, 17, 17}}};
+      Statistics stats;
+      ASSERT_STATUS_OK(PatternRewriter({rule}, {.match_only = true, .indexed = indexed}).Run(test.graph, stats));
+      EXPECT_EQ(stats.matches, 1u);
+      EXPECT_EQ(checks, 1);
+    }
+  }
+}
+
 }  // namespace test
 }  // namespace onnxruntime

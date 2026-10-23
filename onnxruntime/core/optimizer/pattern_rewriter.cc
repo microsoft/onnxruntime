@@ -1294,6 +1294,8 @@ Status PatternParser::AppendAlternative(Definition& target, const Definition& me
 Status PatternParser::ValidateTypes(const Pattern& pattern) {
   for (int handle : pattern.required_tensor_bindings_)
     ORT_RETURN_IF(pattern.IsAttribute(handle), "Interface tensor binding cannot become an attribute.");
+  for (int handle : pattern.composed_tensor_annotations_)
+    ORT_RETURN_IF(pattern.IsAttribute(handle), "Composed tensor annotation cannot become an attribute.");
   InlinedHashSet<std::string> dimensions, elements, names;
   for (const auto& value : pattern.values_)
     if (!value.name.empty()) names.insert(value.name);
@@ -1516,7 +1518,10 @@ Status PatternParser::PatternCall(const InlinedVector<std::string>& names, const
   }
   for (int handle : source.required_tensor_bindings_)
     pattern_.required_tensor_bindings_.insert(map[handle].handle);
+  for (int handle : source.composed_tensor_annotations_)
+    pattern_.composed_tensor_annotations_.insert(map[handle].handle);
   auto constraints = [&](int handle, const auto& alternatives) {
+    if (!source.IsAttribute(handle)) pattern_.composed_tensor_annotations_.insert(map[handle].handle);
     auto copy = alternatives;
     for (auto& type : copy) {
       type.value_name = source.IsAttribute(handle) ? attribute_name(type.value_name) : scoped(type.value_name);
