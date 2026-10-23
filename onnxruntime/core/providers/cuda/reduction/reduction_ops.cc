@@ -442,38 +442,38 @@ Status ReduceComputeCore(const AllocatorPtr& gpu_allocator, const CudaKernel* ke
         input_data = reinterpret_cast<const CudaT*>(input_data_buffer.get());
       }
 
+      auto* output_data = reinterpret_cast<CudaT*>(output.MutableData<T>());
       switch (applicable_matrix_reduction) {
         case ApplicableMatrixReduction::Rows: {
-          ORT_RETURN_IF_ERROR(reduce_matrix_rows(
-              stream, input_data, reinterpret_cast<CudaT*>(output.MutableData<T>()), m, n));
-        } break;
+          if (!calculate_log && cudnn_reduce_op != CUDNN_REDUCE_TENSOR_AVG) {
+            return reduce_matrix_rows(stream, input_data, output_data, m, n);
+          }
+          const auto buffer_size_bytes = compute_reduce_matrix_rows_buffer_size<CudaT, CudaT>(m, n);
+          auto buffer = buffer_size_bytes == 0
+                            ? nullptr
+                            : AllocateScratchBuffer<void>(gpu_allocator, kernel, buffer_size_bytes, compute_stream);
+          if (calculate_log) {
+            return reduce_matrix_rows_log_sum(stream, input_data, output_data, m, n, buffer.get(), buffer_size_bytes);
+          }
+          return reduce_matrix_rows_mean(stream, input_data, output_data, m, n, buffer.get(), buffer_size_bytes);
+        }
         case ApplicableMatrixReduction::Columns: {
           const auto buffer_size_bytes = compute_reduce_matrix_columns_buffer_size<CudaT>(m, n);
           auto buffer = buffer_size_bytes == 0
                             ? nullptr
                             : AllocateScratchBuffer<void>(gpu_allocator, kernel, buffer_size_bytes, compute_stream);
-          ORT_RETURN_IF_ERROR(reduce_matrix_columns(stream, input_data,
-                                                    reinterpret_cast<CudaT*>(output.MutableData<T>()), m, n,
-                                                    buffer.get(), buffer_size_bytes));
-        } break;
-        default: {
-          ORT_ENFORCE(false, "Invild matrix reduction type.");
+          if (calculate_log) {
+            return reduce_matrix_columns_log_sum(stream, input_data, output_data, m, n, buffer.get(),
+                                                 buffer_size_bytes);
+          }
+          if (cudnn_reduce_op == CUDNN_REDUCE_TENSOR_AVG) {
+            return reduce_matrix_columns_mean(stream, input_data, output_data, m, n, buffer.get(), buffer_size_bytes);
+          }
+          return reduce_matrix_columns(stream, input_data, output_data, m, n, buffer.get(), buffer_size_bytes);
         }
+        default:
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid matrix reduction type.");
       }
-
-      if (calculate_log) {
-        Impl_Log<CudaT>(stream, reinterpret_cast<const CudaT*>(output.Data<T>()),
-                        reinterpret_cast<CudaT*>(output.MutableData<T>()), output_count);
-      } else if (cudnn_reduce_op == CUDNN_REDUCE_TENSOR_AVG) {
-        float denominator_float = applicable_matrix_reduction == ApplicableMatrixReduction::Rows
-                                      ? static_cast<float>(m)
-                                      : static_cast<float>(n);
-        CudaT denominator = ToCudaType<T>::FromFloat(denominator_float);
-        UnaryDiv(stream, reinterpret_cast<const CudaT*>(output.Data<T>()),
-                 reinterpret_cast<CudaT*>(output.MutableData<T>()), denominator, output_count);
-      }
-
-      return Status::OK();
     }
   }
 
@@ -527,8 +527,11 @@ Status ReduceComputeCore(const AllocatorPtr& gpu_allocator, const CudaKernel* ke
   cudnnDataType_t cudnn_type_X = CUDNN_DATA_FLOAT;
 
   // Reducesum with BFP16 is not supported by cudnn, so convert input to fp32 then call cudnn
+  // FP16 ReduceLogSum also reduces in fp32 so the sum isn't narrowed before the log.
   if ((ReduceTensorIndices == CUDNN_REDUCE_TENSOR_FLATTENED_INDICES && std::is_same<T, MLFloat16>::value) ||
-      (ReduceTensorIndices == CUDNN_REDUCE_TENSOR_NO_INDICES && std::is_same<T, BFloat16>::value)) {
+      (ReduceTensorIndices == CUDNN_REDUCE_TENSOR_NO_INDICES && std::is_same<T, BFloat16>::value) ||
+      (ReduceTensorIndices == CUDNN_REDUCE_TENSOR_NO_INDICES && std::is_same<T, MLFloat16>::value && calculate_log &&
+       input_count != output_count)) {
     // ArgMax/ArgMin with FP16 are not supported by cudnn, so convert input to fp32 then call cudnn
     temp_X = AllocateScratchBuffer<float>(gpu_allocator, kernel, input_count, compute_stream);
     Impl_Cast<CudaT, float>(stream, reinterpret_cast<const CudaT*>(input.Data<T>()), temp_X.get(), input_shape.Size());
@@ -699,6 +702,12 @@ Status ReduceComputeCore(const AllocatorPtr& gpu_allocator, const CudaKernel* ke
               &one, input_tensor, temp_X.get(),
               &zero, output_tensor, temp_output.get()));
 
+          if (calculate_log) {
+            Impl_Log<float>(stream, temp_output.get(), temp_output.get(), output_count);
+            Impl_Cast<float, CudaT>(stream, temp_output.get(), reinterpret_cast<CudaT*>(output.MutableData<T>()),
+                                    output_count);
+            return Status::OK();
+          }
           Impl_Cast<float, CudaT>(stream, temp_output.get(), reinterpret_cast<CudaT*>(output.MutableData<T>()), output_count);
         } else {
           auto* p_output = reinterpret_cast<CudaT*>(output.template MutableData<T>());
