@@ -210,7 +210,7 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
   }
 
   if (int8_enable_ || fp8_enable_) {
-    int8_calibration_cache_available_ = !info.int8_calibration_table_name.empty();
+    int8_calibration_cache_available_ = !int8_calibration_table_name_.empty();
   }
 
   // Load INT8 calibration table
