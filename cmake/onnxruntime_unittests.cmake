@@ -1888,6 +1888,35 @@ if (NOT IOS)
 endif()
 
 if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+  if (onnxruntime_USE_WEBGPU AND onnxruntime_BUILD_SHARED_LIB AND
+      NOT onnxruntime_DISABLE_CONTRIB_OPS AND NOT onnxruntime_MINIMAL_BUILD AND
+      NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    # Manual diagnostic runner; deliberately not built or registered as a CI test.
+    onnxruntime_add_executable(onnxruntime_webgpu_matmul_nbits_benchmark EXCLUDE_FROM_ALL
+      "${TEST_SRC_DIR}/webgpu/matmul_nbits_benchmark.cc")
+    target_link_libraries(onnxruntime_webgpu_matmul_nbits_benchmark PRIVATE onnxruntime)
+    target_include_directories(onnxruntime_webgpu_matmul_nbits_benchmark PRIVATE "${ONNXRUNTIME_ROOT}")
+    if(onnxruntime_USE_EP_API_ADAPTERS AND NOT onnxruntime_WEBGPU_STATIC_PLUGIN)
+      add_dependencies(onnxruntime_webgpu_matmul_nbits_benchmark onnxruntime_providers_webgpu)
+      target_compile_definitions(onnxruntime_webgpu_matmul_nbits_benchmark PRIVATE
+        ORT_WEBGPU_BENCHMARK_PLUGIN_PATH="$<TARGET_FILE_NAME:onnxruntime_providers_webgpu>")
+    elseif(onnxruntime_USE_EP_API_ADAPTERS)
+      target_compile_definitions(onnxruntime_webgpu_matmul_nbits_benchmark PRIVATE
+        ORT_WEBGPU_BENCHMARK_STATIC_PLUGIN=1)
+    endif()
+    set_target_properties(onnxruntime_webgpu_matmul_nbits_benchmark PROPERTIES FOLDER "ONNXRuntimeTest")
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND onnxruntime_ENABLE_DAWN_BACKEND_VULKAN)
+      # Optional Linux/glibc compiler statistics, excluded from clean timing and CI.
+      add_library(onnxruntime_webgpu_pipeline_stats SHARED EXCLUDE_FROM_ALL
+        "${TEST_SRC_DIR}/webgpu/vulkan_pipeline_stats.cc")
+      target_include_directories(onnxruntime_webgpu_pipeline_stats PRIVATE
+        "${dawn_SOURCE_DIR}/third_party/vulkan-headers/src/include")
+      target_compile_features(onnxruntime_webgpu_pipeline_stats PRIVATE cxx_std_17)
+      target_link_libraries(onnxruntime_webgpu_pipeline_stats PRIVATE ${CMAKE_DL_LIBS} Threads::Threads)
+      set_target_properties(onnxruntime_webgpu_pipeline_stats PROPERTIES FOLDER "ONNXRuntimeTest")
+    endif()
+  endif()
+
   if(onnxruntime_BUILD_BENCHMARKS)
     SET(BENCHMARK_DIR ${TEST_SRC_DIR}/onnx/microbenchmark)
     onnxruntime_add_executable(onnxruntime_benchmark

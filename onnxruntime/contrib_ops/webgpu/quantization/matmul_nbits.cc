@@ -3,9 +3,11 @@
 
 #include <string>
 #include <string_view>
+#include <initializer_list>
 
 #include "contrib_ops/webgpu/quantization/matmul_nbits.h"
 #include "contrib_ops/webgpu/quantization/matmul_nbits_common.h"
+#include "contrib_ops/webgpu/quantization/matmul_nbits_small_m_simt.h"
 #include "contrib_ops/webgpu/quantization/subgroup_matrix_matmul_nbits.h"
 #include "contrib_ops/webgpu/quantization/dp4a_matmul_nbits.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
@@ -13,10 +15,26 @@
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/webgpu_utils.h"
+#include "core/platform/env_var.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace webgpu {
+
+namespace {
+uint32_t SmallMSimtSetting(const char* name, uint32_t fallback, std::initializer_list<uint32_t> supported) {
+  const auto value = onnxruntime::detail::GetEnvironmentVar(name);
+  if (value.empty()) {
+    return fallback;
+  }
+  for (uint32_t setting : supported) {
+    if (value == std::to_string(setting)) {
+      return setting;
+    }
+  }
+  ORT_THROW("Unsupported diagnostic tile setting: ", name, "=", value);
+}
+}  // namespace
 
 ONNX_OPERATOR_KERNEL_EX(
     MatMulNBits,
@@ -330,19 +348,34 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
   const uint32_t zp_elements_per_byte = 8 / static_cast<uint32_t>(nbits);
   uint32_t zero_blocks_per_col = (n_blocks_per_col + zp_elements_per_byte - 1) / zp_elements_per_byte * zp_elements_per_byte;
 
+  const auto diagnostic_mode = onnxruntime::detail::GetEnvironmentVar("ORT_WEBGPU_SMALL_M_DIAGNOSTIC");
+  ORT_RETURN_IF_NOT(diagnostic_mode.empty() || diagnostic_mode == "auto" ||
+                        diagnostic_mode == "regular" || diagnostic_mode == "simt",
+                    "ORT_WEBGPU_SMALL_M_DIAGNOSTIC must be auto, regular, or simt.");
+  if (diagnostic_mode == "simt") {
+    const SmallMSimtConfig config{
+        SmallMSimtSetting("ORT_WEBGPU_SMALL_M_BN", 16, {8, 16, 32}),
+        SmallMSimtSetting("ORT_WEBGPU_SMALL_M_BK", 512, {256, 512, 1024}),
+        SmallMSimtSetting("ORT_WEBGPU_SMALL_M_A_BLOCK_PADDING", 0, {0, 1})};
+    return ApplySmallMSimtMatMulNBits(a, b, scales, zero_points, bias, M, N, K, block_size,
+                                      batch_count, weight_index, weight_index_indirect, dispatch_M,
+                                      static_cast<uint32_t>(nbits), context, y, config);
+  }
+  const bool force_regular = diagnostic_mode == "regular";
+
   // apple|intel - Experimental dawn support for subgroup matrix matmul.
   std::optional<SubgroupMatrixConfig> subgroup_matrix_config;
-  if (CanApplySubgroupMatrixMatMulNBits(context,
-                                        accuracy_level,
-                                        block_size,
-                                        batch_count,
-                                        N,
-                                        K,
-                                        static_cast<uint32_t>(nbits),
-                                        y->DataType() == DataTypeImpl::GetType<MLFloat16>(),
-                                        subgroup_matrix_config,
-                                        M,
-                                        has_weight_idx_indirect)) {
+  if (!force_regular && CanApplySubgroupMatrixMatMulNBits(context,
+                                                          accuracy_level,
+                                                          block_size,
+                                                          batch_count,
+                                                          N,
+                                                          K,
+                                                          static_cast<uint32_t>(nbits),
+                                                          y->DataType() == DataTypeImpl::GetType<MLFloat16>(),
+                                                          subgroup_matrix_config,
+                                                          M,
+                                                          has_weight_idx_indirect)) {
     return ApplySubgroupMatrixMatMulNBits(a, b, scales, zero_points, bias, M, N, K,
                                           static_cast<uint32_t>(nbits), zero_blocks_per_col,
                                           *subgroup_matrix_config, context, y, weight_index,
@@ -351,14 +384,14 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
 
   // On FP32 only GPUs and Qualcomm GPUs, integer math is faster than FP32 therefore always use DP4A independent of length of M.
   // DP4A Q2 path now supports custom zero points via a 1024-entry LUT (4 zero-point sections × 256 byte values).
-  if (CanApplyDP4AMatrixMatMulNBits(context, accuracy_level, block_size, N, K, components_a,
-                                    M, has_weight_idx_indirect, y)) {
+  if (!force_regular && CanApplyDP4AMatrixMatMulNBits(context, accuracy_level, block_size, N, K, components_a,
+                                                      M, has_weight_idx_indirect, y)) {
     return ApplyDP4AMatrixMatMulNBits(a, b, scales, zero_points, bias, batch_count, M, dispatch_M, N, K, block_size, zero_blocks_per_col, kMinMForTileOptimization, static_cast<uint32_t>(nbits), context, y, weight_index, weight_index_indirect);
   }
 
   // This program is optimized for FP32/FP16 Block32 prefill.
-  if (CanApplyWideTileMatMulNBits(M, K, block_size, nbits, has_weight_idx_indirect,
-                                  components_a, components_b)) {
+  if (!force_regular && CanApplyWideTileMatMulNBits(M, K, block_size, nbits, has_weight_idx_indirect,
+                                                    components_a, components_b)) {
     return ApplyWideTileMatMulNBits(a, b, scales, zero_points, bias, batch_count, dispatch_M, N, K,
                                     block_size, zero_blocks_per_col, static_cast<uint32_t>(nbits),
                                     context, y, weight_index, weight_index_indirect);
