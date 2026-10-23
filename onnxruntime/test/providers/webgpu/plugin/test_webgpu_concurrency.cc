@@ -1264,12 +1264,18 @@ TEST_F(PluginEpWebGpuConcurrency, DeviceCopyVectorsDuringSessionRunsAndTeardown)
         Ort::ThrowOnError(Ort::GetApi().CopyTensors(*ort_env, sources, destinations, nullptr, 2));
       }
       // Release source owners immediately; later Session work must still consume the submitted copies.
-      const char* input_names[]{"X"};
-      const char* output_names[]{"Y"};
-      auto result = sessions[thread_id]->Run(
-          Ort::RunOptions{nullptr}, input_names, &destination, 1, output_names, 1);
+      auto gpu_output = Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size());
+      {
+        Ort::IoBinding binding(*sessions[thread_id]);
+        binding.BindInput("X", destination);
+        binding.BindOutput("Y", gpu_output);
+        sessions[thread_id]->Run(Ort::RunOptions{nullptr}, binding);
+      }
+      // Read back after OnRunEnd submits the Session, including on hosts built without streams.
       std::array<float, kElements> output;
-      std::copy_n(result.front().GetTensorData<float>(), output.size(), output.begin());
+      auto cpu_output = Ort::Value::CreateTensor<float>(
+          cpu_memory, output.data(), output.size(), kShape.data(), kShape.size());
+      Ort::ThrowOnError(ort_env->CopyTensor(gpu_output, cpu_output, nullptr));
       VerifyOutput(output, value);
       sessions[thread_id] = CreateSession();
     }
