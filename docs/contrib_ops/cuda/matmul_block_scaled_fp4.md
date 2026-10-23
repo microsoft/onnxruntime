@@ -318,7 +318,8 @@ GEMM and the original scale tensor for the other paths.
 | `ORT_FP4_GEMV_ROW_TILING` | `1` | Set to `0` to force `RowsPerBlock == 1` in the scalar decode GEMV. |
 | `ORT_FP4_GEMV_KSPLIT` | `0` | Benchmark override for the tensor-core GEMV K-split value (`1, 2, 4, 8, or 16`). |
 | `ORT_FP4_GEMV_COL_TILES` | `0` | Benchmark override for tensor-core GEMV column tiles (`1` or `4`). |
-| `ORT_FP4_GEMV_MATCH_N` / `ORT_FP4_GEMV_MATCH_K` | `0` | Restrict the two benchmark overrides to one `N`/`K` shape; zero means any shape. |
+| `ORT_FP4_GEMV_COL_GROUPS` | `0` | Benchmark override for tensor-core GEMV column groups (`1` or `2`); grouping is supported only for `M <= 8`. |
+| `ORT_FP4_GEMV_MATCH_N` / `ORT_FP4_GEMV_MATCH_K` | `0` | Restrict the three benchmark overrides to one `N`/`K` shape; zero means any shape. |
 
 The default remains the existing weight-only semantics: decode GEMV for small
 `M`, otherwise dequantize `B` and call cuBLAS.
