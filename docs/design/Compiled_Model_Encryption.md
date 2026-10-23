@@ -131,7 +131,7 @@ Omitting the plugin variable skips the Node.js integration test; setting it with
 a normal native addon fails explicitly rather than silently skipping the fixture.
 
 For Rust, with the system-library build configured as described in
-`rust/README.md`, from `rust`:
+[the Rust build guide](../../rust/BUILD.md), from `rust`:
 
 ```powershell
 $env:RUST_ONNXRUNTIME_LIBRARY_PATH = "<native-build-output-directory>\onnxruntime.dll"

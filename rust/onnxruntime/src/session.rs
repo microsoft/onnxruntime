@@ -1607,7 +1607,7 @@ mod tests {
 
         impl Drop for Fixture {
             fn drop(&mut self) {
-                unsafe {
+                let unregister = unsafe {
                     status_to_result_with_api(
                         self.api.UnregisterExecutionProviderLibrary.unwrap()(
                             self.env,
@@ -1615,10 +1615,56 @@ mod tests {
                         ),
                         &self.api,
                     )
-                    .unwrap();
+                };
+                let cleanup = fs::remove_dir_all(&self.directory);
+                if std::thread::panicking() {
+                    if let Err(error) = unregister {
+                        error!(
+                            "Failed to unregister encrypted-context fixture during unwinding: {}",
+                            error
+                        );
+                    }
+                    if let Err(error) = cleanup {
+                        error!(
+                            "Failed to remove encrypted-context fixture during unwinding: {}",
+                            error
+                        );
+                    }
+                } else {
+                    unregister.unwrap();
+                    cleanup.unwrap();
                 }
-                fs::remove_dir_all(&self.directory).unwrap();
             }
+        }
+
+        #[test]
+        fn fixture_cleanup_survives_unregistration_failure_during_unwind() {
+            let environment = test_environment().env();
+            let api = unsafe { environment.api() };
+            let env = environment.env_ptr;
+            drop(environment);
+            let mut random = [0; 16];
+            SystemRandom::new().fill(&mut random).unwrap();
+            let directory = std::env::temp_dir().join(format!(
+                "ort-rust-encrypted-cleanup-{:x}",
+                u128::from_le_bytes(random)
+            ));
+            fs::create_dir(&directory).unwrap();
+            fs::write(directory.join("unexpected.ctx"), b"fallback").unwrap();
+            let result = catch_unwind(AssertUnwindSafe(|| {
+                let _fixture = Fixture {
+                    directory: directory.clone(),
+                    api,
+                    env,
+                };
+                // No library was registered: Drop must preserve this panic despite unregister failing.
+                panic!("original test failure");
+            }));
+            assert_eq!(
+                result.unwrap_err().downcast_ref::<&str>(),
+                Some(&"original test failure")
+            );
+            assert!(!directory.exists());
         }
 
         #[derive(Default)]
