@@ -1,4 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
+// SPDX-FileCopyrightText: Copyright 2026 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
 
 #ifdef _WIN32
@@ -54,13 +55,7 @@ static constexpr uint32_t min_ort_version_with_compute_v2_support = 16;
 static constexpr uint32_t min_ort_version_with_shape_inference = 17;
 #endif
 
-#if !defined(DISABLE_FLOAT8_TYPES) && !defined(DISABLE_FLOAT4_TYPES)
-#define SUPPORTED_TENSOR_TYPES DataTypeImpl::AllTensorTypesIRv11()
-#elif !defined(DISABLE_FLOAT8_TYPES)
-#define SUPPORTED_TENSOR_TYPES DataTypeImpl::AllTensorTypesIRv10()
-#else
-#define SUPPORTED_TENSOR_TYPES DataTypeImpl::AllTensorTypesIRv4()
-#endif
+#define SUPPORTED_TENSOR_TYPES DataTypeImpl::AllTensorTypesIRv13()
 
 #if defined(ORT_MINIMAL_BUILD)
 struct OrtShapeInferContext {
