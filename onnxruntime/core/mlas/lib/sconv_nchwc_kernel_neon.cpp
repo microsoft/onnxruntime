@@ -264,7 +264,7 @@ void
         unsigned KernelFlags
     )
 {
-#if defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC) && !defined(_WIN32)
+#if defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC)
     MlasConvNchwcFloatKernelNeonAsm(
         Input,
         Filter,
@@ -315,7 +315,7 @@ void
 // Implementation of MlasConvDepthwiseFloatKernelNeon
 //
 // This kernel performs depthwise separable convolution where each input channel
-// is convolved with its own filter. 
+// is convolved with its own filter.
 //
 
 static void
