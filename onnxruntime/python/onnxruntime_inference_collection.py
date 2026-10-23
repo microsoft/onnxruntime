@@ -1136,6 +1136,8 @@ class IOBinding:
         :param buffer_ptr: memory pointer to input data
         """
         self._reject_if_pinned("rebind inputs")
+        if name in self._numpy_obj_references:
+            self._iobinding.synchronize_inputs()
         self._iobinding.bind_input(
             name,
             OrtDevice.make(device_type, device_id)._get_c_device(),
@@ -1143,6 +1145,7 @@ class IOBinding:
             shape,
             buffer_ptr,
         )
+        self._numpy_obj_references.pop(name, None)
         self._bound_inputs[name] = None
 
     def bind_ortvalue_input(self, name, ortvalue):
@@ -1152,7 +1155,10 @@ class IOBinding:
         """
         _validate_ortvalue_session_compatibility(ortvalue, self._session, "bound to")
         self._reject_if_pinned("rebind inputs")
+        if name in self._numpy_obj_references:
+            self._iobinding.synchronize_inputs()
         self._iobinding.bind_ortvalue_input(name, ortvalue._ortvalue)
+        self._numpy_obj_references.pop(name, None)
         self._bound_inputs[name] = ortvalue
 
     def synchronize_inputs(self):
@@ -1248,8 +1254,11 @@ class IOBinding:
 
     def clear_binding_inputs(self):
         self._reject_if_pinned("clear input bindings")
+        if self._numpy_obj_references:
+            self._iobinding.synchronize_inputs()
         self._iobinding.clear_binding_inputs()
         self._bound_inputs.clear()
+        self._numpy_obj_references.clear()
 
     def clear_binding_outputs(self):
         self._reject_if_pinned("clear output bindings")

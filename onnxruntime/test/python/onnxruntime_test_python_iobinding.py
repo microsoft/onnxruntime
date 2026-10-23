@@ -2,17 +2,19 @@
 # Licensed under the MIT License.
 # pylint: disable=C0115,W0212,C0103,C0114
 
+import gc
 import unittest
+import weakref
 
 import numpy as np
 from helper import get_name
 from numpy.testing import assert_almost_equal
 from onnx import TensorProto, helper
-
-import onnxruntime as onnxrt
 from onnxruntime.capi._pybind_state import OrtDevice as C_OrtDevice  # pylint: disable=E0611
 from onnxruntime.capi._pybind_state import OrtValue as C_OrtValue
 from onnxruntime.capi._pybind_state import OrtValueVector, SessionIOBinding
+
+import onnxruntime as onnxrt
 
 test_params = [
     ("cuda", "CUDAExecutionProvider", C_OrtDevice.cuda),
@@ -26,6 +28,78 @@ _LAST_RELEASED_AI_ONNX_OPSET = max(v for (d, v) in helper.OP_SET_ID_VERSION_MAP 
 
 
 class TestIOBinding(unittest.TestCase):
+    def test_clear_cpu_input_releases_numpy_reference(self):
+        session = onnxrt.InferenceSession(
+            get_name("mul_1.onnx"),
+            providers=["CPUExecutionProvider"],
+        )
+        binding = session.io_binding()
+
+        data = self._create_numpy_input()
+        reference = weakref.ref(data)
+
+        binding.bind_cpu_input("X", data)
+        del data
+        gc.collect()
+
+        self.assertIsNotNone(reference())
+
+        binding.clear_binding_inputs()
+        gc.collect()
+
+        self.assertIsNone(reference())
+
+    def test_rebind_raw_pointer_releases_previous_cpu_reference(self):
+        session = onnxrt.InferenceSession(
+            get_name("mul_1.onnx"),
+            providers=["CPUExecutionProvider"],
+        )
+        binding = session.io_binding()
+
+        data = self._create_numpy_input()
+        reference = weakref.ref(data)
+
+        binding.bind_cpu_input("X", data)
+        del data
+        gc.collect()
+
+        self.assertIsNotNone(reference())
+
+        replacement = self._create_numpy_input()
+        binding.bind_input(
+            "X",
+            "cpu",
+            0,
+            replacement.dtype,
+            replacement.shape,
+            replacement.ctypes.data,
+        )
+        gc.collect()
+
+        self.assertIsNone(reference())
+
+    def test_rebind_ortvalue_releases_previous_cpu_reference(self):
+        session = onnxrt.InferenceSession(
+            get_name("mul_1.onnx"),
+            providers=["CPUExecutionProvider"],
+        )
+        binding = session.io_binding()
+
+        data = self._create_numpy_input()
+        reference = weakref.ref(data)
+
+        binding.bind_cpu_input("X", data)
+        del data
+        gc.collect()
+
+        self.assertIsNotNone(reference())
+
+        replacement = onnxrt.OrtValue.ortvalue_from_numpy(self._create_numpy_input())
+        binding.bind_ortvalue_input("X", replacement)
+        gc.collect()
+
+        self.assertIsNone(reference())
+
     def test_cuda_rms_norm_fp16_offset_buffers(self):
         """RMSNorm must accept FP16 CUDA buffers offset by one element without corrupting their padding."""
         if "CUDAExecutionProvider" not in onnxrt.get_available_providers():
