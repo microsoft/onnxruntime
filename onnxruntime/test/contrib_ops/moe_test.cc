@@ -2260,7 +2260,8 @@ TEST(MoETest, QMoETest_Int2CudaPrepackedRejectsRawFallback) {
 // mismatch instead of only a shape or gate mismatch.
 template <typename T = MLFloat16>
 static std::vector<float> RunQMoEPackedIntGemvParityCase(
-    bool disable_packed_gemv, int64_t num_rows = 4, int64_t num_experts = 4, int64_t k = 2) {
+    bool disable_packed_gemv, int64_t num_rows = 4, int64_t num_experts = 4, int64_t k = 2,
+    bool rounding_sensitive_fc2 = false) {
   constexpr int64_t hidden_size = 512;
   constexpr int64_t inter_size = 512;
   constexpr int64_t block_size = 64;
@@ -2282,7 +2283,8 @@ static std::vector<float> RunQMoEPackedIntGemvParityCase(
 
   std::vector<float> input(static_cast<size_t>(num_rows * hidden_size));
   for (float& value : input) {
-    value = static_cast<float>(next_rand() % 17) * 0.05f - 0.4f;
+    value = (static_cast<float>(next_rand() % 17) * 0.05f - 0.4f) *
+            (rounding_sensitive_fc2 ? 4.0f : 1.0f);
   }
 
   // Favor high-numbered experts too, exercising the full expert-map range.
@@ -2297,16 +2299,16 @@ static std::vector<float> RunQMoEPackedIntGemvParityCase(
     }
   }
 
-  // Each expert's weight is a "shifted identity": row r picks out input column
-  // (r + expert_shift) % columns, so a bug that mixes up per-expert strides or permutation
-  // changes the numeric result rather than only the output shape.
-  auto make_expert_weights = [](int64_t rows, int64_t columns, int64_t expert_shift) {
+  // Each expert uses a shifted identity; the rounding-sensitive case adds a second FC2 term.
+  auto make_expert_weights = [](int64_t rows, int64_t columns, int64_t expert_shift, bool two_terms) {
     std::vector<uint8_t> weights(static_cast<size_t>(rows * columns / pack_size), 0);
     constexpr uint8_t base_code = static_cast<uint8_t>(1u << (bits - 1));
     for (int64_t row = 0; row < rows; ++row) {
       const int64_t identity_column = (row + expert_shift) % columns;
+      const int64_t second_column = (identity_column + 17) % columns;
       for (int64_t column = 0; column < columns; ++column) {
-        const uint8_t code = static_cast<uint8_t>(base_code + (column == identity_column ? 1 : 0));
+        const bool selected = column == identity_column || (two_terms && column == second_column);
+        const uint8_t code = static_cast<uint8_t>(base_code + (selected ? 1 : 0));
         const int64_t byte_index = row * (columns / pack_size) + column / pack_size;
         weights[static_cast<size_t>(byte_index)] |=
             static_cast<uint8_t>(code << ((column % pack_size) * bits));
@@ -2318,8 +2320,8 @@ static std::vector<float> RunQMoEPackedIntGemvParityCase(
   std::vector<uint8_t> fc1_weights(static_cast<size_t>(num_experts * fc1_rows * hidden_size / pack_size));
   std::vector<uint8_t> fc2_weights(static_cast<size_t>(num_experts * hidden_size * inter_size / pack_size));
   for (int64_t e = 0; e < num_experts; ++e) {
-    const auto fc1_e = make_expert_weights(fc1_rows, hidden_size, e * 7);
-    const auto fc2_e = make_expert_weights(hidden_size, inter_size, e * 11);
+    const auto fc1_e = make_expert_weights(fc1_rows, hidden_size, e * 7, false);
+    const auto fc2_e = make_expert_weights(hidden_size, inter_size, e * 11, rounding_sensitive_fc2);
     std::copy(fc1_e.begin(), fc1_e.end(), fc1_weights.begin() + static_cast<int64_t>(fc1_e.size()) * e);
     std::copy(fc2_e.begin(), fc2_e.end(), fc2_weights.begin() + static_cast<int64_t>(fc2_e.size()) * e);
   }
@@ -2425,6 +2427,9 @@ TEST(MoETest, QMoETest_Int2CudaPackedDecodeFourRowsTop10Parity) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP();
   for (bool fused : {false, true}) {
     ScopedEnvironmentVariables settings{{{"ORT_QMOE_INT2_DECODE_MAX_EXPANDED_ROWS", "40"},
+                                         {"ORT_QMOE_INT2_LARGE_EXPERTS", "1"},
+                                         {"ORT_ENABLE_QMOE_INT2_PREFILL", "0"},
+                                         {"ORT_DISABLE_MOE_GEMV", "0"},
                                          {"ORT_INT2_S4_FUSED_FINALIZE", fused ? "1" : "0"}}};
     const auto packed = RunQMoEPackedIntGemvParityCase(false, 4, 16, 10);
     const auto dense = RunQMoEPackedIntGemvParityCase(true, 4, 16, 10);
@@ -2437,6 +2442,26 @@ TEST(MoETest, QMoETest_Int2CudaPackedDecodeFourRowsTop10Parity) {
     ASSERT_EQ(packed_bf16.size(), dense_bf16.size());
     for (size_t i = 0; i < packed_bf16.size(); ++i) {
       EXPECT_NEAR(packed_bf16[i], dense_bf16[i], 0.02f) << "BF16 mismatch at index " << i;
+    }
+
+    if (fused) {
+      // Two FC2 terms and larger activations make the per-expert FP32 dot product land between
+      // activation-dtype values, exercising the cast before the fused routing-weight accumulation.
+      const auto rounding_packed = RunQMoEPackedIntGemvParityCase(false, 4, 16, 10, true);
+      const auto rounding_dense = RunQMoEPackedIntGemvParityCase(true, 4, 16, 10, true);
+      ASSERT_EQ(rounding_packed.size(), rounding_dense.size());
+      for (size_t i = 0; i < rounding_packed.size(); ++i) {
+        EXPECT_NEAR(rounding_packed[i], rounding_dense[i], 0.0002f)
+            << "rounding-sensitive FP16 mismatch at index " << i;
+      }
+
+      const auto rounding_packed_bf16 = RunQMoEPackedIntGemvParityCase<BFloat16>(false, 4, 16, 10, true);
+      const auto rounding_dense_bf16 = RunQMoEPackedIntGemvParityCase<BFloat16>(true, 4, 16, 10, true);
+      ASSERT_EQ(rounding_packed_bf16.size(), rounding_dense_bf16.size());
+      for (size_t i = 0; i < rounding_packed_bf16.size(); ++i) {
+        EXPECT_NEAR(rounding_packed_bf16[i], rounding_dense_bf16[i], 0.002f)
+            << "rounding-sensitive BF16 mismatch at index " << i;
+      }
     }
   }
 }
