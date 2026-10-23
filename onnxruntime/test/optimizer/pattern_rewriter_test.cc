@@ -2612,7 +2612,6 @@ TEST(PatternRewriterTests, SharedDimensionAndElementBindings) {
         EXPECT_EQ(std::get<int64_t>(match.dimensionOf("N")), 3);
         if (scenario == 0) EXPECT_EQ(std::get<int64_t>(match.dimensionOf("M")), 2);
         if (scenario == 2) EXPECT_EQ(std::get<std::string>(match.dimensionOf("M")), "batch");
-        if (scenario == 5) EXPECT_TRUE(std::holds_alternative<std::monostate>(match.dimensionOf("M")));
         EXPECT_THROW(match.dimensionOf("missing"), OnnxRuntimeException);
         EXPECT_THROW(match.elementTypeOf("missing"), OnnxRuntimeException);
         ONNX_NAMESPACE::AttributeProto attribute;
@@ -2624,7 +2623,7 @@ TEST(PatternRewriterTests, SharedDimensionAndElementBindings) {
       };
       Statistics stats;
       ASSERT_STATUS_OK(PatternRewriter({rule}, {.match_only = true, .indexed = indexed}).Run(test.graph, stats));
-      const bool expected = scenario == 0 || scenario == 2 || scenario == 5;
+      const bool expected = scenario == 0 || scenario == 2;
       EXPECT_EQ(stats.matches, expected ? 1u : 0u);
       EXPECT_EQ(guards, expected ? 1 : 0);
     }
@@ -4741,7 +4740,7 @@ TEST(PatternRewriterTests, InterleavedGroupsDispatchCallbacksInRegistrationOrder
         Statistics stats;
         PatternRewriter rewriter({first, middle, last}, options);
         if (match_only && throw_late) {
-          EXPECT_THROW(rewriter.Run(test.graph, stats), OnnxRuntimeException);
+          EXPECT_THROW((void)rewriter.Run(test.graph, stats), OnnxRuntimeException);
         } else {
           ASSERT_STATUS_OK(rewriter.Run(test.graph, stats));
           EXPECT_EQ(stats.rewrites, match_only ? 0u : 1u);
@@ -4949,6 +4948,225 @@ TEST(PatternRewriterTests, ComposedTensorAnnotationsCannotBecomeAttributes) {
       ASSERT_STATUS_OK(PatternRewriter({rule}, {.match_only = true, .indexed = indexed}).Run(test.graph, stats));
       EXPECT_EQ(stats.matches, 1u);
       EXPECT_EQ(checks, 1);
+    }
+  }
+}
+
+TEST(PatternRewriterTests, RepeatedDimensionsRequireKnownEqualEvidence) {
+  using Dim = std::variant<int64_t, std::string>;
+  struct Case {
+    Dim first, second;
+    bool equal;
+  };
+  const Case cases[] = {
+      {std::string{}, std::string{}, false}, {std::string{}, int64_t{2}, false}, {int64_t{2}, std::string{}, false}, {int64_t{2}, int64_t{2}, true}, {int64_t{2}, int64_t{3}, false}, {std::string("batch"), std::string("batch"), true}, {std::string("batch"), std::string("other"), false}, {std::string("batch"), int64_t{2}, false}, {int64_t{2}, std::string("batch"), false}, {std::string{}, std::string("batch"), false}, {std::string("batch"), std::string{}, false}};
+  for (bool indexed : {false, true}) {
+    for (bool match_only : {false, true}) {
+      for (bool same_tensor : {false, true}) {
+        for (const auto& c : cases) {
+          TestGraph test;
+          auto& b = test.builder;
+          auto* x = b.MakeSymbolicInput<float>({c.first, same_tensor ? c.second : Dim{std::string{}}});
+          auto* y = same_tensor ? nullptr : b.MakeSymbolicInput<float>({c.second, std::string{}});
+          if (same_tensor)
+            b.AddNode("Identity", {x}, {b.MakeOutput()});
+          else
+            b.AddNode("CastLike", {x, y}, {b.MakeOutput()});
+          b.SetGraphOutputs();
+          ASSERT_STATUS_OK(test.graph.Resolve());
+          auto rule = IdentityPair();
+          rule.pattern = Pattern(same_tensor ? "(x:float[M,M])=>return Identity(x)"
+                                             : "(x:float[M,K],y:float[M,N])=>return CastLike(x,y)");
+          rule.replacement = Replacement("(x)=>Identity(x)");
+          int checks = 0;
+          rule.check_and_bind = [&](const Graph&, Match& match) {
+            ++checks;
+            if (const auto* integer = std::get_if<int64_t>(&c.first))
+              EXPECT_EQ(std::get<int64_t>(match.dimensionOf("M")), *integer);
+            else
+              EXPECT_EQ(std::get<std::string>(match.dimensionOf("M")), std::get<std::string>(c.first));
+            if (!same_tensor) {
+              EXPECT_TRUE(std::holds_alternative<std::monostate>(match.dimensionOf("K")));
+              EXPECT_TRUE(std::holds_alternative<std::monostate>(match.dimensionOf("N")));
+            }
+            return true;
+          };
+          InlinedVector<std::string> failures;
+          Options options{.match_only = match_only, .indexed = indexed, .max_iterations = 1};
+          options.on_failure = [&](const MatchFailure& failure) {
+            if (failure.stage == FailureStage::TypeShape) failures.emplace_back(failure.reason);
+          };
+          Statistics stats;
+          ASSERT_STATUS_OK(PatternRewriter({rule}, options).Run(test.graph, stats));
+          EXPECT_EQ(stats.matches, c.equal ? 1u : 0u);
+          EXPECT_EQ(stats.rewrites, c.equal && !match_only ? 1u : 0u);
+          EXPECT_EQ(checks, c.equal ? 1 : 0);
+          if (!c.equal) {
+            ASSERT_FALSE(failures.empty());
+            EXPECT_NE(failures.front().find("dimension 'M'"), std::string::npos);
+            const bool unknown = c.first == Dim{std::string{}} || c.second == Dim{std::string{}};
+            EXPECT_NE(failures.front().find(unknown ? "Unknown occurrence" : "Conflicting bindings"), std::string::npos);
+          }
+          ASSERT_STATUS_OK(test.graph.Resolve());
+        }
+      }
+    }
+  }
+}
+
+TEST(PatternRewriterTests, SingletonAndSelectedAlternativeDimensionsAllowUnknowns) {
+  for (bool indexed : {false, true}) {
+    for (const char* annotation : {
+             "float[M,N]", "float[_,_]", "float[M,_] | float[_,M]",
+             "float[M,M] | float[M,_]", "float[M,M] | float[_,N]"}) {
+      TestGraph test;
+      auto& b = test.builder;
+      auto* x = b.MakeSymbolicInput<float>({std::string{}, std::string{}});
+      b.AddNode("Identity", {x}, {b.MakeOutput()});
+      b.SetGraphOutputs();
+      ASSERT_STATUS_OK(test.graph.Resolve());
+      auto rule = IdentityPair();
+      rule.pattern = Pattern("(x:" + std::string(annotation) + ")=>return Identity(x)");
+      int checks = 0;
+      rule.check_and_bind = [&](const Graph&, Match& match) {
+        ++checks;
+        if (std::string_view(annotation).find('M') != std::string::npos)
+          EXPECT_TRUE(std::holds_alternative<std::monostate>(match.dimensionOf("M")));
+        if (std::string_view(annotation).find('N') != std::string::npos)
+          EXPECT_TRUE(std::holds_alternative<std::monostate>(match.dimensionOf("N")));
+        return true;
+      };
+      Statistics stats;
+      ASSERT_STATUS_OK(PatternRewriter({rule}, {.match_only = true, .indexed = indexed}).Run(test.graph, stats));
+      EXPECT_EQ(stats.matches, 1u);
+      EXPECT_EQ(checks, 1);
+    }
+    // The first alternative tentatively binds M, but fails unknown equality.
+    // The successful alternative must neither inherit that binding nor its occurrence count.
+    TestGraph test;
+    auto& b = test.builder;
+    auto* x = b.MakeSymbolicInput<float>({int64_t{2}, std::string{}});
+    b.AddNode("Identity", {x}, {b.MakeOutput()});
+    b.SetGraphOutputs();
+    ASSERT_STATUS_OK(test.graph.Resolve());
+    auto rule = IdentityPair();
+    rule.pattern = Pattern("(x:float[M,M] | float[_,M])=>return Identity(x)");
+    rule.check_and_bind = [](const Graph&, Match& match) {
+      EXPECT_TRUE(std::holds_alternative<std::monostate>(match.dimensionOf("M")));
+      return true;
+    };
+    Statistics stats;
+    ASSERT_STATUS_OK(PatternRewriter({rule}, {.match_only = true, .indexed = indexed}).Run(test.graph, stats));
+    EXPECT_EQ(stats.matches, 1u);
+    TestGraph pair;
+    auto& pair_builder = pair.builder;
+    auto* unknown = pair_builder.MakeSymbolicInput<float>({std::string{}});
+    auto* known = pair_builder.MakeInput<float>({2}, -1.0f, 1.0f);
+    pair_builder.AddNode("CastLike", {unknown, known}, {pair_builder.MakeOutput()});
+    pair_builder.SetGraphOutputs();
+    ASSERT_STATUS_OK(pair.graph.Resolve());
+    rule.pattern = Pattern("(x:float[M] | float[_],y:float[M])=>return CastLike(x,y)");
+    rule.check_and_bind = [](const Graph&, Match& match) {
+      EXPECT_EQ(std::get<int64_t>(match.dimensionOf("M")), 2);
+      return true;
+    };
+    ASSERT_STATUS_OK(PatternRewriter({rule}, {.match_only = true, .indexed = indexed}).Run(pair.graph, stats));
+    EXPECT_EQ(stats.matches, 1u);
+  }
+}
+
+TEST(PatternRewriterTests, ComposedDimensionOccurrencesAreHygienicAndConjunctive) {
+  const PatternLibrary library(R"(
+    interface Capture(a:float[M]) -> (y)
+    interface Equality(a:float[M]) -> (y:float[M])
+    pattern Pass implements Capture { return (y=a) }
+    pattern Equal implements Equality { return (y=a) }
+    pattern Alias=Pass
+    pattern Wrapped(a) { p=Alias(a);return (y=p.y) }
+    pattern Single(x) { p=Wrapped(x);return Identity(p.y) }
+    pattern Independent(x,y) { p=Wrapped(x);q=Wrapped(y);return CastLike(p.y,q.y) }
+    pattern Repeated(x) { p=Equal(x);return Identity(p.y) }
+  )");
+  for (bool indexed : {false, true}) {
+    for (const char* entry : {"Single", "Independent", "Repeated"}) {
+      TestGraph test;
+      auto& b = test.builder;
+      auto* x = b.MakeSymbolicInput<float>({std::string{}});
+      if (std::string_view(entry) == "Independent") {
+        auto* y = b.MakeSymbolicInput<float>({std::string{}});
+        b.AddNode("CastLike", {x, y}, {b.MakeOutput()});
+      } else {
+        b.AddNode("Identity", {x}, {b.MakeOutput()});
+      }
+      b.SetGraphOutputs();
+      ASSERT_STATUS_OK(test.graph.Resolve());
+      int checks = 0;
+      auto check = [&](const Graph&, Match& match) {
+        ++checks;
+        auto view = match.instance("p").instance("p");
+        EXPECT_TRUE(std::holds_alternative<std::monostate>(view.dimensionOf("M")));
+        if (std::string_view(entry) == "Independent")
+          EXPECT_TRUE(std::holds_alternative<std::monostate>(match.instance("q").instance("p").dimensionOf("M")));
+        return true;
+      };
+      Rule rule{"Composition", library.GetPattern(entry), "(x)=>Identity(x)", check, {{kOnnxDomain, 17, 17}}};
+      Statistics stats;
+      ASSERT_STATUS_OK(PatternRewriter({rule}, {.match_only = true, .indexed = indexed}).Run(test.graph, stats));
+      const bool expected = std::string_view(entry) != "Repeated";
+      EXPECT_EQ(stats.matches, expected ? 1u : 0u);
+      EXPECT_EQ(checks, expected ? 1 : 0);
+    }
+  }
+}
+
+TEST(PatternRewriterTests, DimensionEqualityRejectionRetriesGraphAlternatives) {
+  const PatternLibrary library(R"(
+    interface I(x) -> (y)
+    pattern Strict implements I { y:float[M,M]=Identity(x);return y }
+    pattern Loose implements I { y:float[M,N]=Identity(x);return y }
+    pattern Wild implements I { y:float[_,_]=Identity(x);return y }
+    pattern Forms=Strict | Loose | Wild
+    pattern Entry(x) { p=Forms(x);return p.y }
+  )");
+  for (bool indexed : {false, true}) {
+    for (bool match_only : {false, true}) {
+      TestGraph test;
+      auto& b = test.builder;
+      auto* x = b.MakeSymbolicInput<float>({std::string{}, std::string{}});
+      auto* output = b.MakeOutput();
+      b.AddNode("Identity", {x}, {output});
+      b.SetGraphOutputs();
+      ASSERT_STATUS_OK(test.graph.Resolve());
+      // Identity shape inference may supply symbolic output dimensions. The
+      // candidate metadata here deliberately has two anonymous dimensions.
+      output->SetShape(*x->Shape());
+      InlinedVector<std::string> checks;
+      auto check = [&](const Graph&, Match& match) {
+        const auto view = match.instance("p");
+        checks.emplace_back(view.alternative());
+        if (view.alternative() == "Loose") {
+          EXPECT_TRUE(std::holds_alternative<std::monostate>(view.dimensionOf("M")));
+          EXPECT_TRUE(std::holds_alternative<std::monostate>(view.dimensionOf("N")));
+          ONNX_NAMESPACE::AttributeProto attribute;
+          attribute.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+          attribute.set_i(1);
+          match.update("only_loose", attribute);
+          return match.Reject("try wild");
+        }
+        EXPECT_EQ(view.alternative(), "Wild");
+        EXPECT_THROW(match.attributeOf("only_loose"), OnnxRuntimeException);
+        return true;
+      };
+      Rule rule{"Forms", library.GetPattern("Entry"), "(x)=>Identity(x)", check, {{kOnnxDomain, 17, 17}}};
+      Statistics stats;
+      ASSERT_STATUS_OK(PatternRewriter({rule}, {.match_only = match_only, .indexed = indexed, .max_iterations = 1})
+                           .Run(test.graph, stats));
+      ASSERT_EQ(checks.size(), 2u);
+      EXPECT_EQ(checks[0], "Loose");
+      EXPECT_EQ(checks[1], "Wild");
+      EXPECT_EQ(stats.matches, 1u);
+      EXPECT_EQ(stats.rewrites, match_only ? 0u : 1u);
+      ASSERT_STATUS_OK(test.graph.Resolve());
     }
   }
 }

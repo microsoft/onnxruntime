@@ -63,7 +63,8 @@ std::string Signature(const Pattern& pattern) {
 
 using Producers = InlinedHashMap<const NodeArg*, NodeIndex>;
 
-bool MatchType(const Pattern& pattern, const Graph& graph, int handle, const TypeConstraint& constraint, Match& match) {
+bool MatchType(const Pattern& pattern, const Graph& graph, int handle, const TypeConstraint& constraint, Match& match,
+               std::string& reason) {
   if (pattern.IsAttribute(handle)) {
     return match.attributeOf(constraint.value_name).type() == constraint.attribute_type;
   }
@@ -92,13 +93,16 @@ bool MatchType(const Pattern& pattern, const Graph& graph, int handle, const Typ
         binding = actual.dim_value();
       else if (actual.has_dim_param() && !actual.dim_param().empty())
         binding = actual.dim_param();
-      if (!match.BindDimension(*name, std::move(binding))) return false;
+      if (!match.BindDimension(*name, std::move(binding))) {
+        reason = "Conflicting bindings for repeated dimension '" + *name + "'.";
+        return false;
+      }
     }
   }
   return true;
 }
 
-bool MatchTypes(const Pattern& pattern, const Graph& graph, Match& match) {
+bool MatchTypes(const Pattern& pattern, const Graph& graph, Match& match, std::string& reason) {
   const auto& groups = pattern.OrderedTypeConstraints();
   for (const auto& [handle, alternatives] : groups) {
     for (const auto& constraint : alternatives) {
@@ -107,14 +111,45 @@ bool MatchTypes(const Pattern& pattern, const Graph& graph, Match& match) {
         if (const auto* name = std::get_if<std::string>(&dim)) match.BindDimension(*name, std::monostate{});
     }
   }
+  InlinedVector<std::pair<int, const TypeConstraint*>> selected;
+  // Count only a complete selection: a later alternative can turn equality into a singleton capture.
+  auto verify_dimensions = [&]() {
+    struct Evidence {
+      size_t occurrences = 0;
+      bool unknown = false;
+    };
+    InlinedHashMap<std::string, Evidence> dimensions;
+    for (const auto& [handle, constraint] : selected) {
+      if (pattern.IsAttribute(handle) || constraint->absent || constraint->any_rank) continue;
+      const auto& shape = *match.values[handle]->Shape();
+      for (size_t i = 0; i < constraint->dimensions.size(); ++i) {
+        const auto* name = std::get_if<std::string>(&constraint->dimensions[i]);
+        if (!name) continue;
+        const auto& actual = shape.dim(static_cast<int>(i));
+        auto& evidence = dimensions[*name];
+        ++evidence.occurrences;
+        evidence.unknown |= !actual.has_dim_value() && (!actual.has_dim_param() || actual.dim_param().empty());
+        if (evidence.occurrences > 1 && evidence.unknown) {
+          reason = "Unknown occurrence of repeated dimension '" + *name + "'; equality cannot be verified.";
+          return false;
+        }
+      }
+    }
+    return true;
+  };
   std::function<bool(size_t, Match&)> search = [&](size_t index, Match& state) {
-    if (index == groups.size()) return true;
+    if (index == groups.size()) return verify_dimensions();
     const auto& [handle, alternatives] = groups[index];
     for (const auto& constraint : alternatives) {
       Match candidate = state;
-      if (MatchType(pattern, graph, handle, constraint, candidate) && search(index + 1, candidate)) {
-        state = std::move(candidate);
-        return true;
+      if (MatchType(pattern, graph, handle, constraint, candidate, reason)) {
+        selected.emplace_back(handle, &constraint);
+        const bool matched = search(index + 1, candidate);
+        selected.pop_back();
+        if (matched) {
+          state = std::move(candidate);
+          return true;
+        }
       }
     }
     return false;
@@ -123,7 +158,7 @@ bool MatchTypes(const Pattern& pattern, const Graph& graph, Match& match) {
 }
 
 bool MatchPattern(const Pattern& pattern, const Graph& graph, const Node& root, const Producers& producers,
-                  Match& match, FailureStage& stage, std::string_view& reason) {
+                  Match& match, FailureStage& stage, std::string& reason) {
   auto fail = [&](FailureStage failure_stage, std::string_view message) {
     stage = failure_stage;
     reason = message;
@@ -194,8 +229,11 @@ bool MatchPattern(const Pattern& pattern, const Graph& graph, const Node& root, 
     }
   }
   // Input variables must be outside the deletion set, even when aliasing another binding.
-  if (!MatchTypes(pattern, graph, match))
-    return fail(FailureStage::TypeShape, "Tensor type/rank/dimension or captured attribute type mismatch.");
+  if (!MatchTypes(pattern, graph, match, reason)) {
+    stage = FailureStage::TypeShape;
+    if (reason.empty()) reason = "Tensor type/rank/dimension or captured attribute type mismatch.";
+    return false;
+  }
   for (int value = 0; value < static_cast<int>(pattern.ValueCount()); ++value) {
     if (!pattern.IsInput(value)) continue;
     auto it = producers.find(match.values[value]);
@@ -2080,7 +2118,7 @@ Status PatternRewriter::Run(Graph& graph, Statistics& statistics) const {
       struct CandidateMatch {
         Match match;
         FailureStage stage = FailureStage::Structure;
-        std::string_view reason;
+        std::string reason;
         bool matched = false;
       };
       auto match_group = [&](const Pattern& pattern, CandidateMatch& candidate) {

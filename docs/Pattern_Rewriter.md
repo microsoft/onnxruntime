@@ -163,12 +163,27 @@ binding any dimensions or element type.
 The matcher uses the model's existing metadata; it does not infer shapes or
 solve equations. Rank-specific constraints reject unknown rank, and fixed
 dimensions require known equal integers. A named dimension binds to an integer
-for a static dimension or a nonempty string for a symbolic dimension. Repeated
-known bindings must agree exactly: integer 2 differs from symbolic `"batch"`,
-and `"batch"` differs from `"other"`. An anonymous unknown dimension leaves
-the variable unbound and does not conflict with a later known binding.
-Consequently, repeated names do **not** prove runtime equality when occurrences
-are unknown; check-and-bind callbacks requiring that proof must reject unknown metadata.
+for a static dimension or a nonempty string for a symbolic dimension.
+A name occurring **once** in the expanded selected annotation combination is
+a capture: an anonymous unknown source dimension is allowed and leaves the
+capture unbound. A **repeated** name is an equality constraint: every occurrence
+must have a known integer or nonempty symbolic name, and all must agree exactly.
+Unknown-plus-known and unknown-plus-unknown both reject before the checker,
+regardless of traversal order. Integer 2 differs from symbolic `"batch"`, and
+`"batch"` differs from `"other"`. `_` accepts any dimension, including unknown,
+without creating a capture or equality constraint.
+
+For example, `(x:float[M,K],y:float[M,N])` requires both `M` dimensions to be
+known and equal; the singleton `K` and `N` dimensions may be anonymous unknowns.
+`float[M,M]` imposes equality between two positions of one tensor as well.
+Counts include only the selected alternative at each annotation occurrence,
+not mutually exclusive alternatives or failed search branches. Calls preserve
+hygienic dimension names and each conjunctive annotation occurrence. Merely
+forwarding an interface formal through a call does not duplicate its annotation;
+an explicit interface output annotation is an additional constraint, even if
+the output aliases an input. Repeating a name there therefore also requires
+known metadata. `Options::on_failure` reports a type/shape failure naming the
+unknown repeated dimension or conflicting bindings.
 Likewise, a missing element type leaves `T` unbound, while a concrete annotation
 such as `float` requires a known matching element type.
 
