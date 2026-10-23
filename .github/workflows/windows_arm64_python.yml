@@ -21,11 +21,7 @@ concurrency:
 jobs:
   build_windows_arm64_python_wheel:
     name: Build Windows ARM64 Python 3.12 wheel
-    runs-on: [
-      "self-hosted",
-      "1ES.Pool=onnxruntime-medium-win-gh-arm64-scus",
-      "JobId=windows-arm64-python-3.12-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
-      ]
+    runs-on: [ort-github-win-16-arm64-scus-ss]
     timeout-minutes: 180
     strategy:
       fail-fast: false

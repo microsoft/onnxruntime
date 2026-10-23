@@ -10,7 +10,7 @@
 #include "contrib_ops/cuda/bert/group_query_attention_workspace_estimate.h"
 #include "contrib_ops/cuda/bert/packed_attention_workspace_estimate.h"
 #endif
-#if !defined(DISABLE_CONTRIB_OPS) && defined(USE_FPA_INTB_GEMM) && USE_FPA_INTB_GEMM
+#if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS)
 #include "contrib_ops/cuda/quantization/matmul_nbits_workspace_estimate.h"
 #endif
 
@@ -21,20 +21,22 @@ namespace onnxruntime::test {
 #if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
 std::optional<contrib::cuda::GQAWorkspaceEstimateConfig> GetGroupQueryAttentionWorkspaceEstimateConfigForTest(
     const void* node, bool head_sink_is_constant_initializer = false,
-    int64_t max_total_sequence_length = 0);
+    int64_t max_total_sequence_length = 0,
+    KernelDispatchPolicy dispatch_policy = KernelDispatchPolicy::Auto);
 
 std::optional<contrib::cuda::GQAWorkspaceAggregate> EstimateGroupQueryAttentionWorkspaceForTest(
     const void* node, gsl::span<const WorkspaceInputShape> input_shapes,
     const cudaDeviceProp& device_prop, const AttentionKernelOptions& kernel_options,
     bool head_sink_is_constant_initializer = false,
-    int64_t max_total_sequence_length = 0);
+    int64_t max_total_sequence_length = 0,
+    KernelDispatchPolicy dispatch_policy = KernelDispatchPolicy::Auto);
 
 std::optional<contrib::cuda::PackedAttentionWorkspaceAggregate> EstimatePackedAttentionWorkspaceForTest(
     const void* node, gsl::span<const WorkspaceInputShape> input_shapes,
     const cudaDeviceProp& device_prop, const AttentionKernelOptions& kernel_options);
 #endif
 
-#if !defined(DISABLE_CONTRIB_OPS) && defined(USE_FPA_INTB_GEMM) && USE_FPA_INTB_GEMM
+#if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS)
 std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemoryForTest(
     const void* node, const cudaDeviceProp& device_prop,
     contrib::cuda::MatMulNBitsMemoryEstimateOptions options = {});

@@ -926,6 +926,9 @@ if (onnxruntime_BUILD_UNIT_TESTS)
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_quantization_test_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/quantization/
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${ONNXRUNTIME_ROOT}/test/python/quantization/qmoe_packed_reference
+        $<TARGET_FILE_DIR:${build_output_target}>/quantization/qmoe_packed_reference
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_transformers_test_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/transformers/
@@ -1265,6 +1268,19 @@ if (onnxruntime_USE_WEBGPU)
         COMMAND ${CMAKE_COMMAND} -E copy
             $<TARGET_FILE_DIR:dxcompiler>/dxcompiler.dll
             $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+      )
+    endif()
+
+    if (DAWN_USE_AGILITY_SDK)
+      add_dependencies(onnxruntime_pybind11_state copy_agility_sdk_dlls)
+      add_custom_command(
+        TARGET onnxruntime_pybind11_state POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+            $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/D3D12
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE_DIR:${build_output_target}>/D3D12/D3D12Core.dll
+            $<TARGET_FILE_DIR:${build_output_target}>/D3D12/d3d12SDKLayers.dll
+            $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/D3D12
       )
     endif()
   endif()

@@ -53,13 +53,14 @@ Status LaunchValidatePackedIndexerReuse(cudaStream_t stream, const int32_t* cumu
                                         int32_t* indices, int32_t* counts, int32_t* status,
                                         int batch_size, int capacity, int state_capacity, int compress_ratio,
                                         bool is_qsa, int32_t* overflow_flags = nullptr);
-// `overflow_flags` is a caller-allocated int32 scratch buffer with at least `batch_size` elements
-// (unused when batch_size == 0). The update kernel writes, per request, whether this call's new
-// blocks/windows would exceed state_capacity; when it does, the whole step is rejected for that
-// request (present_state_lengths / present_key_state / present_kv_buffer / present_gate_buffer for
-// that request are left exactly as their past_* counterparts) and the select kernels force that
-// request's selected_indices/selected_counts to the safe empty result (-1 / 0) rather than
-// selecting against a partially updated state.
+// `overflow_flags` is a caller-allocated int32 buffer with at least `batch_size` elements
+// (unused when batch_size == 0); it may be the operator's state_status output. The update kernel
+// writes, per request, a psai::StateStatusCode: 1 for inconsistent device metadata, 2 when this
+// call's new blocks/windows would exceed state_capacity, else 0. When non-zero, the whole step is rejected for that
+// request (present_key_state / present_kv_buffer / present_gate_buffer for that request are left
+// unchanged and present_state_lengths is left as past_state_lengths clamped to valid bounds) and
+// the select kernels force that request's selected_indices/selected_counts to the safe empty
+// result (-1 / 0) rather than selecting against a partially updated state.
 template <typename T>
 Status LaunchQsaPackedSparseAttentionIndexer(
     cudaStream_t stream,
