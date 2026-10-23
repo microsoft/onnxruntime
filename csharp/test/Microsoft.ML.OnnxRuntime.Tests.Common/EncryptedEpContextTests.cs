@@ -4,7 +4,6 @@
 #if NET8_0_OR_GREATER && !(ANDROID || IOS)
 namespace Microsoft.ML.OnnxRuntime.Tests;
 
-using Google.Protobuf;
 using Onnx;
 using System;
 using System.IO;
@@ -30,7 +29,6 @@ public class EncryptedEpContextTests
         const string epName = "encrypted_ep_context";
         const string modelName = "encrypted_model.onnx";
         string directory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(directory);
         string modelFile = Path.Combine(directory, "model.aesgcm");
         string contextFile = Path.Combine(directory, "context.aesgcm");
         byte[] key = RandomNumberGenerator.GetBytes(32);
@@ -38,25 +36,23 @@ public class EncryptedEpContextTests
         int writes = 0;
         int reads = 0;
 
-        env.RegisterExecutionProviderLibrary(epName, libraryPath);
+        bool registered = false;
         try
         {
+            Directory.CreateDirectory(directory);
+            env.RegisterExecutionProviderLibrary(epName, libraryPath);
+            registered = true;
             var device = env.GetEpDevices().Single(d => d.EpName == epName);
-            ModelProto original = ModelProto.Parser.ParseFrom(
-                TestDataLoader.LoadModelFromEmbeddedResource("mul_1.onnx"));
+            byte[] inputModel = TestDataLoader.LoadModelFromEmbeddedResource("encrypted_ep_context_mul.onnx");
+            ModelProto original = ModelProto.Parser.ParseFrom(inputModel);
             NodeProto mul = Assert.Single(original.Graph.Node);
             Assert.Equal("Mul", mul.OpType);
-            var inputType = original.Graph.Input[0].Type.Clone();
+            Assert.Empty(original.Graph.Initializer);
+            Assert.Equal(2, original.Graph.Input.Count);
+            var inputType = original.Graph.Input[0].Type;
             int[] dimensions = inputType.TensorType.Shape.Dim.Select(d => checked((int)d.DimValue)).ToArray();
             Assert.All(dimensions, d => Assert.True(d > 0));
             string[] inputNames = mul.Input.ToArray();
-            original.Graph.Input.Clear();
-            foreach (string name in inputNames)
-            {
-                original.Graph.Input.Add(new ValueInfoProto { Name = name, Type = inputType.Clone() });
-            }
-            original.Graph.Initializer.Clear();
-            byte[] inputModel = original.ToByteArray();
 
             using (var options = CreateOptions(env, device))
             using (var compile = new OrtModelCompilationOptions(options))
@@ -209,11 +205,21 @@ public class EncryptedEpContextTests
         }
         finally
         {
-            env.UnregisterExecutionProviderLibrary(epName);
-            CryptographicOperations.ZeroMemory(key);
-            File.Delete(modelFile);
-            File.Delete(contextFile);
-            Directory.Delete(directory);
+            try
+            {
+                if (registered)
+                {
+                    env.UnregisterExecutionProviderLibrary(epName);
+                }
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(key);
+                if (Directory.Exists(directory))
+                {
+                    Directory.Delete(directory, recursive: true);
+                }
+            }
         }
     }
 
