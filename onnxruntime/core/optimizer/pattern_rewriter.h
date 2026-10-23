@@ -154,6 +154,7 @@ struct Match;
 class BindingView {
  public:
   const NodeArg* valueOf(std::string_view name) const;
+  const NodeArg* optionalValueOf(std::string_view name) const;
   const ONNX_NAMESPACE::AttributeProto& attributeOf(std::string_view name) const;
   const Dimension& dimensionOf(std::string_view name) const;
   std::optional<int32_t> elementTypeOf(std::string_view name) const;
@@ -184,6 +185,7 @@ struct Match {
   InlinedVector<const Node*> nodes;
   InlinedVector<const NodeArg*> values;
   const NodeArg* valueOf(std::string_view name) const;
+  const NodeArg* optionalValueOf(std::string_view name) const;
   void update(std::string_view name, ONNX_NAMESPACE::AttributeProto value);
   const ONNX_NAMESPACE::AttributeProto& attributeOf(std::string_view name) const;
   const Dimension& dimensionOf(std::string_view name) const;

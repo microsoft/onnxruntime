@@ -750,55 +750,113 @@ the returned pattern.
 
 ```cpp
 PatternLibrary library(R"(
-  interface GatedActivation(g:float[M,N], u:float[M,N]) -> (product:float[M,N])
-
-  pattern plain implements GatedActivation {
-    s = Sigmoid(g)
-    a = Mul(g,s)
-    p = Mul(a,u)
-    return (product=p)
-  }
-
-  pattern scaled implements GatedActivation: (alpha:float[...]) -> {
-    scaled = Mul(g,alpha)
+  pattern activation(g:float[M,N], u:float[M,N],
+                     alpha:float[...] | None) -> (product:float[M,N]) {
+    scaled = (Mul(g,alpha) | g)
     s = Sigmoid(scaled)
     a = Mul(g,s)
-    p = Mul(a,u)
-    return (product=p)
+    product = Mul(a,u)
+    return product
   }
 
-  pattern Forms = plain | scaled
-
-  pattern wrapped implements GatedActivation {
-    act = Forms(g,u)
-    return (product=act.product)
-  }
-
-  pattern Fuse(g,u) {
-    outer = wrapped(g,u)
-    return Identity(outer.product)
+  pattern Fuse(g,u,alpha:float[...] | None) {
+    product = activation(g,u,alpha)
+    return Identity(product)
   }
 )");
 ```
 
-An **interface** is an abstract tensor binding contract, not a callable graph.
-A **pattern body** can implement that contract, inheriting interface inputs
-and returning its interface outputs, either positionally or
-with explicit `(port=local_value, ...)` mappings. Named mappings may reorder
-ports. Output annotations constrain the mapped values as well as input
-annotations; they do not manufacture shape evidence. Identity mappings such
-as `return (y=x)` are allowed inside patterns and emit no operator.
-A body without `implements` declares its inputs directly, as in `pattern Fuse(g,u)`.
-Its output port names come from explicit `(port=value)` mappings or returned
-value names (`return act.product` exposes `product`). A returned unnamed
-operator call exposes `output`, or `output0`, `output1`, etc. for multiple
-outputs. All named patterns, including patterns suitable for entry use, may
-be called directly or through alternatives.
+Ordinary patterns declare typed positional inputs and, optionally, positional
+outputs using `-> (product:float[M,N])`. `return product` supplies that result;
+multiple results use `return first,second`. Output annotations constrain the
+returned values and share the definition's dimension variables with inputs;
+they do not manufacture shape evidence. Output names must not shadow a
+different local value. Without an output signature, names and annotations
+are inferred from returned variables as before.
+
+`product=activation(g,u,alpha)` binds a tensor directly. For multiple results
+write `first,second=Pair(x)`, just as for a multi-output ONNX operator.
+Explicit multi-target calls require exact positional arity and distinct,
+previously unused target names. No `product.port` notation is needed.
+
+### Expressions, alternatives, and branch-local inputs
+
+The example factors optional scaling outside the shared Sigmoid/Mul suffix:
+`scaled=(Mul(g,alpha) | g)`. An assignment `scaled=g` is an alias to the exact
+same `NodeArg`, not an inserted Identity. Reusing both names therefore imposes
+the same binding-identity requirement as reusing either name.
+
+Alternatives are tried in source order, expanding into complete concrete
+plans. Put multiplication first to prefer it when both alternatives can match.
+There is no automatic longest match. Checker rejection may try the next
+complete plan, with fresh bindings. Every included operator must contribute
+to a returned value in **each** plan. Thus
+`alpha=Add(a,b);scaled=(Mul(g,alpha)|g);return Sigmoid(scaled)` is rejected
+because the Add is disconnected in the identity plan. Connecting that Add
+through another returned computation makes the definition valid.
+
+Call-expression alternatives may invoke definitions with different input
+signatures. Each call checks its own actual arguments; only positional result
+arity and declared result annotations must be compatible. No named interface
+is required:
+
+```text
+pattern plain(g:float[M,N],u:float[M,N]) -> (product:float[M,N]) {
+  s=Sigmoid(g);a=Mul(g,s);product=Mul(a,u);return product
+}
+pattern scaled(g:float[M,N],u:float[M,N],alpha:float[...]) -> (product:float[M,N]) {
+  v=Mul(g,alpha);s=Sigmoid(v);a=Mul(g,s);product=Mul(a,u);return product
+}
+pattern choice(g,u,alpha:float[...] | None) {
+  product=plain(g,u) | scaled(g,u,alpha)
+  return product
+}
+pattern discovered(g,u) {
+  product=plain(g,u) | scaled(g,u,_)
+  return product
+}
+```
+
+`_` as a call actual binds a **real, present tensor** without a caller-level
+name. It is not ONNX's omitted input slot (`None`). Each `_` is independent;
+callee type/shape/constancy and repeated-formal binding requirements still
+apply. The callee-local binding remains available to scoped C++ views.
+Wildcards for attribute formals are rejected.
+
+A declared input may be unused in a selected branch only if its annotation
+permits `None`. In `choice` the plain plan leaves `alpha` unbound. Another
+reachable use may bind it, in which case its tensor annotation and all uses'
+`NodeArg` identity must agree. Required inputs remain required; `None` cannot
+disable an actual required operator slot. `match.optionalValueOf("alpha")`
+returns `nullptr` for a declared unbound optional tensor and throws for an
+unknown name or attribute. Existing `valueOf` retains its optional-null
+behavior; required unbound lookups remain errors. Select an appropriate
+pre-parsed replacement in C++ when an optional capture is absent: consuming
+it in a required replacement input is an explicit schema-validation error,
+not a successful rewrite or candidate retry.
+
+Result compatibility compares the ordered declared constraints structurally,
+including dimension symbol spellings, but ignores result labels. An
+unannotated result is unconstrained. Parenthesized expressions may nest;
+calls and aliases preserve source-order selection identities. Expression
+occurrences expose their selected call/operator/alias name via
+`match.instance("product").alternative()`, with `alternativeView()` descending
+into a selected call's metadata. Operator and value-alias leaves have no
+callee-local scope or deeper `alternativeView()`; grouped branches retain
+their nested selection metadata under the `<group>` tag.
+
+Interfaces remain optional reusable tensor contracts, not callable graphs:
+`interface Unary(x:float[N])->(y:float[N])` and
+`pattern Copy implements Unary { y=Identity(x);return y }` remain supported.
+The older explicit `(port=local_value)` returns, colon-signature extra
+discovered inputs, and scoped DSL `p.port` accesses are compatibility syntax,
+not necessary for new positional examples. An unnamed returned operator call
+still exposes `output` (or `output0`, `output1`, etc.).
 
 ### Calls versus standalone entries
 
 Reusable bodies may return identity aliases or independent output branches.
-Every declared input must be used, and every operator must reach at least
+Every required declared input must be used, and every operator must reach at least
 one returned value, but those returned values need not have a single root.
 `GetPattern(name)` validates **every fully expanded plan** as a standalone
 entry: it must have an operator root, all operators must feed that final
@@ -816,27 +874,29 @@ Thus a library
 may contain useful callable patterns that cannot independently serve as rules:
 
 ```text
-pattern identity(x) { return (y=x) }
+pattern identity(x) -> (y) { return x }
 pattern branches(x,z) {
   left = Identity(x)
   right = Neg(z)
-  return (a=left,b=right)
+  return left,right
 }
 pattern join(x,z) {
-  p = branches(x,z)
-  q = identity(p.a)
-  return Add(q.y,p.b)
+  left,right = branches(x,z)
+  value = identity(left)
+  return Add(value,right)
 }
 ```
 
 `GetPattern("join")` succeeds; `GetPattern("identity")` and
 `GetPattern("branches")` fail. These checks apply equally to body patterns,
 aliases and alternative definitions. Legacy standalone `Pattern("(x)=>...")`
-syntax and its existing entry validation are unchanged.
+syntax remains supported; its operator-root and output-boundary checks are unchanged.
 
-The colon signature extends a pattern with external inputs discovered by
-matching. Here callers supply only `g,u`, while `alpha` binds to the input of
-the matched Mul. It remains a tensor, not an automatically decoded float.
+The legacy colon signature extends an interface implementation with external
+inputs discovered by matching. For example,
+`pattern extra implements Unary: (alpha:float[...]) -> { y=Mul(x,alpha);return y }`
+is called with just `extra(x)`, while `alpha` binds to the matched Mul's input.
+It remains a tensor, not an automatically decoded float.
 Additional attribute captures can also be declared in that signature using
 the existing attribute-annotation syntax. There is no separate capture
 language. Both `float[]` and `float[...]` continue to mean **any rank**, not
@@ -849,34 +909,40 @@ interface) and identical ordered input/output port names and annotations.
 This is a strict structural annotation check (including symbol spellings),
 not semantic type equivalence; equivalent any-rank `[]`/`[...]` are normalized.
 Extra discovered inputs of an `implements` body are not common call ports.
-A named call `act=Forms(g,u)` and the anonymous call
-`act=(plain | scaled)(g,u)` have the same matching behavior. Each occurrence
+A named call `value=Forms(x)` and the legacy anonymous call
+`value=(first | second)(x)` have the same matching behavior when `Forms=first|second`.
+Unlike call-expression alternatives, these definition alternatives retain
+the common input signature requirement. Each occurrence
 has an independent selected immediate member, available through `alternative()`;
 no user-defined tag name is required. Nesting and single aliases preserve
 their selection identities:
 
 ```text
-pattern Inner = plain | scaled
-pattern Outer = Inner | plain
+pattern first(x) { value=Identity(x);return value }
+pattern second(x) { value=Neg(x);return value }
+pattern Inner = first | second
+pattern Outer = Inner | first
 pattern Alias = Outer
-pattern nested(g,u) {
-  act = Alias(g,u)
-  return Identity(act.product)
+pattern nested(x) {
+  value = Alias(x)
+  return Identity(value)
 }
 ```
 
-For a selection of `scaled`, `act` reports definition `Alias`, member `Outer`;
-successive `alternativeView()` calls report `Outer`/`Inner`, `Inner`/`scaled`,
-then body `scaled` with no member. Anonymous alternatives use the same
+For a selection of `second`, `value` reports definition `Alias`, member `Outer`;
+successive `alternativeView()` calls report `Outer`/`Inner`, `Inner`/`second`,
+then body `second` with no member. Legacy anonymous alternatives use the same
 representation and retain their immediate named members too. Patterns may
 call other patterns within the expansion and dependency-nesting bounds.
-Inline operator or
-subgraph alternative spellings are not supported; existing `|` type
-annotations are unchanged.
+The separate `|` type-annotation syntax is unchanged.
 
-Calls require one assigned instance name. Use `act.product` for common outputs
-and C++ views for concrete internals. A single-output instance additionally
-allows `act` as shorthand for its output. Tensor handles, attribute captures,
+Calls bind positional output variables. The **first output name** is also
+the C++ occurrence-scope handle for `match.instance("first")`; this explicit
+introspection API is separate from `match.valueOf("first")`, which returns
+the actual result tensor. Legacy one-name calls to multi-output patterns
+remain instance-only: `p=Pair(x)` requires `p.port` to address a result and
+`valueOf("p")`/tensor use of `p` fails, rather than selecting an arbitrary
+output. Tensor handles, attribute captures,
 dimensions and element-type variables are remapped into the call occurrence.
 Two instances do not share a capture just because its local spelling is the
 same. Formal inputs and returned aliases bind to the caller's actual
@@ -905,6 +971,9 @@ alternative/alias wrappers (interfaces do not count). This bound is independent
 of declaration order and is enforced before deeper recursive compilation to
 protect native stack usage. Forward-reference chains at 64 succeed; 65 or
 more fail with an explicit nesting-limit diagnostic.
+Expression nesting is also bounded to 64 (including call parentheses), sharing the native
+recursion budget with active dependency compilation. No expression has more
+than 64 branches, and expression alternatives share the 64-complete-plan limit.
 Recursive calls, duplicate definitions/ports, missing members, incompatible
 interfaces and invalid mappings fail during construction. An unresolved
 unqualified call must name a registered standard ONNX operator; use an
@@ -929,20 +998,22 @@ different producers.
 
 ### Instance binding views and handwritten C++ structs
 
-`match.instance("outer").instance("act")` returns a read-only `BindingView`.
-Its `valueOf`, `attributeOf`, `dimensionOf`, and `elementTypeOf` use names
-relative to that occurrence. `definition()` identifies the called definition,
+`match.instance("product")` returns a read-only `BindingView` for the activation
+call in the example. `view.instance("scaled")` selects its nested expression
+occurrence. Its `valueOf`, `optionalValueOf`, `attributeOf`, `dimensionOf`,
+and `elementTypeOf` use names relative to that occurrence. `definition()` identifies the called definition,
 `interfaceName()` its contract, and `alternative()` the selected immediate member
-(empty for a body call). `alternativeView()` enters that member's metadata;
-calling it on a body view raises an error. Repeated calls traverse nested
+(empty for a body call). `alternativeView()` enters a selected call/member's metadata;
+calling it on a body or operator/value-alias leaf raises an error. Repeated calls traverse nested
 alternatives/aliases without losing intermediate tags. This navigation does
 not add tensor namespaces: all selected member locals use the same occurrence
 path, and `instance("child")` addresses a nested call inside the selected body.
 Entry metadata is available through `match.bindings()`.
 Fully qualified lookups such as
-`match.valueOf("outer.act.alpha")` are equivalent. Missing instances and
+`match.valueOf("product.alpha")` are equivalent. Missing instances and
 unavailable member-local names raise errors; they are not nullable optional
-fields. Only the selected member's concrete bindings exist.
+fields. Explicitly declared optional tensors are the exception described above.
+Only the selected member's concrete bindings exist.
 
 Views are non-owning and valid only during the candidate callback. They must
 not be retained across graph mutation. The following manual structs show what
@@ -954,9 +1025,7 @@ struct GatedView {
   const NodeArg* u;
   const NodeArg* product;
   explicit GatedView(BindingView v)
-      : g(v.valueOf("g")), u(v.valueOf("u")), product(v.valueOf("product")) {
-    ORT_ENFORCE(v.interfaceName() == "GatedActivation");
-  }
+      : g(v.valueOf("g")), u(v.valueOf("u")), product(v.valueOf("product")) {}
 };
 struct PlainView {
   GatedView ports;
@@ -966,23 +1035,24 @@ struct PlainView {
 struct ScaledView {
   GatedView ports;
   const NodeArg* alpha;
-  explicit ScaledView(BindingView v) : ports(v), alpha(v.valueOf("alpha")) {}
+  explicit ScaledView(BindingView v) : ports(v), alpha(v.optionalValueOf("alpha")) {
+    ORT_ENFORCE(alpha, "Selected scaling requires alpha.");
+  }
 };
 struct ActivationView {
   GatedView ports;
   std::variant<PlainView, ScaledView> alternative;
   static std::variant<PlainView, ScaledView> Select(BindingView v) {
-    if (v.alternative() == "plain") return PlainView(v.alternativeView());
-    ORT_ENFORCE(v.alternative() == "scaled", "Unexpected activation member.");
-    return ScaledView(v.alternativeView());
+    const auto scaling = v.instance("scaled");
+    if (scaling.alternative() == "g") return PlainView(v);
+    ORT_ENFORCE(scaling.alternative() == "Mul", "Unexpected scaling alternative.");
+    return ScaledView(v);
   }
   explicit ActivationView(BindingView v) : ports(v), alternative(Select(v)) {}
 };
 struct FusionView {
-  GatedView outer;
-  ActivationView act;
-  explicit FusionView(const Match& m)
-      : outer(m.instance("outer")), act(m.instance("outer").instance("act")) {}
+  ActivationView activation;
+  explicit FusionView(const Match& m) : activation(m.instance("product")) {}
 };
 
 bool CheckGatingShapes(const GatedView& v) {
@@ -1002,10 +1072,10 @@ bool CheckGatingShapes(const GatedView& v) {
 Rule MakePatternFusion(const PatternLibrary& library) {
   auto check = [](const Graph& graph, Match& match) {
     FusionView view(match);
-    if (!CheckGatingShapes(view.outer) || !CheckGatingShapes(view.act.ports))
+    if (!CheckGatingShapes(view.activation.ports))
       return match.Reject("Unsupported gating shapes.");
     float alpha = 1.0f;
-    if (const auto* scaled = std::get_if<ScaledView>(&view.act.alternative)) {
+    if (const auto* scaled = std::get_if<ScaledView>(&view.activation.alternative)) {
       const auto* shape = scaled->alpha->Shape();
       if (!shape || !(shape->dim_size() == 0 ||
                       (shape->dim_size() == 1 && shape->dim(0).has_dim_value() &&
@@ -1037,9 +1107,9 @@ Rule MakePatternFusion(const PatternLibrary& library) {
 
 Include `<cmath>` for `std::isfinite`, in addition to the rewriter header.
 This synthetic fusion recognizes `g * sigmoid(alpha*g) * u`, removes its
-trailing Identity, and selects the QuickGelu alpha in C++. The tests execute
-both source and replacement with CPU EP for plain, scalar-alpha and
-one-element-alpha cases. This is a small floating-point example, not a
+trailing Identity, and selects the QuickGelu alpha in C++. The tests execute both source and replacement with CPU EP for plain,
+scalar-alpha and one-element-alpha cases, including the factored positional
+form above. This is a small floating-point example, not a
 general MoE/QMoE lowering or a bitwise-equivalence guarantee.
 
 Replacement callbacks may likewise select among pre-parsed recipes in C++;

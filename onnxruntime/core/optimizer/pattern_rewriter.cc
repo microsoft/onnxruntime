@@ -672,6 +672,7 @@ struct Definition {
   InlinedVector<std::string> members;
   InlinedVector<std::shared_ptr<const Pattern>, 1> plans;
   size_t dependency_depth = 1;
+  bool explicit_outputs = false;
   bool compiling = false;
 };
 
@@ -701,11 +702,12 @@ class PatternParser {
       : text_(text), replacement_attributes_(attributes), replacement_bindings_(bindings) {}
 
   PatternParser(std::string_view text, ResolveDefinition resolve, gsl::span<const size_t> choices,
-                const Definition* definition = nullptr)
-      : text_(text), resolve_(std::move(resolve)), choices_(choices), definition_(definition) {}
+                const Definition* definition = nullptr, size_t* compile_depth = nullptr)
+      : text_(text), resolve_(std::move(resolve)), choices_(choices), definition_(definition), compile_depth_(compile_depth) {}
 
   const auto& Radices() const { return radices_; }
   const auto& ReturnedNames() const { return returned_names_; }
+  const auto& ExpressionResults() const { return expression_results_; }
   Status Declarations(InlinedVector<Definition, 1>& definitions);
   static Status ValidateTypes(const Pattern& pattern);
   static Status AppendAlternative(Definition& target, const Definition& member);
@@ -831,14 +833,13 @@ class PatternParser {
         }
       }
       if (!returned_values) {
-        ORT_RETURN_IF_ERROR(Call(names));
+        ORT_RETURN_IF_ERROR(resolve_ ? Expression(names) : Call(names));
         for (const auto& name : names) {
           auto annotation = annotations.find(name);
           if (annotation == annotations.end()) continue;
           auto& constraint = annotation->second;
           auto found = symbols_.find(name);
-          ORT_RETURN_IF(found == symbols_.end() || pattern_.instances_.count(name),
-                        Error("annotate the called pattern's ports, not its instance"));
+          ORT_RETURN_IF(found == symbols_.end(), Error("cannot annotate an instance-only binding"));
           pattern_.ordered_type_constraints_.emplace_back(found->second.handle, constraint);
           pattern_.type_constraints_.emplace(found->second.handle, std::move(constraint));
         }
@@ -874,6 +875,7 @@ class PatternParser {
       for (Value input : it->inputs)
         if (input.handle >= 0) reachable.insert(input.handle);
     }
+    for (int handle : pattern_.optional_inputs_) reachable.insert(handle);
     ORT_RETURN_IF(reachable.size() != pattern_.ValueCount(), Error("unused input"));
     destination = std::move(pattern_);
     return Status::OK();
@@ -1238,7 +1240,9 @@ class PatternParser {
             }
           } else {
             ORT_RETURN_IF(keyword, Error("positional input after attribute"));
-            if (name == "None") {
+            if (name == "_" && resolve_) {
+              inputs.push_back(pattern_.AddValue(""));
+            } else if (name == "None") {
               inputs.push_back(Value{-1});
             } else {
               auto found = symbols_.find(name);
@@ -1304,8 +1308,14 @@ class PatternParser {
   InlinedVector<size_t> radices_;
   InlinedVector<Value> last_outputs_;
   InlinedVector<std::string> returned_names_;
+  InlinedHashMap<size_t, InlinedVector<Port>> expression_results_;
+  InlinedVector<Port> last_result_ports_;
+  size_t expression_depth_ = 0;
+  size_t* compile_depth_ = nullptr;
   Status Header(InlinedVector<Port>& ports, std::string& signature);
   Status PatternCall(const InlinedVector<std::string>& names, const Definition& definition);
+  Status Expression(const InlinedVector<std::string>& names);
+  Status ScanAtom();
 };
 
 Status PatternParser::AppendAlternative(Definition& target, const Definition& member) {
@@ -1331,7 +1341,7 @@ Status PatternParser::AppendAlternative(Definition& target, const Definition& me
 
 Status PatternParser::ValidateTypes(const Pattern& pattern) {
   for (int handle : pattern.required_tensor_bindings_)
-    ORT_RETURN_IF(pattern.IsAttribute(handle), "Interface tensor binding cannot become an attribute.");
+    ORT_RETURN_IF(pattern.IsAttribute(handle), "Declared tensor binding cannot become an attribute.");
   for (int handle : pattern.composed_tensor_annotations_)
     ORT_RETURN_IF(pattern.IsAttribute(handle), "Composed tensor annotation cannot become an attribute.");
   InlinedHashSet<std::string> dimensions, elements, names;
@@ -1388,6 +1398,124 @@ Status PatternParser::Header(InlinedVector<Port>& ports, std::string& signature)
   return Status::OK();
 }
 
+Status PatternParser::ScanAtom() {
+  ORT_RETURN_IF(kind_ != Kind::Identifier && token_ != "(", Error("expected call or value expression"));
+  const bool grouped = token_ == "(";
+  if (!grouped) {
+    ORT_RETURN_IF_ERROR(Next());
+    if (token_ == "::") {
+      ORT_RETURN_IF_ERROR(Next());
+      ORT_RETURN_IF(kind_ != Kind::Identifier, Error("expected operator name"));
+      ORT_RETURN_IF_ERROR(Next());
+    }
+  }
+  while (token_ == "(") {
+    int depth = 0;
+    do {
+      if (kind_ == Kind::Symbol && token_ == "(") ++depth;
+      if (kind_ == Kind::Symbol && token_ == ")") --depth;
+      ORT_RETURN_IF(depth > 64, Error("expression nesting limit of 64 exceeded"));
+      ORT_RETURN_IF_ERROR(Next());
+      ORT_RETURN_IF(kind_ == Kind::End && depth, Error("unterminated expression"));
+    } while (depth);
+    // Legacy (First | Second)(arguments) syntax.
+    if (!grouped) break;
+  }
+  return Status::OK();
+}
+
+Status PatternParser::Expression(const InlinedVector<std::string>& names) {
+  ORT_RETURN_IF(expression_depth_ >= 64, Error("expression nesting limit of 64 exceeded"));
+  const bool nested = compile_depth_ && expression_depth_ > 0;
+  ORT_RETURN_IF(nested && *compile_depth_ >= 64, Error("combined expression/dependency nesting limit of 64 exceeded"));
+  if (nested) ++*compile_depth_;
+  ++expression_depth_;
+  const size_t start = token_start_;
+  InlinedVector<size_t> branches;
+  do {
+    branches.push_back(token_start_);
+    ORT_RETURN_IF(branches.size() > 64, Error("expression alternatives exceed 64"));
+    ORT_RETURN_IF_ERROR(ScanAtom());
+    if (token_ != "|") break;
+    ORT_RETURN_IF_ERROR(Next());
+  } while (true);
+  const size_t end = token_start_;
+  size_t choice = 0;
+  if (branches.size() > 1) {
+    const size_t slot = radices_.size();
+    radices_.push_back(branches.size());
+    choice = slot < choices_.size() ? choices_[slot] : 0;
+    ORT_RETURN_IF(choice >= branches.size(), Error("invalid expression alternative"));
+  }
+  position_ = branches[choice];
+  ORT_RETURN_IF_ERROR(Next());
+  const std::string label = token_ == "(" ? "<group>" : token_;
+  last_result_ports_.clear();
+  if (token_ == "(") {
+    // Distinguish a grouped expression from the supported legacy anonymous call.
+    ORT_RETURN_IF_ERROR(ScanAtom());
+    const size_t after = token_start_;
+    position_ = branches[choice];
+    ORT_RETURN_IF_ERROR(Next());
+    int depth = 0;
+    do {
+      if (kind_ == Kind::Symbol && token_ == "(") ++depth;
+      if (kind_ == Kind::Symbol && token_ == ")") --depth;
+      ORT_RETURN_IF_ERROR(Next());
+    } while (depth);
+    const bool legacy = token_ == "(";
+    position_ = branches[choice];
+    ORT_RETURN_IF_ERROR(Next());
+    if (legacy) {
+      ORT_RETURN_IF_ERROR(Call(names));
+    } else {
+      ORT_RETURN_IF_ERROR(Expect("("));
+      ORT_RETURN_IF_ERROR(Expression(names));
+      ORT_RETURN_IF_ERROR(Expect(")"));
+    }
+    ORT_RETURN_IF(token_start_ != after, Error("invalid grouped expression"));
+  } else {
+    const size_t atom = token_start_;
+    std::string value;
+    ORT_RETURN_IF_ERROR(Identifier(value, true));
+    if (token_ == "(" || token_ == "::") {
+      position_ = atom;
+      ORT_RETURN_IF_ERROR(Next());
+      ORT_RETURN_IF_ERROR(Call(names));
+    } else {
+      ORT_RETURN_IF(names.size() != 1, Error("value aliases require one assignment target"));
+      auto found = symbols_.find(value);
+      ORT_RETURN_IF(found == symbols_.end(), Error("undefined value alias"));
+      pattern_.required_tensor_bindings_.insert(found->second.handle);
+      symbols_.emplace(names.front(), found->second);
+      pattern_.aliases_.emplace(names.front(), found->second);
+      last_outputs_ = {found->second};
+      auto constraints = pattern_.type_constraints_.find(found->second.handle);
+      last_result_ports_.push_back({names.front(), constraints == pattern_.type_constraints_.end()
+                                                       ? InlinedVector<TypeConstraint, 1>{}
+                                                       : constraints->second});
+    }
+  }
+  if (last_result_ports_.empty())
+    for (size_t i = 0; i < last_outputs_.size(); ++i) last_result_ports_.push_back({"", {}});
+  if (branches.size() > 1) {
+    expression_results_.emplace(start, last_result_ports_);
+    if (!names.empty()) {
+      const std::string& path = names.front();
+      auto existing = pattern_.instances_.find(path);
+      std::shared_ptr<const Pattern::Instance> selected;
+      if (existing != pattern_.instances_.end())
+        selected = std::make_shared<const Pattern::Instance>(existing->second);
+      pattern_.instances_.insert_or_assign(path, Pattern::Instance{"<expression>", "", label, std::move(selected)});
+    }
+  }
+  position_ = end;
+  ORT_RETURN_IF_ERROR(Next());
+  --expression_depth_;
+  if (nested) --*compile_depth_;
+  return Status::OK();
+}
+
 Status PatternParser::Declarations(InlinedVector<Definition, 1>& definitions) {
   ORT_RETURN_IF_ERROR(Next());
   InlinedHashSet<std::string> names;
@@ -1432,11 +1560,13 @@ Status PatternParser::Declarations(InlinedVector<Definition, 1>& definitions) {
       } else {
         ORT_RETURN_IF_ERROR(Header(definition.inputs, definition.signature));
       }
-      if (definition.kind == Definition::Kind::Interface) {
+      if (definition.kind == Definition::Kind::Interface ||
+          (definition.kind == Definition::Kind::Body && token_ == "->")) {
         std::string output_signature;
         ORT_RETURN_IF_ERROR(Expect("->"));
         ORT_RETURN_IF_ERROR(Header(definition.outputs, output_signature));
-        ORT_RETURN_IF(definition.outputs.empty(), Error("interface requires output ports"));
+        definition.explicit_outputs = true;
+        ORT_RETURN_IF(definition.outputs.empty(), Error("output signature requires at least one output"));
         InlinedHashSet<std::string> ports;
         for (const auto& input : definition.inputs) ports.insert(input.name);
         for (const auto& output : definition.outputs) {
@@ -1455,7 +1585,8 @@ Status PatternParser::Declarations(InlinedVector<Definition, 1>& definitions) {
           }
         }
         ORT_RETURN_IF_ERROR(ValidateTypes(contract));
-      } else {
+      }
+      if (definition.kind != Definition::Kind::Interface) {
         const size_t start = token_start_;
         ORT_RETURN_IF_ERROR(Expect("{"));
         while (!(kind_ == Kind::Symbol && token_ == "}") && kind_ != Kind::End) ORT_RETURN_IF_ERROR(Next());
@@ -1472,7 +1603,9 @@ Status PatternParser::Declarations(InlinedVector<Definition, 1>& definitions) {
 
 Status PatternParser::PatternCall(const InlinedVector<std::string>& names, const Definition& definition) {
   ORT_RETURN_IF(definition.kind == Definition::Kind::Interface, Error("interfaces are not callable"));
-  ORT_RETURN_IF(names.size() != 1, Error("pattern calls require one named instance"));
+  ORT_RETURN_IF(names.empty(), Error("pattern calls require assigned outputs"));
+  ORT_RETURN_IF(names.size() != 1 && names.size() != definition.outputs.size(),
+                Error("pattern output assignment arity mismatch"));
   const std::string& path = names.front();
   ORT_RETURN_IF(pattern_.instances_.count(path), Error("duplicate pattern instance"));
   ORT_RETURN_IF_ERROR(Expect("("));
@@ -1480,9 +1613,14 @@ Status PatternParser::PatternCall(const InlinedVector<std::string>& names, const
   while (token_ != ")") {
     std::string actual;
     ORT_RETURN_IF_ERROR(Identifier(actual, true));
-    auto found = symbols_.find(actual);
-    ORT_RETURN_IF(found == symbols_.end(), Error("undefined pattern argument"));
-    inputs.push_back(found->second);
+    if (actual == "_") {
+      ORT_RETURN_IF(pattern_.ValueCount() >= 256, Error("expanded value limit exceeded"));
+      inputs.push_back(pattern_.AddValue(""));
+    } else {
+      auto found = symbols_.find(actual);
+      ORT_RETURN_IF(found == symbols_.end(), Error("undefined pattern argument"));
+      inputs.push_back(found->second);
+    }
     if (token_ != ",") break;
     ORT_RETURN_IF_ERROR(Next());
   }
@@ -1504,13 +1642,14 @@ Status PatternParser::PatternCall(const InlinedVector<std::string>& names, const
   for (size_t i = 0; i < inputs.size(); ++i) {
     const Value formal = source.NamedValue(definition.inputs[i].name);
     if (source.IsAttribute(formal)) {
+      ORT_RETURN_IF(inputs[i].name.empty(), Error("wildcards require tensor arguments"));
       ORT_RETURN_IF(!pattern_.IsInput(inputs[i]), Error("attribute arguments must be external inputs"));
       pattern_.attribute_inputs_.insert(inputs[i].handle);
       attribute_inputs_.insert(inputs[i].handle);
       attributes.emplace(formal.name, inputs[i].name);
     }
     map[formal.handle] = inputs[i];
-    if (!source.IsOptional(formal)) pattern_.optional_inputs_.erase(inputs[i].handle);
+    if (!source.IsOptional(formal) || inputs[i].name.empty()) pattern_.optional_inputs_.erase(inputs[i].handle);
   }
   auto scoped = [&](std::string_view name) { return path + "." + std::string(name); };
   auto attribute_name = [&](const std::string& name) {
@@ -1579,11 +1718,17 @@ Status PatternParser::PatternCall(const InlinedVector<std::string>& names, const
     pattern_.aliases_.insert_or_assign(output_name, output);
     symbols_.insert_or_assign(output_name, output);
     last_outputs_.push_back(output);
+    if (names.size() == source.outputs_.size()) {
+      ORT_RETURN_IF(pattern_.attribute_names_.count(names[i]), Error("output conflicts with attribute capture"));
+      symbols_.insert_or_assign(names[i], output);
+      pattern_.aliases_.insert_or_assign(names[i], output);
+    }
   }
   if (last_outputs_.size() == 1) {
     symbols_.emplace(path, last_outputs_.front());
     pattern_.aliases_.emplace(path, last_outputs_.front());
   }
+  last_result_ports_ = definition.outputs;
   return Status::OK();
 }
 
@@ -1627,6 +1772,7 @@ class PatternModule {
         if (value.handle >= 0) reachable.insert(value.handle);
     }
     for (int handle : plan.attribute_inputs_) reachable.insert(handle);
+    for (int handle : plan.optional_inputs_) reachable.insert(handle);
     ORT_ENFORCE(reachable.size() == plan.ValueCount(), "Pattern ", name, " cannot be a rule entry: unused inputs.");
   }
 
@@ -1675,11 +1821,28 @@ class PatternModule {
       }
       const std::string text = definition.signature + " => " + definition.body;
       InlinedVector<size_t> choices;
+      InlinedHashMap<size_t, InlinedVector<Port>> expression_results;
       do {
         Pattern plan;
-        PatternParser parser(text, [&](std::string_view name) { return Resolve(name); }, choices, &definition);
+        PatternParser parser(text, [&](std::string_view name) { return Resolve(name); }, choices, &definition, &active_compile_depth_);
         const auto status = parser.Parse(plan);
         ORT_ENFORCE(status.IsOK(), "In definition ", definition.name, ": ", status.ErrorMessage());
+        for (const auto& [position, results] : parser.ExpressionResults()) {
+          auto [it, inserted] = expression_results.emplace(position, results);
+          if (!inserted) {
+            ORT_ENFORCE(it->second.size() == results.size(), "Expression alternative output arity mismatch in ", definition.name);
+            for (size_t i = 0; i < results.size(); ++i) {
+              if (it->second[i].constraints.empty()) {
+                it->second[i] = results[i];
+                continue;
+              }
+              if (results[i].constraints.empty()) continue;
+              auto a = it->second[i], b = results[i];
+              a.name = b.name = "";
+              ORT_ENFORCE(CompatiblePorts({a}, {b}), "Expression alternative output type mismatch in ", definition.name);
+            }
+          }
+        }
         if (!definition.interface_name.empty()) {
           for (const auto& port : definition.inputs) {
             ORT_ENFORCE(!plan.IsAttribute(plan.NamedValue(port.name)),
@@ -1693,7 +1856,14 @@ class PatternModule {
           }
           for (Value output : plan.outputs_) plan.optional_inputs_.erase(output.handle);
         }
-        if (definition.interface_name.empty()) {
+        if (definition.explicit_outputs) {
+          for (Value output : plan.outputs_) {
+            ORT_ENFORCE(!plan.IsAttribute(output), "Declared pattern output must remain a tensor in ", definition.name);
+            plan.required_tensor_bindings_.insert(output.handle);
+            plan.optional_inputs_.erase(output.handle);
+          }
+        }
+        if (definition.interface_name.empty() && !definition.explicit_outputs) {
           InlinedVector<Port> outputs;
           InlinedHashSet<std::string> names;
           for (size_t i = 0; i < parser.ReturnedNames().size(); ++i) {
@@ -1720,8 +1890,10 @@ class PatternModule {
             ORT_ENFORCE(local == plan.values_.end() || local->handle == output.handle,
                         "Output port shadows a different local value in pattern ", definition.name, ": ", port.name);
             plan.aliases_.insert_or_assign(port.name, output);
-            if (!definition.interface_name.empty() && !port.constraints.empty())
+            if ((!definition.interface_name.empty() || definition.explicit_outputs) && !port.constraints.empty()) {
               plan.ordered_type_constraints_.emplace_back(output.handle, port.constraints);
+              plan.type_constraints_.emplace(output.handle, port.constraints);
+            }
           }
         }
         ORT_THROW_IF_ERROR(PatternParser::ValidateTypes(plan));
@@ -1826,11 +1998,21 @@ const NodeArg* Match::valueOf(std::string_view name) const {
   return values[value.handle];
 }
 
+const NodeArg* Match::optionalValueOf(std::string_view name) const {
+  ORT_ENFORCE(pattern, "Named lookup requires a matched pattern.");
+  const Value value = pattern->NamedValue(name);
+  ORT_ENFORCE(!pattern->IsAttribute(value), "Pattern binding is an attribute: ", name);
+  return valueOf(name);
+}
+
 std::string BindingView::Qualify(std::string_view name) const {
   return path_.empty() ? std::string(name) : path_ + "." + std::string(name);
 }
 
 const NodeArg* BindingView::valueOf(std::string_view name) const { return match_->valueOf(Qualify(name)); }
+const NodeArg* BindingView::optionalValueOf(std::string_view name) const {
+  return match_->optionalValueOf(Qualify(name));
+}
 const ONNX_NAMESPACE::AttributeProto& BindingView::attributeOf(std::string_view name) const {
   return match_->attributeOf(Qualify(name));
 }
@@ -2040,6 +2222,7 @@ PatternRewriter::PatternRewriter(Rules rules, Options options)
         if (input.handle >= 0) reachable.insert(input.handle);
     }
     for (int handle : rule.pattern.attribute_inputs_) reachable.insert(handle);
+    for (int handle : rule.pattern.optional_inputs_) reachable.insert(handle);
     ORT_ENFORCE(reachable.size() == rule.pattern.ValueCount(), "Unused pattern input.");
     invalidation_depth_ = std::max(invalidation_depth_, rule.pattern.Nodes().size());
     if (!options_.indexed) continue;
