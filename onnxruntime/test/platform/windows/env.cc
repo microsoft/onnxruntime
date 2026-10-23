@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "test/platform/windows/env.h"
+#include <algorithm>
 #include <vector>
 
 namespace onnxruntime {
@@ -42,6 +43,27 @@ bool WindowsEnvTester::SetCpuInfo(const CpuInfo& cpu_info) {
         global_processor_id++;
       }
       cores_.push_back(std::move(logical_processors));
+    }
+  }
+  performance_cores_.clear();
+  return true;
+}
+
+bool WindowsEnvTester::SetCpuInfo(const CpuInfo& cpu_info, const CpuEfficiencyClasses& efficiency_classes) {
+  if (!SetCpuInfo(cpu_info)) {
+    return false;
+  }
+  if (efficiency_classes.size() != cores_.size()) {
+    return false;
+  }
+  // Mirrors InitializeCpuInfo: only a heterogeneous part has performance cores.
+  const BYTE highest_class = *std::max_element(efficiency_classes.begin(), efficiency_classes.end());
+  const BYTE lowest_class = *std::min_element(efficiency_classes.begin(), efficiency_classes.end());
+  if (highest_class != lowest_class) {
+    for (size_t i = 0; i < cores_.size(); ++i) {
+      if (efficiency_classes[i] == highest_class) {
+        performance_cores_.push_back(cores_[i]);
+      }
     }
   }
   return true;
