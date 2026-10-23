@@ -5,6 +5,7 @@
 #include "core/providers/webgpu/webgpu_provider_options.h"
 #include "core/session/IOBinding.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/optimizer/graph_transform_test_fixture.h"
 #include "test/optimizer/webgpu_fusion_test_util.h"
 #include "test/util/include/default_providers.h"
@@ -88,24 +89,45 @@ Status CheckQLoRACount(const Graph& graph, size_t expected) {
 }  // namespace
 
 TEST_F(GraphTransformationTests, MatMulNBitsQLoRAFusionPreservesDefaults) {
-  ASSERT_STATUS_OK(TestGraphTransformer(
-      [](ModelTestBuilder& b) { BuildQLoRA(b); }, 21, *logger_, std::make_unique<MatMulNBitsQLoRAFusion>(),
-      TransformerLevel::Level2, 1, nullptr,
-      [](const Graph& graph) {
-        ORT_RETURN_IF_ERROR(CheckQLoRACount(graph, 1));
-        const auto inputs = graph.GetOverridableInitializers();
-        ORT_RETURN_IF_NOT(inputs.size() == 4, "Adapter parameters were removed.");
-        for (const auto* input : inputs) {
-          const ONNX_NAMESPACE::TensorProto* init = nullptr;
-          ORT_RETURN_IF_NOT(graph.GetInitializedTensor(input->Name(), init), "Missing default.");
-          if (init->data_type() == ONNX_NAMESPACE::TensorProto::UINT8) {
-            ORT_RETURN_IF_NOT(init->dims(0) == 0 || init->dims(1) == 0, "Packed default was not emptied.");
-          } else {
-            ORT_RETURN_IF_NOT(init->dims(0) > 0 && init->dims(1) > 0, "Scale default was emptied.");
+  for (bool empty_defaults : {false, true}) {
+    SCOPED_TRACE(empty_defaults);
+    InlinedHashMap<std::string, std::string> initializers;
+    ASSERT_STATUS_OK(TestGraphTransformer(
+        [&](ModelTestBuilder& b) {
+          BuildQLoRA(b, 1, 64, 128, 1, false, false, false, 0, empty_defaults);
+          for (const auto& [name, init] : b.graph_.GetAllInitializedTensors()) {
+            initializers.emplace(name, init->SerializeAsString());
           }
-        }
-        return Status::OK();
-      }));
+        },
+        21, *logger_, std::make_unique<MatMulNBitsQLoRAFusion>(), TransformerLevel::Level2, 1, nullptr,
+        [&](const Graph& graph) {
+          ORT_RETURN_IF_ERROR(CheckQLoRACount(graph, 1));
+          ORT_RETURN_IF_NOT(graph.GetOverridableInitializers().size() == 4, "Adapter parameters were removed.");
+          for (const auto& [name, original] : initializers) {
+            const ONNX_NAMESPACE::TensorProto* init = nullptr;
+            ORT_RETURN_IF_NOT(graph.GetInitializedTensor(name, init), "Missing initializer.");
+            ORT_RETURN_IF_NOT(init->SerializeAsString() == original, "Initializer shape or data changed.");
+          }
+          return Status::OK();
+        }));
+  }
+}
+
+TEST_F(GraphTransformationTests, MatMulNBitsQLoRAFusionRequiresWebGpu) {
+  Model model("CPU quantized LoRA", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+              {{kOnnxDomain, 21}, {kMSDomain, 1}}, {}, *logger_);
+  ModelTestBuilder builder(model.MainGraph());
+  BuildQLoRA<float>(builder, 1, 64);
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(model.MainGraph().Resolve());
+  const auto data = model.ToProto().SerializeAsString();
+  SessionOptions options;
+  options.graph_optimization_level = TransformerLevel::Level2;
+  InferenceSessionWrapper session(options, GetEnvironment());
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultCpuExecutionProvider()));
+  ASSERT_STATUS_OK(session.Load(data.data(), static_cast<int>(data.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+  ASSERT_STATUS_OK(CheckQLoRACount(session.GetGraph(), 0));
 }
 
 TEST_F(GraphTransformationTests, MatMulNBitsQLoRAFusionNumerics) {
@@ -233,11 +255,11 @@ TEST_F(GraphTransformationTests, MatMulNBitsQLoRAFusionRejectsDifferentAdapterAc
 }
 
 template <typename T>
-void RunQLoRASerializedEmptyDefaults(const logging::Logger& logger, int64_t k = 64, bool raw_empty_defaults = false) {
+void RunQLoRASerializedDefaults(const logging::Logger& logger, int64_t k = 64, bool raw_empty_defaults = false) {
   if (!DefaultWebGpuExecutionProvider()) GTEST_SKIP() << "WebGPU unavailable.";
   for (int64_t m : {1, 2, 37}) {
     SCOPED_TRACE(m);
-    Model model("quantized LoRA empty defaults", false, ModelMetaData(), PathString(),
+    Model model("quantized LoRA defaults", false, ModelMetaData(), PathString(),
                 IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 21}, {kMSDomain, 1}}, {}, logger);
     auto& graph = model.MainGraph();
     ModelTestBuilder builder(graph);
@@ -265,8 +287,8 @@ void RunQLoRASerializedEmptyDefaults(const logging::Logger& logger, int64_t k = 
     ASSERT_FALSE(a_name.empty());
     ASSERT_FALSE(b_name.empty());
     std::vector<OrtValue> expected(7);
-    // Compare unfused, load-time fusion, and serialized fusion using the same
-    // partial-override states and exact reference values.
+    // Compare the standard optimizer opt-out, automatic fusion, and serialized
+    // fusion using the same partial-override states and exact reference values.
     for (int mode : {0, 1, 2}) {
       const bool fused = mode != 0;
       if (mode == 2) {
@@ -279,30 +301,32 @@ void RunQLoRASerializedEmptyDefaults(const logging::Logger& logger, int64_t k = 
       if (mode == 2) {
         ASSERT_EQ(proto.graph().node_size(), 1);
         ASSERT_EQ(proto.graph().node(0).op_type(), "MatMulNBitsQLoRA");
-        int empty_count = 0;
+        int packed_count = 0;
         for (const auto& init : proto.graph().initializer()) {
           if (init.name() != a_name && init.name() != b_name) continue;
-          ++empty_count;
+          ++packed_count;
           ASSERT_EQ(init.dims_size(), 3);
-          EXPECT_EQ(init.dims(init.name() == a_name ? 0 : 1), 0);
-          EXPECT_TRUE(init.raw_data().empty());
+          const int axis = init.name() == a_name ? 0 : 1;
+          EXPECT_EQ(init.dims(axis), raw_empty_defaults ? 0 : (axis == 0 ? 32 : 1));
+          const int64_t size = init.dims(0) * init.dims(1) * init.dims(2);
+          EXPECT_EQ(init.raw_data(), std::string(static_cast<size_t>(size), static_cast<char>(128)));
           EXPECT_EQ(init.int32_data_size(), 0);
           EXPECT_EQ(init.external_data_size(), 0);
         }
-        ASSERT_EQ(empty_count, 2);
+        ASSERT_EQ(packed_count, 2);
       }
       std::string data;
       ASSERT_TRUE(proto.SerializeToString(&data));
       SessionOptions options;
-      options.graph_optimization_level = TransformerLevel::Level1;
+      options.graph_optimization_level = mode == 2 ? TransformerLevel::Level1 : TransformerLevel::Level2;
+      if (mode == 0) {
+        ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableSpecifiedOptimizers,
+                                                               "MatMulNBitsQLoRAFusion"));
+      }
       ASSERT_STATUS_OK(options.config_options.AddConfigEntry("session.disable_cpu_ep_fallback", "1"));
       InferenceSessionWrapper session(options, GetEnvironment());
       ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultWebGpuExecutionProvider()));
       ASSERT_STATUS_OK(session.Load(data.data(), static_cast<int>(data.size())));
-      if (mode == 1) {
-        ASSERT_STATUS_OK(
-            session.RegisterGraphTransformer(std::make_unique<MatMulNBitsQLoRAFusion>(), TransformerLevel::Level2));
-      }
       // Mode 2 loads the serialized operator without a LoRA transformer.
       ASSERT_STATUS_OK(session.Initialize());
       ASSERT_STATUS_OK(CheckQLoRACount(session.GetGraph(), fused ? 1 : 0));
@@ -403,21 +427,21 @@ void RunQLoRASerializedEmptyDefaults(const logging::Logger& logger, int64_t k = 
   }
 }
 
-TEST_F(GraphTransformationTests, MatMulNBitsQLoRAFusionSerializedEmptyDefaults) {
-  RunQLoRASerializedEmptyDefaults<MLFloat16>(*logger_);
+TEST_F(GraphTransformationTests, MatMulNBitsQLoRAFusionSerializedDefaults) {
+  RunQLoRASerializedDefaults<MLFloat16>(*logger_);
 }
 
-TEST_F(GraphTransformationTests, MatMulNBitsQLoRAFusionSerializedEmptyDefaultsFp32) {
-  RunQLoRASerializedEmptyDefaults<float>(*logger_);
+TEST_F(GraphTransformationTests, MatMulNBitsQLoRAFusionSerializedDefaultsFp32) {
+  RunQLoRASerializedDefaults<float>(*logger_);
 }
 
 TEST_F(GraphTransformationTests, MatMulNBitsQLoRAFusionJointDP4ACapture) {
-  RunQLoRASerializedEmptyDefaults<float>(*logger_, 2048);
+  RunQLoRASerializedDefaults<float>(*logger_, 2048);
 }
 
 TEST_F(GraphTransformationTests, MatMulNBitsQLoRAFusionFromEmptyRawDefaults) {
-  RunQLoRASerializedEmptyDefaults<MLFloat16>(*logger_, 64, true);
-  RunQLoRASerializedEmptyDefaults<float>(*logger_, 64, true);
+  RunQLoRASerializedDefaults<MLFloat16>(*logger_, 64, true);
+  RunQLoRASerializedDefaults<float>(*logger_, 64, true);
 }
 
 TEST_F(GraphTransformationTests, MatMulNBitsQLoRAFusionRejectsInvalidDefaultRank) {

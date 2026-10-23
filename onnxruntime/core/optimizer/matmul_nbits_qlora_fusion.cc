@@ -3,11 +3,8 @@
 
 #include "core/optimizer/matmul_nbits_qlora_fusion.h"
 
-#include <cmath>
-
 #include "core/graph/graph_utils.h"
 #include "core/graph/node_attr_utils.h"
-#include "core/optimizer/initializer.h"
 #include "core/optimizer/matmul_nbits_fusion_utils.h"
 #include "core/optimizer/utils.h"
 
@@ -59,39 +56,6 @@ bool Projection(const Node* node, int64_t bits) {
          GetIntAttr(*node, "block_size", -1, true) == 32 && GetIntAttr(*node, "weight_prepacked", 0) == 0 &&
          !HasInput(*node, 3) && !HasInput(*node, 4) && !HasInput(*node, 5) &&
          (bits != 8 || GetIntAttr(*node, "accuracy_level", 0) == 0);
-}
-
-bool ZeroDefault(const Graph& graph, const NodeArg& q, const NodeArg& scales) {
-  if (!graph.IsInputsIncludingInitializers(&q) || graph.IsOutput(&q) || graph.GetConsumerNodes(q.Name()).size() != 1)
-    return false;
-  const ONNX_NAMESPACE::TensorProto* qp = nullptr;
-  const ONNX_NAMESPACE::TensorProto* sp = nullptr;
-  if (!graph.GetInitializedTensor(q.Name(), qp) || !graph.GetInitializedTensor(scales.Name(), sp)) return false;
-  Initializer qdata(graph, *qp, graph.ModelPath());
-  Initializer sdata(graph, *sp, graph.ModelPath());
-  const auto bytes = qdata.DataAsByteSpan();
-  if (!bytes.empty() && sdata.DataAsByteSpan().empty()) return false;
-  if (!std::all_of(bytes.begin(), bytes.end(), [](uint8_t value) { return value == 128; })) return false;
-  if (sp->data_type() == ONNX_NAMESPACE::TensorProto::FLOAT) {
-    const auto values = sdata.DataAsSpan<float>();
-    return std::all_of(values.begin(), values.end(), [](float value) { return std::isfinite(value); });
-  }
-  const auto values = sdata.DataAsSpan<MLFloat16>();
-  return std::all_of(values.begin(), values.end(), [](MLFloat16 value) { return std::isfinite(value.ToFloat()); });
-}
-
-void EmptyDefault(Graph& graph, NodeArg& arg, int axis) {
-  const ONNX_NAMESPACE::TensorProto* original = nullptr;
-  ORT_ENFORCE(graph.GetInitializedTensor(arg.Name(), original));
-  ONNX_NAMESPACE::TensorProto empty;
-  empty.set_name(arg.Name());
-  empty.set_data_type(original->data_type());
-  for (int i = 0; i < original->dims_size(); ++i) empty.add_dims(i == axis ? 0 : original->dims(i));
-  auto shape = *arg.Shape();
-  shape.mutable_dim(axis)->Clear();
-  arg.SetShape(shape);
-  graph.RemoveInitializedTensor(arg.Name());
-  graph.AddInitializedTensor(empty);
 }
 
 }  // namespace
@@ -147,8 +111,6 @@ Status MatMulNBitsQLoRAFusion::ApplyImpl(Graph& graph, bool& modified, int graph
     const bool flat_scales = s && s->dim_size() == 1 && s->dim(0).has_dim_value() &&
                              s->dim(0).dim_value() / n == k / 32 && s->dim(0).dim_value() % n == 0;
     if (!flat_scales && !Shape(*inputs[2], {n, k / 32})) continue;
-    const bool empty_defaults =
-        ZeroDefault(graph, *inputs[3], *inputs[4]) && ZeroDefault(graph, *inputs[5], *inputs[6]);
     auto attrs = base->GetAttributes();
     attrs.erase("weight_prepacked");
     utils::SetNodeAttribute(utils::MakeAttribute("lora_bits", int64_t{8}), attrs);
@@ -171,13 +133,10 @@ Status MatMulNBitsQLoRAFusion::ApplyImpl(Graph& graph, bool& modified, int graph
     const NodeIndex removed[] = {base->Index(), down->Index(), up->Index(), add->Index()};
     for (auto node : removed) graph.RemoveNode(node);
     for (const auto& edge : outputs) graph.AddEdge(fused.Index(), edge.dst_node, 0, edge.dst_arg_index);
-    if (empty_defaults) {
-      // Keep scale defaults: overriding only a packed weight must still use its original scale.
-      EmptyDefault(graph, *inputs[3], 0);
-      EmptyDefault(graph, *inputs[5], 1);
-    }
+    // Preserve initializer shapes and data. Replacing full-size zero weights with
+    // empty adapters would bypass arithmetic, including NaN/Inf propagation.
     modified = true;
-    LOGS(logger, VERBOSE) << "MatMulNBitsQLoRAFusion: " << fused.Name() << " empty defaults=" << empty_defaults;
+    LOGS(logger, VERBOSE) << "MatMulNBitsQLoRAFusion: " << fused.Name();
   }
   return Status::OK();
 }

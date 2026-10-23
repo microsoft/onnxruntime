@@ -4,7 +4,7 @@
 base projection with packed INT8 adapter projections. Both FP16 and FP32
 models are supported, with scales and intermediate tensors matching the
 model's floating type. See the [operator guide](WebGPU_MatMulNBitsQLoRA_Prototype.md)
-for layouts, opt-in graph matching, explicit export, and capture requirements.
+for layouts, automatic graph matching, explicit export, and capture requirements.
 
 ## QLoRA-only split regression (2026-10-15)
 

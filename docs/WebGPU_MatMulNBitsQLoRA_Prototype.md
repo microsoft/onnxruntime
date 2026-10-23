@@ -5,21 +5,22 @@ adapter projections, and their residual Add. Adapter weights remain replaceable.
 is an inference operator for quantized adapters; it does not merge adapter
 weights into the base or perform adapter training.
 
-Enable graph matching with `session.enable_matmul_nbits_lora_fusion=1` in
-the decoder session options. For native GenAI, merge these entries into
-the model's existing `model.decoder.session_options` object:
+Graph matching runs automatically at the extended graph-optimization level
+(`ORT_ENABLE_EXTENDED`) or higher when WebGPU provides the fused kernel.
+CPU execution and unsupported patterns retain the original graph. For a comparison
+with the original graph, disable this transformer using the standard session option.
+For native GenAI, merge this entry into `model.decoder.session_options`:
 
 ```json
 {
-  "session.enable_matmul_nbits_lora_fusion": "1"
+  "optimization.disable_specified_optimizers": "MatMulNBitsQLoRAFusion"
 }
 ```
 
-This transformer handles packed INT8 adapters. An explicitly exported
-`MatMulNBitsQLoRA` node does not require the graph-matching option.
+Append the transformer name with a semicolon if other optimizers are already disabled.
+This transformer handles packed INT8 adapters.
 Both built-in and plugin WebGPU are supported; plugin use requires the host
-and provider library from this branch. Disable the option for a comparison
-with the original graph.
+and provider library from this branch.
 
 The transformer matches packed INT8 MatMulNBits adapter projections, not
 arbitrary DequantizeLinear/Cast/MatMul graphs. Those graphs require an offline
@@ -153,16 +154,14 @@ must run on WebGPU; the down projection must consume the base's X. Intermediate
 outputs must be private. Bias, explicit zero points, group indices, prepacked
 weights, and incompatible shapes prevent this fusion.
 
-Private overridable defaults containing only byte value 128, with finite
-default scales, are replaced by empty packed adapter tensors in the session
-graph. Scale defaults remain unchanged, preserving partial override semantics.
-Empty A rank or empty B rank selects the ordinary base kernel before adapter
-allocation or dispatch. Nonzero and shared packed defaults retain their data.
+The matcher preserves initializer shapes and data, including full-size zero
+adapter defaults and scale defaults. It does not replace zero weights with empty
+tensors: doing so would skip arithmetic and can change NaN/Inf propagation.
+Already-empty A rank or B rank selects the ordinary base kernel before adapter
+allocation or dispatch. Full-size zero weights still execute the adapter projections.
 Input names and the adapter file stay unchanged.
 
-Eliding a zero branch assumes finite activations,
-adapter scales, and adapter intermediates. NaN/Inf propagation through zero multiplication can differ;
-the transformer remains opt-in. GenAI builds without adapter-aware capture
+GenAI builds without adapter-aware capture
 identity require separate generators when changing the adapter selection.
 [GenAI #2740](https://github.com/microsoft/onnxruntime-genai/pull/2740) assigns
 separate capture IDs after additive adapter activation. Activation does not
@@ -182,10 +181,11 @@ layout, and bound buffers stay compatible.
 
 ### Compact model packaging
 
-An explicitly exported `MatMulNBitsQLoRA` node accepts empty packed defaults
-directly in the serialized model. Full-size buffers filled with 128 are only
-needed by the current three-MatMulNBits fusion pattern, not by the fused operator.
-For an adapter-off default, export overridable initializers as follows:
+Both an explicitly exported `MatMulNBitsQLoRA` node and the raw three-MatMulNBits
+pattern accept empty packed defaults. The raw pattern requires a runtime with
+empty-weight MatMulNBits support on CPU and WebGPU; its K/N attributes retain the
+logical projection sizes. For an adapter-off default, export overridable
+initializers as follows:
 
 | Initializer | Default shape | Default payload |
 |---|---|---|
@@ -199,17 +199,14 @@ packed graph input as dynamic, so a rank-32 adapter can override its empty
 initializer. Either empty packed weight disables the adapter. Scale-only and
 single-weight overrides therefore continue to produce the base result; supplying
 both packed weights uses the supplied scales or their retained defaults.
-Saving a graph after offline QLoRA fusion also produces this representation.
+Scale defaults can also be empty, but activating the adapter then requires
+supplying both packed weights and their scales. Fusion preserves whichever
+representation the model exports; it does not compact full-size zero defaults.
 
-This compact export requires a runtime with the custom operator. Disabling
-fusion does not convert it to a portable fallback graph. Do not place empty
-packed weights into the existing fixed-rank MatMulNBits chain: its N/K
-attributes still require nonempty rank-32 projections. For an unfused fallback,
-retain the original empty-default DequantizeLinear/MatMul graph. WebGPU's
-empty-tensor handling supports that graph, but this transformer does not yet
-match it. Empty DequantizeLinear outputs avoid dequantization work; a zero-K
-MatMul with a nonempty output still initializes that output, and the residual
-Add remains.
+Use the raw MatMulNBits pattern for a model shared by CPU and WebGPU. WebGPU
+fuses eligible patterns automatically; CPU executes the original operators.
+Saving a fused graph serializes explicit MatMulNBitsQLoRA nodes and requires
+the WebGPU kernel to execute them. Disabling fusion does not expand explicit nodes.
 
 ### FP32 packages and composed base fusions
 
@@ -226,7 +223,7 @@ file across different activation types still requires scale conversion at
 the graph boundary or a separate mixed-scale type contract. Casting only
 initializer defaults would not handle later adapter overrides.
 
-Adapter-off execution skips the adapter projections but calls a standalone
+Empty adapter weights skip the adapter projections and call a standalone
 base MatMulNBits. The current QKV/MLP transformers do not compose with the
 QLoRA operator, so this can lose the throughput benefit of those base fusions.
 Empty defaults alone do not resolve that difference. A follow-up composed
@@ -264,10 +261,11 @@ separately checks the specialized decode reduction.
 That reference test allows 0.003 absolute error for K=8192 with FP16 lane
 accumulation; shorter K and FP32 accumulation retain 0.002. Its relative
 tolerance stays 0.001. Deliberately exact switching checks remain exact.
-A serialization regression
-checks that empty packed defaults have no payload and that a reloaded explicit
-operator accepts full and partial overrides without a load-time QLoRA transform.
-It also captures adapter-off and adapter-on under separate IDs and alternates
+Serialization regressions check that full-size zero defaults retain their payload,
+empty packed defaults remain empty, and a reloaded explicit operator accepts
+full and partial overrides without a load-time QLoRA transform. Session tests
+exercise automatic fusion and the standard optimizer-disable option.
+They also capture adapter-off and adapter-on under separate IDs and alternate
 replay with sentinel-filled outputs, checking that both captures execute and
 produce the correct results with CPU fallback disabled.
 See [the performance evaluation](WebGPU_MatMulNBitsQLoRA_Performance.md) for model-level

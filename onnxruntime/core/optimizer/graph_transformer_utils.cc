@@ -490,8 +490,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
           }
         }
       }
-      if (has_matmul_nbits_qlora_kernel &&
-          session_options.config_options.GetConfigOrDefault("session.enable_matmul_nbits_lora_fusion", "0") == "1") {
+      if (has_matmul_nbits_qlora_kernel) {
         transformers.emplace_back(std::make_unique<MatMulNBitsQLoRAFusion>());
       }
       if (has_matmul_nbits_mlp_kernel) {
