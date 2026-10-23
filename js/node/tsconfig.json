@@ -1,8 +1,11 @@
 {
   "extends": "../tsconfig.json",
   "compilerOptions": {
+    "rootDir": "lib",
     "outDir": "dist",
-    "declaration": true
+    "declaration": true,
+    "types": ["node"],
+    "lib": ["ES2020", "ESNext.BigInt", "dom"]
   },
   "include": ["lib"]
 }

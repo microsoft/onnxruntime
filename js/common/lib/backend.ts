@@ -43,6 +43,16 @@ export interface InferenceSessionHandler extends SessionHandler {
     options: InferenceSession.RunOptions,
     activeLoraAdapters?: readonly LoraAdapterHandler[],
   ): Promise<SessionHandler.ReturnType>;
+
+  /**
+   * Optional blocking variant of `run()`. Backends that cannot run synchronously do not implement it.
+   */
+  runSync?(
+    feeds: SessionHandler.FeedsType,
+    fetches: SessionHandler.FetchesType,
+    options: InferenceSession.RunOptions,
+    activeLoraAdapters?: readonly LoraAdapterHandler[],
+  ): SessionHandler.ReturnType;
 }
 
 /**
