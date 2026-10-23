@@ -3,31 +3,27 @@
 
 #pragma once
 
-#include "core/framework/op_kernel.h"
 #include "core/providers/cpu/tensor/unsqueeze.h"
-#include "core/framework/data_transfer_manager.h"
-#include "core/providers/webgpu/webgpu_execution_provider.h"
+#include "core/providers/webgpu/webgpu_kernel.h"
 
 namespace onnxruntime {
 namespace webgpu {
 
-class Unsqueeze final : public OpKernel, public UnsqueezeBase {
+class Unsqueeze final : public WebGpuKernel, public UnsqueezeBase {
  public:
-  explicit Unsqueeze(const OpKernelInfo& info) : OpKernel{info}, UnsqueezeBase(info) {}
+  explicit Unsqueeze(const OpKernelInfo& info) : WebGpuKernel{info}, UnsqueezeBase(info) {}
 
-  Status Compute(OpKernelContext* context) const override {
-    const auto& ep = *static_cast<const WebGpuExecutionProvider*>(Info().GetExecutionProvider());
-    auto compute_scope = ep.EnterKernelCompute();
-    const Tensor* X = context->Input<Tensor>(0);
+  Status ComputeInternal(ComputeContext& context) const override {
+    const Tensor* X = context.Input<Tensor>(0);
     if (X == nullptr) {
       return Status(common::ONNXRUNTIME, common::FAIL, "Input tensor is not set");
     }
     const TensorShape& X_shape = X->Shape();
 
     TensorShapeVector axes;
-    size_t num_inputs = context->InputCount();
+    size_t num_inputs = static_cast<size_t>(context.InputCount());
     if (num_inputs == 2) {  // axes is an input
-      const Tensor* axes_tensor = context->Input<Tensor>(1);
+      const Tensor* axes_tensor = context.Input<Tensor>(1);
       ORT_ENFORCE(axes_tensor != nullptr, "Axes input is null");
       ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 0 ||
                       axes_tensor->Shape().NumDimensions() == 1,
@@ -39,12 +35,12 @@ class Unsqueeze final : public OpKernel, public UnsqueezeBase {
     }
 
     TensorShapeVector output_shape = ComputeOutputShape(X_shape, axes);
-    Tensor* Y = context->Output(0, TensorShape(output_shape));
+    Tensor* Y = context.Output(0, TensorShape(output_shape));
     const void* source = X->DataRaw();
     void* target = Y->MutableDataRaw();
     // If source and target pointers are not equal (non-inplace operation), we need to copy the data.
     if (target != source) {
-      ORT_RETURN_IF_ERROR(Info().GetDataTransferManager().CopyTensor(*X, *Y));
+      ORT_RETURN_IF_ERROR(context.CopyTensor(*X, *Y));
     }
 
     return Status::OK();
