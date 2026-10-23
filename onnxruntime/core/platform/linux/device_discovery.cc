@@ -6,6 +6,7 @@
 #include "core/platform/linux/npu_device_discovery.h"
 #include "core/platform/linux/pci_device_discovery.h"
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -65,6 +66,18 @@ Status ReadValueFromFile(const fs::path& file_path, ValueType& value) {
   ORT_RETURN_IF_ERROR(ReadFileContents(file_path, file_text));
   file_text = utils::TrimString(file_text);
   return ParseStringWithClassicLocale<ValueType>(file_text, value);
+}
+
+// Returns true if `compatible_value` is one of the device tree compatible strings of the device at `device_path`.
+bool IsDeviceTreeCompatible(const fs::path& device_path, std::string_view compatible_value) {
+  std::string compatible;
+  if (!ReadFileContents(device_path / "of_node" / "compatible", compatible).IsOK()) {
+    return false;
+  }
+
+  // The compatible file holds a list of NUL-terminated strings.
+  const auto entries = utils::SplitString(compatible, std::string_view{"\0", 1});
+  return std::find(entries.begin(), entries.end(), compatible_value) != entries.end();
 }
 
 std::optional<bool> IsGpuDiscrete(uint16_t vendor_id, uint16_t device_id) {
@@ -135,6 +148,7 @@ Status DetectGpuSysfsPaths(const fs::path& sysfs_class_drm_path,
   };
 
   std::vector<GpuSysfsPathInfo> gpu_sysfs_paths{};
+  bool found_nvidia_pci_gpu = false;
 
   auto dir_iterator = fs::directory_iterator{sysfs_class_drm_path, error_code};
   ORT_RETURN_IF_ERROR(ErrorCodeToStatus(error_code, sysfs_class_drm_path, "Iterating over DRM sysfs devices"));
@@ -162,9 +176,33 @@ Status DetectGpuSysfsPaths(const fs::path& sysfs_class_drm_path,
         LOGS_DEFAULT(VERBOSE) << "Skipping non-PCI DRM card: " << dir_item_path;
         continue;
       }
+    } else {
+      uint16_t vendor_id{};
+      if (const auto status = ReadValueFromFile(vendor_path, vendor_id); !status.IsOK()) {
+        LOGS_DEFAULT(WARNING) << "Failed to read DRM card vendor ID from " << vendor_path << ": "
+                              << status.ErrorMessage();
+      } else if (vendor_id == pci_vendor_ids::kNvidia) {
+        found_nvidia_pci_gpu = true;
+      }
     }
 
     gpu_sysfs_paths.push_back({card_idx, dir_item_path, is_nvidia_platform_gpu});
+  }
+
+  // On Jetson Thor the GPU is a PCI device, and the display controller (nvidia,tegra264-display) is a separate non-PCI
+  // DRM card bound to the nv_platform driver. If an NVIDIA PCI GPU was found, don't also report that display
+  // controller as a GPU. The Jetson Orin display controller (nvidia,tegra234-display) is kept even then, because it is
+  // the card that represents the Orin integrated GPU.
+  if (found_nvidia_pci_gpu) {
+    std::erase_if(gpu_sysfs_paths, [&](const GpuSysfsPathInfo& path_info) {
+      if (path_info.is_nvidia_platform_gpu &&
+          IsDeviceTreeCompatible(path_info.path / "device", "nvidia,tegra264-display")) {
+        LOGS_DEFAULT(VERBOSE) << "Skipping Jetson Thor display controller because an NVIDIA PCI GPU was found: "
+                              << path_info.path;
+        return true;
+      }
+      return false;
+    });
   }
 
   gpu_sysfs_paths_out = std::move(gpu_sysfs_paths);
