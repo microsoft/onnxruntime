@@ -200,7 +200,7 @@ Status QMoE::ComputeInt3(OpKernelContext* context) const {
   params.limit = swiglu_limit_;
   params.is_bfloat16 = !input->IsDataType<MLFloat16>();
   auto* compute_stream = GetComputeStream(context);
-  const auto stream = compute_stream ? static_cast<cudaStream_t>(compute_stream->GetHandle()) : nullptr;
+  const auto stream = Stream(context);
   auto first_check = params.fc1;
   auto second_check = params.fc2;
   if (int3_inputs_[3].validated) first_check.scales = nullptr;
