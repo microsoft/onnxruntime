@@ -1,0 +1,5 @@
+{
+  "schema_version": 1,
+  "kind": "builtin",
+  "ep_name": "CPUExecutionProvider"
+}

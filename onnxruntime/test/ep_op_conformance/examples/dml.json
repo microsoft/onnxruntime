@@ -1,0 +1,6 @@
+{
+  "schema_version": 1,
+  "kind": "builtin",
+  "ep_name": "DmlExecutionProvider",
+  "options": {"device_id": "0"}
+}

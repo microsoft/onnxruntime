@@ -569,6 +569,9 @@ class BaseTester {
   }
   BaseTester& Config(const Graph::ResolveOptions& resolve_options);
 
+  // Exports one unoptimized float32 baseline invocation; custom session semantics are not supported.
+  BaseTester& ConfigEpOpConformanceExport(std::string directory, std::string stable_id);
+
   void RunWithConfig(size_t* number_of_pre_packed_weights_counter = nullptr,
                      size_t* number_of_shared_pre_packed_weights_counter = nullptr);
 
@@ -778,6 +781,24 @@ class BaseTester {
 
  private:
   void FillFeeds(std::unordered_map<std::string, OrtValue>& feeds);
+
+  void ExportEpOpConformanceCase(const Model& model, const std::unordered_map<std::string, OrtValue>& feeds);
+
+  void RunWithOptions(SessionOptions session_options, ExpectResult expect_result,
+                      const std::string& expected_failure_string,
+                      const std::unordered_set<std::string>& excluded_provider_types,
+                      const RunOptions* run_options,
+                      std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers,
+                      const Graph::ResolveOptions& resolve_options,
+                      size_t* number_of_pre_packed_weights_counter = nullptr,
+                      size_t* number_of_shared_pre_packed_weights_counter = nullptr);
+
+  std::string ep_op_conformance_export_directory_;
+  std::string ep_op_conformance_export_id_;
+  bool ep_op_conformance_exported_ = false;
+  bool custom_session_options_configured_ = false;
+  bool custom_run_options_configured_ = false;
+  bool custom_resolve_options_configured_ = false;
 
   RunContext ctx_{};
 

@@ -932,6 +932,7 @@ if(onnxruntime_MINIMAL_BUILD OR onnxruntime_REDUCED_OPS_BUILD)
   list(REMOVE_ITEM onnxruntime_unittest_utils_src
     "${TEST_SRC_DIR}/unittest_util/base_tester.cc"
     "${TEST_SRC_DIR}/unittest_util/base_tester.h"
+    "${TEST_SRC_DIR}/unittest_util/ep_op_conformance_export.cc"
     "${TEST_SRC_DIR}/unittest_util/function_test_util.cc"
     "${TEST_SRC_DIR}/unittest_util/function_test_util.h"
     "${TEST_SRC_DIR}/unittest_util/graph_transform_test_builder.cc"
@@ -1665,6 +1666,15 @@ block()
     LIBS ${onnxruntime_provider_test_libs}
     DEPENDS ${onnxruntime_provider_test_deps}
   )
+
+  if(NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
+    AddTest(
+      TARGET onnxruntime_ep_op_conformance_export_test
+      SOURCES ${TEST_SRC_DIR}/providers/cpu/ep_op_conformance_export_test.cc ${onnxruntime_unittest_main_src}
+      LIBS ${onnxruntime_provider_test_libs}
+      DEPENDS ${onnxruntime_provider_test_deps}
+    )
+  endif()
 
   # Match the non-plugin WebGPU test-source selection above.
   if (onnxruntime_USE_WEBGPU AND NOT onnxruntime_USE_EP_API_ADAPTERS)

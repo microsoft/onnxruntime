@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "id": "ai.onnx.Mul.opset14.float32.scalar",
+      "operator": "Mul",
+      "opset": 14,
+      "inputs": [
+        {"name": "A", "shape": [], "values": [2]},
+        {"name": "B", "shape": [], "values": [3]}
+      ],
+      "outputs": [{"name": "Y", "shape": [], "values": [6]}],
+      "comparison": {"atol": 0.00001, "rtol": 0.0001, "nan_equal": true}
+    },
+    {
+      "id": "ai.onnx.Mul.opset14.float32.initializer",
+      "operator": "Mul",
+      "opset": 14,
+      "inputs": [
+        {"name": "A", "shape": [3], "values": [1, 2, 3]},
+        {"name": "B", "shape": [3], "values": [2, 4, 6], "initializer": true}
+      ],
+      "outputs": [{"name": "Y", "shape": [3], "values": [2, 8, 18]}],
+      "comparison": {"atol": 0, "rtol": 0, "nan_equal": true}
+    },
+    {
+      "id": "ai.onnx.Add.opset14.float32.broadcast",
+      "operator": "Add",
+      "opset": 14,
+      "inputs": [
+        {"name": "A", "shape": [2, 2], "values": [1, 2, 3, 4]},
+        {"name": "B", "shape": [2], "values": [10, 20]}
+      ],
+      "outputs": [{"name": "Y", "shape": [2, 2], "values": [11, 22, 13, 24]}],
+      "comparison": {"atol": 0.00001, "rtol": 0.0001, "nan_equal": true}
+    }
+  ]
+}
