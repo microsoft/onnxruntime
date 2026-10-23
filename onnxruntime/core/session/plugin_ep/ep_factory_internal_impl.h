@@ -83,6 +83,14 @@ class EpFactoryInternalImpl {
                                  "CreateSyncStreamForDevice is not implemented for this EP factory.");
   }
 
+  virtual OrtStatus* GetDeviceMemoryCapacity(
+      _In_ const OrtEpDevice* /*ep_device*/,
+      _Out_ uint64_t* /*total_memory_bytes*/,
+      _Out_ uint64_t* /*available_memory_bytes*/) noexcept {
+    return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED,
+                                 "GetDeviceMemoryCapacity is not implemented for this EP factory.");
+  }
+
   virtual OrtStatus* CreateExternalResourceImporterForDevice(
       _In_ const OrtEpDevice* /*ep_device*/,
       _Outptr_result_maybenull_ OrtExternalResourceImporterImpl** importer) noexcept {

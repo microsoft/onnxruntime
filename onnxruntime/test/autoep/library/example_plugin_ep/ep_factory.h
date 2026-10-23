@@ -118,6 +118,12 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
       const OrtSessionOptions* session_options,
       size_t* selected_index) noexcept;
 
+  static OrtStatus* ORT_API_CALL GetDeviceMemoryCapacityImpl(
+      OrtEpFactory* this_ptr,
+      const OrtEpDevice* ep_device,
+      uint64_t* total_memory_bytes,
+      uint64_t* available_memory_bytes) noexcept;
+
   const std::string ep_name_;              // EP name
   const std::string vendor_{"Contoso"};    // EP vendor name
   const uint32_t vendor_id_{0xB357};       // EP vendor ID
