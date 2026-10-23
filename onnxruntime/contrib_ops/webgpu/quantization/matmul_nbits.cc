@@ -4,12 +4,14 @@
 #include <string>
 #include <string_view>
 
+#include "contrib_ops/cpu/quantization/matmul_nbits_helper.h"
 #include "contrib_ops/webgpu/quantization/matmul_nbits.h"
 #include "contrib_ops/webgpu/quantization/matmul_nbits_common.h"
 #include "contrib_ops/webgpu/quantization/subgroup_matrix_matmul_nbits.h"
 #include "contrib_ops/webgpu/quantization/dp4a_matmul_nbits.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
 #include "core/providers/cpu/math/matmul_helper.h"
+#include "core/providers/webgpu/math/matmul.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/webgpu_utils.h"
@@ -229,11 +231,16 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   const Tensor* g_idx = context.Input(4);
   const Tensor* bias = context.Input(5);
 
-  ORT_ENFORCE(g_idx == nullptr, "group_idx as input is not supported yet.");
-
-  const bool has_zero_points = zero_points != nullptr;
-  if (has_zero_points) {
-    ORT_ENFORCE(zero_points->DataType() == DataTypeImpl::GetType<uint8_t>(), "Currently, only uint8 is supported for zero points, but got ", zero_points->DataType());
+  const bool empty_weights = b->Shape().Size() == 0;
+  if (empty_weights) {
+    ORT_RETURN_IF_ERROR(matmul_nbits_helper::CheckEmptyInputs(*b, bias, N_, K_, block_size_, bits_,
+                                                              Info().GetAttrOrDefault<int64_t>("weight_prepacked", 0)));
+  } else {
+    ORT_ENFORCE(g_idx == nullptr, "group_idx as input is not supported yet.");
+    if (zero_points != nullptr) {
+      ORT_ENFORCE(zero_points->DataType() == DataTypeImpl::GetType<uint8_t>(),
+                  "Currently, only uint8 is supported for zero points, but got ", zero_points->DataType());
+    }
   }
 
   MatMulComputeHelper helper;
@@ -244,6 +251,14 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   const uint32_t data_size = onnxruntime::narrow<uint32_t>(y->Shape().Size());
   if (data_size == 0) {
     return Status::OK();
+  }
+
+  if (empty_weights) {
+    // Record a fill dispatch so graph replay also overwrites the output. The
+    // MatMul shader uses [batch, row, column] coordinates, even for a vector A.
+    auto program = CreateMatMulFillBiasOrZeroBeforeSplitKProgram(
+        bias, y, false, 1.0f, 1, TensorShape({1, y->Shape().Size() / N_, N_}));
+    return context.RunProgram(program);
   }
 
   return ApplyMatMulNBits(a, b, scales, zero_points, bias, K_, N_, block_size_, accuracy_level_, bits_, context, y, 0);
