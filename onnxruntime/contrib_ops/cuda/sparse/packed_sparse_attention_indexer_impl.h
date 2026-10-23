@@ -39,13 +39,13 @@ struct PackedSparseAttentionIndexerParams {
   // policy_mode = "qsa"
   int block_topk = 0;  // token_budget / compress_ratio
   int state_update_capacity = 0;
-  void* mid_kv_buffer = nullptr;         // [batch, buffer_capacity, head_size] T
-  int32_t* mid_state_lengths = nullptr;  // [batch, 2]
-  void* mid_kv_buffer2 = nullptr;        // [batch, buffer_capacity, head_size] T
-  int32_t* mid_state_lengths2 = nullptr; // [batch, 2]
-  void* mid_kv_buffer3 = nullptr;        // [batch, buffer_capacity, head_size] T
-  int32_t* mid_state_lengths3 = nullptr; // [batch, 2]
-  int32_t* validation_status = nullptr;  // [batch]
+  void* mid_kv_buffer = nullptr;          // [batch, buffer_capacity, head_size] T
+  int32_t* mid_state_lengths = nullptr;   // [batch, 2]
+  void* mid_kv_buffer2 = nullptr;         // [batch, buffer_capacity, head_size] T
+  int32_t* mid_state_lengths2 = nullptr;  // [batch, 2]
+  void* mid_kv_buffer3 = nullptr;         // [batch, buffer_capacity, head_size] T
+  int32_t* mid_state_lengths3 = nullptr;  // [batch, 2]
+  int32_t* validation_status = nullptr;   // [batch]
 
   // policy_mode = "csa"
   int index_topk = 0;
