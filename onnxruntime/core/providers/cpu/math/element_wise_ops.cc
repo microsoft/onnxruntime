@@ -737,6 +737,36 @@ Status Div<MLFloat16>::Compute(OpKernelContext* context) const {
 
 namespace pow_internal {
 
+// Exact integer power by squaring. std::pow computes in double, which cannot represent every
+// int64 above 2^53. Multiplication is done in the unsigned type so overflow wraps instead of
+// being undefined behavior.
+template <typename T, typename E>
+T IntegerPow(T base, E exponent) {
+  using U = std::make_unsigned_t<T>;
+  U result = 1;
+  U base_power = static_cast<U>(base);
+  while (exponent > 0) {
+    if (exponent & 1) {
+      result *= base_power;
+    }
+    exponent >>= 1;
+    if (exponent > 0) {
+      base_power *= base_power;
+    }
+  }
+  return static_cast<T>(result);
+}
+
+template <typename T, typename E>
+T PowElement(T x, E y) {
+  if constexpr (std::is_integral_v<T> && std::is_integral_v<E>) {
+    if (y >= 0) {
+      return IntegerPow(x, y);
+    }
+  }
+  return static_cast<T>(std::pow(x, y));
+}
+
 template <typename T, typename E>
 void PowImpl(OpKernelContext& context) {
   ProcessBroadcastSpanFuncs funcs{
@@ -747,7 +777,7 @@ void PowImpl(OpKernelContext& context) {
 
         std::transform(Y.begin(), Y.end(), output.begin(),
                        [X](E y) {
-                         return static_cast<T>(std::pow(X, y));
+                         return static_cast<T>(PowElement<T, E>(X, y));
                        });
       },
       [](BroadcastHelper& per_iter_bh) {
@@ -755,24 +785,30 @@ void PowImpl(OpKernelContext& context) {
         const E Y = per_iter_bh.ScalarInput1<E>();
         auto output = per_iter_bh.OutputSpan<T>();
 
-        // optimize for X^2 and X^3
-        if (Y == 2) {
-          std::transform(X.begin(), X.end(), output.begin(),
-                         [](T x) {
-                           return static_cast<T>(x * x);
-                         });
-
-        } else if (Y == 3) {
-          std::transform(X.begin(), X.end(), output.begin(),
-                         [](T x) {
-                           return static_cast<T>(x * x * x);
-                         });
-        } else {
-          std::transform(X.begin(), X.end(), output.begin(),
-                         [Y](T x) {
-                           return static_cast<T>(std::pow(x, Y));
-                         });
+        if constexpr (std::is_integral_v<T> && !std::is_integral_v<E>) {
+          if (Y == 2 || Y == 3) {
+            const int exponent = Y == 2 ? 2 : 3;
+            std::transform(X.begin(), X.end(), output.begin(),
+                           [exponent](T x) { return IntegerPow(x, exponent); });
+            return;
+          }
         }
+        if constexpr (!std::is_integral_v<T>) {
+          // Only exists in the float/double copies
+          if (Y == 2) {
+            std::transform(X.begin(), X.end(), output.begin(),
+                           [](T x) { return static_cast<T>(x * x); });
+            return;  // done, leave the lambda
+          }
+          if (Y == 3) {
+            std::transform(X.begin(), X.end(), output.begin(),
+                           [](T x) { return static_cast<T>(x * x * x); });
+            return;
+          }
+        }
+
+        std::transform(X.begin(), X.end(), output.begin(),
+                       [Y](T x) { return PowElement(x, Y); });
       },
       [](BroadcastHelper& per_iter_bh) {
         auto X = per_iter_bh.SpanInput0<T>();
@@ -781,12 +817,12 @@ void PowImpl(OpKernelContext& context) {
 
         std::transform(X.begin(), X.end(), Y.begin(), output.begin(),
                        [](T x, E y) {
-                         return static_cast<T>(std::pow(x, y));
+                         return static_cast<T>(PowElement<T, E>(x, y));
                        });
-      }};
+      }};  // namespace pow_internal
 
   UntypedBroadcastTwo(context, funcs, 1.0);
-}
+}  // namespace onnxruntime
 
 template <typename B>
 Status DispatchOnBase(OpKernelContext& context, const Tensor& Y) {
