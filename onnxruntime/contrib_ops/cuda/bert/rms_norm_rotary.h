@@ -5,10 +5,10 @@
 #include "core/providers/cuda/cuda_kernel.h"
 namespace onnxruntime::contrib::cuda {
 Status LaunchRMSNormRotary(cudaStream_t stream, const uint16_t* input, const float* scale,
-                          const int64_t* positions, const uint16_t* cosine, const uint16_t* sine,
-                          uint16_t* output, float* normalized, int groups, int heads, int sequence,
-                          int input_stride, int rotary_dim, int cache_rows, bool scalar_position,
-                          float epsilon, bool dense_prefill, bool fp32_rotary);
+                           const int64_t* positions, const uint16_t* cosine, const uint16_t* sine,
+                           uint16_t* output, float* normalized, int groups, int heads, int sequence,
+                           int input_stride, int rotary_dim, int cache_rows, bool scalar_position,
+                           float epsilon, bool dense_prefill, bool fp32_rotary);
 
 class RMSNormRotary final : public onnxruntime::cuda::CudaKernel {
  public:

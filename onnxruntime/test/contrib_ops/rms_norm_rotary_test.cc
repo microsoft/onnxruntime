@@ -77,8 +77,7 @@ TEST(RMSNormRotaryTest, RMSNormRotaryExactUnfusedParity) {
               for (size_t i = 0; i < positions.size(); ++i) positions[i] = static_cast<int64_t>((i * 7 + 3) % cache_rows);
               if (!positions.empty()) positions.back() = cache_rows - 1;
             }
-            const auto position_shape = scalar ? std::vector<int64_t>{1} :
-                                                 std::vector<int64_t>{output_batch, output_sequence};
+            const auto position_shape = scalar ? std::vector<int64_t>{1} : std::vector<int64_t>{output_batch, output_sequence};
             const auto run = [](OpTester& test) {
               auto providers = CudaProvider();
               ASSERT_FALSE(providers.empty());
@@ -162,9 +161,13 @@ TEST(RMSNormRotaryTest, RMSNormRotaryRejectsInvalidContracts) {
     test.AddInput<int32_t>("mode", {1}, {mode == 7 ? 2 : 0});
     test.AddOutput<BFloat16>("Y", {1, 2, 512}, std::vector<BFloat16>(1024));
     test.Run(OpTester::ExpectResult::kExpectFailure,
-             mode == 0 ? "slice" : mode == 1 ? "rotary" : mode == 2 ? "requires finite" :
-             mode == 3 ? "invalid slice" :
-             mode == 4 ? "scale" : mode == 5 ? "positions" : mode == 6 ? "cosine/sine" : "prefill_numerics",
+             mode == 0 ? "slice" : mode == 1 ? "rotary"
+                               : mode == 2   ? "requires finite"
+                               : mode == 3   ? "invalid slice"
+                               : mode == 4   ? "scale"
+                               : mode == 5   ? "positions"
+                               : mode == 6   ? "cosine/sine"
+                                             : "prefill_numerics",
              {}, nullptr, &providers);
   }
 }

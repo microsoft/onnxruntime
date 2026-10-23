@@ -67,12 +67,12 @@ __global__ void RMSNormRotaryKernel(
   }
 }
 
-}
+}  // namespace
 Status LaunchRMSNormRotary(cudaStream_t stream, const uint16_t* input, const float* scale,
-                          const int64_t* positions, const uint16_t* cosine, const uint16_t* sine,
-                          uint16_t* output, float* normalized, int groups, int heads, int sequence,
-                          int input_stride, int rotary_dim, int cache_rows, bool scalar_position,
-                          float epsilon, bool dense_prefill, bool fp32_rotary) {
+                           const int64_t* positions, const uint16_t* cosine, const uint16_t* sine,
+                           uint16_t* output, float* normalized, int groups, int heads, int sequence,
+                           int input_stride, int rotary_dim, int cache_rows, bool scalar_position,
+                           float epsilon, bool dense_prefill, bool fp32_rotary) {
   ORT_RETURN_IF_NOT(groups > 1 && heads > 0 && sequence > 0 && input_stride >= 256 &&
                         rotary_dim > 0 && rotary_dim <= 256 && rotary_dim % 2 == 0 && cache_rows > 0 &&
                         (dense_prefill || fp32_rotary),

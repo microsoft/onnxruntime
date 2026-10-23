@@ -6216,8 +6216,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(4, "sine", "Same shape/type as cosine.", "T")
         .Input(5, "prefill_numerics", "Optional CPU int32 scalar 0/1.", "TI", OpSchema::Optional)
         .Output(0, "Y", "Normalized and rotated [B,S,heads*width].", "T")
-        .Output(1, "normalized_fp32", "Optional BF16-rounded normalized values widened to FP32, before rotation, "
-                "[B,S,heads,width].", "F", OpSchema::Optional)
+        .Output(1, "normalized_fp32",
+                "Optional BF16-rounded normalized values widened to FP32, before rotation, "
+                "[B,S,heads,width].",
+                "F", OpSchema::Optional)
         .TypeConstraint("T", {"tensor(bfloat16)"}, "BF16 data.")
         .TypeConstraint("F", {"tensor(float)"}, "FP32 scale and optional normalized output.")
         .TypeConstraint("I", {"tensor(int64)"}, "Position indices.")
@@ -6250,7 +6252,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           if (hasInputShape(ctx, 1)) {
             const auto& scale = getInputShape(ctx, 1);
             if (scale.dim_size() != 1 || (scale.dim(0).has_dim_value() && normalized.dim(3).has_dim_value() &&
-                scale.dim(0).dim_value() != normalized.dim(3).dim_value())) {
+                                          scale.dim(0).dim_value() != normalized.dim(3).dim_value())) {
               fail_shape_inference("RMSNormRotary scale must have shape [width].");
             }
           }

@@ -100,13 +100,13 @@ Status RMSNormRotary::ComputeInternal(OpKernelContext* context) const {
       buffer.get(), buffer_size, stride, context->GetUseDeterministicCompute(), dense));
   const auto launch_rotary = [&]<typename RotaryT>() {
     return LaunchRotaryEmbeddingKernel<RotaryT>(
-      Stream(context), reinterpret_cast<RotaryT*>(output->MutableData<BFloat16>()),
-      reinterpret_cast<const RotaryT*>(prepared.get()),
-      positions->Data<int64_t>(), nullptr,
-      reinterpret_cast<const RotaryT*>(cosine->Data<BFloat16>()),
-      reinterpret_cast<const RotaryT*>(sine->Data<BFloat16>()), batch, sequence, heads, dim, rotary,
-      cache_rows, scalar ? 0 : 1, false, GetDeviceProp().maxThreadsPerBlock, false,
-      !dense && fp32_rotary_);
+        Stream(context), reinterpret_cast<RotaryT*>(output->MutableData<BFloat16>()),
+        reinterpret_cast<const RotaryT*>(prepared.get()),
+        positions->Data<int64_t>(), nullptr,
+        reinterpret_cast<const RotaryT*>(cosine->Data<BFloat16>()),
+        reinterpret_cast<const RotaryT*>(sine->Data<BFloat16>()), batch, sequence, heads, dim, rotary,
+        cache_rows, scalar ? 0 : 1, false, GetDeviceProp().maxThreadsPerBlock, false,
+        !dense && fp32_rotary_);
   };
   if (dense) return launch_rotary.template operator()<CudaT>();
   return launch_rotary.template operator()<onnxruntime::cuda::ToCudaType<BFloat16>::MappedType>();

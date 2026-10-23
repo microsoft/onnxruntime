@@ -22,7 +22,7 @@ using namespace onnxruntime::cuda;
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())           \
           .TypeConstraint("F", DataTypeImpl::GetTensorType<float>())       \
           .TypeConstraint("TI", DataTypeImpl::GetTensorType<int32_t>())    \
-          .InputMemoryType(OrtMemTypeCPUInput, 2)                         \
+          .InputMemoryType(OrtMemTypeCPUInput, 2)                          \
           .TypeConstraint("M", {DataTypeImpl::GetTensorType<float>(),      \
                                 DataTypeImpl::GetTensorType<MLFloat16>(),  \
                                 DataTypeImpl::GetTensorType<BFloat16>()}), \
