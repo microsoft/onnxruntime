@@ -77,7 +77,7 @@ static common::Status AllocateBufferUsingDeviceAllocatorFromShapeAndType(const T
  *         if string tensors are attempted to be copied to non-CPU devices, or if any underlying
  *         data loading, allocation, or copying operation fails.
  */
-static common::Status DeserializeTensorProto(const Env& env, const std::basic_string<PATH_CHAR_TYPE>& proto_path,
+static common::Status DeserializeTensorProto(const Env& env, const ModelPath& proto_path,
                                              const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                              const MemBuffer* memory_buffer,
                                              const AllocatorPtr& alloc, const AllocatorPtr& default_cpu_alloc,
@@ -184,7 +184,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
       ORT_RETURN_IF_ERROR(AllocateTensorOnDeviceOrMemory(/* use_device_allocator_for_initializers =*/true,
                                                          tensor_shape, type,
                                                          default_cpu_alloc, tensor));
-      ORT_RETURN_IF_ERROR(utils::TensorProtoToTensor(env, proto_path.c_str(), tensor_proto, tensor));
+      ORT_RETURN_IF_ERROR(utils::TensorProtoToTensor(env, proto_path, tensor_proto, tensor));
       Tensor::InitOrtValue(std::move(tensor), ort_value);
       return common::Status::OK();
     } else {  // non-cpu tensor
@@ -207,7 +207,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
                                                          tensor_shape, type,
                                                          default_cpu_alloc, deserialized_tensor));
 
-      ORT_RETURN_IF_ERROR(utils::TensorProtoToTensor(env, proto_path.c_str(), tensor_proto, deserialized_tensor));
+      ORT_RETURN_IF_ERROR(utils::TensorProtoToTensor(env, proto_path, tensor_proto, deserialized_tensor));
       return CopyTensorFromCPUToDevice(data_transfer_mgr, deserialized_tensor, std::move(tensor), ort_value);
     }
   }
@@ -271,7 +271,7 @@ common::Status CopyTensorFromCPUToDevice(
 }
 
 common::Status SaveInitializedTensors(
-    const Env& env, const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
+    const Env& env, const ModelPath& graph_loc,
     const GraphViewer& graph, const AllocatorPtr& default_cpu_alloc,
     const OrtValueNameIdxMap& ort_value_name_idx_map,
     const std::vector<OrtValueIndex>& initializer_allocation_order,

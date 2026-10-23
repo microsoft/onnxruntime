@@ -18,7 +18,7 @@ bool IsQDQPairSupported(
     const Graph& graph,
     const Node& q_node, const Node& dq_node,
     const GetConstantInitializerFn& get_const_initializer,
-    const std::filesystem::path& model_path,
+    const onnxruntime::ModelPath& model_path,
     bool check_op_type) {
   if (check_op_type) {
     if (!MatchQNode(q_node) || !MatchDQNode(dq_node)) {
@@ -88,7 +88,7 @@ bool IsDQQConversion(
     const Graph& graph,
     const Node& dq_node, const Node& q_node,
     const GetConstantInitializerFn& get_const_initializer,
-    const std::filesystem::path& model_path) {
+    const onnxruntime::ModelPath& model_path) {
   ConstPointerContainer<std::vector<NodeArg*>> dq_input_defs = dq_node.InputDefs();
   ConstPointerContainer<std::vector<NodeArg*>> q_input_defs = q_node.InputDefs();
 
@@ -171,7 +171,7 @@ bool QOrDQNodeHasConstantScalarScaleAndZeroPoint(
 bool IsQOrDQScalePositiveConstantScalar(
     const Graph& graph,
     const Node& q_or_dq_node, const GetConstantInitializerFn& get_const_initializer,
-    const std::filesystem::path& model_path) {
+    const onnxruntime::ModelPath& model_path) {
   auto q_or_dq_input_defs = q_or_dq_node.InputDefs();
 
   ORT_ENFORCE(q_or_dq_input_defs.size() >= 2);

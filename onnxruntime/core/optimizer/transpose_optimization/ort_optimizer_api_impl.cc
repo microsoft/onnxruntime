@@ -48,11 +48,11 @@ class ApiValueInfo final : public api::ValueInfoRef {
 class ApiTensor final : public api::TensorRef {
  private:
   const onnx::TensorProto& tensor_proto_;
-  const std::filesystem::path& model_path_;
+  const onnxruntime::ModelPath& model_path_;
   AllocatorPtr cpu_allocator_;
 
  public:
-  explicit ApiTensor(const onnx::TensorProto& tensor_proto, const std::filesystem::path& model_path,
+  explicit ApiTensor(const onnx::TensorProto& tensor_proto, const onnxruntime::ModelPath& model_path,
                      AllocatorPtr cpu_allocator)
       : tensor_proto_(tensor_proto), model_path_(model_path), cpu_allocator_(std::move(cpu_allocator)) {}
 

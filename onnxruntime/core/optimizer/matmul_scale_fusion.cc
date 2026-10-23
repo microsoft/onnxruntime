@@ -52,7 +52,7 @@ struct ScalarScale {
 
 template <typename T>
 struct ExtractScalarDispatchTarget {
-  Status operator()(const ONNX_NAMESPACE::TensorProto& tensor_proto, const std::filesystem::path& model_path,
+  Status operator()(const ONNX_NAMESPACE::TensorProto& tensor_proto, const ModelPath& model_path,
                     ScalarScale& scale, bool& lossless) {
     T scalar;
     ORT_RETURN_IF_ERROR(utils::UnpackTensor(tensor_proto, model_path, &scalar, 1));

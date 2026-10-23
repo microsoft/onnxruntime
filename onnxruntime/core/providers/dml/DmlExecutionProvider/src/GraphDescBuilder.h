@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include <filesystem>
+#include "core/common/model_path.h"
 
 #include "MLOperatorAuthorImpl.h"
 #include "ExecutionProvider.h"
@@ -42,7 +42,7 @@ namespace Dml
             const std::unordered_map<std::string, std::pair<const ONNX_NAMESPACE::TensorProto*, bool>>& isInitializerTransferable,
             const std::unordered_map<std::string, GraphNodeProperties>& graphNodePropertyMap,
             const ExecutionProviderImpl* executionHandle,
-            const std::filesystem::path& modelPath,
+            const onnxruntime::ModelPath& modelPath,
             gsl::span<const onnxruntime::Node* const> subgraphNodes,
             gsl::span<const onnxruntime::NodeArg* const> subgraphInputs,
             gsl::span<const onnxruntime::NodeArg* const> subgraphOutputs,

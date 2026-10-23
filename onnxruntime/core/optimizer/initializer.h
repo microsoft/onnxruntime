@@ -28,10 +28,10 @@ class Initializer final {
               gsl::span<const int64_t> dims);
 
   Initializer(const ONNX_NAMESPACE::TensorProto& tensor_proto,
-              const std::filesystem::path& model_path = {});
+              const onnxruntime::ModelPath& model_path = {});
 
   Initializer(const Graph& graph, const ONNX_NAMESPACE::TensorProto& tensor_proto,
-              const std::filesystem::path& model_path = {}, bool check_outer_scope = false);
+              const onnxruntime::ModelPath& model_path = {}, bool check_outer_scope = false);
 
   ~Initializer();
 
