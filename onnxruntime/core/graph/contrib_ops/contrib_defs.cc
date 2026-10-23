@@ -4069,13 +4069,20 @@ It is a fusion of two operations:
    dequantized_weight = (quantized_weight - zero_point) * scale
 2. Matrix multiplication between the input matrix A and the dequantized weight matrix.
 
-The weight matrix is a 2D constant matrix with the input feature count and output feature count specified by attributes 'K' and 'N'.
+The logical weight matrix is 2D, with the input feature count and output feature count specified by attributes 'K' and 'N'.
 It is quantized block-wise along the K dimension with a block size specified by the 'block_size' attribute.
 The block size must be a power of 2 and not smaller than 16 (e.g., 16, 32, 64, 128). Each block has its own scale and zero-point.
 The quantization is performed using a bit-width specified by the 'bits' attribute, which can take values from 2 to 8.
 
 The quantized weights are stored in a bit-packed format along the K dimension, with each block being represented by a blob of uint8.
 For example, for 4 bits, the first 4 bits are stored in the lower 4 bits of a byte, and the second 4 bits are stored in the higher 4 bits of a byte.
+
+When weight_prepacked is 0, B may represent an omitted projection by replacing one or more dimensions of its
+packed shape (N, k_blocks, blob_size) with 0. All remaining dimensions must retain their normal values.
+In this case, Y is filled with zeros (or the broadcast bias, if provided). Its shape is still determined by A, K and N.
+The contents of A, scales, zero_points and g_idx are not used; the quantization parameters may also be empty.
+This permits zero-sized defaults for optional weights, with dynamic input dimensions allowing nonempty overrides.
+Empty packed weights are currently supported by the CPU and WebGPU execution providers.
 )DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(MatMulNBits)
@@ -4106,6 +4113,7 @@ For example, for 4 bits, the first 4 bits are stored in the lower 4 bits of a by
       .Input(1, "B",
              "Packed uint8 tensor of shape (N, k_blocks, blob_size), "
              "where k_blocks = ceil(K / block_size) and blob_size = (block_size * bits / 8). "
+             "With weight_prepacked=0, one or more dimensions may be 0 to omit the projection as described above. "
              "The quantized weights are stored in a bit-packed format along the K dimension, packed within each block_size.",
              "T2")
       .Input(2, "scales", "Per-block scaling factors for dequantization with shape (N, k_blocks) and same data type as input A.", "T1")
@@ -4143,6 +4151,106 @@ For example, for 4 bits, the first 4 bits are stored in the lower 4 bits of a by
               !bias_shape.dim(0).has_dim_value() ||
               bias_shape.dim(0).dim_value() != out_features) {
             fail_shape_inference("bias shape must be [N] where N = ", out_features);
+          }
+        }
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(MatMulNBitsQLoRA)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(
+          "Computes MatMulNBits(X,W,scales) + MatMulNBits(MatMulNBits(X,lora_A,lora_A_scales),lora_B,lora_B_scales). "
+          "Each projection follows MatMulNBits block quantization and bit packing, with implicit zero points "
+          "2^(bits-1) for the base and 2^(lora_bits-1) for the adapters. No bias or explicit zero points are applied. "
+          "The adapter rank R may be any positive integer and need not be a multiple of lora_block_size. "
+          "Partial final blocks are padded; only the logical K or R elements participate in each projection. "
+          "An empty rank dimension in either packed adapter disables the adapter, while scale defaults are retained. "
+          "Intermediate projections and block scales use the activation type before the final addition. "
+          "Adapters remain replaceable. Execution providers may support a subset of the defined types, "
+          "quantization settings, and ranks.")
+      .Attr("K", "Positive input feature dimension of the base and down-projection weight matrices.",
+            AttributeProto::INT)
+      .Attr("N", "Positive output feature dimension of the base and up-projection weight matrices.",
+            AttributeProto::INT)
+      .Attr("bits", "Base weight bit width, following MatMulNBits (2, 4, or 8).", AttributeProto::INT, int64_t{4})
+      .Attr("block_size", "Base quantization block size along K, following MatMulNBits: a power of two, at least 16.",
+            AttributeProto::INT, int64_t{32})
+      .Attr("accuracy_level",
+            "Accuracy policy following MatMulNBits: 0 (unset), 1 (fp32), 2 (fp16), 3 (bf16), or 4 (int8). "
+            "Applies to the base and eligible adapter down projections; the up projection uses level 0.",
+            AttributeProto::INT, int64_t{0})
+      .Attr("lora_bits", "Adapter weight bit width, following MatMulNBits (2, 4, or 8).",
+            AttributeProto::INT, int64_t{8})
+      .Attr("lora_block_size",
+            "Adapter quantization block size along K for lora_A and R for lora_B: a power of two, at least 16.",
+            AttributeProto::INT, int64_t{32})
+      .Input(0, "X", "Input of rank at least one, with last dimension K, following MatMulNBits.", "T")
+      .Input(1, "W", "Packed base weights [N,ceil(K/block_size),block_size*bits/8].", "TQ")
+      .Input(2, "scales", "Base block scales [N,ceil(K/block_size)]; may be flattened.", "T")
+      .Input(3, "lora_A",
+             "Packed down weights [R_A,ceil(K/lora_block_size),lora_block_size*lora_bits/8], R_A=R or 0.", "TQ")
+      .Input(4, "lora_A_scales",
+             "Down block scales [R,ceil(K/lora_block_size)]; retained when the adapter is empty.", "T")
+      .Input(5, "lora_B",
+             "Packed up weights [N,R_blocks,lora_block_size*lora_bits/8], R_blocks=ceil(R/lora_block_size) or 0.", "TQ")
+      .Input(6, "lora_B_scales",
+             "Up block scales [N,ceil(R/lora_block_size)]; retained when the adapter is empty.", "T")
+      .Output(0, "Y", "Input shape with the last dimension replaced by N.", "T")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)"},
+                      "Activations and block scales share the same floating-point type (FP16 or FP32).")
+      .TypeConstraint("TQ", {"tensor(uint8)"}, "Packed quantized weights.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        const auto k = getAttribute(ctx, "K", -1);
+        const auto n = getAttribute(ctx, "N", -1);
+        const auto lora_bits = getAttribute(ctx, "lora_bits", 8);
+        const auto lora_block_size = getAttribute(ctx, "lora_block_size", 32);
+        const auto valid_quantization = [](int64_t bits, int64_t block_size) {
+          return (bits == 2 || bits == 4 || bits == 8) && block_size >= 16 &&
+                 (block_size & (block_size - 1)) == 0;
+        };
+        if (k <= 0 || n <= 0 ||
+            !valid_quantization(getAttribute(ctx, "bits", 4), getAttribute(ctx, "block_size", 32)) ||
+            !valid_quantization(lora_bits, lora_block_size)) {
+          fail_shape_inference(
+              "MatMulNBitsQLoRA requires positive K and N, bit widths 2, 4, or 8, "
+              "and power-of-two block sizes of at least 16.");
+        }
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        MatmulWithQuantWeightShapeInference(ctx, k, n, true);
+        int64_t rank = -1;
+        for (size_t index : {size_t{3}, size_t{4}, size_t{5}, size_t{6}}) {
+          if (!hasInputShape(ctx, index)) continue;
+          const auto& shape = getInputShape(ctx, index);
+          const bool packed = index == 3 || index == 5;
+          if (shape.dim_size() != (packed ? 3 : 2)) fail_shape_inference("Invalid quantized adapter rank.");
+          if ((index == 3 || index == 4) && shape.dim(0).has_dim_value()) {
+            const auto value = shape.dim(0).dim_value();
+            if (index == 3 && value == 0) continue;  // Empty packed defaults retain the scale tensor's rank.
+            if (value <= 0 || (rank > 0 && value != rank)) {
+              fail_shape_inference("Inconsistent adapter rank between lora_A and lora_A_scales.");
+            }
+            rank = value;
+          }
+        }
+        const auto k_blocks = k / lora_block_size + (k % lora_block_size != 0);
+        const auto r_blocks = rank < 0 ? -1 : rank / lora_block_size + (rank % lora_block_size != 0);
+        const auto blob_size = (lora_block_size / 8) * lora_bits;
+        const int64_t dims[4][3] = {
+            {rank, k_blocks, blob_size},
+            {rank, k_blocks, 0},
+            {n, r_blocks, blob_size},
+            {n, r_blocks, 0},
+        };
+        for (size_t index : {size_t{3}, size_t{4}, size_t{5}, size_t{6}}) {
+          if (!hasInputShape(ctx, index)) continue;
+          const auto& shape = getInputShape(ctx, index);
+          for (int axis = 0; axis < shape.dim_size(); ++axis) {
+            const auto& dim = shape.dim(axis);
+            const bool empty_axis = (index == 3 && axis == 0) || (index == 5 && axis == 1);
+            if (dim.has_dim_value() && dims[index - 3][axis] >= 0 && dim.dim_value() != dims[index - 3][axis] &&
+                !(empty_axis && dim.dim_value() == 0)) {
+              fail_shape_inference("Invalid quantized adapter dimensions.");
+            }
           }
         }
       });

@@ -23,8 +23,10 @@ class SubgroupMatrixMatMulNBitsProgram final : public Program<SubgroupMatrixMatM
   SubgroupMatrixMatMulNBitsProgram(uint32_t nbits, SubgroupMatrixConfig config, uint32_t tile_m,
                                    uint32_t tile_n, uint32_t tile_k,
                                    bool has_zero_points, bool has_bias,
-                                   bool has_weight_idx, bool has_weight_idx_indirect, bool has_tail_buffer)
-      : Program{config.subgroupSize == 64 ? "SubgroupMatrixMatMulNBitsWave64" : "SubgroupMatrixMatMulNBits"},
+                                   bool has_weight_idx, bool has_weight_idx_indirect, bool has_qlora_up,
+                                   bool has_tail_buffer)
+      : Program{has_qlora_up ? "SubgroupMatrixMatMulNBitsQLoRAUp"
+                             : (config.subgroupSize == 64 ? "SubgroupMatrixMatMulNBitsWave64" : "SubgroupMatrixMatMulNBits")},
         nbits_(nbits),
         config_(config),
         tile_m_(tile_m),
@@ -34,6 +36,7 @@ class SubgroupMatrixMatMulNBitsProgram final : public Program<SubgroupMatrixMatM
         has_bias_(has_bias),
         has_weight_idx_{has_weight_idx},
         has_weight_idx_indirect_{has_weight_idx_indirect},
+        has_qlora_up_{has_qlora_up},
         has_tail_buffer_{has_tail_buffer} {};
   Status GenerateShaderCode(ShaderHelper& sh) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
@@ -55,6 +58,7 @@ class SubgroupMatrixMatMulNBitsProgram final : public Program<SubgroupMatrixMatM
   bool has_bias_;
   bool has_weight_idx_;
   bool has_weight_idx_indirect_;
+  bool has_qlora_up_;
   bool has_tail_buffer_;
 };
 
@@ -69,7 +73,20 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
                                       onnxruntime::webgpu::ComputeContext& context,
                                       Tensor* y,
                                       const uint32_t weight_index,
-                                      const Tensor* weight_index_indirect = nullptr);
+                                      const Tensor* weight_index_indirect = nullptr,
+                                      const Tensor* lora_t = nullptr,
+                                      const Tensor* lora_b = nullptr,
+                                      const Tensor* lora_b_scales = nullptr,
+                                      const Tensor* prepacked_a = nullptr,
+                                      uint32_t narrow_tile_m = 0);
+
+Status ApplySubgroupMatrixMatMulNBitsQLoRA(
+    const Tensor* x, const Tensor* w, const Tensor* scales,
+    const Tensor* lora_a, const Tensor* lora_a_scales,
+    const Tensor* lora_b, const Tensor* lora_b_scales,
+    uint32_t M, uint32_t N, uint32_t K, const SubgroupMatrixConfig& config,
+    const SubgroupMatrixConfig& down_config,
+    onnxruntime::webgpu::ComputeContext& context, Tensor* t, Tensor* y);
 
 bool CanApplySubgroupMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& context,
                                        uint64_t accuracy_level,

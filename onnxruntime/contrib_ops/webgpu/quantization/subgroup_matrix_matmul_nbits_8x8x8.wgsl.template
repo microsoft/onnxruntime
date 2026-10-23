@@ -7,6 +7,7 @@
 #param n_bits
 #param has_zero_points
 #param has_bias
+#param has_qlora_up
 #param has_weight_idx
 #param has_weight_idx_indirect
 
@@ -210,6 +211,53 @@ $MAIN {
       }
       workgroupBarrier();
   }
+
+#if has_qlora_up
+  for (var idx = local_idx; idx < tile_rows * tile_k; idx += workgroup_size_x) {
+    let row = idx / tile_k;
+    let col = idx % tile_k;
+    let global_row = a_global_base + row;
+    if (global_row < uniforms.M) {
+      tile_A[idx] = compute_precision(lora_t[global_row * 8u + col / 4u][col % 4u]);
+    }
+  }
+  for (var idx = local_idx; idx < tile_cols * tile_k; idx += workgroup_size_x) {
+    let row = idx / tile_k;
+    let col = idx % tile_k;
+    let global_col = b_global_base + row;
+    if (global_col < uniforms.N) {
+      tile_B[idx] = compute_precision(qlora_weight(global_col, col / 4u)[col % 4u]);
+    }
+  }
+  workgroupBarrier();
+
+  for (var step: u32 = 0; step < tile_k; step += 8u) {
+    let matrix_a_offset = subtile_idy * subtile_rows * tile_k + step;
+    var matA0: subgroup_matrix_left<compute_precision, 8, 8> = subgroupMatrixLoad<subgroup_matrix_left<compute_precision, 8, 8>, row_major>(
+        &tile_A, matrix_a_offset, tile_k);
+    var matA1: subgroup_matrix_left<compute_precision, 8, 8> = subgroupMatrixLoad<subgroup_matrix_left<compute_precision, 8, 8>, row_major>(
+        &tile_A, matrix_a_offset + 8u * tile_k, tile_k);
+    let matrix_b_offset = subtile_idx * subtile_cols * tile_k + step;
+    var matB0: subgroup_matrix_right<compute_precision, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<compute_precision, 8, 8>, col_major>(
+        &tile_B, matrix_b_offset, tile_k);
+    var matB1: subgroup_matrix_right<compute_precision, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<compute_precision, 8, 8>, col_major>(
+        &tile_B, matrix_b_offset + 8u * tile_k, tile_k);
+    var matB2: subgroup_matrix_right<compute_precision, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<compute_precision, 8, 8>, col_major>(
+        &tile_B, matrix_b_offset + 16u * tile_k, tile_k);
+    var matB3: subgroup_matrix_right<compute_precision, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<compute_precision, 8, 8>, col_major>(
+        &tile_B, matrix_b_offset + 24u * tile_k, tile_k);
+
+    matC00 = subgroupMatrixMultiplyAccumulate(matA0, matB0, matC00);
+    matC01 = subgroupMatrixMultiplyAccumulate(matA0, matB1, matC01);
+    matC02 = subgroupMatrixMultiplyAccumulate(matA0, matB2, matC02);
+    matC03 = subgroupMatrixMultiplyAccumulate(matA0, matB3, matC03);
+    matC10 = subgroupMatrixMultiplyAccumulate(matA1, matB0, matC10);
+    matC11 = subgroupMatrixMultiplyAccumulate(matA1, matB1, matC11);
+    matC12 = subgroupMatrixMultiplyAccumulate(matA1, matB2, matC12);
+    matC13 = subgroupMatrixMultiplyAccumulate(matA1, matB3, matC13);
+  }
+  workgroupBarrier();
+#endif
 
   // Write out
   // Write out top block

@@ -21,6 +21,7 @@
 #param n_bits
 #param has_zero_points
 #param has_bias
+#param has_qlora_up
 #param has_weight_idx
 #param has_weight_idx_indirect
 #param sg_mat_k
@@ -59,6 +60,11 @@ var<workgroup> buf_b: array<f16, BN * SHMEM_STRIDE>;
 
 // Small staging buffer for edge-tile output (one 16x16 tile per subgroup)
 var<workgroup> coopmat_stage: array<f16, kSgMatM * kSgMatN * kSubgroupsPerWorkgroup>;
+
+#if has_qlora_up
+const kQLoRARank: u32 = 32;
+var<workgroup> lora_a: array<f16, BM * kQLoRARank>;
+#endif
 
 #if n_bits == 4
 // Dequantize one 16-element K chunk from one B row into buf_b.
@@ -254,6 +260,84 @@ $MAIN {
         }
         workgroupBarrier();
     }
+
+#if has_qlora_up
+    for (var load_unit = local_idx; load_unit < BM * (kQLoRARank / 4u);
+         load_unit += workgroup_size_x) {
+        let tile_m = load_unit / (kQLoRARank / 4u);
+        let r4 = load_unit % (kQLoRARank / 4u);
+        let global_m = global_base_m + tile_m;
+        let offset = tile_m * kQLoRARank + r4 * 4u;
+        if (global_m < uniforms.M) {
+            let values = lora_t[global_m * (kQLoRARank / 4u) + r4];
+            for (var i = 0u; i < 4u; i++) {
+                lora_a[offset + i] = f16(values[i]);
+            }
+        } else {
+            for (var i = 0u; i < 4u; i++) {
+                lora_a[offset + i] = f16(0.0);
+            }
+        }
+    }
+    for (var load_unit = local_idx; load_unit < BN * (kQLoRARank / 4u);
+         load_unit += workgroup_size_x) {
+        let tile_n = load_unit / (kQLoRARank / 4u);
+        let r4 = load_unit % (kQLoRARank / 4u);
+        let global_n = global_base_n + tile_n;
+        let offset = tile_n * SHMEM_STRIDE + r4 * 4u;
+        if (global_n < uniforms.N) {
+            let values = qlora_weight(global_n, r4);
+            for (var i = 0u; i < 4u; i++) {
+                buf_b[offset + i] = f16(values[i]);
+            }
+        } else {
+            for (var i = 0u; i < 4u; i++) {
+                buf_b[offset + i] = f16(0.0);
+            }
+        }
+    }
+    workgroupBarrier();
+
+    for (var k = 0u; k < kQLoRARank; k += kSgMatK) {
+        let b_base = (warp_c * WN) * SHMEM_STRIDE + k;
+        var b0: subgroup_matrix_right<f16, sg_mat_n, sg_mat_k> = subgroupMatrixLoad<subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>, col_major>(
+            &buf_b, b_base, SHMEM_STRIDE);
+        var b1: subgroup_matrix_right<f16, sg_mat_n, sg_mat_k> = subgroupMatrixLoad<subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>, col_major>(
+            &buf_b, b_base + 16u * SHMEM_STRIDE, SHMEM_STRIDE);
+        var b2: subgroup_matrix_right<f16, sg_mat_n, sg_mat_k> = subgroupMatrixLoad<subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>, col_major>(
+            &buf_b, b_base + 32u * SHMEM_STRIDE, SHMEM_STRIDE);
+        var b3: subgroup_matrix_right<f16, sg_mat_n, sg_mat_k> = subgroupMatrixLoad<subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>, col_major>(
+            &buf_b, b_base + 48u * SHMEM_STRIDE, SHMEM_STRIDE);
+
+        let a_base = (warp_r * WM) * kQLoRARank + k;
+        var a0: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> = subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>, row_major>(
+            &lora_a, a_base, kQLoRARank);
+        var a1: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> = subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>, row_major>(
+            &lora_a, a_base + 16u * kQLoRARank, kQLoRARank);
+        var a2: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> = subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>, row_major>(
+            &lora_a, a_base + 32u * kQLoRARank, kQLoRARank);
+        var a3: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> = subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>, row_major>(
+            &lora_a, a_base + 48u * kQLoRARank, kQLoRARank);
+
+        c00 = subgroupMatrixMultiplyAccumulate(a0, b0, c00);
+        c01 = subgroupMatrixMultiplyAccumulate(a0, b1, c01);
+        c02 = subgroupMatrixMultiplyAccumulate(a0, b2, c02);
+        c03 = subgroupMatrixMultiplyAccumulate(a0, b3, c03);
+        c10 = subgroupMatrixMultiplyAccumulate(a1, b0, c10);
+        c11 = subgroupMatrixMultiplyAccumulate(a1, b1, c11);
+        c12 = subgroupMatrixMultiplyAccumulate(a1, b2, c12);
+        c13 = subgroupMatrixMultiplyAccumulate(a1, b3, c13);
+        c20 = subgroupMatrixMultiplyAccumulate(a2, b0, c20);
+        c21 = subgroupMatrixMultiplyAccumulate(a2, b1, c21);
+        c22 = subgroupMatrixMultiplyAccumulate(a2, b2, c22);
+        c23 = subgroupMatrixMultiplyAccumulate(a2, b3, c23);
+        c30 = subgroupMatrixMultiplyAccumulate(a3, b0, c30);
+        c31 = subgroupMatrixMultiplyAccumulate(a3, b1, c31);
+        c32 = subgroupMatrixMultiplyAccumulate(a3, b2, c32);
+        c33 = subgroupMatrixMultiplyAccumulate(a3, b3, c33);
+    }
+    workgroupBarrier();
+#endif
 
     // Write out results
     let dr = global_base_m + warp_r * WM;

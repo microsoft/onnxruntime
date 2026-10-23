@@ -13,6 +13,7 @@
 #param tile_size_k_vec
 #param tile_size_k
 #param tile_size
+#param has_qlora_up
 #param has_bias
 #param has_weight_idx
 #param has_weight_idx_indirect
@@ -264,7 +265,12 @@ $MAIN {
       output_value += acc_element_t(bias[b_global + b_bias_offset]);
 #endif
       // Downcast to the output type only at the final write.
+#if has_qlora_up
+      let delta = qlora_delta(batch * uniforms.M + a_global, b_global);
+      output.setByOffset(output_idx, output_element_t(output_value) + delta);
+#else
       output.setByOffset(output_idx, output_element_t(output_value));
+#endif
     }
   }
 }  // MAIN
