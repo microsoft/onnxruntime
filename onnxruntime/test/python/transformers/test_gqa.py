@@ -264,7 +264,7 @@ class CaptureStdout:
         os.close(self._duped_fd)
 
 
-def get_sdpa_kernel_from_debug_info(run_func):
+def get_sdpa_kernel_from_debug_info(run_func, all_kernels=False):
     captured_text = None
     with scoped_env_var("ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO", "1"):
         with CaptureStdout() as captured:
@@ -272,6 +272,8 @@ def get_sdpa_kernel_from_debug_info(run_func):
         captured_text = captured.output.decode(errors="replace")
 
     if captured_text is not None:
+        if all_kernels:
+            return re.findall(r"SdpaKernel=([A-Z_]+)", captured_text)
         match = re.search(r"SdpaKernel=(?P<kernel>[A-Z_]+)", captured_text)
         if match is not None:
             return match.group("kernel")
@@ -300,6 +302,7 @@ class GQAConfig:
     # Slack above local_window_size is worth allocating anyway: it lets the append point drift, so
     # the CPU kernel compacts once every C - W + 1 steps instead of on every step.
     sliding_window_cache: int = 0
+    right_padded_query: bool = False
     # Length of the cos/sin caches. 0 means "same as buffer_sequence_length". A windowed KV cache is
     # shorter than the sequence, so RoPE positions must be driven by a separately sized rotary cache.
     rope_cache_length: int = 0
@@ -549,6 +552,7 @@ def create_gqa_node_and_io(
         causal=1 if config.causal else 0,
         smooth_softmax=1 if config.use_smooth_softmax else 0,
         qk_output=output_qk,
+        **({"right_padded_query": 1} if config.right_padded_query else {}),
         **quantization_attributes,
         **qk_norm_attributes,
         **windowed_cache_attributes,
@@ -4388,6 +4392,7 @@ def _windowed_run_steps(
     k_scale=None,
     v_scale=None,
     providers=None,
+    use_capacity_bound=False,
 ):
     """Drives a GroupQueryAttention node token-chunk by token-chunk over a shared past/present buffer.
 
@@ -4410,13 +4415,15 @@ def _windowed_run_steps(
     outputs = []
     past_length = 0
 
-    for step_length in step_lengths:
+    for step in step_lengths:
+        valid_length, step_length = step if isinstance(step, tuple) else (step, step)
         config = deepcopy(base_config)
         config.q_sequence_length = step_length
         config.kv_sequence_length = step_length
         config.past_kv_sequence_length = past_length
         config.buffer_sequence_length = buffer_sequence_length
         config.sliding_window_cache = sliding_window_cache
+        config.right_padded_query = any(isinstance(item, tuple) for item in step_lengths)
 
         if step_length not in sessions:
             sessions[step_length] = _windowed_make_session(config, ort_type, providers=providers)
@@ -4424,9 +4431,17 @@ def _windowed_run_steps(
 
         io_binding = session.io_binding()
 
-        q = q_all[:, past_length : past_length + step_length].reshape(batch_size, step_length, q_hidden_size)
-        k = k_all[:, past_length : past_length + step_length].reshape(batch_size, step_length, kv_hidden_size)
-        v = v_all[:, past_length : past_length + step_length].reshape(batch_size, step_length, kv_hidden_size)
+        q = q_all[:, past_length : past_length + valid_length].reshape(batch_size, valid_length, q_hidden_size)
+        k = k_all[:, past_length : past_length + valid_length].reshape(batch_size, valid_length, kv_hidden_size)
+        v = v_all[:, past_length : past_length + valid_length].reshape(batch_size, valid_length, kv_hidden_size)
+        if step_length > valid_length:
+            pad_len = step_length - valid_length
+            q_pad = torch.full((batch_size, pad_len, q_hidden_size), 50.0, device=device, dtype=torch_type)
+            k_pad = torch.full((batch_size, pad_len, kv_hidden_size), 50.0, device=device, dtype=torch_type)
+            v_pad = torch.full((batch_size, pad_len, kv_hidden_size), 50.0, device=device, dtype=torch_type)
+            q = torch.cat([q, q_pad], dim=1)
+            k = torch.cat([k, k_pad], dim=1)
+            v = torch.cat([v, v_pad], dim=1)
         # Keep references: io_binding only records data pointers, so temporaries would be freed.
         q, k, v = q.contiguous(), k.contiguous(), v.contiguous()
         bind_tensor(io_binding, "query", q, device, ort_type)
@@ -4435,12 +4450,14 @@ def _windowed_run_steps(
         bind_tensor(io_binding, "past_key", cache_k, device, cache_ort_type)
         bind_tensor(io_binding, "past_value", cache_v, device, cache_ort_type)
 
-        total_length = past_length + step_length
+        total_length = past_length + valid_length
+        padded_total_length = past_length + step_length
         seqlens_k = torch.full((batch_size,), total_length - 1, dtype=torch.int32, device=device)
         bind_tensor(io_binding, "seqlens_k", seqlens_k, device, TensorProto.INT32)
         cpu_device = torch.device("cpu")
         # Keep a reference: io_binding only records the data pointer, so a temporary would be freed.
-        total_sequence_length = torch.tensor([total_length], dtype=torch.int32, device=cpu_device)
+        length_bound = buffer_sequence_length if use_capacity_bound else padded_total_length
+        total_sequence_length = torch.tensor([length_bound], dtype=torch.int32, device=cpu_device)
         bind_tensor(
             io_binding,
             "total_sequence_length",
@@ -4454,11 +4471,17 @@ def _windowed_run_steps(
             bind_tensor(io_binding, "sin_cache", sin, device, ort_type)
 
         if position_ids_all is not None:
-            position_ids = position_ids_all[:, past_length:total_length].contiguous()
+            position_ids = position_ids_all[:, past_length:total_length]
+            if step_length > valid_length:
+                pos_pad = torch.zeros((batch_size, step_length - valid_length), dtype=torch.int64, device=device)
+                position_ids = torch.cat([position_ids, pos_pad], dim=1)
+            position_ids = position_ids.contiguous()
             bind_tensor(io_binding, "position_ids", position_ids, device, TensorProto.INT64)
 
         if attention_bias_all is not None:
-            attention_bias = attention_bias_all[:, :, past_length:total_length, :total_length].contiguous()
+            attention_bias = attention_bias_all[
+                :, :, past_length:padded_total_length, :padded_total_length
+            ].contiguous()
             bind_tensor(io_binding, "attention_bias", attention_bias, device, ort_type)
 
         if head_sink is not None:
@@ -4477,7 +4500,7 @@ def _windowed_run_steps(
         session.run_with_iobinding(io_binding)
         io_binding.synchronize_outputs()
 
-        outputs.append(out.clone())
+        outputs.append(out[:, :valid_length].clone())
         past_length = total_length
 
     return outputs, cache_k, cache_v
@@ -4518,14 +4541,24 @@ class TestGQAWindowedKvCache(unittest.TestCase):
             setattr(config, name, value)
         return config
 
-    def _check_parity(self, base_config, step_lengths, rtol=1e-3, atol=1e-3, buffer_sequence_length=None):
+    def _check_parity(
+        self,
+        base_config,
+        step_lengths,
+        rtol=1e-3,
+        atol=1e-3,
+        buffer_sequence_length=None,
+        full_cache_length_bound=None,
+        full_cache_only=False,
+    ):
         self._require_ep()
 
         device = self.device
         torch_type = self.torch_type
         ort_type = self.ort_type
         capacity = buffer_sequence_length or min(self.max_length, self.window_size + self.slack)
-        total_length = sum(step_lengths)
+        unpadded_steps = [step[0] if isinstance(step, tuple) else step for step in step_lengths]
+        total_length = sum(unpadded_steps)
         self.assertLessEqual(total_length, self.max_length)
 
         torch.manual_seed(0)
@@ -4585,13 +4618,43 @@ class TestGQAWindowedKvCache(unittest.TestCase):
             "v_scale": v_scale,
             "providers": self.providers,
         }
-        reference, reference_cache_k, reference_cache_v = _windowed_run_steps(base_config, self.max_length, 0, **common)
+        reference_common = {**common, "step_lengths": unpadded_steps}
+        reference, reference_cache_k, reference_cache_v = _windowed_run_steps(
+            base_config, self.max_length, 0, **reference_common
+        )
         if base_config.k_quant_type != "NONE" and any(torch.isnan(step).any() for step in reference):
             # A quantized KV cache is only read correctly by the flash-attention prefill kernels.
             # Builds without them route the first prompt through memory-efficient attention, which
             # reinterprets the quantized cache as unquantized and produces NaN for both the
             # windowed and the full-length run, so there is nothing to compare.
             self.skipTest("quantized prefill needs a build with flash attention enabled")
+        if step_lengths != unpadded_steps or full_cache_length_bound is not None:
+            padded_full, padded_full_k, padded_full_v = _windowed_run_steps(
+                base_config,
+                full_cache_length_bound or self.max_length,
+                0,
+                **common,
+                use_capacity_bound=full_cache_length_bound is not None,
+            )
+            for step_index, (expected, actual) in enumerate(zip(reference, padded_full, strict=True)):
+                numpy.testing.assert_allclose(
+                    actual.float().cpu().numpy(),
+                    expected.float().cpu().numpy(),
+                    rtol=rtol,
+                    atol=atol,
+                    err_msg=f"full-cache padded mismatch at step {step_index} (step_lengths={step_lengths})",
+                )
+            for name, actual_cache, reference_cache in (
+                ("present_key", padded_full_k, reference_cache_k),
+                ("present_value", padded_full_v, reference_cache_v),
+            ):
+                numpy.testing.assert_array_equal(
+                    actual_cache[:, :, :total_length].cpu().numpy(),
+                    reference_cache[:, :, :total_length].cpu().numpy(),
+                    err_msg=f"{name} full-cache padded valid range mismatch (T={total_length})",
+                )
+        if full_cache_only:
+            return
         windowed, cache_k, cache_v = _windowed_run_steps(base_config, capacity, 1, **common)
 
         for step_index, (expected, actual) in enumerate(zip(reference, windowed, strict=True)):
@@ -4634,6 +4697,108 @@ class TestGQAWindowedKvCache(unittest.TestCase):
         # GroupQueryAttention only allows a subsequent prompt (1 < S < T) at batch_size 1.
         steps = [128] * 6 + [1] * 32
         self._check_parity(self._base_config(batch_size=1), steps)
+
+    def test_right_padded_chunked_prefill(self):
+        # Fixed-length prefill chunks (e.g. NPU/static-shape constraint where the last chunk has
+        # only 1 or a few valid tokens right-padded to the chunk size) across Flash, MEA, and
+        # Unfused backends, both with and without sliding_window_cache.
+        if self.device != "cuda":
+            self.skipTest("CUDA right-padded chunked prefill test")
+        steps = [(1, 128), 128, (1, 128), (7, 128), 1, 1]
+        for expected_kernel, disable_flash, disable_mea in (
+            ("FLASH_ATTENTION", "0", "0"),
+            ("EFFICIENT_ATTENTION", "1", "0"),
+            ("MATH", "1", "1"),
+        ):
+            with (
+                scoped_env_var("ORT_DISABLE_FLASH_ATTENTION", disable_flash),
+                scoped_env_var("ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION", disable_mea),
+                scoped_env_var("ORT_ENABLE_CUDNN_FLASH_ATTENTION", "0"),
+                scoped_env_var("ORT_ENABLE_XQA", "0"),
+                scoped_env_var("ORT_DISABLE_FLASH_DECODE", "1"),
+            ):
+                kernels = get_sdpa_kernel_from_debug_info(
+                    lambda: self._check_parity(self._base_config(batch_size=1, rotary=True), steps),
+                    all_kernels=True,
+                )
+                self.assertEqual(set(kernels), {expected_kernel})
+
+    def test_right_padded_global_prefill_cudnn_fallback(self):
+        if self.device != "cuda":
+            self.skipTest("CUDA right-padded cuDNN fallback regression")
+        with (
+            scoped_env_var("ORT_ENABLE_CUDNN_FLASH_ATTENTION", "1"),
+            scoped_env_var("ORT_ENABLE_XQA", "0"),
+            scoped_env_var("ORT_DISABLE_FLASH_DECODE", "1"),
+        ):
+            self._check_parity(
+                self._base_config(batch_size=1, rotary=True, local_window_size=-1),
+                [128, (1, 128), (7, 128), 1],
+                full_cache_only=True,
+            )
+
+    def test_unpadded_chunked_prefill_capacity_bound(self):
+        if self.device != "cuda":
+            self.skipTest("CUDA capacity-valued length regression")
+        # At the second step, capacity - query_length = 384 is not the true past (300).
+        for disable_flash, disable_mea in (("0", "0"), ("1", "0"), ("1", "1")):
+            with (
+                scoped_env_var("ORT_DISABLE_FLASH_ATTENTION", disable_flash),
+                scoped_env_var("ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION", disable_mea),
+                scoped_env_var("ORT_ENABLE_CUDNN_FLASH_ATTENTION", "0"),
+                scoped_env_var("ORT_ENABLE_XQA", "0"),
+                scoped_env_var("ORT_DISABLE_FLASH_DECODE", "1"),
+            ):
+                self._check_parity(
+                    self._base_config(batch_size=1, rotary=True),
+                    [300, 128, 1],
+                    full_cache_length_bound=512,
+                )
+
+    def test_right_padded_mode_ragged_single_token_decode(self):
+        if self.device != "cuda":
+            self.skipTest("CUDA right-padded mode regression")
+        self._require_ep()
+        with (
+            scoped_env_var("ORT_ENABLE_XQA", "0"),
+            scoped_env_var("ORT_DISABLE_FLASH_DECODE", "1"),
+        ):
+            parity_check_gqa_past(
+                config=self._base_config(
+                    batch_size=2,
+                    past_kv_sequence_length=300,
+                    buffer_sequence_length=512,
+                    rope_cache_length=512,
+                    right_padded_query=True,
+                    rotary=True,
+                ),
+                ep="CUDAExecutionProvider",
+                device="cuda",
+                torch_type=torch.float16,
+                ort_type=TensorProto.FLOAT16,
+                causal=True,
+                rtol=1e-3,
+                atol=1e-3,
+            )
+
+    @unittest.skipIf(not has_quantized_kv_cache(), "Quantized KV cache is not available, skipping test.")
+    def test_right_padded_chunked_prefill_int8(self):
+        if self.device != "cuda":
+            self.skipTest("CUDA right-padded quantized chunked prefill test")
+        steps = [(1, 128), 128, (1, 128), (5, 128), 1, 1]
+        self._check_parity(
+            self._base_config(
+                batch_size=1,
+                rotary=True,
+                kv_cache_type="int8",
+                k_quant_type="PER_CHANNEL",
+                v_quant_type="PER_CHANNEL",
+                kv_cache_bit_width=8,
+            ),
+            steps,
+            rtol=5e-2,
+            atol=1e-1,
+        )
 
     def test_eviction_boundaries(self):
         # Land exactly on capacity - 1, capacity and capacity + 1 with single-token steps.
