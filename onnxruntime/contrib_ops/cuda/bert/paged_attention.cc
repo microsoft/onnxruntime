@@ -561,13 +561,17 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   // token_count <= batch_size while still carrying a multi-token sequence. Local windows and
   // attention sinks stay eligible: the kernel's rows are flattened (query token, query head) pairs,
   // so it derives the window from each row's own query position and the sink from its own head.
+  const bool bf16_int8_spec_xqa_eligible =
+      quantized_xqa_eligible && std::is_same<T, BFloat16>::value && kIsInt8Cache &&
+      parameters.head_size == 256 && (group_size == 6 || group_size == 16);
   const bool xqa_spec_dec_candidate =
       decode_eligible && has_metadata_bounds && per_channel_k_on_xqa &&
-      ((quantized_xqa_eligible && std::is_same<T, MLFloat16>::value) || native_spec_xqa_eligible) &&
+      ((quantized_xqa_eligible && std::is_same<T, MLFloat16>::value && group_size == 6) ||
+       bf16_int8_spec_xqa_eligible ||
+       (native_spec_xqa_eligible && group_size == 6)) &&
       ((parameters.head_size == 256) ||
        (parameters.head_size == 128 && parameters.is_causal &&
         kIsInt8Cache && std::is_same<T, MLFloat16>::value)) &&
-      group_size == 6 &&
       max_query_len_bound > 1 && max_query_len_bound <= 8;
   const bool portable_spec_dec_candidate =
       has_metadata_bounds && max_query_len_bound > 1 && max_query_len_bound <= 8 &&
@@ -740,7 +744,9 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
       if (!onnxruntime::llm::common::isCapturing(cuda_stream)) {
         const size_t required_smem = use_xqa_spec_dec
                                          ? GetXQAPagedSpecDecRequiredSharedMemoryBytes(
-                                               parameters.head_size, xqa_kv_quant_type)
+                                               parameters.head_size, parameters.num_heads,
+                                               parameters.kv_num_heads, xqa_kv_quant_type,
+                                               std::is_same<T, BFloat16>::value)
                                          : GetXQAPagedRequiredSharedMemoryBytes(
                                                device_prop, parameters.head_size, parameters.num_heads,
                                                parameters.kv_num_heads, xqa_kv_quant_type,
@@ -904,9 +910,10 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     xqa_max_pages_per_seq = parameters.max_num_blocks_per_seq * pages_per_block;
     xqa_workspace_bytes = use_xqa_spec_dec
                               ? GetXQAPagedSpecDecWorkspaceSize(
-                                    device_prop, parameters.batch_size, parameters.kv_num_heads,
-                                    parameters.head_size,
-                                    xqa_max_pages_per_seq, max_query_len, xqa_kv_quant_type)
+                                    device_prop, parameters.batch_size, parameters.num_heads,
+                                    parameters.kv_num_heads, parameters.head_size,
+                                    xqa_max_pages_per_seq, max_query_len, xqa_kv_quant_type,
+                                    std::is_same<T, BFloat16>::value)
                               : GetXQAScratchSize(
                                     device_prop, parameters.batch_size, parameters.num_heads,
                                     parameters.kv_num_heads, parameters.head_size,
