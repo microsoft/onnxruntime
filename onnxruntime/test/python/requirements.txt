@@ -1,4 +1,4 @@
 onnx==1.22.0
 pytest
 onnx-ir
-cryptography
+cryptography>=44.0.0

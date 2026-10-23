@@ -62,13 +62,7 @@ class TestEncryptedEpContext(AutoEpTestCase):
                     result.add_provider_for_devices([device], {})
                     return result
 
-                x = onnx.helper.make_tensor_value_info("X", onnx.TensorProto.FLOAT, [3, 2])
-                y = onnx.helper.make_tensor_value_info("Y", onnx.TensorProto.FLOAT, [3, 2])
-                z = onnx.helper.make_tensor_value_info("Z", onnx.TensorProto.FLOAT, [3, 2])
-                graph = onnx.helper.make_graph([onnx.helper.make_node("Mul", ["X", "Y"], ["Z"])], "mul", [x, y], [z])
-                original = onnx.helper.make_model(graph, opset_imports=[onnx.helper.make_opsetid("", 13)])
-                original.ir_version = 8
-                input_model = original.SerializeToString()
+                input_model = Path(get_name("encrypted_ep_context_mul.onnx")).read_bytes()
                 compile_options = options()
                 compiler = ort.ModelCompiler(compile_options, input_model, embed_compiled_data_into_model=False)
 
@@ -86,7 +80,7 @@ class TestEncryptedEpContext(AutoEpTestCase):
                 self.assertEqual(compiled_graph.node[0].op_type, "EPContext")
                 self.assertEqual(len(compiled_graph.initializer), 0)
                 model_file.write_bytes(encrypt(compiled, "compiled.onnx"))
-                del compiler, compile_options, compiled, compiled_graph, original, input_model
+                del compiler, compile_options, compiled, compiled_graph, input_model
                 gc.collect()
                 self.assertEqual(writes, 1)
                 self.assertTrue(context_name)
@@ -111,7 +105,7 @@ class TestEncryptedEpContext(AutoEpTestCase):
                 for iteration in range(2):
                     left = np.arange(6, dtype=np.float32).reshape(3, 2) - iteration
                     right = 2 * np.arange(6, dtype=np.float32).reshape(3, 2) + iteration
-                    np.testing.assert_array_equal(session.run(None, {"X": left, "Y": right})[0], left * right)
+                    np.testing.assert_array_equal(session.run(None, {"x": left, "y": right})[0], left * right)
                 self.assertEqual(reads, 1)
                 del session, load_options
                 gc.collect()
