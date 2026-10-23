@@ -93,7 +93,7 @@ class Pattern {
   const auto& AttributeNames() const { return attribute_names_; }
   const auto& TypeConstraints() const { return type_constraints_; }
   bool IsAttribute(Value value) const { return attribute_inputs_.count(value.handle) != 0; }
-  const auto& AdditionalTypeConstraints() const { return additional_type_constraints_; }
+  const auto& OrderedTypeConstraints() const { return ordered_type_constraints_; }
 
  private:
   friend class detail::PatternParser;
@@ -122,9 +122,10 @@ class Pattern {
   InlinedHashSet<std::string> attribute_names_;
   InlinedHashMap<int, InlinedVector<TypeConstraint, 1>> type_constraints_;
   InlinedHashSet<int> attribute_inputs_;
+  InlinedHashSet<int> required_tensor_bindings_;
   InlinedHashMap<std::string, Value> aliases_;
   InlinedHashMap<std::string, std::string> attribute_aliases_;
-  InlinedVector<std::pair<int, InlinedVector<TypeConstraint, 1>>> additional_type_constraints_;
+  InlinedVector<std::pair<int, InlinedVector<TypeConstraint, 1>>> ordered_type_constraints_;
   struct Instance {
     std::string definition;
     std::string interface_name;

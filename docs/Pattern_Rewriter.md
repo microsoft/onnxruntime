@@ -211,7 +211,9 @@ Pattern optional("(x,low:float | None) => return Clip(x,low)");
 ```
 
 Alternatives are tried left to right, with annotated variables processed in
-definition order. Matching finds the first **globally consistent** combination:
+definition order. A call inserts its callee's ordered constraint occurrences
+at the call site, preserving callee order even when actual arguments are
+reordered or aliased to the same value. Matching finds the first **globally consistent** combination:
 if a later constraint conflicts with a tentative dimension or element-type
 binding, earlier annotation alternatives are reconsidered. Failed alternatives
 leave no bindings behind. Variables mentioned only in unchosen alternatives
@@ -282,7 +284,9 @@ Attribute equality compares the protobuf attribute type as well as its value.
 For example, `axis=-1` is an integer attribute, while `epsilon=1e-5` is a float.
 Single- or double-quoted string attributes are supported; strings may escape
 quotes and backslashes. Other attributes are unconstrained. A listed attribute
-must be present in the resolved node's attribute map.
+must be present in the resolved node's attribute map. Staged replacement nodes
+receive schema default attributes before verification and requeueing, so later
+rules and callbacks see defaults without an intervening `Graph::Resolve()`.
 
 In keyword positions the same numeric list syntax instead denotes an attribute:
 
@@ -788,7 +792,10 @@ use-time diagnostic naming the requested entry. Inherited interface inputs
 and mapped outputs must remain tensor bindings, checked during library
 construction; extra body-only inputs may capture attributes. Mapped interface
 outputs are always required to be present, even when unannotated and aliased
-to an optional input. Thus a library
+to an optional input. Interface tensor-kind requirements survive calls and
+aliases; callers cannot reclassify these mapped values as attribute captures
+or pass them to attribute formals. Conflicts fail during library construction.
+Thus a library
 may contain useful callable patterns that cannot independently serve as rules:
 
 ```text
@@ -845,7 +852,7 @@ For a selection of `scaled`, `act` reports definition `Alias`, member `Outer`;
 successive `alternativeView()` calls report `Outer`/`Inner`, `Inner`/`scaled`,
 then body `scaled` with no member. Anonymous alternatives use the same
 representation and retain their immediate named members too. Patterns may
-call other patterns at arbitrary nesting depths within the expansion bounds.
+call other patterns within the expansion and dependency-nesting bounds.
 Inline operator or
 subgraph alternative spellings are not supported; existing `|` type
 annotations are unchanged.
@@ -867,7 +874,12 @@ type-annotation combinations. Each plan also permits at most **256 expanded
 call occurrences**, counted cumulatively through nested bodies, including
 zero-node identity calls. This bounds scoped metadata even when composition
 adds no nodes or values; overflow is rejected before copying callee metadata.
-Libraries contain at most 256 definitions.
+Libraries contain at most 256 definitions. A dependency path may contain at
+most **64 concrete pattern definitions**, including its entry and any named
+alternative/alias wrappers (interfaces do not count). This bound is independent
+of declaration order and is enforced before deeper recursive compilation to
+protect native stack usage. Forward-reference chains at 64 succeed; 65 or
+more fail with an explicit nesting-limit diagnostic.
 Recursive calls, duplicate definitions/ports, missing members, incompatible
 interfaces and invalid mappings fail during construction. An unresolved
 unqualified call must name a registered standard ONNX operator; use an

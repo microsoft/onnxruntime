@@ -4761,5 +4761,140 @@ TEST(PatternRewriterTests, InterleavedGroupsDispatchCallbacksInRegistrationOrder
   }
 }
 
+TEST(PatternRewriterTests, AnnotationPrioritySurvivesReorderedAndAliasedCalls) {
+  for (int repeat = 0; repeat < 16; ++repeat) {
+    const PatternLibrary library(R"(
+      pattern F(x:float[M,_] | float[_,M], z:float[_,M] | float[M,_]) {
+        y=CastLike(x,z);return y
+      }
+      pattern Reordered(v,w) { p=F(w,v);return p.y }
+      pattern Aliased(v) { p=F(v,v);return p.y }
+      pattern Alias=F
+      pattern Nested(v,w) { p=Alias(w,v);return p.y }
+    )");
+    for (const char* entry : {"F", "Reordered", "Aliased", "Nested"}) {
+      for (bool indexed : {false, true}) {
+        TestGraph test;
+        auto& b = test.builder;
+        auto* v = b.MakeInput<float>({2, 3}, -1.0f, 1.0f);
+        auto* w = std::string_view(entry) == "Aliased" ? v : b.MakeInput<float>({2, 3}, -1.0f, 1.0f);
+        b.AddNode("CastLike", {w, v}, {b.MakeOutput()});
+        b.SetGraphOutputs();
+        ASSERT_STATUS_OK(test.graph.Resolve());
+        int checks = 0;
+        auto check = [&](const Graph&, Match& match) {
+          ++checks;
+          const auto view = std::string_view(entry) == "F" ? match.bindings() : match.instance("p");
+          EXPECT_EQ(std::get<int64_t>(view.dimensionOf("M")), 2);
+          return true;
+        };
+        Rule rule{"Priority", library.GetPattern(entry), std::string_view(entry) == "F" ? "(x)=>Identity(x)" : "(v)=>Identity(v)", check, {{kOnnxDomain, 17, 17}}};
+        Statistics stats;
+        ASSERT_STATUS_OK(PatternRewriter({rule}, {.match_only = true, .indexed = indexed}).Run(test.graph, stats));
+        EXPECT_EQ(stats.matches, 1u);
+        EXPECT_EQ(checks, 1);
+      }
+    }
+  }
+}
+
+TEST(PatternRewriterTests, ComposedInterfaceTensorBindingsCannotBecomeAttributes) {
+  for (bool annotated : {false, true}) {
+    const std::string prefix = annotated
+                                   ? "interface I(a:float[])->(y:float[]) "
+                                   : "interface I(a)->(y) ";
+    const std::string definitions = prefix + R"(
+      pattern Pass implements I { return (y=a) }
+      pattern Alias=Pass
+      pattern Wrapped implements I { p=Alias(a);return (y=p.y) }
+      pattern Attr(x,alpha:float) { y=LeakyRelu(x,alpha=alpha);return y }
+    )";
+    for (const char* call : {"Pass", "Alias", "Wrapped"}) {
+      for (const char* body : {
+               "p=CALL(a);return LeakyRelu(x,alpha=a)",
+               "p=CALL(a);q=Attr(x,p.y);return q.y",
+               "p=CALL(a);q=Attr(x,p.a);return q.y",
+               "q=Attr(x,a);p=CALL(a);return q.y"}) {
+        std::string text = body;
+        text.replace(text.find("CALL"), 4, call);
+        try {
+          const PatternLibrary library(definitions + "pattern Entry(x,a){" + text + "}");
+          FAIL() << "Accepted interface tensor/attribute conflict: " << text;
+        } catch (const OnnxRuntimeException& error) {
+          EXPECT_NE(std::string(error.what()).find("Interface tensor binding"), std::string::npos) << error.what();
+        }
+      }
+    }
+  }
+}
+
+TEST(PatternRewriterTests, ReplacementDefaultsAreVisibleToChainedRules) {
+  for (bool indexed : {false, true}) {
+    for (bool explicit_alpha : {false, true}) {
+      TestGraph test;
+      auto& b = test.builder;
+      auto* x = b.MakeInput<float>({2}, -1.0f, 1.0f);
+      auto* a = b.MakeIntermediate();
+      b.AddNode("Identity", {x}, {a});
+      auto* output = b.MakeOutput();
+      b.AddNode("LeakyRelu", {a}, {output});
+      b.SetGraphOutputs();
+      ASSERT_STATUS_OK(test.graph.Resolve());
+      size_t checks = 0;
+      auto check = [&](const Graph&, Match& match) {
+        ++checks;
+        EXPECT_FLOAT_EQ(match.attributeOf("alpha").f(), explicit_alpha ? 0.02f : 0.01f);
+        EXPECT_FLOAT_EQ(match.nodes.back()->GetAttributes().at("alpha").f(), explicit_alpha ? 0.02f : 0.01f);
+        return true;
+      };
+      Rules rules{
+          {"RemoveIdentity", "(x)=>{a=Identity(x);return LeakyRelu(a,alpha=0.01)}", explicit_alpha ? "(x)=>LeakyRelu(x,alpha=0.02)" : "(x)=>LeakyRelu(x)", {}, {{kOnnxDomain, 17, 17}}},
+          {"UsePRelu", "(x)=>return LeakyRelu(x,alpha=alpha)", explicit_alpha ? "(x)=>PRelu(x,0.02)" : "(x)=>PRelu(x,0.01)", check, {{kOnnxDomain, 17, 17}}}};
+      Statistics stats;
+      ASSERT_STATUS_OK(PatternRewriter(rules, {.indexed = indexed}).Run(test.graph, stats));
+      EXPECT_EQ(stats.rewrites, 2u);
+      EXPECT_EQ(checks, 1u);
+      EXPECT_FALSE(stats.iteration_limit_reached);
+      ASSERT_NE(test.graph.GetProducerNode(output->Name()), nullptr);
+      EXPECT_EQ(test.graph.GetProducerNode(output->Name())->OpType(), "PRelu");
+      ASSERT_STATUS_OK(test.graph.Resolve());
+    }
+  }
+}
+
+TEST(PatternRewriterTests, ForwardDefinitionNestingHasExplicitBoundary) {
+  for (bool reverse : {false, true}) {
+    for (bool aliases : {false, true}) {
+      for (int depth : {64, 65, 256}) {
+        std::string text;
+        for (int index = 0; index < depth; ++index) {
+          const int i = reverse ? depth - 1 - index : index;
+          const std::string name = "P" + std::to_string(i);
+          const std::string next = "P" + std::to_string(i + 1);
+          if (i == depth - 1)
+            text += "pattern " + name + "(x){return (y=x)} ";
+          else if (i > 0 && aliases)
+            text += "pattern " + name + "=" + next + " ";
+          else
+            text += "pattern " + name + "(x){p=" + next + "(x);" +
+                    (i == 0 ? "y=Identity(p.y);return y" : "return (y=p.y)") + "} ";
+        }
+        if (depth == 64) {
+          const PatternLibrary library(text);
+          EXPECT_EQ(library.GetPattern("P0").Nodes().size(), 1u);
+        } else {
+          try {
+            const PatternLibrary library(text);
+            FAIL() << "Accepted depth " << depth;
+          } catch (const OnnxRuntimeException& error) {
+            EXPECT_NE(std::string(error.what()).find("dependency nesting limit of 64"), std::string::npos)
+                << error.what();
+          }
+        }
+      }
+    }
+  }
+}
+
 }  // namespace test
 }  // namespace onnxruntime
