@@ -595,6 +595,20 @@ static bool MakeQDQNodeUnit(api::GraphRef& graph, const api::NodeRef& dq_node) {
       }
       q_output_dtype = static_cast<int64_t>(dq_input_dtype);
     }
+  } else if (!zp_input.value().empty()) {
+    // With an explicit zero point, the new Q reuses that zero point verbatim, so the zero
+    // point's type becomes the Q output type (the Q output's value info is copied from the
+    // DQ input below). INT32 dequantized data with an INT32 zero point is valid for
+    // DequantizeLinear, but QuantizeLinear has no INT32 output, so the inserted Q made the
+    // graph invalid (#33443). Skip the push-through for that case, leaving the dequantized
+    // path unquantized. Only reject INT32: QuantizeLinear also supports types that
+    // api::DataType does not model (e.g. INT4 and UINT4 at opset 21), so an allowlist check
+    // here would wrongly disable this repair for supported quantized graphs.
+    const api::DataType dq_input_dtype = graph.GetValueInfo(dq_inputs[0])->DType();
+    const api::DataType zp_dtype = graph.GetValueInfo(zp_input.value())->DType();
+    if (dq_input_dtype == api::DataType::INT32 || zp_dtype == api::DataType::INT32) {
+      return false;
+    }
   }
 
   // Add Q
