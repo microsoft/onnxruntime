@@ -498,6 +498,22 @@ void RegisterQMoEDenseLayerHostWeights(
 void UnregisterQMoEDenseLayerHostWeights(
     int device_id, int64_t layer_index, const uint8_t* fc1_w = nullptr);
 
+// Exclusive per-device lease over the shared prefill DMA state (staging buffers, dense-layer table and
+// workspace). Hold it from TryPrepareQMoEPrefillDmaLayer through the last pass of a layer so concurrent
+// sessions cannot interleave their prepare/begin/dequant steps. Releasing the lease orders the next owner's
+// work after everything this owner enqueued on its stream.
+class QMoEPrefillDmaLease {
+ public:
+  QMoEPrefillDmaLease(int device_id, cudaStream_t exec_stream);
+  ~QMoEPrefillDmaLease();
+  QMoEPrefillDmaLease(const QMoEPrefillDmaLease&) = delete;
+  QMoEPrefillDmaLease& operator=(const QMoEPrefillDmaLease&) = delete;
+
+ private:
+  int device_id_;
+  cudaStream_t exec_stream_;
+};
+
 bool TryPrepareQMoEPrefillDmaLayer(
     int device_id, int64_t layer_index, int num_experts, int hidden_size, int inter_size,
     int runner_num_experts, int64_t tile_rows, size_t elem_size,

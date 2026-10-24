@@ -1699,7 +1699,7 @@ onnxruntime/test/python/transformers/profile_qmoe_gemv.sh \
 
 ## 12b. Portable CPU/GPU Offload (`session.moe.offload.*`)
 
-Large Mixture-of-Experts models (such as 48-layer $\times$ 512-expert NVFP4/MXFP4/INT4 models with
+Large Mixture-of-Experts models (such as 48-layer $\times$ 512-expert NVFP4 models with
 60+ GiB of routed expert weights) often exceed the VRAM of 24 GiB–32 GiB consumer and workstation
 GPUs. Rather than exporting a separate hardware-specific operator or baking GPU slot counts into the
 ONNX graph, `com.microsoft::QMoE` supports **portable runtime CPU/GPU offload** controlled entirely
@@ -1731,10 +1731,9 @@ capture policies are never encoded in `model.onnx`.
 | Encoding | `quant_type` | `expert_weight_bits` | `block_size` | `weights_prepacked` | `swiglu_fusion` | Required Expert Input Slots |
 | :--- | :---: | :---: | :---: | :---: | :---: | :--- |
 | **NVFP4 (W4A16)** | `"nvfp4"` | `4` | `16` | `1` (offline K-packed row-major) | `1` (interleaved) | • **Slot 2 (`fc1_experts_weights`)**: `uint8`, physical `[E, 2*I, H/2]` (logical `[E, H, I]`)<br>• **Slot 3 (`fc1_scales`)**: `float8e4m3fn`, `[E, 2*I, H/16]`<br>• **Slot 5 (`fc2_experts_weights`)**: `uint8`, physical `[E, H, I/2]` (logical `[E, I, H/2]`)<br>• **Slot 6 (`fc2_scales`)**: `float8e4m3fn`, `[E, H, I/16]`<br>• **Slot 15 (`fc1_global_scale`)**: `float32`, `[E]`<br>• **Slot 16 (`fc2_global_scale`)**: `float32`, `[E]`<br>• *(Optional)* **Slots 4, 7**: `fc1_experts_bias` `[E, 2*I]`, `fc2_experts_bias` `[E, H]` (`fp16`/`bf16`) |
-| **MXFP4 (W4A16)** | `"fp4"` | `4` | `32` | `1` (offline K-packed row-major) | `1` (interleaved) | • **Slot 2 (`fc1_experts_weights`)**: `uint8`, physical `[E, 2*I, H/2]`<br>• **Slot 3 (`fc1_scales`)**: `float8e8m0` (`uint8`), `[E, 2*I, H/32]`<br>• **Slot 5 (`fc2_experts_weights`)**: `uint8`, physical `[E, H, I/2]`<br>• **Slot 6 (`fc2_scales`)**: `float8e8m0` (`uint8`), `[E, H, I/32]`<br>• *(Optional)* **Slots 15, 16**: `float32` `[E]` global scales (defaults to `1.0f`) |
 
 > **Eligibility note**: When `session.moe.offload.mode="auto"`, any `MoE`/`QMoE` node outside the
-> table above (such as `quant_type="int"`, `quant_type="fp8"`, `swiglu_fusion=2`, or separate
+> table above (such as `quant_type="fp4"` (MXFP4), `quant_type="int"`, `quant_type="fp8"`, `swiglu_fusion=2`, or separate
 > `router_weights` at slot 14) keeps its initializers on GPU and executes through the standard CUDA
 > `MoE`/`QMoE` path. When `session.moe.offload.mode="required"`, unsupported nodes or shared
 > non-offload initializer consumers fail fast during session initialization with `ORT_INVALID_ARGUMENT`.
@@ -1983,7 +1982,7 @@ full-model CUDA Graph:
    - **On the CPU (`DoorbellService` + `SpinPool`)**: `DoorbellService` detects `*doorbell_req_host == next_seq`
      and dispatches the missed experts across `SpinPool` workers pinned to distinct physical cores
      alternating across NUMA sockets / L3 CCDs (`DiscoverPhysicalCoreCount()`).
-   - **AVX-512 Cold-Expert Microkernels (`Fp4Group4Avx512<RT=1..4>`)**: Cold NVFP4/MXFP4 experts are
+   - **AVX-512 Cold-Expert Microkernels (`Fp4Group4Avx512<RT=1..4>`)**: Cold NVFP4 experts are
      evaluated directly from their row-major `[N, K/2]` storage without weight conversion using
      `_mm512_permutex2var_ps` 2D LUT permutes (`stack_fma = 0`, `stack_mov = 0`), multi-row contiguous
      activation reuse (`RT = 1..4` tokens routed to the same cold expert share a single DDR5 weight

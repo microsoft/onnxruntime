@@ -210,6 +210,8 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
 
   bool async_ = false;
   bool experts_registered_ = false;
+  bool all_expert_banks_registered_ = false;
+  mutable bool promo_budget_retained_ = false;
   std::vector<const void*> registered_host_ptrs_;
   bool async_aux_ = false;
   mutable cudaStream_t aux_stream_ = nullptr;

@@ -44,6 +44,57 @@
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemv.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemv_fp4.h"
 
+#ifndef BUILD_CUDA_EP_AS_PLUGIN
+#include "core/mlas/inc/mlas.h"
+#if defined(_M_AMD64) || defined(__x86_64__)
+#if defined(_MSC_VER)
+#include <intrin.h>
+#else
+#include <cpuid.h>
+#endif
+#endif
+
+// Satisfy MlasPlatformAvx512Supported() in the shared-provider bridge build so linking
+// qmoe_shared_layout from onnxruntime_mlas does not pull in platform.cpp/threading.cpp
+// (which reference onnxruntime_common's ThreadPool symbols not exported to shared providers).
+bool MLASCALL MlasPlatformAvx512Supported(void) {
+#if defined(_M_AMD64) || defined(__x86_64__)
+  unsigned cpuid0[4]{0, 0, 0, 0};
+  unsigned cpuid1[4]{0, 0, 0, 0};
+#if defined(_MSC_VER)
+  __cpuid(reinterpret_cast<int*>(cpuid0), 0);
+  if (cpuid0[0] < 7u) return false;
+  __cpuid(reinterpret_cast<int*>(cpuid1), 1);
+#else
+  __cpuid(0, cpuid0[0], cpuid0[1], cpuid0[2], cpuid0[3]);
+  if (cpuid0[0] < 7u) return false;
+  __cpuid(1, cpuid1[0], cpuid1[1], cpuid1[2], cpuid1[3]);
+#endif
+  constexpr unsigned kLeaf1EcxMask = (1u << 27) | (1u << 28) | (1u << 12) | (1u << 29);
+  if ((cpuid1[2] & kLeaf1EcxMask) != kLeaf1EcxMask) return false;
+  uint64_t xcr0 = 0;
+#if defined(_MSC_VER)
+  xcr0 = _xgetbv(0);
+#else
+  uint32_t eax = 0, edx = 0;
+  __asm__ volatile("xgetbv" : "=a"(eax), "=d"(edx) : "c"(0));
+  xcr0 = (static_cast<uint64_t>(edx) << 32) | eax;
+#endif
+  if ((xcr0 & 0xE6u) != 0xE6u) return false;
+  unsigned cpuid7[4]{0, 0, 0, 0};
+#if defined(_MSC_VER)
+  __cpuidex(reinterpret_cast<int*>(cpuid7), 7, 0);
+#else
+  __cpuid_count(7, 0, cpuid7[0], cpuid7[1], cpuid7[2], cpuid7[3]);
+#endif
+  constexpr unsigned kLeaf7EbxMask = (1u << 5) | (1u << 16) | (1u << 17) | (1u << 30) | (1u << 31);
+  return (cpuid7[1] & kLeaf7EbxMask) == kLeaf7EbxMask;
+#else
+  return false;
+#endif
+}
+#endif
+
 namespace onnxruntime::contrib::cuda {
 
 using namespace onnxruntime::cuda;
@@ -206,32 +257,29 @@ class SessionPromotionBudget {
     return instance;
   }
 
-  ~SessionPromotionBudget() {
-    for (int b = 0; b < 2; ++b) {
-      if (pinned_bounce_[b] != nullptr) {
-        static_cast<void>(cudaFreeHost(pinned_bounce_[b]));
-        pinned_bounce_[b] = nullptr;
-      }
+  // Each session owns its step counters and pinned bounce buffers so interleaved sessions cannot
+  // reset each other's step or overwrite DMA sources that are still in flight.
+  void Retain(const void* session_key) noexcept {
+    std::lock_guard<std::mutex> lock(mutex_);
+    ++sessions_[session_key].refs;
+  }
+
+  // Frees the session's bounce buffers when its last owner is gone. Callers must have drained their streams.
+  void Release(const void* session_key) noexcept {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = sessions_.find(session_key);
+    if (it == sessions_.end()) return;
+    if (--it->second.refs <= 0) {
+      it->second.FreeBounce();
+      sessions_.erase(it);
     }
   }
 
-  void EnsureBounceAllocated(size_t max_bytes) noexcept {
+  void EnsureBounceAllocated(const void* session_key, size_t max_bytes) noexcept {
     if (max_bytes == 0) return;
     std::lock_guard<std::mutex> lock(mutex_);
-    for (int b = 0; b < 2; ++b) {
-      if (pinned_bounce_[b] == nullptr || pinned_cap_[b] < max_bytes) {
-        if (pinned_bounce_[b] != nullptr) {
-          static_cast<void>(cudaFreeHost(pinned_bounce_[b]));
-          pinned_bounce_[b] = nullptr;
-          pinned_cap_[b] = 0;
-        }
-        void* p = nullptr;
-        if (cudaHostAlloc(&p, max_bytes, cudaHostAllocPortable) == cudaSuccess && p != nullptr) {
-          pinned_bounce_[b] = static_cast<uint8_t*>(p);
-          pinned_cap_[b] = max_bytes;
-        }
-      }
-    }
+    SessionState& st = sessions_[session_key];
+    for (int b = 0; b < 2; ++b) st.EnsureCapacity(b, max_bytes);
   }
 
   bool TryAcquire(const void* session_key, uint64_t step_seq, int max_promotions,
@@ -239,50 +287,72 @@ class SessionPromotionBudget {
                   bool need_pinned_bounce = false, uint8_t** out_pinned_bounce = nullptr) noexcept {
     if (out_pinned_bounce) *out_pinned_bounce = nullptr;
     if (max_promotions <= 0 && max_bytes == 0) return true;
-    const uint64_t combined_key =
-        (static_cast<uint64_t>(reinterpret_cast<uintptr_t>(session_key)) << 24) ^ step_seq;
     const size_t aligned_promo_bytes = (promo_bytes + 4095u) & ~size_t{4095u};
     std::lock_guard<std::mutex> lock(mutex_);
-    if (combined_key != current_key_) {
-      current_key_ = combined_key;
-      promotions_in_step_ = 0;
-      bytes_in_step_ = 0;
-      step_epoch_ ^= 1;
+    SessionState& st = sessions_[session_key];
+    if (!st.has_step || step_seq != st.current_step) {
+      st.has_step = true;
+      st.current_step = step_seq;
+      st.promotions_in_step = 0;
+      st.bytes_in_step = 0;
+      st.step_epoch ^= 1;
     }
-    if (max_promotions > 0 && promotions_in_step_ >= max_promotions) return false;
-    if (max_bytes > 0 && promotions_in_step_ > 0 && bytes_in_step_ + aligned_promo_bytes > max_bytes) return false;
+    if (max_promotions > 0 && st.promotions_in_step >= max_promotions) return false;
+    if (max_bytes > 0 && st.promotions_in_step > 0 && st.bytes_in_step + aligned_promo_bytes > max_bytes) return false;
     if (need_pinned_bounce && out_pinned_bounce) {
-      const size_t required_cap = std::max(max_bytes, bytes_in_step_ + aligned_promo_bytes);
-      if (pinned_bounce_[step_epoch_] == nullptr || pinned_cap_[step_epoch_] < required_cap) {
-        if (pinned_bounce_[step_epoch_] != nullptr) {
-          static_cast<void>(cudaFreeHost(pinned_bounce_[step_epoch_]));
-          pinned_bounce_[step_epoch_] = nullptr;
-          pinned_cap_[step_epoch_] = 0;
-        }
-        void* p = nullptr;
-        if (cudaHostAlloc(&p, required_cap, cudaHostAllocPortable) == cudaSuccess && p != nullptr) {
-          pinned_bounce_[step_epoch_] = static_cast<uint8_t*>(p);
-          pinned_cap_[step_epoch_] = required_cap;
-        }
-      }
-      if (pinned_bounce_[step_epoch_] != nullptr &&
-          bytes_in_step_ + aligned_promo_bytes <= pinned_cap_[step_epoch_]) {
-        *out_pinned_bounce = pinned_bounce_[step_epoch_] + bytes_in_step_;
+      const int e = st.step_epoch;
+      st.EnsureCapacity(e, std::max(max_bytes, st.bytes_in_step + aligned_promo_bytes));
+      if (st.pinned_bounce[e] != nullptr && st.bytes_in_step + aligned_promo_bytes <= st.pinned_cap[e]) {
+        *out_pinned_bounce = st.pinned_bounce[e] + st.bytes_in_step;
       }
     }
-    ++promotions_in_step_;
-    bytes_in_step_ += aligned_promo_bytes;
+    ++st.promotions_in_step;
+    st.bytes_in_step += aligned_promo_bytes;
     return true;
   }
 
  private:
+  struct SessionState {
+    int refs = 0;
+    bool has_step = false;
+    uint64_t current_step = 0;
+    int promotions_in_step = 0;
+    size_t bytes_in_step = 0;
+    int step_epoch = 0;
+    uint8_t* pinned_bounce[2]{nullptr, nullptr};
+    size_t pinned_cap[2]{0, 0};
+
+    void EnsureCapacity(int b, size_t bytes) noexcept {
+      if (pinned_bounce[b] != nullptr && pinned_cap[b] >= bytes) return;
+      if (pinned_bounce[b] != nullptr) {
+        static_cast<void>(cudaFreeHost(pinned_bounce[b]));
+        pinned_bounce[b] = nullptr;
+        pinned_cap[b] = 0;
+      }
+      void* p = nullptr;
+      if (cudaHostAlloc(&p, bytes, cudaHostAllocPortable) == cudaSuccess && p != nullptr) {
+        pinned_bounce[b] = static_cast<uint8_t*>(p);
+        pinned_cap[b] = bytes;
+      } else {
+        static_cast<void>(cudaGetLastError());
+      }
+    }
+
+    void FreeBounce() noexcept {
+      for (int b = 0; b < 2; ++b) {
+        if (pinned_bounce[b] != nullptr) static_cast<void>(cudaFreeHost(pinned_bounce[b]));
+        pinned_bounce[b] = nullptr;
+        pinned_cap[b] = 0;
+      }
+    }
+  };
+
+  ~SessionPromotionBudget() {
+    for (auto& kv : sessions_) kv.second.FreeBounce();
+  }
+
   std::mutex mutex_;
-  uint64_t current_key_ = ~uint64_t{0};
-  int promotions_in_step_ = 0;
-  size_t bytes_in_step_ = 0;
-  int step_epoch_ = 0;
-  uint8_t* pinned_bounce_[2]{nullptr, nullptr};
-  size_t pinned_cap_[2]{0, 0};
+  std::map<const void*, SessionState> sessions_;
 };
 
 struct QMoEOffload::SharedLayerCache {
@@ -382,6 +452,9 @@ struct DenseLayerHostWeights {
 
 struct DevicePrefillDmaState {
   std::mutex mutex;
+  std::mutex lease_mutex;
+  cudaEvent_t lease_done_event = nullptr;
+  bool lease_done_recorded = false;
   std::map<int64_t, DenseLayerHostWeights> dense_layers;
   cudaStream_t dma_stream = nullptr;
   cudaEvent_t dma_done_event[2]{nullptr, nullptr};
@@ -406,6 +479,7 @@ struct DevicePrefillDmaState {
   uint8_t* workspace_dev = nullptr;
   size_t workspace_bytes = 0;
   int workspace_runner_experts = 0;
+  int workspace_num_experts = 0;
   int workspace_hidden = 0;
   int workspace_inter = 0;
   size_t dequant_fc1_offset = 0;
@@ -817,6 +891,7 @@ void UnregisterQMoEDenseLayerHostWeights(
       state.workspace_dev = nullptr;
       state.workspace_bytes = 0;
       state.workspace_runner_experts = 0;
+      state.workspace_num_experts = 0;
     }
     state.lent_layers.clear();
     state.total_lent_bytes = 0;
@@ -826,6 +901,38 @@ void UnregisterQMoEDenseLayerHostWeights(
     state.mmap_touched_layer_mask = 0;
     if (restore_dev) static_cast<void>(cudaSetDevice(prev_dev));
   }
+}
+
+QMoEPrefillDmaLease::QMoEPrefillDmaLease(int device_id, cudaStream_t exec_stream)
+    : device_id_(device_id), exec_stream_(exec_stream) {
+  auto& state = DevicePrefillDmaState::ForDevice(device_id_);
+  state.lease_mutex.lock();
+  std::lock_guard<std::mutex> lock(state.mutex);
+  if (state.lease_done_event == nullptr) {
+    if (cudaEventCreateWithFlags(&state.lease_done_event, cudaEventDisableTiming) != cudaSuccess) {
+      static_cast<void>(cudaGetLastError());
+      state.lease_done_event = nullptr;
+      return;
+    }
+  }
+  if (state.lease_done_recorded) {
+    static_cast<void>(cudaStreamWaitEvent(exec_stream_, state.lease_done_event, 0));
+    if (state.dma_stream) static_cast<void>(cudaStreamWaitEvent(state.dma_stream, state.lease_done_event, 0));
+  }
+}
+
+QMoEPrefillDmaLease::~QMoEPrefillDmaLease() {
+  auto& state = DevicePrefillDmaState::ForDevice(device_id_);
+  {
+    std::lock_guard<std::mutex> lock(state.mutex);
+    if (state.lease_done_event != nullptr &&
+        cudaEventRecord(state.lease_done_event, exec_stream_) == cudaSuccess) {
+      state.lease_done_recorded = true;
+    } else {
+      static_cast<void>(cudaGetLastError());
+    }
+  }
+  state.lease_mutex.unlock();
 }
 
 bool TryPrepareQMoEPrefillDmaLayer(
@@ -859,7 +966,7 @@ bool TryPrepareQMoEPrefillDmaLayer(
           if (covered < static_cast<size_t>(num_experts)) {
             has_uncached_cold_experts = true;
           }
-        } else if (!matched->owner->experts_registered_ &&
+        } else if (!matched->owner->all_expert_banks_registered_ &&
                    matched->owner->base_resident_slots_ < num_experts) {
           has_uncached_cold_experts = true;
         }
@@ -1157,14 +1264,27 @@ bool TryPrepareQMoEPrefillDmaLayer(
     state.buffered_layer[0] = state.buffered_layer[1] = -1;
     state.buffered_pass[0] = state.buffered_pass[1] = -1;
   }
-  if (state.workspace_runner_experts != runner_num_experts ||
-      state.workspace_hidden != hidden_size ||
-      state.workspace_inter != inter_size ||
-      state.dequant_fc2_offset != deq_fc2_off ||
-      state.staging_fc1_w_offset[0] != stg_fc1_w_off[0]) {
+  // Every offset depends on the expert count (global-scale and histogram slabs), so compare the complete layout.
+  bool layout_changed = state.workspace_runner_experts != runner_num_experts ||
+                        state.workspace_num_experts != num_experts ||
+                        state.workspace_hidden != hidden_size ||
+                        state.workspace_inter != inter_size ||
+                        state.dequant_fc1_offset != deq_fc1_off ||
+                        state.dequant_fc2_offset != deq_fc2_off ||
+                        state.hist_offset != hist_off;
+  for (int b = 0; b < 2 && !layout_changed; ++b) {
+    layout_changed = state.staging_fc1_w_offset[b] != stg_fc1_w_off[b] ||
+                     state.staging_fc2_w_offset[b] != stg_fc2_w_off[b] ||
+                     state.staging_fc1_s_offset[b] != stg_fc1_s_off[b] ||
+                     state.staging_fc2_s_offset[b] != stg_fc2_s_off[b] ||
+                     state.staging_fc1_g_offset[b] != stg_fc1_g_off[b] ||
+                     state.staging_fc2_g_offset[b] != stg_fc2_g_off[b];
+  }
+  if (layout_changed) {
     CUDA_CALL_THROW(cudaStreamSynchronize(exec_stream));
     CUDA_CALL_THROW(cudaStreamSynchronize(state.dma_stream));
     state.workspace_runner_experts = runner_num_experts;
+    state.workspace_num_experts = num_experts;
     state.workspace_hidden = hidden_size;
     state.workspace_inter = inter_size;
     state.dequant_fc1_offset = deq_fc1_off;
@@ -2529,6 +2649,10 @@ QMoEOffload::~QMoEOffload() {
       registered_host_ptrs_.clear();
     }
   }
+  if (promo_budget_retained_) {
+    SessionPromotionBudget::Instance().Release(session_controller_.get());
+    promo_budget_retained_ = false;
+  }
   file_expert_store_.Shutdown();
   if (restore_dev) {
     static_cast<void>(cudaSetDevice(prev_dev));
@@ -3081,6 +3205,15 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
         try_register(t);
       }
     }
+    // A single registered bank does not make every bank a valid pinned DMA source.
+    const auto is_registered = [this](const Tensor* t) {
+      return t != nullptr && std::find(registered_host_ptrs_.begin(), registered_host_ptrs_.end(), t->DataRaw()) !=
+                                 registered_host_ptrs_.end();
+    };
+    all_expert_banks_registered_ =
+        expert_blocks_ ? is_registered(expert_blocks_)
+                       : (is_registered(nvfp4_fc1_w_) && is_registered(nvfp4_fc1_s_) &&
+                          is_registered(nvfp4_fc2_w_) && is_registered(nvfp4_fc2_s_));
   }
 
   fc1_cols_ = std::clamp(ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_FC1_COLS", 64), 32, 1024) / 32 * 32;
@@ -3120,9 +3253,13 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
     step_promo_bytes_ = static_cast<size_t>(std::clamp(
                             ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_STEP_PROMOTION_MIB", 64), 0, 4096))
                         << 20;
-    if (resident_promotions_ > 0 && !experts_registered_ && !host_complement_mode_ &&
+    if (resident_promotions_ > 0 && !all_expert_banks_registered_ && !host_complement_mode_ &&
         !(file_expert_store_.IsInitialized() && host_cache_mapped_)) {
-      SessionPromotionBudget::Instance().EnsureBounceAllocated(step_promo_bytes_);
+      if (!promo_budget_retained_) {
+        SessionPromotionBudget::Instance().Retain(session_controller_.get());
+        promo_budget_retained_ = true;
+      }
+      SessionPromotionBudget::Instance().EnsureBounceAllocated(session_controller_.get(), step_promo_bytes_);
     }
     resident_log_ = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_RESIDENT_LOG", 0) == 1;
 
@@ -3629,6 +3766,7 @@ void QMoEOffload::InitializeShared(const OpKernelInfo& info) {
     }
     registered_host_ptrs_.push_back(expert_blocks_->DataRaw());
     experts_registered_ = true;
+    all_expert_banks_registered_ = true;
   }
   // Double-buffered device slot table: 2 epochs * num_experts_ (v3 Section 7.5 / F3).
   slot_table_dev_ = GetTransientScratchBuffer<uint8_t>(SafeInt<size_t>(2) * num_experts_ * sizeof(int));
@@ -5265,8 +5403,12 @@ Status QMoEOffload::PromoteResident(cudaStream_t stream, const InlinedVector<Inl
                                     : (resident_total_routes_ / static_cast<uint64_t>(std::max<int64_t>(1, k_)));
       const bool use_ssd = !host_complement_mode_ && file_expert_store_.IsInitialized();
       const bool source_is_pinned =
-          experts_registered_ || host_complement_mode_ || (use_ssd && host_cache_mapped_);
+          all_expert_banks_registered_ || host_complement_mode_ || (use_ssd && host_cache_mapped_);
       uint8_t* pinned_bounce_slot = nullptr;
+      if (!promo_budget_retained_) {
+        SessionPromotionBudget::Instance().Retain(session_controller_.get());
+        promo_budget_retained_ = true;
+      }
       if (!SessionPromotionBudget::Instance().TryAcquire(session_controller_.get(), step_seq,
                                                          step_promo_budget_, step_promo_bytes_,
                                                          single_expert_bytes,
@@ -7004,7 +7146,10 @@ Status QMoEOffload::ComputeSharedAsync(OpKernelContext* context, const Tensor* i
 
   const size_t elem_size = sizeof(uint16_t);
   const int routes = SafeInt<int>(tile_rows) * k_;
-  const int cap_rows = use_persistent_decode ? std::max(tile_rows, 4) : tile_rows;
+  // The persistent decode state is shared by every captured graph, so its layout must not depend on the shape being
+  // captured; size it for the largest row count that can use it.
+  const int persistent_cap_rows = std::max(4, async_max_tokens_);
+  const int cap_rows = use_persistent_decode ? std::max(tile_rows, persistent_cap_rows) : tile_rows;
   const int cap_routes = SafeInt<int>(cap_rows) * k_;
   const int route_slots = nvfp4_mode_ ? cap_routes : std::max(max_routes_, kGroupedMoeMinRows);
   const int compute_rows = nvfp4_mode_ ? routes : std::max(routes, kGroupedMoeMinRows);

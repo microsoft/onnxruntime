@@ -454,7 +454,8 @@ class TestQMoEOffloadV4(unittest.TestCase):
             fc1_bias_per_expert = 2 * 64 * 2  # 256 B
             fc2_bias_per_layer = 16 * 128 * 2  # 4096 B
             bias_slot_bytes = slot_bytes + fc1_bias_per_expert
-            bias_fixed_bytes = fixed_table_bytes + fc2_bias_per_layer
+            # The node keeps its own full FC1/FC2 bias banks besides the backend's per-slot FC1 bias and FC2 buffer.
+            bias_fixed_bytes = fixed_table_bytes + 2 * fc2_bias_per_layer + 16 * fc1_bias_per_expert
             bias_budget = 2 * bias_fixed_bytes + 12 * bias_slot_bytes
             sess_bias_ref = self._make_session(model_bias, {"session.moe.offload.mode": "disabled"})
             sess_bias_off = self._make_session(
@@ -523,8 +524,6 @@ class TestQMoEOffloadV4(unittest.TestCase):
             x = rng.standard_normal((2, 128), dtype=np.float32) * 0.5
             r = rng.standard_normal((2, 16), dtype=np.float32)
             sess_ref = self._make_session(model_path, {"session.moe.offload.mode": "disabled"})
-            y_ref = self._run_bf16(sess_ref, x, r)
-            del sess_ref
 
             # Wrap inputs/outputs in FLOAT <-> BFLOAT16 Cast on GPU so CUDA Graph capture has 100% GPU I/O
             m = onnx.load_model(model_path, load_external_data=False)
@@ -551,7 +550,11 @@ class TestQMoEOffloadV4(unittest.TestCase):
                 if d.ep_name == "CUDAExecutionProvider" and d.device.type == ort.OrtHardwareDeviceType.GPU
             ]
             devices.sort(key=lambda d: int(d.ep_options.get("device_id", d.ep_metadata.get("cuda_device_id", "0"))))
-            dev_id = int(devices[0].ep_options.get("device_id", devices[0].ep_metadata.get("cuda_device_id", "0")))
+            dev_id = (
+                int(devices[0].ep_options.get("device_id", devices[0].ep_metadata.get("cuda_device_id", "0")))
+                if devices
+                else 0
+            )
 
             so = ort.SessionOptions()
             so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
@@ -562,24 +565,71 @@ class TestQMoEOffloadV4(unittest.TestCase):
                 "session.moe.offload.popularity_file": "expert-profile.bin",
             }.items():
                 so.add_session_config_entry(k, v)
-            so.add_provider_for_devices(
-                [devices[0]], {"enable_cuda_graph": "1", "min_num_runs_before_cuda_graph_capture": "2"}
-            )
-            sess_graph = ort.InferenceSession(cg_model_path, sess_options=so)
+            if devices:
+                so.add_provider_for_devices(
+                    [devices[0]], {"enable_cuda_graph": "1", "min_num_runs_before_cuda_graph_capture": "2"}
+                )
+                sess_graph = ort.InferenceSession(cg_model_path, sess_options=so)
+            else:
+                sess_graph = ort.InferenceSession(
+                    cg_model_path, sess_options=so, providers=[("CUDAExecutionProvider", {"enable_cuda_graph": "1"})]
+                )
 
-            x_in = _bfloat16_u16_to_float32(_float32_to_bfloat16_u16(x))
-            r_in = _bfloat16_u16_to_float32(_float32_to_bfloat16_u16(r))
-            binding = sess_graph.io_binding()
-            binding.bind_cpu_input("X_f32", x_in)
-            binding.bind_cpu_input("R_f32", r_in)
-            binding.bind_output("Y_f32", "cuda", dev_id)
+            def round_bf16(a: np.ndarray) -> np.ndarray:
+                return _bfloat16_u16_to_float32(_float32_to_bfloat16_u16(a))
 
-            for _ in range(6):
-                binding.synchronize_inputs()
-                sess_graph.run_with_iobinding(binding)
-                y_cand = binding.copy_outputs_to_cpu()[0]
-                max_diff = float(np.max(np.abs(y_ref - y_cand)))
-                self.assertLess(max_diff, 5e-2, f"CUDA graph replay mismatch: max_diff={max_diff}")
+            cudart = None
+            for lib_name in (
+                "libcudart.so.13",
+                "libcudart.so.12",
+                "libcudart.so",
+                "cudart64_13.dll",
+                "cudart64_12.dll",
+            ):
+                with contextlib.suppress(OSError):
+                    cudart = ctypes.CDLL(lib_name)
+                    break
+            if cudart is None:
+                self.skipTest("CUDA runtime library is required to update captured GPU inputs in place")
+
+            def device_buffer(nbytes: int) -> ctypes.c_void_p:
+                ptr = ctypes.c_void_p()
+                self.assertEqual(cudart.cudaMalloc(ctypes.byref(ptr), ctypes.c_size_t(nbytes)), 0)
+                return ptr
+
+            def upload(ptr: ctypes.c_void_p, arr: np.ndarray):
+                arr = np.ascontiguousarray(arr, dtype=np.float32)
+                self.assertEqual(cudart.cudaMemcpy(ptr, arr.ctypes.data_as(ctypes.c_void_p), arr.nbytes, 1), 0)
+
+            # Update the captured GPU inputs in place with different activations and routes on every replay so a
+            # stale doorbell, host-result or scratch buffer cannot match the reference by accident.
+            x_ptr = device_buffer(x.nbytes)
+            r_ptr = device_buffer(r.nbytes)
+            try:
+                x_in = round_bf16(x)
+                r_in = round_bf16(r)
+                upload(x_ptr, x_in)
+                upload(r_ptr, r_in)
+                binding = sess_graph.io_binding()
+                binding.bind_input("X_f32", "cuda", dev_id, np.float32, list(x.shape), x_ptr.value)
+                binding.bind_input("R_f32", "cuda", dev_id, np.float32, list(r.shape), r_ptr.value)
+                binding.bind_output("Y_f32", "cuda", dev_id)
+
+                replay_rng = np.random.default_rng(31337)
+                for step in range(8):
+                    if step > 0:
+                        x_in = round_bf16(replay_rng.standard_normal((2, 128), dtype=np.float32) * 0.5)
+                        r_in = round_bf16(replay_rng.standard_normal((2, 16), dtype=np.float32) * 2.0)
+                        upload(x_ptr, x_in)
+                        upload(r_ptr, r_in)
+                    y_ref = self._run_bf16(sess_ref, x_in, r_in)
+                    sess_graph.run_with_iobinding(binding)
+                    y_cand = binding.copy_outputs_to_cpu()[0]
+                    max_diff = float(np.max(np.abs(y_ref - y_cand)))
+                    self.assertLess(max_diff, 5e-2, f"CUDA graph replay mismatch at step {step}: max_diff={max_diff}")
+            finally:
+                cudart.cudaFree(x_ptr)
+                cudart.cudaFree(r_ptr)
 
     def _run_fp16(self, sess, x_f32: np.ndarray, r_f32: np.ndarray) -> np.ndarray:
         x_f16 = x_f32.astype(np.float16)
@@ -587,7 +637,9 @@ class TestQMoEOffloadV4(unittest.TestCase):
         out = sess.run(["Y"], {"X": x_f16, "router_probs": r_f16})[0]
         return out.astype(np.float32)
 
-    def test_v4_mxfp4_decode_prefill_bounded_host_and_full_residency(self):
+    def test_v4_mxfp4_offload_is_rejected_when_required_and_ignored_when_auto(self):
+        # Only NVFP4 with weights_prepacked=1 defines the K-packed row-major layout the offload kernels read, so
+        # MXFP4 nodes must neither be relocated nor reinterpreted.
         with tempfile.TemporaryDirectory() as tmpdir:
             for use_fp16 in (False, True):
                 sub_dir = os.path.join(tmpdir, "fp16" if use_fp16 else "bf16")
@@ -604,64 +656,17 @@ class TestQMoEOffloadV4(unittest.TestCase):
                     quant_type="fp4",
                     use_fp16=use_fp16,
                 )
-                # MXFP4 (block_size=32) per-expert slot bytes for H=128, I=64:
-                # fc1_w: 2*64*64 = 8192, fc2_w: 128*32 = 4096,
-                # fc1_s: 2*64*4 = 512, fc2_s: 128*2 = 256, globals: 8, fc1_bias: 256 => 13,320 B
-                slot_bytes = 13320
-                fixed_table_bytes = 2 * 16 * 4 + 16 * 128 * 2  # 128 + 4096 = 4,224 B
-                budget_adaptive = 2 * fixed_table_bytes + 16 * slot_bytes
-                host_slot_stride = 13568  # aligned 256B blocks for MXFP4
+                with self.assertRaisesRegex(Exception, "expected 'nvfp4'"):
+                    self._make_session(model_path, {"session.moe.offload.mode": "required"})
 
                 sess_base = self._make_session(model_path, {"session.moe.offload.mode": "disabled"})
-                sess_full = self._make_session(model_path, {"session.moe.offload.mode": "auto"})
-                sess_partial = self._make_session(
-                    model_path,
-                    {
-                        "session.moe.offload.mode": "required",
-                        "session.moe.offload.placement": "adaptive",
-                        "session.moe.offload.device_expert_bytes": str(budget_adaptive),
-                        "session.moe.offload.popularity_file": "expert-profile.bin",
-                    },
-                )
-                sess_bounded_host = self._make_session(
-                    model_path,
-                    {
-                        "session.moe.offload.mode": "required",
-                        "session.moe.offload.placement": "adaptive",
-                        "session.moe.offload.device_expert_bytes": str(budget_adaptive),
-                        "session.moe.offload.host_expert_bytes": str(2 * 4 * host_slot_stride),
-                        "session.moe.offload.allow_file_backing": "1",
-                    },
-                )
-                sess_gpu_stream = self._make_session(
-                    model_path,
-                    {
-                        "session.moe.offload.mode": "required",
-                        "session.moe.offload.placement": "static",
-                        "session.moe.offload.cpu_execution": "disabled",
-                        "session.moe.offload.device_expert_bytes": str(budget_adaptive),
-                    },
-                )
-
+                sess_auto = self._make_session(model_path, {"session.moe.offload.mode": "auto"})
                 rng = np.random.default_rng(808 + int(use_fp16))
                 runner = self._run_fp16 if use_fp16 else self._run_bf16
-                for num_rows in (1, 2, 4, 16):
+                for num_rows in (1, 4, 16):
                     x = rng.standard_normal((num_rows, 128), dtype=np.float32) * 0.5
                     r = rng.standard_normal((num_rows, 16), dtype=np.float32)
-                    y_ref = runner(sess_base, x, r)
-                    for name, s in (
-                        ("mxfp4_full", sess_full),
-                        ("mxfp4_partial", sess_partial),
-                        ("mxfp4_bounded_host", sess_bounded_host),
-                        ("mxfp4_gpu_stream", sess_gpu_stream),
-                    ):
-                        y_got = runner(s, x, r)
-                        max_diff = float(np.max(np.abs(y_ref - y_got)))
-                        self.assertLess(
-                            max_diff,
-                            5e-2,
-                            f"MXFP4 ({'fp16' if use_fp16 else 'bf16'}) mismatch in {name} at T={num_rows}: {max_diff}",
-                        )
+                    np.testing.assert_array_equal(runner(sess_base, x, r), runner(sess_auto, x, r))
 
     def test_v4_embedded_heap_weights_bounded_cache_eviction_safety(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -965,7 +970,7 @@ class TestQMoEOffloadV4(unittest.TestCase):
                     cuda_options={"gpu_device_mem_limit": str(4 * 1024 * 1024)},
                 )
             with self.assertRaisesRegex(Exception, "(?i)budget|memory|allocation"):
-                self._make_session(
+                sess_tight = self._make_session(
                     model_path,
                     {
                         "session.moe.offload.mode": "required",
@@ -973,6 +978,11 @@ class TestQMoEOffloadV4(unittest.TestCase):
                         "session.moe.offload.device_expert_bytes": str(budget_partial),
                     },
                     cuda_options={"gpu_device_mem_limit": str(budget_partial + 64 * 1024)},
+                )
+                self._run_bf16(
+                    sess_tight,
+                    np.ones((1, 128), dtype=np.float32),
+                    np.ones((1, 16), dtype=np.float32),
                 )
 
     @unittest.skipIf(sys.platform == "win32", "Requires POSIX g++ toolchain for standalone header/allocator probe.")

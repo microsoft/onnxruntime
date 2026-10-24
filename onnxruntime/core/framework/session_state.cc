@@ -1736,8 +1736,9 @@ bool ValidateNodeForMoeOffload(const Node& node,
   };
 
   const std::string quant_type = moe_offload::MoeOffloadSessionPolicy::ToLowerAscii(get_str_attr("quant_type", "int"));
-  if (quant_type != "nvfp4" && quant_type != "fp4" && quant_type != "mxfp4") {
-    out_reason = "unsupported quant_type='" + quant_type + "' (expected 'nvfp4' or 'fp4')";
+  // Only NVFP4 with weights_prepacked=1 defines the K-packed row-major layout the offload kernels read.
+  if (quant_type != "nvfp4") {
+    out_reason = "unsupported quant_type='" + quant_type + "' (expected 'nvfp4')";
     return false;
   }
   const int64_t weight_bits = get_int_attr("expert_weight_bits", 8);

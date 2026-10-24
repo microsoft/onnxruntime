@@ -37,6 +37,7 @@
 #include "contrib_ops/cpu/utils/debug_macros.h"
 
 #include <algorithm>
+#include <optional>
 #include <array>
 #include <cstring>
 #include <functional>
@@ -866,10 +867,12 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
           (activation_type_ == onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Swiglu) &&
           (swiglu_fusion_ == 0 || swiglu_fusion_ == 1);
       const bool nvfp4_globals_ok = (quant_type_ != "nvfp4") || (fc1_g != nullptr && fc2_g != nullptr);
+      // The offload backend reads the raw K-packed row-major bytes. Only NVFP4 with weights_prepacked=1 defines that
+      // layout; MXFP4 and other weights_prepacked modes are N-packed in the standard path, so admitting them would
+      // change how the same initializer bytes are interpreted.
       const bool node_eligible =
-          (quant_type_ == "nvfp4" || quant_type_ == "fp4") &&
+          nvfp4_weights_row_major_ &&
           expert_weight_bits_ == 4 &&
-          weights_prepacked_ &&
           is_interleaved_swiglu &&
           !use_sparse_mixer_ &&
           !has_unsupported_slot &&
@@ -879,14 +882,15 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
       if (!node_eligible) {
         ORT_ENFORCE(offload_policy_.mode != onnxruntime::moe_offload::OffloadMode::kRequired,
                     "QMoE offload mode='required' rejected node '", op_kernel_info.node().Name(),
-                    "': quant_type='", quant_type_, "', weights_prepacked=", weights_prepacked_,
+                    "': quant_type='", quant_type_, "', nvfp4_row_major_weights=", nvfp4_weights_row_major_,
+                    " (requires quant_type='nvfp4' and weights_prepacked=1)",
                     ", swiglu_fusion=", swiglu_fusion_, ", use_sparse_mixer=", use_sparse_mixer_,
                     ", unsupported_slot=", bad_slot_idx, ", has_const_cpu_weights=", has_const_weights);
       } else {
         const int32_t num_e = static_cast<int32_t>(fc1_w->Shape()[0]);
         const int32_t hid = static_cast<int32_t>(fc1_w->Shape()[1]);
         const int32_t inter = static_cast<int32_t>(fc2_w->Shape()[1]);
-        const size_t blk = (quant_type_ == "nvfp4") ? 16u : 32u;
+        const size_t blk = 16u;
 
         offload_source_desc_.op_type = "QMoE";
         offload_source_desc_.quant_type = quant_type_;
@@ -954,8 +958,11 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
         offload_capabilities_.decode_kernel_skips_negative_slots = true;
         offload_capabilities_.source_bytes_per_expert = raw_slot_bytes;
         offload_capabilities_.gpu_slot_bytes = raw_slot_bytes + fc1_bias_slot_bytes;
+        // QMoE keeps its own full FC1/FC2 bias banks on the device for prefill dequantization, in addition to the
+        // per-slot FC1 bias and full FC2 bias buffer owned by the offload backend; charge every persistent copy.
+        const size_t fc1_bias_full_bytes = (fc1_b != nullptr) ? fc1_b->SizeInBytes() : 0;
         offload_capabilities_.gpu_fixed_table_bytes =
-            static_cast<size_t>(2) * num_e * sizeof(int32_t) + fc2_bias_fixed_bytes;
+            static_cast<size_t>(2) * num_e * sizeof(int32_t) + 2 * fc2_bias_fixed_bytes + fc1_bias_full_bytes;
         offload_capabilities_.cpu_slot_bytes = cpu_slot_stride;
         offload_capabilities_.min_host_cache_slots = 1;
 
@@ -1469,8 +1476,10 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
           ? (static_cast<int64_t>(moe_params.num_rows) * static_cast<int64_t>(k_)) /
                 static_cast<int64_t>(moe_params.num_experts)
           : static_cast<int64_t>(moe_params.num_rows) * static_cast<int64_t>(k_);
+  // Offload-managed NVFP4 keeps raw scales and initializers on the host or in raw GPU copies, which the native
+  // block-scaled kernels (swizzled scales, device weight pointers) cannot consume.
   const bool route_native_fp4 =
-      fp4_native_available &&
+      fp4_native_available && !offload_node_registered_ &&
       (!nvfp4_weights_row_major_ || (packed_fp4_fc1_block_scales_ != nullptr &&
                                      packed_fp4_fc2_block_scales_ != nullptr)) &&
       (fp4_native_max_tokens_per_expert_ <= 0 || avg_tokens_per_expert <= fp4_native_max_tokens_per_expert_) &&
@@ -2666,31 +2675,30 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                                                     ? gemv_fp4_fc2_weights_decode_
                                                     : gemv_fp4_fc2_weights_)
                                                    .get());
+    // With native FP4 prepacking, packed_fp4_*_block_scales_ holds swizzled scales, so raw GEMV reads the original
+    // tensor when it is GPU-resident and uses the uploaded raw copy only for CPU-backed offload initializers.
+    auto raw_row_major_ptr = [&](int input_idx, const IAllocatorUniquePtr<void>& uploaded) -> const void* {
+      const Tensor* t = context->Input<Tensor>(input_idx);
+      if (t != nullptr && t->Location().device.Type() != OrtDevice::CPU) return t->DataRaw();
+      return uploaded ? uploaded.get() : (t != nullptr ? t->DataRaw() : nullptr);
+    };
     const uint8_t* gemv_fc1_raw_block_scales =
-        nvfp4_weights_row_major_ ? (packed_fp4_fc1_block_scales_
-                                        ? static_cast<const uint8_t*>(packed_fp4_fc1_block_scales_.get())
-                                        : static_cast<const uint8_t*>(context->Input<Tensor>(3)->DataRaw()))
+        nvfp4_weights_row_major_ ? static_cast<const uint8_t*>(raw_row_major_ptr(3, packed_fp4_fc1_block_scales_))
         : is_nvfp4               ? static_cast<const uint8_t*>((gemv_fp4_fc1_block_raw_ ? gemv_fp4_fc1_block_raw_
                                                                                         : packed_fp4_fc1_block_scales_)
                                                                    .get())
                                  : nullptr;
     const uint8_t* gemv_fc2_raw_block_scales =
-        nvfp4_weights_row_major_ ? (packed_fp4_fc2_block_scales_
-                                        ? static_cast<const uint8_t*>(packed_fp4_fc2_block_scales_.get())
-                                        : static_cast<const uint8_t*>(context->Input<Tensor>(6)->DataRaw()))
+        nvfp4_weights_row_major_ ? static_cast<const uint8_t*>(raw_row_major_ptr(6, packed_fp4_fc2_block_scales_))
         : is_nvfp4               ? static_cast<const uint8_t*>((gemv_fp4_fc2_block_raw_ ? gemv_fp4_fc2_block_raw_
                                                                                         : packed_fp4_fc2_block_scales_)
                                                                    .get())
                                  : nullptr;
     const float* gemv_fc1_raw_global_scales =
-        nvfp4_weights_row_major_ ? (packed_fc1_global_scale_
-                                        ? static_cast<const float*>(packed_fc1_global_scale_.get())
-                                        : context->Input<Tensor>(15)->Data<float>())
+        nvfp4_weights_row_major_ ? static_cast<const float*>(raw_row_major_ptr(15, packed_fc1_global_scale_))
                                  : (is_nvfp4 ? static_cast<const float*>(packed_fc1_global_scale_.get()) : nullptr);
     const float* gemv_fc2_raw_global_scales =
-        nvfp4_weights_row_major_ ? (packed_fc2_global_scale_
-                                        ? static_cast<const float*>(packed_fc2_global_scale_.get())
-                                        : context->Input<Tensor>(16)->Data<float>())
+        nvfp4_weights_row_major_ ? static_cast<const float*>(raw_row_major_ptr(16, packed_fc2_global_scale_))
                                  : (is_nvfp4 ? static_cast<const float*>(packed_fc2_global_scale_.get()) : nullptr);
     auto p_r2u_buf = GetScratchBuffer<int>(expanded, GetComputeStream(context));
     auto p_exp_buf = GetScratchBuffer<int>(expanded, GetComputeStream(context));
@@ -3022,6 +3030,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   int prefill_dma_dev_id = 0;
   int64_t prefill_dma_layer = -1;
   QMoEPrefillPassDmaView prefill_dma_view{};
+  // Held across every tile and pass so concurrent sessions cannot interleave on the per-device DMA state.
+  std::optional<QMoEPrefillDmaLease> prefill_dma_lease;
   if (use_int_dequant_fallback) {
     ORT_ENFORCE(fc1_experts_weights != nullptr && fc2_experts_weights != nullptr &&
                     fc1_scales != nullptr && fc2_scales != nullptr,
@@ -3117,13 +3127,14 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       static_cast<void>(cudaGetDevice(&dev_id));
       prefill_dma_dev_id = dev_id;
       prefill_dma_layer = parsed_layer;
-      if (use_nvfp4_compaction && num_compact_passes > 1 && row_tile_plan.TileCount() == 1) {
+      if (use_nvfp4_compaction && num_compact_passes > 1) {
         const float* host_fc1_g = (fc1_global_scale && fc1_global_scale->Location().device.Type() == OrtDevice::CPU)
                                       ? fc1_global_scale->Data<float>()
                                       : static_cast<const float*>(p_fc1_global_scale);
         const float* host_fc2_g = (fc2_global_scale && fc2_global_scale->Location().device.Type() == OrtDevice::CPU)
                                       ? fc2_global_scale->Data<float>()
                                       : static_cast<const float*>(p_fc2_global_scale);
+        prefill_dma_lease.emplace(dev_id, stream);
         use_prefill_dma = TryPrepareQMoEPrefillDmaLayer(
             dev_id, parsed_layer, narrow<int>(moe_params.num_experts),
             narrow<int>(moe_params.hidden_size), narrow<int>(moe_params.inter_size),
@@ -3135,6 +3146,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
             static_cast<const uint8_t*>(p_fc2_block_scales),
             host_fc2_g,
             stream, &prefill_dma_view);
+        if (!use_prefill_dma) prefill_dma_lease.reset();
       }
       if (!use_prefill_dma) {
         static_cast<void>(TryGetQMoEResidentLayerSlabView(
@@ -3164,7 +3176,10 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       }
       fc1_weight_data = prefill_dma_view.dequant_fc1_weights;
       fc2_weight_data = prefill_dma_view.dequant_fc2_weights;
-      dequantize_fp4_dma = [&, fc1_n, fc1_k, fc2_n, fc2_k, num_experts, fc1_bias_gpu_src, fc2_bias_gpu_src](int pass_start_expert) {
+      dequantize_fp4_dma = [&, fc1_n, fc1_k, fc2_n, fc2_k, wave_experts = num_experts, fc1_bias_gpu_src, fc2_bias_gpu_src](int pass_start_expert) {
+        // The last wave covers only the remaining experts; launching a full wave would read past the per-expert tables.
+        const int num_experts = std::min(wave_experts, narrow<int>(moe_params.num_experts) - pass_start_expert);
+        if (num_experts <= 0) return;
         auto dequant_pass = [&](const uint8_t* stg_w, const uint8_t* stg_s, const float* stg_g,
                                 void* out, int n, int k, const void* bias_ptr, void* output_bias,
                                 const uint8_t* res_w, const uint8_t* res_s,
