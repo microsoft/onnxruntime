@@ -4179,6 +4179,88 @@ TEST(GroupQueryAttentionTest, CudaH512PrefillMemoryEfficientBf16) {
   RunGQAH512PrefillMemoryEfficientTest<BFloat16>();
 }
 
+// Runs a causal fp16 prompt with zero Q/K, so each output token is the running mean of V and the
+// expected values are exact. Returns the kernel debug log.
+static std::string RunGQACudnnSdpaProbeCase(const std::optional<std::string>& enable_cudnn_env,
+                                            bool reject_cudnn_graph) {
+  ScopedEnvironmentVariables scoped_env_vars{{
+      {"ORT_ENABLE_XQA", "0"},
+      {"ORT_ENABLE_CUDNN_FLASH_ATTENTION", enable_cudnn_env},
+      {"ORT_TEST_ONLY_GQA_REJECT_CUDNN_SDPA_GRAPH", reject_cudnn_graph ? std::optional<std::string>("1") : std::nullopt},
+      {"ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO", "1"},
+  }};
+  constexpr int sequence_length = 64;
+  constexpr int num_heads = 8;
+  constexpr int kv_num_heads = 2;
+  constexpr int head_size = 128;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+  std::vector<MLFloat16> value(sequence_length * kv_hidden_size);
+  std::vector<MLFloat16> present_value(sequence_length * kv_hidden_size);
+  std::vector<MLFloat16> expected(sequence_length * hidden_size);
+  for (int token = 0; token < sequence_length; ++token) {
+    for (int head = 0; head < kv_num_heads; ++head) {
+      const MLFloat16 v(static_cast<float>(token + 1) / 64.0f + static_cast<float>(head) / 8.0f);
+      std::fill_n(value.begin() + token * kv_hidden_size + head * head_size, head_size, v);
+      std::fill_n(present_value.begin() + (head * sequence_length + token) * head_size, head_size, v);
+    }
+    for (int head = 0; head < num_heads; ++head) {
+      const int kv_head = head / (num_heads / kv_num_heads);
+      std::fill_n(expected.begin() + token * hidden_size + head * head_size, head_size,
+                  MLFloat16(static_cast<float>(token + 2) / 128.0f + static_cast<float>(kv_head) / 8.0f));
+    }
+  }
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", num_heads);
+  tester.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+  tester.AddInput<MLFloat16>("query", {1, sequence_length, hidden_size},
+                             std::vector<MLFloat16>(sequence_length * hidden_size, MLFloat16(0.0f)));
+  tester.AddInput<MLFloat16>("key", {1, sequence_length, kv_hidden_size},
+                             std::vector<MLFloat16>(sequence_length * kv_hidden_size, MLFloat16(0.0f)));
+  tester.AddInput<MLFloat16>("value", {1, sequence_length, kv_hidden_size}, value);
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddInput<int32_t>("seqlens_k", {1}, {sequence_length - 1});
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {sequence_length}, true);
+  tester.AddOutput<MLFloat16>("output", {1, sequence_length, hidden_size}, expected);
+  tester.AddOutput<MLFloat16>("present_key", {1, kv_num_heads, sequence_length, head_size},
+                              std::vector<MLFloat16>(sequence_length * kv_hidden_size, MLFloat16(0.0f)));
+  tester.AddOutput<MLFloat16>("present_value", {1, kv_num_heads, sequence_length, head_size}, present_value);
+  tester.SetOutputTolerance(0.005f);
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  SessionOptions options;
+  EXPECT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  testing::internal::CaptureStdout();
+  tester.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  return testing::internal::GetCapturedStdout();
+}
+
+// When cuDNN SDPA is auto-selected but its graph can't be built, GQA must run on another kernel
+// instead of failing the Run. The test hook forces the rejection for a statically eligible shape.
+TEST(GroupQueryAttentionTest, CudaCudnnSdpaRejectedGraphFallsBack) {
+  if (!HasCudaEnvironment(900) || DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "cuDNN SDPA is only auto-selected on SM90+.";
+  }
+
+  const std::string auto_log = RunGQACudnnSdpaProbeCase(std::nullopt, /*reject_cudnn_graph=*/false);
+  if (auto_log.find("SdpaKernel=CUDNN_FLASH_ATTENTION") == std::string::npos) {
+    GTEST_SKIP() << "cuDNN SDPA is not runnable in this build/device configuration.\n"
+                 << auto_log;
+  }
+
+  const std::string fallback_log = RunGQACudnnSdpaProbeCase(std::nullopt, /*reject_cudnn_graph=*/true);
+  EXPECT_EQ(fallback_log.find("SdpaKernel=CUDNN_FLASH_ATTENTION"), std::string::npos) << fallback_log;
+  EXPECT_TRUE(fallback_log.find("SdpaKernel=FLASH_ATTENTION") != std::string::npos ||
+              fallback_log.find("SdpaKernel=EFFICIENT_ATTENTION") != std::string::npos)
+      << fallback_log;
+
+  // An explicit opt-in doesn't consult the probe, so it keeps cuDNN.
+  const std::string explicit_log = RunGQACudnnSdpaProbeCase(std::string("1"), /*reject_cudnn_graph=*/true);
+  EXPECT_NE(explicit_log.find("SdpaKernel=CUDNN_FLASH_ATTENTION"), std::string::npos) << explicit_log;
+}
+
 static void RunGQACudaCacheAliasingTest(
     bool use_flash,
     bool sliding_window_cache = false,
