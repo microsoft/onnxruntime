@@ -34,6 +34,42 @@
     list(APPEND onnxruntime_providers_webgpu_cc_srcs ${onnxruntime_webgpu_contrib_ops_cc_srcs})
   endif()
 
+  # Source file basenames must be unique within this target. With /experimental:log<dir>\ or /analyze:log <dir>\
+  # (which compliance tooling may inject), MSVC writes one SARIF log per translation unit into <dir>, named after the
+  # file name without its directory, so same-named sources race for one log under parallel compilation (fatal error
+  # C1083) or silently overwrite each other's results. This rule covers only this target's source list, not other ORT
+  # targets, so add compiled sources to the list before this check. It deliberately runs before the
+  # build-mode-specific filtering below, so a static-library build also rejects names that would collide in the
+  # plugin builds. Remove it once that tooling gives each translation unit its own log name.
+  function(onnxruntime_webgpu_check_unique_source_basenames)
+    set(names "")
+    set(paths "")
+    set(collisions "")
+    foreach(src IN LISTS ARGN)
+      string(TOLOWER "${src}" src_lower)
+      if(NOT src_lower MATCHES "\\.(c|cc|cpp|cxx)$")
+        continue()
+      endif()
+      get_filename_component(name "${src_lower}" NAME_WLE)
+      list(FIND names "${name}" index)
+      if(index EQUAL -1)
+        list(APPEND names "${name}")
+        list(APPEND paths "${src}")
+      else()
+        list(GET paths ${index} other)
+        if(NOT other STREQUAL src)
+          string(APPEND collisions "\n  '${name}': ${other} and ${src}")
+        endif()
+      endif()
+    endforeach()
+    if(NOT collisions STREQUAL "")
+      message(FATAL_ERROR "onnxruntime_providers_webgpu: source files must have unique basenames because MSVC "
+                          "names per-file SARIF logs after the file name without its directory, so same-named "
+                          "files collide. Rename one file in each pair:${collisions}")
+    endif()
+  endfunction()
+  onnxruntime_webgpu_check_unique_source_basenames(${onnxruntime_providers_webgpu_cc_srcs})
+
   if(NOT onnxruntime_USE_EP_API_ADAPTERS)
     #
     # Build WebGPU EP as an internal (non-plugin) static library
