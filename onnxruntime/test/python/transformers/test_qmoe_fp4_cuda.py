@@ -312,7 +312,9 @@ def create_fp4_moe_onnx_graph(
     ]
 
     graph = helper.make_graph(nodes, "QMoE_FP4_Test", graph_inputs, graph_outputs, initializers)
-    model = helper.make_model(graph)
+    model = helper.make_model(
+        graph, opset_imports=[helper.make_opsetid("", 22), helper.make_opsetid("com.microsoft", 1)]
+    )
     return model.SerializeToString()
 
 
@@ -925,8 +927,10 @@ class TestQMoEFP4Sm80SingleWeightCopy(unittest.TestCase):
     ``gemv_fp4_fc*_reads_sm80_layout_``), and then reports ``is_packed = true`` so ORT releases
     the raw ``[E, K, N/2]`` initializers (``release_fp4_raw_weights_``).
 
-    Two properties have to hold for that to be safe, one test each:
+    Session initialization and two properties of the packed weights are covered:
 
+    * session construction applies the SM80 decision before tactic discovery, for both FP16 and
+      BF16 with the default, enabled, and disabled modes -- ``test_sm80_session_initialization``;
     * every dispatch stays numerically equivalent to ORT_FP4_SM80_GEMM=0, which keeps the raw
       initializers and serves decode from a GEMV-native weight copy and prefill from the
       dequant fallback -- ``test_sm80_parity_vs_dequant_fallback``;
@@ -968,6 +972,29 @@ class TestQMoEFP4Sm80SingleWeightCopy(unittest.TestCase):
             use_swiglu=True,
         )
         return model, dequantized
+
+    @parameterized.expand(
+        [
+            ("fp16_default", TensorProto.FLOAT16, None),
+            ("fp16_enabled", TensorProto.FLOAT16, "1"),
+            ("fp16_disabled", TensorProto.FLOAT16, "0"),
+            ("bf16_default", TensorProto.BFLOAT16, None),
+            ("bf16_enabled", TensorProto.BFLOAT16, "1"),
+            ("bf16_disabled", TensorProto.BFLOAT16, "0"),
+        ]
+    )
+    def test_sm80_session_initialization(self, _name, onnx_dtype, sm80_mode):
+        """Constructing an MXFP4 session must apply the SM80 decision before tactic discovery."""
+        self._skip_unless_sm80_regime()
+        model, _ = self._build_model(512, 512, 1, onnx_dtype)
+        opts = onnxruntime.SessionOptions()
+        opts.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
+        opts.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+        with _env_overrides(ORT_FP4_SM80_GEMM=sm80_mode, ORT_ENABLE_FP4_CUTLASS_GEMM="0"):
+            session = onnxruntime.InferenceSession(
+                model, opts, providers=[resolve_cuda_plugin_ep("CUDAExecutionProvider")]
+            )
+        self.assertIn("CUDAExecutionProvider", session.get_providers())
 
     def _run(self, model, sm80_mode, input_tensor, router_logits, onnx_dtype):
         opts = onnxruntime.SessionOptions()
