@@ -1356,6 +1356,23 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                                                   fc1_expert_weight_bits_, fc1_n, fc1_k));
       ORT_RETURN_IF_ERROR(validate_fallback_input(fc2_shape, fc2_scales, "fc2_experts_weights", "fc2_scales",
                                                   fc2_expert_weight_bits_, fc2_n, fc2_k));
+    } else {
+      // Offline-prepacked weights: PrePack may have released the scale initializers, so validate either the
+      // live tensor or the shape cached at PrePack time before kernels index [E,N,K/block_size] scales.
+      auto validate_preloaded_scales = [&](const Tensor* scales, const TensorShape& cached_shape,
+                                           const char* scales_name, int64_t n, int64_t k) -> Status {
+        const TensorShape& scale_shape = scales != nullptr ? scales->Shape() : cached_shape;
+        const int64_t blocks_per_row = k / block_size_;
+        ORT_RETURN_IF_NOT(scale_shape.NumDimensions() == 3 &&
+                              scale_shape[0] == moe_params.num_experts &&
+                              scale_shape[1] == n && scale_shape[2] == blocks_per_row,
+                          "INT2 or mixed-width CUDA QMoE with prepacked weights requires block-wise ", scales_name,
+                          " shape [E,N,K/block_size]=[", moe_params.num_experts, ",", n, ",", blocks_per_row,
+                          "], got ", scale_shape, ".");
+        return Status::OK();
+      };
+      ORT_RETURN_IF_ERROR(validate_preloaded_scales(fc1_scales, fc1_scales_shape_, "fc1_scales", fc1_n, fc1_k));
+      ORT_RETURN_IF_ERROR(validate_preloaded_scales(fc2_scales, fc2_scales_shape_, "fc2_scales", fc2_n, fc2_k));
     }
 
     const size_t element_size = is_fp16_ ? sizeof(half) : sizeof(__nv_bfloat16);
@@ -1687,6 +1704,12 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                              (kernel_activation_type == ActivationType::Silu ||
                               kernel_activation_type == ActivationType::Swiglu) &&
                              moe_params.num_rows <= 65535 / k_;
+  // Offline-packed SM80 bytes cannot be consumed by the dense dequantization fallback.
+  ORT_RETURN_IF(preloaded_int2_or_mixed && !use_packed_int,
+                "INT2 or mixed-width CUDA QMoE with weights_prepacked=1 requires a packed execution path "
+                "(INT2 GEMV/prefill enabled, SwiGLU fusion 1, block_size 32/64/128, no zero points, supported "
+                "shapes and routing), but none is available for this invocation. Use weights_prepacked=0 "
+                "with raw weights for the dense fallback.");
   if (use_int_dequant_fallback && !use_packed_int) {
     const size_t total_dequant_bytes = SafeInt<size_t>(int_dequant_fc1_bytes) + int_dequant_fc2_bytes;
     ORT_RETURN_IF_NOT(total_dequant_bytes <= static_cast<size_t>(int_dequant_max_scratch_bytes_),
@@ -3726,8 +3749,19 @@ Status QMoE::ComputeInt3(OpKernelContext* context) const {
   params.limit = swiglu_limit_;
   params.is_bfloat16 = !input->IsDataType<MLFloat16>();
   const auto stream = Stream(context);
+  // Cached validation is valid only when every scale/zero-point input is an immutable initializer;
+  // runtime-fed tensors are re-validated on each invocation (skipped while capturing a CUDA graph).
+  int content_constant = int3_content_constant_.load(std::memory_order_relaxed);
+  if (content_constant < 0) {
+    const Tensor* unused = nullptr;
+    const bool constant = (Info().TryGetConstantInput(3, &unused)) && (Info().TryGetConstantInput(6, &unused)) &&
+                          (!first_zeros || Info().TryGetConstantInput(11, &unused)) &&
+                          (!second_zeros || Info().TryGetConstantInput(12, &unused));
+    content_constant = constant ? 1 : 0;
+    int3_content_constant_.store(content_constant, std::memory_order_relaxed);
+  }
   const bool need_validate =
-      !int3_content_validated_.load(std::memory_order_relaxed) &&
+      (content_constant == 0 || !int3_content_validated_.load(std::memory_order_relaxed)) &&
       (first_zeros != nullptr || second_zeros != nullptr ||
        onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_VALIDATE_INT3_CONTENT", 0) != 0) &&
       !onnxruntime::llm::common::isCapturing(stream);
@@ -3743,9 +3777,18 @@ Status QMoE::ComputeInt3(OpKernelContext* context) const {
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
     ORT_RETURN_IF_NOT(invalid_host == 0,
                       "INT3 QMoE requires finite nonnegative scales and INT3 zero points equal to 4 with zero padding.");
-    int3_content_validated_.store(true, std::memory_order_relaxed);
+    if (content_constant == 1) {
+      int3_content_validated_.store(true, std::memory_order_relaxed);
+    }
   }
   auto* output = context->Output(0, input_shape);
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+  if (routing_snapshot_) {
+    auto* pilot = context->GetKernelPilot();
+    ORT_RETURN_IF_NOT(pilot, "MoE expert tracking is enabled but its collector is unavailable.");
+    ORT_RETURN_IF_ERROR(routing_snapshot_->BeginInvocation(pilot->Moe(), static_cast<size_t>(experts)));
+  }
+#endif
   if (rows == 0) return Status::OK();
   const size_t element_size = input->DataType()->Size();
   const size_t per_row_bytes =
@@ -3783,12 +3826,23 @@ Status QMoE::ComputeInt3(OpKernelContext* context) const {
     } else {
       route(reinterpret_cast<const half*>(router->DataRaw()) + offset * experts);
     }
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+    if (routing_snapshot_) {
+      ORT_RETURN_IF_ERROR(routing_snapshot_->Capture(
+          selected.get(), SafeInt<size_t>(params.rows) * SafeInt<size_t>(k_), stream));
+    }
+#endif
     params.input = static_cast<const char*>(input->DataRaw()) + offset * hidden * element_size;
     params.output = static_cast<char*>(output->MutableDataRaw()) + offset * hidden * element_size;
     params.router_weights = router_weights
                                 ? static_cast<const char*>(router_weights->DataRaw()) + offset * experts * element_size
                                 : nullptr;
     CUDA_RETURN_IF_ERROR(LaunchInt3Moe(params, stream));
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+    if (routing_snapshot_) {
+      ORT_RETURN_IF_ERROR(routing_snapshot_->Consume());
+    }
+#endif
   }
   return Status::OK();
 }
@@ -4064,6 +4118,10 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
     } else if (quant_type_ == "int") {
       if (uses_packed_int_decode) {
         if (packed_fc1_weights_ || weights_prepacked_) {
+          if (weights_prepacked_) {
+            // The initializer is released below, so cache its shape for validation at Run time.
+            fc1_scales_shape_ = tensor.Shape();
+          }
           bool local_packed = false;
           PrePackTransposeAndPack(tensor, stream, alloc, gemv_int_fc1_scales_, local_packed);
           is_packed = weights_prepacked_;
@@ -4117,6 +4175,10 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
     } else if (quant_type_ == "int") {
       if (uses_packed_int_decode) {
         if (packed_fc2_weights_ || weights_prepacked_) {
+          if (weights_prepacked_) {
+            // The initializer is released below, so cache its shape for validation at Run time.
+            fc2_scales_shape_ = tensor.Shape();
+          }
           bool local_packed = false;
           PrePackTransposeAndPack(tensor, stream, alloc, gemv_int_fc2_scales_, local_packed);
           is_packed = weights_prepacked_;
