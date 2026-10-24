@@ -13,18 +13,22 @@ import (
 type ErrorCode int
 
 const (
-	ErrorCodeOK               ErrorCode = 0
-	ErrorCodeFail             ErrorCode = 1
-	ErrorCodeInvalidArgument  ErrorCode = 2
-	ErrorCodeNoSuchFile       ErrorCode = 3
-	ErrorCodeNoModel          ErrorCode = 4
-	ErrorCodeEngineError      ErrorCode = 5
-	ErrorCodeRuntimeException ErrorCode = 6
-	ErrorCodeInvalidProtobuf  ErrorCode = 7
-	ErrorCodeModelLoaded      ErrorCode = 8
-	ErrorCodeNotImplemented   ErrorCode = 9
-	ErrorCodeInvalidGraph     ErrorCode = 10
-	ErrorCodeEPFail           ErrorCode = 11
+	ErrorCodeOK                       ErrorCode = 0
+	ErrorCodeFail                     ErrorCode = 1
+	ErrorCodeInvalidArgument          ErrorCode = 2
+	ErrorCodeNoSuchFile               ErrorCode = 3
+	ErrorCodeNoModel                  ErrorCode = 4
+	ErrorCodeEngineError              ErrorCode = 5
+	ErrorCodeRuntimeException         ErrorCode = 6
+	ErrorCodeInvalidProtobuf          ErrorCode = 7
+	ErrorCodeModelLoaded              ErrorCode = 8
+	ErrorCodeNotImplemented           ErrorCode = 9
+	ErrorCodeInvalidGraph             ErrorCode = 10
+	ErrorCodeEPFail                   ErrorCode = 11
+	ErrorCodeModelLoadCanceled        ErrorCode = 12
+	ErrorCodeModelRequiresCompilation ErrorCode = 13
+	ErrorCodeNotFound                 ErrorCode = 14
+	ErrorCodeDeviceReset              ErrorCode = 15
 )
 
 func (c ErrorCode) String() string {
@@ -53,6 +57,14 @@ func (c ErrorCode) String() string {
 		return "InvalidGraph"
 	case ErrorCodeEPFail:
 		return "EPFail"
+	case ErrorCodeModelLoadCanceled:
+		return "ModelLoadCanceled"
+	case ErrorCodeModelRequiresCompilation:
+		return "ModelRequiresCompilation"
+	case ErrorCodeNotFound:
+		return "NotFound"
+	case ErrorCodeDeviceReset:
+		return "DeviceReset"
 	default:
 		return fmt.Sprintf("ErrorCode(%d)", int(c))
 	}
