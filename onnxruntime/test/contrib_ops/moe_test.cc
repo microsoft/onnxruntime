@@ -2951,6 +2951,128 @@ TEST(MoETest, QMoETest_MixedWidthCudaPackedDecodeBFloat16) {
 }
 #endif
 
+TEST(MoETest, QMoETest_MixedWidthCudaPackedDecodeBlock32) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device with compute capability 8.0 or newer is required.";
+  }
+  for (const auto& bits : {std::pair<int64_t, int64_t>{2, 4},
+                           std::pair<int64_t, int64_t>{4, 2},
+                           std::pair<int64_t, int64_t>{2, 2}}) {
+    for (int64_t num_rows : {1, 4}) {
+      RunQMoEMixedWidthCudaIdentityTest(
+          bits.first, bits.second, /*max_scratch_bytes=*/1, /*fused_swiglu=*/true,
+          /*with_zero_points=*/false, /*use_bf16=*/false, /*block_size=*/32, /*hidden_size=*/512,
+          /*inter_size=*/512, /*expect_scratch_failure=*/false, /*use_initializers=*/true, num_rows);
+    }
+  }
+}
+
+TEST(MoETest, QMoETest_Int3AndMixedWidthCudaSwiGLU) {
+  if (!HasCudaEnvironment(750)) {
+    GTEST_SKIP() << "CUDA device with compute capability 7.5 or newer is required.";
+  }
+  auto pack_lsb_bits = [](const std::vector<uint8_t>& codes, int64_t rows, int64_t cols, int64_t bits) {
+    const int64_t row_bytes = (cols * bits + 7) / 8;
+    std::vector<uint8_t> out(static_cast<size_t>(rows * row_bytes), 0);
+    for (int64_t r = 0; r < rows; ++r) {
+      for (int64_t c = 0; c < cols; ++c) {
+        const uint8_t code = static_cast<uint8_t>(codes[static_cast<size_t>(r * cols + c)] & ((1u << bits) - 1u));
+        const int64_t bit_offset = c * bits;
+        const size_t byte_idx = static_cast<size_t>(r * row_bytes + bit_offset / 8);
+        const int shift = static_cast<int>(bit_offset % 8);
+        out[byte_idx] |= static_cast<uint8_t>(code << shift);
+        if (shift + bits > 8) {
+          out[byte_idx + 1] |= static_cast<uint8_t>(code >> (8 - shift));
+        }
+      }
+    }
+    return out;
+  };
+
+  constexpr int64_t num_experts = 2;
+  constexpr int64_t hidden_size = 128;
+  constexpr int64_t inter_size = 64;
+  constexpr int64_t fc1_rows = 2 * inter_size;
+
+  for (const auto& bits : {std::pair<int64_t, int64_t>{3, 3},
+                           std::pair<int64_t, int64_t>{3, 4},
+                           std::pair<int64_t, int64_t>{4, 3},
+                           std::pair<int64_t, int64_t>{2, 3}}) {
+    for (int64_t block_size : {32, 64}) {
+      for (int64_t num_rows : {1, 4}) {
+        const int64_t fc1_bits = bits.first;
+        const int64_t fc2_bits = bits.second;
+        const uint8_t z1 = static_cast<uint8_t>(1u << (fc1_bits - 1));
+        const uint8_t z2 = static_cast<uint8_t>(1u << (fc2_bits - 1));
+
+        std::vector<uint8_t> fc1_codes(static_cast<size_t>(num_experts * fc1_rows * hidden_size), z1);
+        std::vector<uint8_t> fc2_codes(static_cast<size_t>(num_experts * hidden_size * inter_size), z2);
+        for (int64_t e = 0; e < num_experts; ++e) {
+          for (int64_t r = 0; r < fc1_rows; ++r) {
+            const int64_t col = r / 2;
+            fc1_codes[static_cast<size_t>((e * fc1_rows + r) * hidden_size + col)] = static_cast<uint8_t>(z1 + 1);
+          }
+          for (int64_t r = 0; r < hidden_size; ++r) {
+            if (r < inter_size) {
+              fc2_codes[static_cast<size_t>((e * hidden_size + r) * inter_size + r)] = static_cast<uint8_t>(z2 + 1);
+            }
+          }
+        }
+        auto fc1_weights = pack_lsb_bits(fc1_codes, num_experts * fc1_rows, hidden_size, fc1_bits);
+        auto fc2_weights = pack_lsb_bits(fc2_codes, num_experts * hidden_size, inter_size, fc2_bits);
+        const std::vector<float> fc1_scales(
+            static_cast<size_t>(num_experts * fc1_rows * (hidden_size / block_size)), 1.0f);
+        const std::vector<float> fc2_scales(
+            static_cast<size_t>(num_experts * hidden_size * (inter_size / block_size)), 1.0f);
+
+        std::vector<float> input(static_cast<size_t>(num_rows * hidden_size), 0.0f);
+        std::vector<float> expected(static_cast<size_t>(num_rows * hidden_size), 0.0f);
+        for (int64_t r = 0; r < num_rows; ++r) {
+          for (int64_t c = 0; c < inter_size; ++c) {
+            const float val = static_cast<float>(static_cast<int>((r * 7 + c) % 9) - 4) * 0.25f;
+            input[static_cast<size_t>(r * hidden_size + c)] = val;
+            const float h = MLFloat16(val).ToFloat();
+            expected[static_cast<size_t>(r * hidden_size + c)] = h / (1.0f + std::exp(-h)) * h;
+          }
+        }
+        const std::vector<float> router_probs(static_cast<size_t>(num_rows * num_experts), 1.0f);
+
+        OpTester tester("QMoE", 1, onnxruntime::kMSDomain);
+        tester.AddAttribute<int64_t>("k", 2);
+        tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
+        tester.AddAttribute<std::string>("activation_type", "swiglu");
+        tester.AddAttribute<int64_t>("swiglu_fusion", 1);
+        tester.AddAttribute<int64_t>("expert_weight_bits", fc1_bits);
+        tester.AddAttribute<int64_t>("fc1_expert_weight_bits", fc1_bits);
+        tester.AddAttribute<int64_t>("fc2_expert_weight_bits", fc2_bits);
+        tester.AddAttribute<int64_t>("fc3_expert_weight_bits", fc1_bits);
+        tester.AddAttribute<int64_t>("weights_prepacked", 0);
+        tester.AddAttribute<int64_t>("block_size", block_size);
+        tester.AddInput<MLFloat16>("input", {num_rows, hidden_size}, ToFloat16(input));
+        tester.AddInput<MLFloat16>("router_probs", {num_rows, num_experts}, ToFloat16(router_probs));
+        tester.AddInput<uint8_t>("fc1_experts_weights",
+                                 {num_experts, fc1_rows, (hidden_size * fc1_bits + 7) / 8}, fc1_weights, true);
+        tester.AddInput<MLFloat16>("fc1_scales", {num_experts, fc1_rows, hidden_size / block_size},
+                                   ToFloat16(fc1_scales), true);
+        tester.AddOptionalInputEdge<MLFloat16>();
+        tester.AddInput<uint8_t>("fc2_experts_weights",
+                                 {num_experts, hidden_size, (inter_size * fc2_bits + 7) / 8}, fc2_weights, true);
+        tester.AddInput<MLFloat16>("fc2_scales", {num_experts, hidden_size, inter_size / block_size},
+                                   ToFloat16(fc2_scales), true);
+        tester.AddOutput<MLFloat16>("output", {num_rows, hidden_size}, ToFloat16(expected));
+        tester.SetOutputTolerance(0.02f);
+
+        std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+        execution_providers.push_back(DefaultCudaExecutionProvider());
+        SessionOptions session_options;
+        ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+            kOrtSessionOptionsDisableCPUEPFallback, "1"));
+        tester.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+      }
+    }
+  }
+}
+
 TEST(MoETest, QMoETest_MixedWidthCudaAsymmetricZeroPoints) {
   if (!HasCudaEnvironment(700)) {
     GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";

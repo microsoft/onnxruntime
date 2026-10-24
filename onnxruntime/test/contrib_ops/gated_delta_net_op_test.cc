@@ -730,7 +730,9 @@ TEST(GatedDeltaNetTest, RecurrentOutputsIncludeFirstRowState) {
                         expected_final_state, false, 2e-3f, 2e-3f);
   test.AddOutput<float>("mid_state", {g.batch, g.hv, g.dv, g.dk},
                         expected_mid_state, false, 2e-3f, 2e-3f);
-  test.Run();
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
 }
 
 TEST(GatedDeltaNetTest, RecurrentMidStatePreservesEmptyRequests) {
@@ -1549,24 +1551,27 @@ TEST(GatedDeltaNetTest, DirectPackedQkvBFloat16ExactParity) {
 template <typename T>
 void TestQwenS2PackedParity() {
   if (NeedSkipGatedDeltaNetTest()) return;
-  Geometry geometry{2, 1, 16, 48, 128, 128};
-  Options options;
-  options.qk_l2_norm = 1;
-  options.gate_activation = "qwen";
-  options.beta_activation = "sigmoid";
-  options.gates_in_input_type = true;
-  Inputs inputs = MakeInputs(geometry, 151);
-  std::vector<OrtValue> reference, packed;
-  RunTypedCase<T>(geometry, options, inputs, 2e-2f, 2e-2f, true, &reference);
-  RunTypedCase<T>(geometry, options, inputs, 2e-2f, 2e-2f, true, &packed,
-                  false, false, nullptr, 0, true);
-  ASSERT_EQ(reference.size(), packed.size());
-  for (size_t index = 0; index < reference.size(); ++index) {
-    const auto& expected = reference[index].Get<Tensor>();
-    const auto& actual = packed[index].Get<Tensor>();
-    ASSERT_EQ(expected.Shape(), actual.Shape());
-    ASSERT_EQ(expected.SizeInBytes(), actual.SizeInBytes());
-    EXPECT_EQ(std::memcmp(expected.DataRaw(), actual.DataRaw(), expected.SizeInBytes()), 0);
+  for (int tokens : {1, 2, 8}) {
+    Geometry geometry{tokens, 1, 16, 48, 128, 128};
+    Options options;
+    options.qk_l2_norm = 1;
+    options.gate_activation = "qwen";
+    options.beta_activation = "sigmoid";
+    options.gates_in_input_type = true;
+    Inputs inputs = MakeInputs(geometry, 151 + tokens);
+    std::vector<OrtValue> reference, packed;
+    RunTypedCase<T>(geometry, options, inputs, 2e-2f, 2e-2f, true, &reference);
+    RunTypedCase<T>(geometry, options, inputs, 2e-2f, 2e-2f, true, &packed,
+                    false, false, nullptr, 0, true);
+    ASSERT_EQ(reference.size(), packed.size());
+    for (size_t index = 0; index < reference.size(); ++index) {
+      const auto& expected = reference[index].Get<Tensor>();
+      const auto& actual = packed[index].Get<Tensor>();
+      ASSERT_EQ(expected.Shape(), actual.Shape());
+      ASSERT_EQ(expected.SizeInBytes(), actual.SizeInBytes());
+      EXPECT_EQ(std::memcmp(expected.DataRaw(), actual.DataRaw(), expected.SizeInBytes()), 0)
+          << "tokens=" << tokens << " output=" << index;
+    }
   }
 }
 
@@ -1593,7 +1598,408 @@ TEST(GatedDeltaNetTest, Recurrent_Float32) {
 TEST(GatedDeltaNetTest, BFloat16UsesRecurrentFallback) {
   if (NeedSkipGatedDeltaNetTest()) return;
   Geometry g{64, 1, 1, 2, kDim, kDim};
-  RunTypedCase<BFloat16>(g, Options{}, MakeInputs(g, 151), 6e-3f, 2e-3f);
+  const Inputs in = MakeInputs(g, 151);
+  RunTypedCase<BFloat16>(g, Options{}, in, 6e-3f, 2e-3f);
+  {
+    ScopedEnvironmentVariables scoped_env_vars{
+        EnvVarMap{{"ORT_GDN_PLAN", "recurrent"}}};
+    RunTypedCase<BFloat16>(g, Options{}, in, 6e-3f, 2e-3f);
+  }
+  if (!NeedSkipGatedDeltaNetSplitTest()) {
+    ScopedEnvironmentVariables scoped_env_vars{
+        EnvVarMap{{"ORT_GDN_PLAN", "chunked_split"}}};
+    RunTypedCase<BFloat16>(g, Options{}, in, 6e-3f, 2e-3f);
+  }
+}
+
+TEST(GatedDeltaNetTest, BFloat16ValuesOutsideFp16Range) {
+  if (NeedSkipGatedDeltaNetTest()) return;
+  Geometry g{64, 1, 1, 2, kDim, kDim};
+
+  // Values above FP16 max finite (65504): 2^20 * 0.5 = 524288.0f would overflow to Inf if
+  // narrowed through FP16.
+  {
+    Inputs in = MakeInputs(g, 159);
+    const float large_scale = std::ldexp(1.0f, 20);
+    for (float& x : in.v) x *= large_scale;
+    for (float& x : in.state0) x *= large_scale;
+    Options o;
+    o.scale = std::ldexp(1.0f, -20) / std::sqrt(static_cast<float>(kDim));
+    std::vector<OrtValue> fetches;
+    RunTypedCase<BFloat16>(g, o, in, 6e-3f, 2e-3f * large_scale, false, &fetches);
+    ASSERT_EQ(fetches.size(), 3u);
+    const float* final_state = fetches[1].Get<Tensor>().Data<float>();
+    float max_abs_state = 0.0f;
+    for (int64_t i = 0; i < fetches[1].Get<Tensor>().Shape().Size(); ++i) {
+      ASSERT_TRUE(std::isfinite(final_state[i]));
+      max_abs_state = std::max(max_abs_state, std::abs(final_state[i]));
+    }
+    EXPECT_GT(max_abs_state, 65504.0f);
+  }
+
+  // Values below FP16 min subnormal (2^-24): 2^-30 would flush to 0 if narrowed through FP16.
+  {
+    Inputs in = MakeInputs(g, 163);
+    const float small_scale = std::ldexp(1.0f, -30);
+    for (float& x : in.v) x *= small_scale;
+    for (float& x : in.state0) x *= small_scale;
+    Options o;
+    o.scale = std::ldexp(1.0f, 30) / std::sqrt(static_cast<float>(kDim));
+    std::vector<OrtValue> fetches;
+    RunTypedCase<BFloat16>(g, o, in, 6e-3f, 2e-3f * small_scale, false, &fetches);
+    ASSERT_EQ(fetches.size(), 3u);
+    const BFloat16* out = fetches[0].Get<Tensor>().Data<BFloat16>();
+    float max_abs_out = 0.0f;
+    for (int64_t i = 0; i < fetches[0].Get<Tensor>().Shape().Size(); ++i) {
+      max_abs_out = std::max(max_abs_out, std::abs(out[i].ToFloat()));
+    }
+    EXPECT_GT(max_abs_out, 1e-2f);
+  }
+}
+
+TEST(GatedDeltaNetTest, BFloat16OutputAvoidsFp16DoubleRounding) {
+  if (NeedSkipGatedDeltaNetTest()) return;
+  Geometry g{64, 1, 1, 2, kDim, kDim};
+  Inputs in;
+  in.q.assign(static_cast<size_t>(g.total_tokens) * g.hq * g.dk, 0.0f);
+  in.k.assign(static_cast<size_t>(g.total_tokens) * g.hq * g.dk, 0.0f);
+  in.v.assign(static_cast<size_t>(g.total_tokens) * g.hv * g.dv, 0.0f);
+  in.decay.assign(static_cast<size_t>(g.total_tokens) * g.hv, 0.0f);
+  in.beta.assign(static_cast<size_t>(g.total_tokens) * g.hv, 0.0f);
+  in.state0.assign(static_cast<size_t>(g.batch) * g.hv * g.dv * g.dk, 0.0f);
+  for (int t = 0; t < g.total_tokens; ++t) {
+    in.q[static_cast<size_t>(t) * g.dk] = 1.0f;
+  }
+  for (int hv = 0; hv < g.hv; ++hv) {
+    for (int c = 0; c < g.dv; ++c) {
+      in.state0[(static_cast<size_t>(hv) * g.dv + c) * g.dk] = 1.0f;
+    }
+  }
+
+  // 1 + 23 * 2^-11 = 1.01123046875 rounds directly to BFloat16 1.0078125 (0x3f81),
+  // whereas rounding to FP16 first (1.01171875) and then to BFloat16 double-rounds to
+  // 1.015625 (0x3f82).
+  Options o;
+  o.update_rule = "linear";
+  o.scale = 1.01123046875f;
+  std::vector<OrtValue> fetches;
+  RunTypedCase<BFloat16>(g, o, in, 0.0f, 0.0f, false, &fetches);
+  ASSERT_EQ(fetches.size(), 3u);
+  const BFloat16 expected(1.0078125f);
+  const BFloat16* out = fetches[0].Get<Tensor>().Data<BFloat16>();
+  for (int64_t i = 0; i < fetches[0].Get<Tensor>().Shape().Size(); ++i) {
+    ASSERT_EQ(out[i].val, expected.val) << "output element " << i;
+  }
+}
+
+TEST(GatedDeltaNetTest, BFloat16PreservesFp32StateCancellation) {
+  if (NeedSkipGatedDeltaNetTest()) return;
+  Geometry g{64, 1, 1, 2, kDim, kDim};
+  Inputs in;
+  in.q.assign(static_cast<size_t>(g.total_tokens) * g.hq * g.dk, 0.0f);
+  in.k.assign(static_cast<size_t>(g.total_tokens) * g.hq * g.dk, 0.0f);
+  in.v.assign(static_cast<size_t>(g.total_tokens) * g.hv * g.dv, 0.0f);
+  in.decay.assign(static_cast<size_t>(g.total_tokens) * g.hv, 0.0f);
+  in.beta.assign(static_cast<size_t>(g.total_tokens) * g.hv, 0.0f);
+  in.state0.assign(static_cast<size_t>(g.batch) * g.hv * g.dv * g.dk, 0.0f);
+  for (int t = 0; t < g.total_tokens; ++t) {
+    in.q[static_cast<size_t>(t) * g.dk + 0] = 1.0f;
+    in.q[static_cast<size_t>(t) * g.dk + 1] = -1.0f;
+  }
+  for (int hv = 0; hv < g.hv; ++hv) {
+    for (int c = 0; c < g.dv; ++c) {
+      in.state0[(static_cast<size_t>(hv) * g.dv + c) * g.dk + 0] = 256.0f;
+      in.state0[(static_cast<size_t>(hv) * g.dv + c) * g.dk + 1] = 257.0f;
+    }
+  }
+
+  Options o;
+  o.update_rule = "linear";
+  o.qk_l2_norm = 0;
+  o.scale = 1.0f;
+  const BFloat16 expected(-1.0f);
+
+  for (const char* plan_env : {"", "chunked_split"}) {
+    if (std::string(plan_env) == "chunked_split" && NeedSkipGatedDeltaNetSplitTest()) continue;
+    SCOPED_TRACE(plan_env);
+    ScopedEnvironmentVariables scoped_env_vars{
+        EnvVarMap{{"ORT_GDN_PLAN", plan_env}}};
+    std::vector<OrtValue> fetches;
+    RunTypedCase<BFloat16>(g, o, in, 0.0f, 0.0f, false, &fetches);
+    ASSERT_EQ(fetches.size(), 3u);
+    const BFloat16* out = fetches[0].Get<Tensor>().Data<BFloat16>();
+    for (int64_t i = 0; i < fetches[0].Get<Tensor>().Shape().Size(); ++i) {
+      ASSERT_EQ(out[i].val, expected.val) << "output element " << i;
+    }
+  }
+}
+
+TEST(GatedDeltaNetTest, BFloat16PreservesTinyFp32StateCancellation) {
+  if (NeedSkipGatedDeltaNetTest()) return;
+  Geometry g{64, 1, 1, 2, kDim, kDim};
+  const float big = std::ldexp(1.0f, 125);
+  const float tiny = std::ldexp(1.0f, -125);
+  const float tiny_plus = tiny * (1.0f + std::ldexp(1.0f, -10));
+
+  Options o;
+  o.update_rule = "linear";
+  o.qk_l2_norm = 0;
+  o.scale = 1.0f;
+
+  // Test both uniform tiny pairs (-64 * 2^-10 = -0.0625) and a mixed-magnitude column where
+  // the first pair is q=(0,0), state=(1,0) and the remaining 63 pairs are tiny (-63 * 2^-10 =
+  // -0.0615234375).
+  for (bool mixed_column : {false, true}) {
+    SCOPED_TRACE(mixed_column ? "mixed_column" : "uniform_tiny");
+    Inputs in;
+    in.q.assign(static_cast<size_t>(g.total_tokens) * g.hq * g.dk, 0.0f);
+    in.k.assign(static_cast<size_t>(g.total_tokens) * g.hq * g.dk, 0.0f);
+    in.v.assign(static_cast<size_t>(g.total_tokens) * g.hv * g.dv, 0.0f);
+    in.decay.assign(static_cast<size_t>(g.total_tokens) * g.hv, 0.0f);
+    in.beta.assign(static_cast<size_t>(g.total_tokens) * g.hv, 0.0f);
+    in.state0.assign(static_cast<size_t>(g.batch) * g.hv * g.dv * g.dk, 0.0f);
+
+    for (int t = 0; t < g.total_tokens; ++t) {
+      for (int d = 0; d < g.dk; d += 2) {
+        in.q[static_cast<size_t>(t) * g.dk + d] = big;
+        in.q[static_cast<size_t>(t) * g.dk + d + 1] = -big;
+      }
+      if (mixed_column) {
+        in.q[static_cast<size_t>(t) * g.dk + 0] = 0.0f;
+        in.q[static_cast<size_t>(t) * g.dk + 1] = 0.0f;
+      }
+    }
+    for (int hv = 0; hv < g.hv; ++hv) {
+      for (int c = 0; c < g.dv; ++c) {
+        for (int d = 0; d < g.dk; d += 2) {
+          in.state0[(static_cast<size_t>(hv) * g.dv + c) * g.dk + d] = tiny;
+          in.state0[(static_cast<size_t>(hv) * g.dv + c) * g.dk + d + 1] = tiny_plus;
+        }
+        if (mixed_column) {
+          in.state0[(static_cast<size_t>(hv) * g.dv + c) * g.dk + 0] = 1.0f;
+          in.state0[(static_cast<size_t>(hv) * g.dv + c) * g.dk + 1] = 0.0f;
+        }
+      }
+    }
+
+    const BFloat16 expected(mixed_column ? -0.0615234375f : -0.0625f);
+    for (const char* plan_env : {"", "chunked_split"}) {
+      if (std::string(plan_env) == "chunked_split" && NeedSkipGatedDeltaNetSplitTest()) continue;
+      SCOPED_TRACE(plan_env);
+      ScopedEnvironmentVariables scoped_env_vars{
+          EnvVarMap{{"ORT_GDN_PLAN", plan_env}}};
+      std::vector<OrtValue> fetches;
+      RunTypedCase<BFloat16>(g, o, in, 0.0f, 0.0f, false, &fetches);
+      ASSERT_EQ(fetches.size(), 3u);
+      const BFloat16* out = fetches[0].Get<Tensor>().Data<BFloat16>();
+      for (int64_t i = 0; i < fetches[0].Get<Tensor>().Shape().Size(); ++i) {
+        ASSERT_EQ(out[i].val, expected.val) << "output element " << i;
+      }
+    }
+  }
+}
+
+TEST(GatedDeltaNetTest, BFloat16NearFltMaxStateDoesNotOverflow) {
+  if (NeedSkipGatedDeltaNetTest()) return;
+  Geometry g{64, 1, 1, 2, kDim, kDim};
+  Inputs in;
+  in.q.assign(static_cast<size_t>(g.total_tokens) * g.hq * g.dk, 0.0f);
+  in.k.assign(static_cast<size_t>(g.total_tokens) * g.hq * g.dk, 0.0f);
+  in.v.assign(static_cast<size_t>(g.total_tokens) * g.hv * g.dv, 0.0f);
+  in.decay.assign(static_cast<size_t>(g.total_tokens) * g.hv, 0.0f);
+  in.beta.assign(static_cast<size_t>(g.total_tokens) * g.hv, 0.0f);
+  in.state0.assign(static_cast<size_t>(g.batch) * g.hv * g.dv * g.dk, 0.0f);
+
+  const float q0 = std::ldexp(1.0f, -120);
+  const float max_f = std::numeric_limits<float>::max();
+  for (int t = 0; t < g.total_tokens; ++t) {
+    in.q[static_cast<size_t>(t) * g.dk + 0] = q0;
+  }
+  for (int hv = 0; hv < g.hv; ++hv) {
+    for (int c = 0; c < g.dv; ++c) {
+      in.state0[(static_cast<size_t>(hv) * g.dv + c) * g.dk + 0] = max_f;
+    }
+  }
+
+  Options o;
+  o.update_rule = "linear";
+  o.qk_l2_norm = 0;
+  o.scale = 1.0f;
+  const BFloat16 expected(256.0f);
+
+  for (const char* plan_env : {"", "chunked_split"}) {
+    if (std::string(plan_env) == "chunked_split" && NeedSkipGatedDeltaNetSplitTest()) continue;
+    SCOPED_TRACE(plan_env);
+    ScopedEnvironmentVariables scoped_env_vars{
+        EnvVarMap{{"ORT_GDN_PLAN", plan_env}}};
+    std::vector<OrtValue> fetches;
+    RunTypedCase<BFloat16>(g, o, in, 0.0f, 0.0f, false, &fetches);
+    ASSERT_EQ(fetches.size(), 3u);
+    const BFloat16* out = fetches[0].Get<Tensor>().Data<BFloat16>();
+    for (int64_t i = 0; i < fetches[0].Get<Tensor>().Shape().Size(); ++i) {
+      ASSERT_EQ(out[i].val, expected.val) << "output element " << i;
+    }
+    const float* final_state = fetches[1].Get<Tensor>().Data<float>();
+    for (int64_t i = 0; i < fetches[1].Get<Tensor>().Shape().Size(); ++i) {
+      ASSERT_TRUE(std::isfinite(final_state[i])) << "state element " << i;
+    }
+  }
+}
+
+TEST(GatedDeltaNetTest, BFloat16PreservesDeltaUpdateCancellation) {
+  if (NeedSkipGatedDeltaNetTest()) return;
+  Geometry g{64, 1, 1, 2, kDim, kDim};
+  Inputs in;
+  in.q.assign(static_cast<size_t>(g.total_tokens) * g.hq * g.dk, 0.0f);
+  in.k.assign(static_cast<size_t>(g.total_tokens) * g.hq * g.dk, 0.0f);
+  in.v.assign(static_cast<size_t>(g.total_tokens) * g.hv * g.dv, 0.0f);
+  in.decay.assign(static_cast<size_t>(g.total_tokens) * g.hv, 0.0f);
+  in.beta.assign(static_cast<size_t>(g.total_tokens) * g.hv, 1.0f);
+  in.state0.assign(static_cast<size_t>(g.batch) * g.hv * g.dv * g.dk, 0.0f);
+
+  for (int t = 0; t < g.total_tokens; ++t) {
+    in.q[static_cast<size_t>(t) * g.dk + 0] = 1.0f;
+    in.k[static_cast<size_t>(t) * g.dk + 0] = 1.0f;
+    const float v_val = (t % 2 == 0) ? 1024.0f : 1.0f;
+    for (int i = 0; i < g.hv * g.dv; ++i) {
+      in.v[static_cast<size_t>(t) * g.hv * g.dv + i] = v_val;
+    }
+  }
+
+  Options o;
+  o.update_rule = "delta";
+  o.qk_l2_norm = 0;
+  o.scale = 1.0f;
+  const BFloat16 expected_even(1024.0f);
+  const BFloat16 expected_odd(1.0f);
+
+  for (const char* plan_env : {"", "chunked_split"}) {
+    if (std::string(plan_env) == "chunked_split" && NeedSkipGatedDeltaNetSplitTest()) continue;
+    SCOPED_TRACE(plan_env);
+    ScopedEnvironmentVariables scoped_env_vars{
+        EnvVarMap{{"ORT_GDN_PLAN", plan_env}}};
+    std::vector<OrtValue> fetches;
+    RunTypedCase<BFloat16>(g, o, in, 0.0f, 0.0f, false, &fetches);
+    ASSERT_EQ(fetches.size(), 3u);
+    const BFloat16* out = fetches[0].Get<Tensor>().Data<BFloat16>();
+    for (int t = 0; t < g.total_tokens; ++t) {
+      const BFloat16 expected = (t % 2 == 0) ? expected_even : expected_odd;
+      for (int i = 0; i < g.hv * g.dv; ++i) {
+        ASSERT_EQ(out[static_cast<size_t>(t) * g.hv * g.dv + i].val, expected.val)
+            << "token " << t << " element " << i;
+      }
+    }
+    const float* final_state = fetches[1].Get<Tensor>().Data<float>();
+    for (int hv = 0; hv < g.hv; ++hv) {
+      for (int c = 0; c < g.dv; ++c) {
+        ASSERT_EQ(final_state[(static_cast<size_t>(hv) * g.dv + c) * g.dk + 0], 1.0f);
+      }
+    }
+  }
+}
+
+TEST(GatedDeltaNetTest, BFloat16PrecisionModesAndSessionOption) {
+  if (NeedSkipGatedDeltaNetTest()) return;
+  Geometry g{64, 1, 1, 2, kDim, kDim};
+  const Inputs in = MakeInputs(g, 173);
+  for (const char* mode : {"fp32", "fp16", "bf16"}) {
+    SCOPED_TRACE(mode);
+    ScopedEnvironmentVariables scoped_env_vars{
+        EnvVarMap{{"ORT_GDN_BF16_PRECISION", mode}}};
+    RunTypedCase<BFloat16>(g, Options{}, in, 6e-3f, 2e-3f);
+  }
+
+  // Session option overrides the environment variable, and invalid values are rejected.
+  Inputs in_rounded = in;
+  in_rounded.q = RoundToTensorType<BFloat16>(in.q);
+  in_rounded.k = RoundToTensorType<BFloat16>(in.k);
+  in_rounded.v = RoundToTensorType<BFloat16>(in.v);
+  std::vector<float> ref_out, ref_state;
+  Reference(g, Options{}, in_rounded, &ref_out, &ref_state);
+
+  auto populate_tester = [&](OpTester& test) {
+    AddCommonAttrs(test, Options{});
+    test.AddInput<BFloat16>("query", {g.total_tokens, g.hq, g.dk}, ToTensorType<BFloat16>(in_rounded.q));
+    test.AddInput<BFloat16>("key", {g.total_tokens, g.hq, g.dk}, ToTensorType<BFloat16>(in_rounded.k));
+    test.AddInput<BFloat16>("value", {g.total_tokens, g.hv, g.dv}, ToTensorType<BFloat16>(in_rounded.v));
+    test.AddOptionalInputEdge<int32_t>();
+    test.AddInput<float>("decay", {g.total_tokens, g.hv}, in_rounded.decay);
+    test.AddInput<float>("beta", {g.total_tokens, g.hv}, in_rounded.beta);
+    test.AddInput<float>("initial_state", {g.batch, g.hv, g.dv, g.dk}, in_rounded.state0);
+    test.AddOptionalInputEdge<float>();
+    test.AddOptionalInputEdge<float>();
+    test.AddOutput<BFloat16>("output", {g.total_tokens, g.hv, g.dv}, ToTensorType<BFloat16>(ref_out),
+                             false, 6e-3f, 6e-3f);
+    test.AddOutput<float>("final_state", {g.batch, g.hv, g.dv, g.dk}, ref_state, false, 2e-3f, 2e-3f);
+    test.AddOutput<float>("state_update", {g.batch, 0}, {});
+  };
+
+  for (const char* mode : {"fp32", "fp16", "bf16"}) {
+    SCOPED_TRACE(mode);
+    ScopedEnvironmentVariables scoped_env_vars{
+        EnvVarMap{{"ORT_GDN_BF16_PRECISION", "invalid_env_overridden_by_session"}}};
+    SessionOptions session_options;
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+        contrib::cuda::gated_delta_net::kGatedDeltaNetBf16PrecisionConfig, mode));
+    OpTester test("GatedDeltaNet", 1, onnxruntime::kMSDomain);
+    populate_tester(test);
+    std::vector<std::unique_ptr<IExecutionProvider>> eps;
+    eps.push_back(DefaultCudaExecutionProvider());
+    test.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
+  }
+
+  for (const char* invalid_mode : {"invalid_mode", "high", "fast", "half", "1", "0", ""}) {
+    SCOPED_TRACE(invalid_mode);
+    SessionOptions bad_options;
+    ASSERT_STATUS_OK(bad_options.config_options.AddConfigEntry(
+        contrib::cuda::gated_delta_net::kGatedDeltaNetBf16PrecisionConfig, invalid_mode));
+    OpTester test("GatedDeltaNet", 1, onnxruntime::kMSDomain);
+    populate_tester(test);
+    std::vector<std::unique_ptr<IExecutionProvider>> eps;
+    eps.push_back(DefaultCudaExecutionProvider());
+    test.Run(bad_options, OpTester::ExpectResult::kExpectFailure,
+             "ep.cuda.gated_delta_net_bf16_precision must be one of: fp32, fp16, bf16", {}, nullptr,
+             &eps);
+  }
+}
+
+TEST(GatedDeltaNetTest, BFloat16SplitPreservesMultiChunkDecay) {
+  if (NeedSkipGatedDeltaNetSplitTest()) return;
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{{"ORT_GDN_PLAN", "chunked_split"}}};
+
+  constexpr int total_tokens = 65536;
+  constexpr float raw_decay = -1e-5f;
+  const float expected_state = std::exp(raw_decay * static_cast<float>(total_tokens));
+
+  OpTester test("GatedDeltaNet", 1, onnxruntime::kMSDomain);
+  Options o;
+  o.update_rule = "gated";
+  o.qk_l2_norm = 0;
+  o.scale = 1.0f;
+  AddCommonAttrs(test, o);
+
+  const std::vector<BFloat16> zero_qkv(static_cast<size_t>(total_tokens) * kDim, BFloat16(0.0f));
+  const std::vector<float> decay(total_tokens, raw_decay);
+  const std::vector<float> state0(static_cast<size_t>(kDim) * kDim, 1.0f);
+  const std::vector<float> ref_state(static_cast<size_t>(kDim) * kDim, expected_state);
+
+  test.AddInput<BFloat16>("query", {total_tokens, 1, kDim}, zero_qkv);
+  test.AddInput<BFloat16>("key", {total_tokens, 1, kDim}, zero_qkv);
+  test.AddInput<BFloat16>("value", {total_tokens, 1, kDim}, zero_qkv);
+  test.AddOptionalInputEdge<int32_t>();
+  test.AddInput<float>("decay", {total_tokens, 1}, decay);
+  test.AddOptionalInputEdge<float>();
+  test.AddInput<float>("initial_state", {1, 1, kDim, kDim}, state0);
+  test.AddOptionalInputEdge<float>();
+  test.AddOptionalInputEdge<float>();
+  test.AddOutput<BFloat16>("output", {total_tokens, 1, kDim}, zero_qkv, /*sort_output=*/false, 0.0f, 0.0f);
+  test.AddOutput<float>("final_state", {1, 1, kDim, kDim}, ref_state, /*sort_output=*/false, 1e-3f, 1e-3f);
+  test.AddOutput<float>("state_update", {1, 0}, {});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
 }
 
 // One token per request drives the warp-specialised decode kernel, a separate instantiation
@@ -2384,7 +2790,18 @@ TEST(GatedDeltaNetPlanTest, BFloat16UsesRecurrentEngine) {
 
   const auto plan = gdn::SelectPlan(d, 160 * 1024);
   EXPECT_TRUE(plan.supported);
-  EXPECT_EQ(plan.engine, gdn::Engine::kRecurrent);
+  EXPECT_EQ(plan.engine, gdn::Engine::kChunked);
+
+  d.sm_major = 7;
+  const auto pre_ampere_plan = gdn::SelectPlan(d, 160 * 1024);
+  EXPECT_TRUE(pre_ampere_plan.supported);
+  EXPECT_EQ(pre_ampere_plan.engine, gdn::Engine::kRecurrent);
+
+  d.sm_major = 8;
+  d.io_type = gdn::IoType::kFloat;
+  const auto float_plan = gdn::SelectPlan(d, 160 * 1024);
+  EXPECT_TRUE(float_plan.supported);
+  EXPECT_EQ(float_plan.engine, gdn::Engine::kRecurrent);
 }
 
 TEST(GatedDeltaNetPlanTest, RecurrentSharedMemoryIncludesBothNormalizationScalars) {

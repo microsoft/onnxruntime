@@ -15,7 +15,6 @@ ONNX_OPERATOR_KERNEL_EX(
     BranchwiseRMSNorm, kMSDomain, 1, kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", WebGpuSupportedFloatTypes())
-        .TypeConstraint("F", DataTypeImpl::GetTensorType<float>())
         .TypeConstraint("M", WebGpuSupportedFloatTypes()),
     BranchwiseRMSNorm);
 
@@ -62,17 +61,9 @@ Status BranchwiseRMSNormProgram::GenerateShaderCode(ShaderHelper& shader) const 
 BranchwiseRMSNorm::BranchwiseRMSNorm(const OpKernelInfo& info)
     : WebGpuKernel(info),
       epsilon_(info.GetAttrOrDefault<float>("epsilon", 1e-5f)),
-      num_branches_(info.GetAttrOrDefault<int64_t>("num_branches", 0)) {
-  ORT_ENFORCE(info.GetAttrOrDefault<int64_t>("use_onnx_arithmetic", 0) == 0,
-              "WebGPU BranchwiseRMSNorm does not support use_onnx_arithmetic=1");
-}
+      num_branches_(info.GetAttrOrDefault<int64_t>("num_branches", 0)) {}
 
 Status BranchwiseRMSNorm::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
-  const auto* numerics = context.Input(2);
-  ORT_RETURN_IF_NOT(numerics == nullptr ||
-                        (numerics->IsDataType<int32_t>() && numerics->Shape().Size() == 1 &&
-                         numerics->Data<int32_t>()[0] == 0),
-                    "BranchwiseRMSNorm: nonzero prefill_numerics requires CUDA");
   const auto* x = context.Input(0);
   const auto* scale = context.Input(1);
   hyper_connection::StreamShape params;

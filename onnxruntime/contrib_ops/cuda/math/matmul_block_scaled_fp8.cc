@@ -346,6 +346,22 @@ Status MatMulBlockQuantizedFp8Weight::ComputeImpl(OpKernelContext* context) cons
   const auto* b_data = static_cast<const uint8_t*>(b->DataRaw());
   const float* b_scale_data = b_scale->Data<float>();
 
+  cublasHandle_t cublas = GetCublasHandle(context);
+  cublasMath_t prev_math_mode = CUBLAS_DEFAULT_MATH;
+  CUBLAS_RETURN_IF_ERROR(cublasGetMathMode(cublas, &prev_math_mode));
+  if (prev_math_mode != CUBLAS_MATH_DISALLOW_REDUCED_PRECISION_REDUCTION) {
+    CUBLAS_RETURN_IF_ERROR(cublasSetMathMode(cublas, CUBLAS_MATH_DISALLOW_REDUCED_PRECISION_REDUCTION));
+  }
+  struct RestoreCublasMathMode {
+    cublasHandle_t handle;
+    cublasMath_t mode;
+    ~RestoreCublasMathMode() {
+      if (mode != CUBLAS_MATH_DISALLOW_REDUCED_PRECISION_REDUCTION) {
+        (void)cublasSetMathMode(handle, mode);
+      }
+    }
+  } restore_math_mode{cublas, prev_math_mode};
+
   for (int64_t n_offset = 0; n_offset < n; n_offset += tile_rows) {
     const int rows = SafeInt<int>(std::min<int64_t>(tile_rows, n - n_offset));
     const size_t row_offset = static_cast<size_t>(n_offset);

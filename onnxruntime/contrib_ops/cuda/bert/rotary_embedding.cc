@@ -5,7 +5,6 @@
 #include "contrib_ops/cpu/bert/rotary_embedding_helper.h"
 #include "contrib_ops/cuda/bert/rotary_embedding.h"
 #include "contrib_ops/cuda/bert/rotary_embedding_impl.h"
-#include "core/providers/cuda/cuda_type_conversion.h"
 
 using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;
@@ -16,26 +15,21 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#define REGISTER_KERNEL_TYPED(T, Version)                               \
+#define REGISTER_KERNEL_TYPED(T)                                        \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                        \
       RotaryEmbedding,                                                  \
       kMSDomain,                                                        \
-      Version,                                                          \
+      1,                                                                \
       T,                                                                \
       kCudaExecutionProvider,                                           \
       (*KernelDefBuilder::Create())                                     \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())        \
-          .TypeConstraint("M", DataTypeImpl::GetTensorType<int64_t>())  \
-          .TypeConstraint("TI", DataTypeImpl::GetTensorType<int32_t>()) \
-          .InputMemoryType(OrtMemTypeCPUInput, 4),                      \
+          .TypeConstraint("M", DataTypeImpl::GetTensorType<int64_t>()), \
       RotaryEmbedding<T>);
 
-REGISTER_KERNEL_TYPED(float, 1)
-REGISTER_KERNEL_TYPED(MLFloat16, 1)
-REGISTER_KERNEL_TYPED(BFloat16, 1)
-REGISTER_KERNEL_TYPED(float, 2)
-REGISTER_KERNEL_TYPED(MLFloat16, 2)
-REGISTER_KERNEL_TYPED(BFloat16, 2)
+REGISTER_KERNEL_TYPED(float)
+REGISTER_KERNEL_TYPED(MLFloat16)
+REGISTER_KERNEL_TYPED(BFloat16)
 
 template <typename T>
 RotaryEmbedding<T>::RotaryEmbedding(const OpKernelInfo& info) : CudaKernel(info) {
@@ -44,9 +38,6 @@ RotaryEmbedding<T>::RotaryEmbedding(const OpKernelInfo& info) : CudaKernel(info)
   num_heads = static_cast<int>(info.GetAttrOrDefault<int64_t>("num_heads", 0));
   interleaved = (info.GetAttrOrDefault<int64_t>("interleaved", 0) == 1);
   is_packed_batching = (info.GetAttrOrDefault<int64_t>("is_packed_batching", 0) == 1);
-  const auto mode = info.GetAttrOrDefault<int64_t>("use_fp32_arithmetic", 0);
-  ORT_ENFORCE(mode == 0 || mode == 1, "use_fp32_arithmetic must be 0 or 1");
-  use_fp32_arithmetic = mode == 1;
 }
 
 template <typename T>
@@ -55,12 +46,6 @@ Status RotaryEmbedding<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* position_ids = context->Input<Tensor>(1);
   const Tensor* cos_cache = context->Input<Tensor>(2);
   const Tensor* sin_cache = context->Input<Tensor>(3);
-  const Tensor* numerics = context->Input<Tensor>(4);
-  ORT_RETURN_IF_NOT(numerics == nullptr ||
-                        (numerics->IsDataType<int32_t>() && numerics->Shape().Size() == 1 &&
-                         (numerics->Data<int32_t>()[0] == 0 || numerics->Data<int32_t>()[0] == 1)),
-                    "prefill_numerics must be an int32 scalar containing 0 or 1");
-  const bool dense_prefill = numerics != nullptr && numerics->Data<int32_t>()[0] == 1;
 
   RotaryParameters parameters = {};
   ORT_RETURN_IF_ERROR(rotary_embedding_helper::CheckInputs<Tensor>(input,
@@ -81,16 +66,14 @@ Status RotaryEmbedding<T>::ComputeInternal(OpKernelContext* context) const {
   // Launch rotary embedding kernel
   typedef typename ToCudaType<T>::MappedType CudaT;
   auto& device_prop = GetDeviceProp();
-  const auto launch = [&](auto* type_tag) {
-    using KernelT = std::remove_pointer_t<decltype(type_tag)>;
-    return LaunchRotaryEmbeddingKernel<KernelT>(
+  return LaunchRotaryEmbeddingKernel<CudaT>(
       Stream(context),
-      reinterpret_cast<KernelT*>(output->template MutableData<T>()),
-      reinterpret_cast<const KernelT*>(input->template Data<T>()),
+      reinterpret_cast<CudaT*>(output->template MutableData<T>()),
+      reinterpret_cast<const CudaT*>(input->template Data<T>()),
       position_ids->Data<int64_t>(),
       nullptr,  // past_sequence_lengths
-      reinterpret_cast<const KernelT*>(cos_cache->template Data<T>()),
-      reinterpret_cast<const KernelT*>(sin_cache->template Data<T>()),
+      reinterpret_cast<const CudaT*>(cos_cache->template Data<T>()),
+      reinterpret_cast<const CudaT*>(sin_cache->template Data<T>()),
       parameters.batch_size,
       parameters.sequence_length,
       parameters.num_heads,
@@ -100,13 +83,7 @@ Status RotaryEmbedding<T>::ComputeInternal(OpKernelContext* context) const {
       parameters.position_ids_format,
       interleaved,
       device_prop.maxThreadsPerBlock,
-      parameters.transposed,
-      dense_prefill ? false : use_fp32_arithmetic);
-  };
-  if (dense_prefill) {
-    return launch(static_cast<typename OrtToCudaType<T>::type*>(nullptr));
-  }
-  return launch(static_cast<CudaT*>(nullptr));
+      parameters.transposed);
 }
 
 }  // namespace cuda

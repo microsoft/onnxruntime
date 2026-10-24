@@ -29,10 +29,13 @@
 #include <limits>
 #include <type_traits>
 
-#include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/cu_inc/cub.cuh"
 #include "core/providers/cuda/cu_inc/cuda_type_helper.cuh"
 #include "core/providers/cuda/cuda_common.h"
+
+// Include env_var_utils.h after cuda_common.h: the latter transitively pulls in provider_api.h,
+// which defines SHARED_PROVIDER and suppresses env_var_utils.h's own logging.h include.
+#include "core/platform/env_var_utils.h"
 
 namespace onnxruntime::contrib::cuda {
 namespace {
@@ -476,25 +479,18 @@ __global__ void __launch_bounds__(kThreads)
   for (int r = 0; r < ROWS; ++r) va[r] = make_float4(0.f, 0.f, 0.f, 0.f);
   if (tid < nq) {
     for (int sp0 = 0; sp0 < p.splits; sp0 += 8) {
-      float4 pq[8][ROWS];
 #pragma unroll
       for (int u = 0; u < 8; ++u) {
+        if (sp0 + u < p.splits) {
 #pragma unroll
-        for (int r = 0; r < ROWS; ++r) {
-          pq[u][r] = sp0 + u < p.splits
-                         ? __ldcg(reinterpret_cast<const float4*>(
-                               partial + (row_idx[r] * p.splits + sp0 + u) * p.partial_stride + cq))
-                         : make_float4(0.f, 0.f, 0.f, 0.f);
-        }
-      }
-#pragma unroll
-      for (int u = 0; u < 8; ++u) {
-#pragma unroll
-        for (int r = 0; r < ROWS; ++r) {
-          va[r].x += pq[u][r].x;
-          va[r].y += pq[u][r].y;
-          va[r].z += pq[u][r].z;
-          va[r].w += pq[u][r].w;
+          for (int r = 0; r < ROWS; ++r) {
+            const float4 q = __ldcg(reinterpret_cast<const float4*>(
+                partial + (row_idx[r] * p.splits + sp0 + u) * p.partial_stride + cq));
+            va[r].x += q.x;
+            va[r].y += q.y;
+            va[r].z += q.z;
+            va[r].w += q.w;
+          }
         }
       }
     }
@@ -619,7 +615,7 @@ __global__ void NormKernel(const T* __restrict__ streams, const T* __restrict__ 
   if constexpr (kPost) gate_c = to_float<T>(prev_gate[group]);
 
   float sum_sq = 0.0f;
-  for (int h = threadIdx.x; h < hidden; h += kThreads) {
+  for (int64_t h = threadIdx.x; h < hidden; h += kThreads) {
     float v = to_float<T>(streams[base + h]);
     if constexpr (kPost) {
       v = Rnd<T>(fmaf(gate_c, to_float<T>(prev_out[row * hidden + h]), v));
@@ -632,7 +628,7 @@ __global__ void NormKernel(const T* __restrict__ streams, const T* __restrict__ 
   const float total = BlockReduce(storage).Sum(sum_sq);
   if (threadIdx.x == 0) inv_rms = rsqrtf(total / static_cast<float>(hidden) + epsilon);
   __syncthreads();
-  for (int h = threadIdx.x; h < hidden; h += kThreads) {
+  for (int64_t h = threadIdx.x; h < hidden; h += kThreads) {
     float v = to_float<T>(streams[base + h]);
     if constexpr (kPost) v = Rnd<T>(fmaf(gate_c, to_float<T>(prev_out[row * hidden + h]), v));
     hn[base + h] = from_float<T>(v * inv_rms * to_float<T>(norm_w[static_cast<int64_t>(c) * hidden + h]));
@@ -872,8 +868,8 @@ Status LaunchFusedRows(bool use_pdl, cudaStream_t stream, const HyperConnectionL
 
   const T* up_streams = tensors.prev_block_output != nullptr ? tensors.streams_out : tensors.streams;
   if (config.branches == 4 && config.rank == 320) {
-    return LaunchWithProgrammaticSerialization(use_pdl, HcUpPreKernel<T, ROWS, 4, 320>, up_grid, dim3(kThreads), stream,
-                                               up_streams, tensors.norm_scale, tensors.up_weight,
+    return LaunchWithProgrammaticSerialization(use_pdl, HcUpPreKernel<T, ROWS, 4, 320>, up_grid, dim3(kThreads),
+                                               stream, up_streams, tensors.norm_scale, tensors.up_weight,
                                                static_cast<const float*>(partial),
                                                static_cast<const float*>(inv_rms), tensors.pre_output,
                                                tensors.post_gate, up);
@@ -935,7 +931,7 @@ Status LaunchHyperConnectionLowRankMixFused(const cudaDeviceProp& device_prop, c
     UpParams up{config.rows, config.branches, config.hidden, config.rank, g.splits, g.partial_stride,
                 config.silu_alpha, config.reduction_scale, config.gate_div, config.gate_mul};
     static const bool enable_pdl =
-        onnxruntime::ParseEnvironmentVariableWithDefault<bool>("ORT_HYPER_CONNECTION_PDL", false);
+        onnxruntime::ParseEnvironmentVariableWithDefault<bool>("ORT_HYPER_CONNECTION_PDL", true);
     const bool use_pdl = enable_pdl && device_prop.major >= 9 && weights_are_constant;
     if (config.rows == 1) {
       return LaunchFusedRows<T, 1>(use_pdl, stream, config, tensors, g, partial, inv_rms, down, up);
@@ -973,9 +969,7 @@ Status LaunchHyperConnectionLowRankMixUnfused(cublasHandle_t cublas, cudaStream_
   ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
 
   ScopedCublasMathMode math_mode;
-  if constexpr (std::is_same_v<T, half>) {
-    ORT_RETURN_IF_ERROR(math_mode.Set(cublas, CUBLAS_MATH_DISALLOW_REDUCED_PRECISION_REDUCTION));
-  }
+  ORT_RETURN_IF_ERROR(math_mode.Set(cublas, CUBLAS_MATH_DISALLOW_REDUCED_PRECISION_REDUCTION));
 
   ORT_RETURN_IF_ERROR(Gemm<T>(cublas, rows, config.rank, K, hn, tensors.down_weight, down));
   (void)inject;

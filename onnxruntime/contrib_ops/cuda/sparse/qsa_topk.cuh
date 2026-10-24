@@ -37,9 +37,9 @@ __device__ __forceinline__ void SortChunk(const uint64_t* input, uint64_t* outpu
 __global__ void QsaCompactTileTopKKernel(const uint64_t* input_keys, uint64_t* output_keys,
                                          int input_stride, int output_stride) {
   __shared__ union {
-    ChunkSort<1>::TempStorage small;
-    ChunkSort<2>::TempStorage medium;
-    ChunkSort<4>::TempStorage large;
+    ChunkSort<1>::TempStorage s1;
+    ChunkSort<2>::TempStorage s2;
+    ChunkSort<4>::TempStorage s4;
   } temp;
   const int chunk_start = static_cast<int>(blockIdx.x) * kChunkSize;
   const uint64_t* input = input_keys + static_cast<int64_t>(blockIdx.y) * input_stride + chunk_start;
@@ -51,11 +51,11 @@ __global__ void QsaCompactTileTopKKernel(const uint64_t* input_keys, uint64_t* o
   if (input[0] == topk::kPaddingSortKey) {
     output[threadIdx.x] = topk::kPaddingSortKey;
   } else if (count > 1024 && input[1024] != topk::kPaddingSortKey) {
-    SortChunk<4>(input, output, count, temp.large);
+    SortChunk<4>(input, output, count, temp.s4);
   } else if (count > 512 && input[512] != topk::kPaddingSortKey) {
-    SortChunk<2>(input, output, min(count, 1024), temp.medium);
+    SortChunk<2>(input, output, min(count, 1024), temp.s2);
   } else {
-    SortChunk<1>(input, output, min(count, 512), temp.small);
+    SortChunk<1>(input, output, min(count, 512), temp.s1);
   }
 }
 

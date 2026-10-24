@@ -97,59 +97,6 @@ TEST(FusedTensorOpsTest, ArgMaxLastAxisNaNSingleAndMultiplePartitions) {
   RunArgMaxNaNRows<BFloat16>();
 }
 
-TEST(FusedTensorOpsTest, EmbeddingRMSNorm) {
-  auto providers = CudaProvider();
-  if (providers.empty()) GTEST_SKIP();
-
-  const std::vector<float> table = {3.0f, 4.0f, 0.0f, 0.0f, 0.0f, 0.0f, 2.0f, 0.0f};
-  const float inverse_first = 1.0f / std::sqrt(6.25f + 1e-6f);
-  const float inverse_second = 1.0f / std::sqrt(1.0f + 1e-6f);
-  const std::vector<float> expected = {
-      3.0f * inverse_first, 4.0f * inverse_first, 0.0f, 0.0f,
-      0.0f, 0.0f, 2.0f * inverse_second, 0.0f};
-
-  OpTester test("EmbeddingRMSNorm", 1, kMSDomain);
-  test.AddAttribute<float>("epsilon", 1e-6f);
-  test.AddInput<int64_t>("ids", {2}, {0, 1});
-  test.AddInput<BFloat16>("table", {2, 4}, ToTensorType<BFloat16>(table));
-  test.AddInput<float>("weight", {4}, {1.0f, 1.0f, 1.0f, 1.0f});
-  test.AddOutput<BFloat16>("normalized", {2, 4}, ToTensorType<BFloat16>(expected));
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
-}
-
-TEST(FusedTensorOpsTest, EmbeddingRMSNormIndexBounds) {
-  auto providers = CudaProvider();
-  if (providers.empty()) GTEST_SKIP();
-  const float nan = std::numeric_limits<float>::quiet_NaN();
-  OpTester test("EmbeddingRMSNorm", 1, kMSDomain);
-  test.AddAttribute<float>("epsilon", 0.0f);
-  test.AddInput<int64_t>("ids", {8}, {0, 1, -1, -2, 2, -3, std::numeric_limits<int64_t>::min(), std::numeric_limits<int64_t>::max()});
-  test.AddInput<BFloat16>("table", {2, 4}, ToBFloat16({2, 0, 0, 0, 0, 2, 0, 0}));
-  test.AddInput<float>("weight", {4}, {1, 1, 1, 1});
-  test.AddOutput<BFloat16>("normalized", {8, 4},
-                           ToBFloat16({2, 0, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 2, 0, 0, 0,
-                                       nan, nan, nan, nan, nan, nan, nan, nan,
-                                       nan, nan, nan, nan, nan, nan, nan, nan}));
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
-}
-
-TEST(FusedTensorOpsTest, RowSelect) {
-  auto providers = CudaProvider();
-  if (providers.empty()) GTEST_SKIP();
-
-  OpTester test("RowSelect", 1, kMSDomain);
-  test.AddInput<int64_t>("selection", {}, {1});
-  for (int i = 0; i < 3; ++i) {
-    const std::string input_name = "x" + std::to_string(i);
-    const std::string output_name = "y" + std::to_string(i);
-    test.AddInput<BFloat16>(input_name.c_str(), {1, 2, 2},
-                            ToTensorType<BFloat16>({1.0f, 2.0f, 3.0f, 4.0f}));
-    test.AddOutput<BFloat16>(output_name.c_str(), {1, 1, 2},
-                             ToTensorType<BFloat16>({3.0f, 4.0f}));
-  }
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
-}
-
 TEST(FusedTensorOpsTest, SigmoidGateMul) {
   auto providers = CudaProvider();
   if (providers.empty()) GTEST_SKIP();
@@ -340,51 +287,6 @@ TEST(FusedTensorOpsTest, SigmoidGateMulSiluEmptyAndInvalidAttributes) {
                                              "silu gate must have the same shape"};
     test.Run(mode == 0 ? OpTester::ExpectResult::kExpectSuccess : OpTester::ExpectResult::kExpectFailure,
              errors[mode], {}, nullptr, &providers);
-  }
-}
-
-TEST(FusedTensorOpsTest, UntileHyperConnectionWeights) {
-  constexpr int64_t kInputElements = 160ll * 20480;
-  constexpr int64_t kVectorCount = kInputElements / 16;
-  for (const int64_t kind : {0, 1}) {
-    auto providers = CudaProvider();
-    if (providers.empty()) GTEST_SKIP();
-    OpTester test("UntileHyperConnectionWeights", 1, kMSDomain);
-    test.AddAttribute<int64_t>("kind", kind);
-    std::vector<BFloat16> input(kInputElements);
-    std::vector<BFloat16> expected(kInputElements);
-    for (int64_t i = 0; i < kInputElements; ++i) {
-      input[i] = BFloat16(static_cast<float>(i % 127));
-    }
-    for (int64_t vector_index = 0; vector_index < kVectorCount; ++vector_index) {
-      int64_t destination_vector;
-      if (kind == 0) {
-        const int64_t rp = vector_index & 127;
-        const int64_t t1 = vector_index >> 7;
-        const int64_t i = t1 % 10;
-        const int64_t t2 = t1 / 10;
-        const int64_t j = t2 % 20;
-        const int64_t s = t2 / 20;
-        destination_vector = (((s * 10 + i) * 128 + rp) * 20 + j);
-      } else {
-        const int64_t c = vector_index & 3;
-        const int64_t t1 = vector_index >> 2;
-        const int64_t rp = t1 & 31;
-        const int64_t t2 = t1 >> 5;
-        const int64_t i = t2 % 10;
-        const int64_t hb = t2 / 10;
-        destination_vector = (((i * 32 + rp) * 4 + c) * 160 + hb);
-      }
-      for (int64_t lane = 0; lane < 16; ++lane) {
-        expected[destination_vector * 16 + lane] = input[vector_index * 16 + lane];
-      }
-    }
-    test.AddInput<BFloat16>("tiled", {160, 20480}, input);
-    const std::vector<int64_t> output_shape = kind == 0
-                                                  ? std::vector<int64_t>{10240, 320}
-                                                  : std::vector<int64_t>{320, 10240};
-    test.AddOutput<BFloat16>("untiled", output_shape, expected);
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
   }
 }
 

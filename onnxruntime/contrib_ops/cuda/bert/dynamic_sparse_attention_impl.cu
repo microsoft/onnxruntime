@@ -15,8 +15,11 @@
 
 #include "contrib_ops/cuda/bert/dynamic_sparse_attention_prefill.cuh"
 #include "core/common/safeint.h"
-#include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/cuda_common.h"
+
+// Include env_var_utils.h after cuda_common.h: the latter transitively pulls in provider_api.h,
+// which defines SHARED_PROVIDER and suppresses env_var_utils.h's own logging.h include.
+#include "core/platform/env_var_utils.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -1764,7 +1767,8 @@ int GetGroupedDecodeSplitCount(const DynamicSparseAttentionParameters& parameter
   const int64_t occupancy_splits =
       std::max<int64_t>(1, (target_blocks + grouped_head_blocks - 1) /
                                grouped_head_blocks);
-  return static_cast<int>(std::min(candidate_splits, occupancy_splits));
+  const int64_t max_splits = quantized_cache ? 32 : candidate_splits;
+  return static_cast<int>(std::min({candidate_splits, occupancy_splits, max_splits}));
 }
 
 size_t GetValidationHashEntries(const DynamicSparseAttentionParameters& parameters) {

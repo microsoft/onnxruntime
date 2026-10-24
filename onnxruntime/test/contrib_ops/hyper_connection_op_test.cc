@@ -2,9 +2,7 @@
 // Licensed under the MIT License.
 
 #include <cmath>
-#include <cstring>
 #include <memory>
-#include <tuple>
 #include <type_traits>
 #include <vector>
 
@@ -12,26 +10,27 @@
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
-#include "core/framework/session_options.h"
 
 namespace onnxruntime::test {
 namespace {
 
-std::vector<std::unique_ptr<IExecutionProvider>> AvailableProviders() {
+std::vector<std::unique_ptr<IExecutionProvider>> AvailableProviders(bool include_webgpu = true) {
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
   providers.push_back(DefaultCpuExecutionProvider());
   if (auto cuda = DefaultCudaExecutionProvider()) {
     providers.push_back(std::move(cuda));
   }
-  if (auto webgpu = DefaultWebGpuExecutionProvider()) {
-    providers.push_back(std::move(webgpu));
+  if (include_webgpu) {
+    if (auto webgpu = DefaultWebGpuExecutionProvider()) {
+      providers.push_back(std::move(webgpu));
+    }
   }
   return providers;
 }
 
 template <typename AddInputs>
-void RunOnAvailableProviders(const char* op_name, AddInputs add_inputs) {
-  for (auto& provider : AvailableProviders()) {
+void RunOnAvailableProviders(const char* op_name, AddInputs add_inputs, bool include_webgpu = true) {
+  for (auto& provider : AvailableProviders(include_webgpu)) {
     SCOPED_TRACE(provider->Type());
     OpTester tester(op_name, 1, kMSDomain);
     add_inputs(tester);
@@ -46,8 +45,21 @@ template <typename T>
 float RoundToType(float value) {
   if constexpr (std::is_same_v<T, MLFloat16>) {
     return MLFloat16(value).ToFloat();
+  } else if constexpr (std::is_same_v<T, BFloat16>) {
+    return BFloat16(value).ToFloat();
   } else {
     return value;
+  }
+}
+
+template <typename T>
+std::vector<T> ConvertVector(const std::vector<float>& values) {
+  if constexpr (std::is_same_v<T, MLFloat16>) {
+    return ToFloat16(values);
+  } else if constexpr (std::is_same_v<T, BFloat16>) {
+    return ToBFloat16(values);
+  } else {
+    return values;
   }
 }
 
@@ -130,371 +142,6 @@ TEST(HyperConnectionOpsTest, BranchwiseRMSNormMixedScaleType) {
   });
 }
 
-class StandardRMSChainTester : public OpTester {
- public:
-  StandardRMSChainTester(int output_type, float epsilon, int64_t start = 0, int64_t width = 0)
-      : OpTester("StandardRMSChain", 17, kOnnxDomain, false),
-        output_type_(output_type),
-        epsilon_(epsilon),
-        start_(start),
-        width_(width) {}
-
-  void AddNodes(Graph& graph, std::vector<NodeArg*>& inputs, std::vector<NodeArg*>& outputs,
-                std::vector<std::function<void(Node&)>>&) override {
-    auto value = [&](const char* name) { return &graph.GetOrCreateNodeArg(name, nullptr); };
-    NodeArg* source = inputs[0];
-    if (width_ != 0) {
-      auto constant = [&](const char* name, int64_t data) {
-        ONNX_NAMESPACE::TensorProto tensor;
-        tensor.set_name(name);
-        tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
-        tensor.add_dims(1);
-        tensor.add_int64_data(data);
-        graph.AddInitializedTensor(tensor);
-        return value(name);
-      };
-      source = value("selected");
-      graph.AddNode("slice", "Slice", "",
-                    {inputs[0], constant("starts", start_), constant("ends", start_ + width_),
-                     constant("axes", -1)},
-                    {source});
-    }
-    auto* x = value("float_x");
-    graph.AddNode("cast", "Cast", "", {source}, {x})
-        .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
-    auto* square = value("square");
-    graph.AddNode("square", "Mul", "", {x, x}, {square});
-    auto* mean = value("mean");
-    auto& reduce = graph.AddNode("mean", "ReduceMean", "", {square}, {mean});
-    reduce.AddAttribute("axes", std::vector<int64_t>{-1});
-    reduce.AddAttribute("keepdims", int64_t{1});
-    ONNX_NAMESPACE::TensorProto epsilon;
-    epsilon.set_name("epsilon");
-    epsilon.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-    epsilon.add_float_data(epsilon_);
-    graph.AddInitializedTensor(epsilon);
-    auto* adjusted = value("adjusted");
-    graph.AddNode("epsilon", "Add", "", {mean, value("epsilon")}, {adjusted});
-    auto* root = value("root");
-    graph.AddNode("root", "Sqrt", "", {adjusted}, {root});
-    auto* normalized = value("normalized");
-    graph.AddNode("divide", "Div", "", {x, root}, {normalized});
-    auto* scaled = value("scaled");
-    graph.AddNode("scale", "Mul", "", {normalized, inputs[1]}, {scaled});
-    graph.AddNode("output", "Cast", "", {scaled}, {outputs[0]})
-        .AddAttribute("to", static_cast<int64_t>(output_type_));
-    if (outputs.size() > 1) {
-      graph.AddNode("widen", "Cast", "", {outputs[0]}, {outputs[1]})
-          .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
-    }
-    graph.SetOutputs(outputs);
-  }
-
- private:
-  int output_type_;
-  float epsilon_;
-  int64_t start_;
-  int64_t width_;
-};
-
-template <typename T>
-void TestStandardRMSArithmetic(int type, bool packed = false) {
-  if (!DefaultCudaExecutionProvider()) {
-    GTEST_SKIP() << "CUDA is required for exact standard RMS arithmetic";
-  }
-  for (int width : {1, 31, 128, 256, 513, 1024, 4096}) {
-    for (int rows : (packed ? std::vector<int>{1, 2, 9, 48} : std::vector<int>{1, 2, 9})) {
-      for (int start : (packed ? std::vector<int>{0, 3} : std::vector<int>{0})) {
-        SCOPED_TRACE("width=" + std::to_string(width) + " rows=" + std::to_string(rows));
-        const int stride = packed ? width * 2 + 7 : width;
-        std::vector<T> input(rows * stride);
-        std::vector<float> scale(width);
-        for (int i = 0; i < rows * stride; ++i) {
-          input[i] = T(std::sin(static_cast<float>(i) * 0.71f) * (1 + i % 17));
-        }
-        for (int i = 0; i < width; ++i) scale[i] = 0.5f + static_cast<float>(i % 23) / 17.0f;
-        constexpr float epsilon = 1e-6f;
-        StandardRMSChainTester reference(type, epsilon, start, packed ? width : 0);
-        OpTester fused("BranchwiseRMSNorm", packed ? 2 : 1, kMSDomain, false);
-        if (packed) {
-          fused.AddAttribute<int64_t>("input_start", start);
-          fused.AddAttribute<int64_t>("input_width", width);
-        }
-        fused.AddAttribute<int64_t>("use_onnx_arithmetic", 1);
-        fused.AddAttribute<float>("epsilon", epsilon);
-        std::vector<OrtValue> expected;
-        for (OpTester* tester : {static_cast<OpTester*>(&reference), &fused}) {
-          const std::vector<int64_t> input_shape = rows == 48 ? std::vector<int64_t>{1, 2, 24, stride}
-                                                              : std::vector<int64_t>{1, rows, stride};
-          auto output_shape = input_shape;
-          output_shape.back() = width;
-          tester->AddInput<T>("X", input_shape, input);
-          tester->AddInput<float>("scale", {width}, scale);
-          tester->AddOutput<T>("Y", output_shape, std::vector<T>(rows * width));
-          tester->AddOutput<float>("Y_fp32", output_shape, std::vector<float>(rows * width));
-          SessionOptions options;
-          options.graph_optimization_level = TransformerLevel::Default;
-          std::vector<std::unique_ptr<IExecutionProvider>> providers;
-          providers.push_back(DefaultCudaExecutionProvider());
-          tester->Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
-          auto fetches = tester->GetFetches();
-          ASSERT_EQ(fetches.size(), 2);
-          if (expected.empty()) {
-            expected = std::move(fetches);
-          } else {
-            for (size_t output = 0; output < fetches.size(); ++output) {
-              const auto& before = expected[output].Get<Tensor>();
-              const auto& after = fetches[output].Get<Tensor>();
-              ASSERT_EQ(before.SizeInBytes(), after.SizeInBytes());
-              EXPECT_EQ(std::memcmp(before.DataRaw(), after.DataRaw(), before.SizeInBytes()), 0)
-                  << "output=" << output;
-            }
-          }
-        }
-      }
-    }
-  }
-}
-
-TEST(HyperConnectionOpsTest, BranchwiseRMSNormStandardFloatExact) {
-  TestStandardRMSArithmetic<float>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-}
-
-TEST(HyperConnectionOpsTest, BranchwiseRMSNormStandardFloat16Exact) {
-  TestStandardRMSArithmetic<MLFloat16>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
-}
-
-TEST(HyperConnectionOpsTest, BranchwiseRMSNormStandardBFloat16Exact) {
-  TestStandardRMSArithmetic<BFloat16>(ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16);
-}
-
-TEST(HyperConnectionOpsTest, BranchwiseRMSNormPackedFloatExact) {
-  TestStandardRMSArithmetic<float>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, true);
-}
-
-TEST(HyperConnectionOpsTest, BranchwiseRMSNormPackedFloat16Exact) {
-  TestStandardRMSArithmetic<MLFloat16>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, true);
-}
-
-TEST(HyperConnectionOpsTest, BranchwiseRMSNormPackedBFloat16Exact) {
-  TestStandardRMSArithmetic<BFloat16>(ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16, true);
-}
-
-template <typename T, typename ScaleT>
-void TestStandardRMSBranchScales(int type) {
-  if (!DefaultCudaExecutionProvider()) GTEST_SKIP() << "CUDA is required for exact branch scales";
-  constexpr int outer = 2;
-  constexpr int branches = 3;
-  constexpr float epsilon = 1e-6f;
-  for (int width : {31, 128, 513}) {
-    for (bool flattened_scale : {false, true}) {
-      SCOPED_TRACE(width);
-      SCOPED_TRACE(flattened_scale);
-      std::vector<T> input(outer * branches * width);
-      std::vector<ScaleT> scale(branches * width);
-      std::vector<float> float_scale(scale.size());
-      for (size_t i = 0; i < input.size(); ++i) input[i] = T(std::sin(static_cast<float>(i) * 0.71f) * 9.0f);
-      for (int branch = 0; branch < branches; ++branch) {
-        for (int h = 0; h < width; ++h) {
-          const int index = branch * width + h;
-          scale[index] = ScaleT((branch + 1) * 0.7f + (h % 17) * 0.013f);
-          if constexpr (std::is_same_v<ScaleT, float>) {
-            float_scale[index] = scale[index];
-          } else {
-            float_scale[index] = scale[index].ToFloat();
-          }
-        }
-      }
-      const std::vector<int64_t> shape{outer, branches, width};
-      StandardRMSChainTester reference(type, epsilon);
-      reference.AddInput<T>("X", shape, input);
-      reference.AddInput<float>("scale", {branches, width}, float_scale);
-      reference.AddOutput<T>("Y", shape, std::vector<T>(input.size()));
-      reference.AddOutput<float>("Y_fp32", shape, std::vector<float>(input.size()));
-      OpTester fused("BranchwiseRMSNorm", 2, kMSDomain, false);
-      fused.AddAttribute<int64_t>("use_onnx_arithmetic", 1);
-      fused.AddAttribute<float>("epsilon", epsilon);
-      fused.AddInput<T>("X", shape, input);
-      fused.AddInput<ScaleT>("scale", flattened_scale ? std::vector<int64_t>{branches * width} : std::vector<int64_t>{branches, width},
-                             scale);
-      fused.AddOutput<T>("Y", shape, std::vector<T>(input.size()));
-      fused.AddOutput<float>("Y_fp32", shape, std::vector<float>(input.size()));
-      std::vector<OrtValue> expected;
-      for (OpTester* tester : {static_cast<OpTester*>(&reference), &fused}) {
-        SessionOptions options;
-        options.graph_optimization_level = TransformerLevel::Default;
-        std::vector<std::unique_ptr<IExecutionProvider>> providers;
-        providers.push_back(DefaultCudaExecutionProvider());
-        tester->Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
-        const auto& fetches = tester->GetFetches();
-        ASSERT_EQ(fetches.size(), 2u);
-        if (expected.empty()) {
-          expected = fetches;
-        } else {
-          for (size_t output = 0; output < fetches.size(); ++output) {
-            const auto& before = expected[output].Get<Tensor>();
-            const auto& after = fetches[output].Get<Tensor>();
-            ASSERT_EQ(before.SizeInBytes(), after.SizeInBytes());
-            EXPECT_EQ(std::memcmp(before.DataRaw(), after.DataRaw(), before.SizeInBytes()), 0) << output;
-          }
-        }
-      }
-    }
-  }
-}
-
-TEST(HyperConnectionOpsTest, BranchwiseRMSNormCudaExactBranchScales) {
-  TestStandardRMSBranchScales<float, float>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-  TestStandardRMSBranchScales<float, MLFloat16>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-  TestStandardRMSBranchScales<float, BFloat16>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-  TestStandardRMSBranchScales<MLFloat16, float>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
-  TestStandardRMSBranchScales<MLFloat16, MLFloat16>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
-  TestStandardRMSBranchScales<MLFloat16, BFloat16>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
-  TestStandardRMSBranchScales<BFloat16, float>(ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16);
-  TestStandardRMSBranchScales<BFloat16, MLFloat16>(ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16);
-  TestStandardRMSBranchScales<BFloat16, BFloat16>(ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16);
-}
-
-TEST(HyperConnectionOpsTest, BranchwiseRMSNormWideSingleRowDeterministic) {
-  if (!DefaultCudaExecutionProvider()) GTEST_SKIP() << "CUDA is required for deterministic RMS";
-  constexpr int width = 8192;
-  constexpr float epsilon = 1e-6f;
-  std::vector<float> input(width);
-  double square_sum = 0.0;
-  for (int i = 0; i < width; ++i) {
-    input[i] = std::sin(static_cast<float>(i) * 0.71f) * (1 + i % 17);
-    const float square = input[i] * input[i];
-    square_sum += square;
-  }
-  const float rms = std::sqrt(static_cast<float>(square_sum / width) + epsilon);
-  std::vector<float> expected(width);
-  for (int i = 0; i < width; ++i) expected[i] = input[i] / rms;
-  std::vector<float> first;
-  for (int run = 0; run < 10; ++run) {
-    OpTester tester("BranchwiseRMSNorm", 2, kMSDomain);
-    tester.AddAttribute<int64_t>("use_onnx_arithmetic", 1);
-    tester.AddAttribute<float>("epsilon", epsilon);
-    tester.AddInput<float>("X", {1, 1, width}, input);
-    tester.AddOptionalInputEdge<float>();
-    tester.AddOutput<float>("Y", {1, 1, width}, expected, false, 1e-5f, 1e-5f);
-    tester.AddOutput<float>("Y_fp32", {1, 1, width}, expected, false, 1e-5f, 1e-5f);
-    SessionOptions options;
-    options.use_deterministic_compute = true;
-    options.graph_optimization_level = TransformerLevel::Default;
-    std::vector<std::unique_ptr<IExecutionProvider>> providers;
-    providers.push_back(DefaultCudaExecutionProvider());
-    tester.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
-    const auto& fetches = tester.GetFetches();
-    ASSERT_EQ(fetches.size(), 2u);
-    const float* actual = fetches[0].Get<Tensor>().Data<float>();
-    if (first.empty()) {
-      first.assign(actual, actual + width);
-    } else {
-      EXPECT_EQ(std::memcmp(first.data(), actual, width * sizeof(float)), 0);
-    }
-    EXPECT_EQ(std::memcmp(actual, fetches[1].Get<Tensor>().Data<float>(), width * sizeof(float)), 0);
-  }
-}
-
-TEST(HyperConnectionOpsTest, BranchwiseRMSNormPackedRejectsInvalidSlice) {
-  if (!DefaultCudaExecutionProvider()) GTEST_SKIP() << "CUDA is required for packed RMS";
-  for (const auto& [start, width, mode, branches, message] :
-       std::vector<std::tuple<int64_t, int64_t, int64_t, int64_t, std::string>>{
-           {-1, 2, 1, 0, "nonnegative"},
-           {0, -1, 1, 0, "nonnegative"},
-           {1, 0, 1, 0, "nonnegative"},
-           {0, 5, 1, 0, "exceeds"},
-           {3, 2, 1, 0, "exceeds"},
-           {0, 2, 0, 0, "requires"},
-           {0, 2, 1, 2, "requires"}}) {
-    OpTester tester("BranchwiseRMSNorm", 2, kMSDomain);
-    tester.AddAttribute<int64_t>("input_start", start);
-    tester.AddAttribute<int64_t>("input_width", width);
-    tester.AddAttribute<int64_t>("use_onnx_arithmetic", mode);
-    tester.AddAttribute<int64_t>("num_branches", branches);
-    tester.AddInput<float>("X", {1, 1, 4}, {1, 2, 3, 4});
-    tester.AddOptionalInputEdge<float>();
-    tester.AddOutput<float>("Y", {1, 1, 2}, {0, 0});
-    std::vector<std::unique_ptr<IExecutionProvider>> providers;
-    providers.push_back(DefaultCudaExecutionProvider());
-    tester.Run(OpTester::ExpectResult::kExpectFailure, message, {}, nullptr, &providers);
-  }
-}
-
-TEST(HyperConnectionOpsTest, BranchwiseRMSNormPackedEmptyWithoutScale) {
-  if (!DefaultCudaExecutionProvider()) GTEST_SKIP() << "CUDA is required for packed RMS";
-  OpTester tester("BranchwiseRMSNorm", 2, kMSDomain);
-  tester.AddAttribute<int64_t>("use_onnx_arithmetic", 1);
-  tester.AddAttribute<int64_t>("input_start", 3);
-  tester.AddAttribute<int64_t>("input_width", 2);
-  tester.AddInput<float>("X", {0, 3, 8}, {});
-  tester.AddOptionalInputEdge<float>();
-  tester.AddOutput<float>("Y", {0, 3, 2}, {});
-  tester.AddOutput<float>("Y_fp32", {0, 3, 2}, {});
-  std::vector<std::unique_ptr<IExecutionProvider>> providers;
-  providers.push_back(DefaultCudaExecutionProvider());
-  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
-}
-
-TEST(HyperConnectionOpsTest, BranchwiseRMSNormPackedWithoutScale) {
-  if (!DefaultCudaExecutionProvider()) GTEST_SKIP() << "CUDA is required for packed RMS";
-  OpTester tester("BranchwiseRMSNorm", 2, kMSDomain);
-  tester.AddAttribute<int64_t>("use_onnx_arithmetic", 1);
-  tester.AddAttribute<int64_t>("input_start", 1);
-  tester.AddAttribute<int64_t>("input_width", 2);
-  tester.AddAttribute<float>("epsilon", 0.0f);
-  tester.AddInput<float>("X", {1, 2, 4}, {99, 3, 4, 99, 99, 0, 2, 99});
-  tester.AddOptionalInputEdge<float>();
-  tester.AddOutput<float>("Y", {1, 2, 2},
-                          {3.0f / std::sqrt(12.5f), 4.0f / std::sqrt(12.5f), 0, 2.0f / std::sqrt(2.0f)});
-  std::vector<std::unique_ptr<IExecutionProvider>> providers;
-  providers.push_back(DefaultCudaExecutionProvider());
-  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
-}
-
-TEST(HyperConnectionOpsTest, BranchwiseRMSNormPackedDoesNotFallBackToCpu) {
-  OpTester tester("BranchwiseRMSNorm", 2, kMSDomain);
-  tester.AddAttribute<int64_t>("use_onnx_arithmetic", 1);
-  tester.AddAttribute<int64_t>("input_width", 2);
-  tester.AddInput<float>("X", {1, 1, 4}, {1, 2, 3, 4});
-  tester.AddOptionalInputEdge<float>();
-  tester.AddOutput<float>("Y", {1, 1, 2}, {0, 0});
-  std::vector<std::unique_ptr<IExecutionProvider>> providers;
-  providers.push_back(DefaultCpuExecutionProvider());
-  tester.Run(OpTester::ExpectResult::kExpectFailure, "Could not find an implementation for BranchwiseRMSNorm(2)",
-             {}, nullptr, &providers);
-}
-
-TEST(HyperConnectionOpsTest, BranchwiseRMSNormStandardCpuBranchScale) {
-  OpTester tester("BranchwiseRMSNorm", 1, kMSDomain);
-  tester.AddAttribute<int64_t>("use_onnx_arithmetic", 1);
-  tester.AddAttribute<int64_t>("num_branches", 2);
-  tester.AddAttribute<float>("epsilon", 0.0f);
-  tester.AddInput<float>("X", {1, 4}, {3.0f, 4.0f, 0.0f, 2.0f});
-  tester.AddInput<float>("scale", {2, 2}, {2.0f, 0.5f, 0.25f, 3.0f});
-  tester.AddOutput<float>("Y", {1, 4},
-                          {3.0f / std::sqrt(12.5f) * 2.0f, 4.0f / std::sqrt(12.5f) * 0.5f,
-                           0.0f, 2.0f / std::sqrt(2.0f) * 3.0f});
-  std::vector<std::unique_ptr<IExecutionProvider>> providers;
-  providers.push_back(DefaultCpuExecutionProvider());
-  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
-}
-
-TEST(HyperConnectionOpsTest, BranchwiseRMSNormRejectsInvalidArithmeticMode) {
-  for (auto& provider : AvailableProviders()) {
-    if (provider->Type() == kWebGpuExecutionProvider) continue;
-    OpTester tester("BranchwiseRMSNorm", 1, kMSDomain);
-    tester.AddAttribute<int64_t>("use_onnx_arithmetic", 2);
-    tester.AddInput<float>("X", {1, 2}, {1.0f, 2.0f});
-    tester.AddOptionalInputEdge<float>();
-    tester.AddOutput<float>("Y", {1, 2}, {0.0f, 0.0f});
-    std::vector<std::unique_ptr<IExecutionProvider>> providers;
-    providers.push_back(std::move(provider));
-    tester.Run(OpTester::ExpectResult::kExpectFailure, "use_onnx_arithmetic must be 0 or 1",
-               {}, nullptr, &providers);
-  }
-}
-
 TEST(HyperConnectionOpsTest, ScaledSiLU) {
   RunOnAvailableProviders("ScaledSiLU", [&](OpTester& tester) {
     tester.AddAttribute<float>("alpha", 0.5f);
@@ -571,6 +218,74 @@ TEST(HyperConnectionOpsTest, PreMixMixedInputTypes) {
   });
 }
 
+template <typename StreamT, typename MixT>
+void RunPreMixVecCase(bool feature_gates, bool flattened, float reduction_scale) {
+  constexpr int64_t rows = 3;
+  constexpr int64_t branches = 3;
+  constexpr int64_t hidden = 16;  // Divisible by 8 -> exercises PreMixVecKernel (2 vecs/row).
+  constexpr bool kIncludeWebGpu = !std::is_same_v<StreamT, BFloat16> && !std::is_same_v<MixT, BFloat16>;
+
+  std::vector<float> streams(rows * branches * hidden);
+  for (size_t i = 0; i < streams.size(); ++i) {
+    const float raw = 0.125f * static_cast<float>((static_cast<int>(i * 7 + 3) % 17) - 8);
+    streams[i] = RoundToType<StreamT>(raw);
+  }
+
+  const size_t mix_size = feature_gates ? (rows * branches * hidden) : (rows * branches);
+  std::vector<float> pre_mix(mix_size);
+  for (size_t i = 0; i < pre_mix.size(); ++i) {
+    const float raw = 0.25f * static_cast<float>((static_cast<int>(i * 5 + 1) % 11) - 5);
+    pre_mix[i] = RoundToType<MixT>(raw);
+  }
+
+  std::vector<float> expected(rows * hidden, 0.0f);
+  for (int64_t r = 0; r < rows; ++r) {
+    for (int64_t h = 0; h < hidden; ++h) {
+      float sum = 0.0f;
+      for (int64_t c = 0; c < branches; ++c) {
+        const size_t x_idx = static_cast<size_t>((r * branches + c) * hidden + h);
+        const size_t g_idx = feature_gates ? x_idx : static_cast<size_t>(r * branches + c);
+        sum += streams[x_idx] * pre_mix[g_idx];
+      }
+      expected[static_cast<size_t>(r * hidden + h)] = RoundToType<StreamT>(sum * reduction_scale);
+    }
+  }
+
+  RunOnAvailableProviders(
+      "HyperConnectionPreMix",
+      [&](OpTester& tester) {
+        if (flattened) {
+          tester.AddAttribute<int64_t>("num_branches", branches);
+        }
+        if (reduction_scale != 1.0f) {
+          tester.AddAttribute<float>("reduction_scale", reduction_scale);
+        }
+        const std::vector<int64_t> stream_shape =
+            flattened ? std::vector<int64_t>{rows, branches * hidden}
+                      : std::vector<int64_t>{rows, branches, hidden};
+        std::vector<int64_t> mix_shape;
+        if (feature_gates) {
+          mix_shape = flattened ? std::vector<int64_t>{rows, branches * hidden}
+                                : std::vector<int64_t>{rows, branches, hidden};
+        } else {
+          mix_shape = {rows, branches};
+        }
+        tester.AddInput<StreamT>("streams", stream_shape, ConvertVector<StreamT>(streams));
+        tester.AddInput<MixT>("pre_mix", mix_shape, ConvertVector<MixT>(pre_mix));
+        tester.AddOutput<StreamT>("output", {rows, hidden}, ConvertVector<StreamT>(expected));
+      },
+      kIncludeWebGpu);
+}
+
+TEST(HyperConnectionOpsTest, PreMixVectorizedFloat16AndBFloat16) {
+  RunPreMixVecCase<MLFloat16, MLFloat16>(/*feature_gates=*/false, /*flattened=*/false, /*reduction_scale=*/0.375f);
+  RunPreMixVecCase<MLFloat16, float>(/*feature_gates=*/true, /*flattened=*/false, /*reduction_scale=*/0.25f);
+  RunPreMixVecCase<MLFloat16, BFloat16>(/*feature_gates=*/true, /*flattened=*/true, /*reduction_scale=*/0.5f);
+  RunPreMixVecCase<BFloat16, BFloat16>(/*feature_gates=*/false, /*flattened=*/false, /*reduction_scale=*/0.375f);
+  RunPreMixVecCase<BFloat16, float>(/*feature_gates=*/true, /*flattened=*/false, /*reduction_scale=*/0.25f);
+  RunPreMixVecCase<BFloat16, MLFloat16>(/*feature_gates=*/true, /*flattened=*/true, /*reduction_scale=*/1.0f);
+}
+
 TEST(HyperConnectionOpsTest, PostMixIdentityAndBranchGates) {
   RunOnAvailableProviders("HyperConnectionPostMix", [&](OpTester& tester) {
     tester.AddInput<float>("streams", {1, 2, 2},
@@ -607,6 +322,93 @@ TEST(HyperConnectionOpsTest, PostMixFlattenedBranchGate) {
     tester.AddOptionalInputEdge<float>();
     tester.AddOutput<float>("output", {1, 4}, {6.0f, 12.0f, 8.0f, 14.0f});
   });
+}
+
+template <typename StreamT, typename MixT>
+void RunPostMixVecCase(int64_t branches, bool feature_gates, bool with_stream_mix, bool flattened) {
+  constexpr int64_t rows = 3;
+  constexpr int64_t hidden = 16;  // Divisible by 8 -> exercises PostMixVecKernel (2 vecs/row).
+  constexpr bool kIncludeWebGpu = !std::is_same_v<StreamT, BFloat16> && !std::is_same_v<MixT, BFloat16>;
+
+  std::vector<float> streams(rows * branches * hidden);
+  for (size_t i = 0; i < streams.size(); ++i) {
+    const float raw = 0.125f * static_cast<float>((static_cast<int>(i * 11 + 5) % 19) - 9);
+    streams[i] = RoundToType<StreamT>(raw);
+  }
+
+  std::vector<float> block_output(rows * hidden);
+  for (size_t i = 0; i < block_output.size(); ++i) {
+    const float raw = 0.25f * static_cast<float>((static_cast<int>(i * 3 + 2) % 13) - 6);
+    block_output[i] = RoundToType<StreamT>(raw);
+  }
+
+  const size_t post_mix_size = feature_gates ? (rows * branches * hidden) : (rows * branches);
+  std::vector<float> post_mix(post_mix_size);
+  for (size_t i = 0; i < post_mix.size(); ++i) {
+    const float raw = 0.125f * static_cast<float>((static_cast<int>(i * 7 + 1) % 15) - 7);
+    post_mix[i] = RoundToType<MixT>(raw);
+  }
+
+  std::vector<float> stream_mix(rows * branches * branches);
+  for (size_t i = 0; i < stream_mix.size(); ++i) {
+    // Asymmetric per-(row, src, dst) weights to verify source reuse and output-branch indexing.
+    const float raw = 0.25f * static_cast<float>((static_cast<int>(i * 9 + 4) % 11) - 5);
+    stream_mix[i] = RoundToType<MixT>(raw);
+  }
+
+  std::vector<float> expected(rows * branches * hidden, 0.0f);
+  for (int64_t r = 0; r < rows; ++r) {
+    for (int64_t c = 0; c < branches; ++c) {
+      for (int64_t h = 0; h < hidden; ++h) {
+        const size_t out_idx = static_cast<size_t>((r * branches + c) * hidden + h);
+        float value = with_stream_mix ? 0.0f : streams[out_idx];
+        if (with_stream_mix) {
+          for (int64_t src = 0; src < branches; ++src) {
+            const size_t mix_idx = static_cast<size_t>((r * branches + src) * branches + c);
+            const size_t src_idx = static_cast<size_t>((r * branches + src) * hidden + h);
+            value += stream_mix[mix_idx] * streams[src_idx];
+          }
+        }
+        const size_t g_idx = feature_gates ? out_idx : static_cast<size_t>(r * branches + c);
+        value += post_mix[g_idx] * block_output[static_cast<size_t>(r * hidden + h)];
+        expected[out_idx] = RoundToType<StreamT>(value);
+      }
+    }
+  }
+
+  RunOnAvailableProviders(
+      "HyperConnectionPostMix",
+      [&](OpTester& tester) {
+        if (flattened) {
+          tester.AddAttribute<int64_t>("num_branches", branches);
+        }
+        const std::vector<int64_t> stream_shape =
+            flattened ? std::vector<int64_t>{rows, branches * hidden}
+                      : std::vector<int64_t>{rows, branches, hidden};
+        const std::vector<int64_t> post_mix_shape =
+            feature_gates ? std::vector<int64_t>{rows, branches, hidden}
+                          : (flattened ? std::vector<int64_t>{rows, branches}
+                                       : std::vector<int64_t>{rows, branches, 1});
+        tester.AddInput<StreamT>("streams", stream_shape, ConvertVector<StreamT>(streams));
+        tester.AddInput<StreamT>("block_output", {rows, hidden}, ConvertVector<StreamT>(block_output));
+        tester.AddInput<MixT>("post_mix", post_mix_shape, ConvertVector<MixT>(post_mix));
+        if (with_stream_mix) {
+          tester.AddInput<MixT>("stream_mix", {rows, branches, branches}, ConvertVector<MixT>(stream_mix));
+        } else {
+          tester.AddOptionalInputEdge<MixT>();
+        }
+        tester.AddOutput<StreamT>("output", stream_shape, ConvertVector<StreamT>(expected));
+      },
+      kIncludeWebGpu);
+}
+
+TEST(HyperConnectionOpsTest, PostMixVectorizedFloat16AndBFloat16) {
+  RunPostMixVecCase<MLFloat16, MLFloat16>(/*branches=*/3, /*feature_gates=*/false, /*with_stream_mix=*/false, /*flattened=*/false);
+  RunPostMixVecCase<MLFloat16, float>(/*branches=*/4, /*feature_gates=*/true, /*with_stream_mix=*/true, /*flattened=*/false);
+  RunPostMixVecCase<MLFloat16, BFloat16>(/*branches=*/3, /*feature_gates=*/false, /*with_stream_mix=*/true, /*flattened=*/true);
+  RunPostMixVecCase<BFloat16, BFloat16>(/*branches=*/3, /*feature_gates=*/false, /*with_stream_mix=*/false, /*flattened=*/false);
+  RunPostMixVecCase<BFloat16, float>(/*branches=*/4, /*feature_gates=*/true, /*with_stream_mix=*/true, /*flattened=*/false);
+  RunPostMixVecCase<BFloat16, MLFloat16>(/*branches=*/3, /*feature_gates=*/true, /*with_stream_mix=*/false, /*flattened=*/true);
 }
 
 }  // namespace

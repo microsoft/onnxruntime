@@ -83,123 +83,6 @@ Status LaunchTypedArgmax(cudaStream_t stream, const T* input, int64_t rows,
   return CUDA_CALL(cudaGetLastError());
 }
 
-__global__ void EmbedNormKernel(const int64_t* ids, const uint16_t* table,
-                                const float* weight, float epsilon,
-                                uint16_t* output, int64_t vocab_size, int64_t hidden_size,
-                                const int32_t* committed, int64_t* slot_ids,
-                                int32_t* seqlens_k, int32_t* cu_seqlens, int64_t rows) {
-  __shared__ float sums[512];
-  if (threadIdx.x == 0 && committed != nullptr) {
-    const int32_t c = committed[0];
-    if (slot_ids != nullptr) slot_ids[blockIdx.x] = static_cast<int64_t>(c) + static_cast<int64_t>(blockIdx.x);
-    if (blockIdx.x == 0) {
-      if (seqlens_k != nullptr) seqlens_k[0] = c + static_cast<int32_t>(rows) - 1;
-      if (cu_seqlens != nullptr) {
-        cu_seqlens[0] = 0;
-        cu_seqlens[1] = static_cast<int32_t>(rows);
-      }
-    }
-  }
-  const int64_t row_index = blockIdx.x;
-  int64_t token_id = ids[row_index];
-  if (token_id < -vocab_size || token_id >= vocab_size) {
-    for (int64_t col = threadIdx.x; col < hidden_size; col += blockDim.x) {
-      output[row_index * hidden_size + col] = __bfloat16_as_ushort(__float2bfloat16_rn(CUDART_NAN_F));
-    }
-    return;
-  }
-  if (token_id < 0) token_id += vocab_size;
-  const uint16_t* embedding = table + token_id * hidden_size;
-  float sum = 0.0f;
-  for (int64_t col = threadIdx.x; col < hidden_size; col += blockDim.x) {
-    const float value = __uint_as_float(static_cast<uint32_t>(embedding[col]) << 16);
-    sum += value * value;
-  }
-  sums[threadIdx.x] = sum;
-  __syncthreads();
-  for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
-    if (threadIdx.x < stride) {
-      sums[threadIdx.x] += sums[threadIdx.x + stride];
-    }
-    __syncthreads();
-  }
-  const float scale = 1.0f / sqrtf(sums[0] / static_cast<float>(hidden_size) + epsilon);
-  for (int64_t col = threadIdx.x; col < hidden_size; col += blockDim.x) {
-    const float value = __uint_as_float(static_cast<uint32_t>(embedding[col]) << 16);
-    const float normalized = (value * scale) * weight[col];
-    output[row_index * hidden_size + col] =
-        __bfloat16_as_ushort(__float2bfloat16_rn(normalized));
-  }
-}
-
-__global__ void EmbedNormKernelInt8(const int64_t* ids, const int8_t* table_i8, const float* row_scales,
-                                    const float* weight, float epsilon,
-                                    uint16_t* output, int64_t vocab_size, int64_t hidden_size,
-                                    const int32_t* committed, int64_t* slot_ids,
-                                    int32_t* seqlens_k, int32_t* cu_seqlens, int64_t rows) {
-  __shared__ float sums[512];
-  if (threadIdx.x == 0 && committed != nullptr) {
-    const int32_t c = committed[0];
-    if (slot_ids != nullptr) slot_ids[blockIdx.x] = static_cast<int64_t>(c) + static_cast<int64_t>(blockIdx.x);
-    if (blockIdx.x == 0) {
-      if (seqlens_k != nullptr) seqlens_k[0] = c + static_cast<int32_t>(rows) - 1;
-      if (cu_seqlens != nullptr) {
-        cu_seqlens[0] = 0;
-        cu_seqlens[1] = static_cast<int32_t>(rows);
-      }
-    }
-  }
-  const int64_t row_index = blockIdx.x;
-  int64_t token_id = ids[row_index];
-  if (token_id < -vocab_size || token_id >= vocab_size) {
-    for (int64_t col = threadIdx.x; col < hidden_size; col += blockDim.x) {
-      output[row_index * hidden_size + col] = __bfloat16_as_ushort(__float2bfloat16_rn(CUDART_NAN_F));
-    }
-    return;
-  }
-  if (token_id < 0) token_id += vocab_size;
-  const int8_t* embedding = table_i8 + token_id * hidden_size;
-  const float rscale = row_scales[token_id];
-  float sum = 0.0f;
-  for (int64_t col = threadIdx.x; col < hidden_size; col += blockDim.x) {
-    const float value = __bfloat162float(__float2bfloat16_rn(static_cast<float>(embedding[col]) * rscale));
-    sum += value * value;
-  }
-  sums[threadIdx.x] = sum;
-  __syncthreads();
-  for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
-    if (threadIdx.x < stride) {
-      sums[threadIdx.x] += sums[threadIdx.x + stride];
-    }
-    __syncthreads();
-  }
-  const float scale = 1.0f / sqrtf(sums[0] / static_cast<float>(hidden_size) + epsilon);
-  for (int64_t col = threadIdx.x; col < hidden_size; col += blockDim.x) {
-    const float value = __bfloat162float(__float2bfloat16_rn(static_cast<float>(embedding[col]) * rscale));
-    const float normalized = (value * scale) * weight[col];
-    output[row_index * hidden_size + col] =
-        __bfloat16_as_ushort(__float2bfloat16_rn(normalized));
-  }
-}
-
-__global__ void RowSelectKernel(const int64_t* selection,
-                                const uint16_t* input0, const uint16_t* input1,
-                                const uint16_t* input2, uint16_t* output0,
-                                uint16_t* output1, uint16_t* output2,
-                                int64_t row_size0, int64_t row_size1,
-                                int64_t row_size2, int64_t num_rows) {
-  const int which = blockIdx.y;
-  const uint16_t* input = which == 0 ? input0 : (which == 1 ? input1 : input2);
-  uint16_t* output = which == 0 ? output0 : (which == 1 ? output1 : output2);
-  const int64_t row_size = which == 0 ? row_size0 : (which == 1 ? row_size1 : row_size2);
-  const int64_t raw_sel = selection[0];
-  const int64_t selected_row = raw_sel <= 0 ? 0 : (raw_sel >= num_rows ? (num_rows - 1) : raw_sel);
-  for (int64_t i = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
-       i < row_size; i += static_cast<int64_t>(gridDim.x) * blockDim.x) {
-    output[i] = input[selected_row * row_size + i];
-  }
-}
-
 __device__ __forceinline__ float StableSigmoid(float value) {
   if (value >= 0.0f) {
     return 1.0f / (1.0f + expf(-value));
@@ -215,12 +98,12 @@ __device__ __forceinline__ float RoundedBf16Sigmoid(float value, bool sigmoid_in
   using namespace onnxruntime::cuda;
   const BFloat16 a(value);
   return static_cast<float>(a > BFloat16(0.0f)
-                               ? BFloat16(1.0f) / (BFloat16(1.0f) + _Exp(-a))
-                               : BFloat16(1.0f) - BFloat16(1.0f) / (BFloat16(1.0f) + _Exp(a)));
+                                ? BFloat16(1.0f) / (BFloat16(1.0f) + _Exp(-a))
+                                : BFloat16(1.0f) - BFloat16(1.0f) / (BFloat16(1.0f) + _Exp(a)));
 }
 
 __device__ float ProjectedRowGate(const __nv_bfloat16* activation, const __nv_bfloat16* weight,
-                                int64_t row, int64_t input_width, bool sigmoid_in_fp32) {
+                                  int64_t row, int64_t input_width, bool sigmoid_in_fp32) {
   using Reduce = cub::BlockReduce<float, kThreads>;
   __shared__ typename Reduce::TempStorage reduction;
   __shared__ float gate;
@@ -259,8 +142,40 @@ __global__ void ProjectedSigmoidGateMulKernel(
     int64_t input_width, int64_t output_width, bool sigmoid_in_fp32) {
   const int64_t row = blockIdx.x;
   const float gate = ProjectedRowGate(activation, weight, row, input_width, sigmoid_in_fp32);
+  const int64_t row_base = row * output_width;
+  if ((output_width & 7) == 0 &&
+      (reinterpret_cast<uintptr_t>(attention + row_base) & 15) == 0 &&
+      (reinterpret_cast<uintptr_t>(output + row_base) & 15) == 0 &&
+      (residual == nullptr || (reinterpret_cast<uintptr_t>(residual + row_base) & 15) == 0)) {
+    const int64_t vec_width = output_width >> 3;
+    const uint4* attn_vec = reinterpret_cast<const uint4*>(attention + row_base);
+    const uint4* res_vec = residual != nullptr ? reinterpret_cast<const uint4*>(residual + row_base) : nullptr;
+    uint4* out_vec = reinterpret_cast<uint4*>(output + row_base);
+    for (int64_t v = threadIdx.x; v < vec_width; v += kThreads) {
+      const uint4 a_u4 = attn_vec[v];
+      const __nv_bfloat16* a_bf = reinterpret_cast<const __nv_bfloat16*>(&a_u4);
+      uint4 o_u4;
+      __nv_bfloat16* o_bf = reinterpret_cast<__nv_bfloat16*>(&o_u4);
+      if (res_vec != nullptr) {
+        const uint4 r_u4 = res_vec[v];
+        const __nv_bfloat16* r_bf = reinterpret_cast<const __nv_bfloat16*>(&r_u4);
+#pragma unroll
+        for (int m = 0; m < 8; ++m) {
+          const __nv_bfloat16 scaled = __float2bfloat16_rn(__bfloat162float(a_bf[m]) * gate);
+          o_bf[m] = __float2bfloat16_rn(__bfloat162float(scaled) + __bfloat162float(r_bf[m]));
+        }
+      } else {
+#pragma unroll
+        for (int m = 0; m < 8; ++m) {
+          o_bf[m] = __float2bfloat16_rn(__bfloat162float(a_bf[m]) * gate);
+        }
+      }
+      out_vec[v] = o_u4;
+    }
+    return;
+  }
   for (int64_t column = threadIdx.x; column < output_width; column += kThreads) {
-    const int64_t index = row * output_width + column;
+    const int64_t index = row_base + column;
     __nv_bfloat16 value = __float2bfloat16_rn(__bfloat162float(attention[index]) * gate);
     if (residual != nullptr) {
       value = __float2bfloat16_rn(__bfloat162float(value) + __bfloat162float(residual[index]));
@@ -316,34 +231,6 @@ __global__ void SigmoidGateMulKernel(const __nv_bfloat16* attention,
   output[i] = value;
 }
 
-__global__ void UntileHcBf16Kernel(const uint16_t* input, uint16_t* output, int kind) {
-  constexpr int64_t kVectorCount = 204800;
-  constexpr int64_t kElementCount = kVectorCount * 16;
-  const int64_t element = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
-  if (element >= kElementCount) return;
-  const int64_t vector_index = element / 16;
-  const int64_t lane = element % 16;
-  int64_t destination_vector;
-  if (kind == 0) {
-    const int64_t rp = vector_index & 127;
-    const int64_t t1 = vector_index >> 7;
-    const int64_t i = t1 % 10;
-    const int64_t t2 = t1 / 10;
-    const int64_t j = t2 % 20;
-    const int64_t s = t2 / 20;
-    destination_vector = (((s * 10 + i) * 128 + rp) * 20 + j);
-  } else {
-    const int64_t c = vector_index & 3;
-    const int64_t t1 = vector_index >> 2;
-    const int64_t rp = t1 & 31;
-    const int64_t t2 = t1 >> 5;
-    const int64_t i = t2 % 10;
-    const int64_t hb = t2 / 10;
-    destination_vector = (((i * 32 + rp) * 4 + c) * 160 + hb);
-  }
-  output[destination_vector * 16 + lane] = input[element];
-}
-
 }  // namespace
 
 Status LaunchArgMaxLastAxis(cudaStream_t stream, const void* input, int input_type,
@@ -367,52 +254,10 @@ Status LaunchArgMaxLastAxis(cudaStream_t stream, const void* input, int input_ty
   }
 }
 
-Status LaunchEmbeddingRMSNorm(cudaStream_t stream, const int64_t* ids, const uint16_t* table,
-                              const float* weight, float epsilon, uint16_t* output,
-                              int64_t rows, int64_t vocab_size, int64_t hidden_size,
-                              const int32_t* committed, int64_t* slot_ids,
-                              int32_t* seqlens_k, int32_t* cu_seqlens) {
-  ORT_RETURN_IF_NOT(hidden_size > 0 && vocab_size > 0,
-                    "EmbeddingRMSNorm requires non-empty table dimensions");
-  ORT_RETURN_IF_NOT(rows <= std::numeric_limits<unsigned>::max(),
-                    "EmbeddingRMSNorm has too many rows for a CUDA grid");
-  if (rows == 0) return Status::OK();
-  EmbedNormKernel<<<static_cast<unsigned>(rows), 512, 0, stream>>>(
-      ids, table, weight, epsilon, output, vocab_size, hidden_size,
-      committed, slot_ids, seqlens_k, cu_seqlens, rows);
-  return CUDA_CALL(cudaGetLastError());
-}
-
-Status LaunchEmbeddingRMSNormInt8(cudaStream_t stream, const int64_t* ids, const int8_t* table_i8,
-                                  const float* row_scales, const float* weight, float epsilon,
-                                  uint16_t* output, int64_t rows, int64_t vocab_size, int64_t hidden_size,
-                                  const int32_t* committed, int64_t* slot_ids,
-                                  int32_t* seqlens_k, int32_t* cu_seqlens) {
-  ORT_RETURN_IF_NOT(hidden_size > 0 && vocab_size > 0,
-                    "EmbeddingRMSNorm requires non-empty table dimensions");
-  ORT_RETURN_IF_NOT(rows <= std::numeric_limits<unsigned>::max(),
-                    "EmbeddingRMSNorm has too many rows for a CUDA grid");
-  if (rows == 0) return Status::OK();
-  EmbedNormKernelInt8<<<static_cast<unsigned>(rows), 512, 0, stream>>>(
-      ids, table_i8, row_scales, weight, epsilon, output, vocab_size, hidden_size,
-      committed, slot_ids, seqlens_k, cu_seqlens, rows);
-  return CUDA_CALL(cudaGetLastError());
-}
-
-Status LaunchRowSelect(cudaStream_t stream, const int64_t* selection,
-                       const uint16_t* const* inputs, uint16_t* const* outputs,
-                       const int64_t* row_sizes, int64_t num_rows) {
-  const dim3 grid(8, 3);
-  RowSelectKernel<<<grid, kThreads, 0, stream>>>(
-      selection, inputs[0], inputs[1], inputs[2], outputs[0], outputs[1], outputs[2],
-      row_sizes[0], row_sizes[1], row_sizes[2], num_rows);
-  return CUDA_CALL(cudaGetLastError());
-}
-
 Status LaunchPrepareSharedExpert(cudaStream_t stream, const uint16_t* up, const uint16_t* silu_gate,
-                                const uint16_t* activation, const uint16_t* weight,
-                                uint16_t* prepared, float* row_gates,
-                                int rows, int width, int input_width) {
+                                 const uint16_t* activation, const uint16_t* weight,
+                                 uint16_t* prepared, float* row_gates,
+                                 int rows, int width, int input_width) {
   ORT_RETURN_IF_NOT(rows >= 0 && width > 0 && input_width > 0,
                     "Shared expert preparation requires nonnegative rows and positive widths");
   if (rows == 0) return Status::OK();
@@ -475,15 +320,6 @@ Status LaunchSigmoidGateMul(cudaStream_t stream, const uint16_t* attention,
     LAUNCH_GATE(false, false, false);
   }
 #undef LAUNCH_GATE
-  return CUDA_CALL(cudaGetLastError());
-}
-
-Status LaunchUntileHyperConnectionWeights(cudaStream_t stream, const uint16_t* input,
-                                          uint16_t* output, int kind) {
-  constexpr int64_t kElementCount = 204800ll * 16;
-  constexpr int threads = 256;
-  constexpr int blocks = static_cast<int>((kElementCount + threads - 1) / threads);
-  UntileHcBf16Kernel<<<blocks, threads, 0, stream>>>(input, output, kind);
   return CUDA_CALL(cudaGetLastError());
 }
 

@@ -34,6 +34,111 @@ void MatMulShapeInference(
 namespace onnxruntime {
 namespace contrib {
 
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    FoldMid2, 1,
+    OpSchema()
+        .SetDoc("Commits a batch-one speculative prefix and prepares rotary/head inputs for two through eight head rows. "
+                "Control and committed-context outputs must alias their inputs on CUDA when present. This is stateful: callers "
+                "must serialize access to these buffers. The result-ring address must identify a device-accessible, "
+                "aligned allocation of capacity*8 int64 words. The mid stage writes the payload; FoldTail publishes "
+                "its sequence word after downstream validation when ptrs is passed to FoldTail, or FoldMid2 publishes it directly when updated_ctl/updated_ctx_commit are omitted. "
+                "Muted prefill calls prepare inputs without committing "
+                "state or touching ring metadata. Invalid device metadata sets error bits and mutes execution.")
+        .Attr("head_rows", "Fixed number of head rows, 2 through 8.", AttributeProto::INT, int64_t{2})
+        .Attr("head_capacity", "Maximum head-cache token capacity.", AttributeProto::INT, int64_t{262144})
+        .Input(0, "next_tokens", "Verifier predictions, batch one.", "I64")
+        .Input(1, "input_ids", "Verifier input IDs.", "I64")
+        .Input(2, "status", "Verifier status words.", "I32")
+        .Input(3, "ctl", "Mutable control state: at least 8 words for S2, 16 for S3..S8.", "I64")
+        .Input(4, "ctx_commit", "Mutable committed context, two words.", "I64")
+        .Input(5, "prefixes", "Two-word context for each accepted-prefix length; S2 needs only the first.", "I64")
+        .Input(6, "prefix2", "Two-word context for acceptance length one.", "I64")
+        .Input(7, "ptrs", "Result ring address and positive record capacity.", "I64")
+        .Input(8, "cos_cache", "Rotary cosine cache [positions, width].", "B")
+        .Input(9, "sin_cache", "Rotary sine cache [positions, width].", "B")
+        .Input(10, "hidden", "Optional hidden states [1, verifier_rows, ...].", "B", OpSchema::Optional)
+        .Output(0, "head_ids", "Head token IDs [1, head_rows].", "I64")
+        .Output(1, "head_c", "Head committed length [1].", "I32")
+        .Output(2, "slot_ids", "Head slots [1, head_rows].", "I64")
+        .Output(3, "seqlens", "Head sequence length [1].", "I32")
+        .Output(4, "cos_out", "Gathered rotary cosine [1, head_rows, width].", "B")
+        .Output(5, "sin_out", "Gathered rotary sine [1, head_rows, width].", "B")
+        .Output(6, "sel", "Accepted-prefix length, or -1 on invalid metadata.", "I64")
+        .Output(7, "head_hidden", "Hidden rows, repeating the last source row when necessary.", "B", OpSchema::Optional)
+        .Output(8, "updated_ctl", "Optional updated control state, aliases ctl.", "I64", OpSchema::Optional)
+        .Output(9, "updated_ctx_commit", "Optional updated context, aliases ctx_commit.", "I64", OpSchema::Optional)
+        .TypeConstraint("I64", {"tensor(int64)"}, "Token and control words.")
+        .TypeConstraint("I32", {"tensor(int32)"}, "Status and sequence lengths.")
+        .TypeConstraint("B", {"tensor(bfloat16)"}, "Rotary and hidden tensors.")
+        .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+          for (int output : {0, 2, 6, 8, 9}) {
+            if (static_cast<size_t>(output) < ctx.getNumOutputs() && ctx.hasOutput(output)) {
+              propagateElemTypeFromInputToOutput(ctx, 0, output);
+            }
+          }
+          for (int output : {1, 3}) propagateElemTypeFromInputToOutput(ctx, 2, output);
+          for (int output : {4, 5}) propagateElemTypeFromInputToOutput(ctx, 8, output);
+          if (ctx.getNumOutputs() > 7 && ctx.hasOutput(7) && hasInputShape(ctx, 10)) {
+            propagateElemTypeFromInputToOutput(ctx, 10, 7);
+          }
+          const auto rows = getAttribute(ctx, "head_rows", 2);
+          const auto capacity = getAttribute(ctx, "head_capacity", 262144);
+          if (rows < 2 || rows > 8 || capacity < rows || capacity > std::numeric_limits<int>::max())
+            fail_shape_inference("FoldMid2: invalid head_rows/head_capacity");
+          for (int output : {0, 2}) {
+            auto* shape = getOutputShape(ctx, output);
+            shape->add_dim()->set_dim_value(1);
+            shape->add_dim()->set_dim_value(rows);
+          }
+          for (int output : {1, 3, 6}) getOutputShape(ctx, output)->add_dim()->set_dim_value(1);
+          if (hasInputShape(ctx, 8)) {
+            const auto& rope = getInputShape(ctx, 8);
+            if (rope.dim_size() != 2) fail_shape_inference("FoldMid2: rotary cache must have rank 2");
+            TensorShapeProto shape;
+            shape.add_dim()->set_dim_value(1);
+            shape.add_dim()->set_dim_value(rows);
+            *shape.add_dim() = rope.dim(1);
+            updateOutputShape(ctx, 4, shape);
+            updateOutputShape(ctx, 5, shape);
+          }
+          if (ctx.getNumOutputs() > 7 && ctx.hasOutput(7) && hasInputShape(ctx, 10)) {
+            auto shape = getInputShape(ctx, 10);
+            if (shape.dim_size() < 3) fail_shape_inference("FoldMid2: hidden must have rank at least 3");
+            shape.mutable_dim(1)->set_dim_value(rows);
+            updateOutputShape(ctx, 7, shape);
+          }
+          if (ctx.getNumOutputs() > 8 && ctx.hasOutput(8)) propagateShapeFromInputToOutput(ctx, 3, 8);
+          if (ctx.getNumOutputs() > 9 && ctx.hasOutput(9)) propagateShapeFromInputToOutput(ctx, 4, 9);
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    FoldTail, 1,
+    OpSchema()
+        .SetDoc("Updates the selected draft-control slot and publishes the result-ring sequence after validation. "
+                "updated_ctl must alias ctl on CUDA when present. Muted calls do not access the ring. Invalid ring metadata "
+                "sets error bit 16 and mutes execution. done is a dependency output set to 1 when unmuted and 0 when muted.")
+        .Attr("ctl_slot", "Draft-control slot: -1 (none), 2, or 8..13.", AttributeProto::INT, int64_t{2})
+        .Input(0, "next_token", "Next draft token (or ignored selector in DFlash).", "I64")
+        .Input(1, "status", "Downstream validation status words.", "I32")
+        .Input(2, "ctl", "Mutable control state.", "I64")
+        .Input(3, "ptrs", "Optional result ring address and record capacity.", "I64", OpSchema::Optional)
+        .Output(0, "done", "Dependency output [1].", "I32")
+        .Output(1, "updated_ctl", "Optional updated control state, aliases ctl.", "I64", OpSchema::Optional)
+        .TypeConstraint("I64", {"tensor(int64)"}, "Token and control words.")
+        .TypeConstraint("I32", {"tensor(int32)"}, "Status and dependency output.")
+        .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 1, 0);
+          if (ctx.getNumOutputs() > 1 && ctx.hasOutput(1)) {
+            propagateElemTypeFromInputToOutput(ctx, 2, 1);
+          }
+          const auto slot = getAttribute(ctx, "ctl_slot", 2);
+          if (slot != -1 && slot != 2 && (slot < 8 || slot > 13)) fail_shape_inference("FoldTail: invalid ctl_slot");
+          getOutputShape(ctx, 0)->add_dim()->set_dim_value(1);
+          if (ctx.getNumOutputs() > 1 && ctx.hasOutput(1)) {
+            propagateShapeFromInputToOutput(ctx, 2, 1);
+          }
+        }));
+
 void DecoderAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   // Type inference
   ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
@@ -3561,70 +3666,58 @@ constexpr const char* RotaryEmbedding_ver1_doc = R"DOC(
 RotaryEmbedding is the implementation of rotary positional embeddings (RoPE). The positions are represented as rotation matrices
 that are multiplied to query and key before the inner product of query and key is taken.
 )DOC";
-static OpSchema RotaryEmbeddingSchema() {
-  return OpSchema()
-      .SetDoc(RotaryEmbedding_ver1_doc)
-      .Attr("scale",
-            "Custom scale will be used if specified. Default value is 1.0",
-            AttributeProto::FLOAT,
-            OPTIONAL_VALUE)
-      .Attr("interleaved",
-            "Indicates whether the input has real and imaginary parts interleaved. "
-            "Default value is 0 (False), meaning the first half of the input consists of real values "
-            "and the second half consists of imaginary values.",
-            AttributeProto::INT,
-            OPTIONAL_VALUE)
-      .Attr("rotary_embedding_dim",
-            "Rotary embedding dimension. Default value is 0.",
-            AttributeProto::INT,
-            OPTIONAL_VALUE)
-      .Attr("num_heads",
-            "Number of attention heads. Default value is 0. Must use with rotary_embedding_dim",
-            AttributeProto::INT,
-            OPTIONAL_VALUE)
-      .Attr("is_packed_batching",
-            "ragged batch inputs or not. Default value is 0",
-            AttributeProto::INT,
-            OPTIONAL_VALUE)
-      .Input(0,
-             "input",
-             "3D tensor with shape (batch_size, sequence_length, hidden_size) or 4D with shape (batch_size, num_heads, sequence_length, head_size)",
-             "T")
-      .Input(1,
-             "position_ids",
-             "1D tensor with shape (1) or 2D tensor with shape (batch_size, sequence_length)",
-             "M")
-      .Input(2,
-             "cos_cache",
-             "2D tensor with shape (max_sequence_length, head_size / 2) or (max_sequence_length, rotary_embedding_dim / 2)",
-             "T")
-      .Input(3,
-             "sin_cache",
-             "2D tensor with shape (max_sequence_length, head_size / 2) or (max_sequence_length, rotary_embedding_dim / 2)",
-             "T")
-      .Input(4, "prefill_numerics", "Optional CPU int32 scalar 0/1; one enables dense prefill arithmetic.", "TI", OpSchema::Optional)
-      .Output(0,
-              "output",
-              "tensor with same shape as input.",
-              "T")
-      .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output types to float tensors.")
-      .TypeConstraint("M", {"tensor(int64)"}, "Constrain input and output types to integer tensors")
-      .TypeConstraint("TI", {"tensor(int32)"}, "CPU numerical control.")
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        propagateElemTypeFromInputToOutput(ctx, 0, 0);
-        propagateShapeFromInputToOutput(ctx, 0, 0);
-      });
-}
-
-ONNX_MS_OPERATOR_SET_SCHEMA(RotaryEmbedding, 1, RotaryEmbeddingSchema());
 ONNX_MS_OPERATOR_SET_SCHEMA(
-    RotaryEmbedding, 2,
-    RotaryEmbeddingSchema()
-        .Attr("use_fp32_arithmetic",
-              "Widen input and cache values to float32, round each multiplication and addition in float32, "
-              "then convert the result to the input type. Values are 0 (legacy arithmetic) or 1. "
-              "Currently supported by CUDA only.",
-              AttributeProto::INT, static_cast<int64_t>(0)));
+    RotaryEmbedding, 1,
+    OpSchema()
+        .SetDoc(RotaryEmbedding_ver1_doc)
+        .Attr("scale",
+              "Custom scale will be used if specified. Default value is 1.0",
+              AttributeProto::FLOAT,
+              OPTIONAL_VALUE)
+        .Attr("interleaved",
+              "Indicates whether the input has real and imaginary parts interleaved. "
+              "Default value is 0 (False), meaning the first half of the input consists of real values "
+              "and the second half consists of imaginary values.",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
+        .Attr("rotary_embedding_dim",
+              "Rotary embedding dimension. Default value is 0.",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
+        .Attr("num_heads",
+              "Number of attention heads. Default value is 0. Must use with rotary_embedding_dim",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
+        .Attr("is_packed_batching",
+              "ragged batch inputs or not. Default value is 0",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
+        .Input(0,
+               "input",
+               "3D tensor with shape (batch_size, sequence_length, hidden_size) or 4D with shape (batch_size, num_heads, sequence_length, head_size)",
+               "T")
+        .Input(1,
+               "position_ids",
+               "1D tensor with shape (1) or 2D tensor with shape (batch_size, sequence_length)",
+               "M")
+        .Input(2,
+               "cos_cache",
+               "2D tensor with shape (max_sequence_length, head_size / 2) or (max_sequence_length, rotary_embedding_dim / 2)",
+               "T")
+        .Input(3,
+               "sin_cache",
+               "2D tensor with shape (max_sequence_length, head_size / 2) or (max_sequence_length, rotary_embedding_dim / 2)",
+               "T")
+        .Output(0,
+                "output",
+                "tensor with same shape as input.",
+                "T")
+        .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output types to float tensors.")
+        .TypeConstraint("M", {"tensor(int64)"}, "Constrain input and output types to integer tensors")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          propagateShapeFromInputToOutput(ctx, 0, 0);
+        }));
 
 constexpr const char* MRotaryEmbedding_ver1_doc = R"DOC(
 MRotaryEmbedding is the fused implementation of Multimodal Rotary Positional Embeddings (M-RoPE) used by the
@@ -4769,6 +4862,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "State layout override (CUDA only): -1 follows channels_last, "
               "0 uses [B,C,state_length], 1 uses [B,state_length,C].",
               AttributeProto::INT, static_cast<int64_t>(-1))
+        .Attr("state_update_capacity",
+              "Maximum number of leading input positions captured into the third output for compact prefix replay, "
+              "in [0, 8]. Default is 0.",
+              AttributeProto::INT, static_cast<int64_t>(0))
         .Attr("activation",
               "Fused activation function. One of: 'silu', 'swish', 'none'. "
               "Default is 'none'.",
@@ -4873,17 +4970,22 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           const int64_t channel_offset = getAttribute(ctx, "input_channel_offset", 0);
           const int64_t history = getAttribute(ctx, "state_length", 0);
           const int64_t state_layout = getAttribute(ctx, "state_channels_last", -1);
+          const int64_t state_update_capacity = getAttribute(ctx, "state_update_capacity", 0);
           if (input_channels < 0 || input_channels > std::numeric_limits<int>::max() ||
               channel_offset < 0 || channel_offset > std::numeric_limits<int>::max() ||
               history < 0 || history > std::numeric_limits<int>::max() ||
-              state_layout < -1 || state_layout > 1) {
+              state_layout < -1 || state_layout > 1 ||
+              state_update_capacity < 0 || state_update_capacity > 8) {
             fail_shape_inference("CausalConvWithState: invalid extended attributes");
           }
           if (input_channels != 0 || channel_offset != 0 || history != 0 || state_layout != -1 ||
-              ctx.getNumOutputs() > 2) {
+              state_update_capacity != 0 || ctx.getNumOutputs() > 2) {
             if (getAttribute(ctx, "channels_last", 0) != 1 || getAttribute(ctx, "ndim", 1) != 1 ||
                 state_window != 0 || getAttribute(ctx, "dilation", 1) < 1) {
               fail_shape_inference("CausalConvWithState: extended attributes require channels_last=1, ndim=1, state_window=0");
+            }
+            if (state_update_capacity > 0 && ctx.getNumOutputs() > 3) {
+              fail_shape_inference("CausalConvWithState: state_update_capacity > 0 supports at most 3 outputs");
             }
             for (size_t i = 2; i < ctx.getNumOutputs(); ++i) propagateElemTypeFromInputToOutput(ctx, 0, i);
             if (!hasInputShape(ctx, 0)) return;
@@ -4923,7 +5025,17 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             *state.add_dim() = state_layout == 0 ? *channels : length;
             *state.add_dim() = state_layout == 0 ? length : *channels;
             updateOutputShape(ctx, 1, state);
-            for (size_t i = 2; i < ctx.getNumOutputs(); ++i) updateOutputShape(ctx, i, state);
+            if (state_update_capacity > 0) {
+              if (ctx.getNumOutputs() > 2) {
+                TensorShapeProto su;
+                *su.add_dim() = input.dim(0);
+                su.add_dim()->set_dim_value(state_update_capacity);
+                *su.add_dim() = *channels;
+                updateOutputShape(ctx, 2, su);
+              }
+            } else {
+              for (size_t i = 2; i < ctx.getNumOutputs(); ++i) updateOutputShape(ctx, i, state);
+            }
             return;
           }
           if (state_window < 0 || state_window > kMaxStateWindow) {
@@ -5882,75 +5994,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
-    EmbeddingRMSNorm, 1,
-    OpSchema()
-        .SetDoc(FusedTensorOps_ver1_doc)
-        .Attr("epsilon", "RMS normalization epsilon.", AttributeProto::FLOAT)
-        .Input(0, "ids",
-               "Embedding row indices with any shape. Negative indices in [-vocabulary, -1] "
-               "count from the end. Out-of-range indices produce NaN output rows.",
-               "I")
-        .Input(1, "table", "BF16 or INT8 embedding matrix [vocabulary, hidden].", "TT")
-        .Input(2, "weight", "FP32 RMS normalization weight [hidden].", "F")
-        .Input(3, "committed_length", "Optional int32[1] committed length for head capture.", "I32", OpSchema::Optional)
-        .Output(0, "normalized", "BF16 normalized embeddings [shape(ids), hidden].", "T")
-        .Output(1, "slot_ids", "Optional int64[1, R] slot ids.", "I", OpSchema::Optional)
-        .Output(2, "seqlens_k", "Optional int32[1] seqlens_k.", "I32", OpSchema::Optional)
-        .Output(3, "cumulative_sequence_lengths", "Optional int32[2] cumulative sequence lengths.", "I32", OpSchema::Optional)
-        .TypeConstraint("I", {"tensor(int64)"}, "Indices use int64.")
-        .TypeConstraint("I32", {"tensor(int32)"}, "Committed length and sequence lengths use int32.")
-        .TypeConstraint("TT", {"tensor(bfloat16)", "tensor(int8)"}, "Embedding table uses BF16 or INT8.")
-        .TypeConstraint("T", {"tensor(bfloat16)"}, "Normalized result uses BF16.")
-        .TypeConstraint("F", {"tensor(float)"}, "Normalization weight uses FP32.")
-        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-          updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16);
-          if (ctx.getNumOutputs() > 1 && ctx.hasOutput(1)) {
-            updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto_DataType_INT64);
-          }
-          if (ctx.getNumOutputs() > 2 && ctx.hasOutput(2)) {
-            updateOutputElemType(ctx, 2, ONNX_NAMESPACE::TensorProto_DataType_INT32);
-          }
-          if (ctx.getNumOutputs() > 3 && ctx.hasOutput(3)) {
-            updateOutputElemType(ctx, 3, ONNX_NAMESPACE::TensorProto_DataType_INT32);
-          }
-          if (!hasInputShape(ctx, 0) || !hasInputShape(ctx, 1)) return;
-          const auto& ids_shape = getInputShape(ctx, 0);
-          const auto& table_shape = getInputShape(ctx, 1);
-          if (table_shape.dim_size() != 2) {
-            fail_shape_inference("EmbeddingRMSNorm: table must have rank two");
-          }
-          ONNX_NAMESPACE::TensorShapeProto output_shape = ids_shape;
-          *output_shape.add_dim() = table_shape.dim(1);
-          updateOutputShape(ctx, 0, output_shape);
-        }));
-
-ONNX_MS_OPERATOR_SET_SCHEMA(
-    RowSelect, 1,
-    OpSchema()
-        .SetDoc(FusedTensorOps_ver1_doc)
-        .Input(0, "selection", "Scalar-like int64 row selector; zero selects row 0.", "I")
-        .Input(1, "x0", "BF16 tensor with shape [1, 2, ...].", "T")
-        .Input(2, "x1", "BF16 tensor with shape [1, 2, ...].", "T")
-        .Input(3, "x2", "BF16 tensor with shape [1, 2, ...].", "T")
-        .Output(0, "y0", "Selected BF16 tensor with shape [1, 1, ...].", "T")
-        .Output(1, "y1", "Selected BF16 tensor with shape [1, 1, ...].", "T")
-        .Output(2, "y2", "Selected BF16 tensor with shape [1, 1, ...].", "T")
-        .TypeConstraint("I", {"tensor(int64)"}, "Selector uses int64.")
-        .TypeConstraint("T", {"tensor(bfloat16)"}, "Inputs and outputs use BF16.")
-        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-          for (int i = 0; i < 3; ++i) {
-            propagateElemTypeFromInputToOutput(ctx, i + 1, i);
-            if (!hasInputShape(ctx, i + 1)) continue;
-            ONNX_NAMESPACE::TensorShapeProto output_shape = getInputShape(ctx, i + 1);
-            if (output_shape.dim_size() < 2) {
-              fail_shape_inference("RowSelect: inputs must have rank at least two");
-            }
-            output_shape.mutable_dim(1)->set_dim_value(1);
-            updateOutputShape(ctx, i, output_shape);
-          }
-        }));
-
-ONNX_MS_OPERATOR_SET_SCHEMA(
     SigmoidGateMul, 1,
     OpSchema()
         .SetDoc(FusedTensorOps_ver1_doc)
@@ -5986,29 +6029,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
           if (hasInputShape(ctx, 0)) updateOutputShape(ctx, 0, getInputShape(ctx, 0));
-        }));
-
-ONNX_MS_OPERATOR_SET_SCHEMA(
-    UntileHyperConnectionWeights, 1,
-    OpSchema()
-        .SetDoc(FusedTensorOps_ver1_doc)
-        .Attr("kind", "Untile layout kind, either 0 or 1.", AttributeProto::INT)
-        .Input(0, "tiled", "Tiled BF16 weight [160, 20480].", "T")
-        .Input(1, "unused", "Reserved optional input retained for exporter compatibility.", "T",
-               OpSchema::Optional)
-        .Output(0, "untiled", "Untiled BF16 weight.", "T")
-        .TypeConstraint("T", {"tensor(bfloat16)"}, "Input and output use BF16.")
-        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-          propagateElemTypeFromInputToOutput(ctx, 0, 0);
-          if (!hasInputShape(ctx, 0)) return;
-          const int64_t kind = getAttribute(ctx, "kind", static_cast<int64_t>(-1));
-          if (kind != 0 && kind != 1) {
-            fail_shape_inference("UntileHyperConnectionWeights: kind must be zero or one");
-          }
-          ONNX_NAMESPACE::TensorShapeProto output_shape;
-          output_shape.add_dim()->set_dim_value(kind == 0 ? 10240 : 320);
-          output_shape.add_dim()->set_dim_value(kind == 0 ? 320 : 10240);
-          updateOutputShape(ctx, 0, output_shape);
         }));
 
 constexpr const char* LinearAttentionGate_ver1_doc = R"DOC(
@@ -6141,94 +6161,31 @@ Applies RMS normalization independently to each branch. X may use grouped shape
 (..., C, H), or flattened shape (..., C * H) when num_branches is specified.
 The optional scale may have shape (C * H), (C, H), or (H). Arithmetic is
 performed in float32 and the result is converted to T.
-With use_onnx_arithmetic=1, compute FP32 square, mean, epsilon addition, square
-root, division, and scale multiplication with separate rounding boundaries.
-CUDA reuses the standard fast last-axis ReduceMean summation order by default.
-Deterministic CUDA sessions instead use a fixed-order reduction, which may
-round differently from the default reduction or deterministic ReduceMean.
-This mode does not substitute reciprocal square root.
-Optional Y_fp32 losslessly widens the already T-rounded Y to float32; it does
-not bypass the output rounding boundary and requires use_onnx_arithmetic=1.
-WebGPU currently supports only the default mode without Y_fp32.
 )DOC";
 
-static OpSchema BranchwiseRMSNormSchema() {
-  return OpSchema()
-      .SetDoc(BranchwiseRMSNorm_ver1_doc)
-      .Attr("epsilon", "Epsilon added before reciprocal square root.",
-            AttributeProto::FLOAT, 1e-5f)
-      .Attr("num_branches",
-            "Number of branches for flattened input. Omit or set to zero for grouped input.",
-            AttributeProto::INT, static_cast<int64_t>(0))
-      .Attr("use_onnx_arithmetic",
-            "Use explicit FP32 mean/sqrt/divide/multiply arithmetic instead of reciprocal RMS. "
-            "Supported values are 0 (default) and 1.",
-            AttributeProto::INT, static_cast<int64_t>(0))
-      .Input(0, "X", "Grouped (..., C, H) or flattened (..., C * H) input.", "T")
-      .Input(1, "scale", "Optional scale with shape (C * H), (C, H), or (H).",
-             "M", OpSchema::Optional)
-      .Input(2, "prefill_numerics", "Optional CPU int32 scalar 0/1; one enables dense prefill arithmetic.", "TI", OpSchema::Optional)
-      .Output(0, "Y", "RMS-normalized output with the same shape as X.", "T")
-      .Output(1, "Y_fp32",
-              "Optional float32 widening of the already T-rounded Y. "
-              "Requires use_onnx_arithmetic=1.",
-              "F", OpSchema::Optional)
-      .TypeConstraint("T",
-                      {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
-                      "Constrain input and output to floating-point tensors.")
-      .TypeConstraint("M",
-                      {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
-                      "Constrain scale to floating-point tensors.")
-      .TypeConstraint("F", {"tensor(float)"}, "Widened output is float32.")
-      .TypeConstraint("TI", {"tensor(int32)"}, "CPU numerical control.")
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        propagateElemTypeFromInputToOutput(ctx, 0, 0);
-        const auto start = getAttribute(ctx, "input_start", 0);
-        const auto width = getAttribute(ctx, "input_width", 0);
-        if (start < 0 || width < 0 || (width == 0 && start != 0)) {
-          fail_shape_inference("input_start and input_width must describe a nonnegative slice");
-        }
-        if (width != 0 && (getAttribute(ctx, "use_onnx_arithmetic", 0) != 1 ||
-                           getAttribute(ctx, "num_branches", 0) != 0)) {
-          fail_shape_inference("input_width requires use_onnx_arithmetic=1 and grouped input");
-        }
-        if (hasInputShape(ctx, 0)) {
-          auto shape = getInputShape(ctx, 0);
-          if (width != 0) {
-            if (shape.dim_size() < 2) fail_shape_inference("grouped input requires rank at least two");
-            auto* last = shape.mutable_dim(shape.dim_size() - 1);
-            if (last->has_dim_value() && (start > last->dim_value() || width > last->dim_value() - start)) {
-              fail_shape_inference("input slice exceeds the last dimension");
-            }
-            last->set_dim_value(width);
-          }
-          updateOutputShape(ctx, 0, shape);
-        }
-        if (ctx.getNumOutputs() > 1) {
-          if (getAttribute(ctx, "use_onnx_arithmetic", 0) != 1) {
-            fail_shape_inference("Y_fp32 requires use_onnx_arithmetic=1");
-          }
-          updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-          if (hasInputShape(ctx, 0)) {
-            auto shape = getInputShape(ctx, 0);
-            if (width != 0) shape.mutable_dim(shape.dim_size() - 1)->set_dim_value(width);
-            updateOutputShape(ctx, 1, shape);
-          }
-        }
-      });
-}
-
-ONNX_MS_OPERATOR_SET_SCHEMA(BranchwiseRMSNorm, 1, BranchwiseRMSNormSchema());
 ONNX_MS_OPERATOR_SET_SCHEMA(
-    BranchwiseRMSNorm, 2,
-    BranchwiseRMSNormSchema()
-        .Attr("input_start", "CUDA-only starting offset in the last input dimension.",
+    BranchwiseRMSNorm, 1,
+    OpSchema()
+        .SetDoc(BranchwiseRMSNorm_ver1_doc)
+        .Attr("epsilon", "Epsilon added before reciprocal square root.",
+              AttributeProto::FLOAT, 1e-5f)
+        .Attr("num_branches",
+              "Number of branches for flattened input. Omit or set to zero for grouped input.",
               AttributeProto::INT, static_cast<int64_t>(0))
-        .Attr("input_width",
-              "CUDA-only width selected from the last input dimension before normalization. "
-              "Zero retains the full input. Requires grouped input and use_onnx_arithmetic=1. "
-              "Outputs retain the leading dimensions and use this last dimension.",
-              AttributeProto::INT, static_cast<int64_t>(0)));
+        .Input(0, "X", "Grouped (..., C, H) or flattened (..., C * H) input.", "T")
+        .Input(1, "scale", "Optional scale with shape (C * H), (C, H), or (H).",
+               "M", OpSchema::Optional)
+        .Output(0, "Y", "RMS-normalized output with the same shape as X.", "T")
+        .TypeConstraint("T",
+                        {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain input and output to floating-point tensors.")
+        .TypeConstraint("M",
+                        {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain scale to floating-point tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          propagateShapeFromInputToOutput(ctx, 0, 0);
+        }));
 
 constexpr const char* ScaledSiLU_ver1_doc = R"DOC(
 Computes SiLU after scaling, with explicit T rounding:
