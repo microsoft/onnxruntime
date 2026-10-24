@@ -37,7 +37,7 @@ constexpr int kGroupedDecodeQueryHeadsPerBlock = 8;
 constexpr int kGroupedDecodeCandidatesPerSplit = 64;
 constexpr int kTargetGroupedDecodeBlocks = 128;
 constexpr int kGroupedQuantizedDecodeCandidatesPerSplit = 32;
-constexpr int kTargetGroupedQuantizedDecodeBlocks = 256;
+constexpr int kTargetGroupedQuantizedDecodeBlocks = 512;
 
 template <typename T>
 __device__ __forceinline__ float ToFloat(T value) {
@@ -995,8 +995,9 @@ __global__ void GroupedDecodeDynamicSparseAttentionKernel(
   __shared__ int candidate_indices[kGroupedPrefillCandidatesPerTile];
   __shared__ bool candidate_valid[kGroupedPrefillCandidatesPerTile];
   __shared__ bool candidate_sources[kGroupedPrefillCandidatesPerTile];
-  __shared__ half mma_query[kGroupedDecodeQueryHeadsPerBlock * 256];
-  __shared__ float mma_scores[kGroupedDecodeQueryHeadsPerBlock * kGroupedPrefillCandidatesPerTile];
+  constexpr int kMmaHeads = (std::is_same_v<T, half> && !kQuantizedCache) ? kQueryHeadsPerBlock : 1;
+  __shared__ half mma_query[kMmaHeads * 256];
+  __shared__ float mma_scores[kMmaHeads * kGroupedPrefillCandidatesPerTile];
 
   constexpr int kValuesPerLane = 8;
   float query_values[kValuesPerLane]{};
@@ -1755,6 +1756,11 @@ bool UseGroupedDecodeAttention(const DynamicSparseAttentionParameters& parameter
           GetGroupedAttentionSharedBytes(parameters, sizeof(float)) < max_shared_memory_per_block);
 }
 
+int GetGroupedDecodeHeadsPerBlock(const DynamicSparseAttentionParameters& parameters) {
+  const int query_heads_per_kv = parameters.num_heads / parameters.kv_num_heads;
+  return (query_heads_per_kv == 12) ? 12 : kGroupedDecodeQueryHeadsPerBlock;
+}
+
 int GetGroupedDecodeSplitCount(const DynamicSparseAttentionParameters& parameters, bool quantized_cache = false) {
   const int candidates_per_split = quantized_cache ? kGroupedQuantizedDecodeCandidatesPerSplit
                                                    : kGroupedDecodeCandidatesPerSplit;
@@ -1763,7 +1769,7 @@ int GetGroupedDecodeSplitCount(const DynamicSparseAttentionParameters& parameter
       (GetCandidateCapacity(parameters) + candidates_per_split - 1) / candidates_per_split;
   const int64_t grouped_head_blocks =
       static_cast<int64_t>(parameters.batch_size) * parameters.sequence_length * parameters.kv_num_heads *
-      GetGroupedHeadTiles(parameters, kGroupedDecodeQueryHeadsPerBlock);
+      GetGroupedHeadTiles(parameters, GetGroupedDecodeHeadsPerBlock(parameters));
   const int64_t occupancy_splits =
       std::max<int64_t>(1, (target_blocks + grouped_head_blocks - 1) /
                                grouped_head_blocks);
@@ -2025,9 +2031,10 @@ Status LaunchDynamicSparseAttention(
   const size_t fused_shared_bytes =
       (static_cast<size_t>(candidate_capacity) + static_cast<size_t>(fused_threads)) * sizeof(float) +
       static_cast<size_t>(parameters.head_size) * sizeof(T);
-  constexpr int kGroupedDecodeThreads = 32 * kGroupedDecodeQueryHeadsPerBlock;
+  const int grouped_decode_heads_per_block = GetGroupedDecodeHeadsPerBlock(parameters);
+  const int grouped_decode_threads = 32 * grouped_decode_heads_per_block;
   constexpr int kGroupedPrefillThreads = 32 * kGroupedPrefillQueryHeadsPerBlock;
-  const bool grouped_decode_threads_supported = kGroupedDecodeThreads <= max_threads_per_block;
+  const bool grouped_decode_threads_supported = grouped_decode_threads <= max_threads_per_block;
   const bool grouped_prefill_threads_supported = kGroupedPrefillThreads <= max_threads_per_block;
   const bool use_grouped_decode =
       grouped_decode_threads_supported &&
@@ -2060,7 +2067,7 @@ Status LaunchDynamicSparseAttention(
     const int64_t partial_blocks = query_blocks * split_count;
     const int64_t grouped_blocks =
         static_cast<int64_t>(parameters.batch_size) * parameters.sequence_length * parameters.kv_num_heads *
-        GetGroupedHeadTiles(parameters, kGroupedDecodeQueryHeadsPerBlock) * split_count;
+        GetGroupedHeadTiles(parameters, grouped_decode_heads_per_block) * split_count;
     ORT_RETURN_IF_ERROR(CheckBlockCount(partial_blocks, "grouped decode partials"));
     ORT_RETURN_IF_ERROR(CheckBlockCount(grouped_blocks, "grouped decode attention"));
     ORT_RETURN_IF_NOT(data.attention_workspace != nullptr,
@@ -2075,10 +2082,11 @@ Status LaunchDynamicSparseAttention(
           ParseEnvironmentVariableWithDefault<int>("ORT_DSA_INT8_VECTOR_STAGING", 1);
       ORT_ENFORCE(vectorized_staging == 0 || vectorized_staging == 1,
                   "ORT_DSA_INT8_VECTOR_STAGING must be 0 or 1.");
-      const auto launch = [&](auto vectorized) {
-        GroupedDecodeDynamicSparseAttentionKernel<T, kGroupedDecodeQueryHeadsPerBlock, true, true,
+      const auto launch = [&](auto heads_tag, auto vectorized) {
+        constexpr int kHeads = decltype(heads_tag)::value;
+        GroupedDecodeDynamicSparseAttentionKernel<T, kHeads, true, true,
                                                   decltype(vectorized)::value>
-            <<<static_cast<int>(grouped_blocks), kGroupedDecodeThreads, grouped_shared_bytes, stream>>>(
+            <<<static_cast<int>(grouped_blocks), 32 * kHeads, grouped_shared_bytes, stream>>>(
                 data.prepared_query, data.present_key, data.present_value,
                 data.auxiliary_key, data.auxiliary_value, data.selected_indices,
                 data.selected_counts, data.seqlens_k, data.head_sink,
@@ -2091,39 +2099,79 @@ Status LaunchDynamicSparseAttention(
                 parameters.selected_kv_source == DynamicSparseAttentionKvSource::kAuxiliary,
                 parameters.use_smooth_softmax, data.key_scale, data.value_scale);
       };
-      if (vectorized_staging) {
-        launch(std::true_type{});
+      if (grouped_decode_heads_per_block == 12) {
+        if (vectorized_staging) {
+          launch(std::integral_constant<int, 12>{}, std::true_type{});
+        } else {
+          launch(std::integral_constant<int, 12>{}, std::false_type{});
+        }
       } else {
-        launch(std::false_type{});
+        if (vectorized_staging) {
+          launch(std::integral_constant<int, kGroupedDecodeQueryHeadsPerBlock>{}, std::true_type{});
+        } else {
+          launch(std::integral_constant<int, kGroupedDecodeQueryHeadsPerBlock>{}, std::false_type{});
+        }
       }
     } else if (parameters.cache_capacity <= 131072) {
-      GroupedDecodeDynamicSparseAttentionKernel<T, kGroupedDecodeQueryHeadsPerBlock, true>
-          <<<static_cast<int>(grouped_blocks), kGroupedDecodeThreads, grouped_shared_bytes, stream>>>(
-              data.prepared_query, data.present_key, data.present_value,
-              data.auxiliary_key, data.auxiliary_value, data.selected_indices,
-              data.selected_counts, data.seqlens_k, data.head_sink,
-              partial_max, partial_sum, partial_output,
-              static_cast<int>(grouped_blocks), split_count, parameters.sequence_length,
-              parameters.num_heads, parameters.kv_num_heads, parameters.head_size,
-              parameters.cache_capacity, parameters.auxiliary_sequence_length,
-              parameters.max_selected, parameters.local_window_size, parameters.scale,
-              local_plus_selected,
-              parameters.selected_kv_source == DynamicSparseAttentionKvSource::kAuxiliary,
-              parameters.use_smooth_softmax, nullptr, nullptr);
+      if (grouped_decode_heads_per_block == 12) {
+        GroupedDecodeDynamicSparseAttentionKernel<T, 12, true>
+            <<<static_cast<int>(grouped_blocks), 32 * 12, grouped_shared_bytes, stream>>>(
+                data.prepared_query, data.present_key, data.present_value,
+                data.auxiliary_key, data.auxiliary_value, data.selected_indices,
+                data.selected_counts, data.seqlens_k, data.head_sink,
+                partial_max, partial_sum, partial_output,
+                static_cast<int>(grouped_blocks), split_count, parameters.sequence_length,
+                parameters.num_heads, parameters.kv_num_heads, parameters.head_size,
+                parameters.cache_capacity, parameters.auxiliary_sequence_length,
+                parameters.max_selected, parameters.local_window_size, parameters.scale,
+                local_plus_selected,
+                parameters.selected_kv_source == DynamicSparseAttentionKvSource::kAuxiliary,
+                parameters.use_smooth_softmax, nullptr, nullptr);
+      } else {
+        GroupedDecodeDynamicSparseAttentionKernel<T, kGroupedDecodeQueryHeadsPerBlock, true>
+            <<<static_cast<int>(grouped_blocks), grouped_decode_threads, grouped_shared_bytes, stream>>>(
+                data.prepared_query, data.present_key, data.present_value,
+                data.auxiliary_key, data.auxiliary_value, data.selected_indices,
+                data.selected_counts, data.seqlens_k, data.head_sink,
+                partial_max, partial_sum, partial_output,
+                static_cast<int>(grouped_blocks), split_count, parameters.sequence_length,
+                parameters.num_heads, parameters.kv_num_heads, parameters.head_size,
+                parameters.cache_capacity, parameters.auxiliary_sequence_length,
+                parameters.max_selected, parameters.local_window_size, parameters.scale,
+                local_plus_selected,
+                parameters.selected_kv_source == DynamicSparseAttentionKvSource::kAuxiliary,
+                parameters.use_smooth_softmax, nullptr, nullptr);
+      }
     } else {
-      GroupedDecodeDynamicSparseAttentionKernel<T, kGroupedDecodeQueryHeadsPerBlock, false>
-          <<<static_cast<int>(grouped_blocks), kGroupedDecodeThreads, grouped_shared_bytes, stream>>>(
-              data.prepared_query, data.present_key, data.present_value,
-              data.auxiliary_key, data.auxiliary_value, data.selected_indices,
-              data.selected_counts, data.seqlens_k, data.head_sink,
-              partial_max, partial_sum, partial_output,
-              static_cast<int>(grouped_blocks), split_count, parameters.sequence_length,
-              parameters.num_heads, parameters.kv_num_heads, parameters.head_size,
-              parameters.cache_capacity, parameters.auxiliary_sequence_length,
-              parameters.max_selected, parameters.local_window_size, parameters.scale,
-              local_plus_selected,
-              parameters.selected_kv_source == DynamicSparseAttentionKvSource::kAuxiliary,
-              parameters.use_smooth_softmax, nullptr, nullptr);
+      if (grouped_decode_heads_per_block == 12) {
+        GroupedDecodeDynamicSparseAttentionKernel<T, 12, false>
+            <<<static_cast<int>(grouped_blocks), 32 * 12, grouped_shared_bytes, stream>>>(
+                data.prepared_query, data.present_key, data.present_value,
+                data.auxiliary_key, data.auxiliary_value, data.selected_indices,
+                data.selected_counts, data.seqlens_k, data.head_sink,
+                partial_max, partial_sum, partial_output,
+                static_cast<int>(grouped_blocks), split_count, parameters.sequence_length,
+                parameters.num_heads, parameters.kv_num_heads, parameters.head_size,
+                parameters.cache_capacity, parameters.auxiliary_sequence_length,
+                parameters.max_selected, parameters.local_window_size, parameters.scale,
+                local_plus_selected,
+                parameters.selected_kv_source == DynamicSparseAttentionKvSource::kAuxiliary,
+                parameters.use_smooth_softmax, nullptr, nullptr);
+      } else {
+        GroupedDecodeDynamicSparseAttentionKernel<T, kGroupedDecodeQueryHeadsPerBlock, false>
+            <<<static_cast<int>(grouped_blocks), grouped_decode_threads, grouped_shared_bytes, stream>>>(
+                data.prepared_query, data.present_key, data.present_value,
+                data.auxiliary_key, data.auxiliary_value, data.selected_indices,
+                data.selected_counts, data.seqlens_k, data.head_sink,
+                partial_max, partial_sum, partial_output,
+                static_cast<int>(grouped_blocks), split_count, parameters.sequence_length,
+                parameters.num_heads, parameters.kv_num_heads, parameters.head_size,
+                parameters.cache_capacity, parameters.auxiliary_sequence_length,
+                parameters.max_selected, parameters.local_window_size, parameters.scale,
+                local_plus_selected,
+                parameters.selected_kv_source == DynamicSparseAttentionKvSource::kAuxiliary,
+                parameters.use_smooth_softmax, nullptr, nullptr);
+      }
     }
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
