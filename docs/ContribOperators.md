@@ -5300,8 +5300,8 @@ This version of the operator has been available since version 1 of the 'com.micr
       sum_h ReLU(q_h . k), the token_budget / compress_ratio highest scoring blocks are kept, and
       their token indices are emitted (request-local logical positions, i.e. the same numbering as
       past_sequence_lengths + local offset) followed by the causally visible tokens of the trailing
-      incomplete block. QSA positions are the request-local logical cache positions derived from
-      past_sequence_lengths and cumulative_sequence_lengths unless optional position_ids are supplied.
+      incomplete block. There is no position_ids input: QSA positions are the request-local logical
+      cache positions derived from past_sequence_lengths and cumulative_sequence_lengths.
   
     policy_mode = "csa" ("compressed sparse attention" block indexer)
       Applies the same window-plan arithmetic as SparseAttentionIndexer (overlap/leftover/new window

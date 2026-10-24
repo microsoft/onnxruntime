@@ -501,13 +501,11 @@ TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsQsaWithCsaInput) {
                        "must be omitted when policy_mode is 'qsa'");
 }
 
-TEST(PackedSparseAttentionIndexerShapeInferenceTest, QsaAcceptsPositionIds) {
+TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsQsaWithPositionIds) {
   GraphOptions options;
   options.add_position_ids = true;
-  std::unique_ptr<Model> model;
-  ASSERT_STATUS_OK(BuildAndResolve([&options](ModelTestBuilder& builder) { AddNode(builder, options); }, model));
-  const auto& node = *model->MainGraph().Nodes().begin();
-  EXPECT_TRUE(node.InputDefs()[psai::kPositionIds]->Exists());
+  ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddNode(builder, options); },
+                       "must be omitted when policy_mode is 'qsa'");
 }
 
 TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsCsaMissingPositionIds) {
@@ -1466,18 +1464,6 @@ TEST(PackedSparseAttentionIndexerTest, QsaMalformedStateLengthsAreClamped) {
   RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(std::move(problem)));
 }
 
-TEST(PackedSparseAttentionIndexerTest, QsaExplicitPositionIds) {
-  auto problem = MakeQsaPackedProblem();
-  problem.position_ids.resize(static_cast<size_t>(problem.TotalTokens()));
-  for (int batch = 0; batch < problem.batch_size; ++batch) {
-    const int start = problem.cumulative_sequence_lengths[batch];
-    for (int token = start; token < problem.cumulative_sequence_lengths[batch + 1]; ++token) {
-      problem.position_ids[static_cast<size_t>(token)] = problem.past_sequence_lengths[batch] + token - start + 1;
-    }
-  }
-  RunQsaPackedTest<float>(1.0e-5f, std::move(problem), ProviderKind::Cuda);
-}
-
 TEST(PackedSparseAttentionIndexerTest, QsaHierarchicalTileBoundariesPreserveStableTies) {
   for (int live_blocks : {0, 31, 32, 33, 511, 512, 513, 1023, 1024, 1025, 2047, 2048, 2049, 2051}) {
     SCOPED_TRACE(live_blocks);
@@ -1770,24 +1756,6 @@ TEST(PackedSparseAttentionIndexerWebGpuTest, QsaPortableStorageBindingLimit) {
   ConfigOptions config_options;
   ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kMaxStorageBuffersPerShaderStage, "8"));
   RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(), ProviderKind::WebGpu, nullptr, false, &config_options);
-}
-
-TEST(PackedSparseAttentionIndexerWebGpuTest, QsaExplicitPositionsStorageBindingLimit) {
-  auto problem = MakeQsaPackedProblem();
-  problem.position_ids.resize(static_cast<size_t>(problem.TotalTokens()));
-  for (int b = 0; b < problem.batch_size; ++b) {
-    const int start = problem.cumulative_sequence_lengths[b];
-    const int end = problem.cumulative_sequence_lengths[b + 1];
-    for (int token = start; token < end; ++token) {
-      problem.position_ids[token] = problem.past_sequence_lengths[b] + token - start;
-    }
-  }
-  for (const std::string limit : {"8", "9"}) {
-    ConfigOptions config_options;
-    ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kMaxStorageBuffersPerShaderStage, limit.c_str()));
-    RunQsaPackedTest<float>(1.0e-5f, problem, ProviderKind::WebGpu, nullptr, false, &config_options, 0,
-                            limit == "8" ? "QSA selection requires 9 storage-buffer bindings" : "");
-  }
 }
 
 TEST(PackedSparseAttentionIndexerWebGpuTest, QsaAllEmptyBatchPreservesState) {

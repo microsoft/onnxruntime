@@ -222,9 +222,9 @@ Status PackedSparseAttentionIndexer<T, TState>::ComputeInternal(OpKernelContext*
   }
   const bool position_ids_provided =
       psai::kPositionIds < context->InputCount() && context->Input<Tensor>(psai::kPositionIds) != nullptr;
-  ORT_RETURN_IF(!is_qsa && !position_ids_provided,
-                "PackedSparseAttentionIndexer: input ", psai::kPositionIds,
-                " (position_ids) is required for policy_mode 'csa'");
+  ORT_RETURN_IF(position_ids_provided == is_qsa,
+               "PackedSparseAttentionIndexer: position_ids is required for "
+               "policy_mode 'csa' and must be omitted for policy_mode 'qsa'");
   const bool gate_buffer_provided =
       psai::kPastGateBuffer < context->InputCount() && context->Input<Tensor>(psai::kPastGateBuffer) != nullptr;
   ORT_RETURN_IF(gate_buffer_provided != !is_qsa, "PackedSparseAttentionIndexer: input ", psai::kPastGateBuffer,
@@ -316,9 +316,6 @@ Status PackedSparseAttentionIndexer<T, TState>::ComputeQsa(OpKernelContext* cont
   }
   ORT_RETURN_IF_ERROR(CheckShape(query_norm_weight, "query_norm_weight", {head_size}));
   ORT_RETURN_IF_ERROR(CheckShape(key_norm_weight, "key_norm_weight", {head_size}));
-  if (position_ids != nullptr) {
-    ORT_RETURN_IF_ERROR(CheckShape(position_ids, "position_ids", {total_tokens}));
-  }
 
   RotaryCacheShape rotary;
   ORT_RETURN_IF_ERROR(CheckRotaryCache(cos_cache, sin_cache, batch_size, rotary));
