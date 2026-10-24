@@ -8,6 +8,7 @@
 #include <cmath>
 #include <functional>
 #include <fstream>
+#include <limits>
 #include <random>
 #include <sstream>
 
@@ -4861,6 +4862,122 @@ TEST_F(GraphTransformationTests, FuseConvMulNoBias) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Mul"] == 0);
   ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
+}
+
+TEST_F(GraphTransformationTests, ConvMulFusionPreservesPositiveInfinityOutput) {
+  auto make_test_case = [](auto input_value, auto weight_value, auto bias_value, auto scale_value) {
+    using T = decltype(input_value);
+    return [=](ModelTestBuilder& builder) {
+      auto* input = builder.MakeInput<T>(std::vector<int64_t>{1, 1, 1, 1}, std::vector<T>{input_value});
+      auto* weight = builder.MakeInitializer<T>(std::vector<int64_t>{1, 1, 1, 1}, std::vector<T>{weight_value});
+      auto* bias = builder.MakeInitializer<T>(std::vector<int64_t>{1}, std::vector<T>{bias_value});
+      auto* conv_output = builder.MakeIntermediate<T>(std::vector<int64_t>{1, 1, 1, 1});
+      builder.AddNode("Conv", {input, weight, bias}, {conv_output})
+          .AddAttribute("kernel_shape", std::vector<int64_t>{1, 1});
+
+      auto* scale = builder.MakeScalarInitializer<T>(scale_value);
+      auto* output = builder.MakeOutput<T>(std::vector<int64_t>{1, 1, 1, 1});
+      builder.AddNode("Mul", {conv_output, scale}, {output});
+    };
+  };
+  const auto build_float_test_case = make_test_case(-1.0f, -1.1f, -0.7f, std::numeric_limits<float>::infinity());
+  const auto build_float16_test_case = make_test_case(
+      MLFloat16(-1.0f), MLFloat16(-1.1f), MLFloat16(-0.7f), MLFloat16(std::numeric_limits<float>::infinity()));
+  const auto build_double_test_case = make_test_case(-1.0, -1.1, -0.7, std::numeric_limits<double>::infinity());
+  const auto build_float16_finite_test_case = make_test_case(MLFloat16(-1.0f), MLFloat16(-1.1f), MLFloat16(-0.7f),
+                                                             MLFloat16(2.0f));
+  const auto build_double_finite_test_case = make_test_case(-1.0, -1.1, -0.7, 2.0);
+
+  auto check_transformed_graph = [](InferenceSessionWrapper& session) {
+    const auto op_to_count = CountOpsInGraph(session.GetGraph());
+    const auto conv = op_to_count.find("Conv");
+    ASSERT_NE(conv, op_to_count.end());
+    ASSERT_EQ(conv->second, 1);
+    const auto mul = op_to_count.find("Mul");
+    ASSERT_NE(mul, op_to_count.end());
+    ASSERT_EQ(mul->second, 1);
+  };
+
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<ConvMulFusion>()));
+
+  TransformerTester(build_float_test_case,
+                    check_transformed_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    18,
+                    0.0,
+                    0.0,
+                    std::move(rule_transformer_L1));
+
+  auto make_graph_checker = [](const int expected_mul_count) {
+    return [expected_mul_count](Graph& graph) {
+      const auto op_to_count = CountOpsInGraph(graph);
+      const auto conv = op_to_count.find("Conv");
+      TEST_RETURN_IF_NOT(conv != op_to_count.end() && conv->second == 1);
+      const auto mul = op_to_count.find("Mul");
+      const auto mul_count = mul == op_to_count.end() ? 0 : mul->second;
+      TEST_RETURN_IF_NOT(mul_count == expected_mul_count);
+      return Status::OK();
+    };
+  };
+  auto check_non_float_type = [&](const std::function<void(ModelTestBuilder&)>& build_test_case,
+                                  const int expected_mul_count) {
+    auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+    ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<ConvMulFusion>()));
+    const auto pre_graph_checker = make_graph_checker(1);
+    const auto post_graph_checker = make_graph_checker(expected_mul_count);
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case,
+                                          18,
+                                          *logger_,
+                                          std::move(rule_transformer),
+                                          TransformerLevel::Level1,
+                                          1,
+                                          pre_graph_checker,
+                                          post_graph_checker));
+  };
+  check_non_float_type(build_float16_test_case, 1);
+  check_non_float_type(build_double_test_case, 1);
+  check_non_float_type(build_float16_finite_test_case, 0);
+  check_non_float_type(build_double_finite_test_case, 0);
+}
+
+TEST_F(GraphTransformationTests, ConvMulFusionPreservesPositiveInfinityInChannelScale) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>(std::vector<int64_t>{1, 1, 1, 1}, std::vector<float>{-1.0f});
+    auto* weight = builder.MakeInitializer<float>(std::vector<int64_t>{2, 1, 1, 1}, std::vector<float>{-1.1f, -2.1f});
+    auto* bias = builder.MakeInitializer<float>(std::vector<int64_t>{2}, std::vector<float>{-0.7f, -0.8f});
+    auto* conv_output = builder.MakeIntermediate<float>(std::vector<int64_t>{1, 2, 1, 1});
+    builder.AddNode("Conv", {input, weight, bias}, {conv_output})
+        .AddAttribute("kernel_shape", std::vector<int64_t>{1, 1});
+
+    auto* scale = builder.MakeInitializer<float>(std::vector<int64_t>{2, 1, 1},
+                                                 std::vector<float>{1.0f, std::numeric_limits<float>::infinity()});
+    auto* output = builder.MakeOutput<float>(std::vector<int64_t>{1, 2, 1, 1});
+    builder.AddNode("Mul", {conv_output, scale}, {output});
+  };
+
+  auto check_transformed_graph = [](InferenceSessionWrapper& session) {
+    const auto op_to_count = CountOpsInGraph(session.GetGraph());
+    const auto conv = op_to_count.find("Conv");
+    ASSERT_NE(conv, op_to_count.end());
+    ASSERT_EQ(conv->second, 1);
+    const auto mul = op_to_count.find("Mul");
+    ASSERT_NE(mul, op_to_count.end());
+    ASSERT_EQ(mul->second, 1);
+  };
+
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<ConvMulFusion>()));
+
+  TransformerTester(build_test_case,
+                    check_transformed_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    18,
+                    0.0,
+                    0.0,
+                    std::move(rule_transformer_L1));
 }
 
 TEST_F(GraphTransformationTests, FuseConvAddNoBias) {
