@@ -502,8 +502,10 @@ support three intermediate precision modes controlled by session option
    - Evaluates `qk_l2_norm` in `float32` before rounding once to `float16`, and writes the
      `bfloat16` output directly from the `float32` accumulator (avoiding `float16` $\to$
      `bfloat16` double-rounding). If a chunk fails these guards, it automatically falls back
-     to the `fp32` (3-slice `bfloat16`) path. FP16 arithmetic still trades rounding accuracy
-     and dynamic range for throughput.
+     to the `fp32` (3-slice `bfloat16`) path (in `chunked_split`, if K1 prepared `float16`
+     tiles and K2's state/update guard triggers fallback, K2 recomputes the `bfloat16`
+     preparation data from the original inputs rather than widening already-rounded `float16`
+     tiles). FP16 arithmetic still trades rounding accuracy and dynamic range for throughput.
 3. **`bf16` (`ep.cuda.gated_delta_net_bf16_precision="bf16"`)**:
    - Uses 1-slice native `bfloat16` for all internal chunk MMA tiles, providing maximum 1-slice
      throughput with native `bfloat16` dynamic range and 7-bit mantissa precision.

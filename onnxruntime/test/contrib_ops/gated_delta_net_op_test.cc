@@ -1893,6 +1893,107 @@ TEST(GatedDeltaNetTest, BFloat16Fp16ModeGuardsAndSplitEngineSelection) {
         ASSERT_EQ(out[i].val, expected.val) << "mixed-row output element " << i;
       }
     }
+
+    // 5. Normalized query (2^-30, 1, 0, ...) with oversized state (2^30, 0, ...) in fp16 mode:
+    // K1 passes its guards, so when K2 rejects the oversized state it must recompute BF16
+    // preparation data rather than widening an already-underflowed FP16 Qg tile.
+    {
+      Inputs in;
+      in.q.assign(static_cast<size_t>(g.total_tokens) * g.hq * g.dk, 0.0f);
+      in.k.assign(static_cast<size_t>(g.total_tokens) * g.hq * g.dk, 0.0f);
+      in.v.assign(static_cast<size_t>(g.total_tokens) * g.hv * g.dv, 0.0f);
+      in.decay.assign(static_cast<size_t>(g.total_tokens) * g.hv, 0.0f);
+      in.beta.assign(static_cast<size_t>(g.total_tokens) * g.hv, 0.0f);
+      in.state0.assign(static_cast<size_t>(g.batch) * g.hv * g.dv * g.dk, 0.0f);
+      const float tiny_q = std::ldexp(1.0f, -30);
+      const float huge_s = std::ldexp(1.0f, 30);
+      for (int t = 0; t < g.total_tokens; ++t) {
+        in.q[static_cast<size_t>(t) * g.dk + 0] = tiny_q;
+        in.q[static_cast<size_t>(t) * g.dk + 1] = 1.0f;
+      }
+      for (int hv = 0; hv < g.hv; ++hv) {
+        for (int c = 0; c < g.dv; ++c) {
+          in.state0[(static_cast<size_t>(hv) * g.dv + c) * g.dk + 0] = huge_s;
+        }
+      }
+      Options o;
+      o.update_rule = "linear";
+      o.qk_l2_norm = 1;
+      o.scale = 1.0f;
+      const BFloat16 expected(1.0f);
+      std::vector<OrtValue> fp32_fetches, fp16_fetches;
+      for (const char* mode : {"fp32", "fp16"}) {
+        ScopedEnvironmentVariables scoped_env_vars{
+            EnvVarMap{{"ORT_GDN_PLAN", plan_env}, {"ORT_GDN_BF16_PRECISION", mode}}};
+        auto& fetches = std::string(mode) == "fp32" ? fp32_fetches : fp16_fetches;
+        RunTypedCase<BFloat16>(g, o, in, 0.0f, 0.0f, false, &fetches);
+        ASSERT_EQ(fetches.size(), 3u);
+      }
+      const BFloat16* out = fp16_fetches[0].Get<Tensor>().Data<BFloat16>();
+      const BFloat16* fp32_out = fp32_fetches[0].Get<Tensor>().Data<BFloat16>();
+      for (int64_t i = 0; i < fp16_fetches[0].Get<Tensor>().Shape().Size(); ++i) {
+        ASSERT_EQ(out[i].val, expected.val) << "normalized-query fallback output element " << i;
+        ASSERT_EQ(out[i].val, fp32_out[i].val) << "normalized-query fallback output element " << i;
+      }
+    }
+
+    // 6. Decay g = -20 (Qg = exp(-20) < 2^-24) with oversized state (exp(20), 0, ...) in fp16
+    // mode: K2 fallback must recompute BF16 preparation data so exp(-20) is not lost to FP16
+    // underflow before multiplying by the state.
+    for (const char* update_rule : {"gated", "gated_delta"}) {
+      SCOPED_TRACE(update_rule);
+      Inputs in;
+      in.q.assign(static_cast<size_t>(g.total_tokens) * g.hq * g.dk, 0.0f);
+      in.k.assign(static_cast<size_t>(g.total_tokens) * g.hq * g.dk, 0.0f);
+      in.v.assign(static_cast<size_t>(g.total_tokens) * g.hv * g.dv, 0.0f);
+      in.decay.assign(static_cast<size_t>(g.total_tokens) * g.hv, 0.0f);
+      in.beta.assign(static_cast<size_t>(g.total_tokens) * g.hv, 1.0f);
+      in.state0.assign(static_cast<size_t>(g.batch) * g.hv * g.dv * g.dk, 0.0f);
+      for (int t = 0; t < g.total_tokens; ++t) {
+        in.q[static_cast<size_t>(t) * g.dk + 0] = 1.0f;
+        if (std::string(update_rule) == "gated_delta") {
+          in.k[static_cast<size_t>(t) * g.dk + 0] = 0.0625f;
+        }
+      }
+      if (std::string(update_rule) == "gated_delta") {
+        std::fill(in.v.begin(), in.v.end(), 1.0f);
+      }
+      for (int hv = 0; hv < g.hv; ++hv) {
+        in.decay[hv] = -20.0f;
+        for (int c = 0; c < g.dv; ++c) {
+          in.state0[(static_cast<size_t>(hv) * g.dv + c) * g.dk + 0] = std::exp(20.0f);
+        }
+      }
+      Options o;
+      o.update_rule = update_rule;
+      o.qk_l2_norm = 0;
+      o.scale = 1.0f;
+      const BFloat16 expected_gated(
+          BFloat16(std::exp(-20.0f)).ToFloat() * std::exp(20.0f));
+      std::vector<OrtValue> fp32_fetches, fp16_fetches;
+      for (const char* mode : {"fp32", "fp16"}) {
+        ScopedEnvironmentVariables scoped_env_vars{
+            EnvVarMap{{"ORT_GDN_PLAN", plan_env}, {"ORT_GDN_BF16_PRECISION", mode}}};
+        auto& fetches = std::string(mode) == "fp32" ? fp32_fetches : fp16_fetches;
+        RunTypedCase<BFloat16>(g, o, in, 1e-2f, 1e-2f, false, &fetches);
+        ASSERT_EQ(fetches.size(), 3u);
+      }
+      const BFloat16* out = fp16_fetches[0].Get<Tensor>().Data<BFloat16>();
+      const BFloat16* fp32_out = fp32_fetches[0].Get<Tensor>().Data<BFloat16>();
+      for (int64_t i = 0; i < fp16_fetches[0].Get<Tensor>().Shape().Size(); ++i) {
+        if (std::string(update_rule) == "gated") {
+          ASSERT_EQ(out[i].val, expected_gated.val) << "decay fallback output element " << i;
+        } else {
+          ASSERT_GT(std::abs(out[i].ToFloat()), 0.5f) << "decay fallback output element " << i;
+        }
+        ASSERT_EQ(out[i].val, fp32_out[i].val) << "decay fallback output element " << i;
+      }
+      const float* state = fp16_fetches[1].Get<Tensor>().Data<float>();
+      const float* fp32_state = fp32_fetches[1].Get<Tensor>().Data<float>();
+      for (int64_t i = 0; i < fp16_fetches[1].Get<Tensor>().Shape().Size(); ++i) {
+        ASSERT_EQ(state[i], fp32_state[i]) << "decay fallback state element " << i;
+      }
+    }
   }
 }
 
