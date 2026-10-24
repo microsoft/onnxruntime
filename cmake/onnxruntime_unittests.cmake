@@ -14,6 +14,37 @@ if (onnxruntime_ENABLE_TRAINING)
   list(APPEND TEST_INC_DIR ${ORTTRAINING_ROOT})
 endif()
 
+# A separate process is required to check actual atexit ordering. The normal test main
+# suppresses telemetry before creating the default environment. Do not emit any events
+# here, and use an isolated home directory so there are no cached uploads.
+if(onnxruntime_USE_1DS_TELEMETRY AND NOT CMAKE_CROSSCOMPILING AND UNIX AND NOT ANDROID AND NOT IOS)
+  onnxruntime_add_executable(onnxruntime_telemetry_shutdown_test
+    "${TEST_SRC_DIR}/platform/telemetry_1ds/telemetry_shutdown_test.cc")
+  target_include_directories(onnxruntime_telemetry_shutdown_test PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR})
+  target_link_libraries(onnxruntime_telemetry_shutdown_test PRIVATE onnxruntime_common ${CMAKE_DL_LIBS} Threads::Threads)
+  if(CPUINFO_SUPPORTED)
+    target_link_libraries(onnxruntime_telemetry_shutdown_test PRIVATE cpuinfo)
+  endif()
+  set_target_properties(onnxruntime_telemetry_shutdown_test PROPERTIES FOLDER "ONNXRuntimeTest")
+  foreach(mode retained recreated released disabled)
+    set(test_home "${CMAKE_CURRENT_BINARY_DIR}/telemetry_shutdown_test_${mode}")
+    file(MAKE_DIRECTORY "${test_home}")
+    set(disable_telemetry 0)
+    if(mode STREQUAL "disabled")
+      set(disable_telemetry 1)
+    endif()
+    add_test(NAME onnxruntime_telemetry_shutdown_${mode}_test
+      COMMAND ${CMAKE_COMMAND} -E env
+        "HOME=${test_home}" "XDG_CACHE_HOME=${test_home}"
+        CI=0 TF_BUILD=0 GITHUB_ACTIONS=0 GITLAB_CI=0 CIRCLECI=0 TRAVIS=0
+        JENKINS_URL=0 CODEBUILD_BUILD_ID=0 BUILDKITE=0 TEAMCITY_VERSION=0
+        APPVEYOR=0 BITBUCKET_BUILD_NUMBER=0 SYSTEM_TEAMFOUNDATIONCOLLECTIONURI=0
+        ORT_RUNNING_UNIT_TESTS=0 "ORT_DISABLE_TELEMETRY=${disable_telemetry}"
+        $<TARGET_FILE:onnxruntime_telemetry_shutdown_test> ${mode})
+    set_tests_properties(onnxruntime_telemetry_shutdown_${mode}_test PROPERTIES TIMEOUT 30)
+  endforeach()
+endif()
+
 # Exclude files based on CMake options.
 function(filter_test_srcs test_srcs_var)
   set(excluded_path_prefixes)
