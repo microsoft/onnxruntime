@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/webgpu/vendor/intel/math/matmul_execution_planner.h"
+#include "core/providers/webgpu/vendor/intel/math/intel_matmul_execution_planner.h"
 
 #include <utility>
 

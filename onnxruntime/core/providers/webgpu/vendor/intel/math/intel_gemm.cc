@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/webgpu/vendor/intel/math/gemm.h"
+#include "core/providers/webgpu/vendor/intel/math/intel_gemm.h"
 #include "core/providers/webgpu/vendor/intel/math/gemm_subgroup.h"
 #include "core/providers/webgpu/math/gemm_utils.h"
 

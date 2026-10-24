@@ -3,7 +3,7 @@
 
 #include "ep.h"
 
-#include "allocator.h"
+#include "session_allocator.h"
 #include "factory.h"
 #include "sync_stream.h"
 

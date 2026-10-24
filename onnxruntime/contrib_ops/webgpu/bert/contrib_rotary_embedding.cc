@@ -4,7 +4,7 @@
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
-#include "contrib_ops/webgpu/bert/rotary_embedding.h"
+#include "contrib_ops/webgpu/bert/contrib_rotary_embedding.h"
 
 namespace onnxruntime {
 namespace contrib {

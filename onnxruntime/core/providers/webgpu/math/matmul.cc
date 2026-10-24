@@ -12,8 +12,8 @@
 #include "core/providers/webgpu/nn/fuse_utils.h"
 #include "core/providers/webgpu/data_transfer.h"
 #include "core/providers/webgpu/tensor/cast.h"
-#include "core/providers/webgpu/vendor/intel/math/matmul_execution_planner.h"
-#include "core/providers/webgpu/vendor/intel/math/matmul.h"
+#include "core/providers/webgpu/vendor/intel/math/intel_matmul_execution_planner.h"
+#include "core/providers/webgpu/vendor/intel/math/matmul_subgroup.h"
 #include "core/providers/webgpu/webgpu_utils.h"
 
 namespace onnxruntime {

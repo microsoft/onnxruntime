@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "factory.h"
-#include "allocator.h"
+#include "session_allocator.h"
 #include "ep.h"
 #include "runtime_compatibility.h"
 
