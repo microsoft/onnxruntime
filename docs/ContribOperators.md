@@ -158,7 +158,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
-<dt><tt>keepdims</tt> : int (default is 0)</dt>
+<dt><tt>keepdims</tt> : int</dt>
 <dd>Keep a singleton final axis when nonzero.</dd>
 </dl>
 
@@ -7611,21 +7611,21 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
-<dt><tt>broadcast_gate</tt> : int (default is 0)</dt>
+<dt><tt>broadcast_gate</tt> : int</dt>
 <dd>When one, projection has the attention shape with final dimension one. Packed layout attributes must be zero. CUDA only.</dd>
-<dt><tt>head_dim</tt> : int (default is 0)</dt>
+<dt><tt>head_dim</tt> : int</dt>
 <dd>Dimension of each attention head.</dd>
-<dt><tt>num_heads</tt> : int (default is 0)</dt>
+<dt><tt>num_heads</tt> : int</dt>
 <dd>Number of attention heads.</dd>
-<dt><tt>q_offset</tt> : int (default is 0)</dt>
+<dt><tt>q_offset</tt> : int</dt>
 <dd>Offset of the query projection within each token.</dd>
-<dt><tt>q_stride</tt> : int (default is 0)</dt>
+<dt><tt>q_stride</tt> : int</dt>
 <dd>Per-head stride in the packed projection.</dd>
-<dt><tt>sigmoid_in_fp32</tt> : int (default is 1)</dt>
+<dt><tt>sigmoid_in_fp32</tt> : int</dt>
 <dd>One computes sigmoid in FP32 before BF16 conversion. Zero preserves the input-type intermediate arithmetic of CUDA Sigmoid, including subtraction on negative inputs.</dd>
-<dt><tt>silu_gate</tt> : int (default is 0)</dt>
+<dt><tt>silu_gate</tt> : int</dt>
 <dd>When one, projection and attention have identical shapes. Multiply the BF16-rounded sigmoid by projection and round to BF16 before multiplying attention. Cannot be combined with broadcast_gate or packed layout attributes.</dd>
-<dt><tt>tok_stride</tt> : int (default is 0)</dt>
+<dt><tt>tok_stride</tt> : int</dt>
 <dd>Per-token stride in the packed projection.</dd>
 </dl>
 
