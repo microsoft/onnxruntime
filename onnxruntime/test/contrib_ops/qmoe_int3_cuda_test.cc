@@ -209,12 +209,12 @@ void RunInt3CudaCase(int block, int fc1_bits, int fc2_bits, bool separate_routin
   std::vector<uint8_t> second_zeros(experts * hidden * second_zero_bytes);
   for (int64_t row = 0; row < experts * inter * 2; ++row) {
     for (int64_t group = 0; group < hidden / block; ++group) {
-      PackInt3TestCode(first_zeros, row, hidden / block, group, fc1_bits, 1 << (fc1_bits - 1));
+      PackInt3TestCode(first_zeros, row, hidden / block, group, fc1_bits, int64_t{1} << (fc1_bits - 1));
     }
   }
   for (int64_t row = 0; row < experts * hidden; ++row) {
     for (int64_t group = 0; group < inter / block; ++group) {
-      PackInt3TestCode(second_zeros, row, inter / block, group, fc2_bits, 1 << (fc2_bits - 1));
+      PackInt3TestCode(second_zeros, row, inter / block, group, fc2_bits, int64_t{1} << (fc2_bits - 1));
     }
   }
   if (malformed == 1) first_scales[0] = T(-1.0f);
