@@ -648,6 +648,14 @@ void dispatcher(Params& params, cudaStream_t s) {
   DISPATCHER_FOR_M(5, 5, CtaNLargeM, 128);
   DISPATCHER_FOR_M(6, 6, CtaNLargeM, 128);
   DISPATCHER_FOR_M(7, 7, CtaNLargeM, 128);
+  if constexpr (CtaNLargeM == 4 && Details::kInterleave == 4) {
+    if (params.m == 8 && params.n / (CtaNLargeM * Details::kInterleave) <= 320 &&
+        params.n % ((CtaNLargeM / 2) * Details::kInterleave) == 0) {
+      exec_kernel<Details, 8, CtaNLargeM / 2, 128, GroupSize, EnableActScale, EnableZero, EnableBias,
+                  ApplyAlphaInAdvance>(params, s);
+      return;
+    }
+  }
   // M = 8 is the DFlash2 verify batch; its projections are sensitive to wave quantization. Only the
   // fp16 int4 SM80-interleaved kernel was measured, so other types and layouts keep CtaNLargeM.
   if constexpr (Details::kStepK == 32 && Details::kInterleave == 4 && !EnableZero && CtaNLargeM == 4 &&
