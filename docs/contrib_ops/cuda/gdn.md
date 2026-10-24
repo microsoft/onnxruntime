@@ -13,8 +13,6 @@ Set process-level tuning options before the first applicable invocation:
   `CausalConvProjection` for lengths 1 to 8, kernel/state length four, dilation
   one, and SiLU activation. Layout, optional bias, and first-token state
   semantics are unchanged.
-- `ORT_GDN_DECODE_WARPS` selects 2, 4, or 8 warps for the existing warp decode
-  family; its default is 8.
 
 Both specialization switches default to `1` and accept only `0` or `1`.
 Unsupported geometry retains generic dispatch. These options do not alter

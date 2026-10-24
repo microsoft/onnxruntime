@@ -599,12 +599,6 @@ __global__ __launch_bounds__(32 * kWarps) void GatedDeltaNetDecodeWarpKernel(
     const int k = lane + i * 32;
     s[i] = pack.initial_state != nullptr ? pack.initial_state[st_off + k] : 0.0f;
   }
-  if (seq_len == 0 && pack.mid_state != nullptr) {
-#pragma unroll
-    for (int i = 0; i < kRegs; ++i) {
-      pack.mid_state[st_off + lane + i * 32] = s[i];
-    }
-  }
 
   for (int t = 0; t < seq_len; ++t) {
     const int64_t tok = tok_base + t;
@@ -774,13 +768,6 @@ __global__ __launch_bounds__(kThreads) void GatedDeltaNetRecurrentKernel(Variant
   }
   __syncthreads();
 
-  if (seq_len == 0 && pack.mid_state != nullptr) {
-    for (int idx = tid; idx < d_k * d_v; idx += kThreads) {
-      const int r = idx / d_v, c = idx % d_v;
-      pack.mid_state[st_off + static_cast<int64_t>(c) * d_k + r] = S[idx];
-    }
-  }
-
   for (int t = 0; t < seq_len; ++t) {
     const int64_t tok = tok_base + t;
     const int64_t gi = tok * p.num_heads_v + hv;
@@ -945,29 +932,15 @@ void LaunchDecodeWarpSized(const Descriptor& desc, const VariantPack<T>& pack,
   }
 }
 
-template <typename T, bool InputTypeGates, bool PackedQkv>
-void LaunchDecodeWarp(const Descriptor& desc, const VariantPack<T>& pack,
-                      const KernelParams& p, cudaStream_t stream) {
-  static const int warps = ParseEnvironmentVariableWithDefault<int>("ORT_GDN_DECODE_WARPS", kDecodeWarps);
-  ORT_ENFORCE(warps == 2 || warps == 4 || warps == kDecodeWarps, "ORT_GDN_DECODE_WARPS must be 2, 4, or 8.");
-  if (warps == 2) {
-    LaunchDecodeWarpSized<T, InputTypeGates, PackedQkv, 2>(desc, pack, p, stream);
-  } else if (warps == 4) {
-    LaunchDecodeWarpSized<T, InputTypeGates, PackedQkv, 4>(desc, pack, p, stream);
-  } else {
-    LaunchDecodeWarpSized<T, InputTypeGates, PackedQkv, kDecodeWarps>(desc, pack, p, stream);
-  }
-}
-
 template <typename T, bool InputTypeGates>
 Status LaunchRecurrent(const Descriptor& desc, bool warp_specialized, const VariantPack<T>& pack,
                        const KernelParams& p, size_t max_shared_memory_per_block,
                        cudaStream_t stream) {
   if (warp_specialized) {
     if (pack.packed_qkv) {
-      LaunchDecodeWarp<T, InputTypeGates, true>(desc, pack, p, stream);
+      LaunchDecodeWarpSized<T, InputTypeGates, true, kDecodeWarps>(desc, pack, p, stream);
     } else {
-      LaunchDecodeWarp<T, InputTypeGates, false>(desc, pack, p, stream);
+      LaunchDecodeWarpSized<T, InputTypeGates, false, kDecodeWarps>(desc, pack, p, stream);
     }
     return CUDA_CALL(cudaGetLastError());
   }
