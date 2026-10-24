@@ -7110,17 +7110,17 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
-<dt><tt>epsilon</tt> : float (default is 1e-06)</dt>
+<dt><tt>epsilon</tt> : float</dt>
 <dd>Finite nonnegative RMS epsilon.</dd>
-<dt><tt>flatten_batch</tt> : int (default is 0)</dt>
+<dt><tt>flatten_batch</tt> : int</dt>
 <dd>One flattens B*S to sequence and outputs [1,B*S,heads*width].</dd>
-<dt><tt>input_start</tt> : int (default is 0)</dt>
+<dt><tt>input_start</tt> : int</dt>
 <dd>Nonnegative start of normalized last-axis slice.</dd>
-<dt><tt>input_width</tt> : int (default is 0)</dt>
+<dt><tt>input_width</tt> : int</dt>
 <dd>Normalized width; zero uses the full last dimension.</dd>
-<dt><tt>rotary_embedding_dim</tt> : int</dt>
+<dt><tt>rotary_embedding_dim</tt> : int (required)</dt>
 <dd>Positive even rotary width, no larger than normalized width.</dd>
-<dt><tt>use_fp32_arithmetic</tt> : int (default is 1)</dt>
+<dt><tt>use_fp32_arithmetic</tt> : int</dt>
 <dd>Decode rotary FP32 (1) or BF16 intermediates (0).</dd>
 </dl>
 
