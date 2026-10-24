@@ -145,6 +145,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.WordConvEmbedding">com.microsoft.WordConvEmbedding</a>
   * <sub>experimental</sub> <a href="#com.microsoft.IsAllFinite">com.microsoft.IsAllFinite</a>
   * <sub>experimental</sub> <a href="#com.microsoft.QEmbedLayerNormalization">com.microsoft.QEmbedLayerNormalization</a>
+
 ## com.microsoft
 ### <a name="com.microsoft.Attention"></a><a name="com.microsoft.attention">**com.microsoft.Attention**</a>
 
@@ -2179,9 +2180,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
-<dt><tt>head_capacity</tt> : int (default is 262144)</dt>
+<dt><tt>head_capacity</tt> : int</dt>
 <dd>Maximum head-cache token capacity.</dd>
-<dt><tt>head_rows</tt> : int (default is 2)</dt>
+<dt><tt>head_rows</tt> : int</dt>
 <dd>Fixed number of head rows, 2 through 4.</dd>
 </dl>
 
@@ -2260,7 +2261,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
-<dt><tt>ctl_slot</tt> : int (default is 2)</dt>
+<dt><tt>ctl_slot</tt> : int</dt>
 <dd>Draft-control slot: -1 (none), 2, 8 or 9.</dd>
 </dl>
 
@@ -9077,4 +9078,5 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
+
 
