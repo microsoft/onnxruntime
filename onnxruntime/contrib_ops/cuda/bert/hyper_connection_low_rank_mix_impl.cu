@@ -815,7 +815,7 @@ Status LaunchWithProgrammaticSerialization(bool use_pdl, Kernel kernel, dim3 gri
 
 // griddepcontrol is compiled only for sm_90+; a kernel image JIT-compiled from older PTX would not contain it,
 // so programmatic dependent launch must not be requested for such an image (or for a driver older than 12.3).
-template <typename T, int DOWN_ROWS, int UP_ROWS = DOWN_ROWS>
+template <typename T, int ROWS>
 bool IsProgrammaticLaunchAvailable() {
 #if defined(CUDART_VERSION) && CUDART_VERSION >= 12030
   static thread_local int cached_device = -1;
@@ -836,10 +836,10 @@ bool IsProgrammaticLaunchAvailable() {
       return cudaFuncGetAttributes(&attributes, kernel) == cudaSuccess && attributes.ptxVersion >= 90 &&
              attributes.binaryVersion >= 90;
     };
-    available = available && image_has_griddepcontrol(HcDownKernel<T, true, DOWN_ROWS>) &&
-                image_has_griddepcontrol(HcDownKernel<T, false, DOWN_ROWS>) &&
-                image_has_griddepcontrol(HcUpPreKernel<T, UP_ROWS>) &&
-                image_has_griddepcontrol(HcUpPreKernel<T, UP_ROWS, 4, 320>);
+    available = available && image_has_griddepcontrol(HcDownKernel<T, true, ROWS>) &&
+                image_has_griddepcontrol(HcDownKernel<T, false, ROWS>) &&
+                image_has_griddepcontrol(HcUpPreKernel<T, ROWS>) &&
+                image_has_griddepcontrol(HcUpPreKernel<T, ROWS, 4, 320>);
     (void)cudaGetLastError();
     cached_device = device;
     cached_available = available;
@@ -850,36 +850,35 @@ bool IsProgrammaticLaunchAvailable() {
 #endif
 }
 
-template <typename T, int DOWN_ROWS, int UP_ROWS = DOWN_ROWS>
+template <typename T, int ROWS>
 Status LaunchFusedRows(bool use_pdl, cudaStream_t stream, const HyperConnectionLowRankMixConfig& config,
                        const HyperConnectionLowRankMixTensors<T>& tensors, const FusedGeometry& g, float* partial,
                        float* inv_rms, const DownParams& down, const UpParams& up) {
-  use_pdl = use_pdl && IsProgrammaticLaunchAvailable<T, DOWN_ROWS, UP_ROWS>();
-  const unsigned down_row_groups = static_cast<unsigned>((config.rows + DOWN_ROWS - 1) / DOWN_ROWS);
-  const unsigned up_row_groups = static_cast<unsigned>((config.rows + UP_ROWS - 1) / UP_ROWS);
-  const dim3 down_grid(g.col_tiles + 1, g.splits, down_row_groups);
-  const dim3 up_grid((config.hidden + kUpTile - 1) / kUpTile, 1, up_row_groups);
+  use_pdl = use_pdl && IsProgrammaticLaunchAvailable<T, ROWS>();
+  const unsigned row_groups = static_cast<unsigned>((config.rows + ROWS - 1) / ROWS);
+  const dim3 down_grid(g.col_tiles + 1, g.splits, row_groups);
+  const dim3 up_grid((config.hidden + kUpTile - 1) / kUpTile, 1, row_groups);
   if (tensors.prev_block_output != nullptr) {
     ORT_RETURN_IF_ERROR(LaunchWithProgrammaticSerialization(
-        use_pdl, HcDownKernel<T, true, DOWN_ROWS>, down_grid, dim3(kThreads), stream, tensors.streams,
+        use_pdl, HcDownKernel<T, true, ROWS>, down_grid, dim3(kThreads), stream, tensors.streams,
         tensors.prev_block_output, tensors.prev_post_gate, tensors.norm_scale, tensors.down_weight,
         tensors.inject_weight, tensors.streams_out, partial, inv_rms, down));
   } else {
     ORT_RETURN_IF_ERROR(LaunchWithProgrammaticSerialization(
-        use_pdl, HcDownKernel<T, false, DOWN_ROWS>, down_grid, dim3(kThreads), stream, tensors.streams,
+        use_pdl, HcDownKernel<T, false, ROWS>, down_grid, dim3(kThreads), stream, tensors.streams,
         static_cast<const T*>(nullptr), static_cast<const T*>(nullptr), tensors.norm_scale,
         tensors.down_weight, tensors.inject_weight, static_cast<T*>(nullptr), partial, inv_rms, down));
   }
 
   const T* up_streams = tensors.prev_block_output != nullptr ? tensors.streams_out : tensors.streams;
   if (config.branches == 4 && config.rank == 320) {
-    return LaunchWithProgrammaticSerialization(use_pdl, HcUpPreKernel<T, UP_ROWS, 4, 320>, up_grid, dim3(kThreads),
+    return LaunchWithProgrammaticSerialization(use_pdl, HcUpPreKernel<T, ROWS, 4, 320>, up_grid, dim3(kThreads),
                                                stream, up_streams, tensors.norm_scale, tensors.up_weight,
                                                static_cast<const float*>(partial),
                                                static_cast<const float*>(inv_rms), tensors.pre_output,
                                                tensors.post_gate, up);
   }
-  return LaunchWithProgrammaticSerialization(use_pdl, HcUpPreKernel<T, UP_ROWS>, up_grid, dim3(kThreads), stream,
+  return LaunchWithProgrammaticSerialization(use_pdl, HcUpPreKernel<T, ROWS>, up_grid, dim3(kThreads), stream,
                                              up_streams, tensors.norm_scale, tensors.up_weight,
                                              static_cast<const float*>(partial),
                                              static_cast<const float*>(inv_rms), tensors.pre_output,
@@ -943,18 +942,10 @@ Status LaunchHyperConnectionLowRankMixFused(const cudaDeviceProp& device_prop, c
     }
     static const int decode_rows =
         onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_HC_DECODE_ROWS", 1);
-    static const int up_decode_rows =
-        onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_HC_UP_DECODE_ROWS", 1);
     ORT_ENFORCE(decode_rows == 1 || decode_rows == 2,
                 "ORT_HC_DECODE_ROWS must be 1 or 2");
     if (config.rows == 4 && decode_rows == 1) {
-      if (up_decode_rows == 4) {
-        return LaunchFusedRows<T, 1, 4>(use_pdl, stream, config, tensors, g, partial, inv_rms, down, up);
-      }
-      if (up_decode_rows == 2) {
-        return LaunchFusedRows<T, 1, 2>(use_pdl, stream, config, tensors, g, partial, inv_rms, down, up);
-      }
-      return LaunchFusedRows<T, 1, 1>(use_pdl, stream, config, tensors, g, partial, inv_rms, down, up);
+      return LaunchFusedRows<T, 1>(use_pdl, stream, config, tensors, g, partial, inv_rms, down, up);
     }
     return LaunchFusedRows<T, 2>(use_pdl, stream, config, tensors, g, partial, inv_rms, down, up);
   }
