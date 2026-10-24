@@ -479,25 +479,18 @@ __global__ void __launch_bounds__(kThreads)
   for (int r = 0; r < ROWS; ++r) va[r] = make_float4(0.f, 0.f, 0.f, 0.f);
   if (tid < nq) {
     for (int sp0 = 0; sp0 < p.splits; sp0 += 8) {
-      float4 pq[8][ROWS];
 #pragma unroll
       for (int u = 0; u < 8; ++u) {
+        if (sp0 + u < p.splits) {
 #pragma unroll
-        for (int r = 0; r < ROWS; ++r) {
-          pq[u][r] = sp0 + u < p.splits
-                         ? __ldcg(reinterpret_cast<const float4*>(
-                               partial + (row_idx[r] * p.splits + sp0 + u) * p.partial_stride + cq))
-                         : make_float4(0.f, 0.f, 0.f, 0.f);
-        }
-      }
-#pragma unroll
-      for (int u = 0; u < 8; ++u) {
-#pragma unroll
-        for (int r = 0; r < ROWS; ++r) {
-          va[r].x += pq[u][r].x;
-          va[r].y += pq[u][r].y;
-          va[r].z += pq[u][r].z;
-          va[r].w += pq[u][r].w;
+          for (int r = 0; r < ROWS; ++r) {
+            const float4 q = __ldcg(reinterpret_cast<const float4*>(
+                partial + (row_idx[r] * p.splits + sp0 + u) * p.partial_stride + cq));
+            va[r].x += q.x;
+            va[r].y += q.y;
+            va[r].z += q.z;
+            va[r].w += q.w;
+          }
         }
       }
     }
