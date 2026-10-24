@@ -3108,10 +3108,15 @@ template <typename T, int Bits>
 __global__ void __launch_bounds__(256) FusedFc1FastKernel(Int3MoeParams params) {
   extern __shared__ float s_input[];
   const size_t route = blockIdx.y;
+  const int expert = __ldg(&params.experts[route]);
+  if (expert < 0) return;
   const int warp_id = threadIdx.x >> 5;
   const int lane = threadIdx.x & 31;
   const int col0 = static_cast<int>(blockIdx.x) * 16 + warp_id * 2;
-  const size_t token = route / params.top_k;
+  const size_t token = params.input_is_gathered
+                           ? route
+                           : (params.source_route_ids ? static_cast<size_t>(__ldg(&params.source_route_ids[route]))
+                                                      : (route / params.top_k));
   const T* in_row = static_cast<const T*>(params.input) + token * params.hidden;
   for (int i = threadIdx.x; i < params.hidden; i += 256) {
     s_input[i] = static_cast<float>(__ldg(&in_row[i]));
@@ -3120,7 +3125,6 @@ __global__ void __launch_bounds__(256) FusedFc1FastKernel(Int3MoeParams params) 
   if (col0 >= params.intermediate) return;
   const bool has_col1 = (col0 + 1) < params.intermediate;
 
-  const int expert = __ldg(&params.experts[route]);
   const size_t row0 = static_cast<size_t>(expert) * (2 * params.intermediate) + 2 * col0;
   const size_t row_bytes = (static_cast<size_t>(params.hidden) * Bits) / 8;
   const size_t blocks = static_cast<size_t>(params.hidden) / params.block_size;
@@ -3185,6 +3189,8 @@ template <typename T, int Bits>
 __global__ void __launch_bounds__(256) Fc2RouteFastKernel(Int3MoeParams params) {
   extern __shared__ float s_act[];
   const size_t route = blockIdx.y;
+  const int exp_id = __ldg(&params.experts[route]);
+  if (exp_id < 0) return;
   const int warp_id = threadIdx.x >> 5;
   const int lane = threadIdx.x & 31;
   const int half_id = lane >> 4;
@@ -3200,7 +3206,6 @@ __global__ void __launch_bounds__(256) Fc2RouteFastKernel(Int3MoeParams params) 
   if (col0 >= params.hidden) return;
   const bool has_col1 = (col0 + 1) < params.hidden;
 
-  const int exp_id = __ldg(&params.experts[route]);
   const size_t w_row0 = static_cast<size_t>(exp_id) * params.hidden + col0;
   const size_t row_bytes = (static_cast<size_t>(params.intermediate) * Bits) / 8;
   const size_t blocks = static_cast<size_t>(params.intermediate) / params.block_size;
@@ -3286,7 +3291,9 @@ __global__ void CheckInt3ContentKernel(Int3Projection projection, size_t rows, i
 
 template <typename T>
 cudaError_t LaunchInt3Typed(const Int3MoeParams& params, cudaStream_t stream) {
-  const size_t total_routes = static_cast<size_t>(params.rows) * params.top_k;
+  const size_t total_routes = (params.total_routes_override > 0)
+                                  ? static_cast<size_t>(params.total_routes_override)
+                                  : (static_cast<size_t>(params.rows) * params.top_k);
   const size_t fc1_smem = static_cast<size_t>(params.hidden) * sizeof(float);
   const size_t fc2_smem = static_cast<size_t>(params.intermediate) * sizeof(float);
   const bool can_use_fast =
@@ -3322,28 +3329,33 @@ cudaError_t LaunchInt3Typed(const Int3MoeParams& params, cudaStream_t stream) {
     status = cudaGetLastError();
     if (status != cudaSuccess) return status;
 
-    const dim3 fin_grid(static_cast<unsigned>((params.hidden + 255) / 256), static_cast<unsigned>(params.rows));
-    FinalizeRoutesFastKernel<T><<<fin_grid, 256, 0, stream>>>(params);
-    return cudaGetLastError();
+    if (params.output != nullptr) {
+      const dim3 fin_grid(static_cast<unsigned>((params.hidden + 255) / 256), static_cast<unsigned>(params.rows));
+      FinalizeRoutesFastKernel<T><<<fin_grid, 256, 0, stream>>>(params);
+      return cudaGetLastError();
+    }
+    return cudaSuccess;
   }
 
   const size_t fc1_count = total_routes * params.intermediate;
   const size_t fc2_count = static_cast<size_t>(params.rows) * params.hidden;
+  const unsigned int fc1_blocks = static_cast<unsigned int>((fc1_count + 3) / 4);
+  const unsigned int fc2_blocks = static_cast<unsigned int>((fc2_count + 3) / 4);
   if (params.fc1.bits == 2) {
-    FusedFc1ScalarKernel<T, 2><<<(fc1_count + 3) / 4, 128, 0, stream>>>(params);
+    FusedFc1ScalarKernel<T, 2><<<fc1_blocks, 128, 0, stream>>>(params);
   } else if (params.fc1.bits == 3) {
-    FusedFc1ScalarKernel<T, 3><<<(fc1_count + 3) / 4, 128, 0, stream>>>(params);
+    FusedFc1ScalarKernel<T, 3><<<fc1_blocks, 128, 0, stream>>>(params);
   } else {
-    FusedFc1ScalarKernel<T, 4><<<(fc1_count + 3) / 4, 128, 0, stream>>>(params);
+    FusedFc1ScalarKernel<T, 4><<<fc1_blocks, 128, 0, stream>>>(params);
   }
   auto status = cudaGetLastError();
   if (status != cudaSuccess) return status;
   if (params.fc2.bits == 2) {
-    Fc2AndFinalizeScalarKernel<T, 2><<<(fc2_count + 3) / 4, 128, 0, stream>>>(params);
+    Fc2AndFinalizeScalarKernel<T, 2><<<fc2_blocks, 128, 0, stream>>>(params);
   } else if (params.fc2.bits == 3) {
-    Fc2AndFinalizeScalarKernel<T, 3><<<(fc2_count + 3) / 4, 128, 0, stream>>>(params);
+    Fc2AndFinalizeScalarKernel<T, 3><<<fc2_blocks, 128, 0, stream>>>(params);
   } else {
-    Fc2AndFinalizeScalarKernel<T, 4><<<(fc2_count + 3) / 4, 128, 0, stream>>>(params);
+    Fc2AndFinalizeScalarKernel<T, 4><<<fc2_blocks, 128, 0, stream>>>(params);
   }
   return cudaGetLastError();
 }
