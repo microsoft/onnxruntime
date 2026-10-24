@@ -25,7 +25,9 @@
 #include "core/framework/utils.h"
 #include "core/framework/max_shape_override.h"
 #include "core/framework/max_shape_inference.h"
+#if !defined(ORT_MINIMAL_BUILD)
 #include "core/framework/moe_offload_plan.h"
+#endif
 #include "core/framework/node_shape_resolver.h"
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -1703,6 +1705,8 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
   return status;
 }
 
+// MoE expert offload is not supported in minimal builds.
+#if !defined(ORT_MINIMAL_BUILD)
 namespace {
 
 bool IsMoeOffloadExpertInputIndex(std::string_view op_type, size_t input_idx) noexcept {
@@ -1973,6 +1977,7 @@ Status PlaceMoeOffloadInitializersOnCpu(const GraphViewer& graph_viewer,
 }
 
 }  // namespace
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 bool SessionState::GetSaveModeForPrepacks(bool saving_model, bool saving_ort_format) {
   bool save_prepacked_constant_initializers =
@@ -2248,6 +2253,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                            "SessionState finalize is canceled due to user request");
   }
 
+#if !defined(ORT_MINIMAL_BUILD)
   moe_offload::MoeOffloadSessionPolicy moe_offload_policy;
   ORT_RETURN_IF_ERROR(moe_offload::MoeOffloadSessionPolicy::ParseFromConfigOptions(
       session_options.config_options, std::filesystem::path(graph_location), moe_offload_policy));
@@ -2266,6 +2272,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
     ORT_RETURN_IF_ERROR(PlaceMoeOffloadInitializersOnCpu(
         *graph_viewer_, moe_offload_policy, ort_value_name_idx_map_, cpu_alloc->Info(), *p_seq_exec_plan_, logger_));
   }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
   // Record the allocation plan
 

@@ -758,8 +758,6 @@ class TestQMoEOffloadV4(unittest.TestCase):
                     },
                     cuda_options={"gpu_device_mem_limit": str(32 * 1024 * 1024)},
                 )
-            del sess_grouped
-            del sess_ref
 
     def test_v4_prefill_histogram_across_incompatible_expert_counts(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -927,7 +925,6 @@ class TestQMoEOffloadV4(unittest.TestCase):
                 },
             )
             _ = self._run_bf16(s_pref_ok, x_pref, r_pref)
-            del s_pref_ok
 
     def test_v4_ordinary_cuda_ep_and_plugin_controller_budget_enforcement(self):
         with tempfile.TemporaryDirectory() as tmpdir:
