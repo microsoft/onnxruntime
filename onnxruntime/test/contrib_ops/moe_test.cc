@@ -4848,16 +4848,18 @@ TEST(MoETest, QMoECudaInt3TiledLogHasOneCounterUpdate) {
   constexpr int64_t num_experts = 2;
   constexpr int64_t hidden_size = 128;
   constexpr int64_t inter_size = 64;
+  constexpr int64_t fc1_rows = 2 * inter_size;
   constexpr int64_t block_size = 32;
   constexpr int64_t bits = 3;
 
   // Code 4 is the INT3 zero point, so all dequantized weights are zero.
-  const std::vector<uint8_t> fc1_codes(static_cast<size_t>(num_experts * inter_size * hidden_size), 4);
+  const std::vector<uint8_t> fc1_codes(static_cast<size_t>(num_experts * fc1_rows * hidden_size), 4);
   const std::vector<uint8_t> fc2_codes(static_cast<size_t>(num_experts * hidden_size * inter_size), 4);
 
   OpTester tester("QMoE", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<int64_t>("k", 2);
-  tester.AddAttribute<std::string>("activation_type", "relu");
+  tester.AddAttribute<std::string>("activation_type", "swiglu");
+  tester.AddAttribute<int64_t>("swiglu_fusion", 1);
   tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
   tester.AddAttribute<int64_t>("expert_weight_bits", bits);
   tester.AddAttribute<int64_t>("weights_prepacked", 0);
@@ -4866,10 +4868,10 @@ TEST(MoETest, QMoECudaInt3TiledLogHasOneCounterUpdate) {
                              ToFloat16(std::vector<float>(num_rows * hidden_size, 1.0f)));
   tester.AddInput<MLFloat16>("router_probs", {num_rows, num_experts},
                              ToFloat16({2.0f, 1.0f, 1.0f, 3.0f, 4.0f, 0.0f}));
-  tester.AddInput<uint8_t>("fc1_experts_weights", {num_experts, inter_size, hidden_size * bits / 8},
-                           PackLsbBits(fc1_codes, num_experts * inter_size, hidden_size, bits), true);
-  tester.AddInput<MLFloat16>("fc1_scales", {num_experts, inter_size, hidden_size / block_size},
-                             ToFloat16(std::vector<float>(num_experts * inter_size * hidden_size / block_size, 1.0f)),
+  tester.AddInput<uint8_t>("fc1_experts_weights", {num_experts, fc1_rows, hidden_size * bits / 8},
+                           PackLsbBits(fc1_codes, num_experts * fc1_rows, hidden_size, bits), true);
+  tester.AddInput<MLFloat16>("fc1_scales", {num_experts, fc1_rows, hidden_size / block_size},
+                             ToFloat16(std::vector<float>(num_experts * fc1_rows * hidden_size / block_size, 1.0f)),
                              true);
   tester.AddOptionalInputEdge<MLFloat16>();
   tester.AddInput<uint8_t>("fc2_experts_weights", {num_experts, hidden_size, inter_size * bits / 8},
