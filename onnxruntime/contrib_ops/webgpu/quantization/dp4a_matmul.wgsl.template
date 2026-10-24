@@ -7,6 +7,7 @@
 #param has_bias
 #param has_zero_points
 #param is_qualcomm
+#param qc_wave128
 #param has_weight_idx
 #param has_weight_idx_indirect
 
@@ -39,7 +40,13 @@
 // this shader require A to be int8 quantized with block size 64. B is regular
 // matmulnbits input with block size 32.
 
+#if qc_wave128
+const tile_size = 128;
+const tile_n = 32;
+#else
 const tile_size = 64;
+const tile_n = 64;
+#endif
 const subtile_size = 16;
 const tile_size_k =  32;
 const vec_factor = 4;
@@ -47,10 +54,10 @@ const u32_factor = 4;
 const tile_size_k_vec = 2;
 
 // Shared memory
-var<workgroup> tile_A : array<array<vec4<u32>, tile_size>, tile_size_k_vec>;                     // 64 x 32
-var<workgroup> scale_A : array<output_element_t, tile_size>;                                     // 64 x 1
-var<workgroup> tile_B : array<array<vec4<u32>, tile_size>, tile_size_k_vec>;                     // 64 x 32
-var<workgroup> scale_B : array<output_element_t, tile_size>;                                     // 64 x 1
+var<workgroup> tile_A : array<array<vec4<u32>, tile_size>, tile_size_k_vec>;                     // tile_size x 32
+var<workgroup> scale_A : array<output_element_t, tile_size>;                                     // tile_size x 1
+var<workgroup> tile_B : array<array<vec4<u32>, tile_n>, tile_size_k_vec>;                     // tile_n x 32
+var<workgroup> scale_B : array<output_element_t, tile_n>;                                     // tile_n x 1
 
 #if has_zero_points
     var<workgroup> zeroes : array<i32, tile_size>;
@@ -198,7 +205,7 @@ $MAIN {
         return;
     }
     let a_global_base = u32((workgroup_idx / uniforms.num_N_tile) % uniforms.num_M_tile) * tile_size;
-    let b_global_base = (workgroup_idx % uniforms.num_N_tile) * tile_size;
+    let b_global_base = (workgroup_idx % uniforms.num_N_tile) * tile_n;
     let load_AorB = u32(local_idx/128);
     let load_row = u32((local_idx%128)/2);
     let load_col = u32(local_idx%2);
@@ -214,12 +221,9 @@ $MAIN {
     var a_idx = u32(local_idx % subtile_size);
 
 #if is_qualcomm
-    // subtile_idx is always 0
-    // subtile_idy is one of {0,1,2,3}
-    // The subtile is now rectangular 64x16 for qualcomm case and we have 4 subtiles, this way we don't need to
-    // increase the number of lane_output each thread needs to track. That is if we want to use a subtile that is 64x64
-    // we would need var lane_outputs: array<output_element_t, 64>;
-    if (sg_size == 64) {
+    // Qualcomm uses four 64x16 subtiles or two 128x16 subtiles. Each lane
+    // owns one activation row and accumulates 16 output columns.
+    if (sg_size == tile_size) {
         subtile_id = u32(local_idx / sg_size);
         subtile_idx = u32(subtile_id / 4);
         subtile_idy = u32(subtile_id % 4);
@@ -240,6 +244,12 @@ $MAIN {
     for (var kidx_v:u32 = 0; kidx_v < uniforms.K16; kidx_v+=tile_size_k_vec)
     {
         // Load Phase: Populate shared memory for the workgroup.
+#if qc_wave128
+        loadSHMA(batch, a_global_base, kidx_v, local_idx / 2u, local_idx % 2u);
+        if (local_idx < 64u) {
+            loadSHMB(b_global_base, kidx_v, local_idx / 2u, local_idx % 2u);
+        }
+#else
         if (load_AorB == 0)
         {
             loadSHMA(batch, a_global_base, kidx_v, load_row, load_col);
@@ -248,6 +258,7 @@ $MAIN {
         {
             loadSHMB(b_global_base, kidx_v, load_row, load_col);
         }
+#endif
         workgroupBarrier();
 
         // Compute phase: Perform matmul for this subtile 16 x 32 x 16.
@@ -258,7 +269,7 @@ $MAIN {
 
 #if has_zero_points && n_bits == 8
  #if is_qualcomm
-        if (sg_size == 64)
+        if (sg_size == tile_size)
         {
             var own_b0: vec4<u32>;
             var own_b1: vec4<u32>;
@@ -340,7 +351,7 @@ $MAIN {
  #endif
 #else
  #if is_qualcomm
-        if (sg_size == 64)
+        if (sg_size == tile_size)
         {
             var own_b0: vec4<u32>;
             var own_b1: vec4<u32>;
