@@ -6514,7 +6514,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>use_sparse_mixer</tt> : int</dt>
 <dd>Whether to use sparse mixer</dd>
 <dt><tt>weights_prepacked</tt> : int</dt>
-<dd>Expert-weight layout selector with quantization-specific meanings. For quant_type='int', -1 and 1 select execution-provider-specific prepacked int4/int8 fc1/fc2 layouts. 0 selects raw [E,N,K/pack] tensors as produced by quantize_matmul_{4,8}bits. For quant_type='nvfp4' on CUDA, -1 (default) and 0 select legacy N-packed [E,K,N/2] bytes; 1 selects K-packed row-major [E,N,K/2] bytes while retaining logical [E,K,N/2] dimensions. NVFP4 block scales and global scales retain their original layouts and values. Ignored for other quantization types. Supported values are -1, 0, and 1; defaults to -1.</dd>
+<dd>Expert-weight layout selector with quantization-specific meanings. For quant_type='int', -1 and 1 select execution-provider-specific prepacked int4/int8 fc1/fc2 layouts. 0 selects raw [E,N,K/pack] tensors as produced by quantize_matmul_{4,8}bits. Uniform INT2 on CUDA also accepts explicit 1 for SM80 CUTLASS W2_A16 bytes, retaining logical [E,N,K/4] dimensions and ordinary block scales. It requires supported packed GEMV/grouped-GEMM execution; raw fallback is unavailable. Mixed-width CUDA INT execution requires 0; INT2 does not accept -1. For quant_type='nvfp4' on CUDA, -1 (default) and 0 select legacy N-packed [E,K,N/2] bytes; 1 selects K-packed row-major [E,N,K/2] bytes while retaining logical [E,K,N/2] dimensions. NVFP4 block scales and global scales retain their original layouts and values. Ignored for other quantization types. Supported values are -1, 0, and 1; defaults to -1.</dd>
 </dl>
 
 #### Inputs (6 - 21)

@@ -66,9 +66,9 @@ MatMulBlockQuantizedFp8Weight::MatMulBlockQuantizedFp8Weight(const OpKernelInfo&
                   "split_sizes must contain positive widths with no sum overflow.");
       total += width;
     }
-    ORT_ENFORCE(!shared_expert_ || (split_sizes_.empty() && prefill_weight_offsets_.empty()),
-                "shared_expert does not support split_sizes or prefill_weight_offsets");
   }
+  ORT_ENFORCE(!shared_expert_ || (split_sizes_.empty() && prefill_weight_offsets_.empty()),
+              "shared_expert does not support split_sizes or prefill_weight_offsets");
 }
 
 template <typename T>

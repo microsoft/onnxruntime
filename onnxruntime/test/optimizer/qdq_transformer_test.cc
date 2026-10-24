@@ -4651,6 +4651,7 @@ TEST(QDQTransformerTests, QDQPropagation_DQForward_ConstantInput_NoPropagation) 
   }
 }
 
+#if !defined(DISABLE_CONTRIB_OPS)
 TEST(QDQTransformerTests, QDQPropagation_MSIndependentScaleOutput_NoPropagation) {
   for (bool explicit_output_dtype : {false, true}) {
     auto build_test_case = [=](ModelTestBuilder& builder) {
@@ -4705,7 +4706,8 @@ TEST(QDQTransformerTests, QDQPropagation_MSFp8Bf16_NoPropagation) {
                                         std::make_unique<QDQPropagationTransformer>(),
                                         TransformerLevel::Level1, 2, nullptr, check_graph));
 }
-#endif
+#endif  // !defined(DISABLE_FLOAT8_TYPES)
+#endif  // !defined(DISABLE_CONTRIB_OPS)
 
 TEST(QDQTransformerTests, QDQPropagation_StopAtOtherQDQ) {
   auto test_case = [&](const std::vector<int64_t>& input_shape, bool same_scale, bool same_zp,

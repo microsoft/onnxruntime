@@ -210,7 +210,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(DequantizeLinear, 1,
                                        "T1", OpSchema::Optional)
                                 .Output(0, "y", "N-D full precision output tensor. It has same shape as input 'x'.",
                                         "T2")
-                                .TypeConstraint("T1", {"tensor(int8)", "tensor(uint8)", "tensor(int16)", "tensor(uint16)", "tensor(int32)", "tensor(int4)", "tensor(uint4)", "tensor(float8e4m3fn)"},
+                                .TypeConstraint("T1", {"tensor(int8)", "tensor(uint8)", "tensor(int16)",
+                                                       "tensor(uint16)", "tensor(int32)", "tensor(int4)",
+                                                       "tensor(uint4)", "tensor(float8e4m3fn)"},
                                                 "Constrain 'x' and 'x_zero_point' to 8-bit integer tensors, "
                                                 "16-bit integer tensors, 32-bit signed integer tensors, or "
                                                 "FP8 E4M3FN tensors.")
@@ -867,16 +869,16 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         {"tensor(uint8)", "tensor(int8)"},
         "Constrain input and output types to 8 bit signed and unsigned tensors.")
       .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
-  propagateElemTypeFromInputToOutput(ctx, 1, 0);
-  if (hasNInputShapes(ctx, 9)) {
-    std::vector<const onnx::TensorShapeProto*> shapes;
-    shapes.push_back(&ctx.getInputType(0)->tensor_type().shape());
-    shapes.push_back(&ctx.getInputType(1)->tensor_type().shape());
-    shapes.push_back(&ctx.getInputType(4)->tensor_type().shape());
-    multidirectionalBroadcastShapeInference(
-        shapes, *ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape());
-  }
-}));
+        propagateElemTypeFromInputToOutput(ctx, 1, 0);
+        if (hasNInputShapes(ctx, 9)) {
+          std::vector<const onnx::TensorShapeProto*> shapes;
+          shapes.push_back(&ctx.getInputType(0)->tensor_type().shape());
+          shapes.push_back(&ctx.getInputType(1)->tensor_type().shape());
+          shapes.push_back(&ctx.getInputType(4)->tensor_type().shape());
+          multidirectionalBroadcastShapeInference(
+              shapes, *ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape());
+        }
+      }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
     QGemm, 1,
