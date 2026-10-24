@@ -77,6 +77,8 @@ class QMoE final : public CudaKernel, public MoEBase {
   int64_t fc3_expert_weight_bits_;
   bool has_int3_ = false;
   mutable std::atomic<bool> int3_content_validated_{false};
+  // -1: not yet determined, 1: scales/zero points are constant initializers, 0: runtime inputs.
+  mutable std::atomic<int> int3_content_constant_{-1};
   bool is_fp16_;
   // When true, the int4/int8 fc1/fc2 weight initializers are already in a
   // CUTLASS fpA_intB layout — produced offline e.g. via
@@ -108,6 +110,9 @@ class QMoE final : public CudaKernel, public MoEBase {
   // how ``MatMulNBits`` caches ``N_`` / ``K_`` in its constructor.
   TensorShape fc1_weights_shape_;
   TensorShape fc2_weights_shape_;
+  // Scale shapes cached when offline-prepacked INT2/mixed-width PrePack releases the scale initializers.
+  TensorShape fc1_scales_shape_;
+  TensorShape fc2_scales_shape_;
   bool use_fp4_dequant_fallback_ = false;
   // Dequantizes FP8 weights to FP16/BF16 scratch buffers before invoking the A16 MoE runner.
   bool use_fp8_dequant_fallback_ = false;

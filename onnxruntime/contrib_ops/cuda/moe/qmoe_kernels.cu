@@ -2457,6 +2457,14 @@ __device__ __forceinline__ void Unpack8CenteredCodes128(
   }
 }
 
+// Rounds each dequantized weight to T before accumulation, matching Int3WeightElem in the scalar kernels.
+template <typename T>
+__device__ __forceinline__ float Dot8DequantizedWeights(const float4& a0, const float4& a1, const float q[8], float scale) {
+  const auto w = [scale](float code) { return static_cast<float>(static_cast<T>(code * scale)); };
+  return a0.x * w(q[0]) + a0.y * w(q[1]) + a0.z * w(q[2]) + a0.w * w(q[3]) +
+         a1.x * w(q[4]) + a1.y * w(q[5]) + a1.z * w(q[6]) + a1.w * w(q[7]);
+}
+
 template <typename T, int Bits>
 __global__ void __launch_bounds__(256) FusedFc1FastKernel(Int3MoeParams params) {
   extern __shared__ float s_input[];
@@ -2495,25 +2503,17 @@ __global__ void __launch_bounds__(256) FusedFc1FastKernel(Int3MoeParams params) 
     float q[8];
 
     Unpack8CenteredCodes<Bits>(w_g0, iter, lane, q);
-    gate0 += (a0.x * q[0] + a0.y * q[1] + a0.z * q[2] + a0.w * q[3] +
-              a1.x * q[4] + a1.y * q[5] + a1.z * q[6] + a1.w * q[7]) *
-             static_cast<float>(__ldg(&s_g0[blk]));
+    gate0 += Dot8DequantizedWeights<T>(a0, a1, q, static_cast<float>(__ldg(&s_g0[blk])));
 
     Unpack8CenteredCodes<Bits>(w_u0, iter, lane, q);
-    up0 += (a0.x * q[0] + a0.y * q[1] + a0.z * q[2] + a0.w * q[3] +
-            a1.x * q[4] + a1.y * q[5] + a1.z * q[6] + a1.w * q[7]) *
-           static_cast<float>(__ldg(&s_u0[blk]));
+    up0 += Dot8DequantizedWeights<T>(a0, a1, q, static_cast<float>(__ldg(&s_u0[blk])));
 
     if (has_col1) {
       Unpack8CenteredCodes<Bits>(w_g1, iter, lane, q);
-      gate1 += (a0.x * q[0] + a0.y * q[1] + a0.z * q[2] + a0.w * q[3] +
-                a1.x * q[4] + a1.y * q[5] + a1.z * q[6] + a1.w * q[7]) *
-               static_cast<float>(__ldg(&s_g1[blk]));
+      gate1 += Dot8DequantizedWeights<T>(a0, a1, q, static_cast<float>(__ldg(&s_g1[blk])));
 
       Unpack8CenteredCodes<Bits>(w_u1, iter, lane, q);
-      up1 += (a0.x * q[0] + a0.y * q[1] + a0.z * q[2] + a0.w * q[3] +
-              a1.x * q[4] + a1.y * q[5] + a1.z * q[6] + a1.w * q[7]) *
-             static_cast<float>(__ldg(&s_u1[blk]));
+      up1 += Dot8DequantizedWeights<T>(a0, a1, q, static_cast<float>(__ldg(&s_u1[blk])));
     }
   }
   gate0 = WarpReduceSum(gate0);
@@ -2580,15 +2580,11 @@ __global__ void __launch_bounds__(256) Fc2RouteFastKernel(Int3MoeParams params) 
     float q[8];
 
     Unpack8CenteredCodes128<Bits>(w0_ptr, iter, sub_lane, q);
-    v0 += (a0.x * q[0] + a0.y * q[1] + a0.z * q[2] + a0.w * q[3] +
-           a1.x * q[4] + a1.y * q[5] + a1.z * q[6] + a1.w * q[7]) *
-          static_cast<float>(__ldg(&s0_ptr[blk]));
+    v0 += Dot8DequantizedWeights<T>(a0, a1, q, static_cast<float>(__ldg(&s0_ptr[blk])));
 
     if (has_col1) {
       Unpack8CenteredCodes128<Bits>(w1_ptr, iter, sub_lane, q);
-      v1 += (a0.x * q[0] + a0.y * q[1] + a0.z * q[2] + a0.w * q[3] +
-             a1.x * q[4] + a1.y * q[5] + a1.z * q[6] + a1.w * q[7]) *
-            static_cast<float>(__ldg(&s1_ptr[blk]));
+      v1 += Dot8DequantizedWeights<T>(a0, a1, q, static_cast<float>(__ldg(&s1_ptr[blk])));
     }
   }
 #pragma unroll
