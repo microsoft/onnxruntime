@@ -2,7 +2,7 @@
 
 `com.microsoft::FoldMid2` and `FoldTail` schema version 1 implement batch-one
 speculative acceptance and result publication without a custom-op library.
-This replaces the earlier two-row schema and supports two through four head
+This replaces the earlier two-row schema and supports two through eight head
 rows, variable rotary width, configurable cache capacity, optional hidden-state
 padding, and deferred publication after downstream validation.
 
@@ -12,12 +12,14 @@ rotary caches, and optional hidden rows. Its outputs are head token IDs,
 committed length, slot IDs, sequence length, gathered cosine/sine rows, accepted
 prefix length, optional padded hidden rows, updated control, and updated context.
 The last two outputs **alias** inputs 3 and 4. The caller must serialize access
-to those device buffers. For four head rows, control has at least 16 int64 words
-and prefix contexts contain four pairs of int64 words.
+to those device buffers. For three through eight head rows, control has at least
+16 int64 words and prefix contexts contain `head_rows` pairs of int64 words.
+When `rows > 4`, predictions `tokens[4..7]` are packed into the upper 32-bit
+halves of ring record words `1, 2, 3, 5`.
 
 `FoldTail` takes a token, status words, the mid-stage control output, and
 result-ring metadata. It returns a dependency token and updated control.
-The latter aliases input 2. `ctl_slot` selects word 2, 8, or 9. The tail writes
+The latter aliases input 2. `ctl_slot` selects word -1 (none), 2, or 8..13. The tail writes
 the ring's sequence word only after a system fence, so host polling cannot
 observe a partial record.
 

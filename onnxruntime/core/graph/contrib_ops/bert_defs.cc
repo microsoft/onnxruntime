@@ -37,19 +37,19 @@ namespace contrib {
 ONNX_MS_OPERATOR_SET_SCHEMA(
     FoldMid2, 1,
     OpSchema()
-        .SetDoc("Commits a batch-one speculative prefix and prepares rotary/head inputs for two through four head rows. "
+        .SetDoc("Commits a batch-one speculative prefix and prepares rotary/head inputs for two through eight head rows. "
                 "Control and committed-context outputs must alias their inputs on CUDA when present. This is stateful: callers "
                 "must serialize access to these buffers. The result-ring address must identify a device-accessible, "
                 "aligned allocation of capacity*8 int64 words. The mid stage writes the payload; FoldTail publishes "
                 "its sequence word after downstream validation when ptrs is passed to FoldTail, or FoldMid2 publishes it directly when updated_ctl/updated_ctx_commit are omitted. "
                 "Muted prefill calls prepare inputs without committing "
                 "state or touching ring metadata. Invalid device metadata sets error bits and mutes execution.")
-        .Attr("head_rows", "Fixed number of head rows, 2 through 4.", AttributeProto::INT, int64_t{2})
+        .Attr("head_rows", "Fixed number of head rows, 2 through 8.", AttributeProto::INT, int64_t{2})
         .Attr("head_capacity", "Maximum head-cache token capacity.", AttributeProto::INT, int64_t{262144})
         .Input(0, "next_tokens", "Verifier predictions, batch one.", "I64")
         .Input(1, "input_ids", "Verifier input IDs.", "I64")
         .Input(2, "status", "Verifier status words.", "I32")
-        .Input(3, "ctl", "Mutable control state: at least 8 words for S2, 16 for S3/S4.", "I64")
+        .Input(3, "ctl", "Mutable control state: at least 8 words for S2, 16 for S3..S8.", "I64")
         .Input(4, "ctx_commit", "Mutable committed context, two words.", "I64")
         .Input(5, "prefixes", "Two-word context for each accepted-prefix length; S2 needs only the first.", "I64")
         .Input(6, "prefix2", "Two-word context for acceptance length one.", "I64")
@@ -83,7 +83,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           }
           const auto rows = getAttribute(ctx, "head_rows", 2);
           const auto capacity = getAttribute(ctx, "head_capacity", 262144);
-          if (rows < 2 || rows > 4 || capacity < rows || capacity > std::numeric_limits<int>::max())
+          if (rows < 2 || rows > 8 || capacity < rows || capacity > std::numeric_limits<int>::max())
             fail_shape_inference("FoldMid2: invalid head_rows/head_capacity");
           for (int output : {0, 2}) {
             auto* shape = getOutputShape(ctx, output);
@@ -117,7 +117,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .SetDoc("Updates the selected draft-control slot and publishes the result-ring sequence after validation. "
                 "updated_ctl must alias ctl on CUDA when present. Muted calls do not access the ring. Invalid ring metadata "
                 "sets error bit 16 and mutes execution. done is a dependency output set to 1 when unmuted and 0 when muted.")
-        .Attr("ctl_slot", "Draft-control slot: -1 (none), 2, 8 or 9.", AttributeProto::INT, int64_t{2})
+        .Attr("ctl_slot", "Draft-control slot: -1 (none), 2, or 8..13.", AttributeProto::INT, int64_t{2})
         .Input(0, "next_token", "Next draft token (or ignored selector in DFlash).", "I64")
         .Input(1, "status", "Downstream validation status words.", "I32")
         .Input(2, "ctl", "Mutable control state.", "I64")
@@ -132,7 +132,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             propagateElemTypeFromInputToOutput(ctx, 2, 1);
           }
           const auto slot = getAttribute(ctx, "ctl_slot", 2);
-          if (slot != -1 && slot != 2 && slot != 8 && slot != 9) fail_shape_inference("FoldTail: invalid ctl_slot");
+          if (slot != -1 && slot != 2 && (slot < 8 || slot > 13)) fail_shape_inference("FoldTail: invalid ctl_slot");
           getOutputShape(ctx, 0)->add_dim()->set_dim_value(1);
           if (ctx.getNumOutputs() > 1 && ctx.hasOutput(1)) {
             propagateShapeFromInputToOutput(ctx, 2, 1);

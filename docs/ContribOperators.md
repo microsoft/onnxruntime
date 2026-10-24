@@ -2171,7 +2171,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.FoldMid2"></a><a name="com.microsoft.foldmid2">**com.microsoft.FoldMid2**</a>
 
-  Commits a batch-one speculative prefix and prepares rotary/head inputs for two through four head rows. Control and committed-context outputs must alias their inputs on CUDA when present. This is stateful: callers must serialize access to these buffers. The result-ring address must identify a device-accessible, aligned allocation of capacity*8 int64 words. The mid stage writes the payload; FoldTail publishes its sequence word after downstream validation when ptrs is passed to FoldTail, or FoldMid2 publishes it directly when updated_ctl/updated_ctx_commit are omitted. Muted prefill calls prepare inputs without committing state or touching ring metadata. Invalid device metadata sets error bits and mutes execution.
+  Commits a batch-one speculative prefix and prepares rotary/head inputs for two through eight head rows. Control and committed-context outputs must alias their inputs on CUDA when present. This is stateful: callers must serialize access to these buffers. The result-ring address must identify a device-accessible, aligned allocation of capacity*8 int64 words. The mid stage writes the payload; FoldTail publishes its sequence word after downstream validation when ptrs is passed to FoldTail, or FoldMid2 publishes it directly when updated_ctl/updated_ctx_commit are omitted. Muted prefill calls prepare inputs without committing state or touching ring metadata. Invalid device metadata sets error bits and mutes execution.
 
 #### Version
 
@@ -2183,7 +2183,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>head_capacity</tt> : int</dt>
 <dd>Maximum head-cache token capacity.</dd>
 <dt><tt>head_rows</tt> : int</dt>
-<dd>Fixed number of head rows, 2 through 4.</dd>
+<dd>Fixed number of head rows, 2 through 8.</dd>
 </dl>
 
 #### Inputs (10 - 11)
@@ -2196,7 +2196,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>status</tt> : I32</dt>
 <dd>Verifier status words.</dd>
 <dt><tt>ctl</tt> : I64</dt>
-<dd>Mutable control state: at least 8 words for S2, 16 for S3/S4.</dd>
+<dd>Mutable control state: at least 8 words for S2, 16 for S3..S8.</dd>
 <dt><tt>ctx_commit</tt> : I64</dt>
 <dd>Mutable committed context, two words.</dd>
 <dt><tt>prefixes</tt> : I64</dt>
@@ -2262,7 +2262,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>ctl_slot</tt> : int</dt>
-<dd>Draft-control slot: -1 (none), 2, 8 or 9.</dd>
+<dd>Draft-control slot: -1 (none), 2, or 8..13.</dd>
 </dl>
 
 #### Inputs (3 - 4)

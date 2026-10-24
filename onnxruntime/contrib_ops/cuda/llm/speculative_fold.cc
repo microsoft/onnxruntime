@@ -19,7 +19,7 @@ class FoldMid2 final : public CudaKernel {
   explicit FoldMid2(const OpKernelInfo& info) : CudaKernel(info) {
     head_rows_ = SafeInt<int>(info.GetAttrOrDefault<int64_t>("head_rows", 2));
     capacity_ = SafeInt<int>(info.GetAttrOrDefault<int64_t>("head_capacity", 262144));
-    ORT_ENFORCE(head_rows_ >= 2 && head_rows_ <= 4 && capacity_ >= head_rows_,
+    ORT_ENFORCE(head_rows_ >= 2 && head_rows_ <= 8 && capacity_ >= head_rows_,
                 "FoldMid2: invalid head_rows/head_capacity");
   }
 
@@ -111,8 +111,8 @@ class FoldTail final : public CudaKernel {
  public:
   explicit FoldTail(const OpKernelInfo& info) : CudaKernel(info) {
     slot_ = SafeInt<int>(info.GetAttrOrDefault<int64_t>("ctl_slot", 2));
-    ORT_ENFORCE(slot_ == -1 || slot_ == 2 || slot_ == 8 || slot_ == 9,
-                "FoldTail: ctl_slot must be -1, 2, 8 or 9");
+    ORT_ENFORCE(slot_ == -1 || slot_ == 2 || (slot_ >= 8 && slot_ <= 13),
+                "FoldTail: ctl_slot must be -1, 2, or 8..13");
   }
 
   Status ComputeInternal(OpKernelContext* context) const override {

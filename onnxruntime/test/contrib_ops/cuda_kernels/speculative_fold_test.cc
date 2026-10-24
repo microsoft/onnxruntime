@@ -41,10 +41,10 @@ struct Buffer {
 };
 
 struct Fixture {
-  Buffer<int64_t> tokens{8}, ids{8}, ctl{16}, context{2}, prefixes{8}, prefix2{2}, ptrs{2}, ring{16};
+  Buffer<int64_t> tokens{8}, ids{8}, ctl{16}, context{2}, prefixes{16}, prefix2{2}, ptrs{2}, ring{16};
   Buffer<int32_t> status{2}, head_c{1}, lengths{1}, done{1};
-  Buffer<int64_t> head_ids{4}, slots{4}, selection{1};
-  Buffer<uint16_t> cosine{16 * 3}, sine{16 * 3}, head_cos{12}, head_sin{12}, hidden{24}, out_hidden{12};
+  Buffer<int64_t> head_ids{8}, slots{8}, selection{1};
+  Buffer<uint16_t> cosine{16 * 3}, sine{16 * 3}, head_cos{24}, head_sin{24}, hidden{24}, out_hidden{24};
 
   void Reset(int rows, int accepted, bool muted = false, int64_t sequence = 0) {
     std::vector<int64_t> predictions{10, 20, 30, 40, 50, 60, 70, 80};
@@ -60,7 +60,7 @@ struct Fixture {
     control[7] = 2;
     ctl.Upload(control);
     context.Upload({-1, -2});
-    prefixes.Upload({100, 101, 200, 201, 300, 301, 400, 401});
+    prefixes.Upload({100, 101, 200, 201, 300, 301, 400, 401, 500, 501, 600, 601, 700, 701, 800, 801});
     prefix2.Upload({200, 201});
     ptrs.Upload({reinterpret_cast<int64_t>(ring.data), 2});
     ring.Upload(std::vector<int64_t>(16, -7));
@@ -98,7 +98,7 @@ class FoldContribTest : public testing::Test {
 
 TEST_F(FoldContribTest, AllPrefixLengthsAndDeferredRingPublication) {
   Fixture f;
-  for (int rows : {1, 2, 3, 4}) {
+  for (int rows : {1, 2, 3, 4, 8}) {
     const int heads = std::max(2, rows);
     for (int accepted = 0; accepted < rows; ++accepted) {
       SCOPED_TRACE(testing::Message() << rows << "/" << accepted);
@@ -115,12 +115,18 @@ TEST_F(FoldContribTest, AllPrefixLengthsAndDeferredRingPublication) {
       EXPECT_EQ(ctl[6], accepted);
       auto record = f.ring.Read();
       EXPECT_EQ(record[8], -7);
-      EXPECT_EQ(record[11], accepted);
-      EXPECT_EQ(record[13], 10 * (accepted + 1));
+      EXPECT_EQ(static_cast<int32_t>(static_cast<uint64_t>(record[11]) & 0xffffffffu), accepted);
+      EXPECT_EQ(static_cast<int32_t>(static_cast<uint64_t>(record[13]) & 0xffffffffu), 10 * (accepted + 1));
       EXPECT_EQ(record[14], 4 + accepted);
       if (rows > 2) {
         const uint64_t packed = 30 | (rows > 3 ? uint64_t{40} << 32 : 0);
         EXPECT_EQ(static_cast<uint64_t>(record[15]), packed);
+      }
+      if (rows == 8) {
+        EXPECT_EQ(static_cast<int32_t>(static_cast<uint64_t>(record[9]) >> 32), 50);
+        EXPECT_EQ(static_cast<int32_t>(static_cast<uint64_t>(record[10]) >> 32), 60);
+        EXPECT_EQ(static_cast<int32_t>(static_cast<uint64_t>(record[11]) >> 32), 70);
+        EXPECT_EQ(static_cast<int32_t>(static_cast<uint64_t>(record[13]) >> 32), 80);
       }
       ASSERT_TRUE(f.Tail().IsOK());
       Check(cudaDeviceSynchronize());
@@ -176,7 +182,7 @@ TEST_F(FoldContribTest, InvalidDeviceMetadataMutesBeforeRingAccess) {
 
 TEST_F(FoldContribTest, TailSlotsAndValidationArePublished) {
   Fixture f;
-  for (int slot : {2, 8, 9}) {
+  for (int slot : {2, 8, 9, 13}) {
     for (const auto& statuses : {std::pair{std::vector<int32_t>{0, 0}, std::vector<int32_t>{4, 8}},
                                  std::pair{std::vector<int32_t>{1, 4}, std::vector<int32_t>{0, 8}}}) {
       f.Reset(4, 2);

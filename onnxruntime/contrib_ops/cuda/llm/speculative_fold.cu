@@ -87,16 +87,19 @@ __global__ void MidKernel(const int64_t* tokens, const int64_t* ids, const int32
   ctl[5] |= validation ? 2 : 0;
   ctl[6] = accepted;
   volatile int64_t* record = reinterpret_cast<int64_t*>(ptrs[0]) + 8 * ((ctl[4] - 1) % ptrs[1]);
-  record[1] = tokens[0];
-  record[2] = rows > 1 ? tokens[1] : tokens[0];
-  record[3] = accepted;
+  auto pack_lo_hi = [](int64_t lo, int64_t hi, bool has_hi) -> int64_t {
+    if (!has_hi) return lo;
+    return static_cast<int64_t>(
+        static_cast<uint64_t>(static_cast<uint32_t>(lo)) |
+        (static_cast<uint64_t>(static_cast<uint32_t>(hi)) << 32));
+  };
+  record[1] = pack_lo_hi(tokens[0], rows > 4 ? tokens[4] : 0, rows > 4);
+  record[2] = pack_lo_hi(rows > 1 ? tokens[1] : tokens[0], rows > 5 ? tokens[5] : 0, rows > 5);
+  record[3] = pack_lo_hi(accepted, rows > 6 ? tokens[6] : 0, rows > 6);
   record[4] = validation;
-  record[5] = pending;
+  record[5] = pack_lo_hi(pending, rows > 7 ? tokens[7] : 0, rows > 7);
   record[6] = ctl[1];
-  record[7] = rows > 2 ? static_cast<int64_t>(
-                             static_cast<uint64_t>(static_cast<uint32_t>(tokens[2])) |
-                             (rows > 3 ? static_cast<uint64_t>(static_cast<uint32_t>(tokens[3])) << 32 : 0))
-                       : 0;
+  record[7] = rows > 2 ? pack_lo_hi(tokens[2], rows > 3 ? tokens[3] : 0, rows > 3) : 0;
   if (publish_ring) {
     __threadfence_system();
     record[0] = ctl[4];
