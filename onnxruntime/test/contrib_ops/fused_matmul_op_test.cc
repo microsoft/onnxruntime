@@ -5,8 +5,11 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
+#include "core/providers/cpu/math/matmul_helper.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/dnnl_op_test_utils.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 namespace onnxruntime {
 namespace test {
@@ -221,6 +224,107 @@ void RunFusedMatMulTest(const char* op_name, int32_t opset_version = 7, bool tra
       excluded_eps.insert(kOpenVINOExecutionProvider);
     }
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_eps);
+  }
+}
+
+template <typename T>
+static void RunTransposeAWithRightVector(const char* op_name, bool use_cuda = false) {
+  for (bool batched : {false, true}) {
+    const std::vector<int64_t> a_dims = batched ? std::vector<int64_t>{2, 2, 3}
+                                                : std::vector<int64_t>{2, 3};
+    const std::vector<T> a_values = batched ? std::vector<T>{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}
+                                            : std::vector<T>{0, 1, 2, 3, 4, 5};
+    const std::vector<int64_t> output_dims = batched ? std::vector<int64_t>{2, 3}
+                                                     : std::vector<int64_t>{3};
+    const std::vector<T> expected_values = batched ? std::vector<T>{30, 41, 52, 96, 107, 118}
+                                                   : std::vector<T>{30, 41, 52};
+    for (bool trans_b : {false, true}) {
+      for (bool constant_b : {false, true}) {
+        for (float alpha : {1.0f, 0.5f}) {
+          SCOPED_TRACE("batched=" + std::to_string(batched) + " trans_b=" + std::to_string(trans_b) +
+                       " constant_b=" + std::to_string(constant_b) + " alpha=" + std::to_string(alpha));
+          OpTester test(op_name, 1, onnxruntime::kMSDomain);
+          test.ConfigEp(use_cuda ? DefaultCudaExecutionProvider() : DefaultCpuExecutionProvider());
+          test.AddAttribute("transA", int64_t{1});
+          test.AddAttribute("transB", int64_t{trans_b});
+          test.AddAttribute("alpha", alpha);
+          test.AddInput<T>("A", a_dims, a_values);
+          test.AddInput<T>("B", {2}, {1, 10}, constant_b);
+          std::vector<T> scaled_expected(expected_values);
+          for (T& value : scaled_expected) {
+            value *= static_cast<T>(alpha);
+          }
+          test.AddOutput<T>("Y", output_dims, scaled_expected);
+          if (use_cuda) {
+            SessionOptions options;
+            ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+            test.Config(options);
+          }
+          test.RunWithConfig();
+        }
+      }
+    }
+  }
+}
+
+TEST(FusedMatMulOpTest, FloatTransposeAWithRightVector) {
+  RunTransposeAWithRightVector<float>("FusedMatMul");
+}
+
+TEST(FusedMatMulOpTest, DoubleTransposeAWithRightVector) {
+  RunTransposeAWithRightVector<double>("FusedMatMul");
+}
+
+TEST(FusedMatMulOpTest, LegacyTransposeAWithRightVector) {
+  RunTransposeAWithRightVector<float>("TransposeMatMul");
+}
+
+TEST(FusedMatMulOpTest, FloatTransposeAWithRightVectorCuda) {
+#if defined(USE_CUDA)
+  if (!HasCudaEnvironment(200)) {
+    GTEST_SKIP() << "CUDA device is unavailable";
+  }
+  RunTransposeAWithRightVector<float>("FusedMatMul", true);
+#else
+  GTEST_SKIP() << "CUDA is not enabled in this build";
+#endif
+}
+
+TEST(FusedMatMulOpTest, DoubleTransposeAWithRightVectorCuda) {
+#if defined(USE_CUDA)
+  if (!HasCudaEnvironment(200)) {
+    GTEST_SKIP() << "CUDA device is unavailable";
+  }
+  RunTransposeAWithRightVector<double>("FusedMatMul", true);
+#else
+  GTEST_SKIP() << "CUDA is not enabled in this build";
+#endif
+}
+
+TEST(FusedMatMulOpTest, TransposeARightVectorHelperOffsets) {
+  for (bool batched : {false, true}) {
+    for (bool trans_b : {false, true}) {
+      for (bool deferred_offsets : {false, true}) {
+        SCOPED_TRACE("batched=" + std::to_string(batched) + " trans_b=" + std::to_string(trans_b) +
+                     " deferred_offsets=" + std::to_string(deferred_offsets));
+        MatMulComputeHelper helper;
+        const TensorShape a_shape = batched ? TensorShape({2, 2, 2, 3}) : TensorShape({2, 3});
+        ASSERT_STATUS_OK(helper.Compute(a_shape, TensorShape({2}),
+                                        true, trans_b, false, false, !deferred_offsets));
+        EXPECT_EQ(helper.OutputShape(), batched ? TensorShape({2, 2, 3}) : TensorShape({3}));
+        EXPECT_EQ(helper.M(), 3);
+        EXPECT_EQ(helper.N(), 1);
+        EXPECT_EQ(helper.K(), 2);
+        EXPECT_EQ(helper.Lda(true), 3);
+        EXPECT_EQ(helper.Ldb(trans_b), trans_b ? 2 : 1);
+        if (batched && deferred_offsets) {
+          helper.FillOffsets();
+        }
+        EXPECT_EQ(helper.LeftOffsets(), (batched ? std::vector<size_t>{0, 6, 12, 18} : std::vector<size_t>{0}));
+        EXPECT_EQ(helper.RightOffsets(), (batched ? std::vector<size_t>{0, 0, 0, 0} : std::vector<size_t>{0}));
+        EXPECT_EQ(helper.OutputOffsets(), (batched ? std::vector<size_t>{0, 3, 6, 9} : std::vector<size_t>{0}));
+      }
+    }
   }
 }
 
