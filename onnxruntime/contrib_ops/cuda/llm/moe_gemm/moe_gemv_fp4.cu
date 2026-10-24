@@ -635,8 +635,11 @@ __device__ __forceinline__ void Fp4WordToRaw(uint32_t word, uint32_t (&raw)[4]) 
 }
 
 // {2^126, 2^126} in bf16 and {2^14, 2^14} in fp16.
+// A function rather than a variable template: Windows nvcc rejects __device__ variable templates with const type.
 template <typename T>
-static __device__ constexpr uint32_t kFp4RawRescale = std::is_same_v<T, half> ? 0x74007400u : 0x7E807E80u;
+__device__ __forceinline__ constexpr uint32_t Fp4RawRescale() {
+  return std::is_same_v<T, half> ? 0x74007400u : 0x7E807E80u;
+}
 
 // Activation unit (32 elements = one lane pair's K slice of a tile) stride in shared memory: 36 floats =
 // 9 float4 chunks, so the threads of a warp that read different units hit distinct banks.
@@ -743,8 +746,9 @@ __device__ __forceinline__ void AccumulateWeightVector(
 #pragma unroll
     for (int c = 0; c < kDecodeColsPerThread; ++c) {
       const uint32_t rounded_bits = RoundedScalePair<T>(scale_codes[c], global_scale);
+      const uint32_t raw_rescale = Fp4RawRescale<T>();
       const PackedPairT<T> shifted = __hmul2(*reinterpret_cast<const PackedPairT<T>*>(&rounded_bits),
-                                             *reinterpret_cast<const PackedPairT<T>*>(&kFp4RawRescale<T>));
+                                             *reinterpret_cast<const PackedPairT<T>*>(&raw_rescale));
       const uint32_t shifted_bits = *reinterpret_cast<const uint32_t*>(&shifted);
       scale_raw[c][0] = __byte_perm(shifted_bits, shifted_bits, 0x1010);
       scale_raw[c][1] = __byte_perm(shifted_bits, shifted_bits, 0x3232);

@@ -16,10 +16,13 @@ _Ret_notnull_ OrtStatus* ToOrtStatus(const onnxruntime::common::Status& st);
 // Convert OrtStatus* to onnxruntime::common::Status and release the OrtStatus*.
 Status ToStatusAndRelease(OrtStatus* ort_status,
                           common::StatusCategory category = common::StatusCategory::ONNXRUNTIME);
+
+_Ret_maybenull_ OrtStatus* CreateUnknownExceptionStatus(const char* function_name) noexcept;
 };  // namespace onnxruntime
 
 #ifndef ORT_NO_EXCEPTIONS
 #define API_IMPL_BEGIN try {
+// In lambdas, __func__ identifies operator() rather than the enclosing C-API entry point.
 #define API_IMPL_END                                                               \
   }                                                                                \
   catch (const onnxruntime::OnnxRuntimeException& ex) {                            \
@@ -32,7 +35,7 @@ Status ToStatusAndRelease(OrtStatus* ort_status,
     return OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());                \
   }                                                                                \
   catch (...) {                                                                    \
-    return OrtApis::CreateStatus(ORT_FAIL, "Unknown Exception");                   \
+    return ::onnxruntime::CreateUnknownExceptionStatus(__func__);                  \
   }
 
 #else

@@ -368,6 +368,7 @@ bool CheckFpAIntBEligibility(int32_t input0_elem_type, int64_t N, int64_t K,
 
   return true;
 }
+#endif
 
 std::optional<int64_t> ComputeMatMulNBitsLeadingDimProduct(gsl::span<const int64_t> input_a_shape) {
   if (input_a_shape.empty()) {
@@ -448,12 +449,25 @@ static std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemoryImpl(
     return std::nullopt;
   }
   const int32_t input0_elem_type = type_proto->tensor_type().elem_type();
+  const size_t element_size =
+      input0_elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT
+          ? sizeof(float)
+      : input0_elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ||
+              input0_elem_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16
+          ? sizeof(uint16_t)
+          : 0;
+  if (element_size == 0) {
+    return std::nullopt;
+  }
 
   const int64_t N = get_attr("N", 0);
   const int64_t K = get_attr("K", 0);
   const int64_t nbits = get_attr("bits", 0);
   const int64_t block_size = get_attr("block_size", 0);
   const int64_t weight_prepacked = get_attr("weight_prepacked", kMatMulNBitsWeightNotPrepacked);
+  if (nbits != 2 && nbits != 4 && nbits != 8) {
+    return std::nullopt;
+  }
 
   constexpr int kInputIndexGroupIndex = 4;
   constexpr int kInputIndexZeroPoints = 3;
@@ -468,6 +482,38 @@ static std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemoryImpl(
                         input_defs[kInputIndexBias] != nullptr &&
                         input_defs[kInputIndexBias]->Exists();
 
+  const auto estimate_legacy_route = [&]() -> std::optional<Level1MemoryEstimate> {
+    if (weight_prepacked != kMatMulNBitsWeightNotPrepacked) {
+      return std::nullopt;
+    }
+
+    // The fused legacy helpers decide at launch time whether they can run.
+    // Reserve the dequantize+GEMM catch-all so every reachable legacy route
+    // remains covered without duplicating those kernel predicates.
+    // Keep env defaults and clamping identical to the constructor's legacy
+    // N-chunk policy; the fpA-only M-chunk session option does not apply here.
+    int64_t chunk_target_rows =
+        ParseEnvironmentVariableWithDefault<int64_t>(
+            kChunkSizeEnvVar, kDefaultChunkTargetRows);
+    if (chunk_target_rows < 1) {
+      chunk_target_rows = kDefaultChunkTargetRows;
+    }
+    const bool force_chunked =
+        ParseEnvironmentVariableWithDefault<int>(kForceChunkedEnvVar, 0) != 0;
+    const auto legacy_plan = ComputeMatMulNBitsLegacyWorkspacePlan(
+        N, K, block_size, element_size,
+        /*can_chunk=*/!has_g_idx, force_chunked, chunk_target_rows);
+    if (!legacy_plan.has_value()) {
+      return std::nullopt;
+    }
+
+    Level1MemoryEstimate legacy_estimate;
+    legacy_estimate.runtime_workspace_bytes =
+        legacy_plan->workspace_bytes;
+    return legacy_estimate;
+  };
+
+#if USE_FPA_INTB_GEMM
   const int device_sm = device_prop.major * 10 + device_prop.minor;
 
   const std::string fpa_intb_gemm =
@@ -481,7 +527,7 @@ static std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemoryImpl(
       input0_elem_type, N, K, nbits, block_size, weight_prepacked,
       has_zero_points, has_g_idx, has_bias, device_sm, fpa_intb_option);
   if (!fpa_intb_eligible) {
-    return std::nullopt;
+    return estimate_legacy_route();
   }
 
   auto estimate = ComputeMatMulNBitsPrepackMemoryEstimate(
@@ -499,9 +545,32 @@ static std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemoryImpl(
     const std::vector<int> profile_m =
         WeightOnlyGroupwiseQuantGemmPluginProfiler::ParseProfileMList(
             profile_m_value);
-    const int requested_constructor_profile_max_m =
+    int requested_constructor_profile_max_m =
         profile_m.empty() ? onnxruntime::llm::kernels::weight_only::kDefaultProfileMaxM
                           : profile_m.back();
+    const std::string m_chunk_size_value =
+        options.m_chunk_size.has_value()
+            ? std::string{*options.m_chunk_size}
+            : ParseEnvironmentVariableWithDefault<std::string>(
+                  kMChunkSizeEnvVar, "");
+    const int m_chunk_size = static_cast<int>(
+        FpAIntBProfileSafeMCap(
+            ParseMatMulNBitsMChunkSize(m_chunk_size_value)));
+    const bool force_chunked =
+        ParseEnvironmentVariableWithDefault<int>(kForceChunkedEnvVar, 0) != 0;
+    const int64_t m_chunk_min_rows =
+        ComputeMatMulNBitsFpAIntBChunkMinRows(
+            N, K, element_size);
+    if (m_chunk_size > 0) {
+      const int64_t maximum_unchunked_rows =
+          force_chunked
+              ? m_chunk_size
+              : std::max<int64_t>(m_chunk_size, m_chunk_min_rows);
+      requested_constructor_profile_max_m =
+          static_cast<int>(std::min<int64_t>(
+              requested_constructor_profile_max_m,
+              maximum_unchunked_rows));
+    }
     const int constructor_profile_max_m =
         onnxruntime::llm::kernels::weight_only::RoundUpProfileM(
             requested_constructor_profile_max_m,
@@ -547,25 +616,50 @@ static std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemoryImpl(
     estimate->initialization_scratch_bytes =
         std::max(estimate->initialization_scratch_bytes, *constructor_profile_scratch);
 
+    std::optional<int64_t> maximum_runtime_rows;
     if (m.has_value()) {
+      maximum_runtime_rows =
+          options.input_shape_is_upper_bound
+              ? MatMulNBitsFpAIntBMaxRowsPerLaunch(
+                    *m, m_chunk_size, m_chunk_min_rows,
+                    force_chunked)
+              : MatMulNBitsFpAIntBRowsPerLaunch(
+                    *m, m_chunk_size, m_chunk_min_rows,
+                    force_chunked);
+    } else if (m_chunk_size > 0) {
+      maximum_runtime_rows =
+          force_chunked
+              ? m_chunk_size
+              : std::max<int64_t>(m_chunk_size,
+                                  m_chunk_min_rows);
+    }
+    if (maximum_runtime_rows.has_value()) {
       estimate->runtime_workspace_bytes =
           onnxruntime::llm::kernels::cutlass_kernels::ComputeFpAIntBGemmWorkspaceSize(
-              SafeInt<int>(*m), original_n, SafeInt<int>(K), sm,
+              SafeInt<int>(*maximum_runtime_rows), original_n,
+              SafeInt<int>(K), sm,
               device_prop.multiProcessorCount);
     }
 
     std::optional<int> lazy_profile_m;
-    if (!m.has_value()) {
+    if (!m.has_value() && !maximum_runtime_rows.has_value()) {
       // A dynamic M can request any rounded bucket at runtime.
       lazy_profile_m = onnxruntime::llm::kernels::weight_only::kMaxProfileM;
-    } else if (*m > 0) {
+    } else if (maximum_runtime_rows.value_or(0) > 0) {
       const auto initial_profile_m =
           WeightOnlyGroupwiseQuantGemmPluginProfiler::GetInitialProfileMBuckets(
               1, constructor_profile_max_m, profile_m);
-      if (options.input_shape_is_upper_bound) {
+      const bool rows_are_upper_bound =
+          options.input_shape_is_upper_bound ||
+          !m.has_value() ||
+          *maximum_runtime_rows != *m;
+      if (rows_are_upper_bound) {
         const int maximum_runtime_profile_m =
             onnxruntime::llm::kernels::weight_only::RoundUpProfileM(
-                SafeInt<int>(*m), onnxruntime::llm::kernels::weight_only::kMaxProfileM);
+                SafeInt<int>(*maximum_runtime_rows),
+                onnxruntime::llm::kernels::weight_only::kMaxProfileM);
+        // M=1 is always profiled at construction. Scratch for the remaining
+        // buckets is nondecreasing in M, so retain the largest missing bucket.
         for (int candidate_m = 1; candidate_m <= maximum_runtime_profile_m; candidate_m *= 2) {
           if (std::find(initial_profile_m.begin(), initial_profile_m.end(), candidate_m) ==
               initial_profile_m.end()) {
@@ -578,9 +672,11 @@ static std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemoryImpl(
       } else {
         const int runtime_profile_m =
             onnxruntime::llm::kernels::weight_only::RoundUpProfileM(
-                SafeInt<int>(*m), onnxruntime::llm::kernels::weight_only::kMaxProfileM);
+                SafeInt<int>(*maximum_runtime_rows),
+                onnxruntime::llm::kernels::weight_only::kMaxProfileM);
         const bool initially_profiled =
-            std::find(initial_profile_m.begin(), initial_profile_m.end(), *m) != initial_profile_m.end() ||
+            std::find(initial_profile_m.begin(), initial_profile_m.end(),
+                      *maximum_runtime_rows) != initial_profile_m.end() ||
             std::find(initial_profile_m.begin(), initial_profile_m.end(), runtime_profile_m) != initial_profile_m.end();
         if (!initially_profiled) {
           lazy_profile_m = runtime_profile_m;
@@ -593,9 +689,20 @@ static std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemoryImpl(
       if (!lazy_profile_scratch.has_value()) {
         return std::nullopt;
       }
-      // Lazy profiling occurs during Run() before the ordinary GEMM. The two allocations do not
-      // overlap, so the accountant peaks them rather than summing them.
-      estimate->runtime_transient_bytes = *lazy_profile_scratch;
+      SafeInt<size_t> runtime_preparation_peak = *lazy_profile_scratch;
+      const bool can_chunk =
+          m_chunk_size > 0 &&
+          (!m.has_value() ||
+           MatMulNBitsFpAIntBRowsPerLaunch(
+               *m, m_chunk_size, m_chunk_min_rows, force_chunked) < *m);
+      if (can_chunk) {
+        if (!estimate->runtime_workspace_bytes.has_value()) {
+          return std::nullopt;
+        }
+        // A partial tail can profile while the preceding GEMM's workspace is still retained.
+        runtime_preparation_peak += *estimate->runtime_workspace_bytes;
+      }
+      estimate->runtime_transient_bytes = static_cast<size_t>(runtime_preparation_peak);
     }
 
     return estimate;
@@ -603,6 +710,15 @@ static std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemoryImpl(
     // Treat invalid or overflowing model-derived sizes as not estimable.
     return std::nullopt;
   }
+#else
+  ORT_UNUSED_PARAMETER(device_prop);
+  ORT_UNUSED_PARAMETER(m);
+  ORT_UNUSED_PARAMETER(options);
+  ORT_UNUSED_PARAMETER(nbits);
+  ORT_UNUSED_PARAMETER(has_zero_points);
+  ORT_UNUSED_PARAMETER(has_bias);
+  return estimate_legacy_route();
+#endif
 }
 
 std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemory(
@@ -637,6 +753,7 @@ std::optional<size_t> EstimateMatMulNBitsWorkspace(
   return estimate.has_value() ? estimate->runtime_workspace_bytes : std::nullopt;
 }
 
+#if USE_FPA_INTB_GEMM
 template <typename T>
 int MatMulNBits<T>::FpAIntBPackingSmForKernel() const {
   // Select the native SM90 (Hopper) mixed-weight layout only when the weights were prepacked for it
@@ -1380,29 +1497,19 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
   // fall back to the generic dequantize + GEMM path (which ignores bias) and add the
   // bias with a separate kernel after the GEMM completes.
 
-  int64_t K_padded = (K_ + block_size_ - 1) / block_size_ * block_size_;
-
-  // Chunked dequant+GEMM trades peak scratch memory for repeated kernel launches.
-  // Thresholds:
-  //   256 MB  – scratch budget; above this the full N*K_padded buffer would dominate
-  //             device memory and risk OOM on consumer GPUs (8–12 GB).
-  //   N > 2*chunk_target_rows (default 65536) – ensures at least two chunks so the
-  //             overhead of per-chunk cuBLAS calls is amortised.
-  //   chunk_target_rows (default 32768) – chosen so that each dequant+GEMM tile is
-  //             large enough to saturate SMs while keeping scratch ≤ ~128 MB.
-  // Only column-wise quantization without reorder_idx is supported; row-wise layouts
-  // interleave K blocks across N and cannot be sliced along the N axis.
+  const auto legacy_workspace = ComputeMatMulNBitsLegacyWorkspacePlan(
+      N_, K_, block_size_, sizeof(T),
+      column_wise_quant_blk_ && reorder_idx_data == nullptr,
+      force_chunked_, chunk_target_rows_);
+  ORT_RETURN_IF_NOT(legacy_workspace.has_value(),
+                    "MatMulNBits legacy workspace size overflow.");
+  int64_t K_padded = legacy_workspace->k_padded;
+  const bool will_use_chunked = legacy_workspace->use_chunked;
   const int64_t chunk_target_rows = chunk_target_rows_;
-  const int64_t scratch_bytes = N_ * K_padded * static_cast<int64_t>(sizeof(T));
-  const bool will_use_chunked = column_wise_quant_blk_ &&
-                                (reorder_idx_data == nullptr) &&
-                                (force_chunked_ ||
-                                 ((scratch_bytes > 256 * 1024 * 1024) &&
-                                  (N_ > chunk_target_rows * 2)));
-
-  // Allocate scratch: full size normally, chunk size if chunked path will be used
-  const int64_t scratch_n = will_use_chunked ? chunk_target_rows : N_;
-  IAllocatorUniquePtr<T> b_data_ptr = this->template GetScratchBuffer<T>(scratch_n * K_padded, this->GetComputeStream(ctx));
+  IAllocatorUniquePtr<T> b_data_ptr =
+      this->template GetScratchBuffer<T>(
+          legacy_workspace->workspace_bytes / sizeof(T),
+          this->GetComputeStream(ctx));
   auto* b_data = b_data_ptr.get();
 
   // Column-wise dequant helper: dispatches 8/4/2-bit x typed / uint8 zero-points.

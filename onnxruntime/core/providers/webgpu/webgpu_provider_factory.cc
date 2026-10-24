@@ -580,6 +580,39 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
       return nullptr;
     }
 
+#if defined(ORT_USE_EP_API_ADAPTERS)
+    // Batch unmapped inputs on the owning Session timeline, including on UMA devices.
+    // Check the entire list before copying so mixed transfers retain their original ordering.
+    if (num_tensors > 1 && streams != nullptr && streams[0] != nullptr) {
+      InlinedVector<BufferManager::UploadInfo> uploads;
+      uploads.reserve(num_tensors);
+      int device_id = -1;
+      for (size_t idx = 0; idx < num_tensors; ++idx) {
+        if (streams[idx] != streams[0]) break;
+        Ort::ConstValue src_value{src_tensors[idx]};
+        Ort::UnownedValue dst_value{dst_tensors[idx]};
+        auto src_info = src_value.GetTensorMemoryInfo();
+        auto dst_info = dst_value.GetTensorMemoryInfo();
+        if (src_info.GetDeviceType() != OrtMemoryInfoDeviceType_CPU ||
+            dst_info.GetDeviceType() != OrtMemoryInfoDeviceType_GPU) break;
+        const auto* src_device = impl.ep_api.MemoryInfo_GetMemoryDevice(src_info);
+        const auto* dst_device = impl.ep_api.MemoryInfo_GetMemoryDevice(dst_info);
+        if (!CanCopyImpl(this_ptr, src_device, dst_device)) break;
+        const int dst_device_id = impl.ep_api.MemoryDevice_GetDeviceId(dst_device);
+        if (idx == 0) device_id = dst_device_id;
+        if (dst_device_id != device_id) break;
+        const size_t size = src_value.GetTensorSizeInBytes();
+        auto target = static_cast<WGPUBuffer>(dst_value.GetTensorMutableRawData());
+        if (size != 0 && wgpuBufferGetMapState(target) != WGPUBufferMapState_Unmapped) break;
+        uploads.push_back({src_value.GetTensorRawData(), target, size});
+      }
+      if (uploads.size() == num_tensors) {
+        webgpu::ep::UploadTensorsOnWebGpuStream(streams[0], device_id, uploads);
+        return nullptr;
+      }
+    }
+#endif
+
     for (size_t idx = 0; idx < num_tensors; ++idx) {
       const OrtMemoryInfo* src_memory_info = nullptr;
       const OrtMemoryInfo* dst_memory_info = nullptr;

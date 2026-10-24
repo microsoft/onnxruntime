@@ -2054,7 +2054,7 @@ class PlannerImpl {
     if (graph_viewer_.NumberOfNodes() > 0) {
       stream_nodes_.push_back({});
       plan_.node_stream_map_.resize(SafeInt<size_t>(graph_viewer_.MaxNodeIndex()) + 1);
-      for (auto node_index : graph_viewer_.GetNodesInTopologicalOrder()) {
+      for (auto node_index : graph_viewer_.GetNodesInTopologicalOrder(context_->GetExecutionOrder())) {
         stream_nodes_[0].push_back(node_index);
         plan_.node_stream_map_[node_index] = 0;
       }
