@@ -1789,7 +1789,7 @@ This version of the operator has been available since version 1 of the 'com.micr
   Auxiliary K/V use BNSH layout and are read-only. When `auxiliary_kv_shared=1`, auxiliary_value may be omitted and
   auxiliary_key is used as both K and V. DeepSeek-style post-attention inverse/conjugate RoPE and output projection remain
   the exporter's responsibility.
-
+  
   Main caches may instead use INT8 with positive finite float32 key_scale and value_scale vectors, one scale per
   KV-head channel. Newly appended keys (after optional normalization and RoPE) and values are divided by their scales,
   rounded to nearest with ties to even, and saturated to [-128, 127]. Attention reads the quantized representation,
@@ -1803,35 +1803,35 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
-<dt><tt>attention_mode</tt> : string (default is selected_only)</dt>
+<dt><tt>attention_mode</tt> : string</dt>
 <dd>One of 'selected_only' or 'local_plus_selected'.</dd>
-<dt><tt>auxiliary_kv_shared</tt> : int (default is 0)</dt>
+<dt><tt>auxiliary_kv_shared</tt> : int</dt>
 <dd>Use auxiliary_key as both key and value when auxiliary_value is omitted.</dd>
-<dt><tt>do_rotary</tt> : int (default is 0)</dt>
+<dt><tt>do_rotary</tt> : int</dt>
 <dd>Whether to apply rotary embedding to Q and newly appended K.</dd>
-<dt><tt>is_causal</tt> : int (default is 1)</dt>
+<dt><tt>is_causal</tt> : int</dt>
 <dd>Must be 1. DynamicSparseAttention version 1 supports causal attention only.</dd>
-<dt><tt>kv_num_heads</tt> : int</dt>
+<dt><tt>kv_num_heads</tt> : int (required)</dt>
 <dd>Number of main and auxiliary KV heads.</dd>
-<dt><tt>local_window_size</tt> : int (default is -1)</dt>
+<dt><tt>local_window_size</tt> : int</dt>
 <dd>Number of causally visible main-cache entries in local_plus_selected mode.</dd>
-<dt><tt>num_heads</tt> : int</dt>
+<dt><tt>num_heads</tt> : int (required)</dt>
 <dd>Number of query heads.</dd>
-<dt><tt>qk_norm_epsilon</tt> : float (default is 0.0)</dt>
+<dt><tt>qk_norm_epsilon</tt> : float</dt>
 <dd>Epsilon for optional per-head Q/K RMS normalization.</dd>
-<dt><tt>rotary_interleaved</tt> : int (default is 0)</dt>
+<dt><tt>rotary_interleaved</tt> : int</dt>
 <dd>Whether rotary pairs use interleaved layout.</dd>
-<dt><tt>rotary_offset</tt> : int (default is 0)</dt>
+<dt><tt>rotary_offset</tt> : int</dt>
 <dd>First head channel covered by rotary embedding. Must be nonnegative, a multiple of 8, and leave room for the rotary dimensions within head_size.</dd>
 <dt><tt>scale</tt> : float</dt>
 <dd>Scaling factor applied to QK. Defaults to 1/sqrt(head_size).</dd>
-<dt><tt>selected_kv_source</tt> : string (default is main)</dt>
+<dt><tt>selected_kv_source</tt> : string</dt>
 <dd>Source addressed by selected indices: 'main' or 'auxiliary'.</dd>
-<dt><tt>smooth_softmax</tt> : int (default is 0)</dt>
+<dt><tt>smooth_softmax</tt> : int</dt>
 <dd>Add a zero-valued sink logit when no explicit head_sink is supplied.</dd>
 </dl>
 
-#### Inputs (5 - 20)
+#### Inputs (11 - 20)
 
 <dl>
 <dt><tt>query</tt> : T</dt>
@@ -5344,31 +5344,31 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
-<dt><tt>compress_ratio</tt> : int</dt>
+<dt><tt>compress_ratio</tt> : int (required)</dt>
 <dd>Number of consecutive tokens folded into one compressed/pooled entry. Must be > 0 and 2 * compress_ratio - 1 must not exceed INT_MAX.</dd>
-<dt><tt>epsilon</tt> : float (default is 0.0)</dt>
+<dt><tt>epsilon</tt> : float</dt>
 <dd>Epsilon of the RMS normalization applied to queries and compressed keys. Default is 1e-6.</dd>
 <dt><tt>head_weight_scale</tt> : float</dt>
 <dd>Only for policy_mode 'csa': scale applied to head_weights. Default is 1/sqrt(num_heads). Must be omitted when policy_mode is 'qsa'.</dd>
 <dt><tt>index_topk</tt> : int</dt>
 <dd>Only for policy_mode 'csa': number of compressed entries selected per query. Must be > 0. Must be omitted when policy_mode is 'qsa'.</dd>
-<dt><tt>indexshare_state_policy</tt> : string (default is default)</dt>
+<dt><tt>indexshare_state_policy</tt> : string</dt>
 <dd>Reuse state policy: default holds QSA and advances CSA; hold or advance overrides it.</dd>
-<dt><tt>max_output_entries</tt> : int (default is 0)</dt>
+<dt><tt>max_output_entries</tt> : int</dt>
 <dd>Fixed padded output width for the optional IndexShare interface.</dd>
-<dt><tt>policy_mode</tt> : string</dt>
+<dt><tt>policy_mode</tt> : string (required)</dt>
 <dd>Indexer policy. Must be exactly 'qsa' (token indexer) or 'csa' (compressed block indexer).</dd>
 <dt><tt>scale</tt> : float</dt>
 <dd>Scale applied to the per-head ReLU scores. Default is 1/sqrt(head_size).</dd>
-<dt><tt>state_capacity</tt> : int</dt>
+<dt><tt>state_capacity</tt> : int (required)</dt>
 <dd>Fixed capacity (number of entries) of past_key_state / present_key_state. Must be > 0.</dd>
-<dt><tt>state_update_capacity</tt> : int (default is 0)</dt>
+<dt><tt>state_update_capacity</tt> : int</dt>
 <dd>Only for policy_mode 'qsa': maximum number of leading token transitions captured per request. Must be in [0, 8]. Default is 0.</dd>
 <dt><tt>token_budget</tt> : int</dt>
 <dd>Only for policy_mode 'qsa': maximum number of tokens selected from complete blocks. Must be > 0 and divisible by compress_ratio. Must be omitted when policy_mode is 'csa'.</dd>
 </dl>
 
-#### Inputs (10 - 22)
+#### Inputs (16 - 22)
 
 <dl>
 <dt><tt>query</tt> : T</dt>
@@ -5417,7 +5417,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Merged device status [N].</dd>
 </dl>
 
-#### Outputs (5 - 16)
+#### Outputs (6 - 16)
 
 <dl>
 <dt><tt>selected_indices</tt> : M</dt>
@@ -8984,4 +8984,5 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
+
 
