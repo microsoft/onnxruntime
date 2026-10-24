@@ -296,7 +296,7 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
       auto& domainToVersionRangeInstance = ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance();
       if (domainToVersionRangeInstance.Map().find(onnxruntime::kMSDomain) == domainToVersionRangeInstance.Map().end()) {
         // External shared providers may have already added kMSDomain
-        domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSDomain, 1, 2);
+        domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSDomain, 1, 1);
       }
       domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSExperimentalDomain, 1, 1);
       domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSNchwcDomain, 1, 1);

@@ -899,55 +899,34 @@ This version of the operator has been available since version 1 of the 'com.micr
   (..., C, H), or flattened shape (..., C * H) when num_branches is specified.
   The optional scale may have shape (C * H), (C, H), or (H). Arithmetic is
   performed in float32 and the result is converted to T.
-  With use_onnx_arithmetic=1, compute FP32 square, mean, epsilon addition, square
-  root, division, and scale multiplication with separate rounding boundaries.
-  CUDA reuses the standard fast last-axis ReduceMean summation order by default.
-  Deterministic CUDA sessions instead use a fixed-order reduction, which may
-  round differently from the default reduction or deterministic ReduceMean.
-  This mode does not substitute reciprocal square root.
-  Optional Y_fp32 losslessly widens the already T-rounded Y to float32; it does
-  not bypass the output rounding boundary and requires use_onnx_arithmetic=1.
-  WebGPU currently supports only the default mode without Y_fp32.
 
 #### Version
 
-This version of the operator has been available since version 2 of the 'com.microsoft' operator set.
-
-Other versions of this operator: com.microsoft.BranchwiseRMSNorm-1
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
 
 #### Attributes
 
 <dl>
-<dt><tt>epsilon</tt> : float (default is 1e-05)</dt>
+<dt><tt>epsilon</tt> : float</dt>
 <dd>Epsilon added before reciprocal square root.</dd>
-<dt><tt>input_start</tt> : int (default is 0)</dt>
-<dd>CUDA-only starting offset in the last input dimension.</dd>
-<dt><tt>input_width</tt> : int (default is 0)</dt>
-<dd>CUDA-only width selected from the last input dimension before normalization. Zero retains the full input. Requires grouped input and use_onnx_arithmetic=1. Outputs retain the leading dimensions and use this last dimension.</dd>
-<dt><tt>num_branches</tt> : int (default is 0)</dt>
+<dt><tt>num_branches</tt> : int</dt>
 <dd>Number of branches for flattened input. Omit or set to zero for grouped input.</dd>
-<dt><tt>use_onnx_arithmetic</tt> : int (default is 0)</dt>
-<dd>Use explicit FP32 mean/sqrt/divide/multiply arithmetic instead of reciprocal RMS. Supported values are 0 (default) and 1.</dd>
 </dl>
 
-#### Inputs (1 - 3)
+#### Inputs (1 - 2)
 
 <dl>
 <dt><tt>X</tt> : T</dt>
 <dd>Grouped (..., C, H) or flattened (..., C * H) input.</dd>
 <dt><tt>scale</tt> (optional) : M</dt>
 <dd>Optional scale with shape (C * H), (C, H), or (H).</dd>
-<dt><tt>prefill_numerics</tt> (optional) : TI</dt>
-<dd>Optional CPU int32 scalar 0/1; one enables dense prefill arithmetic.</dd>
 </dl>
 
-#### Outputs (1 - 2)
+#### Outputs
 
 <dl>
 <dt><tt>Y</tt> : T</dt>
 <dd>RMS-normalized output with the same shape as X.</dd>
-<dt><tt>Y_fp32</tt> (optional) : F</dt>
-<dd>Optional float32 widening of the already T-rounded Y. Requires use_onnx_arithmetic=1.</dd>
 </dl>
 
 #### Type Constraints
@@ -957,10 +936,6 @@ Other versions of this operator: com.microsoft.BranchwiseRMSNorm-1
 <dd>Constrain input and output to floating-point tensors.</dd>
 <dt><tt>M</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain scale to floating-point tensors.</dd>
-<dt><tt>F</tt> : tensor(float)</dt>
-<dd>Widened output is float32.</dd>
-<dt><tt>TI</tt> : tensor(int32)</dt>
-<dd>CPU numerical control.</dd>
 </dl>
 
 

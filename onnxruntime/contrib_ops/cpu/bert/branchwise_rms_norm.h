@@ -18,7 +18,6 @@ class BranchwiseRMSNorm final : public LayerNormImpl {
  private:
   float epsilon_;
   int64_t num_branches_;
-  bool use_onnx_arithmetic_;
 };
 
 }  // namespace onnxruntime::contrib

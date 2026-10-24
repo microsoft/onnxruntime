@@ -5851,94 +5851,31 @@ Applies RMS normalization independently to each branch. X may use grouped shape
 (..., C, H), or flattened shape (..., C * H) when num_branches is specified.
 The optional scale may have shape (C * H), (C, H), or (H). Arithmetic is
 performed in float32 and the result is converted to T.
-With use_onnx_arithmetic=1, compute FP32 square, mean, epsilon addition, square
-root, division, and scale multiplication with separate rounding boundaries.
-CUDA reuses the standard fast last-axis ReduceMean summation order by default.
-Deterministic CUDA sessions instead use a fixed-order reduction, which may
-round differently from the default reduction or deterministic ReduceMean.
-This mode does not substitute reciprocal square root.
-Optional Y_fp32 losslessly widens the already T-rounded Y to float32; it does
-not bypass the output rounding boundary and requires use_onnx_arithmetic=1.
-WebGPU currently supports only the default mode without Y_fp32.
 )DOC";
 
-static OpSchema BranchwiseRMSNormSchema() {
-  return OpSchema()
-      .SetDoc(BranchwiseRMSNorm_ver1_doc)
-      .Attr("epsilon", "Epsilon added before reciprocal square root.",
-            AttributeProto::FLOAT, 1e-5f)
-      .Attr("num_branches",
-            "Number of branches for flattened input. Omit or set to zero for grouped input.",
-            AttributeProto::INT, static_cast<int64_t>(0))
-      .Attr("use_onnx_arithmetic",
-            "Use explicit FP32 mean/sqrt/divide/multiply arithmetic instead of reciprocal RMS. "
-            "Supported values are 0 (default) and 1.",
-            AttributeProto::INT, static_cast<int64_t>(0))
-      .Input(0, "X", "Grouped (..., C, H) or flattened (..., C * H) input.", "T")
-      .Input(1, "scale", "Optional scale with shape (C * H), (C, H), or (H).",
-             "M", OpSchema::Optional)
-      .Input(2, "prefill_numerics", "Optional CPU int32 scalar 0/1; one enables dense prefill arithmetic.", "TI", OpSchema::Optional)
-      .Output(0, "Y", "RMS-normalized output with the same shape as X.", "T")
-      .Output(1, "Y_fp32",
-              "Optional float32 widening of the already T-rounded Y. "
-              "Requires use_onnx_arithmetic=1.",
-              "F", OpSchema::Optional)
-      .TypeConstraint("T",
-                      {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
-                      "Constrain input and output to floating-point tensors.")
-      .TypeConstraint("M",
-                      {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
-                      "Constrain scale to floating-point tensors.")
-      .TypeConstraint("F", {"tensor(float)"}, "Widened output is float32.")
-      .TypeConstraint("TI", {"tensor(int32)"}, "CPU numerical control.")
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        propagateElemTypeFromInputToOutput(ctx, 0, 0);
-        const auto start = getAttribute(ctx, "input_start", 0);
-        const auto width = getAttribute(ctx, "input_width", 0);
-        if (start < 0 || width < 0 || (width == 0 && start != 0)) {
-          fail_shape_inference("input_start and input_width must describe a nonnegative slice");
-        }
-        if (width != 0 && (getAttribute(ctx, "use_onnx_arithmetic", 0) != 1 ||
-                           getAttribute(ctx, "num_branches", 0) != 0)) {
-          fail_shape_inference("input_width requires use_onnx_arithmetic=1 and grouped input");
-        }
-        if (hasInputShape(ctx, 0)) {
-          auto shape = getInputShape(ctx, 0);
-          if (width != 0) {
-            if (shape.dim_size() < 2) fail_shape_inference("grouped input requires rank at least two");
-            auto* last = shape.mutable_dim(shape.dim_size() - 1);
-            if (last->has_dim_value() && (start > last->dim_value() || width > last->dim_value() - start)) {
-              fail_shape_inference("input slice exceeds the last dimension");
-            }
-            last->set_dim_value(width);
-          }
-          updateOutputShape(ctx, 0, shape);
-        }
-        if (ctx.getNumOutputs() > 1) {
-          if (getAttribute(ctx, "use_onnx_arithmetic", 0) != 1) {
-            fail_shape_inference("Y_fp32 requires use_onnx_arithmetic=1");
-          }
-          updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-          if (hasInputShape(ctx, 0)) {
-            auto shape = getInputShape(ctx, 0);
-            if (width != 0) shape.mutable_dim(shape.dim_size() - 1)->set_dim_value(width);
-            updateOutputShape(ctx, 1, shape);
-          }
-        }
-      });
-}
-
-ONNX_MS_OPERATOR_SET_SCHEMA(BranchwiseRMSNorm, 1, BranchwiseRMSNormSchema());
 ONNX_MS_OPERATOR_SET_SCHEMA(
-    BranchwiseRMSNorm, 2,
-    BranchwiseRMSNormSchema()
-        .Attr("input_start", "CUDA-only starting offset in the last input dimension.",
+    BranchwiseRMSNorm, 1,
+    OpSchema()
+        .SetDoc(BranchwiseRMSNorm_ver1_doc)
+        .Attr("epsilon", "Epsilon added before reciprocal square root.",
+              AttributeProto::FLOAT, 1e-5f)
+        .Attr("num_branches",
+              "Number of branches for flattened input. Omit or set to zero for grouped input.",
               AttributeProto::INT, static_cast<int64_t>(0))
-        .Attr("input_width",
-              "CUDA-only width selected from the last input dimension before normalization. "
-              "Zero retains the full input. Requires grouped input and use_onnx_arithmetic=1. "
-              "Outputs retain the leading dimensions and use this last dimension.",
-              AttributeProto::INT, static_cast<int64_t>(0)));
+        .Input(0, "X", "Grouped (..., C, H) or flattened (..., C * H) input.", "T")
+        .Input(1, "scale", "Optional scale with shape (C * H), (C, H), or (H).",
+               "M", OpSchema::Optional)
+        .Output(0, "Y", "RMS-normalized output with the same shape as X.", "T")
+        .TypeConstraint("T",
+                        {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain input and output to floating-point tensors.")
+        .TypeConstraint("M",
+                        {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain scale to floating-point tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          propagateShapeFromInputToOutput(ctx, 0, 0);
+        }));
 
 constexpr const char* ScaledSiLU_ver1_doc = R"DOC(
 Computes SiLU after scaling, with explicit T rounding:

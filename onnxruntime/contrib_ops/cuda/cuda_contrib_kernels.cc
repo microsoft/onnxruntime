@@ -180,9 +180,6 @@ class CUDA_MS_OP_CLASS_NAME(1, RMSNormRotary);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, BranchwiseRMSNorm);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, BranchwiseRMSNorm);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, BranchwiseRMSNorm);
-class CUDA_MS_OP_TYPED_CLASS_NAME(2, float, BranchwiseRMSNorm);
-class CUDA_MS_OP_TYPED_CLASS_NAME(2, MLFloat16, BranchwiseRMSNorm);
-class CUDA_MS_OP_TYPED_CLASS_NAME(2, BFloat16, BranchwiseRMSNorm);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, ScaledSiLU);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, ScaledSiLU);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, ScaledSiLU);
@@ -551,9 +548,6 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, BranchwiseRMSNorm)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, BranchwiseRMSNorm)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, BranchwiseRMSNorm)>,
-      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(2, float, BranchwiseRMSNorm)>,
-      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(2, MLFloat16, BranchwiseRMSNorm)>,
-      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(2, BFloat16, BranchwiseRMSNorm)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, ScaledSiLU)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, ScaledSiLU)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, ScaledSiLU)>,
