@@ -33,6 +33,10 @@
 #include "core/providers/cuda/cu_inc/cuda_type_helper.cuh"
 #include "core/providers/cuda/cuda_common.h"
 
+// Include env_var_utils.h after cuda_common.h: the latter transitively pulls in provider_api.h,
+// which defines SHARED_PROVIDER and suppresses env_var_utils.h's own logging.h include.
+#include "core/platform/env_var_utils.h"
+
 namespace onnxruntime::contrib::cuda {
 namespace {
 
@@ -239,15 +243,15 @@ __global__ void __launch_bounds__(kThreads)
 #pragma unroll
     for (int i = 0; i < kMaxVecIters; ++i) {
       const int qi = tid + kThreads * i;
-      sv[r][i] = qi < nvec ? sp[qi] : make_uint4(0u, 0u, 0u, 0u);
+      sv[r][i] = qi < nvec ? __ldcg(sp + qi) : make_uint4(0u, 0u, 0u, 0u);
     }
     if constexpr (kPost) {
-      gate_c[r] = to_float<T>(prev_gate[row_idx[r] * branches + c]);
+      gate_c[r] = BitsToFloat<T>(__ldcg(reinterpret_cast<const uint16_t*>(prev_gate + row_idx[r] * branches + c)));
       const uint4* bp = reinterpret_cast<const uint4*>(prev_out + row_idx[r] * hidden);
 #pragma unroll
       for (int i = 0; i < kMaxVecIters; ++i) {
         const int qi = tid + kThreads * i;
-        bv[r][i] = qi < nvec ? bp[qi] : make_uint4(0u, 0u, 0u, 0u);
+        bv[r][i] = qi < nvec ? __ldcg(bp + qi) : make_uint4(0u, 0u, 0u, 0u);
       }
     }
   }
@@ -399,7 +403,7 @@ __global__ void __launch_bounds__(kThreads)
 }
 
 // CTA (hb, 0, z) owns features [16 hb, 16 hb + 16) of every branch for ROWS rows.
-template <typename T, int ROWS>
+template <typename T, int ROWS, int BRANCHES = 0, int RANK = 0>
 __global__ void __launch_bounds__(kThreads)
     HcUpPreKernel(const T* __restrict__ streams, const T* __restrict__ norm_w, const T* __restrict__ w_up,
                   const float* __restrict__ partial, const float* __restrict__ inv_rms_in,
@@ -407,7 +411,9 @@ __global__ void __launch_bounds__(kThreads)
   const int hb = blockIdx.x;
   const int64_t row0 = static_cast<int64_t>(blockIdx.z) * ROWS;
   const int tid = threadIdx.x;
-  const int branches = p.branches;
+  const int branches = BRANCHES == 0 ? p.branches : BRANCHES;
+  const int rank = RANK == 0 ? p.rank : RANK;
+  constexpr int kBranchStorage = BRANCHES == 0 ? kMaxFusedBranches : BRANCHES;
   const int hidden = p.hidden;
   const int64_t K = static_cast<int64_t>(branches) * hidden;
   const int h0 = hb * kUpTile;
@@ -429,8 +435,8 @@ __global__ void __launch_bounds__(kThreads)
   }
 
   __shared__ __align__(16) uint4 wsm[kWeightSlots * kThreads];
-  __shared__ __align__(16) float sf[ROWS][kMaxFusedRank];
-  __shared__ float sg[ROWS][kMaxFusedBranches * kUpTile];
+  __shared__ __align__(16) float sf[ROWS][RANK == 0 ? kMaxFusedRank : RANK];
+  __shared__ float sg[ROWS][kBranchStorage * kUpTile];
 
   // Prefetch the first chunk of up weights before waiting for the down kernel.
   const T* wbase = w_up + static_cast<int64_t>(c) * hidden + col;
@@ -438,7 +444,7 @@ __global__ void __launch_bounds__(kThreads)
 #pragma unroll
     for (int i = 0; i < kWeightSlots; ++i) {
       const int row = rp + phases * i;
-      if (row < p.rank) CpAsync16(&wsm[i * kThreads + tid], wbase + static_cast<int64_t>(row) * K);
+      if (row < rank) CpAsync16(&wsm[i * kThreads + tid], wbase + static_cast<int64_t>(row) * K);
     }
   }
   CpCommit();
@@ -447,50 +453,44 @@ __global__ void __launch_bounds__(kThreads)
   GridTrigger();
   GridWait();
 
-  float xv[ROWS][kMaxFusedBranches], inv[ROWS][kMaxFusedBranches], nw[kMaxFusedBranches];
+  float xv[ROWS][kBranchStorage], inv[ROWS][kBranchStorage], nw[kBranchStorage];
   const int hl = tid;  // feature owned by threads < 16 in the final pre-mix
   const bool owner = tid < kUpTile && (h0 + hl) < hidden;
   if (owner) {
 #pragma unroll
-    for (int b = 0; b < kMaxFusedBranches; ++b) {
+    for (int b = 0; b < kBranchStorage; ++b) {
       if (b < branches) {
         nw[b] = to_float<T>(norm_w[static_cast<int64_t>(b) * hidden + h0 + hl]);
 #pragma unroll
         for (int r = 0; r < ROWS; ++r) {
-          xv[r][b] = to_float<T>(streams[row_idx[r] * K + static_cast<int64_t>(b) * hidden + h0 + hl]);
-          inv[r][b] = inv_rms_in[row_idx[r] * branches + b];
+          xv[r][b] = BitsToFloat<T>(__ldcg(reinterpret_cast<const uint16_t*>(
+              streams + row_idx[r] * K + static_cast<int64_t>(b) * hidden + h0 + hl)));
+          inv[r][b] = __ldcg(inv_rms_in + row_idx[r] * branches + b);
         }
       }
     }
   }
 
   // Fixed-order reduction of the K-split partial sums, then ScaledSiLU; four columns per thread.
-  const int nq = p.rank / 4;
+  const int nq = rank / 4;
   const int cq = tid * 4;
   float4 va[ROWS];
 #pragma unroll
   for (int r = 0; r < ROWS; ++r) va[r] = make_float4(0.f, 0.f, 0.f, 0.f);
   if (tid < nq) {
     for (int sp0 = 0; sp0 < p.splits; sp0 += 8) {
-      float4 pq[8][ROWS];
 #pragma unroll
       for (int u = 0; u < 8; ++u) {
+        if (sp0 + u < p.splits) {
 #pragma unroll
-        for (int r = 0; r < ROWS; ++r) {
-          pq[u][r] = sp0 + u < p.splits
-                         ? __ldcg(reinterpret_cast<const float4*>(
-                               partial + (row_idx[r] * p.splits + sp0 + u) * p.partial_stride + cq))
-                         : make_float4(0.f, 0.f, 0.f, 0.f);
-        }
-      }
-#pragma unroll
-      for (int u = 0; u < 8; ++u) {
-#pragma unroll
-        for (int r = 0; r < ROWS; ++r) {
-          va[r].x += pq[u][r].x;
-          va[r].y += pq[u][r].y;
-          va[r].z += pq[u][r].z;
-          va[r].w += pq[u][r].w;
+          for (int r = 0; r < ROWS; ++r) {
+            const float4 q = __ldcg(reinterpret_cast<const float4*>(
+                partial + (row_idx[r] * p.splits + sp0 + u) * p.partial_stride + cq));
+            va[r].x += q.x;
+            va[r].y += q.y;
+            va[r].z += q.z;
+            va[r].w += q.w;
+          }
         }
       }
     }
@@ -510,7 +510,9 @@ __global__ void __launch_bounds__(kThreads)
     const int r = tid / branches;
     const int t = tid % branches;
     float v = 0.0f;
-    for (int sp = 0; sp < p.splits; ++sp) v += partial[(row_idx[r] * p.splits + sp) * p.partial_stride + p.rank + t];
+    for (int sp = 0; sp < p.splits; ++sp) {
+      v += __ldcg(partial + (row_idx[r] * p.splits + sp) * p.partial_stride + rank + t);
+    }
     const float inject = Rnd<T>(v);
     const float u = Rnd<T>(SigmoidF32(Rnd<T>(inject / p.gate_div)));
     if (row_ok[r]) gate_out[row_idx[r] * branches + t] = from_float<T>(u * p.gate_mul);
@@ -523,12 +525,12 @@ __global__ void __launch_bounds__(kThreads)
 #pragma unroll
     for (int m = 0; m < 8; ++m) acc[r][m] = 0.0f;
   }
-  for (int chunk0 = 0; chunk0 < p.rank; chunk0 += chunk_rows) {
+  for (int chunk0 = 0; chunk0 < rank; chunk0 += chunk_rows) {
     if (chunk0 > 0 && valid) {
 #pragma unroll
       for (int i = 0; i < kWeightSlots; ++i) {
         const int row = chunk0 + rp + phases * i;
-        if (row < p.rank) CpAsync16(&wsm[i * kThreads + tid], wbase + static_cast<int64_t>(row) * K);
+        if (row < rank) CpAsync16(&wsm[i * kThreads + tid], wbase + static_cast<int64_t>(row) * K);
       }
       CpCommit();
     }
@@ -537,7 +539,7 @@ __global__ void __launch_bounds__(kThreads)
 #pragma unroll
       for (int i = 0; i < kWeightSlots; ++i) {
         const int row = chunk0 + rp + phases * i;
-        if (row < p.rank) {
+        if (row < rank) {
           float wf[8];
           Unpack8<T>(wsm[i * kThreads + tid], wf);
 #pragma unroll
@@ -585,7 +587,7 @@ __global__ void __launch_bounds__(kThreads)
     for (int r = 0; r < ROWS; ++r) {
       float sum = 0.0f;
 #pragma unroll
-      for (int b = 0; b < kMaxFusedBranches; ++b) {
+      for (int b = 0; b < kBranchStorage; ++b) {
         if (b < branches) {
           const float n = Rnd<T>(xv[r][b] * inv[r][b] * nw[b]);
           sum = fmaf(n, sg[r][b * kUpTile + hl], sum);
@@ -660,13 +662,40 @@ __global__ void PreMixKernel(const T* __restrict__ hn, const T* __restrict__ up,
 }
 
 template <typename T>
-__global__ void PostGateKernel(const T* __restrict__ inject, T* __restrict__ gate, int64_t count, float gate_div,
-                               float gate_mul) {
-  const int64_t i = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
-  if (i >= count) return;
-  const float t = Rnd<T>(to_float<T>(inject[i]) / gate_div);
-  const float u = Rnd<T>(SigmoidF32(t));
-  gate[i] = from_float<T>(u * gate_mul);
+__global__ void FusedInjectPostGateKernel(const T* __restrict__ hn, const T* __restrict__ w_inject,
+                                          T* __restrict__ gate_out, int64_t rows, int branches, int64_t K,
+                                          float gate_div, float gate_mul) {
+  const int64_t row = blockIdx.x;
+  if (row >= rows) return;
+  const int tid = threadIdx.x;
+  const T* x_row = hn + row * K;
+  __shared__ float smem[8][8];
+  float acc[8] = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
+  for (int64_t k = tid; k < K; k += kThreads) {
+    const float xv = to_float<T>(x_row[k]);
+    const T* wk = w_inject + k * branches;
+#pragma unroll
+    for (int b = 0; b < 8; ++b) {
+      if (b < branches) acc[b] = fmaf(xv, to_float<T>(wk[b]), acc[b]);
+    }
+  }
+#pragma unroll
+  for (int b = 0; b < 8; ++b) {
+    if (b < branches) {
+#pragma unroll
+      for (int off = 16; off > 0; off >>= 1) acc[b] += __shfl_down_sync(0xffffffffu, acc[b], off);
+      if ((tid & 31) == 0) smem[tid >> 5][b] = acc[b];
+    }
+  }
+  __syncthreads();
+  if (tid < branches) {
+    float v = 0.0f;
+#pragma unroll
+    for (int w = 0; w < 8; ++w) v += smem[w][tid];
+    const float t = Rnd<T>(Rnd<T>(v) / gate_div);
+    const float u = Rnd<T>(SigmoidF32(t));
+    gate_out[row * branches + tid] = from_float<T>(u * gate_mul);
+  }
 }
 
 template <typename T>
@@ -805,7 +834,8 @@ bool IsProgrammaticLaunchAvailable() {
     };
     available = available && image_has_griddepcontrol(HcDownKernel<T, true, ROWS>) &&
                 image_has_griddepcontrol(HcDownKernel<T, false, ROWS>) &&
-                image_has_griddepcontrol(HcUpPreKernel<T, ROWS>);
+                image_has_griddepcontrol(HcUpPreKernel<T, ROWS>) &&
+                image_has_griddepcontrol(HcUpPreKernel<T, ROWS, 4, 320>);
     (void)cudaGetLastError();
     cached_device = device;
     cached_available = available;
@@ -837,6 +867,13 @@ Status LaunchFusedRows(bool use_pdl, cudaStream_t stream, const HyperConnectionL
   }
 
   const T* up_streams = tensors.prev_block_output != nullptr ? tensors.streams_out : tensors.streams;
+  if (config.branches == 4 && config.rank == 320) {
+    return LaunchWithProgrammaticSerialization(use_pdl, HcUpPreKernel<T, ROWS, 4, 320>, up_grid, dim3(kThreads),
+                                               stream, up_streams, tensors.norm_scale, tensors.up_weight,
+                                               static_cast<const float*>(partial),
+                                               static_cast<const float*>(inv_rms), tensors.pre_output,
+                                               tensors.post_gate, up);
+  }
   return LaunchWithProgrammaticSerialization(use_pdl, HcUpPreKernel<T, ROWS>, up_grid, dim3(kThreads), stream,
                                              up_streams, tensors.norm_scale, tensors.up_weight,
                                              static_cast<const float*>(partial),
@@ -893,8 +930,17 @@ Status LaunchHyperConnectionLowRankMixFused(const cudaDeviceProp& device_prop, c
                     g.splits, g.partial_stride, config.epsilon};
     UpParams up{config.rows, config.branches, config.hidden, config.rank, g.splits, g.partial_stride,
                 config.silu_alpha, config.reduction_scale, config.gate_div, config.gate_mul};
-    const bool use_pdl = device_prop.major >= 9 && weights_are_constant;
+    static const bool enable_pdl =
+        onnxruntime::ParseEnvironmentVariableWithDefault<bool>("ORT_HYPER_CONNECTION_PDL", true);
+    const bool use_pdl = enable_pdl && device_prop.major >= 9 && weights_are_constant;
     if (config.rows == 1) {
+      return LaunchFusedRows<T, 1>(use_pdl, stream, config, tensors, g, partial, inv_rms, down, up);
+    }
+    static const int decode_rows =
+        onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_HC_DECODE_ROWS", 1);
+    ORT_ENFORCE(decode_rows == 1 || decode_rows == 2,
+                "ORT_HC_DECODE_ROWS must be 1 or 2");
+    if (config.rows == 4 && decode_rows == 1) {
       return LaunchFusedRows<T, 1>(use_pdl, stream, config, tensors, g, partial, inv_rms, down, up);
     }
     return LaunchFusedRows<T, 2>(use_pdl, stream, config, tensors, g, partial, inv_rms, down, up);
@@ -926,7 +972,7 @@ Status LaunchHyperConnectionLowRankMixUnfused(cublasHandle_t cublas, cudaStream_
   ORT_RETURN_IF_ERROR(math_mode.Set(cublas, CUBLAS_MATH_DISALLOW_REDUCED_PRECISION_REDUCTION));
 
   ORT_RETURN_IF_ERROR(Gemm<T>(cublas, rows, config.rank, K, hn, tensors.down_weight, down));
-  ORT_RETURN_IF_ERROR(Gemm<T>(cublas, rows, config.branches, K, hn, tensors.inject_weight, inject));
+  (void)inject;
 
   const int64_t down_count = rows * config.rank;
   ORT_RETURN_IF_NOT(BlocksFor(down_count) <= std::numeric_limits<int>::max(),
@@ -942,8 +988,8 @@ Status LaunchHyperConnectionLowRankMixUnfused(cublasHandle_t cublas, cudaStream_
   PreMixKernel<T><<<static_cast<int>(BlocksFor(pre_count)), kThreads, 0, stream>>>(
       hn, up, tensors.pre_output, pre_count, config.branches, config.hidden, config.reduction_scale);
   ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
-  PostGateKernel<T><<<static_cast<int>(BlocksFor(groups)), kThreads, 0, stream>>>(
-      inject, tensors.post_gate, groups, config.gate_div, config.gate_mul);
+  FusedInjectPostGateKernel<T><<<static_cast<int>(rows), kThreads, 0, stream>>>(
+      hn, tensors.inject_weight, tensors.post_gate, rows, config.branches, K, config.gate_div, config.gate_mul);
   return CUDA_CALL(cudaGetLastError());
 }
 
