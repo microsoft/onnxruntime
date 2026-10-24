@@ -83,6 +83,10 @@ Status LaunchMatMulBlockQuantizedFp4WeightGemv(void* y,
 // limit through 64 for tuned workloads. The direct launcher accepts tensor-core cases through 64.
 int MatMulBlockQuantizedFp4WeightGemvMaxM(int k, const cudaDeviceProp& device_prop);
 
+// Whether K, the device, and the cached environment selector permit the tensor-core sub-path.
+// Callers must also respect MatMulBlockQuantizedFp4WeightGemvMaxM for their M dimension.
+bool CanUseMatMulBlockQuantizedFp4WeightMma(int k, const cudaDeviceProp& device_prop);
+
 // Repacks the [N, ceil(K/block_size)] row-major E4M3 weight-scale tensor into the swizzled layout
 // the SM120 block-scaled tensor cores expect. b_scale must be sized for the *rounded* dimensions:
 // RoundUp(N, 128) * RoundUp(K / 16, 4) bytes. Only the first N rows are written; the padding rows
