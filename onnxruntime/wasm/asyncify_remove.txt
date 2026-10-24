@@ -1,0 +1,4 @@
+onnxruntime::Graph::*
+onnxruntime::GraphViewer::*
+onnx::*
+google::protobuf::*
