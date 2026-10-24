@@ -41,12 +41,12 @@ namespace onnxruntime::contrib::cuda {
 namespace {
 
 constexpr int kThreads = 256;
-constexpr int kColTile = 16;         // down columns per CTA of the down kernel (two 16-byte weight vectors)
-constexpr int kUpTile = 16;          // features per CTA of the up kernel
-constexpr int kMaxSliceRows = 1280;  // K rows handled by one CTA of the down kernel
-constexpr int kWeightSlots = 10;     // 16-byte weight vectors per thread in the down pass
-constexpr int kAsyncWeightSlots = 9; // slots staged in shared memory so 5 CTAs/SM fit in 228 KB on sm_90+
-constexpr int kMaxVecIters = 2;      // 16-byte vectors per thread in the norm pass
+constexpr int kColTile = 16;          // down columns per CTA of the down kernel (two 16-byte weight vectors)
+constexpr int kUpTile = 16;           // features per CTA of the up kernel
+constexpr int kMaxSliceRows = 1280;   // K rows handled by one CTA of the down kernel
+constexpr int kWeightSlots = 10;      // 16-byte weight vectors per thread in the down pass
+constexpr int kAsyncWeightSlots = 9;  // slots staged in shared memory so 5 CTAs/SM fit in 228 KB on sm_90+
+constexpr int kMaxVecIters = 2;       // 16-byte vectors per thread in the norm pass
 constexpr int kMaxFusedHidden = kMaxVecIters * kThreads * 8;
 constexpr int kMaxFusedRank = 512;
 constexpr int kMaxFusedBranches = 8;
