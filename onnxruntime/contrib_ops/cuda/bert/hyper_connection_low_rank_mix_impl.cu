@@ -29,10 +29,13 @@
 #include <limits>
 #include <type_traits>
 
-#include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/cu_inc/cub.cuh"
 #include "core/providers/cuda/cu_inc/cuda_type_helper.cuh"
 #include "core/providers/cuda/cuda_common.h"
+
+// Include env_var_utils.h after cuda_common.h: the latter transitively pulls in provider_api.h,
+// which defines SHARED_PROVIDER and suppresses env_var_utils.h's own logging.h include.
+#include "core/platform/env_var_utils.h"
 
 namespace onnxruntime::contrib::cuda {
 namespace {
