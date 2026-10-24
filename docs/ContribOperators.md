@@ -2514,7 +2514,6 @@ This version of the operator has been available since version 1 of the 'com.micr
   `beta_activation='sigmoid'` applies a sigmoid to `beta`, and `qk_l2_norm=1` L2-normalizes each
   query and key head vector. Folding these in avoids materializing the intermediates and keeps
   the gate arithmetic in float32 independent of the input type.
-
   Decay and beta may be float or the query element type (both use the same type). CUDA widens
   FP16/BF16 gate inputs to float before any gate arithmetic, avoiding standalone lossless casts.
   State, a_log, and dt_bias remain float. WebGPU currently accepts float decay and beta only.
@@ -2537,10 +2536,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>When 1, L2-normalize each query and key head vector before the recurrence. Default 0.</dd>
 <dt><tt>scale</tt> : float</dt>
 <dd>Output scaling factor. When 0.0 (default) uses 1/sqrt(head_size_qk).</dd>
-<dt><tt>state_update_capacity</tt> : int</dt>
-<dd>Capacity C for compact contiguous-prefix transition capture, in [0, 8]. 0 (default) disables compact state-update outputs.</dd>
 <dt><tt>state_output</tt> : string</dt>
 <dd>Third output is either 'state_update' (default) or the recurrent state after the first token ('mid_state'). CUDA supports both modes; WebGPU supports 'state_update'.</dd>
+<dt><tt>state_update_capacity</tt> : int</dt>
+<dd>Capacity C for compact contiguous-prefix transition capture, in [0, 8]. 0 (default) disables compact state-update outputs.</dd>
 <dt><tt>update_rule</tt> : string</dt>
 <dd>One of: 'linear', 'gated', 'delta', 'gated_delta'. Default is 'gated_delta'.</dd>
 </dl>
@@ -8974,4 +8973,5 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
+
 

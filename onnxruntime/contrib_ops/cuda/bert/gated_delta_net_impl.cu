@@ -44,12 +44,15 @@
 #include <algorithm>
 #include <mutex>
 #include <type_traits>
-#include "core/platform/env_var_utils.h"
 
 #include "contrib_ops/cuda/bert/gated_delta_net_impl.h"
 #include "contrib_ops/cuda/bert/gated_delta_net_mma.cuh"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
+
+// Include env_var_utils.h after cuda_common.h: the latter transitively pulls in provider_api.h,
+// which defines SHARED_PROVIDER and suppresses env_var_utils.h's own logging.h include.
+#include "core/platform/env_var_utils.h"
 
 namespace onnxruntime {
 namespace contrib {
