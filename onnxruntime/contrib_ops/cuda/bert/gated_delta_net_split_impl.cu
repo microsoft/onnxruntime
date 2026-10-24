@@ -715,7 +715,7 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetScanKernel(
         }
         bool thread_out_of_fp16 =
             thread_s_max > 0x43800000 || (thread_s_max != 0 && thread_s_max < 0x38800000) ||
-            s_flags == 3;
+            (s_flags & 2) != 0;
         for (int idx = tid; idx < BT * DVB; idx += kChunkedThreads) {
           const int t = idx / DVB, c = idx % DVB;
           if (t < len && __float_as_int(fabsf(uv_in[t * DV + v0 + c])) > 0x43800000) {

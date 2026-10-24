@@ -430,7 +430,7 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetChunkedKernel(
         s_flags |= (abits == 0) ? 1 : ((abits < 0x33800000) ? 2 : 0);
       }
       if (thread_s_max > 0x43800000 || (thread_s_max != 0 && thread_s_max < 0x38800000) ||
-          s_flags == 3) {
+          (s_flags & 2) != 0) {
         thread_out_of_fp16 = true;
       }
     }
