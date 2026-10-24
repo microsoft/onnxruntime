@@ -173,20 +173,28 @@ class MlasSQNBitGemmTest : public MlasTestBase {
 
           const float b_scale = QuantBScale[n * BlockCountK + k_blk];
 
-          static_assert(BlkBitWidth == 4, "only implemented for 4-bit quantized B");
+          // Unpack quantized values and zero points from the packed layout
+          // (8 / BlkBitWidth values per byte, little-endian pairs). Bytes never
+          // straddle block boundaries because BlkLen is a multiple of that.
+          constexpr size_t ValuesPerByte = 8 / BlkBitWidth;
+          constexpr uint8_t QuantMax = (1 << BlkBitWidth) - 1;
+          static_assert(BlkLen % ValuesPerByte == 0, "packed bytes must not straddle blocks");
 
-          uint8_t b_zp = 8;
+          uint8_t b_zp = 1u << (BlkBitWidth - 1);  // unsigned mid-point
           if (QuantBZeroPoint != nullptr) {
-            const uint8_t b_zp_byte = QuantBZeroPoint[n * ((BlockCountK + 1) / 2) + k_blk / 2];
-            b_zp = (k_blk & 1) ? (b_zp_byte >> 4) : (b_zp_byte & 0x0F);
+            const uint8_t b_zp_byte =
+                QuantBZeroPoint[n * ((BlockCountK + ValuesPerByte - 1) / ValuesPerByte) +
+                                k_blk / ValuesPerByte];
+            b_zp = (b_zp_byte >> (BlkBitWidth * (k_blk % ValuesPerByte))) & QuantMax;
           }
 
           int32_t qsum = 0;
 
           for (size_t kk = 0; kk < k_blk_len; ++kk) {
             const int8_t qa = QuantAData[m * BlockCountK * BlkLen + k + kk];
-            const uint8_t qb_byte = QuantBData[(n * BlockCountK * BlkLen + k + kk) / 2];
-            const int8_t qb = ((kk & 1) == 1 ? (qb_byte >> 4) : (qb_byte & 0x0F)) - b_zp;
+            const uint8_t qb_byte = QuantBData[(n * BlockCountK * BlkLen + k + kk) / ValuesPerByte];
+            const int8_t qb = static_cast<int8_t>(
+                (qb_byte >> (BlkBitWidth * (kk % ValuesPerByte))) & QuantMax) - b_zp;
             qsum += qa * qb;
           }
 
@@ -812,6 +820,14 @@ static size_t SQNBitGemmRegisterAllShortExecuteTests() {
   count += SQNBitGemmShortExecuteTest<4, 64>::RegisterShortExecuteTests();
   count += SQNBitGemmShortExecuteTest<4, 128>::RegisterShortExecuteTests();
   count += SQNBitGemmShortExecuteTest<4, 256>::RegisterShortExecuteTests();
+  // 2-bit. RegisterShortExecuteTests checks MlasIsQNBitGemmAvailable per
+  // compute type, so these register the W2 CompInt8 cases on platforms with
+  // the W2 int8 kernels, the new SQ2BitGemmVariant_CompFp32 cases on
+  // platforms with the W2 fp32 kernels, and nothing where neither is
+  // available.
+  count += SQNBitGemmShortExecuteTest<2, 32>::RegisterShortExecuteTests();
+  count += SQNBitGemmShortExecuteTest<2, 64>::RegisterShortExecuteTests();
+  count += SQNBitGemmShortExecuteTest<2, 128>::RegisterShortExecuteTests();
   count += SQNBitGemmKleidiAIShortExecuteTest::RegisterShortExecuteTests();
 
   return count;

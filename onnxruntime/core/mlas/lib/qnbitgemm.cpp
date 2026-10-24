@@ -40,6 +40,7 @@ enum QNBitGemmVariant {
     SQ8BitGemmVariant_CompInt8,
     HQ8BitGemmVariant_CompFp16,
     SQ2BitGemmVariant_CompInt8,
+    SQ2BitGemmVariant_CompFp32,
 
     // End of valid variants
 
@@ -82,6 +83,8 @@ GetQNBitGemmVariant(
     if (BlkBitWidth == 2 && (BlkLen == 32 || BlkLen == 64 || BlkLen == 128)) {
         if (ComputeType == SQNBIT_CompInt8) {
             return SQ2BitGemmVariant_CompInt8;
+        } else if (ComputeType == SQNBIT_CompFp32) {
+            return SQ2BitGemmVariant_CompFp32;
         }
     }
 
@@ -156,6 +159,11 @@ MlasIsQNBitGemmAvailable(
                    Dispatch->SQ2BitGemmKernel_BlkSum_CompInt8 != nullptr &&
                    Dispatch->QuantizeARowComputeBlkSum_CompInt8 != nullptr;
         }
+        case SQ2BitGemmVariant_CompFp32: {
+            return Dispatch->SQ2BitGemmPackQuantBData != nullptr &&
+                   Dispatch->SQ2BitGemmM1Kernel_CompFp32 != nullptr &&
+                   Dispatch->SQ2BitBlkDequantBForSgemm_CompFp32 != nullptr;
+        }
         default: {
             return false;
         }
@@ -185,11 +193,17 @@ MlasQNBitGemmFp16DirectCOutputSupported(size_t BlkBitWidth, MLAS_QNBIT_GEMM_COMP
     }
 
     if (ComputeType == SQNBIT_CompFp32) {
-        // The strip conversion in SQ4BitGemm_CompFp32 is portable, so it only needs the
+        // The strip conversion in SQNBitGemm_CompFp32 is portable, so it only needs the
         // CompFp32 kernels themselves.
-        return BlkBitWidth == 4 &&
-               Dispatch->SQ4BitGemmM1Kernel_CompFp32 != nullptr &&
-               Dispatch->SQ4BitBlkDequantBForSgemm_CompFp32 != nullptr;
+        if (BlkBitWidth == 4) {
+            return Dispatch->SQ4BitGemmM1Kernel_CompFp32 != nullptr &&
+                   Dispatch->SQ4BitBlkDequantBForSgemm_CompFp32 != nullptr;
+        }
+        if (BlkBitWidth == 2) {
+            return Dispatch->SQ2BitGemmM1Kernel_CompFp32 != nullptr &&
+                   Dispatch->SQ2BitBlkDequantBForSgemm_CompFp32 != nullptr;
+        }
+        return false;
     }
 
     return false;
@@ -466,7 +480,20 @@ MlasQNBitGemmPackQuantBData(
             );
         }
     } else if (BlkBitWidth == 2) {
-        if (ComputeType == SQNBIT_CompInt8 && Dispatch->SQ2BitGemmPackQuantBDataAndBlkSum != nullptr) {
+        if (ComputeType == SQNBIT_CompFp32 && Dispatch->SQ2BitGemmPackQuantBData != nullptr) {
+            // The CompFp32 W2 kernels consume the native quantizer layout, so
+            // packing is a plain copy.
+            Dispatch->SQ2BitGemmPackQuantBData(
+                N,
+                K,
+                BlkLen,
+                ComputeType,
+                static_cast<const std::byte*>(QuantBData),
+                static_cast<std::byte*>(PackedQuantBDataAndOrBlkSumWorkspace),
+                ThreadPool,
+                BackendKernelSelectorConfig
+            );
+        } else if (ComputeType == SQNBIT_CompInt8 && Dispatch->SQ2BitGemmPackQuantBDataAndBlkSum != nullptr) {
             const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
             PackedQuantBDataStruct<float, 2> packed_quant_b(PackedQuantBDataAndOrBlkSumWorkspace, N, BlockCountK, BlkLen, false);
             Dispatch->SQ2BitGemmPackQuantBDataAndBlkSum(
@@ -566,8 +593,13 @@ StripCToFp16(
     }
 }
 
+//
+// SQNBIT_CompFp32 GEMM for 4-bit and 2-bit block quantized B. The structure is
+// bit-width agnostic; only the kernel entry points differ.
+//
+template <size_t BlkBitWidth>
 void
-SQ4BitGemm_CompFp32(
+SQNBitGemm_CompFp32(
     const size_t BlkLen,
     const size_t K,
     const MLAS_QNBIT_GEMM_DATA_PARAMS<float>* const DataParams,
@@ -579,8 +611,6 @@ SQ4BitGemm_CompFp32(
     const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 )
 {
-    constexpr size_t BlkBitWidth = 4;
-
     MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
     MLAS_UNREFERENCED_PARAMETER(PerGemmWorkspace);
 
@@ -606,6 +636,17 @@ SQ4BitGemm_CompFp32(
 
     const float* Bias = (DataParams->Bias == nullptr) ? nullptr : DataParams->Bias + RangeStartN;
 
+    static_assert(BlkBitWidth == 4 || BlkBitWidth == 2);
+    MLAS_QNBIT_GEMM_DISPATCH::SQ4BitGemmM1Kernel_CompFp32_Fn* M1Kernel;
+    MLAS_QNBIT_GEMM_DISPATCH::Q4BitBlkDequantBForSgemm_CompFp32_Fn* DequantBForSgemm;
+    if constexpr (BlkBitWidth == 4) {
+        M1Kernel = GetMlasPlatform().QNBitGemmDispatch->SQ4BitGemmM1Kernel_CompFp32;
+        DequantBForSgemm = GetMlasPlatform().QNBitGemmDispatch->SQ4BitBlkDequantBForSgemm_CompFp32;
+    } else {
+        M1Kernel = GetMlasPlatform().QNBitGemmDispatch->SQ2BitGemmM1Kernel_CompFp32;
+        DequantBForSgemm = GetMlasPlatform().QNBitGemmDispatch->SQ2BitBlkDequantBForSgemm_CompFp32;
+    }
+
     if (RangeCountM == 1) {
         size_t CountN;
         for (size_t n = 0; n < RangeCountN; n += CountN) {
@@ -625,7 +666,7 @@ SQ4BitGemm_CompFp32(
                 assert(DataParams->PostProcessor == nullptr);
                 StripCToFp16(
                     [&](float* c_out, size_t /*c_out_ldc*/) {
-                        GetMlasPlatform().QNBitGemmDispatch->SQ4BitGemmM1Kernel_CompFp32(
+                        M1Kernel(
                             BlkLen,
                             a_row, b_col, b_col_scale, b_col_zp, c_out, CountN, K, k_blks, bias
                         );
@@ -635,7 +676,7 @@ SQ4BitGemm_CompFp32(
                 continue;
             }
 
-            GetMlasPlatform().QNBitGemmDispatch->SQ4BitGemmM1Kernel_CompFp32(
+            M1Kernel(
                 BlkLen,
                 a_row, b_col, b_col_scale, b_col_zp, c_blk, CountN, K, k_blks, bias
             );
@@ -673,7 +714,7 @@ SQ4BitGemm_CompFp32(
         float* c_blk = (C == nullptr) ? nullptr : C + n;
         const float* bias = (Bias == nullptr) ? nullptr : Bias + n;
 
-        GetMlasPlatform().QNBitGemmDispatch->SQ4BitBlkDequantBForSgemm_CompFp32(
+        DequantBForSgemm(
             BlkLen,
             dequant_b, b_col, b_col_scale, b_col_zp, CountN, K, k_blks
         );
@@ -735,6 +776,40 @@ SQ4BitGemm_CompFp32(
             RowsRemaining -= RowsHandled;
         }
     }
+}
+
+void
+SQ4BitGemm_CompFp32(
+    const size_t BlkLen,
+    const size_t K,
+    const MLAS_QNBIT_GEMM_DATA_PARAMS<float>* const DataParams,
+    void* const PerGemmWorkspace,
+    const size_t RangeStartM,
+    const size_t RangeCountM,
+    const size_t RangeStartN,
+    const size_t RangeCountN,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig)
+{
+    SQNBitGemm_CompFp32<4>(
+        BlkLen, K, DataParams, PerGemmWorkspace,
+        RangeStartM, RangeCountM, RangeStartN, RangeCountN, BackendKernelSelectorConfig);
+}
+
+void
+SQ2BitGemm_CompFp32(
+    const size_t BlkLen,
+    const size_t K,
+    const MLAS_QNBIT_GEMM_DATA_PARAMS<float>* const DataParams,
+    void* const PerGemmWorkspace,
+    const size_t RangeStartM,
+    const size_t RangeCountM,
+    const size_t RangeStartN,
+    const size_t RangeCountN,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig)
+{
+    SQNBitGemm_CompFp32<2>(
+        BlkLen, K, DataParams, PerGemmWorkspace,
+        RangeStartM, RangeCountM, RangeStartN, RangeCountN, BackendKernelSelectorConfig);
 }
 
 void
@@ -1516,6 +1591,8 @@ GetQNBitGemm(QNBitGemmVariant variant)
             // W2 CompInt8 compute kernel registered by the AVX-512 /
             // AVX-512-VNNI dispatch tables.
             return SQ2BitGemm_CompInt8;
+        case SQ2BitGemmVariant_CompFp32:
+            return SQ2BitGemm_CompFp32;
         default:
             return nullptr;
     }

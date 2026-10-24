@@ -77,14 +77,20 @@ Q2BitGemmPackQuantBDataSize_Avx512(
     const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* /* BackendKernelSelectorConfig */
 )
 {
-    if (ComputeType != SQNBIT_CompInt8) {
-        return 0;
-    }
     if (BlkLen != kBlkLen && BlkLen != kBlkLen128 && BlkLen != kBlkLen32) {
         return 0;
     }
     const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
     if (BlockCountK == 0) {
+        return 0;
+    }
+    if (ComputeType == SQNBIT_CompFp32) {
+        // The CompFp32 W2 kernels (SQ2BitGemmVariant_CompFp32) consume the
+        // native, unswizzled quantizer layout, so the prepacked buffer is a
+        // plain copy of the quantized data (see SQ2BitGemmPackQuantBData).
+        return N * BlockCountK * MlasQNBitBlkDataSizeInBytes(2, BlkLen);
+    }
+    if (ComputeType != SQNBIT_CompInt8) {
         return 0;
     }
     const size_t BlockCountKPadded =

@@ -118,8 +118,13 @@ template <size_t BlkBitWidth>
 constexpr MLAS_FORCEINLINE size_t
 MlasQNBitZeroPointsForBlksSizeInBytes(size_t BlkCount)
 {
-    if constexpr (BlkBitWidth <= 4) {
+    if constexpr (BlkBitWidth == 4) {
         return MlasDivRoundup(BlkCount, 2);  // 2 blocks per byte
+    } else if constexpr (BlkBitWidth == 2) {
+        // 2-bit zero points pack 4 per byte (little-endian 2-bit pairs), the
+        // same packing the quantizers emit (see
+        // matmul_nbits_helper::GetUint8ZeroPointBlobSize).
+        return MlasDivRoundup(BlkCount, 4);
     } else {
         return BlkCount;
     }
@@ -322,6 +327,25 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
     Q4BitBlkDequantBForSgemm_CompFp32_Fn* SQ4BitBlkDequantBForSgemm_CompFp32 = nullptr;
 
     /**
+     * @brief Multiply float matrix A with quantized 2-bit integer matrix B.
+     *        B is block quantized and column major.
+     *        This kernel handles the special case where M, the number of rows of A and C, is 1.
+     *        Same contract as SQ4BitGemmM1Kernel_CompFp32_Fn.
+     */
+    using SQ2BitGemmM1Kernel_CompFp32_Fn = SQ4BitGemmM1Kernel_CompFp32_Fn;
+
+    SQ2BitGemmM1Kernel_CompFp32_Fn* SQ2BitGemmM1Kernel_CompFp32 = nullptr;
+
+    /**
+     * @brief Dequantize a quantized 2-bit integer matrix B into the format
+     *        expected by the Sgemm kernel.
+     *        Same contract as Q4BitBlkDequantBForSgemm_CompFp32_Fn.
+     */
+    using Q2BitBlkDequantBForSgemm_CompFp32_Fn = Q4BitBlkDequantBForSgemm_CompFp32_Fn;
+
+    Q2BitBlkDequantBForSgemm_CompFp32_Fn* SQ2BitBlkDequantBForSgemm_CompFp32 = nullptr;
+
+    /**
      * @brief Dequantize B into the format expected by the Sgemm kernel.
      *        B is a quantized 4-bit integer matrix that is block quantized and column major.
      *        This is equivalent to dequantizing B and then running MlasSgemmCopyPackB.
@@ -456,6 +480,10 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
     // The W2 pack-size signature matches the W4 one; alias for self-documentation.
     using Q2BitGemmPackQuantBDataSize_Fn = Q4BitGemmPackQuantBDataSize_Fn;
     Q2BitGemmPackQuantBDataSize_Fn* Q2BitGemmPackQuantBDataSize = nullptr;
+
+    /** Packs quantized B data for the 2-bit CompFp32 kernels (native layout, plain copy). */
+    using SQ2BitGemmPackQuantBData_Fn = Q4BitGemmPackQuantBData_Fn;
+    SQ2BitGemmPackQuantBData_Fn* SQ2BitGemmPackQuantBData = nullptr;
 
     /** Packs quantized B data + per-block sums for the 2-bit CompInt8 kernel. */
     typedef void(SQ2BitGemmPackQuantBDataAndSumBlk_Fn)(

@@ -28,6 +28,7 @@ Abstract:
 #include "qnbitgemm.h"
 #include "sqnbitgemm_kernel_avx_common.h"
 #include "sqnbitgemm_kernel_avx_common_int8.h"
+#include "sqnbitgemm_kernel_avx2_2bit_fp32.h"
 #include "sqnbitgemm_kernel_avx2_int8_blklen16.h"
 #include "sqnbitgemm_kernel_avx2_int8_blklen32.h"
 #include "sqnbitgemm_kernel_avx2_int8_blklen64.h"
@@ -323,6 +324,12 @@ const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx2vnni = []() {
     d.SQ2BitGemmPackQuantBDataAndBlkSum = onnxruntime::mlas::sq2bit_avx512::SQ2BitGemmPackQuantBDataAndBlkSum_Scalar;
     d.SQ2BitGemmKernel_BlkSum_CompInt8  = onnxruntime::mlas::sq2bit_avx2::SQ2BitGemmKernel_BlkSum_CompInt8_Avx2Vnni_Dispatch;
     d.Q2BitGemmEffectiveBlockCountK     = onnxruntime::mlas::sq2bit_avx512::Q2BitGemmEffectiveBlockCountK;
+    // 2-bit CompFp32 path (default compute type for float activations): native
+    // layout kernels, so prepacking is a plain copy.
+    d.SQ2BitGemmPackQuantBData           = SQ2BitGemmPackQuantBData_avx2;
+    d.SQ2BitGemmM1Kernel_CompFp32        = SQ2BitGemmM1Kernel_CompFp32_avx2;
+    d.SQ2BitBlkDequantBForSgemm_CompFp32 = Q2BitBlkDequantBForSgemm_CompFp32_avx2;
+
 
     return d;
 }();
