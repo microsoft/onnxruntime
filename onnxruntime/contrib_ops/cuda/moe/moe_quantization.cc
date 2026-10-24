@@ -463,9 +463,8 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
                 "INT3 CUDA QMoE requires interleaved fused SwiGLU.");
     ORT_ENFORCE(block_size_ == 32 || block_size_ == 64 || block_size_ == 128,
                 "INT3 CUDA QMoE requires block_size 32, 64, or 128.");
-    return;
   }
-  enable_int2_prefill_ = quant_type_ == "int" && sm_ >= 80 &&
+  enable_int2_prefill_ = quant_type_ == "int" && !has_int3_ && sm_ >= 80 &&
                          (block_size_ == 32 || block_size_ == 64 || block_size_ == 128) &&
                          (fc1_expert_weight_bits_ == 2 || fc1_expert_weight_bits_ == 4) &&
                          (fc2_expert_weight_bits_ == 2 || fc2_expert_weight_bits_ == 4) &&
@@ -480,7 +479,7 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
       fp4_deep_gemm_num_experts_ > 0 &&
       onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_FP4_DEEPGEMM", 0) == 1;
 
-  if (quant_type_ == "fp4" || quant_type_ == "nvfp4" || quant_type_ == "fp8" || quant_type_ == "wfp4afp8") {
+  if (!has_int3_ && (quant_type_ == "fp4" || quant_type_ == "nvfp4" || quant_type_ == "fp8" || quant_type_ == "wfp4afp8")) {
     if (quant_type_ == "fp4") {
       ORT_ENFORCE(expert_weight_bits_ == 4, "FP4 quantization requires expert_weight_bits=4");
 #if defined(ENABLE_FP4) && defined(USE_FP4_QMOE)
@@ -713,7 +712,7 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
             sm_, activation_type_, normalize_routing_weights_, use_sparse_mixer_);
       }
     }
-  } else {
+  } else if (!has_int3_) {
     // Integer quantization (INT4/INT8)
     if (is_fp16) {
       if (use_int_dequant_fallback) {
@@ -886,12 +885,20 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
           (activation_type_ == onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Swiglu) &&
           (swiglu_fusion_ == 0 || swiglu_fusion_ == 1);
       const bool nvfp4_globals_ok = (quant_type_ != "nvfp4") || (fc1_g != nullptr && fc2_g != nullptr);
-      // The offload backend reads the raw K-packed row-major bytes. Only NVFP4 with weights_prepacked=1 defines that
-      // layout; MXFP4 and other weights_prepacked modes are N-packed in the standard path, so admitting them would
+      // The offload backend reads the raw K-packed row-major NVFP4 bytes, SM80-prepacked INT4 bytes, or raw INT3 bytes.
+      // MXFP4 and other weights_prepacked modes are N-packed in the standard path, so admitting them would
       // change how the same initializer bytes are interpreted.
+      const bool int4_sm80_prepacked =
+          (quant_type_ == "int" && expert_weight_bits_ == 4 &&
+           fc1_expert_weight_bits_ == 4 && fc2_expert_weight_bits_ == 4 &&
+           weights_prepacked_ && block_size_ == 32);
+      const bool int3_raw =
+          (quant_type_ == "int" && expert_weight_bits_ == 3 &&
+           fc1_expert_weight_bits_ == 3 && fc2_expert_weight_bits_ == 3 &&
+           !weights_prepacked_ && (block_size_ == 32 || block_size_ == 64 || block_size_ == 128));
       const bool node_eligible =
-          nvfp4_weights_row_major_ &&
-          expert_weight_bits_ == 4 &&
+          (nvfp4_weights_row_major_ || int4_sm80_prepacked || int3_raw) &&
+          (expert_weight_bits_ == 4 || int3_raw) &&
           is_interleaved_swiglu &&
           !use_sparse_mixer_ &&
           !has_unsupported_slot &&
@@ -902,14 +909,22 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
         ORT_ENFORCE(offload_policy_.mode != onnxruntime::moe_offload::OffloadMode::kRequired,
                     "QMoE offload mode='required' rejected node '", op_kernel_info.node().Name(),
                     "': quant_type='", quant_type_, "', nvfp4_row_major_weights=", nvfp4_weights_row_major_,
-                    " (requires quant_type='nvfp4' and weights_prepacked=1)",
+                    " (expected 'nvfp4' with weights_prepacked=1, prepacked 'int' INT4, or raw 'int' INT3)",
+                    ", int4_sm80_prepacked=", int4_sm80_prepacked, ", int3_raw=", int3_raw,
                     ", swiglu_fusion=", swiglu_fusion_, ", use_sparse_mixer=", use_sparse_mixer_,
                     ", unsupported_slot=", bad_slot_idx, ", has_const_cpu_weights=", has_const_weights);
       } else {
         const int32_t num_e = static_cast<int32_t>(fc1_w->Shape()[0]);
-        const int32_t hid = static_cast<int32_t>(fc1_w->Shape()[1]);
-        const int32_t inter = static_cast<int32_t>(fc2_w->Shape()[1]);
-        const size_t blk = 16u;
+        const bool legacy_4b_w = (fc1_w->Shape()[1] == fc2_w->Shape()[2] * 2 &&
+                                  fc1_w->Shape()[2] == fc2_w->Shape()[1]);
+        const int32_t hid = (int3_raw || !legacy_4b_w)
+                                ? static_cast<int32_t>(fc2_w->Shape()[1])
+                                : static_cast<int32_t>(fc1_w->Shape()[1]);
+        const int32_t inter = (int3_raw || !legacy_4b_w)
+                                  ? static_cast<int32_t>(fc1_w->Shape()[1] / 2)
+                                  : static_cast<int32_t>(fc2_w->Shape()[1]);
+        const size_t blk = int3_raw ? static_cast<size_t>(block_size_)
+                                    : ((quant_type_ == "nvfp4") ? 16u : 32u);
 
         offload_source_desc_.op_type = "QMoE";
         offload_source_desc_.quant_type = quant_type_;
@@ -919,7 +934,7 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
         offload_source_desc_.hidden_size = hid;
         offload_source_desc_.inter_size = inter;
         offload_source_desc_.block_size = static_cast<int32_t>(blk);
-        offload_source_desc_.weight_bits = 4;
+        offload_source_desc_.weight_bits = static_cast<int32_t>(expert_weight_bits_);
         offload_source_desc_.weights_prepacked = weights_prepacked_;
         offload_source_desc_.placement.device_id = controller->DeviceId();
         offload_source_desc_.shard_spec.global_num_experts = num_e;
@@ -954,19 +969,20 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
         record_slice(onnxruntime::moe_offload::ExpertBankKind::kFc2Bias, 7, fc2_b);
 
         const size_t raw_slot_bytes =
-            static_cast<size_t>(2) * inter * (hid / 2) +
-            static_cast<size_t>(hid) * (inter / 2) +
-            static_cast<size_t>(2) * inter * (hid / blk) +
-            static_cast<size_t>(hid) * (inter / blk) +
+            (fc1_w->SizeInBytes() + fc2_w->SizeInBytes() + fc1_s->SizeInBytes() + fc2_s->SizeInBytes()) /
+                static_cast<size_t>(num_e) +
             2 * sizeof(float);
         const size_t fc1_bias_slot_bytes =
             (fc1_b != nullptr && num_e > 0) ? (fc1_b->SizeInBytes() / static_cast<size_t>(num_e)) : 0;
         const size_t fc2_bias_fixed_bytes = (fc2_b != nullptr) ? fc2_b->SizeInBytes() : 0;
 
         onnxruntime::contrib::qmoe_shared::Nvfp4ExpertBlockLayout host_layout{};
-        const bool layout_ok = (quant_type_ == "nvfp4")
-                                   ? onnxruntime::contrib::qmoe_shared::MakeNvfp4ExpertBlockLayout(hid, inter, &host_layout)
-                                   : onnxruntime::contrib::qmoe_shared::MakeMxfp4ExpertBlockLayout(hid, inter, &host_layout);
+        const bool layout_ok = int3_raw
+                                   ? onnxruntime::contrib::qmoe_shared::MakeInt3ExpertBlockLayout(
+                                         hid, inter, static_cast<int64_t>(blk), &host_layout)
+                                   : ((quant_type_ == "nvfp4" || int4_sm80_prepacked)
+                                          ? onnxruntime::contrib::qmoe_shared::MakeNvfp4ExpertBlockLayout(hid, inter, &host_layout)
+                                          : onnxruntime::contrib::qmoe_shared::MakeMxfp4ExpertBlockLayout(hid, inter, &host_layout));
         const size_t cpu_slot_stride = layout_ok ? host_layout.stride : raw_slot_bytes;
 
         offload_capabilities_.supports_full_gpu_resident = true;
@@ -992,6 +1008,9 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
     }
   }
 
+  if (has_int3_) {
+    return;
+  }
   ORT_ENFORCE(m_moe_runner != nullptr,
               "QMoE: failed to construct MoE runner for quant_type='", quant_type_,
               "', expert_weight_bits=", expert_weight_bits_,
