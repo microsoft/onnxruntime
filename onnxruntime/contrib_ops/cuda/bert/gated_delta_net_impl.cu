@@ -551,7 +551,6 @@ __global__ __launch_bounds__(32 * kWarps) void GatedDeltaNetDecodeWarpKernel(
     p.beta_activation = BetaActivation::kSigmoid;
     p.update_rule = UpdateRule::kGatedDelta;
     p.qk_l2_norm = true;
-    p.state_update_capacity = 0;
     p.decay_per_key_dim_flag = 0;
     p.state_update_tail_pass = p.short_row_tail_pass = false;
     d_v = 128;
@@ -918,7 +917,7 @@ void LaunchDecodeWarpSized(const Descriptor& desc, const VariantPack<T>& pack,
             desc.head_size_v == 128 && pack.cu_seqlens == nullptr &&
             p.gate_activation == GateActivation::kSoftplusDecay &&
             p.beta_activation == BetaActivation::kSigmoid && p.update_rule == UpdateRule::kGatedDelta &&
-            p.qk_l2_norm && p.state_update_capacity == 0 && p.decay_per_key_dim_flag == 0 &&
+            p.qk_l2_norm && p.decay_per_key_dim_flag == 0 &&
             !p.state_update_tail_pass && !p.short_row_tail_pass) {
           GatedDeltaNetDecodeWarpKernel<T, 128, Warps, InputTypeGates, PackedQkv, true>
               <<<grid, block, 0, stream>>>(pack, p, desc.head_size_v);

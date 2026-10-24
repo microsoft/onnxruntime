@@ -364,7 +364,9 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
   desc.state_update_capacity = state_update_capacity_;
   desc.state_update_active =
       state_update_capacity_ > 0 &&
-      (state_update_active == nullptr || state_update_active->Data<int32_t>()[0] != 0);
+      (state_update_active == nullptr || state_update_active->Data<int32_t>()[0] != 0) &&
+      (cu_seqlens != nullptr ||
+       total_tokens <= static_cast<int64_t>(state_update_capacity_ + 1) * batch);
   desc.update_rule = update_rule_;
   desc.gate_activation = gate_activation_;
   desc.beta_activation = beta_activation_;
@@ -378,12 +380,15 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
   desc.qk_l2_norm = qk_l2_norm_;
   desc.decay_per_key_dim = decay_per_key_dim;
   desc.ragged = cu_seqlens != nullptr;
+  const bool packed_uniform_qkv = is_packed_qkv && cu_seqlens == nullptr;
   const gdn::Engine effective_engine =
-      (mid_state_output_ && total_tokens <= 512LL * batch && forced_engine_ == gdn::Engine::kAuto)
+      ((mid_state_output_ || packed_uniform_qkv) && total_tokens <= 512LL * batch &&
+       forced_engine_ == gdn::Engine::kAuto)
           ? gdn::Engine::kRecurrent
           : forced_engine_;
   desc.preferred_engine = effective_engine;
-  desc.bf16_precision = bf16_precision_;
+  desc.bf16_precision =
+      (packed_uniform_qkv && !has_session_bf16_precision_) ? gdn::Bf16Precision::kBf16 : bf16_precision_;
   if (!has_session_bf16_precision_) {
     const std::string env_val =
         ParseEnvironmentVariableWithDefault<std::string>(gdn::kGatedDeltaNetBf16PrecisionEnv, "");

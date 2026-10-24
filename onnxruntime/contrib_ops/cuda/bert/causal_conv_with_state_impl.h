@@ -36,7 +36,8 @@ Status LaunchCausalConvProjectionKernel(
     cudaStream_t stream, const T* input, const T* weight, const T* bias, const T* past,
     T* output, T* present, T* first_state, T* second_state, T* third_state, int batch, int channels, int length,
     int kernel_size, int dilation, int input_width, int channel_offset,
-    int state_length, bool state_channels_last, bool apply_silu);
+    int state_length, bool state_channels_last, bool apply_silu,
+    T* state_update = nullptr, int state_update_capacity = 0);
 
 // Fused causal depthwise conv1d + activation + state management.
 // One thread block per (batch, channel). For decode (L=1), this is a simple

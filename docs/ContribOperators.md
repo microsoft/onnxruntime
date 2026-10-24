@@ -1034,6 +1034,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>State layout override (CUDA only): -1 follows channels_last, 0 uses [B,C,state_length], 1 uses [B,state_length,C].</dd>
 <dt><tt>state_length</tt> : int</dt>
 <dd>Carry history length (CUDA only); 0 uses (kernel_size-1)*dilation. An explicit length must cover the receptive field; convolution reads its trailing history.</dd>
+<dt><tt>state_update_capacity</tt> : int</dt>
+<dd>Compact speculative state-update capture capacity (CUDA extended path only, 0..8); when > 0, output 2 has shape (batch_size, state_update_capacity, channels) and records the first min(sequence_length, state_update_capacity) projected input rows.</dd>
 <dt><tt>state_window</tt> : int</dt>
 <dd>Number of trailing per-position carry states held by past_state and present_state. When 0 (default) the state tensors have no window axis and hold only the state after the last position, i.e. the backward-compatible (batch_size, channels, state_length) where state_length = (k_1 - 1) * dilation. When W > 0 both gain a LEADING axis of extent W, right-aligned: slot j is the state after position (seq_len - W + j), so slot W-1 is always the state after the last position (identical to the W = 0 tensor) and is the slot past_state is read from. The window axis leads the batch axis so that each slot is one contiguous (batch_size, channels, state_length) block. Slots below max(0, W - seq_len) hold no position from this call and are filled with zeros. A window lets a speculative decoder roll the state back to an accepted prefix without replaying the forward. Valid range is [0, 8].</dd>
 </dl>

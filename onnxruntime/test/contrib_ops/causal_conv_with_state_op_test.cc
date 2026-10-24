@@ -400,6 +400,32 @@ TEST(CausalConvWithStateTest, PackedChannelsExtendedHistoryAndFirstState) {
   TestPackedChannelHistory<float>(2, false, true, true, true, 1, false);
 }
 
+TEST(CausalConvWithStateTest, PackedChannelsStateUpdateCapacity) {
+  auto cuda = DefaultCudaExecutionProvider();
+  if (!cuda) GTEST_SKIP() << "CUDA is required for extended convolution";
+  OpTester test("CausalConvWithState", 1, kMSDomain);
+  test.AddAttribute<int64_t>("channels_last", 1);
+  test.AddAttribute<int64_t>("input_channels", 2);
+  test.AddAttribute<int64_t>("input_channel_offset", 1);
+  test.AddAttribute<int64_t>("state_length", 3);
+  test.AddAttribute<int64_t>("state_channels_last", 0);
+  test.AddAttribute<int64_t>("state_update_capacity", 2);
+  test.AddAttribute<std::string>("activation", "none");
+  test.AddInput<float>("input", {1, 3, 4},
+                       {10.f, 1.f, 2.f, 99.f,
+                        20.f, 3.f, 4.f, 99.f,
+                        30.f, 7.f, 8.f, 99.f});
+  test.AddInput<float>("weight", {2, 1, 2}, {1.f, 1.f, 1.f, 1.f});
+  test.AddOptionalInputEdge<float>();
+  test.AddInput<float>("past", {1, 2, 3}, {0.f, 0.f, 5.f, 0.f, 0.f, 6.f});
+  test.AddOutput<float>("output", {1, 3, 2}, {6.f, 8.f, 4.f, 6.f, 10.f, 12.f});
+  test.AddOutput<float>("present", {1, 2, 3}, {1.f, 3.f, 7.f, 2.f, 4.f, 8.f});
+  test.AddOutput<float>("state_update", {1, 2, 2}, {1.f, 2.f, 3.f, 4.f}, false, 1e-4f, 1e-4f);
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(std::move(cuda));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+
 TEST(CausalConvWithStateTest, PackedChannelsInvalidConfigurations) {
   const std::vector<std::string> errors{
       "invalid extended attributes", "channel slice exceeds input width", "state_length is too short",

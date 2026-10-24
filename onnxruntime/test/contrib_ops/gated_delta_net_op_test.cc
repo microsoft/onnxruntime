@@ -730,7 +730,9 @@ TEST(GatedDeltaNetTest, RecurrentOutputsIncludeFirstRowState) {
                         expected_final_state, false, 2e-3f, 2e-3f);
   test.AddOutput<float>("mid_state", {g.batch, g.hv, g.dv, g.dk},
                         expected_mid_state, false, 2e-3f, 2e-3f);
-  test.Run();
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
 }
 
 TEST(GatedDeltaNetTest, RecurrentMidStatePreservesEmptyRequests) {

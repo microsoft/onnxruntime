@@ -4704,6 +4704,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "State layout override (CUDA only): -1 follows channels_last, "
               "0 uses [B,C,state_length], 1 uses [B,state_length,C].",
               AttributeProto::INT, static_cast<int64_t>(-1))
+        .Attr("state_update_capacity",
+              "Compact speculative state-update capture capacity (CUDA extended path only, 0..8); "
+              "when > 0, output 2 has shape (batch_size, state_update_capacity, channels) and records "
+              "the first min(sequence_length, state_update_capacity) projected input rows.",
+              AttributeProto::INT, static_cast<int64_t>(0))
         .Attr("activation",
               "Fused activation function. One of: 'silu', 'swish', 'none'. "
               "Default is 'none'.",
@@ -4808,17 +4813,22 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           const int64_t channel_offset = getAttribute(ctx, "input_channel_offset", 0);
           const int64_t history = getAttribute(ctx, "state_length", 0);
           const int64_t state_layout = getAttribute(ctx, "state_channels_last", -1);
+          const int64_t state_update_capacity = getAttribute(ctx, "state_update_capacity", 0);
           if (input_channels < 0 || input_channels > std::numeric_limits<int>::max() ||
               channel_offset < 0 || channel_offset > std::numeric_limits<int>::max() ||
               history < 0 || history > std::numeric_limits<int>::max() ||
-              state_layout < -1 || state_layout > 1) {
+              state_layout < -1 || state_layout > 1 ||
+              state_update_capacity < 0 || state_update_capacity > 8) {
             fail_shape_inference("CausalConvWithState: invalid extended attributes");
           }
           if (input_channels != 0 || channel_offset != 0 || history != 0 || state_layout != -1 ||
-              ctx.getNumOutputs() > 2) {
+              state_update_capacity != 0 || ctx.getNumOutputs() > 2) {
             if (getAttribute(ctx, "channels_last", 0) != 1 || getAttribute(ctx, "ndim", 1) != 1 ||
                 state_window != 0 || getAttribute(ctx, "dilation", 1) < 1) {
               fail_shape_inference("CausalConvWithState: extended attributes require channels_last=1, ndim=1, state_window=0");
+            }
+            if (state_update_capacity > 0 && ctx.getNumOutputs() > 3) {
+              fail_shape_inference("CausalConvWithState: state_update_capacity > 0 supports at most 3 outputs");
             }
             for (size_t i = 2; i < ctx.getNumOutputs(); ++i) propagateElemTypeFromInputToOutput(ctx, 0, i);
             if (!hasInputShape(ctx, 0)) return;
@@ -4858,7 +4868,17 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             *state.add_dim() = state_layout == 0 ? *channels : length;
             *state.add_dim() = state_layout == 0 ? length : *channels;
             updateOutputShape(ctx, 1, state);
-            for (size_t i = 2; i < ctx.getNumOutputs(); ++i) updateOutputShape(ctx, i, state);
+            if (state_update_capacity > 0) {
+              if (ctx.getNumOutputs() > 2 && ctx.hasOutput(2)) {
+                TensorShapeProto update_shape;
+                *update_shape.add_dim() = input.dim(0);
+                update_shape.add_dim()->set_dim_value(state_update_capacity);
+                *update_shape.add_dim() = *channels;
+                updateOutputShape(ctx, 2, update_shape);
+              }
+            } else {
+              for (size_t i = 2; i < ctx.getNumOutputs(); ++i) updateOutputShape(ctx, i, state);
+            }
             return;
           }
           if (state_window < 0 || state_window > kMaxStateWindow) {
