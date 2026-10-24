@@ -55,6 +55,9 @@ Status LaunchMatMulFp8SharedExpert(void* y, const void* a, const void* weight,
                                    const float* scales, int m, int n, int k, int block_size,
                                    const Fp8SharedExpertEpilogue& epilogue,
                                    const cudaDeviceProp& device_prop, cudaStream_t stream);
+Status LaunchFp8PrepareSharedExpert(void* prepared, float* row_gates, const void* up, const void* silu_gate,
+                                    const void* gate_activation, const void* gate_weight,
+                                    int m, int k, int gate_width, cudaStream_t stream);
 Status LaunchFp8SharedExpertEpilogue(void* y, const Fp8SharedExpertEpilogue& epilogue,
                                      int m, int n, cudaStream_t stream);
 

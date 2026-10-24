@@ -183,17 +183,6 @@ TEST(MatMulBlockQuantizedFp8WeightOpTest, SharedExpertNumericsAndFallbacks) {
           providers.push_back(DefaultCudaExecutionProvider());
           op.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
         };
-        OpTester silu("SigmoidGateMul", 1, kMSDomain);
-        silu.AddAttribute<int64_t>("silu_gate", 1);
-        silu.AddAttribute<int64_t>("sigmoid_in_fp32", 0);
-        silu.AddInput<BFloat16>("up", input_shape, up);
-        silu.AddInput<BFloat16>("gate", input_shape, gate);
-        silu.AddOptionalInputEdge<BFloat16>();
-        silu.AddInput<int32_t>("prefill", {1}, {prefill});
-        silu.AddOutput<BFloat16>("prepared", input_shape, prepared);
-        silu.SetOutputTolerance(0.f, 0.f);
-        run(silu);
-
         std::vector<BFloat16> projected(m * n);
         OpTester projection("MatMulBlockQuantizedFp8Weight", 1, kMSDomain);
         projection.AddAttribute<int64_t>("block_size", block_size);
@@ -216,21 +205,15 @@ TEST(MatMulBlockQuantizedFp8WeightOpTest, SharedExpertNumericsAndFallbacks) {
         for (int64_t i = 0; i < m * gate_width; ++i) {
           gate_activation[i] = BFloat16(static_cast<float>((i / gate_width) % 3 - 1));
         }
-        OpTester post("SigmoidGateMul", 1, kMSDomain);
-        post.AddAttribute<int64_t>("broadcast_gate", 1);
-        post.AddAttribute<int64_t>("sigmoid_in_fp32", 0);
-        post.AddInput<BFloat16>("down", output_shape, projected);
-        post.AddInput<BFloat16>("activation", activation_shape, gate_activation);
-        post.AddInput<BFloat16>("residual", output_shape, residual);
-        post.AddInput<int32_t>("prefill", {1}, {prefill});
-        post.AddInput<BFloat16>("weight", {gate_width, 1}, gate_weight);
-        post.AddOutput<BFloat16>("Y", output_shape, expected);
-        post.SetCustomOutputVerifier([&](const std::vector<OrtValue>& fetches, const std::string&) {
-          ASSERT_EQ(fetches.size(), 1u);
-          const auto& output = fetches[0].Get<Tensor>();
-          expected.assign(output.Data<BFloat16>(), output.Data<BFloat16>() + m * n);
-        });
-        run(post);
+        for (int64_t row = 0; row < m; ++row) {
+          const float logit = round(4.f * static_cast<float>(row % 3 - 1));
+          const float gate_value = logit > 0 ? round(1.f / round(1.f + round(std::exp(-logit))))
+                                             : round(1.f - round(1.f / round(1.f + round(std::exp(logit)))));
+          for (int64_t col = 0; col < n; ++col) {
+            const float gated = round(static_cast<float>(projected[row * n + col]) * gate_value);
+            expected[row * n + col] = BFloat16(round(gated + static_cast<float>(residual[row * n + col])));
+          }
+        }
 
         OpTester test("MatMulBlockQuantizedFp8Weight", 1, kMSDomain);
         test.AddAttribute<int64_t>("block_size", block_size);

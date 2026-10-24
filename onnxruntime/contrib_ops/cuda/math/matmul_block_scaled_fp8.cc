@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/cuda/math/matmul_block_scaled_fp8.h"
-#include "contrib_ops/cuda/bert/fused_tensor_ops.h"
 
 #include <algorithm>
 #include <type_traits>
@@ -199,13 +198,10 @@ Status MatMulBlockQuantizedFp8Weight::ComputeImpl(OpKernelContext* context) cons
   if (shared_expert_) {
     shared_activation = GetScratchBuffer<CudaT>(SafeInt<size_t>(m_i) * k_i, GetComputeStream(context));
     shared_gates = GetScratchBuffer<float>(m_i, GetComputeStream(context));
-    ORT_RETURN_IF_ERROR(LaunchPrepareSharedExpert(
-        Stream(context), reinterpret_cast<const uint16_t*>(a->DataRaw()),
-        reinterpret_cast<const uint16_t*>(silu_gate->DataRaw()),
-        reinterpret_cast<const uint16_t*>(gate_activation->DataRaw()),
-        reinterpret_cast<const uint16_t*>(gate_weight->DataRaw()),
-        reinterpret_cast<uint16_t*>(shared_activation.get()), shared_gates.get(), m_i, k_i,
-        SafeInt<int>(gate_activation->Shape()[a_rank - 1])));
+    ORT_RETURN_IF_ERROR(LaunchFp8PrepareSharedExpert(
+        shared_activation.get(), shared_gates.get(), a->DataRaw(), silu_gate->DataRaw(),
+        gate_activation->DataRaw(), gate_weight->DataRaw(), m_i, k_i,
+        SafeInt<int>(gate_activation->Shape()[a_rank - 1]), Stream(context)));
     shared_epilogue = {shared_gates.get(), residual->DataRaw()};
   }
   const auto finish_output = [&]() -> Status {

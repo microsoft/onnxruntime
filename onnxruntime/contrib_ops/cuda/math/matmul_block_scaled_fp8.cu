@@ -6,6 +6,7 @@
 
 #include <cuda_bf16.h>
 #include <cuda_fp16.h>
+#include <cub/block/block_reduce.cuh>
 
 #include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
@@ -800,6 +801,44 @@ __global__ void Fp8SharedExpertEpilogueKernel(__nv_bfloat16* output, Fp8SharedEx
   }
 }
 
+constexpr int kSharedExpertPrepareThreads = 256;
+
+// Matches CUDA Sigmoid's BF16 intermediates, including its negative-input subtraction.
+__device__ __forceinline__ float SharedExpertBf16Sigmoid(float value) {
+  using namespace onnxruntime::cuda;
+  const BFloat16 a(value);
+  return static_cast<float>(a > BFloat16(0.0f)
+                                ? BFloat16(1.0f) / (BFloat16(1.0f) + _Exp(-a))
+                                : BFloat16(1.0f) - BFloat16(1.0f) / (BFloat16(1.0f) + _Exp(a)));
+}
+
+// One block per row: computes the projected row gate sigmoid(dot(gate_activation, gate_weight)) and
+// the SiLU-gated activation up * silu(silu_gate).
+__global__ void PrepareSharedExpertKernel(
+    const __nv_bfloat16* up, const __nv_bfloat16* silu_gate, const __nv_bfloat16* activation,
+    const __nv_bfloat16* weight, __nv_bfloat16* prepared, float* row_gates, int width, int input_width) {
+  using Reduce = cub::BlockReduce<float, kSharedExpertPrepareThreads>;
+  __shared__ typename Reduce::TempStorage reduction;
+  __shared__ float gate;
+  const int64_t row = blockIdx.x;
+  float dot = 0.0f;
+  for (int k = threadIdx.x; k < input_width; k += kSharedExpertPrepareThreads) {
+    dot = fmaf(__bfloat162float(activation[row * input_width + k]), __bfloat162float(weight[k]), dot);
+  }
+  const float total = Reduce(reduction).Sum(dot);
+  if (threadIdx.x == 0) {
+    gate = SharedExpertBf16Sigmoid(__bfloat162float(__float2bfloat16_rn(total)));
+    row_gates[row] = gate;
+  }
+  __syncthreads();
+  for (int column = threadIdx.x; column < width; column += kSharedExpertPrepareThreads) {
+    const int64_t index = row * width + column;
+    const float value = __bfloat162float(silu_gate[index]);
+    const auto silu = __float2bfloat16_rn(value * SharedExpertBf16Sigmoid(value));
+    prepared[index] = __float2bfloat16_rn(__bfloat162float(up[index]) * __bfloat162float(silu));
+  }
+}
+
 // Kill switch for A/B testing the tensor-core path against the FMA path in the same binary.
 bool Fp8GemvMmaEnabled() {
   static bool const enabled = onnxruntime::ParseEnvironmentVariableWithDefault<bool>("ORT_FP8_GEMV_MMA", true);
@@ -841,6 +880,33 @@ Status LaunchFp8SharedExpertEpilogue(void* y, const Fp8SharedExpertEpilogue& epi
   ORT_UNUSED_PARAMETER(epilogue);
   ORT_UNUSED_PARAMETER(m);
   ORT_UNUSED_PARAMETER(n);
+  ORT_UNUSED_PARAMETER(stream);
+  return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Shared expert requires FP8 support.");
+#endif
+}
+
+Status LaunchFp8PrepareSharedExpert(void* prepared, float* row_gates, const void* up, const void* silu_gate,
+                                    const void* gate_activation, const void* gate_weight,
+                                    int m, int k, int gate_width, cudaStream_t stream) {
+#if !defined(DISABLE_FLOAT8_TYPES) && defined(CUDA_VERSION) && CUDA_VERSION >= 11080
+  ORT_RETURN_IF_NOT(m >= 0 && k > 0 && gate_width > 0,
+                    "Shared expert preparation requires nonnegative rows and positive widths");
+  if (m == 0) return Status::OK();
+  PrepareSharedExpertKernel<<<m, kSharedExpertPrepareThreads, 0, stream>>>(
+      static_cast<const __nv_bfloat16*>(up), static_cast<const __nv_bfloat16*>(silu_gate),
+      static_cast<const __nv_bfloat16*>(gate_activation), static_cast<const __nv_bfloat16*>(gate_weight),
+      static_cast<__nv_bfloat16*>(prepared), row_gates, k, gate_width);
+  return CUDA_CALL(cudaGetLastError());
+#else
+  ORT_UNUSED_PARAMETER(prepared);
+  ORT_UNUSED_PARAMETER(row_gates);
+  ORT_UNUSED_PARAMETER(up);
+  ORT_UNUSED_PARAMETER(silu_gate);
+  ORT_UNUSED_PARAMETER(gate_activation);
+  ORT_UNUSED_PARAMETER(gate_weight);
+  ORT_UNUSED_PARAMETER(m);
+  ORT_UNUSED_PARAMETER(k);
+  ORT_UNUSED_PARAMETER(gate_width);
   ORT_UNUSED_PARAMETER(stream);
   return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Shared expert requires FP8 support.");
 #endif
