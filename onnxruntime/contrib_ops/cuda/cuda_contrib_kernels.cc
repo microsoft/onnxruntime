@@ -101,7 +101,6 @@ class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, MoE);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, MoE);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, MoE);
 class CUDA_MS_OP_CLASS_NAME(1, SpeculativePrefixCommit);
-class CUDA_MS_OP_CLASS_NAME(1, SpeculativeStepPublish);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, QMoE);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, QMoE);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float_float, MultiHeadAttention);
@@ -470,7 +469,6 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, MoE)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, MoE)>,
       BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, SpeculativePrefixCommit)>,
-      BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, SpeculativeStepPublish)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, QMoE)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, QMoE)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float_float, MultiHeadAttention)>,

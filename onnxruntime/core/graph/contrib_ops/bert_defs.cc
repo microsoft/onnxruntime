@@ -37,13 +37,12 @@ namespace contrib {
 ONNX_MS_OPERATOR_SET_SCHEMA(
     SpeculativePrefixCommit, 1,
     OpSchema()
-        .SetDoc("Commits a batch-one speculative prefix and prepares rotary/head inputs for two through eight head rows. "
-                "Control and committed-context outputs must alias their inputs on CUDA when present. This is stateful: callers "
-                "must serialize access to these buffers. The result-ring address must identify a device-accessible, "
-                "aligned allocation of capacity*8 int64 words. The mid stage writes the payload; SpeculativeStepPublish publishes "
-                "its sequence word after downstream validation when ptrs is passed to SpeculativeStepPublish, or SpeculativePrefixCommit publishes it directly when updated_ctl/updated_ctx_commit are omitted. "
-                "Muted prefill calls prepare inputs without committing "
-                "state or touching ring metadata. Invalid device metadata sets error bits and mutes execution.")
+        .SetDoc("Commits a batch-one speculative prefix, prepares rotary/head inputs for two through eight head rows, "
+                "and publishes the result-ring record. Control and committed-context outputs must alias their inputs "
+                "on CUDA when present. This is stateful: callers must serialize access to these buffers. The result-ring "
+                "address must identify a device-accessible, aligned allocation of capacity*8 int64 words. "
+                "Muted prefill calls prepare inputs without committing state or touching ring metadata. "
+                "Invalid device metadata sets error bits and mutes execution.")
         .Attr("head_rows", "Fixed number of head rows, 2 through 8.", AttributeProto::INT, int64_t{2})
         .Attr("head_capacity", "Maximum head-cache token capacity.", AttributeProto::INT, int64_t{262144})
         .Input(0, "next_tokens", "Verifier predictions, batch one.", "I64")
@@ -56,7 +55,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(7, "ptrs", "Result ring address and positive record capacity.", "I64")
         .Input(8, "cos_cache", "Rotary cosine cache [positions, width].", "B")
         .Input(9, "sin_cache", "Rotary sine cache [positions, width].", "B")
-        .Input(10, "hidden", "Optional hidden states [1, verifier_rows, ...].", "B", OpSchema::Optional)
         .Output(0, "head_ids", "Head token IDs [1, head_rows].", "I64")
         .Output(1, "head_c", "Head committed length [1].", "I32")
         .Output(2, "slot_ids", "Head slots [1, head_rows].", "I64")
@@ -64,23 +62,19 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Output(4, "cos_out", "Gathered rotary cosine [1, head_rows, width].", "B")
         .Output(5, "sin_out", "Gathered rotary sine [1, head_rows, width].", "B")
         .Output(6, "sel", "Accepted-prefix length, or -1 on invalid metadata.", "I64")
-        .Output(7, "head_hidden", "Hidden rows, repeating the last source row when necessary.", "B", OpSchema::Optional)
-        .Output(8, "updated_ctl", "Optional updated control state, aliases ctl.", "I64", OpSchema::Optional)
-        .Output(9, "updated_ctx_commit", "Optional updated context, aliases ctx_commit.", "I64", OpSchema::Optional)
+        .Output(7, "updated_ctl", "Optional updated control state, aliases ctl.", "I64", OpSchema::Optional)
+        .Output(8, "updated_ctx_commit", "Optional updated context, aliases ctx_commit.", "I64", OpSchema::Optional)
         .TypeConstraint("I64", {"tensor(int64)"}, "Token and control words.")
         .TypeConstraint("I32", {"tensor(int32)"}, "Status and sequence lengths.")
-        .TypeConstraint("B", {"tensor(bfloat16)"}, "Rotary and hidden tensors.")
+        .TypeConstraint("B", {"tensor(bfloat16)"}, "Rotary tensors.")
         .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
-          for (int output : {0, 2, 6, 8, 9}) {
+          for (int output : {0, 2, 6, 7, 8}) {
             if (static_cast<size_t>(output) < ctx.getNumOutputs() && ctx.hasOutput(output)) {
               propagateElemTypeFromInputToOutput(ctx, 0, output);
             }
           }
           for (int output : {1, 3}) propagateElemTypeFromInputToOutput(ctx, 2, output);
           for (int output : {4, 5}) propagateElemTypeFromInputToOutput(ctx, 8, output);
-          if (ctx.getNumOutputs() > 7 && ctx.hasOutput(7) && hasInputShape(ctx, 10)) {
-            propagateElemTypeFromInputToOutput(ctx, 10, 7);
-          }
           const auto rows = getAttribute(ctx, "head_rows", 2);
           const auto capacity = getAttribute(ctx, "head_capacity", 262144);
           if (rows < 2 || rows > 8 || capacity < rows || capacity > std::numeric_limits<int>::max())
@@ -101,42 +95,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             updateOutputShape(ctx, 4, shape);
             updateOutputShape(ctx, 5, shape);
           }
-          if (ctx.getNumOutputs() > 7 && ctx.hasOutput(7) && hasInputShape(ctx, 10)) {
-            auto shape = getInputShape(ctx, 10);
-            if (shape.dim_size() < 3) fail_shape_inference("SpeculativePrefixCommit: hidden must have rank at least 3");
-            shape.mutable_dim(1)->set_dim_value(rows);
-            updateOutputShape(ctx, 7, shape);
-          }
-          if (ctx.getNumOutputs() > 8 && ctx.hasOutput(8)) propagateShapeFromInputToOutput(ctx, 3, 8);
-          if (ctx.getNumOutputs() > 9 && ctx.hasOutput(9)) propagateShapeFromInputToOutput(ctx, 4, 9);
-        }));
-
-ONNX_MS_OPERATOR_SET_SCHEMA(
-    SpeculativeStepPublish, 1,
-    OpSchema()
-        .SetDoc("Updates the selected draft-control slot and publishes the result-ring sequence after validation. "
-                "updated_ctl must alias ctl on CUDA when present. Muted calls do not access the ring. Invalid ring metadata "
-                "sets error bit 16 and mutes execution. done is a dependency output set to 1 when unmuted and 0 when muted.")
-        .Attr("ctl_slot", "Draft-control slot: -1 (none), 2, or 8..13.", AttributeProto::INT, int64_t{2})
-        .Input(0, "next_token", "Next draft token (or ignored selector in DFlash).", "I64")
-        .Input(1, "status", "Downstream validation status words.", "I32")
-        .Input(2, "ctl", "Mutable control state.", "I64")
-        .Input(3, "ptrs", "Optional result ring address and record capacity.", "I64", OpSchema::Optional)
-        .Output(0, "done", "Dependency output [1].", "I32")
-        .Output(1, "updated_ctl", "Optional updated control state, aliases ctl.", "I64", OpSchema::Optional)
-        .TypeConstraint("I64", {"tensor(int64)"}, "Token and control words.")
-        .TypeConstraint("I32", {"tensor(int32)"}, "Status and dependency output.")
-        .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
-          propagateElemTypeFromInputToOutput(ctx, 1, 0);
-          if (ctx.getNumOutputs() > 1 && ctx.hasOutput(1)) {
-            propagateElemTypeFromInputToOutput(ctx, 2, 1);
-          }
-          const auto slot = getAttribute(ctx, "ctl_slot", 2);
-          if (slot != -1 && slot != 2 && (slot < 8 || slot > 13)) fail_shape_inference("SpeculativeStepPublish: invalid ctl_slot");
-          getOutputShape(ctx, 0)->add_dim()->set_dim_value(1);
-          if (ctx.getNumOutputs() > 1 && ctx.hasOutput(1)) {
-            propagateShapeFromInputToOutput(ctx, 2, 1);
-          }
+          if (ctx.getNumOutputs() > 7 && ctx.hasOutput(7)) propagateShapeFromInputToOutput(ctx, 3, 7);
+          if (ctx.getNumOutputs() > 8 && ctx.hasOutput(8)) propagateShapeFromInputToOutput(ctx, 4, 8);
         }));
 
 void DecoderAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {

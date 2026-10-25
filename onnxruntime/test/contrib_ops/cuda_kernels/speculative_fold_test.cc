@@ -81,10 +81,7 @@ struct Fixture {
     return fold::LaunchMid(tokens.data, ids.data, status.data, 2, ctl.data, context.data,
                            prefixes.data, prefix2.data, ptrs.data, cosine.data, sine.data,
                            head_ids.data, head_c.data, slots.data, lengths.data, head_cos.data, head_sin.data,
-                           selection.data, hidden.data, out_hidden.data, 3, rows, heads, 16, 3, 16, stream);
-  }
-  Status Tail(int slot = 2, cudaStream_t stream = nullptr) {
-    return fold::LaunchTail(tokens.data, status.data, 2, ctl.data, ptrs.data, done.data, slot, stream);
+                           selection.data, rows, heads, 16, 3, 16, stream);
   }
 };
 
@@ -96,7 +93,7 @@ class FoldContribTest : public testing::Test {
   }
 };
 
-TEST_F(FoldContribTest, AllPrefixLengthsAndDeferredRingPublication) {
+TEST_F(FoldContribTest, AllPrefixLengthsAndDirectRingPublication) {
   Fixture f;
   for (int rows : {1, 2, 3, 4, 8}) {
     const int heads = std::max(2, rows);
@@ -114,7 +111,7 @@ TEST_F(FoldContribTest, AllPrefixLengthsAndDeferredRingPublication) {
       EXPECT_EQ(ctl[4], 4);
       EXPECT_EQ(ctl[6], accepted);
       auto record = f.ring.Read();
-      EXPECT_EQ(record[8], -7);
+      EXPECT_EQ(record[8], 4);
       EXPECT_EQ(static_cast<int32_t>(static_cast<uint64_t>(record[11]) & 0xffffffffu), accepted);
       EXPECT_EQ(static_cast<int32_t>(static_cast<uint64_t>(record[13]) & 0xffffffffu), 10 * (accepted + 1));
       EXPECT_EQ(record[14], 4 + accepted);
@@ -128,17 +125,9 @@ TEST_F(FoldContribTest, AllPrefixLengthsAndDeferredRingPublication) {
         EXPECT_EQ(static_cast<int32_t>(static_cast<uint64_t>(record[11]) >> 32), 70);
         EXPECT_EQ(static_cast<int32_t>(static_cast<uint64_t>(record[13]) >> 32), 80);
       }
-      ASSERT_TRUE(f.Tail().IsOK());
-      Check(cudaDeviceSynchronize());
-      EXPECT_EQ(f.ring.Read()[8], 4);
-      EXPECT_EQ(f.done.Read()[0], 1);
       const auto cos = f.head_cos.Read();
       EXPECT_EQ(cos[0], 13);
       EXPECT_EQ(cos[3 * heads - 1], 12 + 3 * heads);
-      const auto hidden = f.out_hidden.Read();
-      for (int row = 0; row < heads; ++row)
-        for (int col = 0; col < 3; ++col)
-          EXPECT_EQ(hidden[row * 3 + col], 200 + std::min(row, rows - 1) * 3 + col);
     }
   }
 }
@@ -148,7 +137,6 @@ TEST_F(FoldContribTest, MutedPrefillDoesNotAccessRingOrCommitContext) {
   f.Reset(8, 0, true);
   f.ptrs.Upload({0, 0});
   ASSERT_TRUE(f.Mid(8, 4).IsOK());
-  ASSERT_TRUE(f.Tail().IsOK());
   Check(cudaDeviceSynchronize());
   EXPECT_EQ(f.context.Read(), (std::vector<int64_t>{-1, -2}));
   EXPECT_EQ(f.ctl.Read()[1], 3);
@@ -170,7 +158,6 @@ TEST_F(FoldContribTest, InvalidDeviceMetadataMutesBeforeRingAccess) {
     if (kind == 3) ctl[7] = -1;
     f.ctl.Upload(ctl);
     ASSERT_TRUE(f.Mid(4, 4).IsOK());
-    ASSERT_TRUE(f.Tail().IsOK());
     Check(cudaDeviceSynchronize());
     EXPECT_EQ(f.selection.Read()[0], -1);
     EXPECT_EQ(f.ctl.Read()[5] & bit, bit);
@@ -180,24 +167,17 @@ TEST_F(FoldContribTest, InvalidDeviceMetadataMutesBeforeRingAccess) {
   }
 }
 
-TEST_F(FoldContribTest, TailSlotsAndValidationArePublished) {
+TEST_F(FoldContribTest, ValidationStatusIsPublished) {
   Fixture f;
-  for (int slot : {2, 8, 9, 13}) {
-    for (const auto& statuses : {std::pair{std::vector<int32_t>{0, 0}, std::vector<int32_t>{4, 8}},
-                                 std::pair{std::vector<int32_t>{1, 4}, std::vector<int32_t>{0, 8}}}) {
-      f.Reset(4, 2);
-      f.status.Upload(statuses.first);
-      ASSERT_TRUE(f.Mid(4, 4).IsOK());
-      Check(cudaDeviceSynchronize());
-      f.status.Upload(statuses.second);
-      ASSERT_TRUE(f.Tail(slot).IsOK());
-      Check(cudaDeviceSynchronize());
-      const int32_t combined = statuses.first[0] | statuses.first[1] | statuses.second[0] | statuses.second[1];
-      EXPECT_EQ(f.ctl.Read()[slot], 10);
-      EXPECT_EQ(f.ctl.Read()[5], combined ? 2 : 0);
-      EXPECT_EQ(f.ring.Read()[4], combined | (combined ? 2 : 0));
-      EXPECT_EQ(f.ring.Read()[0], 1);
-    }
+  for (const auto& statuses : {std::vector<int32_t>{0, 0}, std::vector<int32_t>{1, 4}}) {
+    f.Reset(4, 2);
+    f.status.Upload(statuses);
+    ASSERT_TRUE(f.Mid(4, 4).IsOK());
+    Check(cudaDeviceSynchronize());
+    const int32_t combined = statuses[0] | statuses[1];
+    EXPECT_EQ(f.ctl.Read()[5], combined ? 2 : 0);
+    EXPECT_EQ(f.ring.Read()[4], combined);
+    EXPECT_EQ(f.ring.Read()[0], 1);
   }
 }
 
@@ -210,7 +190,6 @@ TEST_F(FoldContribTest, CapturedGraphReplaysWithFreshAcceptance) {
   f.Reset(4, 0);
   Check(cudaStreamBeginCapture(stream, cudaStreamCaptureModeThreadLocal));
   ASSERT_TRUE(f.Mid(4, 4, stream).IsOK());
-  ASSERT_TRUE(f.Tail(2, stream).IsOK());
   Check(cudaStreamEndCapture(stream, &graph));
   Check(cudaGraphInstantiate(&executable, graph, nullptr, nullptr, 0));
   for (int accepted : {0, 3, 1, 2}) {

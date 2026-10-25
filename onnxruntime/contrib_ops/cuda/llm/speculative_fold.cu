@@ -106,41 +106,6 @@ __global__ void MidKernel(const int64_t* tokens, const int64_t* ids, const int32
   }
 }
 
-__global__ void HiddenKernel(const uint16_t* source, uint16_t* output, int64_t width, int rows, int head_rows) {
-  for (int64_t i = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
-       i < width * head_rows; i += static_cast<int64_t>(gridDim.x) * blockDim.x) {
-    const int64_t row = i / width;
-    output[i] = source[(row < rows ? row : rows - 1) * width + i % width];
-  }
-}
-
-__global__ void TailKernel(const int64_t* token, const int32_t* status, int count,
-                           const int64_t* input_ctl, int64_t* ctl, int ctl_count,
-                           const int64_t* ptrs, int32_t* done, int slot) {
-  if (threadIdx.x != 0) return;
-  if (input_ctl != nullptr && input_ctl != ctl) {
-    for (int i = 0; i < ctl_count; ++i) ctl[i] = input_ctl[i];
-  }
-  done[0] = 0;
-  if (ctl[3] != 0) return;
-  if (ptrs != nullptr && (ctl[4] <= 0 || !ValidRing(ptrs, ctl[4] - 1))) {
-    ctl[5] |= 16;
-    ctl[3] = 1;
-    return;
-  }
-  int32_t error = 0;
-  for (int i = 0; i < count; ++i) error |= status[i];
-  if (slot >= 0) ctl[slot] = token[0];
-  if (error) ctl[5] |= 2;
-  if (ptrs != nullptr) {
-    volatile int64_t* record = reinterpret_cast<int64_t*>(ptrs[0]) + 8 * ((ctl[4] - 1) % ptrs[1]);
-    record[4] = record[4] | error | ctl[5];
-    __threadfence_system();
-    record[0] = ctl[4];
-  }
-  done[0] = 1;
-}
-
 Status LaunchStatus(cudaError_t error) {
   return error == cudaSuccess ? Status::OK()
                               : Status(common::StatusCategory::SYSTEM, static_cast<int>(error), cudaGetErrorString(error));
@@ -152,25 +117,13 @@ Status LaunchMid(const int64_t* tokens, const int64_t* ids, const int32_t* statu
                  const int64_t* ptrs, const uint16_t* cosine, const uint16_t* sine,
                  int64_t* head_ids, int32_t* head_c, int64_t* slots, int32_t* lengths,
                  uint16_t* head_cos, uint16_t* head_sin, int64_t* selection,
-                 const uint16_t* hidden, uint16_t* head_hidden, int64_t hidden_width,
                  int rows, int head_rows, int rope_rows, int rope_width, int capacity, cudaStream_t stream,
                  bool publish_ring, const int64_t* input_ctl, int ctl_count, const int64_t* input_context) {
   MidKernel<<<1, 256, 0, stream>>>(tokens, ids, status, status_count, input_ctl, ctl, ctl_count,
                                    input_context, context, prefixes, prefix2, ptrs,
                                    cosine, sine, head_ids, head_c, slots, lengths, head_cos, head_sin, selection,
                                    rows, head_rows, rope_rows, rope_width, capacity, publish_ring);
-  ORT_RETURN_IF_ERROR(LaunchStatus(cudaGetLastError()));
-  if (head_hidden) {
-    HiddenKernel<<<32, 256, 0, stream>>>(hidden, head_hidden, hidden_width, rows, head_rows);
-    ORT_RETURN_IF_ERROR(LaunchStatus(cudaGetLastError()));
-  }
-  return Status::OK();
-}
-
-Status LaunchTail(const int64_t* token, const int32_t* status, int status_count, int64_t* ctl,
-                  const int64_t* ptrs, int32_t* done, int slot, cudaStream_t stream,
-                  const int64_t* input_ctl, int ctl_count) {
-  TailKernel<<<1, 32, 0, stream>>>(token, status, status_count, input_ctl, ctl, ctl_count, ptrs, done, slot);
   return LaunchStatus(cudaGetLastError());
 }
+
 }  // namespace onnxruntime::contrib::cuda::speculative_fold

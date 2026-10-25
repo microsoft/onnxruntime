@@ -91,7 +91,6 @@ TEST(SpeculativeFoldTest, InferenceSessionLoadsVersionOneAndAcceptsMutedPrefillR
   auto* ptrs = arg("ptrs", i64, {2});
   auto* cosine = arg("cosine", bf16, {16, 3});
   auto* sine = arg("sine", bf16, {16, 3});
-  auto* hidden = arg("hidden", bf16, {1, -1, 3});
   auto* head_ids = arg("head_ids", i64, {1, 2});
   auto* head_c = arg("head_c", i32, {1});
   auto* slots = arg("slots", i64, {1, 2});
@@ -99,23 +98,15 @@ TEST(SpeculativeFoldTest, InferenceSessionLoadsVersionOneAndAcceptsMutedPrefillR
   auto* cos_out = arg("cos_out", bf16, {1, 2, 3});
   auto* sin_out = arg("sin_out", bf16, {1, 2, 3});
   auto* selected = arg("selected", i64, {1});
-  auto* head_hidden = arg("head_hidden", bf16, {1, 2, 3});
-  auto* mid_ctl = arg("mid_ctl", i64, {8});
-  auto* updated_context = arg("updated_context", i64, {2});
-  auto* draft = arg("draft", i64, {1});
-  auto* downstream_status = arg("downstream_status", i32, {1});
-  auto* done = arg("done", i32, {1});
   auto* updated_ctl = arg("updated_ctl", i64, {8});
+  auto* updated_context = arg("updated_context", i64, {2});
   graph.AddNode("mid", "SpeculativePrefixCommit", "",
-                {tokens, ids, status, ctl, context, prefixes, prefix2, ptrs, cosine, sine, hidden},
-                {head_ids, head_c, slots, lengths, cos_out, sin_out, selected, head_hidden, mid_ctl, updated_context},
+                {tokens, ids, status, ctl, context, prefixes, prefix2, ptrs, cosine, sine},
+                {head_ids, head_c, slots, lengths, cos_out, sin_out, selected, updated_ctl, updated_context},
                 nullptr, kMSDomain)
       .SetExecutionProviderType(kCudaExecutionProvider);
-  graph.AddNode("tail", "SpeculativeStepPublish", "", {draft, downstream_status, mid_ctl, ptrs}, {done, updated_ctl}, nullptr,
-                kMSDomain)
-      .SetExecutionProviderType(kCudaExecutionProvider);
-  graph.SetOutputs({head_ids, head_c, slots, lengths, cos_out, sin_out, selected, head_hidden,
-                    updated_ctl, updated_context, done});
+  graph.SetOutputs({head_ids, head_c, slots, lengths, cos_out, sin_out, selected,
+                    updated_ctl, updated_context});
   ASSERT_STATUS_OK(graph.Resolve());
 
   std::stringstream stream;
@@ -140,7 +131,6 @@ TEST(SpeculativeFoldTest, InferenceSessionLoadsVersionOneAndAcceptsMutedPrefillR
   auto run = [&](int rows, bool muted) {
     std::vector<int64_t> token_values(rows);
     std::vector<int64_t> id_values(rows, -1);
-    std::vector<BFloat16> hidden_rows(rows * 3);
     for (int row = 0; row < rows; ++row) token_values[row] = row + 10;
     id_values[0] = 0;
     if (rows > 1) id_values[1] = token_values[0];
@@ -154,18 +144,15 @@ TEST(SpeculativeFoldTest, InferenceSessionLoadsVersionOneAndAcceptsMutedPrefillR
     feed("ptrs", {2}, muted ? std::vector<int64_t>{0, 0} : std::vector<int64_t>{ring.Address(), 4});
     feed("cosine", {16, 3}, rope);
     feed("sine", {16, 3}, rope);
-    feed("hidden", {1, rows, 3}, hidden_rows);
-    feed("draft", {1}, std::vector<int64_t>{42});
-    feed("downstream_status", {1}, std::vector<int32_t>{0});
     std::vector<OrtValue> outputs;
     const std::vector<std::string> output_names{
         "head_ids", "head_c", "slots", "lengths", "cos_out", "sin_out",
-        "selected", "head_hidden", "updated_ctl", "updated_context", "done"};
+        "selected", "updated_ctl", "updated_context"};
     const Status status = session.Run(RunOptions{}, feeds, output_names, &outputs);
     EXPECT_TRUE(status.IsOK()) << status;
     if (status.IsOK()) {
       EXPECT_EQ(outputs[6].Get<Tensor>().Data<int64_t>()[0], muted ? 0 : 1);
-      EXPECT_EQ(outputs[10].Get<Tensor>().Data<int32_t>()[0], muted ? 0 : 1);
+      EXPECT_EQ(outputs[1].Get<Tensor>().Data<int32_t>()[0], muted ? 0 : 2);
     }
   };
 

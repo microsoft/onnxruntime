@@ -1,10 +1,10 @@
-# CUDA speculative prefix commit and step publish operators
+# CUDA speculative prefix commit operator
 
-`com.microsoft::SpeculativePrefixCommit` and `SpeculativeStepPublish` schema version 1 implement batch-one
+`com.microsoft::SpeculativePrefixCommit` schema version 1 implements batch-one
 speculative acceptance and result publication without a custom-op library.
 This replaces the earlier two-row schema and supports two through eight head
 rows, variable rotary width, configurable cache capacity, optional hidden-state
-padding, and deferred publication after downstream validation.
+padding, and direct ring publication after verification.
 
 `SpeculativePrefixCommit` takes verifier token predictions, input token IDs, status words,
 control state, committed context, prefix contexts, result-ring metadata,
@@ -15,13 +15,9 @@ The last two outputs **alias** inputs 3 and 4. The caller must serialize access
 to those device buffers. For three through eight head rows, control has at least
 16 int64 words and prefix contexts contain `head_rows` pairs of int64 words.
 When `rows > 4`, predictions `tokens[4..7]` are packed into the upper 32-bit
-halves of ring record words `1, 2, 3, 5`.
-
-`SpeculativeStepPublish` takes a token, status words, the mid-stage control output, and
-result-ring metadata. It returns a dependency token and updated control.
-The latter aliases input 2. `ctl_slot` selects word -1 (none), 2, or 8..13. The tail writes
-the ring's sequence word only after a system fence, so host polling cannot
-observe a partial record.
+halves of ring record words `1, 2, 3, 5`. The operator writes the ring's
+sequence word only after a system fence, so host polling cannot observe a
+partial record.
 
 The ring metadata is `[device_accessible_address, positive_record_capacity]`.
 Each record has eight int64 words. Its address must be aligned and its allocation
@@ -30,9 +26,8 @@ the caller. Invalid length, rotary position, or ring metadata sets error bits
 4, 8, or 16, mutes control, and avoids unsafe ring access. Muted prefill uses
 zero positions/cache length and does not commit contexts or access ring metadata.
 Muted prefill may contain more verifier rows than `head_rows`; non-muted
-verification is limited to `head_rows`. The tail unions its downstream status
-with the verifier status stored by the mid stage. The kernels do not allocate
-or synchronize the stream and support CUDA graph replay.
+verification is limited to `head_rows`. The kernel does not allocate
+or synchronize the stream and supports CUDA graph replay.
 
 ## Migrating legacy packages
 
