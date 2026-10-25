@@ -902,7 +902,7 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
       // and TRT EP instance, so it won't be released.)
       std::string calibration_table, cache_path, cache_prefix, timing_cache_path, lib_path, trt_tactic_sources,
           trt_extra_plugin_lib_paths, min_profile, max_profile, opt_profile, ep_context_file_path,
-          onnx_model_folder_path, trt_op_types_to_exclude, preview_features;
+          onnx_model_folder_path, trt_op_types_to_exclude, preview_features, profiling_verbosity;
       auto it = provider_options_map.find(type);
       if (it != provider_options_map.end()) {
         OrtTensorRTProviderOptionsV2 params;
@@ -1216,6 +1216,9 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
               preview_features = option.second;
               params.trt_preview_features = preview_features.c_str();
             }
+          } else if (option.first == "trt_profiling_verbosity") {
+            profiling_verbosity = option.second;
+            params.trt_profiling_verbosity = profiling_verbosity.c_str();
           } else {
             ORT_THROW("Invalid TensorRT EP option: ", option.first);
           }

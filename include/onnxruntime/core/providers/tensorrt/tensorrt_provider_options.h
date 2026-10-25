@@ -97,4 +97,5 @@ struct OrtTensorRTProviderOptionsV2 {
   int trt_engine_hw_compatible{0};                    // Enable hardware compatibility. Default 0 = false, nonzero = true
   const char* trt_op_types_to_exclude{};              // Exclude specific ops from running on TRT.
   int trt_load_user_initializer{0};                   // Save initializers locally instead of to disk. Default 0 = false, nonzero = true
+  const char* trt_profiling_verbosity{nullptr};       // Profiling (build) and NVTX (runtime) verbosity: "none" | "layer_names_only" | "detailed". NVTX cannot exceed the engine's build verbosity
 };
