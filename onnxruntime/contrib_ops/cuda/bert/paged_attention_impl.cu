@@ -533,6 +533,10 @@ Status GetSanitizeSequenceLengthsWorkspaceSize(int batch_size,
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "batch_size exceeds the sequence sanitizer indexing limit.");
   }
+  if (batch_size < 256) {
+    workspace_bytes = 0;
+    return Status::OK();
+  }
   const int element_count = batch_size + 1;
   int32_t* placeholder = nullptr;
   size_t max_scan_bytes = 0;
@@ -543,6 +547,84 @@ Status GetSanitizeSequenceLengthsWorkspaceSize(int batch_size,
       nullptr, sum_scan_bytes, placeholder, placeholder, SaturatingAddInt32{}, element_count, stream));
   workspace_bytes = std::max(max_scan_bytes, sum_scan_bytes);
   return Status::OK();
+}
+
+__global__ void __launch_bounds__(256) FusedSanitizeSequenceLengthsSmallBatchKernel(
+    int32_t* sanitized_cumulative_seqlens_q,
+    int32_t* sanitized_past_seqlens,
+    int32_t* sequence_validity,
+    int32_t* cumulative_seqlens_kv,
+    const int32_t* cumulative_seqlens_q,
+    const int32_t* past_seqlens,
+    int batch_size,
+    int max_num_blocks_per_seq,
+    int block_size,
+    int token_count) {
+  __shared__ int32_t s_q[256];
+  __shared__ int32_t s_kv[256];
+  const int tid = static_cast<int>(threadIdx.x);
+  if (tid <= batch_size) {
+    if (tid == 0) {
+      s_q[0] = 0;
+    } else if (tid == batch_size) {
+      s_q[tid] = token_count;
+    } else {
+      s_q[tid] = min(token_count, max(0, cumulative_seqlens_q[tid]));
+    }
+  }
+  __syncthreads();
+  for (int offset = 1; offset <= batch_size; offset <<= 1) {
+    int32_t val = tid <= batch_size ? s_q[tid] : 0;
+    if (tid >= offset && tid <= batch_size) {
+      val = max(s_q[tid - offset], val);
+    }
+    __syncthreads();
+    if (tid <= batch_size) {
+      s_q[tid] = val;
+    }
+    __syncthreads();
+  }
+  if (tid <= batch_size) {
+    sanitized_cumulative_seqlens_q[tid] = s_q[tid];
+  }
+  if (tid == 0) {
+    s_kv[0] = 0;
+  }
+  if (tid < batch_size) {
+    const int32_t query_length = s_q[tid + 1] - s_q[tid];
+    const int64_t mapped_capacity = static_cast<int64_t>(max_num_blocks_per_seq) * block_size;
+    const int64_t available_past_capacity = mapped_capacity - query_length;
+    const int64_t max_past_length = available_past_capacity > 0 ? available_past_capacity : 0;
+    const int64_t input_past_length = past_seqlens[tid];
+    if (query_length > mapped_capacity ||
+        input_past_length < 0 || input_past_length > max_past_length) {
+      sanitized_past_seqlens[tid] = 0;
+      sequence_validity[tid] = 0;
+      s_kv[tid + 1] = 0;
+    } else {
+      sequence_validity[tid] = 1;
+      sanitized_past_seqlens[tid] = static_cast<int32_t>(input_past_length);
+      const int64_t uncapped_kv_length = input_past_length + query_length;
+      const int64_t kv_length = uncapped_kv_length < mapped_capacity ? uncapped_kv_length : mapped_capacity;
+      s_kv[tid + 1] = static_cast<int32_t>(kv_length < INT32_MAX ? kv_length : INT32_MAX);
+    }
+  }
+  __syncthreads();
+  const SaturatingAddInt32 sat_add{};
+  for (int offset = 1; offset <= batch_size; offset <<= 1) {
+    int32_t val = tid <= batch_size ? s_kv[tid] : 0;
+    if (tid >= offset && tid <= batch_size) {
+      val = sat_add(s_kv[tid - offset], val);
+    }
+    __syncthreads();
+    if (tid <= batch_size) {
+      s_kv[tid] = val;
+    }
+    __syncthreads();
+  }
+  if (tid <= batch_size) {
+    cumulative_seqlens_kv[tid] = s_kv[tid];
+  }
 }
 
 Status LaunchSanitizeSequenceLengths(int32_t* sanitized_cumulative_seqlens_q,
@@ -561,6 +643,14 @@ Status LaunchSanitizeSequenceLengths(int32_t* sanitized_cumulative_seqlens_q,
   if (batch_size <= 0 || batch_size > (INT32_MAX - 1) / 2) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "batch_size exceeds the sequence sanitizer indexing limit.");
+  }
+  if (batch_size < 256) {
+    const int threads = ((batch_size + 1 + 31) / 32) * 32;
+    FusedSanitizeSequenceLengthsSmallBatchKernel<<<1, threads, 0, stream>>>(
+        sanitized_cumulative_seqlens_q, sanitized_past_seqlens, sequence_validity,
+        cumulative_seqlens_kv, cumulative_seqlens_q, past_seqlens, batch_size,
+        max_num_blocks_per_seq, block_size, token_count);
+    return CUDA_CALL(cudaGetLastError());
   }
   constexpr int kThreadsPerBlock = 256;
   const int cumulative_element_count = batch_size + 1;

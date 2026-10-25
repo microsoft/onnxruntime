@@ -1178,6 +1178,12 @@ bool is_moe_gemv_fused_finalize_supported(int sm, int64_t num_rows, int64_t expe
   if (num_rows * experts_per_token != expanded_num_rows) {
     return false;
   }
+  // Beyond 4 tokens (e.g. S=8 speculative decoding with k=10 -> 80 expanded routes), iterating
+  // serially over experts_per_token inside each CTA is slower than launching the parallel-route
+  // moe_gemv_kernel followed by finalizeMoeRoutingKernel.
+  if (num_rows > 4 && expanded_num_rows > 32) {
+    return false;
+  }
   return true;
 }
 

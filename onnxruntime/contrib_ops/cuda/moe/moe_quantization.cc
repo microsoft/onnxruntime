@@ -168,9 +168,15 @@ std::optional<onnxruntime::llm::cutlass_extensions::CutlassGemmConfig> PickPrefi
   if (rows_per_expert >= 100.0) {
     pick = is_fc2 ? find_tma(CutlassTileConfigSM90::CtaShape128x64x128B, ClusterShape::ClusterShape_2x1x1)
                   : find_tma(CutlassTileConfigSM90::CtaShape128x256x128B, ClusterShape::ClusterShape_2x1x1);
+    if (!pick) {
+      pick = find_ampere(CutlassTileConfig::CtaShape64x128x64_WarpShape64x32x64);
+    }
   } else if (rows_per_expert >= 24.0) {
     pick = is_fc2 ? find_tma(CutlassTileConfigSM90::CtaShape128x64x128B, ClusterShape::ClusterShape_2x1x1)
                   : find_ampere(CutlassTileConfig::CtaShape64x128x64_WarpShape32x64x64);
+    if (!pick) {
+      pick = find_ampere(CutlassTileConfig::CtaShape64x128x64_WarpShape64x32x64);
+    }
   } else {
     pick = find_ampere(CutlassTileConfig::CtaShape32x128x64_WarpShape32x32x64);
   }
@@ -1846,7 +1852,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
         const int64_t tile_rows = distinct_tile_rows[i];
         std::optional<MoeConfig> config1 = deterministic_config;
         std::optional<MoeConfig> config2 = deterministic_config;
-        if (is_nvfp4 && !use_fp4_gemv && !route_native_fp4) {
+        if ((is_nvfp4 || quant_type_ == "int") && !use_fp4_gemv && !route_native_fp4) {
           const double rows_per_expert = static_cast<double>(tile_rows) * static_cast<double>(k_) / runner_num_experts;
           if (auto fc1 = PickPrefillTactic(tactics, false, rows_per_expert)) config1 = fc1;
           if (auto fc2 = PickPrefillTactic(tactics, true, rows_per_expert)) config2 = fc2;
@@ -3845,6 +3851,77 @@ Status QMoE::ComputeInt3(OpKernelContext* context) const {
 #endif
   if (rows == 0) return Status::OK();
   const size_t element_size = input->DataType()->Size();
+
+  static const bool disable_int3_tc_prefill =
+      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_DISABLE_INT3_TENSORCORE_PREFILL", 0) != 0;
+  static const int int3_prefill_min_rows =
+      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_INT3_PREFILL_MIN_ROWS", 16);
+  const bool can_use_tc_prefill =
+      !disable_int3_tc_prefill && rows >= int3_prefill_min_rows &&
+      first_zeros == nullptr && second_zeros == nullptr &&
+      router_weights == nullptr && !use_sparse_mixer_ &&
+      sm_ >= 80 && experts <= 512 &&
+      hidden % 64 == 0 && intermediate % 64 == 0 &&
+      (block_size_ == 32 || block_size_ == 64 || block_size_ == 128);
+
+  if (can_use_tc_prefill) {
+    namespace ck = onnxruntime::llm::kernels::cutlass_kernels;
+    const size_t prefill_tile_rows =
+        std::min<size_t>(rows, row_tile_size_ > 0 ? static_cast<size_t>(row_tile_size_) : size_t{2048});
+    const size_t prefill_routes = SafeInt<size_t>(prefill_tile_rows) * k_;
+    auto selected = GetScratchBuffer<int>(prefill_routes, GetComputeStream(context));
+    auto scales = GetScratchBuffer<float>(prefill_routes, GetComputeStream(context));
+    auto unpermuted_to_permuted = GetScratchBuffer<int>(prefill_routes, GetComputeStream(context));
+
+    ck::Int2MoePrefillParams prefill_params{};
+    prefill_params.fc1_weights = first_weights->Data<uint8_t>();
+    prefill_params.fc2_weights = second_weights->Data<uint8_t>();
+    prefill_params.fc1_scales = first_scales->DataRaw();
+    prefill_params.fc2_scales = second_scales->DataRaw();
+    prefill_params.fc1_bias = first_bias ? first_bias->DataRaw() : nullptr;
+    prefill_params.fc2_bias = second_bias ? second_bias->DataRaw() : nullptr;
+    prefill_params.selected_experts = selected.get();
+    prefill_params.routing_weights = scales.get();
+    prefill_params.unpermuted_to_permuted = unpermuted_to_permuted.get();
+    prefill_params.is_bf16 = params.is_bfloat16;
+    prefill_params.num_rows = static_cast<int64_t>(prefill_tile_rows);
+    prefill_params.hidden_size = params.hidden;
+    prefill_params.inter_size = params.intermediate;
+    prefill_params.block_size = params.block_size;
+    prefill_params.fc1_weight_bits = params.fc1.bits;
+    prefill_params.fc2_weight_bits = params.fc2.bits;
+    prefill_params.weights_are_raw = true;
+    prefill_params.num_experts = params.num_experts;
+    prefill_params.top_k = params.top_k;
+    prefill_params.sm = sm_;
+    prefill_params.multiprocessor_count = GetDeviceProp().multiProcessorCount;
+    prefill_params.alpha = params.alpha;
+    prefill_params.beta = params.beta;
+    prefill_params.limit = params.limit;
+    prefill_params.stream = stream;
+
+    const size_t prefill_ws_bytes = ck::GetInt2MoePrefillWorkspaceSize(prefill_params);
+    auto prefill_workspace = GetScratchBuffer<void>(prefill_ws_bytes, GetComputeStream(context));
+
+    for (int64_t offset = 0; offset < rows; offset += static_cast<int64_t>(prefill_tile_rows)) {
+      const int cur_rows = narrow<int>(std::min<size_t>(prefill_tile_rows, static_cast<size_t>(rows - offset)));
+      if (params.is_bfloat16) {
+        LaunchSoftmaxTopK(reinterpret_cast<const __nv_bfloat16*>(router->DataRaw()) + offset * experts,
+                          scales.get(), selected.get(), cur_rows, params.num_experts,
+                          params.top_k, normalize_routing_weights_, stream);
+      } else {
+        LaunchSoftmaxTopK(reinterpret_cast<const half*>(router->DataRaw()) + offset * experts,
+                          scales.get(), selected.get(), cur_rows, params.num_experts,
+                          params.top_k, normalize_routing_weights_, stream);
+      }
+      prefill_params.input = static_cast<const char*>(input->DataRaw()) + offset * hidden * element_size;
+      prefill_params.output = static_cast<char*>(output->MutableDataRaw()) + offset * hidden * element_size;
+      prefill_params.num_rows = cur_rows;
+      ck::RunInt2MoePrefill(prefill_params, prefill_workspace.get());
+    }
+    return Status::OK();
+  }
+
   const size_t per_row_bytes =
       SafeInt<size_t>(k_) * (SafeInt<size_t>(intermediate + hidden) * element_size + 7 * sizeof(int));
   const size_t budget = std::min<size_t>(int_dequant_max_scratch_bytes_, size_t{256} << 20);
@@ -3857,6 +3934,7 @@ Status QMoE::ComputeInt3(OpKernelContext* context) const {
   auto selected = GetScratchBuffer<int>(routes, GetComputeStream(context));
   auto scales = GetScratchBuffer<float>(routes, GetComputeStream(context));
   auto source_rows = GetScratchBuffer<int>(SafeInt<size_t>(routes) * 5 + 4096, GetComputeStream(context));
+  auto route_groups = GetScratchBuffer<int2>(routes, GetComputeStream(context));
   const size_t act_bytes = SafeInt<size_t>(routes) * intermediate * element_size;
   const size_t fc2_part_bytes = SafeInt<size_t>(routes) * hidden * element_size;
   auto activation = GetScratchBuffer<void>(act_bytes + fc2_part_bytes, GetComputeStream(context));
@@ -3867,13 +3945,24 @@ Status QMoE::ComputeInt3(OpKernelContext* context) const {
   params.grouped_workspace = use_sparse_mixer_ ? nullptr : source_rows.get();
   for (int64_t offset = 0; offset < rows; offset += tile_rows) {
     params.rows = narrow<int>(std::min<size_t>(tile_rows, rows - offset));
+    const int cur_routes = params.rows * params.top_k;
+    const bool use_groups = !use_sparse_mixer_ && router_weights == nullptr && cur_routes > 0 && cur_routes <= 256;
+    params.route_groups = use_groups ? route_groups.get() : nullptr;
     const auto route = [&](const auto* logits) {
       if (use_sparse_mixer_) {
         LaunchSparseMixerTop2(logits, scales.get(), selected.get(), source_rows.get(),
                               params.rows, params.num_experts, stream);
+      } else if (use_groups &&
+                 LaunchFusedInt3RouteGroups(logits, scales.get(), selected.get(), route_groups.get(),
+                                            params.rows, params.num_experts, params.top_k,
+                                            normalize_routing_weights_, stream)) {
+        // Fused 1-CTA SoftmaxTopK + paired-first route grouping completed.
       } else {
         LaunchSoftmaxTopK(logits, scales.get(), selected.get(), params.rows, params.num_experts,
                           params.top_k, normalize_routing_weights_, stream);
+        if (use_groups) {
+          LaunchBuildInt3RouteGroups(selected.get(), route_groups.get(), cur_routes, stream);
+        }
       }
     };
     if (params.is_bfloat16) {
