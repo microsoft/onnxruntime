@@ -127,8 +127,4 @@ Status SigmoidGateMul::ComputeInternal(OpKernelContext* context) const {
       dense_prefill ? false : sigmoid_in_fp32_, silu_gate_);
 }
 
-template class ArgMaxLastAxis<float>;
-template class ArgMaxLastAxis<MLFloat16>;
-template class ArgMaxLastAxis<BFloat16>;
-
 }  // namespace onnxruntime::contrib::cuda
