@@ -23,7 +23,9 @@ import os
 import time
 import unittest
 from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import nullcontext
+from threading import Barrier
 
 import numpy
 import torch
@@ -3273,7 +3275,7 @@ class TestQMoEInt3Validation(unittest.TestCase):
         return model, tensors
 
     @staticmethod
-    def _session(model, scratch=None, tile=None, capture=False):
+    def _session(model, scratch=None, tile=None, capture=False, provider_options=None):
         options = onnxruntime.SessionOptions()
         options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
         if scratch is not None:
@@ -3281,11 +3283,14 @@ class TestQMoEInt3Validation(unittest.TestCase):
         if tile is not None:
             options.add_session_config_entry("ep.cuda.qmoe_row_tile_size", str(tile))
         provider = resolve_cuda_plugin_ep("CUDAExecutionProvider")
-        if capture:
+        if capture or provider_options:
+            extra_options = dict(provider_options or {})
+            if capture:
+                extra_options["enable_cuda_graph"] = True
             provider = (
-                (provider, {"enable_cuda_graph": True})
+                (provider, extra_options)
                 if isinstance(provider, str)
-                else (provider[0], {**provider[1], "enable_cuda_graph": True})
+                else (provider[0], {**provider[1], **extra_options})
             )
         return onnxruntime.InferenceSession(model.SerializeToString(), options, providers=[provider])
 
@@ -3480,6 +3485,99 @@ class TestQMoEInt3Validation(unittest.TestCase):
                     numpy.testing.assert_allclose(
                         self._run(session, binding, output), self._reference(tensors, (3, 3), 32), rtol=0.03, atol=0.002
                     )
+
+    @parameterized.expand([("implicit", False), ("explicit", True)])
+    def test_external_capture_requires_validated_initializers(self, _name, zeros):
+        model, tensors = self._case(zeros=zeros)
+        stream = torch.cuda.Stream()
+        session = self._session(model, provider_options={"user_compute_stream": str(stream.cuda_stream)})
+        binding, buffers, output = self._binding(session, tensors)
+        run_options = onnxruntime.RunOptions()
+        run_options.add_run_config_entry("disable_synchronize_execution_providers", "1")
+        graph = torch.cuda.CUDAGraph()
+        with (
+            torch.cuda.graph(graph, stream=stream),
+            self.assertRaisesRegex(Exception, "capture requires validated initializers"),
+        ):
+            session.run_with_iobinding(binding, run_options)
+        numpy.testing.assert_allclose(
+            self._run(session, binding, output), self._reference(tensors, (3, 3), 32), rtol=0.03, atol=0.002
+        )
+        graph = torch.cuda.CUDAGraph()
+        with torch.cuda.graph(graph, stream=stream):
+            session.run_with_iobinding(binding, run_options)
+        for factor in (1.0, 0.5, 1.25):
+            changed = {**tensors, "x": tensors["x"] * factor}
+            buffers["x"].copy_(changed["x"])
+            torch.cuda.synchronize()
+            graph.replay()
+            torch.cuda.synchronize()
+            numpy.testing.assert_allclose(
+                output.float().cpu().numpy(), self._reference(changed, (3, 3), 32), rtol=0.03, atol=0.002
+            )
+
+    @parameterized.expand(
+        [
+            (f"{first}_{second}_{dtype}", (first, second), dtype)
+            for first, second in ((3, 3), (3, 4), (4, 3))
+            for dtype in (torch.float16, torch.bfloat16)
+        ]
+    )
+    def test_repeated_calls(self, _name, bits, dtype):
+        for dynamic in ((), ("fc1_S", "fc2_S")):
+            with self.subTest(dynamic=dynamic):
+                model, tensors = self._case(bits, dtype=dtype, dynamic=dynamic)
+                session = self._session(model)
+                binding, buffers, output = self._binding(session, tensors)
+                cases = []
+                for factor in (0.5, 1.25):
+                    changed = {**tensors, "x": tensors["x"] * factor}
+                    if dynamic:
+                        changed["fc1_S"] = tensors["fc1_S"] * factor
+                    cases.append((changed, self._reference(changed, bits, 32)))
+                for iteration in range(12):
+                    changed, expected = cases[iteration % len(cases)]
+                    for name, buffer in buffers.items():
+                        buffer.copy_(changed[name])
+                    numpy.testing.assert_allclose(self._run(session, binding, output), expected, rtol=0.03, atol=0.002)
+
+    @parameterized.expand(
+        [
+            (f"{first}_{second}_{dtype}_{shared}_{dynamic}", (first, second), dtype, shared, dynamic)
+            for first, second in ((3, 3), (3, 4), (4, 3))
+            for dtype in (torch.float16, torch.bfloat16)
+            for shared in (False, True)
+            for dynamic in (False, True)
+        ]
+    )
+    def test_concurrent_runs(self, _name, bits, dtype, shared, dynamic):
+        dynamic_names = ("fc1_S", "fc2_S", "fc1_Z", "fc2_Z") if dynamic else ()
+        model, tensors = self._case(bits, dtype=dtype, dynamic=dynamic_names, zeros=dynamic)
+        shared_session = self._session(model) if shared else None
+        workers = []
+        for worker in range(3):
+            changed = {**tensors, "x": tensors["x"] * (0.5 + worker * 0.5)}
+            changed["router"] = tensors["router"].roll(worker, dims=0)
+            if dynamic:
+                changed["fc1_S"] = tensors["fc1_S"] * (0.75 + worker * 0.25)
+                changed["fc2_S"] = tensors["fc2_S"] * (1.25 - worker * 0.25)
+            session = shared_session if shared else self._session(model)
+            binding, buffers, output = self._binding(session, changed)
+            workers.append((session, binding, buffers, output, self._reference(changed, bits, 32)))
+        barrier = Barrier(len(workers))
+
+        def run_worker(state):
+            session, binding, buffers, output, expected = state
+            torch.cuda.set_device(0)
+            for _ in range(6):
+                barrier.wait(timeout=30)
+                session.run_with_iobinding(binding)
+                binding.synchronize_outputs()
+                actual = output.float().cpu().numpy().copy()
+                numpy.testing.assert_allclose(actual, expected, rtol=0.03, atol=0.002)
+
+        with ThreadPoolExecutor(max_workers=len(workers)) as executor:
+            list(executor.map(run_worker, workers))
 
     @parameterized.expand(
         [
