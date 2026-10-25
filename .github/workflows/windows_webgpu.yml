@@ -93,7 +93,7 @@ jobs:
         env:
           PROCESSOR_ARCHITECTURE: x64
         with:
-          dotnet-version: "8.x"
+          dotnet-version: "8.0.427" # Temporary exact pin bypasses the failing aka.ms SDK redirect.
 
       - name: Test WebGPU NuGet packaging
         run: python -m unittest plugin-ep-webgpu\csharp\test\test_pack_nuget.py -v
@@ -755,7 +755,7 @@ jobs:
         env:
           PROCESSOR_ARCHITECTURE: x64
         with:
-          dotnet-version: "8.x"
+          dotnet-version: "8.0.427" # Temporary exact pin bypasses the failing aka.ms SDK redirect.
 
       - name: Use Nuget 6.x
         uses: nuget/setup-nuget@d105a947828025cd7a980103c35ba2bfae586d0f # v2.0.2
