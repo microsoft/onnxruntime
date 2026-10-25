@@ -69,11 +69,14 @@ Do not modify directly.*
   * <a href="#com.microsoft.MatMulBlockQuantizedFp8Weight">com.microsoft.MatMulBlockQuantizedFp8Weight</a>
   * <a href="#com.microsoft.MatMulBnb4">com.microsoft.MatMulBnb4</a>
   * <a href="#com.microsoft.MatMulFpQ4">com.microsoft.MatMulFpQ4</a>
+  * <a href="#com.microsoft.MatMulGGMLIQ2XXS">com.microsoft.MatMulGGMLIQ2XXS</a>
+  * <a href="#com.microsoft.MatMulGGMLQ8_0">com.microsoft.MatMulGGMLQ8_0</a>
   * <a href="#com.microsoft.MatMulInteger16">com.microsoft.MatMulInteger16</a>
   * <a href="#com.microsoft.MatMulIntegerToFloat">com.microsoft.MatMulIntegerToFloat</a>
   * <a href="#com.microsoft.MatMulNBits">com.microsoft.MatMulNBits</a>
   * <a href="#com.microsoft.MatMulNBitsMlp">com.microsoft.MatMulNBitsMlp</a>
   * <a href="#com.microsoft.MatMulNBitsQkv">com.microsoft.MatMulNBitsQkv</a>
+  * <a href="#com.microsoft.MatMulNVFP4A16">com.microsoft.MatMulNVFP4A16</a>
   * <a href="#com.microsoft.MaxpoolWithMask">com.microsoft.MaxpoolWithMask</a>
   * <a href="#com.microsoft.MoE">com.microsoft.MoE</a>
   * <a href="#com.microsoft.MulInteger">com.microsoft.MulInteger</a>
@@ -4181,6 +4184,118 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.MatMulGGMLIQ2XXS"></a><a name="com.microsoft.matmulggmliq2xxs">**com.microsoft.MatMulGGMLIQ2XXS**</a>
+
+  Weight-only matrix multiplication with serialized GGML IQ2_XXS weights.
+  
+  A has shape [..., K]. B has shape [N, K/256, 66], with no padding or transposition:
+  each 66-byte block contains a little-endian FP16 superblock scale followed by eight
+  8-byte records. Each record contains four byte indices into the canonical 256x8
+  IQ2_XXS magnitude grid and a little-endian uint32 containing four 7-bit sign indices
+  in bits 0..27 and a 4-bit local scale in bits 28..31. The eighth sign bit is the
+  parity of the seven stored sign bits. A decoded element is
+  d * (0.5 + local_scale) * 0.25 * grid[index, j] * sign[j].
+  The grid is fixed by GGML IQ2_XXS; this is not affine integer quantization.
+  
+  Let round_T denote round-to-nearest-even to A's element type. Weight decoding
+  uses FP32, then each complete reconstructed weight is rounded to T before
+  FP32 multiplication and accumulation. The matmul result is rounded to T before
+  optional bias addition: Y = round_T(round_T(A @ round_T(dequantize(B)).T) + bias).
+  The bias addition uses FP32 followed by round_T. Without bias, there is only
+  the matmul output rounding. For FLOAT, round_T is the identity. The summation
+  order is unspecified. This ordering preserves native BF16 reconstructed operands.
+  K must equal 256 times B's second dimension. N and K are derived from B.
+  The output has shape [..., N]. Empty dimensions, including K=0, are supported.
+  The CUDA kernel reads packed blocks directly without a persistent expanded
+  weight or full-matrix dequantization buffer.
+  
+  Format reference:
+  https://github.com/ggml-org/llama.cpp/blob/b76b13379d3b7d67ab0bc424516bb6fd2522bd8e/ggml/src/ggml-quants.c#L2489-L2514
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs (2 - 3)
+
+<dl>
+<dt><tt>A</tt> : T</dt>
+<dd>Activation tensor with rank at least one and shape [..., K].</dd>
+<dt><tt>B</tt> : T1</dt>
+<dd>Raw serialized GGML IQ2_XXS blocks of shape [N, K/256, 66].</dd>
+<dt><tt>bias</tt> (optional) : T</dt>
+<dd>Optional bias of shape [N], added after rounding the matmul output to T.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>Output tensor of shape [..., N], with the same type as A.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Activation, bias and output element types.</dd>
+<dt><tt>T1</tt> : tensor(uint8)</dt>
+<dd>Serialized weight bytes.</dd>
+</dl>
+
+
+### <a name="com.microsoft.MatMulGGMLQ8_0"></a><a name="com.microsoft.matmulggmlq8_0">**com.microsoft.MatMulGGMLQ8_0**</a>
+
+  Weight-only matrix multiplication with raw serialized GGML Q8_0 blocks.
+  
+  A has shape [..., K], rank at least one. B is UINT8 of shape [N, K/32, 34].
+  Each 34-byte block contains a little-endian FP16 scale d followed by 32 signed
+  two's-complement INT8 values q, in K order. Decode d*q in FP32, then round each
+  complete reconstructed weight to A's element type T, not the scale alone.
+  There are no attributes, zero points, padding, external scales or prepacking.
+  
+  Let round_T denote round-to-nearest-even to T. Products and accumulation use
+  FP32. Round the matmul result to T before optional bias addition:
+  Y = round_T(round_T(A @ round_T(dequantize(B)).T) + bias).
+  Bias addition uses FP32 followed by round_T; without bias only the matmul output
+  rounding applies. For FLOAT round_T is the identity. Summation order is unspecified.
+  N and K derive from B; K must equal 32 times B's second dimension. The output has
+  shape [..., N]. Empty dimensions, including K=0, are supported.
+  CUDA reads packed bytes directly, without a persistent expanded weight or
+  full-matrix dequantization buffer. This does not change MatMulNBits semantics.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs (2 - 3)
+
+<dl>
+<dt><tt>A</tt> : T</dt>
+<dd>Activation tensor with rank at least one and shape [..., K].</dd>
+<dt><tt>B</tt> : T1</dt>
+<dd>Raw serialized GGML Q8_0 blocks of shape [N, K/32, 34].</dd>
+<dt><tt>bias</tt> (optional) : T</dt>
+<dd>Optional bias [N], added after rounding the matmul output to T.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>Output of shape [..., N] with the same type as A.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Activation, bias and output element types.</dd>
+<dt><tt>T1</tt> : tensor(uint8)</dt>
+<dd>Raw serialized weight bytes.</dd>
+</dl>
+
+
 ### <a name="com.microsoft.MatMulInteger16"></a><a name="com.microsoft.matmulinteger16">**com.microsoft.MatMulInteger16**</a>
 
   Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-1.13.0/reference/generated/numpy.matmul.html.
@@ -4525,6 +4640,68 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>T2</tt> : tensor(uint8)</dt>
 <dd>Constrain quantized weight types to uint8.</dd>
+</dl>
+
+
+### <a name="com.microsoft.MatMulNVFP4A16"></a><a name="com.microsoft.matmulnvfp4a16">**com.microsoft.MatMulNVFP4A16**</a>
+
+  NVFP4 weight-only matrix multiplication with FP32 global scaling in the epilogue.
+  
+  A has shape [..., K], rank at least one, with FP16 or BF16 elements. B is UINT8
+  [N, K/2], containing low-nibble-first E2M1 pairs. K must be divisible by 16.
+  weight_scale is UINT8 [N, K/16] containing raw E4M3 scale bytes; weight_scale_2
+  is a one-element FP32 global scale tensor. N and K derive from B.
+  
+  Let round_T denote round-to-nearest-even to A's element type. Local weight
+  operands are round_T(e2m1(B) * e4m3(weight_scale)), without the global scale.
+  Products and accumulation use FP32. The global scale multiplies the FP32
+  accumulator before the only output rounding:
+  Y = round_T((A @ local_weight.T) * weight_scale_2).
+  This ordering applies for every M, including general prefill. The summation
+  order is unspecified. The output has shape [..., N]. Empty dimensions and
+  K=0 (empty FP32 sum times the global scale) are supported.
+  
+  There are no attributes, activation quantization, reciprocal scale semantics,
+  or fused bias. Add bias separately in the native output type when required.
+  CUDA uses direct packed execution for small M only when the tensor-core GEMV
+  sub-path is available and enabled. Other cases use temporary local FP16/BF16
+  weights and FP32 accumulators, never persistent expanded weights.
+  This is not native FP4-by-FP4 tensor-core execution or a full-model memory claim.
+  It does not change the defaults or arithmetic of MatMulBlockQuantizedFp4Weight.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs
+
+<dl>
+<dt><tt>A</tt> : T</dt>
+<dd>FP16/BF16 activation with rank at least one and shape [..., K].</dd>
+<dt><tt>B</tt> : T1</dt>
+<dd>Packed E2M1 bytes [N, K/2], low nibble first.</dd>
+<dt><tt>weight_scale</tt> : T1</dt>
+<dd>Raw E4M3 scale bytes [N, K/16].</dd>
+<dt><tt>weight_scale_2</tt> : T2</dt>
+<dd>One-element FP32 global multiplier applied after accumulation.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>Output [..., N] with the same element type as A.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16), tensor(bfloat16)</dt>
+<dd>Activation and output type.</dd>
+<dt><tt>T1</tt> : tensor(uint8)</dt>
+<dd>Packed E2M1 weights and E4M3 scale bytes.</dd>
+<dt><tt>T2</tt> : tensor(float)</dt>
+<dd>Global FP32 scale.</dd>
 </dl>
 
 
