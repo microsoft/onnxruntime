@@ -4790,16 +4790,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "(seq_len - W + j). Extended attributes override the state length and layout "
                 "as for past_state.",
                 "T")
-        .Output(2, "first_state",
-                "Optional carry state after the first input position, with the same "
-                "layout and length as present_state. CUDA only; requires rank-3 channels-last input "
+        .Output(2, "state_update",
+                "Optional compact state-update capture with shape (batch_size, state_update_capacity, channels) "
+                "when state_update_capacity > 0. CUDA extended path only; requires rank-3 channels-last input "
                 "and state_window=0.",
-                "T", OpSchema::Optional)
-        .Output(3, "second_state",
-                "Optional carry state after at most two input positions, with the same layout and length as present_state.",
-                "T", OpSchema::Optional)
-        .Output(4, "third_state",
-                "Optional carry state after at most three input positions, with the same layout and length as present_state.",
                 "T", OpSchema::Optional)
         .TypeConstraint("T",
                         {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
@@ -4827,10 +4821,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 state_window != 0 || getAttribute(ctx, "dilation", 1) < 1) {
               fail_shape_inference("CausalConvWithState: extended attributes require channels_last=1, ndim=1, state_window=0");
             }
-            if (state_update_capacity > 0 && ctx.getNumOutputs() > 3) {
-              fail_shape_inference("CausalConvWithState: state_update_capacity > 0 supports at most 3 outputs");
+            if (ctx.getNumOutputs() > 2 && state_update_capacity <= 0) {
+              fail_shape_inference("CausalConvWithState: state_update output requires state_update_capacity > 0");
             }
-            for (size_t i = 2; i < ctx.getNumOutputs(); ++i) propagateElemTypeFromInputToOutput(ctx, 0, i);
+            if (ctx.getNumOutputs() > 2) propagateElemTypeFromInputToOutput(ctx, 0, 2);
             if (!hasInputShape(ctx, 0)) return;
             const auto& input = getInputShape(ctx, 0);
             if (input.dim_size() != 3) fail_shape_inference("CausalConvWithState: extended input must have rank 3");
@@ -4868,16 +4862,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             *state.add_dim() = state_layout == 0 ? *channels : length;
             *state.add_dim() = state_layout == 0 ? length : *channels;
             updateOutputShape(ctx, 1, state);
-            if (state_update_capacity > 0) {
-              if (ctx.getNumOutputs() > 2 && ctx.hasOutput(2)) {
-                TensorShapeProto update_shape;
-                *update_shape.add_dim() = input.dim(0);
-                update_shape.add_dim()->set_dim_value(state_update_capacity);
-                *update_shape.add_dim() = *channels;
-                updateOutputShape(ctx, 2, update_shape);
-              }
-            } else {
-              for (size_t i = 2; i < ctx.getNumOutputs(); ++i) updateOutputShape(ctx, i, state);
+            if (state_update_capacity > 0 && ctx.getNumOutputs() > 2 && ctx.hasOutput(2)) {
+              TensorShapeProto update_shape;
+              *update_shape.add_dim() = input.dim(0);
+              update_shape.add_dim()->set_dim_value(state_update_capacity);
+              *update_shape.add_dim() = *channels;
+              updateOutputShape(ctx, 2, update_shape);
             }
             return;
           }
@@ -5601,11 +5591,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Capacity C for compact contiguous-prefix transition capture, in [0, 8]. "
               "0 (default) disables compact state-update outputs.",
               AttributeProto::INT, static_cast<int64_t>(0))
-        .Attr("state_output",
-              "Third output is either 'state_update' (default) or the recurrent state after "
-              "the first token ('mid_state'). CUDA supports both modes; WebGPU supports "
-              "'state_update'.",
-              AttributeProto::STRING, std::string("state_update"))
         .Input(0, "query", "Query or packed QKV, shaped as described above.", "T")
         .Input(1, "key", "Key, shape (total_tokens, num_heads_k, head_size_qk)", "T",
                OpSchema::Optional)
@@ -5649,12 +5634,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "(batch_size, num_heads_v, head_size_v, head_size_qk)",
                 "TS", OpSchema::Optional)
         .Output(2, "state_update",
-                "Struct-of-arrays transition factors when state_output='state_update', or "
-                "the state after the first token when state_output='mid_state'.",
-                "TS", OpSchema::Optional)
-        .Output(3, "mid_state2", "CUDA state after at most two request tokens; requires state_output='mid_state'.",
-                "TS", OpSchema::Optional)
-        .Output(4, "mid_state3", "CUDA state after at most three request tokens; requires state_output='mid_state'.",
+                "Struct-of-arrays compact transition factors, shape "
+                "(batch_size, state_update_capacity * (num_heads_v + num_heads_k * "
+                "head_size_qk + num_heads_v * head_size_v)).",
                 "TS", OpSchema::Optional)
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                         "Constrain query/key/value/output types.")
@@ -5668,8 +5650,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           if (ctx.getNumOutputs() > 1) {
             updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
           }
-          for (size_t i = 2; i < ctx.getNumOutputs(); ++i) {
-            updateOutputElemType(ctx, i, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+          if (ctx.getNumOutputs() > 2) {
+            updateOutputElemType(ctx, 2, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
           }
 
           const bool has_key = ctx.getNumInputs() > 1 && ctx.getInputType(1) != nullptr;
@@ -5794,61 +5776,45 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                                  kMaxStateWindow, "], got ", state_update_capacity);
           }
           if (ctx.getNumOutputs() > 2) {
-            const std::string state_output =
-                getAttribute(ctx, "state_output", std::string("state_update"));
-            if (state_output != "state_update" && state_output != "mid_state") {
-              fail_shape_inference("GatedDeltaNet: state_output must be 'state_update' or 'mid_state'");
-            }
-            if (state_output == "mid_state") {
-              if (state_update_capacity != 0) {
-                fail_shape_inference("GatedDeltaNet: mid_state output requires state_update_capacity=0");
+            ONNX_NAMESPACE::TensorShapeProto capsule_shape;
+            add_batch_dim(capsule_shape);
+            auto* width = capsule_shape.add_dim();
+            if (!packed_qkv && query_shape.dim(token_dims).has_dim_value() &&
+                query_shape.dim(token_dims + 1).has_dim_value() &&
+                value_shape->dim(token_dims).has_dim_value() &&
+                value_shape->dim(token_dims + 1).has_dim_value()) {
+              // num_heads_k is constrained to equal num_heads_q, so query supplies it.
+              const int64_t num_heads_k = query_shape.dim(token_dims).dim_value();
+              const int64_t head_size_qk = query_shape.dim(token_dims + 1).dim_value();
+              const int64_t num_heads_v = value_shape->dim(token_dims).dim_value();
+              const int64_t head_size_v = value_shape->dim(token_dims + 1).dim_value();
+              if (num_heads_k <= 0 || head_size_qk <= 0 || num_heads_v <= 0 || head_size_v <= 0) {
+                fail_shape_inference(
+                    "GatedDeltaNet: head counts and head sizes must be positive");
               }
-              if (state_shape != nullptr) {
-                for (size_t i = 2; i < ctx.getNumOutputs(); ++i) updateOutputShape(ctx, i, *state_shape);
-              }
-            } else {
-              if (ctx.getNumOutputs() > 3)
-                fail_shape_inference("GatedDeltaNet: additional prefix states require state_output='mid_state'");
-              ONNX_NAMESPACE::TensorShapeProto capsule_shape;
-              add_batch_dim(capsule_shape);
-              auto* width = capsule_shape.add_dim();
-              if (!packed_qkv && query_shape.dim(token_dims).has_dim_value() &&
-                  query_shape.dim(token_dims + 1).has_dim_value() &&
-                  value_shape->dim(token_dims).has_dim_value() &&
-                  value_shape->dim(token_dims + 1).has_dim_value()) {
-                // num_heads_k is constrained to equal num_heads_q, so query supplies it.
-                const int64_t num_heads_k = query_shape.dim(token_dims).dim_value();
-                const int64_t head_size_qk = query_shape.dim(token_dims + 1).dim_value();
-                const int64_t num_heads_v = value_shape->dim(token_dims).dim_value();
-                const int64_t head_size_v = value_shape->dim(token_dims + 1).dim_value();
-                if (num_heads_k <= 0 || head_size_qk <= 0 || num_heads_v <= 0 || head_size_v <= 0) {
-                  fail_shape_inference(
-                      "GatedDeltaNet: head counts and head sizes must be positive");
-                }
 
-                constexpr int64_t max_dimension = std::numeric_limits<int64_t>::max();
-                if (num_heads_k > max_dimension / head_size_qk ||
-                    num_heads_v > max_dimension / head_size_v) {
-                  fail_shape_inference("GatedDeltaNet: state_update width overflows int64");
-                }
-                const int64_t key_width = num_heads_k * head_size_qk;
-                const int64_t value_width = num_heads_v * head_size_v;
-                if (num_heads_v > max_dimension - key_width) {
-                  fail_shape_inference("GatedDeltaNet: state_update width overflows int64");
-                }
-                const int64_t width_without_capacity = num_heads_v + key_width;
-                if (value_width > max_dimension - width_without_capacity) {
-                  fail_shape_inference("GatedDeltaNet: state_update width overflows int64");
-                }
-                const int64_t per_token_width = width_without_capacity + value_width;
-                if (state_update_capacity > 0 &&
-                    per_token_width > max_dimension / state_update_capacity) {
-                  fail_shape_inference("GatedDeltaNet: state_update width overflows int64");
-                }
-                width->set_dim_value(state_update_capacity * per_token_width);
+              constexpr int64_t max_dimension = std::numeric_limits<int64_t>::max();
+              if (num_heads_k > max_dimension / head_size_qk ||
+                  num_heads_v > max_dimension / head_size_v) {
+                fail_shape_inference("GatedDeltaNet: state_update width overflows int64");
               }
-              updateOutputShape(ctx, 2, capsule_shape);
+              const int64_t key_width = num_heads_k * head_size_qk;
+              const int64_t value_width = num_heads_v * head_size_v;
+              if (num_heads_v > max_dimension - key_width) {
+                fail_shape_inference("GatedDeltaNet: state_update width overflows int64");
+              }
+              const int64_t width_without_capacity = num_heads_v + key_width;
+              if (value_width > max_dimension - width_without_capacity) {
+                fail_shape_inference("GatedDeltaNet: state_update width overflows int64");
+              }
+              const int64_t per_token_width = width_without_capacity + value_width;
+              if (state_update_capacity > 0 &&
+                  per_token_width > max_dimension / state_update_capacity) {
+                fail_shape_inference("GatedDeltaNet: state_update width overflows int64");
+              }
+              width->set_dim_value(state_update_capacity * per_token_width);
             }
+            updateOutputShape(ctx, 2, capsule_shape);
           }
 
           if (state_shape != nullptr) {

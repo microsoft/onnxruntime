@@ -76,8 +76,8 @@ Status CausalConvWithState<T>::ComputeInternal(OpKernelContext* context) const {
     ORT_RETURN_IF_NOT(channels_last_ && state_window_ == 0 && input_shape.NumDimensions() == 3 &&
                           weight_shape.NumDimensions() == 3 && weight_shape[1] == 1,
                       "extended CausalConvWithState requires rank-3 channels-last input, rank-3 weight and state_window=0");
-    ORT_RETURN_IF_NOT(state_update_capacity_ == 0 || context->OutputCount() <= 3,
-                      "extended CausalConvWithState with state_update_capacity > 0 supports at most 3 outputs");
+    ORT_RETURN_IF_NOT(context->OutputCount() <= 2 || state_update_capacity_ > 0,
+                      "extended CausalConvWithState state_update output requires state_update_capacity > 0");
     const int batch = SafeInt<int>(input_shape[0]);
     const int length = SafeInt<int>(input_shape[1]);
     const int width = SafeInt<int>(input_shape[2]);
@@ -99,19 +99,9 @@ Status CausalConvWithState<T>::ComputeInternal(OpKernelContext* context) const {
                       "past_state must match configured state layout and length");
     Tensor* output = context->Output(0, TensorShape({batch, length, channels}));
     Tensor* present = context->Output(1, state_shape);
-    Tensor* state_update = nullptr;
-    Tensor* first = nullptr;
-    Tensor* second = nullptr;
-    Tensor* third = nullptr;
-    if (state_update_capacity_ > 0) {
-      state_update = context->OutputCount() > 2
-                         ? context->Output(2, TensorShape({batch, state_update_capacity_, channels}))
-                         : nullptr;
-    } else {
-      first = context->OutputCount() > 2 ? context->Output(2, state_shape) : nullptr;
-      second = context->OutputCount() > 3 ? context->Output(3, state_shape) : nullptr;
-      third = context->OutputCount() > 4 ? context->Output(4, state_shape) : nullptr;
-    }
+    Tensor* state_update = state_update_capacity_ > 0 && context->OutputCount() > 2
+                               ? context->Output(2, TensorShape({batch, state_update_capacity_, channels}))
+                               : nullptr;
     using CudaT = typename OrtToCudaType<T>::type;
     return LaunchCausalConvProjectionKernel<CudaT>(
         Stream(context), reinterpret_cast<const CudaT*>(input_tensor->Data<T>()),
@@ -120,9 +110,6 @@ Status CausalConvWithState<T>::ComputeInternal(OpKernelContext* context) const {
         past_state_tensor ? reinterpret_cast<const CudaT*>(past_state_tensor->Data<T>()) : nullptr,
         reinterpret_cast<CudaT*>(output->MutableData<T>()),
         reinterpret_cast<CudaT*>(present->MutableData<T>()),
-        first ? reinterpret_cast<CudaT*>(first->MutableData<T>()) : nullptr,
-        second ? reinterpret_cast<CudaT*>(second->MutableData<T>()) : nullptr,
-        third ? reinterpret_cast<CudaT*>(third->MutableData<T>()) : nullptr,
         batch, channels, length, kernel, dilation_, width, input_channel_offset_, state_length,
         state_last, activation_ != "none",
         state_update ? reinterpret_cast<CudaT*>(state_update->MutableData<T>()) : nullptr,

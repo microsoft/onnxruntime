@@ -33,9 +33,6 @@ struct VariantPack {
   const float* dt_bias = nullptr;          // [Hv]
   T* output = nullptr;                     // [total_tokens, max(Hq,Hv), V]
   float* final_state = nullptr;            // [B, Hv, V, K]
-  float* mid_state = nullptr;              // [B, Hv, V, K], state after local row 0
-  float* mid_state2 = nullptr;             // state after local row 1
-  float* mid_state3 = nullptr;             // state after local row 2
   float* state_update = nullptr;           // [B, C * (Hv + Hk*K + Hv*V)]
   void* workspace = nullptr;
 };

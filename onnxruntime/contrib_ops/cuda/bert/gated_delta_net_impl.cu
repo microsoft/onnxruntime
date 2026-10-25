@@ -688,31 +688,12 @@ __global__ __launch_bounds__(32 * kWarps) void GatedDeltaNetDecodeWarpKernel(
       pack.output[tok * v_stride + hv * d_v + col] =
           static_cast<T>(p.scale * o);
     }
-    float* snapshots[3] = {pack.mid_state, pack.mid_state2, pack.mid_state3};
-#pragma unroll
-    for (int prefix = 0; prefix < 3; ++prefix) {
-      float* prefix_state = snapshots[prefix];
-      if (prefix_state == nullptr || t != min(prefix + 1, seq_len) - 1) continue;
-#pragma unroll
-      for (int i = 0; i < kRegs; ++i) {
-        prefix_state[st_off + lane + i * 32] = s[i];
-      }
-    }
   }
 
   if (pack.final_state != nullptr) {
 #pragma unroll
     for (int i = 0; i < kRegs; ++i) {
       pack.final_state[st_off + lane + i * 32] = s[i];
-    }
-  }
-  if (seq_len == 0) {
-    float* snapshots[3] = {pack.mid_state, pack.mid_state2, pack.mid_state3};
-#pragma unroll
-    for (int prefix = 0; prefix < 3; ++prefix) {
-      if (snapshots[prefix] == nullptr) continue;
-#pragma unroll
-      for (int i = 0; i < kRegs; ++i) snapshots[prefix][st_off + lane + i * 32] = s[i];
     }
   }
 }
@@ -860,16 +841,6 @@ __global__ __launch_bounds__(kThreads) void GatedDeltaNetRecurrentKernel(Variant
       for (int r = 0; r < d_k; ++r) acc += S[r * d_v + c] * qbuf[r];
       pack.output[tok * v_stride + hv * d_v + c] = (T)(p.scale * acc);
     }
-    float* snapshots[3] = {pack.mid_state, pack.mid_state2, pack.mid_state3};
-#pragma unroll
-    for (int prefix = 0; prefix < 3; ++prefix) {
-      float* prefix_state = snapshots[prefix];
-      if (prefix_state == nullptr || t != min(prefix + 1, seq_len) - 1) continue;
-      for (int idx = tid; idx < d_k * d_v; idx += kThreads) {
-        const int r = idx / d_v, c = idx % d_v;
-        prefix_state[st_off + static_cast<int64_t>(c) * d_k + r] = S[idx];
-      }
-    }
 
     __syncthreads();
   }
@@ -878,17 +849,6 @@ __global__ __launch_bounds__(kThreads) void GatedDeltaNetRecurrentKernel(Variant
     for (int idx = tid; idx < d_k * d_v; idx += kThreads) {
       const int r = idx / d_v, c = idx % d_v;
       pack.final_state[st_off + static_cast<int64_t>(c) * d_k + r] = S[idx];
-    }
-  }
-  if (seq_len == 0) {
-    float* snapshots[3] = {pack.mid_state, pack.mid_state2, pack.mid_state3};
-#pragma unroll
-    for (int prefix = 0; prefix < 3; ++prefix) {
-      if (snapshots[prefix] == nullptr) continue;
-      for (int idx = tid; idx < d_k * d_v; idx += kThreads) {
-        const int r = idx / d_v, c = idx % d_v;
-        snapshots[prefix][st_off + static_cast<int64_t>(c) * d_k + r] = S[idx];
-      }
     }
   }
 }

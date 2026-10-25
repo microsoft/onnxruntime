@@ -34,7 +34,7 @@ inline CausalConvLayout MakeCausalConvLayout(bool channels_last, int64_t channel
 template <typename T>
 Status LaunchCausalConvProjectionKernel(
     cudaStream_t stream, const T* input, const T* weight, const T* bias, const T* past,
-    T* output, T* present, T* first_state, T* second_state, T* third_state, int batch, int channels, int length,
+    T* output, T* present, int batch, int channels, int length,
     int kernel_size, int dilation, int input_width, int channel_offset,
     int state_length, bool state_channels_last, bool apply_silu,
     T* state_update = nullptr, int state_update_capacity = 0);

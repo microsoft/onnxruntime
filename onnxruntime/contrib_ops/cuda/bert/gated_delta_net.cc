@@ -45,14 +45,7 @@ REGISTER_KERNEL_TYPED(MLFloat16)
 REGISTER_KERNEL_TYPED(BFloat16)
 
 template <typename T>
-GatedDeltaNet<T>::GatedDeltaNet(const OpKernelInfo& info)
-    : CudaKernel(info),
-      mid_state_output_(info.GetAttrOrDefault<std::string>("state_output", "state_update") ==
-                        "mid_state") {
-  ORT_ENFORCE(mid_state_output_ ||
-                  info.GetAttrOrDefault<std::string>("state_output", "state_update") ==
-                      "state_update",
-              "state_output must be 'state_update' or 'mid_state'");
+GatedDeltaNet<T>::GatedDeltaNet(const OpKernelInfo& info) : CudaKernel(info) {
   const std::string rule = info.GetAttrOrDefault<std::string>("update_rule", "gated_delta");
   if (rule == "linear") {
     update_rule_ = gdn::UpdateRule::kLinear;
@@ -98,9 +91,6 @@ GatedDeltaNet<T>::GatedDeltaNet(const OpKernelInfo& info)
 
   forced_engine_ = gdn::EngineFromName(
       ParseEnvironmentVariableWithDefault<std::string>("ORT_GDN_PLAN", ""));
-  if (mid_state_output_) {
-    bf16_precision_ = gdn::Bf16Precision::kBf16;
-  }
 
   const auto from_config =
       info.GetConfigOptions().GetConfigEntry(gdn::kGatedDeltaNetBf16PrecisionConfig);
@@ -142,8 +132,6 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
                           gate->GetElementType() == query->GetElementType(),
                       "decay and beta must be float or match the query element type");
   }
-  ORT_RETURN_IF_NOT(!mid_state_output_ || state_update_capacity_ == 0,
-                    "state_output='mid_state' cannot be combined with state_update_capacity");
 
   ORT_RETURN_IF_NOT((state_update_capacity_ > 0) == (capture_count != nullptr),
                     "capture_count must be present exactly when state_update_capacity is positive");
@@ -229,10 +217,6 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
 
   ORT_RETURN_IF_NOT(num_heads_q == num_heads_k,
                     "num_heads_q (", num_heads_q, ") must equal num_heads_k (", num_heads_k, ")");
-  if (mid_state_output_) {
-    ORT_RETURN_IF_NOT(num_heads_v >= num_heads_q,
-                      "mid-state output requires value_heads >= query_heads");
-  }
   ORT_RETURN_IF_NOT(num_heads_v > 0 && num_heads_q > 0 && num_heads_v % num_heads_q == 0,
                     "num_heads_v (", num_heads_v, ") must be a positive multiple of num_heads_q (",
                     num_heads_q, ")");
@@ -335,22 +319,10 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
   TensorShape state_shape{batch, num_heads_v, head_size_v, head_size_qk};
   Tensor* final_state = context->Output(1, state_shape);
 
-  Tensor* state_update = nullptr;
-  Tensor* mid_state = nullptr;
-  Tensor* mid_state2 = nullptr;
-  Tensor* mid_state3 = nullptr;
-  if (mid_state_output_) {
-    mid_state = context->Output(2, state_shape);
-    if (context->OutputCount() > 3) mid_state2 = context->Output(3, state_shape);
-    if (context->OutputCount() > 4) mid_state3 = context->Output(4, state_shape);
-  } else {
-    ORT_RETURN_IF_NOT(context->OutputCount() <= 3,
-                      "additional prefix states require state_output='mid_state'");
-    const int64_t state_update_width = static_cast<int64_t>(state_update_capacity_) *
-                                       (num_heads_v + num_heads_k * head_size_qk +
-                                        num_heads_v * head_size_v);
-    state_update = context->Output(2, TensorShape{batch, state_update_width});
-  }
+  const int64_t state_update_width = static_cast<int64_t>(state_update_capacity_) *
+                                     (num_heads_v + num_heads_k * head_size_qk +
+                                      num_heads_v * head_size_v);
+  Tensor* state_update = context->Output(2, TensorShape{batch, state_update_width});
 
   gdn::Descriptor desc{};
   desc.total_tokens = total_tokens;
@@ -382,7 +354,7 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
   desc.ragged = cu_seqlens != nullptr;
   const bool packed_uniform_qkv = is_packed_qkv && cu_seqlens == nullptr;
   const gdn::Engine effective_engine =
-      ((mid_state_output_ || packed_uniform_qkv) && total_tokens <= 512LL * batch &&
+      (packed_uniform_qkv && total_tokens <= 512LL * batch &&
        forced_engine_ == gdn::Engine::kAuto)
           ? gdn::Engine::kRecurrent
           : forced_engine_;
@@ -493,9 +465,6 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
   pack.dt_bias = dt_bias != nullptr ? dt_bias->Data<float>() : nullptr;
   pack.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
   pack.final_state = final_state != nullptr ? final_state->MutableData<float>() : nullptr;
-  pack.mid_state = mid_state != nullptr ? mid_state->MutableData<float>() : nullptr;
-  pack.mid_state2 = mid_state2 != nullptr ? mid_state2->MutableData<float>() : nullptr;
-  pack.mid_state3 = mid_state3 != nullptr ? mid_state3->MutableData<float>() : nullptr;
   pack.state_update = state_update != nullptr ? state_update->MutableData<float>() : nullptr;
 
   // Only the inactive case is cleared. While capture is active the kernels write just the

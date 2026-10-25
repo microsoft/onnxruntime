@@ -62,9 +62,6 @@ GatedDeltaNet::GatedDeltaNet(const OpKernelInfo& info) : WebGpuKernel(info) {
   const auto state_update_capacity = info.GetAttrOrDefault<int64_t>("state_update_capacity", 0);
   ORT_ENFORCE(state_update_capacity >= 0 && state_update_capacity <= 8,
               "state_update_capacity must be in [0, 8], got ", state_update_capacity);
-  ORT_ENFORCE(info.GetAttrOrDefault<std::string>("state_output", "state_update") ==
-                  "state_update",
-              "WebGPU GatedDeltaNet supports only state_output='state_update'");
   state_update_capacity_ = static_cast<int>(state_update_capacity);
 }
 

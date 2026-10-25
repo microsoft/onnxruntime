@@ -30,7 +30,6 @@ class GatedDeltaNet : public onnxruntime::cuda::CudaKernel {
   int chunk_size_;
   int state_update_capacity_;
   bool qk_l2_norm_;
-  bool mid_state_output_;
 };
 
 }  // namespace cuda
