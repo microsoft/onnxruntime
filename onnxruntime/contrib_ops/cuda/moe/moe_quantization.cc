@@ -165,9 +165,15 @@ std::optional<onnxruntime::llm::cutlass_extensions::CutlassGemmConfig> PickPrefi
   if (rows_per_expert >= 100.0) {
     pick = is_fc2 ? find_tma(CutlassTileConfigSM90::CtaShape128x64x128B, ClusterShape::ClusterShape_2x1x1)
                   : find_tma(CutlassTileConfigSM90::CtaShape128x256x128B, ClusterShape::ClusterShape_2x1x1);
+    if (!pick.has_value()) {
+      pick = find_ampere(CutlassTileConfig::CtaShape64x128x64_WarpShape32x64x64);
+    }
   } else if (rows_per_expert >= 24.0) {
     pick = is_fc2 ? find_tma(CutlassTileConfigSM90::CtaShape128x64x128B, ClusterShape::ClusterShape_2x1x1)
                   : find_ampere(CutlassTileConfig::CtaShape64x128x64_WarpShape32x64x64);
+    if (!pick.has_value()) {
+      pick = find_ampere(CutlassTileConfig::CtaShape64x128x64_WarpShape32x64x64);
+    }
   } else {
     pick = find_ampere(CutlassTileConfig::CtaShape32x128x64_WarpShape32x32x64);
   }
@@ -1456,7 +1462,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
         const int64_t tile_rows = distinct_tile_rows[i];
         std::optional<MoeConfig> config1 = deterministic_config;
         std::optional<MoeConfig> config2 = deterministic_config;
-        if (is_nvfp4 && !use_fp4_gemv && !route_native_fp4) {
+        if ((is_nvfp4 || quant_type_ == "int") && !use_fp4_gemv && !route_native_fp4) {
           const double rows_per_expert = static_cast<double>(tile_rows) * static_cast<double>(k_) / runner_num_experts;
           if (auto fc1 = PickPrefillTactic(tactics, false, rows_per_expert)) config1 = fc1;
           if (auto fc2 = PickPrefillTactic(tactics, true, rows_per_expert)) config2 = fc2;
