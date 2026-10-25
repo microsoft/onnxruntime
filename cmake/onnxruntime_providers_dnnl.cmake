@@ -42,7 +42,11 @@
       BUILD_WITH_INSTALL_RPATH TRUE
       INSTALL_RPATH_USE_LINK_PATH FALSE)
   elseif(UNIX)
-    set_property(TARGET onnxruntime_providers_dnnl APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/core/providers/dnnl/version_script.lds -Xlinker --gc-sections -Xlinker -rpath=\$ORIGIN")
+    set_property(TARGET onnxruntime_providers_dnnl APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/core/providers/dnnl/version_script.lds -Xlinker --gc-sections")
+    set_target_properties(onnxruntime_providers_dnnl PROPERTIES
+      BUILD_RPATH "$ORIGIN"
+      BUILD_RPATH_USE_ORIGIN TRUE
+      INSTALL_RPATH "$ORIGIN")
   elseif(WIN32)
     set_property(TARGET onnxruntime_providers_dnnl APPEND_STRING PROPERTY LINK_FLAGS "-DEF:${ONNXRUNTIME_ROOT}/core/providers/dnnl/symbols.def")
   else()
