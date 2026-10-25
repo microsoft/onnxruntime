@@ -2,18 +2,19 @@
 
 ## Summary and Document Status
 
-Updated: 2026-10-22. This plan follows the stage-gate approach in [ORT roadmap PR #32657](https://github.com/microsoft/onnxruntime/pull/32657) and the [INT2 end-to-end delivery plan](int2-qmoe-end-to-end-delivery-plan.md). It respects the canonical-bitstream / provider-prepack boundary in the [low-bit-width exploration document](2bit-6bit-weight-only-quantization-exploration.md) and defines a uniform INT3 QMoE baseline, subsequent performance work, and a portable-format draft for discussion with the ONNX committee.
+Updated: 2026-10-25. This plan follows the stage-gate approach in [ORT roadmap PR #32657](https://github.com/microsoft/onnxruntime/pull/32657) and the [INT2 end-to-end delivery plan](int2-qmoe-end-to-end-delivery-plan.md). It respects the canonical-bitstream / provider-prepack boundary in the [low-bit-width exploration document](2bit-6bit-weight-only-quantization-exploration.md) and defines a uniform INT3 QMoE baseline, subsequent performance work, and a portable-format draft for discussion with the ONNX committee.
 
-**This is a delivery plan, not an approved ONNX standard or a claim of production INT3 execution support.** The INT3 format/reference and compatible `com.microsoft::QMoE` v1 schema/host-validation foundation merged in [#33394](https://github.com/microsoft/onnxruntime/pull/33394). Schema acceptance does not imply a CPU or CUDA INT3 execution kernel. Additional widths, standard-domain operators, and tensor datatypes require their respective schema review, versioning, and ONNX approval processes. This plan does not assign an ONNX INT3 datatype number or standard opset.
+**This is a delivery plan, not an approved ONNX standard or a claim of production INT3 qualification.** The INT3 format/reference and compatible `com.microsoft::QMoE` v1 schema/host-validation foundation merged in [#33394](https://github.com/microsoft/onnxruntime/pull/33394). CUDA INT3 execution and fast packed kernels subsequently merged in [#33569](https://github.com/microsoft/onnxruntime/pull/33569); CPU execution and broader end-to-end acceptance remain separate. Additional widths, standard-domain operators, and tensor datatypes require their respective schema review, versioning, and ONNX approval processes. This plan does not assign an ONNX INT3 datatype number or standard opset.
 
-### Implementation Progress (October 22, 2026)
+### Implementation Progress (October 25, 2026)
 
 | Stage | Current evidence | Remaining acceptance |
 | --- | --- | --- |
 | P0/P1: portable references and contract | [#33394](https://github.com/microsoft/onnxruntime/pull/33394) merged as `d9c279b72f5ed6b4f5f67cbda1eb118b7e9dca41`: row-local LSB-first references, golden vectors, standard-operator decoding, QMoE v1 INT3 schema and shared host content validation | Does not deliver runtime kernels or ONNX standard approval |
-| PR2: CUDA correctness | Draft [#33519](https://github.com/microsoft/onnxruntime/pull/33519): direct-packed baseline for `(3,4)`, `(3,3)` and `(4,3)`, bounded prefill, and 82 actual CUDA Session cases | Clean provider-target build and formal integration-test acceptance; CPU/provider parity and broader qualification remain open |
-| PR3: packed decode | The runtime draft executes packed FC1/FC2 without full dense weight expansion | Versioned provider-private prepack, cache identity/lifetime and prepack-cost qualification |
-| PR4: prefill performance | Functional bounded direct-packed prefill and full-model experiments in the runtime draft | Selected-expert/tiled dequantization with existing GEMM, dedicated acceptance tests, optimized candidates and measured performance wins |
+| P2: CUDA correctness | [#33569](https://github.com/microsoft/onnxruntime/pull/33569) merged as `bd6010c0e1ff09b016c3fa6c9c818b6699ccd9b9`: `ComputeInt3`, scalar fallback, FP16/BF16 packed FC1/FC2, mixed-width dispatch, C++ and Python CUDA tests | Close content-validation, independent-reference, mutation/capture and scratch-bound acceptance gaps; merged implementation does not close every P2 gate |
+| P3: packed decode | #33569 reads canonical packed bytes directly, with batched unpacking, shared-input reuse and route-parallel FC2; no full dense expert expansion | Qualify remaining parity/sanitizer/lifetime cases; INT3 private prepack is optional, not a missing mandatory implementation |
+| P4a: bounded prefill | #33569 provides row-tiled direct-packed execution with activation/route-partial scratch budgeting | Qualify long/partial tiles, exact scratch limits and decode/prefill transitions; separate dequantize-to-GEMM baseline is no longer mandatory |
+| P4b/P4c: prefill optimization | #33569 integrates fast SIMT packed kernels and dispatch, covering part of the original optimization intent | Native/grouped-GEMM prefill remains conditional research; compare candidates against merged #33569, not the retired prototype |
 | Producer integration | Draft [Olive #2749](https://github.com/microsoft/Olive/pull/2749): symmetric INT3 RTN and packing; draft [Mobius #783](https://github.com/onnxruntime/mobius/pull/783): expert INT3 overrides | Merge, exporter/runtime integration and full-model mixed-pair qualification |
 | Padding-layout research | Draft [#33530](https://github.com/microsoft/onnxruntime/pull/33530): separate A100 block-padding experiment source, raw records and report | Reviewer acceptance; no portable-layout change or winning private layout is established |
 
@@ -21,7 +22,7 @@ The merged contract retains QMoE version 1 and legacy non-INT3 behavior; it adds
 
 Pre-merge local evidence for the final review fixes: 223 Python reference tests passed, 18 native schema/format tests passed, and 7 format tests passed with `ORT_NO_EXCEPTIONS` and the real helper implementation. The native checks rebuilt affected sources against cached dependencies, not a clean whole-ORT or globally no-exceptions build. The Python suite runs through existing quantization CI; these local results do not assert a hosted-CI result.
 
-The runtime draft reports full Qwen3-30B-A3B expert INT3 and matched expert INT4 exports and A100 measurements at input lengths 128/512/2048/4096 with 32 output tokens. **Current INT3 inference is substantially slower than INT4; this is correctness and experimental evidence, not performance delivery.** The 5-shot MMLU pipeline diagnostic used one question per subject (57 total): INT3 40/57 versus INT4 49/57, with identical document/prompt/target hashes. These are not full MMLU scores or completed quality qualification. See the runtime PR's committed report and JSON for measurement protocols and limitations; the experiments reused isolated cached runtime artifacts, not a clean full build.
+The earlier #33519 prototype reported full Qwen3-30B-A3B expert INT3 and matched expert INT4 exports and A100 measurements at input lengths 128/512/2048/4096 with 32 output tokens. **That prototype was substantially slower than INT4; this is not a performance result for merged #33569.** Its 5-shot MMLU pipeline diagnostic used one question per subject (57 total): INT3 40/57 versus INT4 49/57, with identical document/prompt/target hashes. These are not full MMLU scores or completed quality qualification. Historical protocols and limitations remain in #33519; its experiments reused isolated cached runtime artifacts, not a clean full build.
 
 First deliver a trustworthy baseline that can be quantized, exported, loaded, and executed for both decode and prefill; then decide where to invest in optimization. The baseline does not promise to outperform INT2/INT4. Production performance qualification requires separate acceptance. INT3's initial purpose is to establish whether it offers a useful trade-off among quality, effective model size, and execution cost.
 
@@ -38,6 +39,80 @@ INT3 portable contract and reference byte vectors
 ```
 
 Export, CPU reference, and CUDA work can proceed in parallel after the contract is frozen. Existing INT2 experience is reusable, but its types, divisibility formulas, and runtime-prepack bytes cannot be treated as an INT3 implementation. The overview is not a strict dependency chain; the stage table and Delivery Sequence below define the dependencies, including the conditional native-prefill branch.
+
+### Merged Baseline and Superseded Work
+
+#33569 is the INT3 CUDA implementation baseline. The competing combined PR2/PR3
+[#33555](https://github.com/microsoft/onnxruntime/pull/33555) is superseded and
+will not be pursued; its private K32 bit-plane layout is not a prerequisite.
+#33519 and #33530 are prototype/research evidence, not additional runtime
+dependencies. Do not transplant #33555 wholesale onto the merged kernels.
+
+The INT3 part of #33569 provides scalar and fast paths for packed projections,
+fused interleaved SwiGLU, biases/router integration and bounded row tiling.
+Its fast path uses eight-code unpacking, shared-memory staging, adjacent-column
+reuse, per-route FC2 partials and separate route finalization. This is packed
+floating-point/SIMT execution, not native INT3 Tensor Core or grouped-GEMM prefill.
+Its **offline SM80 prepack additions apply to INT2 and mixed INT2/INT4**, not
+INT3; INT3 still requires `weights_prepacked=0`.
+
+The merged tests include `QMoETest_Int3AndMixedWidthCudaSwiGLU` in `moe_test.cc`
+and additions in `test_qmoe_cuda.py`, including an independent `unpack_lsb`
+reference. These are real reference/integration tests;
+do not describe the implementation as untested. They do not close every
+independent-reference, invalid-content, mutation/capture or resource-bound gate.
+Code-supported configurations and test-exercised configurations must remain
+distinct. See the [merged host implementation](https://github.com/microsoft/onnxruntime/blob/bd6010c0e1ff09b016c3fa6c9c818b6699ccd9b9/onnxruntime/contrib_ops/cuda/moe/moe_quantization.cc)
+and [kernel implementation](https://github.com/microsoft/onnxruntime/blob/bd6010c0e1ff09b016c3fa6c9c818b6699ccd9b9/onnxruntime/contrib_ops/cuda/moe/qmoe_kernels.cu).
+
+The historical A100 comparison in
+[Olive recipes #679](https://github.com/microsoft/olive-recipes/pull/679)
+compares pre-merge snapshots #33569 `4ba6c38384cf5b12d4aa4570cd15af2461c4d515`
+and #33555 `d75ac16f377c0c783d289046f5cf2efe6bb5f9bc`: 5.03-5.19x prefill and
+1.75-2.00x decode throughput for all-expert-INT3 Qwen3-30B-A3B on A100, batch1,
+input128/512/2048/4096. This supports retiring the competing implementation,
+not a benchmark of the final merge or an INT3-versus-INT4 quality claim.
+Top-1 agreed on 128/128 numerical-reference predictions, but logits failed
+`allclose(atol=rtol=0.01)` with maximum absolute difference 0.5625.
+
+### Next PR: INT3 QMoE Validation and Correctness Regressions
+
+Build a narrow follow-up on merged main, reusing #33569's kernels and existing
+formal tests. Close residual P2/P3/P4a acceptance rather than introducing a
+competing runtime or private prepack:
+
+1. Enforce finite/nonnegative scales and explicit INT3 zero-point/padding rules
+  by default, not only through a debug environment variable. At the merge
+  revision, `ComputeInt3`'s `need_validate` requires explicit zero points or
+  `ORT_VALIDATE_INT3_CONTENT`, and skips checks during capture. Cache validation
+  only for immutable content, revalidate dynamic content, and define an explicit
+  capture-safe validation/support policy. Skipping checks is not qualification.
+2. Add formal negative and same-Session valid/invalid/valid regressions for
+  constant/dynamic scales and zero points: NaN/Inf/negative scales, non-4 INT3
+  zero points and invalid padding. Preserve legitimate INT2/INT4 semantics.
+3. Extend existing reference tests only where coverage is missing: all three
+  baseline pairs, FP16/BF16, block32/64/128, omitted/explicit zero-point
+  equivalence, bias/router variants and fast/scalar eligibility boundaries.
+  Connect small CUDA fixtures to #33394's independent packed-code and
+  standard-operator dequantization references. Use justified dtype-aware
+  tolerances, not bitwise identity across different reduction orders.
+4. Test zero rows, scratch minimum/exact-boundary failures, partial row tiles
+  and decode/prefill transitions against the merged allocation plan, including
+  FC2 route-partial storage. Run actual provider-target tests and targeted
+  Compute Sanitizer checks; keep experimental benchmark artifacts out of the PR.
+
+Exit gate: targeted formal regressions pass with default settings on the initial
+A100 target; unsupported/capture cases have explicit behavior; old INT2/INT4
+regressions remain unchanged. This is the **next ORT PR**, not a claim that these
+changes/tests have already been implemented or run. Producer merges (Olive #2749
+and Mobius #783) can proceed in parallel with P5 integration parity; CPU parity
+(P6), matched model quality (P7) and ONNX standardization (P8) remain open.
+
+After this gate, choose performance work from measured bottlenecks. If prefill
+warrants it, compare bounded selected-expert conversion plus existing GEMM or a
+packed grouped candidate against merged #33569, including conversion, scratch
+and residency costs. No private layout or losing GEMM design is required merely
+to complete the original numbering.
 
 ## 1. Product Goals and Initial Scope
 
@@ -218,15 +293,18 @@ Prioritize FP16/BF16 activation. Packed decode extracts codes in place, applies 
 
 ## 4. Workstreams, PR Boundaries, and Acceptance Gates
 
-All stages are currently **Planned**. This is a dependency-driven plan, not a merged implementation or a delivery-date commitment from other teams. PR labels below are proposed sequence labels, not actual GitHub PR numbers; none of these INT3 PRs is claimed to be opened or merged.
+The progress table above is authoritative for merged status and residual gates.
+The following table defines acceptance scopes, not a claim that every stage is
+unimplemented. PR labels are scope identifiers, not actual GitHub PR numbers or
+delivery-date commitments; #33394 and #33569 already cover substantial portions.
 
 | Stage / proposed PR label | Main deliverables | Exit gate |
 | --- | --- | --- |
 | P0 / PR 0: Format and feasibility | Review Section 2; freeze fixtures; compare Olive's existing INT3 checkpoint format with this contract | Exporter/runtime owners agree on bytes and mathematical semantics; independent pack/unpack agrees for every code, tails, and zero groups; do not directly reuse unknown checkpoint packing |
 | P1 / PR 1: QMoE contract and shared validation | Reviewed INT3 allowance in either FC; ceil-bit sizes/strides; shape inference; tail and zero-point validation | All `(3,4)`, `(3,3)`, and `(4,3)` models validate; old INT2/4/8 fixtures remain fully compatible; unsupported providers reject clearly |
 | P2 / PR 2: Independent reference and CUDA correctness | Scalar FP32 oracle; FP16/BF16 numerical references; bounded expert/block dequantization; decode and prefill | Synthetic/reduced Qwen correctness; no unbounded full-expert dequantization; actual provider-target builds/tests pass |
-| P3 / PR 3: Packed CUDA decode | Raw bitstream to versioned prepack; in-place INT3 load/decode for FC1 and FC2; independent INT3/INT4 dispatch | All three baseline combinations pass target routing/shape parity and memcheck; no large dequantized buffer; record prepack and repeated-call costs |
-| P4a / PR 4a: Baseline prefill | Selected-expert or row/block-tiled dequantization + existing GEMM; explicit scratch budget | Long prompts, partial tiles, and decode/prefill transitions work; bounded memory; do not label this native packed performance |
+| P3 / PR 3: Packed CUDA decode | Direct canonical packed execution as merged in #33569; private prepack optional | All baseline pairs pass routing/shape parity and memcheck; no large dequantized buffer; qualify repeated-call costs and optional conversion |
+| P4a / PR 4a: Baseline prefill | Bounded direct-packed execution as merged in #33569; alternative selected-expert/GEMM paths only if useful | Long prompts, partial tiles, and decode/prefill transitions; explicit activation/route-partial scratch bounds |
 | P4b / PR 4b + PR 4c: Conditional prefill performance | Kernel foundation followed by QMoE integration; packed grouped kernel or measured local-conversion strategy, block64 first | End-to-end cost beats baseline; scratch estimates/bounds regressions pass; stop native optimization without a benefit |
 | Follow-up / PR 4d: Optional coverage | Additional optimized block sizes, combinations beyond the three baseline combinations, and provider qualification | Qualify each added configuration; no new mixed-width defaults or implied untested coverage; not a baseline dependency |
 | P5 / PR 5: Olive/Mobius export | Expert classification, mixed checkpoint, packing converter, fused graph, external data, manifest | Checkpoint-to-ONNX-to-ORT parity; correct width binding and gate/up order; reproducible source revisions/tool versions |
@@ -250,7 +328,11 @@ Production qualification means that packed paths and dispatch are demonstrated f
 
 ## Delivery Sequence
 
-Every heading in this section uses a **proposed label**, not an actual PR number. All entries are planned, not opened or merged. PR 5 may comprise coordinated PRs across repositories. Numbering identifies scope, not a mandatory serial execution order; no implementation PR URLs are assigned here.
+Headings retain original scope labels for discussion links, not actual PR
+numbers. Read them with the authoritative progress table: P0/P1 have #33394,
+and P2/P3/P4a plus part of P4b/P4c have #33569. Remaining acceptance gates are
+not instructions to duplicate merged code. PR 5 may comprise coordinated
+repository PRs; numbering is not mandatory serial order.
 
 ### PR 0: Portable Format and Golden Fixtures - Proposed (P0)
 
@@ -281,15 +363,15 @@ Every heading in this section uses a **proposed label**, not an actual PR number
 
 ### PR 3: Packed CUDA Decode - Proposed (P3)
 
-- Depends on PR 2; convert canonical raw bytes to a versioned provider-private prepack, evaluating the internal 2+1 planes without changing model serialization.
+- Depends on PR 2; retain merged direct canonical packed execution. Evaluate a versioned provider-private prepack, including internal 2+1 planes, only if new measurements justify conversion and residency costs; do not change model serialization.
 - Implement in-place INT3 extraction, scale application, and FP32 accumulation for FP16/BF16 in both fused FC1 and down-projection FC2. Reuse existing INT4 paths where applicable and dispatch each projection by its effective width for `(3,4)`, `(3,3)`, and `(4,3)`.
 - Cover routing/shapes, cached/runtime scales, cache identity and lifetime, repeated calls, memcheck, and bounded fallback; no large dequantized weight buffer.
-- Exit gate: packed decode parity and memcheck for all three combinations, with measured prepack/repeated-call costs including raw/cache coexistence and padding. A correctness-only FC2 INT3 fallback does not complete this packed-decode gate. Architecture eligibility is not qualification on every device.
+- Exit gate: packed decode parity and memcheck for all three combinations, with measured repeated-call costs and, only when applicable, optional prepack/raw-cache coexistence and padding costs. A correctness-only FC2 INT3 fallback does not complete this packed-decode gate. Architecture eligibility is not qualification on every device.
 - Do not export provider caches as raw weights, promise portable offline prepack, or require INT8 activation.
 
 ### PR 4a: Bounded Prefill Baseline - Proposed (P4a)
 
-- Depends on PR 2 and may proceed alongside PR 3; implement selected-expert or row/block-tiled dequantization with existing GEMM and an explicit scratch budget.
+- Depends on PR 2 and may proceed alongside PR 3; retain merged row-tiled direct-packed execution with an explicit scratch budget. Selected-expert dequantization plus existing GEMM is an optional comparison candidate, not a missing baseline dependency.
 - Validate `(3,4)`, `(3,3)`, and `(4,3)` with long prompts, partial tiles, empty experts, FP16/BF16, and decode-to-prefill-to-decode transitions, coordinating cached-scale/prepack behavior with PR 3. INT3 FC2 execution is required here, not deferred to PR 4d.
 - Exit gate: correct model prefill, enforceable scratch bounds, scratch-guard tests, and actual provider-target coverage.
 - Required for the usable baseline, but not a native packed grouped-GEMM delivery or a promise to beat INT2/INT4. It remains the comparison/fallback path for conditional performance work.
