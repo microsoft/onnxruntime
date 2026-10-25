@@ -66,6 +66,12 @@ ORT V2 custom-op interface rather than terminating the host process.
 
 ## Focused execution tests
 
+The shared provider source-list regression does not require CUDA:
+
+```sh
+python onnxruntime/contrib_ops/cuda/bert/source_compatibility/source_filters_test.py
+```
+
 With `onnxruntime-gpu`, `onnx-ir`, `onnxscript`, `numpy`, `ml_dtypes`, and `pytest`
 available in an isolated environment:
 
