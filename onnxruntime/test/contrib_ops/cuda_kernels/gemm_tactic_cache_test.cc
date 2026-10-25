@@ -10,6 +10,7 @@
 // Plugin builds register these directly: --gtest_filter=GemmTacticCache*.*
 #if USE_FPA_INTB_GEMM
 #include <gtest/gtest.h>
+#include <gsl/gsl>
 
 #include <cstdio>
 #include <barrier>
@@ -919,6 +920,66 @@ TEST(GemmTacticCacheTest, CachedValidationRespectsSessionLaunchLimit) {
   CleanUp(file);
 }
 #endif
+
+TEST(GemmTacticCacheCudaTest, EagerAndLazyProfilingSelectAllocatorDevice) {
+  int device_count = 0;
+  CUDA_CALL_THROW(cudaGetDeviceCount(&device_count));
+  if (device_count < 2) {
+    GTEST_SKIP() << "Two CUDA devices required to distinguish ambient and allocator devices.";
+  }
+  int original_device = 0;
+  CUDA_CALL_THROW(cudaGetDevice(&original_device));
+  auto restore_device = gsl::finally([&] { EXPECT_EQ(cudaSetDevice(original_device), cudaSuccess); });
+  using namespace onnxruntime::llm::kernels::weight_only;
+  class Allocator : public IAllocator {
+   public:
+    Allocator() : IAllocator(OrtMemoryInfo("Cuda", OrtDeviceAllocator,
+                                           OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA, 1))) {}
+    void* Alloc(size_t bytes) override {
+      int device = -1;
+      CUDA_CALL_THROW(cudaGetDevice(&device));
+      EXPECT_EQ(device, 1);
+      void* pointer = nullptr;
+      CUDA_CALL_THROW(cudaMalloc(&pointer, bytes));
+      return pointer;
+    }
+    void Free(void* pointer) override { CUDA_CALL_THROW(cudaFree(pointer)); }
+  };
+  class Profiler : public GemmPluginProfiler<CutlassGemmConfig, std::shared_ptr<int>, GemmIdCore, GemmIdCoreHash> {
+   public:
+    std::vector<int> initialized;
+
+   protected:
+    size_t computeTmpSize(size_t, size_t, size_t) override { return 4; }
+    std::vector<CutlassGemmConfig> getTactics(int, int, int) const override { return {MakeSm80Config()}; }
+    std::vector<int> getProfileMBuckets(int, int, bool) const override { return {1}; }
+    void initTmpData(int m, int, int, char* workspace, size_t size, cudaStream_t stream) override {
+      int device = -1;
+      CUDA_CALL_THROW(cudaGetDevice(&device));
+      EXPECT_EQ(device, 1);
+      cudaPointerAttributes attributes{};
+      CUDA_CALL_THROW(cudaPointerGetAttributes(&attributes, workspace));
+      EXPECT_EQ(attributes.device, 1);
+      initialized.push_back(m);
+      CUDA_CALL_THROW(cudaMemsetAsync(workspace, 0, size, stream));
+    }
+    void runTactic(int, int, int, const CutlassGemmConfig&, char* workspace, const cudaStream_t& stream) override {
+      CUDA_CALL_THROW(cudaMemsetAsync(workspace, 0, 4, stream));
+    }
+  };
+  Profiler profiler;
+  profiler.setAllocator(std::make_shared<Allocator>());
+  const auto dtype = onnxruntime::llm::nvinfer::DataType::kHALF;
+  const GemmIdCore id(64, 64, dtype, 0, 4, 32, false, false, false, "", false, 0, 1);
+  CUDA_CALL_THROW(cudaSetDevice(0));
+  profiler.profileTactics(std::make_shared<int>(0), dtype, GemmDims(1, 4, 64, 64), id);
+  EXPECT_EQ(profiler.initialized, std::vector<int>({1}));
+  ASSERT_TRUE(profiler.getBestConfig(1, id).has_value());
+  EXPECT_FALSE(profiler.getBestConfig(4, id).has_value());
+  CUDA_CALL_THROW(cudaSetDevice(0));
+  ASSERT_TRUE(profiler.getBestConfigOrProfile(4, id).has_value());
+  EXPECT_EQ(profiler.initialized, std::vector<int>({1, 4}));
+}
 
 TEST(GemmTacticCacheCudaTest, TemporaryRunnerFailureDoesNotPoisonNextProfiler) {
   int device_count = 0;
