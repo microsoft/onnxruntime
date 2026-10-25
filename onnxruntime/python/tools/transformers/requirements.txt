@@ -1,4 +1,4 @@
-onnx >= 1.8
+onnx >= 1.21.0
 numpy >= 1.19.0
 psutil
 py-cpuinfo
