@@ -5721,48 +5721,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           }
         }));
 
-constexpr const char* FusedTensorOps_ver1_doc = R"DOC(
-CUDA contrib operators for fused tensor operations used by transformer models.
-)DOC";
-
-ONNX_MS_OPERATOR_SET_SCHEMA(
-    SigmoidGateMul, 1,
-    OpSchema()
-        .SetDoc(FusedTensorOps_ver1_doc)
-        .Attr("head_dim", "Dimension of each attention head.", AttributeProto::INT, static_cast<int64_t>(0))
-        .Attr("num_heads", "Number of attention heads.", AttributeProto::INT, static_cast<int64_t>(0))
-        .Attr("q_stride", "Per-head stride in the packed projection.", AttributeProto::INT, static_cast<int64_t>(0))
-        .Attr("tok_stride", "Per-token stride in the packed projection.", AttributeProto::INT, static_cast<int64_t>(0))
-        .Attr("q_offset", "Offset of the query projection within each token.", AttributeProto::INT, static_cast<int64_t>(0))
-        .Attr("broadcast_gate",
-              "When one, projection has the attention shape with final dimension one. "
-              "Packed layout attributes must be zero. CUDA only.",
-              AttributeProto::INT, static_cast<int64_t>(0))
-        .Attr("sigmoid_in_fp32",
-              "One computes sigmoid in FP32 before BF16 conversion. Zero preserves "
-              "the input-type intermediate arithmetic of CUDA Sigmoid, including subtraction on negative inputs.",
-              AttributeProto::INT, static_cast<int64_t>(1))
-        .Attr("silu_gate",
-              "When one, projection and attention have identical shapes. Multiply the "
-              "BF16-rounded sigmoid by projection and round to BF16 before multiplying attention. "
-              "Cannot be combined with broadcast_gate or packed layout attributes.",
-              AttributeProto::INT, static_cast<int64_t>(0))
-        .Input(0, "attention", "BF16 attention values.", "T")
-        .Input(1, "projection", "BF16 packed projection containing gate values.", "T")
-        .Input(2, "residual", "Optional BF16 residual with the attention shape.", "T", OpSchema::Optional)
-        .Input(3, "prefill_numerics", "Optional CPU int32 scalar 0/1.", "TI", OpSchema::Optional)
-        .Input(4, "gate_weight", "Optional BF16 projected-gate weight [input_width,1], requires broadcast_gate.", "T", OpSchema::Optional)
-        .Output(0, "output",
-                "Attention multiplied by BF16-rounded sigmoid gates, rounded to BF16 "
-                "before optionally adding residual and rounding again.",
-                "T")
-        .TypeConstraint("T", {"tensor(bfloat16)"}, "Inputs and output use BF16.")
-        .TypeConstraint("TI", {"tensor(int32)"}, "CPU numerical control.")
-        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-          propagateElemTypeFromInputToOutput(ctx, 0, 0);
-          if (hasInputShape(ctx, 0)) updateOutputShape(ctx, 0, getInputShape(ctx, 0));
-        }));
-
 constexpr const char* LinearAttentionGate_ver1_doc = R"DOC(
 Fuses the gate projections that feed LinearAttention's gated-delta recurrence:
 

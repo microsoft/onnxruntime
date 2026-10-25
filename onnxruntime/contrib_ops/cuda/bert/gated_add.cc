@@ -3,7 +3,6 @@
 
 #include "contrib_ops/cuda/bert/gated_add.h"
 #include "contrib_ops/cuda/bert/gated_add_impl.h"
-#include "contrib_ops/cuda/bert/fused_tensor_ops.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_type_conversion.h"
 

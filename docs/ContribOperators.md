@@ -123,7 +123,6 @@ Do not modify directly.*
   * <a href="#com.microsoft.SampleOp">com.microsoft.SampleOp</a>
   * <a href="#com.microsoft.Sampling">com.microsoft.Sampling</a>
   * <a href="#com.microsoft.ScaledSiLU">com.microsoft.ScaledSiLU</a>
-  * <a href="#com.microsoft.SigmoidGateMul">com.microsoft.SigmoidGateMul</a>
   * <a href="#com.microsoft.SkipGroupNorm">com.microsoft.SkipGroupNorm</a>
   * <a href="#com.microsoft.SkipLayerNormalization">com.microsoft.SkipLayerNormalization</a>
   * <a href="#com.microsoft.SkipSimplifiedLayerNormalization">com.microsoft.SkipSimplifiedLayerNormalization</a>
@@ -7566,67 +7565,6 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output to floating-point tensors.</dd>
 <dt><tt>M</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain the optional scale to floating-point tensors.</dd>
-</dl>
-
-
-### <a name="com.microsoft.SigmoidGateMul"></a><a name="com.microsoft.sigmoidgatemul">**com.microsoft.SigmoidGateMul**</a>
-
-  CUDA contrib operators for fused tensor operations used by transformer models.
-
-#### Version
-
-This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
-
-#### Attributes
-
-<dl>
-<dt><tt>broadcast_gate</tt> : int</dt>
-<dd>When one, projection has the attention shape with final dimension one. Packed layout attributes must be zero. CUDA only.</dd>
-<dt><tt>head_dim</tt> : int</dt>
-<dd>Dimension of each attention head.</dd>
-<dt><tt>num_heads</tt> : int</dt>
-<dd>Number of attention heads.</dd>
-<dt><tt>q_offset</tt> : int</dt>
-<dd>Offset of the query projection within each token.</dd>
-<dt><tt>q_stride</tt> : int</dt>
-<dd>Per-head stride in the packed projection.</dd>
-<dt><tt>sigmoid_in_fp32</tt> : int</dt>
-<dd>One computes sigmoid in FP32 before BF16 conversion. Zero preserves the input-type intermediate arithmetic of CUDA Sigmoid, including subtraction on negative inputs.</dd>
-<dt><tt>silu_gate</tt> : int</dt>
-<dd>When one, projection and attention have identical shapes. Multiply the BF16-rounded sigmoid by projection and round to BF16 before multiplying attention. Cannot be combined with broadcast_gate or packed layout attributes.</dd>
-<dt><tt>tok_stride</tt> : int</dt>
-<dd>Per-token stride in the packed projection.</dd>
-</dl>
-
-#### Inputs (2 - 5)
-
-<dl>
-<dt><tt>attention</tt> : T</dt>
-<dd>BF16 attention values.</dd>
-<dt><tt>projection</tt> : T</dt>
-<dd>BF16 packed projection containing gate values.</dd>
-<dt><tt>residual</tt> (optional) : T</dt>
-<dd>Optional BF16 residual with the attention shape.</dd>
-<dt><tt>prefill_numerics</tt> (optional) : TI</dt>
-<dd>Optional CPU int32 scalar 0/1.</dd>
-<dt><tt>gate_weight</tt> (optional) : T</dt>
-<dd>Optional BF16 projected-gate weight [input_width,1], requires broadcast_gate.</dd>
-</dl>
-
-#### Outputs
-
-<dl>
-<dt><tt>output</tt> : T</dt>
-<dd>Attention multiplied by BF16-rounded sigmoid gates, rounded to BF16 before optionally adding residual and rounding again.</dd>
-</dl>
-
-#### Type Constraints
-
-<dl>
-<dt><tt>T</tt> : tensor(bfloat16)</dt>
-<dd>Inputs and output use BF16.</dd>
-<dt><tt>TI</tt> : tensor(int32)</dt>
-<dd>CPU numerical control.</dd>
 </dl>
 
 
