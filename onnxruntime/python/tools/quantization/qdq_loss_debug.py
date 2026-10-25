@@ -243,8 +243,11 @@ def _run_dequantize_linear(
     weight_tensor: numpy.ndarray, weight_scale: numpy.ndarray, weight_zp: numpy.ndarray, channel_axis: int
 ) -> numpy.ndarray | None:
     assert weight_scale.shape == weight_zp.shape
+    # Subtract the zero point in float64: in the quantized integer dtype, values below the zero point wrap around.
+    weight_values = weight_tensor.astype(numpy.float64)
+    weight_zp = weight_zp.astype(numpy.float64)
     if weight_zp.size == 1:
-        return (weight_tensor - weight_zp) * weight_scale
+        return ((weight_values - weight_zp) * weight_scale).astype(weight_scale.dtype)
 
     assert weight_zp.ndim == 1
     reshape_dims = list(weight_tensor.shape)  # deep copy
@@ -252,7 +255,7 @@ def _run_dequantize_linear(
     channel_count = weight_tensor.shape[channel_axis]
     dequantized_weights = None
     for i in range(channel_count):
-        per_channel_data = weight_tensor.take(i, channel_axis)
+        per_channel_data = weight_values.take(i, channel_axis)
         dequantized_per_channel_data = (per_channel_data - weight_zp[i]) * weight_scale[i]
         if i == 0:
             dequantized_weights = numpy.asarray(dequantized_per_channel_data).reshape(reshape_dims)
@@ -264,7 +267,7 @@ def _run_dequantize_linear(
         return None
 
     dequantized_weights.reshape(weight_tensor.shape)
-    return dequantized_weights
+    return dequantized_weights.astype(weight_scale.dtype)
 
 
 def create_weight_matching(float_model_path: str, qdq_model_path: str) -> dict[str, dict[str, numpy.ndarray]]:
@@ -382,7 +385,7 @@ def compute_activation_error(
     for name, match in activations_match.items():
         err_result: dict[str, float] = {}
         err_result["qdq_err"] = err_func(match["pre_qdq"], match["post_qdq"])
-        float_activation = match["float"]
+        float_activation = match.get("float")
         if float_activation:
             err_result["xmodel_err"] = err_func(float_activation, match["post_qdq"])
         result[name] = err_result

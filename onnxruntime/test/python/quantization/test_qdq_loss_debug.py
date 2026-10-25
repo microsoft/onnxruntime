@@ -308,6 +308,64 @@ class TestSaveActivations(unittest.TestCase):
             dq_array = matched_weights[weight_name]["dequantized"]
             self.assertEqual(float_array.shape, dq_array.shape)
 
+    def test_create_weight_matching_asymmetric_weights(self):
+        float_model_path = str(Path(self._tmp_model_dir.name) / "float_model5.onnx")
+        construct_test_model1(float_model_path, activations_as_outputs=False)
+
+        for weight_type in (QuantType.QUInt8, QuantType.QInt8):
+            for per_channel in (False, True):
+                with self.subTest(weight_type=weight_type, per_channel=per_channel):
+                    qdq_model_path = str(
+                        Path(self._tmp_model_dir.name) / f"qdq_model5_{weight_type.name}_{per_channel}.onnx"
+                    )
+                    quantize_static(
+                        float_model_path,
+                        qdq_model_path,
+                        TestDataReader(),
+                        quant_format=QuantFormat.QDQ,
+                        per_channel=per_channel,
+                        reduce_range=False,
+                        activation_type=QuantType.QUInt8,
+                        weight_type=weight_type,
+                        extra_options={"WeightSymmetric": False},
+                    )
+
+                    matched_weights = create_weight_matching(float_model_path, qdq_model_path)
+                    for weight_name in ["W1", "W3", "W5"]:
+                        float_array = matched_weights[weight_name]["float"]
+                        dq_array = matched_weights[weight_name]["dequantized"]
+                        self.assertEqual(dq_array.dtype, np.float32)
+                        # One quantization step of the per-tensor range bounds the error for both granularities.
+                        step = (max(float_array.max(), 0.0) - min(float_array.min(), 0.0)) / 255
+                        np.testing.assert_allclose(dq_array, float_array, rtol=0, atol=step)
+
+    def test_compute_activation_error_without_float_activations(self):
+        float_model_path = str(Path(self._tmp_model_dir.name) / "float_model6.onnx")
+        construct_test_model1(float_model_path, activations_as_outputs=False)
+        data_reader = TestDataReader()
+
+        qdq_model_path = str(Path(self._tmp_model_dir.name) / "qdq_model6.onnx")
+        quantize_static(
+            float_model_path,
+            qdq_model_path,
+            data_reader,
+            quant_format=QuantFormat.QDQ,
+            per_channel=False,
+            reduce_range=False,
+            activation_type=QuantType.QInt8,
+            weight_type=QuantType.QInt8,
+        )
+
+        data_reader.rewind()
+        augmented_qdq_model_path = str(Path(self._tmp_model_dir.name).joinpath("augmented_qdq_model6.onnx"))
+        qdq_activations = augment_model_collect_activations(qdq_model_path, augmented_qdq_model_path, data_reader)
+
+        activations_error = compute_activation_error(create_activation_matching(qdq_activations))
+        self.assertTrue(activations_error)
+        for tensor_name, error in activations_error.items():
+            self.assertIsInstance(error["qdq_err"], float, f"{tensor_name} qdq error not computed")
+            self.assertNotIn("xmodel_err", error)
+
     def test_none_test(self):
         a = np.array([2, 3, 4])
         b = np.array([7, 8, 9])
