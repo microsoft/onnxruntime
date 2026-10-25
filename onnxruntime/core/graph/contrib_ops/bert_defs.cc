@@ -5726,37 +5726,6 @@ CUDA contrib operators for fused tensor operations used by transformer models.
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
-    ArgMaxLastAxis, 1,
-    OpSchema()
-        .SetDoc(FusedTensorOps_ver1_doc)
-        .Attr("keepdims", "Keep a singleton final axis when nonzero.", AttributeProto::INT,
-              static_cast<int64_t>(0))
-        .Input(0, "logits", "Logits with vocabulary on the last axis.", "T")
-        .Output(0, "indices",
-                "First maximum index for each leading row. NaNs are ignored; "
-                "an all-NaN row returns index zero.",
-                "I")
-        .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
-                        "Supported logit types.")
-        .TypeConstraint("I", {"tensor(int64)"}, "Argmax indices are int64.")
-        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-          updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto_DataType_INT64);
-          if (!hasInputShape(ctx, 0)) return;
-          const auto& input_shape = getInputShape(ctx, 0);
-          if (input_shape.dim_size() < 1) {
-            fail_shape_inference("ArgMaxLastAxis: logits must have rank at least one");
-          }
-          ONNX_NAMESPACE::TensorShapeProto output_shape;
-          for (int i = 0; i + 1 < input_shape.dim_size(); ++i) {
-            *output_shape.add_dim() = input_shape.dim(i);
-          }
-          if (getAttribute(ctx, "keepdims", static_cast<int64_t>(0)) != 0) {
-            output_shape.add_dim()->set_dim_value(1);
-          }
-          updateOutputShape(ctx, 0, output_shape);
-        }));
-
-ONNX_MS_OPERATOR_SET_SCHEMA(
     SigmoidGateMul, 1,
     OpSchema()
         .SetDoc(FusedTensorOps_ver1_doc)
@@ -6191,9 +6160,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     GatedAdd, 1,
     OpSchema()
         .SetDoc(GatedAdd_ver1_doc)
+        .Attr("sigmoid_in_fp32",
+              "When gate_weight is provided, compute sigmoid in FP32 (1, default) or input type (0).",
+              AttributeProto::INT, static_cast<int64_t>(1))
         .Input(0, "X", "Unscaled input with shape (..., C).", "T")
         .Input(1, "Y", "Input scaled by gate, with the same shape as X.", "T")
-        .Input(2, "gate", "Per-row gate with shape (..., 1).", "T")
+        .Input(2, "gate", "Per-row gate with shape (..., 1), or activation (..., K) when gate_weight is provided.", "T")
+        .Input(3, "gate_weight", "Optional projection weight [K, 1] applied to gate before sigmoid.", "T", OpSchema::Optional)
         .Output(0, "output", "Gated sum with the same shape as X.", "T")
         .TypeConstraint("T",
                         {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},

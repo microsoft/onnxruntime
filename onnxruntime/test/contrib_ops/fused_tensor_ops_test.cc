@@ -39,7 +39,9 @@ TEST(FusedTensorOpsTest, ArgMaxLastAxisWithoutKeepdims) {
   auto providers = CudaProvider();
   if (providers.empty()) GTEST_SKIP();
 
-  OpTester test("ArgMaxLastAxis", 1, kMSDomain);
+  OpTester test("ArgMax", 13);
+  test.AddAttribute<int64_t>("axis", -1);
+  test.AddAttribute<int64_t>("keepdims", 0);
   test.AddInput<float>("logits", {2, 4}, {1.0f, 5.0f, 5.0f, -1.0f, 4.0f, 3.0f, 2.0f, 1.0f});
   test.AddOutput<int64_t>("indices", {2}, {1, 0});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
@@ -49,7 +51,8 @@ TEST(FusedTensorOpsTest, ArgMaxLastAxisWithKeepdims) {
   auto providers = CudaProvider();
   if (providers.empty()) GTEST_SKIP();
 
-  OpTester test("ArgMaxLastAxis", 1, kMSDomain);
+  OpTester test("ArgMax", 13);
+  test.AddAttribute<int64_t>("axis", -1);
   test.AddAttribute<int64_t>("keepdims", 1);
   test.AddInput<BFloat16>("logits", {2, 4},
                           ToTensorType<BFloat16>({1.0f, 5.0f, 5.0f, -1.0f, 4.0f, 3.0f, 2.0f, 1.0f}));
@@ -65,7 +68,8 @@ TEST(FusedTensorOpsTest, ArgMaxLastAxisPartitionedVocabulary) {
     std::vector<float> values(3 * width, -std::numeric_limits<float>::infinity());
     values[4095] = values[4096] = values[width - 1] = 5.0f;
     values[2 * width - 1] = 7.0f;
-    OpTester test("ArgMaxLastAxis", 1, kMSDomain);
+    OpTester test("ArgMax", 13);
+    test.AddAttribute<int64_t>("axis", -1);
     test.AddAttribute<int64_t>("keepdims", keepdims ? 1 : 0);
     test.AddInput<BFloat16>("logits", {3, width}, ToBFloat16(values));
     test.AddOutput<int64_t>("indices", keepdims ? std::vector<int64_t>{3, 1} : std::vector<int64_t>{3},
@@ -81,12 +85,16 @@ void RunArgMaxNaNRows() {
     if (providers.empty()) GTEST_SKIP();
     const float nan = std::numeric_limits<float>::quiet_NaN();
     std::vector<float> values(4 * width, nan);
+    values[width] = -std::numeric_limits<float>::infinity();
     values[2 * width - 1] = -std::numeric_limits<float>::infinity();
     values[2 * width] = values[3 * width - 1] = 5.0f;
+    values[3 * width] = -1.0f;
     values[4 * width - 1] = 7.0f;
-    OpTester test("ArgMaxLastAxis", 1, kMSDomain);
+    OpTester test("ArgMax", 13);
+    test.AddAttribute<int64_t>("axis", -1);
+    test.AddAttribute<int64_t>("keepdims", 0);
     test.AddInput<T>("logits", {4, width}, ToTensorType<T>(values));
-    test.AddOutput<int64_t>("indices", {4}, {0, width - 1, 0, width - 1});
+    test.AddOutput<int64_t>("indices", {4}, {0, 0, 0, width - 1});
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
   }
 }

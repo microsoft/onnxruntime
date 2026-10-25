@@ -17,71 +17,6 @@ namespace onnxruntime::contrib::cuda {
 namespace {
 
 constexpr int kThreads = 256;
-constexpr int kArgmaxThreads = 256;
-
-__device__ __forceinline__ float ToFloat(float value) { return value; }
-__device__ __forceinline__ float ToFloat(half value) { return __half2float(value); }
-__device__ __forceinline__ float ToFloat(__nv_bfloat16 value) { return __bfloat162float(value); }
-
-template <typename T>
-__global__ void ArgmaxRowsKernel(const T* input, const int64_t* input_indices,
-                                 int64_t width, int64_t partitions, float* partial_values,
-                                 int64_t* output) {
-  __shared__ float values[kArgmaxThreads];
-  __shared__ int64_t indices[kArgmaxThreads];
-  const int tid = threadIdx.x;
-  const int64_t row = blockIdx.x / partitions;
-  const int64_t partition = blockIdx.x % partitions;
-  const int64_t end = partitions == 1 ? width : min(width, (partition + 1) * 4096);
-  float best_value = -CUDART_INF_F;
-  int64_t best_index = INT64_MAX;
-  for (int64_t col = partition * 4096 + tid; col < end; col += blockDim.x) {
-    const float value = ToFloat(input[row * width + col]);
-    const int64_t index = input_indices == nullptr ? col : input_indices[row * width + col];
-    if (value > best_value || (value == best_value && index < best_index)) {
-      best_value = value;
-      best_index = index;
-    }
-  }
-  values[tid] = best_value;
-  indices[tid] = best_index;
-  __syncthreads();
-  for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
-    if (tid < stride) {
-      const float other_value = values[tid + stride];
-      const int64_t other_index = indices[tid + stride];
-      if (other_value > values[tid] ||
-          (other_value == values[tid] && other_index < indices[tid])) {
-        values[tid] = other_value;
-        indices[tid] = other_index;
-      }
-    }
-    __syncthreads();
-  }
-  if (tid == 0) {
-    output[blockIdx.x] = partial_values == nullptr && indices[0] == INT64_MAX ? 0 : indices[0];
-    if (partial_values != nullptr) partial_values[blockIdx.x] = values[0];
-  }
-}
-
-template <typename T>
-Status LaunchTypedArgmax(cudaStream_t stream, const T* input, int64_t rows,
-                         int64_t width, int64_t* output,
-                         float* partial_values, int64_t* partial_indices) {
-  if (rows == 0) return Status::OK();
-  const int64_t partitions = GetArgMaxLastAxisPartitions(width);
-  ORT_RETURN_IF_NOT(rows <= std::numeric_limits<unsigned>::max() / partitions,
-                    "ArgMaxLastAxis has too many rows for a CUDA grid");
-  ArgmaxRowsKernel<<<static_cast<unsigned>(rows * partitions), kArgmaxThreads, 0, stream>>>(
-      input, nullptr, width, partitions, partitions == 1 ? nullptr : partial_values,
-      partitions == 1 ? output : partial_indices);
-  CUDA_RETURN_IF_ERROR(cudaGetLastError());
-  if (partitions > 1) {
-    ArgmaxRowsKernel<<<static_cast<unsigned>(rows), kArgmaxThreads, 0, stream>>>(
-        partial_values, partial_indices, partitions, 1, nullptr, output);
-  }
-  return CUDA_CALL(cudaGetLastError());
-}
 
 __device__ __forceinline__ float StableSigmoid(float value) {
   if (value >= 0.0f) {
@@ -232,27 +167,6 @@ __global__ void SigmoidGateMulKernel(const __nv_bfloat16* attention,
 }
 
 }  // namespace
-
-Status LaunchArgMaxLastAxis(cudaStream_t stream, const void* input, int input_type,
-                            int64_t rows, int64_t width, int64_t* output,
-                            float* partial_values, int64_t* partial_indices) {
-  ORT_RETURN_IF_NOT(rows >= 0 && width > 0,
-                    "ArgMaxLastAxis requires a non-negative row count and positive vocabulary dimension");
-  if (rows == 0) return Status::OK();
-  switch (input_type) {
-    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-      return LaunchTypedArgmax(stream, static_cast<const float*>(input), rows, width, output,
-                               partial_values, partial_indices);
-    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
-      return LaunchTypedArgmax(stream, static_cast<const half*>(input), rows, width, output,
-                               partial_values, partial_indices);
-    case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:
-      return LaunchTypedArgmax(stream, static_cast<const __nv_bfloat16*>(input), rows, width, output,
-                               partial_values, partial_indices);
-    default:
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "ArgMaxLastAxis input type is not supported");
-  }
-}
 
 Status LaunchPrepareSharedExpert(cudaStream_t stream, const uint16_t* up, const uint16_t* silu_gate,
                                  const uint16_t* activation, const uint16_t* weight,

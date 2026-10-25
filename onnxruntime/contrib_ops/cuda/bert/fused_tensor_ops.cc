@@ -14,20 +14,6 @@
 
 namespace onnxruntime::contrib::cuda {
 
-#define REGISTER_ARGMAX_LAST_AXIS(T)                                    \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                        \
-      ArgMaxLastAxis, kMSDomain, 1, T, kCudaExecutionProvider,          \
-      (*KernelDefBuilder::Create())                                     \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())        \
-          .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()), \
-      ArgMaxLastAxis<T>);
-
-REGISTER_ARGMAX_LAST_AXIS(float)
-REGISTER_ARGMAX_LAST_AXIS(MLFloat16)
-REGISTER_ARGMAX_LAST_AXIS(BFloat16)
-
-#undef REGISTER_ARGMAX_LAST_AXIS
-
 ONNX_OPERATOR_KERNEL_EX(
     SigmoidGateMul, kMSDomain, 1, kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
@@ -35,31 +21,6 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("TI", DataTypeImpl::GetTensorType<int32_t>())
         .InputMemoryType(OrtMemTypeCPUInput, 3),
     SigmoidGateMul);
-
-template <typename T>
-ArgMaxLastAxis<T>::ArgMaxLastAxis(const OpKernelInfo& info)
-    : CudaKernel(info), keepdims_(info.GetAttrOrDefault<int64_t>("keepdims", 0) != 0) {}
-
-template <typename T>
-Status ArgMaxLastAxis<T>::ComputeInternal(OpKernelContext* context) const {
-  const Tensor* input = context->Input<Tensor>(0);
-  const auto& shape = input->Shape();
-  ORT_RETURN_IF_NOT(shape.NumDimensions() >= 1 &&
-                        shape[shape.NumDimensions() - 1] > 0,
-                    "ArgMaxLastAxis requires a non-empty final dimension");
-  const int64_t width = shape[shape.NumDimensions() - 1];
-  const int64_t rows = shape.Size() / width;
-  TensorShapeVector output_dims(shape.GetDims().begin(), shape.GetDims().end() - 1);
-  if (keepdims_) output_dims.push_back(1);
-  Tensor* output = context->Output(0, TensorShape(output_dims));
-  const size_t partial_count = SafeInt<size_t>(rows) * GetArgMaxLastAxisPartitions(width);
-  auto partial_values = GetScratchBuffer<float>(partial_count, GetComputeStream(context));
-  auto partial_indices = GetScratchBuffer<int64_t>(partial_count, GetComputeStream(context));
-  using CudaT = typename onnxruntime::cuda::OrtToCudaType<T>::type;
-  return LaunchArgMaxLastAxis(Stream(context), reinterpret_cast<const CudaT*>(input->Data<T>()),
-                              input->GetElementType(), rows, width,
-                              output->MutableData<int64_t>(), partial_values.get(), partial_indices.get());
-}
 
 SigmoidGateMul::SigmoidGateMul(const OpKernelInfo& info)
     : CudaKernel(info),

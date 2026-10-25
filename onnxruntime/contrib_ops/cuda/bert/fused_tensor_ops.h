@@ -9,12 +9,6 @@
 
 namespace onnxruntime::contrib::cuda {
 
-Status LaunchArgMaxLastAxis(cudaStream_t stream, const void* input, int input_type,
-                            int64_t rows, int64_t width, int64_t* output,
-                            float* partial_values, int64_t* partial_indices);
-inline int64_t GetArgMaxLastAxisPartitions(int64_t width) {
-  return 1 + (width - 1) / 4096;
-}
 Status LaunchSigmoidGateMul(cudaStream_t stream, const uint16_t* attention,
                             const uint16_t* projection, uint16_t* output, int64_t count,
                             int head_dim, int heads, int q_stride,
@@ -30,16 +24,6 @@ Status LaunchPrepareSharedExpert(cudaStream_t stream, const uint16_t* up, const 
                                  const uint16_t* activation, const uint16_t* weight,
                                  uint16_t* prepared, float* row_gates,
                                  int rows, int width, int input_width);
-
-template <typename T>
-class ArgMaxLastAxis final : public onnxruntime::cuda::CudaKernel {
- public:
-  explicit ArgMaxLastAxis(const OpKernelInfo& info);
-  Status ComputeInternal(OpKernelContext* context) const override;
-
- private:
-  bool keepdims_;
-};
 
 class SigmoidGateMul final : public onnxruntime::cuda::CudaKernel {
  public:

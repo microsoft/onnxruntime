@@ -3,7 +3,6 @@
 Do not modify directly.*
 
 * com.microsoft
-  * <a href="#com.microsoft.ArgMaxLastAxis">com.microsoft.ArgMaxLastAxis</a>
   * <a href="#com.microsoft.Attention">com.microsoft.Attention</a>
   * <a href="#com.microsoft.AttnLSTM">com.microsoft.AttnLSTM</a>
   * <a href="#com.microsoft.BeamSearch">com.microsoft.BeamSearch</a>
@@ -147,45 +146,6 @@ Do not modify directly.*
   * <sub>experimental</sub> <a href="#com.microsoft.QEmbedLayerNormalization">com.microsoft.QEmbedLayerNormalization</a>
 
 ## com.microsoft
-### <a name="com.microsoft.ArgMaxLastAxis"></a><a name="com.microsoft.argmaxlastaxis">**com.microsoft.ArgMaxLastAxis**</a>
-
-  CUDA contrib operators for fused tensor operations used by transformer models.
-
-#### Version
-
-This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
-
-#### Attributes
-
-<dl>
-<dt><tt>keepdims</tt> : int</dt>
-<dd>Keep a singleton final axis when nonzero.</dd>
-</dl>
-
-#### Inputs
-
-<dl>
-<dt><tt>logits</tt> : T</dt>
-<dd>Logits with vocabulary on the last axis.</dd>
-</dl>
-
-#### Outputs
-
-<dl>
-<dt><tt>indices</tt> : I</dt>
-<dd>First maximum index for each leading row. NaNs are ignored; an all-NaN row returns index zero.</dd>
-</dl>
-
-#### Type Constraints
-
-<dl>
-<dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
-<dd>Supported logit types.</dd>
-<dt><tt>I</tt> : tensor(int64)</dt>
-<dd>Argmax indices are int64.</dd>
-</dl>
-
-
 ### <a name="com.microsoft.Attention"></a><a name="com.microsoft.attention">**com.microsoft.Attention**</a>
 
   Multi-Head Attention that can be either unidirectional (like GPT-2) or bidirectional (like BERT).
@@ -2440,7 +2400,14 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
 
-#### Inputs
+#### Attributes
+
+<dl>
+<dt><tt>sigmoid_in_fp32</tt> : int</dt>
+<dd>When gate_weight is provided, compute sigmoid in FP32 (1, default) or input type (0).</dd>
+</dl>
+
+#### Inputs (3 - 4)
 
 <dl>
 <dt><tt>X</tt> : T</dt>
@@ -2448,7 +2415,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>Y</tt> : T</dt>
 <dd>Input scaled by gate, with the same shape as X.</dd>
 <dt><tt>gate</tt> : T</dt>
-<dd>Per-row gate with shape (..., 1).</dd>
+<dd>Per-row gate with shape (..., 1), or activation (..., K) when gate_weight is provided.</dd>
+<dt><tt>gate_weight</tt> (optional) : T</dt>
+<dd>Optional projection weight [K, 1] applied to gate before sigmoid.</dd>
 </dl>
 
 #### Outputs

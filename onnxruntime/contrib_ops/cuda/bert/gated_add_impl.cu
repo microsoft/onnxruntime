@@ -61,6 +61,30 @@ __global__ void GatedAddKernel(T* output,
   }
 }
 
+template <typename T>
+__global__ void GatedAddVec8Kernel(uint4* output,
+                                   const uint4* x,
+                                   const uint4* y,
+                                   const T* gate,
+                                   int vec_count,
+                                   onnxruntime::cuda::fast_divmod vec_hidden_size) {
+  const int v = static_cast<int>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (v < vec_count) {
+    const T g = gate[vec_hidden_size.div(v)];
+    const uint4 x_u4 = x[v];
+    const uint4 y_u4 = y[v];
+    uint4 out_u4;
+    const T* x_t = reinterpret_cast<const T*>(&x_u4);
+    const T* y_t = reinterpret_cast<const T*>(&y_u4);
+    T* out_t = reinterpret_cast<T*>(&out_u4);
+#pragma unroll
+    for (int m = 0; m < 8; ++m) {
+      out_t[m] = RoundedMulAdd(x_t[m], y_t[m], g);
+    }
+    output[v] = out_u4;
+  }
+}
+
 }  // namespace
 
 template <typename T>
@@ -76,6 +100,23 @@ Status LaunchGatedAddKernel(cudaStream_t stream,
   }
 
   constexpr int kThreads = 256;
+  if constexpr (sizeof(T) == 2) {
+    if ((hidden_size & 7) == 0 && (count >> 3) <= std::numeric_limits<int>::max() &&
+        (reinterpret_cast<uintptr_t>(output) & 15) == 0 &&
+        (reinterpret_cast<uintptr_t>(x) & 15) == 0 &&
+        (reinterpret_cast<uintptr_t>(y) & 15) == 0) {
+      const int vec_count = static_cast<int>(count >> 3);
+      const int vec_blocks = (vec_count - 1) / kThreads + 1;
+      GatedAddVec8Kernel<T><<<vec_blocks, kThreads, 0, stream>>>(
+          reinterpret_cast<uint4*>(output),
+          reinterpret_cast<const uint4*>(x),
+          reinterpret_cast<const uint4*>(y),
+          gate,
+          vec_count,
+          onnxruntime::cuda::fast_divmod(static_cast<int>(hidden_size >> 3)));
+      return CUDA_CALL(cudaGetLastError());
+    }
+  }
   const int64_t blocks = (count - 1) / kThreads + 1;
   ORT_RETURN_IF_NOT(blocks <= std::numeric_limits<int>::max(),
                     "GatedAdd launch requires too many blocks");
