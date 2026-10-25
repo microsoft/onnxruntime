@@ -53,7 +53,7 @@ __device__ __forceinline__ void SequenceRange(const int32_t* cu_seqlens, int b, 
 // Effective per-token decay and beta, after the optional fused activations.
 __device__ __forceinline__ float EffectiveDecay(float raw, const float* a_log, const float* dt_bias,
                                                 int h, GateActivation act) {
-  if (act == GateActivation::kQwen) {
+  if (act == GateActivation::kSoftplusDecay) {
     const float bias = dt_bias != nullptr ? dt_bias[h] : 0.0f;
     const float scale = a_log != nullptr ? -__expf(a_log[h]) : -1.0f;
     return scale * SoftPlus(raw + bias);
@@ -122,7 +122,7 @@ __device__ __forceinline__ uint32_t PackHalf2(__nv_bfloat16 lo, __nv_bfloat16 hi
 // mma.sync.m16n8k16 is Ampere and later, so ptxas rejects it for a pre-Ampere target. The only
 // caller is the chunked engine, and SelectPlan requires sm_major >= 8 before choosing it, so the
 // pre-Ampere body below exists purely to let those targets compile and is never executed.
-template <typename T>
+template <typename T = __half>
 __device__ __forceinline__ void MmaM16N8K16(float (&d)[4], const uint32_t (&a)[4],
                                             const uint32_t (&b)[2]);
 

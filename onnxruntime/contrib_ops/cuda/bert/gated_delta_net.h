@@ -14,7 +14,7 @@ namespace contrib {
 namespace cuda {
 
 template <typename T>
-class GatedDeltaNet final : public onnxruntime::cuda::CudaKernel {
+class GatedDeltaNet : public onnxruntime::cuda::CudaKernel {
  public:
   GatedDeltaNet(const OpKernelInfo& info);
   Status ComputeInternal(OpKernelContext* context) const override;

@@ -22,19 +22,22 @@ using onnxruntime::cuda::CudaKernel;
 using onnxruntime::cuda::OrtToCudaType;
 namespace gdn = gated_delta_net;
 
-#define REGISTER_KERNEL_TYPED(T)                                        \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                        \
-      GatedDeltaNet,                                                    \
-      kMSDomain,                                                        \
-      1,                                                                \
-      T,                                                                \
-      kCudaExecutionProvider,                                           \
-      (*KernelDefBuilder::Create())                                     \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())        \
-          .TypeConstraint("TS", DataTypeImpl::GetTensorType<float>())   \
-          .TypeConstraint("TI", DataTypeImpl::GetTensorType<int32_t>()) \
-          .InputMemoryType(OrtMemTypeCPUInput, 10)                      \
-          .MayInplace(6, 1),                                            \
+#define REGISTER_KERNEL_TYPED(T)                                           \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                           \
+      GatedDeltaNet,                                                       \
+      kMSDomain,                                                           \
+      1,                                                                   \
+      T,                                                                   \
+      kCudaExecutionProvider,                                              \
+      (*KernelDefBuilder::Create())                                        \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())           \
+          .TypeConstraint("TS", DataTypeImpl::GetTensorType<float>())      \
+          .TypeConstraint("TG", {DataTypeImpl::GetTensorType<float>(),     \
+                                 DataTypeImpl::GetTensorType<MLFloat16>(), \
+                                 DataTypeImpl::GetTensorType<BFloat16>()}) \
+          .TypeConstraint("TI", DataTypeImpl::GetTensorType<int32_t>())    \
+          .InputMemoryType(OrtMemTypeCPUInput, 10)                         \
+          .MayInplace(6, 1),                                               \
       GatedDeltaNet<T>);
 
 REGISTER_KERNEL_TYPED(float)
@@ -59,10 +62,10 @@ GatedDeltaNet<T>::GatedDeltaNet(const OpKernelInfo& info) : CudaKernel(info) {
   const std::string gate = info.GetAttrOrDefault<std::string>("gate_activation", "none");
   if (gate == "none") {
     gate_activation_ = gdn::GateActivation::kNone;
-  } else if (gate == "qwen") {
-    gate_activation_ = gdn::GateActivation::kQwen;
+  } else if (gate == "softplus" || gate == "qwen") {
+    gate_activation_ = gdn::GateActivation::kSoftplusDecay;
   } else {
-    ORT_THROW("gate_activation must be one of: none, qwen");
+    ORT_THROW("gate_activation must be one of: none, softplus");
   }
 
   const std::string beta = info.GetAttrOrDefault<std::string>("beta_activation", "none");
@@ -123,6 +126,13 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* capture_count = context->Input<Tensor>(9);
   const Tensor* state_update_active = context->Input<Tensor>(10);
 
+  ORT_RETURN_IF_NOT(query != nullptr, "query is required");
+  for (const Tensor* gate : {decay, beta}) {
+    ORT_RETURN_IF_NOT(gate == nullptr || gate->IsDataType<float>() ||
+                          gate->GetElementType() == query->GetElementType(),
+                      "decay and beta must be float or match the query element type");
+  }
+
   ORT_RETURN_IF_NOT((state_update_capacity_ > 0) == (capture_count != nullptr),
                     "capture_count must be present exactly when state_update_capacity is positive");
 
@@ -137,7 +147,6 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
   ORT_RETURN_IF_NOT(needs_beta == (beta != nullptr),
                     "beta input presence must match update_rule");
 
-  ORT_RETURN_IF_NOT(query != nullptr, "query is required");
   const bool is_packed_qkv = key == nullptr && value == nullptr;
   ORT_RETURN_IF_NOT(is_packed_qkv || (key != nullptr && value != nullptr),
                     "key and value must be both present or both absent");
@@ -277,9 +286,9 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
                           b[token_dims] == num_heads_v,
                       "beta must be [...tokens, num_heads_v]");
   }
-  if (gate_activation_ == gdn::GateActivation::kQwen) {
+  if (gate_activation_ == gdn::GateActivation::kSoftplusDecay) {
     ORT_RETURN_IF_NOT(a_log != nullptr && dt_bias != nullptr,
-                      "gate_activation=qwen requires a_log and dt_bias");
+                      "gate_activation=softplus requires a_log and dt_bias");
     ORT_RETURN_IF_NOT(a_log->Shape().NumDimensions() == 1 && a_log->Shape()[0] == num_heads_v,
                       "a_log must be [num_heads_v]");
     ORT_RETURN_IF_NOT(dt_bias->Shape().NumDimensions() == 1 &&
@@ -287,7 +296,7 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
                       "dt_bias must be [num_heads_v]");
   } else {
     ORT_RETURN_IF_NOT(a_log == nullptr && dt_bias == nullptr,
-                      "a_log and dt_bias require gate_activation=qwen");
+                      "a_log and dt_bias require gate_activation=softplus");
   }
 
   if (capture_count != nullptr) {
@@ -327,7 +336,9 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
   desc.state_update_capacity = state_update_capacity_;
   desc.state_update_active =
       state_update_capacity_ > 0 &&
-      (state_update_active == nullptr || state_update_active->Data<int32_t>()[0] != 0);
+      (state_update_active == nullptr || state_update_active->Data<int32_t>()[0] != 0) &&
+      (cu_seqlens != nullptr ||
+       total_tokens <= static_cast<int64_t>(state_update_capacity_ + 1) * batch);
   desc.update_rule = update_rule_;
   desc.gate_activation = gate_activation_;
   desc.beta_activation = beta_activation_;
@@ -341,8 +352,15 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
   desc.qk_l2_norm = qk_l2_norm_;
   desc.decay_per_key_dim = decay_per_key_dim;
   desc.ragged = cu_seqlens != nullptr;
-  desc.preferred_engine = forced_engine_;
-  desc.bf16_precision = bf16_precision_;
+  const bool packed_uniform_qkv = is_packed_qkv && cu_seqlens == nullptr;
+  const gdn::Engine effective_engine =
+      (packed_uniform_qkv && total_tokens <= 512LL * batch &&
+       forced_engine_ == gdn::Engine::kAuto)
+          ? gdn::Engine::kRecurrent
+          : forced_engine_;
+  desc.preferred_engine = effective_engine;
+  desc.bf16_precision =
+      (packed_uniform_qkv && !has_session_bf16_precision_) ? gdn::Bf16Precision::kBf16 : bf16_precision_;
   if (!has_session_bf16_precision_) {
     const std::string env_val =
         ParseEnvironmentVariableWithDefault<std::string>(gdn::kGatedDeltaNetBf16PrecisionEnv, "");
@@ -358,21 +376,21 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
   desc.sm_major = prop.major;
 
   gdn::Plan plan = gdn::SelectPlan(desc, prop.sharedMemPerBlockOptin);
-  if (forced_engine_ == gdn::Engine::kChunked ||
-      forced_engine_ == gdn::Engine::kChunkedSplit) {
+  if (effective_engine == gdn::Engine::kChunked ||
+      effective_engine == gdn::Engine::kChunkedSplit) {
     ORT_RETURN_IF_NOT(
-        plan.engine == forced_engine_,
-        "GatedDeltaNet: the ", gdn::EngineName(forced_engine_),
+        plan.engine == effective_engine,
+        "GatedDeltaNet: the ", gdn::EngineName(effective_engine),
         " engine cannot serve this descriptor (",
         plan.reject_reason ? plan.reject_reason : "no reason recorded", ")");
-  } else if (forced_engine_ == gdn::Engine::kRecurrent) {
+  } else if (effective_engine == gdn::Engine::kRecurrent) {
     plan.engine = gdn::Engine::kRecurrent;
     // Match the fallback path's kernel choice: the override must measure what the
     // heuristic would have run, not the generic kernel.
     plan.warp_specialized = gdn::RecurrentIsWarpSpecialized(head_size_qk);
     plan.state_update_tail_pass = false;
     plan.short_row_tail_pass = false;
-  } else if (forced_engine_ == gdn::Engine::kCudnn) {
+  } else if (effective_engine == gdn::Engine::kCudnn) {
     plan.engine = gdn::Engine::kCudnn;
   }
   ORT_RETURN_IF_NOT(plan.supported, "GatedDeltaNet: no supported plan (",
@@ -391,7 +409,9 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
   const size_t query_row_bytes = static_cast<size_t>(num_heads_q) * head_size_qk * sizeof(T);
   const size_t key_row_bytes = static_cast<size_t>(num_heads_k) * head_size_qk * sizeof(T);
   const size_t value_row_bytes = static_cast<size_t>(num_heads_v) * head_size_v * sizeof(T);
-  const size_t unpacked_qkv_bytes = is_packed_qkv
+  const bool direct_packed_decode = is_packed_qkv && plan.engine == gdn::Engine::kRecurrent &&
+                                    plan.warp_specialized && total_tokens <= 8LL * batch;
+  const size_t unpacked_qkv_bytes = is_packed_qkv && !direct_packed_decode
                                         ? static_cast<size_t>(total_tokens) *
                                               (query_row_bytes + key_row_bytes + value_row_bytes)
                                         : 0;
@@ -405,7 +425,10 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
   const CudaT* query_data = reinterpret_cast<const CudaT*>(query->Data<T>());
   const CudaT* key_data = key != nullptr ? reinterpret_cast<const CudaT*>(key->Data<T>()) : nullptr;
   const CudaT* value_data = value != nullptr ? reinterpret_cast<const CudaT*>(value->Data<T>()) : nullptr;
-  if (is_packed_qkv) {
+  if (direct_packed_decode) {
+    key_data = query_data + query_row_bytes / sizeof(T);
+    value_data = key_data + key_row_bytes / sizeof(T);
+  } else if (is_packed_qkv) {
     const size_t packed_row_bytes = query_row_bytes + key_row_bytes + value_row_bytes;
     auto* unpacked_query = workspace.get();
     auto* unpacked_key = unpacked_query + static_cast<size_t>(total_tokens) * query_row_bytes;
@@ -430,10 +453,13 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
   pack.query = query_data;
   pack.key = key_data;
   pack.value = value_data;
+  pack.packed_qkv = direct_packed_decode;
   pack.cu_seqlens = cu_seqlens != nullptr ? cu_seqlens->Data<int32_t>() : nullptr;
   pack.capture_count = desc.state_update_active ? capture_count->Data<int32_t>() : nullptr;
-  pack.decay = decay != nullptr ? decay->Data<float>() : nullptr;
-  pack.beta = beta != nullptr ? beta->Data<float>() : nullptr;
+  pack.decay = decay != nullptr ? decay->DataRaw() : nullptr;
+  pack.beta = beta != nullptr ? beta->DataRaw() : nullptr;
+  const Tensor* gate = decay != nullptr ? decay : beta;
+  pack.gates_in_input_type = gate != nullptr && !gate->IsDataType<float>();
   pack.initial_state = initial_state != nullptr ? initial_state->Data<float>() : nullptr;
   pack.a_log = a_log != nullptr ? a_log->Data<float>() : nullptr;
   pack.dt_bias = dt_bias != nullptr ? dt_bias->Data<float>() : nullptr;

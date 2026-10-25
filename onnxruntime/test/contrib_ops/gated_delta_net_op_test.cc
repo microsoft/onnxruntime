@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstring>
 #include <limits>
 #include <numeric>
 #include <random>
@@ -58,6 +59,7 @@ struct Options {
   int state_update_capacity = 0;
   int chunk_size = 0;
   float scale = 0.0f;
+  bool gates_in_input_type = false;
 };
 
 struct Inputs {
@@ -300,7 +302,7 @@ void Reference(const Geometry& g, const Options& o, const Inputs& in, std::vecto
         double decay = 1.0;
         if (gated) {
           float raw = in.decay[gi];
-          if (o.gate_activation == "qwen") {
+          if (o.gate_activation == "qwen" || o.gate_activation == "softplus") {
             raw = -std::exp(in.a_log[hv]) * SoftPlus(raw + in.dt_bias[hv]);
           }
           decay = std::exp(static_cast<double>(raw));
@@ -421,6 +423,10 @@ void RunTypedCase(const Geometry& g, const Options& o, const Inputs& in_raw, flo
   in.q = RoundToTensorType<T>(in_raw.q);
   in.k = RoundToTensorType<T>(in_raw.k);
   in.v = RoundToTensorType<T>(in_raw.v);
+  if (o.gates_in_input_type) {
+    in.decay = RoundToTensorType<T>(in_raw.decay);
+    in.beta = RoundToTensorType<T>(in_raw.beta);
+  }
 
   std::vector<float> ref_out, ref_state, ref_state_update;
   Reference(g, o, in, &ref_out, &ref_state, use_webgpu ? &ref_state_update : nullptr);
@@ -490,12 +496,20 @@ void RunTypedCase(const Geometry& g, const Options& o, const Inputs& in_raw, flo
   const bool needs_beta =
       o.update_rule == "delta" || o.update_rule == "gated_delta";
   if (needs_decay) {
-    test.AddInput<float>("decay", shaped({g.hv}), in.decay);
+    if (o.gates_in_input_type) {
+      test.AddInput<T>("decay", shaped({g.hv}), ToTensorType<T>(in.decay));
+    } else {
+      test.AddInput<float>("decay", shaped({g.hv}), in.decay);
+    }
   } else {
     test.AddOptionalInputEdge<float>();
   }
   if (needs_beta) {
-    test.AddInput<float>("beta", shaped({g.hv}), in.beta);
+    if (o.gates_in_input_type) {
+      test.AddInput<T>("beta", shaped({g.hv}), ToTensorType<T>(in.beta));
+    } else {
+      test.AddInput<float>("beta", shaped({g.hv}), in.beta);
+    }
   } else {
     test.AddOptionalInputEdge<float>();
   }
@@ -504,7 +518,7 @@ void RunTypedCase(const Geometry& g, const Options& o, const Inputs& in_raw, flo
   } else {
     test.AddInput<float>("initial_state", {g.batch, g.hv, g.dv, g.dk}, in.state0);
   }
-  if (o.gate_activation == "qwen") {
+  if (o.gate_activation == "qwen" || o.gate_activation == "softplus") {
     test.AddInput<float>("a_log", {g.hv}, in.a_log);
     test.AddInput<float>("dt_bias", {g.hv}, in.dt_bias);
   } else {
@@ -603,6 +617,66 @@ void RunCase(const Geometry& g, const Options& o, const Inputs& in, float out_to
              float state_tol, bool rank4 = false, std::vector<OrtValue>* fetches = nullptr,
              bool use_webgpu = false) {
   RunTypedCase<MLFloat16>(g, o, in, out_tol, state_tol, rank4, fetches, use_webgpu);
+}
+
+template <typename T>
+void TestInputTypeGates() {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA is required for input-type gates";
+  }
+  for (const int tokens : {1, 2, 9, 65}) {
+    const Geometry geometry{tokens, 1, 2, 4, 128, 128};
+    Inputs inputs = MakeInputs(geometry, 917 + tokens);
+    inputs.decay = RoundToTensorType<T>(inputs.decay);
+    inputs.beta = RoundToTensorType<T>(inputs.beta);
+    for (const std::string rule : {"gated_delta", "gated", "delta"}) {
+      Options options;
+      options.update_rule = rule;
+      options.gate_activation = rule == "delta" ? "none" : "qwen";
+      options.beta_activation = "sigmoid";
+      std::vector<OrtValue> reference, narrowed;
+      RunTypedCase<T>(geometry, options, inputs, 6e-3f, 2e-3f, true, &reference);
+      options.gates_in_input_type = true;
+      RunTypedCase<T>(geometry, options, inputs, 6e-3f, 2e-3f, true, &narrowed);
+      ASSERT_EQ(reference.size(), narrowed.size());
+      for (size_t i = 0; i < reference.size(); ++i) {
+        const Tensor& expected = reference[i].Get<Tensor>();
+        const Tensor& actual = narrowed[i].Get<Tensor>();
+        ASSERT_EQ(expected.Shape(), actual.Shape());
+        ASSERT_EQ(expected.SizeInBytes(), actual.SizeInBytes());
+        if (expected.SizeInBytes() != 0) {
+          EXPECT_EQ(std::memcmp(expected.DataRaw(), actual.DataRaw(), expected.SizeInBytes()), 0)
+              << "tokens=" << tokens << " rule=" << rule << " output=" << i;
+        }
+      }
+    }
+  }
+}
+
+TEST(GatedDeltaNetTest, InputTypeGatesFloat16ExactParity) {
+  TestInputTypeGates<MLFloat16>();
+}
+
+TEST(GatedDeltaNetTest, InputTypeGatesBFloat16ExactParity) {
+  TestInputTypeGates<BFloat16>();
+}
+
+TEST(GatedDeltaNetTest, RejectsGateTypeDifferentFromQuery) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA is required for input-type gates";
+  }
+  OpTester test("GatedDeltaNet", 1, kMSDomain);
+  test.AddInput<MLFloat16>("query", {1, 1, 64}, std::vector<MLFloat16>(64));
+  test.AddInput<MLFloat16>("key", {1, 1, 64}, std::vector<MLFloat16>(64));
+  test.AddInput<MLFloat16>("value", {1, 1, 64}, std::vector<MLFloat16>(64));
+  test.AddOptionalInputEdge<int32_t>();
+  test.AddInput<BFloat16>("decay", {1, 1}, {BFloat16(-0.1f)});
+  test.AddInput<BFloat16>("beta", {1, 1}, {BFloat16(0.5f)});
+  test.AddOutput<MLFloat16>("output", {1, 1, 64}, std::vector<MLFloat16>(64));
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "decay and beta must be float or match the query element type", {}, nullptr, &providers);
 }
 
 constexpr int kDim = 128;  // the chunked engine is specialised for head_size 128
@@ -1342,6 +1416,80 @@ TEST(GatedDeltaNetTest, Recurrent_PackedQkvDecode) {
                           /*rank4=*/true, /*fetches=*/nullptr, /*use_webgpu=*/false,
                           /*omit_final_state=*/false, /*webgpu_config=*/nullptr,
                           /*test_max_storage_buffer_binding_size=*/0, /*packed_qkv=*/true);
+}
+
+template <typename T>
+void TestDirectPackedQkvParity() {
+  if (NeedSkipGatedDeltaNetTest()) return;
+  for (int width : {64, 128, 256}) {
+    for (int tokens : {1, 2, 9, 65}) {
+      const Geometry geometry{tokens * 2, 2, 2, 4, width, 128};
+      Inputs inputs = MakeInputs(geometry, width + tokens);
+      for (bool input_type_gates : {false, true}) {
+        Options options;
+        options.qk_l2_norm = 1;
+        options.gate_activation = "qwen";
+        options.beta_activation = "sigmoid";
+        options.gates_in_input_type = input_type_gates;
+        std::vector<OrtValue> reference, packed;
+        RunTypedCase<T>(geometry, options, inputs, 2e-2f, 2e-2f, true, &reference);
+        RunTypedCase<T>(geometry, options, inputs, 2e-2f, 2e-2f, true, &packed,
+                        false, false, nullptr, 0, true);
+        ASSERT_EQ(reference.size(), packed.size());
+        for (size_t index = 0; index < reference.size(); ++index) {
+          const auto& expected = reference[index].Get<Tensor>();
+          const auto& actual = packed[index].Get<Tensor>();
+          ASSERT_EQ(expected.Shape(), actual.Shape());
+          ASSERT_EQ(expected.SizeInBytes(), actual.SizeInBytes());
+          EXPECT_EQ(std::memcmp(expected.DataRaw(), actual.DataRaw(), expected.SizeInBytes()), 0)
+              << "tokens=" << tokens << " width=" << width << " input_type_gates=" << input_type_gates;
+        }
+      }
+    }
+  }
+}
+
+TEST(GatedDeltaNetTest, DirectPackedQkvFloat16ExactParity) {
+  TestDirectPackedQkvParity<MLFloat16>();
+}
+
+TEST(GatedDeltaNetTest, DirectPackedQkvBFloat16ExactParity) {
+  TestDirectPackedQkvParity<BFloat16>();
+}
+
+template <typename T>
+void TestQwenS2PackedParity() {
+  if (NeedSkipGatedDeltaNetTest()) return;
+  for (int tokens : {1, 2, 8}) {
+    Geometry geometry{tokens, 1, 16, 48, 128, 128};
+    Options options;
+    options.qk_l2_norm = 1;
+    options.gate_activation = "qwen";
+    options.beta_activation = "sigmoid";
+    options.gates_in_input_type = true;
+    Inputs inputs = MakeInputs(geometry, 151 + tokens);
+    std::vector<OrtValue> reference, packed;
+    RunTypedCase<T>(geometry, options, inputs, 2e-2f, 2e-2f, true, &reference);
+    RunTypedCase<T>(geometry, options, inputs, 2e-2f, 2e-2f, true, &packed,
+                    false, false, nullptr, 0, true);
+    ASSERT_EQ(reference.size(), packed.size());
+    for (size_t index = 0; index < reference.size(); ++index) {
+      const auto& expected = reference[index].Get<Tensor>();
+      const auto& actual = packed[index].Get<Tensor>();
+      ASSERT_EQ(expected.Shape(), actual.Shape());
+      ASSERT_EQ(expected.SizeInBytes(), actual.SizeInBytes());
+      EXPECT_EQ(std::memcmp(expected.DataRaw(), actual.DataRaw(), expected.SizeInBytes()), 0)
+          << "tokens=" << tokens << " output=" << index;
+    }
+  }
+}
+
+TEST(GatedDeltaNetTest, QwenS2PackedFloat16ExactParity) {
+  TestQwenS2PackedParity<MLFloat16>();
+}
+
+TEST(GatedDeltaNetTest, QwenS2PackedBFloat16ExactParity) {
+  TestQwenS2PackedParity<BFloat16>();
 }
 
 TEST(GatedDeltaNetTest, Recurrent_VerifyBatch) {
