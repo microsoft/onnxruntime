@@ -2052,7 +2052,7 @@ Status LaunchDynamicSparseAttention(
       CUDA_RETURN_IF_ERROR(cudaDeviceGetAttribute(&optin_shared, cudaDevAttrMaxSharedMemoryPerBlockOptin, device));
       constexpr int kMaxGridDimYZ = 65535;
       use_prefill_kernel =
-          enabled && !data.quantized_cache && cc_major >= 8 && parameters.sequence_length >= 8 &&
+          enabled && cc_major >= 8 && parameters.sequence_length >= 8 &&
           parameters.head_size == dsa_prefill::kHeadDim && !local_plus_selected &&
           parameters.selected_kv_source == DynamicSparseAttentionKvSource::kMain &&
           !parameters.use_smooth_softmax && parameters.max_selected > 0 &&
@@ -2199,16 +2199,27 @@ Status LaunchDynamicSparseAttention(
     }
   } else if (use_prefill_kernel) {
     if constexpr (std::is_same_v<T, __nv_bfloat16>) {
-      CUDA_RETURN_IF_ERROR(cudaFuncSetAttribute(
-          dsa_prefill::DynamicSparseAttentionPrefillKernel, cudaFuncAttributeMaxDynamicSharedMemorySize,
-          static_cast<int>(dsa_prefill::kSharedBytes)));
       const dim3 grid(static_cast<unsigned>(parameters.batch_size * parameters.sequence_length),
                       static_cast<unsigned>(parameters.kv_num_heads));
-      dsa_prefill::DynamicSparseAttentionPrefillKernel<<<grid, dsa_prefill::kThreads, dsa_prefill::kSharedBytes,
-                                                         stream>>>(
-          data.prepared_query, data.present_key, data.present_value, data.selected_indices, data.selected_counts,
-          data.seqlens_k, data.output, parameters.sequence_length, parameters.num_heads, parameters.kv_num_heads,
-          parameters.cache_capacity, parameters.max_selected, parameters.scale);
+      if (data.quantized_cache) {
+        CUDA_RETURN_IF_ERROR(cudaFuncSetAttribute(
+            dsa_prefill::DynamicSparseAttentionPrefillKernel<true>, cudaFuncAttributeMaxDynamicSharedMemorySize,
+            static_cast<int>(dsa_prefill::kSharedBytes)));
+        dsa_prefill::DynamicSparseAttentionPrefillKernel<true><<<grid, dsa_prefill::kThreads, dsa_prefill::kSharedBytes,
+                                                                 stream>>>(
+            data.prepared_query, data.present_key, data.present_value, data.selected_indices, data.selected_counts,
+            data.seqlens_k, data.output, parameters.sequence_length, parameters.num_heads, parameters.kv_num_heads,
+            parameters.cache_capacity, parameters.max_selected, parameters.scale, data.key_scale, data.value_scale);
+      } else {
+        CUDA_RETURN_IF_ERROR(cudaFuncSetAttribute(
+            dsa_prefill::DynamicSparseAttentionPrefillKernel<false>, cudaFuncAttributeMaxDynamicSharedMemorySize,
+            static_cast<int>(dsa_prefill::kSharedBytes)));
+        dsa_prefill::DynamicSparseAttentionPrefillKernel<false><<<grid, dsa_prefill::kThreads, dsa_prefill::kSharedBytes,
+                                                                  stream>>>(
+            data.prepared_query, data.present_key, data.present_value, data.selected_indices, data.selected_counts,
+            data.seqlens_k, data.output, parameters.sequence_length, parameters.num_heads, parameters.kv_num_heads,
+            parameters.cache_capacity, parameters.max_selected, parameters.scale, nullptr, nullptr);
+      }
     }
   } else if (!data.quantized_cache && grouped_prefill_threads_supported &&
              UseGroupedPrefillAttention(parameters, sizeof(T), max_shared_memory_per_block)) {

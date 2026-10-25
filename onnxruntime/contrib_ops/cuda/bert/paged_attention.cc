@@ -839,18 +839,19 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
 #if USE_FLASH_ATTENTION
   const bool use_flash_split_kv =
       use_flash_attention &&
-      parameters.token_count == parameters.batch_size &&
-      max_query_len == 1 &&
-      !parameters.use_smooth_softmax &&
-      parameters.local_window_size <= 0;
+      ((parameters.token_count == parameters.batch_size && max_query_len == 1 && parameters.local_window_size <= 0) ||
+       (parameters.batch_size == 1 && parameters.token_count == max_query_len && max_query_len <= 64)) &&
+      !parameters.use_smooth_softmax;
   if (use_flash_split_kv) {
     // The combine kernel costs more than it saves for short decode contexts, even when a high
     // query-head count makes the occupancy heuristic select two splits. The upper bound sizes the
     // workspaces, while the replay-wide lower bound proves splitting is worthwhile on every replay.
     if (max_kv_len_lower_bound > kFlashSplitKvMinSequenceLength) {
+      const int effective_kv_len =
+          parameters.local_window_size > 0 ? std::min(max_kv_len, parameters.local_window_size) : max_kv_len;
       const auto [num_splits, softmax_lse_accum_bytes, out_accum_bytes] =
           onnxruntime::flash::get_num_splits_and_buffer_sizes(
-              parameters.batch_size, 1, max_kv_len, parameters.num_heads,
+              parameters.batch_size, max_query_len, effective_kv_len, parameters.num_heads,
               parameters.head_size, device_prop.multiProcessorCount);
       flash_num_splits = static_cast<int>(num_splits);
       flash_softmax_lse_accum_buffer =

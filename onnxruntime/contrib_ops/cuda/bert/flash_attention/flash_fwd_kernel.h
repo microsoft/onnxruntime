@@ -481,13 +481,16 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, cons
   // CUDA graph replay keeps the split count and workspace sizes fixed, but varlen sequence lengths
   // remain live device values. Partition the live tiles so a loose replay upper bound does not
   // concentrate all useful work in the first split. Fixed-length callers retain the original extent.
-  const int n_blocks_to_split =
+  const int total_n_blocks =
       cute::ceil_div(Is_even_MN ? params.seqlen_k : binfo.actual_seqlen_k, kBlockN);
+  const int window_block_min =
+      !Is_local ? 0
+                : std::max(0, (m_block * kBlockM + binfo.actual_seqlen_k - binfo.actual_seqlen_q - params.window_size_left) / kBlockN);
+  const int n_blocks_to_split = std::max(0, total_n_blocks - window_block_min);
   const int n_blocks_per_split = cute::ceil_div(n_blocks_to_split, num_n_splits);
-  const int n_block_min = !Is_local
-                              ? n_split_idx * n_blocks_per_split
-                              : std::max(n_split_idx * n_blocks_per_split, (m_block * kBlockM + binfo.actual_seqlen_k - binfo.actual_seqlen_q - params.window_size_left) / kBlockN);
-  int n_block_max = std::min(cute::ceil_div(binfo.actual_seqlen_k, kBlockN), (n_split_idx + 1) * n_blocks_per_split);
+  const int n_block_min = window_block_min + n_split_idx * n_blocks_per_split;
+  int n_block_max = std::min(cute::ceil_div(binfo.actual_seqlen_k, kBlockN),
+                             window_block_min + (n_split_idx + 1) * n_blocks_per_split);
   if (Is_causal || Is_local) {
     n_block_max = std::min(n_block_max,
                            cute::ceil_div((m_block + 1) * kBlockM + binfo.actual_seqlen_k - binfo.actual_seqlen_q + params.window_size_right, kBlockN));

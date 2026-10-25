@@ -674,6 +674,7 @@ struct Int3MoeParams {
   const int* source_route_ids = nullptr;
   bool input_is_gathered = false;
   int total_routes_override = 0;
+  int* grouped_workspace = nullptr;
 };
 
 cudaError_t LaunchInt3Moe(const Int3MoeParams& params, cudaStream_t stream);

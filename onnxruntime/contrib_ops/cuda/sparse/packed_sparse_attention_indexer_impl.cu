@@ -138,11 +138,95 @@ __global__ void ElementwiseCopyKernel(const T* src, T* dst, int64_t count) {
 // policy_mode = "qsa"
 // ---------------------------------------------------------------------------------------------
 
+template <typename T, typename TState>
+__global__ void QsaUpdateStateBlocksKernel(const T* key, const T* key_norm_weight, const T* cos_cache,
+                                           const T* sin_cache, const int32_t* cumulative_sequence_lengths,
+                                           const int32_t* past_sequence_lengths, const int32_t* past_state_lengths,
+                                           const int32_t* state_update_capture_count, bool state_update_active,
+                                           TState* present_key_state, T* state_update,
+                                           PackedSparseAttentionIndexerParams params) {
+  extern __shared__ float shared[];
+  float* pooled = shared;
+  float* reduction = shared + params.head_size;
+
+  for (int b = static_cast<int>(blockIdx.x); b < params.batch_size; b += static_cast<int>(gridDim.x)) {
+    const int req_start = cumulative_sequence_lengths[b];
+    const int req_end = cumulative_sequence_lengths[b + 1];
+    const int raw_key_len = past_state_lengths[b * 2 + psai::kKeyStateLength];
+    const int raw_buf_len = past_state_lengths[b * 2 + psai::kBufferLength];
+    const int past_sequence_length = past_sequence_lengths[b];
+    const bool invalid_metadata =
+        cumulative_sequence_lengths[0] != 0 ||
+        cumulative_sequence_lengths[params.batch_size] != params.total_tokens ||
+        req_start < 0 || req_end < req_start || req_end > params.total_tokens ||
+        past_sequence_length < 0 || raw_key_len < 0 || raw_key_len > params.state_capacity ||
+        raw_buf_len < 0 || raw_buf_len >= params.compress_ratio ||
+        raw_key_len != past_sequence_length / params.compress_ratio ||
+        raw_buf_len != past_sequence_length % params.compress_ratio;
+    const int req_len = invalid_metadata ? 0 : req_end - req_start;
+    const int old_key_len = min(max(raw_key_len, 0), params.state_capacity);
+    const int old_buf_len = min(max(raw_buf_len, 0), params.compress_ratio - 1);
+    const int pending = old_buf_len + req_len;
+    const int full_new_block_count = pending / params.compress_ratio;
+    const int capacity_left = params.state_capacity - old_key_len;
+    const bool rejected = invalid_metadata || full_new_block_count > capacity_left;
+    const int new_block_count = rejected ? 0 : full_new_block_count;
+    const bool capture_active = !rejected && state_update != nullptr && state_update_capture_count != nullptr &&
+                                state_update_active;
+    const int capture_count = capture_active
+                                  ? min(max(state_update_capture_count[b], 0),
+                                        min(req_len, params.state_update_capacity))
+                                  : 0;
+
+    for (int k = 1 + static_cast<int>(blockIdx.y); k < new_block_count; k += static_cast<int>(gridDim.y)) {
+      float sum_squares = 0.0f;
+      for (int d = static_cast<int>(threadIdx.x); d < params.head_size; d += static_cast<int>(blockDim.x)) {
+        float sum = 0.0f;
+        for (int t = 0; t < params.compress_ratio; ++t) {
+          const int virtual_pos = k * params.compress_ratio + t;
+          sum += to_float<T>(key[(static_cast<int64_t>(req_start) + (virtual_pos - old_buf_len)) *
+                                     params.key_row_stride +
+                                 d]);
+        }
+        const float p = sum / static_cast<float>(params.compress_ratio);
+        pooled[d] = p;
+        sum_squares += p * p;
+      }
+      sum_squares = SaiBlockSum(sum_squares, reduction);
+      const float inverse_rms = rsqrtf(sum_squares / static_cast<float>(params.head_size) + params.epsilon);
+      for (int d = static_cast<int>(threadIdx.x); d < params.head_size; d += static_cast<int>(blockDim.x)) {
+        pooled[d] = pooled[d] * inverse_rms * to_float<T>(key_norm_weight[d]);
+      }
+      __syncthreads();
+
+      const int entry = old_key_len + k;
+      const int rope_position =
+          SaiClampPosition(static_cast<int64_t>(entry) * params.compress_ratio, params.max_rotary_length);
+      const int64_t cache_offset =
+          (static_cast<int64_t>(params.cos_cache_batched ? b : 0) * params.max_rotary_length + rope_position) *
+          params.rotary_width;
+      const int64_t out_base = (static_cast<int64_t>(b) * params.state_capacity + entry) * params.head_size;
+      const int completion_token = (k + 1) * params.compress_ratio - old_buf_len - 1;
+      const int64_t capture_base =
+          (static_cast<int64_t>(b) * params.state_update_capacity + completion_token) * params.head_size;
+      for (int d = static_cast<int>(threadIdx.x); d < params.head_size; d += static_cast<int>(blockDim.x)) {
+        const float rot = SaiLeadingRope<T>(pooled, params.rotary_width, cos_cache + cache_offset,
+                                            sin_cache + cache_offset, d);
+        present_key_state[out_base + d] = from_float<TState>(rot);
+        if (completion_token < capture_count) {
+          state_update[capture_base + d] = from_float<T>(rot);
+        }
+      }
+      __syncthreads();
+    }
+  }
+}
+
 // One block per request: forms every newly-closed compress_ratio block (mean-pool -> RMSNorm ->
 // leading RoPE -> append into fixed-capacity key_state) and publishes the raw trailing buffer.
 // Reads only past_kv_buffer / key (never present_kv_buffer / present_key_state), so it is correct
 // whether or not the present/past tensors are the same aliased allocation.
-template <typename T, typename TState>
+template <typename T, typename TState, bool kFirstBlockOnly = false>
 __global__ void QsaUpdateStateKernel(const T* key, const T* key_norm_weight, const T* cos_cache,
                                      const T* sin_cache, const int32_t* cumulative_sequence_lengths,
                                      const int32_t* past_sequence_lengths, const T* past_kv_buffer,
@@ -214,7 +298,9 @@ __global__ void QsaUpdateStateKernel(const T* key, const T* key_norm_weight, con
     }
     __syncthreads();
 
-    for (int k = 0; k < new_block_count; ++k) {
+    const int loop_limit = kFirstBlockOnly ? min(new_block_count, 1) : new_block_count;
+    for (int k = 0; k < loop_limit; ++k) {
+      float sum_squares = 0.0f;
       for (int d = static_cast<int>(threadIdx.x); d < params.head_size; d += static_cast<int>(blockDim.x)) {
         float sum = 0.0f;
         for (int t = 0; t < params.compress_ratio; ++t) {
@@ -227,13 +313,9 @@ __global__ void QsaUpdateStateKernel(const T* key, const T* key_norm_weight, con
                                            params.key_row_stride +
                                        d]);
         }
-        pooled[d] = sum / static_cast<float>(params.compress_ratio);
-      }
-      __syncthreads();
-
-      float sum_squares = 0.0f;
-      for (int d = static_cast<int>(threadIdx.x); d < params.head_size; d += static_cast<int>(blockDim.x)) {
-        sum_squares += pooled[d] * pooled[d];
+        const float p = sum / static_cast<float>(params.compress_ratio);
+        pooled[d] = p;
+        sum_squares += p * p;
       }
       sum_squares = SaiBlockSum(sum_squares, reduction);
       const float inverse_rms = rsqrtf(sum_squares / static_cast<float>(params.head_size) + params.epsilon);
@@ -248,24 +330,21 @@ __global__ void QsaUpdateStateKernel(const T* key, const T* key_norm_weight, con
       const int64_t cache_offset =
           (static_cast<int64_t>(params.cos_cache_batched ? b : 0) * params.max_rotary_length + rope_position) *
           params.rotary_width;
-      for (int d = static_cast<int>(threadIdx.x); d < params.head_size; d += static_cast<int>(blockDim.x)) {
-        rotated[d] = SaiLeadingRope<T>(pooled, params.rotary_width, cos_cache + cache_offset,
-                                       sin_cache + cache_offset, d);
-      }
-      __syncthreads();
-
       const int64_t out_base = (static_cast<int64_t>(b) * params.state_capacity + entry) * params.head_size;
       const int completion_token = (k + 1) * params.compress_ratio - old_buf_len - 1;
       const int64_t capture_base =
           (static_cast<int64_t>(b) * params.state_update_capacity + completion_token) * params.head_size;
       for (int d = static_cast<int>(threadIdx.x); d < params.head_size; d += static_cast<int>(blockDim.x)) {
-        present_key_state[out_base + d] = from_float<TState>(rotated[d]);
+        const float rot = SaiLeadingRope<T>(pooled, params.rotary_width, cos_cache + cache_offset,
+                                            sin_cache + cache_offset, d);
+        present_key_state[out_base + d] = from_float<TState>(rot);
         if (completion_token < capture_count) {
-          state_update[capture_base + d] = from_float<T>(rotated[d]);
+          state_update[capture_base + d] = from_float<T>(rot);
         }
       }
       __syncthreads();
     }
+    (void)rotated;
 
     // Publish the raw trailing buffer. Skipped entirely on overflow: present_kv_buffer already
     // holds past_kv_buffer's contents unchanged (from the baseline copy in the Launch function
@@ -1647,13 +1726,33 @@ Status LaunchQsaPackedSparseAttentionIndexer(
   }
 
   const size_t value_bytes = static_cast<size_t>(params.head_size) * sizeof(float);
-  ORT_RETURN_IF_ERROR(ConfigureDynamicSharedMemory(
-      QsaUpdateStateKernel<T, TState>, 2 * value_bytes + kThreads * sizeof(float), "QsaUpdateStateKernel"));
   const int state_blocks = static_cast<int>(std::min<int64_t>(params.batch_size, kSaiMaxGridDimX));
-  QsaUpdateStateKernel<T, TState><<<state_blocks, kThreads, 2 * value_bytes + kThreads * sizeof(float), stream>>>(
-      key, key_norm_weight, cos_cache, sin_cache, cumulative_sequence_lengths, past_sequence_lengths, past_kv_buffer,
-      past_state_lengths, state_update_capture_count, state_update_active, present_key_state, present_kv_buffer,
-      present_state_lengths, state_update, overflow_flags, params);
+  if (params.total_tokens >= 4 * params.compress_ratio && params.compress_ratio > 0) {
+    const int parallel_blocks =
+        std::min<int>((params.total_tokens + params.compress_ratio - 1) / params.compress_ratio, 512);
+    ORT_RETURN_IF_ERROR(ConfigureDynamicSharedMemory(
+        QsaUpdateStateBlocksKernel<T, TState>, value_bytes + kThreads * sizeof(float), "QsaUpdateStateBlocksKernel"));
+    QsaUpdateStateBlocksKernel<T, TState>
+        <<<dim3(state_blocks, parallel_blocks), kThreads, value_bytes + kThreads * sizeof(float), stream>>>(
+            key, key_norm_weight, cos_cache, sin_cache, cumulative_sequence_lengths, past_sequence_lengths,
+            past_state_lengths, state_update_capture_count, state_update_active, present_key_state, state_update,
+            params);
+    ORT_RETURN_IF_ERROR(ConfigureDynamicSharedMemory(
+        QsaUpdateStateKernel<T, TState, true>, 2 * value_bytes + kThreads * sizeof(float), "QsaUpdateStateKernel"));
+    QsaUpdateStateKernel<T, TState, true>
+        <<<state_blocks, kThreads, 2 * value_bytes + kThreads * sizeof(float), stream>>>(
+            key, key_norm_weight, cos_cache, sin_cache, cumulative_sequence_lengths, past_sequence_lengths,
+            past_kv_buffer, past_state_lengths, state_update_capture_count, state_update_active, present_key_state,
+            present_kv_buffer, present_state_lengths, state_update, overflow_flags, params);
+  } else {
+    ORT_RETURN_IF_ERROR(ConfigureDynamicSharedMemory(
+        QsaUpdateStateKernel<T, TState, false>, 2 * value_bytes + kThreads * sizeof(float), "QsaUpdateStateKernel"));
+    QsaUpdateStateKernel<T, TState, false>
+        <<<state_blocks, kThreads, 2 * value_bytes + kThreads * sizeof(float), stream>>>(
+            key, key_norm_weight, cos_cache, sin_cache, cumulative_sequence_lengths, past_sequence_lengths,
+            past_kv_buffer, past_state_lengths, state_update_capture_count, state_update_active, present_key_state,
+            present_kv_buffer, present_state_lengths, state_update, overflow_flags, params);
+  }
 
   if (params.total_tokens == 0) {
     return CUDA_CALL(cudaGetLastError());
@@ -1748,7 +1847,7 @@ Status LaunchQsaPackedSparseAttentionIndexer(
         overflow_flags, key_stride, selected_indices, selected_counts, params);
   } else if (use_ragged_prefill) {
     static const bool warp_heads =
-        ParseEnvironmentVariableWithDefault<bool>("ORT_PACKED_SPARSE_INDEXER_WARP_HEADS", false);
+        ParseEnvironmentVariableWithDefault<bool>("ORT_PACKED_SPARSE_INDEXER_WARP_HEADS", true);
     if (warp_heads) {
       QsaRaggedPrefillScoreKernel<T, TState, true><<<token_blocks, kHierarchicalTileBlocks * kWarpSize, 0, stream>>>(
           present_key_state, query_rotated, cumulative_sequence_lengths, past_sequence_lengths, position_ids,

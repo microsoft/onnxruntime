@@ -3846,8 +3846,8 @@ Status QMoE::ComputeInt3(OpKernelContext* context) const {
   if (rows == 0) return Status::OK();
   const size_t element_size = input->DataType()->Size();
   const size_t per_row_bytes =
-      SafeInt<size_t>(k_) * (SafeInt<size_t>(intermediate + hidden) * element_size + 3 * sizeof(int));
-  const size_t budget = std::min<size_t>(int_dequant_max_scratch_bytes_, size_t{64} << 20);
+      SafeInt<size_t>(k_) * (SafeInt<size_t>(intermediate + hidden) * element_size + 7 * sizeof(int));
+  const size_t budget = std::min<size_t>(int_dequant_max_scratch_bytes_, size_t{256} << 20);
   ORT_RETURN_IF_NOT(per_row_bytes <= budget, "INT3 QMoE scratch budget cannot accommodate one token.");
   size_t tile_rows = std::min<size_t>(rows, budget / per_row_bytes);
   if (row_tile_size_ > 0) tile_rows = std::min<size_t>(tile_rows, row_tile_size_);
@@ -3856,7 +3856,7 @@ Status QMoE::ComputeInt3(OpKernelContext* context) const {
   const size_t routes = SafeInt<size_t>(tile_rows) * k_;
   auto selected = GetScratchBuffer<int>(routes, GetComputeStream(context));
   auto scales = GetScratchBuffer<float>(routes, GetComputeStream(context));
-  auto source_rows = GetScratchBuffer<int>(routes, GetComputeStream(context));
+  auto source_rows = GetScratchBuffer<int>(SafeInt<size_t>(routes) * 5 + 4096, GetComputeStream(context));
   const size_t act_bytes = SafeInt<size_t>(routes) * intermediate * element_size;
   const size_t fc2_part_bytes = SafeInt<size_t>(routes) * hidden * element_size;
   auto activation = GetScratchBuffer<void>(act_bytes + fc2_part_bytes, GetComputeStream(context));
@@ -3864,6 +3864,7 @@ Status QMoE::ComputeInt3(OpKernelContext* context) const {
   params.fc2_partial = static_cast<char*>(activation.get()) + act_bytes;
   params.experts = selected.get();
   params.routing_scales = scales.get();
+  params.grouped_workspace = use_sparse_mixer_ ? nullptr : source_rows.get();
   for (int64_t offset = 0; offset < rows; offset += tile_rows) {
     params.rows = narrow<int>(std::min<size_t>(tile_rows, rows - offset));
     const auto route = [&](const auto* logits) {

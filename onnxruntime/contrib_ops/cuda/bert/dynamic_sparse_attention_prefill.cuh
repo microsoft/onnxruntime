@@ -65,10 +65,30 @@ __device__ __forceinline__ void MmaBf16(float (&c)[4], const uint32_t (&a)[4], u
       : "+f"(c[0]), "+f"(c[1]), "+f"(c[2]), "+f"(c[3])
       : "r"(a[0]), "r"(a[1]), "r"(a[2]), "r"(a[3]), "r"(b0), "r"(b1));
 }
+
+__device__ __forceinline__ uint4 DequantizeInt8x8ToBf16(uint2 packed, float4 s0, float4 s1) {
+  const int32_t w0 = static_cast<int32_t>(packed.x);
+  const int32_t w1 = static_cast<int32_t>(packed.y);
+  const float b0 = static_cast<float>(static_cast<int32_t>(w0 << 24) >> 24) * s0.x;
+  const float b1 = static_cast<float>(static_cast<int32_t>(w0 << 16) >> 24) * s0.y;
+  const float b2 = static_cast<float>(static_cast<int32_t>(w0 << 8) >> 24) * s0.z;
+  const float b3 = static_cast<float>(static_cast<int32_t>(w0) >> 24) * s0.w;
+  const float b4 = static_cast<float>(static_cast<int32_t>(w1 << 24) >> 24) * s1.x;
+  const float b5 = static_cast<float>(static_cast<int32_t>(w1 << 16) >> 24) * s1.y;
+  const float b6 = static_cast<float>(static_cast<int32_t>(w1 << 8) >> 24) * s1.z;
+  const float b7 = static_cast<float>(static_cast<int32_t>(w1) >> 24) * s1.w;
+  uint4 out;
+  *reinterpret_cast<__nv_bfloat162*>(&out.x) = __floats2bfloat162_rn(b0, b1);
+  *reinterpret_cast<__nv_bfloat162*>(&out.y) = __floats2bfloat162_rn(b2, b3);
+  *reinterpret_cast<__nv_bfloat162*>(&out.z) = __floats2bfloat162_rn(b4, b5);
+  *reinterpret_cast<__nv_bfloat162*>(&out.w) = __floats2bfloat162_rn(b6, b7);
+  return out;
+}
 #endif
 
 // grid = (batch * sequence_length, kv_num_heads), block = kThreads, dynamic smem = kSharedBytes.
 // query: [rows, num_heads, 256] (already normalized / rotated); key, value: [batch, kv_heads, capacity, 256].
+template <bool kQuantizedCache = false>
 __global__ void __launch_bounds__(kThreads, 2) DynamicSparseAttentionPrefillKernel(
     const __nv_bfloat16* __restrict__ query,
     const __nv_bfloat16* __restrict__ key,
@@ -82,7 +102,9 @@ __global__ void __launch_bounds__(kThreads, 2) DynamicSparseAttentionPrefillKern
     int kv_num_heads,
     int capacity,
     int max_selected,
-    float scale) {
+    float scale,
+    const float* __restrict__ key_scale = nullptr,
+    const float* __restrict__ value_scale = nullptr) {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
   extern __shared__ __align__(16) unsigned char smem_raw[];
   __nv_bfloat16* sQ = reinterpret_cast<__nv_bfloat16*>(smem_raw);
@@ -108,8 +130,23 @@ __global__ void __launch_bounds__(kThreads, 2) DynamicSparseAttentionPrefillKern
   const int total = valid_length ? static_cast<int>(total_length) : 0;
   const int count = valid_length ? max(0, min(selected_counts[row], max_selected)) : 0;
   const int32_t* row_indices = selected_indices + static_cast<int64_t>(row) * max_selected;
-  const __nv_bfloat16* key_base = key + (static_cast<int64_t>(batch) * kv_num_heads + kv_head) * capacity * kHeadDim;
-  const __nv_bfloat16* value_base = value + (static_cast<int64_t>(batch) * kv_num_heads + kv_head) * capacity * kHeadDim;
+  const int64_t kv_head_offset = (static_cast<int64_t>(batch) * kv_num_heads + kv_head) * capacity * kHeadDim;
+  const __nv_bfloat16* key_base = key + kv_head_offset;
+  const __nv_bfloat16* value_base = value + kv_head_offset;
+  const int8_t* key_base_i8 = reinterpret_cast<const int8_t*>(key) + kv_head_offset;
+  const int8_t* value_base_i8 = reinterpret_cast<const int8_t*>(value) + kv_head_offset;
+  float4 ks0 = make_float4(1.0f, 1.0f, 1.0f, 1.0f);
+  float4 ks1 = make_float4(1.0f, 1.0f, 1.0f, 1.0f);
+  float4 vs0 = make_float4(1.0f, 1.0f, 1.0f, 1.0f);
+  float4 vs1 = make_float4(1.0f, 1.0f, 1.0f, 1.0f);
+  if constexpr (kQuantizedCache) {
+    const float* ks_ptr = key_scale + kv_head * kHeadDim + lane * 8;
+    const float* vs_ptr = value_scale + kv_head * kHeadDim + lane * 8;
+    ks0 = *reinterpret_cast<const float4*>(ks_ptr);
+    ks1 = *reinterpret_cast<const float4*>(ks_ptr + 4);
+    vs0 = *reinterpret_cast<const float4*>(vs_ptr);
+    vs1 = *reinterpret_cast<const float4*>(vs_ptr + 4);
+  }
 
   // Stage the group's query heads; the padding rows are zero so their (ignored) scores stay finite.
   const __nv_bfloat16* query_group = query + (static_cast<int64_t>(row) * num_heads + kv_head * group) * kHeadDim;
@@ -136,7 +173,8 @@ __global__ void __launch_bounds__(kThreads, 2) DynamicSparseAttentionPrefillKern
     return (index >= 0 && index < total && index <= query_position && index < capacity) ? index : -1;
   };
 
-  auto issue_rows = [&](__nv_bfloat16* dst, const __nv_bfloat16* base, int tile) {
+  auto issue_rows = [&](__nv_bfloat16* dst, const __nv_bfloat16* base, const int8_t* base_i8,
+                        float4 sc0, float4 sc1, int tile) {
   // 4 candidate rows per pass (one per warp), 32 lanes x 16 B = one 512 B row.
 #pragma unroll 4
     for (int it = 0; it < kTile / 4; ++it) {
@@ -144,7 +182,13 @@ __global__ void __launch_bounds__(kThreads, 2) DynamicSparseAttentionPrefillKern
       const int index = candidate_index(tile * kTile + cand_in_tile);
       __nv_bfloat16* row_dst = dst + cand_in_tile * kRowStride + lane * 8;
       if (index >= 0) {
-        CpAsync16(row_dst, base + static_cast<int64_t>(index) * kHeadDim + lane * 8);
+        if constexpr (kQuantizedCache) {
+          const uint2 packed =
+              __ldg(reinterpret_cast<const uint2*>(base_i8 + static_cast<int64_t>(index) * kHeadDim + lane * 8));
+          *reinterpret_cast<uint4*>(row_dst) = DequantizeInt8x8ToBf16(packed, sc0, sc1);
+        } else {
+          CpAsync16(row_dst, base + static_cast<int64_t>(index) * kHeadDim + lane * 8);
+        }
       } else {
         *reinterpret_cast<uint4*>(row_dst) = make_uint4(0, 0, 0, 0);
       }
@@ -153,10 +197,10 @@ __global__ void __launch_bounds__(kThreads, 2) DynamicSparseAttentionPrefillKern
 
   const int tiles = (count + kTile - 1) / kTile;
   if (tiles > 0) {
-    issue_rows(sK, key_base, 0);
-    CpAsyncCommit();
-    issue_rows(sV, value_base, 0);
-    CpAsyncCommit();
+    issue_rows(sK, key_base, key_base_i8, ks0, ks1, 0);
+    if constexpr (!kQuantizedCache) CpAsyncCommit();
+    issue_rows(sV, value_base, value_base_i8, vs0, vs1, 0);
+    if constexpr (!kQuantizedCache) CpAsyncCommit();
   }
 
   float acc_o[8][4];
@@ -171,7 +215,7 @@ __global__ void __launch_bounds__(kThreads, 2) DynamicSparseAttentionPrefillKern
   const int soft_col = (tid & 7) * 8;
 
   for (int tile = 0; tile < tiles; ++tile) {
-    CpAsyncWait<1>();  // K(tile) has landed, V(tile) may still be in flight
+    if constexpr (!kQuantizedCache) CpAsyncWait<1>();  // K(tile) has landed, V(tile) may still be in flight
     __syncthreads();
 
     // S = Q K^T for this warp's 16 candidate columns.
@@ -197,9 +241,9 @@ __global__ void __launch_bounds__(kThreads, 2) DynamicSparseAttentionPrefillKern
     __syncthreads();  // scores visible; sK is free
 
     if (tile + 1 < tiles) {
-      issue_rows(sK, key_base, tile + 1);
+      issue_rows(sK, key_base, key_base_i8, ks0, ks1, tile + 1);
     }
-    CpAsyncCommit();  // K(tile+1) (possibly empty)
+    if constexpr (!kQuantizedCache) CpAsyncCommit();  // K(tile+1) (possibly empty)
 
     // Online softmax: 8 threads per row, 8 columns each.
     float s_val[8];
@@ -246,8 +290,10 @@ __global__ void __launch_bounds__(kThreads, 2) DynamicSparseAttentionPrefillKern
       }
     }
 
-    CpAsyncWait<1>();  // V(tile) has landed (K(tile+1) may be in flight)
-    __syncthreads();
+    if constexpr (!kQuantizedCache) {
+      CpAsyncWait<1>();  // V(tile) has landed (K(tile+1) may be in flight)
+      __syncthreads();
+    }
 
     // O += P V for this warp's 64 output dimensions.
 #pragma unroll
@@ -266,9 +312,9 @@ __global__ void __launch_bounds__(kThreads, 2) DynamicSparseAttentionPrefillKern
     __syncthreads();  // sV and sP are free
 
     if (tile + 1 < tiles) {
-      issue_rows(sV, value_base, tile + 1);
+      issue_rows(sV, value_base, value_base_i8, vs0, vs1, tile + 1);
     }
-    CpAsyncCommit();  // V(tile+1) (possibly empty)
+    if constexpr (!kQuantizedCache) CpAsyncCommit();  // V(tile+1) (possibly empty)
   }
 
   if ((tid & 7) == 0) sL[soft_row] = running_sum;
@@ -304,6 +350,8 @@ __global__ void __launch_bounds__(kThreads, 2) DynamicSparseAttentionPrefillKern
   (void)capacity;
   (void)max_selected;
   (void)scale;
+  (void)key_scale;
+  (void)value_scale;
 #endif
 }
 
