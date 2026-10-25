@@ -6,6 +6,9 @@ package = JSON.parse(File.read(File.join(__dir__, "package.json")))
 root_dir =  File.dirname(File.dirname(__dir__))
 
 common_cpp_flags = '-Wall -Wextra -DUSE_COREML'
+if ENV['ORT_RN_TEST_EP_CONTEXT'] == '1'
+  common_cpp_flags += ' -DORT_RN_TEST_EP_CONTEXT=1'
+end
 
 Pod::Spec.new do |spec|
   spec.static_framework = true

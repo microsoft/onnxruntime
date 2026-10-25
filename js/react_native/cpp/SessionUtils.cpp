@@ -1,4 +1,5 @@
 #include "SessionUtils.h"
+#include "EncryptedEpContextTest.h"
 #include "JsiUtils.h"
 #include "cpu_provider_factory.h"
 #include <jsi/jsi.h>
@@ -76,6 +77,15 @@ void parseSessionOptions(Runtime& runtime, const Value& optionsValue,
   auto options = optionsValue.asObject(runtime);
 
   try {
+#ifdef ORT_RN_TEST_EP_CONTEXT
+    if (options.hasProperty(runtime, "__testEpContextProvider")) {
+      auto name = options.getProperty(runtime, "__testEpContextProvider");
+      if (!name.isString()) {
+        throw JSError(runtime, "Expected a test EP registration name");
+      }
+      sessionOptions = encryptionTestOptions(env->getOrtEnv(), name.asString(runtime).utf8(runtime));
+    }
+#endif
     // epContextDataRead
     epContextDataRead = EpContextDataReadCallback::createAndRegister(
         runtime, options, env, sessionOptions);
