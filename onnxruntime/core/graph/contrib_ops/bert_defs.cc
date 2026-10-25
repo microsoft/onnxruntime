@@ -2905,15 +2905,6 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
   const bool has_capture_count = PackedSparseAttentionIndexerHasInput(ctx, psai::kStateUpdateCaptureCount);
   const bool has_state_update_active = PackedSparseAttentionIndexerHasInput(ctx, psai::kStateUpdateActive);
   const bool has_state_update_output = ctx.hasOutput(psai::kStateUpdate);
-  const bool has_mid_kv_buffer = ctx.hasOutput(psai::kMidKvBuffer);
-  const bool has_mid_state_lengths = ctx.hasOutput(psai::kMidStateLengths);
-  const bool has_validation_status = ctx.hasOutput(psai::kValidationStatus);
-  if (has_mid_kv_buffer != has_mid_state_lengths) {
-    fail_shape_inference("PackedSparseAttentionIndexer: mid_kv_buffer and mid_state_lengths must be connected together");
-  }
-  if (!is_qsa && (has_mid_kv_buffer || has_validation_status)) {
-    fail_shape_inference("PackedSparseAttentionIndexer: mid-state and validation outputs are only supported for qsa");
-  }
   if (!is_qsa && (state_update_capacity > 0 || has_capture_count ||
                   has_state_update_active || has_state_update_output)) {
     fail_shape_inference("PackedSparseAttentionIndexer: state update capture is only valid for policy_mode 'qsa'");
@@ -2925,9 +2916,9 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
   }
 
   if (ctx.getNumOutputs() < static_cast<size_t>(psai::kFixedOutputCount) ||
-      ctx.getNumOutputs() > static_cast<size_t>(psai::kMaxOutputCount)) {
-    fail_shape_inference("PackedSparseAttentionIndexer: expected ", psai::kFixedOutputCount, " to ",
-                         psai::kMaxOutputCount, " declared outputs, got ", ctx.getNumOutputs());
+      ctx.getNumOutputs() > static_cast<size_t>(psai::kOutputCount)) {
+    fail_shape_inference("PackedSparseAttentionIndexer: expected ", psai::kFixedOutputCount, " or ",
+                         psai::kOutputCount, " declared outputs, got ", ctx.getNumOutputs());
   }
   if (ctx.hasOutput(psai::kPresentGateBuffer) == is_qsa) {
     fail_shape_inference("PackedSparseAttentionIndexer: output ", psai::kPresentGateBuffer,
@@ -2938,36 +2929,12 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
   updateOutputElemType(ctx, psai::kSelectedCounts, ONNX_NAMESPACE::TensorProto_DataType_INT32);
   if (has_indexshare) updateOutputElemType(ctx, psai::kIndexShareStatus, ONNX_NAMESPACE::TensorProto_DataType_INT32);
   updateOutputElemType(ctx, psai::kPresentStateLengths, ONNX_NAMESPACE::TensorProto_DataType_INT32);
-  if (has_mid_state_lengths) {
-    updateOutputElemType(ctx, psai::kMidStateLengths, ONNX_NAMESPACE::TensorProto_DataType_INT32);
-    propagateShapeFromInputToOutput(ctx, psai::kPastStateLengths, psai::kMidStateLengths);
-  }
-  if (has_validation_status) {
-    updateOutputElemType(ctx, psai::kValidationStatus, ONNX_NAMESPACE::TensorProto_DataType_INT32);
-    propagateShapeFromInputToOutput(ctx, psai::kPastSequenceLengths, psai::kValidationStatus);
-  }
   const bool has_state_status_output = ctx.hasOutput(psai::kStateStatus);
   if (has_state_status_output) {
     updateOutputElemType(ctx, psai::kStateStatus, ONNX_NAMESPACE::TensorProto_DataType_INT32);
   }
   propagateElemTypeFromInputToOutput(ctx, psai::kPastKeyState, psai::kPresentKeyState);
   propagateElemTypeFromInputToOutput(ctx, psai::kPastKvBuffer, psai::kPresentKvBuffer);
-  if (has_mid_kv_buffer) {
-    propagateElemTypeFromInputToOutput(ctx, psai::kPastKvBuffer, psai::kMidKvBuffer);
-    propagateShapeFromInputToOutput(ctx, psai::kPastKvBuffer, psai::kMidKvBuffer);
-  }
-  for (int prefix = 0; prefix < 2; ++prefix) {
-    const int buffer = psai::kMidKvBuffer2 + 2 * prefix;
-    const int lengths = buffer + 1;
-    if (ctx.hasOutput(buffer) != ctx.hasOutput(lengths))
-      fail_shape_inference("PackedSparseAttentionIndexer: prefix buffer and lengths must be connected together");
-    if (!ctx.hasOutput(buffer)) continue;
-    if (!is_qsa) fail_shape_inference("PackedSparseAttentionIndexer: prefix outputs require policy_mode='qsa'");
-    propagateElemTypeFromInputToOutput(ctx, psai::kPastKvBuffer, buffer);
-    propagateShapeFromInputToOutput(ctx, psai::kPastKvBuffer, buffer);
-    updateOutputElemType(ctx, lengths, ONNX_NAMESPACE::TensorProto_DataType_INT32);
-    propagateShapeFromInputToOutput(ctx, psai::kPastStateLengths, lengths);
-  }
   if (!is_qsa) {
     // present_gate_buffer keeps its fixed positional slot (with an empty name) for policy_mode
     // 'qsa'; only propagate its type/shape when it is actually produced.
@@ -3242,8 +3209,6 @@ Unlike SparseAttentionIndexer, this operator:
     (the optional state_status output reports which requests were rejected and why);
   * additionally emits selected_counts, the exact number of active (non -1) entries per query, so
     that no downstream consumer needs to scan selected_indices for its query's true count.
-  * for QSA, optionally emits the pending-state snapshot after the first request token and a
-    per-request validation status for overflow or inconsistent state metadata.
 
 Both policy_mode values keep the semantics of SparseAttentionIndexer, applied independently to each
 request's own packed token range and fixed-capacity state slice:
@@ -3500,26 +3465,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "synchronizing inside the operator. Currently supported by the CUDA provider only.",
                 "M",
                 OpSchema::Optional)
-        .Output(9, "mid_kv_buffer",
-                "Only for CUDA policy_mode 'qsa' refresh: pending-buffer snapshot after the first token of each request. "
-                "Not supported in IndexShare reuse mode.",
-                "T", OpSchema::Optional)
-        .Output(10, "mid_state_lengths",
-                "Only for CUDA policy_mode 'qsa' refresh: state lengths after the first token of each request. "
-                "Not supported in IndexShare reuse mode.",
-                "M", OpSchema::Optional)
-        .Output(11, "validation_status",
-                "Only for CUDA policy_mode 'qsa' refresh: per-request overflow status; two-token rejection is encoded as 0x99. "
-                "Not supported in IndexShare reuse mode.",
-                "M", OpSchema::Optional)
-        .Output(12, "mid_kv_buffer2", "CUDA QSA pending-buffer snapshot after at most two request tokens.",
-                "T", OpSchema::Optional)
-        .Output(13, "mid_state_lengths2", "CUDA QSA state lengths after at most two request tokens.",
-                "M", OpSchema::Optional)
-        .Output(14, "mid_kv_buffer3", "CUDA QSA pending-buffer snapshot after at most three request tokens.",
-                "T", OpSchema::Optional)
-        .Output(15, "mid_state_lengths3", "CUDA QSA state lengths after at most three request tokens.",
-                "M", OpSchema::Optional)
         .TypeConstraint("T",
                         {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                         "Constrain floating point tensors to float, float16 and bfloat16.")

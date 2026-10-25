@@ -5285,8 +5285,6 @@ This version of the operator has been available since version 1 of the 'com.micr
       (the optional state_status output reports which requests were rejected and why);
     * additionally emits selected_counts, the exact number of active (non -1) entries per query, so
       that no downstream consumer needs to scan selected_indices for its query's true count.
-    * for QSA, optionally emits the pending-state snapshot after the first request token and a
-      per-request validation status for overflow or inconsistent state metadata.
   
   Both policy_mode values keep the semantics of SparseAttentionIndexer, applied independently to each
   request's own packed token range and fixed-capacity state slice:
@@ -5417,7 +5415,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Merged device status [N].</dd>
 </dl>
 
-#### Outputs (6 - 16)
+#### Outputs (6 - 9)
 
 <dl>
 <dt><tt>selected_indices</tt> : M</dt>
@@ -5438,20 +5436,6 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Selection status [N], forwarded on reuse and zero on refresh.</dd>
 <dt><tt>state_status</tt> (optional) : M</dt>
 <dd>Device-side per-request state update status with shape (batch_size). 0: the request's state update was applied (or intentionally held by IndexShare reuse); 1: invalid device metadata (cumulative_sequence_lengths, past_sequence_lengths or past_state_lengths are inconsistent); 2: the update would exceed state_capacity. A non-zero request leaves its state payloads unchanged, clamps out-of-range past_state_lengths into present_state_lengths, and emits an empty selection (selected_counts is 0 and selected_indices is -1). Intended for CUDA graph replay, where the host checks it after the replay instead of synchronizing inside the operator. Currently supported by the CUDA provider only.</dd>
-<dt><tt>mid_kv_buffer</tt> (optional) : T</dt>
-<dd>Only for CUDA policy_mode 'qsa' refresh: pending-buffer snapshot after the first token of each request. Not supported in IndexShare reuse mode.</dd>
-<dt><tt>mid_state_lengths</tt> (optional) : M</dt>
-<dd>Only for CUDA policy_mode 'qsa' refresh: state lengths after the first token of each request. Not supported in IndexShare reuse mode.</dd>
-<dt><tt>validation_status</tt> (optional) : M</dt>
-<dd>Only for CUDA policy_mode 'qsa' refresh: per-request overflow status; two-token rejection is encoded as 0x99. Not supported in IndexShare reuse mode.</dd>
-<dt><tt>mid_kv_buffer2</tt> (optional) : T</dt>
-<dd>CUDA QSA pending-buffer snapshot after at most two request tokens.</dd>
-<dt><tt>mid_state_lengths2</tt> (optional) : M</dt>
-<dd>CUDA QSA state lengths after at most two request tokens.</dd>
-<dt><tt>mid_kv_buffer3</tt> (optional) : T</dt>
-<dd>CUDA QSA pending-buffer snapshot after at most three request tokens.</dd>
-<dt><tt>mid_state_lengths3</tt> (optional) : M</dt>
-<dd>CUDA QSA state lengths after at most three request tokens.</dd>
 </dl>
 
 #### Type Constraints

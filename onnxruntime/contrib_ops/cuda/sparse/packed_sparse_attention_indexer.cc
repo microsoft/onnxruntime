@@ -365,46 +365,16 @@ Status PackedSparseAttentionIndexer<T, TState>::ComputeQsa(OpKernelContext* cont
                              ? context->Output(
                                    psai::kStateUpdate, TensorShape({batch_size, state_update_capacity_, head_size}))
                              : nullptr;
-  Tensor* mid_kv_buffer =
-      context->OutputCount() > psai::kMidKvBuffer
-          ? context->Output(psai::kMidKvBuffer, TensorShape({batch_size, buffer_capacity, head_size}))
-          : nullptr;
-  Tensor* mid_state_lengths =
-      context->OutputCount() > psai::kMidStateLengths
-          ? context->Output(psai::kMidStateLengths, TensorShape({batch_size, psai::kStateLengthColumns}))
-          : nullptr;
-  Tensor* validation_status =
-      context->OutputCount() > psai::kValidationStatus
-          ? context->Output(psai::kValidationStatus, TensorShape({batch_size}))
-          : nullptr;
   ORT_RETURN_IF(selected_indices == nullptr || selected_counts == nullptr || present_key_state == nullptr ||
                     present_kv_buffer == nullptr || present_state_lengths == nullptr,
                 "PackedSparseAttentionIndexer: policy_mode 'qsa' requires selected_indices, selected_counts, "
                 "present_key_state, present_kv_buffer and present_state_lengths outputs");
-  ORT_RETURN_IF((mid_kv_buffer == nullptr) != (mid_state_lengths == nullptr),
-                "PackedSparseAttentionIndexer: mid_kv_buffer and mid_state_lengths must be connected together");
   if (state_update != nullptr && state_update->SizeInBytes() > 0) {
     CUDA_RETURN_IF_ERROR(cudaMemsetAsync(state_update->MutableDataRaw(), 0, state_update->SizeInBytes(),
                                          Stream(context)));
   }
 
   PackedSparseAttentionIndexerParams params;
-  Tensor* mid_buffers[2]{};
-  Tensor* mid_lengths[2]{};
-  for (int prefix = 0; prefix < 2; ++prefix) {
-    const int buffer_index = psai::kMidKvBuffer2 + prefix * 2;
-    const int length_index = buffer_index + 1;
-    if (context->OutputCount() > buffer_index)
-      mid_buffers[prefix] = context->Output(buffer_index, TensorShape({batch_size, buffer_capacity, head_size}));
-    if (context->OutputCount() > length_index)
-      mid_lengths[prefix] = context->Output(length_index, TensorShape({batch_size, psai::kStateLengthColumns}));
-    ORT_RETURN_IF((mid_buffers[prefix] == nullptr) != (mid_lengths[prefix] == nullptr),
-                  "PackedSparseAttentionIndexer: every prefix buffer requires its matching lengths");
-  }
-  params.mid_kv_buffer2 = mid_buffers[0] ? mid_buffers[0]->MutableData<T>() : nullptr;
-  params.mid_state_lengths2 = mid_lengths[0] ? mid_lengths[0]->MutableData<int32_t>() : nullptr;
-  params.mid_kv_buffer3 = mid_buffers[1] ? mid_buffers[1]->MutableData<T>() : nullptr;
-  params.mid_state_lengths3 = mid_lengths[1] ? mid_lengths[1]->MutableData<int32_t>() : nullptr;
   params.batch_size = static_cast<int>(batch_size);
   params.total_tokens = static_cast<int>(total_tokens);
   params.num_heads = static_cast<int>(num_heads);
@@ -424,12 +394,6 @@ Status PackedSparseAttentionIndexer<T, TState>::ComputeQsa(OpKernelContext* cont
   params.scale = has_scale_ ? scale_ : 1.0f / std::sqrt(static_cast<float>(head_size));
   params.block_topk = static_cast<int>(token_budget_ / compress_ratio_);
   params.state_update_capacity = static_cast<int>(state_update_capacity_);
-  params.mid_kv_buffer =
-      mid_kv_buffer == nullptr ? nullptr : reinterpret_cast<CudaT*>(mid_kv_buffer->MutableData<T>());
-  params.mid_state_lengths =
-      mid_state_lengths == nullptr ? nullptr : mid_state_lengths->MutableData<int32_t>();
-  params.validation_status =
-      validation_status == nullptr ? nullptr : validation_status->MutableData<int32_t>();
 
   auto float_workspace = GetScratchBuffer<float>(GetQsaPackedWorkspaceFloatCount(params), GetComputeStream(context));
   Tensor* state_status = GetStateStatusOutput(context, batch_size);
@@ -667,13 +631,6 @@ Status PackedSparseAttentionIndexer<T, TState>::ComputeCsa(OpKernelContext* cont
 
 template <typename T, typename TState>
 Status PackedSparseAttentionIndexer<T, TState>::ComputeReuse(OpKernelContext* context) const {
-  ORT_RETURN_IF(context->OutputCount() > psai::kMidKvBuffer2,
-                "PackedSparseAttentionIndexer: additional prefix outputs require refresh, not IndexShare reuse");
-  for (int index : {psai::kMidKvBuffer, psai::kMidStateLengths, psai::kValidationStatus}) {
-    Tensor* output = context->OutputCount() > index ? context->Output(index, TensorShape({0})) : nullptr;
-    ORT_RETURN_IF(output != nullptr,
-                  "PackedSparseAttentionIndexer: outputs 9-11 are not supported in IndexShare reuse mode");
-  }
   const Tensor* query = context->Input<Tensor>(psai::kQuery);
   const Tensor* lengths = context->Input<Tensor>(psai::kPastSequenceLengths);
   const Tensor* indices = context->Input<Tensor>(psai::kMergedIndices);

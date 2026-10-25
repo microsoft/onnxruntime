@@ -121,20 +121,9 @@ empty output name for `qsa`; `state_update` is declared only when QSA capture is
 | 6 | `state_update` | `(batch_size, state_update_capacity, head_size)` | T | qsa capture only |
 | 7 | `index_share_status` | `(total_tokens)` | int32 | index sharing |
 | 8 | `state_status` | `(batch_size)` | int32 | optional, CUDA only |
-| 9 | `mid_kv_buffer` | same shape as `past_kv_buffer` | T | optional CUDA qsa snapshot |
-| 10 | `mid_state_lengths` | same shape as `past_state_lengths` | int32 | optional CUDA qsa snapshot |
-| 11 | `validation_status` | `(batch_size)` | int32 | optional CUDA qsa status |
 
 CUDA supports `T_KEY = T` and, for QSA only, BF16 activations with FP32 key state.
 The pending buffers and captured state updates remain in the activation type.
-`mid_kv_buffer` and `mid_state_lengths` must be connected together and capture the state
-after each request's first token. `validation_status` is zero on success; rejected
-requests report 9, or `0x99` for requests containing at least two tokens.
-
-Output 8 retains main's `state_status` contract. Graphs built against the earlier
-experimental snapshot layout must insert an empty output at slot 8 before the
-snapshot outputs, which now occupy slots 9-11. Existing graphs using only the
-mainline outputs do not require changes.
 
 `capacity` is `token_budget + compress_ratio - 1` for `qsa` and `index_topk` for `csa`, exactly the
 same formula (`SelectedCapacity`) used by `SparseAttentionIndexer`.

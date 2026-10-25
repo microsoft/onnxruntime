@@ -558,7 +558,7 @@ TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsWrongOutputCount) {
   GraphOptions options;
   options.output_count = 4;
   ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddNode(builder, options); },
-                       "output size 4 not in range [min=6, max=16]");
+                       "output size 4 not in range [min=6, max=9]");
 }
 
 TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsStateUpdateCapacityWithoutCaptureCount) {
@@ -1096,26 +1096,12 @@ void RunQsaPackedTest(float tolerance, QsaPackedProblem problem = MakeQsaPackedP
     if (problem.state_update_capacity == 0) test.AddOptionalOutputEdge<T>();
     test.AddOutput<int32_t>("status", {total_tokens}, std::vector<int32_t>(static_cast<size_t>(total_tokens), 0));
   }
-  if (problem.report_state_status || problem.report_mid_state) {
+  if (problem.report_state_status) {
     if (padding == 0) {
       if (problem.state_update_capacity == 0) test.AddOptionalOutputEdge<T>();
       test.AddOptionalOutputEdge<int32_t>();  // indexshare_status
     }
-    if (problem.report_state_status) {
-      test.AddOutput<int32_t>("state_status", {batch_size}, expected.state_status);
-    } else {
-      test.AddOptionalOutputEdge<int32_t>();
-    }
-  }
-  if (problem.report_mid_state) {
-    for (int batch = 0; batch < batch_size; ++batch) {
-      ASSERT_EQ(problem.cumulative_sequence_lengths[batch + 1] - problem.cumulative_sequence_lengths[batch], 1);
-    }
-    test.AddOutput<T>("mid_kv_buffer", {batch_size, buffer_capacity, head_size},
-                      ToElementType<T>(expected.present_kv_buffer), false, 0.0f, tolerance);
-    test.AddOutput<int32_t>("mid_state_lengths", {batch_size, 2}, expected.present_state_lengths);
-    test.AddOutput<int32_t>("validation_status", {batch_size},
-                            std::vector<int32_t>(static_cast<size_t>(batch_size), 0));
+    test.AddOutput<int32_t>("state_status", {batch_size}, expected.state_status);
   }
   RunOnProvider(test, std::move(provider),
                 expected_error.empty() ? OpTester::ExpectResult::kExpectSuccess : OpTester::ExpectResult::kExpectFailure,
@@ -1141,20 +1127,6 @@ TEST(PackedSparseAttentionIndexerTest, QsaFloat16) { RunQsaPackedTest<MLFloat16>
 
 TEST(PackedSparseAttentionIndexerTest, QsaBFloat16) { RunQsaPackedTest<BFloat16>(2.0e-2f); }
 
-TEST(PackedSparseAttentionIndexerTest, QsaMidStateOutputsPreserveStateStatusSlot) {
-  for (bool report_state_status : {false, true}) {
-    QsaPackedProblem problem;
-    problem.cumulative_sequence_lengths = {0, 1, 2};
-    problem.past_sequence_lengths = {0, 0};
-    problem.past_state_lengths = {0, 0, 0, 0};
-    problem.report_state_status = report_state_status;
-    problem.report_mid_state = true;
-    problem = MakeQsaPackedProblem(std::move(problem));
-    RunQsaPackedTest<float>(1.0e-5f, problem, ProviderKind::Cuda);
-    RunQsaPackedTest<BFloat16, float>(2.0e-2f, std::move(problem), ProviderKind::Cuda);
-  }
-}
-
 TEST(PackedSparseAttentionIndexerTest, QsaBFloat16FloatState) {
   RunQsaPackedTest<BFloat16, float>(2.0e-2f);
 }
@@ -1168,7 +1140,7 @@ TEST(PackedSparseAttentionIndexerTest, IndexShareRefreshPreservesBudgetAndPadsRo
 }
 
 TEST(PackedSparseAttentionIndexerTest, IndexShareReusePackedQkAndStatus) {
-  for (int invalid = 0; invalid < 9; ++invalid) {
+  for (int invalid = 0; invalid < 7; ++invalid) {
     SCOPED_TRACE(invalid);
     std::vector<int32_t> cumulative{0, 1, 2};
     std::vector<int32_t> past_lengths{5, 5};
@@ -1217,17 +1189,7 @@ TEST(PackedSparseAttentionIndexerTest, IndexShareReusePackedQkAndStatus) {
     test.AddOptionalOutputEdge<float>();
     test.AddOutput<int32_t>("status", {2}, {invalid == 0 ? 0 : 1, 2});
     test.AddOutput<int32_t>("state_status", {2}, {0, 0});
-    if (invalid == 7) {
-      test.AddOutput<float>("mid_buffer", {2, 3, 2}, std::vector<float>(12));
-      test.AddOutput<int32_t>("mid_lengths", {2, 2}, std::vector<int32_t>(4));
-    } else if (invalid == 8) {
-      test.AddOptionalOutputEdge<float>();
-      test.AddOptionalOutputEdge<int32_t>();
-      test.AddOutput<int32_t>("validation", {2}, {0, 0});
-    }
-    RunOnProvider(test, std::move(provider),
-                  invalid >= 7 ? OpTester::ExpectResult::kExpectFailure : OpTester::ExpectResult::kExpectSuccess,
-                  invalid >= 7 ? "outputs 9-11 are not supported in IndexShare reuse mode" : "");
+    RunOnProvider(test, std::move(provider));
   }
 }
 
