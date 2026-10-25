@@ -306,7 +306,7 @@ void CUDAExecutionProvider::PerThreadContext::CaptureBegin(CudaGraphAnnotation_t
 }
 
 void CUDAExecutionProvider::PerThreadContext::CaptureEnd(CudaGraphAnnotation_t cuda_graph_annotation_id,
-                                                       bool capture_succeeded) {
+                                                        bool capture_succeeded) {
   cuda_graph_.CaptureEnd(cuda_graph_annotation_id, capture_succeeded);
 }
 
@@ -534,7 +534,7 @@ Status CUDAExecutionProvider::OnRunEnd(bool sync_stream, const onnxruntime::RunO
 }
 
 Status CUDAExecutionProvider::OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& run_options,
-                                     bool run_succeeded) {
+                                      bool run_succeeded) {
   CudaGraphAnnotation_t cuda_graph_annotation_id = GetPerThreadContext().GetCudaGraphAnnotationId(run_options);
   if (IsGraphCaptureEnabled() && !GetPerThreadContext().IsGraphCaptured(cuda_graph_annotation_id)) {
     if (GetPerThreadContext().IsGraphCaptureAllowed(cuda_graph_annotation_id)) {
