@@ -56,8 +56,18 @@ void CUDAGraphManager::CaptureBegin(CudaGraphAnnotation_t cuda_graph_annotation_
   CUDA_CALL_THROW(cudaStreamBeginCapture(stream_, cudaStreamCaptureModeGlobal));
 }
 
-void CUDAGraphManager::CaptureEnd(CudaGraphAnnotation_t cuda_graph_annotation_id) {
+void CUDAGraphManager::CaptureEnd(CudaGraphAnnotation_t cuda_graph_annotation_id, bool capture_succeeded) {
   cudaGraph_t graph = NULL;
+  if (!capture_succeeded) {
+    const auto status = cudaStreamEndCapture(stream_, &graph);
+    if (graph != NULL) {
+      CUDA_CALL_THROW(cudaGraphDestroy(graph));
+    }
+    if (status != cudaErrorStreamCaptureInvalidated) {
+      CUDA_CALL_THROW(status);
+    }
+    return;
+  }
   CUDA_CALL_THROW(cudaStreamEndCapture(stream_, &graph));
   if (graph == NULL) {
     ORT_THROW("CUDAGraph::CaptureEnd: graph_ is NULL");

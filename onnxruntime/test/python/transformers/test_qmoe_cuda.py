@@ -3597,8 +3597,10 @@ class TestQMoEInt3Validation(unittest.TestCase):
         expected = self._run(session, binding, output, warmup)
         numpy.testing.assert_allclose(expected, self._reference(tensors, (3, 3), 32), rtol=0.03, atol=0.002)
         if any(name.endswith(("_S", "_Z")) for name in dynamic):
-            with self.assertRaisesRegex(Exception, "capture requires immutable scale and zero-point initializers"):
-                self._run(session, binding, output)
+            for attempt in range(3):
+                with self.subTest(attempt=attempt):
+                    with self.assertRaisesRegex(Exception, "capture requires immutable scale and zero-point initializers"):
+                        self._run(session, binding, output)
         else:
             for _ in range(3):
                 numpy.testing.assert_array_equal(self._run(session, binding, output), expected)

@@ -270,6 +270,11 @@ class IExecutionProvider {
     return Status::OK();
   }
 
+  virtual common::Status OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& run_options,
+                                  bool /*run_succeeded*/) {
+    return OnRunEnd(sync_stream, run_options);
+  }
+
   /**
      Called when InferenceSession::SetEpDynamicOptions is called
   */

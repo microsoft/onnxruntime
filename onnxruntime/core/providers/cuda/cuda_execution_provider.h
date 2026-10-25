@@ -34,6 +34,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
   Status OnRunStart(const onnxruntime::RunOptions& run_options) override;
 
   Status OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& run_options) override;
+  Status OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& run_options, bool run_succeeded) override;
 
   DataLayout GetPreferredLayout() const override;
 
@@ -178,7 +179,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
     bool IsGraphCaptureAllowed(CudaGraphAnnotation_t cuda_graph_annotation_id) const;
     bool IsGraphCaptureAllowedOnRun(CudaGraphAnnotation_t cuda_graph_annotation_id) const;
     void CaptureBegin(CudaGraphAnnotation_t cuda_graph_annotation_id);
-    void CaptureEnd(CudaGraphAnnotation_t cuda_graph_annotation_id);
+    void CaptureEnd(CudaGraphAnnotation_t cuda_graph_annotation_id, bool capture_succeeded);
     bool IsGraphCaptured(CudaGraphAnnotation_t cuda_graph_annotation_id) const;
     CudaGraphAnnotation_t GetCudaGraphAnnotationId(const onnxruntime::RunOptions& run_options) const;
     Status ReplayGraph(CudaGraphAnnotation_t cuda_graph_annotation_id, bool sync = true);

@@ -37,7 +37,7 @@ struct CUDAGraphManager {
 
   void SetStream(cudaStream_t stream);
   void CaptureBegin(CudaGraphAnnotation_t cuda_graph_annotation_id);
-  void CaptureEnd(CudaGraphAnnotation_t cuda_graph_annotation_id);
+  void CaptureEnd(CudaGraphAnnotation_t cuda_graph_annotation_id, bool capture_succeeded = true);
   Status Replay(CudaGraphAnnotation_t cuda_graph_annotation_id, bool sync_status_flag = true);
 
   void Reset();
