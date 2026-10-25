@@ -695,7 +695,6 @@ if enable_training or enable_training_apis:
             "*.h",
         ]
 
-    requirements_file = "requirements-training.txt"
     # with training, we want to follow this naming convention:
     # stable:
     # onnxruntime-training-1.7.0+cu111-cp36-cp36m-linux_x86_64.whl
@@ -822,6 +821,9 @@ if not path.exists(requirements_path):
     raise FileNotFoundError("Unable to find " + requirements_file)
 with open(requirements_path) as f:
     install_requires = f.read().splitlines()
+
+if enable_training or enable_training_apis:
+    install_requires.extend(["cerberus", "h5py", "onnx", "sympy", "setuptools>=61.0.0"])
 
 # Adding CUDA Runtime as dependency for NV TensorRT RTX python wheel
 if package_name == "onnxruntime-trt-rtx":
