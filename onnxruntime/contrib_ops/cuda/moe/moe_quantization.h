@@ -92,6 +92,9 @@ class QMoE final : public CudaKernel, public MoEBase {
   // layout on every GPU, so -1 and 1 are currently equivalent for the CUDA EP;
   // 1 is reserved for a possible future Hopper-specific layout (e.g. W4A8).
   bool weights_prepacked_ = true;
+  bool nvfp4_weights_row_major_ = false;
+  bool nvfp4_fc1_decode_scale_eligible_ = false;
+  bool nvfp4_fc2_decode_scale_eligible_ = false;
   // Cached source weight shapes captured at PrePack time. When the
   // PrePack hook consumed and released the original int4/int8 or MXFP4
   // weight initializers (``is_packed = true``), ``context->Input<Tensor>(2)``
@@ -104,6 +107,7 @@ class QMoE final : public CudaKernel, public MoEBase {
   bool use_fp4_dequant_fallback_ = false;
   // Dequantizes FP8 weights to FP16/BF16 scratch buffers before invoking the A16 MoE runner.
   bool use_fp8_dequant_fallback_ = false;
+  bool enable_fp8_fused_ = false;
   // WFP4AFP8 (W4A8) requires SM100+ (Blackwell) block-scaled tensor ops. On older GPUs we
   // dequantize MXFP4 weights to FP16/BF16 and run the dense A16 MoE runner.
   bool use_wfp4afp8_dequant_fallback_ = false;

@@ -533,6 +533,62 @@ void BufferManager::Upload(CommandRecordingState& recording, void* src, WGPUBuff
   ORT_THROW_IF_ERROR(context_.Flush(*this, recording));
 }
 
+void BufferManager::UploadBatch(CommandRecordingState& recording, gsl::span<const UploadInfo> uploads) const {
+  // Bound staging memory while amortizing buffer creation and queue submission across small inputs.
+  constexpr size_t kBatchBytes = 16 * 1024 * 1024;
+  size_t begin = 0;
+  while (begin < uploads.size()) {
+    size_t end = begin;
+    size_t bytes = 0;
+    while (end < uploads.size()) {
+      const auto aligned_size = NormalizeCopySize(uploads[end].size);
+      if (aligned_size > kBatchBytes - bytes) break;
+      bytes += aligned_size;
+      ++end;
+    }
+    if (end == begin) {
+      const auto& upload = uploads[begin++];
+      Upload(recording, const_cast<void*>(upload.source), upload.target, upload.size);
+      continue;
+    }
+    if (bytes != 0) {
+      wgpu::BufferDescriptor desc{};
+      desc.size = bytes;
+      desc.usage = wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::MapWrite;
+      desc.mappedAtCreation = true;
+      auto staging_buffer = context_.Device().CreateBuffer(&desc);
+      auto* mapped = static_cast<uint8_t*>(staging_buffer.GetMappedRange());
+      size_t offset = 0;
+      for (size_t i = begin; i < end; ++i) {
+        const auto& upload = uploads[i];
+        const auto aligned_size = NormalizeCopySize(upload.size);
+        if (upload.size != 0) {
+          memcpy(mapped + offset, upload.source, upload.size);
+          memset(mapped + offset + upload.size, 0, aligned_size - upload.size);
+        }
+        offset += aligned_size;
+      }
+      staging_buffer.Unmap();
+      ORT_THROW_IF_ERROR(context_.EncodeDeferredDispatches(recording));
+      context_.EndComputePass(recording);
+      auto& encoder = context_.GetCommandEncoder(recording);
+      offset = 0;
+      for (size_t i = begin; i < end; ++i) {
+        const auto& upload = uploads[i];
+        const auto aligned_size = NormalizeCopySize(upload.size);
+        if (aligned_size != 0) {
+          ORT_ENFORCE(aligned_size <= wgpuBufferGetSize(upload.target));
+          EnforceBufferUnmapped(context_, upload.target);
+          encoder.CopyBufferToBuffer(staging_buffer, offset, upload.target, 0, aligned_size);
+        }
+        offset += aligned_size;
+      }
+      ORT_THROW_IF_ERROR(context_.Flush(*this, recording));
+    }
+    begin = end;
+  }
+}
+
 void BufferManager::MemCpy(CommandRecordingState& recording, WGPUBuffer src, WGPUBuffer dst, size_t size) const {
   ORT_ENFORCE(src != dst, "Source and destination buffers must be different.");
   EnforceBufferUnmapped(context_, src);
@@ -545,10 +601,7 @@ void BufferManager::MemCpy(CommandRecordingState& recording, WGPUBuffer src, WGP
               "Source and destination buffers must have enough space for the copy operation. src_size=",
               src_size, ", dst_size=", dst_size, ", copy_size=", copy_size, ".");
 
-  ORT_THROW_IF_ERROR(context_.EncodeDeferredDispatches(recording));
-  auto& command_encoder = context_.GetCommandEncoder(recording);
-  context_.EndComputePass(recording);
-  command_encoder.CopyBufferToBuffer(src, 0, dst, 0, copy_size);
+  context_.CopyBuffer(src, dst, copy_size, recording);
 }
 
 WGPUBuffer BufferManager::Create(CommandRecordingState& recording, size_t size, wgpu::BufferUsage usage,

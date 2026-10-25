@@ -29,7 +29,8 @@ class Conv : public WebGpuKernel {
  public:
   Conv(const OpKernelInfo& info) : WebGpuKernel(info), conv_attrs_(info) {
     if (is_fused) {
-      ORT_ENFORCE(GetFusedActivationAttr(info, activation_).IsOK());
+      // Throw the Status, not the expression: the message names the activation ORT_ENFORCE would drop.
+      ORT_THROW_IF_ERROR(GetFusedActivationAttr(info, activation_));
     }
   }
   Status ComputeInternal(ComputeContext& context) const override;
