@@ -652,25 +652,21 @@ OrtStatus* ORT_API_CALL CudaEp::OnRunEndImpl(
   bool replayed_graph = false;
   if (!context.cuda_graph.IsGraphCaptured(id)) {
     if (context.cuda_graph.IsGraphCaptureAllowed(id, ep->config_.min_num_runs_before_cuda_graph_capture)) {
-      context.cuda_graph.CaptureEnd(id);
+      size_t post_capture_free_mem = 0;
+      context.cuda_graph.CaptureEnd(id, &post_capture_free_mem);
 
-      // Check if GPU memory was allocated during capture (which would make the
-      // captured graph invalid since CUDA graph replay cannot reproduce allocations).
-      if (context.pre_capture_free_mem > 0) {
-        size_t post_free_mem = 0;
-        size_t total_mem = 0;
-        if (cudaMemGetInfo(&post_free_mem, &total_mem) == cudaSuccess) {
-          if (post_free_mem < context.pre_capture_free_mem) {
-            Ort::Status log_status(ep->factory_.GetOrtApi().Logger_LogMessage(
-                &ep->logger_, ORT_LOGGING_LEVEL_WARNING,
-                "GPU memory was allocated during CUDA graph capture. "
-                "Graph replay may produce incorrect results. Consider increasing "
-                "min_num_runs_before_cuda_graph_capture to allow allocations to stabilize.",
-                ORT_FILE, __LINE__, __FUNCTION__));
-          }
-        }
-        context.pre_capture_free_mem = 0;
+      // Sample before graph instantiation, whose own allocation is expected and
+      // must not be mistaken for a model allocation made while capture was active.
+      if (context.pre_capture_free_mem > 0 && post_capture_free_mem > 0 &&
+          post_capture_free_mem < context.pre_capture_free_mem) {
+        Ort::Status log_status(ep->factory_.GetOrtApi().Logger_LogMessage(
+            &ep->logger_, ORT_LOGGING_LEVEL_WARNING,
+            "GPU memory was allocated during CUDA graph capture. "
+            "Graph replay may produce incorrect results. Consider increasing "
+            "min_num_runs_before_cuda_graph_capture to allow allocations to stabilize.",
+            ORT_FILE, __LINE__, __FUNCTION__));
       }
+      context.pre_capture_free_mem = 0;
 
       // CUDA work issued to a capturing stream doesn't actually run on the GPU,
       // so replay the captured graph to actually execute the work.
