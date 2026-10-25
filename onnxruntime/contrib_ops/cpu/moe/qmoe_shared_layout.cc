@@ -944,13 +944,20 @@ bool FileExpertStore::InitializeStorage(const char* file_path, uint64_t file_off
               address < lo || address + length > hi || perms[0] != 'r' || perms[1] != '-' ||
               perms[3] != 's' || inode == 0) continue;
           const std::string path = line.substr(static_cast<size_t>(path_pos));
+          if (path.empty() || path[0] != '/') break;
           bank->fd = open(path.c_str(), O_RDONLY | O_CLOEXEC);
-          if (bank->fd < 0) return false;
+          if (bank->fd < 0) break;
           struct stat st{};
+          const bool same_dev = (fstat(bank->fd, &st) == 0) &&
+                                (major(st.st_dev) == major_id && minor(st.st_dev) == minor_id);
           if (fstat(bank->fd, &st) != 0 || !S_ISREG(st.st_mode) ||
-              static_cast<uint64_t>(st.st_ino) != inode || major(st.st_dev) != major_id || minor(st.st_dev) != minor_id ||
+              (same_dev && static_cast<uint64_t>(st.st_ino) != inode) ||
               offset > static_cast<uint64_t>(st.st_size) || address - lo > static_cast<uint64_t>(st.st_size) - offset ||
-              length > static_cast<uint64_t>(st.st_size) - offset - (address - lo)) return false;
+              length > static_cast<uint64_t>(st.st_size) - offset - (address - lo)) {
+            close(bank->fd);
+            bank->fd = -1;
+            break;
+          }
           bank->offset = offset + address - lo;
           bank->bytes = source.expert_bytes;
           bank->destination = source.block_offset;
@@ -986,6 +993,7 @@ bool FileExpertStore::InitializeStorage(const char* file_path, uint64_t file_off
     bank->mapped_ptr = static_cast<const uint8_t*>(source.data);
     bank->bytes = source.expert_bytes;
     bank->destination = source.block_offset;
+    bank->offset = source.file_offset;
     if (source.file_path != nullptr && source.file_path[0] != '\0') {
       bank->file_handle = CreateFileA(
           source.file_path, GENERIC_READ,
@@ -1001,11 +1009,15 @@ bool FileExpertStore::InitializeStorage(const char* file_path, uint64_t file_off
       }
       bank->resolved_path = source.file_path;
       bank->is_file_backed = true;
-    }
-    bank->offset = source.file_offset;
-    if (source.expert_bytes <= 64 && read_opt_enabled) {
+      if (source.expert_bytes <= 64 && read_opt_enabled) {
+        bank->resident.assign(static_cast<const uint8_t*>(source.data),
+                              static_cast<const uint8_t*>(source.data) + length);
+      }
+    } else if (length <= (4ULL << 20) && read_opt_enabled) {
       bank->resident.assign(static_cast<const uint8_t*>(source.data),
                             static_cast<const uint8_t*>(source.data) + length);
+    } else {
+      return false;
     }
     read_banks.push_back(std::move(bank));
 #else
@@ -1978,10 +1990,12 @@ void Fc1SwiGluRange(const ExpertBlockLayout& layout, const uint8_t* block, const
       for (int64_t r = 0; r < m; ++r) {
         const float gate_projection = tmp[r * kChunk + (n - nb)];
         const float up_projection = tmp[r * kChunk + (n - nb) + 1];
-        const float gate = std::min(fp16_boundaries ? BoundaryFloat16::Round(gate_projection) : gate_projection,
-                                    swiglu.limit);
-        const float value = std::clamp(fp16_boundaries ? BoundaryFloat16::Round(up_projection) : up_projection,
-                                       -swiglu.limit, swiglu.limit);
+        float gate = fp16_boundaries ? BoundaryFloat16::Round(gate_projection) : gate_projection;
+        float value = fp16_boundaries ? BoundaryFloat16::Round(up_projection) : up_projection;
+        if (std::isfinite(swiglu.limit)) {
+          gate = std::min(gate, swiglu.limit);
+          value = std::clamp(value, -swiglu.limit, swiglu.limit);
+        }
         const float act = gate / (1.0f + std::exp(-swiglu.alpha * gate)) * (value + swiglu.beta);
         inter_reordered[r * layout.inter + (j / 32) * 32 + pos] = fp16_boundaries ? BoundaryFloat16::Round(act) : act;
       }

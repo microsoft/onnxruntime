@@ -477,6 +477,65 @@ class SharedLayoutTest(unittest.TestCase):
             np.testing.assert_array_equal(y_raw, y_pk)
             np.testing.assert_array_equal(y_raw, y_pk_legacy)
 
+        # Regression: legacy-shaped SM80 weights where 2 * inter != hidden (hidden=256, inter=64 ->
+        # canonical FC1 is [E, 128, 128] while legacy FC1 is [E, 256, 64]) with runtime scales must
+        # defer prepacking and unpack only routed experts with the true canonical dimensions.
+        hidden_leg, inter_leg = 256, 64
+        n1_leg = 2 * inter_leg
+        experts_leg = [random_expert(rng, hidden_leg, inter_leg) for _ in range(num_experts)]
+        raw1_leg = np.stack([ref.raw_pack(e["fc1_codes"]) for e in experts_leg])
+        raw2_leg = np.stack([ref.raw_pack(e["fc2_codes"]) for e in experts_leg])
+        pk1_leg = np.stack([ref.pack_sm80_w4(e["fc1_codes"]).reshape(hidden_leg, inter_leg) for e in experts_leg])
+        pk2_leg = np.stack([ref.pack_sm80_w4(e["fc2_codes"]).reshape(inter_leg, hidden_leg // 2) for e in experts_leg])
+        s1_leg = np.stack([e["fc1_scales"] for e in experts_leg])
+        b1_leg = np.stack([e["fc1_bias"] for e in experts_leg])
+        s2_leg = np.stack([e["fc2_scales"] for e in experts_leg])
+        b2_leg = np.stack([e["fc2_bias"] for e in experts_leg])
+        m_raw_rt_scales = build_qmoe_model(
+            num_experts,
+            hidden_leg,
+            inter_leg,
+            top_k,
+            raw1_leg,
+            s1_leg,
+            b1_leg,
+            raw2_leg,
+            s2_leg,
+            b2_leg,
+            False,
+            runtime_scales=True,
+        )
+        m_pk_leg_rt_scales = build_qmoe_model(
+            num_experts,
+            hidden_leg,
+            inter_leg,
+            top_k,
+            pk1_leg,
+            s1_leg,
+            b1_leg,
+            pk2_leg,
+            s2_leg,
+            b2_leg,
+            True,
+            w1_shape=(num_experts, hidden_leg, inter_leg),
+            w2_shape=(num_experts, inter_leg, hidden_leg // 2),
+            runtime_scales=True,
+        )
+        x_leg = (rng.standard_normal((tokens, hidden_leg)) * 0.5).astype(np.float16)
+        feed_rt = {"x": x_leg, "router": router, "s1": s1_leg, "s2": s2_leg}
+        y_leg_outs = []
+        for disable_prepack in ("0", "1"):
+            so = ort.SessionOptions()
+            so.add_session_config_entry("session.disable_prepacking", disable_prepack)
+            sess_raw_rt = ort.InferenceSession(m_raw_rt_scales, sess_options=so, providers=["CPUExecutionProvider"])
+            sess_pk_rt = ort.InferenceSession(m_pk_leg_rt_scales, sess_options=so, providers=["CPUExecutionProvider"])
+            y_raw_rt = sess_raw_rt.run(None, feed_rt)[0]
+            y_pk_rt = sess_pk_rt.run(None, feed_rt)[0]
+            np.testing.assert_array_equal(y_raw_rt, y_pk_rt)
+            y_leg_outs.append(y_pk_rt)
+        np.testing.assert_array_equal(y_leg_outs[0], y_leg_outs[1])
+        _ = n1_leg
+
         lib = load_lib()
         blocks = [ref.assemble_block(hidden, inter, **e) for e in experts]
         want = np.zeros((tokens, hidden), dtype=np.float64)
@@ -505,22 +564,39 @@ def build_qmoe_model(
     prepacked,
     w1_shape=None,
     w2_shape=None,
+    runtime_scales=False,
 ):
     import onnx  # noqa: PLC0415
 
     n1 = 2 * inter
     tokens = "tokens"
-    inits = [
-        onnx.numpy_helper.from_array(np.ascontiguousarray(a).reshape(shape), name)
-        for name, a, shape in [
-            ("w1", w1, w1_shape or (num_experts, n1, hidden // 2)),
-            ("s1", s1, (num_experts, n1, hidden // 32)),
-            ("b1", b1, (num_experts, n1)),
-            ("w2", w2, w2_shape or (num_experts, hidden, inter // 2)),
-            ("s2", s2, (num_experts, hidden, inter // 32)),
-            ("b2", b2, (num_experts, hidden)),
-        ]
+    init_specs = [
+        ("w1", w1, w1_shape or (num_experts, n1, hidden // 2)),
+        ("b1", b1, (num_experts, n1)),
+        ("w2", w2, w2_shape or (num_experts, hidden, inter // 2)),
+        ("b2", b2, (num_experts, hidden)),
     ]
+    if not runtime_scales:
+        init_specs.extend(
+            [
+                ("s1", s1, (num_experts, n1, hidden // 32)),
+                ("s2", s2, (num_experts, hidden, inter // 32)),
+            ]
+        )
+    inits = [
+        onnx.numpy_helper.from_array(np.ascontiguousarray(a).reshape(shape), name) for name, a, shape in init_specs
+    ]
+    graph_inputs = [
+        onnx.helper.make_tensor_value_info("x", onnx.TensorProto.FLOAT16, [tokens, hidden]),
+        onnx.helper.make_tensor_value_info("router", onnx.TensorProto.FLOAT16, [tokens, num_experts]),
+    ]
+    if runtime_scales:
+        graph_inputs.extend(
+            [
+                onnx.helper.make_tensor_value_info("s1", onnx.TensorProto.FLOAT16, [num_experts, n1, hidden // 32]),
+                onnx.helper.make_tensor_value_info("s2", onnx.TensorProto.FLOAT16, [num_experts, hidden, inter // 32]),
+            ]
+        )
     node = onnx.helper.make_node(
         "QMoE",
         ["x", "router", "w1", "s1", "b1", "w2", "s2", "b2"],
@@ -537,10 +613,7 @@ def build_qmoe_model(
     graph = onnx.helper.make_graph(
         [node],
         "qmoe_golden",
-        [
-            onnx.helper.make_tensor_value_info("x", onnx.TensorProto.FLOAT16, [tokens, hidden]),
-            onnx.helper.make_tensor_value_info("router", onnx.TensorProto.FLOAT16, [tokens, num_experts]),
-        ],
+        graph_inputs,
         [onnx.helper.make_tensor_value_info("y", onnx.TensorProto.FLOAT16, [tokens, hidden])],
         initializer=inits,
     )
@@ -578,9 +651,11 @@ class CudaGoldenTest(unittest.TestCase):
         x = (rng.standard_normal((tokens, hidden)) * 0.5).astype(np.float16)
         router = rng.standard_normal((tokens, num_experts)).astype(np.float16)
 
+        so = ort.SessionOptions()
+        so.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
         outs = []
         for model in (m_raw, m_pk):
-            sess = ort.InferenceSession(model, providers=["CUDAExecutionProvider"])
+            sess = ort.InferenceSession(model, sess_options=so, providers=["CUDAExecutionProvider"])
             outs.append(sess.run(None, {"x": x, "router": router})[0])
         np.testing.assert_array_equal(outs[0], outs[1], err_msg="numpy packer differs from CUDA PrePack")
 
@@ -646,7 +721,11 @@ class RealArtifactGoldenTest(unittest.TestCase):
         rng = np.random.default_rng(layer)
         x = (rng.standard_normal((tokens, hidden)) * 0.5).astype(np.float16)
         router = rng.standard_normal((tokens, experts)).astype(np.float16)
-        got = ort.InferenceSession(model, providers=["CUDAExecutionProvider"]).run(None, {"x": x, "router": router})[0]
+        so = ort.SessionOptions()
+        so.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+        got = ort.InferenceSession(model, sess_options=so, providers=["CUDAExecutionProvider"]).run(
+            None, {"x": x, "router": router}
+        )[0]
 
         blocks = ref.assemble_blocks_from_prepacked(
             hidden, inter, w1, banks["s1"], banks["b1"], w2, banks["s2"], banks["b2"]

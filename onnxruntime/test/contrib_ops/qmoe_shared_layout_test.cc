@@ -390,11 +390,20 @@ TEST(QMoESharedLayoutTest, ModifiedPrivateReadOnlyMappingExcludedFromReloadAndEv
   store.ReleaseLease(1);
   store.Shutdown();
 
-  // Verify that a genuine shared read-only mapping (r--s) is accepted.
+  // Verify that a genuine shared read-only mapping (r--s) is accepted, including via /proc/self/maps auto-discovery.
   void* shared_map = mmap(nullptr, total_bytes, PROT_READ, MAP_SHARED, fd, 0);
   ASSERT_NE(shared_map, MAP_FAILED);
   EXPECT_TRUE(shared::IsFileBackedReadOnlyMapping(shared_map, total_bytes));
   EXPECT_EQ(shared::EvictFileBackedHostPages(shared_map, total_bytes), total_bytes);
+
+  shared::FileExpertStore shared_store;
+  shared::FileExpertStore::MappedBank shared_bank{shared_map, expert_bytes, 0, nullptr, 0};
+  ASSERT_TRUE(shared_store.InitializeMapped(&shared_bank, 1, num_experts, expert_bytes, /*cache_slots=*/1));
+  EXPECT_TRUE(shared_store.IsBankFileBacked(0));
+  ASSERT_TRUE(shared_store.AcquireReady(0, &lease));
+  EXPECT_EQ(lease.data[0], 0x11);
+  shared_store.ReleaseLease(0);
+  shared_store.Shutdown();
 
   munmap(shared_map, total_bytes);
   munmap(priv_map, total_bytes);

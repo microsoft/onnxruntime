@@ -392,7 +392,7 @@ inline void PopulateScaleFp4Lut2D(const float* base_lut, float global_scale, boo
 }
 
 template <bool IsMxfp4>
-const __m512 (&GetScaleFp4Lut2D(float global_scale, bool round_scale_bf16))[256] {
+const __m512 (*GetScaleFp4Lut2D(float global_scale, bool round_scale_bf16) noexcept)[256] {
   uint32_t gs_bits = 0;
   std::memcpy(&gs_bits, &global_scale, sizeof(gs_bits));
   const uint64_t key = (static_cast<uint64_t>(gs_bits) << 2) |
@@ -408,12 +408,10 @@ const __m512 (&GetScaleFp4Lut2D(float global_scale, bool round_scale_bf16))[256]
         PopulateScaleFp4Lut2D(base_lut, global_scale, round_scale_bf16, entry->lut_2d);
         entry->key = key;
       }
-      return entry->lut_2d;
+      return &entry->lut_2d;
     }
   }
-  alignas(64) static __m512 fallback_lut[256];
-  PopulateScaleFp4Lut2D(base_lut, global_scale, round_scale_bf16, fallback_lut);
-  return fallback_lut;
+  return nullptr;
 }
 
 template <int RT, bool IsMxfp4>
@@ -649,7 +647,13 @@ void Avx512Nvfp4GemmRange(const uint8_t* weights, const uint8_t* block_scales, f
                           const uint16_t* bias, bool bias_is_bf16, int64_t n_total, int64_t k,
                           const float* a_reordered, int64_t m, float* out, int64_t out_stride,
                           int64_t n_begin, int64_t n_end, bool round_scale_bf16) {
-  const auto& lut_2d = GetScaleFp4Lut2D<false>(global_scale, round_scale_bf16);
+  const auto* lut_2d_ptr = GetScaleFp4Lut2D<false>(global_scale, round_scale_bf16);
+  if (lut_2d_ptr == nullptr) {
+    Nvfp4GemmRange(weights, block_scales, global_scale, bias, bias_is_bf16, n_total, k,
+                   a_reordered, m, out, out_stride, n_begin, n_end, /*force_scalar=*/true, round_scale_bf16);
+    return;
+  }
+  const auto& lut_2d = *lut_2d_ptr;
   int64_t r = 0;
   while (r < m) {
     const int64_t left = m - r;
@@ -679,7 +683,13 @@ void Avx512Mxfp4GemmRange(const uint8_t* weights, const uint8_t* block_scales, f
                           const uint16_t* bias, bool bias_is_bf16, int64_t n_total, int64_t k,
                           const float* a_reordered, int64_t m, float* out, int64_t out_stride,
                           int64_t n_begin, int64_t n_end, bool round_scale_bf16) {
-  const auto& lut_2d = GetScaleFp4Lut2D<true>(global_scale, round_scale_bf16);
+  const auto* lut_2d_ptr = GetScaleFp4Lut2D<true>(global_scale, round_scale_bf16);
+  if (lut_2d_ptr == nullptr) {
+    Mxfp4GemmRange(weights, block_scales, global_scale, bias, bias_is_bf16, n_total, k,
+                   a_reordered, m, out, out_stride, n_begin, n_end, /*force_scalar=*/true, round_scale_bf16);
+    return;
+  }
+  const auto& lut_2d = *lut_2d_ptr;
   int64_t r = 0;
   while (r < m) {
     const int64_t left = m - r;

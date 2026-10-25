@@ -17,7 +17,7 @@ file(GLOB_RECURSE onnxruntime_cpu_contrib_ops_srcs CONFIGURE_DEPENDS
 list(REMOVE_ITEM onnxruntime_cpu_contrib_ops_srcs
   "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/moe/qmoe_shared_layout_avx512.cc"
 )
-if(onnxruntime_ENABLE_MLAS_QMOE_OFFLOAD AND NOT onnxruntime_DISABLE_CONTRIB_OPS)
+if(onnxruntime_ENABLE_MLAS_QMOE_OFFLOAD AND NOT onnxruntime_DISABLE_CONTRIB_OPS AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD AND NOT onnxruntime_ORT_MINIMAL_BUILD)
   list(REMOVE_ITEM onnxruntime_cpu_contrib_ops_srcs
     "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/moe/qmoe_shared_layout.cc"
   )
