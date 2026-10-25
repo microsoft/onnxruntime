@@ -53,6 +53,12 @@ bool LaunchFusedRouteMaps(const __nv_bfloat16* logits, float* topk_scales, int* 
                           int* permuted_expert, int64_t* expert_first_token_offset, int num_rows, int num_experts,
                           int k, bool normalize_scales, bool pdl, cudaStream_t stream);
 
+bool LaunchFusedInt3RouteGroups(const half* logits, float* topk_scales, int* topk_indices, int2* route_groups,
+                                int num_rows, int num_experts, int k, bool normalize_scales, cudaStream_t stream);
+bool LaunchFusedInt3RouteGroups(const __nv_bfloat16* logits, float* topk_scales, int* topk_indices, int2* route_groups,
+                                int num_rows, int num_experts, int k, bool normalize_scales, cudaStream_t stream);
+void LaunchBuildInt3RouteGroups(const int* topk_indices, int2* route_groups, int num_pairs, cudaStream_t stream);
+
 void LaunchSparseMixerTop2(
     const float* input,
     float* output,
@@ -441,6 +447,7 @@ struct Int3MoeParams {
   const int* experts = nullptr;
   const float* routing_scales = nullptr;
   const void* router_weights = nullptr;
+  const int2* route_groups = nullptr;
   int num_experts = 0;
   Int3Projection fc1{};
   Int3Projection fc2{};
