@@ -216,9 +216,9 @@ projection uses INT3; they do not change INT2/INT4-only execution.
 ### 3.2 Runtime Content Validation
 
 For the combinations in section 3.1, both projections' scales must be finite
-and nonnegative, including when zero points are omitted. Validation is enabled
-by default and does not require `ORT_VALIDATE_INT3_CONTENT`. Zero scales are
-accepted. The bit-width-specific zero-point constraints are:
+and nonnegative, including when zero points are omitted. Content validation is
+mandatory; zero scales are accepted. The bit-width-specific zero-point
+constraints are:
 
 | Projection width | Explicit zero-point content |
 |------------------|-----------------------------|
