@@ -66,6 +66,8 @@ struct TypeConstraint {
   bool immutable = false;
 };
 
+struct Match;
+
 struct OpsetRequirement {
   std::string domain;
   int min_version;
@@ -94,6 +96,9 @@ class Pattern {
   const auto& TypeConstraints() const { return type_constraints_; }
   bool IsAttribute(Value value) const { return attribute_inputs_.count(value.handle) != 0; }
   const auto& OrderedTypeConstraints() const { return ordered_type_constraints_; }
+  // Visit rewrite-safe candidates at one root in expansion order. true continues; false stops.
+  // Requires a resolved graph. The visitor must not mutate it. Does not filter opsets or providers.
+  Status VisitMatches(const Graph& graph, NodeIndex root, const std::function<bool(Match&)>& visitor) const;
 
  private:
   friend class detail::PatternParser;
@@ -148,9 +153,7 @@ class PatternLibrary {
   std::shared_ptr<const detail::PatternModule> module_;
 };
 
-struct Match;
-
-// Non-owning, instance-scoped access. Valid only during this candidate's callback.
+// Non-owning access; the parent Match and its unchanged graph must outlive this view.
 class BindingView {
  public:
   const NodeArg* valueOf(std::string_view name) const;
@@ -182,6 +185,7 @@ Status ReadConstantTensor(const Graph& graph, const NodeArg* value, InlinedVecto
 Status ReadConstantTensor(const Graph& graph, const NodeArg* value, InlinedVector<int64_t>& data, bool& available);
 
 struct Match {
+  // Matcher plumbing, not a supported interface for constructing or modifying matches.
   InlinedVector<const Node*> nodes;
   InlinedVector<const NodeArg*> values;
   const NodeArg* valueOf(std::string_view name) const;
@@ -207,6 +211,9 @@ struct Match {
   const Pattern* pattern = nullptr;
 
  private:
+  friend class Pattern;
+  friend class PatternRewriter;
+  std::shared_ptr<const Pattern> owned_pattern_;  // Copies own the plan, but still borrow graph objects.
   NodeAttributes captured_attributes_;
   InlinedHashMap<std::string, Dimension> dimensions_;
   InlinedHashMap<std::string, int32_t> element_types_;
@@ -215,6 +222,11 @@ struct Match {
 };
 
 struct Replacement {
+  struct Instantiation {
+    InlinedVector<NodeIndex> nodes;
+    InlinedVector<NodeArg*> outputs;
+  };
+  using TensorBindings = InlinedHashMap<std::string, const NodeArg*>;
   struct Output {
     size_t node;
     size_t slot = 0;
@@ -236,6 +248,10 @@ struct Replacement {
   Replacement operator()(const Graph&, const Match&) const { return *this; }
   const auto& Plan() const { return plan_; }
   const auto& Outputs() const { return outputs_; }
+  // Build a fresh fragment without matching, deleting, rewiring, or changing graph outputs.
+  // result changes only on success. Call Graph::Resolve before using the constructed graph.
+  Status Instantiate(Graph& graph, const TensorBindings& tensors, const NodeAttributes& attributes,
+                     Instantiation& result, const Node* annotation_source = nullptr) const;
 
  private:
   friend class PatternRewriter;

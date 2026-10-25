@@ -289,12 +289,21 @@ bool CanRewritePartition(const Match& match, const Options& options) {
                      [&](const Node* node) { return node->GetExecutionProviderType() == provider; });
 }
 
-Status Replace(Graph& graph, const Pattern& pattern, const Match& match, const Replacement& recipe,
-               Producers& producers, InlinedVector<NodeIndex>& added) {
+void RollbackFragment(Graph& graph, InlinedVector<NodeIndex>& added, const InlinedVector<std::string>& initializers) {
+  for (auto it = added.rbegin(); it != added.rend(); ++it) graph.RemoveNode(*it);
+  for (const auto& name : initializers) graph.RemoveInitializedTensor(name);
+  added.clear();
+}
+
+Status StageReplacement(Graph& graph, const Replacement& recipe, gsl::span<NodeArg* const> returned_outputs,
+                        const std::function<Status(const Replacement::Input&, NodeArg*&)>& resolve_tensor,
+                        const std::function<Status(const std::string&, ONNX_NAMESPACE::AttributeProto&)>& resolve_attribute,
+                        const Node* annotation_source, InlinedVector<NodeIndex>& added,
+                        InlinedVector<std::string>& initializers) {
+  ORT_RETURN_IF(!recipe.Plan(), "Replacement has no parsed plan.");
   const auto& nodes = *recipe.Plan();
   ORT_RETURN_IF(nodes.empty(), "Replacements must contain at least one node.");
-  const Node& root = *match.nodes.back();
-  ORT_RETURN_IF(recipe.Outputs().size() != pattern.Outputs().size(),
+  ORT_RETURN_IF(recipe.Outputs().size() != returned_outputs.size(),
                 "Replacement return count must equal the pattern return count.");
   InlinedVector<InlinedVector<NodeArg*>> exposed_outputs;
   for (const auto& node : nodes) exposed_outputs.emplace_back(node.output_count, nullptr);
@@ -302,15 +311,21 @@ Status Replace(Graph& graph, const Pattern& pattern, const Match& match, const R
     const auto& output = recipe.Outputs()[i];
     ORT_RETURN_IF(output.node >= nodes.size() || output.slot >= nodes[output.node].output_count,
                   "Invalid replacement return slot.");
-    exposed_outputs[output.node][output.slot] = graph.GetNodeArg(match.values[pattern.Outputs()[i]]->Name());
+    exposed_outputs[output.node][output.slot] = returned_outputs[i];
   }
   InlinedVector<InlinedVector<NodeArg*>> external_inputs;
+  InlinedVector<NodeAttributes> resolved_attributes;
   for (size_t i = 0; i < nodes.size(); ++i) {
     const auto& node = nodes[i];
+    auto attributes = node.attributes;
     for (const auto& [name, binding] : node.attribute_bindings) {
       ORT_RETURN_IF(name.empty() || node.attributes.count(name), "Invalid or duplicate replacement attribute: ", name);
-      match.attributeOf(binding);
+      ONNX_NAMESPACE::AttributeProto value;
+      ORT_RETURN_IF_ERROR(resolve_attribute(binding, value));
+      value.set_name(name);
+      attributes.emplace(name, std::move(value));
     }
+    resolved_attributes.push_back(std::move(attributes));
     const auto& domain = node.domain == kOnnxDomainAlias ? kOnnxDomain : node.domain;
     ORT_RETURN_IF(node.op.empty() || node.inputs.size() > 64 || node.output_count == 0 || node.output_count > 64,
                   "Invalid replacement operator or arity.");
@@ -334,18 +349,9 @@ Status Replace(Graph& graph, const Pattern& pattern, const Match& match, const R
         inputs.push_back(nullptr);
         continue;
       }
-      Value value;
-      if (const auto* handle = std::get_if<Value>(&input)) {
-        value = *handle;
-      } else {
-        value = pattern.NamedValue(std::get<std::string>(input));
-      }
-      ORT_RETURN_IF(
-          value.handle < 0 || static_cast<size_t>(value.handle) >= match.values.size() || !pattern.IsInput(value) ||
-              pattern.IsAttribute(value),
-          "Replacement inputs must be pattern input variables.");
-      const NodeArg* binding = match.values[value];
-      inputs.push_back(binding ? graph.GetNodeArg(binding->Name()) : &graph.GetOrCreateNodeArg("", nullptr));
+      NodeArg* binding = nullptr;
+      ORT_RETURN_IF_ERROR(resolve_tensor(input, binding));
+      inputs.push_back(binding ? binding : &graph.GetOrCreateNodeArg("", nullptr));
     }
     external_inputs.push_back(std::move(inputs));
   }
@@ -356,12 +362,10 @@ Status Replace(Graph& graph, const Pattern& pattern, const Match& match, const R
     for (const auto& input : nodes[i].inputs)
       if (const auto* output = std::get_if<Replacement::Output>(&input)) reachable.insert(output->node);
   }
-  InlinedVector<std::string> initializers;
-  auto rollback = [&]() {
-    for (auto it = added.rbegin(); it != added.rend(); ++it) graph.RemoveNode(*it);
-    for (const auto& name : initializers) graph.RemoveInitializedTensor(name);
-    added.clear();
-  };
+  bool staged = false;
+  auto cleanup = gsl::finally([&]() {
+    if (!staged) RollbackFragment(graph, added, initializers);
+  });
   // Stage and validate every schema before deleting any matched nodes or changing edges.
   for (size_t i = 0; i < nodes.size(); ++i) {
     auto& inputs = external_inputs[i];
@@ -408,22 +412,14 @@ Status Replace(Graph& graph, const Pattern& pattern, const Match& match, const R
                                               : &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("rewrite_value"), nullptr));
     const auto& node = nodes[i];
     const auto& domain = node.domain == kOnnxDomainAlias ? kOnnxDomain : node.domain;
-    NodeAttributes resolved_attributes;
-    const NodeAttributes* attributes = &node.attributes;
-    if (!node.attribute_bindings.empty()) {
-      resolved_attributes = node.attributes;
-      for (const auto& [name, binding] : node.attribute_bindings) {
-        auto value = match.attributeOf(binding);
-        value.set_name(name);
-        resolved_attributes.emplace(name, std::move(value));
-      }
-      attributes = &resolved_attributes;
-    }
-    Node& replacement = graph.AddNode(graph.GenerateNodeName("rewrite"), node.op, "PatternRewriter", inputs, outputs,
-                                      root, attributes, domain);
+    const auto node_name = graph.GenerateNodeName("rewrite");
+    Node& replacement = annotation_source
+                            ? graph.AddNode(node_name, node.op, "PatternRewriter", inputs, outputs,
+                                            *annotation_source, &resolved_attributes[i], domain)
+                            : graph.AddNode(node_name, node.op, "PatternRewriter", inputs, outputs,
+                                            &resolved_attributes[i], domain);
     added.push_back(replacement.Index());
     if (!graph.SetOpSchemaFromRegistryForNode(replacement)) {
-      rollback();
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Replacement schema is unavailable: ", node.op);
     }
     ORT_TRY {
@@ -437,11 +433,34 @@ Status Replace(Graph& graph, const Pattern& pattern, const Match& match, const R
       replacement.Op()->Verify(proto);
     }
     ORT_CATCH(const ONNX_NAMESPACE::checker::ValidationError& error) {
-      rollback();
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid replacement: ", error.what());
     }
-    replacement.SetExecutionProviderType(root.GetExecutionProviderType());
+    if (annotation_source) replacement.SetExecutionProviderType(annotation_source->GetExecutionProviderType());
   }
+  staged = true;
+  return Status::OK();
+}
+
+Status Replace(Graph& graph, const Pattern& pattern, const Match& match, const Replacement& recipe,
+               Producers& producers, InlinedVector<NodeIndex>& added) {
+  InlinedVector<NodeArg*> returned_outputs;
+  for (Value output : pattern.Outputs()) returned_outputs.push_back(graph.GetNodeArg(match.values[output]->Name()));
+  auto tensor = [&](const Replacement::Input& input, NodeArg*& result) -> Status {
+    const Value value = std::holds_alternative<Value>(input) ? std::get<Value>(input)
+                                                             : pattern.NamedValue(std::get<std::string>(input));
+    ORT_RETURN_IF(value.handle < 0 || static_cast<size_t>(value.handle) >= match.values.size() ||
+                      !pattern.IsInput(value) || pattern.IsAttribute(value),
+                  "Replacement inputs must be pattern input variables.");
+    result = match.values[value] ? graph.GetNodeArg(match.values[value]->Name()) : nullptr;
+    return Status::OK();
+  };
+  auto attribute = [&](const std::string& name, ONNX_NAMESPACE::AttributeProto& result) -> Status {
+    result = match.attributeOf(name);
+    return Status::OK();
+  };
+  InlinedVector<std::string> initializers;
+  ORT_RETURN_IF_ERROR(StageReplacement(graph, recipe, returned_outputs, tensor, attribute, match.nodes.back(), added, initializers));
+  auto rollback = [&]() { RollbackFragment(graph, added, initializers); };
   // External consumers of a returned intermediate may feed a pattern input.
   // Validate the prospective producer mapping before replacing their edges.
   if (std::any_of(pattern.Outputs().begin(), pattern.Outputs().end(), [&](Value value) {
@@ -1768,7 +1787,6 @@ class PatternModule {
     return result;
   }
 
- private:
   static void ValidateEntry(const Pattern& plan, std::string_view name) {
     ORT_ENFORCE(!plan.Nodes().empty(), "Pattern ", name, " cannot be a rule entry: no operator root.");
     InlinedHashSet<int> returned;
@@ -1793,6 +1811,7 @@ class PatternModule {
     ORT_ENFORCE(reachable.size() == plan.ValueCount(), "Pattern ", name, " cannot be a rule entry: unused inputs.");
   }
 
+ private:
   const Definition* Resolve(std::string_view name) {
     auto found = by_name_.find(std::string(name));
     if (found == by_name_.end()) return nullptr;  // Unqualified ONNX operator.
@@ -1958,6 +1977,71 @@ Rule::Rule(std::string name, Pattern pattern, std::string_view replacement, Chec
 Rule::Rule(std::string name, std::string_view pattern, std::string_view replacement, CheckAndBind check_and_bind,
            InlinedVector<OpsetRequirement, 1> opsets)
     : Rule(std::move(name), Pattern(pattern), Replacement(replacement), std::move(check_and_bind), std::move(opsets)) {}
+
+Status Pattern::VisitMatches(const Graph& graph, NodeIndex root_index,
+                             const std::function<bool(Match&)>& visitor) const {
+  ORT_RETURN_IF(!visitor, "Pattern visitor must be callable.");
+  ORT_RETURN_IF(graph.GraphResolveNeeded(), "Pattern matching requires an already resolved graph.");
+  ORT_RETURN_IF(root_index >= static_cast<NodeIndex>(graph.MaxNodeIndex()),
+                "Pattern root does not exist in the supplied graph.");
+  const Node* root = graph.GetNode(root_index);
+  ORT_RETURN_IF(!root, "Pattern root does not exist in the supplied graph.");
+  detail::PatternModule::ValidateEntry(*this, "<standalone>");
+  for (const auto& alternative : alternatives_) detail::PatternModule::ValidateEntry(*alternative, "<standalone>");
+  Producers producers;
+  for (const auto& node : graph.Nodes())
+    for (const NodeArg* output : node.OutputDefs())
+      if (output->Exists()) producers[output] = node.Index();
+  auto visit = [&](const Pattern& plan) {
+    Match match;
+    match.pattern = &plan;
+    FailureStage stage = FailureStage::Structure;
+    std::string reason;
+    if (!MatchPattern(plan, graph, *root, producers, match, stage, reason)) return true;
+    match.owned_pattern_ = std::make_shared<const Pattern>(plan);
+    match.pattern = match.owned_pattern_.get();
+    return visitor(match);
+  };
+  if (!visit(*this)) return Status::OK();
+  for (const auto& alternative : alternatives_)
+    if (!visit(*alternative)) break;
+  return Status::OK();
+}
+
+Status Replacement::Instantiate(Graph& graph, const TensorBindings& tensors, const NodeAttributes& attributes,
+                                Instantiation& result, const Node* annotation_source) const {
+  ORT_RETURN_IF(annotation_source &&
+                    (annotation_source->Index() >= static_cast<NodeIndex>(graph.MaxNodeIndex()) ||
+                     graph.GetNode(annotation_source->Index()) != annotation_source),
+                "Replacement annotation source must belong to the supplied graph.");
+  for (const auto& [name, value] : tensors) {
+    ORT_RETURN_IF(attributes.count(name), "Replacement binding is both tensor and attribute: ", name);
+    ORT_RETURN_IF(value && (!value->Exists() || graph.GetNodeArg(value->Name()) != value),
+                  "Replacement tensor binding must belong to the supplied graph: ", name);
+  }
+  auto tensor = [&](const Input& input, NodeArg*& value) -> Status {
+    const auto* name = std::get_if<std::string>(&input);
+    ORT_RETURN_IF(!name, "Standalone replacement cannot use compiled pattern handles.");
+    auto found = tensors.find(*name);
+    ORT_RETURN_IF(found == tensors.end(), "Missing replacement tensor binding: ", *name);
+    value = found->second ? graph.GetNodeArg(found->second->Name()) : nullptr;
+    return Status::OK();
+  };
+  auto attribute = [&](const std::string& name, ONNX_NAMESPACE::AttributeProto& value) -> Status {
+    auto found = attributes.find(name);
+    ORT_RETURN_IF(found == attributes.end(), "Missing replacement attribute binding: ", name);
+    value = found->second;
+    return Status::OK();
+  };
+  Instantiation staged;
+  for (size_t i = 0; i < outputs_.size(); ++i)
+    staged.outputs.push_back(&graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("rewrite_output"), nullptr));
+  InlinedVector<std::string> initializers;
+  ORT_RETURN_IF_ERROR(StageReplacement(graph, *this, staged.outputs, tensor, attribute, annotation_source,
+                                       staged.nodes, initializers));
+  result = std::move(staged);
+  return Status::OK();
+}
 
 Pattern::Pattern(std::string_view text) { ORT_THROW_IF_ERROR(detail::PatternParser(text).Parse(*this)); }
 
@@ -2334,7 +2418,8 @@ Status PatternRewriter::Run(Graph& graph, Statistics& statistics) const {
           return;
         }
         Match rule_match = candidate.match;
-        rule_match.pattern = &rules_[id].pattern;
+        rule_match.owned_pattern_ = std::make_shared<const Pattern>(rules_[id].pattern);
+        rule_match.pattern = rule_match.owned_pattern_.get();
         if (rules_[id].check_and_bind) {
           ++statistics.check_and_bind_calls;
           if (!rules_[id].check_and_bind(graph, rule_match)) {
