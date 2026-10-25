@@ -40,12 +40,43 @@ __global__ void ScaledSiLUKernel(const T* x, const void* scale, int scale_type,
   y[i] = from_float<T>(to_float<T>(z) * to_float<T>(sigmoid));
 }
 
+template <typename T>
+__global__ void ScaledSiLUVec8Kernel(const uint4* x, const void* scale, int scale_type,
+                                     uint4* y, int vec_count, float alpha) {
+  const int v = static_cast<int>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (v >= vec_count) return;
+  const float scale_value = scale == nullptr ? alpha : LoadScale(scale, scale_type);
+  const uint4 x_u4 = x[v];
+  uint4 y_u4;
+  const T* x_t = reinterpret_cast<const T*>(&x_u4);
+  T* y_t = reinterpret_cast<T*>(&y_u4);
+#pragma unroll
+  for (int m = 0; m < 8; ++m) {
+    const T z = from_float<T>(to_float<T>(x_t[m]) * scale_value);
+    const T sigmoid = from_float<T>(Sigmoid(to_float<T>(z)));
+    y_t[m] = from_float<T>(to_float<T>(z) * to_float<T>(sigmoid));
+  }
+  y[v] = y_u4;
+}
+
 }  // namespace
 
 template <typename T>
 Status LaunchScaledSiLU(cudaStream_t stream, const T* x, const void* scale,
                         int scale_type, T* y, int64_t count, float alpha) {
   if (count == 0) return Status::OK();
+  if constexpr (sizeof(T) == 2) {
+    if ((count & 7) == 0 && (count >> 3) <= std::numeric_limits<int>::max() &&
+        (reinterpret_cast<uintptr_t>(x) & 15) == 0 &&
+        (reinterpret_cast<uintptr_t>(y) & 15) == 0) {
+      const int vec_count = static_cast<int>(count >> 3);
+      const int vec_blocks = (vec_count - 1) / kThreads + 1;
+      ScaledSiLUVec8Kernel<T><<<vec_blocks, kThreads, 0, stream>>>(
+          reinterpret_cast<const uint4*>(x), scale, scale_type,
+          reinterpret_cast<uint4*>(y), vec_count, alpha);
+      return CUDA_CALL(cudaGetLastError());
+    }
+  }
   const int64_t block_count = (count - 1) / kThreads + 1;
   ORT_RETURN_IF_NOT(block_count <= std::numeric_limits<int>::max(), "CUDA launch requires too many blocks");
   ScaledSiLUKernel<<<static_cast<int>(block_count), kThreads, 0, stream>>>(x, scale, scale_type, y, count, alpha);

@@ -100,6 +100,8 @@ class CUDA_ONNX_OP_TYPED_CLASS_NAME(1, MLFloat16, Crop);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, MoE);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, MoE);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, MoE);
+class CUDA_MS_OP_CLASS_NAME(1, SpeculativePrefixCommit);
+class CUDA_MS_OP_CLASS_NAME(1, SpeculativeStepPublish);
 class CUDA_MS_OP_CLASS_NAME(1, FoldMid2);
 class CUDA_MS_OP_CLASS_NAME(1, FoldTail);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, QMoE);
@@ -162,6 +164,9 @@ class CUDA_ONNX_OP_TYPED_CLASS_NAME(1, MLFloat16, ParametricSoftplus);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, RotaryEmbedding);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, RotaryEmbedding);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, RotaryEmbedding);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, SwiGLU);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, SwiGLU);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, SwiGLU);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, MRotaryEmbedding);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, MRotaryEmbedding);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, MRotaryEmbedding);
@@ -475,6 +480,8 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, MoE)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, MoE)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, MoE)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, SpeculativePrefixCommit)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, SpeculativeStepPublish)>,
       BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, FoldMid2)>,
       BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, FoldTail)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, QMoE)>,
@@ -537,6 +544,9 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, RotaryEmbedding)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, RotaryEmbedding)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, RotaryEmbedding)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, SwiGLU)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, SwiGLU)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, SwiGLU)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, MRotaryEmbedding)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, MRotaryEmbedding)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, MRotaryEmbedding)>,
