@@ -70,6 +70,16 @@ export const binding =
       maxDataSize: number,
       name: string,
     ) => Promise<Buffer>;
+    /** @internal Available only in ORT_NODEJS_TEST_EP_CONTEXT builds. */
+    // eslint-disable-next-line @typescript-eslint/naming-convention
+    __testCompileEpContextModel?: (
+      libraryPath: string,
+      registrationName: string,
+      inputModel: Buffer,
+    ) => { model: Buffer; context: Buffer; contextName: string };
+    /** @internal Available only in ORT_NODEJS_TEST_EP_CONTEXT builds. */
+    // eslint-disable-next-line @typescript-eslint/naming-convention
+    __testUnregisterEpContextPlugin?: (registrationName: string) => void;
   };
 
 let ortInitialized = false;
