@@ -111,7 +111,7 @@ __global__ void GatherBlockQuantizedKernel(
     int64_t ind_dim,
     int64_t bits,
     int64_t block_size,
-    int64_t gather_axis,
+    int64_t quantize_axis_dim,
     int64_t N,
     bool sign) {
   int64_t out_idx = blockDim.x * blockIdx.x + threadIdx.x;
@@ -132,12 +132,23 @@ __global__ void GatherBlockQuantizedKernel(
   }
   int64_t in_idx = idx_before * gather_axis_dim * after_gather_dim + idx_at_g * after_gather_dim + idx_after;
 
-  int64_t block_id = in_idx / block_size;
+  const int64_t blocks_per_row = (quantize_axis_dim + block_size - 1) / block_size;
+  const int64_t row = in_idx / quantize_axis_dim;
+  const int64_t block_in_row = in_idx % quantize_axis_dim / block_size;
+  const int64_t block_id =
+      row * blocks_per_row + block_in_row;
 
   // unpack zero_point for this block:
   int64_t offset = 0;
   if (zero_points) {
-    offset = get_val(zero_points, block_id, bits, sign);
+    int64_t zero_point_id = block_id;
+    if constexpr (std::is_same_v<T1, uint8_t>) {
+      const int64_t packing_factor = 8 / bits;
+      const int64_t packed_blocks_per_row =
+          (blocks_per_row + packing_factor - 1) / packing_factor * packing_factor;
+      zero_point_id = row * packed_blocks_per_row + block_in_row;
+    }
+    offset = get_val(zero_points, zero_point_id, bits, sign);
   } else if constexpr (std::is_same_v<T1, uint8_t>) {
     offset = int64_t{1} << (bits - 1);
   }
@@ -175,7 +186,7 @@ Status LaunchGatherBlockQuantizedKernel(const T1* data,
     GatherBlockQuantizedKernel<<<blocks_per_grid, GridDim::maxThreadsPerBlock, 0, param.stream>>>(
         data, indices, scales, zero_points, output,
         param.after_gather_dim, param.gather_axis_dim, param.ind_dim, param.bits,
-        param.block_size, param.gather_axis, param.N, sign);
+        param.block_size, param.quantize_axis_dim, param.N, sign);
   }
 
   return CUDA_CALL(cudaGetLastError());
