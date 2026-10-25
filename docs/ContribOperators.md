@@ -1795,6 +1795,12 @@ This version of the operator has been available since version 1 of the 'com.micr
   Auxiliary K/V use BNSH layout and are read-only. When `auxiliary_kv_shared=1`, auxiliary_value may be omitted and
   auxiliary_key is used as both K and V. DeepSeek-style post-attention inverse/conjugate RoPE and output projection remain
   the exporter's responsibility.
+  
+  Main caches may instead use INT8 with positive finite float32 key_scale and value_scale vectors, one scale per
+  KV-head channel. Newly appended keys (after optional normalization and RoPE) and values are divided by their scales,
+  rounded to nearest with ties to even, and saturated to [-128, 127]. Attention reads the quantized representation,
+  including newly appended rows. Auxiliary caches remain floating point. Invalid scale values produce validation_status=10
+  when validation is requested; CUDA strict validation also reports them as an error.
 
 #### Version
 
@@ -1831,7 +1837,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Add a zero-valued sink logit when no explicit head_sink is supplied.</dd>
 </dl>
 
-#### Inputs (11 - 17)
+#### Inputs (11 - 20)
 
 <dl>
 <dt><tt>query</tt> : T</dt>
@@ -1840,10 +1846,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Current main key [batch, sequence, kv_num_heads * head_size].</dd>
 <dt><tt>value</tt> (optional) : T</dt>
 <dd>Current main value [batch, sequence, kv_num_heads * head_size].</dd>
-<dt><tt>past_key</tt> (optional) : T</dt>
-<dd>Main key cache in BNSH layout.</dd>
-<dt><tt>past_value</tt> (optional) : T</dt>
-<dd>Main value cache in BNSH layout.</dd>
+<dt><tt>past_key</tt> (optional) : TCache</dt>
+<dd>Main key cache in BNSH layout, same type as query or INT8.</dd>
+<dt><tt>past_value</tt> (optional) : TCache</dt>
+<dd>Main value cache in BNSH layout, same type as past_key.</dd>
 <dt><tt>auxiliary_key</tt> (optional) : T</dt>
 <dd>Read-only auxiliary key sequence in BNSH layout.</dd>
 <dt><tt>auxiliary_value</tt> (optional) : T</dt>
@@ -1868,17 +1874,25 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Optional K RMSNorm weight [head_size].</dd>
 <dt><tt>head_sink</tt> (optional) : T</dt>
 <dd>Optional sink logit [num_heads]. Participates in the shared softmax denominator in both attention modes.</dd>
+<dt><tt>committed_length</tt> (optional) : M</dt>
+<dd>Optional single-request committed token count for cursor validation. When supplied, validation_status is 9 if seqlens_k, sequence_length, or cache_capacity is inconsistent. CUDA only.</dd>
+<dt><tt>key_scale</tt> (optional) : S</dt>
+<dd>Positive finite per-channel INT8 key-cache scales [kv_num_heads * head_size].</dd>
+<dt><tt>value_scale</tt> (optional) : S</dt>
+<dd>Positive finite per-channel INT8 value-cache scales [kv_num_heads * head_size].</dd>
 </dl>
 
-#### Outputs (1 - 3)
+#### Outputs (1 - 4)
 
 <dl>
 <dt><tt>output</tt> : T</dt>
 <dd>Attention output [batch, sequence, num_heads * head_size].</dd>
-<dt><tt>present_key</tt> (optional) : T</dt>
+<dt><tt>present_key</tt> (optional) : TCache</dt>
 <dd>Updated main key cache in BNSH layout.</dd>
-<dt><tt>present_value</tt> (optional) : T</dt>
+<dt><tt>present_value</tt> (optional) : TCache</dt>
 <dd>Updated main value cache in BNSH layout.</dd>
+<dt><tt>validation_status</tt> (optional) : M</dt>
+<dd>Optional CUDA-only int32 status: 0 when valid, a validation code when invalid.</dd>
 </dl>
 
 #### Type Constraints
@@ -1886,6 +1900,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain all floating-point inputs and outputs to one element type.</dd>
+<dt><tt>TCache</tt> : tensor(float), tensor(float16), tensor(bfloat16), tensor(int8)</dt>
+<dd>Cache type must match T unless INT8 per-channel scales are supplied.</dd>
+<dt><tt>S</tt> : tensor(float)</dt>
+<dd>INT8 cache scales use float32.</dd>
 <dt><tt>M</tt> : tensor(int32)</dt>
 <dd>Constrain selection and sequence metadata to int32.</dd>
 </dl>
@@ -5312,8 +5330,8 @@ This version of the operator has been available since version 1 of the 'com.micr
       sum_h ReLU(q_h . k), the token_budget / compress_ratio highest scoring blocks are kept, and
       their token indices are emitted (request-local logical positions, i.e. the same numbering as
       past_sequence_lengths + local offset) followed by the causally visible tokens of the trailing
-      incomplete block. QSA positions are the request-local logical cache positions derived from
-      past_sequence_lengths and cumulative_sequence_lengths; position_ids must be omitted.
+      incomplete block. There is no position_ids input: QSA positions are the request-local logical
+      cache positions derived from past_sequence_lengths and cumulative_sequence_lengths.
   
     policy_mode = "csa" ("compressed sparse attention" block indexer)
       Applies the same window-plan arithmetic as SparseAttentionIndexer (overlap/leftover/new window
@@ -5407,8 +5425,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Only for policy_mode 'csa': per-head score weights with shape (total_tokens, num_heads).</dd>
 <dt><tt>position_ids</tt> (optional) : I</dt>
 <dd>Only for policy_mode 'csa': absolute position of every packed query, with shape (total_tokens).</dd>
-<dt><tt>past_key_state</tt> : T</dt>
-<dd>Generic fixed-capacity state: policy_mode 'qsa' stores prepared complete-block keys; policy_mode 'csa' stores compressed keys. Shape is (batch_size, state_capacity, head_size) and never changes across calls.</dd>
+<dt><tt>past_key_state</tt> : T_KEY</dt>
+<dd>Generic fixed-capacity state: policy_mode 'qsa' stores prepared complete-block keys; policy_mode 'csa' stores compressed keys. Shape is (batch_size, state_capacity, head_size) and never changes across calls. CUDA QSA also supports FLOAT key state with BFLOAT16 query/key tensors. WebGPU requires key state and activations to have the same type.</dd>
 <dt><tt>past_kv_buffer</tt> : T</dt>
 <dd>Generic fixed-capacity pending-token buffer. Shape is (batch_size, 2 * compress_ratio - 1, head_size) for policy_mode 'qsa' (which only ever uses up to compress_ratio - 1 of these entries) and (batch_size, 2 * compress_ratio - 1, 2 * head_size) for policy_mode 'csa'.</dd>
 <dt><tt>past_gate_buffer</tt> (optional) : T</dt>
@@ -5436,7 +5454,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Selected entries with shape (total_tokens, capacity). capacity is token_budget + compress_ratio - 1 for policy_mode 'qsa' (request-local token positions into the main key/value cache) and index_topk for policy_mode 'csa' (compressed entry indices into key_state). Unused entries are -1.</dd>
 <dt><tt>selected_counts</tt> : M</dt>
 <dd>Exact number of used (non -1) entries of selected_indices for every query, with shape (total_tokens).</dd>
-<dt><tt>present_key_state</tt> : T</dt>
+<dt><tt>present_key_state</tt> : T_KEY</dt>
 <dd>Updated generic key state, with the same fixed shape as past_key_state.</dd>
 <dt><tt>present_kv_buffer</tt> : T</dt>
 <dd>Updated generic pending-token buffer, with the same fixed shape as past_kv_buffer.</dd>
@@ -5457,6 +5475,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain floating point tensors to float, float16 and bfloat16.</dd>
+<dt><tt>T_KEY</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain the generic key-state tensor to float, float16 and bfloat16.</dd>
 <dt><tt>I</tt> : tensor(int64)</dt>
 <dd>Constrain position ids to 64-bit integer tensors.</dd>
 <dt><tt>M</tt> : tensor(int32)</dt>
