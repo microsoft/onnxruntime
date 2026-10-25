@@ -386,7 +386,7 @@ def compute_activation_error(
         err_result: dict[str, float] = {}
         err_result["qdq_err"] = err_func(match["pre_qdq"], match["post_qdq"])
         float_activation = match.get("float")
-        if float_activation:
+        if float_activation is not None:
             err_result["xmodel_err"] = err_func(float_activation, match["post_qdq"])
         result[name] = err_result
     return result

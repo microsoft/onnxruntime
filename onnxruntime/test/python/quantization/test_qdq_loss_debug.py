@@ -366,6 +366,16 @@ class TestSaveActivations(unittest.TestCase):
             self.assertIsInstance(error["qdq_err"], float, f"{tensor_name} qdq error not computed")
             self.assertNotIn("xmodel_err", error)
 
+    def test_compute_activation_error_with_ndarray_activations(self):
+        a = np.array([2.0, 3.0, 4.0])
+        b = np.array([7.0, 8.0, 9.0])
+        c = np.array([1.0, 2.0, 3.0])
+        activations_match = create_activation_matching({"test" + QUANT_INPUT_SUFFIX: a, "test": c}, {"test": b})
+
+        activations_error = compute_activation_error(activations_match)
+        self.assertIsInstance(activations_error["test"]["qdq_err"], float)
+        self.assertIsInstance(activations_error["test"]["xmodel_err"], float)
+
     def test_none_test(self):
         a = np.array([2, 3, 4])
         b = np.array([7, 8, 9])
