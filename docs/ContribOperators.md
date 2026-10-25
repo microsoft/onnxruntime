@@ -2435,7 +2435,14 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
 
-#### Inputs
+#### Attributes
+
+<dl>
+<dt><tt>sigmoid_in_fp32</tt> : int</dt>
+<dd>When gate_weight is provided, compute sigmoid in FP32 (1, default) or input type (0).</dd>
+</dl>
+
+#### Inputs (3 - 4)
 
 <dl>
 <dt><tt>X</tt> : T</dt>
@@ -2443,7 +2450,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>Y</tt> : T</dt>
 <dd>Input scaled by gate, with the same shape as X.</dd>
 <dt><tt>gate</tt> : T</dt>
-<dd>Per-row gate with shape (..., 1).</dd>
+<dd>Per-row gate with shape (..., 1), or activation (..., K) when gate_weight is provided.</dd>
+<dt><tt>gate_weight</tt> (optional) : T</dt>
+<dd>Optional projection weight [K, 1] applied to gate before sigmoid.</dd>
 </dl>
 
 #### Outputs
