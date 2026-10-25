@@ -182,12 +182,16 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         }));
 
 static const char* DequantizeLinear_ver1_doc = R"DOC(
-The linear dequantization operator. It consumes a quantized data, a scale, a zero point and computes the full precision data.
-The dequantization formula is y = (x - x_zero_point) * x_scale.
-Scale and zero point must have same shape. They must be either scalar (per tensor) or 1-D tensor (per 'axis').)DOC";
+The linear dequantization operator. It consumes quantized data, a scale, and an optional zero point.
+The dequantization formula is y = (x - x_zero_point) * x_scale. Scale and zero point are scalar
+or per-axis vectors. FP8 E4M3FN inputs can be dequantized directly to BF16 with FP32 scales.)DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(DequantizeLinear, 1,
                             OpSchema()
+                                .Attr("output_dtype",
+                                      "Optional output element type. When omitted, the scale "
+                                      "element type determines the output type.",
+                                      AttributeProto::INT, false)
                                 .Attr("axis",
                                       "The axis along which same quantization parameters are applied. It's optional."
                                       "If it's not specified, it means per-tensor quantization and input 'x_scale' and "
@@ -199,7 +203,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(DequantizeLinear, 1,
                                 .Input(1, "x_scale",
                                        "Scale for input 'x'. It can be a scalar, which means a per-tensor/layer "
                                        "dequantization, or a 1-D tensor for per-axis dequantization.",
-                                       "T2")
+                                       "TS")
                                 .Input(2, "x_zero_point",
                                        "Zero point for input 'x'. Shape must match x_scale. It's optional. "
                                        "Zero point is 0 when it's not specified.",
@@ -208,16 +212,29 @@ ONNX_MS_OPERATOR_SET_SCHEMA(DequantizeLinear, 1,
                                         "T2")
                                 .TypeConstraint("T1", {"tensor(int8)", "tensor(uint8)", "tensor(int16)",
                                                        "tensor(uint16)", "tensor(int32)", "tensor(int4)",
-                                                       "tensor(uint4)"},
+                                                       "tensor(uint4)", "tensor(float8e4m3fn)"},
                                                 "Constrain 'x' and 'x_zero_point' to 8-bit integer tensors, "
-                                                "16-bit integer tensors, or 32-bit signed integer tensors.")
-                                .TypeConstraint("T2", {"tensor(float16)", "tensor(float)"},
-                                                "Constrain 'y', 'x_scale' to float tensors.")
+                                                "16-bit integer tensors, 32-bit signed integer tensors, or "
+                                                "FP8 E4M3FN tensors.")
+                                .TypeConstraint("T2", {"tensor(float16)", "tensor(float)", "tensor(bfloat16)"},
+                                                "Constrain the output element type.")
+                                .TypeConstraint("TS", {"tensor(float16)", "tensor(float)", "tensor(bfloat16)"},
+                                                "Constrain the scale element type.")
                                 .SetDoc(DequantizeLinear_ver1_doc)
                                 .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-                                  auto y_type = ctx.getOutputType(0);
-                                  // only float is supported
-                                  y_type->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto::FLOAT);
+                                  const int64_t output_dtype =
+                                      getAttribute(ctx, "output_dtype", static_cast<int64_t>(0));
+                                  if (output_dtype != 0) {
+                                    if (output_dtype != ONNX_NAMESPACE::TensorProto::FLOAT &&
+                                        output_dtype != ONNX_NAMESPACE::TensorProto::FLOAT16 &&
+                                        output_dtype != ONNX_NAMESPACE::TensorProto::BFLOAT16) {
+                                      fail_shape_inference(
+                                          "DequantizeLinear: output_dtype must be float, float16, or bfloat16");
+                                    }
+                                    updateOutputElemType(ctx, 0, static_cast<int32_t>(output_dtype));
+                                  } else if (ctx.getInputType(1) != nullptr) {
+                                    propagateElemTypeFromInputToOutput(ctx, 1, 0);
+                                  }
 
                                   if (!hasInputShape(ctx, 0)) return;
 
