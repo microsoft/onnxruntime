@@ -5,6 +5,7 @@
 
 #include <optional>
 #include <sstream>
+#include <string>
 
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
@@ -34,6 +35,13 @@
 #include "core/framework/prepacked_weights_container.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/util/include/test/test_environment.h"
+#ifdef USE_CUDA
+#include "contrib_ops/cuda/quantization/matmul_4bits_m1.cuh"
+
+namespace onnxruntime::cuda::test {
+std::string CompareMatMul4BitsM1DirectScales(int max_unroll, int k, int n, int pattern);
+}
+#endif
 
 extern std::unique_ptr<Ort::Env> ort_env;
 
@@ -1677,6 +1685,131 @@ TEST(MatMulNBits, Fp16_Int4_PrepackedSm90BlockSize32Rejected) {
 // throw is instead covered GPU-free, with synthetic (sm, block_size) values, by
 // MatMulNBitsSm90ValidationTest in test/contrib_ops/cuda_kernels/matmul_nbits_sm90_validation_test.cc
 // (see the comment there for why that coverage lives in a separate translation unit).
+
+#ifdef USE_CUDA
+template <int MaxUnroll>
+void TestMatMul4BitsM1DirectScales() {
+  if (!DefaultCudaExecutionProvider()) {
+    GTEST_SKIP() << "CUDA execution provider unavailable";
+  }
+  const auto compare = [](int k, int n, int pattern) {
+    SCOPED_TRACE(::testing::Message() << "K=" << k << ", N=" << n << ", pattern=" << pattern);
+    EXPECT_EQ("", onnxruntime::cuda::test::CompareMatMul4BitsM1DirectScales(MaxUnroll, k, n, pattern));
+  };
+  for (int k : {8, 264, 1032, 3072, 4088, 4096, 4104, 8192}) {
+    compare(k, 24, 0);
+  }
+  compare(3072, 1024, 0);
+  compare(3072, 24, 1);
+}
+
+TEST(MatMulNBits, DirectScalesUnroll4) {
+  TestMatMul4BitsM1DirectScales<4>();
+}
+
+TEST(MatMulNBits, DirectScalesUnroll16) {
+  TestMatMul4BitsM1DirectScales<16>();
+}
+
+TEST(MatMulNBits, DirectScaleExperimentSelection) {
+  using contrib::cuda::SelectMatMul4BitsM1DirectUnroll;
+  EXPECT_EQ(SelectMatMul4BitsM1DirectUnroll(0, 1024, 3072, 32, false), 0);
+  EXPECT_EQ(SelectMatMul4BitsM1DirectUnroll(1, 1024, 3072, 32, false), 16);
+  EXPECT_EQ(SelectMatMul4BitsM1DirectUnroll(2, 1024, 3072, 32, false), 4);
+  EXPECT_EQ(SelectMatMul4BitsM1DirectUnroll(2, 8, 8, 32, false), 4);
+  EXPECT_EQ(SelectMatMul4BitsM1DirectUnroll(2, 8, 4088, 32, false), 4);
+  EXPECT_EQ(SelectMatMul4BitsM1DirectUnroll(2, 8, 4096, 32, false), 0);
+  EXPECT_EQ(SelectMatMul4BitsM1DirectUnroll(2, 8, 8192, 32, false), 0);
+  EXPECT_EQ(SelectMatMul4BitsM1DirectUnroll(2, 512, 4096, 32, false), 0);
+  EXPECT_EQ(SelectMatMul4BitsM1DirectUnroll(2, 1024, 4096, 32, false), 16);
+  EXPECT_EQ(SelectMatMul4BitsM1DirectUnroll(2, 1024, 8192, 32, false), 16);
+  EXPECT_EQ(SelectMatMul4BitsM1DirectUnroll(3, 1024, 3072, 32, false), 0);
+  EXPECT_EQ(SelectMatMul4BitsM1DirectUnroll(2, 1024, 3072, 64, false), 0);
+  EXPECT_EQ(SelectMatMul4BitsM1DirectUnroll(2, 1024, 3072, 32, true), 0);
+  EXPECT_EQ(SelectMatMul4BitsM1DirectUnroll(2, 1023, 3072, 32, false), 0);
+  EXPECT_EQ(SelectMatMul4BitsM1DirectUnroll(2, 1024, 3071, 32, false), 0);
+  EXPECT_EQ(SelectMatMul4BitsM1DirectUnroll(2, 0, 3072, 32, false), 0);
+  EXPECT_EQ(SelectMatMul4BitsM1DirectUnroll(2, 1024, 0, 32, false), 0);
+}
+
+// Use fresh processes for modes 0/1/2; the launcher caches the mode.
+TEST(MatMulNBits, Fp16_Int4_DirectScaleExperiment) {
+  if (!DefaultCudaExecutionProvider()) {
+    GTEST_SKIP() << "CUDA execution provider unavailable";
+  }
+  ScopedEnvironmentVariables env{EnvVarMap{{"ORT_FPA_INTB_GEMM", "0"}}};
+  for (auto k : {8, 24, 264, 1032, 3072, 4088, 4096, 8192}) {
+    for (auto n : {8, 24, 256, 1024}) {
+      TestOptions opts{};
+      opts.M = 1, opts.N = n, opts.K = k;
+      opts.block_size = 32;
+      opts.disable_cpu_ep_fallback = true;
+      opts.output_abs_error = 0.1f;
+      opts.output_rel_error = 0.02f;
+      std::vector<std::unique_ptr<IExecutionProvider>> eps;
+      eps.push_back(DefaultCudaExecutionProvider());
+      RunTest<MLFloat16>(opts, std::move(eps));
+    }
+  }
+}
+#endif
+
+#ifdef USE_CUDA
+TEST(MatMulNBits, Cuda_DirectScaleExperimentFallbacks) {
+  if (!DefaultCudaExecutionProvider()) {
+    GTEST_SKIP() << "CUDA execution provider unavailable";
+  }
+  ScopedEnvironmentVariables env{EnvVarMap{{"ORT_FPA_INTB_GEMM", "0"}}};
+  for (auto variant : {0, 1, 2, 3, 4, 5, 6}) {
+    TestOptions opts{};
+    opts.M = 1, opts.N = 24, opts.K = 1032;
+    opts.block_size = 32;
+    opts.disable_cpu_ep_fallback = true;
+    opts.output_abs_error = 0.1f;
+    opts.output_rel_error = 0.02f;
+    switch (variant) {
+      case 0:
+        opts.N = 23;
+        break;
+      case 1:
+        opts.K = 1031;
+        break;
+      case 2:
+        opts.M = 3;
+        break;
+      case 3:
+        opts.block_size = 16;
+        break;
+      case 4:
+        opts.block_size = 64;
+        break;
+      case 5:
+        opts.block_size = 128;
+        break;
+      case 6:
+        opts.has_zero_point = true;
+        break;
+    }
+    std::vector<std::unique_ptr<IExecutionProvider>> eps;
+    eps.push_back(DefaultCudaExecutionProvider());
+    RunTest<MLFloat16>(opts, std::move(eps));
+  }
+  TestOptions opts{};
+  opts.M = 1, opts.N = 24, opts.K = 1032;
+  opts.block_size = 32;
+  opts.disable_cpu_ep_fallback = true;
+  opts.output_abs_error = 0.1f;
+  opts.output_rel_error = 0.02f;
+  std::vector<std::unique_ptr<IExecutionProvider>> float_eps;
+  float_eps.push_back(DefaultCudaExecutionProvider());
+  RunTest<float>(opts, std::move(float_eps));
+  if (HasCudaEnvironment(800)) {
+    std::vector<std::unique_ptr<IExecutionProvider>> bf16_eps;
+    bf16_eps.push_back(DefaultCudaExecutionProvider());
+    RunTest<BFloat16>(opts, std::move(bf16_eps));
+  }
+}
+#endif
 
 // Exercises the CUDA small-M batched GEMV tiles: CtaM in {2,4,8,16} (with M values that are not a
 // multiple of CtaM so the row-skip path runs) and CtaN in {1,2} (N divisible / not divisible by 16).
