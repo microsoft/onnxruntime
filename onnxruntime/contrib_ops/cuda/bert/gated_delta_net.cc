@@ -352,15 +352,8 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
   desc.qk_l2_norm = qk_l2_norm_;
   desc.decay_per_key_dim = decay_per_key_dim;
   desc.ragged = cu_seqlens != nullptr;
-  const bool packed_uniform_qkv = is_packed_qkv && cu_seqlens == nullptr;
-  const gdn::Engine effective_engine =
-      (packed_uniform_qkv && total_tokens <= 512LL * batch &&
-       forced_engine_ == gdn::Engine::kAuto)
-          ? gdn::Engine::kRecurrent
-          : forced_engine_;
-  desc.preferred_engine = effective_engine;
-  desc.bf16_precision =
-      (packed_uniform_qkv && !has_session_bf16_precision_) ? gdn::Bf16Precision::kBf16 : bf16_precision_;
+  desc.preferred_engine = forced_engine_;
+  desc.bf16_precision = bf16_precision_;
   if (!has_session_bf16_precision_) {
     const std::string env_val =
         ParseEnvironmentVariableWithDefault<std::string>(gdn::kGatedDeltaNetBf16PrecisionEnv, "");
@@ -376,21 +369,21 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
   desc.sm_major = prop.major;
 
   gdn::Plan plan = gdn::SelectPlan(desc, prop.sharedMemPerBlockOptin);
-  if (effective_engine == gdn::Engine::kChunked ||
-      effective_engine == gdn::Engine::kChunkedSplit) {
+  if (forced_engine_ == gdn::Engine::kChunked ||
+      forced_engine_ == gdn::Engine::kChunkedSplit) {
     ORT_RETURN_IF_NOT(
-        plan.engine == effective_engine,
-        "GatedDeltaNet: the ", gdn::EngineName(effective_engine),
+        plan.engine == forced_engine_,
+        "GatedDeltaNet: the ", gdn::EngineName(forced_engine_),
         " engine cannot serve this descriptor (",
         plan.reject_reason ? plan.reject_reason : "no reason recorded", ")");
-  } else if (effective_engine == gdn::Engine::kRecurrent) {
+  } else if (forced_engine_ == gdn::Engine::kRecurrent) {
     plan.engine = gdn::Engine::kRecurrent;
     // Match the fallback path's kernel choice: the override must measure what the
     // heuristic would have run, not the generic kernel.
     plan.warp_specialized = gdn::RecurrentIsWarpSpecialized(head_size_qk);
     plan.state_update_tail_pass = false;
     plan.short_row_tail_pass = false;
-  } else if (effective_engine == gdn::Engine::kCudnn) {
+  } else if (forced_engine_ == gdn::Engine::kCudnn) {
     plan.engine = gdn::Engine::kCudnn;
   }
   ORT_RETURN_IF_NOT(plan.supported, "GatedDeltaNet: no supported plan (",

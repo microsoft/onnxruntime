@@ -1061,7 +1061,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>present_state</tt> : T</dt>
 <dd>Updated carry state. For ndim=1: (batch_size, channels, state_length), or (W, batch_size, channels, state_length) when state_window = W > 0, and (batch_size, state_length, d_1, ..., d_n) per slot when channels_last = 1. Slot W-1 contains the last state_length values from the virtual input along the causal axis; slot j contains the same for the prefix ending at position (seq_len - W + j). Extended attributes override the state length and layout as for past_state.</dd>
 <dt><tt>state_update</tt> (optional) : T</dt>
-<dd>Optional compact state-update capture with shape (batch_size, state_update_capacity, channels) when state_update_capacity &gt; 0. CUDA extended path only; requires rank-3 channels-last input and state_window=0.</dd>
+<dd>Optional compact state-update capture with shape (batch_size, state_update_capacity, channels) when state_update_capacity > 0. CUDA extended path only; requires rank-3 channels-last input and state_window=0.</dd>
 </dl>
 
 #### Type Constraints
