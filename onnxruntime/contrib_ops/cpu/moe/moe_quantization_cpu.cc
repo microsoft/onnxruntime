@@ -20,6 +20,7 @@
 #include "core/util/thread_utils.h"
 #include "contrib_ops/cpu/moe/moe_utils.h"
 #include "contrib_ops/cpu/moe/moe_helper.h"
+#include "contrib_ops/cpu/moe/qmoe_shared_layout.h"
 
 #include <atomic>
 #include <vector>
@@ -644,8 +645,50 @@ Status QMoECPU<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr all
     return Status::OK();
   }
 
-  if ((input_idx == 2 || input_idx == 5) && tensor.Shape().NumDimensions() == 3) {
-    ORT_RETURN_IF_ERROR(PrePackQNBitExperts(tensor, input_idx, alloc, is_packed, prepacked_weights));
+  Tensor unpacked_sm80_tensor;
+  const Tensor* weight_tensor = &tensor;
+  if (weights_prepacked_ && (input_idx == 2 || input_idx == 5) && tensor.Shape().NumDimensions() == 3) {
+    const auto& raw_shape = tensor.Shape();
+    const int64_t num_experts = raw_shape[0];
+    // Require both expert weight tensors and both 3D scale tensors to be constant initializers so
+    // canonical (rows, cols) are unambiguous even when weights use legacy [E, K, N/2] tensor shapes.
+    // Otherwise defer unpacking to ComputeCommon, where CheckInputs resolves dimensions and only routed
+    // experts are unpacked.
+    const Tensor* fc1_weights_init = nullptr;
+    const Tensor* fc2_weights_init = nullptr;
+    const Tensor* fc1_scales_init = nullptr;
+    const Tensor* fc2_scales_init = nullptr;
+    if (!Info().TryGetConstantInput(2, &fc1_weights_init) || fc1_weights_init == nullptr ||
+        !Info().TryGetConstantInput(5, &fc2_weights_init) || fc2_weights_init == nullptr ||
+        !Info().TryGetConstantInput(3, &fc1_scales_init) || fc1_scales_init == nullptr ||
+        fc1_scales_init->Shape().NumDimensions() != 3 || fc1_scales_init->Shape()[0] != num_experts ||
+        !Info().TryGetConstantInput(6, &fc2_scales_init) || fc2_scales_init == nullptr ||
+        fc2_scales_init->Shape().NumDimensions() != 3 || fc2_scales_init->Shape()[0] != num_experts) {
+      return Status::OK();
+    }
+    const Tensor* scales_tensor = (input_idx == 2) ? fc1_scales_init : fc2_scales_init;
+    const int64_t rows = scales_tensor->Shape()[1];
+    const int64_t cols = scales_tensor->Shape()[2] * block_size_;
+    ORT_RETURN_IF_NOT(rows > 0 && cols > 0 &&
+                          (rows % qmoe_shared::kColumnsInterleaved) == 0 &&
+                          (cols % qmoe_shared::kRowsPerTile) == 0 &&
+                          SafeInt<size_t>(num_experts) * rows * (cols / 2) == tensor.SizeInBytes(),
+                      "QMoE CPU weights_prepacked=1 requires SM80 tile-aligned INT4 dimensions.");
+    const size_t expert_bytes = static_cast<size_t>(rows * (cols / 2));
+    TensorShape canonical_shape{num_experts, rows, cols / 2};
+    unpacked_sm80_tensor = Tensor(tensor.DataType(), canonical_shape, alloc);
+    const uint8_t* src_ptr = static_cast<const uint8_t*>(tensor.DataRaw());
+    uint8_t* dst_ptr = unpacked_sm80_tensor.MutableData<uint8_t>();
+    for (int64_t e = 0; e < num_experts; ++e) {
+      qmoe_shared::UnpackSm80Int4Weights(src_ptr + static_cast<size_t>(e) * expert_bytes,
+                                         dst_ptr + static_cast<size_t>(e) * expert_bytes,
+                                         rows, cols);
+    }
+    weight_tensor = &unpacked_sm80_tensor;
+  }
+
+  if ((input_idx == 2 || input_idx == 5) && weight_tensor->Shape().NumDimensions() == 3) {
+    ORT_RETURN_IF_ERROR(PrePackQNBitExperts(*weight_tensor, input_idx, alloc, is_packed, prepacked_weights));
     if (is_packed) {
       return Status::OK();
     }
@@ -659,7 +702,7 @@ Status QMoECPU<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr all
   }
 
   if (input_idx == 2 || input_idx == 5) {
-    const auto& shape = tensor.Shape();
+    const auto& shape = weight_tensor->Shape();
     const int64_t num_experts = shape[0];
     const int64_t rows = shape[1];
     const int64_t cols_packed = shape[2];
@@ -706,7 +749,7 @@ Status QMoECPU<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr all
 
       IAllocatorUniquePtr<void> lut_cache_buffer;
       const uint8_t* zp_data = zp_tensor ? zp_tensor->Data<uint8_t>() : nullptr;
-      ORT_RETURN_IF_ERROR(BuildDirectLutPackedBCache(static_cast<const uint8_t*>(tensor.DataRaw()),
+      ORT_RETURN_IF_ERROR(BuildDirectLutPackedBCache(static_cast<const uint8_t*>(weight_tensor->DataRaw()),
                                                      scales_tensor->Data<T>(),
                                                      zp_data,
                                                      num_experts,
@@ -730,7 +773,7 @@ Status QMoECPU<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr all
     size_t packed_size = static_cast<size_t>(num_experts * rows * cols);
     auto packed_buffer = IAllocator::MakeUniquePtr<void>(alloc, packed_size, true);
     uint8_t* dst_base = static_cast<uint8_t*>(packed_buffer.get());
-    const uint8_t* src_base = static_cast<const uint8_t*>(tensor.DataRaw());
+    const uint8_t* src_base = static_cast<const uint8_t*>(weight_tensor->DataRaw());
 
     for (int64_t i = 0; i < num_experts; ++i) {
       const uint8_t* src = src_base + i * rows * cols_packed;
@@ -942,6 +985,15 @@ QMoECPU<T>::QMoECPU(const OpKernelInfo& op_kernel_info)
   if (block_size_ > 0) {
     ORT_ENFORCE(block_size_ >= 16, "block_size must be >= 16 when provided.");
     ORT_ENFORCE((block_size_ & (block_size_ - 1)) == 0, "block_size must be a power of 2.");
+  }
+
+  const int64_t weights_prepacked_attr = op_kernel_info.GetAttrOrDefault<int64_t>("weights_prepacked", -1);
+  ORT_ENFORCE(weights_prepacked_attr == -1 || weights_prepacked_attr == 0 || weights_prepacked_attr == 1,
+              "weights_prepacked must be -1 (default), 0, or 1, got ", weights_prepacked_attr);
+  weights_prepacked_ = (weights_prepacked_attr == 1);
+  if (weights_prepacked_) {
+    ORT_ENFORCE(expert_weight_bits_ == 4 && block_size_ == qmoe_shared::kBlockSize,
+                "CPU QMoE with weights_prepacked=1 requires expert_weight_bits=4 and block_size=32.");
   }
 
   const auto use_mlas_q4_gemm = ParseEnvironmentVariable<bool>(kUseMlasQ4GemmMoe);
@@ -1504,6 +1556,30 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
   const bool use_qnbit_fc2 = (qnbit_fc2_.packed != nullptr);
   const uint8_t* fc1_weights_data = (packed_fc1_ != nullptr || packed_fc1_lut_cache_ != nullptr || use_qnbit_fc1) ? nullptr : fc1_experts_weights->template Data<uint8_t>();
   const uint8_t* fc2_weights_data = (packed_fc2_ != nullptr || packed_fc2_lut_cache_ != nullptr || use_qnbit_fc2) ? nullptr : fc2_experts_weights->template Data<uint8_t>();
+  const size_t fc1_expert_weight_bytes = static_cast<size_t>(fc1_out_features * (hidden_size / 2));
+  const size_t fc2_expert_weight_bytes = static_cast<size_t>(hidden_size * (inter_size / 2));
+  size_t unpacked_weight_scratch_per_thread = 0;
+  if (weights_prepacked_) {
+    if (fc1_weights_data != nullptr) {
+      ORT_RETURN_IF_NOT((fc1_out_features % qmoe_shared::kColumnsInterleaved) == 0 &&
+                            (hidden_size % qmoe_shared::kRowsPerTile) == 0,
+                        "QMoE CPU weights_prepacked=1 requires SM80 tile-aligned FC1 dimensions.");
+      unpacked_weight_scratch_per_thread = std::max(unpacked_weight_scratch_per_thread, fc1_expert_weight_bytes);
+    }
+    if (fc2_weights_data != nullptr) {
+      ORT_RETURN_IF_NOT((hidden_size % qmoe_shared::kColumnsInterleaved) == 0 &&
+                            (inter_size % qmoe_shared::kRowsPerTile) == 0,
+                        "QMoE CPU weights_prepacked=1 requires SM80 tile-aligned FC2 dimensions.");
+      unpacked_weight_scratch_per_thread = std::max(unpacked_weight_scratch_per_thread, fc2_expert_weight_bytes);
+    }
+  }
+  IAllocatorUniquePtr<uint8_t> unpacked_weights_scratch_ptr;
+  uint8_t* unpacked_weights_scratch = nullptr;
+  if (unpacked_weight_scratch_per_thread > 0 && num_active_experts > 0) {
+    unpacked_weights_scratch_ptr = IAllocator::MakeUniquePtr<uint8_t>(
+        allocator, static_cast<size_t>(num_expert_threads) * unpacked_weight_scratch_per_thread);
+    unpacked_weights_scratch = unpacked_weights_scratch_ptr.get();
+  }
   const T* fc1_scales_data = fc1_scales->template Data<T>();
   const T* fc2_scales_data = fc2_scales->template Data<T>();
   const T* fc1_bias_data = fc1_experts_bias ? fc1_experts_bias->template Data<T>() : nullptr;
@@ -1894,6 +1970,9 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
     std::byte* thread_qnbit_workspace = (qnbit_workspace == nullptr)
                                             ? nullptr
                                             : (qnbit_workspace + static_cast<size_t>(thread_id) * qnbit_workspace_per_thread);
+    uint8_t* thread_unpacked_weights = (unpacked_weights_scratch == nullptr)
+                                           ? nullptr
+                                           : (unpacked_weights_scratch + static_cast<size_t>(thread_id) * unpacked_weight_scratch_per_thread);
 
     for (int64_t expert_idx : expert_batch) {
       bool fc2_bias_added_by_mlas = false;
@@ -1979,6 +2058,8 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
                                   CanUseMlasQ4Gemm(expert_weight_bits_, is_fc1_block_wise ? block_size_ : 0,
                                                    fc1_out_features, hidden_size, q_type)));
 
+      const uint8_t* expert_fc1_weights = nullptr;
+
       if (use_qnbit_fc1) {
         float* fc1_bias_float = nullptr;
         if (has_fc1_bias) {
@@ -2054,10 +2135,20 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
         goto fc1_bias_handling;
       }
 
+      if (fc1_weights_data != nullptr) {
+        const uint8_t* raw_expert_fc1 = fc1_weights_data + static_cast<size_t>(expert_idx) * fc1_out_features * fc1_packed_cols;
+        if (weights_prepacked_) {
+          qmoe_shared::UnpackSm80Int4Weights(raw_expert_fc1, thread_unpacked_weights, fc1_out_features, hidden_size);
+          expert_fc1_weights = thread_unpacked_weights;
+        } else {
+          expert_fc1_weights = raw_expert_fc1;
+        }
+      }
+
       if (use_direct_q4_gemm) {
         IAllocatorUniquePtr<uint8_t> mlas_packed_fc1;
         Status convert_status = ConvertToMlasQ4Format(
-            fc1_weights_data + expert_idx * fc1_out_features * fc1_packed_cols,
+            expert_fc1_weights,
             fc1_scales_ptr,
             fc1_zp_ptr,  // This will be nullptr
             is_fc1_block_wise ? block_size_ : 0,
@@ -2099,7 +2190,7 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
         concurrency::ThreadPool::TrySimpleParallelFor(inner_tp, narrow<int>(num_dequant_blocks), [&](std::ptrdiff_t block_idx) {
           const int64_t start_row = block_idx * dequant_block_size;
           const int64_t end_row = std::min(start_row + dequant_block_size, fc1_out_features);
-          const auto offset = expert_idx * fc1_out_features * fc1_packed_cols + start_row * fc1_packed_cols;
+          const auto offset = start_row * fc1_packed_cols;
 
           const T* current_scales_ptr = fc1_scales_ptr + (is_fc1_block_wise ? start_row * fc1_scales_dims[2] : start_row);
           const uint8_t* current_zp_ptr = nullptr;
@@ -2113,14 +2204,14 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
             }
           }
 
-          DequantizeBlock(fc1_weights_data + offset,
+          DequantizeBlock(expert_fc1_weights + offset,
                           current_scales_ptr,
                           current_zp_ptr,
                           is_fc1_block_wise ? block_size_ : 0, expert_weight_bits_,
                           end_row - start_row, hidden_size, B1_dequant + start_row * hidden_size, inner_tp);
         });
       } else {
-        DequantizeBlock(fc1_weights_data + expert_idx * fc1_out_features * fc1_packed_cols,
+        DequantizeBlock(expert_fc1_weights,
                         fc1_scales_ptr,
                         fc1_zp_ptr,
                         is_fc1_block_wise ? block_size_ : 0, expert_weight_bits_,
@@ -2239,6 +2330,8 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
                                       CanUseMlasQ4Gemm(expert_weight_bits_, is_fc2_block_wise ? block_size_ : 0,
                                                        hidden_size, inter_size, q_type2)));
 
+      const uint8_t* expert_fc2_weights = nullptr;
+
       if (use_qnbit_fc2) {
         float* fc2_bias_float = nullptr;
         if (has_fc2_bias) {
@@ -2316,10 +2409,20 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
         goto fc2_gemm_done;
       }
 
+      if (fc2_weights_data != nullptr) {
+        const uint8_t* raw_expert_fc2 = fc2_weights_data + static_cast<size_t>(expert_idx) * hidden_size * fc2_packed_cols;
+        if (weights_prepacked_) {
+          qmoe_shared::UnpackSm80Int4Weights(raw_expert_fc2, thread_unpacked_weights, hidden_size, inter_size);
+          expert_fc2_weights = thread_unpacked_weights;
+        } else {
+          expert_fc2_weights = raw_expert_fc2;
+        }
+      }
+
       if (use_direct_q4_gemm_fc2) {
         IAllocatorUniquePtr<uint8_t> mlas_packed_fc2;
         Status convert_status = ConvertToMlasQ4Format(
-            fc2_weights_data + expert_idx * hidden_size * fc2_packed_cols,
+            expert_fc2_weights,
             fc2_scales_ptr,
             fc2_zp_ptr,  // This will be nullptr
             is_fc2_block_wise ? block_size_ : 0,
@@ -2363,7 +2466,7 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
         concurrency::ThreadPool::TrySimpleParallelFor(inner_tp, narrow<int>(num_fc2_dequant_blocks), [&](std::ptrdiff_t block_idx) {
           const int64_t start_row = block_idx * fc2_dequant_block_size;
           const int64_t end_row = std::min(start_row + fc2_dequant_block_size, hidden_size);
-          const auto offset = expert_idx * hidden_size * fc2_packed_cols + start_row * fc2_packed_cols;
+          const auto offset = start_row * fc2_packed_cols;
 
           const T* current_scales_ptr = fc2_scales_ptr + (is_fc2_block_wise ? start_row * fc2_scales_dims[2] : start_row);
           const uint8_t* current_zp_ptr = nullptr;
@@ -2377,14 +2480,14 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
             }
           }
 
-          DequantizeBlock(fc2_weights_data + offset,
+          DequantizeBlock(expert_fc2_weights + offset,
                           current_scales_ptr,
                           current_zp_ptr,
                           is_fc2_block_wise ? block_size_ : 0, expert_weight_bits_,
                           end_row - start_row, inter_size, B2_dequant + start_row * inter_size, inner_tp);
         });
       } else {
-        DequantizeBlock(fc2_weights_data + expert_idx * hidden_size * fc2_packed_cols,
+        DequantizeBlock(expert_fc2_weights,
                         fc2_scales_ptr,
                         fc2_zp_ptr,
                         is_fc2_block_wise ? block_size_ : 0, expert_weight_bits_,
