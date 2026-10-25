@@ -160,6 +160,52 @@ FP4 e2m1 (both MXFP4 and NVFP4) are symmetric formats with no zero-point.
 
 ## 3. Quantization Modes
 
+### INT3 CUDA Support and Validation
+
+Integer QMoE with an effective FC1 or FC2 width of 3 uses the raw packed INT3
+execution path. Supported FC1/FC2 pairs are `(3,3)`, `(3,4)`, `(4,3)`, `(2,3)`,
+and `(3,2)`, with FP16 or BF16 activations and matching scales, block sizes
+32/64/128, `weights_prepacked=0`, and interleaved fused SwiGLU
+(`activation_type="swiglu"`, `swiglu_fusion=1`). Hidden and intermediate sizes
+must be positive multiples of the block size. This support does not extend to
+CPU execution, offline prepacked INT3, split FC3 projections, or other
+activation modes. INT2/INT4-only execution is unchanged.
+
+Both projections' scales must be finite and nonnegative, including when zero
+points are omitted. Validation is enabled by default and does not require
+`ORT_VALIDATE_INT3_CONTENT`. Zero scales are accepted. Explicit INT3 zero
+points must contain code 4 in every logical block, with zero unused high bits
+in the last byte of each row. In a mixed pair, the INT2/INT4 projection retains
+its existing asymmetric zero-point semantics; the INT3 code/padding rule does
+not apply to that projection.
+
+Content validation runs before execution, including for zero-token inputs.
+Successful validation is cached only when **all** supplied scale and zero-point
+tensors are immutable initializers. Runtime-fed or overridable metadata is
+validated on every invocation outside CUDA graph capture. A failed invocation
+does not validate the content or prevent a later corrected feed from running.
+Packed weights are not included in this metadata cache.
+
+CUDA graph capture accepts only immutable metadata that was successfully
+validated by an earlier execution outside capture. Perform a non-capturing
+warmup first (for CUDA EP graph sessions, `gpu_graph_id=-1` disables capture
+for that run). Unvalidated initializers are rejected during capture with
+warmup guidance. Dynamic scales or zero points are rejected during capture
+even after a valid warmup; graph replay cannot revalidate changing content.
+
+The INT3 token scratch limit is the smaller of
+`ep.cuda.qmoe_int_dequant_max_scratch_bytes` and 64 MiB. For activation element
+size `S`, hidden size `H`, intermediate size `I`, and top-k `K`, each tile row
+requires `K * ((I + H) * S + 3 * sizeof(int))` bytes: SwiGLU activations, FC2
+partials, and three routing arrays (two integer arrays and one float array).
+A nonempty input is accepted when the limit accommodates at least one row;
+an exact one-row limit is sufficient. Larger inputs are tiled to fit, also
+respecting `ep.cuda.qmoe_row_tile_size` and kernel launch limits, with a partial
+last tile when needed. Zero-token inputs require no token scratch but still
+undergo shape and content validation. The small content-validation flag,
+model tensors, outputs, and execution-provider allocations are not part of
+this token scratch limit. This is not a bound on total session GPU memory.
+
 | `quant_type` | Notation | Activation | Weight | Native SM | Fallback | Build gate |
 |--------------|----------|-----------|--------|-----------|----------|------------|
 | `"int"` (4-bit) | W4A16 | FP16/BF16 | INT4 group-wise | SM75+ (Ampere GemmGrouped) | — | always |
