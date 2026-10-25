@@ -951,6 +951,15 @@ static const char* const kOrtSessionOptionsConfigUsePerSessionThreads = "session
 // Equivalent to OrtApi::SetDeterministicCompute.
 static const char* const kOrtSessionOptionsConfigUseDeterministicCompute = "session.use_deterministic_compute";
 
+// Skip device-side input sanitization (block_table clamping, sequence-length monotonicity/bounds
+// clamping, and invalid-sequence output masking) in PagedAttention when the caller guarantees
+// valid block_table, cumulative_seqlens_q, and past_seqlens inputs.
+// Option values:
+// - "0": Sanitize PagedAttention inputs on device. [DEFAULT]
+// - "1": Skip PagedAttention input sanitization.
+static const char* const kOrtSessionOptionsPagedAttentionSkipInputSanitizer =
+    "session.paged_attention.skip_input_sanitizer";
+
 // ---------------------------------------------------------------------------
 // Portable MoE / QMoE Offload v4 Session Configuration Keys
 // ---------------------------------------------------------------------------

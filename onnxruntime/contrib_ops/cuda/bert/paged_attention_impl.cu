@@ -81,7 +81,7 @@ __global__ void PrepareCudnnBlockTableKernel(
         cudnn_block_table[row_offset + block] = 0;
       }
       cudnn_seqlens_kv[batch] = mapped_length;
-      if (mapped_length == 0) {
+      if (mapped_length == 0 && sequence_validity != nullptr) {
         sequence_validity[batch] = 0;
       }
     }
@@ -466,6 +466,46 @@ struct SaturatingAddInt32 {
   }
 };
 
+template <int kBlockSize>
+__global__ void GetCumulativeSeqlensKV(int32_t* cumulative_seqlens_kv, const int32_t* cumulative_seqlens_q,
+                                       const int32_t* past_seqlens, const int batch_size) {
+  typedef cub::BlockScan<int, kBlockSize> BlockScan;
+  __shared__ typename BlockScan::TempStorage temp_storage;
+  __shared__ int running_total;
+
+  if (threadIdx.x == 0) {
+    cumulative_seqlens_kv[0] = 0;
+    running_total = 0;
+  }
+  __syncthreads();
+
+  for (int base = 0; base < batch_size; base += kBlockSize) {
+    const int id = base + static_cast<int>(threadIdx.x);
+    const int length = (id < batch_size)
+                           ? past_seqlens[id] + cumulative_seqlens_q[id + 1] - cumulative_seqlens_q[id]
+                           : 0;
+    int prefix = 0;
+    int aggregate = 0;
+    BlockScan(temp_storage).InclusiveSum(length, prefix, aggregate);
+    if (id < batch_size) {
+      cumulative_seqlens_kv[id + 1] = running_total + prefix;
+    }
+    __syncthreads();
+    if (threadIdx.x == 0) {
+      running_total += aggregate;
+    }
+    __syncthreads();
+  }
+}
+
+Status LaunchGetCumulativeSeqlensKV(int32_t* cumulative_seqlens_kv, const int32_t* cumulative_seqlens_q,
+                                    const int32_t* past_seqlens, const int batch_size, cudaStream_t stream) {
+  constexpr int kThreads = 256;
+  GetCumulativeSeqlensKV<kThreads><<<1, kThreads, 0, stream>>>(cumulative_seqlens_kv, cumulative_seqlens_q,
+                                                               past_seqlens, batch_size);
+  return CUDA_CALL(cudaGetLastError());
+}
+
 __global__ void ClampCumulativeSequenceLengths(int32_t* sanitized_cumulative_seqlens_q,
                                                const int32_t* cumulative_seqlens_q,
                                                int batch_size,
@@ -711,7 +751,7 @@ struct DerivedSlotResolver {
 
   __device__ __forceinline__ int operator()(int token_id) const {
     const int batch_id = FindTokenBatch(token_id, cumulative_seqlens_q, batch_size);
-    if (batch_id < 0 || sequence_validity[batch_id] == 0) {
+    if (batch_id < 0 || (sequence_validity != nullptr && sequence_validity[batch_id] == 0)) {
       return -1;
     }
     const int position = past_seqlens[batch_id] + (token_id - cumulative_seqlens_q[batch_id]);
@@ -2432,9 +2472,12 @@ Status QkvToContext(
   }
 
   ORT_RETURN_IF_ERROR(attention_status);
-  return LaunchMaskInvalidSequenceOutputs(
-      data.output, data.sequence_validity, data.cumulative_seqlens_q,
-      parameters.batch_size, parameters.v_hidden_size, stream);
+  if (data.sequence_validity != nullptr) {
+    return LaunchMaskInvalidSequenceOutputs(
+        data.output, data.sequence_validity, data.cumulative_seqlens_q,
+        parameters.batch_size, parameters.v_hidden_size, stream);
+  }
+  return Status::OK();
 }
 
 #define INSTANTIATE_PAGED_ATTENTION(T, TCACHE)                   \
