@@ -2440,7 +2440,8 @@ static void RunArgMaxDropDQTestCase(const std::vector<int64_t>& input_shape,
                                     int keepdims,
                                     int select_last_index,
                                     bool use_contrib_qdq,
-                                    bool expect_drop_dq = true) {
+                                    bool expect_drop_dq = true,
+                                    float scale = .003f) {
   auto build_test_case = [&](ModelTestBuilder& builder) {
     auto* input_arg = builder.MakeInput<QuantType>(input_shape,
                                                    std::numeric_limits<QuantType>::min(),
@@ -2449,7 +2450,7 @@ static void RunArgMaxDropDQTestCase(const std::vector<int64_t>& input_shape,
 
     // add DQ
     auto* dq_output = builder.MakeIntermediate();
-    builder.AddDequantizeLinearNode<QuantType>(input_arg, .003f, 1, dq_output, use_contrib_qdq);
+    builder.AddDequantizeLinearNode<QuantType>(input_arg, scale, 1, dq_output, use_contrib_qdq);
 
     // add ArgMax
     Node& argmax_node = builder.AddNode("ArgMax", {dq_output}, {output_arg});
@@ -2479,10 +2480,65 @@ static void RunArgMaxDropDQTestCase(const std::vector<int64_t>& input_shape,
                     opsets);
 }
 
+// Runs a test case with 1D vector (per-channel) scale to verify that non-scalar DQ is not dropped.
+template <typename QuantType>
+static void RunArgMax1DScaleDropDQTestCase(const std::vector<int64_t>& input_shape,
+                                          int axis,
+                                          int keepdims,
+                                          int select_last_index,
+                                          const std::vector<float>& scales,
+                                          const std::vector<QuantType>& zero_points,
+                                          bool use_contrib_qdq,
+                                          bool expect_drop_dq = false) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<QuantType>(input_shape,
+                                                   std::numeric_limits<QuantType>::min(),
+                                                   std::numeric_limits<QuantType>::max());
+    auto* output_arg = builder.MakeOutput();
+
+    // add DQ with 1D vector scales and zero-points
+    auto* dq_output = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<QuantType>(input_arg, scales, zero_points, dq_output, nullptr, use_contrib_qdq);
+
+    // add ArgMax
+    Node& argmax_node = builder.AddNode("ArgMax", {dq_output}, {output_arg});
+    argmax_node.AddAttribute("axis", static_cast<int64_t>(axis));
+    argmax_node.AddAttribute("keepdims", static_cast<int64_t>(keepdims));
+    argmax_node.AddAttribute("select_last_index", static_cast<int64_t>(select_last_index));
+  };
+
+  auto check_graph = [use_contrib_qdq, expect_drop_dq](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
+    EXPECT_EQ(op_to_count["ArgMax"], 1);
+    EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], expect_drop_dq ? 0 : 1);
+  };
+
+  TransformerTester(build_test_case, check_graph,
+                    TransformerLevel::Level1,
+                    TransformerLevel::Level2,
+                    {13, 19, 21});
+}
+
 // Checks that the DQ node is dropped from DQ -> ArgMax. Uses 8-bit and 16-bit Q/DQ ops.
 TEST(QDQTransformerTests, ArgMax) {
   RunArgMaxDropDQTestCase<uint8_t>({2, 13, 12, 37}, 1, 0, 0, false);
   RunArgMaxDropDQTestCase<uint8_t>({2, 13, 12, 37}, 1, 0, 0, true /*use_contrib_qdq*/);
+
+  // Should *not* drop DQ when scale is non-positive (negative or zero), as it inverts ordering or causes ties for ArgMax.
+  RunArgMaxDropDQTestCase<uint8_t>({2, 13, 12, 37}, 1, 0, 0, false /*use_contrib_qdq*/, false /*expect_drop_dq*/, -1.0f /*scale*/);
+  RunArgMaxDropDQTestCase<uint8_t>({2, 13, 12, 37}, 1, 0, 0, true /*use_contrib_qdq*/, false /*expect_drop_dq*/, -1.0f /*scale*/);
+  RunArgMaxDropDQTestCase<uint8_t>({2, 13, 12, 37}, 1, 0, 0, false /*use_contrib_qdq*/, false /*expect_drop_dq*/, 0.0f /*scale*/);
+  RunArgMaxDropDQTestCase<uint8_t>({2, 13, 12, 37}, 1, 0, 0, true /*use_contrib_qdq*/, false /*expect_drop_dq*/, 0.0f /*scale*/);
+
+  // Should *not* drop DQ with select_last_index = 1 for non-positive scales.
+  RunArgMaxDropDQTestCase<uint8_t>({2, 13, 12, 37}, 1, 0, 1 /*select_last_index*/, false /*use_contrib_qdq*/, false /*expect_drop_dq*/, -1.0f /*scale*/);
+  RunArgMaxDropDQTestCase<uint8_t>({2, 13, 12, 37}, 1, 0, 1 /*select_last_index*/, false /*use_contrib_qdq*/, false /*expect_drop_dq*/, 0.0f /*scale*/);
+
+  // Should *not* drop DQ when scale is 1D per-channel (non-scalar).
+  std::vector<float> per_channel_scales = {0.003f, 0.005f};
+  std::vector<uint8_t> per_channel_zp = {0, 0};
+  RunArgMax1DScaleDropDQTestCase<uint8_t>({2, 13, 12, 37}, 1, 0, 0, per_channel_scales, per_channel_zp, false /*use_contrib_qdq*/, false /*expect_drop_dq*/);
 
   // Should *not* drop DQ for 16-bit DQ -> ArgMax (because ORT does not support 16-bit input types for ArgMax).
   RunArgMaxDropDQTestCase<uint16_t>({2, 13, 12, 37}, 1, 0, 0, true /*use_contrib_qdq*/, false /*expect_drop_dq*/);

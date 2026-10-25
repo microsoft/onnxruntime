@@ -65,8 +65,9 @@ class DropQDQNodeGroupSelector : public NodeGroupSelector {
 // Single DQ -> node.
 class DropDQNodeGroupSelector : public NodeGroupSelector {
  public:
-  explicit DropDQNodeGroupSelector(bool allow_16bit = true, bool allow_4bit = true)
-      : allow_16bit_(allow_16bit), allow_4bit_(allow_4bit) {}
+  explicit DropDQNodeGroupSelector(bool allow_16bit = true, bool allow_4bit = true,
+                                   bool allow_nonpositive_scale = true)
+      : allow_16bit_(allow_16bit), allow_4bit_(allow_4bit), allow_nonpositive_scale_(allow_nonpositive_scale) {}
 
  private:
   bool Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
@@ -75,6 +76,7 @@ class DropDQNodeGroupSelector : public NodeGroupSelector {
 
   bool allow_16bit_;
   bool allow_4bit_;
+  bool allow_nonpositive_scale_;
 };
 
 // single input. default is to only support uint8.
@@ -388,8 +390,9 @@ class DropDQNodesSelector : public BaseSelector {
  public:
   explicit DropDQNodesSelector(bool allow_16bit = false,
                                bool allow_4bit = false,
+                               bool allow_nonpositive_scale = true,
                                gsl::span<const char*> compatible_providers = {})
-      : BaseSelector(std::make_unique<DropDQNodeGroupSelector>(allow_16bit, allow_4bit),
+      : BaseSelector(std::make_unique<DropDQNodeGroupSelector>(allow_16bit, allow_4bit, allow_nonpositive_scale),
                      compatible_providers) {}
 };
 

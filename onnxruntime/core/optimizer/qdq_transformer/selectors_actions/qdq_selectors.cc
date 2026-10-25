@@ -273,6 +273,13 @@ bool DropDQNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node&
     return graph_viewer.GetConstantInitializer(initializer_name, true);
   };
 
+  if (!allow_nonpositive_scale_) {
+    if (!IsQOrDQScalePositiveConstantScalar(graph_viewer.GetGraph(), dq_node, get_const_initializer,
+                                            graph_viewer.ModelPath())) {
+      return false;
+    }
+  }
+
   return IsDQSupported(dq_node, get_const_initializer);
 }
 
