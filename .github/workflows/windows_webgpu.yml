@@ -89,11 +89,7 @@ jobs:
         working-directory: ${{ github.workspace }}
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
-        env:
-          PROCESSOR_ARCHITECTURE: x64
-        with:
-          dotnet-version: "8.0.427" # Temporary exact pin bypasses the failing aka.ms SDK redirect.
+        uses: ./.github/actions/setup-dotnet
 
       - name: Test WebGPU NuGet packaging
         run: python -m unittest plugin-ep-webgpu\csharp\test\test_pack_nuget.py -v
@@ -751,11 +747,7 @@ jobs:
         working-directory: ${{ github.workspace }}
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
-        env:
-          PROCESSOR_ARCHITECTURE: x64
-        with:
-          dotnet-version: "8.0.427" # Temporary exact pin bypasses the failing aka.ms SDK redirect.
+        uses: ./.github/actions/setup-dotnet
 
       - name: Use Nuget 6.x
         uses: nuget/setup-nuget@d105a947828025cd7a980103c35ba2bfae586d0f # v2.0.2
