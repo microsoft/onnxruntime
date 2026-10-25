@@ -113,6 +113,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.QuantizeLinear">com.microsoft.QuantizeLinear</a>
   * <a href="#com.microsoft.QuantizeWithOrder">com.microsoft.QuantizeWithOrder</a>
   * <a href="#com.microsoft.QuickGelu">com.microsoft.QuickGelu</a>
+  * <a href="#com.microsoft.RMSNormRotary">com.microsoft.RMSNormRotary</a>
   * <a href="#com.microsoft.Range">com.microsoft.Range</a>
   * <a href="#com.microsoft.ReduceSumInteger">com.microsoft.ReduceSumInteger</a>
   * <a href="#com.microsoft.RelativePositionBias">com.microsoft.RelativePositionBias</a>
@@ -4016,11 +4017,15 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>block_size</tt> : int</dt>
 <dd>Number of consecutive K values that share one weight scale. Default 128.</dd>
+<dt><tt>prefill_weight_offsets</tt> : list of ints</dt>
+<dd>Output-column offsets for optional original-type [K, segmentN] prefill weights. Used only when prefill_numerics is one; decode retains FP8 weights.</dd>
+<dt><tt>shared_expert</tt> : int</dt>
+<dd>When one, BF16 A is the up branch and shared_silu_gate is the equal-shaped gate branch. Multiply A by BF16(shared_silu_gate * BF16(sigmoid(shared_silu_gate))) before projection. Round the projection to BF16, multiply by the BF16 sigmoid of the BF16 dot product shared_gate_activation @ shared_gate_weight, round to BF16, then add shared_residual. Sigmoid uses BF16 intermediates. Requires all shared inputs and excludes bias, a_scale, split_sizes and original prefill weights. Default zero preserves ordinary projection.</dd>
 <dt><tt>split_sizes</tt> : list of ints</dt>
 <dd>Optional last-dimension output widths (one to eight positive sizes).</dd>
 </dl>
 
-#### Inputs (3 - 5)
+#### Inputs (3 - 13)
 
 <dl>
 <dt><tt>A</tt> : T</dt>
@@ -4033,6 +4038,22 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Optional global fp32 activation scale (scalar). When present, A is statically quantized to FP8 E4M3 with this scale (W8A8 numerics); when absent, A retains its FP16/BF16 precision.</dd>
 <dt><tt>bias</tt> (optional) : T</dt>
 <dd>Optional bias of shape [N].</dd>
+<dt><tt>prefill_numerics</tt> (optional) : TI</dt>
+<dd>Optional CUDA CPU-memory int32 control of shape [1]. Zero or omission preserves existing dispatch; one selects dense BF16 dequantization/GEMM rounding during eager prefill. Decode CUDA graph capture must bind an immutable zero.</dd>
+<dt><tt>prefill_weight</tt> (optional) : T</dt>
+<dd>Optional original-type [K, segmentN] eager-prefill weight.</dd>
+<dt><tt>prefill_weight2</tt> (optional) : T</dt>
+<dd>Optional second original-type eager-prefill weight segment.</dd>
+<dt><tt>prefill_weight3</tt> (optional) : T</dt>
+<dd>Optional third original-type eager-prefill weight segment.</dd>
+<dt><tt>shared_silu_gate</tt> (optional) : T</dt>
+<dd>BF16 gate branch matching A, for shared_expert=1.</dd>
+<dt><tt>shared_gate_activation</tt> (optional) : T</dt>
+<dd>BF16 projected-gate activation with matching leading axes.</dd>
+<dt><tt>shared_gate_weight</tt> (optional) : T</dt>
+<dd>BF16 [gate_input_width, 1] projected-gate weight.</dd>
+<dt><tt>shared_residual</tt> (optional) : T</dt>
+<dd>BF16 residual matching the unsplit output.</dd>
 </dl>
 
 #### Outputs (1 - &#8734;)
@@ -4051,6 +4072,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain weight to FP8 E4M3.</dd>
 <dt><tt>T2</tt> : tensor(float)</dt>
 <dd>Constrain scales to FP32.</dd>
+<dt><tt>TI</tt> : tensor(int32)</dt>
+<dd>CPU prefill numerical-mode control.</dd>
 </dl>
 
 
@@ -7103,6 +7126,71 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float16), tensor(float), tensor(double), tensor(bfloat16)</dt>
 <dd>Constrain input and output types to float tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.RMSNormRotary"></a><a name="com.microsoft.rmsnormrotary">**com.microsoft.RMSNormRotary**</a>
+
+  CUDA BF16 ONNX-arithmetic RMS normalization followed by non-interleaved partial RoPE. Input is [B,S,heads,stride]; a contiguous last-axis slice is normalized with FP32 scale. Normalization rounds to BF16 before rotation. Output is flattened [B,S,heads*width]. Width 256 and more than one row use one kernel for FP32 decode rotary or prefill; other shapes and BF16 decode rotary reuse existing CUDA kernels. Prefill mode uses reciprocal-multiply normalization and BF16 rotary intermediates; decode uses division normalization and the selected rotary arithmetic.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>epsilon</tt> : float</dt>
+<dd>Finite nonnegative RMS epsilon.</dd>
+<dt><tt>flatten_batch</tt> : int</dt>
+<dd>One flattens B*S to sequence and outputs [1,B*S,heads*width].</dd>
+<dt><tt>input_start</tt> : int</dt>
+<dd>Nonnegative start of normalized last-axis slice.</dd>
+<dt><tt>input_width</tt> : int</dt>
+<dd>Normalized width; zero uses the full last dimension.</dd>
+<dt><tt>rotary_embedding_dim</tt> : int (required)</dt>
+<dd>Positive even rotary width, no larger than normalized width.</dd>
+<dt><tt>use_fp32_arithmetic</tt> : int</dt>
+<dd>Decode rotary FP32 (1) or BF16 intermediates (0).</dd>
+</dl>
+
+#### Inputs (5 - 6)
+
+<dl>
+<dt><tt>X</tt> : T</dt>
+<dd>BF16 input [B,S,heads,stride].</dd>
+<dt><tt>scale</tt> : F</dt>
+<dd>FP32 RMS scale [width].</dd>
+<dt><tt>position_ids</tt> : I</dt>
+<dd>One base position or [B,S] positions.</dd>
+<dt><tt>cosine</tt> : T</dt>
+<dd>BF16 cache [cache_rows,rotary_embedding_dim/2].</dd>
+<dt><tt>sine</tt> : T</dt>
+<dd>Same shape/type as cosine.</dd>
+<dt><tt>prefill_numerics</tt> (optional) : TI</dt>
+<dd>Optional CPU int32 scalar 0/1.</dd>
+</dl>
+
+#### Outputs (1 - 2)
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>Normalized and rotated [B,S,heads*width].</dd>
+<dt><tt>normalized_fp32</tt> (optional) : F</dt>
+<dd>Optional BF16-rounded normalized values widened to FP32, before rotation, [B,S,heads,width].</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(bfloat16)</dt>
+<dd>BF16 data.</dd>
+<dt><tt>F</tt> : tensor(float)</dt>
+<dd>FP32 scale and optional normalized output.</dd>
+<dt><tt>I</tt> : tensor(int64)</dt>
+<dd>Position indices.</dd>
+<dt><tt>TI</tt> : tensor(int32)</dt>
+<dd>Numerical control.</dd>
 </dl>
 
 
