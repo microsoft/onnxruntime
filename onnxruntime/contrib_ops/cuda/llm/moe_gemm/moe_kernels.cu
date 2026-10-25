@@ -62,6 +62,8 @@
 #include "contrib_ops/cuda/llm/kernels/quantization.cuh"
 #include "contrib_ops/cuda/llm/moe_gemm/common.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_kernels.h"
+#include "contrib_ops/cuda/moe/qmoe_fused_route.cuh"
+#include "contrib_ops/cuda/moe/qmoe_kernels.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemv.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_util_kernels.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemm_activation_kernels.cuh"
@@ -664,13 +666,15 @@ __global__ void fusedRoutingBuildExpertMapsSingleTokenKernel(
 bool isFusedMoeRoutingSupported(const int64_t num_tokens, const int num_experts,
                                 const int num_experts_per_node, const int experts_per_token,
                                 const int ep_size) {
-  // One warp, one token: lane e owns expert e, so the whole expert count must fit in a warp, and
-  // the permutation shortcut above assumes a single token. Expert parallelism would additionally
-  // need the out-of-node masking that the general prologue does.
-  return !MoeFusedRoutingDisabledByEnv() && num_tokens == 1 && ep_size == 1 &&
-         num_experts == num_experts_per_node && num_experts >= 1 &&
-         num_experts <= onnxruntime::cuda::topk::kWarpBitonicMaxSize && experts_per_token >= 1 &&
-         experts_per_token <= num_experts;
+  if (MoeFusedRoutingDisabledByEnv() || ep_size != 1 || num_experts != num_experts_per_node ||
+      num_experts < 1 || experts_per_token < 1 || experts_per_token > num_experts) {
+    return false;
+  }
+  if (num_tokens == 1 && num_experts <= onnxruntime::cuda::topk::kWarpBitonicMaxSize) {
+    return true;
+  }
+  return onnxruntime::cuda::CanUseFusedRouteMaps(
+      num_tokens, static_cast<int64_t>(num_experts), static_cast<int64_t>(experts_per_token));
 }
 
 template <typename T>
@@ -678,28 +682,42 @@ void launchFusedRoutingBuildExpertMaps(const T* router_logits, int* token_select
                                        float* token_final_scales, int* permuted_row_to_unpermuted_row,
                                        int* unpermuted_row_to_permuted_row,
                                        int* permuted_token_selected_experts,
-                                       int64_t* expert_first_token_offset, const int num_experts,
-                                       const int experts_per_token, const bool normalize_routing_weights,
-                                       cudaStream_t stream) {
+                                       int64_t* expert_first_token_offset, const int num_tokens,
+                                       const int num_experts, const int experts_per_token,
+                                       const bool normalize_routing_weights, cudaStream_t stream) {
   // The runner is also instantiated for narrow activation types (fp8/fp4) that can never be a
   // router logit dtype; reject those here so the caller does not have to.
   if constexpr (std::is_same_v<T, float> || std::is_same_v<T, half> || std::is_same_v<T, __nv_bfloat16>) {
-    cudaLaunchConfig_t config;
-    config.gridDim = 1;
-    config.blockDim = onnxruntime::cuda::topk::kWarpSize;
-    config.dynamicSmemBytes = 0;
-    config.stream = stream;
-    cudaLaunchAttribute attrs[1];
-    attrs[0].id = cudaLaunchAttributeProgrammaticStreamSerialization;
-    attrs[0].val.programmaticStreamSerializationAllowed = onnxruntime::llm::common::getEnvEnablePDL();
-    config.numAttrs = 1;
-    config.attrs = attrs;
+    if (num_tokens == 1 && num_experts <= onnxruntime::cuda::topk::kWarpBitonicMaxSize) {
+      cudaLaunchConfig_t config;
+      config.gridDim = 1;
+      config.blockDim = onnxruntime::cuda::topk::kWarpSize;
+      config.dynamicSmemBytes = 0;
+      config.stream = stream;
+      cudaLaunchAttribute attrs[1];
+      attrs[0].id = cudaLaunchAttributeProgrammaticStreamSerialization;
+      attrs[0].val.programmaticStreamSerializationAllowed = onnxruntime::llm::common::getEnvEnablePDL();
+      config.numAttrs = 1;
+      config.attrs = attrs;
 
-    CUDA_CALL_THROW(cudaLaunchKernelEx(&config, &fusedRoutingBuildExpertMapsSingleTokenKernel<T>, router_logits,
-                                       token_selected_experts, token_final_scales, permuted_row_to_unpermuted_row,
-                                       unpermuted_row_to_permuted_row, permuted_token_selected_experts,
-                                       expert_first_token_offset, num_experts, experts_per_token,
-                                       normalize_routing_weights));
+      CUDA_CALL_THROW(cudaLaunchKernelEx(&config, &fusedRoutingBuildExpertMapsSingleTokenKernel<T>, router_logits,
+                                         token_selected_experts, token_final_scales, permuted_row_to_unpermuted_row,
+                                         unpermuted_row_to_permuted_row, permuted_token_selected_experts,
+                                         expert_first_token_offset, num_experts, experts_per_token,
+                                         normalize_routing_weights));
+      return;
+    }
+
+    if constexpr (std::is_same_v<T, half> || std::is_same_v<T, __nv_bfloat16>) {
+      ORT_THROW_IF_ERROR(onnxruntime::cuda::LaunchFusedRouteMaps<T>(
+          stream, router_logits, token_selected_experts, token_final_scales, permuted_row_to_unpermuted_row,
+          unpermuted_row_to_permuted_row, permuted_token_selected_experts, expert_first_token_offset,
+          num_tokens, num_experts, experts_per_token, normalize_routing_weights));
+      return;
+    }
+
+    ORT_THROW("Fused MoE routing requested for unsupported router logit dtype with num_tokens=", num_tokens,
+              ", num_experts=", num_experts);
   } else {
     (void)router_logits;
     (void)token_selected_experts;
@@ -708,6 +726,7 @@ void launchFusedRoutingBuildExpertMaps(const T* router_logits, int* token_select
     (void)unpermuted_row_to_permuted_row;
     (void)permuted_token_selected_experts;
     (void)expert_first_token_offset;
+    (void)num_tokens;
     (void)num_experts;
     (void)experts_per_token;
     (void)normalize_routing_weights;
@@ -2983,8 +3002,8 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
       launchFusedRoutingBuildExpertMaps<InputType>(
           static_cast<InputType const*>(fused_routing.router_logits), fused_routing.token_selected_experts,
           fused_routing.token_final_scales, permuted_row_to_unpermuted_row_, unpermuted_row_to_permuted_row,
-          permuted_token_selected_experts_, expert_first_token_offset_, full_num_experts, experts_per_token,
-          fused_routing.normalize_routing_weights, stream);
+          permuted_token_selected_experts_, expert_first_token_offset_, static_cast<int>(num_rows), full_num_experts,
+          experts_per_token, fused_routing.normalize_routing_weights, stream);
       token_selected_experts = fused_routing.token_selected_experts;
       token_topk_unpermuted_scales = fused_routing.token_final_scales;
       if (fused_routing.on_routing_ready != nullptr) {
