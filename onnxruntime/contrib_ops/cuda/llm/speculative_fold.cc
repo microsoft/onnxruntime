@@ -14,13 +14,13 @@ bool Count(const Tensor* tensor, int64_t count) {
   return tensor && tensor->Shape().Size() == count;
 }
 
-class FoldMid2 final : public CudaKernel {
+class SpeculativePrefixCommit final : public CudaKernel {
  public:
-  explicit FoldMid2(const OpKernelInfo& info) : CudaKernel(info) {
+  explicit SpeculativePrefixCommit(const OpKernelInfo& info) : CudaKernel(info) {
     head_rows_ = SafeInt<int>(info.GetAttrOrDefault<int64_t>("head_rows", 2));
     capacity_ = SafeInt<int>(info.GetAttrOrDefault<int64_t>("head_capacity", 262144));
     ORT_ENFORCE(head_rows_ >= 2 && head_rows_ <= 8 && capacity_ >= head_rows_,
-                "FoldMid2: invalid head_rows/head_capacity");
+                "SpeculativePrefixCommit: invalid head_rows/head_capacity");
   }
 
   Status ComputeInternal(OpKernelContext* context) const override {
@@ -36,33 +36,33 @@ class FoldMid2 final : public CudaKernel {
     const auto* sine = context->Input<Tensor>(9);
     const auto* hidden = context->InputCount() > 10 ? context->Input<Tensor>(10) : nullptr;
     ORT_RETURN_IF_NOT(tokens && ids && status && ctl && committed && prefixes && prefix2 && ptrs && cosine && sine,
-                      "FoldMid2: missing required input");
+                      "SpeculativePrefixCommit: missing required input");
     const int64_t rows = tokens->Shape().Size();
     ORT_RETURN_IF_NOT(rows > 0 && rows <= INT_MAX && ids->Shape().Size() >= rows &&
                           status->Shape().Size() <= INT_MAX,
-                      "FoldMid2: invalid token/status shape");
+                      "SpeculativePrefixCommit: invalid token/status shape");
     ORT_RETURN_IF_NOT(ctl->Shape().Size() >= (head_rows_ > 2 ? 16 : 8) &&
                           Count(committed, 2) && prefixes->Shape().Size() >= (head_rows_ > 2 ? 2 * head_rows_ : 2) &&
                           Count(prefix2, 2) && Count(ptrs, 2),
-                      "FoldMid2: invalid control/context shape");
+                      "SpeculativePrefixCommit: invalid control/context shape");
     const auto& rope = cosine->Shape();
     ORT_RETURN_IF_NOT(rope.NumDimensions() == 2 && rope[0] > 0 && rope[0] <= INT_MAX &&
                           rope[1] > 0 && rope[1] <= INT_MAX && sine->Shape() == rope,
-                      "FoldMid2: rotary caches must have matching [positions, width] shapes");
+                      "SpeculativePrefixCommit: rotary caches must have matching [positions, width] shapes");
     Tensor* head_hidden = nullptr;
     int64_t width = 0;
     if (hidden) {
       auto shape = hidden->Shape().AsShapeVector();
       ORT_RETURN_IF_NOT(shape.size() >= 3 && shape[0] == 1 && shape[1] == rows,
-                        "FoldMid2: hidden state must match token rows");
+                        "SpeculativePrefixCommit: hidden state must match token rows");
       width = hidden->Shape().Size() / rows;
-      ORT_RETURN_IF_NOT(width > 0 && width <= INT64_MAX / head_rows_, "FoldMid2: invalid hidden width");
+      ORT_RETURN_IF_NOT(width > 0 && width <= INT64_MAX / head_rows_, "SpeculativePrefixCommit: invalid hidden width");
       shape[1] = head_rows_;
       if (context->OutputCount() > 7) {
         head_hidden = context->Output(7, TensorShape(shape));
       }
     } else if (context->OutputCount() > 7) {
-      ORT_RETURN_IF_NOT(!context->Output(7, TensorShape({0})), "FoldMid2: hidden output requires hidden input");
+      ORT_RETURN_IF_NOT(!context->Output(7, TensorShape({0})), "SpeculativePrefixCommit: hidden output requires hidden input");
     }
     auto* out_ids = context->Output(0, TensorShape({1, head_rows_}));
     auto* head_c = context->Output(1, TensorShape({1}));
@@ -107,12 +107,12 @@ class FoldMid2 final : public CudaKernel {
   int capacity_;
 };
 
-class FoldTail final : public CudaKernel {
+class SpeculativeStepPublish final : public CudaKernel {
  public:
-  explicit FoldTail(const OpKernelInfo& info) : CudaKernel(info) {
+  explicit SpeculativeStepPublish(const OpKernelInfo& info) : CudaKernel(info) {
     slot_ = SafeInt<int>(info.GetAttrOrDefault<int64_t>("ctl_slot", 2));
     ORT_ENFORCE(slot_ == -1 || slot_ == 2 || (slot_ >= 8 && slot_ <= 13),
-                "FoldTail: ctl_slot must be -1, 2, or 8..13");
+                "SpeculativeStepPublish: ctl_slot must be -1, 2, or 8..13");
   }
 
   Status ComputeInternal(OpKernelContext* context) const override {
@@ -123,7 +123,7 @@ class FoldTail final : public CudaKernel {
     ORT_RETURN_IF_NOT(Count(token, 1) && status && status->Shape().Size() <= INT_MAX &&
                           ctl && ctl->Shape().Size() >= 8 && (slot_ < 0 || ctl->Shape().Size() > slot_) &&
                           (ptrs == nullptr || Count(ptrs, 2)),
-                      "FoldTail: invalid token/status/control/pointer shape");
+                      "SpeculativeStepPublish: invalid token/status/control/pointer shape");
     auto* done = context->Output(0, TensorShape({1}));
     int64_t* ctl_ptr = const_cast<int64_t*>(ctl->Data<int64_t>());
     if (context->OutputCount() > 1) {
@@ -145,21 +145,21 @@ class FoldTail final : public CudaKernel {
 }  // namespace
 
 ONNX_OPERATOR_KERNEL_EX(
-    FoldMid2, kMSDomain, 1, kCudaExecutionProvider,
+    SpeculativePrefixCommit, kMSDomain, 1, kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .MayInplace(3, 8)
         .MayInplace(4, 9)
         .TypeConstraint("I64", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("I32", DataTypeImpl::GetTensorType<int32_t>())
         .TypeConstraint("B", DataTypeImpl::GetTensorType<BFloat16>()),
-    FoldMid2);
+    SpeculativePrefixCommit);
 
 ONNX_OPERATOR_KERNEL_EX(
-    FoldTail, kMSDomain, 1, kCudaExecutionProvider,
+    SpeculativeStepPublish, kMSDomain, 1, kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .MayInplace(2, 1)
         .TypeConstraint("I64", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("I32", DataTypeImpl::GetTensorType<int32_t>()),
-    FoldTail);
+    SpeculativeStepPublish);
 
 }  // namespace onnxruntime::contrib::cuda

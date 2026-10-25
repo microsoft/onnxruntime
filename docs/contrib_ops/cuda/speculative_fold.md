@@ -1,12 +1,12 @@
-# CUDA speculative fold operators
+# CUDA speculative prefix commit and step publish operators
 
-`com.microsoft::FoldMid2` and `FoldTail` schema version 1 implement batch-one
+`com.microsoft::SpeculativePrefixCommit` and `SpeculativeStepPublish` schema version 1 implement batch-one
 speculative acceptance and result publication without a custom-op library.
 This replaces the earlier two-row schema and supports two through eight head
 rows, variable rotary width, configurable cache capacity, optional hidden-state
 padding, and deferred publication after downstream validation.
 
-`FoldMid2` takes verifier token predictions, input token IDs, status words,
+`SpeculativePrefixCommit` takes verifier token predictions, input token IDs, status words,
 control state, committed context, prefix contexts, result-ring metadata,
 rotary caches, and optional hidden rows. Its outputs are head token IDs,
 committed length, slot IDs, sequence length, gathered cosine/sine rows, accepted
@@ -17,7 +17,7 @@ to those device buffers. For three through eight head rows, control has at least
 When `rows > 4`, predictions `tokens[4..7]` are packed into the upper 32-bit
 halves of ring record words `1, 2, 3, 5`.
 
-`FoldTail` takes a token, status words, the mid-stage control output, and
+`SpeculativeStepPublish` takes a token, status words, the mid-stage control output, and
 result-ring metadata. It returns a dependency token and updated control.
 The latter aliases input 2. `ctl_slot` selects word -1 (none), 2, or 8..13. The tail writes
 the ring's sequence word only after a system fence, so host polling cannot

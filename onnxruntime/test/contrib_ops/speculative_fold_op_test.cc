@@ -106,12 +106,12 @@ TEST(SpeculativeFoldTest, InferenceSessionLoadsVersionOneAndAcceptsMutedPrefillR
   auto* downstream_status = arg("downstream_status", i32, {1});
   auto* done = arg("done", i32, {1});
   auto* updated_ctl = arg("updated_ctl", i64, {8});
-  graph.AddNode("mid", "FoldMid2", "",
+  graph.AddNode("mid", "SpeculativePrefixCommit", "",
                 {tokens, ids, status, ctl, context, prefixes, prefix2, ptrs, cosine, sine, hidden},
                 {head_ids, head_c, slots, lengths, cos_out, sin_out, selected, head_hidden, mid_ctl, updated_context},
                 nullptr, kMSDomain)
       .SetExecutionProviderType(kCudaExecutionProvider);
-  graph.AddNode("tail", "FoldTail", "", {draft, downstream_status, mid_ctl, ptrs}, {done, updated_ctl}, nullptr,
+  graph.AddNode("tail", "SpeculativeStepPublish", "", {draft, downstream_status, mid_ctl, ptrs}, {done, updated_ctl}, nullptr,
                 kMSDomain)
       .SetExecutionProviderType(kCudaExecutionProvider);
   graph.SetOutputs({head_ids, head_c, slots, lengths, cos_out, sin_out, selected, head_hidden,

@@ -37,8 +37,6 @@ Do not modify directly.*
   * <a href="#com.microsoft.EngramGate">com.microsoft.EngramGate</a>
   * <a href="#com.microsoft.ExpandDims">com.microsoft.ExpandDims</a>
   * <a href="#com.microsoft.FastGelu">com.microsoft.FastGelu</a>
-  * <a href="#com.microsoft.FoldMid2">com.microsoft.FoldMid2</a>
-  * <a href="#com.microsoft.FoldTail">com.microsoft.FoldTail</a>
   * <a href="#com.microsoft.FusedConv">com.microsoft.FusedConv</a>
   * <a href="#com.microsoft.FusedGemm">com.microsoft.FusedGemm</a>
   * <a href="#com.microsoft.FusedMatMul">com.microsoft.FusedMatMul</a>
@@ -133,6 +131,8 @@ Do not modify directly.*
   * <a href="#com.microsoft.SparseAttentionIndexer">com.microsoft.SparseAttentionIndexer</a>
   * <a href="#com.microsoft.SparsePagedAttention">com.microsoft.SparsePagedAttention</a>
   * <a href="#com.microsoft.SparseToDenseMatMul">com.microsoft.SparseToDenseMatMul</a>
+  * <a href="#com.microsoft.SpeculativePrefixCommit">com.microsoft.SpeculativePrefixCommit</a>
+  * <a href="#com.microsoft.SpeculativeStepPublish">com.microsoft.SpeculativeStepPublish</a>
   * <a href="#com.microsoft.Tokenizer">com.microsoft.Tokenizer</a>
   * <a href="#com.microsoft.TorchEmbedding">com.microsoft.TorchEmbedding</a>
   * <a href="#com.microsoft.TransposeMatMul">com.microsoft.TransposeMatMul</a>
@@ -2166,134 +2166,6 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float), tensor(double), tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain input and output types to float or half tensors.</dd>
-</dl>
-
-
-### <a name="com.microsoft.FoldMid2"></a><a name="com.microsoft.foldmid2">**com.microsoft.FoldMid2**</a>
-
-  Commits a batch-one speculative prefix and prepares rotary/head inputs for two through eight head rows. Control and committed-context outputs must alias their inputs on CUDA when present. This is stateful: callers must serialize access to these buffers. The result-ring address must identify a device-accessible, aligned allocation of capacity*8 int64 words. The mid stage writes the payload; FoldTail publishes its sequence word after downstream validation when ptrs is passed to FoldTail, or FoldMid2 publishes it directly when updated_ctl/updated_ctx_commit are omitted. Muted prefill calls prepare inputs without committing state or touching ring metadata. Invalid device metadata sets error bits and mutes execution.
-
-#### Version
-
-This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
-
-#### Attributes
-
-<dl>
-<dt><tt>head_capacity</tt> : int</dt>
-<dd>Maximum head-cache token capacity.</dd>
-<dt><tt>head_rows</tt> : int</dt>
-<dd>Fixed number of head rows, 2 through 8.</dd>
-</dl>
-
-#### Inputs (10 - 11)
-
-<dl>
-<dt><tt>next_tokens</tt> : I64</dt>
-<dd>Verifier predictions, batch one.</dd>
-<dt><tt>input_ids</tt> : I64</dt>
-<dd>Verifier input IDs.</dd>
-<dt><tt>status</tt> : I32</dt>
-<dd>Verifier status words.</dd>
-<dt><tt>ctl</tt> : I64</dt>
-<dd>Mutable control state: at least 8 words for S2, 16 for S3..S8.</dd>
-<dt><tt>ctx_commit</tt> : I64</dt>
-<dd>Mutable committed context, two words.</dd>
-<dt><tt>prefixes</tt> : I64</dt>
-<dd>Two-word context for each accepted-prefix length; S2 needs only the first.</dd>
-<dt><tt>prefix2</tt> : I64</dt>
-<dd>Two-word context for acceptance length one.</dd>
-<dt><tt>ptrs</tt> : I64</dt>
-<dd>Result ring address and positive record capacity.</dd>
-<dt><tt>cos_cache</tt> : B</dt>
-<dd>Rotary cosine cache [positions, width].</dd>
-<dt><tt>sin_cache</tt> : B</dt>
-<dd>Rotary sine cache [positions, width].</dd>
-<dt><tt>hidden</tt> (optional) : B</dt>
-<dd>Optional hidden states [1, verifier_rows, ...].</dd>
-</dl>
-
-#### Outputs (7 - 10)
-
-<dl>
-<dt><tt>head_ids</tt> : I64</dt>
-<dd>Head token IDs [1, head_rows].</dd>
-<dt><tt>head_c</tt> : I32</dt>
-<dd>Head committed length [1].</dd>
-<dt><tt>slot_ids</tt> : I64</dt>
-<dd>Head slots [1, head_rows].</dd>
-<dt><tt>seqlens</tt> : I32</dt>
-<dd>Head sequence length [1].</dd>
-<dt><tt>cos_out</tt> : B</dt>
-<dd>Gathered rotary cosine [1, head_rows, width].</dd>
-<dt><tt>sin_out</tt> : B</dt>
-<dd>Gathered rotary sine [1, head_rows, width].</dd>
-<dt><tt>sel</tt> : I64</dt>
-<dd>Accepted-prefix length, or -1 on invalid metadata.</dd>
-<dt><tt>head_hidden</tt> (optional) : B</dt>
-<dd>Hidden rows, repeating the last source row when necessary.</dd>
-<dt><tt>updated_ctl</tt> (optional) : I64</dt>
-<dd>Optional updated control state, aliases ctl.</dd>
-<dt><tt>updated_ctx_commit</tt> (optional) : I64</dt>
-<dd>Optional updated context, aliases ctx_commit.</dd>
-</dl>
-
-#### Type Constraints
-
-<dl>
-<dt><tt>I64</tt> : tensor(int64)</dt>
-<dd>Token and control words.</dd>
-<dt><tt>I32</tt> : tensor(int32)</dt>
-<dd>Status and sequence lengths.</dd>
-<dt><tt>B</tt> : tensor(bfloat16)</dt>
-<dd>Rotary and hidden tensors.</dd>
-</dl>
-
-
-### <a name="com.microsoft.FoldTail"></a><a name="com.microsoft.foldtail">**com.microsoft.FoldTail**</a>
-
-  Updates the selected draft-control slot and publishes the result-ring sequence after validation. updated_ctl must alias ctl on CUDA when present. Muted calls do not access the ring. Invalid ring metadata sets error bit 16 and mutes execution. done is a dependency output set to 1 when unmuted and 0 when muted.
-
-#### Version
-
-This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
-
-#### Attributes
-
-<dl>
-<dt><tt>ctl_slot</tt> : int</dt>
-<dd>Draft-control slot: -1 (none), 2, or 8..13.</dd>
-</dl>
-
-#### Inputs (3 - 4)
-
-<dl>
-<dt><tt>next_token</tt> : I64</dt>
-<dd>Next draft token (or ignored selector in DFlash).</dd>
-<dt><tt>status</tt> : I32</dt>
-<dd>Downstream validation status words.</dd>
-<dt><tt>ctl</tt> : I64</dt>
-<dd>Mutable control state.</dd>
-<dt><tt>ptrs</tt> (optional) : I64</dt>
-<dd>Optional result ring address and record capacity.</dd>
-</dl>
-
-#### Outputs (1 - 2)
-
-<dl>
-<dt><tt>done</tt> : I32</dt>
-<dd>Dependency output [1].</dd>
-<dt><tt>updated_ctl</tt> (optional) : I64</dt>
-<dd>Optional updated control state, aliases ctl.</dd>
-</dl>
-
-#### Type Constraints
-
-<dl>
-<dt><tt>I64</tt> : tensor(int64)</dt>
-<dd>Token and control words.</dd>
-<dt><tt>I32</tt> : tensor(int32)</dt>
-<dd>Status and dependency output.</dd>
 </dl>
 
 
@@ -8298,6 +8170,134 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>T1</tt> : tensor(float), tensor(double), tensor(int64), tensor(int32), tensor(uint64), tensor(uint32)</dt>
 <dd>Constrain input and output types to float tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.SpeculativePrefixCommit"></a><a name="com.microsoft.speculativeprefixcommit">**com.microsoft.SpeculativePrefixCommit**</a>
+
+  Commits a batch-one speculative prefix and prepares rotary/head inputs for two through eight head rows. Control and committed-context outputs must alias their inputs on CUDA when present. This is stateful: callers must serialize access to these buffers. The result-ring address must identify a device-accessible, aligned allocation of capacity*8 int64 words. The mid stage writes the payload; SpeculativeStepPublish publishes its sequence word after downstream validation when ptrs is passed to SpeculativeStepPublish, or SpeculativePrefixCommit publishes it directly when updated_ctl/updated_ctx_commit are omitted. Muted prefill calls prepare inputs without committing state or touching ring metadata. Invalid device metadata sets error bits and mutes execution.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>head_capacity</tt> : int</dt>
+<dd>Maximum head-cache token capacity.</dd>
+<dt><tt>head_rows</tt> : int</dt>
+<dd>Fixed number of head rows, 2 through 8.</dd>
+</dl>
+
+#### Inputs (10 - 11)
+
+<dl>
+<dt><tt>next_tokens</tt> : I64</dt>
+<dd>Verifier predictions, batch one.</dd>
+<dt><tt>input_ids</tt> : I64</dt>
+<dd>Verifier input IDs.</dd>
+<dt><tt>status</tt> : I32</dt>
+<dd>Verifier status words.</dd>
+<dt><tt>ctl</tt> : I64</dt>
+<dd>Mutable control state: at least 8 words for S2, 16 for S3..S8.</dd>
+<dt><tt>ctx_commit</tt> : I64</dt>
+<dd>Mutable committed context, two words.</dd>
+<dt><tt>prefixes</tt> : I64</dt>
+<dd>Two-word context for each accepted-prefix length; S2 needs only the first.</dd>
+<dt><tt>prefix2</tt> : I64</dt>
+<dd>Two-word context for acceptance length one.</dd>
+<dt><tt>ptrs</tt> : I64</dt>
+<dd>Result ring address and positive record capacity.</dd>
+<dt><tt>cos_cache</tt> : B</dt>
+<dd>Rotary cosine cache [positions, width].</dd>
+<dt><tt>sin_cache</tt> : B</dt>
+<dd>Rotary sine cache [positions, width].</dd>
+<dt><tt>hidden</tt> (optional) : B</dt>
+<dd>Optional hidden states [1, verifier_rows, ...].</dd>
+</dl>
+
+#### Outputs (7 - 10)
+
+<dl>
+<dt><tt>head_ids</tt> : I64</dt>
+<dd>Head token IDs [1, head_rows].</dd>
+<dt><tt>head_c</tt> : I32</dt>
+<dd>Head committed length [1].</dd>
+<dt><tt>slot_ids</tt> : I64</dt>
+<dd>Head slots [1, head_rows].</dd>
+<dt><tt>seqlens</tt> : I32</dt>
+<dd>Head sequence length [1].</dd>
+<dt><tt>cos_out</tt> : B</dt>
+<dd>Gathered rotary cosine [1, head_rows, width].</dd>
+<dt><tt>sin_out</tt> : B</dt>
+<dd>Gathered rotary sine [1, head_rows, width].</dd>
+<dt><tt>sel</tt> : I64</dt>
+<dd>Accepted-prefix length, or -1 on invalid metadata.</dd>
+<dt><tt>head_hidden</tt> (optional) : B</dt>
+<dd>Hidden rows, repeating the last source row when necessary.</dd>
+<dt><tt>updated_ctl</tt> (optional) : I64</dt>
+<dd>Optional updated control state, aliases ctl.</dd>
+<dt><tt>updated_ctx_commit</tt> (optional) : I64</dt>
+<dd>Optional updated context, aliases ctx_commit.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>I64</tt> : tensor(int64)</dt>
+<dd>Token and control words.</dd>
+<dt><tt>I32</tt> : tensor(int32)</dt>
+<dd>Status and sequence lengths.</dd>
+<dt><tt>B</tt> : tensor(bfloat16)</dt>
+<dd>Rotary and hidden tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.SpeculativeStepPublish"></a><a name="com.microsoft.speculativesteppublish">**com.microsoft.SpeculativeStepPublish**</a>
+
+  Updates the selected draft-control slot and publishes the result-ring sequence after validation. updated_ctl must alias ctl on CUDA when present. Muted calls do not access the ring. Invalid ring metadata sets error bit 16 and mutes execution. done is a dependency output set to 1 when unmuted and 0 when muted.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>ctl_slot</tt> : int</dt>
+<dd>Draft-control slot: -1 (none), 2, or 8..13.</dd>
+</dl>
+
+#### Inputs (3 - 4)
+
+<dl>
+<dt><tt>next_token</tt> : I64</dt>
+<dd>Next draft token (or ignored selector in DFlash).</dd>
+<dt><tt>status</tt> : I32</dt>
+<dd>Downstream validation status words.</dd>
+<dt><tt>ctl</tt> : I64</dt>
+<dd>Mutable control state.</dd>
+<dt><tt>ptrs</tt> (optional) : I64</dt>
+<dd>Optional result ring address and record capacity.</dd>
+</dl>
+
+#### Outputs (1 - 2)
+
+<dl>
+<dt><tt>done</tt> : I32</dt>
+<dd>Dependency output [1].</dd>
+<dt><tt>updated_ctl</tt> (optional) : I64</dt>
+<dd>Optional updated control state, aliases ctl.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>I64</tt> : tensor(int64)</dt>
+<dd>Token and control words.</dd>
+<dt><tt>I32</tt> : tensor(int32)</dt>
+<dd>Status and dependency output.</dd>
 </dl>
 
 
