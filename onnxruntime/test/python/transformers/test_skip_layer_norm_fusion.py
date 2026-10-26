@@ -188,13 +188,13 @@ class TestFusion(unittest.TestCase):
         self.verify_skip_layer_norm_fusion(
             model_name,
             {
-                "Add": 0,
-                "LayerNormalization": 0,
-                "SkipLayerNormalization": 1,
+                "Add": 1,
+                "LayerNormalization": 1,
+                "SkipLayerNormalization": 0,
                 "Cast": 0,
             },
             ["input_1", "input_2", "layer_norm_weight", "layer_norm_bias"],
-            ["output", "", "", "layernorm_input"],
+            ["output"],
         )
         os.remove(model_name)
 
@@ -205,13 +205,13 @@ class TestFusion(unittest.TestCase):
         self.verify_skip_layer_norm_fusion(
             model_name,
             {
-                "Add": 0,
-                "LayerNormalization": 0,
-                "SkipLayerNormalization": 1,
+                "Add": 1,
+                "LayerNormalization": 1,
+                "SkipLayerNormalization": 0,
                 "Cast": 0,
             },
             ["matmul_output", "input_2", "layer_norm_weight", "layer_norm_bias", "bias"],
-            ["output", "", "", "layernorm_input"],
+            ["output"],
         )
         os.remove(model_name)
 
@@ -222,13 +222,13 @@ class TestFusion(unittest.TestCase):
         self.verify_skip_layer_norm_fusion(
             model_name,
             {
-                "Add": 0,
-                "LayerNormalization": 0,
-                "SkipLayerNormalization": 1,
+                "Add": 1,
+                "LayerNormalization": 1,
+                "SkipLayerNormalization": 0,
                 "Cast": 0,
             },
             ["matmul_output", "input_1", "layer_norm_weight", "layer_norm_bias", "bias"],
-            ["output", "", "", "layernorm_input"],
+            ["output"],
         )
         os.remove(model_name)
 
@@ -241,13 +241,13 @@ class TestFusion(unittest.TestCase):
         self.verify_skip_layer_norm_fusion(
             model_name,
             {
-                "Add": 0,
-                "LayerNormalization": 0,
-                "SkipLayerNormalization": 1,
+                "Add": 1,
+                "LayerNormalization": 1,
+                "SkipLayerNormalization": 0,
                 "Cast": 1,
             },
             ["matmul_output_cast", "input_2", "layer_norm_weight", "layer_norm_bias", "bias"],
-            ["output", "", "", "layernorm_input"],
+            ["output"],
         )
         os.remove(model_name)
 
@@ -260,13 +260,13 @@ class TestFusion(unittest.TestCase):
         self.verify_skip_layer_norm_fusion(
             model_name,
             {
-                "Add": 0,
-                "LayerNormalization": 0,
-                "SkipLayerNormalization": 1,
+                "Add": 1,
+                "LayerNormalization": 1,
+                "SkipLayerNormalization": 0,
                 "Cast": 1,
             },
             ["matmul_output_cast", "input_1", "layer_norm_weight", "layer_norm_bias", "bias"],
-            ["output", "", "", "layernorm_input"],
+            ["output"],
         )
         os.remove(model_name)
 
@@ -396,9 +396,9 @@ class TestFusion(unittest.TestCase):
         onnx.save(model, model_name)
         self.verify_skip_layer_norm_fusion(
             model_name,
-            {"Add": 0, "LayerNormalization": 0, "SkipLayerNormalization": 1, "Cast": 0},
+            {"Add": 1, "LayerNormalization": 1, "SkipLayerNormalization": 0, "Cast": 0},
             ["input_1", "input_2", "layer_norm_weight", "layer_norm_bias"],
-            ["output", "", "", "layernorm_input"],
+            ["output"],
         )
         os.remove(model_name)
 

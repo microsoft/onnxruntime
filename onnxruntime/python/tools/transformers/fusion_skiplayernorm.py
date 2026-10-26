@@ -131,25 +131,19 @@ class FusionSkipLayerNormalization(Fusion):
                     )
                     return
 
-        # This means that the residual Add before the LayerNormalization produces an output
-        # that is consumed by some other nodes or graph output other than the LayerNormalization itself
-        # We can still go ahead with the SkipLayerNormalization fusion but we need to
-        # preserve the output of Add and that needs to be produced by SkipLayerNormalization.
+        # If the residual Add output is consumed elsewhere, we cannot fuse it into a single-output
+        # SkipLayerNormalization without creating a multi-output custom op. Some backends, including
+        # OpenVINO, reject this shape at load time. In that case, skip the fusion and leave the original
+        # Add + LayerNormalization pattern intact so the residual output remains a normal tensor.
         add_has_graph_output = self.model.find_graph_output(add.output[0]) is not None
         residual_add_has_multiple_consumers = (
             add_has_graph_output or len(self.model.get_children(add, input_name_to_nodes)) > 1
         )
+        if residual_add_has_multiple_consumers:
+            return
 
         outputs_to_keep = node.output
-
-        if residual_add_has_multiple_consumers:
-            outputs_to_keep.extend([add.output[0]])
-
         outputs = [node.output[0]]
-
-        # Skip the other optional outputs of SkipLayerNormalization before adding the Add's output
-        if residual_add_has_multiple_consumers:
-            outputs.extend(["", "", add.output[0]])
 
         if self.model.is_safe_to_fuse_nodes([add, node], outputs_to_keep, input_name_to_nodes, output_name_to_node):
             self.nodes_to_remove.extend([add, node])
