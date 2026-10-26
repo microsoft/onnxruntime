@@ -14,6 +14,7 @@
 #include <array>
 #include <cctype>
 #include <charconv>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -43,6 +44,7 @@
 #include "core/framework/config_options.h"
 #include "core/framework/tensor_shape.h"
 #endif
+#include "core/common/parse_string.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
@@ -104,6 +106,8 @@ struct MoeOffloadSessionPolicy {
   int32_t async_max_tokens{8};       // Decode vs. prefill streaming token threshold (S <= 8 DFlash2)
   int32_t prefill_wave_experts{32};  // Max active cold experts per DMA wave
   bool skip_zero_cold_doorbell{false};
+  float tail_substitution_threshold{0.0f};
+  int32_t tail_substitution_min_rank{6};
 
   std::filesystem::path source_root;
   std::filesystem::path derived_cache_dir;
@@ -387,24 +391,47 @@ struct MoeOffloadSessionPolicy {
               "Invalid ", kOrtSessionOptionsMoeOffloadNodeOverrides, " value '", val,
               "'; expected semicolon-separated 'node_name:max_resident_slots=<N>,device_expert_bytes=<B>'.");
         }
-      } else if (key != kOrtSessionOptionsMoeOffloadSkipZeroColdDoorbell) {
+      } else if (key != kOrtSessionOptionsMoeOffloadSkipZeroColdDoorbell &&
+                 key != kOrtSessionOptionsMoeOffloadTailSubstitutionThreshold &&
+                 key != kOrtSessionOptionsMoeOffloadTailSubstitutionMinRank) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "Unknown session.moe.offload.* configuration key: ", key);
       }
     }
 
-    const auto skip_it = kv_map.find(kOrtSessionOptionsMoeOffloadSkipZeroColdDoorbell);
-    const std::string_view skip = (skip_it != kv_map.end())
-                                      ? std::string_view(skip_it->second)
-                                      : (std::getenv("ORT_QMOE_SKIP_ZERO_COLD_DOORBELL") != nullptr
-                                             ? std::string_view(std::getenv("ORT_QMOE_SKIP_ZERO_COLD_DOORBELL"))
-                                             : std::string_view("0"));
+    const auto config_or_env = [&](const char* key, const char* env, std::string_view fallback) -> std::string_view {
+      const auto it = kv_map.find(key);
+      if (it != kv_map.end()) return it->second;
+      const char* value = std::getenv(env);
+      return value != nullptr ? std::string_view(value) : fallback;
+    };
+    const auto skip = config_or_env(kOrtSessionOptionsMoeOffloadSkipZeroColdDoorbell,
+                                    "ORT_QMOE_SKIP_ZERO_COLD_DOORBELL", "0");
     if (skip != "0" && skip != "1") {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Invalid ", kOrtSessionOptionsMoeOffloadSkipZeroColdDoorbell,
                              " value '", skip, "'; expected '0' or '1'.");
     }
-    out.skip_zero_cold_doorbell = (skip == "1");
+    out.skip_zero_cold_doorbell = skip == "1";
+    const auto threshold = config_or_env(kOrtSessionOptionsMoeOffloadTailSubstitutionThreshold,
+                                         "ORT_QMOE_TAIL_SUBSTITUTION_THRESHOLD", "0.0");
+    const auto has_whitespace = [](std::string_view s) {
+      return std::any_of(s.begin(), s.end(), [](unsigned char c) { return std::isspace(c) != 0; });
+    };
+    if (threshold.empty() || has_whitespace(threshold) ||
+        !TryParseStringWithClassicLocale(threshold, out.tail_substitution_threshold) ||
+        !std::isfinite(out.tail_substitution_threshold) || out.tail_substitution_threshold < 0.0f) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Invalid ", kOrtSessionOptionsMoeOffloadTailSubstitutionThreshold,
+                             " value '", threshold, "'; expected a finite non-negative float.");
+    }
+    const auto min_rank = config_or_env(kOrtSessionOptionsMoeOffloadTailSubstitutionMinRank,
+                                        "ORT_QMOE_TAIL_SUBSTITUTION_MIN_RANK", "6");
+    if (!TryParseInt32(min_rank, out.tail_substitution_min_rank) || out.tail_substitution_min_rank < 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Invalid ", kOrtSessionOptionsMoeOffloadTailSubstitutionMinRank,
+                             " value '", min_rank, "'; expected a non-negative integer less than k when enabled.");
+    }
 
     if (out.source_root.empty() && !base_dir.empty()) {
       out.source_root = base_dir;

@@ -1318,6 +1318,7 @@ int main() {
         use_fp16: bool = True,
         num_experts: int = 16,
         resident_slots: int = 10,
+        top_k: int = 8,
     ):
         model_path = self._build_int_qmoe_model(
             model_dir,
@@ -1325,7 +1326,7 @@ int main() {
             num_experts=num_experts,
             hidden_size=256,
             inter_size=128,
-            top_k=8,
+            top_k=top_k,
             use_fp16=use_fp16,
         )
         pairs = [(layer, expert) for expert in range(num_experts) for layer in range(num_layers)]
@@ -1480,20 +1481,196 @@ with tempfile.TemporaryDirectory() as directory:
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
-    def test_v4_skip_zero_cold_doorbell_policy_validation_and_env_precedence(self):
+    def test_v4_tail_substitution_oracle_unique_routes_and_normalized_weights(self):
+        for use_fp16 in (True, False):
+            with self.subTest(use_fp16=use_fp16), tempfile.TemporaryDirectory() as model_dir:
+                model_path, config = self._build_decode_optimization_model(model_dir, use_fp16=use_fp16)
+                rng = np.random.default_rng(33576)
+                x = rng.standard_normal((4, 256), dtype=np.float32) * 0.25
+                router = np.tile(
+                    np.array([3, 2.8, 2.6, 2.4, 2.2, 2, 0.99, 0.98, -1, -2, 1.1, 1, -5, -5, -5, -5], dtype=np.float32),
+                    (4, 1),
+                )
+                baseline, _ = self._run_decode_with_telemetry(model_path, config, [(x, router)], use_fp16)
+                disabled, disabled_stats = self._run_decode_with_telemetry(
+                    model_path,
+                    {**config, "session.moe.offload.tail_substitution_threshold": "0.0"},
+                    [(x, router)],
+                    use_fp16,
+                )
+                np.testing.assert_array_equal(baseline[0].view(np.uint32), disabled[0].view(np.uint32))
+                self.assertEqual(sum(item["substituted_routes_count"] for item in disabled_stats), 0)
+                substituted, stats = self._run_decode_with_telemetry(
+                    model_path,
+                    {
+                        **config,
+                        "session.moe.offload.skip_zero_cold_doorbell": "1",
+                        "session.moe.offload.tail_substitution_threshold": "0.01",
+                        "session.moe.offload.tail_substitution_min_rank": "6",
+                    },
+                    [(x, router)],
+                    use_fp16,
+                )
+                rounded_router = (
+                    router.astype(np.float16).astype(np.float32)
+                    if use_fp16
+                    else _bfloat16_u16_to_float32(_float32_to_bfloat16_u16(router))
+                )
+                repl_logits = rounded_router[:, 6:8]
+                repl_exp = np.exp(repl_logits - np.max(repl_logits, axis=1, keepdims=True))
+                repl_props = repl_exp / np.sum(repl_exp, axis=1, keepdims=True)
+                orig_tail_logits = rounded_router[:, 10:12]
+                orig_tail_sum = np.sum(np.exp(orig_tail_logits), axis=1, keepdims=True)
+                repl_tail_sum = np.sum(np.exp(repl_logits), axis=1, keepdims=True)
+                oracle_router = rounded_router.copy()
+                oracle_router[:, 6:8] = repl_logits + np.log(orig_tail_sum / repl_tail_sum)
+                oracle_router[:, 10:12] = -20.0
+                oracle, _ = self._run_decode_with_telemetry(model_path, config, [(x, oracle_router)], use_fp16)
+                np.testing.assert_allclose(substituted[0], oracle[0], rtol=2e-3, atol=2e-3)
+                for disabled_item, item in zip(disabled_stats, stats, strict=True):
+                    disabled_weights = np.asarray(disabled_item["last_weights"], dtype=np.float32).reshape(4, 8)
+                    indices = np.asarray(item["last_indices"]).reshape(4, 8)
+                    weights = np.asarray(item["last_weights"], dtype=np.float32).reshape(4, 8)
+                    np.testing.assert_array_equal(indices, np.tile(np.arange(8), (4, 1)))
+                    self.assertTrue(all(len(set(row)) == 8 for row in indices))
+                    np.testing.assert_array_equal(
+                        weights[:, :6].view(np.uint32),
+                        disabled_weights[:, :6].view(np.uint32),
+                    )
+                    w_sub = np.sum(disabled_weights[:, 6:8], axis=1, keepdims=True)
+                    expected_tail_weights = w_sub * repl_props
+                    np.testing.assert_allclose(weights[:, 6:8], expected_tail_weights, rtol=1e-6, atol=1e-6)
+                    np.testing.assert_allclose(weights.sum(axis=1), 1.0, rtol=0, atol=2e-7)
+                    self.assertEqual(item["last_cold_count"], 0)
+                    self.assertEqual(item["substituted_routes_count"], 8)
+                    self.assertEqual(item["zero_cold_conversions_count"], 4)
+                    self.assertEqual(item["zero_cold_short_circuits"], 1)
+                    self.assertEqual(item["cpu_doorbell_wakeups"], 0)
+
+    def test_v4_tail_substitution_stable_normalization_after_replacing_every_route(self):
+        for use_fp16 in (True, False):
+            with self.subTest(use_fp16=use_fp16), tempfile.TemporaryDirectory() as model_dir:
+                model_path, config = self._build_decode_optimization_model(
+                    model_dir, num_layers=1, use_fp16=use_fp16, num_experts=128, resident_slots=32
+                )
+                x = np.full((1, 256), 0.125, dtype=np.float32)
+                router = np.zeros((1, 128), dtype=np.float32)
+                router[:, :32] = -1000
+                actual, stats = self._run_decode_with_telemetry(
+                    model_path,
+                    {
+                        **config,
+                        "session.moe.offload.skip_zero_cold_doorbell": "1",
+                        "session.moe.offload.tail_substitution_threshold": "0.02",
+                        "session.moe.offload.tail_substitution_min_rank": "0",
+                    },
+                    [(x, router)],
+                    use_fp16,
+                )
+                np.testing.assert_array_equal(stats[0]["last_indices"], np.arange(8))
+                np.testing.assert_allclose(stats[0]["last_weights"], np.full(8, 0.125), rtol=0, atol=1e-7)
+                self.assertEqual(stats[0]["substituted_routes_count"], 8)
+                self.assertEqual(stats[0]["last_cold_count"], 0)
+                oracle_router = np.full((1, 128), -1000, dtype=np.float32)
+                oracle_router[:, :8] = 0
+                oracle, _ = self._run_decode_with_telemetry(model_path, config, [(x, oracle_router)], use_fp16)
+                np.testing.assert_array_equal(actual[0].view(np.uint32), oracle[0].view(np.uint32))
+
+    def test_v4_tail_substitution_gap_and_rank_guards(self):
         with tempfile.TemporaryDirectory() as model_dir:
             model_path, config = self._build_decode_optimization_model(model_dir, num_layers=1)
-            key = "session.moe.offload.skip_zero_cold_doorbell"
-            for invalid in ("2", "-1", "invalid"):
-                with self.subTest(value=invalid), self.assertRaisesRegex(Exception, "Invalid " + key):
-                    self._make_session(model_path, {**config, key: invalid})
+            x = np.full((1, 256), 0.125, dtype=np.float32)
+            router = np.array(
+                [[3, 2.8, 2.6, 2.4, 2.2, 2, 0.99, 0.98, -1, -2, 1.1, 1, -5, -5, -5, -5]],
+                dtype=np.float32,
+            )
+            baseline, _ = self._run_decode_with_telemetry(model_path, config, [(x, router)])
+            rejected, stats = self._run_decode_with_telemetry(
+                model_path,
+                {**config, "session.moe.offload.tail_substitution_threshold": "0.000001"},
+                [(x, router)],
+            )
+            np.testing.assert_array_equal(baseline[0].view(np.uint32), rejected[0].view(np.uint32))
+            self.assertEqual(stats[0]["substituted_routes_count"], 0)
+            self.assertEqual(stats[0]["last_cold_count"], 2)
+            self.assertEqual(stats[0]["cpu_doorbell_wakeups"], 1)
+            _, rank_stats = self._run_decode_with_telemetry(
+                model_path,
+                {
+                    **config,
+                    "session.moe.offload.tail_substitution_threshold": "0.01",
+                    "session.moe.offload.tail_substitution_min_rank": "7",
+                },
+                [(x, router)],
+            )
+            self.assertEqual(rank_stats[0]["last_indices"][6], 10)
+            self.assertEqual(rank_stats[0]["last_indices"][7], 6)
+            self.assertEqual(rank_stats[0]["last_cold_count"], 1)
+        with tempfile.TemporaryDirectory() as model_dir:
+            model_path, config = self._build_decode_optimization_model(
+                model_dir, num_layers=1, num_experts=64, resident_slots=32, top_k=40
+            )
+            x = np.full((1, 256), 0.125, dtype=np.float32)
+            router = np.linspace(4.0, -4.0, 64, dtype=np.float32).reshape(1, 64)
+            baseline, _ = self._run_decode_with_telemetry(model_path, config, [(x, router)])
+            actual, k40_stats = self._run_decode_with_telemetry(
+                model_path,
+                {
+                    **config,
+                    "session.moe.offload.tail_substitution_threshold": "0.02",
+                    "session.moe.offload.tail_substitution_min_rank": "6",
+                },
+                [(x, router)],
+            )
+            np.testing.assert_array_equal(baseline[0].view(np.uint32), actual[0].view(np.uint32))
+            self.assertEqual(k40_stats[0]["substituted_routes_count"], 0)
+
+    def test_v4_decode_optimization_policy_validation_and_env_precedence(self):
+        with tempfile.TemporaryDirectory() as model_dir:
+            model_path, config = self._build_decode_optimization_model(model_dir, num_layers=1)
+            prefix = "session.moe.offload."
+            for key, value in (
+                ("skip_zero_cold_doorbell", "2"),
+                ("tail_substitution_threshold", "-0.1"),
+                ("tail_substitution_threshold", "nan"),
+                ("tail_substitution_threshold", "inf"),
+                ("tail_substitution_threshold", "0.01junk"),
+                ("tail_substitution_min_rank", "-1"),
+            ):
+                with self.subTest(key=key, value=value), self.assertRaisesRegex(Exception, "Invalid " + prefix + key):
+                    self._make_session(model_path, {**config, prefix + key: value})
+            with self.assertRaisesRegex(Exception, "min_rank < k"):
+                self._make_session(
+                    model_path,
+                    {
+                        **config,
+                        prefix + "tail_substitution_threshold": "0.01",
+                        prefix + "tail_substitution_min_rank": "8",
+                    },
+                )
             x = np.full((1, 256), 0.125, dtype=np.float32)
             router = np.linspace(3.0, -3.0, 16, dtype=np.float32).reshape(1, 16)
             with mock.patch.dict(os.environ, {"ORT_QMOE_SKIP_ZERO_COLD_DOORBELL": "1"}):
                 _, enabled = self._run_decode_with_telemetry(model_path, config, [(x, router)])
-                _, explicit_zero = self._run_decode_with_telemetry(model_path, {**config, key: "0"}, [(x, router)])
+                _, explicit_zero = self._run_decode_with_telemetry(
+                    model_path, {**config, prefix + "skip_zero_cold_doorbell": "0"}, [(x, router)]
+                )
             self.assertEqual(enabled[0]["zero_cold_short_circuits"], 1)
             self.assertEqual(explicit_zero[0]["zero_cold_short_circuits"], 0)
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "ORT_QMOE_TAIL_SUBSTITUTION_THRESHOLD": "invalid",
+                    "ORT_QMOE_TAIL_SUBSTITUTION_MIN_RANK": "invalid",
+                },
+            ):
+                with self.assertRaisesRegex(Exception, "tail_substitution_threshold"):
+                    self._make_session(model_path, config)
+                session = self._make_session(
+                    model_path,
+                    {**config, prefix + "tail_substitution_threshold": "0", prefix + "tail_substitution_min_rank": "0"},
+                )
+                del session
 
     def test_v4_int4_and_int3_offload_modes_and_numerical_parity(self):
         with tempfile.TemporaryDirectory() as tmpdir:

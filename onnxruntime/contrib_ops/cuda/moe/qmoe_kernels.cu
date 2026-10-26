@@ -155,7 +155,7 @@ __global__ void QMoEOffloadClassifyKernel(
     uint64_t* doorbell_seq_dev, volatile uint64_t* doorbell_req_host,
     volatile int32_t* doorbell_tile_rows_host, int tile_rows,
     bool skip_zero_cold, volatile uint64_t* doorbell_done_host,
-    volatile int32_t* cold_count_host, QMoEOffloadTelemetry* telemetry) {
+    volatile int32_t* cold_count_host, QMoEOffloadTelemetry* telemetry, const float* topk_scales) {
   const int row = blockIdx.x * blockDim.x + threadIdx.x;
   int exp = 0;
   int slot = -1;
@@ -169,6 +169,10 @@ __global__ void QMoEOffloadClassifyKernel(
     hit_compact[row] = slot < 0 ? dummy_slot : slot;
     if (row < route_count) {
       hit_flag[row] = slot >= 0;
+      if (telemetry != nullptr && row < 256) {
+        telemetry->last_indices[row] = exp;
+        telemetry->last_weights[row] = topk_scales[row];
+      }
     }
   }
   const bool has_doorbell = (doorbell_seq_dev != nullptr && doorbell_req_host != nullptr && gridDim.x == 1);
@@ -295,7 +299,7 @@ cudaError_t LaunchQMoEOffloadClassify(
     uint64_t* doorbell_seq_dev, volatile uint64_t* doorbell_req_host,
     volatile int32_t* doorbell_tile_rows_host, int tile_rows,
     bool skip_zero_cold, volatile uint64_t* doorbell_done_host,
-    volatile int32_t* cold_count_host, QMoEOffloadTelemetry* telemetry) {
+    volatile int32_t* cold_count_host, QMoEOffloadTelemetry* telemetry, const float* topk_scales) {
   if (row_count <= 0) return cudaSuccess;
   if (doorbell_seq_dev != nullptr && doorbell_req_host != nullptr && row_count <= 256) {
     QMoEOffloadClassifyKernel<<<1, 256, 0, stream>>>(
@@ -304,7 +308,7 @@ cudaError_t LaunchQMoEOffloadClassify(
         host_indices_out, reinterpret_cast<const uint4*>(input_dev),
         reinterpret_cast<uint4*>(host_input_out), input_vec4_count,
         doorbell_seq_dev, doorbell_req_host, doorbell_tile_rows_host, tile_rows,
-        skip_zero_cold, doorbell_done_host, cold_count_host, telemetry);
+        skip_zero_cold, doorbell_done_host, cold_count_host, telemetry, topk_scales);
     return cudaGetLastError();
   }
   const int blocks = row_count / 128 + (row_count % 128 != 0);
@@ -313,8 +317,192 @@ cudaError_t LaunchQMoEOffloadClassify(
       unit_scales, identity_permutation, k_for_source_rows,
       host_indices_out, reinterpret_cast<const uint4*>(input_dev),
       reinterpret_cast<uint4*>(host_input_out), input_vec4_count,
-      nullptr, nullptr, nullptr, tile_rows, false, nullptr, nullptr, nullptr);
+      nullptr, nullptr, nullptr, tile_rows, false, nullptr, nullptr, nullptr, nullptr);
   return cudaGetLastError();
+}
+
+template <typename T>
+__global__ void QMoETailSubstitutionKernel(
+    const T* logits, float* topk_scales, int* topk_indices, const int* expert_slot,
+    int num_experts, int k, int min_rank, float threshold, bool normalize_scales,
+    QMoEOffloadTelemetry* telemetry) {
+  const int row = blockIdx.x;
+  const int lane = threadIdx.x;
+  const T* row_logits = logits + static_cast<size_t>(row) * num_experts;
+  int* row_indices = topk_indices + row * k;
+  float* row_scales = topk_scales + row * k;
+  float row_max = -FLT_MAX;
+  for (int expert = lane; expert < num_experts; expert += 32) {
+    row_max = fmaxf(row_max, static_cast<float>(row_logits[expert]));
+  }
+  for (int offset = 16; offset > 0; offset /= 2) {
+    row_max = fmaxf(row_max, __shfl_down_sync(0xffffffffu, row_max, offset));
+  }
+  row_max = __shfl_sync(0xffffffffu, row_max, 0);
+  float row_sum = 0.0f;
+  for (int expert = lane; expert < num_experts; expert += 32) {
+    row_sum += expf(static_cast<float>(row_logits[expert]) - row_max);
+  }
+  for (int offset = 16; offset > 0; offset /= 2) {
+    row_sum += __shfl_down_sync(0xffffffffu, row_sum, offset);
+  }
+  row_sum = __shfl_sync(0xffffffffu, row_sum, 0);
+  if (!isfinite(row_max) || !isfinite(row_sum) || row_sum <= 0.0f) return;
+
+  extern __shared__ uint32_t selected[];
+  const int mask_words = num_experts / 32 + (num_experts % 32 != 0);
+  for (int word = lane; word < mask_words; word += 32) selected[word] = 0;
+  __syncwarp();
+  float orig_selected_max = -FLT_MAX;
+  int cold_before = 0;
+  for (int rank = lane; rank < k; rank += 32) {
+    const int expert = row_indices[rank];
+    atomicOr(selected + expert / 32, uint32_t{1} << (expert % 32));
+    cold_before += expert_slot[expert] < 0;
+    orig_selected_max = fmaxf(orig_selected_max, static_cast<float>(row_logits[expert]));
+  }
+  __syncwarp();
+  for (int offset = 16; offset > 0; offset /= 2) {
+    cold_before += __shfl_down_sync(0xffffffffu, cold_before, offset);
+    orig_selected_max = fmaxf(orig_selected_max, __shfl_down_sync(0xffffffffu, orig_selected_max, offset));
+  }
+  cold_before = __shfl_sync(0xffffffffu, cold_before, 0);
+  orig_selected_max = __shfl_sync(0xffffffffu, orig_selected_max, 0);
+  float orig_selected_sum = 0.0f;
+  for (int rank = lane; rank < k; rank += 32) {
+    orig_selected_sum += expf(static_cast<float>(row_logits[row_indices[rank]]) - orig_selected_max);
+  }
+  for (int offset = 16; offset > 0; offset /= 2) {
+    orig_selected_sum += __shfl_down_sync(0xffffffffu, orig_selected_sum, offset);
+  }
+  orig_selected_sum = __shfl_sync(0xffffffffu, orig_selected_sum, 0);
+  const float orig_scale_denom = fmaxf(orig_selected_sum, kTopKNormalizeEpsilon);
+
+  int substitutions = 0;
+  uint32_t sub_rank_mask = 0u;
+  float sub_orig_scale_mass = 0.0f;
+  for (int rank = min_rank; rank < k; ++rank) {
+    const int expert = row_indices[rank];
+    if (expert_slot[expert] >= 0) continue;
+    float best_logit = -FLT_MAX;
+    int best_expert = num_experts;
+    for (int candidate = lane; candidate < num_experts; candidate += 32) {
+      if (expert_slot[candidate] < 0 ||
+          (selected[candidate / 32] & (uint32_t{1} << (candidate % 32))) != 0) continue;
+      const float value = static_cast<float>(row_logits[candidate]);
+      if (value > best_logit || (value == best_logit && candidate < best_expert)) {
+        best_logit = value;
+        best_expert = candidate;
+      }
+    }
+    for (int offset = 16; offset > 0; offset /= 2) {
+      const float other_logit = __shfl_down_sync(0xffffffffu, best_logit, offset);
+      const int other_expert = __shfl_down_sync(0xffffffffu, best_expert, offset);
+      if (lane + offset < 32 &&
+          (other_logit > best_logit || (other_logit == best_logit && other_expert < best_expert))) {
+        best_logit = other_logit;
+        best_expert = other_expert;
+      }
+    }
+    best_logit = __shfl_sync(0xffffffffu, best_logit, 0);
+    best_expert = __shfl_sync(0xffffffffu, best_expert, 0);
+    const float expert_logit = static_cast<float>(row_logits[expert]);
+    const float original_probability = expf(expert_logit - row_max) / row_sum;
+    const float replacement_probability = expf(best_logit - row_max) / row_sum;
+    const float orig_scale = expf(expert_logit - orig_selected_max) / orig_scale_denom;
+    const float repl_scale = expf(best_logit - orig_selected_max) / orig_scale_denom;
+    const float prob_gap = original_probability - replacement_probability;
+    const float scale_gap = orig_scale - repl_scale;
+    const float effective_gap =
+        (normalize_scales && min_rank > 0 && prob_gap > 0.0f)
+            ? sqrtf(prob_gap * fmaxf(0.0f, scale_gap))
+            : prob_gap;
+    const bool scale_within_bound =
+        !normalize_scales || min_rank == 0 || orig_scale <= fmaxf(threshold * 25.0f, 0.050f);
+    if (best_expert < num_experts && effective_gap <= threshold && scale_within_bound) {
+      if (lane == 0) {
+        row_indices[rank] = best_expert;
+        selected[expert / 32] &= ~(uint32_t{1} << (expert % 32));
+        selected[best_expert / 32] |= uint32_t{1} << (best_expert % 32);
+      }
+      sub_rank_mask |= (uint32_t{1} << rank);
+      sub_orig_scale_mass += orig_scale;
+      ++substitutions;
+      __syncwarp();
+    }
+  }
+  if (substitutions == 0) return;
+
+  if (normalize_scales) {
+    float sub_max = -FLT_MAX;
+    for (int rank = lane; rank < k; rank += 32) {
+      if ((sub_rank_mask & (uint32_t{1} << rank)) != 0u) {
+        sub_max = fmaxf(sub_max, static_cast<float>(row_logits[row_indices[rank]]));
+      }
+    }
+    for (int offset = 16; offset > 0; offset /= 2) {
+      sub_max = fmaxf(sub_max, __shfl_down_sync(0xffffffffu, sub_max, offset));
+    }
+    sub_max = __shfl_sync(0xffffffffu, sub_max, 0);
+    float sub_sum = 0.0f;
+    for (int rank = lane; rank < k; rank += 32) {
+      if ((sub_rank_mask & (uint32_t{1} << rank)) != 0u) {
+        sub_sum += expf(static_cast<float>(row_logits[row_indices[rank]]) - sub_max);
+      }
+    }
+    for (int offset = 16; offset > 0; offset /= 2) {
+      sub_sum += __shfl_down_sync(0xffffffffu, sub_sum, offset);
+    }
+    sub_sum = __shfl_sync(0xffffffffu, sub_sum, 0);
+    const float mass = (substitutions == k) ? 1.0f : sub_orig_scale_mass;
+    const float sub_denom = fmaxf(sub_sum, kTopKNormalizeEpsilon);
+    for (int rank = lane; rank < k; rank += 32) {
+      if ((sub_rank_mask & (uint32_t{1} << rank)) != 0u) {
+        row_scales[rank] = mass * expf(static_cast<float>(row_logits[row_indices[rank]]) - sub_max) / sub_denom;
+      }
+    }
+  } else {
+    for (int rank = lane; rank < k; rank += 32) {
+      if ((sub_rank_mask & (uint32_t{1} << rank)) != 0u) {
+        row_scales[rank] = expf(static_cast<float>(row_logits[row_indices[rank]]) - row_max) / row_sum;
+      }
+    }
+  }
+  if (lane == 0 && telemetry != nullptr) {
+    telemetry->substituted_routes_count[row] += substitutions;
+    telemetry->zero_cold_conversions_count[row] += cold_before == substitutions;
+  }
+}
+
+template <typename T>
+cudaError_t LaunchQMoETailSubstitutionImpl(
+    const T* logits, float* topk_scales, int* topk_indices, const int* expert_slot,
+    int num_rows, int num_experts, int k, int min_rank, float threshold,
+    bool normalize_scales, cudaStream_t stream, QMoEOffloadTelemetry* telemetry) {
+  if (num_rows <= 0 || num_rows > 4 || k <= 0 || k > 32 || k > num_experts || min_rank < 0 || min_rank >= k ||
+      threshold <= 0.0f || logits == nullptr || topk_scales == nullptr ||
+      topk_indices == nullptr || expert_slot == nullptr) return cudaErrorInvalidValue;
+  const size_t mask_bytes = static_cast<size_t>(num_experts / 32 + (num_experts % 32 != 0)) * sizeof(uint32_t);
+  QMoETailSubstitutionKernel<<<num_rows, 32, mask_bytes, stream>>>(
+      logits, topk_scales, topk_indices, expert_slot, num_experts, k, min_rank, threshold,
+      normalize_scales, telemetry);
+  return cudaGetLastError();
+}
+
+cudaError_t LaunchQMoETailSubstitution(
+    const half* logits, float* topk_scales, int* topk_indices, const int* expert_slot,
+    int num_rows, int num_experts, int k, int min_rank, float threshold,
+    bool normalize_scales, cudaStream_t stream, QMoEOffloadTelemetry* telemetry) {
+  return LaunchQMoETailSubstitutionImpl(logits, topk_scales, topk_indices, expert_slot, num_rows,
+                                        num_experts, k, min_rank, threshold, normalize_scales, stream, telemetry);
+}
+
+cudaError_t LaunchQMoETailSubstitution(
+    const __nv_bfloat16* logits, float* topk_scales, int* topk_indices, const int* expert_slot,
+    int num_rows, int num_experts, int k, int min_rank, float threshold,
+    bool normalize_scales, cudaStream_t stream, QMoEOffloadTelemetry* telemetry) {
+  return LaunchQMoETailSubstitutionImpl(logits, topk_scales, topk_indices, expert_slot, num_rows,
+                                        num_experts, k, min_rank, threshold, normalize_scales, stream, telemetry);
 }
 
 cudaError_t LaunchQMoEOffloadMerge(
