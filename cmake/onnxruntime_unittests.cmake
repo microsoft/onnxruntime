@@ -1138,12 +1138,14 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND onnxruntime_BUILD_CUDA_EP_AS_P
 
   if (TARGET onnxruntime_providers_cuda_plugin)
     if (NOT onnxruntime_DISABLE_CONTRIB_OPS)
-      set_property(SOURCE "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/moe_gemm_int2_test.cc"
-        APPEND PROPERTY INCLUDE_DIRECTORIES
-        $<TARGET_PROPERTY:onnxruntime_providers_cuda_plugin,INCLUDE_DIRECTORIES>)
-      set_property(SOURCE "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/moe_gemm_int2_test.cc"
-        APPEND PROPERTY COMPILE_DEFINITIONS
-        BUILD_CUDA_EP_AS_PLUGIN ORT_API_MANUAL_INIT ORT_USE_EP_API_ADAPTERS=1)
+      foreach(cuda_plugin_internal_test gemm_tactic_cache_test.cc moe_gemm_int2_test.cc)
+        set_property(SOURCE "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/${cuda_plugin_internal_test}"
+          APPEND PROPERTY INCLUDE_DIRECTORIES
+          $<TARGET_PROPERTY:onnxruntime_providers_cuda_plugin,INCLUDE_DIRECTORIES>)
+        set_property(SOURCE "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/${cuda_plugin_internal_test}"
+          APPEND PROPERTY COMPILE_DEFINITIONS
+          BUILD_CUDA_EP_AS_PLUGIN ORT_API_MANUAL_INIT ORT_USE_EP_API_ADAPTERS=1)
+      endforeach()
     endif()
     set(onnxruntime_providers_cuda_plugin_ut_impl_src
       "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_allocator.cc"

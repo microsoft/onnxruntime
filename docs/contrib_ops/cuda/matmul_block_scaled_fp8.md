@@ -364,8 +364,8 @@ Y = bf16(bf16(down * gate) + shared_residual)
 ```
 
 `sigmoid_bf16` uses BF16 intermediates, including the negative-input
-subtraction, matching `SigmoidGateMul(sigmoid_in_fp32=0)`. The projected
-gate uses the same 256-thread CUB reduction as that operator. Input 5
+subtraction, matching the CUDA `Sigmoid` operator. The projected gate uses
+a local 256-thread CUB reduction. Input 5
 `prefill_numerics` still selects the original FP8 projection numerical path.
 
 One preparation kernel computes both SiLU/up and projected row gates. On SM90,
@@ -374,10 +374,11 @@ and absorb the gate/residual epilogue into its stores (two total launches
 instead of three). Other architectures, disabled MMA, larger M, small or
 unaligned K and dense-prefill paths retain the existing projection
 dispatch and run a separate epilogue. No weights are transformed by the fusion.
-The focused native tests compare bit-exactly against the three original CUDA
-operators, including dense-prefill and generic fallbacks.
+The focused native tests compare bit-exactly against the unfused FP8 projection
+and a reference for the BF16 activation and epilogue, including dense-prefill
+and generic fallbacks.
 
 
 Optional CPU input 5 selects dense-prefill numerics. Optional inputs 6-8 and `prefill_weight_offsets` preserve the original projection weights/layout when a packed decode projection differs. They are mutually exclusive with shared-expert mode.
 
-Shared-expert preparation depends on the projected-gate helpers from companion PR #33470.
+Shared-expert preparation is self-contained and requires no companion operator PR.

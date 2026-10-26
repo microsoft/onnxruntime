@@ -373,6 +373,22 @@ TEST(CUDA_EP_Unittest, FusedSoftmaxTopKExpertMaps_NormalizedAndGraphReplay) {
   }
 }
 
+TEST(CUDA_EP_Unittest, FusedSoftmaxTopKExpertMaps_MultipleNaNsAreRowLocal) {
+  for (int experts : {65, 512}) {
+    for (int nan_row : {0, 1}) {
+      SCOPED_TRACE(::testing::Message() << "experts=" << experts << " nan_row=" << nan_row);
+      std::vector<float> values(2 * experts, 0.0f);
+      // Several threads observe NaNs in one sorting group; the other row must retain its probabilities.
+      for (int expert = 0; expert < experts; expert += 4) {
+        values[nan_row * experts + expert] = -std::numeric_limits<float>::quiet_NaN();
+      }
+      RunFusedRoutingMapsTest<float>(2, experts, 10, false, false, &values);
+      RunFusedRoutingMapsTest<half>(2, experts, 10, false, false, &values);
+      RunFusedRoutingMapsTest<__nv_bfloat16>(2, experts, 10, false, false, &values);
+    }
+  }
+}
+
 TEST(CUDA_EP_Unittest, FusedSoftmaxTopKExpertMaps_UnsupportedUsesFallback) {
   auto launch = [](int rows, int experts, int k, bool normalize) {
     return contrib::cuda::TryLaunchSoftmaxTopKExpertMaps(
