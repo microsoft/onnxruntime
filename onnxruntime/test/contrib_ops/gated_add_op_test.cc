@@ -162,6 +162,17 @@ TEST(ContribOpGatedAddTest, BFloat16) {
   RunGatedAddTest<BFloat16>({1, 4, 2048});
 }
 
+TEST(ContribOpGatedAddTest, Float16NonVectorizedHiddenSize) {
+  RunGatedAddTest<MLFloat16>({3, 5, 7});
+}
+
+TEST(ContribOpGatedAddTest, BFloat16NonVectorizedHiddenSize) {
+  if (!CudaHasBF16Support()) {
+    GTEST_SKIP() << "bfloat16 requires compute capability 8.0 or later";
+  }
+  RunGatedAddTest<BFloat16>({3, 5, 7});
+}
+
 TEST(ContribOpGatedAddTest, MismatchedYShape) {
   auto execution_providers = AvailableGatedOpExecutionProviders();
   for (auto& ep : execution_providers) {
@@ -187,7 +198,8 @@ TEST(ContribOpGatedAddTest, ProjectedGateBFloat16) {
     int64_t width;
     int64_t input_width;
   };
-  for (const ProjectionCase& test_case : {ProjectionCase{8, 16}, ProjectionCase{2560, 16}, ProjectionCase{259, 300}}) {
+  for (const ProjectionCase& test_case : {ProjectionCase{8, 16}, ProjectionCase{2560, 16}, ProjectionCase{2560, 2560},
+                                          ProjectionCase{259, 300}}) {
     constexpr int64_t kRows = 4;
     const int64_t width = test_case.width;
     const int64_t input_width = test_case.input_width;

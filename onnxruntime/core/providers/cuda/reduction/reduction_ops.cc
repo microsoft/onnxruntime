@@ -97,9 +97,8 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
 
   int64_t input_count = input_shape.Size();
   IAllocatorUniquePtr<float> temp_X;
-  if (ReduceTensorIndices == CUDNN_REDUCE_TENSOR_FLATTENED_INDICES &&
-      (std::is_same<T, MLFloat16>::value || std::is_same<T, BFloat16>::value)) {
-    // ArgMax/ArgMin with FP16/BF16 are not supported by cudnn, so convert input to fp32 then call cudnn
+  if (ReduceTensorIndices == CUDNN_REDUCE_TENSOR_FLATTENED_INDICES && std::is_same<T, MLFloat16>::value) {
+    // ArgMax/ArgMin with FP16 are not supported by cudnn, so convert input to fp32 then call cudnn
     temp_X = GetScratchBuffer<float>(input_count, stream);
     cudnn_type_X = CUDNN_DATA_FLOAT;
     Impl_Cast<CudaT, float>(cuda_stream, reinterpret_cast<const CudaT*>(X), temp_X.get(), input_shape.Size());
@@ -115,7 +114,7 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
   }
 
   CudnnReduceDescriptor reduce_desc;
-  if constexpr (std::is_same<T, MLFloat16>::value || std::is_same<T, BFloat16>::value)
+  if constexpr (std::is_same<T, MLFloat16>::value)
     ORT_RETURN_IF_ERROR(reduce_desc.Set(cudnn_reduce_op, CudnnTensor::GetDataType<float>(), ReduceTensorIndices));
   else
     ORT_RETURN_IF_ERROR(reduce_desc.Set(cudnn_reduce_op, cudnn_type_X, ReduceTensorIndices));

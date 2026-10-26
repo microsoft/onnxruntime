@@ -62,29 +62,22 @@ __global__ void ProjectedSigmoidGateMulKernel(
   if ((output_width & 7) == 0 &&
       (reinterpret_cast<uintptr_t>(attention + row_base) & 15) == 0 &&
       (reinterpret_cast<uintptr_t>(output + row_base) & 15) == 0 &&
-      (residual == nullptr || (reinterpret_cast<uintptr_t>(residual + row_base) & 15) == 0)) {
+      (reinterpret_cast<uintptr_t>(residual + row_base) & 15) == 0) {
     const int64_t vec_width = output_width >> 3;
     const uint4* attn_vec = reinterpret_cast<const uint4*>(attention + row_base);
-    const uint4* res_vec = residual != nullptr ? reinterpret_cast<const uint4*>(residual + row_base) : nullptr;
+    const uint4* res_vec = reinterpret_cast<const uint4*>(residual + row_base);
     uint4* out_vec = reinterpret_cast<uint4*>(output + row_base);
     for (int64_t v = threadIdx.x; v < vec_width; v += kProjectedGateThreads) {
       const uint4 a_u4 = attn_vec[v];
+      const uint4 r_u4 = res_vec[v];
       const __nv_bfloat16* a_bf = reinterpret_cast<const __nv_bfloat16*>(&a_u4);
+      const __nv_bfloat16* r_bf = reinterpret_cast<const __nv_bfloat16*>(&r_u4);
       uint4 o_u4;
       __nv_bfloat16* o_bf = reinterpret_cast<__nv_bfloat16*>(&o_u4);
-      if (res_vec != nullptr) {
-        const uint4 r_u4 = res_vec[v];
-        const __nv_bfloat16* r_bf = reinterpret_cast<const __nv_bfloat16*>(&r_u4);
 #pragma unroll
-        for (int m = 0; m < 8; ++m) {
-          const __nv_bfloat16 scaled = __float2bfloat16_rn(__bfloat162float(a_bf[m]) * gate);
-          o_bf[m] = __float2bfloat16_rn(__bfloat162float(scaled) + __bfloat162float(r_bf[m]));
-        }
-      } else {
-#pragma unroll
-        for (int m = 0; m < 8; ++m) {
-          o_bf[m] = __float2bfloat16_rn(__bfloat162float(a_bf[m]) * gate);
-        }
+      for (int m = 0; m < 8; ++m) {
+        const __nv_bfloat16 scaled = __float2bfloat16_rn(__bfloat162float(a_bf[m]) * gate);
+        o_bf[m] = __float2bfloat16_rn(__bfloat162float(scaled) + __bfloat162float(r_bf[m]));
       }
       out_vec[v] = o_u4;
     }
@@ -92,11 +85,8 @@ __global__ void ProjectedSigmoidGateMulKernel(
   }
   for (int64_t column = threadIdx.x; column < output_width; column += kProjectedGateThreads) {
     const int64_t index = row_base + column;
-    __nv_bfloat16 value = __float2bfloat16_rn(__bfloat162float(attention[index]) * gate);
-    if (residual != nullptr) {
-      value = __float2bfloat16_rn(__bfloat162float(value) + __bfloat162float(residual[index]));
-    }
-    output[index] = value;
+    const __nv_bfloat16 scaled = __float2bfloat16_rn(__bfloat162float(attention[index]) * gate);
+    output[index] = __float2bfloat16_rn(__bfloat162float(scaled) + __bfloat162float(residual[index]));
   }
 }
 
