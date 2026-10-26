@@ -100,6 +100,7 @@ struct RuntimeWorkloadSnapshot {
   // Run outcome is independent of submission completeness. Retained records on Failed runs
   // describe only successful kernels before failure, not a complete successful workload.
   RuntimeWorkloadRunState run_state = RuntimeWorkloadRunState::NotStarted;
+  RuntimeWorkloadLimits limits{};
 };
 
 // One collector per run. Callers own its lifetime and must keep it alive until all submitters finish.

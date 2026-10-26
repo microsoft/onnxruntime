@@ -1013,6 +1013,12 @@ class InferenceSession {
   static std::atomic<uint32_t> global_session_id_;  // a monotonically increasing session id
   uint32_t session_id_;                             // the current session's id
 
+#if !defined(ORT_MINIMAL_BUILD)
+  std::string compute_estimate_report_prefix_;
+  size_t compute_estimate_max_records_ = 10000;
+  size_t compute_estimate_max_payload_bytes_ = 16 * 1024 * 1024;
+#endif
+
   struct Telemetry {
     Telemetry();
     uint32_t total_runs_since_last_ = 0;                              // the total number of Run() calls since the last report

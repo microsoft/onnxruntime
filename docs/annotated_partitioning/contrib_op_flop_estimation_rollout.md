@@ -1,13 +1,13 @@
 # Contrib Operator FLOP Estimation: Design and Rollout Plan
 
-**Status:** Rollout proposal with an initial internal implementation; later phases remain proposed.
+**Status:** CPU MatMulNBits runtime count/report preview implemented; GQA and later phases remain proposed.
 
 ## 1. Summary
 
 Introduce an opt-in diagnostic feature that estimates the mathematical work of a contrib operator invocation.
 The minimum operator scope is `com.microsoft::MatMulNBits` and GroupQueryAttention (GQA). Start with the existing
-MatMulNBits estimator, bias component, and legacy static-report preview; next connect estimates to runtime workload metadata,
-then add GQA baseline estimates. Route-aware adjustments are optional, incremental refinements, not an exact
+MatMulNBits estimator, bias component, and runtime metadata/report integration;
+next add GQA baseline estimates. Route-aware adjustments are optional, incremental refinements, not an exact
 executed-work prerequisite for GQA. Keep dispatch, placement,
 memory admission, and allocation behavior unchanged throughout the diagnostic rollout.
 
@@ -25,8 +25,8 @@ The key distinction is:
   establish this rate.
 
 **Target deliverable:** runtime-derived workload estimates for MatMulNBits and GQA in a versioned developer report.
-Initialization should configure runtime reporting, not generate the target workload report. The existing static
-export is a legacy developer preview to replace in a later batch, not the desired reporting lifecycle.
+Initialization configures runtime reporting, without generating a workload report. Batch 3 replaces the legacy
+initialization-time static export; graph-based helpers remain internal regression/reference utilities.
 Throughput and performance-policy changes are separate deliverables.
 
 The initial core-only preview and the core-plus-bias increment remain independently reviewable and shippable.
@@ -58,7 +58,7 @@ are not implemented by this increment.
 ### Structured runtime collector: review batches
 
 The target report uses metadata from actual runtime invocations, not initialization-time workload assumptions.
-The existing initialization-time export below remains a legacy preview until replacement is implemented.
+Batch 3 replaces the legacy initialization-time export with per-run reports.
 Metadata transport must be typed and independent of logger severity or text parsing.
 
 **Batch 1: standalone storage primitive (implemented, not connected to inference).**
@@ -135,68 +135,103 @@ capability-gated LUT route, activation conversion, dynamic/repeated/concurrent r
 isolation, If/Loop/Scan identity, empty outputs, rank-one/two-bit geometry, kernel/termination/downstream
 failures, bounded collection, collector reuse, and unchanged output values.
 
-**Batch 3 (proposed): runtime counts and export.** Apply existing checked core/bias formulas to invocation records,
-export versioned runtime reports with partial/drop/run-status coverage, and replace initialization-time workload
-export. Agree on configuration and export lifecycle before implementation; GQA extends this path afterward.
+**Batch 3: runtime counts and export (implemented).** Apply the existing pure checked core/bias helpers to each
+retained invocation's full activation shape, K, N and bias presence. The full shape already includes batching:
+backend M/batch_count are provenance, not an additional multiplier. Missing route information does not invalidate
+the baseline. No route-adjusted arithmetic, device timing, hardware calibration, GQA or CUDA capture is introduced.
 
 ### Generating a review artifact
 
-The following describes the still-available legacy static preview, not the target runtime report.
-
-Set `session.compute_estimate_report_path` to a UTF-8 JSON file path before creating a session:
+Set `session.compute_estimate_report_path` to a UTF-8 **output prefix** before creating a session:
 
 ```python
 import onnxruntime as ort
 
 options = ort.SessionOptions()
-options.add_session_config_entry("session.compute_estimate_report_path", "compute_estimates.json")
+options.add_session_config_entry("session.compute_estimate_report_path", "compute_estimates")
+options.add_session_config_entry("session.compute_estimate_max_records", "10000")
+options.add_session_config_entry("session.compute_estimate_max_payload_bytes", "16777216")
 session = ort.InferenceSession("model.onnx", sess_options=options, providers=["CPUExecutionProvider"])
+# Supply the model's actual feeds; each run writes its own report.
+outputs = session.run(None, feeds)
 ```
 
 The equivalent C++ configuration is:
 
 ```cpp
 Ort::SessionOptions options;
-options.AddConfigEntry("session.compute_estimate_report_path", "compute_estimates.json");
+options.AddConfigEntry("session.compute_estimate_report_path", "compute_estimates");
 ```
 
 These examples require an ORT build containing this implementation, not an older installed wheel.
-Session initialization generates the report from the final executable graph before removable attributes are
-pruned. No `Run()` or profiling call is required. Relative paths use the process working directory; parents must
-already exist. Existing files are overwritten, so choose a path distinct from model/optimized-model files and a
-different path for each concurrent session. Reports contain node names and shape metadata; review them before sharing.
+Initialization validates configuration but writes no report. After each canonical `Run`, including failed runs,
+the session closes collection, snapshots it and synchronously exports outside the kernel path. A report is available
+when `Run` returns. Export adds CPU/file-I/O latency; it performs no additional device synchronization.
+For asynchronous callers, wait for completion before inspecting output.
 
-Unknown/unsupported estimates are normal report entries. Generation/open/write failures log a warning and do not
-fail session initialization. Minimal builds and compile-only sessions warn that export is unsupported. Full builds
-with contrib ops disabled can export coverage reports but label the MatMulNBits estimator unavailable.
-The unset/empty option performs no report traversal or file I/O.
+Filenames have the form
+`<prefix>_<pid>_<process-token-timestamp>_session-<session-id>_run-<run-id>.json`.
+The process token is initialized once at first export; session/run IDs distinguish concurrent sessions/runs.
+Relative prefixes use the process working directory; parent directories must already exist. Choose a fresh prefix
+for independent application launches. Reports contain actual tensor shapes and graph/node identities, but no tensor
+contents; review metadata before sharing.
 
-The developer-facing schema is version 2. It replaces the core-only version-1 preview, adding bias and
-component-level subtotals and introducing partial node availability. `estimator_support` is
-`matmul_nbits_core_and_bias` when enabled. `nodes` contains per-node components and positional input shapes
-(unknown dimensions are `null`, omitted optional inputs have state `missing`). `graphs` contains separate summaries
-for `main` and each nested graph. Nested identities use `main/<node_index>/<attribute_name>`, recursively;
-attribute segments escape `~` as `~0` and `/` as `~1`. The top-level summary covers only direct nodes in `main`.
-Counts never aggregate alternative branches or unknown loop iteration counts into a per-run total.
+The two optional budgets default to 10,000 records and 16 MiB accounted payload per run. They accept nonnegative
+decimal integers representable as size_t; invalid values fail initialization. Zero intentionally retains no records.
+These are collector accounting limits, not hard peak-memory limits: snapshots, JSON construction and serialization
+consume additional memory. Every run creates a file; there is no disk-retention policy. Use a bounded diagnostic
+window and manage report retention externally.
 
-Node availability is `available` when both declared components are available, `partial` when only one is
-available, and `unavailable` when neither is available (or the operator is unsupported).
-The three node counts in each summary are disjoint: `estimated_node_count` means fully estimated within the
-declared component scope, `partially_estimated_node_count` means partially estimated, and `unavailable_node_count`
-means no component is available. Reason counts include partial nodes.
-Each `component_summaries` entry reports its metric, convention, logical basis, per-invocation phase,
-estimated/unavailable component counts, unavailable reasons, checked `known_operation_count`, and completeness.
-An overflowing component subtotal omits its count and reports overflow. These subtotals cover declared components
-of supported direct nodes, not unsupported nodes or complete operator work.
-The existing `known_dense_equivalent_ops` and `subtotal_availability` remain core-only; bias is never added to that
-subtotal. Overall declared-scope completeness also requires no partial nodes or component-subtotal overflow.
-Core still lists bias among its exclusions; bias has its own `floating_point_ops` metric and `bias_add_v1`
-convention. Neither component claims route-specific executed work or whole-operator completeness.
+If an internal caller also supplies `RunOptions::runtime_workload_collector`, the supplied collector is used for
+both capture and export with its own limits. It must be fresh for every run. Reuse warns and skips capture/export
+for that run rather than exporting a stale snapshot. Internal callers may also explicitly call the snapshot-based
+`BuildComputeEstimateReport` or `WriteComputeEstimateReport` without enabling automatic export.
+
+Generation/open/write failures warn without changing inference status or outputs; they do not produce a replacement
+success report. An interrupted or failed write can leave a partial file; only successfully parsed reports should be
+consumed. Minimal builds and compile-only sessions warn that automatic export is unsupported. Full contrib-disabled
+builds can export empty coverage reports with `estimator_support: disabled`. Unset/empty prefix performs no
+automatic collection, report traversal or file I/O; an explicitly supplied internal collector still works.
+
+**Migration:** the old `session.compute_estimate_report_path` literal-file/static behavior is intentionally replaced.
+Consumers must discover suffixed files and parse schema version 3 instead of expecting an initialization-time
+version-2 `nodes`/`graphs` document. The graph-based version-2 builders remain internal only.
+
+### Runtime report contract (schema version 3)
+
+- `report_kind: runtime_workload`, session/run IDs and `run_state` identify the run. No timing/rate is implied.
+- `invocations` contains only retained records from successful instrumented CPU MatMulNBits invocations, including
+  repeated executed subgraphs. Unexecuted branches and static nodes do not contribute.
+- Each record includes graph/node/invocation/provider identity, actual shapes, backend geometry, bias presence,
+  activation type, quantization settings, and optional route/effective-mode provenance. Invocation IDs reflect commit
+  order, not execution order. No hardware instruction count or tiling metadata is claimed.
+- Core uses `dense_equivalent_ops` / `core_arithmetic_v1`; bias uses `floating_point_ops` / `bias_add_v1`.
+  For A=[2,3,64], N=32 with bias: core=24576 and bias=192. Bias is never added to the core subtotal.
+- Per-invocation availability is `available`, `partial` or `unavailable`. Missing estimates have explicit reasons and
+  omit `operation_count`; valid zero counts remain available. Counts are decimal strings to preserve uint64 precision.
+- `component_summaries` aggregate retained executed records across graph scopes. Overflow omits the subtotal count.
+  `complete_for_captured_component_scope` requires successful Run, complete collection, available component estimates
+  and no subtotal overflow. A known subtotal on a failed run describes successful invocations before failure only.
+- `collection` exposes the actual record/payload budgets, accounted retained bytes and
+  record/payload/allocation/metadata/reuse diagnostics independently
+  of run outcome. Missing records are never assigned zero work.
+- `coverage_scope: instrumented_cpu_matmul_nbits_invocations_only`, `whole_run_work_complete: false` and
+  `whole_operator_work_complete: false` prevent captured subtotals from masquerading as all-model/all-provider counts.
+  An empty report is not evidence that a workload did no work. Unsupported operators, CUDA kernels, fused/opaque EP
+  partitions and graph replay are not instrumented, and their skipped invocation counts are not known.
+- `route_adjustment_applied: false`; dequantization, packing, conversions, padding and route-specific extras are
+  explicitly excluded. Route names do not change the baseline formulas.
+
+CPU Debug correctness tests cover counts, partial/overflow/drop diagnostics, automatic per-run export, concurrent
+runs, dynamic shapes, UTF-8 paths, file errors, disabled behavior, explicit collector coexistence, and executed
+If/Loop/Scan/transformer records. This is a developer preview, not production overhead qualification or evidence of
+CUDA/plugin/minimal runtime coverage; those need their own build/runtime validation and performance matrix.
 
 Run the targeted tests after rebuilding:
 
 ```text
-onnxruntime_provider_test --gtest_filter="ComputeEstimateReportTest.*:MatMulNBitsComputeEstimate*:MatMulNBitsBiasEstimate*"
+onnxruntime_provider_test --gtest_filter="ComputeEstimateReportTest.*:RuntimeComputeEstimateReportTest.*:MatMulNBitsComputeEstimate*:MatMulNBitsBiasEstimate*"
+onnxruntime_test_all --gtest_filter="RuntimeWorkloadCollectorTest.*:RuntimeWorkloadExecutionTest.*"
 ```
 
 ## 2. Motivation and boundaries
@@ -392,7 +427,7 @@ per-node result -> coverage-aware report -> optional timing correlation
 7. Defer public C/C++/Python APIs and plugin registration until the internal contract stabilizes.
 
 The result type should make contradictory states impossible: an available estimate has a count, and an unavailable
-estimate has a reason rather than a numeric placeholder. The following is an abbreviated version-2 report
+estimate has a reason rather than a numeric placeholder. The following is a historical, abbreviated static version-2 report
 for a node without bias;
 the implementation also emits positional input metadata, estimator support, and per-graph summaries:
 
@@ -723,9 +758,10 @@ additional build coverage, and later-phase semantics still require team agreemen
 
 ## 10. Completion criteria
 
-The **MVP is complete** when a developer can request a persistent, versioned static report for an optimized graph,
-see the correct `MatMulNBits` core count for supported concrete shapes, and understand every exclusion and missing
-estimate without any change to inference behavior.
+The **CPU MatMulNBits MVP is complete** when a developer can opt into persistent, versioned per-run reports,
+see correct core and bias estimates from actual executed shapes, and understand collection limits, failures,
+coverage gaps and exclusions without changes to inference results or dispatch. Batch 3 provides this developer
+preview; production rollout still requires overhead qualification and the declared platform/build matrix.
 
 The **minimum operator scope is complete** when MatMulNBits core-plus-bias and GQA core estimates satisfy the
 Section 6 acceptance gate for the declared workload/build matrix, with documented conventions, runtime support,

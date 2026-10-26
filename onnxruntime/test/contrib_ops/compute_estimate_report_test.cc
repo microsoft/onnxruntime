@@ -4,6 +4,7 @@
 #if !defined(ORT_MINIMAL_BUILD)
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <filesystem>
@@ -12,6 +13,7 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "gtest/gtest.h"
@@ -20,6 +22,7 @@
 #include "core/common/path_string.h"
 #include "core/framework/allocator.h"
 #include "core/framework/compute_estimate_report.h"
+#include "core/framework/runtime_workload_collector.h"
 #include "core/graph/constants.h"
 #include "core/graph/indexed_sub_graph.h"
 #include "core/graph/model.h"
@@ -49,6 +52,25 @@ class ComputeEstimateReportTest : public ::testing::Test {
     path_ = std::filesystem::temp_directory_path() /
             ("ort_compute_report_" + std::to_string(stamp) + "_" + std::to_string(sequence++) + ".json");
     cleanup_ = ScopedFileDeleter(path_.native());
+  }
+
+  ~ComputeEstimateReportTest() override {
+    for (const auto& path : RuntimeReportPaths()) {
+      std::error_code error;
+      std::filesystem::remove(path, error);
+      EXPECT_FALSE(error) << error.message();
+    }
+  }
+
+  std::vector<std::filesystem::path> RuntimeReportPaths() const {
+    std::vector<std::filesystem::path> paths;
+    const auto prefix = path_.filename().native() + ToPathString("_");
+    for (const auto& entry : std::filesystem::directory_iterator(path_.parent_path())) {
+      if (entry.path().filename().native().find(prefix) == 0 && entry.path().extension() == ".json") {
+        paths.push_back(entry.path());
+      }
+    }
+    return paths;
   }
 
   Node& AddMatMul(std::optional<std::vector<int64_t>> shape = std::vector<int64_t>{2, 3, 64},
@@ -85,7 +107,9 @@ class ComputeEstimateReportTest : public ::testing::Test {
   }
 
   Json ReadReport() {
-    std::ifstream stream(path_);
+    const auto paths = RuntimeReportPaths();
+    ORT_ENFORCE(paths.size() == 1, "Expected exactly one runtime report, found ", paths.size());
+    std::ifstream stream(paths[0]);
     EXPECT_TRUE(stream.is_open());
     return Json::parse(stream);
   }
@@ -103,11 +127,27 @@ class ComputeEstimateReportTest : public ::testing::Test {
   SessionOptions ReportOptions() {
     SessionOptions options;
     options.graph_optimization_level = TransformerLevel::Default;
+    options.intra_op_param.thread_pool_size = 1;
     const auto utf8_path = ToUTF8String(path_.native());
     EXPECT_TRUE(options.config_options.AddConfigEntry(kOrtSessionOptionsComputeEstimateReportPath,
                                                       utf8_path.c_str())
                     .IsOK());
     return options;
+  }
+
+  Status Run(InferenceSession& session, const std::vector<int64_t>& shape = {2, 3, 64},
+             bool terminate = false, RuntimeWorkloadCollector* collector = nullptr) {
+    OrtValue input;
+    Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape(shape), std::make_shared<CPUAllocator>(), input);
+    std::fill_n(input.GetMutable<Tensor>()->MutableData<float>(),
+                static_cast<size_t>(input.Get<Tensor>().Shape().Size()), 1.0f);
+    RunOptions options;
+    options.terminate = terminate;
+    options.runtime_workload_collector = collector;
+    std::vector<OrtValue> outputs;
+    const std::vector<std::string> output_names{model_.MainGraph().GetOutputs()[0]->Name()};
+    return session.Run(options, {{model_.MainGraph().GetInputs()[0]->Name(), input}},
+                       output_names, &outputs);
   }
 
   Model model_;
@@ -339,29 +379,17 @@ TEST_F(ComputeEstimateReportTest, NestedGraphsAreSeparateScopes) {
     EXPECT_EQ(report["graphs"][i]["summary"]["known_dense_equivalent_ops"], "24576");
     EXPECT_EQ(report["graphs"][i]["summary"]["per_run_total_available"], false);
   }
-  auto options = ReportOptions();
-  InferenceSession session(options, GetEnvironment());
-  ASSERT_STATUS_OK(Initialize(session));
-  const auto exported = ReadReport();
-  EXPECT_EQ(exported["graphs"].size(), 3u);
-  EXPECT_EQ(exported["summary"]["known_dense_equivalent_ops"], "0");
-  RecordProperty("compute_estimate_report", exported.dump(2));
 }
 
-TEST_F(ComputeEstimateReportTest, SessionExportsFinalGraphAndRetainsInference) {
+TEST_F(ComputeEstimateReportTest, SessionExportsExecutedInvocationsAndRetainsInference) {
   AddMatMul(std::vector<int64_t>{2, 3, 64}, true, true);
   ASSERT_STATUS_OK(model_.MainGraph().Resolve());
   auto options = ReportOptions();
   options.graph_optimization_level = TransformerLevel::Level1;
   InferenceSessionWrapper session(options, GetEnvironment());
   ASSERT_STATUS_OK(Initialize(session));
-  const auto report = ReadReport();
-  EXPECT_EQ(report["nodes"].size(), session.GetGraph().NumberOfNodes());
-  EXPECT_EQ(report["summary"]["reported_node_count"], 1);
-  EXPECT_EQ(report["summary"]["known_dense_equivalent_ops"], "24576");
-  EXPECT_EQ(report["nodes"][0]["provider"], kCpuExecutionProvider);
-  EXPECT_EQ(report["nodes"][0]["components"][1]["operation_count"], "192");
-  RecordProperty("compute_estimate_report", report.dump(2));
+  EXPECT_FALSE(std::filesystem::exists(path_));
+  EXPECT_TRUE(RuntimeReportPaths().empty());
 
   const auto& input_name = session.GetGraph().GetInputs()[0]->Name();
   const auto& output_name = session.GetGraph().GetOutputs()[0]->Name();
@@ -379,6 +407,21 @@ TEST_F(ComputeEstimateReportTest, SessionExportsFinalGraphAndRetainsInference) {
   for (size_t i = 0; i < 2 * 3 * 32; ++i) {
     EXPECT_EQ(result.Data<float>()[i], 1.0f);
   }
+  const auto report = ReadReport();
+  EXPECT_EQ(report["schema_version"], 3);
+  EXPECT_EQ(report["run_state"], "succeeded");
+  EXPECT_EQ(report["session_id"], session.GetCurrentSessionId());
+  EXPECT_EQ(report["collection"]["max_records"], 10000);
+  EXPECT_EQ(report["collection"]["max_payload_bytes"], 16777216);
+  ASSERT_EQ(report["invocations"].size(), 1u);
+  EXPECT_EQ(report["invocations"][0]["provider"], kCpuExecutionProvider);
+  EXPECT_EQ(report["invocations"][0]["input_shape"], Json::array({2, 3, 64}));
+  EXPECT_EQ(report["invocations"][0]["components"][0]["operation_count"], "24576");
+  EXPECT_EQ(report["invocations"][0]["components"][1]["operation_count"], "192");
+  EXPECT_TRUE(report["invocations"][0].contains("route"));
+  EXPECT_EQ(report["component_summaries"][0]["complete_for_captured_component_scope"], true);
+  EXPECT_EQ(report["whole_run_work_complete"], false);
+  RecordProperty("runtime_compute_estimate_report", report.dump(2));
 }
 
 TEST_F(ComputeEstimateReportTest, DisabledExportDoesNotWrite) {
@@ -387,15 +430,20 @@ TEST_F(ComputeEstimateReportTest, DisabledExportDoesNotWrite) {
   SessionOptions options;
   InferenceSession session(options, GetEnvironment());
   ASSERT_STATUS_OK(Initialize(session));
+  ASSERT_STATUS_OK(Run(session));
   EXPECT_FALSE(std::filesystem::exists(path_));
+  EXPECT_TRUE(RuntimeReportPaths().empty());
 }
 
-TEST_F(ComputeEstimateReportTest, WriteFailureWarnsAndInitializationSucceeds) {
+TEST_F(ComputeEstimateReportTest, WriteFailureWarnsAndInferenceSucceeds) {
   AddMatMul();
   ASSERT_STATUS_OK(model_.MainGraph().Resolve());
   auto options = ReportOptions();
-  // Opening an existing directory as a file fails without requiring permission changes.
-  const auto invalid_path = ToUTF8String(std::filesystem::temp_directory_path().native());
+  // A file cannot be the parent directory of a report.
+  {
+    std::ofstream parent(path_);
+  }
+  const auto invalid_path = ToUTF8String((path_ / "report").native());
   ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsComputeEstimateReportPath,
                                                          invalid_path.c_str()));
   auto sink = std::make_unique<CapturingSink>();
@@ -406,9 +454,111 @@ TEST_F(ComputeEstimateReportTest, WriteFailureWarnsAndInitializationSucceeds) {
   ASSERT_STATUS_OK(Environment::Create(std::move(logging_manager), environment));
   InferenceSession session(options, *environment);
   ASSERT_STATUS_OK(Initialize(session));
+  EXPECT_FALSE(std::any_of(captured->Messages().begin(), captured->Messages().end(), [](const std::string& message) {
+    return message.find("Failed to open compute estimate report") != std::string::npos;
+  }));
+  ASSERT_STATUS_OK(Run(session));
   EXPECT_TRUE(std::any_of(captured->Messages().begin(), captured->Messages().end(), [](const std::string& message) {
     return message.find("Failed to open compute estimate report") != std::string::npos;
   }));
+}
+
+TEST_F(ComputeEstimateReportTest, DynamicAndConcurrentRunsWriteDistinctReports) {
+  AddMatMul(std::vector<int64_t>{-1, 3, 64}, false, true);
+  ASSERT_STATUS_OK(model_.MainGraph().Resolve());
+  InferenceSession session(ReportOptions(), GetEnvironment());
+  ASSERT_STATUS_OK(Initialize(session));
+  std::atomic<size_t> failures{0};
+  std::array<std::thread, 4> threads;
+  for (size_t i = 0; i < threads.size(); ++i) {
+    threads[i] = std::thread([&, i]() {
+      if (!Run(session, {static_cast<int64_t>(i + 1), 3, 64}).IsOK()) ++failures;
+    });
+  }
+  for (auto& thread : threads) thread.join();
+  EXPECT_EQ(failures, 0u);
+  const auto paths = RuntimeReportPaths();
+  ASSERT_EQ(paths.size(), threads.size());
+  std::vector<uint64_t> ids;
+  for (const auto& path : paths) {
+    std::ifstream stream(path);
+    const auto report = Json::parse(stream);
+    const auto batches = report["invocations"][0]["input_shape"][0].get<uint64_t>();
+    EXPECT_EQ(report["component_summaries"][0]["known_operation_count"], std::to_string(batches * 12288));
+    EXPECT_EQ(report["component_summaries"][1]["known_operation_count"], std::to_string(batches * 96));
+    ids.push_back(report["run_id"].get<uint64_t>());
+  }
+  std::sort(ids.begin(), ids.end());
+  EXPECT_EQ(std::adjacent_find(ids.begin(), ids.end()), ids.end());
+  ASSERT_STATUS_OK(Run(session));
+  EXPECT_EQ(RuntimeReportPaths().size(), threads.size() + 1);
+  InferenceSession another_session(ReportOptions(), GetEnvironment());
+  ASSERT_STATUS_OK(Initialize(another_session));
+  ASSERT_STATUS_OK(Run(another_session));
+  EXPECT_EQ(RuntimeReportPaths().size(), threads.size() + 2);
+}
+
+TEST_F(ComputeEstimateReportTest, AutomaticLimitsAndFailedRunsAreExplicit) {
+  AddMatMul();
+  ASSERT_STATUS_OK(model_.MainGraph().Resolve());
+  for (const auto* limit : {kOrtSessionOptionsComputeEstimateMaxRecords,
+                            kOrtSessionOptionsComputeEstimateMaxPayloadBytes}) {
+    auto options = ReportOptions();
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(limit, "0"));
+    InferenceSession session(options, GetEnvironment());
+    ASSERT_STATUS_OK(Initialize(session));
+    ASSERT_STATUS_OK(Run(session));
+    auto report = ReadReport();
+    EXPECT_TRUE(report["invocations"].empty());
+    EXPECT_EQ(report["run_state"], "succeeded");
+    EXPECT_EQ(report["collection"]["collection_complete"], false);
+    EXPECT_EQ(report["collection"][limit == kOrtSessionOptionsComputeEstimateMaxRecords
+                                       ? "record_limit_drops"
+                                       : "payload_limit_drops"],
+              1);
+    EXPECT_EQ(report["component_summaries"][0]["complete_for_captured_component_scope"], false);
+    for (const auto& path : RuntimeReportPaths()) ASSERT_TRUE(std::filesystem::remove(path));
+  }
+  InferenceSession session(ReportOptions(), GetEnvironment());
+  ASSERT_STATUS_OK(Initialize(session));
+  EXPECT_FALSE(Run(session, {2, 3, 64}, true).IsOK());
+  const auto report = ReadReport();
+  EXPECT_EQ(report["run_state"], "failed");
+  EXPECT_TRUE(report["invocations"].empty());
+  EXPECT_EQ(report["collection"]["collection_complete"], true);
+  EXPECT_EQ(report["component_summaries"][0]["complete_for_captured_component_scope"], false);
+}
+
+TEST_F(ComputeEstimateReportTest, InvalidLimitsFailInitialization) {
+  AddMatMul();
+  ASSERT_STATUS_OK(model_.MainGraph().Resolve());
+  for (const auto* key : {kOrtSessionOptionsComputeEstimateMaxRecords,
+                          kOrtSessionOptionsComputeEstimateMaxPayloadBytes}) {
+    for (const auto* value : {"", "-1", "1x", " 2", "18446744073709551616"}) {
+      auto options = ReportOptions();
+      ASSERT_STATUS_OK(options.config_options.AddConfigEntry(key, value));
+      InferenceSession session(options, GetEnvironment());
+      EXPECT_FALSE(Initialize(session).IsOK()) << key << "=" << value;
+    }
+  }
+  EXPECT_TRUE(RuntimeReportPaths().empty());
+}
+
+TEST_F(ComputeEstimateReportTest, ExplicitCollectorIsExportedWithoutChangingItsLimits) {
+  AddMatMul();
+  ASSERT_STATUS_OK(model_.MainGraph().Resolve());
+  auto options = ReportOptions();
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsComputeEstimateMaxRecords, "0"));
+  InferenceSession session(options, GetEnvironment());
+  ASSERT_STATUS_OK(Initialize(session));
+  RuntimeWorkloadCollector collector({10, 8192});
+  ASSERT_STATUS_OK(Run(session, {2, 3, 64}, false, &collector));
+  const auto report = ReadReport();
+  EXPECT_EQ(report["invocations"].size(), 1u);
+  EXPECT_EQ(report["collection"]["max_records"], 10);
+  EXPECT_EQ(report["collection"]["max_payload_bytes"], 8192);
+  ASSERT_STATUS_OK(Run(session, {2, 3, 64}, false, &collector));
+  EXPECT_EQ(RuntimeReportPaths().size(), 1u);
 }
 
 TEST_F(ComputeEstimateReportTest, Utf8PathAndOverwrite) {
@@ -423,6 +573,154 @@ TEST_F(ComputeEstimateReportTest, Utf8PathAndOverwrite) {
   std::ifstream stream(unicode_path);
   const auto report = Json::parse(stream);
   EXPECT_EQ(report["summary"]["known_dense_equivalent_ops"], "24576");
+  path_ = unicode_path;
+  InferenceSession session(ReportOptions(), GetEnvironment());
+  ASSERT_STATUS_OK(Initialize(session));
+  EXPECT_TRUE(RuntimeReportPaths().empty());
+  ASSERT_STATUS_OK(Run(session));
+  const auto first = ReadReport();
+  EXPECT_EQ(first["component_summaries"][0]["known_operation_count"], "24576");
+  ASSERT_STATUS_OK(Run(session));
+  EXPECT_EQ(RuntimeReportPaths().size(), 2u);
+}
+
+RuntimeWorkloadSnapshot RuntimeSnapshot() {
+  RuntimeWorkloadSnapshot snapshot;
+  snapshot.session_id = 7;
+  snapshot.run_id = 11;
+  snapshot.run_state = RuntimeWorkloadRunState::Succeeded;
+  snapshot.limits = {10, 8192};
+  MatMulNBitsRuntimeMetadata metadata;
+  metadata.input_shape = {2, 3, 64};
+  metadata.output_shape = {2, 3, 32};
+  metadata.m = 6;
+  metadata.n = 32;
+  metadata.k = 64;
+  metadata.batch_count = 1;
+  metadata.bias_present = true;
+  metadata.bits = 4;
+  metadata.block_size = 32;
+  metadata.input_element_type = ONNX_NAMESPACE::TensorProto::FLOAT;
+  snapshot.records.push_back({0, "main/0/body", 1, kCpuExecutionProvider, metadata});
+  return snapshot;
+}
+
+Json RuntimeReport(const RuntimeWorkloadSnapshot& snapshot) {
+  std::string text;
+  ORT_THROW_IF_ERROR(BuildComputeEstimateReport(snapshot, text));
+  return Json::parse(text);
+}
+
+TEST(RuntimeComputeEstimateReportTest, CountsAndRouteProvenanceAreIndependent) {
+  auto snapshot = RuntimeSnapshot();
+  for (const auto route : {MatMulNBitsRuntimeRoute::PackedLut, MatMulNBitsRuntimeRoute::PackedQNBit,
+                           MatMulNBitsRuntimeRoute::Unpacked, MatMulNBitsRuntimeRoute::EmptyOutput}) {
+    snapshot.records[0].matmul_nbits.route = route;
+    const auto report = RuntimeReport(snapshot);
+    EXPECT_EQ(report["invocations"][0]["components"][0]["operation_count"], "24576");
+    EXPECT_EQ(report["invocations"][0]["components"][1]["operation_count"], "192");
+    EXPECT_EQ(report["component_summaries"][0]["known_operation_count"], "24576");
+    EXPECT_EQ(report["route_adjustment_applied"], false);
+    EXPECT_EQ(report, RuntimeReport(snapshot));
+  }
+  snapshot.records[0].matmul_nbits.route.reset();
+  const auto report = RuntimeReport(snapshot);
+  EXPECT_FALSE(report["invocations"][0].contains("route"));
+  EXPECT_FALSE(report["invocations"][0].contains("compute_mode"));
+  EXPECT_EQ(report["invocations"][0]["availability"], "available");
+}
+
+TEST(RuntimeComputeEstimateReportTest, SubgraphsAndRepeatedInvocationsSumOnlyExecutedRecords) {
+  auto snapshot = RuntimeSnapshot();
+  auto record = snapshot.records[0];
+  record.invocation_id = 1;
+  record.graph_path = "main/2/then_branch";
+  snapshot.records.push_back(record);
+  record.invocation_id = 2;
+  snapshot.records.push_back(record);
+  const auto report = RuntimeReport(snapshot);
+  EXPECT_EQ(report["invocations"].size(), 3u);
+  EXPECT_EQ(report["component_summaries"][0]["known_operation_count"], "73728");
+  EXPECT_EQ(report["component_summaries"][1]["known_operation_count"], "576");
+  EXPECT_EQ(report["component_summaries"][0]["complete_for_captured_component_scope"], true);
+}
+
+TEST(RuntimeComputeEstimateReportTest, UnknownInvalidAndUnsupportedAreNotZero) {
+  auto snapshot = RuntimeSnapshot();
+  snapshot.records[0].matmul_nbits.input_shape = {-1, 3, 64};
+  auto report = RuntimeReport(snapshot);
+  EXPECT_EQ(report["invocations"][0]["availability"], "unavailable");
+  EXPECT_EQ(report["invocations"][0]["components"][0]["unavailable_reason"], "unknown_shape");
+  EXPECT_FALSE(report["invocations"][0]["components"][0].contains("operation_count"));
+  EXPECT_EQ(report["component_summaries"][0]["complete_for_captured_component_scope"], false);
+  snapshot.records[0].matmul_nbits.input_shape = {2, 3, 63};
+  report = RuntimeReport(snapshot);
+  EXPECT_EQ(report["invocations"][0]["components"][0]["unavailable_reason"], "invalid_metadata");
+  snapshot.records[0].provider = kCudaExecutionProvider;
+  report = RuntimeReport(snapshot);
+  EXPECT_EQ(report["invocations"][0]["components"][0]["unavailable_reason"], "unsupported_provider");
+}
+
+TEST(RuntimeComputeEstimateReportTest, EmptyOutputAndZeroReductionKeepBiasSemantics) {
+  auto snapshot = RuntimeSnapshot();
+  snapshot.records[0].matmul_nbits.input_shape = {2, 0, 64};
+  auto report = RuntimeReport(snapshot);
+  EXPECT_EQ(report["invocations"][0]["components"][0]["operation_count"], "0");
+  EXPECT_EQ(report["invocations"][0]["components"][1]["operation_count"], "0");
+  snapshot.records[0].matmul_nbits.input_shape = {2, 3, 0};
+  snapshot.records[0].matmul_nbits.k = 0;
+  report = RuntimeReport(snapshot);
+  EXPECT_EQ(report["invocations"][0]["components"][0]["operation_count"], "0");
+  EXPECT_EQ(report["invocations"][0]["components"][1]["operation_count"], "192");
+  snapshot.records[0].matmul_nbits.bias_present = false;
+  EXPECT_EQ(RuntimeReport(snapshot)["invocations"][0]["components"][1]["operation_count"], "0");
+}
+
+TEST(RuntimeComputeEstimateReportTest, InvocationAndSubtotalOverflowRemainDistinct) {
+  auto snapshot = RuntimeSnapshot();
+  auto& metadata = snapshot.records[0].matmul_nbits;
+  metadata.input_shape = {std::numeric_limits<int64_t>::max(), 1};
+  metadata.k = 1;
+  metadata.n = 2;
+  auto report = RuntimeReport(snapshot);
+  EXPECT_EQ(report["invocations"][0]["components"][0]["unavailable_reason"], "overflow");
+  EXPECT_EQ(report["invocations"][0]["components"][1]["operation_count"], "18446744073709551614");
+  EXPECT_EQ(report["invocations"][0]["availability"], "partial");
+  metadata.n = 1;
+  auto record = snapshot.records[0];
+  record.invocation_id = 1;
+  snapshot.records.push_back(record);
+  report = RuntimeReport(snapshot);
+  EXPECT_EQ(report["invocations"][0]["components"][0]["operation_count"], "18446744073709551614");
+  EXPECT_EQ(report["component_summaries"][0]["subtotal_unavailable_reason"], "overflow");
+  EXPECT_FALSE(report["component_summaries"][0].contains("known_operation_count"));
+  EXPECT_EQ(report["component_summaries"][1]["known_operation_count"], "18446744073709551614");
+  EXPECT_EQ(report["component_summaries"][0]["complete_for_captured_component_scope"], false);
+}
+
+TEST(RuntimeComputeEstimateReportTest, FailedRunningAndIncompleteDoNotClaimCompleteTotals) {
+  auto snapshot = RuntimeSnapshot();
+  for (const auto state : {RuntimeWorkloadRunState::Failed, RuntimeWorkloadRunState::Running,
+                           RuntimeWorkloadRunState::NotStarted}) {
+    snapshot.run_state = state;
+    const auto report = RuntimeReport(snapshot);
+    EXPECT_EQ(report["component_summaries"][0]["known_operation_count"], "24576");
+    EXPECT_EQ(report["component_summaries"][0]["complete_for_captured_component_scope"], false);
+  }
+  snapshot.run_state = RuntimeWorkloadRunState::Succeeded;
+  snapshot.stats.collection_complete = false;
+  snapshot.stats.record_limit_drops = 3;
+  snapshot.stats.payload_limit_drops = 4;
+  snapshot.stats.metadata_failure_drops = 5;
+  snapshot.stats.allocation_failure_drops = 6;
+  snapshot.stats.run_reuse_rejections = 7;
+  const auto report = RuntimeReport(snapshot);
+  EXPECT_EQ(report["collection"]["record_limit_drops"], 3);
+  EXPECT_EQ(report["collection"]["payload_limit_drops"], 4);
+  EXPECT_EQ(report["collection"]["metadata_failure_drops"], 5);
+  EXPECT_EQ(report["collection"]["allocation_failure_drops"], 6);
+  EXPECT_EQ(report["collection"]["run_reuse_rejections"], 7);
+  EXPECT_EQ(report["component_summaries"][0]["complete_for_captured_component_scope"], false);
 }
 
 }  // namespace

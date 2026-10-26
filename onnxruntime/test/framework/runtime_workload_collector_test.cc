@@ -13,6 +13,8 @@
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "nlohmann/json.hpp"
+#include "core/framework/compute_estimate_report.h"
 #include "core/framework/runtime_workload_collector.h"
 #include "core/graph/constants.h"
 #include "test/util/include/asserts.h"
@@ -52,6 +54,14 @@ size_t PayloadBytes(const MatMulNBitsRuntimeMetadata& metadata) {
          (metadata.input_shape.size() + metadata.output_shape.size()) * sizeof(int64_t);
 }
 
+#if !defined(DISABLE_CONTRIB_OPS)
+nlohmann::json Report(const RuntimeWorkloadSnapshot& snapshot) {
+  std::string text;
+  ORT_THROW_IF_ERROR(BuildComputeEstimateReport(snapshot, text));
+  return nlohmann::json::parse(text);
+}
+#endif
+
 TEST(RuntimeWorkloadCollectorTest, EmptySnapshotHasRunIdentity) {
   RuntimeWorkloadCollector collector(12, 34, {10, 8192});
   RuntimeWorkloadSnapshot snapshot;
@@ -61,6 +71,8 @@ TEST(RuntimeWorkloadCollectorTest, EmptySnapshotHasRunIdentity) {
   EXPECT_TRUE(snapshot.records.empty());
   EXPECT_TRUE(snapshot.stats.collection_complete);
   EXPECT_EQ(snapshot.stats.retained_payload_bytes, 0u);
+  EXPECT_EQ(snapshot.limits.max_records, 10u);
+  EXPECT_EQ(snapshot.limits.max_payload_bytes, 8192u);
 }
 
 TEST(RuntimeWorkloadCollectorTest, OwnsSubmittedMetadataAndSnapshotCopies) {
@@ -496,6 +508,9 @@ TEST(RuntimeWorkloadExecutionTest, TransformerEncoderAndDecoderPropagateCollecto
   EXPECT_EQ(encoder_records, 1u);
   EXPECT_GT(decoder_records, 1u);
   EXPECT_TRUE(snapshot.stats.collection_complete);
+  const auto report = Report(snapshot);
+  EXPECT_EQ(report["invocations"].size(), snapshot.records.size());
+  EXPECT_EQ(report["component_summaries"][0]["complete_for_captured_component_scope"], true);
   const std::vector<int32_t> expected{
       2, 16, 6, 14, 1, 15, 6, 14, 1, 15, 2, 3, 4, 15, 6, 14, 1, 15, 6, 14,
       2, 16, 6, 14, 1, 15, 6, 14, 1, 14};
@@ -732,6 +747,9 @@ TEST(RuntimeWorkloadExecutionTest, FailedRunRetainsEarlierSuccessfulInvocation) 
   ASSERT_EQ(snapshot.records.size(), 1u);
   EXPECT_EQ(snapshot.records[0].matmul_nbits.route.has_value(), true);
   EXPECT_EQ(snapshot.run_state, RuntimeWorkloadRunState::Failed);
+  const auto report = Report(snapshot);
+  EXPECT_EQ(report["component_summaries"][0]["known_operation_count"], "24576");
+  EXPECT_EQ(report["component_summaries"][0]["complete_for_captured_component_scope"], false);
 }
 
 TEST(RuntimeWorkloadExecutionTest, LoopInvocationsAndLimitsKeepSubgraphIdentity) {
@@ -747,6 +765,12 @@ TEST(RuntimeWorkloadExecutionTest, LoopInvocationsAndLimitsKeepSubgraphIdentity)
     EXPECT_EQ(snapshot.stats.record_limit_drops, 3 - snapshot.records.size());
     EXPECT_EQ(snapshot.stats.collection_complete, max_records >= 3);
     EXPECT_EQ(snapshot.run_state, RuntimeWorkloadRunState::Succeeded);
+    const auto report = Report(snapshot);
+    EXPECT_EQ(report["component_summaries"][0]["known_operation_count"],
+              std::to_string(snapshot.records.size() * 24576));
+    EXPECT_EQ(report["component_summaries"][1]["known_operation_count"],
+              std::to_string(snapshot.records.size() * 192));
+    EXPECT_EQ(report["component_summaries"][0]["complete_for_captured_component_scope"], max_records >= 3);
     for (size_t i = 0; i < snapshot.records.size(); ++i) {
       EXPECT_EQ(snapshot.records[i].invocation_id, i);
       EXPECT_EQ(snapshot.records[i].graph_path, "main/0/body");
@@ -829,6 +853,9 @@ TEST(RuntimeWorkloadExecutionTest, IfBranchesWithSameNodeIndexHaveDistinctGraphI
     ASSERT_EQ(snapshot.records.size(), 1u);
     EXPECT_EQ(snapshot.records[0].node_index, 0u);
     EXPECT_EQ(snapshot.records[0].graph_path, condition ? "main/0/then_branch" : "main/0/else_branch");
+    const auto report = Report(snapshot);
+    EXPECT_EQ(report["invocations"].size(), 1u);
+    EXPECT_EQ(report["component_summaries"][0]["known_operation_count"], "24576");
   }
 }
 
@@ -859,6 +886,7 @@ TEST(RuntimeWorkloadExecutionTest, ScanInvocationsShareIdentityButNotInvocationI
   ExpectOutput(outputs, 66.f);
   auto snapshot = Snapshot(collector);
   ASSERT_EQ(snapshot.records.size(), 3u);
+  EXPECT_EQ(Report(snapshot)["component_summaries"][0]["known_operation_count"], "73728");
   for (size_t i = 0; i < snapshot.records.size(); ++i) {
     EXPECT_EQ(snapshot.records[i].graph_path, "main/0/body");
     EXPECT_EQ(snapshot.records[i].node_index, 0u);

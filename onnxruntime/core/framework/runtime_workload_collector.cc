@@ -81,7 +81,7 @@ Status RuntimeWorkloadCollector::GetSnapshot(RuntimeWorkloadSnapshot& output) co
   std::lock_guard<std::mutex> lock(mutex_);
   Status status;
   ORT_TRY {
-    RuntimeWorkloadSnapshot snapshot{session_id_, run_id_, records_, stats_, run_state_};
+    RuntimeWorkloadSnapshot snapshot{session_id_, run_id_, records_, stats_, run_state_, limits_};
     output = std::move(snapshot);
     return Status::OK();
   }

@@ -2777,6 +2777,26 @@ common::Status InferenceSession::Initialize() {
   ORT_TRY {
     ORT_TELEMETRY_CAPTURE_STATUS_BEGIN(status)
     LOGS(*session_logger_, INFO) << "Initializing session.";
+#if !defined(ORT_MINIMAL_BUILD)
+    compute_estimate_report_prefix_ = session_options_.config_options.GetConfigOrDefault(
+        kOrtSessionOptionsComputeEstimateReportPath, "");
+    const auto parse_compute_limit = [&](const char* key, const char* default_value, size_t& limit) -> Status {
+      const auto text = session_options_.config_options.GetConfigOrDefault(key, default_value);
+      ORT_RETURN_IF_NOT(!text.empty() &&
+                            std::all_of(text.begin(), text.end(), [](char c) { return c >= '0' && c <= '9'; }) &&
+                            TryParseStringWithClassicLocale<size_t>(text, limit),
+                        key, " must be a nonnegative decimal integer representable as size_t. Received: ", text);
+      return Status::OK();
+    };
+    ORT_RETURN_IF_ERROR(parse_compute_limit(kOrtSessionOptionsComputeEstimateMaxRecords, "10000",
+                                            compute_estimate_max_records_));
+    ORT_RETURN_IF_ERROR(parse_compute_limit(kOrtSessionOptionsComputeEstimateMaxPayloadBytes, "16777216",
+                                            compute_estimate_max_payload_bytes_));
+#else
+    if (!session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsComputeEstimateReportPath, "").empty()) {
+      LOGS(*session_logger_, WARNING) << "Compute estimate report export is unsupported in a minimal build.";
+    }
+#endif
 #if defined(ORT_MINIMAL_BUILD)
     for (const auto& [key, value] : session_options_.config_options.GetConfigOptionsMap()) {
       const std::string_view option = key;
@@ -3300,20 +3320,6 @@ common::Status InferenceSession::Initialize() {
       ort_format_model_mapped_memory_.reset();
     }
 
-    // Estimate before pruning attributes needed by operator metadata adapters.
-    const auto compute_report_path = session_options_.config_options.GetConfigOrDefault(
-        kOrtSessionOptionsComputeEstimateReportPath, "");
-    if (!compute_report_path.empty()) {
-#if !defined(ORT_MINIMAL_BUILD)
-      const auto report_status = WriteComputeEstimateReport(graph, compute_report_path);
-      if (!report_status.IsOK()) {
-        LOGS(*session_logger_, WARNING) << report_status.ErrorMessage();
-      }
-#else
-      LOGS(*session_logger_, WARNING) << "Compute estimate report export is unsupported in a minimal build.";
-#endif
-    }
-
     // once the model is saved, we may remove unnecessary attributes for inference
     session_state_->PruneRemovableAttributes();
 
@@ -3726,14 +3732,31 @@ Status InferenceSession::Run(const RunOptions& run_options,
 
   RuntimeWorkloadCollector* workload_collector = nullptr;
 #if !defined(ORT_MINIMAL_BUILD)
-  if (run_options.runtime_workload_collector &&
-      run_options.runtime_workload_collector->BeginRun(session_id_)) {
-    workload_collector = run_options.runtime_workload_collector;
+  std::optional<RuntimeWorkloadCollector> automatic_collector;
+  auto* requested_collector = run_options.runtime_workload_collector;
+  if (!requested_collector && !compute_estimate_report_prefix_.empty()) {
+    automatic_collector.emplace(RuntimeWorkloadLimits{compute_estimate_max_records_,
+                                                      compute_estimate_max_payload_bytes_});
+    requested_collector = &*automatic_collector;
+  }
+  if (requested_collector) {
+    if (requested_collector->BeginRun(session_id_)) {
+      workload_collector = requested_collector;
+    } else {
+      LOGS(*session_logger_, WARNING) << "Runtime workload capture/export skipped: collector cannot be reused.";
+    }
   }
   bool succeeded = false;
   auto finish_collection = gsl::finally([&]() {
     if (workload_collector) {
       workload_collector->EndRun(succeeded);
+      if (!compute_estimate_report_prefix_.empty()) {
+        const auto report_status = ExportRuntimeComputeEstimateReport(*workload_collector,
+                                                                      compute_estimate_report_prefix_);
+        if (!report_status.IsOK()) {
+          LOGS(*session_logger_, WARNING) << report_status.ErrorMessage();
+        }
+      }
     }
   });
 #endif
