@@ -2958,6 +2958,76 @@ class TestQMoEIntPrePackSmoke(unittest.TestCase):
     def test_int4_swiglu_interleaved_medium(self):
         self._run_one(hidden_size=128, inter_size=64, num_experts=8, top_k=2, swiglu_fusion=1, batch_size=16)
 
+    def test_int4_deterministic_prefill_tactic_parity(self):
+        torch.manual_seed(123)
+        numpy.random.seed(123)
+
+        hidden_size = 64
+        inter_size = 128
+        num_experts = 8
+        top_k = 2
+        # rows_per_expert = 256 * 2 / 8 = 64 selects the prefill tile under ORT_FORCE_DETERMINISTIC_MOE=1.
+        batch_size = 256
+        bits = 4
+        pack = 8 // bits
+        fc1_n = 2 * inter_size
+
+        fc1 = numpy.zeros((num_experts, hidden_size, fc1_n // pack), dtype=numpy.uint8)
+        fc2 = numpy.zeros((num_experts, inter_size, hidden_size // pack), dtype=numpy.uint8)
+        fc1_scales = numpy.zeros((num_experts, fc1_n), dtype=numpy.float16)
+        fc2_scales = numpy.zeros((num_experts, hidden_size), dtype=numpy.float16)
+        cuda_quantizer = CudaQuantizer()
+        for e in range(num_experts):
+            w1 = torch.from_numpy((torch.randn(fc1_n, hidden_size) * 0.05).numpy().astype(numpy.float16))
+            w2 = torch.from_numpy((torch.randn(hidden_size, inter_size) * 0.05).numpy().astype(numpy.float16))
+            q1, s1 = cuda_quantizer.qmoe_per_channel_quantize(w1, bits, True)
+            q2, s2 = cuda_quantizer.qmoe_per_channel_quantize(w2, bits, True)
+            fc1[e] = q1.numpy()
+            fc2[e] = q2.numpy()
+            fc1_scales[e] = s1.numpy().astype(numpy.float16)
+            fc2_scales[e] = s2.numpy().astype(numpy.float16)
+
+        x = numpy.random.randn(batch_size, hidden_size).astype(numpy.float16)
+        router = numpy.random.randn(batch_size, num_experts).astype(numpy.float16)
+
+        def run(deterministic):
+            previous = os.environ.get("ORT_FORCE_DETERMINISTIC_MOE")
+            if deterministic:
+                os.environ["ORT_FORCE_DETERMINISTIC_MOE"] = "1"
+            else:
+                os.environ.pop("ORT_FORCE_DETERMINISTIC_MOE", None)
+            try:
+                return self._run_default_prepacked_model(
+                    hidden_size=hidden_size,
+                    inter_size=inter_size,
+                    num_experts=num_experts,
+                    top_k=top_k,
+                    batch_size=batch_size,
+                    fc1_weights=fc1,
+                    fc2_weights=fc2,
+                    fc1_scales=fc1_scales,
+                    fc2_scales=fc2_scales,
+                    x=x,
+                    router=router,
+                )
+            finally:
+                if previous is None:
+                    os.environ.pop("ORT_FORCE_DETERMINISTIC_MOE", None)
+                else:
+                    os.environ["ORT_FORCE_DETERMINISTIC_MOE"] = previous
+
+        default_output = run(False)
+        deterministic_output = run(True)
+        self.assertFalse(numpy.isnan(deterministic_output).any(), "QMoE deterministic output has NaN")
+        max_diff = numpy.max(
+            numpy.abs(default_output.astype(numpy.float32) - deterministic_output.astype(numpy.float32))
+        )
+        self.assertLess(
+            max_diff,
+            0.05,
+            f"INT4 deterministic prefill output differs from default output: max_diff={max_diff:.6f}",
+        )
+
     def test_int4_grouped_moe_row_tiling_parity(self):
         shape = dict(
             hidden_size=128,
