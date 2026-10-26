@@ -955,7 +955,7 @@ TEST(SignalOpsTest, DFT20_2D_real) {
 }
 
 TEST(SignalOpsTest, DFT20_Rank0InputRejected) {
-  for (int opset : {kOpsetVersion17, kOpsetVersion20}) {
+  for (int opset : {kMinOpsetVersion, kOpsetVersion20}) {
     OpTester test("DFT", opset);
     test.AddShapeToTensorData(false);  // must precede AddInput/AddOutput: it only affects tensors added afterwards
     test.AddInput<float>("input", {}, {1.f});
