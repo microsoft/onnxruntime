@@ -1683,6 +1683,11 @@ block()
 
   if (onnxruntime_USE_CUDA AND NOT onnxruntime_DISABLE_CONTRIB_OPS)
     ort_configure_cuda_cccl(${onnxruntime_provider_test_target})
+    if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.8)
+      # Match the provider workaround for overflow diagnostics in CUDA math headers.
+      target_compile_options(${onnxruntime_provider_test_target} PRIVATE
+        "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=221>")
+    endif()
   endif()
 
   # Match the non-plugin WebGPU test-source selection above.
