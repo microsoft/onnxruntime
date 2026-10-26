@@ -18,6 +18,7 @@
 
 #if defined(USE_CUDA) || defined(USE_WEBGPU)
 #include "test/common/tensor_op_test_utils.h"
+#include "test/contrib_ops/fresh_process_test_util.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/scoped_env_vars.h"
 #include "test/util/include/default_providers.h"
@@ -688,6 +689,34 @@ TEST(DynamicSparseAttentionTest, GroupedMergeActiveSplitBoundaries_CUDA) {
       RunDynamicSparseAttentionCase<BFloat16, int8_t>(
           MakeGroupedCacheCase(2, auxiliary, false, 2, 20, 2, true, count), std::move(cuda_ep));
     }
+  }
+}
+
+// ORT_DSA_INT8_VECTOR_STAGING and ORT_DSA_SHARED_SCALE_MERGE are cached in function-local statics, so
+// the non-default INT8 grouped-decode staging and the per-channel merge are checked in fresh processes.
+TEST(DynamicSparseAttentionTest, Int8CacheGroupedDecodeAlternateSwitchesInFreshProcess_CUDA) {
+  if (!DefaultCudaExecutionProvider()) GTEST_SKIP() << "CUDA EP not available.";
+
+  const std::string filter =
+      "DynamicSparseAttentionTest.Int8CacheGroupedDecode_CUDA:"
+      "DynamicSparseAttentionTest.Int8CacheGroupedDecodeFloat16_CUDA:"
+      "DynamicSparseAttentionTest.Int8CacheGroupedDecodeVectorStagingChannels_CUDA:"
+      "DynamicSparseAttentionTest.GroupedMergeActiveSplitBoundaries_CUDA:"
+      "DynamicSparseAttentionTest.GroupedDecodeRatio12ReferenceParity_CUDA";
+
+  struct Mode {
+    const char* vector_staging;
+    const char* shared_scale_merge;
+  };
+  const Mode modes[] = {{"0", "1"}, {"1", "0"}, {"0", "0"}};
+  for (const Mode& mode : modes) {
+    SCOPED_TRACE(std::string("INT8_VECTOR_STAGING=") + mode.vector_staging +
+                 " SHARED_SCALE_MERGE=" + mode.shared_scale_merge);
+    ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{
+        {"ORT_DSA_INT8_VECTOR_STAGING", mode.vector_staging},
+        {"ORT_DSA_SHARED_SCALE_MERGE", mode.shared_scale_merge},
+    }};
+    ASSERT_EQ(RunGTestFilterInFreshProcess(filter), 0);
   }
 }
 
