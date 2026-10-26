@@ -800,6 +800,7 @@ __global__ void FusedInjectPostGateB4Kernel(const T* __restrict__ hn, const T* _
   }
 }
 
+// Grid (rows, ceil(branches / 8)): blockIdx.y selects a tile of up to 8 branch columns, so any num_branches works.
 template <typename T>
 __global__ void FusedInjectPostGateKernel(const T* __restrict__ hn, const T* __restrict__ w_inject,
                                           T* __restrict__ gate_out, int64_t rows, int branches, int64_t K,
@@ -807,33 +808,35 @@ __global__ void FusedInjectPostGateKernel(const T* __restrict__ hn, const T* __r
   const int64_t row = blockIdx.x;
   if (row >= rows) return;
   const int tid = threadIdx.x;
+  const int b0 = blockIdx.y * 8;
+  const int tile = min(8, branches - b0);
   const T* x_row = hn + row * K;
   __shared__ float smem[8][8];
   float acc[8] = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
   for (int64_t k = tid; k < K; k += kThreads) {
     const float xv = to_float<T>(x_row[k]);
-    const T* wk = w_inject + k * branches;
+    const T* wk = w_inject + k * branches + b0;
 #pragma unroll
     for (int b = 0; b < 8; ++b) {
-      if (b < branches) acc[b] = fmaf(xv, to_float<T>(wk[b]), acc[b]);
+      if (b < tile) acc[b] = fmaf(xv, to_float<T>(wk[b]), acc[b]);
     }
   }
 #pragma unroll
   for (int b = 0; b < 8; ++b) {
-    if (b < branches) {
+    if (b < tile) {
 #pragma unroll
       for (int off = 16; off > 0; off >>= 1) acc[b] += __shfl_down_sync(0xffffffffu, acc[b], off);
       if ((tid & 31) == 0) smem[tid >> 5][b] = acc[b];
     }
   }
   __syncthreads();
-  if (tid < branches) {
+  if (tid < tile) {
     float v = 0.0f;
 #pragma unroll
     for (int w = 0; w < 8; ++w) v += smem[w][tid];
     const float t = Rnd<T>(Rnd<T>(v) / gate_div);
     const float u = Rnd<T>(SigmoidF32(t));
-    gate_out[row * branches + tid] = from_float<T>(u * gate_mul);
+    gate_out[row * branches + b0 + tid] = from_float<T>(u * gate_mul);
   }
 }
 
@@ -1206,7 +1209,8 @@ Status LaunchHyperConnectionLowRankMixUnfused(cublasHandle_t cublas, cudaStream_
       return CUDA_CALL(cudaGetLastError());
     }
   }
-  FusedInjectPostGateKernel<T><<<static_cast<int>(rows), kThreads, 0, stream>>>(
+  const dim3 inject_grid(static_cast<unsigned>(rows), static_cast<unsigned>((config.branches + 7) / 8));
+  FusedInjectPostGateKernel<T><<<inject_grid, kThreads, 0, stream>>>(
       hn, tensors.inject_weight, tensors.post_gate, rows, config.branches, K, config.gate_div, config.gate_mul);
   return CUDA_CALL(cudaGetLastError());
 }
