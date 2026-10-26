@@ -236,8 +236,11 @@ Packed weights are not included in this metadata cache.
 
 For the combinations in section 3.1, CUDA graph capture accepts only immutable
 metadata that was successfully validated by an earlier execution outside
-capture. Perform a non-capturing warmup first (for CUDA EP graph sessions,
-`gpu_graph_id=-1` disables capture for that run). Unvalidated initializers are
+capture. ORT-managed CUDA EP graph sessions (`enable_cuda_graph=1`)
+automatically perform non-capturing warmup runs per `gpu_graph_id`, validating
+immutable initializers before capture. External stream capture requires an
+explicit non-capturing warmup first. To validate without triggering ORT-managed
+capture, use `gpu_graph_id=-1` for that run. Unvalidated initializers are
 rejected during capture with warmup guidance. Dynamic scales or zero points
 are rejected during capture even after a valid warmup; graph replay cannot
 revalidate changing content.

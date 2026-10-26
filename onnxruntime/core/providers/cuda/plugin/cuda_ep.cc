@@ -650,9 +650,17 @@ OrtStatus* ORT_API_CALL CudaEp::OnRunEndImpl(
   auto& context = ep->GetPerThreadContext();
   CudaGraphAnnotation_t id = ep->GetGraphAnnotationId(run_options);
   bool replayed_graph = false;
+  const char* run_succeeded_value = run_options == nullptr
+                                        ? nullptr
+                                        : ep->factory_.GetOrtApi().GetRunConfigEntry(run_options, "ep.internal.run_succeeded");
+  const bool run_succeeded = run_succeeded_value == nullptr || std::string_view(run_succeeded_value) != "0";
   if (!context.cuda_graph.IsGraphCaptured(id)) {
     if (context.cuda_graph.IsGraphCaptureAllowed(id, ep->config_.min_num_runs_before_cuda_graph_capture)) {
-      context.cuda_graph.CaptureEnd(id);
+      context.cuda_graph.CaptureEnd(id, run_succeeded);
+      if (!run_succeeded) {
+        context.pre_capture_free_mem = 0;
+        return nullptr;
+      }
 
       // Check if GPU memory was allocated during capture (which would make the
       // captured graph invalid since CUDA graph replay cannot reproduce allocations).
@@ -679,7 +687,7 @@ OrtStatus* ORT_API_CALL CudaEp::OnRunEndImpl(
         return status;
       }
       replayed_graph = true;
-    } else {
+    } else if (run_succeeded) {
       context.cuda_graph.IncrementRegularRunCount(id);
     }
   }

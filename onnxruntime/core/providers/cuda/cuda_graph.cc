@@ -63,7 +63,9 @@ void CUDAGraphManager::CaptureEnd(CudaGraphAnnotation_t cuda_graph_annotation_id
     if (graph != NULL) {
       CUDA_CALL_THROW(cudaGraphDestroy(graph));
     }
-    if (status != cudaErrorStreamCaptureInvalidated) {
+    if (status == cudaErrorStreamCaptureInvalidated) {
+      (void)cudaGetLastError();
+    } else {
       CUDA_CALL_THROW(status);
     }
     return;

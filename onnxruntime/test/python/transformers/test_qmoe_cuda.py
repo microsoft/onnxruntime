@@ -3603,8 +3603,11 @@ class TestQMoEInt3Validation(unittest.TestCase):
                     self.assertRaisesRegex(Exception, "capture requires immutable scale and zero-point initializers"),
                 ):
                     self._run(session, binding, output)
+            output.zero_()
+            numpy.testing.assert_array_equal(self._run(session, binding, output, warmup), expected)
         else:
             for _ in range(3):
+                output.zero_()
                 numpy.testing.assert_array_equal(self._run(session, binding, output), expected)
 
 

@@ -53,7 +53,7 @@ class CudaGraphManager {
   void CaptureBegin(CudaGraphAnnotation_t id);
 
   /// End capture, instantiate the graph, and store the executable.
-  void CaptureEnd(CudaGraphAnnotation_t id);
+  void CaptureEnd(CudaGraphAnnotation_t id, bool capture_succeeded = true);
 
   /// Launch a previously captured graph. Returns OrtStatus on error.
   OrtStatus* Replay(CudaGraphAnnotation_t id, bool sync = true);

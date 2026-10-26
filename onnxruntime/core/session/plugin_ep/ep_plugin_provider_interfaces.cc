@@ -866,6 +866,12 @@ Status PluginExecutionProvider::OnRunEnd(bool sync_stream, const RunOptions& run
   return ToStatusAndRelease(ort_ep_->OnRunEnd(ort_ep_.get(), &run_options, sync_stream));
 }
 
+Status PluginExecutionProvider::OnRunEnd(bool sync_stream, const RunOptions& run_options, bool run_succeeded) {
+  RunOptions end_options = run_options;
+  ORT_RETURN_IF_ERROR(end_options.config_options.AddConfigEntry("ep.internal.run_succeeded", run_succeeded ? "1" : "0"));
+  return OnRunEnd(sync_stream, end_options);
+}
+
 Status PluginExecutionProvider::OnSessionInitializationEnd() {
   if (ort_ep_->ort_version_supported < 27 || ort_ep_->OnSessionInitializationEnd == nullptr) {
     return Base::OnSessionInitializationEnd();

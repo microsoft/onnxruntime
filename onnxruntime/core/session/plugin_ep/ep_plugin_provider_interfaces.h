@@ -116,6 +116,7 @@ class PluginExecutionProvider : public IExecutionProvider {
   Status OnRunStart(const RunOptions& run_options) override;
 
   Status OnRunEnd(bool sync_stream, const RunOptions& run_options) override;
+  Status OnRunEnd(bool sync_stream, const RunOptions& run_options, bool run_succeeded) override;
 
   Status OnSessionInitializationEnd() override;
 
