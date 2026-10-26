@@ -10,6 +10,7 @@
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/providers/cpu/reduction/reduction_test_cases.h"
+#include "core/framework/session_options.h"
 #include "core/providers/cpu/reduction/reduction_ops.h"
 #include "test/util/include/default_providers.h"
 
@@ -7028,46 +7029,52 @@ TEST(ReductionOpTest, ReduceSum_int64_Overflow_Saturates) {
            {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDmlExecutionProvider, kWebGpuExecutionProvider});
 }
 
+// CPU-only: other EPs (e.g. CUDA) still accumulate integers through double.
+// One intra-op thread keeps the fast-reduce dispatch thresholds deterministic.
+static void RunReduceSumInt64Cpu(const std::vector<int64_t>& shape, const std::vector<int64_t>& axes,
+                                 const std::vector<int64_t>& data, const std::vector<int64_t>& out_shape,
+                                 const std::vector<int64_t>& expected) {
+  OpTester test("ReduceSum", 13);
+  test.AddAttribute("keepdims", static_cast<int64_t>(0));
+  test.AddInput<int64_t>("data", shape, data);
+  test.AddInput<int64_t>("axes", {static_cast<int64_t>(axes.size())}, axes);
+  test.AddOutput<int64_t>("reduced", out_shape, expected);
+  SessionOptions so;
+  so.intra_op_param.thread_pool_size = 1;
+  test.Config(so).ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+}
+
 TEST(ReductionOpTest, ReduceSum_int64_ExactAbove2Pow53) {
   const int64_t p53 = int64_t{1} << 53;
-  const std::vector<std::string> excluded = {kTensorrtExecutionProvider, kOpenVINOExecutionProvider,
-                                             kDmlExecutionProvider, kWebGpuExecutionProvider};
+  const int64_t big = std::numeric_limits<int64_t>::max();
+
+  // Generic path: reduce a single axis of a 1-D tensor.
+  RunReduceSumInt64Cpu({2}, {0}, {p53 + 1, -p53}, {}, {1});
+  RunReduceSumInt64Cpu({2}, {0}, {p53, 1}, {}, {p53 + 1});
+  // Partial sum exceeds the int64 range, then cancels.
+  RunReduceSumInt64Cpu({4}, {0}, {big, big, -big, -big}, {}, {0});
+
+  // FastReduceKR: reduce the last axis.
+  RunReduceSumInt64Cpu({2, 2}, {1}, {p53 + 1, -p53, p53, 1}, {2}, {1, p53 + 1});
+
+  // FastReduceRK: reduce the first axis; needs rows > 16 and max(dim) > 256 with one thread.
   {
-    // Scalar path: single contiguous axis.
-    OpTester test("ReduceSum", 13);
-    test.AddAttribute("keepdims", (int64_t)0);
-    test.AddInput<int64_t>("data", {2}, {p53 + 1, -p53});
-    test.AddInput<int64_t>("axes", {1}, {0});
-    test.AddOutput<int64_t>("reduced", {}, {1});
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded);
+    std::vector<int64_t> data(512 * 2, 0);
+    data[0] = p53 + 1;  // row 0, col 0
+    data[1] = p53;      // row 0, col 1
+    data[2] = -p53;     // row 1, col 0
+    data[3] = 1;        // row 1, col 1
+    RunReduceSumInt64Cpu({512, 2}, {0}, data, {2}, {1, p53 + 1});
   }
-  {
-    OpTester test("ReduceSum", 13);
-    test.AddAttribute("keepdims", (int64_t)0);
-    test.AddInput<int64_t>("data", {2}, {p53, 1});
-    test.AddInput<int64_t>("axes", {1}, {0});
-    test.AddOutput<int64_t>("reduced", {}, {p53 + 1});
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded);
-  }
-  {
-    // Fast RK path (reduce first axis).
-    OpTester test("ReduceSum", 13);
-    test.AddAttribute("keepdims", (int64_t)0);
-    test.AddInput<int64_t>("data", {2, 2}, {p53 + 1, p53, -p53, 1});
-    test.AddInput<int64_t>("axes", {1}, {0});
-    test.AddOutput<int64_t>("reduced", {2}, {1, p53 + 1});
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded);
-  }
-  {
-    // Cancellation after the partial sum exceeds int64 range.
-    const int64_t big = std::numeric_limits<int64_t>::max();
-    OpTester test("ReduceSum", 13);
-    test.AddAttribute("keepdims", (int64_t)0);
-    test.AddInput<int64_t>("data", {4}, {big, big, -big, -big});
-    test.AddInput<int64_t>("axes", {1}, {0});
-    test.AddOutput<int64_t>("reduced", {}, {0});
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded);
-  }
+
+  // FastReduceKRK: reduce the middle axis; needs dim 0 >= 2 with one thread.
+  RunReduceSumInt64Cpu({2, 3, 2}, {1},
+                       {p53 + 1, p53, -p53, 1, 0, 0,
+                        big, -big, big, -big, -big, big},
+                       {2, 2}, {1, p53 + 1, big, -big});
+
+  // FastReduceRKR: reduce the first and last axes; needs dim 1 >= 2 with one thread.
+  RunReduceSumInt64Cpu({2, 2, 2}, {0, 2}, {p53 + 1, -p53, p53, 1, 0, 0, 0, 0}, {2}, {1, p53 + 1});
 }
 
 TEST(ReductionOpTest, ReduceMean_int32_LargeValues_NoOverflow) {
