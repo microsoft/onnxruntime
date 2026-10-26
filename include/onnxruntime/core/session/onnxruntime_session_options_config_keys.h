@@ -1055,6 +1055,8 @@ static const char* const kOrtSessionOptionsMoeOffloadMinExpertWeight = "session.
 // - "0": prune both GPU-resident and CPU-cold tail experts whose routing probability is below `min_expert_weight`.
 // Overrides ORT_QMOE_SKIP_TAIL_COLD_ONLY.
 static const char* const kOrtSessionOptionsMoeOffloadSkipTailColdOnly = "session.moe.offload.skip_tail_cold_only";
+static const char* const kOrtSessionOptionsMoeOffloadTailSubstitutionThreshold = "session.moe.offload.tail_substitution_threshold";
+static const char* const kOrtSessionOptionsMoeOffloadTailSubstitutionMinRank = "session.moe.offload.tail_substitution_min_rank";
 static const char* const kOrtSessionOptionsMoeOffloadPopularityFile = "session.moe.offload.popularity_file";
 static const char* const kOrtSessionOptionsMoeOffloadNodeOverrides = "session.moe.offload.node_overrides";
 static const char* const kOrtSessionOptionsMoeOffloadSourceRoot = "session.moe.offload.source_root";
