@@ -71,11 +71,7 @@ stages:
       parameters:
         host_cpu_arch: 'x64'
 
-    - task: UseDotNet@2
-      displayName: 'Install .NET 8 SDK'
-      inputs:
-        packageType: sdk
-        version: '8.x'
+    - template: ../templates/setup-dotnet.yml
 
     - template: ../templates/set-nightly-build-option-variable-step.yml
 
