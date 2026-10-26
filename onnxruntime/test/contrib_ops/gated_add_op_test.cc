@@ -187,56 +187,49 @@ TEST(ContribOpGatedAddTest, ProjectedGateBFloat16) {
     int64_t width;
     int64_t input_width;
   };
-  for (bool sigmoid_in_fp32 : {false, true}) {
-    for (const ProjectionCase& test_case : {ProjectionCase{8, 16}, ProjectionCase{2560, 16}, ProjectionCase{259, 300}}) {
-      constexpr int64_t kRows = 4;
-      const int64_t width = test_case.width;
-      const int64_t input_width = test_case.input_width;
-      std::vector<BFloat16> x(kRows * width);
-      std::vector<BFloat16> y(kRows * width);
-      std::vector<BFloat16> act(kRows * input_width);
-      std::vector<BFloat16> weight(input_width);
-      std::vector<BFloat16> expected(kRows * width);
-      for (int64_t k = 0; k < input_width; ++k) {
-        weight[k] = BFloat16(static_cast<float>((k % 5) - 2) * 0.25f);
-      }
-      for (int64_t r = 0; r < kRows; ++r) {
-        float dot = 0.0f;
-        for (int64_t k = 0; k < input_width; ++k) {
-          act[r * input_width + k] = BFloat16(static_cast<float>(((r + k) % 7) - 3) * 0.125f);
-          dot = std::fma(act[r * input_width + k].ToFloat(), weight[k].ToFloat(), dot);
-        }
-        const float gate = BFloat16(dot).ToFloat();
-        const float exp_value = std::exp(gate >= 0.0f ? -gate : gate);
-        const float sigmoid = gate >= 0.0f ? 1.0f / (1.0f + exp_value) : exp_value / (1.0f + exp_value);
-        const BFloat16 denominator(1.0f + BFloat16(exp_value).ToFloat());
-        const BFloat16 reciprocal(1.0f / denominator.ToFloat());
-        const BFloat16 rounded_sigmoid =
-            sigmoid_in_fp32 ? BFloat16(sigmoid)
-                            : (gate > 0.0f ? reciprocal : BFloat16(1.0f - reciprocal.ToFloat()));
-        for (int64_t c = 0; c < width; ++c) {
-          const int64_t idx = r * width + c;
-          x[idx] = BFloat16(static_cast<float>((idx % 17) - 8) * 0.13f);
-          y[idx] = BFloat16(static_cast<float>((idx % 11) - 5) * 0.37f);
-          const BFloat16 product(y[idx].ToFloat() * rounded_sigmoid.ToFloat());
-          expected[idx] = BFloat16(x[idx].ToFloat() + product.ToFloat());
-        }
-      }
-      std::vector<std::unique_ptr<IExecutionProvider>> providers;
-      if (auto cuda_ep = DefaultCudaExecutionProvider()) {
-        providers.push_back(std::move(cuda_ep));
-      }
-      if (providers.empty()) GTEST_SKIP();
-      OpTester tester("GatedAdd", 1, onnxruntime::kMSDomain);
-      tester.AddAttribute<int64_t>("sigmoid_in_fp32", sigmoid_in_fp32 ? 1 : 0);
-      tester.AddInput<BFloat16>("X", {1, kRows, width}, x);
-      tester.AddInput<BFloat16>("Y", {1, kRows, width}, y);
-      tester.AddInput<BFloat16>("gate", {1, kRows, input_width}, act);
-      tester.AddInput<BFloat16>("gate_weight", {input_width, 1}, weight);
-      tester.AddOutput<BFloat16>("output", {1, kRows, width}, expected);
-      tester.SetOutputTolerance(0.0f, 0.0f);
-      tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+  for (const ProjectionCase& test_case : {ProjectionCase{8, 16}, ProjectionCase{2560, 16}, ProjectionCase{259, 300}}) {
+    constexpr int64_t kRows = 4;
+    const int64_t width = test_case.width;
+    const int64_t input_width = test_case.input_width;
+    std::vector<BFloat16> x(kRows * width);
+    std::vector<BFloat16> y(kRows * width);
+    std::vector<BFloat16> act(kRows * input_width);
+    std::vector<BFloat16> weight(input_width);
+    std::vector<BFloat16> expected(kRows * width);
+    for (int64_t k = 0; k < input_width; ++k) {
+      weight[k] = BFloat16(static_cast<float>((k % 5) - 2) * 0.25f);
     }
+    for (int64_t r = 0; r < kRows; ++r) {
+      float dot = 0.0f;
+      for (int64_t k = 0; k < input_width; ++k) {
+        act[r * input_width + k] = BFloat16(static_cast<float>(((r + k) % 7) - 3) * 0.125f);
+        dot = std::fma(act[r * input_width + k].ToFloat(), weight[k].ToFloat(), dot);
+      }
+      const float gate = BFloat16(dot).ToFloat();
+      const float exp_value = std::exp(gate >= 0.0f ? -gate : gate);
+      const float sigmoid = gate >= 0.0f ? 1.0f / (1.0f + exp_value) : exp_value / (1.0f + exp_value);
+      const BFloat16 rounded_sigmoid(sigmoid);
+      for (int64_t c = 0; c < width; ++c) {
+        const int64_t idx = r * width + c;
+        x[idx] = BFloat16(static_cast<float>((idx % 17) - 8) * 0.13f);
+        y[idx] = BFloat16(static_cast<float>((idx % 11) - 5) * 0.37f);
+        const BFloat16 product(y[idx].ToFloat() * rounded_sigmoid.ToFloat());
+        expected[idx] = BFloat16(x[idx].ToFloat() + product.ToFloat());
+      }
+    }
+    std::vector<std::unique_ptr<IExecutionProvider>> providers;
+    if (auto cuda_ep = DefaultCudaExecutionProvider()) {
+      providers.push_back(std::move(cuda_ep));
+    }
+    if (providers.empty()) GTEST_SKIP();
+    OpTester tester("GatedAdd", 1, onnxruntime::kMSDomain);
+    tester.AddInput<BFloat16>("X", {1, kRows, width}, x);
+    tester.AddInput<BFloat16>("Y", {1, kRows, width}, y);
+    tester.AddInput<BFloat16>("gate", {1, kRows, input_width}, act);
+    tester.AddInput<BFloat16>("gate_weight", {input_width, 1}, weight);
+    tester.AddOutput<BFloat16>("output", {1, kRows, width}, expected);
+    tester.SetOutputTolerance(0.0f, 0.0f);
+    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
   }
 }
 

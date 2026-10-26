@@ -6118,9 +6118,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     GatedAdd, 1,
     OpSchema()
         .SetDoc(GatedAdd_ver1_doc)
-        .Attr("sigmoid_in_fp32",
-              "When gate_weight is provided, compute sigmoid in FP32 (1, default) or input type (0).",
-              AttributeProto::INT, static_cast<int64_t>(1))
         .Input(0, "X", "Unscaled input with shape (..., C).", "T")
         .Input(1, "Y", "Input scaled by gate, with the same shape as X.", "T")
         .Input(2, "gate", "Per-row gate with shape (..., 1), or activation (..., K) when gate_weight is provided.", "T")

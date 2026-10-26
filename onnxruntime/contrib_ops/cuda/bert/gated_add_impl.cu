@@ -11,7 +11,6 @@
 
 #include "contrib_ops/cuda/bert/gated_add_impl.h"
 #include "core/providers/cuda/cuda_common.h"
-#include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/shared_inc/fast_divmod.h"
 
 namespace onnxruntime {
@@ -30,19 +29,12 @@ __device__ __forceinline__ float StableSigmoid(float value) {
   return exp_value / (1.0f + exp_value);
 }
 
-__device__ __forceinline__ float RoundedBf16Sigmoid(float value, bool sigmoid_in_fp32) {
-  if (sigmoid_in_fp32) {
-    return __bfloat162float(__float2bfloat16_rn(StableSigmoid(value)));
-  }
-  using namespace onnxruntime::cuda;
-  const BFloat16 a(value);
-  return static_cast<float>(a > BFloat16(0.0f)
-                                ? BFloat16(1.0f) / (BFloat16(1.0f) + _Exp(-a))
-                                : BFloat16(1.0f) - BFloat16(1.0f) / (BFloat16(1.0f) + _Exp(a)));
+__device__ __forceinline__ float RoundedBf16Sigmoid(float value) {
+  return __bfloat162float(__float2bfloat16_rn(StableSigmoid(value)));
 }
 
 __device__ float ProjectedRowGate(const __nv_bfloat16* activation, const __nv_bfloat16* weight,
-                                  int64_t row, int64_t input_width, bool sigmoid_in_fp32) {
+                                  int64_t row, int64_t input_width) {
   using Reduce = cub::BlockReduce<float, kProjectedGateThreads>;
   __shared__ typename Reduce::TempStorage reduction;
   __shared__ float gate;
@@ -54,7 +46,7 @@ __device__ float ProjectedRowGate(const __nv_bfloat16* activation, const __nv_bf
   const float total = Reduce(reduction).Sum(dot);
   if (threadIdx.x == 0) {
     const float value = __bfloat162float(__float2bfloat16_rn(total));
-    gate = RoundedBf16Sigmoid(value, sigmoid_in_fp32);
+    gate = RoundedBf16Sigmoid(value);
   }
   __syncthreads();
   return gate;
@@ -63,9 +55,9 @@ __device__ float ProjectedRowGate(const __nv_bfloat16* activation, const __nv_bf
 __global__ void ProjectedSigmoidGateMulKernel(
     const __nv_bfloat16* attention, const __nv_bfloat16* activation,
     const __nv_bfloat16* weight, const __nv_bfloat16* residual, __nv_bfloat16* output,
-    int64_t input_width, int64_t output_width, bool sigmoid_in_fp32) {
+    int64_t input_width, int64_t output_width) {
   const int64_t row = blockIdx.x;
-  const float gate = ProjectedRowGate(activation, weight, row, input_width, sigmoid_in_fp32);
+  const float gate = ProjectedRowGate(activation, weight, row, input_width);
   const int64_t row_base = row * output_width;
   if ((output_width & 7) == 0 &&
       (reinterpret_cast<uintptr_t>(attention + row_base) & 15) == 0 &&
@@ -235,8 +227,7 @@ INSTANTIATE_GATED_ADD(__nv_bfloat16)
 Status LaunchProjectedSigmoidGateMul(cudaStream_t stream, const uint16_t* attention,
                                      const uint16_t* activation, const uint16_t* weight,
                                      const uint16_t* residual, uint16_t* output,
-                                     int64_t rows, int64_t input_width, int64_t output_width,
-                                     bool sigmoid_in_fp32) {
+                                     int64_t rows, int64_t input_width, int64_t output_width) {
   ORT_RETURN_IF_NOT(rows >= 0 && rows <= std::numeric_limits<int>::max() &&
                         input_width > 0 && output_width > 0,
                     "GatedAdd projected gate dimensions exceed CUDA limits");
@@ -246,7 +237,7 @@ Status LaunchProjectedSigmoidGateMul(cudaStream_t stream, const uint16_t* attent
       reinterpret_cast<const __nv_bfloat16*>(activation),
       reinterpret_cast<const __nv_bfloat16*>(weight),
       reinterpret_cast<const __nv_bfloat16*>(residual), reinterpret_cast<__nv_bfloat16*>(output),
-      input_width, output_width, sigmoid_in_fp32);
+      input_width, output_width);
   return CUDA_CALL(cudaGetLastError());
 }
 

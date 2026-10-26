@@ -68,7 +68,7 @@ Status GatedAdd<T>::ComputeInternal(OpKernelContext* context) const {
           reinterpret_cast<const uint16_t*>(gate_weight->Data<BFloat16>()),
           reinterpret_cast<const uint16_t*>(x->Data<BFloat16>()),
           reinterpret_cast<uint16_t*>(output->MutableData<BFloat16>()),
-          shape.Size() / hidden_size, input_width, hidden_size, sigmoid_in_fp32_);
+          shape.Size() / hidden_size, input_width, hidden_size);
     }
   }
 

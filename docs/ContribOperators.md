@@ -2399,13 +2399,6 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
 
-#### Attributes
-
-<dl>
-<dt><tt>sigmoid_in_fp32</tt> : int</dt>
-<dd>When gate_weight is provided, compute sigmoid in FP32 (1, default) or input type (0).</dd>
-</dl>
-
 #### Inputs (3 - 4)
 
 <dl>
