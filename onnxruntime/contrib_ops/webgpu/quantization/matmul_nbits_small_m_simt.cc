@@ -98,7 +98,7 @@ class MatMulNBitsSmallMSimtProgram final : public Program<MatMulNBitsSmallMSimtP
       if (n < uniforms.N && k < uniforms.K) {
         let scale_block = k / 32u;
 )";
-    body << "        let scale = " << scales.GetByOffset("scale_base + n * uniforms.blocks + scale_block") << ";\n";
+    body << "        let scale = f16(" << scales.GetByOffset("scale_base + n * uniforms.blocks + scale_block") << ");\n";
     if (has_zero_points_) {
       body << "        let zero_index = (uniforms.weight_index * uniforms.N + n) * uniforms.zero_stride + scale_block;\n"
            << "        let zero_word = " << zero_points->GetByOffset("zero_index / 8u") << ";\n"
