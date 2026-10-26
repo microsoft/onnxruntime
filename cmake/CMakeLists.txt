@@ -213,6 +213,7 @@ set(ONNXRUNTIME_TELEMETRY_TENANT_TOKEN "" CACHE STRING "Override the compiled-in
 cmake_dependent_option(onnxruntime_USE_MIMALLOC "Override new/delete and arena allocator with mimalloc" OFF "WIN32;NOT onnxruntime_USE_CUDA;NOT onnxruntime_USE_OPENVINO" OFF)
 option(onnxruntime_USE_CANN "Build with CANN support" OFF)
 option(onnxruntime_USE_XNNPACK "Build with XNNPACK support. Provides an alternative math library on ARM, WebAssembly and x86." OFF)
+option(onnxruntime_USE_SYSTEM_XNNPACK "Use installed shared XNNPACK and pthreadpool libraries on Unix" OFF)
 option(onnxruntime_USE_WEBNN "Build with WebNN support. Enable hardware acceleration in web browsers." OFF)
 option(onnxruntime_USE_WEBGPU "Build with WebGPU support. Enable WebGPU via C/C++ interface." OFF)
 option(onnxruntime_USE_EP_API_ADAPTERS "Build EP (e.g. WebGPU) as a plugin EP library using EP API adapters" OFF)
@@ -2063,6 +2064,12 @@ else()
         target_include_directories(safeint_interface INTERFACE ${safeint_SOURCE_DIR})\n\
         ")
     include("${CMAKE_CURRENT_LIST_DIR}/onnxruntime_telemetry_config.cmake")
+    if(onnxruntime_USE_XNNPACK AND onnxruntime_USE_SYSTEM_XNNPACK)
+      string(APPEND PROJECT_CONFIG_CONTENT
+        "include(\"\${CMAKE_CURRENT_LIST_DIR}/onnxruntime_system_xnnpack.cmake\")\n")
+      install(FILES "${PROJECT_SOURCE_DIR}/external/onnxruntime_system_xnnpack.cmake"
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME})
+    endif()
   endif()
 
   string(APPEND PROJECT_CONFIG_CONTENT
