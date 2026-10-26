@@ -536,6 +536,15 @@ Status LaunchCausalConvProjectionKernel(
     int state_length, bool state_channels_last, bool apply_silu,
     T* state_update, int state_update_capacity) {
   const dim3 grid((channels - 1) / 128 + 1, batch, length);
+  if (state_update != nullptr && length < state_update_capacity) {
+    // The kernels write only the first min(length, capacity) rows per batch; zero the rest so the
+    // output does not expose stale allocator contents. A strided memset keeps this graph-capturable.
+    const size_t row_bytes = static_cast<size_t>(channels) * sizeof(T);
+    CUDA_RETURN_IF_ERROR(cudaMemset2DAsync(
+        state_update + static_cast<size_t>(length) * channels,
+        static_cast<size_t>(state_update_capacity) * row_bytes, 0,
+        static_cast<size_t>(state_update_capacity - length) * row_bytes, static_cast<size_t>(batch), stream));
+  }
   static const int specialize = ParseEnvironmentVariableWithDefault<int>("ORT_CAUSAL_CONV_S2_SPECIALIZE", 1);
   ORT_ENFORCE(specialize == 0 || specialize == 1, "ORT_CAUSAL_CONV_S2_SPECIALIZE must be 0 or 1.");
   if (specialize && length >= 1 && kernel_size == 4 && dilation == 1 && state_length == 4) {

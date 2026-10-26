@@ -8,11 +8,16 @@ Set process-level tuning options before the first applicable invocation:
   1 to 8 tokens, 16 query/key heads, 48 value heads, and 128-wide heads.
   It additionally requires Qwen softplus-decay gates, sigmoid beta,
   gated-delta updates, Q/K L2 normalization, uniform non-packed sequence
-  metadata, and no per-key decay, state-update capture, or tail passes.
+  metadata, and no per-key decay, state-update tail pass, or short-row tail
+  pass.
 - `ORT_CAUSAL_CONV_S2_SPECIALIZE=1` specializes the companion
-  `CausalConvProjection` for lengths 1 to 8, kernel/state length four, dilation
-  one, and SiLU activation. Layout, optional bias, and first-token state
-  semantics are unchanged.
+  `CausalConvWithState` extended (packed-channel) projection path for kernel size
+  four, state length four and dilation one. Lengths 1 to 8 use the per-position
+  specialized kernel and lengths of 16 or more use the tiled kernel (eight
+  positions per CTA); other lengths keep the generic kernel. The `activation`
+  attribute (`none`, `silu` or `swish`; the last two are identical) is honored
+  as configured and is not part of the dispatch condition. Layout, optional
+  bias, and first-token state semantics are unchanged.
 
 Both specialization switches default to `1` and accept only `0` or `1`.
 Unsupported geometry retains generic dispatch. These options do not alter

@@ -4707,7 +4707,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("state_update_capacity",
               "Compact speculative state-update capture capacity (CUDA extended path only, 0..8); "
               "when > 0, output 2 has shape (batch_size, state_update_capacity, channels) and records "
-              "the first min(sequence_length, state_update_capacity) projected input rows.",
+              "the first min(sequence_length, state_update_capacity) projected input rows and any "
+              "remaining rows are zero.",
               AttributeProto::INT, static_cast<int64_t>(0))
         .Attr("activation",
               "Fused activation function. One of: 'silu', 'swish', 'none'. "
