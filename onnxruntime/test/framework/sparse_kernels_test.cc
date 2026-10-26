@@ -1554,6 +1554,30 @@ TEST(SparseTensorConversionTests, CsrConversion) {
 #endif
 }
 
+TEST(SparseTensorConversionTests, SparseCsrToDenseRejectsMaxRowsWithoutOverflow) {
+  auto* cpu_provider = TestCPUExecutionProvider();
+  auto cpu_allocator = cpu_provider->CreatePreferredAllocators()[0];
+
+  DataTransferManager dtm;
+  ASSERT_STATUS_OK(dtm.RegisterDataTransfer(cpu_provider->GetDataTransfer()));
+
+  SparseTensor src(DataTypeImpl::GetType<int32_t>(), TensorShape{1, 1},
+                   cpu_allocator);
+  const std::vector<int32_t> values = {1};
+  const std::vector<int64_t> inner = {0};
+  const std::vector<int64_t> outer = {0, 1};
+  ASSERT_STATUS_OK(src.MakeCsrData(
+      *cpu_provider->GetDataTransfer(), cpu_allocator->Info(), values.size(),
+      values.data(), gsl::make_span(inner), gsl::make_span(outer)));
+
+  const_cast<TensorShape&>(src.DenseShape()) =
+      TensorShape{std::numeric_limits<int64_t>::max(), 0};
+  Tensor dense_dst;
+  EXPECT_THROW(sparse_utils::SparseCsrToDenseTensor(
+                   dtm, src, cpu_allocator, cpu_allocator, dense_dst),
+               OnnxRuntimeException);
+}
+
 TEST(SparseTensorConversionTests, CooConversion) {
   auto* cpu_provider = TestCPUExecutionProvider();
   auto cpu_allocator = cpu_provider->CreatePreferredAllocators()[0];

@@ -21,11 +21,14 @@ OrtValueTensorSlicer<T> OrtValueTensorSlicer<T>::Create(T& ort_value, int64_t sl
     ORT_ENFORCE(!prim_type->HasSubElems(), "Can't slice a tensor with a subbyte element type");
   }
   auto& tensor_shape = tensor.Shape();
-  ORT_ENFORCE(gsl::narrow_cast<int64_t>(tensor_shape.NumDimensions()) >= slice_dimension,
+  ORT_ENFORCE(slice_dimension >= 0 &&
+                  gsl::narrow_cast<int64_t>(tensor_shape.NumDimensions()) > slice_dimension,
               "Insufficient dimensions to slice on ", slice_dimension, ". Shape:", tensor_shape);
 
   auto dim0_size = tensor_shape[0];
-  ORT_ENFORCE(dim0_offset < dim0_size, "Invalid dim0_offset of ", dim0_offset, ". Dimension 0 is ", dim0_size);
+  ORT_ENFORCE(dim0_offset >= 0 && dim0_offset < dim0_size &&
+                  (slice_dimension != 0 || dim0_offset == 0),
+              "Invalid dim0_offset of ", dim0_offset, ". Dimension 0 is ", dim0_size);
 
   return OrtValueTensorSlicer{ort_value, slice_dimension, dim0_offset};
 };
