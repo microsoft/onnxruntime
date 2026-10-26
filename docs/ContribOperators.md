@@ -4188,7 +4188,7 @@ This version of the operator has been available since version 1 of the 'com.micr
   
   The quantized weights are stored in a bit-packed format along the K dimension, with each block being represented by a blob of uint8.
   For example, for 4 bits, the first 4 bits are stored in the lower 4 bits of a byte, and the second 4 bits are stored in the higher 4 bits of a byte.
-
+  
   When weight_prepacked is 0, B may represent an omitted projection by replacing one or more dimensions of its
   packed shape (N, k_blocks, blob_size) with 0. All remaining dimensions must retain their normal values.
   In this case, Y is filled with zeros (or the broadcast bias, if provided). Its shape is still determined by A, K and N.
