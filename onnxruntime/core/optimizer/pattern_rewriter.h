@@ -96,6 +96,8 @@ class Pattern {
   const auto& TypeConstraints() const { return type_constraints_; }
   bool IsAttribute(Value value) const { return attribute_inputs_.count(value.handle) != 0; }
   const auto& OrderedTypeConstraints() const { return ordered_type_constraints_; }
+  // First rewrite-safe match at this root, or nullopt. On error, result is unchanged.
+  Status MatchAt(const Graph& graph, NodeIndex root, std::optional<Match>& result) const;
   // Visit rewrite-safe candidates at one root in expansion order. true continues; false stops.
   // Requires a resolved graph. The visitor must not mutate it. Does not filter opsets or providers.
   Status VisitMatches(const Graph& graph, NodeIndex root, const std::function<bool(Match&)>& visitor) const;

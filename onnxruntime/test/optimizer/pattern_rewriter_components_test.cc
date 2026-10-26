@@ -148,6 +148,59 @@ TEST(PatternComponentTests, InvalidContextAndCallbackErrorsAreNotNonmatches) {
                OnnxRuntimeException);
 }
 
+TEST(PatternComponentTests, MatchAtReturnsFirstCandidateAndClearsOrdinaryNonmatch) {
+  TestGraph test;
+  auto& b = test.builder;
+  auto* x = b.MakeInput<float>({2}, -1.0f, 1.0f);
+  auto* y = b.MakeIntermediate();
+  auto& inner = b.AddNode("Identity", {x}, {y});
+  auto& root = b.AddNode("Sigmoid", {y}, {b.MakeOutput()});
+  b.SetGraphOutputs();
+  ASSERT_STATUS_OK(test.graph.Resolve());
+  const auto before = test.model.ToProto().SerializeAsString();
+  std::optional<Match> result;
+  ASSERT_STATUS_OK(PatternLibrary("pattern E(x){v=Identity(x)|x;return Sigmoid(v)}")
+                       .GetPattern("E")
+                       .MatchAt(test.graph, root.Index(), result));
+  ASSERT_TRUE(result);
+  EXPECT_EQ(result->valueOf("x"), x);
+  EXPECT_EQ(result->nodes.size(), 2u);
+  Match copy = *result;
+  EXPECT_FALSE(Pattern("(x)=>return Identity(x)").MatchAt(test.graph, std::numeric_limits<NodeIndex>::max(), result).IsOK());
+  ASSERT_TRUE(result);
+  EXPECT_EQ(result->valueOf("x"), x);
+  EXPECT_THROW((void)Pattern("(x)=>return x").MatchAt(test.graph, root.Index(), result), OnnxRuntimeException);
+  ASSERT_TRUE(result);
+  EXPECT_EQ(result->valueOf("x"), x);
+  ASSERT_STATUS_OK(Pattern("(x)=>return Identity(x)").MatchAt(test.graph, root.Index(), result));
+  EXPECT_FALSE(result);
+  EXPECT_EQ(copy.valueOf("x"), x);
+  ASSERT_STATUS_OK(Pattern("(x)=>return Identity(x)").MatchAt(test.graph, inner.Index(), result));
+  ASSERT_TRUE(result);
+  EXPECT_EQ(result->valueOf("x"), x);
+  EXPECT_EQ(test.model.ToProto().SerializeAsString(), before);
+  test.graph.SetGraphResolveNeeded();
+  EXPECT_FALSE(Pattern("(x)=>return Identity(x)").MatchAt(test.graph, inner.Index(), result).IsOK());
+  ASSERT_TRUE(result);
+}
+
+TEST(PatternComponentTests, AttributeCapturesRequirePresenceAndDoNotSupportNone) {
+  EXPECT_THROW((void)Pattern("(x,p:ints|None)=>return Transpose(x,perm=p)"), OnnxRuntimeException);
+  TestGraph test;
+  auto& b = test.builder;
+  auto* x = b.MakeInput<float>({2, 3}, -1.0f, 1.0f);
+  auto& root = b.AddNode("Transpose", {x}, {b.MakeOutput()});
+  b.SetGraphOutputs();
+  ASSERT_STATUS_OK(test.graph.Resolve());
+  std::optional<Match> result;
+  ASSERT_STATUS_OK(Pattern("(x,p:ints)=>return Transpose(x,perm=p)").MatchAt(test.graph, root.Index(), result));
+  EXPECT_FALSE(result);
+  ASSERT_STATUS_OK(Pattern("(x)=>return Transpose(x)").MatchAt(test.graph, root.Index(), result));
+  ASSERT_TRUE(result);
+  EXPECT_EQ(result->nodes[0]->GetAttributes().find("perm"), result->nodes[0]->GetAttributes().end());
+  EXPECT_THROW(result->attributeOf("p"), OnnxRuntimeException);
+}
+
 TEST(PatternComponentTests, DeletionBoundaryButNotProviderPolicyIsIncluded) {
   for (int scenario = 0; scenario < 3; ++scenario) {
     TestGraph test;

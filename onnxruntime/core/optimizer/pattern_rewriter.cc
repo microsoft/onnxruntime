@@ -1978,6 +1978,16 @@ Rule::Rule(std::string name, std::string_view pattern, std::string_view replacem
            InlinedVector<OpsetRequirement, 1> opsets)
     : Rule(std::move(name), Pattern(pattern), Replacement(replacement), std::move(check_and_bind), std::move(opsets)) {}
 
+Status Pattern::MatchAt(const Graph& graph, NodeIndex root, std::optional<Match>& result) const {
+  std::optional<Match> candidate;
+  ORT_RETURN_IF_ERROR(VisitMatches(graph, root, [&](Match& match) {
+    candidate = std::move(match);
+    return false;
+  }));
+  result = std::move(candidate);
+  return Status::OK();
+}
+
 Status Pattern::VisitMatches(const Graph& graph, NodeIndex root_index,
                              const std::function<bool(Match&)>& visitor) const {
   ORT_RETURN_IF(!visitor, "Pattern visitor must be callable.");

@@ -45,11 +45,12 @@ outer `q`, composition is `composed[i]=p[q[i]]`, not `q[p[i]]`.
 The complete definition of `ComposeTransposePermutations` is:
 ```cpp
 bool ComposeTransposePermutations(const Graph&, Match& match) {
-  const auto* shape = match.valueOf("x")->Shape();
+  const NodeArg* x = match.valueOf("x");
+  const auto* shape = x->Shape();
   if (!shape) return match.Reject("Transpose composition requires known rank.");
   const int rank = shape->dim_size();
-  const auto& p = match.attributeOf("p");
-  const auto& q = match.attributeOf("q");
+  const ONNX_NAMESPACE::AttributeProto& p = match.attributeOf("p");
+  const ONNX_NAMESPACE::AttributeProto& q = match.attributeOf("q");
   auto valid = [rank](const ONNX_NAMESPACE::AttributeProto& perm) {
     if (perm.type() != ONNX_NAMESPACE::AttributeProto_AttributeType_INTS ||
         perm.ints_size() != rank) return false;
@@ -68,41 +69,45 @@ bool ComposeTransposePermutations(const Graph&, Match& match) {
 ```
 
 The pattern requires explicit `perm` attributes; it does not match default
-reverse-axis Transposes. Known rank is enough: dimension sizes need not be
+reverse-axis Transposes. `attributeOf` returns a const reference to the captured
+`AttributeProto` rather than copying its potentially large payload; the reference
+borrows the Match. The pattern guarantees that `p` and `q` exist before the
+checker runs. Optional attribute captures such as `p:ints | None` are not
+supported: `None` describes tensor-slot/branch absence, not a missing attribute.
+To handle an omitted attribute, leave it out of the pattern's keyword constraints
+and inspect the matched node's `GetAttributes()` map in the checker; see
+[attribute captures](#optional-type-and-shape-annotations) below for the default
+attribute distinction. Known rank is enough: dimension sizes need not be
 known. Identity composition remains a Transpose with the identity permutation,
 not a zero-node replacement. The built-in boundary check will not apply the
 fusion if the inner Transpose result is exposed as a graph output or is
 consumed elsewhere. The rank-three
 noncommuting permutations `[1,0,2]` then `[0,2,1]` compose to `[1,2,0]`.
 
-## Constructing rules
-
-The experimental `onnxruntime::rewrite::PatternRewriter` replaces connected
-operator patterns with semantically equivalent graphs. Include
-`core/optimizer/pattern_rewriter.h`. Construct `Pattern` and `Replacement` from
-text; programmatic builders and mutable replacement recipes are not public APIs.
-Check-and-bind callbacks and replacement callbacks remain ordinary C++ functions.
-An omitted check-and-bind callback (`{}`) accepts after built-in checks and
-contributes zero to `check_and_bind_calls`. Use that placeholder when supplying
-the fifth constructor argument without a checker.
-
-A `Rule` takes `(name, pattern, replacement, check_and_bind, opset_requirements)`.
-The pattern may be text or a parsed `Pattern`; the replacement may be text,
-a parsed `Replacement`, or a callback returning one. Text accepts string literals,
-`std::string`, and `std::string_view` and is parsed once during rule construction;
-syntax errors are reported immediately. Parsed definitions own their data, so
-the original text need not outlive the rule. Rules remain copyable and movable.
-The matcher establishes structural and deletion safety. **The rule author must establish
-semantic equivalence, supported types, and kernel compatibility.**
-The opset list defaults to empty, not an inferred version range: missing required
-domain ranges are construction errors. The example's supported ranges are the
-author's contract, not automatic proof about every schema version.
-
 ## Patterns
 
 `Pattern` is an owning, copyable parsed graph description. Repeated names bind
 the **same `NodeArg`**, not merely equal tensor contents. It has a standalone
 execution API; neither a `Rule`, replacement, nor `PatternRewriter` is needed:
+
+```cpp
+Pattern pattern("(x)=>{a=Identity(x);return Sigmoid(a)}");
+std::optional<Match> match;
+ORT_RETURN_IF_ERROR(pattern.MatchAt(graph, root.Index(), match));
+if (match) {
+  const NodeArg* input = match->valueOf("x");
+  // Inspect input; do not mutate graph.
+  (void)input;
+}
+```
+
+`MatchAt` matches at exactly the specified root node. It returns the first
+successful concrete plan in source order, or `std::nullopt` for an ordinary
+nonmatch (clearing any previous result). Status errors and configuration
+exceptions leave the caller's result unchanged. The result owns its selected
+plan but borrows the unchanged graph, as described in [Match](#the-match-object).
+It does not run a checker or search another candidate after a later checker
+rejection. Use the ordered visitor when that retry is needed:
 
 ```cpp
 Pattern pattern("(x)=>{a=Identity(x);return Sigmoid(a)}");
@@ -125,10 +130,10 @@ empty visitors return errors; malformed/non-rooted pattern configuration
 throws. Visitor exceptions propagate, never silently retry. The callback may
 copy a candidate but must not mutate the graph.
 
-The standalone API uses the same structural, attribute, constant, type/shape,
-layer and **deletion-boundary** matcher as the engine. It enumerates rewrite-safe
-patterns, not arbitrary subgraph occurrences. It deliberately does not apply
-rule opset-range or execution-provider policy and does not run a checker,
+Both standalone APIs use the same structural, attribute, constant, type/shape,
+layer and **deletion-boundary** matcher as the engine. They find rewrite-safe
+patterns, not arbitrary subgraph occurrences. They deliberately do not apply
+rule opset-range or execution-provider policy and do not run a checker,
 construct a replacement or traverse other roots/subgraphs. The first consistent
 annotation combination is selected within each concrete graph plan; rejecting
 that candidate does not search other annotation combinations.
@@ -282,6 +287,13 @@ For example, `float` means a FLOAT attribute in keyword position but a scalar
 float32 tensor in tensor position; use `int64` for an integer tensor and `int`
 for an INT attribute. Attribute variables cannot also be tensor inputs, carry
 shapes, or use type unions (including `None`). Undeclared captures remain supported and untyped.
+There is no nullable `optionalAttributeOf` lookup: `attributeOf` requires a bound
+capture or prepared attribute and returns `const AttributeProto&`. A constrained
+attribute must exist for a match; a schema default inserted by `Graph::Resolve`
+counts as present. An optional attribute without a schema default (for example
+Transpose `perm`) may remain absent. Omit its keyword constraint and use
+`match.nodes[index]->GetAttributes().find("perm")` to distinguish that case in
+C++; omitted/default permutations still need their operator-specific semantics.
 
 Annotations are constraints on **patterns only**; replacements continue to use
 unannotated inputs and derive types/shapes from preserved outputs and schema
@@ -555,7 +567,7 @@ text and returns false; it does not
 throw, mutate the graph, stop `VisitMatches` enumeration, or veto a candidate by
 itself if its caller ignores the boolean.
 
-Candidates from `VisitMatches` and engine callbacks retain their selected compiled
+Candidates from `MatchAt`, `VisitMatches` and engine callbacks retain their selected compiled
 pattern. Copying a Match copies its binding/prepared/rejection state and shares
 that immutable pattern ownership, so destroying the original Pattern/library or
 Match does not invalidate the copied plan. Nodes, tensors and captured graph data
@@ -565,7 +577,7 @@ moving that object. Engine callbacks should retain neither pointers nor views.
 
 The public low-level `Bind*` methods, raw vectors and `pattern` pointer are matcher
 plumbing, not supported user construction/forgery APIs. Obtain evidence from
-`VisitMatches` or engine callbacks; author checkers using lookups, `update` and
+`MatchAt`, `VisitMatches` or engine callbacks; author checkers using lookups, `update` and
 `Reject`. Replacement instantiation deliberately takes explicit bindings rather
 than trusting a manually fabricated or stale Match.
 
@@ -670,6 +682,29 @@ Replacement tensor inputs may reference only pattern input variables, literal
 constants, or earlier outputs in the replacement itself. A matched intermediate
 is about to be deleted and cannot be a replacement input. Replacement sequences
 must be connected to their final operator.
+
+## Constructing rules
+
+The experimental `onnxruntime::rewrite::PatternRewriter` replaces connected
+operator patterns with semantically equivalent graphs. Include
+`core/optimizer/pattern_rewriter.h`. Construct `Pattern` and `Replacement` from
+text; programmatic builders and mutable replacement recipes are not public APIs.
+Check-and-bind callbacks and replacement callbacks remain ordinary C++ functions.
+An omitted check-and-bind callback (`{}`) accepts after built-in checks and
+contributes zero to `check_and_bind_calls`. Use that placeholder when supplying
+the fifth constructor argument without a checker.
+
+A `Rule` takes `(name, pattern, replacement, check_and_bind, opset_requirements)`.
+The pattern may be text or a parsed `Pattern`; the replacement may be text,
+a parsed `Replacement`, or a callback returning one. Text accepts string literals,
+`std::string`, and `std::string_view` and is parsed once during rule construction;
+syntax errors are reported immediately. Parsed definitions own their data, so
+the original text need not outlive the rule. Rules remain copyable and movable.
+The matcher establishes structural and deletion safety. **The rule author must establish
+semantic equivalence, supported types, and kernel compatibility.**
+The opset list defaults to empty, not an inferred version range: missing required
+domain ranges are construction errors. The example's supported ranges are the
+author's contract, not automatic proof about every schema version.
 
 ## When a match succeeds or fails
 
@@ -894,7 +929,7 @@ normally and are not converted to nonmatches.
 
 `onnxruntime/test/optimizer/pattern_rewriter_components_test.cc` separates
 `PatternComponentTests`, `ReplacementComponentTests`, `MatchComponentTests`
-and `CheckAndBindComponentTests`. These invoke `VisitMatches`, `Instantiate`,
+and `CheckAndBindComponentTests`. These invoke `MatchAt`, `VisitMatches`, `Instantiate`,
 Match lookups/updates and an ordinary checker directly, without disguising
 an engine run as a standalone component operation. The same file follows them
 with the motivating Transpose rule's numerical/boundary integration test.
