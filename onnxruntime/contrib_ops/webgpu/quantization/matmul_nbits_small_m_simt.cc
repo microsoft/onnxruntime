@@ -45,8 +45,8 @@ class MatMulNBitsSmallMSimtProgram final : public Program<MatMulNBitsSmallMSimtP
     const auto& a = shader.AddInput("a", ShaderUsage::UseValueTypeAlias);
     const auto& b = shader.AddInput("b", ShaderUsage::UseValueTypeAlias);
     const auto& scales = shader.AddInput("scales", ShaderUsage::UseValueTypeAlias);
-    const auto* zero_points = has_zero_points_ ? &shader.AddInput("zero_points", ShaderUsage::UseValueTypeAlias) : nullptr;
-    const auto* bias = has_bias_ ? &shader.AddInput("bias", ShaderUsage::UseValueTypeAlias) : nullptr;
+    const auto* zero_points = has_zero_points_ ? &shader.AddInput("zero_points", ShaderUsage::None) : nullptr;
+    const auto* bias = has_bias_ ? &shader.AddInput("bias", ShaderUsage::None) : nullptr;
     const auto& output = shader.AddOutput("output", ShaderUsage::UseElementTypeAlias);
     constexpr uint32_t kKLanes = kWorkgroupSize / kBN;
     shader.AdditionalImplementation()
