@@ -532,7 +532,11 @@ A conceptual internal representation is:
 ComputeCapability
 |-- sub_graph
 |   `-- source-node membership and supplied/derived boundary inputs/outputs
-`-- planning (optional)
+|-- nodes_to_optimize (optional, existing)
+|   `-- child ComputeCapability requests identifying subsets to optimize
+|-- optimization_func (optional, existing)
+|   `-- callback on an optimization request; mutates Graph and updates the parent capability
+`-- planning (optional, proposed)
     |-- candidate_id + graph_revision
     |-- alternative_view_ids + compatibility_constraints
     |-- implementation_recipe
@@ -740,6 +744,96 @@ revised plan before allocation/use, or an explicit initialization failure. Runti
 inside the committed permissions and fails explicitly when no permitted route is available. Existing
 GQA policy enforcement is the foundation; the proposed capability-to-kernel binding and whole-session
 checks are not already supplied by that enforcement or by post-PrePack verification alone.
+
+#### Example: GQA Request, Contract Reply, and Selection
+
+One GQA execution candidate can offer several contracts for the same implementation, rather than one
+capability per backend route. This example uses the GQA policy/sizing work above; multi-contract
+discovery and selected-binding transport remain proposed, not implemented.
+
+**Request.** Assume the application permits both `memory` and `latency`, with neither hard-pinned:
+
+```text
+source node / graph revision / EP instance: GQA_42 / R17 / CUDA:0
+device: SM80, 108 SMs
+types / query heads / KV heads / head size: FP16 Q/K/V and cache / 8 / 2 / 512
+workload: batch <= 1, query length <= 4, total KV length <= 64
+allocated KV capacity: 64
+configuration: separate Q/K/V, causal, non-windowed
+               no rotary, QK normalization, softcap, attention bias, or head sink
+backends: Flash, memory-efficient attention, unfused enabled; XQA and cuDNN disabled
+allowed policy intents: {memory, latency}
+```
+
+The EP evaluates the same implementation and workload with the existing estimator, resolving
+permissions and requirements together:
+
+```text
+M = EstimateGroupQueryAttentionWorkspace(..., Memory)
+L = EstimateGroupQueryAttentionWorkspace(..., Latency)
+```
+
+**Reply.** Assuming both estimates succeed, the conceptual reply is:
+
+```text
+ComputeCapability:
+  sub_graph: source_nodes = {GQA_42}; boundary = derived from source graph
+  planning:
+    candidate_id: cuda0:GQA_42:R17
+    graph_revision: R17
+    implementation_recipe:
+      kind: registered GQA kernel
+      host_graph_rewrite: none
+      graph_effects: unchanged graph interface
+      recipe_state: <retained implementation/configuration state>
+    contracts:
+      - contract_id: C_memory
+        resolved_state: <retained M.committed_backends and query conditions>
+        allocation_requirements: requirements_from(M)
+      - contract_id: C_latency
+        resolved_state: <retained L.committed_backends and query conditions>
+        allocation_requirements: requirements_from(L)
+```
+
+Both contracts cover the declared workload, report `bound_status = bounded` and no unresolved terms,
+and require explicit failure when no permitted route is available. Resolved state is EP-private;
+ORT selects the ID rather than interpreting backend masks. For each successful result `E`,
+`requirements_from(E)` is illustrative conversion code, not a new API:
+
+| Resource ID | Size bound | Location and lifetime |
+|:------------|:-----------|:----------------------|
+| `GQA_42:execution_workspace` | `E.total_workspace_bytes` | CUDA:0, 256-byte alignment, operation through device completion |
+| `GQA_42:persistent_prepack` | `E.persistent_prepack_bytes` | CUDA:0, session |
+| `GQA_42:initialization_scratch` | `E.initialization_scratch_bytes` | CUDA:0, initialization |
+
+With Flash and memory-efficient attention compiled in, the
+`MemoryHead512Envelope64RetainsCoveringUnfusedRoute` regression specifies the following analytical
+workspace bounds for this configuration. Its default-policy baseline and `latency` resolve to the
+same route sets:
+
+| Contract | Execution workspace bound | Persistent prepack | Initialization scratch |
+|:---------|--------------------------:|-------------------:|-----------------------:|
+| `C_memory` | 213,248 bytes | 0 | 0 |
+| `C_latency` | 1,245,440 bytes | 0 | 0 |
+
+These are implementation requirements, not measured or whole-session VRAM totals. The zeros follow
+from this configuration's known implementation behavior, not unspecified fields. Here, `memory`
+retains both Flash and unfused for prefill/chunked prefill: unfused provides covering fallback where
+Flash does not cover the admitted geometry, and both routes are included in the bound.
+
+**Selection and execution.**
+
+```text
+Compare: GQA_42 on CUDA with C_latency versus the same candidate with C_memory
+    -> evaluate each with KV backing, activations, weights, transfers, and other kernels
+    -> select one contract, reconcile/verify, and commit the whole-session backing plan
+    -> pass its retained binding to the kernel; L2 verifies and runtime enforces it
+```
+
+Do not add the alternative contracts' requirements together. Selecting `C_memory` binds its resolved
+permissions, not a later independent interpretation of `"memory"`. If the user pins `memory`, offer
+only that permitted contract. If cuDNN becomes permitted without an adequate bound, a contract
+retaining it is unresolved; report the limitation instead of claiming a bound or silently removing it.
 
 ### Select Placement-Sensitive Optimizations through EP Recipes
 
