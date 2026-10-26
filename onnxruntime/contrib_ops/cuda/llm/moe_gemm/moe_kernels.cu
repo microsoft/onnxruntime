@@ -62,7 +62,6 @@
 #include "contrib_ops/cuda/llm/kernels/quantization.cuh"
 #include "contrib_ops/cuda/llm/moe_gemm/common.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_kernels.h"
-#include "contrib_ops/cuda/moe/qmoe_fused_route.cuh"
 #include "contrib_ops/cuda/moe/qmoe_kernels.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemv.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_util_kernels.h"
@@ -673,12 +672,12 @@ bool isFusedMoeRoutingSupported(const int64_t num_tokens, const int num_experts,
   if (num_tokens == 1 && num_experts <= onnxruntime::cuda::topk::kWarpBitonicMaxSize) {
     return true;
   }
-  return onnxruntime::cuda::CanUseFusedRouteMaps(
+  return onnxruntime::contrib::cuda::CanUseFusedRouteMaps(
       num_tokens, static_cast<int64_t>(num_experts), static_cast<int64_t>(experts_per_token));
 }
 
 template <typename T>
-void launchFusedRoutingBuildExpertMaps(const T* router_logits, int* token_selected_experts,
+bool launchFusedRoutingBuildExpertMaps(const T* router_logits, int* token_selected_experts,
                                        float* token_final_scales, int* permuted_row_to_unpermuted_row,
                                        int* unpermuted_row_to_permuted_row,
                                        int* permuted_token_selected_experts,
@@ -705,19 +704,27 @@ void launchFusedRoutingBuildExpertMaps(const T* router_logits, int* token_select
                                          unpermuted_row_to_permuted_row, permuted_token_selected_experts,
                                          expert_first_token_offset, num_experts, experts_per_token,
                                          normalize_routing_weights));
-      return;
+      return true;
     }
 
     if constexpr (std::is_same_v<T, half> || std::is_same_v<T, __nv_bfloat16>) {
-      ORT_THROW_IF_ERROR(onnxruntime::cuda::LaunchFusedRouteMaps<T>(
-          stream, router_logits, token_selected_experts, token_final_scales, permuted_row_to_unpermuted_row,
-          unpermuted_row_to_permuted_row, permuted_token_selected_experts, expert_first_token_offset,
-          num_tokens, num_experts, experts_per_token, normalize_routing_weights));
-      return;
+      if (onnxruntime::contrib::cuda::LaunchFusedRouteMaps(
+              router_logits, token_final_scales, token_selected_experts, permuted_row_to_unpermuted_row,
+              unpermuted_row_to_permuted_row, permuted_token_selected_experts, expert_first_token_offset,
+              num_tokens, num_experts, experts_per_token, normalize_routing_weights,
+              onnxruntime::llm::common::getEnvEnablePDL(), stream)) {
+        return true;
+      }
     }
 
-    ORT_THROW("Fused MoE routing requested for unsupported router logit dtype with num_tokens=", num_tokens,
-              ", num_experts=", num_experts);
+    // LaunchFusedRouteMaps can decline at runtime when the SM90 kernel image/device is unavailable
+    // or router_logits is not 8-byte aligned (and is not available for float logits). Materialize
+    // softmax + top-k here and return false so the caller builds the expert maps via the standard
+    // prologue.
+    onnxruntime::contrib::cuda::LaunchSoftmaxTopK(
+        router_logits, token_final_scales, token_selected_experts, num_tokens, num_experts,
+        experts_per_token, normalize_routing_weights, stream);
+    return false;
   } else {
     (void)router_logits;
     (void)token_selected_experts;
@@ -2992,14 +2999,14 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
     // yet and we fold it into the expert-map prologue, saving a kernel launch per MoE layer. The
     // caller gates on the same predicate, so the two cannot disagree about who computed the routing.
     bool const use_fused_routing = fused_routing.router_logits != nullptr;
-    bool fused_prologue_result = use_fused_routing;
+    bool fused_prologue_result = false;
     if (use_fused_routing) {
       ORT_ENFORCE(!use_w4afp8, "Fused MoE routing is not supported for W4AFP8");
       ORT_ENFORCE(isFusedMoeRoutingSupported(num_rows, full_num_experts, num_experts_per_node,
                                              experts_per_token, parallelism_config.ep_size),
                   "Fused MoE routing was requested for an unsupported configuration");
       ORT_ENFORCE(fused_routing.token_selected_experts && fused_routing.token_final_scales);
-      launchFusedRoutingBuildExpertMaps<InputType>(
+      fused_prologue_result = launchFusedRoutingBuildExpertMaps<InputType>(
           static_cast<InputType const*>(fused_routing.router_logits), fused_routing.token_selected_experts,
           fused_routing.token_final_scales, permuted_row_to_unpermuted_row_, unpermuted_row_to_permuted_row,
           permuted_token_selected_experts_, expert_first_token_offset_, static_cast<int>(num_rows), full_num_experts,
@@ -3010,7 +3017,8 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
         fused_routing.on_routing_ready(fused_routing.routing_context, token_selected_experts,
                                        static_cast<size_t>(expanded_num_rows), stream);
       }
-    } else if (!use_w4afp8) {
+    }
+    if (!fused_prologue_result && !use_w4afp8) {
       // WAR: fusedBuildExpertMapsSortFirstToken kernel will lead to illegal memory access for W4AFP8
       fused_prologue_result = fusedBuildExpertMapsSortFirstToken(token_selected_experts,
                                                                  permuted_row_to_unpermuted_row_, unpermuted_row_to_permuted_row,
