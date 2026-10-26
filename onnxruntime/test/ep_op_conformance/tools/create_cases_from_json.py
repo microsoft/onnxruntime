@@ -1,4 +1,4 @@
-"""Create portable operator cases from authored JSON, optionally using a build cache."""
+"""Create portable operator cases from authored JSON, with optional managed build output."""
 
 import argparse
 import hashlib
@@ -7,7 +7,6 @@ import json
 import math
 import os
 import re
-import shutil
 import tempfile
 from pathlib import Path
 
@@ -174,52 +173,63 @@ def identity(definitions):
 def materialize(definitions, output):
     provenance = identity(definitions)
     digest = hashlib.sha256(json.dumps(provenance, sort_keys=True).encode()).hexdigest()
-    destination = output / digest
-    record = output / f"{digest}.json"
-    if not destination.exists():
-        staging = output / f"{digest}.tmp"
-        if staging.exists():
-            shutil.rmtree(staging)
-        generate(definitions, staging)
-        staging.rename(destination)
-    elif not record.exists():
-        raise ValueError("Incomplete generated case set; use a fresh output directory")
-    files = {
+    if output.exists():
+        metadata = read_generated(output)
+        if metadata["input_digest"] == digest:
+            if metadata["source_revision"] != os.environ.get("GITHUB_SHA"):
+                metadata["source_revision"] = os.environ.get("GITHUB_SHA")
+                temporary = output / "current.tmp"
+                temporary.write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+                temporary.replace(output / "current.json")
+            return
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=".ep-op-conformance-build-", dir=output.parent) as temporary:
+        staging = Path(temporary) / "generated"
+        generate(definitions, staging / "cases")
+        metadata = {
+            "schema_version": 1,
+            "input_digest": digest,
+            "source_revision": os.environ.get("GITHUB_SHA"),
+            **provenance,
+            "directory": "cases",
+            "files": generated_files(staging / "cases"),
+        }
+        (staging / "current.json").write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        previous = Path(temporary) / "previous"
+        if output.exists():
+            output.rename(previous)
+        try:
+            staging.rename(output)
+        except Exception:
+            if previous.exists():
+                previous.rename(output)
+            raise
+
+
+def generated_files(destination):
+    return {
         path.relative_to(destination).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
         for path in sorted(destination.rglob("*"))
         if path.is_file()
     }
-    if record.exists() and json.loads(record.read_text(encoding="utf-8"))["files"] != files:
-        raise ValueError("Generated case bytes changed; cases are immutable")
-    metadata = {
-        "schema_version": 1,
-        "input_digest": digest,
-        "source_revision": os.environ.get("GITHUB_SHA"),
-        **provenance,
-        "directory": digest,
-        "files": files,
-    }
-    output.mkdir(parents=True, exist_ok=True)
-    if not record.exists():
-        record.write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    temporary = output / "current.tmp"
-    temporary.write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    temporary.replace(output / "current.json")
+
+
+def read_generated(output):
+    metadata = json.loads((output / "current.json").read_text(encoding="utf-8"))
+    if metadata["schema_version"] != 1 or metadata["directory"] != "cases":
+        raise ValueError("Unsupported generated layout; use a fresh build output directory")
+    if {path.name for path in output.iterdir()} != {"cases", "current.json"}:
+        raise ValueError("Unexpected files in generated build output")
+    if generated_files(output / "cases") != metadata["files"]:
+        raise ValueError("Generated case hashes differ; cases are immutable until regeneration")
+    return metadata
 
 
 def verify_generated(definitions, output):
-    metadata = json.loads((output / "current.json").read_text(encoding="utf-8"))
+    metadata = read_generated(output)
     digest = hashlib.sha256(json.dumps(identity(definitions), sort_keys=True).encode()).hexdigest()
-    if metadata["input_digest"] != digest or metadata["directory"] != digest:
+    if metadata["input_digest"] != digest:
         raise ValueError("Generated case input identity mismatch")
-    destination = output / digest
-    files = {
-        path.relative_to(destination).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
-        for path in sorted(destination.rglob("*"))
-        if path.is_file()
-    }
-    if files != metadata["files"]:
-        raise ValueError("Generated case hashes differ; cases are immutable")
 
 
 if __name__ == "__main__":
@@ -227,26 +237,18 @@ if __name__ == "__main__":
         description="Create ONNX models, tensor datasets and case manifests from authored JSON definitions."
     )
     parser.add_argument("--definitions", required=True, type=Path, help="Schema-version-1 JSON definitions file.")
-    destination = parser.add_mutually_exclusive_group()
+    destination = parser.add_mutually_exclusive_group(required=True)
     destination.add_argument("--output", type=Path, help="Fresh directory for directly generated cases.")
-    destination.add_argument("--build-cache", type=Path, help="Build directory for digest-keyed reusable cases.")
-    action = parser.add_mutually_exclusive_group()
-    action.add_argument(
-        "--print-key", action="store_true", help="Print the build-cache fingerprint without generating."
+    destination.add_argument(
+        "--build-output", type=Path, help="Managed build directory; replaces cases when inputs change."
     )
-    action.add_argument("--verify", action="store_true", help="Verify existing --build-cache inputs and case bytes.")
+    parser.add_argument("--verify", action="store_true", help="Verify existing --build-output inputs and case bytes.")
     arguments = parser.parse_args()
-    if arguments.print_key:
-        if arguments.output or arguments.build_cache:
-            parser.error("--print-key does not take an output directory")
-        print(hashlib.sha256(json.dumps(identity(arguments.definitions), sort_keys=True).encode()).hexdigest())
-    elif arguments.verify:
-        if arguments.build_cache is None:
-            parser.error("--verify requires --build-cache")
-        verify_generated(arguments.definitions, arguments.build_cache)
-    elif arguments.build_cache:
-        materialize(arguments.definitions, arguments.build_cache)
-    elif arguments.output:
-        generate(arguments.definitions, arguments.output)
+    if arguments.verify:
+        if arguments.build_output is None:
+            parser.error("--verify requires --build-output")
+        verify_generated(arguments.definitions, arguments.build_output)
+    elif arguments.build_output:
+        materialize(arguments.definitions, arguments.build_output)
     else:
-        parser.error("--output or --build-cache is required unless --print-key is set")
+        generate(arguments.definitions, arguments.output)

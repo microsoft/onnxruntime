@@ -41,8 +41,10 @@ retain the three package manifests and exact generation metadata.
 ## Package Cases
 
 `tools/create_cases_from_json.py --definitions cases/pilot.json --output C:/cases/generated` creates cases from
-authored JSON; `--build-cache` selects immutable build-cache output instead. Existing JSON-generated or C++-exported
-cases can be packaged independently using Python 3.10+ with ONNX and NumPy:
+authored JSON into a fresh directory. For build integration, `--build-output` maintains a single `cases/` directory
+and `current.json` provenance/hash record. Unchanged inputs reuse the files; changed inputs regenerate the entire set
+and replace the previous output only after success, without retaining historical copies. Existing JSON-generated
+or C++-exported cases can be packaged independently using Python 3.10+ with ONNX and NumPy:
 
 ```powershell
 python tools/package_cases.py create --cases C:/cases/generated --output C:/cases/preview-1.zip `

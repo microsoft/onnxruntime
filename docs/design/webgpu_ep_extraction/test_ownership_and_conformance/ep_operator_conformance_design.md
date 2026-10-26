@@ -440,8 +440,10 @@ work. `tools/package_cases.py` implements reusable creation and verification of 
 JSON-generated or C++-exported case directories, preserving case/model/tensor bytes and recording hashes,
 provenance, and model IR/opset requirements. It validates supported structure and dependency closure, not mathematical
 correctness or EP compatibility. CI reuses its archive/hash mechanics for a separate, explicitly CI-only negative
-fixture archive; public canonical-case commands do not bypass validation. JSON generation and optional build caching
-share `tools/create_cases_from_json.py`. Source-kit/runtime packaging and bundle checks remain CI-only in `tools/ci/`;
+fixture archive; public canonical-case commands do not bypass validation. `tools/create_cases_from_json.py` supports
+fresh direct output or one managed build output. Unchanged inputs avoid regeneration; changed inputs replace the
+whole generated set after successful generation, without retaining historical copies. Provenance and file hashes
+remain recorded independently of directory naming. Source-kit/runtime packaging and bundle checks remain CI-only in `tools/ci/`;
 a release installation/publication interface is not implemented.
 
 An external EP should test against at least:

@@ -114,13 +114,12 @@ jobs:
           $cpu = "$env:RUNNER_TEMP/ep-op-conformance-handoff/cpu"
           $infrastructure = "$env:RUNNER_TEMP/ep-op-conformance-handoff/infrastructure"
           New-Item -ItemType Directory "$cpu/bin", "$infrastructure/bin", "$infrastructure/generated" | Out-Null
-          $generated = "$build/ep_op_conformance/generated"
-          $generation = Get-Content "$generated/current.json" -Raw | ConvertFrom-Json
-          Copy-Item "$generated/$($generation.directory)" "$cpu/cases" -Recurse
+          $generated = "$build/ep_op_conformance/generated-cases"
+          Copy-Item "$generated/cases" "$cpu/cases" -Recurse
           Copy-Item onnxruntime/test/ep_op_conformance/examples/cpu.json "$cpu/profile.json"
           Copy-Item "$generated/current.json" "$cpu/generation.json"
-          Copy-Item "$generated/current.json", "$generated/$($generation.directory).json" "$infrastructure/generated"
-          Copy-Item "$generated/$($generation.directory)" "$infrastructure/generated" -Recurse
+          Copy-Item "$generated/current.json" "$infrastructure/generated"
+          Copy-Item "$generated/cases" "$infrastructure/generated" -Recurse
           foreach ($destination in @("$cpu/bin", "$infrastructure/bin")) {
             Copy-Item "$build/RelWithDebInfo/onnxruntime.dll" $destination
             Copy-Item "$build/ep_op_conformance/RelWithDebInfo/onnxruntime_ep_op_conformance_test.exe" $destination
@@ -155,7 +154,7 @@ jobs:
         with:
           name: ep-op-conformance-main-build-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            ${{ github.workspace }}/build/RelWithDebInfo/ep_op_conformance/generated/*.json
+            ${{ github.workspace }}/build/RelWithDebInfo/ep_op_conformance/generated-cases/current.json
             ${{ github.workspace }}/build/RelWithDebInfo/Testing/Temporary/LastTest.log
           if-no-files-found: warn
           retention-days: 14

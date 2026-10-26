@@ -10,6 +10,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from create_cases_from_json import read_generated
 from package_cases import create as package_cases
 from package_cases import (
     extract_archive,
@@ -29,14 +30,10 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def check_generated(generated):
-    metadata = json.loads((generated / "current.json").read_text(encoding="utf-8"))
-    directory = metadata["directory"]
-    if not re.fullmatch(r"[0-9a-f]{64}", directory) or directory != metadata["input_digest"]:
+    metadata = read_generated(generated)
+    if not re.fullmatch(r"[0-9a-f]{64}", metadata["input_digest"]):
         raise ValueError("Invalid generated case identity")
-    positive = generated / directory
-    if inventory(positive) != metadata["files"]:
-        raise ValueError("Generated case hash mismatch")
-    return positive, metadata
+    return generated / "cases", metadata
 
 
 def create(generated, runtime, plugin, output, revision, runner):

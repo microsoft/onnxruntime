@@ -81,29 +81,32 @@ class CaseNamingTest(unittest.TestCase):
 
 
 class GenerationTest(unittest.TestCase):
-    def test_direct_and_build_cache_cli(self):
+    def test_direct_and_build_output_cli(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             script = ROOT / "tools/create_cases_from_json.py"
             arguments = [sys.executable, "-B", str(script), "--definitions", str(ROOT / "cases/pilot.json")]
-            for destination in (("--output", root / "direct"), ("--build-cache", root / "cache")):
+            for destination in (("--output", root / "direct"), ("--build-output", root / "build")):
                 subprocess.run([*arguments, destination[0], str(destination[1])], check=True, capture_output=True)
-            metadata = json.loads((root / "cache/current.json").read_text())
-            cached = root / "cache" / metadata["directory"]
+            metadata = json.loads((root / "build/current.json").read_text())
+            generated = root / "build" / metadata["directory"]
             expected = {
                 path.relative_to(root / "direct"): path.read_bytes()
                 for path in (root / "direct").rglob("*")
                 if path.is_file()
             }
             self.assertEqual(
-                expected, {path.relative_to(cached): path.read_bytes() for path in cached.rglob("*") if path.is_file()}
+                expected,
+                {path.relative_to(generated): path.read_bytes() for path in generated.rglob("*") if path.is_file()},
             )
-            key = subprocess.run([*arguments, "--print-key"], check=True, capture_output=True, text=True).stdout.strip()
-            self.assertEqual(key, metadata["directory"])
+            self.assertEqual(metadata["directory"], "cases")
             subprocess.run(
-                [*arguments, "--build-cache", str(root / "cache"), "--verify"], check=True, capture_output=True
+                [*arguments, "--build-output", str(root / "build"), "--verify"], check=True, capture_output=True
             )
-            for invalid in (("--verify",), ("--output", str(root / "new"), "--build-cache", str(root / "cache"))):
+            for invalid in (
+                ("--output", str(root / "new"), "--verify"),
+                ("--output", str(root / "new"), "--build-output", str(root / "build")),
+            ):
                 result = subprocess.run([*arguments, *invalid], check=False, capture_output=True)
                 self.assertEqual(result.returncode, 2)
 
@@ -211,6 +214,55 @@ class GenerationTest(unittest.TestCase):
         self.assertEqual(sentinel.read_text(), "existing output")
         self.assertEqual(list(self.destination.iterdir()), [sentinel])
 
+    def test_build_output_replaced_without_retaining_history(self):
+        output = self.root / "build"
+        materialize(self.definitions, output)
+        before = json.loads((output / "current.json").read_text())
+        document = json.loads(self.definitions.read_text())
+        document["cases"].pop()
+        self.definitions.write_text(json.dumps(document))
+        materialize(self.definitions, output)
+        after = json.loads((output / "current.json").read_text())
+        self.assertNotEqual(before["input_digest"], after["input_digest"])
+        self.assertEqual({path.name for path in output.iterdir()}, {"cases", "current.json"})
+        self.assertEqual(len(list((output / "cases").glob("*/case.json"))), 2)
+        self.assertEqual(set(self.root.iterdir()), {self.definitions, output})
+        verify_generated(self.definitions, output)
+
+    def test_failed_build_generation_preserves_previous_output(self):
+        output = self.root / "build"
+        materialize(self.definitions, output)
+        original = {path.relative_to(output): path.read_bytes() for path in output.rglob("*") if path.is_file()}
+        self.definitions.write_text("invalid JSON")
+        with self.assertRaises(json.JSONDecodeError):
+            materialize(self.definitions, output)
+        self.assertEqual(
+            original, {path.relative_to(output): path.read_bytes() for path in output.rglob("*") if path.is_file()}
+        )
+        self.assertEqual(set(self.root.iterdir()), {self.definitions, output})
+
+    def test_failed_build_publish_restores_previous_output(self):
+        output = self.root / "build"
+        materialize(self.definitions, output)
+        original = {path.relative_to(output): path.read_bytes() for path in output.rglob("*") if path.is_file()}
+        self.definitions.write_text(self.definitions.read_text() + "\n")
+        original_rename = Path.rename
+
+        def rename(path, target):
+            if path.name == "generated":
+                raise OSError("simulated publish failure")
+            return original_rename(path, target)
+
+        with (
+            patch("create_cases_from_json.Path.rename", new=rename),
+            self.assertRaisesRegex(OSError, "publish failure"),
+        ):
+            materialize(self.definitions, output)
+        self.assertEqual(
+            original, {path.relative_to(output): path.read_bytes() for path in output.rglob("*") if path.is_file()}
+        )
+        self.assertEqual(set(self.root.iterdir()), {self.definitions, output})
+
 
 class InfrastructureTest(unittest.TestCase):
     def setUp(self):
@@ -246,15 +298,17 @@ class InfrastructureTest(unittest.TestCase):
     def test_generation_records_source_revision(self):
         self.assertEqual(check_generated(self.generated)[1]["source_revision"], "test-revision")
 
-    def test_changed_input_keeps_old_cases_immutable(self):
+    def test_changed_input_replaces_cases_in_place(self):
         positive, original = check_generated(self.generated)
         document = json.loads(self.definitions.read_text())
         document["cases"][0]["comparison"]["atol"] = 0.25
         self.definitions.write_text(json.dumps(document))
         materialize(self.definitions, self.generated)
-        self.assertNotEqual(positive, check_generated(self.generated)[0])
-        self.assertTrue(positive.is_dir())
-        self.assertEqual(original["files"], json.loads((self.generated / f"{positive.name}.json").read_text())["files"])
+        updated, metadata = check_generated(self.generated)
+        self.assertEqual(positive, updated)
+        self.assertNotEqual(original["input_digest"], metadata["input_digest"])
+        self.assertNotEqual(original["files"], metadata["files"])
+        self.assertEqual({path.name for path in self.generated.iterdir()}, {"cases", "current.json"})
 
     def test_mutated_generated_bytes_rejected(self):
         positive, _ = check_generated(self.generated)
@@ -273,7 +327,7 @@ class InfrastructureTest(unittest.TestCase):
         with patch("create_cases_from_json.importlib.metadata.version", side_effect=packages.__getitem__):
             self.assertEqual(identity(self.definitions)["producer_packages"], packages)
 
-    def test_changed_producer_versions_keep_old_cases_immutable(self):
+    def test_changed_producer_versions_replace_cases_in_place(self):
         positive, original = check_generated(self.generated)
         with patch("create_cases_from_json.importlib.metadata.version", return_value="changed-version"):
             with self.assertRaisesRegex(ValueError, "input identity mismatch"):
@@ -281,10 +335,10 @@ class InfrastructureTest(unittest.TestCase):
             materialize(self.definitions, self.generated)
             verify_generated(self.definitions, self.generated)
         updated, metadata = check_generated(self.generated)
-        self.assertNotEqual(positive, updated)
+        self.assertEqual(positive, updated)
         self.assertEqual(metadata["producer_packages"], dict.fromkeys(("numpy", "onnx", "protobuf"), "changed-version"))
-        self.assertTrue(positive.is_dir())
-        self.assertEqual(original, json.loads((self.generated / f"{positive.name}.json").read_text()))
+        self.assertNotEqual(original["input_digest"], metadata["input_digest"])
+        self.assertEqual({path.name for path in self.generated.iterdir()}, {"cases", "current.json"})
 
     def test_package_roundtrip_and_header_closure(self):
         output = self.package()

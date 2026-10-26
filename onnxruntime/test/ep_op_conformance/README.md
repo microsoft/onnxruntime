@@ -21,7 +21,7 @@ separates initial source-built CPU/source-kit validation from later provider-wor
 - [runner/case_io.h](runner/case_io.h) and [runner/comparison.h](runner/comparison.h): shared artifact loader and
   float32 comparator used regardless of target.
 - [tools/create_cases_from_json.py](tools/create_cases_from_json.py): Python/ONNX producer for independently authored
-  JSON definitions, with optional build-cache reuse.
+  JSON definitions, with optional managed build output.
 - [tools/package_cases.py](tools/package_cases.py): reusable archive creation and verification for existing cases.
 - [cases/pilot.json](cases/pilot.json): scalar Mul, initializer Mul, and broadcast Add, once per dataset.
 - [examples/cpu.json](examples/cpu.json), [examples/dml.json](examples/dml.json), and
@@ -417,13 +417,12 @@ switch. Generation uses the build's `Python_EXECUTABLE`:
 python tools/ci_build/build.py --config Release --build_dir build/Windows --build_shared_lib --update --build --parallel `
   --cmake_extra_defines onnxruntime_BUILD_EP_OP_CONFORMANCE_TESTS=ON
 $MainBuild = 'build/Windows/Release'
-$Generated = "$MainBuild/ep_op_conformance/generated"
-$Generation = Get-Content "$Generated/current.json" -Raw | ConvertFrom-Json
+$Generated = "$MainBuild/ep_op_conformance/generated-cases"
 New-Item -ItemType Directory -Force "$MainBuild/ep_op_conformance/reports/Release" | Out-Null
 & "$MainBuild/ep_op_conformance/Release/onnxruntime_ep_op_conformance_test.exe" `
   --runtime "$MainBuild/Release/onnxruntime.dll" `
   --profile onnxruntime/test/ep_op_conformance/examples/cpu.json `
-  --cases "$Generated/$($Generation.directory)" --report "$MainBuild/ep_op_conformance/reports/Release/cpu.json"
+  --cases "$Generated/cases" --report "$MainBuild/ep_op_conformance/reports/Release/cpu.json"
 if ($LASTEXITCODE -ne 0) { throw 'CPU EP conformance failed' }
 ```
 
@@ -435,13 +434,16 @@ target-local. Configuration errors distinguish this runner's contract from integ
 - Cross-compilation and Android/iOS deployment are not yet supported or validated;
   their rejection is a current integration limit, not an inherent restriction of the portable case contract.
 
-[tools/create_cases_from_json.py](tools/create_cases_from_json.py) with `--build-cache` records input/producer hashes
-in digest-keyed immutable build directories;
-installed NumPy, ONNX, and protobuf versions are recorded, not separately pinned or enforced. Changed inputs or
-producer versions select a new directory and unchanged builds avoid regeneration. Building the runner does not
+[tools/create_cases_from_json.py](tools/create_cases_from_json.py) with `--build-output` maintains one `cases/`
+directory and a `current.json` provenance/hash record. Each build checks the definitions, generator, and installed
+NumPy/ONNX/protobuf versions. Unchanged inputs reuse the existing files; changed inputs regenerate the entire set
+in temporary storage and replace the previous output only after success. No historical case sets are retained.
+Producer versions are recorded, not separately pinned or enforced. This skips unchanged generation, not individual
+unchanged cases within a changed set. Building the runner does not
 register provider execution with CTest; CI or developers invoke it explicitly with a runtime, profile, cases, and
 writable report path. Comparator/exporter tests retain CTest integration. Generation metadata lives under the build's
-`ep_op_conformance/generated`; the example above writes reports under `ep_op_conformance/reports/<configuration>`.
+`ep_op_conformance/generated-cases`; the example above writes reports under `ep_op_conformance/reports/<configuration>`.
+Old fingerprint-cache directories under `ep_op_conformance/generated` are not used or automatically deleted.
 
 ### Packaging existing cases
 
@@ -527,7 +529,7 @@ Revised local Windows validation:
 
 - The explicit CPU job invocation passes all three canonical cases with assignment/output checks; CPU execution is
   absent from CTest. Direct-target changed-input and unchanged-input rebuilds pass; static-only and minimal
-  opt-ins reject explicitly. Forty-eight generation/package tests pass. The final source kit built outside the
+  opt-ins reject explicitly. Fifty-one generation/package tests pass. The final source kit built outside the
   checkout with public dependencies; after
   removing its source/build trees, all 20 matching-runtime CPU/plugin and nine ORT 1.24.4 CPU scenarios passed.
 - C++20 builds and 23 exporter tests, 36 integration checks, and 10 comparator checks passed. All 36 integration

@@ -96,25 +96,11 @@ set(EP_OP_CONFORMANCE_TEST_RUNTIME "" CACHE FILEPATH "ORT runtime for optional p
 set(EP_OP_CONFORMANCE_TEST_PLUGIN "" CACHE FILEPATH "Matching example_plugin_ep library for integration tests")
 set(EP_OP_CONFORMANCE_TEST_CPP_CASES "" CACHE PATH "Cases captured by the C++ exporter for integration tests")
 if(EP_OP_CONFORMANCE_PARENT_BUILD)
-  set(case_root "${CMAKE_CURRENT_BINARY_DIR}/generated")
-  set(case_inputs "${CMAKE_CURRENT_SOURCE_DIR}/cases/pilot.json"
-                  "${CMAKE_CURRENT_SOURCE_DIR}/tools/create_cases_from_json.py")
-  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${case_inputs})
-  execute_process(
-    COMMAND "${Python_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/create_cases_from_json.py"
-            --definitions "${CMAKE_CURRENT_SOURCE_DIR}/cases/pilot.json" --print-key
-    OUTPUT_VARIABLE case_key OUTPUT_STRIP_TRAILING_WHITESPACE
-    COMMAND_ERROR_IS_FATAL ANY)
-  add_custom_command(
-    OUTPUT "${case_root}/${case_key}.json" "${case_root}/current.json"
-        COMMAND "${Python_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/create_cases_from_json.py"
-          --definitions "${CMAKE_CURRENT_SOURCE_DIR}/cases/pilot.json" --build-cache "${case_root}"
-    DEPENDS ${case_inputs}
-    VERBATIM)
+  set(case_root "${CMAKE_CURRENT_BINARY_DIR}/generated-cases")
   add_custom_target(ep_op_conformance_cases
-        COMMAND "${Python_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/create_cases_from_json.py"
-          --definitions "${CMAKE_CURRENT_SOURCE_DIR}/cases/pilot.json" --build-cache "${case_root}" --verify
-    DEPENDS "${case_root}/${case_key}.json" "${case_root}/current.json"
+    COMMAND "${Python_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/create_cases_from_json.py"
+            --definitions "${CMAKE_CURRENT_SOURCE_DIR}/cases/pilot.json" --build-output "${case_root}"
+    BYPRODUCTS "${case_root}/current.json"
     VERBATIM)
   add_dependencies(onnxruntime_ep_op_conformance_test ep_op_conformance_cases onnxruntime)
 endif()
