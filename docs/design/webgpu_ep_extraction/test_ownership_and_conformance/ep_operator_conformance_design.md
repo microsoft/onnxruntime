@@ -150,7 +150,7 @@ Unknown fields and unsupported representations must be rejected, not silently ig
 | --- | --- |
 | Document | Required `schema_version: 1`; nonempty `cases` array |
 | Case | Required `id`, `operator`, `opset`, `inputs`, `outputs`, `comparison`; no run-count field |
-| `id` | Nonempty unique string using ASCII letters, digits, `.`, `_`, `-`; stable semantic identity, not an ordinal |
+| `id` | Structured case ID following the convention below; unique ignoring ASCII case; stable semantic identity, not an ordinal |
 | `operator`, `opset` | Standard ONNX operator name and supported positive integer opset; generated model must pass ONNX checking |
 | `inputs` | Ordered array of tensor definitions; order is the node input order; unique nonempty names |
 | `outputs` | Nonempty ordered array of authored expected tensors covering all outputs; unique names |
@@ -158,6 +158,13 @@ Unknown fields and unsupported representations must be rejected, not silently ig
 | `shape`, `values` | Concrete nonnegative integer dimensions; `[]` means scalar; float32 values with exactly the shape's element count; zero dimensions imply zero elements |
 | `initializer` | True retains that input in the model's initializers and omits it from runtime feeds; not a comparison option |
 | `comparison` | Required `atol`, `rtol` (finite nonnegative numbers) and `nan_equal` (boolean); expanded to a policy for each output |
+
+New IDs follow the [case ID convention](../../../../onnxruntime/test/ep_op_conformance/README.md#case-id-convention):
+`<domain>.<operator>.opset<version>.<descriptive_variant>`, with no mandatory dtype slot. IDs are stable and
+provider-neutral, while the model and tensors remain authoritative. Dots separate components, and the final variant
+contains only ASCII letters, digits, and underscores. The generator validates the structured syntax and
+case-insensitive uniqueness, then writes `case-<id>` directories. This prefix avoids Windows reserved device names
+without restricting domain prefixes. Manifests, reports, and skip profiles retain the unprefixed logical ID.
 
 This subset has implicit float32 type, finite JSON values representable as finite float32, one generated dataset, and
 one execution per dataset. No `repeat_count` exists in authoring or manifest v1. JSON definitions cannot express
@@ -169,7 +176,7 @@ once; generation must not obtain expected values by executing the EP under test.
 {
   "schema_version": 1,
   "cases": [{
-    "id": "example.mul.scalar",
+    "id": "ai.onnx.Mul.opset13.float32_scalar",
     "operator": "Mul",
     "opset": 13,
     "inputs": [
@@ -203,12 +210,12 @@ closed. There is no execution-count field or implicit repeated-run protocol.
 ```json
 {
   "schema_version": 1,
-  "id": "example.mul.scalar",
+  "id": "ai.onnx.Mul.opset13.float32_scalar",
   "model": "model.onnx",
   "required_nodes": ["node1"],
   "datasets": [{"inputs": ["test_data_set_0/input_0.pb"], "outputs": ["test_data_set_0/output_0.pb"]}],
   "comparison": {"Z": {"atol": 0, "rtol": 0, "nan_equal": false}},
-  "source": {"definition": "example.json", "case_id": "example.mul.scalar"}
+  "source": {"definition": "example.json"}
 }
 ```
 
@@ -423,13 +430,13 @@ dependencies at execution. Offline dependency acquisition is not an initial requ
 
 Runner binaries are platform-specific; generated cases and contracts should be platform-neutral. Source availability
 does not establish portability on untested platforms. The initial source-kit CI target is Windows x64. Source and
-case archives must be independently identifiable and record source/schema/corpus revisions, pinned producer/build
-dependencies, hashes, and compatible runtime/API/operator requirements. API 24 is the runner minimum, not a promise
+case archives must be independently identifiable and record source/schema/corpus revisions, producer/build dependency
+versions, hashes, and compatible runtime/API/operator requirements. API 24 is the runner minimum, not a promise
 that a particular plugin built against newer headers works on ORT 1.24.
 
 Packaging in PR CI should exercise the eventual release-preparation path, but ephemeral CI artifacts are not published
 release kits. Release/nightly ownership, version policy, publication, and platform coverage remain separate follow-up
-work; no source kit or release installation interface is implemented yet.
+work. CI source-kit preparation is implemented; a release installation/publication interface is not.
 
 An external EP should test against at least:
 
@@ -486,7 +493,8 @@ requires at least one pass and no failures; exit `1` means case failure or zero 
 exit `2` means setup/input/report error. A profile skip does not avoid artifact validation. No device, corrupt
 artifacts, unknown skips, empty selection, and invalid profiles cannot turn into a successful skipped run.
 
-Producer provenance is currently `source: {definition, case_id}` for JSON generation and
+Producer provenance is currently `source: {definition}` for JSON generation, with the top-level `id` identifying the
+authored entry, and
 `source: {suite, test, file, line}` for C++ export. Keep source metadata with the artifact. These are not complete
 reproducibility records or runtime source-file dependencies. Full reports/kits should additionally record suite and
 schema revisions, source revision/local patch identity, model/tensor/profile hashes, generator version/seeds, runtime
@@ -522,25 +530,33 @@ must route corpus, producer, runner, profile, and relevant public API changes to
 
 ### Shared build and case artifacts
 
-Keep the existing standalone CMake runner project and expose it as an opt-in ORT subproject. Both modes build the same
+The standalone CMake runner is exposed through `onnxruntime_BUILD_EP_OP_CONFORMANCE_TESTS=ON` as an opt-in ORT subproject.
+Both modes build the same
 sources and public API boundary. The parent build supplies public ONNX/protobuf/JSON targets and includes, without
 private ORT libraries, a second dependency-fetch stack, or a second runner implementation. C++20 stays target-local.
-Case generation and EP test registration remain separate from executable definition.
+Case generation and provider execution remain separate from executable definition.
 
 The initial enabled path requires a shared runtime and native execution; unsupported static-only, cross-compiled,
-or browser configurations must fail clearly rather than silently register no tests. A labelled CTest test directly
-invokes the runner with an explicit source-built runtime, profile, generated cases, and writable report path.
+or browser configurations must fail clearly rather than produce an unusable runner. Building the executable does not
+register a provider run with CTest. Provider CI jobs invoke the runner directly with an explicit source-built runtime,
+profile, generated cases, and writable report path. Comparator/exporter unit tests retain CTest integration.
 Per-EP corpus execution does not invoke the full Python developer/negative harness.
 
 Generate cases deterministically into the build tree once per workflow/input set, sharing exact bytes and metadata
-between build/test jobs. Generation uses pinned producer dependencies, not an installed ORT wheel as an output oracle.
+between build/test jobs. Generation reuses the ORT build's Python environment and dependency policy; it does not use
+an installed ORT wheel as an output oracle.
 Track canonical definitions and producer inputs so changed inputs invalidate generation,
 unchanged builds avoid regeneration, and stale or mixed cases cannot survive. Handle the generator's existing-output
 refusal through fresh input-keyed directories or narrowly owned staging, never hand-edited generated files.
-Negative fixtures remain separate from canonical positives.
+Negative fixtures remain separate from canonical positives. The producer uses the build's `Python_EXECUTABLE` and
+records installed NumPy, ONNX, and protobuf versions without separately pinning or enforcing them. Inputs and producer
+versions form a digest-named immutable directory and metadata under the build tree. Changed input or producer versions
+select a fresh directory; an unchanged direct-target build does not regenerate. The dedicated CPU job invokes only
+the native runner against the canonical corpus.
 
-Independent EP workflows may initially regenerate using the same source revision and pinned producer inputs. PR
-changes use their own cases/generator, not a mutable latest-main archive or a cache treated as authority. No
+Independent EP workflows may initially regenerate using the same source revision and compatible producer dependencies,
+recording their actual versions. PR changes use their own cases/generator, not a mutable latest-main archive or a cache
+treated as authority. No
 cross-workflow artifact service is required. Profiles contain setup and reasoned support exclusions, never alternate
 goldens, models, tolerances, or validators. Retain reports/logs even on failure, with exact case selection, revisions,
 hashes, runtime/profile identity, and available plugin/device provenance.
@@ -550,7 +566,8 @@ hashes, runtime/profile identity, and available plugin/device provenance.
 Source-kit validation uses a matching shared runtime and limited sample plugin built from the same revision and
 configuration. Reuse an existing source-build producer rather than adding a full ORT build solely for this fixture.
 The external consumer depends on that producer and downloads narrow source-kit, case/scenario, and native-fixture
-artifacts by immutable IDs. Fixture publication and this consumer are not implemented yet.
+artifacts by immutable IDs. This publication and reusable consumer are implemented in the Windows CPU workflow DAG;
+remote workflow execution remains pending.
 
 The consumer has no ORT checkout and compiles the packaged source, not a staged prebuilt runner. Build-time tooling is
 allowed; isolation is a focused final native-execution check with source/build directories unavailable and Python
@@ -572,16 +589,31 @@ weakening compatibility declarations. This integration smoke proves harness beha
 
 ### Current CI implementation
 
-[CPU CI](../../../../.github/workflows/ep-op-conformance-cpu.yml) builds the standalone public-only CMake runner using
-hash-pinned ONNX/protobuf/JSON dependencies and prepares artifacts with Python. A separate job downloads the staged
-native bundle by immutable artifact ID without checkout or Python setup. It restricts PATH to System32 and checks
-successful CPU inference and intended nonzero/report outcomes for incorrect outputs, malformed tensors, invalid
-profiles/unknown fields, and skip rules. Negative fixtures must fail for the intended reason, not because the runtime
-or bundle is missing. Reports are preserved even on failure. All nine scenarios pass in a local rehearsal with
-ORT 1.24.4; no remote workflow result is claimed. The Windows host supplies PowerShell and the MSVC redistributable.
+[Windows CPU source CI](../../../../.github/workflows/windows_x64_release_build_x64_release.yml) enables the main-build
+subproject and publishes separate build handoffs for two independent reusable workflows. The
+[generic provider workflow](../../../../.github/workflows/windows-ep-op-conformance.yml), called with
+`ep-name: CPUExecutionProvider`, receives the main-build runner/runtime,
+exact canonical cases, CPU profile, and generation metadata. It runs the native executable directly, without checkout,
+Python setup, the example plugin, or infrastructure tests, and retains its report even on failure.
+Other Windows EP callers reuse the same bundle layout with a target-specific profile and compatible native libraries.
+Inputs supply `ep-name` for job/report naming and runner labels; callers provide required hardware/drivers/dependencies.
+The profile, not the display label, selects the EP. This does not add provider adapters or non-Windows host support.
 
-That workflow stages a prebuilt binary, not a source kit, and does not yet exercise source-built CPU conformance or
-the matched plugin consumer described above. The
+The [infrastructure workflow](../../../../.github/workflows/windows-ep-op-conformance-infrastructure.yml) checks out the same
+revision, tests generation/packaging and C++ export/replay using relocated main-build binaries, and publishes exact
+positives, derived scenarios/profiles, runner source, and matching runtime/plugin fixtures. Source/case/fixture
+manifests independently record revisions, versions, API, input/producer identity, and file hashes. Its no-checkout
+source-kit job verifies agreement, builds packaged sources against kit-local headers and hash-pinned public dependencies,
+and validates the native comparator. It stages bundles for a fresh execution job without source/build directories or
+Python setup. PATH is restricted to System32. Matching-runtime plugin scenarios enforce two mandatory
+Mul passes, comparison failure, unskipped Add session failure with fallback prohibited, reasoned skips, and intended
+library/device/profile/artifact/skip errors. A separate bundle runs nine CPU checks on ORT 1.24.4; the current plugin
+never runs against that older runtime. Package/generation provenance is retained with native reports; configure,
+build, and test logs are uploaded even on failure. No remote workflow result is claimed. The Windows host supplies
+PowerShell and the MSVC redistributable. CPU conformance and infrastructure validation depend only on the common ORT
+build, not on each other's test results. Branch-protection owners must review their separate check names.
+
+This proves bounded infrastructure, not release publication or WebGPU parity. The
 [workstream](test_ownership_and_conformance_workstream.md#work-packages) owns deliverables, workflow changes,
 dependencies, and completion checks. Its work packages are distinct from the migration phases below.
 

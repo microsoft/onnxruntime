@@ -1,8 +1,5 @@
 # EP Operator Conformance Pilot
 
-The short name is **EP op conformance**, distinct from broader EP conformance of registration, device, or lifecycle
-contracts. The `test-conformance` workstream identifier remains an abbreviation for the wider test-ownership work.
-
 This is a narrow native prototype, not complete generic-test migration, WebGPU parity, or a released conformance kit. The
 [design](../../../docs/design/webgpu_ep_extraction/test_ownership_and_conformance/ep_operator_conformance_design.md)
 and [workstream](../../../docs/design/webgpu_ep_extraction/test_ownership_and_conformance/test_ownership_and_conformance_workstream.md)
@@ -11,9 +8,9 @@ and its draft contracts. Local revised checks pass; the new workflow has not bee
 unit-test migration and separate browser/Wasm continuity are out of scope.
 
 The external audience is EP implementers. Planned distribution is versioned standalone runner source plus immutable
-generated cases and contracts/provenance; prebuilt runners are optional. Source-kit packaging and opt-in main ORT
-build integration are not implemented yet. The commands below build the existing standalone project using this
-checkout's public headers, without building ORT. The
+generated cases and contracts/provenance; prebuilt runners are optional. CI source-kit packaging and opt-in main ORT
+build integration are implemented; release publication remains separate. The standalone commands below use this
+checkout's public headers without building ORT; [source-kit instructions](SOURCE_KIT.md) use only packaged headers. The
 [CI rollout](../../../docs/design/webgpu_ep_extraction/test_ownership_and_conformance/test_ownership_and_conformance_workstream.md#work-packages)
 separates initial source-built CPU/source-kit validation from later provider-workflow adoption.
 
@@ -77,6 +74,42 @@ Not delivered: full generic-test migration/WebGPU parity, complete coverage acco
 custom portable validators, FP16/other value types, expected-error cases, arbitrary session settings, profile tolerance overrides,
 release packaging, real WebGPU validation, browser/Wasm, or a native static host/SDK.
 
+## Case ID convention
+
+Use a stable, provider-neutral ID with an operator-identifying prefix and a descriptive variant:
+
+```text
+<domain>.<operator>.opset<version>.<descriptive_variant>
+```
+
+Use `ai.onnx` for the standard ONNX domain and the declared domain for custom operators. Preserve the operator
+schema's capitalization and use the model's imported opset version. Custom-domain examples describe the naming
+convention, not additional support in the bounded generator.
+
+The variant describes the behavior being exercised, including types, shapes, attributes, or initializer roles when
+useful. There is no mandatory dtype slot: operators may have multiple input/output types. Prefer lowercase
+`snake_case` for new variants, for example `ai.onnx.Cast.opset19.float32_to_int64` or
+`ai.onnx.TopK.opset11.largest_sorted`. The final variant contains only ASCII letters, digits, and underscores;
+dots separate components. For example, use `ai.onnx.Mul.opset14.float32_scalar`.
+
+IDs are used in manifests, reports, and exact-match skip profiles. They must be unique across the selected corpus
+and remain stable across source reorderings. Do not include EP names, platforms, outcomes, tolerance values, or
+content hashes. The model and tensors are authoritative; consumers must not infer types or graph semantics by
+parsing the ID. Avoid cosmetic renames once an ID is referenced.
+
+The generator stores each case in a `case-<id>` directory, for example
+`case-ai.onnx.Mul.opset14.float32_scalar`. The manifest, reports, and skip profiles retain the unprefixed logical ID.
+The `case-` prefix avoids some invalid filename cases.
+The generator enforces these portability rules:
+
+- Follow the structured ID above. Domain names use ASCII letters, digits, `.`, `_`, and `-`; the operator uses
+  ASCII letters, digits, and `_`; the opset is a positive decimal integer without leading zeros; the final variant
+  uses ASCII letters, digits, and `_`. Every component is nonempty.
+- Do not create IDs differing only by ASCII letter case, since their directories collide on case-insensitive filesystems.
+
+Keep IDs and output paths reasonably short to fit the host's filesystem limits. The runner reads identity from the manifest;
+it does not require an ID-derived directory name, and the C++ export API still accepts an explicit directory path.
+
 ## Build the standalone runner
 
 [CMakeLists.txt](CMakeLists.txt) is independent of the main ORT build. It requires CMake 3.26+, a C++20 toolchain, public
@@ -98,7 +131,7 @@ cmake --build "$PilotBuild" --config Release --target onnxruntime_ep_op_conforma
 ctest --test-dir "$PilotBuild" -C Release --output-on-failure -R '^ep_op_conformance_comparison$'
 ```
 
-Create/reuse the producer environment described below before configuring. Alternatively, supply all six cache paths
+Reuse the ORT build/test Python environment described below before configuring. Alternatively, supply all six cache paths
 with `EP_OP_CONFORMANCE_FETCH_DEPS=OFF` (the default) in a separate build directory. Replace paths with your SDK/build paths;
 use an appropriate toolchain/generator for your platform. On other platforms substitute native executable and
 shared-library filenames. A single-configuration generator also needs `-DCMAKE_BUILD_TYPE=Release`.
@@ -123,7 +156,8 @@ dynamic-loader library where needed. The registered CTest above checks the compa
 
 ## Generate independent data cases
 
-Use an isolated virtual environment for producer dependencies, reusing an existing one when available:
+Reuse the ORT build/test Python environment for generation; no separate producer environment is required.
+For generation without a source build, an ordinary development virtual environment with NumPy and ONNX is sufficient:
 
 ```powershell
 python -m venv .venv
@@ -318,23 +352,100 @@ single exported-Mul selection: skip IDs must be present in the selected corpus.
 
 ## CPU CI and staged execution
 
-[CPU CI](../../../.github/workflows/ep-op-conformance-cpu.yml) has separate preparation and consumption jobs. Preparation
-builds this standalone CMake project against public ORT headers with pinned public dependencies and uses
-[tools/prepare_ci.py](tools/prepare_ci.py) to generate canonical cases and negative fixtures. It stages the runner,
-ORT 1.24.4 runtime, profiles, artifacts, and [tools/run_ci.ps1](tools/run_ci.ps1). Consumption downloads the bundle by
-immutable artifact ID without checkout or Python setup, restricts PATH to System32, and runs only native checks.
-The Windows host still supplies PowerShell, system libraries, and the MSVC redistributable.
+[Windows CPU source CI](../../../.github/workflows/windows_x64_release_build_x64_release.yml) enables the main-build
+runner and generates canonical cases once. It publishes separate CPU and infrastructure build handoffs from its
+existing build; no additional full ORT build is introduced. Two independent reusable workflows consume immutable IDs:
 
-The local rehearsal passed all nine scenarios: positive CPU execution, incorrect expected output, malformed tensor,
-invalid profile kind, unknown manifest field, removed profile alias, partial skip, all-skipped failure, and unknown
-skip rejection. The consumer validates intended exit/status/phase/diagnostics and preserves reports even on failure.
-The workflow itself has not been run on GitHub.
+- [Provider conformance](../../../.github/workflows/windows-ep-op-conformance.yml), called with
+  `ep-name: CPUExecutionProvider`, downloads only the main-build runner/runtime,
+  canonical cases, CPU profile, and generation metadata. It invokes the native runner directly and retains its report,
+  without checkout, Python setup, a plugin fixture, or infrastructure tests.
+- [Infrastructure validation](../../../.github/workflows/windows-ep-op-conformance-infrastructure.yml) checks out the same
+  revision to run generator/package tests and C++ export/replay integration checks using relocated build outputs.
+  It publishes hash-manifested source-kit, case/scenario, and matching runtime/plugin artifacts. A no-checkout job
+  verifies them and compiles packaged source with kit-local public headers and pinned public dependencies. A fresh
+  execution job has neither source/build trees nor Python setup, restricts PATH to System32, and runs 20
+  matching-runtime CPU/plugin checks plus nine separate ORT 1.24.4 CPU compatibility checks.
 
-This binary-staging lane is current pilot infrastructure, not a packaged-source consumer or a matched current-source
-plugin check. The planned infrastructure consumer builds source outside an ORT checkout and isolates only final
-native execution. Ordinary EP op conformance will run in existing EP workflows with their normal environments.
+CPU provider conformance does not depend on infrastructure test or source-kit build success. The current plugin is
+never forced onto the minimum runtime. The CPU caller and all infrastructure jobs explicitly select the
+`onnxruntime-github-vs2022-latest` 1ES pool with distinct run-specific job IDs. The infrastructure workflow fixes its
+pool internally rather than exposing a runner input. The Windows host still supplies PowerShell, system libraries, and the MSVC
+redistributable. Reports, provenance, and build diagnostics are retained on failure. Required-check owners must review
+the separate CPU and infrastructure check names. The revised workflow DAG has not run on GitHub. Ordinary EP lanes
+retain their normal environments.
 
-To rehearse with the CI-pinned preparation environment and a fresh destination:
+### Reusing provider execution
+
+The reusable [provider workflow](../../../.github/workflows/windows-ep-op-conformance.yml) selects the EP through the
+bundle's `profile.json`, not through workflow logic. `ep-name` uses the actual EP name, such as `CPUExecutionProvider`,
+in job/report labels; it does not override the profile's EP registration name. Call it with an immutable `bundle-id`
+and a required JSON array of `runs-on` labels; there is no default runner:
+
+```yaml
+  ep_op_conformance_cpu:
+    needs: build_x64_release
+    uses: ./.github/workflows/windows-ep-op-conformance.yml
+    permissions:
+      contents: read
+    with:
+      bundle-id: ${{ needs.build_x64_release.outputs.conformance-cpu-id }}
+      ep-name: CPUExecutionProvider
+      runs-on: >-
+        ["self-hosted",
+         "1ES.Pool=onnxruntime-github-vs2022-latest",
+         "JobId=ep-op-conformance-cpu-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"]
+```
+
+The Windows bundle contains `bin/onnxruntime_ep_op_conformance_test.exe`, `bin/onnxruntime.dll`, `cases/`,
+`profile.json`, and optional `generation.json`. Include provider DLLs and native dependencies as required. Plugin
+library paths are resolved relative to the profile; keep them bundle-relative. Callers supply a compatible runtime,
+profile/options/skips, and Windows runner labels with the required hardware, drivers, and host dependencies already
+available. Report artifact names include `ep-name`; repeated invocations for the same EP in one run currently share
+an artifact name and must be avoided.
+The workflow performs no EP-specific installation, and adding a caller does not add a new runner adapter or establish
+hardware coverage. Linux/macOS bundle layouts and browser/Wasm execution are not provided by this Windows workflow.
+
+### Main-build CPU execution
+
+Use the normal ORT build/test Python environment with NumPy and ONNX installed, then enable the opt-in main CMake
+switch. Generation uses the build's `Python_EXECUTABLE`:
+
+```powershell
+python tools/ci_build/build.py --config Release --build_dir build/Windows --build_shared_lib --update --build --parallel `
+  --cmake_extra_defines onnxruntime_BUILD_EP_OP_CONFORMANCE_TESTS=ON
+$MainBuild = 'build/Windows/Release'
+$Generated = "$MainBuild/ep_op_conformance/generated"
+$Generation = Get-Content "$Generated/current.json" -Raw | ConvertFrom-Json
+New-Item -ItemType Directory -Force "$MainBuild/ep_op_conformance/reports/Release" | Out-Null
+& "$MainBuild/ep_op_conformance/Release/onnxruntime_ep_op_conformance_test.exe" `
+  --runtime "$MainBuild/Release/onnxruntime.dll" `
+  --profile onnxruntime/test/ep_op_conformance/examples/cpu.json `
+  --cases "$Generated/$($Generation.directory)" --report "$MainBuild/ep_op_conformance/reports/Release/cpu.json"
+if ($LASTEXITCODE -ne 0) { throw 'CPU EP conformance failed' }
+```
+
+The direct target `onnxruntime_ep_op_conformance_test` also builds its runtime and case prerequisites. C++20 remains
+target-local. Static-only, cross-compiled, browser, minimal, and reduced-op builds fail explicitly when opted in.
+[tools/build_cases.py](tools/build_cases.py) records input/producer hashes in digest-keyed immutable build directories;
+installed NumPy, ONNX, and protobuf versions are recorded, not separately pinned or enforced. Changed inputs or
+producer versions select a new directory and unchanged builds avoid regeneration. Building the runner does not
+register provider execution with CTest; CI or developers invoke it explicitly with a runtime, profile, cases, and
+writable report path. Comparator/exporter tests retain CTest integration. Generation metadata lives under the build's
+`ep_op_conformance/generated`; the example above writes reports under `ep_op_conformance/reports/<configuration>`.
+
+### Source-kit preparation
+
+[tools/package_ci.py](tools/package_ci.py) provides `create`, `verify`, and `stage` commands. `create` takes
+`--generated`, `--runner`, `--runtime`, `--plugin`, `--revision`, and a fresh `--output`. It packages source with public
+header closure/notices/contracts, exact main-build positives plus derived scenarios, and matching native fixtures
+as three independent artifacts. `verify` takes `--source`, `--cases`, `--fixture`, and optional `--revision`.
+`stage` adds `--runner` and a fresh `--output`; optional `--minimum-runtime` selects CPU-only smoke instead of the
+matching fixture. Scenario bytes/profiles are checked against the producer package, never maintained as goldens.
+[tools/test_infrastructure.py](tools/test_infrastructure.py) checks generation reuse/invalidation, immutability,
+package hashes, revision agreement, and header closure using the ORT build/test Python environment.
+
+To rehearse with that environment and a fresh destination:
 
 ```powershell
 python onnxruntime/test/ep_op_conformance/tools/prepare_ci.py `
@@ -343,7 +454,8 @@ python onnxruntime/test/ep_op_conformance/tools/prepare_ci.py `
 ```
 
 Preparation writes source/public-header/tool hashes, runtime and bundle-file hashes, and producer package versions
-to `prepared.json`; consumption checks the file hashes before execution. This is bounded bundle provenance, not
+to `prepared.json`; packaged staging also retains all three manifests and generation metadata. Consumption checks
+file hashes before execution and retains this provenance with reports. This is bounded bundle provenance, not
 complete device/plugin provenance or a released conformance kit. Outputs must be fresh and are never overwritten.
 
 | Stage | Required dependencies |
@@ -367,13 +479,19 @@ run status `ERROR`. Exit code is 0 for a run with at least one pass and no failu
 pass. A profile skip does not bypass artifact validation. A runner PASS covers only selected cases, not complete
 generic-test population or WebGPU parity accounting.
 
-Producer `source` metadata records JSON definition/case ID or C++ suite/test/file/line. Each case result retains that
+Producer `source` metadata records the JSON definition filename or C++ suite/test/file/line. For JSON generation,
+the top-level `id` identifies the authored entry without repeating it in `source`. Each case result retains that
 metadata; the report also retains the loaded runtime version and target profile. Full generic report hashes, device/environment
 provenance, and population reconciliation remain future work. Keep artifact source metadata; no original source
 files are required at execution. See the [report contract](../../../docs/design/webgpu_ep_extraction/test_ownership_and_conformance/ep_operator_conformance_design.md#runner-inputs-and-reports).
 
 Revised local Windows validation:
 
+- The explicit CPU job invocation passes all three canonical cases with assignment/output checks; CPU execution is
+  absent from CTest. Direct-target changed-input and unchanged-input rebuilds pass; static-only, minimal, and
+  reduced-op opt-ins reject explicitly. Twenty-eight
+  generation/package tests pass. The final source kit built outside the checkout with public dependencies; after
+  removing its source/build trees, all 20 matching-runtime CPU/plugin and nine ORT 1.24.4 CPU scenarios passed.
 - C++20 builds and 23 exporter tests, 36 integration checks, and 10 comparator checks passed. All 36 integration
   checks ran with the matching source-built runtime/sample plugin and fresh single-run C++ artifacts; none skipped.
   Captured and data-defined artifacts replayed on CPU and the sample plugin, including staged native execution.

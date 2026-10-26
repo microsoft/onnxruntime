@@ -1,0 +1,59 @@
+# Runs canonical operator cases against a profile-selected EP using a prebuilt Windows native bundle.
+# The caller supplies a compatible runtime/provider and a runner with the required hardware and dependencies.
+name: EP Operator Conformance
+
+on:
+  workflow_call:
+    inputs:
+      bundle-id:
+        description: 'Immutable artifact ID containing the Windows native runner, runtime, cases, and profile'
+        required: true
+        type: string
+      ep-name:
+        description: 'Actual EP name, such as CPUExecutionProvider, used in the job and report artifact names'
+        required: true
+        type: string
+      runs-on:
+        description: 'JSON array of runner labels; the runner must have the required EP hardware and dependencies'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: pwsh
+
+jobs:
+  conformance:
+    name: ${{ inputs.ep-name }} EP Operator Conformance
+    runs-on: ${{ fromJSON(inputs.runs-on) }}
+    timeout-minutes: 10
+    steps:
+      - name: Download Native Conformance Bundle By Immutable ID
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ inputs.bundle-id }}
+          merge-multiple: true
+          path: ${{ runner.temp }}/ep-op-conformance
+
+      - name: Run Canonical Cases Against Selected EP
+        run: |
+          $root = "$env:RUNNER_TEMP/ep-op-conformance"
+          New-Item -ItemType Directory "$root/reports" | Out-Null
+          & "$root/bin/onnxruntime_ep_op_conformance_test.exe" `
+            --runtime "$root/bin/onnxruntime.dll" --profile "$root/profile.json" `
+            --cases "$root/cases" --report "$root/reports/conformance.json"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Preserve EP Conformance Report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ep-op-conformance-${{ inputs.ep-name }}-reports-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/ep-op-conformance/reports
+            ${{ runner.temp }}/ep-op-conformance/generation.json
+          if-no-files-found: warn
+          retention-days: 14

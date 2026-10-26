@@ -31,7 +31,10 @@ function Invoke-Scenario {
         [int]$Failed = 0,
         [int]$Skipped = 0,
         [string]$ErrorPattern = '',
-        [string]$Phase = ''
+        [string]$Phase = '',
+        [string]$Kind = 'builtin',
+        [string]$EpName = 'CPUExecutionProvider',
+        [string[]]$ExpectedIds = @()
     )
     $process = [System.Diagnostics.Process]::new()
     try {
@@ -74,13 +77,15 @@ function Invoke-Scenario {
             Assert-Condition ($report.error -match $ErrorPattern) "$Name did not report the expected setup error"
             Assert-Condition (@($report.results).Count -eq 0) "$Name unexpectedly executed cases"
         } else {
-            Assert-Condition ($report.profile.kind -ceq 'builtin') "$Name target kind mismatch"
-            Assert-Condition ($report.profile.ep_name -ceq 'CPUExecutionProvider') "$Name target name mismatch"
+            Assert-Condition ($report.profile.kind -ceq $Kind) "$Name target kind mismatch"
+            Assert-Condition ($report.profile.ep_name -ceq $EpName) "$Name target name mismatch"
             Assert-Condition ($report.passed -eq $Passed) "$Name pass count mismatch"
             Assert-Condition ($report.failed -eq $Failed) "$Name fail count mismatch"
             Assert-Condition ($report.skipped -eq $Skipped) "$Name skip count mismatch"
             $expectedIds = @(
-                if ($Cases -eq 'positive') {
+                if ($ExpectedIds.Count) {
+                    $ExpectedIds
+                } elseif ($Cases -eq 'positive') {
                     $metadata.positive_case_ids
                 } else {
                     $metadata.mutation_case_id
@@ -99,10 +104,12 @@ function Invoke-Scenario {
                     Assert-Condition (-not [string]::IsNullOrWhiteSpace($result.reason)) "$Name skip has no reason"
                     continue
                 }
-                Assert-Condition (@($result.assignment).Count -gt 0) "$Name has no assignment evidence"
-                Assert-Condition (@($result.assignment | Where-Object { $_.node -ceq 'node1' }).Count -eq 1) "$Name required node is missing"
-                foreach ($assignment in $result.assignment) {
-                    Assert-Condition ($assignment.ep_name -ceq 'CPUExecutionProvider') "$Name assigned to the wrong EP"
+                if ($Phase -ne 'session') {
+                    Assert-Condition (@($result.assignment).Count -gt 0) "$Name has no assignment evidence"
+                    Assert-Condition (@($result.assignment | Where-Object { $_.node -ceq 'node1' }).Count -eq 1) "$Name required node is missing"
+                    foreach ($assignment in $result.assignment) {
+                        Assert-Condition ($assignment.ep_name -ceq $EpName) "$Name assigned to the wrong EP"
+                    }
                 }
                 if ($result.status -eq 'FAIL') {
                     Assert-Condition ($result.phase -ceq $Phase) "$Name failed in the wrong phase"
@@ -137,6 +144,7 @@ try {
         $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $bundle $entry.Key)).Hash
         Assert-Condition ($hash -ieq $entry.Value) "Bundle hash mismatch: $($entry.Key)"
     }
+    Copy-Item -LiteralPath (Join-Path $bundle 'prepared.json') -Destination (Join-Path $reports 'provenance.json')
     $total = @($metadata.positive_case_ids).Count
     Invoke-Scenario -Name 'positive' -Passed $total
     Invoke-Scenario -Name 'wrong-output' -Cases 'wrong-output' -ExitCode 1 -Status 'FAIL' -Failed 1 `
@@ -148,6 +156,34 @@ try {
     Invoke-Scenario -Name 'partial-skip' -Profile 'partial-skip' -Passed ($total - 1) -Skipped 1
     Invoke-Scenario -Name 'all-skipped' -Profile 'all-skipped' -ExitCode 1 -Status 'FAIL' -Skipped $total
     Invoke-Scenario -Name 'unknown-skip' -Profile 'unknown-skip' -ExitCode 2 -Status 'ERROR' -ErrorPattern 'Skip must name'
+    if ($metadata.ContainsKey('plugin') -and $metadata.plugin) {
+        $pluginArgs = @{ Kind = 'plugin'; EpName = 'ConformanceExampleEP' }
+        $supported = @('ai.onnx.Mul.opset14.float32_scalar', 'ai.onnx.Mul.opset14.float32_initializer')
+        foreach ($identity in $supported) {
+            Invoke-Scenario -Name "plugin-$identity" -Cases "positive/$($metadata.positive_case_directories[$identity])" -Profile 'plugin-unskipped' `
+                -Passed 1 -ExpectedIds @($identity) @pluginArgs
+        }
+        Invoke-Scenario -Name 'plugin-reasoned-skip' -Profile 'plugin' -Passed 2 -Skipped ($total - 2) @pluginArgs
+        Invoke-Scenario -Name 'plugin-wrong-output' -Cases 'wrong-output' -Profile 'plugin-unskipped' `
+            -ExitCode 1 -Status 'FAIL' -Failed 1 -Phase 'execution_or_comparison' `
+            -ErrorPattern '^Output mismatch at element ' @pluginArgs
+        $addId = 'ai.onnx.Add.opset14.float32_broadcast'
+        Invoke-Scenario -Name 'plugin-no-fallback' -Cases "positive/$($metadata.positive_case_directories[$addId])" -Profile 'plugin-unskipped' `
+            -ExitCode 1 -Status 'FAIL' -Failed 1 -Phase 'session' -ExpectedIds @($addId) `
+            -ErrorPattern 'fallback.*disabled|disable.*fallback|assigned to the default CPU EP' @pluginArgs
+        Invoke-Scenario -Name 'plugin-invalid-library' -Profile 'plugin-invalid-library' `
+            -ExitCode 2 -Status 'ERROR' -ErrorPattern 'missing_plugin' @pluginArgs
+        Invoke-Scenario -Name 'plugin-invalid-device' -Profile 'plugin-invalid-device' `
+            -ExitCode 2 -Status 'ERROR' -ErrorPattern '^Requested plugin device is unavailable' @pluginArgs
+        Invoke-Scenario -Name 'plugin-invalid-profile' -Profile 'plugin-invalid-profile' `
+            -ExitCode 2 -Status 'ERROR' -ErrorPattern '^Invalid plugin device index' @pluginArgs
+        Invoke-Scenario -Name 'plugin-malformed-artifact' -Cases 'malformed-artifact' -Profile 'plugin-unskipped' `
+            -ExitCode 2 -Status 'ERROR' -ErrorPattern 'Invalid TensorProto' @pluginArgs
+        Invoke-Scenario -Name 'plugin-unknown-skip' -Profile 'plugin-unknown-skip' `
+            -ExitCode 2 -Status 'ERROR' -ErrorPattern 'Skip must name' @pluginArgs
+        Invoke-Scenario -Name 'plugin-all-skipped' -Profile 'plugin-all-skipped' `
+            -ExitCode 1 -Status 'FAIL' -Skipped $total @pluginArgs
+    }
 } catch {
     $checks.Add(@{ name = 'bundle-preflight'; status = 'FAIL'; error = $_.Exception.Message })
 } finally {
@@ -168,7 +204,7 @@ try {
     } | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $reports 'ci-summary.json')
 }
 if ($failures) {
-    throw "$failures CPU CI checks failed; see $reports"
+    throw "$failures native CI checks failed; see $reports"
 }
 
-Write-Host "All $($checks.Count) native CPU CI checks passed without Python or source tools on PATH."
+Write-Host "All $($checks.Count) native CI checks passed without Python or source tools on PATH."

@@ -1,7 +1,8 @@
 import argparse
 import json
 import math
-import shutil
+import re
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -9,13 +10,34 @@ import onnx
 from onnx import helper, numpy_helper
 
 
-def fields(value, required, optional=()):
-    if not isinstance(value, dict) or set(required) - value.keys() or value.keys() - set(required) - set(optional):
-        raise ValueError("Missing or unsupported definition fields")
+def validate_fields(value, required, optional=()):
+    if not isinstance(value, dict):
+        raise ValueError(f"Expected a definition object, got {type(value).__name__}")
+    required_fields = set(required)
+    missing = required_fields - value.keys()
+    unsupported = value.keys() - required_fields - set(optional)
+    details = []
+    if missing:
+        details.append(f"missing: {', '.join(sorted(missing))}")
+    if unsupported:
+        details.append(f"unsupported: {', '.join(sorted(unsupported))}")
+    if details:
+        raise ValueError(f"Invalid definition fields: {'; '.join(details)}")
+
+
+def case_directory_name(identity):
+    if not isinstance(identity, str) or not re.fullmatch(
+        r"(?:[A-Za-z0-9_-]+\.)+[A-Za-z0-9_]+\.opset[1-9][0-9]*\.[A-Za-z0-9_]+", identity
+    ):
+        raise ValueError(
+            "Invalid case ID: expected <domain>.<operator>.opset<version>.<variant> using portable ASCII "
+            "components and an alphanumeric/underscore variant"
+        )
+    return f"case-{identity}"
 
 
 def tensor(definition, allow_initializer=False):
-    fields(definition, ("name", "shape", "values"), ("initializer",) if allow_initializer else ())
+    validate_fields(definition, ("name", "shape", "values"), ("initializer",) if allow_initializer else ())
     shape = definition["shape"]
     if (
         not isinstance(definition["name"], str)
@@ -41,8 +63,10 @@ def value_info(value):
 
 
 def generate(definitions: Path, destination: Path):
+    if destination.exists():
+        raise ValueError("Destination already exists; generated cases are immutable")
     document = json.loads(definitions.read_text(encoding="utf-8"))
-    fields(document, ("schema_version", "cases"))
+    validate_fields(document, ("schema_version", "cases"))
     if (
         type(document["schema_version"]) is not int
         or document["schema_version"] != 1
@@ -50,23 +74,23 @@ def generate(definitions: Path, destination: Path):
         or not document["cases"]
     ):
         raise ValueError("Unsupported definition version or empty case set")
-    if destination.exists():
-        raise ValueError("Destination already exists; generated cases are immutable")
-    payloads = []
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=".ep-op-conformance-", dir=destination.parent) as temporary:
+        staging = Path(temporary) / "cases"
+        staging.mkdir()
+        write_cases(document["cases"], definitions, staging)
+        staging.rename(destination)
+
+
+def write_cases(cases, definitions, destination):
     identities = set()
-    for case in document["cases"]:
-        fields(case, ("id", "operator", "opset", "inputs", "outputs", "comparison"))
+    for case in cases:
+        validate_fields(case, ("id", "operator", "opset", "inputs", "outputs", "comparison"))
         identity = case["id"]
-        if (
-            not isinstance(identity, str)
-            or not identity
-            or identity in (".", "..")
-            or any(char not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-" for char in identity)
-        ):
-            raise ValueError("Invalid case ID")
-        if identity in identities:
-            raise ValueError("Duplicate case ID")
-        identities.add(identity)
+        directory = case_directory_name(identity)
+        if identity.lower() in identities:
+            raise ValueError(f"Duplicate case ID (case-insensitive): {identity}")
+        identities.add(identity.lower())
         if (
             not isinstance(case["operator"], str)
             or not case["operator"]
@@ -75,7 +99,7 @@ def generate(definitions: Path, destination: Path):
         ):
             raise ValueError("Invalid operator or opset")
         comparison = case["comparison"]
-        fields(comparison, ("atol", "rtol", "nan_equal"))
+        validate_fields(comparison, ("atol", "rtol", "nan_equal"))
         if any(
             type(comparison[key]) not in (int, float) or not math.isfinite(comparison[key]) or comparison[key] < 0
             for key in ("atol", "rtol")
@@ -125,25 +149,35 @@ def generate(definitions: Path, destination: Path):
             "required_nodes": ["node1"],
             "datasets": [dataset],
             "comparison": {value.name: comparison for value in outputs},
-            "source": {"definition": definitions.name, "case_id": identity},
+            "source": {"definition": definitions.name},
         }
         files["case.json"] = (json.dumps(manifest, indent=2, sort_keys=True) + "\n").encode("utf-8")
-        payloads.append((identity, files))
-    destination.mkdir(parents=True)
-    try:
-        for identity, files in payloads:
-            for relative, contents in files.items():
-                target = destination / identity / relative
-                target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_bytes(contents)
-    except Exception:
-        shutil.rmtree(destination)
-        raise
+        for relative, contents in files.items():
+            target = destination / directory / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(contents)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--definitions", required=True, type=Path)
-    parser.add_argument("--output", required=True, type=Path)
+    parser = argparse.ArgumentParser(
+        description=(
+            "Generate portable EP operator conformance cases from authored JSON definitions. "
+            "Each case contains an ONNX model, input and authored expected-output TensorProtos, and a manifest."
+        )
+    )
+    parser.add_argument(
+        "--definitions",
+        required=True,
+        type=Path,
+        help="Path to a schema-version-1 JSON case definitions file.",
+    )
+    parser.add_argument(
+        "--output",
+        required=True,
+        type=Path,
+        help="Output directory in which to create one case-<id> subdirectory per case. Must not already exist.",
+    )
+
     arguments = parser.parse_args()
+
     generate(arguments.definitions, arguments.output)

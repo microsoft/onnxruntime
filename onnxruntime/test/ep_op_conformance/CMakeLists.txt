@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.26)
-project(ort_ep_op_conformance_pilot LANGUAGES CXX)
+if(NOT EP_OP_CONFORMANCE_PARENT_BUILD)
+  project(ort_ep_op_conformance_pilot LANGUAGES CXX)
+endif()
 
 include(CTest)
 
@@ -14,8 +16,14 @@ set(PROTOBUF_INCLUDE_DIR "" CACHE PATH "Matching protobuf include directory")
 set(ONNX_PROTO_LIBRARY "" CACHE FILEPATH "Prebuilt ONNX protobuf library")
 set(PROTOBUF_LIBRARY "" CACHE FILEPATH "Matching protobuf library")
 
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/artifact.json")
+  set(ORT_PUBLIC_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include")
+endif()
+
 option(EP_OP_CONFORMANCE_FETCH_DEPS "Build pinned public ONNX, protobuf and JSON dependencies" OFF)
-if(EP_OP_CONFORMANCE_FETCH_DEPS)
+if(EP_OP_CONFORMANCE_PARENT_BUILD)
+  set(ORT_PUBLIC_INCLUDE_DIR "${ONNXRUNTIME_ROOT}/../include/onnxruntime/core/session")
+elseif(EP_OP_CONFORMANCE_FETCH_DEPS)
   include(FetchContent)
   set(protobuf_BUILD_TESTS OFF CACHE BOOL "" FORCE)
   set(protobuf_BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
@@ -44,7 +52,11 @@ if(EP_OP_CONFORMANCE_FETCH_DEPS)
     DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
   FetchContent_MakeAvailable(onnx nlohmann_json)
   if(NOT ORT_PUBLIC_INCLUDE_DIR)
-    get_filename_component(ORT_PUBLIC_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../include/onnxruntime/core/session" ABSOLUTE)
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/include/onnxruntime_cxx_api.h")
+      set(ORT_PUBLIC_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include")
+    else()
+      get_filename_component(ORT_PUBLIC_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../include/onnxruntime/core/session" ABSOLUTE)
+    endif()
   endif()
 else()
   foreach(required JSON_INCLUDE_DIR ONNX_PROTO_INCLUDE_DIR PROTOBUF_INCLUDE_DIR ONNX_PROTO_LIBRARY PROTOBUF_LIBRARY)
@@ -61,7 +73,10 @@ add_executable(onnxruntime_ep_op_conformance_test runner/main.cc)
 set_target_properties(onnxruntime_ep_op_conformance_test PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
 target_compile_definitions(onnxruntime_ep_op_conformance_test PRIVATE ORT_API_MANUAL_INIT)
 target_include_directories(onnxruntime_ep_op_conformance_test SYSTEM PRIVATE "${ORT_PUBLIC_INCLUDE_DIR}")
-if(EP_OP_CONFORMANCE_FETCH_DEPS)
+if(EP_OP_CONFORMANCE_PARENT_BUILD)
+  target_include_directories(onnxruntime_ep_op_conformance_test SYSTEM PRIVATE "${ONNX_INCLUDE_DIRS}")
+  target_link_libraries(onnxruntime_ep_op_conformance_test PRIVATE onnx_proto ${PROTOBUF_LIB} nlohmann_json::nlohmann_json)
+elseif(EP_OP_CONFORMANCE_FETCH_DEPS)
   target_compile_definitions(onnxruntime_ep_op_conformance_test PRIVATE ONNX_ML=1 ONNX_API=)
   target_include_directories(onnxruntime_ep_op_conformance_test SYSTEM PRIVATE "${onnx_BINARY_DIR}")
   target_link_libraries(onnxruntime_ep_op_conformance_test PRIVATE onnx_proto protobuf::libprotobuf-lite nlohmann_json::nlohmann_json)
@@ -80,6 +95,30 @@ endif()
 set(EP_OP_CONFORMANCE_TEST_RUNTIME "" CACHE FILEPATH "ORT runtime for optional producer/integration tests")
 set(EP_OP_CONFORMANCE_TEST_PLUGIN "" CACHE FILEPATH "Matching example_plugin_ep library for integration tests")
 set(EP_OP_CONFORMANCE_TEST_CPP_CASES "" CACHE PATH "Cases captured by the C++ exporter for integration tests")
+if(EP_OP_CONFORMANCE_PARENT_BUILD)
+  set(case_root "${CMAKE_CURRENT_BINARY_DIR}/generated")
+  set(case_inputs "${CMAKE_CURRENT_SOURCE_DIR}/cases/pilot.json"
+                  "${CMAKE_CURRENT_SOURCE_DIR}/tools/generate_cases.py"
+                  "${CMAKE_CURRENT_SOURCE_DIR}/tools/build_cases.py")
+  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${case_inputs})
+  execute_process(
+    COMMAND "${Python_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/build_cases.py"
+            --definitions "${CMAKE_CURRENT_SOURCE_DIR}/cases/pilot.json" --print-key
+    OUTPUT_VARIABLE case_key OUTPUT_STRIP_TRAILING_WHITESPACE
+    COMMAND_ERROR_IS_FATAL ANY)
+  add_custom_command(
+    OUTPUT "${case_root}/${case_key}.json" "${case_root}/current.json"
+    COMMAND "${Python_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/build_cases.py"
+            --definitions "${CMAKE_CURRENT_SOURCE_DIR}/cases/pilot.json" --output "${case_root}"
+    DEPENDS ${case_inputs}
+    VERBATIM)
+  add_custom_target(ep_op_conformance_cases
+    COMMAND "${Python_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/build_cases.py"
+            --definitions "${CMAKE_CURRENT_SOURCE_DIR}/cases/pilot.json" --output "${case_root}" --verify
+    DEPENDS "${case_root}/${case_key}.json" "${case_root}/current.json"
+    VERBATIM)
+  add_dependencies(onnxruntime_ep_op_conformance_test ep_op_conformance_cases onnxruntime)
+endif()
 if(BUILD_TESTING AND EP_OP_CONFORMANCE_TEST_RUNTIME)
   find_package(Python3 3.10 REQUIRED COMPONENTS Interpreter)
   set(pilot_test_args --runner $<TARGET_FILE:onnxruntime_ep_op_conformance_test>

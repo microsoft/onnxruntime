@@ -92,6 +92,7 @@ option(onnxruntime_USE_ARM_NEON_NCHWC "Build with ARM Neon NCHWc kernels in MLAS
 option(onnxruntime_USE_KLEIDIAI "Build with KleidiAI integration in MLAS" OFF)
 option(onnxruntime_USE_QMX_KLEIDIAI_COEXIST "Build with QMX and Arm KLEIDIAI libraries" OFF)
 option(onnxruntime_BUILD_UNIT_TESTS "Build ONNXRuntime unit tests" ON)
+option(onnxruntime_BUILD_EP_OP_CONFORMANCE_TESTS "Build native public-API EP operator conformance tests" OFF)
 option(onnxruntime_RUN_MLAS_TESTS "Run a targeted subset of MLAS unit tests with CTest" OFF)
 # Declare both prerequisites before evaluating this dependent option on a fresh configure.
 # Enable ONNX Runtime CUDA EP's internal unit tests that directly access the EP's internal functions instead of through
@@ -147,6 +148,11 @@ option(onnxruntime_USE_AVX2 "Use AVX2 instructions" OFF)
 option(onnxruntime_USE_AVX512 "Use AVX512 instructions" OFF)
 
 option(onnxruntime_BUILD_SHARED_LIB "Build a shared library" OFF)
+if(onnxruntime_BUILD_EP_OP_CONFORMANCE_TESTS AND
+   (NOT onnxruntime_BUILD_SHARED_LIB OR CMAKE_CROSSCOMPILING OR EMSCRIPTEN OR
+    onnxruntime_MINIMAL_BUILD OR onnxruntime_REDUCED_OPS_BUILD OR ANDROID OR IOS))
+  message(FATAL_ERROR "EP op conformance requires a full native, non-cross-compiled shared runtime")
+endif()
 option(onnxruntime_BUILD_APPLE_FRAMEWORK "Build a macOS/iOS framework" OFF)
 option(onnxruntime_ENABLE_MICROSOFT_INTERNAL "Use this option to enable/disable microsoft internal only code" OFF)
 
@@ -2101,6 +2107,11 @@ endif()
 
 if(onnxruntime_BUILD_UNIT_TESTS)
   include("${CMAKE_CURRENT_SOURCE_DIR}/onnxruntime_test_pch.cmake")
+endif()
+
+if(onnxruntime_BUILD_EP_OP_CONFORMANCE_TESTS)
+  set(EP_OP_CONFORMANCE_PARENT_BUILD ON)
+  add_subdirectory("${ONNXRUNTIME_ROOT}/test/ep_op_conformance" "ep_op_conformance")
 endif()
 
 # Include precompiled header configuration for providers

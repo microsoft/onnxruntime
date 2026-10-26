@@ -12,7 +12,7 @@
 namespace onnxruntime::test {
 namespace {
 
-constexpr const char* kMulId = "ai.onnx.Mul.opset14.float32.vector";
+constexpr const char* kMulId = "ai.onnx.Mul.opset14.float32_vector";
 
 struct MulCase {
   const std::vector<int64_t> shape{2};
@@ -64,7 +64,7 @@ class EpOpConformanceExportTest : public ::testing::Test {
     EXPECT_FALSE(error) << error.message();
   }
 
-  std::filesystem::path CaseDirectory() const { return root_ / "case"; }
+  std::filesystem::path CaseDirectory() const { return root_ / (std::string("case-") + kMulId); }
 
   void ExpectNoExport() const {
     EXPECT_FALSE(std::filesystem::exists(CaseDirectory() / "case.json"));
@@ -96,7 +96,7 @@ TEST_F(EpOpConformanceExportTest, ExplicitOptionsWithoutExport) {
 
 TEST_F(EpOpConformanceExportTest, MulFloat32Vector) {
   const auto configured_root = Env::Default().GetEnvironmentVar("ORT_EP_OP_CONFORMANCE_EXPORT_DIR");
-  const auto directory = configured_root.empty() ? CaseDirectory() : std::filesystem::path(configured_root) / kMulId;
+  const auto directory = configured_root.empty() ? CaseDirectory() : std::filesystem::path(configured_root) / (std::string("case-") + kMulId);
   OpTester tester("Mul", 14);
   authored_.AddTo(tester);
   tester.ConfigEpOpConformanceExport(directory.string(), kMulId);

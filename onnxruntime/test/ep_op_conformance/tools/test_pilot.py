@@ -10,7 +10,7 @@ from pathlib import Path
 
 import numpy as np
 import onnx
-from generate_cases import generate
+from generate_cases import case_directory_name, generate
 from onnx import numpy_helper
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,8 +25,9 @@ class PilotTest(unittest.TestCase):
         self.cases = self.root / "cases"
         generate(ROOT / "cases/pilot.json", self.cases)
         self.profile = {"schema_version": 1, "kind": "builtin", "ep_name": "CPUExecutionProvider"}
-        self.scalar = self.cases / "ai.onnx.Mul.opset14.float32.scalar"
-        self.add = self.cases / "ai.onnx.Add.opset14.float32.broadcast"
+        self.scalar_id = "ai.onnx.Mul.opset14.float32_scalar"
+        self.scalar = self.cases / case_directory_name(self.scalar_id)
+        self.add = self.cases / case_directory_name("ai.onnx.Add.opset14.float32_broadcast")
 
     def replay(self, expected_code=0, cases=None):
         profile = self.root / "profile.json"
@@ -76,7 +77,9 @@ class PilotTest(unittest.TestCase):
         for result in report["results"]:
             self.assertEqual(result["status"], "PASS")
             self.assertEqual(result["assignment"][0]["ep_name"], "CPUExecutionProvider")
-            manifest = json.loads((self.cases / result["id"] / "case.json").read_text(encoding="utf-8"))
+            manifest = json.loads(
+                (self.cases / case_directory_name(result["id"]) / "case.json").read_text(encoding="utf-8")
+            )
             self.assertEqual(result["source"], manifest["source"])
 
     def test_native_execution_without_source_or_python(self):
@@ -235,7 +238,7 @@ class PilotTest(unittest.TestCase):
         self.assertEqual(self.replay(2)["status"], "ERROR")
 
     def test_nonfloat_initializer_rejected(self):
-        case = self.cases / "ai.onnx.Mul.opset14.float32.initializer"
+        case = self.cases / case_directory_name("ai.onnx.Mul.opset14.float32_initializer")
         path = case / "model.onnx"
         model = onnx.load_model(path)
         model.graph.initializer[0].data_type = onnx.TensorProto.INT64
@@ -263,7 +266,7 @@ class PilotTest(unittest.TestCase):
         self.assertIn("Skip must name", self.replay(2)["error"])
 
     def test_all_skipped_is_not_green(self):
-        self.profile["skips"] = {self.scalar.name: "test all-skipped disposition"}
+        self.profile["skips"] = {self.scalar_id: "test all-skipped disposition"}
         report = self.replay(1, self.scalar)
         self.assertEqual(report["passed"], 0)
         self.assertEqual(report["results"][0]["status"], "SKIP")
@@ -300,7 +303,7 @@ class PilotTest(unittest.TestCase):
 
     def test_plugin_initializer(self):
         self.plugin()
-        report = self.replay(cases=self.cases / "ai.onnx.Mul.opset14.float32.initializer")
+        report = self.replay(cases=self.cases / case_directory_name("ai.onnx.Mul.opset14.float32_initializer"))
         self.assertEqual(report["passed"], 1)
 
     def test_plugin_wrong_expected_fails(self):

@@ -1,8 +1,8 @@
 # Workstream `test-conformance`: Test Ownership and Operator Conformance
 
-Status: Revised design reflecting the agreed pilot review and CI organization. The bounded implementation passes
-local checks; isolated CPU CI is implemented and locally rehearsed, but has not run on GitHub. Main-build integration,
-source-kit validation, and broader EP adoption are not implemented yet.
+Status: Main-build CPU integration and source-kit/plugin validation CI are implemented. The bounded pilot and
+native scenarios pass local checks; the revised workflow DAG has not run on GitHub. Broader EP adoption, generic-case
+migration, and release publication remain future work.
 
 [WebGPU EP extraction overview](../webgpu_ep_extraction.md)
 
@@ -42,7 +42,7 @@ See the [pilot README](../../../../onnxruntime/test/ep_op_conformance/README.md)
 | WebGPU generic parity | Migration of all WebGPU-applicable generic tests with equivalent execution/assertions in applicable WebGPU lanes |
 | Preserved coverage | Equivalent execution and assertions to the original C++ test for every applicable existing EP consumer and CI lane |
 
-Kit publication and complete migration are planned, not implemented pilot facilities.
+CI source-kit preparation is implemented; release publication and complete migration remain planned.
 
 ## Desired end state
 
@@ -60,7 +60,7 @@ Kit publication and complete migration are planned, not implemented pilot facili
 - Existing EP workflows own provider execution; shared infrastructure checks run once rather than duplicating a
   central all-EP matrix. Ordinary EP lanes retain their normal environments; only external smoke execution is isolated.
 - A future source-first versioned kit supports independent external CI. Source availability is not proof of tested
-  portability. No source-kit packaging, release publication, or complete migration is claimed now.
+  portability. CI source-kit packaging is implemented; release publication and complete migration are not claimed.
 
 ## Test classification
 
@@ -176,12 +176,15 @@ A small CPU-authored Mul export fixture and independent scalar Mul, initializer 
 definitions exist. They use one artifact loader/comparator. No existing shared authored variant has been retired;
 neither full generic migration/WebGPU parity nor an existing variant's canonical-source transfer is established.
 
-[CPU CI](../../../../.github/workflows/ep-op-conformance-cpu.yml) implements a standalone public-only CMake build,
-Python preparation including incorrect-output/malformed-artifact/invalid-profile negatives, and a separate job that
-downloads an immutable native bundle without checkout or Python setup. Its restricted-PATH consumer checks hashes,
-intended failure phases/diagnostics, skip rules, and reports. All nine scenarios passed local rehearsal with the
-CI-pinned ORT 1.24.4 runtime. This is the first lane toward all supported built-in EP adoption, not a claim that the
-workflow has remotely passed. Windows system libraries, PowerShell, and the MSVC redistributable remain host prerequisites.
+[Windows CPU source CI](../../../../.github/workflows/windows_x64_release_build_x64_release.yml) opts into the main-build
+runner and generation. Its independent [provider workflow](../../../../.github/workflows/windows-ep-op-conformance.yml), called for CPU, invokes the
+native runner directly against the canonical cases and source-built CPU runtime, without CTest registration.
+The separate [infrastructure workflow](../../../../.github/workflows/windows-ep-op-conformance-infrastructure.yml) owns
+generation/package tests, C++ export/replay, and source-kit packaging. Its downstream jobs build packaged source
+without checkout and execute native bundles without source/build trees or Python setup. They check hashes, intended
+phases/diagnostics, assignment/fallback, and skip rules, with a separate ORT 1.24.4 compatibility smoke. CPU conformance
+does not depend on infrastructure test results. This remains local validation, not a remotely passed workflow.
+Windows system libraries, PowerShell, and the MSVC redistributable remain host prerequisites.
 
 Revised local Windows results: 23 exporter tests, 36 integration checks without skips on the matching runtime/sample
 plugin and fresh C++ capture, and 10 comparator checks pass. CPU/sample-plugin replay and staged runs without Python
@@ -215,11 +218,18 @@ a strict sequence and are distinct from the design's generic-test migration phas
 
 ### 1. Main-build integration and CPU CI
 
+**Implemented:** `onnxruntime_BUILD_EP_OP_CONFORMANCE_TESTS=ON` exposes the existing project using parent public
+dependency targets. Generation reuses the build's `Python_EXECUTABLE` and records installed producer package versions.
+The runner target depends on input-keyed build-tree cases and the shared runtime, but registers no provider execution
+with CTest. The Windows source workflow enables this option and hands a CPU-only native bundle to a dedicated job
+that invokes the runner directly. Local direct-target and explicit CPU execution checks pass; the normal GitHub
+workflow remains to be exercised.
+
 **Deliverables:** expose the standalone runner through the main [CMake entry](../../../../cmake/CMakeLists.txt) and
 enable it in the existing
 [Windows x64 CPU source workflow](../../../../.github/workflows/windows_x64_release_build_x64_release.yml). Add
-build-tree case generation and labelled CTest execution against its shared runtime with a builtin CPU profile.
-Main-build switches and test registration are proposed, not existing command-line interfaces.
+build-tree case generation and explicit execution in a dedicated CPU job against its shared runtime with a builtin
+CPU profile. The build switch and job interface above are implemented.
 
 **Dependencies:** reuse the existing standalone project and parent-provided public dependency targets under the
 [shared build and artifact requirements](ep_operator_conformance_design.md#shared-build-and-case-artifacts).
@@ -230,16 +240,26 @@ unsupported configurations, and immutable case bytes with revision/hash metadata
 
 ### 2. Source-kit and plugin validation CI
 
-**Deliverables:** reuse `build_x64_release` in that CPU workflow to publish narrow source-kit, case/scenario, and
-matching runtime/`example_plugin_ep` fixture artifacts. Refactor the isolated
-[CPU workflow](../../../../.github/workflows/ep-op-conformance-cpu.yml) into a reusable consumer, preserving required-check
-names deliberately. Use the existing pilot generation/scenario helpers and the
+**Implemented:** a separate infrastructure workflow consumes the existing ORT build outputs by immutable ID, runs
+generation/package and C++ export/replay tests, and publishes three hash-manifested artifacts with source/API/corpus
+metadata. Its downstream no-checkout job builds kit-local public sources and stages matching-plugin and
+minimum-runtime CPU bundles. A fresh native job has no checkout/source/build tree and restricts PATH. This workflow
+does not gate the sibling CPU conformance job. Branch-protection owners must review the separate CPU and
+infrastructure check names. Release publication remains separate. Remote execution is pending. Local rehearsal built the packaged
+source outside the checkout, then passed 20 matching-runtime CPU/plugin scenarios and nine ORT 1.24.4 CPU checks
+after removing the kit's source/build directories. Twenty-eight generation/package regression tests also pass.
+
+**Deliverables:** reuse `build_x64_release` outputs in the
+[infrastructure workflow](../../../../.github/workflows/windows-ep-op-conformance-infrastructure.yml) to publish narrow
+source-kit, case/scenario, and matching runtime/`example_plugin_ep` fixture artifacts, then validate isolated
+consumption. Keep the [generic provider workflow](../../../../.github/workflows/windows-ep-op-conformance.yml) limited to
+profile-selected provider execution, with caller-supplied EP name and Windows runner labels. Use the existing pilot generation/scenario helpers and the
 [source-kit contents](ep_operator_conformance_design.md#distribution); do not add another full ORT build.
 
 **Dependencies:** packaging may proceed alongside package 1, but consumption needs its exact positive artifacts and a
 verified matching fixture. Call the consumer in the same CPU workflow DAG with a producer `needs` dependency and
-immutable artifact IDs; `needs` cannot span independent workflow runs. The existing job does not publish these
-artifacts today.
+immutable artifact IDs; `needs` cannot span independent workflow runs. The source job publishes neutral build inputs;
+infrastructure-specific packaging happens only in the infrastructure workflow.
 
 **Completion:** on Windows x64, build the packaged source without an ORT checkout and pass the
 [plugin validation scenarios](ep_operator_conformance_design.md#source-kit-and-plugin-validation), including mandatory
@@ -254,7 +274,7 @@ Start with these workflow changes, preserving normal dependencies and device set
 
 | Workflow | Planned integration |
 | --- | --- |
-| [Windows CUDA](../../../../.github/workflows/windows_cuda.yml) | Build runner/generate cases before cleanup, preserve artifacts, and execute in the existing GPU test job with relocated CTest paths. |
+| [Windows CUDA](../../../../.github/workflows/windows_cuda.yml) | Build runner/generate cases before cleanup, preserve artifacts, and invoke the runner directly in the existing GPU test job. |
 | [Windows DML](../../../../.github/workflows/windows_dml.yml) | Run in the existing GPU build/test job using its source-built runtime and normal DirectML dependencies. |
 | [Windows WebGPU](../../../../.github/workflows/windows_webgpu.yml) | Preserve runner/cases across the build/test split and execute on existing GPU test nodes; choose applicable variants rather than duplicating the full matrix automatically. |
 | [Reusable Linux build](../../../../.github/workflows/reusable_linux_build.yml) | Pass explicit opt-in/profile inputs and preserve artifacts/permissions/path relocation in existing runtime lanes as needed. |
@@ -296,7 +316,7 @@ validated packaging from package 2 as the release-preparation path for immutable
 compatible release/nightly kits, with optional prebuilt runners. Kit publication does not depend on completed
 migration; publication and release ownership remain to be established.
 
-This revision documents planned work, not its completion.
+Packages 1 and 2 are implemented with local validation; later packages remain planned.
 Publication or successful pilot subsets alone cannot close the extraction gate. Static hosts/SDK are deferred.
 
 ## Interfaces with other workstreams

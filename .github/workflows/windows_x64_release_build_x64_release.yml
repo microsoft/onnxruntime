@@ -19,6 +19,9 @@ jobs:
       "JobId=windows-x64-release-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
       ]
     timeout-minutes: 300
+    outputs:
+      conformance-cpu-id: ${{ steps.conformance-cpu.outputs.artifact-id }}
+      conformance-build-id: ${{ steps.conformance-build.outputs.artifact-id }}
 
     steps:
       - name: Checkout repository
@@ -95,7 +98,7 @@ jobs:
       - name: Build and Test
         shell: pwsh
         run: |
-          python.exe "${{ github.workspace }}\tools\ci_build\build.py" --config RelWithDebInfo --build_dir "${{ github.workspace }}\build" --skip_submodule_sync --build_csharp --parallel --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --enable_onnx_tests --build_wheel --build_java --build_nodejs --msbuild_extra_options "IncludeMobileTargets=false" --build_nuget --use_vcpkg --use_vcpkg_ms_internal_asset_cache
+          python.exe "${{ github.workspace }}\tools\ci_build\build.py" --config RelWithDebInfo --build_dir "${{ github.workspace }}\build" --skip_submodule_sync --build_csharp --parallel --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --enable_onnx_tests --build_wheel --build_java --build_nodejs --msbuild_extra_options "IncludeMobileTargets=false" --build_nuget --use_vcpkg --use_vcpkg_ms_internal_asset_cache --cmake_extra_defines onnxruntime_BUILD_EP_OP_CONFORMANCE_TESTS=ON
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
           }
@@ -103,6 +106,59 @@ jobs:
         env:
           ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
           DocUpdateNeeded: 'false'
+
+      - name: Stage EP Op Conformance Build Outputs
+        shell: pwsh
+        run: |
+          $build = "$env:GITHUB_WORKSPACE/build/RelWithDebInfo"
+          $cpu = "$env:RUNNER_TEMP/ep-op-conformance-handoff/cpu"
+          $infrastructure = "$env:RUNNER_TEMP/ep-op-conformance-handoff/infrastructure"
+          New-Item -ItemType Directory "$cpu/bin", "$infrastructure/bin", "$infrastructure/generated" | Out-Null
+          $generated = "$build/ep_op_conformance/generated"
+          $generation = Get-Content "$generated/current.json" -Raw | ConvertFrom-Json
+          Copy-Item "$generated/$($generation.directory)" "$cpu/cases" -Recurse
+          Copy-Item onnxruntime/test/ep_op_conformance/examples/cpu.json "$cpu/profile.json"
+          Copy-Item "$generated/current.json" "$cpu/generation.json"
+          Copy-Item "$generated/current.json", "$generated/$($generation.directory).json" "$infrastructure/generated"
+          Copy-Item "$generated/$($generation.directory)" "$infrastructure/generated" -Recurse
+          foreach ($destination in @("$cpu/bin", "$infrastructure/bin")) {
+            Copy-Item "$build/RelWithDebInfo/onnxruntime.dll" $destination
+            Copy-Item "$build/ep_op_conformance/RelWithDebInfo/onnxruntime_ep_op_conformance_test.exe" $destination
+            if (Test-Path "$build/RelWithDebInfo/onnxruntime_providers_shared.dll") {
+              Copy-Item "$build/RelWithDebInfo/onnxruntime_providers_shared.dll" $destination
+            }
+          }
+          Copy-Item "$build/RelWithDebInfo/example_plugin_ep.dll", `
+            "$build/RelWithDebInfo/onnxruntime_ep_op_conformance_export_test.exe" "$infrastructure/bin"
+
+      - name: Publish CPU EP Op Conformance Bundle
+        id: conformance-cpu
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ep-op-conformance-cpu-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ep-op-conformance-handoff/cpu
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Publish EP Op Conformance Infrastructure Build Inputs
+        id: conformance-build
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ep-op-conformance-build-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ep-op-conformance-handoff/infrastructure
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Preserve EP Op Conformance Build Metadata
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ep-op-conformance-main-build-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ github.workspace }}/build/RelWithDebInfo/ep_op_conformance/generated/*.json
+            ${{ github.workspace }}/build/RelWithDebInfo/Testing/Temporary/LastTest.log
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Run onnxruntime_provider_test with example_plugin_ep
         shell: pwsh
@@ -162,3 +218,24 @@ jobs:
       OrtPackageId: Microsoft.ML.OnnxRuntime
       OnnxRuntimeBuildDirectory: ${{ github.workspace }}\build
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 'true'
+
+  ep_op_conformance_cpu:
+    needs: build_x64_release
+    uses: ./.github/workflows/windows-ep-op-conformance.yml
+    permissions:
+      contents: read
+    with:
+      bundle-id: ${{ needs.build_x64_release.outputs.conformance-cpu-id }}
+      ep-name: CPUExecutionProvider
+      runs-on: >-
+        ["self-hosted",
+         "1ES.Pool=onnxruntime-github-vs2022-latest",
+         "JobId=ep-op-conformance-cpu-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"]
+
+  ep_op_conformance_infrastructure:
+    needs: build_x64_release
+    uses: ./.github/workflows/windows-ep-op-conformance-infrastructure.yml
+    permissions:
+      contents: read
+    with:
+      build-id: ${{ needs.build_x64_release.outputs.conformance-build-id }}

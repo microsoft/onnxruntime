@@ -6,6 +6,6 @@
   "library": "example_plugin_ep.dll",
   "device_index": 0,
   "skips": {
-    "ai.onnx.Add.opset14.float32.broadcast": "The example plugin implements Mul, not Add"
+    "ai.onnx.Add.opset14.float32_broadcast": "The example plugin implements Mul, not Add"
   }
 }
