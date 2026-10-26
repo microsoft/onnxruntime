@@ -36,25 +36,39 @@ class SpeculativePrefixCommit final : public CudaKernel {
     const auto* sine = context->Input<Tensor>(9);
     ORT_RETURN_IF_NOT(tokens && ids && status && ctl && committed && prefixes && prefix2 && ptrs && cosine && sine,
                       "SpeculativePrefixCommit: missing required input");
-    const int64_t rows = tokens->Shape().Size();
-    ORT_RETURN_IF_NOT(rows > 0 && rows <= INT_MAX && ids->Shape().Size() >= rows &&
+    const auto& tok_shape = tokens->Shape();
+    const int64_t batch = tok_shape.NumDimensions() >= 2
+                              ? tok_shape.SizeToDimension(tok_shape.NumDimensions() - 1)
+                              : int64_t{1};
+    const int64_t rows = tok_shape.NumDimensions() >= 2
+                             ? tok_shape[tok_shape.NumDimensions() - 1]
+                             : tok_shape.Size();
+    ORT_RETURN_IF_NOT(batch > 0 && batch <= INT_MAX && rows > 0 && rows <= INT_MAX &&
+                          ids->Shape().Size() >= batch * rows && ids->Shape().Size() % batch == 0 &&
+                          ids->Shape().Size() / batch <= INT_MAX &&
                           status->Shape().Size() <= INT_MAX,
                       "SpeculativePrefixCommit: invalid token/status shape");
-    ORT_RETURN_IF_NOT(ctl->Shape().Size() >= (head_rows_ > 2 ? 16 : 8) &&
-                          Count(committed, 2) && prefixes->Shape().Size() >= (head_rows_ > 2 ? 2 * head_rows_ : 2) &&
-                          Count(prefix2, 2) && Count(ptrs, 2),
+    const int64_t min_ctl = (head_rows_ > 2 ? 16 : 8);
+    const int64_t min_pref = (head_rows_ > 2 ? 2 * head_rows_ : 2);
+    ORT_RETURN_IF_NOT(ctl->Shape().Size() >= batch * min_ctl && ctl->Shape().Size() % batch == 0 &&
+                          ctl->Shape().Size() / batch <= INT_MAX &&
+                          Count(committed, 2 * batch) &&
+                          prefixes->Shape().Size() >= batch * min_pref && prefixes->Shape().Size() % batch == 0 &&
+                          prefixes->Shape().Size() / batch <= INT_MAX &&
+                          (Count(prefix2, 2 * batch) || Count(prefix2, 2)) &&
+                          (Count(ptrs, 2 * batch) || Count(ptrs, 2)),
                       "SpeculativePrefixCommit: invalid control/context shape");
     const auto& rope = cosine->Shape();
     ORT_RETURN_IF_NOT(rope.NumDimensions() == 2 && rope[0] > 0 && rope[0] <= INT_MAX &&
                           rope[1] > 0 && rope[1] <= INT_MAX && sine->Shape() == rope,
                       "SpeculativePrefixCommit: rotary caches must have matching [positions, width] shapes");
-    auto* out_ids = context->Output(0, TensorShape({1, head_rows_}));
-    auto* head_c = context->Output(1, TensorShape({1}));
-    auto* slots = context->Output(2, TensorShape({1, head_rows_}));
-    auto* lengths = context->Output(3, TensorShape({1}));
-    auto* out_cos = context->Output(4, TensorShape({1, head_rows_, rope[1]}));
-    auto* out_sin = context->Output(5, TensorShape({1, head_rows_, rope[1]}));
-    auto* selection = context->Output(6, TensorShape({1}));
+    auto* out_ids = context->Output(0, TensorShape({batch, head_rows_}));
+    auto* head_c = context->Output(1, TensorShape({batch}));
+    auto* slots = context->Output(2, TensorShape({batch, head_rows_}));
+    auto* lengths = context->Output(3, TensorShape({batch}));
+    auto* out_cos = context->Output(4, TensorShape({batch, head_rows_, rope[1]}));
+    auto* out_sin = context->Output(5, TensorShape({batch, head_rows_, rope[1]}));
+    auto* selection = context->Output(6, TensorShape({batch}));
     int64_t* ctl_ptr = const_cast<int64_t*>(ctl->Data<int64_t>());
     int64_t* context_ptr = const_cast<int64_t*>(committed->Data<int64_t>());
     if (context->OutputCount() > 7) {
@@ -69,6 +83,11 @@ class SpeculativePrefixCommit final : public CudaKernel {
         context_ptr = updated_context->MutableData<int64_t>();
       }
     }
+    const int ids_stride = static_cast<int>(ids->Shape().Size() / batch);
+    const int ctl_stride = static_cast<int>(ctl->Shape().Size() / batch);
+    const int prefix_stride = static_cast<int>(prefixes->Shape().Size() / batch);
+    const int prefix2_stride = (Count(prefix2, 2 * batch) && batch > 1) ? 2 : 0;
+    const int ptrs_stride = (Count(ptrs, 2 * batch) && batch > 1) ? 2 : 0;
     return speculative_fold::LaunchMid(
         tokens->Data<int64_t>(), ids->Data<int64_t>(), status->Data<int32_t>(), static_cast<int>(status->Shape().Size()),
         ctl_ptr, context_ptr, prefixes->Data<int64_t>(),
@@ -79,7 +98,8 @@ class SpeculativePrefixCommit final : public CudaKernel {
         lengths->MutableData<int32_t>(), reinterpret_cast<uint16_t*>(out_cos->MutableData<BFloat16>()),
         reinterpret_cast<uint16_t*>(out_sin->MutableData<BFloat16>()), selection->MutableData<int64_t>(),
         static_cast<int>(rows), head_rows_, static_cast<int>(rope[0]), static_cast<int>(rope[1]), capacity_, Stream(context),
-        true, ctl->Data<int64_t>(), static_cast<int>(ctl->Shape().Size()), committed->Data<int64_t>());
+        true, ctl->Data<int64_t>(), ctl_stride, committed->Data<int64_t>(),
+        static_cast<int>(batch), ids_stride, prefix_stride, prefix2_stride, ptrs_stride);
   }
 
  private:
