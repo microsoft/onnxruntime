@@ -1,32 +1,31 @@
 # PackedSparseAttentionIndexer — Operator Documentation
 
-## Experimental CUDA decode specializations
+## CUDA QSA dispatch switches
 
-Set these process-level options before the first operator invocation. All three
-default to `1`; only `0` and `1` are accepted. Existing dispatch remains available
-when an option is disabled (`0`) or its geometry is unsupported.
+Three process-level environment variables select alternate CUDA QSA kernels. Each value is read once
+per process on the first eligible call and cached, so set them before the first operator invocation.
+None changes schemas, cache layouts, causal visibility, stable tie ordering, selected counts or
+state-update semantics. The companion `DynamicSparseAttention` switches are documented in
+[cuda/dynamic_sparse_attention.md](cuda/dynamic_sparse_attention.md).
 
-- `ORT_PACKED_SPARSE_INDEXER_COMPACT_TOPK=1`: compact QSA chunks of 2048 keys
-  to 512 keys with device-side 512/1024/2048 sorting probes. Up to five chunks
-  use a fused final merge/emit; larger selections use the existing pairwise
-  merge. Stable tie ordering, causal tails, capacity stride/padding, and
-  overflow handling are preserved. This option is mutually exclusive with
-  `ORT_PACKED_SPARSE_INDEXER_RADIX_TOPK=1`.
-- `ORT_DSA_INT8_VECTOR_STAGING=1`: the companion `DynamicSparseAttention`
-  grouped INT8 path uses eight-byte cache loads and independent per-channel
-  key/value scales. Its existing guards still require head size 256, FP16/BF16
-  queries, one through eight tokens (`1 <= sequence_length <= 8`), GQA ratio at
-  least four, more than 256 candidates, and sufficient resources. Auxiliary
-  floating-point caches retain their own unscaled load path.
-- `ORT_DSA_SHARED_SCALE_MERGE=1`: grouped attention merges with at most 32
-  splits compute the exponential factor once per split and share it across
-  output channels. A nonzero partial sum, not the maximum-score sentinel,
-  determines whether a split is active. Active factors that underflow to zero
-  remain in the accumulation.
+Hierarchical QSA TopK is eligible when `1 <= total_tokens <= 64`, `state_capacity >= 2048`,
+`head_size == 128`, `compress_ratio == 4`, `num_heads == 4` and `32 < block_topk <= 512`. Ragged QSA
+prefill is eligible when `total_tokens > 64`, `head_size == 128`, `compress_ratio == 4` and
+`num_heads == 4`. Other geometries never read these switches.
 
-These options change kernels, not graph schemas or cache layouts. Qualify
-accuracy and performance on the target runtime, hardware, and workload before
-enabling them in a deployment.
+| Variable | Default | Applies to | Value | Kernels selected |
+|---|---|---|---|---|
+| `ORT_PACKED_SPARSE_INDEXER_COMPACT_TOPK` | `1` (only `0`/`1` accepted) | hierarchical QSA TopK | `1` | Compacts each 2048-key chunk to 512 keys (`QsaCompactTileTopKKernel`). Up to five chunks use the fused `QsaFinalMergeAndEmitKernel`; more chunks use pairwise `QsaMergeTileTopKKernel` followed by `QsaEmitHierarchicalTopKKernel`. |
+| | | | `0` | Tile-level merge: `QsaMergeTwoLevelsTopKKernel` (4-way) while two levels remain, then `QsaMergeTileTopKKernel`, then `QsaEmitHierarchicalTopKKernel`. |
+| `ORT_PACKED_SPARSE_INDEXER_RADIX_TOPK` | `0` (boolean) | hierarchical QSA TopK | `1` | Live-key radix selection (`QsaPartialTopKKernel<true>`) over the tile-sorted keys, then `QsaEmitHierarchicalTopKKernel`. Requires `ORT_PACKED_SPARSE_INDEXER_COMPACT_TOPK=0`; enabling both fails with an error. |
+| `ORT_PACKED_SPARSE_INDEXER_WARP_HEADS` | `1` (boolean) | ragged QSA prefill | `1` | `QsaRaggedPrefillScoreKernel<..., true>`: one warp per state block keeps all four heads (256 threads per CTA). |
+| | | | `0` | `QsaRaggedPrefillScoreKernel<...>` with one warp per (state block, head) and CTA-wide barriers (1024 threads per CTA). |
+
+Effective hierarchical modes are therefore `COMPACT=1,RADIX=0` (default), `COMPACT=0,RADIX=0` and
+`COMPACT=0,RADIX=1`. The packed-QSA tests re-run the hierarchical, stable-tie, partial-merge-group
+and ragged-prefill cases in fresh processes for every non-default mode
+(`QsaAlternateTopKModesInFreshProcess`). Qualify accuracy and performance on the target runtime,
+hardware and workload before changing a default.
 
 This document describes the `com.microsoft::PackedSparseAttentionIndexer` contrib operator: the
 packed/variable-length counterpart of `com.microsoft::SparseAttentionIndexer`, built for
@@ -323,13 +322,9 @@ mechanics with no packed equivalent):
   the shared-memory TopK path for up to 32 selected blocks, bounded partial TopK for 33–512 blocks,
   and a hierarchical TopK path for common long-context Qwen shapes. Values above 512 that do not
   match the hierarchical specialization retain the correctness-first repeated-scan fallback.
-- CUDA has two additional dispatch controls. Set them before the first eligible
-  call; each value is cached per process. `ORT_PACKED_SPARSE_INDEXER_RADIX_TOPK=1` (default `0`,
-  mutually exclusive with `ORT_PACKED_SPARSE_INDEXER_COMPACT_TOPK=1`) uses live-key
-  radix selection for eligible short QSA calls. `ORT_PACKED_SPARSE_INDEXER_WARP_HEADS=1` (default `1`) uses
-  warp-local scoring for eligible packed prefill calls with more than 64 tokens, four heads,
-  head size 128 and compression ratio four. Both retain causal visibility, stable tie ordering,
-  selected counts and state-update semantics.
+- The CUDA dispatch switches `ORT_PACKED_SPARSE_INDEXER_COMPACT_TOPK`,
+  `ORT_PACKED_SPARSE_INDEXER_RADIX_TOPK` and `ORT_PACKED_SPARSE_INDEXER_WARP_HEADS` are described in
+  the "CUDA QSA dispatch switches" section at the top of this document.
 - OgaEngine / Model Builder integration (declaring `past_key_state` etc. as Engine-managed,
   per-request fixed-size state, analogous to a paged auxiliary cache) is out of scope for this
   operator definition and is expected in a follow-up to `microsoft/onnxruntime-genai`.
