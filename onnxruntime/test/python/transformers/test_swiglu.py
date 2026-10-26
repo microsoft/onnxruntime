@@ -6,9 +6,12 @@ The T-typed inputs are fed as float and cast inside the graph, so the harness ne
 a bfloat16 numpy array.
 """
 
+import os
+import tempfile
 import unittest
 
 import numpy as np
+import onnx
 import torch
 from onnx import TensorProto as TP  # noqa: N817
 from onnx import helper
@@ -175,6 +178,64 @@ class TestSwiGLU(unittest.TestCase):
                     shape = [1, 3]
                 got = run(build_swiglu(TP.FLOAT, 0.0, fused, shape), feeds)[0]
                 np.testing.assert_allclose(got, want, rtol=2e-6, atol=0.0)
+
+    def test_float32_underflowing_sigmoid_tail(self):
+        """alpha * gate is below float exp's range, but the multiply by up brings the tail back."""
+        gate = np.array([[-(2.0**100), -(2.0**100) * 1.1]], dtype=np.float32)
+        up = np.full_like(gate, 1e20)
+        alpha = 2.0**-93
+        g = gate.astype(np.float64)
+        e = np.exp(g * alpha)
+        want = (g * e / (1.0 + e) * up.astype(np.float64)).astype(np.float32)
+        self.assertTrue(bool((want < 0.0).all()))
+        for fused in (False, True):
+            with self.subTest(fused=fused):
+                if fused:
+                    feeds = {"gate": np.concatenate((gate, up), axis=-1)}
+                    shape = [1, 4]
+                else:
+                    feeds = {"gate": gate, "up": up}
+                    shape = [1, 2]
+                got = run(build_swiglu(TP.FLOAT, 0.0, fused, shape, alpha=alpha), feeds)[0]
+                np.testing.assert_allclose(got, want, rtol=1e-5, atol=0.0)
+
+    def test_quick_gelu_mul_fusion_parity(self):
+        """The automatic QuickGelu + Mul fusion must not change the unfused result."""
+        alpha = 2.0**-93
+        shape = [1, 2]
+        nodes = [
+            helper.make_node("QuickGelu", ["gate"], ["gated"], domain="com.microsoft", alpha=alpha),
+            helper.make_node("Mul", ["gated", "up"], ["y"]),
+        ]
+        graph = helper.make_graph(
+            nodes,
+            "quick_gelu_mul",
+            [helper.make_tensor_value_info(n, TP.FLOAT, shape) for n in ("gate", "up")],
+            [helper.make_tensor_value_info("y", TP.FLOAT, shape)],
+        )
+        model = helper.make_model(
+            graph, opset_imports=[helper.make_opsetid("", 17), helper.make_opsetid("com.microsoft", 1)]
+        )
+        model.ir_version = 10
+        gate = np.array([[-(2.0**100), -(2.0**100) * 1.1]], dtype=np.float32)
+        feeds = {"gate": gate, "up": np.full_like(gate, 1e20)}
+
+        results = {}
+        for level in (ort.GraphOptimizationLevel.ORT_DISABLE_ALL, ort.GraphOptimizationLevel.ORT_ENABLE_ALL):
+            with tempfile.TemporaryDirectory() as tmp:
+                options = ort.SessionOptions()
+                options.graph_optimization_level = level
+                options.optimized_model_filepath = os.path.join(tmp, "optimized.onnx")
+                sess = ort.InferenceSession(model.SerializeToString(), options, providers=["CUDAExecutionProvider"])
+                ops = {n.op_type for n in onnx.load(options.optimized_model_filepath).graph.node}
+                results[level] = (sess.run(None, feeds)[0], ops)
+
+        unfused, unfused_ops = results[ort.GraphOptimizationLevel.ORT_DISABLE_ALL]
+        fused, fused_ops = results[ort.GraphOptimizationLevel.ORT_ENABLE_ALL]
+        self.assertIn("QuickGelu", unfused_ops)
+        self.assertIn("SwiGLU", fused_ops)
+        self.assertTrue(bool((unfused < 0.0).all()))
+        np.testing.assert_allclose(fused, unfused, rtol=1e-5, atol=0.0)
 
     def test_rejects_mismatched_shapes(self):
         model = build_swiglu(TP.FLOAT, 0.0, False, [2, 8])

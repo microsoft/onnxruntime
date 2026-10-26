@@ -34,7 +34,19 @@ __global__ void SwiGLUKernel(int64_t count, int64_t cols, float limit, float alp
       g = fminf(g, limit);
       l = fminf(fmaxf(l, -limit), limit);
     }
-    output[i] = static_cast<CudaT>(g * _Sigmoid(alpha * g) * (l + beta));
+    const float scaled = alpha * g;
+    float result;
+    if (scaled < -87.0f) {
+      // Float exp enters its subnormal range near -87 and underflows to zero by -104, which would
+      // zero a tail that the following multiply by (l + beta) can bring back into range. Keep the
+      // whole product wide, as QuickGelu does.
+      const double wide_g = static_cast<double>(g);
+      const double e = exp(wide_g * static_cast<double>(alpha));
+      result = static_cast<float>(wide_g * e / (1.0 + e) * (static_cast<double>(l) + static_cast<double>(beta)));
+    } else {
+      result = g * _Sigmoid(scaled) * (l + beta);
+    }
+    output[i] = static_cast<CudaT>(result);
   }
 }
 
