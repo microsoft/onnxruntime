@@ -1,13 +1,10 @@
 # Writing C++ graph rewrite rules
 
-## Rewrite rules: composing two Transposes
+This document describes how to express fusion optimizations as rewrite rules.
 
-A rule combines a pattern, semantic check-and-bind function, replacement,
-and supported opset ranges. This natural example replaces
-`Transpose(Transpose(x,p),q)` with one Transpose. It **checks** known rank and
-valid explicit permutations and **binds** the composed permutation for the
-replacement. For inner permutation `p` and outer `q`, composition is
-`composed[i]=p[q[i]]`, not `q[p[i]]`.
+## Example: composing two Transposes
+
+The following example replaces `Transpose(Transpose(x,p),q)` with one Transpose.
 
 ```cpp
 #include "core/optimizer/pattern_rewriter.h"
@@ -15,6 +12,38 @@ replacement. For inner permutation `p` and outer `q`, composition is
 using namespace onnxruntime;
 using namespace onnxruntime::rewrite;
 
+bool ComposeTransposePermutations(const Graph&, Match& match) {
+  // Validate that the permutations are composable and compute the "composed" permutation
+  // ...
+}
+
+Rule MakeComposeTransposeRule() {
+  Pattern pattern(R"(
+    (x,p:ints,q:ints) => {
+      a=Transpose(x,perm=p)
+      return Transpose(a,perm=q)
+    })");
+  Replacement replacement("(x,composed)=>Transpose(x,perm=composed)");
+  return Rule{"ComposeTranspose", pattern, replacement,
+              ComposeTransposePermutations, {{kOnnxDomain, 13, 25}}};
+}
+```
+
+A rule combines a pattern, semantic check-and-bind function, replacement,
+and supported opset ranges.
+* The pattern describes the subgraph to be fused
+* The replacement describes the new subgraph that will replace the fused subgraph
+* The check-and-bind function (called `ComposeTransposePermutations` in above
+example) checks for extra conditions that must hold for the fusion to be
+applied. It can also compute other information (eg., new constant values or
+attribute values) needed to construct the replacement. In this example,
+it **checks** known rank and valid explicit permutations and **binds** the
+composed permutation for the replacement. For inner permutation `p` and
+outer `q`, composition is `composed[i]=p[q[i]]`, not `q[p[i]]`.
+* The opset ranges specify the ONNX opsets for which the fusion is valid.
+
+The complete definition of `ComposeTransposePermutations` is:
+```cpp
 bool ComposeTransposePermutations(const Graph&, Match& match) {
   const auto* shape = match.valueOf("x")->Shape();
   if (!shape) return match.Reject("Transpose composition requires known rank.");
@@ -36,29 +65,15 @@ bool ComposeTransposePermutations(const Graph&, Match& match) {
   match.update("composed", std::move(composed));
   return true;
 }
-
-Rule MakeComposeTransposeRule() {
-  Pattern pattern(R"(
-    (x,p:ints,q:ints) => {
-      a=Transpose(x,perm=p)
-      return Transpose(a,perm=q)
-    })");
-  Replacement replacement("(x,composed)=>Transpose(x,perm=composed)");
-  return Rule{"ComposeTranspose", pattern, replacement,
-              ComposeTransposePermutations, {{kOnnxDomain, 13, 25}}};
-}
 ```
 
 The pattern requires explicit `perm` attributes; it does not match default
 reverse-axis Transposes. Known rank is enough: dimension sizes need not be
 known. Identity composition remains a Transpose with the identity permutation,
-not a zero-node replacement. The built-in boundary check rejects an inner
-Transpose result exposed as a graph output or consumed elsewhere. The rank-three
-noncommuting permutations `[1,0,2]` then `[0,2,1]` compose to `[1,2,0]`;
-tests compare actual CPU results before and after rewriting.
-
-The sections below describe the components independently. The rewriter engine,
-which schedules a collection of rules, is separate from all four components.
+not a zero-node replacement. The built-in boundary check will not apply the
+fusion if the inner Transpose result is exposed as a graph output or is
+consumed elsewhere. The rank-three
+noncommuting permutations `[1,0,2]` then `[0,2,1]` compose to `[1,2,0]`.
 
 ## Constructing rules
 
