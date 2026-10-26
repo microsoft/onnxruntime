@@ -101,42 +101,21 @@ if (match) {
 }
 ```
 
-`MatchAt` matches at exactly the specified root node. It returns the first
-successful concrete plan in source order, or `std::nullopt` for an ordinary
-nonmatch (clearing any previous result). Status errors and configuration
+`MatchAt` matches at exactly the specified root node. It returns a match,
+or `std::nullopt` for an ordinary nonmatch (clearing any previous result).
+Status errors and configuration
 exceptions leave the caller's result unchanged. The result owns its selected
 plan but borrows the unchanged graph, as described in [Match](#the-match-object).
-It does not run a checker or search another candidate after a later checker
-rejection. Use the ordered visitor when that retry is needed:
+The graph must already be resolved; an unresolved graph or invalid root returns
+an error. Malformed/non-rooted pattern configuration throws.
 
-```cpp
-Pattern pattern("(x) => { a = Identity(x); return Sigmoid(a) }");
-size_t count = 0;
-ORT_RETURN_IF_ERROR(pattern.VisitMatches(graph, root_index, [&](Match& match) {
-  ++count;
-  const NodeArg* input = match.valueOf("x");
-  // Inspect input; do not mutate graph.
-  (void)input;
-  return true;  // Continue to the next concrete candidate.
-}));
-```
-
-`VisitMatches` anchors at one existing root in an **already resolved** graph.
-It visits successful expanded graph plans in source order, each with fresh
-bindings. `true` means **continue**, `false` means **stop**; these are traversal
-controls, not check-and-bind acceptance. Ordinary nonmatches/exhaustion return
-OK without invoking the visitor. Unresolved graphs, invalid root indices and
-empty visitors return errors; malformed/non-rooted pattern configuration
-throws. Visitor exceptions propagate, never silently retry. The callback may
-copy a candidate but must not mutate the graph.
-
-Both standalone APIs use the same structural, attribute, constant, type/shape,
-layer and **deletion-boundary** matcher as the engine. They find rewrite-safe
-patterns, not arbitrary subgraph occurrences. They deliberately do not apply
-rule opset-range or execution-provider policy and do not run a checker,
-construct a replacement or traverse other roots/subgraphs. The first consistent
-annotation combination is selected within each concrete graph plan; rejecting
-that candidate does not search other annotation combinations.
+This standalone API uses the same structural, attribute, constant, type/shape,
+layer and **deletion-boundary** matcher as the engine. It finds rewrite-safe
+patterns, not arbitrary subgraph occurrences. It does not apply rule opset-range
+or execution-provider policy, run a checker, construct a replacement, or traverse
+other roots/subgraphs. After introducing pattern disjunction below,
+[matching alternatives at one root](#matching-alternatives-at-one-root) describes
+first-match ordering and the separate ordered visitor API.
 
 ### Pattern syntax and shared replacement notation
 
@@ -591,19 +570,21 @@ Declare the attribute binding in the replacement's input list, set it with
 No replacement lambda is needed just to prepare attributes.
 
 It is an ordinary C++ function and can be unit-tested by calling it on candidates
-obtained from `VisitMatches`, without applying any rule:
+obtained from `MatchAt`, without applying any rule:
 
 ```cpp
-std::optional<Match> accepted;
-ORT_RETURN_IF_ERROR(pattern.VisitMatches(graph, root_index, [&](Match& candidate) {
-  if (!ComposeTransposePermutations(graph, candidate)) return true; // Reject: try next.
-  accepted = candidate;  // Keeps prepared "composed" plus selected-plan ownership.
-  return false;         // Accept: stop enumeration.
-}));
+std::optional<Match> candidate;
+ORT_RETURN_IF_ERROR(pattern.MatchAt(graph, root_index, candidate));
+if (candidate && ComposeTransposePermutations(graph, *candidate)) {
+  const ONNX_NAMESPACE::AttributeProto& composed = candidate->attributeOf("composed");
+  // Inspect the checked match and prepared permutation.
+  (void)composed;
+}
 ```
 
-Do **not** directly return the checker boolean from a visitor: its traversal
-meaning is opposite. In engine use, checker false discards candidate-local
+For retry across disjunctions, see the later
+[ordered visitor example](#matching-alternatives-at-one-root).
+In engine use, checker false discards candidate-local
 updates and tries the next eligible rule/concrete plan. Exceptions and replacement
 errors propagate; they are not ordinary rejection. The engine supplies provider
 and opset eligibility before invoking the checker. The checker supplies semantic
@@ -1276,6 +1257,61 @@ first globally consistent type/shape combination. Checker rejection does not
 try another annotation combination for that candidate; it advances to the
 next concrete graph candidate. Neither search permutes operands or explores
 different producers.
+
+### Matching alternatives at one root
+
+Disjunction can produce multiple matches for the same pattern and root.
+For example, when an Identity feeds a Sigmoid, both branches below can match:
+the first binds `x` to the Identity input, while the second binds `x` to the
+Sigmoid input.
+
+```cpp
+PatternLibrary library(R"(
+  pattern E(x) {
+    value = Identity(x) | x
+    return Sigmoid(value)
+  }
+)");
+Pattern pattern = library.GetPattern("E");
+size_t count = 0;
+ORT_RETURN_IF_ERROR(pattern.VisitMatches(graph, root_index, [&](Match& match) {
+  ++count;
+  const NodeArg* input = match.valueOf("x");
+  // Inspect input; do not mutate graph.
+  (void)input;
+  return true;  // Continue to the next concrete candidate.
+}));
+```
+
+`MatchAt` returns only the first successful concrete plan in source order.
+It does not run a checker or search another candidate after a later checker
+rejection. `VisitMatches` anchors at the same root in an **already resolved**
+graph and visits successful expanded graph plans in source order, each with
+fresh bindings. Both APIs use the standalone eligibility checks described in
+[Patterns](#patterns), without rule opset-range or provider filtering.
+`true` means **continue**, `false` means **stop**; these are traversal controls,
+not check-and-bind acceptance. Ordinary nonmatches/exhaustion return OK without
+invoking the visitor. Unresolved graphs, invalid root indices and empty visitors
+return errors; malformed/non-rooted pattern configuration throws. Visitor
+exceptions propagate, never silently retry. The callback may copy a candidate
+but must not mutate the graph.
+
+To try the next concrete plan after checker rejection, adapt the checker result
+explicitly (using a checker appropriate to the supplied pattern):
+
+```cpp
+std::optional<Match> accepted;
+ORT_RETURN_IF_ERROR(pattern.VisitMatches(graph, root_index, [&](Match& candidate) {
+  if (!check_and_bind(graph, candidate)) return true;  // Reject: try next.
+  accepted = candidate;  // Keeps prepared attributes plus selected-plan ownership.
+  return false;         // Accept: stop enumeration.
+}));
+```
+
+Do **not** directly return the checker boolean from a visitor: its traversal
+meaning is opposite. The first consistent annotation combination is selected
+within each concrete graph plan; rejecting that candidate does not search
+other annotation combinations.
 
 ### Instance binding views and handwritten C++ structs
 
