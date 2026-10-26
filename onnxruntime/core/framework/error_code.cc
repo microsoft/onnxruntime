@@ -122,11 +122,11 @@ Status ToStatusAndRelease(OrtStatus* ort_status, common::StatusCategory category
 #endif
 
 ORT_API(OrtErrorCode, OrtApis::GetErrorCode, _In_ const OrtStatus* status) {
-  return status->code;
+  return status == nullptr ? ORT_OK : status->code;
 }
 
 ORT_API(const char*, OrtApis::GetErrorMessage, _In_ const OrtStatus* status) {
-  return status->msg;
+  return status == nullptr ? "" : status->msg;
 }
 
 ORT_API(void, OrtApis::ReleaseStatus, _Frees_ptr_opt_ OrtStatus* value) {
