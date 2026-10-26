@@ -348,6 +348,12 @@ class Env {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "This environment does not support random-access files.");
   }
 
+  virtual common::Status DuplicateReadOnlyFileDescriptor(
+      int /*descriptor*/, std::shared_ptr<RandomAccessFile>& /*file*/) const {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "Pre-opened external initializer files require Linux.");
+  }
+
  protected:
   Env();
 

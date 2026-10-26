@@ -25,6 +25,8 @@
 
 namespace onnxruntime {
 
+class RandomAccessFile;
+
 enum class ExecutionOrder {
   DEFAULT = 0,           // default topological sort
   PRIORITY_BASED = 1,    // priority-based topological sort
@@ -180,6 +182,9 @@ struct SessionOptions {
   Status AddExternalInitializersFromFilesInMemory(gsl::span<const PathString> file_names,
                                                   gsl::span<std::pair<char*, const size_t>> files_buffers);
 #endif
+
+  std::shared_ptr<const std::unordered_map<PathString, std::shared_ptr<RandomAccessFile>>>
+      external_initializer_file_sources;
 
   // custom function callback to create a thread
   OrtCustomCreateThreadFn custom_create_thread_fn = nullptr;

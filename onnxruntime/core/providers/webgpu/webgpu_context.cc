@@ -450,6 +450,14 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
       adapter_info_.nextInChain = &subgroup_matrix_configs_;
     }
     ORT_ENFORCE(Device().GetAdapterInfo(&adapter_info_) == wgpu::Status::Success);
+    LOGS_DEFAULT(INFO) << "WebGPU selected adapter: vendor=" << adapter_info_.vendorID
+                       << " device=" << adapter_info_.deviceID
+                       << " hardware="
+                       << ((adapter_info_.adapterType == wgpu::AdapterType::IntegratedGPU ||
+                            adapter_info_.adapterType == wgpu::AdapterType::DiscreteGPU)
+                               ? "true"
+                               : "false")
+                       << " vulkan=" << (adapter_info_.backendType == wgpu::BackendType::Vulkan ? "true" : "false");
 #if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
     // Use the backend selected by Dawn rather than the requested backend. The
     // request can be Undefined when Dawn performs automatic adapter selection.

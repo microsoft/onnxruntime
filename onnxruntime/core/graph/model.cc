@@ -50,6 +50,26 @@ namespace onnxruntime {
 
 #if !defined(ORT_MINIMAL_BUILD)
 
+static Status ValidateFileSourceGraph(const GraphProto& graph) {
+  for (const auto& node : graph.node()) {
+    for (const auto& attribute : node.attribute()) {
+      ORT_RETURN_IF(attribute.has_t() && utils::HasExternalData(attribute.t()),
+                    "File-source loading does not support external tensor attributes.");
+      for (const auto& tensor : attribute.tensors()) {
+        ORT_RETURN_IF(utils::HasExternalData(tensor),
+                      "File-source loading does not support external tensor attributes.");
+      }
+      if (attribute.has_g()) {
+        ORT_RETURN_IF_ERROR(ValidateFileSourceGraph(attribute.g()));
+      }
+      for (const auto& subgraph : attribute.graphs()) {
+        ORT_RETURN_IF_ERROR(ValidateFileSourceGraph(subgraph));
+      }
+    }
+  }
+  return Status::OK();
+}
+
 void Model::RemoveLocalFunctionsProtos(const InlinedHashSet<std::string>& retained) {
   auto* local_functions = model_proto_.mutable_functions();
   if (retained.empty()) {
@@ -222,9 +242,18 @@ Model::Model(const std::string& graph_name,
   }
 
   // need to call private ctor so can't use make_shared
+  if (options.external_initializer_file_sources) {
+    ORT_THROW_IF_ERROR(ValidateFileSourceGraph(model_proto_.graph()));
+  }
   GSL_SUPPRESS(r .11)
   graph_.reset(new Graph(*this, model_proto_.mutable_graph(), *p_domain_to_version, IrVersion(), schema_registry,
                          logger, options.strict_shape_type_inference));
+#if !defined(DISABLE_EXTERNAL_INITIALIZERS)
+  if (options.external_initializer_file_sources) {
+    ORT_THROW_IF_ERROR(graph_->InjectExternalInitializersFromFileSources(
+        *options.external_initializer_file_sources));
+  }
+#endif
 }
 
 Model::Model(const ModelProto& model_proto, const PathString& model_path,
@@ -359,9 +388,18 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
   }
 
   // create instance. need to call private ctor so can't use make_unique
+  if (options.external_initializer_file_sources) {
+    ORT_THROW_IF_ERROR(ValidateFileSourceGraph(model_proto_.graph()));
+  }
   GSL_SUPPRESS(r .11)
   graph_.reset(new Graph(*this, model_proto_.mutable_graph(), domain_to_version, IrVersion(), schema_registry,
                          logger, options.strict_shape_type_inference));
+#if !defined(DISABLE_EXTERNAL_INITIALIZERS)
+  if (options.external_initializer_file_sources) {
+    ORT_THROW_IF_ERROR(graph_->InjectExternalInitializersFromFileSources(
+        *options.external_initializer_file_sources));
+  }
+#endif
 }
 
 const NodeHashMap<std::string, std::unique_ptr<FunctionTemplate>>& Model::GetModelLocalFunctionTemplates() const {

@@ -1251,7 +1251,8 @@ common::Status InferenceSession::LoadOnnxModel(const PathString& model_uri) {
                                                  kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
     const bool allow_released_opsets_only = session_options_.config_options.GetConfigOrDefault(
                                                 kOrtSessionOptionsConfigStrictAllowReleasedOpsetsOnly, "1") == "1";
-    ModelOptions model_opts{allow_released_opsets_only, strict_shape_type_inference, check_load_cancellation_fn_};
+    ModelOptions model_opts{allow_released_opsets_only, strict_shape_type_inference, check_load_cancellation_fn_,
+                            session_options_.external_initializer_file_sources};
 
     // When set, the external initializers folder overrides the model's own directory as the
     // base for resolving external data. The model bytes are still read from model_uri.
@@ -1358,7 +1359,7 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
     return onnxruntime::Model::Load(std::move(model_proto), model_location_, model,
                                     HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_,
                                     ModelOptions{allow_released_opsets_only, strict_shape_type_inference,
-                                                 check_load_cancellation_fn_});
+                                                 check_load_cancellation_fn_, session_options_.external_initializer_file_sources});
   };
 
   return LoadWithLoader(loader, "model_loading_array");
@@ -1426,7 +1427,7 @@ common::Status InferenceSession::LoadOnnxModel(ModelProto model_proto) {
     return onnxruntime::Model::Load(std::move(model_proto), model_location_, model,
                                     HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_,
                                     ModelOptions{allow_released_opsets_only, strict_shape_type_inference,
-                                                 check_load_cancellation_fn_});
+                                                 check_load_cancellation_fn_, session_options_.external_initializer_file_sources});
   };
 
   return LoadWithLoader(loader, "model_loading_proto");
@@ -1458,7 +1459,8 @@ common::Status InferenceSession::Load(std::istream& model_istream, bool allow_re
 #endif
     const bool strict_shape_type_inference = session_options_.config_options.GetConfigOrDefault(
                                                  kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
-    ModelOptions model_opts{allow_released_opsets_only, strict_shape_type_inference, check_load_cancellation_fn_};
+    ModelOptions model_opts{allow_released_opsets_only, strict_shape_type_inference, check_load_cancellation_fn_,
+                            session_options_.external_initializer_file_sources};
 
     PathString external_data_model_path = GetExternalInitializersFolderModelPath(session_options_.config_options);
     if (!external_data_model_path.empty()) {
@@ -1501,7 +1503,8 @@ common::Status InferenceSession::Load() {
     // Pass on ownership of the parsed ModelProto to the Model instance (its job here is done by this stage)
     return Model::Load(std::move(this->model_proto_), model_location_, model,
                        HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_,
-                       ModelOptions{allow_released_opsets_only, strict_shape_type_inference, check_load_cancellation_fn_});
+                       ModelOptions{allow_released_opsets_only, strict_shape_type_inference, check_load_cancellation_fn_,
+                                    session_options_.external_initializer_file_sources});
   };
 
   return LoadWithLoader(loader, "model_loading_from_saved_proto");
@@ -1533,7 +1536,8 @@ common::Status InferenceSession::Load(const OrtModel& model_editor_api_model) {
                                                          HasLocalSchema() ? &custom_schema_registries_ : nullptr,
                                                          ModelOptions{allow_released_opsets_only,
                                                                       strict_shape_type_inference,
-                                                                      check_load_cancellation_fn_},
+                                                                      check_load_cancellation_fn_,
+                                                                      session_options_.external_initializer_file_sources},
                                                          *session_logger_, tmp_model));
 
   model_ = std::move(tmp_model);

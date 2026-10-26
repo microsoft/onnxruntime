@@ -4450,6 +4450,78 @@ Status Graph::InjectExternalInitializedTensors(const InlinedHashMap<std::string,
   return Status::OK();
 }
 
+Status Graph::InjectExternalInitializersFromFileSources(
+    const std::unordered_map<PathString, std::shared_ptr<RandomAccessFile>>& files) {
+  ORT_RETURN_IF(endian::native != endian::little,
+                "File-source initializer loading requires a little-endian host.");
+  std::vector<Graph*> subgraphs;
+  FindAllSubgraphs(subgraphs);
+  auto inject = [&](Graph& graph) -> Status {
+    std::vector<std::string> names;
+    for (const auto& [name, tensor] : graph.GetAllInitializedTensors()) {
+      if (utils::HasExternalDataInFile(*tensor)) {
+        names.push_back(name);
+      }
+    }
+    for (const auto& name : names) {
+      const auto& proto = *graph.GetAllInitializedTensors().at(name);
+      ORT_RETURN_IF(utils::HasString(proto),
+                    "External initializer file sources do not support string tensors.");
+      std::unique_ptr<ExternalDataInfo> info;
+      ORT_RETURN_IF_ERROR(ExternalDataInfo::Create(proto.external_data(), info));
+      const auto source = files.find(ExternalDataInfo::NormalizeFileName(info->GetRelPath()));
+      ORT_RETURN_IF(source == files.end(),
+                    "No registered external initializer file source: ", info->GetRelPath());
+      size_t bytes = 0;
+      ORT_RETURN_IF_ERROR(utils::GetSizeInBytesFromTensorProto<0>(proto, &bytes));
+      ORT_RETURN_IF(info->GetOffset() < 0 ||
+                        (info->GetLength() != 0 && info->GetLength() != bytes),
+                    "Invalid registered external initializer range: ", name);
+      auto mapping = std::make_shared<RandomAccessFile::MappedMemoryPtr>();
+      ORT_RETURN_IF_ERROR(source->second->Map(info->GetOffset(), bytes, *mapping));
+      const auto* type = DataTypeImpl::TensorTypeFromONNXEnum(proto.data_type())->GetElementType();
+      const auto shape = utils::GetTensorShapeFromTensorProto(proto);
+      std::unique_ptr<Tensor> tensor;
+      if (reinterpret_cast<uintptr_t>(mapping->get()) % std::max<size_t>(type->Size(), 1) != 0) {
+        tensor = std::make_unique<Tensor>(type, shape, CPUAllocator::DefaultInstance());
+        std::memcpy(tensor->MutableDataRaw(), mapping->get(), bytes);
+        mapping.reset();
+      } else {
+        tensor = std::make_unique<Tensor>(
+            type, shape, mapping->get(),
+            OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
+      }
+      auto replacement = utils::TensorToTensorProto(*tensor, name, true);
+      if (!utils::HasExternalDataInMemory(replacement)) {
+        ORT_RETURN_IF_ERROR(graph.ReplaceInitializedTensor(replacement, OrtValue{}));
+        continue;
+      }
+      OrtValue value;
+      if (mapping) {
+        value.Init(tensor.release(), DataTypeImpl::GetType<Tensor>(),
+                   [mapping = std::move(mapping)](void* pointer) {
+                     delete static_cast<Tensor*>(pointer);
+                   });
+      } else {
+        Tensor::InitOrtValue(std::move(*tensor), value);
+      }
+      ORT_RETURN_IF_ERROR(graph.ReplaceInitializedTensor(replacement, value));
+    }
+    for (const auto& node : graph.Nodes()) {
+      for (const auto& [name, attribute] : node.GetAttributes()) {
+        ORT_RETURN_IF(attribute.has_t() && utils::HasExternalData(attribute.t()),
+                      "File-source loading does not support external tensor attributes: ", name);
+        for (const auto& tensor : attribute.tensors()) {
+          ORT_RETURN_IF(utils::HasExternalData(tensor),
+                        "File-source loading does not support external tensor attributes: ", name);
+        }
+      }
+    }
+    return Status::OK();
+  };
+  return ForThisAndAllSubgraphs(subgraphs, inject);
+}
+
 Status Graph::InjectExternalInitializersFromFilesInMemory(
     const InlinedHashMap<PathString, std::pair<char*, size_t>>& external_initializer_files,
     bool use_buffers_directly) {
