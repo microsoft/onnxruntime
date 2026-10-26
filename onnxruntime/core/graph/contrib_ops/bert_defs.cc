@@ -5572,7 +5572,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::FLOAT, 0.0f)
         .Attr("gate_activation",
               "'none' (default) treats `decay` as the effective log-space decay. 'softplus' computes "
-              "-exp(a_log) * Softplus(decay + dt_bias) in float32.",
+              "-exp(a_log) * Softplus(decay + dt_bias) in float32. 'qwen' is accepted as a legacy "
+              "alias of 'softplus' with identical behavior.",
               AttributeProto::STRING, std::string("none"))
         .Attr("beta_activation",
               "'none' (default) treats `beta` as the effective update rate. 'sigmoid' applies a "

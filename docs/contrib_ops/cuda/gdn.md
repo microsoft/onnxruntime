@@ -79,7 +79,7 @@ Source:
 |---|---|---|---|
 | `update_rule` | string | `gated_delta` | One of `linear`, `gated`, `delta`, `gated_delta`. Selects which of the decay and delta-retrieval terms are present. |
 | `scale` | float | `0.0` | Output scale. `0.0` means `1/sqrt(head_size_qk)`. |
-| `gate_activation` | string | `none` | `none` treats `decay` as the effective log-space decay. `softplus` computes `-exp(a_log) * Softplus(decay + dt_bias)` in float32. |
+| `gate_activation` | string | `none` | `none` treats `decay` as the effective log-space decay. `softplus` computes `-exp(a_log) * Softplus(decay + dt_bias)` in float32. `qwen` is accepted as a legacy alias of `softplus` with identical behavior. |
 | `beta_activation` | string | `none` | `none` treats `beta` as the effective update rate; `sigmoid` applies a sigmoid. |
 | `qk_l2_norm` | int | `0` | When `1`, L2-normalizes each query and key head vector in-kernel. |
 | `chunk_size` | int | `64` | Chunk length for the chunked engine. `32` pins the reduced shared-memory configuration (see §6). |

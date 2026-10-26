@@ -48,9 +48,10 @@ GatedDeltaNet::GatedDeltaNet(const OpKernelInfo& info) : WebGpuKernel(info) {
   ORT_ENFORCE(update_rule_ != GatedDeltaNetUpdateRule::Invalid,
               "update_rule must be one of: linear, gated, delta, gated_delta");
   const auto gate_activation = info.GetAttrOrDefault<std::string>("gate_activation", "none");
-  ORT_ENFORCE(gate_activation == "none" || gate_activation == "softplus",
-              "gate_activation must be one of: none, softplus");
-  qwen_gate_ = gate_activation == "softplus";
+  ORT_ENFORCE(gate_activation == "none" || gate_activation == "softplus" ||
+                  gate_activation == "qwen",
+              "gate_activation must be one of: none, softplus (legacy alias: qwen)");
+  qwen_gate_ = gate_activation == "softplus" || gate_activation == "qwen";
   const auto beta_activation = info.GetAttrOrDefault<std::string>("beta_activation", "none");
   ORT_ENFORCE(beta_activation == "none" || beta_activation == "sigmoid",
               "beta_activation must be one of: none, sigmoid");

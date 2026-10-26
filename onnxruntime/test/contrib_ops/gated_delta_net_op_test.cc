@@ -302,7 +302,7 @@ void Reference(const Geometry& g, const Options& o, const Inputs& in, std::vecto
         double decay = 1.0;
         if (gated) {
           float raw = in.decay[gi];
-          if (o.gate_activation == "softplus") {
+          if ((o.gate_activation == "softplus" || o.gate_activation == "qwen")) {
             raw = -std::exp(in.a_log[hv]) * SoftPlus(raw + in.dt_bias[hv]);
           }
           decay = std::exp(static_cast<double>(raw));
@@ -518,7 +518,7 @@ void RunTypedCase(const Geometry& g, const Options& o, const Inputs& in_raw, flo
   } else {
     test.AddInput<float>("initial_state", {g.batch, g.hv, g.dv, g.dk}, in.state0);
   }
-  if (o.gate_activation == "softplus") {
+  if ((o.gate_activation == "softplus" || o.gate_activation == "qwen")) {
     test.AddInput<float>("a_log", {g.hv}, in.a_log);
     test.AddInput<float>("dt_bias", {g.hv}, in.dt_bias);
   } else {
@@ -1292,6 +1292,47 @@ TEST(GatedDeltaNetTest, Chunked_FusedActivations) {
   o.beta_activation = "sigmoid";
   o.qk_l2_norm = 1;
   RunCase(g, o, MakeInputs(g, 7), 3e-2f, 3e-2f);
+}
+
+// "qwen" is a legacy alias of "softplus" with identical behavior; the reference applies the fused
+// softplus decay for either spelling, and the two spellings must also match each other bit-for-bit.
+TEST(GatedDeltaNetTest, QwenGateActivationIsAliasOfSoftplus) {
+  if (NeedSkipGatedDeltaNetTest()) return;
+  for (int tokens : {1, 128}) {
+    Geometry g{tokens, 1, 1, 2, kDim, kDim};
+    Inputs inputs = MakeInputs(g, 8);
+    Options o;
+    o.beta_activation = "sigmoid";
+    o.qk_l2_norm = 1;
+    std::vector<OrtValue> softplus_fetches, qwen_fetches;
+    o.gate_activation = "softplus";
+    RunCase(g, o, inputs, 3e-2f, 3e-2f, false, &softplus_fetches);
+    o.gate_activation = "qwen";
+    RunCase(g, o, inputs, 3e-2f, 3e-2f, false, &qwen_fetches);
+    ASSERT_EQ(softplus_fetches.size(), qwen_fetches.size());
+    for (size_t i = 0; i < softplus_fetches.size(); ++i) {
+      const Tensor& expected = softplus_fetches[i].Get<Tensor>();
+      const Tensor& actual = qwen_fetches[i].Get<Tensor>();
+      ASSERT_EQ(expected.Shape(), actual.Shape());
+      ASSERT_EQ(0, memcmp(expected.DataRaw(), actual.DataRaw(), expected.SizeInBytes()))
+          << "output " << i << " tokens=" << tokens;
+    }
+  }
+}
+
+TEST(GatedDeltaNetWebGpuTest, QwenGateActivationAlias) {
+  if (NeedSkipGatedDeltaNetWebGpuTest()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  Geometry g{7, 3, 1, 3, 8, 5};
+  Inputs inputs = MakeInputs(g, 226);
+  inputs.cu_seqlens = {0, 1, 5, 7};
+  Options options;
+  options.gate_activation = "qwen";
+  options.beta_activation = "sigmoid";
+  options.qk_l2_norm = 1;
+  RunTypedCase<float>(g, options, inputs, 3e-4f, 3e-4f,
+                      /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true);
 }
 
 TEST(GatedDeltaNetTest, Chunked_NoInitialState) {
