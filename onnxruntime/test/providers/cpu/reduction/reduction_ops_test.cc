@@ -7028,6 +7028,48 @@ TEST(ReductionOpTest, ReduceSum_int64_Overflow_Saturates) {
            {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDmlExecutionProvider, kWebGpuExecutionProvider});
 }
 
+TEST(ReductionOpTest, ReduceSum_int64_ExactAbove2Pow53) {
+  const int64_t p53 = int64_t{1} << 53;
+  const std::vector<std::string> excluded = {kTensorrtExecutionProvider, kOpenVINOExecutionProvider,
+                                             kDmlExecutionProvider, kWebGpuExecutionProvider};
+  {
+    // Scalar path: single contiguous axis.
+    OpTester test("ReduceSum", 13);
+    test.AddAttribute("keepdims", (int64_t)0);
+    test.AddInput<int64_t>("data", {2}, {p53 + 1, -p53});
+    test.AddInput<int64_t>("axes", {1}, {0});
+    test.AddOutput<int64_t>("reduced", {}, {1});
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded);
+  }
+  {
+    OpTester test("ReduceSum", 13);
+    test.AddAttribute("keepdims", (int64_t)0);
+    test.AddInput<int64_t>("data", {2}, {p53, 1});
+    test.AddInput<int64_t>("axes", {1}, {0});
+    test.AddOutput<int64_t>("reduced", {}, {p53 + 1});
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded);
+  }
+  {
+    // Fast RK path (reduce first axis).
+    OpTester test("ReduceSum", 13);
+    test.AddAttribute("keepdims", (int64_t)0);
+    test.AddInput<int64_t>("data", {2, 2}, {p53 + 1, p53, -p53, 1});
+    test.AddInput<int64_t>("axes", {1}, {0});
+    test.AddOutput<int64_t>("reduced", {2}, {1, p53 + 1});
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded);
+  }
+  {
+    // Cancellation after the partial sum exceeds int64 range.
+    const int64_t big = std::numeric_limits<int64_t>::max();
+    OpTester test("ReduceSum", 13);
+    test.AddAttribute("keepdims", (int64_t)0);
+    test.AddInput<int64_t>("data", {4}, {big, big, -big, -big});
+    test.AddInput<int64_t>("axes", {1}, {0});
+    test.AddOutput<int64_t>("reduced", {}, {0});
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded);
+  }
+}
+
 TEST(ReductionOpTest, ReduceMean_int32_LargeValues_NoOverflow) {
   OpTester test("ReduceMean", 18);
   // Values that would overflow if summed naively in int32, but mean fits in range.
