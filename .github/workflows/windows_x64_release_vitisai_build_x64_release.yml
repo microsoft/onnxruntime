@@ -65,7 +65,7 @@ jobs:
           "C:\Program Files\doxygen\bin\doxygen.exe" ${{ github.workspace }}\tools\ci_build\github\Doxyfile_csharp.cfg
         working-directory: ${{ github.workspace }}
 
-      - name: Use .NET 8.x
+      - name: Setup .NET
         uses: ./.github/actions/setup-dotnet
 
       - name: Use Nuget 6.x

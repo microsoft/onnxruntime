@@ -8,4 +8,4 @@ runs:
       env:
         PROCESSOR_ARCHITECTURE: x64
       with:
-        dotnet-version: '8.0.427' # Temporary exact pin bypasses the failing aka.ms SDK redirect.
+        dotnet-version: '10.x'
