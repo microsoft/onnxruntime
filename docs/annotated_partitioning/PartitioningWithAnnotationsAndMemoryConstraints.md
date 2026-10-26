@@ -644,15 +644,15 @@ Shared implementation sizing and policy logic
 | `runtime_workspace_bytes` | Execution workspace, with resource identity, alignment, and operation/Run lifetime. `nullopt` means unknown, not zero. |
 | `persistent_prepack_bytes` | Additional packed destinations retained for the session, distinct from original initializers already represented in the graph. |
 | `initialization_scratch_bytes` | Temporary construction/PrePack storage, including its coexistence with source weights and packed destinations. |
-| `runtime_transient_bytes` | Runtime-preparation storage, such as lazy profiling scratch, with preparation lifetime and explicit non-overlap conditions relative to ordinary execution workspace. |
+| `runtime_transient_bytes` | Runtime-preparation storage, such as lazy profiling scratch, with preparation lifetime. Taking the maximum of preparation and execution scratch requires established non-overlap. |
 
-An adapter must establish implementation identity, workload validity, allocation coverage, and lifetime
-semantics, not just copy byte counts. Default zero fields are not proof that an unsupported allocation
-category costs nothing. Use the raw implementation requirements, not the full `ComputeResourceCount()`
-result: that total already includes graph-related costs, which ORT must not charge again as workspace.
-The current maximum of runtime-preparation and execution scratch is valid only while their declared
-non-overlap holds. Persistent backing, asynchronous completion, and retained pools still require the
-whole-session plan; neither summing all L1 peaks nor taking their maximum is a generic budget test.
+When reusing an existing L1 estimator, associate its results with the implementation, selected contract,
+workload bounds, and allocation lifetimes they describe. Use the implementation's allocation
+requirements, not the aggregate `ComputeResourceCount()` result, which already includes graph-related
+costs accounted for separately by ORT. Missing allocation information remains unresolved; default zero
+values alone do not establish a zero-memory requirement.
+
+Here, a compatibility adapter means this conversion code; it need not be a separate component or API.
 
 For a changed/fused implementation, query its own recipe and contract. Do not assume that adding the
 source nodes' L1 estimates bounds the replacement. Current reservation consolidation preserves
@@ -851,6 +851,9 @@ alignment, and non-pool overhead/reserve, not just logical live-tensor bytes. Th
 maximum of initialization and Run backing peaks plus disjoint overhead/reserve, under the companion
 proposal's ownership and workload assumptions. CUDA's `gpu_mem_limit` is an arena limit, not this entire
 session-associated device budget.
+
+Per-implementation L1 bounds are inputs to this backing plan; neither summing all L1 peaks nor taking
+their maximum is a generic budget test.
 
 The EP owns route eligibility and requirement formulas; the framework consumes contract descriptors
 without knowing CUDA route names. Unknown sizes or unsupported lifetime assumptions remain unresolved,
