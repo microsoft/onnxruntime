@@ -37,31 +37,31 @@ namespace contrib {
 ONNX_MS_OPERATOR_SET_SCHEMA(
     SpeculativePrefixCommit, 1,
     OpSchema()
-        .SetDoc("Commits a batch-one speculative prefix, prepares rotary/head inputs for two through eight head rows, "
-                "and publishes the result-ring record. Control and committed-context outputs must alias their inputs "
-                "on CUDA when present. This is stateful: callers must serialize access to these buffers. The result-ring "
-                "address must identify a device-accessible, aligned allocation of capacity*8 int64 words. "
-                "Muted prefill calls prepare inputs without committing state or touching ring metadata. "
-                "Invalid device metadata sets error bits and mutes execution.")
+        .SetDoc("Commits a speculative prefix for each request in the batch, prepares rotary/head inputs for two "
+                "through eight head rows, and publishes the result-ring records. Control and committed-context outputs "
+                "must alias their inputs on CUDA when present. This is stateful: callers must serialize access to "
+                "these buffers. The result-ring address must identify a device-accessible, aligned allocation of "
+                "capacity*8 int64 words per batch item. Muted prefill calls prepare inputs without committing state or "
+                "touching ring metadata. Invalid device metadata sets error bits and mutes execution.")
         .Attr("head_rows", "Fixed number of head rows, 2 through 8.", AttributeProto::INT, int64_t{2})
         .Attr("head_capacity", "Maximum head-cache token capacity.", AttributeProto::INT, int64_t{262144})
-        .Input(0, "next_tokens", "Verifier predictions, batch one.", "I64")
+        .Input(0, "next_tokens", "Verifier predictions, [batch, rows] or [rows] for batch one.", "I64")
         .Input(1, "input_ids", "Verifier input IDs.", "I64")
         .Input(2, "status", "Verifier status words.", "I32")
-        .Input(3, "ctl", "Mutable control state: at least 8 words for S2, 16 for S3..S8.", "I64")
-        .Input(4, "ctx_commit", "Mutable committed context, two words.", "I64")
+        .Input(3, "ctl", "Mutable control state: at least 8 words per batch item for S2, 16 for S3..S8.", "I64")
+        .Input(4, "ctx_commit", "Mutable committed context, two words per batch item.", "I64")
         .Input(5, "prefixes", "Two-word context for each accepted-prefix length; S2 needs only the first.", "I64")
         .Input(6, "prefix2", "Two-word context for acceptance length one.", "I64")
         .Input(7, "ptrs", "Result ring address and positive record capacity.", "I64")
         .Input(8, "cos_cache", "Rotary cosine cache [positions, width].", "B")
         .Input(9, "sin_cache", "Rotary sine cache [positions, width].", "B")
-        .Output(0, "head_ids", "Head token IDs [1, head_rows].", "I64")
-        .Output(1, "head_c", "Head committed length [1].", "I32")
-        .Output(2, "slot_ids", "Head slots [1, head_rows].", "I64")
-        .Output(3, "seqlens", "Head sequence length [1].", "I32")
-        .Output(4, "cos_out", "Gathered rotary cosine [1, head_rows, width].", "B")
-        .Output(5, "sin_out", "Gathered rotary sine [1, head_rows, width].", "B")
-        .Output(6, "sel", "Accepted-prefix length, or -1 on invalid metadata.", "I64")
+        .Output(0, "head_ids", "Head token IDs [batch, head_rows].", "I64")
+        .Output(1, "head_c", "Head committed length [batch].", "I32")
+        .Output(2, "slot_ids", "Head slots [batch, head_rows].", "I64")
+        .Output(3, "seqlens", "Head sequence length [batch].", "I32")
+        .Output(4, "cos_out", "Gathered rotary cosine [batch, head_rows, width].", "B")
+        .Output(5, "sin_out", "Gathered rotary sine [batch, head_rows, width].", "B")
+        .Output(6, "sel", "Accepted-prefix length [batch], or -1 on invalid metadata.", "I64")
         .Output(7, "updated_ctl", "Optional updated control state, aliases ctl.", "I64", OpSchema::Optional)
         .Output(8, "updated_ctx_commit", "Optional updated context, aliases ctx_commit.", "I64", OpSchema::Optional)
         .TypeConstraint("I64", {"tensor(int64)"}, "Token and control words.")
@@ -79,17 +79,23 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           const auto capacity = getAttribute(ctx, "head_capacity", 262144);
           if (rows < 2 || rows > 8 || capacity < rows || capacity > std::numeric_limits<int>::max())
             fail_shape_inference("SpeculativePrefixCommit: invalid head_rows/head_capacity");
+          TensorShapeProto_Dimension batch_dim;
+          if (hasInputShape(ctx, 0) && getInputShape(ctx, 0).dim_size() >= 2) {
+            batch_dim = getInputShape(ctx, 0).dim(0);
+          } else {
+            batch_dim.set_dim_value(1);
+          }
           for (int output : {0, 2}) {
             auto* shape = getOutputShape(ctx, output);
-            shape->add_dim()->set_dim_value(1);
+            *shape->add_dim() = batch_dim;
             shape->add_dim()->set_dim_value(rows);
           }
-          for (int output : {1, 3, 6}) getOutputShape(ctx, output)->add_dim()->set_dim_value(1);
+          for (int output : {1, 3, 6}) *getOutputShape(ctx, output)->add_dim() = batch_dim;
           if (hasInputShape(ctx, 8)) {
             const auto& rope = getInputShape(ctx, 8);
             if (rope.dim_size() != 2) fail_shape_inference("SpeculativePrefixCommit: rotary cache must have rank 2");
             TensorShapeProto shape;
-            shape.add_dim()->set_dim_value(1);
+            *shape.add_dim() = batch_dim;
             shape.add_dim()->set_dim_value(rows);
             *shape.add_dim() = rope.dim(1);
             updateOutputShape(ctx, 4, shape);
@@ -724,8 +730,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "Optional sink logit [num_heads]. Participates in the shared softmax denominator in both attention modes.",
                "T", OpSchema::Optional)
         .Input(17, "committed_length",
-               "Optional single-request committed token count for cursor validation. When supplied, validation_status "
-               "is 9 if seqlens_k, sequence_length, or cache_capacity is inconsistent. CUDA only.",
+               "Optional per-request committed token count ([1] or [batch]) for cursor validation. When supplied, "
+               "validation_status is 9 if seqlens_k, sequence_length, or cache_capacity is inconsistent. CUDA only.",
                "M", OpSchema::Optional)
         .Input(18, "key_scale", "Positive finite per-channel INT8 key-cache scales [kv_num_heads * head_size].",
                "S", OpSchema::Optional)

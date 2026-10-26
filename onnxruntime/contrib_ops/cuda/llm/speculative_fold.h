@@ -16,6 +16,7 @@ Status LaunchMid(const int64_t* tokens, const int64_t* ids, const int32_t* statu
                  uint16_t* head_cos, uint16_t* head_sin, int64_t* selection,
                  int rows, int head_rows, int rope_rows, int rope_width, int capacity, cudaStream_t stream,
                  bool publish_ring = true, const int64_t* input_ctl = nullptr, int ctl_count = 0,
-                 const int64_t* input_context = nullptr);
+                 const int64_t* input_context = nullptr, int batch_size = 1, int ids_stride = 0,
+                 int prefix_stride = 0, int prefix2_stride = 0, int ptrs_stride = 0);
 
 }  // namespace onnxruntime::contrib::cuda::speculative_fold
