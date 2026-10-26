@@ -654,6 +654,69 @@ TEST(QDQTransformerTests, ConcatPerAxisParametersAreNotFused) {
   TestPerAxisQuantizationIsNotFused("Concat");
 }
 
+static void TestMatMulQuantizationParameterShapes(const std::vector<int64_t>& a_parameter_shape,
+                                                  int64_t a_axis,
+                                                  const std::vector<int64_t>& b_parameter_shape,
+                                                  int64_t b_axis,
+                                                  const std::vector<int64_t>& y_parameter_shape,
+                                                  int64_t y_axis,
+                                                  bool should_fuse) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto add_qdq = [&](const std::string& op_type, NodeArg* input, NodeArg* output,
+                       const std::vector<int64_t>& parameter_shape, int64_t axis) {
+      const size_t parameter_count = parameter_shape.empty() ? 1 : gsl::narrow_cast<size_t>(parameter_shape[0]);
+      std::vector<float> scales(parameter_count);
+      for (size_t i = 0; i < parameter_count; ++i) {
+        scales[i] = gsl::narrow_cast<float>(i + 1);
+      }
+      auto* scale = builder.MakeInitializer<float>(parameter_shape, scales);
+      auto* zero_point = builder.MakeInitializer<uint8_t>(parameter_shape,
+                                                          std::vector<uint8_t>(parameter_count, 0));
+      builder.AddNode(op_type, {input, scale, zero_point}, {output}).AddAttribute("axis", axis);
+    };
+
+    auto* input_a = builder.MakeInput<uint8_t>({2, 3}, {1, 2, 3, 4, 5, 6});
+    auto* input_b = builder.MakeInput<uint8_t>({3, 3}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
+    auto* dq_a = builder.MakeIntermediate();
+    auto* dq_b = builder.MakeIntermediate();
+    add_qdq("DequantizeLinear", input_a, dq_a, a_parameter_shape, a_axis);
+    add_qdq("DequantizeLinear", input_b, dq_b, b_parameter_shape, b_axis);
+
+    auto* matmul_output = builder.MakeIntermediate();
+    builder.AddNode("MatMul", {dq_a, dq_b}, {matmul_output});
+    add_qdq("QuantizeLinear", matmul_output, builder.MakeOutput(), y_parameter_shape, y_axis);
+  };
+
+  auto check_graph = [&](InferenceSessionWrapper& session) {
+    auto counts = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(counts["QLinearMatMul"], should_fuse ? 1 : 0);
+    EXPECT_EQ(counts["MatMul"], should_fuse ? 0 : 1);
+  };
+
+  TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2,
+                    18, 0.0, 0.0, std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
+}
+
+TEST(QDQTransformerTests, MatMulPerRowAParametersAreNotFused) {
+  TestMatMulQuantizationParameterShapes({2}, 0, {}, 1, {}, 1, false);
+}
+
+TEST(QDQTransformerTests, MatMulPerAxisOutputParametersAreNotFused) {
+  TestMatMulQuantizationParameterShapes({}, 1, {}, 1, {2}, 0, false);
+}
+
+TEST(QDQTransformerTests, MatMulPerColumnBParametersAreFused) {
+  TestMatMulQuantizationParameterShapes({}, 1, {3}, 1, {}, 1, true);
+}
+
+TEST(QDQTransformerTests, MatMulPerRowBParametersAreNotFused) {
+  TestMatMulQuantizationParameterShapes({}, 1, {3}, 0, {}, 1, false);
+}
+
+TEST(QDQTransformerTests, MatMulLengthOneAParametersAreFused) {
+  TestMatMulQuantizationParameterShapes({1}, 1, {}, 1, {}, 1, true);
+}
+
 TEST(QDQTransformerTests, Add) {
   QDQTransformerBinaryOpTests<uint8_t, uint8_t, uint8_t>("Add");
   QDQTransformerBinaryOpTests<int8_t, int8_t, int8_t>("Add");
