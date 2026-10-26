@@ -13,6 +13,9 @@
 function(onnxruntime_filter_cuda_cu_sources CU_SRC_LIST)
   set(_list "${${CU_SRC_LIST}}")
 
+  # This standalone custom-op target supplies its own pinned upstream dependencies.
+  list(FILTER _list EXCLUDE REGEX "/bert/source_compatibility/")
+
   # Quick build mode: Filter flash attention kernels for faster development iteration.
   #   - We keep only hdim128 fp16 and bf16 flash attention kernels in quick build mode.
   #   - All other listed head dimensions are excluded (e.g., 32, 64, 96, 192, 256).
