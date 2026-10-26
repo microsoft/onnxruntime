@@ -80,8 +80,8 @@ __device__ __forceinline__ void SetValidationError(int32_t* error_flag,
                                                    DynamicSparseAttentionValidationError error) {
   const int32_t previous =
       atomicCAS(error_flag, kDynamicSparseAttentionValidationOk, static_cast<int32_t>(error));
-  if (previous == 9) {
-    atomicCAS(error_flag, 9, static_cast<int32_t>(error));
+  if (previous == kDynamicSparseAttentionInvalidCommittedLength) {
+    atomicCAS(error_flag, kDynamicSparseAttentionInvalidCommittedLength, static_cast<int32_t>(error));
   }
 }
 
@@ -237,7 +237,8 @@ __global__ void ValidateInputsKernel(const int32_t* selected_indices,
     const int64_t committed = committed_length[b * committed_length_stride];
     const int64_t total = committed + sequence_length;
     if (committed < 0 || total > main_capacity || seqlens_k[b] != total - 1) {
-      atomicCAS(error_flag, kDynamicSparseAttentionValidationOk, 9);
+      atomicCAS(error_flag, kDynamicSparseAttentionValidationOk,
+                kDynamicSparseAttentionInvalidCommittedLength);
     }
   }
 }
@@ -1919,7 +1920,7 @@ Status ValidateDynamicSparseAttentionOnDevice(
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
       &host_error, error_flag, sizeof(host_error), cudaMemcpyDeviceToHost, stream));
   CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
-  if (host_error == kDynamicSparseAttentionValidationOk || host_error == 9) {
+  if (host_error == kDynamicSparseAttentionValidationOk) {
     return Status::OK();
   }
 
@@ -1948,6 +1949,9 @@ Status ValidateDynamicSparseAttentionOnDevice(
       break;
     case kDynamicSparseAttentionInvalidPosition:
       message = "a rotary position is outside the rotary cache";
+      break;
+    case kDynamicSparseAttentionInvalidCommittedLength:
+      message = "committed_length is inconsistent with seqlens_k, sequence_length, or cache_capacity";
       break;
     case kDynamicSparseAttentionInvalidCacheScale:
       message = "INT8 cache scales must be positive and finite";

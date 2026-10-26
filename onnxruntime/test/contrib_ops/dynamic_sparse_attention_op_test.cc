@@ -595,6 +595,7 @@ TEST(DynamicSparseAttentionTest, Int8CachePrefillBFloat16_CUDA) {
   if (!CudaHasBF16Support()) GTEST_SKIP() << "CUDA device does not support BFloat16.";
   auto c = MakeGroupedCacheCase(9, false, false, 2, 20, 2, true);
   c.head_sink.clear();
+  c.smooth_softmax = 0;
   for (int row = 0; row < c.batch_size * c.sequence_length; ++row) {
     const int64_t b = row / c.sequence_length;
     for (int h = 0; h < c.num_heads; ++h) {
@@ -2119,6 +2120,19 @@ TEST(DynamicSparseAttentionTest, RejectsInvalidSelectionMetadata_CUDA) {
     c.expected_present_value.assign(3 * 8, 0.0f);
     RunDynamicSparseAttentionCase(c, DefaultCudaExecutionProvider(), OpTester::ExpectResult::kExpectFailure,
                                   "incompatible with the current sequence");
+  }
+  {
+    SCOPED_TRACE("committed cursor disagrees with seqlens_k and no validation_status output");
+    auto c = MakeSingleTokenSelectedOnlyCase();
+    c.cache_sequence_length = 2;
+    c.total_sequence_length = 2;
+    c.past_key.assign(16, 0.0f);
+    c.past_value.assign(16, 0.0f);
+    c.expected_present_key.assign(16, 0.0f);
+    c.expected_present_value.assign(16, 0.0f);
+    c.committed_length = 1;
+    RunDynamicSparseAttentionCase(c, DefaultCudaExecutionProvider(), OpTester::ExpectResult::kExpectFailure,
+                                  "committed_length is inconsistent");
   }
 }
 
