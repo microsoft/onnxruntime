@@ -7,6 +7,15 @@
 
 #include "gtest/gtest.h"
 
+#include <cstdio>
+#include <fstream>
+#include <iterator>
+#include <memory>
+#include <vector>
+#if defined(__linux__)
+#include <unistd.h>
+#endif
+
 class ExperimentalCApiTest : public ::testing::Test {
  protected:
   void SetUp() override {
@@ -73,3 +82,56 @@ TEST_F(ExperimentalCApiTest, ConsistentLookup) {
       api_->GetExperimentalFunction(kOrtExperimental_OrtApi_ExperimentalApiTest_SinceV28_FnName);
   EXPECT_EQ(fn1, fn2);
 }
+
+#if defined(__linux__) && !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
+TEST_F(ExperimentalCApiTest, FileSourcesValidateArgumentsAndRejectWritableFiles) {
+  auto* fn = Ort::Experimental::
+      Get_OrtApi_SessionOptionsSetExternalInitializerFileDescriptors_SinceV32_FnOrThrow(api_);
+  Ort::SessionOptions options;
+  EXPECT_FALSE(Ort::Status(fn(nullptr, nullptr, nullptr, 0)).IsOK());
+  EXPECT_FALSE(Ort::Status(fn(options, nullptr, nullptr, 1)).IsOK());
+  std::unique_ptr<FILE, decltype(&fclose)> file(tmpfile(), fclose);
+  ASSERT_NE(file, nullptr);
+  const char* name = "weights.data";
+  const int descriptor = fileno(file.get());
+  EXPECT_FALSE(Ort::Status(fn(options, &name, &descriptor, 1)).IsOK());
+  const int invalid = -1;
+  for (const char* bad : {"../weights.data", "/weights.data", ".", "a/b"}) {
+    EXPECT_FALSE(Ort::Status(fn(options, &bad, &invalid, 1)).IsOK());
+  }
+}
+
+TEST_F(ExperimentalCApiTest, FileSourcesCloneAndRejectBufferMixing) {
+  auto* fn = Ort::Experimental::
+      Get_OrtApi_SessionOptionsSetExternalInitializerFileDescriptors_SinceV32_FnOrThrow(api_);
+  Ort::SessionOptions options;
+  ASSERT_TRUE(Ort::Status(fn(options, nullptr, nullptr, 0)).IsOK());
+  auto clone = options.Clone();
+  char data[8]{};
+  char* buffer = data;
+  const ORTCHAR_T* name = ORT_TSTR("weights.data");
+  const size_t size = sizeof(data);
+  EXPECT_FALSE(Ort::Status(api_->AddExternalInitializersFromFilesInMemory(
+                               clone, &name, &buffer, &size, 1))
+                   .IsOK());
+}
+
+TEST_F(ExperimentalCApiTest, FileSourcesNeverFallBackToModelPaths) {
+  auto* fn = Ort::Experimental::
+      Get_OrtApi_SessionOptionsSetExternalInitializerFileDescriptors_SinceV32_FnOrThrow(api_);
+  std::ifstream input("testdata/model_with_external_initializers.onnx", std::ios::binary);
+  ASSERT_TRUE(input);
+  const std::vector<char> graph{std::istreambuf_iterator<char>{input}, {}};
+  ASSERT_FALSE(graph.empty());
+  Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "file-sources"};
+  Ort::SessionOptions options;
+  ASSERT_TRUE(Ort::Status(fn(options, nullptr, nullptr, 0)).IsOK());
+  try {
+    Ort::Session session{env, graph.data(), graph.size(), options};
+    FAIL() << "Missing registered sources must not fall back to disk";
+  } catch (const Ort::Exception& error) {
+    EXPECT_NE(std::string(error.what()).find("No registered external initializer file source"),
+              std::string::npos);
+  }
+}
+#endif
