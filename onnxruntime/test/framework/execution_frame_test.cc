@@ -757,8 +757,12 @@ TEST(ExecutionFrameTestInit, FetchReusesPreallocatedScalarOutputForSingleElement
   TypeProto float_tensor;
   float_tensor.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
 
+  TypeProto float_vector1_tensor;
+  float_vector1_tensor.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  float_vector1_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
   auto& input_arg = graph.GetOrCreateNodeArg("X", &float_tensor);
-  auto& output_arg = graph.GetOrCreateNodeArg("Y", &float_tensor);
+  auto& output_arg = graph.GetOrCreateNodeArg("Y", &float_vector1_tensor);
   graph.AddNode("identity", "Identity", "identity", {&input_arg}, {&output_arg});
   graph.SetInputs({&input_arg});
   graph.SetOutputs({&output_arg});
