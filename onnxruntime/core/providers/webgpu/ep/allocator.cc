@@ -33,7 +33,7 @@ namespace {
 
 // Wraps an existing Session allocator, not another buffer pool or recording.
 // Unlike the Env's adapter::Allocator, this wrapper also forwards AllocOnStream.
-// Info returns an ORT-owned copy of the allocator's OrtMemoryInfo because ORT may copy it.
+// ORT may copy the OrtMemoryInfo returned by Info, so Info returns a copy created by ORT rather than impl_'s original.
 struct WebGpuSessionAllocator final : OrtAllocator {
   explicit WebGpuSessionAllocator(AllocatorPtr impl)
       : OrtAllocator{},

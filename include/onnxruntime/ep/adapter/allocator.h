@@ -20,11 +20,11 @@ namespace ep {
 namespace adapter {
 
 // OrtMemoryInfo is opaque at the C API boundary. Its layout (e.g. std::string) can differ between ORT and a plugin
-// EP built with different STL/CRT settings, so an instance must not be copied or have its fields read by the other
-// side. These helpers convert between ORT-owned and EP-local instances using only the C API.
+// EP built with different STL/CRT settings, so an instance must not be copied or have its fields read by the side
+// that did not create it. These helpers convert between instances created by ORT and by the EP using only the C API.
 
 /// <summary>
-/// Creates an EP-local OrtMemoryInfo from one owned by ORT.
+/// Copies an OrtMemoryInfo created by ORT into one created by the EP.
 /// The C API does not expose the device alignment, so it is left at the default of 0.
 /// </summary>
 inline OrtMemoryInfo CreateMemoryInfoFromApi(const OrtMemoryInfo* api_memory_info) {
@@ -40,8 +40,8 @@ inline OrtMemoryInfo CreateMemoryInfoFromApi(const OrtMemoryInfo* api_memory_inf
 }
 
 /// <summary>
-/// Creates an ORT-owned OrtMemoryInfo from an EP-local one, for example to return from OrtAllocator::Info or to pass
-/// to an ORT API. As with CreateMemoryInfo_V2, the OrtMemType is derived from the device memory type.
+/// Copies an OrtMemoryInfo created by the EP into one created by ORT, for example to return from OrtAllocator::Info
+/// or to pass to an ORT API. As with CreateMemoryInfo_V2, the OrtMemType is derived from the device memory type.
 /// </summary>
 inline Ort::MemoryInfo CreateApiMemoryInfo(const OrtMemoryInfo& memory_info) {
   const OrtDevice& device = memory_info.device;
