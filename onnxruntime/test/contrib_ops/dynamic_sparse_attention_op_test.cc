@@ -596,7 +596,7 @@ TEST(DynamicSparseAttentionTest, Int8CachePrefillBFloat16_CUDA) {
   auto c = MakeGroupedCacheCase(9, false, false, 2, 20, 2, true);
   c.head_sink.clear();
   for (int row = 0; row < c.batch_size * c.sequence_length; ++row) {
-    const int b = row / c.sequence_length;
+    const int64_t b = row / c.sequence_length;
     for (int h = 0; h < c.num_heads; ++h) {
       const int64_t kv = h / (c.num_heads / c.kv_num_heads);
       const int64_t out = (row * c.num_heads + h) * c.head_size;
