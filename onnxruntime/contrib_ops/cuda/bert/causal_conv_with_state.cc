@@ -51,8 +51,7 @@ CausalConvWithState<T>::CausalConvWithState(const OpKernelInfo& info) : CudaKern
   state_length_ = SafeInt<int>(info.GetAttrOrDefault<int64_t>("state_length", 0));
   state_channels_last_ = SafeInt<int>(info.GetAttrOrDefault<int64_t>("state_channels_last", -1));
   state_update_capacity_ = SafeInt<int>(info.GetAttrOrDefault<int64_t>("state_update_capacity", 0));
-  const auto& output_defs = info.node().OutputDefs();
-  has_state_update_output_ = output_defs.size() > 2 && output_defs[2]->Exists();
+  has_state_update_output_ = causal_conv_with_state_helper::HasOutput(info, 2);
   ORT_ENFORCE(input_channels_ >= 0 && input_channel_offset_ >= 0 && state_length_ >= 0 &&
                   state_channels_last_ >= -1 && state_channels_last_ <= 1 &&
                   state_update_capacity_ >= 0 && state_update_capacity_ <= 8,

@@ -42,7 +42,7 @@ CausalConvWithState::CausalConvWithState(const OpKernelInfo& info)
                   info.GetAttrOrDefault<int64_t>("input_channel_offset", 0) == 0 &&
                   info.GetAttrOrDefault<int64_t>("state_length", 0) == 0 &&
                   info.GetAttrOrDefault<int64_t>("state_channels_last", -1) == -1 &&
-                  (info.node().OutputDefs().size() <= 2 || !info.node().OutputDefs()[2]->Exists()),
+                  !causal_conv_with_state_helper::HasOutput(info, 2),
               "WebGPU CausalConvWithState does not support extended channel/state options (CUDA only)");
   std::string activation_str = info.GetAttrOrDefault<std::string>("activation", "none");
   activation_ = ParseCausalConvActivation(activation_str);
