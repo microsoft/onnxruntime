@@ -876,12 +876,19 @@ Status PluginExecutionProvider::OnRunEnd(bool sync_stream, const RunOptions& run
     return OnRunEnd(sync_stream, run_options);
   }
   std::optional<RunOptions> end_options;
-  try {
+  Status preparation_status;
+  ORT_TRY {
     end_options.emplace(run_options);
     end_options->config_options.configurations[kEpRunSucceededConfigKey] = "0";
-  } catch (const std::exception& exception) {
+  }
+  ORT_CATCH(const std::exception& exception) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      preparation_status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to prepare plugin run-end options: ", exception.what());
+    });
+  }
+  if (!preparation_status.IsOK()) {
     const auto teardown_status = OnRunEnd(sync_stream, run_options);
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to prepare plugin run-end options: ", exception.what(),
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, preparation_status.ErrorMessage(),
                            "; OnRunEnd: ", teardown_status.ToString());
   }
   return OnRunEnd(sync_stream, *end_options);
