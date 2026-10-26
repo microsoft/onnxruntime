@@ -7,7 +7,7 @@ using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using Xunit;
 
-#if NET8_0_OR_GREATER
+#if NET10_0_OR_GREATER
 using SystemNumericsTensors = System.Numerics.Tensors;
 #endif
 
@@ -76,7 +76,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             Assert.Equal(session.InputNames.Count, inputsEpDevices.Count);
         }
 
-#if NET8_0_OR_GREATER
+#if NET10_0_OR_GREATER
 #pragma warning disable SYSLIB5001 // System.Numerics.Tensors is only in preview so we can continue receiving API feedback
         [Theory]
         [InlineData(GraphOptimizationLevel.ORT_DISABLE_ALL)]
@@ -680,7 +680,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             try
             {
                 // captures start at index 1
-                var group = Regex.Matches(fileName, regEx).Single().Groups[1];
+                var group = Regex.Matches(fileName, regEx).Cast<Match>().Single().Groups[1];
                 var num = int.Parse(group.Value);
                 if (num >= 0 && num < names.Count)
                 {
@@ -1488,7 +1488,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
             var inputShape = new long[] { 4, 4 };
             var inputData = new float[16];
-            Array.Fill(inputData, 1);
+            inputData.AsSpan().Fill(1);
             using var inputOrtValue = OrtValue.CreateTensorValueFromMemory(inputData, inputShape);
 
             var expectedOutput = new float[] {
@@ -1515,7 +1515,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
             var inputShape = new long[] { 4, 4 };
             var inputData = new float[16];
-            Array.Fill(inputData, 1);
+            inputData.AsSpan().Fill(1);
             using var inputOrtValue = OrtValue.CreateTensorValueFromMemory(inputData, inputShape);
 
             var expectedOutput = new float[] {
@@ -1628,7 +1628,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-#if NET8_0_OR_GREATER
+#if NET10_0_OR_GREATER
 #pragma warning disable SYSLIB5001 // Type is for evaluation purposes only and is subject to change or removal in future updates. Suppress this diagnostic to proceed.
         private void ValidateRunResultData(SystemNumericsTensors.Tensor<float> resultTensor, float[] expectedOutput, int[] expectedDimensions)
         {

@@ -78,6 +78,8 @@ stages:
 
       - template: ../templates/setup-feeds-and-python-steps.yml
 
+      - template: ../templates/setup-dotnet.yml
+
       # Download the NuGet package produced by the packaging pipeline run that
       # triggered this pipeline (or that was selected at queue time).
       - download: build

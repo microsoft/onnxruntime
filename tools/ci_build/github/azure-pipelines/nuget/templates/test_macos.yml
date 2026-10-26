@@ -26,6 +26,8 @@ stages:
     - name: OnnxRuntimeBuildDirectory
       value: '$(Build.BinariesDirectory)'
     steps:
+    - template: ../../templates/setup-dotnet.yml
+
     - download: build
       displayName: 'Download Nuget'
       artifact: 'drop-signed-nuget-${{ parameters.ArtifactSuffix }}'

@@ -5,7 +5,8 @@
 ARG BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda13_x64_almalinux8_gcc14_dotnet:20251107.1
 FROM $BASEIMAGE
 
-RUN dnf install -y perl-core && dnf clean all
+ADD scripts /tmp/scripts
+RUN /tmp/scripts/install_dotnet.sh && dnf install -y perl-core && dnf clean all
 
 ARG TRT_VERSION
 
@@ -40,7 +41,6 @@ ENV LANG=en_US.UTF-8
 ENV LC_ALL=en_US.UTF-8
 
 ENV CUDAHOSTCXX=/opt/rh/gcc-toolset-14/root/usr/bin/g++
-ADD scripts /tmp/scripts
 RUN sed -i 's/enabled\s*=\s*1/enabled = 1\nexclude=dotnet* aspnet* netstandard*/g' /etc/yum.repos.d/almalinux.repo
 ENV PATH=/usr/lib/jvm/msopenjdk-17/bin:$PATH
 ENV JAVA_HOME=/usr/lib/jvm/msopenjdk-17

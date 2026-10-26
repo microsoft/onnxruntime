@@ -4,9 +4,9 @@ REM Licensed under the MIT License.
 @ECHO ON
 SETLOCAL EnableDelayedExpansion
 
-SET TargetFramework=net8.0
+SET TargetFramework=net10.0
 SET TargetArch=x64
-SET dn="C:\Program Files\dotnet\dotnet"
+SET dn=dotnet
 SET CurrentOnnxRuntimeVersion=""
 
 SET LocalNuGetRepo=%1
@@ -44,7 +44,7 @@ IF EXIST test\Microsoft.ML.OnnxRuntime.EndToEndTests\obj RMDIR /S /Q test\Micros
 %dn% restore -v normal test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --configfile .\Nuget.CSharp.config --no-cache --packages test\Microsoft.ML.OnnxRuntime.EndToEndTests\packages --source https://api.nuget.org/v3/index.json --source  %LocalNuGetRepo%
 
 
-IF NOT errorlevel 0 (
+IF errorlevel 1 (
     @echo "Failed to restore nuget packages for the test project"
     EXIT 1
 )
@@ -59,7 +59,7 @@ IF %%gpu_package%%=="T" (
   set TESTONGPU=ON
   %dn% test -p:DefineConstants=USE_TENSORRT test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore --filter TensorRT
 
-  IF NOT errorlevel 0 (
+  IF errorlevel 1 (
     @echo "Failed to build or execute the end-to-end test"
     EXIT 1
   )
@@ -69,7 +69,7 @@ IF %%gpu_package%%=="T" (
   %dn% test test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore
 )
 
-IF NOT errorlevel 0 (
+IF errorlevel 1 (
     @echo "Failed to build or execute the end-to-end test"
     EXIT 1
 )
