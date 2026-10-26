@@ -9,14 +9,15 @@
 
 namespace onnxruntime::contrib::cuda::speculative_fold {
 
-Status LaunchMid(const int64_t* tokens, const int64_t* ids, const int32_t* status, int status_count,
-                 int64_t* ctl, int64_t* context, const int64_t* prefixes, const int64_t* prefix2,
-                 const int64_t* ptrs, const uint16_t* cosine, const uint16_t* sine,
-                 int64_t* head_ids, int32_t* head_c, int64_t* slots, int32_t* lengths,
-                 uint16_t* head_cos, uint16_t* head_sin, int64_t* selection,
-                 int rows, int head_rows, int rope_rows, int rope_width, int capacity, cudaStream_t stream,
-                 bool publish_ring = true, const int64_t* input_ctl = nullptr, int ctl_count = 0,
-                 const int64_t* input_context = nullptr, int batch_size = 1, int ids_stride = 0,
-                 int prefix_stride = 0, int prefix2_stride = 0, int ptrs_stride = 0);
+// ctl_out/ctx_out must either be the same buffers as ctl/ctx (in-place) or disjoint from them. The kernel
+// copies the unchanged words when they differ, so callers always read the updated state from the outputs.
+// ctl has ctl_stride (>= 16) words and prefixes has prefix_stride (>= 2 * head_rows) words per batch item.
+// ptrs is {ring address, records per batch item}; batch item b uses the ring at
+// address + b * records * 8 * sizeof(int64_t).
+Status LaunchPrefixCommit(const int64_t* tokens, const int64_t* ids, const int32_t* status, int status_count,
+                          const int64_t* ctl, int64_t* ctl_out, const int64_t* ctx, int64_t* ctx_out,
+                          const int64_t* prefixes, const int64_t* ptrs, int32_t* head_c,
+                          int rows, int head_rows, int batch_size, int ids_stride, int ctl_stride,
+                          int prefix_stride, cudaStream_t stream);
 
 }  // namespace onnxruntime::contrib::cuda::speculative_fold

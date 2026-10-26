@@ -37,72 +37,65 @@ namespace contrib {
 ONNX_MS_OPERATOR_SET_SCHEMA(
     SpeculativePrefixCommit, 1,
     OpSchema()
-        .SetDoc("Commits a speculative prefix for each request in the batch, prepares rotary/head inputs for two "
-                "through eight head rows, and publishes the result-ring records. Control and committed-context outputs "
-                "must alias their inputs on CUDA when present. This is stateful: callers must serialize access to "
-                "these buffers. The result-ring address must identify a device-accessible, aligned allocation of "
-                "capacity*8 int64 words per batch item. Muted prefill calls prepare inputs without committing state or "
-                "touching ring metadata. Invalid device metadata sets error bits and mutes execution.")
-        .Attr("head_rows", "Fixed number of head rows, 2 through 8.", AttributeProto::INT, int64_t{2})
-        .Attr("head_capacity", "Maximum head-cache token capacity.", AttributeProto::INT, int64_t{262144})
-        .Input(0, "next_tokens", "Verifier predictions, [batch, rows] or [rows] for batch one.", "I64")
-        .Input(1, "input_ids", "Verifier input IDs.", "I64")
-        .Input(2, "status", "Verifier status words.", "I32")
-        .Input(3, "ctl", "Mutable control state: at least 8 words per batch item for S2, 16 for S3..S8.", "I64")
-        .Input(4, "ctx_commit", "Mutable committed context, two words per batch item.", "I64")
-        .Input(5, "prefixes", "Two-word context for each accepted-prefix length; S2 needs only the first.", "I64")
-        .Input(6, "prefix2", "Two-word context for acceptance length one.", "I64")
-        .Input(7, "ptrs", "Result ring address and positive record capacity.", "I64")
-        .Input(8, "cos_cache", "Rotary cosine cache [positions, width].", "B")
-        .Input(9, "sin_cache", "Rotary sine cache [positions, width].", "B")
-        .Output(0, "head_ids", "Head token IDs [batch, head_rows].", "I64")
-        .Output(1, "head_c", "Head committed length [batch].", "I32")
-        .Output(2, "slot_ids", "Head slots [batch, head_rows].", "I64")
-        .Output(3, "seqlens", "Head sequence length [batch].", "I32")
-        .Output(4, "cos_out", "Gathered rotary cosine [batch, head_rows, width].", "B")
-        .Output(5, "sin_out", "Gathered rotary sine [batch, head_rows, width].", "B")
-        .Output(6, "sel", "Accepted-prefix length [batch], or -1 on invalid metadata.", "I64")
-        .Output(7, "updated_ctl", "Optional updated control state, aliases ctl.", "I64", OpSchema::Optional)
-        .Output(8, "updated_ctx_commit", "Optional updated context, aliases ctx_commit.", "I64", OpSchema::Optional)
-        .TypeConstraint("I64", {"tensor(int64)"}, "Token and control words.")
-        .TypeConstraint("I32", {"tensor(int32)"}, "Status and sequence lengths.")
-        .TypeConstraint("B", {"tensor(bfloat16)"}, "Rotary tensors.")
+        .SetDoc("Commits the accepted prefix of a speculative verification step for each request in the batch and "
+                "publishes a result-ring record for the host. Acceptance compares the verifier predictions with the "
+                "draft tokens in input_ids. The operator is stateful: the control state and committed context are "
+                "read from ctl and ctx_commit and the updated state is written to updated_ctl and updated_ctx_commit, "
+                "which are required outputs. An output may alias its input (same device buffer) or be disjoint from it; "
+                "partial overlap is not supported. Callers that keep the state in persistent device buffers must bind "
+                "the outputs to those buffers, otherwise the updated state is lost. Callers must serialize access to "
+                "the state buffers. The result ring is described by ptrs and holds ptrs[1] records of eight int64 "
+                "words for each batch item, laid out consecutively per batch item starting at ptrs[0]; it must be a "
+                "device-accessible, 8-byte aligned allocation. Each record is published by writing its sequence word "
+                "last, after a system-scope fence. A request whose ctl[3] muted flag is set (for example during "
+                "prefill) does not commit state or touch the ring, and may use any number of rows. Invalid device "
+                "metadata sets error bits in ctl[5] (4: invalid row count or state, 16: invalid result ring) and mutes "
+                "the request. The status words are OR-ed together and a non-zero value sets bit 2 of ctl[5].")
+        .Attr("head_rows", "Number of verifier rows, 3 through 8. Non-muted requests must provide exactly this many "
+                           "rows. Default is 8.",
+              AttributeProto::INT, static_cast<int64_t>(8))
+        .Input(0, "next_tokens", "Verifier predictions with shape [batch, rows], or [rows] for batch one.", "I64")
+        .Input(1, "input_ids", "Verifier input IDs; the draft tokens are input_ids[b, 1:rows]. The number of "
+                               "elements must be a multiple of the batch size and at least batch * rows.",
+               "I64")
+        .Input(2, "status", "Verifier status words, shared by all batch items.", "I32")
+        .Input(3, "ctl",
+               "Control state, 16 int64 words per batch item: [0] pending token, [1] length, [3] muted flag, "
+               "[4] ring sequence number, [5] error flags, [6] accepted count, [7] cache length. Other words are "
+               "preserved.",
+               "I64")
+        .Input(4, "ctx_commit", "Committed context, two int64 words per batch item.", "I64")
+        .Input(5, "prefixes",
+               "Context pairs per batch item: pair k (words 2k and 2k+1) is committed when k tokens are accepted. "
+               "At least 2 * head_rows words per batch item.",
+               "I64")
+        .Input(6, "ptrs", "Result ring address and number of records per batch item (must be positive).", "I64")
+        .Output(0, "head_c", "Cache length before the commit [batch]; zero for muted or invalid requests.", "I32")
+        .Output(1, "updated_ctl", "Updated control state, same shape as ctl. May alias ctl.", "I64")
+        .Output(2, "updated_ctx_commit", "Updated committed context, same shape as ctx_commit. May alias ctx_commit.",
+                "I64")
+        .TypeConstraint("I64", {"tensor(int64)"}, "Token, control and pointer words.")
+        .TypeConstraint("I32", {"tensor(int32)"}, "Status words and cache lengths.")
         .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
-          for (int output : {0, 2, 6, 7, 8}) {
-            if (static_cast<size_t>(output) < ctx.getNumOutputs() && ctx.hasOutput(output)) {
-              propagateElemTypeFromInputToOutput(ctx, 0, output);
+          propagateElemTypeFromInputToOutput(ctx, 2, 0);
+          propagateElemTypeFromInputToOutput(ctx, 3, 1);
+          propagateElemTypeFromInputToOutput(ctx, 4, 2);
+          const auto rows = getAttribute(ctx, "head_rows", 8);
+          if (rows < 3 || rows > 8) fail_shape_inference("SpeculativePrefixCommit: head_rows must be in [3, 8]");
+          if (hasInputShape(ctx, 3)) propagateShapeFromInputToOutput(ctx, 3, 1);
+          if (hasInputShape(ctx, 4)) propagateShapeFromInputToOutput(ctx, 4, 2);
+          if (hasInputShape(ctx, 0)) {
+            const auto& tokens_shape = getInputShape(ctx, 0);
+            if (tokens_shape.dim_size() != 1 && tokens_shape.dim_size() != 2) {
+              fail_shape_inference("SpeculativePrefixCommit: next_tokens must have rank 1 or 2");
+            }
+            auto* head_c_shape = getOutputShape(ctx, 0);
+            if (tokens_shape.dim_size() == 2) {
+              *head_c_shape->add_dim() = tokens_shape.dim(0);
+            } else {
+              head_c_shape->add_dim()->set_dim_value(1);
             }
           }
-          for (int output : {1, 3}) propagateElemTypeFromInputToOutput(ctx, 2, output);
-          for (int output : {4, 5}) propagateElemTypeFromInputToOutput(ctx, 8, output);
-          const auto rows = getAttribute(ctx, "head_rows", 2);
-          const auto capacity = getAttribute(ctx, "head_capacity", 262144);
-          if (rows < 2 || rows > 8 || capacity < rows || capacity > std::numeric_limits<int>::max())
-            fail_shape_inference("SpeculativePrefixCommit: invalid head_rows/head_capacity");
-          TensorShapeProto_Dimension batch_dim;
-          if (hasInputShape(ctx, 0) && getInputShape(ctx, 0).dim_size() >= 2) {
-            batch_dim = getInputShape(ctx, 0).dim(0);
-          } else {
-            batch_dim.set_dim_value(1);
-          }
-          for (int output : {0, 2}) {
-            auto* shape = getOutputShape(ctx, output);
-            *shape->add_dim() = batch_dim;
-            shape->add_dim()->set_dim_value(rows);
-          }
-          for (int output : {1, 3, 6}) *getOutputShape(ctx, output)->add_dim() = batch_dim;
-          if (hasInputShape(ctx, 8)) {
-            const auto& rope = getInputShape(ctx, 8);
-            if (rope.dim_size() != 2) fail_shape_inference("SpeculativePrefixCommit: rotary cache must have rank 2");
-            TensorShapeProto shape;
-            *shape.add_dim() = batch_dim;
-            shape.add_dim()->set_dim_value(rows);
-            *shape.add_dim() = rope.dim(1);
-            updateOutputShape(ctx, 4, shape);
-            updateOutputShape(ctx, 5, shape);
-          }
-          if (ctx.getNumOutputs() > 7 && ctx.hasOutput(7)) propagateShapeFromInputToOutput(ctx, 3, 7);
-          if (ctx.getNumOutputs() > 8 && ctx.hasOutput(8)) propagateShapeFromInputToOutput(ctx, 4, 8);
         }));
 
 void DecoderAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
