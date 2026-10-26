@@ -36,3 +36,21 @@
  * \snippet{doc} snippets.dox OrtStatus Return Value
  */
 ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtApi_ExperimentalApiTest, _Out_ int64_t* out)
+
+/** \brief Register a complete set of pre-opened read-only external initializer files on Linux.
+ *
+ * Descriptors are duplicated on success; callers retain ownership of their originals.
+ * Each name must be a flat relative ONNX external-data location. Registration replaces
+ * the previous set atomically. Sessions and cloned options retain the files independently.
+ * Tensor ranges are privately mapped without reopening or canonicalizing file paths.
+ * Small tensors may be inlined; unaligned numeric ranges are copied into aligned storage.
+ * Files must remain immutable while dependent sessions/tensors exist. Missing sources
+ * and invalid ranges fail without filesystem fallback. Supports ONNX graph initializers,
+ * including subgraphs, but not external tensor attributes or model packages.
+ * This does not change execution-provider selection or provide a sandbox.
+ */
+ORT_EXPERIMENTAL_API(32, OrtStatusPtr, OrtApi_SessionOptionsSetExternalInitializerFileDescriptors,
+                     _Inout_ OrtSessionOptions* options,
+                     _In_reads_(count) const char* const* names,
+                     _In_reads_(count) const int* descriptors,
+                     size_t count)

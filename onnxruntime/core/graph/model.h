@@ -40,12 +40,17 @@ struct ModelOptions {
   bool strict_shape_type_inference;
 
   CheckLoadCancellationFn check_load_cancellation_fn;
+  std::shared_ptr<const std::unordered_map<PathString, std::shared_ptr<RandomAccessFile>>>
+      external_initializer_file_sources;
 
   ModelOptions(bool allow_released_opsets_only, bool strict_shape_type_inference,
-               CheckLoadCancellationFn check_load_cancellation_fn)
+               CheckLoadCancellationFn check_load_cancellation_fn,
+               std::shared_ptr<const std::unordered_map<PathString, std::shared_ptr<RandomAccessFile>>>
+                   file_sources = {})
       : allow_released_opsets_only(allow_released_opsets_only),
         strict_shape_type_inference(strict_shape_type_inference),
-        check_load_cancellation_fn(std::move(check_load_cancellation_fn)) {}
+        check_load_cancellation_fn(std::move(check_load_cancellation_fn)),
+        external_initializer_file_sources(std::move(file_sources)) {}
 
   ModelOptions(bool allow_released_opsets_only, bool strict_shape_type_inference)
       : allow_released_opsets_only(allow_released_opsets_only),

@@ -50,6 +50,7 @@ struct IndexedSubGraph;
 class Model;
 struct ModelSavingOptions;
 class OpSignature;
+class RandomAccessFile;
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 class RuntimeOptimizationRecordContainer;
@@ -770,6 +771,9 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   common::Status InjectExternalInitializersFromFilesInMemory(
       const InlinedHashMap<PathString, std::pair<char*, size_t>>& external_initializer_files,
       bool use_buffers_directly = false);
+
+  common::Status InjectExternalInitializersFromFileSources(
+      const std::unordered_map<PathString, std::shared_ptr<RandomAccessFile>>& files);
 #endif  // !defined(DISABLE_EXTERNAL_INITIALIZERS)
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
