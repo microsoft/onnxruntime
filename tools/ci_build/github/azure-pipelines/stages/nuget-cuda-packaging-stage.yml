@@ -40,6 +40,8 @@ stages:
 
     - template: ../templates/setup-feeds-and-python-steps.yml
 
+    - template: ../templates/setup-dotnet.yml
+
     - template: ../templates/flex-downloadPipelineArtifact.yml
       parameters:
         StepName: 'Download Pipeline Artifact - NuGet'
@@ -96,28 +98,26 @@ stages:
       inputs:
         versionSpec: 6.10.x
 
-    - task: MSBuild@1
+    - script: >-
+        dotnet msbuild OnnxRuntime.DesktopOnly.CSharp.sln
+        -t:restore
+        "-p:Platform=Any CPU"
+        -p:Configuration=RelWithDebInfo
+        -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu
       displayName: 'Restore NuGet Packages and create project.assets.json'
-      inputs:
-        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.DesktopOnly.CSharp.sln'
-        platform: 'Any CPU'
-        configuration: RelWithDebInfo
-        msbuildArguments: '-t:restore -p:OrtPackageId="Microsoft.ML.OnnxRuntime.Gpu"'
-        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+      workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
-    - task: MSBuild@1
+    - script: >-
+        dotnet msbuild OnnxRuntime.DesktopOnly.CSharp.sln
+        "-p:Platform=Any CPU"
+        -p:Configuration=RelWithDebInfo
+        "-p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory)"
+        -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu
+        -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}
+        -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)
+        -p:PackageVersion=$(OnnxRuntimeVersion)
       displayName: 'Build C# bindings'
-      inputs:
-        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.DesktopOnly.CSharp.sln'
-        configuration: RelWithDebInfo
-        platform: 'Any CPU'
-        msbuildArguments: >
-          -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)"
-          -p:OrtPackageId="Microsoft.ML.OnnxRuntime.Gpu"
-          -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}
-          -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)
-          -p:PackageVersion=$(OnnxRuntimeVersion)
-        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+      workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - template: ../templates/win-esrp-dll.yml
       parameters:
@@ -125,21 +125,19 @@ stages:
         DisplayName: 'ESRP - Sign C# dlls'
         DoEsrp: ${{ parameters.DoEsrp }}
 
-    - task: MSBuild@1
+    - script: >-
+        dotnet msbuild OnnxRuntime.CSharp.proj
+        -t:CreatePackage
+        "-p:Platform=Any CPU"
+        -p:Configuration=RelWithDebInfo
+        "-p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory)"
+        -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu
+        "-p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}"
+        "-p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)"
+        "-p:CurrentDate=$(ORT_CI_BUILD_DATE)"
+        "-p:CurrentTime=$(ORT_CI_BUILD_TIME)"
       displayName: 'Build Nuget Packages'
-      inputs:
-        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
-        configuration: RelWithDebInfo
-        platform: 'Any CPU'
-        msbuildArguments: >-
-          -t:CreatePackage
-          "-p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory)"
-          -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu
-          "-p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}"
-          "-p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)"
-          "-p:CurrentDate=$(ORT_CI_BUILD_DATE)"
-          "-p:CurrentTime=$(ORT_CI_BUILD_TIME)"
-        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+      workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - task: BatchScript@1
       displayName: 'Add TensorRT header file to the native nuGet package'
@@ -202,14 +200,15 @@ stages:
         VerifyNugetSigning: false
         IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
 
-    - task: MSBuild@1
+    - script: >-
+        dotnet msbuild OnnxRuntime.DesktopOnly.CSharp.sln
+        -t:Clean
+        "-p:Platform=Any CPU"
+        -p:Configuration=RelWithDebInfo
+        "-p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory)"
+        -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu
       displayName: 'Clean C#'
-      inputs:
-        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.DesktopOnly.CSharp.sln'
-        platform: 'Any CPU'
-        configuration: RelWithDebInfo
-        msbuildArguments: '-t:Clean -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu'
-        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+      workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - task: 1ES.PublishPipelineArtifact@1
       displayName: 'Publish Pipeline NuGet Artifact'
