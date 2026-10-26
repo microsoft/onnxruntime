@@ -66,7 +66,8 @@ using Producers = InlinedHashMap<const NodeArg*, NodeIndex>;
 bool MatchType(const Pattern& pattern, const Graph& graph, int handle, const TypeConstraint& constraint, Match& match,
                std::string& reason) {
   if (pattern.IsAttribute(handle)) {
-    return match.attributeOf(constraint.value_name).type() == constraint.attribute_type;
+    const auto* attribute = match.optionalAttributeOf(constraint.value_name);
+    return constraint.absent ? !attribute : attribute && attribute->type() == constraint.attribute_type;
   }
   const NodeArg* value = match.values[handle];
   if (constraint.absent) return !value;
@@ -199,7 +200,12 @@ bool MatchPattern(const Pattern& pattern, const Graph& graph, const Node& root, 
     match.nodes[i] = node;
     for (const auto& attribute : expected.attributes) {
       auto found = node->GetAttributes().find(attribute.name);
-      if (found == node->GetAttributes().end() || !attribute.Matches(found->second))
+      if (found == node->GetAttributes().end()) {
+        if (!attribute.optional || attribute.capture.empty() || !match.BindAbsentAttribute(attribute.capture))
+          return fail(FailureStage::Attribute, "Missing attribute or repeated capture presence mismatch.");
+        continue;
+      }
+      if (!attribute.Matches(found->second))
         return fail(FailureStage::Attribute, "Missing attribute or attribute constraint mismatch.");
       if (!attribute.capture.empty() && !match.BindAttribute(attribute.capture, found->second))
         return fail(FailureStage::Attribute, "Repeated attribute capture mismatch.");
@@ -297,7 +303,7 @@ void RollbackFragment(Graph& graph, InlinedVector<NodeIndex>& added, const Inlin
 
 Status StageReplacement(Graph& graph, const Replacement& recipe, gsl::span<NodeArg* const> returned_outputs,
                         const std::function<Status(const Replacement::Input&, NodeArg*&)>& resolve_tensor,
-                        const std::function<Status(const std::string&, ONNX_NAMESPACE::AttributeProto&)>& resolve_attribute,
+                        const std::function<Status(const std::string&, std::optional<ONNX_NAMESPACE::AttributeProto>&)>& resolve_attribute,
                         const Node* annotation_source, InlinedVector<NodeIndex>& added,
                         InlinedVector<std::string>& initializers) {
   ORT_RETURN_IF(!recipe.Plan(), "Replacement has no parsed plan.");
@@ -320,10 +326,12 @@ Status StageReplacement(Graph& graph, const Replacement& recipe, gsl::span<NodeA
     auto attributes = node.attributes;
     for (const auto& [name, binding] : node.attribute_bindings) {
       ORT_RETURN_IF(name.empty() || node.attributes.count(name), "Invalid or duplicate replacement attribute: ", name);
-      ONNX_NAMESPACE::AttributeProto value;
+      std::optional<ONNX_NAMESPACE::AttributeProto> value;
       ORT_RETURN_IF_ERROR(resolve_attribute(binding, value));
-      value.set_name(name);
-      attributes.emplace(name, std::move(value));
+      if (value) {
+        value->set_name(name);
+        attributes.emplace(name, std::move(*value));
+      }
     }
     resolved_attributes.push_back(std::move(attributes));
     const auto& domain = node.domain == kOnnxDomainAlias ? kOnnxDomain : node.domain;
@@ -454,8 +462,12 @@ Status Replace(Graph& graph, const Pattern& pattern, const Match& match, const R
     result = match.values[value] ? graph.GetNodeArg(match.values[value]->Name()) : nullptr;
     return Status::OK();
   };
-  auto attribute = [&](const std::string& name, ONNX_NAMESPACE::AttributeProto& result) -> Status {
-    result = match.attributeOf(name);
+  auto attribute = [&](const std::string& name, std::optional<ONNX_NAMESPACE::AttributeProto>& result) -> Status {
+    const auto* value = match.optionalAttributeOf(name);
+    if (value)
+      result = *value;
+    else
+      result.reset();
     return Status::OK();
   };
   InlinedVector<std::string> initializers;
@@ -1022,7 +1034,7 @@ class PatternParser {
       if (token_ != "|") break;
       ORT_RETURN_IF_ERROR(Next());
     } while (true);
-    ORT_RETURN_IF(alternatives.size() == 1 && alternatives.front().absent, Error("None requires a tensor alternative"));
+    ORT_RETURN_IF(alternatives.size() == 1 && alternatives.front().absent, Error("None requires a concrete type alternative"));
     return Status::OK();
   }
 
@@ -1226,7 +1238,8 @@ class PatternParser {
                   attribute_inputs_.insert(declared->second.handle);
                 }
                 pattern_.attribute_names_.insert(capture);
-                attributes.push_back({name, [](const auto&) { return true; }, capture});
+                const bool optional = declared != symbols_.end() && pattern_.IsOptional(declared->second);
+                attributes.push_back({name, [](const auto&) { return true; }, capture, optional});
               }
             } else if (kind_ == Kind::String) {
               attributes.push_back(AttributeMatcher::Equal(name, token_));
@@ -1392,8 +1405,12 @@ Status PatternParser::ValidateTypes(const Pattern& pattern) {
     combinations *= alternatives.size();
     for (const auto& type : alternatives) {
       if (pattern.IsAttribute(handle)) {
-        ORT_RETURN_IF(alternatives.size() != 1 || !type.attribute_type || type.immutable || pattern.IsOptional(handle),
-                      "Invalid attribute annotation or optional attribute.");
+        const bool optional = alternatives.size() == 2 &&
+                              std::count_if(alternatives.begin(), alternatives.end(),
+                                            [](const auto& alternative) { return alternative.absent; }) == 1;
+        ORT_RETURN_IF((alternatives.size() != 1 && !optional) ||
+                          (!type.absent && (!type.attribute_type || type.immutable)),
+                      "Attribute annotations require one concrete attribute type, optionally combined with None.");
       } else {
         ORT_RETURN_IF(!type.tensor_type, "Annotation requires an attribute variable.");
       }
@@ -2019,16 +2036,20 @@ Status Pattern::VisitMatches(const Graph& graph, NodeIndex root_index,
 }
 
 Status Replacement::Instantiate(Graph& graph, const TensorBindings& tensors, const NodeAttributes& attributes,
-                                Instantiation& result, const Node* annotation_source) const {
+                                Instantiation& result, const Node* annotation_source,
+                                const InlinedHashSet<std::string>& absent_attributes) const {
   ORT_RETURN_IF(annotation_source &&
                     (annotation_source->Index() >= static_cast<NodeIndex>(graph.MaxNodeIndex()) ||
                      graph.GetNode(annotation_source->Index()) != annotation_source),
                 "Replacement annotation source must belong to the supplied graph.");
   for (const auto& [name, value] : tensors) {
-    ORT_RETURN_IF(attributes.count(name), "Replacement binding is both tensor and attribute: ", name);
+    ORT_RETURN_IF(attributes.count(name) || absent_attributes.count(name),
+                  "Replacement binding is both tensor and attribute: ", name);
     ORT_RETURN_IF(value && (!value->Exists() || graph.GetNodeArg(value->Name()) != value),
                   "Replacement tensor binding must belong to the supplied graph: ", name);
   }
+  for (const auto& name : absent_attributes)
+    ORT_RETURN_IF(name.empty() || attributes.count(name), "Invalid or conflicting absent attribute binding: ", name);
   auto tensor = [&](const Input& input, NodeArg*& value) -> Status {
     const auto* name = std::get_if<std::string>(&input);
     ORT_RETURN_IF(!name, "Standalone replacement cannot use compiled pattern handles.");
@@ -2037,7 +2058,11 @@ Status Replacement::Instantiate(Graph& graph, const TensorBindings& tensors, con
     value = found->second ? graph.GetNodeArg(found->second->Name()) : nullptr;
     return Status::OK();
   };
-  auto attribute = [&](const std::string& name, ONNX_NAMESPACE::AttributeProto& value) -> Status {
+  auto attribute = [&](const std::string& name, std::optional<ONNX_NAMESPACE::AttributeProto>& value) -> Status {
+    if (absent_attributes.count(name)) {
+      value.reset();
+      return Status::OK();
+    }
     auto found = attributes.find(name);
     ORT_RETURN_IF(found == attributes.end(), "Missing replacement attribute binding: ", name);
     value = found->second;
@@ -2099,6 +2124,7 @@ Replacement::Replacement(std::string_view text) {
 const NodeArg* Match::valueOf(std::string_view name) const {
   ORT_ENFORCE(pattern, "Named lookup requires a matched pattern.");
   const Value value = pattern->NamedValue(name);
+  ORT_ENFORCE(!pattern->IsAttribute(value), "Pattern binding is an attribute: ", name);
   ORT_ENFORCE(value.handle >= 0 && static_cast<size_t>(value.handle) < values.size() &&
                   (values[value.handle] || pattern->IsOptional(value)),
               "Pattern value is not bound: ", name);
@@ -2122,6 +2148,10 @@ const NodeArg* BindingView::optionalValueOf(std::string_view name) const {
 }
 const ONNX_NAMESPACE::AttributeProto& BindingView::attributeOf(std::string_view name) const {
   return match_->attributeOf(Qualify(name));
+}
+
+const ONNX_NAMESPACE::AttributeProto* BindingView::optionalAttributeOf(std::string_view name) const {
+  return match_->optionalAttributeOf(Qualify(name));
 }
 const Dimension& BindingView::dimensionOf(std::string_view name) const { return match_->dimensionOf(Qualify(name)); }
 std::optional<int32_t> BindingView::elementTypeOf(std::string_view name) const {
@@ -2207,24 +2237,38 @@ void Match::update(std::string_view name, ONNX_NAMESPACE::AttributeProto value) 
 }
 
 const ONNX_NAMESPACE::AttributeProto& Match::attributeOf(std::string_view name) const {
+  const auto* value = optionalAttributeOf(name);
+  ORT_ENFORCE(value, "Attribute capture is absent: ", name);
+  return *value;
+}
+
+const ONNX_NAMESPACE::AttributeProto* Match::optionalAttributeOf(std::string_view name) const {
   if (pattern) {
     auto alias = pattern->attribute_aliases_.find(std::string(name));
     if (alias != pattern->attribute_aliases_.end()) name = alias->second;
   }
   auto captured = captured_attributes_.find(std::string(name));
-  if (captured != captured_attributes_.end()) return captured->second;
+  if (captured != captured_attributes_.end()) return &captured->second;
+  if (absent_attributes_.count(std::string(name))) return nullptr;
   auto found = extra_attributes_.find(std::string(name));
   ORT_ENFORCE(!name.empty() && found != extra_attributes_.end(), "Missing replacement attribute binding: ", name);
-  return found->second;
+  return &found->second;
 }
 
 bool Match::BindAttribute(std::string_view name, const ONNX_NAMESPACE::AttributeProto& value) {
+  if (absent_attributes_.count(std::string(name))) return false;
   if (value.type() == ONNX_NAMESPACE::AttributeProto_AttributeType_UNDEFINED || value.has_ref_attr_name()) return false;
   auto normalized = value;
   normalized.set_name(std::string(name));
   normalized.clear_doc_string();
   auto [it, inserted] = captured_attributes_.emplace(std::string(name), normalized);
   return inserted || it->second.SerializeAsString() == normalized.SerializeAsString();
+}
+
+bool Match::BindAbsentAttribute(std::string_view name) {
+  if (captured_attributes_.count(std::string(name))) return false;
+  absent_attributes_.insert(std::string(name));
+  return true;
 }
 
 const Dimension& Match::dimensionOf(std::string_view name) const {

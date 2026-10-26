@@ -34,6 +34,7 @@ struct AttributeMatcher {
   std::string name;
   std::function<bool(const ONNX_NAMESPACE::AttributeProto&)> predicate;
   std::string capture;
+  bool optional = false;
   bool Matches(const ONNX_NAMESPACE::AttributeProto& value) const { return predicate(value); }
   static AttributeMatcher Equal(std::string name, int64_t value);
   static AttributeMatcher Equal(std::string name, int value) { return Equal(std::move(name), int64_t{value}); }
@@ -161,6 +162,8 @@ class BindingView {
   const NodeArg* valueOf(std::string_view name) const;
   const NodeArg* optionalValueOf(std::string_view name) const;
   const ONNX_NAMESPACE::AttributeProto& attributeOf(std::string_view name) const;
+  // Null only for a captured absence; unknown or wrong-kind names are errors.
+  const ONNX_NAMESPACE::AttributeProto* optionalAttributeOf(std::string_view name) const;
   const Dimension& dimensionOf(std::string_view name) const;
   std::optional<int32_t> elementTypeOf(std::string_view name) const;
   BindingView instance(std::string_view name) const;
@@ -194,6 +197,7 @@ struct Match {
   const NodeArg* optionalValueOf(std::string_view name) const;
   void update(std::string_view name, ONNX_NAMESPACE::AttributeProto value);
   const ONNX_NAMESPACE::AttributeProto& attributeOf(std::string_view name) const;
+  const ONNX_NAMESPACE::AttributeProto* optionalAttributeOf(std::string_view name) const;
   const Dimension& dimensionOf(std::string_view name) const;
   std::optional<int32_t> elementTypeOf(std::string_view name) const;
   BindingView bindings() const { return BindingView(*this, ""); }
@@ -203,6 +207,7 @@ struct Match {
     rejection_reason_.clear();
   }
   bool BindAttribute(std::string_view name, const ONNX_NAMESPACE::AttributeProto& value);
+  bool BindAbsentAttribute(std::string_view name);
   bool BindDimension(std::string_view name, Dimension value);
   bool BindElementType(std::string_view name, int32_t value);
   bool Reject(std::string_view reason) {
@@ -217,6 +222,7 @@ struct Match {
   friend class PatternRewriter;
   std::shared_ptr<const Pattern> owned_pattern_;  // Copies own the plan, but still borrow graph objects.
   NodeAttributes captured_attributes_;
+  InlinedHashSet<std::string> absent_attributes_;
   InlinedHashMap<std::string, Dimension> dimensions_;
   InlinedHashMap<std::string, int32_t> element_types_;
   NodeAttributes extra_attributes_;
@@ -252,8 +258,10 @@ struct Replacement {
   const auto& Outputs() const { return outputs_; }
   // Build a fresh fragment without matching, deleting, rewiring, or changing graph outputs.
   // result changes only on success. Call Graph::Resolve before using the constructed graph.
+  // absent_attributes explicitly omits keyword bindings; unresolved names remain errors.
   Status Instantiate(Graph& graph, const TensorBindings& tensors, const NodeAttributes& attributes,
-                     Instantiation& result, const Node* annotation_source = nullptr) const;
+                     Instantiation& result, const Node* annotation_source = nullptr,
+                     const InlinedHashSet<std::string>& absent_attributes = {}) const;
 
  private:
   friend class PatternRewriter;

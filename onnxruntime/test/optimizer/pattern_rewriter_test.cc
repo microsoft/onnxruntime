@@ -2906,7 +2906,6 @@ TEST(PatternRewriterTests, TypeUnionParsingAndBounds) {
                     "(x?)=>return Identity(x)", "(x?:float[])=>return Identity(x)",
                     "(x:float[]?)=>return Identity(x)",
                     "(x,p:ints|floats)=>return Identity(x,perm=p)",
-                    "(x,p:int|None)=>return Identity(x,axis=p)",
                     "(x)=>{y:float[]|None=Identity(x);return y;}"}) {
     SCOPED_TRACE(text);
     EXPECT_THROW((void)Pattern{text}, OnnxRuntimeException);
@@ -6118,7 +6117,6 @@ TEST(PatternRewriterTests, OrdinaryOutputSignaturesPreserveTypedAttributeInputs)
   for (const char* text : {
            "interface I(x,axis:int)->(y)",
            "pattern P(x)->(y:ints){y=Identity(x);return y}",
-           "pattern P(x,a:int|None)->(y){y=Softmax(x,axis=a);return y}",
            "pattern P(x,a:int)->(y){y=Softmax(x,axis=a);return y} "
            "pattern E(x){y=P(x,_);return y}"}) {
     SCOPED_TRACE(text);

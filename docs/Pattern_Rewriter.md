@@ -72,12 +72,11 @@ The pattern requires explicit `perm` attributes; it does not match default
 reverse-axis Transposes. `attributeOf` returns a const reference to the captured
 `AttributeProto` rather than copying its potentially large payload; the reference
 borrows the Match. The pattern guarantees that `p` and `q` exist before the
-checker runs. Optional attribute captures such as `p : ints | None` are not
-supported: `None` describes tensor-slot/branch absence, not a missing attribute.
-To handle an omitted attribute, leave it out of the pattern's keyword constraints
-and inspect the matched node's `GetAttributes()` map in the checker; see
-[attribute captures](#optional-type-and-shape-annotations) below for the default
-attribute distinction. Known rank is enough: dimension sizes need not be
+checker runs. This example deliberately uses mandatory captures. An annotation
+such as `p : ints | None` would also match an omitted `perm`; its checker would
+use `optionalAttributeOf("p")` and explicitly implement the default reverse
+permutation. See [optional attribute captures](#optional-attribute-captures).
+Known rank is enough: dimension sizes need not be
 known. Identity composition remains a Transpose with the identity permutation,
 not a zero-node replacement. The built-in boundary check will not apply the
 fusion if the inner Transpose result is exposed as a graph output or is
@@ -212,7 +211,7 @@ They cannot collide with tensor, attribute, or element-type variable names.
 Tensor element names follow ONNX, for example `float`, `double`, `float16`,
 `bfloat16`, `int64`, `int32`, `uint8`, `bool`, and `string`. Only tensor types
 are supported; sequences, maps, and optional ONNX value types are not annotations.
-`None` in a type union describes an absent operator slot, not an ONNX optional
+For a tensor binding, `None` in a type union describes an absent operator slot, not an ONNX optional
 value type: `(x : float[], low : float | None, high : float | None)` allows absent
 scalar Clip bounds. An absent slot matches only its `None` alternative, without
 binding any dimensions or element type.
@@ -264,15 +263,10 @@ Attribute annotations are `int`, `float`, `string`, `ints`, `floats`, `strings`,
 or `tensor`, matching the corresponding concrete `AttributeProto` type.
 For example, `float` means a FLOAT attribute in keyword position but a scalar
 float32 tensor in tensor position; use `int64` for an integer tensor and `int`
-for an INT attribute. Attribute variables cannot also be tensor inputs, carry
-shapes, or use type unions (including `None`). Undeclared captures remain supported and untyped.
-There is no nullable `optionalAttributeOf` lookup: `attributeOf` requires a bound
-capture or prepared attribute and returns `const AttributeProto&`. A constrained
-attribute must exist for a match; a schema default inserted by `Graph::Resolve`
-counts as present. An optional attribute without a schema default (for example
-Transpose `perm`) may remain absent. Omit its keyword constraint and use
-`match.nodes[index]->GetAttributes().find("perm")` to distinguish that case in
-C++; omitted/default permutations still need their operator-specific semantics.
+for an INT attribute. Attribute variables cannot also be tensor inputs or carry
+shapes. An attribute annotation permits one concrete type, optionally combined
+with `None`, as described below; arbitrary attribute-type unions remain unsupported.
+Undeclared captures remain supported and untyped, and require a present attribute.
 
 Annotations are constraints on **patterns only**; replacements continue to use
 unannotated inputs and derive types/shapes from preserved outputs and schema
@@ -299,8 +293,8 @@ Callback rejection does not trigger another combination.
 
 The product of alternative counts across annotations is limited to 64 at parse time.
 Empty branches, duplicate constraints, and `None` alone are rejected.
-`None | float[M]` is also accepted, but `None` is permitted only for header tensor
-inputs, not assigned outputs or attribute captures. Replacements remain untyped.
+`None | float[M]` is also accepted. `None` is permitted in header tensor inputs
+and optional attribute captures, not assigned outputs. Replacements remain untyped.
 The former experimental `x?` syntax is removed; use `x : tensor[...] | None` for
 an unconstrained optional tensor slot.
 
@@ -393,8 +387,69 @@ Repeating a capture requires identical protobuf attribute content, ignoring the
 original attribute name and documentation string; type and list order matter.
 Captures can hold any concrete attribute type, but replacement schemas decide
 whether that type is valid. Captures are per match, survive clearing computed
-attributes, and cannot be overwritten with `match.update`. Missing attributes
-are not captured from schema defaults: only the resolved node's map is used.
+attributes, and cannot be overwritten with `match.update`. Matching reads only the resolved node's attribute map, including any defaults
+already inserted by `Graph::Resolve`.
+
+### Optional attribute captures
+
+Declare `name : type | None` (or `name : None | type`) to capture either a
+concrete attribute or its absence. The concrete type can be `int`, `float`,
+`string`, `ints`, `floats`, `strings`, or `tensor`; shape/element-type
+annotations and `const` are not attribute qualifiers. `None` alone and unions
+of multiple concrete attribute types are rejected. Classification follows use:
+`float | None` in a keyword position describes an optional FLOAT attribute,
+whereas in a tensor position it describes an optional scalar float32 tensor.
+
+```cpp
+Pattern pattern("(x, perm : ints | None) => return Transpose(x, perm = perm)");
+std::optional<Match> match;
+ORT_RETURN_IF_ERROR(pattern.MatchAt(graph, root_index, match));
+if (match) {
+  const ONNX_NAMESPACE::AttributeProto* perm = match->optionalAttributeOf("perm");
+  if (perm) {
+    // An explicit permutation, including an empty list for rank zero.
+  } else {
+    // Transpose uses reverse-axis order; interpretation belongs to the checker.
+  }
+}
+```
+
+`optionalAttributeOf` returns a pointer to a captured/prepared attribute, or
+`nullptr` for a successfully captured absence. It throws for unknown names,
+tensor bindings and captures unavailable in the selected plan. `attributeOf`
+still returns a const reference and throws for absence. Both lookups are
+available on `BindingView` with the same relative-name/scoping rules.
+References/pointers borrow the Match. Copying a Match preserves presence state;
+`ClearUpdates` does not clear captures or captured absence, and `update` cannot
+overwrite an optional capture even when absent. Prepared attributes still
+require concrete values: there is no prepared-None `update` API.
+
+Repeating a capture requires identical presence at every occurrence and, when
+present, identical normalized attribute contents. Missing/present is a mismatch
+in either order; an empty list is present, not absent. Each concrete candidate
+has fresh presence state. Ordinary nested calls and alternatives remap optional
+attribute bindings hygienically, just like mandatory captures. An unselected
+branch does not fabricate evidence of an absent attribute.
+
+Presence means presence in the **resolved map**, not original model spelling.
+For example, omitted LeakyRelu `alpha` becomes a present default after Resolve;
+Transpose `perm` has no schema default and may remain absent. Optional capture
+does not implement omitted-attribute semantics or prove replacement equivalence.
+
+A replacement keyword referring to captured absence is **omitted**, not written
+as an UNDEFINED/empty protobuf attribute:
+
+```cpp
+Rule preserve{"PreserveTranspose",
+              "(x, perm : ints | None) => return Transpose(x, perm = perm)",
+              "(x, perm) => Transpose(x, perm = perm)", {},
+              {{kOnnxDomain, 13, 25}}};
+```
+
+Staging then inserts target-schema defaults and validates required attributes.
+Omitting a required attribute fails and rolls back staging; it does not retry
+another candidate. The example illustrates propagation, not an optimization
+(use a one-iteration limit if executing this self-reproducing rule).
 
 Scalar numeric literals in replacements synthesize rank-zero float32 or int64
 initializers; list literals synthesize rank-one tensors. Replacement keyword
@@ -497,6 +552,21 @@ an unknown name: schema validation accepts it only in optional slots. Missing
 referenced names and tensor/attribute name collisions return errors; extra
 bindings are allowed for reusable environments. Replacements compiled internally
 against pattern integer handles cannot be instantiated independently.
+The final defaulted `absent_attributes` argument explicitly lists absent
+attribute bindings without changing the existing `NodeAttributes` map API:
+
+```cpp
+Replacement recipe("(x, perm) => Transpose(x, perm = perm)");
+Replacement::Instantiation built;
+ORT_RETURN_IF_ERROR(recipe.Instantiate(
+    graph, {{"x", input}}, {}, built, nullptr, {"perm"}));
+```
+
+A name must not occur in both the absent set and the present attributes or
+tensor bindings. Extra absent names are allowed like extra present bindings,
+but a referenced name missing from both attribute environments remains an error.
+Explicit absence omits the target keyword; target defaults/required validation
+still apply. This differs from a null tensor input, which occupies an ONNX slot.
 
 All output names are fresh and generated by the API. Existing operators, edges,
 graph inputs and outputs are not replaced or rewired. Result order matches recipe
@@ -534,7 +604,7 @@ host C++ choices, not ONNX control flow.
 `nodes` follows pattern operator order (last is the root); `values` is indexed by
 that selected pattern's handles. Use named/scoped lookups instead of transferring
 integer handles between definitions. `valueOf`, `optionalValueOf`, `attributeOf`,
-`dimensionOf`, `elementTypeOf` and `BindingView` provide read-only access to captures.
+`optionalAttributeOf`, `dimensionOf`, `elementTypeOf` and `BindingView` provide read-only access to captures.
 Unknown names are errors; explicitly declared optional unbound tensors are null.
 
 `update(name, AttributeProto)` prepares replacement attributes under fresh names
@@ -1317,7 +1387,7 @@ other annotation combinations.
 
 `match.instance("product")` returns a read-only `BindingView` for the activation
 call in the example. `view.instance("scaled")` selects its nested expression
-occurrence. Its `valueOf`, `optionalValueOf`, `attributeOf`, `dimensionOf`,
+occurrence. Its `valueOf`, `optionalValueOf`, `attributeOf`, `optionalAttributeOf`, `dimensionOf`,
 and `elementTypeOf` use names relative to that occurrence. `definition()` identifies the called definition,
 `interfaceName()` its contract, and `alternative()` the selected immediate member
 (empty for a body call). `alternativeView()` enters a selected call/member's metadata;

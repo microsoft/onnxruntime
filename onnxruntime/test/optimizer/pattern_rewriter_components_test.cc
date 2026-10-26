@@ -184,8 +184,7 @@ TEST(PatternComponentTests, MatchAtReturnsFirstCandidateAndClearsOrdinaryNonmatc
   ASSERT_TRUE(result);
 }
 
-TEST(PatternComponentTests, AttributeCapturesRequirePresenceAndDoNotSupportNone) {
-  EXPECT_THROW((void)Pattern("(x,p:ints|None)=>return Transpose(x,perm=p)"), OnnxRuntimeException);
+TEST(PatternComponentTests, OptionalAttributeCapturesDistinguishAbsenceFromUnknownNames) {
   TestGraph test;
   auto& b = test.builder;
   auto* x = b.MakeInput<float>({2, 3}, -1.0f, 1.0f);
@@ -199,6 +198,261 @@ TEST(PatternComponentTests, AttributeCapturesRequirePresenceAndDoNotSupportNone)
   ASSERT_TRUE(result);
   EXPECT_EQ(result->nodes[0]->GetAttributes().find("perm"), result->nodes[0]->GetAttributes().end());
   EXPECT_THROW(result->attributeOf("p"), OnnxRuntimeException);
+  ASSERT_STATUS_OK(Pattern("(x,p:ints|None)=>return Transpose(x,perm=p)").MatchAt(test.graph, root.Index(), result));
+  ASSERT_TRUE(result);
+  EXPECT_EQ(result->optionalAttributeOf("p"), nullptr);
+  EXPECT_EQ(result->bindings().optionalAttributeOf("p"), nullptr);
+  EXPECT_THROW(result->attributeOf("p"), OnnxRuntimeException);
+  EXPECT_THROW(result->optionalAttributeOf("missing"), OnnxRuntimeException);
+  EXPECT_THROW(result->optionalAttributeOf("x"), OnnxRuntimeException);
+  EXPECT_THROW(result->valueOf("p"), OnnxRuntimeException);
+  EXPECT_THROW(result->optionalValueOf("p"), OnnxRuntimeException);
+  Match copy = *result;
+  ONNX_NAMESPACE::AttributeProto prepared;
+  prepared.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+  prepared.set_i(1);
+  EXPECT_THROW(result->update("p", prepared), OnnxRuntimeException);
+  result->update("prepared", prepared);
+  EXPECT_EQ(result->optionalAttributeOf("prepared")->i(), 1);
+  result->Reject("rejected");
+  result->ClearUpdates();
+  EXPECT_EQ(result->optionalAttributeOf("p"), nullptr);
+  EXPECT_EQ(copy.optionalAttributeOf("p"), nullptr);
+  EXPECT_THROW(result->optionalAttributeOf("prepared"), OnnxRuntimeException);
+}
+
+TEST(PatternComponentTests, OptionalAttributeTypesAndResolvedDefaults) {
+  for (const char* type : {"int", "ints", "float", "floats", "string", "strings", "tensor"}) {
+    const auto text = MakeString("(x,p:", type, "|None)=>return Identity(x,unused=p)");
+    EXPECT_NO_THROW((void)Pattern(text));
+  }
+  for (const char* text : {
+           "(x,p:None)=>return Identity(x,unused=p)",
+           "(x,p:ints|float|None)=>return Identity(x,unused=p)",
+           "(x,p:const int64[1]|None)=>return Identity(x,unused=p)",
+           "(x,p:float[1]|None)=>return Identity(x,unused=p)",
+           "(x,p:ints|None)=>return Add(x,p,unused=p)"}) {
+    EXPECT_THROW((void)Pattern(text), OnnxRuntimeException) << text;
+  }
+  for (bool present : {false, true}) {
+    TestGraph test;
+    auto* x = test.builder.MakeInput<float>({2, 3}, -1.0f, 1.0f);
+    auto& root = test.builder.AddNode("Transpose", {x}, {test.builder.MakeOutput()});
+    if (present) root.AddAttribute("perm", std::vector<int64_t>{1, 0});
+    test.builder.SetGraphOutputs();
+    ASSERT_STATUS_OK(test.graph.Resolve());
+    for (const char* annotation : {"ints|None", "None|ints", "float|None"}) {
+      std::optional<Match> match;
+      ASSERT_STATUS_OK(Pattern(MakeString("(x,p:", annotation, ")=>return Transpose(x,perm=p)"))
+                           .MatchAt(test.graph, root.Index(), match));
+      EXPECT_EQ(match.has_value(), !present || std::string_view(annotation) != "float|None");
+      if (match) {
+        const auto* attribute = match->optionalAttributeOf("p");
+        EXPECT_EQ(attribute != nullptr, present);
+        if (attribute) EXPECT_EQ(attribute->ints_size(), 2);
+      }
+    }
+  }
+  TestGraph defaults;
+  auto* x = defaults.builder.MakeInput<float>({2}, -1.0f, 1.0f);
+  auto& root = defaults.builder.AddNode("LeakyRelu", {x}, {defaults.builder.MakeOutput()});
+  defaults.builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(defaults.graph.Resolve());
+  std::optional<Match> match;
+  ASSERT_STATUS_OK(Pattern("(x,p:float|None)=>return LeakyRelu(x,alpha=p)")
+                       .MatchAt(defaults.graph, root.Index(), match));
+  ASSERT_TRUE(match);
+  ASSERT_NE(match->optionalAttributeOf("p"), nullptr);
+  EXPECT_FLOAT_EQ(match->attributeOf("p").f(), 0.01f);
+  TestGraph integers;
+  auto* input = integers.builder.MakeInput<float>({2, 3}, -1.0f, 1.0f);
+  auto& softmax = integers.builder.AddNode("Softmax", {input}, {integers.builder.MakeOutput()});
+  integers.builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(integers.graph.Resolve());
+  ASSERT_STATUS_OK(PatternLibrary("pattern E(x,p:int|None)->(y){y=Softmax(x,axis=p);return y}")
+                       .GetPattern("E")
+                       .MatchAt(integers.graph, softmax.Index(), match));
+  ASSERT_TRUE(match);
+  EXPECT_EQ(match->attributeOf("p").i(), -1);
+}
+
+TEST(PatternComponentTests, RepeatedOptionalAttributesRequireEqualPresenceAndPayload) {
+  for (int inner = 0; inner < 3; ++inner) {
+    for (int outer = 0; outer < 3; ++outer) {
+      TestGraph test;
+      auto& b = test.builder;
+      auto* x = b.MakeInput<float>({2, 3}, -1.0f, 1.0f);
+      auto* y = b.MakeIntermediate();
+      auto& a = b.AddNode("Transpose", {x}, {y});
+      auto& root = b.AddNode("Transpose", {y}, {b.MakeOutput()});
+      if (inner) a.AddAttribute("perm", inner == 1 ? std::vector<int64_t>{1, 0} : std::vector<int64_t>{0, 1});
+      if (outer) root.AddAttribute("perm", outer == 1 ? std::vector<int64_t>{1, 0} : std::vector<int64_t>{0, 1});
+      b.SetGraphOutputs();
+      ASSERT_STATUS_OK(test.graph.Resolve());
+      std::optional<Match> match;
+      ASSERT_STATUS_OK(Pattern("(x,p:ints|None)=>{a=Transpose(x,perm=p);return Transpose(a,perm=p)}")
+                           .MatchAt(test.graph, root.Index(), match));
+      EXPECT_EQ(match.has_value(), inner == outer) << inner << "," << outer;
+    }
+  }
+  TestGraph scalar;
+  auto* x = scalar.builder.MakeInput<float>({}, -1.0f, 1.0f);
+  auto& root = scalar.builder.AddNode("Transpose", {x}, {scalar.builder.MakeOutput()});
+  root.AddAttribute("perm", std::vector<int64_t>{});
+  scalar.builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(scalar.graph.Resolve());
+  std::optional<Match> match;
+  ASSERT_STATUS_OK(Pattern("(x,p:ints|None)=>return Transpose(x,perm=p)")
+                       .MatchAt(scalar.graph, root.Index(), match));
+  ASSERT_TRUE(match);
+  ASSERT_NE(match->optionalAttributeOf("p"), nullptr);
+  EXPECT_EQ(match->attributeOf("p").ints_size(), 0);
+}
+
+TEST(PatternComponentTests, OptionalAttributeCompositionAndCheckerRetryAreIsolated) {
+  TestGraph test;
+  auto& b = test.builder;
+  auto* x = b.MakeInput<float>({2, 3}, -1.0f, 1.0f);
+  auto* y = b.MakeIntermediate();
+  b.AddNode("Transpose", {x}, {y}).AddAttribute("perm", std::vector<int64_t>{1, 0});
+  auto& root = b.AddNode("Transpose", {y}, {b.MakeOutput()});
+  b.SetGraphOutputs();
+  ASSERT_STATUS_OK(test.graph.Resolve());
+  PatternLibrary library(R"(
+    pattern Short(x,p:ints|None) { return Transpose(x,perm=p) }
+    pattern Long(x,p:ints|None) { a=Transpose(x,perm=p); return Transpose(a) }
+    pattern Nested(x,p:ints|None) { a=Short(x,p); return a }
+    pattern E(x,p:ints|None) { a=Nested(x,p)|Long(x,p); return a }
+  )");
+  int calls = 0;
+  Match saved;
+  auto visitor = [&](Match& match) {
+    if (++calls == 1) {
+      EXPECT_EQ(match.optionalAttributeOf("p"), nullptr);
+      EXPECT_EQ(match.instance("a").optionalAttributeOf("p"), nullptr);
+      return true;
+    }
+    EXPECT_NE(match.optionalAttributeOf("p"), nullptr);
+    EXPECT_EQ(match.attributeOf("p").ints(0), 1);
+    saved = match;
+    return false;
+  };
+  ASSERT_STATUS_OK(library.GetPattern("E").VisitMatches(test.graph, root.Index(), visitor));
+  EXPECT_EQ(calls, 2);
+  EXPECT_EQ(saved.attributeOf("p").ints_size(), 2);
+  EXPECT_EQ(saved.instance("a").optionalAttributeOf("p"), &saved.attributeOf("p"));
+}
+
+TEST(ReplacementComponentTests, ExplicitAbsentAttributesOmitKeywordsAndPreserveMissingErrors) {
+  TestGraph test;
+  auto* x = test.builder.MakeInput<float>({2}, -1.0f, 1.0f);
+  Replacement::Instantiation result;
+  ASSERT_STATUS_OK(Replacement("(x,p)=>LeakyRelu(x,alpha=p)")
+                       .Instantiate(test.graph, {{"x", x}}, {}, result, nullptr, {"p", "unused"}));
+  EXPECT_FLOAT_EQ(test.graph.GetNode(result.nodes.front())->GetAttributes().at("alpha").f(), 0.01f);
+  Replacement::Instantiation transpose;
+  ASSERT_STATUS_OK(Replacement("(x,p)=>Transpose(x,perm=p)")
+                       .Instantiate(test.graph, {{"x", x}}, {}, transpose, nullptr, {"p"}));
+  EXPECT_TRUE(test.graph.GetNode(transpose.nodes.front())->GetAttributes().empty());
+  const auto count = test.graph.NumberOfNodes();
+  const auto initializers = test.graph.GetAllInitializedTensors().size();
+  for (const char* text : {"(x,p)=>LeakyRelu(x,alpha=p)", "(x,p)=>{a=Add(x,1.0);return Cast(a,to=p)}"}) {
+    Replacement::Instantiation unchanged = result;
+    const bool required = std::string_view(text).find("Cast") != std::string_view::npos;
+    const InlinedHashSet<std::string> absent = required ? InlinedHashSet<std::string>{"p"} : InlinedHashSet<std::string>{"typo"};
+    EXPECT_FALSE(Replacement(text).Instantiate(test.graph, {{"x", x}}, {}, unchanged, nullptr, absent).IsOK());
+    EXPECT_EQ(unchanged.nodes, result.nodes);
+    EXPECT_EQ(unchanged.outputs, result.outputs);
+    EXPECT_EQ(test.graph.NumberOfNodes(), count);
+    EXPECT_EQ(test.graph.GetAllInitializedTensors().size(), initializers);
+  }
+  ONNX_NAMESPACE::AttributeProto attribute;
+  attribute.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_FLOAT);
+  attribute.set_f(0.5f);
+  EXPECT_FALSE(Replacement("(x,p)=>LeakyRelu(x,alpha=p)")
+                   .Instantiate(test.graph, {{"x", x}}, {{"p", attribute}}, result, nullptr, {"p"})
+                   .IsOK());
+  EXPECT_FALSE(Replacement("(x)=>Identity(x)")
+                   .Instantiate(test.graph, {{"x", x}}, {}, result, nullptr, {"x"})
+                   .IsOK());
+}
+
+TEST(PatternRewriterTests, OptionalAttributeReplacementAndRequiredRuleIsolation) {
+  for (bool indexed : {false, true}) {
+    for (bool present : {false, true}) {
+      TestGraph test;
+      auto* x = test.builder.MakeInput<float>({2, 3}, -1.0f, 1.0f);
+      auto& root = test.builder.AddNode("Transpose", {x}, {test.builder.MakeOutput()});
+      if (present) root.AddAttribute("perm", std::vector<int64_t>{1, 0});
+      test.builder.SetGraphOutputs();
+      ASSERT_STATUS_OK(test.graph.Resolve());
+      int required_calls = 0, optional_calls = 0;
+      Rules rules{
+          Rule{"Required", "(x,p:ints)=>return Transpose(x,perm=p)", "(x,p)=>Transpose(x,perm=p)", [&](const Graph&, Match&) { ++required_calls; return false; }, {{kOnnxDomain, 13, 25}}},
+          Rule{"Optional", "(x,p:ints|None)=>return Transpose(x,perm=p)", "(x,p)=>Transpose(x,perm=p)", [&](const Graph&, Match& match) {
+                 ++optional_calls;
+                 EXPECT_EQ(match.optionalAttributeOf("p") != nullptr, present);
+                 return true;
+               },
+               {{kOnnxDomain, 13, 25}}}};
+      Options options;
+      options.indexed = indexed;
+      options.max_iterations = 1;
+      PatternRewriter rewriter(std::move(rules), options);
+      Statistics statistics;
+      ASSERT_STATUS_OK(rewriter.Run(test.graph, statistics));
+      EXPECT_EQ(statistics.rewrites, 1u);
+      EXPECT_EQ(required_calls, present ? 1 : 0);
+      EXPECT_EQ(optional_calls, 1);
+      for (const auto& node : test.graph.Nodes()) {
+        EXPECT_EQ(node.GetAttributes().count("perm"), present ? 1u : 0u);
+      }
+      ASSERT_STATUS_OK(test.graph.Resolve());
+    }
+  }
+}
+
+TEST(PatternRewriterTests, OptionalAttributeCheckerRejectionRetriesAndRequiredOmissionRollsBack) {
+  for (bool indexed : {false, true}) {
+    TestGraph test;
+    auto& b = test.builder;
+    auto* x = b.MakeInput<float>({2, 3}, -1.0f, 1.0f);
+    auto* y = b.MakeIntermediate();
+    b.AddNode("Transpose", {x}, {y}).AddAttribute("perm", std::vector<int64_t>{1, 0});
+    b.AddNode("Transpose", {y}, {b.MakeOutput()});
+    b.SetGraphOutputs();
+    ASSERT_STATUS_OK(test.graph.Resolve());
+    PatternLibrary library(R"(
+      pattern Short(x,p:ints|None) { return Transpose(x,perm=p) }
+      pattern Long(x,p:ints|None) { a=Transpose(x,perm=p);return Transpose(a) }
+      pattern E(x,p:ints|None) { a=Short(x,p)|Long(x,p);return a }
+    )");
+    int rejected = 0, accepted = 0;
+    Rule rule{"OptionalRetry", library.GetPattern("E"), "(x,p)=>Transpose(x,perm=p)", [&](const Graph&, Match& match) {
+                if (!match.optionalAttributeOf("p")) {
+                  ++rejected;
+                  return match.Reject("Need explicit perm");
+                }
+                ++accepted;
+                return true;
+              },
+              {{kOnnxDomain, 13, 25}}};
+    Options options;
+    options.indexed = indexed;
+    options.match_only = true;
+    Statistics statistics;
+    ASSERT_STATUS_OK(PatternRewriter({std::move(rule)}, options).Run(test.graph, statistics));
+    EXPECT_EQ(rejected, 1);
+    EXPECT_EQ(accepted, 2);  // The inner short match and the outer long match.
+
+    const auto before = test.model.ToProto().SerializeAsString();
+    Rule invalid{"MissingRequired", "(x,p:ints|None)=>return Transpose(x,perm=p)", "(x,p)=>{a=Add(x,1.0);return Cast(a,to=p)}", [](const Graph&, Match& match) { return !match.optionalAttributeOf("p"); }, {{kOnnxDomain, 13, 25}}};
+    options.match_only = false;
+    EXPECT_FALSE(PatternRewriter({std::move(invalid)}, options).Run(test.graph, statistics).IsOK());
+    EXPECT_EQ(test.model.ToProto().SerializeAsString(), before);
+    EXPECT_EQ(test.graph.NumberOfNodes(), 2);
+    EXPECT_TRUE(test.graph.GetAllInitializedTensors().empty());
+  }
 }
 
 TEST(PatternComponentTests, DeletionBoundaryButNotProviderPolicyIsIncluded) {
