@@ -18,6 +18,20 @@ or copy the entire file and remove the mobile projects (anything with iOS, Andro
 
 ## Development setup:
 
+### Desktop CI tests
+
+`Microsoft.ML.OnnxRuntime.Tests.NetCoreApp` requires the .NET 10 SDK and runs on the .NET 10 runtime.
+After building the native libraries, run it from the repository root:
+
+```powershell
+dotnet test csharp\test\Microsoft.ML.OnnxRuntime.Tests.NetCoreApp\Microsoft.ML.OnnxRuntime.Tests.NetCoreApp.csproj -p:IncludeMobileTargets=false
+```
+
+The managed library and shared test library retain their `netstandard2.0;net8.0` targets. The desktop test
+runner consumes those assemblies on .NET 10 without changing the managed package's supported frameworks.
+Linux CI containers install SDK 10 and retain runtime 8 for the separate package validation projects
+that still target `net8.0`.
+
 ### Requirements:
 
 #### Windows
