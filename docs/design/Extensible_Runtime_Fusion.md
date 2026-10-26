@@ -1,6 +1,6 @@
-# Post-partition runtime fusion for canonical ONNX
+# EP-registered runtime fusion for canonical ONNX
 
-Status: **engineering design for review, not approved for implementation** (October 15, 2026).
+Status: **engineering design for review, not approved for implementation** (revised October 26, 2026).
 Tracks [#33403](https://github.com/microsoft/onnxruntime/issues/33403).
 No native build, dependency installation, GPU allocation, model execution, or runtime probe was
 performed for this design. Test names, commands, numerical gates, and performance budgets below are
@@ -33,6 +33,19 @@ transparent retry after state mutation. CPU and native WebGPU are architectural 
 requirements, not first-release implementations. Compiler EPs need not adopt this mechanism.
 Qwen3.8-27B is a pilot, not a model-specific runtime API.
 
+### Revised integration direction
+
+Fusion patterns register on the EP side. Each EP owns their priority order and exposes eligible
+execution candidates through the capability path. ORT chooses compatible candidates in that order,
+subject to ownership, semantic, kernel, and, when enabled, memory-feasibility checks. There is no
+per-session speed competition and no separate post-partition package-selection pipeline.
+
+Separate candidate description from application so memory estimation can be connected without
+rerunning a mutating matcher. Reuse `GetCapability`, `ComputeCapability`, and the capability
+optimization application model first; define only the missing adapters. Independent package delivery
+remains a goal, not a reason to freeze a second graph-inspection ABI or require a competing EP.
+These are the proposed design direction, not a claim of maintainer approval or existing support.
+
 ## 2. Evidence ledger and baseline discipline
 
 All runtime claims below refer to **R**, unless a difference is explicitly noted. Links are immutable
@@ -44,7 +57,8 @@ research references, not claims that proposed interfaces exist.
 | M | [Mobius main `b1e9c8e9dec1dfa206183f957e77d07cfb734df2`](https://github.com/onnxruntime/mobius/tree/b1e9c8e9dec1dfa206183f957e77d07cfb734df2) |
 | G | [GenAI main `991e3560e63b8a26806d4ec7d702c04e75fb6e51`](https://github.com/microsoft/onnxruntime-genai/tree/991e3560e63b8a26806d4ec7d702c04e75fb6e51) |
 | F | [Fusion proposal `587ef1bf3467935b083740a52ac8fcba3785b2a6`](https://github.com/microsoft/onnxruntime/blob/587ef1bf3467935b083740a52ac8fcba3785b2a6/docs/design/Extensible_Runtime_Fusion.md) |
-| P | [Placement proposal `e7604f130fef274e68fb2e410936550b832f254e`](https://github.com/microsoft/onnxruntime/blob/e7604f130fef274e68fb2e410936550b832f254e/docs/annotated_partitioning/PartitioningWithAnnotationsAndMemoryConstraints.md) |
+| P | [Placement proposal `2f96ad081fdbe1d76a2a731262a998b3cd4c9c0d`](https://github.com/microsoft/onnxruntime/blob/2f96ad081fdbe1d76a2a731262a998b3cd4c9c0d/docs/annotated_partitioning/PartitioningWithAnnotationsAndMemoryConstraints.md), refreshed October 26 for the proposed recipe/planning integration only |
+| W | [Composable rewrite rules, gramalingam/onnxruntime#16 at `6d707086e04fe287f162b9dc2baf58b935d8e2bc`](https://github.com/gramalingam/onnxruntime/blob/6d707086e04fe287f162b9dc2baf58b935d8e2bc/docs/Pattern_Rewriter.md); optional matcher implementation, not an ORT-main dependency |
 | V | [OpenVINO plugin `7463f66e48d09fe5150af8c76520fbf75e08c490`](https://github.com/onnxruntime/onnxruntime-ep-openvino/tree/7463f66e48d09fe5150af8c76520fbf75e08c490); compiler-EP comparison only |
 
 The PR base is default-branch commit `327d11ab6c22e387acf793dd9de8caf406055ca9`.
@@ -54,6 +68,9 @@ accountant's new `INT32_MAX` validation for the CUDA GQA total-sequence bound an
 workspace bounds/estimate helpers. These do not supply target re-estimation for arbitrary rewrites.
 Do not combine P's proposed reconciliation with R and describe the result as implemented.
 Any implementation PR must repeat the comparison against its actual base and publish its build pin.
+The October 26 revision also inspected the PR head's `execution_provider.h:152-179`,
+`compute_capability.h:27-44`, and `graph_partitioner.cc:1145-1181` for the capability integration below.
+Refreshing P and W does not refresh R or turn either proposal into shipped runtime functionality.
 V's `CreateEpFactories`/`ReleaseEpFactory` lifetime patterns are useful references. Its
 GetCapability/Compile and AddNodesToFuse path owns compiled regions; it is not a public extension
 that borrows existing CUDA kernels. Creating a competing EP solely to reach those kernels is rejected.
@@ -63,447 +80,249 @@ that borrows existing CUDA kernels. Creating a competing EP solely to reach thos
 | Evidence at R | Implication |
 |---|---|
 | [`inference_session.cc:1590-1602,1896-1952,2015-2087`](https://github.com/microsoft/onnxruntime/blob/1988019b6e23ac4def4628cddd603c1bfb504fe8/onnxruntime/core/session/inference_session.cc#L1896-L1952) | L1 precedes partition; mutation accounting is installed after partition; L2+ and casts repeat; copies follow. |
-| [`graph_transformer_utils.cc:413-426,464-467`](https://github.com/microsoft/onnxruntime/blob/1988019b6e23ac4def4628cddd603c1bfb504fe8/onnxruntime/core/optimizer/graph_transformer_utils.cc#L413-L426), [`graph_transformer_mgr.cc:38-59`](https://github.com/microsoft/onnxruntime/blob/1988019b6e23ac4def4628cddd603c1bfb504fe8/onnxruntime/core/optimizer/graph_transformer_mgr.cc#L38-L59) | Ordinary transformer registration order is not a once-only extension stage. |
+| [`graph_transformer_utils.cc:413-426,464-467`](https://github.com/microsoft/onnxruntime/blob/1988019b6e23ac4def4628cddd603c1bfb504fe8/onnxruntime/core/optimizer/graph_transformer_utils.cc#L413-L426), [`graph_transformer_mgr.cc:38-59`](https://github.com/microsoft/onnxruntime/blob/1988019b6e23ac4def4628cddd603c1bfb504fe8/onnxruntime/core/optimizer/graph_transformer_mgr.cc#L38-L59) | Repeated optimization loops must not independently reselect a capability's implementation. |
+| [`execution_provider.h:152-179`](https://github.com/microsoft/onnxruntime/blob/3207aa12931ac9de054fdf0de183f7f036c01269/include/onnxruntime/core/framework/execution_provider.h#L152-L179) | `GetCapability` can return overlapping source-node sets; ORT decides assignment. The signature includes optimizer-registry and resource-accountant inputs. |
+| [`compute_capability.h:27-44`](https://github.com/microsoft/onnxruntime/blob/3207aa12931ac9de054fdf0de183f7f036c01269/onnxruntime/core/framework/compute_capability.h#L27-L44), [`graph_partitioner.cc:1145-1181`](https://github.com/microsoft/onnxruntime/blob/3207aa12931ac9de054fdf0de183f7f036c01269/onnxruntime/core/framework/graph_partitioner.cc#L1145-L1181) | Child optimization callbacks can update an available parent capability before placement/fusion. This is an application hook, not a complete alternative-recipe planner. |
 | [`group_query_attention_fusion.cc:413-440`](https://github.com/microsoft/onnxruntime/blob/1988019b6e23ac4def4628cddd603c1bfb504fe8/onnxruntime/core/optimizer/group_query_attention_fusion.cc#L413-L440) | Existing GQA fusion starts from contrib GQA, not canonical Attention. |
 | [`attention_fusion.cc:1030-1046`](https://github.com/microsoft/onnxruntime/blob/1988019b6e23ac4def4628cddd603c1bfb504fe8/onnxruntime/core/optimizer/attention_fusion.cc#L1030-L1046), [`session_state.cc:242-310`](https://github.com/microsoft/onnxruntime/blob/1988019b6e23ac4def4628cddd603c1bfb504fe8/onnxruntime/core/framework/session_state.cc#L242-L310) | Rewrites can retain EP assignment; finalization later binds registered kernels. |
 | [`inference_session.cc:1113-1129`](https://github.com/microsoft/onnxruntime/blob/1988019b6e23ac4def4628cddd603c1bfb504fe8/onnxruntime/core/session/inference_session.cc#L1113-L1129) | Private C++ registration is not an external binary contract. Preserve its existing enable behavior. |
-| [`onnxruntime_c_api.h:6130-6653,8210-8244`](https://github.com/microsoft/onnxruntime/blob/1988019b6e23ac4def4628cddd603c1bfb504fe8/include/onnxruntime/core/session/onnxruntime_c_api.h#L6130-L6653) | Public inspection and pre-finalization Model Editor are not a post-partition rewrite transaction. |
-| [`onnxruntime_experimental_c_api.inc:21-37`](https://github.com/microsoft/onnxruntime/blob/1988019b6e23ac4def4628cddd603c1bfb504fe8/include/onnxruntime/core/session/onnxruntime_experimental_c_api.inc#L21-L37) | Experimental discovery exists, but no fusion registration entry exists. |
+| [`onnxruntime_c_api.h:6130-6653,8210-8244`](https://github.com/microsoft/onnxruntime/blob/1988019b6e23ac4def4628cddd603c1bfb504fe8/include/onnxruntime/core/session/onnxruntime_c_api.h#L6130-L6653) | Reuse public `OrtGraph`/`OrtNode`/`OrtValueInfo` inspection where possible; Model Editor alone does not supply the capability recipe/application contract. |
+| [`onnxruntime_experimental_c_api.inc:21-37`](https://github.com/microsoft/onnxruntime/blob/1988019b6e23ac4def4628cddd603c1bfb504fe8/include/onnxruntime/core/session/onnxruntime_experimental_c_api.inc#L21-L37) | Experimental discovery exists, but no independently deployed EP-pattern registration interface is established here. |
 | [`kernel_registry_manager.cc:60-104`](https://github.com/microsoft/onnxruntime/blob/1988019b6e23ac4def4628cddd603c1bfb504fe8/onnxruntime/core/framework/kernel_registry_manager.cc#L60-L104) | Custom registries have precedence; an operator name alone proves neither implementation nor eligibility. |
 
 ## 3. Integration and graph lifecycle (D1)
 
-For the fixed-placement pilot, propose an explicit call in `TransformGraph`, after partition and
-installation of mutation-accounting callbacks, immediately before the existing outer L2+ loop
-(before R's line 2015):
+### EP-owned registration and capability discovery
+
+Each EP owns a registry of enabled fusion patterns and an explicit ordered pattern list. A pattern
+can be EP-bundled or supplied by an optional independently updated package, but both enter the same
+registry and selection path. EP options express permission and priority, not proof of eligibility.
+Keep existing cross-EP priority; this design does not let an external package claim nodes on behalf
+of an unrelated provider.
+
+During `GetCapability`, the EP matches the normalized graph and describes executable candidates.
+A candidate identifies a source-node set and a prepared implementation recipe, not a second
+complete model that ORT must execute to compare performance. Different patterns may cover the same
+source nodes or emit different replacement DAGs. Standalone execution remains a candidate where
+supported; a region executable only after fusion need not first have standalone target-EP kernels.
+
+Use the existing `ComputeCapability` application model, including `nodes_to_optimize` and an
+ORT-controlled `optimization_func` adapter, rather than add an unrelated post-partition callback.
+Existing registry optimizers can be shared through `GraphOptimizerRegistry`. Neither `Graph&`
+nor `std::function` crosses a future external ABI.
+
+**This is reuse, not an assertion that the current API is sufficient unchanged.** The current
+partitioner checks availability, runs child optimizations, and places/fuses the updated parent.
+Explicit candidate ordering, nonmutating recipe descriptions, arbitrary replacement-DAG capability
+updates/splitting, graph-revision validation, and external registration still need supported adapters.
+The first structural probe must verify that emitted adapters and existing contrib nodes receive
+normal kernel registration/finalization without incorrectly becoming one compiled synthetic node.
+
+### Proposed lifecycle and ordering
+
+The logical lifecycle is:
 
 ```text
-canonical load -> shared preprocessing / L0-L1 -> ordinary partition and EP assignment
- -> install mutation accounting -> extension snapshot / match / validate / commit ONCE
- -> existing repeated L2/L3 -> casts -> L4 [existing loop] -> final copies
- -> final graph/resource admission -> kernel creation / PrePack / declarations -> Run
+canonical load -> shared preprocessing / L0-L1
+ -> EP GetCapability: describe candidates from EP-ordered patterns
+ -> ORT checks availability, eligibility, and ordered conflicts
+ -> [budgeted integration: query recipe requirements before final selection]
+ -> provisionally select compatible candidates
+ -> apply selected recipes through capability optimization adapters
+ -> reconcile graph, capabilities, kernels, and resource information
+ -> finalize placement -> kernel creation / PrePack -> Run
 ```
 
-Enable only with explicit session configuration and optimization level at least L2. Registration
-alone is not enablement. Disabled, absent, or Basic-only extensions do not receive callbacks or
-change normal optimization. Explicit required-pattern configuration at Basic fails configuration
-validation rather than pretending to satisfy that requirement.
+Within an EP, sort candidates first by the EP's pattern-list ordinal, then by stable graph traversal,
+anchor node ID, and candidate ID. Package registration/load order must not override this list.
+Process valid candidates greedily in that order; an accepted candidate excludes overlapping ones,
+including parent whole-Scan versus descendant rewrites. A declined candidate does not claim nodes
+or consume reservations, so a lower-priority feasible candidate can still be considered.
+Priority never overrides schemas, semantics, ownership, kernel availability, or memory feasibility.
+There is no original-versus-fused speed tournament, online benchmark, or optimal-combination search.
 
-V1 supports ordinary ONNX inference initialization. ORT-format loading, compile-only sessions,
-training, online re-partitioning, and graph replay from an optimized cache are initially unsupported
-extension entry paths: optional extension use is diagnosed as not applicable; required use fails.
-This avoids accidentally modifying assign-only serialization behavior.
+Pattern selection requires explicit enablement and optimization level at least L2. Absent, disabled,
+and Basic-only configurations preserve ordinary behavior. Required-pattern policy at Basic fails
+configuration validation. Initial scope is ordinary ONNX inference initialization; ORT-format
+loading, compile-only sessions, training, online repartition, and optimized-cache replay need
+separate support. Optional use on those paths is diagnosed as not applicable; required use fails.
 
-Core freezes a session snapshot generation and graph IDs after partition. Traverse graphs in stable
-parent-before-child order; skip descendants of compiler-owned opaque regions. All callbacks see
-this same generation before any proposal is committed. A parent whole-Scan proposal conflicts with
-every descendant proposal. No callback runs again when L2 repeats or an emitted contrib node exposes
-another optimization. New body graphs are not a new matching round. A later explicitly supported
-reinitialization would require new identities and a new generation, not reuse of stale handles.
+`GetCapability` can be called again as graphs/providers/layouts change. Discovery must therefore be
+read-only and repeatable, not globally once-only. Key prepared candidates by graph revision,
+ownership view, EP instance, effective configuration and workload bounds. Do not reuse stale matches
+or double-charge resources on another pass. Apply only a selected candidate valid for that revision;
+its application callback must execute the chosen recipe, not rerun matching to select another one.
+Install the necessary graph/accounting update support before application; do not depend solely on
+callbacks currently installed after partition.
 
-Match the graph actually present here, not the exporter input. Publish positive and near-match
-fixtures at this boundary, including L0/L1 normalization and partition assignments. Later transforms
-may change replacement nodes; trace them and revalidate kernel/resource provenance on the final
-graph. Retain the existing private `RegisterGraphTransformer` path unchanged.
+Publish positive and near-match fixtures at capability discovery, not only untouched exporter
+topology. Preserve unrelated private transformer behavior. Later transforms may further optimize
+emitted nodes, but must not silently invalidate selected kernel/state/resource contracts.
 
-### Future fusion-aware placement integration
+### Memory estimation and placement planning
 
-The fixed-placement path above is not the future planner's final-assignment contract. As
-[chilo-ms notes](https://github.com/microsoft/onnxruntime/issues/33403#issuecomment-6226599402),
-assignment-dependent matching may use tentative EP ownership. A planner must know eligible
-implementation recipes, their logical graph effects and allocation requirements before accepting
-a placement; source-only sizing could otherwise offload a region whose fused target would fit.
-The separately proposed planning flow is:
+Baseline delivery can first exercise ordered capability selection without claiming a memory bound.
+The next integration connects target-specific estimators to those same recipes, not a separate
+post-partition fusion pipeline. A budgeted selector evaluates memory feasibility before accepting
+a candidate, then considers the next EP-ordered candidate if the higher-priority one is infeasible.
+The baseline order-only selector does not need a full CPU/GPU planner to demonstrate fusion.
 
-```text
-candidate EP assignment view
- -> read-only recipe / effect / resource queries
- -> planner chooses placement and compatible recipes
- -> rewrite only selected regions
- -> verify transformed graph and memory feasibility
- -> finalize ownership -> instantiate device resources
-```
+For the future planner in [#33372](https://github.com/microsoft/onnxruntime/pull/33372), supply tentative
+EP ownership without final assignment. Describe logical graph effects and allocation requirements
+before selecting placement; the fused implementation may fit where unfused source estimates do not.
+Queries must not mutate the live graph, construct kernels, upload weights, or materialize trial
+device resources. Apply a provisional winner on a candidate graph, reconcile transfers/casts and the
+execution/backing plan, verify, then commit final placement before materialization.
+Placement-sensitive L2+ passes must participate as selected recipes or be gated in this mode.
+This planner is proposed follow-on work, not current ORT behavior or a prerequisite for baseline.
 
-Keep recipe description separate from rewrite application. Queries must not mutate the live graph,
-construct target kernels, upload weights or materialize trial device resources; evaluating another
-placement must not require executing every candidate transformation. A future planning context must
-identify its tentative ownership view, graph revision and workload/contract bounds, so recipes and
-estimates from a discarded trial cannot be reused for another assignment.
+## 4. Recipe contracts and independent delivery (D2)
 
-V1's once-only callbacks still inspect a fixed assigned snapshot; the current C table does not
-claim this planning-mode context. Any future adapter/context extensions require separate API,
-lifetime and resource-owner approval with the
-[region-aware placement proposal #33372](https://github.com/microsoft/onnxruntime/pull/33372).
-Neither the planner nor repeated planning queries are added to this pilot. Required-pattern policy
-and preference for eligible fusion remain in force; this is not per-session speed benchmarking.
+### Logical descriptors, not a frozen ABI
 
-## 4. Proposed experimental C boundary (D2)
+Define the capability integration before fixing external function tables. The previous draft's
+parallel `OrtRF*` inspection/registration table is not the selected interface for this revision.
+Reuse `OrtGraph`, `OrtNode`, and `OrtValueInfo` for external read-only inspection where applicable,
+adding only missing revision, EP-instance, workload, and bounded-constant-access contracts.
+No new public API names, binary layouts, experimental factory, or loading entry point are approved
+by this document. The first prototype can use internal adapters, but cannot claim independent
+binary deployment on that basis.
 
-**Every `OrtRF*` declaration below is proposed, not shipped.** These declarations specify the V1
-wire contract; implementation headers must add normal ORT annotations and complete API documentation.
-Use `ORT_API_CALL`, C-compatible records, UTF-8 strings, `OrtStatus*`, and existing public type
-handles. No Graph, STL, protobuf object, provider pointer, CUDA stream, or kernel factory crosses it.
+The following describes required information, not new C/C++ structs:
 
-### Discovery and configuration
-
-Approve an experimental factory registered through existing
-[`GetExperimentalFunction`](https://github.com/microsoft/onnxruntime/blob/1988019b6e23ac4def4628cddd603c1bfb504fe8/include/onnxruntime/core/session/onnxruntime_c_api.h#L7580-L7600).
-The proposed name is `OrtApi_GetRuntimeFusionApi_SinceV<N>`, where N is the actual introduction
-API version, not an invented currently available symbol. The exact typed factory is:
-
-```c
-typedef struct OrtRFContext OrtRFContext;
-typedef struct OrtRFCollector OrtRFCollector;
-typedef struct OrtRFEpToken OrtRFEpToken;
-typedef struct OrtRuntimeFusionApi OrtRuntimeFusionApi;
-
-typedef OrtStatus* (ORT_API_CALL* OrtRFGetApiFn)(
-    uint32_t abi_version, const OrtRuntimeFusionApi** out);
-```
-
-Retrieve `OrtApi` using the normal `OrtApiBase` version check, then resolve and cast the named
-experimental function to exactly this typedef. Missing name means unavailable; unknown table
-version returns `ORT_NOT_IMPLEMENTED` without changing `out`. Neither a new global exported symbol
-nor a new EP entry point is assumed. Exact V1 table match is required. Any incompatible field or
-semantic change gets a new table version; a changed factory signature gets a new experimental name.
-No indefinite cross-release ABI promise. Publish a tested ORT/EP/build/device/package matrix.
-Promotion, retirement, and a possible compatibility bridge require separate C API maintainer review.
-
-Applications may call static registration directly. For a DSO, explicitly call
-`RegisterCustomOpsLibrary_V2` with an application-approved absolute library path; its existing
-`RegisterCustomOps(options, api_base)` entry point discovers this factory and registers fusions.
-A fusion-only library need not register any model-visible op. Never scan directories, consult
-model metadata for executable paths, or automatically load a package. Native code is trusted
-application code, not sandboxed by graph validation.
-
-### Records and read-only inspection
-
-All extensible input/output records begin with `size_t struct_size`; omitted future fields are
-not read, unknown flags and nonzero reserved fields are errors. V1 requires the documented V1
-minimum size; field offsets and calling convention are platform ABI-specific. `size_t` counts
-are checked for overflow before allocation. Empty arrays use count zero; optional value references
-use kind 0, not a magic node index. IDs are session/snapshot-scoped, not persistent model names.
-
-```c
-typedef uint64_t OrtRFGraphId;
-typedef uint64_t OrtRFNodeId;
-typedef uint64_t OrtRFValueId;
-
-typedef struct OrtRFBytes {
-  const void* data;
-  size_t size;
-} OrtRFBytes;
-
-typedef struct OrtRFValueRef {
-  size_t struct_size;
-  uint32_t kind;                 /* 0 absent, 1 snapshot value, 2 proposal-local value */
-  OrtRFValueId id;
-} OrtRFValueRef;
-
-typedef struct OrtRFAttribute {
-  size_t struct_size;
-  const char* name;
-  uint32_t kind;                 /* 0 unrepresented, 1 int64, 2 float, 3 bytes,
-                                   4 ints, 5 floats, 6 tensor */
-  int64_t integer;
-  float real;
-  OrtRFBytes bytes;
-  const int64_t* integers;
-  size_t integer_count;
-  const float* reals;
-  size_t real_count;
-  const OrtValue* tensor;        /* CPU dense constant; ORT copies, never takes ownership */
-} OrtRFAttribute;
-
-typedef struct OrtRFNodeView {
-  size_t struct_size;
-  OrtRFNodeId id;
-  const char* name;
-  const char* domain;
-  const char* op_type;
-  int64_t since_version;
-  const OrtRFEpToken* ep;
-  uint32_t flags;                /* bit 0 executable, bit 1 compiler-owned opaque */
-  const OrtRFValueRef* inputs;   /* kind 0 absent, kind 1 snapshot; never kind 2 */
-  size_t input_count;
-  const OrtRFValueRef* outputs;
-  size_t output_count;
-  const OrtRFAttribute* attributes;
-  size_t attribute_count;
-  const OrtRFGraphId* subgraphs; /* attribute order, with names available through GraphInfo */
-  size_t subgraph_count;
-} OrtRFNodeView;
-
-typedef struct OrtRFGraphInfo {
-  size_t struct_size;
-  OrtRFGraphId id;
-  OrtRFGraphId parent;           /* 0 for root */
-  OrtRFNodeId parent_node;       /* 0 for root */
-  const char* attribute_name;   /* owning node's graph attribute */
-  size_t node_count;
-  const OrtRFValueId* inputs;
-  size_t input_count;
-  const OrtRFValueId* outputs;
-  size_t output_count;
-  const OrtRFValueId* captures;  /* resolved outer-scope values */
-  size_t capture_count;
-} OrtRFGraphInfo;
-
-typedef struct OrtRFValueView {
-  size_t struct_size;
-  OrtRFValueId id;
-  OrtRFGraphId owner;
-  const char* name;
-  const OrtTypeInfo* type;      /* borrowed, not released by extension */
-  uint32_t flags;               /* input, output, initializer, outer capture bits */
-  const OrtValue* constant;     /* optional borrowed read-only CPU constant */
-} OrtRFValueView;
-```
-
-V1 replacement attributes exclude graphs, sparse tensors, and lists of tensors/strings. Those
-patterns are unsupported, not silently coerced. `NodeAt` represents unsupported source attributes
-with kind 0 and their names; graph attributes are inspected through the named subgraph records.
-A matcher requiring an unrepresented attribute cannot prove eligibility and must decline it.
-Reading initializer payloads is explicit and subject to session byte limits; metadata inspection
-must not materialize all 27B weights. `ValueInfo.constant` may be null even for an initializer;
-`ReadConstant` returns a bounded borrowed view or a reason it cannot be exposed.
-Existing initializer IDs can always be referenced without copying their entire payload.
-
-### Replacement, registration, and function table
-
-```c
-typedef struct OrtRFNodeSpec {
-  size_t struct_size;
-  uint64_t local_node_id;
-  const char* domain;
-  const char* op_type;
-  int64_t opset_version;        /* requested domain import; core resolves actual schema */
-  const OrtRFValueRef* inputs;
-  size_t input_count;
-  const OrtRFValueRef* outputs;
-  size_t output_count;
-  const OrtRFAttribute* attributes;
-  size_t attribute_count;
-  uint32_t kernel_origin;      /* V1: 1 = target EP built-in registration only */
-} OrtRFNodeSpec;
-
-typedef struct OrtRFLocalValue {
-  size_t struct_size;
-  uint64_t local_id;
-  const OrtTypeInfo* type;
-  const OrtValue* initializer; /* optional new bounded CPU constant, deep-copied */
-} OrtRFLocalValue;
-
-typedef struct OrtRFProposal {
-  size_t struct_size;
-  const char* candidate_id;    /* unique within package/revision/snapshot */
-  const char* pattern_contract;
-  uint64_t snapshot_generation;
-  OrtRFGraphId graph;
-  OrtRFNodeId anchor;
-  const OrtRFEpToken* target;
-  uint32_t scope;              /* 0 flat; 1 bounded whole-Scan */
-  const OrtRFNodeId* consumed_nodes;
-  size_t consumed_count;
-  const OrtRFValueId* boundary_inputs;
-  size_t boundary_input_count;
-  const OrtRFValueId* boundary_outputs;
-  size_t boundary_output_count;
-  const OrtRFLocalValue* local_values;
-  size_t local_value_count;
-  const OrtRFNodeSpec* nodes;   /* topologically ordered replacement DAG */
-  size_t node_count;
-  const char* resource_recipe; /* provider-approved target recipe key, not a byte assertion */
-} OrtRFProposal;
-
-typedef struct OrtRFShapeBound {
-  size_t struct_size;
-  const char* input_name;
-  const int64_t* min_dimensions; /* finite nonnegative bounds; same rank */
-  const int64_t* max_dimensions; /* finite nonnegative bounds, including state/cache */
-  size_t rank;
-} OrtRFShapeBound;
-
-typedef struct OrtRFConfig {
-  size_t struct_size;
-  uint32_t enabled;
-  uint32_t resource_mode;       /* 0 baseline; 1 budgeted */
-  const char* const* required_patterns; /* qualified package-id/pattern-contract */
-  size_t required_pattern_count;
-  const OrtRFShapeBound* bounds;
-  size_t bound_count;
-  size_t max_proposals;
-  size_t max_descriptor_bytes;
-  size_t max_constant_bytes;
-} OrtRFConfig;
-
-typedef struct OrtRFExtension {
-  size_t struct_size;
-  uint32_t abi_version;
-  const char* package_id;
-  const char* package_revision;
-  const char* target_ep_type;   /* filter, not an EP instance identity */
-  uint64_t required_features;  /* V1 bit 0 = whole-Scan; unknown bits rejected */
-  void* package_state;
-  void (ORT_API_CALL* Retain)(void*);
-  void (ORT_API_CALL* Release)(void*);
-  OrtStatus* (ORT_API_CALL* CreateSessionState)(void* package_state, void** out);
-  void (ORT_API_CALL* ReleaseSessionState)(void*);
-  OrtStatus* (ORT_API_CALL* Match)(
-      void* session_state, const OrtRFContext*, OrtRFCollector*);
-} OrtRFExtension;
-
-struct OrtRuntimeFusionApi {
-  size_t struct_size;
-  uint32_t abi_version;
-  uint64_t supported_features;
-  OrtStatus* (ORT_API_CALL* Configure)(OrtSessionOptions*, const OrtRFConfig*);
-  OrtStatus* (ORT_API_CALL* RegisterExtension)(OrtSessionOptions*, const OrtRFExtension*);
-  OrtStatus* (ORT_API_CALL* SnapshotInfo)(
-      const OrtRFContext*, uint64_t* generation, OrtRFGraphId* root, OrtRFGraphId* current);
-  OrtStatus* (ORT_API_CALL* GetSessionConfig)(
-      const OrtRFContext*, const OrtRFConfig** out);
-  OrtStatus* (ORT_API_CALL* GraphInfo)(
-      const OrtRFContext*, OrtRFGraphId, const OrtRFGraphInfo** out);
-  OrtStatus* (ORT_API_CALL* NodeAt)(
-      const OrtRFContext*, OrtRFGraphId, size_t topological_index, const OrtRFNodeView** out);
-  OrtStatus* (ORT_API_CALL* ValueInfo)(
-      const OrtRFContext*, OrtRFValueId, const OrtRFValueView** out);
-  OrtStatus* (ORT_API_CALL* ReadConstant)(
-      const OrtRFContext*, OrtRFValueId, size_t byte_limit, const OrtValue** out);
-  OrtStatus* (ORT_API_CALL* Submit)(OrtRFCollector*, const OrtRFProposal*);
-};
-```
-
-Disabled is the default configuration. When enabling, supply nonzero caps; recommended starting
-limits are 8,192 proposals, 64 MiB total descriptor storage, and 1 MiB of new/read constant payload.
-These are limits, not reservations. The runtime may reject tighter platform limits explicitly.
-`Configure` copies and replaces configuration atomically; options become immutable to the session
-at initialization. Conflicting duplicate package ID/revision registrations fail rather than
-silently changing precedence.
-
-Before the first `Match`, core validates configuration against the loaded graph and freezes the
-session's effective configuration. `GetSessionConfig` exposes that immutable snapshot, including
-validated workload bounds, resource mode, required patterns and limits. ORT owns the returned
-record and all nested strings/arrays; they are read-only borrows valid only during the current
-callback, not handles to mutable `OrtSessionOptions`. Do not release, modify or retain them.
-Every graph callback in a session sees the same effective configuration. Reconfiguring cloned
-options must not alter another clone or an already-created session, even when registration and
-package state are shared. `Match` must read this session view rather than infer bounds from shared
-`package_state`, symbolic shape names or an earlier Run.
-
-Graph, node, and value IDs are nonzero and unique within a snapshot, including descendants. The
-context identifies its current graph; `SnapshotInfo` returns both root and current, while each callback's
-collector restricts submissions to the graph being visited. `NodeAt` order is stable with node-ID
-tie breaking. Core associates EP tokens with session-owned provider instances, supplies only tokens
-for applicable EPs, and compares identity, never just the provider type string. The package can
-compare tokens during the callback but cannot dereference or retain them. No proposal can invent
-ownership. An eventual multi-instance EP implementation must preserve this invariant.
-
-Replacement outputs referring to snapshot IDs must be precisely the original boundary values;
-local IDs cannot collide with them. This expresses the source-to-target value mapping without
-renaming observable values. Initializers referenced by snapshot ID retain graph/session ownership.
-Shared initializers and outer captures are never deleted while another user exists. New constants
-are copied into ORT-owned storage; packages cannot supply paths, executable callbacks, or device
-pointers through a proposal. Each emitted compute node uses the target token; shape/host adapters
-must already be supported on that EP or be left outside the consumed region.
-
-### Ownership, threading, and errors
-
-- Configure/RegisterExtension validate and copy atomically. On failure options are unchanged and
-  no reference is retained. Strings, arrays, types, and submitted constants are copied by ORT
-  before the call returns. Snapshot views, status message inputs, tokens, and collectors are
-  borrowed only for the callback. Extensions must not call Release on borrowed handles.
-- Successful registration retains package state once per shared registration object. Options
-  clones share that immutable object and its DSO lease, preserving registration order and copied
-  configuration. Each session creates separate mutable session state, even from cloned options.
-  A failed `CreateSessionState` leaves `out` untouched; the package cleans its partial allocation.
-- Within one session, callbacks are serialized and non-reentrant, including parent/body visits.
-  Different sessions may initialize concurrently, including Create/Release callbacks. Shared
-  package state must be thread-safe. No background callback may outlive its call.
-- Destroy session callback state before releasing its registration lease. Release the last package
-  reference while the library is still loaded, then unload. Releasing original options must not
-  unload code used by clones or sessions. Application-managed/static code must remain loaded for
-  that same interval; registration does not make manually unloading it safe.
-- Loader integration must stage all fusion registrations made by one `RegisterCustomOps` invocation
-  and publish only when it succeeds. On failure, release staged state before releasing the DSO.
-  This is a **new required loader integration**, not an assertion that today's loader is
-  transactional for arbitrary custom-op side effects. Fusion-only V1 conformance tests cover it.
-- Null status means success. Returned errors are created through the negotiated OrtApi; ownership
-  transfers to the caller, which calls `ReleaseStatus` (ORT does so for callback errors).
-  No exceptions cross the ABI; release callbacks cannot fail. Failed calls do not modify out
-  parameters. Malformed records and callback errors fail initialization.
-- `Submit` success means copied and queued, not selected. Well-formed but unsupported candidates
-  are recorded later as non-matches. Required patterns must have at least one accepted candidate;
-  this is not a promise that every matching region fuses. Per-region mandatory coverage is deferred.
-
-| Runtime / package combination | V1 outcome |
+| Descriptor | Required information |
 |---|---|
-| Factory available, table version 1, qualified runtime/EP/build tuple | Register; eligibility still depends on graph/kernel validation. |
-| Older runtime without the experimental name, or loading omitted by application | Application may run without an optional package; mandatory use fails before session creation. |
-| Factory present but requested table unsupported, incompatible tuple, failed registration | Explicit error, no partial registration; do not reinterpret another table layout. |
-| New runtime preserving exact V1 table and a newly qualified tuple | Compatible only after package conformance qualification; no blanket future-version promise. |
+| EP pattern registration | Pattern/contract ID and revision, implementation/package identity and revision, enablement, explicit EP-owned priority ordinal, retained callback state. |
+| Candidate context | Graph/revision, source-node IDs, anchor, target EP instance and current/tentative ownership view, immutable effective session configuration and workload bounds. |
+| Prepared recipe | Candidate ID, complete consumption closure, boundary inputs/outputs/captures, logical replacement DAG or compiler-private implementation description, attributes/types/opsets/constants, dependencies, and retained application state. |
+| Requirement query | Selected recipe/kernel/build/device, dtype and workload/alias/concurrency bounds; target-owned requirements with an explicit unknown result, not package-asserted byte counts. |
+| Selection/application | Exact candidate/recipe identity and revision, selected contracts, validated boundary mapping, and an application handle that cannot substitute another implementation. |
 
-A failed explicit library load or callback is not silently swallowed as "optional." Optional
-unavailability means the application elects not to register after its availability check.
+ORT must bound candidate count, descriptor storage, and constant reads; recommended initial caps
+remain 8,192 candidates, 64 MiB descriptor storage, and 1 MiB new/read constant payload.
+Metadata inspection must not materialize 27B weights. Existing initializers can be referenced without
+copying payloads; new constants become ORT-owned. Preserve shared storage and every observable
+boundary value identity. A consumed CPU compute node is not made eligible by a CPU-resident input.
 
-Shape bounds are an application-declared workload envelope in **both** modes, not assumptions
-inferred from one example. Require `0 <= min <= max` per dimension and reject unknown input names,
-duplicate bounds and inconsistent ranks. Core validates all submitted feeds/bindings against the
-accepted envelope before launching any kernel, including kernels before a recurrent region.
-`Match` obtains these validated bounds through `GetSessionConfig`; graph type metadata alone
-does not encode their finite minima/maxima. Missing bounds remain unknown, not unrestricted
-permission to fuse.
-Eligibility must hold for the entire fixed-shape or bounded envelope. No arbitrary package Run
-callback, dynamic match/defuse, or data-dependent fallback is added.
-If eligibility cannot be proven from topology, types, fixed shapes and declared shape bounds, leave
-the region unfused. For example a session allowing `B=2,P>0,S>1` cannot receive GQA just because
-its first call is prefill. Use a B=1 envelope, or separate B=2 prefill (`P=0`) and decode (`S=1`)
-sessions with the same canonical file. A general B=2 dynamic/chunked session stays unfused.
+Freeze effective configuration and the ordered registry for each session; another session may use
+a different order or workload envelope without sharing mutable candidate state. Reject conflicting
+duplicate pattern identities rather than let package loading silently replace priority.
+Required-pattern policy means at least one accepted candidate of that qualified pattern, not a
+promise that every occurrence fuses. A candidate discovered or retained is not yet selected.
+
+### Delivery, ownership, and lifetime requirements
+
+EP-bundled patterns and optional independent packages must obey the same recipe/selection model.
+An external package registers into the target EP's registry; it does not become a competing EP,
+claim nodes directly, or establish priority by load order. No exporter or model weights are required
+in the runtime package. EP-owned registration does not require matcher updates to ship with the EP.
+
+Before external delivery, specify and qualify a version-negotiated registration/recipe adapter,
+including which existing C/EP APIs it reuses and which minimal additions are necessary. Do not expose
+`Graph&`, STL, protobuf objects, provider pointers, CUDA streams, or kernel factories across that
+boundary. Compiler-private lowering and host-visible rewrites must normalize to the same selected
+recipe contract; compiler EPs need not adopt the pilot to continue working.
+
+Retain the following requirements when defining that adapter:
+
+- Application-controlled static registration and explicit library loading; no directory scanning or
+  executable paths taken from model metadata. Native packages are trusted application code.
+- Atomic registration and cleanup on failure; copied descriptors and explicit retain/release rules
+  for package, candidate, and recipe state. Graph inspection handles are callback-scoped borrows;
+  retained recipes must not contain raw pointers that survive a graph revision.
+- SessionOptions cloning/configuration isolation and immutable per-session registry snapshots.
+  Release candidate/session state before package callbacks or libraries can be unloaded.
+- Serialized, non-reentrant callbacks within a session and safe concurrent initialization across
+  sessions. No asynchronous callback outlives its call; shared immutable registrations are thread-safe.
+- No exceptions crossing a C boundary, explicit `OrtStatus` ownership, unchanged out-parameters on
+  failure, and release callbacks that cannot fail.
+- Explicit errors for incompatible versions, failed loads/registration, malformed recipes, and
+  callback errors. Optional absence is an application choice, not permission to swallow errors.
+  Missing optional patterns leave ordinary execution; required unavailability fails.
+
+Independent DSO conformance and a supported ORT/EP/build/device/package matrix are delivery gates,
+not prerequisites to choosing the capability architecture. Exact public signatures remain a
+follow-on approval item; this revision does not promise indefinite cross-release ABI stability.
+
+### Workload eligibility
+
+Workload bounds are application-declared in both resource modes. Validate `0 <= min <= max`,
+input names, uniqueness, and ranks before discovery. Matchers and requirement queries see the same
+immutable validated session view, not mutable options or another session's shared package state.
+The eventual implementation must reject out-of-envelope feeds/bindings before any kernel launches.
+Graph symbolic dimensions alone are not bounds and missing bounds remain unknown.
+
+Eligibility must hold for the entire fixed-shape or bounded envelope. No package Run callback,
+dynamic match/defuse, or data-dependent fallback is added. For example, a session allowing
+`B=2,P>0,S>1` cannot receive GQA just because its first call is prefill. Use B=1, or separate
+B=2 prefill (`P=0`) and decode (`S=1`) envelopes with the same canonical file.
 Mask contents and arbitrary length-tensor values cannot be certified by shape bounds.
+
+### Matcher choice is a demo-stage decision
+
+W's composable pattern engine is an optional implementation, not the system interface. Its
+standalone `Pattern::MatchAt`/`VisitMatches` can inspect matches without applying a rule; standalone
+matching does not enforce the rule engine's EP/opset policy. `Replacement::Instantiate` constructs
+a fragment, not a complete boundary-preserving replacement transaction. Those components may be
+adapted behind the EP registry, but do not supply memory admission or an external ABI.
+
+Do not make adopting that DSL or merging W a system-design prerequisite. During the Qwen demo,
+first use small exported Attention/convolution/Scan fixtures to measure pattern expressiveness,
+adapter effort, topology survival, and matching overhead; then validate the full model.
+A different matcher must produce the same recipe/selection contract. Demo results decide practical
+adoption, not whether the architecture needs a second optimizer pipeline.
 
 ## 5. Host validation and commitment (D3)
 
-1. Freeze registries and snapshot identities. Collect bounded proposals without mutating the graph.
-   Enforce count/byte caps and unique candidate identities; duplicate identities are malformed.
-2. Validate IDs, current generation, graph scope, acyclicity, schemas/import versions, type/shape
+1. Freeze the session's EP registry/order and configuration. Discover bounded candidate descriptions
+   without graph mutation or resource charges; retain them only for their graph/ownership revision.
+   Enforce count/byte caps and unique candidate identities within that revision.
+2. Validate IDs, current revision, graph scope, acyclicity, schemas/import versions, type/shape
    compatibility, constants, and every use crossing the region boundary. Preserve all escaping
    outputs, including graph outputs and descendant captures. Missing observable state is not dead
    just because it has no ordinary local consumer. Do not raise an existing domain import and
    reinterpret surviving nodes; reject incompatible requests. Adding an otherwise absent target
    domain import is allowed only after validating all emitted schemas.
-3. Require every consumed executable node to belong to the same target instance. CPU-resident
-   initializer/shape inputs do not authorize consuming CPU compute. Never enter a compiler-owned
-   compiled node/body, cross EPs, or reassign source nodes to force eligibility.
+3. Require the complete consumed executable region to be available for the target EP instance.
+   Unassigned nodes can be claimed if the proposed implementation supports them; final assignment
+   of every source node is not a discovery prerequisite. A tentative ownership view can establish
+   same-EP eligibility. Never steal work committed to another EP, enter compiler-owned opaque
+   regions, or use host-resident constants as permission to consume CPU-assigned compute.
 4. Resolve replacement kernels through the **actual session registry precedence**, without kernel
    construction. Validate schema/type constraints, build pruning, host-input requirements, device
    capabilities, and package-qualified operator contract. V1 declines any custom-registry override
    of an emitted kernel, even one with the same op name; it does not bypass normal lookup. Core
    records the selected built-in registration privately and checks it again at finalization.
 5. In budgeted mode, obtain target-specific coverage before selection/commit (section 8).
-6. Order candidates by application registration ordinal, then package ID/revision, candidate ID
-   (UTF-8 byte order), then anchor ID. Greedily choose non-overlapping valid proposals. Consumption
-   closure, including Scan descendants, defines overlap. Resource/semantic rejection is not a
-   speed competition; no per-session benchmark or original-versus-fused cost tournament.
+6. Preserve ordinary EP priority, then process candidates in the EP-owned pattern order and stable
+   tie-break order from section 3. Choose compatible, non-overlapping feasible candidates. Consumption
+   closure, including Scan descendants, defines overlap. Rejected candidates do not reserve nodes
+   or bytes. Lower-priority alternatives are available before application, not as recovery from
+   an already failed mutation. No per-session benchmark or cost tournament is added.
 7. Validate the accepted **combined** replacement against a disposable graph representation before
    touching the live graph. This catches cycles and boundaries introduced by interactions between
-   individually valid proposals. ORT, not the package, materializes nodes and assigns their EP.
-8. Commit once, update identities/accounting, and Resolve. Unexpected commit/Resolve failure aborts
-   and discards initialization. V1 promises no live-graph rollback, reconstruction, repartition, or
-   execution retry. No partially mutated graph or recurrent state can continue.
+   individually valid recipes. Through a validated capability adapter, ORT materializes selected
+   nodes, updates/splits the parent capability as needed, and preserves boundary values. New compute
+   nodes must have target kernels; host adapters are explicit and checked, not hidden callbacks.
+8. Apply only the prepared recipes, update capabilities/identities/accounting, and Resolve. Reconcile
+   the actual implementations before final placement/resource commitment. Unexpected application or
+   Resolve failure aborts baseline initialization; the pilot promises no live-graph rollback or Run
+   retry. A future planner may reject an isolated candidate graph under P's separate contract, but
+   cannot continue with a partially mutated live graph or recurrent state.
 
 Unsupported kernels, masks, ownership, or resource coverage detected before commitment leave the
-original region intact with a reason, unless a required pattern cannot be satisfied. Missing
-canonical execution support is still an ordinary session failure, not something fusion hides.
+original region intact with a reason, unless a required pattern cannot be satisfied. If neither a
+selected recipe nor ordinary execution covers the region, initialization fails; leaving it unchanged
+does not manufacture missing kernel support.
 Distinguish `NO_MATCH`, `EP_MISMATCH`, `OPAQUE_REGION`, `UNSUPPORTED_MASK/STATE/TYPE`,
 `KERNEL_MISSING/OVERRIDDEN`, `RESOURCE_UNKNOWN/INSUFFICIENT`, `OVERLAP`, `STALE_SNAPSHOT`,
 `INVALID_PROPOSAL`, and `COMMIT_FAILED`. Stale/malformed proposals and callback failures are errors,
 not silent non-matches.
 
-Diagnostics identify artifact digest, package/revision, pattern contract, graph/generation, consumed
-and emitted nodes, target instance token's diagnostic ID, selected registration, rejection reason,
-and later transformations. Default logging includes no tensor payload, library search path, or
-weight data. An opt-in trace records timing and resource provenance.
+Diagnostics identify artifact digest, package/revision, pattern contract, graph/revision, consumed
+and emitted nodes, EP pattern priority, target instance diagnostic ID, selected registration,
+rejection reason, and later transformations. Default logging includes no tensor payload, library
+search path, or weight data. An opt-in trace records timing and resource provenance.
 
 ## 6. Pilot source-to-target contracts (D4)
 
@@ -511,6 +330,8 @@ The mappings below are package pattern contracts, not model names in the core AP
 structural and semantic qualification; registration of a kernel establishes feasibility only.
 Canonical ONNX inputs/outputs remain unchanged, including all cache and recurrent state values.
 Adapters are ordinary existing operations in the replacement DAG, not hidden package execution.
+These are demo/implementation qualification gates, not prerequisites to selecting the capability
+architecture or a particular matcher DSL.
 
 ### 6.1 Canonical Attention to GroupQueryAttention
 
@@ -543,7 +364,7 @@ single-token decode for dense uniform B; continuation chunks `P>0,S>1` require *
 `1 <= S`, `P+S <= INT32_MAX`, and all shape/offset products fit their kernel interfaces.
 Derive host placement from the selected kernel definition; copies are inserted by normal ORT
 logic and included in resource/performance accounting. Never pull arbitrary device data to the
-host during Match or infer runtime mask contents from a symbolic shape. A graph input mask that
+host during discovery or infer runtime mask contents from a symbolic shape. A graph input mask that
 happens to contain ones in a test is not structurally proven redundant. V1 declines arbitrary
 runtime mask inputs; supporting a checked runtime predicate before any state mutation would require
 a separately approved adapter/error contract. A workload promise alone must not erase mask semantics.
@@ -555,7 +376,7 @@ noncausal mode, unknown mask provenance, and fully masked rows. Finite large-neg
 not automatically equivalent to `-infinity`. Mask conversion must preserve original error/bounds
 semantics; `Cast(INT64->INT32)` alone is not range validation. Unproven cases remain unfused.
 
-The smallest blocker is a tiny post-partition Attention fixture with `P>0,S>1`, plus a ragged
+The smallest blocker is a tiny capability-discovery Attention fixture with `P>0,S>1`, plus a ragged
 near-match, recording source ownership and causal/output equality. Acceptance of uniform dense
 GQA does not approve broader padding, BF16, cache aliases, or absorbed rotary.
 
@@ -592,7 +413,7 @@ shape/head adaptation and a Scan
 ([M lowering](https://github.com/onnxruntime/mobius/blob/b1e9c8e9dec1dfa206183f957e77d07cfb734df2/src/mobius/functions/linear_attention.py#L132-L235));
 fusing arithmetic inside one iteration is insufficient.
 
-Add only `scope=whole-Scan`: the proposal consumes the entire Scan node in its enclosing graph,
+Add only a bounded whole-Scan recipe: the candidate consumes the entire Scan node in its enclosing graph,
 plus explicitly listed flat adapters if eligible. Core, not the package, derives its recursive
 executable consumption closure. No general nested-graph editing API or replacement graph attribute
 is introduced. Inspect the body read-only and require:
@@ -600,8 +421,10 @@ is introduced. Inspect the body read-only and require:
 - Forward scan input/output directions, proven scan axes, matching carried-state count/order,
   no early termination, and exactly the supported recurrence.
 - Complete outer captures and invariant weights/gates; no mutation or unaccounted side effects.
-- CUDA ownership for the parent Scan and every consumed executable descendant, same instance.
-  Reject CPU-parent/CUDA-body, mixed body, compiler-owned body, and nested control flow.
+- Availability for CUDA of the parent Scan and every consumed executable descendant, same instance.
+  Unassigned source work may qualify through the whole recipe. Reject committed CPU ownership,
+  mixed tentative ownership, compiler-owned body, and nested control flow. Verify final target
+  assignment rather than treating a discovery-time provider name as proof.
 - Every externally observable sequence/state output is reconstructed, not merely the final token.
 - Retire descendant reservation/profile/identity entries **before** destroying the body graphs;
   invalidate snapshot handles at commitment. Verify no Scan remains in the accepted region.
@@ -721,12 +544,14 @@ a recipe key, not authoritative byte counts. Unknown is distinct from zero. The 
 
 1. Before candidate commitment, evaluate target coverage against declared finite workload bounds.
    Replace source charges with target charges (deduplicate shared constants) and conservatively
-   check the combined plan. Unknown/underreserved candidates stay unfused with a reason; an unmet
-   required pattern fails. Do not alter the user's EP budget.
+   check the combined plan. Unknown/underreserved candidates are declined without charges; consider
+   lower-priority alternatives in EP order, including standalone execution where supported and
+   covered. An unmet required pattern fails. Do not alter the user's EP budget.
 2. After **all** L2+/cast/copy transformations, rebuild or revalidate coverage for the final graph,
    including unaffected source nodes and every inserted adapter/copy. If coverage is invalidated
-   or no longer fits, fail initialization **even for optional fusion**. No graph rollback or
-   automatic unfused retry.
+   or no longer fits, do not commit placement/materialize resources. Baseline application has no
+   automatic unfused retry after mutation; a future planner can discard an isolated candidate under
+   its own bounded search contract.
 3. Admit the whole initialization/execution envelope **before initializer upload, kernel
    construction, PrePack, or another budget-consuming initialization step**. Include initialization peaks, not just Run.
    Declarations after creation validate the recipe but are not the preventive gate.
@@ -756,48 +581,48 @@ removal retires descendants before their graph identities can dangle.
 This is a **session/EP-accounted bound**, not a promise that other processes cannot exhaust device
 memory. Initial budgeted support requires an enforceable allocation domain or conservatively
 bounded sharing; otherwise reject the budgeted configuration. Compiler EP compilation or EP setup
-may allocate before this hook: any such allocations must already be admitted under the existing
-resource owner, or that configuration cannot claim this hard-bound mode.
+may allocate before final admission: any such allocations must already be admitted under the
+existing resource owner, or that configuration cannot claim this hard-bound mode.
 The same rule applies to allocation-bearing DSO static initialization or registration: prohibit
 device staging there in the supported package contract, or admit/charge it before loading.
 
-Narrow adapters to existing recipes are allowed follow-on work. The general planner in
+Narrow adapters to existing estimators are allowed follow-on work. The general planner in
 [#33372](https://github.com/microsoft/onnxruntime/issues/33372) and P's reconciliation are future
 dependencies, not current guarantees or prerequisites for baseline fusion. Memory determines
 feasibility, not default speed preference. If a later authorized placement workflow splits a fused
 region, invalidate/rebuild affected fusion/resource data or reject that workflow; automatic defusion
 search is deferred.
 
-The post-partition hook deliberately runs after the partitioner's accountant objects have been
-used to produce reservations. Budgeted implementation therefore needs a planning-safe target
-estimator/resource-owner adapter; invoking the existing source consolidation callback cannot stand
-in for it. For this fixed-placement path, do not move matching into a per-EP capability loop to
-regain access to those objects: partitioning may revisit graphs/providers. This missing adapter
-blocks budgeted mode, not baseline.
+`GetCapability` already accepts a resource-accountant input, but that does not establish target
+estimates or noncharging exploration for every recipe. Add a query-only estimator/resource-owner
+adapter and separate speculative queries from accepted reservations. Repeated capability discovery
+must not double-charge source or target nodes; source consolidation alone is not target estimation.
+This adapter blocks budgeted use, not baseline ordered capability selection.
 
-Baseline/budgeted are resource modes, not fixed/planning placement modes. Budgeted admission here
-validates the chosen assignment; it does not search alternative ownership or guarantee discovery of
-a GPU placement made feasible by fusion. Future planning needs the nonmutating recipe queries in
-section 3 before final placement acceptance, followed by reconciliation of the selected graph and
-memory plan. That integration is proposed, not a guarantee supplied by current ORT main.
+Baseline/budgeted are resource modes, not separate optimization-selection pipelines. Baseline
+selects eligible candidates by EP order without a hard memory promise. Budgeted integration adds
+target feasibility to that same selection before final acceptance. General CPU/GPU boundary search
+is P's follow-on responsibility; this design does not claim an optimal placement or current
+ORT-main support for the proposed planner.
 
 ## 9. Qualification plan, not execution evidence
 
 ### 9.1 Generic mechanism and API
 
 Create the following tests after contract approval; the `RuntimeFusion*` suites do **not** exist
-at R. A skip/missing binary, missing fixture, unavailable CUDA EP, or lack of independently built
-DSO is a blocked prerequisite, never a pass.
+at R. These are logical coverage targets, not a commitment to the removed C table. A skip/missing
+binary, fixture, CUDA EP, or DSO required by the selected delivery milestone is a blocked
+prerequisite, never a pass.
 
 | Suite / target | Required assertions |
 |---|---|
-| `RuntimeFusionTests.*` / `onnxruntime_test_all` | Absent/disabled/Basic preserve behavior; required-at-Basic error; trace partition, extension once, L2, casts, copies, including repeated optimization loops and nested graphs. |
-| `RuntimeFusionTests.*` | EP-split, opaque compiler regions, deterministic overlaps, stale IDs, all escaping outputs/captures, missing schema, invalid combined DAG, failed Resolve, callback failure, proposal/byte limits. Verify graph unchanged on precommit non-match and session discarded on commit failure. |
-| `RuntimeFusionApiTest.*` / `onnxruntime_shared_lib_test` | Static and separately built DSO; null discovery/version mismatch/short descriptors; copied descriptors; cloned options after original release; concurrent sessions and no callback reentrancy; partial registration failure; retained-state/destructor/unload order. |
-| `RuntimeFusionApiTest.SessionConfigBounds` / `onnxruntime_shared_lib_test` | `Match` reads the validated effective config, including nested bounds, through a callback-scoped read-only borrow. Clones configured with different bounds and concurrent sessions see their own snapshots; releasing/reconfiguring options cannot alter another clone or an existing session. Invalid configuration fails before Match. |
-| `RuntimeFusionApiTest.*` | Build DSO using only public C headers, no private ORT includes/link symbols; load into separately built ORT. Test no-native-loader build using the same static registration API. |
-| `RuntimeFusionTests.WholeScan*` | CUDA parent/body positive; CPU parent/CUDA body negative; CUDA parent/mixed body negative; capture/state order; unsupported nested control flow; recursive overlap; descendant resource retirement before graph destruction; no loop after acceptance. |
-| `RuntimeFusionTests.Budget*` | Unknown estimate, target larger than source, partial CSV, shared initializer, initialization peak, stale body IDs, later-transform invalidation, final graph failure even for optional fusion, unchanged EP budget, out-of-bound Run rejected before state mutation. |
+| `RuntimeFusionTests.*` / `onnxruntime_test_all` | EP registry/order, absent/disabled/Basic behavior, required-at-Basic error. Repeat discovery after graph/layout changes; assert no mutation/reservation during queries and no duplicate application. Preserve ordinary EP priority. |
+| `RuntimeFusionTests.OrderedCandidates*` | Overlapping high/low-priority patterns, deterministic same-pattern anchors, package load-order independence, rejected candidate leaving lower-priority candidates available, and emitted multi-node DAG/capability updates. No benchmark selection. |
+| `RuntimeFusionTests.*` | EP-split, opaque regions, stale revision/ownership views, escaping outputs/captures, missing schema, invalid combined DAG, failed Resolve, callback errors and candidate/byte limits. Assert prepared recipe is applied without reselecting it; baseline mutation failure discards initialization. |
+| `RuntimeFusionTests.SessionConfigBounds` / `onnxruntime_test_all` | Discovery sees validated per-session bounds and EP order. Cloned options/concurrent sessions cannot alter another session's registry or workload snapshot. Invalid bounds fail before discovery. |
+| `RuntimeFusionApiTest.*` / `onnxruntime_shared_lib_test`, external-delivery milestone | Once the adapter is approved: static/DSO registration, version/descriptor errors, copied/retained state, clone isolation, partial registration cleanup, concurrent sessions and destructor/unload order. Build DSO with only approved public headers, not private symbols. |
+| `RuntimeFusionTests.WholeScan*` | Unassigned or same-tentative-CUDA parent/body positive; committed CPU or mixed ownership negative; capture/state order, nested control flow, recursive overlap, descendant resource retirement, no Scan after acceptance. |
+| `RuntimeFusionTests.Budget*` | Unknown/insufficient high-priority recipe allows a covered lower-priority candidate without stale charges. Cover target larger than source, partial CSV, shared initializer, initialization peak, repeat discovery, later-transform invalidation, unchanged budget, and out-of-bound Run rejection before mutation. |
 | `RuntimeFusionCudaTest.*` / `onnxruntime_provider_test` | Pruned/overridden kernels and actual selected memory/alias metadata; dense GQA, convolution, recurrence mapping and numerical gates; source/replacement ownership trace. |
 | Existing regression targets | `InferenceSessionTests.TestRegisterTransformers`, `ExperimentalCApiTest.*`, relevant existing resource-accountant, attention and stateful tests, legacy contrib models and disabled-extension behavior. |
 
@@ -837,7 +662,7 @@ pattern; do not silently select a different state ABI.
 For the configuration-visibility regression, use one saved canonical GQA graph with symbolic
 `B/P/S`, `Hq=4,Hkv=2,D=64`, and the same package registration shared by cloned options.
 Configure session A with `B=1,P=[1,17],S=[2,7]`, and session B with
-`B=2,P=[1,17],S=[2,7]`. Each `Match` must observe its own bounds through `GetSessionConfig`;
+`B=2,P=[1,17],S=[2,7]`. Each discovery callback must observe its own validated session bounds;
 A is eligible if the remaining contract checks pass, while B must decline batched continuation
 chunks. Initialize the sessions concurrently and verify that reconfiguring one options clone
 cannot change the other's snapshot. Add a third envelope whose `P_max + S_max > INT32_MAX`:
@@ -1022,7 +847,9 @@ correctness gates and is not covered by a text-only success.
 
 ## 10. Approval ledger and smallest blocked probes
 
-**No decision below is approved.** The named proposed approval coordinator for D1-D6 is
+The October 26 design direction is EP-side registration and EP-owned pattern order. This is not
+maintainer approval of the adapters or their implementation. The named proposed approval coordinator
+for D1-D6 is
 **@titaiwangms**, the issue author/assignee. This is a routing proposal, not a claim of delegated
 authority or consent. The coordinator must confirm an individually named responsible ORT maintainer
 for each row, with subsystem/API co-review as listed. Source inspection supplies no authoritative
@@ -1032,12 +859,12 @@ or mark an issue-author acknowledgment as public-API approval.
 
 | ID | Concrete proposed decision and rationale | Named routing owner; required approval | Status / smallest evidence gate |
 |---|---|---|---|
-| D1 | Explicit opt-in, L2-gated, once-only stage after partition/accounting callbacks and before outer L2. Avoid repeated discovery and preserve ownership. | @titaiwangms to confirm session/optimizer maintainer. | Proposed, unapproved; P1 ordering/ownership trace blocks M1 hook acceptance. |
-| D2 | Exact-version experimental C table via existing named experimental lookup; static + explicit V2 custom-op loader; staged registration and shared library leases. Proves independent deployment without stable ABI overclaim. | @titaiwangms to confirm C API maintainer; request `@microsoft/onnxruntime-api` review. | Proposed, unapproved; P2 blocks M1 public ABI/loader delivery. |
-| D3 | Declarative combined-DAG validation, preserved boundary IDs, host-only mutation, fail/discard on commit error. Avoid unsafe live rollback. | @titaiwangms to confirm graph/session and kernel-registry maintainers. | Proposed, unapproved; P3 blocks M1 transaction acceptance and whole-Scan M3. |
-| D4 | FP16 dense GQA + narrow convolution; bounded whole-Scan to K-major LinearAttention separately gated. No implicit GatedDeltaNet/precision expansion. | @titaiwangms to confirm CUDA attention/control-flow and stateful-kernel maintainers, with Mobius/GenAI export co-review. | Proposed, unapproved; P1/P4 block M2; P5 blocks M3 recurrence implementation. |
-| D5 | Baseline first; budgeted candidates require new target coverage and final pre-initialization admission, no automatic retry. Source sums and late declarations are insufficient. | @titaiwangms to confirm resource-accountant/session/CUDA recipe maintainers. | Proposed, unapproved; P6 blocks budgeted portion of M4, not baseline M2. |
-| D6 | ORT owns generic API/hook/validation/test DSO; performance-package owner owns matcher/adapter/release matrix; no competing EP/new kernel. Proposed distribution below. | @titaiwangms to confirm ORT ownership and Mobius package/release owner. | Proposed, unapproved; owner/support nomination plus P2/P7 blocks independently supported M4 package. |
+| D1 | Register/order patterns on the EP side; discover through `GetCapability` and reuse capability application. ORT resolves conflicts by EP order, not package load order or speed competition. | @titaiwangms to confirm partitioner/EP maintainer. | Revised direction; P1 must validate ordering, repeated discovery and multi-node replacement support before M1 acceptance. |
+| D2 | Reuse existing graph inspection; define only missing capability/recipe registration adapters. Do not freeze the former parallel C table. | @titaiwangms to confirm C/EP API maintainer; request `@microsoft/onnxruntime-api` review before any public additions. | Public ABI deferred; P2 gates external delivery, not an internal M1 prototype. |
+| D3 | Describe/select/apply separately; validate combined effects and boundaries; update capabilities/accounting and reconcile before final commitment. No baseline live rollback. | @titaiwangms to confirm graph/partitioner and kernel-registry maintainers. | Proposed, unapproved; P3 blocks M1 application acceptance and whole-Scan M3. |
+| D4 | Qualify FP16 GQA/convolution and separately whole-Scan LinearAttention in the model demo. Grama's engine is optional, not a system-design dependency. | @titaiwangms to confirm CUDA/stateful-kernel maintainers, with Mobius/GenAI co-review. | Demo-stage gates P4/P5; matcher fitness does not block the architecture decision. |
+| D5 | Baseline ordered selection first; target estimates add feasibility before selection in budgeted mode. Unknown is not zero; admit before materialization. | @titaiwangms to confirm resource-accountant/session/CUDA recipe maintainers. | Proposed, unapproved; P6 gates budgeted M4, not baseline M1/M2. |
+| D6 | EP owns registry/order; ORT owns selection/validated application; optional package owns matcher/adapter release. One recipe model for bundled and external patterns. | @titaiwangms to confirm ORT/EP ownership and Mobius package/release owner. | Proposed, unapproved; P2/P7 plus support ownership gate independent M4 delivery. |
 
 The coordinator must replace routing placeholders with confirmed named approvers/status and linked
 review decisions before calling the design accepted. An accepted design can retain an explicitly
@@ -1050,26 +877,29 @@ and tiny local random data after authorization; if missing, request a bounded bu
 
 | Probe | Smallest work / observable result | Exact milestone blocked |
 |---|---|---|
-| P1: topology/partition | One Attention+cache fixture, one convolution fixture, one tiny Qwen35 text graph. Capture post-L1/post-partition node IDs, EP assignments and trace before L2; include a second optimization iteration. No official weights. | M1 exact hook ordering; M2 survival/ownership and package-update topology choice. |
-| P2: independent ABI | One independently built fusion-only DSO against public headers and a separately built runtime; cloned options, incompatible API, failing registration, concurrent two-session init and unload trace. | M1 external registration and lifetime; M4 distribution support. |
-| P3: transaction closure | Two overlapping flat proposals and one parent Scan/body conflict with an escaping captured value; inject Resolve failure. Assert unchanged precommit graph or discarded session, no dangling graph/reservation IDs. | M1 rewrite contract; M3 recursive destruction. |
+| P1: capability integration | Tiny flat fixture with two EP-ordered overlapping patterns and a multi-node replacement; repeat discovery after a revision/layout change. Trace returned/selected capabilities, registered target kernels, no duplicate application or speculative charges. Use Attention/convolution exports for M2, no official weights. | M1 ordering/application adapters; M2 topology survival and package-update choice. |
+| P2: independent ABI | After adapter approval, independently built fusion-only DSO and runtime; EP-side registration, order unchanged by load order, clones, version mismatch, failing registration, concurrent init and unload trace. | M4 external delivery; not a gate for an internal M1 prototype. |
+| P3: application closure | Two overlapping flat recipes and parent Scan/body conflict with an escaping capture; assert selected identity, boundary preservation and parent capability updates. Inject stale revision and Resolve failure; assert no dangling graph/reservation IDs or continuation of partial initialization. | M1 application contract; M3 recursive destruction. |
 | P4: semantics | GQA positives `(B,P,S)=(2,0,2),(2,3,1),(1,3,2)`, D=64; negative `(2,3,2)` and ragged/runtime masks; convolution `K=4,S=1,2`, nonzero history. Compare every output with independent reference at declared gates. | M2 first CUDA mapping acceptance. |
 | P5: recurrence | One standard-only lowered Scan `B=1,Hk=2,Hv=4,Dk=32,Dv=64,S=7`, nonsymmetric FP32 state and FP32 recurrence inputs; trace CUDA parent/body and exact cast/head order; compare whole/chunks/single-token references. | M3 recurrence mapping **before implementation delivery**; mixed dtype/ownership is a blocker, not permission to change casts/reassign. |
-| P6: preventive budget | Synthetic bounded fixture with target greater than source, missing/partial CSV, initialization scratch and a later transform. Verify target estimates exist before commit and admission precedes initializer upload; inject over-budget failure. Add actual target allocation/declaration comparison before CUDA budgeted support. | M4 budgeted integration; each uncovered kernel recipe remains blocked independently. |
-| P7: unchanged artifact | Fixed tiny canonical digest manifest, A/B matcher revisions and explicit disable/unavailable cases, using the exact same files. Record accepted regions plus numerical and load-time behavior. | M4 independent-package value proof. |
+| P6: preventive budget | High-priority recipe exceeding budget and lower-priority fitting recipe; unknown estimate, repeat queries, partial CSV, shared storage and initialization scratch. Verify selection/charges, final reconciliation and admission before upload; compare target declarations/allocations. | M4 budgeted integration; each uncovered target recipe remains blocked. |
+| P7: unchanged artifact | Fixed tiny canonical digest manifest, EP-bundled and external A/B matcher registration with the same explicit EP order, disable/unavailable cases. Record coverage, numerics and load behavior without model changes. | M4 independent-package value proof; W suitability evaluated here, not required. |
 
-No actual full-model export or cache package is assumed available. If P1 shows canonical shape
-scaffolding is CPU-owned inside a proposed region, shrink to a valid boundary or report non-match;
-do not add pre-partition ownership negotiation to solve the probe.
+No actual full-model export or cache package is assumed available. If P1 shows shape scaffolding
+unavailable to the target EP, shrink the boundary or report non-match; do not consume CPU-committed
+compute to force eligibility. An unassigned node and a node already committed to another EP are
+different cases.
 
 ### D6 proposed ownership and support matrix
 
-Place only generic core code and conformance fixtures in ORT (`core/session`, `core/optimizer` or a
-generic graph-rewrite helper, public experimental headers and framework/shared-library tests).
-Keep operator patterns out of core. Propose the optional, separately versioned performance
+Place generic selection/application adapters and conformance fixtures in ORT (`core/framework`,
+`core/optimizer`, and framework/shared-library tests). EPs own registration, priority and support
+validation; patterns may reuse shared optimizer implementations without duplicating machinery.
+Keep model-specific pattern knowledge out of the generic planner. Propose the optional, separately
+versioned performance
 distribution **`mobius-ort-cuda-fusion`** under the Mobius project's ownership; this is a name/owner
-proposal, not an existing package, new repository, or published artifact. It must depend only on
-the public fusion headers/ABI at runtime, not require the exporter or model weights in-process.
+proposal, not an existing package, new repository, or published artifact. External delivery must use
+the approved EP registration/recipe boundary, not private runtime symbols or exporter/model weights.
 Existing contrib schemas/kernels stay owned by their existing ORT maintainers. Package owners must
 qualify their supported ORT/EP/build/device tuple and respond to topology drift.
 
@@ -1090,18 +920,17 @@ affected-file scope, acceptance gates and exact verification targets. Dependenci
 
 | Milestone | Scope / acceptance | Predecessor and blockers |
 |---|---|---|
-| M1 generic mechanism | Session hook, experimental table/static+DSO registration, lifetime/validation/diagnostics, no model pattern in core. `RuntimeFusionTests.*`, `RuntimeFusionApiTest.*`, legacy registration regressions. | D1-D3 and generic part of D6 accepted; P1 ordering, P2, P3. No predecessors exist yet. |
-| M2 flat CUDA pilot | Package GQA mapping, convolution contract, actual registry checks, coexistence with existing contrib fusions. Tiny fixtures, negative masks/dtypes, all outputs/states and unchanged-artifact topology probe. | Actual M1 PR and approved D4 flat-region contract; P1/P4. No recurrence approval implied. |
+| M1 capability mechanism | EP-owned ordered registry, repeatable discovery, prepared recipes and validated capability application adapters. Internal prototype permitted; no frozen external ABI or model-specific matcher dependency. `RuntimeFusionTests.*` and existing capability regressions. | D1/D3 and generic D6 approval; P1/P3. D2 external API and P2 are not internal prototype gates. |
+| M2 flat CUDA demo | Register GQA/convolution patterns in the EP; verify kernels, topology, negative masks/dtypes and all outputs/state. Evaluate W on small exported fixtures without making adoption mandatory. | Actual M1 PR and D4 flat-region contract; P1/P4. No recurrence approval implied. |
 | M3 stateful/whole-Scan | Recursive read-only inspection, core-derived closure, body accounting retirement, narrow LinearAttention sequence replacement and asymmetric-state tests. Convolution state qualification extended here. | Actual M1/M2 PRs, D3/D4 whole-Scan acceptance and P5 before sequence implementation; no wider GatedDeltaNet approval. |
-| M4 reduced generation/package/resources | Random-weight text decoder, generated-token feedback, A/B immutable-artifact proof, distribution matrix and optional budgeted recipes. | Actual M1-M3 PRs, D6 release owner, P7. Budgeted portion separately blocked on D5/P6 and each target recipe. Baseline qualification can proceed without general planner #33372. |
+| M4 reduced generation/package/resources | Random-weight text decoder, feedback generation, independent EP-side package registration and A/B artifact proof. Approve/qualify minimal external adapter; separately connect recipe estimators and budget feasibility. | Actual M1-M3 PRs; D2/D6 and P2/P7 for external release. Budgeted part needs D5/P6 and each target recipe. No general planner prerequisite. |
 | M5 official 27B campaign | New pinned text-only export, independent numerical comparison, coverage/performance/resource report with retained provenance. Vision/full-VLM is a separate qualification. | Actual M4 PR/report; explicit weight/export/device/build/retention budget authorization. Historical Mobius #758 is context, not a substitute. |
 
-Future planner integration is outside M1-M5 and is not a prerequisite for the fixed-placement
-pilot. After the relevant fusion and placement contracts are accepted, a separate adapter milestone
-must qualify query isolation, tentative-assignment/revision invalidation, and a case where the
-unfused estimate would trigger offload but an eligible fused recipe fits. It must verify the
-selected rewrite and reconciled memory plan before final ownership commitment and device
-materialization; no runtime planning or qualification is authorized by this roadmap.
+General placement search remains outside M1-M5. After the shared recipe contracts are accepted,
+P's planner can consume the same EP-ordered candidates, not a second fusion mechanism. Qualify
+query isolation, tentative-ownership/revision invalidation, and an unfused-offloads/fused-fits case;
+verify the selected graph and execution/backing plan before final commitment/materialization.
+Neither that planner nor model execution is authorized by this documentation revision.
 
 ### Acceptance record
 
