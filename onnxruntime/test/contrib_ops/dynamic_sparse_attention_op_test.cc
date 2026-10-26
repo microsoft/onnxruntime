@@ -550,7 +550,7 @@ DynamicSparseAttentionCase MakeGroupedCacheCase(int sequence_length, bool auxili
 }
 
 TEST(DynamicSparseAttentionTest, FloatingCacheGroupedReferenceParity_CUDA) {
-  for (int sequence_length : {1, 3}) {
+  for (int sequence_length : {1, 3, 9}) {
     for (bool auxiliary : {false, true}) {
       for (bool bf16 : {false, true}) {
         auto cuda_ep = DefaultCudaExecutionProvider();
@@ -566,6 +566,66 @@ TEST(DynamicSparseAttentionTest, FloatingCacheGroupedReferenceParity_CUDA) {
         }
       }
     }
+  }
+}
+
+TEST(DynamicSparseAttentionTest, GroupedDecodeRatio12ReferenceParity_CUDA) {
+  for (int sequence_length : {1, 3}) {
+    for (bool auxiliary : {false, true}) {
+      SCOPED_TRACE("sequence_length=" + std::to_string(sequence_length) +
+                   ", auxiliary=" + std::to_string(auxiliary));
+      const auto floating_case = MakeGroupedCacheCase(sequence_length, auxiliary, true, 2, 24, 2);
+      auto cuda_ep = DefaultCudaExecutionProvider();
+      if (!cuda_ep) GTEST_SKIP() << "CUDA EP not available.";
+      RunDynamicSparseAttentionCase<MLFloat16>(floating_case, std::move(cuda_ep));
+      cuda_ep = DefaultCudaExecutionProvider();
+      RunDynamicSparseAttentionCase<BFloat16>(floating_case, std::move(cuda_ep));
+
+      const auto int8_case = MakeGroupedCacheCase(sequence_length, auxiliary, false, 2, 24, 2, true);
+      cuda_ep = DefaultCudaExecutionProvider();
+      RunDynamicSparseAttentionCase<MLFloat16, int8_t>(int8_case, std::move(cuda_ep));
+      cuda_ep = DefaultCudaExecutionProvider();
+      RunDynamicSparseAttentionCase<BFloat16, int8_t>(int8_case, std::move(cuda_ep));
+    }
+  }
+}
+
+TEST(DynamicSparseAttentionTest, Int8CachePrefillBFloat16_CUDA) {
+  if (!DefaultCudaExecutionProvider()) GTEST_SKIP() << "CUDA EP not available.";
+  if (!CudaHasBF16Support()) GTEST_SKIP() << "CUDA device does not support BFloat16.";
+  auto c = MakeGroupedCacheCase(9, false, false, 2, 20, 2, true);
+  c.head_sink.clear();
+  for (int row = 0; row < c.batch_size * c.sequence_length; ++row) {
+    const int b = row / c.sequence_length;
+    for (int h = 0; h < c.num_heads; ++h) {
+      const int64_t kv = h / (c.num_heads / c.kv_num_heads);
+      const int64_t out = (row * c.num_heads + h) * c.head_size;
+      std::vector<float> numerator(c.head_size, 0.0f);
+      double denominator = 0.0;
+      for (int i = 0; i < c.selected_counts[row]; ++i) {
+        const int index = c.selected_indices[row * c.max_selected + i];
+        const int64_t offset = ((b * c.kv_num_heads + kv) * c.cache_sequence_length + index) * c.head_size;
+        double dot = 0.0;
+        for (int d = 0; d < c.head_size; ++d) {
+          dot += c.query[out + d] * c.expected_present_key[offset + d] * c.key_scale[kv * c.head_size + d];
+        }
+        const double weight = std::exp(dot * c.scale);
+        denominator += weight;
+        for (int d = 0; d < c.head_size; ++d) {
+          numerator[d] += static_cast<float>(weight * c.expected_present_value[offset + d] *
+                                             c.value_scale[kv * c.head_size + d]);
+        }
+      }
+      for (int d = 0; d < c.head_size; ++d) {
+        c.expected_output[out + d] = denominator == 0.0 ? 0.0f : static_cast<float>(numerator[d] / denominator);
+      }
+    }
+  }
+  for (const char* prefill_env : {"1", "0"}) {
+    SCOPED_TRACE(prefill_env);
+    ScopedEnvironmentVariables scoped_env_vars{
+        EnvVarMap{{"ORT_DSA_PREFILL_KERNEL", prefill_env}}};
+    RunDynamicSparseAttentionCase<BFloat16, int8_t>(c, DefaultCudaExecutionProvider());
   }
 }
 

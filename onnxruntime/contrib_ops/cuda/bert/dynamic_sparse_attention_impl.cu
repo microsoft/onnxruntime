@@ -1006,7 +1006,7 @@ __global__ void GroupedDecodeDynamicSparseAttentionKernel(
   if constexpr (std::is_same_v<T, half> && !kQuantizedCache) {
     const int group_head_base = head_tile * kQueryHeadsPerBlock;
     for (int index = static_cast<int>(threadIdx.x);
-         index < kGroupedDecodeQueryHeadsPerBlock * head_size;
+         index < kQueryHeadsPerBlock * head_size;
          index += static_cast<int>(blockDim.x)) {
       const int local_head = index / head_size;
       const int head_offset = index - local_head * head_size;
@@ -1168,6 +1168,7 @@ __global__ void GroupedDecodeDynamicSparseAttentionKernel(
       if (threadIdx.x < 32) {
         const int mma_lane = static_cast<int>(threadIdx.x);
         const int row_pair = mma_lane >> 2;
+        const int second_row = row_pair + 8;
         const int k_pair = (mma_lane & 3) * 2;
         float score_fragment[4]{};
         for (int k_start = 0; k_start < head_size; k_start += 16) {
@@ -1176,10 +1177,16 @@ __global__ void GroupedDecodeDynamicSparseAttentionKernel(
           const uint32_t query_fragment[4]{
               *reinterpret_cast<const uint32_t*>(
                   mma_query + row_pair * head_size + first_k),
-              0,
+              second_row < kQueryHeadsPerBlock
+                  ? *reinterpret_cast<const uint32_t*>(
+                        mma_query + second_row * head_size + first_k)
+                  : 0u,
               *reinterpret_cast<const uint32_t*>(
                   mma_query + row_pair * head_size + second_k),
-              0};
+              second_row < kQueryHeadsPerBlock
+                  ? *reinterpret_cast<const uint32_t*>(
+                        mma_query + second_row * head_size + second_k)
+                  : 0u};
           const uint32_t key_fragment[2]{
               *reinterpret_cast<const uint32_t*>(
                   shared_key + row_pair * head_size + first_k),
@@ -1190,6 +1197,10 @@ __global__ void GroupedDecodeDynamicSparseAttentionKernel(
         const int score_column = (mma_lane & 3) * 2;
         mma_scores[row_pair * kGroupedPrefillCandidatesPerTile + score_column] = score_fragment[0];
         mma_scores[row_pair * kGroupedPrefillCandidatesPerTile + score_column + 1] = score_fragment[1];
+        if (second_row < kQueryHeadsPerBlock) {
+          mma_scores[second_row * kGroupedPrefillCandidatesPerTile + score_column] = score_fragment[2];
+          mma_scores[second_row * kGroupedPrefillCandidatesPerTile + score_column + 1] = score_fragment[3];
+        }
       }
       __syncthreads();
     }
