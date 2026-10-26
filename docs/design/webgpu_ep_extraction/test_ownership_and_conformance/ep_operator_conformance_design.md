@@ -536,8 +536,11 @@ sources and public API boundary. The parent build supplies public ONNX/protobuf/
 private ORT libraries, a second dependency-fetch stack, or a second runner implementation. C++20 stays target-local.
 Case generation and provider execution remain separate from executable definition.
 
-The initial enabled path requires a shared runtime and native execution; unsupported static-only, cross-compiled,
-or browser configurations must fail clearly rather than produce an unusable runner. Building the executable does not
+The current runner requires dynamic native-library loading and ONNX model loading. Static-only and minimal runtimes
+do not meet that contract; Emscripten requires a separate WebAssembly host. Cross-compilation and Android/iOS deployment
+are not yet enabled or validated, rather than inherently incompatible with portable operator conformance.
+Configuration errors distinguish these integration gaps from runner contract requirements; all remain rejected in
+the current main-build path. Building the executable does not
 register a provider run with CTest. Provider CI jobs invoke the runner directly with an explicit source-built runtime,
 profile, generated cases, and writable report path. Comparator/exporter unit tests retain CTest integration.
 Per-EP corpus execution does not invoke the full Python developer/negative harness.

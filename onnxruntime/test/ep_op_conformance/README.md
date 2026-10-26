@@ -426,7 +426,13 @@ if ($LASTEXITCODE -ne 0) { throw 'CPU EP conformance failed' }
 ```
 
 The direct target `onnxruntime_ep_op_conformance_test` also builds its runtime and case prerequisites. C++20 remains
-target-local. Static-only, cross-compiled, browser, minimal, and reduced-op builds fail explicitly when opted in.
+target-local. Configuration errors distinguish this runner's contract from integration paths not yet enabled:
+
+- Static-only runtimes are incompatible with this runner's dynamic loading, and minimal runtimes lack its required
+  ONNX model loading. Emscripten requires a separate WebAssembly host rather than the native-library loader.
+- Cross-compilation and Android/iOS deployment are not yet supported or validated;
+  their rejection is a current integration limit, not an inherent restriction of the portable case contract.
+
 [tools/build_cases.py](tools/build_cases.py) records input/producer hashes in digest-keyed immutable build directories;
 installed NumPy, ONNX, and protobuf versions are recorded, not separately pinned or enforced. Changed inputs or
 producer versions select a new directory and unchanged builds avoid regeneration. Building the runner does not
