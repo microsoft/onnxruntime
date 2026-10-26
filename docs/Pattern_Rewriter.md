@@ -4,7 +4,7 @@ This document describes how to express fusion optimizations as rewrite rules.
 
 ## Example: composing two Transposes
 
-The following example replaces `Transpose(Transpose(x,p),q)` with one Transpose.
+The following example replaces `Transpose(Transpose(x, p), q)` with one Transpose.
 
 ```cpp
 #include "core/optimizer/pattern_rewriter.h"
@@ -19,11 +19,11 @@ bool ComposeTransposePermutations(const Graph&, Match& match) {
 
 Rule MakeComposeTransposeRule() {
   Pattern pattern(R"(
-    (x,p:ints,q:ints) => {
-      a=Transpose(x,perm=p)
-      return Transpose(a,perm=q)
+    (x, p : ints, q : ints) => {
+      a = Transpose(x, perm = p)
+      return Transpose(a, perm = q)
     })");
-  Replacement replacement("(x,composed)=>Transpose(x,perm=composed)");
+  Replacement replacement("(x, composed) => Transpose(x, perm = composed)");
   return Rule{"ComposeTranspose", pattern, replacement,
               ComposeTransposePermutations, {{kOnnxDomain, 13, 25}}};
 }
@@ -39,7 +39,7 @@ applied. It can also compute other information (eg., new constant values or
 attribute values) needed to construct the replacement. In this example,
 it **checks** known rank and valid explicit permutations and **binds** the
 composed permutation for the replacement. For inner permutation `p` and
-outer `q`, composition is `composed[i]=p[q[i]]`, not `q[p[i]]`.
+outer `q`, composition is `composed[i] = p[q[i]]`, not `q[p[i]]`.
 * The opset ranges specify the ONNX opsets for which the fusion is valid.
 
 The complete definition of `ComposeTransposePermutations` is:
@@ -72,7 +72,7 @@ The pattern requires explicit `perm` attributes; it does not match default
 reverse-axis Transposes. `attributeOf` returns a const reference to the captured
 `AttributeProto` rather than copying its potentially large payload; the reference
 borrows the Match. The pattern guarantees that `p` and `q` exist before the
-checker runs. Optional attribute captures such as `p:ints | None` are not
+checker runs. Optional attribute captures such as `p : ints | None` are not
 supported: `None` describes tensor-slot/branch absence, not a missing attribute.
 To handle an omitted attribute, leave it out of the pattern's keyword constraints
 and inspect the matched node's `GetAttributes()` map in the checker; see
@@ -82,7 +82,7 @@ known. Identity composition remains a Transpose with the identity permutation,
 not a zero-node replacement. The built-in boundary check will not apply the
 fusion if the inner Transpose result is exposed as a graph output or is
 consumed elsewhere. The rank-three
-noncommuting permutations `[1,0,2]` then `[0,2,1]` compose to `[1,2,0]`.
+noncommuting permutations `[1, 0, 2]` then `[0, 2, 1]` compose to `[1, 2, 0]`.
 
 ## Patterns
 
@@ -91,7 +91,7 @@ the **same `NodeArg`**, not merely equal tensor contents. It has a standalone
 execution API; neither a `Rule`, replacement, nor `PatternRewriter` is needed:
 
 ```cpp
-Pattern pattern("(x)=>{a=Identity(x);return Sigmoid(a)}");
+Pattern pattern("(x) => { a = Identity(x); return Sigmoid(a) }");
 std::optional<Match> match;
 ORT_RETURN_IF_ERROR(pattern.MatchAt(graph, root.Index(), match));
 if (match) {
@@ -110,7 +110,7 @@ It does not run a checker or search another candidate after a later checker
 rejection. Use the ordered visitor when that retry is needed:
 
 ```cpp
-Pattern pattern("(x)=>{a=Identity(x);return Sigmoid(a)}");
+Pattern pattern("(x) => { a = Identity(x); return Sigmoid(a) }");
 size_t count = 0;
 ORT_RETURN_IF_ERROR(pattern.VisitMatches(graph, root_index, [&](Match& match) {
   ++count;
@@ -182,8 +182,8 @@ Use `domain.Operator(...)` (ONNX text-format notation) or
 `domain::Operator(...)` for qualified operators in patterns and replacements:
 
 ```cpp
-Pattern pattern("(x,y) => { mm = com.microsoft.FusedMatMul(x,y); return Identity(mm); }");
-Replacement replacement("(x,y) => com.microsoft.FusedMatMul(x,y)");
+Pattern pattern("(x, y) => { mm = com.microsoft.FusedMatMul(x, y); return Identity(mm); }");
+Replacement replacement("(x, y) => com.microsoft.FusedMatMul(x, y)");
 ```
 
 An unqualified operator uses the standard ONNX domain. `ai.onnx::Identity`
@@ -202,13 +202,13 @@ are available for introspection.
 
 ### Optional type and shape annotations
 
-Pattern header variables and assigned outputs may carry `: type` annotations.
+Pattern header variables and assigned outputs may carry ` : type` annotations.
 Unannotated variables retain their existing unconstrained behavior:
 
 ```cpp
 Pattern pattern(R"(
-  (x:float[M,N], y:float[N,K]) => {
-    product:float[M,K] = MatMul(x,y);
+  (x : float[M, N], y : float[N, K]) => {
+    product : float[M, K] = MatMul(x, y);
     return Identity(product);
   }
 )");
@@ -222,19 +222,19 @@ They cannot collide with tensor, attribute, or element-type variable names.
 |---|---|
 | `float` | Rank-zero float32 tensor (known scalar shape) |
 | `float[]` or `float[...]` | Float32 tensor of any rank, including unknown rank |
-| `float[M,N]` | Known rank 2, with named dimension bindings |
-| `float[2,3]` | Known rank 2 and exact static dimensions 2 and 3 |
-| `float[M,...]` | Known rank at least 1, binding its first dimension |
-| `float[_,N]` | Known rank 2; first dimension unconstrained and unnamed |
-| `tensor[M,N]` | Known rank 2, without an element-type constraint |
-| `tensor<T>[M,N]` | Known rank 2, with shared element-type variable `T` |
+| `float[M, N]` | Known rank 2, with named dimension bindings |
+| `float[2, 3]` | Known rank 2 and exact static dimensions 2 and 3 |
+| `float[M, ...]` | Known rank at least 1, binding its first dimension |
+| `float[_, N]` | Known rank 2; first dimension unconstrained and unnamed |
+| `tensor[M, N]` | Known rank 2, without an element-type constraint |
+| `tensor<T>[M, N]` | Known rank 2, with shared element-type variable `T` |
 | `tensor<T>[]` | Any rank, with shared element-type variable `T` |
 
 Tensor element names follow ONNX, for example `float`, `double`, `float16`,
 `bfloat16`, `int64`, `int32`, `uint8`, `bool`, and `string`. Only tensor types
 are supported; sequences, maps, and optional ONNX value types are not annotations.
 `None` in a type union describes an absent operator slot, not an ONNX optional
-value type: `(x:float[], low:float | None, high:float | None)` allows absent
+value type: `(x : float[], low : float | None, high : float | None)` allows absent
 scalar Clip bounds. An absent slot matches only its `None` alternative, without
 binding any dimensions or element type.
 
@@ -251,9 +251,9 @@ regardless of traversal order. Integer 2 differs from symbolic `"batch"`, and
 `"batch"` differs from `"other"`. `_` accepts any dimension, including unknown,
 without creating a capture or equality constraint.
 
-For example, `(x:float[M,K],y:float[M,N])` requires both `M` dimensions to be
+For example, `(x : float[M, K], y : float[M, N])` requires both `M` dimensions to be
 known and equal; the singleton `K` and `N` dimensions may be anonymous unknowns.
-`float[M,M]` imposes equality between two positions of one tensor as well.
+`float[M, M]` imposes equality between two positions of one tensor as well.
 Counts include only the selected alternative at each annotation occurrence,
 not mutually exclusive alternatives or failed search branches. Calls preserve
 hygienic dimension names and each conjunctive annotation occurrence. Merely
@@ -276,8 +276,8 @@ with computed attributes, and survive clearing computed attributes.
 Attribute captures can be declared and annotated in the header:
 
 ```cpp
-Pattern pattern("(x:float[M,N], axes:ints) => { t=Transpose(x,perm=axes); return Identity(t); }");
-Replacement replacement("(x,axes) => Transpose(x,perm=axes)");
+Pattern pattern("(x : float[M, N], axes : ints) => { t = Transpose(x, perm = axes); return Identity(t); }");
+Replacement replacement("(x, axes) => Transpose(x, perm = axes)");
 ```
 
 A header name used in keyword position denotes an attribute, not a tensor.
@@ -306,8 +306,8 @@ silently ignored. Each annotation allows at most 64 dimensions, with at most
 Use `|` for a disjunction of tensor constraints:
 
 ```cpp
-Pattern pattern("(x:float[M] | float[M,N]) => return Identity(x)");
-Pattern optional("(x,low:float | None) => return Clip(x,low)");
+Pattern pattern("(x : float[M] | float[M, N]) => return Identity(x)");
+Pattern optional("(x, low : float | None) => return Clip(x, low)");
 ```
 
 Type alternatives are tried left to right, with annotated variables processed
@@ -322,7 +322,7 @@ The product of alternative counts across annotations is limited to 64 at parse t
 Empty branches, duplicate constraints, and `None` alone are rejected.
 `None | float[M]` is also accepted, but `None` is permitted only for header tensor
 inputs, not assigned outputs or attribute captures. Replacements remain untyped.
-The former experimental `x?` syntax is removed; use `x:tensor[...] | None` for
+The former experimental `x?` syntax is removed; use `x : tensor[...] | None` for
 an unconstrained optional tensor slot.
 
 ### Optional input slots
@@ -332,13 +332,13 @@ both an empty ONNX input name and an omitted trailing slot. Mark a header
 variable with a tensor type union including `None` to allow either a present value or an absent slot:
 
 ```cpp
-Pattern pattern("(x,low:tensor[...] | None,high:tensor[...] | None) => { a=Identity(x); return Clip(a,low,high); }");
-Replacement replacement("(x,low,high) => Clip(x,low,high)");
-Pattern absent_min("(x,high) => { a=Identity(x); return Clip(a,None,high); }");
+Pattern pattern("(x, low : tensor[...] | None, high : tensor[...] | None) => { a = Identity(x); return Clip(a, low, high); }");
+Replacement replacement("(x, low, high) => Clip(x, low, high)");
+Pattern absent_min("(x, high) => { a = Identity(x); return Clip(a, None, high); }");
 ```
 
 An ordinary header variable requires a present input. Repeated optional variables
-must bind identically, including absence: `(x,v:tensor[...] | None) => Clip(x,v,v)` does not match
+must bind identically, including absence: `(x, v : tensor[...] | None) => Clip(x, v, v)` does not match
 one present and one absent slot. `match.valueOf("low")` returns `nullptr` when
 the optional binding is absent; check-and-bind callbacks must check it before dereferencing.
 Replacements preserve an absent binding as an empty input name. Explicit `None`
@@ -358,11 +358,11 @@ an earlier constant-folding pass.
 A bracketed positional literal is a **rank-one tensor**, not an attribute:
 
 ```cpp
-Pattern pattern("(x) => { reshaped = Reshape(x,[2,3]); return Identity(reshaped); }");
-Replacement replacement("(x) => Reshape(x,[2,3])");
+Pattern pattern("(x) => { reshaped = Reshape(x, [2, 3]); return Identity(reshaped); }");
+Replacement replacement("(x) => Reshape(x, [2, 3])");
 ```
 
-`[1,2]` is an int64 tensor of shape `[2]`; `[1.0,2.0]` is float32 of the same
+`[1, 2]` is an int64 tensor of shape `[2]`; `[1.0, 2.0]` is float32 of the same
 shape. `[1]` has shape `[1]` and does not match scalar `1` or a matrix `[[1]]`.
 Matching requires exact rank, length, element type, order, and values. Nested
 lists are not supported. All elements must have the same numeric type spelling:
@@ -373,11 +373,11 @@ of shape `[0]`. Replacement tensor lists synthesize immutable initializers.
 Keyword arguments constrain attributes, not tensor inputs:
 
 ```cpp
-Pattern pattern("(x) => { h = HardSigmoid(x, alpha=0.25, beta=0.5); return Mul(h,x); }");
+Pattern pattern("(x) => { h = HardSigmoid(x, alpha = 0.25, beta = 0.5); return Mul(h, x); }");
 ```
 
 Attribute equality compares the protobuf attribute type as well as its value.
-For example, `axis=-1` is an integer attribute, while `epsilon=1e-5` is a float.
+For example, `axis = -1` is an integer attribute, while `epsilon = 1e-5` is a float.
 Single- or double-quoted string attributes are supported; strings may escape
 quotes and backslashes. Other attributes are unconstrained. A listed attribute
 must be present in the resolved node's attribute map. Staged replacement nodes
@@ -387,8 +387,8 @@ rules and callbacks see defaults without an intervening `Graph::Resolve()`.
 In keyword positions the same numeric list syntax instead denotes an attribute:
 
 ```cpp
-Pattern pattern("(x) => { t=Transpose(x,perm=[1,0]); return Identity(t); }");
-Replacement replacement("(x) => Transpose(x,perm=[1,0])");
+Pattern pattern("(x) => { t = Transpose(x, perm = [1, 0]); return Identity(t); }");
+Replacement replacement("(x) => Transpose(x, perm = [1, 0])");
 ```
 
 Integer lists become `INTS` attributes; float lists become `FLOATS`.
@@ -402,8 +402,8 @@ Positional inputs must precede keyword attributes.
 Instead of a literal, a pattern keyword may capture an attribute by name:
 
 ```cpp
-Pattern pattern("(x) => { t=Transpose(x,perm=axes); return Identity(t); }");
-Replacement replacement("(x,axes) => Transpose(x,perm=axes)");
+Pattern pattern("(x) => { t = Transpose(x, perm = axes); return Identity(t); }");
+Replacement replacement("(x, axes) => Transpose(x, perm = axes)");
 ```
 
 The attribute must be present and concrete. `match.attributeOf("axes")` exposes
@@ -427,10 +427,10 @@ Assignments can describe a DAG rather than only a chain:
 
 ```cpp
 Pattern pattern(R"(
-  (x,y) => {
-    sum = Add(x,y)
-    product = Mul(sum,x)
-    return Add(sum,product)
+  (x, y) => {
+    sum = Add(x, y)
+    product = Mul(sum, x)
+    return Add(sum, product)
   }
 )");
 ```
@@ -441,7 +441,7 @@ for equivalent computations or reorder commutative inputs.
 Comma-separated assignment names declare the exact ordered output count:
 
 ```cpp
-Pattern pattern("(x) => { first,second = Split(x,axis=0); return Concat(first,second,axis=0); }");
+Pattern pattern("(x) => { first, second = Split(x, axis = 0); return Concat(first, second, axis = 0); }");
 Replacement replacement("(x) => Identity(x)");
 ```
 
@@ -451,11 +451,11 @@ For a multi-output root, assign its outputs first, then return their names:
 Pattern pattern(R"(
   (x) => {
     copied = Identity(x);
-    left,right = Split(copied,axis=0);
-    return left,right;
+    left, right = Split(copied, axis = 0);
+    return left, right;
   }
 )");
-Replacement replacement("(x) => { left,right = Split(x,axis=0); return left,right; }");
+Replacement replacement("(x) => { left, right = Split(x, axis = 0); return left, right; }");
 ```
 
 This replacement preserves the two explicitly returned original `NodeArg`s in order,
@@ -466,8 +466,8 @@ names to describe its exact arity. Named returns may select and reorder outputs,
 including outputs from different nodes:
 
 ```cpp
-Pattern pattern("(x) => { a=Identity(x); y=Add(a,a); z=Mul(y,y); return y,z; }");
-Replacement replacement("(x) => { y=Add(x,x); z=Mul(y,y); return y,z; }");
+Pattern pattern("(x) => { a = Identity(x); y = Add(a, a); z = Mul(y, y); return y, z; }");
+Replacement replacement("(x) => { y = Add(x, x); z = Mul(y, y); return y, z; }");
 ```
 
 The final operator remains the unique sink used to anchor backward matching.
@@ -498,7 +498,7 @@ The standalone `Instantiate` API executes a recipe without a pattern, Match,
 rule, or engine:
 
 ```cpp
-Replacement recipe("(x,perm)=>Transpose(x,perm=perm)");
+Replacement recipe("(x, perm) => Transpose(x, perm = perm)");
 ONNX_NAMESPACE::AttributeProto permutation;
 permutation.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INTS);
 permutation.add_ints(1);
@@ -596,9 +596,9 @@ obtained from `VisitMatches`, without applying any rule:
 ```cpp
 std::optional<Match> accepted;
 ORT_RETURN_IF_ERROR(pattern.VisitMatches(graph, root_index, [&](Match& candidate) {
-  if (!ComposeTransposePermutations(graph, candidate)) return true; // Reject: try next.
+  if (!ComposeTransposePermutations(graph, candidate)) return true; // Reject : try next.
   accepted = candidate;  // Keeps prepared "composed" plus selected-plan ownership.
-  return false;         // Accept: stop enumeration.
+  return false;         // Accept : stop enumeration.
 }));
 ```
 
@@ -612,9 +612,9 @@ equivalence/capability policy that pattern syntax alone cannot prove.
 The following rank-two specialization of the `TransposeMatMul` example rule
 checks a node attribute rather than inspecting types in C++. The pattern's
 annotations already require float32 matrices with compatible dimensions.
-The callback accepts only `Transpose` with an explicit `perm=[1,0]`, then
+The callback accepts only `Transpose` with an explicit `perm = [1, 0]`, then
 binds a new integer attribute variable, `rhs_transpose`, for the text replacement.
-The resulting `FusedMatMul` uses `transB=1` to perform the same transpose internally.
+The resulting `FusedMatMul` uses `transB = 1` to perform the same transpose internally.
 The Microsoft-domain opset must already be imported.
 
 ```cpp
@@ -625,9 +625,9 @@ using namespace onnxruntime::rewrite;
 
 Rule MakeTransposeMatMulRule() {
   const auto* pattern = R"(
-    (x:float[M,N], y:float[K,N]) => {
+    (x : float[M, N], y : float[K, N]) => {
       transposed = Transpose(y)
-      return MatMul(x,transposed)
+      return MatMul(x, transposed)
     }
   )";
   auto check_and_bind = [](const Graph&, Match& match) {
@@ -644,7 +644,7 @@ Rule MakeTransposeMatMulRule() {
     match.update("rhs_transpose", std::move(trans_b));
     return true;
   };
-  const auto* replacement = "(x,y,rhs_transpose) => com.microsoft.FusedMatMul(x,y,transB=rhs_transpose)";
+  const auto* replacement = "(x, y, rhs_transpose) => com.microsoft.FusedMatMul(x, y, transB = rhs_transpose)";
   return Rule{"TransposeMatMul", pattern, replacement, check_and_bind, {{kOnnxDomain, 9, 21}, {kMSDomain, 1, 1}}};
 }
 ```
@@ -743,7 +743,7 @@ callers construct their own `Rules` and pass them to `PatternRewriter`.
 
 There is no match-wide float32 restriction. Independently typed operands such
 as shape/index tensors or a Pow exponent require their own semantic constraints.
-The supplied RMS pattern specifically matches `Pow(x,2.0)`; the float32 exponent
+The supplied RMS pattern specifically matches `Pow(x, 2.0)`; the float32 exponent
 is a literal constraint, not a blanket callback check.
 
 The RMS example also requires last-axis reduction, keepdims, known positive
@@ -755,7 +755,7 @@ Contrib-disabled tests construct only the two HardSwish examples.
 
 ## Opset and execution-provider applicability
 
-Each `OpsetRequirement` is `{domain, min_version, max_version}`, with positive,
+Each `OpsetRequirement` is `{domain, min_version, max_version }`, with positive,
 inclusive bounds. Declare every domain used by a pattern or replacement;
 additional requirements are allowed. `""` and `"ai.onnx"` denote the same domain.
 Duplicate domains, reversed ranges, and undeclared pattern domains are errors.
@@ -838,8 +838,8 @@ separate fragment-only construction contract described above.
 
 Rules have deterministic **registration-order priority**, including across
 different structural groups. At each eligible root, rewriting chooses the first
-passing check-and-bind callback. With `Options{.match_only=true}`, all passing callbacks are counted
-and replacements are not called. `indexed=false` selects the reference matching
+passing check-and-bind callback. With `Options{.match_only = true }`, all passing callbacks are counted
+and replacements are not called. `indexed = false` selects the reference matching
 mode with the same eligibility and priority semantics.
 
 Every pattern and replacement must contain at least one node, and their
@@ -903,7 +903,7 @@ the rule name, candidate root index, `FailureStage`, and a reason string:
 ```cpp
 Options options;
 options.on_failure = [](const MatchFailure& failure) {
-  std::cerr << failure.rule << ": " << failure.reason << '\n';
+  std::cerr << failure.rule << " : " << failure.reason << '\n';
 };
 ```
 
@@ -1003,7 +1003,7 @@ run in global registration order, not group order. Rewrite mode stops at
 the first accepted rule without invoking lower-priority callbacks; match-only
 mode visits all matching rules in that same order. Group signatures use
 locale-independent serialization.
-With `indexed=false`, the reference mode instead tries all opset-applicable
+With `indexed = false`, the reference mode instead tries all opset-applicable
 rules in registration order at each node. Match-only mode processes one batch,
 counts all passing rules, and never applies replacements.
 
@@ -1019,25 +1019,25 @@ the returned pattern.
 
 ```cpp
 PatternLibrary library(R"(
-  pattern activation(g:float[M,N], u:float[M,N],
-                     alpha:float[...] | None) -> (product:float[M,N]) {
-    scaled = (Mul(g,alpha) | g)
+  pattern activation(g : float[M, N], u : float[M, N],
+                     alpha : float[...] | None) -> (product : float[M, N]) {
+    scaled = (Mul(g, alpha) | g)
     s = Sigmoid(scaled)
-    a = Mul(g,s)
-    product = Mul(a,u)
+    a = Mul(g, s)
+    product = Mul(a, u)
     return product
   }
 
-  pattern Fuse(g,u,alpha:float[...] | None) {
-    product = activation(g,u,alpha)
+  pattern Fuse(g, u, alpha : float[...] | None) {
+    product = activation(g, u, alpha)
     return Identity(product)
   }
 )");
 ```
 
 Ordinary patterns declare typed positional inputs and, optionally, positional
-outputs using `-> (product:float[M,N])`. `return product` supplies that result;
-multiple results use `return first,second`. Output annotations constrain the
+outputs using `-> (product : float[M, N])`. `return product` supplies that result;
+multiple results use `return first, second`. Output annotations constrain the
 returned values and share the definition's dimension variables with inputs;
 they do not manufacture shape evidence. Output names must not shadow a
 different local value. Without an output signature, names and annotations
@@ -1049,21 +1049,21 @@ additional repeated-dimension constraints.
 
 Ordinary inputs retain their tensor/attribute classification from use, including
 typed attribute formals such as
-`pattern P(x,axis:int)->(y){y=Softmax(x,axis=axis);return y}`.
+`pattern P(x, axis : int) -> (y) { y = Softmax(x, axis = axis); return y }`.
 Adding an output signature does not impose an interface's all-tensor input
 contract. Declared outputs themselves must be tensors. Output labels cannot
 replace a different existing tensor binding, including a direct alias or a
 positional call result; reusing a label for the same handle remains valid.
 
-`product=activation(g,u,alpha)` binds a tensor directly. For multiple results
-write `first,second=Pair(x)`, just as for a multi-output ONNX operator.
+`product = activation(g, u, alpha)` binds a tensor directly. For multiple results
+write `first, second = Pair(x)`, just as for a multi-output ONNX operator.
 Explicit multi-target calls require exact positional arity and distinct,
 previously unused target names. No `product.port` notation is needed.
 
 ### Expressions, alternatives, and branch-local inputs
 
 The example factors optional scaling outside the shared Sigmoid/Mul suffix:
-`scaled=(Mul(g,alpha) | g)`. An assignment `scaled=g` is an alias to the exact
+`scaled = (Mul(g, alpha) | g)`. An assignment `scaled = g` is an alias to the exact
 same `NodeArg`, not an inserted Identity. Reusing both names therefore imposes
 the same binding-identity requirement as reusing either name.
 
@@ -1072,7 +1072,7 @@ plans. Put multiplication first to prefer it when both alternatives can match.
 There is no automatic longest match. Checker rejection may try the next
 complete plan, with fresh bindings. Every included operator must contribute
 to a returned value in **each** plan. Thus
-`alpha=Add(a,b);scaled=(Mul(g,alpha)|g);return Sigmoid(scaled)` is rejected
+`alpha = Add(a, b); scaled = (Mul(g, alpha) | g); return Sigmoid(scaled)` is rejected
 because the Add is disconnected in the identity plan. Connecting that Add
 through another returned computation makes the definition valid.
 
@@ -1082,18 +1082,18 @@ arity and declared result annotations must be compatible. No named interface
 is required:
 
 ```text
-pattern plain(g:float[M,N],u:float[M,N]) -> (product:float[M,N]) {
-  s=Sigmoid(g);a=Mul(g,s);product=Mul(a,u);return product
+pattern plain(g : float[M, N], u : float[M, N]) -> (product : float[M, N]) {
+  s = Sigmoid(g); a = Mul(g, s); product = Mul(a, u); return product
 }
-pattern scaled(g:float[M,N],u:float[M,N],alpha:float[...]) -> (product:float[M,N]) {
-  v=Mul(g,alpha);s=Sigmoid(v);a=Mul(g,s);product=Mul(a,u);return product
+pattern scaled(g : float[M, N], u : float[M, N], alpha : float[...]) -> (product : float[M, N]) {
+  v = Mul(g, alpha); s = Sigmoid(v); a = Mul(g, s); product = Mul(a, u); return product
 }
-pattern choice(g,u,alpha:float[...] | None) {
-  product=plain(g,u) | scaled(g,u,alpha)
+pattern choice(g, u, alpha : float[...] | None) {
+  product = plain(g, u) | scaled(g, u, alpha)
   return product
 }
-pattern discovered(g,u) {
-  product=plain(g,u) | scaled(g,u,_)
+pattern discovered(g, u) {
+  product = plain(g, u) | scaled(g, u, _)
   return product
 }
 ```
@@ -1127,9 +1127,9 @@ callee-local scope or deeper `alternativeView()`; grouped branches retain
 their nested selection metadata under the `<group>` tag.
 
 Interfaces remain optional reusable tensor contracts, not callable graphs:
-`interface Unary(x:float[N])->(y:float[N])` and
-`pattern Copy implements Unary { y=Identity(x);return y }` remain supported.
-The older explicit `(port=local_value)` returns, colon-signature extra
+`interface Unary(x : float[N]) -> (y : float[N])` and
+`pattern Copy implements Unary { y = Identity(x); return y }` remain supported.
+The older explicit `(port = local_value)` returns, colon-signature extra
 discovered inputs, and scoped DSL `p.port` accesses are compatibility syntax,
 not necessary for new positional examples. An unnamed returned operator call
 still exposes `output` (or `output0`, `output1`, etc.).
@@ -1156,26 +1156,26 @@ may contain useful callable patterns that cannot independently serve as rules:
 
 ```text
 pattern identity(x) -> (y) { return x }
-pattern branches(x,z) {
+pattern branches(x, z) {
   left = Identity(x)
   right = Neg(z)
-  return left,right
+  return left, right
 }
-pattern join(x,z) {
-  left,right = branches(x,z)
+pattern join(x, z) {
+  left, right = branches(x, z)
   value = identity(left)
-  return Add(value,right)
+  return Add(value, right)
 }
 ```
 
 `GetPattern("join")` succeeds; `GetPattern("identity")` and
 `GetPattern("branches")` fail. These checks apply equally to body patterns,
-aliases and alternative definitions. Legacy standalone `Pattern("(x)=>...")`
+aliases and alternative definitions. Legacy standalone `Pattern("(x) => ...")`
 syntax remains supported; its operator-root and output-boundary checks are unchanged.
 
 The legacy colon signature extends an interface implementation with external
 inputs discovered by matching. For example,
-`pattern extra implements Unary: (alpha:float[...]) -> { y=Mul(x,alpha);return y }`
+`pattern extra implements Unary : (alpha : float[...]) -> { y = Mul(x, alpha); return y }`
 is called with just `extra(x)`, while `alpha` binds to the matched Mul's input.
 It remains a tensor, not an automatically decoded float.
 Additional attribute captures can also be declared in that signature using
@@ -1190,8 +1190,8 @@ interface) and identical ordered input/output port names and annotations.
 This is a strict structural annotation check (including symbol spellings),
 not semantic type equivalence; equivalent any-rank `[]`/`[...]` are normalized.
 Extra discovered inputs of an `implements` body are not common call ports.
-A named call `value=Forms(x)` and the legacy anonymous call
-`value=(first | second)(x)` have the same matching behavior when `Forms=first|second`.
+A named call `value = Forms(x)` and the legacy anonymous call
+`value = (first | second)(x)` have the same matching behavior when `Forms = first | second`.
 Unlike call-expression alternatives, these definition alternatives retain
 the common input signature requirement. Each occurrence
 has an independent selected immediate member, available through `alternative()`;
@@ -1199,8 +1199,8 @@ no user-defined tag name is required. Nesting and single aliases preserve
 their selection identities:
 
 ```text
-pattern first(x) { value=Identity(x);return value }
-pattern second(x) { value=Neg(x);return value }
+pattern first(x) { value = Identity(x); return value }
+pattern second(x) { value = Neg(x); return value }
 pattern Inner = first | second
 pattern Outer = Inner | first
 pattern Alias = Outer
@@ -1221,7 +1221,7 @@ Calls bind positional output variables. The **first output name** is also
 the C++ occurrence-scope handle for `match.instance("first")`; this explicit
 introspection API is separate from `match.valueOf("first")`, which returns
 the actual result tensor. Legacy one-name calls to multi-output patterns
-remain instance-only: `p=Pair(x)` requires `p.port` to address a result and
+remain instance-only: `p = Pair(x)` requires `p.port` to address a result and
 `valueOf("p")`/tensor use of `p` fails, rather than selecting an arbitrary
 output. Tensor handles, attribute captures,
 dimensions and element-type variables are remapped into the call occurrence.
@@ -1377,9 +1377,9 @@ Rule MakePatternFusion(const PatternLibrary& library) {
     return true;
   };
   Replacement recipe(R"(
-    (g,u,activation_alpha) => {
-      a = com.microsoft.QuickGelu(g,alpha=activation_alpha)
-      return Mul(a,u)
+    (g, u, activation_alpha) => {
+      a = com.microsoft.QuickGelu(g, alpha = activation_alpha)
+      return Mul(a, u)
     }
   )");
   return Rule{"PatternActivation", library.GetPattern("Fuse"), recipe, check,
@@ -1396,7 +1396,7 @@ general MoE/QMoE lowering or a bitwise-equivalence guarantee.
 
 Replacement callbacks may likewise select among pre-parsed recipes in C++;
 that choice is host construction, **not** an ONNX If. Pre-parsed recipes can
-reference scoped tensor leaves, for example `(x,p.alpha)=>Mul(x,p.alpha)`.
+reference scoped tensor leaves, for example `(x, p.alpha) => Mul(x, p.alpha)`.
 Such names must exist in every concrete plan when the recipe is attached
 directly to a rule; use a callback to choose a member-specific recipe.
 Matched internal outputs remain forbidden replacement inputs, including
@@ -1404,7 +1404,7 @@ when accessed through an interface alias.
 
 ### Optional immutable tensor constraints and constant readers
 
-The prefix qualifier `const`, as in `top_k:const int64[1]`, requires an
+The prefix qualifier `const`, as in `top_k : const int64[1]`, requires an
 immutable constant initializer in addition to the tensor annotation.
 It does not decode contents, bind a scalar, or require local payload storage.
 Runtime inputs and overridable initializers do not satisfy it.
@@ -1414,9 +1414,9 @@ It can qualify individual tensor alternatives, including
 `ReadConstantTensor(graph, value, data, available)` has typed overloads for
 `InlinedVector<float>` and `InlinedVector<int64_t>`. A missing value,
 nonconstant/overridable initializer, wrong element type, or external payload
-returns OK with `available=false`, leaving `data` unchanged. A malformed
+returns OK with `available = false`, leaving `data` unchanged. A malformed
 available payload returns an error, leaving both outputs unchanged.
-Success decodes raw or typed protobuf storage and sets `available=true`.
+Success decodes raw or typed protobuf storage and sets `available = true`.
 C++ checks rank, supported values and all dependent relationships; decoding
 does not implicitly enforce scalar shape. Propagate reader errors, for
 example with `ORT_THROW_IF_ERROR` in a bool checker, rather than turning
