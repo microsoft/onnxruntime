@@ -61,13 +61,15 @@ void CUDAGraphManager::CaptureEnd(CudaGraphAnnotation_t cuda_graph_annotation_id
   if (!capture_succeeded) {
     const auto status = cudaStreamEndCapture(stream_, &graph);
     if (graph != NULL) {
-      CUDA_CALL_THROW(cudaGraphDestroy(graph));
+      const auto destroy_status = cudaGraphDestroy(graph);
+      if (destroy_status != cudaSuccess) {
+        LOGS_DEFAULT(WARNING) << "Failed to destroy discarded CUDA graph: " << cudaGetErrorString(destroy_status);
+      }
     }
-    if (status == cudaErrorStreamCaptureInvalidated) {
-      (void)cudaGetLastError();
-    } else {
-      CUDA_CALL_THROW(status);
+    if (status != cudaSuccess && status != cudaErrorStreamCaptureInvalidated) {
+      LOGS_DEFAULT(WARNING) << "Failed to end discarded CUDA graph capture: " << cudaGetErrorString(status);
     }
+    (void)cudaGetLastError();
     return;
   }
   CUDA_CALL_THROW(cudaStreamEndCapture(stream_, &graph));

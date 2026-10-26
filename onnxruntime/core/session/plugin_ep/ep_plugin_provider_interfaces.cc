@@ -2,10 +2,12 @@
 // Licensed under the MIT License.
 
 #include "core/session/plugin_ep/ep_plugin_provider_interfaces.h"
+#include "core/session/plugin_ep/run_options_internal.h"
 
 #include <algorithm>
 #include <gsl/gsl>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -867,9 +869,22 @@ Status PluginExecutionProvider::OnRunEnd(bool sync_stream, const RunOptions& run
 }
 
 Status PluginExecutionProvider::OnRunEnd(bool sync_stream, const RunOptions& run_options, bool run_succeeded) {
-  RunOptions end_options = run_options;
-  ORT_RETURN_IF_ERROR(end_options.config_options.AddConfigEntry("ep.internal.run_succeeded", run_succeeded ? "1" : "0"));
-  return OnRunEnd(sync_stream, end_options);
+  if (ort_ep_->OnRunEnd == nullptr) {
+    return Base::OnRunEnd(sync_stream, run_options);
+  }
+  if (run_succeeded) {
+    return OnRunEnd(sync_stream, run_options);
+  }
+  std::optional<RunOptions> end_options;
+  try {
+    end_options.emplace(run_options);
+    end_options->config_options.configurations[kEpRunSucceededConfigKey] = "0";
+  } catch (const std::exception& exception) {
+    const auto teardown_status = OnRunEnd(sync_stream, run_options);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to prepare plugin run-end options: ", exception.what(),
+                           "; OnRunEnd: ", teardown_status.ToString());
+  }
+  return OnRunEnd(sync_stream, *end_options);
 }
 
 Status PluginExecutionProvider::OnSessionInitializationEnd() {

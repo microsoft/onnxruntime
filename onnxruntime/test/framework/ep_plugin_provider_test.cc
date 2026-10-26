@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/session/plugin_ep/ep_plugin_provider_interfaces.h"
+#include "core/session/plugin_ep/run_options_internal.h"
 
 #include <algorithm>
 #include <atomic>
@@ -21,6 +22,7 @@
 #include "core/framework/op_kernel.h"
 #include "core/framework/plugin_data_transfer.h"
 #include "core/framework/resource_accountant.h"
+#include "core/framework/run_options.h"
 #include "core/framework/stream_handles.h"
 #include "core/graph/constants.h"
 #include "core/graph/graph_viewer.h"
@@ -87,6 +89,12 @@ struct TestOrtEp : ::OrtEp, ApiPtrs {
   const OrtMemoryDevice* test_default_memory_device = nullptr;
   mutable std::atomic<int> get_default_memory_device_call_count{0};
   int requested_stream_device_id = -1;
+  std::function<OrtStatus*(const OrtRunOptions*, bool)> on_run_end;
+
+  static OrtStatus* ORT_API_CALL OnRunEndImpl(OrtEp* this_ptr, const OrtRunOptions* options,
+                                              bool sync_stream) noexcept {
+    return static_cast<TestOrtEp*>(this_ptr)->on_run_end(options, sync_stream);
+  }
 
   static OrtStatus* ORT_API_CALL GetDefaultMemoryDeviceImpl(const OrtEp* this_ptr,
                                                             const OrtMemoryDevice** device) noexcept {
@@ -188,6 +196,44 @@ MakeTestOrtEpResult MakeTestOrtEp(OrtEpFactory& ep_factory,
 MakeTestOrtEpResult MakeTestOrtEp(std::vector<const OrtEpDevice*> ep_devices = {},
                                   std::function<void(TestOrtEp&)> setup = nullptr) {
   return MakeTestOrtEp(g_test_ort_ep_factory, std::move(ep_devices), std::move(setup));
+}
+
+TEST(PluginExecutionProviderTest, OnRunEndForwardsRunSuccessWithoutMutatingCallerOptions) {
+  auto [ep, ort_ep] = MakeTestOrtEp();
+  ort_ep->OnRunEnd = TestOrtEp::OnRunEndImpl;
+  RunOptions options;
+  options.run_tag = "caller";
+  options.config_options.configurations[kEpRunSucceededConfigKey] = "caller-value";
+  int callback_count = 0;
+  ort_ep->on_run_end = [&](const OrtRunOptions* received, bool sync_stream) -> OrtStatus* {
+    ++callback_count;
+    EXPECT_EQ(received, &options);
+    EXPECT_TRUE(sync_stream);
+    return nullptr;
+  };
+  EXPECT_STATUS_OK(ep->OnRunEnd(true, options, true));
+  ort_ep->on_run_end = [&](const OrtRunOptions* received, bool sync_stream) -> OrtStatus* {
+    ++callback_count;
+    EXPECT_NE(received, &options);
+    EXPECT_FALSE(sync_stream);
+    EXPECT_EQ(received->run_tag, "caller");
+    EXPECT_EQ(received->config_options.GetConfigOrDefault(kEpRunSucceededConfigKey, ""), "0");
+    return ort_ep->ort_api->CreateStatus(ORT_EP_FAIL, "teardown error");
+  };
+  const auto status = ep->OnRunEnd(false, options, false);
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_EQ(status.ErrorMessage(), "teardown error");
+  EXPECT_EQ(options.config_options.GetConfigOrDefault(kEpRunSucceededConfigKey, ""), "caller-value");
+  EXPECT_EQ(callback_count, 2);
+}
+
+TEST(PluginExecutionProviderTest, OnRunEndWithoutCallbackAcceptsSuccessAndFailure) {
+  auto [ep, ort_ep] = MakeTestOrtEp();
+  EXPECT_EQ(ort_ep->OnRunEnd, nullptr);
+  RunOptions options;
+  EXPECT_STATUS_OK(ep->OnRunEnd(true, options, true));
+  EXPECT_STATUS_OK(ep->OnRunEnd(true, options, false));
+  EXPECT_TRUE(options.config_options.configurations.empty());
 }
 
 using LookUpKernelFunc = std::function<const KernelCreateInfo*(const Node&)>;

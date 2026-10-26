@@ -12,6 +12,7 @@
 #include "core/framework/allocator.h"
 #include "ep/get_capability_utils.h"
 #include "ep/api.h"  // onnxruntime::ep::CurrentOrtApiVersion()
+#include "core/session/plugin_ep/run_options_internal.h"
 
 #include <cstring>
 #include <limits>
@@ -652,13 +653,16 @@ OrtStatus* ORT_API_CALL CudaEp::OnRunEndImpl(
   bool replayed_graph = false;
   const char* run_succeeded_value = run_options == nullptr
                                         ? nullptr
-                                        : ep->factory_.GetOrtApi().GetRunConfigEntry(run_options, "ep.internal.run_succeeded");
+                                        : ep->factory_.GetOrtApi().GetRunConfigEntry(run_options, kEpRunSucceededConfigKey);
   const bool run_succeeded = run_succeeded_value == nullptr || std::string_view(run_succeeded_value) != "0";
   if (!context.cuda_graph.IsGraphCaptured(id)) {
     if (context.cuda_graph.IsGraphCaptureAllowed(id, ep->config_.min_num_runs_before_cuda_graph_capture)) {
       context.cuda_graph.CaptureEnd(id, run_succeeded);
       if (!run_succeeded) {
         context.pre_capture_free_mem = 0;
+        if (sync_stream) {
+          PL_CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(context.graph_stream));
+        }
         return nullptr;
       }
 

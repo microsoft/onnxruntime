@@ -368,6 +368,9 @@ class GraphCaptureTestExecutionProvider : public CPUExecutionProvider {
   Status OnRunStart(const RunOptions&) override {
     Notify(GraphCaptureOperation::Run);
     ++run_count;
+    if (on_run_start) {
+      on_run_start();
+    }
     return Status::OK();
   }
 
@@ -385,6 +388,15 @@ class GraphCaptureTestExecutionProvider : public CPUExecutionProvider {
     return fail_replay ? ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Replay failed for testing") : Status::OK();
   }
 
+  Status OnRunEnd(bool sync_stream, const RunOptions& run_options, bool run_succeeded) override {
+    if (!run_succeeded) {
+      ++failed_run_end_count;
+      return Status::OK();
+    }
+    ++successful_run_end_count;
+    return OnRunEnd(sync_stream, run_options);
+  }
+
   Status ReleaseCapturedGraph(int) override {
     Notify(GraphCaptureOperation::Release);
     captured_ = false;
@@ -393,6 +405,9 @@ class GraphCaptureTestExecutionProvider : public CPUExecutionProvider {
   }
 
   std::function<void(GraphCaptureOperation)> on_operation;
+  std::function<void()> on_run_start;
+  std::atomic<int> failed_run_end_count{0};
+  std::atomic<int> successful_run_end_count{0};
   std::atomic<int> run_count{0};
   std::atomic<int> replay_count{0};
   bool fail_replay = false;
@@ -466,6 +481,22 @@ TEST_F(GraphCaptureSessionTest, ReplayFailureReleasesRunLock) {
   ASSERT_STATUS_OK(Execute(GraphCaptureOperation::Release));
   ASSERT_STATUS_OK(Execute(GraphCaptureOperation::Replay));
   EXPECT_EQ(ep_->run_count.load(), 4);
+}
+
+TEST_F(GraphCaptureSessionTest, OnRunEndReceivesExecutionFailureAndRecovery) {
+  ASSERT_NO_FATAL_FAILURE(CreateSession());
+  ASSERT_STATUS_OK(Execute(GraphCaptureOperation::Run));
+  EXPECT_EQ(ep_->successful_run_end_count.load(), 1);
+  RunOptions options;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation, "-1"));
+  ep_->on_run_start = [&options]() { options.terminate = true; };
+  EXPECT_FALSE(RunModelWithValues(*session_, options, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f}).IsOK());
+  EXPECT_EQ(ep_->failed_run_end_count.load(), 1);
+  EXPECT_EQ(ep_->successful_run_end_count.load(), 1);
+  EXPECT_EQ(ep_->replay_count.load(), 0);
+  ep_->on_run_start = nullptr;
+  ASSERT_STATUS_OK(Execute(GraphCaptureOperation::Run));
+  EXPECT_EQ(ep_->successful_run_end_count.load(), 2);
 }
 
 class GraphCaptureRunSerializationTest
