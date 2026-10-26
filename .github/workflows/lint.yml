@@ -39,11 +39,7 @@ jobs:
   lint-python-format:
     # Required workflow
     name: Python format
-    runs-on: [
-        "self-hosted",
-        "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
-        "JobId=lint-python-format-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
-        ]
+    runs-on: [ort-github-linux-16-amd-wcus-ss]
     timeout-minutes: 120
     permissions:
       contents: read
@@ -86,7 +82,7 @@ jobs:
       - name: Upload SARIF file
         if: always()
         continue-on-error: true
-        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         with:
           # Path to SARIF file relative to the root of the repository
           sarif_file: lintrunner.sarif

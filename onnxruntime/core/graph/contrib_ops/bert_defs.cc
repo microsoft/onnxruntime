@@ -666,6 +666,8 @@ Multi-Head Attention that can be either unidirectional (like GPT-2) or bidirecti
 The weights for input projection of Q, K and V are merged. The data is stacked on the second dimension. Its shape
 is (input_hidden_size, hidden_size + hidden_size + v_hidden_size). Here hidden_size is the hidden dimension of Q and K,
 and v_hidden_size is that of V.
+Q, K and V hidden sizes must be positive multiples of num_heads. Their sum must match the weights' second dimension.
+When qkv_hidden_sizes is omitted, the weights' second dimension must be divisible by three.
 
 The mask_index is optional. Besides raw attention mask with shape (batch_size, total_sequence_length)
 or (batch_size, sequence_length, total_sequence_length) with value 0 for masked and 1 otherwise,
@@ -1498,6 +1500,16 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Default value is 1e-6.",
               AttributeProto::FLOAT,
               1e-6f)
+        .Attr("q_norm_epsilon",
+              "Epsilon for per-head Q RMS normalization. Overrides qk_norm_epsilon for Q when provided. "
+              "Must be finite and positive.",
+              AttributeProto::FLOAT,
+              OPTIONAL_VALUE)
+        .Attr("k_norm_epsilon",
+              "Epsilon for per-head K RMS normalization. Overrides qk_norm_epsilon for K when provided. "
+              "Must be finite and positive.",
+              AttributeProto::FLOAT,
+              OPTIONAL_VALUE)
         .Input(0,
                "query",
                "Query with shape (batch_size, sequence_length, hidden_size), or packed QKV with shape"
@@ -1902,12 +1914,17 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "S")
         .Input(6,
                "past_seqlens",
-               "A tensor with shape (batch_size). It specifies the past lengths of cached sequence in the KV cache.",
+               "A tensor with shape (batch_size). It specifies the past lengths of cached sequences. "
+               "CUDA sanitizes malformed values on device: an invalid value suppresses that sequence's cache writes "
+               "and produces zero output. A backend requiring exact host lengths may instead return INVALID_ARGUMENT "
+               "when attention_metadata is absent.",
                "S")
         .Input(7,
                "block_table",
                "2D tensor with shape (batch_size, max_blocks_per_sequence) that maps each sequence in the batch to its"
-               "corresponding blocks in the KV cache.",
+               "corresponding blocks in the KV cache. -1 denotes an unmapped page. CUDA converts values below -1 or "
+               "greater than or equal to num_blocks to the unmapped sentinel before resolving cache addresses; mapped "
+               "pages remain attendable.",
                "S")
         .Input(8,
                "cos_cache",
@@ -2872,7 +2889,7 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
   }
 
   if (ctx.getNumOutputs() < static_cast<size_t>(psai::kFixedOutputCount) ||
-      ctx.getNumOutputs() > static_cast<size_t>(has_indexshare ? psai::kOutputCount : psai::kStateUpdate + 1)) {
+      ctx.getNumOutputs() > static_cast<size_t>(psai::kOutputCount)) {
     fail_shape_inference("PackedSparseAttentionIndexer: expected ", psai::kFixedOutputCount, " or ",
                          psai::kOutputCount, " declared outputs, got ", ctx.getNumOutputs());
   }
@@ -2885,6 +2902,10 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
   updateOutputElemType(ctx, psai::kSelectedCounts, ONNX_NAMESPACE::TensorProto_DataType_INT32);
   if (has_indexshare) updateOutputElemType(ctx, psai::kIndexShareStatus, ONNX_NAMESPACE::TensorProto_DataType_INT32);
   updateOutputElemType(ctx, psai::kPresentStateLengths, ONNX_NAMESPACE::TensorProto_DataType_INT32);
+  const bool has_state_status_output = ctx.hasOutput(psai::kStateStatus);
+  if (has_state_status_output) {
+    updateOutputElemType(ctx, psai::kStateStatus, ONNX_NAMESPACE::TensorProto_DataType_INT32);
+  }
   propagateElemTypeFromInputToOutput(ctx, psai::kPastKeyState, psai::kPresentKeyState);
   propagateElemTypeFromInputToOutput(ctx, psai::kPastKvBuffer, psai::kPresentKvBuffer);
   if (!is_qsa) {
@@ -3135,6 +3156,12 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
     *state_update_shape.add_dim() = key_state_shape->dim(2);
     updateOutputShape(ctx, psai::kStateUpdate, state_update_shape);
   }
+  if (has_state_status_output && (key_state_shape != nullptr || past_sequence_shape != nullptr)) {
+    ONNX_NAMESPACE::TensorShapeProto state_status_shape;
+    *state_status_shape.add_dim() =
+        key_state_shape != nullptr ? key_state_shape->dim(0) : past_sequence_shape->dim(0);
+    updateOutputShape(ctx, psai::kStateStatus, state_status_shape);
+  }
 }
 
 constexpr const char* PackedSparseAttentionIndexer_ver1_doc = R"DOC(
@@ -3151,7 +3178,8 @@ Unlike SparseAttentionIndexer, this operator:
   * uses a single generic set of state slots (past_key_state / past_kv_buffer / past_gate_buffer /
     past_state_lengths) for both policy_mode values, each with a shape that is fixed across calls
     (state never grows and is never concatenated); a step that would overflow the fixed capacity is
-    rejected as a deterministic no-op on state rather than truncated or allowed to corrupt memory;
+    rejected as a deterministic no-op on state rather than truncated or allowed to corrupt memory
+    (the optional state_status output reports which requests were rejected and why);
   * additionally emits selected_counts, the exact number of active (non -1) entries per query, so
     that no downstream consumer needs to scan selected_indices for its query's true count.
 
@@ -3397,6 +3425,18 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 OpSchema::Optional)
         .Output(7, "indexshare_status", "Selection status [N], forwarded on reuse and zero on refresh.",
                 "M", OpSchema::Optional)
+        .Output(8,
+                "state_status",
+                "Device-side per-request state update status with shape (batch_size). 0: the request's state "
+                "update was applied (or intentionally held by IndexShare reuse); 1: invalid device metadata "
+                "(cumulative_sequence_lengths, past_sequence_lengths or past_state_lengths are inconsistent); "
+                "2: the update would exceed state_capacity. A non-zero request leaves its state payloads "
+                "unchanged, clamps out-of-range past_state_lengths into present_state_lengths, and emits an "
+                "empty selection (selected_counts is 0 and selected_indices is -1). "
+                "Intended for CUDA graph replay, where the host checks it after the replay instead of "
+                "synchronizing inside the operator. Currently supported by the CUDA provider only.",
+                "M",
+                OpSchema::Optional)
         .TypeConstraint("T",
                         {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                         "Constrain floating point tensors to float, float16 and bfloat16.")
@@ -5285,6 +5325,63 @@ their BufferViews have the same Program binding owner, not merely equal raw buff
           }
         }));
 
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    ConvStateReplay, 1,
+    OpSchema()
+        .SetDoc(R"DOC(
+Reconstruct rolling convolution history after retaining a prefix of captured inputs, without
+performing convolution arithmetic. The WebGPU-only implementation copies FP16 or FP32 payload
+bits exactly, including signed zero and NaN payloads, and waits for checked GPU completion.
+
+Inputs 0-2 are full rank-1 backing allocations of the same element type.
+CPU int64 metadata [8] is ordered as:
+  source_offset_bytes, destination_offset_bytes, capture_offset_bytes,
+  batch_size, channels, history_width, capacity, kept_count.
+Offsets are logical byte offsets into the full backing tensors, aligned to the element size
+(two bytes for FP16, four for FP32), not WebGPU storage-binding offsets.
+All fields are nonnegative; channels must be positive; 0 <= kept_count <= capacity.
+Zero batch size, history width, or capture capacity is valid. Zero state size is a no-op.
+Geometry, backing byte extents and metadata must fit the implementation's uint32 indexing range.
+
+The source view is the incoming snapshot immediately before capture, with layout
+[batch_size, channels, history_width]. Captured inputs have layout [batch_size, capacity, channels].
+capacity is the original capture stride, not kept_count. All retained inputs must have been captured.
+For each batch b, channel c and position p, with W = history_width and k = kept_count:
+  destination[b,c,p] = source[b,c,p+k]                 if p+k < W
+                     = capture[b,p+k-W,c]            otherwise.
+For k >= W only the last W inputs of the retained prefix are used; unused capture tails are not read.
+
+The output must be explicitly prebound to the same full allocation as destination_backing.
+Destination backing must be distinct from source and capture backing, even for disjoint logical views.
+Only the designated destination view is modified; neighboring elements and all source/capture data
+are preserved. One descriptor is supported per invocation; graph capture is not supported.
+)DOC")
+        .Input(0, "source_backing", "Full backing tensor containing the incoming convolution history.", "T")
+        .Input(1, "capture_backing", "Full backing tensor containing captured token-major inputs.", "T")
+        .Input(2, "destination_backing", "Full inactive destination-state backing tensor.", "T")
+        .Input(3, "metadata", "CPU int64 [8]: byte offsets, batch, channels, history, capacity, kept_count.", "TI")
+        .Output(0, "destination_out", "Same backing allocation and shape as destination_backing.", "T")
+        .TypeConstraint("T", {"tensor(float16)", "tensor(float)"}, "State and captured inputs are FP16 or FP32.")
+        .TypeConstraint("TI", {"tensor(int64)"}, "CPU replay metadata is int64.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 2, 0);
+          for (size_t index = 0; index < 4; ++index) {
+            if (!hasInputShape(ctx, index)) {
+              continue;
+            }
+            const auto& shape = getInputShape(ctx, index);
+            if (shape.dim_size() != 1) {
+              fail_shape_inference("ConvStateReplay inputs must have rank 1.");
+            }
+            if (index == 3 && shape.dim(0).has_dim_value() && shape.dim(0).dim_value() != 8) {
+              fail_shape_inference("ConvStateReplay metadata must have shape [8].");
+            }
+          }
+          if (hasInputShape(ctx, 2)) {
+            propagateShapeFromInputToOutput(ctx, 2, 0);
+          }
+        }));
+
 constexpr const char* GatedDeltaNet_ver1_doc = R"DOC(
 Packed (token-major) gated delta network / linear attention with an explicit recurrent state.
 Implemented by CUDA and native WebGPU execution providers. WebGPU supports float and float16
@@ -5900,6 +5997,113 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           propagateShapeFromInputToOutput(ctx, 0, 0);
         }));
 
+constexpr const char* HyperConnectionLowRankMix_ver1_doc = R"DOC(
+One hyper-connection block with a low-rank gate network, fused into one operator. C = num_branches streams of
+width H are kept as one flattened (..., C * H) tensor. With the optional prologue the operator first applies the
+post-mix of the previous block (identity stream mix):
+
+  S[..., c, h] = streams[..., c, h] + prev_post_gate[..., c] * prev_block_output[..., h]
+
+and otherwise S = streams. It then computes, with `rms` taken per branch over H:
+
+  hn[..., c, h] = S[..., c, h] / sqrt(mean_h(S[..., c, :]^2) + epsilon) * norm_scale[c, h]
+  d             = ScaledSiLU(hn @ down_weight, silu_alpha)                   (..., R)
+  g[..., c, h]  = sigmoid(d @ up_weight)                                    per stream and feature
+  pre_output    = reduction_scale * sum_c(hn[..., c, h] * g[..., c, h])     (..., H)
+  post_gate     = sigmoid((hn @ inject_weight) / gate_div) * gate_mul         (..., C)
+
+pre_output is the input of the next transformer block and post_gate is prev_post_gate of the next call.
+streams_out is S (the streams after the prologue; a copy of streams when there is no prologue).
+
+Numerics contract. Matrix products and reductions accumulate in float32. The result of every step is rounded
+to T once, as the output of the equivalent standard operator would be:
+S = cast_T(streams + prev_post_gate * prev_block_output), hn = cast_T(S * inv_rms * norm_scale),
+down = cast_T(hn @ down_weight), Z = cast_T(silu_alpha * down), SG = cast_T(sigmoid(Z)), hidden = cast_T(Z * SG),
+up = cast_T(hidden @ up_weight), g = cast_T(sigmoid(up)), pre_output = cast_T(reduction_scale * sum_c(hn * g)),
+inject = cast_T(hn @ inject_weight), post_gate = cast_T(cast_T(sigmoid(cast_T(inject / gate_div))) * gate_mul).
+sigmoid is evaluated in float32 with expf and rounded once to T; it does not reproduce a Sigmoid kernel that
+rounds to T after every elementary operation. The accumulation order of the matrix products is fixed, so the
+results are deterministic, but they are not bitwise identical to cuBLAS.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    HyperConnectionLowRankMix, 1,
+    OpSchema()
+        .SetDoc(HyperConnectionLowRankMix_ver1_doc)
+        .Attr("num_branches", "Number of residual streams C. The last dimension of streams is C * H.",
+              AttributeProto::INT, true)
+        .Attr("epsilon", "Epsilon added to the mean square of each branch before the reciprocal square root.",
+              AttributeProto::FLOAT, 1e-5f)
+        .Attr("reduction_scale", "Multiplier applied to the sum over branches of pre_output.",
+              AttributeProto::FLOAT, 1.0f)
+        .Attr("silu_alpha", "Scale of the ScaledSiLU between the down and up projections.",
+              AttributeProto::FLOAT, 1.0f)
+        .Attr("gate_div", "Divisor applied to the inject logits before the sigmoid. Must not be zero.",
+              AttributeProto::FLOAT, 1.0f)
+        .Attr("gate_mul", "Multiplier applied to the sigmoid of the inject logits.",
+              AttributeProto::FLOAT, 1.0f)
+        .Input(0, "streams",
+               "Flattened streams (..., C * H). With the prologue these are the streams before the previous "
+               "block's post-mix.",
+               "T")
+        .Input(1, "norm_scale", "Per-branch RMS norm weight with shape (C * H).", "T")
+        .Input(2, "down_weight", "Down projection with shape (C * H, R), row-major [K, N].", "T")
+        .Input(3, "up_weight", "Up projection with shape (R, C * H), row-major [K, N].", "T")
+        .Input(4, "inject_weight", "Post-gate projection with shape (C * H, C), row-major [K, N].", "T")
+        .Input(5, "prev_block_output",
+               "Optional output of the previous block with shape (..., H). Provide together with prev_post_gate.",
+               "T", OpSchema::Optional)
+        .Input(6, "prev_post_gate",
+               "Optional post-mix gate of the previous block with shape (..., C). Provide together with "
+               "prev_block_output.",
+               "T", OpSchema::Optional)
+        .Output(0, "pre_output", "Block input with shape (..., H).", "T")
+        .Output(1, "post_gate", "Post-mix gate for the next call with shape (..., C).", "T")
+        .Output(2, "streams_out",
+                "Optional streams after the prologue, with the same shape as streams. Equal to streams when the "
+                "prologue inputs are absent.",
+                "T", OpSchema::Optional)
+        .TypeConstraint("T",
+                        {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain all floating-point inputs and outputs to the same type.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          propagateElemTypeFromInputToOutput(ctx, 0, 1);
+          if (ctx.getNumOutputs() > 2) {
+            propagateElemTypeFromInputToOutput(ctx, 0, 2);
+          }
+          if (!hasInputShape(ctx, 0)) {
+            return;
+          }
+          const auto branches = getAttribute(ctx, "num_branches", 0);
+          if (branches < 1) {
+            fail_shape_inference("num_branches must be positive.");
+          }
+          const auto& input_shape = getInputShape(ctx, 0);
+          const int rank = input_shape.dim_size();
+          if (rank < 1) {
+            fail_shape_inference("streams must have rank at least 1.");
+          }
+          auto* pre_shape = getOutputShape(ctx, 0);
+          auto* gate_shape = getOutputShape(ctx, 1);
+          for (int i = 0; i < rank - 1; ++i) {
+            *pre_shape->add_dim() = input_shape.dim(i);
+            *gate_shape->add_dim() = input_shape.dim(i);
+          }
+          auto* hidden = pre_shape->add_dim();
+          const auto& last = input_shape.dim(rank - 1);
+          if (last.has_dim_value()) {
+            if (last.dim_value() % branches != 0) {
+              fail_shape_inference("The last dimension of streams must be divisible by num_branches.");
+            }
+            hidden->set_dim_value(last.dim_value() / branches);
+          }
+          gate_shape->add_dim()->set_dim_value(branches);
+          if (ctx.getNumOutputs() > 2) {
+            propagateShapeFromInputToOutput(ctx, 0, 2);
+          }
+        }));
+
 constexpr const char* GatedAdd_ver1_doc = R"DOC(
 Adds one tensor to another tensor scaled by a per-row gate:
 
@@ -5924,6 +6128,91 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
           propagateShapeFromInputToOutput(ctx, 0, 0);
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    RMSNormRotary, 1,
+    OpSchema()
+        .SetDoc("CUDA BF16 ONNX-arithmetic RMS normalization followed by non-interleaved partial RoPE. "
+                "Input is [B,S,heads,stride]; a contiguous last-axis slice is normalized with FP32 scale. "
+                "Normalization rounds to BF16 before rotation. Output is flattened [B,S,heads*width]. "
+                "Width 256 and more than one row use one kernel for FP32 decode rotary or prefill; "
+                "other shapes and BF16 decode rotary reuse existing CUDA kernels. "
+                "Prefill mode uses reciprocal-multiply normalization and BF16 rotary intermediates; "
+                "decode uses division normalization and the selected rotary arithmetic.")
+        .Attr("epsilon", "Finite nonnegative RMS epsilon.", AttributeProto::FLOAT, 1e-6f)
+        .Attr("input_start", "Nonnegative start of normalized last-axis slice.", AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("input_width", "Normalized width; zero uses the full last dimension.", AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("rotary_embedding_dim", "Positive even rotary width, no larger than normalized width.", AttributeProto::INT)
+        .Attr("use_fp32_arithmetic", "Decode rotary FP32 (1) or BF16 intermediates (0).", AttributeProto::INT, static_cast<int64_t>(1))
+        .Attr("flatten_batch", "One flattens B*S to sequence and outputs [1,B*S,heads*width].", AttributeProto::INT, static_cast<int64_t>(0))
+        .Input(0, "X", "BF16 input [B,S,heads,stride].", "T")
+        .Input(1, "scale", "FP32 RMS scale [width].", "F")
+        .Input(2, "position_ids", "One base position or [B,S] positions.", "I")
+        .Input(3, "cosine", "BF16 cache [cache_rows,rotary_embedding_dim/2].", "T")
+        .Input(4, "sine", "Same shape/type as cosine.", "T")
+        .Input(5, "prefill_numerics", "Optional CPU int32 scalar 0/1.", "TI", OpSchema::Optional)
+        .Output(0, "Y", "Normalized and rotated [B,S,heads*width].", "T")
+        .Output(1, "normalized_fp32",
+                "Optional BF16-rounded normalized values widened to FP32, before rotation, "
+                "[B,S,heads,width].",
+                "F", OpSchema::Optional)
+        .TypeConstraint("T", {"tensor(bfloat16)"}, "BF16 data.")
+        .TypeConstraint("F", {"tensor(float)"}, "FP32 scale and optional normalized output.")
+        .TypeConstraint("I", {"tensor(int64)"}, "Position indices.")
+        .TypeConstraint("TI", {"tensor(int32)"}, "Numerical control.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          if (ctx.getNumOutputs() > 1) {
+            updateOutputElemType(ctx, 1, TensorProto::FLOAT);
+          }
+          const int64_t width_attr = getAttribute(ctx, "input_width", 0);
+          const int64_t start = getAttribute(ctx, "input_start", 0);
+          const int64_t rotary = getAttribute(ctx, "rotary_embedding_dim", 0);
+          const int64_t mode = getAttribute(ctx, "use_fp32_arithmetic", 1);
+          const int64_t flatten = getAttribute(ctx, "flatten_batch", 0);
+          if (width_attr < 0 || start < 0 || rotary <= 0 || rotary % 2 || (mode != 0 && mode != 1) ||
+              (flatten != 0 && flatten != 1)) {
+            fail_shape_inference("RMSNormRotary has invalid slice, rotary width or mode.");
+          }
+          if (!hasInputShape(ctx, 0)) return;
+          const auto& input = getInputShape(ctx, 0);
+          if (input.dim_size() != 4) fail_shape_inference("RMSNormRotary input must have rank four.");
+          auto normalized = input;
+          if (width_attr) normalized.mutable_dim(3)->set_dim_value(width_attr);
+          if (input.dim(3).has_dim_value() && normalized.dim(3).has_dim_value() &&
+              (normalized.dim(3).dim_value() <= 0 || start > input.dim(3).dim_value() ||
+               normalized.dim(3).dim_value() > input.dim(3).dim_value() - start ||
+               rotary > normalized.dim(3).dim_value())) {
+            fail_shape_inference("RMSNormRotary slice or rotary width exceeds input width.");
+          }
+          if (hasInputShape(ctx, 1)) {
+            const auto& scale = getInputShape(ctx, 1);
+            if (scale.dim_size() != 1 || (scale.dim(0).has_dim_value() && normalized.dim(3).has_dim_value() &&
+                                          scale.dim(0).dim_value() != normalized.dim(3).dim_value())) {
+              fail_shape_inference("RMSNormRotary scale must have shape [width].");
+            }
+          }
+          ONNX_NAMESPACE::TensorShapeProto output;
+          *output.add_dim() = input.dim(0);
+          *output.add_dim() = input.dim(1);
+          if (flatten) {
+            output.mutable_dim(0)->set_dim_value(1);
+            output.mutable_dim(1)->Clear();
+            if (input.dim(0).has_dim_value() && input.dim(1).has_dim_value()) {
+              const auto batch = input.dim(0).dim_value(), sequence = input.dim(1).dim_value();
+              if (batch > 0 && sequence > INT64_MAX / batch) fail_shape_inference("RMSNormRotary sequence overflow.");
+              output.mutable_dim(1)->set_dim_value(batch * sequence);
+            }
+          }
+          auto* flat = output.add_dim();
+          if (input.dim(2).has_dim_value() && normalized.dim(3).has_dim_value()) {
+            const auto heads = input.dim(2).dim_value(), width = normalized.dim(3).dim_value();
+            if (heads <= 0 || width > INT64_MAX / heads) fail_shape_inference("Invalid RMSNormRotary head width.");
+            flat->set_dim_value(heads * width);
+          }
+          updateOutputShape(ctx, 0, output);
+          if (ctx.getNumOutputs() > 1) updateOutputShape(ctx, 1, normalized);
         }));
 
 }  // namespace contrib

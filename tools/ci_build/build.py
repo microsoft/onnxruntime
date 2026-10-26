@@ -434,6 +434,25 @@ def get_msvc_spectre_lib_dir(args):
     return None
 
 
+def stale_python_cache_args(config_build_dir: str) -> list[str]:
+    """CMake arguments that drop the FindPython cache when the build tree was configured for another Python.
+
+    FindPython re-resolves most results for a new Python_EXECUTABLE but keeps the cached header directory, so
+    Development.Module and NumPy are then reported missing and the Python::NumPy target is not created.
+    """
+    cache = Path(config_build_dir) / "CMakeCache.txt"
+    if not cache.is_file():
+        return []
+    prefix = "_Python_EXECUTABLE:INTERNAL="
+    for line in cache.read_text(encoding="utf-8", errors="replace").splitlines():
+        if line.startswith(prefix):
+            cached = os.path.normcase(os.path.realpath(line[len(prefix) :]))
+            if cached != os.path.normcase(os.path.realpath(sys.executable)):
+                return ["-U", "_Python_*"]
+            break
+    return []
+
+
 def generate_build_tree(
     cmake_path,
     source_dir,
@@ -1017,20 +1036,12 @@ def generate_build_tree(
                 "Use an x86, x64, or ARM64 target."
             )
 
-        # The plugin EP package is built with `--use_webgpu shared_lib` and packaged in a separate step,
-        # so the `--build_*` check below does not cover it.
-        if args.use_webgpu == "shared_lib":
+        if args.build_csharp or args.build_nuget or args.build_java or args.build_nodejs:
             raise BuildError(
-                "Dawn Agility SDK (--use_dawn_agility_sdk) is not supported with the WebGPU plugin EP shared "
-                "library build (--use_webgpu shared_lib), which is the configuration used to produce the released "
-                "plugin EP packages. Use the static library build (--use_webgpu) for local development."
-            )
-
-        if args.build_wheel or args.build_csharp or args.build_nuget or args.build_java or args.build_nodejs:
-            raise BuildError(
-                "Dawn Agility SDK (--use_dawn_agility_sdk) is currently supported for local development builds only. "
-                "Python, C#, NuGet, Java, and Node.js packaging is not supported because the required D3D12 runtime "
-                "DLLs are not deployed into those packages."
+                "--use_dawn_agility_sdk is not supported with --build_csharp, --build_nuget, "
+                "--build_java, or --build_nodejs because those build paths do not deploy "
+                "the required D3D12 runtime DLLs. "
+                "For the standalone WebGPU EP NuGet package, use plugin-ep-webgpu/csharp/pack_nuget.py."
             )
 
     if args.use_snpe:
@@ -1404,7 +1415,7 @@ def generate_build_tree(
             cxxflags = cflags.copy()
         config_build_dir = get_config_build_dir(build_dir, config)
         os.makedirs(config_build_dir, exist_ok=True)
-        temp_cmake_args = cmake_args.copy()
+        temp_cmake_args = cmake_args.copy() + stale_python_cache_args(config_build_dir)
         if cflags is not None and cxxflags is not None and len(cflags) != 0 and len(cxxflags) != 0:
             temp_cmake_args += [
                 "-DCMAKE_C_FLAGS={}".format(" ".join(cflags)),
@@ -2048,6 +2059,21 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                     run_subprocess(
                         [sys.executable, "-m", "unittest", "discover", "-s", "quantization", "-v"],
                         cwd=cwd,
+                        dll_path=dll_path,
+                    )
+                    run_subprocess(
+                        [
+                            sys.executable,
+                            "-m",
+                            "pytest",
+                            "-q",
+                            "-p",
+                            "no:cacheprovider",
+                            "--rootdir=.",
+                            "--confcutdir=.",
+                            "test_reference.py",
+                        ],
+                        cwd=os.path.join(cwd, "quantization", "qmoe_packed_reference"),
                         dll_path=dll_path,
                     )
 

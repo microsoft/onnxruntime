@@ -1043,6 +1043,43 @@ TEST(WebGpuContextTest, ReplaysCopyOnlyGraphAndRetainsBuffersUntilRelease) {
   EXPECT_TRUE(commands.empty());
 }
 
+TEST(WebGpuContextTest, ReplaysPartialClearBetweenCopies) {
+  ConfigOptions options;
+  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+  webgpu::BufferManager manager(context, webgpu::BufferCacheMode::Disabled,
+                                webgpu::BufferCacheMode::Disabled, webgpu::BufferCacheMode::Disabled,
+                                webgpu::BufferCacheMode::Disabled);
+  webgpu::CommandRecordingState recording;
+  constexpr auto usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst;
+  std::array<uint32_t, 3> values{1, 2, 3};
+  auto source = wgpu::Buffer::Acquire(manager.Create(recording, sizeof(values), usage));
+  auto intermediate = wgpu::Buffer::Acquire(manager.Create(recording, sizeof(values), usage));
+  auto destination = wgpu::Buffer::Acquire(manager.Create(recording, sizeof(values), usage));
+  manager.Upload(recording, values.data(), source.Get(), sizeof(values));
+
+  std::vector<webgpu::CapturedCommand> commands;
+  context.CaptureBegin(&commands, manager, recording);
+  manager.MemCpy(recording, source.Get(), intermediate.Get(), sizeof(values));
+  context.ClearBuffer(intermediate.Get(), 2 * sizeof(uint32_t), recording);
+  manager.MemCpy(recording, intermediate.Get(), destination.Get(), sizeof(values));
+  ASSERT_STATUS_OK(context.Flush(manager, recording));
+  context.CaptureEnd(recording);
+  ASSERT_EQ(commands.size(), 3u);
+  EXPECT_EQ(ReadBufferWithExternalCommandEncoder<3>(context, destination.Get()),
+            (std::array<uint32_t, 3>{0, 0, values[2]}));
+
+  for (uint32_t run = 1; run <= 3; ++run) {
+    values.fill(run);
+    manager.Upload(recording, values.data(), source.Get(), sizeof(values));
+    context.Replay(commands, manager, recording);
+    EXPECT_EQ(ReadBufferWithExternalCommandEncoder<3>(context, destination.Get()),
+              (std::array<uint32_t, 3>{0, 0, values[2]}));
+    EXPECT_EQ(recording.num_pending_dispatches, 0u);
+  }
+  context.ReleaseGraphResources(commands);
+}
+
 TEST(WebGpuContextTest, DoesNotCaptureDeviceAllocatorBufferClear) {
   ConfigOptions options;
   auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
@@ -1514,17 +1551,26 @@ TEST(WebGpuContextTest, D3D12AcceleratedCanBeEnabledAfterInitialOffSession) {
     auto off_ep = off_factory->CreateProvider();
     ASSERT_NE(off_ep, nullptr);
 
+    auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+    if (context.SelectedBackendType() != wgpu::BackendType::D3D12 ||
+        !context.D3D12SharedResourceFeaturesAvailable()) {
+      GTEST_SKIP() << "The selected adapter does not support D3D12 weight loading.";
+    }
+    ASSERT_NE(context.WeightLoadingD3D12Device(), nullptr);
+    auto* native_device = context.WeightLoadingD3D12Device();
+    auto* webgpu_device = context.Device().Get();
+    EXPECT_EQ(off_ep->GetExternalDataLoader(), nullptr);
+
     auto required_factory = WebGpuProviderFactoryCreator::Create(
         WeightLoadAccelerationOptions(kWeightLoadAcceleration_Required));
     auto required_ep = required_factory->CreateProvider();
     ASSERT_NE(required_ep, nullptr);
 
-    auto& context = webgpu::WebGpuContextFactory::GetContext(0);
     const auto support_status =
         webgpu::CheckD3D12AcceleratedExternalWeightsSupport(context);
-    if (!support_status.IsOK()) {
-      GTEST_SKIP() << support_status.ErrorMessage();
-    }
+    ASSERT_STATUS_OK(support_status);
+    EXPECT_EQ(context.Device().Get(), webgpu_device);
+    EXPECT_EQ(context.WeightLoadingD3D12Device(), native_device);
     EXPECT_TRUE(context.DeviceHasFeature(
         wgpu::FeatureName::SharedBufferMemoryD3D12Resource));
     EXPECT_TRUE(context.DeviceHasFeature(
@@ -1534,6 +1580,17 @@ TEST(WebGpuContextTest, D3D12AcceleratedCanBeEnabledAfterInitialOffSession) {
     ASSERT_NE(loader, nullptr);
     EXPECT_STATUS_OK(loader->BeginLoad());
     loader->EndLoad();
+
+    auto preferred_ep = WebGpuProviderFactoryCreator::Create(
+                            WeightLoadAccelerationOptions(kWeightLoadAcceleration_Preferred))
+                            ->CreateProvider();
+    ASSERT_NE(preferred_ep, nullptr);
+    auto preferred_loader = preferred_ep->GetExternalDataLoader();
+    ASSERT_NE(preferred_loader, nullptr);
+    EXPECT_STATUS_OK(preferred_loader->BeginLoad());
+    preferred_loader->EndLoad();
+    EXPECT_EQ(context.Device().Get(), webgpu_device);
+    EXPECT_EQ(context.WeightLoadingD3D12Device(), native_device);
   });
 }
 

@@ -2,7 +2,9 @@
 # Licensed under the MIT License.
 
 import importlib.util
+import os
 import sys
+import tempfile
 import unittest.mock
 from pathlib import Path
 
@@ -54,6 +56,13 @@ template <typename T, bool FusedSwiGlu, bool EnableBias, int KLanes = 8,
 __global__ void MoeGemvFp4RawKPackedKernel() { if (NativeScale) { return; } }
 bool Fp4MoeGemvSupportsNativeScale() { return cudaFuncGetAttributes(); }
 bool Fp4MoeGemvKernelUsesNativeScale() { return false; }
+template <typename T>
+__device__ __forceinline__ float PackedLowToFloat(uint32_t word) { return word; }
+template <typename T, bool FusedSwiGlu, bool EnableBias, int KLanes, int Warps, int Batch, int MinBlocks>
+__global__ void MoeGemvFp4DecodeKernel() {}
+static bool Fp4MoeGemvUsePdl() { return onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_FP4_GEMV_PDL", 1) != 0; }
+template <typename T, bool FusedSwiGlu>
+void LaunchMoeGemvFp4RawNPacked() {}
 """
         headers = {
             "common.h": "enum class ActivationType { Identity };\nstruct ActivationParams {\n  ActivationParams() {} };",
@@ -61,25 +70,75 @@ bool Fp4MoeGemvKernelUsesNativeScale() { return false; }
             "interleaved_numeric_conversion.h": "CUTLASS_DEVICE int fp4_e2m1x8_uninterleave(int value) { return value; }",
         }
         for element in ("half", "__nv_bfloat16"):
-            for fused, bias, wide, reuse in (
-                (False, False, True, False),
-                (True, True, False, False),
-                (True, False, False, True),
+            for fused, bias, wide, reuse, decode in (
+                (False, False, True, False, False),
+                (True, True, False, False, False),
+                (True, False, False, True, False),
+                (True, False, False, False, True),
+                (False, True, True, False, True),
             ):
-                with self.subTest(element=element, fused=fused, bias=bias, wide=wide, reuse=reuse):
+                with self.subTest(element=element, fused=fused, bias=bias, wide=wide, reuse=reuse, decode=decode):
                     with (
                         unittest.mock.patch.object(Path, "read_text", lambda path: headers[path.name]),
                         unittest.mock.patch.object(
                             self.benchmark, "compile_device_code", return_value=object()
                         ) as compile_code,
                     ):
-                        self.benchmark.compile_nvfp4(source, element, fused, bias, wide, reuse)
+                        self.benchmark.compile_nvfp4(source, element, fused, bias, wide, reuse, decode=decode)
                     generated, _ = compile_code.call_args.args
                     self.assertIn("template <bool NativeDecode = false>", generated)
-                    self.assertIn("__global__ void MoeGemvFp4RawKPackedKernel", generated)
+                    if decode:
+                        self.assertIn("__global__ void MoeGemvFp4DecodeKernel", generated)
+                    else:
+                        self.assertIn("__global__ void MoeGemvFp4RawKPackedKernel", generated)
                     self.assertNotIn("bool Fp4MoeGemvSupportsNativeScale", generated)
                     self.assertNotIn("bool Fp4MoeGemvKernelUsesNativeScale", generated)
+                    self.assertNotIn("Fp4MoeGemvUsePdl", generated)
+                    self.assertNotIn("ParseEnvironmentVariableWithDefault", generated)
                     self.assertNotIn("cudaFuncGetAttributes", generated)
+
+    def test_real_moe_gemv_fp4_source_excludes_host_helpers(self):
+        real_source = (self.benchmark.ROOT / "contrib_ops/cuda/llm/moe_gemm/moe_gemv_fp4.cu").read_text()
+        for decode in (False, True):
+            with (
+                self.subTest(decode=decode),
+                unittest.mock.patch.object(
+                    self.benchmark, "compile_device_code", return_value=object()
+                ) as compile_code,
+            ):
+                self.benchmark.compile_nvfp4(real_source, "half", True, False, False, False, decode=decode)
+            generated, _ = compile_code.call_args.args
+            self.assertNotIn("Fp4MoeGemvSupportsNativeScale", generated)
+            self.assertNotIn("Fp4MoeGemvKernelUsesNativeScale", generated)
+            self.assertNotIn("Fp4MoeGemvUsePdl", generated)
+            self.assertNotIn("QuerySm90DecodeKernelCaps", generated)
+            self.assertNotIn("ParseEnvironmentVariableWithDefault", generated)
+            self.assertNotIn("cudaFuncGetAttributes", generated)
+
+    def test_resolve_ort_root_from_copied_build_tree_and_workspace_env(self):
+        marker = Path("contrib_ops/cuda/llm/moe_gemm/moe_gemv_fp4.cu")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir).resolve()
+            ort_root = temp_root / "repo" / "onnxruntime"
+            (ort_root / marker).parent.mkdir(parents=True, exist_ok=True)
+            (ort_root / marker).write_text("// stub\n")
+
+            copied_in_repo = (
+                temp_root
+                / "repo"
+                / "build"
+                / "Release"
+                / "Release"
+                / "transformers"
+                / "benchmark_qwen38_mtp_kernels.py"
+            )
+            self.assertEqual(self.benchmark.resolve_ort_root(copied_in_repo), ort_root)
+
+            copied_in_temp = (
+                temp_root / "_temp" / "build" / "RelWithDebInfo" / "RelWithDebInfo" / "transformers" / "benchmark.py"
+            )
+            with unittest.mock.patch.dict(os.environ, {"GITHUB_WORKSPACE": str(temp_root / "repo")}, clear=False):
+                self.assertEqual(self.benchmark.resolve_ort_root(copied_in_temp), ort_root)
 
 
 if __name__ == "__main__":

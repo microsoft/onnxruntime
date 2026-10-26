@@ -237,6 +237,80 @@ devices decline the fused path and use generic dequantization plus cuBLAS.
 
 ---
 
+### 4.5 Opt-in FP16 raw INT4 tail outputs
+
+`ORT_MATMULNBITS_UNALIGNED4_FAST_PATH=1` optionally extends the existing raw
+INT4 fused kernels to output widths `N % 8 == 4`, including `N=324`.
+It defaults to **off**. Eligibility is restricted to FP16, `bits=4`,
+`block_size=32`, column-wise quantization, `N >= 4`, `K > 0` divisible by 32,
+and `1 <= M <= 4`, with no zero points, bias or `g_idx`. The fpA_intB path
+and forced chunking are excluded. The kernels themselves support `M <= 8`, but
+for `M = 5..8` the batched tail kernel was slower than the fallback in
+measurements (see below), so larger `M` keeps the existing dequantize + GEMM path.
+Existing aligned matrices and default-off dispatch remain unchanged; this
+selector does not turn on fpA_intB.
+
+For M=1, the existing shared-scale kernel is instantiated with tail masking.
+The final CTA loads only valid scale rows and fills invalid shared slots with
+zero. All eight warps participate in the scale-loading barrier before invalid
+output warps exit; those warps never read weights or store output. For M=2..4,
+the existing register-batched kernel uses one output per warp, with whole
+invalid warps exiting before tensor reads. That kernel has no CTA barrier.
+Valid outputs retain the original kernel's unpacking, FP16 accumulation order
+and warp reduction. No packing, persistent allocation, expert routing, or
+model precision change is introduced.
+
+Measured on one H200 (CUDA 13.0, FP16, `block_size=32`, device-resident I/O,
+median of 7x500 `Run`s, which include per-run host launch overhead). Off is the
+existing dequantize + GEMM fallback; on is this selector:
+
+| N x K | M=1 off / on (us) | M=2 | M=3 | M=4 | M=5 | M=8 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 324 x 10240 | 24.7 / 19.3 | 28.9 / 17.7 | 28.4 / 20.4 | 26.3 / 20.7 | 26.6 / 38.8 | 26.3 / 42.6 |
+| 324 x 4096 | 21.7 / 16.4 | 25.6 / 16.0 | 25.6 / 17.1 | 23.6 / 17.3 | 23.6 / 24.8 | 23.0 / 25.7 |
+| 1028 x 4096 | 23.0 / 16.2 | 28.3 / 15.8 | 28.4 / 16.9 | 26.3 / 17.1 | 25.8 / 24.4 | 25.9 / 26.0 |
+| 4100 x 2048 | 26.9 / 16.1 | 30.8 / 17.1 | 31.0 / 18.4 | 31.0 / 19.0 | 30.7 / 25.5 | 29.6 / 26.8 |
+
+The selector is therefore limited to `M <= 4`. These are operator-level
+timings, not end-to-end model throughput.
+
+When explicitly enabled, each kernel prints at most one successful dispatch
+receipt per M1/batched branch:
+
+```text
+[MatMulNBitsUnaligned4] node="projection" M=1 K=10240 N=324 type=FP16 bits=4 branch=M1_SHARED_TAIL
+[MatMulNBitsUnaligned4] node="projection" M=4 K=10240 N=324 type=FP16 bits=4 branch=BATCHED_REGISTER_TAIL
+```
+
+Atomic flags prevent duplicate lines from concurrent Runs. A receipt follows
+the launch and a successful non-synchronizing CUDA error peek; it is not proof
+of completed asynchronous execution. Capture can record this launch without
+new cache/event dependencies; graph replay does not re-enter host dispatch.
+
+The numerical reference is the **original aligned raw INT4 kernel**, padding
+N324 to N328 and comparing the first 324 FP16 output bytes (similarly N4 to 8
+and N12 to 16). This is **not** a promise of byte parity with the previous
+dequantization-plus-cuBLAS fallback, whose arithmetic differs. Full-model
+token/quality parity and an independently audited performance/memory pilot
+are required before accepting the selector for a run.
+
+GPU validation (CUDA EP or the CUDA plugin EP; skipped when CUDA is unavailable):
+
+```bash
+python -m unittest onnxruntime/test/python/transformers/test_matmul_nbits_unaligned4.py -v
+```
+
+The paired test requires 144 byte comparisons over M1,2,3,4; N4,12,324;
+K32,320,10240; and constant, signed-zero, adversarial and realish tensors.
+Independent poison rows in the padded reference must not affect valid outputs.
+Because `InferenceSession` allocates tensors from the ORT CUDA arena rather
+than exact-sized standalone buffers, this session-level test does not provide
+exact-boundary OOB detection under `compute-sanitizer`; verifying strict
+allocation boundaries requires a direct kernel launch harness with exact-sized
+input and output buffers and prefix/suffix poison guards.
+
+---
+
 ## 5. Fallback Path — Dequantize + GEMM
 
 When neither the fpA_intB path nor the fused GEMV applies (e.g. `M > 1`,
@@ -472,6 +546,13 @@ drops to ~0.86 GiB; the remainder is the weight-sized and scale buffers, which d
 not depend on `M`. Prefer a power of two so trailing chunks round to an
 already-profiled bucket.
 
+Capacity-aware placement reserves a complete runtime-preparation peak. If a
+partial tail can lazily profile, its profiling scratch is added to the reusable
+GEMM workspace retained from earlier chunks. The accountant takes the maximum of
+that preparation peak and ordinary runtime workspace, rather than charging the
+same workspace twice. This is a requested-buffer bound, not a measurement of
+allocator-reserved memory or device VRAM usage.
+
 Measured on H200 for that LM-head node alone (FP16, fpA_intB SM80 kernel,
 `arena_extend_strategy=kSameAsRequested`, NVML sampled from a separate process):
 
@@ -504,9 +585,19 @@ peaks become 3114 -> 2568 MiB (chunk off -> 256; run peak 2430 / 2416 MiB). In a
 full model the session-creation peak also overlaps other nodes' initializers, so
 the saving applies per profiled node.
 
-The Level-2 `DeclareWorkspaceRequirements` estimate uses the chunk size. The
-Level-1 (partition-time) estimate ignores it and stays a conservative upper
-bound.
+Both the Level-1 (partition-time) and Level-2 `DeclareWorkspaceRequirements`
+estimates use the chunk policy. The `ep.cuda.matmul_nbits_m_chunk_size` session
+option takes precedence over `ORT_MATMULNBITS_M_CHUNK_SIZE`, matching runtime
+configuration. A maximum-shape hint is a bound, not an exact runtime shape:
+Level 1 also covers smaller, unchunked launches below the size gate and missing
+tail-profile buckets.
+
+For dynamic `M`, a positive chunk size can bound the largest launch. Without a
+launch bound, a profiling-scratch estimate alone is insufficient: capacity-aware
+placement intentionally declines CUDA assignment when ordinary runtime workspace
+is unknown. It may use CPU fallback, or initialization fails if no compatible
+fallback exists. This partition-time coverage is for the in-tree CUDA EP; it
+does not establish equivalent CUDA plugin placement accounting.
 
 M chunking applies only to the fpA_intB path. The dequantize + cuBLAS fallback
 (§5) needs no `M`-proportional scratch; its dequantized-weight buffer is bounded
@@ -677,6 +768,7 @@ present. `ComputeInternal` then:
 |----------|----------------|--------|
 | `ORT_DISABLE_QMOE_ROUTER_GEMV_SPECIALIZATION` | bool, `0` | Disable the router GEMV specialization (§4.3); shapes fall back to the generic GEMV / dequant path. Useful for A/B benchmarking. |
 | `ORT_FPA_INTB_GEMM` | int/string, `0` | Enable the CUTLASS weight-only path (§6). `0` or `off` disables it, otherwise enables it. |
+| `ORT_MATMULNBITS_UNALIGNED4_FAST_PATH` | `0` or `1`, `0` | Opt in to FP16 scale-only raw INT4 tail-output kernels for N%8=4, block32 and M1..4 (§4.5). |
 | `ORT_FPA_INTB_PROFILE_M` | comma list, unset | Override the M buckets profiled for the fpA_intB tactic cache (§6.1). The maximum value also bounds the initial profile range. Session-config equivalent: `ep.cuda.fpa_intb_profile_m`. |
 | `ORT_CUDA_GEMM_TACTIC_CACHE_DIR` | path, unset | Directory for the persistent fpA_intB tactic cache (§6.1). Unset means the cache is in-process only. Session-config equivalent: `ep.cuda.gemm_tactic_cache_dir`. |
 | `ORT_CUDA_GEMM_TACTIC_CACHE_PREFIX` | path prefix, unset | Explicit cache file prefix (§6.1); writes `<prefix>.matmulnbits_fpa_intb.tsv`. Session-config equivalent: `ep.cuda.gemm_tactic_cache_prefix`. |
