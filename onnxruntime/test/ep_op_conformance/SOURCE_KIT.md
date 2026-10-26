@@ -33,6 +33,29 @@ profile shows the bounded selection; `registration_name` determines the sample p
 
 The packaged contract document records the case, profile, CLI, comparison, assignment, exit-code, and report
 contracts, and distinguishes implemented facilities from future plans. The source manifest identifies the revision,
-header API, and every packaged file hash. The companion case package retains positives and producer/input digests;
-binaries are never independently authored goldens. `tools/package_ci.py verify` checks the three packages before
-compilation. Native scenario reports retain the three package manifests and exact generation metadata.
+header API, and every packaged file hash. The companion case artifact contains canonical `cases.zip`, a separate
+CI-only `negative-fixtures.zip`, and producer/input digests; binaries are never independently authored goldens.
+`tools/ci/package_artifacts.py verify` checks the three CI artifacts before compilation. Native scenario reports
+retain the three package manifests and exact generation metadata.
+
+## Package Cases
+
+`tools/create_cases_from_json.py --definitions cases/pilot.json --output C:/cases/generated` creates cases from
+authored JSON; `--build-cache` selects immutable build-cache output instead. Existing JSON-generated or C++-exported
+cases can be packaged independently using Python 3.10+ with ONNX and NumPy:
+
+```powershell
+python tools/package_cases.py create --cases C:/cases/generated --output C:/cases/preview-1.zip `
+  --version preview-1 --revision SOURCE_REVISION --license LICENSE --notices ThirdPartyNotices.txt
+python tools/package_cases.py verify --archive C:/cases/preview-1.zip --revision SOURCE_REVISION
+Expand-Archive C:/cases/preview-1.zip -DestinationPath C:/cases/unpacked
+```
+
+Pass `C:/cases/unpacked/cases` to the runner. Packaging preserves case/model/tensor bytes, validates the supported
+structure and dependency closure, and records provenance, hashes, case IDs, and model IR/opset requirements. Supply
+applicable notices for the inputs; `--provenance` optionally retains a producer JSON object. Packaging does not run
+inference or establish correctness or provider compatibility. Its public commands cannot bypass case validation.
+Model IR/opset versions are recorded rather than checked against the installed ONNX package's schema ceiling;
+packaging does not validate operator semantics or runtime support.
+Source-kit/runtime packaging and negative-fixture preparation remain CI-only under `tools/ci/`; publication and
+release version policy are not implemented.

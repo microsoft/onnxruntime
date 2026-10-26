@@ -20,7 +20,9 @@ separates initial source-built CPU/source-kit validation from later provider-wor
   assignment checks, execution, and JSON reporting.
 - [runner/case_io.h](runner/case_io.h) and [runner/comparison.h](runner/comparison.h): shared artifact loader and
   float32 comparator used regardless of target.
-- [tools/generate_cases.py](tools/generate_cases.py): Python/ONNX producer for independently authored data definitions.
+- [tools/create_cases_from_json.py](tools/create_cases_from_json.py): Python/ONNX producer for independently authored
+  JSON definitions, with optional build-cache reuse.
+- [tools/package_cases.py](tools/package_cases.py): reusable archive creation and verification for existing cases.
 - [cases/pilot.json](cases/pilot.json): scalar Mul, initializer Mul, and broadcast Add, once per dataset.
 - [examples/cpu.json](examples/cpu.json), [examples/dml.json](examples/dml.json), and
   [examples/sample_plugin.json](examples/sample_plugin.json): CPU, legacy DirectML, and sample-plugin profiles.
@@ -165,7 +167,7 @@ python -m venv .venv
 python -m pip install numpy onnx
 $RunRoot = Join-Path $Repo ('build/ep_op_conformance/run-' + (Get-Date -Format 'yyyyMMdd-HHmmssfff'))
 $DataCases = Join-Path $RunRoot 'data_cases'
-python onnxruntime/test/ep_op_conformance/tools/generate_cases.py `
+python onnxruntime/test/ep_op_conformance/tools/create_cases_from_json.py `
   --definitions onnxruntime/test/ep_op_conformance/cases/pilot.json --output "$DataCases"
 ```
 
@@ -326,7 +328,7 @@ define comparison by dtype. Do not implement mixed-type inputs/outputs by castin
 
 ## Integration checks
 
-The producer-side [tools/test_pilot.py](tools/test_pilot.py) checks CPU execution, wrong outputs/shapes, malformed
+The producer-side [tools/test_runner.py](tools/test_runner.py) checks CPU execution, wrong outputs/shapes, malformed
 artifacts, unsupported fields/profiles, deterministic generation, unavailable providers/devices, and non-green
 empty/all-skipped runs.
 With the matching sample-plugin library it also checks Mul execution and assignment, initializer handling, wrong
@@ -334,7 +336,7 @@ expected output, and unsupported Add rejection with CPU fallback prohibited. Wit
 those exact artifacts on both CPU and the sample plugin.
 
 ```powershell
-python onnxruntime/test/ep_op_conformance/tools/test_pilot.py `
+python onnxruntime/test/ep_op_conformance/tools/test_runner.py `
   --runner "$Runner" --runtime "$OrtBuild/Release/onnxruntime.dll" `
   --plugin-library "$OrtBuild/Release/example_plugin_ep.dll" --exported-cases "$CppCases" -v
 ```
@@ -433,19 +435,49 @@ target-local. Configuration errors distinguish this runner's contract from integ
 - Cross-compilation and Android/iOS deployment are not yet supported or validated;
   their rejection is a current integration limit, not an inherent restriction of the portable case contract.
 
-[tools/build_cases.py](tools/build_cases.py) records input/producer hashes in digest-keyed immutable build directories;
+[tools/create_cases_from_json.py](tools/create_cases_from_json.py) with `--build-cache` records input/producer hashes
+in digest-keyed immutable build directories;
 installed NumPy, ONNX, and protobuf versions are recorded, not separately pinned or enforced. Changed inputs or
 producer versions select a new directory and unchanged builds avoid regeneration. Building the runner does not
 register provider execution with CTest; CI or developers invoke it explicitly with a runtime, profile, cases, and
 writable report path. Comparator/exporter tests retain CTest integration. Generation metadata lives under the build's
 `ep_op_conformance/generated`; the example above writes reports under `ep_op_conformance/reports/<configuration>`.
 
-### Source-kit preparation
+### Packaging existing cases
 
-[tools/package_ci.py](tools/package_ci.py) provides `create`, `verify`, and `stage` commands. `create` takes
+[tools/package_cases.py](tools/package_cases.py) packages existing case directories from JSON generation or C++
+export without running inference or rewriting models, tensors, or case manifests. Use Python 3.10+ and ONNX/NumPy:
+
+```powershell
+python onnxruntime/test/ep_op_conformance/tools/package_cases.py create `
+  --cases "$Cases" --output "$RunRoot/cases-preview-1.zip" --version preview-1 --revision "$Revision" `
+  --license LICENSE --notices ThirdPartyNotices.txt
+python onnxruntime/test/ep_op_conformance/tools/package_cases.py verify `
+  --archive "$RunRoot/cases-preview-1.zip" --revision "$Revision"
+```
+
+The input contains one directory per case, each with `case.json` and its referenced model/tensor files. Extra files,
+duplicate IDs, unsafe paths, symlinks, unsupported structure, and missing dependencies are rejected. The versioned
+archive contains `cases/`, supplied license/notices, and `artifact.json` with source revision, file hashes, case IDs,
+and model IR/opset requirements. Optional `--provenance producer.json` retains a producer metadata object. A fresh
+output is required. Identical bytes and metadata produce an identical archive.
+
+Verification checks archive integrity and supported case structure, not mathematical correctness or EP compatibility.
+It records model IR/opset requirements without imposing the installed ONNX package's schema-version ceiling;
+operator semantics and runtime support are not validated by packaging.
+Structurally valid but wrong expected outputs cannot be identified without an independent correctness check. Do not
+include deliberately invalid CI scenarios in distributable cases. No runtime, plugin, EP selection, or ORT build is
+needed for packaging. [tools/test_package_cases.py](tools/test_package_cases.py) covers this packaging interface.
+
+### CI source-kit preparation
+
+[tools/ci/package_artifacts.py](tools/ci/package_artifacts.py) provides `create`, `verify`, and `stage` commands. `create` takes
 `--generated`, `--runner`, `--runtime`, `--plugin`, `--revision`, and a fresh `--output`. It packages source with public
 header closure/notices/contracts, exact main-build positives plus derived scenarios, and matching native fixtures
-as three independent artifacts. `verify` takes `--source`, `--cases`, `--fixture`, and optional `--revision`.
+as three independent CI artifacts. The case artifact contains a canonical `cases.zip` created by the reusable
+packager and a separate `negative-fixtures.zip` with CI-only kind `ci-fixtures`, created using the same archive/hash
+mechanics without canonical validation. No public option bypasses case validation. `verify` takes `--source`,
+`--cases`, `--fixture`, and optional `--revision`.
 `stage` adds `--runner` and a fresh `--output`; optional `--minimum-runtime` selects CPU-only smoke instead of the
 matching fixture. Scenario bytes/profiles are checked against the producer package, never maintained as goldens.
 [tools/test_infrastructure.py](tools/test_infrastructure.py) checks generation reuse/invalidation, immutability,
@@ -454,9 +486,9 @@ package hashes, revision agreement, and header closure using the ORT build/test 
 To rehearse with that environment and a fresh destination:
 
 ```powershell
-python onnxruntime/test/ep_op_conformance/tools/prepare_ci.py `
+python onnxruntime/test/ep_op_conformance/tools/ci/prepare_bundle.py `
   --runner "$Runner" --runtime C:/sdk/ort-1.24.4/onnxruntime.dll --output "$RunRoot/cpu-bundle"
-& "$RunRoot/cpu-bundle/run_ci.ps1" -ExpectedRuntimeVersion '1.24.4'
+& "$RunRoot/cpu-bundle/run_bundle_checks.ps1" -ExpectedRuntimeVersion '1.24.4'
 ```
 
 Preparation writes source/public-header/tool hashes, runtime and bundle-file hashes, and producer package versions
@@ -494,9 +526,9 @@ files are required at execution. See the [report contract](../../../docs/design/
 Revised local Windows validation:
 
 - The explicit CPU job invocation passes all three canonical cases with assignment/output checks; CPU execution is
-  absent from CTest. Direct-target changed-input and unchanged-input rebuilds pass; static-only, minimal, and
-  reduced-op opt-ins reject explicitly. Twenty-eight
-  generation/package tests pass. The final source kit built outside the checkout with public dependencies; after
+  absent from CTest. Direct-target changed-input and unchanged-input rebuilds pass; static-only and minimal
+  opt-ins reject explicitly. Forty-eight generation/package tests pass. The final source kit built outside the
+  checkout with public dependencies; after
   removing its source/build trees, all 20 matching-runtime CPU/plugin and nine ORT 1.24.4 CPU scenarios passed.
 - C++20 builds and 23 exporter tests, 36 integration checks, and 10 comparator checks passed. All 36 integration
   checks ran with the matching source-built runtime/sample plugin and fresh single-run C++ artifacts; none skipped.

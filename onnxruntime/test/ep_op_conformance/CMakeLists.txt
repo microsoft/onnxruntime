@@ -98,23 +98,22 @@ set(EP_OP_CONFORMANCE_TEST_CPP_CASES "" CACHE PATH "Cases captured by the C++ ex
 if(EP_OP_CONFORMANCE_PARENT_BUILD)
   set(case_root "${CMAKE_CURRENT_BINARY_DIR}/generated")
   set(case_inputs "${CMAKE_CURRENT_SOURCE_DIR}/cases/pilot.json"
-                  "${CMAKE_CURRENT_SOURCE_DIR}/tools/generate_cases.py"
-                  "${CMAKE_CURRENT_SOURCE_DIR}/tools/build_cases.py")
+                  "${CMAKE_CURRENT_SOURCE_DIR}/tools/create_cases_from_json.py")
   set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${case_inputs})
   execute_process(
-    COMMAND "${Python_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/build_cases.py"
+    COMMAND "${Python_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/create_cases_from_json.py"
             --definitions "${CMAKE_CURRENT_SOURCE_DIR}/cases/pilot.json" --print-key
     OUTPUT_VARIABLE case_key OUTPUT_STRIP_TRAILING_WHITESPACE
     COMMAND_ERROR_IS_FATAL ANY)
   add_custom_command(
     OUTPUT "${case_root}/${case_key}.json" "${case_root}/current.json"
-    COMMAND "${Python_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/build_cases.py"
-            --definitions "${CMAKE_CURRENT_SOURCE_DIR}/cases/pilot.json" --output "${case_root}"
+        COMMAND "${Python_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/create_cases_from_json.py"
+          --definitions "${CMAKE_CURRENT_SOURCE_DIR}/cases/pilot.json" --build-cache "${case_root}"
     DEPENDS ${case_inputs}
     VERBATIM)
   add_custom_target(ep_op_conformance_cases
-    COMMAND "${Python_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/build_cases.py"
-            --definitions "${CMAKE_CURRENT_SOURCE_DIR}/cases/pilot.json" --output "${case_root}" --verify
+        COMMAND "${Python_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/create_cases_from_json.py"
+          --definitions "${CMAKE_CURRENT_SOURCE_DIR}/cases/pilot.json" --build-cache "${case_root}" --verify
     DEPENDS "${case_root}/${case_key}.json" "${case_root}/current.json"
     VERBATIM)
   add_dependencies(onnxruntime_ep_op_conformance_test ep_op_conformance_cases onnxruntime)
@@ -130,5 +129,5 @@ if(BUILD_TESTING AND EP_OP_CONFORMANCE_TEST_RUNTIME)
     list(APPEND pilot_test_args --exported-cases "${EP_OP_CONFORMANCE_TEST_CPP_CASES}")
   endif()
   add_test(NAME ep_op_conformance_pilot
-           COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/test_pilot.py" ${pilot_test_args})
+           COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/test_runner.py" ${pilot_test_args})
 endif()

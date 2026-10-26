@@ -1,26 +1,22 @@
+"""Assemble Windows native infrastructure-check bundles, including negative fixtures."""
+
 import argparse
-import hashlib
 import importlib.metadata
 import json
 import os
 import shutil
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import numpy as np
 import onnx
-from generate_cases import generate
+from create_cases_from_json import generate
 from onnx import numpy_helper
+from package_cases import sha256, write_json
 
-ROOT = Path(__file__).resolve().parents[1]
-
-
-def write_json(path, document):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-
-
-def sha256(path):
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def prepare(runner: Path, runtime: Path, output: Path, cases=None, plugin=None):
@@ -41,7 +37,7 @@ def prepare(runner: Path, runtime: Path, output: Path, cases=None, plugin=None):
             shutil.copy2(shared, binary / shared.name)
         if plugin:
             shutil.copy2(plugin, binary / "example_plugin_ep.dll")
-        shutil.copy2(ROOT / "tools/run_ci.ps1", output / "run_ci.ps1")
+        shutil.copy2(ROOT / "tools/ci/run_bundle_checks.ps1", output / "run_bundle_checks.ps1")
         (output / "reports").mkdir()
 
         definitions = ROOT / "cases/pilot.json"
@@ -120,9 +116,10 @@ def prepare(runner: Path, runtime: Path, output: Path, cases=None, plugin=None):
             ROOT / "runner/main.cc",
             ROOT / "runner/case_io.h",
             ROOT / "runner/comparison.h",
-            ROOT / "tools/generate_cases.py",
+            ROOT / "tools/create_cases_from_json.py",
             Path(__file__).resolve(),
-            ROOT / "tools/run_ci.ps1",
+            ROOT / "tools/package_cases.py",
+            ROOT / "tools/ci/run_bundle_checks.ps1",
         ]
         public_headers = (
             ROOT / "include" if (ROOT / "include").is_dir() else ROOT.parents[2] / "include/onnxruntime/core/session"

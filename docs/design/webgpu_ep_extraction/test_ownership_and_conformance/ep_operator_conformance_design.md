@@ -96,7 +96,7 @@ The EP op conformance suite should be a second layer:
 ## Case ownership and storage
 
 ORT owns canonical portable cases, producer tools, shared execution/validation code, and migration verification.
-The current pilot lives under `onnxruntime/test/ep_op_conformance/`, with `cases/pilot.json`, `tools/generate_cases.py`,
+The current pilot lives under `onnxruntime/test/ep_op_conformance/`, with `cases/pilot.json`, `tools/create_cases_from_json.py`,
 `runner/`, and `examples/`. The private producer is in `unittest_util/ep_op_conformance_export.cc` and `base_tester`.
 The versioned draft contracts below describe the bounded pilot; they are not formal JSON Schema implementations.
 Conversion tooling, broader schemas, and release-kit packaging remain future work.
@@ -436,7 +436,13 @@ that a particular plugin built against newer headers works on ORT 1.24.
 
 Packaging in PR CI should exercise the eventual release-preparation path, but ephemeral CI artifacts are not published
 release kits. Release/nightly ownership, version policy, publication, and platform coverage remain separate follow-up
-work. CI source-kit preparation is implemented; a release installation/publication interface is not.
+work. `tools/package_cases.py` implements reusable creation and verification of versioned archives from existing
+JSON-generated or C++-exported case directories, preserving case/model/tensor bytes and recording hashes,
+provenance, and model IR/opset requirements. It validates supported structure and dependency closure, not mathematical
+correctness or EP compatibility. CI reuses its archive/hash mechanics for a separate, explicitly CI-only negative
+fixture archive; public canonical-case commands do not bypass validation. JSON generation and optional build caching
+share `tools/create_cases_from_json.py`. Source-kit/runtime packaging and bundle checks remain CI-only in `tools/ci/`;
+a release installation/publication interface is not implemented.
 
 An external EP should test against at least:
 

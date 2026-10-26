@@ -10,7 +10,7 @@ from pathlib import Path
 
 import numpy as np
 import onnx
-from generate_cases import case_directory_name, generate
+from create_cases_from_json import case_directory_name, generate
 from onnx import numpy_helper
 
 ROOT = Path(__file__).resolve().parents[1]

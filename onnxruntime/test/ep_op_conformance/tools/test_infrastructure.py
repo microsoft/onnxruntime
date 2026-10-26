@@ -1,13 +1,22 @@
 import json
+import subprocess
+import sys
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
 import onnx
-from build_cases import identity, materialize, verify_generated
-from generate_cases import case_directory_name, generate, validate_fields
-from package_ci import ROOT, check_generated, create, seal, verify, verify_all
+from ci.package_artifacts import ROOT, check_generated, create, seal, verify, verify_all
+from create_cases_from_json import (
+    case_directory_name,
+    generate,
+    identity,
+    materialize,
+    validate_fields,
+    verify_generated,
+)
 
 
 class DefinitionFieldsTest(unittest.TestCase):
@@ -72,6 +81,32 @@ class CaseNamingTest(unittest.TestCase):
 
 
 class GenerationTest(unittest.TestCase):
+    def test_direct_and_build_cache_cli(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            script = ROOT / "tools/create_cases_from_json.py"
+            arguments = [sys.executable, "-B", str(script), "--definitions", str(ROOT / "cases/pilot.json")]
+            for destination in (("--output", root / "direct"), ("--build-cache", root / "cache")):
+                subprocess.run([*arguments, destination[0], str(destination[1])], check=True, capture_output=True)
+            metadata = json.loads((root / "cache/current.json").read_text())
+            cached = root / "cache" / metadata["directory"]
+            expected = {
+                path.relative_to(root / "direct"): path.read_bytes()
+                for path in (root / "direct").rglob("*")
+                if path.is_file()
+            }
+            self.assertEqual(
+                expected, {path.relative_to(cached): path.read_bytes() for path in cached.rglob("*") if path.is_file()}
+            )
+            key = subprocess.run([*arguments, "--print-key"], check=True, capture_output=True, text=True).stdout.strip()
+            self.assertEqual(key, metadata["directory"])
+            subprocess.run(
+                [*arguments, "--build-cache", str(root / "cache"), "--verify"], check=True, capture_output=True
+            )
+            for invalid in (("--verify",), ("--output", str(root / "new"), "--build-cache", str(root / "cache"))):
+                result = subprocess.run([*arguments, *invalid], check=False, capture_output=True)
+                self.assertEqual(result.returncode, 2)
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
@@ -94,7 +129,7 @@ class GenerationTest(unittest.TestCase):
                 self.assertTrue((manifests[0].parent / "test_data_set_0/output_0.pb").is_file())
             original_check(model)
 
-        with patch("generate_cases.onnx.checker.check_model", side_effect=check_model) as checker:
+        with patch("create_cases_from_json.onnx.checker.check_model", side_effect=check_model) as checker:
             generate(self.definitions, self.destination)
         self.assertEqual(checker.call_count, len(document["cases"]))
         self.assertEqual(len(list(self.destination.glob("*/case.json"))), len(document["cases"]))
@@ -132,7 +167,7 @@ class GenerationTest(unittest.TestCase):
             return original_write(path, contents)
 
         with (
-            patch("generate_cases.Path.write_bytes", new=write_bytes),
+            patch("create_cases_from_json.Path.write_bytes", new=write_bytes),
             self.assertRaisesRegex(OSError, "simulated write failure"),
         ):
             generate(self.definitions, self.destination)
@@ -141,7 +176,7 @@ class GenerationTest(unittest.TestCase):
 
     def test_publish_failure_cleans_staging(self):
         with (
-            patch("generate_cases.Path.rename", side_effect=OSError("simulated rename failure")),
+            patch("create_cases_from_json.Path.rename", side_effect=OSError("simulated rename failure")),
             self.assertRaisesRegex(OSError, "simulated rename failure"),
         ):
             generate(self.definitions, self.destination)
@@ -157,7 +192,7 @@ class GenerationTest(unittest.TestCase):
             sentinel.write_text("competing output")
             return original_rename(path, target)
 
-        with patch("generate_cases.Path.rename", new=rename), self.assertRaises(OSError):
+        with patch("create_cases_from_json.Path.rename", new=rename), self.assertRaises(OSError):
             generate(self.definitions, self.destination)
         self.assertEqual(sentinel.read_text(), "competing output")
         self.assertEqual(list(self.destination.iterdir()), [sentinel])
@@ -168,7 +203,7 @@ class GenerationTest(unittest.TestCase):
         sentinel = self.destination / "keep.txt"
         sentinel.write_text("existing output")
         with (
-            patch("generate_cases.Path.read_text") as read_text,
+            patch("create_cases_from_json.Path.read_text") as read_text,
             self.assertRaisesRegex(ValueError, "already exists"),
         ):
             generate(self.definitions, self.destination)
@@ -235,12 +270,12 @@ class InfrastructureTest(unittest.TestCase):
 
     def test_producer_versions_recorded_without_enforcement(self):
         packages = {"numpy": "test-numpy", "onnx": "test-onnx", "protobuf": "test-protobuf"}
-        with patch("build_cases.importlib.metadata.version", side_effect=packages.__getitem__):
+        with patch("create_cases_from_json.importlib.metadata.version", side_effect=packages.__getitem__):
             self.assertEqual(identity(self.definitions)["producer_packages"], packages)
 
     def test_changed_producer_versions_keep_old_cases_immutable(self):
         positive, original = check_generated(self.generated)
-        with patch("build_cases.importlib.metadata.version", return_value="changed-version"):
+        with patch("create_cases_from_json.importlib.metadata.version", return_value="changed-version"):
             with self.assertRaisesRegex(ValueError, "input identity mismatch"):
                 verify_generated(self.definitions, self.generated)
             materialize(self.definitions, self.generated)
@@ -257,11 +292,12 @@ class InfrastructureTest(unittest.TestCase):
         self.assertTrue((output / "source-kit/include/onnxruntime_ep_c_api.h").is_file())
         self.assertFalse(list((output / "source-kit").rglob("*.dll")))
         self.assertFalse(list((output / "source-kit").rglob("*.exe")))
-        self.assertTrue((output / "cases/wrong-output/case.json").is_file())
-        self.assertTrue((output / "cases/profiles/plugin.json").is_file())
-        case_root = output / "cases/positive"
-        identities = {json.loads(path.read_text())["id"] for path in case_root.glob("*/case.json")}
-        profile = json.loads((output / "cases/profiles/plugin.json").read_text())
+        with zipfile.ZipFile(output / "cases/cases.zip") as canonical:
+            identities = {entry["id"] for entry in json.loads(canonical.read("artifact.json"))["cases"]}
+            self.assertFalse(any("wrong-output" in name for name in canonical.namelist()))
+        with zipfile.ZipFile(output / "cases/negative-fixtures.zip") as negative:
+            self.assertIn("cases/wrong-output/case.json", negative.namelist())
+            profile = json.loads(negative.read("profiles/plugin.json"))
         self.assertTrue(set(profile["skips"]).issubset(identities))
         self.assertTrue(all(not identity.startswith("case-") for identity in profile["skips"]))
         self.assertEqual(

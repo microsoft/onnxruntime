@@ -1,44 +1,31 @@
+"""Package CI source/native fixtures using the reusable canonical-case archive tool."""
+
 import argparse
 import json
 import re
 import shutil
-from pathlib import Path, PurePosixPath
+import sys
+import tempfile
+from pathlib import Path
 
-from prepare_ci import prepare, sha256, write_json
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-ROOT = Path(__file__).resolve().parents[1]
+from package_cases import create as package_cases
+from package_cases import (
+    extract_archive,
+    inventory,
+    seal,
+    sha256,
+    verify,
+    verify_archive,
+    verify_cases_archive,
+    write_archive,
+    write_json,
+)
 
+from ci.prepare_bundle import prepare
 
-def inventory(root):
-    result = {}
-    for path in sorted(root.rglob("*")):
-        if path.is_symlink():
-            raise ValueError(f"Package contains a symlink: {path}")
-        if path.is_file() and path != root / "artifact.json":
-            result[path.relative_to(root).as_posix()] = sha256(path)
-    return result
-
-
-def seal(root, kind, revision, **metadata):
-    write_json(
-        root / "artifact.json",
-        {"schema_version": 1, "kind": kind, "source_revision": revision, **metadata, "files": inventory(root)},
-    )
-
-
-def verify(root, kind, revision=None):
-    metadata = json.loads((root / "artifact.json").read_text(encoding="utf-8"))
-    if metadata["schema_version"] != 1 or metadata["kind"] != kind:
-        raise ValueError("Unsupported package schema or kind")
-    if not metadata["source_revision"] or (revision and metadata["source_revision"] != revision):
-        raise ValueError("Package source revision mismatch")
-    for relative in metadata["files"]:
-        path = PurePosixPath(relative)
-        if path.is_absolute() or ".." in path.parts or "\\" in relative or ":" in relative:
-            raise ValueError("Unsafe package path")
-    if inventory(root) != metadata["files"]:
-        raise ValueError("Package file hashes or dependency closure mismatch")
-    return metadata
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def check_generated(generated):
@@ -88,10 +75,24 @@ def create(generated, runtime, plugin, output, revision, runner):
             kit, "source-kit", revision, **common, dependency_build="CMake FetchContent hash-pinned public dependencies"
         )
         cases = output / "cases"
+        cases.mkdir()
+        package_cases(
+            positive,
+            cases / "cases.zip",
+            common["ort_version"],
+            revision,
+            source / "LICENSE",
+            source / "ThirdPartyNotices.txt",
+            provenance=generation,
+        )
         scratch = output / "preparation"
         prepare(runner, runtime, scratch, positive, plugin)
-        shutil.move(scratch / "cases", cases)
-        shutil.move(scratch / "profiles", cases / "profiles")
+        shutil.rmtree(scratch / "cases/positive")
+        negative = scratch / "negative-fixtures"
+        negative.mkdir()
+        shutil.move(scratch / "cases", negative / "cases")
+        shutil.move(scratch / "profiles", negative / "profiles")
+        write_archive(negative, cases / "negative-fixtures.zip", "ci-fixtures", revision)
         shutil.rmtree(scratch)
         write_json(cases / "generation.json", generation)
         seal(
@@ -131,13 +132,50 @@ def verify_all(source, cases, fixture, revision=None):
         if kit[field] != corpus[field] or kit[field] != native[field]:
             raise ValueError(f"Package compatibility metadata mismatch: {field}")
     generation = json.loads((cases / "generation.json").read_text(encoding="utf-8"))
-    if generation["input_digest"] != corpus["corpus_digest"] or inventory(cases / "positive") != generation["files"]:
+    canonical = verify_cases_archive(cases / "cases.zip", revision)
+    verify_archive(cases / "negative-fixtures.zip", "ci-fixtures", revision)
+    positive_files = {
+        name.removeprefix("cases/"): digest for name, digest in canonical["files"].items() if name.startswith("cases/")
+    }
+    if (
+        generation["input_digest"] != corpus["corpus_digest"]
+        or positive_files != generation["files"]
+        or canonical["provenance"] != generation
+    ):
         raise ValueError("Case provenance mismatch")
     for name, digest in generation["inputs"].items():
         path = source / ("cases" if name == "pilot.json" else "tools") / name
         if sha256(path) != digest:
             raise ValueError(f"Case input differs from source kit: {name}")
     return revision
+
+
+def stage(source, cases, fixture, runner, output, minimum_runtime=None, revision=None):
+    revision = verify_all(source, cases, fixture, revision)
+    runtime = minimum_runtime or fixture / "onnxruntime.dll"
+    plugin = None if minimum_runtime else fixture / "example_plugin_ep.dll"
+    with tempfile.TemporaryDirectory(prefix="ort-conformance-stage-") as temporary:
+        root = Path(temporary)
+        extract_archive(cases / "cases.zip", root / "canonical", "conformance-cases", revision)
+        extract_archive(cases / "negative-fixtures.zip", root / "negative", "ci-fixtures", revision)
+        prepare(runner, runtime, output, root / "canonical/cases", plugin)
+        if plugin:
+            actual = {
+                name: digest for name, digest in inventory(output / "cases").items() if not name.startswith("positive/")
+            }
+            if actual != inventory(root / "negative/cases"):
+                raise ValueError("Derived scenario bytes differ from the producer package")
+            if inventory(output / "profiles") != inventory(root / "negative/profiles"):
+                raise ValueError("Derived profiles differ from the producer package")
+    shutil.copy2(cases / "generation.json", output / "generation.json")
+    metadata = json.loads((output / "prepared.json").read_text(encoding="utf-8"))
+    metadata["source_revision"] = revision
+    metadata["package_manifests"] = {
+        name: json.loads((path / "artifact.json").read_text(encoding="utf-8"))
+        for name, path in (("source", source), ("cases", cases), ("fixture", fixture))
+    }
+    metadata["files"]["generation.json"] = sha256(output / "generation.json")
+    write_json(output / "prepared.json", metadata)
 
 
 if __name__ == "__main__":
@@ -168,31 +206,15 @@ if __name__ == "__main__":
             arguments.runner,
         )
     else:
-        revision = verify_all(arguments.source, arguments.cases, arguments.fixture, arguments.revision)
         if arguments.command == "stage":
-            runtime = arguments.minimum_runtime or arguments.fixture / "onnxruntime.dll"
-            plugin = None if arguments.minimum_runtime else arguments.fixture / "example_plugin_ep.dll"
-            prepare(arguments.runner, runtime, arguments.output, arguments.cases / "positive", plugin)
-            if plugin:
-                expected_cases = {
-                    name: digest
-                    for name, digest in inventory(arguments.cases).items()
-                    if name not in ("generation.json",) and not name.startswith("profiles/")
-                }
-                if inventory(arguments.output / "cases") != expected_cases:
-                    raise ValueError("Derived scenario bytes differ from the producer package")
-                if inventory(arguments.output / "profiles") != inventory(arguments.cases / "profiles"):
-                    raise ValueError("Derived profiles differ from the producer package")
-            shutil.copy2(arguments.cases / "generation.json", arguments.output / "generation.json")
-            metadata = json.loads((arguments.output / "prepared.json").read_text(encoding="utf-8"))
-            metadata["source_revision"] = revision
-            metadata["package_manifests"] = {
-                name: json.loads((path / "artifact.json").read_text(encoding="utf-8"))
-                for name, path in (
-                    ("source", arguments.source),
-                    ("cases", arguments.cases),
-                    ("fixture", arguments.fixture),
-                )
-            }
-            metadata["files"]["generation.json"] = sha256(arguments.output / "generation.json")
-            write_json(arguments.output / "prepared.json", metadata)
+            stage(
+                arguments.source,
+                arguments.cases,
+                arguments.fixture,
+                arguments.runner,
+                arguments.output,
+                arguments.minimum_runtime,
+                arguments.revision,
+            )
+        else:
+            verify_all(arguments.source, arguments.cases, arguments.fixture, arguments.revision)
