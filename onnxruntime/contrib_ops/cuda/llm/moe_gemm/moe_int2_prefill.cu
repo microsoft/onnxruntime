@@ -177,21 +177,63 @@ void LaunchRepackRawIntToSm80Int4ActiveExperts(
 }
 
 template <typename T>
+__global__ void __launch_bounds__(256) TransposeScalesActiveExpertsVec8Kernel(
+    const T* __restrict__ raw_scales,
+    T* __restrict__ transposed_scales,
+    const int64_t* __restrict__ expert_offsets,
+    int rows,
+    int cols) {
+  const int e = static_cast<int>(blockIdx.z);
+  if (expert_offsets != nullptr && __ldg(&expert_offsets[e + 1]) == __ldg(&expert_offsets[e])) {
+    return;
+  }
+  __shared__ __align__(16) T s_tile[8][128 + 8];
+  const int tile_x = static_cast<int>(blockIdx.x);
+  const int tile_y = static_cast<int>(blockIdx.y);
+
+  const int tx = static_cast<int>(threadIdx.x) & 7;
+  const int ty = static_cast<int>(threadIdx.x) >> 3;
+
+  const size_t expert_stride = static_cast<size_t>(rows) * cols;
+  const T* in_e = raw_scales + static_cast<size_t>(e) * expert_stride;
+  T* out_e = transposed_scales + static_cast<size_t>(e) * expert_stride;
+
+  const int col_in = tile_x * 8 + tx;
+  const int row_base = tile_y * 128;
+  if (col_in < cols) {
+#pragma unroll
+    for (int j = 0; j < 128; j += 32) {
+      s_tile[tx][ty + j] = __ldg(&in_e[(row_base + ty + j) * cols + col_in]);
+    }
+  }
+  __syncthreads();
+
+  const int tid = static_cast<int>(threadIdx.x);
+  if (tid < 128) {
+    const int c = tid >> 4;
+    const int r8 = (tid & 15) * 8;
+    const int col_out = tile_x * 8 + c;
+    if (col_out < cols) {
+      *reinterpret_cast<uint4*>(&out_e[col_out * rows + row_base + r8]) =
+          *reinterpret_cast<const uint4*>(&s_tile[c][r8]);
+    }
+  }
+}
+
+template <typename T>
 __global__ void __launch_bounds__(256) TransposeScalesActiveExpertsKernel(
     const T* __restrict__ raw_scales,
     T* __restrict__ transposed_scales,
     const int64_t* __restrict__ expert_offsets,
     int rows,
     int cols) {
-  const int e = static_cast<int>(blockIdx.y);
+  const int e = static_cast<int>(blockIdx.z);
   if (expert_offsets != nullptr && __ldg(&expert_offsets[e + 1]) == __ldg(&expert_offsets[e])) {
     return;
   }
   __shared__ T s_tile[32][33];
-  const int tiles_x = (cols + 31) >> 5;
-  const int tile_idx = static_cast<int>(blockIdx.x);
-  const int tile_y = tile_idx / tiles_x;
-  const int tile_x = tile_idx - tile_y * tiles_x;
+  const int tile_x = static_cast<int>(blockIdx.x);
+  const int tile_y = static_cast<int>(blockIdx.y);
 
   const int tx = static_cast<int>(threadIdx.x) & 31;
   const int ty = static_cast<int>(threadIdx.x) >> 5;
@@ -224,9 +266,19 @@ template <typename T>
 void LaunchTransposeScalesActiveExperts(
     const T* raw_scales, T* transposed_scales, const int64_t* expert_offsets,
     int num_experts, int rows, int cols, cudaStream_t stream) {
-  const int tiles_y = (rows + 31) >> 5;
+  if constexpr (sizeof(T) == 2) {
+    if ((rows & 127) == 0 && (reinterpret_cast<uintptr_t>(transposed_scales) & 15u) == 0) {
+      const int tiles_x = (cols + 7) >> 3;
+      const int tiles_y = rows >> 7;
+      const dim3 grid(static_cast<unsigned>(tiles_x), static_cast<unsigned>(tiles_y), static_cast<unsigned>(num_experts));
+      TransposeScalesActiveExpertsVec8Kernel<T><<<grid, 256, 0, stream>>>(
+          raw_scales, transposed_scales, expert_offsets, rows, cols);
+      return;
+    }
+  }
   const int tiles_x = (cols + 31) >> 5;
-  const dim3 grid(static_cast<unsigned>(tiles_y * tiles_x), static_cast<unsigned>(num_experts));
+  const int tiles_y = (rows + 31) >> 5;
+  const dim3 grid(static_cast<unsigned>(tiles_x), static_cast<unsigned>(tiles_y), static_cast<unsigned>(num_experts));
   TransposeScalesActiveExpertsKernel<T><<<grid, 256, 0, stream>>>(
       raw_scales, transposed_scales, expert_offsets, rows, cols);
 }
