@@ -156,8 +156,10 @@ std::string ComposeSeriesName(const GraphViewer& graph_viewer) {
 class SessionScope {
  public:
   friend class KernelScope;
-  SessionScope(const SessionState& session_state, const ExecutionFrame& frame, profiling::Profiler* run_profiler)
+  SessionScope(const SessionState& session_state, const ExecutionFrame& frame, profiling::Profiler* run_profiler,
+               RuntimeWorkloadCollector* workload_collector = nullptr)
       : session_state_(session_state),
+        workload_collector_(workload_collector),
         run_profiler_(run_profiler)
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
         ,
@@ -255,6 +257,7 @@ class SessionScope {
   }
 
   profiling::Profiler* GetRunProfiler() const { return run_profiler_; }
+  RuntimeWorkloadCollector* GetRuntimeWorkloadCollector() const { return workload_collector_; }
 
   void StopProfilingIfEnabled(profiling::EventCategory category,
                               const std::string& event_name,
@@ -290,6 +293,7 @@ class SessionScope {
 
  private:
   const SessionState& session_state_;
+  RuntimeWorkloadCollector* workload_collector_;
   profiling::Profiler* run_profiler_;
   TimePoint session_start_;
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
@@ -546,7 +550,8 @@ onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
                                      ctx.GetLogger(),
                                      terminate_flag,
                                      ctx.GetDeviceStream(stream_idx),
-                                     session_scope.GetRunProfiler());
+                                     session_scope.GetRunProfiler(),
+                                     session_scope.GetRuntimeWorkloadCollector());
   onnxruntime::Status status;
   auto& logger = ctx.GetLogger();
   if (p_kernel->IsAsync()) {
@@ -694,7 +699,8 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
                                    const bool& terminate_flag,
                                    const bool only_execute_path_to_fetches,
                                    bool single_thread_mode,
-                                   profiling::Profiler* run_profiler) {
+                                   profiling::Profiler* run_profiler,
+                                   RuntimeWorkloadCollector* workload_collector) {
   auto* execution_plan = session_state.GetExecutionPlan();
   VLOGS(logger, 0) << "Number of streams: " << execution_plan->execution_plan.size();
   int32_t valid_streams = 0;
@@ -737,7 +743,7 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
   ORT_UNUSED_PARAMETER(only_execute_path_to_fetches);
 #endif
 
-  SessionScope session_scope(session_state, ctx.GetExecutionFrame(), run_profiler);
+  SessionScope session_scope(session_state, ctx.GetExecutionFrame(), run_profiler, workload_collector);
 
   auto* tp = single_thread_mode ? nullptr : session_state.GetInterOpThreadPool();
 

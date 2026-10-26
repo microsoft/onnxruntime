@@ -3724,15 +3724,33 @@ Status InferenceSession::Run(const RunOptions& run_options,
     sequential_run_lock.emplace(session_mutex_);
   }
 
-  return RunImpl(run_options, feed_names, feeds, output_names, p_fetches, p_fetches_device_info,
-                 /*graph_capture_depth=*/0);
+  RuntimeWorkloadCollector* workload_collector = nullptr;
+#if !defined(ORT_MINIMAL_BUILD)
+  if (run_options.runtime_workload_collector &&
+      run_options.runtime_workload_collector->BeginRun(session_id_)) {
+    workload_collector = run_options.runtime_workload_collector;
+  }
+  bool succeeded = false;
+  auto finish_collection = gsl::finally([&]() {
+    if (workload_collector) {
+      workload_collector->EndRun(succeeded);
+    }
+  });
+#endif
+  auto status = RunImpl(run_options, feed_names, feeds, output_names, p_fetches, p_fetches_device_info,
+                        /*graph_capture_depth=*/0, workload_collector);
+#if !defined(ORT_MINIMAL_BUILD)
+  succeeded = status.IsOK();
+#endif
+  return status;
 }
 
 Status InferenceSession::RunImpl(const RunOptions& run_options,
                                  gsl::span<const std::string> feed_names, gsl::span<const OrtValue> feeds,
                                  gsl::span<const std::string> output_names, std::vector<OrtValue>* p_fetches,
                                  const std::vector<OrtDevice>* p_fetches_device_info,
-                                 int graph_capture_depth) {
+                                 int graph_capture_depth,
+                                 RuntimeWorkloadCollector* workload_collector) {
   // Ignore run-level profiling request if session-level profiling is already enabled.
   std::optional<profiling::Profiler> run_profiler;
   if (run_options.enable_profiling && session_profiler_.IsEnabled()) {
@@ -3920,7 +3938,7 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
                                      device_stream_collection_holder,
 #endif
                                      run_logger,
-                                     run_profiler ? &*run_profiler : nullptr);
+                                     run_profiler ? &*run_profiler : nullptr, workload_collector);
       }
 
       // info all execution providers InferenceSession:Run ended
@@ -4077,7 +4095,7 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
     RunOptions recursive_run_options{run_options};
     recursive_run_options.enable_profiling = false;
     ORT_RETURN_IF_ERROR(RunImpl(recursive_run_options, feed_names, feeds, output_names, p_fetches,
-                                p_fetches_device_info, graph_capture_depth + 1));
+                                p_fetches_device_info, graph_capture_depth + 1, workload_collector));
   }
 
   // Log runtime error telemetry if the return value is not OK

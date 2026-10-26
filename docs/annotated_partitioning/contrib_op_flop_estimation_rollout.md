@@ -82,10 +82,55 @@ handling, logger integration, or JSON/file export. No production inference behav
 The full-build-only implementation does not depend on contrib kernels or MLAS. Tests cover ownership, repeated
 invocations, missing routes, empty-output metadata, isolation, limits, and concurrent submissions/snapshots.
 
-**Batch 2 (proposed): execution integration.** Pass an optional recorder through execution context, capture metadata
-at actual CPU MatMulNBits dispatch/backend call sites, and commit only established successful invocations.
-Define run failure/incompleteness behavior and ensure collection errors cannot fail inference. Test disabled
-behavior, actual routes, changing shapes, and concurrent/repeated runs. Do not use logs as data transport.
+**Batch 2: execution integration (implemented).** An internal, typed
+`RunOptions::runtime_workload_collector` pointer opts a canonical `InferenceSession::Run` into capture.
+The caller owns a fresh collector, supplies explicit record/payload budgets, and keeps it alive until Run
+returns (or asynchronous execution finishes). No C API setter, default budgets, file configuration, or
+export lifecycle is introduced. For example, internal C++ callers can use:
+
+```cpp
+RuntimeWorkloadCollector collector(RuntimeWorkloadLimits{1000, 1024 * 1024});
+RunOptions options;
+options.runtime_workload_collector = &collector;
+// session.Run(options, ...);
+RuntimeWorkloadSnapshot snapshot;
+// Check the inference Status and collector.GetSnapshot(snapshot) independently.
+```
+
+The canonical Run binds the session's identity and a process-local, monotonically assigned run ID.
+Collectors cannot be reused: subsequent/concurrent attempts disable capture for the rejected run, preserve
+the original identity/data, and increment `run_reuse_rejections`, marking collection incomplete without
+failing inference. Separate collectors isolate concurrent runs of the same or different sessions.
+The optional pointer follows the existing run-profiler execution/context plumbing, including If, Loop,
+and Scan subgraphs. The context owns the recorder; kernels do not store per-run mutable state.
+Standalone and constant-folding contexts return no recorder. Transport uses typed metadata, never logs.
+The C API and its versioned function table are unchanged; an appended full-build C++ context virtual provides
+safe optional lookup rather than assuming every `OpKernelContext` is an internal execution context.
+
+CPU MatMulNBits submits only after its selected computation succeeds. Invalid inputs, thrown/failed
+computation, and terminated executions do not submit successful-invocation records. Empty outputs submit
+`EmptyOutput`/`NotExecuted` explicitly. Records include actual activation/output shapes, activation type,
+bias presence, bits/block size, executable node index, provider, and an unambiguous graph path formed from
+parent node indices and subgraph attributes. Repeated control-flow invocations retain the same node identity
+but receive distinct commit-order invocation IDs. Matrix geometry/batch count describe the actual
+`MatMulComputeHelper` backend geometry: shared-weight batches may be flattened into M, with batch count one.
+Packed LUT, packed QNBit, and unpacked FP32 GEMM are distinguished. Compute mode describes the effective MLAS
+interface, including the half-activation int8 path's conversion to SQNBit int8, not merely `accuracy_level`,
+activation type, or a claim about every instruction executed inside a backend.
+
+Snapshots independently expose `NotStarted`, `Running`, `Succeeded`, or `Failed` run state and submission
+completeness. A failed run retains successful earlier kernel records, but they are not a complete successful
+workload. Limit rejection, allocation failure, and other metadata-capture exceptions are diagnostic only;
+they update drop counters/completeness without replacing the inference result. Snapshot failures remain a
+separate diagnostic Status. Allocation-failure recovery requires exception-enabled builds, as in Batch 1.
+With capture disabled, there is no collector allocation, record/shape/string copying, run-ID assignment,
+or collection locking. This is CPU MatMulNBits coverage, not all-provider/all-operator coverage; EP graph
+replay does not synthesize records for kernels it does not invoke.
+
+Focused tests cover storage/lifecycle diagnostics, actual packed int8/FP32 and unpacked routes, a
+capability-gated LUT route, activation conversion, dynamic/repeated/concurrent runs, node/session/run
+isolation, If/Loop/Scan identity, empty outputs, rank-one/two-bit geometry, kernel/termination/downstream
+failures, bounded collection, collector reuse, and unchanged output values.
 
 **Batch 3 (proposed): runtime counts and export.** Apply existing checked core/bias formulas to invocation records,
 export versioned runtime reports with partial/drop/run-status coverage, and replace initialization-time workload

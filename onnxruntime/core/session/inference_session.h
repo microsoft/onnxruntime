@@ -805,7 +805,8 @@ class InferenceSession {
                                        gsl::span<const OrtValue> feeds, gsl::span<const std::string> output_names,
                                        std::vector<OrtValue>* p_fetches,
                                        const std::vector<OrtDevice>* p_fetches_device_info,
-                                       int graph_capture_depth);
+                                       int graph_capture_depth,
+                                       RuntimeWorkloadCollector* workload_collector = nullptr);
 
   void SetLoggingManager(const SessionOptions& session_options,
                          const Environment& session_env);

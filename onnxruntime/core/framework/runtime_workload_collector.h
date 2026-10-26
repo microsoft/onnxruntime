@@ -19,6 +19,16 @@
 
 namespace onnxruntime {
 
+class Graph;
+class Node;
+
+enum class RuntimeWorkloadRunState {
+  NotStarted,
+  Running,
+  Succeeded,
+  Failed,
+};
+
 enum class MatMulNBitsRuntimeRoute {
   EmptyOutput,
   PackedLut,
@@ -76,6 +86,8 @@ struct RuntimeWorkloadCollectionStats {
   uint64_t record_limit_drops = 0;
   uint64_t payload_limit_drops = 0;
   uint64_t allocation_failure_drops = 0;
+  uint64_t metadata_failure_drops = 0;
+  uint64_t run_reuse_rejections = 0;
   // Completeness of submissions only, not operator/component coverage or run success.
   bool collection_complete = true;
 };
@@ -85,6 +97,9 @@ struct RuntimeWorkloadSnapshot {
   uint64_t run_id = 0;
   InlinedVector<RuntimeWorkloadRecord, 1> records;
   RuntimeWorkloadCollectionStats stats;
+  // Run outcome is independent of submission completeness. Retained records on Failed runs
+  // describe only successful kernels before failure, not a complete successful workload.
+  RuntimeWorkloadRunState run_state = RuntimeWorkloadRunState::NotStarted;
 };
 
 // One collector per run. Callers own its lifetime and must keep it alive until all submitters finish.
@@ -92,22 +107,42 @@ struct RuntimeWorkloadSnapshot {
 class RuntimeWorkloadCollector {
  public:
   RuntimeWorkloadCollector(uint64_t session_id, uint64_t run_id, RuntimeWorkloadLimits limits);
+  explicit RuntimeWorkloadCollector(RuntimeWorkloadLimits limits)
+      : RuntimeWorkloadCollector(0, 0, limits) {}
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(RuntimeWorkloadCollector);
 
   // Copies metadata without retaining tensors, caller storage, or graph objects.
-  // Rejection is an explicit diagnostic error; future execution integration must not fail inference on it.
+  // Rejection is an explicit diagnostic error; execution integration must not fail inference on it.
   [[nodiscard]] Status RecordMatMulNBits(std::string_view graph_path, size_t node_index,
                                          std::string_view provider, const MatMulNBitsRuntimeMetadata& metadata);
   // Copies a consistent snapshot. On allocation failure, returns an error without modifying output.
   [[nodiscard]] Status GetSnapshot(RuntimeWorkloadSnapshot& output) const;
+  // Execution integration is single-use. A fresh collector is required for each Run.
+  // Reusing one (including concurrently) disables capture for the rejected run.
+  [[nodiscard]] bool BeginRun(uint64_t session_id);
+  void EndRun(bool succeeded);
+  void RecordCollectionFailure(bool allocation_failure);
 
  private:
-  const uint64_t session_id_;
-  const uint64_t run_id_;
+  uint64_t session_id_;
+  uint64_t run_id_;
   const RuntimeWorkloadLimits limits_;
   mutable std::mutex mutex_;
   InlinedVector<RuntimeWorkloadRecord, 1> records_;
   RuntimeWorkloadCollectionStats stats_;
+  RuntimeWorkloadRunState run_state_ = RuntimeWorkloadRunState::NotStarted;
+};
+
+// Owned by an execution context, never by a kernel. Shape/identity copies are made only when enabled.
+struct RuntimeWorkloadRecorder {
+  RuntimeWorkloadCollector* collector;
+  const Graph* graph;
+  const Node* node;
+
+  void RecordMatMulNBits(const TensorShape& input_shape, const TensorShape& output_shape,
+                         int64_t m, int64_t n, int64_t k, size_t batch_count, bool bias_present,
+                         int32_t input_element_type, uint32_t bits, uint32_t block_size,
+                         MatMulNBitsRuntimeRoute route, MatMulNBitsRuntimeComputeMode mode) const;
 };
 
 }  // namespace onnxruntime

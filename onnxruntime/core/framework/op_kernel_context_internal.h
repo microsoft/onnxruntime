@@ -7,6 +7,7 @@
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
 #include "core/session/onnxruntime_c_api.h"
+#include "core/framework/runtime_workload_collector.h"
 
 // onnxruntime internal OpKernelContext derived class to provide additional
 // APIs that aren't desirable to add to the public OpKernelContext API
@@ -14,6 +15,7 @@
 namespace onnxruntime {
 class SessionState;
 class ExecutionFrame;
+class RuntimeWorkloadCollector;
 
 class OpKernelContextInternal : public OpKernelContext {
  public:
@@ -23,11 +25,17 @@ class OpKernelContextInternal : public OpKernelContext {
                                    const logging::Logger& logger,
                                    const bool& terminate_flag,
                                    Stream* stream,
-                                   profiling::Profiler* run_profiler = nullptr)
+                                   profiling::Profiler* run_profiler = nullptr,
+                                   RuntimeWorkloadCollector* workload_collector = nullptr)
       : OpKernelContext(&frame, &kernel, stream, session_state.GetThreadPool(), logger),
         session_state_(session_state),
         terminate_flag_(terminate_flag),
         run_profiler_(run_profiler) {
+#if !defined(ORT_MINIMAL_BUILD)
+    workload_recorder_ = {workload_collector, &session_state.GetGraphViewer().GetGraph(), &kernel.Node()};
+#else
+    ORT_UNUSED_PARAMETER(workload_collector);
+#endif
     const auto& implicit_inputs = kernel.Node().ImplicitInputDefs();
     int num_implicit_inputs = static_cast<int>(implicit_inputs.size());
     implicit_input_values_.reserve(num_implicit_inputs);
@@ -59,6 +67,17 @@ class OpKernelContextInternal : public OpKernelContext {
     return kernel_pilot_;
   }
 
+  const RuntimeWorkloadRecorder* GetRuntimeWorkloadRecorder() const override {
+    return workload_recorder_.collector ? &workload_recorder_ : nullptr;
+  }
+  RuntimeWorkloadCollector* GetRuntimeWorkloadCollector() const {
+    return workload_recorder_.collector;
+  }
+#else
+  RuntimeWorkloadCollector* GetRuntimeWorkloadCollector() const { return nullptr; }
+#endif
+
+#if !defined(ORT_MINIMAL_BUILD)
   // Called by the executor only after successful Compute(). To commit usage, Compute() must obtain
   // the pilot via GetKernelPilot(), then BeginInvocation() and collect its selection before returning.
   // Without a lookup this is a no-op; KernelPilot::RecordUsage() also checks for a pending invocation.
@@ -132,6 +151,7 @@ class OpKernelContextInternal : public OpKernelContext {
  private:
 #if !defined(ORT_MINIMAL_BUILD)
   mutable KernelPilot* kernel_pilot_{nullptr};
+  RuntimeWorkloadRecorder workload_recorder_{};
 
   class AccountingAllocator : public IAllocator {
    public:

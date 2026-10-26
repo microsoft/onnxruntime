@@ -12,6 +12,7 @@
 #include "core/common/narrow.h"
 #include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
+#include "core/framework/runtime_workload_collector.h"
 #include "core/mlas/inc/mlas_qnbit.h"
 #include "core/mlas/inc/mlas_q4.h"
 #include "core/providers/cpu/math/matmul_helper.h"
@@ -1535,8 +1536,22 @@ Status MatMulNBits<T1>::Compute(OpKernelContext* ctx) const {
 
   Tensor* y = ctx->Output(0, helper.OutputShape());
 
+#if !defined(ORT_MINIMAL_BUILD)
+  const auto* recorder = ctx->GetRuntimeWorkloadRecorder();
+  auto record = [&](MatMulNBitsRuntimeRoute route, MatMulNBitsRuntimeComputeMode mode) {
+    if (recorder) {
+      recorder->RecordMatMulNBits(a->Shape(), y->Shape(), helper.M(), helper.N(), helper.K(),
+                                  helper.OutputOffsets().size(), bias != nullptr, a->GetElementType(),
+                                  static_cast<uint32_t>(nbits_), static_cast<uint32_t>(block_size_), route, mode);
+    }
+  };
+#endif
+
   // Bail out early if the output is going to be empty
   if (y->Shape().Size() == 0) {
+#if !defined(ORT_MINIMAL_BUILD)
+    record(MatMulNBitsRuntimeRoute::EmptyOutput, MatMulNBitsRuntimeComputeMode::NotExecuted);
+#endif
     return Status::OK();
   }
 
@@ -1556,11 +1571,38 @@ Status MatMulNBits<T1>::Compute(OpKernelContext* ctx) const {
                     // MlasQNBitGemmPackQuantBDataSize() returns 0, we can consider calling MlasQNBitGemmBatch()
                     // with B directly too.
     if (prefer_lut_gemm_) {
-      return ComputeBPackedLUT(a, bias, y, thread_pool, helper);
+      ORT_RETURN_IF_ERROR(ComputeBPackedLUT(a, bias, y, thread_pool, helper));
+#if !defined(ORT_MINIMAL_BUILD)
+      record(MatMulNBitsRuntimeRoute::PackedLut, MatMulNBitsRuntimeComputeMode::Lut);
+#endif
+      return Status::OK();
     }
 
     if (MlasIsQNBitGemmAvailable(nbits_, block_size_, compute_type_)) {
-      return ComputeBPacked(a, scales, zero_points, bias, y, allocator, thread_pool, helper);
+      ORT_RETURN_IF_ERROR(ComputeBPacked(a, scales, zero_points, bias, y, allocator, thread_pool, helper));
+#if !defined(ORT_MINIMAL_BUILD)
+      // HQNBIT_CompInt8 converts half activations and calls the SQNBIT backend on every platform.
+      std::optional<MatMulNBitsRuntimeComputeMode> mode;
+      switch (compute_type_) {
+        case SQNBIT_CompFp32:
+          mode = MatMulNBitsRuntimeComputeMode::SQNBitFp32;
+          break;
+        case HQNBIT_CompFp16:
+          mode = MatMulNBitsRuntimeComputeMode::HQNBitFp16;
+          break;
+        case BHQNBIT_CompBf16:
+          mode = MatMulNBitsRuntimeComputeMode::BHQNBitBf16;
+          break;
+        case SQNBIT_CompInt8:
+        case HQNBIT_CompInt8:
+          mode = MatMulNBitsRuntimeComputeMode::SQNBitInt8;
+          break;
+      }
+      if (mode) {
+        record(MatMulNBitsRuntimeRoute::PackedQNBit, *mode);
+      }
+#endif
+      return Status::OK();
     }
   }
 
@@ -1571,7 +1613,11 @@ Status MatMulNBits<T1>::Compute(OpKernelContext* ctx) const {
                                "This is because MLAS doesn't have an optimized quantized kernel "
                                "for the requested compute configuration.";
 
-  return ComputeBUnpacked(a, b, scales, zero_points, reorder_idx, bias, y, allocator, thread_pool, helper);
+  ORT_RETURN_IF_ERROR(ComputeBUnpacked(a, b, scales, zero_points, reorder_idx, bias, y, allocator, thread_pool, helper));
+#if !defined(ORT_MINIMAL_BUILD)
+  record(MatMulNBitsRuntimeRoute::Unpacked, MatMulNBitsRuntimeComputeMode::Float32Gemm);
+#endif
+  return Status::OK();
 }
 
 #define REGISTER_MatMulNBits(T1)                                         \
