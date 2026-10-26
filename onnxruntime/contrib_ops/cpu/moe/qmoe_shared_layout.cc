@@ -544,6 +544,8 @@ struct FileExpertStore::Impl {
     uint64_t offset = 0;
     size_t bytes = 0;
     size_t destination = 0;
+    int32_t transpose_rows = 0;
+    int32_t transpose_cols = 0;
     const uint8_t* mapped_ptr = nullptr;
     bool is_file_backed = false;
     bool is_file_mapped = false;
@@ -622,6 +624,92 @@ struct FileExpertStore::Impl {
   }
 #endif
 
+  bool ReadSingleBankSlice(const ReadBank& bank, int32_t expert_id, uint8_t* dst,
+                           size_t slice_off, size_t slice_len) noexcept {
+    if (slice_len == 0) return true;
+    if (slice_off > bank.bytes || slice_len > bank.bytes - slice_off) return false;
+    const bool need_xpose = (bank.transpose_rows > 0 && bank.transpose_cols > 0 &&
+                             slice_off == 0 && slice_len == bank.bytes &&
+                             static_cast<size_t>(bank.transpose_rows) * static_cast<size_t>(bank.transpose_cols) *
+                                     sizeof(uint16_t) ==
+                                 bank.bytes);
+    if (!bank.resident.empty()) {
+      const uint8_t* src = bank.resident.data() + static_cast<size_t>(expert_id) * bank.bytes + slice_off;
+      if (need_xpose) {
+        TransposeInt4Scales(reinterpret_cast<const uint16_t*>(src),
+                            reinterpret_cast<uint16_t*>(dst + bank.destination),
+                            bank.transpose_rows, bank.transpose_cols);
+      } else {
+        std::memcpy(dst + bank.destination + slice_off, src, slice_len);
+      }
+      bytes_copied_from_memory.fetch_add(slice_len, std::memory_order_relaxed);
+      return true;
+    }
+#if defined(_WIN32)
+    if (bank.file_handle != INVALID_HANDLE_VALUE) {
+      const uint64_t bank_offset = bank.offset + static_cast<uint64_t>(expert_id) * bank.bytes + slice_off;
+      if (need_xpose) {
+        thread_local std::vector<uint8_t> tls_buf;
+        if (tls_buf.size() < slice_len) tls_buf.resize(slice_len);
+        if (!ReadFromWinHandleAt(bank.file_handle, bank_offset, tls_buf.data(), slice_len)) {
+          return false;
+        }
+        TransposeInt4Scales(reinterpret_cast<const uint16_t*>(tls_buf.data()),
+                            reinterpret_cast<uint16_t*>(dst + bank.destination),
+                            bank.transpose_rows, bank.transpose_cols);
+      } else if (!ReadFromWinHandleAt(bank.file_handle, bank_offset, dst + bank.destination + slice_off, slice_len)) {
+        return false;
+      }
+      bytes_read.fetch_add(slice_len, std::memory_order_relaxed);
+      return true;
+    }
+#endif
+    if (bank.mapped_ptr != nullptr) {
+      const uint8_t* src = bank.mapped_ptr + static_cast<size_t>(expert_id) * bank.bytes + slice_off;
+      if (need_xpose) {
+        TransposeInt4Scales(reinterpret_cast<const uint16_t*>(src),
+                            reinterpret_cast<uint16_t*>(dst + bank.destination),
+                            bank.transpose_rows, bank.transpose_cols);
+      } else {
+        std::memcpy(dst + bank.destination + slice_off, src, slice_len);
+      }
+      bytes_copied_from_memory.fetch_add(slice_len, std::memory_order_relaxed);
+      return true;
+    }
+#if !defined(_WIN32)
+    if (bank.fd < 0) return false;
+    const uint64_t bank_offset = bank.offset + static_cast<uint64_t>(expert_id) * bank.bytes + slice_off;
+    uint8_t* read_dst = dst + bank.destination + slice_off;
+    thread_local std::vector<uint8_t> tls_buf;
+    if (need_xpose) {
+      if (tls_buf.size() < slice_len) tls_buf.resize(slice_len);
+      read_dst = tls_buf.data();
+    }
+    size_t done = 0;
+    while (done < slice_len) {
+      const ssize_t r = pread(bank.fd, read_dst + done, slice_len - done,
+                              static_cast<off_t>(bank_offset + done));
+      if (r < 0 && errno == EINTR) continue;
+      if (r <= 0) return false;
+      done += static_cast<size_t>(r);
+    }
+    if (need_xpose) {
+      TransposeInt4Scales(reinterpret_cast<const uint16_t*>(read_dst),
+                          reinterpret_cast<uint16_t*>(dst + bank.destination),
+                          bank.transpose_rows, bank.transpose_cols);
+    }
+#if defined(__linux__) && defined(POSIX_FADV_DONTNEED)
+    if (drop_page_cache) {
+      posix_fadvise(bank.fd, static_cast<off_t>(bank_offset), static_cast<off_t>(slice_len), POSIX_FADV_DONTNEED);
+    }
+#endif
+    bytes_read.fetch_add(slice_len, std::memory_order_relaxed);
+    return true;
+#else
+    return false;
+#endif
+  }
+
   bool ReadExpertFromDisk(int32_t expert_id, uint8_t* dst) noexcept {
     const auto read_begin = std::chrono::steady_clock::now();
     const bool ok = ReadExpertFromDiskImpl(expert_id, dst);
@@ -635,60 +723,10 @@ struct FileExpertStore::Impl {
   bool ReadExpertFromDiskImpl(int32_t expert_id, uint8_t* dst) noexcept {
     const uint64_t offset = file_offset + static_cast<uint64_t>(expert_id) * expert_stride;
     if (!banks.empty()) {
-#if defined(__linux__) && defined(POSIX_FADV_WILLNEED)
-      // Start asynchronous readahead for every bank first so a cold expert's bank reads overlap on the device
-      // instead of paying one storage round trip per bank.
-      if (read_opt) {
-        for (const auto& bank : banks) {
-          if (bank->resident.empty() && bank->fd >= 0) {
-            posix_fadvise(bank->fd, static_cast<off_t>(bank->offset + static_cast<uint64_t>(expert_id) * bank->bytes),
-                          static_cast<off_t>(bank->bytes), POSIX_FADV_WILLNEED);
-          }
-        }
-      }
-#endif
       for (const auto& bank : banks) {
-        if (!bank->resident.empty()) {
-          std::memcpy(dst + bank->destination, bank->resident.data() + static_cast<size_t>(expert_id) * bank->bytes,
-                      bank->bytes);
-          bytes_copied_from_memory.fetch_add(bank->bytes, std::memory_order_relaxed);
-          continue;
+        if (!ReadSingleBankSlice(*bank, expert_id, dst, 0, bank->bytes)) {
+          return false;
         }
-#if defined(_WIN32)
-        if (bank->file_handle != INVALID_HANDLE_VALUE) {
-          const uint64_t bank_offset = bank->offset + static_cast<uint64_t>(expert_id) * bank->bytes;
-          if (!ReadFromWinHandleAt(bank->file_handle, bank_offset, dst + bank->destination, bank->bytes)) {
-            return false;
-          }
-          bytes_read.fetch_add(bank->bytes, std::memory_order_relaxed);
-          continue;
-        }
-#endif
-        if (bank->mapped_ptr != nullptr) {
-          std::memcpy(dst + bank->destination, bank->mapped_ptr + static_cast<size_t>(expert_id) * bank->bytes,
-                      bank->bytes);
-          bytes_copied_from_memory.fetch_add(bank->bytes, std::memory_order_relaxed);
-          continue;
-        }
-#if !defined(_WIN32)
-        const uint64_t bank_offset = bank->offset + static_cast<uint64_t>(expert_id) * bank->bytes;
-        size_t done = 0;
-        while (done < bank->bytes) {
-          const ssize_t r = pread(bank->fd, dst + bank->destination + done, bank->bytes - done,
-                                  static_cast<off_t>(bank_offset + done));
-          if (r < 0 && errno == EINTR) continue;
-          if (r <= 0) return false;
-          done += static_cast<size_t>(r);
-        }
-#if defined(__linux__) && defined(POSIX_FADV_DONTNEED)
-        if (drop_page_cache) {
-          posix_fadvise(bank->fd, static_cast<off_t>(bank_offset), static_cast<off_t>(bank->bytes), POSIX_FADV_DONTNEED);
-        }
-#endif
-        bytes_read.fetch_add(bank->bytes, std::memory_order_relaxed);
-#else
-        return false;
-#endif
       }
       return true;
     }
@@ -1029,6 +1067,8 @@ bool FileExpertStore::InitializeStorage(const char* file_path, uint64_t file_off
           return false;
         }
       }
+      bank->transpose_rows = source.transpose_rows;
+      bank->transpose_cols = source.transpose_cols;
       read_banks.push_back(std::move(bank));
 #elif defined(_WIN32)
     auto bank = std::make_unique<Impl::ReadBank>();
@@ -1036,6 +1076,8 @@ bool FileExpertStore::InitializeStorage(const char* file_path, uint64_t file_off
     bank->bytes = source.expert_bytes;
     bank->destination = source.block_offset;
     bank->offset = source.file_offset;
+    bank->transpose_rows = source.transpose_rows;
+    bank->transpose_cols = source.transpose_cols;
     if (source.file_path != nullptr && source.file_path[0] != '\0') {
       bank->file_handle = CreateFileA(
           source.file_path, GENERIC_READ,
@@ -1357,6 +1399,112 @@ void FileExpertStore::FinishReplace(int32_t new_id, bool ok) noexcept {
     impl_->slot_state[slot] = Impl::kEmpty;
   }
   impl_->cv.notify_all();
+}
+
+int FileExpertStore::BeginLoadExpert(int32_t expert_id, uint8_t** out_slot_dst,
+                                     ExpertBlockLease* out_ready_lease) noexcept {
+  if (!initialized_ || !impl_ || !out_slot_dst || !out_ready_lease || expert_id < 0 ||
+      static_cast<int64_t>(expert_id) >= num_experts_) {
+    return -1;
+  }
+  std::lock_guard<std::mutex> lock(impl_->mutex);
+  const int slot = impl_->expert_to_slot[expert_id];
+  if (slot >= 0) {
+    if (impl_->slot_state[slot] == Impl::kReady) {
+      if (impl_->slot_prefetched[slot]) {
+        impl_->prefetch_hits.fetch_add(1, std::memory_order_relaxed);
+        impl_->slot_prefetched[slot] = 0;
+      } else {
+        impl_->cache_hits.fetch_add(1, std::memory_order_relaxed);
+      }
+      ++impl_->slot_pins[slot];
+      impl_->slot_lru[slot] = ++impl_->lru_clock;
+      const uint8_t* ptr = impl_->aligned_base + static_cast<size_t>(slot) * expert_stride_;
+      if (!MakeExpertBlockLease(ptr, expert_stride_, impl_->min_alignment, out_ready_lease)) {
+        --impl_->slot_pins[slot];
+        return -1;
+      }
+      out_ready_lease->content_id = model_content_id_;
+      return 0;
+    }
+    return -1;
+  }
+  const int victim = impl_->SelectVictimSlotLocked();
+  if (victim < 0) return -1;
+  impl_->ssd_misses.fetch_add(1, std::memory_order_relaxed);
+  impl_->RemovePendingExpertLocked(expert_id);
+  impl_->expert_to_slot[expert_id] = victim;
+  impl_->slot_expert[victim] = expert_id;
+  impl_->slot_state[victim] = Impl::kLoading;
+  impl_->slot_pins[victim] = 1;
+  impl_->slot_prefetched[victim] = 0;
+  *out_slot_dst = impl_->aligned_base + static_cast<size_t>(victim) * expert_stride_;
+  return 1;
+}
+
+bool FileExpertStore::LoadExpertChunk(int32_t expert_id, uint8_t* slot_dst, int chunk_idx) noexcept {
+  if (!initialized_ || !impl_ || !slot_dst || expert_id < 0 ||
+      static_cast<int64_t>(expert_id) >= num_experts_ || chunk_idx < 0 ||
+      chunk_idx >= kLoadChunksPerExpert) {
+    return false;
+  }
+  const auto read_begin = std::chrono::steady_clock::now();
+  bool ok = true;
+  if (!impl_->banks.empty() && impl_->banks.size() >= 2 &&
+      impl_->banks[0]->transpose_rows == 0 && impl_->banks[0]->bytes >= 2) {
+    const size_t half = (impl_->banks[0]->bytes >= 8192)
+                            ? ((impl_->banks[0]->bytes / 2) & ~size_t{4095})
+                            : (impl_->banks[0]->bytes / 2);
+    if (chunk_idx == 0) {
+      ok = impl_->ReadSingleBankSlice(*impl_->banks[0], expert_id, slot_dst, 0, half);
+    } else if (chunk_idx == 1) {
+      ok = impl_->ReadSingleBankSlice(*impl_->banks[0], expert_id, slot_dst, half, impl_->banks[0]->bytes - half);
+    } else if (chunk_idx == 2) {
+      ok = impl_->ReadSingleBankSlice(*impl_->banks[1], expert_id, slot_dst, 0, impl_->banks[1]->bytes);
+    } else {
+      for (size_t b = 2; b < impl_->banks.size() && ok; ++b) {
+        ok = impl_->ReadSingleBankSlice(*impl_->banks[b], expert_id, slot_dst, 0, impl_->banks[b]->bytes);
+      }
+    }
+  } else {
+    if (chunk_idx == 0) {
+      ok = impl_->ReadExpertFromDiskImpl(expert_id, slot_dst);
+    }
+  }
+  impl_->read_ns.fetch_add(static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                                     std::chrono::steady_clock::now() - read_begin)
+                                                     .count()),
+                           std::memory_order_relaxed);
+  return ok;
+}
+
+bool FileExpertStore::FinishLoadExpert(int32_t expert_id, bool ok, ExpertBlockLease* out_lease) noexcept {
+  if (!initialized_ || !impl_ || expert_id < 0 || static_cast<int64_t>(expert_id) >= num_experts_) {
+    return false;
+  }
+  std::lock_guard<std::mutex> lock(impl_->mutex);
+  const int slot = impl_->expert_to_slot[expert_id];
+  if (slot < 0 || impl_->slot_state[slot] != Impl::kLoading) return false;
+  if (!ok) {
+    impl_->expert_to_slot[expert_id] = -1;
+    impl_->slot_expert[slot] = -1;
+    impl_->slot_state[slot] = Impl::kEmpty;
+    impl_->slot_pins[slot] = 0;
+    impl_->cv.notify_all();
+    return false;
+  }
+  impl_->slot_state[slot] = Impl::kReady;
+  impl_->slot_lru[slot] = ++impl_->lru_clock;
+  impl_->cv.notify_all();
+  const uint8_t* ptr = impl_->aligned_base + static_cast<size_t>(slot) * expert_stride_;
+  if (out_lease) {
+    if (!MakeExpertBlockLease(ptr, expert_stride_, impl_->min_alignment, out_lease)) {
+      --impl_->slot_pins[slot];
+      return false;
+    }
+    out_lease->content_id = model_content_id_;
+  }
+  return true;
 }
 
 bool FileExpertStore::TryAcquireCached(int32_t expert_id, ExpertBlockLease* out_lease) noexcept {
@@ -1932,9 +2080,32 @@ void UnpackSm80Int4Weights(const uint8_t* sm80_weights, uint8_t* raw_weights, in
 
 void TransposeInt4Scales(const uint16_t* src, uint16_t* dst, int64_t rows, int64_t cols) {
   if (!src || !dst || rows <= 0 || cols <= 0) return;
-  for (int64_t r = 0; r < rows; ++r) {
+  constexpr int64_t kTile = 16;
+  int64_t r0 = 0;
+  for (; r0 + kTile <= rows; r0 += kTile) {
+    int64_t c0 = 0;
+    for (; c0 + kTile <= cols; c0 += kTile) {
+      uint16_t tile[kTile][kTile];
+      for (int64_t dr = 0; dr < kTile; ++dr) {
+        const uint16_t* srow = src + (r0 + dr) * cols + c0;
+        for (int64_t dc = 0; dc < kTile; ++dc) {
+          tile[dc][dr] = srow[dc];
+        }
+      }
+      for (int64_t dc = 0; dc < kTile; ++dc) {
+        std::memcpy(dst + (c0 + dc) * rows + r0, tile[dc], kTile * sizeof(uint16_t));
+      }
+    }
+    for (; c0 < cols; ++c0) {
+      uint16_t* dcol = dst + c0 * rows + r0;
+      for (int64_t dr = 0; dr < kTile; ++dr) {
+        dcol[dr] = src[(r0 + dr) * cols + c0];
+      }
+    }
+  }
+  for (; r0 < rows; ++r0) {
     for (int64_t c = 0; c < cols; ++c) {
-      dst[c * rows + r] = src[r * cols + c];
+      dst[c * rows + r0] = src[r0 * cols + c];
     }
   }
 }

@@ -23,6 +23,7 @@
 
 #include "gtest/gtest.h"
 #include "contrib_ops/cpu/moe/qmoe_shared_layout.h"
+#include "core/framework/moe_offload_plan.h"
 
 namespace onnxruntime::test {
 namespace {
@@ -491,6 +492,99 @@ TEST(QMoESharedLayoutTest, ModifiedPrivateReadOnlyMappingExcludedFromReloadAndEv
 
   munmap(shared_map, total_bytes);
   munmap(priv_map, total_bytes);
+  close(fd);
+  std::filesystem::remove(tmp_path);
+}
+
+TEST(QMoESharedLayoutTest, PromoteCleanPrivateMappingAndParallelChunkedLoadWithScaleTranspose) {
+  const long page_raw = sysconf(_SC_PAGESIZE);
+  const size_t page_size = (page_raw > 0) ? static_cast<size_t>(page_raw) : 4096u;
+  constexpr int64_t num_experts = 3;
+  constexpr int32_t s_rows = 20;
+  constexpr int32_t s_cols = 18;
+  const size_t w0_bytes = page_size * 2;
+  const size_t w1_bytes = page_size;
+  const size_t s_bytes = static_cast<size_t>(s_rows) * static_cast<size_t>(s_cols) * sizeof(uint16_t);
+  const size_t stride = ((w0_bytes + w1_bytes + s_bytes + shared::kBankAlignment - 1) /
+                         shared::kBankAlignment) *
+                        shared::kBankAlignment;
+
+  const auto tmp_path = std::filesystem::temp_directory_path() / "ort_qmoe_promote_chunk_load_test.bin";
+  const size_t file_bytes = static_cast<size_t>(num_experts) * w0_bytes;
+  {
+    std::vector<uint8_t> raw(file_bytes);
+    for (size_t i = 0; i < raw.size(); ++i) raw[i] = static_cast<uint8_t>((i * 37 + 11) & 0xFF);
+    std::ofstream out(tmp_path, std::ios::binary | std::ios::trunc);
+    ASSERT_TRUE(out.is_open());
+    out.write(reinterpret_cast<const char*>(raw.data()), static_cast<std::streamsize>(raw.size()));
+  }
+
+  const int fd = open(tmp_path.c_str(), O_RDONLY | O_CLOEXEC);
+  ASSERT_GE(fd, 0);
+
+  // Dirty rw-p mapping must not be promoted to shared read-only.
+  void* dirty_map = mmap(nullptr, file_bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
+  ASSERT_NE(dirty_map, MAP_FAILED);
+  static_cast<uint8_t*>(dirty_map)[0] ^= 0xFF;
+  EXPECT_FALSE(moe_offload::PromoteFileMappingToSharedReadOnly(dirty_map, file_bytes));
+  EXPECT_FALSE(shared::IsFileBackedReadOnlyMapping(dirty_map, file_bytes));
+
+  // Clean rw-p mapping (matching PosixRandomAccessFile::Map) promotes to r--s in-place.
+  void* clean_map = mmap(nullptr, file_bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
+  ASSERT_NE(clean_map, MAP_FAILED);
+  EXPECT_FALSE(shared::IsFileBackedReadOnlyMapping(clean_map, file_bytes));
+  EXPECT_TRUE(moe_offload::PromoteFileMappingToSharedReadOnly(clean_map, file_bytes));
+  EXPECT_TRUE(shared::IsFileBackedReadOnlyMapping(clean_map, file_bytes));
+  EXPECT_TRUE(moe_offload::IsReloadableFileMapping(clean_map, file_bytes));
+
+  std::vector<uint8_t> w1_backing(static_cast<size_t>(num_experts) * w1_bytes);
+  for (size_t i = 0; i < w1_backing.size(); ++i) w1_backing[i] = static_cast<uint8_t>((i * 53 + 3) & 0xFF);
+
+  std::vector<uint16_t> s_backing(static_cast<size_t>(num_experts) * s_rows * s_cols);
+  for (size_t i = 0; i < s_backing.size(); ++i) s_backing[i] = static_cast<uint16_t>(i + 1);
+
+  const shared::FileExpertStore::MappedBank banks[]{
+      {clean_map, w0_bytes, 0, nullptr, 0, 0, 0},
+      {w1_backing.data(), w1_bytes, w0_bytes, nullptr, 0, 0, 0},
+      {s_backing.data(), s_bytes, w0_bytes + w1_bytes, nullptr, 0, s_rows, s_cols}};
+
+  shared::FileExpertStore store;
+  ASSERT_TRUE(store.InitializeMapped(banks, std::size(banks), num_experts, stride, /*cache_slots=*/2));
+  EXPECT_TRUE(store.IsBankFileBacked(0));
+
+  uint8_t* slot_dst = nullptr;
+  shared::ExpertBlockLease lease{};
+  ASSERT_EQ(store.BeginLoadExpert(1, &slot_dst, &lease), 1);
+  ASSERT_NE(slot_dst, nullptr);
+  for (int chunk = 0; chunk < shared::FileExpertStore::kLoadChunksPerExpert; ++chunk) {
+    EXPECT_TRUE(store.LoadExpertChunk(1, slot_dst, chunk));
+  }
+  ASSERT_TRUE(store.FinishLoadExpert(1, true, &lease));
+  ASSERT_NE(lease.data, nullptr);
+
+  // Verify chunked w0 + w1 + transposed scales match reference.
+  std::vector<uint16_t> expected_xpose(static_cast<size_t>(s_rows) * s_cols);
+  shared::TransposeInt4Scales(s_backing.data() + static_cast<size_t>(1) * s_rows * s_cols,
+                              expected_xpose.data(), s_rows, s_cols);
+  EXPECT_EQ(std::memcmp(lease.data + w0_bytes, w1_backing.data() + w1_bytes, w1_bytes), 0);
+  EXPECT_EQ(std::memcmp(lease.data + w0_bytes + w1_bytes, expected_xpose.data(), s_bytes), 0);
+
+  // Calling BeginLoadExpert on an already-ready expert returns 0 and pins a second lease.
+  uint8_t* slot_dst2 = nullptr;
+  shared::ExpertBlockLease lease2{};
+  EXPECT_EQ(store.BeginLoadExpert(1, &slot_dst2, &lease2), 0);
+  EXPECT_EQ(lease2.data, lease.data);
+  store.ReleaseLease(1);
+  store.ReleaseLease(1);
+
+  // Aborting a chunk load with ok=false rolls back the slot cleanly.
+  ASSERT_EQ(store.BeginLoadExpert(2, &slot_dst, &lease), 1);
+  EXPECT_FALSE(store.FinishLoadExpert(2, false, &lease));
+  EXPECT_FALSE(store.TryAcquireCached(2, &lease));
+
+  store.Shutdown();
+  munmap(clean_map, file_bytes);
+  munmap(dirty_map, file_bytes);
   close(fd);
   std::filesystem::remove(tmp_path);
 }

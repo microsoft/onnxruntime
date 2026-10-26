@@ -23,8 +23,11 @@
 #include <vector>
 
 #if defined(__linux__)
+#include <fcntl.h>
+#include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/sysmacros.h>
+#include <unistd.h>
 #endif
 
 #ifdef SHARED_PROVIDER
@@ -93,7 +96,7 @@ struct MoeOffloadSessionPolicy {
   bool allow_file_backing{true};
   bool popularity_file_explicit{false};
   int32_t cpu_threads{0};            // 0 = auto physical-core discovery
-  int32_t async_max_tokens{4};       // Decode vs. prefill streaming token threshold
+  int32_t async_max_tokens{8};       // Decode vs. prefill streaming token threshold (S <= 8 DFlash2)
   int32_t prefill_wave_experts{32};  // Max active cold experts per DMA wave
 
   std::filesystem::path source_root;
@@ -445,9 +448,11 @@ inline bool IsReloadableFileMapping(const void* data, size_t bytes) noexcept {
     const std::string path = line.substr(static_cast<size_t>(path_pos));
     if (path.empty() || path[0] != '/') return false;
     struct stat st{};
-    if (stat(path.c_str(), &st) != 0 || !S_ISREG(st.st_mode) ||
-        static_cast<uint64_t>(st.st_ino) != inode ||
-        major(st.st_dev) != major_id || minor(st.st_dev) != minor_id) {
+    if (stat(path.c_str(), &st) != 0 || !S_ISREG(st.st_mode)) {
+      return false;
+    }
+    if (major(st.st_dev) == major_id && minor(st.st_dev) == minor_id &&
+        static_cast<uint64_t>(st.st_ino) != inode) {
       return false;
     }
     const uint64_t file_size = static_cast<uint64_t>(st.st_size);
@@ -456,6 +461,91 @@ inline bool IsReloadableFileMapping(const void* data, size_t bytes) noexcept {
       return false;
     }
     return true;
+  }
+  return false;
+#else
+  (void)data;
+  (void)bytes;
+  return false;
+#endif
+}
+
+// Converts a clean (unmodified) little-endian POSIX MAP_PRIVATE (rw-p) regular-file mapping covering
+// [data, data + bytes) into a shared read-only (PROT_READ, MAP_SHARED -> r--s) mapping in-place via
+// MAP_FIXED so FileExpertStore, EvictUploadedHostPages, and cudaHostRegister operate on shared
+// page-cache pages without Copy-On-Write RssAnon inflation while keeping default PosixRandomAccessFile::Map
+// semantics unchanged for mutable initializers.
+inline bool PromoteFileMappingToSharedReadOnly(const void* data, size_t bytes) noexcept {
+  if (data == nullptr || bytes == 0) return false;
+#if defined(__linux__) && (!defined(__BYTE_ORDER__) || (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__))
+  const uintptr_t address = reinterpret_cast<uintptr_t>(data);
+  if (address > std::numeric_limits<uintptr_t>::max() - bytes) return false;
+  const long page_raw = sysconf(_SC_PAGESIZE);
+  if (page_raw <= 0) return false;
+  const size_t page_size = static_cast<size_t>(page_raw);
+
+  std::ifstream maps("/proc/self/maps");
+  if (!maps) return false;
+  std::string line;
+  while (std::getline(maps, line)) {
+    unsigned long long lo = 0, hi = 0, offset = 0, inode = 0;
+    unsigned int major_id = 0, minor_id = 0;
+    char perms[5]{};
+    int path_pos = 0;
+    if (std::sscanf(line.c_str(), "%llx-%llx %4s %llx %x:%x %llu %n", &lo, &hi, perms,
+                    &offset, &major_id, &minor_id, &inode, &path_pos) != 7) {
+      continue;
+    }
+    if (address < lo || address + bytes > hi) continue;
+    if (perms[0] == 'r' && perms[1] == '-' && perms[3] == 's' && inode != 0) {
+      return true;
+    }
+    if (perms[0] != 'r' || perms[1] != 'w' || perms[3] != 'p' || inode == 0) {
+      return false;
+    }
+    const std::string path = line.substr(static_cast<size_t>(path_pos));
+    if (path.empty() || path[0] != '/') return false;
+
+    const uintptr_t map_lo = address & ~(page_size - 1);
+    if (map_lo < lo) return false;
+    const size_t mapped_length = bytes + static_cast<size_t>(address - map_lo);
+    const uint64_t map_file_offset = offset + static_cast<uint64_t>(map_lo - lo);
+
+    // Verify the first page has not been Copy-On-Write faulted into anonymous memory.
+    const int pm_fd = open("/proc/self/pagemap", O_RDONLY | O_CLOEXEC);
+    if (pm_fd >= 0) {
+      uint64_t pm_entry = 0;
+      const off_t pm_off = static_cast<off_t>((map_lo / page_size) * sizeof(uint64_t));
+      const ssize_t pr = pread(pm_fd, &pm_entry, sizeof(pm_entry), pm_off);
+      close(pm_fd);
+      if (pr == static_cast<ssize_t>(sizeof(pm_entry))) {
+        const bool present = ((pm_entry >> 63) & 1ULL) != 0;
+        const bool file_page = ((pm_entry >> 61) & 1ULL) != 0;
+        if (present && !file_page) {
+          return false;
+        }
+      }
+    }
+
+    const int fd = open(path.c_str(), O_RDONLY | O_CLOEXEC);
+    if (fd < 0) return false;
+    struct stat st{};
+    if (fstat(fd, &st) != 0 || !S_ISREG(st.st_mode) ||
+        (major(st.st_dev) == major_id && minor(st.st_dev) == minor_id &&
+         static_cast<uint64_t>(st.st_ino) != inode)) {
+      close(fd);
+      return false;
+    }
+    const uint64_t file_size = static_cast<uint64_t>(st.st_size);
+    if (map_file_offset > file_size || mapped_length > file_size - map_file_offset) {
+      close(fd);
+      return false;
+    }
+    void* const remapped = mmap(reinterpret_cast<void*>(map_lo), mapped_length,
+                                PROT_READ, MAP_SHARED | MAP_FIXED,
+                                fd, static_cast<off_t>(map_file_offset));
+    close(fd);
+    return remapped != MAP_FAILED;
   }
   return false;
 #else

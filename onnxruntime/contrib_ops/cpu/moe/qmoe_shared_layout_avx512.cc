@@ -190,10 +190,11 @@ void Int4Group8Avx512(const uint8_t* w_base, const uint8_t* next_w_base, const u
   for (int64_t kb = 0; kb < blocks; ++kb) {
     const uint8_t* tile0 = WeightsPrepacked ? (w_base + (kb >> 1) * 128 + (kb & 1) * 16) : nullptr;
     const uint8_t* tile1 = WeightsPrepacked ? (w_base1 + (kb >> 1) * 128 + (kb & 1) * 16) : nullptr;
-    if (next_w_base != nullptr && (kb & 1) == 0) {
+    if (next_w_base != nullptr) {
       if constexpr (WeightsPrepacked) {
-        _mm_prefetch(reinterpret_cast<const char*>(next_w_base + (kb >> 1) * 128), _MM_HINT_T0);
-        _mm_prefetch(reinterpret_cast<const char*>(next_w_base + group_stride + (kb >> 1) * 128), _MM_HINT_T0);
+        const int64_t pf_off = (kb >> 1) * 128 + (kb & 1) * 64;
+        _mm_prefetch(reinterpret_cast<const char*>(next_w_base + pf_off), _MM_HINT_T0);
+        _mm_prefetch(reinterpret_cast<const char*>(next_w_base + group_stride + pf_off), _MM_HINT_T0);
       }
     }
     const __m512 al0 = _mm512_loadu_ps(a_reordered + 0 * k + kb * kBlockSize);
@@ -259,7 +260,7 @@ void Int4Group4Avx512(const uint8_t* w_base, const uint8_t* next_w_base, const u
     const uint8_t* tile = WeightsPrepacked ? (w_base + (kb >> 1) * 128 + (kb & 1) * 16) : nullptr;
     if (next_w_base != nullptr) {
       if constexpr (WeightsPrepacked) {
-        if ((kb & 1) == 0) _mm_prefetch(reinterpret_cast<const char*>(next_w_base + (kb >> 1) * 128), _MM_HINT_T0);
+        _mm_prefetch(reinterpret_cast<const char*>(next_w_base + (kb >> 1) * 128 + (kb & 1) * 64), _MM_HINT_T0);
       } else if ((kb & 3) == 0) {
         const int64_t byte_off = kb * 16;
         for (int c = 0; c < 4; ++c) {
