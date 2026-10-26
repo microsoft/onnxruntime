@@ -258,14 +258,56 @@ TEST(SpeculativeFoldTest, SupportsBatchedSpeculativePrefixCommitS8) {
   // Batch 1: muted (ctl[3] = 1)
   // Batch 2: accepts 1 draft (tokens[0] == ids[1], tokens[1] != ids[2])
   std::vector<int64_t> token_values = {
-      10, 11, 12, 99, 14, 15, 16, 17,
-      20, 21, 22, 23, 24, 25, 26, 27,
-      30, 88, 32, 33, 34, 35, 36, 37,
+      10,
+      11,
+      12,
+      99,
+      14,
+      15,
+      16,
+      17,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      30,
+      88,
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
   };
   std::vector<int64_t> id_values = {
-      1, 10, 11, 12, 13, 14, 15, 16,
-      2, 20, 21, 22, 23, 24, 25, 26,
-      3, 30, 31, 32, 33, 34, 35, 36,
+      1,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      2,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      3,
+      30,
+      31,
+      32,
+      33,
+      34,
+      35,
+      36,
   };
   std::vector<int64_t> ctl_values(kBatch * 16, 0);
   // Batch 0: length=10, muted=0, seq=0, cache_len=10
@@ -316,7 +358,7 @@ TEST(SpeculativeFoldTest, SupportsBatchedSpeculativePrefixCommitS8) {
   EXPECT_EQ(out_ctl[0 * 16 + 1], 10 + 4);  // length = 10 + 3 + 1
   EXPECT_EQ(out_ctl[0 * 16 + 4], 1);       // seq incremented to 1
 
-  EXPECT_EQ(out_ctl[1 * 16 + 4], 5);       // muted: seq unchanged
+  EXPECT_EQ(out_ctl[1 * 16 + 4], 5);  // muted: seq unchanged
 
   EXPECT_EQ(out_ctl[2 * 16 + 0], 88);      // pending = tokens[2, 1]
   EXPECT_EQ(out_ctl[2 * 16 + 1], 30 + 2);  // length = 30 + 1 + 1
