@@ -717,6 +717,41 @@ TEST(QDQTransformerTests, MatMulLengthOneAParametersAreFused) {
   TestMatMulQuantizationParameterShapes({1}, 1, {}, 1, {}, 1, true);
 }
 
+TEST(QDQTransformerTests, MatMulGenericSelectorAllowsRankOnePerChannelBParameters) {
+  const auto& logger = DefaultLoggingManager().DefaultLogger();
+  const std::unordered_map<std::string, int> domain_to_version = {{kOnnxDomain, 21}, {kMSDomain, 1}};
+  Model model("MatMulGenericSelectorTest", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {}, logger);
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+
+  auto* input_a = builder.MakeInput<uint16_t>({2, 3, 3}, uint16_t{0}, uint16_t{255});
+  auto* dq_a = builder.MakeIntermediate();
+  builder.AddDequantizeLinearNode(input_a, 0.01f, uint16_t{0}, dq_a);
+
+  auto* input_b = builder.MakeInitializer<int8_t>({3}, {1, 2, 3});
+  auto* dq_b = builder.MakeIntermediate();
+  builder.AddDequantizeLinearNode(input_b, std::vector<float>{0.1f, 0.2f, 0.3f},
+                                  std::vector<int8_t>{0, 0, 0}, dq_b)
+      .AddAttribute("axis", int64_t{-1});
+
+  auto* matmul_output = builder.MakeIntermediate();
+  builder.AddNode("MatMul", {dq_a, dq_b}, {matmul_output});
+  builder.AddQuantizeLinearNode(matmul_output, 0.01f, uint16_t{0}, builder.MakeOutput());
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  const GraphViewer graph_viewer(graph);
+  QDQ::SelectorManager selector_manager;
+  const auto selections = selector_manager.GetQDQSelections(graph_viewer, logger);
+
+  ASSERT_EQ(selections.size(), 1u);
+  const auto& selection = selections.front();
+  ASSERT_EQ(selection.dq_nodes.size(), 2u);
+  ASSERT_EQ(selection.q_nodes.size(), 1u);
+  ASSERT_EQ(graph.GetNode(selection.target_node)->OpType(), "MatMul");
+}
+
 TEST(QDQTransformerTests, Add) {
   QDQTransformerBinaryOpTests<uint8_t, uint8_t, uint8_t>("Add");
   QDQTransformerBinaryOpTests<int8_t, int8_t, int8_t>("Add");

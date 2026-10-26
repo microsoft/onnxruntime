@@ -786,9 +786,10 @@ bool MatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node&
     // QLinearMatMul only supports per-tensor quantization for A and Y. B may
     // use per-column quantization, but the DQ axis is not carried into
     // QLinearMatMul and must already describe that same last dimension.
-    if (!HasPerTensorQuantizationParams(dq_nodes[0], true) ||
-        !HasSupportedQLinearMatMulBParams(dq_nodes[1]) ||
-        !HasPerTensorQuantizationParams(q_nodes[0], true)) {
+    if (check_qlinear_matmul_params_ &&
+        (!HasPerTensorQuantizationParams(dq_nodes[0], true) ||
+         !HasSupportedQLinearMatMulBParams(dq_nodes[1]) ||
+         !HasPerTensorQuantizationParams(q_nodes[0], true))) {
       return false;
     }
 
