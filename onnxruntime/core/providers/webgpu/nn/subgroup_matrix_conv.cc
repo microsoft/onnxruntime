@@ -134,7 +134,7 @@ class SubgroupMatrixConvImpl final : public Conv<is_channels_last, is_fused>::Co
     ORT_RETURN_IF_ERROR(conv_attrs.InferPadsAndOutputShape(src_spacial_shape, kernel_spacial_shape_vector,
                                                            local_strides, local_dilations, local_pads,
                                                            output_shape_vector));
-    output_shape_vector.push_back(weight_shape[0]);  // Cout
+    output_shape_vector.push_back(weight_shape[0]);       // Cout
     const TensorShape output_shape(output_shape_vector);  // NHWC: [batch, out_h, out_w, Cout]
 
     // static_cast, not narrow: an input the normal Conv path accepts must not abort here.
@@ -414,12 +414,12 @@ std::unique_ptr<typename Conv<is_channels_last, is_fused>::ConvOptImpl> CreateSu
       return nullptr;
     }
     return std::make_unique<SubgroupMatrixConvImpl<is_channels_last, is_fused>>(parent, *config,
-                                                                               std::move(tiling_selector));
+                                                                                std::move(tiling_selector));
   }
 }
 
 // Explicit instantiation for every Conv instantiation (see conv.cc).
-#define WEBGPU_INSTANTIATE_CREATE_SUBGROUP_MATRIX_CONV_IMPL(CHANNELS_LAST, FUSED)               \
+#define WEBGPU_INSTANTIATE_CREATE_SUBGROUP_MATRIX_CONV_IMPL(CHANNELS_LAST, FUSED)              \
   template std::unique_ptr<Conv<CHANNELS_LAST, FUSED>::ConvOptImpl>                            \
   CreateSubgroupMatrixConvImpl<CHANNELS_LAST, FUSED>(const Conv<CHANNELS_LAST, FUSED>& parent, \
                                                      const ComputeContextBase& context);

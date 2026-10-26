@@ -40,22 +40,22 @@ ss << __str_29;
 // 16 |
 ss << __str_5;
 // 17 |   let constant_value =
-ss << __str_436;
+ss << __str_543;
 // 18 | #if is_float16
 if (__param_is_float16) {
 // 19 |       bitcast<vec2<f16>>(uniforms.constant_value)[0];
-ss << __str_437;
+ss << __str_544;
 // 20 | #else
 } else {
 // 21 |       bitcast<output_value_t>(uniforms.constant_value);
-ss << __str_438;
+ss << __str_545;
 // 22 | #endif
 }
 // 23 |
 // 24 | #if dim_value_zero
 if (__param_dim_value_zero) {
 // 25 |   output[global_idx] = constant_value;
-ss << __str_439;
+ss << __str_546;
 // 26 | #else
 } else {
 // 27 |   let output_indices = output.offsetToIndices(global_idx);
@@ -63,83 +63,83 @@ ss << __str_265;
 ss << __var_output->OffsetToIndices(__str_239);
 ss << __str_29;
 // 28 |   var input_index = u32(0);
-ss << __str_440;
+ss << __str_547;
 // 29 |   var use_pad_value = false;
-ss << __str_441;
+ss << __str_548;
 // 30 |   var in_coord = i32(0);
-ss << __str_442;
+ss << __str_549;
 // 31 |
 ss << __str_5;
 // 32 |   for (var dim = 0; dim < output.rank && !use_pad_value; dim++) {
-ss << __str_443;
+ss << __str_550;
 ss << __var_output->Rank();
-ss << __str_444;
+ss << __str_551;
 // 33 |     let output_index = i32(getElementAt(output_indices, dim, output.rank));
-ss << __str_445;
-ss << GetElementAt(__str_247, __str_431, __var_output->Rank());
+ss << __str_552;
+ss << GetElementAt(__str_247, __str_538, __var_output->Rank());
 ss << __str_17;
 // 34 |     let lower_pads = getElementAt(uniforms.lower_pads, dim, output.rank);
-ss << __str_446;
-ss << GetElementAt(__str_432, __str_431, __var_output->Rank());
+ss << __str_553;
+ss << GetElementAt(__str_539, __str_538, __var_output->Rank());
 ss << __str_29;
 // 35 |     let data_shape = i32(getElementAt(uniforms.data_shape, dim, output.rank));
-ss << __str_447;
-ss << GetElementAt(__str_433, __str_431, __var_output->Rank());
+ss << __str_554;
+ss << GetElementAt(__str_540, __str_538, __var_output->Rank());
 ss << __str_17;
 // 36 | #if pad_mode == PAD_MODE_CONSTANT
 if (__param_pad_mode == 0) {
 // 37 |     if (output_index < lower_pads || output_index >= data_shape + lower_pads) {
-ss << __str_448;
+ss << __str_555;
 // 38 |         use_pad_value = true;
-ss << __str_449;
+ss << __str_556;
 // 39 | #elif pad_mode == PAD_MODE_EDGE
 } else if (__param_pad_mode == 2) {
 // 40 |     if (output_index < lower_pads) {
-ss << __str_450;
+ss << __str_557;
 // 41 |       in_coord = 0;
-ss << __str_451;
+ss << __str_558;
 // 42 |     } else if (output_index >= data_shape + lower_pads) {
-ss << __str_452;
+ss << __str_559;
 // 43 |       in_coord = data_shape - 1;
-ss << __str_453;
+ss << __str_560;
 // 44 | #elif pad_mode == PAD_MODE_REFLECT
 } else if (__param_pad_mode == 1) {
 // 45 |     if (output_index < lower_pads || output_index >= data_shape + lower_pads) {
-ss << __str_448;
+ss << __str_555;
 // 46 |       in_coord = output_index - lower_pads;
-ss << __str_454;
+ss << __str_561;
 // 47 |       if (in_coord < 0) {
-ss << __str_455;
+ss << __str_562;
 // 48 |         in_coord = -in_coord;
-ss << __str_456;
+ss << __str_563;
 // 49 |       }
 ss << __str_292;
 // 50 |       let _2n_1 = 2 * (data_shape - 1);
-ss << __str_457;
+ss << __str_564;
 // 51 |       in_coord = in_coord % _2n_1;
-ss << __str_458;
+ss << __str_565;
 // 52 |       if (in_coord >= data_shape) {
-ss << __str_459;
+ss << __str_566;
 // 53 |         in_coord = _2n_1 - in_coord;
-ss << __str_460;
+ss << __str_567;
 // 54 |       }
 ss << __str_292;
 // 55 | #else // PAD_MODE_WRAP
 } else {
 // 56 |     if (output_index < lower_pads) {
-ss << __str_450;
+ss << __str_557;
 // 57 |       in_coord = data_shape + output_index - lower_pads;
-ss << __str_461;
+ss << __str_568;
 // 58 |     } else if (output_index >= data_shape + lower_pads) {
-ss << __str_452;
+ss << __str_559;
 // 59 |       in_coord = output_index - data_shape - lower_pads;
-ss << __str_462;
+ss << __str_569;
 // 60 | #endif // pad_mode
 }
 // 61 |     } else {
-ss << __str_463;
+ss << __str_570;
 // 62 |         in_coord = output_index - lower_pads;
-ss << __str_464;
+ss << __str_571;
 // 63 |     }
 ss << __str_20;
 // 64 |
@@ -147,31 +147,31 @@ ss << __str_5;
 // 65 | #if pad_mode == PAD_MODE_WRAP
 if (__param_pad_mode == 3) {
 // 66 |     in_coord = ((in_coord % data_shape) + data_shape) % data_shape;
-ss << __str_465;
+ss << __str_572;
 // 67 | #endif
 }
 // 68 |
 // 69 |     input_index += select(u32(in_coord)
-ss << __str_466;
+ss << __str_573;
 // 70 | #if output.rank > 1
 if (__var_output->Rank() > 1) {
 // 71 |         * getElementAt(uniforms.data_stride, dim, output.rank - 1)
-ss << __str_467;
-ss << GetElementAt(__str_434, __str_431, __var_output->Rank() - 1);
+ss << __str_574;
+ss << GetElementAt(__str_541, __str_538, __var_output->Rank() - 1);
 ss << __str_5;
 // 72 | #endif
 }
 // 73 |         , u32(in_coord), dim == output.rank - 1);
-ss << __str_468;
+ss << __str_575;
 ss << __var_output->Rank();
-ss << __str_469;
+ss << __str_576;
 // 74 |   }
 ss << __str_11;
 // 75 |
 ss << __str_5;
 // 76 |   output.setByOffset(global_idx, select(data[input_index], constant_value, use_pad_value));
 ss << __str_241;
-ss << __var_output->SetByOffset(__str_239, __str_435);
+ss << __var_output->SetByOffset(__str_239, __str_542);
 ss << __str_29;
 // 77 | #endif
 }
