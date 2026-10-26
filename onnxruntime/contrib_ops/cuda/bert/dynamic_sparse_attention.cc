@@ -165,8 +165,9 @@ Status DynamicSparseAttention<T>::ComputeInternal(OpKernelContext* context) cons
   ORT_RETURN_IF_NOT(parameters.head_size <= GetDeviceProp().maxThreadsPerBlock,
                     "DynamicSparseAttention: head_size exceeds the CUDA device thread-block limit.");
   ORT_RETURN_IF(committed_length != nullptr &&
-                    (parameters.batch_size != 1 || committed_length->Shape().Size() != 1),
-                "DynamicSparseAttention: committed_length requires batch_size=1 and one int32 element.");
+                    committed_length->Shape().Size() != 1 &&
+                    committed_length->Shape().Size() != parameters.batch_size,
+                "DynamicSparseAttention: committed_length must have 1 or batch_size int32 elements.");
 
   TensorShape output_shape({parameters.batch_size, parameters.sequence_length,
                             parameters.query_hidden_size});
@@ -253,11 +254,17 @@ Status DynamicSparseAttention<T>::ComputeInternal(OpKernelContext* context) cons
             parameters, GetDeviceProp().sharedMemPerBlock);
     auto validation_workspace =
         GetScratchBuffer<uint32_t>(validation_workspace_elements, GetComputeStream(context));
+    const int committed_length_stride =
+        (committed_length != nullptr && committed_length->Shape().Size() == parameters.batch_size &&
+         parameters.batch_size > 1)
+            ? 1
+            : 0;
     ORT_RETURN_IF_ERROR(ValidateDynamicSparseAttentionOnDevice(
         stream, data.selected_indices, data.selected_counts, data.seqlens_k,
         data.position_ids, parameters, validation_error, validation_workspace.get(),
         GetDeviceProp().sharedMemPerBlock, strict_validation_, data.key_scale, data.value_scale,
-        committed_length == nullptr ? nullptr : committed_length->Data<int32_t>()));
+        committed_length == nullptr ? nullptr : committed_length->Data<int32_t>(),
+        committed_length_stride));
   }
 
   const size_t attention_workspace_elements =

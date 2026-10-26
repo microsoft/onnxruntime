@@ -105,7 +105,8 @@ __global__ void ValidateInputsKernel(const int32_t* selected_indices,
                                      const float* key_scale,
                                      const float* value_scale,
                                      int cache_channels,
-                                     const int32_t* committed_length) {
+                                     const int32_t* committed_length,
+                                     int committed_length_stride) {
   const int row = static_cast<int>(blockIdx.x);
   const int b = row / sequence_length;
   const int s = row - b * sequence_length;
@@ -232,10 +233,10 @@ __global__ void ValidateInputsKernel(const int32_t* selected_indices,
     return;
   }
 
-  if (row == 0 && threadIdx.x == 0 && committed_length != nullptr) {
-    const int64_t committed = *committed_length;
+  if (s == 0 && threadIdx.x == 0 && committed_length != nullptr) {
+    const int64_t committed = committed_length[b * committed_length_stride];
     const int64_t total = committed + sequence_length;
-    if (committed < 0 || total > main_capacity || seqlens_k[0] != total - 1) {
+    if (committed < 0 || total > main_capacity || seqlens_k[b] != total - 1) {
       atomicCAS(error_flag, kDynamicSparseAttentionValidationOk, 9);
     }
   }
@@ -1865,7 +1866,8 @@ Status ValidateDynamicSparseAttentionOnDevice(
     bool copy_result_to_host,
     const float* key_scale,
     const float* value_scale,
-    const int32_t* committed_length) {
+    const int32_t* committed_length,
+    int committed_length_stride) {
   CUDA_RETURN_IF_ERROR(cudaMemsetAsync(error_flag, 0, sizeof(int32_t), stream));
   const int64_t row_count =
       static_cast<int64_t>(parameters.batch_size) * parameters.sequence_length;
@@ -1895,7 +1897,7 @@ Status ValidateDynamicSparseAttentionOnDevice(
       parameters.selected_kv_source == DynamicSparseAttentionKvSource::kAuxiliary,
       validation_bitmap, validation_hash_entries, use_shared_hash_table, error_flag,
       key_scale, value_scale, parameters.kv_num_heads * parameters.head_size,
-      committed_length);
+      committed_length, committed_length_stride);
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
   if (!copy_result_to_host) {
