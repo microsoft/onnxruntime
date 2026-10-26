@@ -48,7 +48,7 @@ struct MemoryCapacityTestDriver {
     return Step();
   }
   bool DeviceTotalMem(size_t* total, Device) noexcept {
-    *total = 16ULL * 1024 * 1024 * 1024;
+    *total = 16ULL * 1024 * 1024;
     return Step();
   }
   bool PrimaryCtxRetain(Context* context, Device) noexcept {
@@ -66,7 +66,7 @@ struct MemoryCapacityTestDriver {
   bool MemGetInfo(size_t* available, size_t* total) noexcept {
     queried_context = current_context;
     *available = available_bytes;
-    *total = 14ULL * 1024 * 1024 * 1024;
+    *total = 14ULL * 1024 * 1024;
     return Step();
   }
   bool CtxPopCurrent(Context* context) noexcept {
@@ -92,7 +92,7 @@ struct MemoryCapacityTestDriver {
   int saved_context = 0;
   int queried_context = 0;
   int queried_ordinal = -1;
-  size_t available_bytes = 12ULL * 1024 * 1024 * 1024;
+  size_t available_bytes = 12ULL * 1024 * 1024;
   bool retained = false;
   bool release_called = false;
 };
@@ -110,7 +110,7 @@ TEST(OrtEpLibrary, MemoryCapacityPreservesCudaContextAndQueriesDeviceTotal) {
     EXPECT_EQ(driver.current_context, original_context);
     EXPECT_FALSE(driver.retained);
     EXPECT_TRUE(driver.release_called);
-    EXPECT_EQ(total, 16ULL * 1024 * 1024 * 1024);
+    EXPECT_EQ(total, 16ULL * 1024 * 1024);
     EXPECT_EQ(available, driver.available_bytes);
 
     driver.available_bytes /= 2;
