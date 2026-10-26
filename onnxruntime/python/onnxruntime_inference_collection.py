@@ -801,6 +801,21 @@ class InferenceSession(Session):
         self._provider_options = self._sess.get_provider_options()
         self._profiling_start_time_ns = self._sess.get_profiling_start_time_ns
 
+        # A requested provider that could not be created used to be dropped
+        # silently, leaving a CPU-only session with no explanation (#33556).
+        # Warn (without breaking the existing fallback to the remaining
+        # providers) so the caller can tell a dropped provider apart from a
+        # session that genuinely runs on the requested providers.
+        dropped_providers = [provider for provider in providers if provider not in self._providers]
+        if dropped_providers:
+            warnings.warn(
+                "Requested execution provider(s) could not be created and will be skipped: "
+                + ", ".join(dropped_providers)
+                + ". The session will run on the remaining providers: "
+                + ", ".join(self._providers)
+                + "."
+            )
+
     def _release_captured_graphs(self) -> None:
         """Release every graph captured by the current session handle and unpin its IOBinding.
 

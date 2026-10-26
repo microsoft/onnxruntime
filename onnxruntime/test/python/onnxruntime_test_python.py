@@ -14,6 +14,7 @@ import sys
 import threading
 import time
 import unittest
+import warnings
 import weakref
 
 import numpy as np
@@ -283,6 +284,31 @@ class TestInferenceSession(unittest.TestCase):
         self.assertTrue(onnxrt.get_all_providers()[-1] == "CPUExecutionProvider")
         sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=onnxrt.get_available_providers())
         self.assertTrue("CPUExecutionProvider" in sess.get_providers())
+
+    def test_requested_provider_that_cannot_be_created_is_not_silently_dropped(self):
+        # Regression test for #33556: requesting MIGraphXExecutionProvider
+        # (listed as available once its plugin EP is registered) used to
+        # yield a CPU-only session with no warning or error. The fix must
+        # either run the session on MIGraphX or surface the failure; a
+        # silent CPU-only session is the bug. Skip on builds where MIGraphX
+        # is not listed as available, since requesting it there is rejected
+        # up front as "not in available provider names" rather than dropped
+        # at session creation.
+        if "MIGraphXExecutionProvider" not in onnxrt.get_available_providers():
+            self.skipTest("MIGraphXExecutionProvider is not available in this build")
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            sess = onnxrt.InferenceSession(
+                get_name("mul_1.onnx"), providers=["MIGraphXExecutionProvider", "CPUExecutionProvider"]
+            )
+        if "MIGraphXExecutionProvider" in sess.get_providers():
+            return
+        self.assertEqual(["CPUExecutionProvider"], sess.get_providers())
+        self.assertTrue(
+            any("MIGraphXExecutionProvider" in str(warning.message) for warning in caught),
+            "Creating a session with an uncreatable MIGraphXExecutionProvider must warn naming that provider, "
+            "not silently fall back to a CPU-only session.",
+        )
 
     def test_enabling_and_disabling_telemetry(self):
         onnxrt.disable_telemetry_events()

@@ -880,7 +880,12 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
     return std::shared_ptr<IExecutionProviderFactory>(std::move(ep_factory));
   };
 
-  if (type == kCudaExecutionProvider) {
+  // Like CUDA, a built-in provider name may also name a plugin EP registered
+  // with register_execution_provider_library() (e.g. MIGraphX, see #33556).
+  // Try the registered plugin first so the built-in branch below cannot
+  // silently swallow a registered plugin EP when the build has no built-in
+  // implementation of that provider.
+  if (type == kCudaExecutionProvider || type == kMIGraphXExecutionProvider) {
     if (auto ep_factory = try_create_registered_plugin_factory(); ep_factory) {
       return ep_factory;
     }
@@ -1272,6 +1277,14 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
       }
     }
 #endif
+    // Reaching here means neither the registered plugin (tried above) nor
+    // the built-in implementation could create this provider. Do not fall
+    // through silently: callers that skip a null factory would otherwise
+    // leave the user with a CPU-only session and no explanation (#33556).
+    LOGS_DEFAULT(WARNING) << "Failed to create " << type
+                          << ". Neither the built-in MIGraphX execution provider nor a plugin execution provider "
+                             "registered with register_execution_provider_library() could create it. "
+                             "The session will run without this provider.";
   } else if (type == kCudaExecutionProvider) {
 #if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
     // If the environment variable 'CUDA_UNAVAILABLE' exists, then we do not load cuda.
