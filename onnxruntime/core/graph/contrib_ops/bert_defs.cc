@@ -659,8 +659,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "Optional sink logit [num_heads]. Participates in the shared softmax denominator in both attention modes.",
                "T", OpSchema::Optional)
         .Input(17, "committed_length",
-               "Optional single-request committed token count for cursor validation. When supplied, validation_status "
-               "is 9 if seqlens_k, sequence_length, or cache_capacity is inconsistent. CUDA only.",
+               "Optional per-request committed token count ([1] or [batch]) for cursor validation. When supplied, "
+               "validation_status is 9 if seqlens_k, sequence_length, or cache_capacity is inconsistent. CUDA only.",
                "M", OpSchema::Optional)
         .Input(18, "key_scale", "Positive finite per-channel INT8 key-cache scales [kv_num_heads * head_size].",
                "S", OpSchema::Optional)

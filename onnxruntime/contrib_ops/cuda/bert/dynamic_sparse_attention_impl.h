@@ -76,7 +76,8 @@ Status ValidateDynamicSparseAttentionOnDevice(
     bool copy_result_to_host,
     const float* key_scale = nullptr,
     const float* value_scale = nullptr,
-    const int32_t* committed_length = nullptr);
+    const int32_t* committed_length = nullptr,
+    int committed_length_stride = 0);
 
 template <typename T>
 Status LaunchDynamicSparseAttention(
