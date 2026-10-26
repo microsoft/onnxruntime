@@ -596,9 +596,9 @@ obtained from `VisitMatches`, without applying any rule:
 ```cpp
 std::optional<Match> accepted;
 ORT_RETURN_IF_ERROR(pattern.VisitMatches(graph, root_index, [&](Match& candidate) {
-  if (!ComposeTransposePermutations(graph, candidate)) return true; // Reject : try next.
+  if (!ComposeTransposePermutations(graph, candidate)) return true; // Reject: try next.
   accepted = candidate;  // Keeps prepared "composed" plus selected-plan ownership.
-  return false;         // Accept : stop enumeration.
+  return false;         // Accept: stop enumeration.
 }));
 ```
 
@@ -755,7 +755,7 @@ Contrib-disabled tests construct only the two HardSwish examples.
 
 ## Opset and execution-provider applicability
 
-Each `OpsetRequirement` is `{domain, min_version, max_version }`, with positive,
+Each `OpsetRequirement` is `{domain, min_version, max_version}`, with positive,
 inclusive bounds. Declare every domain used by a pattern or replacement;
 additional requirements are allowed. `""` and `"ai.onnx"` denote the same domain.
 Duplicate domains, reversed ranges, and undeclared pattern domains are errors.
@@ -838,7 +838,7 @@ separate fragment-only construction contract described above.
 
 Rules have deterministic **registration-order priority**, including across
 different structural groups. At each eligible root, rewriting chooses the first
-passing check-and-bind callback. With `Options{.match_only = true }`, all passing callbacks are counted
+passing check-and-bind callback. With `Options{.match_only = true}`, all passing callbacks are counted
 and replacements are not called. `indexed = false` selects the reference matching
 mode with the same eligibility and priority semantics.
 
@@ -903,7 +903,7 @@ the rule name, candidate root index, `FailureStage`, and a reason string:
 ```cpp
 Options options;
 options.on_failure = [](const MatchFailure& failure) {
-  std::cerr << failure.rule << " : " << failure.reason << '\n';
+  std::cerr << failure.rule << ": " << failure.reason << '\n';
 };
 ```
 
