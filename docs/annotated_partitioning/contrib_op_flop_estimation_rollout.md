@@ -5,9 +5,10 @@
 ## 1. Summary
 
 Introduce an opt-in diagnostic feature that estimates the mathematical work of a contrib operator invocation.
-Start with a pure `com.microsoft::MatMulNBits` estimator and a coverage-aware static report. Then complete and
-validate MatMulNBits counting, including bias, concrete runtime shapes, and supported route-specific ancillary
-work, before expanding to Attention/GQA, measured throughput, or other operators. Keep dispatch, placement,
+The minimum operator scope is `com.microsoft::MatMulNBits` and GroupQueryAttention (GQA). Start with the existing
+MatMulNBits estimator, bias component, and legacy static-report preview; next connect estimates to runtime workload metadata,
+then add GQA baseline estimates. Route-aware adjustments are optional, incremental refinements, not an exact
+executed-work prerequisite for GQA. Keep dispatch, placement,
 memory admission, and allocation behavior unchanged throughout the diagnostic rollout.
 
 This plan builds on the
@@ -23,13 +24,16 @@ The key distinction is:
 - **FLOP/s or equivalent operations/s:** a count divided by a matched measured duration. A graph alone cannot
   establish this rate.
 
-**Recommended first release:** counting conventions, `MatMulNBits` core dense-equivalent operations, and a versioned
-developer report. Throughput and performance-policy changes are separate deliverables.
+**Target deliverable:** runtime-derived workload estimates for MatMulNBits and GQA in a versioned developer report.
+Initialization should configure runtime reporting, not generate the target workload report. The existing static
+export is a legacy developer preview to replace in a later batch, not the desired reporting lifecycle.
+Throughput and performance-policy changes are separate deliverables.
 
-The core-only developer preview remains independently reviewable and shippable, but it is not the MatMulNBits
-counting-completion milestone. Prioritize its ancillary and runtime-count follow-ups before starting broader
-operator coverage or throughput work. Add implementation-dependent counts only when their route and frequency
-can be established; otherwise retain explicit unavailable results rather than inventing a total.
+The initial core-only preview and the core-plus-bias increment remain independently reviewable and shippable.
+Neither alone satisfies the minimum MatMulNBits-and-GQA deliverable. Prioritize useful, convention-based workload
+estimates over exhaustive kernel auditing. Add implementation-dependent adjustments only when supported by
+execution metadata and documented arithmetic models; an unknown route must not invalidate an available baseline
+or be treated as zero extra work. Timing and performance-policy changes remain separate deliverables.
 
 ### Initial implementation
 
@@ -39,8 +43,8 @@ core dense-equivalent count under convention version 1 or an explicit unavailabl
 `M = 1`; unknown dimensions remain unavailable even alongside zero extents. The adapter reads canonical graph
 shapes, not maximum-shape scenarios, and does not validate packed weights or replace normal operator validation.
 
-The Phase-2 preview adds a static JSON report via the existing session configuration API. There is no runtime
-instrumentation, new public API function, or inference-policy change. The estimator sources are included by the
+The Phase-2 preview added a static JSON report via the existing session configuration API. That preview does not
+collect runtime counts or change inference policy. The estimator sources are included by the
 existing CPU contrib source glob, independently of CUDA.
 
 Increment 2a adds a separate `bias` component: `MN` logical floating-point additions when the sixth schema input
@@ -51,7 +55,45 @@ dimension `K` makes the core count zero but does not make bias additions zero if
 Core arithmetic and its convention remain unchanged. Runtime invocation counts and route-specific executed FLOPs
 are not implemented by this increment.
 
+### Structured runtime collector: review batches
+
+The target report uses metadata from actual runtime invocations, not initialization-time workload assumptions.
+The existing initialization-time export below remains a legacy preview until replacement is implemented.
+Metadata transport must be typed and independent of logger severity or text parsing.
+
+**Batch 1: standalone storage primitive (implemented, not connected to inference).**
+The internal [RuntimeWorkloadCollector](../../onnxruntime/core/framework/runtime_workload_collector.h) owns a
+run's submitted MatMulNBits records. Each record copies graph/provider identity, node index, actual shapes,
+matrix geometry/batch count, bias presence, activation element type, quantization settings, and optional
+route/effective compute mode. Session/run identifiers are supplied by the caller; accepted records receive a
+unique collector-local invocation ID in commit order, not execution order. Missing route fields remain missing.
+
+Limits are explicit constructor arguments, with no enabled-by-default collector. Record count and accounted
+payload bytes are bounded. The byte budget includes record size, copied string bytes/terminators, and shape
+elements; allocator capacity, bookkeeping, caller buffers, and snapshot copies are not a hard-memory guarantee.
+Rejected submissions return a diagnostic Status and update saturating drop counters and collection completeness.
+Allocation failures are converted to Status in exception-enabled builds; no-exception builds retain the existing
+allocation-failure termination behavior. Thread-safe snapshots copy retained records and status without exposing
+mutable collector state. Collection completeness describes submissions only, not run success or FLOP coverage.
+Callers must keep the collector alive until all submitters finish.
+
+This batch has no kernel/context/session plumbing, run-ID generation, semantic validation, counts, run-outcome
+handling, logger integration, or JSON/file export. No production inference behavior or public API changes.
+The full-build-only implementation does not depend on contrib kernels or MLAS. Tests cover ownership, repeated
+invocations, missing routes, empty-output metadata, isolation, limits, and concurrent submissions/snapshots.
+
+**Batch 2 (proposed): execution integration.** Pass an optional recorder through execution context, capture metadata
+at actual CPU MatMulNBits dispatch/backend call sites, and commit only established successful invocations.
+Define run failure/incompleteness behavior and ensure collection errors cannot fail inference. Test disabled
+behavior, actual routes, changing shapes, and concurrent/repeated runs. Do not use logs as data transport.
+
+**Batch 3 (proposed): runtime counts and export.** Apply existing checked core/bias formulas to invocation records,
+export versioned runtime reports with partial/drop/run-status coverage, and replace initialization-time workload
+export. Agree on configuration and export lifecycle before implementation; GQA extends this path afterward.
+
 ### Generating a review artifact
+
+The following describes the still-available legacy static preview, not the target runtime report.
 
 Set `session.compute_estimate_report_path` to a UTF-8 JSON file path before creating a session:
 
@@ -227,7 +269,7 @@ total executed FLOPs. Known-component subtotals must retain exclusions and incom
 Adding components improves coverage; validated route attribution improves fidelity to execution. Neither makes
 the quantized core a hardware instruction count or predicts latency without measurement.
 
-### 4.4 From logical workload to estimated executed FLOPs
+### 4.4 Baseline estimates and optional route-aware refinements
 
 Provide two distinct results rather than progressively relabeling the existing core count:
 
@@ -239,28 +281,38 @@ Provide two distinct results rather than progressively relabeling the existing c
   specified workload and lifecycle phase. Integer/bitwise work, conversions, and bytes moved remain separate.
   An FMA counts as two FLOPs; this is an arithmetic estimate, not a hardware instruction count.
 
-The transition requires the following work within Increment 3a, before the MatMulNBits completion gate:
+The primary deliverable is the logical baseline for MatMulNBits and GQA, with explicit component scope and
+assumptions. It does not require instruction-exact counts. A route-adjusted arithmetic estimate is a separate,
+optional result: record its model/convention, evidence, processed geometry, and limitations. Call it estimated
+executed FLOPs only when the model accounts for the floating-point arithmetic attributed to that route and phase.
+Do not sum a baseline component with its adjusted replacement.
+
+Route-family refinements in Increment 3a use focused implementation verification rather than requiring an
+exhaustive audit of every kernel before baseline delivery:
 
 1. Select a bounded route, initially a CPU path exercised by the pilot tests, and confirm the actual kernel
    selected. Record relevant algorithm, dtypes, quantization settings, and preparation state. Reuse actual route
    decisions rather than introducing a parallel dispatch predictor.
-2. Audit the route end to end, including library calls. Establish floating-point versus integer core arithmetic,
+2. Verify count-affecting behavior, including library calls where necessary. Establish floating-point versus integer core arithmetic,
    retained/eliminated reconstruction, bias/epilogues, padded processing, repetitions, and additional reductions.
    Do not treat `2MNK` as executed FLOPs when the selected route performs integer dot products.
 3. Establish initialization, first-use, and per-invocation lifetimes, including cached/shared preparation.
    Distinguish cold and warm invocations; do not charge shared or one-time work repeatedly.
 4. Implement checked formulas from validated processed geometry and execution frequency. Count padding and
    repetition within the affected component, without adding them again as overlapping extra work.
-5. Validate with independent reference cases and route-boundary, padding, reuse, and lifecycle tests. Use backend
-   documentation, generated-code inspection, and interpretable hardware counters where needed. An opaque library
-   call is not sufficient evidence for its internal arithmetic count.
+5. Validate the arithmetic model with independent reference cases and route-boundary, padding, reuse, and lifecycle
+   tests. Share formulas across variants only after confirming their assumptions. Use backend documentation and
+   deeper inspection where necessary; hardware counters are optional supporting evidence, not a baseline gate.
+   An opaque library call is not sufficient evidence for its internal arithmetic count.
 6. Report logical and executed metrics side by side with route identity, phase, convention, precision, assumptions,
    and coverage. Runtime shapes alone do not establish an executed-FLOP count.
 
 For one invocation, the executed estimate sums only validated floating-point core, reconstruction, epilogue,
 and other arithmetic performed for that invocation. If any applicable component is unknown, expose a
 known-component subtotal with explicit gaps, not a complete executed-FLOP total. Enable the executed metric only
-for validated routes; adding ancillary logical estimates alone does not qualify a route as supported.
+for validated routes; adding ancillary logical estimates alone does not qualify a route as supported. If route
+metadata or an adjustment model is unavailable, retain the logical baseline and mark the adjustment unavailable.
+Fusion alone does not imply fewer FLOPs; it may reduce memory traffic without eliminating arithmetic.
 
 ## 5. Proposed architecture and report
 
@@ -389,16 +441,17 @@ from particular contributors. Calendar estimates should follow contract review a
 | 0. Contract | Metric conventions, exclusions, result states, report schema, supported build scope | None | Framework maintainer + operator owner | Resolve Q1-Q3 below; approve reference cases and unknown/error semantics |
 | 1. Pure pilot | Internal result type and lookup; graph-free MatMulNBits estimator; unit tests | Phase 0 | Framework + quantization owners | Independent expected counts pass; no CUDA dependency; overflow and invalid metadata diagnosed |
 | 2. Static reporting / MVP | Opt-in developer report over the optimized executable graph; coverage and provenance | Phase 1 | Framework + tooling owners | End-to-end report matches golden expectations; fusion/partial coverage are honest; inference unchanged |
-| 3. Runtime counts | Opt-in invocation estimates using concrete shapes; event identity and bounded caching | Phase 2 | Execution/profiling owners | Dynamic-shape cases pass; no extra device synchronization; agreed overhead gate passes |
-| 4. Attention coverage | Incremental packed Attention and GQA support; phase and active-length semantics | MatMulNBits counting-completion gate below; Phase 3 for runtime-only metadata | Attention owners | Prefill/decode/chunked, causal/windowed, and ragged reference cases pass |
-| 5. Measured throughput | Matched CPU and eager-CUDA timing; units, scope, route provenance where available | MatMulNBits counting-completion gate and Phase 3; Phase 4 only for Attention throughput | Profiling + EP owners | Attribution, aggregation, invalid durations, and timing validation pass |
+| 3. Runtime workload metadata and counts | MatMulNBits invocation estimates, actual route/compute-type metadata where exposed, event identity and bounded caching; accommodate GQA metadata needs | Phase 2 and Increment 2a | Execution/profiling + quantization owners | Changing shapes and actual selected-route attribution pass; no extra device synchronization; agreed overhead gate passes |
+| 4. Required GQA baseline / later Attention expansion | GQA core estimate, explicit masking convention, prefill/decode/chunked and active-length semantics; other Attention ops later | Phase 2 and approved GQA convention; Phase 3 integration for runtime-only metadata | Attention owners | Independent GQA references, missing-metadata handling, and static/runtime report integration pass for declared support scope |
+| 5. Measured throughput | Matched CPU and eager-CUDA timing; units, scope, route provenance where available | Phase 3; Phase 4 for GQA throughput | Profiling + EP owners | Attribution, aggregation, invalid durations, and timing validation pass |
 | 6. Cost-model experiments | Calibrated latency/transfer model; separate route/placement experiment | Phase 5 + applicable memory feasibility contracts | Performance + EP owners | Representative end-to-end benefit and fallback behavior proven before any policy adoption |
 
-Phases 0-2 remain the useful, independently shippable core-only MVP. The current priority after Phase 2 is
-MatMulNBits counting completion, not Attention or timing. After that gate passes, Phases 4 and 5 can proceed
-independently; MatMulNBits throughput need not wait for complete Attention coverage.
+Phases 0-2 remain an independently shippable initial MVP, extended by the implemented bias increment.
+The current priority is a MatMulNBits runtime slice followed by required GQA baseline coverage, not exhaustive
+executed-work accounting. GQA formula/convention work can proceed without waiting for all runtime infrastructure.
+Timing does not block either baseline; MatMulNBits timing need not wait for broader Attention coverage.
 
-The ancillary increments below retain their numbering but now participate in the MatMulNBits-first milestone:
+The ancillary increments retain their numbering; route-specific work does not block the minimum operator scope:
 
 | Increment | Deliverables | Dependencies | Proposed owner | Exit gate |
 | --- | --- | --- | --- | --- |
@@ -406,43 +459,44 @@ The ancillary increments below retain their numbering but now participate in the
 | Optional logical reconstruction | Separately labeled one-reconstruction scenario, if consumers need it | Phase 2 and approved scalar reconstruction convention | Quantization + tooling owners | Hand-calculated cases pass; never labeled per-invocation executed work |
 | 3a. Route-specific ancillary work | Incremental dequantization, unpacking, conversion, layout, padding, and prepacking estimates | Phase 3 plus validated route and preparation-frequency metadata for each supported path | Quantization + EP owners | Route, reuse, padding, repetition, phase, and non-overlap tests pass; unknown paths remain unavailable |
 
-Agree on component semantics during Phase 2 design, but do not implement every component before shipping the MVP.
-Deliver Increment 2a next, then Phase 3 for MatMulNBits and Increment 3a for the agreed supported routes.
-Logical reconstruction remains optional and cannot substitute for evidence of executed ancillary work.
-Do not start Attention/GQA, other operator estimators, throughput, or cost-model implementation until the
-MatMulNBits counting-completion gate passes. Each route-specific component is enabled only with sufficient evidence.
+Increment 2a is implemented for review. Deliver Phase 3 first as a bounded MatMulNBits runtime slice, then
+integrate GQA baseline estimates. Logical reconstruction and Increment 3a remain optional follow-ups.
+Do not require complete ancillary coverage or exact executed counts before adding GQA.
 
-### MatMulNBits-first order and completion gate
+### Current implementation order and minimum-scope acceptance
 
 Here, "MatMul counting" means the existing `com.microsoft::MatMulNBits` target, not new coverage of standard
 `MatMul`, `Gemm`, or every quantized matrix operator.
 
-1. Finish Phase-2 report review and correctness validation, preserving the independent core-only preview.
-2. Implement Increment 2a: separate bias counts and component-level coverage, including absent, unknown, empty,
-   and overflow cases. Keep the `2MNK` core convention unchanged.
-3. Implement Phase 3 for MatMulNBits: concrete invocation geometry, execution identity, repeated/dynamic workloads,
-   and checked aggregation without stale cache reuse or extra device synchronization.
-4. Implement Increment 3a for a bounded, owner-approved CPU/CUDA route matrix. Audit dequantization, unpacking,
-   conversion, layout, padding/recomputation, and prepacking; identify retained/eliminated work, reuse, repetition,
-   and initialization/first-use/per-invocation lifetimes. Record unvalidated routes and components as unavailable.
-5. Review independent reference counts, end-to-end reports, inference compatibility, build coverage, and measured
-   count-only overhead against the agreed workload matrix before opening the next operator/timing workstream.
+1. Review and commit the existing MatMulNBits core-plus-bias feature, tests, and report documentation.
+2. Implement the next coding task: capture actual MatMulNBits invocation dimensions, bias presence, selected
+   top-level route, and compute type where available; reuse the existing pure estimators and expose runtime results.
+   Design metadata/reporting with GQA needs in mind without speculative universal kernel abstractions.
+3. Add GQA baseline formulas and adapters using query heads, head dimensions, query lengths, active KV lengths,
+   and an approved causal/windowed/ragged or rectangular convention. Support prefill, decode, and chunked workloads
+   within a declared scope; report missing host-visible semantic values explicitly.
+4. Validate both required operators with independent references, changing workloads, report artifacts, compatibility,
+   and count-only overhead measurements. No route-specific refinement is required to pass baseline acceptance.
+5. Add route-family adjustments incrementally using actual selected-route metadata and justified models of
+   reconstruction, padding, repetitions, or reductions. Keep preparation lifetime and arithmetic categories explicit.
 
-The gate passes only when:
+The minimum-scope acceptance gate requires:
 
-- Core and bias counts match independent references for the declared static and runtime workload matrix.
-- Every applicable ancillary component on each claimed supported route has a validated count and attribution;
-  components proven absent or eliminated are distinguished from components whose execution is unknown.
-- Unsupported routes/components have explicit reasons and documented limitations. Reviewers approve the bounded
-  coverage and any deferred gaps; marking all ancillary work unavailable is not completion.
-- Reports keep arithmetic categories and lifetimes separate, avoid overlap/shared-preparation double counting,
-  and do not claim literal total executed FLOPs or whole-operator completeness without supporting evidence.
-- Dynamic/repeated/concurrent invocation tests, route/reuse changes, overflow, disabled behavior, and the
-  approved overhead gate pass. Published review artifacts show both covered and unavailable cases.
+- MatMulNBits core and bias and GQA core estimates match independent references under documented conventions.
+- Static concrete and runtime invocation results retain distinct provenance; repeated/dynamic/concurrent cases
+  have correct identity and no stale count reuse. Control-flow totals include only established executions.
+- GQA uses query-head count and active KV lengths, not KV-head count or cache capacity as substitutes; the masking
+  convention, ancillary exclusions, and unsupported cases are visible.
+- Available baseline estimates survive missing route metadata. Unsupported adjustments have explicit reasons;
+  neither unknown extra work nor missing baseline inputs are silently treated as zero.
+- Reports separate logical baselines, adjusted replacements, categories, and phases, with no double counting or
+  unsubstantiated executed-FLOP/whole-operator claims.
+- Supported build/inference compatibility and the approved overhead gate pass; review artifacts cover both
+  available and unavailable cases.
 
-This is completion of counting within a declared, validated support scope, not a promise to count every hardware
-instruction or support every EP. Broader route coverage can follow, but silently treating unknown work as zero
-or relaxing the gate to begin Attention is not the planned rollout.
+This gate covers useful estimates for both required operators, not exact instruction counts or universal EP
+coverage. Route-specific ancillary work, other Attention operators, and timing are independently reviewable
+follow-ups, not prerequisites for the required GQA baseline.
 
 ### Phase 2: static-report launch
 
@@ -467,6 +521,13 @@ Initial bias implementation is available for review in the version-2 report desc
 
 ### Phase 3: runtime refinement
 
+- Start with a MatMulNBits runtime slice. Read dimensions and bias presence from validated inputs, route/compute
+  type from actual implementation decisions, and preparation state where exposed. Reuse existing metadata;
+  never infer actual execution from a maximum-shape hint or a provider name alone.
+- For GQA, collect validated head geometry, query/active KV lengths, masking/window settings, and per-sequence
+  lengths where host-visible. Missing device-only values remain unavailable; do not copy them solely for estimates.
+- Add an opt-in runtime reporting hook: initialization-time static export cannot describe per-invocation routes.
+  Baseline counting must remain independent of whether route-specific metadata is available.
 - Recompute counts for actual invocation geometry, rather than presenting static hints as observed work.
 - Distinguish concurrent runs, repeated invocations, subgraphs, and node identity within one session.
 - Aggregate only executed control-flow paths once runtime support exists; otherwise retain explicit incompleteness.
@@ -476,7 +537,7 @@ Initial bias implementation is available for review in the version-2 report desc
 
 ### Increment 3a: route-specific ancillary work
 
-For one supported route at a time:
+Optional refinement, not a MatMulNBits/GQA baseline gate. For one arithmetic family at a time:
 
 1. Reuse the kernel's validated geometry and actual route decision; do not duplicate its dispatch cascade.
 2. Establish whether preparation runs during initialization, first use, or each invocation.
@@ -492,7 +553,10 @@ first-use preparation from steady-state work. Do not attribute shared preparatio
 
 ### Phase 4: Attention expansion
 
-Begin implementation only after the MatMulNBits counting-completion gate passes.
+GQA is required baseline coverage, not an expansion blocked on MatMulNBits route audits. Implement it after the
+first MatMulNBits runtime slice; convention and pure-formula work can begin earlier. Other Attention operators
+follow separately. Core formulas must have exact tests under their declared workload convention, even though
+their relationship to kernel execution is approximate.
 
 First agree on useful unmasked work versus rectangular dense-equivalent work. For useful core work, define `P` as
 the sum of valid query-key pairs across batches and query heads:
@@ -517,8 +581,8 @@ belong to a separately named route-specific metric, not an undocumented change t
 
 ### Phase 5: throughput
 
-Begin timing integration only after the MatMulNBits counting-completion gate passes. Count-only overhead
-measurements needed to validate Phase 3 are not deferred by this restriction.
+Timing is separate from the minimum count deliverable and does not require exhaustive route accounting.
+Count-only overhead measurements remain part of runtime-count validation.
 
 Only calculate a rate when the count and duration cover the same invocation and components:
 
@@ -574,10 +638,11 @@ comparing disabled, count-only, and timing-enabled modes. Record exact commands 
 
 1. **Internal validation:** maintainers exercise the pilot and golden reports on small deterministic graphs.
 2. **Developer preview:** expose opt-in static reporting with documented coverage; gather model/report feedback.
-3. **Runtime preview:** separately opt in to counts, then timing; record overhead and attribution gaps.
-4. **MatMulNBits counting completion:** validate bias, runtime counts, and supported ancillary routes against the
-   gate above before starting Attention/GQA, other operators, or throughput implementation.
-5. **Broader support:** add operators only with owner-reviewed conventions and reference cases. Stabilize a public
+3. **Runtime preview:** opt in to MatMulNBits runtime counts and exposed route metadata; record overhead and gaps.
+4. **Required operator coverage:** add GQA baseline estimates and validate both operators against minimum-scope
+   acceptance. Do not block on executed-work completeness.
+5. **Optional refinements and broader support:** add route adjustments, matched timing, and other operators with
+   owner-reviewed conventions and reference cases. Stabilize a public
    API only after consumers validate the report and unknown-state semantics.
 
 Track unavailable-reason frequencies, supported-node coverage, report generation cost, and count/timing overhead
@@ -606,7 +671,7 @@ additional build coverage, and later-phase semantics still require team agreemen
 | Q9 | Should external EPs/custom ops register estimators? | Revisit after multiple built-in operators demonstrate the needed contract | Public API design |
 | Q10 | When may estimates affect placement or dispatch? | Only after calibrated end-to-end experiments, including bandwidth and transfer costs | Phase 6 |
 | Q11 | Which ancillary components and reconstruction conventions should be supported first? | Bias after static reporting; logical reconstruction only if needed; executed-work estimates require validated route and frequency metadata | Phase 2 design; per-route approval before Increment 3a |
-| Q12 | What is the bounded MatMulNBits counting-completion scope? | Agree on CPU/CUDA routes, workload matrix, applicable components, and explicit deferred gaps; require owner approval before broader work starts | Before Increment 3a; gate review before Phases 4-5 |
+| Q12 | What is the minimum supported workload/build scope for MatMulNBits and GQA? | Agree on baseline components, prefill/decode/chunked and masking cases, runtime metadata availability, and explicit gaps; route refinements are optional | Phase 3 design and Phase 4 baseline acceptance |
 
 ## 10. Completion criteria
 
@@ -614,8 +679,9 @@ The **MVP is complete** when a developer can request a persistent, versioned sta
 see the correct `MatMulNBits` core count for supported concrete shapes, and understand every exclusion and missing
 estimate without any change to inference behavior.
 
-The **MatMulNBits counting milestone is complete** only when the MatMulNBits-first gate in Section 6 passes.
-Shipping the core-only MVP does not satisfy that gate or authorize starting broader operator/timing work.
+The **minimum operator scope is complete** when MatMulNBits core-plus-bias and GQA core estimates satisfy the
+Section 6 acceptance gate for the declared workload/build matrix, with documented conventions, runtime support,
+and explicit gaps. Exact route-specific executed-FLOP counts and full ancillary coverage are not required.
 
 The **diagnostic feature is mature** when supported runtime invocations and matched throughput can be reported with
 validated attribution, honest coverage, and measured overhead. Automatic performance planning remains a separate
