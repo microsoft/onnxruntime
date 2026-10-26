@@ -789,16 +789,19 @@ class DataTypeImpl final {
   static const std::vector<MLDataType>& AllTensorTypesIRv9() { return g_host->DataTypeImpl__AllTensorTypesIRv9(); }
   static const std::vector<MLDataType>& AllTensorTypesIRv10() { return g_host->DataTypeImpl__AllTensorTypesIRv10(); }
   static const std::vector<MLDataType>& AllTensorTypesIRv11() { return g_host->DataTypeImpl__AllTensorTypesIRv11(); }
+  static const std::vector<MLDataType>& AllTensorTypesIRv14() { return g_host->DataTypeImpl__AllTensorTypesIRv14(); }
 
   static const std::vector<MLDataType>& AllIEEEFloatTensorTypes() { return g_host->DataTypeImpl__AllIEEEFloatTensorTypes(); }
 
   static const std::vector<MLDataType>& AllTensorAndSequenceTensorTypes() { return g_host->DataTypeImpl__AllTensorAndSequenceTensorTypes(); }
   static const std::vector<MLDataType>& AllTensorAndSequenceTensorTypesIRv4() { return g_host->DataTypeImpl__AllTensorAndSequenceTensorTypesIRv4(); }
   static const std::vector<MLDataType>& AllTensorAndSequenceTensorTypesIRv9() { return g_host->DataTypeImpl__AllTensorAndSequenceTensorTypesIRv9(); }
+  static const std::vector<MLDataType>& AllTensorAndSequenceTensorTypesIRv14() { return g_host->DataTypeImpl__AllTensorAndSequenceTensorTypesIRv14(); }
 
   static const std::vector<MLDataType>& AllOptionalAndTensorAndSequenceTensorTypes() { return g_host->DataTypeImpl__AllOptionalAndTensorAndSequenceTensorTypes(); }
   static const std::vector<MLDataType>& AllOptionalAndTensorAndSequenceTensorTypesIRv4() { return g_host->DataTypeImpl__AllOptionalAndTensorAndSequenceTensorTypesIRv4(); }
   static const std::vector<MLDataType>& AllOptionalAndTensorAndSequenceTensorTypesIRv9() { return g_host->DataTypeImpl__AllOptionalAndTensorAndSequenceTensorTypesIRv9(); }
+  static const std::vector<MLDataType>& AllOptionalAndTensorAndSequenceTensorTypesIRv14() { return g_host->DataTypeImpl__AllOptionalAndTensorAndSequenceTensorTypesIRv14(); }
 
   static const std::vector<MLDataType>& AllFixedSizeTensorAndSequenceTensorTypes() { return g_host->DataTypeImpl__AllFixedSizeTensorAndSequenceTensorTypes(); }
   static const std::vector<MLDataType>& AllFixedSizeTensorAndSequenceTensorTypesIRv4() { return g_host->DataTypeImpl__AllFixedSizeTensorAndSequenceTensorTypesIRv4(); }
@@ -807,10 +810,15 @@ class DataTypeImpl final {
   static const std::vector<MLDataType>& AllSequenceTensorTypes() { return g_host->DataTypeImpl__AllSequenceTensorTypes(); }
   static const std::vector<MLDataType>& AllSequenceTensorTypesIRv4() { return g_host->DataTypeImpl__AllSequenceTensorTypesIRv4(); }
   static const std::vector<MLDataType>& AllSequenceTensorTypesIRv9() { return g_host->DataTypeImpl__AllSequenceTensorTypesIRv9(); }
+  static const std::vector<MLDataType>& AllSequenceTensorTypesIRv14() { return g_host->DataTypeImpl__AllSequenceTensorTypesIRv14(); }
 
   static const std::vector<MLDataType>& AllFixedSizeSequenceTensorTypes() { return g_host->DataTypeImpl__AllFixedSizeSequenceTensorTypes(); }
   static const std::vector<MLDataType>& AllFixedSizeSequenceTensorTypesIRv4() { return g_host->DataTypeImpl__AllFixedSizeSequenceTensorTypesIRv4(); }
   static const std::vector<MLDataType>& AllFixedSizeSequenceTensorTypesIRv9() { return g_host->DataTypeImpl__AllFixedSizeSequenceTensorTypesIRv9(); }
+
+  static const std::vector<MLDataType>& AllOptionalTypesIRv14() {
+    return g_host->DataTypeImpl__AllOptionalTypesIRv14();
+  }
 
   const PrimitiveDataTypeBase* AsPrimitiveDataType() const { return g_host->DataTypeImpl__AsPrimitiveDataType(this); }
 
