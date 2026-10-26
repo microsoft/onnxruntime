@@ -70,11 +70,21 @@ struct RequestAdapterOptionsLuid : wgpu::ChainedStruct {
 
 WebGpuContext::~WebGpuContext() = default;
 
+bool WebGpuContext::IsFeatureEnabled(WebGpuFeature feature) const {
+  const auto index = static_cast<size_t>(feature);
+  return feature_requests_[index].value_or(kWebGpuFeatures[index].enabled_by_default);
+}
+
+bool WebGpuContext::IsDeviceFeatureDisabled(wgpu::FeatureName feature) const {
+  return feature == wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix &&
+         !IsFeatureEnabled(WebGpuFeature::SubgroupMatrix);
+}
+
 void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
   std::call_once(init_flag_, [this, config]() {
     max_num_pending_dispatches_ = config.max_num_pending_dispatches;
     enable_robustness_ = config.enable_robustness;
-    disable_subgroup_matrix_ = config.disable_subgroup_matrix;
+    feature_requests_ = config.feature_requests;
     adapter_index_ = config.adapter_index;
     adapter_power_preference_ = config.power_preference;
     adapter_backend_type_ = config.backend_type;
@@ -416,8 +426,7 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
     Device().GetFeatures(&supported_features);
     for (size_t i = 0; i < supported_features.featureCount; i++) {
       // Also hide the feature on externally supplied devices so all kernels use their fallbacks.
-      if (disable_subgroup_matrix_ &&
-          supported_features.features[i] == wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix) {
+      if (IsDeviceFeatureDisabled(supported_features.features[i])) {
         continue;
       }
       device_features_.insert(supported_features.features[i]);
@@ -509,14 +518,17 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
               " and cannot be applied to the existing device. Use a separate process or an externally supplied custom context/device.");
   }
 
-  if (config.disable_subgroup_matrix_explicitly_set && disable_subgroup_matrix_ != config.disable_subgroup_matrix) {
-    LOGS_DEFAULT(WARNING)
-        << "WebGPU context is already initialized with disableSubgroupMatrix=" << disable_subgroup_matrix_
-        << ". Requested value " << config.disable_subgroup_matrix << " will be ignored.";
-  } else if (!config.disable_subgroup_matrix_explicitly_set && disable_subgroup_matrix_) {
-    LOGS_DEFAULT(WARNING)
-        << "WebGPU context is already initialized with disableSubgroupMatrix=1. "
-        << "This session shares the context and will not use subgroup matrix kernels.";
+  for (size_t i = 0; i < kWebGpuFeatures.size(); ++i) {
+    const auto& feature = kWebGpuFeatures[i];
+    const bool enabled = feature_requests_[i].value_or(feature.enabled_by_default);
+    if (config.feature_requests[i] && *config.feature_requests[i] != enabled) {
+      LOGS_DEFAULT(WARNING) << "WebGPU context feature " << feature.name << " is already initialized with enabled="
+                            << enabled << ". Requested value " << *config.feature_requests[i]
+                            << " will be ignored.";
+    } else if (!config.feature_requests[i] && enabled != feature.enabled_by_default) {
+      LOGS_DEFAULT(WARNING) << "This session shares a WebGPU context with feature " << feature.name
+                            << " enabled=" << enabled << ".";
+    }
   }
 
   if (config.enable_robustness_explicitly_set) {
@@ -1120,7 +1132,7 @@ std::vector<wgpu::FeatureName> WebGpuContext::GetAvailableRequiredFeatures(const
 #endif
   };
   for (auto feature : features) {
-    if (disable_subgroup_matrix_ && feature == wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix) {
+    if (IsDeviceFeatureDisabled(feature)) {
       continue;
     }
 #if !defined(__wasm__)

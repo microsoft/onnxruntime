@@ -3,8 +3,29 @@
 
 #pragma once
 
+#include <array>
+#include <cstddef>
+#include <optional>
+#include <string_view>
+
 namespace onnxruntime {
 namespace webgpu {
+
+// Named WebGPU EP features controlled by enableFeatures/disableFeatures. Keep in sync with kWebGpuFeatures.
+enum class WebGpuFeature : size_t {
+  SubgroupMatrix,
+  Count,
+};
+
+struct WebGpuFeatureDefinition {
+  std::string_view name;
+  bool enabled_by_default;
+};
+
+inline constexpr std::array<WebGpuFeatureDefinition, static_cast<size_t>(WebGpuFeature::Count)> kWebGpuFeatures{{
+    {"subgroupMatrix", true},
+}};
+using WebGpuFeatureRequests = std::array<std::optional<bool>, kWebGpuFeatures.size()>;
 
 enum class WeightLoadAccelerationMode {
   Off,
@@ -66,8 +87,10 @@ constexpr const char* kDefaultBufferCacheMode = "ep.webgpuexecutionprovider.defa
 
 constexpr const char* kValidationMode = "ep.webgpuexecutionprovider.validationMode";
 constexpr const char* kEnableRobustness = "ep.webgpuexecutionprovider.enableRobustness";
-// Disable subgroup matrix kernels. Accepts "0" (default) or "1". Set before the shared context is initialized.
-constexpr const char* kDisableSubgroupMatrix = "ep.webgpuexecutionprovider.disableSubgroupMatrix";
+// Comma-separated names, trimmed of surrounding whitespace. Empty lists preserve defaults.
+// See kWebGpuFeatures for supported names.
+constexpr const char* kEnableFeatures = "ep.webgpuexecutionprovider.enableFeatures";
+constexpr const char* kDisableFeatures = "ep.webgpuexecutionprovider.disableFeatures";
 
 constexpr const char* kForceCpuNodeNames = "ep.webgpuexecutionprovider.forceCpuNodeNames";
 constexpr const char* kEnablePIXCapture = "ep.webgpuexecutionprovider.enablePIXCapture";
@@ -130,9 +153,6 @@ constexpr const char* kValidationMode_full = "full";
 
 constexpr const char* kEnableRobustness_ON = "1";
 constexpr const char* kEnableRobustness_OFF = "0";
-
-constexpr const char* kDisableSubgroupMatrix_ON = "1";
-constexpr const char* kDisableSubgroupMatrix_OFF = "0";
 
 }  // namespace options
 }  // namespace webgpu

@@ -197,8 +197,22 @@ const setExecutionProviders = async (
               appendEpOption(epOptions, 'validationMode', webgpuOptions.validationMode, allocs);
             }
 
-            if (typeof webgpuOptions.disableSubgroupMatrix === 'boolean') {
-              appendEpOption(epOptions, 'disableSubgroupMatrix', webgpuOptions.disableSubgroupMatrix ? '1' : '0', allocs);
+            for (const key of ['enableFeatures', 'disableFeatures'] as const) {
+              const features = webgpuOptions[key];
+              if (features !== undefined) {
+                if (
+                  !Array.isArray(features) ||
+                  Array.from(features).some(
+                    (name) =>
+                      typeof name !== 'string' || name.length === 0 || name.includes(',') || name.includes('\0'),
+                  )
+                ) {
+                  throw new Error(
+                    `${key} must be an array of nonempty feature names without commas or null characters.`,
+                  );
+                }
+                appendEpOption(epOptions, key, features.join(','), allocs);
+              }
             }
 
             // set f32 accumulation for the MatMulNBits kernels

@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
 #include <charconv>
 #include <limits>
 
@@ -312,15 +313,29 @@ WebGpuContextConfig ParseWebGpuContextConfig(
     }
   }
 
-  if (std::string disable_subgroup_matrix_str;
-      config_options.TryGetConfigEntry(kDisableSubgroupMatrix, disable_subgroup_matrix_str)) {
-    config.disable_subgroup_matrix_explicitly_set = true;
-    if (disable_subgroup_matrix_str == kDisableSubgroupMatrix_ON) {
-      config.disable_subgroup_matrix = true;
-    } else if (disable_subgroup_matrix_str == kDisableSubgroupMatrix_OFF) {
-      config.disable_subgroup_matrix = false;
-    } else {
-      ORT_THROW("Invalid disableSubgroupMatrix value: ", disable_subgroup_matrix_str, ". Must be \"0\" or \"1\".");
+  for (const auto& [key, enabled] : {std::pair{kEnableFeatures, true}, std::pair{kDisableFeatures, false}}) {
+    std::string value;
+    if (!config_options.TryGetConfigEntry(key, value) || value.empty()) {
+      continue;
+    }
+    std::string_view remaining{value};
+    while (true) {
+      const auto separator = remaining.find(',');
+      auto name = remaining.substr(0, separator);
+      constexpr std::string_view kWhitespace = " \t\r\n";
+      name.remove_prefix(std::min(name.find_first_not_of(kWhitespace), name.size()));
+      name.remove_suffix(name.size() - (name.find_last_not_of(kWhitespace) + 1));
+      const auto feature = std::find_if(kWebGpuFeatures.begin(), kWebGpuFeatures.end(),
+                                        [name](const auto& entry) { return entry.name == name; });
+      ORT_ENFORCE(feature != kWebGpuFeatures.end(), "Unknown WebGPU feature: ", name);
+      const auto index = static_cast<size_t>(feature - kWebGpuFeatures.begin());
+      ORT_ENFORCE(!config.feature_requests[index].has_value(),
+                  "Duplicate or conflicting WebGPU feature: ", name);
+      config.feature_requests[index] = enabled;
+      if (separator == std::string_view::npos) {
+        break;
+      }
+      remaining.remove_prefix(separator + 1);
     }
   }
 
