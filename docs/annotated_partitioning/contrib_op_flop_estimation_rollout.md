@@ -102,7 +102,10 @@ Collectors cannot be reused: subsequent/concurrent attempts disable capture for 
 the original identity/data, and increment `run_reuse_rejections`, marking collection incomplete without
 failing inference. Separate collectors isolate concurrent runs of the same or different sessions.
 The optional pointer follows the existing run-profiler execution/context plumbing, including If, Loop,
-and Scan subgraphs. The context owns the recorder; kernels do not store per-run mutable state.
+and Scan subgraphs and the GPT beam/greedy-search and T5/Whisper beam-search encoder/decoder subgraphs
+(including GPT's initial decoder). A T5 regression test inserts zero-valued MatMulNBits probes into both
+encoder and decoder, checks their runtime records, and verifies unchanged generated sequences.
+The context owns the recorder; kernels do not store per-run mutable state.
 Standalone and constant-folding contexts return no recorder. Transport uses typed metadata, never logs.
 The C API and its versioned function table are unchanged; an appended full-build C++ context virtual provides
 safe optional lookup rather than assuming every `OpKernelContext` is an internal execution context.

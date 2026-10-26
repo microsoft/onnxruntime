@@ -188,7 +188,8 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
                                   this->context_.Logger(),
                                   this->ort_stream_,
                                   /*sync_subgraph_fetches*/ false,
-                                  this->context_.GetRunProfiler());
+                                  this->context_.GetRunProfiler(),
+                                  this->context_.GetRuntimeWorkloadCollector());
   ORT_RETURN_IF_ERROR(status);
 
 #ifdef DEBUG_GENERATION
@@ -388,7 +389,8 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
                                     this->context_.Logger(),
                                     this->ort_stream_,
                                     /*sync_subgraph_fetches*/ false,
-                                    this->context_.GetRunProfiler());
+                                    this->context_.GetRunProfiler(),
+                                    this->context_.GetRuntimeWorkloadCollector());
 
     ORT_RETURN_IF_ERROR(status);
 

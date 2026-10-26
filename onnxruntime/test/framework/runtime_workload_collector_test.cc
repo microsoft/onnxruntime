@@ -6,6 +6,7 @@
 #include <array>
 #include <algorithm>
 #include <atomic>
+#include <fstream>
 #include <limits>
 #include <string>
 #include <thread>
@@ -409,6 +410,99 @@ ModelProto LoopWorkloadModel() {
   attribute->set_type(ONNX_NAMESPACE::AttributeProto::GRAPH);
   *attribute->mutable_g() = std::move(body);
   return model;
+}
+
+template <typename T>
+OrtValue FilledTensor(const std::vector<int64_t>& shape, T value);
+
+TEST(RuntimeWorkloadExecutionTest, TransformerEncoderAndDecoderPropagateCollector) {
+  ModelProto model;
+  std::ifstream stream("testdata/dummy_t5.onnx", std::ios::binary);
+  ASSERT_TRUE(stream.is_open());
+  ASSERT_TRUE(model.ParseFromIstream(&stream));
+  size_t instrumented = 0;
+  for (auto& node : *model.mutable_graph()->mutable_node()) {
+    for (auto& attribute : *node.mutable_attribute()) {
+      if (attribute.name() != "encoder" && attribute.name() != "decoder") {
+        continue;
+      }
+      auto& graph = *attribute.mutable_g();
+      ASSERT_GT(graph.output_size(), 0);
+      const auto output_name = graph.output(0).name();
+      const std::string prefix = "workload_probe_";
+      for (auto& existing : *graph.mutable_node()) {
+        for (auto& output : *existing.mutable_output()) {
+          if (output == output_name) output = prefix + "original";
+        }
+        for (auto& input : *existing.mutable_input()) {
+          if (input == output_name) input = prefix + "original";
+        }
+      }
+      const auto probe = WorkloadModel(false, false);
+      for (auto initializer : probe.graph().initializer()) {
+        initializer.set_name(prefix + initializer.name());
+        *graph.add_initializer() = std::move(initializer);
+      }
+      auto* a = graph.add_initializer();
+      a->set_name(prefix + "A");
+      a->set_data_type(TensorProto::FLOAT);
+      for (int64_t dim : {1, 1, 64}) a->add_dims(dim);
+      a->set_raw_data(std::string(64 * sizeof(float), '\0'));
+      for (auto probe_node : probe.graph().node()) {
+        for (auto& input : *probe_node.mutable_input()) {
+          if (!input.empty()) input = prefix + input;
+        }
+        for (auto& output : *probe_node.mutable_output()) output = prefix + output;
+        *graph.add_node() = std::move(probe_node);
+      }
+      auto* reduce = graph.add_node();
+      reduce->set_op_type("ReduceSum");
+      reduce->add_input(prefix + "Y");
+      reduce->add_output(prefix + "zero");
+      AddIntegerAttribute(*reduce, "keepdims", 0);
+      auto* add = graph.add_node();
+      add->set_op_type("Add");
+      add->add_input(prefix + "original");
+      add->add_input(prefix + "zero");
+      add->add_output(output_name);
+      ++instrumented;
+    }
+  }
+  ASSERT_EQ(instrumented, 2u);
+  SessionOptions options;
+  options.graph_optimization_level = TransformerLevel::Default;
+  options.intra_op_param.thread_pool_size = 1;
+  InferenceSession session(options, GetEnvironment());
+  const auto bytes = model.SerializeAsString();
+  ASSERT_STATUS_OK(session.Load(bytes.data(), static_cast<int>(bytes.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+  OrtValue input = FilledTensor<int32_t>({1, 5}, 0);
+  const std::array<int32_t, 5> tokens{14, 6, 13, 9, 7};
+  std::copy(tokens.begin(), tokens.end(), input.GetMutable<Tensor>()->MutableData<int32_t>());
+  RuntimeWorkloadCollector collector(0, 0, {100, 1024 * 1024});
+  RunOptions run_options;
+  run_options.runtime_workload_collector = &collector;
+  const std::vector<std::string> input_names{"encoder_input_ids"}, output_names{"sequences"};
+  const std::vector<OrtValue> feeds{input};
+  std::vector<OrtValue> outputs;
+  ASSERT_STATUS_OK(session.Run(run_options, input_names, feeds, output_names, &outputs));
+  RuntimeWorkloadSnapshot snapshot;
+  ASSERT_STATUS_OK(collector.GetSnapshot(snapshot));
+  size_t encoder_records = 0, decoder_records = 0;
+  for (const auto& record : snapshot.records) {
+    if (record.graph_path.find("/encoder") != std::string::npos) ++encoder_records;
+    if (record.graph_path.find("/decoder") != std::string::npos) ++decoder_records;
+  }
+  EXPECT_EQ(encoder_records, 1u);
+  EXPECT_GT(decoder_records, 1u);
+  EXPECT_TRUE(snapshot.stats.collection_complete);
+  const std::vector<int32_t> expected{
+      2, 16, 6, 14, 1, 15, 6, 14, 1, 15, 2, 3, 4, 15, 6, 14, 1, 15, 6, 14,
+      2, 16, 6, 14, 1, 15, 6, 14, 1, 14};
+  ASSERT_EQ(outputs.size(), 1u);
+  const auto& output = outputs[0].Get<Tensor>();
+  ASSERT_EQ(output.Shape().Size(), static_cast<int64_t>(expected.size()));
+  EXPECT_TRUE(std::equal(expected.begin(), expected.end(), output.Data<int32_t>()));
 }
 
 std::unique_ptr<InferenceSession> WorkloadSession(const ModelProto& model, bool force_fp32 = false,
