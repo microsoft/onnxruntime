@@ -28,6 +28,62 @@ namespace cuda {
 
 namespace {
 
+template <typename T, int kPosTile = 8>
+__global__ void CausalConvProjectionTiledK4Kernel(
+    const T* __restrict__ input, const T* __restrict__ weight, const T* __restrict__ bias,
+    const T* __restrict__ past, T* __restrict__ output, T* __restrict__ present,
+    int channels, int length, int input_width, int channel_offset,
+    CausalConvLayout state_layout, bool apply_silu,
+    T* __restrict__ state_update = nullptr, int state_update_capacity = 0) {
+  const int b = blockIdx.y;
+  const int c = blockIdx.x * blockDim.x + threadIdx.x;
+  if (c >= channels) return;
+  const int pos_base = static_cast<int>(blockIdx.z) * kPosTile;
+
+  const float b_val = bias == nullptr ? 0.0f : to_float(bias[c]);
+  const float w0 = to_float(weight[c * 4 + 0]);
+  const float w1 = to_float(weight[c * 4 + 1]);
+  const float w2 = to_float(weight[c * 4 + 2]);
+  const float w3 = to_float(weight[c * 4 + 3]);
+
+  auto load_src = [&](int src) -> float {
+    if (src >= 0) {
+      return to_float(input[(static_cast<int64_t>(b) * length + src) * input_width + channel_offset + c]);
+    }
+    return past == nullptr ? 0.0f : to_float(past[state_layout.Offset(b, 4 + src, c)]);
+  };
+
+  float v0 = load_src(pos_base - 3);
+  float v1 = load_src(pos_base - 2);
+  float v2 = load_src(pos_base - 1);
+
+#pragma unroll
+  for (int p = 0; p < kPosTile; ++p) {
+    const int position = pos_base + p;
+    if (position >= length) break;
+    const T cur_in = input[(static_cast<int64_t>(b) * length + position) * input_width + channel_offset + c];
+    if (state_update != nullptr && position < state_update_capacity) {
+      state_update[(static_cast<int64_t>(b) * state_update_capacity + position) * channels + c] = cur_in;
+    }
+    const float v3 = to_float(cur_in);
+    float sum = b_val + v0 * w0 + v1 * w1 + v2 * w2 + v3 * w3;
+    if (apply_silu) sum = sum / (1.0f + expf(-sum));
+    output[(static_cast<int64_t>(b) * length + position) * channels + c] = from_float<T>(sum);
+    v0 = v1;
+    v1 = v2;
+    v2 = v3;
+  }
+
+  if (blockIdx.z != 0) return;
+#pragma unroll
+  for (int position = 0; position < 4; ++position) {
+    const int source = length - 4 + position;
+    present[state_layout.Offset(b, position, c)] =
+        source >= 0 ? input[(static_cast<int64_t>(b) * length + source) * input_width + channel_offset + c]
+                    : (past == nullptr ? from_float<T>(0.0f) : past[state_layout.Offset(b, 4 + source, c)]);
+  }
+}
+
 template <typename T, bool S2 = false>
 __global__ void CausalConvProjectionKernel(
     const T* input, const T* weight, const T* bias, const T* past,
@@ -482,7 +538,17 @@ Status LaunchCausalConvProjectionKernel(
   const dim3 grid((channels - 1) / 128 + 1, batch, length);
   static const int specialize = ParseEnvironmentVariableWithDefault<int>("ORT_CAUSAL_CONV_S2_SPECIALIZE", 1);
   ORT_ENFORCE(specialize == 0 || specialize == 1, "ORT_CAUSAL_CONV_S2_SPECIALIZE must be 0 or 1.");
-  if (specialize && length >= 1 && length <= 8 && kernel_size == 4 && dilation == 1 && state_length == 4) {
+  if (specialize && length >= 1 && kernel_size == 4 && dilation == 1 && state_length == 4) {
+    if (length >= 16) {
+      constexpr int kPosTile = 8;
+      const dim3 tiled_grid((channels - 1) / 128 + 1, batch, (length + kPosTile - 1) / kPosTile);
+      CausalConvProjectionTiledK4Kernel<T, kPosTile><<<tiled_grid, 128, 0, stream>>>(
+          input, weight, bias, past, output, present, channels, length,
+          input_width, channel_offset,
+          MakeCausalConvLayout(state_channels_last, channels, state_length), apply_silu,
+          state_update, state_update_capacity);
+      return CUDA_CALL(cudaGetLastError());
+    }
     CausalConvProjectionKernel<T, true><<<grid, 128, 0, stream>>>(
         input, weight, bias, past, output, present, channels, length,
         kernel_size, dilation, input_width, channel_offset, state_length,

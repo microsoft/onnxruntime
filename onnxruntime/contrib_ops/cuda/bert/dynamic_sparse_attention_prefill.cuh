@@ -32,7 +32,8 @@ constexpr size_t kQBytes = kMaxGroup * kRowStride * sizeof(__nv_bfloat16);
 constexpr size_t kKBytes = kTile * kRowStride * sizeof(__nv_bfloat16);
 constexpr size_t kSBytes = kMaxGroup * kSStride * sizeof(float);
 constexpr size_t kPBytes = kMaxGroup * kPStride * sizeof(__nv_bfloat16);
-constexpr size_t kSharedBytes = kQBytes + 2 * kKBytes + kSBytes + kPBytes + 2 * kMaxGroup * sizeof(float);
+// sQ is only used to load qf[][] into registers before the tile loop and aliases sK thereafter.
+constexpr size_t kSharedBytes = 2 * kKBytes + kSBytes + kPBytes + 2 * kMaxGroup * sizeof(float);
 
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
 __device__ __forceinline__ uint32_t SmemAddr(const void* p) {
@@ -41,6 +42,9 @@ __device__ __forceinline__ uint32_t SmemAddr(const void* p) {
 
 __device__ __forceinline__ void CpAsync16(void* smem_dst, const void* gmem_src) {
   asm volatile("cp.async.cg.shared.global [%0], [%1], 16;\n" ::"r"(SmemAddr(smem_dst)), "l"(gmem_src));
+}
+__device__ __forceinline__ void CpAsync8(void* smem_dst, const void* gmem_src) {
+  asm volatile("cp.async.ca.shared.global [%0], [%1], 8;\n" ::"r"(SmemAddr(smem_dst)), "l"(gmem_src));
 }
 __device__ __forceinline__ void CpAsyncCommit() { asm volatile("cp.async.commit_group;\n" ::); }
 template <int N>
@@ -89,7 +93,7 @@ __device__ __forceinline__ uint4 DequantizeInt8x8ToBf16(uint2 packed, float4 s0,
 // grid = (batch * sequence_length, kv_num_heads), block = kThreads, dynamic smem = kSharedBytes.
 // query: [rows, num_heads, 256] (already normalized / rotated); key, value: [batch, kv_heads, capacity, 256].
 template <bool kQuantizedCache = false>
-__global__ void __launch_bounds__(kThreads, 2) DynamicSparseAttentionPrefillKernel(
+__global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionPrefillKernel(
     const __nv_bfloat16* __restrict__ query,
     const __nv_bfloat16* __restrict__ key,
     const __nv_bfloat16* __restrict__ value,
@@ -107,8 +111,8 @@ __global__ void __launch_bounds__(kThreads, 2) DynamicSparseAttentionPrefillKern
     const float* __restrict__ value_scale = nullptr) {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
   extern __shared__ __align__(16) unsigned char smem_raw[];
-  __nv_bfloat16* sQ = reinterpret_cast<__nv_bfloat16*>(smem_raw);
-  __nv_bfloat16* sK = sQ + kMaxGroup * kRowStride;
+  __nv_bfloat16* sK = reinterpret_cast<__nv_bfloat16*>(smem_raw);
+  __nv_bfloat16* sQ = sK;
   __nv_bfloat16* sV = sK + kTile * kRowStride;
   float* sS = reinterpret_cast<float*>(sV + kTile * kRowStride);
   __nv_bfloat16* sP = reinterpret_cast<__nv_bfloat16*>(sS + kMaxGroup * kSStride);
@@ -166,6 +170,7 @@ __global__ void __launch_bounds__(kThreads, 2) DynamicSparseAttentionPrefillKern
   for (int k = 0; k < 16; ++k) {
     LdmatrixX4(qf[k], sQ + (lane & 15) * kRowStride + k * 16 + (lane >> 4) * 8);
   }
+  __syncthreads();
 
   auto candidate_index = [&](int candidate) -> int {
     if (candidate >= count) return -1;
@@ -173,34 +178,47 @@ __global__ void __launch_bounds__(kThreads, 2) DynamicSparseAttentionPrefillKern
     return (index >= 0 && index < total && index <= query_position && index < capacity) ? index : -1;
   };
 
-  auto issue_rows = [&](__nv_bfloat16* dst, const __nv_bfloat16* base, const int8_t* base_i8,
-                        float4 sc0, float4 sc1, int tile) {
+  auto issue_rows = [&](__nv_bfloat16* dst, const __nv_bfloat16* base, const int8_t* base_i8, int tile) {
   // 4 candidate rows per pass (one per warp), 32 lanes x 16 B = one 512 B row.
-#pragma unroll 4
+#pragma unroll
     for (int it = 0; it < kTile / 4; ++it) {
       const int cand_in_tile = it * 4 + warp;
       const int index = candidate_index(tile * kTile + cand_in_tile);
       __nv_bfloat16* row_dst = dst + cand_in_tile * kRowStride + lane * 8;
       if (index >= 0) {
         if constexpr (kQuantizedCache) {
-          const uint2 packed =
-              __ldg(reinterpret_cast<const uint2*>(base_i8 + static_cast<int64_t>(index) * kHeadDim + lane * 8));
-          *reinterpret_cast<uint4*>(row_dst) = DequantizeInt8x8ToBf16(packed, sc0, sc1);
+          CpAsync8(row_dst, base_i8 + static_cast<int64_t>(index) * kHeadDim + lane * 8);
         } else {
           CpAsync16(row_dst, base + static_cast<int64_t>(index) * kHeadDim + lane * 8);
         }
       } else {
-        *reinterpret_cast<uint4*>(row_dst) = make_uint4(0, 0, 0, 0);
+        if constexpr (kQuantizedCache) {
+          *reinterpret_cast<uint2*>(row_dst) = make_uint2(0, 0);
+        } else {
+          *reinterpret_cast<uint4*>(row_dst) = make_uint4(0, 0, 0, 0);
+        }
+      }
+    }
+  };
+
+  auto dequantize_rows = [&](__nv_bfloat16* dst, float4 sc0, float4 sc1) {
+    if constexpr (kQuantizedCache) {
+#pragma unroll
+      for (int it = 0; it < kTile / 4; ++it) {
+        const int cand_in_tile = it * 4 + warp;
+        __nv_bfloat16* row_dst = dst + cand_in_tile * kRowStride + lane * 8;
+        const uint2 packed = *reinterpret_cast<const uint2*>(row_dst);
+        *reinterpret_cast<uint4*>(row_dst) = DequantizeInt8x8ToBf16(packed, sc0, sc1);
       }
     }
   };
 
   const int tiles = (count + kTile - 1) / kTile;
   if (tiles > 0) {
-    issue_rows(sK, key_base, key_base_i8, ks0, ks1, 0);
-    if constexpr (!kQuantizedCache) CpAsyncCommit();
-    issue_rows(sV, value_base, value_base_i8, vs0, vs1, 0);
-    if constexpr (!kQuantizedCache) CpAsyncCommit();
+    issue_rows(sK, key_base, key_base_i8, 0);
+    CpAsyncCommit();
+    issue_rows(sV, value_base, value_base_i8, 0);
+    CpAsyncCommit();
   }
 
   float acc_o[8][4];
@@ -215,7 +233,8 @@ __global__ void __launch_bounds__(kThreads, 2) DynamicSparseAttentionPrefillKern
   const int soft_col = (tid & 7) * 8;
 
   for (int tile = 0; tile < tiles; ++tile) {
-    if constexpr (!kQuantizedCache) CpAsyncWait<1>();  // K(tile) has landed, V(tile) may still be in flight
+    CpAsyncWait<1>();  // K(tile) has landed, V(tile) may still be in flight
+    dequantize_rows(sK, ks0, ks1);
     __syncthreads();
 
     // S = Q K^T for this warp's 16 candidate columns.
@@ -241,9 +260,9 @@ __global__ void __launch_bounds__(kThreads, 2) DynamicSparseAttentionPrefillKern
     __syncthreads();  // scores visible; sK is free
 
     if (tile + 1 < tiles) {
-      issue_rows(sK, key_base, key_base_i8, ks0, ks1, tile + 1);
+      issue_rows(sK, key_base, key_base_i8, tile + 1);
     }
-    if constexpr (!kQuantizedCache) CpAsyncCommit();  // K(tile+1) (possibly empty)
+    CpAsyncCommit();  // K(tile+1) (possibly empty)
 
     // Online softmax: 8 threads per row, 8 columns each.
     float s_val[8];
@@ -290,10 +309,9 @@ __global__ void __launch_bounds__(kThreads, 2) DynamicSparseAttentionPrefillKern
       }
     }
 
-    if constexpr (!kQuantizedCache) {
-      CpAsyncWait<1>();  // V(tile) has landed (K(tile+1) may be in flight)
-      __syncthreads();
-    }
+    CpAsyncWait<1>();  // V(tile) has landed (K(tile+1) may be in flight)
+    dequantize_rows(sV, vs0, vs1);
+    __syncthreads();
 
     // O += P V for this warp's 64 output dimensions.
 #pragma unroll
@@ -312,9 +330,9 @@ __global__ void __launch_bounds__(kThreads, 2) DynamicSparseAttentionPrefillKern
     __syncthreads();  // sV and sP are free
 
     if (tile + 1 < tiles) {
-      issue_rows(sV, value_base, value_base_i8, vs0, vs1, tile + 1);
+      issue_rows(sV, value_base, value_base_i8, tile + 1);
     }
-    if constexpr (!kQuantizedCache) CpAsyncCommit();  // V(tile+1) (possibly empty)
+    CpAsyncCommit();  // V(tile+1) (possibly empty)
   }
 
   if ((tid & 7) == 0) sL[soft_row] = running_sum;
