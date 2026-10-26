@@ -54,11 +54,6 @@ jobs:
           # This is only the interpreter lintrunner runs on. The Python syntax the linters target
           # is set by target-version under [tool.ruff] in pyproject.toml, independently of this.
           python-version: "3.12"
-      - name: Setup Rust
-        uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af # v1.0.7
-        with:
-          toolchain: stable
-          components: rustfmt
       - name: Update PATH
         run: |
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
