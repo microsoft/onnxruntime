@@ -6,7 +6,6 @@
 # Dependencies
 requirements-dev.txt @microsoft/onnxruntime-admin
 requirements-doc.txt @microsoft/onnxruntime-admin
-requirements-training.txt @microsoft/onnxruntime-admin
 requirements.txt.in @microsoft/onnxruntime-admin
 /cgmanifests/cgmanifest.json @microsoft/onnxruntime-admin
 /cgmanifests/generated/cgmanifest.json @microsoft/onnxruntime-admin

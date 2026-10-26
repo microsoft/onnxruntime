@@ -1,9 +1,0 @@
-cerberus
-flatbuffers
-h5py
-numpy >= 1.16.6
-onnx
-packaging
-protobuf>=4.25.8
-sympy
-setuptools>=61.0.0
