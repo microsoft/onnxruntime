@@ -3163,12 +3163,8 @@ Status QMoE::ComputeInt3(OpKernelContext* context) const {
 
   if (can_use_tc_prefill) {
     namespace ck = onnxruntime::llm::kernels::cutlass_kernels;
-    const size_t prefill_tile_rows =
+    size_t prefill_tile_rows =
         std::min<size_t>(rows, row_tile_size_ > 0 ? static_cast<size_t>(row_tile_size_) : size_t{2048});
-    const size_t prefill_routes = SafeInt<size_t>(prefill_tile_rows) * k_;
-    auto selected = GetScratchBuffer<int>(prefill_routes, GetComputeStream(context));
-    auto scales = GetScratchBuffer<float>(prefill_routes, GetComputeStream(context));
-    auto unpermuted_to_permuted = GetScratchBuffer<int>(prefill_routes, GetComputeStream(context));
 
     ck::Int2MoePrefillParams prefill_params{};
     prefill_params.fc1_weights = first_weights->Data<uint8_t>();
@@ -3177,9 +3173,6 @@ Status QMoE::ComputeInt3(OpKernelContext* context) const {
     prefill_params.fc2_scales = second_scales->DataRaw();
     prefill_params.fc1_bias = first_bias ? first_bias->DataRaw() : nullptr;
     prefill_params.fc2_bias = second_bias ? second_bias->DataRaw() : nullptr;
-    prefill_params.selected_experts = selected.get();
-    prefill_params.routing_weights = scales.get();
-    prefill_params.unpermuted_to_permuted = unpermuted_to_permuted.get();
     prefill_params.is_bf16 = params.is_bfloat16;
     prefill_params.num_rows = static_cast<int64_t>(prefill_tile_rows);
     prefill_params.hidden_size = params.hidden;
@@ -3197,26 +3190,64 @@ Status QMoE::ComputeInt3(OpKernelContext* context) const {
     prefill_params.limit = params.limit;
     prefill_params.stream = stream;
 
-    const size_t prefill_ws_bytes = ck::GetInt2MoePrefillWorkspaceSize(prefill_params);
-    auto prefill_workspace = GetScratchBuffer<void>(prefill_ws_bytes, GetComputeStream(context));
-
-    for (int64_t offset = 0; offset < rows; offset += static_cast<int64_t>(prefill_tile_rows)) {
-      const int cur_rows = narrow<int>(std::min<size_t>(prefill_tile_rows, static_cast<size_t>(rows - offset)));
-      if (params.is_bfloat16) {
-        LaunchSoftmaxTopK(reinterpret_cast<const __nv_bfloat16*>(router->DataRaw()) + offset * experts,
-                          scales.get(), selected.get(), cur_rows, params.num_experts,
-                          params.top_k, normalize_routing_weights_, stream);
-      } else {
-        LaunchSoftmaxTopK(reinterpret_cast<const half*>(router->DataRaw()) + offset * experts,
-                          scales.get(), selected.get(), cur_rows, params.num_experts,
-                          params.top_k, normalize_routing_weights_, stream);
+    const size_t prefill_budget = static_cast<size_t>(int_dequant_max_scratch_bytes_);
+    const size_t min_prefill_tile_rows =
+        std::min<size_t>(prefill_tile_rows, static_cast<size_t>(std::max(1, int3_prefill_min_rows)));
+    size_t prefill_routes = 0;
+    size_t prefill_ws_bytes = 0;
+    size_t total_prefill_scratch_bytes = 0;
+    for (;;) {
+      prefill_params.num_rows = static_cast<int64_t>(prefill_tile_rows);
+      prefill_routes = SafeInt<size_t>(prefill_tile_rows) * k_;
+      prefill_ws_bytes = ck::GetInt2MoePrefillWorkspaceSize(prefill_params);
+      const size_t routing_scratch_bytes =
+          SafeInt<size_t>(prefill_routes) * (2 * sizeof(int) + sizeof(float));
+      total_prefill_scratch_bytes = SafeInt<size_t>(prefill_ws_bytes) + routing_scratch_bytes;
+      if (total_prefill_scratch_bytes <= prefill_budget || prefill_tile_rows <= min_prefill_tile_rows ||
+          row_tile_size_ > 0) {
+        break;
       }
-      prefill_params.input = static_cast<const char*>(input->DataRaw()) + offset * hidden * element_size;
-      prefill_params.output = static_cast<char*>(output->MutableDataRaw()) + offset * hidden * element_size;
-      prefill_params.num_rows = cur_rows;
-      ck::RunInt2MoePrefill(prefill_params, prefill_workspace.get());
+      prefill_tile_rows = std::max<size_t>(min_prefill_tile_rows, prefill_tile_rows / 2);
     }
-    return Status::OK();
+
+    if (total_prefill_scratch_bytes <= prefill_budget) {
+      auto selected = GetScratchBuffer<int>(prefill_routes, GetComputeStream(context));
+      auto scales = GetScratchBuffer<float>(prefill_routes, GetComputeStream(context));
+      auto unpermuted_to_permuted = GetScratchBuffer<int>(prefill_routes, GetComputeStream(context));
+      prefill_params.selected_experts = selected.get();
+      prefill_params.routing_weights = scales.get();
+      prefill_params.unpermuted_to_permuted = unpermuted_to_permuted.get();
+      auto prefill_workspace = GetScratchBuffer<void>(prefill_ws_bytes, GetComputeStream(context));
+
+      for (int64_t offset = 0; offset < rows; offset += static_cast<int64_t>(prefill_tile_rows)) {
+        const int cur_rows = narrow<int>(std::min<size_t>(prefill_tile_rows, static_cast<size_t>(rows - offset)));
+        if (params.is_bfloat16) {
+          LaunchSoftmaxTopK(reinterpret_cast<const __nv_bfloat16*>(router->DataRaw()) + offset * experts,
+                            scales.get(), selected.get(), cur_rows, params.num_experts,
+                            params.top_k, normalize_routing_weights_, stream);
+        } else {
+          LaunchSoftmaxTopK(reinterpret_cast<const half*>(router->DataRaw()) + offset * experts,
+                            scales.get(), selected.get(), cur_rows, params.num_experts,
+                            params.top_k, normalize_routing_weights_, stream);
+        }
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+        if (routing_snapshot_) {
+          ORT_RETURN_IF_ERROR(routing_snapshot_->Capture(
+              selected.get(), SafeInt<size_t>(cur_rows) * SafeInt<size_t>(k_), stream));
+        }
+#endif
+        prefill_params.input = static_cast<const char*>(input->DataRaw()) + offset * hidden * element_size;
+        prefill_params.output = static_cast<char*>(output->MutableDataRaw()) + offset * hidden * element_size;
+        prefill_params.num_rows = cur_rows;
+        ck::RunInt2MoePrefill(prefill_params, prefill_workspace.get());
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+        if (routing_snapshot_) {
+          ORT_RETURN_IF_ERROR(routing_snapshot_->Consume());
+        }
+#endif
+      }
+      return Status::OK();
+    }
   }
 
   const size_t per_row_bytes =

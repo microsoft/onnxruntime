@@ -2519,9 +2519,12 @@ __device__ __forceinline__ void Unpack8CenteredCodesFromWord(uint32_t w, float (
   }
 }
 
-__device__ __forceinline__ float Dot8(const float4& a0, const float4& a1, const float (&q)[8]) {
-  return (a0.x * q[0] + a0.y * q[1] + a0.z * q[2] + a0.w * q[3] +
-          a1.x * q[4] + a1.y * q[5] + a1.z * q[6] + a1.w * q[7]);
+// Rounds each dequantized weight to T before accumulation, matching Int3WeightElem in the scalar kernels.
+template <typename T>
+__device__ __forceinline__ float Dot8DequantizedWeights(const float4& a0, const float4& a1, const float q[8], float scale) {
+  const auto w = [scale](float code) { return static_cast<float>(static_cast<T>(code * scale)); };
+  return a0.x * w(q[0]) + a0.y * w(q[1]) + a0.z * w(q[2]) + a0.w * w(q[3]) +
+         a1.x * w(q[4]) + a1.y * w(q[5]) + a1.z * w(q[6]) + a1.w * w(q[7]);
 }
 
 template <typename T>
@@ -2715,7 +2718,7 @@ __global__ void __launch_bounds__(128, 6) FusedFc1FastVecKernel(Int3MoeParams pa
         const uint32_t w_aligned = AlignPackedCodeWord<Bits>(w0[r], bit_shift);
         float q[8];
         Unpack8CenteredCodesFromWord<Bits>(w_aligned, q);
-        acc0[r] += Dot8(a0, a1, q) * static_cast<float>(raw_s[r]);
+        acc0[r] += Dot8DequantizedWeights<T>(a0, a1, q, static_cast<float>(raw_s[r]));
       }
     }
   } else {
@@ -2742,8 +2745,8 @@ __global__ void __launch_bounds__(128, 6) FusedFc1FastVecKernel(Int3MoeParams pa
         float q[8];
         Unpack8CenteredCodesFromWord<Bits>(w_aligned, q);
         const float sc = static_cast<float>(raw_s[r]);
-        acc0[r] += Dot8(a0_0, a1_0, q) * sc;
-        acc1[r] += Dot8(a0_1, a1_1, q) * sc;
+        acc0[r] += Dot8DequantizedWeights<T>(a0_0, a1_0, q, sc);
+        acc1[r] += Dot8DequantizedWeights<T>(a0_1, a1_1, q, sc);
       }
     }
 #pragma unroll
@@ -2858,7 +2861,7 @@ __global__ void __launch_bounds__(128, 6) Fc2RouteFastVecKernel(Int3MoeParams pa
         const uint32_t w_aligned = AlignPackedCodeWord<Bits>(w0[r], bit_shift);
         float q[8];
         Unpack8CenteredCodesFromWord<Bits>(w_aligned, q);
-        v0[r] += Dot8(a0, a1, q) * static_cast<float>(raw_s[r]);
+        v0[r] += Dot8DequantizedWeights<T>(a0, a1, q, static_cast<float>(raw_s[r]));
       }
     }
   } else {
@@ -2885,8 +2888,8 @@ __global__ void __launch_bounds__(128, 6) Fc2RouteFastVecKernel(Int3MoeParams pa
         float q[8];
         Unpack8CenteredCodesFromWord<Bits>(w_aligned, q);
         const float sc = static_cast<float>(raw_s[r]);
-        v0[r] += Dot8(a0_0, a1_0, q) * sc;
-        v1[r] += Dot8(a0_1, a1_1, q) * sc;
+        v0[r] += Dot8DequantizedWeights<T>(a0_0, a1_0, q, sc);
+        v1[r] += Dot8DequantizedWeights<T>(a0_1, a1_1, q, sc);
       }
     }
 #pragma unroll
@@ -2961,14 +2964,6 @@ __global__ void __launch_bounds__(128) FinalizeRoutesVec8Kernel(Int3MoeParams pa
     out_vals[j] = static_cast<T>(acc[j]);
   }
   *reinterpret_cast<uint4*>(static_cast<T*>(params.output) + token * params.hidden + col) = out_u4;
-}
-
-// Rounds each dequantized weight to T before accumulation, matching Int3WeightElem in the scalar kernels.
-template <typename T>
-__device__ __forceinline__ float Dot8DequantizedWeights(const float4& a0, const float4& a1, const float q[8], float scale) {
-  const auto w = [scale](float code) { return static_cast<float>(static_cast<T>(code * scale)); };
-  return a0.x * w(q[0]) + a0.y * w(q[1]) + a0.z * w(q[2]) + a0.w * w(q[3]) +
-         a1.x * w(q[4]) + a1.y * w(q[5]) + a1.z * w(q[6]) + a1.w * w(q[7]);
 }
 
 template <typename T, int Bits>
