@@ -2387,13 +2387,32 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.GatedAdd"></a><a name="com.microsoft.gatedadd">**com.microsoft.GatedAdd**</a>
 
-  Adds one tensor to another tensor scaled by a per-row gate:
+  Adds one tensor to another tensor scaled by a per-row gate. X and Y have shape (..., C). The
+  leading dimensions of gate must match the leading dimensions of X (there is no broadcasting over
+  them); the optional gate_weight input selects how the per-row gate is obtained.
+  
+  Plain mode (gate_weight is not provided): gate has shape (..., 1) and is used directly as the
+  gate, broadcast over C. No sigmoid is applied.
   
     output = X + round_to_T(Y * gate)
   
-  X and Y have shape (..., C), and gate has shape (..., 1). The gate is broadcast
-  over C. For reduced-precision types, the product is rounded to T before the add,
-  matching separate ONNX Mul and Add operators.
+  For reduced-precision types, the product is rounded to T before the add, matching separate ONNX
+  Mul and Add operators. This mode supports float, float16 and bfloat16, subject to execution provider kernel support.
+  
+  Projected mode (gate_weight is provided): gate holds an activation with shape (..., K) and
+  gate_weight has shape (K, 1). For every row, the gate is computed by projecting the activation
+  with gate_weight and applying a sigmoid:
+  
+    p      = round_to_bfloat16(sum_k(gate[..., k] * gate_weight[k]))
+    s      = round_to_bfloat16(sigmoid(p))
+    output = round_to_bfloat16(X + round_to_bfloat16(Y * s))
+  
+  The dot product, the sigmoid and the multiplication and addition are evaluated in FP32 (the
+  sigmoid is always computed in FP32, and the order of the FP32 accumulation over K is not
+  specified); the result is rounded to bfloat16 after the projection, after the sigmoid, after the
+  multiplication and after the addition. This mode is only implemented by the CUDA execution
+  provider for bfloat16 tensors. Other execution providers and types return NOT_IMPLEMENTED when
+  gate_weight is provided.
 
 #### Version
 
@@ -2405,11 +2424,11 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>X</tt> : T</dt>
 <dd>Unscaled input with shape (..., C).</dd>
 <dt><tt>Y</tt> : T</dt>
-<dd>Input scaled by gate, with the same shape as X.</dd>
+<dd>Input scaled by the gate, with the same shape as X.</dd>
 <dt><tt>gate</tt> : T</dt>
-<dd>Per-row gate with shape (..., 1), or activation (..., K) when gate_weight is provided.</dd>
+<dd>In plain mode, the per-row gate with shape (..., 1). When gate_weight is provided, the activation with shape (..., K) that is projected with gate_weight and passed through a sigmoid to produce the per-row gate. Its leading dimensions must match X.</dd>
 <dt><tt>gate_weight</tt> (optional) : T</dt>
-<dd>Optional projection weight [K, 1] applied to gate before sigmoid.</dd>
+<dd>Optional projection weight with shape (K, 1), where K is the last dimension of gate. When present, the gate is sigmoid(gate . gate_weight) computed per row in FP32 (projected mode). Only supported by the CUDA execution provider with bfloat16.</dd>
 </dl>
 
 #### Outputs
