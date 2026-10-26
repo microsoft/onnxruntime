@@ -24,7 +24,10 @@ class GatedAddProgram final : public Program<GatedAddProgram> {
 
 class GatedAdd final : public WebGpuKernel {
  public:
-  GatedAdd(const OpKernelInfo& info) : WebGpuKernel(info) {}
+  GatedAdd(const OpKernelInfo& info) : WebGpuKernel(info) {
+    const int64_t fp32 = info.GetAttrOrDefault<int64_t>("sigmoid_in_fp32", 1);
+    ORT_ENFORCE(fp32 == 0 || fp32 == 1, "GatedAdd sigmoid_in_fp32 must be zero or one");
+  }
   Status ComputeInternal(ComputeContext& context) const override;
 };
 

@@ -13,7 +13,10 @@ namespace contrib {
 template <typename T>
 class GatedAdd final : public OpKernel {
  public:
-  explicit GatedAdd(const OpKernelInfo& info) : OpKernel(info) {}
+  explicit GatedAdd(const OpKernelInfo& info) : OpKernel(info) {
+    const int64_t fp32 = info.GetAttrOrDefault<int64_t>("sigmoid_in_fp32", 1);
+    ORT_ENFORCE(fp32 == 0 || fp32 == 1, "GatedAdd sigmoid_in_fp32 must be zero or one");
+  }
   Status Compute(OpKernelContext* context) const override;
 };
 
