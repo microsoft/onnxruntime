@@ -168,15 +168,24 @@ struct UpParams {
   float gate_mul;
 };
 
+__device__ __forceinline__ bool RowOk(int64_t row0, int r, int64_t total_rows) {
+  return row0 + r < total_rows;
+}
+
+__device__ __forceinline__ int64_t RowIdx(int64_t row0, int r, int64_t total_rows) {
+  return (row0 + r < total_rows) ? (row0 + r) : (total_rows - 1);
+}
+
 // CTA (j, s, z): K slice s (rows [k0, k0 + len) of the flattened stream, inside branch c) of the ROWS rows
 // z * ROWS ... z * ROWS + ROWS - 1, which share every weight read.
 // j < ceil(R / 16) owns down columns [16 j, 16 j + 16); the last j owns the C inject columns.
 template <typename T, bool kPost, int ROWS>
-__global__ void __launch_bounds__(kThreads, ROWS <= 2 ? 5 : 4)
+__global__ void __launch_bounds__(kThreads, ROWS >= 4 ? 4 : 5)
     HcDownKernel(const T* __restrict__ streams, const T* __restrict__ prev_out, const T* __restrict__ prev_gate,
                  const T* __restrict__ norm_w, const T* __restrict__ w_down, const T* __restrict__ w_inject,
                  T* __restrict__ streams_out, float* __restrict__ partial, float* __restrict__ inv_rms_out,
                  DownParams p) {
+  constexpr int kLocalAsyncWeightSlots = ROWS >= 4 ? 8 : kAsyncWeightSlots;
   const int j = blockIdx.x;
   const int s = blockIdx.y;
   const int64_t row0 = static_cast<int64_t>(blockIdx.z) * ROWS;
@@ -191,15 +200,8 @@ __global__ void __launch_bounds__(kThreads, ROWS <= 2 ? 5 : 4)
   const int col_tiles = (p.rank + kColTile - 1) / kColTile;
   const bool is_inject = (j == col_tiles);
   const int64_t k0 = static_cast<int64_t>(c) * hidden + h0;
-  int64_t row_idx[ROWS];
-  bool row_ok[ROWS];
-#pragma unroll
-  for (int r = 0; r < ROWS; ++r) {
-    row_ok[r] = row0 + r < p.rows;
-    row_idx[r] = row_ok[r] ? row0 + r : p.rows - 1;  // keep loads of unused rows in bounds
-  }
 
-  __shared__ __align__(16) uint4 wsm[kAsyncWeightSlots * kThreads];
+  __shared__ __align__(16) uint4 wsm[kLocalAsyncWeightSlots * kThreads];
   __shared__ __align__(16) uint16_t xs[ROWS][kMaxSliceRows];
   __shared__ float sq_red[8][ROWS];
 
@@ -214,7 +216,7 @@ __global__ void __launch_bounds__(kThreads, ROWS <= 2 ? 5 : 4)
     if (col < p.rank) {
       const T* base = w_down + k0 * p.rank + col;
 #pragma unroll
-      for (int i = 0; i < kAsyncWeightSlots; ++i) {
+      for (int i = 0; i < kLocalAsyncWeightSlots; ++i) {
         const int row = rp + 128 * i;
         if (row < len) CpAsync16(&wsm[i * kThreads + tid], base + static_cast<int64_t>(row) * p.rank);
       }
@@ -237,18 +239,20 @@ __global__ void __launch_bounds__(kThreads, ROWS <= 2 ? 5 : 4)
   float sum_sq[ROWS];
 #pragma unroll
   for (int r = 0; r < ROWS; ++r) {
+    const int64_t r_idx = RowIdx(row0, r, p.rows);
+    const bool r_ok = RowOk(row0, r, p.rows);
     uint4 sv[kMaxVecIters];
     uint4 bv[kMaxVecIters];
     float gate_c = 0.0f;
-    const uint4* sp = reinterpret_cast<const uint4*>(streams + row_idx[r] * K + static_cast<int64_t>(c) * hidden);
+    const uint4* sp = reinterpret_cast<const uint4*>(streams + r_idx * K + static_cast<int64_t>(c) * hidden);
 #pragma unroll
     for (int i = 0; i < kMaxVecIters; ++i) {
       const int qi = tid + kThreads * i;
       sv[i] = qi < nvec ? __ldcg(sp + qi) : make_uint4(0u, 0u, 0u, 0u);
     }
     if constexpr (kPost) {
-      gate_c = BitsToFloat<T>(__ldcg(reinterpret_cast<const uint16_t*>(prev_gate + row_idx[r] * branches + c)));
-      const uint4* bp = reinterpret_cast<const uint4*>(prev_out + row_idx[r] * hidden);
+      gate_c = BitsToFloat<T>(__ldcg(reinterpret_cast<const uint16_t*>(prev_gate + r_idx * branches + c)));
+      const uint4* bp = reinterpret_cast<const uint4*>(prev_out + r_idx * hidden);
 #pragma unroll
       for (int i = 0; i < kMaxVecIters; ++i) {
         const int qi = tid + kThreads * i;
@@ -275,8 +279,8 @@ __global__ void __launch_bounds__(kThreads, ROWS <= 2 ? 5 : 4)
           const uint4 packed = Pack8<T>(v);
           *reinterpret_cast<uint4*>(&xs[r][h - h0]) = packed;
           if constexpr (kPost) {
-            if (j == 0 && row_ok[r]) {
-              *reinterpret_cast<uint4*>(streams_out + row_idx[r] * K + static_cast<int64_t>(c) * hidden + h) =
+            if (j == 0 && r_ok) {
+              *reinterpret_cast<uint4*>(streams_out + r_idx * K + static_cast<int64_t>(c) * hidden + h) =
                   packed;
             }
           }
@@ -295,7 +299,9 @@ __global__ void __launch_bounds__(kThreads, ROWS <= 2 ? 5 : 4)
 #pragma unroll
     for (int w = 0; w < 8; ++w) total += sq_red[w][r];
     inv_rms[r] = rsqrtf(total / static_cast<float>(hidden) + p.epsilon);
-    if (j == 0 && piece == 0 && tid == 0 && row_ok[r]) inv_rms_out[row_idx[r] * branches + c] = inv_rms[r];
+    if (j == 0 && piece == 0 && tid == 0 && RowOk(row0, r, p.rows)) {
+      inv_rms_out[RowIdx(row0, r, p.rows) * branches + c] = inv_rms[r];
+    }
     if (norm_active) {
       float x[8], w[8];
       Unpack8<T>(*reinterpret_cast<const uint4*>(&xs[r][tid * 8]), x);
@@ -322,7 +328,7 @@ __global__ void __launch_bounds__(kThreads, ROWS <= 2 ? 5 : 4)
         const int row = rp + 128 * i;
         if (row < len) {
           float wf[8];
-          const uint4 w_vec = (i < kAsyncWeightSlots)
+          const uint4 w_vec = (i < kLocalAsyncWeightSlots)
                                   ? wsm[i * kThreads + tid]
                                   : __ldcg(reinterpret_cast<const uint4*>(base + static_cast<int64_t>(row) * p.rank));
           Unpack8<T>(w_vec, wf);
@@ -358,7 +364,9 @@ __global__ void __launch_bounds__(kThreads, ROWS <= 2 ? 5 : 4)
 #pragma unroll
       for (int q = 0; q < 8; ++q) v += red[q][r][t];
       const int out_col = j * kColTile + t;
-      if (out_col < p.rank && row_ok[r]) partial[(row_idx[r] * p.splits + s) * p.partial_stride + out_col] = v;
+      if (out_col < p.rank && RowOk(row0, r, p.rows)) {
+        partial[(RowIdx(row0, r, p.rows) * p.splits + s) * p.partial_stride + out_col] = v;
+      }
     }
   } else {
     const T* wi = reinterpret_cast<const T*>(wsm);
@@ -401,17 +409,20 @@ __global__ void __launch_bounds__(kThreads, ROWS <= 2 ? 5 : 4)
       float v = 0.0f;
 #pragma unroll
       for (int q = 0; q < 8; ++q) v += red[q][r][t];
-      if (row_ok[r]) partial[(row_idx[r] * p.splits + s) * p.partial_stride + p.rank + t] = v;
+      if (RowOk(row0, r, p.rows)) {
+        partial[(RowIdx(row0, r, p.rows) * p.splits + s) * p.partial_stride + p.rank + t] = v;
+      }
     }
   }
 }
 
 // CTA (hb, 0, z) owns features [16 hb, 16 hb + 16) of every branch for ROWS rows.
 template <typename T, int ROWS, int BRANCHES = 0, int RANK = 0>
-__global__ void __launch_bounds__(kThreads)
+__global__ void __launch_bounds__(kThreads, 5)
     HcUpPreKernel(const T* __restrict__ streams, const T* __restrict__ norm_w, const T* __restrict__ w_up,
                   const float* __restrict__ partial, const float* __restrict__ inv_rms_in,
                   T* __restrict__ pre_out, T* __restrict__ gate_out, UpParams p) {
+  constexpr int kLocalWeightSlots = ROWS >= 4 ? 8 : kWeightSlots;
   const int hb = blockIdx.x;
   const int64_t row0 = static_cast<int64_t>(blockIdx.z) * ROWS;
   const int tid = threadIdx.x;
@@ -429,16 +440,9 @@ __global__ void __launch_bounds__(kThreads)
   const int rp = tid / groups;
   const int col = h0 + half_id * 8;
   const bool valid = col < hidden;
-  const int chunk_rows = phases * kWeightSlots;
-  int64_t row_idx[ROWS];
-  bool row_ok[ROWS];
-#pragma unroll
-  for (int r = 0; r < ROWS; ++r) {
-    row_ok[r] = row0 + r < p.rows;
-    row_idx[r] = row_ok[r] ? row0 + r : p.rows - 1;
-  }
+  const int chunk_rows = phases * kLocalWeightSlots;
 
-  __shared__ __align__(16) uint4 wsm[kWeightSlots * kThreads];
+  __shared__ __align__(16) uint4 wsm[kLocalWeightSlots * kThreads];
   __shared__ __align__(16) float sf[ROWS][RANK == 0 ? kMaxFusedRank : RANK];
   __shared__ float sg[ROWS][kBranchStorage * kUpTile];
 
@@ -446,7 +450,7 @@ __global__ void __launch_bounds__(kThreads)
   const T* wbase = w_up + static_cast<int64_t>(c) * hidden + col;
   if (valid) {
 #pragma unroll
-    for (int i = 0; i < kWeightSlots; ++i) {
+    for (int i = 0; i < kLocalWeightSlots; ++i) {
       const int row = rp + phases * i;
       if (row < rank) CpAsync16(&wsm[i * kThreads + tid], wbase + static_cast<int64_t>(row) * K);
     }
@@ -459,78 +463,44 @@ __global__ void __launch_bounds__(kThreads)
 
   // Fixed-order reduction of the K-split partial sums, then ScaledSiLU; four columns per thread.
   const int nq = rank / 4;
-  if (ROWS * nq <= kThreads) {
-    if (tid < ROWS * nq) {
-      const int r = tid / nq;
-      const int cq = (tid % nq) * 4;
-      float4 va = make_float4(0.f, 0.f, 0.f, 0.f);
-      for (int sp0 = 0; sp0 < p.splits; sp0 += 8) {
+  for (int idx = tid; idx < ROWS * nq; idx += kThreads) {
+    const int r = idx / nq;
+    const int cq = (idx % nq) * 4;
+    const int64_t r_idx = RowIdx(row0, r, p.rows);
+    float4 va = make_float4(0.f, 0.f, 0.f, 0.f);
+    for (int sp0 = 0; sp0 < p.splits; sp0 += 8) {
 #pragma unroll
-        for (int u = 0; u < 8; ++u) {
-          if (sp0 + u < p.splits) {
-            const float4 q = __ldcg(reinterpret_cast<const float4*>(
-                partial + (row_idx[r] * p.splits + sp0 + u) * p.partial_stride + cq));
-            va.x += q.x;
-            va.y += q.y;
-            va.z += q.z;
-            va.w += q.w;
-          }
+      for (int u = 0; u < 8; ++u) {
+        if (sp0 + u < p.splits) {
+          const float4 q = __ldcg(reinterpret_cast<const float4*>(
+              partial + (r_idx * p.splits + sp0 + u) * p.partial_stride + cq));
+          va.x += q.x;
+          va.y += q.y;
+          va.z += q.z;
+          va.w += q.w;
         }
-      }
-      const float v[4] = {va.x, va.y, va.z, va.w};
-      float out[4];
-#pragma unroll
-      for (int m = 0; m < 4; ++m) {
-        const float z = Rnd<T>(Rnd<T>(v[m]) * p.silu_alpha);
-        out[m] = Rnd<T>(z * Rnd<T>(SigmoidF32(z)));
-      }
-      *reinterpret_cast<float4*>(&sf[r][cq]) = make_float4(out[0], out[1], out[2], out[3]);
-    }
-  } else {
-    const int cq = tid * 4;
-    float4 va[ROWS];
-#pragma unroll
-    for (int r = 0; r < ROWS; ++r) va[r] = make_float4(0.f, 0.f, 0.f, 0.f);
-    if (tid < nq) {
-      for (int sp0 = 0; sp0 < p.splits; sp0 += 8) {
-#pragma unroll
-        for (int u = 0; u < 8; ++u) {
-          if (sp0 + u < p.splits) {
-#pragma unroll
-            for (int r = 0; r < ROWS; ++r) {
-              const float4 q = __ldcg(reinterpret_cast<const float4*>(
-                  partial + (row_idx[r] * p.splits + sp0 + u) * p.partial_stride + cq));
-              va[r].x += q.x;
-              va[r].y += q.y;
-              va[r].z += q.z;
-              va[r].w += q.w;
-            }
-          }
-        }
-      }
-#pragma unroll
-      for (int r = 0; r < ROWS; ++r) {
-        const float v[4] = {va[r].x, va[r].y, va[r].z, va[r].w};
-        float out[4];
-#pragma unroll
-        for (int m = 0; m < 4; ++m) {
-          const float z = Rnd<T>(Rnd<T>(v[m]) * p.silu_alpha);
-          out[m] = Rnd<T>(z * Rnd<T>(SigmoidF32(z)));
-        }
-        *reinterpret_cast<float4*>(&sf[r][cq]) = make_float4(out[0], out[1], out[2], out[3]);
       }
     }
+    const float v[4] = {va.x, va.y, va.z, va.w};
+    float out[4];
+#pragma unroll
+    for (int m = 0; m < 4; ++m) {
+      const float z = Rnd<T>(Rnd<T>(v[m]) * p.silu_alpha);
+      out[m] = Rnd<T>(z * Rnd<T>(SigmoidF32(z)));
+    }
+    *reinterpret_cast<float4*>(&sf[r][cq]) = make_float4(out[0], out[1], out[2], out[3]);
   }
   if (hb == 0 && tid < branches * ROWS) {
     const int r = tid / branches;
     const int t = tid % branches;
+    const int64_t r_idx = RowIdx(row0, r, p.rows);
     float v = 0.0f;
     for (int sp = 0; sp < p.splits; ++sp) {
-      v += __ldcg(partial + (row_idx[r] * p.splits + sp) * p.partial_stride + rank + t);
+      v += __ldcg(partial + (r_idx * p.splits + sp) * p.partial_stride + rank + t);
     }
     const float inject = Rnd<T>(v);
     const float u = Rnd<T>(SigmoidF32(Rnd<T>(inject / p.gate_div)));
-    if (row_ok[r]) gate_out[row_idx[r] * branches + t] = from_float<T>(u * p.gate_mul);
+    if (RowOk(row0, r, p.rows)) gate_out[r_idx * branches + t] = from_float<T>(u * p.gate_mul);
   }
   __syncthreads();
 
@@ -543,7 +513,7 @@ __global__ void __launch_bounds__(kThreads)
   for (int chunk0 = 0; chunk0 < rank; chunk0 += chunk_rows) {
     if (chunk0 > 0 && valid) {
 #pragma unroll
-      for (int i = 0; i < kWeightSlots; ++i) {
+      for (int i = 0; i < kLocalWeightSlots; ++i) {
         const int row = chunk0 + rp + phases * i;
         if (row < rank) CpAsync16(&wsm[i * kThreads + tid], wbase + static_cast<int64_t>(row) * K);
       }
@@ -552,7 +522,7 @@ __global__ void __launch_bounds__(kThreads)
     CpWaitAll();
     if (valid) {
 #pragma unroll
-      for (int i = 0; i < kWeightSlots; ++i) {
+      for (int i = 0; i < kLocalWeightSlots; ++i) {
         const int row = chunk0 + rp + phases * i;
         if (row < rank) {
           float wf[8];
@@ -612,20 +582,21 @@ __global__ void __launch_bounds__(kThreads)
   if (tid < ROWS * kUpTile) {
     const int r = tid / kUpTile;
     const int hl = tid % kUpTile;
-    if ((h0 + hl) < hidden && row_ok[r]) {
+    const int64_t r_idx = RowIdx(row0, r, p.rows);
+    if ((h0 + hl) < hidden && RowOk(row0, r, p.rows)) {
       float sum = 0.0f;
 #pragma unroll
       for (int b = 0; b < kBranchStorage; ++b) {
         if (b < branches) {
           const float nw = to_float<T>(norm_w[static_cast<int64_t>(b) * hidden + h0 + hl]);
           const float xv = BitsToFloat<T>(__ldcg(reinterpret_cast<const uint16_t*>(
-              streams + row_idx[r] * K + static_cast<int64_t>(b) * hidden + h0 + hl)));
-          const float inv = __ldcg(inv_rms_in + row_idx[r] * branches + b);
+              streams + r_idx * K + static_cast<int64_t>(b) * hidden + h0 + hl)));
+          const float inv = __ldcg(inv_rms_in + r_idx * branches + b);
           const float n = Rnd<T>(xv * inv * nw);
           sum = fmaf(n, sg[r][b * kUpTile + hl], sum);
         }
       }
-      pre_out[row_idx[r] * hidden + h0 + hl] = from_float<T>(sum * p.reduction_scale);
+      pre_out[r_idx * hidden + h0 + hl] = from_float<T>(sum * p.reduction_scale);
     }
   }
 }
@@ -677,6 +648,35 @@ __global__ void ScaledSiluKernel(T* __restrict__ x, int64_t count, float alpha) 
 }
 
 template <typename T>
+__global__ void PreMixVec8Kernel(const T* __restrict__ hn, const T* __restrict__ up, T* __restrict__ pre,
+                                 uint32_t vec_count, uint32_t vec_cols, int branches, int hidden,
+                                 float reduction_scale) {
+  const uint32_t vec_i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (vec_i >= vec_count) return;
+  const uint32_t row = vec_i / vec_cols;
+  const int h = static_cast<int>((vec_i - row * vec_cols) * 8u);
+  const int64_t K = static_cast<int64_t>(branches) * hidden;
+  float sum[8] = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
+  for (int b = 0; b < branches; ++b) {
+    const int64_t idx = static_cast<int64_t>(row) * K + static_cast<int64_t>(b) * hidden + h;
+    float hn_v[8], up_v[8];
+    Unpack8<T>(__ldg(reinterpret_cast<const uint4*>(hn + idx)), hn_v);
+    Unpack8<T>(__ldg(reinterpret_cast<const uint4*>(up + idx)), up_v);
+#pragma unroll
+    for (int m = 0; m < 8; ++m) {
+      const float gate = Rnd<T>(SigmoidF32(up_v[m]));
+      sum[m] = fmaf(hn_v[m], gate, sum[m]);
+    }
+  }
+  float out[8];
+#pragma unroll
+  for (int m = 0; m < 8; ++m) {
+    out[m] = sum[m] * reduction_scale;
+  }
+  *reinterpret_cast<uint4*>(pre + static_cast<int64_t>(vec_i) * 8) = Pack8<T>(out);
+}
+
+template <typename T>
 __global__ void PreMixKernel(const T* __restrict__ hn, const T* __restrict__ up, T* __restrict__ pre,
                              int64_t count, int branches, int hidden, float reduction_scale) {
   const int64_t i = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
@@ -691,6 +691,59 @@ __global__ void PreMixKernel(const T* __restrict__ hn, const T* __restrict__ up,
     sum = fmaf(to_float<T>(hn[idx]), gate, sum);
   }
   pre[i] = from_float<T>(sum * reduction_scale);
+}
+
+template <typename T, int ROWS_PER_CTA = 4>
+__global__ void FusedInjectPostGateB4Kernel(const T* __restrict__ hn, const T* __restrict__ w_inject,
+                                            T* __restrict__ gate_out, int64_t rows, int64_t K,
+                                            float gate_div, float gate_mul) {
+  const int64_t row0 = static_cast<int64_t>(blockIdx.x) * ROWS_PER_CTA;
+  if (row0 >= rows) return;
+  const int tid = threadIdx.x;
+  __shared__ float smem[8][ROWS_PER_CTA][4];
+  float acc[ROWS_PER_CTA][4];
+#pragma unroll
+  for (int r = 0; r < ROWS_PER_CTA; ++r) {
+#pragma unroll
+    for (int b = 0; b < 4; ++b) acc[r][b] = 0.0f;
+  }
+  const int valid_rows = static_cast<int>(min(static_cast<int64_t>(ROWS_PER_CTA), rows - row0));
+  for (int64_t k = tid; k < K; k += kThreads) {
+    const uint2 wk_u2 = __ldg(reinterpret_cast<const uint2*>(w_inject + k * 4));
+    float wf[4];
+    Unpack2<T>(wk_u2.x, wf[0], wf[1]);
+    Unpack2<T>(wk_u2.y, wf[2], wf[3]);
+#pragma unroll
+    for (int r = 0; r < ROWS_PER_CTA; ++r) {
+      if (r < valid_rows) {
+        const float xv = to_float<T>(hn[(row0 + r) * K + k]);
+#pragma unroll
+        for (int b = 0; b < 4; ++b) {
+          acc[r][b] = fmaf(xv, wf[b], acc[r][b]);
+        }
+      }
+    }
+  }
+#pragma unroll
+  for (int r = 0; r < ROWS_PER_CTA; ++r) {
+#pragma unroll
+    for (int b = 0; b < 4; ++b) {
+#pragma unroll
+      for (int off = 16; off > 0; off >>= 1) acc[r][b] += __shfl_down_sync(0xffffffffu, acc[r][b], off);
+      if ((tid & 31) == 0) smem[tid >> 5][r][b] = acc[r][b];
+    }
+  }
+  __syncthreads();
+  if (tid < valid_rows * 4) {
+    const int r = tid >> 2;
+    const int b = tid & 3;
+    float v = 0.0f;
+#pragma unroll
+    for (int w = 0; w < 8; ++w) v += smem[w][r][b];
+    const float t = Rnd<T>(Rnd<T>(v) / gate_div);
+    const float u = Rnd<T>(SigmoidF32(t));
+    gate_out[(row0 + r) * 4 + b] = from_float<T>(u * gate_mul);
+  }
 }
 
 template <typename T>
@@ -843,7 +896,7 @@ Status LaunchWithProgrammaticSerialization(bool use_pdl, Kernel kernel, dim3 gri
 
 // griddepcontrol is compiled only for sm_90+; a kernel image JIT-compiled from older PTX would not contain it,
 // so programmatic dependent launch must not be requested for such an image (or for a driver older than 12.3).
-template <typename T, int ROWS>
+template <typename T, int DOWN_ROWS, int UP_ROWS = DOWN_ROWS>
 bool IsProgrammaticLaunchAvailable() {
 #if defined(CUDART_VERSION) && CUDART_VERSION >= 12030
   static thread_local int cached_device = -1;
@@ -864,10 +917,10 @@ bool IsProgrammaticLaunchAvailable() {
       return cudaFuncGetAttributes(&attributes, kernel) == cudaSuccess && attributes.ptxVersion >= 90 &&
              attributes.binaryVersion >= 90;
     };
-    available = available && image_has_griddepcontrol(HcDownKernel<T, true, ROWS>) &&
-                image_has_griddepcontrol(HcDownKernel<T, false, ROWS>) &&
-                image_has_griddepcontrol(HcUpPreKernel<T, ROWS>) &&
-                image_has_griddepcontrol(HcUpPreKernel<T, ROWS, 4, 320>);
+    available = available && image_has_griddepcontrol(HcDownKernel<T, true, DOWN_ROWS>) &&
+                image_has_griddepcontrol(HcDownKernel<T, false, DOWN_ROWS>) &&
+                image_has_griddepcontrol(HcUpPreKernel<T, UP_ROWS>) &&
+                image_has_griddepcontrol(HcUpPreKernel<T, UP_ROWS, 4, 320>);
     (void)cudaGetLastError();
     cached_device = device;
     cached_available = available;
@@ -878,52 +931,53 @@ bool IsProgrammaticLaunchAvailable() {
 #endif
 }
 
-template <typename T, int ROWS>
+template <typename T, int DOWN_ROWS, int UP_ROWS = DOWN_ROWS>
 Status LaunchFusedRows(bool use_pdl, cudaStream_t stream, const HyperConnectionLowRankMixConfig& config,
                        const HyperConnectionLowRankMixTensors<T>& tensors, const FusedGeometry& g, float* partial,
                        float* inv_rms, const DownParams& down, const UpParams& up) {
   static const bool carveout_set = []() {
-    (void)cudaFuncSetAttribute(HcDownKernel<T, true, ROWS>,
+    (void)cudaFuncSetAttribute(HcDownKernel<T, true, DOWN_ROWS>,
                                cudaFuncAttributePreferredSharedMemoryCarveout,
                                cudaSharedmemCarveoutMaxShared);
-    (void)cudaFuncSetAttribute(HcDownKernel<T, false, ROWS>,
+    (void)cudaFuncSetAttribute(HcDownKernel<T, false, DOWN_ROWS>,
                                cudaFuncAttributePreferredSharedMemoryCarveout,
                                cudaSharedmemCarveoutMaxShared);
-    (void)cudaFuncSetAttribute(HcUpPreKernel<T, ROWS, 4, 320>,
+    (void)cudaFuncSetAttribute(HcUpPreKernel<T, UP_ROWS, 4, 320>,
                                cudaFuncAttributePreferredSharedMemoryCarveout,
                                cudaSharedmemCarveoutMaxShared);
-    (void)cudaFuncSetAttribute(HcUpPreKernel<T, ROWS>,
+    (void)cudaFuncSetAttribute(HcUpPreKernel<T, UP_ROWS>,
                                cudaFuncAttributePreferredSharedMemoryCarveout,
                                cudaSharedmemCarveoutMaxShared);
     (void)cudaGetLastError();
     return true;
   }();
   (void)carveout_set;
-  use_pdl = use_pdl && IsProgrammaticLaunchAvailable<T, ROWS>();
-  const unsigned row_groups = static_cast<unsigned>((config.rows + ROWS - 1) / ROWS);
-  const dim3 down_grid(g.col_tiles + 1, g.splits, row_groups);
-  const dim3 up_grid((config.hidden + kUpTile - 1) / kUpTile, 1, row_groups);
+  use_pdl = use_pdl && IsProgrammaticLaunchAvailable<T, DOWN_ROWS, UP_ROWS>();
+  const unsigned down_row_groups = static_cast<unsigned>((config.rows + DOWN_ROWS - 1) / DOWN_ROWS);
+  const unsigned up_row_groups = static_cast<unsigned>((config.rows + UP_ROWS - 1) / UP_ROWS);
+  const dim3 down_grid(g.col_tiles + 1, g.splits, down_row_groups);
+  const dim3 up_grid((config.hidden + kUpTile - 1) / kUpTile, 1, up_row_groups);
   if (tensors.prev_block_output != nullptr) {
     ORT_RETURN_IF_ERROR(LaunchWithProgrammaticSerialization(
-        use_pdl, HcDownKernel<T, true, ROWS>, down_grid, dim3(kThreads), stream, tensors.streams,
+        use_pdl, HcDownKernel<T, true, DOWN_ROWS>, down_grid, dim3(kThreads), stream, tensors.streams,
         tensors.prev_block_output, tensors.prev_post_gate, tensors.norm_scale, tensors.down_weight,
         tensors.inject_weight, tensors.streams_out, partial, inv_rms, down));
   } else {
     ORT_RETURN_IF_ERROR(LaunchWithProgrammaticSerialization(
-        use_pdl, HcDownKernel<T, false, ROWS>, down_grid, dim3(kThreads), stream, tensors.streams,
+        use_pdl, HcDownKernel<T, false, DOWN_ROWS>, down_grid, dim3(kThreads), stream, tensors.streams,
         static_cast<const T*>(nullptr), static_cast<const T*>(nullptr), tensors.norm_scale,
         tensors.down_weight, tensors.inject_weight, static_cast<T*>(nullptr), partial, inv_rms, down));
   }
 
   const T* up_streams = tensors.prev_block_output != nullptr ? tensors.streams_out : tensors.streams;
   if (config.branches == 4 && config.rank == 320) {
-    return LaunchWithProgrammaticSerialization(use_pdl, HcUpPreKernel<T, ROWS, 4, 320>, up_grid, dim3(kThreads),
+    return LaunchWithProgrammaticSerialization(use_pdl, HcUpPreKernel<T, UP_ROWS, 4, 320>, up_grid, dim3(kThreads),
                                                stream, up_streams, tensors.norm_scale, tensors.up_weight,
                                                static_cast<const float*>(partial),
                                                static_cast<const float*>(inv_rms), tensors.pre_output,
                                                tensors.post_gate, up);
   }
-  return LaunchWithProgrammaticSerialization(use_pdl, HcUpPreKernel<T, ROWS>, up_grid, dim3(kThreads), stream,
+  return LaunchWithProgrammaticSerialization(use_pdl, HcUpPreKernel<T, UP_ROWS>, up_grid, dim3(kThreads), stream,
                                              up_streams, tensors.norm_scale, tensors.up_weight,
                                              static_cast<const float*>(partial),
                                              static_cast<const float*>(inv_rms), tensors.pre_output,
@@ -987,12 +1041,17 @@ Status LaunchHyperConnectionLowRankMixFused(const cudaDeviceProp& device_prop, c
     }
     static const int decode_rows =
         onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_HC_DECODE_ROWS", 1);
-    ORT_ENFORCE(decode_rows == 1 || decode_rows == 2,
-                "ORT_HC_DECODE_ROWS must be 1 or 2");
+    ORT_ENFORCE(decode_rows == 1 || decode_rows == 2 || decode_rows == 4,
+                "ORT_HC_DECODE_ROWS must be 1, 2, or 4");
     if (config.rows == 4 && decode_rows == 1) {
       return LaunchFusedRows<T, 1>(use_pdl, stream, config, tensors, g, partial, inv_rms, down, up);
     }
-    return LaunchFusedRows<T, 2>(use_pdl, stream, config, tensors, g, partial, inv_rms, down, up);
+    static const int s8_decode_rows =
+        onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_HC_S8_DECODE_ROWS", 4);
+    if (config.rows >= 8 && (s8_decode_rows == 4 || decode_rows == 4)) {
+      return LaunchFusedRows<T, 4, 2>(use_pdl, stream, config, tensors, g, partial, inv_rms, down, up);
+    }
+    return LaunchFusedRows<T, 2, 2>(use_pdl, stream, config, tensors, g, partial, inv_rms, down, up);
   }
 }
 
@@ -1032,11 +1091,36 @@ Status LaunchHyperConnectionLowRankMixUnfused(cublasHandle_t cublas, cudaStream_
   ORT_RETURN_IF_ERROR(Gemm<T>(cublas, rows, K, config.rank, down, tensors.up_weight, up));
 
   const int64_t pre_count = rows * config.hidden;
-  ORT_RETURN_IF_NOT(BlocksFor(pre_count) <= std::numeric_limits<int>::max(),
-                    "CUDA launch requires too many blocks");
-  PreMixKernel<T><<<static_cast<int>(BlocksFor(pre_count)), kThreads, 0, stream>>>(
-      hn, up, tensors.pre_output, pre_count, config.branches, config.hidden, config.reduction_scale);
+  if constexpr (sizeof(T) == 2) {
+    const int64_t vec_count = pre_count / 8;
+    if (config.hidden % 8 == 0 && vec_count <= std::numeric_limits<uint32_t>::max() &&
+        (reinterpret_cast<uintptr_t>(hn) & 15u) == 0 &&
+        (reinterpret_cast<uintptr_t>(up) & 15u) == 0 &&
+        (reinterpret_cast<uintptr_t>(tensors.pre_output) & 15u) == 0) {
+      PreMixVec8Kernel<T><<<static_cast<int>(BlocksFor(vec_count)), kThreads, 0, stream>>>(
+          hn, up, tensors.pre_output, static_cast<uint32_t>(vec_count),
+          static_cast<uint32_t>(config.hidden / 8), config.branches, config.hidden, config.reduction_scale);
+    } else {
+      ORT_RETURN_IF_NOT(BlocksFor(pre_count) <= std::numeric_limits<int>::max(),
+                        "CUDA launch requires too many blocks");
+      PreMixKernel<T><<<static_cast<int>(BlocksFor(pre_count)), kThreads, 0, stream>>>(
+          hn, up, tensors.pre_output, pre_count, config.branches, config.hidden, config.reduction_scale);
+    }
+  } else {
+    ORT_RETURN_IF_NOT(BlocksFor(pre_count) <= std::numeric_limits<int>::max(),
+                      "CUDA launch requires too many blocks");
+    PreMixKernel<T><<<static_cast<int>(BlocksFor(pre_count)), kThreads, 0, stream>>>(
+        hn, up, tensors.pre_output, pre_count, config.branches, config.hidden, config.reduction_scale);
+  }
   ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
+  if constexpr (sizeof(T) == 2) {
+    if (config.branches == 4 && (reinterpret_cast<uintptr_t>(tensors.inject_weight) & 7u) == 0) {
+      const int64_t row_blocks = (rows + 3) / 4;
+      FusedInjectPostGateB4Kernel<T, 4><<<static_cast<int>(row_blocks), kThreads, 0, stream>>>(
+          hn, tensors.inject_weight, tensors.post_gate, rows, K, config.gate_div, config.gate_mul);
+      return CUDA_CALL(cudaGetLastError());
+    }
+  }
   FusedInjectPostGateKernel<T><<<static_cast<int>(rows), kThreads, 0, stream>>>(
       hn, tensors.inject_weight, tensors.post_gate, rows, config.branches, K, config.gate_div, config.gate_mul);
   return CUDA_CALL(cudaGetLastError());
