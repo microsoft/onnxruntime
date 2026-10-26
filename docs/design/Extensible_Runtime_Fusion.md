@@ -336,7 +336,7 @@ architecture or a particular matcher DSL.
 ### 6.1 Canonical Attention to GroupQueryAttention
 
 Use M's `_attention.py::_apply_attention` and
-[`rewrite_rules/_group_query_attention.py::AttentionToGQA:455-645`](https://github.com/onnxruntime/mobius/blob/b1e9c8e9dec1dfa206183f957e77d07cfb734df2/src/mobius/rewrite_rules/_group_query_attention.py#L455-L645)
+[`rewrite_rules/_group_query_attention.py::AttentionToGQA:680-833`](https://github.com/onnxruntime/mobius/blob/b1e9c8e9dec1dfa206183f957e77d07cfb734df2/src/mobius/rewrite_rules/_group_query_attention.py#L680-L833)
 as prior art, not as a semantic oracle.
 Qwen35Attention's offset Q/K normalization, partial MRoPE, projection packing, and sigmoid output
 gate stay outside the first region. Target `com.microsoft::GroupQueryAttention:1`, `do_rotary=0`,
@@ -710,9 +710,19 @@ policy, then apply the FP16 export policy while preserving FP32 recurrence. Init
 weights according to the model, not arbitrary Gaussian scales. Use prompts `[1,17,23,41,5,8,9]`
 and `[1,7,11,19,31,6,13]` for B=2, no padding; positions are three identical text-only aranges.
 Compare extension-off/on with 7-token prefill, chunks `[2,1,4]`, then 16 greedy feedback tokens,
-all convolution and recurrent states, and both GQA caches. Run chunked GQA positives at B=1.
-For B=2 use separate prefill/decode envelopes, or require GQA to remain unfused in a general
-dynamic/chunked session; do not expect an unsupported batched chunk to execute GQA.
+all convolution and recurrent states, and both attention caches. At M, the decoder forwards the
+runtime `attention_mask` to `create_attention_bias`
+([`qwen35.py:282-286,492-496`](https://github.com/onnxruntime/mobius/blob/b1e9c8e9dec1dfa206183f957e77d07cfb734df2/src/mobius/models/qwen35.py#L492-L496)).
+The helper uses mask contents to construct the additive bias
+([`_common.py:194-263`](https://github.com/onnxruntime/mobius/blob/b1e9c8e9dec1dfa206183f957e77d07cfb734df2/src/mobius/components/_common.py#L194-L263)).
+Under section 6.1's V1 contract, assert that this decoder's Attention remains unfused, including B=1.
+All-one feeds, no-padding prompts, and prefill/decode shape bounds do not prove structural mask
+redundancy. Do not remove or ignore the canonical mask to force a positive result. Decoder GQA
+qualification needs a separately approved mask contract; numerical equality alone is not coverage.
+
+Use the mask-free small graphs in section 9.2 for GQA-positive tests. Run chunked positives at B=1;
+for B=2 use separate prefill/decode envelopes or require GQA to remain unfused in a general dynamic
+session. Verify accepted/rejected regions in the graph trace rather than infer fusion from outputs.
 
 Public prior art for local config construction and random-weight binding is
 [`qwen38_standard_test.py:27-50,333-371`](https://github.com/onnxruntime/mobius/blob/b1e9c8e9dec1dfa206183f957e77d07cfb734df2/src/mobius/models/qwen38_standard_test.py#L333-L371).
