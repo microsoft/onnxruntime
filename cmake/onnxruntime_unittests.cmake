@@ -1723,6 +1723,24 @@ block()
         ENVIRONMENT "GTEST_FILTER=${fp8_decode_filter};ORT_QMOE_FP8_GEMV_NATIVE_DECODE=${native_decode}"
         RUN_SERIAL TRUE)
     endforeach()
+
+    if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
+      set(moe_routing_warp_select_filter "CUDA_EP_Unittest.FusedSoftmaxTopKExpertMaps*")
+      if (onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
+        set(moe_routing_warp_select_outer_filter "${moe_routing_warp_select_filter}")
+      else()
+        set(moe_routing_warp_select_outer_filter "CUDA_EP_Unittest.All")
+      endif()
+      foreach(warp_select 0 1 2)
+        add_test(NAME onnxruntime_moe_routing_warp_select_${warp_select}
+          COMMAND $<TARGET_FILE:${onnxruntime_provider_test_target}>
+            "--gtest_filter=${moe_routing_warp_select_outer_filter}"
+          WORKING_DIRECTORY $<TARGET_FILE_DIR:${onnxruntime_provider_test_target}>)
+        set_tests_properties(onnxruntime_moe_routing_warp_select_${warp_select} PROPERTIES
+          ENVIRONMENT "GTEST_FILTER=${moe_routing_warp_select_filter};ORT_MOE_ROUTING_WARP_SELECT=${warp_select}"
+          RUN_SERIAL TRUE)
+      endforeach()
+    endif()
   endif()
 
   if (onnxruntime_USE_CUDA AND onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND

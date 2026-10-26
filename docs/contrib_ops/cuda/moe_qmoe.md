@@ -861,9 +861,8 @@ prefill and decode kernels with no extra conversion.
 ### Large-expert INT2 execution and single-copy packed weights
 
 Compatible INT2 execution supports up to 512 experts and top-10 routing by
-default. `ORT_QMOE_INT2_LARGE_EXPERTS=0` restores the previous 256-expert
-eligibility. Packed INT2 GEMV accepts up to 20 expanded rows, covering one-token
-decode and two-token verification with top-10 routing. Existing GPU, alignment,
+default. Packed INT2 GEMV accepts up to 80 expanded rows, covering one-token
+decode and multi-token verification with top-10 routing. Existing GPU, alignment,
 block-size, symmetric-weight and fused-SwiGLU checks remain in force. Larger
 calls use supported packed grouped GEMM; raw inputs retain the bounded dense
 fallback for unsupported configurations.

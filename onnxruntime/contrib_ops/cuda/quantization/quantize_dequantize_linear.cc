@@ -81,7 +81,7 @@ class DequantizeLinearFp8Bf16 final : public CudaKernel {
                       zero_point == nullptr ? nullptr : zero_point->Data<Float8E4M3FN>(),
                       output->MutableData<BFloat16>(), static_cast<size_t>(count),
                       static_cast<size_t>(axis_stride), static_cast<size_t>(scale_count));
-    return Status::OK();
+    return CUDA_CALL(cudaGetLastError());
   }
 
  private:

@@ -57,6 +57,13 @@ float ToFloat(T value) {
 
 template <typename T>
 T FromFloat(float value) {
+  if (std::isnan(value) && std::signbit(value)) {
+    if constexpr (std::is_same_v<T, half>) {
+      return __ushort_as_half(0xfe00u);
+    } else if constexpr (std::is_same_v<T, __nv_bfloat16>) {
+      return __ushort_as_bfloat16(0xffc0u);
+    }
+  }
   return static_cast<T>(value);
 }
 
@@ -354,6 +361,15 @@ TEST(CUDA_EP_Unittest, FusedSoftmaxTopKExpertMaps_NormalizedAndGraphReplay) {
     }
     RunFusedRoutingMapsTest<__nv_bfloat16>(rows, 512, 16, true);
     RunFusedRoutingMapsTest<float>(rows, 80, 16, false, true);
+    for (int experts : {65, 512}) {
+      std::vector<float> mixed_neg_nan(static_cast<size_t>(rows) * experts, 0.0f);
+      for (int row = 0; row < rows; ++row) {
+        mixed_neg_nan[row * experts + experts - 1 - row] = -std::numeric_limits<float>::quiet_NaN();
+      }
+      RunFusedRoutingMapsTest<float>(rows, experts, 10, false, false, &mixed_neg_nan);
+      RunFusedRoutingMapsTest<half>(rows, experts, 10, false, false, &mixed_neg_nan);
+      RunFusedRoutingMapsTest<__nv_bfloat16>(rows, experts, 10, false, false, &mixed_neg_nan);
+    }
   }
 }
 
@@ -385,7 +401,7 @@ TEST(CUDA_EP_Unittest, FusedSoftmaxTopKExpertMaps_WarpSelectSpecialized) {
 
 TEST(CUDA_EP_Unittest, FusedSoftmaxTopKExpertMaps_WarpSelectAdversarialKeys) {
   for (int rows : {1, 2}) {
-    for (int pattern = 0; pattern < 4; ++pattern) {
+    for (int pattern = 0; pattern < 6; ++pattern) {
       SCOPED_TRACE(::testing::Message() << "rows=" << rows << " pattern=" << pattern);
       auto values = MakeLogits(rows, 512);
       for (int row = 0; row < rows; ++row) {
@@ -398,8 +414,14 @@ TEST(CUDA_EP_Unittest, FusedSoftmaxTopKExpertMaps_WarpSelectAdversarialKeys) {
           } else if (pattern == 2) {
             value = expert % 3 ? -std::numeric_limits<float>::infinity()
                                : std::numeric_limits<float>::quiet_NaN();
-          } else {
+          } else if (pattern == 3) {
             value = (expert + row) % 7 == 0 ? 1000.0f : -1000.0f;
+          } else if (pattern == 4) {
+            value = expert == 511 - row ? -std::numeric_limits<float>::quiet_NaN() : 0.0f;
+          } else {
+            if (expert == 257 + row) {
+              value = -std::numeric_limits<float>::quiet_NaN();
+            }
           }
         }
       }
