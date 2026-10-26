@@ -220,9 +220,9 @@ TEST(HyperConnectionLowRankMixTest, FusedMultipleKSlicesAndWeightChunks) {
 }
 
 TEST(HyperConnectionLowRankMixTest, FusedDecodeShapeRank320) {
-  // rows == 8 is the default speculative-decode shape (4-row down kernel + 2-row up kernel); 1, 2 and 4 cover the
-  // smaller row-group dispatches.
-  for (int rows : {1, 2, 4, 8}) {
+  // rows == 8 is the default speculative-decode shape (4-row down kernel + 2-row up kernel); 1 uses the single-row
+  // kernels and 2..7 the 2-row kernels (3 and 7 exercise the partial last row group).
+  for (int rows : {1, 2, 3, 4, 7, 8}) {
     for (bool prologue : {false, true}) {
       RunTest<BFloat16>(rows, 4, 2560, 320, prologue, true, kBf16Tol, 37);
       RunTest<MLFloat16>(rows, 4, 2560, 320, prologue, true, kFp16Tol, 53);

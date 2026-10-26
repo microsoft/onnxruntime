@@ -1097,15 +1097,11 @@ Status LaunchHyperConnectionLowRankMixFused(const cudaDeviceProp& device_prop, c
       return LaunchFusedRows<T, 1>(use_pdl, stream, config, tensors, g, partial, inv_rms, down, up);
     }
     // Fused row-group dispatch: rows == 1 -> 1x1, rows 2..7 -> 2x2, rows == 8 -> 4x2 (down x up rows per CTA).
-    // ORT_HC_S8_DECODE_ROWS=2 selects 2x2 for the 8-row decode shape; ORT_HC_DECODE_ROWS=4 forces 4x2 for it.
-    // Values 1 and 2 of ORT_HC_DECODE_ROWS no longer select anything (the dedicated four-row dispatch was removed).
-    static const int decode_rows =
-        onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_HC_DECODE_ROWS", 1);
-    ORT_ENFORCE(decode_rows == 1 || decode_rows == 2 || decode_rows == 4,
-                "ORT_HC_DECODE_ROWS must be 1, 2, or 4");
+    // Experimental: ORT_HC_S8_DECODE_ROWS=2 selects 2x2 instead of 4x2 for the 8-row shape (default 4).
     static const int s8_decode_rows =
         onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_HC_S8_DECODE_ROWS", 4);
-    if (config.rows >= 8 && (s8_decode_rows == 4 || decode_rows == 4)) {
+    ORT_ENFORCE(s8_decode_rows == 2 || s8_decode_rows == 4, "ORT_HC_S8_DECODE_ROWS must be 2 or 4");
+    if (config.rows >= 8 && s8_decode_rows == 4) {
       return LaunchFusedRows<T, 4, 2>(use_pdl, stream, config, tensors, g, partial, inv_rms, down, up);
     }
     return LaunchFusedRows<T, 2, 2>(use_pdl, stream, config, tensors, g, partial, inv_rms, down, up);
