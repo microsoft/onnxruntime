@@ -1,11 +1,10 @@
 #!/bin/bash
 set -e -x
 
-# Retain runtime 8 for package validation projects that still target net8.0.
 if [ -f /etc/redhat-release ]; then
   # If you found the following command went successfully but dotnet command still reports no sdk was found, most likely
   # it was because the dotnet packages were installed from more than one dnf repos.
-  dnf install -y dotnet-sdk-10.0 dotnet-runtime-8.0
+  dnf install -y dotnet-sdk-10.0
 elif [ -f /etc/os-release ]; then
   # Get Ubuntu version
   declare repo_version
@@ -17,7 +16,7 @@ elif [ -f /etc/os-release ]; then
   # Clean up
   rm packages-microsoft-prod.deb
   # Update packages
-  apt-get update && apt-get install -y dotnet-sdk-10.0 dotnet-runtime-8.0
+  apt-get update && apt-get install -y dotnet-sdk-10.0
 else
   echo "Unsupported OS"
   exit 1

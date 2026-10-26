@@ -40,11 +40,7 @@ stages:
 
     - template: ../templates/setup-feeds-and-python-steps.yml
 
-    - task: UseDotNet@2
-      displayName: 'Install .NET 10 SDK'
-      inputs:
-        packageType: sdk
-        version: '10.x'
+    - template: ../templates/setup-dotnet.yml
 
     - template: ../templates/flex-downloadPipelineArtifact.yml
       parameters:

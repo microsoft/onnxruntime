@@ -1,0 +1,14 @@
+parameters:
+- name: architecture
+  type: string
+  default: ''
+
+steps:
+- task: UseDotNet@2
+  displayName: 'Install .NET 10 SDK'
+  inputs:
+    packageType: sdk
+    version: '10.x'
+  ${{ if ne(parameters.architecture, '') }}:
+    env:
+      PROCESSOR_ARCHITECTURE: ${{ parameters.architecture }}
