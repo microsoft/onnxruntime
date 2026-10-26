@@ -68,3 +68,17 @@ When `split_count > 32` (floating-point caches only) the generic
 `MergeDynamicSparseAttentionKernel` is used regardless of `ORT_DSA_SHARED_SCALE_MERGE`. The tests
 `Int8CacheGroupedDecodeAlternateSwitchesInFreshProcess_CUDA` re-run the INT8 grouped-decode and merge
 cases in fresh processes with each non-default combination.
+
+### Benchmark
+
+rc3 model (INT4), H200, clean machine, 5 repetitions, baseline noise about +-0.03 ms, DFlash2 S=8
+decode ms/cycle at context 2K/8K/32K. Both defaults are the faster setting, so the switches remain
+only as fallbacks:
+
+| Setting | Decode vs default |
+|---|---|
+| `ORT_DSA_INT8_VECTOR_STAGING=0` | about +0.3 ms (+2%) slower |
+| `ORT_DSA_SHARED_SCALE_MERGE=0` | about +0.05 to +0.1 ms (+0.3 to 0.5%) slower |
+
+The corresponding indexer switch results are in
+[../packed_sparse_attention_indexer.md](../packed_sparse_attention_indexer.md#benchmark).

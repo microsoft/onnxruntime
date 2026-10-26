@@ -1541,10 +1541,10 @@ TEST(PackedSparseAttentionIndexerTest, QsaHierarchicalScoringReusesKeysAcrossHea
   }
 }
 
-// The CUDA indexer caches ORT_PACKED_SPARSE_INDEXER_{COMPACT_TOPK,RADIX_TOPK,WARP_HEADS} in
-// function-local statics, so every alternate selection mode is exercised by re-running the
-// hierarchical top-k and ragged-prefill cases (nonuniform scores, stable ties, partial merge groups)
-// in a fresh process that has the switches set before the first eligible call.
+// The CUDA indexer caches ORT_PACKED_SPARSE_INDEXER_{COMPACT_TOPK,WARP_HEADS} in function-local
+// statics, so each non-default mode (tile-level two-level merge, non-warp ragged prefill scorer) is
+// exercised by re-running the hierarchical top-k and ragged-prefill cases (nonuniform scores, stable
+// ties, partial merge groups) in a fresh process that has the switch set before the first eligible call.
 TEST(PackedSparseAttentionIndexerTest, QsaAlternateTopKModesInFreshProcess) {
   if (DefaultCudaExecutionProvider() == nullptr) {
     GTEST_SKIP() << "CUDA EP not available.";
@@ -1562,21 +1562,16 @@ TEST(PackedSparseAttentionIndexerTest, QsaAlternateTopKModesInFreshProcess) {
 
   struct Mode {
     const char* compact;
-    const char* radix;
     const char* warp_heads;
   };
   const Mode modes[] = {
-      {"1", "0", "1"},  // explicit defaults
-      {"0", "0", "1"},  // tile-level two-level merge
-      {"0", "1", "1"},  // live-key radix selection
-      {"1", "0", "0"},  // non-warp ragged prefill scorer
+      {"0", "1"},  // tile-level two-level merge
+      {"1", "0"},  // non-warp ragged prefill scorer
   };
   for (const Mode& mode : modes) {
-    SCOPED_TRACE(std::string("COMPACT_TOPK=") + mode.compact + " RADIX_TOPK=" + mode.radix +
-                 " WARP_HEADS=" + mode.warp_heads);
+    SCOPED_TRACE(std::string("COMPACT_TOPK=") + mode.compact + " WARP_HEADS=" + mode.warp_heads);
     ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{
         {"ORT_PACKED_SPARSE_INDEXER_COMPACT_TOPK", mode.compact},
-        {"ORT_PACKED_SPARSE_INDEXER_RADIX_TOPK", mode.radix},
         {"ORT_PACKED_SPARSE_INDEXER_WARP_HEADS", mode.warp_heads},
     }};
     ASSERT_EQ(RunGTestFilterInFreshProcess(filter), 0);

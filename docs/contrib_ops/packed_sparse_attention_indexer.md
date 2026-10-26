@@ -2,7 +2,7 @@
 
 ## CUDA QSA dispatch switches
 
-Three process-level environment variables select alternate CUDA QSA kernels. Each value is read once
+Two process-level environment variables select alternate CUDA QSA kernels. Each value is read once
 per process on the first eligible call and cached, so set them before the first operator invocation.
 None changes schemas, cache layouts, causal visibility, stable tie ordering, selected counts or
 state-update semantics. The companion `DynamicSparseAttention` switches are documented in
@@ -17,15 +17,27 @@ prefill is eligible when `total_tokens > 64`, `head_size == 128`, `compress_rati
 |---|---|---|---|---|
 | `ORT_PACKED_SPARSE_INDEXER_COMPACT_TOPK` | `1` (only `0`/`1` accepted) | hierarchical QSA TopK | `1` | Compacts each 2048-key chunk to 512 keys (`QsaCompactTileTopKKernel`). Up to five chunks use the fused `QsaFinalMergeAndEmitKernel`; more chunks use pairwise `QsaMergeTileTopKKernel` followed by `QsaEmitHierarchicalTopKKernel`. |
 | | | | `0` | Tile-level merge: `QsaMergeTwoLevelsTopKKernel` (4-way) while two levels remain, then `QsaMergeTileTopKKernel`, then `QsaEmitHierarchicalTopKKernel`. |
-| `ORT_PACKED_SPARSE_INDEXER_RADIX_TOPK` | `0` (boolean) | hierarchical QSA TopK | `1` | Live-key radix selection (`QsaPartialTopKKernel<true>`) over the tile-sorted keys, then `QsaEmitHierarchicalTopKKernel`. Requires `ORT_PACKED_SPARSE_INDEXER_COMPACT_TOPK=0`; enabling both fails with an error. |
 | `ORT_PACKED_SPARSE_INDEXER_WARP_HEADS` | `1` (boolean) | ragged QSA prefill | `1` | `QsaRaggedPrefillScoreKernel<..., true>`: one warp per state block keeps all four heads (256 threads per CTA). |
 | | | | `0` | `QsaRaggedPrefillScoreKernel<...>` with one warp per (state block, head) and CTA-wide barriers (1024 threads per CTA). |
 
-Effective hierarchical modes are therefore `COMPACT=1,RADIX=0` (default), `COMPACT=0,RADIX=0` and
-`COMPACT=0,RADIX=1`. The packed-QSA tests re-run the hierarchical, stable-tie, partial-merge-group
+The packed-QSA tests re-run the hierarchical, stable-tie, partial-merge-group
 and ragged-prefill cases in fresh processes for every non-default mode
-(`QsaAlternateTopKModesInFreshProcess`). Qualify accuracy and performance on the target runtime,
-hardware and workload before changing a default.
+(`COMPACT_TOPK=0`, `WARP_HEADS=0`; `QsaAlternateTopKModesInFreshProcess`).
+
+### Benchmark
+
+rc3 model (INT4), H200, clean machine, 5 repetitions, baseline noise about +-0.03 ms. DFlash2 S=8
+decode is ms/cycle at context 2K/8K/32K; TTFT is at 2K/8K/32K prompt. Defaults are fastest, so
+both switches default to the fast path and remain as fallbacks:
+
+| Setting | Result vs default |
+|---|---|
+| `ORT_PACKED_SPARSE_INDEXER_COMPACT_TOPK=0` | decode about +0.2 to +0.27 ms (+1.5%) slower |
+| `ORT_PACKED_SPARSE_INDEXER_WARP_HEADS=0` | TTFT +3.7% at 8K, +14% at 32K |
+
+A live-key radix selection alternative was benchmarked (default 14.93/15.07/15.30 ms versus
+15.08/15.22/15.64 ms with it, i.e. +0.15 to +0.34 ms slower) and removed. Qualify accuracy and
+performance on the target runtime, hardware and workload before changing a default.
 
 This document describes the `com.microsoft::PackedSparseAttentionIndexer` contrib operator: the
 packed/variable-length counterpart of `com.microsoft::SparseAttentionIndexer`, built for
@@ -322,8 +334,8 @@ mechanics with no packed equivalent):
   the shared-memory TopK path for up to 32 selected blocks, bounded partial TopK for 33–512 blocks,
   and a hierarchical TopK path for common long-context Qwen shapes. Values above 512 that do not
   match the hierarchical specialization retain the correctness-first repeated-scan fallback.
-- The CUDA dispatch switches `ORT_PACKED_SPARSE_INDEXER_COMPACT_TOPK`,
-  `ORT_PACKED_SPARSE_INDEXER_RADIX_TOPK` and `ORT_PACKED_SPARSE_INDEXER_WARP_HEADS` are described in
+- The CUDA dispatch switches `ORT_PACKED_SPARSE_INDEXER_COMPACT_TOPK`
+  and `ORT_PACKED_SPARSE_INDEXER_WARP_HEADS` are described in
   the "CUDA QSA dispatch switches" section at the top of this document.
 - OgaEngine / Model Builder integration (declaring `past_key_state` etc. as Engine-managed,
   per-request fixed-size state, analogous to a paged auxiliary cache) is out of scope for this
