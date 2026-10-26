@@ -604,6 +604,70 @@ __global__ void __launch_bounds__(kThreads, 5)
 // ----------------------------------------------------------------------------- unfused path kernels
 
 template <typename T, bool kPost>
+__global__ void NormVec8Kernel(const T* __restrict__ streams, const T* __restrict__ prev_out,
+                               const T* __restrict__ prev_gate, const T* __restrict__ norm_w, T* __restrict__ hn,
+                               T* __restrict__ streams_out, int branches, int hidden, float epsilon) {
+  __shared__ float sq_red[8];
+  const int tid = threadIdx.x;
+  const int64_t group = blockIdx.x;
+  const int64_t row = group / branches;
+  const int c = static_cast<int>(group - row * branches);
+  const int64_t base = group * hidden;
+  const int nvec = hidden >> 3;
+  float gate_c = 0.0f;
+  if constexpr (kPost) gate_c = to_float<T>(__ldg(prev_gate + group));
+
+  const uint4* sp = reinterpret_cast<const uint4*>(streams + base);
+  const uint4* bp = kPost ? reinterpret_cast<const uint4*>(prev_out + row * hidden) : nullptr;
+  uint4* sout_p = (kPost && streams_out != nullptr) ? reinterpret_cast<uint4*>(streams_out + base) : nullptr;
+
+  float v_reg[kMaxVecIters][8];
+  float sum_sq = 0.0f;
+#pragma unroll
+  for (int i = 0; i < kMaxVecIters; ++i) {
+    const int qi = tid + kThreads * i;
+    if (qi < nvec) {
+      Unpack8<T>(__ldg(sp + qi), v_reg[i]);
+      if constexpr (kPost) {
+        float b[8];
+        Unpack8<T>(__ldg(bp + qi), b);
+#pragma unroll
+        for (int m = 0; m < 8; ++m) v_reg[i][m] = Rnd<T>(fmaf(gate_c, b[m], v_reg[i][m]));
+        if (sout_p != nullptr) {
+          sout_p[qi] = Pack8<T>(v_reg[i]);
+        }
+      }
+#pragma unroll
+      for (int m = 0; m < 8; ++m) sum_sq += v_reg[i][m] * v_reg[i][m];
+    }
+  }
+#pragma unroll
+  for (int off = 16; off > 0; off >>= 1) sum_sq += __shfl_xor_sync(0xffffffffu, sum_sq, off);
+  if ((tid & 31) == 0) sq_red[tid >> 5] = sum_sq;
+  __syncthreads();
+
+  float total = 0.0f;
+#pragma unroll
+  for (int w = 0; w < 8; ++w) total += sq_red[w];
+  const float inv_rms = rsqrtf(total / static_cast<float>(hidden) + epsilon);
+
+  const uint4* nwp = reinterpret_cast<const uint4*>(norm_w + static_cast<int64_t>(c) * hidden);
+  uint4* hnp = reinterpret_cast<uint4*>(hn + base);
+#pragma unroll
+  for (int i = 0; i < kMaxVecIters; ++i) {
+    const int qi = tid + kThreads * i;
+    if (qi < nvec) {
+      float nw[8];
+      Unpack8<T>(__ldg(nwp + qi), nw);
+      float out[8];
+#pragma unroll
+      for (int m = 0; m < 8; ++m) out[m] = v_reg[i][m] * inv_rms * nw[m];
+      hnp[qi] = Pack8<T>(out);
+    }
+  }
+}
+
+template <typename T, bool kPost>
 __global__ void NormKernel(const T* __restrict__ streams, const T* __restrict__ prev_out,
                            const T* __restrict__ prev_gate, const T* __restrict__ norm_w, T* __restrict__ hn,
                            T* __restrict__ streams_out, int branches, int hidden, float epsilon) {
@@ -1065,14 +1129,46 @@ Status LaunchHyperConnectionLowRankMixUnfused(cublasHandle_t cublas, cudaStream_
   const int64_t groups = rows * config.branches;
   ORT_RETURN_IF_NOT(groups <= std::numeric_limits<int>::max(), "CUDA launch requires too many blocks");
 
+  const bool use_vec8_norm =
+      sizeof(T) == 2 && config.hidden % 8 == 0 && config.hidden <= kMaxFusedHidden &&
+      (reinterpret_cast<uintptr_t>(tensors.streams) & 15u) == 0 &&
+      (reinterpret_cast<uintptr_t>(tensors.norm_scale) & 15u) == 0 &&
+      (reinterpret_cast<uintptr_t>(hn) & 15u) == 0 &&
+      (tensors.prev_block_output == nullptr ||
+       ((reinterpret_cast<uintptr_t>(tensors.prev_block_output) & 15u) == 0 &&
+        (tensors.streams_out == nullptr || (reinterpret_cast<uintptr_t>(tensors.streams_out) & 15u) == 0)));
   if (tensors.prev_block_output != nullptr) {
-    NormKernel<T, true><<<static_cast<int>(groups), kThreads, 0, stream>>>(
-        tensors.streams, tensors.prev_block_output, tensors.prev_post_gate, tensors.norm_scale, hn,
-        tensors.streams_out, config.branches, config.hidden, config.epsilon);
+    if constexpr (sizeof(T) == 2) {
+      if (use_vec8_norm) {
+        NormVec8Kernel<T, true><<<static_cast<int>(groups), kThreads, 0, stream>>>(
+            tensors.streams, tensors.prev_block_output, tensors.prev_post_gate, tensors.norm_scale, hn,
+            tensors.streams_out, config.branches, config.hidden, config.epsilon);
+      } else {
+        NormKernel<T, true><<<static_cast<int>(groups), kThreads, 0, stream>>>(
+            tensors.streams, tensors.prev_block_output, tensors.prev_post_gate, tensors.norm_scale, hn,
+            tensors.streams_out, config.branches, config.hidden, config.epsilon);
+      }
+    } else {
+      NormKernel<T, true><<<static_cast<int>(groups), kThreads, 0, stream>>>(
+          tensors.streams, tensors.prev_block_output, tensors.prev_post_gate, tensors.norm_scale, hn,
+          tensors.streams_out, config.branches, config.hidden, config.epsilon);
+    }
   } else {
-    NormKernel<T, false><<<static_cast<int>(groups), kThreads, 0, stream>>>(
-        tensors.streams, nullptr, nullptr, tensors.norm_scale, hn, nullptr, config.branches, config.hidden,
-        config.epsilon);
+    if constexpr (sizeof(T) == 2) {
+      if (use_vec8_norm) {
+        NormVec8Kernel<T, false><<<static_cast<int>(groups), kThreads, 0, stream>>>(
+            tensors.streams, nullptr, nullptr, tensors.norm_scale, hn, nullptr, config.branches, config.hidden,
+            config.epsilon);
+      } else {
+        NormKernel<T, false><<<static_cast<int>(groups), kThreads, 0, stream>>>(
+            tensors.streams, nullptr, nullptr, tensors.norm_scale, hn, nullptr, config.branches, config.hidden,
+            config.epsilon);
+      }
+    } else {
+      NormKernel<T, false><<<static_cast<int>(groups), kThreads, 0, stream>>>(
+          tensors.streams, nullptr, nullptr, tensors.norm_scale, hn, nullptr, config.branches, config.hidden,
+          config.epsilon);
+    }
   }
   ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
 
