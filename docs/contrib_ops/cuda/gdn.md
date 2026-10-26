@@ -74,7 +74,7 @@ Source:
 |---|---|---|---|
 | `update_rule` | string | `gated_delta` | One of `linear`, `gated`, `delta`, `gated_delta`. Selects which of the decay and delta-retrieval terms are present. |
 | `scale` | float | `0.0` | Output scale. `0.0` means `1/sqrt(head_size_qk)`. |
-| `gate_activation` | string | `none` | `none` treats `decay` as the effective log-space decay. `qwen` computes `-exp(a_log) * Softplus(decay + dt_bias)` in float32. |
+| `gate_activation` | string | `none` | `none` treats `decay` as the effective log-space decay. `softplus` computes `-exp(a_log) * Softplus(decay + dt_bias)` in float32. |
 | `beta_activation` | string | `none` | `none` treats `beta` as the effective update rate; `sigmoid` applies a sigmoid. |
 | `qk_l2_norm` | int | `0` | When `1`, L2-normalizes each query and key head vector in-kernel. |
 | `chunk_size` | int | `64` | Chunk length for the chunked engine. `32` pins the reduced shared-memory configuration (see §6). |
@@ -525,7 +525,7 @@ support three intermediate precision modes controlled by session option
 
 Measured on NVIDIA H200 (`sm_90a`, CUDA 13.0) at the Qwen3.8-Flash-Next geometry
 (`batch = 1`, `num_heads_q = num_heads_k = 16`, `num_heads_v = 32`, `head_size_qk = head_size_v = 128`,
-`update_rule = "gated_delta"`, `gate_activation = "qwen"`, `beta_activation = "sigmoid"`,
+`update_rule = "gated_delta"`, `gate_activation = "softplus"`, `beta_activation = "sigmoid"`,
 `qk_l2_norm = 1`, 36 GDN layers) against the sequential `float32` `recurrent` engine reference:
 
 | Sequence Length | Mode | 1-Op Latency (us) | 36-Layer Time (ms) | Output RMSE vs. `recurrent` | State RMSE vs. `recurrent` | Exact BF16 Output Match |

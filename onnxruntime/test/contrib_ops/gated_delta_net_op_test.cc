@@ -302,7 +302,7 @@ void Reference(const Geometry& g, const Options& o, const Inputs& in, std::vecto
         double decay = 1.0;
         if (gated) {
           float raw = in.decay[gi];
-          if (o.gate_activation == "qwen" || o.gate_activation == "softplus") {
+          if (o.gate_activation == "softplus") {
             raw = -std::exp(in.a_log[hv]) * SoftPlus(raw + in.dt_bias[hv]);
           }
           decay = std::exp(static_cast<double>(raw));
@@ -518,7 +518,7 @@ void RunTypedCase(const Geometry& g, const Options& o, const Inputs& in_raw, flo
   } else {
     test.AddInput<float>("initial_state", {g.batch, g.hv, g.dv, g.dk}, in.state0);
   }
-  if (o.gate_activation == "qwen" || o.gate_activation == "softplus") {
+  if (o.gate_activation == "softplus") {
     test.AddInput<float>("a_log", {g.hv}, in.a_log);
     test.AddInput<float>("dt_bias", {g.hv}, in.dt_bias);
   } else {
@@ -632,7 +632,7 @@ void TestInputTypeGates() {
     for (const std::string rule : {"gated_delta", "gated", "delta"}) {
       Options options;
       options.update_rule = rule;
-      options.gate_activation = rule == "delta" ? "none" : "qwen";
+      options.gate_activation = rule == "delta" ? "none" : "softplus";
       options.beta_activation = "sigmoid";
       std::vector<OrtValue> reference, narrowed;
       RunTypedCase<T>(geometry, options, inputs, 6e-3f, 2e-3f, true, &reference);
@@ -730,7 +730,7 @@ TEST(GatedDeltaNetWebGpuTest, Rank4AllRulesAndInverseGqa) {
     SCOPED_TRACE(rule);
     Options options;
     options.update_rule = rule;
-    options.gate_activation = "qwen";
+    options.gate_activation = "softplus";
     options.beta_activation = "sigmoid";
     options.qk_l2_norm = 1;
     RunCase(g, options, MakeInputs(g, 201), 3e-3f, 3e-4f, /*rank4=*/true,
@@ -756,7 +756,7 @@ TEST(GatedDeltaNetWebGpuTest, RecurrentVectorizedValueIoAndSharedGate) {
   inputs.cu_seqlens = {0, 3, 7};
   Options options;
   options.update_rule = "gated";
-  options.gate_activation = "qwen";
+  options.gate_activation = "softplus";
   RunTypedCase<MLFloat16>(g, options, inputs, 3e-3f, 3e-4f,
                           /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true,
                           /*omit_final_state=*/true);
@@ -812,7 +812,7 @@ TEST(GatedDeltaNetWebGpuTest, PackedQkvAndParamsWithSegmentedBacking) {
   inputs.cu_seqlens = {0, 4, 9};
   Options options;
   options.update_rule = "gated_delta";
-  options.gate_activation = "qwen";
+  options.gate_activation = "softplus";
 
   const auto binding_count = [](uint64_t bytes) {
     return (bytes + max_binding_size - 1) / max_binding_size;
@@ -919,7 +919,7 @@ TEST(GatedDeltaNetWebGpuTest, RaggedWithoutInitialState) {
   Inputs inputs = MakeInputs(g, 223, /*with_state=*/false);
   inputs.cu_seqlens = {0, 1, 5, 7};
   Options options;
-  options.gate_activation = "qwen";
+  options.gate_activation = "softplus";
   options.beta_activation = "sigmoid";
   options.qk_l2_norm = 1;
   options.scale = 0.37f;
@@ -935,7 +935,7 @@ TEST(GatedDeltaNetWebGpuTest, RaggedQwenWithInitialStateAndNonDivisibleDv) {
   Inputs inputs = MakeInputs(g, 225);
   inputs.cu_seqlens = {0, 1, 5, 7};
   Options options;
-  options.gate_activation = "qwen";
+  options.gate_activation = "softplus";
   options.beta_activation = "sigmoid";
   options.qk_l2_norm = 1;
   RunTypedCase<float>(g, options, inputs, 3e-4f, 3e-4f,
@@ -948,7 +948,7 @@ TEST(GatedDeltaNetWebGpuTest, ChunkwiseQwenPrefillPartialChunk) {
   }
   Options options;
   options.chunk_size = 16;
-  options.gate_activation = "qwen";
+  options.gate_activation = "softplus";
   options.beta_activation = "sigmoid";
   options.qk_l2_norm = 1;
   for (const Geometry geometry : {Geometry{65, 1, 2, 4, 128, 128}, Geometry{65, 1, 16, 48, 128, 128}}) {
@@ -967,7 +967,7 @@ TEST(GatedDeltaNetWebGpuTest, ChunkwiseQwenPrefillSaturatedGates) {
   Geometry geometry{32, 1, 1, 2, 16, 7};
   Options options;
   options.chunk_size = 16;
-  options.gate_activation = "qwen";
+  options.gate_activation = "softplus";
   options.beta_activation = "sigmoid";
   options.qk_l2_norm = 1;
   for (bool isolated_resets : {false, true}) {
@@ -996,7 +996,7 @@ TEST(GatedDeltaNetWebGpuTest, ChunkwiseQwenPrefillRaggedAndEmptySequence) {
   Geometry geometry{130, 3, 1, 3, 16, 7};
   Options options;
   options.chunk_size = 16;
-  options.gate_activation = "qwen";
+  options.gate_activation = "softplus";
   options.beta_activation = "sigmoid";
   options.qk_l2_norm = 1;
   options.scale = 0.37f;
@@ -1023,7 +1023,7 @@ TEST(GatedDeltaNetWebGpuTest, ChunkwiseQwenPrefillLargeRaggedBatch) {
   Geometry geometry{2080, 64, 1, 1, 128, 128};
   Options options;
   options.chunk_size = 16;
-  options.gate_activation = "qwen";
+  options.gate_activation = "softplus";
   options.beta_activation = "sigmoid";
   options.qk_l2_norm = 1;
   Inputs inputs = MakeInputs(geometry, 234);
@@ -1040,7 +1040,7 @@ TEST(GatedDeltaNetWebGpuTest, ChunkwiseQwenPrefillPackedAndUniform) {
   Geometry geometry{130, 2, 2, 4, 32, 32};
   Options options;
   options.chunk_size = 16;
-  options.gate_activation = "qwen";
+  options.gate_activation = "softplus";
   options.beta_activation = "sigmoid";
   options.qk_l2_norm = 1;
   const Inputs inputs = MakeInputs(geometry, 233);
@@ -1062,7 +1062,7 @@ TEST(GatedDeltaNetWebGpuTest, CompactStateUpdates) {
   inputs.cu_seqlens = {0, 1, 5, 12};
   inputs.capture_count = {-1, 2, 8};
   Options options;
-  options.gate_activation = "qwen";
+  options.gate_activation = "softplus";
   options.beta_activation = "sigmoid";
   options.qk_l2_norm = 1;
   options.state_update_capacity = 7;
@@ -1079,7 +1079,7 @@ TEST(GatedDeltaNetWebGpuTest, CompactStateUpdatesFp16QwenGeometry) {
   inputs.cu_seqlens = {0, 1, 5, 12};
   inputs.capture_count = {-1, 2, 8};
   Options options;
-  options.gate_activation = "qwen";
+  options.gate_activation = "softplus";
   options.beta_activation = "sigmoid";
   options.qk_l2_norm = 1;
   options.state_update_capacity = 7;
@@ -1100,7 +1100,7 @@ TEST(GatedDeltaNetWebGpuTest, CapturedStateReplayMatchesIndependentPrefixes) {
   }
   inputs.capture_count = {geometry.total_tokens};
   Options options;
-  options.gate_activation = "qwen";
+  options.gate_activation = "softplus";
   options.beta_activation = "sigmoid";
   options.qk_l2_norm = 1;
   // Capture capacity intentionally exceeds both the full run length and every partial prefix.
@@ -1288,7 +1288,7 @@ TEST(GatedDeltaNetTest, Chunked_FusedActivations) {
   if (NeedSkipGatedDeltaNetTest()) return;
   Geometry g{128, 1, 1, 2, kDim, kDim};
   Options o;
-  o.gate_activation = "qwen";
+  o.gate_activation = "softplus";
   o.beta_activation = "sigmoid";
   o.qk_l2_norm = 1;
   RunCase(g, o, MakeInputs(g, 7), 3e-2f, 3e-2f);
@@ -1394,7 +1394,7 @@ TEST(GatedDeltaNetTest, ChunkedSplit_FusedActivationsMatchReference) {
 
   Geometry g{128, 1, 2, 6, kDim, kDim};
   Options options;
-  options.gate_activation = "qwen";
+  options.gate_activation = "softplus";
   options.beta_activation = "sigmoid";
   options.qk_l2_norm = 1;
   RunCase(g, options, MakeInputs(g, 137), 3e-2f, 3e-2f);
@@ -1428,7 +1428,7 @@ void TestDirectPackedQkvParity() {
       for (bool input_type_gates : {false, true}) {
         Options options;
         options.qk_l2_norm = 1;
-        options.gate_activation = "qwen";
+        options.gate_activation = "softplus";
         options.beta_activation = "sigmoid";
         options.gates_in_input_type = input_type_gates;
         std::vector<OrtValue> reference, packed;
@@ -1464,7 +1464,7 @@ void TestQwenS2PackedParity() {
     Geometry geometry{tokens, 1, 16, 48, 128, 128};
     Options options;
     options.qk_l2_norm = 1;
-    options.gate_activation = "qwen";
+    options.gate_activation = "softplus";
     options.beta_activation = "sigmoid";
     options.gates_in_input_type = true;
     Inputs inputs = MakeInputs(geometry, 151 + tokens);
@@ -2002,7 +2002,7 @@ TEST(GatedDeltaNetTest, Ragged_CompactReplayMatchesSequentialPrefixes) {
   constexpr int kPartial = 4;
   Geometry g{kPrefillTokens + 5 + kCapacity, 4, 1, 2, kDim, kDim};
   Options options;
-  options.gate_activation = "qwen";
+  options.gate_activation = "softplus";
   options.beta_activation = "sigmoid";
   options.qk_l2_norm = 1;
   options.state_update_capacity = kCapacity;
@@ -2456,7 +2456,7 @@ TEST(GatedDeltaNetTest, RejectsPerKeyDtBias) {
   Inputs in = MakeInputs(g, 53);
   OpTester test("GatedDeltaNet", 1, onnxruntime::kMSDomain);
   Options o;
-  o.gate_activation = "qwen";
+  o.gate_activation = "softplus";
   AddCommonAttrs(test, o);
   test.AddInput<MLFloat16>("query", {g.total_tokens, g.hq, g.dk}, ToFloat16(in.q));
   test.AddInput<MLFloat16>("key", {g.total_tokens, g.hq, g.dk}, ToFloat16(in.k));
@@ -2602,7 +2602,7 @@ TEST(GatedDeltaNetTest, UniformCompactCaptureLongerThanCapacity) {
   if (NeedSkipGatedDeltaNetTest()) return;
   constexpr int kCapacity = 4;
   Options options;
-  options.gate_activation = "qwen";
+  options.gate_activation = "softplus";
   options.beta_activation = "sigmoid";
   options.qk_l2_norm = 1;
   options.state_update_capacity = kCapacity;

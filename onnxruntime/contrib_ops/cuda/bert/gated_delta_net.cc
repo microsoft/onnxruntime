@@ -62,7 +62,7 @@ GatedDeltaNet<T>::GatedDeltaNet(const OpKernelInfo& info) : CudaKernel(info) {
   const std::string gate = info.GetAttrOrDefault<std::string>("gate_activation", "none");
   if (gate == "none") {
     gate_activation_ = gdn::GateActivation::kNone;
-  } else if (gate == "softplus" || gate == "qwen") {
+  } else if (gate == "softplus") {
     gate_activation_ = gdn::GateActivation::kSoftplusDecay;
   } else {
     ORT_THROW("gate_activation must be one of: none, softplus");
