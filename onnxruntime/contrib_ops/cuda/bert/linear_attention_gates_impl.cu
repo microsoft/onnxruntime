@@ -67,6 +67,73 @@ __global__ void LinearAttentionGateKernel(
   }
 }
 
+template <typename T>
+__device__ __forceinline__ void Unpack4Half(uint2 u, float (&v)[4]) {
+  uint16_t b0 = static_cast<uint16_t>(u.x & 0xffffu);
+  uint16_t b1 = static_cast<uint16_t>(u.x >> 16);
+  uint16_t b2 = static_cast<uint16_t>(u.y & 0xffffu);
+  uint16_t b3 = static_cast<uint16_t>(u.y >> 16);
+  v[0] = to_float<T>(*reinterpret_cast<const T*>(&b0));
+  v[1] = to_float<T>(*reinterpret_cast<const T*>(&b1));
+  v[2] = to_float<T>(*reinterpret_cast<const T*>(&b2));
+  v[3] = to_float<T>(*reinterpret_cast<const T*>(&b3));
+}
+
+template <typename T>
+__device__ __forceinline__ uint2 Pack4Half(const float (&v)[4]) {
+  T t0 = from_float<T>(v[0]);
+  T t1 = from_float<T>(v[1]);
+  T t2 = from_float<T>(v[2]);
+  T t3 = from_float<T>(v[3]);
+  uint2 u;
+  u.x = static_cast<uint32_t>(*reinterpret_cast<const uint16_t*>(&t0)) |
+        (static_cast<uint32_t>(*reinterpret_cast<const uint16_t*>(&t1)) << 16);
+  u.y = static_cast<uint32_t>(*reinterpret_cast<const uint16_t*>(&t2)) |
+        (static_cast<uint32_t>(*reinterpret_cast<const uint16_t*>(&t3)) << 16);
+  return u;
+}
+
+template <typename T, int kWarpsPerBlock, bool kUseSilu>
+__global__ void GatedRMSNormWarp128Kernel(
+    T* __restrict__ output,
+    const T* __restrict__ input,
+    const T* __restrict__ scale,
+    const T* __restrict__ gate,
+    int64_t num_rows,
+    float epsilon) {
+  const int warp_id = threadIdx.x >> 5;
+  const int lane = threadIdx.x & 31;
+  const int64_t row = static_cast<int64_t>(blockIdx.x) * kWarpsPerBlock + warp_id;
+  if (row >= num_rows) return;
+
+  const int64_t vec_offset = row * 32 + lane;
+  const uint2 xv2 = __ldg(reinterpret_cast<const uint2*>(input) + vec_offset);
+  const uint2 gv2 = __ldg(reinterpret_cast<const uint2*>(gate) + vec_offset);
+  const uint2 sv2 = __ldg(reinterpret_cast<const uint2*>(scale) + lane);
+
+  float xv[4], gv[4], sv[4];
+  Unpack4Half<T>(xv2, xv);
+  Unpack4Half<T>(gv2, gv);
+  Unpack4Half<T>(sv2, sv);
+
+  float sum_sq = (xv[0] * xv[0] + xv[1] * xv[1]) + (xv[2] * xv[2] + xv[3] * xv[3]);
+#pragma unroll
+  for (int off = 16; off > 0; off >>= 1) {
+    sum_sq += __shfl_xor_sync(0xffffffffu, sum_sq, off);
+  }
+  const float inv_rms = rsqrtf(sum_sq * (1.0f / 128.0f) + epsilon);
+
+  float yv[4];
+#pragma unroll
+  for (int m = 0; m < 4; ++m) {
+    const float z = gv[m];
+    const float normalized = xv[m] * inv_rms * sv[m];
+    const float activated_gate = kUseSilu ? (z * SigmoidFloat(z)) : SigmoidFloat(z);
+    yv[m] = normalized * activated_gate;
+  }
+  reinterpret_cast<uint2*>(output)[vec_offset] = Pack4Half<T>(yv);
+}
+
 // One block per normalization group. The input is read twice (once for the sum of squares, once
 // for the output); the group is a few hundred bytes so the second read is an L1 hit.
 template <typename T, int kThreadsPerBlock, bool kUseSilu>
@@ -153,6 +220,22 @@ Status LaunchGatedRMSNormKernel(
   ORT_RETURN_IF_NOT(num_rows <= std::numeric_limits<int>::max(),
                     "GatedRMSNorm launch requires too many blocks");
   ORT_RETURN_IF_NOT(max_threads_per_block >= 64, "GatedRMSNorm requires maxThreadsPerBlock >= 64");
+  if constexpr (sizeof(T) == 2) {
+    if (norm_size == 128 && max_threads_per_block >= 128 &&
+        ((reinterpret_cast<uintptr_t>(output) | reinterpret_cast<uintptr_t>(input) |
+          reinterpret_cast<uintptr_t>(scale) | reinterpret_cast<uintptr_t>(gate)) & 7u) == 0) {
+      constexpr int kWarps = 4;
+      const int warp_blocks = static_cast<int>((num_rows + kWarps - 1) / kWarps);
+      if (activation == GatedRMSNormActivation::kSilu) {
+        GatedRMSNormWarp128Kernel<T, kWarps, true><<<warp_blocks, kWarps * 32, 0, stream>>>(
+            output, input, scale, gate, num_rows, epsilon);
+      } else {
+        GatedRMSNormWarp128Kernel<T, kWarps, false><<<warp_blocks, kWarps * 32, 0, stream>>>(
+            output, input, scale, gate, num_rows, epsilon);
+      }
+      return CUDA_CALL(cudaGetLastError());
+    }
+  }
   const int blocks = static_cast<int>(num_rows);
 #define LAUNCH_GATED_RMS_NORM(threads, use_silu_mode)                            \
   GatedRMSNormKernel<T, threads, use_silu_mode><<<blocks, threads, 0, stream>>>( \
