@@ -2641,7 +2641,7 @@ __device__ __forceinline__ void Unpack8CenteredCodes128(
 }
 
 template <typename T, int Bits, int BlockSize>
-__global__ void __launch_bounds__(128, 6) FusedFc1FastVecKernel(Int3MoeParams params) {
+__global__ void __launch_bounds__(128, 7) FusedFc1FastVecKernel(Int3MoeParams params) {
   extern __shared__ uint4 s_raw[];
   T* s_in0 = reinterpret_cast<T*>(s_raw);
   int route0 = static_cast<int>(blockIdx.y);
