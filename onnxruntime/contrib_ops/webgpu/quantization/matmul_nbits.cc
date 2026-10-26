@@ -6,6 +6,7 @@
 
 #include "contrib_ops/webgpu/quantization/matmul_nbits.h"
 #include "contrib_ops/webgpu/quantization/matmul_nbits_common.h"
+#include "contrib_ops/webgpu/quantization/matmul_nbits_small_m_simt.h"
 #include "contrib_ops/webgpu/quantization/subgroup_matrix_matmul_nbits.h"
 #include "contrib_ops/webgpu/quantization/dp4a_matmul_nbits.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
@@ -329,6 +330,10 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
   // values per byte — so that the linear stride correctly skips byte-boundary padding.
   const uint32_t zp_elements_per_byte = 8 / static_cast<uint32_t>(nbits);
   uint32_t zero_blocks_per_col = (n_blocks_per_col + zp_elements_per_byte - 1) / zp_elements_per_byte * zp_elements_per_byte;
+
+  if (CanApplySmallMSimtMatMulNBits(a, N, K, block_size, nbits, has_weight_idx_indirect, override_M, context)) {
+    return ApplySmallMSimtMatMulNBits(a, b, scales, zero_points, bias, N, K, weight_index, context, y);
+  }
 
   // apple|intel - Experimental dawn support for subgroup matrix matmul.
   std::optional<SubgroupMatrixConfig> subgroup_matrix_config;
