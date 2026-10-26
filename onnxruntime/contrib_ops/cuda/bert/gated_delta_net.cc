@@ -336,9 +336,7 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
   desc.state_update_capacity = state_update_capacity_;
   desc.state_update_active =
       state_update_capacity_ > 0 &&
-      (state_update_active == nullptr || state_update_active->Data<int32_t>()[0] != 0) &&
-      (cu_seqlens != nullptr ||
-       total_tokens <= static_cast<int64_t>(state_update_capacity_ + 1) * batch);
+      (state_update_active == nullptr || state_update_active->Data<int32_t>()[0] != 0);
   desc.update_rule = update_rule_;
   desc.gate_activation = gate_activation_;
   desc.beta_activation = beta_activation_;

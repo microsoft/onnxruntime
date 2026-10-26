@@ -45,7 +45,7 @@ CausalConvWithState<T>::CausalConvWithState(const OpKernelInfo& info) : OpKernel
                   info.GetAttrOrDefault<int64_t>("input_channel_offset", 0) == 0 &&
                   info.GetAttrOrDefault<int64_t>("state_length", 0) == 0 &&
                   info.GetAttrOrDefault<int64_t>("state_channels_last", -1) == -1 &&
-                  info.node().OutputDefs().size() <= 2,
+                  (info.node().OutputDefs().size() <= 2 || !info.node().OutputDefs()[2]->Exists()),
               "CPU CausalConvWithState does not support extended channel/state options (CUDA only)");
   int64_t ndim = info.GetAttrOrDefault<int64_t>("ndim", 1);
   ORT_ENFORCE(ndim == 1, "CPU CausalConvWithState only supports ndim=1");

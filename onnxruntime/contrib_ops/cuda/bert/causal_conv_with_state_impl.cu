@@ -41,10 +41,10 @@ __global__ void CausalConvProjectionTiledK4Kernel(
   const int pos_base = static_cast<int>(blockIdx.z) * kPosTile;
 
   const float b_val = bias == nullptr ? 0.0f : to_float(bias[c]);
-  const float w0 = to_float(weight[c * 4 + 0]);
-  const float w1 = to_float(weight[c * 4 + 1]);
-  const float w2 = to_float(weight[c * 4 + 2]);
-  const float w3 = to_float(weight[c * 4 + 3]);
+  const float w0 = to_float(weight[static_cast<int64_t>(c) * 4 + 0]);
+  const float w1 = to_float(weight[static_cast<int64_t>(c) * 4 + 1]);
+  const float w2 = to_float(weight[static_cast<int64_t>(c) * 4 + 2]);
+  const float w3 = to_float(weight[static_cast<int64_t>(c) * 4 + 3]);
 
   auto load_src = [&](int src) -> float {
     if (src >= 0) {
@@ -113,7 +113,7 @@ __global__ void CausalConvProjectionKernel(
                                      ? to_float(cur_in)
                                      : to_float(input[(static_cast<int64_t>(b) * length + source) * input_width + channel_offset + c]))
                               : (past == nullptr ? 0.0f : to_float(past[state_layout.Offset(b, state_length + source, c)]));
-      sum += value * to_float(weight[c * kernel_size + tap]);
+      sum += value * to_float(weight[static_cast<int64_t>(c) * kernel_size + tap]);
     }
     if (apply_silu) sum = sum / (1.0f + expf(-sum));
     output[(static_cast<int64_t>(b) * length + position) * channels + c] = from_float<T>(sum);

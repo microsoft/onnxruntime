@@ -462,6 +462,19 @@ TEST(CausalConvWithStateTest, PackedChannelsRejectsUnsupportedCpu) {
            {}, nullptr, &providers);
 }
 
+TEST(CausalConvWithStateTest, EmptyTrailingStateUpdateOutputIsOmitted) {
+  OpTester test("CausalConvWithState", 1, kMSDomain);
+  test.AddAttribute<std::string>("activation", "none");
+  test.AddInput<float>("input", {1, 1, 2}, {1.0f, 2.0f});
+  test.AddInput<float>("weight", {1, 1, 2}, {1.0f, 1.0f});
+  test.AddOptionalInputEdge<float>();
+  test.AddOptionalInputEdge<float>();
+  test.AddOutput<float>("output", {1, 1, 2}, {1.0f, 3.0f});
+  test.AddOutput<float>("present", {1, 1, 1}, {2.0f});
+  test.AddOptionalOutputEdge<float>();
+  test.Run();
+}
+
 TEST(CausalConvWithStateTest, BasicNoStateNoBias) {
   // B=1, D=2, L=4, K=3, activation=none
   int batch_size = 1, channels = 2, input_length = 4, kernel_size = 3;

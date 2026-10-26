@@ -2597,6 +2597,50 @@ TEST(GatedDeltaNetTest, RequiresCaptureCountExactlyWhenCapacityIsPositive) {
   }
 }
 
+// A uniform call longer than state_update_capacity + 1 must still capture the requested prefix.
+TEST(GatedDeltaNetTest, UniformCompactCaptureLongerThanCapacity) {
+  if (NeedSkipGatedDeltaNetTest()) return;
+  constexpr int kCapacity = 4;
+  Options options;
+  options.gate_activation = "qwen";
+  options.beta_activation = "sigmoid";
+  options.qk_l2_norm = 1;
+  options.state_update_capacity = kCapacity;
+
+  for (int tokens : {8, 64}) {
+    SCOPED_TRACE(tokens);
+    Geometry g{tokens, 1, 1, 2, kDim, kDim};
+    Inputs in = MakeInputs(g, 83 + tokens);
+    in.capture_count = {kCapacity};
+
+    std::vector<OrtValue> fetches;
+    RunCase(g, options, in, 3e-2f, 3e-2f, false, &fetches);
+    ASSERT_EQ(fetches.size(), 3u);
+
+    std::vector<OrtValue> recurrent_fetches;
+    {
+      ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_GDN_PLAN", "recurrent"}}};
+      RunCase(g, options, in, 3e-2f, 3e-2f, false, &recurrent_fetches);
+    }
+    ASSERT_EQ(recurrent_fetches.size(), 3u);
+
+    const Tensor& state_update = fetches[2].Get<Tensor>();
+    const Tensor& recurrent_state_update = recurrent_fetches[2].Get<Tensor>();
+    ASSERT_EQ(state_update.Shape(), recurrent_state_update.Shape());
+    const float* actual = state_update.Data<float>();
+    const float* expected = recurrent_state_update.Data<float>();
+    const int64_t decay_elements = static_cast<int64_t>(kCapacity) * g.hv;
+    const int64_t key_elements = static_cast<int64_t>(kCapacity) * g.hq * g.dk;
+    const int64_t delta_elements = static_cast<int64_t>(kCapacity) * g.hv * g.dv;
+    for (int64_t i = 0; i < decay_elements; ++i) {
+      EXPECT_GT(actual[i], 0.0f) << "decay element " << i;
+    }
+    for (int64_t i = 0; i < decay_elements + key_elements + delta_elements; ++i) {
+      EXPECT_NEAR(actual[i], expected[i], 3e-2f) << "state_update element " << i;
+    }
+  }
+}
+
 TEST(GatedDeltaNetTest, InactiveStateUpdateIgnoresCountsAndClearsOutput) {
   if (NeedSkipGatedDeltaNetTest()) return;
   Geometry g{4, 1, 1, 2, 64, 32};
