@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <limits>
@@ -320,8 +321,10 @@ static void RunCausalConvWithStateTests(
 // =============================================================================
 
 template <typename T>
-void TestPackedChannelHistory(int length, bool state_last, bool use_past, bool use_bias, bool silu, int dilation) {
-  constexpr int batch = 2, channels = 7, width = 13, offset = 3, kernel = 4;
+void TestPackedChannelHistory(int length, bool state_last, bool use_past, bool use_bias, bool silu, int dilation,
+                              int capacity = 0, int channels = 7) {
+  constexpr int batch = 2, offset = 3, kernel = 4;
+  const int width = channels + 6;
   const int history = (kernel - 1) * dilation + 1;
   auto cuda = DefaultCudaExecutionProvider();
   if (!cuda) GTEST_SKIP() << "CUDA is required for extended convolution";
@@ -353,8 +356,18 @@ void TestPackedChannelHistory(int length, bool state_last, bool use_past, bool u
       }
     }
   }
+  // Captured rows are the raw projected input; rows beyond min(length, capacity) are defined as zero.
+  std::vector<T> state_update(static_cast<size_t>(batch) * capacity * channels, T(0.0f));
+  for (int b = 0; b < batch; ++b) {
+    for (int t = 0; t < std::min(length, capacity); ++t) {
+      for (int c = 0; c < channels; ++c) {
+        state_update[(static_cast<size_t>(b) * capacity + t) * channels + c] = input[(b * length + t) * width + offset + c];
+      }
+    }
+  }
   OpTester test("CausalConvWithState", 1, kMSDomain);
   test.AddAttribute<int64_t>("channels_last", 1);
+  if (capacity > 0) test.AddAttribute<int64_t>("state_update_capacity", capacity);
   test.AddAttribute<int64_t>("input_channels", channels);
   test.AddAttribute<int64_t>("input_channel_offset", offset);
   test.AddAttribute<int64_t>("state_length", history);
@@ -375,6 +388,7 @@ void TestPackedChannelHistory(int length, bool state_last, bool use_past, bool u
     test.AddOptionalInputEdge<T>();
   test.AddOutput<T>("output", {batch, length, channels}, output);
   test.AddOutput<T>("present", state_shape, present);
+  if (capacity > 0) test.AddOutput<T>("state_update", {batch, capacity, channels}, state_update);
   test.SetOutputTolerance(std::is_same_v<T, BFloat16> ? 0.01f : 0.001f, 0.001f);
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
   providers.push_back(std::move(cuda));
@@ -394,6 +408,59 @@ TEST(CausalConvWithStateTest, PackedChannelsExtendedHistory) {
       }
     }
   }
+}
+
+// Lengths 16, 17 and 24 select CausalConvProjectionTiledK4Kernel (kernel 4, dilation 1, history 4):
+// two full eight-position tiles, a partial trailing tile, and three full tiles. 130 channels spans a full and a
+// partial 128-channel block. Positive capacities cover the captured rows in the tiled path and in
+// the per-position short-K4 path (lengths 1..8), including capacity above the sequence length.
+TEST(CausalConvWithStateTest, PackedChannelsTiledK4AndCapture) {
+  for (int length : {16, 17, 24}) {
+    for (bool state_last : {false, true}) {
+      for (bool past : {false, true}) {
+        for (int channels : {7, 130}) {
+          TestPackedChannelHistory<float>(length, state_last, past, true, true, 1, 0, channels);
+          TestPackedChannelHistory<MLFloat16>(length, state_last, past, false, true, 1, 7, channels);
+          TestPackedChannelHistory<BFloat16>(length, state_last, past, true, false, 1, 8, channels);
+        }
+      }
+    }
+  }
+  for (int length : {1, 3, 8}) {
+    for (bool state_last : {false, true}) {
+      for (bool past : {false, true}) {
+        TestPackedChannelHistory<float>(length, state_last, past, true, true, 1, 2);
+        TestPackedChannelHistory<MLFloat16>(length, state_last, past, false, true, 1, 8, 130);
+        TestPackedChannelHistory<BFloat16>(length, state_last, past, true, false, 1, 7);
+      }
+    }
+  }
+}
+
+// Capacity above the sequence length leaves rows the kernels never write; they are defined as zero.
+TEST(CausalConvWithStateTest, PackedChannelsStateUpdateCapacityExceedsLength) {
+  auto cuda = DefaultCudaExecutionProvider();
+  if (!cuda) GTEST_SKIP() << "CUDA is required for extended convolution";
+  OpTester test("CausalConvWithState", 1, kMSDomain);
+  test.AddAttribute<int64_t>("channels_last", 1);
+  test.AddAttribute<int64_t>("input_channels", 2);
+  test.AddAttribute<int64_t>("state_length", 1);
+  test.AddAttribute<int64_t>("state_channels_last", 0);
+  test.AddAttribute<int64_t>("state_update_capacity", 8);
+  test.AddAttribute<std::string>("activation", "none");
+  test.AddInput<float>("input", {1, 1, 2}, {3.f, 5.f});
+  test.AddInput<float>("weight", {2, 1, 2}, {1.f, 1.f, 1.f, 1.f});
+  test.AddOptionalInputEdge<float>();
+  test.AddOptionalInputEdge<float>();
+  test.AddOutput<float>("output", {1, 1, 2}, {3.f, 5.f});
+  test.AddOutput<float>("present", {1, 2, 1}, {3.f, 5.f});
+  std::vector<float> expected_update(16, 0.f);
+  expected_update[0] = 3.f;
+  expected_update[1] = 5.f;
+  test.AddOutput<float>("state_update", {1, 8, 2}, expected_update, false, 1e-4f, 1e-4f);
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(std::move(cuda));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
 }
 
 TEST(CausalConvWithStateTest, PackedChannelsStateUpdateCapacity) {
