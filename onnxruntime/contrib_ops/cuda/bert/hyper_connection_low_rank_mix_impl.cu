@@ -422,7 +422,8 @@ __global__ void __launch_bounds__(kThreads, 5)
     HcUpPreKernel(const T* __restrict__ streams, const T* __restrict__ norm_w, const T* __restrict__ w_up,
                   const float* __restrict__ partial, const float* __restrict__ inv_rms_in,
                   T* __restrict__ pre_out, T* __restrict__ gate_out, UpParams p) {
-  constexpr int kLocalWeightSlots = ROWS >= 4 ? 8 : kWeightSlots;
+  static_assert(ROWS <= 2, "the cross-warp gate reduction below assumes ROWS * 16 * branches <= kThreads");
+  constexpr int kLocalWeightSlots = kWeightSlots;
   const int hb = blockIdx.x;
   const int64_t row0 = static_cast<int64_t>(blockIdx.z) * ROWS;
   const int tid = threadIdx.x;
@@ -555,28 +556,17 @@ __global__ void __launch_bounds__(kThreads, 5)
     }
   }
   __syncthreads();
+  // The up kernel runs with at most 2 rows, so ROWS * groups * 8 = 16 * ROWS * branches <= kThreads (branches <= 8).
   const int g8 = groups * 8;
-  if (ROWS * g8 <= kThreads) {
-    if (tid < ROWS * g8) {
-      const int r = tid / g8;
-      const int idx = tid % g8;
-      float v = 0.0f;
+  if (tid < ROWS * g8) {
+    const int r = tid / g8;
+    const int idx = tid % g8;
+    float v = 0.0f;
 #pragma unroll
-      for (int q = 0; q < 8; ++q) v += red[(q * ROWS + r) * g8 + idx];
-      const int gg = idx >> 3;
-      const int local = (gg & 1) * 8 + (idx & 7);
-      sg[r][(gg >> 1) * kUpTile + local] = Rnd<T>(SigmoidF32(Rnd<T>(v)));
-    }
-  } else if (tid < g8) {
-#pragma unroll
-    for (int r = 0; r < ROWS; ++r) {
-      float v = 0.0f;
-#pragma unroll
-      for (int q = 0; q < 8; ++q) v += red[(q * ROWS + r) * g8 + tid];
-      const int gg = tid >> 3;
-      const int local = (gg & 1) * 8 + (tid & 7);
-      sg[r][(gg >> 1) * kUpTile + local] = Rnd<T>(SigmoidF32(Rnd<T>(v)));
-    }
+    for (int q = 0; q < 8; ++q) v += red[(q * ROWS + r) * g8 + idx];
+    const int gg = idx >> 3;
+    const int local = (gg & 1) * 8 + (idx & 7);
+    sg[r][(gg >> 1) * kUpTile + local] = Rnd<T>(SigmoidF32(Rnd<T>(v)));
   }
   __syncthreads();
   if (tid < ROWS * kUpTile) {
@@ -1103,13 +1093,13 @@ Status LaunchHyperConnectionLowRankMixFused(const cudaDeviceProp& device_prop, c
     if (config.rows == 1) {
       return LaunchFusedRows<T, 1>(use_pdl, stream, config, tensors, g, partial, inv_rms, down, up);
     }
+    // Fused row-group dispatch: rows == 1 -> 1x1, rows 2..7 -> 2x2, rows == 8 -> 4x2 (down x up rows per CTA).
+    // ORT_HC_S8_DECODE_ROWS=2 selects 2x2 for the 8-row decode shape; ORT_HC_DECODE_ROWS=4 forces 4x2 for it.
+    // Values 1 and 2 of ORT_HC_DECODE_ROWS no longer select anything (the dedicated four-row dispatch was removed).
     static const int decode_rows =
         onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_HC_DECODE_ROWS", 1);
     ORT_ENFORCE(decode_rows == 1 || decode_rows == 2 || decode_rows == 4,
                 "ORT_HC_DECODE_ROWS must be 1, 2, or 4");
-    if (config.rows == 4 && decode_rows == 1) {
-      return LaunchFusedRows<T, 1>(use_pdl, stream, config, tensors, g, partial, inv_rms, down, up);
-    }
     static const int s8_decode_rows =
         onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_HC_S8_DECODE_ROWS", 4);
     if (config.rows >= 8 && (s8_decode_rows == 4 || decode_rows == 4)) {
@@ -1123,7 +1113,7 @@ template <typename T>
 Status LaunchHyperConnectionLowRankMixUnfused(cublasHandle_t cublas, cudaStream_t stream,
                                               const HyperConnectionLowRankMixConfig& config,
                                               const HyperConnectionLowRankMixTensors<T>& tensors,
-                                              T* hn, T* down, T* up, T* inject) {
+                                              T* hn, T* down, T* up) {
   const int64_t rows = config.rows;
   const int64_t K = static_cast<int64_t>(config.branches) * config.hidden;
   const int64_t groups = rows * config.branches;
@@ -1176,7 +1166,6 @@ Status LaunchHyperConnectionLowRankMixUnfused(cublasHandle_t cublas, cudaStream_
   ORT_RETURN_IF_ERROR(math_mode.Set(cublas, CUBLAS_MATH_DISALLOW_REDUCED_PRECISION_REDUCTION));
 
   ORT_RETURN_IF_ERROR(Gemm<T>(cublas, rows, config.rank, K, hn, tensors.down_weight, down));
-  (void)inject;
 
   const int64_t down_count = rows * config.rank;
   ORT_RETURN_IF_NOT(BlocksFor(down_count) <= std::numeric_limits<int>::max(),
@@ -1230,7 +1219,7 @@ Status LaunchHyperConnectionLowRankMixUnfused(cublasHandle_t cublas, cudaStream_
       const HyperConnectionLowRankMixTensors<T>&, float*, bool);                                 \
   template Status LaunchHyperConnectionLowRankMixUnfused<T>(                                     \
       cublasHandle_t, cudaStream_t, const HyperConnectionLowRankMixConfig&,                      \
-      const HyperConnectionLowRankMixTensors<T>&, T*, T*, T*, T*);
+      const HyperConnectionLowRankMixTensors<T>&, T*, T*, T*);
 
 INSTANTIATE(float)
 INSTANTIATE(half)
