@@ -72,7 +72,7 @@ def stage_dawn_agility_sdk(source_dir: Path, mirror_dir: Path) -> Path:
         if actual_hash != expected_hash.lower():
             raise ValueError(f"Agility SDK SHA1 mismatch. Expected {expected_hash}, got {actual_hash}.")
 
-        # Match the HTTPS URL-to-local-path mapping and ZIP fallback in onnxruntime_external_deps.cmake.
+        # Match the HTTPS URL-to-local-path mapping in cmake/external/onnxruntime_external_deps.cmake.
         mirror_path = mirror_dir.joinpath(*url.removeprefix("https://").split("/"))
 
         # CMake 3.31 rejects extensionless local archives before its content-aware extractor runs.

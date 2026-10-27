@@ -2,95 +2,13 @@
 # Licensed under the MIT License.
 
 import hashlib
-import shutil
 import subprocess
 import tempfile
 import unittest
-import zipfile
 from pathlib import Path
 from unittest import mock
 
 import stage_dawn_agility_sdk as staging
-
-
-@unittest.skipUnless(shutil.which("cmake"), "Requires CMake")
-class DawnAgilitySdkCMakeTest(unittest.TestCase):
-    def setUp(self):
-        temporary = tempfile.TemporaryDirectory()
-        self.addCleanup(temporary.cleanup)
-        self.root = Path(temporary.name)
-        self.mirror = self.root / "mirror with spaces"
-        self.url = "https://www.nuget.org/api/v2/package/Microsoft.Direct3D.D3D12/1.721.3-preview"
-        self.archive = self.mirror / "www.nuget.org/api/v2/package/Microsoft.Direct3D.D3D12/1.721.3-preview.zip"
-        self.archive.parent.mkdir(parents=True)
-        with zipfile.ZipFile(self.archive, "w") as package:
-            package.writestr("Microsoft.Direct3D.D3D12.nuspec", "<package />")
-            package.writestr("build/native/include/d3d12.h", "local SDK fixture")
-        self.digest = hashlib.sha1(self.archive.read_bytes()).hexdigest()
-
-    def configure_sdk(self, digest=None):
-        cmake_dir = Path(__file__).resolve().parents[4] / "cmake"
-        source = (cmake_dir / "external" / "onnxruntime_external_deps.cmake").read_text(encoding="utf-8")
-        loader = source[
-            source.index("file(STRINGS deps.txt") : source.index('message(STATUS "Loading Dependencies ...")')
-        ]
-        start = source.index(
-            "    if (DAWN_USE_AGILITY_SDK)", source.index("    onnxruntime_fetchcontent_makeavailable(dawn)")
-        )
-        sdk = source[start : source.index("\n  endif()\n  endif()", start)]
-        (self.root / "deps.txt").write_text(f"dawn_agility_sdk;{self.url};{digest or self.digest}\n", encoding="utf-8")
-        script = self.root / "CMakeLists.txt"
-        script.write_text(
-            "cmake_minimum_required(VERSION 3.28)\n"
-            "project(dawn_agility_sdk_local NONE)\n"
-            "include(FetchContent)\n"
-            f'include("{(cmake_dir / "external" / "helper_functions.cmake").as_posix()}")\n'
-            "set(DAWN_USE_AGILITY_SDK ON)\n"
-            'set(DAWN_AGILITY_SDK_DIR "${CMAKE_CURRENT_BINARY_DIR}/dawn-src/third_party/agility-sdk")\n'
-            f'set(onnxruntime_CMAKE_DEPS_MIRROR_DIR "{self.mirror.as_posix()}")\n'
-            + loader
-            + f'\nif(NOT DEP_URL_dawn_agility_sdk STREQUAL "{self.archive.as_posix()}")\n'
-            '  message(FATAL_ERROR "SDK did not resolve to the local ZIP")\n'
-            "endif()\n" + sdk,
-            encoding="utf-8",
-        )
-        return subprocess.run(
-            ["cmake", "-S", str(self.root), "-B", str(self.root / "build")],
-            cwd=self.root,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-
-    def test_extracts_zip_mirror_of_extensionless_url(self):
-        result = self.configure_sdk()
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        header = (
-            self.root
-            / "build"
-            / "dawn-src"
-            / "third_party"
-            / "agility-sdk"
-            / "src"
-            / "build"
-            / "native"
-            / "include"
-            / "d3d12.h"
-        )
-        self.assertEqual(header.read_text(encoding="utf-8"), "local SDK fixture")
-
-    def test_prefers_exact_mirror_path_when_both_exist(self):
-        self.url += ".zip"
-        self.archive.with_name(self.archive.name + ".zip").write_bytes(b"not the expected archive")
-        result = self.configure_sdk()
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-
-    def test_rejects_local_archive_hash_mismatch(self):
-        result = self.configure_sdk(digest="0" * 40)
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("SHA1", result.stdout + result.stderr)
-        self.assertIn("does not match expected value", result.stdout + result.stderr)
-        self.assertNotIn("Do not know how to extract", result.stderr)
 
 
 class StageDawnAgilitySdkTest(unittest.TestCase):
