@@ -885,7 +885,54 @@ class FusionAttention(Fusion):
 
         return attention_node
 
+    def get_scalar_scale(self, name: str, output_name_to_node: dict, allow_sqrt: bool = True) -> float | None:
+        if name in self.model.get_graphs_input_names():
+            return None
+        definitions = sum(
+            sum(t.name == name for t in graph.initializer)
+            + sum(t.values.name == name for t in graph.sparse_initializer)
+            + sum(name in producer.output for producer in graph.node)
+            for graph in self.model.graphs()
+        )
+        if definitions != 1:
+            return None
+        value = self.model.get_constant_value(name)
+        if value is not None:
+            # Scores and transposed Q/K are rank four. Even one element can expand rank.
+            if value.size != 1 or value.ndim > 4:
+                return None
+            scalar = float(value.item())
+            return scalar if np.isfinite(scalar) else None
+        producer = output_name_to_node.get(name)
+        if allow_sqrt and producer is not None and producer.op_type == "Sqrt":
+            scalar = self.get_scalar_scale(producer.input[0], output_name_to_node, allow_sqrt=False)
+            if scalar is not None and scalar >= 0:
+                return float(np.sqrt(scalar))
+        return None
+
+    def get_scale_factor(self, node: NodeProto, data_input: str, output_name_to_node: dict) -> float | None:
+        if node.op_type == "Div" and node.input[0] == data_input:
+            divisor = self.get_scalar_scale(node.input[1], output_name_to_node)
+            return 1.0 / divisor if divisor is not None and divisor != 0 else None
+        if node.op_type == "Mul" and data_input in node.input:
+            return self.get_scalar_scale(node.input[1 - self.model.input_index(data_input, node)], output_name_to_node)
+        return None
+
+    def has_transpose_layout(self, nodes: list[NodeProto], expected: list[int]) -> bool:
+        permutation = list(range(4))
+        # Parent paths are listed from the consumer back towards the projection.
+        for node in reversed(nodes):
+            if node.op_type != "Transpose":
+                continue
+            perm = self.model.get_node_attribute(node, "perm")
+            perm = [3, 2, 1, 0] if perm is None else perm
+            if sorted(perm) != [0, 1, 2, 3]:
+                return False
+            permutation = [permutation[i] for i in perm]
+        return permutation == expected
+
     def fuse(self, node, input_name_to_nodes, output_name_to_node):
+        self.mask_filter_value = None
         # Sometimes we can not fuse skiplayernormalization since the add before layernorm has an output that used by nodes outside skiplayernorm
         # Conceptually we treat add before layernorm as skiplayernorm node since they share the same pattern
         normalize_node = node
@@ -993,7 +1040,8 @@ class FusionAttention(Fusion):
         is_sdpa = False
         qk_paths = {
             "path1": (["Softmax", "Add", "Div", "MatMul"], [0, 0, None, 0]),
-            "path2": (["Softmax", "Add", "Mul", "MatMul"], [0, 0, None, 0]),
+            "path2": (["Softmax", "Add", "Mul", "MatMul"], [0, 0, 0, None]),
+            "path2_reversed": (["Softmax", "Add", "Mul", "MatMul"], [0, 0, 1, None]),
             "path3": (["Softmax", "Where", "MatMul", "Div"], [0, 0, 2, 0]),
             "path4": (["Softmax", "Add", "Where", "MatMul"], [0, 0, 0, 2]),
             "path5": (["Softmax", "Div", "MatMul"], [0, 0, 0]),
@@ -1072,6 +1120,40 @@ class FusionAttention(Fusion):
         add_k = k_nodes[-2]
         matmul_k = k_nodes[-1]
 
+        softmax_axis = self.model.get_node_attribute(qk_nodes[0], "axis")
+        if softmax_axis is None:
+            softmax_axis = -1 if self.model.get_opset_version() >= 13 else 1
+        if softmax_axis not in (-1, 3):
+            return
+        if not (
+            self.has_transpose_layout(q_nodes, [0, 2, 1, 3])
+            and self.has_transpose_layout(k_nodes, [0, 2, 3, 1])
+            and self.has_transpose_layout(v_nodes, [0, 2, 1, 3])
+            and self.has_transpose_layout([transpose_qkv], [0, 2, 1, 3])
+        ):
+            return
+
+        attention_scale = 1.0
+        scaling_nodes = []
+        if is_sdpa:
+            scaling_nodes.extend([(after_q, q_nodes[0].output[0]), (after_k, k_nodes[0].output[0])])
+        elif not is_distill and not is_distill_add:
+            scaling_nodes.append((qk_nodes[-2], matmul_qk.output[0]))
+        if q_nodes[0].op_type == "Div":
+            scaling_nodes.append((q_nodes[0], q_nodes[1].output[0]))
+        for scale_node, data_input in scaling_nodes:
+            factor = self.get_scale_factor(scale_node, data_input, output_name_to_node)
+            if factor is None:
+                return
+            attention_scale *= factor
+        # Both fused operators interpret zero as the default scale, not uniform scores.
+        if (
+            not np.isfinite(attention_scale)
+            or abs(attention_scale) > np.finfo(np.float32).max
+            or np.float32(attention_scale) == 0
+        ):
+            return
+
         # Note that Cast might be removed by OnnxRuntime so we match two patterns here.
         mask_nodes = None
         is_transformers_5_mask = False
@@ -1104,18 +1186,24 @@ class FusionAttention(Fusion):
         elif is_no_mask_attention:
             pass
         else:
+            # Both the score scale and mask can be Mul nodes. Match the mask
+            # from the other Add operand instead of choosing the first Mul.
+            mask_input_index = 1 - self.model.input_index(qk_nodes[2].output[0], add_qk)
             mask_path, mask_nodes, _ = self.model.match_parent_paths(
                 add_qk,
                 [
-                    (["Mul", "Sub", "Cast", "Unsqueeze", "Unsqueeze"], [None, 0, 1, 0, 0]),
-                    (["Mul", "Sub", "Unsqueeze", "Unsqueeze"], [None, 0, 1, 0]),
+                    (["Mul", "Sub", "Cast", "Unsqueeze", "Unsqueeze"], [mask_input_index, 0, 1, 0, 0]),
+                    (["Mul", "Sub", "Unsqueeze", "Unsqueeze"], [mask_input_index, 0, 1, 0]),
                     # The following two patterns are for SDPA.
-                    (["Where", "Cast", "Sub", "Expand", "Unsqueeze", "Unsqueeze"], [None, 0, 0, 1, 0, 0]),
-                    (["Where", "Cast", "Sub", "Cast", "Expand", "Unsqueeze", "Unsqueeze"], [None, 0, 0, 1, 0, 0, 0]),
+                    (["Where", "Cast", "Sub", "Expand", "Unsqueeze", "Unsqueeze"], [mask_input_index, 0, 0, 1, 0, 0]),
+                    (
+                        ["Where", "Cast", "Sub", "Cast", "Expand", "Unsqueeze", "Unsqueeze"],
+                        [mask_input_index, 0, 0, 1, 0, 0, 0],
+                    ),
                     # Transformers 5 eager attention mask.
                     (
                         ["Where", "Expand", "And", "Reshape", "Reshape", "Gather", "Flatten"],
-                        [None, 0, 0, 1, 0, 0, 0],
+                        [mask_input_index, 0, 0, 1, 0, 0, 0],
                     ),
                     # Transformers 5 eager attention without an attention_mask input.
                     (
@@ -1130,7 +1218,7 @@ class FusionAttention(Fusion):
                             "Gather",
                             "Shape",
                         ],
-                        [None, 0, 0, 0, 0, 0, 0, 1, 0],
+                        [mask_input_index, 0, 0, 0, 0, 0, 0, 1, 0],
                     ),
                 ],
                 output_name_to_node,
@@ -1147,24 +1235,18 @@ class FusionAttention(Fusion):
             and len(mask_nodes) > 1
             and not is_transformers_5_mask
         ):
-            _, mul_val = self.model.get_constant_input(mask_nodes[0])
-            # The mask value shall be a float scalar (usually is the lowest float value).
-            if (
-                (mul_val is None)
-                or not (isinstance(mul_val, np.ndarray) and mul_val.size == 1)
-                or (mul_val.item() >= 0)
-            ):
+            constant_index, _ = self.model.get_constant_input(mask_nodes[0])
+            if constant_index is None:
                 return
-            if mul_val.item() != -10000:
-                self.mask_filter_value = mul_val.item()
+            # Embedding the filter as an attribute must not freeze a graph input
+            # or resolve a same-named initializer from a different graph scope.
+            mul_val = self.get_scalar_scale(mask_nodes[0].input[constant_index], output_name_to_node, allow_sqrt=False)
+            if mul_val is None or mul_val >= 0:
+                return
+            if mul_val != -10000:
+                self.mask_filter_value = mul_val
 
         if matmul_v.input[0] == root_input and matmul_q.input[0] == root_input and matmul_k.input[0] == root_input:
-            mask_index = (
-                self.attention_mask.process_mask(mask_nodes[-1].input[0])
-                if not is_no_mask_attention and not is_transformers_5_no_mask
-                else None
-            )
-
             attention_last_node = reshape_qkv if einsum_node is None else transpose_qkv
 
             q_num_heads, q_hidden_size = self.get_num_heads_and_hidden_size(reshape_q)
@@ -1174,6 +1256,14 @@ class FusionAttention(Fusion):
                     "Please specify those parameters in argument."
                 )
                 return
+
+            default_scale = 1.0 / np.sqrt(q_hidden_size / q_num_heads)
+            scale_attribute = None if np.float32(attention_scale) == np.float32(default_scale) else attention_scale
+            mask_index = (
+                self.attention_mask.process_mask(mask_nodes[-1].input[0])
+                if not is_no_mask_attention and not is_transformers_5_no_mask
+                else None
+            )
 
             # number of heads are same for all the paths, hence to create attention node, we pass the q_num_heads
             # the input_hidden_size represents the input hidden size, this is used as needed but hidden sizes for Q, K are extracted appropriately
@@ -1190,6 +1280,7 @@ class FusionAttention(Fusion):
                 first_input=root_input,
                 output=attention_last_node.output[0],
                 add_qk_str=add_qk_str,
+                scale=scale_attribute,
             )
 
             if new_node is None:
