@@ -31,6 +31,8 @@ struct GQAWorkspaceEstimateConfig {
   size_t cache_element_size = 0;
   int64_t num_heads = 0;
   int64_t kv_num_heads = 0;
+  // Exact head geometry from executable-graph metadata, not max-shape hints; zero means unknown.
+  int64_t static_head_size = 0;
   int64_t causal = 1;
   int64_t local_window_size = -1;
   bool sliding_window_cache = false;
@@ -52,7 +54,7 @@ struct GQAWorkspaceEstimateConfig {
   // ep.cuda.gqa_workspace_max_total_sequence_length. It bounds non-windowed
   // estimation; zero means unspecified. This is not a runtime input limit.
   int64_t max_total_sequence_length = 0;
-  // Parsed intent only; all values currently leave sizing and dispatch unchanged.
+  // Resolved to committed GQA phase-route sets shared by Level 1, Level 2, and runtime.
   KernelDispatchPolicy dispatch_policy = KernelDispatchPolicy::Auto;
 };
 
