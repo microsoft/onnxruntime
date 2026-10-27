@@ -86,7 +86,7 @@ TYPED_TEST(CudaBitwiseOpTest, IntegerExtremaBroadcastAndTails) {
         expected.push_back(apply(value, scalar));
       }
       RunCudaBitwise(op, opset, {7}, values, {}, {scalar}, {7}, expected);
-      RunCudaBitwise(op, opset, {}, {scalar}, {}, {scalar}, {}, {apply(scalar, scalar)});
+      RunCudaBitwise<T>(op, opset, {}, {scalar}, {}, {scalar}, {}, {apply(scalar, scalar)});
 
       if (std::string(op) != "BitwiseNot") {
         RunCudaBitwise(op, opset, {}, {scalar}, {7}, values, {7}, expected);
