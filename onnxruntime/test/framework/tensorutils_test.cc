@@ -2212,5 +2212,68 @@ TEST(TensorProtoDataSizeShapeValidationTest, UnpackInitializerDataRejectsInlineR
 }
 #endif  // !defined(__wasm__)
 
+#if !defined(ORT_MINIMAL_BUILD) && !defined(__wasm__)
+// Positive control: valid matching external tensor copy succeeds.
+TEST(TensorProtoUtilsTest, ExternalTensorCopyPreservesMatchingDestination) {
+  std::basic_string<ORTCHAR_T> filename(ORT_TSTR("matching_tensor_XXXXXX"));
+  const std::vector<float> expected{1.0f, 0.0f, -2.0f, 3.0f};
+  TensorProto proto;
+  CreateTensorWithExternalData<float>(TensorProto_DataType_FLOAT, expected, filename, proto);
+  std::unique_ptr<ORTCHAR_T, decltype(&DeleteFileFromDisk)> file_deleter(
+      const_cast<ORTCHAR_T*>(filename.c_str()), DeleteFileFromDisk);
+  Tensor destination(DataTypeImpl::GetType<float>(), TensorShape({4}), CPUAllocator::DefaultInstance());
+  ASSERT_STATUS_OK(utils::TensorProtoToTensor(Env::Default(), {}, proto, destination));
+  EXPECT_THAT(gsl::make_span(destination.Data<float>(), expected.size()),
+              ::testing::ElementsAreArray(expected));
+}
+
+#if !defined(DISABLE_SPARSE_TENSORS)
+TEST(TensorProtoUtilsTest, DenseSparseConversionPreservesTypedFloatValues) {
+  TensorProto proto;
+  proto.set_name("weights");
+  proto.set_data_type(TensorProto_DataType_FLOAT);
+  proto.add_dims(2);
+  proto.add_dims(2);
+  for (float value : {0.0f, 1.0f, -2.0f, 0.0f}) {
+    proto.add_float_data(value);
+  }
+  SparseTensorProto sparse;
+  ASSERT_STATUS_OK(utils::DenseTensorToSparseTensorProto(proto, {}, sparse));
+  EXPECT_EQ(sparse.values().name(), "weights");
+  ASSERT_EQ(sparse.values().dims_size(), 1);
+  EXPECT_EQ(sparse.values().dims(0), 2);
+  TensorProto restored;
+  ASSERT_STATUS_OK(utils::SparseTensorProtoToDenseTensorProto(sparse, {}, restored));
+  std::vector<float> actual(4);
+  ASSERT_STATUS_OK(utils::UnpackTensor(restored, restored.raw_data().data(), restored.raw_data().size(),
+                                      actual.data(), actual.size()));
+  EXPECT_THAT(actual, ::testing::ElementsAre(0.0f, 1.0f, -2.0f, 0.0f));
+}
+
+TEST(TensorProtoUtilsTest, RejectsMismatchedExternalTensorShapeAndOversizedDenseToSparseInput) {
+  std::basic_string<ORTCHAR_T> filename(ORT_TSTR("mismatched_tensor_XXXXXX"));
+  const std::vector<float> external_values{1.0f, 0.0f, -2.0f, 3.0f};
+  TensorProto external_proto;
+  CreateTensorWithExternalData<float>(TensorProto_DataType_FLOAT, external_values, filename, external_proto);
+  std::unique_ptr<ORTCHAR_T, decltype(&DeleteFileFromDisk)> file_deleter(
+      const_cast<ORTCHAR_T*>(filename.c_str()), DeleteFileFromDisk);
+  Tensor mismatched_destination(DataTypeImpl::GetType<float>(), TensorShape({2, 2}), CPUAllocator::DefaultInstance());
+  Status external_status = utils::TensorProtoToTensor(Env::Default(), {}, external_proto, mismatched_destination);
+  EXPECT_FALSE(external_status.IsOK());
+
+  TensorProto oversized_dense_proto;
+  oversized_dense_proto.set_name("oversized_weights");
+  oversized_dense_proto.set_data_type(TensorProto_DataType_FLOAT);
+  oversized_dense_proto.add_dims(2);
+  for (float value : {0.0f, 1.0f, -2.0f, 0.0f}) {
+    oversized_dense_proto.add_float_data(value);
+  }
+  SparseTensorProto sparse;
+  Status sparse_status = utils::DenseTensorToSparseTensorProto(oversized_dense_proto, {}, sparse);
+  EXPECT_FALSE(sparse_status.IsOK());
+}
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
+#endif  // !defined(ORT_MINIMAL_BUILD) && !defined(__wasm__)
+
 }  // namespace test
 }  // namespace onnxruntime
