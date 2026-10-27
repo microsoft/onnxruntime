@@ -1186,8 +1186,8 @@ struct EpDeviceImpl : Ort::detail::Base<T> {
   ConstKeyValuePairs EpOptions() const;
   ConstHardwareDevice Device() const;
   ConstMemoryInfo GetMemoryInfo(OrtDeviceMemoryType memory_type) const;       ///< Wraps EpDevice_MemoryInfo
-  std::pair<uint64_t, uint64_t> GetMemoryCapacity() const;                    ///< Total and available device memory
   SyncStream CreateSyncStream(ConstKeyValuePairs stream_options = {}) const;  /// Wraps EpDevice_CreateSyncStream
+  std::pair<uint64_t, uint64_t> GetMemoryCapacity() const;                    ///< Total and available device memory
 };
 }  // namespace detail
 

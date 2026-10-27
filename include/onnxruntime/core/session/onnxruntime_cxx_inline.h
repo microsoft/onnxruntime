@@ -757,18 +757,18 @@ inline ConstMemoryInfo EpDeviceImpl<T>::GetMemoryInfo(OrtDeviceMemoryType memory
 }
 
 template <typename T>
+inline SyncStream EpDeviceImpl<T>::CreateSyncStream(ConstKeyValuePairs stream_options) const {
+  OrtSyncStream* stream = nullptr;
+  ThrowOnError(GetApi().CreateSyncStreamForEpDevice(this->p_, stream_options, &stream));
+  return SyncStream{stream};
+}
+
+template <typename T>
 inline std::pair<uint64_t, uint64_t> EpDeviceImpl<T>::GetMemoryCapacity() const {
   uint64_t total_memory_bytes{};
   uint64_t available_memory_bytes{};
   ThrowOnError(GetApi().EpDevice_GetMemoryCapacity(this->p_, &total_memory_bytes, &available_memory_bytes));
   return {total_memory_bytes, available_memory_bytes};
-}
-
-template <typename T>
-inline SyncStream EpDeviceImpl<T>::CreateSyncStream(ConstKeyValuePairs stream_options) const {
-  OrtSyncStream* stream = nullptr;
-  ThrowOnError(GetApi().CreateSyncStreamForEpDevice(this->p_, stream_options, &stream));
-  return SyncStream{stream};
 }
 }  // namespace detail
 
