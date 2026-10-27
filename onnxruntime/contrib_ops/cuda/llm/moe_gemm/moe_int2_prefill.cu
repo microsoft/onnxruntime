@@ -161,6 +161,9 @@ __global__ void __launch_bounds__(256) RepackRawIntToSm80Int4ActiveExpertsKernel
 void LaunchRepackRawIntToSm80Int4ActiveExperts(
     const uint8_t* raw_weights, uint8_t* sm80_int4_weights, const int64_t* expert_offsets,
     int num_experts, int n, int k, int src_bits, cudaStream_t stream) {
+  const size_t required_alignment = GetInt2MoePrefillRawWeightAlignment(src_bits);
+  ORT_ENFORCE(reinterpret_cast<uintptr_t>(raw_weights) % required_alignment == 0,
+              "Raw INT", src_bits, " prefill repack requires ", required_alignment, "-byte aligned weights.");
   const int num_uint4_per_expert = n * (k >> 5);
   const dim3 grid(static_cast<unsigned>((num_uint4_per_expert + 255) / 256), static_cast<unsigned>(num_experts));
   if (src_bits == 2) {
@@ -406,6 +409,20 @@ void RunInt2MoePrefillImpl(const Int2MoePrefillParams& params, void* workspace) 
 }
 
 }  // namespace
+
+size_t GetInt2MoePrefillRawWeightAlignment(int weight_bits) {
+  // The widest load RepackRawIntToSm80Int4ActiveExpertsKernel issues on the raw weights, per bit width.
+  switch (weight_bits) {
+    case 2:
+      return alignof(uint2);
+    case 3:
+      return alignof(uint32_t);
+    case 4:
+      return alignof(uint4);
+    default:
+      ORT_THROW("Raw INT prefill repack requires 2, 3, or 4 bits, got ", weight_bits);
+  }
+}
 
 size_t GetInt2MoePrefillWorkspaceSize(const Int2MoePrefillParams& params) {
   return PrefillWorkspace(params).bytes;

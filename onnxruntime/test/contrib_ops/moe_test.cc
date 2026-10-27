@@ -3,6 +3,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
+#include <memory>
+#include <string>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -17,6 +20,7 @@
 #include "contrib_ops/cpu/moe/moe_helper.h"
 #include "core/mlas/inc/mlas_qnbit.h"
 #include "core/session/inference_session.h"
+#include "core/session/IOBinding.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/util/include/scoped_env_vars.h"
 #include "test/common/tensor_op_test_utils.h"
@@ -3743,6 +3747,286 @@ TEST(MoETest, QMoETest_Int3CudaPrefillBiasPrecisionParity) {
   RunInt3CudaPrefillBiasPrecisionParityTest<BFloat16>();
 #endif
 }
+
+#ifdef USE_CUDA
+// Every QMoE operand is a graph input so a test can bind it to a device buffer at an arbitrary byte offset.
+static std::string BuildQMoEInt3ExternalBuffersModel(int64_t fc1_bits, int64_t fc2_bits, int64_t num_experts,
+                                                     int64_t hidden_size, int64_t inter_size, int64_t block_size,
+                                                     int64_t top_k) {
+  ONNX_NAMESPACE::ModelProto model;
+  model.set_ir_version(ONNX_NAMESPACE::IR_VERSION);
+  auto* ms_opset = model.add_opset_import();
+  ms_opset->set_domain(kMSDomain);
+  ms_opset->set_version(1);
+  auto* graph = model.mutable_graph();
+  graph->set_name("qmoe_int3_external_buffers");
+
+  // A negative dimension is the symbolic row count.
+  auto add_value_info = [graph](const char* name, int32_t elem_type, const std::vector<int64_t>& dims,
+                                bool is_input) {
+    auto* value_info = is_input ? graph->add_input() : graph->add_output();
+    value_info->set_name(name);
+    auto* tensor_type = value_info->mutable_type()->mutable_tensor_type();
+    tensor_type->set_elem_type(elem_type);
+    for (int64_t dim : dims) {
+      auto* shape_dim = tensor_type->mutable_shape()->add_dim();
+      if (dim < 0) {
+        shape_dim->set_dim_param("num_rows");
+      } else {
+        shape_dim->set_dim_value(dim);
+      }
+    }
+  };
+  constexpr int32_t kFloat16 = ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
+  constexpr int32_t kUint8 = ONNX_NAMESPACE::TensorProto_DataType_UINT8;
+  const int64_t fc1_rows = 2 * inter_size;
+  add_value_info("input", kFloat16, {-1, hidden_size}, true);
+  add_value_info("router_probs", kFloat16, {-1, num_experts}, true);
+  add_value_info("fc1_weights", kUint8, {num_experts, fc1_rows, (hidden_size * fc1_bits + 7) / 8}, true);
+  add_value_info("fc1_scales", kFloat16, {num_experts, fc1_rows, hidden_size / block_size}, true);
+  add_value_info("fc1_bias", kFloat16, {num_experts, fc1_rows}, true);
+  add_value_info("fc2_weights", kUint8, {num_experts, hidden_size, (inter_size * fc2_bits + 7) / 8}, true);
+  add_value_info("fc2_scales", kFloat16, {num_experts, hidden_size, inter_size / block_size}, true);
+  add_value_info("fc2_bias", kFloat16, {num_experts, hidden_size}, true);
+  add_value_info("output", kFloat16, {-1, hidden_size}, false);
+
+  auto* node = graph->add_node();
+  node->set_op_type("QMoE");
+  node->set_domain(kMSDomain);
+  for (const char* input_name : {"input", "router_probs", "fc1_weights", "fc1_scales", "fc1_bias",
+                                 "fc2_weights", "fc2_scales", "fc2_bias"}) {
+    node->add_input(input_name);
+  }
+  node->add_output("output");
+  auto add_int_attribute = [node](const char* name, int64_t value) {
+    auto* attribute = node->add_attribute();
+    attribute->set_name(name);
+    attribute->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+    attribute->set_i(value);
+  };
+  add_int_attribute("k", top_k);
+  add_int_attribute("swiglu_fusion", 1);
+  add_int_attribute("normalize_routing_weights", 1);
+  add_int_attribute("expert_weight_bits", fc1_bits);
+  add_int_attribute("fc1_expert_weight_bits", fc1_bits);
+  add_int_attribute("fc2_expert_weight_bits", fc2_bits);
+  add_int_attribute("fc3_expert_weight_bits", fc1_bits);
+  add_int_attribute("weights_prepacked", 0);
+  add_int_attribute("block_size", block_size);
+  auto* activation = node->add_attribute();
+  activation->set_name("activation_type");
+  activation->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_STRING);
+  activation->set_s("swiglu");
+
+  std::string model_bytes;
+  ORT_ENFORCE(model.SerializeToString(&model_bytes));
+  return model_bytes;
+}
+
+// The Tensor Core prefill path reads raw packed weights as 8/4/16-byte words (2/3/4 bits) and the activations and
+// biases as 16-byte vectors, but IOBinding can hand a kernel a tensor that starts at any byte offset of a larger
+// device allocation. Bind each operand at offsets that break those alignments and expect the same result as aligned
+// buffers on both sides of the prefill threshold (15 rows use the SIMT decode path, 16 rows are eligible for Tensor
+// Core prefill). Misaligned operands must fall back to the SIMT path instead of faulting.
+static void RunInt3CudaPrefillMisalignedExternalBuffersTest(int64_t fc1_bits, int64_t fc2_bits) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device with compute capability 8.0 or newer is required.";
+  }
+
+  constexpr int64_t num_experts = 4;
+  constexpr int64_t top_k = 2;
+  constexpr int64_t hidden_size = 128;
+  constexpr int64_t inter_size = 128;
+  constexpr int64_t fc1_rows = 2 * inter_size;
+  constexpr int64_t block_size = 64;
+  constexpr int64_t max_rows = 16;
+
+  uint32_t state = 24680u;
+  auto next = [&state]() {
+    state = state * 1664525u + 1013904223u;
+    return state >> 8;
+  };
+  const auto make_fp16 = [&next](size_t count, uint32_t levels, float step) {
+    std::vector<MLFloat16> values(count);
+    for (auto& value : values) {
+      value = MLFloat16(static_cast<float>(static_cast<int>(next() % levels) - static_cast<int>(levels / 2)) * step);
+    }
+    return values;
+  };
+  const auto make_scales = [&next](size_t count) {
+    std::vector<MLFloat16> scales(count);
+    for (auto& scale : scales) {
+      scale = MLFloat16(0.01f * static_cast<float>(1 + next() % 7));
+    }
+    return scales;
+  };
+  const auto make_packed_weights = [&next](int64_t rows, int64_t cols, int64_t bits) {
+    std::vector<uint8_t> codes(static_cast<size_t>(rows * cols));
+    for (auto& code : codes) {
+      code = static_cast<uint8_t>(next() & ((1u << bits) - 1u));
+    }
+    return PackLsbBits(codes, rows, cols, bits);
+  };
+
+  const auto input = make_fp16(static_cast<size_t>(max_rows * hidden_size), 9, 0.25f);
+  const auto router_probs = make_fp16(static_cast<size_t>(max_rows * num_experts), 17, 0.25f);
+  const auto fc1_bias = make_fp16(static_cast<size_t>(num_experts * fc1_rows), 9, 0.125f);
+  const auto fc2_bias = make_fp16(static_cast<size_t>(num_experts * hidden_size), 9, 0.125f);
+
+  // Byte offsets added to the 16-byte aligned device allocations. +1 breaks every width, +4 stays valid for 3-bit
+  // weights but breaks the 8-byte (2-bit) and 16-byte (4-bit) requirements, and +2 is still a valid FP16 tensor.
+  struct OffsetCase {
+    const char* name;
+    size_t fc1_weights;
+    size_t fc2_weights;
+    size_t scales;
+    size_t biases;
+    size_t activations;
+  };
+  const std::vector<OffsetCase> offset_cases = {
+      {"aligned", 0, 0, 0, 0, 0},
+      {"fc1 weights +1", 1, 0, 0, 0, 0},
+      {"fc2 weights +1", 0, 1, 0, 0, 0},
+      {"both weights +1", 1, 1, 0, 0, 0},
+      {"both weights +4", 4, 4, 0, 0, 0},
+      {"scales +2", 0, 0, 2, 0, 0},
+      {"biases +2", 0, 0, 0, 2, 0},
+      {"input and output +2", 0, 0, 0, 0, 2},
+  };
+
+  const auto fc1_weights = make_packed_weights(num_experts * fc1_rows, hidden_size, fc1_bits);
+  const auto fc2_weights = make_packed_weights(num_experts * hidden_size, inter_size, fc2_bits);
+  const auto fc1_scales = make_scales(static_cast<size_t>(num_experts * fc1_rows * (hidden_size / block_size)));
+  const auto fc2_scales = make_scales(static_cast<size_t>(num_experts * hidden_size * (inter_size / block_size)));
+
+  const std::string model_bytes = BuildQMoEInt3ExternalBuffersModel(
+      fc1_bits, fc2_bits, num_experts, hidden_size, inter_size, block_size, top_k);
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  InferenceSession session(session_options, GetEnvironment());
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  IExecutionProvider* ep = cuda_ep.get();
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(cuda_ep)));
+  OrtMemoryInfo gpu_info;
+  bool found_gpu_info = false;
+  for (const auto& allocator : ep->CreatePreferredAllocators()) {
+    if (allocator->Info().device.Type() == OrtDevice::GPU && allocator->Info().mem_type == OrtMemTypeDefault) {
+      gpu_info = allocator->Info();
+      found_gpu_info = true;
+    }
+  }
+  ASSERT_TRUE(found_gpu_info);
+  ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+  const AllocatorPtr gpu_allocator = session.GetAllocator(gpu_info);
+  ASSERT_NE(gpu_allocator, nullptr);
+
+  const auto run = [&](int64_t rows, const OffsetCase& offsets, std::vector<float>& result) -> Status {
+    std::vector<IAllocatorUniquePtr<uint8_t>> storage;
+    const auto make_value = [&](MLDataType type, const TensorShape& shape, const void* host_data, size_t offset) {
+      const size_t bytes = static_cast<size_t>(shape.Size()) * type->Size();
+      storage.push_back(IAllocator::MakeUniquePtr<uint8_t>(gpu_allocator, bytes + offset));
+      void* base = storage.back().get();
+      ORT_ENFORCE(reinterpret_cast<uintptr_t>(base) % 16 == 0, "Device allocations must be 16-byte aligned.");
+      OrtValue value;
+      Tensor::InitOrtValue(type, shape, base, gpu_info, value, static_cast<ptrdiff_t>(offset));
+      Tensor host_tensor(type, shape, const_cast<void*>(host_data), OrtMemoryInfo());
+      ORT_THROW_IF_ERROR(ep->GetDataTransfer()->CopyTensor(host_tensor, *value.GetMutable<Tensor>()));
+      return value;
+    };
+    const MLDataType fp16 = DataTypeImpl::GetType<MLFloat16>();
+    const MLDataType uint8 = DataTypeImpl::GetType<uint8_t>();
+    const TensorShape activation_shape({rows, hidden_size});
+
+    // The output starts as NaN so a kernel that never writes it cannot pass.
+    const std::vector<MLFloat16> nan_output(static_cast<size_t>(rows * hidden_size),
+                                            MLFloat16(std::numeric_limits<float>::quiet_NaN()));
+    const OrtValue input_value = make_value(fp16, activation_shape, input.data(), offsets.activations);
+    const OrtValue router_value = make_value(fp16, TensorShape({rows, num_experts}), router_probs.data(), 0);
+    const OrtValue fc1_weights_value = make_value(
+        uint8, TensorShape({num_experts, fc1_rows, (hidden_size * fc1_bits + 7) / 8}), fc1_weights.data(),
+        offsets.fc1_weights);
+    const OrtValue fc1_scales_value = make_value(
+        fp16, TensorShape({num_experts, fc1_rows, hidden_size / block_size}), fc1_scales.data(), offsets.scales);
+    const OrtValue fc1_bias_value = make_value(
+        fp16, TensorShape({num_experts, fc1_rows}), fc1_bias.data(), offsets.biases);
+    const OrtValue fc2_weights_value = make_value(
+        uint8, TensorShape({num_experts, hidden_size, (inter_size * fc2_bits + 7) / 8}), fc2_weights.data(),
+        offsets.fc2_weights);
+    const OrtValue fc2_scales_value = make_value(
+        fp16, TensorShape({num_experts, hidden_size, inter_size / block_size}), fc2_scales.data(), offsets.scales);
+    const OrtValue fc2_bias_value = make_value(
+        fp16, TensorShape({num_experts, hidden_size}), fc2_bias.data(), offsets.biases);
+    const OrtValue output_value = make_value(fp16, activation_shape, nan_output.data(), offsets.activations);
+
+    std::unique_ptr<IOBinding> binding;
+    ORT_RETURN_IF_ERROR(session.NewIOBinding(&binding));
+    ORT_RETURN_IF_ERROR(binding->BindInput("input", input_value));
+    ORT_RETURN_IF_ERROR(binding->BindInput("router_probs", router_value));
+    ORT_RETURN_IF_ERROR(binding->BindInput("fc1_weights", fc1_weights_value));
+    ORT_RETURN_IF_ERROR(binding->BindInput("fc1_scales", fc1_scales_value));
+    ORT_RETURN_IF_ERROR(binding->BindInput("fc1_bias", fc1_bias_value));
+    ORT_RETURN_IF_ERROR(binding->BindInput("fc2_weights", fc2_weights_value));
+    ORT_RETURN_IF_ERROR(binding->BindInput("fc2_scales", fc2_scales_value));
+    ORT_RETURN_IF_ERROR(binding->BindInput("fc2_bias", fc2_bias_value));
+    ORT_RETURN_IF_ERROR(binding->BindOutput("output", output_value));
+    ORT_RETURN_IF_ERROR(session.Run(RunOptions{}, *binding));
+
+    std::vector<MLFloat16> host_output(nan_output.size());
+    Tensor host_tensor(fp16, activation_shape, host_output.data(), OrtMemoryInfo());
+    ORT_RETURN_IF_ERROR(ep->GetDataTransfer()->CopyTensor(output_value.Get<Tensor>(), host_tensor));
+    result.resize(host_output.size());
+    std::transform(host_output.begin(), host_output.end(), result.begin(),
+                   [](MLFloat16 value) { return value.ToFloat(); });
+    return Status::OK();
+  };
+
+  for (const int64_t rows : {int64_t{15}, int64_t{16}}) {
+    std::vector<float> reference;
+    for (const OffsetCase& offsets : offset_cases) {
+      SCOPED_TRACE(MakeString("fc1_bits=", fc1_bits, " fc2_bits=", fc2_bits, " rows=", rows, " ", offsets.name));
+      std::vector<float> actual;
+      ASSERT_STATUS_OK(run(rows, offsets, actual));
+      ASSERT_EQ(actual.size(), static_cast<size_t>(rows * hidden_size));
+      ASSERT_TRUE(std::all_of(actual.begin(), actual.end(), [](float value) { return std::isfinite(value); }));
+      if (reference.empty()) {
+        reference = actual;  // The first case binds only aligned buffers.
+        float max_abs = 0.0f;
+        for (float value : reference) {
+          max_abs = std::max(max_abs, std::abs(value));
+        }
+        ASSERT_GT(max_abs, 0.1f) << "aligned output is trivially small";
+        continue;
+      }
+      for (size_t i = 0; i < actual.size(); ++i) {
+        ASSERT_NEAR(actual[i], reference[i], 0.05f + 0.02f * std::abs(reference[i])) << "output element " << i;
+      }
+    }
+  }
+}
+
+// W<fc1 bits>W<fc2 bits>: the raw-weight repack reads 2-, 3-, and 4-bit weights as 8-, 4-, and 16-byte words, so each
+// mix exercises a different pair of alignment requirements.
+TEST(MoETest, QMoETest_Int3CudaPrefillMisalignedExternalBuffers_W3W3) {
+  RunInt3CudaPrefillMisalignedExternalBuffersTest(3, 3);
+}
+
+TEST(MoETest, QMoETest_Int3CudaPrefillMisalignedExternalBuffers_W4W3) {
+  RunInt3CudaPrefillMisalignedExternalBuffersTest(4, 3);
+}
+
+TEST(MoETest, QMoETest_Int3CudaPrefillMisalignedExternalBuffers_W2W3) {
+  RunInt3CudaPrefillMisalignedExternalBuffersTest(2, 3);
+}
+
+TEST(MoETest, QMoETest_Int3CudaPrefillMisalignedExternalBuffers_W3W4) {
+  RunInt3CudaPrefillMisalignedExternalBuffersTest(3, 4);
+}
+
+TEST(MoETest, QMoETest_Int3CudaPrefillMisalignedExternalBuffers_W3W2) {
+  RunInt3CudaPrefillMisalignedExternalBuffersTest(3, 2);
+}
+#endif
 
 TEST(MoETest, QMoETest_Int3Fused512ExpertRoutingExecutionParity) {
   if (!HasCudaEnvironment(750)) {

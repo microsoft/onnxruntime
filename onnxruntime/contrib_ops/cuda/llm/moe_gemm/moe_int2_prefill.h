@@ -43,4 +43,8 @@ struct Int2MoePrefillParams {
 size_t GetInt2MoePrefillWorkspaceSize(const Int2MoePrefillParams& params);
 void RunInt2MoePrefill(const Int2MoePrefillParams& params, void* workspace);
 
+// Byte alignment the raw (`weights_are_raw`) packed-weight base pointer must satisfy for `weight_bits` (2, 3, or 4),
+// because the repack kernel reads the weights as 8-, 4-, or 16-byte words. Throws for any other bit width.
+size_t GetInt2MoePrefillRawWeightAlignment(int weight_bits);
+
 }  // namespace onnxruntime::llm::kernels::cutlass_kernels

@@ -3168,9 +3168,12 @@ Status QMoE::ComputeInt3(OpKernelContext* context) const {
       onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_DISABLE_INT3_TENSORCORE_PREFILL", 0) != 0;
   static const int int3_prefill_min_rows =
       onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_INT3_PREFILL_MIN_ROWS", 16);
-  // The CUTLASS epilogue loads the fused biases as 16-byte vectors, so misaligned biases use the SIMT path.
-  const auto is_bias_16byte_aligned = [](const Tensor* bias) {
-    return bias == nullptr || reinterpret_cast<uintptr_t>(bias->DataRaw()) % 16 == 0;
+  namespace ck = onnxruntime::llm::kernels::cutlass_kernels;
+  // The Tensor Core path reads packed weights as 8/4/16-byte words (2/3/4 bits) and the activations and biases as
+  // 16-byte vectors. Externally bound tensors can start at any element boundary of a larger allocation, so
+  // misaligned operands use the byte-safe SIMT path. Scales are read element by element and need no check.
+  const auto is_aligned = [](const Tensor* tensor, size_t alignment) {
+    return tensor == nullptr || reinterpret_cast<uintptr_t>(tensor->DataRaw()) % alignment == 0;
   };
   const bool can_use_tc_prefill =
       !disable_int3_tc_prefill && rows >= int3_prefill_min_rows &&
@@ -3179,10 +3182,12 @@ Status QMoE::ComputeInt3(OpKernelContext* context) const {
       sm_ >= 80 && experts <= 512 &&
       hidden % 64 == 0 && intermediate % 64 == 0 &&
       (block_size_ == 32 || block_size_ == 64 || block_size_ == 128) &&
-      is_bias_16byte_aligned(first_bias) && is_bias_16byte_aligned(second_bias);
+      is_aligned(first_weights, ck::GetInt2MoePrefillRawWeightAlignment(params.fc1.bits)) &&
+      is_aligned(second_weights, ck::GetInt2MoePrefillRawWeightAlignment(params.fc2.bits)) &&
+      is_aligned(input, 16) && is_aligned(output, 16) &&
+      is_aligned(first_bias, 16) && is_aligned(second_bias, 16);
 
   if (can_use_tc_prefill) {
-    namespace ck = onnxruntime::llm::kernels::cutlass_kernels;
     size_t prefill_tile_rows =
         std::min<size_t>(rows, row_tile_size_ > 0 ? static_cast<size_t>(row_tile_size_) : size_t{2048});
 
