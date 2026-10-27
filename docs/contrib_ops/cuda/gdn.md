@@ -12,9 +12,9 @@ Set process-level tuning options before the first applicable invocation:
   pass.
 - `ORT_CAUSAL_CONV_S2_SPECIALIZE=1` specializes the companion
   `CausalConvWithState` extended (packed-channel) projection path for kernel size
-  four, state length four and dilation one. Lengths 1 to 8 use the per-position
+  four, state length four and dilation one. Lengths below 16 use the per-position
   specialized kernel and lengths of 16 or more use the tiled kernel (eight
-  positions per CTA); other lengths keep the generic kernel. The `activation`
+  positions per CTA). The `activation`
   attribute (`none`, `silu` or `swish`; the last two are identical) is honored
   as configured and is not part of the dispatch condition. Layout, optional
   bias, and first-token state semantics are unchanged.

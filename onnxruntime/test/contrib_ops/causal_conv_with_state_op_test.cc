@@ -515,18 +515,41 @@ TEST(CausalConvWithStateTest, PackedChannelsInvalidConfigurations) {
   }
 }
 
-TEST(CausalConvWithStateTest, PackedChannelsRejectsUnsupportedCpu) {
+// The per-position projection kernels launch one grid.z slice per token, and CUDA caps grid.z at 65535.
+TEST(CausalConvWithStateTest, PackedChannelsRejectsLengthBeyondGridLimit) {
+  auto cuda = DefaultCudaExecutionProvider();
+  if (!cuda) GTEST_SKIP() << "CUDA is required for extended convolution";
+  constexpr int64_t length = 65536;
   OpTester test("CausalConvWithState", 1, kMSDomain);
   test.AddAttribute<int64_t>("channels_last", 1);
-  test.AddAttribute<int64_t>("input_channels", 2);
-  test.AddInput<float>("input", {1, 1, 2}, {1.0f, 2.0f});
-  test.AddInput<float>("weight", {2, 1, 2}, {1.0f, 1.0f, 1.0f, 1.0f});
-  test.AddOutput<float>("output", {1, 1, 2}, {1.0f, 2.0f});
-  test.AddOutput<float>("present", {1, 1, 2}, {1.0f, 2.0f});
+  test.AddAttribute<int64_t>("input_channels", 1);
+  test.AddInput<float>("input", {1, length, 1}, std::vector<float>(length));
+  test.AddInput<float>("weight", {1, 1, 2}, {1.0f, 1.0f});
+  test.AddOutput<float>("output", {1, length, 1}, std::vector<float>(length));
+  test.AddOutput<float>("present", {1, 1, 1}, {0.0f});
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
-  providers.push_back(DefaultCpuExecutionProvider());
-  test.Run(OpTester::ExpectResult::kExpectFailure, "does not support extended channel/state options",
-           {}, nullptr, &providers);
+  providers.push_back(std::move(cuda));
+  test.Run(OpTester::ExpectResult::kExpectFailure, "0 < length <= 65535", {}, nullptr, &providers);
+}
+
+TEST(CausalConvWithStateTest, PackedChannelsRejectsUnsupportedCpu) {
+  // Each extended attribute is rejected on its own; the CPU kernel implements only the base op.
+  const std::vector<std::pair<std::string, int64_t>> extended_attributes{
+      {"input_channels", 2}, {"state_update_capacity", 1}};
+  for (const auto& [name, value] : extended_attributes) {
+    SCOPED_TRACE(name);
+    OpTester test("CausalConvWithState", 1, kMSDomain);
+    test.AddAttribute<int64_t>("channels_last", 1);
+    test.AddAttribute<int64_t>(name, value);
+    test.AddInput<float>("input", {1, 1, 2}, {1.0f, 2.0f});
+    test.AddInput<float>("weight", {2, 1, 2}, {1.0f, 1.0f, 1.0f, 1.0f});
+    test.AddOutput<float>("output", {1, 1, 2}, {1.0f, 2.0f});
+    test.AddOutput<float>("present", {1, 1, 2}, {1.0f, 2.0f});
+    std::vector<std::unique_ptr<IExecutionProvider>> providers;
+    providers.push_back(DefaultCpuExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectFailure, "does not support extended channel/state options",
+             {}, nullptr, &providers);
+  }
 }
 
 TEST(CausalConvWithStateTest, EmptyTrailingStateUpdateOutputIsOmitted) {

@@ -87,8 +87,11 @@ Status CausalConvWithState<T>::ComputeInternal(OpKernelContext* context) const {
     const int pad = SafeInt<int>(kernel - 1) * dilation_;
     const int state_length = state_length_ == 0 ? pad : state_length_;
     const bool state_last = state_channels_last_ == -1 ? channels_last_ : state_channels_last_ != 0;
-    ORT_RETURN_IF_NOT(batch > 0 && batch <= 65535 && length > 0 && length <= 65535 &&
-                          channels > 0 && kernel > 0 && input_channel_offset_ <= width &&
+    // The projection kernels map batch to grid.y and positions to grid.z, which CUDA caps at 65535.
+    ORT_RETURN_IF_NOT(batch > 0 && batch <= 65535 && length > 0 && length <= 65535,
+                      "extended CausalConvWithState requires 0 < batch <= 65535 and 0 < length <= 65535, got batch ",
+                      batch, ", length ", length);
+    ORT_RETURN_IF_NOT(channels > 0 && kernel > 0 && input_channel_offset_ <= width &&
                           channels <= width - input_channel_offset_ && weight_shape[0] == channels &&
                           state_length >= pad,
                       "invalid extended CausalConvWithState dimensions");
