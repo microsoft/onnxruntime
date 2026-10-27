@@ -96,6 +96,25 @@ WEBGPU_ELEMENTWISE_IMPL(Sqrt, "sqrt(a)")
 WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Sqrt, 6, 12, WebGpuSupportedFloatTypes())
 WEBGPU_ELEMENTWISE_KERNEL(Sqrt, 13, WebGpuSupportedFloatTypes())
 
+// WGSL round() rounds half to even, as ONNX Round requires.
+WEBGPU_ELEMENTWISE_IMPL(Round, "round(a)")
+WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Round, 11, 21, WebGpuSupportedFloatTypes())
+WEBGPU_ELEMENTWISE_KERNEL(Round, 22, WebGpuSupportedFloatTypes())
+
+namespace {
+// WGSL sign() supports f32, f16 and i32, but not u32.
+const std::vector<MLDataType>& SignTypes() {
+  static const std::vector<MLDataType> types{DataTypeImpl::GetTensorType<float>(),
+                                             DataTypeImpl::GetTensorType<MLFloat16>(),
+                                             DataTypeImpl::GetTensorType<int32_t>()};
+  return types;
+}
+}  // namespace
+
+WEBGPU_ELEMENTWISE_IMPL(Sign, "sign(a)")
+WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Sign, 9, 12, SignTypes())
+WEBGPU_ELEMENTWISE_KERNEL(Sign, 13, SignTypes())
+
 WEBGPU_ELEMENTWISE_IMPL(Exp, "exp(a)")
 WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Exp, 6, 12, WebGpuSupportedFloatTypes())
 WEBGPU_ELEMENTWISE_KERNEL(Exp, 13, WebGpuSupportedFloatTypes())
@@ -568,6 +587,19 @@ class Softplus final : public UnaryElementwise {
 
 WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Softplus, 1, 21, WebGpuSupportedFloatTypes())
 WEBGPU_ELEMENTWISE_KERNEL(Softplus, 22, WebGpuSupportedFloatTypes())
+
+// For |v| >= 2^24, 1 + |v| == |v| and the quotient is exactly +/-1. Dividing directly can give 0 for
+// huge |v| because GPUs flush the subnormal reciprocal of the divisor. f32 also keeps f16 accurate.
+constexpr const char SoftsignImpl[] = R"(
+fn softsign_v(a: x_value_t) -> x_value_t {
+  let v = vec4<f32>(a);
+  return x_value_t(select(v / (1.0 + abs(v)), sign(v), abs(v) >= vec4<f32>(16777216.0)));
+}
+)";
+
+WEBGPU_ELEMENTWISE_IMPL(Softsign, "softsign_v(a)", SoftsignImpl, ShaderUsage::UseValueTypeAlias)
+WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Softsign, 1, 21, WebGpuSupportedFloatTypes())
+WEBGPU_ELEMENTWISE_KERNEL(Softsign, 22, WebGpuSupportedFloatTypes())
 
 }  // namespace webgpu
 }  // namespace onnxruntime

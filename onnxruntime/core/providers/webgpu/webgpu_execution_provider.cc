@@ -140,6 +140,10 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     KERNEL_CREATE_INFO(13, Reciprocal),
     KERNEL_CREATE_INFO_VERSIONED(6, 12, Sqrt),
     KERNEL_CREATE_INFO(13, Sqrt),
+    KERNEL_CREATE_INFO_VERSIONED(11, 21, Round),
+    KERNEL_CREATE_INFO(22, Round),
+    KERNEL_CREATE_INFO_VERSIONED(9, 12, Sign),
+    KERNEL_CREATE_INFO(13, Sign),
     KERNEL_CREATE_INFO_VERSIONED(6, 12, Exp),
     KERNEL_CREATE_INFO(13, Exp),
     KERNEL_CREATE_INFO_VERSIONED(9, 12, Erf),
@@ -193,6 +197,8 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     KERNEL_CREATE_INFO(20, Gelu),
     KERNEL_CREATE_INFO_VERSIONED(1, 21, Softplus),
     KERNEL_CREATE_INFO(22, Softplus),
+    KERNEL_CREATE_INFO_VERSIONED(1, 21, Softsign),
+    KERNEL_CREATE_INFO(22, Softsign),
 
     // // binary - math
     // All binary elementwise ops (Add, Sub, Mul, Div, Max, Min, Equal, Greater, Less,
