@@ -59,7 +59,7 @@ The execution pipeline is:
 
 ```
 input tokens → router (top-k softmax) → permute by expert
-  → GEMM1 (per-expert) → activation (SiLU/GeLU/ReLU/SwiGLU)
+  → GEMM1 (per-expert) → activation (SiLU/GeLU/ReLU/SwiGLU/GEGLU)
   → GEMM2 (per-expert) → un-permute → weighted sum
 ```
 
@@ -72,7 +72,7 @@ input tokens → router (top-k softmax) → permute by expert
 | Attribute | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `k` | int | 1 | Top-K experts selected per token. |
-| `activation_type` | string | `"relu"` | One of `"relu"`, `"gelu"`, `"silu"`, `"swiglu"`, `"identity"`. These are the only values accepted end-to-end (attribute parsing); other kernel-internal types are not reachable from ONNX. |
+| `activation_type` | string | `"relu"` | One of `"relu"`, `"relu2"`, `"gelu"`, `"silu"`, `"swiglu"`, `"geglu"`, `"identity"`. CUDA GEGLU computes `GELU(gate, approximate="tanh") * up`, requires fused FC1 and `swiglu_fusion=1` or `2`; QMoE additionally requires `quant_type="int"`. |
 | `normalize_routing_weights` | int | 0 | Re-normalize the top-k weights to sum to 1. |
 | `use_sparse_mixer` | int | 0 | Enable sparse-mixer routing variant. |
 | `swiglu_fusion` | int | 0 | 0=no fusion, 1=interleaved (Gate/Value), 2=block (Gate;Value). See [§8](#8-swiglu-fusion). |
@@ -123,12 +123,13 @@ to the selected `quant_type` are simply omitted (most are `Optional`).
 | 20 | `fc2_act_block_scale` | T2 (Opt, float8e8m0) | `(E, M_pad, inter/32)` | wfp4afp8 (Variant B) |
 
 `E = num_experts`. `pack = 8 / expert_weight_bits` for INT/MXFP4 weights; `pack = 1`
-for FP8 weights. `fusion = 2` for `swiglu_fusion=1`, otherwise `1`.
+for FP8 weights. `fusion = 2` for fused SwiGLU or GEGLU with
+`swiglu_fusion=1` or `2`, otherwise `1`.
 
 > **CUDA EP restriction for `quant_type="int"`:** `fc1_scales` and `fc2_scales`
 > must use the same FP16 or BF16 type as the activation input. Although the
 > operator schema also permits float scales, the CUDA INT kernel does not
-> currently cast float scales internally. `fusion = 2` for `swiglu_fusion=1`, otherwise `1`.
+> currently cast float scales internally.
 
 For packed input, tokens from variable-length sequences may be concatenated
 without padding. MoE routing is token-local, so no sequence-offset input is
@@ -635,6 +636,26 @@ easy to feed Mixtral-style models without offline fusion.
 > must be fused offline before quantization+packing.
 
 ---
+
+### GEGLU
+
+CUDA `MoE` and integer `QMoE` also accept `activation_type="geglu"`.
+They evaluate `GELU(gate, approximate="tanh") * up`, not a scaled-SwiGLU
+approximation or erf-based GELU. The fused FC1 output has `2 * inter_size`
+columns: fusion mode 1 stores `[gate0, up0, gate1, up1, ...]`, and mode 2
+stores `[gate | up]`. GEGLU requires one of these explicit fusion modes and
+does not support separate FC3 weights. `activation_alpha`, `activation_beta`,
+and `swiglu_limit` apply to SwiGLU only.
+
+GEGLU uses the generic gated activation path; specialized kernels that
+hardcode SwiGLU remain excluded. Integer INT4/INT8 still use weight-only
+CUTLASS runners. GEGLU is rejected for FP4, NVFP4, FP8, and WFP4AFP8 rather
+than silently selecting a different activation. CPU and other execution
+providers do not gain GEGLU support from this CUDA implementation.
+
+The activation and product are computed in float before conversion to the
+activation output type. This is not a promise of bitwise parity with eager
+PyTorch code that materializes GELU in FP16/BF16 before multiplication.
 
 ## 9. FP4 (MXFP4) Details
 

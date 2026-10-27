@@ -57,6 +57,8 @@ class MoEBase {
       activation_type_ = ActivationType::Silu;
     } else if (activation_type_str == "swiglu") {
       activation_type_ = ActivationType::Swiglu;
+    } else if (activation_type_str == "geglu") {
+      activation_type_ = ActivationType::Geglu;
     } else if (activation_type_str == "identity") {
       activation_type_ = ActivationType::Identity;
     } else {
@@ -81,8 +83,11 @@ class MoEBase {
     swiglu_fusion_ = static_cast<int>(op_kernel_info.GetAttrOrDefault<int64_t>("swiglu_fusion", 0));
     ORT_ENFORCE(swiglu_fusion_ >= 0 && swiglu_fusion_ <= 2,
                 "swiglu_fusion must be 0, 1, or 2, but got ", swiglu_fusion_);
-    ORT_ENFORCE(activation_type_ == ActivationType::Swiglu || swiglu_fusion_ == 0,
-                "swiglu_fusion is only valid when activation_type is 'swiglu'.");
+    ORT_ENFORCE(activation_type_ == ActivationType::Swiglu ||
+                    activation_type_ == ActivationType::Geglu || swiglu_fusion_ == 0,
+                "swiglu_fusion is only valid when activation_type is 'swiglu' or 'geglu'.");
+    ORT_ENFORCE(activation_type_ != ActivationType::Geglu || swiglu_fusion_ != 0,
+                "GEGLU requires fused FC1 gate/up weights and swiglu_fusion=1 or 2.");
 
     // SwiGLU limit for clamping (optional, use infinity if not provided)
     swiglu_limit_ = op_kernel_info.GetAttrOrDefault<float>("swiglu_limit", std::numeric_limits<float>::infinity());

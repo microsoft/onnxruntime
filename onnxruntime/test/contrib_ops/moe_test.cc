@@ -256,6 +256,144 @@ TEST(MoETest, CudaReluSquaredQuantizedInt8) {
   RunCudaReluSquaredMoETest<MLFloat16>(750, 8);
 }
 
+template <typename ElementType>
+static void RunCudaGegluTest(bool quantized, int fusion, int rows = 2, int top_k = 2,
+                             const std::string& expected_failure = "") {
+  SCOPED_TRACE(::testing::Message() << "fusion=" << fusion << ", rows=" << rows << ", top_k=" << top_k);
+  if (!HasCudaEnvironment(std::is_same_v<ElementType, BFloat16> ? 800 : 750)) {
+    GTEST_SKIP() << "CUDA architecture does not support the test element type";
+  }
+  constexpr int experts = 2;
+  constexpr int hidden = 128;
+  constexpr int inter = 128;
+  constexpr int block = 32;
+  constexpr float fp32_abs_tolerance = 3e-5f;
+  float max_erf_tanh_separation = 0.0f;
+  std::vector<ElementType> input(rows * hidden);
+  std::vector<ElementType> expected(rows * hidden);
+  std::vector<ElementType> router_probs(rows * experts);
+  std::vector<ElementType> fc1(experts * 2 * inter * hidden, ElementType(0.0f));
+  std::vector<ElementType> fc2(experts * hidden * inter, ElementType(0.0f));
+  std::vector<uint8_t> qfc1(fc1.size() / 2, 0x88);
+  std::vector<uint8_t> qfc2(fc2.size() / 2, 0x88);
+  auto set_weight = [](auto& dense, auto& packed, size_t index, int value) {
+    dense[index] = ElementType(static_cast<float>(value));
+    const int shift = static_cast<int>(index % 2) * 4;
+    const auto mask = static_cast<uint8_t>(0xF << shift);
+    packed[index / 2] = static_cast<uint8_t>(
+        (packed[index / 2] & ~mask) | ((value + 8) << shift));
+  };
+  for (int expert = 0; expert < experts; ++expert) {
+    for (int channel = 0; channel < hidden; ++channel) {
+      const int gate_row = fusion == 1 ? channel * 2 : channel;
+      const int up_row = fusion == 1 ? channel * 2 + 1 : inter + channel;
+      set_weight(fc1, qfc1, (expert * 2 * inter + gate_row) * hidden + channel, expert + 1);
+      set_weight(fc1, qfc1, (expert * 2 * inter + up_row) * hidden + channel, 3 - expert);
+      set_weight(fc2, qfc2, (expert * hidden + channel) * inter + channel, 1);
+    }
+  }
+  for (int row = 0; row < rows; ++row) {
+    // Despite the schema input name, CUDA consumes logits and applies softmax.
+    router_probs[row * experts] = ElementType(row % 2 == 0 ? 1.0f : 0.0f);
+    router_probs[row * experts + 1] = ElementType(row % 2 == 0 ? 0.0f : 1.0f);
+    for (int channel = 0; channel < hidden; ++channel) {
+      const float value = static_cast<float>((channel + row) % 17 - 8) * 0.25f;
+      input[row * hidden + channel] = ElementType(value);
+      float result = 0.0f;
+      float erf_result = 0.0f;
+      for (int expert = 0; expert < experts; ++expert) {
+        const float logit = static_cast<float>(router_probs[row * experts + expert]);
+        const float routing_weight = top_k == 1 ? (logit > 0.5f ? 1.0f : 0.0f)
+                                                : std::exp(logit) / (std::exp(1.0f) + 1.0f);
+        const float gate = value * static_cast<float>(expert + 1);
+        const float gelu = 0.5f * gate *
+                           (1.0f + std::tanh(0.7978845608f * (gate + 0.044715f * gate * gate * gate)));
+        result += routing_weight * gelu * value * static_cast<float>(3 - expert);
+        const float erf_gelu = 0.5f * gate * (1.0f + std::erf(gate / std::sqrt(2.0f)));
+        erf_result += routing_weight * erf_gelu * value * static_cast<float>(3 - expert);
+      }
+      expected[row * hidden + channel] = ElementType(result);
+      max_erf_tanh_separation = std::max(max_erf_tanh_separation, std::abs(result - erf_result));
+    }
+  }
+  OpTester tester(quantized ? "QMoE" : "MoE", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("k", top_k);
+  tester.AddAttribute<std::string>("activation_type", "geglu");
+  tester.AddAttribute<int64_t>("swiglu_fusion", fusion);
+  tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
+  tester.AddInput<ElementType>("input", {rows, hidden}, input);
+  tester.AddInput<ElementType>("router_probs", {rows, experts}, router_probs);
+  if (quantized) {
+    tester.AddAttribute<int64_t>("expert_weight_bits", 4);
+    tester.AddAttribute<int64_t>("block_size", block);
+    tester.AddAttribute<int64_t>("weights_prepacked", 0);
+    tester.AddInput<uint8_t>("fc1_experts_weights", {experts, 2 * inter, hidden / 2}, qfc1, true);
+    tester.AddInput<ElementType>("fc1_scales", {experts, 2 * inter, hidden / block},
+                                 std::vector<ElementType>(experts * 2 * inter * hidden / block, ElementType(1.0f)), true);
+    tester.AddOptionalInputEdge<ElementType>();
+    tester.AddInput<uint8_t>("fc2_experts_weights", {experts, hidden, inter / 2}, qfc2, true);
+    tester.AddInput<ElementType>("fc2_scales", {experts, hidden, inter / block},
+                                 std::vector<ElementType>(experts * hidden * inter / block, ElementType(1.0f)), true);
+  } else {
+    tester.AddInput<ElementType>("fc1_experts_weights", {experts, 2 * inter, hidden}, fc1);
+    tester.AddOptionalInputEdge<ElementType>();
+    tester.AddInput<ElementType>("fc2_experts_weights", {experts, hidden, inter}, fc2);
+  }
+  tester.AddOutput<ElementType>("output", {rows, hidden}, expected);
+  tester.SetOutputTolerance(std::is_same_v<ElementType, BFloat16> ? 0.02f : 0.001f);
+  if constexpr (std::is_same_v<ElementType, float>) {
+    // CUTLASS uses hardware fast-tanh: its activation error is amplified by
+    // the up projection (2.3e-5 observed on SM80 for this input sweep).
+    // Independently require ample separation from an erf-GELU implementation.
+    ASSERT_GT(max_erf_tanh_separation, 10.0f * fp32_abs_tolerance);
+    tester.SetOutputAbsErr("output", fp32_abs_tolerance);
+    tester.SetOutputRelErr("output", 0.0f);
+  }
+  SessionOptions options;
+  ORT_THROW_IF_ERROR(options.config_options.AddConfigEntry("session.disable_cpu_ep_fallback", "1"));
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(DefaultCudaExecutionProvider());
+  tester.Run(options, expected_failure.empty() ? OpTester::ExpectResult::kExpectSuccess : OpTester::ExpectResult::kExpectFailure,
+             expected_failure, {}, nullptr, &providers);
+}
+
+TEST(MoETest, CudaGegluFloat32) {
+  for (int fusion : {1, 2})
+    for (int rows : {1, 17})
+      for (int top_k : {1, 2}) RunCudaGegluTest<float>(false, fusion, rows, top_k);
+}
+
+TEST(MoETest, CudaGegluFloat16) {
+  for (int fusion : {1, 2})
+    for (int rows : {1, 17})
+      for (int top_k : {1, 2}) RunCudaGegluTest<MLFloat16>(false, fusion, rows, top_k);
+}
+
+TEST(MoETest, CudaGegluBFloat16) {
+  for (int fusion : {1, 2})
+    for (int rows : {1, 17})
+      for (int top_k : {1, 2}) RunCudaGegluTest<BFloat16>(false, fusion, rows, top_k);
+}
+
+TEST(MoETest, CudaGegluQuantizedInt4Float16) {
+  for (int fusion : {1, 2})
+    for (int rows : {1, 17})
+      for (int top_k : {1, 2}) RunCudaGegluTest<MLFloat16>(true, fusion, rows, top_k);
+}
+
+#if !defined(ORT_QUICK_BUILD) && defined(ENABLE_BF16)
+TEST(MoETest, CudaGegluQuantizedInt4BFloat16) {
+  for (int fusion : {1, 2})
+    for (int rows : {1, 17})
+      for (int top_k : {1, 2}) RunCudaGegluTest<BFloat16>(true, fusion, rows, top_k);
+}
+#endif
+
+TEST(MoETest, CudaGegluRequiresFusedWeights) {
+  RunCudaGegluTest<float>(false, 0, 1, 1, "GEGLU requires fused FC1 gate/up weights");
+  RunCudaGegluTest<MLFloat16>(true, 0, 1, 1, "GEGLU requires fused FC1 gate/up weights");
+}
+
 static void RunQMoETest(const std::vector<float>& input, const std::vector<float>& router_probs,
                         const std::vector<uint8_t>& fc1_experts_weights,
                         const std::vector<uint8_t>& fc2_experts_weights,

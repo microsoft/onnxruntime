@@ -1430,15 +1430,19 @@ constexpr const char* MoE_ver1_doc = R"DOC(
       When swiglu_fusion=0, two GEMMs are not fused, and they are FC1 and FC3 in the inputs.
       When swiglu_fusion=1, two GEMMs are fused so that g and l are computed in a single GEMM (FC1), and g and l are interleaved on each row of size 2 * inter_size.
       When swiglu_fusion=2, two GEMMs are fused, and g and l are concatenated on each row.
+      CUDA also supports GEGLU: geglu = GELU(g, approximate='tanh') * l.
+      GEGLU requires fused FC1 projections: swiglu_fusion=1 stores [g0,l0,g1,l1,...],
+      and swiglu_fusion=2 stores [g | l]. Separate FC3 inputs are not supported.
+      activation_alpha, activation_beta and swiglu_limit do not affect GEGLU.
       )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
     MoE, 1,
     OpSchema()
         .SetDoc(MoE_ver1_doc)
-        .Attr("activation_type", "Activation function to use. Choose from relu, gelu, silu, swiglu and identity. CUDA also supports relu2 (squared ReLU). Default is relu", AttributeProto::STRING, std::string("relu"))
-        .Attr("swiglu_fusion", "0: not fused, 1: fused and interleaved. 2: fused and not interleaved.", AttributeProto::INT, static_cast<int64_t>(0))
-        .Attr("swiglu_limit", "The limit used to clamp in SwiGLU. No clamp when limit is not provided.", AttributeProto::FLOAT, OPTIONAL_VALUE)
+        .Attr("activation_type", "Activation function to use. Choose from relu, gelu, silu, swiglu and identity. CUDA also supports relu2 (squared ReLU) and geglu (GELU-tanh(gate) * up). GEGLU requires fused FC1 gate/up weights, swiglu_fusion=1 or 2, and no FC3 inputs. Default is relu", AttributeProto::STRING, std::string("relu"))
+        .Attr("swiglu_fusion", "Gate/up layout for swiglu or geglu. 0: not fused (swiglu only), 1: fused and interleaved, 2: fused and not interleaved ([gate | up] for geglu).", AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("swiglu_limit", "The limit used to clamp in SwiGLU. No clamp when limit is not provided. Does not affect GEGLU.", AttributeProto::FLOAT, OPTIONAL_VALUE)
         .Attr("activation_alpha", "Alpha parameter used in activation function.", AttributeProto::FLOAT, 1.0f)
         .Attr("activation_beta", "Beta parameter used in activation function.", AttributeProto::FLOAT, 0.0f)
         .Attr("k", "Number of top experts to select from expert pool", AttributeProto::INT, static_cast<int64_t>(1))
@@ -1453,7 +1457,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "2D input tensor with shape (total_tokens, num_experts), where total_tokens "
                "must match the flattened token count of input",
                "T")
-        .Input(2, "fc1_experts_weights", "3D input tensor with shape (num_experts, fusion_size * inter_size, hidden_size), where fusion_size is 2 for fused swiglu, and 1 otherwise", "T")
+        .Input(2, "fc1_experts_weights", "3D input tensor with shape (num_experts, fusion_size * inter_size, hidden_size), where fusion_size is 2 for fused swiglu or geglu, and 1 otherwise", "T")
         .Input(3, "fc1_experts_bias", "2D optional input tensor with shape (num_experts, fusion_size * inter_size)", "T", OpSchema::Optional)
         .Input(4, "fc2_experts_weights", "3D input tensor with shape (num_experts, hidden_size, inter_size)", "T")
         .Input(5, "fc2_experts_bias", "2D optional input tensor with shape (num_experts, hidden_size)", "T", OpSchema::Optional)
@@ -1517,6 +1521,10 @@ constexpr const char* qMoE_ver1_doc = R"DOC(
       When swiglu_fusion=0, two GEMMs are not fused, and they are FC1 and FC3 in the inputs.
       When swiglu_fusion=1, two GEMMs are fused so that g and l are computed in a single GEMM (FC1), and g and l are interleaved on each row of size 2 * inter_size.
       When swiglu_fusion=2, two GEMMs are fused, and g and l are concatenated on each row.
+      CUDA also supports GEGLU with quant_type='int': geglu = GELU(g, approximate='tanh') * l.
+      GEGLU requires fused FC1 projections: swiglu_fusion=1 stores [g0,l0,g1,l1,...],
+      and swiglu_fusion=2 stores [g | l]. Separate FC3 weights are not supported.
+      activation_alpha, activation_beta and swiglu_limit do not affect GEGLU.
       )DOC";
 
 static void QMoETypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
@@ -1728,7 +1736,7 @@ static OpSchema QMoESchema() {
   auto schema = OpSchema()
                     .SetDoc(std::string(qMoE_ver1_doc) + qMoE_int3_doc)
                     .Attr("activation_type",
-                          "Activation function to use. Choose from relu, gelu, silu, swiglu and identity. CUDA also supports relu2 (squared ReLU). Default is relu",
+                          "Activation function to use. Choose from relu, gelu, silu, swiglu and identity. CUDA also supports relu2 (squared ReLU) and geglu (GELU-tanh(gate) * up). GEGLU requires quant_type='int', fused FC1 gate/up weights, swiglu_fusion=1 or 2, and no separate FC3 weights. Default is relu",
                           AttributeProto::STRING,
                           std::string("relu"))
                     .Attr("k",
@@ -1761,11 +1769,12 @@ static OpSchema QMoESchema() {
                           AttributeProto::INT,
                           OPTIONAL_VALUE)
                     .Attr("swiglu_fusion",
-                          "0: not fused, 1: fused and interleaved. 2: fused and not interleaved.",
+                          "Gate/up layout for swiglu or geglu. 0: not fused (swiglu only), "
+                          "1: fused and interleaved, 2: fused and not interleaved ([gate | up] for geglu).",
                           AttributeProto::INT,
                           static_cast<int64_t>(0))
                     .Attr("swiglu_limit",
-                          "The limit used to clamp inputs in SwiGLU. It is infinite when limit is not provided.",
+                          "The limit used to clamp inputs in SwiGLU. It is infinite when limit is not provided. Does not affect GEGLU.",
                           AttributeProto::FLOAT,
                           OPTIONAL_VALUE)
                     .Attr("activation_alpha",
@@ -1819,7 +1828,7 @@ static OpSchema QMoESchema() {
                            "fc1_experts_weights",
                            "3D tensor with shape (num_experts, fusion_size * inter_size, "
                            "hidden_size * effective_fc1_bits / 8). The last dimension must be byte-aligned. "
-                           "The fusion_size is 2 for fused swiglu, or 1 otherwise. effective_fc1_bits is "
+                           "The fusion_size is 2 for fused swiglu or geglu, or 1 otherwise. effective_fc1_bits is "
                            "fc1_expert_weight_bits when provided, otherwise expert_weight_bits.",
                            "T1")
                     .Input(3,
