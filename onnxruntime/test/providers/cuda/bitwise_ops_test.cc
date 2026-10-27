@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <cstdint>
+#include <initializer_list>
 #include <limits>
 #include <string>
 #include <vector>
@@ -22,7 +23,7 @@ void RunCudaBitwise(const char* op, int opset,
                     const std::vector<int64_t>& output_shape, const std::vector<T>& expected) {
   SCOPED_TRACE(std::string(op) + " opset=" + std::to_string(opset));
   OpTester test(op, opset);
-  const bool unary = std::string(op) == "BitwiseNot" || std::string(op) == "Not";
+  const bool unary = std::string(op) == "BitwiseNot";
   test.AddInput<T>(unary ? "X" : "A", lhs_shape, lhs);
   if (!unary) {
     test.AddInput<T>("B", rhs_shape, rhs);
@@ -112,11 +113,22 @@ TEST(CudaBitwiseLogicalTest, BooleanOpsUnchanged) {
   if (!DefaultCudaExecutionProvider()) {
     GTEST_SKIP() << "CUDA execution provider is unavailable";
   }
-  const std::vector<bool> lhs{false, false, true, true};
-  const std::vector<bool> rhs{false, true, false, true};
-  RunCudaBitwise<bool>("And", 7, {4}, lhs, {4}, rhs, {4}, {false, false, false, true});
-  RunCudaBitwise<bool>("Or", 7, {4}, lhs, {4}, rhs, {4}, {false, true, true, true});
-  RunCudaBitwise<bool>("Not", 1, {4}, lhs, {}, {}, {4}, {true, true, false, false});
+  const auto run = [](const char* op, int opset, std::initializer_list<bool> expected) {
+    SCOPED_TRACE(op);
+    const bool unary = std::string(op) == "Not";
+    OpTester test(op, opset);
+    test.AddInput<bool>(unary ? "X" : "A", {4}, {false, false, true, true});
+    if (!unary) {
+      test.AddInput<bool>("B", {4}, {false, true, false, true});
+    }
+    test.AddOutput<bool>(unary ? "Y" : "C", {4}, expected);
+    SessionOptions options;
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    test.Config(options).ConfigEp(DefaultCudaExecutionProvider()).RunWithConfig();
+  };
+  run("And", 7, {false, false, false, true});
+  run("Or", 7, {false, true, true, true});
+  run("Not", 1, {true, true, false, false});
 }
 
 }  // namespace
