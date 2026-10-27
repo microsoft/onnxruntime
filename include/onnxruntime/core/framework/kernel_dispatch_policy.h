@@ -15,12 +15,27 @@ enum class KernelDispatchPolicy {
   Safe,
 };
 
-// Matching is case-sensitive. Empty or unrecognized values preserve Auto.
-inline KernelDispatchPolicy ParseKernelDispatchPolicy(std::string_view value) {
-  if (value == "latency") return KernelDispatchPolicy::Latency;
-  if (value == "memory") return KernelDispatchPolicy::Memory;
-  if (value == "safe") return KernelDispatchPolicy::Safe;
-  return KernelDispatchPolicy::Auto;
+// Matching is case-sensitive. Empty and "auto" select Auto; failure leaves policy unchanged.
+inline bool TryParseKernelDispatchPolicy(
+    std::string_view value,
+    KernelDispatchPolicy& policy) noexcept {
+  if (value.empty() || value == "auto") {
+    policy = KernelDispatchPolicy::Auto;
+    return true;
+  }
+  if (value == "latency") {
+    policy = KernelDispatchPolicy::Latency;
+    return true;
+  }
+  if (value == "memory") {
+    policy = KernelDispatchPolicy::Memory;
+    return true;
+  }
+  if (value == "safe") {
+    policy = KernelDispatchPolicy::Safe;
+    return true;
+  }
+  return false;
 }
 
 constexpr const char* KernelDispatchPolicyName(KernelDispatchPolicy policy) {

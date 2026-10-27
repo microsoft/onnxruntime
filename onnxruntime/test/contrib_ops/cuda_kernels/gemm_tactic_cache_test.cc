@@ -13,8 +13,9 @@
 
 #include <cstdio>
 #include <barrier>
-#include <filesystem>
+#include <filesystem>  // NOLINT(build/c++17)
 #include <fstream>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -29,6 +30,9 @@
 #include "contrib_ops/cuda/llm/gemm_profiler.h"
 #if !defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP)
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_profiler.h"
+#include "contrib_ops/cuda/quantization/matmul_nbits_tactic_cache.h"
+#include "core/providers/cuda/cuda_execution_provider.h"
+#include "core/providers/cuda/cuda_execution_provider_info.h"
 #endif
 #include "test/util/include/scoped_env_vars.h"
 
@@ -44,6 +48,21 @@ using onnxruntime::llm::cutlass_extensions::MainloopScheduleType;
 using onnxruntime::llm::cutlass_extensions::SplitKStyle;
 
 namespace {
+
+#if !defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP)
+class CacheTestProfiler : public onnxruntime::llm::kernels::weight_only::WeightOnlyGroupwiseQuantGemmPluginProfiler {
+ public:
+  size_t launches = 0;
+
+ protected:
+  bool hasRunnerContext() const override { return true; }
+  void runTactic(int, int, int, const CutlassGemmConfig&, char*, const cudaStream_t&) override { ++launches; }
+  size_t computeTmpSize(size_t, size_t, size_t) override { return 0; }
+  std::vector<CutlassGemmConfig> getTactics(int, int, int) const override { return {CutlassGemmConfig{}}; }
+  bool checkTactic(int, int, int, const CutlassGemmConfig&) const override { return true; }
+  float getSelectionTime(int, int, int, const CutlassGemmConfig&, float time) const override { return time; }
+};
+#endif  // !defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP)
 
 gc::HardwareSignature MakeSignature(const std::string& device_name = "TEST GPU 4090", int sm = 80) {
   gc::HardwareSignature sig;
@@ -675,6 +694,10 @@ TEST(GemmTacticCacheTest, StaleReaderDoesNotOverwriteRetunedBucket) {
   ASSERT_TRUE(first.Flush().IsOK());
   stale.Put(key, 64, MakeSm80Config());
   ASSERT_TRUE(stale.Flush().IsOK());
+  ASSERT_TRUE(stale.Get(key, 1).has_value() && stale.Get(key, 1)->has_value());
+  ExpectConfigEqual(**stale.Get(key, 1), MakeSm90Config());
+  ASSERT_TRUE(stale.ReloadIfChanged().IsOK());
+  ExpectConfigEqual(**stale.Get(key, 1), MakeSm90Config());
   gc::MatMulNBitsTacticCache result(file, MakeSignature());
   ASSERT_TRUE(result.Load().IsOK());
   ASSERT_TRUE(result.Get(key, 1).has_value());
@@ -942,6 +965,399 @@ TEST(GemmTacticCacheCudaTest, TemporaryRunnerFailureDoesNotPoisonNextProfiler) {
   EXPECT_TRUE(result.Get(MakeKey(), 1).has_value());
   CleanUp(file);
 }
+
+TEST(GemmTacticCacheTest, ParseCacheAccessAndFlag) {
+  auto both = gc::ParseCacheAccess("");
+  ASSERT_TRUE(both.has_value());
+  EXPECT_TRUE(both->load && both->save);
+  auto load_save = gc::ParseCacheAccess("LOAD_SAVE");
+  ASSERT_TRUE(load_save.has_value());
+  EXPECT_TRUE(load_save->load && load_save->save);
+  auto load = gc::ParseCacheAccess("load");
+  ASSERT_TRUE(load.has_value());
+  EXPECT_TRUE(load->load && !load->save);
+  auto save = gc::ParseCacheAccess("save");
+  ASSERT_TRUE(save.has_value());
+  EXPECT_TRUE(!save->load && save->save);
+  EXPECT_FALSE(gc::ParseCacheAccess("readonly").has_value());
+
+  EXPECT_EQ(gc::ParseCacheFlag(""), std::optional<bool>(false));
+  EXPECT_EQ(gc::ParseCacheFlag("0"), std::optional<bool>(false));
+  EXPECT_EQ(gc::ParseCacheFlag("On"), std::optional<bool>(true));
+  EXPECT_EQ(gc::ParseCacheFlag("1"), std::optional<bool>(true));
+  EXPECT_FALSE(gc::ParseCacheFlag("2").has_value());
+}
+
+TEST(GemmTacticCacheTest, ResolveFilePathSidecar) {
+  const auto sig = MakeSignature("NVIDIA H200", 90);
+  const std::string suffix = ".matmulnbits_fpa_intb.tsv";
+  const std::filesystem::path abs_model_path =
+      std::filesystem::temp_directory_path() / "models" / "m.onnx";
+  ASSERT_TRUE(abs_model_path.is_absolute());
+  const auto abs_model_u8 = abs_model_path.u8string();
+  const std::string abs_model(abs_model_u8.begin(), abs_model_u8.end());
+  EXPECT_EQ(gc::MatMulNBitsTacticCache::ResolveFilePath("", "", sig, abs_model), abs_model + suffix);
+  const auto rel_resolved = gc::MatMulNBitsTacticCache::ResolveFilePath("", "", sig, "models/m.onnx");
+  EXPECT_TRUE(std::filesystem::path(rel_resolved).is_absolute());
+  // Explicit session locations win over the sidecar.
+  EXPECT_EQ(gc::MatMulNBitsTacticCache::ResolveFilePath("", "/tmp/p", sig, abs_model), "/tmp/p" + suffix);
+  EXPECT_EQ(gc::MatMulNBitsTacticCache::ResolveFilePath("/tmp/dir", "", sig, abs_model),
+            "/tmp/dir/NVIDIA_H200_sm90" + suffix);
+}
+
+TEST(GemmTacticCacheTest, ReloadIfChangedPicksUpOtherWriters) {
+  const std::string prefix = UniqueTempPrefix("reload");
+  const std::string file = prefix + ".matmulnbits_fpa_intb.tsv";
+  const gc::HardwareSignature sig = MakeSignature();
+  const gc::MatMulNBitsKey key = MakeKey();
+
+  gc::MatMulNBitsTacticCache reader(file, sig);
+  ASSERT_TRUE(reader.Load().IsOK());  // file does not exist yet
+
+  {
+    gc::MatMulNBitsTacticCache writer(file, sig);
+    writer.Put(key, 1, MakeSm80Config());
+    ASSERT_TRUE(writer.Flush().IsOK());
+  }
+  ASSERT_TRUE(reader.ReloadIfChanged().IsOK());
+  ASSERT_TRUE(reader.Get(key, 1).has_value() && reader.Get(key, 1)->has_value());
+  ExpectConfigEqual(**reader.Get(key, 1), MakeSm80Config());
+
+  {
+    gc::MatMulNBitsTacticCache writer(file, sig);
+    writer.Put(key, 64, MakeSm90Config());
+    ASSERT_TRUE(writer.Flush().IsOK());
+  }
+  ASSERT_TRUE(reader.ReloadIfChanged().IsOK());
+  EXPECT_TRUE(reader.Get(key, 64).has_value());
+
+  // When another writer replaces an existing clean bucket on disk, ReloadIfChanged() must refresh
+  // the clean entry while preserving any locally dirty bucket in memory.
+  reader.Put(key, 64, MakeSm80Config());
+  {
+    gc::MatMulNBitsTacticCache writer(file, sig);
+    writer.Put(key, 1, MakeSm90Config());
+    ASSERT_TRUE(writer.Flush().IsOK());
+  }
+  ASSERT_TRUE(reader.ReloadIfChanged().IsOK());
+  ASSERT_TRUE(reader.Get(key, 1).has_value() && reader.Get(key, 1)->has_value());
+  ExpectConfigEqual(**reader.Get(key, 1), MakeSm90Config());
+  ASSERT_TRUE(reader.Get(key, 64).has_value() && reader.Get(key, 64)->has_value());
+  ExpectConfigEqual(**reader.Get(key, 64), MakeSm80Config());
+
+  CleanUp(file);
+}
+
+TEST(GemmTacticCacheTest, FlushAdoptsRowsFromOtherWriters) {
+  const std::string prefix = UniqueTempPrefix("adopt");
+  const std::string file = prefix + ".matmulnbits_fpa_intb.tsv";
+  const gc::HardwareSignature sig = MakeSignature();
+  const gc::MatMulNBitsKey key = MakeKey();
+
+  gc::MatMulNBitsTacticCache self(file, sig);
+  ASSERT_TRUE(self.Load().IsOK());
+  {
+    gc::MatMulNBitsTacticCache other(file, sig);
+    other.Put(key, 1, MakeSm80Config());
+    ASSERT_TRUE(other.Flush().IsOK());
+  }
+  self.Put(key, 64, MakeSm90Config());
+  ASSERT_TRUE(self.Flush().IsOK());
+
+  // The other writer's row is now known in memory, and no reload is needed to see it.
+  EXPECT_TRUE(self.Get(key, 1).has_value());
+  ASSERT_TRUE(self.ReloadIfChanged().IsOK());
+  EXPECT_TRUE(self.Get(key, 64).has_value());
+
+  CleanUp(file);
+}
+
+#if !defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP)
+TEST(GemmTacticCacheTest, SessionProfileMapsDeduplicateOnlyWithinOneLiveSession) {
+  using onnxruntime::llm::kernels::weight_only::GemmPluginProfilerManager;
+  GemmPluginProfilerManager<CacheTestProfiler> manager;
+  const int first_session = 1;
+  const int second_session = 2;
+  auto first_map = manager.getSessionProfileMap(&first_session);
+  EXPECT_EQ(first_map, manager.getSessionProfileMap(&first_session));
+  EXPECT_NE(first_map, manager.getSessionProfileMap(&second_session));
+  using onnxruntime::llm::kernels::weight_only::GemmIdCore;
+  const GemmIdCore key(1024, 4096, onnxruntime::llm::nvinfer::DataType::kHALF);
+  first_map->createMProfileMap(key);
+  first_map->getMProfileMap(key)->emplace(1, MakeSm80Config());
+  auto second_map = manager.getSessionProfileMap(&second_session);
+  EXPECT_FALSE(second_map->existsMProfileMap(key));
+  first_map.reset();
+  EXPECT_FALSE(manager.getSessionProfileMap(&first_session)->existsMProfileMap(key));
+}
+
+TEST(GemmTacticCacheTest, RetuneProfilesAgainAcrossConcurrentAndSequentialSessions) {
+  int device_count = 0;
+  if (cudaGetDeviceCount(&device_count) != cudaSuccess || device_count == 0) {
+    GTEST_SKIP() << "CUDA events are required for the profiling-loop smoke test.";
+  }
+  using onnxruntime::llm::kernels::weight_only::GemmDims;
+  using onnxruntime::llm::kernels::weight_only::GemmIdCore;
+  using onnxruntime::llm::kernels::weight_only::GemmPluginProfilerManager;
+  GemmPluginProfilerManager<CacheTestProfiler> manager;
+  const int first_session = 1;
+  const int retune_session = 2;
+  const auto dtype = onnxruntime::llm::nvinfer::DataType::kHALF;
+  const GemmIdCore key(1024, 4096, dtype);
+  const GemmDims dims(1, 1, 1024, 4096);
+  const auto allocator = std::make_shared<CPUAllocator>();
+  const auto access = gc::ParseCacheAccess("save");
+  ASSERT_TRUE(access.has_value());
+  auto first = manager.createGemmPluginProfiler(false);
+  first->setPersistentCache(nullptr, *access, manager.getSessionProfileMap(&first_session));
+  first->setAllocator(allocator);
+  first->profileTactics(nullptr, dtype, dims, key);
+  EXPECT_GT(first->launches, 0u);
+
+  auto same_session = manager.createGemmPluginProfiler(false);
+  same_session->setPersistentCache(nullptr, *access, manager.getSessionProfileMap(&first_session));
+  same_session->setAllocator(allocator);
+  same_session->profileTactics(nullptr, dtype, dims, key);
+  EXPECT_EQ(same_session->launches, 0u);
+
+  auto retune = manager.createGemmPluginProfiler(false);
+  retune->setPersistentCache(nullptr, *access, manager.getSessionProfileMap(&retune_session));
+  retune->setAllocator(allocator);
+  retune->profileTactics(nullptr, dtype, dims, key);
+  EXPECT_GT(retune->launches, 0u);
+  EXPECT_TRUE(first->getBestConfig(1, key).has_value());
+
+  first.reset();
+  same_session.reset();
+  auto sequential = manager.createGemmPluginProfiler(false);
+  sequential->setPersistentCache(nullptr, *access, manager.getSessionProfileMap(&first_session));
+  sequential->setAllocator(allocator);
+  sequential->profileTactics(nullptr, dtype, dims, key);
+  EXPECT_GT(sequential->launches, 0u);
+  EXPECT_TRUE(retune->getBestConfig(1, key).has_value());
+}
+
+TEST(GemmTacticCacheTest, NormalRetuneNormalKeepsRetunedTacticWithoutChangingLiveSession) {
+  int device_count = 0;
+  if (cudaGetDeviceCount(&device_count) != cudaSuccess || device_count == 0) {
+    GTEST_SKIP() << "CUDA events are required for the profiling-loop test.";
+  }
+  using namespace onnxruntime::llm::kernels::weight_only;
+  class ConfigurableProfiler : public CacheTestProfiler {
+   public:
+    int preferred_sm = 80;
+
+   protected:
+    std::vector<CutlassGemmConfig> getTactics(int, int, int) const override {
+      return {MakeSm80Config(), MakeSm90Config()};
+    }
+    float getSelectionTime(int, int, int, const CutlassGemmConfig& tactic, float) const override {
+      return tactic.sm_version == preferred_sm ? 0.1f : 10.0f;
+    }
+    bool validatePersistentTactic(int, int, int, const CutlassGemmConfig&) override { return true; }
+  };
+
+  const std::string file = UniqueTempPrefix("normal_retune_normal") + ".matmulnbits_fpa_intb.tsv";
+  const auto sig = MakeSignature();
+  auto cache = std::make_shared<gc::MatMulNBitsTacticCache>(file, sig);
+  ASSERT_TRUE(cache->Load().IsOK());
+
+  GemmPluginProfilerManager<ConfigurableProfiler> manager;
+  const int session_1 = 1;
+  const int session_2_retune = 2;
+  const int session_3 = 3;
+  const auto dtype = onnxruntime::llm::nvinfer::DataType::kHALF;
+  const GemmIdCore id(3072, 4096, dtype);
+  const GemmDims dims(1, 1, id.n, id.k);
+  const auto allocator = std::make_shared<CPUAllocator>();
+
+  const auto load_save_access = gc::ParseCacheAccess("load_save");
+  const auto save_access = gc::ParseCacheAccess("save");
+  ASSERT_TRUE(load_save_access.has_value() && save_access.has_value());
+
+  auto configure_profiler = [&](ConfigurableProfiler& p, int preferred_sm,
+                                const gc::CacheAccess& access, const void* session_key) {
+    p.preferred_sm = preferred_sm;
+    p.setQuant(4, false, true);
+    p.setGroupSize(64);
+    p.setCudaKernelType(KernelType::FP16Int4Groupwise, 80);
+    p.setProfileMOverride({1});
+    p.setPersistentCache(cache, access, manager.getSessionProfileMap(session_key));
+    p.setAllocator(allocator);
+  };
+
+  // 1. First normal session selects tactic A (MakeSm80Config) and deduplicates within the session.
+  auto first_normal = manager.createGemmPluginProfiler(false);
+  configure_profiler(*first_normal, 80, *load_save_access, &session_1);
+  first_normal->profileTactics(nullptr, dtype, dims, id, true);
+  EXPECT_GT(first_normal->launches, 0u);
+  ASSERT_TRUE(first_normal->getBestConfig(1, id).has_value());
+  ExpectConfigEqual(*first_normal->getBestConfig(1, id), MakeSm80Config());
+
+  auto first_normal_dup = manager.createGemmPluginProfiler(false);
+  configure_profiler(*first_normal_dup, 80, *load_save_access, &session_1);
+  first_normal_dup->profileTactics(nullptr, dtype, dims, id, true);
+  EXPECT_EQ(first_normal_dup->launches, 0u);
+  ASSERT_TRUE(cache->Flush().IsOK());
+
+  // 2. A save-mode session retunes the same shape to tactic B (MakeSm90Config) and saves B.
+  auto retune = manager.createGemmPluginProfiler(false);
+  configure_profiler(*retune, 90, *save_access, &session_2_retune);
+  retune->profileTactics(nullptr, dtype, dims, id, true);
+  EXPECT_GT(retune->launches, 0u);
+  ASSERT_TRUE(retune->getBestConfig(1, id).has_value());
+  ExpectConfigEqual(*retune->getBestConfig(1, id), MakeSm90Config());
+  ASSERT_TRUE(cache->Flush().IsOK());
+
+  // The still-running first normal session must keep its original choice (A).
+  ASSERT_TRUE(first_normal->getBestConfig(1, id).has_value());
+  ExpectConfigEqual(*first_normal->getBestConfig(1, id), MakeSm80Config());
+
+  // Lazily growing the first session's map with a new M bucket must publish only the newly
+  // selected bucket (64 -> A), preserving within-session sharing while keeping the retuned
+  // tactic (1 -> B) persisted.
+  const size_t launches_before_lazy = first_normal->launches;
+  const auto lazy_config = first_normal->getBestConfigOrProfile(64, id);
+  ASSERT_TRUE(lazy_config.has_value());
+  ExpectConfigEqual(*lazy_config, MakeSm80Config());
+  EXPECT_GT(first_normal->launches, launches_before_lazy);
+
+  const auto shared_lazy_config = first_normal_dup->getBestConfigOrProfile(64, id);
+  ASSERT_TRUE(shared_lazy_config.has_value());
+  ExpectConfigEqual(*shared_lazy_config, MakeSm80Config());
+  EXPECT_EQ(first_normal_dup->launches, 0u);
+  ASSERT_TRUE(cache->Flush().IsOK());
+  ASSERT_TRUE(cache->Get(MakeKey(), 1).has_value() && cache->Get(MakeKey(), 1)->has_value());
+  ExpectConfigEqual(**cache->Get(MakeKey(), 1), MakeSm90Config());
+  ASSERT_TRUE(cache->Get(MakeKey(), 64).has_value() && cache->Get(MakeKey(), 64)->has_value());
+  ExpectConfigEqual(**cache->Get(MakeKey(), 64), MakeSm80Config());
+
+  // 3. The next normal session must load tactic B from the cache without re-profiling or overwriting B with A.
+  auto second_normal = manager.createGemmPluginProfiler(false);
+  configure_profiler(*second_normal, 80, *load_save_access, &session_3);
+  second_normal->profileTactics(nullptr, dtype, dims, id, true);
+  EXPECT_EQ(second_normal->launches, 0u);
+  ASSERT_TRUE(second_normal->getBestConfig(1, id).has_value());
+  ExpectConfigEqual(*second_normal->getBestConfig(1, id), MakeSm90Config());
+  ASSERT_TRUE(cache->Flush().IsOK());
+
+  gc::MatMulNBitsTacticCache verify(file, sig);
+  ASSERT_TRUE(verify.Load().IsOK());
+  ASSERT_TRUE(verify.Get(MakeKey(), 1).has_value() && verify.Get(MakeKey(), 1)->has_value());
+  ExpectConfigEqual(**verify.Get(MakeKey(), 1), MakeSm90Config());
+  ASSERT_TRUE(verify.Get(MakeKey(), 64).has_value() && verify.Get(MakeKey(), 64)->has_value());
+  ExpectConfigEqual(**verify.Get(MakeKey(), 64), MakeSm80Config());
+
+  CleanUp(file);
+}
+
+TEST(GemmTacticCacheTest, ShutdownFlushAvoidsLockedMutexesAndSavesBeforeStop) {
+  const std::string file = UniqueTempPrefix("shutdown_flush") + ".matmulnbits_fpa_intb.tsv";
+  const auto sig = MakeSignature();
+  const auto key = MakeKey();
+
+  auto cache = onnxruntime::contrib::cuda::GetGlobalMatMulNBitsTacticCacheForTesting(file, sig, /*load*/ false);
+  ASSERT_NE(cache, nullptr);
+  cache->Put(key, 1, MakeSm80Config());
+
+  // Simulate a worker thread stopped while holding the cache mutex: shutdown flush must not block.
+  {
+    std::barrier locked(2);
+    std::barrier release(2);
+    std::thread stopped_worker([&]() {
+      auto lock = cache->LockMutexForTesting();
+      locked.arrive_and_wait();
+      release.arrive_and_wait();
+    });
+    locked.arrive_and_wait();
+    EXPECT_FALSE(cache->TryFlush().IsOK());
+    onnxruntime::contrib::cuda::FlushMatMulNBitsTacticCachesForShutdown();
+    EXPECT_FALSE(std::filesystem::exists(file));
+    release.arrive_and_wait();
+    stopped_worker.join();
+  }
+
+  // Simulate a worker thread stopped while holding the global registry mutex: shutdown flush must not block.
+  {
+    std::barrier locked(2);
+    std::barrier release(2);
+    std::thread stopped_worker([&]() {
+      auto lock = onnxruntime::contrib::cuda::LockMatMulNBitsTacticCacheRegistryForTesting();
+      locked.arrive_and_wait();
+      release.arrive_and_wait();
+    });
+    locked.arrive_and_wait();
+    onnxruntime::contrib::cuda::FlushMatMulNBitsTacticCachesForShutdown();
+    EXPECT_FALSE(std::filesystem::exists(file));
+    release.arrive_and_wait();
+    stopped_worker.join();
+  }
+
+  // Saving before worker threads are stopped persists the staged tactics.
+  onnxruntime::contrib::cuda::FlushMatMulNBitsTacticCaches();
+  gc::MatMulNBitsTacticCache verify(file, sig);
+  ASSERT_TRUE(verify.Load().IsOK());
+  ASSERT_TRUE(verify.Get(key, 1).has_value() && verify.Get(key, 1)->has_value());
+  ExpectConfigEqual(**verify.Get(key, 1), MakeSm80Config());
+
+  CleanUp(file);
+}
+
+TEST(GemmTacticCacheTest, RelativeModelPathSavedNextToModelAfterDirectoryChange) {
+  int device_count = 0;
+  if (cudaGetDeviceCount(&device_count) != cudaSuccess || device_count == 0) {
+    GTEST_SKIP() << "CUDA device required for CUDAExecutionProvider construction.";
+  }
+
+  const auto base_dir = std::filesystem::temp_directory_path() / "ort_gemm_tactic_cache_rel_model_test";
+  const auto models_dir = base_dir / "models";
+  const auto other_dir = base_dir / "other_cwd";
+  std::error_code ec;
+  std::filesystem::remove_all(base_dir, ec);
+  ASSERT_TRUE(std::filesystem::create_directories(models_dir, ec)) << ec.message();
+  ASSERT_TRUE(std::filesystem::create_directories(other_dir, ec)) << ec.message();
+
+  const auto original_cwd = std::filesystem::current_path(ec);
+  ASSERT_FALSE(ec) << ec.message();
+  struct CwdGuard {
+    std::filesystem::path saved;
+    std::filesystem::path cleanup_dir;
+    ~CwdGuard() {
+      std::error_code ignore;
+      std::filesystem::current_path(saved, ignore);
+      std::filesystem::remove_all(cleanup_dir, ignore);
+    }
+  } cwd_guard{original_cwd, base_dir};
+
+  std::filesystem::current_path(base_dir, ec);
+  ASSERT_FALSE(ec) << ec.message();
+
+  const auto sig = MakeSignature();
+  const auto key = MakeKey();
+  {
+    CUDAExecutionProvider ep(CUDAExecutionProviderInfo{});
+    // Record a relative model path ("models/model.onnx") as GetCapability does at session creation.
+    ep.SetSessionModelPath(std::filesystem::path("models") / "model.onnx");
+    EXPECT_TRUE(ep.GetSessionModelPath().is_absolute());
+
+    const auto model_u8 = ep.GetSessionModelPath().u8string();
+    const std::string sidecar_prefix(model_u8.begin(), model_u8.end());
+    const std::string cache_file = gc::MatMulNBitsTacticCache::ResolveFilePath("", "", sig, sidecar_prefix);
+    auto cache = onnxruntime::contrib::cuda::GetGlobalMatMulNBitsTacticCacheForTesting(cache_file, sig, /*load*/ false);
+    ASSERT_NE(cache, nullptr);
+    cache->Put(key, 1, MakeSm80Config());
+
+    // Change working directory before closing the session (~CUDAExecutionProvider flushes the cache).
+    std::filesystem::current_path(other_dir, ec);
+    ASSERT_FALSE(ec) << ec.message();
+  }
+
+  const auto expected_cache = models_dir / "model.onnx.matmulnbits_fpa_intb.tsv";
+  const auto wrong_cache = other_dir / "models" / "model.onnx.matmulnbits_fpa_intb.tsv";
+  EXPECT_TRUE(std::filesystem::exists(expected_cache));
+  EXPECT_FALSE(std::filesystem::exists(wrong_cache));
+}
+#endif  // !defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP)
 
 }  // namespace test
 }  // namespace onnxruntime

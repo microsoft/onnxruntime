@@ -115,12 +115,16 @@ class SequentialPlannerTestContext : public ISequentialPlannerContext {
   SequentialPlannerTestContext(ShapeMap* shape_map) : shape_map_(shape_map) {}
 
   TensorShapeProto* GetShape(const onnxruntime::NodeArg& arg) const override {
+    ++shape_queries_;
     auto iter = shape_map_->find(&arg);
     return (shape_map_->end() != iter) ? iter->second : nullptr;
   }
 
+  size_t GetShapeQueryCount() const { return shape_queries_; }
+
  private:
   ShapeMap* shape_map_;
+  mutable size_t shape_queries_ = 0;
 };
 
 class ParallelPlannerTestContext : public SequentialPlannerTestContext {
@@ -165,6 +169,7 @@ class PlannerTest : public ::testing::Test {
   std::unique_ptr<SessionState> state_;
   ShapeMap shape_map_;
   std::optional<SequentialExecutionPlan> plan_;
+  size_t shape_queries_ = 0;
 
  public:
   PlannerTest()
@@ -206,6 +211,11 @@ class PlannerTest : public ::testing::Test {
     auto iter = name_to_arg_.find(name);
     if (name_to_arg_.end() != iter) return iter->second;
     return (name_to_arg_[name] = &graph_.GetOrCreateNodeArg(name, &float_type_.value));
+  }
+
+  template <typename T>
+  void SetTensorType(const std::string& name) {
+    name_to_arg_[name] = &graph_.GetOrCreateNodeArg(name, DataTypeImpl::GetTensorType<T>()->GetTypeProto());
   }
 
   onnxruntime::Node* AddNode(::onnxruntime::KernelDef& kernel_def, std::string& input, std::string& output) {
@@ -349,6 +359,7 @@ class PlannerTest : public ::testing::Test {
           plan_);
 
       EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+      shape_queries_ = test_context.GetShapeQueryCount();
       // AllocationPlanTestUtility::BasicIntegrityCheck(*plan_, name_to_arg_.size());
     }
   }
@@ -357,6 +368,13 @@ class PlannerTest : public ::testing::Test {
     int id;
     index(name, id);
     EXPECT_EQ(plan_->allocation_plan[id].alloc_kind, kind) << "Error in allocation kind for " << name;
+  }
+
+  void CheckReusedBuffer(const std::string& name, const std::string& expected) {
+    int id, expected_id;
+    index(name, id);
+    index(expected, expected_id);
+    EXPECT_EQ(plan_->allocation_plan[id].reused_buffer, expected_id);
   }
 
   void CheckFreed(int step_number, std::initializer_list<std::string> freed_items) {
@@ -382,6 +400,26 @@ class PlannerTest : public ::testing::Test {
 
  protected:
   Graph& GetGraph() { return graph_; }
+  size_t GetShapeQueryCount() const { return shape_queries_; }
+  template <typename T>
+  void CheckStorageSizedReuse(AllocKind expected) {
+    std::string input = "input", a = "a", b = "b", c = "c", output = "output";
+    SetTensorType<T>(b);
+    SetTensorType<T>(c);
+    SetTensorType<T>(output);
+    AddNormalNode(input, a);
+    auto cast_kernel = KernelDefBuilder().SetName("Cast").Provider(kCpuExecutionProvider).SinceVersion(9).Build();
+    AddNode(*cast_kernel, a, b)->AddAttribute("to", static_cast<int64_t>(utils::ToTensorProtoElementType<T>()));
+    AddNormalNode(b, c);
+    AddNormalNode(c, output);
+    Shape compatible{"batch", "width"}, different{"batch", "other"};
+    SetShape({{a, &compatible.value}, {b, &different.value}, {c, &compatible.value}});
+
+    CreatePlan();
+
+    CheckAllocKind(c, expected);
+    if (expected == AllocKind::kReuse) CheckReusedBuffer(c, a);
+  }
   const SequentialExecutionPlan& GetPlan() const { return *plan_; }
   const SessionState& GetState() const { return *state_; }
   ExecutionProviders& GetExecutionProviders() { return execution_providers_; }
@@ -715,6 +753,123 @@ TEST_F(PlannerTest, InPlaceSizeMismatchTest) {
   CheckFreed(2, {X3});
   CheckFreed(3, {X2});
 }
+
+TEST_F(PlannerTest, ReuseIndexPreservesMostRecentlyFreedCompatibleBuffer) {
+  std::string input = "input", a = "a", b = "b", c = "c";
+  std::string joined = "joined", reused = "reused", output = "output";
+  AddNormalNode(input, a);
+  AddNormalNode(input, b);
+  AddNormalNode(input, c);
+  auto sum_kernel = KernelDefBuilder().SetName("Sum").Provider(kCpuExecutionProvider).SinceVersion(8).Build();
+  std::string sum_name = "sum";
+  std::vector<NodeArg*> inputs{Arg(a), Arg(b), Arg(c)}, outputs{Arg(joined)};
+  AddNode(*sum_kernel, sum_name, inputs, outputs);
+  AddNormalNode(joined, reused);
+  AddNormalNode(reused, output);
+  Shape compatible{"batch", "width"}, incompatible{"batch", "other"}, join_shape{"batch", "joined"};
+  SetShape({{a, &compatible.value}, {b, &compatible.value}, {c, &incompatible.value}, {joined, &join_shape.value}, {reused, &compatible.value}, {output, &compatible.value}});
+
+  CreatePlan();
+
+  // Sum frees a, b, then c. Skip the newer incompatible c, but prefer b to a.
+  CheckAllocKind(reused, AllocKind::kReuse);
+  CheckReusedBuffer(reused, b);
+  CheckAllocKind(output, AllocKind::kAllocateOutput);
+}
+
+TEST_F(PlannerTest, ReuseIndexPreservesEmptyAndUnknownShapeEligibility) {
+  std::string input = "input", a = "a", b = "b", c = "c", output = "output";
+  AddNormalNode(input, a);
+  AddNormalNode(a, b);
+  AddNormalNode(b, c);
+  AddNormalNode(c, output);
+  Shape empty_symbol{""}, different{"other"};
+  SetShape({{a, &empty_symbol.value}, {b, &different.value}, {c, &empty_symbol.value}});
+
+  CreatePlan();
+
+  CheckAllocKind(a, AllocKind::kAllocate);
+  CheckAllocKind(b, AllocKind::kAllocate);
+  CheckAllocKind(c, AllocKind::kAllocate);
+  CheckAllocKind(output, AllocKind::kAllocateOutput);
+}
+
+TEST_F(PlannerTest, ReuseIndexAllowsZeroSizedTensors) {
+  std::string input = "input", a = "a", b = "b", c = "c", output = "output";
+  AddNormalNode(input, a);
+  AddNormalNode(a, b);
+  AddNormalNode(b, c);
+  AddNormalNode(c, output);
+  Shape empty{0, 8}, different{1, 8};
+  SetShape({{a, &empty.value}, {b, &different.value}, {c, &empty.value}});
+
+  CreatePlan();
+
+  CheckAllocKind(c, AllocKind::kReuse);
+  CheckReusedBuffer(c, a);
+}
+
+TEST_F(PlannerTest, ReuseIndexDoesNotReuseScalarBuffers) {
+  std::string input = "input", a = "a", b = "b", c = "c", output = "output";
+  AddNormalNode(input, a);
+  AddNormalNode(a, b);
+  AddNormalNode(b, c);
+  AddNormalNode(c, output);
+  Shape scalar(std::initializer_list<int>{}), different{1};
+  SetShape({{a, &scalar.value}, {b, &different.value}, {c, &scalar.value}});
+
+  CreatePlan();
+
+  CheckAllocKind(c, AllocKind::kAllocate);
+}
+
+TEST_F(PlannerTest, ReuseIndexAllowsEqualWidthDifferentElementTypes) {
+  CheckStorageSizedReuse<int32_t>(AllocKind::kReuse);
+}
+
+TEST_F(PlannerTest, ReuseIndexRejectsDifferentElementWidths) {
+  CheckStorageSizedReuse<int64_t>(AllocKind::kAllocate);
+}
+
+TEST_F(PlannerTest, ReuseIndexDoesNotReuseStringBuffers) {
+  std::string input = "input", a = "a", b = "b", c = "c", output = "output";
+  for (const auto& name : {input, a, b, c, output}) SetTensorType<std::string>(name);
+  AddNormalNode(input, a);
+  AddNormalNode(a, b);
+  AddNormalNode(b, c);
+  AddNormalNode(c, output);
+  Shape shape{"batch", "width"};
+  SetShape({{a, &shape.value}, {b, &shape.value}, {c, &shape.value}});
+
+  CreatePlan();
+
+  CheckAllocKind(c, AllocKind::kAllocate);
+}
+
+// The indexed complexity contract applies to full builds, not the minimal linear fallback.
+#if !defined(ORT_MINIMAL_BUILD)
+TEST_F(PlannerTest, ReuseIndexAvoidsQuadraticShapeQueries) {
+  constexpr int node_count = 512;
+  InlinedVector<std::string> names;
+  InlinedVector<Shape> shapes;
+  names.reserve(node_count + 1);
+  shapes.reserve(node_count + 1);
+  for (int i = 0; i <= node_count; ++i) {
+    names.push_back("value_" + std::to_string(i));
+    shapes.emplace_back(std::initializer_list<int>{i + 1});
+    SetShape(names.back(), &shapes.back().value);
+    if (i > 0) AddNormalNode(names[i - 1], names[i]);
+  }
+
+  CreatePlan();
+
+  // Count existing shape-context queries instead of relying on wall-clock time.
+  // Every freed buffer has a distinct shape, so no full-list scans are needed.
+  RecordProperty("shape_queries", std::to_string(GetShapeQueryCount()));
+  EXPECT_LE(GetShapeQueryCount(), 3U * node_count);
+  for (int i = 1; i < node_count; ++i) CheckAllocKind(names[i], AllocKind::kAllocate);
+}
+#endif
 
 // Test operator<< to output details of an allocation & execution plan.
 TEST_F(PlannerTest, PlanOutputTest) {
@@ -2211,29 +2366,29 @@ TEST(AllocationPlannerTest, AvoidReuseOfPackedSubByteBufferForFullByteTensor) {
     return t;
   };
 
-  auto create_model = [&]() -> Model {
+  auto create_model = [&](TensorProto_DataType source_elem_type, TensorProto_DataType dest_elem_type) -> Model {
     Model model("packed_subbyte_reuse", false, ModelMetaData(), PathString(),
                 IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 21}}, {},
                 DefaultLoggingManager().DefaultLogger());
     Graph& graph = model.MainGraph();
 
     TypeProto float_type = make_tensor_type(TensorProto_DataType_FLOAT);
-    TypeProto uint4_type = make_tensor_type(TensorProto_DataType_UINT4);
-    TypeProto uint8_type = make_tensor_type(TensorProto_DataType_UINT8);
+    TypeProto source_type = make_tensor_type(source_elem_type);
+    TypeProto dest_type = make_tensor_type(dest_elem_type);
 
     auto& X = graph.GetOrCreateNodeArg("X", &float_type);
-    auto& A = graph.GetOrCreateNodeArg("A", &uint4_type);  // packed sub-byte buffer: ceil(1023/2) = 512 bytes
+    auto& A = graph.GetOrCreateNodeArg("A", &source_type);
     auto& B = graph.GetOrCreateNodeArg("B", &float_type);  // consumes A -> A becomes dead here
-    auto& C = graph.GetOrCreateNodeArg("C", &uint8_type);  // full-byte buffer: 1023 bytes
+    auto& C = graph.GetOrCreateNodeArg("C", &dest_type);
     auto& Y = graph.GetOrCreateNodeArg("Y", &float_type);
 
     auto add_cast = [&graph](const std::string& name, NodeArg& in, NodeArg& out, TensorProto_DataType to) {
       auto& node = graph.AddNode(name, "Cast", name, {&in}, {&out});
       node.AddAttribute("to", static_cast<int64_t>(to));
     };
-    add_cast("cast_to_uint4", X, A, TensorProto_DataType_UINT4);
+    add_cast("cast_to_source", X, A, source_elem_type);
     add_cast("cast_a_to_float", A, B, TensorProto_DataType_FLOAT);
-    add_cast("cast_to_uint8", B, C, TensorProto_DataType_UINT8);
+    add_cast("cast_to_dest", B, C, dest_elem_type);
     add_cast("cast_c_to_float", C, Y, TensorProto_DataType_FLOAT);
 
     graph.SetInputs({&X});
@@ -2242,48 +2397,64 @@ TEST(AllocationPlannerTest, AvoidReuseOfPackedSubByteBufferForFullByteTensor) {
     return model;
   };
 
-  SessionOptions so;
-  // Keep memory reuse on (default) and avoid graph optimizations that could rewrite the Cast chain.
-  so.graph_optimization_level = TransformerLevel::Default;
-  InferenceSession sess{so, GetEnvironment()};
+  struct StorageCase {
+    TensorProto_DataType source;
+    TensorProto_DataType destination;
+    bool reuse;
+  };
+  // Exercise both packing-density rejection and compatible packed/dense reuse, plus string exclusion.
+  for (const auto& storage_case : {
+           StorageCase{TensorProto_DataType_UINT4, TensorProto_DataType_UINT8, false},
+           StorageCase{TensorProto_DataType_UINT8, TensorProto_DataType_UINT4, false},
+           StorageCase{TensorProto_DataType_UINT4, TensorProto_DataType_UINT4, true},
+           StorageCase{TensorProto_DataType_UINT4, TensorProto_DataType_INT4, true},
+           StorageCase{TensorProto_DataType_UINT8, TensorProto_DataType_INT8, true},
+           StorageCase{TensorProto_DataType_STRING, TensorProto_DataType_STRING, false},
+       }) {
+    SCOPED_TRACE(::testing::Message() << "source=" << storage_case.source
+                                      << ", destination=" << storage_case.destination);
+    SessionOptions so;
+    // Keep memory reuse on (default) and avoid graph optimizations that could rewrite the Cast chain.
+    so.graph_optimization_level = TransformerLevel::Default;
+    InferenceSession sess{so, GetEnvironment()};
 
-  std::string serialized;
-  ASSERT_TRUE(create_model().ToProto().SerializeToString(&serialized));
-  std::stringstream sstr(serialized);
-  ASSERT_STATUS_OK(sess.Load(sstr));
-  ASSERT_STATUS_OK(sess.Initialize());
+    std::string serialized;
+    ASSERT_TRUE(create_model(storage_case.source, storage_case.destination).ToProto().SerializeToString(&serialized));
+    std::stringstream sstr(serialized);
+    ASSERT_STATUS_OK(sess.Load(sstr));
+    ASSERT_STATUS_OK(sess.Initialize());
 
-  const auto& session_state = sess.GetSessionState();
-  const auto& ort_value_index_map = session_state.GetOrtValueNameIdxMap();
-  const SequentialExecutionPlan* plan = session_state.GetExecutionPlan();
+    const auto& session_state = sess.GetSessionState();
+    const auto& ort_value_index_map = session_state.GetOrtValueNameIdxMap();
+    const SequentialExecutionPlan* plan = session_state.GetExecutionPlan();
 
-  OrtValueIndex a_index, c_index;
-  ASSERT_STATUS_OK(ort_value_index_map.GetIdx("A", a_index));
-  ASSERT_STATUS_OK(ort_value_index_map.GetIdx("C", c_index));
+    OrtValueIndex a_index, c_index;
+    ASSERT_STATUS_OK(ort_value_index_map.GetIdx("A", a_index));
+    ASSERT_STATUS_OK(ort_value_index_map.GetIdx("C", c_index));
 
-  // The uint8 tensor C must never be planned to reuse the (smaller) uint4 tensor A's buffer.
-  const auto& c_plan = plan->allocation_plan[c_index];
-  const bool reuses_a = (c_plan.alloc_kind == AllocKind::kReuse) && (c_plan.reused_buffer == a_index);
-  EXPECT_FALSE(reuses_a) << "uint8[" << kDim << "] output must not reuse the uint4[" << kDim << "] buffer";
+    const auto& c_plan = plan->allocation_plan[c_index];
+    const bool reuses_a = (c_plan.alloc_kind == AllocKind::kReuse) && (c_plan.reused_buffer == a_index);
+    EXPECT_EQ(reuses_a, storage_case.reuse);
 
-  // The model must still run and produce correct results after round-tripping through uint4 and uint8.
-  constexpr float kValue = 3.0f;
-  std::vector<int64_t> dims{kDim};
-  std::vector<float> input_data(static_cast<size_t>(kDim), kValue);
-  OrtValue input_value;
-  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims, input_data, &input_value);
+    // The model must still run and produce correct results after round-tripping through both storage types.
+    constexpr float kValue = 3.0f;
+    std::vector<int64_t> dims{kDim};
+    std::vector<float> input_data(static_cast<size_t>(kDim), kValue);
+    OrtValue input_value;
+    CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims, input_data, &input_value);
 
-  NameMLValMap feeds{{"X", input_value}};
-  std::vector<std::string> output_names{"Y"};
-  std::vector<OrtValue> fetches;
-  ASSERT_STATUS_OK(sess.Run(feeds, output_names, &fetches));
+    NameMLValMap feeds{{"X", input_value}};
+    std::vector<std::string> output_names{"Y"};
+    std::vector<OrtValue> fetches;
+    ASSERT_STATUS_OK(sess.Run(feeds, output_names, &fetches));
 
-  ASSERT_EQ(fetches.size(), 1u);
-  const Tensor& out = fetches[0].Get<Tensor>();
-  ASSERT_EQ(out.Shape().Size(), kDim);
-  const float* out_data = out.Data<float>();
-  for (int64_t i = 0; i < kDim; ++i) {
-    ASSERT_EQ(out_data[i], kValue) << "mismatch at index " << i;
+    ASSERT_EQ(fetches.size(), 1u);
+    const Tensor& out = fetches[0].Get<Tensor>();
+    ASSERT_EQ(out.Shape().Size(), kDim);
+    const float* out_data = out.Data<float>();
+    for (int64_t i = 0; i < kDim; ++i) {
+      ASSERT_EQ(out_data[i], kValue) << "mismatch at index " << i;
+    }
   }
 }
 

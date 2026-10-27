@@ -37,6 +37,7 @@ class Tensor;
 namespace webgpu {
 
 class WebGpuContext;
+class WebGpuInstanceWrapper;
 class ComputeContextBase;
 class ComputeContext;
 class ProgramBase;
@@ -264,7 +265,7 @@ class WebGpuContextFactory {
   // it is reached from OrtEnv::~OrtEnv via CleanupWebGpuContexts().
   // On abnormal/process termination they simply leak, which is safe.
   static std::unordered_map<int32_t, WebGpuContextInfo>* contexts_;
-  static WGPUInstance default_instance_;
+  static WebGpuInstanceWrapper* default_instance_;
 };
 
 // Class WebGpuContext includes all necessary resources for the context.
@@ -338,6 +339,11 @@ class WebGpuContext final {
   // Unlike Flush, waits for submitted queue work and checks scoped errors and device loss.
   // Serialize with other operations on this recording. Scopes cover flushing, not earlier encoding.
   Status FlushAndWaitChecked(const webgpu::BufferManager& buffer_mgr, CommandRecordingState& recording);
+
+  // Scopes cover enqueue (which may run multiple programs), flushing and completion.
+  // Drain and resolve all scopes even if enqueue fails or throws. Do not switch threads in enqueue.
+  Status RunAndWaitChecked(const webgpu::BufferManager& buffer_mgr, CommandRecordingState& recording,
+                           const std::function<Status()>& enqueue);
 
   // Context-level managers are shared by sessions and synchronize their buffer caches internally.
   webgpu::BufferManager& BufferManager() const { return *buffer_mgr_; }

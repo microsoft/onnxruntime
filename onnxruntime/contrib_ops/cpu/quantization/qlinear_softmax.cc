@@ -104,14 +104,14 @@ QLinearSoftmax::QLinearSoftmax(const OpKernelInfo& info)
 Status QLinearSoftmax::Compute(OpKernelContext* ctx) const {
   const auto* X = ctx->Input<Tensor>(0);
   const auto& X_shape = X->Shape();
+  auto* Y = ctx->Output(0, X_shape);
+
   // edge case. one or more dims with value of 0. nothing to do
   if (X_shape.Size() == 0) {
     return Status::OK();
   }
 
   auto axis = static_cast<int>(HandleNegativeAxis(axis_, int64_t(X_shape.NumDimensions())));
-
-  auto* Y = ctx->Output(0, X_shape);
 
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
   const size_t D = onnxruntime::narrow<size_t>(opset_ < OPSET13 ? X_shape.SizeFromDimension(onnxruntime::narrow<size_t>(axis)) : X_shape[onnxruntime::narrow<size_t>(axis)]);

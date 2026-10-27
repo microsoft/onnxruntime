@@ -184,6 +184,7 @@ std::optional<GQAWorkspaceBounds> BuildBounds(
       config.num_heads % config.kv_num_heads != 0 ||
       config.num_heads > std::numeric_limits<int32_t>::max() ||
       config.kv_num_heads > std::numeric_limits<int32_t>::max() ||
+      config.static_head_size < 0 ||
       (config.causal != 0 && config.causal != 1) ||
       (config.local_window_size != -1 && config.local_window_size <= 0) ||
       (config.sliding_window_cache && config.local_window_size <= 0) ||
@@ -265,6 +266,7 @@ std::optional<GQAWorkspaceBounds> BuildBounds(
     cache_head_bound *= 2;
   }
   head_bound = std::min(head_bound, cache_head_bound);
+  if (config.static_head_size > head_bound) return std::nullopt;
   if (batch_bound <= 0 || capacity_bound <= 0 || head_bound < 8 ||
       (windowed && capacity_bound != config.local_window_size) ||
       (!windowed && (config.max_total_sequence_length < sequence_bound ||
@@ -362,12 +364,26 @@ std::optional<GQAWorkspaceBounds> BuildBounds(
 
   bool flash_reachable = false;
 #if USE_FLASH_ATTENTION
-  flash_reachable =
-      !has_bias && kernel_options.UseFlashAttention() &&
-      onnxruntime::flash::is_any_supported_head_size<MLFloat16>(
-          device_prop, static_cast<size_t>(head_bound),
-          static_cast<size_t>(config.num_heads),
-          static_cast<size_t>(config.kv_num_heads));
+  const auto supports_flash = [&](int64_t head) {
+    const auto supports = [&](auto element) {
+      return IsGQAFlashEligibleSeqFree<decltype(element)>(
+          device_prop, has_bias, !kernel_options.UseFlashAttention(),
+          head, config.num_heads, config.kv_num_heads);
+    };
+    return config.is_bf16 ? supports(BFloat16{}) : supports(MLFloat16{});
+  };
+  if (config.static_head_size > 0) {
+    flash_reachable = supports_flash(config.static_head_size);
+  } else {
+    for (int64_t head = 8;
+         head <= std::min<int64_t>(head_bound, onnxruntime::flash::kFlashAttentionMaxHeadSize);
+         head += 8) {
+      if (supports_flash(head)) {
+        flash_reachable = true;
+        break;
+      }
+    }
+  }
 #endif
   if (flash_reachable) {
     bounds.reachable_backends =
@@ -414,14 +430,16 @@ std::optional<GQAWorkspaceBounds> BuildBounds(
     auto covering = IntersectGQAReachableBackends(
         bounds.reachable_backends, GQAReachableBackend::Unfused);
 #if USE_FLASH_ATTENTION || USE_MEMORY_EFFICIENT_ATTENTION
+    const int64_t first_head = config.static_head_size > 0 ? config.static_head_size : 8;
+    const int64_t last_head = config.static_head_size > 0 ? config.static_head_size : head_bound;
     bool flash_covers = false;
     bool mea_covers = false;
 #if USE_FLASH_ATTENTION
     flash_covers = flash_reachable &&
-                   head_bound <= static_cast<int64_t>(onnxruntime::flash::kFlashAttentionMaxHeadSize);
+                   last_head <= static_cast<int64_t>(onnxruntime::flash::kFlashAttentionMaxHeadSize);
 #endif
 #if USE_MEMORY_EFFICIENT_ATTENTION
-    mea_covers = mea_reachable && head_bound <= kEfficientAttentionMaxHeadSize;
+    mea_covers = mea_reachable && last_head <= kEfficientAttentionMaxHeadSize;
     GroupQueryAttentionParameters parameters{};
     parameters.is_first_prompt = phase == GQAExecutionPhase::Prefill;
     // Eligibility distinguishes phase classes, not lengths within a class.
@@ -431,12 +449,9 @@ std::optional<GQAWorkspaceBounds> BuildBounds(
     parameters.use_smooth_softmax = config.smooth_softmax;
     parameters.past_kv_format = AttentionQkvFormat::Q_K_V_BNSH;
 #endif
-    for (int64_t head = 8; (flash_covers || mea_covers) && head <= head_bound; head += 8) {
+    for (int64_t head = first_head; (flash_covers || mea_covers) && head <= last_head; head += 8) {
 #if USE_FLASH_ATTENTION
-      flash_covers = flash_covers &&
-                     IsGQAFlashEligibleSeqFree<MLFloat16>(
-                         device_prop, has_bias, !kernel_options.UseFlashAttention(),
-                         head, config.num_heads, config.kv_num_heads);
+      flash_covers = flash_covers && supports_flash(head);
 #endif
 #if USE_MEMORY_EFFICIENT_ATTENTION
       parameters.head_size = static_cast<int>(head);
@@ -464,7 +479,8 @@ std::optional<GQAWorkspaceBounds> BuildBounds(
 std::optional<GQAWorkspaceEstimateConfig> GetGroupQueryAttentionWorkspaceEstimateConfig(
     const Node& node,
     bool head_sink_is_constant_initializer,
-    int64_t max_total_sequence_length) {
+    int64_t max_total_sequence_length,
+    KernelDispatchPolicy dispatch_policy) {
   if (node.OpType() != "GroupQueryAttention") return std::nullopt;
   GQAWorkspaceEstimateConfig config;
   bool found_heads = false;
@@ -500,7 +516,12 @@ std::optional<GQAWorkspaceEstimateConfig> GetGroupQueryAttentionWorkspaceEstimat
       config.v_quantization = *type;
     }
   }
-  if (!found_heads || !found_kv_heads) return std::nullopt;
+  if (!found_heads || !found_kv_heads ||
+      config.num_heads <= 0 || config.kv_num_heads <= 0 ||
+      config.num_heads > std::numeric_limits<int32_t>::max() ||
+      config.kv_num_heads > std::numeric_limits<int32_t>::max()) {
+    return std::nullopt;
+  }
   const auto& inputs = node.InputDefs();
   if (inputs.empty() || inputs[0] == nullptr) return std::nullopt;
   const auto* query_type = inputs[0]->TypeAsProto();
@@ -512,6 +533,16 @@ std::optional<GQAWorkspaceEstimateConfig> GetGroupQueryAttentionWorkspaceEstimat
   }
   config.qkv_element_size = 2;
   config.is_bf16 = query_elem == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
+  const auto& query_tensor_type = query_type->tensor_type();
+  if (query_tensor_type.has_shape() && query_tensor_type.shape().dim_size() == 3 &&
+      query_tensor_type.shape().dim(2).has_dim_value()) {
+    const bool packed = inputs.size() <= kKey || inputs[kKey] == nullptr || !inputs[kKey]->Exists();
+    const int64_t head_factor = config.num_heads + (packed ? 2 * config.kv_num_heads : 0);
+    const int64_t hidden_size = query_tensor_type.shape().dim(2).dim_value();
+    if (hidden_size > 0 && hidden_size % head_factor == 0) {
+      config.static_head_size = hidden_size / head_factor;
+    }
+  }
 
   const NodeArg* cache_arg =
       inputs.size() > kPastKey && inputs[kPastKey] != nullptr && inputs[kPastKey]->Exists()
@@ -535,6 +566,7 @@ std::optional<GQAWorkspaceEstimateConfig> GetGroupQueryAttentionWorkspaceEstimat
       ParseEnvironmentVariableWithDefault<bool>("ORT_DISABLE_FLASH_DECODE", false);
   config.head_sink_may_be_prepacked = head_sink_is_constant_initializer;
   config.max_total_sequence_length = max_total_sequence_length;
+  config.dispatch_policy = dispatch_policy;
   return config;
 }
 
@@ -561,9 +593,9 @@ std::optional<GQAWorkspaceAggregate> EstimateGroupQueryAttentionWorkspace(
     int64_t max_total_sequence_length,
     KernelDispatchPolicy dispatch_policy) {
   auto config = GetGroupQueryAttentionWorkspaceEstimateConfig(
-      node, head_sink_is_constant_initializer, max_total_sequence_length);
+      node, head_sink_is_constant_initializer, max_total_sequence_length,
+      dispatch_policy);
   if (!config.has_value()) return std::nullopt;
-  config->dispatch_policy = dispatch_policy;
   return EstimateGroupQueryAttentionWorkspace(
       *config, input_shapes, device_prop, kernel_options);
 }

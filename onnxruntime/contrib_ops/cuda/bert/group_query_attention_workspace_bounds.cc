@@ -541,8 +541,6 @@ GQAWorkspaceAggregate GetGQAWorkspaceAggregateForBounds(
           GQAReachableBackend::MemoryEfficient,
           GQAReachableBackend::Unfused};
 
-      GQAReachableBackend selected_general_backends =
-          GQAReachableBackend::None;
       for (GQAExecutionPhase phase :
            {GQAExecutionPhase::Prefill,
             GQAExecutionPhase::ChunkedPrefill}) {
@@ -556,8 +554,6 @@ GQAWorkspaceAggregate GetGQAWorkspaceAggregateForBounds(
           return aggregate;
         }
         committed_backends.Set(phase, selected.backends);
-        selected_general_backends =
-            selected_general_backends | selected.backends;
       }
       if (bounds.decode_reachable) {
         const auto selected =
@@ -569,12 +565,7 @@ GQAWorkspaceAggregate GetGQAWorkspaceAggregateForBounds(
           aggregate.status = selected.status;
           return aggregate;
         }
-        const auto decode_fallbacks = IntersectGQAReachableBackends(
-            selected_general_backends,
-            GetGQAReachableBackendsForPhase(
-                bounds.reachable_backends, GQAExecutionPhase::Decode));
-        committed_backends.decode =
-            selected.backends | decode_fallbacks;
+        committed_backends.decode = selected.backends;
       }
       break;
     }

@@ -11,6 +11,7 @@
 
 #include "core/framework/config_options.h"
 #include "core/framework/cuda_gqa_workspace_config.h"
+#include "core/framework/kernel_dispatch_policy.h"
 #include "core/framework/max_shape_override.h"
 #include "core/framework/murmurhash3.h"
 #include "core/framework/tensorprotoutils.h"
@@ -123,8 +124,9 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
   // If profiling statistics are available, uses their non-workspace cost and
   // profiled temporary allocations. If a Level-1 runtime workspace estimate is
   // also provided, uses the maximum of the profiled and estimated workspace.
-  // Without profiling, computes known initializer/output bytes and uses the
-  // Level-1 runtime workspace or, when unavailable, fallback workspace.
+  // Without profiling, or when the profile omits a node with a Level-1 estimate,
+  // computes known initializer/output bytes and uses the Level-1 runtime
+  // workspace or, when unavailable, fallback workspace.
   // Initializer bytes are charged separately, so persistent prepack estimates
   // must include only additional allocations, not storage reused directly from
   // an initializer (for example, an offline-prepacked weight). Persistent
@@ -183,11 +185,12 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
         return static_cast<size_t>(resource_count);
       }
 
-      // Preserve the established partial-profile behavior: a node absent from
-      // the stats file has zero cost. Falling through to ad-hoc accounting
-      // would change existing partition decisions and mix profile-based costs
-      // with initializer bookkeeping that the profile path does not use.
-      return static_cast<size_t>(0);
+      // Preserve the established partial-profile behavior when no estimator is
+      // available. An explicit Level-1 estimate must still affect placement, so
+      // use the static initializer/output accounting below for that node.
+      if (!level1_memory_estimate.has_value()) {
+        return static_cast<size_t>(0);
+      }
     }
 
     const auto* graph = node.GetContainingGraph();
@@ -559,9 +562,22 @@ Status CreateAccountants(
     std::optional<ResourceAccountantMap>& acc_map) {
   WorkspaceEstimatorConfig estimator_config{
       config_options.GetConfigEntry(kOrtSessionOptionsCudaFpAIntBGemm),
-      config_options.GetConfigEntry(kOrtSessionOptionsCudaFpAIntBProfileM)};
+      config_options.GetConfigEntry(kOrtSessionOptionsCudaFpAIntBProfileM),
+      config_options.GetConfigEntry(kOrtSessionOptionsCudaMatMulNBitsMChunkSize)};
   estimator_config.kernel_dispatch_policy =
       config_options.GetConfigEntry(kOrtSessionOptionsKernelDispatchPolicy);
+  if (estimator_config.kernel_dispatch_policy.has_value()) {
+    KernelDispatchPolicy parsed_policy = KernelDispatchPolicy::Auto;
+    if (!TryParseKernelDispatchPolicy(
+            *estimator_config.kernel_dispatch_policy, parsed_policy)) {
+      return ORT_MAKE_STATUS(
+          ONNXRUNTIME, INVALID_ARGUMENT,
+          kOrtSessionOptionsKernelDispatchPolicy,
+          " must be empty or one of 'auto', 'latency', 'memory', or 'safe' "
+          "(case-sensitive), but got: '",
+          *estimator_config.kernel_dispatch_policy, "'");
+    }
+  }
   ORT_RETURN_IF_ERROR(ParseCudaGqaWorkspaceMaxTotalSequenceLength(
       config_options, estimator_config.cuda_gqa_workspace_max_total_sequence_length));
 

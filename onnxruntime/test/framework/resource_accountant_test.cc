@@ -724,9 +724,9 @@ TEST(RealAccountantTest, StatsPath_Level1EstimateUsesMaximumWorkspace) {
   EXPECT_EQ(graph_reservations.at(h.node_b->Index()).bytes, size_t{800});
 }
 
-// A stats file may have incomplete coverage. Preserve the historical behavior
-// where unknown nodes have zero cost and do not enter ad-hoc bookkeeping.
-TEST(RealAccountantTest, StatsPath_UnknownNodeHasZeroCost) {
+// A stats file may have incomplete coverage. Preserve zero cost for an unknown
+// node without an estimator, but do not discard an explicit Level-1 estimate.
+TEST(RealAccountantTest, StatsPath_UnknownNodeHonorsLevel1Estimate) {
   SharedWeightGraph h;
   ASSERT_NO_FATAL_FAILURE(SharedWeightGraph::Create(h));
 
@@ -758,17 +758,27 @@ TEST(RealAccountantTest, StatsPath_UnknownNodeHasZeroCost) {
   auto known_cost = accountant->ComputeResourceCount(*h.node_a);
   EXPECT_EQ(std::get<size_t>(known_cost), size_t{1000});
 
-  auto unknown_cost = accountant->ComputeResourceCount(
+  const auto unknown_without_estimate =
+      accountant->ComputeResourceCount(*h.node_b);
+  EXPECT_EQ(std::get<size_t>(unknown_without_estimate), size_t{0});
+  auto pending_workspace =
+      accountant->GetPendingWorkspaceEstimateSelection(h.node_b->Index());
+  EXPECT_EQ(pending_workspace.bytes, size_t{0});
+  EXPECT_EQ(pending_workspace.source, WorkspaceEstimateSource::kNone);
+
+  const auto unknown_cost = accountant->ComputeResourceCount(
       *h.node_b,
       Level1MemoryEstimate{
           /*runtime_workspace_bytes=*/250,
           /*persistent_prepack_bytes=*/300,
           /*initialization_scratch_bytes=*/400});
-  EXPECT_EQ(std::get<size_t>(unknown_cost), size_t{0});
-  const auto pending_workspace =
+  EXPECT_EQ(std::get<size_t>(unknown_cost), size_t{2550});
+  pending_workspace =
       accountant->GetPendingWorkspaceEstimateSelection(h.node_b->Index());
-  EXPECT_EQ(pending_workspace.bytes, size_t{0});
-  EXPECT_EQ(pending_workspace.source, WorkspaceEstimateSource::kNone);
+  EXPECT_EQ(pending_workspace.bytes, size_t{250});
+  EXPECT_EQ(pending_workspace.source, WorkspaceEstimateSource::kEstimator);
+  EXPECT_EQ(pending_workspace.persistent_prepack_bytes, size_t{300});
+  EXPECT_EQ(pending_workspace.initialization_scratch_bytes, size_t{400});
 
   IndexedSubGraph sub_graph;
   sub_graph.nodes.push_back(h.node_a->Index());
@@ -778,9 +788,12 @@ TEST(RealAccountantTest, StatsPath_UnknownNodeHasZeroCost) {
   sub_graph.AppendNodeCost(unknown_cost);
   sub_graph.AccountForAllNodes();
 
-  EXPECT_EQ(GetSizeT(accountant->GetConsumedAmount()), size_t{1000});
-  EXPECT_EQ(accountant->GetCommittedWorkspaceEstimate(), size_t{400});
+  EXPECT_EQ(GetSizeT(accountant->GetConsumedAmount()), size_t{3550});
+  EXPECT_EQ(accountant->GetCommittedWorkspaceEstimate(), size_t{650});
+  EXPECT_EQ(accountant->GetCommittedPersistentPrepackEstimate(), size_t{300});
+  EXPECT_EQ(accountant->GetCommittedInitializationScratchEstimate(), size_t{400});
   EXPECT_EQ(accountant->GetWorkspaceEstimateSourceCounts().profile, size_t{1});
+  EXPECT_EQ(accountant->GetWorkspaceEstimateSourceCounts().estimator, size_t{1});
 }
 
 // Factory with no limit and no stats file creates accountant with no threshold.
@@ -823,13 +836,19 @@ TEST(CudaGqaWorkspaceEnvelopeTest, RawValueParserPreservesRangeAndFailureOutput)
   }
 }
 
+TEST(RealAccountantTest, PartialWorkspaceEstimatorConfigDefaultsChunkPolicy) {
+  const WorkspaceEstimatorConfig config{std::string{"1"}, std::string{"1,16"}};
+  EXPECT_FALSE(config.cuda_matmul_nbits_m_chunk_size.has_value());
+  EXPECT_EQ(config.cuda_gqa_workspace_max_total_sequence_length, 0);
+}
+
 TEST(KernelDispatchPolicyTest, PartialEstimatorConfigDefaultsPolicyToUnset) {
   const WorkspaceEstimatorConfig config{std::nullopt, std::nullopt};
   EXPECT_FALSE(config.kernel_dispatch_policy.has_value());
   EXPECT_EQ(config.cuda_gqa_workspace_max_total_sequence_length, int64_t{0});
 }
 
-TEST(KernelDispatchPolicyTest, ParsesTokens) {
+TEST(KernelDispatchPolicyTest, ParsesValidTokens) {
   struct Case {
     const char* value;
     KernelDispatchPolicy expected;
@@ -839,13 +858,20 @@ TEST(KernelDispatchPolicyTest, ParsesTokens) {
            Case{"auto", KernelDispatchPolicy::Auto},
            Case{"latency", KernelDispatchPolicy::Latency},
            Case{"memory", KernelDispatchPolicy::Memory},
-           Case{"safe", KernelDispatchPolicy::Safe},
-           Case{"Latency", KernelDispatchPolicy::Auto},
-           Case{" memory", KernelDispatchPolicy::Auto},
-           Case{"memory ", KernelDispatchPolicy::Auto},
-           Case{"unknown", KernelDispatchPolicy::Auto}}) {
+           Case{"safe", KernelDispatchPolicy::Safe}}) {
     SCOPED_TRACE(test_case.value);
-    EXPECT_EQ(ParseKernelDispatchPolicy(test_case.value), test_case.expected);
+    KernelDispatchPolicy parsed = KernelDispatchPolicy::Safe;
+    EXPECT_TRUE(TryParseKernelDispatchPolicy(test_case.value, parsed));
+    EXPECT_EQ(parsed, test_case.expected);
+  }
+}
+
+TEST(KernelDispatchPolicyTest, RejectsInvalidTokens) {
+  for (const char* value : {"Latency", "Memory", "SAFE", "memroy", " memory", "memory ", " memory ", " ", "unknown"}) {
+    SCOPED_TRACE(value);
+    KernelDispatchPolicy parsed = KernelDispatchPolicy::Memory;
+    EXPECT_FALSE(TryParseKernelDispatchPolicy(value, parsed));
+    EXPECT_EQ(parsed, KernelDispatchPolicy::Memory);
   }
 }
 
@@ -857,6 +883,8 @@ TEST(RealAccountantTest, FactoryRetainsNarrowWorkspaceEstimatorConfig) {
       kOrtSessionOptionsCudaFpAIntBGemm, "1"));
   ASSERT_STATUS_OK(config.AddConfigEntry(
       kOrtSessionOptionsCudaFpAIntBProfileM, "1,16"));
+  ASSERT_STATUS_OK(config.AddConfigEntry(
+      kOrtSessionOptionsCudaMatMulNBitsMChunkSize, "4096"));
   ASSERT_STATUS_OK(config.AddConfigEntry(
       kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLength, "4096"));
   ASSERT_STATUS_OK(config.AddConfigEntry(
@@ -871,6 +899,8 @@ TEST(RealAccountantTest, FactoryRetainsNarrowWorkspaceEstimatorConfig) {
   const auto& estimator_config = accountant->GetWorkspaceEstimatorConfig();
   EXPECT_EQ(estimator_config.cuda_fpa_intb_gemm, std::optional<std::string>{"1"});
   EXPECT_EQ(estimator_config.cuda_fpa_intb_profile_m, std::optional<std::string>{"1,16"});
+  EXPECT_EQ(estimator_config.cuda_matmul_nbits_m_chunk_size,
+            std::optional<std::string>{"4096"});
   EXPECT_EQ(estimator_config.cuda_gqa_workspace_max_total_sequence_length,
             int64_t{4096});
   EXPECT_EQ(estimator_config.kernel_dispatch_policy,
@@ -883,7 +913,7 @@ TEST(RealAccountantTest, FactoryRetainsKernelDispatchPolicyValue) {
   };
   for (const auto& test_case : {
            Case{nullptr}, Case{""}, Case{"auto"}, Case{"latency"}, Case{"memory"},
-           Case{"safe"}, Case{"Latency"}, Case{"unknown"}, Case{" memory "}}) {
+           Case{"safe"}}) {
     SCOPED_TRACE(test_case.value != nullptr ? test_case.value : "<unset>");
     ConfigOptions config;
     ASSERT_STATUS_OK(config.AddConfigEntry(
@@ -908,13 +938,36 @@ TEST(RealAccountantTest, FactoryRetainsKernelDispatchPolicyValue) {
 }
 
 TEST(RealAccountantTest, KernelDispatchPolicyDoesNotEnablePartitioning) {
-  for (const char* value : {"auto", "latency", "memory", "safe", "unknown"}) {
+  for (const char* value : {"", "auto", "latency", "memory", "safe"}) {
     SCOPED_TRACE(value);
     ConfigOptions config;
     ASSERT_STATUS_OK(config.AddConfigEntry(kOrtSessionOptionsKernelDispatchPolicy, value));
     std::optional<ResourceAccountantMap> acc_map;
     ASSERT_STATUS_OK(CreateAccountants(config, PathString(), acc_map));
     EXPECT_FALSE(acc_map.has_value());
+  }
+}
+
+TEST(RealAccountantTest, FactoryRejectsInvalidKernelDispatchPolicy) {
+  for (bool enable_partitioning : {false, true}) {
+    SCOPED_TRACE(enable_partitioning);
+    for (const char* value : {"Latency", "Memory", "SAFE", "memroy", " memory", "memory ", " memory ", " ", "unknown"}) {
+      SCOPED_TRACE(value);
+      ConfigOptions config;
+      if (enable_partitioning) {
+        ASSERT_STATUS_OK(config.AddConfigEntry(
+            kOrtSessionOptionsResourceCudaPartitioningSettings, "1000,"));
+      }
+      ASSERT_STATUS_OK(config.AddConfigEntry(
+          kOrtSessionOptionsKernelDispatchPolicy, value));
+      std::optional<ResourceAccountantMap> acc_map;
+      const auto status = CreateAccountants(config, PathString(), acc_map);
+      ASSERT_FALSE(status.IsOK());
+      EXPECT_EQ(status.Code(), common::StatusCode::INVALID_ARGUMENT);
+      EXPECT_NE(status.ErrorMessage().find(kOrtSessionOptionsKernelDispatchPolicy),
+                std::string::npos);
+      EXPECT_FALSE(acc_map.has_value());
+    }
   }
 }
 

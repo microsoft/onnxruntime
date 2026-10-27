@@ -229,9 +229,11 @@ constexpr bool IsGQAPhaseAdmitted(
 
 struct GQAWorkspaceAggregate {
   GQAWorkspaceStatus status;
+  // Maximum across admitted phase/route alternatives, not their sum.
   size_t total_workspace_bytes = 0;
   size_t persistent_prepack_bytes = 0;
   size_t initialization_scratch_bytes = 0;
+  // Union of sized committed routes; reachable routes may have been excluded.
   GQAReachableBackend sized_backends = GQAReachableBackend::None;
   GQACommittedBackends committed_backends;
 };
@@ -240,7 +242,7 @@ struct GQAWorkspaceAggregate {
 // the maximum over admitted phases and their permitted routes. Auto and Latency
 // preserve the phase-applicable route cascade. Memory minimizes complete route
 // sets per phase, retaining a proven covering fallback for partial-coverage routes;
-// decode also retains the selected general-phase routes. Safe commits every
+// each phase selects its own fallback independently. Safe commits every
 // analytically bounded route applicable to each phase. A committed cuDNN route
 // makes the result unavailable because its allocator-based workspace has no
 // graph-free oracle.
