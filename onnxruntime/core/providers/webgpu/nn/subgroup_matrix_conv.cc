@@ -1,9 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <algorithm>
 #include <cstdint>
-#include <iterator>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -56,8 +54,9 @@ std::optional<SubgroupMatrixConfig> GetSupportedConfig(const ComputeContextBase&
 
 Status GenerateShaderCode8x16x16(ShaderHelper& shader, const ShaderVariableHelper& input_src,
                                  uint32_t sg_mat_count_m, uint32_t sg_mat_count_n,
-                                 uint32_t split_k, uint32_t vec_size) {
+                                 uint32_t split_k, uint32_t vec_size, bool b_is_hwio) {
   return WGSL_TEMPLATE_APPLY(shader, "nn/subgroup_matrix_conv_8x16x16.wgsl.template",
+                             WGSL_TEMPLATE_PARAMETER(b_is_hwio, b_is_hwio),
                              WGSL_TEMPLATE_PARAMETER(sg_mat_count_m, sg_mat_count_m),
                              WGSL_TEMPLATE_PARAMETER(sg_mat_count_n, sg_mat_count_n),
                              WGSL_TEMPLATE_PARAMETER(sg_mat_k, 16),
@@ -88,20 +87,27 @@ class SubgroupMatrixConvImpl final : public Conv<is_channels_last, is_fused>::Co
     const ConvAttributes& conv_attrs = parent.ConvAttrs();
     const Activation& activation = parent.ConvActivation();
 
-    // Fast decline for any Conv this path doesn't accept: PrePackInternal only skips
-    // prepacking for problems CanApplySubgroupMatrixConv accepts, so a non-null
-    // prepacked_kernel_ here (grouped/1x1/etc. convs prepacked for another path)
-    // means this one would decline below anyway -- this just avoids the shape
-    // inference to get there. The kernel needs OIHW regardless.
-    if (parent.PrepackedKernel() != nullptr) {
-      return Status::OK();
-    }
+    // Accept whatever layout PrePackInternal left the weight in (OIHW, or OHWI/HWIO
+    // shared with another path) and recover the logical OIHW shape from it.
+    const KernelLayout kernel_layout = parent.GetKernelLayout();
+    const Tensor* weight = parent.PrepackedKernel() != nullptr ? parent.PrepackedKernel() : context.Input<Tensor>(1);
     const auto* input = context.Input<Tensor>(0);
-    const auto* weight = context.Input<Tensor>(1);
     if (input == nullptr || weight == nullptr) {
       return Status::OK();
     }
-    const TensorShape& weight_shape = weight->Shape();  // OIHW: [Cout, Cin, kh, kw]
+    TensorShape weight_shape = weight->Shape();
+    switch (kernel_layout) {
+      case KernelLayout::OIHW:
+        break;
+      case KernelLayout::HWIO:
+        weight_shape = TensorShape(
+            TensorShapeVector{weight_shape[3], weight_shape[2], weight_shape[0], weight_shape[1]});
+        break;
+      case KernelLayout::OHWI:
+        weight_shape = TensorShape(
+            TensorShapeVector{weight_shape[0], weight_shape[3], weight_shape[1], weight_shape[2]});
+        break;
+    }
     if (!CanApplySubgroupMatrixConv(context, is_channels_last, weight_shape,
                                     narrow<uint32_t>(conv_attrs.group), weight->DataType())) {
       return Status::OK();
@@ -113,38 +119,12 @@ class SubgroupMatrixConvImpl final : public Conv<is_channels_last, is_fused>::Co
     if (input_shape.NumDimensions() != 4) {
       return Status::OK();
     }
-    ConvAttributes::ConvPadVector local_pads(conv_attrs.pads.begin(), conv_attrs.pads.end());
-    TensorShapeVector local_dilations(conv_attrs.dilations.begin(), conv_attrs.dilations.end());
-    TensorShapeVector local_strides(conv_attrs.strides.begin(), conv_attrs.strides.end());
-    TensorShapeVector kernel_spacial_shape_vector;
-    ORT_RETURN_IF_ERROR(conv_attrs.ComputeKernelShape(weight_shape, kernel_spacial_shape_vector, false));
-    if (local_pads.empty()) {
-      local_pads.resize(kernel_spacial_shape_vector.size() * 2, 0);
-    }
-    if (local_dilations.empty()) {
-      local_dilations.resize(kernel_spacial_shape_vector.size(), 1);
-    }
-    if (local_strides.empty()) {
-      local_strides.resize(kernel_spacial_shape_vector.size(), 1);
-    }
-    TensorShapeVector input_shape_vector = input_shape.AsShapeVector();
-    TensorShapeVector output_shape_vector = {input_shape[0]};
-    TensorShape src_spacial_shape = TensorShape(
-        TensorShapeVector(std::next(input_shape_vector.begin()), std::prev(input_shape_vector.end())));
-    ORT_RETURN_IF_ERROR(conv_attrs.InferPadsAndOutputShape(src_spacial_shape, kernel_spacial_shape_vector,
-                                                           local_strides, local_dilations, local_pads,
-                                                           output_shape_vector));
-    output_shape_vector.push_back(weight_shape[0]);       // Cout
-    const TensorShape output_shape(output_shape_vector);  // NHWC: [batch, out_h, out_w, Cout]
-
-    // static_cast, not narrow: an input the normal Conv path accepts must not abort here.
     std::vector<uint32_t> pads;
     std::vector<uint32_t> strides;
     std::vector<uint32_t> dilations;
-    auto transform_dim = [](int64_t dim) { return static_cast<int32_t>(dim); };
-    std::transform(local_pads.begin(), local_pads.end(), std::back_inserter(pads), transform_dim);
-    std::transform(local_strides.begin(), local_strides.end(), std::back_inserter(strides), transform_dim);
-    std::transform(local_dilations.begin(), local_dilations.end(), std::back_inserter(dilations), transform_dim);
+    TensorShape output_shape;  // NHWC: [batch, out_h, out_w, Cout]
+    ORT_RETURN_IF_ERROR(ComputeConvGeometry(conv_attrs, input_shape, weight_shape, is_channels_last,
+                                            pads, strides, dilations, output_shape));
     if (dilations.size() < 2 || pads.size() < 2 || strides.size() < 2) {
       return Status::OK();
     }
@@ -173,7 +153,7 @@ class SubgroupMatrixConvImpl final : public Conv<is_channels_last, is_fused>::Co
       return Status::OK();
     }
 
-    // ClampTileNToProblem already guarantees tile_n <= N; mirrored here as the last
+    // CapTileNToAlignedN already guarantees tile_n <= N; mirrored here as the last
     // possible decline point before output allocation/weight transpose commit below.
     if (N < tiling->tile_n) {
       return Status::OK();
@@ -181,21 +161,22 @@ class SubgroupMatrixConvImpl final : public Conv<is_channels_last, is_fused>::Co
 
     Tensor* output = context.Output(0, output_shape);
 
-    // Transpose weight OIHW -> OHWI = [Cout, kh, kw, Cin] (B column-major, B[k,n] at
-    // n*K+k). Constant weights are cached; non-constant ones are redone every Run.
-    //
-    // TODO: prepack the constant case too (PrePackIm2ColMatMulWeight already produces
-    // this layout) -- blocked on PrePackInternal committing from the weight alone
-    // while Compute can still decline at runtime onto the im2col path.
+    // B operand: OHWI or HWIO (see b_is_hwio and the WGSL template). An already
+    // prepacked weight is used as-is; otherwise this transposes to OHWI itself,
+    // caching the result for constant weights.
     Tensor run_local_ohwi_weight;
-    const Tensor* ohwi_weight = nullptr;
-    if (parent.IsWeightConstant()) {
+    const Tensor* b_weight = nullptr;
+    bool b_is_hwio = false;
+    if (parent.PrepackedKernel() != nullptr) {
+      b_weight = parent.PrepackedKernel();
+      b_is_hwio = (kernel_layout == KernelLayout::HWIO);
+    } else if (parent.IsWeightConstant()) {
       ORT_RETURN_IF_ERROR(EnsureTransposedKernel(context, weight, weight_shape));
-      ohwi_weight = cached_ohwi_weight_.get();
+      b_weight = cached_ohwi_weight_.get();
     } else {
       ORT_RETURN_IF_ERROR(
           TransposeKernel(context, weight, weight_shape, &run_local_ohwi_weight, {0, 2, 3, 1}));
-      ohwi_weight = &run_local_ohwi_weight;
+      b_weight = &run_local_ohwi_weight;
     }
 
     const auto& config = config_;
@@ -221,17 +202,17 @@ class SubgroupMatrixConvImpl final : public Conv<is_channels_last, is_fused>::Co
     const bool has_bias = bias != nullptr;
     const uint32_t split_k = tiling->split_k;
     SubgroupMatrixConvProgram program{has_bias, config, sg_mat_count_m, sg_mat_count_n, split_k, vec_size,
-                                      activation};
+                                      b_is_hwio, activation};
     program.SetWorkgroupSize(kSubgroupMatrixSubgroupSize * split_k);
     program.SetSubgroupSize(kSubgroupMatrixSubgroupSize);
     program.SetDispatchGroupSize(dispatch_x, dispatch_y, batch);
     program.CacheHint(has_bias, static_cast<uint32_t>(config.componentType),
                       static_cast<uint32_t>(config.resultComponentType),
                       config.M, config.N, config.K, config.subgroupSize,
-                      sg_mat_count_m, sg_mat_count_n, split_k, vec_size,
+                      sg_mat_count_m, sg_mat_count_n, split_k, vec_size, b_is_hwio,
                       activation.CacheKey())
         .AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(vec_size)},
-                    {ohwi_weight, ProgramTensorMetadataDependency::TypeAndRank, 1}})
+                    {b_weight, ProgramTensorMetadataDependency::TypeAndRank, 1}})
         .AddOutput({output, ProgramTensorMetadataDependency::Rank, output_shape, 1})
         .AddUniformVariables({{M},
                               {N},
@@ -252,6 +233,9 @@ class SubgroupMatrixConvImpl final : public Conv<is_channels_last, is_fused>::Co
     if (has_bias) {
       program.AddInput({bias, ProgramTensorMetadataDependency::None});
     }
+    LOGS_DEFAULT(VERBOSE) << "SubgroupMatrixConv dispatching: M=" << M << " N=" << N << " K=" << K
+                          << " batch=" << batch << " tile_m=" << tile_m << " tile_n=" << tile_n
+                          << " split_k=" << split_k << " vec_size=" << vec_size << ".";
     ORT_RETURN_IF_ERROR(context.RunProgram(program));
 
     handled = true;
@@ -310,7 +294,8 @@ Status SubgroupMatrixConvProgram::GenerateShaderCode(ShaderHelper& shader) const
 
   const auto& config = config_;
   if (config.Is(8, 16, 16)) {
-    return GenerateShaderCode8x16x16(shader, input_src, sg_mat_count_m_, sg_mat_count_n_, split_k_, vec_size_);
+    return GenerateShaderCode8x16x16(shader, input_src, sg_mat_count_m_, sg_mat_count_n_, split_k_, vec_size_,
+                                     b_is_hwio_);
   }
   return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::NOT_IMPLEMENTED,
                 "Unsupported subgroup matrix config dimensions.");
@@ -390,7 +375,8 @@ bool CanApplySubgroupMatrixConv(ComputeContextBase& context,
     return false;
   }
 
-  LOGS_DEFAULT(VERBOSE) << "SubgroupMatrixConv ACCEPTED: kernel_shape[OIHW]=" << kernel_shape.ToString()
+  LOGS_DEFAULT(VERBOSE) << "SubgroupMatrixConv initial eligibility checks passed (Compute() may still"
+                        << " decline): kernel_shape[OIHW]=" << kernel_shape.ToString()
                         << " Cout(N)=" << N << " Cin=" << channel_input << " kh=" << kernel_height
                         << " kw=" << kernel_width << " K=" << K << ".";
   return true;

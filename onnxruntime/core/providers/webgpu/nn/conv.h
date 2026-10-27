@@ -5,6 +5,7 @@
 
 #include <memory>
 #include <mutex>
+#include <vector>
 
 #include "core/common/optional.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
@@ -66,6 +67,8 @@ class Conv : public WebGpuKernel {
   bool IsWeightConstant() const { return w_is_constant_; }
   // Prepacked weight, or null if not prepacked (layout given by kernel_layout_).
   const Tensor* PrepackedKernel() const { return prepacked_kernel_.get(); }
+  // Layout of PrepackedKernel(), or OIHW while it is null (input 1 is read directly).
+  KernelLayout GetKernelLayout() const { return kernel_layout_; }
 
  protected:
   ConvAttributes conv_attrs_;
@@ -101,6 +104,13 @@ class Conv : public WebGpuKernel {
 };
 
 Status TransposeKernel(ComputeContext& context, const Tensor* kernel, const TensorShape& kernel_shape, Tensor* transposed_kernel, const InlinedVector<size_t>& perm);
+
+// Resolves pads/strides/dilations and the output shape. Shared by ComputeInternal and
+// the subgroup-matrix opt path so the two can't diverge on auto_pad handling.
+Status ComputeConvGeometry(const ConvAttributes& conv_attrs, const TensorShape& input_shape,
+                           const TensorShape& kernel_shape, bool is_channels_last,
+                           /*out*/ std::vector<uint32_t>& pads, std::vector<uint32_t>& strides,
+                           std::vector<uint32_t>& dilations, TensorShape& output_shape);
 
 }  // namespace webgpu
 }  // namespace onnxruntime

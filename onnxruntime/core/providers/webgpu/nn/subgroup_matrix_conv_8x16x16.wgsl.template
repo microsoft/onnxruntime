@@ -8,8 +8,9 @@
 //
 // A: gathered per K-block into a_scratch (im2col rows are scattered, but
 //    subgroupMatrixLoad needs a contiguous buffer); K order (kh, kw, cin) matches
-//    the OHWI weight.
-// B: weight pre-transposed to OHWI, column-major (B[k,n] at n*K+k).
+//    both weight layouts below.
+// B: OHWI, column-major (B[k,n] at n*K+k), or HWIO, row-major (B[k,n] at k*N+n) --
+//    see b_is_hwio, set by the host to whichever the weight arrived in.
 //
 // Workgroup: split_k subgroups x 32 lanes, tile kTileM x kTileN (host-selected). K
 // blocks round-robin across subgroups when split_k > 1; partials summed at
@@ -28,6 +29,7 @@
 #param sg_mat_count_n
 #param split_k
 #param vec_size
+#param b_is_hwio
 
 #use .getByOffset .setByOffset
 
@@ -227,11 +229,30 @@ $MAIN {
         workgroupBarrier();
 
         if (valid) {
-            // Load the B right tiles for this K block. The weight is OHWI, i.e. B is
-            // stored column-major ([N, K] row-major, element B[k, n] at n*K + k), so
-            // the tile for N-block j (columns global_base_n + j*sg_mat_n) starts at
-            // (global_base_n + j*sg_mat_n)*K + kb*sg_mat_k and is loaded col-major
-            // with stride K.
+            // Load the B right tiles for this K block.
+#if b_is_hwio
+            // HWIO: B is row-major ([K, N], B[k, n] at k*N + n); load row-major, stride N.
+            let b_base = kb * kSgMatK * uniforms.N + global_base_n;
+            var sg_mat_b0: subgroup_matrix_right<f16, sg_mat_n, sg_mat_k> =
+                subgroupMatrixLoad<subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>, row_major>(
+                    &input_b, b_base + 0 * kSgMatN, uniforms.N);
+#if sg_mat_count_n >= 2
+            var sg_mat_b1: subgroup_matrix_right<f16, sg_mat_n, sg_mat_k> =
+                subgroupMatrixLoad<subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>, row_major>(
+                    &input_b, b_base + 1 * kSgMatN, uniforms.N);
+#endif
+#if sg_mat_count_n >= 3
+            var sg_mat_b2: subgroup_matrix_right<f16, sg_mat_n, sg_mat_k> =
+                subgroupMatrixLoad<subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>, row_major>(
+                    &input_b, b_base + 2 * kSgMatN, uniforms.N);
+#endif
+#if sg_mat_count_n >= 4
+            var sg_mat_b3: subgroup_matrix_right<f16, sg_mat_n, sg_mat_k> =
+                subgroupMatrixLoad<subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>, row_major>(
+                    &input_b, b_base + 3 * kSgMatN, uniforms.N);
+#endif
+#else
+            // OHWI: B is column-major ([N, K], B[k, n] at n*K + k); load col-major, stride K.
             let b_base = global_base_n * uniforms.K + kb * kSgMatK;
             var sg_mat_b0: subgroup_matrix_right<f16, sg_mat_n, sg_mat_k> =
                 subgroupMatrixLoad<subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>, col_major>(
@@ -250,6 +271,7 @@ $MAIN {
             var sg_mat_b3: subgroup_matrix_right<f16, sg_mat_n, sg_mat_k> =
                 subgroupMatrixLoad<subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>, col_major>(
                     &input_b, b_base + 3 * kSgMatN * uniforms.K, uniforms.K);
+#endif
 #endif
 
             // Load the A left tiles (one per M block) from workgroup staging,

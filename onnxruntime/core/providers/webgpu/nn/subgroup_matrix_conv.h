@@ -25,7 +25,7 @@ class SubgroupMatrixConvProgram final : public Program<SubgroupMatrixConvProgram
  public:
   SubgroupMatrixConvProgram(bool has_bias, SubgroupMatrixConfig config,
                             uint32_t sg_mat_count_m, uint32_t sg_mat_count_n, uint32_t split_k,
-                            uint32_t vec_size, const Activation& activation)
+                            uint32_t vec_size, bool b_is_hwio, const Activation& activation)
       : Program{"SubgroupMatrixConv"},
         has_bias_(has_bias),
         config_(config),
@@ -33,6 +33,7 @@ class SubgroupMatrixConvProgram final : public Program<SubgroupMatrixConvProgram
         sg_mat_count_n_(sg_mat_count_n),
         split_k_(split_k),
         vec_size_(vec_size),
+        b_is_hwio_(b_is_hwio),
         activation_(activation) {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -62,6 +63,8 @@ class SubgroupMatrixConvProgram final : public Program<SubgroupMatrixConvProgram
   const uint32_t sg_mat_count_n_;
   const uint32_t split_k_;
   const uint32_t vec_size_;
+  // Whether input_b is HWIO rather than OHWI.
+  const bool b_is_hwio_;
   const Activation activation_;
 };
 

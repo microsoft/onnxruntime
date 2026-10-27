@@ -154,7 +154,7 @@ SubgroupMatrixTiling ConvHeuristicTiling(uint32_t N, uint32_t K) {
 // trailing partial N tile back to N - tile_n, which needs tile_n <= N, and N
 // itself need not be a multiple of kSubgroupMatrixN. Callers must have already
 // rejected N < kSubgroupMatrixN.
-void ClampTileNToProblem(SubgroupMatrixTiling& t, uint32_t N) {
+void CapTileNToAlignedN(SubgroupMatrixTiling& t, uint32_t N) {
   const uint32_t max_tile_n = (N / kSubgroupMatrixN) * kSubgroupMatrixN;
   if (t.tile_n > max_tile_n) {
     t.tile_n = max_tile_n;
@@ -195,7 +195,7 @@ std::optional<SubgroupMatrixTiling> LookupPretunedTiling(std::string_view arch, 
 // batch is a pure occupancy multiplier (one output-tile grid per z slice); retires
 // split-K factors whose batch-scaled occupancy would exceed ~2x hardware.
 // MatMul-only: Conv's tiling ignores occupancy and batch entirely.
-void ClampSplitKForBatch(SubgroupMatrixTiling& t, uint32_t M, uint32_t N, uint32_t batch, uint32_t hw) {
+void CapSplitKForBatch(SubgroupMatrixTiling& t, uint32_t M, uint32_t N, uint32_t batch, uint32_t hw) {
   auto tile_count = [](uint32_t dim, uint32_t tile) { return (dim + tile - 1) / tile; };
   const uint32_t eff_tiles = batch * tile_count(M, t.tile_m) * tile_count(N, t.tile_n);
   while (t.split_k > 1 && eff_tiles * t.split_k > 2 * hw) {
@@ -209,7 +209,7 @@ SubgroupMatrixTiling SelectTiling(std::string_view arch, uint32_t M, uint32_t N,
     SubgroupMatrixTiling tiling = *tuned;
     // The table is tuned at batch 1, so only revisit split-K when batch > 1.
     if (batch > 1) {
-      ClampSplitKForBatch(tiling, M, N, batch, EffectiveHwSubgroups(arch));
+      CapSplitKForBatch(tiling, M, N, batch, EffectiveHwSubgroups(arch));
     }
     return tiling;
   }
@@ -219,7 +219,7 @@ SubgroupMatrixTiling SelectTiling(std::string_view arch, uint32_t M, uint32_t N,
 // Conv counterpart of SelectTiling: no pretuned table, always ConvHeuristicTiling.
 SubgroupMatrixTiling SelectConvTiling(uint32_t N, uint32_t K) {
   SubgroupMatrixTiling tiling = ConvHeuristicTiling(N, K);
-  ClampTileNToProblem(tiling, N);
+  CapTileNToAlignedN(tiling, N);
   return tiling;
 }
 
@@ -248,7 +248,7 @@ SubgroupMatrixTilingSelector CreateSubgroupMatrixConvTilingSelector(
   }
   return [](const ComputeContext& /*context*/, uint32_t /*M*/, uint32_t N,
             uint32_t K, uint32_t /*batch*/) -> std::optional<SubgroupMatrixTiling> {
-    // N must hold at least one subgroup-matrix N block (ClampTileNToProblem can't
+    // N must hold at least one subgroup-matrix N block (CapTileNToAlignedN can't
     // help below that); must agree with CanApplySubgroupMatrixConv's own check.
     if (K % kSubgroupMatrixK != 0 || N < kSubgroupMatrixN) {
       return std::nullopt;

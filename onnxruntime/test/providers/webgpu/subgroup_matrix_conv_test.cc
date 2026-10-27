@@ -108,7 +108,8 @@ static void RunConvTest(int64_t N, int64_t Cin, int64_t H, int64_t W,
                         const std::string& activation = "",
                         const std::vector<float>& activation_params = {},
                         float abs_err = 0.06f, float rel_err = 0.02f,
-                        bool weight_is_initializer = true) {
+                        bool weight_is_initializer = true,
+                        const std::string& auto_pad = "NOTSET") {
 #if defined(DISABLE_CONTRIB_OPS)
   if (!activation.empty()) {
     GTEST_SKIP() << "FusedConv requires contrib ops.";
@@ -156,7 +157,13 @@ static void RunConvTest(int64_t N, int64_t Cin, int64_t H, int64_t W,
   }
   test->AddAttribute("group", static_cast<int64_t>(1));
   test->AddAttribute("kernel_shape", std::vector<int64_t>{kh, kw});
-  test->AddAttribute("pads", std::vector<int64_t>{pad, pad, pad, pad});
+  if (auto_pad == "NOTSET") {
+    test->AddAttribute("pads", std::vector<int64_t>{pad, pad, pad, pad});
+  } else {
+    // auto_pad and pads are mutually exclusive; pick pad/N/H/W to match (e.g. VALID
+    // with pad == 0).
+    test->AddAttribute("auto_pad", auto_pad);
+  }
   test->AddAttribute("strides", std::vector<int64_t>{stride, stride});
   test->AddAttribute("dilations", std::vector<int64_t>{dilation, dilation});
 
@@ -268,6 +275,24 @@ TEST(SubgroupMatrixConv, Batched) {
               /*stride=*/1, /*pad=*/1);
 }
 
+// Plain Conv is also eligible for Im2ColMatMul, so PrePackInternal prepacks the
+// constant weight to OHWI and Compute() reads that tensor directly (GetKernelLayout()
+// == OHWI) instead of re-transposing it.
+TEST(SubgroupMatrixConv, SharedPrepackOHWI) {
+  RunConvTest(/*N=*/1, /*Cin=*/32, /*H=*/10, /*W=*/10, /*Cout=*/48, /*kh=*/3, /*kw=*/3);
+}
+
+// auto_pad != NOTSET: PrePackInternal can't predict the runtime pads, so the weight
+// stays OIHW and Compute() builds its own cached OHWI transpose -- the one
+// weight-handling branch the other tests don't exercise.
+TEST(SubgroupMatrixConv, AutoPadSkipsPrepack) {
+  RunConvTest(/*N=*/1, /*Cin=*/16, /*H=*/16, /*W=*/16, /*Cout=*/64, /*kh=*/3, /*kw=*/3,
+              /*stride=*/1, /*pad=*/0, /*dilation=*/1, /*has_bias=*/false,
+              /*activation=*/"", /*activation_params=*/{},
+              /*abs_err=*/0.06f, /*rel_err=*/0.02f, /*weight_is_initializer=*/true,
+              /*auto_pad=*/"VALID");
+}
+
 #if !defined(DISABLE_CONTRIB_OPS)
 // Fused activations. The epilogue is generated from GetActivationSnippet, so every
 // ActivationKind is expected to work -- including the ones a hand-written shader
@@ -318,6 +343,14 @@ TEST(SubgroupMatrixConv, FusedActivationWithDeclaration) {
                 /*stride=*/1, /*pad=*/1, /*dilation=*/1, /*has_bias=*/true, /*activation=*/act,
                 /*activation_params=*/{}, /*abs_err=*/0.08f, /*rel_err=*/0.03f);
   }
+}
+
+// HardSwish isn't supported by Im2ColMatMul, so PrePackInternal falls through to the
+// general HWIO transpose, and Compute() must read that layout directly too.
+TEST(SubgroupMatrixConv, SharedPrepackHWIO) {
+  RunConvTest(/*N=*/1, /*Cin=*/16, /*H=*/10, /*W=*/10, /*Cout=*/32, /*kh=*/3, /*kw=*/3,
+              /*stride=*/1, /*pad=*/1, /*dilation=*/1, /*has_bias=*/false,
+              /*activation=*/"HardSwish");
 }
 
 // A fused activation on a shifted/odd N tile: the epilogue, the bias index and the
