@@ -21,12 +21,12 @@ class OpKernel;
 
 namespace test {
 
-// Returns the workspace size (bytes) the fpA_intB CUTLASS runner requested on the most recent
-// ComputeInternal() call of the given kernel, via MatMulNBits<MLFloat16>::LastComputeWorkspaceBytes().
+// Returns the CUTLASS or legacy workspace size requested on the most recent ComputeInternal().
 // The caller MUST guarantee that `kernel` is a fp16 (MLFloat16) MatMulNBits kernel instance; the
 // implementation performs a fixed-offset static_cast (MatMulNBits is single, non-virtual inheritance
 // from OpKernel). See the definition in matmul_nbits_workspace_test.cc.
 size_t GetMatMulNBitsLastComputeWorkspaceBytes(const OpKernel* kernel);
+bool GetMatMulNBitsLastComputeUsedPreallocatedWorkspace(const OpKernel* kernel);
 
 }  // namespace test
 }  // namespace onnxruntime

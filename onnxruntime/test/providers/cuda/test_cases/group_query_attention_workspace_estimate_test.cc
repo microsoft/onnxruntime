@@ -26,6 +26,7 @@
 #include "contrib_ops/cuda/bert/group_query_attention_workspace_estimate.h"
 #include "test/providers/cuda/test_cases/cuda_test_bridge.h"
 #include "test/test_environment.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/inference_session_wrapper.h"
 #include "test/util/include/scoped_env_vars.h"
@@ -1268,6 +1269,121 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, KernelDeclaresPrepackedHeadSinkRo
       gsl::make_span(shapes), requirements));
   EXPECT_TRUE(requirements.empty());
 }
+
+#if !defined(ORT_MINIMAL_BUILD)
+TEST(GroupQueryAttentionWorkspaceEstimateTest, ExplicitZeroEnvelopeInitializesWithAndWithoutPlanning) {
+  if (!HasCudaDevice()) {
+    GTEST_SKIP() << "A CUDA device is required to construct the CUDA kernel.";
+  }
+  ScopedEnvironmentVariables env_vars{{{"ORT_ENABLE_XQA", "0"}}};
+  for (const char* enabled : {"0", "1"}) {
+    SCOPED_TRACE(enabled);
+    SessionOptions options;
+    options.graph_optimization_level = TransformerLevel::Default;
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsEnableStaticWorkspacePreallocation, enabled));
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLength, "0"));
+    InferenceSessionWrapper session(options, GetEnvironment());
+    CUDAExecutionProviderInfo provider_info;
+    provider_info.sdpa_kernel = kMath;
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::make_shared<CUDAExecutionProvider>(provider_info)));
+    const auto model = BuildGroupQueryAttentionKernelModel(false, false);
+    ASSERT_STATUS_OK(session.Load(model.data(), static_cast<int>(model.size())));
+    ASSERT_STATUS_OK(session.Initialize());
+    const Node* node = FindNodeByOpType(session.GetGraph(), "GroupQueryAttention");
+    ASSERT_NE(node, nullptr);
+    ASSERT_EQ(node->GetExecutionProviderType(), kCudaExecutionProvider);
+    EXPECT_TRUE(session.GetSessionState().GetExecutionPlan()->workspace_allocation_plan.empty());
+  }
+}
+
+TEST(GroupQueryAttentionWorkspaceEstimateTest, CachedWorkspaceIsConsumedOnlyWithinEnvelope) {
+  if (!HasCudaDevice()) {
+    GTEST_SKIP() << "A CUDA device is required to run the CUDA kernel.";
+  }
+  ScopedEnvironmentVariables env_vars{{{"ORT_ENABLE_XQA", "0"}}};
+  SessionOptions options;
+  options.graph_optimization_level = TransformerLevel::Default;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsEnableStaticWorkspacePreallocation, "1"));
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLength, "64"));
+  InferenceSessionWrapper session(options, GetEnvironment());
+  CUDAExecutionProviderInfo provider_info;
+  provider_info.sdpa_kernel = kMath;
+  provider_info.do_copy_in_default_stream = true;
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::make_shared<CUDAExecutionProvider>(provider_info)));
+  const auto model = BuildGroupQueryAttentionKernelModel(false, false);
+  ASSERT_STATUS_OK(session.Load(model.data(), static_cast<int>(model.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  const auto& state = session.GetSessionState();
+  ASSERT_TRUE(state.GetEnableMemoryPattern());
+  const Node* node = FindNodeByOpType(session.GetGraph(), "GroupQueryAttention");
+  ASSERT_NE(node, nullptr);
+  ASSERT_EQ(node->GetExecutionProviderType(), kCudaExecutionProvider);
+  const auto* kernel = state.GetKernel(node->Index());
+  ASSERT_NE(kernel, nullptr);
+  const auto& plans = state.GetExecutionPlan()->workspace_allocation_plan.at(node->Index());
+  ASSERT_EQ(plans.size(), 1u);
+  const auto& plan = plans.front();
+  const std::vector<std::string> input_names{
+      "query", "key", "value", "past_key", "past_value", "seqlens_k", "total_sequence_length"};
+  const std::vector<std::string> output_names{"output", "present_key", "present_value"};
+  const auto shapes = SeparateShapes();
+  auto allocator = std::make_shared<CPUAllocator>();
+  InlinedVector<OrtValue> feeds(input_names.size());
+  InlinedVector<int> feed_indices(input_names.size());
+  for (size_t i = 0; i < input_names.size(); ++i) {
+    ASSERT_STATUS_OK(state.GetOrtValueNameIdxMap().GetIdx(input_names[i], feed_indices[i]));
+    if (i < 5) {
+      const auto& shape = *shapes[i].GetShape();
+      std::vector<MLFloat16> values(static_cast<size_t>(shape.Size()), MLFloat16(i == 2 ? 1.0f : 0.0f));
+      CreateMLValue<MLFloat16>(allocator, shape.GetDims(), values, &feeds[i]);
+    }
+  }
+
+  size_t run = 0;
+  const MemoryPatternGroup* cached_patterns = nullptr;
+  for (int32_t total_length : {128, 64, 128, 64}) {
+    SCOPED_TRACE(MakeString("run=", run, ", total_length=", total_length));
+    CreateMLValue<int32_t>(allocator, {2}, {total_length - 1, total_length - 1}, &feeds[5]);
+    CreateMLValue<int32_t>(allocator, {}, {total_length}, &feeds[6]);
+    std::vector<OrtValue> outputs;
+    ASSERT_STATUS_OK(session.Run(RunOptions{}, input_names, feeds, output_names, &outputs));
+    const auto usage = GetGroupQueryAttentionWorkspaceUsageForTest(kernel);
+    if (run != 0 && total_length <= 64) {
+      EXPECT_GT(usage.planned_regions, 0u);
+      EXPECT_EQ(usage.dynamic_regions, 0u);
+    } else {
+      EXPECT_EQ(usage.planned_regions, 0u);
+      EXPECT_GT(usage.dynamic_regions, 0u);
+    }
+    ASSERT_EQ(outputs.size(), output_names.size());
+    const auto& output = outputs[0].Get<Tensor>();
+    ASSERT_EQ(output.Shape(), TensorShape({2, 4, 512}));
+    const auto values = output.DataAsSpan<MLFloat16>();
+    for (size_t i = 0; i < values.size(); ++i) {
+      const size_t row = (i / 512) % 4;
+      const float expected = static_cast<float>(row + 1) / static_cast<float>(total_length - 3 + row);
+      EXPECT_NEAR(values[i].ToFloat(), expected, 0.001f);
+    }
+
+    const InlinedHashMap<int, TensorShape>* inferred_shapes = nullptr;
+    const auto* patterns = state.GetMemoryPatternGroup(feeds, feed_indices, inferred_shapes);
+    ASSERT_NE(patterns, nullptr);
+    if (cached_patterns != nullptr) {
+      EXPECT_EQ(patterns, cached_patterns);
+    }
+    cached_patterns = patterns;
+    const auto* device_pattern = patterns->GetPatterns(plan.location);
+    ASSERT_NE(device_pattern, nullptr);
+    const auto* block = device_pattern->GetBlock(plan.pattern_id);
+    ASSERT_NE(block, nullptr);
+    EXPECT_EQ(block->size_, plan.allocation_bytes);
+    ++run;
+  }
+}
+#endif
 
 TEST(GroupQueryAttentionWorkspaceBoundsTest, CheckedOverflowIsUnavailable) {
   auto bounds = Bounds();

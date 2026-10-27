@@ -1456,6 +1456,9 @@ struct ProviderHost {
 
   // Kernel pilot support — appended at end to preserve vtable ABI compatibility.
   virtual KernelPilot* OpKernelContext__GetKernelPilot(const OpKernelContext* p) = 0;
+
+  virtual Status OpKernelContext__GetPreallocatedWorkspace(OpKernelContext* p, int slot_id,
+                                                           size_t requested_bytes, void** workspace) = 0;
 };
 
 #if defined(_MSC_VER) && !defined(__clang__)

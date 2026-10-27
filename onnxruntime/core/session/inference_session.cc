@@ -2934,6 +2934,13 @@ common::Status InferenceSession::Initialize() {
     }
 #endif
 
+#if !defined(ORT_MINIMAL_BUILD)
+    ORT_RETURN_IF(session_options_.config_options.GetConfigOrDefault(
+                      kOrtSessionOptionsEnableStaticWorkspacePreallocation, "0") == "1" &&
+                      session_options_.execution_mode != ORT_SEQUENTIAL,
+                  "Workspace memory-pattern planning requires sequential execution mode.");
+#endif
+
     // now that we have all the execution providers, create the session state
     session_state_ = std::make_unique<SessionState>(
         model_->MainGraph(),

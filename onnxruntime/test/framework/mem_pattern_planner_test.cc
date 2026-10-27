@@ -35,5 +35,16 @@ TEST(MemPatternPlannerTest, TraceAllocaitonTest) {
   EXPECT_EQ(pattern.GetBlock(5)->offset_, 1024u + 256u + 512u);
   EXPECT_EQ(pattern.GetBlock(6)->offset_, 1024u);
 }
+TEST(MemPatternPlannerTest, WorkspaceSharesNonOverlappingActivationBlock) {
+  MemPatternPlanner planner{/*using_counters=*/false};
+  planner.TraceAllocation(0, 1024);
+  planner.TraceFree(0);
+  planner.TraceAllocation(-1, 512);
+  planner.TraceFree(-1);
+
+  const auto pattern = planner.GenerateMemPattern();
+  EXPECT_EQ(pattern.PeakSize(), 1024u);
+  EXPECT_EQ(pattern.GetBlock(0)->offset_, pattern.GetBlock(-1)->offset_);
+}
 }  // namespace test
 }  // namespace onnxruntime

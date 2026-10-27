@@ -1663,6 +1663,10 @@ struct ProviderHostImpl : ProviderHost {
   KernelPilot* OpKernelContext__GetKernelPilot(const OpKernelContext* p) override {
     return p->GetKernelPilot();
   }
+  Status OpKernelContext__GetPreallocatedWorkspace(OpKernelContext* p, int slot_id,
+                                                   size_t requested_bytes, void** workspace) override {
+    return p->GetPreallocatedWorkspace(slot_id, requested_bytes, workspace);
+  }
   // OpKernelInfo (wrapped)
   std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info) override { return onnxruntime::CopyOpKernelInfo(info); }
   void OpKernelInfo__operator_delete(OpKernelInfo* p) override { delete p; }

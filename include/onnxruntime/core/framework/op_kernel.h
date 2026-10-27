@@ -142,6 +142,11 @@ class OpKernel {
     return Status::OK();
   }
 
+#if !defined(ORT_MINIMAL_BUILD)
+  // Opt in only when Compute() can consume the declared slot from the execution frame.
+  virtual bool SupportsPreallocatedWorkspace() const noexcept { return false; }
+#endif
+
   // Override this function to use provided pre-packed weight.
   // Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
   //                                 gsl::span<const size_t> prepacked_buffer_sizes,

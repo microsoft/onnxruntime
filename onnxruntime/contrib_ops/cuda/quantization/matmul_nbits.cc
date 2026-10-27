@@ -1144,23 +1144,15 @@ Status MatMulNBits<T>::PrePack_ZeroPoint([[maybe_unused]] const Tensor& tensor,
 }
 #endif
 
-#if USE_FPA_INTB_GEMM && !defined(BUILD_CUDA_EP_AS_PLUGIN)
-// Level 2 (Phase-A memory roadmap, issue microsoft/onnxruntime#29775). Uses the constructed runner
-// state and effective arch from ComputeInternal(). The size is exact for its CUTLASS GEMM branch.
-// Runtime may instead select the CUDA GEMV tactic, which requests no workspace; in that case this is
-// a safe upper bound. Unknown/negative dimensions and arithmetic overflow use dynamic fallback.
-// The shared formula returns zero for empty output; a zero-sized requirement is omitted.
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN)
+// Share the runtime sizing helpers for CUTLASS and legacy scratch. GEMV can leave the declared
+// upper bound unused; unknown shapes and unavailable bounds retain dynamic allocation.
 template <typename T>
 Status MatMulNBits<T>::DeclareWorkspaceRequirements(
     gsl::span<const WorkspaceInputShape> input_shapes,
     /*out*/ InlinedVector<WorkspaceRequirement>& requirements) const {
   requirements.clear();
-  if (!has_fpA_intB_gemm_ || weightOnlyGemmRunner_ == nullptr) {
-    return Status::OK();
-  }
-
-  // Input A is the only input needed for this estimate. Missing or unknown unrelated optional
-  // inputs do not suppress declaration.
+  // A determines M; optional g_idx presence also controls whether legacy scratch can be chunked.
   const TensorShape* a_shape = GetWorkspaceInputShape(input_shapes, 0).GetShape();
   if (a_shape == nullptr) {
     return Status::OK();
@@ -1173,33 +1165,48 @@ Status MatMulNBits<T>::DeclareWorkspaceRequirements(
   if (!m64.has_value()) {
     return Status::OK();
   }
-  // ComputeInternal sizes the workspace for one M chunk.
-  const int64_t workspace_m = FpAIntBRowsPerLaunch(*m64);
-  // Feed the SAME effective arch the runner resolved after setArch() - not the raw sm_ member.
-  const int effective_sm = FpAIntBPackingSmForKernel();
-  std::optional<size_t> ws;
-  try {
-    ws = onnxruntime::llm::kernels::cutlass_kernels::ComputeFpAIntBGemmWorkspaceSize(
-        SafeInt<int>(workspace_m), SafeInt<int>(N_), SafeInt<int>(K_),
-        effective_sm, this->GetDeviceProp().multiProcessorCount);
-  } catch (const OnnxRuntimeException&) {
+  if (*m64 == 0 || N_ == 0) {
     return Status::OK();
   }
-  if (!ws.has_value() || *ws == 0) {
+#if USE_FPA_INTB_GEMM
+  if (has_fpA_intB_gemm_ && weightOnlyGemmRunner_ != nullptr) {
+    // ComputeInternal sizes the workspace for one M chunk.
+    const int64_t workspace_m = FpAIntBRowsPerLaunch(*m64);
+    // Feed the SAME effective arch the runner resolved after setArch() - not the raw sm_ member.
+    const int effective_sm = FpAIntBPackingSmForKernel();
+    std::optional<size_t> ws;
+    try {
+      ws = onnxruntime::llm::kernels::cutlass_kernels::ComputeFpAIntBGemmWorkspaceSize(
+          SafeInt<int>(workspace_m), SafeInt<int>(N_), SafeInt<int>(K_),
+          effective_sm, this->GetDeviceProp().multiProcessorCount);
+    } catch (const OnnxRuntimeException&) {
+      return Status::OK();
+    }
+    if (!ws.has_value() || *ws == 0) {
+      return Status::OK();
+    }
+    requirements.push_back(WorkspaceRequirement{*ws, /*slot_id=*/0, /*alignment_bytes=*/0});
     return Status::OK();
   }
-  requirements.push_back(WorkspaceRequirement{*ws, /*slot_id=*/0, /*alignment_bytes=*/0});
+#endif
+  const auto legacy = ComputeMatMulNBitsLegacyWorkspacePlan(
+      N_, K_, block_size_, sizeof(T),
+      column_wise_quant_blk_ &&
+          GetWorkspaceInputShape(input_shapes, 4).GetState() == WorkspaceInputShapeState::Missing,
+      force_chunked_, chunk_target_rows_);
+  if (legacy.has_value() && legacy->workspace_bytes != 0) {
+    requirements.push_back(WorkspaceRequirement{legacy->workspace_bytes, /*slot_id=*/0, /*alignment_bytes=*/0});
+  }
   return Status::OK();
 }
 #endif
 
 template <typename T>
 Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
-#if USE_FPA_INTB_GEMM
   // TEST verification hook only. Record every invocation, including validation failures, empty
   // outputs, and GEMV/non-fpA_intB paths, so the value always describes the latest call.
   last_compute_workspace_bytes_.store(0, std::memory_order_relaxed);
-#endif
+  last_compute_used_preallocated_workspace_.store(false, std::memory_order_relaxed);
 
   if constexpr (std::is_same_v<T, BFloat16>) {
     if (sm_ < 80) {
@@ -1318,6 +1325,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
       decltype(gemmProfiler_->getBestConfig(m, gemmId_)) bestTactic;
       int tactic_m = 0;
       IAllocatorUniquePtr<void> workspace_buffer;
+      void* workspace_data = nullptr;
       size_t workspace_size = 0;
       bool workspace_allocated = false;
 
@@ -1391,7 +1399,14 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
             // Sized for a full chunk; the workspace size is non-decreasing in M, so it also covers
             // a smaller trailing chunk.
             workspace_size = weightOnlyGemmRunner_->getWorkspaceSize(chunk_m, n, k);
-            workspace_buffer = this->template GetScratchBuffer<void>(workspace_size, this->GetComputeStream(ctx));
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+            ORT_RETURN_IF_ERROR(ctx->GetPreallocatedWorkspace(0, workspace_size, &workspace_data));
+#endif
+            last_compute_used_preallocated_workspace_.store(workspace_data != nullptr, std::memory_order_relaxed);
+            if (workspace_data == nullptr) {
+              workspace_buffer = this->template GetScratchBuffer<void>(workspace_size, this->GetComputeStream(ctx));
+              workspace_data = workspace_buffer.get();
+            }
             workspace_allocated = true;
             // TEST verification hook only. Relaxed ordering is sufficient: the pilot's single-threaded
             // tests only read this after the compute call has returned, so no cross-thread happens-before
@@ -1410,7 +1425,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
               rows, n, k,
               static_cast<int>(block_size_),
               *bestTactic,
-              reinterpret_cast<char*>(workspace_buffer.get()),
+              reinterpret_cast<char*>(workspace_data),
               workspace_size,
               stream);
         }
@@ -1506,11 +1521,18 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
   int64_t K_padded = legacy_workspace->k_padded;
   const bool will_use_chunked = legacy_workspace->use_chunked;
   const int64_t chunk_target_rows = chunk_target_rows_;
-  IAllocatorUniquePtr<T> b_data_ptr =
-      this->template GetScratchBuffer<T>(
-          legacy_workspace->workspace_bytes / sizeof(T),
-          this->GetComputeStream(ctx));
-  auto* b_data = b_data_ptr.get();
+  const size_t workspace_bytes = legacy_workspace->workspace_bytes;
+  void* planned_workspace = nullptr;
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+  ORT_RETURN_IF_ERROR(ctx->GetPreallocatedWorkspace(0, workspace_bytes, &planned_workspace));
+#endif
+  last_compute_workspace_bytes_.store(workspace_bytes, std::memory_order_relaxed);
+  last_compute_used_preallocated_workspace_.store(planned_workspace != nullptr, std::memory_order_relaxed);
+  IAllocatorUniquePtr<T> b_data_ptr;
+  if (planned_workspace == nullptr) {
+    b_data_ptr = this->template GetScratchBuffer<T>(workspace_bytes / sizeof(T), this->GetComputeStream(ctx));
+  }
+  auto* b_data = planned_workspace != nullptr ? static_cast<T*>(planned_workspace) : b_data_ptr.get();
 
   // Column-wise dequant helper: dispatches 8/4/2-bit x typed / uint8 zero-points.
   // Used by both the full-N and chunked paths so the offset math stays in one place.

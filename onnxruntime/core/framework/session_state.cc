@@ -1170,6 +1170,12 @@ const MemoryPatternGroup* SessionState::GetMemoryPatternGroup(
   auto it = mem_patterns_.find(key);
   if (it == mem_patterns_.end()) {
 #ifdef ENABLE_TRAINING
+#if !defined(ORT_MINIMAL_BUILD)
+    // The static training planner cannot model kernel workspace lifetimes.
+    if (const auto* plan = GetExecutionPlan(); plan != nullptr && !plan->workspace_allocation_plan.empty()) {
+      return nullptr;
+    }
+#endif
     MemoryPatternGroup mem_patterns;
     InlinedHashMap<int, TensorShape> inferred_shapes;
     if (GeneratePatternGroupCache(tensor_inputs, feed_mlvalue_idxs, mem_patterns, inferred_shapes).IsOK()) {
@@ -2135,8 +2141,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   // Level-2 workspace declaration: after kernels are created and PrePack'd, call
   // DeclareWorkspaceRequirements() on each kernel with positional input presence/shape metadata.
   // Static graph shapes remain usable when no max-shape inference result is available.
-  // This collects workspace slot requirements for future offset planning.
-  // Requirements are reported per graph but are not yet persisted in a workspace plan.
+  // Opted-in kernels also register workspace lifetimes for run-scoped memory-pattern planning.
   {
     SafeInt<size_t> aggregate_declared_workspace_bytes = 0;
     size_t nodes_with_workspace = 0;
@@ -2155,6 +2160,16 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
     const bool strict_workspace_verification =
         session_options.config_options.GetConfigOrDefault(
             kOrtSessionOptionsStrictWorkspaceVerification, "0") == "1";
+    const bool enable_workspace_preallocation =
+        session_options.config_options.GetConfigOrDefault(
+            kOrtSessionOptionsEnableStaticWorkspacePreallocation, "0") == "1";
+    ORT_RETURN_IF(enable_workspace_preallocation && session_options.execution_mode != ORT_SEQUENTIAL,
+                  "Workspace memory-pattern planning requires sequential execution mode.");
+    int next_workspace_pattern_id = -1;
+    if (enable_workspace_preallocation) {
+      ORT_RETURN_IF_NOT(p_seq_exec_plan_.has_value(), "Workspace planning requires an execution plan.");
+      p_seq_exec_plan_->workspace_allocation_plan.clear();
+    }
 
     const SessionState* reservation_owner = this;
     while (reservation_owner->parent_ != nullptr) {
@@ -2210,6 +2225,29 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
       LOGS(logger_, VERBOSE) << "Level-2 workspace: node '" << node.Name()
                              << "' (" << node.OpType() << "): " << requirements.size()
                              << " slot(s), " << declared_bytes << " bytes total";
+
+      if (enable_workspace_preallocation && kernel->SupportsPreallocatedWorkspace()) {
+        if (requirements.size() != 1) {
+          LOGS(logger_, WARNING) << "Workspace planning skipped for node '" << node.Name()
+                                 << "': only one workspace slot per kernel is supported.";
+        } else {
+          const auto& requirement = requirements.front();
+          const OrtDevice device = kernel->GetDevice(OrtMemTypeDefault);
+          const size_t padding = requirement.alignment_bytes > 1 ? requirement.alignment_bytes - 1 : 0;
+          const size_t unaligned_bytes = SafeInt<size_t>(requirement.size_bytes) + padding;
+          const size_t block_alignment = std::max(static_cast<size_t>(device.GetAlignment()), kAllocAlignment);
+          size_t allocation_bytes = 0;
+          ORT_RETURN_IF_NOT(IAllocator::CalcMemSizeForArrayWithAlignment(
+                                unaligned_bytes, 1, block_alignment, &allocation_bytes),
+                            "Workspace allocation size overflow for node '", node.Name(), "'.");
+          ORT_RETURN_IF(next_workspace_pattern_id == std::numeric_limits<int>::min(),
+                        "Too many workspace slots for memory-pattern identifiers.");
+          p_seq_exec_plan_->workspace_allocation_plan[node.Index()].push_back(
+              SequentialExecutionPlan::WorkspaceAllocationPlan{
+                  next_workspace_pattern_id--, requirement.slot_id, requirement.size_bytes,
+                  allocation_bytes, requirement.alignment_bytes, device});
+        }
+      }
 
       if (reservation == nullptr) {
         ++missing_reservation;
