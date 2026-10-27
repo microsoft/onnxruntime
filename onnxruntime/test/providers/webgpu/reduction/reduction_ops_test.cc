@@ -1,13 +1,18 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <utility>
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/unittest_util/conversion.h"
 #include "test/util/include/default_providers.h"
 
 #ifdef USE_WEBGPU
@@ -41,6 +46,166 @@ TEST(ReductionOpTest, ReduceSum_WebGpu_EnableInt64_SizeDiv4) {
   auto provider = WebGpuExecutionProviderWithOptions(config_options);
   test.ConfigEp(std::move(provider))
       .RunWithConfig();
+}
+
+namespace {
+constexpr float kInf = std::numeric_limits<float>::infinity();
+
+// Runs an opset-18 reduction on WebGPU only, with CPU fallback disabled. Which WebGPU program runs
+// depends on the shape: reductions with reduce_size < 32 and output_size > 1024 use the naive
+// per-output program; small outputs use the workgroup shared-memory program.
+template <typename T>
+void RunReduceOnWebGpu(const char* op_type, const std::vector<int64_t>& input_shape, const std::vector<T>& input,
+                       const std::vector<int64_t>& axes, int64_t keepdims,
+                       const std::vector<int64_t>& output_shape, const std::vector<T>& expected,
+                       float abs_error = 0.0f) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU execution provider is not available.";
+  }
+  SessionOptions options;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+
+  OpTester test(op_type, 18);
+  test.AddAttribute<int64_t>("keepdims", keepdims);
+  test.AddInput<T>("data", input_shape, input);
+  test.AddInput<int64_t>("axes", {static_cast<int64_t>(axes.size())}, axes, true);
+  test.AddOutput<T>("reduced", output_shape, expected);
+  if (abs_error > 0.0f) {
+    test.SetOutputAbsErr("reduced", abs_error);
+  }
+  test.Config(options).ConfigEp(std::move(webgpu_ep)).RunWithConfig();
+}
+
+// Reference LogSumExp with the CPU kernel's semantics: an infinite max is returned as-is.
+float ReferenceLogSumExp(const float* values, size_t count) {
+  float max_value = -kInf;
+  for (size_t i = 0; i < count; ++i) {
+    max_value = std::max(max_value, values[i]);
+  }
+  if (std::isinf(max_value)) {
+    return max_value;
+  }
+  double sum = 0.0;
+  for (size_t i = 0; i < count; ++i) {
+    sum += std::exp(static_cast<double>(values[i]) - max_value);
+  }
+  return static_cast<float>(max_value + std::log(sum));
+}
+
+// Builds `num_rows` rows of `row_length` values by cycling through `row_patterns`, then reduces
+// the last axis and checks against ReferenceLogSumExp.
+void TestLogSumExpRows(const std::vector<std::vector<float>>& row_patterns, int64_t num_rows) {
+  const size_t row_length = row_patterns[0].size();
+  std::vector<float> input;
+  std::vector<float> expected;
+  for (int64_t r = 0; r < num_rows; ++r) {
+    const auto& row = row_patterns[static_cast<size_t>(r) % row_patterns.size()];
+    input.insert(input.end(), row.begin(), row.end());
+    expected.push_back(ReferenceLogSumExp(row.data(), row.size()));
+  }
+  RunReduceOnWebGpu<float>("ReduceLogSumExp", {num_rows, static_cast<int64_t>(row_length)}, input, {1}, 0,
+                           {num_rows}, expected, 1e-4f);
+}
+
+// WebNN conformance reduceL2 float16 input. The sum of squares (~74000) exceeds the f16 range
+// even though the result (~272.1) does not.
+const std::vector<float> kReduceL2Input{
+    4.859375f, 88.25f, 54.5f, 64.75f, 6.85546875f, 91.375f,
+    41.875f, 73.625f, 35.3125f, 48.34375f, 82.375f, 77.875f,
+    93.3125f, 62.5f, 60.28125f, 13.234375f, 20.53125f, 53.4375f,
+    11.3203125f, 64.75f, 43.65625f, 0.83740234375f, 0.68505859375f, 33.5f};
+}  // namespace
+
+TEST(ReductionOpTest, ReduceL2_Float16_SharedPath_LargeSumOfSquares_WebGpu) {
+  RunReduceOnWebGpu<MLFloat16>("ReduceL2", {2, 3, 4}, FloatsToMLFloat16s(kReduceL2Input), {0, 1, 2}, 0, {},
+                               FloatsToMLFloat16s({272.0f}), 0.25f);
+  // Non-innermost axes take the transpose + shared-memory path.
+  RunReduceOnWebGpu<MLFloat16>("ReduceL2", {2, 2, 2, 3}, FloatsToMLFloat16s(kReduceL2Input), {1, 3}, 1, {2, 1, 2, 1},
+                               FloatsToMLFloat16s({138.625f, 166.625f, 149.875f, 67.625f}), 0.125f);
+}
+
+TEST(ReductionOpTest, ReduceL2_Float16_NaivePath_LargeSquares_WebGpu) {
+  // 300^2 and 400^2 overflow f16, but the norm (500) does not.
+  constexpr int64_t kRows = 1040;
+  std::vector<float> input;
+  for (int64_t i = 0; i < kRows; ++i) {
+    input.push_back(300.0f);
+    input.push_back(-400.0f);
+  }
+  RunReduceOnWebGpu<MLFloat16>("ReduceL2", {kRows, 2}, FloatsToMLFloat16s(input), {1}, 0, {kRows},
+                               FloatsToMLFloat16s(std::vector<float>(kRows, 500.0f)), 0.25f);
+}
+
+TEST(ReductionOpTest, ReduceSum_Float16_SharedPath_IntermediateOverflow_WebGpu) {
+  // The workgroup tree reduction pairs elements 0+2 and 1+3, whose f16 partial sums overflow.
+  RunReduceOnWebGpu<MLFloat16>("ReduceSum", {4}, FloatsToMLFloat16s({60000.0f, -60000.0f, 60000.0f, -60000.0f}), {0}, 0,
+                               {}, FloatsToMLFloat16s({0.0f}));
+}
+
+TEST(ReductionOpTest, ReduceMean_Float16_SharedPath_IntermediateOverflow_WebGpu) {
+  RunReduceOnWebGpu<MLFloat16>("ReduceMean", {2}, FloatsToMLFloat16s({60000.0f, 60000.0f}), {0}, 0, {},
+                               FloatsToMLFloat16s({60000.0f}));
+}
+
+TEST(ReductionOpTest, ReduceLogSum_Float16_SharedPath_LargeSum_WebGpu) {
+  // WebNN conformance reduce-log-sum-small-values: the sum exceeds f16's range, the log does not.
+  RunReduceOnWebGpu<MLFloat16>("ReduceLogSum", {4}, FloatsToMLFloat16s({65504.0f, 65504.0f, 65504.0f, 65504.0f}), {0}, 0,
+                               {}, FloatsToMLFloat16s({12.4765625f}), 0.01f);
+}
+
+TEST(ReductionOpTest, ReduceLogSumExp_LargeMagnitude_WebGpu) {
+  // WebNN conformance reduce_log_sum_exp: exp(100) overflows f32 unless the max is subtracted first.
+  RunReduceOnWebGpu<float>("ReduceLogSumExp", {1}, {100.0f}, {0}, 0, {}, {100.0f});
+  RunReduceOnWebGpu<float>("ReduceLogSumExp", {1}, {-100.0f}, {0}, 0, {}, {-100.0f});
+}
+
+TEST(ReductionOpTest, ReduceLogSumExp_SharedPath_WebGpu) {
+  std::vector<float> increasing(64);
+  for (size_t i = 0; i < increasing.size(); ++i) {
+    increasing[i] = 0.5f * static_cast<float>(i) - 10.0f;
+  }
+  std::vector<float> neg_inf_and_three(64, -kInf);
+  for (size_t i = 0; i < neg_inf_and_three.size(); i += 2) {
+    neg_inf_and_three[i] = 3.0f;
+  }
+  std::vector<float> one_pos_inf(64, 0.0f);
+  one_pos_inf[37] = kInf;
+  TestLogSumExpRows({std::vector<float>(64, 100.0f),
+                     std::vector<float>(64, -100.0f),
+                     std::vector<float>(64, -kInf),
+                     neg_inf_and_three,
+                     one_pos_inf,
+                     increasing},
+                    6);
+}
+
+TEST(ReductionOpTest, ReduceLogSumExp_NaivePath_WebGpu) {
+  TestLogSumExpRows({{100.0f, 100.0f},
+                     {-100.0f, -99.0f},
+                     {-kInf, -kInf},
+                     {-kInf, 3.0f},
+                     {5.0f, -kInf},
+                     {kInf, 1.0f},
+                     {1.0f, kInf}},
+                    1036);
+}
+
+TEST(ReductionOpTest, ReduceLogSumExp_Float16_WebGpu) {
+  // WebNN conformance reduce_log_sum_exp float16 4D tensor options.axes.
+  const std::vector<float> input{
+      0.79736328125f, 5.046875f, 8.5234375f, 1.40625f,
+      0.11883544921875f, 0.285888671875f, 1.9326171875f, 3.794921875f,
+      2.603515625f, 4.9375f, 4.5703125f, 0.78662109375f,
+      0.210205078125f, 9.0625f, 4.1015625f, 4.59765625f,
+      0.2548828125f, 1.1591796875f, 6.8046875f, 5.234375f,
+      8.9140625f, 9.1640625f, 5.71875f, 0.325439453125f};
+  RunReduceOnWebGpu<MLFloat16>("ReduceLogSumExp", {2, 2, 2, 3}, FloatsToMLFloat16s(input), {1, 3}, 0, {2, 2},
+                               FloatsToMLFloat16s({8.5703125f, 5.5f, 9.75f, 9.203125f}), 0.01f);
+}
+
+TEST(ReductionOpTest, ReduceLogSumExp_EmptyInput_WebGpu) {
+  RunReduceOnWebGpu<float>("ReduceLogSumExp", {2, 0}, {}, {1}, 0, {2}, {-kInf, -kInf});
 }
 #endif
 
