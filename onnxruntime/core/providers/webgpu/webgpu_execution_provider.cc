@@ -165,6 +165,11 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     KERNEL_CREATE_INFO_VERSIONED(6, 12, Tanh),
     KERNEL_CREATE_INFO(13, Tanh),
     KERNEL_CREATE_INFO(1, Not),
+    KERNEL_CREATE_INFO_VERSIONED(9, 12, IsNaN),
+    KERNEL_CREATE_INFO_VERSIONED(13, 19, IsNaN),
+    KERNEL_CREATE_INFO(20, IsNaN),
+    KERNEL_CREATE_INFO_VERSIONED(10, 19, IsInf),
+    KERNEL_CREATE_INFO(20, IsInf),
 
     // // activations
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 11, float, Clip)>,
