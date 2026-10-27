@@ -25,7 +25,10 @@ foreach(ONNXRUNTIME_DEP IN LISTS ONNXRUNTIME_DEPS_LIST)
       # Search a local mirror folder
       string(REGEX REPLACE "^https://" "${onnxruntime_CMAKE_DEPS_MIRROR_DIR}/" LOCAL_URL "${ONNXRUNTIME_DEP_URL}")
 
-      # Older CMake versions (e.g. 3.31) require a recognized archive suffix for local files.
+      # CMake 3.31 rejects extensionless local archives before its content-aware extractor runs.
+      # TODO Remove this .zip suffix handling and its addition in
+      # tools/ci_build/github/windows/stage_dawn_agility_sdk.py once the minimum supported CMake accepts extensionless
+      # local archives, as CMake 4.4.2 does.
       if(NOT EXISTS "${LOCAL_URL}" AND EXISTS "${LOCAL_URL}.zip")
         string(APPEND LOCAL_URL ".zip")
       endif()

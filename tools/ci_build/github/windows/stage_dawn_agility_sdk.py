@@ -74,7 +74,12 @@ def stage_dawn_agility_sdk(source_dir: Path, mirror_dir: Path) -> Path:
 
         # Match the HTTPS URL-to-local-path mapping and ZIP fallback in onnxruntime_external_deps.cmake.
         mirror_path = mirror_dir.joinpath(*url.removeprefix("https://").split("/"))
+
+        # CMake 3.31 rejects extensionless local archives before its content-aware extractor runs.
+        # TODO Remove this .zip suffix addition and its handling in cmake/external/onnxruntime_external_deps.cmake once
+        # the minimum supported CMake accepts extensionless local archives, as CMake 4.4.2 does.
         mirror_path = mirror_path.with_name(mirror_path.name + ".zip")
+
         mirror_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(archive, mirror_path)
         print(f"Staged Dawn Agility SDK at {mirror_path} (SHA1 {actual_hash})")
