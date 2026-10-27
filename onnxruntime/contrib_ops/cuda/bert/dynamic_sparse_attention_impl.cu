@@ -80,8 +80,8 @@ __device__ __forceinline__ void SetValidationError(int32_t* error_flag,
                                                    DynamicSparseAttentionValidationError error) {
   const int32_t previous =
       atomicCAS(error_flag, kDynamicSparseAttentionValidationOk, static_cast<int32_t>(error));
-  if (previous == 9) {
-    atomicCAS(error_flag, 9, static_cast<int32_t>(error));
+  if (previous == kDynamicSparseAttentionInvalidCommittedLength) {
+    atomicCAS(error_flag, kDynamicSparseAttentionInvalidCommittedLength, static_cast<int32_t>(error));
   }
 }
 
@@ -237,7 +237,8 @@ __global__ void ValidateInputsKernel(const int32_t* selected_indices,
     const int64_t committed = committed_length[b * committed_length_stride];
     const int64_t total = committed + sequence_length;
     if (committed < 0 || total > main_capacity || seqlens_k[b] != total - 1) {
-      atomicCAS(error_flag, kDynamicSparseAttentionValidationOk, 9);
+      atomicCAS(error_flag, kDynamicSparseAttentionValidationOk,
+                kDynamicSparseAttentionInvalidCommittedLength);
     }
   }
 }
@@ -1007,7 +1008,7 @@ __global__ void GroupedDecodeDynamicSparseAttentionKernel(
   if constexpr (std::is_same_v<T, half> && !kQuantizedCache) {
     const int group_head_base = head_tile * kQueryHeadsPerBlock;
     for (int index = static_cast<int>(threadIdx.x);
-         index < kGroupedDecodeQueryHeadsPerBlock * head_size;
+         index < kQueryHeadsPerBlock * head_size;
          index += static_cast<int>(blockDim.x)) {
       const int local_head = index / head_size;
       const int head_offset = index - local_head * head_size;
@@ -1169,6 +1170,7 @@ __global__ void GroupedDecodeDynamicSparseAttentionKernel(
       if (threadIdx.x < 32) {
         const int mma_lane = static_cast<int>(threadIdx.x);
         const int row_pair = mma_lane >> 2;
+        const int second_row = row_pair + 8;
         const int k_pair = (mma_lane & 3) * 2;
         float score_fragment[4]{};
         for (int k_start = 0; k_start < head_size; k_start += 16) {
@@ -1177,10 +1179,16 @@ __global__ void GroupedDecodeDynamicSparseAttentionKernel(
           const uint32_t query_fragment[4]{
               *reinterpret_cast<const uint32_t*>(
                   mma_query + row_pair * head_size + first_k),
-              0,
+              second_row < kQueryHeadsPerBlock
+                  ? *reinterpret_cast<const uint32_t*>(
+                        mma_query + second_row * head_size + first_k)
+                  : 0u,
               *reinterpret_cast<const uint32_t*>(
                   mma_query + row_pair * head_size + second_k),
-              0};
+              second_row < kQueryHeadsPerBlock
+                  ? *reinterpret_cast<const uint32_t*>(
+                        mma_query + second_row * head_size + second_k)
+                  : 0u};
           const uint32_t key_fragment[2]{
               *reinterpret_cast<const uint32_t*>(
                   shared_key + row_pair * head_size + first_k),
@@ -1191,6 +1199,10 @@ __global__ void GroupedDecodeDynamicSparseAttentionKernel(
         const int score_column = (mma_lane & 3) * 2;
         mma_scores[row_pair * kGroupedPrefillCandidatesPerTile + score_column] = score_fragment[0];
         mma_scores[row_pair * kGroupedPrefillCandidatesPerTile + score_column + 1] = score_fragment[1];
+        if (second_row < kQueryHeadsPerBlock) {
+          mma_scores[second_row * kGroupedPrefillCandidatesPerTile + score_column] = score_fragment[2];
+          mma_scores[second_row * kGroupedPrefillCandidatesPerTile + score_column + 1] = score_fragment[3];
+        }
       }
       __syncthreads();
     }
@@ -1908,7 +1920,7 @@ Status ValidateDynamicSparseAttentionOnDevice(
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
       &host_error, error_flag, sizeof(host_error), cudaMemcpyDeviceToHost, stream));
   CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
-  if (host_error == kDynamicSparseAttentionValidationOk || host_error == 9) {
+  if (host_error == kDynamicSparseAttentionValidationOk) {
     return Status::OK();
   }
 
@@ -1937,6 +1949,9 @@ Status ValidateDynamicSparseAttentionOnDevice(
       break;
     case kDynamicSparseAttentionInvalidPosition:
       message = "a rotary position is outside the rotary cache";
+      break;
+    case kDynamicSparseAttentionInvalidCommittedLength:
+      message = "committed_length is inconsistent with seqlens_k, sequence_length, or cache_capacity";
       break;
     case kDynamicSparseAttentionInvalidCacheScale:
       message = "INT8 cache scales must be positive and finite";

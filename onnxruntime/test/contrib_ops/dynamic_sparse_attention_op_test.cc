@@ -18,6 +18,7 @@
 
 #if defined(USE_CUDA) || defined(USE_WEBGPU)
 #include "test/common/tensor_op_test_utils.h"
+#include "test/contrib_ops/fresh_process_test_util.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/scoped_env_vars.h"
 #include "test/util/include/default_providers.h"
@@ -550,7 +551,7 @@ DynamicSparseAttentionCase MakeGroupedCacheCase(int sequence_length, bool auxili
 }
 
 TEST(DynamicSparseAttentionTest, FloatingCacheGroupedReferenceParity_CUDA) {
-  for (int sequence_length : {1, 3}) {
+  for (int sequence_length : {1, 3, 9}) {
     for (bool auxiliary : {false, true}) {
       for (bool bf16 : {false, true}) {
         auto cuda_ep = DefaultCudaExecutionProvider();
@@ -566,6 +567,67 @@ TEST(DynamicSparseAttentionTest, FloatingCacheGroupedReferenceParity_CUDA) {
         }
       }
     }
+  }
+}
+
+TEST(DynamicSparseAttentionTest, GroupedDecodeRatio12ReferenceParity_CUDA) {
+  for (int sequence_length : {1, 3}) {
+    for (bool auxiliary : {false, true}) {
+      SCOPED_TRACE("sequence_length=" + std::to_string(sequence_length) +
+                   ", auxiliary=" + std::to_string(auxiliary));
+      const auto floating_case = MakeGroupedCacheCase(sequence_length, auxiliary, true, 2, 24, 2);
+      auto cuda_ep = DefaultCudaExecutionProvider();
+      if (!cuda_ep) GTEST_SKIP() << "CUDA EP not available.";
+      RunDynamicSparseAttentionCase<MLFloat16>(floating_case, std::move(cuda_ep));
+      cuda_ep = DefaultCudaExecutionProvider();
+      RunDynamicSparseAttentionCase<BFloat16>(floating_case, std::move(cuda_ep));
+
+      const auto int8_case = MakeGroupedCacheCase(sequence_length, auxiliary, false, 2, 24, 2, true);
+      cuda_ep = DefaultCudaExecutionProvider();
+      RunDynamicSparseAttentionCase<MLFloat16, int8_t>(int8_case, std::move(cuda_ep));
+      cuda_ep = DefaultCudaExecutionProvider();
+      RunDynamicSparseAttentionCase<BFloat16, int8_t>(int8_case, std::move(cuda_ep));
+    }
+  }
+}
+
+TEST(DynamicSparseAttentionTest, Int8CachePrefillBFloat16_CUDA) {
+  if (!DefaultCudaExecutionProvider()) GTEST_SKIP() << "CUDA EP not available.";
+  if (!CudaHasBF16Support()) GTEST_SKIP() << "CUDA device does not support BFloat16.";
+  auto c = MakeGroupedCacheCase(9, false, false, 2, 20, 2, true);
+  c.head_sink.clear();
+  c.smooth_softmax = 0;
+  for (int row = 0; row < c.batch_size * c.sequence_length; ++row) {
+    const int64_t b = row / c.sequence_length;
+    for (int h = 0; h < c.num_heads; ++h) {
+      const int64_t kv = h / (c.num_heads / c.kv_num_heads);
+      const int64_t out = (row * c.num_heads + h) * c.head_size;
+      std::vector<float> numerator(c.head_size, 0.0f);
+      double denominator = 0.0;
+      for (int i = 0; i < c.selected_counts[row]; ++i) {
+        const int index = c.selected_indices[row * c.max_selected + i];
+        const int64_t offset = ((b * c.kv_num_heads + kv) * c.cache_sequence_length + index) * c.head_size;
+        double dot = 0.0;
+        for (int d = 0; d < c.head_size; ++d) {
+          dot += c.query[out + d] * c.expected_present_key[offset + d] * c.key_scale[kv * c.head_size + d];
+        }
+        const double weight = std::exp(dot * c.scale);
+        denominator += weight;
+        for (int d = 0; d < c.head_size; ++d) {
+          numerator[d] += static_cast<float>(weight * c.expected_present_value[offset + d] *
+                                             c.value_scale[kv * c.head_size + d]);
+        }
+      }
+      for (int d = 0; d < c.head_size; ++d) {
+        c.expected_output[out + d] = denominator == 0.0 ? 0.0f : static_cast<float>(numerator[d] / denominator);
+      }
+    }
+  }
+  for (const char* prefill_env : {"1", "0"}) {
+    SCOPED_TRACE(prefill_env);
+    ScopedEnvironmentVariables scoped_env_vars{
+        EnvVarMap{{"ORT_DSA_PREFILL_KERNEL", prefill_env}}};
+    RunDynamicSparseAttentionCase<BFloat16, int8_t>(c, DefaultCudaExecutionProvider());
   }
 }
 
@@ -627,6 +689,34 @@ TEST(DynamicSparseAttentionTest, GroupedMergeActiveSplitBoundaries_CUDA) {
       RunDynamicSparseAttentionCase<BFloat16, int8_t>(
           MakeGroupedCacheCase(2, auxiliary, false, 2, 20, 2, true, count), std::move(cuda_ep));
     }
+  }
+}
+
+// ORT_DSA_INT8_VECTOR_STAGING and ORT_DSA_SHARED_SCALE_MERGE are cached in function-local statics, so
+// the non-default INT8 grouped-decode staging and the per-channel merge are checked in fresh processes.
+TEST(DynamicSparseAttentionTest, Int8CacheGroupedDecodeAlternateSwitchesInFreshProcess_CUDA) {
+  if (!DefaultCudaExecutionProvider()) GTEST_SKIP() << "CUDA EP not available.";
+
+  const std::string filter =
+      "DynamicSparseAttentionTest.Int8CacheGroupedDecode_CUDA:"
+      "DynamicSparseAttentionTest.Int8CacheGroupedDecodeFloat16_CUDA:"
+      "DynamicSparseAttentionTest.Int8CacheGroupedDecodeVectorStagingChannels_CUDA:"
+      "DynamicSparseAttentionTest.GroupedMergeActiveSplitBoundaries_CUDA:"
+      "DynamicSparseAttentionTest.GroupedDecodeRatio12ReferenceParity_CUDA";
+
+  struct Mode {
+    const char* vector_staging;
+    const char* shared_scale_merge;
+  };
+  const Mode modes[] = {{"0", "1"}, {"1", "0"}, {"0", "0"}};
+  for (const Mode& mode : modes) {
+    SCOPED_TRACE(std::string("INT8_VECTOR_STAGING=") + mode.vector_staging +
+                 " SHARED_SCALE_MERGE=" + mode.shared_scale_merge);
+    ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{
+        {"ORT_DSA_INT8_VECTOR_STAGING", mode.vector_staging},
+        {"ORT_DSA_SHARED_SCALE_MERGE", mode.shared_scale_merge},
+    }};
+    ASSERT_EQ(RunGTestFilterInFreshProcess(filter), 0);
   }
 }
 
@@ -2059,6 +2149,19 @@ TEST(DynamicSparseAttentionTest, RejectsInvalidSelectionMetadata_CUDA) {
     c.expected_present_value.assign(3 * 8, 0.0f);
     RunDynamicSparseAttentionCase(c, DefaultCudaExecutionProvider(), OpTester::ExpectResult::kExpectFailure,
                                   "incompatible with the current sequence");
+  }
+  {
+    SCOPED_TRACE("committed cursor disagrees with seqlens_k and no validation_status output");
+    auto c = MakeSingleTokenSelectedOnlyCase();
+    c.cache_sequence_length = 2;
+    c.total_sequence_length = 2;
+    c.past_key.assign(16, 0.0f);
+    c.past_value.assign(16, 0.0f);
+    c.expected_present_key.assign(16, 0.0f);
+    c.expected_present_value.assign(16, 0.0f);
+    c.committed_length = 1;
+    RunDynamicSparseAttentionCase(c, DefaultCudaExecutionProvider(), OpTester::ExpectResult::kExpectFailure,
+                                  "committed_length is inconsistent");
   }
 }
 

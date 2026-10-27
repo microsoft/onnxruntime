@@ -1810,7 +1810,9 @@ This version of the operator has been available since version 1 of the 'com.micr
   the exporter's responsibility.
   
   Main caches may instead use INT8 with positive finite float32 key_scale and value_scale vectors, one scale per
-  KV-head channel. Newly appended keys (after optional normalization and RoPE) and values are divided by their scales,
+  KV-head channel. The cache is symmetric signed int8 without a zero point, like the 8-bit KV cache of GroupQueryAttention
+  and PagedAttention; tensor(uint8) is reserved for packed 4-bit caches in those operators and is not accepted here.
+  Newly appended keys (after optional normalization and RoPE) and values are divided by their scales,
   rounded to nearest with ties to even, and saturated to [-128, 127]. Attention reads the quantized representation,
   including newly appended rows. Auxiliary caches remain floating point. Invalid scale values produce validation_status=10
   when validation is requested; CUDA strict validation also reports them as an error.
@@ -1888,7 +1890,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>head_sink</tt> (optional) : T</dt>
 <dd>Optional sink logit [num_heads]. Participates in the shared softmax denominator in both attention modes.</dd>
 <dt><tt>committed_length</tt> (optional) : M</dt>
-<dd>Optional single-request committed token count for cursor validation. When supplied, validation_status is 9 if seqlens_k, sequence_length, or cache_capacity is inconsistent. CUDA only.</dd>
+<dd>Optional per-request committed token count ([1] or [batch]) for cursor validation. When supplied, validation_status is 9 if seqlens_k, sequence_length, or cache_capacity is inconsistent, and CUDA strict validation fails with a cursor-specific error. CUDA only.</dd>
 <dt><tt>key_scale</tt> (optional) : S</dt>
 <dd>Positive finite per-channel INT8 key-cache scales [kv_num_heads * head_size].</dd>
 <dt><tt>value_scale</tt> (optional) : S</dt>
@@ -1905,7 +1907,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>present_value</tt> (optional) : TCache</dt>
 <dd>Updated main value cache in BNSH layout.</dd>
 <dt><tt>validation_status</tt> (optional) : M</dt>
-<dd>Optional CUDA-only int32 status: 0 when valid, a validation code when invalid.</dd>
+<dd>Optional CUDA-only int32 status: 0 when valid, otherwise a validation code (1-8: selection, sequence-length or rotary-position errors; 9: inconsistent committed_length cursor; 10: invalid INT8 cache scale).</dd>
 </dl>
 
 #### Type Constraints

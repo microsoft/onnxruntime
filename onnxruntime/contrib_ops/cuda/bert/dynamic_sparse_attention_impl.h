@@ -22,6 +22,7 @@ enum DynamicSparseAttentionValidationError : int32_t {
   kDynamicSparseAttentionNonCausalIndex = 6,
   kDynamicSparseAttentionInvalidSequenceLength = 7,
   kDynamicSparseAttentionInvalidPosition = 8,
+  kDynamicSparseAttentionInvalidCommittedLength = 9,
   kDynamicSparseAttentionInvalidCacheScale = 10,
 };
 

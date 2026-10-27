@@ -32,11 +32,13 @@
 #include "core/graph/constants.h"
 #include "core/graph/model.h"
 #include "test/common/tensor_op_test_utils.h"
+#include "test/contrib_ops/fresh_process_test_util.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/test_environment.h"
 #include "test/unittest_util/graph_transform_test_builder.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
+#include "test/util/include/scoped_env_vars.h"
 
 #ifdef USE_WEBGPU
 #include "core/providers/webgpu/webgpu_provider_options.h"
@@ -1536,6 +1538,43 @@ TEST(PackedSparseAttentionIndexerTest, QsaHierarchicalScoringReusesKeysAcrossHea
     RunQsaPackedTest<MLFloat16>(2.0e-3f, problem, ProviderKind::Cuda);
     RunQsaPackedTest<BFloat16>(2.0e-2f, problem, ProviderKind::Cuda);
     RunQsaPackedTest<BFloat16, float>(2.0e-2f, std::move(problem), ProviderKind::Cuda);
+  }
+}
+
+// The CUDA indexer caches ORT_PACKED_SPARSE_INDEXER_{COMPACT_TOPK,WARP_HEADS} in function-local
+// statics, so each non-default mode (tile-level two-level merge, non-warp ragged prefill scorer) is
+// exercised by re-running the hierarchical top-k and ragged-prefill cases (nonuniform scores, stable
+// ties, partial merge groups) in a fresh process that has the switch set before the first eligible call.
+TEST(PackedSparseAttentionIndexerTest, QsaAlternateTopKModesInFreshProcess) {
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+
+  const std::string filter =
+      "PackedSparseAttentionIndexerTest.QsaHierarchicalTopK:"
+      "PackedSparseAttentionIndexerTest.QsaHierarchicalPairedVerification:"
+      "PackedSparseAttentionIndexerTest.QsaCompactChunkAndFallbackBoundaries:"
+      "PackedSparseAttentionIndexerTest.QsaHierarchicalTileBoundariesPreserveStableTies:"
+      "PackedSparseAttentionIndexerTest.QsaHierarchicalPackedRowsWithLargeCapacity:"
+      "PackedSparseAttentionIndexerTest.QsaHierarchicalMergeLevelsWithPartialGroups:"
+      "PackedSparseAttentionIndexerTest.QsaHierarchicalScoringReusesKeysAcrossHeads:"
+      "PackedSparseAttentionIndexerTest.QsaRaggedPrefill";
+
+  struct Mode {
+    const char* compact;
+    const char* warp_heads;
+  };
+  const Mode modes[] = {
+      {"0", "1"},  // tile-level two-level merge
+      {"1", "0"},  // non-warp ragged prefill scorer
+  };
+  for (const Mode& mode : modes) {
+    SCOPED_TRACE(std::string("COMPACT_TOPK=") + mode.compact + " WARP_HEADS=" + mode.warp_heads);
+    ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{
+        {"ORT_PACKED_SPARSE_INDEXER_COMPACT_TOPK", mode.compact},
+        {"ORT_PACKED_SPARSE_INDEXER_WARP_HEADS", mode.warp_heads},
+    }};
+    ASSERT_EQ(RunGTestFilterInFreshProcess(filter), 0);
   }
 }
 
