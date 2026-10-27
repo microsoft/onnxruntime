@@ -815,8 +815,8 @@ ArmKleidiAI::MlasConv(
                                   Bias,
                                   Parameters->FilterIsPacked ? Parameters->PackedFilter : nullptr,
                                   Output,
-                                  -std::numeric_limits<float>::max(),
-                                  std::numeric_limits<float>::max(),
+                                  -std::numeric_limits<float>::infinity(),
+                                  std::numeric_limits<float>::infinity(),
                                   ThreadPool)) {
             const size_t activation_rows = Parameters->ChannelsLast
                                                ? Parameters->OutputSize

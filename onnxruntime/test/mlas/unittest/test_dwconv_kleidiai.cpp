@@ -10,6 +10,7 @@
 #include "core/mlas/lib/kleidiai/mlasi_kleidiai.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -303,6 +304,96 @@ void RunMlasConvChannelsLastCase(size_t channels,
   }
 }
 
+enum class NonFiniteSource {
+  Bias,
+  Accumulation,
+};
+
+void RunMlasConvNonFiniteCase(NonFiniteSource source) {
+  if (!MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2()) {
+    GTEST_SKIP() << "DepthwiseConvKleidiAI requires ARM64 SME2. Skipping test.";
+  }
+
+  constexpr size_t batches = 1;
+  constexpr size_t channels = 8;
+  constexpr size_t in_height = 8;
+  constexpr size_t in_width = 8;
+  constexpr size_t filter_height = 3;
+  constexpr size_t filter_width = 3;
+  constexpr size_t padding = 1;
+  constexpr size_t filter_count = 1;
+  constexpr size_t out_height = in_height;
+  constexpr size_t out_width = in_width;
+
+  std::vector<float> input(batches * in_height * in_width * channels, 0.0f);
+  std::vector<float> weights(channels * filter_height * filter_width, 0.0f);
+  std::vector<float> bias(channels, 0.0f);
+  std::vector<float> output(batches * out_height * out_width * channels, 0.0f);
+
+  if (source == NonFiniteSource::Accumulation) {
+    std::fill(input.begin(), input.end(), std::numeric_limits<float>::max());
+  }
+
+  for (size_t channel = 0; channel < channels; ++channel) {
+    const bool negative = channel % 2 != 0;
+    if (source == NonFiniteSource::Bias) {
+      bias[channel] = negative ? -std::numeric_limits<float>::infinity()
+                               : std::numeric_limits<float>::infinity();
+    } else {
+      const float weight = negative ? -2.0f : 2.0f;
+      std::fill_n(weights.data() + channel * filter_height * filter_width,
+                  filter_height * filter_width,
+                  weight);
+    }
+  }
+
+  const int64_t input_shape[] = {static_cast<int64_t>(in_height), static_cast<int64_t>(in_width)};
+  const int64_t kernel_shape[] = {static_cast<int64_t>(filter_height), static_cast<int64_t>(filter_width)};
+  const int64_t dilation_shape[] = {1, 1};
+  const int64_t pads[] = {padding, padding, padding, padding};
+  const int64_t strides[] = {1, 1};
+  const int64_t output_shape[] = {static_cast<int64_t>(out_height), static_cast<int64_t>(out_width)};
+  MLAS_ACTIVATION activation{};
+  activation.ActivationKind = MlasIdentityActivation;
+
+  MLAS_CONV_PARAMETERS parameters{};
+  size_t working_buffer_size = 0;
+  MlasConvPrepare(&parameters,
+                  2,
+                  batches,
+                  channels,
+                  1,
+                  input_shape,
+                  kernel_shape,
+                  dilation_shape,
+                  pads,
+                  strides,
+                  output_shape,
+                  filter_count,
+                  &activation,
+                  &working_buffer_size,
+                  true,
+                  0.0f,
+                  nullptr);
+  ASSERT_TRUE(ArmKleidiAI::DepthwiseConvKleidiAISupported(&parameters));
+
+  std::vector<float> working_buffer(working_buffer_size);
+  ASSERT_TRUE(ArmKleidiAI::MlasConv(&parameters,
+                                    input.data(),
+                                    weights.data(),
+                                    bias.data(),
+                                    working_buffer.data(),
+                                    output.data(),
+                                    nullptr));
+
+  for (size_t index = 0; index < output.size(); ++index) {
+    const size_t channel = index % channels;
+    const bool expect_negative = channel % 2 != 0;
+    EXPECT_TRUE(std::isinf(output[index])) << "Expected infinity at element " << index;
+    EXPECT_EQ(std::signbit(output[index]), expect_negative) << "Wrong infinity sign at element " << index;
+  }
+}
+
 }  // namespace
 
 TEST(MlasKleidiDepthwiseTest, ZeroPaddingNchw) {
@@ -342,6 +433,14 @@ TEST(MlasKleidiDepthwiseTest, MlasConvChannelsLast) {
 TEST(MlasKleidiDepthwiseTest, MlasConvChannelsLastPrepackedWeights) {
   RunMlasConvChannelsLastCase(
       /*channels=*/32, /*in_height=*/8, /*in_width=*/8, /*padding=*/1, /*use_prepacked_weights=*/true);
+}
+
+TEST(MlasKleidiDepthwiseTest, MlasConvPreservesInfiniteBias) {
+  RunMlasConvNonFiniteCase(NonFiniteSource::Bias);
+}
+
+TEST(MlasKleidiDepthwiseTest, MlasConvPreservesOverflowInfinity) {
+  RunMlasConvNonFiniteCase(NonFiniteSource::Accumulation);
 }
 
 TEST(MlasKleidiDepthwiseTest, RejectsOutputSmallerThanKernelTile) {
