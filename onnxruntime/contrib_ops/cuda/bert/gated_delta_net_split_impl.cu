@@ -131,7 +131,155 @@ struct PrepTile {
 // K1: everything in a chunk that does not touch the recurrent state.
 // One CTA per (sequence, v-head, chunk).
 // ---------------------------------------------------------------------------
+template <typename T, typename MT, bool kExactFp32Uv, int DK, int DV, int BT>
+__device__ __forceinline__ void RunPrepareStep(
+    char* smem_raw, const KernelParams& p, int len, bool needs_retrieval, MT* out, float* uv_out,
+    float* decay_out, bool negate_decay, int tid, int warp_id, int lane) {
+  using L = SplitLd<DK, DV, BT, 64>;
+  using Tile = PrepTile<DK, DV, BT>;
+  const PrepSmem<MT, DK, DV, BT> s = CarvePrep<MT, DK, DV, BT>(smem_raw);
+  T* k_in = reinterpret_cast<T*>(s.k_h);
+  T* q_in = reinterpret_cast<T*>(s.q_h);
+  T* v_in = reinterpret_cast<T*>(s.v_h);
+
+  if constexpr (!std::is_same_v<T, MT>) {
+    for (int idx = tid; idx < BT * DV; idx += kChunkedThreads) {
+      const int t = idx / DV, d = idx % DV;
+      s.v_h[t * L::kVh + d] = FloatToElem<MT>(ElemToFloat(v_in[t * L::kVh + d]));
+    }
+    if (!p.qk_l2_norm) {
+      for (int idx = tid; idx < BT * DK; idx += kChunkedThreads) {
+        const int t = idx / DK, d = idx % DK;
+        s.k_h[t * L::kKh + d] = FloatToElem<MT>(ElemToFloat(k_in[t * L::kKh + d]));
+        s.q_h[t * L::kKh + d] = FloatToElem<MT>(ElemToFloat(q_in[t * L::kKh + d]));
+      }
+    }
+  }
+
+  if (p.qk_l2_norm) {
+    for (int t = warp_id; t < BT; t += kChunkedWarps) {
+      float sq = 0.0f, sk = 0.0f;
+      for (int d = lane; d < DK; d += 32) {
+        const float qv = ElemToFloat(q_in[t * L::kKh + d]);
+        const float kv = ElemToFloat(k_in[t * L::kKh + d]);
+        sq += qv * qv;
+        sk += kv * kv;
+      }
+#pragma unroll
+      for (int off = 16; off > 0; off >>= 1) {
+        sq += __shfl_xor_sync(0xffffffff, sq, off);
+        sk += __shfl_xor_sync(0xffffffff, sk, off);
+      }
+      const float rq = rsqrtf(sq + 1e-12f), rk = rsqrtf(sk + 1e-12f);
+      for (int d = lane; d < DK; d += 32) {
+        const float qv = ElemToFloat(q_in[t * L::kKh + d]);
+        const float kv = ElemToFloat(k_in[t * L::kKh + d]);
+        s.q_h[t * L::kKh + d] = FloatToElem<MT>(qv * rq);
+        s.k_h[t * L::kKh + d] = FloatToElem<MT>(kv * rk);
+      }
+    }
+  }
+  __syncthreads();
+
+  InclusiveScanBT<BT>(s.gc, tid);
+  __syncthreads();
+  const float g_total = s.gc[BT - 1];
+
+  // M and its exact inverse.
+  SmemGemm<BT, BT, DK, false, true, false>(s.t_f, L::kF1, s.k_h, L::kKh, s.k_h, L::kKh, warp_id,
+                                           lane);
+  __syncthreads();
+  for (int idx = tid; idx < BT * BT; idx += kChunkedThreads) {
+    const int t = idx / BT, sc = idx % BT;
+    const float m = (sc < t && needs_retrieval)
+                        ? s.beta[t] * s.t_f[t * L::kF1 + sc] * __expf(s.gc[t] - s.gc[sc])
+                        : 0.0f;
+    s.m_h[t * L::kMh + sc] = FloatToElem<MT>(m);
+  }
+  __syncthreads();
+
+  // The Neumann iterate lands on top of M: BuildTriInverse has consumed M by the time it
+  // writes N, and the prepare kernel only fits two CTAs on an SM without the extra tile.
+  BuildTriInverse<BT>(s.m_h, L::kMh, s.db_h, s.m_h, s.ti_h, L::kMh, s.t_f, L::kF1, warp_id, lane,
+                      tid);
+
+  MT* w_out = out;
+  MT* qg_out = w_out + Tile::kW;
+  MT* p_out = qg_out + Tile::kQg;
+  MT* kd_out = p_out + Tile::kP;
+
+  // Uv = (I+M)^-1 (beta v).
+  if constexpr (kExactFp32Uv) {
+    for (int idx = tid; idx < BT * DV; idx += kChunkedThreads) {
+      const int t = idx / DV, d = idx % DV;
+      s.t_f[t * L::kF1 + d] = ElemToFloat(s.v_h[t * L::kVh + d]) * s.beta[t];
+    }
+    __syncthreads();
+    SmemGemmFp32State<BT, DV, BT, false>(uv_out, DV, s.ti_h, L::kMh, s.t_f, L::kF1, s.v_h, L::kVh,
+                                         warp_id, lane, tid);
+    __syncthreads();
+  } else {
+    for (int idx = tid; idx < BT * DV; idx += kChunkedThreads) {
+      const int t = idx / DV, d = idx % DV;
+      s.v_h[t * L::kVh + d] = ScaleElem(s.v_h[t * L::kVh + d], s.beta[t]);
+    }
+    __syncthreads();
+    SmemGemm<BT, DV, BT, false, false, false>(s.t_f, L::kF1, s.ti_h, L::kMh, s.v_h, L::kVh, warp_id,
+                                              lane);
+    __syncthreads();
+    for (int idx = tid; idx < BT * DV; idx += kChunkedThreads) {
+      uv_out[idx] = s.t_f[(idx / DV) * L::kF1 + idx % DV];
+    }
+  }
+
+  // Kd and Qg are just row scalings of k and q, so emit them before k is overwritten by the
+  // row scaling W needs.
+  for (int idx = tid; idx < BT * DK; idx += kChunkedThreads) {
+    const int t = idx / DK, d = idx % DK;
+    kd_out[idx] = ScaleElem(s.k_h[t * L::kKh + d], __expf(g_total - s.gc[t]));
+    qg_out[idx] = ScaleElem(s.q_h[t * L::kKh + d], __expf(s.gc[t]));
+  }
+  __syncthreads();
+
+  // P = (q k^T) exp(gc_t - gc_s), inclusive lower. q_h is still unscaled here.
+  SmemGemm<BT, BT, DK, false, true, false>(s.t_f, L::kF1, s.q_h, L::kKh, s.k_h, L::kKh, warp_id,
+                                           lane);
+  __syncthreads();
+  for (int idx = tid; idx < BT * BT; idx += kChunkedThreads) {
+    const int t = idx / BT, sc = idx % BT;
+    p_out[idx] = FloatToElem<MT>(
+        (sc <= t && t < len) ? s.t_f[t * L::kF1 + sc] * __expf(s.gc[t] - s.gc[sc]) : 0.0f);
+  }
+  for (int idx = tid; idx < BT * DK; idx += kChunkedThreads) {
+    const int t = idx / DK, d = idx % DK;
+    const float bw = needs_retrieval ? s.beta[t] * __expf(s.gc[t]) : 0.0f;
+    s.k_h[t * L::kKh + d] = FloatToElem<MT>(ElemToFloat(s.k_h[t * L::kKh + d]) * bw);
+  }
+  __syncthreads();
+  // W = (I+M)^-1 diag(beta exp(gc)) k, with the row scaling folded into k in place.
+  SmemGemm<BT, DK, BT, false, false, false>(s.t_f, L::kF1, s.ti_h, L::kMh, s.k_h, L::kKh, warp_id,
+                                            lane);
+  __syncthreads();
+  for (int idx = tid; idx < BT * DK; idx += kChunkedThreads) {
+    w_out[idx] = FloatToElem<MT>(s.t_f[(idx / DK) * L::kF1 + idx % DK]);
+  }
+
+  if (tid == 0) {
+    const float d = __expf(g_total);
+    *decay_out = negate_decay ? -d : d;
+  }
+}
+
 template <typename T, int DK, int DV, int BT>
+__device__ __noinline__ void RunPrepareStepExactBf16Fallback(
+    char* smem_raw, const KernelParams& p, int len, bool needs_retrieval, T* out, float* uv_out,
+    float* decay_out, bool negate_decay, int tid, int warp_id, int lane) {
+  RunPrepareStep<T, T, /*kExactFp32Uv=*/true, DK, DV, BT>(
+      smem_raw, p, len, needs_retrieval, out, uv_out, decay_out, negate_decay, tid, warp_id, lane);
+}
+
+template <typename T, int DK, int DV, int BT,
+          Bf16Precision kBf16Prec = Bf16Precision::kFp32>
 __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetPrepareKernel(
     VariantPack<T> pack, KernelParams p, T* tiles, float* uv_tiles, float* decays, int chunk_base,
     int chunks_per_pass) {
@@ -162,19 +310,53 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetPrepareKernel(
   const bool needs_retrieval =
       p.update_rule == UpdateRule::kDelta || p.update_rule == UpdateRule::kGatedDelta;
 
+  constexpr bool kCheckFp16 =
+      std::is_same_v<T, __nv_bfloat16> && kBf16Prec == Bf16Precision::kFp16;
+  bool thread_out_of_fp16 = kCheckFp16 && (fabsf(p.scale) > 16.0f);
+  // Bound ||k||_2 <= 1, not just individual components, so retrieval cannot amplify the inverse.
+  const int max_k_bits = p.qk_l2_norm      ? 0x46000000
+                         : needs_retrieval ? __float_as_int(1.0f / sqrtf(static_cast<float>(DK)))
+                                           : 0x41000000;
+  const int max_q_bits = p.qk_l2_norm ? 0x46000000 : 0x41000000;
+  int thread_q_max = 0, thread_k_max = 0;
+
   for (int idx = tid; idx < BT * DK; idx += kChunkedThreads) {
     const int t = idx / DK, d = idx % DK;
     const int64_t tok = tok_base + chunk0 + t;
-    s.k_h[t * L::kKh + d] =
-        (t < len) ? pack.key[tok * k_stride + hk * DK + d] : FloatToElem<T>(0.f);
-    s.q_h[t * L::kKh + d] =
-        (t < len) ? pack.query[tok * q_stride + hq * DK + d] : FloatToElem<T>(0.f);
+    const T kv = (t < len) ? pack.key[tok * k_stride + hk * DK + d] : FloatToElem<T>(0.f);
+    const T qv = (t < len) ? pack.query[tok * q_stride + hq * DK + d] : FloatToElem<T>(0.f);
+    s.k_h[t * L::kKh + d] = kv;
+    s.q_h[t * L::kKh + d] = qv;
+    if constexpr (kCheckFp16) {
+      if (t < len) {
+        thread_k_max = max(thread_k_max, __float_as_int(fabsf(ElemToFloat(kv))));
+        thread_q_max = max(thread_q_max, __float_as_int(fabsf(ElemToFloat(qv))));
+      }
+    }
   }
+  if constexpr (kCheckFp16) {
+    if (thread_k_max > max_k_bits || thread_q_max > max_q_bits ||
+        (!p.qk_l2_norm && ((thread_k_max != 0 && thread_k_max < 0x38800000) ||
+                           (thread_q_max != 0 && thread_q_max < 0x38800000)))) {
+      thread_out_of_fp16 = true;
+    }
+  }
+  int thread_v_max = 0;
   for (int idx = tid; idx < BT * DV; idx += kChunkedThreads) {
     const int t = idx / DV, d = idx % DV;
     const int64_t tok = tok_base + chunk0 + t;
-    s.v_h[t * L::kVh + d] =
-        (t < len) ? pack.value[tok * v_stride + hv * DV + d] : FloatToElem<T>(0.f);
+    const T vv = (t < len) ? pack.value[tok * v_stride + hv * DV + d] : FloatToElem<T>(0.f);
+    s.v_h[t * L::kVh + d] = vv;
+    if constexpr (kCheckFp16) {
+      if (t < len) {
+        thread_v_max = max(thread_v_max, __float_as_int(fabsf(ElemToFloat(vv))));
+      }
+    }
+  }
+  if constexpr (kCheckFp16) {
+    if (thread_v_max > 0x43800000 || (thread_v_max != 0 && thread_v_max < 0x38800000)) {
+      thread_out_of_fp16 = true;
+    }
   }
   if (tid < BT) {
     const int64_t tok = tok_base + chunk0 + tid;
@@ -188,134 +370,48 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetPrepareKernel(
     }
     s.gc[tid] = g;
     s.beta[tid] = be;
-  }
-  __syncthreads();
-
-  if (p.qk_l2_norm) {
-    for (int t = warp_id; t < BT; t += kChunkedWarps) {
-      float sq = 0.0f, sk = 0.0f;
-      for (int d = lane; d < DK; d += 32) {
-        const float qv = ElemToFloat(s.q_h[t * L::kKh + d]);
-        const float kv = ElemToFloat(s.k_h[t * L::kKh + d]);
-        sq += qv * qv;
-        sk += kv * kv;
-      }
-#pragma unroll
-      for (int off = 16; off > 0; off >>= 1) {
-        sq += __shfl_xor_sync(0xffffffff, sq, off);
-        sk += __shfl_xor_sync(0xffffffff, sk, off);
-      }
-      const float rq = rsqrtf(sq + 1e-12f), rk = rsqrtf(sk + 1e-12f);
-      for (int d = lane; d < DK; d += 32) {
-        s.q_h[t * L::kKh + d] = FloatToElem<T>(ElemToFloat(s.q_h[t * L::kKh + d]) * rq);
-        s.k_h[t * L::kKh + d] = FloatToElem<T>(ElemToFloat(s.k_h[t * L::kKh + d]) * rk);
+    if constexpr (kCheckFp16) {
+      if (tid < len && (!(g <= 0.0f) || !(fabsf(be) <= 1.0f) || (needs_retrieval && be < 0.0f))) {
+        thread_out_of_fp16 = true;
       }
     }
-    __syncthreads();
   }
-
-  InclusiveScanBT<BT>(s.gc, tid);
-  __syncthreads();
-  const float g_total = s.gc[BT - 1];
-
-  // M and its exact inverse.
-  SmemGemm<BT, BT, DK, false, true, false>(s.t_f, L::kF1, s.k_h, L::kKh, s.k_h, L::kKh, warp_id,
-                                           lane);
-  __syncthreads();
-  for (int idx = tid; idx < BT * BT; idx += kChunkedThreads) {
-    const int t = idx / BT, sc = idx % BT;
-    const float m = (sc < t && needs_retrieval)
-                        ? s.beta[t] * s.t_f[t * L::kF1 + sc] * __expf(s.gc[t] - s.gc[sc])
-                        : 0.0f;
-    s.m_h[t * L::kMh + sc] = FloatToElem<T>(m);
-  }
-  __syncthreads();
-
-  // The Neumann iterate lands on top of M: BuildTriInverse has consumed M by the time it
-  // writes N, and the prepare kernel only fits two CTAs on an SM without the extra tile.
-  BuildTriInverse<BT>(s.m_h, L::kMh, s.db_h, s.m_h, s.ti_h, L::kMh, s.t_f, L::kF1, warp_id, lane,
-                      tid);
 
   const int64_t tile_base =
       (static_cast<int64_t>(b) * p.num_heads_v + hv) * chunks_per_pass + c_local;
   T* out = tiles + tile_base * Tile::kHalves;
-  T* w_out = out;
-  T* qg_out = w_out + Tile::kW;
-  T* p_out = qg_out + Tile::kQg;
-  T* kd_out = p_out + Tile::kP;
   float* uv_out = uv_tiles + tile_base * Tile::kUv;
+  float* decay_out = decays + tile_base;
 
-  // Uv = (I+M)^-1 (beta v).
   if constexpr (std::is_same_v<T, __nv_bfloat16>) {
-    if (p.bf16_precision != Bf16Precision::kBf16) {
-      for (int idx = tid; idx < BT * DV; idx += kChunkedThreads) {
-        const int t = idx / DV, d = idx % DV;
-        s.t_f[t * L::kF1 + d] = ElemToFloat(s.v_h[t * L::kVh + d]) * s.beta[t];
+    if constexpr (kBf16Prec == Bf16Precision::kBf16) {
+      __syncthreads();
+      RunPrepareStep<T, T, /*kExactFp32Uv=*/false, DK, DV, BT>(
+          smem_raw, p, len, needs_retrieval, out, uv_out, decay_out, /*negate_decay=*/false, tid,
+          warp_id, lane);
+    } else if constexpr (kBf16Prec == Bf16Precision::kFp16) {
+      const bool out_of_fp16 = __syncthreads_or(thread_out_of_fp16) != 0;
+      if (!out_of_fp16) {
+        RunPrepareStep<T, __half, /*kExactFp32Uv=*/false, DK, DV, BT>(
+            smem_raw, p, len, needs_retrieval, reinterpret_cast<__half*>(out), uv_out, decay_out,
+            /*negate_decay=*/false, tid, warp_id, lane);
+      } else {
+        RunPrepareStepExactBf16Fallback<T, DK, DV, BT>(
+            smem_raw, p, len, needs_retrieval, out, uv_out, decay_out, /*negate_decay=*/true, tid,
+            warp_id, lane);
       }
-      __syncthreads();
-      SmemGemmFp32State<BT, DV, BT, false>(uv_out, DV, s.ti_h, L::kMh, s.t_f, L::kF1, s.v_h,
-                                           L::kVh, warp_id, lane, tid);
-      __syncthreads();
     } else {
-      for (int idx = tid; idx < BT * DV; idx += kChunkedThreads) {
-        const int t = idx / DV, d = idx % DV;
-        s.v_h[t * L::kVh + d] = ScaleElem(s.v_h[t * L::kVh + d], s.beta[t]);
-      }
       __syncthreads();
-      SmemGemm<BT, DV, BT, false, false, false>(s.t_f, L::kF1, s.ti_h, L::kMh, s.v_h, L::kVh,
-                                                warp_id, lane);
-      __syncthreads();
-      for (int idx = tid; idx < BT * DV; idx += kChunkedThreads) {
-        uv_out[idx] = s.t_f[(idx / DV) * L::kF1 + idx % DV];
-      }
+      RunPrepareStep<T, T, /*kExactFp32Uv=*/true, DK, DV, BT>(
+          smem_raw, p, len, needs_retrieval, out, uv_out, decay_out, /*negate_decay=*/false, tid,
+          warp_id, lane);
     }
   } else {
-    for (int idx = tid; idx < BT * DV; idx += kChunkedThreads) {
-      const int t = idx / DV, d = idx % DV;
-      s.v_h[t * L::kVh + d] = ScaleElem(s.v_h[t * L::kVh + d], s.beta[t]);
-    }
     __syncthreads();
-    SmemGemm<BT, DV, BT, false, false, false>(s.t_f, L::kF1, s.ti_h, L::kMh, s.v_h, L::kVh, warp_id,
-                                              lane);
-    __syncthreads();
-    for (int idx = tid; idx < BT * DV; idx += kChunkedThreads) {
-      uv_out[idx] = s.t_f[(idx / DV) * L::kF1 + idx % DV];
-    }
+    RunPrepareStep<T, T, /*kExactFp32Uv=*/false, DK, DV, BT>(
+        smem_raw, p, len, needs_retrieval, out, uv_out, decay_out, /*negate_decay=*/false, tid,
+        warp_id, lane);
   }
-
-  // Kd and Qg are just row scalings of k and q, so emit them before k is overwritten by the
-  // row scaling W needs.
-  for (int idx = tid; idx < BT * DK; idx += kChunkedThreads) {
-    const int t = idx / DK, d = idx % DK;
-    kd_out[idx] = ScaleElem(s.k_h[t * L::kKh + d], __expf(g_total - s.gc[t]));
-    qg_out[idx] = ScaleElem(s.q_h[t * L::kKh + d], __expf(s.gc[t]));
-  }
-  __syncthreads();
-
-  // P = (q k^T) exp(gc_t - gc_s), inclusive lower. q_h is still unscaled here.
-  SmemGemm<BT, BT, DK, false, true, false>(s.t_f, L::kF1, s.q_h, L::kKh, s.k_h, L::kKh, warp_id,
-                                           lane);
-  __syncthreads();
-  for (int idx = tid; idx < BT * BT; idx += kChunkedThreads) {
-    const int t = idx / BT, sc = idx % BT;
-    p_out[idx] = FloatToElem<T>(
-        (sc <= t && t < len) ? s.t_f[t * L::kF1 + sc] * __expf(s.gc[t] - s.gc[sc]) : 0.0f);
-  }
-  for (int idx = tid; idx < BT * DK; idx += kChunkedThreads) {
-    const int t = idx / DK, d = idx % DK;
-    const float bw = needs_retrieval ? s.beta[t] * __expf(s.gc[t]) : 0.0f;
-    s.k_h[t * L::kKh + d] = FloatToElem<T>(ElemToFloat(s.k_h[t * L::kKh + d]) * bw);
-  }
-  __syncthreads();
-  // W = (I+M)^-1 diag(beta exp(gc)) k, with the row scaling folded into k in place.
-  SmemGemm<BT, DK, BT, false, false, false>(s.t_f, L::kF1, s.ti_h, L::kMh, s.k_h, L::kKh, warp_id,
-                                            lane);
-  __syncthreads();
-  for (int idx = tid; idx < BT * DK; idx += kChunkedThreads) {
-    w_out[idx] = FloatToElem<T>(s.t_f[(idx / DK) * L::kF1 + idx % DK]);
-  }
-
-  if (tid == 0) decays[tile_base] = __expf(g_total);
 }
 
 // ---------------------------------------------------------------------------
@@ -356,10 +452,210 @@ __device__ __forceinline__ ScanSmem<T, DK, DV, BT, DVB> CarveScan(char* raw) {
   return s;
 }
 
+template <typename T, int DK, int DV, int BT, int DVB, bool kRecomputeFromInputs>
+__device__ __noinline__ void RunScanStepExactBf16Fallback(
+    char* smem_raw, const VariantPack<T>& pack, const KernelParams& p, const T* in,
+    const float* uv_in, float decay_all, int64_t tok_base, int chunk0, int len, int hv, int v0,
+    int64_t v_stride, int tid, int warp_id, int lane) {
+  using L = SplitLd<DK, DV, BT, DVB>;
+  using Tile = PrepTile<DK, DV, BT>;
+  const ScanSmem<T, DK, DV, BT, DVB> s = CarveScan<T, DK, DV, BT, DVB>(smem_raw);
+  float* u_f = reinterpret_cast<float*>(s.s_h);
+
+  if constexpr (kRecomputeFromInputs && std::is_same_v<T, __nv_bfloat16>) {
+    // K1 prepared FP16 tiles, which may already have rounded tiny BF16 components (such as
+    // normalized query/key entries or exp(gc) factors below 2^-24) to zero. Recompute the
+    // chunk's BF16 preparation tiles from the original inputs before multiplying by the state.
+    const int hq = hv * p.num_heads_q / p.num_heads_v;
+    const int hk = hv * p.num_heads_k / p.num_heads_v;
+    const int64_t q_stride = static_cast<int64_t>(p.num_heads_q) * DK;
+    const int64_t k_stride = static_cast<int64_t>(p.num_heads_k) * DK;
+    const bool needs_decay = pack.decay != nullptr &&
+                             (p.update_rule == UpdateRule::kGated ||
+                              p.update_rule == UpdateRule::kGatedDelta);
+    const bool needs_retrieval =
+        p.update_rule == UpdateRule::kDelta || p.update_rule == UpdateRule::kGatedDelta;
+
+    T* k_h = s.wq_h;
+    T* q_h = s.wq_h + BT * L::kKh;
+    auto load_and_normalize_qk = [&]() {
+      for (int idx = tid; idx < BT * DK; idx += kChunkedThreads) {
+        const int t = idx / DK, d = idx % DK;
+        const int64_t tok = tok_base + chunk0 + t;
+        k_h[t * L::kKh + d] =
+            (t < len) ? pack.key[tok * k_stride + hk * DK + d] : FloatToElem<T>(0.f);
+        q_h[t * L::kKh + d] =
+            (t < len) ? pack.query[tok * q_stride + hq * DK + d] : FloatToElem<T>(0.f);
+      }
+      if (p.qk_l2_norm) {
+        __syncthreads();
+        for (int t = warp_id; t < BT; t += kChunkedWarps) {
+          float sq = 0.0f, sk = 0.0f;
+          for (int d = lane; d < DK; d += 32) {
+            const float qv = ElemToFloat(q_h[t * L::kKh + d]);
+            const float kv = ElemToFloat(k_h[t * L::kKh + d]);
+            sq += qv * qv;
+            sk += kv * kv;
+          }
+#pragma unroll
+          for (int off = 16; off > 0; off >>= 1) {
+            sq += __shfl_xor_sync(0xffffffff, sq, off);
+            sk += __shfl_xor_sync(0xffffffff, sk, off);
+          }
+          const float rq = rsqrtf(sq + 1e-12f), rk = rsqrtf(sk + 1e-12f);
+          for (int d = lane; d < DK; d += 32) {
+            const float qv = ElemToFloat(q_h[t * L::kKh + d]);
+            const float kv = ElemToFloat(k_h[t * L::kKh + d]);
+            q_h[t * L::kKh + d] = FloatToElem<T>(qv * rq);
+            k_h[t * L::kKh + d] = FloatToElem<T>(kv * rk);
+          }
+        }
+      }
+    };
+
+    float* gc = reinterpret_cast<float*>(s.u_h);
+    float* beta = gc + BT;
+    load_and_normalize_qk();
+    if (tid < BT) {
+      const int64_t tok = tok_base + chunk0 + tid;
+      const int64_t gi = tok * p.num_heads_v + hv;
+      float g = 0.0f, be = 0.0f;
+      if (tid < len) {
+        g = needs_decay ? EffectiveDecay(pack.decay[gi], pack.a_log, pack.dt_bias, hv,
+                                         p.gate_activation)
+                        : 0.0f;
+        be = pack.beta != nullptr ? EffectiveBeta(pack.beta[gi], p.beta_activation) : 1.0f;
+      }
+      gc[tid] = g;
+      beta[tid] = be;
+    }
+    __syncthreads();
+
+    InclusiveScanBT<BT>(gc, tid);
+    __syncthreads();
+    const float g_total = gc[BT - 1];
+    decay_all = __expf(g_total);
+
+    float* tf0 = s.t_f;
+    T* m_h = reinterpret_cast<T*>(s.t_f + BT * L::kF2);
+    T* db_h = s.s_h;
+    T* ti_h = s.p_h;
+    SmemGemm<BT, BT, DK, false, true, false>(tf0, L::kF2, k_h, L::kKh, k_h, L::kKh, warp_id, lane);
+    __syncthreads();
+    for (int idx = tid; idx < BT * BT; idx += kChunkedThreads) {
+      const int t = idx / BT, sc = idx % BT;
+      const float m = (sc < t && needs_retrieval)
+                          ? beta[t] * tf0[t * L::kF2 + sc] * __expf(gc[t] - gc[sc])
+                          : 0.0f;
+      m_h[t * L::kMh + sc] = FloatToElem<T>(m);
+    }
+    __syncthreads();
+    BuildTriInverse<BT>(m_h, L::kMh, db_h, m_h, ti_h, L::kMh, tf0, L::kF2, warp_id, lane, tid);
+
+    for (int idx = tid; idx < BT * DK; idx += kChunkedThreads) {
+      const int t = idx / DK, d = idx % DK;
+      q_h[t * L::kKh + d] = ScaleElem(q_h[t * L::kKh + d], __expf(gc[t]));
+      const float bw = needs_retrieval ? beta[t] * __expf(gc[t]) : 0.0f;
+      k_h[t * L::kKh + d] = FloatToElem<T>(ElemToFloat(k_h[t * L::kKh + d]) * bw);
+    }
+    __syncthreads();
+    T* w_tmp = reinterpret_cast<T*>(tf0);
+    SmemGemm<BT, DK, BT, false, false, false, T, kChunkedWarps, T>(
+        w_tmp, L::kKh, ti_h, L::kMh, k_h, L::kKh, warp_id, lane);
+    __syncthreads();
+    for (int idx = tid; idx < BT * DK; idx += kChunkedThreads) {
+      const int t = idx / DK, d = idx % DK;
+      k_h[t * L::kKh + d] = w_tmp[t * L::kKh + d];
+    }
+    __syncthreads();
+
+    SmemGemmFp32State<2 * BT, DVB, DK, false>(s.t_f, L::kF2, s.wq_h, L::kKh, s.s_f, L::kSf, s.s_h,
+                                              L::kSh, warp_id, lane, tid);
+    __syncthreads();
+
+    float* v_f = reinterpret_cast<float*>(s.wq_h);
+    for (int idx = tid; idx < BT * DVB; idx += kChunkedThreads) {
+      const int t = idx / DVB, c = idx % DVB;
+      const int64_t tok = tok_base + chunk0 + t;
+      const T vv = (t < len) ? pack.value[tok * v_stride + hv * DV + v0 + c] : FloatToElem<T>(0.f);
+      v_f[t * L::kF2 + c] = ElemToFloat(vv) * beta[t];
+    }
+    const float saved_gc = (tid < BT) ? gc[tid] : 0.0f;
+    __syncthreads();
+    SmemGemmFp32State<BT, DVB, BT, false>(u_f, L::kSf, ti_h, L::kMh, v_f, L::kF2, s.u_h, L::kBh,
+                                          warp_id, lane, tid);
+    __syncthreads();
+    for (int idx = tid; idx < BT * DVB; idx += kChunkedThreads) {
+      const int t = idx / DVB, c = idx % DVB;
+      u_f[t * L::kSf + c] -= tf0[t * L::kF2 + c];
+    }
+    if (tid < BT) {
+      gc[tid] = saved_gc;
+    }
+
+    load_and_normalize_qk();
+    __syncthreads();
+    SmemGemm<BT, BT, DK, false, true, false>(tf0, L::kF2, q_h, L::kKh, k_h, L::kKh, warp_id, lane);
+    __syncthreads();
+    for (int idx = tid; idx < BT * BT; idx += kChunkedThreads) {
+      const int t = idx / BT, sc = idx % BT;
+      s.p_h[t * L::kMh + sc] = FloatToElem<T>(
+          (sc <= t && t < len) ? tf0[t * L::kF2 + sc] * __expf(gc[t] - gc[sc]) : 0.0f);
+    }
+    for (int idx = tid; idx < BT * DK; idx += kChunkedThreads) {
+      const int t = idx / DK, d = idx % DK;
+      s.kd_h[t * L::kKh + d] = ScaleElem(k_h[t * L::kKh + d], __expf(g_total - gc[t]));
+    }
+    __syncthreads();
+  } else {
+    const T* wq_in = in;
+    const T* p_in = wq_in + Tile::kW + Tile::kQg;
+    const T* kd_in = p_in + Tile::kP;
+    for (int idx = tid; idx < 2 * BT * DK; idx += kChunkedThreads) {
+      s.wq_h[(idx / DK) * L::kKh + idx % DK] = wq_in[idx];
+    }
+    for (int idx = tid; idx < BT * BT; idx += kChunkedThreads) {
+      s.p_h[(idx / BT) * L::kMh + idx % BT] = p_in[idx];
+    }
+    __syncthreads();
+    SmemGemmFp32State<2 * BT, DVB, DK, false>(s.t_f, L::kF2, s.wq_h, L::kKh, s.s_f, L::kSf, s.s_h,
+                                              L::kSh, warp_id, lane, tid);
+    __syncthreads();
+    for (int idx = tid; idx < BT * DVB; idx += kChunkedThreads) {
+      const int t = idx / DVB, c = idx % DVB;
+      u_f[t * L::kSf + c] = uv_in[t * DV + v0 + c] - s.t_f[t * L::kF2 + c];
+    }
+    for (int idx = tid; idx < BT * DK; idx += kChunkedThreads) {
+      s.kd_h[(idx / DK) * L::kKh + idx % DK] = kd_in[idx];
+    }
+    __syncthreads();
+  }
+
+  SmemGemmFp32State<BT, DVB, BT, false>(s.t_f, L::kF2, s.p_h, L::kMh, u_f, L::kSf, s.u_h, L::kBh,
+                                        warp_id, lane, tid);
+  __syncthreads();
+  for (int idx = tid; idx < BT * DVB; idx += kChunkedThreads) {
+    const int t = idx / DVB, c = idx % DVB;
+    if (t < len) {
+      const int64_t tok = tok_base + chunk0 + t;
+      pack.output[tok * v_stride + hv * DV + v0 + c] =
+          FloatToElem<T>(p.scale * (s.t_f[t * L::kF2 + c] + s.t_f[(BT + t) * L::kF2 + c]));
+    }
+  }
+  for (int idx = tid; idx < DK * DVB; idx += kChunkedThreads) {
+    s.s_f[(idx / DVB) * L::kSf + idx % DVB] *= decay_all;
+  }
+  __syncthreads();
+  SmemGemmFp32State<DK, DVB, BT, true, kChunkedWarps, T, /*TA=*/true>(
+      s.s_f, L::kSf, s.kd_h, L::kKh, u_f, L::kSf, s.u_h, L::kBh, warp_id, lane, tid);
+  __syncthreads();
+}
+
 // ---------------------------------------------------------------------------
 // K2: the recurrence. One CTA per (sequence, v-head, v-block).
 // ---------------------------------------------------------------------------
-template <typename T, int DK, int DV, int BT, int DVB>
+template <typename T, int DK, int DV, int BT, int DVB,
+          Bf16Precision kBf16Prec = Bf16Precision::kFp32>
 __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetScanKernel(
     VariantPack<T> pack, KernelParams p, const T* tiles, const float* uv_tiles,
     const float* decays, float* carry, int chunk_base, int chunks_per_pass, int n_chunks,
@@ -398,27 +694,103 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetScanKernel(
     const int len = min(BT, seq_len - chunk0);
 
     const T* in = tiles + (head_base + c_local) * Tile::kHalves;
-    const T* wq_in = in;
-    const T* p_in = wq_in + Tile::kW + Tile::kQg;
-    const T* kd_in = p_in + Tile::kP;
     const float* uv_in = uv_tiles + (head_base + c_local) * Tile::kUv;
-
-    for (int idx = tid; idx < 2 * BT * DK; idx += kChunkedThreads) {
-      s.wq_h[(idx / DK) * L::kKh + idx % DK] = wq_in[idx];
-    }
-    for (int idx = tid; idx < BT * BT; idx += kChunkedThreads) {
-      s.p_h[(idx / BT) * L::kMh + idx % BT] = p_in[idx];
-    }
-    __syncthreads();
+    const float raw_decay = decays[head_base + c_local];
+    const float decay_all = fabsf(raw_decay);
 
     if constexpr (std::is_same_v<T, __nv_bfloat16>) {
-      if (p.bf16_precision != Bf16Precision::kBf16) {
-        // One GEMM for both products of the state: rows [0, BT) are W S, rows [BT, 2 BT) are Qg S.
+      if constexpr (kBf16Prec == Bf16Precision::kFp16) {
+        if (signbit(raw_decay)) {
+          RunScanStepExactBf16Fallback<T, DK, DV, BT, DVB, /*kRecomputeFromInputs=*/false>(
+              smem_raw, pack, p, in, uv_in, decay_all, tok_base, chunk0, len, hv, v0, v_stride,
+              tid, warp_id, lane);
+          continue;
+        }
+        int thread_s_max = 0, s_flags = 0;
+        for (int idx = tid; idx < DK * DVB; idx += kChunkedThreads) {
+          const int r = idx / DVB, c = idx % DVB;
+          const int abits = __float_as_int(fabsf(s.s_f[r * L::kSf + c]));
+          thread_s_max = max(thread_s_max, abits);
+          s_flags |= (abits == 0) ? 1 : ((abits < 0x33800000) ? 2 : 0);
+        }
+        bool thread_out_of_fp16 =
+            thread_s_max > 0x43800000 || (thread_s_max != 0 && thread_s_max < 0x38800000) ||
+            (s_flags & 2) != 0;
+        for (int idx = tid; idx < BT * DVB; idx += kChunkedThreads) {
+          const int t = idx / DVB, c = idx % DVB;
+          if (t < len && __float_as_int(fabsf(uv_in[t * DV + v0 + c])) > 0x43800000) {
+            thread_out_of_fp16 = true;
+          }
+        }
+        const bool k2_out_of_fp16 = __syncthreads_or(thread_out_of_fp16) != 0;
+        if (!k2_out_of_fp16) {
+          const __half* in_fp16 = reinterpret_cast<const __half*>(in);
+          const __half* wq_fp16 = in_fp16;
+          const __half* p_fp16 = wq_fp16 + Tile::kW + Tile::kQg;
+          const __half* kd_fp16 = p_fp16 + Tile::kP;
+          const ScanSmem<__half, DK, DV, BT, DVB> s_fp16 =
+              CarveScan<__half, DK, DV, BT, DVB>(smem_raw);
+          for (int idx = tid; idx < 2 * BT * DK; idx += kChunkedThreads) {
+            s_fp16.wq_h[(idx / DK) * L::kKh + idx % DK] = wq_fp16[idx];
+          }
+          for (int idx = tid; idx < BT * BT; idx += kChunkedThreads) {
+            s_fp16.p_h[(idx / BT) * L::kMh + idx % BT] = p_fp16[idx];
+          }
+          for (int idx = tid; idx < DK * DVB; idx += kChunkedThreads) {
+            const int r = idx / DVB, c = idx % DVB;
+            s_fp16.s_h[r * L::kSh + c] = __float2half(s_fp16.s_f[r * L::kSf + c]);
+          }
+          __syncthreads();
+          SmemGemm<2 * BT, DVB, DK, false, false, false>(
+              s_fp16.t_f, L::kF2, s_fp16.wq_h, L::kKh, s_fp16.s_h, L::kSh, warp_id, lane);
+          __syncthreads();
+          for (int idx = tid; idx < BT * DVB; idx += kChunkedThreads) {
+            const int t = idx / DVB, c = idx % DVB;
+            s_fp16.u_h[t * L::kBh + c] =
+                __float2half(uv_in[t * DV + v0 + c] - s_fp16.t_f[t * L::kF2 + c]);
+          }
+          for (int idx = tid; idx < BT * DK; idx += kChunkedThreads) {
+            s_fp16.kd_h[(idx / DK) * L::kKh + idx % DK] = kd_fp16[idx];
+          }
+          __syncthreads();
+
+          SmemGemm<BT, DVB, BT, false, false, false>(
+              s_fp16.t_f, L::kF2, s_fp16.p_h, L::kMh, s_fp16.u_h, L::kBh, warp_id, lane);
+          __syncthreads();
+          for (int idx = tid; idx < BT * DVB; idx += kChunkedThreads) {
+            const int t = idx / DVB, c = idx % DVB;
+            if (t < len) {
+              const int64_t tok = tok_base + chunk0 + t;
+              pack.output[tok * v_stride + hv * DV + v0 + c] = FloatToElem<T>(
+                  p.scale * (s_fp16.t_f[t * L::kF2 + c] + s_fp16.t_f[(BT + t) * L::kF2 + c]));
+            }
+          }
+
+          SmemGemm<DK, DVB, BT, true, false, true, float>(
+              s_fp16.s_f, L::kSf, s_fp16.kd_h, L::kKh, s_fp16.u_h, L::kBh, warp_id, lane,
+              decay_all);
+          __syncthreads();
+          continue;
+        }
+        RunScanStepExactBf16Fallback<T, DK, DV, BT, DVB, /*kRecomputeFromInputs=*/true>(
+            smem_raw, pack, p, in, uv_in, decay_all, tok_base, chunk0, len, hv, v0, v_stride, tid,
+            warp_id, lane);
+        continue;
+      } else if constexpr (kBf16Prec == Bf16Precision::kFp32) {
+        const T* wq_in = in;
+        const T* p_in = wq_in + Tile::kW + Tile::kQg;
+        const T* kd_in = p_in + Tile::kP;
+
+        for (int idx = tid; idx < 2 * BT * DK; idx += kChunkedThreads) {
+          s.wq_h[(idx / DK) * L::kKh + idx % DK] = wq_in[idx];
+        }
+        for (int idx = tid; idx < BT * BT; idx += kChunkedThreads) {
+          s.p_h[(idx / BT) * L::kMh + idx % BT] = p_in[idx];
+        }
+        __syncthreads();
         SmemGemmFp32State<2 * BT, DVB, DK, false>(s.t_f, L::kF2, s.wq_h, L::kKh, s.s_f, L::kSf,
                                                   s.s_h, L::kSh, warp_id, lane, tid);
         __syncthreads();
-        // s_h ([DK][kSh] = 256 * (DVB + 8) B) is dead after the state GEMM and covers
-        // u_f ([BT][kSf] = 256 * (DVB + 4) B) with zero extra shared memory.
         float* u_f = reinterpret_cast<float*>(s.s_h);
         for (int idx = tid; idx < BT * DVB; idx += kChunkedThreads) {
           const int t = idx / DVB, c = idx % DVB;
@@ -429,7 +801,6 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetScanKernel(
         }
         __syncthreads();
 
-        // P U overwrites the W S half; Qg S is still live above it.
         SmemGemmFp32State<BT, DVB, BT, false>(s.t_f, L::kF2, s.p_h, L::kMh, u_f, L::kSf, s.u_h,
                                               L::kBh, warp_id, lane, tid);
         __syncthreads();
@@ -442,7 +813,6 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetScanKernel(
           }
         }
 
-        const float decay_all = decays[head_base + c_local];
         for (int idx = tid; idx < DK * DVB; idx += kChunkedThreads) {
           s.s_f[(idx / DVB) * L::kSf + idx % DVB] *= decay_all;
         }
@@ -453,6 +823,18 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetScanKernel(
         continue;
       }
     }
+
+    const T* wq_in = in;
+    const T* p_in = wq_in + Tile::kW + Tile::kQg;
+    const T* kd_in = p_in + Tile::kP;
+
+    for (int idx = tid; idx < 2 * BT * DK; idx += kChunkedThreads) {
+      s.wq_h[(idx / DK) * L::kKh + idx % DK] = wq_in[idx];
+    }
+    for (int idx = tid; idx < BT * BT; idx += kChunkedThreads) {
+      s.p_h[(idx / BT) * L::kMh + idx % BT] = p_in[idx];
+    }
+    __syncthreads();
 
     for (int idx = tid; idx < DK * DVB; idx += kChunkedThreads) {
       const int r = idx / DVB, c = idx % DVB;
@@ -486,8 +868,7 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetScanKernel(
 
     // S = decay S + Kd^T U in FP32 so small per-chunk decays do not round away between chunks.
     SmemGemm<DK, DVB, BT, true, false, true, float>(s.s_f, L::kSf, s.kd_h, L::kKh, s.u_h,
-                                                    L::kBh, warp_id, lane,
-                                                    decays[head_base + c_local]);
+                                                    L::kBh, warp_id, lane, decay_all);
     __syncthreads();
   }
 
@@ -544,39 +925,51 @@ Status LaunchGatedDeltaNetSplit(const Descriptor& desc, const Plan& plan,
   const size_t prep_smem = SplitPrepareSmemBytes(BT, DK, DV);
   const size_t scan_smem = SplitScanSmemBytes(BT, DK, dvb);
 
-  static DynamicSmemConfig prep_smem_config;
-  ORT_RETURN_IF_ERROR(SetMaxDynamicSmem(GatedDeltaNetPrepareKernel<T, DK, DV, BT>, prep_smem,
-                                        prep_smem_config));
-
-  for (int base = 0; base < total_chunks; base += chunks_per_pass) {
-    const int n = std::min(chunks_per_pass, total_chunks - base);
-    const bool first = base == 0;
-    const bool last = base + n >= total_chunks;
-
+  auto launch_pass = [&]<Bf16Precision kPrec>(int base, int n, bool first, bool last) -> Status {
+    static DynamicSmemConfig prep_smem_config;
+    ORT_RETURN_IF_ERROR(SetMaxDynamicSmem(
+        GatedDeltaNetPrepareKernel<T, DK, DV, BT, kPrec>, prep_smem, prep_smem_config));
     const dim3 prep_grid(desc.batch, desc.num_heads_v, n);
-    GatedDeltaNetPrepareKernel<T, DK, DV, BT>
+    GatedDeltaNetPrepareKernel<T, DK, DV, BT, kPrec>
         <<<prep_grid, kChunkedThreads, prep_smem, stream>>>(pack, p, tiles, uv_tiles, decays, base,
                                                             chunks_per_pass);
 
     const dim3 scan_grid(desc.batch, desc.num_heads_v, DV / dvb);
     if (dvb == 32) {
       static DynamicSmemConfig scan32_smem_config;
-      ORT_RETURN_IF_ERROR(SetMaxDynamicSmem(GatedDeltaNetScanKernel<T, DK, DV, BT, 32>,
-                                            scan_smem, scan32_smem_config));
-      GatedDeltaNetScanKernel<T, DK, DV, BT, 32>
+      ORT_RETURN_IF_ERROR(SetMaxDynamicSmem(
+          GatedDeltaNetScanKernel<T, DK, DV, BT, 32, kPrec>, scan_smem, scan32_smem_config));
+      GatedDeltaNetScanKernel<T, DK, DV, BT, 32, kPrec>
           <<<scan_grid, kChunkedThreads, scan_smem, stream>>>(pack, p, tiles, uv_tiles, decays,
                                                               carry, base, chunks_per_pass, n,
                                                               first, last);
     } else {
       static DynamicSmemConfig scan64_smem_config;
-      ORT_RETURN_IF_ERROR(SetMaxDynamicSmem(GatedDeltaNetScanKernel<T, DK, DV, BT, 64>,
-                                            scan_smem, scan64_smem_config));
-      GatedDeltaNetScanKernel<T, DK, DV, BT, 64>
+      ORT_RETURN_IF_ERROR(SetMaxDynamicSmem(
+          GatedDeltaNetScanKernel<T, DK, DV, BT, 64, kPrec>, scan_smem, scan64_smem_config));
+      GatedDeltaNetScanKernel<T, DK, DV, BT, 64, kPrec>
           <<<scan_grid, kChunkedThreads, scan_smem, stream>>>(pack, p, tiles, uv_tiles, decays,
                                                               carry, base, chunks_per_pass, n,
                                                               first, last);
     }
-    ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
+    return CUDA_CALL(cudaGetLastError());
+  };
+
+  for (int base = 0; base < total_chunks; base += chunks_per_pass) {
+    const int n = std::min(chunks_per_pass, total_chunks - base);
+    const bool first = base == 0;
+    const bool last = base + n >= total_chunks;
+    if constexpr (std::is_same_v<T, __nv_bfloat16>) {
+      if (desc.bf16_precision == Bf16Precision::kFp16) {
+        ORT_RETURN_IF_ERROR(launch_pass.template operator()<Bf16Precision::kFp16>(base, n, first, last));
+        continue;
+      }
+      if (desc.bf16_precision == Bf16Precision::kBf16) {
+        ORT_RETURN_IF_ERROR(launch_pass.template operator()<Bf16Precision::kBf16>(base, n, first, last));
+        continue;
+      }
+    }
+    ORT_RETURN_IF_ERROR(launch_pass.template operator()<Bf16Precision::kFp32>(base, n, first, last));
   }
   return Status::OK();
 }

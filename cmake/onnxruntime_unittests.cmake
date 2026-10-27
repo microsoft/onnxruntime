@@ -1125,6 +1125,7 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND onnxruntime_BUILD_CUDA_EP_AS_P
       "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/qmoe_fp4_to_fp8_kernel_test.cc"
       "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/qmoe_fp8_compaction_test.cc"
       "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/softmax_topk_kernel_test.cc"
+      "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/speculative_fold_test.cc"
     )
   endif()
 
@@ -1158,6 +1159,7 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND onnxruntime_BUILD_CUDA_EP_AS_P
         "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/llm/fpA_intB_gemm_adaptor.cu"
         "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/llm/fpA_intB_gemm_preprocessors_impl.cu"
         "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/llm/moe_gemm/moe_gemm_kernels_fp16_uint2.cu"
+        "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/llm/speculative_fold.cu"
         "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/moe/qmoe_kernels.cu"
       )
       if (onnxruntime_USE_FP4_QMOE)

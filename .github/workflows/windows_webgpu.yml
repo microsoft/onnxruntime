@@ -38,7 +38,7 @@ jobs:
       NVIDIA_TF32_OVERRIDE: "0"
     steps:
       - name: Checkout
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           submodules: none
@@ -89,11 +89,7 @@ jobs:
         working-directory: ${{ github.workspace }}
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
-        env:
-          PROCESSOR_ARCHITECTURE: x64
-        with:
-          dotnet-version: "8.x"
+        uses: ./.github/actions/setup-dotnet
 
       - name: Test WebGPU NuGet packaging
         run: python -m unittest plugin-ep-webgpu\csharp\test\test_pack_nuget.py -v
@@ -182,7 +178,7 @@ jobs:
       NVIDIA_TF32_OVERRIDE: "0"
     steps:
       - name: Checkout
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           submodules: none
@@ -296,7 +292,7 @@ jobs:
       NVIDIA_TF32_OVERRIDE: "0"
     steps:
       - name: Checkout
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           submodules: none
@@ -384,7 +380,7 @@ jobs:
       NVIDIA_TF32_OVERRIDE: "0"
     steps:
       - name: Checkout
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           submodules: none
@@ -448,7 +444,7 @@ jobs:
       ONNXRUNTIME_TEST_GPU_DEVICE_ID: "0"
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           submodules: none
@@ -506,7 +502,7 @@ jobs:
     timeout-minutes: 300
     steps:
       - name: Checkout
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           submodules: none
@@ -587,7 +583,7 @@ jobs:
     timeout-minutes: 300
     steps:
       - name: Checkout
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: none
 
@@ -707,7 +703,7 @@ jobs:
       ALLOW_RELEASED_ONNX_OPSET_ONLY: "0"
     steps:
       - name: Checkout
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           submodules: none
@@ -751,11 +747,7 @@ jobs:
         working-directory: ${{ github.workspace }}
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
-        env:
-          PROCESSOR_ARCHITECTURE: x64
-        with:
-          dotnet-version: "8.x"
+        uses: ./.github/actions/setup-dotnet
 
       - name: Use Nuget 6.x
         uses: nuget/setup-nuget@d105a947828025cd7a980103c35ba2bfae586d0f # v2.0.2

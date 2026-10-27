@@ -9,6 +9,7 @@
 #include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/platform/env_var_utils.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "contrib_ops/cpu/utils/dump_tensor.h"
 #include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 #include "contrib_ops/cuda/bert/paged_attention_impl.h"
@@ -164,6 +165,15 @@ PagedAttention<T, TCACHE>::PagedAttention(const OpKernelInfo& info)
   constexpr bool kIsFp16OrBf16 = std::is_same_v<T, MLFloat16> || std::is_same_v<T, BFloat16>;
   enable_cudnn_paged_ = kIsFp16OrBf16 && kernel_options_->UseCudnnFlashAttention();
   auto_enable_cudnn_paged_ = kIsFp16OrBf16 && kernel_options_->AllowCudnnFlashAttentionAuto();
+  const std::string skip_sanitizer_cfg =
+      info.GetConfigOptions().GetConfigOrDefault(kOrtSessionOptionsPagedAttentionSkipInputSanitizer, "");
+  ORT_ENFORCE(skip_sanitizer_cfg.empty() || skip_sanitizer_cfg == "0" || skip_sanitizer_cfg == "1",
+              "Invalid value for ", kOrtSessionOptionsPagedAttentionSkipInputSanitizer, ": '",
+              skip_sanitizer_cfg, "'. Expected '0' or '1'.");
+  skip_input_sanitizer_ =
+      skip_sanitizer_cfg == "1" ||
+      (skip_sanitizer_cfg.empty() &&
+       ParseEnvironmentVariableWithDefault<int>("ORT_PAGED_ATTENTION_SKIP_SANITIZER", 0) != 0);
 }
 
 template <typename T, typename TCACHE>
@@ -322,11 +332,16 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
         "block_table sequence capacity exceeds the CUDA int32 indexing limit.");
   }
   const int max_kv_len_capacity = static_cast<int>(safe_max_kv_len_capacity);
-  auto sanitized_block_table = GetScratchBuffer<int>(block_table_element_count, GetComputeStream(context));
-  ORT_RETURN_IF_ERROR(LaunchSanitizeBlockTable(
-      reinterpret_cast<const int*>(block_table->Data<int>()),
-      sanitized_block_table.get(), block_table_element_count, parameters.num_blocks,
-      cuda_stream));
+  IAllocatorUniquePtr<int> sanitized_block_table;
+  const int* active_block_table = reinterpret_cast<const int*>(block_table->Data<int>());
+  if (!skip_input_sanitizer_) {
+    sanitized_block_table = GetScratchBuffer<int>(block_table_element_count, GetComputeStream(context));
+    ORT_RETURN_IF_ERROR(LaunchSanitizeBlockTable(
+        active_block_table,
+        sanitized_block_table.get(), block_table_element_count, parameters.num_blocks,
+        cuda_stream));
+    active_block_table = sanitized_block_table.get();
+  }
 
   // Kernel backend selection. The choice depends only on static shapes and on the optional
   // 'attention_metadata' bounds, never on a device-to-host readback, so it is identical on every
@@ -410,16 +425,27 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
       SafeInt<size_t>(sizeof(int)) * cumulative_sequence_length_count;
   auto cumulative_seqlens_kv_buffer = GetScratchBuffer<void>(cumulative_seqlens_kv_bytes, GetComputeStream(context));
   int* cumulative_seqlens_kv_ptr = reinterpret_cast<int*>(cumulative_seqlens_kv_buffer.get());
-  auto sanitized_sequence_lengths =
-      GetScratchBuffer<int>(sanitized_sequence_length_count, GetComputeStream(context));
-  int* sanitized_cumulative_seqlens_q = sanitized_sequence_lengths.get();
-  int* sanitized_past_seqlens = sanitized_cumulative_seqlens_q + cumulative_sequence_length_count;
-  auto sequence_validity = GetScratchBuffer<int>(parameters.batch_size, GetComputeStream(context));
+  IAllocatorUniquePtr<int> sanitized_sequence_lengths;
+  IAllocatorUniquePtr<int> sequence_validity;
+  IAllocatorUniquePtr<void> sequence_sanitizer_workspace;
   size_t sequence_sanitizer_workspace_bytes = 0;
-  ORT_RETURN_IF_ERROR(GetSanitizeSequenceLengthsWorkspaceSize(
-      parameters.batch_size, sequence_sanitizer_workspace_bytes, cuda_stream));
-  auto sequence_sanitizer_workspace =
-      GetScratchBuffer<void>(sequence_sanitizer_workspace_bytes, GetComputeStream(context));
+  const int* active_cumulative_seqlens_q = reinterpret_cast<const int*>(cumulative_seqlens_q->Data<int>());
+  const int* active_past_seqlens = reinterpret_cast<const int*>(past_seqlens->Data<int>());
+  int* active_sequence_validity = nullptr;
+  if (!skip_input_sanitizer_) {
+    sanitized_sequence_lengths =
+        GetScratchBuffer<int>(sanitized_sequence_length_count, GetComputeStream(context));
+    int* sanitized_cumulative_seqlens_q = sanitized_sequence_lengths.get();
+    int* sanitized_past_seqlens = sanitized_cumulative_seqlens_q + cumulative_sequence_length_count;
+    sequence_validity = GetScratchBuffer<int>(parameters.batch_size, GetComputeStream(context));
+    ORT_RETURN_IF_ERROR(GetSanitizeSequenceLengthsWorkspaceSize(
+        parameters.batch_size, sequence_sanitizer_workspace_bytes, cuda_stream));
+    sequence_sanitizer_workspace =
+        GetScratchBuffer<void>(sequence_sanitizer_workspace_bytes, GetComputeStream(context));
+    active_cumulative_seqlens_q = sanitized_cumulative_seqlens_q;
+    active_past_seqlens = sanitized_past_seqlens;
+    active_sequence_validity = sequence_validity.get();
+  }
 
   // The fused prologue (QK-Norm and/or rotary) writes densified Q and K into the workspace, so it
   // needs room for both. Plain packed-QKV only needs to densify Q.
@@ -432,23 +458,32 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   }
   auto workspace_buffer = GetScratchBuffer<void>(workspace_buffer_bytes, GetComputeStream(context));
 
-  // Canonicalize untrusted sequence metadata and populate cumulative_seqlens_kv for every backend.
-  // This stays entirely on the compute stream, so CUDA Graph replay sees current values without a
-  // host synchronization.
-  ORT_RETURN_IF_ERROR(LaunchSanitizeSequenceLengths(
-      sanitized_cumulative_seqlens_q,
-      sanitized_past_seqlens,
-      sequence_validity.get(),
-      cumulative_seqlens_kv_ptr,
-      reinterpret_cast<const int*>(cumulative_seqlens_q->Data<int>()),
-      reinterpret_cast<const int*>(past_seqlens->Data<int>()),
-      sequence_sanitizer_workspace.get(),
-      sequence_sanitizer_workspace_bytes,
-      parameters.batch_size,
-      parameters.max_num_blocks_per_seq,
-      parameters.block_size,
-      parameters.token_count,
-      cuda_stream));
+  if (!skip_input_sanitizer_) {
+    // Canonicalize untrusted sequence metadata and populate cumulative_seqlens_kv for every backend.
+    // This stays entirely on the compute stream, so CUDA Graph replay sees current values without a
+    // host synchronization.
+    ORT_RETURN_IF_ERROR(LaunchSanitizeSequenceLengths(
+        const_cast<int*>(active_cumulative_seqlens_q),
+        const_cast<int*>(active_past_seqlens),
+        active_sequence_validity,
+        cumulative_seqlens_kv_ptr,
+        reinterpret_cast<const int*>(cumulative_seqlens_q->Data<int>()),
+        reinterpret_cast<const int*>(past_seqlens->Data<int>()),
+        sequence_sanitizer_workspace.get(),
+        sequence_sanitizer_workspace_bytes,
+        parameters.batch_size,
+        parameters.max_num_blocks_per_seq,
+        parameters.block_size,
+        parameters.token_count,
+        cuda_stream));
+  } else {
+    ORT_RETURN_IF_ERROR(LaunchGetCumulativeSeqlensKV(
+        cumulative_seqlens_kv_ptr,
+        active_cumulative_seqlens_q,
+        active_past_seqlens,
+        parameters.batch_size,
+        cuda_stream));
+  }
   int total_kv_tokens = 0;
   int max_query_len = 0;
   int max_kv_len = 0;
@@ -679,7 +714,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     auto original_cum_q_pinned = this->AllocateBufferOnCPUPinned<int>(kCumulativeCount);
     auto original_past_pinned = this->AllocateBufferOnCPUPinned<int>(parameters.batch_size);
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cum_q_pinned.get(),
-                                         sanitized_cumulative_seqlens_q,
+                                         active_cumulative_seqlens_q,
                                          sizeof(int) * kCumulativeCount, cudaMemcpyDeviceToHost, cuda_stream));
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cum_kv_pinned.get(), cumulative_seqlens_kv_ptr,
                                          sizeof(int) * kCumulativeCount, cudaMemcpyDeviceToHost, cuda_stream));
@@ -957,10 +992,10 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     cudnn_block_table_buffer =
         GetScratchBuffer<int>(block_table_element_count, GetComputeStream(context));
     ORT_RETURN_IF_ERROR(LaunchPrepareCudnnBlockTable(
-        sanitized_block_table.get(), cudnn_block_table_buffer.get(),
+        active_block_table, cudnn_block_table_buffer.get(),
         cumulative_seqlens_kv_ptr,
         reinterpret_cast<int*>(cudnn_seqlens_kv_buffer.get()),
-        sequence_validity.get(), block_table_element_count,
+        active_sequence_validity, block_table_element_count,
         parameters.batch_size, parameters.max_num_blocks_per_seq,
         parameters.block_size, cuda_stream));
   }
@@ -1003,11 +1038,11 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
                          : reinterpret_cast<CudaTCache*>(const_cast<TCACHE*>(value_cache->Data<TCACHE>()));
   data.k_scale = k_scale == nullptr ? nullptr : k_scale->Data<float>();
   data.v_scale = v_scale == nullptr ? nullptr : v_scale->Data<float>();
-  data.cumulative_seqlens_q = sanitized_cumulative_seqlens_q;
-  data.past_seqlens = sanitized_past_seqlens;
-  data.sequence_validity = sequence_validity.get();
+  data.cumulative_seqlens_q = active_cumulative_seqlens_q;
+  data.past_seqlens = active_past_seqlens;
+  data.sequence_validity = active_sequence_validity;
   data.cumulative_seqlens_kv = cumulative_seqlens_kv_ptr;
-  data.block_table = sanitized_block_table.get();
+  data.block_table = active_block_table;
   data.cudnn_block_table =
       use_cudnn_paged ? cudnn_block_table_buffer.get() : nullptr;
   data.slot_mapping = slot_mapping == nullptr ? nullptr : reinterpret_cast<const int*>(slot_mapping->Data<int>());

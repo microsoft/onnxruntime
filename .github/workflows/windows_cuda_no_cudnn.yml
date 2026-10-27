@@ -26,7 +26,7 @@ jobs:
     runs-on: [ort-github-win-16-amd-scus-ss]
     timeout-minutes: 210
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           submodules: 'none'
@@ -166,7 +166,7 @@ jobs:
     timeout-minutes: 120
     runs-on: [ort-github-win-6-a10-scus-ss]
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           submodules: 'none'
