@@ -3938,6 +3938,9 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
         ORT_CHECK_AND_SET_RETVAL(device_stream_collection->CleanUp(sync_execution_provider));
       }
 #endif
+#if !defined(ORT_MINIMAL_BUILD)
+      session_state_->LogMemoryBackingReport(retval.IsOK() ? "RunEnd" : "RunFailed");
+#endif
     }
     ORT_CATCH(const std::exception& e) {
       ORT_HANDLE_EXCEPTION([&]() {

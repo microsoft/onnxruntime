@@ -610,6 +610,14 @@ static const char* const kOrtSessionOptionsMaxShapeOverride = "session.max_shape
 static const char* const kOrtSessionOptionsStrictWorkspaceVerification =
     "session.strict_workspace_verification";
 
+// Set to "1" to log a fixed-placement initialization/Run memory diagnostic (default "0").
+// Reports known tensor/declared-workspace lifetimes separately from allocator-wide snapshots.
+// Uncovered backing costs remain unavailable; this does not enforce a budget or change allocation.
+// Assumes one active Run. Parallel/multi-stream lifetimes conservatively overlap.
+// Non-minimal builds only. INFO summaries; VERBOSE lists individual uncovered terms.
+static const char* const kOrtSessionOptionsEnableMemoryBackingReport =
+    "session.enable_memory_backing_report";
+
 // Enable EP context feature to dump the partitioned graph which includes the EP context into Onnx file.
 // The dumped Onnx model with EP context can be used for future inference to avoid the EP graph partitioning/compile overhead.
 // "0": disable. (default)
