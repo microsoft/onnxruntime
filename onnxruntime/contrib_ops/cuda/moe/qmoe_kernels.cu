@@ -598,7 +598,8 @@ __global__ void __launch_bounds__(256) BuildInt3RouteGroupsPairedFirstKernel(
 }
 
 void LaunchBuildInt3RouteGroups(const int* topk_indices, int2* route_groups, int num_pairs, cudaStream_t stream) {
-  if (num_pairs <= 0 || num_pairs > 256) return;
+  ORT_ENFORCE(num_pairs > 0 && num_pairs <= 256,
+              "BuildInt3RouteGroups requires 0 < num_pairs <= 256, got ", num_pairs);
   BuildInt3RouteGroupsPairedFirstKernel<<<1, 256, 0, stream>>>(topk_indices, route_groups, num_pairs);
   CUDA_CALL_THROW(cudaGetLastError());
 }
