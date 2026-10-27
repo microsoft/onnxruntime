@@ -54,7 +54,7 @@ Existing implementation anchors:
 
 - [Collector contract](../../onnxruntime/core/framework/runtime_workload_collector.h).
 - [Runtime report builders](../../onnxruntime/core/framework/compute_estimate_report.h).
-- [Pure core/bias formulas](../../onnxruntime/contrib_ops/cpu/quantization/matmul_nbits_compute_estimate.cc).
+- [Pure core/bias formulas](../../onnxruntime/core/framework/matmul_nbits_compute_estimate.cc).
 - [CPU dispatch and recording](../../onnxruntime/contrib_ops/cpu/quantization/matmul_nbits.cc).
 - [CUDA implementation to extend](../../onnxruntime/contrib_ops/cuda/quantization/matmul_nbits.cc).
 

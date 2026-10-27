@@ -10,7 +10,7 @@
 
 #include "gtest/gtest.h"
 
-#include "contrib_ops/cpu/quantization/matmul_nbits_compute_estimate.h"
+#include "core/framework/matmul_nbits_compute_estimate.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/graph/constants.h"

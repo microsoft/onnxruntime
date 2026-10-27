@@ -40,7 +40,7 @@ or be treated as zero extra work. Timing and performance-policy changes remain s
 
 ### Initial implementation
 
-The internal [MatMulNBits compute estimator](../../onnxruntime/contrib_ops/cpu/quantization/matmul_nbits_compute_estimate.h)
+The internal [MatMulNBits compute estimator](../../onnxruntime/core/framework/matmul_nbits_compute_estimate.h)
 provides a checked shape-based count and a static adapter for resolved in-tree graph nodes. Its result is either a
 core dense-equivalent count under convention version 1 or an explicit unavailable reason. Rank-one inputs use
 `M = 1`; unknown dimensions remain unavailable even alongside zero extents. The adapter reads canonical graph
@@ -48,7 +48,8 @@ shapes, not maximum-shape scenarios, and does not validate packed weights or rep
 
 The Phase-2 preview added a static JSON report via the existing session configuration API. That preview does not
 collect runtime counts or change inference policy. The estimator sources are included by the
-existing CPU contrib source glob, independently of CUDA.
+existing framework source glob, independently of CPU contrib kernels and CUDA. Keeping the estimator
+and report in the framework library avoids a reverse framework-to-provider static-library dependency.
 
 Increment 2a adds a separate `bias` component: `MN` logical floating-point additions when the sixth schema input
 is present, or zero when it is omitted. Known absence does not require concrete input shapes; present bias with

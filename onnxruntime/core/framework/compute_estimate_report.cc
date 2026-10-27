@@ -24,7 +24,7 @@
 #include "core/platform/env.h"
 
 #if !defined(DISABLE_CONTRIB_OPS)
-#include "contrib_ops/cpu/quantization/matmul_nbits_compute_estimate.h"
+#include "core/framework/matmul_nbits_compute_estimate.h"
 #endif
 
 namespace onnxruntime {

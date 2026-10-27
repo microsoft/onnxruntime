@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "contrib_ops/cpu/quantization/matmul_nbits_compute_estimate.h"
+#include "core/framework/matmul_nbits_compute_estimate.h"
 
 #include <algorithm>
 #include <type_traits>
