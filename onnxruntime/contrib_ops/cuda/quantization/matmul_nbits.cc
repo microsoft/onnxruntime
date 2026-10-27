@@ -92,6 +92,15 @@ Status MatMulNBits<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr
                                /*out*/ bool& is_packed,
                                /*out*/ PrePackedWeights* /*prepacked_weights*/) {
   is_packed = false;
+  if (tensor.Shape().Size() == 0) {
+    // Reject empty weights before fpA_intB prepacking can read their buffer.
+    if (input_idx == MatMulNBits_Input_B) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                             "CUDA MatMulNBits does not support empty B weights yet.");
+    }
+    // Leave empty quantization parameters for runtime validation: B may be a runtime input.
+    return Status::OK();
+  }
   constexpr int kInputIndexGroupIndex = 4;
   if (input_idx == kInputIndexGroupIndex) {
     const int64_t k_blocks = K_ / block_size_ + (K_ % block_size_ != 0);
@@ -1227,6 +1236,10 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
   const auto* scales_data = scales->Data<T>();
   const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->DataRaw();
 #endif
+  if (b != nullptr && b->Shape().Size() == 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "CUDA MatMulNBits does not support empty B weights yet.");
+  }
   const auto* bias_data = bias == nullptr ? nullptr : bias->Data<T>();
 
   ORT_RETURN_IF_ERROR(matmul_nbits_helper::CheckInputs<Tensor>(

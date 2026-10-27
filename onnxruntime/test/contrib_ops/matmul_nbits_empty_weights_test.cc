@@ -101,6 +101,41 @@ TEST_P(MatMulNBitsEmptyWeights, ZeroAndBiasFp16) {
   RunEmptyCases<MLFloat16>(GetParam());
 }
 
+#if defined(USE_CUDA)
+TEST(MatMulNBitsEmptyWeightsCuda, RejectsEmptyWeights) {
+  for (bool constant : {false, true}) {
+    for (int empty_axis : {0, 1, 2}) {
+      SCOPED_TRACE(MakeString("constant=", constant, ", empty_axis=", empty_axis));
+      auto ep = DefaultCudaExecutionProvider();
+      if (!ep) GTEST_SKIP() << "CUDA unavailable.";
+
+      OpTester test("MatMulNBits", 1, kMSDomain);
+      test.AddAttribute<int64_t>("K", 128);
+      test.AddAttribute<int64_t>("N", 128);
+      test.AddAttribute<int64_t>("bits", 4);
+      test.AddAttribute<int64_t>("block_size", 32);
+      test.AddInput<MLFloat16>("A", {1, 128}, std::vector<MLFloat16>(128, MLFloat16(1.0f)));
+      std::vector<int64_t> b_shape{128, 4, 16};
+      b_shape[empty_axis] = 0;
+      test.AddInput<uint8_t>("B", b_shape, {}, constant);
+      test.AddInput<MLFloat16>("scales", {0}, {}, true);
+      test.AddOutput<MLFloat16>("Y", {1, 128}, std::vector<MLFloat16>(128));
+
+      SessionOptions options;
+      options.use_per_session_threads = false;
+      ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+      // Exercise the prepacking rejection in fpA_intB builds as well as the runtime input check.
+      ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsCudaFpAIntBGemm, "1"));
+      test.Config(options)
+          .Config(OpTester::ExpectResult::kExpectFailure,
+                  "CUDA MatMulNBits does not support empty B weights yet.")
+          .ConfigEp(std::move(ep))
+          .RunWithConfig();
+    }
+  }
+}
+#endif
+
 TEST_P(MatMulNBitsEmptyWeights, RejectMalformedPackedShape) {
   for (bool constant : {false, true}) {
     for (const auto& shape : {std::vector<int64_t>{0, 2, 33}, std::vector<int64_t>{0, 64}}) {
