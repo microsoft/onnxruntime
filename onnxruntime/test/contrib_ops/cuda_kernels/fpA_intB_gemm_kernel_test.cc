@@ -473,16 +473,20 @@ class KernelTestFixture : public ::testing::Test {
     return finite && std::memcmp(h_out1_.data(), h_out2_.data(), h_out1_.size() * sizeof(AType)) == 0;
   }
 
-  // For each {M, N, expected CtaN} case, checks the column tile the dispatcher launches, the result against
-  // the CUTLASS reference, and (for M = 8) that it equals two M = 4 launches bit for bit.
-  void CheckGemvTiles(int k, const std::vector<std::tuple<int, int, int>>& cases) {
-    for (const auto& [m, n, expected_cta_n] : cases) {
-      SCOPED_TRACE(testing::Message() << "M=" << m << " N=" << n << " K=" << k);
-      InitBuffers(m, n, k, kIsInt2 ? 64 : 32);
-      EXPECT_EQ(GemvLaunchCtaN(), expected_cta_n);
-      EXPECT_TRUE(BenchmarkAndVerifyKernel());
-      if (m == 8) {
-        EXPECT_TRUE(M8MatchesTwoM4Launches());
+  // For each K and {M, N, expected CtaN} case, checks the column tile the dispatcher launches, the result against
+  // the CUTLASS reference, and (for M = 8) that it equals two M = 4 launches bit for bit. The fixture is scale-only,
+  // so the weights always use the SM80-interleaved layout (also on Hopper), the only layout with a narrow tile.
+  void CheckGemvTiles(const std::vector<std::tuple<int, int, int>>& cases) {
+    static_assert(GetKernelArch(90) == 80, "The narrow M = 8 tile exists only in the SM80-interleaved layout");
+    for (const int k : {1024, 4096}) {
+      for (const auto& [m, n, expected_cta_n] : cases) {
+        SCOPED_TRACE(testing::Message() << "M=" << m << " N=" << n << " K=" << k);
+        InitBuffers(m, n, k, kIsInt2 ? 64 : 32);
+        EXPECT_EQ(GemvLaunchCtaN(), expected_cta_n);
+        EXPECT_TRUE(BenchmarkAndVerifyKernel());
+        if (m == 8) {
+          EXPECT_TRUE(M8MatchesTwoM4Launches());
+        }
       }
     }
   }
@@ -1135,13 +1139,14 @@ TEST_F(Fp16Int4GroupwiseTest, Int4GroupwiseHopperRouting) {
 }
 
 namespace {
-// {M, N, expected CtaN} cases for the scale-only SM80-interleaved layout. M = 8 uses the half-width tile (CtaN 2)
-// when the default tile (CtaN 4) would launch at most 320 blocks for INT4 (N / 16) or 160 blocks for INT8 (N / 8).
-// The cases sit on both sides of those cutoffs and include the neighbouring M = 7 and 9, which keep CtaN 4.
+// {M, N, expected CtaN} cases for the scale-only SM80-interleaved layout, run for K = 1024 and K = 4096. M = 8 uses
+// the half-width tile (CtaN 2) when the default tile (CtaN 4) would launch at most 320 blocks for INT4 (N / 16) or
+// 160 blocks for INT8 (N / 8). The cases sit on both sides of those cutoffs and include the neighbouring M = 7 and 9,
+// which keep CtaN 4.
 const std::vector<std::tuple<int, int, int>> kInt4M8TileCases{
     {8, 2880, 2}, {8, 5120, 2}, {7, 5120, 4}, {9, 5120, 4}, {8, 5136, 4}, {8, 6144, 4}};
 const std::vector<std::tuple<int, int, int>> kInt8M8TileCases{
-    {8, 640, 2}, {8, 1280, 2}, {7, 1280, 4}, {9, 1280, 4}, {8, 1288, 4}, {8, 2560, 4}};
+    {8, 640, 2}, {8, 1280, 2}, {7, 1280, 4}, {9, 1280, 4}, {8, 1288, 4}, {8, 1536, 4}, {8, 2560, 4}};
 }  // namespace
 
 // Check the FP16 INT4 narrow tile, its grid cutoff and the M = 7 / 9 fallback against the CUTLASS reference.
@@ -1149,7 +1154,7 @@ TEST_F(Fp16Int4SymmetricGroupwiseTest, Int4Group32SymmetricM8NarrowTile) {
   if (onnxruntime::llm::common::getSMVersion() < kMinSupportedSm) {
     GTEST_SKIP() << "FP16 INT4 GEMV requires SM " << kMinSupportedSm << " or later";
   }
-  CheckGemvTiles(4096, kInt4M8TileCases);
+  CheckGemvTiles(kInt4M8TileCases);
 }
 
 // Check the BF16 INT4 narrow tile, its grid cutoff and the M = 7 / 9 fallback against the CUTLASS reference.
@@ -1157,7 +1162,7 @@ TEST_F(Bf16Int4SymmetricGroupwiseTest, Int4Group32SymmetricM8NarrowTile) {
   if (onnxruntime::llm::common::getSMVersion() < 80) {
     GTEST_SKIP() << "BF16 INT4 GEMV requires SM 80 or later";
   }
-  CheckGemvTiles(4096, kInt4M8TileCases);
+  CheckGemvTiles(kInt4M8TileCases);
 }
 
 // Check the FP16 INT8 narrow tile (N = 1280 is 160 default blocks), the first aligned N above the cutoff and the
@@ -1166,7 +1171,7 @@ TEST_F(Fp16Int8SymmetricGroupwiseTest, Int8Group32SymmetricM8NarrowTile) {
   if (onnxruntime::llm::common::getSMVersion() < kMinSupportedSm) {
     GTEST_SKIP() << "FP16 INT8 GEMV requires SM " << kMinSupportedSm << " or later";
   }
-  CheckGemvTiles(4096, kInt8M8TileCases);
+  CheckGemvTiles(kInt8M8TileCases);
 }
 
 // Check the BF16 INT8 narrow tile (N = 1280 is 160 default blocks), the first aligned N above the cutoff and the
@@ -1175,7 +1180,7 @@ TEST_F(Bf16Int8SymmetricGroupwiseTest, Int8Group32SymmetricM8NarrowTile) {
   if (onnxruntime::llm::common::getSMVersion() < 80) {
     GTEST_SKIP() << "BF16 INT8 GEMV requires SM 80 or later";
   }
-  CheckGemvTiles(4096, kInt8M8TileCases);
+  CheckGemvTiles(kInt8M8TileCases);
 }
 
 // Check default dispatch and every legal geometry around the two-column grid.y limit.
