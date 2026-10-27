@@ -3297,8 +3297,15 @@ Status QMoE::ComputeInt3(OpKernelContext* context) const {
   params.routing_scales = scales.get();
   for (int64_t offset = 0; offset < rows; offset += tile_rows) {
     params.rows = narrow<int>(std::min<size_t>(tile_rows, rows - offset));
+    params.input = static_cast<const char*>(input->DataRaw()) + offset * hidden * element_size;
+    params.output = static_cast<char*>(output->MutableDataRaw()) + offset * hidden * element_size;
+    params.router_weights = router_weights
+                                ? static_cast<const char*>(router_weights->DataRaw()) + offset * experts * element_size
+                                : nullptr;
     const int cur_routes = params.rows * params.top_k;
-    const bool use_groups = !use_sparse_mixer_ && router_weights == nullptr && cur_routes > 0 && cur_routes <= 256;
+    // Only the vectorized GEMV kernels consume route groups, so the scalar and non-vectorized fast fallbacks skip them.
+    const bool use_groups = !use_sparse_mixer_ && router_weights == nullptr && cur_routes > 0 && cur_routes <= 256 &&
+                            SelectInt3DecodeKernel(params) == Int3DecodeKernel::kFastVectorized;
     params.route_groups = use_groups ? route_groups.get() : nullptr;
     const auto route = [&](const auto* logits) {
       if (use_sparse_mixer_) {
@@ -3328,11 +3335,6 @@ Status QMoE::ComputeInt3(OpKernelContext* context) const {
           selected.get(), SafeInt<size_t>(params.rows) * SafeInt<size_t>(k_), stream));
     }
 #endif
-    params.input = static_cast<const char*>(input->DataRaw()) + offset * hidden * element_size;
-    params.output = static_cast<char*>(output->MutableDataRaw()) + offset * hidden * element_size;
-    params.router_weights = router_weights
-                                ? static_cast<const char*>(router_weights->DataRaw()) + offset * experts * element_size
-                                : nullptr;
     CUDA_RETURN_IF_ERROR(LaunchInt3Moe(params, stream));
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
     if (routing_snapshot_) {

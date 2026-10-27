@@ -463,6 +463,16 @@ struct Int3MoeParams {
   bool is_bfloat16 = false;
 };
 
+// Kernel family LaunchInt3Moe dispatches for `params`. Only the vectorized GEMV kernels read
+// Int3MoeParams::route_groups, so callers use this to skip building route groups for the other families.
+enum class Int3DecodeKernel {
+  kScalar,
+  kFast,
+  kFastVectorized,
+};
+
+Int3DecodeKernel SelectInt3DecodeKernel(const Int3MoeParams& params);
+
 cudaError_t LaunchInt3Moe(const Int3MoeParams& params, cudaStream_t stream);
 cudaError_t ValidateInt3MoeContent(const Int3Projection& projection, size_t rows,
                                    int logical_k, int block_size, bool is_bfloat16,

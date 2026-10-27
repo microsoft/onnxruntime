@@ -552,6 +552,77 @@ TEST(CUDA_EP_Unittest, FusedInt3RouteGroups_512ExpertsParityAndGrouping) {
   }
 }
 
+// Only the vectorized INT3 decode GEMV kernels read route groups, and QMoE builds them only when this selector picks
+// that family. The selection inspects shapes and pointer alignment, so the addresses need no backing allocation.
+TEST(CUDA_EP_Unittest, FusedInt3RouteGroups_DecodeKernelSelection) {
+  using onnxruntime::contrib::cuda::Int3DecodeKernel;
+  using onnxruntime::contrib::cuda::Int3MoeParams;
+  using onnxruntime::contrib::cuda::SelectInt3DecodeKernel;
+
+  const auto bytes = [](uintptr_t address) { return reinterpret_cast<const uint8_t*>(address); };
+  struct Case {
+    const char* name;
+    void (*mutate)(Int3MoeParams&);
+    Int3DecodeKernel expected;
+  };
+  const Case cases[] = {
+      {"vectorized shape", [](Int3MoeParams&) {}, Int3DecodeKernel::kFastVectorized},
+      {"route groups and router weights are ignored",
+       [](Int3MoeParams& p) {
+         p.route_groups = reinterpret_cast<const int2*>(uintptr_t{0x70000});
+         p.router_weights = reinterpret_cast<const void*>(uintptr_t{0x80000});
+       },
+       Int3DecodeKernel::kFastVectorized},
+      {"4-byte aligned weights", [](Int3MoeParams& p) { p.fc1.weights = reinterpret_cast<const uint8_t*>(uintptr_t{0x50004}); },
+       Int3DecodeKernel::kFastVectorized},
+      {"hidden at the shared memory limit", [](Int3MoeParams& p) { p.hidden = 12288; },
+       Int3DecodeKernel::kFastVectorized},
+      {"block size 16", [](Int3MoeParams& p) { p.block_size = 16; }, Int3DecodeKernel::kFast},
+      {"input offset by 2 bytes", [](Int3MoeParams& p) { p.input = reinterpret_cast<const void*>(uintptr_t{0x10002}); },
+       Int3DecodeKernel::kFast},
+      {"output offset by 2 bytes", [](Int3MoeParams& p) { p.output = reinterpret_cast<void*>(uintptr_t{0x20002}); },
+       Int3DecodeKernel::kFast},
+      {"activation offset by 4 bytes", [](Int3MoeParams& p) { p.activation = reinterpret_cast<void*>(uintptr_t{0x30004}); },
+       Int3DecodeKernel::kFast},
+      {"fc2 partial offset by 8 bytes", [](Int3MoeParams& p) { p.fc2_partial = reinterpret_cast<void*>(uintptr_t{0x40008}); },
+       Int3DecodeKernel::kFast},
+      {"fc1 weights offset by 1 byte", [](Int3MoeParams& p) { p.fc1.weights = reinterpret_cast<const uint8_t*>(uintptr_t{0x50001}); },
+       Int3DecodeKernel::kScalar},
+      {"fc2 weights offset by 2 bytes", [](Int3MoeParams& p) { p.fc2.weights = reinterpret_cast<const uint8_t*>(uintptr_t{0x60002}); },
+       Int3DecodeKernel::kScalar},
+      {"fc1 zero points", [](Int3MoeParams& p) { p.fc1.zeros = reinterpret_cast<const uint8_t*>(uintptr_t{0x90000}); },
+       Int3DecodeKernel::kScalar},
+      {"fc2 zero points", [](Int3MoeParams& p) { p.fc2.zeros = reinterpret_cast<const uint8_t*>(uintptr_t{0x90000}); },
+       Int3DecodeKernel::kScalar},
+      {"no fc2 partial buffer", [](Int3MoeParams& p) { p.fc2_partial = nullptr; }, Int3DecodeKernel::kScalar},
+      {"hidden 128", [](Int3MoeParams& p) { p.hidden = 128; }, Int3DecodeKernel::kScalar},
+      {"intermediate 192", [](Int3MoeParams& p) { p.intermediate = 192; }, Int3DecodeKernel::kScalar},
+      {"block size 12", [](Int3MoeParams& p) { p.block_size = 12; }, Int3DecodeKernel::kScalar},
+      {"routes beyond the grid limit", [](Int3MoeParams& p) { p.rows = 40000; }, Int3DecodeKernel::kScalar},
+      {"hidden above the shared memory limit", [](Int3MoeParams& p) { p.hidden = 12544; },
+       Int3DecodeKernel::kScalar},
+  };
+  for (const Case& test_case : cases) {
+    Int3MoeParams params{};
+    params.input = reinterpret_cast<const void*>(uintptr_t{0x10000});
+    params.output = reinterpret_cast<void*>(uintptr_t{0x20000});
+    params.activation = reinterpret_cast<void*>(uintptr_t{0x30000});
+    params.fc2_partial = reinterpret_cast<void*>(uintptr_t{0x40000});
+    params.fc1.weights = bytes(0x50000);
+    params.fc2.weights = bytes(0x60000);
+    params.fc1.bits = 3;
+    params.fc2.bits = 3;
+    params.rows = 8;
+    params.top_k = 2;
+    params.hidden = 256;
+    params.intermediate = 128;
+    params.block_size = 64;
+    test_case.mutate(params);
+    EXPECT_EQ(static_cast<int>(SelectInt3DecodeKernel(params)), static_cast<int>(test_case.expected))
+        << test_case.name;
+  }
+}
+
 }  // namespace
 }  // namespace test
 }  // namespace onnxruntime

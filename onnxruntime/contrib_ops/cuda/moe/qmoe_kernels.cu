@@ -3155,26 +3155,10 @@ cudaError_t LaunchInt3Typed(const Int3MoeParams& params, cudaStream_t stream) {
   const size_t total_routes = static_cast<size_t>(params.rows) * params.top_k;
   const size_t fc1_smem = static_cast<size_t>(params.hidden) * sizeof(float);
   const size_t fc2_smem = static_cast<size_t>(params.intermediate) * sizeof(float);
-  const bool can_use_fast =
-      params.fc2_partial != nullptr &&
-      params.fc1.zeros == nullptr && params.fc2.zeros == nullptr &&
-      params.hidden % 256 == 0 && params.intermediate % 128 == 0 &&
-      params.block_size >= 8 && params.block_size % 8 == 0 &&
-      (reinterpret_cast<uintptr_t>(params.fc1.weights) & 3u) == 0 &&
-      (reinterpret_cast<uintptr_t>(params.fc2.weights) & 3u) == 0 &&
-      total_routes <= 65535 && params.rows <= 65535 &&
-      fc1_smem <= 48 * 1024 && fc2_smem <= 48 * 1024;
+  const Int3DecodeKernel kernel = SelectInt3DecodeKernel(params);
 
-  if (can_use_fast) {
-    const bool can_use_vec_fast =
-        params.intermediate % 16 == 0 && params.hidden % 32 == 0 &&
-        (params.block_size == 32 || params.block_size == 64 || params.block_size == 128) &&
-        (reinterpret_cast<uintptr_t>(params.input) & 15u) == 0 &&
-        (reinterpret_cast<uintptr_t>(params.activation) & 15u) == 0 &&
-        (reinterpret_cast<uintptr_t>(params.fc2_partial) & 15u) == 0 &&
-        (reinterpret_cast<uintptr_t>(params.output) & 15u) == 0;
-
-    if (can_use_vec_fast) {
+  if (kernel != Int3DecodeKernel::kScalar) {
+    if (kernel == Int3DecodeKernel::kFastVectorized) {
       const size_t route_slots = params.route_groups != nullptr ? 2 : 1;
       const size_t fc1_vec_smem = route_slots * static_cast<size_t>(params.hidden) * sizeof(T);
       const size_t fc2_vec_smem = route_slots * static_cast<size_t>(params.intermediate) * sizeof(T);
@@ -3287,6 +3271,31 @@ cudaError_t LaunchInt3Typed(const Int3MoeParams& params, cudaStream_t stream) {
 }
 
 }  // namespace
+
+Int3DecodeKernel SelectInt3DecodeKernel(const Int3MoeParams& params) {
+  const size_t total_routes = static_cast<size_t>(params.rows) * params.top_k;
+  const size_t fc1_smem = static_cast<size_t>(params.hidden) * sizeof(float);
+  const size_t fc2_smem = static_cast<size_t>(params.intermediate) * sizeof(float);
+  const bool can_use_fast =
+      params.fc2_partial != nullptr &&
+      params.fc1.zeros == nullptr && params.fc2.zeros == nullptr &&
+      params.hidden % 256 == 0 && params.intermediate % 128 == 0 &&
+      params.block_size >= 8 && params.block_size % 8 == 0 &&
+      (reinterpret_cast<uintptr_t>(params.fc1.weights) & 3u) == 0 &&
+      (reinterpret_cast<uintptr_t>(params.fc2.weights) & 3u) == 0 &&
+      total_routes <= 65535 && params.rows <= 65535 &&
+      fc1_smem <= 48 * 1024 && fc2_smem <= 48 * 1024;
+  if (!can_use_fast) return Int3DecodeKernel::kScalar;
+
+  const bool can_use_vec_fast =
+      params.intermediate % 16 == 0 && params.hidden % 32 == 0 &&
+      (params.block_size == 32 || params.block_size == 64 || params.block_size == 128) &&
+      (reinterpret_cast<uintptr_t>(params.input) & 15u) == 0 &&
+      (reinterpret_cast<uintptr_t>(params.activation) & 15u) == 0 &&
+      (reinterpret_cast<uintptr_t>(params.fc2_partial) & 15u) == 0 &&
+      (reinterpret_cast<uintptr_t>(params.output) & 15u) == 0;
+  return can_use_vec_fast ? Int3DecodeKernel::kFastVectorized : Int3DecodeKernel::kFast;
+}
 
 cudaError_t LaunchInt3Moe(const Int3MoeParams& params, cudaStream_t stream) {
   if (params.rows == 0) return cudaSuccess;
