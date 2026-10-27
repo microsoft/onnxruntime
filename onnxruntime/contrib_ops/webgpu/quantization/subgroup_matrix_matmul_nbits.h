@@ -18,6 +18,17 @@ namespace webgpu {
 
 using namespace onnxruntime::webgpu;
 
+inline bool PreferRegularMatMulNBitsForSmallM(uint32_t M, uint32_t N, uint32_t nbits,
+                                              const SubgroupMatrixConfig& config) {
+  // Avoid padding a small INT4 verification to 128 rows, but retain the subgroup
+  // kernel for wide outputs. Other subgroup tile configurations are unchanged.
+  return nbits == 4 &&
+         config.componentType == wgpu::SubgroupMatrixComponentType::F16 &&
+         config.resultComponentType == wgpu::SubgroupMatrixComponentType::F16 &&
+         config.Is(16, 16, 16) && config.subgroupSize == 32 &&
+         M >= 4 && M <= 8 && static_cast<uint64_t>(M) * N <= 128u * 1024u;
+}
+
 class SubgroupMatrixMatMulNBitsProgram final : public Program<SubgroupMatrixMatMulNBitsProgram> {
  public:
   SubgroupMatrixMatMulNBitsProgram(uint32_t nbits, SubgroupMatrixConfig config, uint32_t tile_m,
