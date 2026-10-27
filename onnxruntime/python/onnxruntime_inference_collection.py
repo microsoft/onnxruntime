@@ -1045,6 +1045,18 @@ class ModelCompiler:
         """Clears a previously registered external EPContext data write callback."""
         self._model_compiler.clear_ep_context_data_write_func()
 
+    def set_ep_context_binary_information(self, output_directory: str | os.PathLike, model_name: str) -> None:
+        """
+        Sets the directory and model name that execution providers use to place their EPContext binary files.
+
+        Raises an 'InvalidArgument' exception if either argument is empty or the directory is not valid.
+
+        :param output_directory: Directory for the EP's binary files. A path without a trailing separator and
+            without an extension is rejected as not being a directory.
+        :param model_name: Model name used by the EP when naming its binary files.
+        """
+        self._model_compiler.set_ep_context_binary_information(os.fspath(output_directory), model_name)
+
     def compile_to_bytes(self) -> bytes:
         """
         Compiles to bytes representing the serialized compiled ONNX model.
