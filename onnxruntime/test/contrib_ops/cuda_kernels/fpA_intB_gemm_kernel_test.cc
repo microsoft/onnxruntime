@@ -19,9 +19,11 @@
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <ctime>
 #include <functional>
 #include <iomanip>
@@ -45,10 +47,10 @@ constexpr int kMinSupportedSm = 75;
 
 std::vector<int> get_m_list() {
 #if USE_COMPACT_FPA_INTB_GEMM
-  return {1, 15, 16, 32, 128, 512};
+  return {1, 8, 15, 16, 32, 128, 512};
 #else
   if (kPipelineMode) {
-    return {1, 14};
+    return {1, 8, 14};
   } else {
     return {1, 4, 8, 14, 256, 512, 1024, 2048};
   }
@@ -417,6 +419,74 @@ class KernelTestFixture : public ::testing::Test {
     d_bias_->from_cpu(h_bias_.data());
   }
 
+  // Launches the zero-point-free GEMV once with debug logging and returns the CtaN column tile it reports.
+  int GemvLaunchCtaN() {
+    static_assert(QuantOp == cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY);
+    wo::Params params(d_act_->data(), nullptr, d_weight_->data(), d_scales_->data(), nullptr, nullptr,
+                      d_out_->data(), 1.f, m_, n_, k_, block_size_, KT);
+    params.debug = true;
+    const int kernel_arch = GetKernelArch(onnxruntime::llm::common::getSMVersion());
+    testing::internal::CaptureStdout();
+    try {
+      wo::kernel_launcher(kernel_arch, params, s_);
+      cudaStreamSynchronize(s_);
+    } catch (...) {
+      // End the capture so that later tests can capture stdout as well.
+      testing::internal::GetCapturedStdout();
+      throw;
+    }
+    const std::string log = testing::internal::GetCapturedStdout();
+    const size_t pos = log.find("CtaN=");
+    return pos == std::string::npos ? 0 : std::atoi(log.c_str() + pos + 5);
+  }
+
+  // Checks that one M = 8 launch is bitwise identical to two M = 4 launches over the same weights. The tile
+  // shape only decides which block computes which output, not the K reduction order of that output.
+  bool M8MatchesTwoM4Launches() {
+    static_assert(QuantOp == cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY);
+    using AType = typename cutlassTypeMapper<KT>::AType;
+    ORT_ENFORCE(m_ == 8);
+    const int kernel_arch = GetKernelArch(onnxruntime::llm::common::getSMVersion());
+    auto launch = [&](int rows, int first_row) {
+      wo::Params params(d_act_->data<AType>() + static_cast<size_t>(first_row) * k_, nullptr, d_weight_->data(),
+                        d_scales_->data(), nullptr, nullptr,
+                        d_out_->data<AType>() + static_cast<size_t>(first_row) * n_, 1.f, rows, n_, k_,
+                        block_size_, KT);
+      wo::kernel_launcher(kernel_arch, params, s_);
+    };
+    // Start from a NaN pattern so that an output that is never written cannot match by accident.
+    auto run = [&](const auto& launches, std::vector<AType>& host_out) {
+      CUDA_CALL_THROW(cudaMemsetAsync(d_out_->data(), 0xFF, d_out_->_bytes, s_));
+      launches();
+      CUDA_CALL_THROW(cudaStreamSynchronize(s_));
+      d_out_->to_cpu(host_out.data());
+    };
+    auto one_m8_launch = [&]() { launch(8, 0); };
+    auto two_m4_launches = [&]() {
+      launch(4, 0);
+      launch(4, 4);
+    };
+    run(one_m8_launch, h_out1_);
+    run(two_m4_launches, h_out2_);
+    const bool finite = std::all_of(h_out1_.begin(), h_out1_.end(),
+                                    [](AType v) { return std::isfinite(static_cast<float>(v)); });
+    return finite && std::memcmp(h_out1_.data(), h_out2_.data(), h_out1_.size() * sizeof(AType)) == 0;
+  }
+
+  // For each {M, N, expected CtaN} case, checks the column tile the dispatcher launches, the result against
+  // the CUTLASS reference, and (for M = 8) that it equals two M = 4 launches bit for bit.
+  void CheckGemvTiles(int k, const std::vector<std::tuple<int, int, int>>& cases) {
+    for (const auto& [m, n, expected_cta_n] : cases) {
+      SCOPED_TRACE(testing::Message() << "M=" << m << " N=" << n << " K=" << k);
+      InitBuffers(m, n, k, kIsInt2 ? 64 : 32);
+      EXPECT_EQ(GemvLaunchCtaN(), expected_cta_n);
+      EXPECT_TRUE(BenchmarkAndVerifyKernel());
+      if (m == 8) {
+        EXPECT_TRUE(M8MatchesTwoM4Launches());
+      }
+    }
+  }
+
   bool BenchmarkAndVerifyKernel(bool use_zero_points = QuantOp == cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS,
                                 int decode_variant = 0) {
     std::cout << "m=" << m_ << ", n=" << n_ << ", k=" << k_ << ", block_size=" << block_size_ << std::endl;
@@ -640,6 +710,10 @@ using Bf16Int2GroupwiseTest = KernelTestFixture<wo::KernelType::BF16Int2Groupwis
 using Fp16Int4SymmetricGroupwiseTest = KernelTestFixture<wo::KernelType::FP16Int4Groupwise, false, false, true,
                                                          cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY>;
 using Bf16Int4SymmetricGroupwiseTest = KernelTestFixture<wo::KernelType::BF16Int4Groupwise, false, false, true,
+                                                         cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY>;
+using Fp16Int8SymmetricGroupwiseTest = KernelTestFixture<wo::KernelType::FP16Int8Groupwise, false, false, true,
+                                                         cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY>;
+using Bf16Int8SymmetricGroupwiseTest = KernelTestFixture<wo::KernelType::BF16Int8Groupwise, false, false, true,
                                                          cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY>;
 
 TEST(FpAIntBGemvTest, SupportUsesDeviceAndKernelArchitectures) {
@@ -1058,6 +1132,50 @@ TEST_F(Fp16Int4GroupwiseTest, Int4GroupwiseHopperRouting) {
 #else
   EXPECT_EQ(GetKernelArch(90), 90);
 #endif
+}
+
+namespace {
+// {M, N, expected CtaN} cases for the scale-only SM80-interleaved layout. M = 8 uses the half-width tile (CtaN 2)
+// when the default tile (CtaN 4) would launch at most 320 blocks for INT4 (N / 16) or 160 blocks for INT8 (N / 8).
+// The cases sit on both sides of those cutoffs and include the neighbouring M = 7 and 9, which keep CtaN 4.
+const std::vector<std::tuple<int, int, int>> kInt4M8TileCases{
+    {8, 2880, 2}, {8, 5120, 2}, {7, 5120, 4}, {9, 5120, 4}, {8, 5136, 4}, {8, 6144, 4}};
+const std::vector<std::tuple<int, int, int>> kInt8M8TileCases{
+    {8, 640, 2}, {8, 1280, 2}, {7, 1280, 4}, {9, 1280, 4}, {8, 1288, 4}, {8, 2560, 4}};
+}  // namespace
+
+// Check the FP16 INT4 narrow tile, its grid cutoff and the M = 7 / 9 fallback against the CUTLASS reference.
+TEST_F(Fp16Int4SymmetricGroupwiseTest, Int4Group32SymmetricM8NarrowTile) {
+  if (onnxruntime::llm::common::getSMVersion() < kMinSupportedSm) {
+    GTEST_SKIP() << "FP16 INT4 GEMV requires SM " << kMinSupportedSm << " or later";
+  }
+  CheckGemvTiles(4096, kInt4M8TileCases);
+}
+
+// Check the BF16 INT4 narrow tile, its grid cutoff and the M = 7 / 9 fallback against the CUTLASS reference.
+TEST_F(Bf16Int4SymmetricGroupwiseTest, Int4Group32SymmetricM8NarrowTile) {
+  if (onnxruntime::llm::common::getSMVersion() < 80) {
+    GTEST_SKIP() << "BF16 INT4 GEMV requires SM 80 or later";
+  }
+  CheckGemvTiles(4096, kInt4M8TileCases);
+}
+
+// Check the FP16 INT8 narrow tile (N = 1280 is 160 default blocks), the first aligned N above the cutoff and the
+// M = 7 / 9 fallback against the CUTLASS reference.
+TEST_F(Fp16Int8SymmetricGroupwiseTest, Int8Group32SymmetricM8NarrowTile) {
+  if (onnxruntime::llm::common::getSMVersion() < kMinSupportedSm) {
+    GTEST_SKIP() << "FP16 INT8 GEMV requires SM " << kMinSupportedSm << " or later";
+  }
+  CheckGemvTiles(4096, kInt8M8TileCases);
+}
+
+// Check the BF16 INT8 narrow tile (N = 1280 is 160 default blocks), the first aligned N above the cutoff and the
+// M = 7 / 9 fallback against the CUTLASS reference.
+TEST_F(Bf16Int8SymmetricGroupwiseTest, Int8Group32SymmetricM8NarrowTile) {
+  if (onnxruntime::llm::common::getSMVersion() < 80) {
+    GTEST_SKIP() << "BF16 INT8 GEMV requires SM 80 or later";
+  }
+  CheckGemvTiles(4096, kInt8M8TileCases);
 }
 
 // Check default dispatch and every legal geometry around the two-column grid.y limit.

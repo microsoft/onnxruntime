@@ -542,7 +542,7 @@ void exec_kernel(Params& params, cudaStream_t s) {
       params.alpha,
       params.m, params.n, params.k);
   if (params.debug) {
-    std::printf("[fpA_intB_debug] GEMV launch: paired_k=0 M=%d\n", params.m);
+    std::printf("[fpA_intB_debug] GEMV launch: paired_k=0 M=%d CtaN=%d\n", params.m, CtaN);
     std::fflush(stdout);
   }
 }
@@ -648,7 +648,17 @@ void dispatcher(Params& params, cudaStream_t s) {
   DISPATCHER_FOR_M(5, 5, CtaNLargeM, 128);
   DISPATCHER_FOR_M(6, 6, CtaNLargeM, 128);
   DISPATCHER_FOR_M(7, 7, CtaNLargeM, 128);
-  // M = 8 is the DFlash2 verify batch; its projections are sensitive to wave quantization.
+  // M = 8 is the DFlash2 verify batch. With the default tile its small-N projections launch only
+  // grid.y = n / (CtaNLargeM * kInterleave) blocks, too few to fill the GPU, so a half-width tile
+  // (CtaN = CtaNLargeM / 2) doubles the block count. The tile only decides which block covers which
+  // columns; each output keeps the same K reduction, so results are bit-identical.
+  // Only the scale-only SM80-interleaved INT4 (StepK 32) and INT8 (StepK 16) layouts qualify. The
+  // Hopper layout (kInterleave 1) and the zero-point kernels (CtaNLargeM 2) keep the default tile.
+  // The grid.y cutoffs are empirical and depend on the SM count (the DFlash2 H200 runs have 132 SMs).
+  // FP16/INT4 and BF16/INT8 were measured; FP16/INT8 and BF16/INT4 reuse the tile and cutoff of the
+  // layout they share, so retune them if they regress. On a 108-SM A100 the INT4 narrow tile loses to
+  // the default tile for N of about 4350-5120 (it spills into a second wave), so an SM-count-aware
+  // cutoff may be needed there.
   if constexpr (((Details::kStepK == 32 && Details::kInterleave == 4) ||
                  (Details::kStepK == 16 && Details::kInterleave == 2)) &&
                 !EnableZero && CtaNLargeM == 4) {
