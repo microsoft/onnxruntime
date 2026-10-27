@@ -179,7 +179,9 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, str_builder.str().c_str());
   };
 
-  // The provider-bridge NvTensorRtRtx EP is deprecated. Report the plugin EP flow with the deprecation error
+#if !defined(ORT_MINIMAL_BUILD)
+  // The provider-bridge NvTensorRtRtx EP is deprecated. Report the plugin EP flow with the deprecation error.
+  // Minimal builds never included this EP, so they keep the generic unknown-provider error to save binary size.
   if (strcmp(provider_name, "NvTensorRtRtx") == 0 || strcmp(provider_name, kNvTensorRTRTXExecutionProvider) == 0) {
     return OrtApis::CreateStatus(
         ORT_INVALID_ARGUMENT,
@@ -189,6 +191,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
          "GetEpDevices, and append it with SessionOptionsAppendExecutionProvider_V2.")
             .c_str());
   }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
   auto ep_to_append_iter = std::find_if(supported_eps.begin(), supported_eps.end(),
                                         [&provider_name](const EpToAppend& elem) -> bool {

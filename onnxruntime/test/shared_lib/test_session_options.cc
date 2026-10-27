@@ -97,6 +97,7 @@ TEST(CApiTest, session_options_provider_interface_fail_add_cuda) {
 }
 #endif  // defined(USE_CUDA_PROVIDER_INTERFACE)
 
+#if !defined(ORT_MINIMAL_BUILD)
 // Test that appending the deprecated provider-bridge NV TensorRT RTX EP by name reports the plugin EP flow.
 TEST(CApiTest, session_options_append_removed_nv_tensorrt_rtx_ep) {
   const OrtApi& api = Ort::GetApi();
@@ -110,6 +111,7 @@ TEST(CApiTest, session_options_append_removed_nv_tensorrt_rtx_ep) {
     EXPECT_THAT(status.GetErrorMessage(), testing::HasSubstr("Use the NVIDIA TensorRT RTX plugin EP"));
   }
 }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 #if defined(USE_TENSORRT_PROVIDER_INTERFACE)
 // Test that loading TensorRT EP when only the interface is built (but not the full EP) fails.
