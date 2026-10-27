@@ -457,7 +457,10 @@ TEST(NhwcTransformerTests, ConvDepthwiseFloat_UsesHelperCapability) {
                     TransformerLevel::Level3,
                     /*opset_version*/ 12,
                     /*per_sample_tolerance*/ 1e-6,
-                    /*relative_per_sample_tolerance*/ 1e-6);
+                    /*relative_per_sample_tolerance*/ 1e-6,
+                    /*transformer*/ nullptr,
+                    /*add_session_options*/ {},
+                    /*disabled_optimizers*/ {"NchwcTransformer"});
 }
 
 TEST(NhwcTransformerTests, ConvDepthwiseFloat_AsymmetricPaddingSkipsNhwc) {
