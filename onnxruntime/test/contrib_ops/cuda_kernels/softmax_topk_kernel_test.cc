@@ -268,6 +268,144 @@ TEST(CUDA_EP_Unittest, SoftmaxTopK_RejectsKGreaterThanExperts) {
                OnnxRuntimeException);
 }
 
+TEST(CUDA_EP_Unittest, FusedRouteMaps_CanUsePredicate) {
+  using onnxruntime::contrib::cuda::CanUseFusedRouteMaps;
+  for (int64_t rows : {1, 2, 4, 7, 8}) {
+    for (int64_t k : {1, 2, 4, 6, 8, 10}) {
+      EXPECT_TRUE(CanUseFusedRouteMaps(rows, 512, k)) << "rows=" << rows << ", k=" << k;
+    }
+  }
+  EXPECT_FALSE(CanUseFusedRouteMaps(0, 512, 10));
+  EXPECT_FALSE(CanUseFusedRouteMaps(9, 512, 10));
+  EXPECT_FALSE(CanUseFusedRouteMaps(8, 256, 10));
+  EXPECT_FALSE(CanUseFusedRouteMaps(8, 32, 4));
+  EXPECT_FALSE(CanUseFusedRouteMaps(8, 512, 3));
+  EXPECT_FALSE(CanUseFusedRouteMaps(8, 512, 5));
+  EXPECT_FALSE(CanUseFusedRouteMaps(8, 512, 12));
+}
+
+template <typename T>
+void RunFusedRouteMapsParityAndFallbackTest(bool normalize_scales) {
+  constexpr int num_rows = 8;
+  constexpr int num_experts = 512;
+  constexpr int k = 10;
+  constexpr int num_pairs = num_rows * k;
+
+  auto logits_float = MakeLogits(num_rows, num_experts);
+  // Include exact ties across rows to verify stable tie-breaking toward lower expert indices.
+  logits_float[0 * num_experts + 3] = 6.0f;
+  logits_float[0 * num_experts + 19] = 6.0f;
+  logits_float[5 * num_experts + 128] = 5.5f;
+  logits_float[5 * num_experts + 257] = 5.5f;
+
+  // Allocate +1 element so we can also test a 2-byte misaligned pointer (declined launch).
+  std::vector<T> logits_padded(logits_float.size() + 1);
+  logits_padded[0] = FromFloat<T>(0.0f);
+  for (size_t i = 0; i < logits_float.size(); ++i) {
+    logits_padded[i] = FromFloat<T>(logits_float[i]);
+  }
+
+  CudaBuffer d_logits(logits_padded.size() * sizeof(T));
+  d_logits.CopyFromHost(logits_padded.data());
+
+  CudaBuffer d_ref_scales(static_cast<size_t>(num_pairs) * sizeof(float));
+  CudaBuffer d_ref_indices(static_cast<size_t>(num_pairs) * sizeof(int));
+  CudaBuffer d_scales(static_cast<size_t>(num_pairs) * sizeof(float));
+  CudaBuffer d_indices(static_cast<size_t>(num_pairs) * sizeof(int));
+  CudaBuffer d_r2u(static_cast<size_t>(num_pairs) * sizeof(int));
+  CudaBuffer d_u2r(static_cast<size_t>(num_pairs) * sizeof(int));
+  CudaBuffer d_expert(static_cast<size_t>(num_pairs) * sizeof(int));
+  CudaBuffer d_offsets(static_cast<size_t>(num_experts + 1) * sizeof(int64_t));
+
+  cudaStream_t stream = nullptr;
+  CUDA_CALL_THROW(cudaStreamCreate(&stream));
+
+  // Unaligned logits pointer (offset by 2 bytes) must be declined without launching.
+  const T* unaligned_logits = d_logits.As<T>() + 1;
+  EXPECT_FALSE(onnxruntime::contrib::cuda::LaunchFusedRouteMaps(
+      unaligned_logits, d_scales.As<float>(), d_indices.As<int>(), d_r2u.As<int>(), d_u2r.As<int>(),
+      d_expert.As<int>(), d_offsets.As<int64_t>(), num_rows, num_experts, k, normalize_scales, false, stream));
+
+  onnxruntime::contrib::cuda::LaunchSoftmaxTopK(
+      d_logits.As<T>(), d_ref_scales.As<float>(), d_ref_indices.As<int>(), num_rows, num_experts, k,
+      normalize_scales, stream);
+
+  const bool launched = onnxruntime::contrib::cuda::LaunchFusedRouteMaps(
+      d_logits.As<T>(), d_scales.As<float>(), d_indices.As<int>(), d_r2u.As<int>(), d_u2r.As<int>(),
+      d_expert.As<int>(), d_offsets.As<int64_t>(), num_rows, num_experts, k, normalize_scales, false, stream);
+  CUDA_CALL_THROW(cudaGetLastError());
+  CUDA_CALL_THROW(cudaStreamSynchronize(stream));
+  CUDA_CALL_THROW(cudaStreamDestroy(stream));
+
+  if (!launched) {
+    GTEST_SKIP() << "SM90 fused route maps kernel is not available on this device/build.";
+  }
+
+  std::vector<float> ref_scales(num_pairs);
+  std::vector<int> ref_indices(num_pairs);
+  std::vector<float> actual_scales(num_pairs);
+  std::vector<int> actual_indices(num_pairs);
+  std::vector<int> actual_r2u(num_pairs);
+  std::vector<int> actual_u2r(num_pairs);
+  std::vector<int> actual_expert(num_pairs);
+  std::vector<int64_t> actual_offsets(num_experts + 1);
+
+  d_ref_scales.CopyToHost(ref_scales.data());
+  d_ref_indices.CopyToHost(ref_indices.data());
+  d_scales.CopyToHost(actual_scales.data());
+  d_indices.CopyToHost(actual_indices.data());
+  d_r2u.CopyToHost(actual_r2u.data());
+  d_u2r.CopyToHost(actual_u2r.data());
+  d_expert.CopyToHost(actual_expert.data());
+  d_offsets.CopyToHost(actual_offsets.data());
+
+  EXPECT_EQ(actual_indices, ref_indices);
+  EXPECT_EQ(actual_scales, ref_scales);
+
+  struct PairItem {
+    int expert;
+    int token;
+    int k_idx;
+  };
+  std::vector<PairItem> pairs(num_pairs);
+  for (int p = 0; p < num_pairs; ++p) {
+    pairs[p] = PairItem{ref_indices[p], p / k, p % k};
+  }
+  std::sort(pairs.begin(), pairs.end(), [](const PairItem& a, const PairItem& b) {
+    return a.expert < b.expert || (a.expert == b.expert && a.token < b.token);
+  });
+
+  std::vector<int> expected_r2u(num_pairs);
+  std::vector<int> expected_u2r(num_pairs);
+  std::vector<int> expected_expert(num_pairs);
+  std::vector<int64_t> expected_offsets(num_experts + 1, 0);
+  for (int rank = 0; rank < num_pairs; ++rank) {
+    const int unpermuted_row = pairs[rank].k_idx * num_rows + pairs[rank].token;
+    expected_r2u[rank] = unpermuted_row;
+    expected_u2r[unpermuted_row] = rank;
+    expected_expert[rank] = pairs[rank].expert;
+  }
+  for (int e = 0; e <= num_experts; ++e) {
+    expected_offsets[e] = std::count_if(pairs.begin(), pairs.end(),
+                                        [e](const PairItem& item) { return item.expert < e; });
+  }
+
+  EXPECT_EQ(actual_r2u, expected_r2u);
+  EXPECT_EQ(actual_u2r, expected_u2r);
+  EXPECT_EQ(actual_expert, expected_expert);
+  EXPECT_EQ(actual_offsets, expected_offsets);
+}
+
+TEST(CUDA_EP_Unittest, FusedRouteMaps_S8E512K10_Half) {
+  RunFusedRouteMapsParityAndFallbackTest<half>(true);
+  RunFusedRouteMapsParityAndFallbackTest<half>(false);
+}
+
+TEST(CUDA_EP_Unittest, FusedRouteMaps_S8E512K10_BFloat16) {
+  RunFusedRouteMapsParityAndFallbackTest<__nv_bfloat16>(true);
+  RunFusedRouteMapsParityAndFallbackTest<__nv_bfloat16>(false);
+}
+
 }  // namespace
 }  // namespace test
 }  // namespace onnxruntime
