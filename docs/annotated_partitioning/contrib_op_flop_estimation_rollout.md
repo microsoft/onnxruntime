@@ -2,6 +2,9 @@
 
 **Status:** CPU MatMulNBits runtime count/report preview implemented; GQA and later phases remain proposed.
 
+For the post-Batch-3 execution sequence, validation gates, CUDA expansion and timing work, see the
+[MatMulNBits counter completion plan](matmul_nbits_counter_completion_plan.md).
+
 ## 1. Summary
 
 Introduce an opt-in diagnostic feature that estimates the mathematical work of a contrib operator invocation.
