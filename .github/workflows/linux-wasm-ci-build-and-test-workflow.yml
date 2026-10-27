@@ -37,11 +37,7 @@ on:
 
 jobs:
   build-wasm:
-    runs-on: [
-        "self-hosted",
-        "1ES.Pool=onnxruntime-github-linux-large",
-        "JobId=build-wasm-${{inputs.job_name}}-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
-        ]
+    runs-on: [ort-github-linux-32-amd-scus-ss]
     timeout-minutes: 120
     env:
       buildArch: x64

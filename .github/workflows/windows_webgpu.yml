@@ -19,11 +19,7 @@ concurrency:
 
 jobs:
   webgpu_build_x64_RelWithDebInfo:
-    runs-on: [
-      "self-hosted",
-      "1ES.Pool=onnxruntime-github-Win2022-GPU-A10",
-      "JobId=webgpu_build_x64_RelWithDebInfo-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}-${{ matrix.vcpkg_option }}-${{ matrix.wgsl_template }}"
-      ]
+    runs-on: [ort-github-win-6-a10-scus-ss]
     timeout-minutes: 300
     strategy:
       matrix:
@@ -145,11 +141,7 @@ jobs:
         continue-on-error: true
 
   webgpu_plugin_build_x64_RelWithDebInfo:
-    runs-on: [
-      "self-hosted",
-      "1ES.Pool=onnxruntime-github-Win2022-GPU-A10",
-      "JobId=webgpu_plugin_build_x64_RelWithDebInfo-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
-      ]
+    runs-on: [ort-github-win-6-a10-scus-ss]
     timeout-minutes: 300
     env:
       OnnxRuntimeBuildDirectory: ${{ github.workspace }}
@@ -229,11 +221,7 @@ jobs:
             ${{ github.workspace }}/RelWithDebInfo/RelWithDebInfo/dxil.dll
 
   webgpu_external_dawn_build_x64_RelWithDebInfo:
-    runs-on: [
-        "self-hosted",
-        "1ES.Pool=onnxruntime-github-Win2022-GPU-A10",
-        "JobId=webgpu_external_dawn_build_x64_RelWithDebInfo-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
-      ]
+    runs-on: [ort-github-win-6-a10-scus-ss]
     timeout-minutes: 300
     steps:
       - name: Checkout
@@ -284,11 +272,7 @@ jobs:
         working-directory: ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo
 
   webgpu_minimal_build_edge_build_x64_RelWithDebInfo:
-    runs-on: [
-        "self-hosted",
-        "1ES.Pool=onnxruntime-github-Win2022-GPU-A10",
-        "JobId=webgpu_minimal_build_edge_build_x64_RelWithDebInfo-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
-        ]
+    runs-on: [ort-github-win-16-amd-scus-ss]
     timeout-minutes: 300
     env:
       OrtPackageId: Microsoft.ML.OnnxRuntime

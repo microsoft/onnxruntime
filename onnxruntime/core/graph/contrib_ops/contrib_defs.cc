@@ -108,6 +108,12 @@ void convTransposeWithDynamicPadsShapeInference(InferenceContext& ctx) {
       }
       kernel_shape.push_back(second_input_shape.dim(i).dim_value());
     }
+    // A longer kernel_shape (W rank > X rank) overruns `dilations` in the loop right below;
+    // a shorter one (W rank < X rank) leaves `effective_kernel_shape` too short for the
+    // output-shape loop further below.
+    if (kernel_shape.size() != n_input_dims) {
+      return;
+    }
   }
 
   std::vector<int64_t> effective_kernel_shape = kernel_shape;

@@ -22,7 +22,7 @@ jobs:
     name: Build Linux CUDA Plugin EP x64 Release
     uses: ./.github/workflows/reusable_linux_build.yml
     with:
-      pool_name: "onnxruntime-github-Ubuntu2204-AMD-CPU" # Build pool
+      pool_name: "ort-github-linux-16-amd-wcus-ss" # Build pool
       build_config: Release
       architecture: x64
       dockerfile_path: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
@@ -54,11 +54,7 @@ jobs:
   test-linux-cuda-plugin-x64-release:
     name: Test Linux CUDA Plugin EP x64 Release
     needs: build-linux-cuda-plugin-x64-release
-    runs-on:
-      - self-hosted
-      - "1ES.Pool=onnxruntime-github-linux-a10"
-      - "1ES.ImageOverride=onnxruntime-ubuntu2204-CUDA-A10-Test"
-      - "JobId=test-linux-cuda-plugin-x64-release-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+    runs-on: [ort-github-linux-6-a10-scus-ss]
     timeout-minutes: 210
     permissions:
       contents: read
