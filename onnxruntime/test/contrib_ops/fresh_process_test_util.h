@@ -23,6 +23,9 @@ namespace test {
 // in a new process of the current test binary. The caller sets the environment variables (for
 // example with ScopedEnvironmentVariables) before calling; the child inherits them. Returns the
 // child exit status (0 on success).
+//
+// Only Windows and Linux are supported (std::system is unavailable on iOS and /proc/self/exe is
+// Linux-specific), so include this header only from tests compiled under USE_CUDA.
 inline int RunGTestFilterInFreshProcess(const std::string& gtest_filter) {
 #ifdef _WIN32
   std::string path(MAX_PATH, '\0');

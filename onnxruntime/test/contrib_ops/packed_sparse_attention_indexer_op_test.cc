@@ -32,13 +32,17 @@
 #include "core/graph/constants.h"
 #include "core/graph/model.h"
 #include "test/common/tensor_op_test_utils.h"
-#include "test/contrib_ops/fresh_process_test_util.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/test_environment.h"
 #include "test/unittest_util/graph_transform_test_builder.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/scoped_env_vars.h"
+
+#ifdef USE_CUDA
+// Uses std::system, which is unavailable on iOS, so only CUDA builds (Windows/Linux) include it.
+#include "test/contrib_ops/fresh_process_test_util.h"
+#endif
 
 #ifdef USE_WEBGPU
 #include "core/providers/webgpu/webgpu_provider_options.h"
@@ -1541,6 +1545,7 @@ TEST(PackedSparseAttentionIndexerTest, QsaHierarchicalScoringReusesKeysAcrossHea
   }
 }
 
+#ifdef USE_CUDA
 // The CUDA indexer caches ORT_PACKED_SPARSE_INDEXER_{COMPACT_TOPK,WARP_HEADS} in function-local
 // statics, so each non-default mode (tile-level two-level merge, non-warp ragged prefill scorer) is
 // exercised by re-running the hierarchical top-k and ragged-prefill cases (nonuniform scores, stable
@@ -1577,6 +1582,7 @@ TEST(PackedSparseAttentionIndexerTest, QsaAlternateTopKModesInFreshProcess) {
     ASSERT_EQ(RunGTestFilterInFreshProcess(filter), 0);
   }
 }
+#endif  // USE_CUDA
 
 // state_status is optional: requesting it must not change any other output, and every healthy
 // request reports 0.

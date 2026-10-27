@@ -69,6 +69,22 @@ When `split_count > 32` (floating-point caches only) the generic
 `Int8CacheGroupedDecodeAlternateSwitchesInFreshProcess_CUDA` re-run the INT8 grouped-decode and merge
 cases in fresh processes with each non-default combination.
 
+### Buffer alignment
+
+The wide-load fast paths assume more alignment than a tensor's element type guarantees, and tensors
+bound through IOBinding can start at any element offset of a larger allocation. The launcher therefore
+checks the caller-provided buffers and uses an equivalent narrower path, with identical results, when a
+buffer is misaligned:
+
+| Fast path | Buffers that must be aligned | Fallback |
+|---|---|---|
+| INT8 grouped decode vector staging (`ORT_DSA_INT8_VECTOR_STAGING=1`) | `key_scale`, `value_scale`, `auxiliary_key`, `auxiliary_value`: 16 bytes; `present_key`, `present_value`: 8 bytes | Scalar per-channel staging (`kVectorizedStaging=false`). |
+| Floating-point grouped decode and grouped prefill | Each staged K/V row: 16 bytes (checked per row in the kernel) | Element-wise copy into shared memory. |
+| Tensor-core BF16 prefill (`ORT_DSA_PREFILL_KERNEL=1`) | `present_key`, `present_value`: 16 bytes (8 for INT8); `key_scale`, `value_scale`: 16 bytes; `output`: 4 bytes | Generic fused/split or grouped prefill kernels. |
+
+Buffers allocated by ONNX Runtime are 256-byte aligned, so only IOBinding with offset buffers takes a
+fallback. The `*MisalignedBuffers_CUDA` tests cover each case.
+
 ### Benchmark
 
 rc3 model (INT4), H200, clean machine, 5 repetitions, baseline noise about +-0.03 ms, DFlash2 S=8

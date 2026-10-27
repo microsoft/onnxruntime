@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cfloat>
+#include <cstdint>
 #include <limits>
 #include <type_traits>
 
@@ -74,6 +75,20 @@ __device__ __forceinline__ void MmaM16N8K16(float (&output)[4],
   ORT_UNUSED_PARAMETER(query_fragment);
   ORT_UNUSED_PARAMETER(key_fragment);
 #endif
+}
+
+// Copies one head_size == 256 K/V row into shared memory with one 16-byte chunk per lane. Tensors bound
+// through IOBinding (cache outputs, auxiliary inputs) can start at any element offset, so a source that is
+// not 16-byte aligned is copied element-wise instead of faulting with cudaErrorMisalignedAddress.
+template <typename T>
+__device__ __forceinline__ void StageHeadRow(T* shared_row, const T* global_row, int lane, int head_size) {
+  if ((reinterpret_cast<uintptr_t>(global_row) & 15) == 0) {
+    reinterpret_cast<uint4*>(shared_row)[lane] = reinterpret_cast<const uint4*>(global_row)[lane];
+  } else {
+    for (int d = lane; d < head_size; d += 32) {
+      shared_row[d] = global_row[d];
+    }
+  }
 }
 
 __device__ __forceinline__ void SetValidationError(int32_t* error_flag,
@@ -821,10 +836,8 @@ __global__ void GroupedPrefillDynamicSparseAttentionKernel(
         const T* value_head = candidate_is_auxiliary
                                   ? auxiliary_value + offset
                                   : main_value + offset;
-        reinterpret_cast<uint4*>(shared_key + shared_offset)[load_lane] =
-            reinterpret_cast<const uint4*>(key_head)[load_lane];
-        reinterpret_cast<uint4*>(shared_value + shared_offset)[load_lane] =
-            reinterpret_cast<const uint4*>(value_head)[load_lane];
+        StageHeadRow(shared_key + shared_offset, key_head, load_lane, head_size);
+        StageHeadRow(shared_value + shared_offset, value_head, load_lane, head_size);
       }
     }
     __syncthreads();
@@ -1156,10 +1169,8 @@ __global__ void GroupedDecodeDynamicSparseAttentionKernel(
         } else {
           const T* key_head = candidate_is_auxiliary ? auxiliary_key + offset : main_key + offset;
           const T* value_head = candidate_is_auxiliary ? auxiliary_value + offset : main_value + offset;
-          reinterpret_cast<uint4*>(shared_key + shared_offset)[load_lane] =
-              reinterpret_cast<const uint4*>(key_head)[load_lane];
-          reinterpret_cast<uint4*>(shared_value + shared_offset)[load_lane] =
-              reinterpret_cast<const uint4*>(value_head)[load_lane];
+          StageHeadRow(shared_key + shared_offset, key_head, load_lane, head_size);
+          StageHeadRow(shared_value + shared_offset, value_head, load_lane, head_size);
         }
       }
     }
@@ -1711,6 +1722,11 @@ int GetAttentionSplitCount(const DynamicSparseAttentionParameters& parameters) {
   return static_cast<int>(std::min(candidate_tiles, occupancy_splits));
 }
 
+// A null pointer is treated as aligned because kernels do not dereference it.
+bool IsAligned(const void* pointer, size_t alignment) {
+  return reinterpret_cast<uintptr_t>(pointer) % alignment == 0;
+}
+
 bool UseFusedAttention(const DynamicSparseAttentionParameters& parameters,
                        size_t element_size,
                        size_t max_shared_memory_per_block) {
@@ -2068,8 +2084,16 @@ Status LaunchDynamicSparseAttention(
       CUDA_RETURN_IF_ERROR(cudaDeviceGetAttribute(&cc_major, cudaDevAttrComputeCapabilityMajor, device));
       CUDA_RETURN_IF_ERROR(cudaDeviceGetAttribute(&optin_shared, cudaDevAttrMaxSharedMemoryPerBlockOptin, device));
       constexpr int kMaxGridDimYZ = 65535;
+      // The kernel issues 16-byte (INT8: 8-byte) cp.async copies from the caches, float4 loads of the INT8
+      // scales and bfloat162 stores to the output. Tensors bound through IOBinding can start at any element
+      // offset, so misaligned buffers use the generic kernels instead of faulting.
+      const size_t cache_alignment = data.quantized_cache ? 8 : 16;
+      const bool buffers_aligned =
+          IsAligned(data.present_key, cache_alignment) && IsAligned(data.present_value, cache_alignment) &&
+          IsAligned(data.output, 4) &&
+          (!data.quantized_cache || (IsAligned(data.key_scale, 16) && IsAligned(data.value_scale, 16)));
       use_prefill_kernel =
-          enabled && cc_major >= 8 && parameters.sequence_length >= 8 &&
+          enabled && buffers_aligned && cc_major >= 8 && parameters.sequence_length >= 8 &&
           parameters.head_size == dsa_prefill::kHeadDim && !local_plus_selected &&
           parameters.selected_kv_source == DynamicSparseAttentionKvSource::kMain &&
           !parameters.use_smooth_softmax && parameters.max_selected > 0 &&
@@ -2099,6 +2123,13 @@ Status LaunchDynamicSparseAttention(
           ParseEnvironmentVariableWithDefault<int>("ORT_DSA_INT8_VECTOR_STAGING", 1);
       ORT_ENFORCE(vectorized_staging == 0 || vectorized_staging == 1,
                   "ORT_DSA_INT8_VECTOR_STAGING must be 0 or 1.");
+      // Vector staging loads 16-byte auxiliary K/V and scale chunks and 8-byte INT8 cache chunks. Tensors bound
+      // through IOBinding can start at any element offset, so misaligned buffers use scalar staging.
+      const bool use_vector_staging =
+          vectorized_staging != 0 &&
+          IsAligned(data.key_scale, 16) && IsAligned(data.value_scale, 16) &&
+          IsAligned(data.auxiliary_key, 16) && IsAligned(data.auxiliary_value, 16) &&
+          IsAligned(data.present_key, 8) && IsAligned(data.present_value, 8);
       const auto launch = [&](auto heads_tag, auto vectorized) {
         constexpr int kHeads = decltype(heads_tag)::value;
         GroupedDecodeDynamicSparseAttentionKernel<T, kHeads, true, true,
@@ -2117,13 +2148,13 @@ Status LaunchDynamicSparseAttention(
                 parameters.use_smooth_softmax, data.key_scale, data.value_scale);
       };
       if (grouped_decode_heads_per_block == 12) {
-        if (vectorized_staging) {
+        if (use_vector_staging) {
           launch(std::integral_constant<int, 12>{}, std::true_type{});
         } else {
           launch(std::integral_constant<int, 12>{}, std::false_type{});
         }
       } else {
-        if (vectorized_staging) {
+        if (use_vector_staging) {
           launch(std::integral_constant<int, kGroupedDecodeQueryHeadsPerBlock>{}, std::true_type{});
         } else {
           launch(std::integral_constant<int, kGroupedDecodeQueryHeadsPerBlock>{}, std::false_type{});
