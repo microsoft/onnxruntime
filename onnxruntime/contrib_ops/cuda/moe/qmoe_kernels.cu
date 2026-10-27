@@ -1811,6 +1811,196 @@ void LaunchQMoEFp8Projection(const QMoEFp8ProjectionParams& params,
   CUDA_CALL_THROW(cudaGetLastError());
 }
 
+template <typename T>
+__global__ void QMoEDynamicFp8QuantizeKernel(const T* input, uint8_t* output, float* scales,
+                                             int cols, int activation) {
+  const int row = blockIdx.x;
+  const int group = blockIdx.y;
+  const int col = group * 128 + threadIdx.x;
+  const int64_t index = static_cast<int64_t>(row) * cols + col;
+  float value = static_cast<float>(input[activation == 2 ? 2 * index : index]);
+  if (activation) {
+    const float up = activation == 2 ? static_cast<float>(input[2 * index + 1]) : 1.0f;
+    value = value / (1.0f + expf(-value)) * up;
+  }
+  using Reduce = cub::BlockReduce<float, 128>;
+  __shared__ typename Reduce::TempStorage storage;
+  __shared__ float scale;
+  const float amax = BlockReduceMax<Reduce>(fabsf(value), storage);
+  if (threadIdx.x == 0) {
+    // Preserve reciprocal-multiply rounding: a one-ULP scale change can flip an FP8 tie.
+    scale = fmaxf(amax, 1.0e-10f) * (1.0f / 448.0f);
+    scales[static_cast<int64_t>(row) * (cols / 128) + group] = scale;
+  }
+  __syncthreads();
+  const float normalized = fminf(448.0f, fmaxf(-448.0f, value / scale));
+  output[index] = __nv_cvt_float_to_fp8(normalized, __NV_SATFINITE, __NV_E4M3);
+}
+
+template <typename T>
+void LaunchQMoEDynamicFp8Quantize(const T* input, uint8_t* quantized, float* scales,
+                                  int rows, int cols, int activation, cudaStream_t stream) {
+  QMoEDynamicFp8QuantizeKernel<<<dim3(rows, cols / 128), 128, 0, stream>>>(
+      input, quantized, scales, cols, activation);
+  CUDA_CALL_THROW(cudaGetLastError());
+}
+
+__device__ __forceinline__ int QMoEDynamicFp8WeightRow(const QMoEFp8ProjectionParams& params, int row) {
+  return params.up_weights    ? row / 2
+         : params.fusion == 2 ? row / 2 + (row % 2) * (params.n / 2)
+                              : row;
+}
+
+template <typename T, typename OutputT>
+__global__ void QMoEDynamicFp8ProjectionKernel(QMoEFp8ProjectionParams params,
+                                               const uint8_t* input, const float* input_scales, OutputT* output,
+                                               const float* routing_weights, const int* routed_rows, int top_k) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 890
+  const int tile = blockIdx.y;
+  if (tile >= params.tile_offsets[params.num_experts]) return;
+  int first = 0;
+  int last = params.num_experts;
+  while (first < last) {
+    const int middle = (first + last) / 2;
+    if (params.tile_offsets[middle + 1] <= tile) {
+      first = middle + 1;
+    } else {
+      last = middle;
+    }
+  }
+  const int expert = first;
+  const int64_t row_start = params.expert_offsets[expert] + (tile - params.tile_offsets[expert]) * 16;
+  const int64_t row_end = params.expert_offsets[expert + 1];
+  const int lane = threadIdx.x % 32;
+  const int group = lane / 4;
+  const int thread = lane % 4;
+  const int column_start = blockIdx.x * 32 + (threadIdx.x / 32) * 8;
+  float result[4] = {};
+  const int k_groups = params.k / 128;
+  for (int k_group = 0; k_group < k_groups; ++k_group) {
+    float dot[4] = {};
+    for (int inner = 0; inner < 128; inner += 32) {
+      uint32_t a[4] = {};
+      uint32_t b[2] = {};
+      // PTX m16n8k32: four A registers cover two rows and two K half-tiles;
+      // two B registers cover one output column and both K half-tiles.
+      for (int half_k = 0; half_k < 2; ++half_k) {
+        for (int byte = 0; byte < 4; ++byte) {
+          const int k = k_group * 128 + inner + half_k * 16 + thread * 4 + byte;
+          for (int half_m = 0; half_m < 2; ++half_m) {
+            const int64_t row = row_start + group + half_m * 8;
+            if (row < row_end) {
+              const int source = params.row_to_unpermuted ? params.row_to_unpermuted[row] % params.num_rows
+                                                          : static_cast<int>(row);
+              a[half_k * 2 + half_m] |=
+                  static_cast<uint32_t>(input[static_cast<int64_t>(source) * params.k + k]) << (8 * byte);
+            }
+          }
+          const int col = column_start + group;
+          const bool up = params.up_weights && (col % 2);
+          const uint8_t* weights = up ? params.up_weights : params.weights;
+          const int weight_row = QMoEDynamicFp8WeightRow(params, col);
+          const int weight_n = params.up_weights ? params.n / 2 : params.n;
+          b[half_k] |= static_cast<uint32_t>(
+                           weights[(static_cast<int64_t>(expert) * weight_n + weight_row) * params.k + k])
+                       << (8 * byte);
+        }
+      }
+      asm volatile(
+          "mma.sync.aligned.m16n8k32.row.col.f32.e4m3.e4m3.f32 "
+          "{%0, %1, %2, %3}, {%4, %5, %6, %7}, {%8, %9}, {%0, %1, %2, %3};"
+          : "+f"(dot[0]), "+f"(dot[1]), "+f"(dot[2]), "+f"(dot[3])
+          : "r"(a[0]), "r"(a[1]), "r"(a[2]), "r"(a[3]), "r"(b[0]), "r"(b[1]));
+    }
+    for (int element = 0; element < 4; ++element) {
+      const int64_t row = row_start + group + (element / 2) * 8;
+      const int col = column_start + thread * 2 + element % 2;
+      if (row < row_end) {
+        const int source = params.row_to_unpermuted ? params.row_to_unpermuted[row] % params.num_rows
+                                                    : static_cast<int>(row);
+        const bool up = params.up_weights && (col % 2);
+        const auto* scales = static_cast<const float*>(up ? params.up_scales : params.scales);
+        const int weight_n = params.up_weights ? params.n / 2 : params.n;
+        const int weight_row = QMoEDynamicFp8WeightRow(params, col);
+        const float weight_scale =
+            scales[(static_cast<int64_t>(expert) * (weight_n / 128) + weight_row / 128) * k_groups + k_group];
+        const float activation_scale = input_scales[static_cast<int64_t>(source) * k_groups + k_group];
+        result[element] += dot[element] * activation_scale * weight_scale;
+      }
+    }
+  }
+  for (int element = 0; element < 4; ++element) {
+    const int64_t row = row_start + group + (element / 2) * 8;
+    const int col = column_start + thread * 2 + element % 2;
+    if (row < row_end) {
+      float value = result[element];
+      if (routing_weights) {
+        const int route = routed_rows[row];
+        const int token = route % params.num_rows;
+        const int slot = route / params.num_rows;
+        // The router's coefficients narrow before multiplication, not its FP32 GEMM output.
+        value *= static_cast<float>(static_cast<T>(routing_weights[token * top_k + slot]));
+      }
+      output[row * params.n + col] = static_cast<OutputT>(value);
+    }
+  }
+#else
+  asm volatile("trap;");
+#endif
+}
+
+bool QMoEDynamicFp8Supported() {
+  cudaFuncAttributes attributes{};
+  CUDA_CALL_THROW(cudaFuncGetAttributes(&attributes, QMoEDynamicFp8ProjectionKernel<half, half>));
+  return attributes.binaryVersion >= 89 && attributes.ptxVersion >= 89;
+}
+
+template <typename T, typename OutputT>
+void LaunchQMoEDynamicFp8Projection(const QMoEFp8ProjectionParams& params,
+                                    const uint8_t* input, const float* input_scales, OutputT* output,
+                                    const float* routing_weights, const int* routed_rows, int top_k,
+                                    cudaStream_t stream) {
+  const int tiles = std::min(params.expanded_rows,
+                             std::min(params.num_experts, params.expanded_rows) + params.expanded_rows / 16);
+  QMoEDynamicFp8ProjectionKernel<T, OutputT><<<dim3(params.n / 32, tiles), 128, 0, stream>>>(
+      params, input, input_scales, output, routing_weights, routed_rows, top_k);
+  CUDA_CALL_THROW(cudaGetLastError());
+}
+
+template <typename T>
+__global__ void QMoEDynamicFp8FinalizeKernel(const float* input, T* output, const int* row_map,
+                                             int rows, int cols, int top_k) {
+  const int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (index >= static_cast<int64_t>(rows) * cols) return;
+  const int token = static_cast<int>(index / cols);
+  const int col = static_cast<int>(index % cols);
+  float sum = 0.0f;
+  for (int slot = 0; slot < top_k; ++slot) {
+    sum += input[static_cast<int64_t>(row_map[token + slot * rows]) * cols + col];
+  }
+  output[index] = static_cast<T>(sum);
+}
+
+template <typename T>
+void LaunchQMoEDynamicFp8Finalize(const float* input, T* output, const int* unpermuted_to_permuted,
+                                  int rows, int cols, int top_k, cudaStream_t stream) {
+  const int64_t count = static_cast<int64_t>(rows) * cols;
+  QMoEDynamicFp8FinalizeKernel<<<narrow<int>((count + 255) / 256), 256, 0, stream>>>(
+      input, output, unpermuted_to_permuted, rows, cols, top_k);
+  CUDA_CALL_THROW(cudaGetLastError());
+}
+
+#define INSTANTIATE_DYNAMIC_FP8(T)                                                                                     \
+  template void LaunchQMoEDynamicFp8Quantize<T>(const T*, uint8_t*, float*, int, int, int, cudaStream_t);              \
+  template void LaunchQMoEDynamicFp8Projection<T, T>(const QMoEFp8ProjectionParams&, const uint8_t*, const float*, T*, \
+                                                     const float*, const int*, int, cudaStream_t);                     \
+  template void LaunchQMoEDynamicFp8Projection<T, float>(const QMoEFp8ProjectionParams&, const uint8_t*, const float*, \
+                                                         float*, const float*, const int*, int, cudaStream_t);         \
+  template void LaunchQMoEDynamicFp8Finalize<T>(const float*, T*, const int*, int, int, int, cudaStream_t);
+INSTANTIATE_DYNAMIC_FP8(half)
+INSTANTIATE_DYNAMIC_FP8(__nv_bfloat16)
+#undef INSTANTIATE_DYNAMIC_FP8
+
 template <typename T, typename InputT>
 __global__ void QMoEFp8ActivationKernel(const InputT* input, const T* bias, T* output,
                                         const int* experts, int rows, int inter_size, int fusion,

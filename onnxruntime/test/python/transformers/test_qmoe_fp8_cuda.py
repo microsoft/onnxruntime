@@ -133,7 +133,9 @@ def create_fp8_moe_onnx_graph(
     return model.SerializeToString()
 
 
-def create_block_fp8_moe_graph(tensors, top_k, onnx_dtype, block_size, fusion=0, normalize=1, initializers=False):
+def create_block_fp8_moe_graph(
+    tensors, top_k, onnx_dtype, block_size, fusion=0, normalize=1, initializers=False, activation_quantization="none"
+):
     """Use runtime weights so the official 512-expert shape needs no >2GB protobuf."""
     names = [""] * 17
     indices = {
@@ -190,6 +192,8 @@ def create_block_fp8_moe_graph(tensors, top_k, onnx_dtype, block_size, fusion=0,
         quant_type="fp8",
         block_size=block_size,
     )
+    if activation_quantization != "none":
+        node.attribute.append(helper.make_attribute("activation_quantization", activation_quantization))
     graph = helper.make_graph(
         [node],
         "BlockFP8",
@@ -365,9 +369,12 @@ class TestQMoEBlockFP8(unittest.TestCase):
         initializers=False,
         row_tile_size=0,
         enable_cuda_graph=False,
+        activation_quantization="none",
     ):
         dtype = TensorProto.BFLOAT16 if tensors["input"].dtype == torch.bfloat16 else TensorProto.FLOAT16
-        model, input_types = create_block_fp8_moe_graph(tensors, top_k, dtype, block, fusion, normalize, initializers)
+        model, input_types = create_block_fp8_moe_graph(
+            tensors, top_k, dtype, block, fusion, normalize, initializers, activation_quantization
+        )
         options = onnxruntime.SessionOptions()
         options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
         options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
@@ -389,11 +396,16 @@ class TestQMoEBlockFP8(unittest.TestCase):
             name = graph_input.name
             tensor = tensors[name]
             binding.bind_input(name, "cuda", 0, input_types[name], tensor.shape, tensor.data_ptr())
-        binding.bind_output("output", "cuda", 0, input_types["input"], output.shape, output.data_ptr())
+        if output.numel() == 0:
+            binding.bind_output("output", "cuda", 0)
+        else:
+            binding.bind_output("output", "cuda", 0, input_types["input"], output.shape, output.data_ptr())
         torch.cuda.synchronize()
         binding.synchronize_inputs()
         session.run_with_iobinding(binding)
         binding.synchronize_outputs()
+        if output.numel() == 0:
+            assert binding.get_outputs()[0].shape() == list(output.shape)
         return output
 
     @staticmethod
@@ -717,11 +729,24 @@ def test_block_fp8_fused_gemm_partial_tiles(monkeypatch, dtype, fusion, row_tile
 )
 @pytest.mark.parametrize("tokens", [1, 32])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
-def test_block_fp8_fused_cuda_graph_replay(capfd, monkeypatch, tokens, dtype):
+@pytest.mark.parametrize("activation_quantization", ["none", "dynamic_fp8"])
+def test_block_fp8_fused_cuda_graph_replay(capfd, monkeypatch, tokens, dtype, activation_quantization):
+    dynamic = activation_quantization == "dynamic_fp8"
+    if dynamic and torch.cuda.get_device_capability() < (8, 9):
+        pytest.skip("Native FP8 MMA requires SM89+")
     monkeypatch.setenv("ORT_ENABLE_FP8_FUSED", "1")
     monkeypatch.setenv("ORT_ENABLE_QMOE_KERNEL_DEBUG_INFO", "1")
-    tensors = TestQMoEBlockFP8._inputs(experts=32, tokens=tokens, dtype=dtype)
-    session, input_types = TestQMoEBlockFP8._session(tensors, enable_cuda_graph=True)
+    tensors = TestQMoEBlockFP8._inputs(
+        hidden=128 if dynamic else 160,
+        inter=128 if dynamic else 80,
+        experts=32,
+        tokens=tokens,
+        dtype=dtype,
+        scale_dtype=torch.float32 if dynamic else torch.bfloat16,
+    )
+    session, input_types = TestQMoEBlockFP8._session(
+        tensors, enable_cuda_graph=True, activation_quantization=activation_quantization
+    )
     output = torch.empty_like(tensors["input"])
     binding = session.io_binding()
     for graph_input in session.get_inputs():
@@ -737,9 +762,191 @@ def test_block_fp8_fused_cuda_graph_replay(capfd, monkeypatch, tokens, dtype):
             torch.cuda.synchronize()
             session.run_with_iobinding(binding)
             binding.synchronize_outputs()
-            expected = TestQMoEBlockFP8._reference(tensors, 128, 0)
+            expected = (
+                dynamic_fp8_reference(tensors, 0, 10) if dynamic else TestQMoEBlockFP8._reference(tensors, 128, 0)
+            )
             torch.testing.assert_close(output.float(), expected.float(), atol=0.003, rtol=0.04)
     assert "DequantWeightBytes=0" in capfd.readouterr().out
+
+
+def dynamic_fp8_reference(tensors, fusion, top_k, normalize=1):
+    """Keep scaled K128 partial sums and routed down outputs in FP32, not the input dtype."""
+    x = tensors["input"]
+    probabilities = tensors["router_probs"].float().softmax(-1)
+    weights, experts = probabilities.topk(top_k, dim=-1)
+    if normalize:
+        weights = weights / weights.sum(-1, keepdim=True)
+    weights = weights.to(x.dtype).float()
+    output = torch.zeros_like(x, dtype=torch.float32)
+
+    def quantize(value):
+        groups = value.float().reshape(value.shape[0], -1, 128)
+        scales = groups.abs().amax(-1).clamp(min=1e-10) / 448
+        quantized = (groups / scales[..., None]).clamp(-448, 448).to(torch.float8_e4m3fn).float()
+        return quantized.flatten(1), scales
+
+    def project(quantized, scales, name, expert):
+        weight = tensors[f"{name}_weights"][expert].view(torch.float8_e4m3fn).float()
+        weight_scales = tensors[f"{name}_scales"][expert].float().repeat_interleave(128, 0)
+        result = torch.zeros(quantized.shape[0], weight.shape[0], device=x.device)
+        for group in range(weight.shape[1] // 128):
+            start = group * 128
+            dot = quantized[:, start : start + 128] @ weight[:, start : start + 128].T
+            result += dot * scales[:, group, None] * weight_scales[None, :, group]
+        return result
+
+    quantized, scales = quantize(x)
+    # Accumulate in top-k order, including narrowing the router's coefficients.
+    for slot in range(top_k):
+        routed = torch.zeros_like(x, dtype=torch.float32)
+        for expert in experts[:, slot].unique().tolist():
+            rows = torch.where(experts[:, slot] == expert)[0]
+            gu = project(quantized[rows], scales[rows], "fc1", expert).to(x.dtype).float()
+            if fusion == 1:
+                gate, up = gu[:, 0::2], gu[:, 1::2]
+            elif fusion == 2:
+                gate, up = gu.chunk(2, -1)
+            else:
+                gate = gu
+                up = (
+                    project(quantized[rows], scales[rows], "fc3", expert).to(x.dtype).float()
+                    if "fc3_weights" in tensors
+                    else 1.0
+                )
+            hidden, hidden_scales = quantize(F.silu(gate) * up)
+            routed[rows] = project(hidden, hidden_scales, "fc2", expert) * weights[rows, slot, None]
+        output += routed
+    return output.to(x.dtype)
+
+
+@pytest.mark.skipif(
+    not torch.cuda.is_available() or not has_fp8_qmoe or torch.cuda.get_device_capability() < (8, 9),
+    reason="SM89+ CUDA FP8 QMoE required",
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("tokens", [1, 33])
+@pytest.mark.parametrize("fusion", [0, 1, 2])
+def test_dynamic_fp8_native_mma(capfd, monkeypatch, dtype, tokens, fusion):
+    monkeypatch.setenv("ORT_ENABLE_QMOE_KERNEL_DEBUG_INFO", "1")
+    tensors = TestQMoEBlockFP8._inputs(
+        hidden=256, inter=128, experts=4, tokens=tokens, fusion=fusion, dtype=dtype, scale_dtype=torch.float32
+    )
+    tensors["input"][:, :128] *= 0.03125
+    session = TestQMoEBlockFP8._session(
+        tensors,
+        fusion=fusion,
+        top_k=2,
+        row_tile_size=17,
+        initializers=tokens == 1,
+        activation_quantization="dynamic_fp8",
+    )
+    actual = TestQMoEBlockFP8._execute(tensors, fusion=fusion, top_k=2, session=session)
+    expected = dynamic_fp8_reference(tensors, fusion, 2)
+    torch.testing.assert_close(actual.float(), expected.float(), atol=0.0003, rtol=0.02)
+    log = capfd.readouterr().out
+    assert "fp8_dynamic_mma" in log
+    assert "DequantWeightBytes=0" in log
+
+
+@pytest.mark.skipif(
+    not torch.cuda.is_available() or not has_fp8_qmoe or torch.cuda.get_device_capability() < (8, 9),
+    reason="SM89+ CUDA FP8 QMoE required",
+)
+@pytest.mark.parametrize("normalize", [0, 1])
+def test_dynamic_fp8_zero_and_ungated(normalize):
+    tensors = TestQMoEBlockFP8._inputs(hidden=128, inter=128, experts=4, tokens=0, scale_dtype=torch.float32)
+    del tensors["fc3_weights"], tensors["fc3_scales"]
+    session = TestQMoEBlockFP8._session(tensors, top_k=2, normalize=normalize, activation_quantization="dynamic_fp8")
+    actual = TestQMoEBlockFP8._execute(tensors, top_k=2, session=session)
+    assert actual.shape == (0, 128)
+    tensors = TestQMoEBlockFP8._inputs(hidden=128, inter=128, experts=4, tokens=2, scale_dtype=torch.float32)
+    tensors["input"][0].zero_()
+    del tensors["fc3_weights"], tensors["fc3_scales"]
+    session = TestQMoEBlockFP8._session(tensors, top_k=2, normalize=normalize, activation_quantization="dynamic_fp8")
+    actual = TestQMoEBlockFP8._execute(tensors, top_k=2, session=session)
+    torch.testing.assert_close(
+        actual.float(), dynamic_fp8_reference(tensors, 0, 2, normalize).float(), atol=0.0003, rtol=0.02
+    )
+    torch.testing.assert_close(actual[0], torch.zeros_like(actual[0]), atol=0, rtol=0)
+
+
+@pytest.mark.skipif(
+    not torch.cuda.is_available() or not has_fp8_qmoe or torch.cuda.get_device_capability() < (8, 9),
+    reason="SM89+ CUDA FP8 QMoE required",
+)
+def test_dynamic_fp8_rejects_weight_only_fallback(monkeypatch):
+    tensors = TestQMoEBlockFP8._inputs(hidden=128, inter=128, experts=2, scale_dtype=torch.float32)
+    monkeypatch.setenv("ORT_ENABLE_FP8_FUSED", "0")
+    with pytest.raises(Exception, match="requires fused execution"):
+        TestQMoEBlockFP8._session(tensors, top_k=2, activation_quantization="dynamic_fp8")
+
+
+@pytest.mark.skipif(
+    os.getenv("ORT_RUN_LARGE_FP8_QMOE_TEST") != "1"
+    or not torch.cuda.is_available()
+    or not has_fp8_qmoe
+    or torch.cuda.get_device_capability() < (8, 9),
+    reason="Set ORT_RUN_LARGE_FP8_QMOE_TEST=1 on an SM89+ FP8 QMoE build",
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_dynamic_fp8_drama3_projection_shapes(dtype):
+    tensors = TestQMoEBlockFP8._inputs(
+        hidden=2048, inter=512, experts=256, tokens=3, dtype=dtype, scale_dtype=torch.float32
+    )
+    session = TestQMoEBlockFP8._session(tensors, top_k=8, activation_quantization="dynamic_fp8")
+    actual = TestQMoEBlockFP8._execute(tensors, top_k=8, session=session)
+    torch.testing.assert_close(actual.float(), dynamic_fp8_reference(tensors, 0, 8).float(), atol=0.004, rtol=0.03)
+
+
+@pytest.mark.skipif(
+    not torch.cuda.is_available() or not has_fp8_qmoe or torch.cuda.get_device_capability() < (8, 9),
+    reason="SM89+ CUDA FP8 QMoE required",
+)
+def test_dynamic_fp8_down_output_retains_fp32():
+    tensors = TestQMoEBlockFP8._inputs(
+        hidden=128, inter=128, experts=2, tokens=1, dtype=torch.float16, scale_dtype=torch.float32
+    )
+    tensors["input"].zero_()
+    tensors["input"][:, 0] = 1
+    tensors["router_probs"].zero_()
+    for name in ("fc1", "fc2", "fc3"):
+        tensors[f"{name}_scales"].fill_(1)
+    gate = torch.zeros(2, 128, 128, device=device)
+    up = torch.zeros_like(gate)
+    gate[:, :, 0] = 32
+    up[:, :, 0] = 16
+    down = torch.full_like(gate, 4)
+    down[1].neg_()
+    for name, value in (("fc1", gate), ("fc2", down), ("fc3", up)):
+        tensors[f"{name}_weights"] = value.to(torch.float8_e4m3fn).view(torch.uint8)
+    session = TestQMoEBlockFP8._session(tensors, top_k=2, activation_quantization="dynamic_fp8")
+    actual = TestQMoEBlockFP8._execute(tensors, top_k=2, session=session)
+    assert torch.isfinite(actual).all()
+    torch.testing.assert_close(actual, dynamic_fp8_reference(tensors, 0, 2), atol=0, rtol=0)
+
+
+@pytest.mark.skipif(
+    not torch.cuda.is_available() or not has_fp8_qmoe or torch.cuda.get_device_capability() < (8, 9),
+    reason="SM89+ CUDA FP8 QMoE required",
+)
+def test_dynamic_fp8_activation_does_not_round_to_bfloat16():
+    tensors = TestQMoEBlockFP8._inputs(
+        hidden=128, inter=128, experts=1, tokens=1, dtype=torch.bfloat16, scale_dtype=torch.float32
+    )
+    tensors["input"].zero_()
+    tensors["input"][:, 0] = 1
+    gate = torch.zeros(1, 128, 128, device=device)
+    up = torch.zeros_like(gate)
+    down = torch.zeros_like(gate)
+    gate[:, 0, 0], up[:, 0, 0] = 32, 14
+    gate[:, 1, 0], up[:, 1, 0] = 0.0078125, 0.25
+    down[:, :, 1] = 1
+    for name, value in (("fc1", gate), ("fc2", down), ("fc3", up)):
+        tensors[f"{name}_weights"] = value.to(torch.float8_e4m3fn).view(torch.uint8)
+        tensors[f"{name}_scales"].fill_(1)
+    session = TestQMoEBlockFP8._session(tensors, top_k=1, activation_quantization="dynamic_fp8")
+    actual = TestQMoEBlockFP8._execute(tensors, top_k=1, session=session)
+    torch.testing.assert_close(actual, torch.full_like(actual, 2**-9), atol=0, rtol=0)
 
 
 if __name__ == "__main__":

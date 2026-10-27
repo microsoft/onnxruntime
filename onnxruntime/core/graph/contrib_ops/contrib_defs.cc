@@ -1491,11 +1491,14 @@ constexpr const char* qMoE_ver1_doc = R"DOC(
         dequantized_weight[e, n, k] = float(weight[e, n, k]) * scale[e, n / block_size, k / block_size]
       Partial edge blocks are allowed. No zero points or activation scales are accepted.
       Without a positive block_size, FP8 uses the legacy per-expert fc*_global_scale inputs instead.
-      Block-scaled FP8 does not use global scales. Activations retain the input type (weight-only quantization).
-      On CUDA SM80-or-newer GPUs, SiLU/SwiGLU block-scaled FP8 uses fused weight-only GEMV/GEMM by default.
+      Block-scaled FP8 does not use global scales. By default activations retain the input type (weight-only quantization).
+      activation_quantization='dynamic_fp8' instead selects dynamic per-token K128 activation quantization,
+      with native FP8 dot products, FP32 block-scale accumulation and FP32 routed down-projection reduction.
+      On CUDA SM80-or-newer GPUs, weight-only SiLU/SwiGLU block-scaled FP8 uses fused GEMV/GEMM by default.
       These kernels decode and scale FP8 tiles on chip without materializing full FP16/BF16 weight buffers.
       Set ORT_ENABLE_FP8_FUSED=0 before session creation to select the compact dense-dequant fallback.
-      Other activation types and unsupported routing sizes retain the fallback.
+      Other activation types and unsupported routing sizes retain the fallback in weight-only mode.
+      Dynamic activation quantization rejects unsupported configurations instead of falling back to weight-only execution.
       The WebGPU block-FP8 kernel supports block_size=128 with float32 scales and rejects projections
       that exceed 32-bit shader addressing or the device's per-dimension dispatch limit.
 
@@ -1519,8 +1522,151 @@ constexpr const char* qMoE_ver1_doc = R"DOC(
       When swiglu_fusion=2, two GEMMs are fused, and g and l are concatenated on each row.
       )DOC";
 
+static void QMoEDynamicFp8Inference(ONNX_NAMESPACE::InferenceContext& ctx) {
+  using namespace ONNX_NAMESPACE;
+  const auto* quant_type = ctx.getAttribute("quant_type");
+  if (!quant_type || quant_type->s() != "fp8" || getAttribute(ctx, "block_size", 0) != 128) {
+    fail_shape_inference("QMoE dynamic_fp8 requires quant_type='fp8' and block_size=128.");
+  }
+  const int64_t bits = getAttribute(ctx, "expert_weight_bits", 4);
+  for (const char* name : {"expert_weight_bits", "fc1_expert_weight_bits", "fc2_expert_weight_bits", "fc3_expert_weight_bits"}) {
+    if (getAttribute(ctx, name, bits) != 8) fail_shape_inference("QMoE dynamic_fp8 requires 8-bit expert weights.");
+  }
+  const auto* activation = ctx.getAttribute("activation_type");
+  const int64_t fusion = getAttribute(ctx, "swiglu_fusion", 0);
+  const bool valid_activation = activation &&
+                                ((activation->s() == "silu" && fusion == 0) ||
+                                 (activation->s() == "swiglu" && (fusion == 1 || fusion == 2)));
+  if (!valid_activation ||
+      getAttribute(ctx, "use_sparse_mixer", 0) != 0) {
+    fail_shape_inference("QMoE dynamic_fp8 requires SiLU or fused SwiGLU and softmax/top-k routing.");
+  }
+  for (auto parameter : {std::make_pair("activation_alpha", 1.0f), std::make_pair("activation_beta", 0.0f)}) {
+    const auto* value = ctx.getAttribute(parameter.first);
+    if (value && value->f() != parameter.second) fail_shape_inference("QMoE dynamic_fp8 requires standard SiLU/SwiGLU.");
+  }
+  const auto* limit = ctx.getAttribute("swiglu_limit");
+  if (limit && limit->f() != std::numeric_limits<float>::infinity()) {
+    fail_shape_inference("QMoE dynamic_fp8 does not support activation clipping.");
+  }
+  auto input = [&](size_t index) -> const TypeProto* {
+    return index < ctx.getNumInputs() ? ctx.getInputType(index) : nullptr;
+  };
+  auto type = [&](size_t index, int expected, bool required) {
+    const auto* value = input(index);
+    if (!value) {
+      if (required) fail_type_inference("QMoE dynamic_fp8 requires input ", index, ".");
+      return;
+    }
+    if (expected && value->has_tensor_type() && value->tensor_type().elem_type() &&
+        value->tensor_type().elem_type() != expected) {
+      fail_type_inference("QMoE dynamic_fp8 input ", index, " has an incompatible tensor element type.");
+    }
+  };
+  const auto* x = input(0);
+  const int element_type = x && x->has_tensor_type() ? x->tensor_type().elem_type() : 0;
+  if (element_type && element_type != TensorProto::FLOAT16 && element_type != TensorProto::BFLOAT16) {
+    fail_type_inference("QMoE dynamic_fp8 requires FP16 or BF16 activations.");
+  }
+  type(1, element_type, true);
+  for (size_t index : {2, 5, 8}) type(index, TensorProto::FLOAT8E4M3FN, index != 8);
+  for (size_t index : {3, 6, 9}) type(index, TensorProto::FLOAT, index != 9 || input(8) != nullptr);
+  for (size_t index : {4, 7, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20}) {
+    if (input(index)) fail_shape_inference("QMoE dynamic_fp8 does not accept input ", index, ".");
+  }
+  if ((fusion && input(8)) || (!input(8) && input(9))) {
+    fail_shape_inference("QMoE dynamic_fp8 FC3 weights/scales require separate SiLU projections.");
+  }
+  auto shape = [&](size_t index, int rank) -> const TensorShapeProto* {
+    const auto* value = input(index);
+    if (!value || !value->has_tensor_type() || !value->tensor_type().has_shape()) return nullptr;
+    const auto& result = value->tensor_type().shape();
+    if (rank && result.dim_size() != rank) {
+      fail_shape_inference("QMoE dynamic_fp8 input ", index, " has an invalid rank.");
+    }
+    return &result;
+  };
+  auto dim = [](const TensorShapeProto* value, int axis) -> const TensorShapeProto::Dimension* {
+    return value ? &value->dim(axis) : nullptr;
+  };
+  auto equal = [&](const TensorShapeProto::Dimension* a, const TensorShapeProto::Dimension* b, int divisor = 1) {
+    if (a && b && a->has_dim_value() && b->has_dim_value() && a->dim_value() != b->dim_value() / divisor) {
+      fail_shape_inference("QMoE dynamic_fp8 has incompatible expert, projection or scale dimensions.");
+    }
+  };
+  const auto* xs = shape(0, 0);
+  if (xs && xs->dim_size() != 2 && xs->dim_size() != 3) {
+    fail_shape_inference("QMoE dynamic_fp8 input must have rank 2 or 3.");
+  }
+  const auto* router = shape(1, 2);
+  const auto* fc1 = shape(2, 3);
+  const auto* fc2 = shape(5, 3);
+  const auto* fc3 = shape(8, 3);
+  const int64_t top_k = getAttribute(ctx, "k", 1);
+  if (top_k <= 0 || (fc1 && fc1->dim(0).has_dim_value() && top_k > fc1->dim(0).dim_value())) {
+    fail_shape_inference("QMoE dynamic_fp8 requires 0 < k <= num_experts.");
+  }
+  if (xs) {
+    int64_t tokens = 1;
+    bool known_tokens = true;
+    for (int axis = 0; axis < xs->dim_size() - 1; ++axis) {
+      const auto& d = xs->dim(axis);
+      if (!d.has_dim_value()) {
+        known_tokens = false;
+        continue;
+      }
+      if (d.dim_value() < 0 ||
+          (d.dim_value() > 0 && tokens > std::numeric_limits<int64_t>::max() / d.dim_value())) {
+        fail_shape_inference("QMoE dynamic_fp8 token dimensions are invalid or overflow int64.");
+      }
+      tokens *= d.dim_value();
+    }
+    if (known_tokens) {
+      if (tokens > 65535 / top_k) fail_shape_inference("QMoE dynamic_fp8 supports at most 65535 token/expert pairs.");
+      const auto* router_tokens = dim(router, 0);
+      if (router_tokens && router_tokens->has_dim_value() && router_tokens->dim_value() != tokens) {
+        fail_shape_inference("QMoE dynamic_fp8 router token count must match the flattened input.");
+      }
+    }
+  }
+  for (const auto* weight : {fc1, fc2, fc3}) {
+    if (!weight) continue;
+    for (int axis = 0; axis < 3; ++axis) {
+      const auto& d = weight->dim(axis);
+      if (d.has_dim_value() && (d.dim_value() <= 0 || (axis > 0 && d.dim_value() % 128 != 0))) {
+        fail_shape_inference("QMoE dynamic_fp8 requires positive expert dimensions and projections aligned to 128.");
+      }
+    }
+    equal(dim(weight, 0), dim(fc1, 0));
+  }
+  equal(dim(router, 1), dim(fc1, 0));
+  equal(dim(xs, xs ? xs->dim_size() - 1 : 0), dim(fc1, 2));
+  equal(dim(fc2, 1), dim(fc1, 2));
+  equal(dim(fc2, 2), dim(fc1, 1), fusion ? 2 : 1);
+  if (fc1 && fusion && fc1->dim(1).has_dim_value() && fc1->dim(1).dim_value() % 256 != 0) {
+    fail_shape_inference("QMoE dynamic_fp8 fused intermediate size must be aligned to 128.");
+  }
+  equal(dim(fc3, 1), dim(fc1, 1));
+  equal(dim(fc3, 2), dim(fc1, 2));
+  for (auto indices : {std::make_pair(2, 3), std::make_pair(5, 6), std::make_pair(8, 9)}) {
+    const auto* weight = shape(indices.first, 3);
+    const auto* scale = shape(indices.second, 3);
+    for (int axis = 0; axis < 3; ++axis) equal(dim(scale, axis), dim(weight, axis), axis == 0 ? 1 : 128);
+  }
+}
+
 static void QMoETypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   using namespace ONNX_NAMESPACE;
+  const auto* activation_quantization = ctx.getAttribute("activation_quantization");
+  const std::string mode = activation_quantization ? activation_quantization->s() : "none";
+  if (mode != "none" && mode != "dynamic_fp8") {
+    fail_shape_inference("QMoE activation_quantization must be 'none' or 'dynamic_fp8'.");
+  }
+  if (mode == "dynamic_fp8") {
+    propagateShapeAndTypeFromFirstInput(ctx);
+    QMoEDynamicFp8Inference(ctx);
+    return;
+  }
   const int64_t root_bits = getAttribute(ctx, "expert_weight_bits", 4);
   const int64_t fc1_bits = getAttribute(ctx, "fc1_expert_weight_bits", root_bits);
   const int64_t fc2_bits = getAttribute(ctx, "fc2_expert_weight_bits", root_bits);
@@ -1717,7 +1863,7 @@ constexpr const char* qMoE_int3_doc = R"DOC(
 static OpSchema QMoESchema() {
   constexpr const char* quant_type_doc =
       "Quantization type: 'int' for integer quantization (default), 'fp4' for MXFP4 quantization, "
-      "'nvfp4' for NVFP4 quantization, 'fp8' for FP8 e4m3 weight-only quantization, "
+      "'nvfp4' for NVFP4 quantization, 'fp8' for FP8 e4m3 weights (weight-only unless activation_quantization is set), "
       "or 'wfp4afp8' for MXFP4 weight with FP8 activation. "
       "When quant_type is 'fp4' or 'nvfp4', weights are stored in E2M1 FP4 format (2 values per byte), "
       "fc*_scales inputs contain the FP4 block scales, and fc*_global_scale inputs must be provided. "
@@ -1727,6 +1873,17 @@ static OpSchema QMoESchema() {
       "The INT3 profile requires integer quantization.";
   auto schema = OpSchema()
                     .SetDoc(std::string(qMoE_ver1_doc) + qMoE_int3_doc)
+                    .Attr("activation_quantization",
+                          "'none' (default) retains weight-only execution. 'dynamic_fp8' quantizes consecutive "
+                          "groups of 128 features per token to saturating nearest-even E4M3FN with FP32 scale "
+                          "max(amax(abs(x)),1e-10) * float32(1/448). Requires block-scaled FP8 weights, block_size=128, "
+                          "FP32 weight scales, FP16/BF16 inputs and 128-aligned projections. Gate/up outputs "
+                          "narrow to the input type; their FP32 SiLU/SwiGLU result is quantized directly for FC2. "
+                          "FC2 stays FP32, multiplies routing weights rounded to the input type, and reduces "
+                          "in FP32 before the final output cast. Biases, supplied activation/global scales, "
+                          "zero points, router_weights and nonstandard activation parameters are unsupported. "
+                          "CUDA requires native FP8 MMA (SM89+) and at most 65535 token/expert pairs.",
+                          AttributeProto::STRING, std::string("none"))
                     .Attr("activation_type",
                           "Activation function to use. Choose from relu, gelu, silu, swiglu and identity. CUDA also supports relu2 (squared ReLU). Default is relu",
                           AttributeProto::STRING,

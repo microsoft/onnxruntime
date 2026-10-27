@@ -53,6 +53,102 @@ struct CudaBuffer {
   size_t bytes;
 };
 
+template <typename T>
+void TestDynamicFp8Quantization() {
+  std::array<T, 384> input{};
+  input[128] = T(448.0f);
+  input[129] = T(-448.0f);
+  input[130] = T(1.0625f);
+  input[131] = T(1.1875f);
+  input[256] = T(0.65625f);
+  input[257] = T(57.0f / 32768.0f);
+  CudaBuffer source(sizeof(input));
+  CudaBuffer quantized(input.size());
+  CudaBuffer scales(3 * sizeof(float));
+  source.Upload(input.data());
+  qmoe::LaunchQMoEDynamicFp8Quantize(source.As<T>(), quantized.As<uint8_t>(), scales.As<float>(),
+                                     1, 384, 0, nullptr);
+  std::array<uint8_t, 384> codes{};
+  std::array<float, 3> actual_scales{};
+  quantized.Download(codes.data());
+  scales.Download(actual_scales.data());
+  EXPECT_FLOAT_EQ(actual_scales[0], 1.0e-10f / 448.0f);
+  EXPECT_FLOAT_EQ(actual_scales[1], 1.0f);
+  for (int col = 0; col < 128; ++col) EXPECT_EQ(codes[col], 0);
+  EXPECT_EQ(codes[128], 0x7e);
+  EXPECT_EQ(codes[129], 0xfe);
+  EXPECT_EQ(codes[130], 0x38);
+  EXPECT_EQ(codes[131], 0x3a);
+  // Replacing reciprocal multiplication with division shifts this scale by one ULP and flips the tie.
+  EXPECT_EQ(actual_scales[2], 0.65625f * (1.0f / 448.0f));
+  EXPECT_EQ(codes[257], 0x39);
+}
+
+TEST(CUDA_EP_Unittest, QMoEDynamicFp8QuantizationScalesAndNearestEven) {
+  TestDynamicFp8Quantization<half>();
+  TestDynamicFp8Quantization<__nv_bfloat16>();
+}
+
+TEST(CUDA_EP_Unittest, QMoEDynamicFp8QuantizesActivationWithoutBFloat16RoundTrip) {
+  std::array<__nv_bfloat16, 256> input{};
+  input[0] = __nv_bfloat16(32.0f);
+  input[1] = __nv_bfloat16(14.0f);
+  input[2] = __nv_bfloat16(0.0078125f);
+  input[3] = __nv_bfloat16(0.25f);
+  CudaBuffer source(sizeof(input));
+  CudaBuffer quantized(128);
+  CudaBuffer scales(sizeof(float));
+  source.Upload(input.data());
+  qmoe::LaunchQMoEDynamicFp8Quantize(source.As<__nv_bfloat16>(), quantized.As<uint8_t>(), scales.As<float>(),
+                                     1, 128, 2, nullptr);
+  std::array<uint8_t, 128> codes{};
+  quantized.Download(codes.data());
+  // The FP32 product is just above the E4M3 zero/subnormal midpoint; BF16 would round to the midpoint.
+  EXPECT_EQ(codes[0], 0x7e);
+  EXPECT_EQ(codes[1], 0x01);
+}
+
+template <typename T>
+void TestDynamicFp8RoutingWeightRounding() {
+  std::vector<uint8_t> weights(128 * 128, 0x38);
+  std::vector<uint8_t> input(128, 0x38);
+  const float scale = 1.0f;
+  const float coefficient = 0.1f;
+  const int route = 0;
+  const std::array<int, 2> tiles{0, 1};
+  const std::array<int64_t, 2> offsets{0, 1};
+  CudaBuffer w(weights.size()), x(input.size()), s(sizeof(float)), r(sizeof(float));
+  CudaBuffer map(sizeof(int)), tile_offsets(sizeof(tiles)), expert_offsets(sizeof(offsets));
+  CudaBuffer output(128 * sizeof(float));
+  w.Upload(weights.data());
+  x.Upload(input.data());
+  s.Upload(&scale);
+  r.Upload(&coefficient);
+  map.Upload(&route);
+  tile_offsets.Upload(tiles.data());
+  expert_offsets.Upload(offsets.data());
+  qmoe::QMoEFp8ProjectionParams params;
+  params.weights = w.As<uint8_t>();
+  params.scales = s.As<float>();
+  params.tile_offsets = tile_offsets.As<int>();
+  params.expert_offsets = expert_offsets.As<int64_t>();
+  params.num_experts = params.num_rows = params.expanded_rows = 1;
+  params.n = params.k = params.block_size = 128;
+  qmoe::LaunchQMoEDynamicFp8Projection<T, float>(
+      params, x.As<uint8_t>(), s.As<float>(), output.As<float>(), r.As<float>(), map.As<int>(), 1, nullptr);
+  std::array<float, 128> actual{};
+  output.Download(actual.data());
+  const float expected = 128.0f * static_cast<float>(T(coefficient));
+  EXPECT_NE(expected, 128.0f * coefficient);
+  for (float value : actual) EXPECT_FLOAT_EQ(value, expected);
+}
+
+TEST(CUDA_EP_Unittest, QMoEDynamicFp8RoundsRoutingWeightsBeforeFp32Product) {
+  if (!qmoe::QMoEDynamicFp8Supported()) GTEST_SKIP() << "Native FP8 MMA requires an SM89+ kernel.";
+  TestDynamicFp8RoutingWeightRounding<half>();
+  TestDynamicFp8RoutingWeightRounding<__nv_bfloat16>();
+}
+
 TEST(CUDA_EP_Unittest, QMoEFp8CompactExpertsPreservesRoutesAndClearsUnusedSlots) {
   constexpr int num_experts = 512;
   constexpr int capacity = 6;

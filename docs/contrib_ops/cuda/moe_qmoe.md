@@ -1411,7 +1411,40 @@ partial final tiles, and the decode scratch bound. Internal CUDA tests in
 `qmoe_fp8_compaction_test.cc` check expert remapping, unused slots, and selected
 weight/bias decoding for separate and fused layouts.
 
-### 10.4 Kernel instantiation files
+### 10.4 Dynamic block-FP8 activations
+
+Set `activation_quantization="dynamic_fp8"` to opt into W8A8 execution instead of
+the default `activation_quantization="none"` weight-only path. This mode requires
+`quant_type="fp8"`, `expert_weight_bits=8`, `block_size=128`, FP32 weight scale
+grids, FP16/BF16 inputs, and hidden/intermediate dimensions divisible by 128.
+The existing row-major FP8 weight layouts and separate gate/up or fused SwiGLU
+layouts are unchanged. Standard SiLU/SwiGLU is supported; biases, zero points,
+activation clipping/parameter overrides, `router_weights`, and supplied
+activation/global scales are rejected.
+
+For each token and consecutive group of 128 features, compute the FP32 scale
+`max(amax(abs(x)), 1e-10) * float32(1/448)`, then clamp `x / scale` to `[-448,448]`
+and convert to E4M3FN with round-to-nearest-even. This quantization is performed
+before gate/up projection and again directly on its FP32 SiLU/SwiGLU result.
+The rounded FP32 reciprocal multiplication is intentional: replacing it with
+a correctly rounded division can shift a scale by one ULP and change FP8 codes.
+Gate/up projection outputs round to the input type, but there is **no**
+FP16/BF16 rounding between the activation product and the second quantizer.
+Native FP8 MMA accumulates each K128 dot in FP32, applies that group's activation
+and weight scales, then adds it to the FP32 projection accumulator.
+Down projection remains FP32, multiplies the selected routing coefficients
+rounded to the input type, and reduces in top-k order in FP32 before casting
+the final output. This is not equivalent to FP8 QDQ followed by A16 GEMM.
+
+CUDA requires SM89+ and a kernel compiled for SM89 or newer. The existing
+`onnxruntime_USE_FP8_QMOE=ON` build option is required. Dynamic mode rejects
+`ORT_ENABLE_FP8_FUSED=0` and invocations with more than 65535 token/expert pairs
+instead of silently falling back to weight-only execution. Chunk longer
+prefills at the graph boundary. Activation scratch contains FP8 values and FP32
+group scales; no dense expert-weight buffer is allocated. Debug dispatch is
+`fp8_dynamic_mma` with `DequantWeightBytes=0`.
+
+### 10.5 Kernel instantiation files
 
 | File | Template |
 |------|----------|

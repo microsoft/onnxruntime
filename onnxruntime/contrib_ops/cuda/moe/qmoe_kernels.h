@@ -311,6 +311,23 @@ void LaunchQMoEFp8Projection(const QMoEFp8ProjectionParams& params,
 bool QMoEFp8GemvSupportsNativeDecode();
 bool QMoEFp8GemvKernelUsesNativeDecode(const void* kernel);
 
+bool QMoEDynamicFp8Supported();
+
+// activation: 0 = input, 1 = SiLU, 2 = SiLU(gate) * up with interleaved gate/up columns.
+template <typename T>
+void LaunchQMoEDynamicFp8Quantize(const T* input, uint8_t* quantized, float* scales,
+                                  int rows, int cols, int activation, cudaStream_t stream);
+
+template <typename T, typename OutputT>
+void LaunchQMoEDynamicFp8Projection(const QMoEFp8ProjectionParams& params,
+                                    const uint8_t* input, const float* input_scales, OutputT* output,
+                                    const float* routing_weights, const int* routed_rows, int top_k,
+                                    cudaStream_t stream);
+
+template <typename T>
+void LaunchQMoEDynamicFp8Finalize(const float* input, T* output, const int* unpermuted_to_permuted,
+                                  int rows, int cols, int top_k, cudaStream_t stream);
+
 template <typename T, typename InputT = T>
 void LaunchQMoEFp8Activation(const InputT* input, const T* bias, T* output,
                              const int* experts, int rows, int inter_size, int fusion,

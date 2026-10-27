@@ -381,6 +381,20 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
 
   block_size_ = op_kernel_info.GetAttrOrDefault<int64_t>("block_size", -1);
   this->quant_type_ = op_kernel_info.GetAttrOrDefault<std::string>("quant_type", "int");
+  const auto activation_quantization =
+      op_kernel_info.GetAttrOrDefault<std::string>("activation_quantization", "none");
+  ORT_ENFORCE(activation_quantization == "none" || activation_quantization == "dynamic_fp8",
+              "activation_quantization must be 'none' or 'dynamic_fp8'.");
+  dynamic_fp8_ = activation_quantization == "dynamic_fp8";
+  ORT_ENFORCE(!dynamic_fp8_ ||
+                  (quant_type_ == "fp8" && block_size_ == 128 && expert_weight_bits_ == 8 && !is_mixed_width &&
+                   sm_ >= 89 && !use_sparse_mixer_ &&
+                   (activation_type_ == onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Silu ||
+                    activation_type_ == onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Swiglu) &&
+                   activation_alpha_ == 1.0f && activation_beta_ == 0.0f &&
+                   swiglu_limit_ == std::numeric_limits<float>::infinity()),
+              "QMoE dynamic_fp8 requires SM89+, block-scaled FP8 weights with block_size=128, "
+              "SiLU or standard SwiGLU, and softmax/top-k routing.");
   ORT_ENFORCE(quant_type_ == "int" || quant_type_ == "fp4" || quant_type_ == "nvfp4" ||
                   quant_type_ == "fp8" || quant_type_ == "wfp4afp8",
               "quant_type must be 'int', 'fp4', 'nvfp4', 'fp8', or 'wfp4afp8', but got '", quant_type_, "'");
@@ -451,6 +465,8 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
 #endif
   enable_fp8_fused_ = quant_type_ == "fp8" && sm_ >= 80 &&
                       onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_FP8_FUSED", 1) != 0;
+  ORT_ENFORCE(!dynamic_fp8_ || (enable_fp8_fused_ && QMoEDynamicFp8Supported()),
+              "QMoE dynamic_fp8 requires fused execution and a CUDA kernel compiled for SM89 or newer.");
 
   using namespace onnxruntime::llm::kernels::cutlass_kernels;
 
@@ -788,6 +804,16 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   const bool is_fp4_family = is_fp4 || is_nvfp4;
   const bool is_fp8 = (quant_type_ == "fp8");
   const bool is_block_fp8 = is_fp8 && block_size_ > 0;
+  if (dynamic_fp8_) {
+    for (int index : {4, 7, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20}) {
+      ORT_RETURN_IF(context->Input<Tensor>(index) != nullptr,
+                    "QMoE dynamic_fp8 does not accept bias, zero points, router_weights or supplied activation/global scales.");
+    }
+    for (int index : {3, 6, 9}) {
+      const auto* scales = context->Input<Tensor>(index);
+      ORT_RETURN_IF(scales && !scales->IsDataType<float>(), "QMoE dynamic_fp8 requires FP32 weight scales.");
+    }
+  }
   const bool is_wfp4afp8 = (quant_type_ == "wfp4afp8");
   const bool is_int = (quant_type_ == "int");
   const bool is_mixed_width = fc1_expert_weight_bits_ != expert_weight_bits_ ||
@@ -971,6 +997,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                       "Block-scaled FP8 requires row-major expert weights [E,N,K].");
     ORT_RETURN_IF_NOT(moe_params.hidden_size % 8 == 0 && moe_params.inter_size % 8 == 0,
                       "Block-scaled FP8 CUDA requires hidden_size and inter_size to be multiples of 8.");
+    ORT_RETURN_IF(dynamic_fp8_ && (moe_params.hidden_size % 128 != 0 || moe_params.inter_size % 128 != 0),
+                  "QMoE dynamic_fp8 requires hidden and intermediate sizes to be multiples of 128.");
     ORT_RETURN_IF_ERROR(moe_helper::CheckFp8BlockScale<Tensor>(
         context->Input<Tensor>(3), moe_params.num_experts, fc1_n, moe_params.hidden_size, block_size_, "fc1_scales"));
     ORT_RETURN_IF_ERROR(moe_helper::CheckFp8BlockScale<Tensor>(
@@ -1059,6 +1087,10 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   ORT_RETURN_IF_NOT(k_ > 0 && k_ <= moe_params.num_experts,
                     "QMoE requires 0 < k <= num_experts, got k=", k_,
                     " and num_experts=", moe_params.num_experts);
+  if (dynamic_fp8_ && moe_params.num_rows == 0) {
+    context->Output(0, input->Shape());
+    return Status::OK();
+  }
 
   // The INT4/INT8 weight-only path stores B in the column-interleaved layout (ColumnMajorTileInterleave),
   // whose CUTLASS pitchlinear iterators require the GEMM reduction dim K to be a whole multiple of the
@@ -1379,6 +1411,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                              (kernel_activation_type == ActivationType::Silu ||
                               kernel_activation_type == ActivationType::Swiglu) &&
                              moe_params.num_rows <= 65535 / k_;
+  ORT_RETURN_IF(dynamic_fp8_ && !use_fp8_fused,
+                "QMoE dynamic_fp8 requires at most 65535 expanded routing rows; chunk the input tokens.");
   // Offline-packed SM80 bytes cannot be consumed by the dense dequantization fallback.
   ORT_RETURN_IF(preloaded_int2_or_mixed && !use_packed_int,
                 "INT2 or mixed-width CUDA QMoE with weights_prepacked=1 requires a packed execution path "
@@ -1651,15 +1685,27 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     const int fc1_n = inter * (fusion ? 2 : 1);
     const int max_routes = narrow<int>(row_tile_plan.rows_per_tile * k_);
     const size_t element_size = input->DataType()->Size();
-    const size_t projection_element_size = fusion ? element_size : sizeof(float);
+    const size_t projection_element_size = fusion || dynamic_fp8_ ? element_size : sizeof(float);
     auto row_map = GetScratchBuffer<int>(max_routes, GetComputeStream(context));
     auto sorted_experts = GetScratchBuffer<int>(max_routes, GetComputeStream(context));
     auto expert_offsets = GetScratchBuffer<int64_t>(num_experts + 1, GetComputeStream(context));
     auto tile_offsets = GetScratchBuffer<int>(num_experts + 1, GetComputeStream(context));
     const size_t projection_bytes = SafeInt<size_t>(max_routes) * fc1_n * projection_element_size;
     auto projection = GetScratchBuffer<void>(projection_bytes, GetComputeStream(context));
-    auto activation = GetScratchBuffer<void>(SafeInt<size_t>(max_routes) * inter * element_size, GetComputeStream(context));
-    auto result = GetScratchBuffer<void>(SafeInt<size_t>(max_routes) * hidden * element_size, GetComputeStream(context));
+    IAllocatorUniquePtr<void> activation;
+    if (!dynamic_fp8_) {
+      activation = GetScratchBuffer<void>(SafeInt<size_t>(max_routes) * inter * element_size, GetComputeStream(context));
+    }
+    auto result = GetScratchBuffer<void>(SafeInt<size_t>(max_routes) * hidden *
+                                             (dynamic_fp8_ ? sizeof(float) : element_size),
+                                         GetComputeStream(context));
+    const size_t quantized_elements = SafeInt<size_t>(dynamic_fp8_ ? max_routes : 0) * std::max(hidden, inter);
+    IAllocatorUniquePtr<uint8_t> quantized;
+    IAllocatorUniquePtr<float> activation_scales;
+    if (dynamic_fp8_) {
+      quantized = GetScratchBuffer<uint8_t>(quantized_elements, GetComputeStream(context));
+      activation_scales = GetScratchBuffer<float>(quantized_elements / 128, GetComputeStream(context));
+    }
     auto scale_type = [](const Tensor* tensor) {
       return tensor->IsDataType<float>() ? 0 : (tensor->IsDataType<MLFloat16>() ? 1 : 2);
     };
@@ -1691,7 +1737,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
             expert_indices, sorted_experts.get(), row_map.get(), unpermuted_row_to_permuted_row, expert_offsets.get(),
             counts.get(), cumulative_counts.get(), blocked_rows.get(), rows, num_experts, k_, 0, stream);
       }
-      const bool gemm = rows > 8;
+      const bool gemm = dynamic_fp8_ || rows > 8;
       if (gemm) {
         LaunchQMoEFp8ExpertTiles(expert_offsets.get(), tile_offsets.get(), num_experts, stream);
       }
@@ -1716,6 +1762,29 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
         params.block_size = narrow<int>(block_size_);
         params.fusion = fusion;
         const auto* tile_input = static_cast<const T*>(input->DataRaw()) + row_offset * hidden;
+        if (dynamic_fp8_) {
+          LaunchQMoEDynamicFp8Quantize(tile_input, quantized.get(), activation_scales.get(), rows, hidden, 0, stream);
+          LaunchQMoEDynamicFp8Projection<T, T>(
+              params, quantized.get(), activation_scales.get(), static_cast<T*>(projection.get()),
+              nullptr, nullptr, narrow<int>(k_), stream);
+          LaunchQMoEDynamicFp8Quantize(static_cast<const T*>(projection.get()), quantized.get(),
+                                       activation_scales.get(), routes, inter, fusion ? 2 : 1, stream);
+          params.weights = static_cast<const uint8_t*>(fc2_experts_weights->DataRaw());
+          params.scales = fc2_scale_tensor->DataRaw();
+          params.up_weights = nullptr;
+          params.up_scales = nullptr;
+          params.row_to_unpermuted = nullptr;
+          params.n = hidden;
+          params.k = inter;
+          params.fusion = 0;
+          LaunchQMoEDynamicFp8Projection<T, float>(
+              params, quantized.get(), activation_scales.get(), static_cast<float*>(result.get()),
+              expert_scales, row_map.get(), narrow<int>(k_), stream);
+          LaunchQMoEDynamicFp8Finalize(static_cast<const float*>(result.get()),
+                                       static_cast<T*>(output->MutableDataRaw()) + row_offset * hidden,
+                                       unpermuted_row_to_permuted_row, rows, hidden, narrow<int>(k_), stream);
+          return;
+        }
         const auto* fc1_bias = fc1_experts_bias_optional ? static_cast<const T*>(fc1_experts_bias_optional->DataRaw()) : nullptr;
         auto project_and_activate = [&](auto* projected) {
           LaunchQMoEFp8Projection(params, tile_input, projected, stream);
@@ -1760,8 +1829,11 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     }
     if (enable_kernel_debug_info_) {
       const size_t activation_bytes = SafeInt<size_t>(projection_bytes) +
-                                      SafeInt<size_t>(max_routes) * (inter + hidden) * element_size;
-      PrintQMoEKernelDebugInfo(row_tile_plan.rows_per_tile > 8 ? "fp8_fused_gemm" : "fp8_fused_gemv",
+                                      SafeInt<size_t>(dynamic_fp8_ ? 0 : max_routes) * inter * element_size +
+                                      SafeInt<size_t>(max_routes) * hidden *
+                                          (dynamic_fp8_ ? sizeof(float) : element_size) +
+                                      quantized_elements + (quantized_elements / 128) * sizeof(float);
+      PrintQMoEKernelDebugInfo(dynamic_fp8_ ? "fp8_dynamic_mma" : (row_tile_plan.rows_per_tile > 8 ? "fp8_fused_gemm" : "fp8_fused_gemv"),
                                moe_params.num_rows, row_tile_plan.rows_per_tile, final_tile_rows,
                                max_routes, final_tile_rows * k_, 0, total_scratch_bytes + activation_bytes);
       std::cout << "QMoE FP8 ExpertCapacity=" << num_experts << " DequantWeightBytes=0" << std::endl;
