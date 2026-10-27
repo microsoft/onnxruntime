@@ -51,12 +51,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "prefill) does not commit state or touch the ring, and may use any number of rows. Invalid device "
                 "metadata sets error bits in ctl[5] (4: invalid row count or state, 16: invalid result ring) and mutes "
                 "the request. The status words are OR-ed together and a non-zero value sets bit 2 of ctl[5].")
-        .Attr("head_rows", "Number of verifier rows, 3 through 8. Non-muted requests must provide exactly this many "
-                           "rows. Default is 8.",
+        .Attr("head_rows",
+              "Number of verifier rows, 3 through 8. Non-muted requests must provide exactly this many "
+              "rows. Default is 8.",
               AttributeProto::INT, static_cast<int64_t>(8))
         .Input(0, "next_tokens", "Verifier predictions with shape [batch, rows], or [rows] for batch one.", "I64")
-        .Input(1, "input_ids", "Verifier input IDs; the draft tokens are input_ids[b, 1:rows]. The number of "
-                               "elements must be a multiple of the batch size and at least batch * rows.",
+        .Input(1, "input_ids",
+               "Verifier input IDs; the draft tokens are input_ids[b, 1:rows]. The number of "
+               "elements must be a multiple of the batch size and at least batch * rows.",
                "I64")
         .Input(2, "status", "Verifier status words, shared by all batch items.", "I32")
         .Input(3, "ctl",
