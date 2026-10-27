@@ -13,16 +13,8 @@ namespace cuda {
 template <typename T>
 class GatedAdd final : public onnxruntime::cuda::CudaKernel {
  public:
-  explicit GatedAdd(const OpKernelInfo& info)
-      : CudaKernel(info),
-        sigmoid_in_fp32_(info.GetAttrOrDefault<int64_t>("sigmoid_in_fp32", 1) == 1) {
-    const int64_t fp32 = info.GetAttrOrDefault<int64_t>("sigmoid_in_fp32", 1);
-    ORT_ENFORCE(fp32 == 0 || fp32 == 1, "GatedAdd sigmoid_in_fp32 must be zero or one");
-  }
+  explicit GatedAdd(const OpKernelInfo& info) : CudaKernel(info) {}
   Status ComputeInternal(OpKernelContext* context) const override;
-
- private:
-  bool sigmoid_in_fp32_{true};
 };
 
 }  // namespace cuda

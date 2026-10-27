@@ -28,8 +28,7 @@ Status LaunchProjectedSigmoidGateMul(cudaStream_t stream,
                                      uint16_t* output,
                                      int64_t rows,
                                      int64_t input_width,
-                                     int64_t output_width,
-                                     bool sigmoid_in_fp32);
+                                     int64_t output_width);
 
 }  // namespace cuda
 }  // namespace contrib
