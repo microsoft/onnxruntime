@@ -183,5 +183,56 @@ TEST(WebGpuDequantizeLinearTest, EmptyPerTensorAndPerAxisShapesAreValidated) {
                                  "x_zero_point must match x_scale");
 }
 
+template <typename T>
+std::vector<T> FromFloats(const std::vector<float>& values) {
+  std::vector<T> result;
+  result.reserve(values.size());
+  for (float v : values) {
+    result.push_back(T(v));
+  }
+  return result;
+}
+
+SessionOptions WebGpuOnlySessionOptions() {
+  SessionOptions options;
+  ORT_THROW_IF_ERROR(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  return options;
+}
+
+// WebNN conformance: dequantizeLinear uint8 1D tensor with 1D scale, implicit block_size = 2
+// (issue #32730). Covers both an explicit block_size and one inferred from the shapes.
+template <typename FloatType>
+void TestDequantizeLinearUint8OneDimensionBlocked(int64_t block_size, float abs_error) {
+  auto provider = DefaultWebGpuExecutionProvider();
+  if (!provider) {
+    GTEST_SKIP() << "WebGPU EP is not available";
+  }
+  const std::vector<uint8_t> x{12, 24, 35, 123};
+  const std::vector<FloatType> scale = FromFloats<FloatType>({9.343092918395996f, 4.617084980010986f});
+  const std::vector<uint8_t> zero_point{128, 110};
+  std::vector<float> expected;
+  for (size_t i = 0; i < x.size(); ++i) {
+    expected.push_back((static_cast<float>(x[i]) - zero_point[i / 2]) * static_cast<float>(scale[i / 2]));
+  }
+
+  OpTester test("DequantizeLinear", 21);
+  test.AddAttribute<int64_t>("axis", 0);
+  test.AddAttribute<int64_t>("block_size", block_size);
+  test.AddInput<uint8_t>("x", {4}, x);
+  test.AddInput<FloatType>("x_scale", {2}, scale, true);
+  test.AddInput<uint8_t>("x_zero_point", {2}, zero_point, true);
+  test.AddOutput<FloatType>("y", {4}, FromFloats<FloatType>(expected));
+  test.SetOutputAbsErr("y", abs_error);
+  test.Config(WebGpuOnlySessionOptions()).ConfigEp(std::move(provider)).RunWithConfig();
+}
+
+TEST(WebGpuDequantizeLinearTest, Uint8OneDimensionBlockSize2) {
+  for (int64_t block_size : {0, 2}) {
+    SCOPED_TRACE(block_size);
+    TestDequantizeLinearUint8OneDimensionBlocked<float>(block_size, 1e-3f);
+    TestDequantizeLinearUint8OneDimensionBlocked<MLFloat16>(block_size, 1.0f);
+  }
+}
+
 }  // namespace
 }  // namespace onnxruntime::test
