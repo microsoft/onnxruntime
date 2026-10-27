@@ -3,6 +3,7 @@
 
 #ifndef ORT_MINIMAL_BUILD
 #include <algorithm>
+#include <cmath>
 #include <optional>
 
 #include "gtest/gtest.h"
@@ -1054,6 +1055,30 @@ TEST(MatMulNBits, BFloat16_Int8_SmallMFallback) {
   }
 
   TestInt8SmallMFallback<BFloat16>();
+}
+#endif
+
+#if defined(USE_WEBGPU)
+TEST(MatMulNBits, WebGpu_DP4A_NarrowN_Int8) {
+  // Small-M reduction, the tiled threshold, and row/column tails in both tile widths.
+  for (int64_t k : {256, 1920, 2048, 4096}) {
+    for (const auto& [m, n] : {std::pair<int64_t, int64_t>{3, 16}, {4, 32}, {65, 48}, {65, 80}}) {
+      for (bool has_zero_point : {false, true}) {
+        TestOptions8Bits opts{};
+        opts.M = m;
+        opts.N = n;
+        opts.K = k;
+        opts.accuracy_level = 4;
+        opts.has_zero_point = has_zero_point;
+        opts.has_bias = true;
+        // Activation-quantization error for these Gaussian inputs grows with sqrt(K).
+        opts.output_abs_error = 0.05f * std::sqrt(static_cast<float>(k) / 256.0f);
+        opts.output_rel_error = 0.02f;
+        RunTest8Bits<MLFloat16>(opts);
+        RunTest8Bits<float>(opts);
+      }
+    }
+  }
 }
 #endif
 

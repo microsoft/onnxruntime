@@ -66,7 +66,7 @@ Status MatMulNBitsWideTileProgram::GenerateShaderCode(ShaderHelper& shader) cons
                              WGSL_TEMPLATE_VARIABLE(scales, scales));
 }
 
-// Apply similar idea with DP4AMatMulNBitsSmallMProgram algorithm.
+// Uses the same K-parallel reduction strategy as DP4AMatMulNBitsKParallelProgram.
 Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& a = shader.AddInput("input_a", ShaderUsage::UseValueTypeAlias);
   const auto& b = shader.AddInput("input_b");
