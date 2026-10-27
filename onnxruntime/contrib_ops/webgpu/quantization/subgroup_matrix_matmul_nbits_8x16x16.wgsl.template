@@ -112,7 +112,9 @@ $MAIN {
   var sg_mat_offset_a = (m_tile * kSgMatCountM + sg_idx) * (uniforms.K / kSgMatDimK) * kSgMatLeftSize;
 
   var sg_mat_acc : array<SgMatResult, kSgMatCountN>;
-  for (var k_idx : u32 = 0; k_idx < uniforms.K; k_idx += kChunkSizeK) {
+  // Read K once so the loop condition doesn't re-read the uniform buffer on every iteration.
+  let K = uniforms.K;
+  for (var k_idx : u32 = 0; k_idx < K; k_idx += kChunkSizeK) {
     let k_block_idx = k_idx / kQuantizationBlockSize;
     for (var load_unit = local_idx; load_unit < kTileN * kPacksPerBlock; load_unit += workgroup_size_x) {
       let n_idx = load_unit / kPacksPerBlock;
@@ -162,13 +164,12 @@ $MAIN {
                                                                           kSgMatDimK);
       sg_mat_offset_a += kSgMatLeftSize;
 
-      var sg_mat_offset_b = sg_mat_k_idx * kSgMatDimK;
+      let sg_mat_offset_b_0 = sg_mat_k_idx * kSgMatDimK;
       for (var sg_mat_n_idx = 0u; sg_mat_n_idx < kSgMatCountN; sg_mat_n_idx++) {
+        let sg_mat_offset_b = sg_mat_offset_b_0 + kSgMatStrideN * sg_mat_n_idx;
         var sg_mat_b : SgMatRight = subgroupMatrixLoad<SgMatRight, col_major>(&tile_b,
                                                                               sg_mat_offset_b,
                                                                               kChunkSizeK);
-        sg_mat_offset_b += kSgMatStrideN;
-
         sg_mat_acc[sg_mat_n_idx] = subgroupMatrixMultiplyAccumulate(sg_mat_a, sg_mat_b, sg_mat_acc[sg_mat_n_idx]);
       }
     }
@@ -210,6 +211,10 @@ $MAIN {
     }
   }
 #else
+  // The row-major result store has a minimum stride of kSgMatDimN. Clamping it here lets Tint's range
+  // analysis prove it and skip its own max() on every store.
+  let stride = max(uniforms.N, kSgMatDimN);
+
   // A trailing M-tile may be partial (M is not required to be a multiple of
   // kTileM). Writing it with subgroupMatrixStore straight to output would run
   // past M. That's not just an out-of-bounds risk: a subgroupMatrixStore whose
@@ -230,7 +235,7 @@ $MAIN {
       subgroupMatrixStore<row_major>(&output,
                                      out_base + sg_mat_n_idx * kSgMatDimN,
                                      sg_mat_acc[sg_mat_n_idx],
-                                     uniforms.N);
+                                     stride);
     }
   } else {
     let out_base = sg_idx * kSgMatDimM * uniforms.N + global_base_n;
@@ -238,7 +243,7 @@ $MAIN {
       subgroupMatrixStore<row_major>(&tail_output,
                                      out_base + sg_mat_n_idx * kSgMatDimN,
                                      sg_mat_acc[sg_mat_n_idx],
-                                     uniforms.N);
+                                     stride);
     }
   }
 #else
@@ -250,7 +255,7 @@ $MAIN {
     subgroupMatrixStore<row_major>(&output,
                                    out_base + sg_mat_n_idx * kSgMatDimN,
                                    sg_mat_acc[sg_mat_n_idx],
-                                   uniforms.N);
+                                   stride);
   }
 #endif
 #endif
