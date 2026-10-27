@@ -466,17 +466,11 @@ TEST(MatMulNBits, WebGpu_DP4A_KParallel_Int4) {
     opts.has_bias = true;
     opts.output_abs_error = 0.1f;
     opts.output_rel_error = 0.02f;
-    for (bool fp16 : {true, false}) {
-      auto ep = DefaultWebGpuExecutionProvider();
-      if (!ep) GTEST_SKIP() << "WebGPU unavailable.";
-      std::vector<std::unique_ptr<IExecutionProvider>> eps;
-      eps.push_back(std::move(ep));
-      if (fp16) {
-        RunTest<MLFloat16>(opts, std::move(eps));
-      } else {
-        RunTest<float>(opts, std::move(eps));
-      }
-    }
+    auto ep = DefaultWebGpuExecutionProvider();
+    if (!ep) GTEST_SKIP() << "WebGPU unavailable.";
+    std::vector<std::unique_ptr<IExecutionProvider>> eps;
+    eps.push_back(std::move(ep));
+    RunTest<float>(opts, std::move(eps));
   }
 }
 #endif

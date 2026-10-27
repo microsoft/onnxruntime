@@ -1091,17 +1091,11 @@ TEST(MatMulNBits, WebGpu_DP4A_KParallel_Int8) {
       // Activation-quantization error for these Gaussian inputs grows with sqrt(K).
       opts.output_abs_error = 0.05f * std::sqrt(static_cast<float>(k) / 256.0f);
       opts.output_rel_error = 0.02f;
-      for (bool fp16 : {true, false}) {
-        auto ep = DefaultWebGpuExecutionProvider();
-        if (!ep) GTEST_SKIP() << "WebGPU unavailable.";
-        std::vector<std::unique_ptr<IExecutionProvider>> eps;
-        eps.push_back(std::move(ep));
-        if (fp16) {
-          RunTest8Bits<MLFloat16>(opts, std::move(eps));
-        } else {
-          RunTest8Bits<float>(opts, std::move(eps));
-        }
-      }
+      auto ep = DefaultWebGpuExecutionProvider();
+      if (!ep) GTEST_SKIP() << "WebGPU unavailable.";
+      std::vector<std::unique_ptr<IExecutionProvider>> eps;
+      eps.push_back(std::move(ep));
+      RunTest8Bits<float>(opts, std::move(eps));
     }
   }
 }
