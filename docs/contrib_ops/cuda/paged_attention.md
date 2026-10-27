@@ -83,8 +83,7 @@ never populated or consumed), `head_sink` / smooth softmax, QK-Norm, quantized c
 
 Structural limits in the current implementation:
 
-- Sequence metadata is canonicalized with parallel device kernels and grid-wide scans; this path
-  has no fixed batch-size limit.
+- Sequence metadata is canonicalized with a single-CTA `cub::BlockScan` kernel (`FusedSanitizeSequenceLengthsSmallBatchKernel`, `workspace_bytes = 0`) for `batch_size < 256` and parallel device kernels with grid-wide CUB scans for `batch_size >= 256`, so this path has no fixed batch-size limit. Trusted runtimes that already validate `block_table`, `cumulative_sequence_length`, and `past_seqlens` can set `session.paged_attention.skip_input_sanitizer` (`"1"`) or `ORT_PAGED_ATTENTION_SKIP_SANITIZER=1` to bypass device-side sanitization and invalid-sequence output masking, using the single-kernel `LaunchGetCumulativeSeqlensKV` path.
 - `block_size % 256 == 0` — see [§18](#18-known-defects-to-fix-first); this is almost certainly a bug.
   *(Partly true. It is a genuine FlashAttention tiling constraint, but a head-size-dependent one. See
   the implementation note in §18.1: validation now accepts any power-of-two `block_size >= 16` and
@@ -1674,9 +1673,12 @@ These block the feature work and should land ahead of it.
    `block_table`. Guard with an early `return` when
    `token_id >= cumulative_seqlens_q[batch_size]`. (`slot_mapping` removes the search entirely on the
    write path, but the gather path still needs the fix.)
-3. **`batch_size <= 256`.** **Fixed.** Sequence metadata canonicalization now uses grid-wide CUB
-   scans and parallel per-sequence bounds checks, so continuous batching is no longer capped at
-   256 concurrent sequences.
+3. **`batch_size <= 256`.** **Fixed.** Sequence metadata canonicalization uses a single-CTA fused
+   `cub::BlockScan` kernel (`FusedSanitizeSequenceLengthsSmallBatchKernel`) for `batch_size < 256`
+   and grid-wide CUB scans for `batch_size >= 256`, so continuous batching is no longer capped at
+   256 concurrent sequences while small-batch decode avoids multi-kernel launch overhead. Trusted
+   runtimes can also set `session.paged_attention.skip_input_sanitizer` (`"1"`) or
+   `ORT_PAGED_ATTENTION_SKIP_SANITIZER=1` to skip device-side sanitization altogether.
 4. **Per-step D→H synchronization — and it blocks CUDA graph capture.** ~~`max_query_len` (and
    `total_kv_tokens` for MEA) are obtained via `cudaStreamSynchronize` every step, once per layer.
    This is not only a throughput bug for the op's primary use case: `cudaStreamSynchronize` on a
