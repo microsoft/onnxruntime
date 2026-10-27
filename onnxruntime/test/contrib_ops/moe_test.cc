@@ -3541,7 +3541,8 @@ TEST(MoETest, QMoETest_Int3AndMixedWidthCudaPrefillParity) {
 
 // FC1/FC2 biases must be added to the FP32 accumulators before the single rounding to FP16/BF16, on both the
 // Tensor Core prefill path and the SIMT path. The gate0 and FC2 column 1 accumulators are `magnitude + 0.75`,
-// which narrows to `magnitude`, so a bias added after narrowing cancels to 0 instead of the exact 0.75. Every
+// which narrows to `magnitude`, so a bias added after narrowing cancels to 0 instead of the exact 0.75. The FP16
+// overflow case sums gate0 to 65536.75, which narrows to inf, and cancels it with a -65504 bias. Every
 // pre-activation that remains after the bias is exactly representable, so results do not depend on rounding
 // the FC1 output to ElementType before the activation.
 template <typename ElementType>
@@ -3566,8 +3567,21 @@ void RunInt3CudaPrefillBiasPrecisionParityTest() {
     return dst;
   };
 
-  for (const float magnitude : {2048.0f, 32768.0f}) {
-    ASSERT_NE(round_elem(magnitude + kFraction), magnitude + kFraction);
+  struct BiasCase {
+    float magnitude;
+    bool gate0_overflows_fp16;
+  };
+  for (const BiasCase bias_case : {BiasCase{2048.0f, false}, BiasCase{32768.0f, false}, BiasCase{32768.0f, true}}) {
+    if (bias_case.gate0_overflows_fp16 && is_bf16) {
+      continue;  // BF16 has the FP32 exponent range, so it cannot overflow here.
+    }
+    const float magnitude = bias_case.magnitude;
+    // The overflow case adds a second `magnitude` term so gate0 reaches 65536.75, and the largest finite FP16 bias
+    // brings it back to 32.75.
+    const float gate0_large = bias_case.gate0_overflows_fp16 ? 2.0f * magnitude : magnitude;
+    const float gate0_bias = bias_case.gate0_overflows_fp16 ? -65504.0f : -magnitude;
+    ASSERT_NE(round_elem(gate0_large + kFraction), gate0_large + kFraction);
+    ASSERT_EQ(std::isinf(round_elem(gate0_large + kFraction)), bias_case.gate0_overflows_fp16);
 
     std::vector<uint8_t> fc1_codes(static_cast<size_t>(num_experts * fc1_rows * hidden_size), kZeroCode);
     std::vector<uint8_t> fc2_codes(static_cast<size_t>(num_experts * hidden_size * inter_size), kZeroCode);
@@ -3583,6 +3597,7 @@ void RunInt3CudaPrefillBiasPrecisionParityTest() {
     token[3] = 32.0f;
     token[4] = 1.0f;
     token[5] = 1.0f;
+    token[6] = bias_case.gate0_overflows_fp16 ? magnitude : 0.0f;
 
     for (int64_t e = 0; e < num_experts; ++e) {
       const auto set_fc1 = [&](int64_t row, int64_t feature, uint8_t code, float scale) {
@@ -3595,9 +3610,10 @@ void RunInt3CudaPrefillBiasPrecisionParityTest() {
       };
 
       // Interleaved FC1 rows: row 2j is gate j and row 2j + 1 is up j.
-      // Column 0: gate = magnitude + 0.75 (cancelled by the bias), up = 2.
+      // Column 0: gate = gate0_large + 0.75 (cancelled by the bias), up = 2.
       set_fc1(0, 0, kPlusOne, 1.0f);
       set_fc1(0, 1, kPlusOne, 1.0f);
+      set_fc1(0, 6, kPlusOne, 1.0f);
       set_fc1(1, 2, kPlusTwo, 1.0f);
       // Column 1: gate = 32, up = magnitude / 32.
       set_fc1(2, 3, kPlusOne, 1.0f);
@@ -3607,7 +3623,7 @@ void RunInt3CudaPrefillBiasPrecisionParityTest() {
       set_fc1(5, 5, kPlusOne, kFraction / 32.0f);
 
       const int64_t bias_base = e * fc1_rows;
-      fc1_bias[static_cast<size_t>(bias_base + 0)] = -magnitude;
+      fc1_bias[static_cast<size_t>(bias_base + 0)] = gate0_bias;
       fc1_bias[static_cast<size_t>(bias_base + 1)] = e == 0 ? 0.25f : -0.5f;
       fc1_bias[static_cast<size_t>(bias_base + 2)] = e == 0 ? 0.5f : -0.5f;
 
@@ -3710,7 +3726,9 @@ void RunInt3CudaPrefillBiasPrecisionParityTest() {
         ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
             "ep.cuda.qmoe_int_dequant_max_scratch_bytes", std::to_string(max_scratch_bytes).c_str()));
       }
-      SCOPED_TRACE(MakeString("is_bf16=", is_bf16, " magnitude=", magnitude, " max_scratch=", max_scratch_bytes));
+      SCOPED_TRACE(MakeString("is_bf16=", is_bf16, " magnitude=", magnitude,
+                              " gate0_overflows_fp16=", bias_case.gate0_overflows_fp16,
+                              " max_scratch=", max_scratch_bytes));
       tester.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
     }
   }
