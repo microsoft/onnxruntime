@@ -286,9 +286,11 @@ void LaunchTransposeScalesActiveExperts(
 template <typename ElementType>
 void RunPackedGroupedGemm(const Int2MoePrefillParams& params,
                           const ElementType* activations, const uint8_t* weights,
-                          const void* scales, const int64_t* offsets, ElementType* output,
-                          int64_t num_rows, int num_columns, int reduction_size, int weight_bits) {
+                          const void* scales, const ElementType* biases, const int64_t* offsets,
+                          ElementType* output, int64_t num_rows, int num_columns, int reduction_size,
+                          int weight_bits) {
   if (weight_bits == 2) {
+    ORT_ENFORCE(biases == nullptr, "INT2 grouped GEMM does not support epilogue biases");
     Int2GroupedGemmParamsT<ElementType> gemm;
     gemm.activations = activations;
     gemm.packed_weights = weights;
@@ -308,7 +310,7 @@ void RunPackedGroupedGemm(const Int2MoePrefillParams& params,
   }
   ORT_ENFORCE(weight_bits == 4, "Packed INT prefill requires INT2 or INT4 weights");
   GroupedGemmInput<ElementType, cutlass::uint4b_t, ElementType, ElementType> gemm{
-      activations, offsets + 1, reinterpret_cast<const cutlass::uint4b_t*>(weights), static_cast<const ElementType*>(scales), nullptr, nullptr, output, nullptr, nullptr, ActivationType::Identity, num_rows, num_columns, reduction_size, params.num_experts, params.block_size, true, false, params.stream, {}, {}};
+      activations, offsets + 1, reinterpret_cast<const cutlass::uint4b_t*>(weights), static_cast<const ElementType*>(scales), nullptr, biases, output, nullptr, nullptr, ActivationType::Identity, num_rows, num_columns, reduction_size, params.num_experts, params.block_size, true, false, params.stream, {}, {}};
   gemm.gemm_config = cutlass_extensions::CutlassGemmConfig(
       cutlass_extensions::CutlassTileConfig::CtaShape32x128x64_WarpShape32x32x64,
       cutlass_extensions::SplitKStyle::NO_SPLIT_K, 1, 4);
@@ -328,6 +330,15 @@ void RunInt2MoePrefillImpl(const Int2MoePrefillParams& params, void* workspace) 
   auto* activated_output = reinterpret_cast<ElementType*>(storage + layout.activated_output);
   auto* fc2_output = reinterpret_cast<ElementType*>(storage + layout.fc2_output);
   const int64_t expanded = params.num_rows * params.top_k;
+
+  // Raw (INT3) weights fold the expert biases into the GEMM epilogue, which adds them to the FP32 accumulators and
+  // rounds once, like the SIMT kernels. The packed INT2/INT4 path keeps adding them after the GEMM result is stored.
+  const auto* fc1_bias = static_cast<const ElementType*>(params.fc1_bias);
+  const auto* fc2_bias = static_cast<const ElementType*>(params.fc2_bias);
+  const ElementType* fc1_gemm_bias = params.weights_are_raw ? fc1_bias : nullptr;
+  const ElementType* fc1_activation_bias = params.weights_are_raw ? nullptr : fc1_bias;
+  const ElementType* fc2_gemm_bias = params.weights_are_raw ? fc2_bias : nullptr;
+  const ElementType* fc2_finalize_bias = params.weights_are_raw ? nullptr : fc2_bias;
 
   threeStepBuildExpertMapsSortFirstToken(
       params.selected_experts, permuted_experts, permuted_rows, params.unpermuted_to_permuted, offsets,
@@ -351,10 +362,10 @@ void RunInt2MoePrefillImpl(const Int2MoePrefillParams& params, void* workspace) 
     LaunchTransposeScalesActiveExperts<ElementType>(
         static_cast<const ElementType*>(params.fc1_scales), transposed_scales, offsets,
         params.num_experts, fc1_n, fc1_k / params.block_size, params.stream);
-    RunPackedGroupedGemm(params, expanded_input, repacked_weights, transposed_scales,
+    RunPackedGroupedGemm(params, expanded_input, repacked_weights, transposed_scales, fc1_gemm_bias,
                          offsets, fc1_output, expanded, fc1_n, fc1_k, /*weight_bits=*/4);
   } else {
-    RunPackedGroupedGemm(params, expanded_input, params.fc1_weights, params.fc1_scales,
+    RunPackedGroupedGemm(params, expanded_input, params.fc1_weights, params.fc1_scales, fc1_gemm_bias,
                          offsets, fc1_output, expanded, params.inter_size * 2,
                          params.hidden_size, params.fc1_weight_bits);
   }
@@ -365,7 +376,7 @@ void RunInt2MoePrefillImpl(const Int2MoePrefillParams& params, void* workspace) 
   activation.limit = params.limit;
   activation.swiglu_fusion = 1;
   doActivation<ElementType, ElementType, ElementType>(
-      activated_output, fc1_output, nullptr, static_cast<const ElementType*>(params.fc1_bias), true, offsets,
+      activated_output, fc1_output, nullptr, fc1_activation_bias, true, offsets,
       params.num_experts, params.inter_size, expanded, ActivationType::Swiglu,
       quant_params, false, nullptr, params.stream, activation);
 
@@ -380,15 +391,15 @@ void RunInt2MoePrefillImpl(const Int2MoePrefillParams& params, void* workspace) 
     LaunchTransposeScalesActiveExperts<ElementType>(
         static_cast<const ElementType*>(params.fc2_scales), transposed_scales, offsets,
         params.num_experts, fc2_n, fc2_k / params.block_size, params.stream);
-    RunPackedGroupedGemm(params, activated_output, repacked_weights, transposed_scales,
+    RunPackedGroupedGemm(params, activated_output, repacked_weights, transposed_scales, fc2_gemm_bias,
                          offsets, fc2_output, expanded, fc2_n, fc2_k, /*weight_bits=*/4);
   } else {
-    RunPackedGroupedGemm(params, activated_output, params.fc2_weights, params.fc2_scales,
+    RunPackedGroupedGemm(params, activated_output, params.fc2_weights, params.fc2_scales, fc2_gemm_bias,
                          offsets, fc2_output, expanded, params.hidden_size,
                          params.inter_size, params.fc2_weight_bits);
   }
   finalizeMoeRoutingKernelLauncher<ElementType, ElementType, ElementType>(
-      fc2_output, static_cast<ElementType*>(params.output), static_cast<const ElementType*>(params.fc2_bias),
+      fc2_output, static_cast<ElementType*>(params.output), fc2_finalize_bias,
       params.routing_weights, params.unpermuted_to_permuted,
       permuted_rows, params.selected_experts, offsets, params.num_rows, params.hidden_size, params.top_k,
       params.num_experts, MOEParallelismConfig{}, false, params.stream);

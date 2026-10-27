@@ -3539,6 +3539,193 @@ TEST(MoETest, QMoETest_Int3AndMixedWidthCudaPrefillParity) {
 #endif
 }
 
+// FC1/FC2 biases must be added to the FP32 accumulators before the single rounding to FP16/BF16, on both the
+// Tensor Core prefill path and the SIMT path. The gate0 and FC2 column 1 accumulators are `magnitude + 0.75`,
+// which narrows to `magnitude`, so a bias added after narrowing cancels to 0 instead of the exact 0.75. Every
+// pre-activation that remains after the bias is exactly representable, so results do not depend on rounding
+// the FC1 output to ElementType before the activation.
+template <typename ElementType>
+void RunInt3CudaPrefillBiasPrecisionParityTest() {
+  constexpr int64_t num_experts = 2;
+  constexpr int64_t num_rows = 16;
+  constexpr int64_t hidden_size = 256;
+  constexpr int64_t inter_size = 128;
+  constexpr int64_t fc1_rows = 2 * inter_size;
+  constexpr int64_t block_size = 64;
+  constexpr int64_t bits = 3;
+  constexpr uint8_t kZeroCode = 4;
+  constexpr uint8_t kPlusOne = 5;
+  constexpr uint8_t kPlusTwo = 6;
+  constexpr float kFraction = 0.75f;
+  constexpr bool is_bf16 = std::is_same_v<ElementType, BFloat16>;
+
+  const auto round_elem = [](float v) { return ElementType(v).ToFloat(); };
+  const auto convert = [](const std::vector<float>& src) {
+    std::vector<ElementType> dst(src.size());
+    for (size_t i = 0; i < src.size(); ++i) dst[i] = ElementType(src[i]);
+    return dst;
+  };
+
+  for (const float magnitude : {2048.0f, 32768.0f}) {
+    ASSERT_NE(round_elem(magnitude + kFraction), magnitude + kFraction);
+
+    std::vector<uint8_t> fc1_codes(static_cast<size_t>(num_experts * fc1_rows * hidden_size), kZeroCode);
+    std::vector<uint8_t> fc2_codes(static_cast<size_t>(num_experts * hidden_size * inter_size), kZeroCode);
+    std::vector<float> fc1_scales(static_cast<size_t>(num_experts * fc1_rows * (hidden_size / block_size)), 1.0f);
+    std::vector<float> fc2_scales(static_cast<size_t>(num_experts * hidden_size * (inter_size / block_size)), 1.0f);
+    std::vector<float> fc1_bias(static_cast<size_t>(num_experts * fc1_rows), 0.0f);
+    std::vector<float> fc2_bias(static_cast<size_t>(num_experts * hidden_size), 0.0f);
+
+    std::vector<float> token(static_cast<size_t>(hidden_size), 0.0f);
+    token[0] = magnitude;
+    token[1] = kFraction;
+    token[2] = 1.0f;
+    token[3] = 32.0f;
+    token[4] = 1.0f;
+    token[5] = 1.0f;
+
+    for (int64_t e = 0; e < num_experts; ++e) {
+      const auto set_fc1 = [&](int64_t row, int64_t feature, uint8_t code, float scale) {
+        const int64_t global_row = e * fc1_rows + row;
+        fc1_codes[static_cast<size_t>(global_row * hidden_size + feature)] = code;
+        fc1_scales[static_cast<size_t>(global_row * (hidden_size / block_size) + feature / block_size)] = scale;
+      };
+      const auto set_fc2 = [&](int64_t row, int64_t feature) {
+        fc2_codes[static_cast<size_t>((e * hidden_size + row) * inter_size + feature)] = kPlusOne;
+      };
+
+      // Interleaved FC1 rows: row 2j is gate j and row 2j + 1 is up j.
+      // Column 0: gate = magnitude + 0.75 (cancelled by the bias), up = 2.
+      set_fc1(0, 0, kPlusOne, 1.0f);
+      set_fc1(0, 1, kPlusOne, 1.0f);
+      set_fc1(1, 2, kPlusTwo, 1.0f);
+      // Column 1: gate = 32, up = magnitude / 32.
+      set_fc1(2, 3, kPlusOne, 1.0f);
+      set_fc1(3, 4, kPlusTwo, magnitude / 64.0f);
+      // Column 2: gate = 32, up = 0.75 / 32.
+      set_fc1(4, 3, kPlusOne, 1.0f);
+      set_fc1(5, 5, kPlusOne, kFraction / 32.0f);
+
+      const int64_t bias_base = e * fc1_rows;
+      fc1_bias[static_cast<size_t>(bias_base + 0)] = -magnitude;
+      fc1_bias[static_cast<size_t>(bias_base + 1)] = e == 0 ? 0.25f : -0.5f;
+      fc1_bias[static_cast<size_t>(bias_base + 2)] = e == 0 ? 0.5f : -0.5f;
+
+      // FC2 row 0 reads activation 0; row 1 sums activations 1 and 2.
+      set_fc2(0, 0);
+      set_fc2(1, 1);
+      set_fc2(1, 2);
+    }
+
+    const auto dequantize = [&](const std::vector<uint8_t>& codes, const std::vector<float>& scales,
+                                int64_t row, int64_t cols, int64_t col) {
+      const float code = static_cast<float>(static_cast<int>(codes[static_cast<size_t>(row * cols + col)]) - kZeroCode);
+      return round_elem(code * scales[static_cast<size_t>(row * (cols / block_size) + col / block_size)]);
+    };
+
+    std::vector<std::vector<float>> expert_output(static_cast<size_t>(num_experts),
+                                                  std::vector<float>(static_cast<size_t>(hidden_size)));
+    for (int64_t e = 0; e < num_experts; ++e) {
+      std::vector<float> activation(static_cast<size_t>(inter_size));
+      for (int64_t j = 0; j < inter_size; ++j) {
+        float gate = 0.0f;
+        float up = 0.0f;
+        for (int64_t c = 0; c < hidden_size; ++c) {
+          gate += token[static_cast<size_t>(c)] * dequantize(fc1_codes, fc1_scales, e * fc1_rows + 2 * j, hidden_size, c);
+          up += token[static_cast<size_t>(c)] * dequantize(fc1_codes, fc1_scales, e * fc1_rows + 2 * j + 1, hidden_size, c);
+        }
+        gate = round_elem(gate + round_elem(fc1_bias[static_cast<size_t>(e * fc1_rows + 2 * j)]));
+        up = round_elem(up + round_elem(fc1_bias[static_cast<size_t>(e * fc1_rows + 2 * j + 1)]));
+        activation[static_cast<size_t>(j)] = round_elem(gate / (1.0f + std::exp(-gate)) * up);
+      }
+      ASSERT_EQ(activation[2], kFraction);
+
+      // Column 1 cancels exactly against activation 1; the other columns only see their bias.
+      const float fc2_accumulator = activation[1] + activation[2];
+      ASSERT_NE(round_elem(fc2_accumulator), fc2_accumulator);
+      for (int64_t c = 0; c < hidden_size; ++c) {
+        fc2_bias[static_cast<size_t>(e * hidden_size + c)] =
+            c == 1 ? -activation[1] : static_cast<float>(((c * 7 + e * 3) % 11) - 5) * 0.125f;
+      }
+
+      for (int64_t c = 0; c < hidden_size; ++c) {
+        float value = 0.0f;
+        for (int64_t j = 0; j < inter_size; ++j) {
+          value += activation[static_cast<size_t>(j)] *
+                   dequantize(fc2_codes, fc2_scales, e * hidden_size + c, inter_size, j);
+        }
+        expert_output[static_cast<size_t>(e)][static_cast<size_t>(c)] =
+            round_elem(value + round_elem(fc2_bias[static_cast<size_t>(e * hidden_size + c)]));
+      }
+      ASSERT_EQ(expert_output[static_cast<size_t>(e)][1], kFraction);
+    }
+
+    // Top-1 routing alternates between the two experts.
+    std::vector<float> input(static_cast<size_t>(num_rows * hidden_size));
+    std::vector<float> router_probs(static_cast<size_t>(num_rows * num_experts), -8.0f);
+    std::vector<float> expected(static_cast<size_t>(num_rows * hidden_size));
+    for (int64_t r = 0; r < num_rows; ++r) {
+      const int64_t expert = r % num_experts;
+      router_probs[static_cast<size_t>(r * num_experts + expert)] = 8.0f;
+      std::copy(token.begin(), token.end(), input.begin() + r * hidden_size);
+      std::copy(expert_output[static_cast<size_t>(expert)].begin(), expert_output[static_cast<size_t>(expert)].end(),
+                expected.begin() + r * hidden_size);
+    }
+
+    const auto fc1_packed = PackLsbBits(fc1_codes, num_experts * fc1_rows, hidden_size, bits);
+    const auto fc2_packed = PackLsbBits(fc2_codes, num_experts * hidden_size, inter_size, bits);
+
+    // Run both the default Tensor Core prefill branch (max_scratch_bytes = 0) and the SIMT path forced by a
+    // scratch budget that is smaller than the prefill workspace (max_scratch_bytes = 65536).
+    for (int64_t max_scratch_bytes : {int64_t{0}, int64_t{65536}}) {
+      OpTester tester("QMoE", 1, onnxruntime::kMSDomain);
+      tester.AddAttribute<int64_t>("k", 1);
+      tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
+      tester.AddAttribute<std::string>("activation_type", "swiglu");
+      tester.AddAttribute<int64_t>("swiglu_fusion", 1);
+      tester.AddAttribute<int64_t>("expert_weight_bits", bits);
+      tester.AddAttribute<int64_t>("weights_prepacked", 0);
+      tester.AddAttribute<int64_t>("block_size", block_size);
+      tester.AddInput<ElementType>("input", {num_rows, hidden_size}, convert(input));
+      tester.AddInput<ElementType>("router_probs", {num_rows, num_experts}, convert(router_probs));
+      tester.AddInput<uint8_t>("fc1_experts_weights", {num_experts, fc1_rows, (hidden_size * bits + 7) / 8},
+                               fc1_packed, true);
+      tester.AddInput<ElementType>("fc1_scales", {num_experts, fc1_rows, hidden_size / block_size},
+                                   convert(fc1_scales), true);
+      tester.AddInput<ElementType>("fc1_experts_bias", {num_experts, fc1_rows}, convert(fc1_bias), true);
+      tester.AddInput<uint8_t>("fc2_experts_weights", {num_experts, hidden_size, (inter_size * bits + 7) / 8},
+                               fc2_packed, true);
+      tester.AddInput<ElementType>("fc2_scales", {num_experts, hidden_size, inter_size / block_size},
+                                   convert(fc2_scales), true);
+      tester.AddInput<ElementType>("fc2_experts_bias", {num_experts, hidden_size}, convert(fc2_bias), true);
+      tester.AddOutput<ElementType>("output", {num_rows, hidden_size}, convert(expected));
+      tester.SetOutputTolerance(is_bf16 ? 0.06f : 0.02f, is_bf16 ? 0.02f : 0.01f);
+
+      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+      execution_providers.push_back(DefaultCudaExecutionProvider());
+      SessionOptions session_options;
+      ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+          kOrtSessionOptionsDisableCPUEPFallback, "1"));
+      if (max_scratch_bytes > 0) {
+        ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+            "ep.cuda.qmoe_int_dequant_max_scratch_bytes", std::to_string(max_scratch_bytes).c_str()));
+      }
+      SCOPED_TRACE(MakeString("is_bf16=", is_bf16, " magnitude=", magnitude, " max_scratch=", max_scratch_bytes));
+      tester.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+    }
+  }
+}
+
+TEST(MoETest, QMoETest_Int3CudaPrefillBiasPrecisionParity) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device with compute capability 8.0 or newer is required.";
+  }
+  RunInt3CudaPrefillBiasPrecisionParityTest<MLFloat16>();
+#if defined(ENABLE_BF16)
+  RunInt3CudaPrefillBiasPrecisionParityTest<BFloat16>();
+#endif
+}
+
 TEST(MoETest, QMoETest_Int3Fused512ExpertRoutingExecutionParity) {
   if (!HasCudaEnvironment(750)) {
     GTEST_SKIP() << "CUDA device with compute capability 7.5 or newer is required.";

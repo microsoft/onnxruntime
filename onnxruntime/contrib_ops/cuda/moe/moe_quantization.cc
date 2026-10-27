@@ -3153,13 +3153,18 @@ Status QMoE::ComputeInt3(OpKernelContext* context) const {
       onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_DISABLE_INT3_TENSORCORE_PREFILL", 0) != 0;
   static const int int3_prefill_min_rows =
       onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_INT3_PREFILL_MIN_ROWS", 16);
+  // The CUTLASS epilogue loads the fused biases as 16-byte vectors, so misaligned biases use the SIMT path.
+  const auto is_bias_16byte_aligned = [](const Tensor* bias) {
+    return bias == nullptr || reinterpret_cast<uintptr_t>(bias->DataRaw()) % 16 == 0;
+  };
   const bool can_use_tc_prefill =
       !disable_int3_tc_prefill && rows >= int3_prefill_min_rows &&
       first_zeros == nullptr && second_zeros == nullptr &&
       router_weights == nullptr && !use_sparse_mixer_ &&
       sm_ >= 80 && experts <= 512 &&
       hidden % 64 == 0 && intermediate % 64 == 0 &&
-      (block_size_ == 32 || block_size_ == 64 || block_size_ == 128);
+      (block_size_ == 32 || block_size_ == 64 || block_size_ == 128) &&
+      is_bias_16byte_aligned(first_bias) && is_bias_16byte_aligned(second_bias);
 
   if (can_use_tc_prefill) {
     namespace ck = onnxruntime::llm::kernels::cutlass_kernels;
