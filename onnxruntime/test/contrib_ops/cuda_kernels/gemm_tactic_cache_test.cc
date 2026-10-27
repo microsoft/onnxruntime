@@ -26,6 +26,10 @@
 #include <windows.h>
 #endif
 
+#if defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP)
+#include "core/common/logging/logging.h"
+#endif
+
 #include "contrib_ops/cuda/llm/gemm_tactic_cache.h"
 #include "contrib_ops/cuda/llm/gemm_profiler.h"
 #if !defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP)

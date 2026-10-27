@@ -2029,7 +2029,9 @@ static void RunQMoEMixedWidthCudaIdentityTest(int64_t fc1_bits, int64_t fc2_bits
                                               bool expect_scratch_failure = true,
                                               bool use_initializers = false,
                                               int64_t num_rows = 1,
-                                              int64_t row_tile_size = 0) {
+                                              int64_t row_tile_size = 0,
+                                              int64_t weights_prepacked = 0,
+                                              const char* expected_error = "") {
   constexpr int64_t num_experts = 1;
 
   auto make_identity = [block_size](int64_t bits, int64_t rows, int64_t columns,
@@ -2094,7 +2096,7 @@ static void RunQMoEMixedWidthCudaIdentityTest(int64_t fc1_bits, int64_t fc2_bits
   if (fc2_bits != expert_bits) {
     tester.AddAttribute<int64_t>("fc2_expert_weight_bits", fc2_bits);
   }
-  tester.AddAttribute<int64_t>("weights_prepacked", 0);
+  tester.AddAttribute<int64_t>("weights_prepacked", weights_prepacked);
   tester.AddAttribute<int64_t>("block_size", block_size);
   if (use_bf16) {
     tester.AddInput<BFloat16>("input", {num_rows, hidden_size}, ToBFloat16(input));
@@ -2157,10 +2159,14 @@ static void RunQMoEMixedWidthCudaIdentityTest(int64_t fc1_bits, int64_t fc2_bits
     ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
         "ep.cuda.qmoe_row_tile_size", std::to_string(row_tile_size).c_str()));
   }
+  const bool scratch_failure = max_scratch_bytes > 0 && expect_scratch_failure;
+  const bool expect_failure = expected_error[0] != '\0' || scratch_failure;
+  const char* failure_message = expected_error[0] != '\0'
+                                    ? expected_error
+                                    : (scratch_failure ? "exceeding the configured limit" : "");
   tester.Run(session_options,
-             max_scratch_bytes > 0 && expect_scratch_failure ? OpTester::ExpectResult::kExpectFailure
-                                                             : OpTester::ExpectResult::kExpectSuccess,
-             max_scratch_bytes > 0 && expect_scratch_failure ? "exceeding the configured limit" : "",
+             expect_failure ? OpTester::ExpectResult::kExpectFailure : OpTester::ExpectResult::kExpectSuccess,
+             failure_message,
              {}, nullptr, &execution_providers);
 }
 
@@ -2238,14 +2244,69 @@ TEST(MoETest, QMoETest_Int2CudaPackedDecodeBlock128) {
       /*expect_scratch_failure=*/false, /*use_initializers=*/true);
 }
 
+TEST(MoETest, QMoETest_Int2CudaPrepackedRejectsRawFallback) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device with compute capability 8.0 or newer is required.";
+  }
+  // No fused SwiGLU: the packed paths must reject before interpreting any weight bytes.
+  RunQMoEMixedWidthCudaIdentityTest(
+      2, 2, 0, false, false, false, 64, 64, 64, false, true, 1, 0, 1,
+      "requires a packed execution path");
+}
+
+TEST(MoETest, QMoETest_Int2CudaPrepackedExpandedRows21To80) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device with compute capability 8.0 or newer is required.";
+  }
+  ScopedEnvironmentVariables scoped_env_vars{
+      {{"ORT_DISABLE_MOE_GEMV", std::nullopt}, {"ORT_ENABLE_QMOE_INT2_PREFILL", "0"}}};
+  constexpr int64_t num_rows = 24;
+  constexpr int64_t num_experts = 1;
+  constexpr int64_t hidden_size = 512;
+  constexpr int64_t inter_size = 512;
+  constexpr int64_t block_size = 64;
+  constexpr int64_t pack_size = 4;
+  constexpr int64_t fc1_rows = 2 * inter_size;
+
+  // All-0xAA bytes represent zero weights in both raw INT2 and SM80 CUTLASS W2_A16 prepacked layouts.
+  const std::vector<uint8_t> fc1_weights(static_cast<size_t>(num_experts * fc1_rows * hidden_size / pack_size), 0xAA);
+  const std::vector<uint8_t> fc2_weights(static_cast<size_t>(num_experts * hidden_size * inter_size / pack_size), 0xAA);
+  const std::vector<float> fc1_scales(static_cast<size_t>(num_experts * fc1_rows * (hidden_size / block_size)), 1.0f);
+  const std::vector<float> fc2_scales(static_cast<size_t>(num_experts * hidden_size * (inter_size / block_size)), 1.0f);
+  const std::vector<float> input(static_cast<size_t>(num_rows * hidden_size), 0.25f);
+  const std::vector<float> router_probs(static_cast<size_t>(num_rows * num_experts), 1.0f);
+  const std::vector<float> expected(static_cast<size_t>(num_rows * hidden_size), 0.0f);
+
+  OpTester tester("QMoE", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("k", 1);
+  tester.AddAttribute<std::string>("activation_type", "swiglu");
+  tester.AddAttribute<int64_t>("swiglu_fusion", 1);
+  tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
+  tester.AddAttribute<int64_t>("expert_weight_bits", 2);
+  tester.AddAttribute<int64_t>("weights_prepacked", 1);
+  tester.AddAttribute<int64_t>("block_size", block_size);
+  tester.AddInput<MLFloat16>("input", {num_rows, hidden_size}, ToFloat16(input));
+  tester.AddInput<MLFloat16>("router_probs", {num_rows, num_experts}, ToFloat16(router_probs));
+  tester.AddInput<uint8_t>("fc1_experts_weights", {num_experts, fc1_rows, hidden_size / pack_size}, fc1_weights, true);
+  tester.AddInput<MLFloat16>("fc1_scales", {num_experts, fc1_rows, hidden_size / block_size}, ToFloat16(fc1_scales), true);
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddInput<uint8_t>("fc2_experts_weights", {num_experts, hidden_size, inter_size / pack_size}, fc2_weights, true);
+  tester.AddInput<MLFloat16>("fc2_scales", {num_experts, hidden_size, inter_size / block_size}, ToFloat16(fc2_scales), true);
+  tester.AddOutput<MLFloat16>("output", {num_rows, hidden_size}, ToFloat16(expected));
+
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  tester.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 // Runs the same multi-row, multi-expert, k=2 INT2 SwiGLU model once with the packed GEMV
 // path selected and once with it disabled (forcing the already-validated dense fallback from
 // #32743), so a stride/permutation/top-k bug in the new packed pipeline shows up as a numeric
 // mismatch instead of only a shape or gate mismatch.
-static std::vector<float> RunQMoEPackedIntGemvParityCase(bool disable_packed_gemv) {
-  constexpr int64_t num_rows = 4;
-  constexpr int64_t num_experts = 4;
-  constexpr int64_t k = 2;
+static std::vector<float> RunQMoEPackedIntGemvParityCase(
+    bool disable_packed_gemv, int64_t num_rows = 4, int64_t num_experts = 4, int64_t k = 2) {
   constexpr int64_t hidden_size = 512;
   constexpr int64_t inter_size = 512;
   constexpr int64_t block_size = 64;
@@ -2264,16 +2325,16 @@ static std::vector<float> RunQMoEPackedIntGemvParityCase(bool disable_packed_gem
     value = static_cast<float>(next_rand() % 17) * 0.05f - 0.4f;
   }
 
-  // Give each row a distinct preferred expert pair so k=2 top-k selection and the resulting
-  // expert permutation differ across rows.
-  constexpr int64_t preferred_pairs[num_rows][2] = {{0, 1}, {1, 2}, {2, 3}, {3, 0}};
+  // Favor high-numbered experts too, exercising the full expert-map range.
   std::vector<float> router_probs(static_cast<size_t>(num_rows * num_experts));
   for (int64_t row = 0; row < num_rows; ++row) {
     for (int64_t e = 0; e < num_experts; ++e) {
       router_probs[static_cast<size_t>(row * num_experts + e)] = 0.1f * static_cast<float>(e);
     }
-    router_probs[static_cast<size_t>(row * num_experts + preferred_pairs[row][0])] = 3.0f;
-    router_probs[static_cast<size_t>(row * num_experts + preferred_pairs[row][1])] = 2.0f;
+    for (int64_t rank = 0; rank < k; ++rank) {
+      const int64_t expert = (num_experts - 1 - row - rank + num_experts) % num_experts;
+      router_probs[static_cast<size_t>(row * num_experts + expert)] = 100.0f - static_cast<float>(rank);
+    }
   }
 
   // Each expert's weight is a "shifted identity": row r picks out input column
@@ -2357,6 +2418,7 @@ static std::vector<float> RunQMoEPackedIntGemvParityCase(bool disable_packed_gem
   EnvVarMap env_overrides;
   if (disable_packed_gemv) {
     env_overrides["ORT_DISABLE_MOE_GEMV"] = "1";
+    env_overrides["ORT_ENABLE_QMOE_INT2_PREFILL"] = "0";
   }
   ScopedEnvironmentVariables scoped_env_vars{env_overrides};
 
@@ -2381,6 +2443,21 @@ TEST(MoETest, QMoETest_Int2CudaPackedDecodeMultiRowExpertParity) {
   ASSERT_EQ(packed_output.size(), dense_output.size());
   for (size_t i = 0; i < packed_output.size(); ++i) {
     EXPECT_NEAR(packed_output[i], dense_output[i], 0.02f) << "mismatch at index " << i;
+  }
+}
+
+TEST(MoETest, QMoETest_Int2Cuda512ExpertsTop10Parity) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device with compute capability 8.0 or newer is required.";
+  }
+  for (const int64_t rows : {1, 2, 3, 32}) {
+    SCOPED_TRACE(rows);
+    const auto packed = RunQMoEPackedIntGemvParityCase(false, rows, 512, 10);
+    const auto dense = RunQMoEPackedIntGemvParityCase(true, rows, 512, 10);
+    ASSERT_EQ(packed.size(), dense.size());
+    for (size_t i = 0; i < packed.size(); ++i) {
+      EXPECT_NEAR(packed[i], dense[i], 0.02f) << "mismatch at index " << i;
+    }
   }
 }
 
@@ -2573,6 +2650,167 @@ TEST(MoETest, QMoETest_Int2CudaCachedScalesDecodeThenPrefill) {
     EXPECT_NEAR(prefill[column], first_decode[column], 0.02f) << "mismatch at column " << column;
   }
 }
+
+TEST(MoETest, QMoETest_Int2CudaSharedGpuInitializerCache) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device with compute capability 8.0 or newer is required.";
+  }
+
+  constexpr int64_t num_experts = 1;
+  constexpr int64_t hidden_size = 512;
+  constexpr int64_t inter_size = 512;
+  constexpr int64_t pack_size = 4;
+  constexpr int64_t fc1_rows = 2 * inter_size;
+  const std::string model_bytes = BuildQMoEInt2DynamicRowsModel();
+
+  auto make_identity_weights = [](int64_t rows, int64_t columns) {
+    std::vector<uint8_t> weights(static_cast<size_t>(rows * columns / pack_size), 0xAA);
+    for (int64_t row = 0; row < rows; ++row) {
+      const int64_t column = row % columns;
+      const size_t byte_index = static_cast<size_t>(row * (columns / pack_size) + column / pack_size);
+      weights[byte_index] |= static_cast<uint8_t>(1u << ((column % pack_size) * 2));
+    }
+    return weights;
+  };
+  const auto identity_fc1 = make_identity_weights(fc1_rows, hidden_size);
+  const auto identity_fc2 = make_identity_weights(hidden_size, inter_size);
+  const std::vector<uint8_t> zero_fc1(identity_fc1.size(), 0xAA);
+  const std::vector<uint8_t> zero_fc2(identity_fc2.size(), 0xAA);
+
+  auto cuda_ep_probe = DefaultCudaExecutionProvider();
+  ASSERT_NE(cuda_ep_probe, nullptr);
+  const auto allocators = cuda_ep_probe->CreatePreferredAllocators();
+  ASSERT_FALSE(allocators.empty());
+  AllocatorPtr gpu_alloc = allocators[0];
+  auto data_transfer = cuda_ep_probe->GetDataTransfer();
+  ASSERT_NE(data_transfer, nullptr);
+
+  struct GpuBuffer {
+    AllocatorPtr alloc;
+    IDataTransfer* transfer = nullptr;
+    TensorShape shape;
+    void* ptr = nullptr;
+    GpuBuffer(AllocatorPtr allocator, IDataTransfer* dt, TensorShape tensor_shape)
+        : alloc(std::move(allocator)), transfer(dt), shape(std::move(tensor_shape)) {
+      ptr = alloc->Alloc(static_cast<size_t>(shape.Size()));
+      ORT_ENFORCE(ptr != nullptr);
+    }
+    ~GpuBuffer() {
+      if (ptr != nullptr) {
+        alloc->Free(ptr);
+      }
+    }
+    void Upload(const std::vector<uint8_t>& host) const {
+      ORT_ENFORCE(host.size() == static_cast<size_t>(shape.Size()));
+      Tensor src_tensor(DataTypeImpl::GetType<uint8_t>(), shape,
+                        const_cast<uint8_t*>(host.data()), OrtMemoryInfo());
+      Tensor dst_tensor(DataTypeImpl::GetType<uint8_t>(), shape, ptr, alloc->Info());
+      ORT_ENFORCE(transfer->CopyTensor(src_tensor, dst_tensor).IsOK());
+    }
+  };
+
+  const TensorShape fc1_shape{num_experts, fc1_rows, hidden_size / pack_size};
+  const TensorShape fc2_shape{num_experts, hidden_size, inter_size / pack_size};
+  GpuBuffer shared_fc1(gpu_alloc, data_transfer.get(), fc1_shape);
+  GpuBuffer shared_fc2(gpu_alloc, data_transfer.get(), fc2_shape);
+  GpuBuffer distinct_fc1(gpu_alloc, data_transfer.get(), fc1_shape);
+  GpuBuffer distinct_fc2(gpu_alloc, data_transfer.get(), fc2_shape);
+  shared_fc1.Upload(identity_fc1);
+  shared_fc2.Upload(identity_fc2);
+  distinct_fc1.Upload(zero_fc1);
+  distinct_fc2.Upload(zero_fc2);
+
+  auto make_weight_value = [&](void* ptr, const TensorShape& shape) {
+    OrtValue val;
+    Tensor::InitOrtValue(DataTypeImpl::GetType<uint8_t>(), shape, ptr, gpu_alloc->Info(), val);
+    return val;
+  };
+
+  const OrtValue shared_fc1_val = make_weight_value(shared_fc1.ptr, fc1_shape);
+  const OrtValue shared_fc2_val = make_weight_value(shared_fc2.ptr, fc2_shape);
+  const OrtValue distinct_fc1_val = make_weight_value(distinct_fc1.ptr, fc1_shape);
+  const OrtValue distinct_fc2_val = make_weight_value(distinct_fc2.ptr, fc2_shape);
+
+  auto create_session = [&](const OrtValue& fc1_val, const OrtValue& fc2_val) {
+    SessionOptions session_options;
+    ORT_ENFORCE(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1").IsOK());
+    ORT_ENFORCE(session_options.AddInitializer("fc1_weights", &fc1_val).IsOK());
+    ORT_ENFORCE(session_options.AddInitializer("fc2_weights", &fc2_val).IsOK());
+    auto session = std::make_unique<InferenceSessionWrapper>(session_options, GetEnvironment());
+    ORT_ENFORCE(session->RegisterExecutionProvider(DefaultCudaExecutionProvider()).IsOK());
+    ORT_ENFORCE(session->Load(model_bytes.data(), static_cast<int>(model_bytes.size())).IsOK());
+    ORT_ENFORCE(session->Initialize().IsOK());
+    return session;
+  };
+
+  auto run_session = [&](InferenceSessionWrapper& session) {
+    std::vector<MLFloat16> input(static_cast<size_t>(hidden_size), MLFloat16(0.5f));
+    std::vector<MLFloat16> router_probs{MLFloat16(1.0f)};
+    OrtValue input_value;
+    OrtValue router_value;
+    Tensor::InitOrtValue(DataTypeImpl::GetType<MLFloat16>(), TensorShape({1, hidden_size}),
+                         input.data(), OrtMemoryInfo(), input_value);
+    Tensor::InitOrtValue(DataTypeImpl::GetType<MLFloat16>(), TensorShape({1, 1}),
+                         router_probs.data(), OrtMemoryInfo(), router_value);
+    NameMLValMap feeds{{"input", input_value}, {"router_probs", router_value}};
+    const std::vector<std::string> output_names{"output"};
+    std::vector<OrtValue> fetches;
+    ORT_ENFORCE(session.Run(feeds, output_names, &fetches).IsOK());
+    const Tensor& output = fetches[0].Get<Tensor>();
+    const MLFloat16* output_data = output.Data<MLFloat16>();
+    std::vector<float> result(static_cast<size_t>(output.Shape().Size()));
+    std::transform(output_data, output_data + result.size(), result.begin(),
+                   [](MLFloat16 value) { return value.ToFloat(); });
+    return result;
+  };
+
+  const std::vector<float> all_zeros(static_cast<size_t>(hidden_size), 0.0f);
+
+  {
+    ScopedEnvironmentVariables scoped_env_vars{{{"ORT_QMOE_INT2_SHARE_PACKED", "1"}}};
+    auto session1 = create_session(shared_fc1_val, shared_fc2_val);
+    const auto out1 = run_session(*session1);
+    EXPECT_NE(out1, all_zeros);
+
+    // Overwrite backing GPU memory after session1 packed it. A cache hit in session2 must reuse
+    // session1's packed buffer rather than re-reading the mutated source buffer.
+    shared_fc1.Upload(zero_fc1);
+    shared_fc2.Upload(zero_fc2);
+
+    auto session2 = create_session(shared_fc1_val, shared_fc2_val);
+    EXPECT_EQ(run_session(*session2), out1);
+
+    // Distinct GPU initializers at different addresses must not be conflated with the cached entry.
+    auto session_distinct = create_session(distinct_fc1_val, distinct_fc2_val);
+    EXPECT_EQ(run_session(*session_distinct), all_zeros);
+
+    // Destroy the first session and verify the surviving session still runs on the shared allocation.
+    session1.reset();
+    EXPECT_EQ(run_session(*session2), out1);
+
+    // Release the last owner so the weak cache entry expires, then recreate: it must re-pack from
+    // the current (zeroed) GPU buffer.
+    session2.reset();
+    auto session3 = create_session(shared_fc1_val, shared_fc2_val);
+    EXPECT_EQ(run_session(*session3), all_zeros);
+  }
+
+  // Verify the cache opt-out (ORT_QMOE_INT2_SHARE_PACKED=0) forces each session to pack independently.
+  {
+    ScopedEnvironmentVariables scoped_env_vars{{{"ORT_QMOE_INT2_SHARE_PACKED", "0"}}};
+    shared_fc1.Upload(identity_fc1);
+    shared_fc2.Upload(identity_fc2);
+    auto session_optout_1 = create_session(shared_fc1_val, shared_fc2_val);
+    const auto out_optout_1 = run_session(*session_optout_1);
+    EXPECT_NE(out_optout_1, all_zeros);
+
+    shared_fc1.Upload(zero_fc1);
+    shared_fc2.Upload(zero_fc2);
+    auto session_optout_2 = create_session(shared_fc1_val, shared_fc2_val);
+    EXPECT_EQ(run_session(*session_optout_2), all_zeros);
+    EXPECT_EQ(run_session(*session_optout_1), out_optout_1);
+  }
+}
 #endif
 
 TEST(MoETest, QMoETest_MixedWidthCudaPackedPrefillDefaultEnabled) {
@@ -2620,8 +2858,8 @@ template <typename ElementType>
 static void RunQMoEPackedPrefillRoutingTest(int64_t num_rows, int64_t hidden_size, int64_t inter_size,
                                             int64_t top_k, bool skewed, bool scale_initializers = true,
                                             int64_t row_tile_size = 0, int64_t block_size = 64,
-                                            int64_t fc1_bits = 2, int64_t fc2_bits = 4) {
-  constexpr int64_t num_experts = 8;
+                                            int64_t fc1_bits = 2, int64_t fc2_bits = 4,
+                                            int64_t num_experts = 8) {
   constexpr float alpha = 1.5f;
   constexpr float beta = 0.125f;
   constexpr float limit = 0.5f;
@@ -2634,7 +2872,7 @@ static void RunQMoEPackedPrefillRoutingTest(int64_t num_rows, int64_t hidden_siz
     return 0.125f * static_cast<float>(expert + 1) +
            0.015625f * static_cast<float>(column % 5) + 0.03125f * static_cast<float>(block);
   };
-  const auto make_weights = [](int64_t rows, int64_t columns, int64_t bits, bool interleaved) {
+  const auto make_weights = [num_experts](int64_t rows, int64_t columns, int64_t bits, bool interleaved) {
     const int64_t pack_size = 8 / bits;
     const uint8_t zero = static_cast<uint8_t>(1u << (bits - 1));
     std::vector<uint8_t> weights(static_cast<size_t>(num_experts * rows * columns / pack_size), 0);
@@ -2762,6 +3000,7 @@ TEST(MoETest, QMoETest_MixedWidthCudaPackedPrefillRouting) {
   if (!HasCudaEnvironment(800)) {
     GTEST_SKIP() << "SM80 or later is required for packed INT2 prefill.";
   }
+
   ScopedEnvironmentVariables scoped_env_vars{
       {{"ORT_DISABLE_MOE_GEMV", "1"}, {"ORT_ENABLE_QMOE_INT2_PREFILL", "1"}}};
   for (int64_t top_k : {1, 2, 4}) {
@@ -2770,6 +3009,20 @@ TEST(MoETest, QMoETest_MixedWidthCudaPackedPrefillRouting) {
       RunQMoEPackedPrefillRoutingTest<MLFloat16>(33, 512, 256, top_k, skewed);
 #if defined(ENABLE_BF16)
       RunQMoEPackedPrefillRoutingTest<BFloat16>(257, 512, 256, top_k, skewed);
+#endif
+    }
+  }
+}
+
+TEST(MoETest, QMoETest_CudaColumnTiledFinalize) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "SM80 or later is required for packed INT2 decode.";
+  }
+  for (int64_t rows : {1, 2}) {
+    for (int64_t hidden : {2560, 2624}) {
+      RunQMoEPackedPrefillRoutingTest<MLFloat16>(rows, hidden, 128, 10, false, true, 0, 64, 2, 4, 16);
+#if defined(ENABLE_BF16)
+      RunQMoEPackedPrefillRoutingTest<BFloat16>(rows, hidden, 128, 10, false, true, 0, 64, 2, 4, 16);
 #endif
     }
   }

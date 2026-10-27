@@ -1563,9 +1563,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.DequantizeLinear"></a><a name="com.microsoft.dequantizelinear">**com.microsoft.DequantizeLinear**</a>
 
-  The linear dequantization operator. It consumes a quantized data, a scale, a zero point and computes the full precision data.
-  The dequantization formula is y = (x - x_zero_point) * x_scale.
-  Scale and zero point must have same shape. They must be either scalar (per tensor) or 1-D tensor (per 'axis').
+  The linear dequantization operator. It consumes quantized data, a scale, and an optional zero point.
+  The dequantization formula is y = (x - x_zero_point) * x_scale. Scale and zero point are scalar
+  or per-axis vectors. FP8 E4M3FN inputs can be dequantized directly to BF16 with FP32 scales.
 
 #### Version
 
@@ -1576,6 +1576,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>axis</tt> : int</dt>
 <dd>The axis along which same quantization parameters are applied. It's optional.If it's not specified, it means per-tensor quantization and input 'x_scale' and 'x_zero_point' must be scalars.If it's specified, it means per 'axis' quantization and input 'x_scale' and 'x_zero_point' must be 1-D tensors.</dd>
+<dt><tt>output_dtype</tt> : int</dt>
+<dd>Optional output element type. When omitted, the scale element type determines the output type.</dd>
 </dl>
 
 #### Inputs (2 - 3)
@@ -1583,7 +1585,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>x</tt> : T1</dt>
 <dd>N-D quantized Input tensor to be de-quantized.</dd>
-<dt><tt>x_scale</tt> : T2</dt>
+<dt><tt>x_scale</tt> : TS</dt>
 <dd>Scale for input 'x'. It can be a scalar, which means a per-tensor/layer dequantization, or a 1-D tensor for per-axis dequantization.</dd>
 <dt><tt>x_zero_point</tt> (optional) : T1</dt>
 <dd>Zero point for input 'x'. Shape must match x_scale. It's optional. Zero point is 0 when it's not specified.</dd>
@@ -1599,10 +1601,12 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Type Constraints
 
 <dl>
-<dt><tt>T1</tt> : tensor(int8), tensor(uint8), tensor(int16), tensor(uint16), tensor(int32), tensor(int4), tensor(uint4)</dt>
-<dd>Constrain 'x' and 'x_zero_point' to 8-bit integer tensors, 16-bit integer tensors, or 32-bit signed integer tensors.</dd>
-<dt><tt>T2</tt> : tensor(float16), tensor(float)</dt>
-<dd>Constrain 'y', 'x_scale' to float tensors.</dd>
+<dt><tt>T1</tt> : tensor(int8), tensor(uint8), tensor(int16), tensor(uint16), tensor(int32), tensor(int4), tensor(uint4), tensor(float8e4m3fn)</dt>
+<dd>Constrain 'x' and 'x_zero_point' to 8-bit integer tensors, 16-bit integer tensors, 32-bit signed integer tensors, or FP8 E4M3FN tensors.</dd>
+<dt><tt>T2</tt> : tensor(float16), tensor(float), tensor(bfloat16)</dt>
+<dd>Constrain the output element type.</dd>
+<dt><tt>TS</tt> : tensor(float16), tensor(float), tensor(bfloat16)</dt>
+<dd>Constrain the scale element type.</dd>
 </dl>
 
 
@@ -4000,7 +4004,9 @@ This version of the operator has been available since version 1 of the 'com.micr
   precision (weight-only W8A16).
   
   The operator multiplies the activation by the transpose of B_scaled and adds the optional bias.
-  The output has shape [..., N] and the same element type as A.
+  The output has shape [..., N] and the same element type as A. When split_sizes is provided,
+  return up to eight consecutive last-dimension partitions instead, equivalent to Split(Y, split_sizes).
+  The partition widths must be positive and sum to N.
 
 #### Version
 
@@ -4011,9 +4017,15 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>block_size</tt> : int</dt>
 <dd>Number of consecutive K values that share one weight scale. Default 128.</dd>
+<dt><tt>prefill_weight_offsets</tt> : list of ints</dt>
+<dd>Output-column offsets for optional original-type [K, segmentN] prefill weights. Used only when prefill_numerics is one; decode retains FP8 weights.</dd>
+<dt><tt>shared_expert</tt> : int</dt>
+<dd>When one, BF16 A is the up branch and shared_silu_gate is the equal-shaped gate branch. Multiply A by BF16(shared_silu_gate * BF16(sigmoid(shared_silu_gate))) before projection. Round the projection to BF16, multiply by the BF16 sigmoid of the BF16 dot product shared_gate_activation @ shared_gate_weight, round to BF16, then add shared_residual. Sigmoid uses BF16 intermediates. Requires all shared inputs and excludes bias, a_scale, split_sizes and original prefill weights. Default zero preserves ordinary projection.</dd>
+<dt><tt>split_sizes</tt> : list of ints</dt>
+<dd>Optional last-dimension output widths (one to eight positive sizes).</dd>
 </dl>
 
-#### Inputs (3 - 5)
+#### Inputs (3 - 13)
 
 <dl>
 <dt><tt>A</tt> : T</dt>
@@ -4026,13 +4038,29 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Optional global fp32 activation scale (scalar). When present, A is statically quantized to FP8 E4M3 with this scale (W8A8 numerics); when absent, A retains its FP16/BF16 precision.</dd>
 <dt><tt>bias</tt> (optional) : T</dt>
 <dd>Optional bias of shape [N].</dd>
+<dt><tt>prefill_numerics</tt> (optional) : TI</dt>
+<dd>Optional CUDA CPU-memory int32 control of shape [1]. Zero or omission preserves existing dispatch; one selects dense BF16 dequantization/GEMM rounding during eager prefill. Decode CUDA graph capture must bind an immutable zero.</dd>
+<dt><tt>prefill_weight</tt> (optional) : T</dt>
+<dd>Optional original-type [K, segmentN] eager-prefill weight.</dd>
+<dt><tt>prefill_weight2</tt> (optional) : T</dt>
+<dd>Optional second original-type eager-prefill weight segment.</dd>
+<dt><tt>prefill_weight3</tt> (optional) : T</dt>
+<dd>Optional third original-type eager-prefill weight segment.</dd>
+<dt><tt>shared_silu_gate</tt> (optional) : T</dt>
+<dd>BF16 gate branch matching A, for shared_expert=1.</dd>
+<dt><tt>shared_gate_activation</tt> (optional) : T</dt>
+<dd>BF16 projected-gate activation with matching leading axes.</dd>
+<dt><tt>shared_gate_weight</tt> (optional) : T</dt>
+<dd>BF16 [gate_input_width, 1] projected-gate weight.</dd>
+<dt><tt>shared_residual</tt> (optional) : T</dt>
+<dd>BF16 residual matching the unsplit output.</dd>
 </dl>
 
-#### Outputs
+#### Outputs (1 - &#8734;)
 
 <dl>
-<dt><tt>Y</tt> : T</dt>
-<dd>Output of shape [..., N] in the activation type.</dd>
+<dt><tt>Y</tt> (variadic) : T</dt>
+<dd>Output(s) of shape [..., N] or [..., split_sizes[i]] in the activation type.</dd>
 </dl>
 
 #### Type Constraints
@@ -4044,6 +4072,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain weight to FP8 E4M3.</dd>
 <dt><tt>T2</tt> : tensor(float)</dt>
 <dd>Constrain scales to FP32.</dd>
+<dt><tt>TI</tt> : tensor(int32)</dt>
+<dd>CPU prefill numerical-mode control.</dd>
 </dl>
 
 
@@ -6507,7 +6537,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>use_sparse_mixer</tt> : int</dt>
 <dd>Whether to use sparse mixer</dd>
 <dt><tt>weights_prepacked</tt> : int</dt>
-<dd>Expert-weight layout selector with quantization-specific meanings. For quant_type='int', -1 and 1 select execution-provider-specific prepacked int4/int8 fc1/fc2 layouts. 0 selects raw [E,N,K/pack] tensors as produced by quantize_matmul_{4,8}bits. For quant_type='nvfp4' on CUDA, -1 (default) and 0 select legacy N-packed [E,K,N/2] bytes; 1 selects K-packed row-major [E,N,K/2] bytes while retaining logical [E,K,N/2] dimensions. NVFP4 block scales and global scales retain their original layouts and values. Ignored for other quantization types. Supported values are -1, 0, and 1; defaults to -1.</dd>
+<dd>Expert-weight layout selector with quantization-specific meanings. For quant_type='int', -1 and 1 select execution-provider-specific prepacked int4/int8 fc1/fc2 layouts. 0 selects raw [E,N,K/pack] tensors as produced by quantize_matmul_{4,8}bits. Uniform INT2 on CUDA also accepts explicit 1 for SM80 CUTLASS W2_A16 bytes, retaining logical [E,N,K/4] dimensions and ordinary block scales. It requires supported packed GEMV/grouped-GEMM execution; raw fallback is unavailable. Mixed-width CUDA INT execution requires 0; INT2 does not accept -1. For quant_type='nvfp4' on CUDA, -1 (default) and 0 select legacy N-packed [E,K,N/2] bytes; 1 selects K-packed row-major [E,N,K/2] bytes while retaining logical [E,K,N/2] dimensions. NVFP4 block scales and global scales retain their original layouts and values. Ignored for other quantization types. Supported values are -1, 0, and 1; defaults to -1.</dd>
 </dl>
 
 #### Inputs (6 - 21)

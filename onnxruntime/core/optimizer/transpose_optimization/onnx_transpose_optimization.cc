@@ -529,8 +529,22 @@ static bool MakeQDQNodeUnit(api::GraphRef& graph, const api::NodeRef& dq_node) {
   const auto scale_input = dq_inputs[1];
   std::optional<std::string_view> zp_input;
 
-  if (dq_inputs.size() > 2) {
+  if (dq_inputs.size() > 2 && !dq_inputs[2].empty()) {
     zp_input = dq_inputs[2];
+  }
+
+  if (dq_domain == onnxruntime::kMSDomain) {
+    const api::DataType input_dtype = graph.GetValueInfo(dq_inputs[0])->DType();
+    const api::DataType scale_dtype = graph.GetValueInfo(scale_input)->DType();
+    const api::DataType output_dtype = graph.GetValueInfo(dq_node.Outputs()[0])->DType();
+    // The MS quantizer cannot invert FP8, BF16, or independently typed scale/output dequantization.
+    if (dq_node.GetAttributeInt("output_dtype").has_value() ||
+        input_dtype == api::DataType::UNDEFINED || scale_dtype == api::DataType::UNDEFINED ||
+        output_dtype == api::DataType::UNDEFINED || scale_dtype != output_dtype ||
+        (scale_dtype != api::DataType::FLOAT && scale_dtype != api::DataType::FLOAT16) ||
+        input_dtype == api::DataType::FLOAT8E4M3FN) {
+      return false;
+    }
   }
 
   std::optional<QuantizationInfo> dq_quant_info = GetQuantizationInfo(graph, dq_node);
