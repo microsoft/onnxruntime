@@ -691,20 +691,27 @@ __global__ void FusedSoftmaxTopKExpertMapsKernel(
   const int local = threadIdx.x % 128;
   __shared__ DecodeRoutingMergeSort::TempStorage temp[2];
   __shared__ float maxima[2];
+  __shared__ bool warp_has_nan[8];
   __shared__ float probabilities[2][16];
   __shared__ int selected[32];
   uint64_t keys[4];
+  bool has_nan = false;
 #pragma unroll
   for (int j = 0; j < 4; ++j) {
     const int expert = local * 4 + j;
     const bool valid = row < rows && expert < experts;
     const float value = valid ? static_cast<float>(logits[row * experts + expert])
                               : onnxruntime::cuda::topk::kNegativeInfinity;
+    has_nan |= valid && isnan(value);
     keys[j] = onnxruntime::cuda::topk::PackStableSortKey(value, valid ? expert : INT_MAX);
   }
+  const bool any_nan = __any_sync(0xffffffff, has_nan);
+  if (local % 32 == 0) warp_has_nan[threadIdx.x / 32] = any_nan;
   DecodeRoutingMergeSort(temp[row], local).Sort(keys, onnxruntime::cuda::topk::Greater<uint64_t>());
   if (local == 0) maxima[row] = onnxruntime::cuda::topk::UnpackStableSortScore(keys[0]);
   __syncthreads();
+  const bool row_has_nan = warp_has_nan[row * 4] || warp_has_nan[row * 4 + 1] ||
+                           warp_has_nan[row * 4 + 2] || warp_has_nan[row * 4 + 3];
 #pragma unroll
   for (int j = 0; j < 4; ++j) {
     const int rank = local * 4 + j;
@@ -712,7 +719,8 @@ __global__ void FusedSoftmaxTopKExpertMapsKernel(
       const int expert = onnxruntime::cuda::topk::UnpackStableSortIndex(keys[j]);
       indices[row * k + rank] = expert;
       selected[row * k + rank] = expert;
-      const float value = expf(onnxruntime::cuda::topk::UnpackStableSortScore(keys[j]) - maxima[row]);
+      const float value =
+          row_has_nan ? 0.0f : expf(onnxruntime::cuda::topk::UnpackStableSortScore(keys[j]) - maxima[row]);
       probabilities[row][rank] = isfinite(value) ? value : 0.0f;
     }
   }
@@ -740,12 +748,15 @@ __global__ void WarpSelectSoftmaxTopKExpertMapsKernel(
   __shared__ int selected[2 * k];
   if (row < rows) {
     uint64_t keys[16];
+    bool has_nan = false;
 #pragma unroll
     for (int i = 0; i < 16; ++i) {
       const int expert = lane + i * 32;
-      keys[i] = onnxruntime::cuda::topk::PackStableSortKey(
-          static_cast<float>(logits[row * kExperts + expert]), expert);
+      const float value = static_cast<float>(logits[row * kExperts + expert]);
+      has_nan |= isnan(value);
+      keys[i] = onnxruntime::cuda::topk::PackStableSortKey(value, expert);
     }
+    const bool row_has_nan = __any_sync(0xffffffff, has_nan);
     float probabilities[k];
     float maximum = 0.0f;
     for (int rank = 0; rank < k; ++rank) {
@@ -776,7 +787,7 @@ __global__ void WarpSelectSoftmaxTopKExpertMapsKernel(
       if (lane == 0) {
         const float score = onnxruntime::cuda::topk::UnpackStableSortScore(best);
         if (rank == 0) maximum = score;
-        const float value = expf(score - maximum);
+        const float value = row_has_nan ? 0.0f : expf(score - maximum);
         probabilities[rank] = isfinite(value) ? value : 0.0f;
         const int expert = onnxruntime::cuda::topk::UnpackStableSortIndex(best);
         selected[row * k + rank] = expert;

@@ -401,6 +401,10 @@ Status MatMulBlockQuantizedFp8Weight::ComputeImpl(OpKernelContext* context) cons
           static_cast<size_t>(width) * sizeof(CudaT), static_cast<size_t>(m_i),
           cudaMemcpyDeviceToDevice, Stream(context)));
     }
+    for (size_t segment = prefill_weight_offsets_.size(); segment < 3; ++segment) {
+      ORT_RETURN_IF_NOT(context->Input<Tensor>(6 + static_cast<int>(segment)) == nullptr,
+                        "Original prefill weight inputs require matching prefill_weight_offsets");
+    }
   }
 
   if (bias != nullptr) {

@@ -300,13 +300,54 @@ void TestNvfp4FusedFinalize(int num_rows, int topk, int k, bool use_bias) {
 TEST(CUDA_EP_Unittest, QMoENvfp4FusedFinalizePreservesRoutingAndRounding) {
   for (int rows : {1, 2}) {
     for (int topk : {1, 4, 10, 16}) {
-      for (int k : {144, 640}) {
+      for (int k : {144, 640, 1152}) {
         for (bool use_bias : {false, true}) {
           TestNvfp4FusedFinalize<half>(rows, topk, k, use_bias);
           TestNvfp4FusedFinalize<__nv_bfloat16>(rows, topk, k, use_bias);
         }
       }
     }
+  }
+
+  if (!SupportsSm80OrLater()) {
+    GTEST_SKIP() << "NVFP4 fused finalization requires SM80 or newer";
+  }
+  // Cancellation-sensitive parity check for K <= 1024 (4 K-lanes):
+  // lane 0 accumulates offsets 0, 64, and 128 in order: (100139008 + 1) + (-100139008) == 0.
+  constexpr int k = 144, n = 2, experts = 1, num_rows = 1, topk = 1;
+  std::vector<__nv_bfloat16> activations(k, __nv_bfloat16(0.0f));
+  activations[0] = __nv_bfloat16(100139008.0f);
+  activations[64] = __nv_bfloat16(1.0f);
+  activations[128] = __nv_bfloat16(-100139008.0f);
+  // E2M1 code 2 is +1.0, so 0x22 packs two +1.0 weights; E4M3 code 0x38 is 1.0.
+  const std::vector<uint8_t> weights(n * k / 2, 0x22), scales(n * k / 16, 0x38);
+  const std::vector<float> globals{1.0f}, routing{1.0f};
+  const std::vector<int> mapping{0}, expert_ids{0};
+  CudaBuffer a(activations.size() * sizeof(__nv_bfloat16)), w(weights.size()), s(scales.size());
+  CudaBuffer g(sizeof(float)), m(sizeof(int)), e(sizeof(int)), r(sizeof(float));
+  CudaBuffer reference(n * sizeof(__nv_bfloat16)), output(n * sizeof(__nv_bfloat16));
+  a.Upload(activations.data());
+  w.Upload(weights.data());
+  s.Upload(scales.data());
+  g.Upload(globals.data());
+  m.Upload(mapping.data());
+  e.Upload(expert_ids.data());
+  r.Upload(routing.data());
+  gemv::launch_moe_gemv_fp4_symmetric<__nv_bfloat16>(
+      a.As<__nv_bfloat16>(), w.As<uint8_t>(), nullptr, s.As<uint8_t>(), g.As<float>(),
+      nullptr, reference.As<__nv_bfloat16>(), nullptr, e.As<int>(),
+      experts, 1, n, k, 16, 90, gemv::MoeGemvConfig::kDefault, false, true, nullptr, true);
+  ASSERT_TRUE(gemv::try_launch_moe_gemv_nvfp4_fused_finalize<__nv_bfloat16>(
+      a.As<__nv_bfloat16>(), w.As<uint8_t>(), s.As<uint8_t>(), g.As<float>(),
+      nullptr, output.As<__nv_bfloat16>(), m.As<int>(), e.As<int>(), r.As<float>(),
+      experts, num_rows, topk, n, k, nullptr));
+  CUDA_CALL_THROW(cudaGetLastError());
+  std::vector<__nv_bfloat16> ref_host(n), out_host(n);
+  reference.Download(ref_host.data());
+  output.Download(out_host.data());
+  for (int col = 0; col < n; ++col) {
+    EXPECT_EQ(static_cast<float>(ref_host[col]), 0.0f);
+    EXPECT_EQ(static_cast<float>(out_host[col]), static_cast<float>(ref_host[col]));
   }
 }
 #endif

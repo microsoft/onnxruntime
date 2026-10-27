@@ -96,48 +96,62 @@ TEST(DequantizeLinearTest, Fp8ToBf16EmptyInput) {
 }
 
 TEST(DequantizeLinearTest, Fp8ToBf16OptimizedReshapeTranspose) {
-  auto provider = DefaultCudaExecutionProvider();
-  if (provider == nullptr) GTEST_SKIP() << "CUDA execution provider is not available";
-  std::unordered_map<std::string, int> versions{{kOnnxDomain, 19}, {kMSDomain, 1}};
-  Model model("Fp8Bf16Optimized", false, ModelMetaData(), PathString(),
-              IOnnxRuntimeOpSchemaRegistryList(), versions, {}, DefaultLoggingManager().DefaultLogger());
-  auto& graph = model.MainGraph();
-  ModelTestBuilder builder(graph);
-  std::vector<Float8E4M3FN> values;
-  for (float value : {1.0f, 2.0f, -1.0f, -2.0f}) values.emplace_back(value);
-  auto* input = builder.MakeInput<Float8E4M3FN>({4}, values);
-  auto* scale = builder.MakeScalarInitializer<float>(2.0f);
-  auto* dequantized = builder.MakeIntermediate();
-  builder.AddNode("DequantizeLinear", {input, scale}, {dequantized}, kMSDomain)
-      .AddAttribute("output_dtype", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto::BFLOAT16));
-  auto* reshaped = builder.MakeIntermediate();
-  builder.AddNode("Reshape", {dequantized, builder.Make1DInitializer<int64_t>({2, 2})}, {reshaped});
-  builder.AddNode("Transpose", {reshaped}, {builder.MakeOutput()})
-      .AddAttribute("perm", std::vector<int64_t>{1, 0});
-  builder.SetGraphOutputs();
-  ASSERT_STATUS_OK(graph.Resolve());
-  std::string serialized;
-  ASSERT_TRUE(model.ToProto().SerializeToString(&serialized));
-  SessionOptions options;
-  options.graph_optimization_level = TransformerLevel::Level3;
-  InferenceSessionWrapper session(options, GetEnvironment());
-  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(provider)));
-  std::istringstream stream(serialized);
-  ASSERT_STATUS_OK(session.Load(stream));
-  ASSERT_STATUS_OK(session.Initialize());
-  for (const auto& node : session.GetGraph().Nodes()) {
-    EXPECT_NE(node.OpType(), "QuantizeLinear");
-  }
-  std::vector<OrtValue> fetches;
-  ASSERT_STATUS_OK(session.Run(RunOptions{}, builder.feeds_, builder.output_names_, &fetches));
-  ASSERT_EQ(fetches.size(), 1u);
-  const auto& output = fetches[0].Get<Tensor>();
-  ASSERT_EQ(output.Shape(), TensorShape({2, 2}));
-  const auto actual = output.DataAsSpan<BFloat16>();
-  const auto expected = ToBFloat16({2, -2, 4, -4});
-  ASSERT_EQ(actual.size(), expected.size());
-  for (size_t i = 0; i < actual.size(); ++i) {
-    EXPECT_EQ(actual[i], expected[i]);
+  for (bool with_reshape : {true, false}) {
+    for (bool with_zero_point : {false, true}) {
+      SCOPED_TRACE(MakeString("with_reshape=", with_reshape, " with_zero_point=", with_zero_point));
+      auto provider = DefaultCudaExecutionProvider();
+      if (provider == nullptr) GTEST_SKIP() << "CUDA execution provider is not available";
+      std::unordered_map<std::string, int> versions{{kOnnxDomain, 19}, {kMSDomain, 1}};
+      Model model("Fp8Bf16Optimized", false, ModelMetaData(), PathString(),
+                  IOnnxRuntimeOpSchemaRegistryList(), versions, {}, DefaultLoggingManager().DefaultLogger());
+      auto& graph = model.MainGraph();
+      ModelTestBuilder builder(graph);
+      std::vector<Float8E4M3FN> values;
+      for (float value : {1.0f, 2.0f, -1.0f, -2.0f}) values.emplace_back(value);
+      const std::vector<int64_t> input_shape = with_reshape ? std::vector<int64_t>{4} : std::vector<int64_t>{2, 2};
+      auto* input = builder.MakeInput<Float8E4M3FN>(input_shape, values);
+      auto* scale = builder.MakeScalarInitializer<float>(2.0f);
+      std::vector<NodeArg*> dq_inputs{input, scale};
+      if (with_zero_point) {
+        dq_inputs.push_back(builder.MakeScalarInitializer<Float8E4M3FN>(Float8E4M3FN(1.0f)));
+      }
+      auto* dequantized = builder.MakeIntermediate();
+      builder.AddNode("DequantizeLinear", dq_inputs, {dequantized}, kMSDomain)
+          .AddAttribute("output_dtype", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto::BFLOAT16));
+      NodeArg* transpose_input = dequantized;
+      if (with_reshape) {
+        auto* reshaped = builder.MakeIntermediate();
+        builder.AddNode("Reshape", {dequantized, builder.Make1DInitializer<int64_t>({2, 2})}, {reshaped});
+        transpose_input = reshaped;
+      }
+      builder.AddNode("Transpose", {transpose_input}, {builder.MakeOutput()})
+          .AddAttribute("perm", std::vector<int64_t>{1, 0});
+      builder.SetGraphOutputs();
+      ASSERT_STATUS_OK(graph.Resolve());
+      std::string serialized;
+      ASSERT_TRUE(model.ToProto().SerializeToString(&serialized));
+      SessionOptions options;
+      options.graph_optimization_level = TransformerLevel::Level3;
+      InferenceSessionWrapper session(options, GetEnvironment());
+      ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(provider)));
+      std::istringstream stream(serialized);
+      ASSERT_STATUS_OK(session.Load(stream));
+      ASSERT_STATUS_OK(session.Initialize());
+      for (const auto& node : session.GetGraph().Nodes()) {
+        EXPECT_NE(node.OpType(), "QuantizeLinear");
+      }
+      std::vector<OrtValue> fetches;
+      ASSERT_STATUS_OK(session.Run(RunOptions{}, builder.feeds_, builder.output_names_, &fetches));
+      ASSERT_EQ(fetches.size(), 1u);
+      const auto& output = fetches[0].Get<Tensor>();
+      ASSERT_EQ(output.Shape(), TensorShape({2, 2}));
+      const auto actual = output.DataAsSpan<BFloat16>();
+      const auto expected = with_zero_point ? ToBFloat16({0, -4, 2, -6}) : ToBFloat16({2, -2, 4, -4});
+      ASSERT_EQ(actual.size(), expected.size());
+      for (size_t i = 0; i < actual.size(); ++i) {
+        EXPECT_EQ(actual[i], expected[i]);
+      }
+    }
   }
 }
 

@@ -335,11 +335,204 @@ void TestPerColumnS2ExactOutputs() {
 }
 
 TEST(MatMulBlockQuantizedFp8WeightOpTest, PerColumnS2ExactOutputsFp16) {
+  constexpr const char* kChildProcessVariable = "ORT_FP8_GEMV_S2_FP16_TEST_CHILD";
+  const bool is_child_process = !Env::Default().GetEnvironmentVar(kChildProcessVariable).empty();
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device is required for per-column FP8 matmul.";
+  }
   TestPerColumnS2ExactOutputs<MLFloat16>();
+  if (!is_child_process) {
+    ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{
+        {"ORT_FP8_GEMV_MMA", "1"},
+        {"ORT_FP8_GEMV_MAX_M", "32"},
+        {"ORT_FP8_GEMV_PER_COLUMN_S2", "1"},
+        {kChildProcessVariable, "1"},
+    }};
+    const std::string command =
+        "\"" + CurrentExecutablePath() +
+        "\" --gtest_filter=MatMulBlockQuantizedFp8WeightOpTest.PerColumnS2ExactOutputsFp16 --gtest_color=no";
+    ASSERT_EQ(std::system(command.c_str()), 0);
+  }
 }
 
 TEST(MatMulBlockQuantizedFp8WeightOpTest, PerColumnS2ExactOutputsBf16) {
+  constexpr const char* kChildProcessVariable = "ORT_FP8_GEMV_S2_BF16_TEST_CHILD";
+  const bool is_child_process = !Env::Default().GetEnvironmentVar(kChildProcessVariable).empty();
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device is required for per-column FP8 matmul.";
+  }
   TestPerColumnS2ExactOutputs<BFloat16>();
+  if (!is_child_process) {
+    ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{
+        {"ORT_FP8_GEMV_MMA", "1"},
+        {"ORT_FP8_GEMV_MAX_M", "32"},
+        {"ORT_FP8_GEMV_PER_COLUMN_S2", "1"},
+        {kChildProcessVariable, "1"},
+    }};
+    const std::string command =
+        "\"" + CurrentExecutablePath() +
+        "\" --gtest_filter=MatMulBlockQuantizedFp8WeightOpTest.PerColumnS2ExactOutputsBf16 --gtest_color=no";
+    ASSERT_EQ(std::system(command.c_str()), 0);
+  }
+}
+
+template <typename T>
+void TestPrefillWeightOverrides() {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device is required for prefill weight override tests.";
+  }
+  constexpr int64_t m = 3, n = 10, k = 16, block_size = 16;
+  const std::vector<int64_t> offsets{1, 4, 8};
+  const std::vector<int64_t> seg_widths{2, 3, 2};
+
+  std::vector<T> a(m * k), bias(n);
+  std::vector<Float8E4M3FN> b(n * k);
+  std::vector<float> b_scale(n, 0.5f);
+  for (int64_t r = 0; r < m; ++r) {
+    for (int64_t i = 0; i < k; ++i) {
+      a[r * k + i] = T(static_cast<float>((r + i) % 5 - 2) * 0.25f);
+    }
+  }
+  for (int64_t col = 0; col < n; ++col) {
+    bias[col] = T(static_cast<float>(col - 4) * 0.125f);
+    for (int64_t i = 0; i < k; ++i) {
+      b[col * k + i] = Float8E4M3FN(static_cast<float>((col + i) % 3 - 1));
+    }
+  }
+
+  // Build three original [K, segmentN] weight segments whose values differ from the FP8 reconstruction.
+  std::vector<T> seg0(k * seg_widths[0]), seg1(k * seg_widths[1]), seg2(k * seg_widths[2]);
+  auto fill_segment = [&](std::vector<T>& seg, int64_t width, int seed) {
+    for (int64_t i = 0; i < k; ++i) {
+      for (int64_t c = 0; c < width; ++c) {
+        seg[i * width + c] = T(static_cast<float>((i * 3 + c + seed) % 7 - 3) * 0.5f);
+      }
+    }
+  };
+  fill_segment(seg0, seg_widths[0], 1);
+  fill_segment(seg1, seg_widths[1], 2);
+  fill_segment(seg2, seg_widths[2], 3);
+
+  auto segment_weight = [&](int64_t col, int64_t i, bool use_override) -> float {
+    if (use_override) {
+      if (col >= offsets[0] && col < offsets[0] + seg_widths[0]) {
+        return static_cast<float>(seg0[i * seg_widths[0] + (col - offsets[0])]);
+      }
+      if (col >= offsets[1] && col < offsets[1] + seg_widths[1]) {
+        return static_cast<float>(seg1[i * seg_widths[1] + (col - offsets[1])]);
+      }
+      if (col >= offsets[2] && col < offsets[2] + seg_widths[2]) {
+        return static_cast<float>(seg2[i * seg_widths[2] + (col - offsets[2])]);
+      }
+    }
+    return b[col * k + i].ToFloat() * b_scale[col];
+  };
+
+  for (int32_t prefill : {0, 1}) {
+    for (bool with_bias : {false, true}) {
+      for (bool split : {false, true}) {
+        SCOPED_TRACE(MakeString("prefill=", prefill, " bias=", with_bias, " split=", split));
+        const std::vector<int64_t> widths = split ? std::vector<int64_t>{3, 4, 3} : std::vector<int64_t>{n};
+        OpTester test("MatMulBlockQuantizedFp8Weight", 1, kMSDomain);
+        test.AddAttribute<int64_t>("block_size", block_size);
+        test.AddAttribute<std::vector<int64_t>>("prefill_weight_offsets", offsets);
+        if (split) {
+          test.AddAttribute<std::vector<int64_t>>("split_sizes", widths);
+        }
+        test.AddInput<T>("A", {m, k}, a);
+        test.AddInput<Float8E4M3FN>("B", {n, k}, b);
+        test.AddInput<float>("b_scale", {n, 1}, b_scale);
+        test.AddOptionalInputEdge<float>();
+        if (with_bias) {
+          test.AddInput<T>("bias", {n}, bias);
+        } else {
+          test.AddOptionalInputEdge<T>();
+        }
+        test.AddInput<int32_t>("prefill_numerics", {1}, {prefill});
+        test.AddInput<T>("prefill_weight", {k, seg_widths[0]}, seg0);
+        test.AddInput<T>("prefill_weight2", {k, seg_widths[1]}, seg1);
+        test.AddInput<T>("prefill_weight3", {k, seg_widths[2]}, seg2);
+
+        int64_t start = 0;
+        for (size_t out_idx = 0; out_idx < widths.size(); ++out_idx) {
+          std::vector<T> expected;
+          for (int64_t r = 0; r < m; ++r) {
+            for (int64_t col = start; col < start + widths[out_idx]; ++col) {
+              float sum = with_bias ? static_cast<float>(bias[col]) : 0.0f;
+              for (int64_t i = 0; i < k; ++i) {
+                sum += static_cast<float>(a[r * k + i]) * segment_weight(col, i, prefill == 1);
+              }
+              expected.emplace_back(sum);
+            }
+          }
+          test.AddOutput<T>(("Y" + std::to_string(out_idx)).c_str(), {m, widths[out_idx]}, expected);
+          start += widths[out_idx];
+        }
+        test.SetOutputTolerance(0.0f, 0.0f);
+        std::vector<std::unique_ptr<IExecutionProvider>> providers;
+        providers.push_back(DefaultCudaExecutionProvider());
+        test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+      }
+    }
+  }
+}
+
+TEST(MatMulBlockQuantizedFp8WeightOpTest, PrefillWeightOverridesFp16AndBf16) {
+  TestPrefillWeightOverrides<MLFloat16>();
+  TestPrefillWeightOverrides<BFloat16>();
+}
+
+TEST(MatMulBlockQuantizedFp8WeightOpTest, RejectsInvalidPrefillWeightSegments) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device is required for prefill weight validation tests.";
+  }
+  constexpr int64_t m = 2, n = 8, k = 16;
+  const std::vector<BFloat16> a(m * k, BFloat16(1.0f));
+  const std::vector<Float8E4M3FN> b(n * k, Float8E4M3FN(1.0f));
+  const std::vector<float> scales(n, 1.0f);
+  const std::vector<BFloat16> y(m * n, BFloat16(0.0f));
+
+  for (int kind = 0; kind < 7; ++kind) {
+    SCOPED_TRACE(kind);
+    OpTester test("MatMulBlockQuantizedFp8Weight", 1, kMSDomain);
+    test.AddAttribute<int64_t>("block_size", k);
+    if (kind == 0) {
+      test.AddAttribute<std::vector<int64_t>>("prefill_weight_offsets", {0, 1, 2, 3});
+    } else if (kind == 1) {
+      test.AddAttribute<std::vector<int64_t>>("prefill_weight_offsets", {1, 4});
+    } else if (kind == 2 || kind == 3) {
+      test.AddAttribute<std::vector<int64_t>>("prefill_weight_offsets", {1});
+    } else if (kind == 4) {
+      test.AddAttribute<std::vector<int64_t>>("prefill_weight_offsets", {-1});
+    } else if (kind == 5) {
+      test.AddAttribute<std::vector<int64_t>>("prefill_weight_offsets", {7});
+    }
+    test.AddInput<BFloat16>("A", {m, k}, a);
+    test.AddInput<Float8E4M3FN>("B", {n, k}, b);
+    test.AddInput<float>("b_scale", {n, 1}, scales);
+    test.AddOptionalInputEdge<float>();
+    test.AddOptionalInputEdge<BFloat16>();
+    test.AddInput<int32_t>("prefill_numerics", {1}, {1});
+    if (kind == 1) {
+      test.AddInput<BFloat16>("prefill_weight", {k, 2}, std::vector<BFloat16>(k * 2));
+      test.AddOptionalInputEdge<BFloat16>();
+    } else if (kind == 2) {
+      test.AddInput<BFloat16>("prefill_weight", {k + 1, 2}, std::vector<BFloat16>((k + 1) * 2));
+    } else if (kind == 3) {
+      test.AddInput<BFloat16>("prefill_weight", {k * 2}, std::vector<BFloat16>(k * 2));
+    } else if (kind >= 4) {
+      test.AddInput<BFloat16>("prefill_weight", {k, 2}, std::vector<BFloat16>(k * 2));
+    }
+    test.AddOutput<BFloat16>("Y", {m, n}, y);
+    const std::string expected_error =
+        kind == 0   ? "prefill_weight_offsets supports at most three original weight segments"
+        : kind <= 3 ? "Original prefill weight must match activation type and shape [K, segmentN]"
+        : kind <= 5 ? "Original prefill weight segment exceeds output width"
+                    : "Original prefill weight inputs require matching prefill_weight_offsets";
+    std::vector<std::unique_ptr<IExecutionProvider>> providers;
+    providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectFailure, expected_error, {}, nullptr, &providers);
+  }
 }
 
 TEST(MatMulBlockQuantizedFp8WeightOpTest, SplitOutputsBFloat16) {

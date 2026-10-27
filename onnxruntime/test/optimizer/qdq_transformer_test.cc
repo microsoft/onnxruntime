@@ -4654,16 +4654,53 @@ TEST(QDQTransformerTests, QDQPropagation_DQForward_ConstantInput_NoPropagation) 
 #if !defined(DISABLE_CONTRIB_OPS)
 TEST(QDQTransformerTests, QDQPropagation_MSIndependentScaleOutput_NoPropagation) {
   for (bool explicit_output_dtype : {false, true}) {
+    for (bool with_zero_point : {false, true}) {
+      auto build_test_case = [=](ModelTestBuilder& builder) {
+        auto* input = builder.MakeInput<int8_t>({4}, {-2, -1, 1, 2});
+        NodeArg* scale = explicit_output_dtype
+                             ? builder.MakeScalarInitializer<float>(0.5f)
+                             : builder.MakeScalarInitializer<BFloat16>(BFloat16(0.5f));
+        std::vector<NodeArg*> dq_inputs{input, scale};
+        if (with_zero_point) {
+          dq_inputs.push_back(builder.MakeScalarInitializer<int8_t>(int8_t(0)));
+        }
+        auto* dequantized = builder.MakeIntermediate();
+        auto& dq = builder.AddNode("DequantizeLinear", dq_inputs, {dequantized}, kMSDomain);
+        if (explicit_output_dtype) {
+          dq.AddAttribute("output_dtype", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto::FLOAT16));
+        }
+        auto* reshaped = builder.MakeIntermediate();
+        builder.AddNode("Reshape", {dequantized, builder.Make1DInitializer<int64_t>({2, 2})}, {reshaped});
+        builder.AddNode("Transpose", {reshaped}, {builder.MakeOutput()})
+            .AddAttribute("perm", std::vector<int64_t>{1, 0});
+      };
+      auto check_graph = [](Graph& graph) -> Status {
+        const auto counts = CountOpsInGraph(graph);
+        TEST_RETURN_IF_NOT(counts.count("com.microsoft.QuantizeLinear") == 0);
+        TEST_RETURN_IF_NOT(counts.at("com.microsoft.DequantizeLinear") == 1);
+        TEST_RETURN_IF_NOT(counts.at("Reshape") == 1 && counts.at("Transpose") == 1);
+        return graph.Resolve();
+      };
+      ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 19, DefaultLoggingManager().DefaultLogger(),
+                                            std::make_unique<QDQPropagationTransformer>(),
+                                            TransformerLevel::Level1, 2, nullptr, check_graph));
+    }
+  }
+}
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+TEST(QDQTransformerTests, QDQPropagation_MSFp8Bf16_NoPropagation) {
+  for (bool with_zero_point : {false, true}) {
     auto build_test_case = [=](ModelTestBuilder& builder) {
-      auto* input = builder.MakeInput<int8_t>({4}, {-2, -1, 1, 2});
-      NodeArg* scale = explicit_output_dtype
-                           ? builder.MakeScalarInitializer<float>(0.5f)
-                           : builder.MakeScalarInitializer<BFloat16>(BFloat16(0.5f));
-      auto* dequantized = builder.MakeIntermediate();
-      auto& dq = builder.AddNode("DequantizeLinear", {input, scale}, {dequantized}, kMSDomain);
-      if (explicit_output_dtype) {
-        dq.AddAttribute("output_dtype", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto::FLOAT16));
+      auto* input = builder.MakeInput<Float8E4M3FN>({4}, std::vector<Float8E4M3FN>(4, Float8E4M3FN(1.0f)));
+      auto* scale = builder.MakeScalarInitializer<float>(0.5f);
+      std::vector<NodeArg*> dq_inputs{input, scale};
+      if (with_zero_point) {
+        dq_inputs.push_back(builder.MakeScalarInitializer<Float8E4M3FN>(Float8E4M3FN(0.0f)));
       }
+      auto* dequantized = builder.MakeIntermediate();
+      builder.AddNode("DequantizeLinear", dq_inputs, {dequantized}, kMSDomain)
+          .AddAttribute("output_dtype", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto::BFLOAT16));
       auto* reshaped = builder.MakeIntermediate();
       builder.AddNode("Reshape", {dequantized, builder.Make1DInitializer<int64_t>({2, 2})}, {reshaped});
       builder.AddNode("Transpose", {reshaped}, {builder.MakeOutput()})
@@ -4680,31 +4717,6 @@ TEST(QDQTransformerTests, QDQPropagation_MSIndependentScaleOutput_NoPropagation)
                                           std::make_unique<QDQPropagationTransformer>(),
                                           TransformerLevel::Level1, 2, nullptr, check_graph));
   }
-}
-
-#if !defined(DISABLE_FLOAT8_TYPES)
-TEST(QDQTransformerTests, QDQPropagation_MSFp8Bf16_NoPropagation) {
-  auto build_test_case = [](ModelTestBuilder& builder) {
-    auto* input = builder.MakeInput<Float8E4M3FN>({4}, std::vector<Float8E4M3FN>(4, Float8E4M3FN(1.0f)));
-    auto* scale = builder.MakeScalarInitializer<float>(0.5f);
-    auto* dequantized = builder.MakeIntermediate();
-    builder.AddNode("DequantizeLinear", {input, scale}, {dequantized}, kMSDomain)
-        .AddAttribute("output_dtype", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto::BFLOAT16));
-    auto* reshaped = builder.MakeIntermediate();
-    builder.AddNode("Reshape", {dequantized, builder.Make1DInitializer<int64_t>({2, 2})}, {reshaped});
-    builder.AddNode("Transpose", {reshaped}, {builder.MakeOutput()})
-        .AddAttribute("perm", std::vector<int64_t>{1, 0});
-  };
-  auto check_graph = [](Graph& graph) -> Status {
-    const auto counts = CountOpsInGraph(graph);
-    TEST_RETURN_IF_NOT(counts.count("com.microsoft.QuantizeLinear") == 0);
-    TEST_RETURN_IF_NOT(counts.at("com.microsoft.DequantizeLinear") == 1);
-    TEST_RETURN_IF_NOT(counts.at("Reshape") == 1 && counts.at("Transpose") == 1);
-    return graph.Resolve();
-  };
-  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 19, DefaultLoggingManager().DefaultLogger(),
-                                        std::make_unique<QDQPropagationTransformer>(),
-                                        TransformerLevel::Level1, 2, nullptr, check_graph));
 }
 #endif  // !defined(DISABLE_FLOAT8_TYPES)
 #endif  // !defined(DISABLE_CONTRIB_OPS)

@@ -972,20 +972,28 @@ bool try_launch_moe_gemv_nvfp4_fused_finalize(
     return false;
   }
   const dim3 grid(static_cast<unsigned>(num_rows), static_cast<unsigned>((n + 7) / 8));
-  const dim3 block(64, static_cast<unsigned>(experts_per_token));
   const int64_t weight_stride = static_cast<int64_t>(n) * k / 2;
   const int64_t scale_stride = static_cast<int64_t>(n) * (k / 16);
   const cutlass_kernels::ActivationParams activation;
-  if (bias != nullptr) {
-    MoeGemvFp4RawKPackedKernel<T, false, true, 8, false, false, false, true><<<grid, block, 0, stream>>>(
+  const auto launch = [&]<int KLanes, bool EnableBias>() {
+    const dim3 block(8 * KLanes, static_cast<unsigned>(experts_per_token));
+    MoeGemvFp4RawKPackedKernel<T, false, EnableBias, KLanes, false, false, false, true><<<grid, block, 0, stream>>>(
         act, weight, block_scales, global_scales, bias, out, nullptr, permuted_row_to_expert,
         num_experts, weight_stride, scale_stride, n, k, activation, nullptr, num_rows,
         unpermuted_row_to_permuted_row, routing_scales, experts_per_token);
+  };
+  if (k <= 1024) {
+    if (bias != nullptr) {
+      launch.template operator()<4, true>();
+    } else {
+      launch.template operator()<4, false>();
+    }
   } else {
-    MoeGemvFp4RawKPackedKernel<T, false, false, 8, false, false, false, true><<<grid, block, 0, stream>>>(
-        act, weight, block_scales, global_scales, bias, out, nullptr, permuted_row_to_expert,
-        num_experts, weight_stride, scale_stride, n, k, activation, nullptr, num_rows,
-        unpermuted_row_to_permuted_row, routing_scales, experts_per_token);
+    if (bias != nullptr) {
+      launch.template operator()<8, true>();
+    } else {
+      launch.template operator()<8, false>();
+    }
   }
   CUDA_CALL_THROW(cudaGetLastError());
   return true;

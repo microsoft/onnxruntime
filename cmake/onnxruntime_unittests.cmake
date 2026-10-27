@@ -1139,12 +1139,14 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND onnxruntime_BUILD_CUDA_EP_AS_P
 
   if (TARGET onnxruntime_providers_cuda_plugin)
     if (NOT onnxruntime_DISABLE_CONTRIB_OPS)
-      set_property(SOURCE "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/moe_gemm_int2_test.cc"
-        APPEND PROPERTY INCLUDE_DIRECTORIES
-        $<TARGET_PROPERTY:onnxruntime_providers_cuda_plugin,INCLUDE_DIRECTORIES>)
-      set_property(SOURCE "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/moe_gemm_int2_test.cc"
-        APPEND PROPERTY COMPILE_DEFINITIONS
-        BUILD_CUDA_EP_AS_PLUGIN ORT_API_MANUAL_INIT ORT_USE_EP_API_ADAPTERS=1)
+      foreach(cuda_plugin_internal_test gemm_tactic_cache_test.cc moe_gemm_int2_test.cc)
+        set_property(SOURCE "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/${cuda_plugin_internal_test}"
+          APPEND PROPERTY INCLUDE_DIRECTORIES
+          $<TARGET_PROPERTY:onnxruntime_providers_cuda_plugin,INCLUDE_DIRECTORIES>)
+        set_property(SOURCE "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/${cuda_plugin_internal_test}"
+          APPEND PROPERTY COMPILE_DEFINITIONS
+          BUILD_CUDA_EP_AS_PLUGIN ORT_API_MANUAL_INIT ORT_USE_EP_API_ADAPTERS=1)
+      endforeach()
     endif()
     set(onnxruntime_providers_cuda_plugin_ut_impl_src
       "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_allocator.cc"
@@ -1725,6 +1727,24 @@ block()
         ENVIRONMENT "GTEST_FILTER=${fp8_decode_filter};ORT_QMOE_FP8_GEMV_NATIVE_DECODE=${native_decode}"
         RUN_SERIAL TRUE)
     endforeach()
+
+    if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
+      set(moe_routing_warp_select_filter "CUDA_EP_Unittest.FusedSoftmaxTopKExpertMaps*")
+      if (onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
+        set(moe_routing_warp_select_outer_filter "${moe_routing_warp_select_filter}")
+      else()
+        set(moe_routing_warp_select_outer_filter "CUDA_EP_Unittest.All")
+      endif()
+      foreach(warp_select 0 1 2)
+        add_test(NAME onnxruntime_moe_routing_warp_select_${warp_select}
+          COMMAND $<TARGET_FILE:${onnxruntime_provider_test_target}>
+            "--gtest_filter=${moe_routing_warp_select_outer_filter}"
+          WORKING_DIRECTORY $<TARGET_FILE_DIR:${onnxruntime_provider_test_target}>)
+        set_tests_properties(onnxruntime_moe_routing_warp_select_${warp_select} PROPERTIES
+          ENVIRONMENT "GTEST_FILTER=${moe_routing_warp_select_filter};ORT_MOE_ROUTING_WARP_SELECT=${warp_select}"
+          RUN_SERIAL TRUE)
+      endforeach()
+    endif()
   endif()
 
   if (onnxruntime_USE_CUDA AND onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND
