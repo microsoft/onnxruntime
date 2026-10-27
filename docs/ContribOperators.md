@@ -132,6 +132,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.SparseAttentionIndexer">com.microsoft.SparseAttentionIndexer</a>
   * <a href="#com.microsoft.SparsePagedAttention">com.microsoft.SparsePagedAttention</a>
   * <a href="#com.microsoft.SparseToDenseMatMul">com.microsoft.SparseToDenseMatMul</a>
+  * <a href="#com.microsoft.SpeculativePrefixCommit">com.microsoft.SpeculativePrefixCommit</a>
   * <a href="#com.microsoft.Tokenizer">com.microsoft.Tokenizer</a>
   * <a href="#com.microsoft.TorchEmbedding">com.microsoft.TorchEmbedding</a>
   * <a href="#com.microsoft.TransposeMatMul">com.microsoft.TransposeMatMul</a>
@@ -8255,6 +8256,61 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>T1</tt> : tensor(float), tensor(double), tensor(int64), tensor(int32), tensor(uint64), tensor(uint32)</dt>
 <dd>Constrain input and output types to float tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.SpeculativePrefixCommit"></a><a name="com.microsoft.speculativeprefixcommit">**com.microsoft.SpeculativePrefixCommit**</a>
+
+  Commits the accepted prefix of a speculative verification step for each request in the batch and publishes a result-ring record for the host. Acceptance compares the verifier predictions with the draft tokens in input_ids. The operator is stateful: the control state and committed context are read from ctl and ctx_commit and the updated state is written to updated_ctl and updated_ctx_commit, which are required outputs. An output may alias its input (same device buffer) or be disjoint from it; partial overlap is not supported. Callers that keep the state in persistent device buffers must bind the outputs to those buffers, otherwise the updated state is lost. Callers must serialize access to the state buffers. The result ring is described by ptrs and holds ptrs[1] records of eight int64 words for each batch item, laid out consecutively per batch item starting at ptrs[0]; it must be a device-accessible, 8-byte aligned allocation. Each record is published by writing its sequence word last, after a system-scope fence. A request whose ctl[3] muted flag is set (for example during prefill) does not commit state or touch the ring, and may use any number of rows. Invalid device metadata sets error bits in ctl[5] (4: invalid row count or state, 16: invalid result ring) and mutes the request. The status words are OR-ed together and a non-zero value sets bit 2 of ctl[5].
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>head_rows</tt> : int</dt>
+<dd>Number of verifier rows, 3 through 8. Non-muted requests must provide exactly this many rows. Default is 8.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>next_tokens</tt> : I64</dt>
+<dd>Verifier predictions with shape [batch, rows], or [rows] for batch one.</dd>
+<dt><tt>input_ids</tt> : I64</dt>
+<dd>Verifier input IDs; the draft tokens are input_ids[b, 1:rows]. The number of elements must be a multiple of the batch size and at least batch * rows.</dd>
+<dt><tt>status</tt> : I32</dt>
+<dd>Verifier status words, shared by all batch items.</dd>
+<dt><tt>ctl</tt> : I64</dt>
+<dd>Control state, 16 int64 words per batch item: [0] pending token, [1] length, [3] muted flag, [4] ring sequence number, [5] error flags, [6] accepted count, [7] cache length. Other words are preserved.</dd>
+<dt><tt>ctx_commit</tt> : I64</dt>
+<dd>Committed context, two int64 words per batch item.</dd>
+<dt><tt>prefixes</tt> : I64</dt>
+<dd>Context pairs per batch item: pair k (words 2k and 2k+1) is committed when k tokens are accepted. At least 2 * head_rows words per batch item.</dd>
+<dt><tt>ptrs</tt> : I64</dt>
+<dd>Result ring address and number of records per batch item (must be positive).</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>head_c</tt> : I32</dt>
+<dd>Cache length before the commit [batch]; zero for muted or invalid requests.</dd>
+<dt><tt>updated_ctl</tt> : I64</dt>
+<dd>Updated control state, same shape as ctl. May alias ctl.</dd>
+<dt><tt>updated_ctx_commit</tt> : I64</dt>
+<dd>Updated committed context, same shape as ctx_commit. May alias ctx_commit.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>I64</tt> : tensor(int64)</dt>
+<dd>Token, control and pointer words.</dd>
+<dt><tt>I32</tt> : tensor(int32)</dt>
+<dd>Status words and cache lengths.</dd>
 </dl>
 
 
