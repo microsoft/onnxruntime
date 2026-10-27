@@ -101,6 +101,7 @@ stages:
             --cmake_generator "$(VSGenerator)"
             --parallel
             --use_vcpkg
+            --cmake_deps_mirror_dir "$(Build.BinariesDirectory)\cmake-deps-mirror"
             --use_vcpkg_ms_internal_asset_cache
             --use_binskim_compliant_compile_flags
             --update
@@ -108,7 +109,6 @@ stages:
             --enable_onnx_tests
             --use_webgpu shared_lib
             --use_dawn_agility_sdk
-            --cmake_deps_mirror_dir "$(Build.BinariesDirectory)\cmake-deps-mirror"
             --wgsl_template static
             --disable_rtti
             --enable_lto

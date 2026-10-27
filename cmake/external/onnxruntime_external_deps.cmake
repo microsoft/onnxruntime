@@ -25,6 +25,11 @@ foreach(ONNXRUNTIME_DEP IN LISTS ONNXRUNTIME_DEPS_LIST)
       # Search a local mirror folder
       string(REGEX REPLACE "^https://" "${onnxruntime_CMAKE_DEPS_MIRROR_DIR}/" LOCAL_URL "${ONNXRUNTIME_DEP_URL}")
 
+      # Older CMake versions (e.g. 3.31) require a recognized archive suffix for local files.
+      if(NOT EXISTS "${LOCAL_URL}" AND EXISTS "${LOCAL_URL}.zip")
+        string(APPEND LOCAL_URL ".zip")
+      endif()
+
       if(EXISTS "${LOCAL_URL}")
         cmake_path(ABSOLUTE_PATH LOCAL_URL)
         set(DEP_URL_${ONNXRUNTIME_DEP_NAME} "${LOCAL_URL}")
