@@ -5,6 +5,11 @@
 
 #pragma once
 
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#endif
+
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -669,3 +674,7 @@ class IMoeOffloadNode {
 };
 
 }  // namespace onnxruntime::moe_offload
+
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif

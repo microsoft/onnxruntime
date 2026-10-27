@@ -1,6 +1,6 @@
 #if defined(_MSC_VER)
 #define _CRT_SECURE_NO_WARNINGS 1
-#pragma warning(disable : 4996)
+#pragma warning(disable : 4996 4100)
 #endif
 
 #include "contrib_ops/cpu/moe/qmoe_shared_layout.h"
