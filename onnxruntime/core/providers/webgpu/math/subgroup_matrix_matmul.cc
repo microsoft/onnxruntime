@@ -400,13 +400,13 @@ SubgroupMatrixTilingSelector MakeStagedTilingSelector(const SubgroupMatrixConfig
     if ((M >= 64 || N >= 8192) && K % config.K == 0) {
       const auto& limits = context.DeviceLimits();
       const bool large = M >= 128 && uint64_t{(M + 63) / 64} * ((N + 63) / 64) >= 256;
-      const SubgroupMatrixTiling big{config.M * 8, config.N * 8, 1, 4, 4, 64};
-      const SubgroupMatrixTiling small{config.M * 4, config.N * 4, 1, 4, 4, 64};
-      if (large && IsStagedTilingSupported(limits, config, big, N)) {
-        return big;
+      const SubgroupMatrixTiling tile128{config.M * 8, config.N * 8, 1, 4, 4, 64};
+      const SubgroupMatrixTiling tile64{config.M * 4, config.N * 4, 1, 4, 4, 64};
+      if (large && IsStagedTilingSupported(limits, config, tile128, N)) {
+        return tile128;
       }
-      if (IsStagedTilingSupported(limits, config, small, N)) {
-        return small;
+      if (IsStagedTilingSupported(limits, config, tile64, N)) {
+        return tile64;
       }
     }
     return fallback(context, M, N, K, batch);
