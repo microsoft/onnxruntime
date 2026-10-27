@@ -503,6 +503,13 @@ std::string ShaderVariableHelper::SetByOffsetImpl(std::string_view offset, std::
          << "]=dot(vec4<u32>(0x1u, 0x100u, 0x10000u, 0x1000000u), (vec4<u32>("
          << value << ") & vec4<u32>(0xFFu)));";
       break;
+    case onnxruntime::webgpu::ProgramVariableDataType::Int8x4:
+      // Pack 4 int8 elements (supplied as a vec4<i32>, one value per lane) like Uint8x4. The bitcast
+      // keeps each lane's two's-complement low byte, so negative values pack correctly.
+      ss << storage_name_ << "[" << storage_offset
+         << "]=dot(vec4<u32>(0x1u, 0x100u, 0x10000u, 0x1000000u), (bitcast<vec4<u32>>(vec4<i32>("
+         << value << ")) & vec4<u32>(0xFFu)));";
+      break;
     default:
       ss << storage_name_ << "[" << storage_offset << "]=" << value << ";";
   }

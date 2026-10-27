@@ -45,6 +45,7 @@
 #include "core/providers/webgpu/tensor/unsqueeze.h"
 #include "core/providers/webgpu/math/binary_elementwise_ops.h"
 #include "core/providers/webgpu/math/unary_elementwise_ops.h"
+#include "core/providers/webgpu/quantization/quantize_linear.h"
 #include "core/providers/webgpu/tensor/where.h"
 #include "core/providers/webgpu/reduction/reduction_ops.h"
 
@@ -430,6 +431,11 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     KERNEL_CREATE_INFO_VERSIONED(19, 20, DequantizeLinear),
     KERNEL_CREATE_INFO_VERSIONED(21, 22, DequantizeLinear),
     KERNEL_CREATE_INFO(23, DequantizeLinear),
+    KERNEL_CREATE_INFO_VERSIONED(10, 12, QuantizeLinear),
+    KERNEL_CREATE_INFO_VERSIONED(13, 18, QuantizeLinear),
+    KERNEL_CREATE_INFO_VERSIONED(19, 20, QuantizeLinear),
+    KERNEL_CREATE_INFO_VERSIONED(21, 22, QuantizeLinear),
+    KERNEL_CREATE_INFO_VERSIONED(23, 24, QuantizeLinear),
 
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 13, CumSum)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 14, CumSum)>,
@@ -788,6 +794,14 @@ std::vector<std::unique_ptr<ComputeCapability>> WebGpuExecutionProvider::GetCapa
       // Current implementation only supports the forward case (transB=1). transB defaults to 1.
       const auto& trans_b = node.GetAttributes().find("transB");
       if (trans_b != node.GetAttributes().end() && trans_b->second.i() == 0) {
+        continue;
+      }
+    }
+
+    if (node.OpType() == "QuantizeLinear" && node.Domain() == kOnnxDomain) {
+      const auto& precision = node.GetAttributes().find("precision");
+      if (precision != node.GetAttributes().end() &&
+          !webgpu::IsQuantizeLinearPrecisionSupported(precision->second.i())) {
         continue;
       }
     }
