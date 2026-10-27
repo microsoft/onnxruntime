@@ -96,7 +96,8 @@ WEBGPU_ELEMENTWISE_IMPL(Sqrt, "sqrt(a)")
 WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Sqrt, 6, 12, WebGpuSupportedFloatTypes())
 WEBGPU_ELEMENTWISE_KERNEL(Sqrt, 13, WebGpuSupportedFloatTypes())
 
-WEBGPU_ELEMENTWISE_IMPL(Exp, "exp(a)")
+// Evaluated in f32: float16 exp() is up to 2 ULP off, which WebNN conformance rejects.
+WEBGPU_ELEMENTWISE_IMPL(Exp, "x_value_t(exp(vec4<f32>(a)))", "", ShaderUsage::UseValueTypeAlias)
 WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Exp, 6, 12, WebGpuSupportedFloatTypes())
 WEBGPU_ELEMENTWISE_KERNEL(Exp, 13, WebGpuSupportedFloatTypes())
 
