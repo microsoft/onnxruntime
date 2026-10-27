@@ -66,14 +66,15 @@ WorkspaceInputShape Known(std::initializer_list<int64_t> dims) {
 
 std::array<WorkspaceInputShape, 16> SeparateShapes(int64_t sequence = 4,
                                                    int64_t head = 64,
-                                                   int64_t capacity = 256) {
+                                                   int64_t capacity = 256,
+                                                   int64_t batch_size = 2) {
   std::array<WorkspaceInputShape, 16> shapes;
-  shapes[0] = Known({2, sequence, 8 * head});
-  shapes[1] = Known({2, sequence, 2 * head});
-  shapes[2] = Known({2, sequence, 2 * head});
-  shapes[3] = Known({2, 2, capacity, head});
-  shapes[4] = Known({2, 2, capacity, head});
-  shapes[5] = Known({2});
+  shapes[0] = Known({batch_size, sequence, 8 * head});
+  shapes[1] = Known({batch_size, sequence, 2 * head});
+  shapes[2] = Known({batch_size, sequence, 2 * head});
+  shapes[3] = Known({batch_size, 2, capacity, head});
+  shapes[4] = Known({batch_size, 2, capacity, head});
+  shapes[5] = Known({batch_size});
   shapes[6] = Known({});
   return shapes;
 }
@@ -177,7 +178,8 @@ void SetValueInfo(ONNX_NAMESPACE::ValueInfoProto& value_info,
 }
 
 std::string BuildGroupQueryAttentionKernelModel(bool sliding_window_cache = true,
-                                                bool include_head_sink = true) {
+                                                bool include_head_sink = true,
+                                                int64_t batch_size = 2) {
   ONNX_NAMESPACE::ModelProto model;
   model.set_ir_version(ONNX_NAMESPACE::IR_VERSION);
   auto* onnx_opset = model.add_opset_import();
@@ -218,16 +220,16 @@ std::string BuildGroupQueryAttentionKernelModel(bool sliding_window_cache = true
 
   constexpr int32_t kFloat16 = ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
   constexpr int32_t kInt32 = ONNX_NAMESPACE::TensorProto_DataType_INT32;
-  SetValueInfo(*graph->add_input(), "query", kFloat16, {2, 4, 512});
-  SetValueInfo(*graph->add_input(), "key", kFloat16, {2, 4, 128});
-  SetValueInfo(*graph->add_input(), "value", kFloat16, {2, 4, 128});
-  SetValueInfo(*graph->add_input(), "past_key", kFloat16, {2, 2, 256, 64});
-  SetValueInfo(*graph->add_input(), "past_value", kFloat16, {2, 2, 256, 64});
-  SetValueInfo(*graph->add_input(), "seqlens_k", kInt32, {2});
+  SetValueInfo(*graph->add_input(), "query", kFloat16, {batch_size, 4, 512});
+  SetValueInfo(*graph->add_input(), "key", kFloat16, {batch_size, 4, 128});
+  SetValueInfo(*graph->add_input(), "value", kFloat16, {batch_size, 4, 128});
+  SetValueInfo(*graph->add_input(), "past_key", kFloat16, {batch_size, 2, 256, 64});
+  SetValueInfo(*graph->add_input(), "past_value", kFloat16, {batch_size, 2, 256, 64});
+  SetValueInfo(*graph->add_input(), "seqlens_k", kInt32, {batch_size});
   SetValueInfo(*graph->add_input(), "total_sequence_length", kInt32, {});
-  SetValueInfo(*graph->add_output(), "output", kFloat16, {2, 4, 512});
-  SetValueInfo(*graph->add_output(), "present_key", kFloat16, {2, 2, 256, 64});
-  SetValueInfo(*graph->add_output(), "present_value", kFloat16, {2, 2, 256, 64});
+  SetValueInfo(*graph->add_output(), "output", kFloat16, {batch_size, 4, 512});
+  SetValueInfo(*graph->add_output(), "present_key", kFloat16, {batch_size, 2, 256, 64});
+  SetValueInfo(*graph->add_output(), "present_value", kFloat16, {batch_size, 2, 256, 64});
 
   if (include_head_sink) {
     auto* head_sink = graph->add_initializer();
@@ -1301,6 +1303,8 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, CachedWorkspaceIsConsumedOnlyWith
   if (!HasCudaDevice()) {
     GTEST_SKIP() << "A CUDA device is required to run the CUDA kernel.";
   }
+  // Multi-token continuation prompts require batch size one.
+  constexpr int64_t kBatchSize = 1;
   ScopedEnvironmentVariables env_vars{{{"ORT_ENABLE_XQA", "0"}}};
   SessionOptions options;
   options.graph_optimization_level = TransformerLevel::Default;
@@ -1312,7 +1316,7 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, CachedWorkspaceIsConsumedOnlyWith
   provider_info.sdpa_kernel = kMath;
   provider_info.do_copy_in_default_stream = true;
   ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::make_shared<CUDAExecutionProvider>(provider_info)));
-  const auto model = BuildGroupQueryAttentionKernelModel(false, false);
+  const auto model = BuildGroupQueryAttentionKernelModel(false, false, kBatchSize);
   ASSERT_STATUS_OK(session.Load(model.data(), static_cast<int>(model.size())));
   ASSERT_STATUS_OK(session.Initialize());
 
@@ -1329,7 +1333,7 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, CachedWorkspaceIsConsumedOnlyWith
   const std::vector<std::string> input_names{
       "query", "key", "value", "past_key", "past_value", "seqlens_k", "total_sequence_length"};
   const std::vector<std::string> output_names{"output", "present_key", "present_value"};
-  const auto shapes = SeparateShapes();
+  const auto shapes = SeparateShapes(/*sequence=*/4, /*head=*/64, /*capacity=*/256, kBatchSize);
   auto allocator = std::make_shared<CPUAllocator>();
   InlinedVector<OrtValue> feeds(input_names.size());
   InlinedVector<int> feed_indices(input_names.size());
@@ -1346,7 +1350,7 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, CachedWorkspaceIsConsumedOnlyWith
   const MemoryPatternGroup* cached_patterns = nullptr;
   for (int32_t total_length : {128, 64, 128, 64}) {
     SCOPED_TRACE(MakeString("run=", run, ", total_length=", total_length));
-    CreateMLValue<int32_t>(allocator, {2}, {total_length - 1, total_length - 1}, &feeds[5]);
+    CreateMLValue<int32_t>(allocator, {kBatchSize}, {total_length - 1}, &feeds[5]);
     CreateMLValue<int32_t>(allocator, {}, {total_length}, &feeds[6]);
     std::vector<OrtValue> outputs;
     ASSERT_STATUS_OK(session.Run(RunOptions{}, input_names, feeds, output_names, &outputs));
@@ -1360,7 +1364,7 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, CachedWorkspaceIsConsumedOnlyWith
     }
     ASSERT_EQ(outputs.size(), output_names.size());
     const auto& output = outputs[0].Get<Tensor>();
-    ASSERT_EQ(output.Shape(), TensorShape({2, 4, 512}));
+    ASSERT_EQ(output.Shape(), TensorShape({kBatchSize, 4, 512}));
     const auto values = output.DataAsSpan<MLFloat16>();
     for (size_t i = 0; i < values.size(); ++i) {
       const size_t row = (i / 512) % 4;
