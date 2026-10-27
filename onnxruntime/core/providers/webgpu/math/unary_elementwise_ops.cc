@@ -100,7 +100,7 @@ WEBGPU_ELEMENTWISE_IMPL(Exp, "exp(a)")
 WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Exp, 6, 12, WebGpuSupportedFloatTypes())
 WEBGPU_ELEMENTWISE_KERNEL(Exp, 13, WebGpuSupportedFloatTypes())
 
-WEBGPU_ELEMENTWISE_IMPL(Erf, "erf_v(a)", ErfImpl, ShaderUsage::UseValueTypeAlias)
+WEBGPU_ELEMENTWISE_IMPL(Erf, "erf_v(a)", ErfImpl(), ShaderUsage::UseValueTypeAlias)
 WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Erf, 9, 12, WebGpuSupportedFloatTypes())
 WEBGPU_ELEMENTWISE_KERNEL(Erf, 13, WebGpuSupportedFloatTypes())
 
@@ -403,7 +403,7 @@ Gelu::Gelu(const OpKernelInfo& info)
     : UnaryElementwise{info,
                        "Gelu",
                        info.GetAttrOrDefault<std::string>("approximate", "none") == "tanh" ? FastGeluExpr : GeluExpr,
-                       info.GetAttrOrDefault<std::string>("approximate", "none") == "tanh" ? TanhImpl : ErfImpl,
+                       info.GetAttrOrDefault<std::string>("approximate", "none") == "tanh" ? std::string{TanhImpl} : ErfImpl(),
                        ShaderUsage::UseValueTypeAlias} {
   cache_hint = info.GetAttrOrDefault<std::string>("approximate", "none");
 }
