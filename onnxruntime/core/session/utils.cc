@@ -584,7 +584,14 @@ OrtStatus* InitializeSession(_In_ const OrtSessionOptions* options,
                              _In_ onnxruntime::InferenceSession& sess,
                              _Inout_opt_ OrtPrepackedWeightsContainer* prepacked_weights_container) {
   if (sess.GetRegisteredProviderTypes().empty()) {
-    ORT_API_RETURN_IF_STATUS_NOT_OK(CreateAndRegisterExecutionProviders(options, sess));
+    if (options != nullptr) {
+      // Use copy construction: OrtSessionOptions assignment is intentionally unsupported.
+      OrtSessionOptions options_with_session_options(*options);
+      options_with_session_options.value = sess.GetSessionOptions();
+      ORT_API_RETURN_IF_STATUS_NOT_OK(CreateAndRegisterExecutionProviders(&options_with_session_options, sess));
+    } else {
+      ORT_API_RETURN_IF_STATUS_NOT_OK(CreateAndRegisterExecutionProviders(nullptr, sess));
+    }
   }
 
   if (prepacked_weights_container != nullptr) {

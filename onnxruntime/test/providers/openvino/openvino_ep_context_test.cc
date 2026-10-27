@@ -409,15 +409,8 @@ TEST_P(OVEPOVIRModelsExportEPContextTests, ExportEpCtxFromOVIRModel) {
       std::unordered_map<std::string, std::string> ov_options = {{"device_type", kDevice}};
       session_options.AppendExecutionProvider_OpenVINO_V2(ov_options);
 
-      try {
-        Ort::Session session(*ort_env, epctx_model.c_str(), session_options);
-        FAIL() << "Session creation should fail when the EP context binary is resolved from the initializer folder.";
-      } catch (const Ort::Exception& ex) {
-        EXPECT_THAT(ex.what(), ::testing::HasSubstr("External data path does not exist"));
-        EXPECT_THAT(ex.what(), ::testing::Not(::testing::HasSubstr("validate_status.IsOK()")));
-        EXPECT_THAT(ex.what(), ::testing::HasSubstr("session.model_external_initializers_file_folder_path"));
-        EXPECT_THAT(ex.what(), ::testing::HasSubstr("ep.context_file_path"));
-      }
+      Ort::Session session(*ort_env, epctx_model.c_str(), session_options);
+      RunAndValidate(session);
     }
 
     {
