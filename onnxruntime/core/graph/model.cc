@@ -38,7 +38,7 @@
 #include "core/graph/function_utils.h"
 #endif
 
-#if defined(__wasm__)
+#if defined(__EMSCRIPTEN__)
 #include <emscripten.h>
 #endif
 
@@ -708,7 +708,7 @@ static Status LoadModel(const T& file_path, std::shared_ptr<Model>& p_model,
 
 template <typename T>
 static Status SaveModel(Model& model, const T& file_path) {
-#if defined(__wasm__) && defined(ORT_ENABLE_WEBASSEMBLY_OUTPUT_OPTIMIZED_MODEL)
+#if defined(__EMSCRIPTEN__) && defined(ORT_ENABLE_WEBASSEMBLY_OUTPUT_OPTIMIZED_MODEL)
   ORT_RETURN_IF_ERROR(model.MainGraph().Resolve());
   auto model_proto = model.ToProto();
   auto buffer_size = model_proto.ByteSizeLong();

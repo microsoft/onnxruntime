@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if defined(__wasm__)
+#if defined(__EMSCRIPTEN__)
 
 #include <emscripten.h>
 
