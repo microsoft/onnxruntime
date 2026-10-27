@@ -219,6 +219,17 @@ TEST(HyperConnectionLowRankMixTest, FusedMultipleKSlicesAndWeightChunks) {
   RunTest<MLFloat16>(1, 4, 2560, 320, false, true, kFp16Tol);
 }
 
+TEST(HyperConnectionLowRankMixTest, FusedDecodeShapeRank320) {
+  // rows == 8 is the default speculative-decode shape (4-row down kernel + 2-row up kernel); 1 uses the single-row
+  // kernels and 2..7 the 2-row kernels (3 and 7 exercise the partial last row group).
+  for (int rows : {1, 2, 3, 4, 7, 8}) {
+    for (bool prologue : {false, true}) {
+      RunTest<BFloat16>(rows, 4, 2560, 320, prologue, true, kBf16Tol, 37);
+      RunTest<MLFloat16>(rows, 4, 2560, 320, prologue, true, kFp16Tol, 53);
+    }
+  }
+}
+
 TEST(HyperConnectionLowRankMixTest, UnfusedManyRows) {
   RunTest<MLFloat16>(9, 4, 16, 8, true, true, kFp16Tol);
   RunTest<MLFloat16>(9, 4, 16, 8, true, false, kFp16Tol);
@@ -267,6 +278,17 @@ TEST(HyperConnectionLowRankMixTest, UnfusedFloat16CancellingDotProducts) {
 TEST(HyperConnectionLowRankMixTest, UnfusedUnsupportedShape) {
   RunTest<MLFloat16>(2, 3, 10, 5, true, true, kFp16Tol);
   RunTest<BFloat16>(1, 4, 12, 16, false, false, kBf16Tol);
+}
+
+TEST(HyperConnectionLowRankMixTest, UnfusedMoreThanEightBranches) {
+  // The inject/post-gate kernel tiles the branch columns in groups of eight: C = 9 needs a second (partial) tile and
+  // C = 17 a third.
+  for (bool prologue : {false, true}) {
+    RunTest<float>(1, 9, 8, 8, prologue, true, kFp32Tol);
+    RunTest<MLFloat16>(1, 9, 8, 8, prologue, true, kFp16Tol);
+    RunTest<BFloat16>(1, 9, 8, 8, prologue, true, kBf16Tol);
+    RunTest<MLFloat16>(3, 17, 16, 8, prologue, false, kFp16Tol);
+  }
 }
 
 TEST(HyperConnectionLowRankMixTest, Float32) {

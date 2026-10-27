@@ -422,16 +422,19 @@ bool IsFusedRouteKernelSm90Available(KernelPtr kernel) {
   return available;
 }
 
+bool CanUseFusedRouteMaps(int64_t num_rows, int64_t num_experts, int64_t k) {
+  // k is limited to the values the single-CTA radix-rank map builder supports (1, 2, 4, 6, 8, 10): the fused path then
+  // replaces exactly the launches it is bit-identical to; other k keep the generic route.
+  const bool supported_k = k == 1 || k == 2 || k == 4 || k == 6 || k == 8 || k == 10;
+  return num_rows >= 1 && num_rows <= kFusedRouteMaxRows && num_experts == kFusedRouteExperts && supported_k;
+}
+
 template <typename T>
 bool LaunchFusedRouteMapsT(const T* logits, float* topk_scales, int* topk_indices,
                            int* permuted_row_to_unpermuted_row, int* unpermuted_row_to_permuted_row,
                            int* permuted_expert, int64_t* expert_first_token_offset, int num_rows,
                            int num_experts, int k, bool normalize_scales, bool pdl, cudaStream_t stream) {
-  // k is limited to the values the single-CTA radix-rank map builder supports (1, 2, 4, 6, 8, 10): the fused path then
-  // replaces exactly the launches it is bit-identical to; other k keep the generic route.
-  const bool supported_k = k == 1 || k == 2 || k == 4 || k == 6 || k == 8 || k == 10;
-  if (num_rows < 1 || num_rows > kFusedRouteMaxRows || num_experts != kFusedRouteExperts || !supported_k ||
-      reinterpret_cast<uintptr_t>(logits) % 8 != 0) {
+  if (!CanUseFusedRouteMaps(num_rows, num_experts, k) || reinterpret_cast<uintptr_t>(logits) % 8 != 0) {
     return false;
   }
   const auto kernel = k == 10 ? FusedSoftmaxTopKMapsKernel<T, 10> : FusedSoftmaxTopKMapsKernel<T, 0>;

@@ -163,11 +163,9 @@ Status HyperConnectionLowRankMix<T>::ComputeInternal(OpKernelContext* context) c
   auto hn = GetScratchBuffer<T>(rows * static_cast<size_t>(features), GetComputeStream(context));
   auto down = GetScratchBuffer<T>(rows * static_cast<size_t>(rank), GetComputeStream(context));
   auto up = GetScratchBuffer<T>(rows * static_cast<size_t>(features), GetComputeStream(context));
-  auto inject = GetScratchBuffer<T>(rows * static_cast<size_t>(branches), GetComputeStream(context));
   return LaunchHyperConnectionLowRankMixUnfused<CudaT>(
       GetCublasHandle(context), Stream(context), config, tensors, reinterpret_cast<CudaT*>(hn.get()),
-      reinterpret_cast<CudaT*>(down.get()), reinterpret_cast<CudaT*>(up.get()),
-      reinterpret_cast<CudaT*>(inject.get()));
+      reinterpret_cast<CudaT*>(down.get()), reinterpret_cast<CudaT*>(up.get()));
 }
 
 template class HyperConnectionLowRankMix<float>;
