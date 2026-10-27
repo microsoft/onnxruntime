@@ -11,6 +11,7 @@
 #include "core/optimizer/graph_optimizer_registry.h"
 #include "core/optimizer/pattern_rewriter.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/optimizer/graph_transform_test_fixture.h"
 #include "test/unittest_util/graph_transform_test_builder.h"
 #include "test/util/include/asserts.h"
@@ -218,6 +219,92 @@ class PatternCapabilityCpuEp final : public CPUExecutionProvider {
   Rules rules_;
 };
 
+struct FunctionCapabilityState {
+  InlinedVector<NodeIndex> discovered_functions;
+  size_t body_discoveries = 0;
+  size_t function_optimizations = 0;
+  Statistics function_statistics;
+  CapabilityRewriteState body;
+};
+
+// Only recognizes the fixed function definition built by TestFunctionCapabilityRewrite.
+// Matching a function name alone is not a production function-equivalence check.
+class FunctionPatternCpuEp final : public CPUExecutionProvider {
+ public:
+  FunctionPatternCpuEp(FunctionCapabilityState& state, bool claim_function)
+      : CPUExecutionProvider{CPUExecutionProviderInfo{}},
+        state_{state},
+        claim_function_{claim_function},
+        body_ep_{state.body, true, false, false},
+        function_rule_{"FunctionToIdentity",
+                       "(x:float[2,3,4])=>return pattern.test::TransposeChain(x)",
+                       "(x)=>Identity(x)",
+                       {},
+                       {{kOnnxDomain, 17, 17}, {"pattern.test", 1, 1}}} {}
+
+  std::vector<std::unique_ptr<ComputeCapability>> GetCapability(
+      const GraphViewer& viewer, const IKernelLookup& kernel_lookup,
+      const GraphOptimizerRegistry& optimizer_registry,
+      IResourceAccountant* accountant) const override {
+    const auto& graph = viewer.GetGraph();
+    const auto before = graph.ToGraphProto().SerializeAsString();
+    std::vector<std::unique_ptr<ComputeCapability>> capabilities;
+    for (const auto& node : graph.Nodes()) {
+      if (node.Domain() != "pattern.test" || node.OpType() != "TransposeChain") continue;
+      EXPECT_TRUE(node.CanBeInlined());
+      EXPECT_EQ(state_.function_optimizations, 0u);
+      state_.discovered_functions.push_back(node.Index());
+      if (!claim_function_) continue;
+      std::optional<Match> match;
+      ORT_THROW_IF_ERROR(function_rule_.pattern.MatchAt(graph, node.Index(), match));
+      if (!match) continue;
+
+      auto region = std::make_unique<IndexedSubGraph>();
+      region->nodes.push_back(node.Index());
+      auto parent = std::make_unique<ComputeCapability>(std::move(region));
+      auto optimization_region = std::make_unique<IndexedSubGraph>();
+      optimization_region->nodes.push_back(node.Index());
+      auto optimization = std::make_unique<ComputeCapability>(std::move(optimization_region));
+      optimization->optimization_func =
+          [this](Graph& graph, const ComputeCapability& selected, ComputeCapability& parent,
+                 const GraphOptimizerRegistry&) {
+            const auto source = selected.sub_graph->nodes.front();
+            ORT_RETURN_IF(source >= static_cast<NodeIndex>(graph.MaxNodeIndex()),
+                          "The selected function is no longer available.");
+            const auto* node = graph.GetNode(source);
+            ORT_RETURN_IF(node == nullptr || !node->GetExecutionProviderType().empty(),
+                          "The selected function is no longer available.");
+            const auto* output = node->OutputDefs()[0];
+            ++state_.function_optimizations;
+            InlinedHashSet<NodeIndex> region{source};
+            ORT_RETURN_IF_ERROR(PatternRewriter({function_rule_}).Run(graph, state_.function_statistics, region));
+            ORT_RETURN_IF(region.size() != 1 || region.count(source),
+                          "Expected one replacement for the selected function.");
+            ORT_RETURN_IF(graph.GetNode(*region.begin())->OutputDefs()[0] != output,
+                          "The function rewrite changed the output identity.");
+            parent.sub_graph->nodes.assign(region.begin(), region.end());
+            return graph.Resolve();
+          };
+      parent->nodes_to_optimize.push_back(std::move(optimization));
+      capabilities.push_back(std::move(parent));
+    }
+
+    if (Count(graph, "Transpose") != 0) ++state_.body_discoveries;
+    if (capabilities.empty()) {
+      capabilities = body_ep_.GetCapability(viewer, kernel_lookup, optimizer_registry, accountant);
+    }
+    EXPECT_EQ(graph.ToGraphProto().SerializeAsString(), before);
+    return capabilities;
+  }
+
+ private:
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(FunctionPatternCpuEp);
+  FunctionCapabilityState& state_;
+  const bool claim_function_;
+  PatternCapabilityCpuEp body_ep_;
+  const Rule function_rule_;
+};
+
 void TestCapabilityRewrite(size_t chain_length, bool enabled = true,
                            bool reject_preferred = false, bool offer_overlap = false,
                            bool outside_consumer = false) {
@@ -280,6 +367,89 @@ void TestCapabilityRewrite(size_t chain_length, bool enabled = true,
   for (int64_t i = 0; i < expected_tensor.Shape().Size(); ++i) {
     EXPECT_EQ(actual_tensor.Data<float>()[i], expected_tensor.Data<float>()[i]);
   }
+}
+
+void TestFunctionCapabilityRewrite(bool claim_function, bool aot_inlining) {
+  SCOPED_TRACE(aot_inlining);
+  TestGraph test;
+  auto& b = test.builder;
+  auto* x = b.MakeInput<float>({2, 3, 4}, -1.0f, 1.0f);
+  AddTransposeChain(b, x, 3);
+  b.SetGraphOutputs();
+  ASSERT_STATUS_OK(test.graph.Resolve());
+  auto proto = test.model.ToProto();
+  auto* function = proto.add_functions();
+  function->set_domain("pattern.test");
+  function->set_name("TransposeChain");
+  function->add_input(x->Name());
+  function->add_output(b.output_names_[0]);
+  auto* function_opset = function->add_opset_import();
+  function_opset->set_domain(kOnnxDomain);
+  function_opset->set_version(17);
+  for (const auto& node : proto.graph().node()) *function->add_node() = node;
+  auto* graph = proto.mutable_graph();
+  graph->clear_node();
+  graph->clear_value_info();
+  auto* call = graph->add_node();
+  call->set_name("function_call");
+  call->set_domain("pattern.test");
+  call->set_op_type("TransposeChain");
+  call->add_input(x->Name());
+  call->add_output(b.output_names_[0]);
+  auto* opset = proto.add_opset_import();
+  opset->set_domain("pattern.test");
+  opset->set_version(1);
+  const auto serialized = proto.SerializeAsString();
+
+  SessionOptions options;
+  options.graph_optimization_level = TransformerLevel::Default;
+  options.intra_op_param.thread_pool_size = 1;
+  options.inter_op_param.thread_pool_size = 1;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(
+      kOrtSessionOptionsDisableAheadOfTimeFunctionInlining, aot_inlining ? "0" : "1"));
+  InferenceSessionWrapper baseline{options, GetEnvironment()};
+  std::istringstream original(serialized);
+  ASSERT_STATUS_OK(baseline.Load(original));
+  ASSERT_STATUS_OK(baseline.Initialize());
+  ASSERT_EQ(Count(baseline.GetGraph(), "Transpose"), 3u);
+  std::vector<OrtValue> expected;
+  ASSERT_STATUS_OK(baseline.Run(RunOptions{}, b.feeds_, b.output_names_, &expected));
+
+  FunctionCapabilityState state;
+  InferenceSessionWrapper session{options, GetEnvironment()};
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::make_unique<FunctionPatternCpuEp>(state, claim_function)));
+  std::istringstream model(serialized);
+  ASSERT_STATUS_OK(session.Load(model));
+  ASSERT_EQ(Count(session.GetGraph(), "TransposeChain"), 1u);
+  const auto source = session.GetGraph().Nodes().begin()->Index();
+  EXPECT_TRUE(state.discovered_functions.empty());
+  EXPECT_EQ(state.function_optimizations, 0u);
+  EXPECT_EQ(state.body.optimizations, 0u);
+  ASSERT_STATUS_OK(session.Initialize());
+
+  EXPECT_GE(state.discovered_functions.size(), claim_function && aot_inlining ? 2u : 1u);
+  for (auto index : state.discovered_functions) EXPECT_EQ(index, source);
+  EXPECT_EQ(session.GetGraph().GetNode(source), nullptr);
+  EXPECT_EQ(Count(session.GetGraph(), "TransposeChain"), 0u);
+  EXPECT_EQ(state.function_optimizations, claim_function ? 1u : 0u);
+  EXPECT_EQ(state.function_statistics.rewrites, claim_function ? 1u : 0u);
+  EXPECT_EQ(state.body.optimizations, claim_function ? 0u : 1u);
+  EXPECT_EQ(state.body.statistics.rewrites, claim_function ? 0u : 2u);
+  EXPECT_EQ(state.body_discoveries != 0, !claim_function);
+  EXPECT_EQ(Count(session.GetGraph(), "Identity"), claim_function ? 1u : 0u);
+  EXPECT_EQ(Count(session.GetGraph(), "Transpose"), claim_function ? 0u : 1u);
+  ASSERT_EQ(session.GetGraph().NumberOfNodes(), 1u);
+  EXPECT_EQ(session.GetGraph().GetOutputs()[0]->Name(), b.output_names_[0]);
+  EXPECT_EQ(session.GetGraph().Nodes().begin()->GetExecutionProviderType(), kCpuExecutionProvider);
+
+  std::vector<OrtValue> actual;
+  ASSERT_STATUS_OK(session.Run(RunOptions{}, b.feeds_, b.output_names_, &actual));
+  ASSERT_EQ(actual.size(), 1u);
+  ASSERT_EQ(expected.size(), 1u);
+  const auto& a = actual[0].Get<Tensor>();
+  const auto& e = expected[0].Get<Tensor>();
+  ASSERT_EQ(a.Shape(), e.Shape());
+  for (int64_t i = 0; i < e.Shape().Size(); ++i) EXPECT_EQ(a.Data<float>()[i], e.Data<float>()[i]);
 }
 }  // namespace
 
@@ -387,6 +557,14 @@ TEST(PatternCapabilityTests, RewritesOnlyOneOfTwoChainsInMixedGraph) {
     ASSERT_EQ(a.Shape(), e.Shape());
     for (int64_t i = 0; i < e.Shape().Size(); ++i) EXPECT_EQ(a.Data<float>()[i], e.Data<float>()[i]);
   }
+}
+
+TEST(PatternCapabilityTests, PreservesFunctionUntilAcceptedRewrite) {
+  for (bool aot_inlining : {false, true}) TestFunctionCapabilityRewrite(true, aot_inlining);
+}
+
+TEST(PatternCapabilityTests, ExpandsUnclaimedFunctionAndRediscoversBody) {
+  for (bool aot_inlining : {false, true}) TestFunctionCapabilityRewrite(false, aot_inlining);
 }
 
 TEST(PatternComponentTests, ScopedRewritesTrackNewNodesAndLeaveOtherMatchesUnchanged) {

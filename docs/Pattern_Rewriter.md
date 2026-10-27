@@ -1277,6 +1277,43 @@ An ordinary staging failure leaves that match's source IDs in the set and does
 not add its staged replacement IDs.
 As with unscoped `Run`, resolve the graph explicitly before later consumers.
 
+### Function expansion and capability application
+
+The rewriter does not decide when ORT expands functions or assigns nodes to an
+EP. A pattern can match a function-call node, but this does not inspect or
+rewrite its model-local function definition.
+
+Capability discovery and rewrite application are separate operations. In
+ordinary ONNX initialization, AOT function inlining can query `GetCapability`
+before normal partitioning. Reporting a capability can preserve a function
+call for later partitioning; it is not permission to run its optimization
+callback during that query. Discovery must be read-only and repeatable.
+Normal partitioning checks availability before invoking the selected
+capability's optimization callback and placing its updated node set.
+
+`PatternCapabilityTests.PreservesFunctionUntilAcceptedRewrite` and
+`PatternCapabilityTests.ExpandsUnclaimedFunctionAndRediscoversBody` exercise
+these paths with a test-only CPU EP and existing CPU kernels:
+
+| Function-call candidate | Expected integration behavior |
+|---|---|
+| Recognized with an executable rewrite | Discovery leaves the call intact. After acceptance, scoped rewriting replaces the call and updates the parent capability before placement. |
+| Not recognized | Existing function expansion exposes the body. A later capability query discovers its Transpose chain and returns a fresh region for rewriting. |
+
+Both tests run with AOT inlining enabled and disabled. With AOT disabled, the
+unclaimed call expands after a partitioning pass, and partitioning repeats.
+No borrowed matches or capabilities from the function-call graph are retained
+for matching the expanded body. Assertions cover the original call's removal,
+callback and rewrite counts, final node types and CPU assignment, output names,
+and numerical equality with ordinary CPU execution.
+
+This is a fixed-function integration probe, not general function-equivalence
+checking or a production registration interface. Recognizing only a function
+name is insufficient for arbitrary model-local definitions. The probe does not
+change expansion policy or cross-EP priority, compare whole-function and
+expanded-body placement alternatives, or establish ORT-format export,
+resource-accounting, or general N-to-M placement contracts.
+
 ### Resolved metadata and mutation boundaries
 
 Call `Graph::Resolve` after constructing a source graph and before `Run` or
