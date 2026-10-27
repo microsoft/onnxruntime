@@ -462,6 +462,49 @@ TEST(MatMulNBitsWorkspace, LegacyLevel1EstimateRemainsAvailableWithoutFpA) {
   EXPECT_EQ(estimate->initialization_scratch_bytes, 0U);
 }
 
+TEST(MatMulNBitsWorkspace, LegacyLevel2MatchesLevel1AndResolvedChunkPolicy) {
+  if (CudaDeviceComputeCapabilityOrNegative() < 0) {
+    GTEST_SKIP() << "A CUDA device is required to construct the kernel.";
+  }
+
+  for (const bool force_chunked : {false, true}) {
+    SCOPED_TRACE(force_chunked ? "chunked" : "unchunked");
+    ScopedEnvironmentVariables scoped_env(
+        EnvVarMap{{"ORT_FPA_INTB_GEMM", optional<std::string>{"1"}},
+                  {"ORT_MATMULNBITS_FORCE_CHUNKED", optional<std::string>{force_chunked ? "1" : "0"}},
+                  {"ORT_MATMULNBITS_CHUNK_SIZE", optional<std::string>{"64"}}});
+    const std::string model_bytes = BuildMatMulNBitsModelBytes("seq", 0, kE2eM, kE2eN, kE2eK, 0, false);
+    SessionOptions so;
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsCudaFpAIntBGemm, "0"));
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsCudaMatMulNBitsMChunkSize, "1"));
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsResourceCudaPartitioningSettings, "4096,"));
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsStrictWorkspaceVerification, "1"));
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    InferenceSessionWrapper session(so, GetEnvironment());
+    auto cuda_ep = std::make_shared<CUDAExecutionProvider>(CUDAExecutionProviderInfo{});
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(cuda_ep));
+    ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+    ASSERT_STATUS_OK(session.Initialize());
+
+    const Node* node = FindNodeByOpType(session.GetGraph(), "MatMulNBits");
+    ASSERT_NE(node, nullptr);
+    ASSERT_EQ(node->GetExecutionProviderType(), kCudaExecutionProvider);
+    const auto estimate = EstimateMatMulNBitsMemoryForTest(
+        node, cuda_ep->GetDeviceProp(), {/*fpa_intb_gemm=*/std::string_view{"0"}});
+    ASSERT_TRUE(estimate.has_value());
+    const size_t expected_workspace = static_cast<size_t>(force_chunked ? 64 : kE2eN) * kE2eK * sizeof(MLFloat16);
+    EXPECT_EQ(estimate->runtime_workspace_bytes, std::optional<size_t>{expected_workspace});
+
+    const OpKernel* kernel = session.GetSessionState().GetKernel(node->Index());
+    ASSERT_NE(kernel, nullptr);
+    const std::array<WorkspaceInputShape, 1> shapes{WorkspaceInputShape::PresentWithoutShape()};
+    InlinedVector<WorkspaceRequirement> requirements;
+    ASSERT_STATUS_OK(kernel->DeclareWorkspaceRequirements(gsl::make_span(shapes), requirements));
+    ASSERT_EQ(requirements.size(), 1u);
+    EXPECT_EQ(requirements[0].size_bytes, expected_workspace);
+  }
+}
+
 TEST(MatMulNBitsWorkspace, GetCapabilityBudgetChargesLegacyDequantWorkspace) {
   if (CudaDeviceComputeCapabilityOrNegative() < 0) {
     GTEST_SKIP() << "No CUDA device available; skipping budget integration test.";
@@ -623,6 +666,90 @@ TEST(MatMulNBitsWorkspace, Level1UpperBoundIncludesUnchunkedRowsBelowSizeGate) {
   ASSERT_TRUE(exact.has_value());
   EXPECT_EQ(bounded->runtime_workspace_bytes, std::optional<size_t>{734048});
   EXPECT_EQ(exact->runtime_workspace_bytes, std::optional<size_t>{1792});
+}
+
+TEST(MatMulNBitsWorkspace, Level2CoversUnchunkedRowsBelowShapeHintAndUnknownM) {
+  if (CudaDeviceComputeCapabilityOrNegative() < kMinFpAIntBSm) {
+    GTEST_SKIP() << "The fpA_intB path requires a compatible CUDA device.";
+  }
+
+  ScopedEnvironmentVariables scoped_env(
+      EnvVarMap{{"ORT_MATMULNBITS_FORCE_CHUNKED", optional<std::string>{"0"}}});
+  const std::string model_bytes = BuildMatMulNBitsModelBytes("seq");
+  SessionOptions so;
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsCudaFpAIntBGemm, "1"));
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsCudaFpAIntBProfileM, "1"));
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsCudaMatMulNBitsMChunkSize, "256"));
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsMaxShapeOverride, "A:[104858,1024]"));
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsResourceCudaPartitioningSettings, "262144,"));
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsStrictWorkspaceVerification, "1"));
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  InferenceSessionWrapper session(so, GetEnvironment());
+  auto cuda_ep = std::make_shared<CUDAExecutionProvider>(CUDAExecutionProviderInfo{});
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(cuda_ep));
+  ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  const Node* node = FindNodeByOpType(session.GetGraph(), "MatMulNBits");
+  ASSERT_NE(node, nullptr);
+  ASSERT_EQ(node->GetExecutionProviderType(), kCudaExecutionProvider);
+  const TensorShape max_shape({104858, kE2eK});
+  const auto estimate = EstimateMatMulNBitsMemoryForTest(
+      node, max_shape.GetDims(), cuda_ep->GetDeviceProp(),
+      {/*fpa_intb_gemm=*/std::string_view{"1"},
+       /*profile_m=*/std::string_view{"1"},
+       /*input_shape_is_upper_bound=*/true,
+       /*m_chunk_size=*/std::string_view{"256"}});
+  ASSERT_TRUE(estimate.has_value());
+  ASSERT_EQ(estimate->runtime_workspace_bytes, std::optional<size_t>{734048});
+
+  const OpKernel* kernel = session.GetSessionState().GetKernel(node->Index());
+  ASSERT_NE(kernel, nullptr);
+  for (const auto& shape : {WorkspaceInputShape::PresentWithShape(max_shape),
+                            WorkspaceInputShape::PresentWithoutShape()}) {
+    const std::array<WorkspaceInputShape, 1> shapes{shape};
+    InlinedVector<WorkspaceRequirement> requirements;
+    ASSERT_STATUS_OK(kernel->DeclareWorkspaceRequirements(gsl::make_span(shapes), requirements));
+    ASSERT_EQ(requirements.size(), 1u);
+    EXPECT_EQ(requirements[0].size_bytes, *estimate->runtime_workspace_bytes);
+  }
+}
+
+TEST(MatMulNBitsWorkspace, Level2DistinguishesStaticEmptyShapeFromZeroHint) {
+  if (CudaDeviceComputeCapabilityOrNegative() < kMinFpAIntBSm) {
+    GTEST_SKIP() << "The fpA_intB path requires a compatible CUDA device.";
+  }
+
+  for (const bool static_empty : {false, true}) {
+    SCOPED_TRACE(static_empty ? "static empty shape" : "zero hint");
+    const std::string model_bytes = BuildMatMulNBitsModelBytes(static_empty ? nullptr : "seq", 0, 0);
+    SessionOptions so;
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsCudaFpAIntBGemm, "1"));
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsCudaFpAIntBProfileM, "1"));
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsCudaMatMulNBitsMChunkSize, "0"));
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    InferenceSessionWrapper session(so, GetEnvironment());
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(
+        std::make_shared<CUDAExecutionProvider>(CUDAExecutionProviderInfo{})));
+    ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+    ASSERT_STATUS_OK(session.Initialize());
+
+    const Node* node = FindNodeByOpType(session.GetGraph(), "MatMulNBits");
+    ASSERT_NE(node, nullptr);
+    ASSERT_EQ(node->GetExecutionProviderType(), kCudaExecutionProvider);
+    const OpKernel* kernel = session.GetSessionState().GetKernel(node->Index());
+    ASSERT_NE(kernel, nullptr);
+    const std::array<WorkspaceInputShape, 1> shapes{
+        WorkspaceInputShape::PresentWithShape(TensorShape({0, kE2eK}))};
+    InlinedVector<WorkspaceRequirement> requirements;
+    ASSERT_STATUS_OK(kernel->DeclareWorkspaceRequirements(gsl::make_span(shapes), requirements));
+    if (static_empty) {
+      ASSERT_EQ(requirements.size(), 1u);
+      EXPECT_EQ(requirements[0].size_bytes, 0u);
+    } else {
+      EXPECT_TRUE(requirements.empty());
+    }
+  }
 }
 
 TEST(MatMulNBitsWorkspace, MaxShapeBudgetChargesMissingSmallerProfileBucket) {
@@ -899,8 +1026,7 @@ TEST(MatMulNBitsWorkspace, EndToEndWorkspaceAgreement) {
   ASSERT_EQ(unknown_k_requirements.size(), 1u);
   EXPECT_GT(unknown_k_requirements[0].size_bytes, 0u);
 
-  // A zero in any leading dimension proves m == 0 even if another leading dimension is unknown
-  // or a huge earlier prefix would overflow. Level 2 omits zero-sized slots by contract.
+  // Zero-shaped hints do not prove this dynamic node has an empty runtime output.
   const std::vector<TensorShapeVector> known_zero_partial_shapes{
       {0, -1, kE2eK},
       {-1, 0, kE2eK},

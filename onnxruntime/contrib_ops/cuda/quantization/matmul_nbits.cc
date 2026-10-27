@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <filesystem>  // NOLINT(build/c++17)
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -1144,51 +1145,65 @@ Status MatMulNBits<T>::PrePack_ZeroPoint([[maybe_unused]] const Tensor& tensor,
 }
 #endif
 
-#if USE_FPA_INTB_GEMM && !defined(BUILD_CUDA_EP_AS_PLUGIN)
-// Level 2 (Phase-A memory roadmap, issue microsoft/onnxruntime#29775). Uses the constructed runner
-// state and effective arch from ComputeInternal(). The size is exact for its CUTLASS GEMM branch.
-// Runtime may instead select the CUDA GEMV tactic, which requests no workspace; in that case this is
-// a safe upper bound. Unknown/negative dimensions and arithmetic overflow use dynamic fallback.
-// The shared formula returns zero for empty output; a zero-sized requirement is omitted.
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN)
 template <typename T>
 Status MatMulNBits<T>::DeclareWorkspaceRequirements(
     gsl::span<const WorkspaceInputShape> input_shapes,
     /*out*/ InlinedVector<WorkspaceRequirement>& requirements) const {
   requirements.clear();
-  if (!has_fpA_intB_gemm_ || weightOnlyGemmRunner_ == nullptr) {
+  const auto& input_a = GetWorkspaceInputShape(input_shapes, 0);
+  if (input_a.GetState() == WorkspaceInputShapeState::Missing) {
     return Status::OK();
   }
 
-  // Input A is the only input needed for this estimate. Missing or unknown unrelated optional
-  // inputs do not suppress declaration.
-  const TensorShape* a_shape = GetWorkspaceInputShape(input_shapes, 0).GetShape();
-  if (a_shape == nullptr) {
-    return Status::OK();
-  }
+#if USE_FPA_INTB_GEMM
+  if (has_fpA_intB_gemm_) {
+    if (weightOnlyGemmRunner_ == nullptr) {
+      return Status::OK();
+    }
 
-  // Input A is the same tensor as ctx->Input(0) in Compute(). m = product of all its dims except
-  // the last (K), which comes from the kernel attribute and may remain unknown here.
-  const std::optional<int64_t> m64 =
-      ComputeMatMulNBitsLeadingDimProduct(a_shape->GetDims());
-  if (!m64.has_value()) {
+    const TensorShape* a_shape = input_a.GetShape();
+    const auto m = a_shape != nullptr
+                       ? ComputeMatMulNBitsLeadingDimProduct(a_shape->GetDims())
+                       : std::nullopt;
+    const auto& input_defs = this->Node().InputDefs();
+    const auto static_m = StaticLeadingDimProduct(input_defs.empty() ? nullptr : input_defs[0]);
+    // Shape hints alone cannot prove an empty runtime output.
+    if (m == std::optional<int64_t>{0} && static_m != std::optional<int64_t>{0}) {
+      return Status::OK();
+    }
+    if (!m.has_value() && m_chunk_size_ <= 0) {
+      return Status::OK();
+    }
+
+    // A maximum M may be chunked while smaller admitted M values remain unchunked.
+    const int64_t workspace_m =
+        static_m.has_value() && m == static_m
+            ? FpAIntBRowsPerLaunch(*m)
+            : MatMulNBitsFpAIntBMaxRowsPerLaunch(
+                  m.value_or(std::numeric_limits<int64_t>::max()),
+                  m_chunk_size_, m_chunk_min_rows_, force_chunked_);
+    std::optional<size_t> ws;
+    try {
+      ws = onnxruntime::llm::kernels::cutlass_kernels::ComputeFpAIntBGemmWorkspaceSize(
+          SafeInt<int>(workspace_m), SafeInt<int>(N_), SafeInt<int>(K_),
+          FpAIntBPackingSmForKernel(), this->GetDeviceProp().multiProcessorCount);
+    } catch (const OnnxRuntimeException&) {
+      return Status::OK();
+    }
+    if (ws.has_value()) {
+      requirements.push_back(WorkspaceRequirement{*ws, /*slot_id=*/0, /*alignment_bytes=*/0});
+    }
     return Status::OK();
   }
-  // ComputeInternal sizes the workspace for one M chunk.
-  const int64_t workspace_m = FpAIntBRowsPerLaunch(*m64);
-  // Feed the SAME effective arch the runner resolved after setArch() - not the raw sm_ member.
-  const int effective_sm = FpAIntBPackingSmForKernel();
-  std::optional<size_t> ws;
-  try {
-    ws = onnxruntime::llm::kernels::cutlass_kernels::ComputeFpAIntBGemmWorkspaceSize(
-        SafeInt<int>(workspace_m), SafeInt<int>(N_), SafeInt<int>(K_),
-        effective_sm, this->GetDeviceProp().multiProcessorCount);
-  } catch (const OnnxRuntimeException&) {
-    return Status::OK();
+#endif
+
+  const auto legacy_plan = ComputeMatMulNBitsLegacyWorkspacePlan(
+      N_, K_, block_size_, sizeof(T), /*can_chunk=*/!has_g_idx_, force_chunked_, chunk_target_rows_);
+  if (legacy_plan.has_value()) {
+    requirements.push_back(
+        WorkspaceRequirement{legacy_plan->workspace_bytes, /*slot_id=*/0, /*alignment_bytes=*/0});
   }
-  if (!ws.has_value() || *ws == 0) {
-    return Status::OK();
-  }
-  requirements.push_back(WorkspaceRequirement{*ws, /*slot_id=*/0, /*alignment_bytes=*/0});
   return Status::OK();
 }
 #endif

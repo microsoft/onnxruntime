@@ -296,6 +296,26 @@ Each Attention family must provide:
 
 This document defines operator-estimation work tracks and invariants. It does not prescribe a public framework API.
 
+## L1/L2 reconciliation
+
+The shared verifier distinguishes an unavailable declaration (an empty requirement list) from proven zero workspace
+(a nonempty declaration with zero total bytes). With `session.strict_workspace_verification=1`, a nonzero
+partition-time reservation must have an available kernel declaration, and that declaration must fit the reservation.
+Default sessions retain dynamic allocation and diagnostic reporting.
+
+Post-partition replacements transfer the source reservations as a conservative budget, not as proof of the new
+implementation's workspace. The replacement kernel must declare its own requirements. Explicit removal notifications
+retire reservations for eliminated work; an untracked removal leaves an orphan that strict verification rejects.
+The existing replacement and removal callbacks also cover these obligations in subgraphs.
+
+GQA uses the same resolved envelope and committed phase masks at both levels. MatMulNBits declares its constructed
+legacy dequantization or fpA-intB route, using the same chunking policy as Level 1 and runtime. A dynamic-M hint must
+cover smaller unchunked fpA-intB launches below the size gate, not just the chunked endpoint. Runtime chunking can also
+provide a bound when M is unknown. Max-shape hints remain estimates, not enforced runtime bounds.
+
+This verification does not add planned backing allocation, session-wide lifetime planning, hard session-budget
+enforcement, automatic placement, or plugin C-ABI forwarding.
+
 ## PA/PMHA framework follow-up
 
 The PA/PMHA follow-up connects the graph-free recipes to the current Phase-A framework:
@@ -309,9 +329,9 @@ The PA/PMHA follow-up connects the graph-free recipes to the current Phase-A fra
   malformed geometry, and checked overflow produce no declaration rather than a zero-byte estimate.
 - **Zero-shaped hints:** `WorkspaceInputShape` does not identify whether a shape came from concrete graph metadata or
   max-shape inference. The adapter therefore treats any zero extent as unavailable and emits no declaration rather
-  than interpreting it as a proven empty runtime output. The current Level-2 requirements boundary represents both
-  unavailable estimates and explicit zero estimates as an empty requirement list, so it cannot expose that
-  distinction. Exact-zero behavior remains available in the graph-free single-route recipe.
+  than interpreting it as a proven empty runtime output. A zero-byte slot requires an independent proof of zero
+  workspace; these adapters do not derive that proof from a hint. Exact-zero behavior remains available in the
+  graph-free single-route recipe.
 
 Route aggregation does not evaluate the runtime cascade only at the supplied maximum sequence length: dispatch gates
 such as Flash and FP32 MEA thresholds or attention-bias alignment are non-monotonic across smaller runtime shapes.

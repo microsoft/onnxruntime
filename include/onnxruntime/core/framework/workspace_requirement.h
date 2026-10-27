@@ -17,6 +17,9 @@ namespace onnxruntime {
 //   - the in-tree onnxruntime::OpKernel (core/framework/op_kernel.h), and
 //   - the plugin adapter onnxruntime::ep::adapter::OpKernel (ep/adapter/op_kernel.h), which
 //     deliberately does not include core/framework/op_kernel.h.
+//
+// An empty requirement list means the declaration is unavailable, not that workspace is zero.
+// A kernel that can prove it needs no workspace returns a zero-byte slot instead.
 struct WorkspaceRequirement {
   size_t size_bytes;  // upper-bound scratch bytes for this slot
   int slot_id;        // kernel-defined, stable across runs; unique within one kernel instance

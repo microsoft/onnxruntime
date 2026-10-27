@@ -425,18 +425,15 @@ class MatMulNBits final : public CudaKernel {
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  bool& is_packed, PrePackedWeights* prepacked_weights) override;
 
-#if USE_FPA_INTB_GEMM
 #ifndef BUILD_CUDA_EP_AS_PLUGIN
-  // Level 2 (Phase-A memory roadmap, issue microsoft/onnxruntime#29775): instance-level workspace
-  // estimate, callable after CreateKernels(). It is exact when runtime selects the CUTLASS GEMM
-  // branch for the queried input-A shape. If runtime instead selects the CUDA GEMV tactic, which
-  // requests no workspace, the declaration is a safe upper bound. Declared only for the in-tree
-  // hierarchy; the plugin build inherits the adapter OpKernel's unbridged default no-op.
+  // Bounds the constructed fpA_intB or legacy route, including its resolved chunking policy.
+  // The plugin hierarchy still inherits the adapter's unbridged default declaration.
   Status DeclareWorkspaceRequirements(
       gsl::span<const WorkspaceInputShape> input_shapes,
       /*out*/ InlinedVector<WorkspaceRequirement>& requirements) const override;
 #endif
 
+#if USE_FPA_INTB_GEMM
   // TEST INSTRUMENTATION ONLY - not a runtime API. Records the workspace size requested by the most
   // recent ComputeInternal() call (zero when it requested none) so a test can verify the Level-2
   // estimate against the real runtime request. This atomic is not correlated to a specific Run() when
