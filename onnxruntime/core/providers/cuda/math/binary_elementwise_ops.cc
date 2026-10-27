@@ -292,6 +292,26 @@ BINARY_OP_REGISTER_VERSIONED_CLASS_HFD(Pow, Pow_7, 7, 11)
 BINARY_LOGICALOP_TYPED(And, 7, bool)
 BINARY_LOGICALOP_TYPED(Or, 7, bool)
 BINARY_LOGICALOP_TYPED(Xor, 7, bool)
+
+#define BINARY_BITWISE_OP_TYPED(name, class_name, T)                    \
+  BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED_V(name, class_name, 18, T) \
+  BINARY_ELEMENTWISE_COMPUTE(class_name, T)
+
+#define BINARY_BITWISE_OP(name, class_name)             \
+  BINARY_BITWISE_OP_TYPED(name, class_name, uint8_t)     \
+  BINARY_BITWISE_OP_TYPED(name, class_name, uint16_t)    \
+  BINARY_BITWISE_OP_TYPED(name, class_name, uint32_t)    \
+  BINARY_BITWISE_OP_TYPED(name, class_name, uint64_t)    \
+  BINARY_BITWISE_OP_TYPED(name, class_name, int8_t)      \
+  BINARY_BITWISE_OP_TYPED(name, class_name, int16_t)     \
+  BINARY_BITWISE_OP_TYPED(name, class_name, int32_t)     \
+  BINARY_BITWISE_OP_TYPED(name, class_name, int64_t)
+
+BINARY_BITWISE_OP(BitwiseAnd, And)
+BINARY_BITWISE_OP(BitwiseOr, Or)
+
+#undef BINARY_BITWISE_OP
+#undef BINARY_BITWISE_OP_TYPED
 BINARY_OP_VERSIONED_HFD(PRelu, 7, 8)
 BINARY_OP_VERSIONED_HFD(PRelu, 9, 15)
 // Opset-16 adds BFloat16 to allowed types for the PRelu operator
