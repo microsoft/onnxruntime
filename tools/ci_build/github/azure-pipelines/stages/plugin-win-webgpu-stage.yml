@@ -83,6 +83,14 @@ stages:
           TMPDIR: "$(Agent.TempDirectory)"
 
       - task: PythonScript@0
+        displayName: 'Stage Dawn Agility SDK from configured NuGet feed'
+        inputs:
+          scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\stage_dawn_agility_sdk.py'
+          arguments: >-
+            --source-dir "$(Build.SourcesDirectory)"
+            --mirror-dir "$(Build.BinariesDirectory)\cmake-deps-mirror"
+
+      - task: PythonScript@0
         displayName: 'Build'
         inputs:
           scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
@@ -100,6 +108,7 @@ stages:
             --enable_onnx_tests
             --use_webgpu shared_lib
             --use_dawn_agility_sdk
+            --cmake_deps_mirror_dir "$(Build.BinariesDirectory)\cmake-deps-mirror"
             --wgsl_template static
             --disable_rtti
             --enable_lto
