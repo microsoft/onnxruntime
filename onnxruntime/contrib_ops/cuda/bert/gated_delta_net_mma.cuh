@@ -261,6 +261,9 @@ __device__ __forceinline__ void SmemGemm(CT* C, int ldc, const T* A, int lda,
   constexpr int kWarpsPerM = kWarps > kMTiles ? kWarps / kMTiles : 1;
   constexpr int kMGroups = kWarps / kWarpsPerM;
   constexpr int kNPerWarp = (kNTiles + kWarpsPerM - 1) / kWarpsPerM;
+  // The barrier sits inside the m-tile loop, so every warp must run the same number of iterations.
+  static_assert(!SyncBeforeStore || (kWarps % kWarpsPerM == 0 && kMTiles % kMGroups == 0),
+                "SyncBeforeStore requires all warps to execute the same number of m-tile iterations");
 
   const int m_group = warp_id / kWarpsPerM;
   const int n_group = warp_id % kWarpsPerM;

@@ -431,7 +431,8 @@ template <typename T, int DK, int DV, int BT, bool InputTypeGates,
 __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetChunkedKernel(
     VariantPack<T> pack, KernelParams p) {
   using L = Ld<DK, BT>;
-  extern __shared__ char smem_raw[];
+  // ldmatrix and the uint4/float2 shared-memory accesses need a 16-byte aligned base.
+  extern __shared__ __align__(16) char smem_raw[];
   const ChunkedSmem<T, DK, BT> s = CarveChunked<T, DK, BT>(smem_raw);
 
   const int b = blockIdx.x, hv = blockIdx.y, v0 = blockIdx.z * kDVB;

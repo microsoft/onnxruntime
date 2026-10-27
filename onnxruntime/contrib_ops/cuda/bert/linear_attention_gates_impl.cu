@@ -14,6 +14,7 @@
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
 #include <math.h>
+#include <cstdint>
 #include <limits>
 
 #include "contrib_ops/cuda/bert/linear_attention_gates_impl.h"
@@ -223,7 +224,8 @@ Status LaunchGatedRMSNormKernel(
   if constexpr (sizeof(T) == 2) {
     if (norm_size == 128 && max_threads_per_block >= 128 &&
         ((reinterpret_cast<uintptr_t>(output) | reinterpret_cast<uintptr_t>(input) |
-          reinterpret_cast<uintptr_t>(scale) | reinterpret_cast<uintptr_t>(gate)) & 7u) == 0) {
+          reinterpret_cast<uintptr_t>(scale) | reinterpret_cast<uintptr_t>(gate)) &
+         7u) == 0) {
       constexpr int kWarps = 4;
       const int warp_blocks = static_cast<int>((num_rows + kWarps - 1) / kWarps);
       if (activation == GatedRMSNormActivation::kSilu) {

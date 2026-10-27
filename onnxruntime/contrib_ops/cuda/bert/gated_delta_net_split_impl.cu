@@ -285,7 +285,7 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetPrepareKernel(
     int chunks_per_pass) {
   using L = SplitLd<DK, DV, BT, 64>;
   using Tile = PrepTile<DK, DV, BT>;
-  extern __shared__ char smem_raw[];
+  extern __shared__ __align__(16) char smem_raw[];
   const PrepSmem<T, DK, DV, BT> s = CarvePrep<T, DK, DV, BT>(smem_raw);
 
   const int b = blockIdx.x, hv = blockIdx.y, c_local = blockIdx.z;
@@ -665,7 +665,7 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetScanKernel(
     bool first_pass, bool last_pass) {
   using L = SplitLd<DK, DV, BT, DVB>;
   using Tile = PrepTile<DK, DV, BT>;
-  extern __shared__ char smem_raw[];
+  extern __shared__ __align__(16) char smem_raw[];
   const ScanSmem<T, DK, DV, BT, DVB> s = CarveScan<T, DK, DV, BT, DVB>(smem_raw);
 
   const int b = blockIdx.x, hv = blockIdx.y, v0 = blockIdx.z * DVB;
