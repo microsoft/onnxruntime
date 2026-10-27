@@ -26,7 +26,8 @@ Ep::Ep(std::unique_ptr<IExecutionProvider> impl, Factory& factory, const OrtLogg
     : onnxruntime::ep::adapter::Ep{std::move(impl), config.cpu_allocator, config.device_allocator},
       factory_{factory},
       logger_{logger},
-      config_{config} {
+      config_{config},
+      device_memory_info_{onnxruntime::ep::adapter::CreateApiMemoryInfo(config_.device_allocator->Info())} {
   // Initialize the execution provider's function table
   GetName = GetNameImpl;
   GetCapability = GetCapabilityImpl;
@@ -317,7 +318,7 @@ OrtStatus* ORT_API_CALL Ep::CreateSyncStreamForDeviceImpl(
 OrtStatus* ORT_API_CALL Ep::GetDefaultMemoryDeviceImpl(
     const OrtEp* this_ptr, const OrtMemoryDevice** memory_device) noexcept {
   const auto* ep = static_cast<const Ep*>(this_ptr);
-  *memory_device = Api().ep.MemoryInfo_GetMemoryDevice(&ep->config_.device_allocator->Info());
+  *memory_device = Api().ep.MemoryInfo_GetMemoryDevice(ep->device_memory_info_);
   return nullptr;
 }
 
