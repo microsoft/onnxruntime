@@ -8390,7 +8390,7 @@ This version of the operator has been available since version 1 of the 'com.micr
     G = clamp(gate, max=limit)
     L = clamp(up, min=-limit, max=limit)
     output = G * Sigmoid(activation_alpha * G) * (L + activation_beta)
-  with the arithmetic done in float regardless of T. A `limit` of zero or less disables both clamps.
+  with the arithmetic done in float regardless of T, widened to double for the product when `activation_alpha * G` is below -87 so that a negative tail is not lost to float exp underflow. A `limit` of zero or less disables both clamps.
   
   This uses the same activation_alpha / activation_beta formula and positive-limit clamping rule as MoE and QMoE. The no-clamp sentinel differs: here any `limit` of zero or less disables clamping, while MoE/QMoE use infinity when `swiglu_limit` is omitted and clamp finite values, including an explicit zero.
   With `up` supplied and the default `limit` and `activation_beta`, it equals the ONNX SwiGLU operator (opset 28) with `alpha` = `activation_alpha`.
