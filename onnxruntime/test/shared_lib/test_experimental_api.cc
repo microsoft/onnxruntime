@@ -132,6 +132,7 @@ TEST_F(ExperimentalCApiTest, FileSourcesNeverFallBackToModelPaths) {
   } catch (const Ort::Exception& error) {
     EXPECT_NE(std::string(error.what()).find("No registered external initializer file source"),
               std::string::npos);
+    EXPECT_NE(std::string(error.what()).find("Pads.bin"), std::string::npos);
   }
 }
 #endif

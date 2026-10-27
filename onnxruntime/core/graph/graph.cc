@@ -4471,7 +4471,8 @@ Status Graph::InjectExternalInitializersFromFileSources(
       ORT_RETURN_IF_ERROR(ExternalDataInfo::Create(proto.external_data(), info));
       const auto source = files.find(ExternalDataInfo::NormalizeFileName(info->GetRelPath()));
       ORT_RETURN_IF(source == files.end(),
-                    "No registered external initializer file source: ", info->GetRelPath());
+                    "No registered external initializer file source: ",
+                    ORT_TSTR_CONVERT_TO_PRINTABLE_STRING(info->GetRelPath()));
       size_t bytes = 0;
       ORT_RETURN_IF_ERROR(utils::GetSizeInBytesFromTensorProto<0>(proto, &bytes));
       ORT_RETURN_IF(info->GetOffset() < 0 ||
