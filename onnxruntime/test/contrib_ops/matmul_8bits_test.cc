@@ -58,6 +58,7 @@ struct TestOptions8Bits {
   bool zp_is_typed{false};  // true: zero_points use same type as scales (T); false: uint8
   bool has_g_idx{false};
   bool has_bias{false};
+  bool disable_cpu_ep_fallback{false};
 
   // When set, RunTest8Bits validates cross-session sharing of the pre-packed weights instead of
   // doing a single run. The model is run in two CPU sessions that use the same container.
@@ -78,11 +79,12 @@ struct TestOptions8Bits {
 }
 
 template <typename T1>
-void RunTest8Bits(const TestOptions8Bits& opts) {
+void RunTest8Bits(const TestOptions8Bits& opts,
+                  std::vector<std::unique_ptr<IExecutionProvider>>&& explicit_eps = {}) {
   SCOPED_TRACE(opts);
 
 #ifdef USE_CUDA
-  if (opts.accuracy_level != 0) {
+  if (explicit_eps.empty() && opts.accuracy_level != 0) {
     return;  // CUDA EP does not handle accuracy level, so only test one level to avoid unnecessary tests.
   }
 #endif
@@ -238,6 +240,19 @@ void RunTest8Bits(const TestOptions8Bits& opts) {
     // in two sessions and validates the sharing counters.
     CheckSharedPrepackedWeights(test, *opts.prepack_sharing_mode,
                                 {q_cols, k_blocks, q_rows / k_blocks}, input1_vals);
+    return;
+  }
+
+  if (opts.disable_cpu_ep_fallback) {
+    SessionOptions session_options;
+    session_options.use_per_session_threads = false;
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    test.Config(session_options);
+  }
+
+  if (!explicit_eps.empty()) {
+    test.ConfigEps(std::move(explicit_eps));
+    test.RunWithConfig();
     return;
   }
 
@@ -1070,13 +1085,23 @@ TEST(MatMulNBits, WebGpu_DP4A_KParallel_Int8) {
       opts.N = n;
       opts.K = k;
       opts.accuracy_level = 4;
+      opts.disable_cpu_ep_fallback = true;
       opts.has_zero_point = has_zero_point;
       opts.has_bias = true;
       // Activation-quantization error for these Gaussian inputs grows with sqrt(K).
       opts.output_abs_error = 0.05f * std::sqrt(static_cast<float>(k) / 256.0f);
       opts.output_rel_error = 0.02f;
-      RunTest8Bits<MLFloat16>(opts);
-      RunTest8Bits<float>(opts);
+      for (bool fp16 : {true, false}) {
+        auto ep = DefaultWebGpuExecutionProvider();
+        if (!ep) GTEST_SKIP() << "WebGPU unavailable.";
+        std::vector<std::unique_ptr<IExecutionProvider>> eps;
+        eps.push_back(std::move(ep));
+        if (fp16) {
+          RunTest8Bits<MLFloat16>(opts, std::move(eps));
+        } else {
+          RunTest8Bits<float>(opts, std::move(eps));
+        }
+      }
     }
   }
 }

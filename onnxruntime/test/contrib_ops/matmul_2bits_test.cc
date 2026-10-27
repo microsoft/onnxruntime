@@ -61,6 +61,7 @@ struct TestOptions2Bits {
 
   // Run the node on the CUDA EP instead of the default (CPU / WebGPU) set.
   bool use_cuda{false};
+  bool disable_cpu_ep_fallback{false};
 
   std::optional<float> output_abs_error{};
   std::optional<float> output_rel_error{};
@@ -79,7 +80,8 @@ struct TestOptions2Bits {
 }
 
 template <typename T1>
-void RunTest2Bits(const TestOptions2Bits& opts) {
+void RunTest2Bits(const TestOptions2Bits& opts,
+                  std::vector<std::unique_ptr<IExecutionProvider>>&& explicit_eps = {}) {
   SCOPED_TRACE(opts);
   ASSERT_FALSE(opts.has_typed_zero_point && !opts.has_zero_point);
 
@@ -228,6 +230,19 @@ void RunTest2Bits(const TestOptions2Bits& opts) {
 
   if (opts.output_rel_error.has_value()) {
     test.SetOutputRelErr("Y", *opts.output_rel_error);
+  }
+
+  if (opts.disable_cpu_ep_fallback) {
+    SessionOptions session_options;
+    session_options.use_per_session_threads = false;
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    test.Config(session_options);
+  }
+
+  if (!explicit_eps.empty()) {
+    test.ConfigEps(std::move(explicit_eps));
+    test.RunWithConfig();
+    return;
   }
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
@@ -1540,12 +1555,22 @@ TEST(MatMulNBits, WebGpu_DP4A_KParallel_Int2) {
     opts.N = 32;
     opts.K = 2048;
     opts.accuracy_level = 4;
+    opts.disable_cpu_ep_fallback = true;
     opts.has_zero_point = has_zero_point;
     opts.has_bias = true;
     opts.output_abs_error = 0.1f;
     opts.output_rel_error = 0.02f;
-    RunTest2Bits<MLFloat16>(opts);
-    RunTest2Bits<float>(opts);
+    for (bool fp16 : {true, false}) {
+      auto ep = DefaultWebGpuExecutionProvider();
+      if (!ep) GTEST_SKIP() << "WebGPU unavailable.";
+      std::vector<std::unique_ptr<IExecutionProvider>> eps;
+      eps.push_back(std::move(ep));
+      if (fp16) {
+        RunTest2Bits<MLFloat16>(opts, std::move(eps));
+      } else {
+        RunTest2Bits<float>(opts, std::move(eps));
+      }
+    }
   }
 }
 #endif
