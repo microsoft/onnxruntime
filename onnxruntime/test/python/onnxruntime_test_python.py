@@ -14,10 +14,11 @@ import sys
 import threading
 import time
 import unittest
+import warnings
 import weakref
 
 import numpy as np
-from helper import get_name
+from helper import get_name, get_shared_library_filename_for_platform
 
 import onnxruntime as onnxrt
 from onnxruntime.capi import _pybind_state as C
@@ -283,6 +284,71 @@ class TestInferenceSession(unittest.TestCase):
         self.assertTrue(onnxrt.get_all_providers()[-1] == "CPUExecutionProvider")
         sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=onnxrt.get_available_providers())
         self.assertTrue("CPUExecutionProvider" in sess.get_providers())
+
+    def test_requested_provider_that_cannot_be_created_is_not_silently_dropped(self):
+        # Regression test for #33556: requesting MIGraphXExecutionProvider
+        # (listed as available once its plugin EP is registered) used to
+        # yield a CPU-only session with no warning or error. The fix must
+        # either run the session on MIGraphX or surface the failure; a
+        # silent CPU-only session is the bug. Skip on builds where MIGraphX
+        # is not listed as available, since requesting it there is rejected
+        # up front as "not in available provider names" rather than dropped
+        # at session creation.
+        if "MIGraphXExecutionProvider" not in onnxrt.get_available_providers():
+            self.skipTest("MIGraphXExecutionProvider is not available in this build")
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            sess = onnxrt.InferenceSession(
+                get_name("mul_1.onnx"), providers=["MIGraphXExecutionProvider", "CPUExecutionProvider"]
+            )
+        if "MIGraphXExecutionProvider" in sess.get_providers():
+            return
+        self.assertEqual(["CPUExecutionProvider"], sess.get_providers())
+        self.assertTrue(
+            any("MIGraphXExecutionProvider" in str(warning.message) for warning in caught),
+            "Creating a session with an uncreatable MIGraphXExecutionProvider must warn naming that provider, "
+            "not silently fall back to a CPU-only session.",
+        )
+
+    def test_registered_migraphx_plugin_is_selected(self):
+        # Regression test for the plugin-first half of #33556: a MIGraphX EP
+        # registered via register_execution_provider_library() must be
+        # selected when MIGraphX is requested, even on builds with no
+        # built-in MIGraphX implementation (where the built-in branch used
+        # to swallow the registration and silently fall back to CPU). The
+        # example plugin EP stands in for a real MIGraphX plugin: it takes
+        # the registration name as its EP name, so registering it as
+        # MIGraphXExecutionProvider exercises exactly the provider-selection
+        # path a genuine plugin would take. Skip where the example plugin
+        # EP library is not shipped with the test data.
+        try:
+            ep_lib_path = get_name(get_shared_library_filename_for_platform("example_plugin_ep"))
+        except FileNotFoundError:
+            self.skipTest("example plugin EP library is not available in this build")
+        ep_name = "MIGraphXExecutionProvider"
+        onnxrt.register_execution_provider_library(ep_name, os.path.realpath(ep_lib_path))
+        try:
+            self.assertIn(ep_name, onnxrt.get_available_providers())
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                sess = onnxrt.InferenceSession(
+                    get_name("mul_1.onnx"), providers=[ep_name, "CPUExecutionProvider"]
+                )
+            try:
+                self.assertIn(ep_name, sess.get_providers())
+                self.assertFalse(
+                    any(ep_name in str(warning.message) for warning in caught),
+                    "Selecting a registered MIGraphX plugin must not warn that it was dropped.",
+                )
+                x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+                input_name = sess.get_inputs()[0].name
+                res = sess.run([], {input_name: x})
+                output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
+                np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
+            finally:
+                del sess
+        finally:
+            onnxrt.unregister_execution_provider_library(ep_name)
 
     def test_enabling_and_disabling_telemetry(self):
         onnxrt.disable_telemetry_events()
