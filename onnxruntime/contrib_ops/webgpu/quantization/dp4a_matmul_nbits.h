@@ -30,34 +30,32 @@ class DP4AMatMulQuantizeProgram final : public Program<DP4AMatMulQuantizeProgram
 
 class DP4AMatMulNBitsProgram final : public Program<DP4AMatMulNBitsProgram> {
  public:
-  DP4AMatMulNBitsProgram(uint32_t tile_size_m, uint32_t tile_size_n, uint32_t tile_size_k_vec, uint32_t block_size,
-                         uint32_t nbits, bool has_zero_points, bool has_bias, bool has_weight_idx,
-                         bool has_weight_idx_indirect, bool is_qualcomm, bool acc_f32)
-      : Program{"DP4AMatMulNBits"},
-        tile_size_m_(tile_size_m),
-        tile_size_n_(tile_size_n),
-        tile_size_k_vec_(tile_size_k_vec),
-        block_size_(block_size),
-        nbits_(nbits),
-        has_bias_(has_bias),
-        has_zero_points_(has_zero_points),
-        has_weight_idx_(has_weight_idx),
-        has_weight_idx_indirect_(has_weight_idx_indirect),
-        is_qualcomm_(is_qualcomm),
-        acc_f32_(acc_f32) {}
+  DP4AMatMulNBitsProgram(uint32_t block_size, uint32_t nbits,
+                         bool has_zero_points, bool has_bias,
+                         bool has_weight_idx, bool has_weight_idx_indirect, bool is_qualcomm,
+                         bool acc_f32) : Program{"DP4AMatMulNBits"},
+                                         block_size_(block_size),
+                                         nbits_(nbits),
+                                         has_bias_(has_bias),
+                                         has_zero_points_(has_zero_points),
+                                         has_weight_idx_(has_weight_idx),
+                                         has_weight_idx_indirect_(has_weight_idx_indirect),
+                                         is_qualcomm_(is_qualcomm),
+                                         acc_f32_(acc_f32) {}
   Status GenerateShaderCode(ShaderHelper& sh) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"batch_count", ProgramUniformVariableDataType::Uint32}, {"M", ProgramUniformVariableDataType::Uint32},
-      {"N", ProgramUniformVariableDataType::Uint32}, {"K", ProgramUniformVariableDataType::Uint32},
-      {"K8", ProgramUniformVariableDataType::Uint32}, {"K16", ProgramUniformVariableDataType::Uint32},
-      {"num_M_tile", ProgramUniformVariableDataType::Uint32}, {"num_N_tile", ProgramUniformVariableDataType::Uint32},
+      {"batch_count", ProgramUniformVariableDataType::Uint32},
+      {"M", ProgramUniformVariableDataType::Uint32},
+      {"N", ProgramUniformVariableDataType::Uint32},
+      {"K", ProgramUniformVariableDataType::Uint32},
+      {"K8", ProgramUniformVariableDataType::Uint32},
+      {"K16", ProgramUniformVariableDataType::Uint32},
+      {"num_M_tile", ProgramUniformVariableDataType::Uint32},
+      {"num_N_tile", ProgramUniformVariableDataType::Uint32},
       {"zero_blocks_per_col", ProgramUniformVariableDataType::Uint32},
       {"weight_idx", ProgramUniformVariableDataType::Uint32});
 
  private:
-  uint32_t tile_size_m_;
-  uint32_t tile_size_n_;
-  uint32_t tile_size_k_vec_;
   uint32_t block_size_;
   uint32_t nbits_;
   bool has_bias_;
@@ -70,28 +68,34 @@ class DP4AMatMulNBitsProgram final : public Program<DP4AMatMulNBitsProgram> {
 
 class DP4AMatMulNBitsKParallelProgram final : public Program<DP4AMatMulNBitsKParallelProgram> {
  public:
-  DP4AMatMulNBitsKParallelProgram(uint32_t tile_size_k_vec, uint32_t tile_size, uint32_t nbits, bool has_zero_points,
-                                  bool has_bias, bool has_weight_idx, bool has_weight_idx_indirect,
-                                  bool single_scale_weights, bool broadcast_a_row = false, bool acc_f32 = false)
-      : Program{"DP4AMatMulNBitsKParallelProgram"},
-        tile_size_k_vec_(tile_size_k_vec),
-        tile_size_(tile_size),
-        nbits_(nbits),
-        has_bias_(has_bias),
-        has_zero_points_(has_zero_points),
-        has_weight_idx_(has_weight_idx),
-        has_weight_idx_indirect_(has_weight_idx_indirect),
-        single_scale_weights_(single_scale_weights),
-        broadcast_a_row_(broadcast_a_row),
-        acc_f32_(acc_f32) {}
+  DP4AMatMulNBitsKParallelProgram(uint32_t tile_size_k_vec, uint32_t tile_size, uint32_t nbits,
+                                  bool has_zero_points, bool has_bias,
+                                  bool has_weight_idx, bool has_weight_idx_indirect, bool single_scale_weights,
+                                  bool broadcast_a_row = false,
+                                  bool acc_f32 = false) : Program{"DP4AMatMulNBitsKParallelProgram"},
+                                                          tile_size_k_vec_(tile_size_k_vec),
+                                                          tile_size_(tile_size),
+                                                          nbits_(nbits),
+                                                          has_bias_(has_bias),
+                                                          has_zero_points_(has_zero_points),
+                                                          has_weight_idx_(has_weight_idx),
+                                                          has_weight_idx_indirect_(has_weight_idx_indirect),
+                                                          single_scale_weights_(single_scale_weights),
+                                                          broadcast_a_row_(broadcast_a_row),
+                                                          acc_f32_(acc_f32) {}
   Status GenerateShaderCode(ShaderHelper& sh) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"batch_count", ProgramUniformVariableDataType::Uint32}, {"M", ProgramUniformVariableDataType::Uint32},
-      {"N", ProgramUniformVariableDataType::Uint32}, {"K", ProgramUniformVariableDataType::Uint32},
-      {"K16", ProgramUniformVariableDataType::Uint32}, {"K32", ProgramUniformVariableDataType::Uint32},
-      {"block_size", ProgramUniformVariableDataType::Uint32}, {"num_N_tile", ProgramUniformVariableDataType::Uint32},
+      {"batch_count", ProgramUniformVariableDataType::Uint32},
+      {"M", ProgramUniformVariableDataType::Uint32},
+      {"N", ProgramUniformVariableDataType::Uint32},
+      {"K", ProgramUniformVariableDataType::Uint32},
+      {"K16", ProgramUniformVariableDataType::Uint32},
+      {"K32", ProgramUniformVariableDataType::Uint32},
+      {"block_size", ProgramUniformVariableDataType::Uint32},
+      {"num_N_tile", ProgramUniformVariableDataType::Uint32},
       {"zero_blocks_per_col", ProgramUniformVariableDataType::Uint32},
-      {"weight_idx", ProgramUniformVariableDataType::Uint32}, {"dispatch_M", ProgramUniformVariableDataType::Uint32});
+      {"weight_idx", ProgramUniformVariableDataType::Uint32},
+      {"dispatch_M", ProgramUniformVariableDataType::Uint32});
 
  private:
   uint32_t tile_size_k_vec_;

@@ -453,23 +453,20 @@ TEST(MatMulNBits, Float32_4b_Accuracy0) {
 }
 
 #ifdef USE_WEBGPU
-TEST(MatMulNBits, WebGpu_DP4A_NarrowN_Int4) {
-  // Tiled row/column tails and the narrow-output K-parallel dispatch.
-  for (const auto& [n, k] : {std::pair<int64_t, int64_t>{16, 256}, {48, 256}, {80, 256}, {32, 2048}}) {
-    for (bool has_zero_point : {false, true}) {
-      TestOptions opts{};
-      opts.batch_count = 2;
-      opts.M = 65;
-      opts.N = n;
-      opts.K = k;
-      opts.accuracy_level = 4;
-      opts.has_zero_point = has_zero_point;
-      opts.has_bias = true;
-      opts.output_abs_error = k == 256 ? 0.05f : 0.1f;
-      opts.output_rel_error = 0.02f;
-      RunTest<MLFloat16>(opts);
-      RunTest<float>(opts);
-    }
+TEST(MatMulNBits, WebGpu_DP4A_KParallel_Int4) {
+  for (bool has_zero_point : {false, true}) {
+    TestOptions opts{};
+    opts.batch_count = 2;
+    opts.M = 65;
+    opts.N = 32;
+    opts.K = 2048;
+    opts.accuracy_level = 4;
+    opts.has_zero_point = has_zero_point;
+    opts.has_bias = true;
+    opts.output_abs_error = 0.1f;
+    opts.output_rel_error = 0.02f;
+    RunTest<MLFloat16>(opts);
+    RunTest<float>(opts);
   }
 }
 #endif
