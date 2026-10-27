@@ -326,6 +326,19 @@ namespace cuda {
 REGISTER_KERNEL_TYPED(MLFloat16)
 REGISTER_KERNEL_TYPED(BFloat16)
 
+#if !defined(DISABLE_FLOAT8_TYPES)
+// Do not claim FLOAT/integer models that already execute on CPU.
+ONNX_OPERATOR_TYPED_KERNEL_EX(
+    QMoE, kMSDomain, 1, float, kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .MayInplace(0, 0)
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<Float8E4M3FN>())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<float>())
+        .TypeConstraint("T4", DataTypeImpl::GetTensorType<float>()),
+    QMoE);
+#endif
+
 QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoEBase(op_kernel_info, GetDeviceProp()) {
   enable_kernel_debug_info_ =
       onnxruntime::ParseEnvironmentVariableWithDefault<int>(kEnableQMoEKernelDebugInfo, 0) != 0;
@@ -478,6 +491,12 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
   bool is_fp16 = input_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16;
 #endif
   is_fp16_ = is_fp16;
+  ORT_ENFORCE(input_type != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT || dynamic_fp8_,
+              "CUDA QMoE FLOAT input requires activation_quantization='dynamic_fp8'.");
+  if (dynamic_fp8_) {
+    // Native W8A8 has its own projection kernels and never invokes the A16 runner.
+    return;
+  }
   if (has_int3_) {
     ORT_ENFORCE(quant_type_ == "int" && weights_prepacked_mode == 0,
                 "INT3 CUDA QMoE requires quant_type='int' and weights_prepacked=0.");
@@ -1785,38 +1804,44 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                                        unpermuted_row_to_permuted_row, rows, hidden, narrow<int>(k_), stream);
           return;
         }
-        const auto* fc1_bias = fc1_experts_bias_optional ? static_cast<const T*>(fc1_experts_bias_optional->DataRaw()) : nullptr;
-        auto project_and_activate = [&](auto* projected) {
-          LaunchQMoEFp8Projection(params, tile_input, projected, stream);
-          LaunchQMoEFp8Activation(projected, fc1_bias, static_cast<T*>(activation.get()),
-                                  sorted_experts.get(), routes, inter, fusion,
-                                  split_fp8_fc1 || !fusion ? 1.0f : activation_alpha_,
-                                  split_fp8_fc1 ? 0.0f : activation_beta_,
-                                  split_fp8_fc1 ? std::numeric_limits<float>::infinity() : swiglu_limit_, stream);
-        };
-        if (fusion) {
-          project_and_activate(static_cast<T*>(projection.get()));
+        if constexpr (!std::is_same_v<T, float>) {
+          const auto* fc1_bias = fc1_experts_bias_optional ? static_cast<const T*>(fc1_experts_bias_optional->DataRaw()) : nullptr;
+          auto project_and_activate = [&](auto* projected) {
+            LaunchQMoEFp8Projection(params, tile_input, projected, stream);
+            LaunchQMoEFp8Activation(projected, fc1_bias, static_cast<T*>(activation.get()),
+                                    sorted_experts.get(), routes, inter, fusion,
+                                    split_fp8_fc1 || !fusion ? 1.0f : activation_alpha_,
+                                    split_fp8_fc1 ? 0.0f : activation_beta_,
+                                    split_fp8_fc1 ? std::numeric_limits<float>::infinity() : swiglu_limit_, stream);
+          };
+          if (fusion) {
+            project_and_activate(static_cast<T*>(projection.get()));
+          } else {
+            // Match the dense SiLU epilogue: narrow only after bias and activation.
+            project_and_activate(static_cast<float*>(projection.get()));
+          }
+          params.weights = static_cast<const uint8_t*>(fc2_experts_weights->DataRaw());
+          params.scales = fc2_scale_tensor->DataRaw();
+          params.scale_type = scale_type(fc2_scale_tensor);
+          params.up_weights = nullptr;
+          params.up_scales = nullptr;
+          params.row_to_unpermuted = nullptr;
+          params.n = hidden;
+          params.k = inter;
+          params.fusion = 0;
+          LaunchQMoEFp8Projection(params, static_cast<const T*>(activation.get()), static_cast<T*>(result.get()), stream);
+          const auto* fc2_bias = fc2_experts_bias_optional ? static_cast<const T*>(fc2_experts_bias_optional->DataRaw()) : nullptr;
+          ck::finalizeMoeRoutingKernelLauncher<T, T, T>(
+              static_cast<const T*>(result.get()), static_cast<T*>(output->MutableDataRaw()) + row_offset * hidden,
+              fc2_bias, expert_scales, unpermuted_row_to_permuted_row, row_map.get(), expert_indices, expert_offsets.get(),
+              rows, hidden, k_, num_experts, parallelism_config, false, stream);
         } else {
-          // Match the dense SiLU epilogue: narrow only after bias and activation.
-          project_and_activate(static_cast<float*>(projection.get()));
+          ORT_THROW("CUDA QMoE FLOAT input requires dynamic_fp8 execution.");
         }
-        params.weights = static_cast<const uint8_t*>(fc2_experts_weights->DataRaw());
-        params.scales = fc2_scale_tensor->DataRaw();
-        params.scale_type = scale_type(fc2_scale_tensor);
-        params.up_weights = nullptr;
-        params.up_scales = nullptr;
-        params.row_to_unpermuted = nullptr;
-        params.n = hidden;
-        params.k = inter;
-        params.fusion = 0;
-        LaunchQMoEFp8Projection(params, static_cast<const T*>(activation.get()), static_cast<T*>(result.get()), stream);
-        const auto* fc2_bias = fc2_experts_bias_optional ? static_cast<const T*>(fc2_experts_bias_optional->DataRaw()) : nullptr;
-        ck::finalizeMoeRoutingKernelLauncher<T, T, T>(
-            static_cast<const T*>(result.get()), static_cast<T*>(output->MutableDataRaw()) + row_offset * hidden,
-            fc2_bias, expert_scales, unpermuted_row_to_permuted_row, row_map.get(), expert_indices, expert_offsets.get(),
-            rows, hidden, k_, num_experts, parallelism_config, false, stream);
       };
-      if (is_fp16_) {
+      if (input->IsDataType<float>()) {
+        execute(static_cast<float*>(nullptr));
+      } else if (is_fp16_) {
         execute(static_cast<half*>(nullptr));
       } else {
         execute(static_cast<__nv_bfloat16*>(nullptr));
@@ -3280,7 +3305,7 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                      bool& is_packed, PrePackedWeights* prepacked_weights) {
   ORT_UNUSED_PARAMETER(prepacked_weights);
   is_packed = false;
-  if (has_int3_) return Status::OK();
+  if (has_int3_ || dynamic_fp8_) return Status::OK();
   if (nvfp4_weights_row_major_ && (input_idx == 2 || input_idx == 5 ||
                                    (use_fp4_dequant_fallback_ && (input_idx == 3 || input_idx == 6)))) {
     return Status::OK();

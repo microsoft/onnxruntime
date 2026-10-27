@@ -1565,8 +1565,9 @@ static void QMoEDynamicFp8Inference(ONNX_NAMESPACE::InferenceContext& ctx) {
   };
   const auto* x = input(0);
   const int element_type = x && x->has_tensor_type() ? x->tensor_type().elem_type() : 0;
-  if (element_type && element_type != TensorProto::FLOAT16 && element_type != TensorProto::BFLOAT16) {
-    fail_type_inference("QMoE dynamic_fp8 requires FP16 or BF16 activations.");
+  if (element_type && element_type != TensorProto::FLOAT &&
+      element_type != TensorProto::FLOAT16 && element_type != TensorProto::BFLOAT16) {
+    fail_type_inference("QMoE dynamic_fp8 requires FP32, FP16 or BF16 activations.");
   }
   type(1, element_type, true);
   for (size_t index : {2, 5, 8}) type(index, TensorProto::FLOAT8E4M3FN, index != 8);
@@ -1875,9 +1876,10 @@ static OpSchema QMoESchema() {
                     .SetDoc(std::string(qMoE_ver1_doc) + qMoE_int3_doc)
                     .Attr("activation_quantization",
                           "'none' (default) retains weight-only execution. 'dynamic_fp8' quantizes consecutive "
-                          "groups of 128 features per token to saturating nearest-even E4M3FN with FP32 scale "
+                          "groups of 128 features per token to saturating nearest-even E4M3FN "
+                          "using FP32 div.full normalization and scale "
                           "max(amax(abs(x)),1e-10) * float32(1/448). Requires block-scaled FP8 weights, block_size=128, "
-                          "FP32 weight scales, FP16/BF16 inputs and 128-aligned projections. Gate/up outputs "
+                          "FP32 weight scales, FP32/FP16/BF16 inputs and 128-aligned projections. Gate/up outputs "
                           "narrow to the input type; their FP32 SiLU/SwiGLU result is quantized directly for FC2. "
                           "FC2 stays FP32, multiplies routing weights rounded to the input type, and reduces "
                           "in FP32 before the final output cast. Biases, supplied activation/global scales, "

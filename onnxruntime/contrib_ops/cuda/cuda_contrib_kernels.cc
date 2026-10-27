@@ -102,6 +102,9 @@ class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, MoE);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, MoE);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, QMoE);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, QMoE);
+#if !defined(DISABLE_FLOAT8_TYPES)
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, QMoE);
+#endif
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float_float, MultiHeadAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float_MLFloat16, MultiHeadAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16_float, MultiHeadAttention);
@@ -470,6 +473,9 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, MoE)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, QMoE)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, QMoE)>,
+#if !defined(DISABLE_FLOAT8_TYPES)
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, QMoE)>,
+#endif
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float_float, MultiHeadAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float_MLFloat16, MultiHeadAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16_float, MultiHeadAttention)>,

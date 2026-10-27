@@ -85,6 +85,7 @@ void TestDynamicFp8Quantization() {
 }
 
 TEST(CUDA_EP_Unittest, QMoEDynamicFp8QuantizationScalesAndNearestEven) {
+  TestDynamicFp8Quantization<float>();
   TestDynamicFp8Quantization<half>();
   TestDynamicFp8Quantization<__nv_bfloat16>();
 }
@@ -106,6 +107,20 @@ TEST(CUDA_EP_Unittest, QMoEDynamicFp8QuantizesActivationWithoutBFloat16RoundTrip
   // The FP32 product is just above the E4M3 zero/subnormal midpoint; BF16 would round to the midpoint.
   EXPECT_EQ(codes[0], 0x7e);
   EXPECT_EQ(codes[1], 0x01);
+}
+
+TEST(CUDA_EP_Unittest, QMoEDynamicFp8FloatNormalizationPreservesMidpoint) {
+  std::array<float, 128> input{};
+  input[0] = 0.783361554145813f;
+  input[1] = -0.20283471047878265f;
+  CudaBuffer source(sizeof(input)), quantized(input.size()), scales(sizeof(float));
+  source.Upload(input.data());
+  qmoe::LaunchQMoEDynamicFp8Quantize(source.As<float>(), quantized.As<uint8_t>(), scales.As<float>(),
+                                     1, 128, 0, nullptr);
+  std::array<uint8_t, 128> codes{};
+  quantized.Download(codes.data());
+  // div.full resolves this to -116 (the midpoint); div.rn yields the next float below -116.
+  EXPECT_EQ(codes[1], 0xee);
 }
 
 template <typename T>
@@ -139,7 +154,9 @@ void TestDynamicFp8RoutingWeightRounding() {
   std::array<float, 128> actual{};
   output.Download(actual.data());
   const float expected = 128.0f * static_cast<float>(T(coefficient));
-  EXPECT_NE(expected, 128.0f * coefficient);
+  if constexpr (!std::is_same_v<T, float>) {
+    EXPECT_NE(expected, 128.0f * coefficient);
+  }
   for (float value : actual) EXPECT_FLOAT_EQ(value, expected);
 }
 
@@ -147,6 +164,7 @@ TEST(CUDA_EP_Unittest, QMoEDynamicFp8RoundsRoutingWeightsBeforeFp32Product) {
   if (!qmoe::QMoEDynamicFp8Supported()) GTEST_SKIP() << "Native FP8 MMA requires an SM89+ kernel.";
   TestDynamicFp8RoutingWeightRounding<half>();
   TestDynamicFp8RoutingWeightRounding<__nv_bfloat16>();
+  TestDynamicFp8RoutingWeightRounding<float>();
 }
 
 TEST(CUDA_EP_Unittest, QMoEFp8CompactExpertsPreservesRoutesAndClearsUnusedSlots) {

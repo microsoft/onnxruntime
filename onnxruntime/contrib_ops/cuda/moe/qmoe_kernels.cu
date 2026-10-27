@@ -1833,7 +1833,10 @@ __global__ void QMoEDynamicFp8QuantizeKernel(const T* input, uint8_t* output, fl
     scales[static_cast<int64_t>(row) * (cols / 128) + group] = scale;
   }
   __syncthreads();
-  const float normalized = fminf(448.0f, fmaxf(-448.0f, value / scale));
+  float normalized;
+  // Match native FP8 exporters' FP32 division; div.rn can move an E4M3 midpoint by one ULP.
+  asm("div.full.f32 %0, %1, %2;" : "=f"(normalized) : "f"(value), "f"(scale));
+  normalized = fminf(448.0f, fmaxf(-448.0f, normalized));
   output[index] = __nv_cvt_float_to_fp8(normalized, __NV_SATFINITE, __NV_E4M3);
 }
 
@@ -1994,12 +1997,15 @@ void LaunchQMoEDynamicFp8Finalize(const float* input, T* output, const int* unpe
   template void LaunchQMoEDynamicFp8Quantize<T>(const T*, uint8_t*, float*, int, int, int, cudaStream_t);              \
   template void LaunchQMoEDynamicFp8Projection<T, T>(const QMoEFp8ProjectionParams&, const uint8_t*, const float*, T*, \
                                                      const float*, const int*, int, cudaStream_t);                     \
-  template void LaunchQMoEDynamicFp8Projection<T, float>(const QMoEFp8ProjectionParams&, const uint8_t*, const float*, \
-                                                         float*, const float*, const int*, int, cudaStream_t);         \
   template void LaunchQMoEDynamicFp8Finalize<T>(const float*, T*, const int*, int, int, int, cudaStream_t);
 INSTANTIATE_DYNAMIC_FP8(half)
 INSTANTIATE_DYNAMIC_FP8(__nv_bfloat16)
+INSTANTIATE_DYNAMIC_FP8(float)
 #undef INSTANTIATE_DYNAMIC_FP8
+template void LaunchQMoEDynamicFp8Projection<half, float>(
+    const QMoEFp8ProjectionParams&, const uint8_t*, const float*, float*, const float*, const int*, int, cudaStream_t);
+template void LaunchQMoEDynamicFp8Projection<__nv_bfloat16, float>(
+    const QMoEFp8ProjectionParams&, const uint8_t*, const float*, float*, const float*, const int*, int, cudaStream_t);
 
 template <typename T, typename InputT>
 __global__ void QMoEFp8ActivationKernel(const InputT* input, const T* bias, T* output,

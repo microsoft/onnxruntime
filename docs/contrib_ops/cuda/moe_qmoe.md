@@ -1416,7 +1416,7 @@ weight/bias decoding for separate and fused layouts.
 Set `activation_quantization="dynamic_fp8"` to opt into W8A8 execution instead of
 the default `activation_quantization="none"` weight-only path. This mode requires
 `quant_type="fp8"`, `expert_weight_bits=8`, `block_size=128`, FP32 weight scale
-grids, FP16/BF16 inputs, and hidden/intermediate dimensions divisible by 128.
+grids, FP32/FP16/BF16 inputs, and hidden/intermediate dimensions divisible by 128.
 The existing row-major FP8 weight layouts and separate gate/up or fused SwiGLU
 layouts are unchanged. Standard SiLU/SwiGLU is supported; biases, zero points,
 activation clipping/parameter overrides, `router_weights`, and supplied
@@ -1428,8 +1428,14 @@ and convert to E4M3FN with round-to-nearest-even. This quantization is performed
 before gate/up projection and again directly on its FP32 SiLU/SwiGLU result.
 The rounded FP32 reciprocal multiplication is intentional: replacing it with
 a correctly rounded division can shift a scale by one ULP and change FP8 codes.
+Normalization uses FP32 `div.full` before the nearest-even FP8 conversion, not
+`div.rn`; the latter can move a midpoint by one ULP and select a different code.
 Gate/up projection outputs round to the input type, but there is **no**
 FP16/BF16 rounding between the activation product and the second quantizer.
+For FP32 input, gate/up values and the final output remain FP32. CUDA's FLOAT
+registration is restricted to FP8 weights with FP32 scales and requires this
+dynamic mode; it does not claim existing FLOAT/integer CPU QMoE models or enable
+FLOAT weight-only execution.
 Native FP8 MMA accumulates each K128 dot in FP32, applies that group's activation
 and weight scales, then adds it to the FP32 projection accumulator.
 Down projection remains FP32, multiplies the selected routing coefficients

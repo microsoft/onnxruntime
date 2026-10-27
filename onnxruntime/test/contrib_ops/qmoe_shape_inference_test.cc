@@ -108,7 +108,7 @@ QMoEShapeCase DynamicFp8Case() {
 }
 
 TEST(QMoEShapeInferenceTest, DynamicFp8PreservesActivationShapeAndType) {
-  for (int element_type : {TensorProto::FLOAT16, TensorProto::BFLOAT16}) {
+  for (int element_type : {TensorProto::FLOAT, TensorProto::FLOAT16, TensorProto::BFLOAT16}) {
     for (int64_t fusion : {0, 1, 2}) {
       auto spec = DynamicFp8Case();
       spec.activation_type = element_type;
@@ -350,7 +350,7 @@ TEST(QMoEShapeInferenceTest, RejectsInvalidDynamicFp8Metadata) {
       {"large k", [](auto& s) { s.top_k = 4; }},
       {"activation", [](auto& s) { s.activation = "relu"; }},
       {"fusion", [](auto& s) { s.fusion = 0; }},
-      {"input type", [](auto& s) { s.activation_type = TensorProto::FLOAT; }},
+      {"input type", [](auto& s) { s.activation_type = TensorProto::DOUBLE; }},
       {"weight type", [](auto& s) { s.types[2] = TensorProto::UINT8; }},
       {"scale type", [](auto& s) { s.types[6] = TensorProto::FLOAT16; }},
       {"missing scale", [](auto& s) { s.shapes.erase(3); }},
