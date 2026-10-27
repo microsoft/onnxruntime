@@ -2746,6 +2746,9 @@ void RunAliasedStateIoBindingCase(int total_tokens, std::unique_ptr<IExecutionPr
   auto& node = graph.AddNode("gdn", "GatedDeltaNet", "aliased recurrent state",
                              node_inputs, node_outputs, nullptr, kMSDomain);
   node.AddAttribute("update_rule", options.update_rule);
+  if (options.chunk_size > 0) {
+    node.AddAttribute("chunk_size", static_cast<int64_t>(options.chunk_size));
+  }
   node.SetExecutionProviderType(execution_provider_type);
   ASSERT_STATUS_OK(graph.Resolve());
 
@@ -2868,31 +2871,50 @@ TEST(GatedDeltaNetTest, AliasedStateIoBindingRecurrentAndChunked) {
 
 // A valid tensor may begin at any element boundary, for example a slice of a larger buffer bound through IOBinding.
 // The chunked engine's 16-byte vector loads and stores must then fall back to scalar accesses instead of faulting
-// or reading shifted data. 80 tokens leave a partial final chunk.
+// or reading shifted data. 80 tokens leave a partial final chunk for both chunk sizes.
+//
+// ORT_GDN_PLAN=chunked pins the fused chunked engine, so automatic plan selection cannot route around the vector
+// paths; the operator fails the run if that engine cannot serve the problem. chunk_size 64 takes the widest chunk the
+// device can hold, and 32 pins the narrow one.
 TEST(GatedDeltaNetTest, ChunkedMisalignedFloat16IoBuffers) {
   if (NeedSkipGatedDeltaNetTest()) return;
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_GDN_PLAN", "chunked"}}};
   const size_t offsets[] = {0, 1, 4};
-  for (size_t input_offset : offsets) {
-    for (size_t output_offset : offsets) {
-      if (input_offset == 0 && output_offset == 0) continue;
-      SCOPED_TRACE("input offset " + std::to_string(input_offset) +
-                   ", output offset " + std::to_string(output_offset));
-      RunAliasedStateIoBindingCase<MLFloat16>(/*total_tokens=*/80, DefaultCudaExecutionProvider(),
-                                              kCudaExecutionProvider, Options{}, input_offset, output_offset);
+  for (int chunk_size : {64, 32}) {
+    Options options;
+    options.chunk_size = chunk_size;
+    for (size_t input_offset : offsets) {
+      for (size_t output_offset : offsets) {
+        if (input_offset == 0 && output_offset == 0) continue;
+        SCOPED_TRACE("chunk_size " + std::to_string(chunk_size) + ", input offset " + std::to_string(input_offset) +
+                     ", output offset " + std::to_string(output_offset));
+        RunAliasedStateIoBindingCase<MLFloat16>(/*total_tokens=*/80, DefaultCudaExecutionProvider(),
+                                                kCudaExecutionProvider, options, input_offset, output_offset);
+      }
     }
   }
 }
 
-// Covers the vectorized fp32 and bf16 modes and the fp16 mode, which always takes the scalar loads.
+// Covers the vectorized fp32 and bf16 modes and the fp16 mode. In fp16 mode the input loads are always scalar (they
+// range-check the values) while the output stores can still be vectorized, so each side needs its own alignment
+// check: the input-only and output-only offsets isolate them.
 TEST(GatedDeltaNetTest, ChunkedMisalignedBFloat16IoBuffers) {
   if (NeedSkipGatedDeltaNetTest()) return;
+  const std::pair<size_t, size_t> offsets[] = {{1, 0}, {0, 1}, {1, 1}};
   for (const char* mode : {"fp32", "fp16", "bf16"}) {
-    SCOPED_TRACE(mode);
     ScopedEnvironmentVariables scoped_env_vars{
-        EnvVarMap{{"ORT_GDN_BF16_PRECISION", mode}}};
-    RunAliasedStateIoBindingCase<BFloat16>(/*total_tokens=*/80, DefaultCudaExecutionProvider(),
-                                           kCudaExecutionProvider, Options{},
-                                           /*input_element_offset=*/1, /*output_element_offset=*/1);
+        EnvVarMap{{"ORT_GDN_PLAN", "chunked"}, {"ORT_GDN_BF16_PRECISION", mode}}};
+    for (int chunk_size : {64, 32}) {
+      Options options;
+      options.chunk_size = chunk_size;
+      for (const auto& [input_offset, output_offset] : offsets) {
+        SCOPED_TRACE(std::string("mode ") + mode + ", chunk_size " + std::to_string(chunk_size) +
+                     ", input offset " + std::to_string(input_offset) +
+                     ", output offset " + std::to_string(output_offset));
+        RunAliasedStateIoBindingCase<BFloat16>(/*total_tokens=*/80, DefaultCudaExecutionProvider(),
+                                               kCudaExecutionProvider, options, input_offset, output_offset);
+      }
+    }
   }
 }
 
