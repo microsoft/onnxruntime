@@ -38,7 +38,7 @@ def stage_dawn_agility_sdk(source_dir: Path, mirror_dir: Path) -> Path:
     nuget = shutil.which("nuget.exe")
     if nuget is None:
         raise FileNotFoundError(
-            "nuget.exe must be on PATH. Provision it from an approved source before staging the Dawn Agility SDK."
+            "nuget.exe must be on PATH."
         )
 
     with tempfile.TemporaryDirectory(prefix="ort-dawn-agility-sdk-") as package_dir:
