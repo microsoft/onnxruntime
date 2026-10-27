@@ -168,10 +168,10 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
                           context.AdapterInfo().subgroupMinSize <= 128 &&
                           context.AdapterInfo().subgroupMaxSize >= 128 &&
                           nbits == 4 && block_size == 32 && M >= 128;
-  const uint32_t kTileSize = qc_wave128 ? 128 : 64;
+  const uint32_t tile_m = qc_wave128 ? 128 : 64;
   const uint32_t tile_n = qc_wave128 ? 32 : 64;
   TensorShape reshaped_y_shape{batch_count, M, N / kVec4Components};
-  uint32_t num_M_tile = (M + kTileSize - 1) / kTileSize;
+  uint32_t num_M_tile = (M + tile_m - 1) / tile_m;
   uint32_t num_N_tile = (N + tile_n - 1) / tile_n;
   bool is_qualcomm = context.AdapterInfo().vendor == std::string_view{"qualcomm"};
   const bool acc_f32 = context.EnableMatmulFp32Accumulation();

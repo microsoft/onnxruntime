@@ -37,14 +37,14 @@
 // 512B of registry from each lane.
 //
 // The medium size matmul is implemented using dot4I8Packed, so the inputs for
-// this shader require A to be int8 quantized with block size 64. B is regular
+// this shader require A to be int8 quantized with block size 128. B is regular
 // matmulnbits input with block size 32.
 
 #if qc_wave128
-const tile_size = 128;
+const tile_m = 128;
 const tile_n = 32;
 #else
-const tile_size = 64;
+const tile_m = 64;
 const tile_n = 64;
 #endif
 const subtile_size = 16;
@@ -54,13 +54,13 @@ const u32_factor = 4;
 const tile_size_k_vec = 2;
 
 // Shared memory
-var<workgroup> tile_A : array<array<vec4<u32>, tile_size>, tile_size_k_vec>;                     // tile_size x 32
-var<workgroup> scale_A : array<output_element_t, tile_size>;                                     // tile_size x 1
+var<workgroup> tile_A : array<array<vec4<u32>, tile_m>, tile_size_k_vec>;                     // tile_m x 32
+var<workgroup> scale_A : array<output_element_t, tile_m>;                                     // tile_m x 1
 var<workgroup> tile_B : array<array<vec4<u32>, tile_n>, tile_size_k_vec>;                     // tile_n x 32
 var<workgroup> scale_B : array<output_element_t, tile_n>;                                     // tile_n x 1
 
 #if has_zero_points
-    var<workgroup> zeroes : array<i32, tile_size>;
+    var<workgroup> zeroes : array<i32, tile_n>;
 #endif
 
 fn loadSHMA(batch:u32, a_global_base:u32, kidx_v:u32, row: u32, col: u32)
@@ -71,9 +71,9 @@ fn loadSHMA(batch:u32, a_global_base:u32, kidx_v:u32, row: u32, col: u32)
         return;
     }
     tile_A[col][row] = a.getByOffset(batch*uniforms.M*uniforms.K16+a_global*uniforms.K16+kidx_v+col);
-    if (col == 0)
+    // A 128-value quantization block shares its scale across four 32-value K tiles.
+    if (col == 0 && kidx_v % 8u == 0u)
     {
-        // kidx_v - covers 16 values of k
         scale_A[row] = scales_a.getByOffset(batch*uniforms.M*(uniforms.K/128) + a_global*(uniforms.K/128) + kidx_v/8);
     }
 }
@@ -204,7 +204,7 @@ $MAIN {
     if (batch >= uniforms.batch_count) {
         return;
     }
-    let a_global_base = u32((workgroup_idx / uniforms.num_N_tile) % uniforms.num_M_tile) * tile_size;
+    let a_global_base = u32((workgroup_idx / uniforms.num_N_tile) % uniforms.num_M_tile) * tile_m;
     let b_global_base = (workgroup_idx % uniforms.num_N_tile) * tile_n;
     let load_AorB = u32(local_idx/128);
     let load_row = u32((local_idx%128)/2);
@@ -223,7 +223,7 @@ $MAIN {
 #if is_qualcomm
     // Qualcomm uses four 64x16 subtiles or two 128x16 subtiles. Each lane
     // owns one activation row and accumulates 16 output columns.
-    if (sg_size == tile_size) {
+    if (sg_size == tile_m) {
         subtile_id = u32(local_idx / sg_size);
         subtile_idx = u32(subtile_id / 4);
         subtile_idy = u32(subtile_id % 4);
@@ -269,7 +269,7 @@ $MAIN {
 
 #if has_zero_points && n_bits == 8
  #if is_qualcomm
-        if (sg_size == tile_size)
+        if (sg_size == tile_m)
         {
             var own_b0: vec4<u32>;
             var own_b1: vec4<u32>;
@@ -351,7 +351,7 @@ $MAIN {
  #endif
 #else
  #if is_qualcomm
-        if (sg_size == tile_size)
+        if (sg_size == tile_m)
         {
             var own_b0: vec4<u32>;
             var own_b1: vec4<u32>;

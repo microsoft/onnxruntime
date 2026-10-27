@@ -170,6 +170,65 @@ TEST(WebGpuMatMulNBitsTest, DP4AQualcommWave128Tiles) {
   }
 }
 
+TEST(WebGpuMatMulNBitsTest, DP4AActivationScaleReuse) {
+  auto provider = DefaultWebGpuExecutionProvider();
+  ASSERT_NE(provider, nullptr);
+  const auto& context = webgpu::WebGpuContextFactory::GetContext(provider->GetDeviceId());
+  if (!context.DeviceHasFeature(wgpu::FeatureName::Subgroups) ||
+      context.AdapterInfo().vendor == std::string_view{"apple"}) {
+    GTEST_SKIP() << "Requires the DP4A path";
+  }
+
+  constexpr int64_t batch_count = 2;
+  constexpr int64_t N = 48;
+  constexpr int64_t K = 384;
+  constexpr int64_t block_size = 32;
+  for (int64_t M : {65, 129}) {
+    for (int64_t bits : {4, 8}) {
+      SCOPED_TRACE(testing::Message() << "M=" << M << ", bits=" << bits);
+      InlinedVector<float> a(batch_count * M * K);
+      InlinedVector<float> expected(batch_count * M * N);
+      for (int64_t batch = 0; batch < batch_count; ++batch) {
+        for (int64_t row = 0; row < M; ++row) {
+          for (int64_t k = 0; k < K; ++k) {
+            // Powers of two give distinct scales across blocks, rows, and batches.
+            a[(batch * M + row) * K + k] = static_cast<float>(1 << ((batch * 3 + row % 3 + (k / 128) * 2) % 7));
+          }
+          for (int64_t n = 0; n < N; ++n) {
+            const int64_t k = (n % (K / block_size)) * block_size + block_size - 1;
+            expected[(batch * M + row) * N + n] = a[(batch * M + row) * K + k];
+          }
+        }
+      }
+
+      // Each column selects the last activation of one K tile, including all
+      // four tiles sharing a scale and the transitions to the next scale.
+      const int64_t values_per_byte = 8 / bits;
+      InlinedVector<uint8_t> weights(N * K / values_per_byte, bits == 4 ? 0x88 : 0x80);
+      for (int64_t n = 0; n < N; ++n) {
+        const int64_t k = (n % (K / block_size)) * block_size + block_size - 1;
+        weights[(n * K + k) / values_per_byte] |= static_cast<uint8_t>(1 << ((k % values_per_byte) * bits));
+      }
+      InlinedVector<float> scales(N * K / block_size, 1.0f);
+      OpTester test("MatMulNBits", 1, kMSDomain);
+      test.AddAttribute<int64_t>("K", K);
+      test.AddAttribute<int64_t>("N", N);
+      test.AddAttribute<int64_t>("bits", bits);
+      test.AddAttribute<int64_t>("block_size", block_size);
+      test.AddAttribute<int64_t>("accuracy_level", 4);
+      test.AddInput<float>("A", {batch_count, M, K}, a.data(), a.size());
+      test.AddInput<uint8_t>("B", {N, K / block_size, block_size / values_per_byte}, weights.data(), weights.size(), true);
+      test.AddInput<float>("scales", {N, K / block_size}, scales.data(), scales.size(), true);
+      test.AddOutput<float>("Y", {batch_count, M, N}, expected.data(), expected.size());
+      test.SetOutputAbsErr("Y", 0.0001f);
+      test.SetOutputRelErr("Y", 0.00001f);
+      SessionOptions options;
+      ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+      test.Config(options).ConfigEp(DefaultWebGpuExecutionProvider()).RunWithConfig();
+    }
+  }
+}
+
 TEST(WebGpuMatMulNBitsTest, DP4AQuantizationLargeSubgroups) {
   auto provider = DefaultWebGpuExecutionProvider();
   ASSERT_NE(provider, nullptr);
