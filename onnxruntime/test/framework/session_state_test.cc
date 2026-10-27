@@ -150,11 +150,15 @@ class TestOpKernel : public OpKernel {
 
 ONNX_OPERATOR_SCHEMA(WorkspaceVerificationTestOp)
     .SetDoc("Test operator for Level-2 workspace verification.")
+    .Attr("workspace_bytes", "Declared workspace bytes, or -1 when unavailable.",
+          ONNX_NAMESPACE::AttributeProto::INT, int64_t{128})
     .Output(0, "output", "Test output.", "tensor(int32)");
 
 class WorkspaceVerificationTestKernel final : public OpKernel {
  public:
-  explicit WorkspaceVerificationTestKernel(const OpKernelInfo& info) : OpKernel(info) {}
+  explicit WorkspaceVerificationTestKernel(const OpKernelInfo& info)
+      : OpKernel(info),
+        workspace_bytes_(info.GetAttrOrDefault<int64_t>("workspace_bytes", 128)) {}
 
   Status Compute(OpKernelContext* context) const override {
     ORT_UNUSED_PARAMETER(context);
@@ -166,9 +170,15 @@ class WorkspaceVerificationTestKernel final : public OpKernel {
       InlinedVector<WorkspaceRequirement>& requirements) const override {
     ORT_UNUSED_PARAMETER(input_shapes);
     requirements.clear();
-    requirements.push_back(WorkspaceRequirement{128, /*slot_id=*/0, /*alignment_bytes=*/0});
+    if (workspace_bytes_ >= 0) {
+      requirements.push_back(
+          WorkspaceRequirement{static_cast<size_t>(workspace_bytes_), /*slot_id=*/0, /*alignment_bytes=*/0});
+    }
     return Status::OK();
   }
+
+ private:
+  const int64_t workspace_bytes_;
 };
 
 enum class WorkspaceVerificationMutation {
@@ -183,7 +193,8 @@ static Status FinalizeWorkspaceVerificationTestSession(
     WorkspaceVerificationMutation mutation = WorkspaceVerificationMutation::kNone,
     bool track_replacement_reservation = true,
     std::optional<size_t> orphaned_reservation_bytes = std::nullopt,
-    bool discard_orphaned_reservation = false) {
+    bool discard_orphaned_reservation = false,
+    int64_t declared_workspace_bytes = 128) {
   Model model("workspace_verification", false, DefaultLoggingManager().DefaultLogger());
   Graph& graph = model.MainGraph();
 
@@ -262,6 +273,9 @@ static Status FinalizeWorkspaceVerificationTestSession(
     graph.SetNodeReplacementCallback({});
   }
 
+  for (auto& final_node : graph.Nodes()) {
+    final_node.AddAttribute("workspace_bytes", declared_workspace_bytes);
+  }
   ORT_RETURN_IF_ERROR(graph.Resolve());
   for (auto& final_node : graph.Nodes()) {
     final_node.SetExecutionProviderType(kCpuExecutionProvider);
@@ -355,13 +369,36 @@ TEST(SessionStateTest, WorkspaceVerificationAllowsOverrunByDefault) {
   EXPECT_STATUS_OK(FinalizeWorkspaceVerificationTestSession(size_t{64}, false));
 }
 
-TEST(SessionStateTest, StrictWorkspaceVerificationOnlyRejectsOverrun) {
+TEST(SessionStateTest, StrictWorkspaceVerificationRejectsOverrun) {
   EXPECT_STATUS_OK(FinalizeWorkspaceVerificationTestSession(std::nullopt));
   EXPECT_STATUS_OK(FinalizeWorkspaceVerificationTestSession(size_t{128}));
   EXPECT_STATUS_OK(FinalizeWorkspaceVerificationTestSession(size_t{256}));
   EXPECT_STATUS_NOT_OK_AND_HAS_SUBSTR(
       FinalizeWorkspaceVerificationTestSession(size_t{64}),
       "declarations exceed the workspace reserved during graph partitioning");
+}
+
+TEST(SessionStateTest, WorkspaceVerificationAllowsUnavailableDeclarationByDefault) {
+  EXPECT_STATUS_OK(FinalizeWorkspaceVerificationTestSession(
+      size_t{128}, false, WorkspaceVerificationMutation::kNone, true, std::nullopt, false,
+      /*declared_workspace_bytes=*/-1));
+}
+
+TEST(SessionStateTest, StrictWorkspaceVerificationRequiresDeclarationForNonzeroReservation) {
+  EXPECT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      FinalizeWorkspaceVerificationTestSession(
+          size_t{128}, true, WorkspaceVerificationMutation::kNone, true, std::nullopt, false,
+          /*declared_workspace_bytes=*/-1),
+      "nonzero reservation(s) have no available declaration");
+  EXPECT_STATUS_OK(FinalizeWorkspaceVerificationTestSession(
+      size_t{0}, true, WorkspaceVerificationMutation::kNone, true, std::nullopt, false,
+      /*declared_workspace_bytes=*/-1));
+}
+
+TEST(SessionStateTest, StrictWorkspaceVerificationAcceptsExplicitZeroWorkspace) {
+  EXPECT_STATUS_OK(FinalizeWorkspaceVerificationTestSession(
+      size_t{128}, true, WorkspaceVerificationMutation::kNone, true, std::nullopt, false,
+      /*declared_workspace_bytes=*/0));
 }
 
 TEST(SessionStateTest, StrictWorkspaceVerificationTracksReplacementNode) {
@@ -378,6 +415,21 @@ TEST(SessionStateTest, StrictWorkspaceVerificationTracksFinalizeNodeFusion) {
       size_t{128}, true, WorkspaceVerificationMutation::kFinalizeNodeFusionPair));
   EXPECT_STATUS_OK(FinalizeWorkspaceVerificationTestSession(
       size_t{128}, true, WorkspaceVerificationMutation::kFinalizeNodeFusionSpan));
+}
+
+TEST(SessionStateTest, StrictWorkspaceVerificationRequiresReplacementOwnDeclaration) {
+  for (const auto mutation : {WorkspaceVerificationMutation::kReplaceWithNew,
+                              WorkspaceVerificationMutation::kFinalizeNodeFusionPair,
+                              WorkspaceVerificationMutation::kFinalizeNodeFusionSpan}) {
+    EXPECT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+        FinalizeWorkspaceVerificationTestSession(
+            size_t{128}, true, mutation, true, std::nullopt, false,
+            /*declared_workspace_bytes=*/-1),
+        "nonzero reservation(s) have no available declaration");
+    EXPECT_STATUS_OK(FinalizeWorkspaceVerificationTestSession(
+        size_t{128}, true, mutation, true, std::nullopt, false,
+        /*declared_workspace_bytes=*/0));
+  }
 }
 
 TEST(SessionStateTest, StrictWorkspaceVerificationRejectsUntrackedReplacement) {

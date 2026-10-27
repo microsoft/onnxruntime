@@ -1667,12 +1667,18 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, DeclaresOneAlignedSlotAndOnlyWork
   unavailable.status.error = contrib::cuda::GQAWorkspaceError::Unavailable;
   SetGroupQueryAttentionWorkspaceRequirements(unavailable, requirements);
   EXPECT_TRUE(requirements.empty());
+  Level1MemoryEstimate unavailable_level1;
+  SetGroupQueryAttentionLevel1MemoryEstimate(unavailable, unavailable_level1);
+  EXPECT_FALSE(unavailable_level1.runtime_workspace_bytes.has_value());
 
   GQAWorkspaceAggregate zero;
   zero.status = {};
   Level1MemoryEstimate zero_level1;
   SetGroupQueryAttentionLevel1MemoryEstimate(zero, zero_level1);
-  EXPECT_FALSE(zero_level1.runtime_workspace_bytes.has_value());
+  EXPECT_EQ(zero_level1.runtime_workspace_bytes, std::optional<size_t>{0});
+  SetGroupQueryAttentionWorkspaceRequirements(zero, requirements);
+  ASSERT_EQ(requirements.size(), 1u);
+  EXPECT_EQ(requirements[0].size_bytes, 0u);
 }
 
 TEST(GroupQueryAttentionWorkspaceEstimateTest, KernelDeclaresPrepackedHeadSinkRoot) {
@@ -2070,6 +2076,8 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, KernelDeclarationMatchesBoundedNo
   SessionOptions session_options;
   ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
       kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLength, "512"));
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsDisableCPUEPFallback, "1"));
   InferenceSessionWrapper session(session_options, GetEnvironment());
 
   CUDAExecutionProviderInfo provider_info;
@@ -2121,6 +2129,8 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, StrictVerificationAcceptsBoundedN
       kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLength, "512"));
   ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
       kOrtSessionOptionsStrictWorkspaceVerification, "1"));
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsDisableCPUEPFallback, "1"));
   InferenceSessionWrapper session(session_options, GetEnvironment());
 
   CUDAExecutionProviderInfo provider_info;

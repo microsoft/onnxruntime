@@ -2146,6 +2146,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
     size_t equal = 0;
     size_t missing_reservation = 0;
     size_t missing_declaration = 0;
+    size_t nonzero_reservations_without_declaration = 0;
     size_t orphaned_reservations = 0;
     size_t orphaned_workspace_reservations = 0;
     SafeInt<size_t> level2_excess_bytes = 0;
@@ -2176,22 +2177,25 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
       }
 
       auto* kernel = GetMutableKernel(node.Index());
-      if (kernel == nullptr) {
-        if (reservation != nullptr) {
-          ++missing_declaration;
-        }
-        continue;
-      }
-
-      auto resolved = ResolveNodeInputShapes(node, &graph_, max_shape_inference_result);
-
       InlinedVector<WorkspaceRequirement> requirements;
-      ORT_RETURN_IF_ERROR(kernel->DeclareWorkspaceRequirements(
-          gsl::make_span(resolved), requirements));
+      if (kernel != nullptr) {
+        auto resolved = ResolveNodeInputShapes(node, &graph_, max_shape_inference_result);
+        ORT_RETURN_IF_ERROR(kernel->DeclareWorkspaceRequirements(
+            gsl::make_span(resolved), requirements));
+      }
 
       if (requirements.empty()) {
         if (reservation != nullptr) {
           ++missing_declaration;
+          if (reservation->bytes > 0) {
+            ++nonzero_reservations_without_declaration;
+            if (strict_workspace_verification) {
+              LOGS(logger_, WARNING) << "Level-2 workspace declaration is unavailable for node '"
+                                     << node.Name() << "' (" << node.OpType()
+                                     << "), with a partitioning reservation of "
+                                     << reservation->bytes << " bytes";
+            }
+          }
         }
         continue;
       }
@@ -2266,6 +2270,8 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                           << ", equal=" << equal
                           << ", missing reservation=" << missing_reservation
                           << ", missing declaration=" << missing_declaration
+                          << ", nonzero reservation without declaration="
+                          << nonzero_reservations_without_declaration
                           << ", orphaned reservation=" << orphaned_reservations
                           << ", orphaned nonzero reservation=" << orphaned_workspace_reservations
                           << ", Level-2 excess=" << static_cast<size_t>(level2_excess_bytes) << " bytes"
@@ -2273,6 +2279,11 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                           << ", orphaned reservation bytes="
                           << static_cast<size_t>(orphaned_reservation_bytes) << " bytes";
     }
+    ORT_RETURN_IF(
+        strict_workspace_verification && nonzero_reservations_without_declaration > 0,
+        "Level-2 workspace verification failed: ",
+        nonzero_reservations_without_declaration,
+        " nonzero reservation(s) have no available declaration.");
     ORT_RETURN_IF(
         strict_verification_failed || strict_reservation_ownership_failed,
         "Level-2 workspace verification failed: one or more declarations exceed "
