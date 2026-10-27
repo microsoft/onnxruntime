@@ -4,18 +4,21 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <iostream>
 #include <limits>
+#include <sstream>
 #include <vector>
 #include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_type_conversion.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/platform/env_var_utils.h"
 #include "contrib_ops/cuda/bert/group_query_attention_impl.h"
 #include "contrib_ops/cuda/bert/group_query_attention.h"
 #include "contrib_ops/cuda/bert/group_query_attention_workspace.h"
 #include "contrib_ops/cuda/bert/group_query_attention_eligibility.h"
 #if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
-#include "core/framework/resource_accountant.h"
+#include "core/framework/cuda_gqa_workspace_config.h"
 #include "contrib_ops/cuda/bert/group_query_attention_workspace_estimate.h"
 #endif
 #include "contrib_ops/cpu/bert/group_query_attention_helper.h"
@@ -126,16 +129,58 @@ GroupQueryAttention<T, U>::GroupQueryAttention(const OpKernelInfo& info)
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
   softcap_ = info.GetAttrOrDefault<float>("softcap", 0.0f);
   use_smooth_softmax_ = info.GetAttrOrDefault<int64_t>("smooth_softmax", 0) == 1;
-  qk_norm_epsilon_ = info.GetAttrOrDefault<float>("qk_norm_epsilon", 1e-6f);
-  ORT_ENFORCE(std::isfinite(qk_norm_epsilon_) && qk_norm_epsilon_ > 0.0f,
+  const float qk_norm_epsilon = info.GetAttrOrDefault<float>("qk_norm_epsilon", 1e-6f);
+  ORT_ENFORCE(std::isfinite(qk_norm_epsilon) && qk_norm_epsilon > 0.0f,
               "GroupQueryAttention (CUDA): qk_norm_epsilon must be finite and positive.");
+  q_norm_epsilon_ = info.GetAttrOrDefault<float>("q_norm_epsilon", qk_norm_epsilon);
+  k_norm_epsilon_ = info.GetAttrOrDefault<float>("k_norm_epsilon", qk_norm_epsilon);
+  ORT_ENFORCE(std::isfinite(q_norm_epsilon_) && q_norm_epsilon_ > 0.0f,
+              "GroupQueryAttention (CUDA): q_norm_epsilon must be finite and positive.");
+  ORT_ENFORCE(std::isfinite(k_norm_epsilon_) && k_norm_epsilon_ > 0.0f,
+              "GroupQueryAttention (CUDA): k_norm_epsilon must be finite and positive.");
 
   k_quant_type_ = StringToKVQuantizationType(info.GetAttrOrDefault<std::string>("k_quant_type", "NONE"));
   v_quant_type_ = StringToKVQuantizationType(info.GetAttrOrDefault<std::string>("v_quant_type", "NONE"));
   kv_cache_bit_width_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("kv_cache_bit_width", 0));
+  const auto policy = info.GetConfigOptions()
+                          .GetConfigEntry(kOrtSessionOptionsKernelDispatchPolicy)
+                          .value_or("");
+  ORT_ENFORCE(TryParseKernelDispatchPolicy(policy, dispatch_policy_),
+              "GroupQueryAttention (CUDA): invalid ", kOrtSessionOptionsKernelDispatchPolicy,
+              " value: '", policy, "'. Expected auto, latency, memory, safe, or empty.");
+#if defined(ORT_MINIMAL_BUILD) || defined(USE_CUDA_MINIMAL) || defined(DISABLE_CONTRIB_OPS) || \
+    defined(BUILD_CUDA_EP_AS_PLUGIN)
+  ORT_ENFORCE(dispatch_policy_ != KernelDispatchPolicy::Memory,
+              "GroupQueryAttention (CUDA): session.kernel_dispatch_policy=memory requires Level-2 workspace commitment, "
+              "which is unavailable in this build. Use auto, latency, or safe instead.");
+#endif
+  switch (dispatch_policy_) {
+    case KernelDispatchPolicy::Memory: {
+      StoreCommittedBackends({});
+      break;
+    }
+    case KernelDispatchPolicy::Safe: {
+      GQACommittedBackends committed_backends;
+      committed_backends.prefill = GetGQAReachableBackendsForPhase(
+          kAnalyticallyBoundedGQABackends, GQAExecutionPhase::Prefill);
+      committed_backends.decode = GetGQAReachableBackendsForPhase(
+          kAnalyticallyBoundedGQABackends, GQAExecutionPhase::Decode);
+      committed_backends.chunked_prefill = GetGQAReachableBackendsForPhase(
+          kAnalyticallyBoundedGQABackends, GQAExecutionPhase::ChunkedPrefill);
+      StoreCommittedBackends(committed_backends);
+      break;
+    }
+    case KernelDispatchPolicy::Auto:
+    case KernelDispatchPolicy::Latency:
+      break;
+  }
 #if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
-  ORT_THROW_IF_ERROR(ParseCudaGqaWorkspaceMaxTotalSequenceLength(
-      info.GetConfigOptions(), max_total_sequence_length_));
+  if (const auto envelope = info.GetConfigOptions().GetConfigEntry(
+          kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLength);
+      envelope.has_value()) {
+    ORT_THROW_IF_ERROR(ParseCudaGqaWorkspaceMaxTotalSequenceLength(
+        *envelope, max_total_sequence_length_));
+  }
 #endif
 
   constexpr bool kIsFp16OrBf16 = std::is_same_v<T, MLFloat16> || std::is_same_v<T, BFloat16>;
@@ -217,6 +262,10 @@ Status GroupQueryAttention<T, U>::DeclareWorkspaceRequirements(
     InlinedVector<WorkspaceRequirement>& requirements) const {
   requirements.clear();
   GQAWorkspaceEstimateConfig config;
+  const auto graph_config = GetGroupQueryAttentionWorkspaceEstimateConfig(this->Node());
+  if (graph_config.has_value()) {
+    config.static_head_size = graph_config->static_head_size;
+  }
   config.qkv_element_size = sizeof(T);
   config.cache_element_size = sizeof(U);
   config.num_heads = num_heads_;
@@ -246,12 +295,34 @@ Status GroupQueryAttention<T, U>::DeclareWorkspaceRequirements(
   config.enable_xqa = enable_xqa_;
   config.disable_flash_decode = disable_flash_decode_;
   config.head_sink_is_prepacked = xqa_head_sink_count_ == num_heads_;
+  config.dispatch_policy = dispatch_policy_;
 
   const auto estimate = EstimateGroupQueryAttentionWorkspace(
       config, input_shapes, GetDeviceProp(), *kernel_options_);
-  if (estimate.has_value()) {
-    SetGroupQueryAttentionWorkspaceRequirements(*estimate, requirements);
+  if (!estimate.has_value()) {
+    ORT_RETURN_IF(
+        dispatch_policy_ == KernelDispatchPolicy::Memory &&
+            !sliding_window_cache_ && max_total_sequence_length_ <= 0,
+        "GroupQueryAttention memory dispatch policy requires a positive ",
+        kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLength,
+        " for a non-windowed KV cache; no workspace bound was established.");
+    ORT_RETURN_IF(
+        dispatch_policy_ == KernelDispatchPolicy::Memory,
+        "GroupQueryAttention could not commit the '",
+        KernelDispatchPolicyName(dispatch_policy_),
+        "' dispatch policy from the declared shape/envelope and analytically bounded routes.");
+    if (dispatch_policy_ == KernelDispatchPolicy::Safe) {
+      LOGS_DEFAULT(VERBOSE)
+          << "GroupQueryAttention safe policy retains analytically bounded route restrictions "
+             "without a declared workspace bound because shape/envelope estimation is unavailable.";
+    }
+    return Status::OK();
   }
+
+  if (dispatch_policy_ != KernelDispatchPolicy::Auto) {
+    StoreCommittedBackends(estimate->committed_backends);
+  }
+  SetGroupQueryAttentionWorkspaceRequirements(*estimate, requirements);
   return Status::OK();
 }
 #endif
@@ -429,7 +500,8 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     }
     parameters.use_qk_norm = true;
   }
-  parameters.qk_norm_epsilon = qk_norm_epsilon_;
+  parameters.q_norm_epsilon = q_norm_epsilon_;
+  parameters.k_norm_epsilon = k_norm_epsilon_;
 
   parameters.local_window_size = local_window_size_;
   parameters.is_unidirectional = is_unidirectional_;
@@ -648,6 +720,13 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
       parameters.seqlen_present_kv_cache,
       parameters.is_windowed_kv_cache));
 
+  // When total_sequence_length is device-resident, helper validation cannot
+  // distinguish a first prompt from a later multi-token chunk and reports it
+  // as non-first. Use the chunked-prefill policy for that existing behavior.
+  const GQAExecutionPhase execution_phase =
+      ClassifyGQAExecutionPhase(
+          parameters.is_first_prompt, parameters.sequence_length);
+
   // Allocate XQA scratch if needed (only for Flash Decoding path)
   IAllocatorUniquePtr<void> xqa_scratch_buffer;
   // Check conditions to enable XQA (Extreme Query Attention) kernel for optimized decoding.
@@ -695,7 +774,9 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   const bool xqa_phase_ok = !parameters.is_first_prompt &&
                             parameters.sequence_length == 1 &&
                             parameters.kv_sequence_length > 0;  // Shared KV (kv_seq=0) has no new K/V to append
-  if (xqa_phase_ok && parameters.past_present_share_buffer && IsGQAXqaEligibleSeqFree<U>(xqa_inputs)) {
+  if (IsGQABackendPermitted(execution_phase, GQAReachableBackend::Xqa) &&
+      xqa_phase_ok && parameters.past_present_share_buffer &&
+      IsGQAXqaEligibleSeqFree<U>(xqa_inputs)) {
     data.use_xqa = true;
 
     if (data.use_xqa) {
@@ -779,6 +860,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   // cuDNN handles grouped-query attention natively. Keep this path bias-free because an arbitrary
   // attention bias cannot be composed with cuDNN's fused bottom-right causal mask.
   bool use_cudnn_sdpa = !data.use_xqa &&
+                        IsGQABackendPermitted(execution_phase, GQAReachableBackend::Cudnn) &&
                         IsGQACudnnSdpaCoreEligibleSeqFree<T, U>(
                             has_attention_bias,
                             is_inputs_quantized,
@@ -801,16 +883,15 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   data.use_cudnn_sdpa = use_cudnn_sdpa;
 
 #if USE_FLASH_ATTENTION
-  bool use_flash_attention = !data.use_xqa &&
-                             !data.use_cudnn_sdpa &&
-                             IsGQAFlashEligibleSeqFree<T>(device_prop,
-                                                          has_attention_bias,
-                                                          disable_flash_attention_,
-                                                          parameters.head_size,
-                                                          parameters.num_heads,
-                                                          parameters.kv_num_heads);
-
-  data.use_flash_attention = use_flash_attention;
+  const bool flash_attention_eligible =
+      !data.use_xqa &&
+      !data.use_cudnn_sdpa &&
+      IsGQAFlashEligibleSeqFree<T>(device_prop,
+                                   has_attention_bias,
+                                   disable_flash_attention_,
+                                   parameters.head_size,
+                                   parameters.num_heads,
+                                   parameters.kv_num_heads);
   // The fast-decode path lets the flash kernel perform RoPE and KV-append internally, bypassing
   // PrepareQKV (and therefore the fused QK-Norm prologue). Disable it when q/k norm weights are
   // present so the regular FlashAttention path (which normalizes via PrepareQKV) is used instead.
@@ -819,7 +900,18 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   // LaunchGetSequenceLengths to derive P = T - sequence_length.
   // It is also disabled for a windowed KV cache: the kernel derives both the absolute RoPE position
   // and the cache append offset from a single seqlens_k value, which those two no longer share.
-  data.use_flash_attention_fast_decode = use_flash_attention && !disable_flash_decode_ && !parameters.is_first_prompt && parameters.sequence_length == 1 && parameters.kv_sequence_length > 0 && parameters.past_present_share_buffer && !is_inputs_quantized && !parameters.use_qk_norm && !parameters.is_windowed_kv_cache;
+  data.use_flash_attention_fast_decode =
+      flash_attention_eligible &&
+      IsGQABackendPermitted(execution_phase, GQAReachableBackend::FlashFastDecode) &&
+      !disable_flash_decode_ && !parameters.is_first_prompt &&
+      parameters.sequence_length == 1 && parameters.kv_sequence_length > 0 &&
+      parameters.past_present_share_buffer && !is_inputs_quantized &&
+      !parameters.use_qk_norm && !parameters.is_windowed_kv_cache;
+  const bool use_flash_attention =
+      flash_attention_eligible &&
+      (data.use_flash_attention_fast_decode ||
+       IsGQABackendPermitted(execution_phase, GQAReachableBackend::Flash));
+  data.use_flash_attention = use_flash_attention;
 
   if (use_flash_attention) {
     // Flash-specific buffer sizes (softmax LSE and the optional split accumulators) come from the
@@ -924,6 +1016,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     // the bias row length (total_sequence_length) — mismatched under past/present buffer sharing.
     // Bias-carrying nodes take the unfused fallback below instead.
     bool use_memory_efficient_attention =
+        IsGQABackendPermitted(execution_phase, GQAReachableBackend::MemoryEfficient) &&
         IsGQAMemoryEfficientEligible<T>(parameters, sm, disable_memory_efficient_attention_,
                                         is_inputs_quantized, has_attention_bias, head_sink != nullptr);
     data.use_memory_efficient_attention = use_memory_efficient_attention;
@@ -980,6 +1073,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   // ---------------------------------------------------------------------
   IAllocatorUniquePtr<void> unfused_scratch;
   if (!data.use_xqa && !data.use_cudnn_sdpa && !data.use_flash_attention && !data.use_memory_efficient_attention &&
+      IsGQABackendPermitted(execution_phase, GQAReachableBackend::Unfused) &&
       !is_inputs_quantized && !parameters.use_smooth_softmax && head_sink == nullptr &&
       parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BNSH) {
     data.use_unfused = true;
@@ -1001,6 +1095,42 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     data.unfused_y_bnsh = reinterpret_cast<CudaT*>(base + recipe.y_bnsh_offset_bytes);
     data.unfused_workspace = reinterpret_cast<void*>(base + recipe.qk_offset_bytes);
   }
+
+  if (kernel_options_->AllowDebugInfo()) {
+    const char* selected_backend = "none";
+    if (data.use_xqa) {
+      selected_backend = "xqa";
+    } else if (data.use_cudnn_sdpa) {
+      selected_backend = "cudnn";
+    } else if (data.use_flash_attention_fast_decode) {
+      selected_backend = "flash_fast_decode";
+    } else if (data.use_flash_attention) {
+      selected_backend = "flash";
+    } else if (data.use_memory_efficient_attention) {
+      selected_backend = "memory_efficient";
+    } else if (data.use_unfused) {
+      selected_backend = "unfused";
+    }
+    std::ostringstream dispatch_info;
+    dispatch_info << "GroupQueryAttentionDispatch Node=" << this->Node().Name()
+                  << " Policy=" << KernelDispatchPolicyName(dispatch_policy_)
+                  << " Phase=" << GQAExecutionPhaseName(execution_phase)
+                  << " PermittedBackends=" << static_cast<uint32_t>(GetGQAPermittedBackends(execution_phase))
+                  << " PastPresentShareBuffer=" << parameters.past_present_share_buffer
+                  << " SelectedBackend=" << selected_backend;
+    std::cout << dispatch_info.str() << std::endl;
+  }
+
+  ORT_RETURN_IF(
+      dispatch_policy_ != KernelDispatchPolicy::Auto &&
+          !data.use_xqa && !data.use_cudnn_sdpa &&
+          !data.use_flash_attention &&
+          !data.use_memory_efficient_attention && !data.use_unfused,
+      "GroupQueryAttention dispatch policy '",
+      KernelDispatchPolicyName(dispatch_policy_),
+      "' has no permitted route for the current ",
+      GQAExecutionPhaseName(execution_phase),
+      " workload.");
 
   if (kernel_options_->AllowDebugInfo()) {
     AttentionKernelDebugInfo debug_info;
@@ -1037,7 +1167,6 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   if (parameters.use_qk_norm) {
     data.q_norm_weight = reinterpret_cast<const CudaT*>(q_norm_weight->Data<T>());
     data.k_norm_weight = reinterpret_cast<const CudaT*>(k_norm_weight->Data<T>());
-    data.qk_norm_epsilon = qk_norm_epsilon_;
   }
 
 #if DUMP_TENSOR_LEVEL > 0

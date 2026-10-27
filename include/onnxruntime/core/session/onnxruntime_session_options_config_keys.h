@@ -503,6 +503,24 @@ static const char* const kOrtSessionOptionsCudaFpAIntBGemvWaveAware = "ep.cuda.f
 static const char* const kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLength =
     "ep.cuda.gqa_workspace_max_total_sequence_length";
 
+/// Hardware-neutral kernel dispatch intent shared across operators and EPs.
+/// Valid values are "auto", "latency", "memory", and "safe"; matching is case-sensitive.
+/// Unset or empty values map to "auto". Other values cause INVALID_ARGUMENT during
+/// session initialization.
+/// CUDA GroupQueryAttention is the first enforcing consumer: "latency" preserves its current
+/// route priority per phase, "memory" commits the smallest analytically bounded prefill,
+/// decode, and chunked-prefill route sets with a fallback proven to cover the admitted
+/// geometry and runtime eligibility outcomes, and "safe" permits only analytically bounded
+/// routes applicable to each phase even without a declared shape/envelope workspace bound.
+/// Capacity-aware placement still requires a proven estimate. "memory" requires Level-2
+/// workspace commitment and is rejected during GQA kernel initialization when unavailable, including CUDA plugin and
+/// CUDA-minimal or ORT-minimal builds. A non-auto policy fails closed when no committed route
+/// can serve a run. The option does not by itself enforce a workload envelope or memory
+/// budget or provide a no-OOM guarantee.
+/// ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO=1 reports the policy, phase, permitted backend
+/// mask, cache-buffer sharing, and selected route for each GQA dispatch.
+static const char* const kOrtSessionOptionsKernelDispatchPolicy = "session.kernel_dispatch_policy";
+
 /// Maximum number of rows of input A per CUDA MatMulNBits fpA_intB GEMM launch. Values below 8192 are
 /// rounded down to a supported tactic-profiler M bucket. Chunking requires M to exceed this limit
 /// and the 256 MiB estimated A/C row-size gate; ORT_MATMULNBITS_FORCE_CHUNKED=1 bypasses that gate.
@@ -517,6 +535,17 @@ static const char* const kOrtSessionOptionsCudaMatMulNBitsMChunkSize = "ep.cuda.
 /// When disabled, cuBLAS is used. Overrides the ORT_CUDA_GEMM_AUTO_TUNE environment variable;
 /// ORT_ENABLE_SMALL_N_GEMV=1/0, when set, forces the small-N GEMV on/off and bypasses tuning.
 static const char* const kOrtSessionOptionsCudaEnableGemmAutoTune = "ep.cuda.enable_gemm_auto_tune";
+
+/// Controls the intermediate precision of the CUDA GatedDeltaNet chunked prefill kernels when the
+/// input/output tensor type is BFloat16:
+/// - "fp32" (default): preserve 24-bit FP32 state and chunk-update residuals using 3-slice BF16
+///   tensor-core decomposition with an exact FP32 fallback for extreme exponents.
+/// - "fp16": use 1-slice FP16 (10 mantissa bits) for internal chunk MMA tiles when chunk values fit
+///   within the safe FP16 dynamic range, falling back to the FP32-preserving BF16 path otherwise.
+/// - "bf16": use 1-slice native BF16 for all internal chunk MMA tiles.
+/// Overrides the ORT_GDN_BF16_PRECISION environment variable.
+static const char* const kOrtSessionOptionsCudaGatedDeltaNetBf16Precision =
+    "ep.cuda.gated_delta_net_bf16_precision";
 
 /// <summary>
 /// This is a setting that contains string annotations or annotation prefixes to be matched

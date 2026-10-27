@@ -19,12 +19,8 @@ Status ConvTranspose<is_channels_last>::ComputeInternal(ComputeContext& context)
   const auto* input = context.Input<Tensor>(0);
   const auto* filter = prepacked_filter_ ? prepacked_filter_.get() : context.Input<Tensor>(1);
   TensorShape input_shape = input->Shape();
-  TensorShape filter_shape = filter->Shape();
-  const bool is_prepacked = weight_layout_ == WeightLayout::DHWOI;
-  if (is_prepacked) {
-    // Recover the logical ONNX shape before validating channels or inferring output dimensions.
-    filter_shape = TensorShape{filter_shape[4], filter_shape[3], filter_shape[0], filter_shape[1], filter_shape[2]};
-  }
+  const bool is_prepacked = weight_layout_ != WeightLayout::ONNX;
+  TensorShape filter_shape = is_prepacked ? original_filter_shape_ : filter->Shape();
 
   const auto rank = input_shape.NumDimensions();
   if (rank < 3) {
@@ -56,7 +52,6 @@ Status ConvTranspose<is_channels_last>::ComputeInternal(ComputeContext& context)
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input channels is not divisible by group.");
   }
 
-  const InlinedVector<size_t> perm = {2, 3, 0, 1};
   TensorShapeVector local_output_padding(conv_transpose_attrs_.output_padding.begin(), conv_transpose_attrs_.output_padding.end());
   ConvAttributes::ConvPadVector local_pads(conv_transpose_attrs_.pads.begin(), conv_transpose_attrs_.pads.end());
   TensorShapeVector local_dilations(conv_transpose_attrs_.dilations.begin(), conv_transpose_attrs_.dilations.end());
@@ -159,12 +154,15 @@ Status ConvTranspose<is_channels_last>::ComputeInternal(ComputeContext& context)
     strides.insert(strides.begin(), 1);
     dilations.insert(dilations.begin(), 1);
   }
-  // Transpose weights
   Tensor transposed_filter;
-  ORT_RETURN_IF_ERROR(TransposeKernel(context, filter, filter_shape, &transposed_filter, perm));
+  if (!is_prepacked) {
+    const InlinedVector<size_t> perm{2, 3, 0, 1};
+    ORT_RETURN_IF_ERROR(TransposeKernel(context, filter, filter_shape, &transposed_filter, perm));
+    filter = &transposed_filter;
+  }
   TensorShape output_shape(output_shape_vector);
-  TensorShape transposed_filter_shape = transposed_filter.Shape();
-  std::vector<const Tensor*> inputs = {input, &transposed_filter};
+  TensorShape transposed_filter_shape = filter->Shape();
+  std::vector<const Tensor*> inputs = {input, filter};
   std::vector<TensorShape> input_output_shapes = {input_shape, transposed_filter_shape};
   if (has_bias) {
     inputs.push_back(bias);
@@ -185,7 +183,8 @@ Status ConvTranspose<is_channels_last>::PrePackInternal(ComputeContextBase& cont
                                                         AllocatorPtr alloc,
                                                         /*out*/ bool& is_packed) {
   is_packed = false;
-  if (input_idx != 1 || tensor.Shape().NumDimensions() != 5 || tensor.Shape().Size() == 0) {
+  const auto rank = tensor.Shape().NumDimensions();
+  if (input_idx != 1 || rank < 3 || rank > 5 || tensor.Shape().Size() == 0) {
     return Status::OK();
   }
 
@@ -196,13 +195,27 @@ Status ConvTranspose<is_channels_last>::PrePackInternal(ComputeContextBase& cont
     return Status::OK();
   }
 
-  const InlinedVector<size_t> perm{2, 3, 4, 1, 0};
-  const auto& shape = tensor.Shape();
-  const TensorShape packed_shape{shape[2], shape[3], shape[4], shape[1], shape[0]};
+  TensorShapeVector unpacked_shape = tensor.Shape().AsShapeVector();
+  InlinedVector<size_t> perm{2, 3, 0, 1};
+  auto packed_layout = WeightLayout::HWIO;
+  if (rank == 3) {
+    // The 1D compute path uses the 2D shader with a synthetic height of one.
+    unpacked_shape.insert(unpacked_shape.begin() + 2, 1);
+  } else if (rank == 5) {
+    perm = {2, 3, 4, 1, 0};
+    packed_layout = WeightLayout::DHWOI;
+  }
+  TensorShapeVector packed_shape;
+  packed_shape.reserve(perm.size());
+  for (const auto axis : perm) {
+    packed_shape.push_back(unpacked_shape[axis]);
+  }
   auto packed = std::make_unique<Tensor>(tensor.DataType(), packed_shape, alloc);
-  ORT_RETURN_IF_ERROR(Transpose::DoTranspose(context, perm, tensor, *packed));
+  const Tensor unpacked = CreateTensorView(tensor, unpacked_shape);
+  ORT_RETURN_IF_ERROR(Transpose::DoTranspose(context, perm, unpacked, *packed));
+  original_filter_shape_ = tensor.Shape();
   prepacked_filter_ = std::move(packed);
-  weight_layout_ = WeightLayout::DHWOI;
+  weight_layout_ = packed_layout;
   is_packed = true;
   return Status::OK();
 }

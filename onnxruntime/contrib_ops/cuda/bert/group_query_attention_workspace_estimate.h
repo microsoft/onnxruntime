@@ -13,6 +13,7 @@
 #include <gsl/span>
 
 #include "core/common/inlined_containers.h"
+#include "core/framework/kernel_dispatch_policy.h"
 #include "core/framework/level1_memory_estimate.h"
 #include "core/framework/workspace_input_shape.h"
 #include "core/framework/workspace_requirement.h"
@@ -30,6 +31,8 @@ struct GQAWorkspaceEstimateConfig {
   size_t cache_element_size = 0;
   int64_t num_heads = 0;
   int64_t kv_num_heads = 0;
+  // Exact head geometry from executable-graph metadata, not max-shape hints; zero means unknown.
+  int64_t static_head_size = 0;
   int64_t causal = 1;
   int64_t local_window_size = -1;
   bool sliding_window_cache = false;
@@ -51,12 +54,15 @@ struct GQAWorkspaceEstimateConfig {
   // ep.cuda.gqa_workspace_max_total_sequence_length. It bounds non-windowed
   // estimation; zero means unspecified. This is not a runtime input limit.
   int64_t max_total_sequence_length = 0;
+  // Resolved to committed GQA phase-route sets shared by Level 1, Level 2, and runtime.
+  KernelDispatchPolicy dispatch_policy = KernelDispatchPolicy::Auto;
 };
 
 std::optional<GQAWorkspaceEstimateConfig> GetGroupQueryAttentionWorkspaceEstimateConfig(
     const Node& node,
     bool head_sink_is_constant_initializer = false,
-    int64_t max_total_sequence_length = 0);
+    int64_t max_total_sequence_length = 0,
+    KernelDispatchPolicy dispatch_policy = KernelDispatchPolicy::Auto);
 
 std::optional<GQAWorkspaceAggregate> EstimateGroupQueryAttentionWorkspace(
     const GQAWorkspaceEstimateConfig& config,
@@ -70,7 +76,8 @@ std::optional<GQAWorkspaceAggregate> EstimateGroupQueryAttentionWorkspace(
     const cudaDeviceProp& device_prop,
     const AttentionKernelOptions& kernel_options,
     bool head_sink_is_constant_initializer = false,
-    int64_t max_total_sequence_length = 0);
+    int64_t max_total_sequence_length = 0,
+    KernelDispatchPolicy dispatch_policy = KernelDispatchPolicy::Auto);
 
 void SetGroupQueryAttentionWorkspaceRequirements(
     const GQAWorkspaceAggregate& estimate,

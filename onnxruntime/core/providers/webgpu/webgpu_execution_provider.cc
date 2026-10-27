@@ -12,6 +12,7 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
+#include <gsl/gsl>
 
 #ifndef DISABLE_CONTRIB_OPS
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
@@ -46,6 +47,10 @@
 #include "core/providers/webgpu/math/unary_elementwise_ops.h"
 #include "core/providers/webgpu/tensor/where.h"
 #include "core/providers/webgpu/reduction/reduction_ops.h"
+
+#if defined(ORT_USE_EP_API_ADAPTERS)
+#include "core/providers/webgpu/ep/runtime_compatibility.h"
+#endif
 
 namespace onnxruntime {
 
@@ -273,9 +278,14 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 24, Transpose)>,
 
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 12, DepthToSpace)>,
-    BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, DepthToSpace)>,
+    BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain,
+                                                                          13, 27, DepthToSpace)>,
+    BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 28, DepthToSpace)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSInternalNHWCDomain, 11, 12, DepthToSpace)>,
-    BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSInternalNHWCDomain, 13, DepthToSpace)>,
+    BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider,
+                                                                          kMSInternalNHWCDomain, 13, 27, DepthToSpace)>,
+    BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider,
+                                                                kMSInternalNHWCDomain, 28, DepthToSpace)>,
 
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 1, 10, Conv)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 21, Conv)>,
@@ -389,7 +399,8 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 22, InstanceNormalization)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSInternalNHWCDomain, 22, InstanceNormalization)>,
 
-    BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 12, Einsum)>,
+    BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 12, 27, Einsum)>,
+    BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 28, Einsum)>,
 
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 2, 10, Pad)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 12, Pad)>,
@@ -468,7 +479,8 @@ std::unique_ptr<KernelRegistry> RegisterKernels(bool enable_graph_capture, bool 
   ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastVersionedKernelInfo(21, 22, enable_int64)));
   ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastVersionedKernelInfo(23, 23, enable_int64)));
   ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastVersionedKernelInfo(24, 24, enable_int64)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastKernelInfo(25, enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastVersionedKernelInfo(25, 27, enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastKernelInfo(28, enable_int64)));
 
   // Register int64 Clip kernels with conditional int64 support
   RegisterClipInt64Kernels(*kernel_registry, enable_int64);
@@ -620,6 +632,7 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
       multi_rotary_cache_concat_offset_{config.multi_rotary_cache_concat_offset},
       kv_cache_quantization_bits_{config.kv_cache_quantization_bits},
       enable_matmul_fp32_accumulation_{config.enable_matmul_fp32_accumulation},
+      forced_matmul_algorithm_{config.forced_matmul_algorithm},
 #if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
       weight_load_acceleration_mode_{config.weight_load_acceleration_mode},
 #endif
@@ -866,6 +879,9 @@ WebGpuExecutionProvider::~WebGpuExecutionProvider() {
 
   prepack_allocator_.reset();
   session_buffer_pool_.reset();
+  if (context_.ActiveSerializedRecording() == recording_.get()) {
+    context_.SetActiveSerializedRecording(nullptr);
+  }
   if (context_.Device()) {
     // A failed Run may leave an unsubmitted recording in the context-shared pools.
     context_.BufferManager().DiscardPendingBuffers(*recording_);
@@ -891,6 +907,19 @@ std::unique_ptr<profiling::EpProfiler> WebGpuExecutionProvider::GetProfiler() {
 }
 
 Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_options) {
+#if defined(ORT_USE_EP_API_ADAPTERS)
+  const bool serialized = webgpu::ep::UseSerializedExecutionMode();
+  if (serialized) {
+    context_.SetActiveSerializedRecording(recording_.get());
+  }
+  bool started = false;
+  auto release_on_error = gsl::finally([&] {
+    if (serialized && !started) {
+      graph_buffer_mgr_active_ = false;
+      context_.SetActiveSerializedRecording(nullptr);
+    }
+  });
+#endif
   if (context_.ValidationMode() >= ValidationMode::Basic) {
     context_.PushErrorScope();
   }
@@ -937,11 +966,23 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
   }
 
   run_active_.store(true);
+#if defined(ORT_USE_EP_API_ADAPTERS)
+  started = true;
+#endif
   return Status::OK();
 }
 
 Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxruntime::RunOptions& run_options) {
-  // When capturing, flushing creates the replay-ready CapturedCommandInfo entries before
+  auto end_run = gsl::finally([&] {
+    graph_buffer_mgr_active_ = false;
+    run_active_.store(false);
+#if defined(ORT_USE_EP_API_ADAPTERS)
+    if (webgpu::ep::UseSerializedExecutionMode()) {
+      context_.SetActiveSerializedRecording(nullptr);
+    }
+#endif
+  });
+  // When capturing, flushing creates the replay-ready dispatch entries before
   // CaptureEnd() detaches their external storage.
   Status flush_status = context_.Flush(BufferManager(), *recording_);
 
@@ -1006,8 +1047,24 @@ bool WebGpuExecutionProvider::IsGraphCaptured(int graph_annotation_id) const {
 }
 
 Status WebGpuExecutionProvider::ReplayGraph(int graph_annotation_id, bool /*sync*/) {
+#if defined(ORT_USE_EP_API_ADAPTERS)
+  const bool serialized_replay = webgpu::ep::UseSerializedExecutionMode() && !IsRunActive();
+  if (serialized_replay) {
+    context_.SetActiveSerializedRecording(recording_.get());
+  }
+  auto release_serialized_run = gsl::finally([&] {
+    if (serialized_replay) {
+      context_.SetActiveSerializedRecording(nullptr);
+    }
+  });
+#endif
   // The sync parameter is ignored: WebGPU EP always replays synchronously.
   ORT_ENFORCE(IsGraphCaptured(graph_annotation_id));
+#if defined(ORT_USE_EP_API_ADAPTERS)
+  if (serialized_replay) {
+    ORT_RETURN_IF_ERROR(context_.Flush(context_.BufferManager(), *recording_));
+  }
+#endif
   // TODO: enable profiling in run level
   if (session_profiler_ && session_profiler_->Enabled()) {
     context_.StartProfiling();

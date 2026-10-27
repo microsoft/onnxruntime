@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "core/framework/kernel_dispatch_policy.h"
 #include "contrib_ops/cuda/bert/group_query_attention_workspace.h"
 
 namespace onnxruntime {
@@ -22,15 +23,130 @@ enum class GQAReachableBackend : uint32_t {
   Cudnn = 1u << 5,
 };
 
+enum class GQAExecutionPhase : uint32_t {
+  Prefill,
+  Decode,
+  ChunkedPrefill,
+};
+
+constexpr const char* GQAExecutionPhaseName(
+    GQAExecutionPhase phase) noexcept {
+  switch (phase) {
+    case GQAExecutionPhase::Prefill:
+      return "prefill";
+    case GQAExecutionPhase::Decode:
+      return "decode";
+    case GQAExecutionPhase::ChunkedPrefill:
+      return "chunked prefill";
+  }
+  return "unknown";
+}
+
+constexpr GQAExecutionPhase ClassifyGQAExecutionPhase(
+    bool is_first_prompt,
+    int64_t sequence_length) noexcept {
+  return is_first_prompt
+             ? GQAExecutionPhase::Prefill
+             : (sequence_length == 1
+                    ? GQAExecutionPhase::Decode
+                    : GQAExecutionPhase::ChunkedPrefill);
+}
+
 constexpr GQAReachableBackend operator|(GQAReachableBackend left,
                                         GQAReachableBackend right) noexcept {
   return static_cast<GQAReachableBackend>(
       static_cast<uint32_t>(left) | static_cast<uint32_t>(right));
 }
 
+constexpr GQAReachableBackend IntersectGQAReachableBackends(
+    GQAReachableBackend left, GQAReachableBackend right) noexcept {
+  return static_cast<GQAReachableBackend>(
+      static_cast<uint32_t>(left) & static_cast<uint32_t>(right));
+}
+
 constexpr bool HasGQAReachableBackend(GQAReachableBackend mask,
                                       GQAReachableBackend backend) noexcept {
   return (static_cast<uint32_t>(mask) & static_cast<uint32_t>(backend)) != 0;
+}
+
+constexpr GQAReachableBackend kAllGQAReachableBackends =
+    GQAReachableBackend::Xqa |
+    GQAReachableBackend::Flash |
+    GQAReachableBackend::FlashFastDecode |
+    GQAReachableBackend::MemoryEfficient |
+    GQAReachableBackend::Unfused |
+    GQAReachableBackend::Cudnn;
+
+constexpr GQAReachableBackend kAnalyticallyBoundedGQABackends =
+    GQAReachableBackend::Xqa |
+    GQAReachableBackend::Flash |
+    GQAReachableBackend::FlashFastDecode |
+    GQAReachableBackend::MemoryEfficient |
+    GQAReachableBackend::Unfused;
+
+constexpr GQAReachableBackend kGQAGeneralPhaseBackends =
+    GQAReachableBackend::Flash |
+    GQAReachableBackend::MemoryEfficient |
+    GQAReachableBackend::Unfused |
+    GQAReachableBackend::Cudnn;
+
+constexpr GQAReachableBackend GetGQAReachableBackendsForPhase(
+    GQAReachableBackend reachable_backends,
+    GQAExecutionPhase phase) noexcept {
+  return phase == GQAExecutionPhase::Decode
+             ? reachable_backends
+             : IntersectGQAReachableBackends(
+                   reachable_backends, kGQAGeneralPhaseBackends);
+}
+
+struct GQACommittedBackends {
+  GQAReachableBackend prefill = GQAReachableBackend::None;
+  GQAReachableBackend decode = GQAReachableBackend::None;
+  GQAReachableBackend chunked_prefill = GQAReachableBackend::None;
+
+  constexpr GQAReachableBackend Get(
+      GQAExecutionPhase phase) const noexcept {
+    switch (phase) {
+      case GQAExecutionPhase::Prefill:
+        return prefill;
+      case GQAExecutionPhase::Decode:
+        return decode;
+      case GQAExecutionPhase::ChunkedPrefill:
+        return chunked_prefill;
+    }
+    return GQAReachableBackend::None;
+  }
+
+  void Set(GQAExecutionPhase phase,
+           GQAReachableBackend backends) noexcept {
+    switch (phase) {
+      case GQAExecutionPhase::Prefill:
+        prefill = backends;
+        return;
+      case GQAExecutionPhase::Decode:
+        decode = backends;
+        return;
+      case GQAExecutionPhase::ChunkedPrefill:
+        chunked_prefill = backends;
+        return;
+    }
+  }
+
+  constexpr GQAReachableBackend Union() const noexcept {
+    return prefill | decode | chunked_prefill;
+  }
+};
+
+constexpr bool operator==(const GQACommittedBackends& left,
+                          const GQACommittedBackends& right) noexcept {
+  return left.prefill == right.prefill &&
+         left.decode == right.decode &&
+         left.chunked_prefill == right.chunked_prefill;
+}
+
+constexpr bool operator!=(const GQACommittedBackends& left,
+                          const GQACommittedBackends& right) noexcept {
+  return !(left == right);
 }
 
 // Graph-free upper bounds and immutable feature facts. Positive dimensions are
@@ -63,10 +179,15 @@ struct GQAWorkspaceBounds {
   bool do_rotary = false;
   bool is_packed_qkv = false;
   bool use_qk_norm = false;
-  bool prompt_reachable = false;
+  bool prefill_reachable = false;
   bool decode_reachable = false;
+  bool chunked_prefill_reachable = false;
 
   GQAReachableBackend reachable_backends = GQAReachableBackend::None;
+  // Separate full-domain eligibility proof from existential reachability.
+  // Each listed route must cover every admitted geometry and runtime-only
+  // eligibility outcome for its phase, including non-aliasing cache buffers.
+  GQACommittedBackends covering_backends;
   int64_t device_major = 0;
   int64_t device_minor = 0;
   int64_t multi_processor_count = 0;
@@ -79,19 +200,42 @@ struct GQAWorkspaceBounds {
   int64_t local_window_size = -1;
 };
 
+constexpr bool IsGQAPhaseAdmitted(
+    const GQAWorkspaceBounds& bounds,
+    GQAExecutionPhase phase) noexcept {
+  switch (phase) {
+    case GQAExecutionPhase::Prefill:
+      return bounds.prefill_reachable;
+    case GQAExecutionPhase::Decode:
+      return bounds.decode_reachable;
+    case GQAExecutionPhase::ChunkedPrefill:
+      return bounds.chunked_prefill_reachable;
+  }
+  return false;
+}
+
 struct GQAWorkspaceAggregate {
   GQAWorkspaceStatus status;
+  // Maximum across admitted phase/route alternatives, not their sum.
   size_t total_workspace_bytes = 0;
   size_t persistent_prepack_bytes = 0;
   size_t initialization_scratch_bytes = 0;
+  // Union of sized committed routes; reachable routes may have been excluded.
   GQAReachableBackend sized_backends = GQAReachableBackend::None;
+  GQACommittedBackends committed_backends;
 };
 
-// Computes a sound maximum over all complete routes reachable anywhere in the
-// bounded domain. cuDNN reachability makes the result unavailable because its
-// allocator-based workspace has no graph-free oracle.
+// Resolves the intent to runtime-enforced phase-specific route sets and computes
+// the maximum over admitted phases and their permitted routes. Auto and Latency
+// preserve the phase-applicable route cascade. Memory minimizes complete route
+// sets per phase, retaining a proven covering fallback for partial-coverage routes;
+// each phase selects its own fallback independently. Safe commits every
+// analytically bounded route applicable to each phase. A committed cuDNN route
+// makes the result unavailable because its allocator-based workspace has no
+// graph-free oracle.
 GQAWorkspaceAggregate GetGQAWorkspaceAggregateForBounds(
-    const GQAWorkspaceBounds& bounds) noexcept;
+    const GQAWorkspaceBounds& bounds,
+    KernelDispatchPolicy policy = KernelDispatchPolicy::Auto) noexcept;
 
 }  // namespace cuda
 }  // namespace contrib
