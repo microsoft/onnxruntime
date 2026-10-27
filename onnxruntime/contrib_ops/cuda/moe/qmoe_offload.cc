@@ -1845,6 +1845,9 @@ struct QMoEOffload::PersistentDecodeState {
   volatile uint64_t* doorbell_req_host = nullptr;
   volatile uint64_t* doorbell_done_host = nullptr;
   volatile int32_t* doorbell_tile_rows_host = nullptr;
+  volatile int32_t* cold_count_host = nullptr;
+  QMoEOffloadTelemetry* telemetry = nullptr;
+  uint64_t cpu_doorbell_wakeups = 0;
   int32_t* pinned_slot_table = nullptr;
   uint64_t last_serviced_seq = 0;
   uint64_t launched_seq = 0;
@@ -1884,6 +1887,8 @@ struct QMoEOffload::PersistentDecodeState {
     doorbell_req_host = nullptr;
     doorbell_done_host = nullptr;
     doorbell_tile_rows_host = nullptr;
+    cold_count_host = nullptr;
+    telemetry = nullptr;
     pinned_slot_table = nullptr;
   }
 
@@ -1969,8 +1974,21 @@ class QMoEOffload::DoorbellService {
     std::unique_lock<std::mutex> lock(mutex_);
     CancelPendingPromo(node);
     service_done_cv_.wait(lock, [this, node] { return servicing_node_ != node; });
+    if (node->v4_policy_.skip_zero_cold_doorbell && node->decode_state_ &&
+        node->decode_state_->doorbell_req_host && node->decode_state_->doorbell_done_host) {
+      const uint64_t request = *node->decode_state_->doorbell_req_host;
+      if (request > node->decode_state_->last_serviced_seq &&
+          *node->decode_state_->doorbell_done_host >= request) {
+        RetirePending(static_cast<size_t>(request - node->decode_state_->last_serviced_seq));
+        node->decode_state_->last_serviced_seq = request;
+      }
+    }
     nodes_.erase(std::remove(nodes_.begin(), nodes_.end(), node), nodes_.end());
     if (cursor_ >= nodes_.size()) cursor_ = 0;
+  }
+
+  bool CrossLayerPromotionEnabled() const noexcept {
+    return cross_layer_promo_enabled_;
   }
 
   void NotifyPending(size_t count = 1) noexcept {
@@ -1978,6 +1996,14 @@ class QMoEOffload::DoorbellService {
     if (sleeping_.load(std::memory_order_acquire)) {
       std::lock_guard<std::mutex> lock(cv_mutex_);
       cv_.notify_one();
+    }
+  }
+
+  void RetirePending(size_t count) noexcept {
+    size_t previous = pending_.load(std::memory_order_acquire);
+    while (previous > 0 &&
+           !pending_.compare_exchange_weak(previous, previous - std::min(previous, count),
+                                           std::memory_order_acq_rel, std::memory_order_acquire)) {
     }
   }
 
@@ -2050,6 +2076,7 @@ class QMoEOffload::DoorbellService {
     uint32_t spins = 0;
     while (!stop_.load(std::memory_order_relaxed)) {
       const QMoEOffload* ready_node = nullptr;
+      size_t serviced_notifications = 1;
       {
         std::lock_guard<std::mutex> lock(mutex_);
         const size_t n = nodes_.size();
@@ -2059,7 +2086,15 @@ class QMoEOffload::DoorbellService {
           if (!node || !node->decode_state_ || !node->decode_state_->doorbell_req_host) continue;
           const uint64_t req = *node->decode_state_->doorbell_req_host;
           if (req > node->decode_state_->last_serviced_seq) {
+            std::atomic_thread_fence(std::memory_order_acquire);
+            const size_t notifications = static_cast<size_t>(req - node->decode_state_->last_serviced_seq);
             node->decode_state_->last_serviced_seq = req;
+            if (node->v4_policy_.skip_zero_cold_doorbell &&
+                *node->decode_state_->doorbell_done_host >= req) {
+              RetirePending(notifications);
+              continue;
+            }
+            if (node->v4_policy_.skip_zero_cold_doorbell) serviced_notifications = notifications;
             cursor_ = (idx + 1) % n;
             // Cross-layer async cold-expert prefetch: while Layer `idx` is about to compute on CPU/GPU,
             // start an async H2D DMA copy on `promo_worker_` for a lookahead node 2..4 layers ahead (`idx + d`),
@@ -2093,8 +2128,7 @@ class QMoEOffload::DoorbellService {
           servicing_node_ = nullptr;
           service_done_cv_.notify_all();
         }
-        const size_t prev = pending_.load(std::memory_order_relaxed);
-        if (prev > 0) pending_.fetch_sub(1, std::memory_order_release);
+        RetirePending(serviced_notifications);
         idle_since = std::chrono::steady_clock::now();
         spins = 0;
         continue;
@@ -2178,6 +2212,7 @@ QMoEOffload::QMoEOffload(const OpKernelInfo& info,
       v4_planned_mode_(true),
       v4_policy_(policy),
       v4_plan_(plan) {
+  offload_telemetry_ = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_OFFLOAD_TELEMETRY", 0) == 1;
   allow_cuda_graph_ = true;
   host_complement_mode_ = false;
   ssd_cache_slots_ = 0;
@@ -2587,6 +2622,25 @@ QMoEOffload::~QMoEOffload() {
   if (decode_state_ && decode_state_->registered_with_doorbell) {
     DoorbellService::Instance().UnregisterNode(this);
     decode_state_->registered_with_doorbell = false;
+  }
+  if (offload_telemetry_ && decode_state_ && decode_state_->telemetry && !context_failed) {
+    const auto& telemetry = *decode_state_->telemetry;
+    std::fprintf(stderr,
+                 "QMoEOffload telemetry {\"layer\":%lld,\"layer_calls\":%llu,"
+                 "\"zero_cold_short_circuits\":%llu,\"cpu_doorbell_wakeups\":%llu,"
+                 "\"cold_routes\":%llu,\"last_cold_count\":%d,\"launched_seq\":%llu,"
+                 "\"request_seq\":%llu,\"done_seq\":%llu,\"last_serviced_seq\":%llu,"
+                 "\"last_promoted_seq\":%llu}\n",
+                 static_cast<long long>(layer_index_), static_cast<unsigned long long>(telemetry.layer_calls),
+                 static_cast<unsigned long long>(telemetry.zero_cold_short_circuits),
+                 static_cast<unsigned long long>(decode_state_->cpu_doorbell_wakeups),
+                 static_cast<unsigned long long>(telemetry.cold_routes),
+                 telemetry.last_cold_count, static_cast<unsigned long long>(decode_state_->launched_seq),
+                 static_cast<unsigned long long>(*decode_state_->doorbell_req_host),
+                 static_cast<unsigned long long>(*decode_state_->doorbell_done_host),
+                 static_cast<unsigned long long>(decode_state_->last_serviced_seq),
+                 static_cast<unsigned long long>(decode_state_->last_promoted_seq));
+    std::fflush(stderr);
   }
   const uint64_t ssd_hits = file_expert_store_.CacheHits();
   const uint64_t ssd_pf_hits = file_expert_store_.PrefetchHits();
@@ -4154,7 +4208,8 @@ Status QMoEOffload::EnsurePersistentDecodeState(OpKernelContext* context, size_t
   const size_t want_gpu = std::max(min_gpu_bytes, size_t{256} << 10) + 512;
   const size_t raw_slot_bytes = static_cast<size_t>(SafeInt<size_t>(num_experts_) * sizeof(int));
   const size_t slot_table_bytes = (raw_slot_bytes + 255) & ~size_t{255};
-  const size_t want_host = std::max(min_host_bytes, size_t{256} << 10) + 512 + slot_table_bytes;
+  const size_t telemetry_bytes = offload_telemetry_ ? ((sizeof(QMoEOffloadTelemetry) + 255) & ~size_t{255}) : 0;
+  const size_t want_host = std::max(min_host_bytes, size_t{256} << 10) + 512 + slot_table_bytes + telemetry_bytes;
   if (!decode_state_) {
     decode_state_ = std::make_unique<PersistentDecodeState>();
   }
@@ -4191,12 +4246,14 @@ Status QMoEOffload::EnsurePersistentDecodeState(OpKernelContext* context, size_t
     decode_state_->pinned_accounted_bytes = want_host;
     decode_state_->session_pinned_budget = std::move(sess_pinned);
     std::memset(decode_state_->pinned.get(), 0, want_host);
-    const size_t meta_off = ((want_host - 256 - slot_table_bytes) + 255) & ~size_t{255};
+    const size_t meta_off = ((want_host - 256 - slot_table_bytes - telemetry_bytes) + 255) & ~size_t{255};
     uint8_t* meta_ptr = decode_state_->pinned.get() + meta_off;
     decode_state_->doorbell_req_host = reinterpret_cast<volatile uint64_t*>(meta_ptr + 0);
     decode_state_->doorbell_done_host = reinterpret_cast<volatile uint64_t*>(meta_ptr + 8);
     decode_state_->doorbell_tile_rows_host = reinterpret_cast<volatile int32_t*>(meta_ptr + 16);
-    decode_state_->pinned_slot_table = reinterpret_cast<int32_t*>(meta_ptr + 256);
+    decode_state_->cold_count_host = reinterpret_cast<volatile int32_t*>(meta_ptr + 20);
+    decode_state_->telemetry = offload_telemetry_ ? reinterpret_cast<QMoEOffloadTelemetry*>(meta_ptr + 256) : nullptr;
+    decode_state_->pinned_slot_table = reinterpret_cast<int32_t*>(meta_ptr + 256 + telemetry_bytes);
     decode_state_->last_serviced_seq = 0;
   }
   if (!decode_state_->completed) {
@@ -4236,6 +4293,15 @@ Status QMoEOffload::EnsurePersistentDecodeState(OpKernelContext* context, size_t
 
 void QMoEOffload::ServiceDoorbell() const {
   if (!decode_state_ || !decode_state_->tile) return;
+  ++decode_state_->cpu_doorbell_wakeups;
+  if (v4_policy_.skip_zero_cold_doorbell && resident_promotions_ == 0 &&
+      !DoorbellService::Instance().CrossLayerPromotionEnabled() &&
+      decode_state_->cold_count_host && *decode_state_->cold_count_host == 0) {
+    if (decode_state_->invocation_rec) decode_state_->invocation_rec->MarkCpuDone();
+    std::atomic_thread_fence(std::memory_order_release);
+    *decode_state_->doorbell_done_host = decode_state_->last_serviced_seq;
+    return;
+  }
   const int t_rows = std::max(1, static_cast<int>(*decode_state_->doorbell_tile_rows_host));
   decode_state_->tile->tile_rows = t_rows;
   try {
@@ -8273,7 +8339,10 @@ Status QMoEOffload::ComputeSharedAsync(OpKernelContext* context, const Tensor* i
           unit_scales, identity, nvfp4_mode_ ? static_cast<int>(k_) : 0,
           host_indices, input->DataRaw(), host_input, input_vec4_count,
           decode_state_->doorbell_seq_dev, decode_state_->doorbell_req_host,
-          decode_state_->doorbell_tile_rows_host, tile_rows));
+          decode_state_->doorbell_tile_rows_host, tile_rows,
+          v4_policy_.skip_zero_cold_doorbell && resident_promotions_ == 0 &&
+              !DoorbellService::Instance().CrossLayerPromotionEnabled(),
+          decode_state_->doorbell_done_host, decode_state_->cold_count_host, decode_state_->telemetry));
       ORT_RETURN_IF_ERROR(enqueue_hits());
       if (bias_gpu_ptr) {
         if (is_bf16_) {

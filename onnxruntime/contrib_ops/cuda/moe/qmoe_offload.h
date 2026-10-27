@@ -324,6 +324,7 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
   mutable uint64_t stream_reused_promotions_ = 0;
 
   bool cpu_timing_ = false;
+  bool offload_telemetry_ = false;
   bool cpu_fp16_boundaries_ = false;
   int fc1_cols_ = 64;
   int fc2_cols_ = 128;

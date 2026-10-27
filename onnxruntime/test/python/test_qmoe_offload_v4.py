@@ -5,6 +5,7 @@
 
 import contextlib
 import ctypes
+import json
 import os
 import struct
 import subprocess
@@ -12,6 +13,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import numpy as np
 import onnx
@@ -1275,6 +1277,192 @@ int main() {
         model_path = os.path.join(model_dir, "model.onnx")
         onnx.save_model(model, model_path)
         return model_path
+
+    def _build_decode_optimization_model(
+        self,
+        model_dir: str,
+        num_layers: int = 2,
+        use_fp16: bool = True,
+        num_experts: int = 16,
+        resident_slots: int = 10,
+    ):
+        model_path = self._build_int_qmoe_model(
+            model_dir,
+            layer_specs=[(4, 32, 1)] * num_layers,
+            num_experts=num_experts,
+            hidden_size=256,
+            inter_size=128,
+            top_k=8,
+            use_fp16=use_fp16,
+        )
+        pairs = [(layer, expert) for expert in range(num_experts) for layer in range(num_layers)]
+        Path(model_dir, "expert-profile.bin").write_bytes(
+            struct.pack("<6I", 0x50525453, 1, num_layers, num_experts, num_layers * num_experts, len(pairs))
+            + b"".join(struct.pack("<2H", *pair) for pair in pairs)
+        )
+        config = {
+            "session.moe.offload.mode": "required",
+            "session.moe.offload.placement": "static",
+            "session.moe.offload.device_expert_bytes": str(num_layers * (2 * num_experts * 4 + resident_slots * 55304)),
+            "session.moe.offload.popularity_file": "expert-profile.bin",
+            "session.moe.offload.cpu_threads": "4",
+        }
+        return model_path, config
+
+    def _run_decode_with_telemetry(
+        self, model_path: str, config: dict, cases: list, use_fp16: bool = True, cuda_graph: bool = False
+    ):
+        with tempfile.TemporaryFile(mode="w+b") as capture:
+            saved_stderr = os.dup(2)
+            try:
+                os.dup2(capture.fileno(), 2)
+                with mock.patch.dict(os.environ, {"ORT_QMOE_OFFLOAD_TELEMETRY": "1"}):
+                    options = {"enable_cuda_graph": "1"} if cuda_graph else None
+                    session = self._make_session(model_path, config, options)
+                    self.assertEqual(session.get_providers()[0], "CUDAExecutionProvider")
+                    if cuda_graph:
+                        self.assertTrue(use_fp16)
+                        x_value = ort.OrtValue.ortvalue_from_numpy(cases[0][0].astype(np.float16), "cuda", 0)
+                        r_value = ort.OrtValue.ortvalue_from_numpy(cases[0][1].astype(np.float16), "cuda", 0)
+                        y_value = ort.OrtValue.ortvalue_from_shape_and_type(cases[0][0].shape, np.float16, "cuda", 0)
+                        binding = session.io_binding()
+                        binding.bind_ortvalue_input("X", x_value)
+                        binding.bind_ortvalue_input("router_probs", r_value)
+                        binding.bind_ortvalue_output("Y", y_value)
+                        outputs = []
+                        for x, router in cases:
+                            x_value.update_inplace(x.astype(np.float16))
+                            r_value.update_inplace(router.astype(np.float16))
+                            session.run_with_iobinding(binding)
+                            outputs.append(y_value.numpy().astype(np.float32))
+                        del binding
+                    else:
+                        run = self._run_fp16 if use_fp16 else self._run_bf16
+                        outputs = [run(session, x, router) for x, router in cases]
+                    del session
+            finally:
+                if sys.exc_info()[0] is not None:
+                    capture.seek(0)
+                    os.write(saved_stderr, capture.read())
+                os.dup2(saved_stderr, 2)
+                os.close(saved_stderr)
+            capture.seek(0)
+            native_log = capture.read().decode("utf-8")
+        prefix = "QMoEOffload telemetry "
+        telemetry = [json.loads(line.split(prefix, 1)[1]) for line in native_log.splitlines() if prefix in line]
+        self.assertTrue(telemetry, native_log)
+        return outputs, telemetry
+
+    def test_v4_zero_cold_doorbell_bitwise_parity_and_transitions(self):
+        with tempfile.TemporaryDirectory() as model_dir:
+            model_path, config = self._build_decode_optimization_model(model_dir)
+            rng = np.random.default_rng(33575)
+            cases = []
+            for rows, cold in ((1, False), (4, False), (1, True), (16, True), (2, False), (1, True), (1, False)):
+                x = rng.standard_normal((rows, 256), dtype=np.float32) * 0.25
+                router = np.tile(np.linspace(3.0, -3.0, 16, dtype=np.float32), (rows, 1))
+                if cold:
+                    router[:, 12:14] = 4.0
+                cases.append((x, router))
+            baseline, baseline_stats = self._run_decode_with_telemetry(model_path, config, cases)
+            optimized, optimized_stats = self._run_decode_with_telemetry(
+                model_path, {**config, "session.moe.offload.skip_zero_cold_doorbell": "1"}, cases
+            )
+            for original, actual in zip(baseline, optimized, strict=True):
+                np.testing.assert_array_equal(original.view(np.uint32), actual.view(np.uint32))
+            self.assertGreater(sum(item["zero_cold_short_circuits"] for item in optimized_stats), 0)
+            self.assertGreater(sum(item["cpu_doorbell_wakeups"] for item in optimized_stats), 0)
+            self.assertGreater(sum(item["cold_routes"] for item in optimized_stats), 0)
+            self.assertEqual(sum(item["zero_cold_short_circuits"] for item in baseline_stats), 0)
+            for item in optimized_stats:
+                self.assertEqual(item["done_seq"], item["launched_seq"])
+                self.assertEqual(item["done_seq"], item["request_seq"])
+                self.assertEqual(item["done_seq"], item["last_serviced_seq"])
+            with self.subTest("adaptive observations retain CPU service"):
+                _, adaptive_stats = self._run_decode_with_telemetry(
+                    model_path,
+                    {
+                        **config,
+                        "session.moe.offload.placement": "adaptive",
+                        "session.moe.offload.skip_zero_cold_doorbell": "1",
+                    },
+                    [cases[0], cases[2], cases[0]],
+                )
+                self.assertEqual(sum(item["zero_cold_short_circuits"] for item in adaptive_stats), 0)
+                self.assertGreater(sum(item["cpu_doorbell_wakeups"] for item in adaptive_stats), 0)
+
+    def test_v4_zero_cold_doorbell_cuda_graph_replay(self):
+        with tempfile.TemporaryDirectory() as model_dir:
+            model_path, config = self._build_decode_optimization_model(model_dir, num_layers=4)
+            rng = np.random.default_rng(33577)
+            cases = []
+            for step in range(128):
+                x = rng.standard_normal((1, 256), dtype=np.float32) * 0.25
+                router = np.linspace(3.0, -3.0, 16, dtype=np.float32).reshape(1, 16)
+                if step % 3 == 1:
+                    router[:, 12:14] = 4.0
+                cases.append((x, router))
+            baseline, _ = self._run_decode_with_telemetry(model_path, config, cases)
+            optimized, stats = self._run_decode_with_telemetry(
+                model_path, {**config, "session.moe.offload.skip_zero_cold_doorbell": "1"}, cases, cuda_graph=True
+            )
+            for original, actual in zip(baseline, optimized, strict=True):
+                np.testing.assert_array_equal(original.view(np.uint32), actual.view(np.uint32))
+            for item in stats:
+                self.assertGreater(item["zero_cold_short_circuits"], 0)
+                self.assertGreater(item["cpu_doorbell_wakeups"], 0)
+                self.assertEqual(item["done_seq"], item["request_seq"])
+                self.assertEqual(item["done_seq"], item["launched_seq"])
+
+    def test_v4_zero_cold_doorbell_retains_cross_layer_promotion_service(self):
+        script = """
+import sys
+import tempfile
+import numpy as np
+sys.path.insert(0, sys.argv[1])
+from test_qmoe_offload_v4 import TestQMoEOffloadV4
+TestQMoEOffloadV4.setUpClass()
+case = TestQMoEOffloadV4()
+with tempfile.TemporaryDirectory() as directory:
+    model, config = case._build_decode_optimization_model(directory, num_layers=1)
+    x = np.full((1, 256), 0.125, dtype=np.float32)
+    router = np.linspace(3.0, -3.0, 16, dtype=np.float32).reshape(1, 16)
+    baseline, _ = case._run_decode_with_telemetry(model, config, [(x, router)])
+    actual, stats = case._run_decode_with_telemetry(
+        model, {**config, "session.moe.offload.skip_zero_cold_doorbell": "1"}, [(x, router)]
+    )
+    np.testing.assert_array_equal(baseline[0].view(np.uint32), actual[0].view(np.uint32))
+    assert stats[0]["zero_cold_short_circuits"] == 0, stats
+    assert stats[0]["cpu_doorbell_wakeups"] == 1, stats
+"""
+        environment = dict(os.environ, ORT_QMOE_CROSS_LAYER_PROMO="1")
+        environment.pop("ORT_QMOE_SHARED_EXPERT_BRIDGE_PTR", None)
+        result = subprocess.run(
+            [sys.executable, "-c", script, str(Path(__file__).resolve().parent)],
+            env=environment,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_v4_skip_zero_cold_doorbell_policy_validation_and_env_precedence(self):
+        with tempfile.TemporaryDirectory() as model_dir:
+            model_path, config = self._build_decode_optimization_model(model_dir, num_layers=1)
+            key = "session.moe.offload.skip_zero_cold_doorbell"
+            for invalid in ("2", "-1", "invalid"):
+                with self.subTest(value=invalid), self.assertRaisesRegex(Exception, "Invalid " + key):
+                    self._make_session(model_path, {**config, key: invalid})
+            x = np.full((1, 256), 0.125, dtype=np.float32)
+            router = np.linspace(3.0, -3.0, 16, dtype=np.float32).reshape(1, 16)
+            with mock.patch.dict(os.environ, {"ORT_QMOE_SKIP_ZERO_COLD_DOORBELL": "1"}):
+                _, enabled = self._run_decode_with_telemetry(model_path, config, [(x, router)])
+                _, explicit_zero = self._run_decode_with_telemetry(
+                    model_path, {**config, key: "0"}, [(x, router)]
+                )
+            self.assertEqual(enabled[0]["zero_cold_short_circuits"], 1)
+            self.assertEqual(explicit_zero[0]["zero_cold_short_circuits"], 0)
 
     def test_v4_int4_and_int3_offload_modes_and_numerical_parity(self):
         with tempfile.TemporaryDirectory() as tmpdir:

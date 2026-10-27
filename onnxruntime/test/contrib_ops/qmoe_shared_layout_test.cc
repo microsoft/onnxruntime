@@ -252,6 +252,47 @@ TEST(QMoESharedLayoutTest, Avx512PartialInt4RangesPreserveOtherColumns) {
   CheckPartialInt4Ranges(false);
 }
 
+TEST(QMoESharedLayoutTest, Avx2PartialInt4RangesPreserveOtherColumns) {
+  if (!shared::CpuHasAvx2FmaF16c()) GTEST_SKIP() << "AVX2+FMA+F16C kernels are not available";
+  CheckPartialInt4Ranges(false);
+}
+
+TEST(QMoESharedLayoutTest, Avx2BFloat16AndHalfConversionMatchScalarIncludingNaNs) {
+  if (!shared::CpuHasAvx2FmaF16c()) GTEST_SKIP() << "AVX2+FMA+F16C kernels are not available";
+  const std::array<uint32_t, 18> patterns{
+      0x00000000, 0x80000000, 0x3F800000, 0xBF800000, 0x3F808000, 0x3F818000,
+      0x00000001, 0x00008000, 0x00018000, 0x7F7FFFFF, 0x7F800000, 0xFF800000,
+      0x7F800001, 0xFF800001, 0x7FFFFFFF, 0xFFFFFFFF, 0x7FC00000, 0xFFC00000};
+  std::array<float, 36> input{};
+  for (size_t i = 0; i < input.size(); ++i) {
+    const auto bits = patterns[i % patterns.size()];
+    std::memcpy(&input[i], &bits, sizeof(bits));
+  }
+  std::array<uint16_t, 36> scalar_bf16{}, simd_bf16{}, scalar_fp16{}, simd_fp16{};
+  shared::FloatToBFloat16BitsRow(input.data(), scalar_bf16.data(), input.size(), true);
+  shared::FloatToBFloat16BitsRow(input.data(), simd_bf16.data(), input.size(), false);
+  EXPECT_EQ(simd_bf16, scalar_bf16);
+  EXPECT_EQ(simd_bf16[12], 0x7FC1);
+  EXPECT_EQ(simd_bf16[13], 0x7FC1);
+
+  std::array<float, 36> roundtrip_scalar_bf16{}, roundtrip_simd_bf16{};
+  shared::BFloat16BitsToFloatRow(scalar_bf16.data(), roundtrip_scalar_bf16.data(), scalar_bf16.size(), true);
+  shared::BFloat16BitsToFloatRow(simd_bf16.data(), roundtrip_simd_bf16.data(), simd_bf16.size(), false);
+  for (size_t i = 0; i < 36; ++i) {
+    if (std::isnan(roundtrip_scalar_bf16[i])) {
+      EXPECT_TRUE(std::isnan(roundtrip_simd_bf16[i]));
+    } else {
+      EXPECT_EQ(roundtrip_simd_bf16[i], roundtrip_scalar_bf16[i]);
+    }
+  }
+
+  shared::FloatToHalfBitsRow(input.data(), scalar_fp16.data(), 10, true);
+  shared::FloatToHalfBitsRow(input.data(), simd_fp16.data(), 10, false);
+  for (size_t i = 0; i < 10; ++i) {
+    EXPECT_EQ(simd_fp16[i], scalar_fp16[i]);
+  }
+}
+
 TEST(QMoESharedLayoutTest, Avx512BFloat16ConversionMatchesScalarIncludingNaNs) {
   if (!shared::CpuHasAvx512()) GTEST_SKIP() << "AVX-512 kernels are not available";
   const std::array<uint32_t, 18> patterns{
@@ -668,30 +709,35 @@ TEST(QMoESharedLayoutTest, CanonicalInt4ExpertViewMatchesReferenceAcrossPrepacke
 
   for (bool prepacked : {true, false}) {
     for (bool is_bf16 : {false, true}) {
-      shared::Int4ExpertView view{};
-      view.fc1_weights = prepacked ? fc1_sm80.data() : fc1_raw.data();
-      view.fc1_scales = is_bf16 ? fc1_s_bf16.data() : fc1_s_fp16.data();
-      view.fc1_bias = is_bf16 ? fc1_b_bf16.data() : fc1_b_fp16.data();
-      view.fc2_weights = prepacked ? fc2_sm80.data() : fc2_raw.data();
-      view.fc2_scales = is_bf16 ? fc2_s_bf16.data() : fc2_s_fp16.data();
-      view.fc2_bias = is_bf16 ? fc2_b_bf16.data() : fc2_b_fp16.data();
-      view.scales_are_block_major = false;
-      view.weights_are_prepacked = prepacked;
-      view.scale_is_bf16 = is_bf16;
-      view.bias_is_bf16 = is_bf16;
+      for (bool apply_fc2_bias : {true, false}) {
+        for (int64_t m_rows : {int64_t{1}, int64_t{2}, int64_t{4}, rows}) {
+          shared::Int4ExpertView view{};
+          view.fc1_weights = prepacked ? fc1_sm80.data() : fc1_raw.data();
+          view.fc1_scales = is_bf16 ? fc1_s_bf16.data() : fc1_s_fp16.data();
+          view.fc1_bias = is_bf16 ? fc1_b_bf16.data() : fc1_b_fp16.data();
+          view.fc2_weights = prepacked ? fc2_sm80.data() : fc2_raw.data();
+          view.fc2_scales = is_bf16 ? fc2_s_bf16.data() : fc2_s_fp16.data();
+          view.fc2_bias = is_bf16 ? fc2_b_bf16.data() : fc2_b_fp16.data();
+          view.scales_are_block_major = false;
+          view.weights_are_prepacked = prepacked;
+          view.scale_is_bf16 = is_bf16;
+          view.bias_is_bf16 = is_bf16;
 
-      std::vector<float> out_scalar(static_cast<size_t>(rows * hidden));
-      std::vector<float> out_simd(static_cast<size_t>(rows * hidden));
-      ASSERT_TRUE(shared::Int4ExpertForward(hidden, inter, view, x.data(), rows, swiglu, out_scalar.data(),
-                                            /*force_scalar=*/true, /*apply_fc2_bias=*/true,
-                                            /*bf16_boundaries=*/is_bf16, /*fp16_boundaries=*/!is_bf16));
-      ASSERT_TRUE(shared::Int4ExpertForward(hidden, inter, view, x.data(), rows, swiglu, out_simd.data(),
-                                            /*force_scalar=*/false, /*apply_fc2_bias=*/true,
-                                            /*bf16_boundaries=*/is_bf16, /*fp16_boundaries=*/!is_bf16));
-      for (size_t i = 0; i < out_scalar.size(); ++i) {
-        EXPECT_NEAR(out_simd[i], out_scalar[i], 1e-5f) << "prepacked=" << prepacked << " bf16=" << is_bf16 << " i=" << i;
-        if (!is_bf16) {
-          EXPECT_NEAR(out_scalar[i], ref_blk_out[i], 1e-5f) << "prepacked=" << prepacked << " i=" << i;
+          std::vector<float> out_scalar(static_cast<size_t>(m_rows * hidden));
+          std::vector<float> out_simd(static_cast<size_t>(m_rows * hidden));
+          ASSERT_TRUE(shared::Int4ExpertForward(hidden, inter, view, x.data(), m_rows, swiglu, out_scalar.data(),
+                                                /*force_scalar=*/true, /*apply_fc2_bias=*/apply_fc2_bias,
+                                                /*bf16_boundaries=*/is_bf16, /*fp16_boundaries=*/!is_bf16));
+          ASSERT_TRUE(shared::Int4ExpertForward(hidden, inter, view, x.data(), m_rows, swiglu, out_simd.data(),
+                                                /*force_scalar=*/false, /*apply_fc2_bias=*/apply_fc2_bias,
+                                                /*bf16_boundaries=*/is_bf16, /*fp16_boundaries=*/!is_bf16));
+          for (size_t i = 0; i < out_scalar.size(); ++i) {
+            EXPECT_NEAR(out_simd[i], out_scalar[i], 1e-5f)
+                << "prepacked=" << prepacked << " bf16=" << is_bf16 << " bias=" << apply_fc2_bias << " m=" << m_rows << " i=" << i;
+            if (!is_bf16 && apply_fc2_bias && m_rows == rows) {
+              EXPECT_NEAR(out_scalar[i], ref_blk_out[i], 1e-5f) << "prepacked=" << prepacked << " i=" << i;
+            }
+          }
         }
       }
     }

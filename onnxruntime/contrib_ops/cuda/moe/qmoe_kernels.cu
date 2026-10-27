@@ -153,39 +153,75 @@ __global__ void QMoEOffloadClassifyKernel(
     float* unit_scales, int* identity_permutation, int k_for_source_rows,
     int* host_indices_out, const uint4* input_dev, uint4* host_input_out, int input_vec4_count,
     uint64_t* doorbell_seq_dev, volatile uint64_t* doorbell_req_host,
-    volatile int32_t* doorbell_tile_rows_host, int tile_rows) {
+    volatile int32_t* doorbell_tile_rows_host, int tile_rows,
+    bool skip_zero_cold, volatile uint64_t* doorbell_done_host,
+    volatile int32_t* cold_count_host, QMoEOffloadTelemetry* telemetry) {
   const int row = blockIdx.x * blockDim.x + threadIdx.x;
+  int exp = 0;
+  int slot = -1;
   if (row < row_count) {
     if (unit_scales != nullptr) unit_scales[row] = 1.0f;
     if (identity_permutation != nullptr) identity_permutation[row] = row;
     const int route = row < route_count ? row : 0;
-    const int exp = topk_indices[route];
-    const int slot = (row < route_count) ? expert_slot[exp] : -1;
+    exp = topk_indices[route];
+    slot = (row < route_count) ? expert_slot[exp] : -1;
     hit_ids[row] = (k_for_source_rows > 0 && row < route_count) ? (route / k_for_source_rows) : route;
     hit_compact[row] = slot < 0 ? dummy_slot : slot;
     if (row < route_count) {
       hit_flag[row] = slot >= 0;
-      if (host_indices_out != nullptr) {
-        host_indices_out[row] = exp;
+    }
+  }
+  const bool has_doorbell = (doorbell_seq_dev != nullptr && doorbell_req_host != nullptr && gridDim.x == 1);
+  const int is_cold = (row < route_count) ? (slot < 0) : 0;
+  const int cold_count = has_doorbell ? __syncthreads_count(is_cold) : 0;
+  const bool zero_cold_bypass = has_doorbell && skip_zero_cold && cold_count == 0 && doorbell_done_host != nullptr;
+  if (!zero_cold_bypass) {
+    if (row < route_count && host_indices_out != nullptr) {
+      host_indices_out[row] = exp;
+    }
+    if (input_dev != nullptr && host_input_out != nullptr) {
+      for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < input_vec4_count; i += gridDim.x * blockDim.x) {
+        host_input_out[i] = input_dev[i];
       }
     }
   }
-  if (input_dev != nullptr && host_input_out != nullptr) {
-    for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < input_vec4_count; i += gridDim.x * blockDim.x) {
-      host_input_out[i] = input_dev[i];
-    }
-  }
-  if (doorbell_seq_dev != nullptr && doorbell_req_host != nullptr && gridDim.x == 1) {
-    __syncthreads();
-    if (threadIdx.x == 0) {
-      if (doorbell_tile_rows_host != nullptr) {
-        *doorbell_tile_rows_host = tile_rows;
+  if (has_doorbell) {
+    if (zero_cold_bypass) {
+      if (threadIdx.x == 0) {
+        const uint64_t next_seq = *doorbell_seq_dev + 1;
+        *doorbell_seq_dev = next_seq;
+        if (telemetry != nullptr) {
+          ++telemetry->layer_calls;
+          telemetry->last_route_count = route_count;
+          telemetry->last_cold_count = 0;
+          ++telemetry->zero_cold_short_circuits;
+        }
+        *doorbell_done_host = next_seq;
+        // Single system fence orders done before request with zero preceding 4 KB PCIe payload writes.
+        __threadfence_system();
+        *doorbell_req_host = next_seq;
       }
-      __threadfence_system();
-      const uint64_t next_seq = *doorbell_seq_dev + 1;
-      *doorbell_seq_dev = next_seq;
-      *doorbell_req_host = next_seq;
-      __threadfence_system();
+    } else {
+      __syncthreads();
+      if (threadIdx.x == 0) {
+        if (cold_count_host != nullptr) {
+          *cold_count_host = cold_count;
+        }
+        if (doorbell_tile_rows_host != nullptr) {
+          *doorbell_tile_rows_host = tile_rows;
+        }
+        __threadfence_system();
+        const uint64_t next_seq = *doorbell_seq_dev + 1;
+        *doorbell_seq_dev = next_seq;
+        if (telemetry != nullptr) {
+          ++telemetry->layer_calls;
+          telemetry->cold_routes += cold_count;
+          telemetry->last_route_count = route_count;
+          telemetry->last_cold_count = cold_count;
+        }
+        *doorbell_req_host = next_seq;
+        __threadfence_system();
+      }
     }
   }
 }
@@ -257,7 +293,9 @@ cudaError_t LaunchQMoEOffloadClassify(
     float* unit_scales, int* identity_permutation, int k_for_source_rows,
     int* host_indices_out, const void* input_dev, void* host_input_out, int input_vec4_count,
     uint64_t* doorbell_seq_dev, volatile uint64_t* doorbell_req_host,
-    volatile int32_t* doorbell_tile_rows_host, int tile_rows) {
+    volatile int32_t* doorbell_tile_rows_host, int tile_rows,
+    bool skip_zero_cold, volatile uint64_t* doorbell_done_host,
+    volatile int32_t* cold_count_host, QMoEOffloadTelemetry* telemetry) {
   if (row_count <= 0) return cudaSuccess;
   if (doorbell_seq_dev != nullptr && doorbell_req_host != nullptr && row_count <= 256) {
     QMoEOffloadClassifyKernel<<<1, 256, 0, stream>>>(
@@ -265,7 +303,8 @@ cudaError_t LaunchQMoEOffloadClassify(
         unit_scales, identity_permutation, k_for_source_rows,
         host_indices_out, reinterpret_cast<const uint4*>(input_dev),
         reinterpret_cast<uint4*>(host_input_out), input_vec4_count,
-        doorbell_seq_dev, doorbell_req_host, doorbell_tile_rows_host, tile_rows);
+        doorbell_seq_dev, doorbell_req_host, doorbell_tile_rows_host, tile_rows,
+        skip_zero_cold, doorbell_done_host, cold_count_host, telemetry);
     return cudaGetLastError();
   }
   const int blocks = row_count / 128 + (row_count % 128 != 0);
@@ -274,7 +313,7 @@ cudaError_t LaunchQMoEOffloadClassify(
       unit_scales, identity_permutation, k_for_source_rows,
       host_indices_out, reinterpret_cast<const uint4*>(input_dev),
       reinterpret_cast<uint4*>(host_input_out), input_vec4_count,
-      nullptr, nullptr, nullptr, tile_rows);
+      nullptr, nullptr, nullptr, tile_rows, false, nullptr, nullptr, nullptr);
   return cudaGetLastError();
 }
 

@@ -437,6 +437,8 @@ bool Nvfp4ExpertForward(int64_t hidden, int64_t inter, const Nvfp4ExpertView& vi
 
 bool CompilerHasAvx512() noexcept;
 bool CpuHasAvx512();
+bool CompilerHasAvx2() noexcept;
+bool CpuHasAvx2FmaF16c();
 
 }  // namespace qmoe_shared
 }  // namespace contrib
@@ -454,6 +456,7 @@ int qmoe_shared_expert_contribution_fp16(const uint8_t* block, int64_t hidden, i
                                          int force_scalar);
 int64_t qmoe_shared_block_bytes(int64_t hidden, int64_t inter);
 int qmoe_shared_cpu_has_avx512(void);
+int qmoe_shared_cpu_has_avx2(void);
 int qmoe_shared_accepts_prepack_contract(int64_t weights_prepacked, int64_t block_size);
 int qmoe_shared_weight_code_at(const uint8_t* weights, int64_t n_total, int64_t k_total, int64_t n,
                                int64_t k);

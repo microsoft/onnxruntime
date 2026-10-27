@@ -70,6 +70,7 @@ def load_lib():
     lib.qmoe_shared_block_bytes.argtypes = [ctypes.c_int64, ctypes.c_int64]
     lib.qmoe_shared_block_bytes.restype = ctypes.c_int64
     lib.qmoe_shared_cpu_has_avx512.restype = ctypes.c_int
+    lib.qmoe_shared_cpu_has_avx2.restype = ctypes.c_int
     lib.qmoe_shared_accepts_prepack_contract.argtypes = [ctypes.c_int64, ctypes.c_int64]
     lib.qmoe_shared_accepts_prepack_contract.restype = ctypes.c_int
     lib.qmoe_shared_weight_code_at.argtypes = [
@@ -336,6 +337,19 @@ class SharedLayoutTest(unittest.TestCase):
         a = run_cpu(load_lib(), block, 512, 128, x, True)
         b = run_cpu(load_lib(), block, 512, 128, x, False)
         np.testing.assert_allclose(a, b, rtol=1e-4, atol=1e-4)
+
+    def test_scalar_and_avx2_int4_agree(self):
+        lib = load_lib()
+        if not lib.qmoe_shared_cpu_has_avx2():
+            self.skipTest("no AVX2")
+        rng = np.random.default_rng(55)
+        e = random_expert(rng, 512, 128)
+        block = ref.assemble_block(512, 128, **e)
+        for m in (1, 2, 4):
+            x = rng.standard_normal((m, 512)).astype(np.float32)
+            a = run_cpu(lib, block, 512, 128, x, True)
+            b = run_cpu(lib, block, 512, 128, x, False)
+            np.testing.assert_allclose(a, b, rtol=1e-5, atol=1e-5)
 
     def test_fp16_subnormal_and_exhaustive_scalar_simd_parity(self):
         lib = load_lib()

@@ -98,6 +98,7 @@ struct MoeOffloadSessionPolicy {
   int32_t cpu_threads{0};            // 0 = auto physical-core discovery
   int32_t async_max_tokens{8};       // Decode vs. prefill streaming token threshold (S <= 8 DFlash2)
   int32_t prefill_wave_experts{32};  // Max active cold experts per DMA wave
+  bool skip_zero_cold_doorbell{false};
 
   std::filesystem::path source_root;
   std::filesystem::path derived_cache_dir;
@@ -381,11 +382,24 @@ struct MoeOffloadSessionPolicy {
               "Invalid ", kOrtSessionOptionsMoeOffloadNodeOverrides, " value '", val,
               "'; expected semicolon-separated 'node_name:max_resident_slots=<N>,device_expert_bytes=<B>'.");
         }
-      } else {
+      } else if (key != kOrtSessionOptionsMoeOffloadSkipZeroColdDoorbell) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "Unknown session.moe.offload.* configuration key: ", key);
       }
     }
+
+    const auto skip_it = kv_map.find(kOrtSessionOptionsMoeOffloadSkipZeroColdDoorbell);
+    const std::string_view skip = (skip_it != kv_map.end())
+                                      ? std::string_view(skip_it->second)
+                                      : (std::getenv("ORT_QMOE_SKIP_ZERO_COLD_DOORBELL") != nullptr
+                                             ? std::string_view(std::getenv("ORT_QMOE_SKIP_ZERO_COLD_DOORBELL"))
+                                             : std::string_view("0"));
+    if (skip != "0" && skip != "1") {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Invalid ", kOrtSessionOptionsMoeOffloadSkipZeroColdDoorbell,
+                             " value '", skip, "'; expected '0' or '1'.");
+    }
+    out.skip_zero_cold_doorbell = (skip == "1");
 
     if (out.source_root.empty() && !base_dir.empty()) {
       out.source_root = base_dir;
