@@ -610,16 +610,16 @@ Status ApplyFlashAttentionPrefill(onnxruntime::webgpu::ComputeContext& context,
                             (adapter_info.architecture == std::string_view{"xe-3lpg"} ||
                              adapter_info.architecture == std::string_view{"xe-3lpg-xs"});
   // Default: 64 threads, 16 KV rows per step.
-  uint32_t wg_size = 64u;
+  uint32_t workgroup_size = 64u;
   uint32_t kv_step = 16u;
   // Xe2: query length <= 128 uses 128 threads and 64 KV rows per step;
   //      longer queries use 256 threads and 32 KV rows per step.
   // Xe3: 128 threads, 64 KV rows per step for all query lengths.
   if (is_intel_xe3 || (is_intel_xe2 && parameters.sequence_length_ <= 128)) {
-    wg_size = 128u;
+    workgroup_size = 128u;
     kv_step = 64u;
   } else if (is_intel_xe2) {
-    wg_size = 256u;
+    workgroup_size = 256u;
     kv_step = 32u;
   }
   // The K tile (full head) and V slice (up to 16 vec4) are staged in workgroup memory for kv_step rows.
@@ -628,12 +628,12 @@ Status ApplyFlashAttentionPrefill(onnxruntime::webgpu::ComputeContext& context,
   const uint64_t vec4_bytes = (Q->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ? 2u : 4u) * 4u;
   if ((head_size_vec + std::min<uint64_t>(head_size_vec, 16)) * kv_step * vec4_bytes >
       context.DeviceLimits().maxComputeWorkgroupStorageSize) {
-    wg_size = 64u;
+    workgroup_size = 64u;
     kv_step = 16u;
   }
   // Values below 8 select direct shared-memory reads, including without subgroups.
   const uint32_t shuffle_chunk = std::min(kv_step, subgroup_min_size);
-  const uint32_t num_seq_tile = CeilDiv(static_cast<uint32_t>(parameters.sequence_length_), wg_size);
+  const uint32_t num_seq_tile = CeilDiv(static_cast<uint32_t>(parameters.sequence_length_), workgroup_size);
   const uint32_t dispatch_size =
       parameters.batch_size_ * parameters.num_heads_ * num_seq_tile;
 
@@ -666,9 +666,9 @@ Status ApplyFlashAttentionPrefill(onnxruntime::webgpu::ComputeContext& context,
   }
   program.AddOutputs({{attn_output, ProgramTensorMetadataDependency::TypeAndRank, 4}});
   program.SetDispatchGroupSize(dispatch_size)
-      .SetWorkgroupSize(wg_size)
+      .SetWorkgroupSize(workgroup_size)
       .CacheHint(has_attention_bias, parameters.head_size_, parameters.num_heads_, parameters.is_unidirectional_,
-                 use_seqlen_k, wg_size, kv_step, shuffle_chunk,
+                 use_seqlen_k, workgroup_size, kv_step, shuffle_chunk,
                  has_local_window, use_seqlens_q, q_BNSH, has_head_sink)
       .AddUniformVariables({{static_cast<uint32_t>(parameters.sequence_length_)},
                             {static_cast<uint32_t>(parameters.total_sequence_length_)},
