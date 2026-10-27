@@ -422,7 +422,8 @@ __global__ void __launch_bounds__(kThreads, 5)
     HcUpPreKernel(const T* __restrict__ streams, const T* __restrict__ norm_w, const T* __restrict__ w_up,
                   const float* __restrict__ partial, const float* __restrict__ inv_rms_in,
                   T* __restrict__ pre_out, T* __restrict__ gate_out, UpParams p) {
-  constexpr int kLocalWeightSlots = ROWS >= 4 ? 8 : kWeightSlots;
+  static_assert(ROWS <= 2, "the cross-warp gate reduction below assumes ROWS * 16 * branches <= kThreads");
+  constexpr int kLocalWeightSlots = kWeightSlots;
   const int hb = blockIdx.x;
   const int64_t row0 = static_cast<int64_t>(blockIdx.z) * ROWS;
   const int tid = threadIdx.x;
@@ -555,28 +556,17 @@ __global__ void __launch_bounds__(kThreads, 5)
     }
   }
   __syncthreads();
+  // The up kernel runs with at most 2 rows, so ROWS * groups * 8 = 16 * ROWS * branches <= kThreads (branches <= 8).
   const int g8 = groups * 8;
-  if (ROWS * g8 <= kThreads) {
-    if (tid < ROWS * g8) {
-      const int r = tid / g8;
-      const int idx = tid % g8;
-      float v = 0.0f;
+  if (tid < ROWS * g8) {
+    const int r = tid / g8;
+    const int idx = tid % g8;
+    float v = 0.0f;
 #pragma unroll
-      for (int q = 0; q < 8; ++q) v += red[(q * ROWS + r) * g8 + idx];
-      const int gg = idx >> 3;
-      const int local = (gg & 1) * 8 + (idx & 7);
-      sg[r][(gg >> 1) * kUpTile + local] = Rnd<T>(SigmoidF32(Rnd<T>(v)));
-    }
-  } else if (tid < g8) {
-#pragma unroll
-    for (int r = 0; r < ROWS; ++r) {
-      float v = 0.0f;
-#pragma unroll
-      for (int q = 0; q < 8; ++q) v += red[(q * ROWS + r) * g8 + tid];
-      const int gg = tid >> 3;
-      const int local = (gg & 1) * 8 + (tid & 7);
-      sg[r][(gg >> 1) * kUpTile + local] = Rnd<T>(SigmoidF32(Rnd<T>(v)));
-    }
+    for (int q = 0; q < 8; ++q) v += red[(q * ROWS + r) * g8 + idx];
+    const int gg = idx >> 3;
+    const int local = (gg & 1) * 8 + (idx & 7);
+    sg[r][(gg >> 1) * kUpTile + local] = Rnd<T>(SigmoidF32(Rnd<T>(v)));
   }
   __syncthreads();
   if (tid < ROWS * kUpTile) {
@@ -810,6 +800,7 @@ __global__ void FusedInjectPostGateB4Kernel(const T* __restrict__ hn, const T* _
   }
 }
 
+// Grid (rows, ceil(branches / 8)): blockIdx.y selects a tile of up to 8 branch columns, so any num_branches works.
 template <typename T>
 __global__ void FusedInjectPostGateKernel(const T* __restrict__ hn, const T* __restrict__ w_inject,
                                           T* __restrict__ gate_out, int64_t rows, int branches, int64_t K,
@@ -817,33 +808,35 @@ __global__ void FusedInjectPostGateKernel(const T* __restrict__ hn, const T* __r
   const int64_t row = blockIdx.x;
   if (row >= rows) return;
   const int tid = threadIdx.x;
+  const int b0 = blockIdx.y * 8;
+  const int tile = min(8, branches - b0);
   const T* x_row = hn + row * K;
   __shared__ float smem[8][8];
   float acc[8] = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
   for (int64_t k = tid; k < K; k += kThreads) {
     const float xv = to_float<T>(x_row[k]);
-    const T* wk = w_inject + k * branches;
+    const T* wk = w_inject + k * branches + b0;
 #pragma unroll
     for (int b = 0; b < 8; ++b) {
-      if (b < branches) acc[b] = fmaf(xv, to_float<T>(wk[b]), acc[b]);
+      if (b < tile) acc[b] = fmaf(xv, to_float<T>(wk[b]), acc[b]);
     }
   }
 #pragma unroll
   for (int b = 0; b < 8; ++b) {
-    if (b < branches) {
+    if (b < tile) {
 #pragma unroll
       for (int off = 16; off > 0; off >>= 1) acc[b] += __shfl_down_sync(0xffffffffu, acc[b], off);
       if ((tid & 31) == 0) smem[tid >> 5][b] = acc[b];
     }
   }
   __syncthreads();
-  if (tid < branches) {
+  if (tid < tile) {
     float v = 0.0f;
 #pragma unroll
     for (int w = 0; w < 8; ++w) v += smem[w][tid];
     const float t = Rnd<T>(Rnd<T>(v) / gate_div);
     const float u = Rnd<T>(SigmoidF32(t));
-    gate_out[row * branches + tid] = from_float<T>(u * gate_mul);
+    gate_out[row * branches + b0 + tid] = from_float<T>(u * gate_mul);
   }
 }
 
@@ -1103,16 +1096,8 @@ Status LaunchHyperConnectionLowRankMixFused(const cudaDeviceProp& device_prop, c
     if (config.rows == 1) {
       return LaunchFusedRows<T, 1>(use_pdl, stream, config, tensors, g, partial, inv_rms, down, up);
     }
-    static const int decode_rows =
-        onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_HC_DECODE_ROWS", 1);
-    ORT_ENFORCE(decode_rows == 1 || decode_rows == 2 || decode_rows == 4,
-                "ORT_HC_DECODE_ROWS must be 1, 2, or 4");
-    if (config.rows == 4 && decode_rows == 1) {
-      return LaunchFusedRows<T, 1>(use_pdl, stream, config, tensors, g, partial, inv_rms, down, up);
-    }
-    static const int s8_decode_rows =
-        onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_HC_S8_DECODE_ROWS", 4);
-    if (config.rows >= 8 && (s8_decode_rows == 4 || decode_rows == 4)) {
+    // Fused row-group dispatch: rows == 1 -> 1x1, rows 2..7 -> 2x2, rows == 8 -> 4x2 (down x up rows per CTA).
+    if (config.rows >= 8) {
       return LaunchFusedRows<T, 4, 2>(use_pdl, stream, config, tensors, g, partial, inv_rms, down, up);
     }
     return LaunchFusedRows<T, 2, 2>(use_pdl, stream, config, tensors, g, partial, inv_rms, down, up);
@@ -1123,7 +1108,7 @@ template <typename T>
 Status LaunchHyperConnectionLowRankMixUnfused(cublasHandle_t cublas, cudaStream_t stream,
                                               const HyperConnectionLowRankMixConfig& config,
                                               const HyperConnectionLowRankMixTensors<T>& tensors,
-                                              T* hn, T* down, T* up, T* inject) {
+                                              T* hn, T* down, T* up) {
   const int64_t rows = config.rows;
   const int64_t K = static_cast<int64_t>(config.branches) * config.hidden;
   const int64_t groups = rows * config.branches;
@@ -1176,7 +1161,6 @@ Status LaunchHyperConnectionLowRankMixUnfused(cublasHandle_t cublas, cudaStream_
   ORT_RETURN_IF_ERROR(math_mode.Set(cublas, CUBLAS_MATH_DISALLOW_REDUCED_PRECISION_REDUCTION));
 
   ORT_RETURN_IF_ERROR(Gemm<T>(cublas, rows, config.rank, K, hn, tensors.down_weight, down));
-  (void)inject;
 
   const int64_t down_count = rows * config.rank;
   ORT_RETURN_IF_NOT(BlocksFor(down_count) <= std::numeric_limits<int>::max(),
@@ -1217,7 +1201,8 @@ Status LaunchHyperConnectionLowRankMixUnfused(cublasHandle_t cublas, cudaStream_
       return CUDA_CALL(cudaGetLastError());
     }
   }
-  FusedInjectPostGateKernel<T><<<static_cast<int>(rows), kThreads, 0, stream>>>(
+  const dim3 inject_grid(static_cast<unsigned>(rows), static_cast<unsigned>((config.branches + 7) / 8));
+  FusedInjectPostGateKernel<T><<<inject_grid, kThreads, 0, stream>>>(
       hn, tensors.inject_weight, tensors.post_gate, rows, config.branches, K, config.gate_div, config.gate_mul);
   return CUDA_CALL(cudaGetLastError());
 }
@@ -1230,7 +1215,7 @@ Status LaunchHyperConnectionLowRankMixUnfused(cublasHandle_t cublas, cudaStream_
       const HyperConnectionLowRankMixTensors<T>&, float*, bool);                                 \
   template Status LaunchHyperConnectionLowRankMixUnfused<T>(                                     \
       cublasHandle_t, cudaStream_t, const HyperConnectionLowRankMixConfig&,                      \
-      const HyperConnectionLowRankMixTensors<T>&, T*, T*, T*, T*);
+      const HyperConnectionLowRankMixTensors<T>&, T*, T*, T*);
 
 INSTANTIATE(float)
 INSTANTIATE(half)
