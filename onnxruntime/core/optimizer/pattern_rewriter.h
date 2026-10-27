@@ -33,7 +33,7 @@ struct Value {
 struct AttributeMatcher {
   std::string name;
   std::function<bool(const ONNX_NAMESPACE::AttributeProto&)> predicate;
-  std::string capture;
+  std::string capture{};
   bool optional = false;
   bool Matches(const ONNX_NAMESPACE::AttributeProto& value) const { return predicate(value); }
   static AttributeMatcher Equal(std::string name, int64_t value);
@@ -139,7 +139,7 @@ class Pattern {
     std::string definition;
     std::string interface_name;
     std::string alternative;
-    std::shared_ptr<const Instance> selected;
+    std::shared_ptr<const Instance> selected{};
   };
   InlinedHashMap<std::string, Instance> instances_;
   InlinedVector<std::shared_ptr<const Pattern>, 1> alternatives_;
@@ -249,7 +249,7 @@ struct Replacement {
     InlinedVector<Input> inputs;
     NodeAttributes attributes;
     size_t output_count = 1;
-    InlinedHashMap<std::string, std::string> attribute_bindings;
+    InlinedHashMap<std::string, std::string> attribute_bindings{};
   };
   explicit Replacement(std::string_view text);
   // A parsed replacement is a reusable recipe callback; copying it shares the immutable plan.

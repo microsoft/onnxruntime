@@ -148,6 +148,25 @@ TEST(PatternComponentTests, InvalidContextAndCallbackErrorsAreNotNonmatches) {
                OnnxRuntimeException);
 }
 
+TEST(PatternComponentTests, ValueAliasesSurviveSymbolTableGrowth) {
+  TestGraph test;
+  auto* x = test.builder.MakeInput<float>({2}, -1.0f, 1.0f);
+  auto& root = test.builder.AddNode("Sigmoid", {x}, {test.builder.MakeOutput()});
+  test.builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(test.graph.Resolve());
+  for (size_t count : {1u, 2u, 4u, 8u, 16u, 32u, 64u}) {
+    SCOPED_TRACE(count);
+    std::ostringstream text;
+    text << "pattern E(x:float[2]) {";
+    for (size_t i = 0; i < count; ++i) text << "a" << i << "=x;";
+    text << "return Sigmoid(a" << count - 1 << ")}";
+    std::optional<Match> result;
+    ASSERT_STATUS_OK(PatternLibrary(text.str()).GetPattern("E").MatchAt(test.graph, root.Index(), result));
+    ASSERT_TRUE(result);
+    for (size_t i = 0; i < count; ++i) EXPECT_EQ(result->valueOf("a" + std::to_string(i)), x);
+  }
+}
+
 TEST(PatternComponentTests, MatchAtReturnsFirstCandidateAndClearsOrdinaryNonmatch) {
   TestGraph test;
   auto& b = test.builder;

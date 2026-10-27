@@ -2480,7 +2480,9 @@ TEST(PatternRewriterTests, OptionalInputSlotsAndNumerics) {
     else
       EXPECT_NO_THROW((void)Replacement{text});
   }
-  for (auto text : {"(None)=>return Identity(None)", "(x??)=>return Identity(x)",
+  for (auto text : {"(None)=>return Identity(None)",
+                    "(x?"
+                    "?)=>return Identity(x)",
                     "(x)=>{a=Identity(x);return Clip(a,missing);}",
                     "(x?)=>return x", "(x)=>{a=Identity(x);return Clip(a,None=0);}"})
     EXPECT_THROW((void)Pattern{text}, OnnxRuntimeException);

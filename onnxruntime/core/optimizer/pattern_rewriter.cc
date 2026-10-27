@@ -430,6 +430,7 @@ Status StageReplacement(Graph& graph, const Replacement& recipe, gsl::span<NodeA
     if (!graph.SetOpSchemaFromRegistryForNode(replacement)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Replacement schema is unavailable: ", node.op);
     }
+    Status verification_status = Status::OK();
     ORT_TRY {
       for (const auto& [name, attribute] : replacement.Op()->attributes()) {
         if (!attribute.required && !attribute.default_value.name().empty() &&
@@ -441,8 +442,11 @@ Status StageReplacement(Graph& graph, const Replacement& recipe, gsl::span<NodeA
       replacement.Op()->Verify(proto);
     }
     ORT_CATCH(const ONNX_NAMESPACE::checker::ValidationError& error) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid replacement: ", error.what());
+      ORT_HANDLE_EXCEPTION([&]() {
+        verification_status = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid replacement: ", error.what());
+      });
     }
+    ORT_RETURN_IF_ERROR(verification_status);
     if (annotation_source) replacement.SetExecutionProviderType(annotation_source->GetExecutionProviderType());
   }
   staged = true;
@@ -1538,11 +1542,12 @@ Status PatternParser::Expression(const InlinedVector<std::string>& names) {
       ORT_RETURN_IF(names.size() != 1, Error("value aliases require one assignment target"));
       auto found = symbols_.find(value);
       ORT_RETURN_IF(found == symbols_.end(), Error("undefined value alias"));
-      pattern_.required_tensor_bindings_.insert(found->second.handle);
-      symbols_.emplace(names.front(), found->second);
-      pattern_.aliases_.emplace(names.front(), found->second);
-      last_outputs_ = {found->second};
-      auto constraints = pattern_.type_constraints_.find(found->second.handle);
+      const Value aliased = found->second;
+      pattern_.required_tensor_bindings_.insert(aliased.handle);
+      symbols_.emplace(names.front(), aliased);
+      pattern_.aliases_.emplace(names.front(), aliased);
+      last_outputs_ = {aliased};
+      auto constraints = pattern_.type_constraints_.find(aliased.handle);
       last_result_ports_.push_back({names.front(), constraints == pattern_.type_constraints_.end()
                                                        ? InlinedVector<TypeConstraint, 1>{}
                                                        : constraints->second});
