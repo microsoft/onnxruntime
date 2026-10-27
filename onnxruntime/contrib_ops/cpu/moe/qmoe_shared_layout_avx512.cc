@@ -251,10 +251,14 @@ void Int4Group4Avx512(const uint8_t* w_base, const uint8_t* next_w_base, const u
   const int64_t raw_w_stride = k / 2;
   const __m128i mask = _mm_set1_epi8(0x0F);
   const __m512i eight = _mm512_set1_epi32(8);
-  __m512 acc0_0 = _mm512_setzero_ps(), acc0_1 = _mm512_setzero_ps(), acc0_2 = _mm512_setzero_ps(), acc0_3 = _mm512_setzero_ps();
-  __m512 acc1_0 = _mm512_setzero_ps(), acc1_1 = _mm512_setzero_ps(), acc1_2 = _mm512_setzero_ps(), acc1_3 = _mm512_setzero_ps();
-  __m512 acc2_0 = _mm512_setzero_ps(), acc2_1 = _mm512_setzero_ps(), acc2_2 = _mm512_setzero_ps(), acc2_3 = _mm512_setzero_ps();
-  __m512 acc3_0 = _mm512_setzero_ps(), acc3_1 = _mm512_setzero_ps(), acc3_2 = _mm512_setzero_ps(), acc3_3 = _mm512_setzero_ps();
+  __m512 acc[4][RT];
+#pragma unroll
+  for (int c = 0; c < 4; ++c) {
+#pragma unroll
+    for (int r = 0; r < RT; ++r) {
+      acc[c][r] = _mm512_setzero_ps();
+    }
+  }
 
   for (int64_t kb = 0; kb < blocks; ++kb) {
     const uint8_t* tile = WeightsPrepacked ? (w_base + (kb >> 1) * 128 + (kb & 1) * 16) : nullptr;
@@ -268,22 +272,13 @@ void Int4Group4Avx512(const uint8_t* w_base, const uint8_t* next_w_base, const u
         }
       }
     }
-    const __m512 al0 = _mm512_loadu_ps(a_reordered + 0 * k + kb * kBlockSize);
-    const __m512 ah0 = _mm512_loadu_ps(a_reordered + 0 * k + kb * kBlockSize + 16);
-    __m512 al1, ah1, al2, ah2, al3, ah3;
-    if constexpr (RT >= 2) {
-      al1 = _mm512_loadu_ps(a_reordered + 1 * k + kb * kBlockSize);
-      ah1 = _mm512_loadu_ps(a_reordered + 1 * k + kb * kBlockSize + 16);
+    __m512 al[RT], ah[RT];
+#pragma unroll
+    for (int r = 0; r < RT; ++r) {
+      al[r] = _mm512_loadu_ps(a_reordered + r * k + kb * kBlockSize);
+      ah[r] = _mm512_loadu_ps(a_reordered + r * k + kb * kBlockSize + 16);
     }
-    if constexpr (RT >= 3) {
-      al2 = _mm512_loadu_ps(a_reordered + 2 * k + kb * kBlockSize);
-      ah2 = _mm512_loadu_ps(a_reordered + 2 * k + kb * kBlockSize + 16);
-    }
-    if constexpr (RT >= 4) {
-      al3 = _mm512_loadu_ps(a_reordered + 3 * k + kb * kBlockSize);
-      ah3 = _mm512_loadu_ps(a_reordered + 3 * k + kb * kBlockSize + 16);
-    }
-    auto step_col = [&](int c, __m512& a0, __m512& a1, __m512& a2, __m512& a3) QMOE_LAMBDA_INLINE {
+    auto step_col = [&](int c) QMOE_LAMBDA_INLINE {
       const uint8_t* byte_ptr = WeightsPrepacked ? (tile + c * 32) : (w_base + c * raw_w_stride + kb * 16);
       const __m128i x = _mm_loadu_si128(reinterpret_cast<const __m128i*>(byte_ptr));
       const __m128i lo = _mm_and_si128(x, mask);
@@ -293,36 +288,24 @@ void Int4Group4Avx512(const uint8_t* w_base, const uint8_t* next_w_base, const u
       const uint16_t s_bits = ScalesBlockMajor ? scales[kb * n_total + n0 + c] : scales[(n0 + c) * blocks + kb];
       const float s_val = ScaleIsBf16 ? Avx512BFloat16BitsToFloat(s_bits) : Avx512HalfBitsToFloat(s_bits);
       const __m512 s = _mm512_set1_ps(s_val);
-      const __m512 prod0 = _mm512_fmadd_ps(wl, al0, _mm512_mul_ps(wh, ah0));
-      a0 = _mm512_fmadd_ps(prod0, s, a0);
-      if constexpr (RT >= 2) {
-        const __m512 prod1 = _mm512_fmadd_ps(wl, al1, _mm512_mul_ps(wh, ah1));
-        a1 = _mm512_fmadd_ps(prod1, s, a1);
-      }
-      if constexpr (RT >= 3) {
-        const __m512 prod2 = _mm512_fmadd_ps(wl, al2, _mm512_mul_ps(wh, ah2));
-        a2 = _mm512_fmadd_ps(prod2, s, a2);
-      }
-      if constexpr (RT >= 4) {
-        const __m512 prod3 = _mm512_fmadd_ps(wl, al3, _mm512_mul_ps(wh, ah3));
-        a3 = _mm512_fmadd_ps(prod3, s, a3);
+#pragma unroll
+      for (int r = 0; r < RT; ++r) {
+        const __m512 prod = _mm512_fmadd_ps(wl, al[r], _mm512_mul_ps(wh, ah[r]));
+        acc[c][r] = _mm512_fmadd_ps(prod, s, acc[c][r]);
       }
     };
-    step_col(0, acc0_0, acc0_1, acc0_2, acc0_3);
-    step_col(1, acc1_0, acc1_1, acc1_2, acc1_3);
-    step_col(2, acc2_0, acc2_1, acc2_2, acc2_3);
-    step_col(3, acc3_0, acc3_1, acc3_2, acc3_3);
+    step_col(0);
+    step_col(1);
+    step_col(2);
+    step_col(3);
   }
-  auto store_col = [&](int c, __m512 a0, __m512 a1, __m512 a2, __m512 a3) QMOE_LAMBDA_INLINE {
-    result[c][0] = _mm512_reduce_add_ps(a0);
-    if constexpr (RT >= 2) result[c][1] = _mm512_reduce_add_ps(a1);
-    if constexpr (RT >= 3) result[c][2] = _mm512_reduce_add_ps(a2);
-    if constexpr (RT >= 4) result[c][3] = _mm512_reduce_add_ps(a3);
-  };
-  store_col(0, acc0_0, acc0_1, acc0_2, acc0_3);
-  store_col(1, acc1_0, acc1_1, acc1_2, acc1_3);
-  store_col(2, acc2_0, acc2_1, acc2_2, acc2_3);
-  store_col(3, acc3_0, acc3_1, acc3_2, acc3_3);
+#pragma unroll
+  for (int c = 0; c < 4; ++c) {
+#pragma unroll
+    for (int r = 0; r < RT; ++r) {
+      result[c][r] = _mm512_reduce_add_ps(acc[c][r]);
+    }
+  }
 }
 
 template <int RT>
@@ -448,7 +431,23 @@ void Avx512Int4GemmRange(const uint8_t* weights, const uint16_t* scales, const u
     const int64_t left = m - r;
     const float* ar = a_reordered + r * k;
     float* orow = out + r * out_stride;
-    if (left >= 4) {
+    if (left >= 8) {
+      Int4RowTileAvx512<8>(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
+                           scale_is_bf16, bias_is_bf16, n_total, k, ar, orow, out_stride, n_begin, n_end);
+      r += 8;
+    } else if (left == 7) {
+      Int4RowTileAvx512<7>(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
+                           scale_is_bf16, bias_is_bf16, n_total, k, ar, orow, out_stride, n_begin, n_end);
+      r += 7;
+    } else if (left == 6) {
+      Int4RowTileAvx512<6>(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
+                           scale_is_bf16, bias_is_bf16, n_total, k, ar, orow, out_stride, n_begin, n_end);
+      r += 6;
+    } else if (left == 5) {
+      Int4RowTileAvx512<5>(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
+                           scale_is_bf16, bias_is_bf16, n_total, k, ar, orow, out_stride, n_begin, n_end);
+      r += 5;
+    } else if (left == 4) {
       Int4RowTileAvx512<4>(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
                            scale_is_bf16, bias_is_bf16, n_total, k, ar, orow, out_stride, n_begin, n_end);
       r += 4;
@@ -504,8 +503,9 @@ void Int3Group8Avx512(const uint8_t* w_base, const uint8_t* next_w_base, const u
 
   for (int64_t kb = 0; kb < blocks; ++kb) {
     const int64_t byte_off = kb * kBlockBytes;
-    if (next_w_base != nullptr && (kb & 1) == 0) {
-      for (int c = 0; c < 8; c += 2) {
+    if (next_w_base != nullptr) {
+      const int c_base = static_cast<int>((kb & 1) * 4);
+      for (int c = c_base; c < c_base + 4; ++c) {
         _mm_prefetch(reinterpret_cast<const char*>(next_w_base + c * raw_w_stride + byte_off), _MM_HINT_T0);
       }
     }
@@ -583,10 +583,14 @@ void Int3Group4Avx512(const uint8_t* w_base, const uint8_t* next_w_base, const u
   const __m512i shifts = _mm512_set_epi32(21, 18, 15, 12, 9, 6, 3, 0, 21, 18, 15, 12, 9, 6, 3, 0);
   const __m512i mask7 = _mm512_set1_epi32(7);
   const __m512i four = _mm512_set1_epi32(4);
-  __m512 acc0_0 = _mm512_setzero_ps(), acc0_1 = _mm512_setzero_ps(), acc0_2 = _mm512_setzero_ps(), acc0_3 = _mm512_setzero_ps();
-  __m512 acc1_0 = _mm512_setzero_ps(), acc1_1 = _mm512_setzero_ps(), acc1_2 = _mm512_setzero_ps(), acc1_3 = _mm512_setzero_ps();
-  __m512 acc2_0 = _mm512_setzero_ps(), acc2_1 = _mm512_setzero_ps(), acc2_2 = _mm512_setzero_ps(), acc2_3 = _mm512_setzero_ps();
-  __m512 acc3_0 = _mm512_setzero_ps(), acc3_1 = _mm512_setzero_ps(), acc3_2 = _mm512_setzero_ps(), acc3_3 = _mm512_setzero_ps();
+  __m512 acc[4][RT];
+#pragma unroll
+  for (int c = 0; c < 4; ++c) {
+#pragma unroll
+    for (int r = 0; r < RT; ++r) {
+      acc[c][r] = _mm512_setzero_ps();
+    }
+  }
 
   for (int64_t kb = 0; kb < blocks; ++kb) {
     const int64_t byte_off = kb * kBlockBytes;
@@ -595,80 +599,49 @@ void Int3Group4Avx512(const uint8_t* w_base, const uint8_t* next_w_base, const u
         _mm_prefetch(reinterpret_cast<const char*>(next_w_base + c * raw_w_stride + byte_off), _MM_HINT_T0);
       }
     }
-    const __m512 a0_0 = _mm512_loadu_ps(a_natural + 0 * k + kb * BlockSize);
-    const __m512 a1_0 = _mm512_loadu_ps(a_natural + 0 * k + kb * BlockSize + 16);
-    __m512 a2_0, a3_0;
-    if constexpr (BlockSize == 64) {
-      a2_0 = _mm512_loadu_ps(a_natural + 0 * k + kb * BlockSize + 32);
-      a3_0 = _mm512_loadu_ps(a_natural + 0 * k + kb * BlockSize + 48);
-    }
-    __m512 a0_1, a1_1, a2_1, a3_1;
-    __m512 a0_2, a1_2, a2_2, a3_2;
-    __m512 a0_3, a1_3, a2_3, a3_3;
-    if constexpr (RT >= 2) {
-      a0_1 = _mm512_loadu_ps(a_natural + 1 * k + kb * BlockSize);
-      a1_1 = _mm512_loadu_ps(a_natural + 1 * k + kb * BlockSize + 16);
+    __m512 a0[RT], a1[RT], a2[RT], a3[RT];
+#pragma unroll
+    for (int r = 0; r < RT; ++r) {
+      a0[r] = _mm512_loadu_ps(a_natural + r * k + kb * BlockSize);
+      a1[r] = _mm512_loadu_ps(a_natural + r * k + kb * BlockSize + 16);
       if constexpr (BlockSize == 64) {
-        a2_1 = _mm512_loadu_ps(a_natural + 1 * k + kb * BlockSize + 32);
-        a3_1 = _mm512_loadu_ps(a_natural + 1 * k + kb * BlockSize + 48);
+        a2[r] = _mm512_loadu_ps(a_natural + r * k + kb * BlockSize + 32);
+        a3[r] = _mm512_loadu_ps(a_natural + r * k + kb * BlockSize + 48);
       }
     }
-    if constexpr (RT >= 3) {
-      a0_2 = _mm512_loadu_ps(a_natural + 2 * k + kb * BlockSize);
-      a1_2 = _mm512_loadu_ps(a_natural + 2 * k + kb * BlockSize + 16);
-      if constexpr (BlockSize == 64) {
-        a2_2 = _mm512_loadu_ps(a_natural + 2 * k + kb * BlockSize + 32);
-        a3_2 = _mm512_loadu_ps(a_natural + 2 * k + kb * BlockSize + 48);
-      }
-    }
-    if constexpr (RT >= 4) {
-      a0_3 = _mm512_loadu_ps(a_natural + 3 * k + kb * BlockSize);
-      a1_3 = _mm512_loadu_ps(a_natural + 3 * k + kb * BlockSize + 16);
-      if constexpr (BlockSize == 64) {
-        a2_3 = _mm512_loadu_ps(a_natural + 3 * k + kb * BlockSize + 32);
-        a3_3 = _mm512_loadu_ps(a_natural + 3 * k + kb * BlockSize + 48);
-      }
-    }
-    auto step_col = [&](int c, __m512& acc_r0, __m512& acc_r1, __m512& acc_r2, __m512& acc_r3) QMOE_LAMBDA_INLINE {
+    auto step_col = [&](int c) QMOE_LAMBDA_INLINE {
       const uint8_t* p = w_base + c * raw_w_stride + byte_off;
       const uint16_t s_bits = scales[(n0 + c) * blocks + kb];
       const float s_val = ScaleIsBf16 ? Avx512BFloat16BitsToFloat(s_bits) : Avx512HalfBitsToFloat(s_bits);
       const __m512 s = _mm512_set1_ps(s_val);
       const __m512 w0 = Unpack16Int3Avx512(p + 0, shifts, mask7, four);
       const __m512 w1 = Unpack16Int3Avx512(p + 6, shifts, mask7, four);
-      __m512 prod0 = _mm512_fmadd_ps(w0, a0_0, _mm512_mul_ps(w1, a1_0));
-      __m512 prod1, prod2, prod3;
-      if constexpr (RT >= 2) prod1 = _mm512_fmadd_ps(w0, a0_1, _mm512_mul_ps(w1, a1_1));
-      if constexpr (RT >= 3) prod2 = _mm512_fmadd_ps(w0, a0_2, _mm512_mul_ps(w1, a1_2));
-      if constexpr (RT >= 4) prod3 = _mm512_fmadd_ps(w0, a0_3, _mm512_mul_ps(w1, a1_3));
+      __m512 w2, w3;
       if constexpr (BlockSize == 64) {
-        const __m512 w2 = Unpack16Int3Avx512(p + 12, shifts, mask7, four);
-        const __m512 w3 = Unpack16Int3Avx512(p + 18, shifts, mask7, four);
-        prod0 = _mm512_fmadd_ps(w2, a2_0, _mm512_fmadd_ps(w3, a3_0, prod0));
-        if constexpr (RT >= 2) prod1 = _mm512_fmadd_ps(w2, a2_1, _mm512_fmadd_ps(w3, a3_1, prod1));
-        if constexpr (RT >= 3) prod2 = _mm512_fmadd_ps(w2, a2_2, _mm512_fmadd_ps(w3, a3_2, prod2));
-        if constexpr (RT >= 4) prod3 = _mm512_fmadd_ps(w2, a2_3, _mm512_fmadd_ps(w3, a3_3, prod3));
+        w2 = Unpack16Int3Avx512(p + 12, shifts, mask7, four);
+        w3 = Unpack16Int3Avx512(p + 18, shifts, mask7, four);
       }
-      acc_r0 = _mm512_fmadd_ps(prod0, s, acc_r0);
-      if constexpr (RT >= 2) acc_r1 = _mm512_fmadd_ps(prod1, s, acc_r1);
-      if constexpr (RT >= 3) acc_r2 = _mm512_fmadd_ps(prod2, s, acc_r2);
-      if constexpr (RT >= 4) acc_r3 = _mm512_fmadd_ps(prod3, s, acc_r3);
+#pragma unroll
+      for (int r = 0; r < RT; ++r) {
+        __m512 prod = _mm512_fmadd_ps(w0, a0[r], _mm512_mul_ps(w1, a1[r]));
+        if constexpr (BlockSize == 64) {
+          prod = _mm512_fmadd_ps(w2, a2[r], _mm512_fmadd_ps(w3, a3[r], prod));
+        }
+        acc[c][r] = _mm512_fmadd_ps(prod, s, acc[c][r]);
+      }
     };
-    step_col(0, acc0_0, acc0_1, acc0_2, acc0_3);
-    step_col(1, acc1_0, acc1_1, acc1_2, acc1_3);
-    step_col(2, acc2_0, acc2_1, acc2_2, acc2_3);
-    step_col(3, acc3_0, acc3_1, acc3_2, acc3_3);
+    step_col(0);
+    step_col(1);
+    step_col(2);
+    step_col(3);
   }
-  auto store_col = [&](int c, __m512 a0, __m512 a1, __m512 a2, __m512 a3) QMOE_LAMBDA_INLINE {
-    result[c][0] = _mm512_reduce_add_ps(a0);
-    if constexpr (RT >= 2) result[c][1] = _mm512_reduce_add_ps(a1);
-    if constexpr (RT >= 3) result[c][2] = _mm512_reduce_add_ps(a2);
-    if constexpr (RT >= 4) result[c][3] = _mm512_reduce_add_ps(a3);
-  };
-  store_col(0, acc0_0, acc0_1, acc0_2, acc0_3);
-  store_col(1, acc1_0, acc1_1, acc1_2, acc1_3);
-  store_col(2, acc2_0, acc2_1, acc2_2, acc2_3);
-  store_col(3, acc3_0, acc3_1, acc3_2, acc3_3);
+#pragma unroll
+  for (int c = 0; c < 4; ++c) {
+#pragma unroll
+    for (int r = 0; r < RT; ++r) {
+      result[c][r] = _mm512_reduce_add_ps(acc[c][r]);
+    }
+  }
 }
 
 template <int RT>
@@ -749,7 +722,23 @@ void Avx512Int3GemmRange(const uint8_t* weights, const uint16_t* scales, const u
     const int64_t left = m - r;
     const float* ar = a_natural + r * k;
     float* orow = out + r * out_stride;
-    if (left >= 4) {
+    if (left >= 8) {
+      Int3RowTileAvx512<8>(weights, scales, bias, block_size, scale_is_bf16, bias_is_bf16,
+                           n_total, k, ar, orow, out_stride, n_begin, n_end);
+      r += 8;
+    } else if (left == 7) {
+      Int3RowTileAvx512<7>(weights, scales, bias, block_size, scale_is_bf16, bias_is_bf16,
+                           n_total, k, ar, orow, out_stride, n_begin, n_end);
+      r += 7;
+    } else if (left == 6) {
+      Int3RowTileAvx512<6>(weights, scales, bias, block_size, scale_is_bf16, bias_is_bf16,
+                           n_total, k, ar, orow, out_stride, n_begin, n_end);
+      r += 6;
+    } else if (left == 5) {
+      Int3RowTileAvx512<5>(weights, scales, bias, block_size, scale_is_bf16, bias_is_bf16,
+                           n_total, k, ar, orow, out_stride, n_begin, n_end);
+      r += 5;
+    } else if (left == 4) {
       Int3RowTileAvx512<4>(weights, scales, bias, block_size, scale_is_bf16, bias_is_bf16,
                            n_total, k, ar, orow, out_stride, n_begin, n_end);
       r += 4;
