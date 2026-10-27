@@ -50,7 +50,7 @@ GatedDeltaNet::GatedDeltaNet(const OpKernelInfo& info) : WebGpuKernel(info) {
   const auto gate_activation = info.GetAttrOrDefault<std::string>("gate_activation", "none");
   ORT_ENFORCE(gate_activation == "none" || gate_activation == "softplus" ||
                   gate_activation == "qwen",
-              "gate_activation must be one of: none, softplus");
+              "gate_activation must be one of: none, softplus (legacy alias: qwen)");
   qwen_gate_ = gate_activation == "softplus" || gate_activation == "qwen";
   const auto beta_activation = info.GetAttrOrDefault<std::string>("beta_activation", "none");
   ORT_ENFORCE(beta_activation == "none" || beta_activation == "sigmoid",
@@ -453,9 +453,9 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
     ORT_RETURN_IF_NOT(a_log != nullptr && dt_bias != nullptr &&
                           a_log->Shape().NumDimensions() == 1 && a_log->Shape()[0] == hv &&
                           dt_bias->Shape().NumDimensions() == 1 && dt_bias->Shape()[0] == hv,
-                      "gate_activation=qwen requires a_log and dt_bias with shape [num_heads_v]");
+                      "gate_activation=softplus requires a_log and dt_bias with shape [num_heads_v]");
   } else {
-    ORT_RETURN_IF_NOT(a_log == nullptr && dt_bias == nullptr, "a_log and dt_bias require gate_activation=qwen");
+    ORT_RETURN_IF_NOT(a_log == nullptr && dt_bias == nullptr, "a_log and dt_bias require gate_activation=softplus");
   }
 
   TensorShapeVector output_dims(q_shape.GetDims().begin(), q_shape.GetDims().begin() + token_dims);

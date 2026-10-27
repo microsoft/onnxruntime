@@ -4809,7 +4809,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("state_update_capacity",
               "Compact speculative state-update capture capacity (CUDA extended path only, 0..8); "
               "when > 0, output 2 has shape (batch_size, state_update_capacity, channels) and records "
-              "the first min(sequence_length, state_update_capacity) projected input rows.",
+              "the first min(sequence_length, state_update_capacity) projected input rows and any "
+              "remaining rows are zero.",
               AttributeProto::INT, static_cast<int64_t>(0))
         .Attr("activation",
               "Fused activation function. One of: 'silu', 'swish', 'none'. "
@@ -4910,6 +4911,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           const int64_t history = getAttribute(ctx, "state_length", 0);
           const int64_t state_layout = getAttribute(ctx, "state_channels_last", -1);
           const int64_t state_update_capacity = getAttribute(ctx, "state_update_capacity", 0);
+          const bool has_state_update_output = ctx.getNumOutputs() > 2 && ctx.hasOutput(2);
           if (input_channels < 0 || input_channels > std::numeric_limits<int>::max() ||
               channel_offset < 0 || channel_offset > std::numeric_limits<int>::max() ||
               history < 0 || history > std::numeric_limits<int>::max() ||
@@ -4918,15 +4920,15 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             fail_shape_inference("CausalConvWithState: invalid extended attributes");
           }
           if (input_channels != 0 || channel_offset != 0 || history != 0 || state_layout != -1 ||
-              state_update_capacity != 0 || ctx.getNumOutputs() > 2) {
+              state_update_capacity != 0 || has_state_update_output) {
             if (getAttribute(ctx, "channels_last", 0) != 1 || getAttribute(ctx, "ndim", 1) != 1 ||
                 state_window != 0 || getAttribute(ctx, "dilation", 1) < 1) {
               fail_shape_inference("CausalConvWithState: extended attributes require channels_last=1, ndim=1, state_window=0");
             }
-            if (ctx.getNumOutputs() > 2 && state_update_capacity <= 0) {
+            if (has_state_update_output && state_update_capacity <= 0) {
               fail_shape_inference("CausalConvWithState: state_update output requires state_update_capacity > 0");
             }
-            if (ctx.getNumOutputs() > 2) propagateElemTypeFromInputToOutput(ctx, 0, 2);
+            if (has_state_update_output) propagateElemTypeFromInputToOutput(ctx, 0, 2);
             if (!hasInputShape(ctx, 0)) return;
             const auto& input = getInputShape(ctx, 0);
             if (input.dim_size() != 3) fail_shape_inference("CausalConvWithState: extended input must have rank 3");
@@ -4964,7 +4966,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             *state.add_dim() = state_layout == 0 ? *channels : length;
             *state.add_dim() = state_layout == 0 ? length : *channels;
             updateOutputShape(ctx, 1, state);
-            if (state_update_capacity > 0 && ctx.getNumOutputs() > 2 && ctx.hasOutput(2)) {
+            if (state_update_capacity > 0 && has_state_update_output) {
               TensorShapeProto update_shape;
               *update_shape.add_dim() = input.dim(0);
               update_shape.add_dim()->set_dim_value(state_update_capacity);
@@ -5672,8 +5674,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::FLOAT, 0.0f)
         .Attr("gate_activation",
               "'none' (default) treats `decay` as the effective log-space decay. 'softplus' computes "
-              "-exp(a_log) * Softplus(decay + dt_bias) in float32. 'qwen' is also accepted for "
-              "compatibility.",
+              "-exp(a_log) * Softplus(decay + dt_bias) in float32. 'qwen' is accepted as a legacy "
+              "alias of 'softplus' with identical behavior.",
               AttributeProto::STRING, std::string("none"))
         .Attr("beta_activation",
               "'none' (default) treats `beta` as the effective update rate. 'sigmoid' applies a "

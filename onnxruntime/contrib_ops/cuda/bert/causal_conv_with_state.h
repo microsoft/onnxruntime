@@ -30,6 +30,7 @@ class CausalConvWithState final : public onnxruntime::cuda::CudaKernel {
   int state_length_;
   int state_channels_last_;
   int state_update_capacity_;
+  bool has_state_update_output_;
 };
 
 }  // namespace cuda

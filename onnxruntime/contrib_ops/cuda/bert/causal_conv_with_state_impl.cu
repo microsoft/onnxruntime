@@ -41,10 +41,10 @@ __global__ void CausalConvProjectionTiledK4Kernel(
   const int pos_base = static_cast<int>(blockIdx.z) * kPosTile;
 
   const float b_val = bias == nullptr ? 0.0f : to_float(bias[c]);
-  const float w0 = to_float(weight[c * 4 + 0]);
-  const float w1 = to_float(weight[c * 4 + 1]);
-  const float w2 = to_float(weight[c * 4 + 2]);
-  const float w3 = to_float(weight[c * 4 + 3]);
+  const float w0 = to_float(weight[static_cast<int64_t>(c) * 4 + 0]);
+  const float w1 = to_float(weight[static_cast<int64_t>(c) * 4 + 1]);
+  const float w2 = to_float(weight[static_cast<int64_t>(c) * 4 + 2]);
+  const float w3 = to_float(weight[static_cast<int64_t>(c) * 4 + 3]);
 
   auto load_src = [&](int src) -> float {
     if (src >= 0) {
@@ -113,7 +113,7 @@ __global__ void CausalConvProjectionKernel(
                                      ? to_float(cur_in)
                                      : to_float(input[(static_cast<int64_t>(b) * length + source) * input_width + channel_offset + c]))
                               : (past == nullptr ? 0.0f : to_float(past[state_layout.Offset(b, state_length + source, c)]));
-      sum += value * to_float(weight[c * kernel_size + tap]);
+      sum += value * to_float(weight[static_cast<int64_t>(c) * kernel_size + tap]);
     }
     if (apply_silu) sum = sum / (1.0f + expf(-sum));
     output[(static_cast<int64_t>(b) * length + position) * channels + c] = from_float<T>(sum);
@@ -536,6 +536,15 @@ Status LaunchCausalConvProjectionKernel(
     int state_length, bool state_channels_last, bool apply_silu,
     T* state_update, int state_update_capacity) {
   const dim3 grid((channels - 1) / 128 + 1, batch, length);
+  if (state_update != nullptr && length < state_update_capacity) {
+    // The kernels write only the first min(length, capacity) rows per batch; zero the rest so the
+    // output does not expose stale allocator contents. A strided memset keeps this graph-capturable.
+    const size_t row_bytes = static_cast<size_t>(channels) * sizeof(T);
+    CUDA_RETURN_IF_ERROR(cudaMemset2DAsync(
+        state_update + static_cast<size_t>(length) * channels,
+        static_cast<size_t>(state_update_capacity) * row_bytes, 0,
+        static_cast<size_t>(state_update_capacity - length) * row_bytes, static_cast<size_t>(batch), stream));
+  }
   static const int specialize = ParseEnvironmentVariableWithDefault<int>("ORT_CAUSAL_CONV_S2_SPECIALIZE", 1);
   ORT_ENFORCE(specialize == 0 || specialize == 1, "ORT_CAUSAL_CONV_S2_SPECIALIZE must be 0 or 1.");
   if (specialize && length >= 1 && kernel_size == 4 && dilation == 1 && state_length == 4) {
