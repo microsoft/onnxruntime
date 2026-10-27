@@ -376,6 +376,17 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
   ORT_ENFORCE(int_dequant_max_scratch_bytes_ > 0,
               int_dequant_max_scratch_bytes_source, " must be greater than 0, got ",
               int_dequant_max_scratch_bytes_, ".");
+  const auto configured_disable_int3_tc_prefill =
+      op_kernel_info.GetConfigOptions().GetConfigEntry(kQMoEDisableInt3TensorCorePrefillConfig);
+  if (configured_disable_int3_tc_prefill.has_value()) {
+    ORT_ENFORCE(*configured_disable_int3_tc_prefill == "0" || *configured_disable_int3_tc_prefill == "1",
+                kQMoEDisableInt3TensorCorePrefillConfig, " must be '0' or '1', got '",
+                *configured_disable_int3_tc_prefill, "'.");
+    disable_int3_tc_prefill_ = *configured_disable_int3_tc_prefill == "1";
+  } else {
+    disable_int3_tc_prefill_ =
+        onnxruntime::ParseEnvironmentVariableWithDefault<int>(kQMoEDisableInt3TensorCorePrefill, 0) != 0;
+  }
   ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("expert_weight_bits", &expert_weight_bits_).IsOK());
   ORT_ENFORCE(expert_weight_bits_ == 8 || expert_weight_bits_ == 4 || expert_weight_bits_ == 3 || expert_weight_bits_ == 2,
               "expert_weight_bits must be 2, 3, 4, or 8, but got ", expert_weight_bits_);
@@ -3164,8 +3175,6 @@ Status QMoE::ComputeInt3(OpKernelContext* context) const {
   if (rows == 0) return Status::OK();
   const size_t element_size = input->DataType()->Size();
 
-  static const bool disable_int3_tc_prefill =
-      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_DISABLE_INT3_TENSORCORE_PREFILL", 0) != 0;
   static const int int3_prefill_min_rows =
       onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_INT3_PREFILL_MIN_ROWS", 16);
   namespace ck = onnxruntime::llm::kernels::cutlass_kernels;
@@ -3176,7 +3185,7 @@ Status QMoE::ComputeInt3(OpKernelContext* context) const {
     return tensor == nullptr || reinterpret_cast<uintptr_t>(tensor->DataRaw()) % alignment == 0;
   };
   const bool can_use_tc_prefill =
-      !disable_int3_tc_prefill && rows >= int3_prefill_min_rows &&
+      !disable_int3_tc_prefill_ && rows >= int3_prefill_min_rows &&
       first_zeros == nullptr && second_zeros == nullptr &&
       router_weights == nullptr && !use_sparse_mixer_ &&
       sm_ >= 80 && experts <= 512 &&

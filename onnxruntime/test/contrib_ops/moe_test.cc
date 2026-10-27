@@ -3748,6 +3748,137 @@ TEST(MoETest, QMoETest_Int3CudaPrefillBiasPrecisionParity) {
 #endif
 }
 
+// The FC1 gate accumulator of every row is 16384 * -4 = -65536, which is finite in FP32 and BF16 but outside the FP16
+// range. The FP32 SIMT kernels evaluate SwiGLU from the accumulator (silu(-65536) underflows to -0) and stay finite.
+// The default Tensor Core prefill stores the FC1 result as ElementType before the activation, so FP16 turns the gate
+// into -inf and silu(-inf) is NaN. That documented limitation is why FP16 only runs here with the Tensor Core
+// prefill disabled, while BF16 also runs on the default path.
+template <typename ElementType>
+void RunInt3CudaPrefillPreActivationOverflowTest(const char* disable_tc_prefill_option,
+                                                 const char* expected_failure = nullptr) {
+  constexpr int64_t num_experts = 1;
+  constexpr int64_t num_rows = 16;
+  constexpr int64_t hidden_size = 256;
+  constexpr int64_t inter_size = 128;
+  constexpr int64_t fc1_rows = 2 * inter_size;
+  constexpr int64_t block_size = 64;
+  constexpr int64_t bits = 3;
+  constexpr uint8_t kZeroCode = 4;
+  constexpr uint8_t kMinusFour = 0;
+  constexpr uint8_t kPlusOne = 5;
+  constexpr uint8_t kPlusTwo = 6;
+  constexpr bool is_bf16 = std::is_same_v<ElementType, BFloat16>;
+
+  const auto round_elem = [](float v) { return ElementType(v).ToFloat(); };
+  const auto convert = [](const std::vector<float>& src) {
+    std::vector<ElementType> dst(src.size());
+    for (size_t i = 0; i < src.size(); ++i) dst[i] = ElementType(src[i]);
+    return dst;
+  };
+
+  std::vector<uint8_t> fc1_codes(static_cast<size_t>(fc1_rows * hidden_size), kZeroCode);
+  std::vector<uint8_t> fc2_codes(static_cast<size_t>(hidden_size * inter_size), kZeroCode);
+  const std::vector<float> fc1_scales(static_cast<size_t>(fc1_rows * (hidden_size / block_size)), 1.0f);
+  const std::vector<float> fc2_scales(static_cast<size_t>(hidden_size * (inter_size / block_size)), 1.0f);
+
+  std::vector<float> token(static_cast<size_t>(hidden_size), 0.0f);
+  token[0] = 16384.0f;
+  token[1] = 1.0f;
+  token[2] = 2.0f;
+  token[3] = 1.5f;
+
+  // Interleaved FC1 rows: row 2j is gate j and row 2j + 1 is up j.
+  // Column 0: gate = -65536, up = 1. Column 1: gate = 2, up = 3. The other columns are zero.
+  fc1_codes[static_cast<size_t>(0 * hidden_size + 0)] = kMinusFour;
+  fc1_codes[static_cast<size_t>(1 * hidden_size + 1)] = kPlusOne;
+  fc1_codes[static_cast<size_t>(2 * hidden_size + 2)] = kPlusOne;
+  fc1_codes[static_cast<size_t>(3 * hidden_size + 3)] = kPlusTwo;
+  // Every FC2 row sums activations 0 and 1.
+  for (int64_t c = 0; c < hidden_size; ++c) {
+    fc2_codes[static_cast<size_t>(c * inter_size + 0)] = kPlusOne;
+    fc2_codes[static_cast<size_t>(c * inter_size + 1)] = kPlusOne;
+  }
+
+  const float activation1 = round_elem(2.0f / (1.0f + std::exp(-2.0f)) * 3.0f);
+  std::vector<float> fc2_bias(static_cast<size_t>(hidden_size));
+  std::vector<float> expected_row(static_cast<size_t>(hidden_size));
+  for (int64_t c = 0; c < hidden_size; ++c) {
+    fc2_bias[static_cast<size_t>(c)] = static_cast<float>(((c * 7) % 11) - 5) * 0.125f;
+    expected_row[static_cast<size_t>(c)] = round_elem(activation1 + round_elem(fc2_bias[static_cast<size_t>(c)]));
+  }
+
+  std::vector<float> input(static_cast<size_t>(num_rows * hidden_size));
+  std::vector<float> expected(static_cast<size_t>(num_rows * hidden_size));
+  for (int64_t r = 0; r < num_rows; ++r) {
+    std::copy(token.begin(), token.end(), input.begin() + r * hidden_size);
+    std::copy(expected_row.begin(), expected_row.end(), expected.begin() + r * hidden_size);
+  }
+  const std::vector<float> router_probs(static_cast<size_t>(num_rows * num_experts), 1.0f);
+
+  const auto fc1_packed = PackLsbBits(fc1_codes, num_experts * fc1_rows, hidden_size, bits);
+  const auto fc2_packed = PackLsbBits(fc2_codes, num_experts * hidden_size, inter_size, bits);
+
+  OpTester tester("QMoE", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("k", 1);
+  tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
+  tester.AddAttribute<std::string>("activation_type", "swiglu");
+  tester.AddAttribute<int64_t>("swiglu_fusion", 1);
+  tester.AddAttribute<int64_t>("expert_weight_bits", bits);
+  tester.AddAttribute<int64_t>("weights_prepacked", 0);
+  tester.AddAttribute<int64_t>("block_size", block_size);
+  tester.AddInput<ElementType>("input", {num_rows, hidden_size}, convert(input));
+  tester.AddInput<ElementType>("router_probs", {num_rows, num_experts}, convert(router_probs));
+  tester.AddInput<uint8_t>("fc1_experts_weights", {num_experts, fc1_rows, (hidden_size * bits + 7) / 8},
+                           fc1_packed, true);
+  tester.AddInput<ElementType>("fc1_scales", {num_experts, fc1_rows, hidden_size / block_size},
+                               convert(fc1_scales), true);
+  tester.AddOptionalInputEdge<ElementType>();  // fc1_experts_bias
+  tester.AddInput<uint8_t>("fc2_experts_weights", {num_experts, hidden_size, (inter_size * bits + 7) / 8},
+                           fc2_packed, true);
+  tester.AddInput<ElementType>("fc2_scales", {num_experts, hidden_size, inter_size / block_size},
+                               convert(fc2_scales), true);
+  tester.AddInput<ElementType>("fc2_experts_bias", {num_experts, hidden_size}, convert(fc2_bias), true);
+  tester.AddOutput<ElementType>("output", {num_rows, hidden_size}, convert(expected));
+  tester.SetOutputTolerance(is_bf16 ? 0.06f : 0.02f, is_bf16 ? 0.02f : 0.01f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  if (disable_tc_prefill_option != nullptr) {
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+        "ep.cuda.qmoe_disable_int3_tensorcore_prefill", disable_tc_prefill_option));
+  }
+  SCOPED_TRACE(MakeString("is_bf16=", is_bf16, " disable_tc_prefill_option=",
+                          disable_tc_prefill_option == nullptr ? "<unset>" : disable_tc_prefill_option));
+  tester.Run(session_options,
+             expected_failure == nullptr ? OpTester::ExpectResult::kExpectSuccess
+                                         : OpTester::ExpectResult::kExpectFailure,
+             expected_failure == nullptr ? "" : expected_failure, {}, nullptr, &execution_providers);
+}
+
+TEST(MoETest, QMoETest_Int3CudaPrefillPreActivationOverflowExactWhenTensorCoreDisabled) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device with compute capability 8.0 or newer is required.";
+  }
+  RunInt3CudaPrefillPreActivationOverflowTest<MLFloat16>("1");
+  {
+    ScopedEnvironmentVariables scoped_env_vars{{{"ORT_DISABLE_INT3_TENSORCORE_PREFILL", "1"}}};
+    RunInt3CudaPrefillPreActivationOverflowTest<MLFloat16>(nullptr);
+  }
+#if defined(ENABLE_BF16)
+  RunInt3CudaPrefillPreActivationOverflowTest<BFloat16>(nullptr);
+  RunInt3CudaPrefillPreActivationOverflowTest<BFloat16>("1");
+#endif
+}
+
+TEST(MoETest, QMoETest_Int3CudaPrefillDisableTensorCoreOptionRejectsInvalidValue) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device with compute capability 8.0 or newer is required.";
+  }
+  RunInt3CudaPrefillPreActivationOverflowTest<MLFloat16>("2", "ep.cuda.qmoe_disable_int3_tensorcore_prefill must be '0' or '1'");
+}
+
 #ifdef USE_CUDA
 // Every QMoE operand is a graph input so a test can bind it to a device buffer at an arbitrary byte offset.
 static std::string BuildQMoEInt3ExternalBuffersModel(int64_t fc1_bits, int64_t fc2_bits, int64_t num_experts,
