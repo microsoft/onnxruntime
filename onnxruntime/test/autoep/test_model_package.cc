@@ -1238,6 +1238,7 @@ TEST(ModelPackageTest, VariantSelection_StopsAtEpWithUncheckedVariant) {
       Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_kernel_registry_info, kernel_ep));
   const OrtEpDevice* cpu_ep = nullptr;
   ASSERT_NO_FATAL_FAILURE(Utils::GetEp(*ort_env, kCpuExecutionProvider, cpu_ep));
+  ASSERT_NE(cpu_ep, nullptr) << "The ORT CPU EP did not publish an OrtEpDevice.";
 
   // Expects variant selection to fail when a variant's compatibility cannot be checked and no other variant matches
   // that EP. The error message must include ep_name.
