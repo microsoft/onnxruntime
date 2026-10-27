@@ -8,6 +8,8 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <optional>
 #include <set>
@@ -17,6 +19,7 @@
 
 #include <gsl/gsl>
 #include <gtest/gtest.h>
+#include <nlohmann/json.hpp>
 
 #include "core/framework/allocator.h"
 #include "core/graph/constants.h"
@@ -195,6 +198,115 @@ class WebGpuPluginSharedAllocatorTest : public ::testing::Test {
   std::optional<ScopedWebGpuPluginRegistration> registration_;
   std::vector<const OrtEpDevice*> ep_devices_;
 };
+
+TEST_F(WebGpuPluginSharedAllocatorTest, InferenceWithCpuTensorMemoryTypes) {
+  const auto ep_device = EpDevice();
+#if !defined(ORT_UNIT_TEST_HAS_WEBGPU_STATIC_PLUGIN_EP)
+  const auto metadata = ep_device.EpMetadata().GetKeyValuePairs();
+  ASSERT_NE(metadata.find(kOrtEpDevice_EpMetadataKey_LibraryPath), metadata.end())
+      << "This regression must run against the plugin, not built-in WebGPU.";
+#endif
+
+  // X is a CPU-side Pad parameter and a GPU-side Mul operand. A GPU-only consumer
+  // would let the framework copy X before Run, bypassing MemcpyFromHost's adapter.
+  ONNX_NAMESPACE::ModelProto model;
+  model.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  model.add_opset_import()->set_version(18);
+  auto* graph = model.mutable_graph();
+  graph->set_name("webgpu_cpu_tensor_memory_types");
+  const auto add_value = [&](const char* name, bool is_input, std::initializer_list<int64_t> dims) {
+    auto* value = is_input ? graph->add_input() : graph->add_output();
+    value->set_name(name);
+    auto* type = value->mutable_type()->mutable_tensor_type();
+    type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    auto* shape = type->mutable_shape();
+    for (const auto dim : dims) {
+      shape->add_dim()->set_dim_value(dim);
+    }
+  };
+  add_value("X", true, {});
+  add_value("Y", false, {});
+  add_value("P", false, {3});
+  auto* pad_data = graph->add_initializer();
+  pad_data->set_name("pad_data");
+  pad_data->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  pad_data->add_dims(1);
+  pad_data->add_float_data(3.0f);
+  auto* pads = graph->add_initializer();
+  pads->set_name("pads");
+  pads->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  pads->add_dims(2);
+  pads->add_int64_data(1);
+  pads->add_int64_data(1);
+  auto* mul = graph->add_node();
+  mul->set_op_type("Mul");
+  mul->add_input("X");
+  mul->add_input("X");
+  mul->add_output("Y");
+  auto* pad = graph->add_node();
+  pad->set_op_type("Pad");
+  pad->add_input("pad_data");
+  pad->add_input("pads");
+  pad->add_input("X");
+  pad->add_output("P");
+
+  Ort::SessionOptions options;
+  options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_DISABLE_ALL);
+  options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
+  options.EnableProfiling(ORT_TSTR("webgpu_tensor_memory_types"));
+  options.AppendExecutionProvider_V2(Env(), {ep_device}, Ort::KeyValuePairs{});
+  const auto model_bytes = model.SerializeAsString();
+  Ort::Session session(Env(), model_bytes.data(), model_bytes.size(), options);
+
+  float input_data = 2.0f;
+  constexpr std::array<float, 3> expected_padding{2, 3, 2};
+  const char* input_names[] = {"X"};
+  const char* output_names[] = {"Y", "P"};
+
+  // C#'s default CPU tensor descriptor uses OrtMemTypeCPUOutput (-1). Device
+  // memory type HOST_ACCESSIBLE (5) is independent of these OrtMemType values.
+  const std::array<Ort::MemoryInfo, 4> memory_infos{
+      Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault),
+      Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPUInput),
+      Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPUOutput),
+      Ort::MemoryInfo("Cpu", OrtMemoryInfoDeviceType_CPU, 0, 0,
+                      OrtDeviceMemoryType_HOST_ACCESSIBLE, 0, OrtDeviceAllocator)};
+  for (const auto& memory_info : memory_infos) {
+    SCOPED_TRACE(::testing::Message() << memory_info.GetMemoryType() << "/" << memory_info.GetDeviceMemoryType());
+    auto input = Ort::Value::CreateTensor<float>(
+        memory_info, &input_data, 1, nullptr, 0);
+    auto outputs = session.Run(Ort::RunOptions{nullptr}, input_names, &input, 1, output_names, 2);
+    ASSERT_EQ(outputs.size(), 2u);
+    ASSERT_EQ(outputs[0].GetTensorTypeAndShapeInfo().GetElementCount(), 1u);
+    EXPECT_FLOAT_EQ(outputs[0].GetTensorData<float>()[0], 4.0f);
+    ASSERT_EQ(outputs[1].GetTensorTypeAndShapeInfo().GetElementCount(), expected_padding.size());
+    const auto* actual_padding = outputs[1].GetTensorData<float>();
+    for (size_t i = 0; i < expected_padding.size(); ++i) {
+      EXPECT_FLOAT_EQ(actual_padding[i], expected_padding[i]);
+    }
+  }
+
+  Ort::AllocatorWithDefaultOptions allocator;
+  const auto profile_path = session.EndProfilingAllocated(allocator);
+  nlohmann::json profile;
+  {
+    std::ifstream file(profile_path.get());
+    ASSERT_TRUE(file.is_open());
+    file >> profile;
+  }
+  std::filesystem::remove(profile_path.get());
+  size_t copies_from_host = 0;
+  for (const auto& event : profile) {
+    if (event.value("cat", "") == "Node" && event.contains("args")) {
+      const auto& args = event["args"];
+      if (args.value("op_name", "") == "MemcpyFromHost") {
+        EXPECT_EQ(args.value("provider", ""), kWebGpuExecutionProvider);
+        ++copies_from_host;
+      }
+    }
+  }
+  EXPECT_EQ(copies_from_host, memory_infos.size());
+}
 
 #if !defined(USE_EXTERNAL_DAWN)
 #if !defined(BUILD_DAWN_SHARED_LIBRARY)
