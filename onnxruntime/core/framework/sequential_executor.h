@@ -36,6 +36,14 @@ onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
                                   const bool& terminate_flag,
                                   SessionScope& session_scope);
 
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_ENABLE_STREAM)
+// Runs a sequential subset with the standard kernel hooks, without recycling frame values.
+Status ExecuteNodesWithRetainedValues(const SessionState& session_state, ExecutionFrame& frame,
+                                      gsl::span<const NodeIndex> nodes, const DeviceStreamCollection& streams,
+                                      const bool& terminate_flag, bool synchronize_providers,
+                                      const logging::Logger& logger, profiling::Profiler* run_profiler);
+#endif
+
 onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<const int> feed_mlvalue_idxs,
                                    gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs,
                                    std::vector<OrtValue>& fetches,
