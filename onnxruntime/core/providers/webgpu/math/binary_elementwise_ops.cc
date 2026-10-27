@@ -475,8 +475,11 @@ WEBGPU_BINARY_IMPL(Greater, "vec4<u32>(vec4<input_a_element_t>(a) > vec4<input_b
 WEBGPU_BINARY_IMPL(Less, "vec4<u32>(vec4<input_a_element_t>(a) < vec4<input_b_element_t>(b))")
 WEBGPU_BINARY_IMPL(GreaterOrEqual, "vec4<u32>(vec4<input_a_element_t>(a) >= vec4<input_b_element_t>(b))")
 WEBGPU_BINARY_IMPL(LessOrEqual, "vec4<u32>(vec4<input_a_element_t>(a) <= vec4<input_b_element_t>(b))")
-// And operator only supports tensor(bool).
+// And/Or/Xor only support tensor(bool). WGSL defines `&` and `|` on vec4<bool> but not `^`,
+// so Xor is expressed as inequality.
 WEBGPU_BINARY_IMPL(And, "(vec4<input_a_element_t>(a) & vec4<input_b_element_t>(b))")
+WEBGPU_BINARY_IMPL(Or, "(vec4<input_a_element_t>(a) | vec4<input_b_element_t>(b))")
+WEBGPU_BINARY_IMPL(Xor, "(vec4<input_a_element_t>(a) != vec4<input_b_element_t>(b))")
 
 namespace {
 // Generic kernel-create fn for any binary/variadic elementwise op class.
@@ -524,7 +527,7 @@ void RegisterBinaryOp(KernelRegistry& kernel_registry,
 // enableInt64 provider option) is applied and maintained consistently. int64 is currently enabled
 // for the arithmetic and comparison ops whose low-32-bit i32 shader semantics are meaningful and
 // implemented (Add, Sub, Mul, Div, Max, Min, Equal, Greater, Less, GreaterOrEqual, LessOrEqual).
-// Pow is a known gap (see the TODO below); PRelu/And have no int64 form.
+// Pow is a known gap (see the TODO below); PRelu/And/Or/Xor have no int64 form.
 //
 // NOTE: int64 in the WebGPU shader operates on the low 32 bits only (i32 element type). Values
 // outside the int32 range [-2^31, 2^31-1] produce incorrect results. This is acceptable for the
@@ -556,9 +559,11 @@ void RegisterBinaryElementwiseKernels(KernelRegistry& kernel_registry, bool enab
   RegisterBinaryOp(kernel_registry, "Pow", CreateBinaryOpKernel<Pow>, number_types, {{7, 11}});
   RegisterBinaryOp(kernel_registry, "Pow", CreateBinaryOpKernel<Pow>, number_types, {{12, 12}, {13, 14}, {15, std::nullopt}}, &number_types);
 
-  // PRelu (float) and And (bool) have no int64 form, so they keep their existing type constraints.
+  // PRelu (float) and And/Or/Xor (bool) have no int64 form, so they keep their existing type constraints.
   RegisterBinaryOp(kernel_registry, "PRelu", CreateBinaryOpKernel<PRelu>, float_types, {{7, 8}, {9, 15}, {16, std::nullopt}});
   RegisterBinaryOp(kernel_registry, "And", CreateBinaryOpKernel<And>, bool_type, {{7, std::nullopt}});
+  RegisterBinaryOp(kernel_registry, "Or", CreateBinaryOpKernel<Or>, bool_type, {{7, std::nullopt}});
+  RegisterBinaryOp(kernel_registry, "Xor", CreateBinaryOpKernel<Xor>, bool_type, {{7, std::nullopt}});
 }
 
 }  // namespace webgpu
