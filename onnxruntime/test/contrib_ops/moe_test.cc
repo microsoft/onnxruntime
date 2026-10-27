@@ -258,8 +258,12 @@ TEST(MoETest, CudaReluSquaredQuantizedInt8) {
 
 template <typename ElementType>
 static void RunCudaGegluTest(bool quantized, int fusion, int rows = 2, int top_k = 2,
-                             const std::string& expected_failure = "") {
-  SCOPED_TRACE(::testing::Message() << "fusion=" << fusion << ", rows=" << rows << ", top_k=" << top_k);
+                             const std::string& expected_failure = "", bool has_bias = false,
+                             int fc1_bits = 4, int fc2_bits = 4) {
+  SCOPED_TRACE(::testing::Message() << "fusion=" << fusion << ", rows=" << rows << ", top_k=" << top_k
+                                    << ", bias=" << has_bias << ", fc1_bits=" << fc1_bits << ", fc2_bits=" << fc2_bits);
+  ASSERT_TRUE(fc1_bits == 2 || fc1_bits == 4);
+  ASSERT_TRUE(fc2_bits == 2 || fc2_bits == 4);
   if (!HasCudaEnvironment(std::is_same_v<ElementType, BFloat16> ? 800 : 750)) {
     GTEST_SKIP() << "CUDA architecture does not support the test element type";
   }
@@ -274,22 +278,30 @@ static void RunCudaGegluTest(bool quantized, int fusion, int rows = 2, int top_k
   std::vector<ElementType> router_probs(rows * experts);
   std::vector<ElementType> fc1(experts * 2 * inter * hidden, ElementType(0.0f));
   std::vector<ElementType> fc2(experts * hidden * inter, ElementType(0.0f));
-  std::vector<uint8_t> qfc1(fc1.size() / 2, 0x88);
-  std::vector<uint8_t> qfc2(fc2.size() / 2, 0x88);
-  auto set_weight = [](auto& dense, auto& packed, size_t index, int value) {
+  std::vector<ElementType> fc1_bias(experts * 2 * inter);
+  std::vector<uint8_t> qfc1(fc1.size() / (8 / fc1_bits), fc1_bits == 2 ? 0xAA : 0x88);
+  std::vector<uint8_t> qfc2(fc2.size() / (8 / fc2_bits), fc2_bits == 2 ? 0xAA : 0x88);
+  auto set_weight = [](auto& dense, auto& packed, size_t index, int value, int bits) {
     dense[index] = ElementType(static_cast<float>(value));
-    const int shift = static_cast<int>(index % 2) * 4;
-    const auto mask = static_cast<uint8_t>(0xF << shift);
-    packed[index / 2] = static_cast<uint8_t>(
-        (packed[index / 2] & ~mask) | ((value + 8) << shift));
+    const int pack_size = 8 / bits;
+    const int shift = static_cast<int>(index % pack_size) * bits;
+    const auto mask = static_cast<uint8_t>(((1 << bits) - 1) << shift);
+    packed[index / pack_size] = static_cast<uint8_t>(
+        (packed[index / pack_size] & ~mask) | ((value + (1 << (bits - 1))) << shift));
   };
   for (int expert = 0; expert < experts; ++expert) {
     for (int channel = 0; channel < hidden; ++channel) {
       const int gate_row = fusion == 1 ? channel * 2 : channel;
       const int up_row = fusion == 1 ? channel * 2 + 1 : inter + channel;
-      set_weight(fc1, qfc1, (expert * 2 * inter + gate_row) * hidden + channel, expert + 1);
-      set_weight(fc1, qfc1, (expert * 2 * inter + up_row) * hidden + channel, 3 - expert);
-      set_weight(fc2, qfc2, (expert * hidden + channel) * inter + channel, 1);
+      set_weight(fc1, qfc1, (expert * 2 * inter + gate_row) * hidden + channel,
+                 fc1_bits == 2 ? 1 - 2 * expert : expert + 1, fc1_bits);
+      set_weight(fc1, qfc1, (expert * 2 * inter + up_row) * hidden + channel,
+                 fc1_bits == 2 ? -1 - expert : 3 - expert, fc1_bits);
+      set_weight(fc2, qfc2, (expert * hidden + channel) * inter + channel, 1, fc2_bits);
+      fc1_bias[expert * 2 * inter + gate_row] =
+          ElementType(0.125f * (expert + 1) + 0.03125f * (channel % 5 - 2));
+      fc1_bias[expert * 2 * inter + up_row] =
+          ElementType(-0.375f * (expert + 1) + 0.0625f * (channel % 3 - 1));
     }
   }
   for (int row = 0; row < rows; ++row) {
@@ -305,12 +317,16 @@ static void RunCudaGegluTest(bool quantized, int fusion, int rows = 2, int top_k
         const float logit = static_cast<float>(router_probs[row * experts + expert]);
         const float routing_weight = top_k == 1 ? (logit > 0.5f ? 1.0f : 0.0f)
                                                 : std::exp(logit) / (std::exp(1.0f) + 1.0f);
-        const float gate = value * static_cast<float>(expert + 1);
+        // Compute logical gate/up values without reading the serialized FC1 layout.
+        const float gate = value * static_cast<float>(fc1_bits == 2 ? 1 - 2 * expert : expert + 1) +
+                           (has_bias ? 0.125f * (expert + 1) + 0.03125f * (channel % 5 - 2) : 0.0f);
+        const float up = value * static_cast<float>(fc1_bits == 2 ? -1 - expert : 3 - expert) +
+                         (has_bias ? -0.375f * (expert + 1) + 0.0625f * (channel % 3 - 1) : 0.0f);
         const float gelu = 0.5f * gate *
                            (1.0f + std::tanh(0.7978845608f * (gate + 0.044715f * gate * gate * gate)));
-        result += routing_weight * gelu * value * static_cast<float>(3 - expert);
+        result += routing_weight * gelu * up;
         const float erf_gelu = 0.5f * gate * (1.0f + std::erf(gate / std::sqrt(2.0f)));
-        erf_result += routing_weight * erf_gelu * value * static_cast<float>(3 - expert);
+        erf_result += routing_weight * erf_gelu * up;
       }
       expected[row * hidden + channel] = ElementType(result);
       max_erf_tanh_separation = std::max(max_erf_tanh_separation, std::abs(result - erf_result));
@@ -324,19 +340,29 @@ static void RunCudaGegluTest(bool quantized, int fusion, int rows = 2, int top_k
   tester.AddInput<ElementType>("input", {rows, hidden}, input);
   tester.AddInput<ElementType>("router_probs", {rows, experts}, router_probs);
   if (quantized) {
-    tester.AddAttribute<int64_t>("expert_weight_bits", 4);
+    tester.AddAttribute<int64_t>("expert_weight_bits", fc2_bits);
+    tester.AddAttribute<int64_t>("fc1_expert_weight_bits", fc1_bits);
+    tester.AddAttribute<int64_t>("fc3_expert_weight_bits", fc1_bits);
     tester.AddAttribute<int64_t>("block_size", block);
     tester.AddAttribute<int64_t>("weights_prepacked", 0);
-    tester.AddInput<uint8_t>("fc1_experts_weights", {experts, 2 * inter, hidden / 2}, qfc1, true);
+    tester.AddInput<uint8_t>("fc1_experts_weights", {experts, 2 * inter, hidden / (8 / fc1_bits)}, qfc1, true);
     tester.AddInput<ElementType>("fc1_scales", {experts, 2 * inter, hidden / block},
                                  std::vector<ElementType>(experts * 2 * inter * hidden / block, ElementType(1.0f)), true);
-    tester.AddOptionalInputEdge<ElementType>();
-    tester.AddInput<uint8_t>("fc2_experts_weights", {experts, hidden, inter / 2}, qfc2, true);
+    if (has_bias) {
+      tester.AddInput<ElementType>("fc1_experts_bias", {experts, 2 * inter}, fc1_bias);
+    } else {
+      tester.AddOptionalInputEdge<ElementType>();
+    }
+    tester.AddInput<uint8_t>("fc2_experts_weights", {experts, hidden, inter / (8 / fc2_bits)}, qfc2, true);
     tester.AddInput<ElementType>("fc2_scales", {experts, hidden, inter / block},
                                  std::vector<ElementType>(experts * hidden * inter / block, ElementType(1.0f)), true);
   } else {
     tester.AddInput<ElementType>("fc1_experts_weights", {experts, 2 * inter, hidden}, fc1);
-    tester.AddOptionalInputEdge<ElementType>();
+    if (has_bias) {
+      tester.AddInput<ElementType>("fc1_experts_bias", {experts, 2 * inter}, fc1_bias);
+    } else {
+      tester.AddOptionalInputEdge<ElementType>();
+    }
     tester.AddInput<ElementType>("fc2_experts_weights", {experts, hidden, inter}, fc2);
   }
   tester.AddOutput<ElementType>("output", {rows, hidden}, expected);
@@ -351,6 +377,10 @@ static void RunCudaGegluTest(bool quantized, int fusion, int rows = 2, int top_k
   }
   SessionOptions options;
   ORT_THROW_IF_ERROR(options.config_options.AddConfigEntry("session.disable_cpu_ep_fallback", "1"));
+  if (quantized && (fc1_bits == 2 || fc2_bits == 2)) {
+    // Keep raw [E,N,K/pack] tensors live for the integer dense-dequantization fallback.
+    ORT_THROW_IF_ERROR(options.config_options.AddConfigEntry("session.disable_prepacking", "1"));
+  }
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
   providers.push_back(DefaultCudaExecutionProvider());
   tester.Run(options, expected_failure.empty() ? OpTester::ExpectResult::kExpectSuccess : OpTester::ExpectResult::kExpectFailure,
@@ -393,6 +423,64 @@ TEST(MoETest, CudaGegluRequiresFusedWeights) {
   RunCudaGegluTest<float>(false, 0, 1, 1, "GEGLU requires fused FC1 gate/up weights");
   RunCudaGegluTest<MLFloat16>(true, 0, 1, 1, "GEGLU requires fused FC1 gate/up weights");
 }
+
+TEST(MoETest, CudaGegluBiasFloat32) {
+  for (int fusion : {1, 2})
+    for (int rows : {1, 17})
+      for (int top_k : {1, 2}) RunCudaGegluTest<float>(false, fusion, rows, top_k, "", true);
+}
+
+TEST(MoETest, CudaGegluBiasFloat16) {
+  for (int fusion : {1, 2})
+    for (int rows : {1, 17})
+      for (int top_k : {1, 2}) RunCudaGegluTest<MLFloat16>(false, fusion, rows, top_k, "", true);
+}
+
+TEST(MoETest, CudaGegluBiasBFloat16) {
+  for (int fusion : {1, 2})
+    for (int rows : {1, 17})
+      for (int top_k : {1, 2}) RunCudaGegluTest<BFloat16>(false, fusion, rows, top_k, "", true);
+}
+
+TEST(MoETest, CudaGegluBiasTmaSm90) {
+#if defined(USE_CUDA) && defined(HAS_SM90_OR_LATER) && !defined(EXCLUDE_SM_90) && !defined(_MSC_VER)
+  if (!HasCudaEnvironment(900) || GetCudaArchitecture() != 900) {
+    GTEST_SKIP() << "SM90 is required for the Hopper TMA activation regression";
+  }
+  // Non-MSVC SM90 builds provide TMA tactics first; pin that tactic instead of profiling.
+  ScopedEnvironmentVariables env{{{"ORT_FORCE_DETERMINISTIC_MOE", "1"}}};
+  for (int fusion : {1, 2}) {
+    for (int rows : {1, 17}) {
+      for (int top_k : {1, 2}) {
+        RunCudaGegluTest<MLFloat16>(false, fusion, rows, top_k, "", true);
+#if defined(ENABLE_BF16)
+        RunCudaGegluTest<BFloat16>(false, fusion, rows, top_k, "", true);
+#endif
+      }
+    }
+  }
+#else
+  GTEST_SKIP() << "Hopper TMA grouped GEMMs are not compiled in this build";
+#endif
+}
+
+TEST(MoETest, CudaGegluQuantizedInt2AndMixedWidthFloat16) {
+  for (const auto& bits : {std::pair{2, 2}, std::pair{2, 4}, std::pair{4, 2}})
+    for (int fusion : {1, 2})
+      for (int rows : {1, 17})
+        for (int top_k : {1, 2})
+          RunCudaGegluTest<MLFloat16>(true, fusion, rows, top_k, "", true, bits.first, bits.second);
+}
+
+#if defined(ENABLE_BF16)
+TEST(MoETest, CudaGegluQuantizedInt2AndMixedWidthBFloat16) {
+  for (const auto& bits : {std::pair{2, 2}, std::pair{2, 4}, std::pair{4, 2}})
+    for (int fusion : {1, 2})
+      for (int rows : {1, 17})
+        for (int top_k : {1, 2})
+          RunCudaGegluTest<BFloat16>(true, fusion, rows, top_k, "", true, bits.first, bits.second);
+}
+#endif
 
 static void RunQMoETest(const std::vector<float>& input, const std::vector<float>& router_probs,
                         const std::vector<uint8_t>& fc1_experts_weights,
