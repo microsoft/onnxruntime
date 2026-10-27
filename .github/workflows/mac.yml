@@ -1,188 +1,30 @@
-name: "MacOS CI Pipeline"
+name: ACES GitHub pool smoke test
 
 on:
-  push:
-    branches:
-      - main
-      - rel-*
-      - plugin-ep-webgpu/rel-*
-  pull_request:
-    branches:
-      - main
-      - rel-*
-      - plugin-ep-webgpu/rel-*
   workflow_dispatch:
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
-  cancel-in-progress: true
-
-env:
-  python_version: "3.14"
+permissions: {}
 
 jobs:
-  cpu:
-    uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
-    with:
-      # Only build arm64 for CPU
-      # Also run a Release build on Xcode 16 for legacy-toolchain coverage.
-      matrix_include: >-
-        [
-          {"machine": "arm64", "target": "arm64", "build_config": "Debug"},
-          {"machine": "arm64", "target": "arm64", "build_config": "Release"},
-          {"machine": "arm64", "target": "arm64", "build_config": "Release", "xcode_version": "16"}
-        ]
-      python_version: "3.14"
-
-  coreml:
-    uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
-    with:
-      use_coreml: true
-      matrix_include: >-
-        [
-          {"machine": "arm64", "target": "x86_64", "build_config": "Release"},
-          {"machine": "arm64", "target": "arm64", "build_config": "Debug"},
-          {"machine": "arm64", "target": "arm64", "build_config": "Release"}
-        ]
-      python_version: "3.14"
-
-  xnnpack:
-    uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
-    with:
-      use_xnnpack: true
-      # only build arm64/Debug for XNNPack
-      matrix_include: >-
-        [
-          {"machine": "arm64", "target": "arm64", "build_config": "Debug"}
-        ]
-      python_version: "3.14"
-
-  webgpu:
-    uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
-    with:
-      use_webgpu: true
-      matrix_include: >-
-        [
-          {"machine": "arm64", "target": "x86_64", "build_config": "Release"},
-          {"machine": "arm64", "target": "arm64", "build_config": "Debug"},
-          {"machine": "arm64", "target": "arm64", "build_config": "Release"}
-        ]
-      python_version: "3.14"
-
-  iphone_simulator:
-    runs-on: macos-15
-
-    env:
-      xcode_version: 26.3
-      simulator_runtime_version: 26.2
-
+  smoke:
     strategy:
+      fail-fast: false
       matrix:
-        target_arch: [x86_64, arm64]
-
-    timeout-minutes: 120
-
+        slot: [1, 2, 3]
+    runs-on:
+      - self-hosted
+      - 1ES.Pool=AcesSharedGitHubTrial
+    timeout-minutes: 10
     steps:
-      - name: Checkout code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Get vcpkg tool info
-        id: vcpkg-tool-info
-        uses: ./.github/actions/get-vcpkg-tool-info
-      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@d19341fb036c43a947a2c0e4a53ad4d15e10bc5c # v0.0.9
-        with:
-          vcpkg-version: ${{ steps.vcpkg-tool-info.outputs.release_tag }}
-          vcpkg-hash: ${{ steps.vcpkg-tool-info.outputs.sha512 }}
-          cmake-version: '3.31.8'
-          cmake-hash: 99cc9c63ae49f21253efb5921de2ba84ce136018abf08632c92c060ba91d552e0f6acc214e9ba8123dee0cf6d1cf089ca389e321879fd9d719a60d975bcffcc8
-          add-cmake-to-path: 'true'
-          disable-terrapin: 'true'
-
-      - name: macOS CI pipeline prepare steps
-        uses: ./.github/actions/macos-ci-setup
-        with:
-          platform_machine: "arm64"
-          python_version: ${{ env.python_version }}
-          xcode_version: ${{ env.xcode_version }}
-          use_cache: false
-
-      - name: Build for iphonesimulator ${{ matrix.target_arch }}
+      - name: Verify macOS ARM64 and Xcode
         shell: bash
         run: |
-          python ./tools/ci_build/build.py \
-            --build_dir ./build \
-            --update \
-            --build --parallel \
-            --test \
-            --build_apple_framework \
-            --use_xcode \
-            --use_coreml \
-            --use_xnnpack \
-            --use_binskim_compliant_compile_flags \
-            --ios \
-            --apple_deploy_target=15.1 \
-            --apple_sysroot=iphonesimulator \
-            --osx_arch=${{ matrix.target_arch }}
-        env:
-          ORT_GET_SIMULATOR_DEVICE_INFO_REQUESTED_RUNTIME_VERSION: ${{ env.simulator_runtime_version }}
-
-  Objective-C-StaticAnalysis:
-    runs-on: macos-14
-
-    env:
-      xcode_version: 15.2
-
-    timeout-minutes: 30
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Get vcpkg tool info
-        id: vcpkg-tool-info
-        uses: ./.github/actions/get-vcpkg-tool-info
-      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@d19341fb036c43a947a2c0e4a53ad4d15e10bc5c # v0.0.9
-        with:
-          vcpkg-version: ${{ steps.vcpkg-tool-info.outputs.release_tag }}
-          vcpkg-hash: ${{ steps.vcpkg-tool-info.outputs.sha512 }}
-          cmake-version: '3.31.8'
-          cmake-hash: 99cc9c63ae49f21253efb5921de2ba84ce136018abf08632c92c060ba91d552e0f6acc214e9ba8123dee0cf6d1cf089ca389e321879fd9d719a60d975bcffcc8
-          add-cmake-to-path: 'true'
-          disable-terrapin: 'true'
-
-      - name: macOS CI pipeline prepare steps
-        uses: ./.github/actions/macos-ci-setup
-        with:
-          platform_machine: "arm64"
-          python_version: ${{ env.python_version }}
-          xcode_version: ${{ env.xcode_version }}
-          use_cache: false
-
-      - name: Generate compile_commands.json and ONNX protobuf files
-        shell: bash
-        run: |
-          python ./tools/ci_build/build.py \
-            --build_dir ./build \
-            --cmake_generator "Unix Makefiles" \
-            --config Debug \
-            --build_shared_lib \
-            --use_coreml \
-            --build_objc \
-            --enable_training_apis \
-            --cmake_extra_defines CMAKE_EXPORT_COMPILE_COMMANDS=ON \
-            --use_binskim_compliant_compile_flags \
-            --update \
-            --build --parallel \
-            --target onnx_proto
-
-      - name: Analyze Objective-C/C++ source code
-        shell: bash
-        run: |
-          CLANG_TIDY_CHECKS="-*,clang-analyzer-*"
-
-          "$(brew --prefix llvm@15)/bin/clang-tidy" \
-            -p=./build/Debug \
-            --checks="${CLANG_TIDY_CHECKS}" \
-            --warnings-as-errors="${CLANG_TIDY_CHECKS}" \
-            --header-filter="objectivec/include|objectivec|onnxruntime/core" \
-            ./objectivec/*.mm \
-            ./onnxruntime/core/platform/apple/logging/apple_log_sink.mm \
-            ./onnxruntime/core/providers/coreml/model/*.mm
+          set -euo pipefail
+          test "$(uname -s)" = Darwin
+          test "$(uname -m)" = arm64
+          printf 'Runner: %s\n' "$RUNNER_NAME"
+          sw_vers
+          xcodebuild -version
+          xcrun --find clang
+          xcrun --find swift
+          sleep 60
