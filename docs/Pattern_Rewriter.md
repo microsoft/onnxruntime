@@ -1245,6 +1245,38 @@ before entering the transformer or after an error. Callers must not concurrently
 graph. Options and compiled rules are immutable; match state and statistics are
 per call.
 
+### Restricting rewriting to a selected region
+
+The scoped overload accepts an explicit set of live node IDs:
+
+```cpp
+InlinedHashSet<NodeIndex> region(selected_nodes.begin(), selected_nodes.end());
+ORT_RETURN_IF_ERROR(rewriter.Run(graph, statistics, region));
+ORT_RETURN_IF_ERROR(graph.Resolve());
+```
+
+Only roots in the region are visited. Every node consumed by a match must also
+belong to the region; a match crossing its boundary is rejected before either
+rule callback runs. Inputs may come from outside the region, and returned values
+may feed outside consumers. Their `NodeArg` identities are preserved, although
+boundary edges are rewired to new producers. Existing deletion-boundary and EP
+checks still apply. Region-scope and deletion-boundary rejections both report
+`FailureStage::Boundary`; the diagnostic reason distinguishes them.
+
+Each successful rewrite removes its source IDs from `region` and adds all of its
+replacement IDs. New nodes participate in the same ordered, iterative matching;
+unmatched region nodes remain in the returned set. This lets a capability
+callback reconcile its node list without rescanning unrelated nodes. The
+overload neither selects an EP nor performs kernel lookup, placement, or resource
+accounting. Callers must still validate those contracts for the resulting region.
+
+An empty region does no work. Invalid input IDs return an error before matching
+or mutation. Match-only mode leaves the set unchanged. Failures do not roll back
+earlier rewrites: the set reflects completed replacements, not a transaction.
+An ordinary staging failure leaves that match's source IDs in the set and does
+not add its staged replacement IDs.
+As with unscoped `Run`, resolve the graph explicitly before later consumers.
+
 ### Resolved metadata and mutation boundaries
 
 Call `Graph::Resolve` after constructing a source graph and before `Run` or
@@ -1290,9 +1322,10 @@ remain unsupported; identity elimination is a separate transformation.
 
 `Options::max_iterations` is a positive upper bound, defaulting to 10.
 Each iteration processes a fixed candidate batch, initially all live nodes in
-topological order. Replacements and affected existing nodes are queued for the
-next batch, never appended to the current batch. An existing later candidate
-can still match an earlier replacement in the same batch. Processing stops
+topological order. For scoped `Run`, the initial batch contains only region nodes.
+Replacements and affected existing nodes are queued for the next batch, never
+appended to the current batch. An existing later candidate can still match an
+earlier replacement in the same batch. Processing stops
 when a batch performs no rewrites, there are no pending candidates, or the bound
 is reached. Match-only mode processes exactly one batch without mutation.
 
