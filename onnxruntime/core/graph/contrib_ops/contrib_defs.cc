@@ -886,6 +886,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             "when `activation_alpha * G` is below -87 so that a negative tail is not lost to "
             "float exp underflow. A `limit` of zero or less disables both clamps.\n"
             "\n"
+            "The result is rounded to T once, after the multiply by (L + activation_beta). With "
+            "`round_activation` set, G * Sigmoid(activation_alpha * G) is first rounded to T, as a "
+            "QuickGelu node followed by a Mul in T would, which keeps a fused QuickGelu + Mul "
+            "bit-identical to the graph it replaces.\n"
+            "\n"
             "This uses the same activation_alpha / activation_beta formula and positive-limit "
             "clamping rule as MoE and QMoE. The no-clamp sentinel differs: here any `limit` "
             "of zero or less disables clamping, while MoE/QMoE use infinity when `swiglu_limit` "
@@ -900,6 +905,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::FLOAT, 0.0f)
         .Attr("activation_alpha", "Multiplier inside the sigmoid.", AttributeProto::FLOAT, 1.0f)
         .Attr("activation_beta", "Value added to the linear half.", AttributeProto::FLOAT, 0.0f)
+        .Attr("round_activation",
+              "If non-zero, round G * Sigmoid(activation_alpha * G) to T before multiplying by "
+              "(L + activation_beta). Zero rounds only the final result.",
+              AttributeProto::INT, static_cast<int64_t>(0))
         .Input(0, "gate", "Gate half of the projection, or both halves concatenated.", "T")
         .Input(1, "up", "Up half of the projection, same shape as gate.", "T", OpSchema::Optional)
         .Output(0, "output", "Activated tensor, shaped like one half of the projection.", "T")

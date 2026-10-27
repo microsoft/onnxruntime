@@ -20,10 +20,12 @@ constexpr int kThreads = 256;
 // buffer. Matches MoE/QMoE's alpha/beta formula and positive-limit clamping rule.
 // With `Fused`, gate and up are the two halves of one `[.., 2 * cols]` row, so the source
 // index skips the half that the other operand owns.
+// With `round_activation`, G * Sigmoid(alpha * G) is narrowed to T before the multiply by (L + beta),
+// exactly as a QuickGelu node followed by a Mul in T would, so SwiGluFusion does not change results.
 template <typename CudaT, bool Fused>
 __global__ void SwiGLUKernel(int64_t count, int64_t cols, float limit, float alpha, float beta,
-                             const CudaT* __restrict__ gate, const CudaT* __restrict__ up,
-                             CudaT* __restrict__ output) {
+                             bool round_activation, const CudaT* __restrict__ gate,
+                             const CudaT* __restrict__ up, CudaT* __restrict__ output) {
   const int64_t stride = static_cast<int64_t>(gridDim.x) * blockDim.x;
   for (int64_t i = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x; i < count;
        i += stride) {
@@ -42,9 +44,17 @@ __global__ void SwiGLUKernel(int64_t count, int64_t cols, float limit, float alp
       // whole product wide, as QuickGelu does.
       const double wide_g = static_cast<double>(g);
       const double e = exp(wide_g * static_cast<double>(alpha));
-      result = static_cast<float>(wide_g * e / (1.0 + e) * (static_cast<double>(l) + static_cast<double>(beta)));
+      const double activated = wide_g * e / (1.0 + e);
+      if (round_activation) {
+        // QuickGelu narrows double -> float -> T.
+        result = static_cast<float>(static_cast<CudaT>(static_cast<float>(activated))) * (l + beta);
+      } else {
+        result = static_cast<float>(activated * (static_cast<double>(l) + static_cast<double>(beta)));
+      }
     } else {
-      result = g * _Sigmoid(scaled) * (l + beta);
+      float activated = g * _Sigmoid(scaled);
+      if (round_activation) activated = static_cast<float>(static_cast<CudaT>(activated));
+      result = activated * (l + beta);
     }
     output[i] = static_cast<CudaT>(result);
   }
@@ -54,7 +64,7 @@ __global__ void SwiGLUKernel(int64_t count, int64_t cols, float limit, float alp
 
 template <typename T>
 Status LaunchSwiGLU(cudaStream_t stream, int64_t count, int64_t cols, float limit,
-                    float alpha, float beta,
+                    float alpha, float beta, bool round_activation,
                     const T* gate, const T* up, T* output) {
   typedef typename ToCudaType<T>::MappedType CudaT;
   const int64_t want = (count + kThreads - 1) / kThreads;
@@ -63,16 +73,18 @@ Status LaunchSwiGLU(cudaStream_t stream, int64_t count, int64_t cols, float limi
   auto* u = reinterpret_cast<const CudaT*>(up);
   auto* o = reinterpret_cast<CudaT*>(output);
   if (cols > 0) {
-    SwiGLUKernel<CudaT, true><<<blocks, kThreads, 0, stream>>>(count, cols, limit, alpha, beta, g, u, o);
+    SwiGLUKernel<CudaT, true><<<blocks, kThreads, 0, stream>>>(count, cols, limit, alpha, beta,
+                                                               round_activation, g, u, o);
   } else {
-    SwiGLUKernel<CudaT, false><<<blocks, kThreads, 0, stream>>>(count, 0, limit, alpha, beta, g, u, o);
+    SwiGLUKernel<CudaT, false><<<blocks, kThreads, 0, stream>>>(count, 0, limit, alpha, beta,
+                                                                round_activation, g, u, o);
   }
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
   return Status::OK();
 }
 
-#define INSTANTIATE(T)                                                                 \
-  template Status LaunchSwiGLU<T>(cudaStream_t, int64_t, int64_t, float, float, float, \
+#define INSTANTIATE(T)                                                                       \
+  template Status LaunchSwiGLU<T>(cudaStream_t, int64_t, int64_t, float, float, float, bool, \
                                   const T*, const T*, T*)
 
 INSTANTIATE(float);

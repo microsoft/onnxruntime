@@ -12,6 +12,9 @@ namespace onnxruntime {
  *
  * QuickGeluFusion first turns gate * Sigmoid(alpha * gate) into QuickGelu, so running after it
  * covers the decomposed SiLU gated MLP that exporters emit today.
+ *
+ * The fused node sets round_activation so QuickGelu's output is still rounded to the tensor type
+ * before it meets `up`, which keeps the result identical to the unfused pair.
  */
 class SwiGluFusion : public GraphTransformer {
  public:

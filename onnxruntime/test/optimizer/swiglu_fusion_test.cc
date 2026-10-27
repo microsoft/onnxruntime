@@ -80,6 +80,9 @@ Status CheckFused(const Graph& graph, const std::string& gate_name, const std::s
     ORT_RETURN_IF_NOT(node.GetExecutionProviderType() == kCudaExecutionProvider, "SwiGLU must stay on CUDA.");
     const auto* alpha = graph_utils::GetNodeAttribute(node, "activation_alpha");
     ORT_RETURN_IF_NOT(alpha != nullptr && alpha->f() == kAlpha, "activation_alpha must carry QuickGelu alpha.");
+    const auto* round_activation = graph_utils::GetNodeAttribute(node, "round_activation");
+    ORT_RETURN_IF_NOT(round_activation != nullptr && round_activation->i() == 1,
+                      "round_activation must keep QuickGelu's rounding to the tensor type.");
   }
   return Status::OK();
 }
@@ -134,6 +137,42 @@ void RunCudaParityTest(double tolerance) {
 
   TransformerTester(BuildDecomposedSwiGlu<T>, check, TransformerLevel::Level1, TransformerLevel::Level2,
                     /*opset_version=*/14, tolerance, 0.0, nullptr, {}, {}, std::move(cuda_ep));
+}
+
+constexpr int64_t kExactRows = 16;
+constexpr int64_t kExactCols = 128;
+
+// gate -> QuickGelu -> Mul <- up in T. QuickGelu rounds its output to T before the Mul, so the fused node has
+// to as well. A subnormal or zero intermediate makes a missing rounding obvious, and a tolerance of zero holds
+// the fusion to the unfused graph's exact result.
+template <typename T>
+void RunCudaQuickGeluMulExactParityTest(float gate_min, float gate_max, float up_min, float up_max) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA execution provider is not available";
+  }
+
+  auto build = [&](ModelTestBuilder& builder) {
+    const std::vector<int64_t> shape{kExactRows, kExactCols};
+    NodeArg* gate = builder.MakeInput<T>(shape, T(gate_min), T(gate_max));
+    NodeArg* up = builder.MakeInput<T>(shape, T(up_min), T(up_max));
+    NodeArg* activated = builder.MakeIntermediate<T>(shape);
+    NodeArg* output = builder.MakeOutput<T>(shape);
+    Node& quick_gelu = builder.AddNode("QuickGelu", {gate}, {activated}, kMSDomain);
+    quick_gelu.AddAttribute("alpha", 1.0f);
+    builder.AddNode("Mul", {activated, up}, {output});
+  };
+
+  auto check = [](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["com.microsoft.SwiGLU"], 1);
+    EXPECT_EQ(op_to_count["com.microsoft.QuickGelu"], 0);
+    EXPECT_EQ(op_to_count["Mul"], 0);
+  };
+
+  TransformerTester(build, check, TransformerLevel::Level1, TransformerLevel::Level2,
+                    /*opset_version=*/14, /*per_sample_tolerance=*/0.0, /*relative_per_sample_tolerance=*/0.0,
+                    nullptr, {}, {}, std::move(cuda_ep));
 }
 
 }  // namespace
@@ -234,6 +273,31 @@ TEST_F(GraphTransformationTests, SwiGluFusionCudaFloatParity) {
 
 TEST_F(GraphTransformationTests, SwiGluFusionCudaFloat16Parity) {
   RunCudaParityTest<MLFloat16>(5e-3);
+}
+
+// The next tests compare the fused node bit for bit with QuickGelu followed by Mul.
+TEST_F(GraphTransformationTests, SwiGluFusionCudaFloatExactAfterQuickGeluRounding) {
+  // alpha * gate crosses -87, where QuickGelu switches to double and narrows the result to float.
+  RunCudaQuickGeluMulExactParityTest<float>(-110.0f, -60.0f, 1e20f, 1e30f);
+}
+
+TEST_F(GraphTransformationTests, SwiGluFusionCudaFloat16ExactAfterQuickGeluRounding) {
+  RunCudaQuickGeluMulExactParityTest<MLFloat16>(-12.0f, 6.0f, -8.0f, 8.0f);
+}
+
+TEST_F(GraphTransformationTests, SwiGluFusionCudaFloat16NegativeTailExact) {
+  // QuickGelu lands in the fp16 subnormal range or on zero, and a large up scales the rounding error back up.
+  RunCudaQuickGeluMulExactParityTest<MLFloat16>(-32.0f, -16.0f, 30000.0f, 65504.0f);
+}
+
+TEST_F(GraphTransformationTests, SwiGluFusionCudaBFloat16ExactAfterQuickGeluRounding) {
+  RunCudaQuickGeluMulExactParityTest<BFloat16>(-12.0f, 6.0f, -8.0f, 8.0f);
+}
+
+TEST_F(GraphTransformationTests, SwiGluFusionCudaBFloat16NegativeTailExact) {
+  // QuickGelu's bf16 output falls to subnormals and then to zero near -97, which an unrounded product with a
+  // large up would hide.
+  RunCudaQuickGeluMulExactParityTest<BFloat16>(-110.0f, -60.0f, 1e37f, 1e38f);
 }
 
 #endif  // !defined(DISABLE_CONTRIB_OPS)

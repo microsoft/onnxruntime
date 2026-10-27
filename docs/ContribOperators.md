@@ -8323,6 +8323,8 @@ This version of the operator has been available since version 1 of the 'com.micr
     output = G * Sigmoid(activation_alpha * G) * (L + activation_beta)
   with the arithmetic done in float regardless of T, widened to double for the product when `activation_alpha * G` is below -87 so that a negative tail is not lost to float exp underflow. A `limit` of zero or less disables both clamps.
   
+  The result is rounded to T once, after the multiply by (L + activation_beta). With `round_activation` set, G * Sigmoid(activation_alpha * G) is first rounded to T, as a QuickGelu node followed by a Mul in T would, which keeps a fused QuickGelu + Mul bit-identical to the graph it replaces.
+  
   This uses the same activation_alpha / activation_beta formula and positive-limit clamping rule as MoE and QMoE. The no-clamp sentinel differs: here any `limit` of zero or less disables clamping, while MoE/QMoE use infinity when `swiglu_limit` is omitted and clamp finite values, including an explicit zero.
   With `up` supplied and the default `limit` and `activation_beta`, it equals the ONNX SwiGLU operator (opset 28) with `alpha` = `activation_alpha`.
   
@@ -8341,6 +8343,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Value added to the linear half.</dd>
 <dt><tt>limit</tt> : float</dt>
 <dd>Clamp applied to both halves; zero or less disables it.</dd>
+<dt><tt>round_activation</tt> : int</dt>
+<dd>If non-zero, round G * Sigmoid(activation_alpha * G) to T before multiplying by (L + activation_beta). Zero rounds only the final result.</dd>
 </dl>
 
 #### Inputs (1 - 2)

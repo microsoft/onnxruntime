@@ -93,6 +93,8 @@ Status SwiGluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, co
                                       "fused QuickGelu and Mul", std::array{gate_arg, up_arg},
                                       std::array{mul_node.MutableOutputDefs()[0]}, nullptr, kMSDomain);
     swiglu_node.AddAttribute("activation_alpha", alpha);
+    // QuickGelu rounds to T before the Mul; keep that rounding so the fusion does not change results.
+    swiglu_node.AddAttribute("round_activation", static_cast<int64_t>(1));
     swiglu_node.SetExecutionProviderType(mul_node.GetExecutionProviderType());
 
     graph_utils::FinalizeNodeFusion(graph, {quick_gelu_node, mul_node}, swiglu_node);

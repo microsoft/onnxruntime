@@ -23,6 +23,7 @@ class SwiGLU final : public CudaKernel {
   float limit_;
   float alpha_;
   float beta_;
+  bool round_activation_;
 };
 
 }  // namespace cuda
