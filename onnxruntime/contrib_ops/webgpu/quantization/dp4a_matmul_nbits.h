@@ -4,6 +4,7 @@
 #pragma once
 
 #include <limits>
+#include <optional>
 
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
@@ -13,6 +14,12 @@ namespace contrib {
 namespace webgpu {
 
 using namespace onnxruntime::webgpu;
+
+// Invocation-local workspace, reusable only by projections of the same input tensor.
+struct DP4AQuantizedInput {
+  std::optional<Tensor> values;
+  std::optional<Tensor> scales;
+};
 
 class DP4AMatMulQuantizeProgram final : public Program<DP4AMatMulQuantizeProgram> {
  public:
@@ -117,7 +124,8 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
                                   onnxruntime::webgpu::ComputeContext& context,
                                   Tensor* y,
                                   const uint32_t weight_index,
-                                  const Tensor* weight_index_indirect = nullptr);
+                                  const Tensor* weight_index_indirect = nullptr,
+                                  DP4AQuantizedInput* quantized_input = nullptr);
 
 // The optional M / has_weight_idx_indirect / y arguments fold the original
 // dispatch-precondition (DP4A is preferred when M is large enough, or

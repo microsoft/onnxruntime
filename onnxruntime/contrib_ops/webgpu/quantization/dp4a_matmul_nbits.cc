@@ -106,25 +106,33 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
                                   onnxruntime::webgpu::ComputeContext& context,
                                   Tensor* y,
                                   const uint32_t weight_index,
-                                  const Tensor* weight_index_indirect) {
+                                  const Tensor* weight_index_indirect, DP4AQuantizedInput* quantized_input) {
   constexpr uint32_t kVec4Components = 4;
   constexpr uint32_t kVec2Components = 2;
   constexpr uint32_t kU32Components = 4;
 
-  constexpr uint32_t kBlockSizeA = 128;
-  DP4AMatMulQuantizeProgram quantize_program;
-  quantize_program.SetWorkgroupSize(64);
-  uint32_t tile_size = 64 * kVec4Components;
-  quantize_program.SetDispatchGroupSize((batch_count * M * K + tile_size - 1) / tile_size, 1, 1);
-  TensorShape a_quant_shape{batch_count, M, K / kU32Components};
-  Tensor a_quant = context.CreateGPUTensor(DataTypeImpl::GetType<uint32_t>(), a_quant_shape);
-  TensorShapeVector a_scales_dims({batch_count, 1, M, K / kBlockSizeA});
-  Tensor a_scale = context.CreateGPUTensor(a->DataType(), a_scales_dims);
-  quantize_program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec4Components)}})
-      .AddOutputs({{&a_quant, ProgramTensorMetadataDependency::Rank, a_quant.Shape(), 1},
-                   {&a_scale, ProgramTensorMetadataDependency::Rank, 1}})
-      .AddUniformVariable({batch_count * M * K / kU32Components});
-  ORT_RETURN_IF_ERROR(context.RunProgram(quantize_program));
+  DP4AQuantizedInput local_input;
+  auto& input = quantized_input ? *quantized_input : local_input;
+  if (!input.values) {
+    constexpr uint32_t kBlockSizeA = 128;
+    DP4AMatMulQuantizeProgram quantize_program;
+    quantize_program.SetWorkgroupSize(64);
+    uint32_t tile_size = 64 * kVec4Components;
+    quantize_program.SetDispatchGroupSize((batch_count * M * K + tile_size - 1) / tile_size, 1, 1);
+    TensorShape a_quant_shape{batch_count, M, K / kU32Components};
+    Tensor a_quant = context.CreateGPUTensor(DataTypeImpl::GetType<uint32_t>(), a_quant_shape);
+    TensorShapeVector a_scales_dims({batch_count, 1, M, K / kBlockSizeA});
+    Tensor a_scale = context.CreateGPUTensor(a->DataType(), a_scales_dims);
+    quantize_program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec4Components)}})
+        .AddOutputs({{&a_quant, ProgramTensorMetadataDependency::Rank, a_quant.Shape(), 1},
+                     {&a_scale, ProgramTensorMetadataDependency::Rank, 1}})
+        .AddUniformVariable({batch_count * M * K / kU32Components});
+    ORT_RETURN_IF_ERROR(context.RunProgram(quantize_program));
+    input.values.emplace(std::move(a_quant));
+    input.scales.emplace(std::move(a_scale));
+  }
+  const auto& a_quant = *input.values;
+  const auto& a_scale = *input.scales;
 
   const bool has_zero_points = zero_points != nullptr;
   const bool has_bias = bias != nullptr;
