@@ -1868,7 +1868,7 @@ session creation with `ORT_INVALID_ARGUMENT`.
 | `session.moe.offload.budget_group` | String identifier | `""` (per-session) | Optional cross-session budget group name (e.g., `"qwen38_flash_graph"`) shared across target and draft sessions on the same GPU. |
 | `session.moe.offload.allow_file_backing` | `"0"`, `"1"` | `"1"` | Allows `FileExpertStore` to read uncached cold experts from the backing weight files when `host_expert_bytes` is bounded. |
 | `session.moe.offload.cpu_threads` | Non-negative integer | `0` (`auto`) | Number of `SpinPool` worker threads for cold-expert CPU execution (`0` auto-detects physical cores via `DiscoverPhysicalCoreCount()`). |
-| `session.moe.offload.async_max_tokens` | Non-negative integer | `4` | Token threshold separating hybrid doorbell decode (`rows <= async_max_tokens`) from GPU streaming DMA prefill (`rows > async_max_tokens`). |
+| `session.moe.offload.async_max_tokens` | Non-negative integer | `8` | Token threshold separating hybrid doorbell decode (`rows <= async_max_tokens`) from GPU streaming DMA prefill (`rows > async_max_tokens`). |
 | `session.moe.offload.prefill_wave_experts` | Positive integer | `32` | Maximum experts per compaction/DMA wave during prefill (further bounded by `device_working_bytes`). |
 | `session.moe.offload.skip_zero_cold_doorbell` | `"0"`, `"1"` | `"0"` | Complete zero-cold partial-residency decode calls on the GPU without dispatching CPU expert work (`ORT_QMOE_SKIP_ZERO_COLD_DOORBELL` fallback). Applies to static placement with cross-layer promotions disabled. |
 | `session.moe.offload.popularity_file` | Relative or absolute path | `""` | Optional path to `expert-profile.bin` (`STRP` v1 format). Relative paths resolve against the model directory. |

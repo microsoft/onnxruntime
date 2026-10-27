@@ -4160,7 +4160,10 @@ __global__ void __launch_bounds__(256, 4) FusedFc1GroupedFastKernel(
   const int vec_len = params.hidden / 8;
   for (int r = 0; r < count; ++r) {
     const size_t route = static_cast<size_t>(s_routes[r]);
-    const size_t token = route / params.top_k;
+    const size_t token = params.input_is_gathered
+                             ? route
+                             : (params.source_route_ids ? static_cast<size_t>(__ldg(&params.source_route_ids[route]))
+                                                        : (route / params.top_k));
     const uint4* in_row4 = reinterpret_cast<const uint4*>(static_cast<const T*>(params.input) + token * params.hidden);
     uint4* s_row4 = reinterpret_cast<uint4*>(s_input + static_cast<size_t>(r) * params.hidden);
     for (int v = threadIdx.x; v < vec_len; v += 256) {
@@ -4510,9 +4513,8 @@ cudaError_t LaunchInt3Typed(const Int3MoeParams& params, cudaStream_t stream) {
     const size_t grouped_fc1_smem = static_cast<size_t>(kGroupRows) * params.hidden * sizeof(T);
     const size_t grouped_fc2_smem = static_cast<size_t>(kGroupRows) * params.intermediate * sizeof(float);
     const bool use_grouped_prefill =
-        params.rows >= 16 && params.grouped_workspace != nullptr &&
-        params.total_routes_override == 0 && !params.input_is_gathered &&
-        params.source_route_ids == nullptr &&
+        (params.rows >= 16 || total_routes >= 32) && params.grouped_workspace != nullptr &&
+        is_power_of_two_block &&
         params.num_experts > 0 && params.num_experts <= 512 &&
         grouped_fc1_smem <= 48 * 1024 && grouped_fc2_smem <= 48 * 1024;
 

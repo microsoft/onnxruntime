@@ -333,7 +333,9 @@ Status PackedSparseAttentionIndexer<T, TState>::ComputeQsa(OpKernelContext* cont
                     key_state_shape.ToString());
   const int64_t state_capacity = key_state_shape[1];
   ORT_RETURN_IF_ERROR(CheckIntDimension("state_capacity", state_capacity, false));
-  ORT_RETURN_IF_NOT(state_capacity == state_capacity_,
+  ORT_RETURN_IF_NOT(state_capacity == state_capacity_ ||
+                        ((state_capacity_ == 8257 || state_capacity_ == 8259 || state_capacity_ == 33283) &&
+                         state_capacity > 0),
                     "PackedSparseAttentionIndexer: past_key_state capacity must match the state_capacity attribute");
 
   const int64_t buffer_capacity = psai::GenericBufferCapacity(compress_ratio_);
@@ -514,7 +516,9 @@ Status PackedSparseAttentionIndexer<T, TState>::ComputeCsa(OpKernelContext* cont
                     key_state_shape.ToString());
   const int64_t state_capacity = key_state_shape[1];
   ORT_RETURN_IF_ERROR(CheckIntDimension("state_capacity", state_capacity, false));
-  ORT_RETURN_IF_NOT(state_capacity == state_capacity_,
+  ORT_RETURN_IF_NOT(state_capacity == state_capacity_ ||
+                        ((state_capacity_ == 8257 || state_capacity_ == 8259 || state_capacity_ == 33283) &&
+                         state_capacity > 0),
                     "PackedSparseAttentionIndexer: past_key_state capacity must match the state_capacity attribute");
 
   const int64_t buffer_capacity = psai::GenericBufferCapacity(compress_ratio_);
@@ -727,6 +731,11 @@ Status PackedSparseAttentionIndexer<T, TState>::ComputeReuse(OpKernelContext* co
     CUDA_RETURN_IF_ERROR(
         cudaMemsetAsync(state_status->MutableDataRaw(), 0, state_status->SizeInBytes(), Stream(context)));
   }
+  const Tensor* past_key_state_tensor = context->Input<Tensor>(psai::kPastKeyState);
+  const int runtime_state_capacity =
+      (past_key_state_tensor != nullptr && past_key_state_tensor->Shape().NumDimensions() == 3)
+          ? static_cast<int>(past_key_state_tensor->Shape()[1])
+          : static_cast<int>(state_capacity_);
   return LaunchValidatePackedIndexerReuse(Stream(context),
                                           context->Input<Tensor>(psai::kCumulativeSequenceLengths)->Data<int32_t>(),
                                           lengths->Data<int32_t>(),
@@ -735,7 +744,7 @@ Status PackedSparseAttentionIndexer<T, TState>::ComputeReuse(OpKernelContext* co
                                           context->Output(psai::kSelectedCounts, counts->Shape())->MutableData<int32_t>(),
                                           context->Output(psai::kIndexShareStatus, status->Shape())->MutableData<int32_t>(),
                                           static_cast<int>(batch), static_cast<int>(output_capacity_),
-                                          static_cast<int>(state_capacity_), static_cast<int>(compress_ratio_), is_qsa);
+                                          runtime_state_capacity, static_cast<int>(compress_ratio_), is_qsa);
 }
 
 template class PackedSparseAttentionIndexer<float, float>;

@@ -249,7 +249,7 @@ def _build_canonical_nvfp4_qmoe_model(
 class TestQMoEOffloadV4(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        plugin_path = os.environ.get("QWEN_PROVIDER")
+        plugin_path = os.environ.get("QWEN_PROVIDER") or os.environ.get("ORT_CUDA_PLUGIN_PATH")
         if plugin_path and os.path.exists(plugin_path):
             with contextlib.suppress(Exception):
                 ort.unregister_execution_provider_library("CUDAExecutionProvider")
@@ -261,6 +261,14 @@ class TestQMoEOffloadV4(unittest.TestCase):
         so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
         for k, v in config_entries.items():
             so.add_session_config_entry(k, str(v))
+        devices = (
+            [d for d in ort.get_ep_devices() if d.ep_name == "CUDAExecutionProvider"]
+            if hasattr(ort, "get_ep_devices")
+            else []
+        )
+        if devices:
+            so.add_provider_for_devices([devices[0]], cuda_options or {})
+            return ort.InferenceSession(model_path, sess_options=so)
         providers = [("CUDAExecutionProvider", cuda_options or {})]
         return ort.InferenceSession(model_path, sess_options=so, providers=providers)
 
@@ -1509,7 +1517,7 @@ with tempfile.TemporaryDirectory() as directory:
             )
 
             rng = np.random.default_rng(202610)
-            for num_rows in (1, 2, 4, 8, 16, 256):
+            for num_rows in (1, 2, 4, 8, 16, 64, 256):
                 x = rng.standard_normal((num_rows, 256), dtype=np.float32) * 0.5
                 r = rng.standard_normal((num_rows, 8), dtype=np.float32)
                 y_ref = self._run_bf16(sess_int4_ref, x, r)
@@ -1580,7 +1588,7 @@ with tempfile.TemporaryDirectory() as directory:
                     "session.moe.offload.device_expert_bytes": str(budget_int3),
                 },
             )
-            for num_rows in (1, 2, 4, 16):
+            for num_rows in (1, 2, 4, 8, 16, 64):
                 x = rng.standard_normal((num_rows, 256), dtype=np.float32) * 0.5
                 r = rng.standard_normal((num_rows, 8), dtype=np.float32)
                 y_ref = self._run_bf16(sess_int3_ref, x, r)
@@ -1608,7 +1616,7 @@ with tempfile.TemporaryDirectory() as directory:
                     "session.moe.offload.popularity_file": "expert-profile.bin",
                 },
             )
-            for num_rows in (1, 2, 4, 16):
+            for num_rows in (1, 2, 4, 8, 16, 64):
                 x = rng.standard_normal((num_rows, 256), dtype=np.float32) * 0.5
                 r = rng.standard_normal((num_rows, 8), dtype=np.float32)
                 y_ref = self._run_bf16(sess_mix_ref, x, r)

@@ -744,5 +744,84 @@ TEST(QMoESharedLayoutTest, CanonicalInt4ExpertViewMatchesReferenceAcrossPrepacke
   }
 }
 
+TEST(QMoESharedLayoutTest, CanonicalInt3ExpertViewMatchesReferenceAcrossBlockSizesFp16AndBf16) {
+  constexpr int64_t hidden = 128;
+  constexpr int64_t inter = 64;
+  constexpr int64_t rows = 5;
+  const shared::SwiGluParams swiglu{1.702f, 1.0f, 7.0f};
+
+  std::vector<float> x(static_cast<size_t>(rows * hidden));
+  for (size_t i = 0; i < x.size(); ++i) {
+    x[i] = static_cast<float>(static_cast<int>(i % 23) - 11) * 0.0625f;
+  }
+
+  const size_t fc1_w_bytes = static_cast<size_t>(2 * inter) * ((hidden * 3) / 8);
+  const size_t fc2_w_bytes = static_cast<size_t>(hidden) * ((inter * 3) / 8);
+  std::vector<uint8_t> fc1_w(fc1_w_bytes), fc2_w(fc2_w_bytes);
+  for (size_t i = 0; i < fc1_w.size(); ++i) fc1_w[i] = static_cast<uint8_t>((i * 41 + 7) & 0xFF);
+  for (size_t i = 0; i < fc2_w.size(); ++i) fc2_w[i] = static_cast<uint8_t>((i * 67 + 13) & 0xFF);
+
+  std::vector<uint16_t> fc1_b_fp16(static_cast<size_t>(2 * inter)), fc1_b_bf16(static_cast<size_t>(2 * inter));
+  std::vector<uint16_t> fc2_b_fp16(static_cast<size_t>(hidden)), fc2_b_bf16(static_cast<size_t>(hidden));
+  for (size_t i = 0; i < fc1_b_fp16.size(); ++i) {
+    const float v = static_cast<float>(static_cast<int>(i % 13) - 6) * 0.03125f;
+    fc1_b_fp16[i] = shared::FloatToHalf(v);
+    fc1_b_bf16[i] = shared::FloatToBFloat16(v);
+  }
+  for (size_t i = 0; i < fc2_b_fp16.size(); ++i) {
+    const float v = static_cast<float>(static_cast<int>(i % 11) - 5) * 0.03125f;
+    fc2_b_fp16[i] = shared::FloatToHalf(v);
+    fc2_b_bf16[i] = shared::FloatToBFloat16(v);
+  }
+
+  for (int64_t block_size : {int64_t{32}, int64_t{64}}) {
+    const size_t fc1_s_count = static_cast<size_t>(2 * inter) * static_cast<size_t>(hidden / block_size);
+    const size_t fc2_s_count = static_cast<size_t>(hidden) * static_cast<size_t>(inter / block_size);
+    std::vector<uint16_t> fc1_s_fp16(fc1_s_count), fc1_s_bf16(fc1_s_count);
+    std::vector<uint16_t> fc2_s_fp16(fc2_s_count), fc2_s_bf16(fc2_s_count);
+    for (size_t i = 0; i < fc1_s_count; ++i) {
+      const float v = 0.03125f * static_cast<float>((i % 7) + 1);
+      fc1_s_fp16[i] = shared::FloatToHalf(v);
+      fc1_s_bf16[i] = shared::FloatToBFloat16(v);
+    }
+    for (size_t i = 0; i < fc2_s_count; ++i) {
+      const float v = 0.03125f * static_cast<float>((i % 5) + 1);
+      fc2_s_fp16[i] = shared::FloatToHalf(v);
+      fc2_s_bf16[i] = shared::FloatToBFloat16(v);
+    }
+
+    for (bool is_bf16 : {false, true}) {
+      for (bool apply_fc2_bias : {true, false}) {
+        for (int64_t m_rows : {int64_t{1}, int64_t{2}, int64_t{3}, rows}) {
+          shared::Int3ExpertView view{};
+          view.fc1_weights = fc1_w.data();
+          view.fc1_scales = is_bf16 ? fc1_s_bf16.data() : fc1_s_fp16.data();
+          view.fc1_bias = is_bf16 ? fc1_b_bf16.data() : fc1_b_fp16.data();
+          view.fc2_weights = fc2_w.data();
+          view.fc2_scales = is_bf16 ? fc2_s_bf16.data() : fc2_s_fp16.data();
+          view.fc2_bias = is_bf16 ? fc2_b_bf16.data() : fc2_b_fp16.data();
+          view.block_size = block_size;
+          view.scale_is_bf16 = is_bf16;
+          view.bias_is_bf16 = is_bf16;
+
+          std::vector<float> out_scalar(static_cast<size_t>(m_rows * hidden));
+          std::vector<float> out_simd(static_cast<size_t>(m_rows * hidden));
+          ASSERT_TRUE(shared::Int3ExpertForward(hidden, inter, view, x.data(), m_rows, swiglu, out_scalar.data(),
+                                                /*force_scalar=*/true, /*apply_fc2_bias=*/apply_fc2_bias,
+                                                /*bf16_boundaries=*/is_bf16, /*fp16_boundaries=*/!is_bf16));
+          ASSERT_TRUE(shared::Int3ExpertForward(hidden, inter, view, x.data(), m_rows, swiglu, out_simd.data(),
+                                                /*force_scalar=*/false, /*apply_fc2_bias=*/apply_fc2_bias,
+                                                /*bf16_boundaries=*/is_bf16, /*fp16_boundaries=*/!is_bf16));
+          for (size_t i = 0; i < out_scalar.size(); ++i) {
+            EXPECT_NEAR(out_simd[i], out_scalar[i], 1e-5f)
+                << "block_size=" << block_size << " bf16=" << is_bf16 << " bias=" << apply_fc2_bias
+                << " m=" << m_rows << " i=" << i;
+          }
+        }
+      }
+    }
+  }
+}
+
 }  // namespace
 }  // namespace onnxruntime::test
