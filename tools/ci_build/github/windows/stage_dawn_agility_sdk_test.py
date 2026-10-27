@@ -5,8 +5,8 @@ import hashlib
 import subprocess
 import tempfile
 import unittest
+import unittest.mock as mock
 from pathlib import Path
-from unittest import mock
 
 import stage_dawn_agility_sdk as staging
 

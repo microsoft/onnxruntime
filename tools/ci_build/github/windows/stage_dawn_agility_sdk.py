@@ -37,9 +37,7 @@ def stage_dawn_agility_sdk(source_dir: Path, mirror_dir: Path) -> Path:
         raise FileNotFoundError(f"NuGet configuration not found: {nuget_config}")
     nuget = shutil.which("nuget.exe")
     if nuget is None:
-        raise FileNotFoundError(
-            "nuget.exe must be on PATH."
-        )
+        raise FileNotFoundError("nuget.exe must be on PATH.")
 
     with tempfile.TemporaryDirectory(prefix="ort-dawn-agility-sdk-") as package_dir:
         print(f"Acquiring {package_id} {version} using {nuget_config}", flush=True)
