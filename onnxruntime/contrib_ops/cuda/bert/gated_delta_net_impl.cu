@@ -417,20 +417,29 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetChunkedKernel(
   for (int chunk0 = 0; chunk0 < seq_len; chunk0 += BT) {
     const int len = min(BT, seq_len - chunk0);
     // Safe FP16 range check in registers during the single global->shared load pass:
-    // fall back to the 3-slice BF16 path if any value exceeds 8192.0f (0x46000000), if any state
-    // entry is below 2^-110 (0x08800000), or if `p.scale` amplifies subnormal inputs (> 16.0f).
+    // fall back when conservative FP16 operand and intermediate-product bounds are exceeded.
     constexpr bool kCheckFp16 =
         std::is_same_v<T, __nv_bfloat16> && kBf16Prec == Bf16Precision::kFp16;
     bool thread_out_of_fp16 = kCheckFp16 && (fabsf(p.scale) > 16.0f);
     if constexpr (kCheckFp16) {
+      int thread_s_max = 0, s_flags = 0;
       for (int idx = tid; idx < DK * kDVB; idx += kChunkedThreads) {
         const int r = idx / kDVB, c = idx % kDVB;
         const int abits = __float_as_int(fabsf(s.s_f[r * L::kVf + c]));
-        if (abits != 0 && (abits < 0x08800000 || abits > 0x46000000)) {
-          thread_out_of_fp16 = true;
-        }
+        thread_s_max = max(thread_s_max, abits);
+        s_flags |= (abits == 0) ? 1 : ((abits < 0x33800000) ? 2 : 0);
+      }
+      if (thread_s_max > 0x43800000 || (thread_s_max != 0 && thread_s_max < 0x38800000) ||
+          (s_flags & 2) != 0) {
+        thread_out_of_fp16 = true;
       }
     }
+    // Bound ||k||_2 <= 1, not just individual components, so retrieval cannot amplify the inverse.
+    const int max_k_bits = p.qk_l2_norm      ? 0x46000000
+                           : needs_retrieval ? __float_as_int(1.0f / sqrtf(static_cast<float>(DK)))
+                                             : 0x41000000;
+    const int max_q_bits = p.qk_l2_norm ? 0x46000000 : 0x41000000;
+    int thread_q_max = 0, thread_k_max = 0;
     for (int idx = tid; idx < BT * DK; idx += kChunkedThreads) {
       const int t = idx / DK, d = idx % DK;
       const int64_t tok = tok_base + chunk0 + t;
@@ -440,14 +449,19 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetChunkedKernel(
       s.q_h[t * L::kKh + d] = qv;
       if constexpr (kCheckFp16) {
         if (t < len) {
-          const int kbits = __float_as_int(fabsf(ElemToFloat(kv)));
-          const int qbits = __float_as_int(fabsf(ElemToFloat(qv)));
-          if (kbits > 0x46000000 || qbits > 0x46000000) {
-            thread_out_of_fp16 = true;
-          }
+          thread_k_max = max(thread_k_max, __float_as_int(fabsf(ElemToFloat(kv))));
+          thread_q_max = max(thread_q_max, __float_as_int(fabsf(ElemToFloat(qv))));
         }
       }
     }
+    if constexpr (kCheckFp16) {
+      if (thread_k_max > max_k_bits || thread_q_max > max_q_bits ||
+          (!p.qk_l2_norm && ((thread_k_max != 0 && thread_k_max < 0x38800000) ||
+                             (thread_q_max != 0 && thread_q_max < 0x38800000)))) {
+        thread_out_of_fp16 = true;
+      }
+    }
+    int thread_v_max = 0;
     for (int idx = tid; idx < BT * kDVB; idx += kChunkedThreads) {
       const int t = idx / kDVB, d = idx % kDVB;
       const int64_t tok = tok_base + chunk0 + t;
@@ -455,11 +469,13 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetChunkedKernel(
       s.v_h[t * L::kVh + d] = vv;
       if constexpr (kCheckFp16) {
         if (t < len) {
-          const int vbits = __float_as_int(fabsf(ElemToFloat(vv)));
-          if (vbits > 0x46000000) {
-            thread_out_of_fp16 = true;
-          }
+          thread_v_max = max(thread_v_max, __float_as_int(fabsf(ElemToFloat(vv))));
         }
+      }
+    }
+    if constexpr (kCheckFp16) {
+      if (thread_v_max > 0x43800000 || (thread_v_max != 0 && thread_v_max < 0x38800000)) {
+        thread_out_of_fp16 = true;
       }
     }
     if (tid < BT) {
@@ -474,6 +490,11 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetChunkedKernel(
       }
       s.gc[tid] = g;
       s.beta[tid] = be;
+      if constexpr (kCheckFp16) {
+        if (tid < len && (!(g <= 0.0f) || !(fabsf(be) <= 1.0f) || (needs_retrieval && be < 0.0f))) {
+          thread_out_of_fp16 = true;
+        }
+      }
     }
 
     if constexpr (std::is_same_v<T, __nv_bfloat16>) {
