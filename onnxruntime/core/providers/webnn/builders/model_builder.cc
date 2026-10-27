@@ -118,7 +118,7 @@ Status ModelBuilder::RegisterConstant(const onnx::TensorProto& tensor, emscripte
       onnxruntime::FileOffsetType data_offset;
       SafeInt<size_t> tensor_byte_size;
       ORT_RETURN_IF_ERROR(utils::GetExternalDataInfo(
-          tensor, graph_viewer_.ModelPath(), external_file_path, data_offset, tensor_byte_size));
+          tensor, graph_viewer_.ModelPath().Path(), external_file_path, data_offset, tensor_byte_size));
 
       unpacked_tensor.resize(static_cast<size_t>(tensor_byte_size));
       ORT_RETURN_IF_ERROR(LoadWebAssemblyExternalData(Env::Default(),

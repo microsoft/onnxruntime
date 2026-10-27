@@ -198,11 +198,7 @@ common::Status ExternalDataLoader::LoadTensor(const RandomAccessFile& file,
   const size_t length = data_length;
   ORT_RETURN_IF_NOT(length == tensor.SizeInBytes(), "External data length does not match tensor size.");
 
-  uint64_t file_length = 0;
-  ORT_RETURN_IF_ERROR(file.GetLength(file_length));
-  const SafeInt<FileOffsetType> end_offset = SafeInt<FileOffsetType>(data_offset) + length;
-  ORT_RETURN_IF(data_offset < 0 || end_offset > file_length,
-                "External data range is outside the file.");
+  ORT_RETURN_IF_ERROR(file.ValidateRange(data_offset, length));
 
   std::lock_guard<std::mutex> lock(mutex_);
   CudaDeviceGuard device_guard;
@@ -244,7 +240,7 @@ common::Status ExternalDataLoader::LoadTensor(const RandomAccessFile& file,
     }
 
     const auto read_status =
-        ReadChunk(file, data_offset + offset, chunk_size, buffers_[buffer_index],
+        ReadChunk(file, data_offset + static_cast<FileOffsetType>(offset), chunk_size, buffers_[buffer_index],
                   reading_thread_count_, reader_pool_);
     if (!read_status.IsOK()) {
       ORT_IGNORE_RETURN_VALUE(synchronize_streams());

@@ -3552,7 +3552,7 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   const logging::Logger& logger = *GetLogger();
 
   if (!graph.ModelPath().empty()) {
-    SetSessionModelPath(graph.ModelPath());
+    SetSessionModelPath(graph.ModelPath().Path());
   }
 
   // Figure out the memory limit if accountant is available

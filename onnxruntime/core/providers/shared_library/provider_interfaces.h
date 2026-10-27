@@ -10,6 +10,7 @@
 // Public wrappers around internal ort interfaces (currently)
 #include "core/providers/shared_library/provider_host_api.h"
 #include "core/common/inlined_containers_fwd.h"
+#include "core/common/model_path.h"
 #include "core/framework/run_instrumentation.h"
 #include "core/framework/resource_accountant.h"
 #include "core/providers/shared/common.h"
@@ -237,7 +238,8 @@ struct ProviderHost {
   virtual Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ uint32_t* p_data, size_t expected_size) = 0;
   virtual Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ int64_t* p_data, size_t expected_size) = 0;
   virtual Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ uint64_t* p_data, size_t expected_size) = 0;
-  virtual Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& tensor, const std::filesystem::path& model_path,
+  virtual Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& tensor,
+                                       const onnxruntime::ModelPath& model_path,
                                        /*out*/ std::vector<uint8_t>& unpacked_tensor) = 0;
 
   virtual uint16_t math__floatToHalf(float f) = 0;
@@ -969,7 +971,7 @@ struct ProviderHost {
   virtual const std::string& NodeUnit__Name(const NodeUnit* p) noexcept = 0;
   virtual int NodeUnit__SinceVersion(const NodeUnit* p) noexcept = 0;
   virtual NodeIndex NodeUnit__Index(const NodeUnit* p) noexcept = 0;
-  virtual const std::filesystem::path& NodeUnit__ModelPath(const NodeUnit* p) noexcept = 0;
+  virtual const onnxruntime::ModelPath& NodeUnit__ModelPath(const NodeUnit* p) noexcept = 0;
   virtual ProviderType NodeUnit__GetExecutionProviderType(const NodeUnit* p) noexcept = 0;
 
   virtual const Node& NodeUnit__GetNode(const NodeUnit* p) noexcept = 0;
@@ -1007,13 +1009,14 @@ struct ProviderHost {
 
   virtual bool Utils__HasExternalDataInMemory(const ONNX_NAMESPACE::TensorProto& ten_proto) = 0;
 
-  virtual Status Utils__ValidateExternalDataPath(const std::filesystem::path& model_path,
+  virtual Status Utils__ValidateExternalDataPath(const onnxruntime::ModelPath& model_path,
                                                  const std::filesystem::path& external_data_path) = 0;
   virtual Status Utils__ValidateExternalDataPathFromDir(const std::filesystem::path& model_dir,
                                                         const std::filesystem::path& external_data_path) = 0;
 
   // Model
-  virtual std::unique_ptr<Model> Model__construct(ONNX_NAMESPACE::ModelProto&& model_proto, const PathString& model_path,
+  virtual std::unique_ptr<Model> Model__construct(ONNX_NAMESPACE::ModelProto&& model_proto,
+                                                  const onnxruntime::ModelPath& model_path,
                                                   const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                                                   const logging::Logger& logger) = 0;
   virtual std::unique_ptr<Model> Model__construct(const std::string& graph_name, bool is_onnx_domain_only,
@@ -1059,7 +1062,7 @@ struct ProviderHost {
   virtual Graph* Graph__MutableParentGraph(Graph* p) = 0;
   virtual const std::string& Graph__Name(const Graph* p) const noexcept = 0;
   virtual void Graph__SetName(Graph* p, const std::string& name) const noexcept = 0;
-  virtual const std::filesystem::path& Graph__ModelPath(const Graph* p) const = 0;
+  virtual const onnxruntime::ModelPath& Graph__ModelPath(const Graph* p) const = 0;
   virtual const std::vector<const NodeArg*>& Graph__GetInputsIncludingInitializers(const Graph* p) const noexcept = 0;
   virtual bool Graph__IsSubgraph(const Graph* p) = 0;
   virtual const Node* Graph__GetProducerNode(const Graph* p, const std::string& node_arg_name) const = 0;
@@ -1094,7 +1097,7 @@ struct ProviderHost {
   virtual std::unique_ptr<Model> GraphViewer__CreateModel(const GraphViewer* p, const logging::Logger& logger, const ModelMetaData&) = 0;
 
   virtual const std::string& GraphViewer__Name(const GraphViewer* p) noexcept = 0;
-  virtual const std::filesystem::path& GraphViewer__ModelPath(const GraphViewer* p) noexcept = 0;
+  virtual const onnxruntime::ModelPath& GraphViewer__ModelPath(const GraphViewer* p) noexcept = 0;
 
   virtual const ConstGraphNodes& GraphViewer__Nodes(const GraphViewer* p) noexcept = 0;
   virtual const Node* GraphViewer__GetNode(const GraphViewer* p, NodeIndex node_index) = 0;
@@ -1163,7 +1166,7 @@ struct ProviderHost {
                                                 std::string_view name,
                                                 gsl::span<const int64_t> dims) = 0;
   virtual Initializer* Initializer__constructor(const Graph& graph, const ONNX_NAMESPACE::TensorProto& tensor_proto,
-                                                const std::filesystem::path& model_path = {},
+                                                const onnxruntime::ModelPath& model_path = {},
                                                 bool check_outer_scope = false) = 0;
 
   virtual void Initializer__destructor(Initializer*) = 0;

@@ -265,7 +265,7 @@ inline std::string GenerateGraphId(const GraphViewer& graph_viewer) {
   };
 
   // Use the model's file name instead of the entire path to avoid cache regeneration if a path changes
-  const fs::path path{main_graph.ModelPath()};
+  const auto& path = main_graph.ModelPath();
 
   if (path.has_filename()) {
     const auto model_name = PathToUTF8String(path.filename().native());
