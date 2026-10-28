@@ -655,7 +655,7 @@ DynamicSparseAttentionCase MakeSelectedOnlyPrefillCase(bool int8_cache, int num_
     for (float& value : c.value) value *= 0.0625f;
     std::mt19937 gen(17);
     for (int b = 0; b < c.batch_size; ++b) {
-      const int past_length = c.seqlens_k[b] + 1 - c.sequence_length;
+      const int64_t past_length = c.seqlens_k[b] + 1 - c.sequence_length;
       for (int kv = 0; kv < c.kv_num_heads; ++kv) {
         for (int pos = 0; pos < past_length; ++pos) {
           for (int d = 0; d < c.head_size; ++d) {
@@ -793,10 +793,10 @@ TEST(DynamicSparseAttentionTest, Int8PrefillQueryBeyondHalfRange_CUDA) {
       c.past_key[offset] = c.expected_present_key[offset] = 0.0f;
     }
   }
-  for (int row = 0; row < c.batch_size * c.sequence_length; ++row) {
+  for (int64_t row = 0; row < c.batch_size * c.sequence_length; ++row) {
     c.key[row * channels + kZeroChannel] = 0.0f;
-    const int b = row / c.sequence_length;
-    const int pos = c.seqlens_k[b] + 1 - c.sequence_length + row % c.sequence_length;
+    const int64_t b = row / c.sequence_length;
+    const int64_t pos = c.seqlens_k[b] + 1 - c.sequence_length + row % c.sequence_length;
     c.expected_present_key[((b * c.kv_num_heads) * c.cache_sequence_length + pos) * c.head_size + kZeroChannel] = 0.0f;
     if (row % 2 == 1) c.query[(row * c.num_heads + 5) * c.head_size + kZeroChannel] = 1.0e7f;
   }
