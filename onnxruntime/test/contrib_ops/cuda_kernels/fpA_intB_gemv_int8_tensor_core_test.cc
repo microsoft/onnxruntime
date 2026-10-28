@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 // Tests of the tensor-core INT8 GEMV (fpA_intB_gemv/int8_tc_gemv.cuh) through fpA_intB_gemv::kernel_launcher:
-//  ./onnxruntime_provider_test --gtest_filter=Int8TensorCoreGemvTest.*
+//  ./onnxruntime_provider_test --gtest_filter=CUDA_EP_Unittest.All
 #if USE_FPA_INTB_GEMM
 #include <cuda_bf16.h>
 #include <cuda_runtime.h>

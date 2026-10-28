@@ -206,11 +206,22 @@ inline int PickGemvCtaN(bool wave_aware, int m, int n, int interleave, int base_
 }
 
 // The tensor-core INT8 GEMV (int8_tc_gemv.cuh) is on unless ORT_DISABLE_FPA_INTB_GEMV_TC=1; the callers that build
-// Params copy it into Params::tensor_core.
+// Params copy it into Params::tensor_core. The variable is read directly, as cuda_runtime_utils.h does: this leaf header
+// can be included before provider_api.h, where core/platform/env_var_utils.h clashes with the provider logging stubs.
+// std::getenv raises C4996 on MSVC, so _dupenv_s is used there.
 inline bool GemvTensorCoreEnabled() {
   static const bool enabled = [] {
+#if defined(_WIN32)
+    char* value = nullptr;
+    size_t value_len = 0;
+    const bool disabled = _dupenv_s(&value, &value_len, "ORT_DISABLE_FPA_INTB_GEMV_TC") == 0 && value != nullptr &&
+                          value[0] == '1' && value[1] == '\0';
+    std::free(value);
+    return !disabled;
+#else
     const char* value = std::getenv("ORT_DISABLE_FPA_INTB_GEMV_TC");
     return value == nullptr || value[0] != '1' || value[1] != '\0';
+#endif
   }();
   return enabled;
 }
