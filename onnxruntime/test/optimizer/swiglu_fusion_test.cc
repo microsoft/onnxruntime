@@ -1,15 +1,20 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cmath>
+#include <sstream>
 #include <string>
 #include <vector>
 
+#include "core/framework/tensor.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/model.h"
 #include "core/optimizer/swiglu_fusion.h"
 
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
+#include "test/util/include/inference_session_wrapper.h"
+#include "test/util/include/test_environment.h"
 #include "test/unittest_util/framework_test_utils.h"
 #include "test/unittest_util/graph_transform_test_builder.h"
 #include "test/optimizer/graph_transform_test_fixture.h"
@@ -175,6 +180,73 @@ void RunCudaQuickGeluMulExactParityTest(float gate_min, float gate_max, float up
                     nullptr, {}, {}, std::move(cuda_ep));
 }
 
+// A zero activation_beta must leave `up` as it is: adding +0.0 would turn a -0.0 into +0.0, while QuickGelu
+// followed by Mul keeps the sign. TransformerTester compares values, and -0.0 == +0.0, so this checks the sign bit
+// of every output of both graphs. Each gate is paired with up = +0.0 and -0.0, and every product is a zero.
+template <typename T>
+void RunCudaSignedZeroTest() {
+  if (!DefaultCudaExecutionProvider()) {
+    GTEST_SKIP() << "CUDA execution provider is not available";
+  }
+
+  // QuickGelu(-100) with alpha 1 takes the double-precision branch of the kernel, the others the float one.
+  std::vector<T> gate_data;
+  std::vector<T> up_data;
+  std::vector<std::string> labels;
+  std::vector<char> expect_negative;
+  for (float gate : {1.0f, -1.0f, 0.0f, -0.0f, -100.0f}) {
+    for (float up : {0.0f, -0.0f}) {
+      gate_data.push_back(T(gate));
+      up_data.push_back(T(up));
+      labels.push_back("gate " + std::to_string(gate) + " up " + std::to_string(up));
+      // QuickGelu keeps the sign of gate, and the Mul xors in the sign of up.
+      expect_negative.push_back(std::signbit(gate) != std::signbit(up));
+    }
+  }
+  const std::vector<int64_t> shape{1, static_cast<int64_t>(gate_data.size())};
+
+  Model model("SignedZero", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+              {{kOnnxDomain, 14}, {kMSDomain, 1}}, {}, DefaultLoggingManager().DefaultLogger());
+  ModelTestBuilder builder(model.MainGraph());
+  NodeArg* gate = builder.MakeInput<T>(shape, gate_data);
+  NodeArg* up = builder.MakeInput<T>(shape, up_data);
+  NodeArg* activated = builder.MakeIntermediate<T>(shape);
+  NodeArg* output = builder.MakeOutput<T>(shape);
+  builder.AddNode("QuickGelu", {gate}, {activated}, kMSDomain).AddAttribute("alpha", 1.0f);
+  builder.AddNode("Mul", {activated, up}, {output});
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(model.MainGraph().Resolve());
+
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+
+  auto run = [&](TransformerLevel level, int expected_swiglu_nodes) {
+    SessionOptions session_options;
+    session_options.graph_optimization_level = level;
+    InferenceSessionWrapper session{session_options, GetEnvironment()};
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
+    std::istringstream model_stream(model_data);
+    ASSERT_STATUS_OK(session.Load(model_stream));
+    ASSERT_STATUS_OK(session.Initialize());
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["com.microsoft.SwiGLU"], expected_swiglu_nodes);
+
+    std::vector<OrtValue> fetches;
+    ASSERT_STATUS_OK(session.Run(RunOptions(), builder.feeds_, builder.output_names_, &fetches));
+    ASSERT_EQ(fetches.size(), 1u);
+    const auto values = fetches[0].Get<Tensor>().DataAsSpan<T>();
+    ASSERT_EQ(values.size(), labels.size());
+    for (size_t i = 0; i < values.size(); ++i) {
+      const float value = static_cast<float>(values[i]);
+      EXPECT_EQ(value, 0.0f) << labels[i];
+      EXPECT_EQ(std::signbit(value), expect_negative[i] != 0) << labels[i];
+    }
+  };
+
+  ASSERT_NO_FATAL_FAILURE(run(TransformerLevel::Level1, /*expected_swiglu_nodes=*/0));
+  ASSERT_NO_FATAL_FAILURE(run(TransformerLevel::Level2, /*expected_swiglu_nodes=*/1));
+}
+
 }  // namespace
 
 TEST_F(GraphTransformationTests, SwiGluFusionFusesQuickGeluMul) {
@@ -298,6 +370,20 @@ TEST_F(GraphTransformationTests, SwiGluFusionCudaBFloat16NegativeTailExact) {
   // QuickGelu's bf16 output falls to subnormals and then to zero near -97, which an unrounded product with a
   // large up would hide.
   RunCudaQuickGeluMulExactParityTest<BFloat16>(-110.0f, -60.0f, 1e37f, 1e38f);
+}
+
+// The fusion's zero activation_beta must not change the sign of a zero product, which a reciprocal turns into -inf
+// or +inf downstream.
+TEST_F(GraphTransformationTests, SwiGluFusionCudaFloatKeepsSignOfZero) {
+  RunCudaSignedZeroTest<float>();
+}
+
+TEST_F(GraphTransformationTests, SwiGluFusionCudaFloat16KeepsSignOfZero) {
+  RunCudaSignedZeroTest<MLFloat16>();
+}
+
+TEST_F(GraphTransformationTests, SwiGluFusionCudaBFloat16KeepsSignOfZero) {
+  RunCudaSignedZeroTest<BFloat16>();
 }
 
 #endif  // !defined(DISABLE_CONTRIB_OPS)

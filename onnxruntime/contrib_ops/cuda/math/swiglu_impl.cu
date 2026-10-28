@@ -26,6 +26,9 @@ template <typename CudaT, bool Fused>
 __global__ void SwiGLUKernel(int64_t count, int64_t cols, float limit, float alpha, float beta,
                              bool round_activation, const CudaT* __restrict__ gate,
                              const CudaT* __restrict__ up, CudaT* __restrict__ output) {
+  // `l + beta` with beta == +0.0 turns l == -0.0 into +0.0 and can flip the sign of a zero result, which a
+  // QuickGelu followed by a Mul keeps. -0.0 is the additive identity for every l, so a zero beta adds that.
+  const float bias = beta == 0.0f ? -0.0f : beta;
   const int64_t stride = static_cast<int64_t>(gridDim.x) * blockDim.x;
   for (int64_t i = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x; i < count;
        i += stride) {
@@ -47,14 +50,14 @@ __global__ void SwiGLUKernel(int64_t count, int64_t cols, float limit, float alp
       const double activated = wide_g * e / (1.0 + e);
       if (round_activation) {
         // QuickGelu narrows double -> float -> T.
-        result = static_cast<float>(static_cast<CudaT>(static_cast<float>(activated))) * (l + beta);
+        result = static_cast<float>(static_cast<CudaT>(static_cast<float>(activated))) * (l + bias);
       } else {
-        result = static_cast<float>(activated * (static_cast<double>(l) + static_cast<double>(beta)));
+        result = static_cast<float>(activated * (static_cast<double>(l) + static_cast<double>(bias)));
       }
     } else {
       float activated = g * _Sigmoid(scaled);
       if (round_activation) activated = static_cast<float>(static_cast<CudaT>(activated));
-      result = activated * (l + beta);
+      result = activated * (l + bias);
     }
     output[i] = static_cast<CudaT>(result);
   }

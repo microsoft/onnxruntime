@@ -904,7 +904,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("limit", "Clamp applied to both halves; zero or less disables it.",
               AttributeProto::FLOAT, 0.0f)
         .Attr("activation_alpha", "Multiplier inside the sigmoid.", AttributeProto::FLOAT, 1.0f)
-        .Attr("activation_beta", "Value added to the linear half.", AttributeProto::FLOAT, 0.0f)
+        .Attr("activation_beta",
+              "Value added to the linear half. A zero value leaves it unchanged, including a negative zero.",
+              AttributeProto::FLOAT, 0.0f)
         .Attr("round_activation",
               "If non-zero, round G * Sigmoid(activation_alpha * G) to T before multiplying by "
               "(L + activation_beta). Zero rounds only the final result.",

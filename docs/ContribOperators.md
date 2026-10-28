@@ -8340,7 +8340,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>activation_alpha</tt> : float</dt>
 <dd>Multiplier inside the sigmoid.</dd>
 <dt><tt>activation_beta</tt> : float</dt>
-<dd>Value added to the linear half.</dd>
+<dd>Value added to the linear half. A zero value leaves it unchanged, including a negative zero.</dd>
 <dt><tt>limit</tt> : float</dt>
 <dd>Clamp applied to both halves; zero or less disables it.</dd>
 <dt><tt>round_activation</tt> : int</dt>

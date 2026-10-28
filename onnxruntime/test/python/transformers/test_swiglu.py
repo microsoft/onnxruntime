@@ -166,6 +166,21 @@ def parity_cases(elem):
     return cases
 
 
+def signed_zero_feeds():
+    """Each gate paired with `up` = +0.0 and -0.0, so every output is a zero whose sign is the only signal.
+
+    With alpha 1, a gate of -100 takes the double-precision branch of the kernel and the others the float one.
+    """
+    gate = np.repeat(np.array([1.0, -1.0, 0.0, -0.0, -100.0], dtype=np.float32), 2)[None, :]
+    up = np.tile(np.array([0.0, -0.0], dtype=np.float32), 5)[None, :]
+    return {"gate": gate, "up": up}
+
+
+def signed_zero_expected(feeds):
+    """Sign bits of QuickGelu(gate) * up: QuickGelu keeps the sign of gate and the Mul xors in the sign of up."""
+    return np.signbit(feeds["gate"]) ^ np.signbit(feeds["up"])
+
+
 @unittest.skipUnless(has_cuda(), "SwiGLU is a CUDA-only kernel")
 class TestSwiGLU(unittest.TestCase):
     def assert_close(self, got, want, tol, tag):
@@ -328,6 +343,35 @@ class TestSwiGLU(unittest.TestCase):
                 for round_activation, expected in ((1, rounded), (0, unrounded)):
                     got = run(build_swiglu(elem, 0.0, False, [1, 1], round_activation=round_activation), feeds)[0]
                     np.testing.assert_allclose(got, [[expected]], rtol=rtol, atol=0.0)
+
+    def test_zero_beta_keeps_the_sign_of_zero(self):
+        """A zero activation_beta adds nothing to `up`, so a -0.0 stays -0.0 instead of becoming +0.0.
+
+        assert_array_equal treats the two zeros as equal, so these cases compare sign bits.
+        """
+        feeds = signed_zero_feeds()
+        want = signed_zero_expected(feeds)
+        shape = list(feeds["gate"].shape)
+        for elem in ELEM_TYPES:
+            for round_activation in (0, 1):
+                with self.subTest(dtype=NAME_OF[elem], round_activation=round_activation):
+                    got = run(build_swiglu(elem, 0.0, False, shape, round_activation=round_activation), feeds)[0]
+                    np.testing.assert_array_equal(got, np.zeros_like(got))
+                    np.testing.assert_array_equal(np.signbit(got), want)
+
+    def test_quick_gelu_mul_fusion_keeps_the_sign_of_zero(self):
+        """The fusion sets beta to zero, and a downstream reciprocal tells -0.0 from +0.0 (-inf vs +inf)."""
+        feeds = signed_zero_feeds()
+        want = signed_zero_expected(feeds)
+        shape = list(feeds["gate"].shape)
+        for elem in ELEM_TYPES:
+            with self.subTest(dtype=NAME_OF[elem]):
+                model = build_quick_gelu_mul(elem, shape, 1.0)
+                unfused, _ = run_optimized(model, feeds, ort.GraphOptimizationLevel.ORT_DISABLE_ALL)
+                fused, fused_ops = run_optimized(model, feeds, ort.GraphOptimizationLevel.ORT_ENABLE_ALL)
+                self.assertIn("SwiGLU", fused_ops)
+                np.testing.assert_array_equal(np.signbit(unfused), want)
+                np.testing.assert_array_equal(np.signbit(fused), want)
 
     def test_rejects_mismatched_shapes(self):
         model = build_swiglu(TP.FLOAT, 0.0, False, [2, 8])
