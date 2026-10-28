@@ -147,6 +147,8 @@ void WeightOnlyGroupwiseQuantGemmPluginProfiler::runTactic(
     params.decode_variant = tactic.cudaKernelVariant >= 2 ? tactic.cudaKernelVariant : 0;
     params.paired_k = tactic.cudaKernelVariant == 1;
     params.wave_aware = mWaveAwareGemv;
+    params.device_sm = mDeviceSm;
+    params.device_sm_count = mDeviceSmCount;
     onnxruntime::llm::kernels::fpA_intB_gemv::kernel_launcher(mArch, params, stream);
   } else {
     // run CUTLASS kernel

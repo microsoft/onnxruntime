@@ -20,6 +20,16 @@ Status LaunchGatedAddKernel(cudaStream_t stream,
                             int64_t count,
                             int64_t hidden_size);
 
+Status LaunchProjectedSigmoidGateMul(cudaStream_t stream,
+                                     const uint16_t* attention,
+                                     const uint16_t* activation,
+                                     const uint16_t* weight,
+                                     const uint16_t* residual,
+                                     uint16_t* output,
+                                     int64_t rows,
+                                     int64_t input_width,
+                                     int64_t output_width);
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
