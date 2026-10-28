@@ -4571,6 +4571,125 @@ TEST(PatternRewriterTests, UnifiedPatternsIndependentOutputsAreCallableNotEntrie
   }
 }
 
+TEST(PatternRewriterTests, MultiSinkAssignmentPriorityAndMatchOnlyAgreeAcrossDispatchModes) {
+  const PatternLibrary library(R"(
+    pattern E(x) { c=Identity(x); s=Neg(c)|Neg(c); y=Abs(c); return y,s,c }
+  )");
+  for (bool indexed : {false, true}) {
+    for (bool match_only : {false, true}) {
+      TestGraph test;
+      auto& b = test.builder;
+      auto* x = b.MakeInput<float>({2}, -1.0f, 1.0f);
+      auto* c = b.MakeOutput();
+      b.AddNode("Identity", {x}, {c});
+      auto* first = b.MakeOutput();
+      auto* second = b.MakeOutput();
+      b.AddNode("Neg", {c}, {first});
+      b.AddNode("Neg", {c}, {second});
+      const auto anchor = b.AddNode("Abs", {c}, {b.MakeOutput()}).Index();
+      b.SetGraphOutputs();
+      ASSERT_STATUS_OK(test.graph.Resolve());
+      const auto before = test.model.ToProto().SerializeAsString();
+      InlinedVector<std::string> calls;
+      Rules rules;
+      for (const char* name : {"Preferred", "Fallback"}) {
+        Rule rule{name, library.GetPattern("E"), "(x)=>UnknownMultiSinkReplacement(x)", {}, {{kOnnxDomain, 17, 17}}};
+        rule.check_and_bind = [&, name](const Graph&, Match& match) {
+          EXPECT_EQ(match.nodes.back()->Index(), anchor);
+          EXPECT_THROW(match.attributeOf("leaked"), OnnxRuntimeException);
+          EXPECT_TRUE(match.RejectionReason().empty());
+          const bool reject = match.valueOf("s") == first;
+          calls.push_back(std::string(name) + (reject ? ":first" : ":second"));
+          if (reject) {
+            ONNX_NAMESPACE::AttributeProto value;
+            value.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+            value.set_i(1);
+            match.update("leaked", value);
+            return match.Reject("try next sibling before the next alternative");
+          }
+          EXPECT_EQ(match.valueOf("s"), second);
+          return true;
+        };
+        rules.push_back(std::move(rule));
+      }
+      Options options;
+      options.indexed = indexed;
+      options.match_only = match_only;
+      Statistics stats;
+      const auto status = PatternRewriter(std::move(rules), options).Run(test.graph, stats);
+      EXPECT_EQ(status.IsOK(), match_only);
+      EXPECT_EQ(stats.rewrites, 0u);
+      if (match_only) {
+        EXPECT_EQ(stats.matches, 4u);
+        EXPECT_EQ(stats.structural_checks, indexed ? 4u : 16u);
+        EXPECT_EQ(calls, (InlinedVector<std::string>{"Preferred:first", "Preferred:second",
+                                                     "Preferred:first", "Preferred:second",
+                                                     "Fallback:first", "Fallback:second",
+                                                     "Fallback:first", "Fallback:second"}));
+      } else {
+        EXPECT_EQ(stats.matches, 1u);
+        EXPECT_EQ(calls, (InlinedVector<std::string>{"Preferred:first", "Preferred:second"}));
+      }
+      EXPECT_EQ(test.model.ToProto().SerializeAsString(), before);
+    }
+  }
+}
+
+TEST(PatternRewriterTests, MultiSinkIterationsRevisitAnchorsAfterSiblingChanges) {
+  for (bool indexed : {false, true}) {
+    for (size_t max_iterations : {1u, 10u}) {
+      TestGraph test;
+      auto& b = test.builder;
+      auto* x = b.MakeInput<float>({1}, -1.0f, 1.0f);
+      auto* c = b.MakeIntermediate();
+      auto* a = b.MakeIntermediate();
+      b.AddNode("Identity", {x}, {c});
+      b.AddNode("Neg", {c}, {a});
+      const auto anchor = b.AddNode("Relu", {c}, {b.MakeOutput()}).Index();
+      b.AddNode("Abs", {a}, {b.MakeOutput()});
+      // Guarantees progress even if the sibling precedes the anchor in the initial batch.
+      b.AddNode("Ceil", {x}, {b.MakeOutput()});
+      b.SetGraphOutputs();
+      ASSERT_STATUS_OK(test.graph.Resolve());
+      bool anchor_seen = false;
+      Options options;
+      options.indexed = indexed;
+      options.max_iterations = max_iterations;
+      options.on_failure = [&](const MatchFailure& failure) {
+        if (failure.rule == "Branches" && failure.root == anchor) anchor_seen = true;
+      };
+      Rule branches{"Branches",
+                    "(x)=>{c=Identity(x);a=Neg(c);state=Sigmoid(a);y=Relu(c);return y,state}",
+                    "(x)=>{y,state=LayerNormalization(x,x);return y,state}",
+                    {},
+                    {{kOnnxDomain, 17, 17}}};
+      Rule sibling{"ChangeSibling", "(x)=>return Abs(x)", "(x)=>Sigmoid(x)", [&](const Graph&, Match&) { return anchor_seen; }, {{kOnnxDomain, 17, 17}}};
+      Rule seed{"SeedProgress", "(x)=>return Ceil(x)", "(x)=>Floor(x)", {}, {{kOnnxDomain, 17, 17}}};
+      Statistics stats;
+      InlinedHashSet<NodeIndex> region;
+      for (const auto& node : test.graph.Nodes()) region.insert(node.Index());
+      PatternRewriter rewriter({branches, sibling, seed}, options);
+      ASSERT_STATUS_OK(indexed ? rewriter.Run(test.graph, stats, region) : rewriter.Run(test.graph, stats));
+      EXPECT_TRUE(anchor_seen);
+      if (max_iterations == 1) {
+        EXPECT_GE(stats.rewrites, 1u);
+        EXPECT_EQ(stats.iterations, 1u);
+        EXPECT_TRUE(stats.iteration_limit_reached);
+        EXPECT_EQ(Count(test.graph, "Relu"), 1u);
+      } else {
+        EXPECT_EQ(stats.rewrites, 3u);
+        EXPECT_GE(stats.iterations, 2u);
+        EXPECT_FALSE(stats.iteration_limit_reached);
+        EXPECT_EQ(Count(test.graph, "LayerNormalization"), 1u);
+        EXPECT_EQ(Count(test.graph, "Relu"), 0u);
+      }
+      if (indexed)
+        for (NodeIndex index : region) EXPECT_NE(test.graph.GetNode(index), nullptr);
+      ASSERT_STATUS_OK(test.graph.Resolve());
+    }
+  }
+}
+
 namespace {
 struct NestedSelectionView {
   std::string_view definition;
