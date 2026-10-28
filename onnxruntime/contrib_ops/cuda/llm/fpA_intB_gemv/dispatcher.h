@@ -278,6 +278,11 @@ template <typename Details, int CtaM, int CtaN, int Threads, int GroupSize, bool
           bool EnableBias, bool ApplyAlphaInAdvance, typename TypeA = typename Details::TypeDetailsA::Type>
 __global__ void kernel(TypeA* act, TypeA* act_scale, uint8_t* weight, TypeA* scales, TypeA* zeros, TypeA* bias,
                        TypeA* out, float alpha, int m, int n, int k) {
+#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900))
+  // Lets a programmatic-dependent-launch successor (the hyper-connection down kernel) start and prefetch its constant
+  // weights while this kernel runs; it reads our output only after griddepcontrol.wait. No-op for plain launches.
+  asm volatile("griddepcontrol.launch_dependents;" ::: "memory");
+#endif
 #if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 750))
   // ArgType          ArgName          DataType           Shape                 Layout
   // input            act              fp16/bf16          [m, k]                RowMajor
