@@ -784,6 +784,9 @@ The dispatcher does not query the device. The caller reports it in
 `MatMulNBits` and its tactic profiler fill both from the execution provider's
 device properties. A caller that leaves them at 0 gets the "Other devices" rule.
 The A100 rule needs both values, because an A30 is also SM 8.0 but has 56 SMs.
+The opt-in wave-aware tile (`ep.cuda.fpa_intb_gemv_wave_aware`; FP16, 4-bit,
+`M = 8`, sm_12x only) takes its SM count from the same fields through
+`GemvPickSmCount`, so a launch that reports no device gets no wave-aware tile.
 
 - **A100.** The windows have an upper bound because more blocks help only until
   the narrow tile crosses a resident-block wave boundary: five 4-bit narrow

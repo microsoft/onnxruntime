@@ -425,16 +425,16 @@ class KernelTestFixture : public ::testing::Test {
     params.device_sm_count = device_prop_.multiProcessorCount;
   }
 
+  // Fills what the dispatcher reads from Params: the reported device and the opt-in wave-aware mode.
+  using ParamsHook = std::function<void(wo::Params&)>;
+
   // Launches the zero-point-free GEMV once with debug logging and returns the CtaN column tile it reports.
-  // Without a reported device the dispatcher must use its device-independent cutoffs.
-  int GemvLaunchCtaN(bool report_device = true) {
+  int LaunchCtaN(const ParamsHook& configure) {
     static_assert(QuantOp == cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY);
     wo::Params params(d_act_->data(), nullptr, d_weight_->data(), d_scales_->data(), nullptr, nullptr,
                       d_out_->data(), 1.f, m_, n_, k_, block_size_, KT);
     params.debug = true;
-    if (report_device) {
-      ReportDevice(params);
-    }
+    configure(params);
     const int kernel_arch = GetKernelArch(onnxruntime::llm::common::getSMVersion());
     testing::internal::CaptureStdout();
     try {
@@ -450,9 +450,20 @@ class KernelTestFixture : public ::testing::Test {
     return pos == std::string::npos ? 0 : std::atoi(log.c_str() + pos + 5);
   }
 
+  // Launches with this device reported. Without a reported device the dispatcher must use its device-independent
+  // cutoffs.
+  int GemvLaunchCtaN(bool report_device = true) {
+    return LaunchCtaN([&](wo::Params& params) {
+      if (report_device) {
+        ReportDevice(params);
+      }
+    });
+  }
+
   // Checks that one M = 8 launch is bitwise identical to two M = 4 launches over the same weights. The tile
-  // shape only decides which block computes which output, not the K reduction order of that output.
-  bool M8MatchesTwoM4Launches() {
+  // shape only decides which block computes which output, not the K reduction order of that output. `configure`
+  // defaults to reporting this device.
+  bool M8MatchesTwoM4Launches(const ParamsHook& configure = nullptr) {
     static_assert(QuantOp == cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY);
     using AType = typename cutlassTypeMapper<KT>::AType;
     ORT_ENFORCE(m_ == 8);
@@ -462,7 +473,11 @@ class KernelTestFixture : public ::testing::Test {
                         d_scales_->data(), nullptr, nullptr,
                         d_out_->data<AType>() + static_cast<size_t>(first_row) * n_, 1.f, rows, n_, k_,
                         block_size_, KT);
-      ReportDevice(params);
+      if (configure) {
+        configure(params);
+      } else {
+        ReportDevice(params);
+      }
       wo::kernel_launcher(kernel_arch, params, s_);
     };
     // Start from a NaN pattern so that an output that is never written cannot match by accident.
@@ -1011,6 +1026,18 @@ TEST(FpAIntBGemvTest, WaveAwareDispatchUsesSyntheticSmCount) {
   EXPECT_EQ(wo::PickGemvCtaN(true, 8, 512, kInterleave, kDefaultCtaN, 0), kDefaultCtaN);
 }
 
+// The wave-aware SM count is the one the caller reports, and only an sm_12x device has one.
+TEST(FpAIntBGemvTest, WaveAwareSmCountComesFromReportedDevice) {
+  EXPECT_EQ(wo::GemvPickSmCount(120, 170), 170);  // RTX 5090
+  EXPECT_EQ(wo::GemvPickSmCount(121, 48), 48);
+  EXPECT_EQ(wo::GemvPickSmCount(80, 108), 0);   // A100
+  EXPECT_EQ(wo::GemvPickSmCount(90, 132), 0);   // H100
+  EXPECT_EQ(wo::GemvPickSmCount(100, 148), 0);  // sm_100 is not sm_12x
+  EXPECT_EQ(wo::GemvPickSmCount(0, 0), 0);      // a caller that does not report its device
+  EXPECT_EQ(wo::GemvPickSmCount(120, 0), 0);
+  EXPECT_EQ(wo::GemvPickSmCount(0, 170), 0);
+}
+
 // Keep upstream wave-aware and default tactic caches distinct after extending the key.
 TEST(FpAIntBGemvTest, TacticCacheSeparatesWaveAwareMode) {
   using TacticCache = std::unordered_map<wo_profile::GemmIdCore, int, wo_profile::GemmIdCoreHash>;
@@ -1278,6 +1305,38 @@ TEST_F(Bf16Int8SymmetricGroupwiseTest, Int8Group32SymmetricM8NarrowTile) {
   }
   CheckGemvTiles(UsesA100M8Tiles() ? kInt8A100M8TileCases : kInt8M8TileCases);
   CheckUnreportedDeviceTiles(kInt8M8TileCases);
+}
+
+// The opt-in wave-aware tile follows the device the caller reports in Params, so the RTX 5090 policy (sm_12x, 170 SMs)
+// is checked on any GPU: the kernels run on this device and only the reported device differs. N = 10240 is 640
+// default blocks on that device's 510 slots, so wave-aware picks the narrow tile where the grid.y cutoff alone
+// keeps the default tile.
+TEST_F(Fp16Int4SymmetricGroupwiseTest, Int4Group32WaveAwareTileFollowsReportedDevice) {
+  if (onnxruntime::llm::common::getSMVersion() < kMinSupportedSm) {
+    GTEST_SKIP() << "FP16 INT4 GEMV requires SM " << kMinSupportedSm << " or later";
+  }
+  constexpr int kRtx5090Sm = 120;
+  constexpr int kRtx5090SmCount = 170;
+  auto report = [](int sm, int sm_count, bool wave_aware) {
+    return [=](wo::Params& params) {
+      params.device_sm = sm;
+      params.device_sm_count = sm_count;
+      params.wave_aware = wave_aware;
+    };
+  };
+  for (const auto& [m, n, expected_cta_n] : std::vector<std::tuple<int, int, int>>{
+           {8, 5120, 2}, {8, 6144, 4}, {8, 10240, 2}, {7, 10240, 4}, {9, 10240, 4}}) {
+    SCOPED_TRACE(testing::Message() << "M=" << m << " N=" << n);
+    InitBuffers(m, n, 4096, 32);
+    EXPECT_EQ(LaunchCtaN(report(kRtx5090Sm, kRtx5090SmCount, true)), expected_cta_n);
+  }
+
+  InitBuffers(8, 10240, 4096, 32);
+  EXPECT_EQ(LaunchCtaN(report(kRtx5090Sm, kRtx5090SmCount, false)), 4);  // opt-in off
+  EXPECT_EQ(LaunchCtaN(report(0, 0, true)), 4);                          // device not reported
+  EXPECT_EQ(LaunchCtaN(report(kRtx5090Sm, 0, true)), 4);                 // SM count not reported
+  EXPECT_EQ(LaunchCtaN(report(80, 108, true)), 4);                       // A100 is not sm_12x
+  EXPECT_TRUE(M8MatchesTwoM4Launches(report(kRtx5090Sm, kRtx5090SmCount, true)));
 }
 
 // Check default dispatch and every legal geometry around the two-column grid.y limit.

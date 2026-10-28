@@ -233,6 +233,20 @@ delta per case, 750 paired trials over 10 cases) and device time is unchanged (m
 per-thread cached attributes) added 0.08-0.11 us (about 3%) per warm launch, so the query was moved out of
 the launch path.
 
+The opt-in wave-aware tile (`ep.cuda.fpa_intb_gemv_wave_aware`; FP16/INT4, `M = 8`, sm_12x) had the same
+per-launch query in `GemvPickSmCount()` and now reads the same `Params` fields. 52 launches (13 N values x 4
+reported devices) ran on the A100 with the dispatcher's debug output captured. With a reported SM 12.0 /
+170-SM device and the flag set, the dispatcher chose `CtaN = 2` at N = 5184, 8192, 10240, and 16384 and
+`CtaN = 4` at N = 5760, 6144, and 12288. The same launches kept the non-wave-aware rule with the flag off,
+with no reported device, or with the A100's own values. Every choice matched an independent restatement of the
+policy, and production, forced-`CtaN = 2`, and forced-`CtaN = 4` outputs were bit-identical. The dispatcher
+made 0 runtime calls over cold and 1,000 warm launches; the previous header made one `cudaGetDevice` call per
+warm launch and ignored the reported device. With the flag set, warm CPU enqueue time exceeded a forced launch
+of the same tile by 0.016-0.021 us (0.5-0.7%) after the change, versus 0.106-0.112 us (3.4-3.6%) before it,
+and 0.019 us with the flag off in both builds (median paired deltas, 5 rounds x 15 trials x 256 launches per
+case). These runs check the dispatch decision and its host cost on an A100 only; no sm_12x device was
+available, so the speed-up of the wave-aware tile itself was not re-measured.
+
 ### Caveats
 
 - Only an A100-SXM4-80GB was measured. A100 40 GB and PCIe parts share SM80, 108 SMs, and a 40 MiB L2,
@@ -240,3 +254,5 @@ the launch path.
 - Other devices keep the H200-tuned grid.y cutoffs. H200 data cover FP16/INT4 and BF16/INT8 only;
   FP16/INT8 and BF16/INT4 on non-A100 devices are unmeasured.
 - Kernel-level timings with synthetic weights and activations; no end-to-end ORT latency was measured.
+- The wave-aware path was checked on an A100 with a reported sm_12x device (dispatch decision and host cost
+  only); no sm_12x GPU was used.

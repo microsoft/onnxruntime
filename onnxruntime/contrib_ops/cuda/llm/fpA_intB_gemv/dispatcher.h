@@ -19,42 +19,8 @@
 #include "core/common/common.h"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 
-#include <atomic>
 #include <cstdio>
 #include <type_traits>
-
-namespace onnxruntime::llm {
-namespace kernels {
-namespace fpA_intB_gemv {
-
-// SM count of the current device if it is sm_12x (consumer / workstation Blackwell), else 0.
-inline int GemvPickSmCount() {
-  int device = 0;
-  if (cudaGetDevice(&device) != cudaSuccess) {
-    return 0;
-  }
-  static constexpr int kMaxDevices = 16;
-  static std::atomic<int> cache[kMaxDevices];  // 0 = unknown, -1 = not sm_12x
-  int count = device >= 0 && device < kMaxDevices ? cache[device].load(std::memory_order_relaxed) : 0;
-  if (count == 0) {
-    int major = 0;
-    if (cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, device) != cudaSuccess ||
-        cudaDeviceGetAttribute(&count, cudaDevAttrMultiProcessorCount, device) != cudaSuccess) {
-      return 0;
-    }
-    if (major != 12) {
-      count = -1;
-    }
-    if (device >= 0 && device < kMaxDevices) {
-      cache[device].store(count, std::memory_order_relaxed);
-    }
-  }
-  return count > 0 ? count : 0;
-}
-
-}  // namespace fpA_intB_gemv
-}  // namespace kernels
-}  // namespace onnxruntime::llm
 
 namespace onnxruntime::llm {
 namespace kernels {
@@ -673,9 +639,9 @@ void dispatcher(Params& params, cudaStream_t s) {
     }
     if constexpr (Details::kStepK == 32 && Details::kInterleave == 4 &&
                   std::is_same_v<typename Details::TypeDetailsA, FP16DetailsA>) {
-      int const sm_count = params.wave_aware && params.m == 8 ? GemvPickSmCount() : 0;
+      // Opt-in wave-aware tile (sm_12x only). Its SM count comes from the reported device as well.
       int const pick = PickGemvCtaN(params.wave_aware, params.m, params.n, Details::kInterleave, CtaNLargeM,
-                                    sm_count);
+                                    GemvPickSmCount(params.device_sm, params.device_sm_count));
       if (pick == CtaNLargeM / 2) {
         exec_kernel<Details, 8, CtaNLargeM / 2, 128, GroupSize, EnableActScale, EnableZero, EnableBias,
                     ApplyAlphaInAdvance>(params, s);

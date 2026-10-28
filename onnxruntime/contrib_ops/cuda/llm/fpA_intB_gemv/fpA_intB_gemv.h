@@ -89,6 +89,13 @@ inline int PickM8GemvCtaN(bool is_a100, int m, int n, int k, int interleave, int
   return narrow ? base_cta_n / 2 : base_cta_n;
 }
 
+// SM count that the wave-aware tile selection (PickGemvCtaN) runs with: the one the caller reports in
+// Params::device_sm_count if the device is sm_12x (consumer / workstation Blackwell), else 0. A caller that does
+// not report its device (0) gets 0 as well, so it never gets a wave-aware tile.
+inline int GemvPickSmCount(int device_sm, int device_sm_count) {
+  return device_sm / 10 == 12 && device_sm_count > 0 ? device_sm_count : 0;
+}
+
 // Picks the dense GEMV column tile (CtaN) that fills the GPU's block slots best.
 //
 // The M = 8 kernel is register-limited to 4 / 3 / 2 resident 128-thread blocks per SM for
@@ -96,7 +103,7 @@ inline int PickM8GemvCtaN(bool is_a100, int m, int n, int k, int interleave, int
 // launches only n / (CtaN * interleave) blocks, so the last wave is often mostly empty (for
 // example N = 10240 at CtaN = 4 runs 640 blocks on the 510 slots of an RTX 5090). Returns the
 // candidate with the highest wave efficiency, and only leaves `base_cta_n` when the gain is clear.
-// The slot counts and the gain were measured on sm_120 only, so `sm_count` is 0 elsewhere.
+// The slot counts and the gain were measured on sm_120 only, so `sm_count` (GemvPickSmCount) is 0 elsewhere.
 inline int PickGemvCtaN(bool wave_aware, int m, int n, int interleave, int base_cta_n, int sm_count) {
   if (!wave_aware || m != 8 || sm_count <= 0) {
     return base_cta_n;
@@ -147,8 +154,9 @@ struct Params {
   bool debug = false;
   int decode_variant = 0;
   // Device that runs the launch, reported by the caller (0 = unknown, which selects the device-independent
-  // cutoffs). The raw device values, not the packing arch passed to kernel_launcher. The dispatcher keys its
-  // M = 8 tile windows on them instead of querying the CUDA runtime on every launch.
+  // cutoffs and no wave-aware tile). The raw device values, not the packing arch passed to kernel_launcher. The
+  // dispatcher keys its M = 8 tile choices (A100 windows, wave-aware SM count) on them instead of querying the
+  // CUDA runtime on every launch.
   int device_sm = 0;        // major * 10 + minor
   int device_sm_count = 0;  // multiProcessorCount
 
