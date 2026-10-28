@@ -323,6 +323,17 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
   MatMulComputeHelper helper;
   ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape, false, true));
 
+  if (b->Shape().Size() == 0) {
+    ORT_RETURN_IF_ERROR(matmul_nbits_helper::CheckEmptyInputs(*b, bias, N_op, K_op, block_size_op, nbits, 0));
+    if (y->Shape().Size() == 0) return Status::OK();
+    // Shared by standalone MatMulNBits and fused QKV/MLP fallbacks. Record a
+    // fill dispatch so capture replay overwrites the output without reading A
+    // or unused quantization parameters. The fill uses [batch, row, column].
+    auto program = CreateMatMulFillBiasOrZeroBeforeSplitKProgram(
+        bias, y, false, 1.0f, 1, TensorShape({1, y->Shape().Size() / N_op, N_op}));
+    return context.RunProgram(program);
+  }
+
   const bool has_qlora_up = lora_t != nullptr;
   const bool has_qlora_down = lora_a_transposed != nullptr;
   ORT_RETURN_IF_NOT(!has_qlora_down || (lora_a_output != nullptr && lora_a_scales != nullptr && !has_qlora_up &&

@@ -44,7 +44,8 @@ void LaunchSoftmaxTopK(
 
 // Decode-only fused routing: softmax + top-k (bit-identical to LaunchSoftmaxTopK) and the (expert, token)-sorted expert
 // maps of fusedBuildExpertMapsSortFirstToken in one single-CTA launch. Returns false (nothing launched) outside its
-// envelope: 1..4 rows, exactly 512 experts, k in {1, 2, 4, 6, 8, 10}, 8-byte aligned logits.
+// envelope: 1..8 rows, exactly 512 experts, k in {1, 2, 4, 6, 8, 10}, 8-byte aligned logits.
+bool CanUseFusedRouteMaps(int64_t num_rows, int64_t num_experts, int64_t k);
 bool LaunchFusedRouteMaps(const half* logits, float* topk_scales, int* topk_indices, int* permuted_row_to_unpermuted_row,
                           int* unpermuted_row_to_permuted_row, int* permuted_expert, int64_t* expert_first_token_offset,
                           int num_rows, int num_experts, int k, bool normalize_scales, bool pdl, cudaStream_t stream);
@@ -424,6 +425,41 @@ void LaunchQMoECombineNvfp4ScalesForGemv(
     int n,
     int k_blocks,
     cudaStream_t stream);
+
+struct Int3Projection {
+  const uint8_t* weights = nullptr;
+  const void* scales = nullptr;
+  const uint8_t* zeros = nullptr;
+  const void* bias = nullptr;
+  int bits = 0;
+};
+
+struct Int3MoeParams {
+  const void* input = nullptr;
+  void* output = nullptr;
+  void* activation = nullptr;
+  void* fc2_partial = nullptr;
+  const int* experts = nullptr;
+  const float* routing_scales = nullptr;
+  const void* router_weights = nullptr;
+  int num_experts = 0;
+  Int3Projection fc1{};
+  Int3Projection fc2{};
+  int rows = 0;
+  int hidden = 0;
+  int intermediate = 0;
+  int top_k = 0;
+  int block_size = 0;
+  float alpha = 1.0f;
+  float beta = 0.0f;
+  float limit = 0.0f;
+  bool is_bfloat16 = false;
+};
+
+cudaError_t LaunchInt3Moe(const Int3MoeParams& params, cudaStream_t stream);
+cudaError_t ValidateInt3MoeContent(const Int3Projection& projection, size_t rows,
+                                   int logical_k, int block_size, bool is_bfloat16,
+                                   int* invalid, cudaStream_t stream);
 
 }  // namespace cuda
 }  // namespace contrib

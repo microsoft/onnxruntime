@@ -61,9 +61,9 @@ fn loadSHMA(batch:u32, a_global_base:u32, kidx_v:u32, row: u32, col: u32)
         return;
     }
     tile_A[col][row] = a.getByOffset(batch*uniforms.M*uniforms.K16+a_global*uniforms.K16+kidx_v+col);
-    if (col == 0)
+    // A 128-value quantization block shares its scale across four 32-value K tiles.
+    if (col == 0 && kidx_v % 8u == 0u)
     {
-        // kidx_v - covers 16 values of k
         scale_A[row] = scales_a.getByOffset(batch*uniforms.M*(uniforms.K/128) + a_global*(uniforms.K/128) + kidx_v/8);
     }
 }
@@ -209,12 +209,9 @@ $MAIN {
     var a_idx = u32(local_idx % subtile_size);
 
 #if is_qualcomm
-    // subtile_idx is always 0
-    // subtile_idy is one of {0,1,2,3}
-    // The subtile is now rectangular 64x16 for qualcomm case and we have 4 subtiles, this way we don't need to
-    // increase the number of lane_output each thread needs to track. That is if we want to use a subtile that is 64x64
-    // we would need var lane_outputs: array<output_element_t, 64>;
-    if (sg_size == 64) {
+    // Qualcomm uses four 64x16 subtiles or two 128x16 subtiles. Each lane
+    // owns one activation row and accumulates 16 output columns.
+    if (sg_size == tile_size_m) {
         subtile_id = u32(local_idx / sg_size);
         subtile_idx = u32(subtile_id / subtiles_n);
         subtile_idy = u32(subtile_id % subtiles_n);
@@ -253,7 +250,7 @@ $MAIN {
 
 #if has_zero_points && n_bits == 8
  #if is_qualcomm
-            if (sg_size == 64)
+            if (sg_size == tile_size_m)
             {
                 var own_b0: vec4<u32>;
                 var own_b1: vec4<u32>;
@@ -335,7 +332,7 @@ $MAIN {
  #endif
 #else
  #if is_qualcomm
-            if (sg_size == 64)
+            if (sg_size == tile_size_m)
             {
                 var own_b0: vec4<u32>;
                 var own_b1: vec4<u32>;

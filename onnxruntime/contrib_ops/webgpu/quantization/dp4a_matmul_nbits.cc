@@ -204,10 +204,16 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
     return context.RunProgram(mul_program);
   }
 
+  // Two 128-lane subgroups cover a 128x32 tile, with one activation row per lane.
+  const bool qc_wave128 = context.AdapterInfo().vendor == std::string_view{"qualcomm"} &&
+                          context.HasFeature(wgpu::FeatureName::SubgroupSizeControl) &&
+                          context.AdapterInfo().subgroupMinSize <= 128 &&
+                          context.AdapterInfo().subgroupMaxSize >= 128 &&
+                          nbits == 4 && block_size == 32 && M >= 128;
   // The 64-lane subgroup variant spans 64 rows. Reserve 32-row tiles for
   // devices whose subgroup range cannot select that variant.
-  const uint32_t tile_size_m = N < 64 && context.AdapterInfo().subgroupMaxSize < 64 ? 32 : 64;
-  const uint32_t tile_size_n = N < 64 ? 32 : 64;
+  const uint32_t tile_size_m = qc_wave128 ? 128 : (N < 64 && context.AdapterInfo().subgroupMaxSize < 64 ? 32 : 64);
+  const uint32_t tile_size_n = qc_wave128 || N < 64 ? 32 : 64;
   const uint32_t tile_size_k_vec = N < 64 && nbits == 8 && block_size == 32 ? 8 : 2;
   TensorShape reshaped_y_shape{batch_count, M, N / kVec4Components};
   uint32_t num_M_tile = CeilDiv(M, tile_size_m);
@@ -218,6 +224,9 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
       tile_size_m, tile_size_n, tile_size_k_vec, block_size, nbits, has_zero_points,
       has_bias, has_weight_idx, has_weight_idx_indirect, is_qualcomm, acc_f32, has_qlora_up};
   mul_program.SetWorkgroupSize(tile_size_m * tile_size_n / 16);
+  if (qc_wave128) {
+    mul_program.SetSubgroupSize(128);
+  }
   mul_program.SetDispatchGroupSize(batch_count * num_M_tile * num_N_tile);
   mul_program
       .AddInputs({{&a_quant, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec4Components)},
