@@ -430,7 +430,7 @@ class WindowsRandomAccessFile final : public RandomAccessFile {
     ORT_RETURN_IF(file_size < requested_end, "RandomAccessFile::Map: requested range exceeds file size.");
 
     wil::unique_handle mapping{CreateFileMappingW(file_handle_.get(), nullptr,
-                                                 copy_on_write_ ? PAGE_WRITECOPY : PAGE_READONLY, 0, 0, nullptr)};
+                                                  copy_on_write_ ? PAGE_WRITECOPY : PAGE_READONLY, 0, 0, nullptr)};
     ORT_RETURN_IF(mapping.get() == nullptr,
                   "CreateFileMappingW failed: ", GetLastError());
 
