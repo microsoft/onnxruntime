@@ -268,7 +268,8 @@ class BuildDocumentationTest(unittest.TestCase):
                     metadata_path = Path(command[command.index("--metadata_path") + 1])
                     self.assertTrue(metadata_path.is_absolute())
                     artifact_dir = self.cwd / "generated-docs"
-                    self.assertEqual(metadata_path, artifact_dir / "generation-metadata.json")
+                    # Windows CI can expose TEMP through an 8.3 path alias.
+                    self.assertTrue(metadata_path.samefile(artifact_dir / "generation-metadata.json"))
                     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
                     for name in ("OperatorKernels.md", "ContribOperators.md"):
                         content = (artifact_dir / name).read_bytes()
