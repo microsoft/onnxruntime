@@ -12,6 +12,7 @@
 #include "core/common/narrow.h"
 #include "core/providers/webgpu/compute_context.h"
 #include "core/providers/webgpu/math/subgroup_matrix_config.h"
+#include "core/providers/webgpu/math/subgroup_matrix_pad_b.h"
 #include "core/providers/webgpu/nn/conv.h"
 #include "core/providers/webgpu/nn/subgroup_matrix_conv.h"
 #include "core/providers/webgpu/shader_helper.h"
@@ -159,17 +160,33 @@ class SubgroupMatrixConvImpl final : public Conv<is_channels_last, is_fused>::Co
       return Status::OK();
     }
 
+    // HWIO's row-major B has row stride N, with no alignment guarantee (unlike OHWI's
+    // stride K, always a multiple of 16); an odd N breaks the subgroup-matrix load's
+    // row-start alignment. A constant weight can pad N up to N_b and cache the
+    // result; a non-constant one can't be cached, so decline instead.
+    constexpr uint32_t kHwioNAlign = 2;
+    const bool needs_padded_b = kernel_layout == KernelLayout::HWIO && N % kHwioNAlign != 0;
+    if (needs_padded_b && !parent.IsWeightConstant()) {
+      return Status::OK();
+    }
+    const uint32_t n_b = needs_padded_b ? ((N / kHwioNAlign) + 1) * kHwioNAlign : N;
+
     Tensor* output = context.Output(0, output_shape);
 
     // B operand: OHWI or HWIO (see b_is_hwio and the WGSL template). An already
-    // prepacked weight is used as-is; otherwise this transposes to OHWI itself,
-    // caching the result for constant weights.
+    // prepacked weight is used as-is (padded to n_b first if its N is unaligned);
+    // otherwise this transposes to OHWI itself, caching the result for constant
+    // weights.
     Tensor run_local_ohwi_weight;
     const Tensor* b_weight = nullptr;
     bool b_is_hwio = false;
     if (parent.PrepackedKernel() != nullptr) {
       b_weight = parent.PrepackedKernel();
       b_is_hwio = (kernel_layout == KernelLayout::HWIO);
+      if (needs_padded_b) {
+        ORT_RETURN_IF_ERROR(EnsurePaddedWeight(context, *b_weight, N, n_b));
+        b_weight = padded_b_weight_.get();
+      }
     } else if (parent.IsWeightConstant()) {
       ORT_RETURN_IF_ERROR(EnsureTransposedKernel(context, weight, weight_shape));
       b_weight = cached_ohwi_weight_.get();
@@ -216,6 +233,7 @@ class SubgroupMatrixConvImpl final : public Conv<is_channels_last, is_fused>::Co
         .AddOutput({output, ProgramTensorMetadataDependency::Rank, output_shape, 1})
         .AddUniformVariables({{M},
                               {N},
+                              {n_b},
                               {K},
                               {dispatch_x},
                               {batch},
@@ -233,8 +251,8 @@ class SubgroupMatrixConvImpl final : public Conv<is_channels_last, is_fused>::Co
     if (has_bias) {
       program.AddInput({bias, ProgramTensorMetadataDependency::None});
     }
-    LOGS_DEFAULT(VERBOSE) << "SubgroupMatrixConv dispatching: M=" << M << " N=" << N << " K=" << K
-                          << " batch=" << batch << " tile_m=" << tile_m << " tile_n=" << tile_n
+    LOGS_DEFAULT(VERBOSE) << "SubgroupMatrixConv dispatching: M=" << M << " N=" << N << " N_b=" << n_b
+                          << " K=" << K << " batch=" << batch << " tile_m=" << tile_m << " tile_n=" << tile_n
                           << " split_k=" << split_k << " vec_size=" << vec_size << ".";
     ORT_RETURN_IF_ERROR(context.RunProgram(program));
 
@@ -258,12 +276,30 @@ class SubgroupMatrixConvImpl final : public Conv<is_channels_last, is_fused>::Co
                                                  "Failed to transpose the subgroup-matrix Conv weight to OHWI.");
   }
 
+  // Pads a prepacked HWIO weight's unaligned N up to n_b on first use and caches it;
+  // only reached for a constant weight (see needs_padded_b above).
+  Status EnsurePaddedWeight(ComputeContext& context, const Tensor& b_weight, uint32_t N, uint32_t n_b) const {
+    std::call_once(pad_once_, [&]() {
+      std::unique_ptr<Tensor> padded;
+      if (PadSubgroupMatrixWeightColumns(context, b_weight, b_weight.Shape(), N, n_b, padded).IsOK()) {
+        padded_b_weight_ = std::move(padded);
+      }
+    });
+    return padded_b_weight_ ? Status::OK()
+                            : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                              "Failed to pad the subgroup-matrix Conv weight.");
+  }
+
   const SubgroupMatrixConfig config_;
   SubgroupMatrixTilingSelector tiling_selector_;
 
   // OIHW -> OHWI transposed constant weight, built once by EnsureTransposedKernel.
   mutable std::once_flag transpose_once_;
   mutable std::unique_ptr<Tensor> cached_ohwi_weight_;
+
+  // N-padded prepacked HWIO weight, built once by EnsurePaddedWeight.
+  mutable std::once_flag pad_once_;
+  mutable std::unique_ptr<Tensor> padded_b_weight_;
 };
 
 }  // namespace

@@ -9,8 +9,11 @@
 // A: gathered per K-block into a_scratch (im2col rows are scattered, but
 //    subgroupMatrixLoad needs a contiguous buffer); K order (kh, kw, cin) matches
 //    both weight layouts below.
-// B: OHWI, column-major (B[k,n] at n*K+k), or HWIO, row-major (B[k,n] at k*N+n) --
-//    see b_is_hwio, set by the host to whichever the weight arrived in.
+// B: OHWI, column-major (B[k,n] at n*K+k), or HWIO, row-major, row stride N_b
+//    (B[k,n] at k*N_b+n) -- see b_is_hwio, set by the host to whichever the weight
+//    arrived in. N_b pads HWIO's N up to a 4-byte-aligned width when N is odd
+//    (never needed for OHWI, whose stride K is already a multiple of 16); padded
+//    columns are read but never written (output always uses real N).
 //
 // Workgroup: split_k subgroups x 32 lanes, tile kTileM x kTileN (host-selected). K
 // blocks round-robin across subgroups when split_k > 1; partials summed at
@@ -19,8 +22,8 @@
 //
 // Bias/activation: write_output(), built by the host from GetActivationSnippet.
 //
-// Host guarantees: K % sg_mat_k == 0; kTileN <= N so a trailing partial N tile can
-// shift back in bounds. M is unconstrained (see load_im2col_vec).
+// Host guarantees: K % sg_mat_k == 0; kTileN <= N_b so a trailing partial N tile
+// can shift back in bounds. M is unconstrained (see load_im2col_vec).
 
 #param sg_mat_k
 #param sg_mat_m
@@ -89,7 +92,10 @@ $MAIN {
     let n_tile_start = n_tile * kTileN;
     // Shift a trailing partial N tile back so unchecked B loads stay inside the
     // weight buffer (max() just guards the u32 subtraction; host clamps kTileN <= N).
-    let global_base_n = min(n_tile_start, max(uniforms.N, kTileN) - kTileN);
+    // Uses N_b (== N unless B was padded for row-major alignment) so the shifted
+    // origin -- itself n_align-even since N_b, kTileN and n_tile_start all are --
+    // stays alignment-safe for the HWIO load below.
+    let global_base_n = min(n_tile_start, max(uniforms.N_b, kTileN) - kTileN);
     let n_skip = n_tile_start - global_base_n;  // columns already written by the previous tile
     let m_tile = tile_idx / uniforms.num_n_tile;        // which kTileM-tall row tile
     let m_base = m_tile * kTileM;
@@ -231,25 +237,27 @@ $MAIN {
         if (valid) {
             // Load the B right tiles for this K block.
 #if b_is_hwio
-            // HWIO: B is row-major ([K, N], B[k, n] at k*N + n); load row-major, stride N.
-            let b_base = kb * kSgMatK * uniforms.N + global_base_n;
+            // HWIO: B is row-major ([K, N_b], B[k, n] at k*N_b + n); load row-major,
+            // stride N_b. N_b (== N unless padded) keeps the row stride, and via
+            // global_base_n above, the column offset, 4-byte aligned.
+            let b_base = kb * kSgMatK * uniforms.N_b + global_base_n;
             var sg_mat_b0: subgroup_matrix_right<f16, sg_mat_n, sg_mat_k> =
                 subgroupMatrixLoad<subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>, row_major>(
-                    &input_b, b_base + 0 * kSgMatN, uniforms.N);
+                    &input_b, b_base + 0 * kSgMatN, uniforms.N_b);
 #if sg_mat_count_n >= 2
             var sg_mat_b1: subgroup_matrix_right<f16, sg_mat_n, sg_mat_k> =
                 subgroupMatrixLoad<subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>, row_major>(
-                    &input_b, b_base + 1 * kSgMatN, uniforms.N);
+                    &input_b, b_base + 1 * kSgMatN, uniforms.N_b);
 #endif
 #if sg_mat_count_n >= 3
             var sg_mat_b2: subgroup_matrix_right<f16, sg_mat_n, sg_mat_k> =
                 subgroupMatrixLoad<subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>, row_major>(
-                    &input_b, b_base + 2 * kSgMatN, uniforms.N);
+                    &input_b, b_base + 2 * kSgMatN, uniforms.N_b);
 #endif
 #if sg_mat_count_n >= 4
             var sg_mat_b3: subgroup_matrix_right<f16, sg_mat_n, sg_mat_k> =
                 subgroupMatrixLoad<subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>, row_major>(
-                    &input_b, b_base + 3 * kSgMatN, uniforms.N);
+                    &input_b, b_base + 3 * kSgMatN, uniforms.N_b);
 #endif
 #else
             // OHWI: B is column-major ([N, K], B[k, n] at n*K + k); load col-major, stride K.

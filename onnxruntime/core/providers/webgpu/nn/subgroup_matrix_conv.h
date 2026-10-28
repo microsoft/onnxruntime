@@ -40,6 +40,7 @@ class SubgroupMatrixConvProgram final : public Program<SubgroupMatrixConvProgram
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"M", ProgramUniformVariableDataType::Uint32},
                                           {"N", ProgramUniformVariableDataType::Uint32},
+                                          {"N_b", ProgramUniformVariableDataType::Uint32},
                                           {"K", ProgramUniformVariableDataType::Uint32},
                                           {"num_n_tile", ProgramUniformVariableDataType::Uint32},
                                           {"batch", ProgramUniformVariableDataType::Uint32},

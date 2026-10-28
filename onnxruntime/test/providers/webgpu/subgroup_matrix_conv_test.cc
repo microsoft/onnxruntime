@@ -346,11 +346,21 @@ TEST(SubgroupMatrixConv, FusedActivationWithDeclaration) {
 }
 
 // HardSwish isn't supported by Im2ColMatMul, so PrePackInternal falls through to the
-// general HWIO transpose, and Compute() must read that layout directly too.
+// general HWIO transpose, and Compute() must read that layout directly too. Odd Cout
+// (HWIO's row stride) must still produce the correct result: a constant weight pads
+// N up to N_b (EnsurePaddedWeight), a non-constant one can't be cached so Compute()
+// declines that unaligned load and falls back instead.
 TEST(SubgroupMatrixConv, SharedPrepackHWIO) {
   RunConvTest(/*N=*/1, /*Cin=*/16, /*H=*/10, /*W=*/10, /*Cout=*/32, /*kh=*/3, /*kw=*/3,
               /*stride=*/1, /*pad=*/1, /*dilation=*/1, /*has_bias=*/false,
               /*activation=*/"HardSwish");
+  RunConvTest(/*N=*/1, /*Cin=*/16, /*H=*/10, /*W=*/10, /*Cout=*/17, /*kh=*/3, /*kw=*/3,
+              /*stride=*/1, /*pad=*/1, /*dilation=*/1, /*has_bias=*/false,
+              /*activation=*/"HardSwish");
+  RunConvTest(/*N=*/1, /*Cin=*/16, /*H=*/10, /*W=*/10, /*Cout=*/17, /*kh=*/3, /*kw=*/3,
+              /*stride=*/1, /*pad=*/1, /*dilation=*/1, /*has_bias=*/false,
+              /*activation=*/"HardSwish", /*activation_params=*/{},
+              /*abs_err=*/0.06f, /*rel_err=*/0.02f, /*weight_is_initializer=*/false);
 }
 
 // A fused activation on a shifted/odd N tile: the epilogue, the bias index and the
