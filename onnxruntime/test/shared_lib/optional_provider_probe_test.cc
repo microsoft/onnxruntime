@@ -1,5 +1,6 @@
 #include <filesystem>
 #include <system_error>
+#include <utility>
 
 #if defined(ORT_NO_EXCEPTIONS) && (defined(__EXCEPTIONS) || defined(_CPPUNWIND))
 #error "The optional-provider no-exceptions test must disable compiler exceptions."
@@ -8,10 +9,12 @@
 #include "gtest/gtest.h"
 #include "core/common/inlined_containers.h"
 #include "core/platform/env.h"
+#include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/provider_bridge_library.h"
 #include "core/session/provider_bridge_ort.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/file_util.h"
+#include "test/util/include/scoped_env_vars.h"
 
 namespace onnxruntime::test {
 
@@ -101,6 +104,59 @@ TEST_F(OptionalProviderProbeTest, SuccessfulProbeInitializesOnceAndCanReload) {
   UnloadSharedProviders();
   EXPECT_NE(TryGetProviderInfo_OpenVINO(), nullptr);
   ASSERT_NO_FATAL_FAILURE(CheckInitializedOnce());
+}
+
+TEST_F(OptionalProviderProbeTest, PluginRegistrationInitializesOnceAndUnregisterUnloads) {
+  ASSERT_NO_FATAL_FAILURE(Install(ORT_OPTIONAL_PROBE_shared_LIBRARY, shared_path_));
+  ASSERT_NO_FATAL_FAILURE(Install(ORT_OPTIONAL_PROBE_plugin_LIBRARY, provider_path_));
+  const ScopedEnvironmentVariables events{{"ORT_TEST_PLUGIN_LIFETIME_EVENTS", "_"}};
+  Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "plugin_lifetime_test"};
+
+  for (const char* expected : {"_L", "_LUL"}) {
+    Ort::Status registered{Ort::GetApi().RegisterExecutionProviderLibrary(
+        env, "plugin_lifetime_test", provider_path_.c_str())};
+    ASSERT_TRUE(registered.IsOK()) << registered.GetErrorMessage();
+    auto unregister = gsl::finally([&]() {
+      Ort::Status status{Ort::GetApi().UnregisterExecutionProviderLibrary(env, "plugin_lifetime_test")};
+      EXPECT_TRUE(status.IsOK()) << status.GetErrorMessage();
+    });
+    EXPECT_EQ(Env::Default().GetEnvironmentVar("ORT_TEST_PLUGIN_LIFETIME_EVENTS"), expected);
+  }
+
+  EXPECT_EQ(Env::Default().GetEnvironmentVar("ORT_TEST_PLUGIN_LIFETIME_EVENTS"), "_LULU");
+}
+
+TEST_F(OptionalProviderProbeTest, FailedPluginLoadUnloadsRetainedProbe) {
+  ASSERT_NO_FATAL_FAILURE(Install(ORT_OPTIONAL_PROBE_shared_LIBRARY, shared_path_));
+  Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "plugin_failure_test"};
+
+  for (const auto& [library, registration_name] : {
+           std::pair{ORT_OPTIONAL_PROBE_plugin_missing_export_LIBRARY, "missing_release_export"},
+           std::pair{ORT_OPTIONAL_PROBE_plugin_LIBRARY, "fail_create_factories"}}) {
+    SCOPED_TRACE(registration_name);
+    ASSERT_NO_FATAL_FAILURE(Install(library, provider_path_));
+    const ScopedEnvironmentVariables events{{"ORT_TEST_PLUGIN_LIFETIME_EVENTS", "_"}};
+    Ort::Status status{Ort::GetApi().RegisterExecutionProviderLibrary(env, registration_name, provider_path_.c_str())};
+    EXPECT_FALSE(status.IsOK());
+    EXPECT_EQ(Env::Default().GetEnvironmentVar("ORT_TEST_PLUGIN_LIFETIME_EVENTS"), "_LU");
+    std::error_code error;
+    ASSERT_TRUE(std::filesystem::remove(provider_path_, error)) << error.message();
+  }
+}
+
+TEST_F(OptionalProviderProbeTest, RetainedPluginProbeCanRetryWithoutLeakingReferences) {
+  ASSERT_NO_FATAL_FAILURE(Install(ORT_OPTIONAL_PROBE_shared_LIBRARY, shared_path_));
+  ASSERT_NO_FATAL_FAILURE(Install(ORT_OPTIONAL_PROBE_plugin_LIBRARY, provider_path_));
+  const ScopedEnvironmentVariables events{{"ORT_TEST_PLUGIN_LIFETIME_EVENTS", "_"}};
+  ProviderLibrary library{provider_path_.c_str(), true, ProviderLibraryPathType::Absolute};
+  auto unload = gsl::finally([&]() { library.Unload(); });
+
+  EXPECT_FALSE(library.Load(/*retain_library_on_missing_get_provider=*/true).IsOK());
+  EXPECT_FALSE(library.Load(/*retain_library_on_missing_get_provider=*/true).IsOK());
+  EXPECT_EQ(Env::Default().GetEnvironmentVar("ORT_TEST_PLUGIN_LIFETIME_EVENTS"), "_L");
+
+  EXPECT_FALSE(library.Load().IsOK());
+  EXPECT_EQ(Env::Default().GetEnvironmentVar("ORT_TEST_PLUGIN_LIFETIME_EVENTS"), "_LU");
 }
 
 }  // namespace onnxruntime::test
