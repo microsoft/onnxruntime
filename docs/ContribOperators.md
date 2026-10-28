@@ -17,6 +17,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.BranchwiseRMSNorm">com.microsoft.BranchwiseRMSNorm</a>
   * <a href="#com.microsoft.CDist">com.microsoft.CDist</a>
   * <a href="#com.microsoft.CausalConvWithState">com.microsoft.CausalConvWithState</a>
+  * <a href="#com.microsoft.CausalRightAttention">com.microsoft.CausalRightAttention</a>
   * <a href="#com.microsoft.ComplexMul">com.microsoft.ComplexMul</a>
   * <a href="#com.microsoft.ComplexMulConj">com.microsoft.ComplexMulConj</a>
   * <a href="#com.microsoft.ConvStateReplay">com.microsoft.ConvStateReplay</a>
@@ -1071,6 +1072,63 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain input and output types to float tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.CausalRightAttention"></a><a name="com.microsoft.causalrightattention">**com.microsoft.CausalRightAttention**</a>
+
+  Native-precision scaled dot-product attention with an explicit right-aligned causal contract:
+  
+    scores[b,h,i,j] = scale * dot(Q[b,h,i,:], K[b,h,j,:])
+    Y[b,h,i,:] = softmax(scores[b,h,i,:], allowed j <= T - S + i) * V[b,h,:,:]
+  
+  Q has shape [B,H,S,256] and K/V have shape [B,H,T,256]. Inputs and output have the
+  same float16 or bfloat16 type. B is in [1,8], H in [1,32], and 1 <= S <= T <= 256.
+  Every query therefore has at least one allowed key. There is no arbitrary mask,
+  dropout, grouped-head expansion, rotary embedding, or cache update.
+  The query axis denotes sequence positions, not head groups folded into query rows.
+  A mask can be omitted only when it is known to equal the specified causal pattern.
+  
+  The CUDA implementation requires compute capability 9.x and memory-efficient
+  attention enabled at build time. It uses native-precision CUTLASS operands with
+  float32 accumulation, an aligned additive bias, and no Flash/unfused fallback.
+  CUDA graph capture is not supported. This is an opt-in operator and does not
+  change the dispatch or mask validation of existing Attention operators.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>scale</tt> : float (required)</dt>
+<dd>Finite positive multiplier for Q times transposed K.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>Q</tt> : T</dt>
+<dd>Native-precision query with shape [B,H,S,256].</dd>
+<dt><tt>K</tt> : T</dt>
+<dd>Native-precision key with shape [B,H,T,256].</dd>
+<dt><tt>V</tt> : T</dt>
+<dd>Native-precision value with the same shape as K.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>Attention output with the same shape and type as Q.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16), tensor(bfloat16)</dt>
+<dd>Native 16-bit floating-point tensors.</dd>
 </dl>
 
 

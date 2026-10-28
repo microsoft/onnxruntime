@@ -1104,6 +1104,7 @@ The **OpSet Version** column uses the following notation:
 |BitmaskDropout|*in* data:**T**<br> *in* ratio:**T1**<br> *in* training_mode:**T2**<br> *out* output:**T**<br> *out* mask:**T3**|1+|**T** = tensor(bfloat16), tensor(double), tensor(float), tensor(float16)<br/> **T1** = tensor(bfloat16), tensor(double), tensor(float), tensor(float16)<br/> **T2** = tensor(bool)<br/> **T3** = tensor(uint32)|
 |BranchwiseRMSNorm|*in* X:**T**<br> *in* scale:**M**<br> *out* Y:**T**|1+|**M** = tensor(bfloat16), tensor(float), tensor(float16)<br/> **T** = tensor(bfloat16), tensor(float), tensor(float16)|
 |CausalConvWithState|*in* input:**T**<br> *in* weight:**T**<br> *in* bias:**T**<br> *in* past_state:**T**<br> *out* output:**T**<br> *out* present_state:**T**<br> *out* state_update:**T**|1+|**T** = tensor(bfloat16), tensor(float), tensor(float16)|
+|CausalRightAttention|*in* Q:**T**<br> *in* K:**T**<br> *in* V:**T**<br> *out* Y:**T**|1+|**T** = tensor(bfloat16), tensor(float16)|
 |ComplexMul|*in* A:**T**<br> *in* B:**T**<br> *out* C:**T**|1+|**T** = tensor(float), tensor(float16)|
 |ComplexMulConj|*in* A:**T**<br> *in* B:**T**<br> *out* C:**T**|1+|**T** = tensor(float), tensor(float16)|
 |ConvTransposeWithDynamicPads|*in* X:**T**<br> *in* W:**T**<br> *in* Pads:**tensor(int64)**<br> *in* B:**T**<br> *out* Y:**T**|1+|**T** = tensor(float)|
