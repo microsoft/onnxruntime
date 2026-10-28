@@ -170,6 +170,48 @@ TEST(CUDA_EP_Unittest, QMoEDynamicFp8RoundsRoutingWeightsBeforeFp32Product) {
 }
 
 template <typename T>
+void TestFp16CompatibleSourceKFragments() {
+  std::array<uint8_t, 128> input{};
+  std::array<uint8_t, 128 * 128> weights{};
+  input[0] = input[16] = 0x7e;  // 448
+  input[2] = 0x01;              // 2^-9
+  weights[0] = 0x7e;
+  weights[16] = 0xfe;  // -448
+  weights[2] = 0x38;   // 1
+  const float scale = 1.0f;
+  const std::array<int, 2> tiles{0, 1};
+  const std::array<int64_t, 2> offsets{0, 1};
+  CudaBuffer x(sizeof(input)), w(sizeof(weights)), s(sizeof(scale)), output(128 * sizeof(float));
+  CudaBuffer tile_offsets(sizeof(tiles)), expert_offsets(sizeof(offsets));
+  x.Upload(input.data());
+  w.Upload(weights.data());
+  s.Upload(&scale);
+  tile_offsets.Upload(tiles.data());
+  expert_offsets.Upload(offsets.data());
+  qmoe::QMoEFp8ProjectionParams params;
+  params.weights = w.As<uint8_t>();
+  params.scales = s.As<float>();
+  params.tile_offsets = tile_offsets.As<int>();
+  params.expert_offsets = expert_offsets.As<int64_t>();
+  params.num_experts = params.num_rows = params.expanded_rows = 1;
+  params.n = params.k = params.block_size = 128;
+  qmoe::LaunchQMoEDynamicFp8Projection<T, float>(
+      params, x.As<uint8_t>(), s.As<float>(), output.As<float>(), nullptr, nullptr, 1, nullptr, true);
+  std::array<float, 128> actual{};
+  output.Download(actual.data());
+  // Source fragment 0 cancels the large products at K0/K16 before fragment 1
+  // adds K2. Contiguous K16 fragments would lose the tiny term before cancellation.
+  EXPECT_EQ(actual[0], 0x1p-9f);
+  for (size_t col = 1; col < actual.size(); ++col) EXPECT_EQ(actual[col], 0.0f);
+}
+
+TEST(CUDA_EP_Unittest, QMoEFp16CompatiblePreservesSourceKFragmentOrder) {
+  if (!qmoe::QMoEFp16CompatibleSupported()) GTEST_SKIP() << "SM90 QMoE kernel required.";
+  TestFp16CompatibleSourceKFragments<half>();
+  TestFp16CompatibleSourceKFragments<__nv_bfloat16>();
+}
+
+template <typename T>
 void TestFp16CompatibleTiedRouting() {
   std::array<T, 256> logits{};
   CudaBuffer source(sizeof(logits)), scales(8 * sizeof(float)), indices(8 * sizeof(int));
