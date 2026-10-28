@@ -618,21 +618,25 @@ void dispatcher(Params& params, cudaStream_t s) {
   // grid.y = n / (CtaNLargeM * kInterleave) blocks, too few to fill the GPU, so a half-width tile
   // (CtaN = CtaNLargeM / 2) doubles the block count. The tile only decides which block covers which
   // columns; each output keeps the same K reduction, so results are bit-identical.
-  // Only the scale-only SM80-interleaved INT4 (StepK 32) and INT8 (StepK 16) layouts qualify. The
+  // Only the SM80-interleaved INT4 (StepK 32) and INT8 (StepK 16) layouts without zero points qualify. The
   // Hopper layout (kInterleave 1) and the zero-point kernels (CtaNLargeM 2) keep the default tile.
-  // A100 (reported by the caller in params.device_sm / device_sm_count) uses same-shape timing-qualified
-  // windows for FP16/BF16 and INT4/INT8. In particular, INT4 N = 4320 fills its 108 * 5 narrow-tile block
-  // slots; N = 4336 starts a second wave. Unqualified A100 epilogues keep the default tile. Other and
-  // unreported devices retain the H200 cutoffs.
+  // A100 and H200 (reported by the caller in params.device_sm / device_sm_count) use same-shape
+  // timing-qualified rules for FP16/BF16 and INT4/INT8 with group size 32 / 64 / 128; on H200 INT8 always keeps
+  // the default tile. Activation scales and alpha-in-advance were not timed and keep the default tile there. A
+  // bias epilogue goes to the rule: A100 keeps the default tile, and H200 narrows its INT4 window because the
+  // half-width kernel is 6 - 32% slower than the default one with a bias except where the wave gain pays for it.
+  // In particular, A100 INT4 N = 4320 fills its 108 * 5 narrow-tile block slots; N = 4336 starts a second wave,
+  // and H200 INT4 N = 5280 fills 132 * 5 slots. Other and unreported devices retain the device-independent
+  // cutoffs.
   if constexpr (((Details::kStepK == 32 && Details::kInterleave == 4) ||
                  (Details::kStepK == 16 && Details::kInterleave == 2)) &&
                 !EnableZero && CtaNLargeM == 4) {
-    const bool is_a100 = IsA100Device(params.device_sm, params.device_sm_count);
-    constexpr bool kA100Qualified = !EnableActScale && !EnableBias && !ApplyAlphaInAdvance &&
+    const M8GemvDevice device = GetM8GemvDevice(params.device_sm, params.device_sm_count);
+    constexpr bool kTimedEpilogue = !EnableActScale && !ApplyAlphaInAdvance &&
                                     (GroupSize == 32 || GroupSize == 64 || GroupSize == 128);
-    if ((!is_a100 || kA100Qualified) &&
-        PickM8GemvCtaN(is_a100, params.m, params.n, params.k, Details::kInterleave, CtaNLargeM) ==
-            CtaNLargeM / 2) {
+    if ((device == M8GemvDevice::kUnmeasured || kTimedEpilogue) &&
+        PickM8GemvCtaN(device, params.m, params.n, params.k, GroupSize, Details::kInterleave, EnableBias,
+                       CtaNLargeM) == CtaNLargeM / 2) {
       exec_kernel<Details, 8, CtaNLargeM / 2, 128, GroupSize, EnableActScale, EnableZero, EnableBias,
                   ApplyAlphaInAdvance>(params, s);
       return;

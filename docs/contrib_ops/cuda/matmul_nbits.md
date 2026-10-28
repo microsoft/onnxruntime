@@ -765,28 +765,29 @@ From `M = 4` the 4/8-bit kernel is register-limited, so its tile is halved. At
 launches only `N / (4 * kInterleave)` blocks, too few to fill the GPU, so a
 further-halved `CtaN = 2` ("narrow") tile can double the block count. The tile
 only decides which block covers which columns and every output keeps the same K
-reduction, so results are bit-identical. Only the scale-only SM80-interleaved
-layouts qualify (4-bit `kStepK = 32`, 8-bit `kStepK = 16`, FP16 or BF16,
-`N % (2 * kInterleave) == 0`); the Hopper layout, zero-point kernels, and 2-bit
-weights keep the default tile.
+reduction, so results are bit-identical. Only the SM80-interleaved layouts
+without zero-points qualify (4-bit `kStepK = 32`, 8-bit `kStepK = 16`, FP16 or
+BF16, `N % (2 * kInterleave) == 0`); the Hopper layout, zero-point kernels, and
+2-bit weights keep the default tile.
 
 `PickM8GemvCtaN` in
 [fpA_intB_gemv.h](../../../onnxruntime/contrib_ops/cuda/llm/fpA_intB_gemv/fpA_intB_gemv.h)
-selects the narrow tile as follows:
+selects the narrow tile as follows. `W` is the number of bytes a 4-bit launch
+streams: the packed weights plus one 16-bit scale per column and group,
+`N * K / 2 + 2 * N * (K / block_size)`.
 
 | Device | 4-bit | 8-bit |
 |---|---|---|
-| A100 (SM 8.0, 108 SMs) | `3456 < N <= 4320`, or `K <= 3072` and `1728 < N <= 2560` | `864 < N <= 1304` |
+| A100 (SM 8.0, 108 SMs) | scale-only: `3456 < N <= 4320`, or `K <= 3072` and `1728 < N <= 2560` | scale-only: `864 < N <= 1304` |
+| H200 (SM 9.0, 132 SMs) | scale-only: `N <= 4224` and `W <= 28 MB`, or `4224 < N <= 5280` and `W <= 42 MB`; with bias: `4224 < N <= 5280` and `W <= 34 MB` | never |
 | Other devices | `N / 16 <= 320` | `N / 8 <= 160` |
 
 The dispatcher does not query the device. The caller reports it in
 `Params::device_sm` (`major * 10 + minor`) and `Params::device_sm_count`;
 `MatMulNBits` and its tactic profiler fill both from the execution provider's
 device properties. A caller that leaves them at 0 gets the "Other devices" rule.
-The A100 rule needs both values, because an A30 is also SM 8.0 but has 56 SMs.
-The opt-in wave-aware tile (`ep.cuda.fpa_intb_gemv_wave_aware`; FP16, 4-bit,
-`M = 8`, sm_12x only) takes its SM count from the same fields through
-`GemvPickSmCount`, so a launch that reports no device gets no wave-aware tile.
+The A100 and H200 rules need both values, because an A30 is also SM 8.0 but has
+56 SMs, and the 114-SM H100 PCIe and 78-SM H20 are also SM 9.0.
 
 - **A100.** The windows have an upper bound because more blocks help only until
   the narrow tile crosses a resident-block wave boundary: five 4-bit narrow
@@ -797,12 +798,47 @@ The opt-in wave-aware tile (`ep.cuda.fpa_intb_gemv_wave_aware`; FP16, 4-bit,
   with `block_size` 32, 64, or 128; any other A100 launch keeps the default
   tile. The measurements are in
   [matmul_nbits_small_m_experiments.md](./matmul_nbits_small_m_experiments.md#2026-10-27-a100-fpa_intb-gemv-m8-tile-dispatch-validation).
-- **Other devices** keep the `grid.y` cutoffs tuned on an H200 (132 SMs). Those
-  measurements cover FP16/4-bit and BF16/8-bit; FP16/8-bit and BF16/4-bit reuse
-  the cutoff of the layout they share and have **not** been measured on other
-  devices. Both rules depend on SM count and per-block resource use, so
-  re-measure the narrow versus default tile at the window edges on a new device
-  or after changing the kernel's register or shared-memory footprint.
+- **H200.** A narrow 4-bit block covers 8 columns and five fit per SM (92
+  registers); a default block covers 16 columns and three fit (142-146
+  registers). One wave therefore holds `132 * 5 * 8 = 5280` narrow columns
+  against 6336 default columns.
+  - `N <= 4224` (`132 * 32`): neither tile leaves the busiest SM more than 32
+    columns, so the narrow tile gains only 2-5% on average from lower latency,
+    and only while `W` is small. Beyond about 28 MB it is mostly a small loss at
+    `3168 < N <= 4224` (median 0.5% for FP16 and 2.6% for BF16; at most 2.2% and
+    4.6%).
+  - `4224 < N <= 5280`: the default tile leaves some SMs 48 columns against 40
+    for the narrow tile, which is 13% faster on average (7-18% for the middle
+    80% of shapes). The gain fades as `W` grows and is gone at about 44 MB; the
+    rule stops at 42 MB.
+  - `N > 5280`: the narrow tile needs a second wave and is 6-83% slower up to
+    `N = 6144`. Further up (measured for `block_size` 32 only) it is slower in
+    78% of the shapes and faster by at most 5% in scattered windows that the
+    rule does not chase.
+  - With a bias the narrow kernel is 6-32% slower than the default one for
+    `N <= 4224`: its K loop compiles differently (84 instead of 92 registers)
+    and the penalty grows with `K`. Only the wave window of `4224 < N <= 5280`
+    survives, up to 34 MB.
+  - 8-bit never takes the narrow tile, with or without a bias: at `K <= 2048` it
+    is faster in at most 55% of the shapes and by at most 6%, at `K = 3072-8192`
+    about 4-5% (median; up to 8%) slower, and at `K = 9216-17408` about 8% (up
+    to 10.5%) slower.
+  - The caps are in bytes, not weight counts, because `block_size` 32, 64 and
+    128 follow one curve in bytes but not in elements. As on the A100, the rule
+    applies to launches without activation scale or alpha-in-advance and with
+    `block_size` 32, 64, or 128; any other launch keeps the default tile. The
+    same SM 9.0 / 132-SM pair is reported by H100 SXM, H800 and GH200, which
+    share the rule but were not measured. The measurements are in
+    [matmul_nbits_small_m_experiments.md](./matmul_nbits_small_m_experiments.md#2026-10-28-h200-fpa_intb-gemv-m8-tile-dispatch-tuning).
+- **Other devices** keep the `grid.y` cutoffs from the first H200 tuning pass.
+  The H200 now has its own rule above, so these remain only where no rule was
+  measured. That first pass covered FP16/4-bit and BF16/8-bit; FP16/8-bit and
+  BF16/4-bit reuse the cutoff of the layout they share and have **not** been
+  measured on other devices. The cutoffs also apply to launches with a bias,
+  which slow the narrow tile down on the H200 and were not measured elsewhere.
+  Both rules depend on SM count and per-block resource use, so re-measure the
+  narrow versus default tile at the window edges on a new device or after
+  changing the kernel's register or shared-memory footprint.
 
 ---
 
@@ -909,13 +945,19 @@ present. `ComputeInternal` then:
 - fpA_intB GEMV `M = 8` tile dispatch (§6.4), in
   [onnxruntime/test/contrib_ops/cuda_kernels/fpA_intB_gemm_kernel_test.cc](../../../onnxruntime/test/contrib_ops/cuda_kernels/fpA_intB_gemm_kernel_test.cc):
   the four `*M8NarrowTile` fixtures check the executed `CtaN` against the
-  dispatch rule of the device they run on (the A100 windows on an A100) and
-  compare `M = 8` bitwise with two `M = 4` launches and with the CUTLASS
-  reference; they also check that a launch that does not report its device uses
-  the device-independent cutoffs. `FpAIntBGemvTest.A100M8DispatchUsesMeasuredWindows`,
-  `FpAIntBGemvTest.OtherDevicesKeepM8DispatchCutoffs` and
-  `FpAIntBGemvTest.A100DeviceRequiresMatchingSmAndSmCount` evaluate
-  `PickM8GemvCtaN` and the A100 predicate for both device classes and are
+  dispatch rule of the device they run on (the A100 windows on an A100, the H200
+  rule on an H200) and compare `M = 8` bitwise with two `M = 4` launches and with
+  the CUTLASS reference; they also check that a launch that does not report its
+  device uses the device-independent cutoffs. The fixtures are scale-only
+  `block_size = 32` launches; bias and the other group sizes are covered by the
+  pure-function tests. `FpAIntBGemvTest.A100M8DispatchUsesMeasuredWindows`,
+  `FpAIntBGemvTest.A100M8DispatchKeepsDefaultTileWithBias`,
+  `FpAIntBGemvTest.H200M8DispatchUsesMeasuredRule`,
+  `FpAIntBGemvTest.H200M8DispatchCapsFollowWeightAndScaleBytes`,
+  `FpAIntBGemvTest.H200M8DispatchWithBiasUsesWaveWindowOnly`,
+  `FpAIntBGemvTest.OtherDevicesKeepM8DispatchCutoffs` and the
+  `FpAIntBGemvTest.*DeviceRequiresMatchingSmAndSmCount` tests evaluate
+  `PickM8GemvCtaN` and the device predicates for every device class and are
   independent of the GPU model.
 - GEMV profiling baselines and methodology are recorded in
   [qmoe_gemv_experiments.md](qmoe_gemv_experiments.md) and, for small-`M`
