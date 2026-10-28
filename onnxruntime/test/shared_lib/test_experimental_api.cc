@@ -13,6 +13,7 @@
 #include <memory>
 #include <vector>
 #if defined(__linux__)
+#include <fcntl.h>
 #include <unistd.h>
 #endif
 
@@ -99,6 +100,10 @@ TEST_F(ExperimentalCApiTest, FileSourcesValidateArgumentsAndRejectWritableFiles)
   for (const char* bad : {"../weights.data", "/weights.data", ".", "a/b"}) {
     EXPECT_FALSE(Ort::Status(fn(options, &bad, &invalid, 1)).IsOK());
   }
+  const int path_only = open("testdata/Pads.bin", O_PATH | O_CLOEXEC);
+  ASSERT_GE(path_only, 0);
+  EXPECT_FALSE(Ort::Status(fn(options, &name, &path_only, 1)).IsOK());
+  EXPECT_EQ(close(path_only), 0);
 }
 
 TEST_F(ExperimentalCApiTest, FileSourcesCloneAndRejectBufferMixing) {
@@ -114,6 +119,49 @@ TEST_F(ExperimentalCApiTest, FileSourcesCloneAndRejectBufferMixing) {
   EXPECT_FALSE(Ort::Status(api_->AddExternalInitializersFromFilesInMemory(
                                clone, &name, &buffer, &size, 1))
                    .IsOK());
+}
+
+TEST_F(ExperimentalCApiTest, FileSourcesInferAfterDescriptorAndOptionsRelease) {
+  auto* fn = Ort::Experimental::
+      Get_OrtApi_SessionOptionsSetExternalInitializerFileDescriptors_SinceV32_FnOrThrow(api_);
+  std::ifstream input("testdata/model_with_external_initializers.onnx", std::ios::binary);
+  ASSERT_TRUE(input);
+  const std::vector<char> graph{std::istreambuf_iterator<char>{input}, {}};
+  std::unique_ptr<FILE, decltype(&fclose)> weights(fopen("testdata/Pads.bin", "rb"), fclose);
+  ASSERT_NE(weights, nullptr);
+  const char* name = "Pads.bin";
+  const int descriptor = fileno(weights.get());
+  Ort::SessionOptions options;
+  ASSERT_TRUE(Ort::Status(fn(options, &name, &descriptor, 1)).IsOK());
+  auto clone = options.Clone();
+  weights.reset();
+  options = Ort::SessionOptions{nullptr};
+  const int invalid = -1;
+  EXPECT_FALSE(Ort::Status(fn(clone, &name, &invalid, 1)).IsOK());
+
+  Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "file-sources"};
+  Ort::Session session{env, graph.data(), graph.size(), clone};
+  clone = Ort::SessionOptions{nullptr};
+  Ort::Session reference{env, ORT_TSTR("testdata/model_with_external_initializers.onnx"),
+                         Ort::SessionOptions{}};
+  auto memory = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+  const int64_t shape[]{1, 2};
+  float values[]{1.0f, 2.0f};
+  auto tensor = Ort::Value::CreateTensor<float>(memory, values, 2, shape, 2);
+  const char* inputs[]{"X"};
+  const char* outputs[]{"Y"};
+  auto expected = reference.Run(Ort::RunOptions{}, inputs, &tensor, 1, outputs, 1);
+  auto actual = session.Run(Ort::RunOptions{}, inputs, &tensor, 1, outputs, 1);
+  ASSERT_EQ(actual.size(), 1u);
+  const auto expected_info = expected[0].GetTensorTypeAndShapeInfo();
+  const auto actual_info = actual[0].GetTensorTypeAndShapeInfo();
+  ASSERT_EQ(actual_info.GetShape(), expected_info.GetShape());
+  ASSERT_EQ(actual_info.GetElementCount(), expected_info.GetElementCount());
+  const auto* expected_data = expected[0].GetTensorData<float>();
+  const auto* actual_data = actual[0].GetTensorData<float>();
+  for (size_t i = 0; i < actual_info.GetElementCount(); ++i) {
+    EXPECT_FLOAT_EQ(actual_data[i], expected_data[i]);
+  }
 }
 
 TEST_F(ExperimentalCApiTest, FileSourcesNeverFallBackToModelPaths) {
@@ -134,5 +182,16 @@ TEST_F(ExperimentalCApiTest, FileSourcesNeverFallBackToModelPaths) {
               std::string::npos);
     EXPECT_NE(std::string(error.what()).find("Pads.bin"), std::string::npos);
   }
+}
+#endif
+
+#if !defined(__linux__) || defined(ORT_MINIMAL_BUILD) || defined(DISABLE_EXTERNAL_INITIALIZERS)
+TEST_F(ExperimentalCApiTest, FileSourcesRejectUnsupportedBuilds) {
+  auto* fn = Ort::Experimental::
+      Get_OrtApi_SessionOptionsSetExternalInitializerFileDescriptors_SinceV32_FnOrThrow(api_);
+  Ort::SessionOptions options;
+  Ort::Status status{fn(options, nullptr, nullptr, 0)};
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.GetErrorCode(), ORT_NOT_IMPLEMENTED);
 }
 #endif

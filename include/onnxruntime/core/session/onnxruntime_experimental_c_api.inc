@@ -42,12 +42,15 @@ ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtApi_ExperimentalApiTest, _Out_ int64_t
  * Descriptors are duplicated on success; callers retain ownership of their originals.
  * Each name must be a flat relative ONNX external-data location. Registration replaces
  * the previous set atomically. Sessions and cloned options retain the files independently.
+ * A zero count installs an empty registry; missing sources still fail without path fallback.
  * Tensor ranges are privately mapped without reopening or canonicalizing file paths.
  * Small tensors may be inlined; unaligned numeric ranges are copied into aligned storage.
  * Files must remain immutable while dependent sessions/tensors exist. Missing sources
  * and invalid ranges fail without filesystem fallback. Supports ONNX graph initializers,
  * including subgraphs, but not external tensor attributes or model packages.
  * This does not change execution-provider selection or provide a sandbox.
+ * Unsupported platforms, minimal builds, and builds without external initializers return
+ * ORT_NOT_IMPLEMENTED.
  */
 ORT_EXPERIMENTAL_API(32, OrtStatusPtr, OrtApi_SessionOptionsSetExternalInitializerFileDescriptors,
                      _Inout_ OrtSessionOptions* options,
