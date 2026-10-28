@@ -76,11 +76,26 @@ POOLING_KERNEL_WITH_INDICES(MaxPool, kMSInternalNHWCDomain, true, MaxPool<8>, 12
 POOLING_KERNEL(GlobalMaxPool, kOnnxDomain, false, MaxPool<1>, 1)
 POOLING_KERNEL(GlobalMaxPool, kMSInternalNHWCDomain, true, MaxPool<1>, 1)
 
+// The internal NHWC domain defines LpPool 11 and 18 (which also serves opset 22) and GlobalLpPool 2.
+// Earlier LpPool versions are left to the CPU EP as the layout transformer has no NHWC schema for them.
+POOLING_KERNEL_VERSIONED(LpPool, kOnnxDomain, false, LpPool, 11, 17)
+POOLING_KERNEL_VERSIONED(LpPool, kMSInternalNHWCDomain, true, LpPool, 11, 17)
+POOLING_KERNEL_VERSIONED(LpPool, kOnnxDomain, false, LpPool, 18, 21)
+POOLING_KERNEL(LpPool, kMSInternalNHWCDomain, true, LpPool, 18)
+POOLING_KERNEL(LpPool, kOnnxDomain, false, LpPool, 22)
+POOLING_KERNEL_VERSIONED(GlobalLpPool, kOnnxDomain, false, LpPool, 2, 21)
+POOLING_KERNEL(GlobalLpPool, kOnnxDomain, false, LpPool, 22)
+POOLING_KERNEL(GlobalLpPool, kMSInternalNHWCDomain, true, LpPool, 2)
+
 Status PoolProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // The value type carries the component count: for NHWC the channel is innermost and pooling
   // never crosses it, so a thread can carry four channels through the same window arithmetic.
   const auto& input = shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform);
+
+  const bool is_max_pool = pool_type_ == onnxruntime::PoolType::kMaxPool;
+  const bool is_lp_pool = pool_type_ == onnxruntime::PoolType::kLpPool;
+  const bool is_average_pool = pool_type_ == onnxruntime::PoolType::kAveragePool;
 
   // Declare and initialize the variables needed.
   std::string var_decl_code;
@@ -90,14 +105,35 @@ Status PoolProgram::GenerateShaderCode(ShaderHelper& shader) const {
   std::string counting_code;
   // Calculate the output value for each pooling window.
   std::string downsampling_code;
+  // The value written to the output, computed from `value`.
+  std::string result_expr = "value";
 
   constexpr const size_t kStringInitialSize = 128;
-  if (is_max_pool_) {
+  if (is_max_pool) {
     SS(var_decl_ss, kStringInitialSize);
     var_decl_ss << "  var value = input_value_t(" << (is_float16_ ? "-65504.0h" : "-3.4028234663852886e+38f") << ");\n";
     var_decl_code = SS_GET(var_decl_ss);
 
     sampling_code = "      value = max(value, x_val);\n";
+    if (use_parallel_reduction_) {
+      downsampling_code = "  sum_or_max_shared[local_idx] = value;\n";
+    }
+  } else if (is_lp_pool) {
+    // sum(|x|^p) is accumulated in f32 so that float16 inputs don't overflow; padding contributes 0.
+    const int components = input.NumComponents();
+    const std::string f32_value_type = components == 1 ? "f32" : MakeString("vec", components, "<f32>");
+    var_decl_code = "  var value = " + f32_value_type + "(0);\n";
+    if (lp_p_ == 1) {
+      sampling_code = "      value += abs(" + f32_value_type + "(x_val));\n";
+      result_expr = "input_value_t(value)";
+    } else if (lp_p_ == 2) {
+      sampling_code = "      let x_f32 = " + f32_value_type + "(x_val);\n      value += x_f32 * x_f32;\n";
+      result_expr = "input_value_t(sqrt(value))";
+    } else {
+      const std::string p = MakeStringWithClassicLocale(lp_p_, ".0");
+      sampling_code = "      value += pow(abs(" + f32_value_type + "(x_val)), " + f32_value_type + "(" + p + "));\n";
+      result_expr = "input_value_t(pow(value, " + f32_value_type + "(1.0 / " + p + ")))";
+    }
     if (use_parallel_reduction_) {
       downsampling_code = "  sum_or_max_shared[local_idx] = value;\n";
     }
@@ -148,7 +184,7 @@ Status PoolProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // can overflow, since the smallest window position is -pad_begin.
   std::string outside_flag_decl;
   std::string overflow_check_code;
-  if (!is_max_pool_ && count_include_pad_) {
+  if (is_average_pool && count_include_pad_) {
     outside_flag_decl = "    var is_outside_padded_region = false;\n";
     SS(overflow_ss, kStringInitialSize);
     overflow_ss
@@ -170,16 +206,18 @@ Status PoolProgram::GenerateShaderCode(ShaderHelper& shader) const {
   std::string sum_or_max_shared;
   if (use_parallel_reduction_) {
     shader.AdditionalImplementation()
-        << "var<workgroup> sum_or_max_shared : array<" << (is_float16_ ? "f16" : "f32") << ",workgroup_size_x >;\n"
-        << (!is_max_pool_ ? "var<workgroup> count_shared : array<u32, workgroup_size_x>;\n" : "");
+        << "var<workgroup> sum_or_max_shared : array<" << (is_float16_ && !is_lp_pool ? "f16" : "f32") << ",workgroup_size_x >;\n"
+        << (is_average_pool ? "var<workgroup> count_shared : array<u32, workgroup_size_x>;\n" : "");
 
     SS(shared_ss, 512);
     std::string sum_or_max_shared_op;
     std::string count_shared_op;
-    if (is_max_pool_) {
+    if (is_max_pool) {
       sum_or_max_shared_op = "sum_or_max_shared[local_idx] = max(sum_or_max_shared[local_idx], sum_or_max_shared[local_idx + reduce_size]);\n";
     } else {
       sum_or_max_shared_op = "sum_or_max_shared[local_idx] += sum_or_max_shared[local_idx + reduce_size];\n";
+    }
+    if (is_average_pool) {
       count_shared_op = "count_shared[local_idx] += count_shared[local_idx + reduce_size];\n";
     }
 
@@ -201,16 +239,16 @@ Status PoolProgram::GenerateShaderCode(ShaderHelper& shader) const {
   if (use_parallel_reduction_) {
     output_ss << "  if (local_idx == 0) {\n"
               << "    value = sum_or_max_shared[0];\n";
-    if (!is_max_pool_) {
+    if (is_average_pool) {
       // Guard against an all-padding window (count == 0): leave value at 0 instead of dividing by zero.
       output_ss << "    if (count_shared[0] > 0u) {\n"
                 << "      value /= " << (is_float16_ ? "f16" : "f32") << "(count_shared[0]);\n"
                 << "    }\n";
     }
-    output_ss << "    " << output.SetByOffset("workgroup_idx", "value") << ";\n"
+    output_ss << "    " << output.SetByOffset("workgroup_idx", result_expr) << ";\n"
               << "  }\n";
   } else {
-    output_ss << "  " << output.SetByOffset("global_idx", "value") << ";\n";
+    output_ss << "  " << output.SetByOffset("global_idx", result_expr) << ";\n";
   }
   std::string output_code = SS_GET(output_ss);
 
@@ -320,14 +358,9 @@ Status Pool<PoolType, is_nhwc>::ComputeInternal(ComputeContext& context) const {
     }
   }
 
-  bool is_max_pool = false;
-  if constexpr (PoolType::type == onnxruntime::PoolType::kMaxPool) {
-    is_max_pool = true;
-  } else if constexpr (PoolType::type != onnxruntime::PoolType::kAveragePool) {
-    ORT_NOT_IMPLEMENTED("Unsupported PoolType.");
-  }
+  constexpr onnxruntime::PoolType pool_type = PoolType::type;
   bool is_float16 = X->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
-  bool count_include_pad = pool_attrs_.count_include_pad;
+  bool count_include_pad = pool_type == onnxruntime::PoolType::kAveragePool && pool_attrs_.count_include_pad;
 
   // Number of elements
   uint32_t output_size = gsl::narrow_cast<uint32_t>(Y->Shape().Size());
@@ -357,10 +390,11 @@ Status Pool<PoolType, is_nhwc>::ComputeInternal(ComputeContext& context) const {
   }
   output_size /= components;
 
-  PoolProgram program{is_max_pool, is_nhwc, kernel_shape, is_float16, count_include_pad, use_parallel_reduction};
+  PoolProgram program{pool_type, lp_p_, is_nhwc, kernel_shape, is_float16, count_include_pad, use_parallel_reduction};
 
   program
-      .CacheHint(kernel_shape.size(), is_max_pool, is_nhwc, is_float16, count_include_pad, use_parallel_reduction)
+      .CacheHint(kernel_shape.size(), static_cast<int>(pool_type), lp_p_, is_nhwc, is_float16, count_include_pad,
+                 use_parallel_reduction)
       .AddInputs({{X, ProgramTensorMetadataDependency::TypeAndRank, components}})
       .AddOutputs({{Y, ProgramTensorMetadataDependency::None, components}})
       .AddUniformVariables({output_size, kernel_size,
