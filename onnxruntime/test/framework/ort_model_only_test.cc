@@ -476,6 +476,151 @@ TEST(OrtModelTest, NormalizesValidVariadicInputArgCounts) {
 
   EXPECT_THAT(node->InputArgCount(), testing::ElementsAre(2));
 }
+
+namespace {
+
+enum class DuplicateInitializerReplacement {
+  kNone,
+  kDense,
+  kSparse,
+};
+
+// Builds a graph `y = Identity(w)` whose first `w` initializer holds 40 floats (160 bytes). Loading it with
+// can_use_flatbuffer_for_initializers enabled caches an OrtValue over the flatbuffer bytes. The optional second
+// `w` initializer replaces it: a 4-float (16 byte) dense initializer, or a sparse initializer with dense shape [40]
+// holding 5.0f at index 3 and -6.0f at index 17. Neither replacement is cached.
+std::vector<uint8_t> BuildOrtModelWithDuplicateInitializer(DuplicateInitializerReplacement replacement) {
+  return BuildOrtModelBuffer([replacement](flatbuffers::FlatBufferBuilder& builder) {
+    const int64_t arg_dim = replacement == DuplicateInitializerReplacement::kDense ? 4 : 40;
+    std::vector<flatbuffers::Offset<fbs::ValueInfo>> node_args{
+        fbs::CreateValueInfoDirect(builder, "w", "", CreateFloatTensorTypeInfo(builder, arg_dim)),
+        fbs::CreateValueInfoDirect(builder, "y", "", CreateFloatTensorTypeInfo(builder, arg_dim))};
+
+    std::vector<int64_t> large_dims{40};
+    std::vector<float> large_values(40, 1.0f);
+    std::vector<uint8_t> large_raw(reinterpret_cast<const uint8_t*>(large_values.data()),
+                                   reinterpret_cast<const uint8_t*>(large_values.data() + large_values.size()));
+    std::vector<flatbuffers::Offset<fbs::Tensor>> initializers{
+        fbs::CreateTensorDirect(builder, "w", "", &large_dims, fbs::TensorDataType::FLOAT, &large_raw)};
+
+    std::vector<int64_t> small_dims{4};
+    const std::vector<float> small_values{2.0f, 3.0f, 4.0f, 5.0f};
+    std::vector<uint8_t> small_raw(reinterpret_cast<const uint8_t*>(small_values.data()),
+                                   reinterpret_cast<const uint8_t*>(small_values.data() + small_values.size()));
+    if (replacement == DuplicateInitializerReplacement::kDense) {
+      initializers.push_back(
+          fbs::CreateTensorDirect(builder, "w", "", &small_dims, fbs::TensorDataType::FLOAT, &small_raw));
+    }
+
+    std::vector<int64_t> sparse_nnz_dims{2};
+    const std::vector<float> sparse_values{5.0f, -6.0f};
+    std::vector<uint8_t> sparse_values_raw(
+        reinterpret_cast<const uint8_t*>(sparse_values.data()),
+        reinterpret_cast<const uint8_t*>(sparse_values.data() + sparse_values.size()));
+    const std::vector<int64_t> sparse_indices{3, 17};
+    std::vector<uint8_t> sparse_indices_raw(
+        reinterpret_cast<const uint8_t*>(sparse_indices.data()),
+        reinterpret_cast<const uint8_t*>(sparse_indices.data() + sparse_indices.size()));
+    std::vector<int64_t> sparse_dense_dims{40};
+    std::vector<flatbuffers::Offset<fbs::SparseTensor>> sparse_initializers;
+    if (replacement == DuplicateInitializerReplacement::kSparse) {
+      const auto values = fbs::CreateTensorDirect(builder, "w", "", &sparse_nnz_dims, fbs::TensorDataType::FLOAT,
+                                                  &sparse_values_raw);
+      const auto indices = fbs::CreateTensorDirect(builder, "w_indices", "", &sparse_nnz_dims,
+                                                   fbs::TensorDataType::INT64, &sparse_indices_raw);
+      sparse_initializers.push_back(fbs::CreateSparseTensorDirect(builder, values, indices, &sparse_dense_dims));
+    }
+
+    std::vector<flatbuffers::Offset<flatbuffers::String>> inputs{builder.CreateSharedString("w")};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> outputs{builder.CreateSharedString("y")};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> implicit_inputs;
+    std::vector<flatbuffers::Offset<flatbuffers::String>> graph_inputs;
+    std::vector<int32_t> input_arg_counts{1};
+    std::vector<flatbuffers::Offset<fbs::Node>> nodes{
+        fbs::CreateNodeDirect(builder, "identity", "", "", 16, 0, "Identity",
+                              fbs::NodeType::Primitive, nullptr,
+                              &inputs, &outputs, nullptr,
+                              &input_arg_counts, &implicit_inputs)};
+
+    return fbs::CreateGraphDirect(builder, &initializers, &node_args, &nodes, 1, nullptr, &graph_inputs, &outputs,
+                                  sparse_initializers.empty() ? nullptr : &sparse_initializers);
+  });
+}
+
+SessionOptions SessionOptionsUsingOrtBytesForInitializers() {
+  SessionOptions so;
+  ORT_THROW_IF_ERROR(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigLoadModelFormat, "ORT"));
+  ORT_THROW_IF_ERROR(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigUseORTModelBytesDirectly, "1"));
+  ORT_THROW_IF_ERROR(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigUseORTModelBytesForInitializers, "1"));
+  return so;
+}
+
+std::vector<float> UnpackFloatInitializer(const TensorProto& initializer) {
+  const TensorShape shape = utils::GetTensorShapeFromTensorProto(initializer);
+  std::vector<float> values(static_cast<size_t>(shape.Size()));
+  const void* raw_data = utils::HasRawData(initializer) ? initializer.raw_data().data() : nullptr;
+  const size_t raw_data_len = utils::HasRawData(initializer) ? initializer.raw_data().size() : 0;
+  ORT_THROW_IF_ERROR(utils::UnpackTensor(initializer, raw_data, raw_data_len, values.data(), values.size()));
+  return values;
+}
+
+}  // namespace
+
+// Control: without a duplicate, an initializer larger than 127 bytes is cached as an OrtValue over the ORT
+// format bytes, so the replacement tests below start from a populated cache.
+TEST(OrtModelTest, OrtFormatLargeInitializerIsCachedWhenUsingBytesForInitializers) {
+  const auto buffer = BuildOrtModelWithDuplicateInitializer(DuplicateInitializerReplacement::kNone);
+  InferenceSessionWrapper session_object{SessionOptionsUsingOrtBytesForInitializers(), GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(buffer.data(), static_cast<int>(buffer.size())));
+
+  const auto& graph = session_object.GetGraph();
+  const TensorProto* initializer = nullptr;
+  ASSERT_TRUE(graph.GetInitializedTensor("w", initializer));
+  ASSERT_NE(initializer, nullptr);
+  EXPECT_TRUE(utils::HasExternalDataInMemory(*initializer));
+  OrtValue cached;
+  ASSERT_TRUE(graph.GetOrtValueInitializer("w", cached));
+  EXPECT_EQ(cached.Get<Tensor>().Shape(), TensorShape({40}));
+}
+
+TEST(OrtModelTest, OrtFormatDuplicateDenseInitializerReplacesCachedValue) {
+  const auto buffer = BuildOrtModelWithDuplicateInitializer(DuplicateInitializerReplacement::kDense);
+  InferenceSessionWrapper session_object{SessionOptionsUsingOrtBytesForInitializers(), GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(buffer.data(), static_cast<int>(buffer.size())));
+
+  const auto& graph = session_object.GetGraph();
+  const TensorProto* initializer = nullptr;
+  ASSERT_TRUE(graph.GetInitializedTensor("w", initializer));
+  ASSERT_NE(initializer, nullptr);
+  EXPECT_FALSE(utils::HasExternalData(*initializer));
+  EXPECT_THAT(UnpackFloatInitializer(*initializer), testing::ElementsAre(2.0f, 3.0f, 4.0f, 5.0f));
+
+  OrtValue cached;
+  EXPECT_FALSE(graph.GetOrtValueInitializer("w", cached))
+      << "stale cached OrtValue with shape " << cached.Get<Tensor>().Shape();
+}
+
+#if !defined(DISABLE_SPARSE_TENSORS)
+TEST(OrtModelTest, OrtFormatDuplicateSparseInitializerReplacesCachedValue) {
+  const auto buffer = BuildOrtModelWithDuplicateInitializer(DuplicateInitializerReplacement::kSparse);
+  InferenceSessionWrapper session_object{SessionOptionsUsingOrtBytesForInitializers(), GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(buffer.data(), static_cast<int>(buffer.size())));
+
+  const auto& graph = session_object.GetGraph();
+  const TensorProto* initializer = nullptr;
+  ASSERT_TRUE(graph.GetInitializedTensor("w", initializer));
+  ASSERT_NE(initializer, nullptr);
+  EXPECT_FALSE(utils::HasExternalData(*initializer));
+  std::vector<float> expected(40, 0.0f);
+  expected[3] = 5.0f;
+  expected[17] = -6.0f;
+  EXPECT_THAT(UnpackFloatInitializer(*initializer), testing::ElementsAreArray(expected));
+
+  OrtValue cached;
+  EXPECT_FALSE(graph.GetOrtValueInitializer("w", cached))
+      << "stale cached OrtValue with shape " << cached.Get<Tensor>().Shape();
+}
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD)
