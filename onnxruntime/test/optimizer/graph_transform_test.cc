@@ -4475,43 +4475,58 @@ TEST_F(GraphTransformationTests, FuseNhwcConvErfForWebGpuEp) {
   ASSERT_STATUS_OK(RunConvActivationFusion(build_test_case, *logger_, check, 17));
 }
 
-TEST_F(GraphTransformationTests, NoFuseNhwcConvWithExistingActivationForWebGpuEp) {
-  for (const std::string activation : {"Relu", "Tanh", "LeakyRelu"}) {
-    SCOPED_TRACE(activation);
-    auto build_test_case = [&activation](ModelTestBuilder& builder) {
-      auto* input = builder.MakeInput<float>({1, 2, 2, 1}, -2.0f, 2.0f);
-      auto* weight = builder.MakeInitializer<float>({1, 1, 1, 1}, {1.0f});
-      auto* conv_out = builder.MakeIntermediate();
-      auto* output = builder.MakeOutput();
-      auto& conv = builder.AddNode("Conv", {input, weight}, {conv_out}, kMSInternalNHWCDomain);
-      conv.SetExecutionProviderType(kWebGpuExecutionProvider);
-      conv.AddAttribute("activation", activation);
-      if (activation == "LeakyRelu") {
-        conv.AddAttribute("activation_params", std::vector<float>{0.25f});
-      }
-      builder.AddNode("Tanh", {conv_out}, {output}).SetExecutionProviderType(kWebGpuExecutionProvider);
-    };
-    auto check = [&activation](Graph& graph) -> Status {
-      ORT_RETURN_IF_ERROR(ExpectNotFused("Tanh")(graph));
-      ORT_RETURN_IF_NOT(graph.NumberOfNodes() == 2, "expected Conv followed by Tanh");
-      for (const auto& node : graph.Nodes()) {
-        if (node.OpType() == "Conv") {
-          ORT_RETURN_IF_NOT(node.GetOutputEdgesCount() == 1 && node.OutputNodesBegin()->OpType() == "Tanh",
-                            "Tanh must still consume the fused Conv output");
-          const auto* attr = graph_utils::GetNodeAttribute(node, "activation");
-          ORT_RETURN_IF_NOT(attr && attr->s() == activation, "existing activation was replaced");
-          const auto* params = graph_utils::GetNodeAttribute(node, "activation_params");
-          if (activation == "LeakyRelu") {
-            ORT_RETURN_IF_NOT(params && params->floats_size() == 1 && params->floats(0) == 0.25f,
-                              "existing activation parameters were changed");
-          } else {
-            ORT_RETURN_IF_NOT(params == nullptr, "unexpected activation parameters");
+TEST_F(GraphTransformationTests, NoFuseNhwcConvWithExistingActivation) {
+  // Graph-only coverage does not require the assigned EP to be available in this build.
+  for (const std::string ep : {"", kCpuExecutionProvider, kAclExecutionProvider,
+                               kJsExecutionProvider, kWebGpuExecutionProvider}) {
+    SCOPED_TRACE(ep.empty() ? "unassigned" : ep);
+    // The empty activation is a positive control: each EP must allow ordinary Conv + Tanh fusion.
+    for (const std::string activation : {"", "Relu", "Tanh", "LeakyRelu"}) {
+      SCOPED_TRACE(activation);
+      auto build_test_case = [&ep, &activation](ModelTestBuilder& builder) {
+        auto* input = builder.MakeInput<float>({1, 2, 2, 1}, -2.0f, 2.0f);
+        auto* weight = builder.MakeInitializer<float>({1, 1, 1, 1}, {1.0f});
+        auto* conv_out = builder.MakeIntermediate();
+        auto* output = builder.MakeOutput();
+        auto& conv = builder.AddNode("Conv", {input, weight}, {conv_out}, kMSInternalNHWCDomain);
+        conv.SetExecutionProviderType(ep);
+        if (!activation.empty()) {
+          conv.AddAttribute("activation", activation);
+        }
+        if (activation == "LeakyRelu") {
+          conv.AddAttribute("activation_params", std::vector<float>{0.25f});
+        }
+        builder.AddNode("Tanh", {conv_out}, {output}).SetExecutionProviderType(ep);
+      };
+      auto check = [&ep, &activation](Graph& graph) -> Status {
+        for (const auto& node : graph.Nodes()) {
+          ORT_RETURN_IF_NOT(node.GetExecutionProviderType() == ep, "execution provider assignment changed");
+        }
+        if (activation.empty()) {
+          return ExpectFusedInto(graph, "Tanh", {});
+        }
+
+        ORT_RETURN_IF_ERROR(ExpectNotFused("Tanh")(graph));
+        ORT_RETURN_IF_NOT(graph.NumberOfNodes() == 2, "expected Conv followed by Tanh");
+        for (const auto& node : graph.Nodes()) {
+          if (node.OpType() == "Conv") {
+            ORT_RETURN_IF_NOT(node.GetOutputEdgesCount() == 1 && node.OutputNodesBegin()->OpType() == "Tanh",
+                              "Tanh must still consume the fused Conv output");
+            const auto* attr = graph_utils::GetNodeAttribute(node, "activation");
+            ORT_RETURN_IF_NOT(attr && attr->s() == activation, "existing activation was replaced");
+            const auto* params = graph_utils::GetNodeAttribute(node, "activation_params");
+            if (activation == "LeakyRelu") {
+              ORT_RETURN_IF_NOT(params && params->floats_size() == 1 && params->floats(0) == 0.25f,
+                                "existing activation parameters were changed");
+            } else {
+              ORT_RETURN_IF_NOT(params == nullptr, "unexpected activation parameters");
+            }
           }
         }
-      }
-      return Status::OK();
-    };
-    ASSERT_STATUS_OK(RunConvActivationFusion(build_test_case, *logger_, check, 17));
+        return Status::OK();
+      };
+      ASSERT_STATUS_OK(RunConvActivationFusion(build_test_case, *logger_, check, 17));
+    }
   }
 }
 
