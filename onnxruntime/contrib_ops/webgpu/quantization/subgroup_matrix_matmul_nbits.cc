@@ -6,12 +6,89 @@
 #include "core/providers/webgpu/math/subgroup_matrix_config.h"
 #include "core/providers/webgpu/webgpu_utils.h"
 
+#include <cstdlib>
+#include <fstream>
+#include <iomanip>
+#include <mutex>
+
 namespace onnxruntime {
 namespace contrib {
 namespace webgpu {
 
 using onnxruntime::webgpu::SelectSubgroupMatrixConfig;
 using onnxruntime::webgpu::SubgroupMatrixConfig;
+
+namespace {
+
+void DumpExperimentalCaps(onnxruntime::webgpu::ComputeContext& context) {
+  const char* path = std::getenv("ORT_WEBGPU_EXPERIMENTAL_MATMUL_NBITS_CAPS");
+  if (!path) return;
+  static std::once_flag once;
+  std::call_once(once, [&]() {
+    std::ofstream file{path};
+    const auto& info = context.AdapterInfo();
+    const auto& configs = context.SubgroupMatrixConfigs();
+    file << "{\"subgroup_min\":" << info.subgroupMinSize << ",\"subgroup_max\":" << info.subgroupMaxSize
+         << ",\"shader_f16\":" << context.HasFeature(wgpu::FeatureName::ShaderF16)
+         << ",\"subgroup_matrix\":" << context.HasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix)
+         << ",\"max_workgroup_storage\":" << context.DeviceLimits().maxComputeWorkgroupStorageSize
+         << ",\"configs\":[";
+    for (size_t i = 0; i < configs.configCount; ++i) {
+      const auto& config = configs.configs[i];
+      if (i) file << ",";
+      file << "{\"component_type\":" << static_cast<uint32_t>(config.componentType)
+           << ",\"result_type\":" << static_cast<uint32_t>(config.resultComponentType)
+           << ",\"M\":" << config.M << ",\"N\":" << config.N << ",\"K\":" << config.K << "}";
+    }
+    file << "]}\n";
+  });
+}
+
+Status CaptureExperimentalInput(const Tensor& a, uint32_t M, uint32_t N, uint32_t K,
+                                onnxruntime::webgpu::ComputeContext& context) {
+  const char* directory = std::getenv("ORT_WEBGPU_EXPERIMENTAL_MATMUL_NBITS_CAPTURE");
+  if (!directory || M != 512) return Status::OK();
+  static std::mutex mutex;
+  static InlinedHashSet<std::string> captured;
+  std::lock_guard lock{mutex};
+  const std::string name = MakeString(directory, "/M", M, "-N", N, "-K", K);
+  if (captured.contains(name)) return Status::OK();
+  auto cpu = context.CreateCPUTensor(a.DataType(), a.Shape());
+  ORT_RETURN_IF_ERROR(context.CopyTensor(a, cpu));
+  std::ofstream data{name + ".f16", std::ios::binary};
+  data.write(static_cast<const char*>(cpu.DataRaw()), cpu.SizeInBytes());
+  std::ofstream metadata{name + ".json"};
+  metadata << "{\"node\":" << std::quoted(context.NodeName()) << ",\"M\":" << M << ",\"N\":" << N
+           << ",\"K\":" << K << "}\n";
+  ORT_RETURN_IF_NOT(data && metadata, "Cannot capture experimental MatMulNBits input");
+  captured.insert(name);
+  return Status::OK();
+}
+
+// Explicit opt-in only. Unknown tile names retain the conservative default.
+void ExperimentalTile(const SubgroupMatrixConfig& config, uint32_t& m, uint32_t& n, uint32_t& k) {
+  m = config.M * 4;
+  n = config.N * 8;
+  k = 32;
+  if (config.componentType == wgpu::SubgroupMatrixComponentType::F16) {
+    if (const char* tile = std::getenv("ORT_WEBGPU_EXPERIMENTAL_MATMUL_NBITS_TILE")) {
+      if (std::string_view{tile} == "64x64x32") {
+        n = 64;
+      } else if (std::string_view{tile} == "64x128x64") {
+        k = 64;
+      }
+    }
+  }
+}
+
+uint32_t ExperimentalStorage(const SubgroupMatrixConfig& config, uint32_t m, uint32_t n, uint32_t k) {
+  const bool fp32 = config.componentType == wgpu::SubgroupMatrixComponentType::F32;
+  const uint32_t subgroups = (m / (2 * config.M)) * (n / (4 * config.N));
+  return n * (k + 8) * (fp32 ? 4 : 2) + (fp32 ? m * k * 4 : 0) +
+         subgroups * config.M * config.N * 4;
+}
+
+}  // namespace
 
 // This program optimizes the layout of input matrix A(MxK) for SubgroupMatrixLoad, so that all elements of each
 // subgroup matrix(mxk) are arranged continuously in memory.
@@ -141,6 +218,26 @@ Status SubgroupMatrixMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader
     shader.AddOutput("tail_output", ShaderUsage::None);
   }
 
+  if (experimental_fp32_) {
+    return WGSL_TEMPLATE_APPLY(shader, "quantization/subgroup_matrix_matmul_nbits_fp32.wgsl.template",
+                               WGSL_TEMPLATE_PARAMETER(has_bias, has_bias_),
+                               WGSL_TEMPLATE_PARAMETER(has_weight_idx, has_weight_idx_),
+                               WGSL_TEMPLATE_PARAMETER(has_zero_points, has_zero_points_),
+                               WGSL_TEMPLATE_PARAMETER(n_bits, nbits_),
+                               WGSL_TEMPLATE_PARAMETER(operand_f32, config_.componentType == wgpu::SubgroupMatrixComponentType::F32),
+                               WGSL_TEMPLATE_PARAMETER(output_type_i32, false),
+                               WGSL_TEMPLATE_PARAMETER(sg_mat_k, config_.K),
+                               WGSL_TEMPLATE_PARAMETER(sg_mat_m, config_.M),
+                               WGSL_TEMPLATE_PARAMETER(sg_mat_n, config_.N),
+                               WGSL_TEMPLATE_PARAMETER(tile_size_k, tile_k_),
+                               WGSL_TEMPLATE_PARAMETER(tile_size_m, tile_m_),
+                               WGSL_TEMPLATE_PARAMETER(tile_size_n, tile_n_),
+                               WGSL_TEMPLATE_VARIABLE(a, a),
+                               WGSL_TEMPLATE_VARIABLE(b, b),
+                               WGSL_TEMPLATE_VARIABLE(output, output),
+                               WGSL_TEMPLATE_VARIABLE(scales_b, scales_b));
+  }
+
   if (config_.Is(8, 8, 8)) {
     return GenerateShaderCode8x8x8(shader, a, b, scales_b, output, nbits_, has_zero_points_, has_bias_, has_weight_idx_, has_weight_idx_indirect_);
   } else if (config_.Is(8, 16, 16)) {
@@ -197,7 +294,16 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
   uint32_t tile_n = 64;
   uint32_t tile_size_k = 32;
   uint32_t workgroup_size = 128;
-  if (config.Is(8, 16, 16)) {
+  const bool experimental_fp32 = a->DataType() == DataTypeImpl::GetType<MLFloat16>() &&
+                                 config.resultComponentType == wgpu::SubgroupMatrixComponentType::F32;
+  if (experimental_fp32) {
+    ORT_RETURN_IF_ERROR(CaptureExperimentalInput(*a, M, N, K, context));
+    ExperimentalTile(config, tile_m, tile_n, tile_size_k);
+    workgroup_size = (tile_m / (2 * config.M)) * (tile_n / (4 * config.N)) * config.subgroupSize;
+    ORT_ENFORCE(ExperimentalStorage(config, tile_m, tile_n, tile_size_k) <=
+                    context.DeviceLimits().maxComputeWorkgroupStorageSize,
+                "Experimental subgroup matrix tile exceeds workgroup storage limits");
+  } else if (config.Is(8, 16, 16)) {
     // Default: 64x64 tile size, 256 thread.
     tile_m = 64;
     tile_n = 64;
@@ -295,7 +401,7 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
   const bool has_tail_buffer = !has_bias && config.Is(8, 16, 16) && (M % tile_m != 0);
   SubgroupMatrixMatMulNBitsProgram matmul_program{nbits, config, tile_m, tile_n, tile_size_k,
                                                   has_zero_points, has_bias, has_weight_idx,
-                                                  has_weight_idx_indirect, has_tail_buffer};
+                                                  has_weight_idx_indirect, has_tail_buffer, experimental_fp32};
   matmul_program.SetWorkgroupSize(workgroup_size);
 
   // Pin kernels running on variable-size adapters to the subgroup size they were written for.
@@ -395,6 +501,37 @@ bool CanApplySubgroupMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& cont
   // TODO: Support weight_idx_indirect.
   if (has_weight_idx_indirect) {
     return false;
+  }
+
+  if (is_fp16 && context.EnableMatmulFp32Accumulation() && nbits == 4 && accuracy_level == 4 && M >= 256) {
+    if (const char* mode = std::getenv("ORT_WEBGPU_EXPERIMENTAL_MATMUL_NBITS_FP32")) {
+      DumpExperimentalCaps(context);
+      constexpr auto kF16 = wgpu::SubgroupMatrixComponentType::F16;
+      constexpr auto kF32 = wgpu::SubgroupMatrixComponentType::F32;
+      const std::string_view requested{mode};
+      if (requested == "mixed" || requested == "auto") {
+        config = SelectSubgroupMatrixConfig(context, {{kF16, kF32, 16, 16, 16, 32, true}});
+      }
+      if (!config && (requested == "f32" || requested == "auto")) {
+        config = SelectSubgroupMatrixConfig(context, {{kF32, kF32, 8, 8, 8, 32, false}});
+      }
+      if (config) {
+        if (N < 5120 && !std::getenv("ORT_WEBGPU_EXPERIMENTAL_MATMUL_NBITS_VALIDATE")) {
+          config.reset();
+          return false;
+        }
+        uint32_t m, n, k;
+        ExperimentalTile(*config, m, n, k);
+        const uint32_t threads = (m / (2 * config->M)) * (n / (4 * config->N)) * config->subgroupSize;
+        const auto& limits = context.DeviceLimits();
+        if (K % k == 0 && threads <= limits.maxComputeWorkgroupSizeX &&
+            threads <= limits.maxComputeInvocationsPerWorkgroup &&
+            ExperimentalStorage(*config, m, n, k) <= limits.maxComputeWorkgroupStorageSize) {
+          return true;
+        }
+        config.reset();
+      }
+    }
   }
 
   // Every fp16 preference below has resultComponentType == F16, and the kernels declare

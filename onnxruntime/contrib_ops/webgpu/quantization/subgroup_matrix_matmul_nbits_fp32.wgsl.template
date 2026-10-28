@@ -1,0 +1,168 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#param n_bits
+#param has_zero_points
+#param has_bias
+#param has_weight_idx
+#param has_weight_idx_indirect
+#param operand_f32
+#param sg_mat_m
+#param sg_mat_n
+#param sg_mat_k
+#param tile_size_m
+#param tile_size_n
+#param tile_size_k
+
+#use .getByOffset .setByOffset
+#include "quantization/matmul_nbits_zero_pt.wgsl.template"
+
+#if operand_f32
+alias operand_t = f32;
+#else
+alias operand_t = f16;
+#endif
+
+const BM: u32 = u32(tile_size_m);
+const BN: u32 = u32(tile_size_n);
+const BK: u32 = u32(tile_size_k);
+const SM: u32 = u32(sg_mat_m);
+const SN: u32 = u32(sg_mat_n);
+const SK: u32 = u32(sg_mat_k);
+const WM: u32 = 2 * SM;
+const WN: u32 = 4 * SN;
+const SUBGROUPS: u32 = (BM / WM) * (BN / WN);
+const STRIDE: u32 = BK + 8;
+
+var<workgroup> tile_b: array<operand_t, BN * STRIDE>;
+var<workgroup> stage: array<f32, SUBGROUPS * SM * SN>;
+#if operand_f32
+var<workgroup> tile_a: array<f32, BM * BK>;
+#endif
+
+// Matches the existing subgroup INT4 layout and scale/zero-point indexing.
+fn dequant_b(n_base: u32, k_base: u32, task: u32) {
+  let n = task / (BK / 16);
+  let k = (task % (BK / 16)) * 16;
+  let global_n = n_base + n;
+#if has_weight_idx
+  let matrix = uniforms.weight_idx;
+#else
+  let matrix = 0u;
+#endif
+  let weight_offset = matrix * uniforms.N * uniforms.K / 8;
+  let scale_offset = matrix * uniforms.N * (uniforms.K / 32);
+  let base = n * STRIDE + k;
+  if (global_n < uniforms.N) {
+    let index = (global_n * uniforms.K + k_base + k) / 8 + weight_offset;
+    let scale = operand_t(scales_b.getByOffset((global_n * uniforms.K + k_base + k) / 32 + scale_offset));
+    let zero = operand_t(mm_read_zero(matrix, global_n, (k_base + k) / 32, uniforms.N, uniforms.zero_blocks_per_col));
+    for (var step = 0u; step < 2u; step++) {
+      let packed = b.getByOffset(index + step);
+      let lo = (vec4<operand_t>(unpack4xU8(packed & 0x0F0F0F0Fu)) - vec4<operand_t>(zero)) * scale;
+      let hi = (vec4<operand_t>(unpack4xU8((packed >> 4u) & 0x0F0F0F0Fu)) - vec4<operand_t>(zero)) * scale;
+      for (var i = 0u; i < 4u; i++) {
+        tile_b[base + step * 8u + i * 2u] = lo[i];
+        tile_b[base + step * 8u + i * 2u + 1u] = hi[i];
+      }
+    }
+  } else {
+    for (var i = 0u; i < 16u; i++) {
+      tile_b[base + i] = operand_t(0);
+    }
+  }
+}
+
+fn write_tile(value: subgroup_matrix_result<f32, sg_mat_n, sg_mat_m>,
+              row: u32, col: u32, subgroup: u32, lane: u32, lanes: u32) {
+  let offset = subgroup * SM * SN;
+  subgroupMatrixStore<row_major>(&stage, offset, value, SN);
+  // Matrix stores and scalar reads may be assigned to different lanes.
+  workgroupBarrier();
+  for (var i = lane; i < SM * SN; i += lanes) {
+    let r = row + i / SN;
+    let c = col + i % SN;
+    if (r < uniforms.M && c < uniforms.N) {
+      var value_f32 = stage[offset + i];
+#if has_bias
+#if has_weight_idx
+      value_f32 += f32(bias[uniforms.weight_idx * uniforms.N + c]);
+#else
+      value_f32 += f32(bias[c]);
+#endif
+#endif
+      output.setByOffset(r * uniforms.N + c, output_element_t(value_f32));
+    }
+  }
+  workgroupBarrier();
+}
+
+$MAIN {
+  let row_base = workgroup_id.y * BM;
+  let col_base = workgroup_id.x * BN;
+  let subgroup = local_idx / sg_size;
+  let lane = local_idx % sg_size;
+  let sr = subgroup % (BM / WM);
+  let sc = subgroup / (BM / WM);
+
+  var c00: subgroup_matrix_result<f32, sg_mat_n, sg_mat_m>;
+  var c01: subgroup_matrix_result<f32, sg_mat_n, sg_mat_m>;
+  var c02: subgroup_matrix_result<f32, sg_mat_n, sg_mat_m>;
+  var c03: subgroup_matrix_result<f32, sg_mat_n, sg_mat_m>;
+  var c10: subgroup_matrix_result<f32, sg_mat_n, sg_mat_m>;
+  var c11: subgroup_matrix_result<f32, sg_mat_n, sg_mat_m>;
+  var c12: subgroup_matrix_result<f32, sg_mat_n, sg_mat_m>;
+  var c13: subgroup_matrix_result<f32, sg_mat_n, sg_mat_m>;
+
+  for (var kb = 0u; kb < uniforms.K; kb += BK) {
+#if operand_f32
+    for (var i = local_idx; i < BM * BK; i += workgroup_size_x) {
+      let row = row_base + i / BK;
+      var value = 0.0f;
+      if (row < uniforms.M) {
+        value = f32(a.getByOffset(row * uniforms.K + kb + i % BK));
+      }
+      tile_a[i] = value;
+    }
+#endif
+    for (var task = local_idx; task < BN * (BK / 16); task += workgroup_size_x) {
+      dequant_b(col_base, kb, task);
+    }
+    workgroupBarrier();
+    for (var k = 0u; k < BK; k += SK) {
+#if operand_f32
+      let a_offset = sr * WM * BK + k;
+      let a0 = subgroupMatrixLoad<subgroup_matrix_left<f32, sg_mat_k, sg_mat_m>, row_major>(&tile_a, a_offset, BK);
+      let a1 = subgroupMatrixLoad<subgroup_matrix_left<f32, sg_mat_k, sg_mat_m>, row_major>(&tile_a, a_offset + SM * BK, BK);
+#else
+      let a_offset = ((row_base / SM + sr * 2u) * (uniforms.K / SK) + (kb + k) / SK) * SM * SK;
+      let a0 = subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>, row_major>(&input_a, a_offset, SK);
+      let a1 = subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>, row_major>(&input_a, a_offset + uniforms.K * SM, SK);
+#endif
+      let b_offset = sc * WN * STRIDE + k;
+      let b0 = subgroupMatrixLoad<subgroup_matrix_right<operand_t, sg_mat_n, sg_mat_k>, col_major>(&tile_b, b_offset, STRIDE);
+      let b1 = subgroupMatrixLoad<subgroup_matrix_right<operand_t, sg_mat_n, sg_mat_k>, col_major>(&tile_b, b_offset + SN * STRIDE, STRIDE);
+      let b2 = subgroupMatrixLoad<subgroup_matrix_right<operand_t, sg_mat_n, sg_mat_k>, col_major>(&tile_b, b_offset + 2u * SN * STRIDE, STRIDE);
+      let b3 = subgroupMatrixLoad<subgroup_matrix_right<operand_t, sg_mat_n, sg_mat_k>, col_major>(&tile_b, b_offset + 3u * SN * STRIDE, STRIDE);
+      c00 = subgroupMatrixMultiplyAccumulate(a0, b0, c00);
+      c01 = subgroupMatrixMultiplyAccumulate(a0, b1, c01);
+      c02 = subgroupMatrixMultiplyAccumulate(a0, b2, c02);
+      c03 = subgroupMatrixMultiplyAccumulate(a0, b3, c03);
+      c10 = subgroupMatrixMultiplyAccumulate(a1, b0, c10);
+      c11 = subgroupMatrixMultiplyAccumulate(a1, b1, c11);
+      c12 = subgroupMatrixMultiplyAccumulate(a1, b2, c12);
+      c13 = subgroupMatrixMultiplyAccumulate(a1, b3, c13);
+    }
+    workgroupBarrier();
+  }
+  let row = row_base + sr * WM;
+  let col = col_base + sc * WN;
+  write_tile(c00, row, col, subgroup, lane, sg_size);
+  write_tile(c01, row, col + SN, subgroup, lane, sg_size);
+  write_tile(c02, row, col + 2u * SN, subgroup, lane, sg_size);
+  write_tile(c03, row, col + 3u * SN, subgroup, lane, sg_size);
+  write_tile(c10, row + SM, col, subgroup, lane, sg_size);
+  write_tile(c11, row + SM, col + SN, subgroup, lane, sg_size);
+  write_tile(c12, row + SM, col + 2u * SN, subgroup, lane, sg_size);
+  write_tile(c13, row + SM, col + 3u * SN, subgroup, lane, sg_size);
+}
