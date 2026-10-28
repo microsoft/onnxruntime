@@ -13,6 +13,15 @@
 #include <memory>
 #include <vector>
 #ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <Windows.h>
+#include <chrono>
+#include <filesystem>
 #include <io.h>
 #else
 #include <fcntl.h>
@@ -111,10 +120,24 @@ TEST_F(ExperimentalCApiTest, FileSourcesValidateArgumentsAndAccess) {
   Ort::SessionOptions options;
   EXPECT_FALSE(Ort::Status(fn(nullptr, nullptr, nullptr, 0)).IsOK());
   EXPECT_FALSE(Ort::Status(fn(options, nullptr, nullptr, 1)).IsOK());
+#ifdef _WIN32
+  const auto temporary_path =
+      std::filesystem::temp_directory_path() /
+      ("ort-file-source-" +
+       std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+  const HANDLE handle = CreateFileW(
+      temporary_path.c_str(), GENERIC_READ | GENERIC_WRITE | DELETE,
+      FILE_SHARE_READ | FILE_SHARE_DELETE, nullptr, CREATE_NEW,
+      FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_DELETE_ON_CLOSE, nullptr);
+  ASSERT_NE(handle, INVALID_HANDLE_VALUE) << GetLastError();
+  std::unique_ptr<void, decltype(&CloseHandle)> file(handle, CloseHandle);
+  const OrtFileHandle descriptor = file.get();
+#else
   std::unique_ptr<FILE, decltype(&fclose)> file(tmpfile(), fclose);
   ASSERT_NE(file, nullptr);
-  const char* name = "weights.data";
   const auto descriptor = NativeFileHandle(file.get());
+#endif
+  const char* name = "weights.data";
 #ifdef _WIN32
   // Windows duplicates only read rights, even when the original also permits writing.
   EXPECT_TRUE(Ort::Status(fn(options, &name, &descriptor, 1)).IsOK());
@@ -155,7 +178,13 @@ TEST_F(ExperimentalCApiTest, FileSourcesInferAfterHandleAndOptionsRelease) {
   std::ifstream input("testdata/model_with_external_initializers.onnx", std::ios::binary);
   ASSERT_TRUE(input);
   const std::vector<char> graph{std::istreambuf_iterator<char>{input}, {}};
-  std::unique_ptr<FILE, decltype(&fclose)> weights(fopen("testdata/Pads.bin", "rb"), fclose);
+  FILE* raw_weights = nullptr;
+#ifdef _WIN32
+  ASSERT_EQ(_wfopen_s(&raw_weights, ORT_TSTR("testdata/Pads.bin"), ORT_TSTR("rb")), 0);
+#else
+  raw_weights = fopen("testdata/Pads.bin", "rb");
+#endif
+  std::unique_ptr<FILE, decltype(&fclose)> weights(raw_weights, fclose);
   ASSERT_NE(weights, nullptr);
   const char* name = "Pads.bin";
   const auto descriptor = NativeFileHandle(weights.get());
