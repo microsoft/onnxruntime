@@ -4479,6 +4479,12 @@ Status Graph::InjectExternalInitializersFromFileSources(
       ORT_RETURN_IF(info->GetOffset() < 0 ||
                         (info->GetLength() != 0 && info->GetLength() != bytes),
                     "Invalid registered external initializer range: ", name);
+      if (bytes == 0) {
+        uint64_t file_length = 0;
+        ORT_RETURN_IF_ERROR(source->second->GetLength(file_length));
+        ORT_RETURN_IF(static_cast<uint64_t>(info->GetOffset()) > file_length,
+                      "Invalid registered external initializer range: ", name);
+      }
       auto mapping = std::make_shared<RandomAccessFile::MappedMemoryPtr>();
       ORT_RETURN_IF_ERROR(source->second->Map(info->GetOffset(), bytes, *mapping));
       const auto* type = DataTypeImpl::TensorTypeFromONNXEnum(proto.data_type())->GetElementType();

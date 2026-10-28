@@ -51,7 +51,8 @@ ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtApi_ExperimentalApiTest, _Out_ int64_t
  * Small tensors may be inlined; unaligned numeric ranges are copied into aligned storage.
  * Files must remain immutable while dependent sessions/tensors exist. Missing sources
  * and invalid ranges fail without filesystem fallback. Supports ONNX graph initializers,
- * including subgraphs, but not external tensor attributes or model packages.
+ * including subgraphs, but not external sparse tensors, external tensor attributes,
+ * external data in model-local functions, or model packages.
  * This does not change execution-provider selection or provide a sandbox.
  * Unsupported platforms and builds without external initializers return ORT_NOT_IMPLEMENTED.
  * Minimal builds do not register this experimental entry.
