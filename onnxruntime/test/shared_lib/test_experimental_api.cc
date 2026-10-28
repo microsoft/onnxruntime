@@ -481,6 +481,35 @@ TEST_F(ExperimentalCApiTest, FileSourcesValidateZeroLengthRanges) {
   EXPECT_NO_THROW(Ort::Session(env, valid.data(), valid.size(), options));
 }
 
+TEST_F(ExperimentalCApiTest, FileSourcesRejectHiddenDuplicateExternalInitializers) {
+  auto* fn = Ort::Experimental::
+      Get_OrtApi_SessionOptionsSetExternalInitializerFileHandles_SinceV32_FnOrThrow(api_);
+  Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "duplicate-file-sources"};
+  for (bool external_first : {false, true}) {
+    SCOPED_TRACE(external_first);
+    auto model = MakeExternalInitializerModel(1, 0);
+    auto* graph = model.mutable_graph();
+    graph->mutable_initializer(0)->mutable_external_data(0)->set_value("testdata/Pads.bin");
+    auto* embedded = graph->add_initializer();
+    embedded->set_name("X");
+    embedded->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    embedded->add_dims(1);
+    embedded->add_float_data(7.0f);
+    if (!external_first) {
+      graph->mutable_initializer()->SwapElements(0, 1);
+    }
+    Ort::SessionOptions options;
+    Ort::ThrowOnError(fn(options, nullptr, nullptr, 0));
+    const auto bytes = model.SerializeAsString();
+    try {
+      Ort::Session session{env, bytes.data(), bytes.size(), options};
+      FAIL() << "Duplicate names must not hide an external initializer from the registry";
+    } catch (const Ort::Exception& error) {
+      EXPECT_NE(std::string{error.what()}.find("duplicate initializer names: X"), std::string::npos);
+    }
+  }
+}
+
 TEST_F(ExperimentalCApiTest, FileSourcesRetainLargeAlignedAndUnalignedInitializers) {
   auto* fn = Ort::Experimental::
       Get_OrtApi_SessionOptionsSetExternalInitializerFileHandles_SinceV32_FnOrThrow(api_);

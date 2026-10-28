@@ -74,15 +74,18 @@ static Status ValidateFileSourceModel(const ModelProto& model) {
     if (!graphs.empty()) {
       const auto [graph, in_function] = graphs.back();
       graphs.pop_back();
+      InlinedHashSet<std::string> initializer_names;
+      for (const auto& tensor : graph->initializer()) {
+        ORT_RETURN_IF(!initializer_names.insert(tensor.name()).second,
+                      "File-source loading does not support duplicate initializer names: ", tensor.name());
+        ORT_RETURN_IF(in_function && utils::HasExternalData(tensor),
+                      "File-source loading does not support external data in model-local functions.");
+      }
       for (const auto& tensor : graph->sparse_initializer()) {
+        ORT_RETURN_IF(!initializer_names.insert(tensor.values().name()).second,
+                      "File-source loading does not support duplicate initializer names: ", tensor.values().name());
         ORT_RETURN_IF(has_external_sparse_data(tensor),
                       "File-source loading does not support external sparse tensors.");
-      }
-      if (in_function) {
-        for (const auto& tensor : graph->initializer()) {
-          ORT_RETURN_IF(utils::HasExternalData(tensor),
-                        "File-source loading does not support external data in model-local functions.");
-        }
       }
       add_nodes(graph->node(), in_function);
       continue;
