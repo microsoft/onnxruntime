@@ -307,11 +307,6 @@ TEST(CUDA_EP_Unittest, QMoEFp16CompatibleProductionExpertMaps) {
         }
       }
       std::iota(order.begin(), order.end(), 0);
-      std::stable_sort(order.begin(), order.end(), [&](int a, int b) { return ids[a] < ids[b]; });
-      for (int index = 0; index < routes; ++index) {
-        expected_map[index] = order[index] / top_k + (order[index] % top_k) * rows;
-        expected_inverse[expected_map[index]] = index;
-      }
       for (int expert = 0; expert < experts; ++expert) {
         expected_tiles[expert + 1] = expected_tiles[expert] + static_cast<int>((expected_offsets[expert + 1] + 15) / 16);
         expected_offsets[expert + 1] += expected_offsets[expert];
@@ -319,8 +314,10 @@ TEST(CUDA_EP_Unittest, QMoEFp16CompatibleProductionExpertMaps) {
       CudaBuffer source(routes * sizeof(int)), map(routes * sizeof(int)), inverse(routes * sizeof(int));
       CudaBuffer sorted(routes * sizeof(int)), offsets(sizeof(expected_offsets)), tiles(sizeof(expected_tiles));
       source.Upload(ids.data());
-      if (!ck::fusedBuildExpertMapsSortFirstToken(source.As<int>(), map.As<int>(), inverse.As<int>(), sorted.As<int>(),
-                                                  offsets.As<int64_t>(), rows, experts, top_k, 0, experts, nullptr)) {
+      const bool fused = ck::fusedBuildExpertMapsSortFirstToken(
+          source.As<int>(), map.As<int>(), inverse.As<int>(), sorted.As<int>(),
+          offsets.As<int64_t>(), rows, experts, top_k, 0, experts, nullptr);
+      if (!fused) {
         const int64_t tokens_per_block = ck::computeNumTokensPerBlock(rows, experts);
         const int64_t blocks = (rows + tokens_per_block - 1) / tokens_per_block;
         CudaBuffer counts(experts * blocks * sizeof(int)), cumulative(experts * blocks * sizeof(int));
@@ -329,18 +326,46 @@ TEST(CUDA_EP_Unittest, QMoEFp16CompatibleProductionExpertMaps) {
             source.As<int>(), sorted.As<int>(), map.As<int>(), inverse.As<int>(), offsets.As<int64_t>(),
             counts.As<int>(), cumulative.As<int>(), blocked_rows.As<int>(), rows, experts, top_k, 0, nullptr);
       }
+      // RankMatch traverses (warp, key slot, lane); the prefix-scan fallback
+      // traverses tokens. Neither API promises token-major order for both paths.
+      auto input_rank = [&](int pair) {
+        const int token = pair / top_k;
+        return fused ? (token / 32) * (32 * top_k) + (pair % top_k) * 32 + token % 32 : pair;
+      };
+      std::stable_sort(order.begin(), order.end(), [&](int a, int b) {
+        return ids[a] != ids[b] ? ids[a] < ids[b] : input_rank(a) < input_rank(b);
+      });
+      for (int index = 0; index < routes; ++index) {
+        expected_map[index] = order[index] / top_k + (order[index] % top_k) * rows;
+        expected_inverse[expected_map[index]] = index;
+      }
       qmoe::LaunchQMoEFp8ExpertTiles(offsets.As<int64_t>(), tiles.As<int>(), experts, nullptr);
-      std::vector<int> actual_map(routes), actual_inverse(routes);
+      std::vector<int> actual_map(routes), actual_inverse(routes), actual_experts(routes);
       std::array<int64_t, experts + 1> actual_offsets{};
       std::array<int, experts + 1> actual_tiles{};
       map.Download(actual_map.data());
       inverse.Download(actual_inverse.data());
+      sorted.Download(actual_experts.data());
       offsets.Download(actual_offsets.data());
       tiles.Download(actual_tiles.data());
       EXPECT_EQ(actual_map, expected_map);
       EXPECT_EQ(actual_inverse, expected_inverse);
-      EXPECT_EQ(actual_offsets, expected_offsets);
+      ASSERT_EQ(actual_offsets, expected_offsets);
       EXPECT_EQ(actual_tiles, expected_tiles);
+      std::vector<uint8_t> seen(routes, 0);
+      for (int index = 0; index < routes; ++index) {
+        const int route = actual_map[index];
+        ASSERT_GE(route, 0);
+        ASSERT_LT(route, routes);
+        EXPECT_EQ(seen[route]++, 0);
+        EXPECT_EQ(actual_inverse[route], index);
+        EXPECT_EQ(actual_experts[index], ids[(route % rows) * top_k + route / rows]);
+      }
+      for (int expert = 0; expert < experts; ++expert) {
+        for (int64_t index = actual_offsets[expert]; index < actual_offsets[expert + 1]; ++index) {
+          EXPECT_EQ(actual_experts[index], expert);
+        }
+      }
     }
   }
 }
