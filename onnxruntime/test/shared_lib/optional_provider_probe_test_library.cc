@@ -1,7 +1,9 @@
 #include "core/framework/execution_provider.h"
 #include "core/providers/shared_library/provider_host_api.h"
+#include "core/session/onnxruntime_ep_c_api.h"
 
 #include <cstdlib>
+#include <memory>
 #include <string>
 
 #if defined(_WIN32)
@@ -55,20 +57,43 @@ struct PluginLifetimeTracker {
 #endif
   }
 } plugin_lifetime_tracker;
+
+const char* ORT_API_CALL GetPluginName(const OrtEpFactory*) noexcept {
+  return "ProbePlugin";
+}
+
+OrtStatus* ORT_API_CALL GetSupportedDevices(OrtEpFactory*, const OrtHardwareDevice* const*, size_t,
+                                            OrtEpDevice**, size_t, size_t* num_devices) noexcept {
+  *num_devices = 0;
+  return nullptr;
+}
+
+OrtStatus* ORT_API_CALL CreateDataTransfer(OrtEpFactory*, OrtDataTransferImpl** data_transfer) noexcept {
+  *data_transfer = nullptr;
+  return nullptr;
+}
 }  // namespace
 
 extern "C" ORT_TEST_EXPORT OrtStatus* CreateEpFactories(
     const char* registration_name, const OrtApiBase* api_base, const OrtLogger*,
-    OrtEpFactory**, size_t, size_t* num_factories) {
+    OrtEpFactory** factories, size_t, size_t* num_factories) {
   if (std::string{registration_name} == "fail_create_factories") {
     return api_base->GetApi(ORT_API_VERSION)->CreateStatus(ORT_FAIL, "Factory creation failed.");
   }
-  *num_factories = 0;
+  auto factory = std::make_unique<OrtEpFactory>();
+  factory->ort_version_supported = ORT_API_VERSION;
+  factory->GetName = GetPluginName;
+  factory->GetVendor = GetPluginName;
+  factory->GetSupportedDevices = GetSupportedDevices;
+  factory->CreateDataTransfer = CreateDataTransfer;
+  factories[0] = factory.release();
+  *num_factories = 1;
   return nullptr;
 }
 
 #if defined(ORT_TEST_OPTIONAL_PROVIDER_plugin)
-extern "C" ORT_TEST_EXPORT OrtStatus* ReleaseEpFactory(OrtEpFactory*) {
+extern "C" ORT_TEST_EXPORT OrtStatus* ReleaseEpFactory(OrtEpFactory* factory) {
+  delete factory;
   return nullptr;
 }
 #endif
