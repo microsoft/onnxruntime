@@ -558,6 +558,9 @@ WGPUBuffer BufferManager::Create(CommandRecordingState& recording, size_t size, 
     auto& cache = GetCacheManager(usage);
     buffer_size = cache.CalculateBufferSize(size);
     buffer = cache.TryAcquireCachedBuffer(buffer_size);
+    if (buffer) {
+      owned_buffers_.insert(buffer);
+    }
   }
   if (buffer) {
     if (initialize_to_zero) {
@@ -565,6 +568,12 @@ WGPUBuffer BufferManager::Create(CommandRecordingState& recording, size_t size, 
       // AllocOnStream defers the clear on the Session timeline. Built-in allocations use the
       // Session recording and retain their caller-supplied submission policy.
       auto buffer_guard = wgpu::Buffer::Acquire(buffer);
+      auto unown_on_throw = gsl::finally([&] {
+        if (buffer_guard) {
+          std::lock_guard<std::mutex> lock{mutex_};
+          owned_buffers_.erase(buffer);
+        }
+      });
       ORT_THROW_IF_ERROR(context_.EncodeDeferredDispatches(recording));
       context_.EndComputePass(recording);
       context_.GetCommandEncoder(recording).ClearBuffer(buffer, 0, buffer_size);
@@ -607,6 +616,7 @@ bool BufferManager::SupportsUMA() const {
 void BufferManager::Release(WGPUBuffer buffer, const CommandRecordingState* recording) const {
   EnforceBufferUnmapped(context_, buffer);
   std::lock_guard<std::mutex> lock{mutex_};
+  owned_buffers_.erase(buffer);
   auto& cache = GetCacheManager(buffer);
   // Keep reusable buffers out of the cache while this recording has unsubmitted work.
   // Graph caches also need this protection from streamless allocations.
@@ -625,10 +635,12 @@ void BufferManager::Release(WGPUBuffer buffer, const CommandRecordingState* reco
 
 bool BufferManager::TryRelease(WGPUBuffer buffer, const CommandRecordingState* recording) const {
   std::lock_guard<std::mutex> lock{mutex_};
-  if (!owned_buffers_.contains(buffer)) {
+  auto owned_it = owned_buffers_.find(buffer);
+  if (owned_it == owned_buffers_.end()) {
     return false;
   }
   EnforceBufferUnmapped(context_, buffer);
+  owned_buffers_.erase(owned_it);
   auto& cache = GetCacheManager(buffer);
   if (cache.SupportsBufferReuse() && recording != nullptr &&
       recording->has_unsubmitted_work.load(std::memory_order_relaxed)) {
@@ -717,24 +729,13 @@ void BufferManager::DiscardPendingBuffers(CommandRecordingState& recording) cons
 
 std::vector<std::pair<size_t, WGPUBuffer>> BufferManager::ExtractCachedBuffers(wgpu::BufferUsage usage) {
   std::lock_guard<std::mutex> lock{mutex_};
-  auto extracted = GetCacheManager(usage).ExtractCachedBuffers();
-  for (const auto& entry : extracted) {
-    if (entry.second) {
-      owned_buffers_.erase(entry.second);
-    }
-  }
-  return extracted;
+  return GetCacheManager(usage).ExtractCachedBuffers();
 }
 
 void BufferManager::AbsorbCachedBuffers(
     wgpu::BufferUsage usage,
     std::vector<std::pair<size_t, WGPUBuffer>>&& buffers) {
   std::lock_guard<std::mutex> lock{mutex_};
-  for (const auto& entry : buffers) {
-    if (entry.second) {
-      owned_buffers_.insert(entry.second);
-    }
-  }
   GetCacheManager(usage).AbsorbCachedBuffers(std::move(buffers));
 }
 

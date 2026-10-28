@@ -123,7 +123,7 @@ class BufferManager {
   std::unique_ptr<IBufferCacheManager> default_cache_;
   // Created on release, only for reusable buffers waiting for this recording's submission.
   mutable InlinedHashMap<const CommandRecordingState*, InlinedVector<wgpu::Buffer>> pending_buffers_;
-  // Tracks buffers currently owned by this manager (used by per-graph managers to route Free).
+  // Tracks buffers currently checked out from this manager (used by per-graph managers to route Free).
   mutable InlinedHashSet<WGPUBuffer> owned_buffers_;
 };
 
