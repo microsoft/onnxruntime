@@ -75,9 +75,9 @@ bool WebGpuContext::IsFeatureEnabled(WebGpuFeature feature) const {
   return feature_requests_[index].value_or(kWebGpuFeatures[index].enabled_by_default);
 }
 
-bool WebGpuContext::IsDeviceFeatureDisabled(wgpu::FeatureName feature) const {
-  return feature == wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix &&
-         !IsFeatureEnabled(WebGpuFeature::SubgroupMatrix);
+bool WebGpuContext::IsDeviceFeatureAllowed(wgpu::FeatureName feature) const {
+  return feature != wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix ||
+         IsFeatureEnabled(WebGpuFeature::SubgroupMatrix);
 }
 
 void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
@@ -425,8 +425,7 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
     wgpu::SupportedFeatures supported_features;
     Device().GetFeatures(&supported_features);
     for (size_t i = 0; i < supported_features.featureCount; i++) {
-      // Also hide the feature on externally supplied devices so all kernels use their fallbacks.
-      if (IsDeviceFeatureDisabled(supported_features.features[i])) {
+      if (!IsDeviceFeatureAllowed(supported_features.features[i])) {
         continue;
       }
       device_features_.insert(supported_features.features[i]);
@@ -1132,7 +1131,7 @@ std::vector<wgpu::FeatureName> WebGpuContext::GetAvailableRequiredFeatures(const
 #endif
   };
   for (auto feature : features) {
-    if (IsDeviceFeatureDisabled(feature)) {
+    if (!IsDeviceFeatureAllowed(feature)) {
       continue;
     }
 #if !defined(__wasm__)

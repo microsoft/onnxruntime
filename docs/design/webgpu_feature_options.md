@@ -30,8 +30,13 @@ of whether hardware supports it.
 
 The native `kWebGpuFeatures` registry defines supported names and defaults.
 It is independent of WebGPU device features; the context maps each ORT feature to
-the device capabilities it gates. The bindings forward lists without maintaining a
-second registry. Only context-scoped device capabilities are registered today;
+the device capabilities it gates. `WebGpuContext::IsDeviceFeatureAllowed`
+checks the effective permission from explicit enable/disable requests or the
+feature default when requesting device features and caching the features
+available to kernels. For an externally supplied device, filtering the cache
+ensures kernels use their fallbacks while preserving the device's enabled features.
+The bindings forward lists without maintaining a second registry.
+Only context-scoped device capabilities are registered today;
 future per-session or device-creation-only features need their corresponding
 lifecycle handling and documented scope. Numeric and enum settings remain
 explicit typed options.
