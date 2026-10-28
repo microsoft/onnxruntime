@@ -35,10 +35,10 @@ jobs:
       uses: ./.github/actions/setup-dotnet
     - name: Install DocFX
       run: |
-        dotnet tool update -g docfx --allow-roll-forward
+        dotnet tool install docfx --tool-path "$env:RUNNER_TEMP\docfx" --allow-roll-forward
     - name: Update PATH
       run: |
-        Add-Content -Value "$env:USERPROFILE\.dotnet\tools" -Encoding utf8 -Path $env:GITHUB_PATH
+        Add-Content -Value "$env:RUNNER_TEMP\docfx" -Encoding utf8 -Path $env:GITHUB_PATH
     # NOTE: We need to restore Microsoft.ML.OnnxRuntime.csproj manually to set IncludeMobileTargets=false
     # docfx doesn't seem to be able to do that properly resulting in build errors
     - name: Restore dependencies
