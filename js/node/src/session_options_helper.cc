@@ -37,7 +37,8 @@ const std::unordered_map<std::string, GraphOptimizationLevel> GRAPH_OPT_LEVEL_NA
 const std::unordered_map<std::string, ExecutionMode> EXECUTION_MODE_NAME_TO_ID_MAP = {{"sequential", ORT_SEQUENTIAL},
                                                                                       {"parallel", ORT_PARALLEL}};
 
-void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions& sessionOptions) {
+void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions& sessionOptions,
+                             bool& requiresDeviceSerialization) {
   for (uint32_t i = 0; i < epList.Length(); i++) {
     Napi::Value epValue = epList[i];
     std::string name;
@@ -171,6 +172,8 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions& sess
 #endif
 #ifdef USE_WEBGPU
     } else if (name == "webgpu") {
+      // WebGPU sessions on one device share a WebGpuContext; see device_lock.h.
+      requiresDeviceSerialization = true;
       sessionOptions.AppendExecutionProvider("WebGPU", webgpu_options);
 #endif
 #ifdef USE_COREML
@@ -205,13 +208,13 @@ void IterateExtraOptions(const std::string& prefix, const Napi::Object& obj, Ort
 }
 
 void ParseSessionOptions(const Napi::Object options, Ort::SessionOptions& sessionOptions,
-                         std::vector<std::vector<char>>* externalDataBuffers) {
+                         bool& requiresDeviceSerialization, std::vector<std::vector<char>>* externalDataBuffers) {
   // Execution provider
   if (options.Has("executionProviders")) {
     auto epsValue = options.Get("executionProviders");
     ORT_NAPI_THROW_TYPEERROR_IF(!epsValue.IsArray(), options.Env(),
                                 "Invalid argument: sessionOptions.executionProviders must be an array.");
-    ParseExecutionProviders(epsValue.As<Napi::Array>(), sessionOptions);
+    ParseExecutionProviders(epsValue.As<Napi::Array>(), sessionOptions, requiresDeviceSerialization);
   }
 
   // Intra threads number

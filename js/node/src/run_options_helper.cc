@@ -30,4 +30,16 @@ void ParseRunOptions(const Napi::Object options, Ort::RunOptions& runOptions) {
                                 "Invalid argument: runOptions.tag must be a string.");
     runOptions.SetRunTag(tagValue.As<Napi::String>().Utf8Value().c_str());
   }
+
+  // Terminate
+  if (options.Has("terminate")) {
+    auto terminateValue = options.Get("terminate");
+    ORT_NAPI_THROW_TYPEERROR_IF(!terminateValue.IsBoolean(), options.Env(),
+                                "Invalid argument: runOptions.terminate must be a boolean.");
+    if (terminateValue.As<Napi::Boolean>().Value()) {
+      runOptions.SetTerminate();
+    } else {
+      runOptions.UnsetTerminate();
+    }
+  }
 }
