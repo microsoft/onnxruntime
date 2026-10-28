@@ -1391,6 +1391,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
           params.decode_variant = bestTactic->cudaKernelVariant >= 2 ? bestTactic->cudaKernelVariant : 0;
           params.paired_k = bestTactic->cudaKernelVariant == 1;
           params.wave_aware = wave_aware_gemv_;
+          params.tensor_core = onnxruntime::llm::kernels::fpA_intB_gemv::GemvTensorCoreEnabled();
           const auto& device_prop = GetDeviceProp();
           params.device_sm = device_prop.major * 10 + device_prop.minor;
           params.device_sm_count = device_prop.multiProcessorCount;

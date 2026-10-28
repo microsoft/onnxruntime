@@ -17,6 +17,7 @@
 #pragma once
 #include <cuda_runtime.h>
 #include <cstdint>
+#include <cstdlib>
 #include <utility>
 
 #include <initializer_list>
@@ -204,6 +205,16 @@ inline int PickGemvCtaN(bool wave_aware, int m, int n, int interleave, int base_
   return best;
 }
 
+// The tensor-core INT8 GEMV (int8_tc_gemv.cuh) is on unless ORT_DISABLE_FPA_INTB_GEMV_TC=1; the callers that build
+// Params copy it into Params::tensor_core.
+inline bool GemvTensorCoreEnabled() {
+  static const bool enabled = [] {
+    const char* value = std::getenv("ORT_DISABLE_FPA_INTB_GEMV_TC");
+    return value == nullptr || value[0] != '1' || value[1] != '\0';
+  }();
+  return enabled;
+}
+
 struct Params {
   using Pointer = void*;
   using ConstPointer = void const*;
@@ -225,6 +236,9 @@ struct Params {
   bool paired_k = false;
   bool wave_aware = false;
   bool debug = false;
+  // Allows the tensor-core INT8 kernel for BF16 activations with symmetric group-wise INT8 weights, M = 1..8, on
+  // SM 9.0 (device_sm and device_sm_count must be reported). Other launches ignore it.
+  bool tensor_core = false;
   int decode_variant = 0;
   // Device that runs the launch, reported by the caller (0 = unknown, which selects the device-independent
   // cutoffs and no wave-aware tile). The raw device values, not the packing arch passed to kernel_launcher. The
