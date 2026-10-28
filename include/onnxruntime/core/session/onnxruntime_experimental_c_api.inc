@@ -38,9 +38,12 @@
 ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtApi_ExperimentalApiTest, _Out_ int64_t* out)
 
 #if !defined(ORT_MINIMAL_BUILD)
-/** \brief Register a complete set of pre-opened read-only external initializer files on Linux.
+/** \brief Register a complete set of pre-opened external initializer files.
  *
- * Descriptors are duplicated on success; callers retain ownership of their originals.
+ * Supported on Windows, Linux, Android, macOS and iOS. Handles are duplicated on
+ * success; callers retain ownership of their originals. Windows uses native HANDLEs
+ * with read access; duplicates have only read access. POSIX requires read-only file
+ * descriptors. Only regular files are supported.
  * Each name must be a flat relative ONNX external-data location. Registration replaces
  * the previous set atomically. Sessions and cloned options retain the files independently.
  * A zero count installs an empty registry; missing sources still fail without path fallback.
@@ -53,9 +56,9 @@ ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtApi_ExperimentalApiTest, _Out_ int64_t
  * Unsupported platforms and builds without external initializers return ORT_NOT_IMPLEMENTED.
  * Minimal builds do not register this experimental entry.
  */
-ORT_EXPERIMENTAL_API(32, OrtStatusPtr, OrtApi_SessionOptionsSetExternalInitializerFileDescriptors,
+ORT_EXPERIMENTAL_API(32, OrtStatusPtr, OrtApi_SessionOptionsSetExternalInitializerFileHandles,
                      _Inout_ OrtSessionOptions* options,
                      _In_reads_(count) const char* const* names,
-                     _In_reads_(count) const int* descriptors,
+                     _In_reads_(count) const OrtFileHandle* handles,
                      size_t count)
 #endif
