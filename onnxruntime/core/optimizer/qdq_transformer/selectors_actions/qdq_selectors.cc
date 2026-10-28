@@ -45,6 +45,42 @@ constexpr bool IsNBitsIntType(int32_t data_type) {
   return Is2BitIntType(data_type) || Is4BitIntType(data_type) || Is8BitIntType(data_type);
 }
 
+constexpr bool IsFloatQuantType(int32_t data_type) {
+  return (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT8E4M3FN) ||
+         (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT8E4M3FNUZ) ||
+         (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT8E5M2) ||
+         (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT8E5M2FNUZ) ||
+         (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT8E8M0) ||
+         (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT4E2M1);
+}
+
+// The QLinear*/QGemm replacement ops only accept integer quantized types, and dropping the Q/DQ nodes feeds the
+// quantized tensor to the target op directly, which most ops do not accept for float8/float4. Either rewrite would
+// produce an invalid graph, so node groups with float quantized types are left unchanged.
+bool HasFloatQuantType(const GraphViewer& graph_viewer, const NodeGroup& node_group) {
+  const auto is_float_quant_arg = [](const NodeArg* arg) {
+    const auto* type_proto = arg != nullptr ? arg->TypeAsProto() : nullptr;
+    return type_proto != nullptr && type_proto->has_tensor_type() &&
+           IsFloatQuantType(type_proto->tensor_type().elem_type());
+  };
+
+  for (NodeIndex dq_idx : node_group.dq_nodes) {
+    const Node* dq_node = graph_viewer.GetNode(dq_idx);
+    if (dq_node != nullptr && is_float_quant_arg(dq_node->InputDefs()[0])) {
+      return true;
+    }
+  }
+
+  for (NodeIndex q_idx : node_group.q_nodes) {
+    const Node* q_node = graph_viewer.GetNode(q_idx);
+    if (q_node != nullptr && is_float_quant_arg(q_node->OutputDefs()[0])) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 // adjust for an optional input/output that has an entry but does not exist
 int NumActualValues(const Node& node, bool input) {
   const auto& defs = input ? node.InputDefs() : node.OutputDefs();
@@ -184,6 +220,10 @@ std::optional<NodesToOptimizeIndices> BaseSelector::Select(const GraphViewer& gr
 
   const auto qdq_group = node_group_selector_->GetQDQSelection(graph_viewer, node);
   if (!qdq_group.has_value()) {
+    return std::nullopt;
+  }
+
+  if (HasFloatQuantType(graph_viewer, *qdq_group)) {
     return std::nullopt;
   }
 
