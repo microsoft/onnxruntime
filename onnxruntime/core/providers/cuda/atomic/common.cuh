@@ -17,7 +17,7 @@
 /* Modifications Copyright (c) Microsoft. */
 
 #pragma once
-#include <cuda/std/bit>
+#include <cstring>
 #include <cuda/std/type_traits>
 
 #include "cuda.h"
@@ -411,7 +411,10 @@ struct AddFunc {
       const auto result = static_cast<UnsignedT>(
           static_cast<ArithmeticT>(static_cast<UnsignedT>(a)) +
           static_cast<ArithmeticT>(static_cast<UnsignedT>(b)));
-      return ::cuda::std::bit_cast<T>(result);
+      // Preserve the modular bit pattern without requiring newer libcu++.
+      T value;
+      memcpy(&value, &result, sizeof(T));
+      return value;
     }
 
     return a + b;
@@ -428,7 +431,9 @@ struct MulFunc {
       const auto result = static_cast<UnsignedT>(
           static_cast<ArithmeticT>(static_cast<UnsignedT>(a)) *
           static_cast<ArithmeticT>(static_cast<UnsignedT>(b)));
-      return ::cuda::std::bit_cast<T>(result);
+      T value;
+      memcpy(&value, &result, sizeof(T));
+      return value;
     }
 
     return a * b;
