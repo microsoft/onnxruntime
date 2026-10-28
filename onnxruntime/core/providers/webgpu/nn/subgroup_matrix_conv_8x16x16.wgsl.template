@@ -22,6 +22,10 @@
 //
 // Bias/activation: write_output(), built by the host from GetActivationSnippet.
 //
+// TODO: Honor EnableMatmulFp32Accumulation(): when it is set, accumulate in
+// f32 (an F16 x F16 -> F32 subgroup-matrix config, f32 accumulators and scratch)
+// instead of the f16 used today.
+//
 // Host guarantees: K % sg_mat_k == 0; kTileN <= N_b so a trailing partial N tile
 // can shift back in bounds. M is unconstrained (see load_im2col_vec).
 

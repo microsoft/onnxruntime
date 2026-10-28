@@ -171,6 +171,16 @@ class SubgroupMatrixConvImpl final : public Conv<is_channels_last, is_fused>::Co
     }
     const uint32_t n_b = needs_padded_b ? ((N / kHwioNAlign) + 1) * kHwioNAlign : N;
 
+    // subgroupMatrixLoad addresses the weight as a single binding; a weight past
+    // maxStorageBufferBindingSize gets split by ProgramManager, which this offset
+    // arithmetic doesn't know about. Checked against the bound size (K x N_b).
+    const uint64_t max_weight_elems = context.DeviceLimits().maxStorageBufferBindingSize / sizeof(MLFloat16);
+    if (static_cast<uint64_t>(K) * n_b > max_weight_elems) {
+      LOGS_DEFAULT(VERBOSE) << "SubgroupMatrixConv declined: weight exceeds maxStorageBufferBindingSize (K=" << K
+                            << " N_b=" << n_b << ", limit_elems=" << max_weight_elems << ").";
+      return Status::OK();
+    }
+
     Tensor* output = context.Output(0, output_shape);
 
     // B operand: OHWI or HWIO (see b_is_hwio and the WGSL template). An already
@@ -382,19 +392,6 @@ bool CanApplySubgroupMatrixConv(ComputeContextBase& context,
                           << kernel_shape.ToString() << ", Cout(N)=" << N << " Cin=" << channel_input
                           << " kh=" << kernel_height << " kw=" << kernel_width << " K=kh*kw*Cin=" << K
                           << "). Need K%16==0 (K%16=" << (K % 16) << ") and N>=16.";
-    return false;
-  }
-
-  // subgroupMatrixLoad addresses the weight as a single binding; a weight past
-  // maxStorageBufferBindingSize gets split by ProgramManager, which this offset
-  // arithmetic doesn't know about.
-  const uint64_t max_weight_elems = context.DeviceLimits().maxStorageBufferBindingSize / sizeof(MLFloat16);
-  if (static_cast<uint64_t>(kernel_shape.Size()) > max_weight_elems) {
-    LOGS_DEFAULT(VERBOSE) << "SubgroupMatrixConv rejected: weight exceeds maxStorageBufferBindingSize"
-                          << " (kernel_shape[OIHW]=" << kernel_shape.ToString() << ", elems="
-                          << kernel_shape.Size() << ", limit_elems=" << max_weight_elems
-                          << ", maxStorageBufferBindingSize=" << context.DeviceLimits().maxStorageBufferBindingSize
-                          << " bytes).";
     return false;
   }
 

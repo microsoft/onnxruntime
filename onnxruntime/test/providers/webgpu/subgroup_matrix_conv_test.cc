@@ -354,8 +354,14 @@ TEST(SubgroupMatrixConv, SharedPrepackHWIO) {
   RunConvTest(/*N=*/1, /*Cin=*/16, /*H=*/10, /*W=*/10, /*Cout=*/32, /*kh=*/3, /*kw=*/3,
               /*stride=*/1, /*pad=*/1, /*dilation=*/1, /*has_bias=*/false,
               /*activation=*/"HardSwish");
-  RunConvTest(/*N=*/1, /*Cin=*/16, /*H=*/10, /*W=*/10, /*Cout=*/17, /*kh=*/3, /*kw=*/3,
-              /*stride=*/1, /*pad=*/1, /*dilation=*/1, /*has_bias=*/false,
+  for (int64_t channels_out : {17, 31, 33}) {
+    RunConvTest(/*N=*/1, /*Cin=*/16, /*H=*/10, /*W=*/10, /*Cout=*/channels_out, /*kh=*/3, /*kw=*/3,
+                /*stride=*/1, /*pad=*/1, /*dilation=*/1, /*has_bias=*/false,
+                /*activation=*/"HardSwish");
+  }
+  // Padded HWIO weight together with a bias and batch > 1.
+  RunConvTest(/*N=*/2, /*Cin=*/16, /*H=*/11, /*W=*/7, /*Cout=*/33, /*kh=*/3, /*kw=*/3,
+              /*stride=*/1, /*pad=*/1, /*dilation=*/1, /*has_bias=*/true,
               /*activation=*/"HardSwish");
   RunConvTest(/*N=*/1, /*Cin=*/16, /*H=*/10, /*W=*/10, /*Cout=*/17, /*kh=*/3, /*kw=*/3,
               /*stride=*/1, /*pad=*/1, /*dilation=*/1, /*has_bias=*/false,
