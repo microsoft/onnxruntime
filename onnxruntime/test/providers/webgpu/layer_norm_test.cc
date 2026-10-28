@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 #include <cmath>
+#include <array>
+#include <algorithm>
 #include <type_traits>
 
 #include "gtest/gtest.h"
@@ -107,7 +109,8 @@ template <typename T>
 void RunLayerNormLargeOffsetTest(bool constant) {
   // Include the issue's shape, scalar/vec2/vec4, and both normalization dispatch paths.
   for (const auto& dims : {TensorShapeVector{1, 16}, {2, 3}, {2, 6}, {2, 16}, {2, 260}, {2, 1024}, {1, 512}, {1, 1024}}) {
-    for (float input_offset : {1000.0f, 2396.814f, 10000.0f}) {
+    // 4080.11767578125 rounds away from itself after an FP32 sum/divide for a three-element constant row.
+    for (float input_offset : {1000.0f, 2396.814f, 4080.11767578125f, 10000.0f}) {
       for (bool has_bias : {false, true}) {
         SCOPED_TRACE(MakeString("shape=", TensorShape(dims), ", offset=", input_offset,
                                 ", constant=", constant, ", bias=", has_bias));
@@ -227,6 +230,60 @@ void RunLayerNormMixedSignMeanTest(int64_t norm_size) {
   }
 }
 
+void RunLayerNormCancellationTest(int64_t norm_size, bool scaled_output, bool all_permutations = true,
+                                  float residual = 1.0f) {
+  // Permute the large cancelling values and small residuals across vector lanes.
+  std::array<float, 4> values = scaled_output ? std::array<float, 4>{-1e8f, -1.0f, 1.0f, 1e8f}
+                                              : std::array<float, 4>{-1e8f, 0.0f, residual, 1e8f};
+  do {
+    for (int output_mask : {0, 1, 2, 3}) {
+      SCOPED_TRACE(MakeString("norm_size=", norm_size, ", scaled_output=", scaled_output,
+                              ", outputs=", output_mask, ", values=", values[0], ",", values[1], ",", values[2], ",", values[3]));
+      auto webgpu_ep = DefaultWebGpuExecutionProvider();
+      if (!webgpu_ep) {
+        GTEST_SKIP() << "WebGPU execution provider is not available.";
+      }
+      constexpr float epsilon = 1e-5f;
+      const float scale_value = scaled_output ? 1e8f : 1.0f;
+      InlinedVector<float> input(static_cast<size_t>(norm_size), 0.0f);
+      std::copy(values.begin(), values.end(), input.begin());
+      const double mean = scaled_output ? 0.0 : static_cast<double>(residual) / norm_size;
+      double squared_deviation = 0.0;
+      for (float value : input) {
+        const double deviation = static_cast<double>(value) - mean;
+        squared_deviation += deviation * deviation;
+      }
+      const double inv_std_dev = 1.0 / std::sqrt(squared_deviation / norm_size + epsilon);
+      InlinedVector<float> expected;
+      expected.reserve(norm_size);
+      for (float value : input) {
+        expected.push_back(static_cast<float>((static_cast<double>(value) - mean) * inv_std_dev * scale_value));
+      }
+      OpTester test("LayerNormalization", 17);
+      test.AddAttribute("epsilon", epsilon);
+      test.AddInput<float>("X", {1, norm_size}, input.data(), input.size());
+      const InlinedVector<float> scale(static_cast<size_t>(norm_size), scale_value);
+      test.AddInput<float>("Scale", {norm_size}, scale.data(), scale.size(), true);
+      test.AddOutput<float>("Y", {1, norm_size}, expected.data(), expected.size());
+      test.SetOutputAbsErr("Y", 1e-5f);
+      test.SetOutputRelErr("Y", 1e-5f);
+      if (output_mask & 1) {
+        test.AddOutput<float>("Mean", {1, 1}, {static_cast<float>(mean)});
+        test.SetOutputAbsErr("Mean", 1e-6f);
+        test.SetOutputRelErr("Mean", 1e-6f);
+      } else if (output_mask & 2) {
+        test.AddOptionalOutputEdge<float>();
+      }
+      if (output_mask & 2) {
+        test.AddOutput<float>("InvStdDev", {1, 1}, {static_cast<float>(inv_std_dev)});
+      }
+      SessionOptions session_options;
+      ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+      test.Config(session_options).ConfigEp(std::move(webgpu_ep)).RunWithConfig();
+    }
+  } while (all_permutations && std::next_permutation(values.begin(), values.end()));
+}
+
 template <typename V, typename U>
 void CheckLayerNormKernelTypes(const KernelRegistry& kernel_registry, bool simplified, bool expect_supported) {
   SCOPED_TRACE(MakeString("simplified=", simplified, ", V=", DataTypeImpl::ToString(DataTypeImpl::GetTensorType<V>()),
@@ -317,6 +374,39 @@ TEST(LayerNorm_WebGPU, MixedSignMean) {
 TEST(LayerNorm_WebGPU, MixedSignMeanSplit) {
   RunLayerNormMixedSignMeanTest(512);
   RunLayerNormMixedSignMeanTest(1024);
+}
+
+TEST(LayerNorm_WebGPU, ScaledCancellation) {
+  RunLayerNormCancellationTest(4, true);
+  RunLayerNormCancellationTest(5, true, /*all_permutations=*/false);
+  RunLayerNormCancellationTest(6, true, /*all_permutations=*/false);
+  RunLayerNormCancellationTest(260, true, /*all_permutations=*/false);
+}
+
+TEST(LayerNorm_WebGPU, ScaledCancellationSplit) {
+  RunLayerNormCancellationTest(512, true);
+  RunLayerNormCancellationTest(1024, true, /*all_permutations=*/false);
+}
+
+TEST(LayerNorm_WebGPU, MeanCancellationOrder) {
+  RunLayerNormCancellationTest(4, false);
+  RunLayerNormCancellationTest(5, false, /*all_permutations=*/false);
+  RunLayerNormCancellationTest(6, false, /*all_permutations=*/false);
+  RunLayerNormCancellationTest(260, false, /*all_permutations=*/false);
+}
+
+TEST(LayerNorm_WebGPU, MeanCancellationOrderSplit) {
+  RunLayerNormCancellationTest(512, false);
+  RunLayerNormCancellationTest(1024, false, /*all_permutations=*/false);
+}
+
+TEST(LayerNorm_WebGPU, MeanRoundingCorrection) {
+  // Unlike +/-1, +/-5 changes the rounded sum with 1e8, so the rounding error must be recovered.
+  for (int64_t norm_size : {4, 512}) {
+    for (float residual : {-5.0f, 5.0f}) {
+      RunLayerNormCancellationTest(norm_size, false, /*all_permutations=*/false, residual);
+    }
+  }
 }
 
 }  // namespace test
