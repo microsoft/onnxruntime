@@ -1026,8 +1026,18 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>When 1, input, output, past_state and present_state use a sequence-major, channels-last layout: input and output are (batch_size, sequence_length, d_1, ..., d_n) and the state tensors are (batch_size, state_length, d_1, ..., d_n), where channels = d_1 * ... * d_n. weight and bias keep their channels-first shapes. Requires ndim = 1. Default is 0 (channels-first).</dd>
 <dt><tt>dilation</tt> : int</dt>
 <dd>Spacing between kernel taps along the causal (last spatial) axis. The receptive field spans (k_1 - 1) * dilation positions before the current one, and past_state / present_state hold that many positions. Must be >= 1. Default is 1 (undilated).</dd>
+<dt><tt>input_channel_offset</tt> : int</dt>
+<dd>Starting channel of the channels-last input slice (CUDA only).</dd>
+<dt><tt>input_channels</tt> : int</dt>
+<dd>CUDA channels-last input channel slice width; 0 selects all channels. Nondefault extended attributes require rank-3 input and state_window=0.</dd>
 <dt><tt>ndim</tt> : int</dt>
 <dd>Spatial dimensionality: 1, 2, or 3. Default is 1.</dd>
+<dt><tt>state_channels_last</tt> : int</dt>
+<dd>State layout override (CUDA only): -1 follows channels_last, 0 uses [B,C,state_length], 1 uses [B,state_length,C].</dd>
+<dt><tt>state_length</tt> : int</dt>
+<dd>Carry history length (CUDA only); 0 uses (kernel_size-1)*dilation. An explicit length must cover the receptive field; convolution reads its trailing history.</dd>
+<dt><tt>state_update_capacity</tt> : int</dt>
+<dd>Compact speculative state-update capture capacity (CUDA extended path only, 0..8); when > 0, output 2 has shape (batch_size, state_update_capacity, channels) and records the first min(sequence_length, state_update_capacity) projected input rows and any remaining rows are zero.</dd>
 <dt><tt>state_window</tt> : int</dt>
 <dd>Number of trailing per-position carry states held by past_state and present_state. When 0 (default) the state tensors have no window axis and hold only the state after the last position, i.e. the backward-compatible (batch_size, channels, state_length) where state_length = (k_1 - 1) * dilation. When W > 0 both gain a LEADING axis of extent W, right-aligned: slot j is the state after position (seq_len - W + j), so slot W-1 is always the state after the last position (identical to the W = 0 tensor) and is the slot past_state is read from. The window axis leads the batch axis so that each slot is one contiguous (batch_size, channels, state_length) block. Slots below max(0, W - seq_len) hold no position from this call and are filled with zeros. A window lets a speculative decoder roll the state back to an accepted prefix without replaying the forward. Valid range is [0, 8].</dd>
 </dl>
@@ -1036,22 +1046,24 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>input</tt> : T</dt>
-<dd>Input tensor with shape (batch_size, channels, ...) in the default channels-first layout. Spatial dims: 1D: (L,); 2D: (H, W); 3D: (D, H, W). When channels_last = 1 the shape is (batch_size, sequence_length, d_1, ..., d_n) instead.</dd>
+<dd>Input tensor with shape (batch_size, channels, ...) in the default channels-first layout. Spatial dims: 1D: (L,); 2D: (H, W); 3D: (D, H, W). When channels_last = 1 the shape is (batch_size, sequence_length, d_1, ..., d_n) instead. Extended channel selection uses rank-3 (batch_size, sequence_length, input_width).</dd>
 <dt><tt>weight</tt> : T</dt>
 <dd>Depthwise convolution kernel with shape (channels, 1, k_1, ...). Spatial kernel sizes: (k_1, ..., k_ndim).</dd>
 <dt><tt>bias</tt> (optional) : T</dt>
 <dd>Optional per-channel bias with shape (channels).</dd>
 <dt><tt>past_state</tt> (optional) : T</dt>
-<dd>Carry state from previous step. For ndim=1: (batch_size, channels, state_length), or (W, batch_size, channels, state_length) when state_window = W > 0, in which case only slot W-1 is read, where state_length = (k_1 - 1) * dilation. When channels_last = 1 each slot is (batch_size, state_length, d_1, ..., d_n) instead. If not provided, padding is zero.</dd>
+<dd>Carry state from previous step. For ndim=1: (batch_size, channels, state_length), or (W, batch_size, channels, state_length) when state_window = W > 0, in which case only slot W-1 is read, where state_length = (k_1 - 1) * dilation. When channels_last = 1 each slot is (batch_size, state_length, d_1, ..., d_n) instead. The state_length and state_channels_last attributes may override the length and layout for the CUDA extended path. If not provided, padding is zero.</dd>
 </dl>
 
-#### Outputs
+#### Outputs (2 - 3)
 
 <dl>
 <dt><tt>output</tt> : T</dt>
-<dd>Convolution output with same shape as input.</dd>
+<dd>Convolution output with same shape as input, except the final dimension is input_channels when extended channel selection is enabled.</dd>
 <dt><tt>present_state</tt> : T</dt>
-<dd>Updated carry state. For ndim=1: (batch_size, channels, state_length), or (W, batch_size, channels, state_length) when state_window = W > 0, and (batch_size, state_length, d_1, ..., d_n) per slot when channels_last = 1. Slot W-1 contains the last state_length values from the virtual input along the causal axis; slot j contains the same for the prefix ending at position (seq_len - W + j).</dd>
+<dd>Updated carry state. For ndim=1: (batch_size, channels, state_length), or (W, batch_size, channels, state_length) when state_window = W > 0, and (batch_size, state_length, d_1, ..., d_n) per slot when channels_last = 1. Slot W-1 contains the last state_length values from the virtual input along the causal axis; slot j contains the same for the prefix ending at position (seq_len - W + j). Extended attributes override the state length and layout as for past_state.</dd>
+<dt><tt>state_update</tt> (optional) : T</dt>
+<dd>Optional compact state-update capture with shape (batch_size, state_update_capacity, channels) when state_update_capacity > 0. CUDA extended path only; requires rank-3 channels-last input and state_window=0.</dd>
 </dl>
 
 #### Type Constraints
@@ -2515,7 +2527,7 @@ This version of the operator has been available since version 1 of the 'com.micr
   per-chunk system (I + M) is arbitrarily ill-conditioned and the recurrence diverges. Either
   normalize upstream or set `qk_l2_norm=1` to have the operator do it.
   
-  Fused activations. `gate_activation='qwen'` computes the effective decay in float32 from the
+  Fused activations. `gate_activation='softplus'` computes the effective decay in float32 from the
   raw projection carried by `decay`:
   
     g = -exp(a_log) * Softplus(decay + dt_bias)
@@ -2523,6 +2535,9 @@ This version of the operator has been available since version 1 of the 'com.micr
   `beta_activation='sigmoid'` applies a sigmoid to `beta`, and `qk_l2_norm=1` L2-normalizes each
   query and key head vector. Folding these in avoids materializing the intermediates and keeps
   the gate arithmetic in float32 independent of the input type.
+  Decay and beta may be float or the query element type (both use the same type). CUDA widens
+  FP16/BF16 gate inputs to float before any gate arithmetic, avoiding standalone lossless casts.
+  State, a_log, and dt_bias remain float. WebGPU currently accepts float decay and beta only.
   
 
 #### Version
@@ -2537,7 +2552,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>chunk_size</tt> : int</dt>
 <dd>Tuning hint for the chunk-parallel prefill algorithm. On CUDA, 32 pins the narrow chunk and any other value lets the implementation select the widest chunk the device can hold. On WebGPU, 16 opts into the chunkwise prefill route on supported Apple silicon; default 64 retains recurrent execution. Default 64.</dd>
 <dt><tt>gate_activation</tt> : string</dt>
-<dd>'none' (default) treats `decay` as the effective log-space decay. 'qwen' computes -exp(a_log) * Softplus(decay + dt_bias) in float32.</dd>
+<dd>'none' (default) treats `decay` as the effective log-space decay. 'softplus' computes -exp(a_log) * Softplus(decay + dt_bias) in float32. 'qwen' is accepted as a legacy alias of 'softplus' with identical behavior.</dd>
 <dt><tt>qk_l2_norm</tt> : int</dt>
 <dd>When 1, L2-normalize each query and key head vector before the recurrence. Default 0.</dd>
 <dt><tt>scale</tt> : float</dt>
@@ -2559,16 +2574,16 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Value, shape (total_tokens, num_heads_v, head_size_v)</dd>
 <dt><tt>cu_seqlens</tt> (optional) : TI</dt>
 <dd>Exclusive prefix sums of the per-request token counts, shape (batch_size + 1). Absent means uniform packing.</dd>
-<dt><tt>decay</tt> (optional) : TS</dt>
-<dd>Log-space decay, shape (total_tokens, num_heads_v) for a scalar per-head decay or (total_tokens, num_heads_v, head_size_qk) for a per-key-dimension decay.</dd>
-<dt><tt>beta</tt> (optional) : TS</dt>
-<dd>Update rate, shape (total_tokens, num_heads_v)</dd>
+<dt><tt>decay</tt> (optional) : TG</dt>
+<dd>Log-space decay, shape (total_tokens, num_heads_v) for a scalar per-head decay or (total_tokens, num_heads_v, head_size_qk) for a per-key-dimension decay. Float or the query element type; converted to float before gate arithmetic.</dd>
+<dt><tt>beta</tt> (optional) : TG</dt>
+<dd>Update rate, shape (total_tokens, num_heads_v). Same element type as decay.</dd>
 <dt><tt>initial_state</tt> (optional) : TS</dt>
 <dd>Recurrent state, shape (batch_size, num_heads_v, head_size_v, head_size_qk), V-major. Required for packed QKV. May alias final_state.</dd>
 <dt><tt>a_log</tt> (optional) : TS</dt>
-<dd>Per-head A_log, shape (num_heads_v). Requires gate_activation=qwen.</dd>
+<dd>Per-head A_log, shape (num_heads_v). Requires gate_activation=softplus.</dd>
 <dt><tt>dt_bias</tt> (optional) : TS</dt>
-<dd>Per-head gate bias, shape (num_heads_v). Requires gate_activation=qwen.</dd>
+<dd>Per-head gate bias, shape (num_heads_v). Requires gate_activation=softplus.</dd>
 <dt><tt>capture_count</tt> (optional) : TI</dt>
 <dd>Number of leading local token transitions to capture for each request, shape (batch_size). Clamped on device to [0, min(state_update_capacity, sequence_length)]. Required exactly when state_update_capacity is positive.</dd>
 <dt><tt>state_update_active</tt> (optional) : TI</dt>
@@ -2592,7 +2607,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain query/key/value/output types.</dd>
 <dt><tt>TS</tt> : tensor(float)</dt>
-<dd>State, gate, beta and compact state-update tensors are always float.</dd>
+<dd>State, gate parameters and compact state-update tensors are always float.</dd>
+<dt><tt>TG</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Decay and beta are float or match the query element type. Gate arithmetic is float.</dd>
 <dt><tt>TI</tt> : tensor(int32)</dt>
 <dd>Constrain index and count tensors to int32.</dd>
 </dl>

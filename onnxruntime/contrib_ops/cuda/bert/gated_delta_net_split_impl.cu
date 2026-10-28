@@ -363,10 +363,10 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetPrepareKernel(
     const int64_t gi = tok * p.num_heads_v + hv;
     float g = 0.0f, be = 0.0f;
     if (tid < len) {
-      g = needs_decay ? EffectiveDecay(pack.decay[gi], pack.a_log, pack.dt_bias, hv,
+      g = needs_decay ? EffectiveDecay(LoadGate<T>(pack.decay, gi, pack.gates_in_input_type), pack.a_log, pack.dt_bias, hv,
                                        p.gate_activation)
                       : 0.0f;
-      be = pack.beta != nullptr ? EffectiveBeta(pack.beta[gi], p.beta_activation) : 1.0f;
+      be = pack.beta != nullptr ? EffectiveBeta(LoadGate<T>(pack.beta, gi, pack.gates_in_input_type), p.beta_activation) : 1.0f;
     }
     s.gc[tid] = g;
     s.beta[tid] = be;
@@ -521,10 +521,13 @@ __device__ __noinline__ void RunScanStepExactBf16Fallback(
       const int64_t gi = tok * p.num_heads_v + hv;
       float g = 0.0f, be = 0.0f;
       if (tid < len) {
-        g = needs_decay ? EffectiveDecay(pack.decay[gi], pack.a_log, pack.dt_bias, hv,
-                                         p.gate_activation)
+        g = needs_decay ? EffectiveDecay(LoadGate<T>(pack.decay, gi, pack.gates_in_input_type),
+                                         pack.a_log, pack.dt_bias, hv, p.gate_activation)
                         : 0.0f;
-        be = pack.beta != nullptr ? EffectiveBeta(pack.beta[gi], p.beta_activation) : 1.0f;
+        be = pack.beta != nullptr
+                 ? EffectiveBeta(LoadGate<T>(pack.beta, gi, pack.gates_in_input_type),
+                                 p.beta_activation)
+                 : 1.0f;
       }
       gc[tid] = g;
       beta[tid] = be;

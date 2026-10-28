@@ -50,6 +50,10 @@
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
 
+// Include env_var_utils.h after cuda_common.h: the latter transitively pulls in provider_api.h,
+// which defines SHARED_PROVIDER and suppresses env_var_utils.h's own logging.h include.
+#include "core/platform/env_var_utils.h"
+
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
@@ -375,7 +379,7 @@ __device__ __noinline__ void RunChunkedStepExactBf16Fallback(
 // ---------------------------------------------------------------------------
 // Chunked engine
 // ---------------------------------------------------------------------------
-template <typename T, int DK, int DV, int BT,
+template <typename T, int DK, int DV, int BT, bool InputTypeGates,
           Bf16Precision kBf16Prec = Bf16Precision::kFp32>
 __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetChunkedKernel(
     VariantPack<T> pack, KernelParams p) {
@@ -483,10 +487,10 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetChunkedKernel(
       const int64_t gi = tok * p.num_heads_v + hv;
       float g = 0.0f, be = 0.0f;
       if (tid < len) {
-        g = needs_decay ? EffectiveDecay(pack.decay[gi], pack.a_log, pack.dt_bias, hv,
+        g = needs_decay ? EffectiveDecay(LoadGate<T>(pack.decay, gi, InputTypeGates), pack.a_log, pack.dt_bias, hv,
                                          p.gate_activation)
                         : 0.0f;
-        be = pack.beta != nullptr ? EffectiveBeta(pack.beta[gi], p.beta_activation) : 1.0f;
+        be = pack.beta != nullptr ? EffectiveBeta(LoadGate<T>(pack.beta, gi, InputTypeGates), p.beta_activation) : 1.0f;
       }
       s.gc[tid] = g;
       s.beta[tid] = be;
@@ -557,9 +561,21 @@ __device__ __forceinline__ float WarpReduceK(float v) {
   return v;
 }
 
-template <typename T, int DK, int kWarps>
+template <typename T, int DK, int kWarps, bool InputTypeGates, bool PackedQkv, bool QwenS2 = false>
 __global__ __launch_bounds__(32 * kWarps) void GatedDeltaNetDecodeWarpKernel(
     VariantPack<T> pack, KernelParams p, int d_v) {
+  if constexpr (QwenS2) {
+    // Host dispatch checks every field before replacing it with a compile-time constant.
+    p.num_heads_q = p.num_heads_k = 16;
+    p.num_heads_v = 48;
+    p.gate_activation = GateActivation::kSoftplusDecay;
+    p.beta_activation = BetaActivation::kSigmoid;
+    p.update_rule = UpdateRule::kGatedDelta;
+    p.qk_l2_norm = true;
+    p.decay_per_key_dim_flag = 0;
+    p.state_update_tail_pass = p.short_row_tail_pass = false;
+    d_v = 128;
+  }
   constexpr int kRegs = DK / 32;  // state elements per lane
   const int lane = threadIdx.x;
   const int warp = threadIdx.y;
@@ -579,9 +595,12 @@ __global__ __launch_bounds__(32 * kWarps) void GatedDeltaNetDecodeWarpKernel(
   }
   const int capture_count = CaptureCount(pack, p, b, seq_len);
 
-  const int64_t q_stride = static_cast<int64_t>(p.num_heads_q) * DK;
-  const int64_t k_stride = static_cast<int64_t>(p.num_heads_k) * DK;
+  const int64_t packed_stride = (static_cast<int64_t>(p.num_heads_q) + p.num_heads_k) * DK +
+                                static_cast<int64_t>(p.num_heads_v) * d_v;
+  const int64_t q_stride = PackedQkv ? packed_stride : static_cast<int64_t>(p.num_heads_q) * DK;
+  const int64_t k_stride = PackedQkv ? packed_stride : static_cast<int64_t>(p.num_heads_k) * DK;
   const int64_t v_stride = static_cast<int64_t>(p.num_heads_v) * d_v;
+  const int64_t v_input_stride = PackedQkv ? packed_stride : v_stride;
   const int64_t st_off =
       (static_cast<int64_t>(b) * p.num_heads_v + hv) * static_cast<int64_t>(d_v) * DK +
       static_cast<int64_t>(col) * DK;
@@ -634,14 +653,14 @@ __global__ __launch_bounds__(32 * kWarps) void GatedDeltaNetDecodeWarpKernel(
 
     float decay_scalar = 1.0f;
     if (needs_decay && !decay_per_key_dim) {
-      decay_scalar = __expf(EffectiveDecay(pack.decay[gi], pack.a_log, pack.dt_bias, hv,
+      decay_scalar = __expf(EffectiveDecay(LoadGate<T>(pack.decay, gi, InputTypeGates), pack.a_log, pack.dt_bias, hv,
                                            p.gate_activation));
     }
 #pragma unroll
     for (int i = 0; i < kRegs; ++i) {
       if (needs_decay && decay_per_key_dim) {
         const int k = lane + i * 32;
-        const float raw = pack.decay[(tok * p.num_heads_v + hv) * DK + k];
+        const float raw = LoadGate<T>(pack.decay, (tok * p.num_heads_v + hv) * DK + k, InputTypeGates);
         s[i] *= __expf(EffectiveDecay(raw, pack.a_log, pack.dt_bias, hv, p.gate_activation));
       } else {
         s[i] *= decay_scalar;
@@ -656,8 +675,8 @@ __global__ __launch_bounds__(32 * kWarps) void GatedDeltaNetDecodeWarpKernel(
     }
 
     const float beta_t =
-        pack.beta != nullptr ? EffectiveBeta(pack.beta[gi], p.beta_activation) : 1.0f;
-    const float vv = static_cast<float>(pack.value[tok * v_stride + hv * d_v + col]);
+        pack.beta != nullptr ? EffectiveBeta(LoadGate<T>(pack.beta, gi, InputTypeGates), p.beta_activation) : 1.0f;
+    const float vv = static_cast<float>(pack.value[tok * v_input_stride + hv * d_v + col]);
     const float delta = beta_t * (vv - r);
 
     if (t < capture_count) {
@@ -704,7 +723,7 @@ __global__ __launch_bounds__(32 * kWarps) void GatedDeltaNetDecodeWarpKernel(
 // Generic recurrent engine: any head geometry the warp kernel cannot take.
 // One CTA per (sequence, v-head); the [DK x DV] state lives in shared memory.
 // ---------------------------------------------------------------------------
-template <typename T, int kThreads>
+template <typename T, int kThreads, bool InputTypeGates>
 __global__ __launch_bounds__(kThreads) void GatedDeltaNetRecurrentKernel(VariantPack<T> pack,
                                                                          KernelParams p, int d_k,
                                                                          int d_v) {
@@ -763,7 +782,7 @@ __global__ __launch_bounds__(kThreads) void GatedDeltaNetRecurrentKernel(Variant
     }
     if (needs_decay && decay_per_key_dim) {
       for (int i = tid; i < d_k; i += kThreads) {
-        const float raw = pack.decay[(tok * p.num_heads_v + hv) * d_k + i];
+        const float raw = LoadGate<T>(pack.decay, (tok * p.num_heads_v + hv) * d_k + i, InputTypeGates);
         gbuf[i] = __expf(EffectiveDecay(raw, pack.a_log, pack.dt_bias, hv, p.gate_activation));
       }
     }
@@ -790,11 +809,11 @@ __global__ __launch_bounds__(kThreads) void GatedDeltaNetRecurrentKernel(Variant
 
     const float g_scalar =
         (needs_decay && !decay_per_key_dim)
-            ? __expf(EffectiveDecay(pack.decay[gi], pack.a_log, pack.dt_bias, hv,
+            ? __expf(EffectiveDecay(LoadGate<T>(pack.decay, gi, InputTypeGates), pack.a_log, pack.dt_bias, hv,
                                     p.gate_activation))
             : 1.0f;
     const float beta_t =
-        pack.beta != nullptr ? EffectiveBeta(pack.beta[gi], p.beta_activation) : 1.0f;
+        pack.beta != nullptr ? EffectiveBeta(LoadGate<T>(pack.beta, gi, InputTypeGates), p.beta_activation) : 1.0f;
 
     // Decay, then retrieval against the decayed state.
     for (int idx = tid; idx < d_k * d_v; idx += kThreads) {
@@ -858,27 +877,53 @@ __global__ __launch_bounds__(kThreads) void GatedDeltaNetRecurrentKernel(Variant
 constexpr int kRecurrentThreads = 256;
 constexpr int kDecodeWarps = kRecurrentThreads / 32;
 
-template <typename T>
+template <typename T, bool InputTypeGates, bool PackedQkv, int Warps>
+void LaunchDecodeWarpSized(const Descriptor& desc, const VariantPack<T>& pack,
+                           const KernelParams& p, cudaStream_t stream) {
+  const dim3 grid(desc.batch, desc.num_heads_v,
+                  (desc.head_size_v + Warps - 1) / Warps);
+  const dim3 block(32, Warps, 1);
+  switch (desc.head_size_qk) {
+    case 64:
+      GatedDeltaNetDecodeWarpKernel<T, 64, Warps, InputTypeGates, PackedQkv>
+          <<<grid, block, 0, stream>>>(pack, p, desc.head_size_v);
+      break;
+    case 128:
+      if constexpr (PackedQkv) {
+        static const int specialize = ParseEnvironmentVariableWithDefault<int>("ORT_GDN_S2_SPECIALIZE", 1);
+        ORT_ENFORCE(specialize == 0 || specialize == 1, "ORT_GDN_S2_SPECIALIZE must be 0 or 1.");
+        if (specialize && desc.batch == 1 && p.total_tokens == p.uniform_len &&
+            p.total_tokens >= 1 && p.total_tokens <= 8 &&
+            p.num_heads_q == 16 && p.num_heads_k == 16 && p.num_heads_v == 48 &&
+            desc.head_size_v == 128 && pack.cu_seqlens == nullptr &&
+            p.gate_activation == GateActivation::kSoftplusDecay &&
+            p.beta_activation == BetaActivation::kSigmoid && p.update_rule == UpdateRule::kGatedDelta &&
+            p.qk_l2_norm && p.decay_per_key_dim_flag == 0 &&
+            !p.state_update_tail_pass && !p.short_row_tail_pass) {
+          GatedDeltaNetDecodeWarpKernel<T, 128, Warps, InputTypeGates, PackedQkv, true>
+              <<<grid, block, 0, stream>>>(pack, p, desc.head_size_v);
+          break;
+        }
+      }
+      GatedDeltaNetDecodeWarpKernel<T, 128, Warps, InputTypeGates, PackedQkv>
+          <<<grid, block, 0, stream>>>(pack, p, desc.head_size_v);
+      break;
+    default:
+      GatedDeltaNetDecodeWarpKernel<T, 256, Warps, InputTypeGates, PackedQkv>
+          <<<grid, block, 0, stream>>>(pack, p, desc.head_size_v);
+      break;
+  }
+}
+
+template <typename T, bool InputTypeGates>
 Status LaunchRecurrent(const Descriptor& desc, bool warp_specialized, const VariantPack<T>& pack,
                        const KernelParams& p, size_t max_shared_memory_per_block,
                        cudaStream_t stream) {
   if (warp_specialized) {
-    const dim3 grid(desc.batch, desc.num_heads_v,
-                    (desc.head_size_v + kDecodeWarps - 1) / kDecodeWarps);
-    const dim3 block(32, kDecodeWarps, 1);
-    switch (desc.head_size_qk) {
-      case 64:
-        GatedDeltaNetDecodeWarpKernel<T, 64, kDecodeWarps>
-            <<<grid, block, 0, stream>>>(pack, p, desc.head_size_v);
-        break;
-      case 128:
-        GatedDeltaNetDecodeWarpKernel<T, 128, kDecodeWarps>
-            <<<grid, block, 0, stream>>>(pack, p, desc.head_size_v);
-        break;
-      default:
-        GatedDeltaNetDecodeWarpKernel<T, 256, kDecodeWarps>
-            <<<grid, block, 0, stream>>>(pack, p, desc.head_size_v);
-        break;
+    if (pack.packed_qkv) {
+      LaunchDecodeWarpSized<T, InputTypeGates, true, kDecodeWarps>(desc, pack, p, stream);
+    } else {
+      LaunchDecodeWarpSized<T, InputTypeGates, false, kDecodeWarps>(desc, pack, p, stream);
     }
     return CUDA_CALL(cudaGetLastError());
   }
@@ -886,20 +931,20 @@ Status LaunchRecurrent(const Descriptor& desc, bool warp_specialized, const Vari
   const size_t smem = RecurrentSmemBytes(desc.head_size_qk, desc.head_size_v);
   static DynamicSmemConfig recurrent_smem_config;
   ORT_RETURN_IF_ERROR(SetMaxDynamicSmem(
-      GatedDeltaNetRecurrentKernel<T, kRecurrentThreads>,
+      GatedDeltaNetRecurrentKernel<T, kRecurrentThreads, InputTypeGates>,
       max_shared_memory_per_block, recurrent_smem_config));
   const dim3 grid(desc.batch, desc.num_heads_v, 1);
-  GatedDeltaNetRecurrentKernel<T, kRecurrentThreads>
+  GatedDeltaNetRecurrentKernel<T, kRecurrentThreads, InputTypeGates>
       <<<grid, kRecurrentThreads, smem, stream>>>(pack, p, desc.head_size_qk, desc.head_size_v);
   return CUDA_CALL(cudaGetLastError());
 }
 
 }  // namespace
 
-template <typename T>
-Status LaunchGatedDeltaNet(const Descriptor& desc, const Plan& plan, const VariantPack<T>& pack,
-                           float scale, int max_threads_per_block,
-                           size_t max_shared_memory_per_block, cudaStream_t stream) {
+template <typename T, bool InputTypeGates>
+static Status LaunchGatedDeltaNetTypedGates(const Descriptor& desc, const Plan& plan, const VariantPack<T>& pack,
+                                            float scale, int max_threads_per_block,
+                                            size_t max_shared_memory_per_block, cudaStream_t stream) {
   KernelParams p{};
   p.total_tokens = desc.total_tokens;
   p.uniform_len = desc.batch > 0 ? desc.total_tokens / desc.batch : 0;
@@ -932,8 +977,8 @@ Status LaunchGatedDeltaNet(const Descriptor& desc, const Plan& plan, const Varia
       auto launch_chunked = [&]<int BT, Bf16Precision kPrec>() -> Status {
         static DynamicSmemConfig smem_config;
         ORT_RETURN_IF_ERROR(SetMaxDynamicSmem(
-            GatedDeltaNetChunkedKernel<T, 128, 128, BT, kPrec>, plan.smem_bytes, smem_config));
-        GatedDeltaNetChunkedKernel<T, 128, 128, BT, kPrec>
+            GatedDeltaNetChunkedKernel<T, 128, 128, BT, InputTypeGates, kPrec>, plan.smem_bytes, smem_config));
+        GatedDeltaNetChunkedKernel<T, 128, 128, BT, InputTypeGates, kPrec>
             <<<grid, kChunkedThreads, plan.smem_bytes, stream>>>(pack, p);
         return CUDA_CALL(cudaGetLastError());
       };
@@ -963,14 +1008,26 @@ Status LaunchGatedDeltaNet(const Descriptor& desc, const Plan& plan, const Varia
       // the two row sets are disjoint, so the merged result is deterministic.
       // The chunked engine only accepts head_size_qk == head_size_v == 128, so the warp
       // kernel is always the right shape here.
-      return LaunchRecurrent<T>(desc, /*warp_specialized=*/true, pack, p,
-                                max_shared_memory_per_block, stream);
+      return LaunchRecurrent<T, InputTypeGates>(desc, /*warp_specialized=*/true, pack, p,
+                                                max_shared_memory_per_block, stream);
     }
   }
 
   (void)max_threads_per_block;
-  return LaunchRecurrent<T>(desc, plan.warp_specialized, pack, p, max_shared_memory_per_block,
-                            stream);
+  return LaunchRecurrent<T, InputTypeGates>(desc, plan.warp_specialized, pack, p, max_shared_memory_per_block,
+                                            stream);
+}
+
+template <typename T>
+Status LaunchGatedDeltaNet(const Descriptor& desc, const Plan& plan, const VariantPack<T>& pack,
+                           float scale, int max_threads_per_block,
+                           size_t max_shared_memory_per_block, cudaStream_t stream) {
+  if (pack.gates_in_input_type) {
+    return LaunchGatedDeltaNetTypedGates<T, true>(
+        desc, plan, pack, scale, max_threads_per_block, max_shared_memory_per_block, stream);
+  }
+  return LaunchGatedDeltaNetTypedGates<T, false>(
+      desc, plan, pack, scale, max_threads_per_block, max_shared_memory_per_block, stream);
 }
 
 template Status LaunchGatedDeltaNet<float>(const Descriptor&, const Plan&, const VariantPack<float>&,

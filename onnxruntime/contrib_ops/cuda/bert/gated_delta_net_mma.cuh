@@ -53,7 +53,7 @@ __device__ __forceinline__ void SequenceRange(const int32_t* cu_seqlens, int b, 
 // Effective per-token decay and beta, after the optional fused activations.
 __device__ __forceinline__ float EffectiveDecay(float raw, const float* a_log, const float* dt_bias,
                                                 int h, GateActivation act) {
-  if (act == GateActivation::kQwen) {
+  if (act == GateActivation::kSoftplusDecay) {
     const float bias = dt_bias != nullptr ? dt_bias[h] : 0.0f;
     const float scale = a_log != nullptr ? -__expf(a_log[h]) : -1.0f;
     return scale * SoftPlus(raw + bias);
