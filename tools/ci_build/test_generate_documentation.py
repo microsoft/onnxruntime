@@ -10,9 +10,9 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import unittest.mock as mock
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
-from unittest import mock
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_DIR = SCRIPT_DIR.parents[1]
@@ -206,10 +206,10 @@ class BuildDocumentationTest(unittest.TestCase):
         is_kernel_generator = command[1] == "gen_opkernel_doc.py"
         if is_kernel_generator and self.fail_query:
             raise subprocess.CalledProcessError(1, command)
-        output = Path(command[command.index("--output_path") + 1])
+        output = Path(kwargs["cwd"]) / command[command.index("--output_path") + 1]
         output.write_text(f"generated {output.name}\n", encoding="utf-8")
         if is_kernel_generator:
-            metadata = Path(command[command.index("--metadata_path") + 1])
+            metadata = Path(kwargs["cwd"]) / command[command.index("--metadata_path") + 1]
             metadata.write_text('{"onnxruntime_version": "test-runtime"}', encoding="utf-8")
 
     def git_output(self, command, **_kwargs):
@@ -255,6 +255,27 @@ class BuildDocumentationTest(unittest.TestCase):
         self.assertTrue(self.cwd.joinpath("generated-docs", "ContribOperators.md").is_file())
         self.assertTrue(self.cwd.joinpath("generated-docs", "generation-metadata.json").is_file())
         self.assertIn("documentation_generated=true", self.github_output.read_text(encoding="utf-8"))
+
+    def test_relative_build_directory_resolves_metadata_in_generator(self):
+        previous_cwd = Path.cwd()
+        try:
+            os.chdir(self.root)
+            self.build_dir = Path("build")
+            for use_webgpu in ("shared_lib", None):
+                with self.subTest(use_webgpu=use_webgpu):
+                    self.generate(use_webgpu=use_webgpu)
+                    command = self.calls[-1][0]
+                    metadata_path = Path(command[command.index("--metadata_path") + 1])
+                    self.assertTrue(metadata_path.is_absolute())
+                    artifact_dir = self.cwd / "generated-docs"
+                    self.assertEqual(metadata_path, artifact_dir / "generation-metadata.json")
+                    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+                    for name in ("OperatorKernels.md", "ContribOperators.md"):
+                        content = (artifact_dir / name).read_bytes()
+                        self.assertEqual(content, self.source.joinpath("docs", name).read_bytes())
+                        self.assertEqual(metadata["documents"][name], hashlib.sha256(content).hexdigest())
+        finally:
+            os.chdir(previous_cwd)
 
     def test_generation_failure_does_not_signal_artifact_readiness(self):
         self.fail_query = True

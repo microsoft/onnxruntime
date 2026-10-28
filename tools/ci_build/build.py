@@ -2464,7 +2464,7 @@ def generate_documentation(source_dir, build_dir, configs, validate, use_webgpu=
         providers.append("WebGPU")
         plugin_args = ["--plugin-ep", f"WebGpuExecutionProvider:{library_path}"]
 
-    artifact_dir = Path(cwd) / "generated-docs"
+    artifact_dir = (Path(cwd) / "generated-docs").resolve()
     artifact_dir.mkdir(parents=True, exist_ok=True)
     metadata_path = artifact_dir / "generation-metadata.json"
     contrib_op_doc_path = os.path.join(source_dir, "docs", "ContribOperators.md")
