@@ -1,12 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #include <limits>
+#include <fstream>
 #include <sstream>
 
+#include "core/framework/tensorprotoutils.h"
+#include "core/framework/tensor_external_data_info.h"
 #include "core/optimizer/pattern_rewriter.h"
 #include "test/optimizer/graph_transform_test_fixture.h"
 #include "test/unittest_util/graph_transform_test_builder.h"
 #include "test/util/include/asserts.h"
+#include "test/util/include/temp_dir.h"
 
 namespace onnxruntime {
 namespace test {
@@ -14,8 +18,8 @@ namespace {
 using namespace rewrite;
 
 struct TestGraph {
-  TestGraph()
-      : model{"rewrite-components", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 17}}, {}, DefaultLoggingManager().DefaultLogger()} {}
+  explicit TestGraph(const PathString& model_path = {})
+      : model{"rewrite-components", false, ModelMetaData(), model_path, IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 17}}, {}, DefaultLoggingManager().DefaultLogger()} {}
   Model model;
   Graph& graph = model.MainGraph();
   ModelTestBuilder builder{graph};
@@ -397,6 +401,376 @@ TEST(CheckAndBindComponentTests, ConstantReadersValidatePayloadBeforeAllocatingD
     ASSERT_STATUS_OK(ReadConstantTensor(test.graph, &value, data, available));
     EXPECT_TRUE(available);
     EXPECT_TRUE(data.empty());
+  }
+}
+
+TEST(CheckAndBindComponentTests, ConstantNodeFormsAndLoadedCanonicalizationShareLiteralAndReaderSemantics) {
+  for (int form = 0; form < 9; ++form) {
+    const bool floating = form < 5;
+    const bool scalar = form == 0 || form == 1 || form == 5;
+    const bool empty = form == 4 || form == 8;
+    const bool singleton = form == 3 || form == 7;
+    const std::string literal = scalar      ? (floating ? "2.0" : "2")
+                                : empty     ? "[]"
+                                : singleton ? (floating ? "[2.0]" : "[2]")
+                                : floating  ? "[2.0,3.0]"
+                                            : "[2,3]";
+    TestGraph test;
+    auto& b = test.builder;
+    auto* c = b.MakeIntermediate();
+    auto& constant = b.AddNode("Constant", {}, {c});
+    if (form == 0) {
+      ONNX_NAMESPACE::TensorProto tensor;
+      tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+      tensor.set_raw_data(std::string("\0\0\0\x40", 4));
+      constant.AddAttribute("value", tensor);
+    } else if (form == 1) {
+      constant.AddAttribute("value_float", 2.0f);
+    } else if (form < 5) {
+      constant.AddAttribute("value_floats", empty       ? std::vector<float>{}
+                                            : singleton ? std::vector<float>{2.0f}
+                                                        : std::vector<float>{2.0f, 3.0f});
+    } else if (form == 5) {
+      constant.AddAttribute("value_int", int64_t{2});
+    } else {
+      constant.AddAttribute("value_ints", empty       ? std::vector<int64_t>{}
+                                          : singleton ? std::vector<int64_t>{2}
+                                                      : std::vector<int64_t>{2, 3});
+    }
+    b.AddNode("Identity", {c}, {b.MakeOutput()});
+    b.SetGraphOutputs();
+    ASSERT_STATUS_OK(test.graph.Resolve());
+    ASSERT_EQ(Count(test.graph, "Constant"), 1u);
+    Model loaded(test.model.ToProto(), nullptr, DefaultLoggingManager().DefaultLogger());
+    ASSERT_STATUS_OK(loaded.MainGraph().Resolve());
+    ASSERT_EQ(Count(loaded.MainGraph(), "Constant"), 0u);
+    for (const Graph* graph : {&test.graph, &loaded.MainGraph()}) {
+      const auto before = graph->ToGraphProto().SerializeAsString();
+      const auto* value = graph->GetNodeArg(c->Name());
+      bool available = false;
+      if (floating) {
+        InlinedVector<float> data;
+        ASSERT_STATUS_OK(ReadConstantTensor(*graph, value, data, available));
+        EXPECT_TRUE(available);
+        EXPECT_EQ(data, (empty ? InlinedVector<float>{} : scalar || singleton ? InlinedVector<float>{2.0f}
+                                                                              : InlinedVector<float>{2.0f, 3.0f}));
+        InlinedVector<int64_t> wrong{99};
+        ASSERT_STATUS_OK(ReadConstantTensor(*graph, value, wrong, available));
+        EXPECT_FALSE(available);
+        EXPECT_EQ(wrong, (InlinedVector<int64_t>{99}));
+      } else {
+        InlinedVector<int64_t> data;
+        ASSERT_STATUS_OK(ReadConstantTensor(*graph, value, data, available));
+        EXPECT_TRUE(available);
+        EXPECT_EQ(data, (empty ? InlinedVector<int64_t>{} : scalar || singleton ? InlinedVector<int64_t>{2}
+                                                                                : InlinedVector<int64_t>{2, 3}));
+      }
+      const auto* root = graph->GetProducerNode(graph->GetOutputs()[0]->Name());
+      ASSERT_NE(root, nullptr);
+      std::optional<Match> match;
+      ASSERT_STATUS_OK(Pattern("()=>return Identity(" + literal + ")").MatchAt(*graph, root->Index(), match));
+      EXPECT_EQ(match.has_value(), !(empty && floating)) << form;
+      ASSERT_STATUS_OK(Pattern(std::string("(c:const ") + (floating ? "float" : "int64") + "[])=>return Identity(c)")
+                           .MatchAt(*graph, root->Index(), match));
+      EXPECT_TRUE(match.has_value());
+      ASSERT_STATUS_OK(Pattern(scalar ? "()=>return Identity([2.0])" : "()=>return Identity(2.0)")
+                           .MatchAt(*graph, root->Index(), match));
+      EXPECT_FALSE(match.has_value());
+      EXPECT_EQ(graph->ToGraphProto().SerializeAsString(), before);
+      EXPECT_FALSE(graph->GraphResolveNeeded());
+    }
+  }
+}
+
+TEST(CheckAndBindComponentTests, SessionConvertedInitializersSupportLiteralMatchingAndTypedReaders) {
+  for (bool indexed : {false, true}) {
+    TestGraph test;
+    auto& b = test.builder;
+    auto* x = b.MakeInput<float>({40}, -1.0f, 1.0f);
+    auto* c = b.MakeInitializer<float>({40}, std::vector<float>(40, 2.0f));
+    b.AddNode("Add", {x, c}, {b.MakeOutput()});
+    b.SetGraphOutputs();
+    ASSERT_STATUS_OK(test.graph.Resolve());
+    std::string literal = "[2.0";
+    for (int i = 1; i < 40; ++i) literal += ",2.0";
+    literal += "]";
+    size_t checks = 0;
+    Rule rule{"MemoryConstant", "(x)=>return Add(x," + literal + ")", "(x)=>Identity(x)", [&](const Graph& graph, Match&) {
+                ++checks;
+                const auto* proto = graph.GetConstantInitializer(c->Name(), false);
+                EXPECT_NE(proto, nullptr);
+                if (!proto) return false;
+                EXPECT_TRUE(utils::HasExternalDataInMemory(*proto));
+                OrtValue owned;
+                EXPECT_TRUE(graph.GetOrtValueInitializer(c->Name(), owned));
+                InlinedVector<float> data;
+                bool available = false;
+                ORT_THROW_IF_ERROR(ReadConstantTensor(graph, graph.GetNodeArg(c->Name()), data, available));
+                EXPECT_TRUE(available);
+                EXPECT_EQ(data, (InlinedVector<float>(40, 2.0f)));
+                return true;
+              },
+              {{kOnnxDomain, 17, 17}}};
+    SessionOptions options;
+    options.graph_optimization_level = TransformerLevel::Level1;
+    options.intra_op_param.thread_pool_size = 1;
+    InferenceSessionWrapper session{options, GetEnvironment()};
+    ASSERT_STATUS_OK(session.RegisterGraphTransformer(
+        std::make_unique<PatternRewriter>(Rules{rule}, Options{.match_only = true, .indexed = indexed}),
+        TransformerLevel::Level1));
+    std::istringstream stream(test.model.ToProto().SerializeAsString());
+    ASSERT_STATUS_OK(session.Load(stream));
+    ASSERT_STATUS_OK(session.Initialize());
+    EXPECT_GT(checks, 0u);
+    std::vector<OrtValue> outputs;
+    ASSERT_STATUS_OK(session.Run(RunOptions{}, b.feeds_, b.output_names_, &outputs));
+    ASSERT_EQ(outputs.size(), 1u);
+    for (int i = 0; i < 40; ++i)
+      EXPECT_EQ(outputs[0].Get<Tensor>().Data<float>()[i], b.feeds_.at(x->Name()).Get<Tensor>().Data<float>()[i] + 2.0f);
+  }
+}
+
+TEST(CheckAndBindComponentTests, DiskExternalConstantsUseOrtLoadingAndPropagateFailures) {
+  const TemporaryDirectory directory(ORT_TSTR("pattern_rewriter_external_constants"));
+  const auto model_path = std::filesystem::path(directory.Path()) / "model.onnx";
+  const auto data_path = std::filesystem::path(directory.Path()) / "weights.bin";
+  {
+    std::ofstream file(data_path, std::ios::binary);
+    const std::string bytes("\0\0\0\x40\0\0\x40\x40", 8);
+    file.write(bytes.data(), bytes.size());
+    ASSERT_TRUE(file.good());
+  }
+  for (int scenario = 0; scenario < 7; ++scenario) {
+    TestGraph test(model_path.native());
+    ONNX_NAMESPACE::TensorProto tensor;
+    tensor.set_name("external");
+    tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    tensor.add_dims(scenario == 4 ? 1073741824LL : 2);
+    ExternalDataInfo::SetExternalLocationToProto(
+        scenario == 1 ? "missing.bin" : scenario == 5 ? "../escape.bin"
+                                                      : "weights.bin",
+        scenario == 2 ? 8 : 0, scenario == 3 ? 4 : scenario == 4 ? 0
+                                                                 : 8,
+        tensor);
+    if (scenario == 6) tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+    test.graph.AddInitializedTensor(tensor);
+    auto& value = test.graph.GetOrCreateNodeArg(tensor.name(), nullptr);
+    const auto before = test.model.ToProto().SerializeAsString();
+    InlinedVector<float> data{99.0f};
+    bool available = true;
+    const auto status = ReadConstantTensor(test.graph, &value, data, available);
+    if (scenario == 0) {
+      ASSERT_STATUS_OK(status);
+      EXPECT_TRUE(available);
+      EXPECT_EQ(data, (InlinedVector<float>{2.0f, 3.0f}));
+      auto& root = test.builder.AddNode("Identity", {&value}, {test.builder.MakeOutput()});
+      test.builder.SetGraphOutputs();
+      ASSERT_STATUS_OK(test.graph.Resolve());
+      std::optional<Match> match;
+      ASSERT_STATUS_OK(Pattern("()=>return Identity([2.0,3.0])").MatchAt(test.graph, root.Index(), match));
+      EXPECT_TRUE(match.has_value());
+      ASSERT_STATUS_OK(Pattern("()=>return Identity(2.0)").MatchAt(test.graph, root.Index(), match));
+      EXPECT_FALSE(match.has_value());
+    } else if (scenario == 6) {
+      ASSERT_STATUS_OK(status);
+      EXPECT_FALSE(available);
+      EXPECT_EQ(data, (InlinedVector<float>{99.0f}));
+    } else {
+      EXPECT_FALSE(status.IsOK()) << scenario;
+      EXPECT_TRUE(available);
+      EXPECT_EQ(data, (InlinedVector<float>{99.0f}));
+    }
+    if (scenario != 0) EXPECT_EQ(test.model.ToProto().SerializeAsString(), before);
+  }
+}
+
+TEST(CheckAndBindComponentTests, MemoryMarkersRequireOwnedMatchingStorageBeforeReading) {
+  for (int scenario = 0; scenario < 5; ++scenario) {
+    TestGraph test;
+    Tensor tensor(DataTypeImpl::GetType<float>(), TensorShape{40}, CPUAllocator::DefaultInstance());
+    std::fill_n(tensor.MutableData<float>(), 40, 2.0f);
+    OrtValue owned;
+    Tensor::InitOrtValue(std::move(tensor), owned);
+    auto proto = utils::TensorToTensorProto(owned.Get<Tensor>(), "owned", true);
+    ASSERT_TRUE(utils::HasExternalDataInMemory(proto));
+    if (scenario == 0) {
+      auto embedded = utils::TensorToTensorProto(owned.Get<Tensor>(), "owned", false);
+      test.graph.AddInitializedTensor(embedded);
+      *const_cast<ONNX_NAMESPACE::TensorProto*>(test.graph.GetInitializer(proto.name(), false)) = proto;
+    } else {
+      ASSERT_STATUS_OK(test.graph.AddInitializedOrtValue(proto, owned));
+      // Simulate inconsistent metadata without dereferencing any encoded address.
+      auto* stored = const_cast<ONNX_NAMESPACE::TensorProto*>(test.graph.GetInitializer(proto.name(), false));
+      if (scenario == 1) stored->set_dims(0, 41);
+      if (scenario == 2) stored->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+      if (scenario == 3)
+        for (auto& field : *stored->mutable_external_data())
+          if (field.key() == "offset") field.set_value("1");
+      if (scenario == 4)
+        for (auto& field : *stored->mutable_external_data())
+          if (field.key() == "length") field.set_value("1");
+    }
+    const auto& value = test.graph.GetOrCreateNodeArg(proto.name(), nullptr);
+    bool available = true;
+    if (scenario == 2) {
+      InlinedVector<int64_t> data{99};
+      EXPECT_FALSE(ReadConstantTensor(test.graph, &value, data, available).IsOK());
+      EXPECT_EQ(data, (InlinedVector<int64_t>{99}));
+    } else {
+      InlinedVector<float> data{99.0f};
+      EXPECT_FALSE(ReadConstantTensor(test.graph, &value, data, available).IsOK());
+      EXPECT_EQ(data, (InlinedVector<float>{99.0f}));
+    }
+    EXPECT_TRUE(available);
+  }
+}
+
+TEST(CheckAndBindComponentTests, DiskExternalScalarAndSingletonConstantsPreserveExactTypeAndRank) {
+  const TemporaryDirectory directory(ORT_TSTR("pattern_rewriter_external_scalar"));
+  const auto model_path = std::filesystem::path(directory.Path()) / "model.onnx";
+  for (bool floating : {false, true}) {
+    const std::string bytes = floating ? std::string("\0\0\0\x40", 4) : std::string("\2\0\0\0\0\0\0\0", 8);
+    {
+      std::ofstream file(std::filesystem::path(directory.Path()) / "scalar.bin", std::ios::binary);
+      file.write(bytes.data(), bytes.size());
+      ASSERT_TRUE(file.good());
+    }
+    for (bool scalar : {false, true}) {
+      for (bool constant_node : {false, true}) {
+        TestGraph test(model_path.native());
+        ONNX_NAMESPACE::TensorProto tensor;
+        tensor.set_name("external_scalar");
+        tensor.set_data_type(floating ? ONNX_NAMESPACE::TensorProto_DataType_FLOAT : ONNX_NAMESPACE::TensorProto_DataType_INT64);
+        if (!scalar) tensor.add_dims(1);
+        ExternalDataInfo::SetExternalLocationToProto("scalar.bin", 0, bytes.size(), tensor);
+        auto* c = &test.graph.GetOrCreateNodeArg(tensor.name(), nullptr);
+        if (constant_node)
+          test.builder.AddNode("Constant", {}, {c}).AddAttribute("value", tensor);
+        else
+          test.graph.AddInitializedTensor(tensor);
+        auto& root = test.builder.AddNode("Identity", {c}, {test.builder.MakeOutput()});
+        test.builder.SetGraphOutputs();
+        ASSERT_STATUS_OK(test.graph.Resolve());
+        const auto before = test.model.ToProto().SerializeAsString();
+        bool available = false;
+        if (floating) {
+          InlinedVector<float> data;
+          ASSERT_STATUS_OK(ReadConstantTensor(test.graph, c, data, available));
+          EXPECT_EQ(data, (InlinedVector<float>{2.0f}));
+        } else {
+          InlinedVector<int64_t> data;
+          ASSERT_STATUS_OK(ReadConstantTensor(test.graph, c, data, available));
+          EXPECT_EQ(data, (InlinedVector<int64_t>{2}));
+        }
+        EXPECT_TRUE(available);
+        const std::string literal = scalar ? (floating ? "2.0" : "2") : floating ? "[2.0]"
+                                                                                 : "[2]";
+        for (bool indexed : {false, true}) {
+          Rule rule{"ExternalLiteral", "()=>return Identity(" + literal + ")", "()=>Identity(2.0)", {}, {{kOnnxDomain, 17, 17}}};
+          Statistics stats;
+          ASSERT_STATUS_OK(PatternRewriter({rule}, {.match_only = true, .indexed = indexed}).Run(test.graph, stats));
+          EXPECT_EQ(stats.matches, 1u);
+        }
+        std::optional<Match> match;
+        const std::string other_rank = scalar ? (floating ? "[2.0]" : "[2]") : floating ? "2.0"
+                                                                                        : "2";
+        ASSERT_STATUS_OK(Pattern("()=>return Identity(" + other_rank + ")").MatchAt(test.graph, root.Index(), match));
+        EXPECT_FALSE(match.has_value());
+        EXPECT_EQ(test.model.ToProto().SerializeAsString(), before);
+      }
+    }
+  }
+}
+
+TEST(CheckAndBindComponentTests, MalformedSupportedConstantsAreErrorsNotAlternativeRejections) {
+  for (int storage = 0; storage < 3; ++storage) {
+    for (bool indexed : {false, true}) {
+      TestGraph test;
+      ONNX_NAMESPACE::TensorProto tensor;
+      tensor.set_name("bad_literal");
+      tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+      tensor.add_dims(2);
+      auto* c = &test.graph.GetOrCreateNodeArg(tensor.name(), nullptr);
+      if (storage == 0) {
+        test.graph.AddInitializedTensor(tensor);
+      } else if (storage == 1) {
+        ExternalDataInfo::SetExternalLocationToProto("nonexistent_pattern_rewriter_data.bin", 0, 8, tensor);
+        test.graph.AddInitializedTensor(tensor);
+      } else {
+        tensor.add_float_data(2.0f);
+        test.builder.AddNode("Constant", {}, {c}).AddAttribute("value", tensor);
+      }
+      auto& root = test.builder.AddNode("Identity", {c}, {test.builder.MakeOutput()});
+      test.builder.SetGraphOutputs();
+      if (storage == 2) {
+        EXPECT_FALSE(test.graph.Resolve().IsOK());
+        continue;
+      }
+      ASSERT_STATUS_OK(test.graph.Resolve());
+      const auto before = test.model.ToProto().SerializeAsString();
+      Pattern pattern("()=>return Identity([2.0,3.0])");
+      std::optional<Match> match;
+      EXPECT_THROW((void)pattern.MatchAt(test.graph, root.Index(), match), OnnxRuntimeException);
+      int callbacks = 0;
+      Rule rule{"MalformedLiteral", pattern, "()=>Identity([2.0,3.0])", [&](const Graph&, Match&) { ++callbacks; return false; }, {{kOnnxDomain, 17, 17}}};
+      Statistics stats;
+      EXPECT_THROW((void)PatternRewriter({rule}, {.indexed = indexed}).Run(test.graph, stats), OnnxRuntimeException);
+      EXPECT_EQ(callbacks, 0);
+      EXPECT_EQ(stats.rewrites, 0u);
+      EXPECT_EQ(test.model.ToProto().SerializeAsString(), before);
+    }
+  }
+}
+
+TEST(CheckAndBindComponentTests, ConstantReadersUseOwningScopeAndRespectLocalOverrides) {
+  for (bool memory : {false, true}) {
+    TestGraph test;
+    auto& b = test.builder;
+    auto* c = b.MakeInitializer<float>({40}, std::vector<float>(40, 2.0f));
+    auto* condition = b.MakeInput<bool>({}, {true});
+    ONNX_NAMESPACE::GraphProto branch;
+    branch.set_name("constant_scope");
+    auto* output = branch.add_output();
+    output->set_name("branch_output");
+    auto* type = output->mutable_type()->mutable_tensor_type();
+    type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    type->mutable_shape()->add_dim()->set_dim_value(40);
+    auto* identity = branch.add_node();
+    identity->set_op_type("Identity");
+    identity->add_input(c->Name());
+    identity->add_output(output->name());
+    auto& conditional = b.AddNode("If", {condition}, {b.MakeOutput()});
+    conditional.AddAttribute("then_branch", branch);
+    conditional.AddAttribute("else_branch", branch);
+    b.SetGraphOutputs();
+    ASSERT_STATUS_OK(test.graph.Resolve());
+    if (memory) ASSERT_STATUS_OK(test.graph.ConvertInitializersIntoOrtValues());
+    Graph* subgraph = conditional.GetAttributeNameToMutableSubgraphMap().at("then_branch");
+    ASSERT_NE(subgraph, nullptr);
+    const auto* capture = subgraph->GetNodeArg(c->Name());
+    ASSERT_NE(capture, nullptr);
+    InlinedVector<float> data;
+    bool available = false;
+    ASSERT_STATUS_OK(ReadConstantTensor(*subgraph, capture, data, available));
+    EXPECT_TRUE(available);
+    EXPECT_EQ(data, (InlinedVector<float>(40, 2.0f)));
+    ONNX_NAMESPACE::TensorProto local;
+    local.set_name(c->Name());
+    local.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    local.add_dims(40);
+    for (int i = 0; i < 40; ++i) local.add_float_data(3.0f);
+    subgraph->AddInitializedTensor(local);
+    if (memory) ASSERT_STATUS_OK(test.graph.ConvertInitializersIntoOrtValues());
+    ASSERT_STATUS_OK(ReadConstantTensor(*subgraph, capture, data, available));
+    EXPECT_TRUE(available);
+    EXPECT_EQ(data, (InlinedVector<float>(40, 3.0f)));
+    subgraph->SetInputs({capture});
+    ASSERT_STATUS_OK(ReadConstantTensor(*subgraph, capture, data, available));
+    EXPECT_FALSE(available);
+    EXPECT_EQ(data, (InlinedVector<float>(40, 3.0f)));
+    ASSERT_STATUS_OK(ReadConstantTensor(test.graph, c, data, available));
+    EXPECT_TRUE(available);
+    EXPECT_EQ(data, (InlinedVector<float>(40, 2.0f)));
   }
 }
 

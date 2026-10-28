@@ -4398,7 +4398,7 @@ TEST(PatternRewriterTests, ConstTensorQualifierAndTypedReaders) {
     InlinedVector<float> values{99.0f};
     bool available = true;
     const auto status = ReadConstantTensor(test.graph, c, values, available);
-    if (scenario == 3) {
+    if (scenario == 3 || scenario == 4) {
       EXPECT_FALSE(status.IsOK());
       EXPECT_EQ(values, (InlinedVector<float>{99.0f}));
     } else {

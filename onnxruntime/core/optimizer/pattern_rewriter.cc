@@ -16,7 +16,7 @@
 #include "core/common/parse_string.h"
 #include "core/graph/graph_utils.h"
 #include "core/framework/tensorprotoutils.h"
-#include "core/optimizer/initializer.h"
+#include "core/platform/env.h"
 #include "onnx/checker.h"
 
 namespace onnxruntime {
@@ -63,6 +63,96 @@ std::string Signature(const Pattern& pattern) {
 
 using Producers = InlinedHashMap<const NodeArg*, NodeIndex>;
 
+struct ConstantSource {
+  const Graph* owner = nullptr;
+  const ONNX_NAMESPACE::TensorProto* tensor = nullptr;
+  ONNX_NAMESPACE::TensorProto converted;
+};
+
+Status FindConstant(const Graph& graph, const NodeArg* value, ConstantSource& source) {
+  if (!value) return Status::OK();
+  const auto& name = value->Name();
+  const Graph* owner = &graph;
+  while (owner) {
+    if (owner->GetInitializer(name, false)) {
+      source.owner = owner;
+      source.tensor = owner->GetConstantInitializer(name, false);
+      return Status::OK();
+    }
+    if (const auto* node = owner->GetProducerNode(name)) {
+      if (node->OpType() != "Constant" || node->Domain() != kOnnxDomain) return Status::OK();
+      const auto& attributes = node->GetAttributes();
+      if (attributes.size() != 1) return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "Constant requires one value attribute.");
+      const auto& [attribute_name, attribute] = *attributes.begin();
+      using namespace ONNX_NAMESPACE;
+      int expected_type = 0;
+      if (attribute_name == "value") expected_type = AttributeProto_AttributeType_TENSOR;
+      if (attribute_name == "value_float") expected_type = AttributeProto_AttributeType_FLOAT;
+      if (attribute_name == "value_floats") expected_type = AttributeProto_AttributeType_FLOATS;
+      if (attribute_name == "value_int") expected_type = AttributeProto_AttributeType_INT;
+      if (attribute_name == "value_ints") expected_type = AttributeProto_AttributeType_INTS;
+      if (attribute_name == "value_string") expected_type = AttributeProto_AttributeType_STRING;
+      if (attribute_name == "value_strings") expected_type = AttributeProto_AttributeType_STRINGS;
+      if (!expected_type) return Status::OK();
+      ORT_RETURN_IF(attribute.type() != expected_type || attribute.has_ref_attr_name(),
+                    "Invalid Constant value attribute: ", attribute_name);
+      ONNX_NAMESPACE::NodeProto proto;
+      node->ToProto(proto);
+      ORT_RETURN_IF_ERROR(utils::ConstantNodeProtoToTensorProto(proto, owner->ModelPath(), source.converted));
+      source.owner = owner;
+      source.tensor = &source.converted;
+      return Status::OK();
+    }
+    if (!owner->IsSubgraph() || !owner->IsOuterScopeValue(name)) break;
+    owner = owner->ParentGraph();
+  }
+  return Status::OK();
+}
+
+Status MaterializeConstant(const ConstantSource& source, OrtValue& result) {
+  const auto& proto = *source.tensor;
+  if (utils::HasExternalDataInMemory(proto)) {
+    // Memory markers are not addresses supplied by the caller: require the graph-owned allocation.
+    OrtValue cached;
+    ORT_RETURN_IF_NOT(source.owner->GetOrtValueInitializer(proto.name(), cached, false) && cached.IsTensor(),
+                      "Constant memory marker has no graph-owned tensor: ", proto.name());
+    const auto& tensor = cached.Get<Tensor>();
+    PathString location;
+    FileOffsetType offset;
+    SafeInt<size_t> bytes = 0;
+    ORT_RETURN_IF_ERROR(utils::GetExternalDataInfo(proto, {}, location, offset, bytes));
+    ORT_RETURN_IF_NOT(tensor.Location().device.Type() == OrtDevice::CPU &&
+                          tensor.GetElementType() == proto.data_type() &&
+                          tensor.Shape() == utils::GetTensorShapeFromTensorProto(proto) &&
+                          tensor.SizeInBytes() == static_cast<size_t>(bytes) &&
+                          graph_utils::CheckInMemoryDataMatch(proto, tensor),
+                      "Constant memory marker does not match its graph-owned CPU tensor: ", proto.name());
+    result = std::move(cached);
+    return Status::OK();
+  }
+  if (utils::HasExternalData(proto)) {
+    // The ORT loader validates file provenance and byte ranges before mapping/allocating storage.
+    return utils::GetExtDataFromTensorProto(Env::Default(), source.owner->ModelPath(), proto, result);
+  }
+  return utils::TensorProtoToOrtValue(Env::Default(), source.owner->ModelPath(), proto,
+                                      CPUAllocator::DefaultInstance(), result);
+}
+
+template <typename T>
+Status ReadConstant(const ConstantSource& source, int32_t type, InlinedVector<T>& data, bool& available) {
+  if (!source.tensor || source.tensor->data_type() != type) {
+    available = false;
+    return Status::OK();
+  }
+  OrtValue storage;
+  ORT_RETURN_IF_ERROR(MaterializeConstant(source, storage));
+  const auto elements = storage.Get<Tensor>().DataAsSpan<T>();
+  InlinedVector<T> decoded(elements.begin(), elements.end());
+  data = std::move(decoded);
+  available = true;
+  return Status::OK();
+}
+
 bool MatchType(const Pattern& pattern, const Graph& graph, int handle, const TypeConstraint& constraint, Match& match,
                std::string& reason) {
   if (pattern.IsAttribute(handle)) {
@@ -72,7 +162,11 @@ bool MatchType(const Pattern& pattern, const Graph& graph, int handle, const Typ
   const NodeArg* value = match.values[handle];
   if (constraint.absent) return !value;
   if (!value) return false;
-  if (constraint.immutable && !graph_utils::GetConstantInitializer(graph, value->Name())) return false;
+  if (constraint.immutable) {
+    ConstantSource source;
+    ORT_THROW_IF_ERROR(FindConstant(graph, value, source));
+    if (!source.tensor) return false;
+  }
   const auto* type = value->TypeAsProto();
   if (!type || !type->has_tensor_type()) return false;
   const int32_t element = type->tensor_type().elem_type();
@@ -255,25 +349,30 @@ bool MatchPattern(const Pattern& pattern, const Graph& graph, const Node& root, 
       return fail(FailureStage::Boundary, "Pattern input is produced inside the deletion set.");
   }
   for (const auto& [handle, expected] : pattern.Constants()) {
-    const auto* tensor = graph_utils::GetConstantInitializer(graph, match.values[handle]->Name());
+    ConstantSource source;
+    ORT_THROW_IF_ERROR(FindConstant(graph, match.values[handle], source));
+    const auto* tensor = source.tensor;
     const bool vector = expected.index() >= 2;
-    if (!tensor || tensor->dims_size() != (vector ? 1 : 0) ||
-        tensor->data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL)
-      return fail(FailureStage::Constant, "Literal initializer rank, mutability or storage mismatch.");
+    if (!tensor || tensor->dims_size() != (vector ? 1 : 0))
+      return fail(FailureStage::Constant, "Literal constant rank or mutability mismatch.");
     const bool floating = std::holds_alternative<float>(expected) ||
                           std::holds_alternative<InlinedVector<float>>(expected);
     if (tensor->data_type() !=
         (floating ? ONNX_NAMESPACE::TensorProto_DataType_FLOAT : ONNX_NAMESPACE::TensorProto_DataType_INT64))
       return fail(FailureStage::Constant, "Literal initializer dtype mismatch.");
-    Initializer initializer(graph, *tensor, graph.ModelPath());
     const bool equal = std::visit([&](const auto& value) {
       using T = std::decay_t<decltype(value)>;
       if constexpr (std::is_arithmetic_v<T>) {
-        return initializer.size() == 1 && *initializer.data<T>() == value;
+        InlinedVector<T> decoded;
+        bool available = false;
+        ORT_THROW_IF_ERROR(ReadConstant(source, tensor->data_type(), decoded, available));
+        return available && decoded.size() == 1 && decoded[0] == value;
       } else {
-        using Element = typename T::value_type;
-        return tensor->dims(0) == static_cast<int64_t>(value.size()) && initializer.size() == value.size() &&
-               std::equal(value.begin(), value.end(), initializer.data<Element>());
+        if (tensor->dims(0) != static_cast<int64_t>(value.size())) return false;
+        T decoded;
+        bool available = false;
+        ORT_THROW_IF_ERROR(ReadConstant(source, tensor->data_type(), decoded, available));
+        return available && decoded == value;
       }
     },
                                   expected);
@@ -2305,28 +2404,9 @@ BindingView BindingView::alternativeView() const {
 namespace {
 template <typename T>
 Status ReadConstant(const Graph& graph, const NodeArg* value, int32_t type, InlinedVector<T>& data, bool& available) {
-  const auto* tensor = value ? graph_utils::GetConstantInitializer(graph, value->Name()) : nullptr;
-  if (!tensor || tensor->data_type() != type ||
-      tensor->data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
-    available = false;
-    return Status::OK();
-  }
-  ORT_RETURN_IF_ERROR(utils::ValidateEmbeddedTensorProtoDataSizeAndShape(*tensor));
-  size_t size = 1;
-  for (int64_t dimension : tensor->dims()) {
-    ORT_RETURN_IF(dimension < 0 || static_cast<uint64_t>(dimension) > std::numeric_limits<size_t>::max(),
-                  "Invalid constant tensor dimension.");
-    const auto dim = static_cast<size_t>(dimension);
-    ORT_RETURN_IF(dim != 0 && size > std::numeric_limits<size_t>::max() / dim, "Constant tensor size overflow.");
-    size *= dim;
-  }
-  InlinedVector<T> decoded(size);
-  ORT_RETURN_IF_ERROR(utils::UnpackTensor(*tensor, tensor->has_raw_data() ? tensor->raw_data().data() : nullptr,
-                                          tensor->raw_data().size(),
-                                          decoded.data(), decoded.size()));
-  data = std::move(decoded);
-  available = true;
-  return Status::OK();
+  ConstantSource source;
+  ORT_RETURN_IF_ERROR(FindConstant(graph, value, source));
+  return ReadConstant(source, type, data, available);
 }
 }  // namespace
 

@@ -187,8 +187,9 @@ class BindingView {
   size_t alternative_depth_ = 0;
 };
 
-// A missing/nonconstant/wrongly typed or externally stored payload is unavailable.
-// Malformed available payloads return an error. Outputs change only on success.
+// Reads immutable initializers (embedded, graph-owned memory, or external files) and supported Constant nodes.
+// Missing/nonconstant/wrongly typed values are unavailable. Malformed storage returns an error.
+// On error both outputs are unchanged; unavailable leaves data unchanged and sets available=false.
 Status ReadConstantTensor(const Graph& graph, const NodeArg* value, InlinedVector<float>& data, bool& available);
 Status ReadConstantTensor(const Graph& graph, const NodeArg* value, InlinedVector<int64_t>& data, bool& available);
 

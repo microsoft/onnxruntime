@@ -321,12 +321,19 @@ input slots are not accepted. `None` is reserved and cannot be a variable name.
 
 ### Constants and attributes
 
-Positional numeric literals in patterns match **rank-zero constant initializers**
+Positional numeric literals in patterns match **rank-zero immutable constants**
 of the exact value and element type: `3.0`, `3e0`, and `0.5` are float32;
 `3`, `-1`, and `0` are int64. Thus `2` and `2.0` are distinct constraints.
-A singleton vector is not a scalar. External tensor data and overridable
-initializers do not satisfy these constraints. Constant operators require
-an earlier constant-folding pass.
+A singleton vector is not a scalar. Matching and the typed constant readers
+share the same storage support: embedded typed/raw initializers, graph-owned
+in-memory initializers, and external tensor files loaded through ORT's validated
+loading facilities. Overridable initializers never satisfy these constraints.
+Standard ONNX `Constant` nodes with dense `value`, `value_float`, `value_floats`,
+`value_int`, or `value_ints` attributes are also recognized without a folding pass.
+Model loading normally canonicalizes these nodes into initializers; directly
+constructed graphs may retain them after `Resolve`. This is not arbitrary
+constant folding: runtime computations and unconverted sparse Constant forms
+are not evaluated.
 
 A bracketed positional literal is a **rank-one tensor**, not an attribute:
 
@@ -856,7 +863,8 @@ other annotation combinations.
 ### Optional immutable tensor constraints and constant readers
 
 The prefix qualifier `const`, as in `top_k : const int64[1]`, requires an
-immutable constant initializer in addition to the tensor annotation.
+immutable constant tensor in addition to the tensor annotation, using the same
+source classification as literal matching and constant readers.
 It does not decode contents, bind a scalar, or require local payload storage.
 Runtime inputs and overridable initializers do not satisfy it.
 It can qualify individual tensor alternatives, including
@@ -864,12 +872,17 @@ It can qualify individual tensor alternatives, including
 
 `ReadConstantTensor(graph, value, data, available)` has typed overloads for
 `InlinedVector<float>` and `InlinedVector<int64_t>`. A missing value,
-nonconstant/overridable initializer, wrong element type, or external payload
-returns OK with `available = false`, leaving `data` unchanged. A malformed
-available payload returns an error, leaving both outputs unchanged. Embedded
-shape and payload sizes are validated before allocating decoded storage, even
-when the graph has not been resolved.
-Success decodes raw or typed protobuf storage and sets `available = true`.
+nonconstant/overridable initializer, wrong element type, or unsupported Constant
+form returns OK with `available = false`, leaving `data` unchanged. A malformed
+recognized payload or failed external-data load returns an error, leaving both
+outputs unchanged. Embedded shape and payload sizes are validated before
+allocating decoded storage, even when the graph has not been resolved.
+In-memory external markers require a matching graph-owned CPU tensor; encoded
+addresses are never trusted on their own. External files use the owning graph's
+model path and ORT's path/range validation before loading. Outer-scope constants
+are supported without bypassing local shadowing or overridable inputs.
+Success copies decoded values into `data` and sets `available = true`, without
+mutating the graph or changing its resolve state.
 C++ checks rank, supported values and all dependent relationships; decoding
 does not implicitly enforce scalar shape. Propagate reader errors, for
 example with `ORT_THROW_IF_ERROR` in a bool checker, rather than turning
