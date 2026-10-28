@@ -1,0 +1,16 @@
+--- a/deep_gemm/include/deep_gemm/ptx/ld_st.cuh
++++ b/deep_gemm/include/deep_gemm/ptx/ld_st.cuh
+@@ -3,2 +3,3 @@
+ #include <cuda/std/cstdint>
+ #include <cuda_bf16.h>
++#include <cstring>
+@@ -152,3 +153,9 @@
+ CUTLASS_DEVICE void st_shared(const __int128_t* ptr, __int128_t val) {
++#if defined(__CUDACC_VER_MAJOR__) and __CUDACC_VER_MAJOR__ < 13
++    uint4 words;
++    memcpy(&words, &val, sizeof(words));
++    st_shared(ptr, words.x, words.y, words.z, words.w);
++#else
+     asm volatile("st.shared.b128 [%0], %1;" :: "l"(__cvta_generic_to_shared(ptr)), "q"(val));
++#endif
+ }
