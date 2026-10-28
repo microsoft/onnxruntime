@@ -2250,6 +2250,7 @@ CUBIN_EXPORT __global__
 
     // merge results from different warp groups
     SharedMem::XSmemBuffer* smemOutTile = mergeAndSaveOutTile(outTile, inputElemSize == 2 && cacheElemSize == 1);
+    bool isLastCta = true;
     if (isMultiBlock) {
       static_assert(ctaShapeInWarps.y == 1, "not implemented");
 #if SPEC_DEC
@@ -2315,10 +2316,9 @@ CUBIN_EXPORT __global__
       __syncthreads();
 
       // merge if we are the last CTA.
-      const bool isLastCta = mbsmem.isLastCta;
-#if defined(XQA_PAGED_INT4)
+      isLastCta = mbsmem.isLastCta;
+      // Latch the flag in every thread before reusing its shared memory for the reduction.
       __syncthreads();
-#endif
       if (isLastCta) {
         MultiBlockSMem::MBBuf& mbbuf = mbsmem.storage[warpIdx.y];
         SMemWarpRowMax& smemRowMax = reinterpret_cast<SMemWarpRowMax&>(smem);
@@ -2411,7 +2411,8 @@ CUBIN_EXPORT __global__
         smemOutTile = mergeAndSaveOutTile(mergedOutTile, false);
       }
     }
-    if (warpGrpIdx == 0) {
+    // Non-final CTAs must not overwrite the merged output with their partial results.
+    if (isLastCta && warpGrpIdx == 0) {
 #if SPEC_DEC
       copyOutputToGlobalMem(warp, &output[reqSeqOffset * nbQHeads], nbQHeads, headGrpSize,
                             (idxHeadGrp * headGrpSize), nbValidHeadTokens, actualQSeqLen,
