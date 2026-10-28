@@ -1,0 +1,530 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+// Tensor-core (mma.sync.m16n8k16, BF16 inputs, FP32 accumulation) INT3 block-wise (block size 64) QMoE decode.
+//
+// The vectorized decode GEMV (FusedFc1FastVecKernel / Fc2RouteFastVecKernel) shares dequantized weights between at
+// most two routes, so with speculative decoding (e.g. 8 tokens x top-10 = 80 routes over ~16-40 experts) every
+// expert is dequantized several times and the kernels are instruction-issue bound. This kernel gives one CTA up to
+// eight routes of the same expert (one mma N-tile): each weight is loaded and dequantized once and the dot products
+// run on the tensor cores.
+//
+// Mapping (m16n8k16, per warp):
+//   * mma A (16x16) = weights. A row g is the even real row (gate for FC1) and row g + 8 the next odd real row (up),
+//     i.e. the two rows of one interleaved SwiGLU pair are adjacent in memory.
+//   * mma B (16x8)  = activations of up to eight routes of one expert (lane (g, t) serves route slot g).
+//   * The row-local 3-bit bitstream (code i at bit 3 i) makes 128 codes = 48 bytes the smallest 16-byte aligned unit,
+//     so lane (g, t) of a quad owns one such 48-byte chunk per 512-wide K super-step. K positions inside an mma are
+//     a free permutation as long as A and B agree: the pair (code j, code j + 4) of every group of 8 codes is one
+//     packed bf16x2 A register (exactly the pairing of DequantizeInt3x8Bf16), and the activations are pre-permuted
+//     in shared memory to {x0,x4}, {x1,x5}, {x2,x6}, {x3,x7} so a group's four B registers are one LDS.128.
+//   * The dequantization is the packed bf16x2 routine used by the GEMV kernels (round once to bf16 per weight), so
+//     weights are bit-identical to the GEMV path; only the fp32 accumulation order differs.
+// Route groups are derived in-kernel from the per-route expert ids: every run of up to 8 routes (in route order) of
+// one expert is led by its first route; CTAs of non-leading routes exit immediately.
+
+#pragma once
+
+#include <cuda_bf16.h>
+#include <cuda_runtime.h>
+
+#include <algorithm>
+#include <cstdint>
+
+#include "contrib_ops/cuda/moe/qmoe_kernels.h"
+#include "core/providers/cuda/cuda_common.h"
+// Include env_var_utils.h after cuda_common.h: the latter transitively pulls in provider_api.h,
+// which defines SHARED_PROVIDER and suppresses env_var_utils.h's own logging.h include.
+#include "core/platform/env_var_utils.h"
+
+namespace onnxruntime {
+namespace contrib {
+namespace cuda {
+namespace int3_tc {
+
+constexpr int kMaxRoutes = 8;         // mma N
+constexpr int kMaxTotalRoutes = 256;  // route ids are packed into bytes
+constexpr int kBlockSize = 64;        // quantization block (codes per scale)
+constexpr int kStepK = 512;           // K consumed per super-step: 4 lanes x 128 codes
+constexpr int kMaxSharedBytes = 48 * 1024;
+
+struct Params {
+  const void* input;            // FC1: [rows][k] (row = route / top_k); FC2: [routes][k]
+  void* out;                    // FC1: [routes][n / 2]; FC2: [routes][n]
+  const uint8_t* weights;       // [experts][n][k * 3 / 8]
+  const __nv_bfloat16* scales;  // [experts * n][k / 64]
+  const __nv_bfloat16* bias;    // [experts][n] or nullptr
+  const int* experts;           // [total_routes]
+  int total_routes;
+  int num_experts;
+  int top_k;
+  int n;  // real output rows (2 * intermediate for FC1)
+  int k;
+  float alpha;
+  float beta;
+  float limit;
+};
+
+#if defined(__CUDACC__)
+
+__device__ __forceinline__ uint4 LoadWeights128(const void* ptr) {
+  uint4 v;
+  asm("ld.global.nc.v4.u32 {%0, %1, %2, %3}, [%4];\n" : "=r"(v.x), "=r"(v.y), "=r"(v.z), "=r"(v.w) : "l"(ptr));
+  return v;
+}
+
+__device__ __forceinline__ uint32_t LoadWord(const void* ptr) {
+  uint32_t v;
+  asm("ld.global.nc.u32 %0, [%1];\n" : "=r"(v) : "l"(ptr));
+  return v;
+}
+
+__device__ __forceinline__ uint32_t LoadHalfWord(const void* ptr) {
+  unsigned short v;
+  asm("ld.global.nc.u16 %0, [%1];\n" : "=h"(v) : "l"(ptr));
+  return v;
+}
+
+__device__ __forceinline__ void MmaBf16(float (&d)[4], uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3,
+                                        uint32_t b0, uint32_t b1) {
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800)
+  asm("mma.sync.aligned.m16n8k16.row.col.f32.bf16.bf16.f32 {%0, %1, %2, %3}, {%4, %5, %6, %7}, {%8, %9}, "
+      "{%0, %1, %2, %3};\n"
+      : "+f"(d[0]), "+f"(d[1]), "+f"(d[2]), "+f"(d[3])
+      : "r"(a0), "r"(a1), "r"(a2), "r"(a3), "r"(b0), "r"(b1));
+#endif
+}
+
+// 32 bits of the 96-bit unit (three words = 32 codes) starting at bit S. Code j of a group of eight lands at window
+// bit 4 and code j + 4 at bit 16, which is the layout DequantizeInt3x8Bf16 feeds to its LOP3.
+template <int S>
+__device__ __forceinline__ uint32_t UnitWindow(const uint32_t* w) {
+  if constexpr (S < 0) {
+    return w[0] << (-S);
+  } else if constexpr ((S & 31) + 19 <= 32) {
+    return w[S >> 5] >> (S & 31);
+  } else {
+    return __funnelshift_r(w[S >> 5], w[(S >> 5) + 1], S & 31);
+  }
+}
+
+// bf16x2 {bf16((c_lo - 4) * s), bf16((c_hi - 4) * s)} for the 3-bit codes at window bits 4..6 and 16..18: the
+// same exact-then-round-once arithmetic as DequantizeInt3x8Bf16.
+__device__ __forceinline__ uint32_t DequantPair(uint32_t window, uint32_t scale2) {
+  uint32_t magic;
+  asm("lop3.b32 %0, %1, %2, %3, %4;"
+      : "=r"(magic)
+      : "r"(window), "n"(0x00070070u), "n"(0x43004100u), "n"((0xf0 & 0xcc) | 0xaa));
+  constexpr uint32_t kCenterBits = 0x43044140u;
+  const __nv_bfloat162 centered =
+      __hsub2(*reinterpret_cast<const __nv_bfloat162*>(&magic), *reinterpret_cast<const __nv_bfloat162*>(&kCenterBits));
+  const __nv_bfloat162 product = __hmul2(centered, *reinterpret_cast<const __nv_bfloat162*>(&scale2));
+  return *reinterpret_cast<const uint32_t*>(&product);
+}
+
+// One group of eight codes (24 bits at unit bit 24 A) of the even/odd row against one 16-byte activation piece.
+template <int A>
+__device__ __forceinline__ void GroupMma(float (&acc)[4], const uint32_t* we, const uint32_t* wo, uint32_t se,
+                                         uint32_t so, const uint4& b) {
+  constexpr int S = 24 * A;
+  const uint32_t e0 = DequantPair(UnitWindow<S - 4>(we), se);
+  const uint32_t o0 = DequantPair(UnitWindow<S - 4>(wo), so);
+  const uint32_t e1 = DequantPair(UnitWindow<S - 1>(we), se);
+  const uint32_t o1 = DequantPair(UnitWindow<S - 1>(wo), so);
+  MmaBf16(acc, e0, o0, e1, o1, b.x, b.y);
+  const uint32_t e2 = DequantPair(UnitWindow<S + 2>(we), se);
+  const uint32_t o2 = DequantPair(UnitWindow<S + 2>(wo), so);
+  const uint32_t e3 = DequantPair(UnitWindow<S + 5>(we), se);
+  const uint32_t o3 = DequantPair(UnitWindow<S + 5>(wo), so);
+  MmaBf16(acc, e2, o2, e3, o3, b.z, b.w);
+}
+
+// kSwiglu = true : FC1, interleaved (gate, up) rows, output [route][n / 2] after SwiGLU.
+// kSwiglu = false: FC2, output [route][n].
+// kWarpsK warps split the K super-steps (reduced through shared memory), kWarps / kWarpsK warps split the rows and
+// every warp owns kM m-blocks (16 real rows each).
+template <bool kSwiglu, int kWarps, int kWarpsK, int kM>
+__global__ void __launch_bounds__(kWarps * 32, 2) Int3TcKernel(const Params p) {
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800)
+  static_assert(kWarps % kWarpsK == 0, "warps must split evenly over K");
+  static_assert(kWarpsK == 1 || kWarps == kWarpsK, "K-split kernels use a single row group");
+  constexpr int kThreads = kWarps * 32;
+  constexpr int kWarpsN = kWarps / kWarpsK;
+  constexpr int kTileN = kWarpsN * kM * 16;
+
+  const int lane = threadIdx.x & 31;
+  const int warp = threadIdx.x >> 5;
+  const int g = lane >> 2;
+  const int t = lane & 3;
+
+  // Routes of this expert: this CTA leads the run of (up to) eight routes starting at its own route when it is the
+  // 8m-th route of the expert. Every warp derives the same result, so exits are CTA-uniform.
+  const int r0 = blockIdx.x;
+  const int total = p.total_routes;
+  const int expert = __ldg(p.experts + r0);
+  int ev[8];
+#pragma unroll
+  for (int i = 0; i < 8; ++i) {
+    const int idx = i * 32 + lane;
+    ev[i] = idx < total ? __ldg(p.experts + idx) : -1;
+  }
+  if (expert < 0 || expert >= p.num_experts) {
+    return;
+  }
+  const int c0 = r0 >> 5;
+  const int b0 = r0 & 31;
+  uint32_t match[8];
+  int rank = 0;
+#pragma unroll
+  for (int i = 0; i < 8; ++i) {
+    match[i] = __ballot_sync(0xffffffffu, ev[i] == expert);
+    const uint32_t below = i < c0 ? 0xffffffffu : (i == c0 ? ((1u << b0) - 1u) : 0u);
+    rank += __popc(match[i] & below);
+  }
+  if ((rank & (kMaxRoutes - 1)) != 0) {
+    return;
+  }
+  int count = 0;
+  uint64_t members = 0;
+#pragma unroll
+  for (int i = 0; i < 8; ++i) {
+    uint32_t bits = match[i] & (i < c0 ? 0u : (i == c0 ? (0xffffffffu << b0) : 0xffffffffu));
+    while (bits != 0u && count < kMaxRoutes) {
+      const int pos = (i << 5) + (__ffs(bits) - 1);
+      bits &= bits - 1u;
+      members |= static_cast<uint64_t>(pos) << (8 * count);
+      ++count;
+    }
+  }
+
+  const int n = p.n;
+  const int k = p.k;
+  const int nss = k / kStepK;
+  const int rem = (k / 128) & 3;  // 128-code chunks past the last super-step, split over the quad as 32-code units
+  const int64_t row_bytes = static_cast<int64_t>(k) * 3 / 8;
+  const int nb = k / kBlockSize;
+  const int wk = warp % kWarpsK;
+  const int wn = warp / kWarpsK;
+  const int tile_row0 = blockIdx.y * kTileN;
+  const int row_base = tile_row0 + wn * (kM * 16);
+  const int64_t wrow = static_cast<int64_t>(expert) * n + row_base + 2 * g;
+  const uint8_t* wptr = p.weights + wrow * row_bytes + 48 * t;
+  const __nv_bfloat16* sptr = p.scales + wrow * nb + 2 * t;
+
+  float acc[kM][4];
+#pragma unroll
+  for (int mb = 0; mb < kM; ++mb) {
+#pragma unroll
+    for (int i = 0; i < 4; ++i) {
+      acc[mb][i] = 0.f;
+    }
+  }
+
+  extern __shared__ uint4 smem_u4[];
+  uint8_t* smem = reinterpret_cast<uint8_t*>(smem_u4);
+
+  // Weights of the first super-step are requested before the activations are staged so both latencies overlap.
+  uint32_t we[kM][12];
+  uint32_t wo[kM][12];
+  uint32_t se[kM];
+  uint32_t so[kM];
+  int ss = wk;
+  auto load_super_step = [&](int s) {
+#pragma unroll
+    for (int mb = 0; mb < kM; ++mb) {
+      const uint8_t* pe = wptr + static_cast<int64_t>(mb) * 16 * row_bytes + s * 192;
+      const uint8_t* po = pe + row_bytes;
+#pragma unroll
+      for (int i = 0; i < 3; ++i) {
+        const uint4 ve = LoadWeights128(pe + 16 * i);
+        const uint4 vo = LoadWeights128(po + 16 * i);
+        we[mb][4 * i + 0] = ve.x;
+        we[mb][4 * i + 1] = ve.y;
+        we[mb][4 * i + 2] = ve.z;
+        we[mb][4 * i + 3] = ve.w;
+        wo[mb][4 * i + 0] = vo.x;
+        wo[mb][4 * i + 1] = vo.y;
+        wo[mb][4 * i + 2] = vo.z;
+        wo[mb][4 * i + 3] = vo.w;
+      }
+      se[mb] = LoadWord(sptr + static_cast<int64_t>(mb) * 16 * nb + 8 * s);
+      so[mb] = LoadWord(sptr + static_cast<int64_t>(mb) * 16 * nb + nb + 8 * s);
+    }
+  };
+  if (ss < nss) {
+    load_super_step(ss);
+  }
+
+  // Stage the activations of the group's routes (zero for unused slots) as 16-byte pieces of eight consecutive K
+  // positions, pre-permuted to {x0,x4}, {x1,x5}, {x2,x6}, {x3,x7}. Piece u of route slot r lives at
+  // (u * 8 + ((r + 2 h(u)) & 7)) * 16 bytes, where h(u) is the quad lane that consumes piece u, so that the readers
+  // of one LDS.128 phase hit eight different 16-byte bank groups.
+  {
+    const int rs = threadIdx.x & 7;
+    const __nv_bfloat16* src = nullptr;
+    if (rs < count) {
+      const int route = static_cast<int>((members >> (8 * rs)) & 0xffu);
+      const int row = kSwiglu ? route / p.top_k : route;
+      src = static_cast<const __nv_bfloat16*>(p.input) + static_cast<int64_t>(row) * k;
+    }
+    const int pieces = k >> 3;
+    const int ss_pieces = nss * 64;
+#pragma unroll 4
+    for (int u = threadIdx.x >> 3; u < pieces; u += kThreads / 8) {
+      uint4 v = make_uint4(0u, 0u, 0u, 0u);
+      if (src != nullptr) {
+        const uint4 x = *reinterpret_cast<const uint4*>(src + 8 * u);
+        v.x = __byte_perm(x.x, x.z, 0x5410);
+        v.y = __byte_perm(x.x, x.z, 0x7632);
+        v.z = __byte_perm(x.y, x.w, 0x5410);
+        v.w = __byte_perm(x.y, x.w, 0x7632);
+      }
+      const int h = u < ss_pieces ? ((u >> 4) & 3) : ((u >> 2) & 3);
+      smem_u4[u * 8 + ((rs + 2 * h) & 7)] = v;
+    }
+  }
+  __syncthreads();
+
+  const uint8_t* b_lane = smem + 2048 * t + ((g + 2 * t) & 7) * 16;
+
+  for (; ss < nss; ss += kWarpsK) {
+    const uint8_t* b_ss = b_lane + 8192 * ss;
+#pragma unroll
+    for (int unit = 0; unit < 4; ++unit) {
+      uint4 bp[4];
+#pragma unroll
+      for (int a = 0; a < 4; ++a) {
+        bp[a] = *reinterpret_cast<const uint4*>(b_ss + (unit * 4 + a) * 128);
+      }
+#pragma unroll
+      for (int mb = 0; mb < kM; ++mb) {
+        const uint32_t se2 = __byte_perm(se[mb], 0, unit < 2 ? 0x1010 : 0x3232);
+        const uint32_t so2 = __byte_perm(so[mb], 0, unit < 2 ? 0x1010 : 0x3232);
+        GroupMma<0>(acc[mb], &we[mb][3 * unit], &wo[mb][3 * unit], se2, so2, bp[0]);
+        GroupMma<1>(acc[mb], &we[mb][3 * unit], &wo[mb][3 * unit], se2, so2, bp[1]);
+        GroupMma<2>(acc[mb], &we[mb][3 * unit], &wo[mb][3 * unit], se2, so2, bp[2]);
+        GroupMma<3>(acc[mb], &we[mb][3 * unit], &wo[mb][3 * unit], se2, so2, bp[3]);
+      }
+    }
+    if (ss + kWarpsK < nss) {
+      load_super_step(ss + kWarpsK);
+    }
+  }
+
+  if constexpr (!kSwiglu) {
+    // Remainder: chunk i of the quad's last 128-code chunks is split into four 32-code units, unit q to lane q & 3.
+    for (int i = 0; i < rem; ++i) {
+      const int q = 4 * i + t;
+      uint32_t rwe[kM][3];
+      uint32_t rwo[kM][3];
+      uint32_t rse[kM];
+      uint32_t rso[kM];
+#pragma unroll
+      for (int mb = 0; mb < kM; ++mb) {
+        const uint8_t* pe = wptr - 48 * t + static_cast<int64_t>(mb) * 16 * row_bytes + nss * 192 + 12 * q;
+        const uint8_t* po = pe + row_bytes;
+#pragma unroll
+        for (int c = 0; c < 3; ++c) {
+          rwe[mb][c] = LoadWord(pe + 4 * c);
+          rwo[mb][c] = LoadWord(po + 4 * c);
+        }
+        const __nv_bfloat16* sb = sptr - 2 * t + static_cast<int64_t>(mb) * 16 * nb + 8 * nss + (q >> 1);
+        const uint32_t s_e = LoadHalfWord(sb);
+        const uint32_t s_o = LoadHalfWord(sb + nb);
+        rse[mb] = s_e | (s_e << 16);
+        rso[mb] = s_o | (s_o << 16);
+      }
+      const uint8_t* b_rem = smem + 8192 * nss + 2048 * i + 512 * t + ((g + 2 * t) & 7) * 16;
+      uint4 bp[4];
+#pragma unroll
+      for (int a = 0; a < 4; ++a) {
+        bp[a] = *reinterpret_cast<const uint4*>(b_rem + a * 128);
+      }
+#pragma unroll
+      for (int mb = 0; mb < kM; ++mb) {
+        GroupMma<0>(acc[mb], rwe[mb], rwo[mb], rse[mb], rso[mb], bp[0]);
+        GroupMma<1>(acc[mb], rwe[mb], rwo[mb], rse[mb], rso[mb], bp[1]);
+        GroupMma<2>(acc[mb], rwe[mb], rwo[mb], rse[mb], rso[mb], bp[2]);
+        GroupMma<3>(acc[mb], rwe[mb], rwo[mb], rse[mb], rso[mb], bp[3]);
+      }
+    }
+  }
+
+  const __nv_bfloat16* bias = p.bias != nullptr ? p.bias + static_cast<int64_t>(expert) * n : nullptr;
+
+  // d = {(even row, route 2t'), (even row, route 2t' + 1), (odd row, route 2t'), (odd row, route 2t' + 1)}
+  auto finalize = [&](const float4 d, int mb, int l) {
+    const int g2 = l >> 2;
+    const int t2 = l & 3;
+#pragma unroll
+    for (int h = 0; h < 2; ++h) {
+      const int slot = 2 * t2 + h;
+      if (slot >= count) {
+        continue;
+      }
+      const int route = static_cast<int>((members >> (8 * slot)) & 0xffu);
+      float even = h == 0 ? d.x : d.y;
+      float odd = h == 0 ? d.z : d.w;
+      if constexpr (kSwiglu) {
+        const int col = (tile_row0 >> 1) + 8 * mb + g2;
+        if (bias != nullptr) {
+          even += __bfloat162float(bias[2 * col]);
+          odd += __bfloat162float(bias[2 * col + 1]);
+        }
+        const float gate = fminf(even, p.limit);
+        const float up = fminf(fmaxf(odd, -p.limit), p.limit);
+        static_cast<__nv_bfloat16*>(p.out)[static_cast<int64_t>(route) * (n >> 1) + col] =
+            __float2bfloat16_rn((gate / (1.0f + expf(-p.alpha * gate))) * (up + p.beta));
+      } else {
+        const int col = row_base + 16 * mb + 2 * g2;
+        if (bias != nullptr) {
+          even += __bfloat162float(bias[col]);
+          odd += __bfloat162float(bias[col + 1]);
+        }
+        *reinterpret_cast<__nv_bfloat162*>(static_cast<__nv_bfloat16*>(p.out) + static_cast<int64_t>(route) * n + col) =
+            __floats2bfloat162_rn(even, odd);
+      }
+    }
+  };
+
+  if constexpr (kWarpsK > 1) {
+    __syncthreads();  // the activation region is reused for the cross-warp reduction
+    float4* red = reinterpret_cast<float4*>(smem);
+#pragma unroll
+    for (int mb = 0; mb < kM; ++mb) {
+      red[(wk * kM + mb) * 32 + lane] = make_float4(acc[mb][0], acc[mb][1], acc[mb][2], acc[mb][3]);
+    }
+    __syncthreads();
+    for (int idx = threadIdx.x; idx < kM * 32; idx += kThreads) {
+      const int l = idx & 31;
+      const int mb = idx >> 5;
+      float4 d = red[mb * 32 + l];
+#pragma unroll
+      for (int w = 1; w < kWarpsK; ++w) {
+        const float4 e = red[(w * kM + mb) * 32 + l];
+        d.x += e.x;
+        d.y += e.y;
+        d.z += e.z;
+        d.w += e.w;
+      }
+      finalize(d, mb, l);
+    }
+  } else {
+#pragma unroll
+    for (int mb = 0; mb < kM; ++mb) {
+      finalize(make_float4(acc[mb][0], acc[mb][1], acc[mb][2], acc[mb][3]), mb, lane);
+    }
+  }
+#endif
+}
+
+inline bool DisabledByEnv() {
+  static const bool disabled =
+      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_DISABLE_QMOE_INT3_TC", 0) == 1;
+  return disabled;
+}
+
+// The vectorized GEMV shares weights between route pairs already, so tiny problems keep it.
+inline int MinRoutes() {
+  static const int routes = onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_INT3_TC_MIN_ROUTES", 33);
+  return routes;
+}
+
+inline bool DeviceSupportsBf16Mma() {
+  int device = 0;
+  int major = 0;
+  if (cudaGetDevice(&device) != cudaSuccess ||
+      cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, device) != cudaSuccess) {
+    return false;
+  }
+  return major >= 8;
+}
+
+// FC1: 5 warps split K, each tile covers kFc1M * 16 real rows (gate/up interleaved); the partial sums of the warps
+// are reduced through shared memory. Smaller tiles were slower: every CTA stages the full activation rows.
+constexpr int kFc1Warps = 5;
+constexpr int kFc1M = 4;
+constexpr int kFc1TileN = kFc1M * 16;
+
+// FC2: 4 warps each own kFc2M * 16 output rows over the whole (short) K.
+constexpr int kFc2Warps = 4;
+constexpr int kFc2M = 2;
+constexpr int kFc2TileN = kFc2Warps * kFc2M * 16;
+
+inline cudaError_t LaunchFc1(const Params& fc1, int hidden, int total_routes, cudaStream_t stream) {
+  const size_t red_bytes = static_cast<size_t>(kFc1Warps) * kFc1M * 32 * sizeof(float4);
+  const size_t smem = std::max(static_cast<size_t>(hidden) * 16, red_bytes);
+  const dim3 grid(static_cast<unsigned>(total_routes), static_cast<unsigned>(fc1.n / kFc1TileN));
+  Int3TcKernel<true, kFc1Warps, kFc1Warps, kFc1M><<<grid, kFc1Warps * 32, smem, stream>>>(fc1);
+  return cudaGetLastError();
+}
+
+inline cudaError_t LaunchFc2(const Params& fc2, int intermediate, int total_routes, cudaStream_t stream) {
+  const dim3 grid(static_cast<unsigned>(total_routes), static_cast<unsigned>(fc2.n / kFc2TileN));
+  Int3TcKernel<false, kFc2Warps, 1, kFc2M>
+      <<<grid, kFc2Warps * 32, static_cast<size_t>(intermediate) * 16, stream>>>(fc2);
+  return cudaGetLastError();
+}
+
+// Returns true when the tensor-core kernels (FC1 and FC2) were launched, leaving the routes' finalize to the
+// caller; false leaves the work to the vectorized GEMV kernels. `status` carries the launch result when handled.
+inline bool TryLaunchBf16(const Int3MoeParams& params, cudaStream_t stream, cudaError_t& status) {
+  const int64_t total_routes = static_cast<int64_t>(params.rows) * params.top_k;
+  if (!params.is_bfloat16 || params.fc1.bits != 3 || params.fc2.bits != 3 || params.block_size != kBlockSize ||
+      params.router_weights != nullptr || total_routes < MinRoutes() || total_routes > kMaxTotalRoutes ||
+      params.hidden % kStepK != 0 || params.intermediate % 128 != 0 ||
+      static_cast<int64_t>(params.hidden) * 16 > kMaxSharedBytes ||
+      static_cast<int64_t>(params.intermediate) * 16 > kMaxSharedBytes ||
+      (reinterpret_cast<uintptr_t>(params.fc1.weights) & 15u) != 0 ||
+      (reinterpret_cast<uintptr_t>(params.fc2.weights) & 15u) != 0 ||
+      (reinterpret_cast<uintptr_t>(params.fc1.scales) & 3u) != 0 ||
+      (reinterpret_cast<uintptr_t>(params.fc2.scales) & 3u) != 0 ||
+      params.fc1.zeros != nullptr || params.fc2.zeros != nullptr || params.experts == nullptr ||
+      DisabledByEnv() || !DeviceSupportsBf16Mma()) {
+    return false;
+  }
+
+  Params fc1{};
+  fc1.input = params.input;
+  fc1.out = params.activation;
+  fc1.weights = params.fc1.weights;
+  fc1.scales = static_cast<const __nv_bfloat16*>(params.fc1.scales);
+  fc1.bias = static_cast<const __nv_bfloat16*>(params.fc1.bias);
+  fc1.experts = params.experts;
+  fc1.total_routes = static_cast<int>(total_routes);
+  fc1.num_experts = params.num_experts;
+  fc1.top_k = params.top_k;
+  fc1.n = 2 * params.intermediate;
+  fc1.k = params.hidden;
+  fc1.alpha = params.alpha;
+  fc1.beta = params.beta;
+  fc1.limit = params.limit;
+
+  status = LaunchFc1(fc1, params.hidden, static_cast<int>(total_routes), stream);
+  if (status != cudaSuccess) {
+    return true;
+  }
+
+  Params fc2{};
+  fc2.input = params.activation;
+  fc2.out = params.fc2_partial;
+  fc2.weights = params.fc2.weights;
+  fc2.scales = static_cast<const __nv_bfloat16*>(params.fc2.scales);
+  fc2.bias = static_cast<const __nv_bfloat16*>(params.fc2.bias);
+  fc2.experts = params.experts;
+  fc2.total_routes = static_cast<int>(total_routes);
+  fc2.num_experts = params.num_experts;
+  fc2.top_k = params.top_k;
+  fc2.n = params.hidden;
+  fc2.k = params.intermediate;
+
+  status = LaunchFc2(fc2, params.intermediate, static_cast<int>(total_routes), stream);
+  return true;
+}
+
+#endif  // __CUDACC__
+
+}  // namespace int3_tc
+}  // namespace cuda
+}  // namespace contrib
+}  // namespace onnxruntime

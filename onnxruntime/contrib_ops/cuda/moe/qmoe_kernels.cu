@@ -4,6 +4,7 @@
 
 #include "contrib_ops/cuda/moe/qmoe_kernels.h"
 #include "contrib_ops/cuda/moe/qmoe_fused_route.cuh"
+#include "contrib_ops/cuda/moe/qmoe_int3_tc.cuh"
 
 #include <cuda_bf16.h>
 #include <cuda_fp8.h>
@@ -3209,6 +3210,16 @@ cudaError_t LaunchInt3Typed(const Int3MoeParams& params, cudaStream_t stream) {
 
   if (kernel != Int3DecodeKernel::kScalar) {
     if (kernel == Int3DecodeKernel::kFastVectorized) {
+      if constexpr (std::is_same_v<T, __nv_bfloat16>) {
+        cudaError_t tc_status = cudaSuccess;
+        if (int3_tc::TryLaunchBf16(params, stream, tc_status)) {
+          if (tc_status != cudaSuccess) return tc_status;
+          const dim3 tc_fin_grid(static_cast<unsigned>((params.hidden / 8 + 127) / 128),
+                                 static_cast<unsigned>(params.rows));
+          FinalizeRoutesVec8Kernel<T><<<tc_fin_grid, 128, 0, stream>>>(params);
+          return cudaGetLastError();
+        }
+      }
       const size_t route_slots = params.route_groups != nullptr ? 2 : 1;
       const size_t fc1_vec_smem = route_slots * static_cast<size_t>(params.hidden) * sizeof(T);
       const size_t fc2_vec_smem = route_slots * static_cast<size_t>(params.intermediate) * sizeof(T);
