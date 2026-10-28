@@ -17,6 +17,7 @@
 
 #ifdef USE_WEBGPU
 #include "core/providers/webgpu/math/binary_elementwise_broadcast_utils.h"
+#include "core/providers/webgpu/webgpu_provider_options.h"
 #endif
 
 namespace onnxruntime {
@@ -209,6 +210,40 @@ TEST(MathOpTest, Pow_BroadcastBase_Float16_WebGpu) {
   TestPowBroadcast<MLFloat16, MLFloat16>({2, 1}, MakeMLFloat16({-2.0f, 3.0f}),
                                          {2, 4}, MakeMLFloat16({0.0f, 1.0f, 2.0f, 3.0f, 0.0f, 1.0f, 2.0f, 3.0f}),
                                          {2, 4}, MakeMLFloat16({1.0f, -2.0f, 4.0f, -8.0f, 1.0f, 3.0f, 9.0f, 27.0f}));
+}
+
+namespace {
+// Pow with an int64 exponent, on a WebGPU EP with int64 enabled (as WebNN configures it). WebNN lowers
+// reduceSumSquare over no axes (including any 0-D input) to Pow(x, int64 2).
+template <typename Base>
+void TestPowInt64Exponent(const std::vector<int64_t>& base_shape, const std::vector<Base>& base,
+                          const std::vector<int64_t>& exponent_shape, const std::vector<int64_t>& exponent,
+                          const std::vector<int64_t>& output_shape, const std::vector<Base>& expected) {
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto webgpu_ep = WebGpuExecutionProviderWithOptions(config_options);
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU execution provider is not enabled in this build.";
+  }
+  SessionOptions options;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+
+  OpTester test("Pow", 15);
+  test.AddInput<Base>("X", base_shape, base);
+  test.AddInput<int64_t>("Y", exponent_shape, exponent, /*is_initializer=*/true);
+  test.AddOutput<Base>("Z", output_shape, expected);
+  test.Config(options).ConfigEp(std::move(webgpu_ep)).RunWithConfig();
+}
+}  // namespace
+
+TEST(MathOpTest, Pow_Int64Exponent_WebGpu) {
+  TestPowInt64Exponent<float>({}, {-3.5f}, {}, {2}, {}, {12.25f});
+  TestPowInt64Exponent<float>({2, 3}, {-3.0f, -1.5f, 0.0f, 0.5f, 2.0f, 4.0f}, {}, {2}, {2, 3},
+                              {9.0f, 2.25f, 0.0f, 0.25f, 4.0f, 16.0f});
+  TestPowInt64Exponent<float>({2, 4}, {-2.0f, -1.0f, 0.0f, 2.0f, -3.0f, -2.0f, 1.0f, 3.0f}, {2, 1}, {3, 2}, {2, 4},
+                              {-8.0f, -1.0f, 0.0f, 8.0f, 9.0f, 4.0f, 1.0f, 9.0f});
+  TestPowInt64Exponent<MLFloat16>({5}, MakeMLFloat16({-3.0f, -1.5f, 0.0f, 0.5f, 2.0f}), {}, {2}, {5},
+                                  MakeMLFloat16({9.0f, 2.25f, 0.0f, 0.25f, 4.0f}));
 }
 
 namespace {

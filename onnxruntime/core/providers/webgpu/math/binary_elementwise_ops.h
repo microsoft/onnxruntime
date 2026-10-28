@@ -77,7 +77,8 @@ class BinaryElementwise : public WebGpuKernel {
 // Registers the binary elementwise ops (Add, Sub, Mul, Div, Max, Min, Equal, Greater, Less,
 // GreaterOrEqual, LessOrEqual, Pow, PRelu, And, Or, Xor) through a single path. int64 support (behind
 // the enableInt64 provider option) is enabled for the arithmetic/comparison ops whose i32 shader
-// semantics are meaningful; Pow int64 is a known gap (TODO) and PRelu/And/Or/Xor have no int64 form.
+// semantics are meaningful; Pow takes an int64 exponent but not an int64 base (TODO) and PRelu/And/Or/Xor
+// have no int64 form.
 void RegisterBinaryElementwiseKernels(KernelRegistry& kernel_registry, bool enable_int64);
 
 // Variadic element-wise operator (e.g. Max, Min) that accepts 1..N inputs with
