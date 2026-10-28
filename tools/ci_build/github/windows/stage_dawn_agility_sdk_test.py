@@ -69,7 +69,7 @@ class StageDawnAgilitySdkTest(unittest.TestCase):
         args = self.run.call_args.args[0]
         self.assertEqual(args[:3], [self.which.return_value, "install", "Microsoft.Direct3D.D3D12"])
         self.assertEqual(args[args.index("-Version") + 1], "1.721.3-preview")
-        self.assertEqual(args[args.index("-ConfigFile") + 1], str(self.config))
+        self.assertEqual(args[args.index("-ConfigFile") + 1], str(self.config.resolve()))
         self.assertEqual(args[args.index("-PackageSaveMode") + 1], "nupkg")
         self.assertEqual(args[args.index("-DependencyVersion") + 1], "Ignore")
         for flag in ("-NonInteractive", "-ExcludeVersion"):
