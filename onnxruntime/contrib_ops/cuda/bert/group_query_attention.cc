@@ -720,9 +720,9 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
       parameters.seqlen_present_kv_cache,
       parameters.is_windowed_kv_cache));
 
-  // When total_sequence_length is device-resident, helper validation cannot
-  // distinguish a first prompt from a later multi-token chunk and reports it
-  // as non-first. Use the chunked-prefill policy for that existing behavior.
+  // A device-resident total length leaves the helper's first-prompt flag false:
+  // even a first prompt uses decode for one token or chunked prefill otherwise.
+  // The estimator admits these classifier outcomes without a host scalar read.
   const GQAExecutionPhase execution_phase =
       ClassifyGQAExecutionPhase(
           parameters.is_first_prompt, parameters.sequence_length);
