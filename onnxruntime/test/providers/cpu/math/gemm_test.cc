@@ -3,6 +3,7 @@
 
 #include "gtest/gtest.h"
 #include <array>
+#include <cmath>
 #include <type_traits>
 #include "core/mlas/inc/mlas.h"
 #include "core/framework/run_options.h"
@@ -195,6 +196,53 @@ TYPED_TEST(CudaGemmBiasBroadcastTest, Rank0ScalarBias) {
                                           false, false, 0.5f, beta);
     }
   }
+}
+
+TEST(GemmOpTest, ZeroKRespectsSignedZero) {
+  for (float alpha : {-1.0f, 1.0f}) {
+    for (bool initializer : {false, true}) {
+      SCOPED_TRACE(::testing::Message() << "alpha=" << alpha << " initializer=" << initializer);
+      OpTester test("Gemm", 13);
+      test.AddAttribute("alpha", alpha);
+      test.AddInput<float>("A", {1, 0}, std::vector<float>{});
+      test.AddInput<float>("B", {0, 4}, std::vector<float>{}, initializer);
+      test.AddInput<float>("C", {4}, {-0.0f, 0.0f, -0.0f, 0.0f});
+      test.AddOutput<float>("Y", {1, 4}, {0.0f, 0.0f, 0.0f, 0.0f});
+      test.SetCustomOutputVerifier([alpha](const std::vector<OrtValue>& fetches, const std::string&) {
+        const float* values = fetches[0].Get<Tensor>().Data<float>();
+        for (size_t i = 0; i < 4; ++i) {
+          EXPECT_EQ(values[i], 0.0f);
+          EXPECT_EQ(std::signbit(values[i]), alpha < 0 && i % 2 == 0);
+        }
+      });
+      test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+    }
+  }
+}
+
+TEST(GemmOpTest, ZeroKScalesBias) {
+  for (bool initializer : {false, true}) {
+    SCOPED_TRACE(initializer);
+    OpTester test("Gemm", 13);
+    test.AddAttribute("beta", 2.0f);
+    test.AddInput<float>("A", {1, 0}, std::vector<float>{});
+    test.AddInput<float>("B", {0, 4}, std::vector<float>{}, initializer);
+    test.AddInput<float>("C", {4}, {1.5f, -2.0f, 0.0f, -0.0f});
+    test.AddOutput<float>("Y", {1, 4}, {3.0f, -4.0f, 0.0f, 0.0f});
+    test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+  }
+}
+
+TEST(GemmOpTest, ZeroKScalesBiasFloat16) {
+  OpTester test("Gemm", 13);
+  test.AddAttribute("beta", 2.0f);
+  test.AddInput<MLFloat16>("A", {1, 0}, {});
+  test.AddInput<MLFloat16>("B", {0, 2}, {});
+  test.AddInput<MLFloat16>("C", {2}, {MLFloat16(1.5f), MLFloat16(-2.0f)});
+  test.AddOutput<MLFloat16>("Y", {1, 2}, {MLFloat16(3.0f), MLFloat16(-4.0f)});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.ConfigEps(std::move(execution_providers)).RunWithConfig();
 }
 
 // Only CUDA, CoreML and XNNPack kernels have float 16 support
