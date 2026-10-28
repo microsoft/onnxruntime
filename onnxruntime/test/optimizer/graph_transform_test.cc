@@ -97,6 +97,7 @@
 #include "test/common/tensor_op_test_utils.h"
 #include "test/compare_ortvalue.h"
 #include "test/unittest_util/framework_test_utils.h"
+#include "test/optimizer/fusion_test_util.h"
 #include "test/optimizer/graph_transform_test_fixture.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/test_environment.h"
@@ -4556,11 +4557,25 @@ TEST_F(GraphTransformationTests, NoFuseNhwcConvGeluForCpuEp) {
   ASSERT_STATUS_OK(RunConvActivationFusion(build_test_case, *logger_, ExpectNotFused("Gelu"), 20));
 }
 
-#if defined(USE_WEBGPU)
-TEST_F(GraphTransformationTests, WebGpuConvMulReluTanhPreservesBothActivations) {
-  if (!DefaultWebGpuExecutionProvider()) {
-    GTEST_SKIP() << "WebGPU EP unavailable in this build.";
+struct ConvActivationFusionExecutionTestCase {
+  const char* name;
+  std::function<std::unique_ptr<IExecutionProvider>()> ep_factory;
+  const char* fused_op_type;
+  const char* fused_domain;
+};
+
+class ConvActivationFusionExecutionTests
+    : public GraphTransformationTests,
+      public ::testing::WithParamInterface<ConvActivationFusionExecutionTestCase> {};
+
+TEST_P(ConvActivationFusionExecutionTests, ConvMulReluTanhPreservesBothActivations) {
+  const auto& test_case = GetParam();
+  auto ep = test_case.ep_factory();
+  if (!ep) {
+    GTEST_SKIP() << test_case.name << " EP unavailable in this build.";
   }
+  const std::string ep_type = ep->Type();
+  ep.reset();
 
   auto build_test_case = [](ModelTestBuilder& builder) {
     auto* input = builder.MakeInput<float>({1, 3, 2, 2},
@@ -4582,34 +4597,45 @@ TEST_F(GraphTransformationTests, WebGpuConvMulReluTanhPreservesBothActivations) 
     builder.AddNode("Tanh", {relu_out}, {output});
   };
 
-  auto check = [](InferenceSessionWrapper& session) {
+  auto check = [&test_case, &ep_type](InferenceSessionWrapper& session) {
     auto op_counts = CountOpsInGraph(session.GetGraph());
     EXPECT_EQ(op_counts["Relu"], 0) << "ConstantFolding and Relu fusion must both run";
     EXPECT_EQ(op_counts["Mul"], 0) << "ConvMulFusion must run";
     EXPECT_EQ(op_counts["Tanh"], 1) << "Tanh must remain after the fused Relu";
-    bool found_conv = false;
+    int fused_conv_count = 0;
     for (const auto& node : session.GetGraph().Nodes()) {
-      EXPECT_EQ(node.GetExecutionProviderType(), kWebGpuExecutionProvider);
-      if (node.OpType() == "Conv") {
-        found_conv = true;
-        EXPECT_EQ(node.Domain(), kMSInternalNHWCDomain);
+      EXPECT_EQ(node.GetExecutionProviderType(), ep_type);
+      if (node.OpType() == test_case.fused_op_type && node.Domain() == test_case.fused_domain) {
+        ++fused_conv_count;
         const auto* activation = graph_utils::GetNodeAttribute(node, "activation");
         ASSERT_NE(activation, nullptr);
         EXPECT_EQ(activation->s(), "Relu");
       }
     }
-    EXPECT_TRUE(found_conv);
+    EXPECT_EQ(fused_conv_count, 1);
   };
 
-  RunWebGpuFusionTransformerTest(
+  RunFusionTransformerTest(
       build_test_case, check, TransformerLevel::Level1, TransformerLevel::Level2, 17,
       /*per_sample_tolerance=*/1e-5, /*relative_per_sample_tolerance=*/1e-5,
-      /*transformer=*/nullptr, []() { return DefaultWebGpuExecutionProvider(); },
-      [](SessionOptions& options) {
-        ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+      /*transformer=*/nullptr, test_case.ep_factory,
+      [&ep_type](SessionOptions& options) {
+        if (ep_type != kCpuExecutionProvider) {
+          ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+        }
       });
 }
 
+INSTANTIATE_TEST_SUITE_P(
+    ExecutionProviders, ConvActivationFusionExecutionTests,
+    ::testing::Values(
+        ConvActivationFusionExecutionTestCase{
+            "CPU", []() { return DefaultCpuExecutionProvider(); }, "FusedConv", kMSDomain},
+        ConvActivationFusionExecutionTestCase{
+            "WebGPU", []() { return DefaultWebGpuExecutionProvider(); }, "Conv", kMSInternalNHWCDomain}),
+    [](const ::testing::TestParamInfo<ConvActivationFusionExecutionTestCase>& info) { return info.param.name; });
+
+#if defined(USE_WEBGPU)
 namespace {
 
 using ConvActivationBuilder = std::function<void(ModelTestBuilder&, NodeArg*, NodeArg*)>;
