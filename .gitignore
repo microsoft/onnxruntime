@@ -58,10 +58,6 @@ onnxruntime/python/version_info.py
 # clangd
 .cache/
 compile_commands.json
-# Rust specific
-rust/**/target
-rust/**/Cargo.lock
-rust/onnxruntime/synset.txt
 
 # Python
 
