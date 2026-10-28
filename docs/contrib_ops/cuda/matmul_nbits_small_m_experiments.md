@@ -223,9 +223,15 @@ outside these windows and is not enabled.
 86 representative launches x 3 rounds (258 debug tile choices) through the actual dispatcher header
 matched the windows for all four FP16/BF16 x INT4/INT8 combinations, and production, forced-`CtaN = 2`,
 and forced-`CtaN = 4` outputs were bit-identical. `M = 7` and `M = 9` keep `CtaN = 4`, and a
-bias-enabled BF16/INT4 launch at N = 4320 keeps `CtaN = 4`. The A100 test (a `cudaGetDevice` call plus
-per-thread cached device attributes) runs only for `M = 8` launches of eligible kernels; it added
-0.08-0.11 us (about 3%) of CPU enqueue time per warm launch and no device time.
+bias-enabled BF16/INT4 launch at N = 4320 keeps `CtaN = 4`. The caller reports the device in
+`Params::device_sm` and `Params::device_sm_count`; the dispatcher makes no CUDA runtime call (0
+`cudaGetDevice` / `cudaDeviceGetAttribute` calls over cold, 1,000 warm, `M = 7` / `M = 9`, and bias-enabled
+launches), and a launch that reports no device gets the device-independent cutoffs. Warm CPU enqueue time of
+the dispatched launch exceeds a forced launch of the same tile by 0.003-0.022 us (0.1-0.8%; median paired
+delta per case, 750 paired trials over 10 cases) and device time is unchanged (median paired ratio
+0.9994-1.0005). An earlier revision that queried the device inside the dispatcher (`cudaGetDevice` plus
+per-thread cached attributes) added 0.08-0.11 us (about 3%) per warm launch, so the query was moved out of
+the launch path.
 
 ### Caveats
 

@@ -779,6 +779,12 @@ selects the narrow tile as follows:
 | A100 (SM 8.0, 108 SMs) | `3456 < N <= 4320`, or `K <= 3072` and `1728 < N <= 2560` | `864 < N <= 1304` |
 | Other devices | `N / 16 <= 320` | `N / 8 <= 160` |
 
+The dispatcher does not query the device. The caller reports it in
+`Params::device_sm` (`major * 10 + minor`) and `Params::device_sm_count`;
+`MatMulNBits` and its tactic profiler fill both from the execution provider's
+device properties. A caller that leaves them at 0 gets the "Other devices" rule.
+The A100 rule needs both values, because an A30 is also SM 8.0 but has 56 SMs.
+
 - **A100.** The windows have an upper bound because more blocks help only until
   the narrow tile crosses a resident-block wave boundary: five 4-bit narrow
   blocks fit per SM, so `N = 4320` fills all `108 * 5` slots and `N >= 4336`
@@ -902,9 +908,12 @@ present. `ComputeInternal` then:
   the four `*M8NarrowTile` fixtures check the executed `CtaN` against the
   dispatch rule of the device they run on (the A100 windows on an A100) and
   compare `M = 8` bitwise with two `M = 4` launches and with the CUTLASS
-  reference. `FpAIntBGemvTest.A100M8DispatchUsesMeasuredWindows` and
-  `FpAIntBGemvTest.OtherDevicesKeepM8DispatchCutoffs` evaluate `PickM8GemvCtaN`
-  for both device classes and are independent of the GPU model.
+  reference; they also check that a launch that does not report its device uses
+  the device-independent cutoffs. `FpAIntBGemvTest.A100M8DispatchUsesMeasuredWindows`,
+  `FpAIntBGemvTest.OtherDevicesKeepM8DispatchCutoffs` and
+  `FpAIntBGemvTest.A100DeviceRequiresMatchingSmAndSmCount` evaluate
+  `PickM8GemvCtaN` and the A100 predicate for both device classes and are
+  independent of the GPU model.
 - GEMV profiling baselines and methodology are recorded in
   [qmoe_gemv_experiments.md](qmoe_gemv_experiments.md) and, for small-`M`
   MatMulNBits GEMV, in

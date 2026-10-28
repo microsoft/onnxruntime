@@ -419,12 +419,22 @@ class KernelTestFixture : public ::testing::Test {
     d_bias_->from_cpu(h_bias_.data());
   }
 
+  // Reports the device that runs the test to the GEMV dispatcher, as MatMulNBits and the tactic profiler do.
+  void ReportDevice(wo::Params& params) const {
+    params.device_sm = device_prop_.major * 10 + device_prop_.minor;
+    params.device_sm_count = device_prop_.multiProcessorCount;
+  }
+
   // Launches the zero-point-free GEMV once with debug logging and returns the CtaN column tile it reports.
-  int GemvLaunchCtaN() {
+  // Without a reported device the dispatcher must use its device-independent cutoffs.
+  int GemvLaunchCtaN(bool report_device = true) {
     static_assert(QuantOp == cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY);
     wo::Params params(d_act_->data(), nullptr, d_weight_->data(), d_scales_->data(), nullptr, nullptr,
                       d_out_->data(), 1.f, m_, n_, k_, block_size_, KT);
     params.debug = true;
+    if (report_device) {
+      ReportDevice(params);
+    }
     const int kernel_arch = GetKernelArch(onnxruntime::llm::common::getSMVersion());
     testing::internal::CaptureStdout();
     try {
@@ -452,6 +462,7 @@ class KernelTestFixture : public ::testing::Test {
                         d_scales_->data(), nullptr, nullptr,
                         d_out_->data<AType>() + static_cast<size_t>(first_row) * n_, 1.f, rows, n_, k_,
                         block_size_, KT);
+      ReportDevice(params);
       wo::kernel_launcher(kernel_arch, params, s_);
     };
     // Start from a NaN pattern so that an output that is never written cannot match by accident.
@@ -473,13 +484,26 @@ class KernelTestFixture : public ::testing::Test {
     return finite && std::memcmp(h_out1_.data(), h_out2_.data(), h_out1_.size() * sizeof(AType)) == 0;
   }
 
-  // For each K and {M, N, expected CtaN} case, checks the column tile the dispatcher launches, the result against
-  // the CUTLASS reference, and (for M = 8) that it equals two M = 4 launches bit for bit. The fixture is scale-only,
-  // so the weights always use the SM80-interleaved layout (also on Hopper), the only layout with a narrow tile.
+  // The device the A100 M = 8 windows are qualified on: A100 (SM 8.0, 108 SMs). A30 is also SM 8.0 but has 56 SMs.
   bool UsesA100M8Tiles() const {
     return device_prop_.major == 8 && device_prop_.minor == 0 && device_prop_.multiProcessorCount == 108;
   }
 
+  // Tile-only check that a caller that does not report its device gets the device-independent cutoffs, also on an A100.
+  void CheckUnreportedDeviceTiles(const std::vector<std::tuple<int, int, int>>& cases,
+                                  const std::vector<int>& k_values = {1024, 4096}) {
+    for (const int k : k_values) {
+      for (const auto& [m, n, expected_cta_n] : cases) {
+        SCOPED_TRACE(testing::Message() << "unreported device M=" << m << " N=" << n << " K=" << k);
+        InitBuffers(m, n, k, kIsInt2 ? 64 : 32);
+        EXPECT_EQ(GemvLaunchCtaN(false), expected_cta_n);
+      }
+    }
+  }
+
+  // For each K and {M, N, expected CtaN} case, checks the column tile the dispatcher launches, the result against
+  // the CUTLASS reference, and (for M = 8) that it equals two M = 4 launches bit for bit. The fixture is scale-only,
+  // so the weights always use the SM80-interleaved layout (also on Hopper), the only layout with a narrow tile.
   void CheckGemvTiles(const std::vector<std::tuple<int, int, int>>& cases,
                       const std::vector<int>& k_values = {1024, 4096}) {
     static_assert(GetKernelArch(90) == 80, "The narrow M = 8 tile exists only in the SM80-interleaved layout");
@@ -517,6 +541,7 @@ class KernelTestFixture : public ::testing::Test {
     wo::Params params(d_act_->data(), p_act_scale, d_weight_->data(), d_scales_->data(), p_zeros, p_bias,
                       d_out_->data(), 1.f, m_, n_, k_, block_size_, KT);
     params.decode_variant = decode_variant;
+    ReportDevice(params);
 
     //------------------------
     // Run FpA_IntB_Gemv CUDA kernel
@@ -948,6 +973,16 @@ TEST(FpAIntBGemvTest, A100M8DispatchUsesMeasuredWindows) {
   }
 }
 
+TEST(FpAIntBGemvTest, A100DeviceRequiresMatchingSmAndSmCount) {
+  EXPECT_TRUE(wo::IsA100Device(80, 108));
+  EXPECT_FALSE(wo::IsA100Device(80, 56));  // A30: same SM 8.0, fewer SMs
+  EXPECT_FALSE(wo::IsA100Device(86, 108));
+  EXPECT_FALSE(wo::IsA100Device(90, 132));
+  EXPECT_FALSE(wo::IsA100Device(0, 0));  // a caller that does not report its device
+  EXPECT_FALSE(wo::IsA100Device(80, 0));
+  EXPECT_FALSE(wo::IsA100Device(0, 108));
+}
+
 TEST(FpAIntBGemvTest, OtherDevicesKeepM8DispatchCutoffs) {
   for (int k : {1024, 4096, 8192}) {
     for (const auto& [n, expected] : std::vector<std::pair<int, int>>{
@@ -1209,6 +1244,7 @@ TEST_F(Fp16Int4SymmetricGroupwiseTest, Int4Group32SymmetricM8NarrowTile) {
     CheckGemvTiles(kInt4A100M8SmallKTileCases, {1024, 2048, 3072});
     CheckGemvTiles(kInt4A100M8LargeKTileCases, {4096, 8192});
   }
+  CheckUnreportedDeviceTiles(kInt4M8TileCases);
 }
 
 // Check the BF16 INT4 narrow tile, its grid cutoff and the M = 7 / 9 fallback against the CUTLASS reference.
@@ -1221,6 +1257,7 @@ TEST_F(Bf16Int4SymmetricGroupwiseTest, Int4Group32SymmetricM8NarrowTile) {
     CheckGemvTiles(kInt4A100M8SmallKTileCases, {1024, 2048, 3072});
     CheckGemvTiles(kInt4A100M8LargeKTileCases, {4096, 8192});
   }
+  CheckUnreportedDeviceTiles(kInt4M8TileCases);
 }
 
 // Check the FP16 INT8 narrow tile (N = 1280 is 160 default blocks), the first aligned N above the cutoff and the
@@ -1230,6 +1267,7 @@ TEST_F(Fp16Int8SymmetricGroupwiseTest, Int8Group32SymmetricM8NarrowTile) {
     GTEST_SKIP() << "FP16 INT8 GEMV requires SM " << kMinSupportedSm << " or later";
   }
   CheckGemvTiles(UsesA100M8Tiles() ? kInt8A100M8TileCases : kInt8M8TileCases);
+  CheckUnreportedDeviceTiles(kInt8M8TileCases);
 }
 
 // Check the BF16 INT8 narrow tile (N = 1280 is 160 default blocks), the first aligned N above the cutoff and the
@@ -1239,6 +1277,7 @@ TEST_F(Bf16Int8SymmetricGroupwiseTest, Int8Group32SymmetricM8NarrowTile) {
     GTEST_SKIP() << "BF16 INT8 GEMV requires SM 80 or later";
   }
   CheckGemvTiles(UsesA100M8Tiles() ? kInt8A100M8TileCases : kInt8M8TileCases);
+  CheckUnreportedDeviceTiles(kInt8M8TileCases);
 }
 
 // Check default dispatch and every legal geometry around the two-column grid.y limit.

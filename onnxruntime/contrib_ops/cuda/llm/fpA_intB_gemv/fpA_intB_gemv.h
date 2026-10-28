@@ -64,6 +64,12 @@ inline bool IsInt4DecodeGeometryLegal(int variant, int n, int k, int interleave)
          k >= 64 && k % 64 == 0 && n % (tile * interleave) == 0 && n / (tile * interleave) <= 65535;
 }
 
+// The only device whose M = 8 tile windows were measured: SM 8.0 with 108 SMs (A100 40 GB / 80 GB, PCIe or SXM).
+// The SM count separates it from the 56-SM A30, which is also SM 8.0.
+inline bool IsA100Device(int device_sm, int device_sm_count) {
+  return device_sm == 80 && device_sm_count == 108;
+}
+
 // A100 timings need both lower and upper bounds: more blocks help only until the narrow
 // tile crosses a resident-block wave boundary. Other devices retain their existing cutoffs.
 inline int PickM8GemvCtaN(bool is_a100, int m, int n, int k, int interleave, int base_cta_n) {
@@ -140,6 +146,11 @@ struct Params {
   bool wave_aware = false;
   bool debug = false;
   int decode_variant = 0;
+  // Device that runs the launch, reported by the caller (0 = unknown, which selects the device-independent
+  // cutoffs). The raw device values, not the packing arch passed to kernel_launcher. The dispatcher keys its
+  // M = 8 tile windows on them instead of querying the CUDA runtime on every launch.
+  int device_sm = 0;        // major * 10 + minor
+  int device_sm_count = 0;  // multiProcessorCount
 
   Params(ConstPointer _act, ConstPointer _act_scale, ConstPointer _weight, ConstPointer _scales, ConstPointer _zeros,
          ConstPointer _bias, Pointer _out, float _alpha, int _m, int _n, int _k, int _groupsize, KernelType _type,

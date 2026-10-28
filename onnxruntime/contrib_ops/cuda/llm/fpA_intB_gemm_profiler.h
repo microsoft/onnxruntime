@@ -120,6 +120,13 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
     mL2CacheBytes = l2CacheBytes;
   }
 
+  // Device that runs the profiled launches. The GEMV dispatcher keys its M = 8 tile windows on it, so the
+  // profiler times the same tile that MatMulNBits launches.
+  void setDeviceInfo(int sm, int smCount) {
+    mDeviceSm = sm;
+    mDeviceSmCount = smCount;
+  }
+
   // Attaches the process-global persistent tactic cache. A nullptr keeps the
   // in-process-only behavior (no disk reads/writes). A non-null `session_profile_map` replaces the
   // process-global profile map so this profiler deduplicates shapes within its own session while
@@ -196,6 +203,8 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
   int mArch = 0;
   int mDecodeInterleave = 0;
   size_t mL2CacheBytes = 0;
+  int mDeviceSm = 0;
+  int mDeviceSmCount = 0;
   std::atomic<size_t> mProfileWeightIndex{0};
   int mPairedGemvMode = 0;
   std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> mCache;
