@@ -19,6 +19,8 @@ using onnxruntime::webgpu::ComputeContext;
 class QMoE final : public MoE {
  public:
   QMoE(const OpKernelInfo& info) : MoE(info) {
+    ORT_ENFORCE(info.GetAttrOrDefault<std::string>("fp8_execution_profile", "native") == "native",
+                "WebGPU QMoE does not support fp8_execution_profile other than 'native'.");
     ORT_ENFORCE(info.GetAttrOrDefault<std::string>("activation_quantization", "none") == "none",
                 "WebGPU QMoE does not support dynamic FP8 activation quantization.");
     ORT_ENFORCE(info.GetAttr<int64_t>("expert_weight_bits", &expert_weight_bits_).IsOK());

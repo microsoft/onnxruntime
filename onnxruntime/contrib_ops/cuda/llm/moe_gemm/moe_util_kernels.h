@@ -15,6 +15,7 @@
  */
 
 #pragma once
+#include "contrib_ops/cuda/llm/moe_gemm/moe_expert_maps.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemm_kernels.h"
 #include "cutlass/gemm/gemm.h"
 #include "core/common/common.h"
@@ -37,21 +38,7 @@ namespace onnxruntime::llm::kernels {
 
 namespace cutlass_kernels {
 
-// Utility kernels used by the MoE runner to build expert maps, expand rows, and finalize routing.
-int64_t computeNumTokensPerBlock(const int64_t num_tokens, const int64_t num_experts_per_node);
-
-bool fusedBuildExpertMapsSortFirstToken(const int* token_selected_experts, int* permuted_row_to_unpermuted_row,
-                                        int* unpermuted_row_to_permuted_row, int* permuted_token_selected_experts,
-                                        int64_t* expert_first_token_offset, const int64_t num_tokens,
-                                        const int num_experts_per_node, const int experts_per_token, const int start_expert, const int end_expert,
-                                        cudaStream_t stream);
-
-void threeStepBuildExpertMapsSortFirstToken(const int* token_selected_experts, int* permuted_token_selected_experts,
-                                            int* permuted_row_to_unpermuted_row, int* unpermuted_row_to_permuted_row, int64_t* expert_first_token_offset,
-                                            int* blocked_expert_counts, int* blocked_expert_counts_cumsum, int* blocked_row_to_unpermuted_row,
-                                            const int64_t num_tokens, const int64_t num_experts_per_node, const int64_t num_experts_per_token,
-                                            const int start_expert_id, cudaStream_t stream);
-
+// Expansion and finalization helpers used by the MoE runner.
 template <class InputActivationsType, class ExpandedActivationsType>
 void expandInputRowsKernelLauncher(const InputActivationsType* unpermuted_input,
                                    ExpandedActivationsType* permuted_output, const float* unpermuted_scales, float* permuted_scales,

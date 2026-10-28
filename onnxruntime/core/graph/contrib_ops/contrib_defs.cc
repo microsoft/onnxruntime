@@ -1493,7 +1493,9 @@ constexpr const char* qMoE_ver1_doc = R"DOC(
       Without a positive block_size, FP8 uses the legacy per-expert fc*_global_scale inputs instead.
       Block-scaled FP8 does not use global scales. By default activations retain the input type (weight-only quantization).
       activation_quantization='dynamic_fp8' instead selects dynamic per-token K128 activation quantization,
-      with native FP8 dot products, FP32 block-scale accumulation and FP32 routed down-projection reduction.
+      with native FP8 dot products by default, FP32 block-scale accumulation and FP32 routed down-projection reduction.
+      fp8_execution_profile='fp16_compatible' explicitly selects tile-local FP16 dot products and the separately
+      specified routing, activation and reduction contract; FP8 storage and activation quantization are retained.
       On CUDA SM80-or-newer GPUs, weight-only SiLU/SwiGLU block-scaled FP8 uses fused GEMV/GEMM by default.
       These kernels decode and scale FP8 tiles on chip without materializing full FP16/BF16 weight buffers.
       Set ORT_ENABLE_FP8_FUSED=0 before session creation to select the compact dense-dequant fallback.
@@ -1658,8 +1660,43 @@ static void QMoEDynamicFp8Inference(ONNX_NAMESPACE::InferenceContext& ctx) {
 
 static void QMoETypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   using namespace ONNX_NAMESPACE;
+  const auto* execution_profile = ctx.getAttribute("fp8_execution_profile");
+  const std::string profile = execution_profile ? execution_profile->s() : "native";
+  if (profile != "native" && profile != "fp16_compatible") {
+    fail_shape_inference("QMoE fp8_execution_profile must be 'native' or 'fp16_compatible'.");
+  }
   const auto* activation_quantization = ctx.getAttribute("activation_quantization");
   const std::string mode = activation_quantization ? activation_quantization->s() : "none";
+  if (profile == "fp16_compatible") {
+    const auto* activation = ctx.getAttribute("activation_type");
+    if (mode != "dynamic_fp8" || getAttribute(ctx, "k", 1) != 8 ||
+        getAttribute(ctx, "normalize_routing_weights", 0) != 1 ||
+        getAttribute(ctx, "swiglu_fusion", 0) != 0 || !activation || activation->s() != "silu") {
+      fail_shape_inference(
+          "QMoE fp16_compatible requires dynamic_fp8, k=8, normalize_routing_weights=1, "
+          "activation_type='silu' and swiglu_fusion=0.");
+    }
+    const auto* x = ctx.getInputType(0);
+    if (x && x->has_tensor_type() && x->tensor_type().elem_type() &&
+        x->tensor_type().elem_type() != TensorProto::FLOAT16 &&
+        x->tensor_type().elem_type() != TensorProto::BFLOAT16) {
+      fail_type_inference("QMoE fp16_compatible requires FLOAT16 or BFLOAT16 activations.");
+    }
+    for (size_t index : {8, 9}) {
+      if (index >= ctx.getNumInputs() || !ctx.getInputType(index)) {
+        fail_shape_inference("QMoE fp16_compatible requires separate gate/up weights and scales.");
+      }
+    }
+    for (size_t index : {1, 2, 5, 8}) {
+      if (hasInputShape(ctx, index)) {
+        const auto& shape = getInputShape(ctx, index);
+        const int axis = index == 1 ? 1 : 0;
+        if (shape.dim_size() > axis && shape.dim(axis).has_dim_value() && shape.dim(axis).dim_value() != 256) {
+          fail_shape_inference("QMoE fp16_compatible requires exactly 256 experts.");
+        }
+      }
+    }
+  }
   if (mode != "none" && mode != "dynamic_fp8") {
     fail_shape_inference("QMoE activation_quantization must be 'none' or 'dynamic_fp8'.");
   }
@@ -1874,6 +1911,25 @@ static OpSchema QMoESchema() {
       "The INT3 profile requires integer quantization.";
   auto schema = OpSchema()
                     .SetDoc(std::string(qMoE_ver1_doc) + qMoE_int3_doc)
+                    .Attr("fp8_execution_profile",
+                          "'native' (default) preserves existing execution. 'fp16_compatible' is an opt-in "
+                          "dynamic_fp8 numeric contract using tile-local FP8-to-FP16 conversion and FP16 MMA, "
+                          "not native FP8 compute. Requires SM90, FLOAT16/BFLOAT16 activations, 256 experts, "
+                          "k=8, normalize_routing_weights=1, activation_type='silu', swiglu_fusion=0 and "
+                          "separate gate/up projections. Uses FP32 softmax, threshold-gather top-8 with "
+                          "32-entry unstable bitonic sorting, FP32 adjacent-pair normalization before typed "
+                          "routing-weight rounding (matching PyTorch 2.8 CUDA routing). Within each K128 block, "
+                          "FP16 MMA visits K16 fragments with indices "
+                          "floor(inner/32)*32 + half_k*16 + thread*4 + (inner%32)/8 + byte, "
+                          "where inner=0,16,...,112, half_k=0,1, thread=0,...,3 and byte=0,1. "
+                          "FP32 K128 partials are multiplied by activation then weight scales before accumulation. "
+                          "Gate/up narrow once to the input type. SiLU uses exp2.approx(-gate*float32(log2(e))) "
+                          "and div.full(1,1+exp), then gate*sigmoid*up is quantized without an extra typed round. "
+                          "Weighted FC2 outputs remain FP32. Final reduction is "
+                          "(((d0+d4)+(d1+d5))+(d2+d6))+(d3+d7), then one output cast. "
+                          "Other dynamic_fp8 contracts and routing capacity limits still apply. "
+                          "Unsupported profiles are rejected; there is no native or weight-only fallback.",
+                          AttributeProto::STRING, std::string("native"))
                     .Attr("activation_quantization",
                           "'none' (default) retains weight-only execution. 'dynamic_fp8' quantizes consecutive "
                           "groups of 128 features per token to saturating nearest-even E4M3FN "
@@ -1884,7 +1940,8 @@ static OpSchema QMoESchema() {
                           "FC2 stays FP32, multiplies routing weights rounded to the input type, and reduces "
                           "in FP32 before the final output cast. Biases, supplied activation/global scales, "
                           "zero points, router_weights and nonstandard activation parameters are unsupported. "
-                          "CUDA requires native FP8 MMA (SM89+) and at most 65535 token/expert pairs.",
+                          "The native CUDA profile requires FP8 MMA (SM89+). All CUDA profiles support "
+                          "at most 65535 token/expert pairs.",
                           AttributeProto::STRING, std::string("none"))
                     .Attr("activation_type",
                           "Activation function to use. Choose from relu, gelu, silu, swiglu and identity. CUDA also supports relu2 (squared ReLU). Default is relu",

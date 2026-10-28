@@ -399,6 +399,17 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
   ORT_ENFORCE(activation_quantization == "none" || activation_quantization == "dynamic_fp8",
               "activation_quantization must be 'none' or 'dynamic_fp8'.");
   dynamic_fp8_ = activation_quantization == "dynamic_fp8";
+  const auto fp8_execution_profile =
+      op_kernel_info.GetAttrOrDefault<std::string>("fp8_execution_profile", "native");
+  ORT_ENFORCE(fp8_execution_profile == "native" || fp8_execution_profile == "fp16_compatible",
+              "QMoE fp8_execution_profile must be 'native' or 'fp16_compatible'.");
+  fp16_compatible_ = fp8_execution_profile == "fp16_compatible";
+  ORT_ENFORCE(!fp16_compatible_ ||
+                  (dynamic_fp8_ && sm_ == 90 && k_ == 8 && normalize_routing_weights_ &&
+                   swiglu_fusion_ == 0 &&
+                   activation_type_ == onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Silu),
+              "QMoE fp16_compatible requires dynamic_fp8, SM90, k=8, normalize_routing_weights=1, "
+              "activation_type='silu' and separate gate/up projections (swiglu_fusion=0).");
   ORT_ENFORCE(!dynamic_fp8_ ||
                   (quant_type_ == "fp8" && block_size_ == 128 && expert_weight_bits_ == 8 && !is_mixed_width &&
                    sm_ >= 89 && !use_sparse_mixer_ &&
@@ -480,6 +491,8 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
                       onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_FP8_FUSED", 1) != 0;
   ORT_ENFORCE(!dynamic_fp8_ || (enable_fp8_fused_ && QMoEDynamicFp8Supported()),
               "QMoE dynamic_fp8 requires fused execution and a CUDA kernel compiled for SM89 or newer.");
+  ORT_ENFORCE(!fp16_compatible_ || QMoEFp16CompatibleSupported(),
+              "QMoE fp16_compatible requires a CUDA kernel compiled for SM90.");
 
   using namespace onnxruntime::llm::kernels::cutlass_kernels;
 
@@ -491,6 +504,10 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
   bool is_fp16 = input_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16;
 #endif
   is_fp16_ = is_fp16;
+  ORT_ENFORCE(!fp16_compatible_ ||
+                  input_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16 ||
+                  input_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16,
+              "QMoE fp16_compatible requires FLOAT16 or BFLOAT16 activations.");
   ORT_ENFORCE(input_type != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT || dynamic_fp8_,
               "CUDA QMoE FLOAT input requires activation_quantization='dynamic_fp8'.");
   if (dynamic_fp8_) {
@@ -898,6 +915,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   const Tensor* fc2_experts_bias_optional = context->Input<Tensor>(7);
   const Tensor* fc3_experts_weights = context->Input<Tensor>(8);
   const bool split_fp8_fc1 = is_block_fp8 && fc3_experts_weights != nullptr;
+  ORT_RETURN_IF(fp16_compatible_ && !split_fp8_fc1,
+                "QMoE fp16_compatible requires separate gate/up weights and scales.");
   ORT_ENFORCE(fc3_experts_weights == nullptr || split_fp8_fc1,
               "QMoE in CUDA execution provider does not support separate fc3_experts_weights. "
               "Gate and up projection weights must be pre-concatenated into fc1, except for block-scaled FP8.");
@@ -1018,6 +1037,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                       "Block-scaled FP8 CUDA requires hidden_size and inter_size to be multiples of 8.");
     ORT_RETURN_IF(dynamic_fp8_ && (moe_params.hidden_size % 128 != 0 || moe_params.inter_size % 128 != 0),
                   "QMoE dynamic_fp8 requires hidden and intermediate sizes to be multiples of 128.");
+    ORT_RETURN_IF(fp16_compatible_ && moe_params.num_experts != 256,
+                  "QMoE fp16_compatible requires exactly 256 experts.");
     ORT_RETURN_IF_ERROR(moe_helper::CheckFp8BlockScale<Tensor>(
         context->Input<Tensor>(3), moe_params.num_experts, fc1_n, moe_params.hidden_size, block_size_, "fc1_scales"));
     ORT_RETURN_IF_ERROR(moe_helper::CheckFp8BlockScale<Tensor>(
@@ -1651,11 +1672,19 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
 
     // Fused routing remains limited to an untiled one-row request; a one-row final tile
     // continues using the same routing implementation as the preceding tiles.
-    if (!row_tile_plan.IsTiled() && !is_fp4_family && !use_packed_int && !is_block_fp8 &&
-        onnxruntime::llm::kernels::cutlass_kernels::isFusedMoeRoutingSupported(
-            tile_rows, static_cast<int>(moe_params.num_experts),
-            static_cast<int>(moe_params.num_experts) / parallelism_config.ep_size,
-            static_cast<int>(k_), parallelism_config.ep_size)) {
+    if (fp16_compatible_) {
+      if (is_fp16) {
+        LaunchQMoEFp16CompatibleRouting(static_cast<const half*>(tile_router_probs),
+                                        expert_scales, expert_indices, narrow<int>(tile_rows), stream);
+      } else {
+        LaunchQMoEFp16CompatibleRouting(static_cast<const __nv_bfloat16*>(tile_router_probs),
+                                        expert_scales, expert_indices, narrow<int>(tile_rows), stream);
+      }
+    } else if (!row_tile_plan.IsTiled() && !is_fp4_family && !use_packed_int && !is_block_fp8 &&
+               onnxruntime::llm::kernels::cutlass_kernels::isFusedMoeRoutingSupported(
+                   tile_rows, static_cast<int>(moe_params.num_experts),
+                   static_cast<int>(moe_params.num_experts) / parallelism_config.ep_size,
+                   static_cast<int>(k_), parallelism_config.ep_size)) {
       fused_routing.router_logits = tile_router_probs;
       fused_routing.token_selected_experts = expert_indices;
       fused_routing.token_final_scales = expert_scales;
@@ -1782,12 +1811,13 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
         params.fusion = fusion;
         const auto* tile_input = static_cast<const T*>(input->DataRaw()) + row_offset * hidden;
         if (dynamic_fp8_) {
-          LaunchQMoEDynamicFp8Quantize(tile_input, quantized.get(), activation_scales.get(), rows, hidden, 0, stream);
+          LaunchQMoEDynamicFp8Quantize(tile_input, quantized.get(), activation_scales.get(),
+                                       rows, hidden, 0, stream, fp16_compatible_);
           LaunchQMoEDynamicFp8Projection<T, T>(
               params, quantized.get(), activation_scales.get(), static_cast<T*>(projection.get()),
-              nullptr, nullptr, narrow<int>(k_), stream);
+              nullptr, nullptr, narrow<int>(k_), stream, fp16_compatible_);
           LaunchQMoEDynamicFp8Quantize(static_cast<const T*>(projection.get()), quantized.get(),
-                                       activation_scales.get(), routes, inter, fusion ? 2 : 1, stream);
+                                       activation_scales.get(), routes, inter, fusion ? 2 : 1, stream, fp16_compatible_);
           params.weights = static_cast<const uint8_t*>(fc2_experts_weights->DataRaw());
           params.scales = fc2_scale_tensor->DataRaw();
           params.up_weights = nullptr;
@@ -1798,10 +1828,11 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
           params.fusion = 0;
           LaunchQMoEDynamicFp8Projection<T, float>(
               params, quantized.get(), activation_scales.get(), static_cast<float*>(result.get()),
-              expert_scales, row_map.get(), narrow<int>(k_), stream);
+              expert_scales, row_map.get(), narrow<int>(k_), stream, fp16_compatible_);
           LaunchQMoEDynamicFp8Finalize(static_cast<const float*>(result.get()),
                                        static_cast<T*>(output->MutableDataRaw()) + row_offset * hidden,
-                                       unpermuted_row_to_permuted_row, rows, hidden, narrow<int>(k_), stream);
+                                       unpermuted_row_to_permuted_row, rows, hidden, narrow<int>(k_), stream,
+                                       fp16_compatible_);
           return;
         }
         if constexpr (!std::is_same_v<T, float>) {
@@ -1858,7 +1889,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                                       SafeInt<size_t>(max_routes) * hidden *
                                           (dynamic_fp8_ ? sizeof(float) : element_size) +
                                       quantized_elements + (quantized_elements / 128) * sizeof(float);
-      PrintQMoEKernelDebugInfo(dynamic_fp8_ ? "fp8_dynamic_mma" : (row_tile_plan.rows_per_tile > 8 ? "fp8_fused_gemm" : "fp8_fused_gemv"),
+      PrintQMoEKernelDebugInfo(fp16_compatible_ ? "fp8_fp16_compatible" : (dynamic_fp8_ ? "fp8_dynamic_mma" : (row_tile_plan.rows_per_tile > 8 ? "fp8_fused_gemm" : "fp8_fused_gemv")),
                                moe_params.num_rows, row_tile_plan.rows_per_tile, final_tile_rows,
                                max_routes, final_tile_rows * k_, 0, total_scratch_bytes + activation_bytes);
       std::cout << "QMoE FP8 ExpertCapacity=" << num_experts << " DequantWeightBytes=0" << std::endl;

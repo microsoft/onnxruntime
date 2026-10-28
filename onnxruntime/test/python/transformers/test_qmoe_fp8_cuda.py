@@ -7,6 +7,7 @@
 import json
 import os
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy
 import pytest
@@ -135,7 +136,15 @@ def create_fp8_moe_onnx_graph(
 
 
 def create_block_fp8_moe_graph(
-    tensors, top_k, onnx_dtype, block_size, fusion=0, normalize=1, initializers=False, activation_quantization="none"
+    tensors,
+    top_k,
+    onnx_dtype,
+    block_size,
+    fusion=0,
+    normalize=1,
+    initializers=False,
+    activation_quantization="none",
+    fp8_execution_profile="native",
 ):
     """Use runtime weights so the official 512-expert shape needs no >2GB protobuf."""
     names = [""] * 17
@@ -195,6 +204,8 @@ def create_block_fp8_moe_graph(
     )
     if activation_quantization != "none":
         node.attribute.append(helper.make_attribute("activation_quantization", activation_quantization))
+    if fp8_execution_profile != "native":
+        node.attribute.append(helper.make_attribute("fp8_execution_profile", fp8_execution_profile))
     graph = helper.make_graph(
         [node],
         "BlockFP8",
@@ -371,6 +382,8 @@ class TestQMoEBlockFP8(unittest.TestCase):
         row_tile_size=0,
         enable_cuda_graph=False,
         activation_quantization="none",
+        fp8_execution_profile="native",
+        provider_options=None,
     ):
         dtype = {
             torch.float32: TensorProto.FLOAT,
@@ -378,13 +391,24 @@ class TestQMoEBlockFP8(unittest.TestCase):
             torch.bfloat16: TensorProto.BFLOAT16,
         }[tensors["input"].dtype]
         model, input_types = create_block_fp8_moe_graph(
-            tensors, top_k, dtype, block, fusion, normalize, initializers, activation_quantization
+            tensors,
+            top_k,
+            dtype,
+            block,
+            fusion,
+            normalize,
+            initializers,
+            activation_quantization,
+            fp8_execution_profile,
         )
         options = onnxruntime.SessionOptions()
         options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
         options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
         options.add_session_config_entry("ep.cuda.qmoe_row_tile_size", str(row_tile_size))
         provider = resolve_cuda_plugin_ep("CUDAExecutionProvider")
+        if provider_options:
+            provider_name, existing_options = provider if isinstance(provider, tuple) else (provider, {})
+            provider = (provider_name, {**existing_options, **provider_options})
         if enable_cuda_graph:
             provider_name, provider_options = provider if isinstance(provider, tuple) else (provider, {})
             provider = (provider_name, {**provider_options, "enable_cuda_graph": "1"})
@@ -856,6 +880,217 @@ def test_dynamic_fp8_native_mma(capfd, monkeypatch, dtype, tokens, fusion):
     log = capfd.readouterr().out
     assert "fp8_dynamic_mma" in log
     assert "DequantWeightBytes=0" in log
+
+
+@pytest.mark.skipif(
+    not torch.cuda.is_available() or not has_fp8_qmoe or torch.cuda.get_device_capability() != (9, 0),
+    reason="SM90 CUDA FP8 QMoE required",
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("tokens", [1, 33])
+@pytest.mark.parametrize("row_tile_size", [0, 17])
+def test_fp16_compatible_profile(capfd, monkeypatch, dtype, tokens, row_tile_size):
+    monkeypatch.setenv("ORT_ENABLE_QMOE_KERNEL_DEBUG_INFO", "1")
+    tensors = TestQMoEBlockFP8._inputs(
+        hidden=256, inter=128, experts=256, tokens=tokens, dtype=dtype, scale_dtype=torch.float32
+    )
+    session = TestQMoEBlockFP8._session(
+        tensors,
+        top_k=8,
+        row_tile_size=row_tile_size,
+        initializers=tokens == 1,
+        activation_quantization="dynamic_fp8",
+        fp8_execution_profile="fp16_compatible",
+    )
+    actual = TestQMoEBlockFP8._execute(tensors, session=session)
+    expected = dynamic_fp8_reference(tensors, 0, 8) if tokens else torch.empty_like(tensors["input"])
+    torch.testing.assert_close(actual.float(), expected.float(), atol=0.0003, rtol=0.02)
+    log = capfd.readouterr().out
+    assert "fp8_fp16_compatible" in log
+    assert "DequantWeightBytes=0" in log
+
+
+@pytest.mark.skipif(
+    not torch.cuda.is_available() or not has_fp8_qmoe or torch.cuda.get_device_capability() != (9, 0),
+    reason="SM90 CUDA FP8 QMoE required",
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_fp16_compatible_empty_and_nondefault_stream(dtype):
+    stream = torch.cuda.Stream()
+    for tokens in (0, 1, 33, 1):
+        tensors = TestQMoEBlockFP8._inputs(
+            hidden=128, inter=128, experts=256, tokens=tokens, dtype=dtype, scale_dtype=torch.float32
+        )
+        session = TestQMoEBlockFP8._session(
+            tensors,
+            top_k=8,
+            activation_quantization="dynamic_fp8",
+            fp8_execution_profile="fp16_compatible",
+            provider_options={"user_compute_stream": str(stream.cuda_stream)},
+        )
+        actual = TestQMoEBlockFP8._execute(tensors, session=session)
+        expected = dynamic_fp8_reference(tensors, 0, 8)
+        torch.testing.assert_close(actual.float(), expected.float(), atol=0.0003, rtol=0.02)
+        stream.synchronize()
+        del session
+
+
+@pytest.mark.skipif(
+    not torch.cuda.is_available() or not has_fp8_qmoe or torch.cuda.get_device_capability() != (9, 0),
+    reason="SM90 CUDA FP8 QMoE required",
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_fp16_compatible_rank3_tiles_cross_batch_boundaries(dtype):
+    tensors = TestQMoEBlockFP8._inputs(
+        hidden=128, inter=128, experts=256, tokens=6, dtype=dtype, scale_dtype=torch.float32
+    )
+    expected = dynamic_fp8_reference(tensors, 0, 8)
+    tensors["input"] = tensors["input"].reshape(2, 3, 128)
+    session = TestQMoEBlockFP8._session(
+        tensors,
+        top_k=8,
+        row_tile_size=4,
+        activation_quantization="dynamic_fp8",
+        fp8_execution_profile="fp16_compatible",
+    )
+    actual = TestQMoEBlockFP8._execute(tensors, session=session)
+    assert actual.shape == (2, 3, 128)
+    torch.testing.assert_close(actual.reshape(6, 128).float(), expected.float(), atol=0.0003, rtol=0.02)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available() or not has_fp8_qmoe, reason="CUDA FP8 QMoE required")
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"fp8_execution_profile": "unknown"},
+        {"activation_quantization": "none"},
+        {"top_k": 7},
+        {"normalize": 0},
+        {"fusion": 1},
+        {"block": 64},
+    ],
+)
+def test_fp16_compatible_rejects_invalid_attributes(change):
+    tensors = TestQMoEBlockFP8._inputs(
+        hidden=128, inter=128, experts=256, tokens=1, dtype=torch.float16, scale_dtype=torch.float32
+    )
+    options = {
+        "top_k": 8,
+        "activation_quantization": "dynamic_fp8",
+        "fp8_execution_profile": "fp16_compatible",
+        **change,
+    }
+    with pytest.raises(Exception, match=r"QMoE|fp16_compatible"):
+        TestQMoEBlockFP8._session(tensors, **options)
+
+
+@pytest.mark.skipif(
+    not torch.cuda.is_available() or not has_fp8_qmoe or torch.cuda.get_device_capability() != (9, 0),
+    reason="SM90 CUDA FP8 QMoE required",
+)
+def test_fp16_compatible_rejects_disabled_fused_execution(monkeypatch):
+    tensors = TestQMoEBlockFP8._inputs(
+        hidden=128, inter=128, experts=256, tokens=1, dtype=torch.float16, scale_dtype=torch.float32
+    )
+    monkeypatch.setenv("ORT_ENABLE_FP8_FUSED", "0")
+    with pytest.raises(Exception, match="requires fused execution"):
+        TestQMoEBlockFP8._session(
+            tensors, top_k=8, activation_quantization="dynamic_fp8", fp8_execution_profile="fp16_compatible"
+        )
+
+
+@pytest.mark.skipif(
+    not torch.cuda.is_available() or not has_fp8_qmoe or torch.cuda.get_device_capability() == (9, 0),
+    reason="Unsupported-architecture CUDA FP8 QMoE device required",
+)
+def test_fp16_compatible_rejects_unsupported_architecture():
+    tensors = TestQMoEBlockFP8._inputs(
+        hidden=128, inter=128, experts=256, tokens=1, dtype=torch.float16, scale_dtype=torch.float32
+    )
+    with pytest.raises(Exception, match="SM90"):
+        TestQMoEBlockFP8._session(
+            tensors, top_k=8, activation_quantization="dynamic_fp8", fp8_execution_profile="fp16_compatible"
+        )
+
+
+@pytest.mark.skipif(
+    not torch.cuda.is_available() or not has_fp8_qmoe or torch.cuda.get_device_capability() != (9, 0),
+    reason="SM90 CUDA FP8 QMoE required",
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_fp16_compatible_concurrent_stream_scratch_lifetime(dtype):
+    cases = []
+    for tokens in (1, 33):
+        tensors = TestQMoEBlockFP8._inputs(
+            hidden=128, inter=128, experts=256, tokens=tokens, dtype=dtype, scale_dtype=torch.float32
+        )
+        stream = torch.cuda.Stream()
+        session = TestQMoEBlockFP8._session(
+            tensors,
+            top_k=8,
+            row_tile_size=17,
+            activation_quantization="dynamic_fp8",
+            fp8_execution_profile="fp16_compatible",
+            provider_options={"user_compute_stream": str(stream.cuda_stream)},
+        )
+        expected = TestQMoEBlockFP8._execute(tensors, session=session)
+        cases.append((tensors, stream, session, expected))
+    torch.cuda.synchronize()
+
+    def run(case):
+        tensors, stream, (session, input_types), expected = case
+        binding = session.io_binding()
+        output = torch.empty_like(expected)
+        for info in session.get_inputs():
+            tensor = tensors[info.name]
+            binding.bind_input(info.name, "cuda", 0, input_types[info.name], tensor.shape, tensor.data_ptr())
+        binding.bind_output("output", "cuda", 0, input_types["input"], output.shape, output.data_ptr())
+        options = onnxruntime.RunOptions()
+        options.add_run_config_entry("disable_synchronize_execution_providers", "1")
+        # Scratch owners leave ComputeInternal before the caller synchronizes the
+        # nondefault stream, and the next call may reuse stream-ordered storage.
+        for _ in range(5):
+            session.run_with_iobinding(binding, options)
+        stream.synchronize()
+        torch.testing.assert_close(output, expected, atol=0, rtol=0)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        list(executor.map(run, cases))
+    for _, stream, _, _ in cases:
+        stream.synchronize()
+    del cases
+
+
+@pytest.mark.skipif(not torch.cuda.is_available() or not has_fp8_qmoe, reason="CUDA FP8 QMoE required")
+@pytest.mark.parametrize("invalid", ["float", "scale_type", "weight_type", "missing_up", "cpu"])
+def test_fp16_compatible_rejects_unsupported_inputs_and_ep(invalid):
+    tensors = TestQMoEBlockFP8._inputs(
+        hidden=128, inter=128, experts=256, tokens=1, dtype=torch.float16, scale_dtype=torch.float32
+    )
+    if invalid == "float":
+        tensors["input"] = tensors["input"].float()
+        tensors["router_probs"] = tensors["router_probs"].float()
+    elif invalid == "scale_type":
+        tensors["fc3_scales"] = tensors["fc3_scales"].half()
+    elif invalid == "missing_up":
+        del tensors["fc3_weights"], tensors["fc3_scales"]
+    model, _ = create_block_fp8_moe_graph(
+        tensors,
+        8,
+        TensorProto.FLOAT if invalid == "float" else TensorProto.FLOAT16,
+        128,
+        activation_quantization="dynamic_fp8",
+        fp8_execution_profile="fp16_compatible",
+    )
+    if invalid == "weight_type":
+        graph = load_model_from_string(model)
+        for info in graph.graph.input:
+            if info.name == "fc1_weights":
+                info.type.tensor_type.elem_type = TensorProto.UINT8
+        model = graph.SerializeToString()
+    providers = ["CPUExecutionProvider"] if invalid == "cpu" else [resolve_cuda_plugin_ep("CUDAExecutionProvider")]
+    with pytest.raises(Exception, match=r"QMoE|fp16_compatible|NOT_IMPLEMENTED"):
+        onnxruntime.InferenceSession(model, providers=providers)
 
 
 @pytest.mark.skipif(
