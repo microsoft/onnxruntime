@@ -34,7 +34,8 @@ class SqueezeBase {
 
   static TensorShapeVector ComputeOutputShape(
       const TensorShape& input_shape,
-      const TensorShapeVector& axes) {
+      const TensorShapeVector& axes,
+      bool axes_is_input) {
     size_t j = 0;
     TensorShapeVector output_shape;
     auto num_dimensions = input_shape.NumDimensions();
@@ -47,9 +48,10 @@ class SqueezeBase {
     std::sort(axes_corrected.begin(), axes_corrected.end());
     axes_corrected.erase(std::unique(axes_corrected.begin(), axes_corrected.end()), axes_corrected.end());
 
+    // An empty axes input is a no-op; only omitted axes squeeze every singleton dimension.
     for (size_t i = 0; i < num_dimensions; ++i) {
       if ((j < axes_corrected.size() && axes_corrected[j] == static_cast<int64_t>(i)) ||
-          (axes_corrected.size() == 0 && input_shape[i] == 1)) {
+          (!axes_is_input && axes_corrected.empty() && input_shape[i] == 1)) {
         ORT_ENFORCE(input_shape[i] == 1, "Dimension of input ", i, " must be 1 instead of ", input_shape[i],
                     ". shape=", input_shape);
         ++j;
@@ -79,13 +81,15 @@ class Squeeze final : public OpKernel, public SqueezeBase {
       ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 1,
                   "An axes tensor must be a vector tensor.");
       auto nDims = static_cast<size_t>(axes_tensor->Shape()[0]);
-      const auto* data = axes_tensor->Data<int64_t>();
-      axes.assign(data, data + nDims);
+      if (nDims != 0) {
+        const auto* data = axes_tensor->Data<int64_t>();
+        axes.assign(data, data + nDims);
+      }
     } else {
       axes.assign(axes_.begin(), axes_.end());
     }
 
-    TensorShapeVector output_shape = ComputeOutputShape(X_shape, axes);
+    TensorShapeVector output_shape = ComputeOutputShape(X_shape, axes, num_inputs == 2);
 
     Tensor* Y = context->Output(0, TensorShape(output_shape));
 

@@ -29,13 +29,15 @@ class Squeeze final : public JsKernel, public SqueezeBase {
       ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 1,
                   "An axes tensor must be a vector tensor.");
       auto nDims = static_cast<size_t>(axes_tensor->Shape()[0]);
-      const auto* data = axes_tensor->Data<int64_t>();
-      axes.assign(data, data + nDims);
+      if (nDims != 0) {
+        const auto* data = axes_tensor->Data<int64_t>();
+        axes.assign(data, data + nDims);
+      }
     } else {
       axes.assign(axes_.begin(), axes_.end());
     }
 
-    TensorShapeVector output_shape = ComputeOutputShape(X_shape, axes);
+    TensorShapeVector output_shape = ComputeOutputShape(X_shape, axes, num_inputs == 2);
     Tensor* Y = context->Output(0, TensorShape(output_shape));
     const void* source = X->DataRaw();
     void* target = Y->MutableDataRaw();
