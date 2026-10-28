@@ -1,2 +1,3 @@
-azure-kusto-data[pandas]==4.5.1
-azure-kusto-ingest[pandas]==4.5.1
+# Kusto SDK 6.x requires Python >=3.9.
+azure-kusto-data[pandas]==6.0.0
+azure-kusto-ingest[pandas]==6.0.0

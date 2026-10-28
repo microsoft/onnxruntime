@@ -96,7 +96,7 @@ def write_to_db(coverage_data, args):
         report_level=ReportLevel.FailuresAndSuccesses,
     )
     df = pandas.DataFrame(data=rows, columns=fields)
-    client.ingest_from_dataframe(df, ingestion_properties=ingestion_props)
+    client.ingest_from_dataframe(df, ingestion_properties=ingestion_props, data_format=DataFormat.CSV)
 
 
 if __name__ == "__main__":
