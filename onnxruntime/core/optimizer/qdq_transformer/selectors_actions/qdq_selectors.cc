@@ -74,6 +74,38 @@ bool HasPerTensorQuantizationParams(const Node* node, bool allow_1d) {
   return is_supported(*inputs[1]) &&
          (inputs.size() < 3 || !inputs[2]->Exists() || is_supported(*inputs[2]));
 }
+
+bool HasSupportedQLinearMatMulBParams(const Node* node) {
+  if (HasPerTensorQuantizationParams(node, true)) {
+    return true;
+  }
+
+  const auto& inputs = node->InputDefs();
+  const auto* b_shape = inputs[0]->Shape();
+
+  if (!b_shape || b_shape->dim_size() != 2 ||
+      !b_shape->dim(1).has_dim_value()) {
+    return false;
+  }
+
+  // Per-column quantization must use B's last dimension.
+  const auto* axis_attr = graph_utils::GetNodeAttribute(*node, "axis");
+  const int64_t axis = axis_attr ? axis_attr->i() : 1;
+  if (axis != 1 && axis != -1) {
+    return false;
+  }
+
+  const int64_t n = b_shape->dim(1).dim_value();
+  const auto has_n_elements = [n](const NodeArg* arg) {
+    const auto* shape = arg->Shape();
+    return shape && shape->dim_size() == 1 && shape->dim(0).has_dim_value() &&
+           shape->dim(0).dim_value() == n;
+  };
+
+  return has_n_elements(inputs[1]) &&
+         (inputs.size() < 3 || !inputs[2]->Exists() ||
+          has_n_elements(inputs[2]));
+}
 }  // namespace
 
 bool NodeGroupSelector::CheckQDQNodes(const GraphViewer& graph_viewer, const Node& node,
@@ -748,6 +780,16 @@ bool MatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node&
   if (qlinear) {
     // QLinearMatMul
     if (!CheckQDQNodes(graph_viewer, node, redundant_clip_node, dq_nodes, q_nodes)) {
+      return false;
+    }
+
+    // QLinearMatMul only supports per-tensor quantization for A and Y. B may
+    // use per-column quantization, but the DQ axis is not carried into
+    // QLinearMatMul and must already describe that same last dimension.
+    if (check_qlinear_matmul_params_ &&
+        (!HasPerTensorQuantizationParams(dq_nodes[0], true) ||
+         !HasSupportedQLinearMatMulBParams(dq_nodes[1]) ||
+         !HasPerTensorQuantizationParams(q_nodes[0], true))) {
       return false;
     }
 
