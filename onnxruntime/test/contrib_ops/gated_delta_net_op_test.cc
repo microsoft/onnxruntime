@@ -4,11 +4,13 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <cstring>
 #include <limits>
 #include <numeric>
 #include <random>
 #include <sstream>
+#include <string>
 #include <type_traits>
 #include <unordered_map>
 #include <vector>
@@ -2674,12 +2676,21 @@ TEST(GatedDeltaNetTest, TwoCallContinuationMatchesSingleRun) {
   RunCase(g2, Options{}, in2, 3e-2f, 3e-2f);
 }
 
+// A nonzero element offset binds the query/key/value (input) or output tensors that many elements past the start of
+// a larger device buffer: a valid view whose address is not 16-byte aligned.
+template <typename T = MLFloat16>
 void RunAliasedStateIoBindingCase(int total_tokens, std::unique_ptr<IExecutionProvider> ep,
-                                  const char* execution_provider_type, const Options& options = Options{}) {
+                                  const char* execution_provider_type, const Options& options = Options{},
+                                  size_t input_element_offset = 0, size_t output_element_offset = 0) {
   ASSERT_NE(ep, nullptr);
 
+  constexpr int kIoElemType = std::is_same_v<T, BFloat16> ? ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16
+                                                          : ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
   Geometry geometry{total_tokens, 1, 1, 2, kDim, kDim};
   Inputs inputs = MakeInputs(geometry, static_cast<uint32_t>(total_tokens) + 163);
+  inputs.q = RoundToTensorType<T>(inputs.q);
+  inputs.k = RoundToTensorType<T>(inputs.k);
+  inputs.v = RoundToTensorType<T>(inputs.v);
   std::vector<float> first_output, first_state;
   Reference(geometry, options, inputs, &first_output, &first_state);
   Inputs second_inputs = inputs;
@@ -2706,14 +2717,11 @@ void RunAliasedStateIoBindingCase(int total_tokens, std::unique_ptr<IExecutionPr
     return type;
   };
   auto& query_arg = graph.GetOrCreateNodeArg(
-      "query", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
-                           {total_tokens, geometry.hq, geometry.dk}));
+      "query", tensor_type(kIoElemType, {total_tokens, geometry.hq, geometry.dk}));
   auto& key_arg = graph.GetOrCreateNodeArg(
-      "key", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
-                         {total_tokens, geometry.hq, geometry.dk}));
+      "key", tensor_type(kIoElemType, {total_tokens, geometry.hq, geometry.dk}));
   auto& value_arg = graph.GetOrCreateNodeArg(
-      "value", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
-                           {total_tokens, geometry.hv, geometry.dv}));
+      "value", tensor_type(kIoElemType, {total_tokens, geometry.hv, geometry.dv}));
   auto& empty = graph.GetOrCreateNodeArg("", nullptr);
   auto& decay_arg = graph.GetOrCreateNodeArg(
       "decay", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
@@ -2725,8 +2733,7 @@ void RunAliasedStateIoBindingCase(int total_tokens, std::unique_ptr<IExecutionPr
       "initial_state", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
                                    {1, geometry.hv, geometry.dv, geometry.dk}));
   auto& output_arg = graph.GetOrCreateNodeArg(
-      "output", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
-                            {total_tokens, geometry.hv, geometry.dv}));
+      "output", tensor_type(kIoElemType, {total_tokens, geometry.hv, geometry.dv}));
   auto& final_state_arg = graph.GetOrCreateNodeArg(
       "final_state", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
                                  {1, geometry.hv, geometry.dv, geometry.dk}));
@@ -2739,6 +2746,9 @@ void RunAliasedStateIoBindingCase(int total_tokens, std::unique_ptr<IExecutionPr
   auto& node = graph.AddNode("gdn", "GatedDeltaNet", "aliased recurrent state",
                              node_inputs, node_outputs, nullptr, kMSDomain);
   node.AddAttribute("update_rule", options.update_rule);
+  if (options.chunk_size > 0) {
+    node.AddAttribute("chunk_size", static_cast<int64_t>(options.chunk_size));
+  }
   node.SetExecutionProviderType(execution_provider_type);
   ASSERT_STATUS_OK(graph.Resolve());
 
@@ -2764,32 +2774,54 @@ void RunAliasedStateIoBindingCase(int total_tokens, std::unique_ptr<IExecutionPr
   auto gpu_allocator = session.GetAllocator(copied_gpu_info);
   auto cpu_allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
 
-  auto make_gpu = [&](const auto& data, MLDataType data_type, const TensorShape& shape) {
+  // Backing buffers of the offset views below; they must outlive the bound values.
+  std::vector<OrtValue> backing_buffers;
+  auto make_gpu = [&](const auto& data, MLDataType data_type, const TensorShape& shape,
+                      size_t element_offset = 0) {
     using Element = typename std::decay_t<decltype(data)>::value_type;
     Tensor cpu(data_type, shape, const_cast<Element*>(data.data()), cpu_allocator->Info());
-    Tensor gpu(data_type, shape, gpu_allocator);
-    ORT_THROW_IF_ERROR(ep_ptr->GetDataTransfer()->CopyTensor(cpu, gpu));
     OrtValue result;
-    Tensor::InitOrtValue(std::move(gpu), result);
+    if (element_offset == 0) {
+      Tensor gpu(data_type, shape, gpu_allocator);
+      ORT_THROW_IF_ERROR(ep_ptr->GetDataTransfer()->CopyTensor(cpu, gpu));
+      Tensor::InitOrtValue(std::move(gpu), result);
+      return result;
+    }
+    Tensor backing(data_type, TensorShape({static_cast<int64_t>(data.size() + element_offset)}), gpu_allocator);
+    Tensor view(data_type, shape,
+                static_cast<char*>(backing.MutableDataRaw()) + element_offset * data_type->Size(),
+                copied_gpu_info);
+    ORT_THROW_IF_ERROR(ep_ptr->GetDataTransfer()->CopyTensor(cpu, view));
+    backing_buffers.emplace_back();
+    Tensor::InitOrtValue(std::move(backing), backing_buffers.back());
+    Tensor::InitOrtValue(std::move(view), result);
     return result;
   };
 
-  auto query_value = make_gpu(ToFloat16(inputs.q), DataTypeImpl::GetType<MLFloat16>(),
-                              TensorShape({total_tokens, geometry.hq, geometry.dk}));
-  auto key_value = make_gpu(ToFloat16(inputs.k), DataTypeImpl::GetType<MLFloat16>(),
-                            TensorShape({total_tokens, geometry.hq, geometry.dk}));
-  auto value_value = make_gpu(ToFloat16(inputs.v), DataTypeImpl::GetType<MLFloat16>(),
-                              TensorShape({total_tokens, geometry.hv, geometry.dv}));
-  auto decay_value = make_gpu(inputs.decay, DataTypeImpl::GetType<float>(),
-                              TensorShape({total_tokens, geometry.hv}));
-  auto beta_value = make_gpu(inputs.beta, DataTypeImpl::GetType<float>(),
-                             TensorShape({total_tokens, geometry.hv}));
-  auto state_value = make_gpu(inputs.state0, DataTypeImpl::GetType<float>(),
-                              TensorShape({1, geometry.hv, geometry.dv, geometry.dk}));
-  auto output_value = make_gpu(
-      std::vector<MLFloat16>(static_cast<size_t>(total_tokens) * geometry.hv * geometry.dv),
-      DataTypeImpl::GetType<MLFloat16>(),
-      TensorShape({total_tokens, geometry.hv, geometry.dv}));
+  // Explicit OrtValue (not auto): the generic lambda's result is type-dependent inside this template.
+  OrtValue query_value = make_gpu(ToTensorType<T>(inputs.q), DataTypeImpl::GetType<T>(),
+                                  TensorShape({total_tokens, geometry.hq, geometry.dk}), input_element_offset);
+  OrtValue key_value = make_gpu(ToTensorType<T>(inputs.k), DataTypeImpl::GetType<T>(),
+                                TensorShape({total_tokens, geometry.hq, geometry.dk}), input_element_offset);
+  OrtValue value_value = make_gpu(ToTensorType<T>(inputs.v), DataTypeImpl::GetType<T>(),
+                                  TensorShape({total_tokens, geometry.hv, geometry.dv}), input_element_offset);
+  OrtValue decay_value = make_gpu(inputs.decay, DataTypeImpl::GetType<float>(),
+                                  TensorShape({total_tokens, geometry.hv}));
+  OrtValue beta_value = make_gpu(inputs.beta, DataTypeImpl::GetType<float>(),
+                                 TensorShape({total_tokens, geometry.hv}));
+  OrtValue state_value = make_gpu(inputs.state0, DataTypeImpl::GetType<float>(),
+                                  TensorShape({1, geometry.hv, geometry.dv, geometry.dk}));
+  OrtValue output_value = make_gpu(
+      std::vector<T>(static_cast<size_t>(total_tokens) * geometry.hv * geometry.dv),
+      DataTypeImpl::GetType<T>(),
+      TensorShape({total_tokens, geometry.hv, geometry.dv}), output_element_offset);
+
+  const auto is_16_byte_aligned = [](const OrtValue& value) {
+    return reinterpret_cast<uintptr_t>(value.Get<Tensor>().DataRaw()) % 16 == 0;
+  };
+  ASSERT_EQ(is_16_byte_aligned(query_value) && is_16_byte_aligned(key_value) && is_16_byte_aligned(value_value),
+            input_element_offset * sizeof(T) % 16 == 0);
+  ASSERT_EQ(is_16_byte_aligned(output_value), output_element_offset * sizeof(T) % 16 == 0);
 
   std::unique_ptr<IOBinding> binding;
   ASSERT_STATUS_OK(session.NewIOBinding(&binding));
@@ -2821,8 +2853,8 @@ void RunAliasedStateIoBindingCase(int total_tokens, std::unique_ptr<IExecutionPr
     EXPECT_NEAR(actual_state[i], expected_state[i], 4e-2f) << "state element " << i;
   }
 
-  std::vector<MLFloat16> actual_output(expected_output.size());
-  Tensor cpu_output(DataTypeImpl::GetType<MLFloat16>(),
+  std::vector<T> actual_output(expected_output.size());
+  Tensor cpu_output(DataTypeImpl::GetType<T>(),
                     TensorShape({total_tokens, geometry.hv, geometry.dv}),
                     actual_output.data(), cpu_allocator->Info());
   ASSERT_STATUS_OK(ep_ptr->GetDataTransfer()->CopyTensor(output_value.Get<Tensor>(), cpu_output));
@@ -2835,6 +2867,55 @@ TEST(GatedDeltaNetTest, AliasedStateIoBindingRecurrentAndChunked) {
   if (NeedSkipGatedDeltaNetTest()) return;
   RunAliasedStateIoBindingCase(/*total_tokens=*/4, DefaultCudaExecutionProvider(), kCudaExecutionProvider);
   RunAliasedStateIoBindingCase(/*total_tokens=*/64, DefaultCudaExecutionProvider(), kCudaExecutionProvider);
+}
+
+// A valid tensor may begin at any element boundary, for example a slice of a larger buffer bound through IOBinding.
+// The chunked engine's 16-byte vector loads and stores must then fall back to scalar accesses instead of faulting
+// or reading shifted data. 80 tokens leave a partial final chunk for both chunk sizes.
+//
+// ORT_GDN_PLAN=chunked pins the fused chunked engine, so automatic plan selection cannot route around the vector
+// paths; the operator fails the run if that engine cannot serve the problem. chunk_size 64 takes the widest chunk the
+// device can hold, and 32 pins the narrow one.
+TEST(GatedDeltaNetTest, ChunkedMisalignedFloat16IoBuffers) {
+  if (NeedSkipGatedDeltaNetTest()) return;
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_GDN_PLAN", "chunked"}}};
+  const size_t offsets[] = {0, 1, 4};
+  for (int chunk_size : {64, 32}) {
+    Options options;
+    options.chunk_size = chunk_size;
+    for (size_t input_offset : offsets) {
+      for (size_t output_offset : offsets) {
+        if (input_offset == 0 && output_offset == 0) continue;
+        SCOPED_TRACE("chunk_size " + std::to_string(chunk_size) + ", input offset " + std::to_string(input_offset) +
+                     ", output offset " + std::to_string(output_offset));
+        RunAliasedStateIoBindingCase<MLFloat16>(/*total_tokens=*/80, DefaultCudaExecutionProvider(),
+                                                kCudaExecutionProvider, options, input_offset, output_offset);
+      }
+    }
+  }
+}
+
+// Covers the vectorized fp32 and bf16 modes and the fp16 mode. In fp16 mode the input loads are always scalar (they
+// range-check the values) while the output stores can still be vectorized, so each side needs its own alignment
+// check: the input-only and output-only offsets isolate them.
+TEST(GatedDeltaNetTest, ChunkedMisalignedBFloat16IoBuffers) {
+  if (NeedSkipGatedDeltaNetTest()) return;
+  const std::pair<size_t, size_t> offsets[] = {{1, 0}, {0, 1}, {1, 1}};
+  for (const char* mode : {"fp32", "fp16", "bf16"}) {
+    ScopedEnvironmentVariables scoped_env_vars{
+        EnvVarMap{{"ORT_GDN_PLAN", "chunked"}, {"ORT_GDN_BF16_PRECISION", mode}}};
+    for (int chunk_size : {64, 32}) {
+      Options options;
+      options.chunk_size = chunk_size;
+      for (const auto& [input_offset, output_offset] : offsets) {
+        SCOPED_TRACE(std::string("mode ") + mode + ", chunk_size " + std::to_string(chunk_size) +
+                     ", input offset " + std::to_string(input_offset) +
+                     ", output offset " + std::to_string(output_offset));
+        RunAliasedStateIoBindingCase<BFloat16>(/*total_tokens=*/80, DefaultCudaExecutionProvider(),
+                                               kCudaExecutionProvider, options, input_offset, output_offset);
+      }
+    }
+  }
 }
 
 TEST(GatedDeltaNetWebGpuTest, AliasedStateIoBinding) {
