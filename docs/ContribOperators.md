@@ -6428,7 +6428,9 @@ This version of the operator has been available since version 1 of the 'com.micr
         Without a positive block_size, FP8 uses the legacy per-expert fc*_global_scale inputs instead.
         Block-scaled FP8 does not use global scales. By default activations retain the input type (weight-only quantization).
         activation_quantization='dynamic_fp8' instead selects dynamic per-token K128 activation quantization,
-        with native FP8 dot products, FP32 block-scale accumulation and FP32 routed down-projection reduction.
+        with native FP8 dot products by default, FP32 block-scale accumulation and FP32 routed down-projection reduction.
+        fp8_execution_profile='fp16_compatible' explicitly selects tile-local FP16 dot products and the separately
+        specified routing, activation and reduction contract; FP8 storage and activation quantization are retained.
         On CUDA SM80-or-newer GPUs, weight-only SiLU/SwiGLU block-scaled FP8 uses fused GEMV/GEMM by default.
         These kernels decode and scale FP8 tiles on chip without materializing full FP16/BF16 weight buffers.
         Set ORT_ENABLE_FP8_FUSED=0 before session creation to select the compact dense-dequant fallback.
@@ -6486,7 +6488,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>activation_beta</tt> : float</dt>
 <dd>Beta parameter used in activation function.</dd>
 <dt><tt>activation_quantization</tt> : string</dt>
-<dd>'none' (default) retains weight-only execution. 'dynamic_fp8' quantizes consecutive groups of 128 features per token to saturating nearest-even E4M3FN using FP32 div.full normalization and scale max(amax(abs(x)),1e-10) * float32(1/448). Requires block-scaled FP8 weights, block_size=128, FP32 weight scales, FP32/FP16/BF16 inputs and 128-aligned projections. Gate/up outputs narrow to the input type; their FP32 SiLU/SwiGLU result is quantized directly for FC2. FC2 stays FP32, multiplies routing weights rounded to the input type, and reduces in FP32 before the final output cast. Biases, supplied activation/global scales, zero points, router_weights and nonstandard activation parameters are unsupported. CUDA requires native FP8 MMA (SM89+) and at most 65535 token/expert pairs.</dd>
+<dd>'none' (default) retains weight-only execution. 'dynamic_fp8' quantizes consecutive groups of 128 features per token to saturating nearest-even E4M3FN using FP32 div.full normalization and scale max(amax(abs(x)),1e-10) * float32(1/448). Requires block-scaled FP8 weights, block_size=128, FP32 weight scales, FP32/FP16/BF16 inputs and 128-aligned projections. Gate/up outputs narrow to the input type; their FP32 SiLU/SwiGLU result is quantized directly for FC2. FC2 stays FP32, multiplies routing weights rounded to the input type, and reduces in FP32 before the final output cast. Biases, supplied activation/global scales, zero points, router_weights and nonstandard activation parameters are unsupported. The native CUDA profile requires FP8 MMA (SM89+). All CUDA profiles support at most 65535 token/expert pairs.</dd>
 <dt><tt>activation_type</tt> : string</dt>
 <dd>Activation function to use. Choose from relu, gelu, silu, swiglu and identity. CUDA also supports relu2 (squared ReLU). Default is relu</dd>
 <dt><tt>block_size</tt> : int</dt>
@@ -6499,6 +6501,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Optional FC2 override for expert_weight_bits. Inherits expert_weight_bits when omitted.</dd>
 <dt><tt>fc3_expert_weight_bits</tt> : int</dt>
 <dd>Optional FC3 override for expert_weight_bits. Inherits expert_weight_bits when omitted. For fused SwiGLU, the effective FC3 width must equal the effective FC1 width.</dd>
+<dt><tt>fp8_execution_profile</tt> : string</dt>
+<dd>'native' (default) preserves existing execution. 'fp16_compatible' is an opt-in dynamic_fp8 numeric contract using tile-local FP8-to-FP16 conversion and FP16 MMA, not native FP8 compute. Requires SM90, FLOAT16/BFLOAT16 activations, 256 experts, k=8, normalize_routing_weights=1, activation_type='silu', swiglu_fusion=0 and separate gate/up projections. Uses FP32 softmax, threshold-gather top-8 with 32-entry unstable bitonic sorting, FP32 adjacent-pair normalization before typed routing-weight rounding (matching PyTorch 2.8 CUDA routing). Within each K128 block, FP16 MMA visits K16 fragments with indices floor(inner/32)*32 + half_k*16 + thread*4 + (inner%32)/8 + byte, where inner=0,16,...,112, half_k=0,1, thread=0,...,3 and byte=0,1. FP32 K128 partials are multiplied by activation then weight scales before accumulation. Gate/up narrow once to the input type. SiLU uses exp2.approx(-gate*float32(log2(e))) and div.full(1,1+exp), then gate*sigmoid*up is quantized without an extra typed round. Weighted FC2 outputs remain FP32. Final reduction is (((d0+d4)+(d1+d5))+(d2+d6))+(d3+d7), then one output cast. Other dynamic_fp8 contracts and routing capacity limits still apply. Unsupported profiles are rejected; there is no native or weight-only fallback.</dd>
 <dt><tt>k</tt> : int</dt>
 <dd>Number of top experts to select from expert pool</dd>
 <dt><tt>normalize_routing_weights</tt> : int</dt>
