@@ -109,7 +109,7 @@ TEST_F(OptionalProviderProbeTest, SuccessfulProbeInitializesOnceAndCanReload) {
 TEST_F(OptionalProviderProbeTest, PluginRegistrationInitializesOnceAndUnregisterUnloads) {
   ASSERT_NO_FATAL_FAILURE(Install(ORT_OPTIONAL_PROBE_shared_LIBRARY, shared_path_));
   ASSERT_NO_FATAL_FAILURE(Install(ORT_OPTIONAL_PROBE_plugin_LIBRARY, provider_path_));
-  const ScopedEnvironmentVariables events{{"ORT_TEST_PLUGIN_LIFETIME_EVENTS", "_"}};
+  const ScopedEnvironmentVariables events{EnvVarMap{{"ORT_TEST_PLUGIN_LIFETIME_EVENTS", "_"}}};
   Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "plugin_lifetime_test"};
 
   for (const char* expected : {"_L", "_LUL"}) {
@@ -135,7 +135,7 @@ TEST_F(OptionalProviderProbeTest, FailedPluginLoadUnloadsRetainedProbe) {
            std::pair{ORT_OPTIONAL_PROBE_plugin_LIBRARY, "fail_create_factories"}}) {
     SCOPED_TRACE(registration_name);
     ASSERT_NO_FATAL_FAILURE(Install(library, provider_path_));
-    const ScopedEnvironmentVariables events{{"ORT_TEST_PLUGIN_LIFETIME_EVENTS", "_"}};
+    const ScopedEnvironmentVariables events{EnvVarMap{{"ORT_TEST_PLUGIN_LIFETIME_EVENTS", "_"}}};
     Ort::Status status{Ort::GetApi().RegisterExecutionProviderLibrary(env, registration_name, provider_path_.c_str())};
     EXPECT_FALSE(status.IsOK());
     EXPECT_EQ(Env::Default().GetEnvironmentVar("ORT_TEST_PLUGIN_LIFETIME_EVENTS"), "_LU");
@@ -147,7 +147,7 @@ TEST_F(OptionalProviderProbeTest, FailedPluginLoadUnloadsRetainedProbe) {
 TEST_F(OptionalProviderProbeTest, RetainedPluginProbeCanRetryWithoutLeakingReferences) {
   ASSERT_NO_FATAL_FAILURE(Install(ORT_OPTIONAL_PROBE_shared_LIBRARY, shared_path_));
   ASSERT_NO_FATAL_FAILURE(Install(ORT_OPTIONAL_PROBE_plugin_LIBRARY, provider_path_));
-  const ScopedEnvironmentVariables events{{"ORT_TEST_PLUGIN_LIFETIME_EVENTS", "_"}};
+  const ScopedEnvironmentVariables events{EnvVarMap{{"ORT_TEST_PLUGIN_LIFETIME_EVENTS", "_"}}};
   ProviderLibrary library{provider_path_.c_str(), true, ProviderLibraryPathType::Absolute};
   auto unload = gsl::finally([&]() { library.Unload(); });
 

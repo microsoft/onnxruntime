@@ -1,6 +1,5 @@
 #include "core/framework/execution_provider.h"
 #include "core/providers/shared_library/provider_host_api.h"
-#include "core/session/onnxruntime_ep_c_api.h"
 
 #include <cstdlib>
 #include <memory>
