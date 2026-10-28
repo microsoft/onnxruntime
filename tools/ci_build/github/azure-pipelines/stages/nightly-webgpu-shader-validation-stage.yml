@@ -6,8 +6,6 @@ stages:
   variables:
   - name: ALLOW_RELEASED_ONNX_OPSET_ONLY
     value: 0
-  - name: Codeql.Enabled
-    value: false
 
   jobs:
   - job: Build
