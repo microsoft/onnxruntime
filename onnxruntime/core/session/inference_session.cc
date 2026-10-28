@@ -20,6 +20,7 @@
 #include "core/common/logging/logging.h"
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/common/json_utils.h"
+#include "core/framework/compute_estimate_report.h"
 #endif
 #include "core/common/parse_string.h"
 #include "core/common/path_string.h"
@@ -2776,6 +2777,26 @@ common::Status InferenceSession::Initialize() {
   ORT_TRY {
     ORT_TELEMETRY_CAPTURE_STATUS_BEGIN(status)
     LOGS(*session_logger_, INFO) << "Initializing session.";
+#if !defined(ORT_MINIMAL_BUILD)
+    compute_estimate_report_prefix_ = session_options_.config_options.GetConfigOrDefault(
+        kOrtSessionOptionsComputeEstimateReportPath, "");
+    const auto parse_compute_limit = [&](const char* key, const char* default_value, size_t& limit) -> Status {
+      const auto text = session_options_.config_options.GetConfigOrDefault(key, default_value);
+      ORT_RETURN_IF_NOT(!text.empty() &&
+                            std::all_of(text.begin(), text.end(), [](char c) { return c >= '0' && c <= '9'; }) &&
+                            TryParseStringWithClassicLocale<size_t>(text, limit),
+                        key, " must be a nonnegative decimal integer representable as size_t. Received: ", text);
+      return Status::OK();
+    };
+    ORT_RETURN_IF_ERROR(parse_compute_limit(kOrtSessionOptionsComputeEstimateMaxRecords, "10000",
+                                            compute_estimate_max_records_));
+    ORT_RETURN_IF_ERROR(parse_compute_limit(kOrtSessionOptionsComputeEstimateMaxPayloadBytes, "16777216",
+                                            compute_estimate_max_payload_bytes_));
+#else
+    if (!session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsComputeEstimateReportPath, "").empty()) {
+      LOGS(*session_logger_, WARNING) << "Compute estimate report export is unsupported in a minimal build.";
+    }
+#endif
 #if defined(ORT_MINIMAL_BUILD)
     for (const auto& [key, value] : session_options_.config_options.GetConfigOptionsMap()) {
       const std::string_view option = key;
@@ -3220,6 +3241,9 @@ common::Status InferenceSession::Initialize() {
     // output via optimized_model_filepath. We still log the session-creation telemetry and record the
     // end-of-initialization bookkeeping that the normal path emits, so neither is lost by returning early.
     if (session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionCompileOnly, "0") == "1") {
+      if (!session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsComputeEstimateReportPath, "").empty()) {
+        LOGS(*session_logger_, WARNING) << "Compute estimate report export is unsupported in a compile-only session.";
+      }
       LOGS(*session_logger_, INFO)
           << "Compile-only session: skipping session-state finalization. The session is not runnable.";
 #if defined(ORT_USE_TELEMETRY)
@@ -3706,15 +3730,50 @@ Status InferenceSession::Run(const RunOptions& run_options,
     sequential_run_lock.emplace(session_mutex_);
   }
 
-  return RunImpl(run_options, feed_names, feeds, output_names, p_fetches, p_fetches_device_info,
-                 /*graph_capture_depth=*/0);
+  RuntimeWorkloadCollector* workload_collector = nullptr;
+#if !defined(ORT_MINIMAL_BUILD)
+  std::optional<RuntimeWorkloadCollector> automatic_collector;
+  auto* requested_collector = run_options.runtime_workload_collector;
+  if (!requested_collector && !compute_estimate_report_prefix_.empty()) {
+    automatic_collector.emplace(RuntimeWorkloadLimits{compute_estimate_max_records_,
+                                                      compute_estimate_max_payload_bytes_});
+    requested_collector = &*automatic_collector;
+  }
+  if (requested_collector) {
+    if (requested_collector->BeginRun(session_id_)) {
+      workload_collector = requested_collector;
+    } else {
+      LOGS(*session_logger_, WARNING) << "Runtime workload capture/export skipped: collector cannot be reused.";
+    }
+  }
+  bool succeeded = false;
+  auto finish_collection = gsl::finally([&]() {
+    if (workload_collector) {
+      workload_collector->EndRun(succeeded);
+      if (!compute_estimate_report_prefix_.empty()) {
+        const auto report_status = ExportRuntimeComputeEstimateReport(*workload_collector,
+                                                                      compute_estimate_report_prefix_);
+        if (!report_status.IsOK()) {
+          LOGS(*session_logger_, WARNING) << report_status.ErrorMessage();
+        }
+      }
+    }
+  });
+#endif
+  auto status = RunImpl(run_options, feed_names, feeds, output_names, p_fetches, p_fetches_device_info,
+                        /*graph_capture_depth=*/0, workload_collector);
+#if !defined(ORT_MINIMAL_BUILD)
+  succeeded = status.IsOK();
+#endif
+  return status;
 }
 
 Status InferenceSession::RunImpl(const RunOptions& run_options,
                                  gsl::span<const std::string> feed_names, gsl::span<const OrtValue> feeds,
                                  gsl::span<const std::string> output_names, std::vector<OrtValue>* p_fetches,
                                  const std::vector<OrtDevice>* p_fetches_device_info,
-                                 int graph_capture_depth) {
+                                 int graph_capture_depth,
+                                 RuntimeWorkloadCollector* workload_collector) {
   // Ignore run-level profiling request if session-level profiling is already enabled.
   std::optional<profiling::Profiler> run_profiler;
   if (run_options.enable_profiling && session_profiler_.IsEnabled()) {
@@ -3902,7 +3961,7 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
                                      device_stream_collection_holder,
 #endif
                                      run_logger,
-                                     run_profiler ? &*run_profiler : nullptr);
+                                     run_profiler ? &*run_profiler : nullptr, workload_collector);
       }
 
       // info all execution providers InferenceSession:Run ended
@@ -4059,7 +4118,7 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
     RunOptions recursive_run_options{run_options};
     recursive_run_options.enable_profiling = false;
     ORT_RETURN_IF_ERROR(RunImpl(recursive_run_options, feed_names, feeds, output_names, p_fetches,
-                                p_fetches_device_info, graph_capture_depth + 1));
+                                p_fetches_device_info, graph_capture_depth + 1, workload_collector));
   }
 
   // Log runtime error telemetry if the return value is not OK

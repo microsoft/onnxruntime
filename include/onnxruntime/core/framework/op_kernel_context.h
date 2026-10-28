@@ -5,6 +5,7 @@ namespace onnxruntime {
 class IExecutionFrame;
 #if !defined(ORT_MINIMAL_BUILD)
 class KernelPilot;
+struct RuntimeWorkloadRecorder;
 #endif
 class Stream;
 namespace concurrency {
@@ -216,6 +217,8 @@ class OpKernelContext {
   // Keep new virtuals after existing declarations to preserve their vtable slots.
   // Session-owned pilot for this kernel; nullptr when unavailable.
   virtual KernelPilot* GetKernelPilot() const { return nullptr; }
+  // Internal typed diagnostic transport. Standalone/constant-folding contexts do not collect.
+  virtual const RuntimeWorkloadRecorder* GetRuntimeWorkloadRecorder() const { return nullptr; }
 #endif
 
  private:
