@@ -2137,6 +2137,40 @@ TEST_F(GraphTransformationTests, FuseConvBNNoBias) {
   }
 }
 
+TEST_F(GraphTransformationTests, ConvBNFusionSkipsInfiniteScale) {
+  for (bool infinite_scale : {false, true}) {
+    SCOPED_TRACE(infinite_scale);
+    Model model("conv_bn_infinite_scale", false, ModelMetaData(), PathString(),
+                IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 18}}, {}, *logger_);
+    Graph& graph = model.MainGraph();
+    ModelTestBuilder builder(graph);
+    auto* input = builder.MakeInput<float>({1, 1, 1, 1}, {0.0f});
+    auto* weight = builder.MakeInitializer<float>({1, 1, 1, 1}, {0.0f});
+    auto* conv_bias = builder.MakeInitializer<float>({1}, {1.0f});
+    auto* conv_output = builder.MakeIntermediate<float>(std::vector<int64_t>{1, 1, 1, 1});
+    builder.AddNode("Conv", {input, weight, conv_bias}, {conv_output});
+
+    auto* scale = builder.MakeInitializer<float>(
+        {1}, {infinite_scale ? std::numeric_limits<float>::infinity() : 1.0f});
+    auto* bias = builder.MakeInitializer<float>({1}, {0.0f});
+    auto* mean = builder.MakeInitializer<float>({1}, {-1.0f});
+    auto* variance = builder.MakeInitializer<float>({1}, {1.0f});
+    auto* output = builder.MakeOutput<float>(std::vector<int64_t>{1, 1, 1, 1});
+    builder.AddNode("BatchNormalization", {conv_output, scale, bias, mean, variance}, {output});
+    builder.SetGraphOutputs();
+    ASSERT_STATUS_OK(graph.Resolve());
+
+    GraphTransformerManager manager{1};
+    auto transformer = std::make_unique<RuleBasedGraphTransformer>("ConvBNFusionTest");
+    ASSERT_STATUS_OK(transformer->Register(std::make_unique<ConvBNFusion>()));
+    ASSERT_STATUS_OK(manager.Register(std::move(transformer), TransformerLevel::Level1));
+    ASSERT_STATUS_OK(manager.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+    auto counts = CountOpsInGraph(graph);
+    EXPECT_EQ(counts["BatchNormalization"], infinite_scale ? 1 : 0);
+  }
+}
+
 static void RunConvTransposeBNFusionTest(bool add_conv_bias, int64_t group, bool add_epsilon = true) {
   const int64_t input_channels_per_group = 2;
   const int64_t input_channels = input_channels_per_group * group;
