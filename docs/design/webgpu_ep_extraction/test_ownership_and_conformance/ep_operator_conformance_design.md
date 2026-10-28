@@ -198,7 +198,7 @@ once; generation must not obtain expected values by executing the EP under test.
 | `model` | Required relative path to the serialized ONNX model |
 | `required_nodes` | Nonempty array of unique nonempty node names present in the model; all must be assigned to the selected target |
 | `datasets` | Nonempty array; each object has `inputs` and `outputs` arrays of relative TensorProto paths |
-| `comparison` | Output-name to `{atol, rtol, nan_equal}` map; one policy for every expected model output, no extra entries |
+| `comparison` | Output-name to `{atol, rtol, nan_equal}` map; one float32 policy per expected output, no extra entries or mode selection |
 | `source` | Producer provenance object; retain it with artifacts, not as a runtime dependency on the original source |
 
 Each dataset supplies named feeds and every authored expected output exactly once. Initializers remain in the
@@ -350,17 +350,22 @@ include a reason, be visible in the report, and not waive the migration/parity g
 tolerance inflation is not acceptable. Profile comparison overrides are not implemented in the pilot.
 
 The shared comparator requires an actual dense float32 output with exactly the expected rank, dimensions, and element
-count, without broadcasting or dtype conversion. Finite float32 values are compared using double-precision arithmetic:
+count, without broadcasting or dtype conversion. The pilot has one comparison policy, without a `mode` field:
 
 $$
 |a-e| \leq \mathrm{atol} + \mathrm{rtol}\,|e|
 $$
 
-Here $a$ is actual and $e$ is authored expected, with finite nonnegative tolerances. Both tolerances zero gives exact
-numeric equality, not byte equality; positive and negative zero match. NaNs match only when both are NaN and
-`nan_equal` is true; a lone NaN always fails. Infinities match only when both are infinite with the same sign;
-finite/infinite pairs fail regardless of tolerance.
-Use this positive acceptance condition so a NaN cannot accidentally pass an inverted mismatch check. Other types,
+Here $a$ is actual and $e$ is authored expected, with finite nonnegative tolerances no greater than the largest finite
+float32 value. Tolerances are rounded to float32, and the relative product and sum are computed in float32 before
+comparison against the double-precision absolute difference. The threshold may overflow. This preserves `OpTester`
+finite-value arithmetic. Both tolerances zero gives exact numeric equality, not byte equality; positive and negative
+zero match. NaNs match only when both are NaN and `nan_equal` is true; a lone NaN always fails. Infinities match only
+when both are infinite with the same sign; finite/infinite pairs fail regardless of tolerance. The legacy `OpTester`
+exception accepting actual infinity for expected positive `FLT_MAX` is deliberately not preserved. Migrating cases
+that rely on that exception require explicit review rather than a claim of equivalent comparison semantics.
+
+Use the positive acceptance condition so a NaN cannot accidentally pass an inverted mismatch check. Other types,
 correlated-output rules, sorting, signed-zero-specific checks, and custom portable validators remain future work.
 Broader dtype support must use per-tensor types and dtype-specific comparison, preserving integer precision and
 initializer roles. Mixed inputs/outputs must not pass through float32 storage. Add it when concrete migrations need it.
@@ -607,7 +612,8 @@ subproject and publishes separate build handoffs for two independent reusable wo
 exact canonical cases, CPU profile, and generation metadata. It runs the native executable directly, without checkout,
 Python setup, the example plugin, or infrastructure tests, and retains its report even on failure.
 Other Windows EP callers reuse the same bundle layout with a target-specific profile and compatible native libraries.
-Inputs supply `ep-name` for job/report naming and runner labels; callers provide required hardware/drivers/dependencies.
+Inputs supply the expected `ep-name` for job/report naming and runner labels; successful execution must report that
+exact profile EP name. Callers provide required hardware/drivers/dependencies.
 The profile, not the display label, selects the EP. This does not add provider adapters or non-Windows host support.
 
 The [infrastructure workflow](../../../../.github/workflows/windows-ep-op-conformance-infrastructure.yml) checks out the same

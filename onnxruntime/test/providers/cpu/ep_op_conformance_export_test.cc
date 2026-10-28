@@ -1,6 +1,8 @@
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <filesystem>
+#include <limits>
 #include <random>
 
 #include "gtest/gtest.h"
@@ -46,6 +48,22 @@ class MissingTargetTester : public OpTester {
     auto& missing = graph.GetOrCreateNodeArg("missing_target", outputs.front()->TypeAsProto());
     graph.AddNode("extra_node", "Identity", "", {outputs.front()}, {&missing});
     graph.SetOutputs({outputs.front(), &missing});
+  }
+};
+
+class CastRoundTripTester : public OpTester {
+ public:
+  CastRoundTripTester() : OpTester("Cast", 13) {}
+
+  void AddNodes(Graph& graph, std::vector<NodeArg*>& inputs, std::vector<NodeArg*>& outputs,
+                std::vector<std::function<void(Node&)>>&) override {
+    auto intermediate_type = *inputs.front()->TypeAsProto();
+    intermediate_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto::INT64);
+    auto& intermediate = graph.GetOrCreateNodeArg("integer_intermediate", &intermediate_type);
+    auto& to_integer = graph.AddNode("to_integer", "Cast", "", {inputs.front()}, {&intermediate});
+    to_integer.AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto::INT64));
+    auto& to_float = graph.AddNode("to_float", "Cast", "", {&intermediate}, {outputs.front()});
+    to_float.AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto::FLOAT));
   }
 };
 
@@ -128,6 +146,7 @@ TEST_F(EpOpConformanceExportTest, MulFloat32Vector) {
   EXPECT_DOUBLE_EQ(policy.absolute, authored_.absolute);
   EXPECT_DOUBLE_EQ(policy.relative, authored_.relative);
   EXPECT_TRUE(policy.nan_equal);
+  EXPECT_FALSE(exported.manifest.at("comparison").at("Y").contains("mode"));
   ONNX_NAMESPACE::ModelProto model;
   ASSERT_TRUE(model.ParseFromString(exported.model));
   ASSERT_EQ(model.graph().node_size(), 1);
@@ -159,6 +178,33 @@ TEST_F(EpOpConformanceExportTest, RejectsMultipleRuns) {
   tester.ConfigEpOpConformanceExport(CaseDirectory().string(), kMulId);
   EXPECT_THROW(RunOnCpu(tester), OnnxRuntimeException);
   ExpectNoExport();
+}
+
+TEST_F(EpOpConformanceExportTest, PreservesFloat32ToleranceBoundary) {
+  const float actual = std::nextafter(1.0f, 2.0f);
+  const float absolute = std::ldexp(1.0f, -24);
+  const float relative = std::nextafter(absolute, 0.0f);
+  OpTester tester("Identity", 14);
+  tester.AddInput<float>("X", {1}, {actual});
+  tester.AddOutput<float>("Y", {1}, {1.0f}, false, relative, absolute);
+  tester.ConfigEpOpConformanceExport(CaseDirectory().string(), kMulId);
+  ASSERT_NO_THROW(RunOnCpu(tester));
+  const auto exported = ep_op_conformance::ReadCase(CaseDirectory());
+  const auto policy = ep_op_conformance::ReadComparison(exported.manifest.at("comparison").at("Y"));
+  ASSERT_NO_THROW(ep_op_conformance::CompareFloats({1.0f}, &actual, 1, policy));
+}
+
+TEST_F(EpOpConformanceExportTest, RejectsMaximumExpectedInfinityActual) {
+  const float actual = -std::numeric_limits<float>::infinity();
+  const float expected = std::numeric_limits<float>::max();
+  OpTester tester("Identity", 14);
+  tester.AddInput<float>("X", {1}, {actual});
+  tester.AddOutput<float>("Y", {1}, {expected});
+  tester.ConfigEpOpConformanceExport(CaseDirectory().string(), kMulId);
+  ASSERT_NO_THROW(RunOnCpu(tester));
+  const auto exported = ep_op_conformance::ReadCase(CaseDirectory());
+  const auto policy = ep_op_conformance::ReadComparison(exported.manifest.at("comparison").at("Y"));
+  EXPECT_THROW(ep_op_conformance::CompareFloats({expected}, &actual, 1, policy), std::runtime_error);
 }
 
 TEST_F(EpOpConformanceExportTest, InitializerRemainsInGraph) {
@@ -250,6 +296,16 @@ TEST_F(EpOpConformanceExportTest, RejectsNonFloat32Output) {
   tester.AddOutput<int64_t>("output", BaseTester::DimsVariant(authored_.shape), expected);
   tester.ConfigEpOpConformanceExport(CaseDirectory().string(), kMulId);
   EXPECT_THROW(RunOnCpu(tester), OnnxRuntimeException);
+  ExpectNoExport();
+}
+
+TEST_F(EpOpConformanceExportTest, RejectsNonFloat32IntermediateBeforePublication) {
+  CastRoundTripTester tester;
+  tester.AddInput<float>("X", {2}, {2.0f, 3.0f});
+  tester.AddOutput<float>("Y", {2}, {2.0f, 3.0f});
+  ASSERT_NO_THROW(RunOnCpu(tester));
+  tester.ConfigEpOpConformanceExport(CaseDirectory().string(), kMulId);
+  EXPECT_THROW(RunOnCpu(tester), std::runtime_error);
   ExpectNoExport();
 }
 

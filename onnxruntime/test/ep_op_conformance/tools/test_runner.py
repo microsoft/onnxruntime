@@ -237,6 +237,56 @@ class PilotTest(unittest.TestCase):
         self.manifest(comparison={"Y": {"atol": -1, "rtol": 0, "nan_equal": True}})
         self.assertEqual(self.replay(2)["status"], "ERROR")
 
+    def test_exact_comparison_executes(self):
+        self.manifest(comparison={"Y": {"atol": 0, "rtol": 0, "nan_equal": True}})
+        self.assertEqual(self.replay(cases=self.scalar)["passed"], 1)
+
+    def test_float32_boundaries_replay(self):
+        document = json.loads((self.scalar / "case.json").read_text())
+        dataset = document["datasets"][0]
+        absolute = np.float32(2**-24)
+        relative = np.nextafter(absolute, np.float32(0))
+        for expected, actual, atol, rtol, expected_code in (
+            (np.float32(1), np.nextafter(np.float32(1), np.float32(2)), absolute, relative, 0),
+            (np.finfo(np.float32).max, np.float32(np.inf), 0, 0, 1),
+            (np.finfo(np.float32).max, np.float32(-np.inf), 0, 0, 1),
+        ):
+            with self.subTest(expected=expected, actual=actual):
+                for relative_path, value in zip(dataset["inputs"], (actual, 1), strict=True):
+                    path = self.scalar / relative_path
+                    tensor = onnx.load_tensor(path)
+                    path.write_bytes(
+                        numpy_helper.from_array(
+                            np.full(tensor.dims, value, dtype=np.float32), tensor.name
+                        ).SerializeToString()
+                    )
+                path = self.scalar / dataset["outputs"][0]
+                tensor = onnx.load_tensor(path)
+                path.write_bytes(
+                    numpy_helper.from_array(
+                        np.full(tensor.dims, expected, dtype=np.float32), tensor.name
+                    ).SerializeToString()
+                )
+                policy = {"atol": float(atol), "rtol": float(rtol), "nan_equal": True}
+                self.manifest(comparison={"Y": policy})
+                report = self.replay(expected_code, self.scalar)
+                if expected_code:
+                    self.assertEqual(report["results"][0]["phase"], "execution_or_comparison")
+                else:
+                    self.assertEqual(report["passed"], 1)
+
+    def test_comparison_mode_field_rejected(self):
+        for mode in ("default", "op_tester_float32", "unknown"):
+            with self.subTest(mode=mode):
+                self.manifest(comparison={"Y": {"atol": 0, "rtol": 0, "nan_equal": True, "mode": mode}})
+                self.assertIn("Unsupported field", self.replay(2)["error"])
+
+    def test_tolerances_must_fit_float32(self):
+        for absolute, relative in ((1e100, 0), (0, 1e100)):
+            with self.subTest(absolute=absolute, relative=relative):
+                self.manifest(comparison={"Y": {"atol": absolute, "rtol": relative, "nan_equal": True}})
+                self.assertIn("fit float32", self.replay(2)["error"])
+
     def test_nonfloat_initializer_rejected(self):
         case = self.cases / case_directory_name("ai.onnx.Mul.opset14.float32_initializer")
         path = case / "model.onnx"

@@ -1,3 +1,4 @@
+import hashlib
 import json
 import subprocess
 import sys
@@ -73,10 +74,36 @@ class PackageCasesTest(unittest.TestCase):
         with self.assertRaises(FileExistsError):
             self.create()
 
+    def test_archive_and_case_order_uses_posix_strings(self):
+        directories = list(self.cases.iterdir())
+        for directory, name in zip(directories, ("Zulu", "alpha", "middle"), strict=True):
+            directory.rename(self.cases / name)
+        self.create()
+        metadata = package_cases.verify_cases_archive(self.archive)
+        self.assertEqual([case["directory"] for case in metadata["cases"]], ["Zulu", "alpha", "middle"])
+        with zipfile.ZipFile(self.archive) as archive:
+            names = archive.namelist()
+            self.assertEqual(names, [*sorted(metadata["files"]), "artifact.json"])
+
     def test_invalid_case_field_rejected(self):
         self.mutate(ignored_assertion=True)
         with self.assertRaisesRegex(ValueError, "fields"):
             self.create()
+
+    def test_comparison_mode_field_rejected(self):
+        for mode in ("default", "op_tester_float32", "unknown", None, 1, {}):
+            with self.subTest(mode=mode):
+                self.document["comparison"]["Y"]["mode"] = mode
+                self.mutate()
+                with self.assertRaisesRegex(ValueError, "fields"):
+                    self.create()
+
+    def test_tolerances_must_fit_float32(self):
+        for absolute, relative in ((1e100, 0), (0, 1e100)):
+            with self.subTest(absolute=absolute, relative=relative):
+                self.mutate(comparison={"Y": {"atol": absolute, "rtol": relative, "nan_equal": True}})
+                with self.assertRaisesRegex(ValueError, "fit float32"):
+                    self.create()
 
     def test_traversal_and_missing_dependency_rejected(self):
         for model in ("../outside.onnx", "missing.onnx", "C:/outside.onnx", "nested\\model.onnx"):
@@ -167,6 +194,46 @@ class PackageCasesTest(unittest.TestCase):
         for relative in ("CON.txt", "directory/file.", "directory/file ", "directory/file:stream", "directory/file?"):
             with self.subTest(relative=relative), self.assertRaises(ValueError):
                 package_cases.safe_relative_path(relative)
+
+    def test_superscript_device_names_rejected_for_inputs_and_archives(self):
+        for prefix in ("COM", "LPT"):
+            for digit in ("\u00b9", "\u00b2", "\u00b3"):
+                name = prefix + digit
+                with self.subTest(name=name):
+                    with self.assertRaisesRegex(ValueError, "Unsafe"):
+                        package_cases.safe_relative_path(name)
+                    with (
+                        patch("package_cases.Path.rglob", return_value=[self.cases / name]),
+                        self.assertRaisesRegex(ValueError, "Unsafe"),
+                    ):
+                        package_cases.inventory(self.cases)
+                    output = self.root / "reserved.zip"
+                    with zipfile.ZipFile(output, "w") as archive:
+                        archive.writestr(name, b"reserved")
+                    destination = self.root / "reserved-extract"
+                    with self.assertRaisesRegex(ValueError, "Unsafe"):
+                        package_cases.extract_archive(output, destination, "ci-fixtures")
+                    self.assertFalse(destination.exists())
+
+    def test_archive_file_directory_collisions_rejected_in_any_order(self):
+        for paths in (("a", "a/child"), ("a/child", "a"), ("A", "a/child"), ("a/child", "A")):
+            with self.subTest(paths=paths):
+                metadata = {
+                    "schema_version": 1,
+                    "kind": "ci-fixtures",
+                    "source_revision": "test-revision",
+                    "files": {name: hashlib.sha256(b"data").hexdigest() for name in paths},
+                }
+                with zipfile.ZipFile(self.archive, "w") as archive:
+                    for name in paths:
+                        archive.writestr(name, b"data")
+                    archive.writestr("artifact.json", json.dumps(metadata))
+                with self.assertRaisesRegex(ValueError, "file/directory"):
+                    package_cases.verify_archive(self.archive, "ci-fixtures")
+                output = self.root / "extract"
+                with self.assertRaisesRegex(ValueError, "file/directory"):
+                    package_cases.extract_archive(self.archive, output, "ci-fixtures")
+                self.assertFalse(output.exists())
 
     def test_generic_archive_handles_deliberately_invalid_fixtures(self):
         self.mutate(ignored_assertion=True)

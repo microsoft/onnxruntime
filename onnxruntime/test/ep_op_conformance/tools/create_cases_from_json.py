@@ -110,6 +110,8 @@ def write_cases(cases, definitions, destination):
             for key in ("atol", "rtol")
         ):
             raise ValueError("Invalid comparison tolerance")
+        if any(comparison[key] > float.fromhex("0x1.fffffep+127") for key in ("atol", "rtol")):
+            raise ValueError("Comparison tolerances must fit float32")
         if type(comparison["nan_equal"]) is not bool:
             raise ValueError("Invalid NaN policy")
         if not isinstance(case["inputs"], list) or not isinstance(case["outputs"], list):

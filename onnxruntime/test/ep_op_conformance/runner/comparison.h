@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <cstddef>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -18,6 +19,10 @@ inline void ValidateComparison(const Comparison& policy) {
   if (!std::isfinite(policy.absolute) || !std::isfinite(policy.relative) ||
       policy.absolute < 0 || policy.relative < 0) {
     throw std::runtime_error("Comparison tolerances must be finite and nonnegative");
+  }
+  if (policy.absolute > std::numeric_limits<float>::max() ||
+      policy.relative > std::numeric_limits<float>::max()) {
+    throw std::runtime_error("Comparison tolerances must fit float32");
   }
 }
 
@@ -36,7 +41,9 @@ inline void CompareFloats(const std::vector<float>& expected, const float* actua
     } else if (std::isinf(reference) || std::isinf(observed)) {
       matches = reference == observed;
     } else {
-      matches = std::abs(reference - observed) <= policy.absolute + policy.relative * std::abs(reference);
+      const float relative_tolerance = static_cast<float>(policy.relative) * std::abs(expected[index]);
+      const float tolerance = static_cast<float>(policy.absolute) + relative_tolerance;
+      matches = std::abs(reference - observed) <= static_cast<double>(tolerance);
     }
     if (!matches) {
       throw std::runtime_error("Output mismatch at element " + std::to_string(index));

@@ -44,7 +44,10 @@ def safe_relative_path(relative):
         or any(character in relative for character in '\\:<>"|?*')
         or any(ord(character) < 32 for character in relative)
         or any(part.endswith((".", " ")) for part in path.parts)
-        or any(re.fullmatch(r"(?i:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?", part) for part in path.parts)
+        or any(
+            re.fullmatch(r"(?i:CON|PRN|AUX|NUL|COM[1-9\u00b9\u00b2\u00b3]|LPT[1-9\u00b9\u00b2\u00b3])(?:\..*)?", part)
+            for part in path.parts
+        )
     ):
         raise ValueError("Unsafe package path")
     return path
@@ -55,7 +58,7 @@ def inventory(root):
         raise ValueError(f"Package root must be a directory, not a symlink: {root}")
     result = {}
     portable_names = set()
-    for path in sorted(root.rglob("*")):
+    for path in sorted(root.rglob("*"), key=lambda path: path.relative_to(root).as_posix()):
         if path.is_symlink():
             raise ValueError(f"Package contains a symlink: {path}")
         relative = path.relative_to(root).as_posix()
@@ -134,11 +137,15 @@ def write_archive(root, output, kind, revision, **metadata):
 
 def read_archive(archive, kind, revision=None):
     names = set()
+    parents = set()
     for entry in archive.infolist():
-        safe_relative_path(entry.filename)
+        path = safe_relative_path(entry.filename)
         if entry.filename.casefold() in names or entry.is_dir() or stat.S_ISLNK(entry.external_attr >> 16):
             raise ValueError("Duplicate or non-file archive entry")
         names.add(entry.filename.casefold())
+        parents.update(parent.as_posix().casefold() for parent in path.parents if parent != PurePosixPath("."))
+    if names & parents:
+        raise ValueError("Archive file/directory path collision")
     document = json.loads(archive.read("artifact.json"))
     validate_metadata(document, kind, revision)
     if {entry.filename for entry in archive.infolist()} != {*document["files"], "artifact.json"}:
@@ -177,7 +184,7 @@ def validate_cases(root):
     if (root / "artifact.json").exists():
         raise ValueError("Unexpected artifact.json outside the case dependency closure")
     files = inventory(root)
-    manifests = sorted(root.glob("*/case.json"))
+    manifests = sorted(root.glob("*/case.json"), key=lambda path: path.relative_to(root).as_posix())
     if not manifests:
         raise ValueError("No case manifests found")
     referenced = set()
@@ -249,6 +256,8 @@ def validate_cases(root):
                 for key in ("atol", "rtol")
             ):
                 raise ValueError("Invalid comparison policy")
+            if any(policy[key] > float.fromhex("0x1.fffffep+127") for key in ("atol", "rtol")):
+                raise ValueError("Comparison tolerances must fit float32")
         for dataset in case["datasets"]:
             fields(dataset, ("inputs", "outputs"))
             for kind, expected in (("inputs", feeds), ("outputs", outputs)):

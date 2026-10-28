@@ -148,24 +148,6 @@ option(onnxruntime_USE_AVX2 "Use AVX2 instructions" OFF)
 option(onnxruntime_USE_AVX512 "Use AVX512 instructions" OFF)
 
 option(onnxruntime_BUILD_SHARED_LIB "Build a shared library" OFF)
-if(onnxruntime_BUILD_EP_OP_CONFORMANCE_TESTS)
-  if(EMSCRIPTEN)
-    message(FATAL_ERROR "The EP op conformance runner loads native runtime/provider libraries; "
-                        "Emscripten requires a separate WebAssembly host")
-  endif()
-  if(NOT onnxruntime_BUILD_SHARED_LIB)
-    message(FATAL_ERROR "The EP op conformance runner dynamically loads ORT and requires "
-                        "onnxruntime_BUILD_SHARED_LIB=ON; static runtime linkage is not supported by this runner")
-  endif()
-  if(onnxruntime_MINIMAL_BUILD)
-    message(FATAL_ERROR "The EP op conformance runner loads ONNX models; "
-                        "minimal runtimes without ONNX model loading are not supported")
-  endif()
-  if(CMAKE_CROSSCOMPILING OR ANDROID OR IOS)
-    message(FATAL_ERROR "EP op conformance main-build integration is not yet supported for "
-                        "cross-compilation, Android, or iOS")
-  endif()
-endif()
 option(onnxruntime_BUILD_APPLE_FRAMEWORK "Build a macOS/iOS framework" OFF)
 option(onnxruntime_ENABLE_MICROSOFT_INTERNAL "Use this option to enable/disable microsoft internal only code" OFF)
 
@@ -584,6 +566,25 @@ endif()
 # 'extended' implies minimal.
 if (onnxruntime_EXTENDED_MINIMAL_BUILD AND NOT onnxruntime_MINIMAL_BUILD)
   set(onnxruntime_MINIMAL_BUILD ON)
+endif()
+
+if(onnxruntime_BUILD_EP_OP_CONFORMANCE_TESTS)
+  if(EMSCRIPTEN)
+    message(FATAL_ERROR "The EP op conformance runner loads native runtime/provider libraries; "
+                        "Emscripten requires a separate WebAssembly host")
+  endif()
+  if(NOT onnxruntime_BUILD_SHARED_LIB)
+    message(FATAL_ERROR "The EP op conformance runner dynamically loads ORT and requires "
+                        "onnxruntime_BUILD_SHARED_LIB=ON; static runtime linkage is not supported by this runner")
+  endif()
+  if(onnxruntime_MINIMAL_BUILD)
+    message(FATAL_ERROR "The EP op conformance runner loads ONNX models; "
+                        "minimal runtimes without ONNX model loading are not supported")
+  endif()
+  if(CMAKE_CROSSCOMPILING OR ANDROID OR IOS)
+    message(FATAL_ERROR "EP op conformance main-build integration is not yet supported for "
+                        "cross-compilation, Android, or iOS")
+  endif()
 endif()
 
 set(ONNXRUNTIME_ROOT ${PROJECT_SOURCE_DIR}/../onnxruntime)

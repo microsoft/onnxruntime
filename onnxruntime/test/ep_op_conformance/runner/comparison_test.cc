@@ -37,7 +37,24 @@ int main() {
     ExpectFailure([&] { CompareFloats({1}, values.data(), 2, {}); });
     ExpectFailure([&] { CompareFloats({}, nullptr, 0, {-1, 0, true}); });
     ExpectFailure([&] { CompareFloats({}, nullptr, 0, {nan, 0, true}); });
-    std::cout << "10 comparison checks passed\n";
+    const float next = std::nextafter(1.0f, 2.0f);
+    const float absolute = std::ldexp(1.0f, -24);
+    const float relative = std::nextafter(absolute, 0.0f);
+    CompareFloats({1}, &next, 1, {absolute, relative, true});
+    const float maximum = std::numeric_limits<float>::max();
+    const float negative_infinity = -infinity;
+    ExpectFailure([&] { CompareFloats({maximum}, &infinity, 1, {}); });
+    ExpectFailure([&] { CompareFloats({maximum}, &negative_infinity, 1, {}); });
+    ExpectFailure([&] { CompareFloats({-maximum}, &negative_infinity, 1, {}); });
+    ExpectFailure([&] { CompareFloats({infinity}, &negative_infinity, 1, {}); });
+    const float negative_small = -std::ldexp(1.0f, -25);
+    ExpectFailure([&] { CompareFloats({1}, &negative_small, 1, {1, 0, true}); });
+    ExpectFailure([&] { CompareFloats({maximum}, &negative_infinity, 1, {maximum, maximum, true}); });
+    const float negative_maximum = -maximum;
+    CompareFloats({maximum}, &negative_maximum, 1, {maximum, maximum, true});
+    ExpectFailure([&] { CompareFloats({}, nullptr, 0, {1e100, 0, true}); });
+    ExpectFailure([&] { CompareFloats({}, nullptr, 0, {0, 1e100, true}); });
+    std::cout << "20 comparison checks passed\n";
     return 0;
   } catch (const std::exception& error) {
     std::cerr << error.what() << '\n';

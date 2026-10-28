@@ -198,6 +198,8 @@ void BaseTester::ExportEpOpConformanceCase(const Model& model, const std::unorde
                 "EP op conformance export is missing a float32 output target");
   }
 
+  ep_op_conformance::ValidateModel(proto);
+
   const auto* test_info = ::testing::UnitTest::GetInstance()->current_test_info();
   ORT_ENFORCE(test_info != nullptr, "EP op conformance export requires Google Test provenance");
   std::string source_file = test_info->file();

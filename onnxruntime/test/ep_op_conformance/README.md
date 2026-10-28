@@ -44,16 +44,21 @@ on the case's session. Neither authoring JSON nor the generated manifest accepts
 `num_run_calls_ != 1`, rather than silently reducing a C++ test to one run.
 
 Actual output dtype, rank, dimensions, and element count must match exactly; there is no broadcasting or dtype
-coercion. Finite values pass using double-precision comparison arithmetic when
+coercion. The pilot has one float32 comparison policy and no `mode` field. Finite values pass when
 
 $$
 |a-e| \leq \mathrm{atol} + \mathrm{rtol}\,|e|
 $$
 
-where $a$ is actual and $e$ is authored expected. Tolerances are finite and nonnegative; zero gives exact numeric
-equality, not byte equality (positive and negative zero match). NaNs match only when both are NaN and `nan_equal` is
-true. Infinities match only with the same sign; lone NaNs and finite/infinite pairs always fail. JSON generation
-accepts finite values representable as finite float32 only, even though TensorProto comparison handles NaNs/infinities.
+where $a$ is actual and $e$ is authored expected. Tolerances are finite, nonnegative, and no greater than the largest
+finite float32 value. Each tolerance is rounded to float32, and the relative product and sum are computed in float32;
+the absolute difference is computed in double precision and compared against that threshold. The threshold may
+overflow. This preserves the existing `OpTester` finite-value arithmetic. Zero tolerances give exact numeric equality,
+not byte equality (positive and negative zero match). NaNs match only when both are NaN and `nan_equal` is true.
+Infinities match only with the same sign; lone NaNs and finite/infinite pairs always fail, regardless of tolerance.
+The legacy `OpTester` exception accepting actual infinity for expected positive `FLT_MAX` is deliberately not
+preserved; any migrating case that relies on it needs explicit review. JSON generation accepts finite values
+representable as finite float32 only, even though TensorProto comparison handles NaNs/infinities.
 
 The JSON generator is bounded to one standard-domain node without attributes and one dataset. Concrete dimensions,
 unique tensor names, and exact element/byte counts are required. Tensor files are inline dense float32, with
@@ -127,14 +132,19 @@ dependency build; it is not linked into the runner. These PowerShell examples st
 $Repo = (Get-Location).Path
 $PilotBuild = Join-Path $Repo 'build/ep_op_conformance/native'
 cmake -S "$Repo/onnxruntime/test/ep_op_conformance" -B "$PilotBuild" `
-  -G 'Visual Studio 17 2022' -A x64 -DCONFORMANCE_FETCH_DEPS=ON `
+  -G 'Visual Studio 17 2022' -A x64 -DEP_OP_CONFORMANCE_FETCH_DEPS=ON `
   "-DPYTHON_EXECUTABLE=$Repo/.venv/Scripts/python.exe"
 cmake --build "$PilotBuild" --config Release --target onnxruntime_ep_op_conformance_test ep_op_conformance_comparison_test
 ctest --test-dir "$PilotBuild" -C Release --output-on-failure -R '^ep_op_conformance_comparison$'
 ```
 
 Reuse the ORT build/test Python environment described below before configuring. Alternatively, supply all six cache paths
-with `EP_OP_CONFORMANCE_FETCH_DEPS=OFF` (the default) in a separate build directory. Replace paths with your SDK/build paths;
+with `EP_OP_CONFORMANCE_FETCH_DEPS=OFF` (the default) in a separate build directory. Manual mode requires static
+ONNX-ML `onnx_proto`, compatible protobuf headers and a static protobuf library, plus JSON headers. The protobuf version
+and runtime must match the generated ONNX code; full-generated code requires full protobuf. The fetched ONNX 1.17.0,
+lite protobuf 3.21.12, and JSON 3.11.3 configuration is the tested standalone example, not an exact-version restriction
+on manual dependencies. Other combinations have not been independently validated. Shared ONNX/protobuf dependencies
+are not supported. Replace paths with your dependency build paths;
 use an appropriate toolchain/generator for your platform. On other platforms substitute native executable and
 shared-library filenames. A single-configuration generator also needs `-DCMAKE_BUILD_TYPE=Release`.
 
@@ -147,7 +157,7 @@ cmake -S "$Repo/onnxruntime/test/ep_op_conformance" -B "$PilotBuild" `
   '-DONNX_PROTO_INCLUDE_DIR=C:/deps/onnx-generated' `
   '-DPROTOBUF_INCLUDE_DIR=C:/deps/protobuf/include' `
   '-DONNX_PROTO_LIBRARY=C:/deps/lib/onnx_proto.lib' `
-  '-DPROTOBUF_LIBRARY=C:/deps/lib/libprotobuf.lib'
+  '-DPROTOBUF_LIBRARY=C:/deps/lib/libprotobuf-lite.lib'
 cmake --build "$PilotBuild" --config Release --target onnxruntime_ep_op_conformance_test ep_op_conformance_comparison_test
 ctest --test-dir "$PilotBuild" -C Release --output-on-failure -R '^ep_op_conformance_comparison$'
 ```
@@ -188,7 +198,7 @@ contain complete bounded field tables and JSON examples. These are draft contrac
 | --- | --- |
 | Authoring JSON | `schema_version: 1`, nonempty `cases`; each case has `id`, `operator`, `opset`, `inputs`, `outputs`, `comparison` |
 | Authored tensor | `name`, concrete `shape`, `values`; optional input `initializer` boolean (default false); implicit float32 |
-| Comparison | `atol`, `rtol`, `nan_equal`; authoring case policy expands to one policy per output |
+| Comparison | `atol`, `rtol`, `nan_equal`; one float32 policy, expanded per output by the fixture generator |
 | Generated manifest | `schema_version: 1`, `id`, `model`, nonempty `required_nodes`/`datasets`, output-name `comparison` map, `source` provenance |
 | Dataset | `inputs`/`outputs` arrays of relative TensorProto paths; exactly one execution, all expected model outputs required |
 | Target profile | `schema_version: 1`, `kind: builtin` or `plugin`, canonical `ep_name`; optional string `options` map and reasoned exact-ID `skips` |
@@ -381,7 +391,8 @@ retain their normal environments.
 
 The reusable [provider workflow](../../../.github/workflows/windows-ep-op-conformance.yml) selects the EP through the
 bundle's `profile.json`, not through workflow logic. `ep-name` uses the actual EP name, such as `CPUExecutionProvider`,
-in job/report labels; it does not override the profile's EP registration name. Call it with an immutable `bundle-id`
+in job/report labels and must exactly match the executed report's profile EP name; it does not override the profile.
+Call it with an immutable `bundle-id`
 and a required JSON array of `runs-on` labels; there is no default runner:
 
 ```yaml

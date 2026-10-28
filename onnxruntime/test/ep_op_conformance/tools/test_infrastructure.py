@@ -160,6 +160,17 @@ class GenerationTest(unittest.TestCase):
         self.assertFalse(self.destination.exists())
         self.assertEqual(list(self.destination.parent.iterdir()), [])
 
+    def test_tolerances_must_fit_float32(self):
+        document = json.loads(self.definitions.read_text())
+        for key in ("atol", "rtol"):
+            with self.subTest(tolerance=key):
+                document["cases"][-1]["comparison"] = {"atol": 0, "rtol": 0, "nan_equal": True, key: 1e100}
+                self.definitions.write_text(json.dumps(document))
+                with self.assertRaisesRegex(ValueError, "fit float32"):
+                    generate(self.definitions, self.destination)
+                self.assertFalse(self.destination.exists())
+                self.assertEqual(list(self.destination.parent.iterdir()), [])
+
     def test_write_failure_cleans_staging(self):
         original_write = Path.write_bytes
 

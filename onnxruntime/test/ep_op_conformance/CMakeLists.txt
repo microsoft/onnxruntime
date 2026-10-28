@@ -13,8 +13,8 @@ set(ORT_PUBLIC_INCLUDE_DIR "" CACHE PATH "Directory containing public onnxruntim
 set(JSON_INCLUDE_DIR "" CACHE PATH "Directory containing nlohmann/json.hpp")
 set(ONNX_PROTO_INCLUDE_DIR "" CACHE PATH "Directory containing generated onnx/onnx-ml.pb.h")
 set(PROTOBUF_INCLUDE_DIR "" CACHE PATH "Matching protobuf include directory")
-set(ONNX_PROTO_LIBRARY "" CACHE FILEPATH "Prebuilt ONNX protobuf library")
-set(PROTOBUF_LIBRARY "" CACHE FILEPATH "Matching protobuf library")
+set(ONNX_PROTO_LIBRARY "" CACHE FILEPATH "Static ONNX protobuf library")
+set(PROTOBUF_LIBRARY "" CACHE FILEPATH "Matching static protobuf library")
 
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/artifact.json")
   set(ORT_PUBLIC_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include")
@@ -81,6 +81,7 @@ elseif(EP_OP_CONFORMANCE_FETCH_DEPS)
   target_include_directories(onnxruntime_ep_op_conformance_test SYSTEM PRIVATE "${onnx_BINARY_DIR}")
   target_link_libraries(onnxruntime_ep_op_conformance_test PRIVATE onnx_proto protobuf::libprotobuf-lite nlohmann_json::nlohmann_json)
 else()
+  target_compile_definitions(onnxruntime_ep_op_conformance_test PRIVATE ONNX_ML=1 ONNX_API=)
   target_include_directories(onnxruntime_ep_op_conformance_test SYSTEM PRIVATE
     "${JSON_INCLUDE_DIR}" "${ONNX_PROTO_INCLUDE_DIR}" "${PROTOBUF_INCLUDE_DIR}")
   target_link_libraries(onnxruntime_ep_op_conformance_test PRIVATE "${ONNX_PROTO_LIBRARY}" "${PROTOBUF_LIBRARY}")

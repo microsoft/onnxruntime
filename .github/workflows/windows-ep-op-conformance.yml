@@ -10,7 +10,7 @@ on:
         required: true
         type: string
       ep-name:
-        description: 'Actual EP name, such as CPUExecutionProvider, used in the job and report artifact names'
+        description: 'Expected EP name, such as CPUExecutionProvider; must match the executed report profile'
         required: true
         type: string
       runs-on:
@@ -39,6 +39,8 @@ jobs:
           path: ${{ runner.temp }}/ep-op-conformance
 
       - name: Run Canonical Cases Against Selected EP
+        env:
+          EXPECTED_EP_NAME: ${{ inputs.ep-name }}
         run: |
           $root = "$env:RUNNER_TEMP/ep-op-conformance"
           New-Item -ItemType Directory "$root/reports" | Out-Null
@@ -46,6 +48,10 @@ jobs:
             --runtime "$root/bin/onnxruntime.dll" --profile "$root/profile.json" `
             --cases "$root/cases" --report "$root/reports/conformance.json"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $report = Get-Content -Raw "$root/reports/conformance.json" | ConvertFrom-Json
+          if ($report.profile.ep_name -cne $env:EXPECTED_EP_NAME) {
+            throw "Expected EP '$env:EXPECTED_EP_NAME', but report selected '$($report.profile.ep_name)'"
+          }
 
       - name: Preserve EP Conformance Report
         if: always()
