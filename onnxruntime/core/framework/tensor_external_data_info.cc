@@ -157,6 +157,11 @@ std::ostream& ExternalDataInfo::WritePrepackedToFileAndAddToProto(
           return os;
         }
       }
+      // Packed layouts can contain aligned sub-regions. Preserve their offsets when mmap'd,
+      // including for blobs below the optional page-alignment threshold.
+      if (!AlignAndPad(os, kAllocAlignment, external_offset)) {
+        return os;
+      }
       if (prepack_count++ > 0) {
         prepacked_entry << "|";
       }
