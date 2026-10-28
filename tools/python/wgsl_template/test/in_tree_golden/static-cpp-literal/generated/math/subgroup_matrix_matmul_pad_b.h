@@ -19,40 +19,41 @@ Status ApplyTemplate<"math/subgroup_matrix_matmul_pad_b.wgsl.template">(ShaderHe
 //  4 | // Copies a row-major f16 weight B [K, N] into a column-padded [K, N_b] buffer
 //  5 | // (N_b >= N), zero-filling columns [N, N_b). One thread per padded-output element.
 //  6 | // Gives B an aligned row stride so the subgroup-matrix f16 load's row-start
-//  7 | // alignment holds for any N. See EnsurePaddedB in subgroup_matrix_matmul.cc.
-//  8 |
-//  9 | #use guardAgainstOutOfBoundsWorkgroupSizes
-// 10 | #use .getByOffset .setByOffset
-// 11 |
-// 12 | $MAIN {
+//  7 | // alignment holds for any N. Shared by MatMul and Conv; see
+//  8 | // PadSubgroupMatrixWeightColumns in subgroup_matrix_pad_b.cc.
+//  9 |
+// 10 | #use guardAgainstOutOfBoundsWorkgroupSizes
+// 11 | #use .getByOffset .setByOffset
+// 12 |
+// 13 | $MAIN {
 MainFunctionStart();
 ss << "\n";
-// 13 |   guardAgainstOutOfBoundsWorkgroupSizes(uniforms.output_size);
+// 14 |   guardAgainstOutOfBoundsWorkgroupSizes(uniforms.output_size);
 ss << "  ";
 ss << shader_helper.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size");
 ss << ";\n";
-// 14 |   let r = global_idx / uniforms.N_b;                 // padded-output row
+// 15 |   let r = global_idx / uniforms.N_b;                 // padded-output row
 ss << "  let r = global_idx / uniforms.N_b;\n";
-// 15 |   let c = global_idx % uniforms.N_b;                 // padded-output column
+// 16 |   let c = global_idx % uniforms.N_b;                 // padded-output column
 ss << "  let c = global_idx % uniforms.N_b;\n";
-// 16 |   var v = output_value_t(0);
+// 17 |   var v = output_value_t(0);
 ss << "  var v = output_value_t(0);\n";
-// 17 |   if (c < uniforms.N) {                              // real column -> copy; else zero pad
+// 18 |   if (c < uniforms.N) {                              // real column -> copy; else zero pad
 ss << "  if (c < uniforms.N) {\n";
-// 18 |     v = output_value_t(input_b.getByOffset(r * uniforms.N + c));
+// 19 |     v = output_value_t(input_b.getByOffset(r * uniforms.N + c));
 ss << "    v = output_value_t(";
 ss << __var_input_b->GetByOffset("r * uniforms.N + c");
 ss << ");\n";
-// 19 |   }
+// 20 |   }
 ss << "  }\n";
-// 20 |   output.setByOffset(global_idx, v);
+// 21 |   output.setByOffset(global_idx, v);
 ss << "  ";
 ss << __var_output->SetByOffset("global_idx", "v");
 ss << ";\n";
-// 21 | }  // MAIN
+// 22 | }  // MAIN
 MainFunctionEnd();
 ss << "\n";
-// 22 |
+// 23 |
 
 
   return Status::OK();

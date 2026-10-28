@@ -19,40 +19,41 @@ Status ApplyTemplate<"math/subgroup_matrix_matmul_pad_b.wgsl.template">(ShaderHe
 //  4 | // Copies a row-major f16 weight B [K, N] into a column-padded [K, N_b] buffer
 //  5 | // (N_b >= N), zero-filling columns [N, N_b). One thread per padded-output element.
 //  6 | // Gives B an aligned row stride so the subgroup-matrix f16 load's row-start
-//  7 | // alignment holds for any N. See EnsurePaddedB in subgroup_matrix_matmul.cc.
-//  8 |
-//  9 | #use guardAgainstOutOfBoundsWorkgroupSizes
-// 10 | #use .getByOffset .setByOffset
-// 11 |
-// 12 | $MAIN {
+//  7 | // alignment holds for any N. Shared by MatMul and Conv; see
+//  8 | // PadSubgroupMatrixWeightColumns in subgroup_matrix_pad_b.cc.
+//  9 |
+// 10 | #use guardAgainstOutOfBoundsWorkgroupSizes
+// 11 | #use .getByOffset .setByOffset
+// 12 |
+// 13 | $MAIN {
 MainFunctionStart();
 ss << __str_5;
-// 13 |   guardAgainstOutOfBoundsWorkgroupSizes(uniforms.output_size);
+// 14 |   guardAgainstOutOfBoundsWorkgroupSizes(uniforms.output_size);
 ss << __str_241;
 ss << shader_helper.GuardAgainstOutOfBoundsWorkgroupSizes(__str_237);
 ss << __str_29;
-// 14 |   let r = global_idx / uniforms.N_b;                 // padded-output row
+// 15 |   let r = global_idx / uniforms.N_b;                 // padded-output row
 ss << __str_242;
-// 15 |   let c = global_idx % uniforms.N_b;                 // padded-output column
+// 16 |   let c = global_idx % uniforms.N_b;                 // padded-output column
 ss << __str_243;
-// 16 |   var v = output_value_t(0);
+// 17 |   var v = output_value_t(0);
 ss << __str_244;
-// 17 |   if (c < uniforms.N) {                              // real column -> copy; else zero pad
+// 18 |   if (c < uniforms.N) {                              // real column -> copy; else zero pad
 ss << __str_245;
-// 18 |     v = output_value_t(input_b.getByOffset(r * uniforms.N + c));
+// 19 |     v = output_value_t(input_b.getByOffset(r * uniforms.N + c));
 ss << __str_246;
 ss << __var_input_b->GetByOffset(__str_238);
 ss << __str_17;
-// 19 |   }
+// 20 |   }
 ss << __str_11;
-// 20 |   output.setByOffset(global_idx, v);
+// 21 |   output.setByOffset(global_idx, v);
 ss << __str_241;
 ss << __var_output->SetByOffset(__str_239, __str_240);
 ss << __str_29;
-// 21 | }  // MAIN
+// 22 | }  // MAIN
 MainFunctionEnd();
 ss << __str_5;
-// 22 |
+// 23 |
 
 
   return Status::OK();

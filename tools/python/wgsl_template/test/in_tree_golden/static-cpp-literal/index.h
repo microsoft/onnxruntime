@@ -128,6 +128,7 @@ Status ApplyTemplate<"nn/im2col_matmul.wgsl.template">(ShaderHelper& shader_help
 template <>
 struct TemplateParameter<"nn/subgroup_matrix_conv_8x16x16.wgsl.template"> {
   using type = struct {
+    int param_b_is_hwio;
     int param_sg_mat_count_m;
     int param_sg_mat_count_n;
     int param_sg_mat_k;
