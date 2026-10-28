@@ -72,13 +72,23 @@ Status UnaryElementwise::ComputeInternal(ComputeContext& context) const {
 // math
 //
 
+namespace {
+// Float and int32 types. WGSL sign() and unary minus support f32, f16 and i32, but not u32.
+const std::vector<MLDataType>& SignedNumberTypes() {
+  static const std::vector<MLDataType> types{DataTypeImpl::GetTensorType<float>(),
+                                             DataTypeImpl::GetTensorType<MLFloat16>(),
+                                             DataTypeImpl::GetTensorType<int32_t>()};
+  return types;
+}
+}  // namespace
+
 WEBGPU_ELEMENTWISE_IMPL(Abs, "abs(a)")
-WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Abs, 6, 12, WebGpuSupportedFloatTypes())
-WEBGPU_ELEMENTWISE_KERNEL(Abs, 13, WebGpuSupportedFloatTypes())
+WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Abs, 6, 12, WebGpuSupportedNumberTypes())
+WEBGPU_ELEMENTWISE_KERNEL(Abs, 13, WebGpuSupportedNumberTypes())
 
 WEBGPU_ELEMENTWISE_IMPL(Neg, "-a")
-WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Neg, 6, 12, WebGpuSupportedFloatTypes())
-WEBGPU_ELEMENTWISE_KERNEL(Neg, 13, WebGpuSupportedFloatTypes())
+WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Neg, 6, 12, SignedNumberTypes())
+WEBGPU_ELEMENTWISE_KERNEL(Neg, 13, SignedNumberTypes())
 
 WEBGPU_ELEMENTWISE_IMPL(Floor, "floor(a)")
 WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Floor, 6, 12, WebGpuSupportedFloatTypes())
@@ -101,19 +111,9 @@ WEBGPU_ELEMENTWISE_IMPL(Round, "round(a)")
 WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Round, 11, 21, WebGpuSupportedFloatTypes())
 WEBGPU_ELEMENTWISE_KERNEL(Round, 22, WebGpuSupportedFloatTypes())
 
-namespace {
-// WGSL sign() supports f32, f16 and i32, but not u32.
-const std::vector<MLDataType>& SignTypes() {
-  static const std::vector<MLDataType> types{DataTypeImpl::GetTensorType<float>(),
-                                             DataTypeImpl::GetTensorType<MLFloat16>(),
-                                             DataTypeImpl::GetTensorType<int32_t>()};
-  return types;
-}
-}  // namespace
-
 WEBGPU_ELEMENTWISE_IMPL(Sign, "sign(a)")
-WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Sign, 9, 12, SignTypes())
-WEBGPU_ELEMENTWISE_KERNEL(Sign, 13, SignTypes())
+WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Sign, 9, 12, SignedNumberTypes())
+WEBGPU_ELEMENTWISE_KERNEL(Sign, 13, SignedNumberTypes())
 
 WEBGPU_ELEMENTWISE_IMPL(Exp, "exp(a)")
 WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Exp, 6, 12, WebGpuSupportedFloatTypes())
