@@ -129,8 +129,11 @@ bool TryGetStaticDim(const ONNX_NAMESPACE::TensorShapeProto* shape, int dim_inde
 // ~12% of the tensor-core peak. Picks below were taken from the profiler's choices on H200 for the Qwen3.8 shapes
 // (hidden 2560, inter 640, 512 experts, top-10) at 128..8192 tokens per call; rows_per_expert = expanded rows / experts.
 // ORT_QMOE_PREFILL_TACTIC=0 restores the first-tactic behaviour.
+// weight_only selects the mixed-type (INT4/INT8 weight, FP16/BF16 activation) tile variants: its candidate list and
+// dispatcher use WarpShape64x32x64 for the 64x128x64 CTA tile, while the dense A16 path uses WarpShape32x64x64.
 std::optional<onnxruntime::llm::cutlass_extensions::CutlassGemmConfig> PickPrefillTactic(
-    const std::vector<onnxruntime::llm::cutlass_extensions::CutlassGemmConfig>& tactics, bool is_fc2, double rows_per_expert) {
+    const std::vector<onnxruntime::llm::cutlass_extensions::CutlassGemmConfig>& tactics, bool is_fc2, double rows_per_expert,
+    bool weight_only = false) {
   using onnxruntime::llm::cutlass_extensions::ClusterShape;
   using onnxruntime::llm::cutlass_extensions::CutlassGemmConfig;
   using onnxruntime::llm::cutlass_extensions::CutlassTileConfig;
@@ -161,13 +164,24 @@ std::optional<onnxruntime::llm::cutlass_extensions::CutlassGemmConfig> PickPrefi
     }
     return best;
   };
+  // Under ORT_QUICK_BUILD the weight-only candidate list has no 64x128x64 WarpShape64x32x64 tile (and the mixed-type
+  // dispatcher rejects WarpShape32x64x64), so the lookup finds nothing and the caller keeps its default tactic.
+  const CutlassTileConfig mid_tile = weight_only ? CutlassTileConfig::CtaShape64x128x64_WarpShape64x32x64
+                                                 : CutlassTileConfig::CtaShape64x128x64_WarpShape32x64x64;
   std::optional<CutlassGemmConfig> pick;
   if (rows_per_expert >= 100.0) {
     pick = is_fc2 ? find_tma(CutlassTileConfigSM90::CtaShape128x64x128B, ClusterShape::ClusterShape_2x1x1)
                   : find_tma(CutlassTileConfigSM90::CtaShape128x256x128B, ClusterShape::ClusterShape_2x1x1);
+    if (!pick.has_value()) {
+      pick = find_ampere(mid_tile);
+    }
   } else if (rows_per_expert >= 24.0) {
-    pick = is_fc2 ? find_tma(CutlassTileConfigSM90::CtaShape128x64x128B, ClusterShape::ClusterShape_2x1x1)
-                  : find_ampere(CutlassTileConfig::CtaShape64x128x64_WarpShape32x64x64);
+    if (is_fc2) {
+      pick = find_tma(CutlassTileConfigSM90::CtaShape128x64x128B, ClusterShape::ClusterShape_2x1x1);
+    }
+    if (!pick.has_value()) {
+      pick = find_ampere(mid_tile);
+    }
   } else {
     pick = find_ampere(CutlassTileConfig::CtaShape32x128x64_WarpShape32x32x64);
   }
@@ -1456,10 +1470,11 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
         const int64_t tile_rows = distinct_tile_rows[i];
         std::optional<MoeConfig> config1 = deterministic_config;
         std::optional<MoeConfig> config2 = deterministic_config;
-        if (is_nvfp4 && !use_fp4_gemv && !route_native_fp4) {
+        if ((is_nvfp4 || quant_type_ == "int") && !use_fp4_gemv && !route_native_fp4) {
           const double rows_per_expert = static_cast<double>(tile_rows) * static_cast<double>(k_) / runner_num_experts;
-          if (auto fc1 = PickPrefillTactic(tactics, false, rows_per_expert)) config1 = fc1;
-          if (auto fc2 = PickPrefillTactic(tactics, true, rows_per_expert)) config2 = fc2;
+          const bool weight_only = quant_type_ == "int";
+          if (auto fc1 = PickPrefillTactic(tactics, false, rows_per_expert, weight_only)) config1 = fc1;
+          if (auto fc2 = PickPrefillTactic(tactics, true, rows_per_expert, weight_only)) config2 = fc2;
         }
         RunnerTileConfig tile_config{tile_rows, config1, config2, 0};
         active_runner->setTactic(tile_config.config1, tile_config.config2);

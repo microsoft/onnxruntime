@@ -421,6 +421,12 @@ struct ArgTestTraits<half> {
   static double ToDouble(half value) { return static_cast<double>(__half2float(value)); }
 };
 
+template <>
+struct ArgTestTraits<BFloat16> {
+  static BFloat16 FromFloat(float value) { return BFloat16(value); }
+  static double ToDouble(BFloat16 value) { return static_cast<double>(value.ToFloat()); }
+};
+
 // Mirrors the sequential semantics of the reduction: seed with the first
 // element, keep the first occurrence of the extreme value and never select a
 // NaN (every comparison against NaN is false, so a leading NaN wins the row).
@@ -584,6 +590,7 @@ TEST(ReductionFunctionsTest, ArgMinMaxLastAxisManyRows) {
 TEST(ReductionFunctionsTest, ArgMinMaxLastAxisTypes) {
   for (int n : {64, 1024, 65536}) {
     TestArgMinMaxLastAxisRandom<half>(3, n, n);
+    TestArgMinMaxLastAxisRandom<BFloat16>(3, n, n);
     TestArgMinMaxLastAxisRandom<float>(3, n, n);
     TestArgMinMaxLastAxisRandom<double>(3, n, n);
   }
@@ -593,6 +600,7 @@ TEST(ReductionFunctionsTest, ArgMinMaxLastAxisSpecialValues) {
   // 64 -> one thread per row, 1024 -> single block per row, 200000 -> many blocks per row.
   for (int n : {64, 1024, 200000}) {
     TestArgMinMaxLastAxisSpecialValues<half>(n);
+    TestArgMinMaxLastAxisSpecialValues<BFloat16>(n);
     TestArgMinMaxLastAxisSpecialValues<float>(n);
     TestArgMinMaxLastAxisSpecialValues<double>(n);
   }
