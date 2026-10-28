@@ -72,6 +72,11 @@ class ConvActivationSelector : public NodeSelector {
   ConvActivationSelector() = default;
 
   std::optional<NodesToOptimizeIndices> Select(const GraphViewer& graph_viewer, const Node& node) const override {
+    // Internal NHWC Conv keeps its op type after fusion. Do not overwrite an existing activation.
+    if (graph_utils::GetNodeAttribute(node, "activation") != nullptr) {
+      return std::nullopt;
+    }
+
     const std::string_view node_ep = node.GetExecutionProviderType();
     const auto* next_node = GetLoneConsumerNode(graph_viewer, node);
     if (!next_node ||

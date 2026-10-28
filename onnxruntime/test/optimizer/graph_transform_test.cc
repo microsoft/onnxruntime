@@ -4475,6 +4475,46 @@ TEST_F(GraphTransformationTests, FuseNhwcConvErfForWebGpuEp) {
   ASSERT_STATUS_OK(RunConvActivationFusion(build_test_case, *logger_, check, 17));
 }
 
+TEST_F(GraphTransformationTests, NoFuseNhwcConvWithExistingActivationForWebGpuEp) {
+  for (const std::string activation : {"Relu", "Tanh", "LeakyRelu"}) {
+    SCOPED_TRACE(activation);
+    auto build_test_case = [&activation](ModelTestBuilder& builder) {
+      auto* input = builder.MakeInput<float>({1, 2, 2, 1}, -2.0f, 2.0f);
+      auto* weight = builder.MakeInitializer<float>({1, 1, 1, 1}, {1.0f});
+      auto* conv_out = builder.MakeIntermediate();
+      auto* output = builder.MakeOutput();
+      auto& conv = builder.AddNode("Conv", {input, weight}, {conv_out}, kMSInternalNHWCDomain);
+      conv.SetExecutionProviderType(kWebGpuExecutionProvider);
+      conv.AddAttribute("activation", activation);
+      if (activation == "LeakyRelu") {
+        conv.AddAttribute("activation_params", std::vector<float>{0.25f});
+      }
+      builder.AddNode("Tanh", {conv_out}, {output}).SetExecutionProviderType(kWebGpuExecutionProvider);
+    };
+    auto check = [&activation](Graph& graph) -> Status {
+      ORT_RETURN_IF_ERROR(ExpectNotFused("Tanh")(graph));
+      ORT_RETURN_IF_NOT(graph.NumberOfNodes() == 2, "expected Conv followed by Tanh");
+      for (const auto& node : graph.Nodes()) {
+        if (node.OpType() == "Conv") {
+          ORT_RETURN_IF_NOT(node.GetOutputEdgesCount() == 1 && node.OutputNodesBegin()->OpType() == "Tanh",
+                            "Tanh must still consume the fused Conv output");
+          const auto* attr = graph_utils::GetNodeAttribute(node, "activation");
+          ORT_RETURN_IF_NOT(attr && attr->s() == activation, "existing activation was replaced");
+          const auto* params = graph_utils::GetNodeAttribute(node, "activation_params");
+          if (activation == "LeakyRelu") {
+            ORT_RETURN_IF_NOT(params && params->floats_size() == 1 && params->floats(0) == 0.25f,
+                              "existing activation parameters were changed");
+          } else {
+            ORT_RETURN_IF_NOT(params == nullptr, "unexpected activation parameters");
+          }
+        }
+      }
+      return Status::OK();
+    };
+    ASSERT_STATUS_OK(RunConvActivationFusion(build_test_case, *logger_, check, 17));
+  }
+}
+
 // WebGPU has no Selu kernel.
 TEST_F(GraphTransformationTests, NoFuseNhwcConvSeluForWebGpuEp) {
   auto build_test_case = [](ModelTestBuilder& builder) {
@@ -4502,6 +4542,59 @@ TEST_F(GraphTransformationTests, NoFuseNhwcConvGeluForCpuEp) {
 }
 
 #if defined(USE_WEBGPU)
+TEST_F(GraphTransformationTests, WebGpuConvMulReluTanhPreservesBothActivations) {
+  if (!DefaultWebGpuExecutionProvider()) {
+    GTEST_SKIP() << "WebGPU EP unavailable in this build.";
+  }
+
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({1, 3, 2, 2},
+                                           {-2.0f, -1.0f, 1.0f, 2.0f,
+                                            -1.5f, -0.5f, 0.5f, 1.5f,
+                                            -3.0f, -0.25f, 0.25f, 3.0f});
+    auto* weight = builder.MakeInitializer<float>({3, 3, 1, 1},
+                                                  {1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, -1.0f, 1.0f});
+    auto* scale = builder.MakeInitializer<float>({3, 1, 1}, {1.0f, 2.0f, -1.0f});
+    auto* folded_weight = builder.MakeIntermediate();
+    auto* conv_out = builder.MakeIntermediate();
+    auto* mul_out = builder.MakeIntermediate();
+    auto* relu_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+    builder.AddNode("Relu", {weight}, {folded_weight});
+    builder.AddNode("Conv", {input, folded_weight}, {conv_out});
+    builder.AddNode("Mul", {conv_out, scale}, {mul_out});
+    builder.AddNode("Relu", {mul_out}, {relu_out});
+    builder.AddNode("Tanh", {relu_out}, {output});
+  };
+
+  auto check = [](InferenceSessionWrapper& session) {
+    auto op_counts = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_counts["Relu"], 0) << "ConstantFolding and Relu fusion must both run";
+    EXPECT_EQ(op_counts["Mul"], 0) << "ConvMulFusion must run";
+    EXPECT_EQ(op_counts["Tanh"], 1) << "Tanh must remain after the fused Relu";
+    bool found_conv = false;
+    for (const auto& node : session.GetGraph().Nodes()) {
+      EXPECT_EQ(node.GetExecutionProviderType(), kWebGpuExecutionProvider);
+      if (node.OpType() == "Conv") {
+        found_conv = true;
+        EXPECT_EQ(node.Domain(), kMSInternalNHWCDomain);
+        const auto* activation = graph_utils::GetNodeAttribute(node, "activation");
+        ASSERT_NE(activation, nullptr);
+        EXPECT_EQ(activation->s(), "Relu");
+      }
+    }
+    EXPECT_TRUE(found_conv);
+  };
+
+  RunWebGpuFusionTransformerTest(
+      build_test_case, check, TransformerLevel::Level1, TransformerLevel::Level2, 17,
+      /*per_sample_tolerance=*/1e-5, /*relative_per_sample_tolerance=*/1e-5,
+      /*transformer=*/nullptr, []() { return DefaultWebGpuExecutionProvider(); },
+      [](SessionOptions& options) {
+        ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+      });
+}
+
 namespace {
 
 using ConvActivationBuilder = std::function<void(ModelTestBuilder&, NodeArg*, NodeArg*)>;
