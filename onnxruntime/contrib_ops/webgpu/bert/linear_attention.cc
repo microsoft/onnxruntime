@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
+#include <string_view>
 
 #include "contrib_ops/webgpu/bert/linear_attention.h"
 
@@ -234,7 +235,13 @@ Status LinearAttention::ComputeInternal(ComputeContext& context) const {
   // When subgroup is enabled, use larger tile_v for better data reuse.
   // Only expand for longer sequences (>=16) where the benefit outweighs the
   // increased register pressure and shared memory usage.
-  if (subgroup_min_size > 0 && seq_length >= 16) {
+  // For Qwen's 128x128 gated-delta state on NVIDIA, one vec4 per workgroup
+  // exposes more independent work and shortens the per-token reductions,
+  // outweighing the data reuse from a larger tile.
+  const bool use_small_prefill_tile = context.AdapterInfo().vendor == std::string_view{"nvidia"} &&
+                                      update_rule_ == LinearAttentionUpdateRule::GatedDelta &&
+                                      head_dim_k == 128 && head_dim_v == 128;
+  if (subgroup_min_size > 0 && seq_length >= 16 && !use_small_prefill_tile) {
     // Ensure the vectorized dimension is wide enough to warrant a larger tile.
     if (head_dim_v / components >= tile_v * 4) {
       tile_v *= 4;
