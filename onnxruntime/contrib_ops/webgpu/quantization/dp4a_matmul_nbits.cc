@@ -48,8 +48,7 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
       WGSL_TEMPLATE_PARAMETER(has_weight_idx_indirect, has_weight_idx_indirect_),
       WGSL_TEMPLATE_PARAMETER(has_zero_points, has_zero_points_), WGSL_TEMPLATE_PARAMETER(is_qualcomm, is_qualcomm_),
       WGSL_TEMPLATE_PARAMETER(n_bits, nbits_), WGSL_TEMPLATE_PARAMETER(output_type_i32, true),
-      WGSL_TEMPLATE_PARAMETER(tile_size_k_vec, tile_size_k_vec_), WGSL_TEMPLATE_PARAMETER(tile_size_m, tile_size_m_),
-      WGSL_TEMPLATE_PARAMETER(tile_size_n, tile_size_n_), WGSL_TEMPLATE_PARAMETER(workgroup_size, WorkgroupSizeX()),
+      WGSL_TEMPLATE_PARAMETER(qc_wave128, SubgroupSize() == 128),
       WGSL_TEMPLATE_VARIABLE(a, a), WGSL_TEMPLATE_VARIABLE(b, b), WGSL_TEMPLATE_VARIABLE(output, output),
       WGSL_TEMPLATE_VARIABLE(scales_a, scales_a), WGSL_TEMPLATE_VARIABLE(scales_b, scales_b));
 }
@@ -210,20 +209,17 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
                           context.AdapterInfo().subgroupMinSize <= 128 &&
                           context.AdapterInfo().subgroupMaxSize >= 128 &&
                           nbits == 4 && block_size == 32 && M >= 128;
-  // The 64-lane subgroup variant spans 64 rows. Reserve 32-row tiles for
-  // devices whose subgroup range cannot select that variant.
-  const uint32_t tile_size_m = qc_wave128 ? 128 : (N < 64 && context.AdapterInfo().subgroupMaxSize < 64 ? 32 : 64);
-  const uint32_t tile_size_n = qc_wave128 || N < 64 ? 32 : 64;
-  const uint32_t tile_size_k_vec = N < 64 && nbits == 8 && block_size == 32 ? 8 : 2;
+  const uint32_t tile_m = qc_wave128 ? 128 : 64;
+  const uint32_t tile_n = qc_wave128 ? 32 : 64;
   TensorShape reshaped_y_shape{batch_count, M, N / kVec4Components};
-  uint32_t num_M_tile = CeilDiv(M, tile_size_m);
-  uint32_t num_N_tile = CeilDiv(N, tile_size_n);
+  uint32_t num_M_tile = (M + tile_m - 1) / tile_m;
+  uint32_t num_N_tile = (N + tile_n - 1) / tile_n;
   bool is_qualcomm = context.AdapterInfo().vendor == std::string_view{"qualcomm"};
   const bool acc_f32 = context.EnableMatmulFp32Accumulation();
   DP4AMatMulNBitsProgram mul_program{
-      tile_size_m, tile_size_n, tile_size_k_vec, block_size, nbits, has_zero_points,
+      block_size, nbits, has_zero_points,
       has_bias, has_weight_idx, has_weight_idx_indirect, is_qualcomm, acc_f32, has_qlora_up};
-  mul_program.SetWorkgroupSize(tile_size_m * tile_size_n / 16);
+  mul_program.SetWorkgroupSize(256);
   if (qc_wave128) {
     mul_program.SetSubgroupSize(128);
   }
@@ -244,8 +240,8 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
                             {zero_blocks_per_col},
                             {weight_index}})
       .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, reshaped_y_shape, static_cast<int>(kVec4Components)})
-      .CacheHint("Block" + std::to_string(block_size), tile_size_m, tile_size_n, tile_size_k_vec, nbits,
-                 has_zero_points, is_qualcomm, has_bias, has_weight_idx, has_weight_idx_indirect, acc_f32,
+      .CacheHint("Block" + std::to_string(block_size), nbits, has_zero_points, is_qualcomm,
+                 has_bias, has_weight_idx, has_weight_idx_indirect, acc_f32,
                  has_qlora_up);
   if (has_zero_points) {
     mul_program.AddInput(

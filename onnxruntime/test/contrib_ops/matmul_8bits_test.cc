@@ -1059,7 +1059,7 @@ TEST(MatMulNBits, BFloat16_Int8_SmallMFallback) {
 
 #if defined(USE_WEBGPU)
 TEST(MatMulNBits, WebGpu_DP4A_NarrowN_Int8) {
-  // Small-M reduction, the tiled threshold, and row/column tails in both tile widths.
+  // Small-M reduction and tiled row/column tails with N below and above 64.
   for (const auto& [m, n] : {std::pair<int64_t, int64_t>{3, 16}, {4, 32}, {65, 48}, {65, 80}}) {
     for (bool has_zero_point : {false, true}) {
       TestOptions8Bits opts{};

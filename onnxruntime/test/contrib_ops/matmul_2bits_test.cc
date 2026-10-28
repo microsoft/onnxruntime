@@ -1534,7 +1534,7 @@ TEST(MatMul2Bits, Float32_2b_BlkLen32_Accuracy0) {
 
 #ifdef USE_WEBGPU
 TEST(MatMulNBits, WebGpu_DP4A_NarrowN_Int2) {
-  // Partial narrow tile, multiple narrow tiles, and a partial wide tile.
+  // Tiled row/column tails with N below and above the 64-column tile width.
   for (int64_t n : {16, 48, 80}) {
     for (bool has_zero_point : {false, true}) {
       TestOptions2Bits opts{};

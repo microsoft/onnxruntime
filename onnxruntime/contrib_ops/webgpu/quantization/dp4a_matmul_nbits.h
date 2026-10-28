@@ -30,13 +30,9 @@ class DP4AMatMulQuantizeProgram final : public Program<DP4AMatMulQuantizeProgram
 
 class DP4AMatMulNBitsProgram final : public Program<DP4AMatMulNBitsProgram> {
  public:
-  DP4AMatMulNBitsProgram(uint32_t tile_size_m, uint32_t tile_size_n, uint32_t tile_size_k_vec, uint32_t block_size,
-                         uint32_t nbits, bool has_zero_points, bool has_bias, bool has_weight_idx,
+  DP4AMatMulNBitsProgram(uint32_t block_size, uint32_t nbits, bool has_zero_points, bool has_bias, bool has_weight_idx,
                          bool has_weight_idx_indirect, bool is_qualcomm, bool acc_f32, bool has_qlora_up = false)
       : Program{has_qlora_up ? "DP4AMatMulNBitsQLoRAUp" : "DP4AMatMulNBits"},
-        tile_size_m_(tile_size_m),
-        tile_size_n_(tile_size_n),
-        tile_size_k_vec_(tile_size_k_vec),
         block_size_(block_size),
         nbits_(nbits),
         has_bias_(has_bias),
@@ -56,9 +52,6 @@ class DP4AMatMulNBitsProgram final : public Program<DP4AMatMulNBitsProgram> {
       {"weight_idx", ProgramUniformVariableDataType::Uint32});
 
  private:
-  uint32_t tile_size_m_;
-  uint32_t tile_size_n_;
-  uint32_t tile_size_k_vec_;
   uint32_t block_size_;
   uint32_t nbits_;
   bool has_bias_;

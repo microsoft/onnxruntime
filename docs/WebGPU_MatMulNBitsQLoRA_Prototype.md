@@ -138,10 +138,10 @@ elements; requiring two full iterations for narrow N conservatively amortizes
 reduction overhead, while shorter K retains tiled reuse across M. This is an
 initial policy, not a universal performance crossover. Existing DP4A
 eligibility checks and subgroup-matrix preference still apply. Other DP4A
-projections use the general tiled kernel, with 32-column tiles when N < 64
-and 64-column tiles otherwise. Narrow tiles use 32 rows when the device's
-maximum subgroup size is below 64; otherwise they keep 64 rows to accommodate
-the existing 64-lane subgroup variant.
+projections retain the upstream tiled kernel: 64x64 tiles, or 128x32 tiles on
+eligible Qualcomm devices, with 256 threads and 32-element K steps. This also
+handles rank-32 down projections with K < 2048. The base prefill projection
+keeps its fused LoRA-up output stage without changing the matrix tiling.
 Shapes outside the joint decode specialization calculate T separately.
 Devices that select subgroup matrix arithmetic for the original
 INT8 up projection retain that kernel and a separate Add to preserve arithmetic.
