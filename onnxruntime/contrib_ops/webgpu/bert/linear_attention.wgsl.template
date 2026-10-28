@@ -68,6 +68,12 @@ var<workgroup> reduction_buf: array<vtype, workgroup_size_x * TILE_V>;
 #endif
 
 $MAIN {
+  // Dispatch normalization may add padding groups. Return uniformly before
+  // accessing tensors or reaching any workgroup barriers.
+  if (workgroup_idx >= uniforms.batch_size * uniforms.num_heads * uniforms.num_dv_tiles) {
+    return;
+  }
+
   // Identify which (batch, head, dv_tile) this workgroup handles
   let bh = workgroup_idx / uniforms.num_dv_tiles;
   let dv_tile_idx = workgroup_idx % uniforms.num_dv_tiles;
