@@ -280,6 +280,43 @@ TEST(PatternComponentTests, ControlDependenciesAreNotRewriteSafeEvenAfterResolve
   }
 }
 
+TEST(PatternComponentTests, SymbolicResultMetadataSharesTheCalleeBindingScope) {
+  for (bool explicit_outputs : {false, true}) {
+    for (bool nested : {false, true}) {
+      for (bool qualified_output : {false, true}) {
+        const std::string source = explicit_outputs
+                                       ? "pattern P(x:float[M])->(y:float[M]){return Identity(x)} "
+                                       : "pattern P(x:float[M]){y:float[M]=Identity(x);return y} ";
+        const std::string callee = nested ? "Nested" : "P";
+        const std::string scope = nested ? "a.p" : "a";
+        const std::string output = qualified_output ? scope + (nested ? "" : ".y") : "a";
+        const PatternLibrary library(source +
+                                     "pattern Nested(x){p=P(x);return p} "
+                                     "pattern E(x){a=" +
+                                     callee + "(x);b=" + output + "|" + scope + ".x;return Add(a,b)}");
+        const auto pattern = library.GetPattern("E");
+        EXPECT_EQ(pattern.OrderedTypeConstraints().size(), 2u);
+        TestGraph test;
+        auto* x = test.builder.MakeInput<float>({2}, -1.0f, 1.0f);
+        auto* y = test.builder.MakeIntermediate();
+        test.builder.AddNode("Identity", {x}, {y});
+        auto& root = test.builder.AddNode("Add", {y, x}, {test.builder.MakeOutput()});
+        test.builder.SetGraphOutputs();
+        ASSERT_STATUS_OK(test.graph.Resolve());
+        int matches = 0;
+        ASSERT_STATUS_OK(pattern.VisitMatches(test.graph, root.Index(), [&](Match& match) {
+          ++matches;
+          auto view = match.instance("a");
+          if (nested) view = view.instance("p");
+          EXPECT_EQ(std::get<int64_t>(view.dimensionOf("M")), 2);
+          return true;
+        }));
+        EXPECT_EQ(matches, 1);
+      }
+    }
+  }
+}
+
 TEST(ReplacementComponentTests, EngineRejectsSubgraphsButStandaloneConstructionCanResolveThem) {
   for (bool indexed : {false, true}) {
     TestGraph test;

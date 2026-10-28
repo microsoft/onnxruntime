@@ -1855,7 +1855,7 @@ Status PatternParser::PatternCall(const InlinedVector<std::string>& names, const
     const auto output_name = scoped(definition.outputs[i].name);
     pattern_.aliases_.insert_or_assign(output_name, output);
     symbols_.insert_or_assign(output_name, output);
-    binding_constraints_.insert_or_assign(output_name, definition.outputs[i].constraints);
+    binding_constraints_.insert_or_assign(output_name, remap_constraints(source.outputs_[i].handle, definition.outputs[i].constraints));
     last_outputs_.push_back(output);
     if (names.size() == source.outputs_.size()) {
       ORT_RETURN_IF(pattern_.attribute_names_.count(names[i]), Error("output conflicts with attribute capture"));
@@ -1868,6 +1868,8 @@ Status PatternParser::PatternCall(const InlinedVector<std::string>& names, const
     pattern_.aliases_.emplace(path, last_outputs_.front());
   }
   last_result_ports_ = definition.outputs;
+  for (size_t i = 0; i < last_result_ports_.size(); ++i)
+    last_result_ports_[i].constraints = remap_constraints(source.outputs_[i].handle, definition.outputs[i].constraints);
   return Status::OK();
 }
 
