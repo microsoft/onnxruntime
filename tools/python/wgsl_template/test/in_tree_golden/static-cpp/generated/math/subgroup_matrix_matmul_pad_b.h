@@ -28,26 +28,26 @@ Status ApplyTemplate<"math/subgroup_matrix_matmul_pad_b.wgsl.template">(ShaderHe
 MainFunctionStart();
 ss << __str_5;
 // 13 |   guardAgainstOutOfBoundsWorkgroupSizes(uniforms.output_size);
-ss << __str_293;
-ss << shader_helper.GuardAgainstOutOfBoundsWorkgroupSizes(__str_289);
+ss << __str_294;
+ss << shader_helper.GuardAgainstOutOfBoundsWorkgroupSizes(__str_290);
 ss << __str_29;
 // 14 |   let r = global_idx / uniforms.N_b;                 // padded-output row
-ss << __str_294;
-// 15 |   let c = global_idx % uniforms.N_b;                 // padded-output column
 ss << __str_295;
-// 16 |   var v = output_value_t(0);
+// 15 |   let c = global_idx % uniforms.N_b;                 // padded-output column
 ss << __str_296;
-// 17 |   if (c < uniforms.N) {                              // real column -> copy; else zero pad
+// 16 |   var v = output_value_t(0);
 ss << __str_297;
-// 18 |     v = output_value_t(input_b.getByOffset(r * uniforms.N + c));
+// 17 |   if (c < uniforms.N) {                              // real column -> copy; else zero pad
 ss << __str_298;
-ss << __var_input_b->GetByOffset(__str_290);
+// 18 |     v = output_value_t(input_b.getByOffset(r * uniforms.N + c));
+ss << __str_299;
+ss << __var_input_b->GetByOffset(__str_291);
 ss << __str_17;
 // 19 |   }
 ss << __str_11;
 // 20 |   output.setByOffset(global_idx, v);
-ss << __str_293;
-ss << __var_output->SetByOffset(__str_291, __str_292);
+ss << __str_294;
+ss << __var_output->SetByOffset(__str_292, __str_293);
 ss << __str_29;
 // 21 | }  // MAIN
 MainFunctionEnd();

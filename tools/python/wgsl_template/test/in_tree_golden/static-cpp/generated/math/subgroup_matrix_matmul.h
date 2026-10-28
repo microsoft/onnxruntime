@@ -20,6 +20,10 @@ Status ApplyTemplate<"math/subgroup_matrix_matmul.wgsl.template">(ShaderHelper& 
   auto& __param_split_k = params.param_split_k;
   auto& __param_tile_k = params.param_tile_k;
 
+  // Extract variables
+  auto* __var_input_a = params.var_input_a;
+  auto* __var_input_b = params.var_input_b;
+
 //   1 | // Copyright (c) Microsoft Corporation. All rights reserved.
 //   2 | // Licensed under the MIT License.
 //   3 | //
@@ -79,7 +83,7 @@ Status ApplyTemplate<"math/subgroup_matrix_matmul.wgsl.template">(ShaderHelper& 
 //  57 | #param sg_grid_n
 //  58 | #param tile_k
 //  59 | //
-//  60 | #use .setByOffset
+//  60 | #use .getByOffset .setByOffset
 //  61 | //
 //  62 | const kSgMatM: u32 = u32(sg_mat_m);              // Subgroup matrix M dimension (rows)
 ss << __str_32;
@@ -102,29 +106,29 @@ ss << __str_36;
 ss << __param_sg_mat_count_n;
 ss << __str_17;
 //  67 | const kSgGridM: u32 = u32(sg_grid_m);            // Subgroups splitting the tile along M
-ss << __str_218;
+ss << __str_220;
 ss << __param_sg_grid_m;
 ss << __str_17;
 //  68 | const kSgGridN: u32 = u32(sg_grid_n);            // Subgroups splitting the tile along N
-ss << __str_219;
+ss << __str_221;
 ss << __param_sg_grid_n;
 ss << __str_17;
 //  69 | const kTileM: u32 = kSgMatM * kSgMatCountM * kSgGridM;  // Tile size along M (output rows per workgroup)
-ss << __str_220;
+ss << __str_222;
 //  70 | const kTileN: u32 = kSgMatN * kSgMatCountN * kSgGridN;  // Tile size along N (output columns per workgroup)
-ss << __str_221;
+ss << __str_223;
 //  71 | #if tile_k > 0
 if (__param_tile_k > 0) {
 //  72 | const kTileK: u32 = u32(tile_k);                 // K depth of A and B staged in shared memory per step
-ss << __str_222;
+ss << __str_224;
 ss << __param_tile_k;
 ss << __str_17;
 //  73 | const kWorkgroupSize: u32 = kSgGridM * kSgGridN * kSubgroupSize;  // Threads per workgroup since split_k is 1 here
-ss << __str_223;
-//  74 | const kStrideA: u32 = kTileK + 8u;               // Staged A row stride padded by 16 bytes to spread banks
-ss << __str_224;
-//  75 | const kStrideB: u32 = kTileN + 8u;               // Staged B row stride padded by 16 bytes to spread banks
 ss << __str_225;
+//  74 | const kStrideA: u32 = kTileK + 8u;               // Staged A row stride padded by 16 bytes to spread banks
+ss << __str_226;
+//  75 | const kStrideB: u32 = kTileN + 8u;               // Staged B row stride padded by 16 bytes to spread banks
+ss << __str_227;
 //  76 | #endif
 }
 //  77 | const kSplitK: u32 = u32(split_k);               // Number of subgroups cooperating along K
@@ -144,7 +148,7 @@ ss << __str_5;
 //  86 | #if tile_k > 0
 if (__param_tile_k > 0) {
 //  87 | var<workgroup> scratch: array<f16, max(kTileM * kStrideA + kTileK * kStrideB, kTileM * kTileN)>;
-ss << __str_226;
+ss << __str_228;
 //  88 | #else
 } else {
 //  89 | var<workgroup> scratch: array<f16, kTileM * kTileN * kSplitK>;
@@ -163,17 +167,17 @@ ss << __str_5;
 //  97 |     // used directly. workgroup_idx is the true linear index, invariant under
 //  98 |     // normalization; batch slices are contiguous blocks of tiles_per_slice tiles.
 //  99 |     let num_m_tile = (uniforms.M + kTileM - 1u) / kTileM;
-ss << __str_227;
-// 100 |     let tiles_per_slice = uniforms.num_n_tile * num_m_tile;
-ss << __str_228;
-// 101 |     let batch_id = workgroup_idx / tiles_per_slice;     // which batch slice (0 for a shared 2D weight)
 ss << __str_229;
-// 102 |     let slice_idx = workgroup_idx % tiles_per_slice;    // tile index within the slice
+// 100 |     let tiles_per_slice = uniforms.num_n_tile * num_m_tile;
 ss << __str_230;
-// 103 |     let n_tile = slice_idx % uniforms.num_n_tile;       // which kTileN-wide column tile
+// 101 |     let batch_id = workgroup_idx / tiles_per_slice;     // which batch slice (0 for a shared 2D weight)
 ss << __str_231;
-// 104 |     let m_tile = slice_idx / uniforms.num_n_tile;       // which kTileM-tall row tile
+// 102 |     let slice_idx = workgroup_idx % tiles_per_slice;    // tile index within the slice
 ss << __str_232;
+// 103 |     let n_tile = slice_idx % uniforms.num_n_tile;       // which kTileN-wide column tile
+ss << __str_233;
+// 104 |     let m_tile = slice_idx / uniforms.num_n_tile;       // which kTileM-tall row tile
+ss << __str_234;
 // 105 |     let n_tile_start = n_tile * kTileN;
 ss << __str_45;
 // 106 |     let m_tile_start = m_tile * kTileM;
@@ -181,19 +185,19 @@ ss << __str_46;
 // 107 | #if tile_k > 0
 if (__param_tile_k > 0) {
 // 108 |     let a_batch_offset = batch_id * uniforms.M * uniforms.K;
-ss << __str_233;
-// 109 |     let b_batch_offset = batch_id * uniforms.K * uniforms.N;
-ss << __str_234;
-// 110 |     let out_batch_offset = batch_id * uniforms.M * uniforms.N;
 ss << __str_235;
+// 109 |     let b_batch_offset = batch_id * uniforms.K * uniforms.N;
+ss << __str_236;
+// 110 |     let out_batch_offset = batch_id * uniforms.M * uniforms.N;
+ss << __str_237;
 // 111 |     let sg_index = local_idx / kSubgroupSize;
 ss << __str_50;
 // 112 |     let m_base = (sg_index % kSgGridM) * kSgMatM * kSgMatCountM;  // first tile row of this subgroup's cell
-ss << __str_236;
-// 113 |     let n_base = (sg_index / kSgGridM) * kSgMatN * kSgMatCountN;  // first tile column of this subgroup's cell
-ss << __str_237;
-// 114 |     let sg_scratch_base = m_base * kTileN + n_base;  // this subgroup's cell in the output tile
 ss << __str_238;
+// 113 |     let n_base = (sg_index / kSgGridM) * kSgMatN * kSgMatCountN;  // first tile column of this subgroup's cell
+ss << __str_239;
+// 114 |     let sg_scratch_base = m_base * kTileN + n_base;  // this subgroup's cell in the output tile
+ss << __str_240;
 // 115 | #else
 } else {
 // 116 |     // Shift a trailing partial tile back so its operand loads stay inside A and B.
@@ -202,18 +206,18 @@ ss << __str_238;
 // 119 |     // The max() only guards the u32 subtraction; the host guarantees
 // 120 |     // the tile fits.
 // 121 |     let global_base_n = min(n_tile_start, max(uniforms.N_b, kTileN) - kTileN);
-ss << __str_239;
+ss << __str_241;
 // 122 |     let m_base = min(m_tile_start, max(uniforms.M, kTileM) - kTileM);
 ss << __str_48;
 // 123 |     // Flat-element offsets into A/B/output for this batch slice, derived from
 ss << __str_5;
 // 124 |     // M/N/K. For a shared 2D weight batch_id is 0, so B collapses to its base.
 // 125 |     let a_batch_offset = batch_id * uniforms.M * uniforms.K;
-ss << __str_233;
-// 126 |     let b_batch_offset = batch_id * uniforms.K * uniforms.N_b;
-ss << __str_240;
-// 127 |     let out_batch_offset = batch_id * uniforms.M * uniforms.N;
 ss << __str_235;
+// 126 |     let b_batch_offset = batch_id * uniforms.K * uniforms.N_b;
+ss << __str_242;
+// 127 |     let out_batch_offset = batch_id * uniforms.M * uniforms.N;
+ss << __str_237;
 // 128 |     let k_blocks = uniforms.K / kSgMatK;
 ss << __str_49;
 // 129 |     let sg_index = local_idx / kSubgroupSize;          // which split-K subgroup (0..kSplitK-1)
@@ -546,136 +550,140 @@ ss << __str_55;
 // 230 | #if tile_k > 0
 if (__param_tile_k > 0) {
 // 231 |     for (var k0: u32 = 0u; k0 < uniforms.K; k0 = k0 + kTileK) {
-ss << __str_241;
+ss << __str_243;
 // 232 |         // k_start equals k0. Deriving it through a division made this loop up to 40%
 ss << __str_5;
 // 233 |         // faster on an RTX 5080.
 // 234 |         let k_start = (k0 / kSgMatK) * kSgMatK;
-ss << __str_242;
+ss << __str_244;
 // 235 |         // The barrier keeps the previous slice alive until every subgroup has read it.
 ss << __str_5;
 // 236 |         workgroupBarrier();
-ss << __str_243;
-// 237 |         for (var i: u32 = local_idx; i < kTileM * kTileK / 4u; i = i + kWorkgroupSize) {
-ss << __str_244;
-// 238 |             let r = i / (kTileK / 4u);
 ss << __str_245;
-// 239 |             let c = (i % (kTileK / 4u)) * 4u;
+// 237 |         for (var i: u32 = local_idx; i < kTileM * kTileK / 4u; i = i + kWorkgroupSize) {
 ss << __str_246;
-// 240 |             var v = vec4<f16>();
+// 238 |             let r = i / (kTileK / 4u);
 ss << __str_247;
-// 241 |             if (m_tile_start + r < uniforms.M && k_start + c < uniforms.K) {
+// 239 |             let c = (i % (kTileK / 4u)) * 4u;
 ss << __str_248;
-// 242 |                 v = input_a[(a_batch_offset + (m_tile_start + r) * uniforms.K + k_start + c) / 4u];
+// 240 |             var v = vec4<f16>();
 ss << __str_249;
+// 241 |             if (m_tile_start + r < uniforms.M && k_start + c < uniforms.K) {
+ss << __str_250;
+// 242 |                 v = input_a.getByOffset((a_batch_offset + (m_tile_start + r) * uniforms.K + k_start + c) / 4u);
+ss << __str_251;
+ss << __var_input_a->GetByOffset(__str_218);
+ss << __str_29;
 // 243 |             }
 ss << __str_202;
 // 244 |             let s = r * kStrideA + c;
-ss << __str_250;
-// 245 |             scratch[s] = v.x;
-ss << __str_251;
-// 246 |             scratch[s + 1u] = v.y;
 ss << __str_252;
-// 247 |             scratch[s + 2u] = v.z;
+// 245 |             scratch[s] = v.x;
 ss << __str_253;
-// 248 |             scratch[s + 3u] = v.w;
+// 246 |             scratch[s + 1u] = v.y;
 ss << __str_254;
+// 247 |             scratch[s + 2u] = v.z;
+ss << __str_255;
+// 248 |             scratch[s + 3u] = v.w;
+ss << __str_256;
 // 249 |         }
 ss << __str_204;
 // 250 |         for (var i: u32 = local_idx; i < kTileK * kTileN / 4u; i = i + kWorkgroupSize) {
-ss << __str_255;
-// 251 |             let r = i / (kTileN / 4u);
-ss << __str_256;
-// 252 |             let c = (i % (kTileN / 4u)) * 4u;
 ss << __str_257;
-// 253 |             var v = vec4<f16>();
-ss << __str_247;
-// 254 |             if (k_start + r < uniforms.K && n_tile_start + c < uniforms.N) {
+// 251 |             let r = i / (kTileN / 4u);
 ss << __str_258;
-// 255 |                 v = input_b[(b_batch_offset + (k_start + r) * uniforms.N + n_tile_start + c) / 4u];
+// 252 |             let c = (i % (kTileN / 4u)) * 4u;
 ss << __str_259;
+// 253 |             var v = vec4<f16>();
+ss << __str_249;
+// 254 |             if (k_start + r < uniforms.K && n_tile_start + c < uniforms.N) {
+ss << __str_260;
+// 255 |                 v = input_b.getByOffset((b_batch_offset + (k_start + r) * uniforms.N + n_tile_start + c) / 4u);
+ss << __str_251;
+ss << __var_input_b->GetByOffset(__str_219);
+ss << __str_29;
 // 256 |             }
 ss << __str_202;
 // 257 |             let s = kTileM * kStrideA + r * kStrideB + c;
-ss << __str_260;
+ss << __str_261;
 // 258 |             scratch[s] = v.x;
-ss << __str_251;
-// 259 |             scratch[s + 1u] = v.y;
-ss << __str_252;
-// 260 |             scratch[s + 2u] = v.z;
 ss << __str_253;
-// 261 |             scratch[s + 3u] = v.w;
+// 259 |             scratch[s + 1u] = v.y;
 ss << __str_254;
+// 260 |             scratch[s + 2u] = v.z;
+ss << __str_255;
+// 261 |             scratch[s + 3u] = v.w;
+ss << __str_256;
 // 262 |         }
 ss << __str_204;
 // 263 |         workgroupBarrier();
-ss << __str_243;
+ss << __str_245;
 // 264 |         for (var kk: u32 = 0u; kk < kTileK; kk = kk + kSgMatK) {
-ss << __str_261;
-// 265 |             let b_base = kTileM * kStrideA + kk * kStrideB + n_base;
 ss << __str_262;
-// 266 |             var sg_mat_b0: subgroup_matrix_right<f16, sg_mat_n, sg_mat_k> =
+// 265 |             let b_base = kTileM * kStrideA + kk * kStrideB + n_base;
 ss << __str_263;
+// 266 |             var sg_mat_b0: subgroup_matrix_right<f16, sg_mat_n, sg_mat_k> =
+ss << __str_264;
 ss << __param_sg_mat_n;
 ss << __str_54;
 ss << __param_sg_mat_k;
 ss << __str_90;
 // 267 |                 subgroupMatrixLoad<subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>, row_major>(
-ss << __str_264;
+ss << __str_265;
 ss << __param_sg_mat_n;
 ss << __str_54;
 ss << __param_sg_mat_k;
 ss << __str_101;
 // 268 |                     &scratch, b_base + 0 * kSgMatN, kStrideB);
-ss << __str_265;
+ss << __str_266;
 // 269 | #if sg_mat_count_n >= 2
 if (__param_sg_mat_count_n >= 2) {
 // 270 |             var sg_mat_b1: subgroup_matrix_right<f16, sg_mat_n, sg_mat_k> =
-ss << __str_266;
+ss << __str_267;
 ss << __param_sg_mat_n;
 ss << __str_54;
 ss << __param_sg_mat_k;
 ss << __str_90;
 // 271 |                 subgroupMatrixLoad<subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>, row_major>(
-ss << __str_264;
+ss << __str_265;
 ss << __param_sg_mat_n;
 ss << __str_54;
 ss << __param_sg_mat_k;
 ss << __str_101;
 // 272 |                     &scratch, b_base + 1 * kSgMatN, kStrideB);
-ss << __str_267;
+ss << __str_268;
 // 273 | #endif
 }
 // 274 |             var sg_mat_a0: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> =
-ss << __str_268;
+ss << __str_269;
 ss << __param_sg_mat_k;
 ss << __str_54;
 ss << __param_sg_mat_m;
 ss << __str_90;
 // 275 |                 subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>, row_major>(
-ss << __str_269;
+ss << __str_270;
 ss << __param_sg_mat_k;
 ss << __str_54;
 ss << __param_sg_mat_m;
 ss << __str_101;
 // 276 |                     &scratch, (m_base + 0 * kSgMatM) * kStrideA + kk, kStrideA);
-ss << __str_270;
+ss << __str_271;
 // 277 | #if sg_mat_count_m >= 2
 if (__param_sg_mat_count_m >= 2) {
 // 278 |             var sg_mat_a1: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> =
-ss << __str_271;
+ss << __str_272;
 ss << __param_sg_mat_k;
 ss << __str_54;
 ss << __param_sg_mat_m;
 ss << __str_90;
 // 279 |                 subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>, row_major>(
-ss << __str_269;
+ss << __str_270;
 ss << __param_sg_mat_k;
 ss << __str_54;
 ss << __param_sg_mat_m;
 ss << __str_101;
 // 280 |                     &scratch, (m_base + 1 * kSgMatM) * kStrideA + kk, kStrideA);
-ss << __str_272;
+ss << __str_273;
 // 281 | #endif
 }
 // 282 | #else
@@ -685,7 +693,7 @@ ss << __str_87;
 // 284 |         // Load the B right tiles for this K block (KxN_b row-major, stride N_b).
 ss << __str_5;
 // 285 |         let b_base = b_batch_offset + kb * kSgMatK * uniforms.N_b + global_base_n;
-ss << __str_273;
+ss << __str_274;
 // 286 |         var sg_mat_b0: subgroup_matrix_right<f16, sg_mat_n, sg_mat_k> =
 ss << __str_89;
 ss << __param_sg_mat_n;
@@ -699,7 +707,7 @@ ss << __str_54;
 ss << __param_sg_mat_k;
 ss << __str_101;
 // 288 |                 &input_b, b_base + 0 * kSgMatN, uniforms.N_b);
-ss << __str_274;
+ss << __str_275;
 // 289 | #if sg_mat_count_n >= 2
 if (__param_sg_mat_count_n >= 2) {
 // 290 |         var sg_mat_b1: subgroup_matrix_right<f16, sg_mat_n, sg_mat_k> =
@@ -715,7 +723,7 @@ ss << __str_54;
 ss << __param_sg_mat_k;
 ss << __str_101;
 // 292 |                 &input_b, b_base + 1 * kSgMatN, uniforms.N_b);
-ss << __str_275;
+ss << __str_276;
 // 293 | #endif
 }
 // 294 | #if sg_mat_count_n >= 3
@@ -733,7 +741,7 @@ ss << __str_54;
 ss << __param_sg_mat_k;
 ss << __str_101;
 // 297 |                 &input_b, b_base + 2 * kSgMatN, uniforms.N_b);
-ss << __str_276;
+ss << __str_277;
 // 298 | #endif
 }
 // 299 | #if sg_mat_count_n >= 4
@@ -751,7 +759,7 @@ ss << __str_54;
 ss << __param_sg_mat_k;
 ss << __str_101;
 // 302 |                 &input_b, b_base + 3 * kSgMatN, uniforms.N_b);
-ss << __str_277;
+ss << __str_278;
 // 303 | #endif
 }
 // 304 | //
@@ -759,7 +767,7 @@ ss << __str_277;
 // 306 |         // a_batch_offset folds this z-slice's flat offset into the column term so
 // 307 |         // every A load below reads from the correct batch slice.
 // 308 |         let a_col = a_batch_offset + kb * kSgMatK;
-ss << __str_278;
+ss << __str_279;
 // 309 |         var sg_mat_a0: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> =
 ss << __str_107;
 ss << __param_sg_mat_k;
@@ -902,7 +910,7 @@ ss << __str_132;
 }
 // 347 |         // This block stands in for the staged inner loop so both paths close the same braces.
 // 348 |         {
-ss << __str_279;
+ss << __str_280;
 // 349 | #endif
 }
 // 350 | //
@@ -1306,17 +1314,17 @@ if (__param_tile_k > 0) {
 // 553 |     workgroupBarrier();
 ss << __str_26;
 // 554 |     for (var i: u32 = local_idx; i < kTileM * kTileN; i = i + kWorkgroupSize) {
-ss << __str_280;
-// 555 |         let global_m = m_tile_start + i / kTileN;
 ss << __str_281;
-// 556 |         let global_n = n_tile_start + i % kTileN;
+// 555 |         let global_m = m_tile_start + i / kTileN;
 ss << __str_282;
-// 557 |         if (global_m < uniforms.M && global_n < uniforms.N) {
+// 556 |         let global_n = n_tile_start + i % kTileN;
 ss << __str_283;
-// 558 |             write_output(out_batch_offset + global_m * uniforms.N + global_n, global_n,
+// 557 |         if (global_m < uniforms.M && global_n < uniforms.N) {
 ss << __str_284;
-// 559 |                          output_value_t(scratch[i]));
+// 558 |             write_output(out_batch_offset + global_m * uniforms.N + global_n, global_n,
 ss << __str_285;
+// 559 |                          output_value_t(scratch[i]));
+ss << __str_286;
 // 560 |         }
 ss << __str_204;
 // 561 |     }
@@ -1380,13 +1388,13 @@ ss << __str_209;
 // 597 |             let scratch_base = r * kTileN;
 ss << __str_210;
 // 598 |             let out_base = out_batch_offset + global_m * uniforms.N + global_base_n;
-ss << __str_286;
+ss << __str_287;
 // 599 |             for (var i: u32 = sg_lane + n_skip; i < n_count; i = i + kSubgroupSize) {
 ss << __str_212;
 // 600 |                 write_output(out_base + i, global_base_n + i,
-ss << __str_287;
-// 601 |                              output_value_t(scratch[scratch_base + i]));
 ss << __str_288;
+// 601 |                              output_value_t(scratch[scratch_base + i]));
+ss << __str_289;
 // 602 |             }
 ss << __str_202;
 // 603 |         }

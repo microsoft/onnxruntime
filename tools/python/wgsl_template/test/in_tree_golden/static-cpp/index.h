@@ -59,6 +59,8 @@ struct TemplateParameter<"math/subgroup_matrix_matmul.wgsl.template"> {
     int param_sg_mat_n;
     int param_split_k;
     int param_tile_k;
+    const ShaderVariableHelper* var_input_a;
+    const ShaderVariableHelper* var_input_b;
   };
 };
 

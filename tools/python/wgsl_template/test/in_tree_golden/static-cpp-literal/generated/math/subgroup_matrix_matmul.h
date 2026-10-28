@@ -20,6 +20,10 @@ Status ApplyTemplate<"math/subgroup_matrix_matmul.wgsl.template">(ShaderHelper& 
   auto& __param_split_k = params.param_split_k;
   auto& __param_tile_k = params.param_tile_k;
 
+  // Extract variables
+  auto* __var_input_a = params.var_input_a;
+  auto* __var_input_b = params.var_input_b;
+
 //   1 | // Copyright (c) Microsoft Corporation. All rights reserved.
 //   2 | // Licensed under the MIT License.
 //   3 | //
@@ -79,7 +83,7 @@ Status ApplyTemplate<"math/subgroup_matrix_matmul.wgsl.template">(ShaderHelper& 
 //  57 | #param sg_grid_n
 //  58 | #param tile_k
 //  59 | //
-//  60 | #use .setByOffset
+//  60 | #use .getByOffset .setByOffset
 //  61 | //
 //  62 | const kSgMatM: u32 = u32(sg_mat_m);              // Subgroup matrix M dimension (rows)
 ss << "const kSgMatM: u32 = u32(";
@@ -566,8 +570,10 @@ ss << "            let c = (i % (kTileK / 4u)) * 4u;\n";
 ss << "            var v = vec4<f16>();\n";
 // 241 |             if (m_tile_start + r < uniforms.M && k_start + c < uniforms.K) {
 ss << "            if (m_tile_start + r < uniforms.M && k_start + c < uniforms.K) {\n";
-// 242 |                 v = input_a[(a_batch_offset + (m_tile_start + r) * uniforms.K + k_start + c) / 4u];
-ss << "                v = input_a[(a_batch_offset + (m_tile_start + r) * uniforms.K + k_start + c) / 4u];\n";
+// 242 |                 v = input_a.getByOffset((a_batch_offset + (m_tile_start + r) * uniforms.K + k_start + c) / 4u);
+ss << "                v = ";
+ss << __var_input_a->GetByOffset("(a_batch_offset + (m_tile_start + r) * uniforms.K + k_start + c) / 4u");
+ss << ";\n";
 // 243 |             }
 ss << "            }\n";
 // 244 |             let s = r * kStrideA + c;
@@ -592,8 +598,10 @@ ss << "            let c = (i % (kTileN / 4u)) * 4u;\n";
 ss << "            var v = vec4<f16>();\n";
 // 254 |             if (k_start + r < uniforms.K && n_tile_start + c < uniforms.N) {
 ss << "            if (k_start + r < uniforms.K && n_tile_start + c < uniforms.N) {\n";
-// 255 |                 v = input_b[(b_batch_offset + (k_start + r) * uniforms.N + n_tile_start + c) / 4u];
-ss << "                v = input_b[(b_batch_offset + (k_start + r) * uniforms.N + n_tile_start + c) / 4u];\n";
+// 255 |                 v = input_b.getByOffset((b_batch_offset + (k_start + r) * uniforms.N + n_tile_start + c) / 4u);
+ss << "                v = ";
+ss << __var_input_b->GetByOffset("(b_batch_offset + (k_start + r) * uniforms.N + n_tile_start + c) / 4u");
+ss << ";\n";
 // 256 |             }
 ss << "            }\n";
 // 257 |             let s = kTileM * kStrideA + r * kStrideB + c;
