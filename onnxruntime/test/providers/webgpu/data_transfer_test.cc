@@ -226,5 +226,61 @@ TEST(WebGpuDataTransferTest, BatchedUploadsRetainMappedDestinationFallback) {
   ASSERT_STATUS_OK(context.FlushAndWaitChecked(ep.BufferManager(), recording));
 }
 
+TEST(WebGpuDataTransferTest, BatchedAndSingleUploadsPreserveRecordedReaders) {
+  ConfigOptions options;
+  auto provider = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  auto& ep = static_cast<WebGpuExecutionProvider&>(*provider);
+  auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+  auto& recording = ep.Recording();
+  auto& manager = ep.BufferManager();
+  CPUAllocator cpu_allocator;
+  const OrtMemoryInfo gpu_info(WEBGPU_BUFFER, OrtDeviceAllocator, webgpu::WebGpuDevice(0), OrtMemTypeDefault);
+  webgpu::DataTransfer transfer(manager, recording, 0);
+  std::array<std::array<uint32_t, 16>, 2> data{};
+  std::array<wgpu::Buffer, 2> buffers, snapshots;
+  InlinedVector<Tensor> sources, targets;
+  sources.reserve(data.size());
+  targets.reserve(data.size());
+  for (size_t i = 0; i < data.size(); ++i) {
+    wgpu::BufferDescriptor desc{};
+    desc.size = sizeof(data[i]);
+    desc.usage = wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst;
+    buffers[i] = context.Device().CreateBuffer(&desc);
+    snapshots[i] = context.Device().CreateBuffer(&desc);
+    sources.emplace_back(DataTypeImpl::GetType<uint32_t>(), TensorShape({16}), data[i].data(), cpu_allocator.Info());
+    targets.emplace_back(DataTypeImpl::GetType<uint32_t>(), TensorShape({16}), buffers[i].Get(), gpu_info);
+    data[i].fill(static_cast<uint32_t>(i + 7));
+  }
+  const std::vector<IDataTransfer::SrcDstPair> uploads{{sources[0], targets[0], nullptr},
+                                                       {sources[1], targets[1], nullptr}};
+  ASSERT_STATUS_OK(transfer.CopyTensors(uploads));
+  for (const bool batched : {false, true, false, true}) {
+    SCOPED_TRACE(batched);
+    const auto previous = data;
+    for (size_t i = 0; i < data.size(); ++i) {
+      manager.MemCpy(recording, buffers[i].Get(), snapshots[i].Get(), sizeof(data[i]));
+      data[i].fill(previous[i][0] + 11);
+    }
+    const auto expected = data;
+    if (batched) {
+      ASSERT_STATUS_OK(transfer.CopyTensors(uploads));
+    } else {
+      for (size_t i = 0; i < data.size(); ++i) {
+        ASSERT_STATUS_OK(transfer.CopyTensor(sources[i], targets[i]));
+      }
+    }
+    for (auto& values : data) values.fill(99);
+    for (size_t i = 0; i < data.size(); ++i) {
+      std::array<uint32_t, 16> actual{};
+      manager.Download(recording, snapshots[i].Get(), actual.data(), sizeof(actual));
+      EXPECT_EQ(actual, previous[i]);
+      manager.Download(recording, buffers[i].Get(), actual.data(), sizeof(actual));
+      EXPECT_EQ(actual, expected[i]);
+    }
+    data = expected;
+  }
+  ASSERT_STATUS_OK(context.FlushAndWaitChecked(manager, recording));
+}
+
 }  // namespace test
 }  // namespace onnxruntime
