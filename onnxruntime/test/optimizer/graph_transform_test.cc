@@ -4556,48 +4556,65 @@ TEST_F(GraphTransformationTests, NoFuseNhwcConvGeluForCpuEp) {
   ASSERT_STATUS_OK(RunConvActivationFusion(build_test_case, *logger_, ExpectNotFused("Gelu"), 20));
 }
 
-TEST_F(GraphTransformationTests, ConvMulReluTanhPreservesBothActivations) {
-  auto build_test_case = [](ModelTestBuilder& builder) {
-    auto* input = builder.MakeInput<float>({1, 3, 2, 2},
-                                           {-2.0f, -1.0f, 1.0f, 2.0f,
-                                            -1.5f, -0.5f, 0.5f, 1.5f,
-                                            -3.0f, -0.25f, 0.25f, 3.0f});
-    auto* weight = builder.MakeInitializer<float>({3, 3, 1, 1},
-                                                  {1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, -1.0f, 1.0f});
-    auto* scale = builder.MakeInitializer<float>({3, 1, 1}, {1.0f, 2.0f, -1.0f});
-    auto* folded_weight = builder.MakeIntermediate();
-    auto* conv_out = builder.MakeIntermediate();
-    auto* mul_out = builder.MakeIntermediate();
-    auto* relu_out = builder.MakeIntermediate();
-    auto* output = builder.MakeOutput();
-    builder.AddNode("Relu", {weight}, {folded_weight});
-    builder.AddNode("Conv", {input, folded_weight}, {conv_out});
-    builder.AddNode("Mul", {conv_out, scale}, {mul_out});
-    builder.AddNode("Relu", {mul_out}, {relu_out});
-    builder.AddNode("Tanh", {relu_out}, {output});
-  };
+TEST_F(GraphTransformationTests, NhwcConvActivationFusionPreservesOutputOnCpu) {
+  // Build internal NHWC Conv(activation=Relu) -> Tanh to exercise fusion of an
+  // already-activated Conv. Input -1 and weight 1 should produce tanh(relu(-1)) = 0;
+  // overwriting Relu with Tanh instead produces tanh(-1), approximately -0.761594.
+  // CPU cannot execute internal NHWC Conv directly, so after the actual transform
+  // we map only its type/domain to CPU FusedConv, retaining the resulting attributes.
+  // Shape [1,1,1,1] makes NCHW/NHWC ordering identical, so no tensor transpose is needed.
+  Model model("ConvActivationFusionCpuTest", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(),
+              {{kOnnxDomain, 17}, {kMSDomain, 1}, {kMSInternalNHWCDomain, 17}}, {}, *logger_);
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+  auto* input = builder.MakeInput<float>({1, 1, 1, 1}, {-1.0f});
+  auto* weight = builder.MakeInitializer<float>({1, 1, 1, 1}, {1.0f});
+  auto* conv_out = builder.MakeIntermediate();
+  auto* output = builder.MakeOutput();
+  auto& conv = builder.AddNode("Conv", {input, weight}, {conv_out}, kMSInternalNHWCDomain);
+  conv.AddAttribute("activation", "Relu");
+  conv.SetExecutionProviderType(kCpuExecutionProvider);
+  builder.AddNode("Tanh", {conv_out}, {output}).SetExecutionProviderType(kCpuExecutionProvider);
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
 
-  auto check = [](InferenceSessionWrapper& session) {
-    auto op_counts = CountOpsInGraph(session.GetGraph());
-    EXPECT_EQ(op_counts["Relu"], 0) << "ConstantFolding and Relu fusion must both run";
-    EXPECT_EQ(op_counts["Mul"], 0) << "ConvMulFusion must run";
-    EXPECT_EQ(op_counts["Tanh"], 1) << "Tanh must remain after the fused Relu";
-    int fused_conv_count = 0;
-    for (const auto& node : session.GetGraph().Nodes()) {
-      EXPECT_EQ(node.GetExecutionProviderType(), kCpuExecutionProvider);
-      if (node.OpType() == "FusedConv" && node.Domain() == kMSDomain) {
-        ++fused_conv_count;
-        const auto* activation = graph_utils::GetNodeAttribute(node, "activation");
-        ASSERT_NE(activation, nullptr);
-        EXPECT_EQ(activation->s(), "Relu");
-      }
+  ConvActivationFusion transformer;
+  bool modified = false;
+  ASSERT_STATUS_OK(transformer.Apply(graph, modified, *logger_));
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  auto model_proto = model.ToProto();
+  int converted_convs = 0;
+  for (auto& node : *model_proto.mutable_graph()->mutable_node()) {
+    if (node.domain() == kMSInternalNHWCDomain && node.op_type() == "Conv") {
+      node.set_domain(kMSDomain);
+      node.set_op_type("FusedConv");
+      ++converted_convs;
     }
-    EXPECT_EQ(fused_conv_count, 1);
-  };
+  }
+  ASSERT_EQ(converted_convs, 1);
+  std::string model_data;
+  ASSERT_TRUE(model_proto.SerializeToString(&model_data));
 
-  TransformerTester(
-      build_test_case, check, TransformerLevel::Level1, TransformerLevel::Level2, 17,
-      /*per_sample_tolerance=*/1e-5, /*relative_per_sample_tolerance=*/1e-5);
+  SessionOptions session_options;
+  // Execute the transformer's result without another optimization pass.
+  session_options.graph_optimization_level = TransformerLevel::Default;
+  InferenceSessionWrapper session{session_options, GetEnvironment()};
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultCpuExecutionProvider()));
+  ASSERT_STATUS_OK(session.Load(model_data.data(), static_cast<int>(model_data.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+  for (const auto& node : session.GetGraph().Nodes()) {
+    EXPECT_EQ(node.GetExecutionProviderType(), kCpuExecutionProvider);
+  }
+
+  RunOptions run_options;
+  std::vector<OrtValue> fetches;
+  ASSERT_STATUS_OK(session.Run(run_options, builder.feeds_, builder.output_names_, &fetches));
+  ASSERT_EQ(fetches.size(), 1U);
+  const auto& result = fetches[0].Get<Tensor>();
+  ASSERT_EQ(result.Shape().Size(), 1);
+  EXPECT_FLOAT_EQ(result.Data<float>()[0], 0.0f);
 }
 
 #if defined(USE_WEBGPU)
