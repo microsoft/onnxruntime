@@ -146,5 +146,37 @@ TEST(CastOpTest, Uint8ToBool_WebGpu) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
+namespace {
+// Outputs larger than maxStorageBufferBindingSize are bound as several buffer segments and written
+// through a generated setter, which must pack byte lanes like the unsegmented path. A 1 KiB test
+// limit splits the 3001-byte input and output into 3 segments each.
+template <typename From, typename To>
+void RunSegmentedByteCastOnWebGpu() {
+  WebGpuExecutionProviderTestOptions test_options{};
+  test_options.max_storage_buffer_binding_size = 1024;
+  auto webgpu_ep = WebGpuExecutionProviderWithTestOptions(test_options);
+  if (webgpu_ep == nullptr) {
+    GTEST_SKIP() << "Artificially small storage binding limits require the native test factory.";
+  }
+  constexpr int64_t kSize = 3001;
+  std::vector<From> input(kSize);
+  std::vector<To> expected(kSize);
+  for (size_t i = 0; i < input.size(); ++i) {
+    input[i] = static_cast<From>(static_cast<uint8_t>(i * 7));
+    expected[i] = static_cast<To>(input[i]);
+  }
+  OpTester test("Cast", 13);
+  test.AddAttribute<int64_t>("to", utils::ToTensorProtoElementType<To>());
+  test.AddInput<From>("input", {kSize}, input);
+  test.AddOutput<To>("output", {kSize}, expected);
+  test.Config(WebGpuOnlySessionOptions()).ConfigEp(std::move(webgpu_ep)).RunWithConfig();
+}
+}  // namespace
+
+TEST(CastOpTest, ByteOutputsAcrossBufferSegments_WebGpu) {
+  RunSegmentedByteCastOnWebGpu<uint8_t, int8_t>();
+  RunSegmentedByteCastOnWebGpu<int8_t, uint8_t>();
+}
+
 }  // namespace test
 }  // namespace onnxruntime

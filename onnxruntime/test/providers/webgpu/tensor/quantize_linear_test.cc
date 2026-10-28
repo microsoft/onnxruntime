@@ -559,5 +559,36 @@ TEST(WebGpuQuantizeLinearTest, QuantizeDequantizeRoundTrip) {
   TestQuantizeDequantizeRoundTrip<MLFloat16, int8_t>();
 }
 
+// Outputs larger than maxStorageBufferBindingSize are bound as several buffer segments and written
+// through a generated setter, which must pack byte lanes like the unsegmented path. A 2 KiB test limit
+// splits the 3001-element float16 input into 3 segments and the byte output into 2.
+template <typename QuantType>
+void TestQuantizeLinearSegmentedOutput() {
+  WebGpuExecutionProviderTestOptions test_options{};
+  test_options.max_storage_buffer_binding_size = 2048;
+  auto provider = WebGpuExecutionProviderWithTestOptions(test_options);
+  if (!provider) {
+    GTEST_SKIP() << "Artificially small storage binding limits require the native test factory.";
+  }
+  constexpr float kScale = 0.125f;
+  const auto zero_point = static_cast<QuantType>(std::is_signed_v<QuantType> ? -3 : 100);
+  const auto x = QuarterSteps(3001);
+  std::vector<QuantType> expected(x.size());
+  for (size_t i = 0; i < x.size(); ++i) {
+    expected[i] = ReferenceQuantize(x[i], kScale, zero_point);
+  }
+  OpTester test("QuantizeLinear", 21);
+  test.AddInput<MLFloat16>("x", {static_cast<int64_t>(x.size())}, FromFloats<MLFloat16>(x));
+  test.AddInput<MLFloat16>("y_scale", {}, {MLFloat16(kScale)});
+  test.AddInput<QuantType>("y_zero_point", {}, {zero_point});
+  test.AddOutput<QuantType>("y", {static_cast<int64_t>(x.size())}, expected);
+  test.Config(WebGpuOnlySessionOptions()).ConfigEp(std::move(provider)).RunWithConfig();
+}
+
+TEST(WebGpuQuantizeLinearTest, SegmentedOutput) {
+  TestQuantizeLinearSegmentedOutput<int8_t>();
+  TestQuantizeLinearSegmentedOutput<uint8_t>();
+}
+
 }  // namespace
 }  // namespace onnxruntime::test
