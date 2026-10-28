@@ -363,7 +363,8 @@ class SubgroupMatrixMatMulImplInternal final : public SubgroupMatrixMatMulImpl {
 Status GenerateSubgroupMatrixShaderCode(ShaderHelper& shader, const SubgroupMatrixConfig& config,
                                         uint32_t sg_mat_count_m, uint32_t sg_mat_count_n,
                                         uint32_t split_k, uint32_t sg_grid_m, uint32_t sg_grid_n,
-                                        uint32_t tile_k) {
+                                        uint32_t tile_k, const ShaderVariableHelper& input_a,
+                                        const ShaderVariableHelper& input_b) {
   return WGSL_TEMPLATE_APPLY(shader, "math/subgroup_matrix_matmul.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(sg_grid_m, sg_grid_m),
                              WGSL_TEMPLATE_PARAMETER(sg_grid_n, sg_grid_n),
@@ -373,7 +374,9 @@ Status GenerateSubgroupMatrixShaderCode(ShaderHelper& shader, const SubgroupMatr
                              WGSL_TEMPLATE_PARAMETER(sg_mat_m, config.M),
                              WGSL_TEMPLATE_PARAMETER(sg_mat_n, config.N),
                              WGSL_TEMPLATE_PARAMETER(split_k, split_k),
-                             WGSL_TEMPLATE_PARAMETER(tile_k, tile_k));
+                             WGSL_TEMPLATE_PARAMETER(tile_k, tile_k),
+                             WGSL_TEMPLATE_VARIABLE(input_a, input_a),
+                             WGSL_TEMPLATE_VARIABLE(input_b, input_b));
 }
 
 // Default tiling used on any vendor without a specialized policy: a 64x64 output
@@ -416,8 +419,8 @@ SubgroupMatrixTilingSelector MakeStagedTilingSelector(const SubgroupMatrixConfig
 }  // namespace
 
 Status SubgroupMatrixMatMulProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  shader.AddInput("input_a", ShaderUsage::UseUniform);
-  shader.AddInput("input_b", ShaderUsage::UseUniform);
+  const auto& input_a = shader.AddInput("input_a", ShaderUsage::UseUniform);
+  const auto& input_b = shader.AddInput("input_b", ShaderUsage::UseUniform);
   if (has_bias_) {
     shader.AddInput("bias", ShaderUsage::UseUniform);
   }
@@ -438,7 +441,7 @@ Status SubgroupMatrixMatMulProgram::GenerateShaderCode(ShaderHelper& shader) con
 
   if (config_.Is(8, 16, 16) || config_.Is(16, 16, 16)) {
     return GenerateSubgroupMatrixShaderCode(shader, config_, sg_mat_count_m_, sg_mat_count_n_, split_k_,
-                                            sg_grid_m_, sg_grid_n_, tile_k_);
+                                            sg_grid_m_, sg_grid_n_, tile_k_, input_a, input_b);
   }
   return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::NOT_IMPLEMENTED,
                 "Unsupported subgroup matrix config dimensions.");

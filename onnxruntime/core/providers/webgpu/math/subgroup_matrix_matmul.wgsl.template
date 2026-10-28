@@ -57,7 +57,7 @@
 #param sg_grid_n
 #param tile_k
 //
-#use .setByOffset
+#use .getByOffset .setByOffset
 //
 const kSgMatM: u32 = u32(sg_mat_m);              // Subgroup matrix M dimension (rows)
 const kSgMatN: u32 = u32(sg_mat_n);              // Subgroup matrix N dimension (columns)
@@ -239,7 +239,7 @@ $MAIN {
             let c = (i % (kTileK / 4u)) * 4u;
             var v = vec4<f16>();
             if (m_tile_start + r < uniforms.M && k_start + c < uniforms.K) {
-                v = input_a[(a_batch_offset + (m_tile_start + r) * uniforms.K + k_start + c) / 4u];
+                v = input_a.getByOffset((a_batch_offset + (m_tile_start + r) * uniforms.K + k_start + c) / 4u);
             }
             let s = r * kStrideA + c;
             scratch[s] = v.x;
@@ -252,7 +252,7 @@ $MAIN {
             let c = (i % (kTileN / 4u)) * 4u;
             var v = vec4<f16>();
             if (k_start + r < uniforms.K && n_tile_start + c < uniforms.N) {
-                v = input_b[(b_batch_offset + (k_start + r) * uniforms.N + n_tile_start + c) / 4u];
+                v = input_b.getByOffset((b_batch_offset + (k_start + r) * uniforms.N + n_tile_start + c) / 4u);
             }
             let s = kTileM * kStrideA + r * kStrideB + c;
             scratch[s] = v.x;
