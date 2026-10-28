@@ -1,6 +1,6 @@
 # EP-registered runtime fusion for canonical ONNX
 
-Status: **engineering design for review, not approved for implementation** (revised October 26, 2026).
+Status: **engineering design for review, not approved for implementation** (revised October 28, 2026).
 Tracks [#33403](https://github.com/microsoft/onnxruntime/issues/33403).
 No native build, dependency installation, GPU allocation, model execution, or runtime probe was
 performed for this design. Test names, commands, numerical gates, and performance budgets below are
@@ -175,6 +175,22 @@ device resources. Apply a provisional winner on a candidate graph, reconcile tra
 execution/backing plan, verify, then commit final placement before materialization.
 Placement-sensitive L2+ passes must participate as selected recipes or be gated in this mode.
 This planner is proposed follow-on work, not current ORT behavior or a prerequisite for baseline.
+
+### Responsibility boundaries for future offloading
+
+Fusion supplies eligible implementation recipes and their resource contracts; P owns graph-level
+CPU/GPU region and boundary selection. An expert-offload controller can manage residency and CPU/GPU
+execution inside an admitted node without assigning separate graph nodes to the CPU EP, as proposed
+by the QMoE [controller](https://github.com/microsoft/onnxruntime/pull/33451) and
+[backend](https://github.com/microsoft/onnxruntime/pull/33452). Execution/capture consumes the
+reconciled placement, as in the [partitioned-capture prototype](https://github.com/microsoft/onnxruntime/pull/32718).
+These proposals are integration references, not implemented compatibility or first-release dependencies.
+Not every offloading decision belongs in `GetCapability`.
+
+Reuse the existing L1/L2 transformer infrastructure and preserve existing fusions; adopting the
+rewrite engine does not require migrating them to capability discovery. The fusion adapter must not
+become a second global placement planner or budget owner. A node-local controller operates within
+resources admitted by the shared resource owner; it cannot independently spend the same headroom.
 
 ## 4. Recipe contracts and independent delivery (D2)
 
@@ -552,12 +568,21 @@ a recipe key, not authoritative byte counts. Unknown is distinct from zero. The 
    or no longer fits, do not commit placement/materialize resources. Baseline application has no
    automatic unfused retry after mutation; a future planner can discard an isolated candidate under
    its own bounded search contract.
-3. Admit the whole initialization/execution envelope **before initializer upload, kernel
-   construction, PrePack, or another budget-consuming initialization step**. Include initialization peaks, not just Run.
+3. Admit the whole initialization/execution envelope **before resource-consuming kernel
+   construction, initializer upload, PrePack, or other materialization**. Include initialization
+   peaks, not just Run.
    Declarations after creation validate the recipe but are not the preventive gate.
 4. Verify actual declarations/allocations against admitted limits; unexpected excess is a fatal
    initialization/Run error, never permission to allocate first and silently revise the budget.
    Workload-bound violations must be detected before launching any state-mutating kernel.
+
+After candidate selection, descriptor-only kernel-shell construction/registration may precede
+whole-plan admission only under an explicit bounded metadata allowance from the resource owner.
+It must not upload weights, pack tensors, initialize an offload backend, or acquire unadmitted
+resource-backed state. Otherwise construction itself requires prior admission. This is a staged
+initialization contract, not permission to allocate first and reconcile later; it does not permit
+kernel construction during query-only discovery. Compatibility with the proposed QMoE lifecycle
+requires verification of this separation, not merely reuse of its initialization hooks.
 
 | Category | Bound and lifetime required |
 |---|---|
@@ -567,6 +592,12 @@ a recipe key, not authoritative byte counts. Unknown is distinct from zero. The 
 | Cache/state | Caller-owned and ORT-owned buffers, dynamic growth up to the bound, old and new buffers, layout adapters, alias-dependent preservation scratch. |
 | Transfers | Staging/pinned host buffers, copy outputs and asynchronous completion lifetimes. |
 | External/retained storage | Existing session/EP allocations, allocator pools and application-bound buffers; explicit ownership and charge domain. |
+
+Composition with expert offloading and capture must reconcile allocation identity and lifetime:
+shared weights are charged once, while expert slots, host caches, pinned DMA buffers, persistent
+copies, and capture-retained buffers remain covered in their respective charge domains. Local
+ledgers alone do not prove a whole-session bound; missing ownership or reconciliation support
+blocks budgeted composition, not baseline fusion.
 
 GQA's exactly-one-K/V-pair alias case requires preservation scratch. Model it or reject it; two
 identical past/present shapes do not establish identical memory requirements. Initially exclude
@@ -623,6 +654,8 @@ prerequisite, never a pass.
 | `RuntimeFusionApiTest.*` / `onnxruntime_shared_lib_test`, external-delivery milestone | Once the adapter is approved: static/DSO registration, version/descriptor errors, copied/retained state, clone isolation, partial registration cleanup, concurrent sessions and destructor/unload order. Build DSO with only approved public headers, not private symbols. |
 | `RuntimeFusionTests.WholeScan*` | Unassigned or same-tentative-CUDA parent/body positive; committed CPU or mixed ownership negative; capture/state order, nested control flow, recursive overlap, descendant resource retirement, no Scan after acceptance. |
 | `RuntimeFusionTests.Budget*` | Unknown/insufficient high-priority recipe allows a covered lower-priority candidate without stale charges. Cover target larger than source, partial CSV, shared initializer, initialization peak, repeat discovery, later-transform invalidation, unchanged budget, and out-of-bound Run rejection before mutation. |
+| `RuntimeFusionTests.RecipeContract*`, budgeted-integration milestone | Preserve selected recipe identity and allowed dispatch routes through application and later transforms. Local rewrite iteration may implement that recipe, but must not reselect an incompatible implementation; reject contract drift before materialization. |
+| `RuntimeFusionTests.OffloadComposition*`, future integration milestone | Verify bounded descriptor-only construction versus admitted materialization. Charge shared allocations once and cover expert residency, host/pinned caches, persistent copies, and capture retention across initialization and Run; reject missing accounting coverage before spending resources. |
 | `RuntimeFusionCudaTest.*` / `onnxruntime_provider_test` | Pruned/overridden kernels and actual selected memory/alias metadata; dense GQA, convolution, recurrence mapping and numerical gates; source/replacement ownership trace. |
 | Existing regression targets | `InferenceSessionTests.TestRegisterTransformers`, `ExperimentalCApiTest.*`, relevant existing resource-accountant, attention and stateful tests, legacy contrib models and disabled-extension behavior. |
 
