@@ -36,6 +36,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", WebGpuSupportedFloatTypes())
+        .TypeConstraint("T_KEY", WebGpuSupportedFloatTypes())
         .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>())
         .MayInplace(psai::kPastKeyState, psai::kPresentKeyState)
@@ -893,6 +894,15 @@ PackedSparseAttentionIndexer::PackedSparseAttentionIndexer(const OpKernelInfo& i
 }
 
 Status PackedSparseAttentionIndexer::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
+  ORT_RETURN_IF(context.InputCount() > psai::kIndexShareMode && context.Input(psai::kIndexShareMode),
+                "PackedSparseAttentionIndexer IndexShare requires the CUDA provider");
+  const Tensor* query = context.Input(psai::kQuery);
+  const Tensor* key_state = context.Input(psai::kPastKeyState);
+  ORT_RETURN_IF(query != nullptr && key_state != nullptr && query->DataType() != key_state->DataType(),
+                "PackedSparseAttentionIndexer: mixed input/state types require the CUDA provider");
+  ORT_RETURN_IF(
+      context.OutputCount() > psai::kStateStatus && context.Output(psai::kStateStatus, TensorShape({0})) != nullptr,
+      "PackedSparseAttentionIndexer state_status requires the CUDA provider");
   const bool is_qsa = policy_ == psai::Policy::kQsa;
   constexpr int kCsaOnlyInputs[] = {psai::kGate, psai::kPositionBias, psai::kHeadWeights};
   for (int index : kCsaOnlyInputs) {
@@ -1143,9 +1153,9 @@ Status PackedSparseAttentionIndexer::ComputeQsa(onnxruntime::webgpu::ComputeCont
       .AddInputs({{&query_metadata, ProgramTensorMetadataDependency::Type},
                   {present_key_state, ProgramTensorMetadataDependency::Type},
                   {&rotary_cache, ProgramTensorMetadataDependency::Type},
-                  {&sequence_metadata, ProgramTensorMetadataDependency::Type}});
-  select.AddInputs({{present_state_lengths, ProgramTensorMetadataDependency::Type},
-                    {&overflow_flags, ProgramTensorMetadataDependency::Type}})
+                  {&sequence_metadata, ProgramTensorMetadataDependency::Type},
+                  {present_state_lengths, ProgramTensorMetadataDependency::Type},
+                  {&overflow_flags, ProgramTensorMetadataDependency::Type}})
       .AddOutputs({{selected_indices, ProgramTensorMetadataDependency::Type},
                    {selected_counts, ProgramTensorMetadataDependency::Type}})
       .SetDispatchGroupSize(ToUint32(total_tokens))

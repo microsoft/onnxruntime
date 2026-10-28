@@ -3,7 +3,8 @@ scikit-learn
 skl2onnx
 sphinx>=6.0.0 # Versions less than 6.0 contain security vulnerabilities.
 sphinx-gallery
-sphinxcontrib.googleanalytics
+# 0.6 removes the legacy namespace initializer that requires pkg_resources.
+sphinxcontrib.googleanalytics==0.6
 furo
 pandas
 pydot

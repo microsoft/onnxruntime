@@ -3,12 +3,126 @@
 
 #include "embed_layer_norm_test_vectors.h"
 #include "gtest/gtest.h"
+#include <cmath>
+#include <type_traits>
 #include "test/common/tensor_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 
 namespace onnxruntime {
 namespace test {
+
+#if defined(USE_CUDA)
+template <typename T>
+static void CheckCudaHighOffsetVariance() {
+  if (!HasCudaEnvironment(0)) GTEST_SKIP() << "CUDA EP unavailable";
+
+  constexpr float epsilon = 1e-5f;
+  const auto native_value = [](float value) {
+    if constexpr (std::is_same_v<T, float>) {
+      return value;
+    } else {
+      return T(value).ToFloat();
+    }
+  };
+  for (int hidden_size : {1, 3, 4, 5, 128, 129, 320, 768, 769, 8192, 8193}) {
+    SCOPED_TRACE(hidden_size);
+    for (bool has_segment : {false, true}) {
+      SCOPED_TRACE(has_segment);
+      const std::vector<int64_t> shape{1, 2, hidden_size};
+      const std::vector<int64_t> table_shape{2, hidden_size};
+      const std::vector<int64_t> parameter_shape{hidden_size};
+      std::vector<float> pattern{1000.01f, 1000.02f, 999.99f, 1000.0f};
+      float position_value = 128.0f;
+      if constexpr (std::is_same_v<T, MLFloat16>) {
+        pattern = {60000.0f, 60032.0f, 59968.0f, 60000.0f};
+        position_value = -59872.0f;
+      }
+      std::vector<float> word(2 * hidden_size);
+      std::vector<float> position(2 * hidden_size, has_segment ? position_value : 0.0f);
+      std::vector<float> segment(hidden_size, 512.0f);
+      std::vector<float> gamma(hidden_size);
+      std::vector<float> beta(hidden_size);
+      std::vector<float> sum(2 * hidden_size);
+      std::vector<float> expected(2 * hidden_size);
+      for (int i = 0; i < hidden_size; ++i) {
+        word[i] = pattern[i % 4];
+        word[hidden_size + i] = std::is_same_v<T, float> ? -1000.0f : pattern[0];
+        if constexpr (std::is_same_v<T, MLFloat16>) {
+          segment[i] = i % 2 == 0 ? 0.25f : 0.5f;
+        }
+        gamma[i] = i % 2 == 0 ? 0.5f : -1.25f;
+        beta[i] = i % 2 == 0 ? 0.25f : -0.75f;
+      }
+      for (int row = 0; row < 2; ++row) {
+        double mean = 0.0;
+        for (int i = 0; i < hidden_size; ++i) {
+          const int index = row * hidden_size + i;
+          const float value = native_value(native_value(word[index] + (has_segment ? segment[i] : 0.0f)) +
+                                           position[index]);
+          sum[index] = value;
+          mean += static_cast<double>(value);
+        }
+        mean /= hidden_size;
+        double variance = 0.0;
+        for (int i = 0; i < hidden_size; ++i) {
+          const double delta = static_cast<double>(sum[row * hidden_size + i]) - mean;
+          variance += delta * delta;
+        }
+        variance /= hidden_size;
+        const double inv_std = 1.0 / std::sqrt(variance + static_cast<double>(epsilon));
+        for (int i = 0; i < hidden_size; ++i) {
+          const int index = row * hidden_size + i;
+          expected[index] = static_cast<float>((static_cast<double>(sum[index]) - mean) *
+                                                   inv_std * gamma[i] +
+                                               beta[i]);
+        }
+      }
+
+      OpTester tester("EmbedLayerNormalization", 1, kMSDomain);
+      tester.AddAttribute("epsilon", epsilon);
+      tester.AddInput<int32_t>("input_ids", {1, 2}, {0, 1});
+      if (has_segment) {
+        tester.AddInput<int32_t>("segment_ids", {1, 2}, {0, 0});
+      } else {
+        tester.AddOptionalInputEdge<int32_t>();
+      }
+      tester.AddInput<T>("word_embedding", table_shape, std::vector<T>(word.begin(), word.end()));
+      tester.AddInput<T>("position_embedding", table_shape, std::vector<T>(position.begin(), position.end()));
+      if (has_segment) {
+        tester.AddInput<T>("segment_embedding", {1, hidden_size}, std::vector<T>(segment.begin(), segment.end()));
+      } else {
+        tester.AddOptionalInputEdge<T>();
+      }
+      tester.AddInput<T>("gamma", parameter_shape, std::vector<T>(gamma.begin(), gamma.end()));
+      tester.AddInput<T>("beta", parameter_shape, std::vector<T>(beta.begin(), beta.end()));
+      tester.AddInput<int32_t>("mask", {1, 2}, {1, 0});
+      tester.AddOutput<T>("output", shape, std::vector<T>(expected.begin(), expected.end()));
+      tester.AddOutput<int32_t>("mask_index", {1}, {1});
+      tester.AddOutput<T>("embedding_sum", shape, std::vector<T>(sum.begin(), sum.end()));
+      if constexpr (std::is_same_v<T, float>) {
+        tester.SetOutputAbsErr("output", 1e-4f);
+        tester.SetOutputRelErr("output", 1e-4f);
+      }
+      tester.SetOutputAbsErr("embedding_sum", 0.0f);
+      tester.SetOutputRelErr("embedding_sum", 0.0f);
+      SessionOptions options;
+      ORT_THROW_IF_ERROR(options.config_options.AddConfigEntry("session.disable_cpu_ep_fallback", "1"));
+      std::vector<std::unique_ptr<IExecutionProvider>> providers;
+      providers.push_back(DefaultCudaExecutionProvider());
+      tester.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+    }
+  }
+}
+
+TEST(EmbedLayerNormTest, CudaHighOffsetVariance) {
+  CheckCudaHighOffsetVariance<float>();
+}
+
+TEST(EmbedLayerNormTest, CudaFloat16HighOffsetVariance) {
+  CheckCudaHighOffsetVariance<MLFloat16>();
+}
+#endif
 
 static void RunTest(const embedlayernorm::OpData& data,
                     bool use_float16 = false,

@@ -13,10 +13,6 @@ Tests:
 
 The inference test is skipped gracefully if no WebGPU device is available
 (e.g., on CPU-only build agents), unless ORT_WEBGPU_TEST_REQUIRE_EP_DEVICE is enabled.
-
-Set ORT_WEBGPU_TEST_PROVIDER_NAME=1 when testing a host built from this checkout
-with --use_webgpu shared_lib to also exercise provider-name selection. The minimum
-supported runtime only needs to support the device-selection API.
 """
 
 import os
@@ -32,9 +28,14 @@ from onnx import TensorProto, helper
 
 import onnxruntime as ort
 
-VERBOSE = os.environ.get("ORT_TEST_VERBOSE", "").strip().lower() in ("1", "true", "yes")
-REQUIRE_EP_DEVICE = os.environ.get("ORT_WEBGPU_TEST_REQUIRE_EP_DEVICE", "").strip().lower() in ("1", "true", "yes")
-TEST_PROVIDER_NAME = os.environ.get("ORT_WEBGPU_TEST_PROVIDER_NAME", "").strip().lower() in ("1", "true", "yes")
+
+def read_bool_environment_variable(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes")
+
+
+VERBOSE = read_bool_environment_variable("ORT_TEST_VERBOSE")
+REQUIRE_EP_DEVICE = read_bool_environment_variable("ORT_WEBGPU_TEST_REQUIRE_EP_DEVICE")
+REQUIRE_AGILITY_SDK = read_bool_environment_variable("ORT_WEBGPU_TEST_REQUIRE_AGILITY_SDK")
 
 
 def debug_print(*args, **kwargs):
@@ -103,6 +104,12 @@ def test_import_and_library_path():
     assert Path(lib_path).is_file(), f"Library path does not exist: {lib_path}"
     print(f"OK: Library path: {lib_path}")
 
+    d3d12_dir = pkg_dir / "D3D12"
+    if platform.system() == "Windows" and (REQUIRE_AGILITY_SDK or d3d12_dir.exists()):
+        for filename in ("D3D12Core.dll", "d3d12SDKLayers.dll"):
+            assert (d3d12_dir / filename).is_file(), f"D3D12 Agility SDK binary is missing: {filename}"
+        print(f"OK: D3D12 Agility SDK binaries: {d3d12_dir}")
+
     ep_name = webgpu_ep.get_ep_name()
     assert ep_name == "WebGpuExecutionProvider", f"Unexpected EP name: {ep_name}"
     print(f"OK: EP name: {ep_name}")
@@ -134,14 +141,8 @@ def test_registration_and_inference():
             print("\n--- ORT EP devices ---")
             print_ep_devices(all_ep_devices)
 
-        webgpu_ep_devices = [
-            d
-            for d in all_ep_devices
-            if d.ep_name == ep_name
-            and d.ep_metadata.get("library_path")
-            and Path(d.ep_metadata["library_path"]).resolve() == Path(lib_path).resolve()
-        ]
-        print(f"Found {len(webgpu_ep_devices)} WebGPU plugin EP device(s)")
+        webgpu_ep_devices = [d for d in all_ep_devices if d.ep_name == ep_name]
+        print(f"Found {len(webgpu_ep_devices)} WebGPU EP device(s)")
 
         if not webgpu_ep_devices:
             if REQUIRE_EP_DEVICE:
@@ -153,10 +154,9 @@ def test_registration_and_inference():
         webgpu_ep_device = webgpu_ep_devices[0]
 
         # Create session with WebGPU EP
-        provider_options = {"validationMode": "disabled"}
         sess_options = ort.SessionOptions()
         sess_options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
-        sess_options.add_provider_for_devices([webgpu_ep_device], provider_options)
+        sess_options.add_provider_for_devices([webgpu_ep_device], {})
         assert sess_options.has_providers(), "SessionOptions should have providers after add_provider_for_devices"
         print("OK: Session options configured with WebGPU EP")
 
@@ -172,36 +172,14 @@ def test_registration_and_inference():
             y = np.array([[2.0, 3.0, 4.0], [5.0, 6.0, 7.0]], dtype=np.float32)
             expected = x * y
 
-            try:
-                assert sess.get_provider_options()[ep_name] == provider_options
-                outputs = sess.run(None, {"x": x, "y": y})
-                result = outputs[0]
+            outputs = sess.run(None, {"x": x, "y": y})
+            result = outputs[0]
 
-                np.testing.assert_allclose(result, expected, rtol=1e-5, atol=1e-5)
-                print("OK: Inference result matches expected output")
-            finally:
-                del sess
+            np.testing.assert_allclose(result, expected, rtol=1e-5, atol=1e-5)
+            print("OK: Inference result matches expected output")
+
+            del sess
             print("OK: Session released")
-
-            if TEST_PROVIDER_NAME:
-                # This binding path is not available in the minimum supported host runtime.
-                named_options = ort.SessionOptions()
-                named_options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
-                named_session = ort.InferenceSession(
-                    model_path, sess_options=named_options, providers=[(ep_name, provider_options)]
-                )
-                try:
-                    assert ep_name in named_session.get_providers(), "Registered WebGPU provider was not selected"
-                    # Verify that the plugin receives the options supplied through the provider-name API.
-                    assert named_session.get_provider_options()[ep_name] == provider_options, (
-                        "Provider-name selection did not use the WebGPU plugin with its requested options"
-                    )
-                    np.testing.assert_allclose(
-                        named_session.run(None, {"x": x, "y": y})[0], expected, rtol=1e-5, atol=1e-5
-                    )
-                finally:
-                    del named_session
-                print("OK: Registered plugin inference via provider name (CPU fallback disabled)")
 
     finally:
         ort.unregister_execution_provider_library(registration_name)

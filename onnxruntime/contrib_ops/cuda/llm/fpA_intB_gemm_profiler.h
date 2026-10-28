@@ -16,10 +16,12 @@
  */
 #pragma once
 
+#include <cutlass/numeric_types.h>
+
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cassert>
-#include <cutlass/numeric_types.h>
 #include <memory>
 #include <optional>
 #include <set>
@@ -78,6 +80,8 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
  public:
   using Config = onnxruntime::llm::cutlass_extensions::CutlassGemmConfig;
 
+  std::optional<Config> getDeterministicConfig(int m) const;
+
   // Parses a comma-separated list of M buckets (e.g. "1,8,64,512") into a sorted, de-duplicated,
   // positive list (empty when the string is empty/blank). Used for the ep.cuda.fpa_intb_profile_m
   // session-config key and the ORT_FPA_INTB_PROFILE_M env var, both resolved by the kernel.
@@ -116,10 +120,25 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
     mL2CacheBytes = l2CacheBytes;
   }
 
+  // Device that runs the profiled launches. The GEMV dispatcher keys its M = 8 tile windows on it, so the
+  // profiler times the same tile that MatMulNBits launches.
+  void setDeviceInfo(int sm, int smCount) {
+    mDeviceSm = sm;
+    mDeviceSmCount = smCount;
+  }
+
   // Attaches the process-global persistent tactic cache. A nullptr keeps the
-  // in-process-only behavior (no disk reads/writes).
-  void setPersistentCache(std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> cache) {
+  // in-process-only behavior (no disk reads/writes). A non-null `session_profile_map` replaces the
+  // process-global profile map so this profiler deduplicates shapes within its own session while
+  // using `cache` for cross-session persistence (and re-tuning without mutating live sessions).
+  void setPersistentCache(std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> cache,
+                          onnxruntime::llm::gemm_cache::CacheAccess access = {},
+                          MNKProfileMapPtr session_profile_map = nullptr) {
     mCache = std::move(cache);
+    mCacheAccess = access;
+    if (session_profile_map != nullptr) {
+      setSelectionTactics(session_profile_map);
+    }
   }
 
   void setTuningResultsCache(std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> cache) {
@@ -163,6 +182,7 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
   void loadPersistentCache(GemmIdCore const& gemmId, MProfileMap& map,
                            bool hasWeightOnlyCudaKernel) override;
 
+  // Records buckets in `map` that are new or differ from the cache in memory (no disk write).
   void stagePersistentCache(GemmIdCore const& gemmId, MProfileMap const& map,
                             bool hasWeightOnlyCudaKernel) override;
 
@@ -183,9 +203,12 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
   int mArch = 0;
   int mDecodeInterleave = 0;
   size_t mL2CacheBytes = 0;
+  int mDeviceSm = 0;
+  int mDeviceSmCount = 0;
   std::atomic<size_t> mProfileWeightIndex{0};
   int mPairedGemvMode = 0;
   std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> mCache;
+  onnxruntime::llm::gemm_cache::CacheAccess mCacheAccess;
   std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> mTuningResultsCache;
   bool mWaveAwareGemv = false;
   std::vector<int> mProfileMOverride;

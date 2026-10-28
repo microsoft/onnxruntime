@@ -26,7 +26,7 @@ enum class UpdateRule : int { kLinear = 0,
                               kDelta = 2,
                               kGatedDelta = 3 };
 enum class GateActivation : int { kNone = 0,
-                                  kQwen = 1 };
+                                  kSoftplusDecay = 1 };
 enum class BetaActivation : int { kNone = 0,
                                   kSigmoid = 1 };
 
@@ -34,6 +34,17 @@ enum class BetaActivation : int { kNone = 0,
 enum class IoType : int { kFloat = 0,
                           kFloat16 = 1,
                           kBFloat16 = 2 };
+
+// Intermediate precision mode for BF16 GatedDeltaNet chunked and split-chunked prefill engines.
+enum class Bf16Precision : int {
+  kFp32 = 0,  // 3-slice BF16 state/update + exact FP32 extreme-column fallback (default)
+  kFp16 = 1,  // 1-slice FP16 internal MMA tiles when within safe FP16 range
+  kBf16 = 2,  // 1-slice native BF16 internal MMA tiles
+};
+
+inline constexpr const char* kGatedDeltaNetBf16PrecisionConfig =
+    "ep.cuda.gated_delta_net_bf16_precision";
+inline constexpr const char* kGatedDeltaNetBf16PrecisionEnv = "ORT_GDN_BF16_PRECISION";
 
 enum class Engine : int {
   kAuto = 0,
@@ -47,6 +58,8 @@ inline constexpr int kChunkedMinTokens = 32;
 
 const char* EngineName(Engine e);
 Engine EngineFromName(const std::string& name);
+const char* Bf16PrecisionName(Bf16Precision p);
+bool TryParseBf16Precision(const std::string& name, Bf16Precision* out);
 
 // Everything that can change the generated code or the launch geometry. Two calls with
 // equal descriptors may share a plan.
@@ -70,6 +83,7 @@ struct Descriptor {
   bool ragged = false;  // cu_seqlens supplied
   // Benchmarking override. kAuto lets the heuristic choose.
   Engine preferred_engine = Engine::kAuto;
+  Bf16Precision bf16_precision = Bf16Precision::kFp32;
   int sm_major = 0;
 };
 
@@ -136,23 +150,25 @@ inline size_t SplitPrepareSmemBytes(int bt, int dk, int dv) {
   return f + h;
 }
 
-// K2 holds the fp16 state, W/Qg/Kd, its own v-block of U, P, and one fp32 scratch that must
-// be wide enough for the [DK x DVB] state update.
+// K2 holds the fp32 state and its 16-bit mma tile, W/Qg (whose upper half is reused for Kd),
+// its own v-block of U, P, and one fp32 scratch that covers the [2 BT x DVB] stacked GEMM.
 inline size_t SplitScanSmemBytes(int bt, int dk, int dvb) {
   const int ld_kh = dk + 8;
   const int ld_bh = dvb + 8;
   const int ld_mh = bt + 8;
+  const int ld_sf = dvb + 4;
   const int ld_f2 = (dvb > bt ? dvb : bt) + 4;
-  const size_t f = sizeof(float) * static_cast<size_t>(dk) * ld_f2;
-  const size_t h = sizeof(uint16_t) * static_cast<size_t>(dk * ld_bh + 3 * bt * ld_kh +
+  const size_t f = sizeof(float) * static_cast<size_t>(dk) * (ld_sf + ld_f2);
+  const size_t h = sizeof(uint16_t) * static_cast<size_t>(dk * ld_bh + 2 * bt * ld_kh +
                                                           bt * ld_bh + bt * ld_mh);
   return f + h;
 }
 
-// Workspace one (head, chunk) needs to hand K1's output to K2: W, Qg, Kd [BT x DK],
-// Uv [BT x DV] and P [BT x BT] in fp16, plus the chunk's scalar decay.
+// Workspace one (head, chunk) needs to hand K1's output to K2: W, Qg, Kd [BT x DK] and
+// P [BT x BT] in 16-bit, Uv [BT x DV] in fp32, plus the chunk's scalar decay.
 inline size_t SplitTileBytes(int bt, int dk, int dv) {
-  return sizeof(uint16_t) * static_cast<size_t>(bt) * (3 * dk + dv + bt) + sizeof(float);
+  return sizeof(uint16_t) * static_cast<size_t>(bt) * (3 * dk + bt) +
+         sizeof(float) * (static_cast<size_t>(bt) * dv + 1);
 }
 
 inline Plan SelectPlan(const Descriptor& desc, size_t smem_per_block_optin) {
@@ -178,9 +194,9 @@ inline Plan SelectPlan(const Descriptor& desc, size_t smem_per_block_optin) {
   // scalar decay per (token, v-head). Per-key-dim decay (KDA) stays sequential.
   const bool rule_ok = !desc.decay_per_key_dim;
 
-  // Its GEMM operands are fp16 mma fragments, so float input would be silently narrowed;
-  // float stays on the scalar engine. bfloat16 needs bf16 fragments, not yet written.
-  const bool type_ok = desc.io_type == IoType::kFloat16;
+  // Its GEMM operands are 16-bit mma fragments (fp16 or bf16), so float input would be
+  // silently narrowed; float stays on the scalar engine.
+  const bool type_ok = desc.io_type == IoType::kFloat16 || desc.io_type == IoType::kBFloat16;
 
   if (long_enough && shape_ok && rule_ok && type_ok && desc.sm_major >= 8) {
     plan.v_block = 64;
@@ -212,10 +228,17 @@ inline Plan SelectPlan(const Descriptor& desc, size_t smem_per_block_optin) {
         // for a workspace proportional to its length.
         const size_t tile = SplitTileBytes(bt, desc.head_size_qk, desc.head_size_v);
         const size_t per_chunk = tile * static_cast<size_t>(batch) * desc.num_heads_v;
+        const size_t carry_bytes = sizeof(float) * static_cast<size_t>(batch) *
+                                   desc.num_heads_v * desc.head_size_v * desc.head_size_qk;
         const int64_t longest = longest_seq;
         const int total_chunks = static_cast<int>((longest + bt - 1) / bt);
         const size_t kWorkspaceCap = 64u << 20;
-        int per_pass = static_cast<int>(kWorkspaceCap / (per_chunk > 0 ? per_chunk : 1));
+        const bool needs_multi_pass =
+            per_chunk > 0 && static_cast<size_t>(total_chunks) * per_chunk > kWorkspaceCap;
+        const size_t tile_budget =
+            (needs_multi_pass && kWorkspaceCap > carry_bytes) ? (kWorkspaceCap - carry_bytes)
+                                                              : kWorkspaceCap;
+        int per_pass = static_cast<int>(tile_budget / (per_chunk > 0 ? per_chunk : 1));
         per_pass = per_pass < 1 ? 1 : per_pass;
         per_pass = per_pass > total_chunks ? total_chunks : per_pass;
         plan.chunks_per_pass = per_pass;
@@ -223,8 +246,7 @@ inline Plan SelectPlan(const Descriptor& desc, size_t smem_per_block_optin) {
         if (per_pass < total_chunks) {
           // A multi-pass walk carries the state between launches through the workspace,
           // because the caller is not obliged to have asked for final_state.
-          plan.workspace_bytes += sizeof(float) * static_cast<size_t>(batch) *
-                                  desc.num_heads_v * desc.head_size_v * desc.head_size_qk;
+          plan.workspace_bytes += carry_bytes;
         }
         plan.supported = true;
         return plan;
@@ -269,7 +291,7 @@ inline Plan SelectPlan(const Descriptor& desc, size_t smem_per_block_optin) {
     } else if (!rule_ok) {
       plan.reject_reason = "per-key-dimension decay";
     } else if (!type_ok) {
-      plan.reject_reason = "chunked engine requires float16 input";
+      plan.reject_reason = "chunked engine requires float16 or bfloat16 input";
     }
   }
   return plan;

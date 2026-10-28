@@ -147,6 +147,8 @@ void WeightOnlyGroupwiseQuantGemmPluginProfiler::runTactic(
     params.decode_variant = tactic.cudaKernelVariant >= 2 ? tactic.cudaKernelVariant : 0;
     params.paired_k = tactic.cudaKernelVariant == 1;
     params.wave_aware = mWaveAwareGemv;
+    params.device_sm = mDeviceSm;
+    params.device_sm_count = mDeviceSmCount;
     onnxruntime::llm::kernels::fpA_intB_gemv::kernel_launcher(mArch, params, stream);
   } else {
     // run CUTLASS kernel
@@ -216,6 +218,25 @@ std::vector<WeightOnlyGroupwiseQuantGemmPluginProfiler::Config> WeightOnlyGroupw
     }
   }
   return tactics;
+}
+
+std::optional<WeightOnlyGroupwiseQuantGemmPluginProfiler::Config>
+WeightOnlyGroupwiseQuantGemmPluginProfiler::getDeterministicConfig(int m) const {
+  const auto configs = mRunner->getConfigs();
+  if (m < 16) {
+    for (const auto& config : configs) {
+      if (config.enableCudaKernel) {
+        return config;
+      }
+    }
+  }
+  for (const auto& config : configs) {
+    if (!config.enableCudaKernel && config.split_k_style == cutlass_extensions::SplitKStyle::NO_SPLIT_K &&
+        (mArch < 89 || config.stages != 2)) {
+      return config;
+    }
+  }
+  return std::nullopt;
 }
 
 bool WeightOnlyGroupwiseQuantGemmPluginProfiler::checkTactic(int m, int n, int k, Config const& tactic) const {
@@ -337,7 +358,7 @@ onnxruntime::llm::gemm_cache::MatMulNBitsKey WeightOnlyGroupwiseQuantGemmPluginP
 
 void WeightOnlyGroupwiseQuantGemmPluginProfiler::loadPersistentCache(
     GemmIdCore const& gemmId, MProfileMap& map, bool hasWeightOnlyCudaKernel) {
-  if (mCache == nullptr) {
+  if (mCache == nullptr || !mCacheAccess.load) {
     return;
   }
   auto key = makeCacheKey(gemmId, hasWeightOnlyCudaKernel);
@@ -388,7 +409,9 @@ void WeightOnlyGroupwiseQuantGemmPluginProfiler::loadPersistentCache(
       continue;
     }
     // Do not clobber tactics already selected in-process this session.
-    map.emplace(m, config);
+    if (map.emplace(m, config).second) {
+      markCacheBucketStaged(mCache.get(), gemmId, m);
+    }
     ++accepted;
   }
   if (accepted != 0) {
@@ -407,10 +430,14 @@ bool WeightOnlyGroupwiseQuantGemmPluginProfiler::stageProfiledTactics(
     if (!config.has_value()) {
       continue;
     }
-    if (mTuningResultsCache != nullptr) {
+    if (mTuningResultsCache != nullptr &&
+        markCacheBucketStaged(mTuningResultsCache.get(), gemmId, m)) {
       mTuningResultsCache->Put(key, m, config);
     }
-    if (mCache == nullptr) {
+    if (mCache == nullptr || !mCacheAccess.save) {
+      continue;
+    }
+    if (!markCacheBucketStaged(mCache.get(), gemmId, m)) {
       continue;
     }
     // Skip buckets already recorded with the same tactic (cache hits). A row rejected on load is still

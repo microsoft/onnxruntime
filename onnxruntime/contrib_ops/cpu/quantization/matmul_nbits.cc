@@ -354,6 +354,13 @@ class MatMulNBits final : public OpKernel {
     const Tensor* tensor_zero_point = nullptr;
     has_zp_input_ = info.TryGetConstantInput(InputIndex::zero_points, &tensor_zero_point);
 
+    const Tensor* weight = nullptr;
+    const bool has_constant_b = info.TryGetConstantInput(InputIndex::B, &weight) && weight != nullptr;
+    const bool constant_b_is_empty = has_constant_b && weight->Shape().Size() == 0;
+    // Runtime B may be empty. Defer parameter validation/conversion until Compute
+    // in that case, and never pack unused parameters for a constant empty B.
+    skip_prepack_ = !has_constant_b || constant_b_is_empty;
+
     if (IsBlockLayoutAdapted()) {
       ORT_ENFORCE(nbits_ != 2, "2-bit MatMulNBits block_size must not exceed 256. Got ", logical_block_size_);
       ORT_ENFORCE(!has_g_idx_, "MatMulNBits with g_idx does not support block_size > ", kMaxExecutionBlockSize,
@@ -361,13 +368,14 @@ class MatMulNBits final : public OpKernel {
       exec_layout_ = MakeExecutionBlockLayout(N_, K_, nbits_, logical_block_size_);
 
       // Expand constant scales / zero points once so neither PrePack ordering nor disabled prepacking matters.
-      // Shape mismatches are left for the PrePack/Compute validation to report.
+      // Shape mismatches are left for the PrePack/Compute validation to report. A constant empty B never uses
+      // them, so they are not expanded in that case.
       AllocatorPtr alloc = info.GetAllocator(OrtMemTypeDefault);
-      if (tensor_scales != nullptr) {
+      if (tensor_scales != nullptr && !constant_b_is_empty) {
         ORT_IGNORE_RETURN_VALUE(ConvertQuantParamToExecutionLayout(exec_layout_, *tensor_scales, false, alloc,
                                                                    exec_scales_));
       }
-      if (has_zp_arg_ && tensor_zero_point != nullptr) {
+      if (has_zp_arg_ && tensor_zero_point != nullptr && !constant_b_is_empty) {
         ORT_IGNORE_RETURN_VALUE(ConvertQuantParamToExecutionLayout(exec_layout_, *tensor_zero_point, true, alloc,
                                                                    exec_zero_points_));
       }
@@ -396,6 +404,7 @@ class MatMulNBits final : public OpKernel {
   const bool has_g_idx_;
   const bool has_bias_;
   bool scales_are_packed_{false};
+  bool skip_prepack_{false};
   const bool force_fp32_;
   const bool prefer_lut_gemm_{false};
   const MLAS_QNBIT_GEMM_COMPUTE_TYPE compute_type_;
@@ -596,6 +605,8 @@ Status MatMulNBits<T1>::PrePack(const Tensor& input_tensor, int input_idx, /*out
                                 /*out*/ bool& is_packed,
                                 /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;
+
+  if (skip_prepack_) return Status::OK();
 
   ORT_RETURN_IF_ERROR(ValidatePrePackInputShape(input_tensor, input_idx));
 
@@ -978,6 +989,9 @@ template <>
 Status MatMulNBits<MLFloat16>::PrePack(const Tensor& input_tensor, int input_idx, /*out*/ AllocatorPtr alloc,
                                        /*out*/ bool& is_packed,
                                        /*out*/ PrePackedWeights* prepacked_weights) {
+  is_packed = false;
+  if (skip_prepack_) return Status::OK();
+
   // Validate in the authored block layout before anything reads the initializer.
   ORT_RETURN_IF_ERROR(ValidatePrePackInputShape(input_tensor, input_idx));
 
@@ -1781,8 +1795,15 @@ Status MatMulNBits<T1>::Compute(OpKernelContext* ctx) const {
   const Tensor* reorder_idx = ctx->Input<Tensor>(InputIndex::g_idx);
   const Tensor* bias = ctx->Input<Tensor>(InputIndex::bias);
 
-  ORT_RETURN_IF_ERROR(matmul_nbits_helper::CheckInputs<Tensor>(
-      a, b, scales, zero_points, reorder_idx, bias, N_, K_, logical_block_size_, nbits_));
+  // Inputs are validated in the authored block layout (logical_block_size_).
+  const bool empty_weights = b != nullptr && b->Shape().Size() == 0;
+  if (empty_weights) {
+    ORT_RETURN_IF_ERROR(matmul_nbits_helper::CheckEmptyInputs(*b, bias, N_, K_, logical_block_size_, nbits_,
+                                                              Info().template GetAttrOrDefault<int64_t>("weight_prepacked", 0)));
+  } else {
+    ORT_RETURN_IF_ERROR(matmul_nbits_helper::CheckInputs<Tensor>(
+        a, b, scales, zero_points, reorder_idx, bias, N_, K_, logical_block_size_, nbits_));
+  }
 
   TensorShape b_shape({static_cast<int64_t>(N_), static_cast<int64_t>(K_)});
   MatMulComputeHelper helper;
@@ -1792,6 +1813,19 @@ Status MatMulNBits<T1>::Compute(OpKernelContext* ctx) const {
 
   // Bail out early if the output is going to be empty
   if (y->Shape().Size() == 0) {
+    return Status::OK();
+  }
+
+  if (empty_weights) {
+    auto output = y->MutableDataAsSpan<T1>();
+    if (bias == nullptr) {
+      std::fill(output.begin(), output.end(), T1(0.0f));
+    } else {
+      const auto bias_values = bias->DataAsSpan<T1>();
+      for (size_t offset = 0; offset < output.size(); offset += N_) {
+        std::copy(bias_values.begin(), bias_values.end(), output.begin() + offset);
+      }
+    }
     return Status::OK();
   }
 

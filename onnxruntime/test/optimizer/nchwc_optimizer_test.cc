@@ -259,27 +259,39 @@ TEST(NchwcOptimizerTests, ConvWithZeroOutputChannelsIsNotTransformed) {
 }
 
 TEST(NchwcOptimizerTests, ConvWithZeroInputChannelsIsNotTransformed) {
+  if (MlasNchwcGetBlockSize() <= 1) {
+    GTEST_SKIP() << "NCHWc is not supported on this platform.";
+  }
+
   for (bool no_bias : {false, true}) {
     SCOPED_TRACE(no_bias ? "without bias" : "with bias");
-    auto build_test_case = [&](NchwcTestHelper& helper) {
-      auto* input_arg = helper.MakeInput<float>({1, 0, 5, 5});
-      auto* weights_arg = helper.MakeInitializer<float>({8, 0, 1, 1}, {});
-      std::vector<NodeArg*> input_args{input_arg, weights_arg};
-      if (!no_bias) {
-        input_args.push_back(helper.Make1DInitializer<float>({1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f}));
-      }
-      helper.AddNode("Conv", input_args, {helper.MakeOutput()});
-    };
+    std::unordered_map<std::string, int> domain_to_version{
+        {kOnnxDomain, 18}, {kMSDomain, 1}, {kMSNchwcDomain, 1}};
+    Model model("nchwc_zero_input_channels", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+                domain_to_version, {}, DefaultLoggingManager().DefaultLogger());
+    Graph& graph = model.MainGraph();
+    NchwcTestHelper helper(graph);
 
-    auto check_nchwc_graph = [](InferenceSessionWrapper& session) {
-      auto op_to_count = CountOpsInGraph(session.GetGraph());
-      EXPECT_EQ(op_to_count["Conv"], 1);
-      EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 0);
-      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 0);
-      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 0);
-    };
+    auto* input_arg = helper.MakeInput<float>({1, 0, 5, 5});
+    auto* weights_arg = helper.MakeInitializer<float>({8, 0, 1, 1}, {});
+    std::vector<NodeArg*> input_args{input_arg, weights_arg};
+    if (!no_bias) {
+      input_args.push_back(helper.Make1DInitializer<float>({1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f}));
+    }
+    Node& conv = helper.AddNode("Conv", input_args, {helper.MakeOutput()});
+    ASSERT_STATUS_OK(graph.Resolve());
+    conv.SetExecutionProviderType(kCpuExecutionProvider);
 
-    NchwcOptimizerTester(build_test_case, check_nchwc_graph, 18);
+    NchwcTransformer transformer;
+    bool modified = false;
+    ASSERT_STATUS_OK(transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger()));
+    EXPECT_FALSE(modified);
+
+    auto op_to_count = CountOpsInGraph(graph);
+    EXPECT_EQ(op_to_count["Conv"], 1);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 0);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 0);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 0);
   }
 }
 

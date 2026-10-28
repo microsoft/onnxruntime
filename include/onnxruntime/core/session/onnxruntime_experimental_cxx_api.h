@@ -8,8 +8,10 @@
 //
 // It is the C++ companion to onnxruntime_experimental_c_api.h.
 //
-// IMPORTANT: Experimental functions are NOT part of the stable ABI. They may be added, changed, or removed between
-// releases without notice. Anything in this file should be treated as experimental and unstable.
+// IMPORTANT: Experimental functions are NOT part of the stable ABI. They may be added or removed between releases
+// without notice. If an experimental function with a given name is available across releases, its signature does not
+// change, and its ABI-relevant types and behavioral contract remain backward compatible. A signature change or an
+// incompatible ABI or behavioral-contract change requires a new name.
 //
 // Two accessor flavors are generated for each experimental function:
 //

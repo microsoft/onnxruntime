@@ -13,16 +13,12 @@ concurrency:
 
 jobs:
   build_x64_debug:
-    runs-on: [
-      "self-hosted",
-      "1ES.Pool=onnxruntime-github-vs2022-latest",
-      "JobId=windows-x64-debug-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
-      ]
+    runs-on: [ort-github-win-16-amd-scus-ss]
     timeout-minutes: 300
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: false
 
@@ -69,12 +65,8 @@ jobs:
           "C:\Program Files\doxygen\bin\doxygen.exe" ${{ github.workspace }}\tools\ci_build\github\Doxyfile_csharp.cfg
         working-directory: ${{ github.workspace }}
 
-      - name: Use .NET 8.x
-        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
-        with:
-          dotnet-version: '8.x'
-        env:
-          PROCESSOR_ARCHITECTURE: x64
+      - name: Setup .NET
+        uses: ./.github/actions/setup-dotnet
 
       - name: Use Nuget 6.x
         uses: nuget/setup-nuget@d105a947828025cd7a980103c35ba2bfae586d0f # v2.0.2
@@ -86,7 +78,7 @@ jobs:
         run: |
           nuget restore ${{ github.workspace }}\packages.config -PackagesDirectory ${{ github.workspace }}\build\Debug -ConfigFile ${{ github.workspace }}\NuGet.config
 
-      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         id: onnx-node-tests-cache
         with:
           path: ${{ github.workspace }}/js/test/
