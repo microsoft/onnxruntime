@@ -183,11 +183,6 @@ struct SessionOptions {
                                                   gsl::span<std::pair<char*, const size_t>> files_buffers);
 #endif
 
-#if !defined(ORT_MINIMAL_BUILD)
-  std::shared_ptr<const std::unordered_map<PathString, std::shared_ptr<RandomAccessFile>>>
-      external_initializer_file_sources;
-#endif
-
   // custom function callback to create a thread
   OrtCustomCreateThreadFn custom_create_thread_fn = nullptr;
 
@@ -236,6 +231,12 @@ struct SessionOptions {
 
   OrtReadNamedBufferFunc ep_context_data_read_func = nullptr;
   void* ep_context_data_read_state = nullptr;
+
+#if !defined(ORT_MINIMAL_BUILD)
+  // Keep additive state trailing so existing aggregate initializers retain their field order.
+  std::shared_ptr<const std::unordered_map<PathString, std::shared_ptr<RandomAccessFile>>>
+      external_initializer_file_sources{};
+#endif
 };
 
 inline std::ostream& operator<<(std::ostream& os, const SessionOptions& session_options) {
