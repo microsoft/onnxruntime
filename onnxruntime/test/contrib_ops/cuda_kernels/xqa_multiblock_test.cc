@@ -38,7 +38,10 @@ class XqaMultiBlockTest : public ::testing::Test {
 
   void SetUp() override {
 #ifdef _WIN32
-    const char* original_splits = std::getenv("XQA_NB_SUB_SEQ");
+    char* original_splits = nullptr;
+    size_t original_splits_size = 0;
+    ASSERT_EQ(_dupenv_s(&original_splits, &original_splits_size, "XQA_NB_SUB_SEQ"), 0);
+    std::unique_ptr<char, decltype(&std::free)> original_splits_owner(original_splits, &std::free);
     original_splits_ = original_splits == nullptr ? "" : original_splits;
 #endif
     int device_count = 0;
