@@ -541,14 +541,17 @@ class PosixEnv : public Env {
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
-  common::Status DuplicateReadOnlyFileDescriptor(
-      int descriptor, std::shared_ptr<RandomAccessFile>& file) const override {
-#if defined(__linux__)
+  common::Status DuplicateReadOnlyFileHandle(
+      FileHandle descriptor, std::shared_ptr<RandomAccessFile>& file) const override {
+#if defined(__linux__) || defined(__ANDROID__) || defined(__APPLE__)
     ScopedFileDescriptor copy{fcntl(descriptor, F_DUPFD_CLOEXEC, 0)};
     ORT_RETURN_IF(!copy.IsValid(), "Cannot duplicate external initializer descriptor: ", strerror(errno));
     const int flags = fcntl(copy.Get(), F_GETFL);
-    ORT_RETURN_IF(flags < 0 || (flags & O_ACCMODE) != O_RDONLY || (flags & O_PATH) != 0,
+    ORT_RETURN_IF(flags < 0 || (flags & O_ACCMODE) != O_RDONLY,
                   "External initializer descriptor must be open read-only.");
+#ifdef O_PATH
+    ORT_RETURN_IF((flags & O_PATH) != 0, "External initializer descriptor must not be path-only.");
+#endif
     struct stat info{};
     ORT_RETURN_IF(fstat(copy.Get(), &info) != 0 || !S_ISREG(info.st_mode) || info.st_size < 0,
                   "External initializer descriptor must identify a regular file.");
@@ -558,7 +561,7 @@ class PosixEnv : public Env {
     ORT_UNUSED_PARAMETER(descriptor);
     ORT_UNUSED_PARAMETER(file);
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "Pre-opened external initializer files require Linux.");
+                           "Pre-opened external initializer files are unsupported on this platform.");
 #endif
   }
 #endif

@@ -12,9 +12,29 @@
 #include <iterator>
 #include <memory>
 #include <vector>
-#if defined(__linux__)
+#ifdef _WIN32
+#include <io.h>
+#else
 #include <fcntl.h>
 #include <unistd.h>
+#endif
+
+#if (defined(_WIN32) || defined(__linux__) || defined(__ANDROID__) || defined(__APPLE__)) && !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
+namespace {
+OrtFileHandle NativeFileHandle(FILE* file) {
+#ifdef _WIN32
+  return reinterpret_cast<OrtFileHandle>(_get_osfhandle(_fileno(file)));
+#else
+  return fileno(file);
+#endif
+}
+
+#ifdef _WIN32
+constexpr OrtFileHandle kInvalidFileHandle = nullptr;
+#else
+constexpr OrtFileHandle kInvalidFileHandle = -1;
+#endif
+}  // namespace
 #endif
 
 class ExperimentalCApiTest : public ::testing::Test {
@@ -84,31 +104,39 @@ TEST_F(ExperimentalCApiTest, ConsistentLookup) {
   EXPECT_EQ(fn1, fn2);
 }
 
-#if defined(__linux__) && !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
-TEST_F(ExperimentalCApiTest, FileSourcesValidateArgumentsAndRejectWritableFiles) {
+#if (defined(_WIN32) || defined(__linux__) || defined(__ANDROID__) || defined(__APPLE__)) && !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
+TEST_F(ExperimentalCApiTest, FileSourcesValidateArgumentsAndAccess) {
   auto* fn = Ort::Experimental::
-      Get_OrtApi_SessionOptionsSetExternalInitializerFileDescriptors_SinceV32_FnOrThrow(api_);
+      Get_OrtApi_SessionOptionsSetExternalInitializerFileHandles_SinceV32_FnOrThrow(api_);
   Ort::SessionOptions options;
   EXPECT_FALSE(Ort::Status(fn(nullptr, nullptr, nullptr, 0)).IsOK());
   EXPECT_FALSE(Ort::Status(fn(options, nullptr, nullptr, 1)).IsOK());
   std::unique_ptr<FILE, decltype(&fclose)> file(tmpfile(), fclose);
   ASSERT_NE(file, nullptr);
   const char* name = "weights.data";
-  const int descriptor = fileno(file.get());
+  const auto descriptor = NativeFileHandle(file.get());
+#ifdef _WIN32
+  // Windows duplicates only read rights, even when the original also permits writing.
+  EXPECT_TRUE(Ort::Status(fn(options, &name, &descriptor, 1)).IsOK());
+#else
   EXPECT_FALSE(Ort::Status(fn(options, &name, &descriptor, 1)).IsOK());
-  const int invalid = -1;
+#endif
+  const auto invalid = kInvalidFileHandle;
+  EXPECT_FALSE(Ort::Status(fn(options, &name, &invalid, 1)).IsOK());
   for (const char* bad : {"../weights.data", "/weights.data", ".", "a/b"}) {
     EXPECT_FALSE(Ort::Status(fn(options, &bad, &invalid, 1)).IsOK());
   }
+#ifdef O_PATH
   const int path_only = open("testdata/Pads.bin", O_PATH | O_CLOEXEC);
   ASSERT_GE(path_only, 0);
   EXPECT_FALSE(Ort::Status(fn(options, &name, &path_only, 1)).IsOK());
   EXPECT_EQ(close(path_only), 0);
+#endif
 }
 
 TEST_F(ExperimentalCApiTest, FileSourcesCloneAndRejectBufferMixing) {
   auto* fn = Ort::Experimental::
-      Get_OrtApi_SessionOptionsSetExternalInitializerFileDescriptors_SinceV32_FnOrThrow(api_);
+      Get_OrtApi_SessionOptionsSetExternalInitializerFileHandles_SinceV32_FnOrThrow(api_);
   Ort::SessionOptions options;
   ASSERT_TRUE(Ort::Status(fn(options, nullptr, nullptr, 0)).IsOK());
   auto clone = options.Clone();
@@ -121,22 +149,22 @@ TEST_F(ExperimentalCApiTest, FileSourcesCloneAndRejectBufferMixing) {
                    .IsOK());
 }
 
-TEST_F(ExperimentalCApiTest, FileSourcesInferAfterDescriptorAndOptionsRelease) {
+TEST_F(ExperimentalCApiTest, FileSourcesInferAfterHandleAndOptionsRelease) {
   auto* fn = Ort::Experimental::
-      Get_OrtApi_SessionOptionsSetExternalInitializerFileDescriptors_SinceV32_FnOrThrow(api_);
+      Get_OrtApi_SessionOptionsSetExternalInitializerFileHandles_SinceV32_FnOrThrow(api_);
   std::ifstream input("testdata/model_with_external_initializers.onnx", std::ios::binary);
   ASSERT_TRUE(input);
   const std::vector<char> graph{std::istreambuf_iterator<char>{input}, {}};
   std::unique_ptr<FILE, decltype(&fclose)> weights(fopen("testdata/Pads.bin", "rb"), fclose);
   ASSERT_NE(weights, nullptr);
   const char* name = "Pads.bin";
-  const int descriptor = fileno(weights.get());
+  const auto descriptor = NativeFileHandle(weights.get());
   Ort::SessionOptions options;
   ASSERT_TRUE(Ort::Status(fn(options, &name, &descriptor, 1)).IsOK());
   auto clone = options.Clone();
   weights.reset();
   options = Ort::SessionOptions{nullptr};
-  const int invalid = -1;
+  const auto invalid = kInvalidFileHandle;
   EXPECT_FALSE(Ort::Status(fn(clone, &name, &invalid, 1)).IsOK());
 
   Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "file-sources"};
@@ -166,7 +194,7 @@ TEST_F(ExperimentalCApiTest, FileSourcesInferAfterDescriptorAndOptionsRelease) {
 
 TEST_F(ExperimentalCApiTest, FileSourcesNeverFallBackToModelPaths) {
   auto* fn = Ort::Experimental::
-      Get_OrtApi_SessionOptionsSetExternalInitializerFileDescriptors_SinceV32_FnOrThrow(api_);
+      Get_OrtApi_SessionOptionsSetExternalInitializerFileHandles_SinceV32_FnOrThrow(api_);
   std::ifstream input("testdata/model_with_external_initializers.onnx", std::ios::binary);
   ASSERT_TRUE(input);
   const std::vector<char> graph{std::istreambuf_iterator<char>{input}, {}};
@@ -188,13 +216,13 @@ TEST_F(ExperimentalCApiTest, FileSourcesNeverFallBackToModelPaths) {
 #if defined(ORT_MINIMAL_BUILD)
 TEST_F(ExperimentalCApiTest, FileSourcesAreNotAdvertisedInMinimalBuilds) {
   EXPECT_EQ(api_->GetExperimentalFunction(
-                "OrtApi_SessionOptionsSetExternalInitializerFileDescriptors_SinceV32"),
+                "OrtApi_SessionOptionsSetExternalInitializerFileHandles_SinceV32"),
             nullptr);
 }
-#elif !defined(__linux__) || defined(DISABLE_EXTERNAL_INITIALIZERS)
+#elif (!defined(_WIN32) && !defined(__linux__) && !defined(__ANDROID__) && !defined(__APPLE__)) || defined(DISABLE_EXTERNAL_INITIALIZERS)
 TEST_F(ExperimentalCApiTest, FileSourcesRejectUnsupportedBuilds) {
   auto* fn = Ort::Experimental::
-      Get_OrtApi_SessionOptionsSetExternalInitializerFileDescriptors_SinceV32_FnOrThrow(api_);
+      Get_OrtApi_SessionOptionsSetExternalInitializerFileHandles_SinceV32_FnOrThrow(api_);
   Ort::SessionOptions options;
   Ort::Status status{fn(options, nullptr, nullptr, 0)};
   ASSERT_FALSE(status.IsOK());

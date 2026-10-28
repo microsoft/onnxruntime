@@ -42,9 +42,11 @@ namespace onnxruntime {
 #ifdef _WIN32
 using PIDType = unsigned long;
 using FileOffsetType = int64_t;
+using FileHandle = void*;
 #else
 using PIDType = pid_t;
 using FileOffsetType = off_t;
+using FileHandle = int;
 #endif
 
 class EnvThread {
@@ -349,10 +351,10 @@ class Env {
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
-  virtual common::Status DuplicateReadOnlyFileDescriptor(
-      int /*descriptor*/, std::shared_ptr<RandomAccessFile>& /*file*/) const {
+  virtual common::Status DuplicateReadOnlyFileHandle(
+      FileHandle /*handle*/, std::shared_ptr<RandomAccessFile>& /*file*/) const {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "Pre-opened external initializer files require Linux.");
+                           "Pre-opened external initializer files are unsupported on this platform.");
   }
 #endif
 

@@ -44,12 +44,12 @@ ORT_API_STATUS_IMPL(OrtApi_ExperimentalApiTest_SinceV28,
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
-ORT_API_STATUS_IMPL(OrtApi_SessionOptionsSetExternalInitializerFileDescriptors_SinceV32,
+ORT_API_STATUS_IMPL(OrtApi_SessionOptionsSetExternalInitializerFileHandles_SinceV32,
                     OrtSessionOptions* options, const char* const* names,
-                    const int* descriptors, size_t count) {
-#if defined(__linux__) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
+                    const OrtFileHandle* handles, size_t count) {
+#if (defined(_WIN32) || defined(__linux__) || defined(__ANDROID__) || defined(__APPLE__)) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
   API_IMPL_BEGIN
-  ORT_API_RETURN_IF(options == nullptr || (count != 0 && (names == nullptr || descriptors == nullptr)),
+  ORT_API_RETURN_IF(options == nullptr || (count != 0 && (names == nullptr || handles == nullptr)),
                     ORT_INVALID_ARGUMENT, "Invalid external initializer file-source arguments");
   ORT_API_RETURN_IF(!options->value.external_initializer_files_mmap.empty(),
                     ORT_INVALID_ARGUMENT, "Cannot combine external initializer buffers and file sources");
@@ -61,14 +61,15 @@ ORT_API_STATUS_IMPL(OrtApi_SessionOptionsSetExternalInitializerFileDescriptors_S
     ORT_API_RETURN_IF(name.empty() || name == "." || name == ".." ||
                           name.find_first_of("/\\:") != std::string_view::npos,
                       ORT_INVALID_ARGUMENT, "Initializer file names must be flat relative names");
-    ORT_API_RETURN_IF(sources->count(std::string{name}) != 0, ORT_INVALID_ARGUMENT,
+    const auto path = onnxruntime::ToPathString(name);
+    ORT_API_RETURN_IF(sources->count(path) != 0, ORT_INVALID_ARGUMENT,
                       "Duplicate initializer file name");
     std::shared_ptr<onnxruntime::RandomAccessFile> file;
-    const auto status = onnxruntime::Env::Default().DuplicateReadOnlyFileDescriptor(descriptors[i], file);
+    const auto status = onnxruntime::Env::Default().DuplicateReadOnlyFileHandle(handles[i], file);
     if (!status.IsOK()) {
       return onnxruntime::ToOrtStatus(status);
     }
-    sources->emplace(name, std::move(file));
+    sources->emplace(path, std::move(file));
   }
   options->value.external_initializer_file_sources = std::move(sources);
   return nullptr;
@@ -76,9 +77,9 @@ ORT_API_STATUS_IMPL(OrtApi_SessionOptionsSetExternalInitializerFileDescriptors_S
 #else
   ORT_UNUSED_PARAMETER(options);
   ORT_UNUSED_PARAMETER(names);
-  ORT_UNUSED_PARAMETER(descriptors);
+  ORT_UNUSED_PARAMETER(handles);
   ORT_UNUSED_PARAMETER(count);
-  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "File-source loading requires a full Linux build");
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "File-source loading requires a supported full build");
 #endif
 }
 #endif
