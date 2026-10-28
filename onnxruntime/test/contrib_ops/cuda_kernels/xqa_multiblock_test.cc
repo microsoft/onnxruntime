@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <string>
@@ -36,6 +37,10 @@ class XqaMultiBlockTest : public ::testing::Test {
   XqaMultiBlockTest() = default;
 
   void SetUp() override {
+#ifdef _WIN32
+    const char* original_splits = std::getenv("XQA_NB_SUB_SEQ");
+    original_splits_ = original_splits == nullptr ? "" : original_splits;
+#endif
     int device_count = 0;
     if (cudaGetDeviceCount(&device_count) != cudaSuccess || device_count == 0) {
       GTEST_SKIP() << "CUDA device unavailable";
@@ -50,6 +55,9 @@ class XqaMultiBlockTest : public ::testing::Test {
   }
 
   void TearDown() override {
+#ifdef _WIN32
+    EXPECT_EQ(_putenv_s("XQA_NB_SUB_SEQ", original_splits_.c_str()), 0);
+#endif
     if (executable_ != nullptr) CUDA_CALL_THROW(cudaGraphExecDestroy(executable_));
     if (graph_ != nullptr) CUDA_CALL_THROW(cudaGraphDestroy(graph_));
     if (stream_ != nullptr) CUDA_CALL_THROW(cudaStreamDestroy(stream_));
@@ -94,6 +102,10 @@ class XqaMultiBlockTest : public ::testing::Test {
     for (int splits : {1, 4}) {
       SCOPED_TRACE(splits);
       onnxruntime::test::ScopedEnvironmentVariables scoped_env_vars{{{"XQA_NB_SUB_SEQ", std::to_string(splits)}}};
+#ifdef _WIN32
+      // XQA uses getenv, whose CRT environment is separate from the Win32 environment.
+      ASSERT_EQ(_putenv_s("XQA_NB_SUB_SEQ", std::to_string(splits).c_str()), 0);
+#endif
       ORT_THROW_IF_ERROR(launch());
       CUDA_CALL_THROW(cudaStreamSynchronize(stream_));
       if (capture) {
@@ -173,6 +185,9 @@ class XqaMultiBlockTest : public ::testing::Test {
   cudaStream_t stream_ = nullptr;
   cudaGraph_t graph_ = nullptr;
   cudaGraphExec_t executable_ = nullptr;
+#ifdef _WIN32
+  std::string original_splits_;
+#endif
 };
 
 TEST_F(XqaMultiBlockTest, Float16) { Run<half>(false); }
