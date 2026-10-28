@@ -3664,7 +3664,7 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
             node.SetOriginalNodeProto(nullptr);
           } else {
             NodeProto node_proto;
-            node.ToProto(node_proto);
+            node.ToProto(node_proto, /*update_subgraphs=*/true);
             checker::check_node(node_proto, ctx, lsc);
           }
         }
@@ -4490,10 +4490,14 @@ Status Graph::InjectExternalInitializersFromFileSources(
       const auto* type = DataTypeImpl::TensorTypeFromONNXEnum(proto.data_type())->GetElementType();
       const auto shape = utils::GetTensorShapeFromTensorProto(proto);
       std::unique_ptr<Tensor> tensor;
-      if (reinterpret_cast<uintptr_t>(mapping->get()) % std::max<size_t>(type->Size(), 1) != 0) {
+      if (proto.data_type() == TensorProto_DataType_BOOL ||
+          reinterpret_cast<uintptr_t>(mapping->get()) % std::max<size_t>(type->Size(), 1) != 0) {
         tensor = std::make_unique<Tensor>(type, shape, CPUAllocator::DefaultInstance());
-        std::memcpy(tensor->MutableDataRaw(), mapping->get(), bytes);
+        if (bytes != 0) {
+          std::memcpy(tensor->MutableDataRaw(), mapping->get(), bytes);
+        }
         mapping.reset();
+        utils::NormalizeBoolTensorIfNeeded(*tensor);
       } else {
         tensor = std::make_unique<Tensor>(
             type, shape, mapping->get(),
@@ -4515,7 +4519,11 @@ Status Graph::InjectExternalInitializersFromFileSources(
       }
       ORT_RETURN_IF_ERROR(graph.ReplaceInitializedTensor(replacement, value));
     }
-    for (const auto& node : graph.Nodes()) {
+    for (auto& node : graph.Nodes()) {
+      if (node.ContainsSubgraph()) {
+        // Check the updated subgraphs with in-memory data inlined, not the original external paths.
+        node.SetOriginalNodeProto(nullptr);
+      }
       for (const auto& [name, attribute] : node.GetAttributes()) {
         ORT_RETURN_IF(attribute.has_t() && utils::HasExternalData(attribute.t()),
                       "File-source loading does not support external tensor attributes: ", name);

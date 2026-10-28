@@ -87,6 +87,14 @@ static Status ValidateFileSourceModel(const ModelProto& model) {
         ORT_RETURN_IF(has_external_sparse_data(tensor),
                       "File-source loading does not support external sparse tensors.");
       }
+      for (const auto& node : graph->node()) {
+        if (node.op_type() == "Constant") {
+          for (const auto& output : node.output()) {
+            ORT_RETURN_IF(!initializer_names.insert(output).second,
+                          "File-source loading does not support duplicate initializer names: ", output);
+          }
+        }
+      }
       add_nodes(graph->node(), in_function);
       continue;
     }

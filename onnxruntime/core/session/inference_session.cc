@@ -437,6 +437,10 @@ static Status FinalizeSessionOptions(const SessionOptions& user_provided_session
       return status;
     }
 
+    // File-source capabilities are independent of model-supplied configuration.
+    constructed_session_options.external_initializer_file_sources =
+        user_provided_session_options.external_initializer_file_sources;
+
     // use the constructed session options
     finalized_session_options = constructed_session_options;
   } else {
