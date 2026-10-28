@@ -149,7 +149,8 @@ void ComputeGemmZeroK(ptrdiff_t M, ptrdiff_t N, T alpha, T beta,
   // Preserve the signed zero from alpha * 0 before adding the scaled bias.
   const T zero_product = static_cast<T>(alpha * 0.0f);
   if (beta == 0 || c_data == nullptr) {
-    std::fill(output.begin(), output.end(), zero_product);
+    const T zero_bias = static_cast<T>(beta * 0.0f);
+    std::fill(output.begin(), output.end(), static_cast<T>(zero_product + zero_bias));
     return;
   }
 

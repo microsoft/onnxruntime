@@ -220,6 +220,24 @@ TEST(GemmOpTest, ZeroKRespectsSignedZero) {
   }
 }
 
+TEST(GemmOpTest, ZeroKWithoutBiasUsesImplicitZero) {
+  for (bool initializer : {false, true}) {
+    SCOPED_TRACE(initializer);
+    OpTester test("Gemm", 13);
+    test.AddAttribute("alpha", -1.0f);
+    test.AddInput<float>("A", {1, 0}, std::vector<float>{});
+    test.AddInput<float>("B", {0, 2}, std::vector<float>{}, initializer);
+    test.AddOutput<float>("Y", {1, 2}, {0.0f, 0.0f});
+    test.SetCustomOutputVerifier([](const std::vector<OrtValue>& fetches, const std::string&) {
+      for (float value : fetches[0].Get<Tensor>().DataAsSpan<float>()) {
+        EXPECT_EQ(value, 0.0f);
+        EXPECT_FALSE(std::signbit(value));
+      }
+    });
+    test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+  }
+}
+
 TEST(GemmOpTest, ZeroKScalesBias) {
   for (bool initializer : {false, true}) {
     SCOPED_TRACE(initializer);
