@@ -113,6 +113,7 @@ class OpaqueReuseTest : public testing::Test {
     schemas.push_back(seed);
     RegisterGenerate<TestPrng, TestPrng>(schemas, "Generate");
     RegisterGenerate<TestPrng, TestPrng>(schemas, "GenerateCopy", false);
+    RegisterGenerate<TestPrng, TestPrng>(schemas, "GenerateRepeatedInput", true, true);
     RegisterGenerate<TestPrng, OtherNamePrng>(schemas, "ToOtherName");
     RegisterGenerate<OtherNamePrng, TestPrng>(schemas, "FromOtherName");
     RegisterGenerate<TestPrng, OtherDomainPrng>(schemas, "ToOtherDomain");
@@ -129,7 +130,8 @@ class OpaqueReuseTest : public testing::Test {
     model_ = std::make_unique<Model>(
         "OpaqueReuse", false, ModelMetaData(), PathString(),
         IOnnxRuntimeOpSchemaRegistryList{registry_->GetOpschemaRegistry()},
-        std::unordered_map<std::string, int>{{kPrngDomain, 1}}, std::vector<ONNX_NAMESPACE::FunctionProto>{},
+        std::unordered_map<std::string, int>{{kPrngDomain, 1}, {kOnnxDomain, 13}},
+        std::vector<ONNX_NAMESPACE::FunctionProto>{},
         DefaultLoggingManager().DefaultLogger());
   }
 
@@ -138,12 +140,16 @@ class OpaqueReuseTest : public testing::Test {
   }
 
   template <typename InputState, typename OutputState>
-  void RegisterGenerate(std::vector<OpSchema>& schemas, const char* name, bool may_inplace = true) {
+  void RegisterGenerate(std::vector<OpSchema>& schemas, const char* name, bool may_inplace = true,
+                        bool repeated_input = false) {
     const auto* input_type = DataTypeImpl::GetType<InputState>();
     const auto* output_type = DataTypeImpl::GetType<OutputState>();
     OpSchema generate(name, __FILE__, __LINE__);
     generate.SetDomain(kPrngDomain).SinceVersion(1);
     generate.Input(0, "state", "PRNG state", "TInput");
+    if (repeated_input) {
+      generate.Input(1, "other_state", "Another PRNG state", "TInput");
+    }
     generate.Output(0, "value", "Scalar sample", "tensor(float)");
     generate.Output(1, "next_state", "Updated PRNG state", "TOutput");
     generate.TypeConstraint("TInput", {DataTypeImpl::ToString(input_type)}, "Test-only PRNG state");
@@ -366,17 +372,29 @@ TEST_F(OpaqueReuseTest, DistinctGraphInputOutputPreservesCallerObject) {
   AddGenerate("s0", "v1", "s1");
   auto session = Initialize({"v1", "s1"});
   OrtValue state = PrngValue(42);
-  std::vector<OrtValue> fetches;
   const NameMLValMap feeds{{"s0", state}};
   const std::vector<std::string> outputs{"v1", "s1"};
 
-  ASSERT_STATUS_OK(session->Run(RunOptions{}, feeds, outputs, &fetches));
+  for (const bool preallocate : {false, true}) {
+    SCOPED_TRACE(preallocate);
+    std::vector<OrtValue> fetches;
+    OrtValue output;
+    if (preallocate) {
+      output = PrngValue(17);
+      fetches = {OrtValue{}, output};
+    }
 
-  EXPECT_EQ(state.Get<TestPrng>().State(), 42u);
-  EXPECT_NE(&state.Get<TestPrng>(), &fetches[1].Get<TestPrng>());
-  EXPECT_EQ(fetches[1].Get<TestPrng>().State(), 42u + 0x9e3779b97f4a7c15ULL);
-  EXPECT_EQ(TestPrng::reused.load(), 0);
-  EXPECT_EQ(TestPrng::copied.load(), 1);
+    ASSERT_STATUS_OK(session->Run(RunOptions{}, feeds, outputs, &fetches));
+
+    EXPECT_EQ(state.Get<TestPrng>().State(), 42u);
+    EXPECT_NE(&state.Get<TestPrng>(), &fetches[1].Get<TestPrng>());
+    EXPECT_EQ(fetches[1].Get<TestPrng>().State(), 42u + 0x9e3779b97f4a7c15ULL);
+    if (preallocate) {
+      EXPECT_TRUE(fetches[1].SharesDataWith(output));
+    }
+    EXPECT_EQ(TestPrng::reused.load(), 0);
+  }
+  EXPECT_EQ(TestPrng::copied.load(), 2);
 }
 
 TEST_F(OpaqueReuseTest, GraphInputOutputAliasRequiresMayInplace) {
@@ -423,18 +441,132 @@ TEST_F(OpaqueReuseTest, GraphInputOutputAliasRejectsPassThroughAndMutableOutputs
   const NameMLValMap feeds{{"s0", state}};
 
   for (const auto& outputs : {std::vector<std::string>{"s0", "s1"},
-                              std::vector<std::string>{"s1", "s0"}}) {
+                              std::vector<std::string>{"s1", "s0"},
+                              std::vector<std::string>{"s1"}}) {
     SCOPED_TRACE(outputs.front());
-    std::vector<OrtValue> fetches(2, state);
+    for (const auto& pass_through : {state, OrtValue{}, PrngValue(17)}) {
+      SCOPED_TRACE(pass_through.IsAllocated());
+      std::vector<OrtValue> fetches;
+      for (const auto& output : outputs) {
+        fetches.push_back(output == "s1" ? state : pass_through);
+      }
 
-    const auto status = session->Run(RunOptions{}, feeds, outputs, &fetches);
+      const auto status = session->Run(RunOptions{}, feeds, outputs, &fetches);
 
-    EXPECT_EQ(status.Code(), common::INVALID_ARGUMENT);
-    EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("aliases multiple model outputs"));
-    EXPECT_EQ(state.Get<TestPrng>().State(), 42u);
-    EXPECT_EQ(TestPrng::reused.load(), 0);
-    EXPECT_EQ(TestPrng::copied.load(), 0);
+      ASSERT_EQ(status.Code(), common::INVALID_ARGUMENT);
+      EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("must remain observable"));
+      EXPECT_EQ(state.Get<TestPrng>().State(), 42u);
+      EXPECT_EQ(TestPrng::reused.load(), 0);
+      EXPECT_EQ(TestPrng::copied.load(), 0);
+    }
   }
+}
+
+TEST_F(OpaqueReuseTest, PassThroughOutputPreservesInputWithUnallocatedMutableOutput) {
+  AddGenerate("s0", "v1", "s1");
+  auto session = Initialize({"s0", "s1"});
+  OrtValue state = PrngValue(42);
+  const NameMLValMap feeds{{"s0", state}};
+
+  for (const auto& outputs : {std::vector<std::string>{"s0", "s1"},
+                              std::vector<std::string>{"s1", "s0"}}) {
+    for (int allocation = 0; allocation < 3; ++allocation) {
+      SCOPED_TRACE(outputs.front());
+      SCOPED_TRACE(allocation);
+      std::vector<OrtValue> fetches;
+      if (allocation != 0) {
+        fetches.resize(outputs.size());
+        if (allocation == 2) {
+          fetches[outputs.front() == "s0" ? 0 : 1] = state;
+        }
+      }
+
+      ASSERT_STATUS_OK(session->Run(RunOptions{}, feeds, outputs, &fetches));
+
+      const size_t pass_through_idx = outputs.front() == "s0" ? 0 : 1;
+      EXPECT_TRUE(fetches[pass_through_idx].SharesDataWith(state));
+      EXPECT_FALSE(fetches[1 - pass_through_idx].SharesDataWith(state));
+      EXPECT_EQ(state.Get<TestPrng>().State(), 42u);
+      EXPECT_EQ(fetches[1 - pass_through_idx].Get<TestPrng>().State(), 42u + 0x9e3779b97f4a7c15ULL);
+      EXPECT_EQ(TestPrng::reused.load(), 0);
+    }
+  }
+}
+
+TEST_F(OpaqueReuseTest, GraphInputOutputAliasRejectsImplicitCapture) {
+  AddGenerate("s0", "v1", "s1");
+  auto& if_node = model_->MainGraph().AddNode(
+      "capture_state", "If", "", {&Scalar("condition", ONNX_NAMESPACE::TensorProto_DataType_BOOL)},
+      {&Scalar("branch_value", ONNX_NAMESPACE::TensorProto_DataType_FLOAT)});
+  for (const char* name : {"then_branch", "else_branch"}) {
+    ONNX_NAMESPACE::GraphProto branch;
+    branch.set_name(name);
+    auto& generate = *branch.add_node();
+    generate.set_op_type("Generate");
+    generate.set_domain(kPrngDomain);
+    generate.add_input("s0");
+    generate.add_output("branch_sample");
+    generate.add_output("branch_state");
+    auto& output = *branch.add_output();
+    output.set_name("branch_sample");
+    output.mutable_type()->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    output.mutable_type()->mutable_tensor_type()->mutable_shape();
+    if_node.AddAttribute(name, branch);
+  }
+
+  for (const auto mode : {ExecutionMode::ORT_SEQUENTIAL, ExecutionMode::ORT_PARALLEL}) {
+    SCOPED_TRACE(mode);
+    auto session = Initialize({"v1", "s1", "branch_value"}, mode);
+    for (const bool condition : {true, false}) {
+      SCOPED_TRACE(condition);
+      OrtValue state = PrngValue(42);
+      OrtValue condition_value;
+      CreateMLValue<bool>(CPUAllocator::DefaultInstance(), {}, {condition}, &condition_value);
+      const NameMLValMap feeds{{"s0", state}, {"condition", condition_value}};
+      const std::vector<std::string> outputs{"v1", "s1", "branch_value"};
+
+      // The control-flow capture is executable and preserves the functional fork without aliasing.
+      auto values = Run(*session, feeds, outputs);
+      EXPECT_EQ(*values[0].Get<Tensor>().Data<float>(), *values[2].Get<Tensor>().Data<float>());
+      EXPECT_EQ(state.Get<TestPrng>().State(), 42u);
+      EXPECT_FALSE(values[1].SharesDataWith(state));
+      const int copied_before = TestPrng::copied.load();
+      const int reused_before = TestPrng::reused.load();
+      const int created_before = TestPrng::created.load();
+      std::vector<OrtValue> fetches(3);
+      fetches[1] = state;
+
+      const auto status = session->Run(RunOptions{}, feeds, outputs, &fetches);
+
+      ASSERT_EQ(status.Code(), common::INVALID_ARGUMENT);
+      EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("direct linear input-to-output kernel path"));
+      EXPECT_EQ(state.Get<TestPrng>().State(), 42u);
+      EXPECT_EQ(TestPrng::copied.load(), copied_before);
+      EXPECT_EQ(TestPrng::reused.load(), reused_before);
+      EXPECT_EQ(TestPrng::created.load(), created_before);
+    }
+  }
+}
+
+TEST_F(OpaqueReuseTest, GraphInputOutputAliasRejectsRepeatedInput) {
+  auto& graph = model_->MainGraph();
+  graph.AddNode("repeated_input", "GenerateRepeatedInput", "", {&State("s0"), &State("s0")},
+                {&Scalar("v1", ONNX_NAMESPACE::TensorProto_DataType_FLOAT), &State("s1")},
+                nullptr, kPrngDomain);
+  auto session = Initialize({"v1", "s1"});
+  OrtValue state = PrngValue(42);
+  std::vector<OrtValue> fetches(2);
+  fetches[1] = state;
+  const NameMLValMap feeds{{"s0", state}};
+  const std::vector<std::string> outputs{"v1", "s1"};
+
+  const auto status = session->Run(RunOptions{}, feeds, outputs, &fetches);
+
+  EXPECT_EQ(status.Code(), common::INVALID_ARGUMENT);
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("direct linear input-to-output kernel path"));
+  EXPECT_EQ(state.Get<TestPrng>().State(), 42u);
+  EXPECT_EQ(TestPrng::reused.load(), 0);
+  EXPECT_EQ(TestPrng::copied.load(), 0);
 }
 
 TEST_F(OpaqueReuseTest, MatchingTypeWithoutMayInplaceDoesNotReuse) {

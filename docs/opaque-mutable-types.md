@@ -134,7 +134,10 @@ relationship must:
 
 - match exactly one opaque model input and one opaque preallocated output;
 - connect that graph input directly to that graph output through the same kernel;
-- be a linear relationship rather than a fork or multi-output alias;
+- have exactly one input use, including implicit control-flow captures and repeated
+  input positions, rather than a fork or multi-output alias;
+- preserve a graph input that is also a graph output, even if that pass-through
+  output is unrequested or has no preallocated fetch;
 - use the same planned device; and
 - correspond to the kernel's `MayInplace(input_index, output_index)` declaration.
 
@@ -230,7 +233,9 @@ test-only opaque PRNG schemas and CPU kernels. It covers:
 - rejection of mismatched opaque domains and names;
 - distinct allocation in the optimizer execution frame;
 - same-object model input/output binding through preallocated outputs and I/O binding;
-- pre-run rejection of non-linear boundary aliases; and
+- pre-run rejection of non-linear boundary aliases, including executable `If`
+  captures and repeated inputs;
+- preservation of pass-through outputs regardless of fetch allocation or ordering; and
 - the distinct-output fallback at the model boundary.
 
 The tests use counters for construction, destruction, copying, and actual address

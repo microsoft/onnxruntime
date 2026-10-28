@@ -3628,6 +3628,13 @@ common::Status InferenceSession::ValidateOpaqueInputOutputAliases(
     const auto& input_name = feed_names[feed_idx];
     const auto& output_name = output_names[output_idx];
 
+    // Graph outputs remain observable even when not requested or preallocated for this run.
+    if (input_name != output_name && output_def_map_.count(input_name) != 0) {
+      return ORT_MAKE_STATUS(
+          ONNXRUNTIME, INVALID_ARGUMENT, "Opaque input '", input_name,
+          "' is also a model output and must remain observable. It cannot alias mutable output '", output_name, "'.");
+    }
+
     if (!aliased_feed_indices.insert(feed_idx).second) {
       return ORT_MAKE_STATUS(
           ONNXRUNTIME, INVALID_ARGUMENT, "Opaque input '", input_name,
@@ -3644,7 +3651,18 @@ common::Status InferenceSession::ValidateOpaqueInputOutputAliases(
     ORT_RETURN_IF_ERROR(session_state_->GetInputNodeInfo(input_name, input_node_info));
     ORT_RETURN_IF_ERROR(session_state_->GetOutputNodeInfo(output_name, output_node_info));
 
-    if (input_node_info.size() != 1 || output_node_info.size() != 1) {
+    // Device mappings omit implicit captures when an explicit use exists. Count actual graph uses instead.
+    size_t input_use_count = 0;
+    const auto matches_input = [&input_name](const NodeArg* arg) { return arg->Name() == input_name; };
+    for (const auto& node : session_state_->GetGraphViewer().Nodes()) {
+      input_use_count += std::count_if(node.InputDefs().begin(), node.InputDefs().end(), matches_input);
+      input_use_count += std::count_if(node.ImplicitInputDefs().begin(), node.ImplicitInputDefs().end(), matches_input);
+      if (input_use_count > 1) {
+        break;
+      }
+    }
+
+    if (input_use_count != 1 || input_node_info.size() != 1 || output_node_info.size() != 1) {
       return ORT_MAKE_STATUS(
           ONNXRUNTIME, INVALID_ARGUMENT, "Opaque input '", input_name, "' and output '", output_name,
           "' may share an object only for a direct linear input-to-output kernel path.");
