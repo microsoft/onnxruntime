@@ -5,6 +5,7 @@
 #include <cmath>
 #include <limits>
 #include <memory>
+#include <random>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -3542,6 +3543,180 @@ TEST(MoETest, QMoETest_Int3AndMixedWidthCudaPrefillParity) {
   RunInt3AndMixedWidthCudaPrefillParityTest<BFloat16>();
 #endif
 }
+
+#if defined(ENABLE_BF16)
+// The BF16 decode GEMVs switch to tensor-core kernels once at least 33 rows are routed:
+//   - INT4 (moe_gemv_tc.cuh): block size 32, hidden % 512 == 0, inter % 128 == 0, inter >= 512, at most 80 routes.
+//   - INT3 (qmoe_int3_tc.cuh): block size 64, hidden % 512 == 0, inter % 128 == 0, at most 256 routes. From 16 tokens
+//     on (ORT_INT3_PREFILL_MIN_ROWS) the prefill kernels run instead, hence 12 tokens x top-4 = 48 routes here.
+// The kernel choice is not observable through the op, so each case is compared with a host reference that rounds
+// every dequantized weight to BF16 and accumulates in FP32, which the kernels match up to the summation order.
+static void RunQMoEBf16TensorCoreGemvParityCase(int64_t bits, int64_t block_size, int64_t hidden_size,
+                                                int64_t inter_size) {
+  constexpr int64_t num_experts = 8;
+  constexpr int64_t num_rows = 12;
+  constexpr int64_t top_k = 4;
+  // Experts picked by each token. They are used by {12, 1, 12, 9, 8, 4, 2, 0} rows: groups of 8 rows of one expert
+  // that are full and partial, a single row, and an expert that is never routed. Picked experts share one router
+  // logit, so their normalized routing weights are exactly 1 / top_k.
+  static constexpr int selected_experts[num_rows][top_k] = {
+      {0, 2, 3, 4},
+      {0, 2, 3, 4},
+      {0, 2, 3, 4},
+      {0, 2, 3, 4},
+      {0, 2, 3, 4},
+      {0, 2, 3, 4},
+      {0, 2, 3, 4},
+      {0, 2, 3, 5},
+      {0, 2, 3, 5},
+      {0, 2, 4, 5},
+      {0, 2, 5, 6},
+      {0, 1, 2, 6},
+  };
+  const int64_t fc1_rows = 2 * inter_size;
+
+  std::mt19937 rng(20261028u);
+  const auto round_bf16 = [](float v) { return BFloat16(v).ToFloat(); };
+  const auto to_bf16 = [](const std::vector<float>& src) {
+    std::vector<BFloat16> dst(src.size());
+    for (size_t i = 0; i < src.size(); ++i) dst[i] = BFloat16(src[i]);
+    return dst;
+  };
+
+  struct Projection {
+    std::vector<uint8_t> codes;
+    std::vector<float> scales;
+    std::vector<float> dequantized;
+  };
+  // The weight magnitude does not depend on the bit width, so the outputs stay O(1) for INT3 and INT4.
+  const float base_scale = 0.125f / static_cast<float>(1 << bits);
+  const auto make_projection = [&](int64_t rows, int64_t cols) {
+    Projection p;
+    const int64_t blocks = cols / block_size;
+    const int zero = 1 << (bits - 1);
+    p.codes.resize(static_cast<size_t>(rows * cols));
+    for (auto& code : p.codes) {
+      code = static_cast<uint8_t>((rng() >> 8) & ((1u << bits) - 1u));
+    }
+    p.scales.resize(static_cast<size_t>(rows * blocks));
+    for (auto& scale : p.scales) {
+      scale = round_bf16(base_scale * static_cast<float>(1 + (rng() >> 8) % 5));
+    }
+    p.dequantized.resize(p.codes.size());
+    for (int64_t r = 0; r < rows; ++r) {
+      for (int64_t c = 0; c < cols; ++c) {
+        p.dequantized[static_cast<size_t>(r * cols + c)] =
+            round_bf16(static_cast<float>(p.codes[static_cast<size_t>(r * cols + c)] - zero) *
+                       p.scales[static_cast<size_t>(r * blocks + c / block_size)]);
+      }
+    }
+    return p;
+  };
+  const auto fc1 = make_projection(num_experts * fc1_rows, hidden_size);
+  const auto fc2 = make_projection(num_experts * hidden_size, inter_size);
+
+  std::vector<float> input(static_cast<size_t>(num_rows * hidden_size));
+  for (auto& v : input) {
+    v = round_bf16(static_cast<float>(static_cast<int>((rng() >> 8) % 9) - 4) * 0.25f);
+  }
+
+  std::vector<float> router_probs(static_cast<size_t>(num_rows * num_experts), round_bf16(-8.0f));
+  for (int64_t r = 0; r < num_rows; ++r) {
+    for (int64_t slot = 0; slot < top_k; ++slot) {
+      router_probs[static_cast<size_t>(r * num_experts + selected_experts[r][slot])] = round_bf16(4.0f);
+    }
+  }
+
+  std::vector<float> expected(static_cast<size_t>(num_rows * hidden_size));
+  std::vector<float> activation(static_cast<size_t>(inter_size));
+  std::vector<float> accumulated(static_cast<size_t>(hidden_size));
+  for (int64_t r = 0; r < num_rows; ++r) {
+    const float* x = &input[static_cast<size_t>(r * hidden_size)];
+    std::fill(accumulated.begin(), accumulated.end(), 0.0f);
+    for (int64_t slot = 0; slot < top_k; ++slot) {
+      const int64_t e = selected_experts[r][slot];
+      for (int64_t j = 0; j < inter_size; ++j) {
+        const float* gate_w = &fc1.dequantized[static_cast<size_t>((e * fc1_rows + 2 * j) * hidden_size)];
+        const float* up_w = gate_w + hidden_size;
+        float gate = 0.0f;
+        float up = 0.0f;
+        for (int64_t c = 0; c < hidden_size; ++c) {
+          gate += x[c] * gate_w[c];
+          up += x[c] * up_w[c];
+        }
+        activation[static_cast<size_t>(j)] = round_bf16(gate / (1.0f + std::exp(-gate)) * up);
+      }
+      for (int64_t c = 0; c < hidden_size; ++c) {
+        const float* w = &fc2.dequantized[static_cast<size_t>((e * hidden_size + c) * inter_size)];
+        float value = 0.0f;
+        for (int64_t j = 0; j < inter_size; ++j) {
+          value += activation[static_cast<size_t>(j)] * w[j];
+        }
+        accumulated[static_cast<size_t>(c)] += round_bf16(value) / static_cast<float>(top_k);
+      }
+    }
+    for (int64_t c = 0; c < hidden_size; ++c) {
+      expected[static_cast<size_t>(r * hidden_size + c)] = round_bf16(accumulated[static_cast<size_t>(c)]);
+    }
+  }
+
+  OpTester tester("QMoE", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("k", top_k);
+  tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
+  tester.AddAttribute<std::string>("activation_type", "swiglu");
+  tester.AddAttribute<int64_t>("swiglu_fusion", 1);
+  tester.AddAttribute<int64_t>("expert_weight_bits", bits);
+  tester.AddAttribute<int64_t>("weights_prepacked", 0);
+  tester.AddAttribute<int64_t>("block_size", block_size);
+  tester.AddInput<BFloat16>("input", {num_rows, hidden_size}, to_bf16(input));
+  tester.AddInput<BFloat16>("router_probs", {num_rows, num_experts}, to_bf16(router_probs));
+  tester.AddInput<uint8_t>("fc1_experts_weights", {num_experts, fc1_rows, (hidden_size * bits + 7) / 8},
+                           PackLsbBits(fc1.codes, num_experts * fc1_rows, hidden_size, bits), true);
+  tester.AddInput<BFloat16>("fc1_scales", {num_experts, fc1_rows, hidden_size / block_size}, to_bf16(fc1.scales),
+                            true);
+  tester.AddOptionalInputEdge<BFloat16>();
+  tester.AddInput<uint8_t>("fc2_experts_weights", {num_experts, hidden_size, (inter_size * bits + 7) / 8},
+                           PackLsbBits(fc2.codes, num_experts * hidden_size, inter_size, bits), true);
+  tester.AddInput<BFloat16>("fc2_scales", {num_experts, hidden_size, inter_size / block_size}, to_bf16(fc2.scales),
+                            true);
+  tester.AddOutput<BFloat16>("output", {num_rows, hidden_size}, to_bf16(expected));
+  tester.SetOutputTolerance(0.05f, 0.01f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  SCOPED_TRACE(MakeString("bits=", bits, " block_size=", block_size, " hidden=", hidden_size, " inter=", inter_size));
+  tester.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// inter = 512 and 640 give FC2 K loops of 4 and 5 steps of 128; hidden = 1024 gives FC1 two K steps of 512.
+TEST(MoETest, QMoETest_Bf16Int4TensorCoreGemvParity) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device with compute capability 8.0 or newer is required.";
+  }
+  for (const auto& shape : {std::pair<int64_t, int64_t>{512, 512},
+                            std::pair<int64_t, int64_t>{512, 640},
+                            std::pair<int64_t, int64_t>{1024, 640}}) {
+    RunQMoEBf16TensorCoreGemvParityCase(/*bits=*/4, /*block_size=*/32, shape.first, shape.second);
+  }
+}
+
+// FC2 consumes K in super-steps of 512 followed by (inter / 128) % 4 chunks of 128, so inter = 384, 512, 640 and 768
+// cover tails of 3, 0, 1 and 2 chunks.
+TEST(MoETest, QMoETest_Bf16Int3TensorCoreGemvParity) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device with compute capability 8.0 or newer is required.";
+  }
+  for (const auto& shape : {std::pair<int64_t, int64_t>{512, 384},
+                            std::pair<int64_t, int64_t>{512, 512},
+                            std::pair<int64_t, int64_t>{512, 640},
+                            std::pair<int64_t, int64_t>{512, 768},
+                            std::pair<int64_t, int64_t>{1024, 640}}) {
+    RunQMoEBf16TensorCoreGemvParityCase(/*bits=*/3, /*block_size=*/64, shape.first, shape.second);
+  }
+}
+#endif  // ENABLE_BF16
 
 // FC1/FC2 biases must be added to the FP32 accumulators before the single rounding to FP16/BF16, on both the
 // Tensor Core prefill path and the SIMT path. The gate0 and FC2 column 1 accumulators are `magnitude + 0.75`,
