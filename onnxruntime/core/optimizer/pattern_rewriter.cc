@@ -79,6 +79,9 @@ Status FindConstant(const Graph& graph, const NodeArg* value, ConstantSource& so
       source.tensor = owner->GetConstantInitializer(name, false);
       return Status::OK();
     }
+    const auto& inputs = owner->GetInputsIncludingInitializers();
+    if (std::any_of(inputs.begin(), inputs.end(), [&](const NodeArg* input) { return input->Name() == name; }))
+      return Status::OK();
     if (const auto* node = owner->GetProducerNode(name)) {
       if (node->OpType() != "Constant" || node->Domain() != kOnnxDomain) return Status::OK();
       const auto& attributes = node->GetAttributes();

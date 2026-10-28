@@ -722,6 +722,64 @@ TEST(CheckAndBindComponentTests, MalformedSupportedConstantsAreErrorsNotAlternat
   }
 }
 
+TEST(CheckAndBindComponentTests, EmptyExternalConstantsValidateFilesAndOffsetsWithoutReadingWholeFiles) {
+  const TemporaryDirectory directory(ORT_TSTR("pattern_rewriter_empty_external"));
+  const auto model_path = std::filesystem::path(directory.Path()) / "model.onnx";
+  {
+    std::ofstream file(std::filesystem::path(directory.Path()) / "weights.bin", std::ios::binary);
+    file << std::string(16, '\0');
+    ASSERT_TRUE(file.good());
+    std::ofstream empty(std::filesystem::path(directory.Path()) / "empty.bin", std::ios::binary);
+    ASSERT_TRUE(empty.good());
+  }
+  for (bool floating : {false, true}) {
+    for (int scenario = 0; scenario < 8; ++scenario) {
+      TestGraph test(model_path.native());
+      ONNX_NAMESPACE::TensorProto tensor;
+      tensor.set_name("empty");
+      tensor.set_data_type(floating ? ONNX_NAMESPACE::TensorProto_DataType_FLOAT : ONNX_NAMESPACE::TensorProto_DataType_INT64);
+      tensor.add_dims(0);
+      const auto* file = scenario < 4 ? "weights.bin" : scenario < 6 ? "empty.bin"
+                                                    : scenario == 6  ? "missing.bin"
+                                                                     : "../escape.bin";
+      const int64_t offset = scenario == 1 ? 8 : scenario == 2 ? 16
+                                             : scenario == 3   ? 17
+                                             : scenario == 5   ? 1
+                                                               : 0;
+      const bool valid = scenario == 0 || scenario == 1 || scenario == 2 || scenario == 4;
+      ExternalDataInfo::SetExternalLocationToProto(file, offset, 0, tensor);
+      test.graph.AddInitializedTensor(tensor);
+      auto& c = test.graph.GetOrCreateNodeArg(tensor.name(), nullptr);
+      test.builder.AddNode("Identity", {&c}, {test.builder.MakeOutput()});
+      test.builder.SetGraphOutputs();
+      ASSERT_STATUS_OK(test.graph.Resolve());
+      const auto before = test.model.ToProto().SerializeAsString();
+      bool available = true;
+      Status status;
+      if (floating) {
+        InlinedVector<float> data{7.0f};
+        status = ReadConstantTensor(test.graph, &c, data, available);
+        EXPECT_EQ(data, (valid && status.IsOK() ? InlinedVector<float>{} : InlinedVector<float>{7.0f}));
+      } else {
+        InlinedVector<int64_t> data{7};
+        status = ReadConstantTensor(test.graph, &c, data, available);
+        EXPECT_EQ(data, (valid && status.IsOK() ? InlinedVector<int64_t>{} : InlinedVector<int64_t>{7}));
+      }
+      EXPECT_EQ(status.IsOK(), valid) << scenario << ": " << status;
+      EXPECT_TRUE(available);
+      if (valid && status.IsOK()) {
+        for (bool indexed : {false, true}) {
+          Rule rule{"EmptyExternal", "()=>return Identity([])", "()=>Identity([])", {}, {{kOnnxDomain, 17, 17}}};
+          Statistics stats;
+          ASSERT_STATUS_OK(PatternRewriter({rule}, {.match_only = true, .indexed = indexed}).Run(test.graph, stats));
+          EXPECT_EQ(stats.matches, floating ? 0u : 1u);
+        }
+      }
+      EXPECT_EQ(test.model.ToProto().SerializeAsString(), before);
+    }
+  }
+}
+
 TEST(CheckAndBindComponentTests, ConstantReadersUseOwningScopeAndRespectLocalOverrides) {
   for (bool memory : {false, true}) {
     TestGraph test;
@@ -770,6 +828,10 @@ TEST(CheckAndBindComponentTests, ConstantReadersUseOwningScopeAndRespectLocalOve
     EXPECT_EQ(data, (InlinedVector<float>(40, 3.0f)));
     ASSERT_STATUS_OK(ReadConstantTensor(test.graph, c, data, available));
     EXPECT_TRUE(available);
+    EXPECT_EQ(data, (InlinedVector<float>(40, 2.0f)));
+    subgraph->RemoveInitializedTensor(c->Name());
+    ASSERT_STATUS_OK(ReadConstantTensor(*subgraph, capture, data, available));
+    EXPECT_FALSE(available);
     EXPECT_EQ(data, (InlinedVector<float>(40, 2.0f)));
   }
 }
