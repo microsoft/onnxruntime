@@ -58,10 +58,17 @@ TEST(TanTest, WebGpu_Float_WebNNConformance) {
 
 // Quadrant boundaries, a value next to the pi/2 pole and arguments of both signs up to the largest
 // multiple of pi/2 (k = +/-8191) the exact argument reduction handles; larger inputs use the built-in tan().
+// The last 14 inputs are f32 values next to odd multiples of pi/2 (k = 3 to 8191), where the reduced angle is
+// tiny and any rounding in the k * (pi/2 part) products is amplified: with only the products for the 8- and
+// 11-bit parts exact, 6715.154296875 (k = 4275) gave 5773775.5 instead of 5774237.
 TEST(TanTest, WebGpu_Float_ReductionRange) {
   const std::vector<float> input{0.0f, 1e-3f, -0.7853982f, 0.7853982f, 1.5707963f, -3.1415927f, 2.3561945f,
                                  100.0f, -100.0f, -500.25f, 750.5f, -750.5f, 123.456f, -123.456f, 9000.75f,
-                                 -9000.75f, 12000.25f, -12000.25f, 12866.5f, -12866.5f};
+                                 -9000.75f, 12000.25f, -12000.25f, 12866.5f, -12866.5f,
+                                 4.71238899230957f, -4.71238899230957f, 252.89820861816406f, -252.89820861816406f,
+                                 1807.986572265625f, -1807.986572265625f, 5854.35791015625f, -5854.35791015625f,
+                                 6715.154296875f, -6715.154296875f, 11191.923828125f, -11191.923828125f,
+                                 12866.392578125f, -12866.392578125f};
   RunTanOnWebGpu<float>(input, ExpectedTan(input), 1e-5f, 1e-5f);
 }
 

@@ -144,11 +144,13 @@ WEBGPU_ELEMENTWISE_KERNEL(Cos, 7, WebGpuSupportedFloatTypes())
 
 // The built-in tan() reduces its argument imprecisely on some GPUs: tan(45.5952) is off by 2.4e-3,
 // well over WebNN's 1/1024 tolerance, because |tan'| = 1 + tan^2 amplifies a 1 ULP angle error. So
-// reduce exactly by pi/2, split in three parts, and evaluate a minimax polynomial on [-pi/4, pi/4]
-// in f32. The leading parts have 8 and 11 significant bits, so k * part is exact while |k| < 2^13
+// reduce exactly by pi/2, split in four parts, and evaluate a minimax polynomial on [-pi/4, pi/4]
+// in f32. The leading parts have 8, 11 and 11 significant bits, so k * part is exact while |k| < 2^13
 // (|x| < ~12867); beyond that the reduction loses accuracy and the built-in tan() is used instead.
-// GPU compilers may reassociate f32 math (WGSL has no `precise`), folding the three parts back into
-// one f32 constant; OR-ing each partial difference with a zero the compiler can't prove (vec_size is
+// Only the last product rounds, and it is below 2.1e-8, so r stays accurate next to the poles,
+// where r is tiny and the result is -1 / tan(r).
+// GPU compilers may reassociate f32 math (WGSL has no `precise`), folding the parts back into one
+// f32 constant; OR-ing each partial difference with a zero the compiler can't prove (vec_size is
 // always below 2^31) keeps the steps apart.
 constexpr const char TanImpl[] = R"(
 fn tan_v(a: x_value_t) -> x_value_t {
@@ -157,7 +159,8 @@ fn tan_v(a: x_value_t) -> x_value_t {
   let k = round(x * 0.63661977236758134);
   var r = bitcast<vec4<f32>>(bitcast<vec4<u32>>(x - k * 1.5703125) | opaque_zero);
   r = bitcast<vec4<f32>>(bitcast<vec4<u32>>(r - k * 4.837512969970703125e-4) | opaque_zero);
-  r = r - k * 7.54978995489188216e-8;
+  r = bitcast<vec4<f32>>(bitcast<vec4<u32>>(r - k * 7.54953362047672271728515625e-8) | opaque_zero);
+  r = r - k * 2.56334406825708960298e-12;
   let z = r * r;
   let p = (((((9.38540185543e-3 * z + 3.11992232697e-3) * z + 2.44301354525e-2) * z + 5.34112807005e-2) * z +
             1.33387994085e-1) * z + 3.33331568548e-1) * z;
