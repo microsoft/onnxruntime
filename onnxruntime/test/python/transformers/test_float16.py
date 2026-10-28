@@ -173,6 +173,81 @@ def _make_constant_of_shape_model():
     return helper.make_model(graph, opset_imports=[helper.make_opsetid("", 18)], ir_version=8)
 
 
+def _make_layer_norm_model():
+    """Create a LayerNormalization model whose Mean and InvStdDev outputs are consumed by another node."""
+    graph_inputs = [
+        helper.make_tensor_value_info("input", TensorProto.FLOAT, [2, 4]),
+        helper.make_tensor_value_info("scale", TensorProto.FLOAT, [4]),
+        helper.make_tensor_value_info("bias", TensorProto.FLOAT, [4]),
+    ]
+    graph_outputs = [
+        helper.make_tensor_value_info("output", TensorProto.FLOAT, [2, 4]),
+        helper.make_tensor_value_info("stats", TensorProto.FLOAT, [2, 1]),
+    ]
+    nodes = [
+        helper.make_node("LayerNormalization", ["input", "scale", "bias"], ["output", "mean", "inv_std_dev"]),
+        helper.make_node("Add", ["mean", "inv_std_dev"], ["stats"]),
+    ]
+    graph = helper.make_graph(nodes, "layer_norm_test", graph_inputs, graph_outputs)
+    return helper.make_model(graph, opset_imports=[helper.make_opsetid("", 17)], ir_version=8)
+
+
+def _make_window_model():
+    """Create a model that scales its input by a HannWindow, which outputs float by default."""
+    graph_inputs = [
+        helper.make_tensor_value_info("size", TensorProto.INT64, []),
+        helper.make_tensor_value_info("input", TensorProto.FLOAT, [8]),
+    ]
+    graph_output = helper.make_tensor_value_info("output", TensorProto.FLOAT, [8])
+    nodes = [
+        helper.make_node("HannWindow", ["size"], ["window"]),
+        helper.make_node("Mul", ["input", "window"], ["output"]),
+    ]
+    graph = helper.make_graph(nodes, "window_test", graph_inputs, [graph_output])
+    return helper.make_model(graph, opset_imports=[helper.make_opsetid("", 17)], ir_version=8)
+
+
+def _make_window_in_if_model():
+    """Create a model whose If then-branch scales the input by a HannWindow."""
+    graph_inputs = [
+        helper.make_tensor_value_info("cond", TensorProto.BOOL, []),
+        helper.make_tensor_value_info("size", TensorProto.INT64, []),
+        helper.make_tensor_value_info("input", TensorProto.FLOAT, [8]),
+    ]
+    graph_output = helper.make_tensor_value_info("output", TensorProto.FLOAT, [8])
+    then_branch = helper.make_graph(
+        [
+            helper.make_node("HannWindow", ["size"], ["window"]),
+            helper.make_node("Mul", ["input", "window"], ["then_out"]),
+        ],
+        "then_branch",
+        [],
+        [helper.make_tensor_value_info("then_out", TensorProto.FLOAT, [8])],
+    )
+    else_branch = helper.make_graph(
+        [helper.make_node("Identity", ["input"], ["else_out"])],
+        "else_branch",
+        [],
+        [helper.make_tensor_value_info("else_out", TensorProto.FLOAT, [8])],
+    )
+    nodes = [helper.make_node("If", ["cond"], ["output"], then_branch=then_branch, else_branch=else_branch)]
+    graph = helper.make_graph(nodes, "window_in_if_test", graph_inputs, [graph_output])
+    return helper.make_model(graph, opset_imports=[helper.make_opsetid("", 17)], ir_version=8)
+
+
+def _make_custom_layer_norm_model():
+    """Create a model with a custom-domain LayerNormalization, which the float rule doesn't cover."""
+    graph_inputs = [helper.make_tensor_value_info("input", TensorProto.FLOAT, [2, 4])]
+    graph_outputs = [
+        helper.make_tensor_value_info("output", TensorProto.FLOAT, [2, 4]),
+        helper.make_tensor_value_info("mean", TensorProto.FLOAT, [2, 1]),
+    ]
+    nodes = [helper.make_node("LayerNormalization", ["input"], ["output", "mean"], domain="custom.domain")]
+    graph = helper.make_graph(nodes, "custom_layer_norm_test", graph_inputs, graph_outputs)
+    opsets = [helper.make_opsetid("", 17), helper.make_opsetid("custom.domain", 1)]
+    return helper.make_model(graph, opset_imports=opsets, ir_version=8)
+
+
 class TestFloat16Conversion(unittest.TestCase):
     """Tests for convert_float_to_float16 correctness."""
 
@@ -338,6 +413,40 @@ class TestFloat16Conversion(unittest.TestCase):
             TensorProto.FLOAT16,
             "With force_fp16_initializers, scales should be converted to fp16",
         )
+
+    @parameterized.expand([(True,), (False,)])
+    def test_layer_norm_mean_and_inv_std_dev_stay_fp32(self, keep_io_types):
+        """LayerNormalization's Mean and InvStdDev outputs keep float and are cast to float16 after the node."""
+        converted = convert_float_to_float16(_make_layer_norm_model(), keep_io_types=keep_io_types)
+
+        onnx.shape_inference.infer_shapes(converted, strict_mode=True)
+        layer_norm = next(node for node in converted.graph.node if node.op_type == "LayerNormalization")
+        self.assertEqual(list(layer_norm.output[1:]), ["mean_cast_to_fp16", "inv_std_dev_cast_to_fp16"])
+
+    @parameterized.expand([(True,), (False,)])
+    def test_window_output_stays_fp32(self, keep_io_types):
+        """HannWindow outputs float by default, so a float to float16 Cast follows it."""
+        converted = convert_float_to_float16(_make_window_model(), keep_io_types=keep_io_types)
+
+        onnx.shape_inference.infer_shapes(converted, strict_mode=True)
+        window = next(node for node in converted.graph.node if node.op_type == "HannWindow")
+        self.assertEqual(list(window.output), ["window_cast_to_fp16"])
+
+    def test_window_output_in_subgraph_is_cast_in_subgraph(self):
+        """A HannWindow inside an If branch gets its Cast in that branch, where its output is defined."""
+        converted = convert_float_to_float16(_make_window_in_if_model(), keep_io_types=False)
+
+        onnx.shape_inference.infer_shapes(converted, strict_mode=True)
+        then_branch = next(attr.g for attr in converted.graph.node[0].attribute if attr.name == "then_branch")
+        self.assertEqual([node.op_type for node in then_branch.node], ["HannWindow", "Cast", "Mul"])
+        self.assertEqual([node.op_type for node in converted.graph.node], ["If"])
+
+    def test_custom_domain_layer_norm_outputs_are_not_cast(self):
+        """Only the ONNX LayerNormalization keeps float outputs; a custom-domain one is left alone."""
+        converted = convert_float_to_float16(_make_custom_layer_norm_model(), keep_io_types=False)
+
+        self.assertEqual(list(converted.graph.node[0].output), ["output", "mean"])
+        self.assertNotIn("Cast", [node.op_type for node in converted.graph.node])
 
     def test_constant_of_shape_without_value_gets_fp16_value(self):
         """ConstantOfShape without value should get an explicit float16 zero."""
