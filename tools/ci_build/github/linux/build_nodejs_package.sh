@@ -12,7 +12,16 @@ else
 fi
 
 mkdir -p "$HOME/.onnx"
+VCPKG_CACHE_ARGS=()
+if [ -n "${VCPKG_DEFAULT_BINARY_CACHE:-}" ]; then
+    VCPKG_CACHE_ARGS=(
+        --volume "${VCPKG_DEFAULT_BINARY_CACHE}:/vcpkg-binary-cache"
+        -e VCPKG_DEFAULT_BINARY_CACHE=/vcpkg-binary-cache
+    )
+fi
+
 docker run \
+    "${VCPKG_CACHE_ARGS[@]}" \
     --network=host \
     --rm \
     --volume "/data/models:/build/models:ro" \

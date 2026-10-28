@@ -11,7 +11,16 @@ else
     exit 1
 fi
 
+VCPKG_CACHE_ARGS=()
+if [ -n "${VCPKG_DEFAULT_BINARY_CACHE:-}" ]; then
+    VCPKG_CACHE_ARGS=(
+        --volume "${VCPKG_DEFAULT_BINARY_CACHE}:/vcpkg-binary-cache"
+        -e VCPKG_DEFAULT_BINARY_CACHE=/vcpkg-binary-cache
+    )
+fi
+
 docker run -e SYSTEM_COLLECTIONURI --rm \
+"${VCPKG_CACHE_ARGS[@]}" \
 --volume "$BUILD_SOURCESDIRECTORY:/onnxruntime_src" --volume "$BUILD_BINARIESDIRECTORY:/build" \
 -e NPM_CONFIG_USERCONFIG=/tmp/.npmrc \
 -e PIP_INDEX_URL \

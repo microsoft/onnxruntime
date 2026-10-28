@@ -39,6 +39,8 @@ stages:
         DockerBuildArgs: " --build-arg BUILD_UID=$( id -u )"
         Repository: onnxruntimecuda${{ variables.CUDA_VERSION_MAJOR }}build
 
+    - template: ../templates/setup-vcpkg-cache.yml
+
     - script: $(Build.SourcesDirectory)/tools/ci_build/github/linux/build_cuda_c_api_package.sh
       workingDirectory: $(Build.SourcesDirectory)
       displayName: 'Build CUDA C API Package'
@@ -97,6 +99,8 @@ stages:
           "
         Repository: onnxruntimecuda${{ variables.CUDA_VERSION_MAJOR }}xtrt86build
     - template: ../templates/set-version-number-variables-step.yml
+
+    - template: ../templates/setup-vcpkg-cache.yml
 
     - script: $(Build.SourcesDirectory)/tools/ci_build/github/linux/build_tensorrt_c_api_package.sh
       workingDirectory: $(Build.SourcesDirectory)

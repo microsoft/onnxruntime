@@ -25,6 +25,8 @@ stages:
       parameters:
         host_cpu_arch: x64
 
+    - template: ../templates/setup-vcpkg-cache.yml
+
     - script: |
         python -m pip install -r "$(Build.SourcesDirectory)\tools\ci_build\github\windows\python\requirements.txt"
       displayName: Install Python build dependencies
