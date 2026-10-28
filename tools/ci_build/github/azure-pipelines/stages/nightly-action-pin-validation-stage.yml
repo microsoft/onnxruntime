@@ -1,0 +1,39 @@
+stages:
+- stage: Action_Pin_Validation
+  displayName: GitHub Actions pin validation
+  dependsOn: []
+  jobs:
+  - job: Validate
+    displayName: Verify action SHA pins and version comments
+    timeoutInMinutes: 10
+    workspace:
+      clean: all
+    pool:
+      name: onnxruntime-Win-CPU-2022
+      os: windows
+    steps:
+    - checkout: self
+      clean: true
+      fetchDepth: 1
+      persistCredentials: false
+      submodules: false
+
+    - powershell: |
+        $ErrorActionPreference = 'Stop'
+        $version = '4.0.0'
+        $expectedHash = '800554b9f87c5136e9469ec9075a1f51fbea5ac402914d99f8afc4ec98a87901'
+        $archivePath = "$(Agent.TempDirectory)\pinact.zip"
+        $extractPath = "$(Agent.TempDirectory)\pinact"
+        Invoke-WebRequest -UseBasicParsing -Uri "https://github.com/suzuki-shunsuke/pinact/releases/download/v$version/pinact_windows_amd64.zip" -OutFile $archivePath
+        $actualHash = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash
+        if ($actualHash -ne $expectedHash) {
+          throw "pinact archive SHA256 mismatch: expected $expectedHash, got $actualHash"
+        }
+        Expand-Archive -LiteralPath $archivePath -DestinationPath $extractPath -Force
+      displayName: Download and verify pinact v4.0.0
+
+    - powershell: |
+        & "$(Agent.TempDirectory)\pinact\pinact.exe" run --fix=false --verify
+        exit $LASTEXITCODE
+      displayName: Verify action SHA pins
+      workingDirectory: '$(Build.SourcesDirectory)'
