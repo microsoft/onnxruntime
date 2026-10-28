@@ -46,6 +46,7 @@ ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtApi_ExperimentalApiTest, _Out_ int64_t
  * descriptors. Only regular files are supported.
  * Each name must be a flat relative ONNX external-data location. Registration replaces
  * the previous set atomically. Sessions and cloned options retain the files independently.
+ * Graph initializer names must be unique; duplicates are rejected before graph construction.
  * A zero count installs an empty registry; missing sources still fail without path fallback.
  * Tensor ranges are privately mapped without reopening or canonicalizing file paths.
  * Small tensors may be inlined; unaligned numeric ranges are copied into aligned storage.
