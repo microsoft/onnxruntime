@@ -621,7 +621,7 @@ if (onnxruntime_USE_XNNPACK)
     message(FATAL_ERROR "XNNPACK EP requires the internal NHWC contrib ops to be available "
                          "but onnxruntime_DISABLE_CONTRIB_OPS is ON")
   endif()
-  if(onnxruntime_USE_VCPKG)
+  if(onnxruntime_USE_VCPKG AND NOT onnxruntime_USE_SYSTEM_XNNPACK)
      FIND_PATH(XNNPACK_HDR xnnpack.h PATH_SUFFIXES include)
      IF(NOT XNNPACK_HDR)
        MESSAGE(FATAL_ERROR "Cannot find xnnpack")
