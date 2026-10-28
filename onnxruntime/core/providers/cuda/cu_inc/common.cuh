@@ -338,7 +338,13 @@ __device__ __inline__ T _Pow(T a, T1 b) {
 }
 
 template <>
-__device__ __inline__ float _Pow(float a, float b) { return powf(a, b); }
+__device__ __inline__ float _Pow(float a, float b) {
+  // Keep powf's signed-zero, negative-infinity, and subnormal behavior.
+  if (b == -0.5f && a >= std::numeric_limits<float>::min()) {
+    return rsqrtf(a);
+  }
+  return powf(a, b);
+}
 
 template <>
 __device__ __inline__ double _Pow(double a, double b) { return pow(a, b); }
