@@ -290,13 +290,43 @@ TEST(GemmTacticCacheTest, DecodeUpgradeRejectsOldSelectionVersion) {
   ASSERT_TRUE(writer.Flush().IsOK());
   std::ifstream input(file);
   std::string contents((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
-  const auto position = contents.find("# tactic_selection_version\t4");
+  const std::string version_line = std::string("# tactic_selection_version\t") + gc::kTacticSelectionVersion;
+  const auto position = contents.find(version_line);
   ASSERT_NE(position, std::string::npos);
-  contents.replace(position, std::string("# tactic_selection_version\t4").size(), "# tactic_selection_version\t3");
+  contents.replace(position, version_line.size(), "# tactic_selection_version\t3");
   std::istringstream old(contents);
   gc::MatMulNBitsTacticCache reader(file, MakeSignature());
   ASSERT_TRUE(reader.Load(old).IsOK());
   EXPECT_TRUE(reader.GetAll(MakeKey()).empty());
+  CleanUp(file);
+}
+
+TEST(GemmTacticCacheTest, TensorCoreSettingsHaveSeparateProfiles) {
+  using onnxruntime::llm::kernels::weight_only::GemmIdCore;
+  const GemmIdCore scalar(1024, 4096, onnxruntime::llm::nvinfer::DataType::kBF16);
+  auto tc = scalar;
+  tc.tensor_core = true;
+  EXPECT_FALSE(scalar == tc);
+
+  const std::string file = UniqueTempPrefix("tensor_core") + ".matmulnbits_fpa_intb.tsv";
+  auto scalar_key = MakeKey();
+  auto tc_key = scalar_key;
+  tc_key.tensor_core_gemv = true;
+  {
+    gc::MatMulNBitsTacticCache cache(file, MakeSignature());
+    cache.Put(scalar_key, 8, MakeSm80Config());
+    EXPECT_FALSE(cache.Get(tc_key, 8).has_value());
+    cache.Put(tc_key, 8, MakeSm90Config());
+    ASSERT_TRUE(cache.Flush().IsOK());
+  }
+  gc::MatMulNBitsTacticCache cache(file, MakeSignature());
+  ASSERT_TRUE(cache.Load().IsOK());
+  auto scalar_config = cache.Get(scalar_key, 8);
+  auto tc_config = cache.Get(tc_key, 8);
+  ASSERT_TRUE(scalar_config.has_value() && scalar_config->has_value());
+  ASSERT_TRUE(tc_config.has_value() && tc_config->has_value());
+  ExpectConfigEqual(MakeSm80Config(), **scalar_config);
+  ExpectConfigEqual(MakeSm90Config(), **tc_config);
   CleanUp(file);
 }
 

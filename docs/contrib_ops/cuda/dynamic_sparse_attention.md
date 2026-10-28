@@ -47,7 +47,11 @@ the code is only reported through `validation_status`.
 `ORT_DSA_INT8_VECTOR_STAGING` and `ORT_DSA_SHARED_SCALE_MERGE` are read once per process (cached in
 function-local statics) when the grouped decode path is first launched, so set them before the first
 operator invocation. Only `0` and `1` are accepted. Neither changes schemas or cache layouts.
-`ORT_DSA_PREFILL_KERNEL` and `ORT_DSA_PREFILL_INT8_TC` (both default `1`) are read on every BF16 call.
+`ORT_DSA_PREFILL_KERNEL` and `ORT_DSA_PREFILL_INT8_TC` (both default `1`) are read once
+at kernel construction. Session options `ep.cuda.dsa_prefill_kernel` and
+`ep.cuda.dsa_prefill_int8_tc` take precedence over their corresponding environment variables.
+Both accept only `0` or `1`; changing a value requires a new session. The loaded prefill
+specialization must have a PTX target of SM80+; otherwise dispatch uses the generic fallback.
 
 Grouped decode is used when `1 <= sequence_length <= 8`, `num_heads / kv_num_heads >= 4` (and
 divisible), `head_size == 256`, 16-bit `T` (FP16/BF16), more than 256 candidates
@@ -63,7 +67,7 @@ and 8 otherwise.
 | | | | `0` | `MergeGroupedDecodeDynamicSparseAttentionKernel<T, false>`: per-channel `expf` over all splits. |
 | `ORT_DSA_PREFILL_KERNEL` | `1` | BF16, not grouped decode, `sequence_length >= 8`, `head_size == 256`, `selected_only` from the main cache, `smooth_softmax = 0`, SM80+ with enough opt-in shared memory | `1` | `DynamicSparseAttentionPrefillKernel<quantized>` tensor-core prefill. |
 | | | | `0` | Generic fused/split or grouped prefill kernels. |
-| `ORT_DSA_PREFILL_INT8_TC` | `1` | The `ORT_DSA_PREFILL_KERNEL` conditions with an INT8 main cache, 16-byte-aligned `present_key` and `present_value`, an 8-byte-aligned `output` and enough opt-in shared memory for `dsa_prefill::kInt8SharedBytes` | `1` | `DynamicSparseAttentionPrefillInt8Kernel` ([dynamic_sparse_attention_prefill_int8.cuh](../../../onnxruntime/contrib_ops/cuda/bert/dynamic_sparse_attention_prefill_int8.cuh)): the gathered K/V rows stay INT8 in shared memory and are converted exactly to FP16 in registers for FP16 `mma` with FP32 accumulation. `key_scale` is folded into the query once per block and `value_scale` is applied to the output once. |
+| `ORT_DSA_PREFILL_INT8_TC` | `1` | The `ORT_DSA_PREFILL_KERNEL` conditions with an INT8 main cache, 16-byte-aligned `present_key` and `present_value`, an 8-byte-aligned `output` and enough opt-in shared memory for `dsa_prefill::kInt8SharedBytes` | `1` | `DynamicSparseAttentionPrefillInt8Kernel` ([dynamic_sparse_attention_prefill_int8.cuh](../../../onnxruntime/contrib_ops/cuda/bert/dynamic_sparse_attention_prefill_int8.cuh)): the gathered K/V rows stay INT8 in shared memory and are converted exactly to FP16 in registers for FP16 `mma` with FP32 accumulation. `key_scale` is folded into the query once per block and `value_scale` is applied to the output once. A block whose scaled query does not fit FP16 (`|Q * key_scale| > 65504`, inf or NaN) is evaluated by an FP32 path (`AttendRowFp32`) instead of being clipped, which would break the cancellation between large terms. That path is about 48x slower for the affected blocks (8192 rows on an H200: 2.75 ms to 131 ms); set `ep.cuda.dsa_prefill_int8_tc=0` for models whose scaled queries exceed the FP16 range, because the kernel below has no such limit. |
 | | | | `0` | `DynamicSparseAttentionPrefillKernel<true>`: dequantizes every gathered tile to BF16 in shared memory. |
 
 When `split_count > 32` (floating-point caches only) the generic

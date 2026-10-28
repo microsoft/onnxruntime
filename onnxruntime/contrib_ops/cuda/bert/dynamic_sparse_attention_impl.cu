@@ -2077,7 +2077,7 @@ Status LaunchDynamicSparseAttention(
   bool use_int8_tc_prefill = false;
   if constexpr (std::is_same_v<T, __nv_bfloat16>) {
     if (!use_grouped_decode) {
-      const bool enabled = ParseEnvironmentVariableWithDefault<int>("ORT_DSA_PREFILL_KERNEL", 1) != 0;
+      const bool enabled = data.prefill_kernel;
       // max_shared_memory_per_block is the default 48 KB limit; the kernel opts in to more and requires SM80+.
       int device = 0;
       int cc_major = 0;
@@ -2103,13 +2103,25 @@ Status LaunchDynamicSparseAttention(
           parameters.num_heads % parameters.kv_num_heads == 0 &&
           parameters.num_heads / parameters.kv_num_heads <= dsa_prefill::kMaxGroup &&
           static_cast<size_t>(optin_shared) >= dsa_prefill::kSharedBytes;
+      if (use_prefill_kernel) {
+        cudaFuncAttributes attributes{};
+        const auto kernel = data.quantized_cache ? dsa_prefill::DynamicSparseAttentionPrefillKernel<true>
+                                                 : dsa_prefill::DynamicSparseAttentionPrefillKernel<false>;
+        CUDA_RETURN_IF_ERROR(cudaFuncGetAttributes(&attributes, kernel));
+        use_prefill_kernel = attributes.ptxVersion >= 80;
+      }
       // The tensor-core INT8 variant converts the cached rows in registers; it needs 16-byte cache rows and 8-byte
       // output vectors (the BF16-dequantizing kernel above is the fallback).
       use_int8_tc_prefill =
           use_prefill_kernel && data.quantized_cache &&
-          ParseEnvironmentVariableWithDefault<int>("ORT_DSA_PREFILL_INT8_TC", 1) != 0 &&
+          data.prefill_int8_tc &&
           IsAligned(data.present_key, 16) && IsAligned(data.present_value, 16) && IsAligned(data.output, 8) &&
           static_cast<size_t>(optin_shared) >= dsa_prefill::kInt8SharedBytes;
+      if (use_int8_tc_prefill) {
+        cudaFuncAttributes attributes{};
+        CUDA_RETURN_IF_ERROR(cudaFuncGetAttributes(&attributes, dsa_prefill::DynamicSparseAttentionPrefillInt8Kernel));
+        use_int8_tc_prefill = attributes.ptxVersion >= 80;
+      }
     }
   }
   if (use_grouped_decode) {

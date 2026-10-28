@@ -317,12 +317,6 @@ __global__ void __launch_bounds__(kThreads) MoeGemvTcInt4Kernel(const Params p) 
 #endif
 }
 
-inline bool DisabledByEnv() {
-  static const bool disabled =
-      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_DISABLE_MOE_GEMV_TC", 0) == 1;
-  return disabled;
-}
-
 // The kernel body is compiled for SM80+ only (BF16 mma.sync), so older devices must keep the scalar GEMV.
 inline bool DeviceSupportsBf16Mma() {
   int device = 0;
@@ -332,12 +326,6 @@ inline bool DeviceSupportsBf16Mma() {
     return false;
   }
   return major >= 8;
-}
-
-// The scalar GEMV only redundantly dequantizes once rows of an expert repeat, so small problems keep it.
-inline int MinExpandedRows() {
-  static const int rows = onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_MOE_GEMV_TC_MIN_ROWS", 33);
-  return rows;
 }
 
 template <bool kSwiglu, int kWarpsK, int kM>
@@ -355,13 +343,19 @@ inline bool TryLaunchInt4Bf16(bool swiglu, const __nv_bfloat16* act, const uint8
                               int num_experts, int64_t expanded_num_rows, int64_t n, int64_t k, int group_size,
                               const float* swiglu_alpha, const float* swiglu_beta, const float* swiglu_limit,
                               float alpha, float beta, float limit, const int* permuted_row_to_source_row,
-                              int64_t num_rows, cudaStream_t stream) {
+                              int64_t num_rows, cudaStream_t stream, int tensor_core_min_rows) {
   if (group_size != 32 || permuted_row_to_expert == nullptr || expert_first_token_offset == nullptr ||
-      expanded_num_rows < MinExpandedRows() || DisabledByEnv() || !DeviceSupportsBf16Mma()) {
+      expanded_num_rows < tensor_core_min_rows || tensor_core_min_rows == 0 || !DeviceSupportsBf16Mma()) {
     return false;
   }
   const bool shape_ok = swiglu ? (n % 64 == 0 && k % 512 == 0) : (n % 128 == 0 && k % 128 == 0);
   if (!shape_ok) {
+    return false;
+  }
+
+  cudaFuncAttributes attributes{};
+  const auto kernel = swiglu ? MoeGemvTcInt4Kernel<true, 4, 4> : MoeGemvTcInt4Kernel<false, 1, 2>;
+  if (cudaFuncGetAttributes(&attributes, kernel) != cudaSuccess || attributes.ptxVersion < 80) {
     return false;
   }
 

@@ -7,6 +7,7 @@
 // pre-packed and block-compacted into int4
 //
 #pragma once
+
 #include <algorithm>
 #include <atomic>
 #include <mutex>
@@ -24,6 +25,7 @@
 #if USE_FPA_INTB_GEMM
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_profiler.h"
 #endif
+#include "contrib_ops/cuda/cuda_session_options.h"
 #include "contrib_ops/cuda/quantization/matmul_nbits_workspace_estimate.h"
 #include "contrib_ops/cuda/quantization/matmul_nbits_sm90_validation.h"
 #include "contrib_ops/cuda/quantization/matmul_nbits_unaligned4.h"
@@ -290,6 +292,8 @@ class MatMulNBits final : public CudaKernel {
                     weight_prepacked_ == kMatMulNBitsWeightPrepackedSm90,
                 "weight_prepacked must be 0 (not prepacked), 1 (SM80 layout), or 2 (SM90 layout), but got ",
                 weight_prepacked_);
+    tensor_core_gemv_ = ReadCudaSessionOption(info, kOrtSessionOptionsCudaDisableFpAIntBGemvTc,
+                                              "ORT_DISABLE_FPA_INTB_GEMV_TC", 0, 0, 1) == 0;
     const std::string wave_aware = info.GetConfigOptions()
                                        .GetConfigEntry(kOrtSessionOptionsCudaFpAIntBGemvWaveAware)
                                        .value_or("0");
@@ -492,6 +496,7 @@ class MatMulNBits final : public CudaKernel {
   int paired_gemv_mode_{0};
   bool has_fpA_intB_gemm_{false};
   bool wave_aware_gemv_{false};
+  bool tensor_core_gemv_{true};
   int64_t weight_prepacked_{kMatMulNBitsWeightNotPrepacked};
   // Max rows of A per fpA_intB launch; 0 disables M chunking.
   int m_chunk_size_{0};

@@ -3552,7 +3552,7 @@ TEST(MoETest, QMoETest_Int3AndMixedWidthCudaPrefillParity) {
 // The kernel choice is not observable through the op, so each case is compared with a host reference that rounds
 // every dequantized weight to BF16 and accumulates in FP32, which the kernels match up to the summation order.
 static void RunQMoEBf16TensorCoreGemvParityCase(int64_t bits, int64_t block_size, int64_t hidden_size,
-                                                int64_t inter_size) {
+                                                int64_t inter_size, const char* disable_tc = nullptr) {
   constexpr int64_t num_experts = 8;
   constexpr int64_t num_rows = 12;
   constexpr int64_t top_k = 4;
@@ -3686,8 +3686,25 @@ static void RunQMoEBf16TensorCoreGemvParityCase(int64_t bits, int64_t block_size
   execution_providers.push_back(DefaultCudaExecutionProvider());
   SessionOptions session_options;
   ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  if (disable_tc) {
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+        "ep.cuda.disable_qmoe_int3_tc", disable_tc));
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry("ep.cuda.disable_moe_gemv_tc", disable_tc));
+  }
   SCOPED_TRACE(MakeString("bits=", bits, " block_size=", block_size, " hidden=", hidden_size, " inter=", inter_size));
   tester.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(MoETest, QMoETensorCoreSessionOptions) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP();
+  ScopedEnvironmentVariables env{EnvVarMap{{"ORT_DISABLE_QMOE_INT3_TC", "invalid"},
+                                           {"ORT_DISABLE_MOE_GEMV_TC", "invalid"}}};
+  // QMoE resolves both controls at construction, so each session explicitly overrides both.
+  for (int bits : {3, 4}) {
+    for (const char* disable : {"0", "1"}) {
+      RunQMoEBf16TensorCoreGemvParityCase(bits, bits == 3 ? 64 : 32, 512, 512, disable);
+    }
+  }
 }
 
 // inter = 512 and 640 give FC2 K loops of 4 and 5 steps of 128; hidden = 1024 gives FC1 two K steps of 512.

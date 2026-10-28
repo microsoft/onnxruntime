@@ -92,6 +92,33 @@ void ExpectExactDequantizedWeights(int64_t bits, bool deterministic = false) {
 
 }  // namespace
 
+TEST(MatMulNBitsFpAIntBLayout, TensorCoreSessionOptions) {
+  if (!HasCudaEnvironment(900)) GTEST_SKIP() << "Tensor-core INT8 GEMV requires SM90";
+  for (const char* disable : {"0", "1"}) {
+    ScopedEnvironmentVariables env{EnvVarMap{{"ORT_DISABLE_FPA_INTB_GEMV_TC", "invalid"}}};
+    OpTester test("MatMulNBits", 1, kMSDomain);
+    test.AddAttribute<int64_t>("K", kK);
+    test.AddAttribute<int64_t>("N", kN);
+    test.AddAttribute<int64_t>("block_size", 32);
+    test.AddAttribute<int64_t>("bits", 8);
+    std::vector<BFloat16> a(8 * kK, BFloat16(0.0f));
+    for (int i = 0; i < 8; ++i) a[i * kK + i] = BFloat16(1.0f);
+    test.AddInput<BFloat16>("A", {8, kK}, a);
+    test.AddInput<uint8_t>("B", {kN, kK / 32, 32}, std::vector<uint8_t>(kN * kK, 129), true);
+    test.AddInput<BFloat16>("scales", {kN, kK / 32}, std::vector<BFloat16>(kN * kK / 32, BFloat16(1.0f)), true);
+    test.AddOutput<BFloat16>("Y", {8, kN}, std::vector<BFloat16>(8 * kN, BFloat16(1.0f)));
+    test.SetOutputTolerance(0.0f, 0.0f);
+    SessionOptions options;
+    options.use_deterministic_compute = true;
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry("ep.cuda.fpa_intb_gemm", "1"));
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry("ep.cuda.disable_fpa_intb_gemv_tc", disable));
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    std::vector<std::unique_ptr<IExecutionProvider>> eps;
+    eps.emplace_back(DefaultCudaExecutionProvider());
+    test.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
+  }
+}
+
 TEST(MatMulNBitsFpAIntBLayout, Int4WeightsRoundTripExactly) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP() << "fpA_intB layout test requires SM80+";
   ExpectExactDequantizedWeights(4);

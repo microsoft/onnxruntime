@@ -32,10 +32,6 @@
 #include <cstdint>
 
 #include "contrib_ops/cuda/moe/qmoe_kernels.h"
-#include "core/providers/cuda/cuda_common.h"
-// Include env_var_utils.h after cuda_common.h: the latter transitively pulls in provider_api.h,
-// which defines SHARED_PROVIDER and suppresses env_var_utils.h's own logging.h include.
-#include "core/platform/env_var_utils.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -418,18 +414,6 @@ __global__ void __launch_bounds__(kWarps * 32, 2) Int3TcKernel(const Params p) {
 #endif
 }
 
-inline bool DisabledByEnv() {
-  static const bool disabled =
-      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_DISABLE_QMOE_INT3_TC", 0) == 1;
-  return disabled;
-}
-
-// The vectorized GEMV shares weights between route pairs already, so tiny problems keep it.
-inline int MinRoutes() {
-  static const int routes = onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_INT3_TC_MIN_ROUTES", 33);
-  return routes;
-}
-
 inline bool DeviceSupportsBf16Mma() {
   int device = 0;
   int major = 0;
@@ -471,7 +455,8 @@ inline cudaError_t LaunchFc2(const Params& fc2, int intermediate, int total_rout
 inline bool TryLaunchBf16(const Int3MoeParams& params, cudaStream_t stream, cudaError_t& status) {
   const int64_t total_routes = static_cast<int64_t>(params.rows) * params.top_k;
   if (!params.is_bfloat16 || params.fc1.bits != 3 || params.fc2.bits != 3 || params.block_size != kBlockSize ||
-      params.router_weights != nullptr || total_routes < MinRoutes() || total_routes > kMaxTotalRoutes ||
+      params.router_weights != nullptr || total_routes < params.tensor_core_min_routes ||
+      total_routes > kMaxTotalRoutes ||
       params.hidden % kStepK != 0 || params.intermediate % 128 != 0 ||
       static_cast<int64_t>(params.hidden) * 16 > kMaxSharedBytes ||
       static_cast<int64_t>(params.intermediate) * 16 > kMaxSharedBytes ||
@@ -480,7 +465,14 @@ inline bool TryLaunchBf16(const Int3MoeParams& params, cudaStream_t stream, cuda
       (reinterpret_cast<uintptr_t>(params.fc1.scales) & 3u) != 0 ||
       (reinterpret_cast<uintptr_t>(params.fc2.scales) & 3u) != 0 ||
       params.fc1.zeros != nullptr || params.fc2.zeros != nullptr || params.experts == nullptr ||
-      DisabledByEnv() || !DeviceSupportsBf16Mma()) {
+      params.tensor_core_min_routes == 0 || !DeviceSupportsBf16Mma()) {
+    return false;
+  }
+
+  cudaFuncAttributes fc1_attributes{}, fc2_attributes{};
+  if (cudaFuncGetAttributes(&fc1_attributes, Int3TcKernel<true, kFc1Warps, kFc1Warps, kFc1M>) != cudaSuccess ||
+      cudaFuncGetAttributes(&fc2_attributes, Int3TcKernel<false, kFc2Warps, 1, kFc2M>) != cudaSuccess ||
+      fc1_attributes.ptxVersion < 80 || fc2_attributes.ptxVersion < 80) {
     return false;
   }
 

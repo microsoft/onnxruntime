@@ -376,6 +376,19 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
   ORT_ENFORCE(int_dequant_max_scratch_bytes_ > 0,
               int_dequant_max_scratch_bytes_source, " must be greater than 0, got ",
               int_dequant_max_scratch_bytes_, ".");
+  int3_tc_min_routes_ = ReadCudaSessionOption(op_kernel_info, kOrtSessionOptionsCudaQmoeInt3TcMinRoutes,
+                                              "ORT_QMOE_INT3_TC_MIN_ROUTES", 33, 1, std::numeric_limits<int>::max());
+  moe_tc_min_rows_ = ReadCudaSessionOption(op_kernel_info, kOrtSessionOptionsCudaMoeGemvTcMinRows,
+                                           "ORT_MOE_GEMV_TC_MIN_ROWS", 33, 1, std::numeric_limits<int>::max());
+  // A threshold of 0 turns the corresponding tensor-core decode path off.
+  if (ReadCudaSessionOption(op_kernel_info, kOrtSessionOptionsCudaDisableQmoeInt3Tc,
+                            "ORT_DISABLE_QMOE_INT3_TC", 0, 0, 1) != 0) {
+    int3_tc_min_routes_ = 0;
+  }
+  if (ReadCudaSessionOption(op_kernel_info, kOrtSessionOptionsCudaDisableMoeGemvTc,
+                            "ORT_DISABLE_MOE_GEMV_TC", 0, 0, 1) != 0) {
+    moe_tc_min_rows_ = 0;
+  }
   const auto configured_disable_int3_tc_prefill =
       op_kernel_info.GetConfigOptions().GetConfigEntry(kQMoEDisableInt3TensorCorePrefillConfig);
   if (configured_disable_int3_tc_prefill.has_value()) {
@@ -2163,6 +2176,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
         p_fc2_scales);
   }
 
+  quant_params.tensor_core_min_rows = moe_tc_min_rows_;
   Tensor* output = context->Output(0, input->Shape());
 
   // ---------------------------------------------------------------------------
@@ -2305,14 +2319,15 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
             static_cast<const WeightType*>(packed_int_fc1),
             static_cast<const T*>(p_fc1_scales), fc1_bias, fc1_output,
             p_efto, p_exp, num_experts, expanded, inter, hidden, static_cast<int>(block_size_), sm_,
-            act_params, p_r2u, num_rows, nullptr, stream);
+            act_params, p_r2u, num_rows, nullptr, stream, moe_tc_min_rows_);
       };
       auto launch_fc2 = [&](auto* weight_type) {
         using WeightType = std::remove_pointer_t<decltype(weight_type)>;
         gemv::launch_moe_gemv_int_symmetric<T, WeightType>(
             fc1_output, static_cast<const WeightType*>(packed_int_fc2),
             static_cast<const T*>(p_fc2_scales), fc2_bias, fc2_output,
-            p_efto, p_exp, num_experts, expanded, hidden, inter, static_cast<int>(block_size_), sm_, stream);
+            p_efto, p_exp, num_experts, expanded, hidden, inter, static_cast<int>(block_size_), sm_, stream,
+            moe_tc_min_rows_);
       };
       if (fc1_expert_weight_bits_ == 2) {
         launch_fc1(static_cast<cutlass::uint2b_t*>(nullptr));
@@ -3116,6 +3131,7 @@ Status QMoE::ComputeInt3(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(check_projection(second_weights, second_scales, second_zeros, second_bias,
                                        hidden, intermediate, fc2_expert_weight_bits_));
   Int3MoeParams params{};
+  params.tensor_core_min_routes = int3_tc_min_routes_;
   params.fc1 = {first_weights->Data<uint8_t>(), first_scales->DataRaw(),
                 first_zeros ? first_zeros->Data<uint8_t>() : nullptr,
                 first_bias ? first_bias->DataRaw() : nullptr, narrow<int>(fc1_expert_weight_bits_)};

@@ -8,7 +8,7 @@
 // The scalar kernel in dispatcher.h is instruction-issue bound on the decode projections (ncu on the Qwen3.8 INT8
 // in_proj, H200: ~11 thread instructions and an FMA pipe at 62% for ~30% of the DRAM bandwidth), because every weight
 // is converted, scaled, repacked and multiplied once per activation row. Here the weights are the mma A operand and the
-// (up to 8) activation rows the B operand, so a weight costs 0.5 FMA-pipe instructions of dequantization plus its share
+// (up to 8) activation rows the B operand, so a weight costs one FMA-pipe instruction of dequantization plus its share
 // of the mma, independent of the row count.
 //
 // Mapping (per warp and 64-wide K tile; mma m16n8k16, so four mma per tile per 16 columns):
@@ -23,10 +23,11 @@
 //
 // Dequantization. The stored byte is q = value + 128. Placed alone in a bf16 lane, the bits 0x00qq are exactly
 // q * 2^-133 (bf16 subnormals continue linearly into the first normal binade, so this holds for all 0 <= q <= 255).
-// One fma.rn.bf16x2 with the per-column constants S = scale * 2^66 and C = -scale * 2^-60 then gives
-// q * scale * 2^-67 - 128 * scale * 2^-67 = (q - 128) * scale * 2^-67 with a single rounding, which is the same bf16
-// rounding of (q - 128) * scale that the scalar kernel and the CUTLASS path apply, times the exact power of two 2^-67.
-// The factor keeps every intermediate normal, and the FP32 accumulators are multiplied by 2^67 at the end.
+// One fma.rn.bf16x2 with 2^126 and -1 turns them into (q - 128) / 128, which is exact for every code and independent of
+// the scale. A second one multiplies by the group scale and gives the same single bf16 rounding of (q - 128) * scale
+// that the scalar kernel and the CUTLASS path apply, divided by 128. The FP32 accumulators are multiplied by 128 at
+// the end. Unlike a shift folded into the scale, this cannot overflow for any finite scale, and the weights stay normal
+// bf16 numbers down to |weight| = 2^-119.
 
 #pragma once
 
@@ -82,15 +83,17 @@ __device__ __forceinline__ void MmaBf16(float (&d)[4], uint32_t a0, uint32_t a1,
 #endif
 }
 
-// bf16x2 {2^66, 2^66} and {-2^-60, -2^-60}: the per-column constants S = scale * 2^66 and C = -scale * 2^-60.
-constexpr uint32_t kScaleUp = 0x60806080u;
-constexpr uint32_t kBiasFold = 0xA180A180u;
-constexpr float kUnscale = 0x1p67f;
+// bf16x2 {2^126, 2^126}, {-1, -1} and {-0, -0}.
+constexpr uint32_t kCodeScale = 0x7E807E80u;
+constexpr uint32_t kMinusOne = 0xBF80BF80u;
+constexpr uint32_t kNegZero = 0x80008000u;
+// The dequantized weights carry a factor 2^-7 that the epilogue removes.
+constexpr float kUnscale = 128.0f;
 
-// bf16x2 {(q_lo - 128) * scale * 2^-67, (q_hi - 128) * scale * 2^-67} for bytes {q_lo, q_hi} of the lanes of `bytes`
-// (the two bytes are already placed in the low byte of each 16-bit lane).
-__device__ __forceinline__ uint32_t Dequant(uint32_t bytes, uint32_t scale_up, uint32_t bias_fold) {
-  return Bf16x2Fma(bytes, scale_up, bias_fold);
+// bf16x2 {(q_lo - 128) * scale / 128, (q_hi - 128) * scale / 128} for bytes {q_lo, q_hi} of the lanes of `bytes` (the
+// two bytes are already placed in the low byte of each 16-bit lane) and the scale duplicated into both lanes.
+__device__ __forceinline__ uint32_t Dequant(uint32_t bytes, uint32_t scale) {
+  return Bf16x2Fma(Bf16x2Fma(bytes, kCodeScale, kMinusOne), scale, kNegZero);
 }
 
 template <int ColTiles>
@@ -178,22 +181,17 @@ __global__ void __launch_bounds__(KWarps * 32, MinBlocks)
     const uint32_t b1[4] = {s.a[1].x, s.a[1].y, s.a[1].z, s.a[1].w};
 #pragma unroll
     for (int ct = 0; ct < ColTiles; ++ct) {
-      uint32_t scale_up[2], bias_fold[2];
-#pragma unroll
-      for (int h = 0; h < 2; ++h) {
-        const uint32_t sc2 = __byte_perm(s.s[ct][h], s.s[ct][h], 0x1010);
-        scale_up[h] = Bf16x2Fma(sc2, kScaleUp, 0x80008000u);
-        bias_fold[h] = Bf16x2Fma(sc2, kBiasFold, 0x80008000u);
-      }
+      const uint32_t sc[2] = {__byte_perm(s.s[ct][0], s.s[ct][0], 0x1010),
+                              __byte_perm(s.s[ct][1], s.s[ct][1], 0x1010)};
       const uint32_t wl[4] = {s.w[ct][0].x, s.w[ct][0].y, s.w[ct][0].z, s.w[ct][0].w};
       const uint32_t wh[4] = {s.w[ct][1].x, s.w[ct][1].y, s.w[ct][1].z, s.w[ct][1].w};
 #pragma unroll
       for (int w = 0; w < 4; ++w) {
         // Bytes {0, 2} of a word are logical K {2w, 2w + 1}; bytes {1, 3} are {2w + 8, 2w + 9}.
-        const uint32_t a0 = Dequant(__byte_perm(wl[w], 0u, 0x4240), scale_up[0], bias_fold[0]);
-        const uint32_t a2 = Dequant(__byte_perm(wl[w], 0u, 0x4341), scale_up[0], bias_fold[0]);
-        const uint32_t a1 = Dequant(__byte_perm(wh[w], 0u, 0x4240), scale_up[1], bias_fold[1]);
-        const uint32_t a3 = Dequant(__byte_perm(wh[w], 0u, 0x4341), scale_up[1], bias_fold[1]);
+        const uint32_t a0 = Dequant(__byte_perm(wl[w], 0u, 0x4240), sc[0]);
+        const uint32_t a2 = Dequant(__byte_perm(wl[w], 0u, 0x4341), sc[0]);
+        const uint32_t a1 = Dequant(__byte_perm(wh[w], 0u, 0x4240), sc[1]);
+        const uint32_t a3 = Dequant(__byte_perm(wh[w], 0u, 0x4341), sc[1]);
         MmaBf16(acc[w & 1][ct], a0, a1, a2, a3, b0[w], b1[w]);
       }
     }
@@ -253,10 +251,17 @@ __global__ void __launch_bounds__(KWarps * 32, MinBlocks)
 }
 
 template <int KWarps, int ColTiles, int GroupSize, int Depth, int MinBlocks = 1>
-inline void LaunchInt8TcGemv(const __nv_bfloat16* act, const uint8_t* weight, const __nv_bfloat16* scales,
+inline bool LaunchInt8TcGemv(const __nv_bfloat16* act, const uint8_t* weight, const __nv_bfloat16* scales,
                              __nv_bfloat16* out, int m, int n, int k, cudaStream_t stream) {
+  cudaFuncAttributes attributes{};
+  if (cudaFuncGetAttributes(&attributes, Int8TcGemvKernel<KWarps, ColTiles, GroupSize, Depth, MinBlocks>) !=
+          cudaSuccess ||
+      attributes.ptxVersion < 80) {
+    return false;
+  }
   Int8TcGemvKernel<KWarps, ColTiles, GroupSize, Depth, MinBlocks>
       <<<n / (ColTiles * kMmaColumns), KWarps * 32, 0, stream>>>(act, weight, scales, out, m, n, k);
+  return true;
 }
 
 struct LaunchConfig {
@@ -284,18 +289,18 @@ inline LaunchConfig LaunchInt8TcGemvAuto(const __nv_bfloat16* act, const uint8_t
     return (blocks + slots - 1) / slots;
   };
   if (blocks <= 2 * sm_count) {
-    LaunchInt8TcGemv<8, 1, GroupSize, 4, 2>(act, weight, scales, out, m, n, k, stream);
+    if (!LaunchInt8TcGemv<8, 1, GroupSize, 4, 2>(act, weight, scales, out, m, n, k, stream)) return {0, 0, 0};
     return {8, 4, 2};
   }
   if (blocks <= 3 * sm_count) {
-    LaunchInt8TcGemv<8, 1, GroupSize, 2, 3>(act, weight, scales, out, m, n, k, stream);
+    if (!LaunchInt8TcGemv<8, 1, GroupSize, 2, 3>(act, weight, scales, out, m, n, k, stream)) return {0, 0, 0};
     return {8, 2, 3};
   }
   if (blocks <= 7 * sm_count || waves(7) <= waves(8)) {
-    LaunchInt8TcGemv<4, 1, GroupSize, 2, 7>(act, weight, scales, out, m, n, k, stream);
+    if (!LaunchInt8TcGemv<4, 1, GroupSize, 2, 7>(act, weight, scales, out, m, n, k, stream)) return {0, 0, 0};
     return {4, 2, 7};
   }
-  LaunchInt8TcGemv<4, 1, GroupSize, 2, 8>(act, weight, scales, out, m, n, k, stream);
+  if (!LaunchInt8TcGemv<4, 1, GroupSize, 2, 8>(act, weight, scales, out, m, n, k, stream)) return {0, 0, 0};
   return {4, 2, 8};
 }
 

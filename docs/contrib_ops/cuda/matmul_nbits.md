@@ -848,8 +848,7 @@ thread instructions per weight and reaches only 28-37% of the H200 DRAM
 bandwidth. For BF16 activations and symmetric INT8 weights,
 [int8_tc_gemv.cuh](../../../onnxruntime/contrib_ops/cuda/llm/fpA_intB_gemv/int8_tc_gemv.cuh)
 makes the weights the A operand of `mma.sync.m16n8k16` (BF16 inputs, FP32
-accumulation) and the 1-8 activation rows the B operand, so dequantization
-costs about one instruction per weight whatever `M` is.
+accumulation) and the 1-8 activation rows the B operand, so all activation rows share each dequantized weight.
 
 - **Gate** (`CanUseInt8TensorCore` in
   [dispatcher.h](../../../onnxruntime/contrib_ops/cuda/llm/fpA_intB_gemv/dispatcher.h)):
@@ -857,28 +856,41 @@ costs about one instruction per weight whatever `M` is.
   interleaved layout (no zero points, bias, activation scale or
   alpha-in-advance), device SM 9.0, `1 <= M <= 8`, `N % 16 == 0`,
   `K % 64 == 0`, `K % block_size == 0` and 16-byte-aligned activation and
-  weight pointers. Every other launch keeps the scalar kernel and its tile rule
+  weight pointers, and a loaded kernel compiled for SM80+ (checked via
+  `cudaFuncGetAttributes`, including PTX JIT loads). Every other launch keeps the scalar kernel and its tile rule
   (§6.4).
 - **Layout.** The runtime's SM80 interleaved weights are consumed as they are.
   The K permutation of that layout is absorbed by choosing which activation
   words feed each `mma`.
-- **Numerics.** Dequantization is bit-identical to the scalar kernel: one
-  `fma.rn.bf16x2` per pair of weights gives `bf16_rn((q - 128) * scale)` times
-  an exact power of two that the epilogue removes. Products accumulate in FP32
-  and the warps' partial sums are reduced through shared memory in a fixed
-  order, so a row's result does not depend on `M`.
+- **Numerics.** The stored byte `q = value + 128`, placed in a BF16 lane, is
+  exactly `q * 2^-133`. One `fma.rn.bf16x2` with `2^126` and `-1` turns a pair
+  of them into `(q - 128) / 128` (exact) and a second one multiplies by the
+  group scale, so a weight is `bf16_rn((q - 128) * scale) / 128`; the epilogue
+  multiplies the FP32 accumulators by 128 (exact). The weights therefore equal
+  the scalar kernel's `bf16_rn((q - 128) * scale)` for every scale with
+  `|scale| >= 2^-119` and a weight that is finite in BF16. No scale-dependent
+  pre-scaling is involved, so large scales cannot overflow and small ones are
+  not flushed to zero. Scales below `2^-119` round their weights to fewer
+  bits. Products accumulate in FP32 and the warps' partial sums are reduced
+  through shared memory in a fixed order, so a row's result does not depend on
+  `M`.
 - **Launch configuration.** `LaunchInt8TcGemvAuto` picks the K split (4 or 8
   warps), the prefetch depth and the blocks per SM from the block count
   `N / 16` relative to the SM count, so that the grid fits in one wave.
 - **Switch.** `ORT_DISABLE_FPA_INTB_GEMV_TC=1` restores the scalar kernel
-  (§8). `MatMulNBits` and the tactic profiler (§6.3) both read it, so the
-  profiler times the kernel that runs. The tactic cache does not key on it; the
-  GEMV choice for `M <= 8` stays valid.
+  (§8). Session option `ep.cuda.disable_fpa_intb_gemv_tc` takes precedence.
+  Both accept `0` or `1` and are resolved once during kernel construction.
+  The resolved flag is passed to the tactic profiler (§6.3) and dispatch.
+  In-memory and persistent tactic-cache keys include the flag, and the
+  selection-version bump invalidates measurements from the previous kernel.
 - **Measured (H200, `M = 8`, `block_size = 32`, cold weights).** `in_proj`
   (`N = 16480`, `K = 2560`) 24.9 → 13.0 µs, `out_proj` (`N = 2560`,
   `K = 6144`) 12.7 → 9.7 µs, `N = 13952`, `K = 2560` about 20 → 11.8 µs. In the
   Qwen3.8-Flash-Next `S = 8` decode this shortens a cycle by 3.8-6.9% at 2K,
-  8K and 32K context.
+  8K and 32K context. These were measured with an earlier dequantization that
+  folded a fixed `2^67` shift into the scale. The one above gives bit-identical
+  outputs on typical scales and takes 0.6-2.4% longer in a standalone kernel
+  benchmark (`M = 1-8`, `N = 2560-16480`, `K = 2560-6144`, group size 32-128).
 
 ---
 
@@ -911,12 +923,12 @@ present. `ComputeInternal` then:
 | `ORT_MATMULNBITS_FORCE_CHUNKED` | int, `0` | Force the chunked dequant+GEMM fallback (§5) regardless of the size heuristic, and bypass the fpA_intB M-chunking size condition (§6.2). |
 | `ORT_MATMULNBITS_CHUNK_SIZE` | int64, `32768` | Target rows per chunk in the chunked fallback. Values `< 1` reset to the default. |
 | `ORT_MATMULNBITS_M_CHUNK_SIZE` | int, `0` | Max rows of `A` per fpA_intB launch (§6.2). `0` disables M chunking. Overridden by the `ep.cuda.matmul_nbits_m_chunk_size` session config entry. Also applies to the CUDA plugin EP. |
-| `ORT_DISABLE_FPA_INTB_GEMV_TC` | `1` disables, unset | Use the scalar fpA_intB GEMV kernel instead of the SM 9.0 tensor-core INT8 GEMV (§6.5). Only the exact value `1` disables it. Read once per process. |
+| `ORT_DISABLE_FPA_INTB_GEMV_TC` | `1` disables, unset | Use the scalar fpA_intB GEMV kernel instead of the SM 9.0 tensor-core INT8 GEMV (§6.5). Accepts `0` or `1` (default `0`); session option `ep.cuda.disable_fpa_intb_gemv_tc` takes precedence. Read once during kernel construction. |
 
 > Environment variables are read with ORT's cross-platform
 > `ParseEnvironmentVariableWithDefault` helper (safe on Windows), not
-> `std::getenv`. `ORT_DISABLE_FPA_INTB_GEMV_TC` is read in the leaf header
-> `fpA_intB_gemv.h`, which cannot use that helper, with `_dupenv_s` on Windows.
+> `std::getenv`. Tensor-core dispatch configuration is resolved during kernel
+> construction and is never re-read during inference.
 
 ---
 

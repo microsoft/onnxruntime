@@ -505,16 +505,18 @@ inline bool CanUseInt8TensorCore(const Params& params, int group_size) {
 }
 
 template <int GroupSize>
-void exec_kernel_tc(Params& params, cudaStream_t s) {
+bool exec_kernel_tc(Params& params, cudaStream_t s) {
   const dense_tc::LaunchConfig config = dense_tc::LaunchInt8TcGemvAuto<GroupSize>(
       reinterpret_cast<const __nv_bfloat16*>(params.act), reinterpret_cast<const uint8_t*>(params.weight),
       reinterpret_cast<const __nv_bfloat16*>(params.scales), reinterpret_cast<__nv_bfloat16*>(params.out), params.m,
       params.n, params.k, params.device_sm_count, s);
+  if (config.k_warps == 0) return false;
   if (params.debug) {
     std::printf("[fpA_intB_debug] GEMV launch: tensor_core=1 M=%d KWarps=%d Depth=%d BlocksPerSm=%d\n", params.m,
                 config.k_warps, config.depth, config.blocks_per_sm);
     std::fflush(stdout);
   }
+  return true;
 }
 
 template <typename Details, int CtaM, int CtaN, int Threads, int GroupSize, bool EnableActScale, bool EnableZero,
@@ -598,8 +600,7 @@ void dispatcher(Params& params, cudaStream_t s) {
                 Details::kStepK == 16 && Details::kUseInterleavedConverter &&
                 Details::LayoutDetails::kTileSize == 64 && !EnableZero && !EnableBias && !EnableActScale &&
                 !ApplyAlphaInAdvance) {
-    if (CanUseInt8TensorCore(params, GroupSize)) {
-      exec_kernel_tc<GroupSize>(params, s);
+    if (CanUseInt8TensorCore(params, GroupSize) && exec_kernel_tc<GroupSize>(params, s)) {
       return;
     }
   }

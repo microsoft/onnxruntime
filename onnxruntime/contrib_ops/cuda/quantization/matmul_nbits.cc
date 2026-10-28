@@ -954,6 +954,7 @@ void MatMulNBits<T>::InitGemmProfiler(int sm) {
 
   gemmProfiler_->setCudaKernelType(cuda_kernel_type, sm);
   gemmProfiler_->setWaveAwareGemv(wave_aware_gemv_);
+  gemmProfiler_->setTensorCoreGemv(tensor_core_gemv_);
   gemmProfiler_->setL2CacheBytes(static_cast<size_t>(this->GetDeviceProp().l2CacheSize));
   gemmProfiler_->setDeviceInfo(device_prop.major * 10 + device_prop.minor, device_prop.multiProcessorCount);
   gemmProfiler_->setQuant(static_cast<int>(nbits_), has_bias_, has_zero_points_);
@@ -996,6 +997,7 @@ void MatMulNBits<T>::RunGemmProfile(bool hasWeightOnlyCudaKernel, int min_m, int
                        this->GetDeviceProp().name, wave_aware_gemv_, paired_gemv_mode_, this->GetDeviceId());
 
   GemmDims dims = {min_m, max_m, n_16b, K_};
+  gemmId_.tensor_core = tensor_core_gemv_;
   gemmProfiler_->profileTactics(weightOnlyGemmRunner_, gemmId_.dtype, dims, gemmId_, hasWeightOnlyCudaKernel);
 }
 
@@ -1391,7 +1393,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
           params.decode_variant = bestTactic->cudaKernelVariant >= 2 ? bestTactic->cudaKernelVariant : 0;
           params.paired_k = bestTactic->cudaKernelVariant == 1;
           params.wave_aware = wave_aware_gemv_;
-          params.tensor_core = onnxruntime::llm::kernels::fpA_intB_gemv::GemvTensorCoreEnabled();
+          params.tensor_core = tensor_core_gemv_;
           const auto& device_prop = GetDeviceProp();
           params.device_sm = device_prop.major * 10 + device_prop.minor;
           params.device_sm_count = device_prop.multiProcessorCount;

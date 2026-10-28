@@ -105,6 +105,24 @@ struct Problem {
   DeviceBuffer d_act, d_weight, d_scales, d_out;
 };
 
+// Scales of random sign and 7-bit mantissa with exponents spread over 2^-110 .. 2^100, so that (q - 128) * scale
+// rounds to bf16 in many different ways. Columns 0..7 hold +-2^64 and +-2^-80 in every group.
+void SetWideRangeScales(Problem& p, uint32_t seed) {
+  std::mt19937 gen(seed);
+  for (bf16& s : p.scales) {
+    const float magnitude =
+        std::ldexp(1.f + static_cast<float>(gen() % 128) / 128.f, static_cast<int>(gen() % 211) - 110);
+    s = __float2bfloat16(((gen() & 1) != 0 ? 1.f : -1.f) * magnitude);
+  }
+  constexpr float kExtremes[] = {0x1p64f, -0x1p64f, 0x1p-80f, -0x1p-80f};
+  for (int g = 0; g < p.k / p.group_size; ++g) {
+    for (int c = 0; c < 8; ++c) {
+      p.scales[static_cast<size_t>(g) * p.n + c] = __float2bfloat16(kExtremes[c % 4]);
+    }
+  }
+  p.d_scales.Upload(p.scales.data());
+}
+
 class Int8TensorCoreGemvTest : public ::testing::Test {
  protected:
   void SetUp() override {
@@ -214,6 +232,41 @@ class Int8TensorCoreGemvTest : public ::testing::Test {
     return std::memcmp(a.data(), b, a.size() * sizeof(bf16)) == 0;
   }
 
+  // One-hot activation rows at every K position (8 per launch): the tensor-core output has to equal the scalar
+  // kernel's under each of the four launch configurations that the reported SM counts select for N = 480 (30 blocks).
+  void ExpectOneHotMatchesScalarKernel(Problem& p) {
+    ASSERT_EQ(p.n, 480);
+    struct Expected {
+      int sm_count;
+      const char* config;
+    };
+    const Expected expected[] = {{16, "KWarps=8 Depth=4 BlocksPerSm=2"},
+                                 {11, "KWarps=8 Depth=2 BlocksPerSm=3"},
+                                 {5, "KWarps=4 Depth=2 BlocksPerSm=7"},
+                                 {4, "KWarps=4 Depth=2 BlocksPerSm=8"}};
+    for (int first = 0; first < p.k; first += 8) {
+      p.SetOneHotActivations(first);
+      const std::vector<bf16> scalar = Run(p, 8, 0, false, prop_.multiProcessorCount);
+      for (const Expected& e : expected) {
+        // Capturing stdout is slow, so only the first launch of a configuration reports it.
+        std::string log;
+        const std::vector<bf16> tc = Run(p, 8, 0, true, e.sm_count, first == 0 ? &log : nullptr);
+        if (first == 0) {
+          ASSERT_NE(log.find(e.config), std::string::npos) << log;
+        }
+        int mismatches = 0;
+        for (size_t i = 0; i < tc.size(); ++i) {
+          if (__bfloat162float(tc[i]) != __bfloat162float(scalar[i]) && mismatches++ < 3) {
+            ADD_FAILURE() << "K positions " << first << ".." << first + 7 << ", row " << i / p.n << ", column "
+                          << i % p.n << ": tensor core " << __bfloat162float(tc[i]) << ", scalar "
+                          << __bfloat162float(scalar[i]) << ", " << e.config;
+          }
+        }
+        ASSERT_EQ(mismatches, 0);
+      }
+    }
+  }
+
   cudaDeviceProp prop_{};
   cudaStream_t stream_ = nullptr;
 };
@@ -221,20 +274,11 @@ class Int8TensorCoreGemvTest : public ::testing::Test {
 }  // namespace
 
 // A one-hot activation row makes the output the dequantized weight at one K position. The scalar kernel and the
-// tensor-core kernel round (q - 128) * scale to bf16 once, so their outputs have to be bitwise equal; probing every K
-// position checks the weight layout (the K order inside a 64-wide tile, the column pairs and the scale rows) of every
-// launch configuration. N = 480 is 30 blocks, which the reported SM counts 16 / 11 / 5 / 4 spread over the four
-// configurations.
+// tensor-core kernel round (q - 128) * scale to bf16 once, so their outputs have to be equal as values (a zero result
+// may have either sign); probing every K position checks the weight layout (the K order inside a 64-wide tile, the
+// column pairs and the scale rows) of every launch configuration. N = 480 is 30 blocks, which the reported SM counts
+// 16 / 11 / 5 / 4 spread over the four configurations.
 TEST_F(Int8TensorCoreGemvTest, OneHotActivationsMatchScalarKernel) {
-  constexpr int kN = 480;
-  struct Expected {
-    int sm_count;
-    const char* config;
-  };
-  const Expected expected[] = {{16, "KWarps=8 Depth=4 BlocksPerSm=2"},
-                               {11, "KWarps=8 Depth=2 BlocksPerSm=3"},
-                               {5, "KWarps=4 Depth=2 BlocksPerSm=7"},
-                               {4, "KWarps=4 Depth=2 BlocksPerSm=8"}};
   for (int group_size : GroupSizes()) {
     std::vector<int> ks = {128, 384, 640};
     if (group_size == 32) {
@@ -242,26 +286,51 @@ TEST_F(Int8TensorCoreGemvTest, OneHotActivationsMatchScalarKernel) {
     }
     for (int k : ks) {
       SCOPED_TRACE("group=" + std::to_string(group_size) + " k=" + std::to_string(k));
-      Problem p(8, kN, k, group_size, 1);
-      for (int first = 0; first < k; first += 8) {
-        p.SetOneHotActivations(first);
-        const std::vector<bf16> scalar = Run(p, 8, 0, false, prop_.multiProcessorCount);
-        for (const Expected& e : expected) {
-          // Capturing stdout is slow, so only the first launch of a configuration reports it.
-          std::string log;
-          const std::vector<bf16> tc = Run(p, 8, 0, true, e.sm_count, first == 0 ? &log : nullptr);
-          if (first == 0) {
-            ASSERT_NE(log.find(e.config), std::string::npos) << log;
+      Problem p(8, 480, k, group_size, 1);
+      ASSERT_NO_FATAL_FAILURE(ExpectOneHotMatchesScalarKernel(p));
+    }
+  }
+}
+
+// The same probe with group scales over most of the bf16 range, so the products round in many different ways.
+TEST_F(Int8TensorCoreGemvTest, WideScaleRangeMatchesScalarKernel) {
+  for (int group_size : GroupSizes()) {
+    SCOPED_TRACE("group=" + std::to_string(group_size));
+    Problem p(8, 480, 384, group_size, 6);
+    SetWideRangeScales(p, 7);
+    ASSERT_NO_FATAL_FAILURE(ExpectOneHotMatchesScalarKernel(p));
+  }
+}
+
+// The kernel handles every finite scale of magnitude >= 2^-119 whose products stay finite. A fixed power-of-two
+// pre-scaling of the weight codes would overflow for code 129 with scale 2^64 and flush the weight to zero for scale
+// 2^-80, so uniform codes at the exponent extremes are compared against the bf16 rounding of the exact product.
+TEST_F(Int8TensorCoreGemvTest, ExtremeScalesMatchReferenceWeights) {
+  constexpr float kMagnitudes[] = {0x1p100f, 0x1p64f, 0x1p-80f, 0x1p-110f, 0x1p-119f};
+  for (int group_size : GroupSizes()) {
+    Problem p(8, 480, 128, group_size, 1);
+    p.SetOneHotActivations(0);
+    for (int code : {0, 1, 127, 128, 129, 254, 255}) {
+      std::fill(p.weight.begin(), p.weight.end(), static_cast<uint8_t>(code));
+      p.d_weight.Upload(p.weight.data());
+      for (float magnitude : kMagnitudes) {
+        for (float scale : {magnitude, -magnitude}) {
+          SCOPED_TRACE(testing::Message() << "group=" << group_size << " code=" << code << " scale=" << scale);
+          std::fill(p.scales.begin(), p.scales.end(), __float2bfloat16(scale));
+          p.d_scales.Upload(p.scales.data());
+          const float expected = __bfloat162float(__float2bfloat16(static_cast<float>(code - 128) * scale));
+          const std::vector<bf16> scalar = Run(p, 8, 0, false, prop_.multiProcessorCount);
+          for (size_t i = 0; i < scalar.size(); ++i) {
+            ASSERT_EQ(__bfloat162float(scalar[i]), expected) << "scalar kernel, output " << i;
           }
-          int mismatches = 0;
-          for (size_t i = 0; i < tc.size(); ++i) {
-            if (__bfloat162float(tc[i]) != __bfloat162float(scalar[i]) && mismatches++ < 3) {
-              ADD_FAILURE() << "K positions " << first << ".." << first + 7 << ", row " << i / kN << ", column "
-                            << i % kN << ": tensor core " << __bfloat162float(tc[i]) << ", scalar "
-                            << __bfloat162float(scalar[i]) << ", " << e.config;
+          for (int sm_count : {16, 11, 5, 4}) {
+            std::string log;
+            const std::vector<bf16> tc = Run(p, 8, 0, true, sm_count, &log);
+            ASSERT_NE(log.find("tensor_core=1"), std::string::npos) << log;
+            for (size_t i = 0; i < tc.size(); ++i) {
+              ASSERT_EQ(__bfloat162float(tc[i]), expected) << "sm_count=" << sm_count << ", output " << i;
             }
           }
-          ASSERT_EQ(mismatches, 0);
         }
       }
     }

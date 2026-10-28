@@ -7,6 +7,7 @@
 //
 // The scales of the INT8 cache are per (kv head, channel) constants, so they leave the tile loop:
 //   * the key scale is folded into the query once per CTA: Q' = Q * key_scale (rounded once to fp16), S = Q' K_int8;
+//     a CTA whose Q' does not fit fp16 (or is not finite) evaluates its query heads in fp32 instead (AttendRowFp32);
 //   * the value scale is applied to the output once per CTA: O = (P V_int8) * value_scale.
 // The gathered int8 rows stay int8 in shared memory (cp.async, double buffered, one tile ahead). A fragment read with
 // ldmatrix is converted to fp16 exactly in registers (1024 + (byte ^ 0x80) - 1152, "magic number" conversion) and
@@ -100,6 +101,65 @@ __device__ __forceinline__ void Int8x4ToHalf2Strided(uint32_t w, uint32_t& even,
   even = Half2MinusBias(a);
   odd = Half2MinusBias(b);
 }
+
+// FP32 evaluation of the query heads of one (row, KV head), one warp per head and eight channels per lane, for rows
+// whose Q * key_scale leaves the FP16 range of the tensor-core path. Clipping there would break the cancellation
+// between large terms. `query` and `output` point at the first head of the group; `key_scale` and `value_scale` at the
+// KV head.
+__device__ __noinline__ void AttendRowFp32(const __nv_bfloat16* __restrict__ query, const int8_t* __restrict__ key,
+                                           const int8_t* __restrict__ value, const float* __restrict__ key_scale,
+                                           const float* __restrict__ value_scale,
+                                           const int32_t* __restrict__ row_indices, int count, int total,
+                                           int query_position, float scale, int group,
+                                           __nv_bfloat16* __restrict__ output, int warp, int lane) {
+  float ks[8];
+#pragma unroll
+  for (int j = 0; j < 8; ++j) {
+    ks[j] = key_scale[lane + j * 32];
+  }
+  for (int h = warp; h < group; h += kThreads / 32) {
+    float q[8];
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      q[j] = __bfloat162float(query[static_cast<int64_t>(h) * kHeadDim + lane + j * 32]);
+    }
+    float numerator[8] = {};
+    float maximum = -FLT_MAX;
+    float denominator = 0.0f;
+    for (int i = 0; i < count; ++i) {
+      const int index = row_indices[i];
+      if (index < 0 || index >= total || index > query_position) {
+        continue;
+      }
+      const int64_t offset = static_cast<int64_t>(index) * kHeadDim + lane;
+      float dot = 0.0f;
+#pragma unroll
+      for (int j = 0; j < 8; ++j) {
+        dot += q[j] * (static_cast<float>(key[offset + j * 32]) * ks[j]);
+      }
+#pragma unroll
+      for (int delta = 16; delta > 0; delta /= 2) {
+        dot += __shfl_xor_sync(0xffffffffu, dot, delta);
+      }
+      const float score = dot * scale;
+      const float next_max = fmaxf(maximum, score);
+      const float correction = expf(maximum - next_max);
+      const float probability = expf(score - next_max);
+      denominator = denominator * correction + probability;
+#pragma unroll
+      for (int j = 0; j < 8; ++j) {
+        numerator[j] = numerator[j] * correction + probability * static_cast<float>(value[offset + j * 32]);
+      }
+      maximum = next_max;
+    }
+    const float inverse = denominator == 0.0f ? 0.0f : 1.0f / denominator;
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      const int d = lane + j * 32;
+      output[static_cast<int64_t>(h) * kHeadDim + d] = __float2bfloat16_rn(numerator[j] * inverse * value_scale[d]);
+    }
+  }
+}
 #endif
 
 // grid = (batch * sequence_length, kv_num_heads), block = kThreads, dynamic smem = kInt8SharedBytes.
@@ -151,13 +211,19 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionPrefillInt8
   const int8_t* key_base = key + kv_head_offset;
   const int8_t* value_base = value + kv_head_offset;
 
-  // Q' = Q * key_scale as fp16 (clamped so that it cannot overflow); the padding rows are zero so their (ignored)
-  // scores stay finite.
+  // Q' = Q * key_scale as fp16; the padding rows are zero so their (ignored) scores stay finite. A row whose Q' does
+  // not fit fp16 (including inf / NaN) is evaluated in fp32 by the whole CTA instead. Underflow to fp16 subnormals
+  // costs at most 2^-25 per element, below the rounding of the fp16 operands, so it stays on this path.
+  const __nv_bfloat16* query_group = query + (static_cast<int64_t>(row) * num_heads + kv_head * group) * kHeadDim;
+  bool needs_fp32 = false;
   {
     const int chunk = tid & 31;
     const float4 k0 = *reinterpret_cast<const float4*>(key_scale + kv_head * kHeadDim + chunk * 8);
     const float4 k1 = *reinterpret_cast<const float4*>(key_scale + kv_head * kHeadDim + chunk * 8 + 4);
-    const __nv_bfloat16* query_group = query + (static_cast<int64_t>(row) * num_heads + kv_head * group) * kHeadDim;
+    auto to_half2 = [&needs_fp32](float x, float y) {
+      needs_fp32 |= !(fabsf(x) <= 65504.0f) || !(fabsf(y) <= 65504.0f);
+      return __floats2half2_rn(x, y);
+    };
 #pragma unroll
     for (int i = 0; i < kMaxGroup / 4; ++i) {
       const int r = (tid >> 5) + 4 * i;
@@ -168,11 +234,10 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionPrefillInt8
         const float2 q23 = __bfloat1622float2(*reinterpret_cast<const __nv_bfloat162*>(&q.y));
         const float2 q45 = __bfloat1622float2(*reinterpret_cast<const __nv_bfloat162*>(&q.z));
         const float2 q67 = __bfloat1622float2(*reinterpret_cast<const __nv_bfloat162*>(&q.w));
-        auto clamp = [](float x) { return fminf(fmaxf(x, -65504.0f), 65504.0f); };
-        const __half2 h01 = __floats2half2_rn(clamp(q01.x * k0.x), clamp(q01.y * k0.y));
-        const __half2 h23 = __floats2half2_rn(clamp(q23.x * k0.z), clamp(q23.y * k0.w));
-        const __half2 h45 = __floats2half2_rn(clamp(q45.x * k1.x), clamp(q45.y * k1.y));
-        const __half2 h67 = __floats2half2_rn(clamp(q67.x * k1.z), clamp(q67.y * k1.w));
+        const __half2 h01 = to_half2(q01.x * k0.x, q01.y * k0.y);
+        const __half2 h23 = to_half2(q23.x * k0.z, q23.y * k0.w);
+        const __half2 h45 = to_half2(q45.x * k1.x, q45.y * k1.y);
+        const __half2 h67 = to_half2(q67.x * k1.z, q67.y * k1.w);
         packed.x = *reinterpret_cast<const uint32_t*>(&h01);
         packed.y = *reinterpret_cast<const uint32_t*>(&h23);
         packed.z = *reinterpret_cast<const uint32_t*>(&h45);
@@ -181,7 +246,13 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionPrefillInt8
       *reinterpret_cast<uint4*>(sQ + r * kInt8QStride + chunk * 8) = packed;
     }
   }
-  __syncthreads();
+  if (__syncthreads_or(needs_fp32)) {
+    // The condition is uniform across the CTA and no cp.async is in flight yet.
+    AttendRowFp32(query_group, key_base, value_base, key_scale + kv_head * kHeadDim, value_scale + kv_head * kHeadDim,
+                  row_indices, count, total, query_position, scale, group,
+                  output + (static_cast<int64_t>(row) * num_heads + kv_head * group) * kHeadDim, warp, lane);
+    return;
+  }
 
   // A fragments of Q' with the channel permutation described at the top: a0 / a2 hold channels 16j + 4t + {0, 1} /
   // {2, 3} of row r0, a1 / a3 the same of row r0 + 8.
