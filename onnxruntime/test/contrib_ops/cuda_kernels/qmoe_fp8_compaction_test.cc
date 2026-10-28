@@ -12,7 +12,7 @@
 #include <gtest/gtest.h>
 
 #include "contrib_ops/cuda/moe/qmoe_kernels.h"
-#include "contrib_ops/cuda/llm/moe_gemm/moe_util_kernels.h"
+#include "contrib_ops/cuda/llm/moe_gemm/moe_expert_maps.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/platform/env_var_utils.h"
 
