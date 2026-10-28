@@ -3013,6 +3013,10 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateCUDAProviderOptionsWithValue,
   if (strcmp(key, "user_compute_stream") == 0) {
     cuda_options->has_user_compute_stream = 1;
     cuda_options->user_compute_stream = value;
+  } else if (strcmp(key, "default_memory_arena_cfg") == 0) {
+    cuda_options->default_memory_arena_cfg = static_cast<OrtArenaCfg*>(value);
+  } else {
+    return CreateStatus(ORT_INVALID_ARGUMENT, "Unknown CUDA pointer provider option.");
   }
   return nullptr;
 #else
@@ -3032,6 +3036,8 @@ ORT_API_STATUS_IMPL(OrtApis::GetCUDAProviderOptionsByName,
 #if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
   if (strcmp(key, "user_compute_stream") == 0) {
     *ptr = cuda_options->user_compute_stream;
+  } else if (strcmp(key, "default_memory_arena_cfg") == 0) {
+    *ptr = cuda_options->default_memory_arena_cfg;
   } else {
     *ptr = nullptr;
   }

@@ -63,6 +63,23 @@ TEST(BFCArenaTest, NoDups) {
   CheckStats(&a, 1023, 0, 654336, 1024);
 }
 
+TEST(BFCArenaTest, ExactSizeWithNoDeadBytes) {
+  BFCArena arena(std::make_unique<CPUAllocator>(), 1 << 20,
+                 ArenaExtendStrategy::kSameAsRequested, 256, 0);
+  void* first = arena.Alloc(256);
+  ASSERT_NE(first, nullptr);
+  EXPECT_EQ(arena.AllocatedSize(first), 256u);
+  void* second = arena.Alloc(512);
+  ASSERT_NE(second, nullptr);
+  EXPECT_NE(first, second);
+  arena.Free(first);
+  void* reused = arena.Alloc(256);
+  EXPECT_EQ(reused, first);
+  arena.Free(second);
+  arena.Free(reused);
+  CheckStats(&arena, 3, 0, 768, 512);
+}
+
 TEST(BFCArenaTest, AllocationsAndDeallocations) {
   BFCArena a(std::unique_ptr<IAllocator>(new CPUAllocator()), 1 << 30);
   // Allocate 256 raw pointers of sizes between 100 bytes and about a meg

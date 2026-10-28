@@ -45,7 +45,7 @@ struct DeviceType<BFloat16> {
 };
 
 template <typename HostT>
-void RunSmallNGemvCase(int m, int n, int k) {
+void RunSmallNGemvCase(int m, int n, int k, bool capture_graph = false) {
   using DeviceT = typename DeviceType<HostT>::type;
   SCOPED_TRACE(std::string(std::is_same_v<HostT, MLFloat16> ? "fp16" : "bf16") + " m=" + std::to_string(m) +
                ", n=" + std::to_string(n) + ", k=" + std::to_string(k));
@@ -71,11 +71,29 @@ void RunSmallNGemvCase(int m, int n, int k) {
   // Accumulation is fp32, so the error is dominated by rounding the output to T.
   const float relative_tolerance = std::is_same_v<HostT, MLFloat16> ? 0.0f : 1.0f / 128.0f;
   for (int iteration = 0; iteration < 2; ++iteration) {
-    ASSERT_STATUS_OK(LaunchSmallNGemv(nullptr,
+    cudaStream_t stream = nullptr;
+    if (capture_graph) {
+      CUDA_CALL_THROW(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
+      CUDA_CALL_THROW(cudaStreamBeginCapture(stream, cudaStreamCaptureModeGlobal));
+    }
+    ASSERT_STATUS_OK(LaunchSmallNGemv(stream,
                                       reinterpret_cast<const DeviceT*>(device_a.get()),
                                       reinterpret_cast<const DeviceT*>(device_b.get()),
                                       reinterpret_cast<DeviceT*>(device_c.get()),
                                       m, n, k, workspace.get(), counter.get()));
+    if (capture_graph) {
+      cudaGraph_t graph;
+      cudaGraphExec_t graph_exec;
+      CUDA_CALL_THROW(cudaStreamEndCapture(stream, &graph));
+      CUDA_CALL_THROW(cudaGraphInstantiate(&graph_exec, graph, nullptr, nullptr, 0));
+      for (int replay = 0; replay < 3; ++replay) {
+        CUDA_CALL_THROW(cudaGraphLaunch(graph_exec, stream));
+      }
+      CUDA_CALL_THROW(cudaStreamSynchronize(stream));
+      CUDA_CALL_THROW(cudaGraphExecDestroy(graph_exec));
+      CUDA_CALL_THROW(cudaGraphDestroy(graph));
+      CUDA_CALL_THROW(cudaStreamDestroy(stream));
+    }
     CUDA_CALL_THROW(cudaDeviceSynchronize());
 
     std::vector<HostT> output(static_cast<size_t>(m) * n);
@@ -95,9 +113,9 @@ void RunSmallNGemvCase(int m, int n, int k) {
   }
 }
 
-void RunSmallNGemvCaseAllTypes(int m, int n, int k) {
-  RunSmallNGemvCase<MLFloat16>(m, n, k);
-  RunSmallNGemvCase<BFloat16>(m, n, k);
+void RunSmallNGemvCaseAllTypes(int m, int n, int k, bool capture_graph = false) {
+  RunSmallNGemvCase<MLFloat16>(m, n, k, capture_graph);
+  RunSmallNGemvCase<BFloat16>(m, n, k, capture_graph);
 }
 
 TEST(MatMulSmallNGemvTest, HandlesAllMVariants) {
@@ -121,6 +139,30 @@ TEST(MatMulSmallNGemvTest, HandlesColumnTileBoundaries) {
   for (const int n : {1, 32, 1024}) {
     RunSmallNGemvCaseAllTypes(1, n, 128);
   }
+}
+
+TEST(MatMulSmallNGemvTest, HandlesHigherSplitCounts) {
+  for (int m = 1; m <= 3; ++m) {
+    RunSmallNGemvCaseAllTypes(m, 324, 10240);
+    RunSmallNGemvCaseAllTypes(m, 33, 1031);
+  }
+  RunSmallNGemvCaseAllTypes(17, 2, 4104);
+  RunSmallNGemvCaseAllTypes(9, 1, 5120);
+}
+
+TEST(MatMulSmallNGemvTest, SizesWorkspaceForHigherSplitCounts) {
+  EXPECT_EQ(SmallNGemvSplitK(1, 5120), 64);
+  EXPECT_EQ(SmallNGemvWorkspaceElements(3, 324, 10240), size_t{64 * 3 * 324});
+  EXPECT_EQ(SmallNGemvWorkspaceElements(17, 2, 4104), size_t{64 * 8 * 2});
+  EXPECT_EQ(SmallNGemvWorkspaceElements(3, 1024, 128), size_t{4 * 3 * 1024});
+}
+
+TEST(MatMulSmallNGemvTest, ReplaysHigherSplitCountsInCudaGraph) {
+  for (int m = 1; m <= 3; ++m) {
+    RunSmallNGemvCaseAllTypes(m, 324, 10240, true);
+    RunSmallNGemvCaseAllTypes(m, 33, 1031, true);
+  }
+  RunSmallNGemvCaseAllTypes(17, 2, 4104, true);
 }
 
 // The smallest eligible K still splits in two, so the vectorized kernel never needs a single-slice path.
