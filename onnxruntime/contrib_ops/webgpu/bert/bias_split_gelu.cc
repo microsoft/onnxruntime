@@ -54,6 +54,7 @@ Status BiasSplitGelu::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
   }
 
   int64_t channels = input_shape[2];
+  ORT_RETURN_IF(channels % 2 != 0, "BiasSplitGelu requires an even channel dimension.");
   input_shape[2] = channels / 2;  // for output shape calculation (N,S,D) -> (N,S,D/2)
 
   TensorShape bias_shape = bias->Shape();
@@ -62,11 +63,14 @@ Status BiasSplitGelu::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
                            "BiasSplitGelu bias should have 1 dimension with size equal to the number of channels.");
   }
 
-  int components = GetMaxComponents(channels);
+  int components = GetMaxComponents(channels / 2);
   channels /= components;
 
   auto* output = context.Output(0, input_shape);
   int64_t output_size = output->Shape().Size() / components;
+  if (output_size == 0) {
+    return Status::OK();
+  }
 
   BiasSplitGeluProgram program{};
   program

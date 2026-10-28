@@ -152,10 +152,10 @@ void CalcNearestPixel(OStringStream& os, ResizeNearestMode mode) {
   os << "return " << body << ";\n}\n";
 }
 
-std::string GetNearestPixelCaller(ResizeNearestMode mode) {
+std::string GetNearestPixelCaller(ResizeNearestMode mode, int32_t rank) {
   switch (mode) {
     case ResizeNearestMode::SIMPLE:
-      return "calc_nearest_pixel(input_coord, uniforms.scales[axis] < 1.0)";
+      return "calc_nearest_pixel(input_coord, " + GetElementAt("uniforms.scales", "axis", rank) + " < 1.0)";
       break;
     case ResizeNearestMode::ROUND_PREFER_FLOOR:
     case ResizeNearestMode::ROUND_PREFER_CEIL:
@@ -177,7 +177,7 @@ Status ResizeNearestProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   std::string scales_index_str = GetElementAt("uniforms.scales", "axis", rank_);
   std::string input_shape_index_str = GetElementAt("uniforms.input_shape", "axis", rank_);
-  std::string input_stride_index_str = GetElementAt("uniforms.input_stride", "axis", rank_ - 1);
+  std::string input_stride_index_str = rank_ > 1 ? GetElementAt("uniforms.input_stride", "axis", rank_ - 1) : "1u";
 
   std::stringstream extrapolation_ss;
   if (extrapolation_enabled_) {
@@ -193,11 +193,11 @@ Status ResizeNearestProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "  let output_indices = " << output.OffsetToIndices("global_idx") << ";\n"
                             << "  var input_index = u32(0);\n"
                             << "  for(var axis = 0; axis < " << rank_ << "; axis++) {\n"
-                            << "    var output_coord = output_indices[axis];\n"
-                            << "    if (" << scales_index_str << " != 1.0) {\n"
+                            << "    var output_coord = " << output.IndicesGet("output_indices", "axis") << ";\n"
+                            << "    if (" << ((coordinate_transform_mode_ == ResizeCoordinateTransformationMode::TF_CROP_AND_RESIZE || coordinate_transform_mode_ == ResizeCoordinateTransformationMode::TF_HALF_PIXEL_FOR_NN) ? "true" : scales_index_str + " != 1.0") << ") {\n"
                             << "      let input_coord = " << GetCoordinateCaller(coordinate_transform_mode_, rank_) << ";\n"
                             << extrapolation_ss.str()
-                            << "      var nearest_coord = " << GetNearestPixelCaller(nearest_mode_) << ";\n"
+                            << "      var nearest_coord = " << GetNearestPixelCaller(nearest_mode_, rank_) << ";\n"
                             << "      if (nearest_coord >= i32(" << input_shape_index_str << ")) {\n"
                             << "        output_coord = " << input_shape_index_str << " - 1;\n"
                             << "      } else if (nearest_coord < 0) {\n"
@@ -585,7 +585,8 @@ Status ResizeImpl(ComputeContext& context,
 
   // Should not hit this as we have already validated input rank/scales and we provide verbose error messages
   // to the user.
-  ORT_ENFORCE(is_2D || is_3D, "Only bilinear/trilinear and bicubic modes are supported in Resize");
+  ORT_ENFORCE(upsample_mode == UpsampleMode::NN || is_2D || is_3D,
+              "Only bilinear/trilinear and bicubic modes are supported in Resize");
 
   switch (upsample_mode) {
     case UpsampleMode::NN:

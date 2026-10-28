@@ -81,6 +81,10 @@ Status PoolProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // never crosses it, so a thread can carry four channels through the same window arithmetic.
   const auto& input = shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform);
+  shader.AdditionalImplementation() << "alias acc_value_t = "
+                                    << (input.NumComponents() == 4 ? "vec4<f32>" : input.NumComponents() == 2 ? "vec2<f32>"
+                                                                                                              : "f32")
+                                    << ";\n";
 
   // Declare and initialize the variables needed.
   std::string var_decl_code;
@@ -103,7 +107,7 @@ Status PoolProgram::GenerateShaderCode(ShaderHelper& shader) const {
     }
   } else {
     SS(var_decl_ss, kStringInitialSize);
-    var_decl_ss << "  var value = input_value_t(0);\n";
+    var_decl_ss << "  var value = acc_value_t(0);\n";
     // count (the averaging divisor) is accumulated in the kernel loop for both modes. A fixed
     // kernel_size divisor would be wrong under count_include_pad + ceil_mode: ceil_mode can extend
     // the last window past the padded region, and those overflow cells must not be counted.
@@ -111,7 +115,7 @@ Status PoolProgram::GenerateShaderCode(ShaderHelper& shader) const {
     var_decl_code = SS_GET(var_decl_ss);
 
     // Only real (non-pad) input cells contribute to the sum.
-    sampling_code = "      value += x_val;\n";
+    sampling_code = "      value += acc_value_t(x_val);\n";
 
     // Divisor: with count_include_pad, count every cell inside the padded region (excluding only the
     // ceil_mode overflow cells, flagged by is_outside_padded_region); otherwise count real input
@@ -127,7 +131,7 @@ Status PoolProgram::GenerateShaderCode(ShaderHelper& shader) const {
     } else {
       // Guard against an all-padding window (count == 0): leave value at 0 instead of dividing by zero.
       downsampling_ss << "  if (count > 0u) {\n"
-                      << "    value /= input_value_t(" << (is_float16_ ? "f16" : "f32") << "(count));\n"
+                      << "    value /= acc_value_t(f32(count));\n"
                       << "  }\n";
     }
     downsampling_code = SS_GET(downsampling_ss);
@@ -170,7 +174,7 @@ Status PoolProgram::GenerateShaderCode(ShaderHelper& shader) const {
   std::string sum_or_max_shared;
   if (use_parallel_reduction_) {
     shader.AdditionalImplementation()
-        << "var<workgroup> sum_or_max_shared : array<" << (is_float16_ ? "f16" : "f32") << ",workgroup_size_x >;\n"
+        << "var<workgroup> sum_or_max_shared : array<" << (is_max_pool_ && is_float16_ ? "f16" : "f32") << ",workgroup_size_x >;\n"
         << (!is_max_pool_ ? "var<workgroup> count_shared : array<u32, workgroup_size_x>;\n" : "");
 
     SS(shared_ss, 512);
@@ -204,13 +208,13 @@ Status PoolProgram::GenerateShaderCode(ShaderHelper& shader) const {
     if (!is_max_pool_) {
       // Guard against an all-padding window (count == 0): leave value at 0 instead of dividing by zero.
       output_ss << "    if (count_shared[0] > 0u) {\n"
-                << "      value /= " << (is_float16_ ? "f16" : "f32") << "(count_shared[0]);\n"
+                << "      value /= f32(count_shared[0]);\n"
                 << "    }\n";
     }
-    output_ss << "    " << output.SetByOffset("workgroup_idx", "value") << ";\n"
+    output_ss << "    " << output.SetByOffset("workgroup_idx", "input_value_t(value)") << ";\n"
               << "  }\n";
   } else {
-    output_ss << "  " << output.SetByOffset("global_idx", "value") << ";\n";
+    output_ss << "  " << output.SetByOffset("global_idx", "input_value_t(value)") << ";\n";
   }
   std::string output_code = SS_GET(output_ss);
 

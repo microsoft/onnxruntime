@@ -17,7 +17,7 @@ using onnxruntime::webgpu::ShaderHelper;
 using onnxruntime::webgpu::WebGpuKernel;
 
 // Computes per-(batch, group) mean and inverse standard deviation of x (+ skip + bias).
-// One workgroup per (batch, group); output is [N * G] with 2 components (mean, inv_std) in f32.
+// One workgroup per (batch, group); output packs shift, residual mean, inverse stddev and padding in f32.
 class GroupNormStatsProgram final : public Program<GroupNormStatsProgram> {
  public:
   GroupNormStatsProgram(int components, uint32_t workgroup_size, bool has_skip, bool skip_broadcast, bool has_bias)

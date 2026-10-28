@@ -126,7 +126,7 @@ std::string GenerateAtomicAddNonIntegerCode(const ShaderVariableHelper& output, 
      << "  let new_output_" << output_type << " = old_output_" << output_type << " + " << add_value << ";\n"
      << "  let new_output_i32 = bitcast<i32>(new_output_" << output_type << ");\n"
      << "  let output_compare_exchange = atomicCompareExchangeWeak(&" << get_output_by_offset << ", old_output_i32, new_output_i32);\n"
-     << "  if (output_compare_exchange.old_value == old_output_i32) {\n"
+     << "  if (output_compare_exchange.exchanged) {\n"
      << "    break;\n"
      << "  }\n"
      << "}\n";

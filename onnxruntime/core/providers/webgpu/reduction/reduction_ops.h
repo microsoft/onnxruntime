@@ -67,7 +67,8 @@ class ReduceSharedProgram final : public Program<ReduceSharedProgram> {
     }
   }
   Status GenerateShaderCode(ShaderHelper& wgpuShaderModuleAddRef) const override;
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"reduceSize", ProgramUniformVariableDataType::Uint32});
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"reduceSize", ProgramUniformVariableDataType::Uint32},
+                                          {"output_size", ProgramUniformVariableDataType::Uint32});
 
  private:
   const ReduceOpType reduce_op_type_;
