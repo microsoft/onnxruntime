@@ -6,7 +6,7 @@ ARG BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/buil
 FROM $BASEIMAGE
 
 ADD scripts /tmp/scripts
-RUN /tmp/scripts/install_dotnet.sh && dnf install -y perl-core && dnf clean all
+RUN dnf install -y dotnet-sdk-10.0 perl-core && dnf clean all
 
 ARG TRT_VERSION
 
