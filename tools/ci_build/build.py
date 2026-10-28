@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 import os
 import platform
@@ -2437,13 +2438,35 @@ def run_csharp_tests(
         run_subprocess(cmd_args, cwd=csharp_source_dir)
 
 
-def generate_documentation(source_dir, build_dir, configs, validate):
+def generate_documentation(source_dir, build_dir, configs, validate, use_webgpu=None):
+    if use_webgpu and use_webgpu != "shared_lib":
+        raise BuildError("WebGPU documentation generation requires --use_webgpu shared_lib.")
+
     # Randomly choose one build config
     config = next(iter(configs))
     cwd = get_config_build_dir(build_dir, config)
     if is_windows():
         cwd = os.path.join(cwd, config)
 
+    providers = ["CPU", "CUDA", "DML"]
+    plugin_args = []
+    if use_webgpu:
+        library_name = (
+            "onnxruntime_providers_webgpu.dll"
+            if is_windows()
+            else "libonnxruntime_providers_webgpu.dylib"
+            if is_macOS()
+            else "libonnxruntime_providers_webgpu.so"
+        )
+        library_path = os.path.abspath(os.path.join(cwd, library_name))
+        if not os.path.isfile(library_path):
+            raise BuildError(f"WebGPU documentation requires the built plugin library: {library_path}")
+        providers.append("WebGPU")
+        plugin_args = ["--plugin-ep", f"WebGpuExecutionProvider:{library_path}"]
+
+    artifact_dir = Path(cwd) / "generated-docs"
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    metadata_path = artifact_dir / "generation-metadata.json"
     contrib_op_doc_path = os.path.join(source_dir, "docs", "ContribOperators.md")
     opkernel_doc_path = os.path.join(source_dir, "docs", "OperatorKernels.md")
     shutil.copy(os.path.join(source_dir, "tools", "python", "gen_contrib_doc.py"), cwd)
@@ -2453,21 +2476,36 @@ def generate_documentation(source_dir, build_dir, configs, validate):
         [sys.executable, "gen_contrib_doc.py", "--output_path", contrib_op_doc_path, "--domains", "com.microsoft"],
         cwd=cwd,
     )
-    # we currently limit the documentation created by a build to a subset of EP's.
-    # Run get_opkernel_doc.py directly if you need/want documentation from other EPs that are enabled in the build.
+    # Other enabled EPs can be documented by running gen_opkernel_doc.py directly.
     run_subprocess(
         [
             sys.executable,
             "gen_opkernel_doc.py",
             "--output_path",
             opkernel_doc_path,
+            "--metadata_path",
+            str(metadata_path),
             "--providers",
-            "CPU",
-            "CUDA",
-            "DML",
+            *providers,
+            *plugin_args,
         ],
         cwd=cwd,
     )
+
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata["source_commit"] = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=source_dir).decode().strip()
+    metadata["build_configuration"] = config
+    metadata["documents"] = {}
+    for doc_path in (opkernel_doc_path, contrib_op_doc_path):
+        document = Path(doc_path)
+        shutil.copy(document, artifact_dir / document.name)
+        metadata["documents"][document.name] = hashlib.sha256(document.read_bytes()).hexdigest()
+    metadata_path.write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    # Signal readiness before validation so stale, but successfully generated, docs are still uploaded.
+    if github_output := os.environ.get("GITHUB_OUTPUT"):
+        with open(github_output, "a", encoding="utf-8") as output:
+            output.write("documentation_generated=true\n")
 
     if validate:
         try:
@@ -2487,7 +2525,7 @@ def generate_documentation(source_dir, build_dir, configs, validate):
                     )
                     log.debug("diff:\n" + diff)  # noqa: G003
 
-            diff_file(opkernel_doc_path, " with CPU, CUDA and DML execution providers enabled")
+            diff_file(opkernel_doc_path, f" with {', '.join(providers)} execution providers enabled")
             diff_file(contrib_op_doc_path)
 
             if have_diff:
@@ -2877,7 +2915,7 @@ def main():
         else:
             # assumes build has occurred for easier use in CI where we don't always build via build.py and need to run
             # documentation generation as a separate task post-build
-            generate_documentation(source_dir, build_dir, configs, args.gen_doc == "validate")
+            generate_documentation(source_dir, build_dir, configs, args.gen_doc == "validate", args.use_webgpu)
 
     log.info("Build complete")
 

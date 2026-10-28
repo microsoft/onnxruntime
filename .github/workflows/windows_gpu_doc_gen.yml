@@ -102,6 +102,10 @@ jobs:
         working-directory: ${{ github.workspace }}
         shell: cmd
 
+      - name: Test documentation tooling
+        run: python -m unittest discover -s tools\ci_build -p test_generate_documentation.py -v
+        shell: pwsh
+
       - name: Download CUDA SDK v12.8
         working-directory: ${{ runner.temp }}
         run: |
@@ -161,7 +165,7 @@ jobs:
       - name: Build
         working-directory: ${{ runner.temp }}
         run: |
-          python.exe ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --build_dir build --skip_submodule_sync --build_csharp --parallel --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --update --build --gen_doc validate --skip_tests --build_wheel --use_dml --use_cuda --cuda_home="$env:RUNNER_TEMP\v12.8" --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --build_dir build --skip_submodule_sync --build_csharp --parallel --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --update --build --skip_tests --build_wheel --use_full_protobuf --use_dml --use_cuda --use_webgpu shared_lib --cuda_home="$env:RUNNER_TEMP\v12.8" --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
@@ -179,22 +183,24 @@ jobs:
           whl-directory: ${{ runner.temp }}\build\RelWithDebInfo\RelWithDebInfo\dist
 
       - name: Generate and validate documentation
+        id: generate_docs
+        env:
+          ORT_WEBGPU_EP_ALLOW_SOFTWARE_ADAPTER: '1'
         working-directory: ${{ runner.temp }}\build
         run: |
-          python.exe ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --build_dir ${{ runner.temp }}\build --gen_doc validate
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --build_dir ${{ runner.temp }}\build --gen_doc validate --use_webgpu shared_lib
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
         shell: pwsh
 
-      - name: Upload updated documentation
-        if: failure()
+      - name: Upload generated documentation
+        if: always() && steps.generate_docs.outputs.documentation_generated == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: updated-docs
-          path: |
-            ${{ github.workspace }}/docs/OperatorKernels.md
-            ${{ github.workspace }}/docs/ContribOperators.md
+          path: ${{ runner.temp }}/build/RelWithDebInfo/RelWithDebInfo/generated-docs/
+          if-no-files-found: error
 
   kernel_documentation:
     name: Windows GPU Kernel Documentation Validation
