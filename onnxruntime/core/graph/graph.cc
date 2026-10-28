@@ -4452,8 +4452,9 @@ Status Graph::InjectExternalInitializedTensors(const InlinedHashMap<std::string,
 
 Status Graph::InjectExternalInitializersFromFileSources(
     const std::unordered_map<PathString, std::shared_ptr<RandomAccessFile>>& files) {
-  ORT_RETURN_IF(endian::native != endian::little,
-                "File-source initializer loading requires a little-endian host.");
+  if constexpr (endian::native != endian::little) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "File-source initializer loading requires a little-endian host.");
+  }
   std::vector<Graph*> subgraphs;
   FindAllSubgraphs(subgraphs);
   auto inject = [&](Graph& graph) -> Status {
