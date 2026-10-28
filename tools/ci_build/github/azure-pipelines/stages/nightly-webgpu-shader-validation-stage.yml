@@ -2,8 +2,13 @@ stages:
 - stage: WebGPU_Shader_Validation
   displayName: WebGPU shader validation
   dependsOn: []
+
   variables:
-    ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
+  - name: ALLOW_RELEASED_ONNX_OPSET_ONLY
+    value: 0
+  - name: Codeql.Enabled
+    value: false
+
   jobs:
   - job: Build
     displayName: Build WebGPU tests
