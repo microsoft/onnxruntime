@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -12,6 +13,7 @@
 #include <fstream>
 #include <limits>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -1024,6 +1026,398 @@ TEST(QMoESharedLayoutTest, PromoteCleanPrivateMappingAndParallelChunkedLoadPrese
   store.Shutdown();
   munmap(clean_map, file_bytes);
   munmap(dirty_map, file_bytes);
+  close(fd);
+  std::filesystem::remove(tmp_path);
+}
+
+TEST(QMoESharedLayoutTest, ReadyFirstFusedColdExpertGroupCoversMixedHitsMissesDuplicatesAndFailures) {
+  struct TestPaddedAtomicInt {
+    alignas(64) std::atomic<int> value{0};
+  };
+  constexpr int kReadyDoneVal = shared::FileExpertStore::kLoadChunksPerExpert + 1;
+
+  const long page_size_raw = sysconf(_SC_PAGESIZE);
+  ASSERT_GT(page_size_raw, 0);
+  const size_t page_size = static_cast<size_t>(page_size_raw);
+  constexpr int64_t kNumExperts = 6;
+  constexpr int64_t kScaleRows = 16;
+  constexpr int64_t kScaleCols = 8;
+  const size_t w0_bytes = page_size * 2;
+  const size_t w1_bytes = page_size;
+  const size_t s_bytes = static_cast<size_t>(kScaleRows * kScaleCols) * sizeof(uint16_t);
+  const size_t stride =
+      ((w0_bytes + w1_bytes + s_bytes + shared::kBankAlignment - 1) / shared::kBankAlignment) *
+      shared::kBankAlignment;
+
+  const auto tmp_path = std::filesystem::temp_directory_path() / "ort_qmoe_ready_first_fused_group_test.bin";
+  const size_t file_bytes = static_cast<size_t>(kNumExperts) * w0_bytes;
+  {
+    std::vector<uint8_t> raw(file_bytes);
+    for (int64_t e = 0; e < kNumExperts; ++e) {
+      std::fill(raw.begin() + static_cast<ptrdiff_t>(e * w0_bytes),
+                raw.begin() + static_cast<ptrdiff_t>((e + 1) * w0_bytes),
+                static_cast<uint8_t>(10 + e));
+    }
+    std::ofstream out(tmp_path, std::ios::binary | std::ios::trunc);
+    ASSERT_TRUE(out.is_open());
+    out.write(reinterpret_cast<const char*>(raw.data()), static_cast<std::streamsize>(raw.size()));
+  }
+
+  const int fd = open(tmp_path.c_str(), O_RDONLY | O_CLOEXEC);
+  ASSERT_GE(fd, 0);
+  void* mapped = mmap(nullptr, file_bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
+  ASSERT_NE(mapped, MAP_FAILED);
+  ASSERT_TRUE(moe_offload::PromoteFileMappingToSharedReadOnly(mapped, file_bytes));
+
+  std::vector<uint8_t> w1_backing(static_cast<size_t>(kNumExperts) * w1_bytes);
+  for (int64_t e = 0; e < kNumExperts; ++e) {
+    std::fill(w1_backing.begin() + static_cast<ptrdiff_t>(e * w1_bytes),
+              w1_backing.begin() + static_cast<ptrdiff_t>((e + 1) * w1_bytes),
+              static_cast<uint8_t>(40 + e));
+  }
+  std::vector<uint16_t> s_backing(static_cast<size_t>(kNumExperts * kScaleRows * kScaleCols), 3U);
+
+  const shared::FileExpertStore::MappedBank banks[]{
+      {mapped, w0_bytes, 0, nullptr, 0},
+      {w1_backing.data(), w1_bytes, w0_bytes, nullptr, 0},
+      {s_backing.data(), s_bytes, w0_bytes + w1_bytes, nullptr, 0}};
+
+  auto run_parallel_serial = [](ptrdiff_t total, auto&& fn) {
+    for (ptrdiff_t t = 0; t < total; ++t) {
+      fn(t);
+    }
+  };
+
+  auto run_parallel_pool = [](ptrdiff_t total, auto&& fn) {
+    std::atomic<ptrdiff_t> next_task{0};
+    constexpr int kWorkers = 4;
+    std::vector<std::thread> workers;
+    workers.reserve(kWorkers - 1);
+    auto worker_loop = [&]() {
+      while (true) {
+        const ptrdiff_t t = next_task.fetch_add(1, std::memory_order_relaxed);
+        if (t >= total) break;
+        fn(t);
+      }
+    };
+    for (int w = 0; w < kWorkers - 1; ++w) {
+      workers.emplace_back(worker_loop);
+    }
+    worker_loop();
+    for (auto& th : workers) {
+      th.join();
+    }
+  };
+
+  auto expect_stage_order = [](const std::vector<std::pair<int, int>>& trace,
+                               const std::vector<int>& expected_slots, int tasks_per_slot) {
+    ASSERT_EQ(trace.size(), expected_slots.size() * static_cast<size_t>(tasks_per_slot));
+    size_t idx = 0;
+    for (int slot : expected_slots) {
+      for (int tile = 0; tile < tasks_per_slot; ++tile, ++idx) {
+        EXPECT_EQ(trace[idx].first, slot) << "idx=" << idx;
+        EXPECT_EQ(trace[idx].second, tile) << "idx=" << idx;
+      }
+    }
+  };
+
+  // 1a. Deterministic serial verification of FC1 and FC2 (slot, col_tile) dispatch order across
+  // mixed {0 (miss), 2 (hit), 1 (miss), 3 (hit)} -> {1, 3, 0, 2}, all-hit -> {0, 1, 2, 3},
+  // and 4-slot all-miss -> {0, 1, 2, 3}:
+  {
+    constexpr int kFc1Tasks = 4;
+    constexpr int kFc2Tasks = 2;
+    const int32_t group_experts[4] = {0, 2, 1, 3};
+
+    // Mixed ready/miss group (ready_slot = {0, 1, 0, 1}):
+    {
+      shared::FileExpertStore store;
+      ASSERT_TRUE(store.InitializeMapped(banks, std::size(banks), kNumExperts, stride, /*cache_slots=*/4));
+      shared::ExpertBlockLease seed{};
+      ASSERT_TRUE(store.AcquireReady(2, &seed));
+      store.ReleaseLease(2);
+      ASSERT_TRUE(store.AcquireReady(3, &seed));
+      store.ReleaseLease(3);
+
+      std::array<shared::ExpertBlockLease, 4> leases{};
+      std::array<uint8_t, 4> lease_held{{0, 0, 0, 0}};
+      std::array<uint8_t*, 4> slot_load_dst{{nullptr, nullptr, nullptr, nullptr}};
+      std::vector<int> miss_load_slots;
+      std::array<TestPaddedAtomicInt, 4> slot_ready{};
+      std::array<TestPaddedAtomicInt, 4> fc1_done{};
+      for (int s = 0; s < 4; ++s) {
+        slot_ready[static_cast<size_t>(s)].value.store(kReadyDoneVal, std::memory_order_relaxed);
+        fc1_done[static_cast<size_t>(s)].value.store(0, std::memory_order_relaxed);
+        if (store.TryAcquireCached(group_experts[s], &leases[static_cast<size_t>(s)])) {
+          lease_held[static_cast<size_t>(s)] = 1;
+        } else {
+          ASSERT_EQ(store.BeginLoadExpert(group_experts[s], &slot_load_dst[static_cast<size_t>(s)],
+                                          &leases[static_cast<size_t>(s)]),
+                    1);
+          lease_held[static_cast<size_t>(s)] = 1;
+          slot_ready[static_cast<size_t>(s)].value.store(0, std::memory_order_relaxed);
+          miss_load_slots.push_back(s);
+        }
+      }
+
+      std::vector<std::pair<int, int>> fc1_trace;
+      std::vector<std::pair<int, int>> fc2_trace;
+      ASSERT_TRUE(shared::RunReadyFirstFusedColdExpertGroup<64>(
+          store, 4, group_experts, miss_load_slots.data(), miss_load_slots.size(), slot_load_dst.data(),
+          leases.data(), lease_held.data(), kFc1Tasks, kFc2Tasks, slot_ready.data(), fc1_done.data(),
+          [](int, const shared::ExpertBlockLease&) {},
+          [&](int slot, int col_tile) { fc1_trace.emplace_back(slot, col_tile); },
+          [&](int slot, int col_tile) { fc2_trace.emplace_back(slot, col_tile); },
+          run_parallel_serial));
+      expect_stage_order(fc1_trace, {1, 3, 0, 2}, kFc1Tasks);
+      expect_stage_order(fc2_trace, {1, 3, 0, 2}, kFc2Tasks);
+
+      // Homogeneous all-ready group ({1, 1, 1, 1}) preserves identity slot order {0, 1, 2, 3}:
+      fc1_trace.clear();
+      fc2_trace.clear();
+      for (int s = 0; s < 4; ++s) {
+        slot_ready[static_cast<size_t>(s)].value.store(kReadyDoneVal, std::memory_order_relaxed);
+        fc1_done[static_cast<size_t>(s)].value.store(0, std::memory_order_relaxed);
+      }
+      ASSERT_TRUE(shared::RunReadyFirstFusedColdExpertGroup<64>(
+          store, 4, group_experts, nullptr, 0, slot_load_dst.data(),
+          leases.data(), lease_held.data(), kFc1Tasks, kFc2Tasks, slot_ready.data(), fc1_done.data(),
+          [](int, const shared::ExpertBlockLease&) {},
+          [&](int slot, int col_tile) { fc1_trace.emplace_back(slot, col_tile); },
+          [&](int slot, int col_tile) { fc2_trace.emplace_back(slot, col_tile); },
+          run_parallel_serial));
+      expect_stage_order(fc1_trace, {0, 1, 2, 3}, kFc1Tasks);
+      expect_stage_order(fc2_trace, {0, 1, 2, 3}, kFc2Tasks);
+      for (int s = 0; s < 4; ++s) {
+        if (lease_held[static_cast<size_t>(s)]) store.ReleaseLease(group_experts[s]);
+      }
+      store.Shutdown();
+    }
+
+    // Homogeneous all-miss group ({0, 0, 0, 0}) preserves identity slot order {0, 1, 2, 3}:
+    {
+      shared::FileExpertStore store;
+      ASSERT_TRUE(store.InitializeMapped(banks, std::size(banks), kNumExperts, stride, /*cache_slots=*/4));
+      std::array<shared::ExpertBlockLease, 4> leases{};
+      std::array<uint8_t, 4> lease_held{{0, 0, 0, 0}};
+      std::array<uint8_t*, 4> slot_load_dst{{nullptr, nullptr, nullptr, nullptr}};
+      std::vector<int> miss_load_slots;
+      std::array<TestPaddedAtomicInt, 4> slot_ready{};
+      std::array<TestPaddedAtomicInt, 4> fc1_done{};
+      for (int s = 0; s < 4; ++s) {
+        ASSERT_EQ(store.BeginLoadExpert(group_experts[s], &slot_load_dst[static_cast<size_t>(s)],
+                                        &leases[static_cast<size_t>(s)]),
+                  1);
+        lease_held[static_cast<size_t>(s)] = 1;
+        slot_ready[static_cast<size_t>(s)].value.store(0, std::memory_order_relaxed);
+        fc1_done[static_cast<size_t>(s)].value.store(0, std::memory_order_relaxed);
+        miss_load_slots.push_back(s);
+      }
+
+      std::vector<std::pair<int, int>> fc1_trace;
+      std::vector<std::pair<int, int>> fc2_trace;
+      ASSERT_TRUE(shared::RunReadyFirstFusedColdExpertGroup<64>(
+          store, 4, group_experts, miss_load_slots.data(), miss_load_slots.size(), slot_load_dst.data(),
+          leases.data(), lease_held.data(), kFc1Tasks, kFc2Tasks, slot_ready.data(), fc1_done.data(),
+          [](int, const shared::ExpertBlockLease&) {},
+          [&](int slot, int col_tile) { fc1_trace.emplace_back(slot, col_tile); },
+          [&](int slot, int col_tile) { fc2_trace.emplace_back(slot, col_tile); },
+          run_parallel_serial));
+      expect_stage_order(fc1_trace, {0, 1, 2, 3}, kFc1Tasks);
+      expect_stage_order(fc2_trace, {0, 1, 2, 3}, kFc2Tasks);
+      for (int s = 0; s < 4; ++s) {
+        if (lease_held[static_cast<size_t>(s)]) store.ReleaseLease(group_experts[s]);
+      }
+      store.Shutdown();
+    }
+  }
+
+  // 1b. Threaded mixed group {0 (miss), 2 (hit), 1 (miss), 3 (hit)}:
+  // Verify stable ready-first slot ordering {1, 3, 0, 2} and exact per-slot outputs under concurrency.
+  {
+    shared::FileExpertStore store;
+    ASSERT_TRUE(store.InitializeMapped(banks, std::size(banks), kNumExperts, stride, /*cache_slots=*/4));
+    shared::ExpertBlockLease seed{};
+    ASSERT_TRUE(store.AcquireReady(2, &seed));
+    store.ReleaseLease(2);
+    ASSERT_TRUE(store.AcquireReady(3, &seed));
+    store.ReleaseLease(3);
+
+    const int32_t group_experts[4] = {0, 2, 1, 3};
+    std::array<shared::ExpertBlockLease, 4> leases{};
+    std::array<uint8_t, 4> lease_held{{0, 0, 0, 0}};
+    std::array<uint8_t*, 4> slot_load_dst{{nullptr, nullptr, nullptr, nullptr}};
+    std::vector<int> miss_load_slots;
+    std::array<TestPaddedAtomicInt, 4> slot_ready{};
+    std::array<TestPaddedAtomicInt, 4> fc1_done{};
+
+    for (int s = 0; s < 4; ++s) {
+      slot_ready[static_cast<size_t>(s)].value.store(kReadyDoneVal, std::memory_order_relaxed);
+      fc1_done[static_cast<size_t>(s)].value.store(0, std::memory_order_relaxed);
+      if (store.TryAcquireCached(group_experts[s], &leases[static_cast<size_t>(s)])) {
+        lease_held[static_cast<size_t>(s)] = 1;
+      } else {
+        ASSERT_EQ(store.BeginLoadExpert(group_experts[s], &slot_load_dst[static_cast<size_t>(s)],
+                                        &leases[static_cast<size_t>(s)]),
+                  1);
+        lease_held[static_cast<size_t>(s)] = 1;
+        slot_ready[static_cast<size_t>(s)].value.store(0, std::memory_order_relaxed);
+        miss_load_slots.push_back(s);
+      }
+    }
+    std::array<int, 4> order{};
+    int ready_count = 0;
+    EXPECT_TRUE(shared::BuildReadyFirstSlotOrder(4, slot_ready.data(), kReadyDoneVal, order.data(), &ready_count));
+    EXPECT_EQ(ready_count, 2);
+    EXPECT_EQ(order[0], 1);
+    EXPECT_EQ(order[1], 3);
+    EXPECT_EQ(order[2], 0);
+    EXPECT_EQ(order[3], 2);
+
+    constexpr int kFc1Tasks = 4;
+    constexpr int kFc2Tasks = 2;
+    std::array<std::atomic<int>, 4> slot_sum{{0, 0, 0, 0}};
+    ASSERT_TRUE(shared::RunReadyFirstFusedColdExpertGroup<64>(
+        store, 4, group_experts, miss_load_slots.data(), miss_load_slots.size(), slot_load_dst.data(),
+        leases.data(), lease_held.data(), kFc1Tasks, kFc2Tasks, slot_ready.data(), fc1_done.data(),
+        [](int, const shared::ExpertBlockLease&) {},
+        [&](int slot, int /*col_tile*/) {
+          slot_sum[static_cast<size_t>(slot)].fetch_add(
+              leases[static_cast<size_t>(slot)].data[0], std::memory_order_relaxed);
+        },
+        [&](int slot, int /*col_tile*/) {
+          EXPECT_EQ(fc1_done[static_cast<size_t>(slot)].value.load(std::memory_order_acquire), kFc1Tasks);
+          slot_sum[static_cast<size_t>(slot)].fetch_add(
+              leases[static_cast<size_t>(slot)].data[w0_bytes], std::memory_order_relaxed);
+        },
+        run_parallel_pool));
+    EXPECT_EQ(slot_sum[0].load(), kFc1Tasks * 10 + kFc2Tasks * 40);
+    EXPECT_EQ(slot_sum[1].load(), kFc1Tasks * 12 + kFc2Tasks * 42);
+    EXPECT_EQ(slot_sum[2].load(), kFc1Tasks * 11 + kFc2Tasks * 41);
+    EXPECT_EQ(slot_sum[3].load(), kFc1Tasks * 13 + kFc2Tasks * 43);
+
+    // 2. All hits on {0, 2, 1, 3} now that all 4 are cached:
+    miss_load_slots.clear();
+    for (int s = 0; s < 4; ++s) {
+      slot_ready[static_cast<size_t>(s)].value.store(kReadyDoneVal, std::memory_order_relaxed);
+      fc1_done[static_cast<size_t>(s)].value.store(0, std::memory_order_relaxed);
+      slot_sum[static_cast<size_t>(s)].store(0, std::memory_order_relaxed);
+    }
+    EXPECT_FALSE(shared::BuildReadyFirstSlotOrder(4, slot_ready.data(), kReadyDoneVal, order.data(), &ready_count));
+    EXPECT_EQ(ready_count, 4);
+    ASSERT_TRUE(shared::RunReadyFirstFusedColdExpertGroup<64>(
+        store, 4, group_experts, nullptr, 0, slot_load_dst.data(),
+        leases.data(), lease_held.data(), kFc1Tasks, kFc2Tasks, slot_ready.data(), fc1_done.data(),
+        [](int, const shared::ExpertBlockLease&) {},
+        [&](int slot, int /*col_tile*/) {
+          slot_sum[static_cast<size_t>(slot)].fetch_add(
+              leases[static_cast<size_t>(slot)].data[0], std::memory_order_relaxed);
+        },
+        [&](int slot, int /*col_tile*/) {
+          slot_sum[static_cast<size_t>(slot)].fetch_add(
+              leases[static_cast<size_t>(slot)].data[w0_bytes], std::memory_order_relaxed);
+        },
+        run_parallel_pool));
+    EXPECT_EQ(slot_sum[0].load(), kFc1Tasks * 10 + kFc2Tasks * 40);
+    EXPECT_EQ(slot_sum[3].load(), kFc1Tasks * 13 + kFc2Tasks * 43);
+    for (int s = 0; s < 4; ++s) {
+      if (lease_held[static_cast<size_t>(s)]) store.ReleaseLease(group_experts[s]);
+    }
+
+    // 3. All misses + duplicate expert {4 (miss), 5 (miss), 4 (dup miss)}:
+    const int32_t dup_miss_group[3] = {4, 5, 4};
+    lease_held = {{0, 0, 0}};
+    miss_load_slots.clear();
+    for (int s = 0; s < 3; ++s) {
+      fc1_done[static_cast<size_t>(s)].value.store(0, std::memory_order_relaxed);
+      slot_ready[static_cast<size_t>(s)].value.store(0, std::memory_order_relaxed);
+      slot_sum[static_cast<size_t>(s)].store(0, std::memory_order_relaxed);
+    }
+    ASSERT_EQ(store.BeginLoadExpert(4, &slot_load_dst[0], &leases[0]), 1);
+    lease_held[0] = 1;
+    miss_load_slots.push_back(0);
+    ASSERT_EQ(store.BeginLoadExpert(5, &slot_load_dst[1], &leases[1]), 1);
+    lease_held[1] = 1;
+    miss_load_slots.push_back(1);
+    leases[2] = leases[0];
+    EXPECT_FALSE(shared::BuildReadyFirstSlotOrder(3, slot_ready.data(), kReadyDoneVal, order.data(), &ready_count));
+    EXPECT_EQ(ready_count, 0);
+    std::atomic<int> ready_cb_count{0};
+    ASSERT_TRUE(shared::RunReadyFirstFusedColdExpertGroup<64>(
+        store, 3, dup_miss_group, miss_load_slots.data(), miss_load_slots.size(), slot_load_dst.data(),
+        leases.data(), lease_held.data(), kFc1Tasks, kFc2Tasks, slot_ready.data(), fc1_done.data(),
+        [&](int /*s*/, const shared::ExpertBlockLease&) {
+          ready_cb_count.fetch_add(1, std::memory_order_relaxed);
+        },
+        [&](int slot, int /*col_tile*/) {
+          slot_sum[static_cast<size_t>(slot)].fetch_add(
+              leases[static_cast<size_t>(slot)].data[0], std::memory_order_relaxed);
+        },
+        [&](int slot, int /*col_tile*/) {
+          slot_sum[static_cast<size_t>(slot)].fetch_add(
+              leases[static_cast<size_t>(slot)].data[w0_bytes], std::memory_order_relaxed);
+        },
+        run_parallel_pool));
+    EXPECT_EQ(ready_cb_count.load(), 3);
+    EXPECT_EQ(slot_sum[0].load(), kFc1Tasks * 14 + kFc2Tasks * 44);
+    EXPECT_EQ(slot_sum[1].load(), kFc1Tasks * 15 + kFc2Tasks * 45);
+    EXPECT_EQ(slot_sum[2].load(), kFc1Tasks * 14 + kFc2Tasks * 44);
+    for (int s = 0; s < 3; ++s) {
+      if (lease_held[static_cast<size_t>(s)]) store.ReleaseLease(dup_miss_group[s]);
+    }
+    store.Shutdown();
+  }
+
+  // 4. Load failure on truncated backing file rolls back failed slot and unblocks workers without deadlock:
+  {
+    shared::FileExpertStore store;
+    ASSERT_TRUE(store.InitializeMapped(banks, std::size(banks), kNumExperts, stride, /*cache_slots=*/2));
+    shared::ExpertBlockLease seed{};
+    ASSERT_TRUE(store.AcquireReady(0, &seed));
+    store.ReleaseLease(0);
+
+    {
+      std::ofstream trunc_out(tmp_path, std::ios::binary | std::ios::trunc);
+      ASSERT_TRUE(trunc_out.is_open());
+      std::vector<uint8_t> short_raw(w0_bytes, 10U);
+      trunc_out.write(reinterpret_cast<const char*>(short_raw.data()),
+                      static_cast<std::streamsize>(short_raw.size()));
+    }
+
+    const int32_t bad_group[2] = {5, 0};
+    std::array<shared::ExpertBlockLease, 2> leases{};
+    std::array<uint8_t, 2> lease_held{{0, 0}};
+    std::array<uint8_t*, 2> slot_load_dst{{nullptr, nullptr}};
+    std::array<TestPaddedAtomicInt, 2> slot_ready{};
+    std::array<TestPaddedAtomicInt, 2> fc1_done{};
+    ASSERT_EQ(store.BeginLoadExpert(5, &slot_load_dst[0], &leases[0]), 1);
+    lease_held[0] = 1;
+    slot_ready[0].value.store(0, std::memory_order_relaxed);
+    ASSERT_TRUE(store.TryAcquireCached(0, &leases[1]));
+    lease_held[1] = 1;
+    slot_ready[1].value.store(kReadyDoneVal, std::memory_order_relaxed);
+    const int miss_slot = 0;
+
+    EXPECT_FALSE(shared::RunReadyFirstFusedColdExpertGroup<64>(
+        store, 2, bad_group, &miss_slot, 1, slot_load_dst.data(),
+        leases.data(), lease_held.data(), 4, 2, slot_ready.data(), fc1_done.data(),
+        [](int, const shared::ExpertBlockLease&) {},
+        [&](int slot, int /*col_tile*/) {
+          EXPECT_NE(slot, 0);
+        },
+        [&](int slot, int /*col_tile*/) {
+          EXPECT_NE(slot, 0);
+        },
+        run_parallel_pool));
+    EXPECT_EQ(lease_held[0], 0);
+    EXPECT_EQ(lease_held[1], 1);
+    store.ReleaseLease(0);
+    EXPECT_FALSE(store.TryAcquireCached(5, &seed));
+    EXPECT_TRUE(store.Evict(0));
+    store.Shutdown();
+  }
+
+  munmap(mapped, file_bytes);
   close(fd);
   std::filesystem::remove(tmp_path);
 }

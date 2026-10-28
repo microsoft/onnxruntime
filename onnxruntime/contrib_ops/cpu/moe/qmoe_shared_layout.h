@@ -3,9 +3,15 @@
 // This header is intentionally independent of ORT internal headers so it can be unit-tested standalone.
 #pragma once
 
+#include <array>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+
+#if defined(_MSC_VER) && (defined(_M_AMD64) || defined(_M_IX86))
+#include <intrin.h>
+#endif
 
 namespace onnxruntime {
 namespace contrib {
@@ -202,6 +208,120 @@ class FileExpertStore {
 size_t ComputePointerAlignment(const void* ptr) noexcept;
 bool MakeExpertBlockLease(const void* ptr, size_t length, size_t min_required_alignment,
                           ExpertBlockLease* lease) noexcept;
+
+// Stable ready-first slot permutation: places initially ready slots (slot_ready[s] >= ready_done_val)
+// before demand-loading slots (slot_ready[s] < ready_done_val), preserving relative slot order within each partition.
+// Returns true iff at least one ready slot appeared after a demand-loading slot (so the order changed).
+template <typename PaddedAtomicIntT>
+inline bool BuildReadyFirstSlotOrder(int group_size, const PaddedAtomicIntT* slot_ready,
+                                     int ready_done_val, int* out_slot_order,
+                                     int* out_ready_count = nullptr) noexcept {
+  int write_idx = 0;
+  bool seen_miss = false;
+  bool reordered = false;
+  for (int s = 0; s < group_size; ++s) {
+    if (slot_ready[s].value.load(std::memory_order_relaxed) >= ready_done_val) {
+      out_slot_order[write_idx++] = s;
+      reordered |= seen_miss;
+    } else {
+      seen_miss = true;
+    }
+  }
+  if (out_ready_count) *out_ready_count = write_idx;
+  for (int s = 0; s < group_size; ++s) {
+    if (slot_ready[s].value.load(std::memory_order_relaxed) < ready_done_val) {
+      out_slot_order[write_idx++] = s;
+    }
+  }
+  return reordered;
+}
+
+template <size_t MaxGroupSlots, typename PaddedAtomicIntT, typename OnSlotLeaseReadyFn,
+          typename Fc1SlotTileFn, typename Fc2SlotTileFn, typename ParallelRunner>
+inline bool RunReadyFirstFusedColdExpertGroup(
+    FileExpertStore& store, int group_size, const int32_t* group_expert_ids,
+    const int* miss_load_slots, size_t miss_load_count, uint8_t* const* slot_load_dst,
+    ExpertBlockLease* group_ssd_leases, uint8_t* lease_held, int fc1_tasks, int fc2_tasks,
+    PaddedAtomicIntT* slot_ready, PaddedAtomicIntT* fc1_done,
+    OnSlotLeaseReadyFn&& on_slot_lease_ready,
+    Fc1SlotTileFn&& fc1_task_for_slot, Fc2SlotTileFn&& fc2_task_for_slot,
+    ParallelRunner&& run_parallel) {
+  constexpr int kReadyDoneVal = FileExpertStore::kLoadChunksPerExpert + 1;
+  const ptrdiff_t total_load =
+      static_cast<ptrdiff_t>(miss_load_count) * FileExpertStore::kLoadChunksPerExpert;
+  const ptrdiff_t total_fc1 = static_cast<ptrdiff_t>(group_size) * fc1_tasks;
+  const ptrdiff_t total_fc2 = static_cast<ptrdiff_t>(group_size) * fc2_tasks;
+  std::array<int, MaxGroupSlots> compute_slot_order;
+  const bool reorder_slots =
+      miss_load_count > 0 && group_size > 1 && static_cast<size_t>(group_size) <= MaxGroupSlots &&
+      BuildReadyFirstSlotOrder(group_size, slot_ready, kReadyDoneVal, compute_slot_order.data());
+  std::atomic<bool> load_failed{false};
+  auto fused_task = [&](ptrdiff_t task) {
+    if (task < total_load) {
+      const int m_idx = static_cast<int>(task) / FileExpertStore::kLoadChunksPerExpert;
+      const int chunk_idx = static_cast<int>(task) % FileExpertStore::kLoadChunksPerExpert;
+      const int slot = miss_load_slots[m_idx];
+      const int32_t exp_id = group_expert_ids[slot];
+      if (!store.LoadExpertChunk(exp_id, slot_load_dst[slot], chunk_idx)) {
+        load_failed.store(true, std::memory_order_release);
+      }
+      if (slot_ready[slot].value.fetch_add(1, std::memory_order_acq_rel) + 1 ==
+          FileExpertStore::kLoadChunksPerExpert) {
+        const bool ok = !load_failed.load(std::memory_order_acquire) &&
+                        store.FinishLoadExpert(exp_id, true, &group_ssd_leases[slot]);
+        if (!ok) {
+          static_cast<void>(store.FinishLoadExpert(exp_id, false, nullptr));
+          lease_held[slot] = 0;
+          load_failed.store(true, std::memory_order_release);
+        }
+        for (int s = slot; s < group_size; ++s) {
+          if (group_expert_ids[s] == exp_id) {
+            if (s != slot) {
+              group_ssd_leases[s] = group_ssd_leases[slot];
+            }
+            if (ok) {
+              on_slot_lease_ready(s, group_ssd_leases[slot]);
+            }
+            slot_ready[s].value.store(kReadyDoneVal, std::memory_order_release);
+          }
+        }
+      }
+    } else if (task < total_load + total_fc1) {
+      const ptrdiff_t fc1_idx = task - total_load;
+      const int ord = static_cast<int>(fc1_idx) / fc1_tasks;
+      const int col_tile = static_cast<int>(fc1_idx) % fc1_tasks;
+      const int slot = reorder_slots ? compute_slot_order[static_cast<size_t>(ord)] : ord;
+      while (slot_ready[slot].value.load(std::memory_order_acquire) < kReadyDoneVal) {
+#if defined(_MSC_VER) && (defined(_M_AMD64) || defined(_M_IX86))
+        _mm_pause();
+#elif defined(__x86_64__) || defined(__i386__)
+        __builtin_ia32_pause();
+#endif
+      }
+      if (!load_failed.load(std::memory_order_acquire)) {
+        fc1_task_for_slot(slot, col_tile);
+      }
+      fc1_done[slot].value.fetch_add(1, std::memory_order_acq_rel);
+    } else {
+      const ptrdiff_t fc2_idx = task - total_load - total_fc1;
+      const int ord = static_cast<int>(fc2_idx) / fc2_tasks;
+      const int col_tile = static_cast<int>(fc2_idx) % fc2_tasks;
+      const int slot = reorder_slots ? compute_slot_order[static_cast<size_t>(ord)] : ord;
+      while (fc1_done[slot].value.load(std::memory_order_acquire) < fc1_tasks) {
+#if defined(_MSC_VER) && (defined(_M_AMD64) || defined(_M_IX86))
+        _mm_pause();
+#elif defined(__x86_64__) || defined(__i386__)
+        __builtin_ia32_pause();
+#endif
+      }
+      if (!load_failed.load(std::memory_order_acquire)) {
+        fc2_task_for_slot(slot, col_tile);
+      }
+    }
+  };
+  run_parallel(total_load + total_fc1 + total_fc2, fused_task);
+  return !load_failed.load(std::memory_order_acquire);
+}
 
 // Byte offsets of the six banks inside one SharedExpertBlockV1 expert block.
 // FC1 is the fused interleaved gate/up projection [2I,H]; FC2 is [H,I].
