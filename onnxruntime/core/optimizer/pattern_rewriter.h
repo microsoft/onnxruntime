@@ -2,11 +2,13 @@
 // Licensed under the MIT License.
 #pragma once
 
+#include <cstddef>
 #include <functional>
 #include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 #include <variant>
 
@@ -129,6 +131,7 @@ class Pattern {
   InlinedHashSet<int> optional_inputs_;
   InlinedHashSet<std::string> attribute_names_;
   InlinedHashMap<int, InlinedVector<TypeConstraint, 1>> type_constraints_;
+  InlinedHashMap<std::string, InlinedVector<TypeConstraint, 1>> binding_constraints_;
   InlinedHashSet<int> attribute_inputs_;
   InlinedHashSet<int> required_tensor_bindings_;
   InlinedHashSet<int> composed_tensor_annotations_;
@@ -271,7 +274,29 @@ struct Replacement {
 
 struct Rule {
   using CheckAndBind = std::function<bool(const Graph&, Match&)>;
-  using ReplacementFunction = std::function<Replacement(const Graph&, const Match&)>;
+  class ReplacementFunction {
+   public:
+    ReplacementFunction() = default;
+    ReplacementFunction(std::nullptr_t) {}
+    ReplacementFunction(Replacement recipe) : implementation_(std::move(recipe)) {}
+    template <typename F>
+      requires(!std::is_same_v<std::decay_t<F>, ReplacementFunction> &&
+               std::is_invocable_r_v<Replacement, F, const Graph&, const Match&>)
+    ReplacementFunction(F callback) : implementation_(Callback(std::move(callback))) {}
+    explicit operator bool() const {
+      return Parsed() || static_cast<bool>(std::get<Callback>(implementation_));
+    }
+    Replacement operator()(const Graph& graph, const Match& match) const {
+      if (const auto* recipe = Parsed()) return *recipe;
+      return std::get<Callback>(implementation_)(graph, match);
+    }
+    Replacement* Parsed() { return std::get_if<Replacement>(&implementation_); }
+    const Replacement* Parsed() const { return std::get_if<Replacement>(&implementation_); }
+
+   private:
+    using Callback = std::function<Replacement(const Graph&, const Match&)>;
+    std::variant<Callback, Replacement> implementation_;
+  };
 
   Rule(std::string name, Pattern pattern, ReplacementFunction replacement, CheckAndBind check_and_bind = {},
        InlinedVector<OpsetRequirement, 1> opsets = {});
@@ -327,7 +352,7 @@ struct Options {
   // Unassigned nodes are always eligible. Assigned nodes must share an allowed provider.
   InlinedHashSet<std::string> compatible_execution_providers{kCpuExecutionProvider};
   // Called synchronously. Records own their strings and contain no graph/match pointers.
-  std::function<void(const MatchFailure&)> on_failure;
+  std::function<void(const MatchFailure&)> on_failure{};
   size_t max_iterations = 10;  // Positive upper bound on candidate batches; match-only uses one batch.
 };
 

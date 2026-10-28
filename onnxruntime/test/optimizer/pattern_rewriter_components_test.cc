@@ -167,6 +167,317 @@ TEST(PatternComponentTests, ValueAliasesSurviveSymbolTableGrowth) {
   }
 }
 
+TEST(PatternComponentTests, ExpandedAnnotationOccurrencesAreBoundedIndependentlyOfPlans) {
+  for (int calls : {4, 5, 256}) {
+    std::ostringstream text;
+    text << "pattern Aliases(";
+    for (int i = 0; i < 64; ++i) text << (i ? "," : "") << "x" << i << ":float[]";
+    text << "){return ";
+    for (int i = 0; i < 64; ++i) text << (i ? "," : "") << "x" << i;
+    text << "} pattern E(x){";
+    for (int call = 0; call < calls; ++call) {
+      for (int i = 0; i < 64; ++i) text << (i ? "," : "") << "a" << call << "_" << i;
+      text << "=Aliases(";
+      for (int i = 0; i < 64; ++i) text << (i ? ",x" : "x");
+      text << ");";
+    }
+    text << "return Sigmoid(a0_0)}";
+    if (calls > 4) {
+      try {
+        const PatternLibrary library(text.str());
+        FAIL() << "Accepted " << calls * 64 << " expanded annotations";
+      } catch (const OnnxRuntimeException& error) {
+        EXPECT_NE(std::string(error.what()).find("annotation occurrence limit of 256"), std::string::npos);
+      }
+      continue;
+    }
+    const auto pattern = PatternLibrary(text.str()).GetPattern("E");
+    EXPECT_EQ(pattern.OrderedTypeConstraints().size(), 256u);
+    TestGraph test;
+    auto* x = test.builder.MakeInput<float>({2}, -1.0f, 1.0f);
+    auto& root = test.builder.AddNode("Sigmoid", {x}, {test.builder.MakeOutput()});
+    test.builder.SetGraphOutputs();
+    ASSERT_STATUS_OK(test.graph.Resolve());
+    std::optional<Match> result;
+    ASSERT_STATUS_OK(pattern.MatchAt(test.graph, root.Index(), result));
+    ASSERT_TRUE(result);
+    EXPECT_EQ(result->valueOf("a3_63"), x);
+  }
+}
+
+TEST(PatternComponentTests, AliasResultsUseBindingAnnotationsWithoutErasingInputConstraints) {
+  EXPECT_NO_THROW((void)PatternLibrary(R"(
+    pattern Inner(x:float[]){y:float[2]=x;return Identity(x)}
+    pattern Fixed(x){y:float[2]=Identity(x);return y}
+    pattern Entry(x){a=Inner(x);y=a.y|Fixed(a.y);return Add(a,y)}
+  )"));
+  for (bool alias_first : {false, true}) {
+    for (bool grouped : {false, true}) {
+      for (bool conflicting_input : {false, true}) {
+        const std::string branch = alias_first ? "x | Identity(x)" : "Identity(x) | x";
+        const PatternLibrary library("pattern E(x:float[" + std::string(conflicting_input ? "3" : "") +
+                                     "]){y:float[2]=" + (grouped ? "(" + branch + ")" : branch) +
+                                     ";z=y;return z} "
+                                     "pattern Nested(x){a=E(x);return a} "
+                                     "pattern Entry(x){a=Nested(x);return Sigmoid(a)}");
+        for (int size : {2, 3}) {
+          TestGraph test;
+          auto* x = test.builder.MakeInput<float>({size}, -1.0f, 1.0f);
+          auto* y = test.builder.MakeIntermediate();
+          test.builder.AddNode("Identity", {x}, {y});
+          auto& root = test.builder.AddNode("Sigmoid", {y}, {test.builder.MakeOutput()});
+          test.builder.SetGraphOutputs();
+          ASSERT_STATUS_OK(test.graph.Resolve());
+          int matches = 0;
+          ASSERT_STATUS_OK(library.GetPattern("Entry").VisitMatches(test.graph, root.Index(), [&](Match& match) {
+            ++matches;
+            EXPECT_EQ(match.valueOf("a"), y);
+            return true;
+          }));
+          EXPECT_EQ(matches, size == 2 && !conflicting_input ? 2 : 0);
+        }
+      }
+    }
+  }
+}
+
+TEST(PatternComponentTests, ControlDependenciesAreNotRewriteSafeEvenAfterResolve) {
+  for (int edge : {0, 1, 2, 3, 4}) {
+    for (bool indexed : {false, true}) {
+      TestGraph test;
+      auto* x = test.builder.MakeInput<float>({2}, -1.0f, 1.0f);
+      auto* y = test.builder.MakeIntermediate();
+      auto& inner = test.builder.AddNode("Identity", {x}, {y});
+      auto& root = test.builder.AddNode("Sigmoid", {y}, {test.builder.MakeOutput()});
+      auto& other = test.builder.AddNode("Neg", {x}, {test.builder.MakeOutput()});
+      test.builder.SetGraphOutputs();
+      ASSERT_STATUS_OK(test.graph.Resolve());
+      const NodeIndex sources[] = {root.Index(), other.Index(), inner.Index(), other.Index(), inner.Index()};
+      const NodeIndex destinations[] = {other.Index(), root.Index(), other.Index(), inner.Index(), root.Index()};
+      test.graph.AddControlEdge(sources[edge], destinations[edge]);
+      ASSERT_TRUE(test.graph.GraphResolveNeeded());
+      const auto before = test.model.ToProto().SerializeAsString();
+      const auto input_edges = root.GetInputEdgesCount();
+      const auto output_edges = root.GetOutputEdgesCount();
+      const Pattern pattern("(x)=>{a=Identity(x);return Sigmoid(a)}");
+      std::optional<Match> result;
+      EXPECT_FALSE(pattern.MatchAt(test.graph, root.Index(), result).IsOK());
+      EXPECT_FALSE(result);
+      int checks = 0;
+      Rule rule{"Control", pattern, "(x)=>Identity(x)", [&](const Graph&, Match&) {
+                  ++checks;
+                  return true;
+                },
+                {{kOnnxDomain, 17, 17}}};
+      Statistics stats;
+      EXPECT_FALSE(PatternRewriter({rule}, {.indexed = indexed}).Run(test.graph, stats).IsOK());
+      EXPECT_EQ(checks, 0);
+      EXPECT_EQ(stats.rewrites, 0u);
+      EXPECT_EQ(root.GetInputEdgesCount(), input_edges);
+      EXPECT_EQ(root.GetOutputEdgesCount(), output_edges);
+      EXPECT_EQ(test.model.ToProto().SerializeAsString(), before);
+    }
+  }
+}
+
+TEST(ReplacementComponentTests, EngineRejectsSubgraphsButStandaloneConstructionCanResolveThem) {
+  for (bool indexed : {false, true}) {
+    TestGraph test;
+    auto* x = test.builder.MakeInput<float>({}, -1.0f, 1.0f);
+    auto* y = test.builder.MakeIntermediate();
+    test.builder.AddNode("Identity", {x}, {y});
+    test.builder.AddNode("Neg", {y}, {test.builder.MakeOutput()});
+    test.builder.SetGraphOutputs();
+    ASSERT_STATUS_OK(test.graph.Resolve());
+    ONNX_NAMESPACE::AttributeProto branch;
+    branch.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+    auto& graph = *branch.mutable_g();
+    graph.set_name("capture");
+    auto* node = graph.add_node();
+    node->set_op_type("Identity");
+    node->add_input(y->Name());
+    node->add_output("branch_output");
+    auto* output = graph.add_output();
+    output->set_name("branch_output");
+    *output->mutable_type() = *x->TypeAsProto();
+    const Replacement recipe("(x,t,e)=>{condition=Greater(x,0.0);return If(condition,then_branch=t,else_branch=e)}");
+    const auto before = test.model.ToProto().SerializeAsString();
+    int checks = 0;
+    Rule rule{"Subgraph", "(x)=>{a=Identity(x);return Neg(a)}", recipe, [&](const Graph&, Match& match) {
+                ++checks;
+                match.update("t", branch);
+                match.update("e", branch);
+                return true;
+              },
+              {{kOnnxDomain, 17, 17}}};
+    Statistics stats;
+    const auto status = PatternRewriter({rule}, {.indexed = indexed}).Run(test.graph, stats);
+    EXPECT_FALSE(status.IsOK());
+    EXPECT_NE(status.ErrorMessage().find("Engine replacements cannot own subgraphs"), std::string::npos);
+    EXPECT_EQ(checks, 1);
+    EXPECT_EQ(stats.rewrites, 0u);
+    EXPECT_EQ(test.model.ToProto().SerializeAsString(), before);
+    Replacement::Instantiation result;
+    ASSERT_STATUS_OK(recipe.Instantiate(test.graph, {{"x", x}}, {{"t", branch}, {"e", branch}}, result));
+    ASSERT_EQ(result.nodes.size(), 2u);
+    ASSERT_STATUS_OK(test.graph.Resolve());
+    const auto* conditional = test.graph.GetNode(result.nodes.back());
+    ASSERT_NE(conditional, nullptr);
+    ASSERT_EQ(conditional->ImplicitInputDefs().size(), 1u);
+    EXPECT_EQ(conditional->ImplicitInputDefs()[0], y);
+  }
+}
+
+TEST(CheckAndBindComponentTests, ConstantReadersValidatePayloadBeforeAllocatingDecodedStorage) {
+  for (int malformed : {0, 1, 2, 3}) {
+    TestGraph test;
+    ONNX_NAMESPACE::TensorProto tensor;
+    tensor.set_name("malformed");
+    tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+    tensor.add_dims(malformed < 2 ? 1073741824LL : malformed == 2 ? -1
+                                                                  : 3);
+    if (malformed == 1) tensor.set_raw_data(std::string(8, '\0'));
+    if (malformed == 3) tensor.add_int64_data(1);
+    test.graph.AddInitializedTensor(tensor);
+    const auto& value = test.graph.GetOrCreateNodeArg(tensor.name(), nullptr);
+    InlinedVector<int64_t> data{7};
+    bool available = true;
+    EXPECT_FALSE(ReadConstantTensor(test.graph, &value, data, available).IsOK());
+    EXPECT_EQ(data, (InlinedVector<int64_t>{7}));
+    EXPECT_TRUE(available);
+  }
+  TestGraph test;
+  for (bool raw : {false, true}) {
+    ONNX_NAMESPACE::TensorProto tensor;
+    tensor.set_name(raw ? "raw" : "typed");
+    tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+    tensor.add_dims(0);
+    if (raw) tensor.set_raw_data("");
+    test.graph.AddInitializedTensor(tensor);
+    const auto& value = test.graph.GetOrCreateNodeArg(tensor.name(), nullptr);
+    InlinedVector<int64_t> data{7};
+    bool available = false;
+    ASSERT_STATUS_OK(ReadConstantTensor(test.graph, &value, data, available));
+    EXPECT_TRUE(available);
+    EXPECT_TRUE(data.empty());
+  }
+}
+
+TEST(PatternRewriterTests, ExpressionPlanAndNestingBounds) {
+  const PatternLibrary grouped(R"(pattern E(x){y=(Identity(x)|x)|x;return Sigmoid(y)})");
+  for (bool indexed : {false, true}) {
+    TestGraph test;
+    auto& b = test.builder;
+    auto* x = b.MakeInput<float>({2}, -1.0f, 1.0f);
+    auto* identity = b.MakeIntermediate();
+    b.AddNode("Identity", {x}, {identity});
+    b.AddNode("Sigmoid", {identity}, {b.MakeOutput()});
+    b.SetGraphOutputs();
+    ASSERT_STATUS_OK(test.graph.Resolve());
+    InlinedVector<std::string> selections;
+    auto check = [&](const Graph&, Match& match) {
+      auto view = match.instance("y");
+      if (view.alternative() == "<group>") view = view.alternativeView();
+      selections.emplace_back(view.alternative());
+      EXPECT_THROW(view.alternativeView(), OnnxRuntimeException);
+      EXPECT_EQ(match.valueOf("y"), identity);
+      return true;
+    };
+    Rule rule{"Grouped", grouped.GetPattern("E"), "(x)=>Identity(x)", check, {{kOnnxDomain, 17, 17}}};
+    Statistics stats;
+    ASSERT_STATUS_OK(PatternRewriter({rule}, {.match_only = true, .indexed = indexed}).Run(test.graph, stats));
+    EXPECT_EQ(selections, (InlinedVector<std::string>{"Identity", "x", "x"}));
+    EXPECT_EQ(stats.matches, 3u);
+  }
+  for (int count : {6, 7}) {
+    std::string source = "pattern E(x){";
+    for (int i = 0; i < count; ++i) {
+      const auto input = i == 0 ? std::string("x") : "v" + std::to_string(i - 1);
+      source += "v" + std::to_string(i) + "=(Identity(" + input + ") | " + input + ");";
+    }
+    source += "return Sigmoid(v" + std::to_string(count - 1) + ")}";
+    if (count == 6) {
+      const PatternLibrary library(source);
+      for (bool indexed : {false, true}) {
+        TestGraph test;
+        auto& b = test.builder;
+        auto* x = b.MakeInput<float>({2}, -1.0f, 1.0f);
+        auto* value = x;
+        for (int i = 0; i < count; ++i) {
+          auto* output = b.MakeIntermediate();
+          b.AddNode("Identity", {value}, {output});
+          value = output;
+        }
+        b.AddNode("Sigmoid", {value}, {b.MakeOutput()});
+        b.SetGraphOutputs();
+        ASSERT_STATUS_OK(test.graph.Resolve());
+        Rule rule{"AllPlans", library.GetPattern("E"), "(x)=>Identity(x)", {}, {{kOnnxDomain, 17, 17}}};
+        Statistics stats;
+        ASSERT_STATUS_OK(PatternRewriter({rule}, {.match_only = true, .indexed = indexed}).Run(test.graph, stats));
+        EXPECT_EQ(stats.matches, 64u);
+      }
+    } else {
+      EXPECT_THROW((void)PatternLibrary(source), OnnxRuntimeException);
+    }
+  }
+  std::string malformed = "pattern E(x){y=(missing)";
+  for (int i = 0; i < 1000; ++i) malformed += "()";
+  malformed += ";return Identity(y)}";
+  EXPECT_THROW((void)PatternLibrary(malformed), OnnxRuntimeException);
+  for (int nesting : {63, 64, 1000}) {
+    const std::string source = "pattern E(x){y=" + std::string(nesting, '(') +
+                               "Identity(x)" + std::string(nesting, ')') + ";return y}";
+    if (nesting == 63)
+      EXPECT_NO_THROW((void)PatternLibrary(source));
+    else
+      EXPECT_THROW((void)PatternLibrary(source), OnnxRuntimeException);
+  }
+  for (int count : {32, 33}) {
+    std::string source;
+    for (int i = 0; i < count; ++i) {
+      source += "pattern F" + std::to_string(i) + "(x){y=(";
+      source += i + 1 == count ? "Identity(x)" : "F" + std::to_string(i + 1) + "(x)";
+      source += ");return y}";
+    }
+    if (count == 32)
+      EXPECT_NO_THROW((void)PatternLibrary(source));
+    else
+      EXPECT_THROW((void)PatternLibrary(source), OnnxRuntimeException);
+  }
+}
+
+TEST(PatternComponentTests, DependencyOrderDoesNotNestNativeParserFrames) {
+  for (bool reverse : {false, true}) {
+    for (int count : {63, 64, 65}) {
+      std::string text;
+      for (int index = 0; index < count; ++index) {
+        const int i = reverse ? count - 1 - index : index;
+        text += "pattern F" + std::to_string(i) + "(x){y=" +
+                (i + 1 == count ? "Identity" : "F" + std::to_string(i + 1)) + "(x);return y}";
+      }
+      if (count <= 64) {
+        EXPECT_EQ(PatternLibrary(text).GetPattern("F0").Nodes().size(), 1u);
+      } else {
+        EXPECT_THROW((void)PatternLibrary(text), OnnxRuntimeException);
+      }
+    }
+  }
+  const PatternLibrary library(R"(
+    pattern Identity(x){y=Neg(x);return y}
+    pattern Helper(x){y=Identity(x);return y}
+    pattern Entry(x){Helper=x;a=ai.onnx::Identity(Helper);b=ai.onnx.Identity(a);return Sigmoid(b)}
+    pattern Legacy(x){y=(Helper|Identity)(x);return Sigmoid(y)}
+  )");
+  EXPECT_EQ(library.GetPattern("Entry").Nodes().size(), 3u);
+  EXPECT_EQ(library.GetPattern("Legacy").Nodes().size(), 2u);
+  EXPECT_THROW((void)PatternLibrary(R"(
+    pattern A(x){y=(B|Leaf)(x);return y}
+    pattern B(x){y=A(x);return y}
+    pattern Leaf(x){y=Identity(x);return y}
+  )"),
+               OnnxRuntimeException);
+}
+
 TEST(PatternComponentTests, MatchAtReturnsFirstCandidateAndClearsOrdinaryNonmatch) {
   TestGraph test;
   auto& b = test.builder;

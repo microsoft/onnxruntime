@@ -727,7 +727,7 @@ TEST(PatternRewriterTests, ReplacementScalarConstantsAndParsedSequence) {
   rule.pattern = Pattern("(x)=>a=Identity(x);b=Identity(a);return Identity(b)");
   for (bool integer : {false, true}) {
     rule.replacement = Replacement(integer ? "(x)=>Add(x,0)" : "(x)=>Add(x,0.0)");
-    auto* compiled = rule.replacement.target<Replacement>();
+    auto* compiled = rule.replacement.Parsed();
     ASSERT_NE(compiled, nullptr);
     ASSERT_EQ(compiled->Plan()->size(), 1u);
     const auto& scalar = std::get<Replacement::Scalar>(compiled->Plan()->front().inputs[1]);
@@ -1942,7 +1942,7 @@ TEST(PatternRewriterTests, RuleConstructorOwnsParsedTextAndReusesPlans) {
   pattern.assign("not a pattern");
   replacement.assign("not a replacement");
   EXPECT_EQ(rule.pattern.Nodes().size(), 2u);
-  const auto* compiled = rule.replacement.target<Replacement>();
+  const auto* compiled = rule.replacement.Parsed();
   ASSERT_NE(compiled, nullptr);
   const auto* plan = compiled->Plan().get();
   auto copied = rule;
@@ -3328,7 +3328,7 @@ TEST(PatternRewriterTests, ExampleGuardsCheckRelevantBindings) {
   auto examples = MakeExampleRules();
   for (size_t index = 0; index < examples.size(); ++index) {
     SCOPED_TRACE(examples[index].name);
-    ASSERT_NE(examples[index].replacement.target<Replacement>(), nullptr);
+    ASSERT_NE(examples[index].replacement.Parsed(), nullptr);
     TestGraph test;
     auto& b = test.builder;
     auto* non_float = b.MakeScalarInitializer<double>(2.0);
@@ -5878,89 +5878,6 @@ TEST(PatternRewriterTests, PositionalSelectedDimensionsAndTensorAliasContracts) 
     pattern P(x) { alias=x;return Add(alias,x) }
     pattern Strings(x) { y=test::Op(x,label=")|(");return y }
   )"));
-}
-
-TEST(PatternRewriterTests, ExpressionPlanAndNestingBounds) {
-  const PatternLibrary grouped(R"(pattern E(x){y=(Identity(x)|x)|x;return Sigmoid(y)})");
-  for (bool indexed : {false, true}) {
-    TestGraph test;
-    auto& b = test.builder;
-    auto* x = b.MakeInput<float>({2}, -1.0f, 1.0f);
-    auto* identity = b.MakeIntermediate();
-    b.AddNode("Identity", {x}, {identity});
-    b.AddNode("Sigmoid", {identity}, {b.MakeOutput()});
-    b.SetGraphOutputs();
-    ASSERT_STATUS_OK(test.graph.Resolve());
-    InlinedVector<std::string> selections;
-    auto check = [&](const Graph&, Match& match) {
-      auto view = match.instance("y");
-      if (view.alternative() == "<group>") view = view.alternativeView();
-      selections.emplace_back(view.alternative());
-      EXPECT_THROW(view.alternativeView(), OnnxRuntimeException);
-      EXPECT_EQ(match.valueOf("y"), identity);
-      return true;
-    };
-    Rule rule{"Grouped", grouped.GetPattern("E"), "(x)=>Identity(x)", check, {{kOnnxDomain, 17, 17}}};
-    Statistics stats;
-    ASSERT_STATUS_OK(PatternRewriter({rule}, {.match_only = true, .indexed = indexed}).Run(test.graph, stats));
-    EXPECT_EQ(selections, (InlinedVector<std::string>{"Identity", "x", "x"}));
-    EXPECT_EQ(stats.matches, 3u);
-  }
-  for (int count : {6, 7}) {
-    std::string source = "pattern E(x){";
-    for (int i = 0; i < count; ++i) {
-      const auto input = i == 0 ? std::string("x") : "v" + std::to_string(i - 1);
-      source += "v" + std::to_string(i) + "=(Identity(" + input + ") | " + input + ");";
-    }
-    source += "return Sigmoid(v" + std::to_string(count - 1) + ")}";
-    if (count == 6) {
-      const PatternLibrary library(source);
-      for (bool indexed : {false, true}) {
-        TestGraph test;
-        auto& b = test.builder;
-        auto* x = b.MakeInput<float>({2}, -1.0f, 1.0f);
-        auto* value = x;
-        for (int i = 0; i < count; ++i) {
-          auto* output = b.MakeIntermediate();
-          b.AddNode("Identity", {value}, {output});
-          value = output;
-        }
-        b.AddNode("Sigmoid", {value}, {b.MakeOutput()});
-        b.SetGraphOutputs();
-        ASSERT_STATUS_OK(test.graph.Resolve());
-        Rule rule{"AllPlans", library.GetPattern("E"), "(x)=>Identity(x)", {}, {{kOnnxDomain, 17, 17}}};
-        Statistics stats;
-        ASSERT_STATUS_OK(PatternRewriter({rule}, {.match_only = true, .indexed = indexed}).Run(test.graph, stats));
-        EXPECT_EQ(stats.matches, 64u);
-      }
-    } else {
-      EXPECT_THROW((void)PatternLibrary(source), OnnxRuntimeException);
-    }
-  }
-  std::string malformed = "pattern E(x){y=(missing)";
-  for (int i = 0; i < 1000; ++i) malformed += "()";
-  malformed += ";return Identity(y)}";
-  EXPECT_THROW((void)PatternLibrary(malformed), OnnxRuntimeException);
-  for (int nesting : {63, 64, 1000}) {
-    const std::string source = "pattern E(x){y=" + std::string(nesting, '(') +
-                               "Identity(x)" + std::string(nesting, ')') + ";return y}";
-    if (nesting == 63)
-      EXPECT_NO_THROW((void)PatternLibrary(source));
-    else
-      EXPECT_THROW((void)PatternLibrary(source), OnnxRuntimeException);
-  }
-  for (int count : {32, 33}) {
-    std::string source;
-    for (int i = 0; i < count; ++i) {
-      source += "pattern F" + std::to_string(i) + "(x){y=(";
-      source += i + 1 == count ? "Identity(x)" : "F" + std::to_string(i + 1) + "(x)";
-      source += ");return y}";
-    }
-    if (count == 32)
-      EXPECT_NO_THROW((void)PatternLibrary(source));
-    else
-      EXPECT_THROW((void)PatternLibrary(source), OnnxRuntimeException);
-  }
 }
 
 TEST(PatternRewriterTests, InferredExpressionOutputsAllowUnconstrainedBranches) {

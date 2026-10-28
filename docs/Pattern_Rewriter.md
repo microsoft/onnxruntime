@@ -757,18 +757,21 @@ supported.
 Graph alternatives expand to at most **64 complete concrete plans per
 definition**, in source order (the rightmost call varies fastest).
 Each plan retains the existing limits of 64 nodes, 256 values and 64
-type-annotation combinations. Each plan also permits at most **256 expanded
+type-annotation combinations and **256 expanded annotation occurrences**,
+including repeated annotations on aliases of the same value. The latter bound
+is checked before copying callee constraints and independently of the combination
+limit. Each plan also permits at most **256 expanded
 call occurrences**, counted cumulatively through nested bodies, including
 zero-node identity calls. This bounds scoped metadata even when composition
 adds no nodes or values; overflow is rejected before copying callee metadata.
 Libraries contain at most 256 definitions. A dependency path may contain at
 most **64 concrete pattern definitions**, including its entry and any named
 alternative/alias wrappers (interfaces do not count). This bound is independent
-of declaration order and is enforced before deeper recursive compilation to
-protect native stack usage. Forward-reference chains at 64 succeed; 65 or
+of declaration order. Definitions compile in iterative dependency order rather
+than nesting native parser frames. Forward-reference chains at 64 succeed; 65 or
 more fail with an explicit nesting-limit diagnostic.
 Expression nesting is also bounded to 64 (including call parentheses), sharing the native
-recursion budget with active dependency compilation. No expression has more
+logical nesting budget with dependency paths. No expression has more
 than 64 branches, and expression alternatives share the 64-complete-plan limit.
 Recursive calls, duplicate definitions/ports, missing members, incompatible
 interfaces and invalid mappings fail during construction. An unresolved
@@ -863,7 +866,9 @@ It can qualify individual tensor alternatives, including
 `InlinedVector<float>` and `InlinedVector<int64_t>`. A missing value,
 nonconstant/overridable initializer, wrong element type, or external payload
 returns OK with `available = false`, leaving `data` unchanged. A malformed
-available payload returns an error, leaving both outputs unchanged.
+available payload returns an error, leaving both outputs unchanged. Embedded
+shape and payload sizes are validated before allocating decoded storage, even
+when the graph has not been resolved.
 Success decodes raw or typed protobuf storage and sets `available = true`.
 C++ checks rank, supported values and all dependent relationships; decoding
 does not implicitly enforce scalar shape. Propagate reader errors, for
@@ -1122,7 +1127,9 @@ Before calling a rule's check-and-bind callback, the matcher checks:
 - Literal and listed attribute constraints. It does not otherwise infer semantic
   equivalence or check arbitrary shapes/types for the author.
 - Distinct matched nodes with the same layer annotation. Matched operators cannot
-  own subgraphs or have implicit inputs.
+  own subgraphs or have implicit inputs. Adding control edges after Resolve
+  marks the graph unresolved; both standalone matching and `Run` reject it
+  before traversing those edges.
 - Pattern input variables are outside the matched deletion set.
 - Every unreturned output stays internal. A graph output, an external consumer, or
   an implicit capture by an external subgraph of an unreturned value prevents the rewrite.
@@ -1241,6 +1248,11 @@ an error in a later candidate does not undo earlier successful rewrites, and
 `GraphTransformer::Apply` does not Resolve an error result. Inspect/handle the
 status before deciding how to use that graph. Standalone `Instantiate` has the
 separate fragment-only construction contract described above.
+Engine replacements cannot own `GRAPH`/`GRAPHS` attributes: `Run` does not
+reconstruct implicit captures between candidates. Such a recipe returns an
+error before deleting the match, with its staged nodes and literals rolled back.
+Standalone `Instantiate` may construct these attributes because its caller must
+Resolve the complete graph before use.
 
 Rules have deterministic **registration-order priority**, including across
 different structural groups. At each eligible root, rewriting chooses the first
@@ -1286,7 +1298,10 @@ Malformed definitions throw `OnnxRuntimeException` with parse-location
 diagnostics; exception-disabled builds follow ORT's abort behavior. Invalid rule
 configuration raises an explicit error when the rewriter is constructed.
 Direct parsed replacements are checked against their rule during construction;
-callback-generated replacements also undergo runtime validation. Returning false from check-and-bind
+`Rule::ReplacementFunction` retains a parsed recipe or a C++ callback without
+requiring RTTI. Its `Parsed()` accessor returns the direct recipe, or null for a
+callback. Assigning either kind replaces the previous selection.
+Callback-generated replacements also undergo runtime validation. Returning false from check-and-bind
 is an ordinary nonmatch.
 
 Replacement schemas and attributes are validated before matched nodes are
