@@ -1811,7 +1811,98 @@ void LaunchQMoEFp8Projection(const QMoEFp8ProjectionParams& params,
   CUDA_CALL_THROW(cudaGetLastError());
 }
 
+// This profile fixes the 256-expert/top-8 ordering contract, including ties:
+// threshold gather in input order followed by an unstable 32-entry bitonic sort.
+// It follows PyTorch 2.8 (a1cb3cc05d46), TensorTopK/SortUtils; see the
+// PyTorch BSD notice in ThirdPartyNotices.txt.
 template <typename T>
+__global__ void QMoEFp16CompatibleRoutingKernel(const T* logits, float* scales, int* indices, int rows) {
+  const int row = blockIdx.x;
+  const int lane = threadIdx.x;
+  if (row >= rows) return;
+  const T* input = logits + static_cast<size_t>(row) * 256;
+  float values[8];
+  float maximum = -FLT_MAX;
+  for (int j = 0; j < 8; ++j) {
+    values[j] = static_cast<float>(input[j * 32 + lane]);
+    maximum = fmaxf(maximum, values[j]);
+  }
+  maximum = WarpReduceMax(maximum);
+  float sum = 0.0f;
+  for (int j = 0; j < 8; ++j) {
+    values[j] = expf(values[j] - maximum);
+    sum += values[j];
+  }
+  sum = WarpReduceSum(sum);
+  uint64_t keys[8];
+  for (int j = 0; j < 8; ++j) {
+    keys[j] = onnxruntime::cuda::topk::PackStableSortKey(values[j] / sum, j * 32 + lane);
+  }
+  onnxruntime::cuda::topk::WarpBitonicTopN<8>(keys);
+  __shared__ float scores[32];
+  __shared__ int experts[32];
+  __shared__ bool valid[32];
+  scores[lane] = 0.0f;
+  experts[lane] = 0;
+  valid[lane] = lane < 8;
+  __syncwarp();
+  if (lane == 0) {
+    const float threshold = onnxruntime::cuda::topk::UnpackStableSortScore(keys[7]);
+    int write = 0;
+    for (int equal_pass = 0; equal_pass < 2; ++equal_pass) {
+      for (int expert = 0; expert < 256; ++expert) {
+        for (int rank = 0; rank < 8; ++rank) {
+          if (onnxruntime::cuda::topk::UnpackStableSortIndex(keys[rank]) != expert) continue;
+          const float score = onnxruntime::cuda::topk::UnpackStableSortScore(keys[rank]);
+          if (equal_pass ? score != threshold : score <= threshold) continue;
+          scores[write] = score;
+          experts[write++] = expert;
+        }
+      }
+    }
+  }
+  __syncwarp();
+  for (int size = 2; size <= 32; size *= 2) {
+    const bool direction = size == 32 ? false : (lane & (size / 2)) != 0;
+    for (int stride = size / 2; stride > 0; stride /= 2) {
+      if (lane < 16) {
+        const int a = 2 * lane - (lane & (stride - 1));
+        const int b = a + stride;
+        const bool comparison = (scores[a] > scores[b] && valid[a]) || !valid[b];
+        if (comparison == direction) {
+          const float score = scores[a];
+          const int expert = experts[a];
+          const bool active = valid[a];
+          scores[a] = scores[b];
+          experts[a] = experts[b];
+          valid[a] = valid[b];
+          scores[b] = score;
+          experts[b] = expert;
+          valid[b] = active;
+        }
+      }
+      __syncwarp();
+    }
+  }
+  if (lane < 8) {
+    // Both typed profiles normalize source FP32 probabilities before narrowing.
+    const float denominator = ((scores[0] + scores[1]) + (scores[2] + scores[3])) +
+                              ((scores[4] + scores[5]) + (scores[6] + scores[7]));
+    scales[static_cast<size_t>(row) * 8 + lane] = scores[lane] / denominator;
+    indices[static_cast<size_t>(row) * 8 + lane] = experts[lane];
+  }
+}
+
+template <typename T>
+void LaunchQMoEFp16CompatibleRouting(const T* logits, float* scales, int* indices, int rows, cudaStream_t stream) {
+  QMoEFp16CompatibleRoutingKernel<<<rows, 32, 0, stream>>>(logits, scales, indices, rows);
+  CUDA_CALL_THROW(cudaGetLastError());
+}
+
+template void LaunchQMoEFp16CompatibleRouting<half>(const half*, float*, int*, int, cudaStream_t);
+template void LaunchQMoEFp16CompatibleRouting<__nv_bfloat16>(const __nv_bfloat16*, float*, int*, int, cudaStream_t);
+
+template <typename T, bool Fp16Compatible>
 __global__ void QMoEDynamicFp8QuantizeKernel(const T* input, uint8_t* output, float* scales,
                                              int cols, int activation) {
   const int row = blockIdx.x;
@@ -1821,7 +1912,17 @@ __global__ void QMoEDynamicFp8QuantizeKernel(const T* input, uint8_t* output, fl
   float value = static_cast<float>(input[activation == 2 ? 2 * index : index]);
   if (activation) {
     const float up = activation == 2 ? static_cast<float>(input[2 * index + 1]) : 1.0f;
-    value = value / (1.0f + expf(-value)) * up;
+    if constexpr (Fp16Compatible) {
+      float exponential;
+      const float exponent = -value * 0x1.715476p+0f;
+      asm("ex2.approx.f32 %0, %1;" : "=f"(exponential) : "f"(exponent));
+      const float denominator = 1.0f + exponential;
+      float sigmoid;
+      asm("div.full.f32 %0, 0f3F800000, %1;" : "=f"(sigmoid) : "f"(denominator));
+      value = value * sigmoid * up;
+    } else {
+      value = value / (1.0f + expf(-value)) * up;
+    }
   }
   using Reduce = cub::BlockReduce<float, 128>;
   __shared__ typename Reduce::TempStorage storage;
@@ -1842,9 +1943,14 @@ __global__ void QMoEDynamicFp8QuantizeKernel(const T* input, uint8_t* output, fl
 
 template <typename T>
 void LaunchQMoEDynamicFp8Quantize(const T* input, uint8_t* quantized, float* scales,
-                                  int rows, int cols, int activation, cudaStream_t stream) {
-  QMoEDynamicFp8QuantizeKernel<<<dim3(rows, cols / 128), 128, 0, stream>>>(
-      input, quantized, scales, cols, activation);
+                                  int rows, int cols, int activation, cudaStream_t stream, bool fp16_compatible) {
+  if (fp16_compatible) {
+    QMoEDynamicFp8QuantizeKernel<T, true><<<dim3(rows, cols / 128), 128, 0, stream>>>(
+        input, quantized, scales, cols, activation);
+  } else {
+    QMoEDynamicFp8QuantizeKernel<T, false><<<dim3(rows, cols / 128), 128, 0, stream>>>(
+        input, quantized, scales, cols, activation);
+  }
   CUDA_CALL_THROW(cudaGetLastError());
 }
 
@@ -1854,7 +1960,7 @@ __device__ __forceinline__ int QMoEDynamicFp8WeightRow(const QMoEFp8ProjectionPa
                               : row;
 }
 
-template <typename T, typename OutputT>
+template <typename T, typename OutputT, bool Fp16Compatible = false>
 __global__ void QMoEDynamicFp8ProjectionKernel(QMoEFp8ProjectionParams params,
                                                const uint8_t* input, const float* input_scales, OutputT* output,
                                                const float* routing_weights, const int* routed_rows, int top_k) {
@@ -1882,21 +1988,27 @@ __global__ void QMoEDynamicFp8ProjectionKernel(QMoEFp8ProjectionParams params,
   const int k_groups = params.k / 128;
   for (int k_group = 0; k_group < k_groups; ++k_group) {
     float dot[4] = {};
-    for (int inner = 0; inner < 128; inner += 32) {
+    for (int inner = 0; inner < 128; inner += Fp16Compatible ? 16 : 32) {
       uint32_t a[4] = {};
       uint32_t b[2] = {};
-      // PTX m16n8k32: four A registers cover two rows and two K half-tiles;
-      // two B registers cover one output column and both K half-tiles.
+      // The compatible profile consumes low/high half pairs of each original FP8x4
+      // register, preserving source K order rather than contiguous K16 fragments.
       for (int half_k = 0; half_k < 2; ++half_k) {
-        for (int byte = 0; byte < 4; ++byte) {
-          const int k = k_group * 128 + inner + half_k * 16 + thread * 4 + byte;
+        for (int byte = 0; byte < (Fp16Compatible ? 2 : 4); ++byte) {
+          const int k = k_group * 128 + half_k * 16 + thread * 4 + byte +
+                        (Fp16Compatible ? (inner / 32) * 32 + (inner % 32) / 8 : inner);
           for (int half_m = 0; half_m < 2; ++half_m) {
             const int64_t row = row_start + group + half_m * 8;
             if (row < row_end) {
               const int source = params.row_to_unpermuted ? params.row_to_unpermuted[row] % params.num_rows
                                                           : static_cast<int>(row);
-              a[half_k * 2 + half_m] |=
-                  static_cast<uint32_t>(input[static_cast<int64_t>(source) * params.k + k]) << (8 * byte);
+              const uint8_t value = input[static_cast<int64_t>(source) * params.k + k];
+              if constexpr (Fp16Compatible) {
+                a[half_k * 2 + half_m] |=
+                    static_cast<uint32_t>(__nv_cvt_fp8_to_halfraw(value, __NV_E4M3).x) << (16 * byte);
+              } else {
+                a[half_k * 2 + half_m] |= static_cast<uint32_t>(value) << (8 * byte);
+              }
             }
           }
           const int col = column_start + group;
@@ -1904,16 +2016,27 @@ __global__ void QMoEDynamicFp8ProjectionKernel(QMoEFp8ProjectionParams params,
           const uint8_t* weights = up ? params.up_weights : params.weights;
           const int weight_row = QMoEDynamicFp8WeightRow(params, col);
           const int weight_n = params.up_weights ? params.n / 2 : params.n;
-          b[half_k] |= static_cast<uint32_t>(
-                           weights[(static_cast<int64_t>(expert) * weight_n + weight_row) * params.k + k])
-                       << (8 * byte);
+          const uint8_t value = weights[(static_cast<int64_t>(expert) * weight_n + weight_row) * params.k + k];
+          if constexpr (Fp16Compatible) {
+            b[half_k] |= static_cast<uint32_t>(__nv_cvt_fp8_to_halfraw(value, __NV_E4M3).x) << (16 * byte);
+          } else {
+            b[half_k] |= static_cast<uint32_t>(value) << (8 * byte);
+          }
         }
       }
-      asm volatile(
-          "mma.sync.aligned.m16n8k32.row.col.f32.e4m3.e4m3.f32 "
-          "{%0, %1, %2, %3}, {%4, %5, %6, %7}, {%8, %9}, {%0, %1, %2, %3};"
-          : "+f"(dot[0]), "+f"(dot[1]), "+f"(dot[2]), "+f"(dot[3])
-          : "r"(a[0]), "r"(a[1]), "r"(a[2]), "r"(a[3]), "r"(b[0]), "r"(b[1]));
+      if constexpr (Fp16Compatible) {
+        asm volatile(
+            "mma.sync.aligned.m16n8k16.row.col.f32.f16.f16.f32 "
+            "{%0, %1, %2, %3}, {%4, %5, %6, %7}, {%8, %9}, {%0, %1, %2, %3};"
+            : "+f"(dot[0]), "+f"(dot[1]), "+f"(dot[2]), "+f"(dot[3])
+            : "r"(a[0]), "r"(a[1]), "r"(a[2]), "r"(a[3]), "r"(b[0]), "r"(b[1]));
+      } else {
+        asm volatile(
+            "mma.sync.aligned.m16n8k32.row.col.f32.e4m3.e4m3.f32 "
+            "{%0, %1, %2, %3}, {%4, %5, %6, %7}, {%8, %9}, {%0, %1, %2, %3};"
+            : "+f"(dot[0]), "+f"(dot[1]), "+f"(dot[2]), "+f"(dot[3])
+            : "r"(a[0]), "r"(a[1]), "r"(a[2]), "r"(a[3]), "r"(b[0]), "r"(b[1]));
+      }
     }
     for (int element = 0; element < 4; ++element) {
       const int64_t row = row_start + group + (element / 2) * 8;
@@ -1958,19 +2081,30 @@ bool QMoEDynamicFp8Supported() {
   return attributes.binaryVersion >= 89 && attributes.ptxVersion >= 89;
 }
 
+bool QMoEFp16CompatibleSupported() {
+  cudaFuncAttributes attributes{};
+  CUDA_CALL_THROW(cudaFuncGetAttributes(&attributes, QMoEDynamicFp8ProjectionKernel<half, half, true>));
+  return attributes.binaryVersion == 90 && attributes.ptxVersion >= 90;
+}
+
 template <typename T, typename OutputT>
 void LaunchQMoEDynamicFp8Projection(const QMoEFp8ProjectionParams& params,
                                     const uint8_t* input, const float* input_scales, OutputT* output,
                                     const float* routing_weights, const int* routed_rows, int top_k,
-                                    cudaStream_t stream) {
+                                    cudaStream_t stream, bool fp16_compatible) {
   const int tiles = std::min(params.expanded_rows,
                              std::min(params.num_experts, params.expanded_rows) + params.expanded_rows / 16);
-  QMoEDynamicFp8ProjectionKernel<T, OutputT><<<dim3(params.n / 32, tiles), 128, 0, stream>>>(
-      params, input, input_scales, output, routing_weights, routed_rows, top_k);
+  if (fp16_compatible) {
+    QMoEDynamicFp8ProjectionKernel<T, OutputT, true><<<dim3(params.n / 32, tiles), 128, 0, stream>>>(
+        params, input, input_scales, output, routing_weights, routed_rows, top_k);
+  } else {
+    QMoEDynamicFp8ProjectionKernel<T, OutputT><<<dim3(params.n / 32, tiles), 128, 0, stream>>>(
+        params, input, input_scales, output, routing_weights, routed_rows, top_k);
+  }
   CUDA_CALL_THROW(cudaGetLastError());
 }
 
-template <typename T>
+template <typename T, bool Fp16Compatible>
 __global__ void QMoEDynamicFp8FinalizeKernel(const float* input, T* output, const int* row_map,
                                              int rows, int cols, int top_k) {
   const int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
@@ -1978,34 +2112,48 @@ __global__ void QMoEDynamicFp8FinalizeKernel(const float* input, T* output, cons
   const int token = static_cast<int>(index / cols);
   const int col = static_cast<int>(index % cols);
   float sum = 0.0f;
-  for (int slot = 0; slot < top_k; ++slot) {
-    sum += input[static_cast<int64_t>(row_map[token + slot * rows]) * cols + col];
+  if constexpr (Fp16Compatible) {
+    float partial[4];
+    for (int lane = 0; lane < 4; ++lane) {
+      partial[lane] = input[static_cast<int64_t>(row_map[token + lane * rows]) * cols + col] +
+                      input[static_cast<int64_t>(row_map[token + (lane + 4) * rows]) * cols + col];
+    }
+    sum = ((partial[0] + partial[1]) + partial[2]) + partial[3];
+  } else {
+    for (int slot = 0; slot < top_k; ++slot) {
+      sum += input[static_cast<int64_t>(row_map[token + slot * rows]) * cols + col];
+    }
   }
   output[index] = static_cast<T>(sum);
 }
 
 template <typename T>
 void LaunchQMoEDynamicFp8Finalize(const float* input, T* output, const int* unpermuted_to_permuted,
-                                  int rows, int cols, int top_k, cudaStream_t stream) {
+                                  int rows, int cols, int top_k, cudaStream_t stream, bool fp16_compatible) {
   const int64_t count = static_cast<int64_t>(rows) * cols;
-  QMoEDynamicFp8FinalizeKernel<<<narrow<int>((count + 255) / 256), 256, 0, stream>>>(
-      input, output, unpermuted_to_permuted, rows, cols, top_k);
+  if (fp16_compatible) {
+    QMoEDynamicFp8FinalizeKernel<T, true><<<narrow<int>((count + 255) / 256), 256, 0, stream>>>(
+        input, output, unpermuted_to_permuted, rows, cols, top_k);
+  } else {
+    QMoEDynamicFp8FinalizeKernel<T, false><<<narrow<int>((count + 255) / 256), 256, 0, stream>>>(
+        input, output, unpermuted_to_permuted, rows, cols, top_k);
+  }
   CUDA_CALL_THROW(cudaGetLastError());
 }
 
 #define INSTANTIATE_DYNAMIC_FP8(T)                                                                                     \
-  template void LaunchQMoEDynamicFp8Quantize<T>(const T*, uint8_t*, float*, int, int, int, cudaStream_t);              \
+  template void LaunchQMoEDynamicFp8Quantize<T>(const T*, uint8_t*, float*, int, int, int, cudaStream_t, bool);        \
   template void LaunchQMoEDynamicFp8Projection<T, T>(const QMoEFp8ProjectionParams&, const uint8_t*, const float*, T*, \
-                                                     const float*, const int*, int, cudaStream_t);                     \
-  template void LaunchQMoEDynamicFp8Finalize<T>(const float*, T*, const int*, int, int, int, cudaStream_t);
+                                                     const float*, const int*, int, cudaStream_t, bool);               \
+  template void LaunchQMoEDynamicFp8Finalize<T>(const float*, T*, const int*, int, int, int, cudaStream_t, bool);
 INSTANTIATE_DYNAMIC_FP8(half)
 INSTANTIATE_DYNAMIC_FP8(__nv_bfloat16)
 INSTANTIATE_DYNAMIC_FP8(float)
 #undef INSTANTIATE_DYNAMIC_FP8
 template void LaunchQMoEDynamicFp8Projection<half, float>(
-    const QMoEFp8ProjectionParams&, const uint8_t*, const float*, float*, const float*, const int*, int, cudaStream_t);
+    const QMoEFp8ProjectionParams&, const uint8_t*, const float*, float*, const float*, const int*, int, cudaStream_t, bool);
 template void LaunchQMoEDynamicFp8Projection<__nv_bfloat16, float>(
-    const QMoEFp8ProjectionParams&, const uint8_t*, const float*, float*, const float*, const int*, int, cudaStream_t);
+    const QMoEFp8ProjectionParams&, const uint8_t*, const float*, float*, const float*, const int*, int, cudaStream_t, bool);
 
 template <typename T, typename InputT>
 __global__ void QMoEFp8ActivationKernel(const InputT* input, const T* bias, T* output,

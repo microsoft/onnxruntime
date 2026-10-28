@@ -5,12 +5,14 @@
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <numeric>
 #include <type_traits>
 #include <vector>
 
 #include <gtest/gtest.h>
 
 #include "contrib_ops/cuda/moe/qmoe_kernels.h"
+#include "contrib_ops/cuda/llm/moe_gemm/moe_util_kernels.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/platform/env_var_utils.h"
 
@@ -165,6 +167,140 @@ TEST(CUDA_EP_Unittest, QMoEDynamicFp8RoundsRoutingWeightsBeforeFp32Product) {
   TestDynamicFp8RoutingWeightRounding<half>();
   TestDynamicFp8RoutingWeightRounding<__nv_bfloat16>();
   TestDynamicFp8RoutingWeightRounding<float>();
+}
+
+template <typename T>
+void TestFp16CompatibleTiedRouting() {
+  std::array<T, 256> logits{};
+  CudaBuffer source(sizeof(logits)), scales(8 * sizeof(float)), indices(8 * sizeof(int));
+  source.Upload(logits.data());
+  qmoe::LaunchQMoEFp16CompatibleRouting(source.As<T>(), scales.As<float>(), indices.As<int>(), 1, nullptr);
+  std::array<int, 8> actual_indices{};
+  std::array<float, 8> actual_scales{};
+  indices.Download(actual_indices.data());
+  scales.Download(actual_scales.data());
+  // Independent Torch 2.8 CUDA softmax(...).topk(8, sorted=True) oracle.
+  const std::array<int, 8> expected{7, 6, 4, 5, 1, 0, 2, 3};
+  EXPECT_EQ(actual_indices, expected);
+  for (float value : actual_scales) EXPECT_EQ(value, 0.125f);
+}
+
+TEST(CUDA_EP_Unittest, QMoEFp16CompatibleThresholdTies) {
+  if (!qmoe::QMoEFp16CompatibleSupported()) GTEST_SKIP() << "SM90 QMoE kernel required.";
+  TestFp16CompatibleTiedRouting<half>();
+  TestFp16CompatibleTiedRouting<__nv_bfloat16>();
+}
+
+template <typename T>
+void TestFp16CompatibleNormalization(const std::array<uint32_t, 8>& expected_bits) {
+  std::array<T, 256> logits{};
+  const std::array<float, 8> values{
+      2.84765625f, 2.013671875f, 1.68359375f, 2.6953125f, 1.3330078125f, 2.517578125f, 2.861328125f, 1.7353515625f};
+  for (size_t i = 0; i < values.size(); ++i) logits[i] = T(values[i]);
+  CudaBuffer source(sizeof(logits)), scales(8 * sizeof(float)), indices(8 * sizeof(int));
+  source.Upload(logits.data());
+  qmoe::LaunchQMoEFp16CompatibleRouting(source.As<T>(), scales.As<float>(), indices.As<int>(), 1, nullptr);
+  std::array<int, 8> actual_indices{};
+  std::array<uint32_t, 8> actual_bits{};
+  indices.Download(actual_indices.data());
+  scales.Download(actual_bits.data());
+  const std::array<int, 8> expected_indices{6, 0, 3, 5, 1, 7, 2, 4};
+  EXPECT_EQ(actual_indices, expected_indices);
+  EXPECT_EQ(actual_bits, expected_bits);
+}
+
+TEST(CUDA_EP_Unittest, QMoEFp16CompatibleSourceNormalizationBeforeTypedRound) {
+  if (!qmoe::QMoEFp16CompatibleSupported()) GTEST_SKIP() << "SM90 QMoE kernel required.";
+  // Synthetic Torch 2.8 CUDA oracles. The last FP16 coefficient rounds to
+  // 0x29c3; reciprocal-based native normalization instead rounds to 0x29c2.
+  TestFp16CompatibleNormalization<half>(
+      {1045721238, 1045532189, 1043591563, 1041671282, 1035339434, 1032441271, 1031985732, 1027100673});
+  TestFp16CompatibleNormalization<__nv_bfloat16>(
+      {1045727040, 1045511103, 1043527552, 1041675396, 1035391114, 1032453862, 1032039721, 1027164856});
+}
+
+template <typename T>
+void TestFp16CompatibleVt4() {
+  std::array<float, 8 * 128> input{};
+  const std::array<float, 8> contributions{16777216.0f, 1.0f, 0.0f, 0.0f, -16777216.0f, 1.0f, 0.0f, 0.0f};
+  const std::array<int, 8> map{0, 1, 2, 3, 4, 5, 6, 7};
+  for (size_t slot = 0; slot < map.size(); ++slot) input[slot * 128] = contributions[slot];
+  CudaBuffer source(sizeof(input)), row_map(sizeof(map)), output(128 * sizeof(T));
+  source.Upload(input.data());
+  row_map.Upload(map.data());
+  qmoe::LaunchQMoEDynamicFp8Finalize(source.As<float>(), output.As<T>(), row_map.As<int>(),
+                                     1, 128, 8, nullptr, true);
+  std::array<T, 128> actual{};
+  output.Download(actual.data());
+  EXPECT_EQ(static_cast<float>(actual[0]), 2.0f);
+  for (int col = 1; col < 128; ++col) EXPECT_EQ(static_cast<float>(actual[col]), 0.0f);
+  qmoe::LaunchQMoEDynamicFp8Finalize(source.As<float>(), output.As<T>(), row_map.As<int>(),
+                                     1, 128, 8, nullptr);
+  output.Download(actual.data());
+  EXPECT_EQ(static_cast<float>(actual[0]), 1.0f);
+}
+
+TEST(CUDA_EP_Unittest, QMoEFp16CompatibleVt4NotSequentialReduction) {
+  if (!qmoe::QMoEFp16CompatibleSupported()) GTEST_SKIP() << "SM90 QMoE kernel required.";
+  TestFp16CompatibleVt4<half>();
+  TestFp16CompatibleVt4<__nv_bfloat16>();
+}
+
+TEST(CUDA_EP_Unittest, QMoEFp16CompatibleProductionExpertMaps) {
+  if (!qmoe::QMoEFp16CompatibleSupported()) GTEST_SKIP() << "SM90 QMoE kernel required.";
+  namespace ck = onnxruntime::llm::kernels::cutlass_kernels;
+  constexpr int experts = 256;
+  constexpr int top_k = 8;
+  for (int rows : {1, 30, 33, 65, 257, 8191}) {
+    for (bool concentrated : {false, true}) {
+      SCOPED_TRACE(std::to_string(rows) + ":" + std::to_string(concentrated));
+      const int routes = rows * top_k;
+      std::vector<int> ids(routes), order(routes), expected_map(routes), expected_inverse(routes);
+      std::array<int64_t, experts + 1> expected_offsets{};
+      std::array<int, experts + 1> expected_tiles{};
+      for (int token = 0; token < rows; ++token) {
+        for (int slot = 0; slot < top_k; ++slot) {
+          ids[token * top_k + slot] = ((concentrated ? 0 : token * 37) + slot * 23) % experts;
+          ++expected_offsets[ids[token * top_k + slot] + 1];
+        }
+      }
+      std::iota(order.begin(), order.end(), 0);
+      std::stable_sort(order.begin(), order.end(), [&](int a, int b) { return ids[a] < ids[b]; });
+      for (int index = 0; index < routes; ++index) {
+        expected_map[index] = order[index] / top_k + (order[index] % top_k) * rows;
+        expected_inverse[expected_map[index]] = index;
+      }
+      for (int expert = 0; expert < experts; ++expert) {
+        expected_tiles[expert + 1] = expected_tiles[expert] + static_cast<int>((expected_offsets[expert + 1] + 15) / 16);
+        expected_offsets[expert + 1] += expected_offsets[expert];
+      }
+      CudaBuffer source(routes * sizeof(int)), map(routes * sizeof(int)), inverse(routes * sizeof(int));
+      CudaBuffer sorted(routes * sizeof(int)), offsets(sizeof(expected_offsets)), tiles(sizeof(expected_tiles));
+      source.Upload(ids.data());
+      if (!ck::fusedBuildExpertMapsSortFirstToken(source.As<int>(), map.As<int>(), inverse.As<int>(), sorted.As<int>(),
+                                                  offsets.As<int64_t>(), rows, experts, top_k, 0, experts, nullptr)) {
+        const int64_t tokens_per_block = ck::computeNumTokensPerBlock(rows, experts);
+        const int64_t blocks = (rows + tokens_per_block - 1) / tokens_per_block;
+        CudaBuffer counts(experts * blocks * sizeof(int)), cumulative(experts * blocks * sizeof(int));
+        CudaBuffer blocked_rows(experts * rows * sizeof(int));
+        ck::threeStepBuildExpertMapsSortFirstToken(
+            source.As<int>(), sorted.As<int>(), map.As<int>(), inverse.As<int>(), offsets.As<int64_t>(),
+            counts.As<int>(), cumulative.As<int>(), blocked_rows.As<int>(), rows, experts, top_k, 0, nullptr);
+      }
+      qmoe::LaunchQMoEFp8ExpertTiles(offsets.As<int64_t>(), tiles.As<int>(), experts, nullptr);
+      std::vector<int> actual_map(routes), actual_inverse(routes);
+      std::array<int64_t, experts + 1> actual_offsets{};
+      std::array<int, experts + 1> actual_tiles{};
+      map.Download(actual_map.data());
+      inverse.Download(actual_inverse.data());
+      offsets.Download(actual_offsets.data());
+      tiles.Download(actual_tiles.data());
+      EXPECT_EQ(actual_map, expected_map);
+      EXPECT_EQ(actual_inverse, expected_inverse);
+      EXPECT_EQ(actual_offsets, expected_offsets);
+      EXPECT_EQ(actual_tiles, expected_tiles);
+    }
+  }
 }
 
 TEST(CUDA_EP_Unittest, QMoEFp8CompactExpertsPreservesRoutesAndClearsUnusedSlots) {

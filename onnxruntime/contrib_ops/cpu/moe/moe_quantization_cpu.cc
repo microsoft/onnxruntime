@@ -922,6 +922,8 @@ template <typename T>
 QMoECPU<T>::QMoECPU(const OpKernelInfo& op_kernel_info)
     : OpKernel(op_kernel_info),
       MoEBaseCPU(op_kernel_info) {
+  ORT_ENFORCE(op_kernel_info.GetAttrOrDefault<std::string>("fp8_execution_profile", "native") == "native",
+              "CPU QMoE does not support fp8_execution_profile other than 'native'.");
   ORT_ENFORCE(op_kernel_info.GetAttrOrDefault<std::string>("activation_quantization", "none") == "none",
               "CPU QMoE does not support dynamic FP8 activation quantization.");
   ORT_ENFORCE(activation_type_ != ActivationType::SwiGLU || swiglu_fusion_ == 1,

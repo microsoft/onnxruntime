@@ -32,6 +32,8 @@ struct QMoEShapeCase {
   std::optional<int64_t> block = 32;
   std::optional<std::string> quant_type = "int";
   std::optional<std::string> activation_quantization;
+  std::optional<std::string> fp8_execution_profile;
+  int64_t normalize = 0;
   int64_t top_k = 1;
   int64_t fusion = 1;
   std::string activation = "swiglu";
@@ -85,6 +87,8 @@ common::Status ResolveQMoE(const QMoEShapeCase& spec,
   if (spec.block) node.AddAttribute("block_size", *spec.block);
   if (spec.quant_type) node.AddAttribute("quant_type", *spec.quant_type);
   if (spec.activation_quantization) node.AddAttribute("activation_quantization", *spec.activation_quantization);
+  if (spec.fp8_execution_profile) node.AddAttribute("fp8_execution_profile", *spec.fp8_execution_profile);
+  node.AddAttribute("normalize_routing_weights", spec.normalize);
   node.AddAttribute("swiglu_fusion", spec.fusion);
   if (!spec.omit_activation) node.AddAttribute("activation_type", spec.activation);
   graph.SetOutputs({&output});
@@ -105,6 +109,39 @@ QMoEShapeCase DynamicFp8Case() {
   spec.shapes = {{0, {2, 256}}, {1, {2, 3}}, {2, {3, 256, 256}}, {3, {3, 2, 2}}, {5, {3, 256, 128}}, {6, {3, 2, 1}}};
   spec.types = {{2, TensorProto::FLOAT8E4M3FN}, {5, TensorProto::FLOAT8E4M3FN}, {3, TensorProto::FLOAT}, {6, TensorProto::FLOAT}};
   return spec;
+}
+
+QMoEShapeCase Fp16CompatibleCase() {
+  auto spec = DynamicFp8Case();
+  spec.fp8_execution_profile = "fp16_compatible";
+  spec.top_k = 8;
+  spec.normalize = 1;
+  spec.fusion = 0;
+  spec.activation = "silu";
+  spec.shapes = {{0, {2, 256}}, {1, {2, 256}}, {2, {256, 128, 256}}, {3, {256, 1, 2}}, {5, {256, 256, 128}}, {6, {256, 2, 1}}, {8, {256, 128, 256}}, {9, {256, 1, 2}}};
+  spec.types[8] = TensorProto::FLOAT8E4M3FN;
+  spec.types[9] = TensorProto::FLOAT;
+  return spec;
+}
+
+TEST(QMoEShapeInferenceTest, Fp16CompatiblePreservesTypedSymbolicAndEmptyShapes) {
+  for (int type : {TensorProto::FLOAT16, TensorProto::BFLOAT16}) {
+    auto spec = Fp16CompatibleCase();
+    spec.activation_type = type;
+    ASSERT_STATUS_OK(ResolveQMoE(spec, [&](const Node&, const NodeArg& output) {
+      EXPECT_EQ(output.TypeAsProto()->tensor_type().elem_type(), type);
+      ASSERT_NE(output.Shape(), nullptr);
+      EXPECT_EQ(output.Shape()->dim(1).dim_value(), 256);
+    }));
+    spec.symbolic_dimension = {{0, 0}};
+    ASSERT_STATUS_OK(ResolveQMoE(spec));
+    spec.symbolic_dimension.reset();
+    spec.shapes[0] = {1, 2, 256};
+    ASSERT_STATUS_OK(ResolveQMoE(spec));
+    spec.shapes[0] = {0, 256};
+    spec.shapes[1][0] = 0;
+    ASSERT_STATUS_OK(ResolveQMoE(spec));
+  }
 }
 
 TEST(QMoEShapeInferenceTest, DynamicFp8PreservesActivationShapeAndType) {
@@ -338,6 +375,39 @@ TEST(QMoEShapeInferenceTest, OtherMicrosoftOperatorsStillResolveToVersion1) {
 }
 
 #ifndef ORT_NO_EXCEPTIONS
+
+TEST(QMoEShapeInferenceTest, RejectsInvalidFp16CompatibleMetadata) {
+  using Mutation = std::pair<std::string, std::function<void(QMoEShapeCase&)>>;
+  const std::vector<Mutation> mutations{
+      {"profile", [](auto& s) { s.fp8_execution_profile = "compatible"; }},
+      {"weight only", [](auto& s) { s.activation_quantization = "none"; }},
+      {"FP32", [](auto& s) { s.activation_type = TensorProto::FLOAT; }},
+      {"router type", [](auto& s) { s.types[1] = TensorProto::FLOAT; }},
+      {"top k", [](auto& s) { s.top_k = 7; }},
+      {"normalization", [](auto& s) { s.normalize = 0; }},
+      {"fusion", [](auto& s) { s.fusion = 1; }},
+      {"activation", [](auto& s) { s.activation = "relu"; }},
+      {"gate only", [](auto& s) { s.shapes.erase(8); s.shapes.erase(9); }},
+      {"missing up scale", [](auto& s) { s.shapes.erase(9); }},
+      {"experts", [](auto& s) { s.shapes[2][0] = 128; }},
+      {"router experts", [](auto& s) { s.shapes[1][1] = 128; }},
+      {"uint8 bank", [](auto& s) { s.types[8] = TensorProto::UINT8; }},
+      {"typed scale", [](auto& s) { s.types[9] = TensorProto::FLOAT16; }},
+      {"unaligned hidden", [](auto& s) { s.shapes[2][2] = 160; }},
+      {"unaligned intermediate", [](auto& s) { s.shapes[2][1] = 160; }},
+      {"input rank", [](auto& s) { s.shapes[0] = {1, 1, 2, 256}; }},
+      {"router rank", [](auto& s) { s.shapes[1] = {2, 256, 1}; }},
+      {"scale shape", [](auto& s) { s.shapes[6][2] = 2; }},
+      {"capacity", [](auto& s) { s.shapes[0][0] = s.shapes[1][0] = 8192; }},
+      {"bias", [](auto& s) { s.shapes[7] = {256, 256}; }},
+  };
+  for (const auto& [name, mutate] : mutations) {
+    SCOPED_TRACE(name);
+    auto spec = Fp16CompatibleCase();
+    mutate(spec);
+    EXPECT_FALSE(ResolveQMoE(spec).IsOK());
+  }
+}
 
 TEST(QMoEShapeInferenceTest, RejectsInvalidDynamicFp8Metadata) {
   using Mutation = std::pair<std::string, std::function<void(QMoEShapeCase&)>>;
