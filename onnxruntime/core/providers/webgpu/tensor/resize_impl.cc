@@ -262,7 +262,7 @@ Status ResizeBilinearProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
                             << "  let output_indices = " << output.OffsetToIndices("global_idx") << ";\n"
                             << "  var input_indices = " << output.OffsetToIndices("global_idx") << ";\n"
-                            << "  var axis = " << rank_ - 2 << ";\n"
+                            << "  var axis = " << height_axis_ << ";\n"
                             << "  let input_height = u32(" << input_shape_index_str << ");\n"
                             << "  var input_max_coord = f32(input_height - 1);\n"
                             << "  var output_coord = output_indices[axis];\n"
@@ -271,7 +271,7 @@ Status ResizeBilinearProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "  input_coord = max(0.0, min(input_coord, input_max_coord));\n"
                             << "  let input_y_coord_int = u32(input_coord);\n"
                             << "  let y_weight_0 = select(input_coord - f32(input_y_coord_int), 0.5, input_coord >= input_max_coord);\n"
-                            << "  axis = " << rank_ - 1 << ";\n"
+                            << "  axis = " << width_axis_ << ";\n"
                             << "  let input_width = u32(" << input_shape_index_str << ");\n"
                             << "  input_max_coord = f32(input_width - 1);\n"
                             << "  output_coord = output_indices[axis];\n"
@@ -282,16 +282,15 @@ Status ResizeBilinearProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "  let x_weight_0 = select(input_coord - f32(input_x_coord_int), 0.5, input_coord >= input_max_coord);\n"
                             << "  let end_of_h = (input_y_coord_int >= input_height - 1);\n"
                             << "  let end_of_w = (input_x_coord_int >= input_width - 1);\n"
-                            << "  let rank = " << rank_ << ";\n"
-                            << "  input_indices[rank - 2] = input_y_coord_int;\n"
-                            << "  input_indices[rank - 1] = input_x_coord_int;\n"
+                            << "  input_indices[" << height_axis_ << "] = input_y_coord_int;\n"
+                            << "  input_indices[" << width_axis_ << "] = input_x_coord_int;\n"
                             << "  let x00 = " << input.GetByIndices("input_indices") << ";\n"
-                            << "  input_indices[rank - 1] = input_x_coord_int + 1;\n"
+                            << "  input_indices[" << width_axis_ << "] = input_x_coord_int + 1;\n"
                             << "  let x10 = select(" << input.GetByIndices("input_indices") << ", x00, end_of_w);\n"
-                            << "  input_indices[rank - 2] = input_y_coord_int + 1;\n"
-                            << "  input_indices[rank - 1] = input_x_coord_int;\n"
+                            << "  input_indices[" << height_axis_ << "] = input_y_coord_int + 1;\n"
+                            << "  input_indices[" << width_axis_ << "] = input_x_coord_int;\n"
                             << "  let x01 = select(" << input.GetByIndices("input_indices") << ", x00, end_of_h);\n"
-                            << "  input_indices[rank - 1] = input_x_coord_int + 1;\n"
+                            << "  input_indices[" << width_axis_ << "] = input_x_coord_int + 1;\n"
                             << "  let x11 = select(select(" << input.GetByIndices("input_indices") << ", x10, end_of_h), x01, end_of_w);\n"
                             << "  let y_weight_1 = 1.0 - y_weight_0;\n"
                             << "  let x_weight_1 = 1.0 - x_weight_0;\n"
@@ -315,12 +314,19 @@ Status ResizeBilinearImpl(ComputeContext& context,
   auto* output_tensor = context.Output(0, output_shape);
   uint32_t output_size = onnxruntime::narrow<uint32_t>(output_shape.Size());
 
-  ResizeBilinearProgram program{coordinate_transform_mode, extrapolation_enabled, rank};
+  // A 4-D linear resize may scale dims 1 and 2 with channels last (scales [1, h, w, 1]); scale
+  // validation only lets dim 1 differ from 1 in that layout. Otherwise the last two dims are resized.
+  const bool channels_last = rank == 4 && scales[1] != 1.0f;
+  const int32_t height_axis = channels_last ? 1 : rank - 2;
+  const int32_t width_axis = channels_last ? 2 : rank - 1;
+
+  ResizeBilinearProgram program{coordinate_transform_mode, extrapolation_enabled, rank, height_axis, width_axis};
   program.AddInput({input_tensor, ProgramTensorMetadataDependency::TypeAndRank})
       .AddOutput({output_tensor, ProgramTensorMetadataDependency::Rank})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .CacheHint(std::to_string(static_cast<int>(extrapolation_enabled)),
-                 std::to_string(static_cast<int>(coordinate_transform_mode)))
+                 std::to_string(static_cast<int>(coordinate_transform_mode)),
+                 channels_last)
       .AddUniformVariables({{roi}, {scales}, {output_size}, {extrapolation_value}});
 
   return context.RunProgram(program);
