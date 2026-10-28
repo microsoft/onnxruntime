@@ -35,6 +35,27 @@ elseif(onnxruntime_USE_DNNL AND onnxruntime_DNNL_AARCH64_RUNTIME STREQUAL "acl" 
   set(DNNL_AARCH64_CMAKE_ARGS "-DDNNL_AARCH64_USE_ACL=ON")
 endif()
 
+if(onnxruntime_USE_SYSTEM_DNNL)
+  find_package(dnnl 3.0.1 CONFIG REQUIRED)
+  get_target_property(_dnnl_target_type DNNL::dnnl TYPE)
+  if(NOT _dnnl_target_type STREQUAL "SHARED_LIBRARY")
+    message(FATAL_ERROR "onnxruntime_USE_SYSTEM_DNNL requires a shared oneDNN library.")
+  endif()
+  if(NOT DNNL_CPU_RUNTIME STREQUAL "OMP")
+    message(FATAL_ERROR "onnxruntime_USE_SYSTEM_DNNL requires oneDNN built with the OpenMP CPU runtime.")
+  endif()
+
+  # Cached primitives may run on a different thread, requiring DNNL_ENABLE_CONCURRENT_EXEC=ON
+  # (ONEDNN_ENABLE_CONCURRENT_EXEC in newer oneDNN). The package does not expose this setting.
+  add_library(dnnl ALIAS DNNL::dnnl)
+  if(WIN32)
+    set(DNNL_DLL_PATH "$<TARGET_FILE:DNNL::dnnl>")
+  else()
+    set(DNNL_DLL_PATH "$<TARGET_SONAME_FILE:DNNL::dnnl>")
+  endif()
+  return()
+endif()
+
 if (onnxruntime_USE_DNNL)
   set(DNNL_SOURCE ${CMAKE_CURRENT_BINARY_DIR}/dnnl/src/dnnl/src)
   set(DNNL_INSTALL ${CMAKE_CURRENT_BINARY_DIR}/dnnl/install)
