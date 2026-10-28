@@ -547,10 +547,6 @@ if (onnxruntime_USE_WEBGPU AND onnxruntime_USE_EP_API_ADAPTERS AND NOT onnxrunti
     "${TEST_SRC_DIR}/providers/webgpu/plugin/*.h"
   )
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_webgpu_plugin_src})
-  # This host-side fusion regression also supports the plugin EP.
-  # The native build uses the recursive glob below.
-  list(APPEND onnxruntime_test_providers_src
-    "${TEST_SRC_DIR}/providers/webgpu/nn/conv_activation_fusion_test.cc")
 endif()
 
 if (onnxruntime_USE_CANN)
