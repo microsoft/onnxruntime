@@ -3699,14 +3699,21 @@ TEST(MoETest, QMoETensorCoreSessionOptions) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP();
   ScopedEnvironmentVariables env{EnvVarMap{{"ORT_DISABLE_QMOE_INT3_TC", "invalid"},
                                            {"ORT_DISABLE_MOE_GEMV_TC", "invalid"}}};
+  // Quick builds omit the native BF16 INT4 MoE runner, so QMoE cannot be constructed for INT4 there.
+#if defined(ORT_QUICK_BUILD)
+  const std::vector<int> bit_widths{3};
+#else
+  const std::vector<int> bit_widths{3, 4};
+#endif
   // QMoE resolves both controls at construction, so each session explicitly overrides both.
-  for (int bits : {3, 4}) {
+  for (int bits : bit_widths) {
     for (const char* disable : {"0", "1"}) {
       RunQMoEBf16TensorCoreGemvParityCase(bits, bits == 3 ? 64 : 32, 512, 512, disable);
     }
   }
 }
 
+#if !defined(ORT_QUICK_BUILD)
 // inter = 512 and 640 give FC2 K loops of 4 and 5 steps of 128; hidden = 1024 gives FC1 two K steps of 512.
 TEST(MoETest, QMoETest_Bf16Int4TensorCoreGemvParity) {
   if (!HasCudaEnvironment(800)) {
@@ -3718,6 +3725,7 @@ TEST(MoETest, QMoETest_Bf16Int4TensorCoreGemvParity) {
     RunQMoEBf16TensorCoreGemvParityCase(/*bits=*/4, /*block_size=*/32, shape.first, shape.second);
   }
 }
+#endif  // !ORT_QUICK_BUILD
 
 // FC2 consumes K in super-steps of 512 followed by (inter / 128) % 4 chunks of 128, so inter = 384, 512, 640 and 768
 // cover tails of 3, 0, 1 and 2 chunks.
