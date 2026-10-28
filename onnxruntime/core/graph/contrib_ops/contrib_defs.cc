@@ -657,6 +657,66 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           return true;
         }));
 
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    UnitLowerTriangularSolve, 1,
+    OpSchema()
+        .SetDoc(R"DOC(
+Solves A X = B for unit lower triangular matrices A.
+A has shape [..., M, M] and B has shape [..., M, N]. Inputs must have equal
+rank of at least two and identical leading batch dimensions; broadcasting is
+not supported. Only the strictly lower triangle of A is used. Its stored
+diagonal and upper triangle are ignored, including non-finite values.
+The output has exactly the shape of B. Empty tensors are supported.
+The CUDA implementation requires CUDA 13.0 or later and does not support CUDA graph capture.
+)DOC")
+        .Input(0, "A", "Unit lower triangular coefficient matrices.", "T")
+        .Input(1, "B", "Right-hand-side matrices.", "T")
+        .Output(0, "X", "Solution matrices, with the same shape as B.", "T")
+        .TypeConstraint("T", {"tensor(float)"}, "Constrain inputs and output to float tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          using namespace ONNX_NAMESPACE;
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          const bool has_a = hasInputShape(ctx, 0);
+          const bool has_b = hasInputShape(ctx, 1);
+          if (has_a) {
+            const auto& a = getInputShape(ctx, 0);
+            if (a.dim_size() < 2) {
+              fail_shape_inference("A and B require equal rank >= 2.");
+            }
+            const auto& rows = a.dim(a.dim_size() - 2);
+            const auto& columns = a.dim(a.dim_size() - 1);
+            if (rows.has_dim_value() && columns.has_dim_value() && rows.dim_value() != columns.dim_value()) {
+              fail_shape_inference("A must be square.");
+            }
+          }
+          if (has_b) {
+            if (getInputShape(ctx, 1).dim_size() < 2) {
+              fail_shape_inference("A and B require equal rank >= 2.");
+            }
+            propagateShapeFromInputToOutput(ctx, 1, 0);
+          }
+          if (!has_a || !has_b) return;
+          const auto& a = getInputShape(ctx, 0);
+          const auto& b = getInputShape(ctx, 1);
+          const int rank = a.dim_size();
+          if (rank != b.dim_size()) {
+            fail_shape_inference("A and B require equal rank >= 2.");
+          }
+          const auto& columns = a.dim(rank - 1);
+          const auto& rhs_rows = b.dim(rank - 2);
+          if (columns.has_dim_value() && rhs_rows.has_dim_value() &&
+              columns.dim_value() != rhs_rows.dim_value()) {
+            fail_shape_inference("Batch dimensions and row counts must match; no broadcasting.");
+          }
+          for (int i = 0; i + 1 < rank; ++i) {
+            const auto& ad = a.dim(i);
+            const auto& bd = b.dim(i);
+            if (ad.has_dim_value() && bd.has_dim_value() && ad.dim_value() != bd.dim_value()) {
+              fail_shape_inference("Batch dimensions and row counts must match; no broadcasting.");
+            }
+          }
+        }));
+
 // Used to be ONNX 1.7 Inverse(12)
 // Comment out docs not to increase the binary size
 //

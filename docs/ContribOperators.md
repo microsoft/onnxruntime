@@ -139,6 +139,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.Trilu">com.microsoft.Trilu</a>
   * <a href="#com.microsoft.UnfoldTensor">com.microsoft.UnfoldTensor</a>
   * <a href="#com.microsoft.Unique">com.microsoft.Unique</a>
+  * <a href="#com.microsoft.UnitLowerTriangularSolve">com.microsoft.UnitLowerTriangularSolve</a>
   * <a href="#com.microsoft.VarlenCausalConvWithState">com.microsoft.VarlenCausalConvWithState</a>
   * <a href="#com.microsoft.VarlenNGramHashMapping">com.microsoft.VarlenNGramHashMapping</a>
   * <a href="#com.microsoft.WhisperBeamSearch">com.microsoft.WhisperBeamSearch</a>
@@ -8653,6 +8654,44 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.UnitLowerTriangularSolve"></a><a name="com.microsoft.unitlowertriangularsolve">**com.microsoft.UnitLowerTriangularSolve**</a>
+
+  Solves A X = B for unit lower triangular matrices A.
+  A has shape [..., M, M] and B has shape [..., M, N]. Inputs must have equal
+  rank of at least two and identical leading batch dimensions; broadcasting is
+  not supported. Only the strictly lower triangle of A is used. Its stored
+  diagonal and upper triangle are ignored, including non-finite values.
+  The output has exactly the shape of B. Empty tensors are supported.
+  The CUDA implementation requires CUDA 13.0 or later and does not support CUDA graph capture.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs
+
+<dl>
+<dt><tt>A</tt> : T</dt>
+<dd>Unit lower triangular coefficient matrices.</dd>
+<dt><tt>B</tt> : T</dt>
+<dd>Right-hand-side matrices.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>X</tt> : T</dt>
+<dd>Solution matrices, with the same shape as B.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float)</dt>
+<dd>Constrain inputs and output to float tensors.</dd>
+</dl>
+
+
 ### <a name="com.microsoft.VarlenCausalConvWithState"></a><a name="com.microsoft.varlencausalconvwithstate">**com.microsoft.VarlenCausalConvWithState**</a>
 
   Stateful causal depthwise convolution over a packed, token-major batch of variable-length
@@ -9137,5 +9176,3 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
-
-
