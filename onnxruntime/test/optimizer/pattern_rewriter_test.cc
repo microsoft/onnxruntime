@@ -69,7 +69,22 @@ Rules MakeExampleRules() {
         return Div(mul, 6.0)
       }
     )";
-    auto check_and_bind = [](const Graph&, Match& m) { return IsFloat32(*m.valueOf("x")); };
+    auto check_and_bind = [](const Graph& graph, Match& m) {
+      if (!IsFloat32(*m.valueOf("x"))) return false;
+      const auto* producer = graph.GetProducerNode(m.valueOf("x")->Name());
+      if (!producer || producer->OpType() != "Clip" || producer->Domain() != kOnnxDomain ||
+          producer->InputDefs().size() != 3)
+        return m.Reject("The approximate Clip-chain example requires an upstream Clip to [-6,6].");
+      for (size_t i = 1; i < 3; ++i) {
+        const auto* bound = producer->InputDefs()[i];
+        if (!bound || !bound->Shape() || bound->Shape()->dim_size() != 0) return false;
+        InlinedVector<float> data;
+        bool available = false;
+        ORT_THROW_IF_ERROR(ReadConstantTensor(graph, bound, data, available));
+        if (!available || data.size() != 1 || data[0] != (i == 1 ? -6.0f : 6.0f)) return false;
+      }
+      return true;
+    };
     const auto* replacement = "(x) => HardSwish(x)";
     Rule rule{"HardSwish", pattern, replacement, check_and_bind, {{kOnnxDomain, 14, 21}}};
     rules.push_back(std::move(rule));
@@ -211,8 +226,13 @@ struct TestGraph {
 };
 
 void BuildHardSwish(ModelTestBuilder& b, bool mismatch = false, bool intermediate_output = false, float divisor = 6.0f,
-                    bool external_consumer = false) {
-  auto* x = b.MakeInput<float>({2, 4}, -5.0f, 5.0f);
+                    bool external_consumer = false, bool bounded = true) {
+  auto* input = b.MakeInput<float>({2, 4}, -5.0f, 5.0f);
+  auto* x = input;
+  if (bounded) {
+    x = b.MakeIntermediate();
+    b.AddNode("Clip", {input, b.MakeScalarInitializer<float>(-6.0f), b.MakeScalarInitializer<float>(6.0f)}, {x});
+  }
   auto* y = mismatch ? b.MakeInput<float>({2, 4}, -5.0f, 5.0f) : x;
   auto* add = b.MakeIntermediate();
   auto* clip = intermediate_output ? b.MakeOutput() : b.MakeIntermediate();
@@ -428,7 +448,9 @@ TEST(PatternRewriterTests, HardSwishPositiveAndBoundaries) {
     BuildHardSwish(test.builder, scenario == 1, scenario == 2, scenario == 3 ? 7.0f : 6.0f, scenario == 4);
     test.builder.SetGraphOutputs();
     ASSERT_STATUS_OK(test.graph.Resolve());
-    if (scenario == 5) test.graph.Nodes().begin()->SetExecutionProviderType(kCudaExecutionProvider);
+    if (scenario == 5)
+      for (auto& node : test.graph.Nodes())
+        if (node.OpType() == "Add") node.SetExecutionProviderType(kCudaExecutionProvider);
     PatternRewriter rewriter(MakeExampleRules());
     Statistics statistics;
     ASSERT_STATUS_OK(rewriter.Run(test.graph, statistics));
@@ -443,7 +465,7 @@ TEST(PatternRewriterTests, NumericalHardSwish) {
                     [](InferenceSessionWrapper& s) {
                       // CPU executes HardSwish's ONNX function body (HardSigmoid + Mul).
                       EXPECT_EQ(Count(s.GetGraph(), "HardSigmoid"), 1u);
-                      EXPECT_EQ(Count(s.GetGraph(), "Clip"), 0u);
+                      EXPECT_EQ(Count(s.GetGraph(), "Clip"), 1u);
                     },
                     TransformerLevel::Default, TransformerLevel::Level1, 17, 1e-6, 1e-5,
                     std::make_unique<PatternRewriter>(MakeExampleRules()));
@@ -465,6 +487,109 @@ TEST(PatternRewriterTests, HardSigmoidAttributeGuard) {
     ASSERT_STATUS_OK(PatternRewriter(MakeExampleRules()).Run(test.graph, stats));
     EXPECT_EQ(stats.rewrites, correct ? 1u : 0u);
     ASSERT_STATUS_OK(test.graph.Resolve());
+  }
+}
+
+TEST(PatternRewriterTests, ClipChainHardSwishRequiresRangeProofAndPreservesOverflowWithoutIt) {
+  const std::vector<float> values{
+      0x1p126f, -0x1p126f, std::numeric_limits<float>::max(), -std::numeric_limits<float>::max(),
+      -6.0f, std::nextafter(-3.0f, -4.0f), -3.0f, std::nextafter(-3.0f, 0.0f),
+      -1.0f, -0.0f, 0.0f, 1.0f, std::nextafter(3.0f, 0.0f), 3.0f,
+      std::nextafter(3.0f, 4.0f), 6.0f};
+  for (bool indexed : {false, true}) {
+    for (bool bounded : {false, true}) {
+      TestGraph test;
+      auto& b = test.builder;
+      auto* input = b.MakeInput<float>({static_cast<int64_t>(values.size())}, values);
+      auto* x = input;
+      if (bounded) {
+        x = b.MakeIntermediate();
+        b.AddNode("Clip", {input, b.MakeScalarInitializer<float>(-6.0f), b.MakeScalarInitializer<float>(6.0f)}, {x});
+      }
+      auto* add = b.MakeIntermediate();
+      auto* clip = b.MakeIntermediate();
+      auto* mul = b.MakeIntermediate();
+      b.AddNode("Add", {x, b.MakeScalarInitializer<float>(3.0f)}, {add});
+      b.AddNode("Clip", {add, b.MakeScalarInitializer<float>(0.0f), b.MakeScalarInitializer<float>(6.0f)}, {clip});
+      b.AddNode("Mul", {clip, x}, {mul});
+      b.AddNode("Div", {mul, b.MakeScalarInitializer<float>(6.0f)}, {b.MakeOutput()});
+      b.AddNode("HardSwish", {x}, {b.MakeOutput()});
+      b.SetGraphOutputs();
+      ASSERT_STATUS_OK(test.graph.Resolve());
+      const auto original = test.model.ToProto().SerializeAsString();
+      Statistics stats;
+      ASSERT_STATUS_OK(PatternRewriter({MakeExampleRules()[0]}, {.indexed = indexed}).Run(test.graph, stats));
+      EXPECT_EQ(stats.rewrites, bounded ? 1u : 0u);
+      ASSERT_STATUS_OK(test.graph.Resolve());
+      const auto rewritten = test.model.ToProto().SerializeAsString();
+      auto execute = [&](const std::string& serialized, std::vector<OrtValue>& outputs) {
+        SessionOptions options;
+        options.graph_optimization_level = TransformerLevel::Default;
+        options.intra_op_param.thread_pool_size = 1;
+        InferenceSessionWrapper session{options, GetEnvironment()};
+        std::istringstream stream(serialized);
+        ORT_RETURN_IF_ERROR(session.Load(stream));
+        ORT_RETURN_IF_ERROR(session.Initialize());
+        return session.Run(RunOptions{}, b.feeds_, b.output_names_, &outputs);
+      };
+      std::vector<OrtValue> before, after;
+      ASSERT_STATUS_OK(execute(original, before));
+      ASSERT_STATUS_OK(execute(rewritten, after));
+      ASSERT_EQ(before.size(), 2u);
+      ASSERT_EQ(after.size(), 2u);
+      const auto* source = before[0].Get<Tensor>().Data<float>();
+      const auto* target = after[0].Get<Tensor>().Data<float>();
+      const auto* hard_swish = before[1].Get<Tensor>().Data<float>();
+      if (!bounded) {
+        EXPECT_TRUE(std::isinf(source[0]) && source[0] > 0);
+        EXPECT_EQ(hard_swish[0], values[0]);
+        EXPECT_TRUE(std::isfinite(hard_swish[0]));
+      }
+      for (size_t i = 0; i < values.size(); ++i) {
+        if (std::isinf(source[i])) {
+          EXPECT_EQ(target[i], source[i]);
+        } else {
+          EXPECT_NEAR(target[i], source[i], 1e-6f + 1e-5f * std::abs(source[i]));
+          if (bounded) EXPECT_NEAR(target[i], hard_swish[i], 1e-6f + 1e-5f * std::abs(hard_swish[i]));
+        }
+      }
+      if (!bounded) EXPECT_EQ(rewritten, original);
+    }
+  }
+}
+
+TEST(PatternRewriterTests, ClipChainRangeProofRejectsUnboundedOrUnreliableBounds) {
+  for (bool indexed : {false, true}) {
+    for (int scenario = 0; scenario < 4; ++scenario) {
+      TestGraph test;
+      BuildHardSwish(test.builder, false, false, 6.0f, false, scenario != 0);
+      test.builder.SetGraphOutputs();
+      ASSERT_STATUS_OK(test.graph.Resolve());
+      if (scenario != 0) {
+        auto& bound_clip = *test.graph.Nodes().begin();
+        auto* upper = bound_clip.MutableInputDefs()[2];
+        if (scenario == 1) {
+          auto tensor = *test.graph.GetInitializer(upper->Name(), false);
+          tensor.clear_raw_data();
+          tensor.clear_float_data();
+          tensor.add_float_data(7.0f);
+          test.graph.RemoveInitializedTensor(upper->Name());
+          test.graph.AddInitializedTensor(tensor);
+        } else if (scenario == 2) {
+          auto inputs = test.graph.GetInputsIncludingInitializers();
+          inputs.push_back(upper);
+          test.graph.SetInputs(inputs);
+        } else {
+          bound_clip.MutableInputDefs().resize(1);
+        }
+        ASSERT_STATUS_OK(test.graph.Resolve());
+      }
+      const auto before = test.model.ToProto().SerializeAsString();
+      Statistics stats;
+      ASSERT_STATUS_OK(PatternRewriter({MakeExampleRules()[0]}, {.indexed = indexed}).Run(test.graph, stats));
+      EXPECT_EQ(stats.rewrites, 0u);
+      EXPECT_EQ(test.model.ToProto().SerializeAsString(), before);
+    }
   }
 }
 
@@ -588,7 +713,7 @@ TEST(PatternRewriterTests, ParsedReplacementSequenceAndNumerics) {
     Statistics stats;
     ASSERT_STATUS_OK(rewriter.Run(test.graph, stats));
     EXPECT_EQ(stats.rewrites, 1u);
-    EXPECT_EQ(test.graph.NumberOfNodes(), 2u);
+    EXPECT_EQ(test.graph.NumberOfNodes(), 3u);
     EXPECT_EQ(test.graph.GetOutputs(), outputs);
     ASSERT_STATUS_OK(test.graph.Resolve());
     EXPECT_EQ(Count(test.graph, "HardSigmoid"), 1u);
@@ -602,7 +727,7 @@ TEST(PatternRewriterTests, ParsedReplacementSequenceAndNumerics) {
                     [](InferenceSessionWrapper& session) {
                       EXPECT_EQ(Count(session.GetGraph(), "HardSigmoid"), 1u);
                       EXPECT_EQ(Count(session.GetGraph(), "Mul"), 1u);
-                      EXPECT_EQ(Count(session.GetGraph(), "Clip"), 0u);
+                      EXPECT_EQ(Count(session.GetGraph(), "Clip"), 1u);
                     },
                     TransformerLevel::Default, TransformerLevel::Level1, 17, 1e-6, 1e-5,
                     std::make_unique<PatternRewriter>(Rules{rule}));
@@ -711,7 +836,7 @@ TEST(PatternRewriterTests, ReplacementParsingCompilationAndRollback) {
       Statistics stats;
       ASSERT_FALSE(PatternRewriter({rule}, {.indexed = indexed}).Run(test.graph, stats).IsOK());
       EXPECT_EQ(stats.rewrites, 0u);
-      EXPECT_EQ(test.graph.NumberOfNodes(), 4u);
+      EXPECT_EQ(test.graph.NumberOfNodes(), 5u);
       EXPECT_EQ(test.graph.GetAllInitializedTensors().size(), initializer_count);
       ASSERT_STATUS_OK(test.graph.Resolve());
       rule.replacement = Replacement("(x)=>a=Identity(x);return HardSwish(a)");
@@ -923,7 +1048,7 @@ TEST(PatternRewriterTests, ReplacementExtraAttributeBindings) {
       } else {
         EXPECT_EQ(rewriter.Run(test.graph, stats).IsOK(), scenario == 0);
       }
-      EXPECT_EQ(test.graph.NumberOfNodes(), scenario == 0 ? 2u : 4u);
+      EXPECT_EQ(test.graph.NumberOfNodes(), scenario == 0 ? 3u : 5u);
       ASSERT_STATUS_OK(test.graph.Resolve());
       if (scenario == 0) {
         for (const auto& node : test.graph.Nodes()) {
@@ -1173,7 +1298,7 @@ TEST(PatternRewriterTests, ParsedHardSwishConstantsAndExecution) {
   TransformerTester([](ModelTestBuilder& b) { BuildHardSwish(b); },
                     [](InferenceSessionWrapper& session) {
                       EXPECT_EQ(Count(session.GetGraph(), "HardSigmoid"), 1u);
-                      EXPECT_EQ(Count(session.GetGraph(), "Clip"), 0u);
+                      EXPECT_EQ(Count(session.GetGraph(), "Clip"), 1u);
                     },
                     TransformerLevel::Default, TransformerLevel::Level1, 17, 1e-6, 1e-5,
                     std::make_unique<PatternRewriter>(Rules{rule}));
@@ -1228,7 +1353,7 @@ TEST(PatternRewriterTests, ExampleFixedConstantsArePatternLiterals) {
           Statistics stats;
           ASSERT_STATUS_OK(PatternRewriter({rule}, {.indexed = indexed}).Run(test.graph, stats));
           EXPECT_EQ(stats.rewrites, 0u) << op << " input " << slot << " scenario " << scenario;
-          EXPECT_EQ(test.graph.NumberOfNodes(), 4u);
+          EXPECT_EQ(test.graph.NumberOfNodes(), 5u);
         }
       }
     }
@@ -1430,7 +1555,7 @@ TEST(PatternRewriterTests, VectorLiteralMatchingAndNumerics) {
       rule.replacement = Replacement(text);
       Statistics stats;
       EXPECT_FALSE(PatternRewriter({rule}, {.indexed = indexed}).Run(test.graph, stats).IsOK());
-      EXPECT_EQ(test.graph.NumberOfNodes(), 4u);
+      EXPECT_EQ(test.graph.NumberOfNodes(), 5u);
       EXPECT_EQ(test.graph.GetAllInitializedTensors().size(), count);
       ASSERT_STATUS_OK(test.graph.Resolve());
     }

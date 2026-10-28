@@ -1166,6 +1166,16 @@ swap. Division examples require a finite scaling result. Consult the rule
 definitions and correctness tests before extending their supported ranges.
 Contrib-disabled tests construct only the two HardSwish examples.
 
+The Clip/Add/Mul/Div HardSwish example is an **approximate, bounded-domain**
+rewrite, not an FP32 algebraic identity. Its checker requires structural proof
+that `x` is the output of `Clip(input, -6.0, 6.0)` with immutable scalar bounds.
+That upstream Clip is retained; arbitrary runtime inputs are rejected rather
+than trusting the test generator's input range. Without this guard, for example,
+`x = 0x1p126` makes the source's `6*x` overflow before division, while
+`HardSwish(x)` stays finite. Bounded numerical comparisons use explicit
+tolerances, not a bitwise-equivalence claim. The separate HardSigmoidMul example
+matches HardSwish's ONNX function structure and does not need this range proof.
+
 ## Opset and execution-provider applicability
 
 Each `OpsetRequirement` is `{domain, min_version, max_version}`, with positive,
@@ -1370,8 +1380,11 @@ the engine's integration tests or duplicate a second matcher/recipe executor.
 
 Concrete entry plans are limited to 64 nodes, 256 values, and 64 inputs/outputs per
 operator. They are connected acyclic graphs rooted at the final operator.
-Named pattern alternatives are expanded as described below. There is no inline
-operator/subgraph alternation, implicit commutation, variadic matching,
+`PatternLibrary` supports bounded named and inline expression alternatives,
+including calls and value aliases, as described in
+[Expressions, alternatives, and branch-local inputs](#expressions-alternatives-and-branch-local-inputs).
+Standalone `Pattern` does not accept those library expressions. There is no
+general structural backtracking, implicit commutation, variadic matching,
 general tensor synthesis, domain-import editing, or model-local function
 rewriting. Control-flow operators are not matched, although their subgraphs can
 be rewritten through `Apply`.
