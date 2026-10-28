@@ -17,6 +17,7 @@
 #include "contrib_ops/cuda/llm/fpA_intB_gemv/fpA_intB_gemv.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemv/details.h"
 #include "core/common/common.h"
+#include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 
 #include <atomic>
@@ -26,6 +27,22 @@
 namespace onnxruntime::llm {
 namespace kernels {
 namespace fpA_intB_gemv {
+
+inline bool GemvUseA100M8Tiles() {
+  int device = 0;
+  CUDA_CALL_THROW(cudaGetDevice(&device));
+  static thread_local int cached_device = -1;
+  static thread_local bool is_a100 = false;
+  if (device != cached_device) {
+    int major = 0, minor = 0, sm_count = 0;
+    CUDA_CALL_THROW(cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, device));
+    CUDA_CALL_THROW(cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, device));
+    CUDA_CALL_THROW(cudaDeviceGetAttribute(&sm_count, cudaDevAttrMultiProcessorCount, device));
+    is_a100 = major == 8 && minor == 0 && sm_count == 108;
+    cached_device = device;
+  }
+  return is_a100;
+}
 
 // SM count of the current device if it is sm_12x (consumer / workstation Blackwell), else 0.
 inline int GemvPickSmCount() {
@@ -654,17 +671,18 @@ void dispatcher(Params& params, cudaStream_t s) {
   // columns; each output keeps the same K reduction, so results are bit-identical.
   // Only the scale-only SM80-interleaved INT4 (StepK 32) and INT8 (StepK 16) layouts qualify. The
   // Hopper layout (kInterleave 1) and the zero-point kernels (CtaNLargeM 2) keep the default tile.
-  // The grid.y cutoffs are empirical and depend on the SM count (the DFlash2 H200 runs have 132 SMs).
-  // FP16/INT4 and BF16/INT8 were measured; FP16/INT8 and BF16/INT4 reuse the tile and cutoff of the
-  // layout they share, so retune them if they regress. On a 108-SM A100 the INT4 narrow tile loses to
-  // the default tile for N of about 4350-5120 (it spills into a second wave), so an SM-count-aware
-  // cutoff may be needed there.
+  // A100 uses same-shape timing-qualified windows for FP16/BF16 and INT4/INT8. In particular,
+  // INT4 N = 4320 fills its 108 * 5 narrow-tile block slots; N = 4336 starts a second wave.
+  // Unqualified A100 epilogues keep the default tile. Other devices retain the H200 cutoffs.
   if constexpr (((Details::kStepK == 32 && Details::kInterleave == 4) ||
                  (Details::kStepK == 16 && Details::kInterleave == 2)) &&
                 !EnableZero && CtaNLargeM == 4) {
-    constexpr int kMaxGridYForNarrow = (Details::kStepK == 16) ? 160 : 320;
-    if (params.m == 8 && params.n / (CtaNLargeM * Details::kInterleave) <= kMaxGridYForNarrow &&
-        params.n % ((CtaNLargeM / 2) * Details::kInterleave) == 0) {
+    const bool is_a100 = params.m == 8 && GemvUseA100M8Tiles();
+    constexpr bool kA100Qualified = !EnableActScale && !EnableBias && !ApplyAlphaInAdvance &&
+                                    (GroupSize == 32 || GroupSize == 64 || GroupSize == 128);
+    if ((!is_a100 || kA100Qualified) &&
+        PickM8GemvCtaN(is_a100, params.m, params.n, params.k, Details::kInterleave, CtaNLargeM) ==
+            CtaNLargeM / 2) {
       exec_kernel<Details, 8, CtaNLargeM / 2, 128, GroupSize, EnableActScale, EnableZero, EnableBias,
                   ApplyAlphaInAdvance>(params, s);
       return;

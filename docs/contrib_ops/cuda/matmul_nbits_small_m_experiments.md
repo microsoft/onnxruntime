@@ -4,7 +4,9 @@ This file records CUDA `MatMulNBits` 4-bit (M = 2..16) and 8-bit small-M
 profiling results. The historical 8-bit baseline covered M = 2..5; the
 general 8-bit dispatch still covers M = 2..5, with M = 6..8 enabled only
 for the exact SM121 FP16 configuration qualified below. These measurements
-provide stable comparison points for future kernel and dispatch changes.
+provide stable comparison points for future kernel and dispatch changes. The
+last section covers the fpA_intB (CUTLASS weight-only) GEMV `M = 8` column-tile
+dispatch rather than the generic small-M GEMV.
 
 > **Note**: These are **point-in-time** measurements captured on the specific GPU, driver, CUDA
 > toolkit, and ORT build noted in the section header. Treat the numbers as a historical baseline
@@ -140,3 +142,95 @@ This is a shape- and device-specific result rather than a general crossover clai
 
 - Sweep block_size {16, 32, 64, 128} and bf16 activations.
 - Add kernel-level (nsys) breakdowns to separate compute from launch/dispatch overhead.
+
+## 2026-10-27 A100 fpA_intB GEMV M=8 Tile Dispatch Validation
+
+This section covers the CUTLASS weight-only (fpA_intB) GEMV, not the generic small-M GEMV measured
+above. It compares the `M = 8` narrow column tile (`CtaN = 2`) with the default tile (`CtaN = 4`) on an
+A100 to qualify the dispatch described in §6.4 of [matmul_nbits.md](./matmul_nbits.md).
+
+### Setup
+
+- Machine/GPU: A100-SXM4-80GB (SM80, 108 SMs, 40 MiB L2), driver 580.159.04, CUDA 13.0 (nvcc 13.0.48),
+  GCC 13.2, `-O3`, `sm_80`.
+- Kernels: the production `fpA_intB_gemv` kernel template instantiated directly (not an ORT session)
+  with M = 8, 128 threads, `CtaN` = 2 and 4, scale-only SM80-interleaved weights (no activation scale,
+  zero points, bias, or alpha-in-advance), FP16 and BF16 activations, INT4 and INT8 weights.
+- Shapes: `block_size` 32 at K = 1024 and 4096, plus spot checks at K = 8192 and `block_size` 64 / 128;
+  1,216 unique dtype x bits x N x K x group x residency conditions in total.
+- Residency: *cache* reuses one weight buffer (0.13-34 MiB, L2-resident); *rotating* cycles through
+  distinct weight buffers (256-276 MiB, more than 6.4x the L2) so the weights stream from DRAM.
+- Timing: CUDA graph replay of at least 128 kernels per case. A case reports the median of 11
+  batch-average per-kernel latencies; a condition reports the median of at least 3 independent rounds
+  (5 for the main sweep; separate processes, shuffled shape and tile order). Decisions use the paired
+  per-round ratio. Both tiles run on identical buffers and produce bit-identical outputs (0 mismatches,
+  no non-finite values).
+
+### Results (K = 4096, `block_size` 32, rotating weights)
+
+Median per-kernel latency in microseconds, narrow (`CtaN = 2`) / default (`CtaN = 4`), with the median
+paired-round ratio narrow / default in parentheses (below 1 favors the narrow tile).
+
+| Weights | N | FP16 | BF16 |
+|---------|-----:|-------------------------|-------------------------|
+| INT4 | 1024 | 12.912 / 11.754 (1.097) | 13.069 / 11.834 (1.105) |
+| INT4 | 2048 | 13.743 / 13.755 (1.000) | 13.881 / 13.995 (0.992) |
+| INT4 | 2880 | 15.223 / 14.411 (1.056) | 15.235 / 14.667 (1.039) |
+| INT4 | 4096 | 17.168 / 18.587 (0.924) | 17.168 / 18.361 (0.935) |
+| INT4 | 4320 | 17.522 / 18.705 (0.936) | 17.514 / 18.462 (0.949) |
+| INT4 | 4336 | 23.529 / 18.789 (1.252) | 23.681 / 18.500 (1.280) |
+| INT4 | 4352 | 24.902 / 18.675 (1.333) | 25.008 / 18.485 (1.353) |
+| INT4 | 5120 | 29.874 / 19.152 (1.560) | 29.807 / 18.833 (1.581) |
+| INT8 | 640 | 9.802 / 9.359 (1.044) | 9.981 / 10.087 (0.989) |
+| INT8 | 1024 | 10.335 / 10.800 (0.957) | 10.721 / 11.281 (0.951) |
+| INT8 | 1280 | 10.818 / 11.243 (0.960) | 11.229 / 11.759 (0.955) |
+| INT8 | 1536 | 11.557 / 11.532 (1.002) | 12.151 / 12.101 (1.005) |
+| INT8 | 2560 | 14.295 / 13.872 (1.031) | 15.271 / 14.896 (1.025) |
+
+### Findings
+
+- INT4 narrow wins for `3456 < N <= 4320` at every tested K (up to 19% faster at N = 4320, K = 8192) and
+  loses from N = 4336: the narrow tile fits five resident blocks per SM, so N = 4320 launches exactly
+  108 x 5 = 540 blocks and larger N starts a second wave. It is 4-5% slower at N = 4336, K = 1024 and up to
+  58% slower at N = 5120, K = 4096. The previous grid.y cutoff (`N <= 5120`) selected the narrow tile across
+  that whole range on this device.
+- INT4 narrow also wins for `1728 < N <= 2560` at K <= 3072: the default tile is up to 8.4% slower at
+  K = 1024 and 4.9% slower at K = 3072. At K = 4096 the result is mixed (paired ratio 0.968-1.022), so that
+  window is limited to K <= 3072 (validated at K = 1024, 2048, and 3072 only). N = 1024 and N = 2880 favor
+  the default tile at K = 4096.
+- INT8 narrow wins for `864 < N <= 1304` (4-5% at N = 1024-1280, K = 4096; up to 9% at N = 872, K = 1024).
+  Both edges are soft: N = 864 is mixed (paired ratio 0.956-1.032 at K = 4096; the default tile loses up to
+  4.6% in one setting), N = 1312 still favors the narrow tile in some settings (excluding it costs up to
+  5.8%), and at K = 8192 the benefit is marginal or reverses. N = 1376 shows a clear cache-resident
+  K = 8192 loss (up to 5.2% for FP16), which argues against a higher cap.
+- The dispatcher applies the windows only to scale-only launches (no activation scale, bias, or
+  alpha-in-advance) with `block_size` 32, 64, or 128; other A100 launches keep the default tile.
+
+### Policy audit
+
+Applying the implemented windows to all 1,216 conditions: 428 conditions (1,736 paired observations)
+select the narrow tile. The worst regret of a selected narrow tile is 1.95% (cache, BF16/INT8, N = 1304,
+K = 8192, `block_size` 32) and none exceeds 3%.
+
+The conservative windows leave measured wins unclaimed, so they are not universally optimal. Choosing the
+default tile at very small N loses up to 6.5% at INT4 N = 256 (4.0% at N = 512) and up to 9.1% at
+INT8 N = 128 (INT8 N = 256 narrow is not uniformly better). A third tile (`CtaN = 8`) beats the better of
+`CtaN` 2 and 4 at some large N (rotating BF16/INT4, N = 6144, K = 8192: 47.1 us versus 55.9 us); it is
+outside these windows and is not enabled.
+
+### Production check
+
+86 representative launches x 3 rounds (258 debug tile choices) through the actual dispatcher header
+matched the windows for all four FP16/BF16 x INT4/INT8 combinations, and production, forced-`CtaN = 2`,
+and forced-`CtaN = 4` outputs were bit-identical. `M = 7` and `M = 9` keep `CtaN = 4`, and a
+bias-enabled BF16/INT4 launch at N = 4320 keeps `CtaN = 4`. The A100 test (a `cudaGetDevice` call plus
+per-thread cached device attributes) runs only for `M = 8` launches of eligible kernels; it added
+0.08-0.11 us (about 3%) of CPU enqueue time per warm launch and no device time.
+
+### Caveats
+
+- Only an A100-SXM4-80GB was measured. A100 40 GB and PCIe parts share SM80, 108 SMs, and a 40 MiB L2,
+  so they use the same windows, but they were not measured separately.
+- Other devices keep the H200-tuned grid.y cutoffs. H200 data cover FP16/INT4 and BF16/INT8 only;
+  FP16/INT8 and BF16/INT4 on non-A100 devices are unmeasured.
+- Kernel-level timings with synthetic weights and activations; no end-to-end ORT latency was measured.

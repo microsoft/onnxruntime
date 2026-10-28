@@ -476,9 +476,14 @@ class KernelTestFixture : public ::testing::Test {
   // For each K and {M, N, expected CtaN} case, checks the column tile the dispatcher launches, the result against
   // the CUTLASS reference, and (for M = 8) that it equals two M = 4 launches bit for bit. The fixture is scale-only,
   // so the weights always use the SM80-interleaved layout (also on Hopper), the only layout with a narrow tile.
-  void CheckGemvTiles(const std::vector<std::tuple<int, int, int>>& cases) {
+  bool UsesA100M8Tiles() const {
+    return device_prop_.major == 8 && device_prop_.minor == 0 && device_prop_.multiProcessorCount == 108;
+  }
+
+  void CheckGemvTiles(const std::vector<std::tuple<int, int, int>>& cases,
+                      const std::vector<int>& k_values = {1024, 4096}) {
     static_assert(GetKernelArch(90) == 80, "The narrow M = 8 tile exists only in the SM80-interleaved layout");
-    for (const int k : {1024, 4096}) {
+    for (const int k : k_values) {
       for (const auto& [m, n, expected_cta_n] : cases) {
         SCOPED_TRACE(testing::Message() << "M=" << m << " N=" << n << " K=" << k);
         InitBuffers(m, n, k, kIsInt2 ? 64 : 32);
@@ -918,6 +923,44 @@ TEST(Int4DecodeTileTest, ProfilerEligibilityAndFallback) {
   }
 }
 
+TEST(FpAIntBGemvTest, A100M8DispatchUsesMeasuredWindows) {
+  for (int k : {1024, 2048, 3072, 4096, 8192}) {
+    for (const auto& [n, expected] : std::vector<std::pair<int, int>>{
+             {1024, 4}, {1712, 4}, {1728, 4}, {1744, k <= 3072 ? 2 : 4}, {2560, k <= 3072 ? 2 : 4}, {2576, 4}, {2880, 4}, {3456, 4}, {3472, 2}, {4096, 2}, {4320, 2}, {4336, 4}, {4352, 4}, {5120, 4}, {5136, 4}}) {
+      SCOPED_TRACE(testing::Message() << "INT4 N=" << n << " K=" << k);
+      EXPECT_EQ(wo::PickM8GemvCtaN(true, 8, n, k, 4, 4), expected);
+    }
+    for (const auto& [n, expected] : std::vector<std::pair<int, int>>{
+             {640, 4}, {864, 4}, {872, 2}, {1024, 2}, {1280, 2}, {1288, 2}, {1296, 2}, {1304, 2}, {1312, 4}, {1536, 4}, {2560, 4}}) {
+      SCOPED_TRACE(testing::Message() << "INT8 N=" << n << " K=" << k);
+      EXPECT_EQ(wo::PickM8GemvCtaN(true, 8, n, k, 2, 4), expected);
+    }
+  }
+  for (bool is_a100 : {false, true}) {
+    for (int m : {7, 9}) {
+      EXPECT_EQ(wo::PickM8GemvCtaN(is_a100, m, 4096, 4096, 4, 4), 4);
+      EXPECT_EQ(wo::PickM8GemvCtaN(is_a100, m, 1280, 4096, 2, 4), 4);
+    }
+    EXPECT_EQ(wo::PickM8GemvCtaN(is_a100, 8, 4097, 4096, 4, 4), 4);
+    EXPECT_EQ(wo::PickM8GemvCtaN(is_a100, 8, 1281, 4096, 2, 4), 4);
+    EXPECT_EQ(wo::PickM8GemvCtaN(is_a100, 8, 1280, 4096, 1, 4), 4);
+    EXPECT_EQ(wo::PickM8GemvCtaN(is_a100, 8, 1280, 4096, 2, 2), 2);
+  }
+}
+
+TEST(FpAIntBGemvTest, OtherDevicesKeepM8DispatchCutoffs) {
+  for (int k : {1024, 4096, 8192}) {
+    for (const auto& [n, expected] : std::vector<std::pair<int, int>>{
+             {2880, 2}, {5120, 2}, {5128, 2}, {5136, 4}, {6144, 4}}) {
+      EXPECT_EQ(wo::PickM8GemvCtaN(false, 8, n, k, 4, 4), expected);
+    }
+    for (const auto& [n, expected] : std::vector<std::pair<int, int>>{
+             {640, 2}, {1280, 2}, {1284, 2}, {1288, 4}, {1536, 4}, {2560, 4}}) {
+      EXPECT_EQ(wo::PickM8GemvCtaN(false, 8, n, k, 2, 4), expected);
+    }
+  }
+}
+
 // Preserve upstream wave-aware tile selection and its M=8-only scope.
 TEST(FpAIntBGemvTest, WaveAwareDispatchUsesSyntheticSmCount) {
   constexpr int kRtx5090SmCount = 170;
@@ -1139,14 +1182,21 @@ TEST_F(Fp16Int4GroupwiseTest, Int4GroupwiseHopperRouting) {
 }
 
 namespace {
-// {M, N, expected CtaN} cases for the scale-only SM80-interleaved layout, run for K = 1024 and K = 4096. M = 8 uses
-// the half-width tile (CtaN 2) when the default tile (CtaN 4) would launch at most 320 blocks for INT4 (N / 16) or
-// 160 blocks for INT8 (N / 8). The cases sit on both sides of those cutoffs and include the neighbouring M = 7 and 9,
-// which keep CtaN 4.
+// {M, N, expected CtaN} cases for the scale-only SM80-interleaved layout. Non-A100 devices
+// retain the default-grid cutoffs of 320 blocks for INT4 and 160 for INT8. A100 cases cover
+// its measured windows and K-dependent lower INT4 window. Neighbouring M = 7 / 9 keep CtaN 4.
 const std::vector<std::tuple<int, int, int>> kInt4M8TileCases{
     {8, 2880, 2}, {8, 5120, 2}, {7, 5120, 4}, {9, 5120, 4}, {8, 5136, 4}, {8, 6144, 4}};
 const std::vector<std::tuple<int, int, int>> kInt8M8TileCases{
     {8, 640, 2}, {8, 1280, 2}, {7, 1280, 4}, {9, 1280, 4}, {8, 1288, 4}, {8, 1536, 4}, {8, 2560, 4}};
+const std::vector<std::tuple<int, int, int>> kInt4A100M8TileCases{
+    {8, 2880, 4}, {8, 3456, 4}, {8, 3472, 2}, {8, 4320, 2}, {8, 4336, 4}, {8, 5120, 4}, {7, 4320, 4}, {9, 4320, 4}, {8, 5136, 4}, {8, 6144, 4}};
+const std::vector<std::tuple<int, int, int>> kInt8A100M8TileCases{
+    {8, 640, 4}, {8, 864, 4}, {8, 872, 2}, {8, 1280, 2}, {8, 1288, 2}, {8, 1304, 2}, {8, 1312, 4}, {7, 1280, 4}, {9, 1280, 4}, {8, 1536, 4}, {8, 2560, 4}};
+const std::vector<std::tuple<int, int, int>> kInt4A100M8SmallKTileCases{
+    {8, 1728, 4}, {8, 1744, 2}, {8, 2560, 2}, {8, 2576, 4}};
+const std::vector<std::tuple<int, int, int>> kInt4A100M8LargeKTileCases{
+    {8, 1744, 4}, {8, 2560, 4}};
 }  // namespace
 
 // Check the FP16 INT4 narrow tile, its grid cutoff and the M = 7 / 9 fallback against the CUTLASS reference.
@@ -1154,7 +1204,11 @@ TEST_F(Fp16Int4SymmetricGroupwiseTest, Int4Group32SymmetricM8NarrowTile) {
   if (onnxruntime::llm::common::getSMVersion() < kMinSupportedSm) {
     GTEST_SKIP() << "FP16 INT4 GEMV requires SM " << kMinSupportedSm << " or later";
   }
-  CheckGemvTiles(kInt4M8TileCases);
+  CheckGemvTiles(UsesA100M8Tiles() ? kInt4A100M8TileCases : kInt4M8TileCases);
+  if (UsesA100M8Tiles()) {
+    CheckGemvTiles(kInt4A100M8SmallKTileCases, {1024, 2048, 3072});
+    CheckGemvTiles(kInt4A100M8LargeKTileCases, {4096, 8192});
+  }
 }
 
 // Check the BF16 INT4 narrow tile, its grid cutoff and the M = 7 / 9 fallback against the CUTLASS reference.
@@ -1162,7 +1216,11 @@ TEST_F(Bf16Int4SymmetricGroupwiseTest, Int4Group32SymmetricM8NarrowTile) {
   if (onnxruntime::llm::common::getSMVersion() < 80) {
     GTEST_SKIP() << "BF16 INT4 GEMV requires SM 80 or later";
   }
-  CheckGemvTiles(kInt4M8TileCases);
+  CheckGemvTiles(UsesA100M8Tiles() ? kInt4A100M8TileCases : kInt4M8TileCases);
+  if (UsesA100M8Tiles()) {
+    CheckGemvTiles(kInt4A100M8SmallKTileCases, {1024, 2048, 3072});
+    CheckGemvTiles(kInt4A100M8LargeKTileCases, {4096, 8192});
+  }
 }
 
 // Check the FP16 INT8 narrow tile (N = 1280 is 160 default blocks), the first aligned N above the cutoff and the
@@ -1171,7 +1229,7 @@ TEST_F(Fp16Int8SymmetricGroupwiseTest, Int8Group32SymmetricM8NarrowTile) {
   if (onnxruntime::llm::common::getSMVersion() < kMinSupportedSm) {
     GTEST_SKIP() << "FP16 INT8 GEMV requires SM " << kMinSupportedSm << " or later";
   }
-  CheckGemvTiles(kInt8M8TileCases);
+  CheckGemvTiles(UsesA100M8Tiles() ? kInt8A100M8TileCases : kInt8M8TileCases);
 }
 
 // Check the BF16 INT8 narrow tile (N = 1280 is 160 default blocks), the first aligned N above the cutoff and the
@@ -1180,7 +1238,7 @@ TEST_F(Bf16Int8SymmetricGroupwiseTest, Int8Group32SymmetricM8NarrowTile) {
   if (onnxruntime::llm::common::getSMVersion() < 80) {
     GTEST_SKIP() << "BF16 INT8 GEMV requires SM 80 or later";
   }
-  CheckGemvTiles(kInt8M8TileCases);
+  CheckGemvTiles(UsesA100M8Tiles() ? kInt8A100M8TileCases : kInt8M8TileCases);
 }
 
 // Check default dispatch and every legal geometry around the two-column grid.y limit.

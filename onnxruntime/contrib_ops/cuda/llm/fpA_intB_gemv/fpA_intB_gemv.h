@@ -64,6 +64,25 @@ inline bool IsInt4DecodeGeometryLegal(int variant, int n, int k, int interleave)
          k >= 64 && k % 64 == 0 && n % (tile * interleave) == 0 && n / (tile * interleave) <= 65535;
 }
 
+// A100 timings need both lower and upper bounds: more blocks help only until the narrow
+// tile crosses a resident-block wave boundary. Other devices retain their existing cutoffs.
+inline int PickM8GemvCtaN(bool is_a100, int m, int n, int k, int interleave, int base_cta_n) {
+  if (m != 8 || base_cta_n != 4 || (interleave != 2 && interleave != 4) ||
+      n <= 0 || n % ((base_cta_n / 2) * interleave) != 0) {
+    return base_cta_n;
+  }
+  bool narrow;
+  if (is_a100) {
+    narrow = interleave == 4
+                 ? ((n > 3456 && n <= 4320) || (k <= 3072 && n > 1728 && n <= 2560))
+                 : (n > 864 && n <= 1304);
+  } else {
+    const int max_grid_y = interleave == 2 ? 160 : 320;
+    narrow = n / (base_cta_n * interleave) <= max_grid_y;
+  }
+  return narrow ? base_cta_n / 2 : base_cta_n;
+}
+
 // Picks the dense GEMV column tile (CtaN) that fills the GPU's block slots best.
 //
 // The M = 8 kernel is register-limited to 4 / 3 / 2 resident 128-thread blocks per SM for

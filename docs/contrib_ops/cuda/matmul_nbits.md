@@ -384,7 +384,7 @@ The layout parameters follow the same formulas as the other widths, evaluated at
 | LDSM row-permutation tile (`kPerm_W*`) | 16 | 32 | 64 |
 | `kWarpGemmIterationsForB` (B smem loads per K tile) | 4 | 2 | 1 |
 | GEMV `kStepK` | 16 | 32 | 64 |
-| GEMV `CtaN` (no zero-points) | 8 | 8 | 4 |
+| GEMV `CtaN`, `M = 2-3` (no zero-points; see §6.4) | 8 | 8 | 4 |
 | Required `N` alignment | 32 | 64 | 128 |
 | Supported `block_size` | 32/64/128 | 32/64/128 | 64/128 |
 
@@ -746,6 +746,55 @@ both built-in and plugin providers.
    }
    ```
 
+### 6.4 GEMV column tile (`CtaN`) by `M`
+
+Each 128-thread GEMV block covers `CtaN * kInterleave` output columns. The tile
+is chosen in
+[dispatcher.h](../../../onnxruntime/contrib_ops/cuda/llm/fpA_intB_gemv/dispatcher.h);
+for scale-only weights (no zero-points) it is:
+
+| `M` | 4-bit / 8-bit `CtaN` | 2-bit `CtaN` |
+|---|---|---|
+| 1 | 8 (4-bit with `block_size=32`: 2, with 256 threads) | 4 |
+| 2-3 | 8 | 4 |
+| 4-15 | 4 | 4 |
+| 8, narrow tile (below) | 2 | not eligible |
+
+From `M = 4` the 4/8-bit kernel is register-limited, so its tile is halved. At
+`M = 8` (the DFlash2 verify batch) a small-`N` projection still
+launches only `N / (4 * kInterleave)` blocks, too few to fill the GPU, so a
+further-halved `CtaN = 2` ("narrow") tile can double the block count. The tile
+only decides which block covers which columns and every output keeps the same K
+reduction, so results are bit-identical. Only the scale-only SM80-interleaved
+layouts qualify (4-bit `kStepK = 32`, 8-bit `kStepK = 16`, FP16 or BF16,
+`N % (2 * kInterleave) == 0`); the Hopper layout, zero-point kernels, and 2-bit
+weights keep the default tile.
+
+`PickM8GemvCtaN` in
+[fpA_intB_gemv.h](../../../onnxruntime/contrib_ops/cuda/llm/fpA_intB_gemv/fpA_intB_gemv.h)
+selects the narrow tile as follows:
+
+| Device | 4-bit | 8-bit |
+|---|---|---|
+| A100 (SM 8.0, 108 SMs) | `3456 < N <= 4320`, or `K <= 3072` and `1728 < N <= 2560` | `864 < N <= 1304` |
+| Other devices | `N / 16 <= 320` | `N / 8 <= 160` |
+
+- **A100.** The windows have an upper bound because more blocks help only until
+  the narrow tile crosses a resident-block wave boundary: five 4-bit narrow
+  blocks fit per SM, so `N = 4320` fills all `108 * 5` slots and `N >= 4336`
+  starts a second wave. There the narrow tile is 4-5% (`N = 4336`, `K = 1024`)
+  to 58% (`N = 5120`, `K = 4096`) slower than the default. The windows apply to
+  scale-only launches without activation scale, bias, or alpha-in-advance and
+  with `block_size` 32, 64, or 128; any other A100 launch keeps the default
+  tile. The measurements are in
+  [matmul_nbits_small_m_experiments.md](./matmul_nbits_small_m_experiments.md#2026-10-27-a100-fpa_intb-gemv-m8-tile-dispatch-validation).
+- **Other devices** keep the `grid.y` cutoffs tuned on an H200 (132 SMs). Those
+  measurements cover FP16/4-bit and BF16/8-bit; FP16/8-bit and BF16/4-bit reuse
+  the cutoff of the layout they share and have **not** been measured on other
+  devices. Both rules depend on SM count and per-block resource use, so
+  re-measure the narrow versus default tile at the window edges on a new device
+  or after changing the kernel's register or shared-memory footprint.
+
 ---
 
 ## 7. Bias Handling
@@ -848,8 +897,18 @@ present. `ComputeInternal` then:
   (config serialize/parse round-trip, signature-mismatch rejection, appended-column
   tolerance, store/load and merge). Build with `onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON`
   and run `./onnxruntime_provider_test --gtest_filter=CUDA_EP_Unittest.All`.
+- fpA_intB GEMV `M = 8` tile dispatch (§6.4), in
+  [onnxruntime/test/contrib_ops/cuda_kernels/fpA_intB_gemm_kernel_test.cc](../../../onnxruntime/test/contrib_ops/cuda_kernels/fpA_intB_gemm_kernel_test.cc):
+  the four `*M8NarrowTile` fixtures check the executed `CtaN` against the
+  dispatch rule of the device they run on (the A100 windows on an A100) and
+  compare `M = 8` bitwise with two `M = 4` launches and with the CUTLASS
+  reference. `FpAIntBGemvTest.A100M8DispatchUsesMeasuredWindows` and
+  `FpAIntBGemvTest.OtherDevicesKeepM8DispatchCutoffs` evaluate `PickM8GemvCtaN`
+  for both device classes and are independent of the GPU model.
 - GEMV profiling baselines and methodology are recorded in
-  [qmoe_gemv_experiments.md](qmoe_gemv_experiments.md).
+  [qmoe_gemv_experiments.md](qmoe_gemv_experiments.md) and, for small-`M`
+  MatMulNBits GEMV, in
+  [matmul_nbits_small_m_experiments.md](matmul_nbits_small_m_experiments.md).
 - To compare the router specialization against the generic path, run the same
   model with and without `ORT_DISABLE_QMOE_ROUTER_GEMV_SPECIALIZATION=1`.
 
