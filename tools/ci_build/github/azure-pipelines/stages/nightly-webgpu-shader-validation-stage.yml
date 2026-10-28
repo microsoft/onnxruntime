@@ -53,11 +53,16 @@ stages:
       inputs:
         SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
         Contents: |
-          **
-          !_deps\**
-          !**\*.obj
-          !**\*.pch
-          !**\*.lib
+          RelWithDebInfo\onnxruntime_provider_test.exe
+          RelWithDebInfo\onnxruntime_provider_test.pdb
+          RelWithDebInfo\onnxruntime_test_all.exe
+          RelWithDebInfo\onnxruntime_test_all.pdb
+          RelWithDebInfo\webgpu_dawn.dll
+          RelWithDebInfo\webgpu_dawn.pdb
+          RelWithDebInfo\dxcompiler.dll
+          RelWithDebInfo\dxcompiler.pdb
+          RelWithDebInfo\testdata\**
+          RelWithDebInfo\samples\**
         TargetFolder: '$(Build.ArtifactStagingDirectory)\webgpu-build'
 
   - job: TestAndValidate
@@ -85,10 +90,6 @@ stages:
       parameters:
         host_cpu_arch: x64
 
-    - script: |
-        python -m pip install -r "$(Build.SourcesDirectory)\tools\ci_build\github\windows\python\requirements.txt"
-      displayName: Install Python test dependencies
-
     - task: DownloadPipelineArtifact@2
       displayName: Download build artifacts
       inputs:
@@ -99,25 +100,16 @@ stages:
     - script: nvidia-smi
       displayName: Verify GPU access
 
-    - task: PythonScript@0
-      displayName: Relocate CTest paths
-      inputs:
-        scriptPath: '$(Build.SourcesDirectory)\tools\python\update_ctest_path.py'
-        arguments: >-
-          "$(Build.BinariesDirectory)\RelWithDebInfo\CTestTestfile.cmake"
-          "$(Build.BinariesDirectory)\RelWithDebInfo"
-        workingDirectory: '$(Build.SourcesDirectory)'
+    - script: .\onnxruntime_provider_test.exe
+      displayName: Run onnxruntime_provider_test.exe
+      workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+      env:
+        ORT_WEBGPU_EP_SHADER_DUMP_FILE: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\shader_dump.log'
 
-    - task: PythonScript@0
-      displayName: Run tests
-      inputs:
-        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-        arguments: >-
-          --config RelWithDebInfo
-          --build_dir "$(Build.BinariesDirectory)"
-          --test
-          --test_parallel 1
-        workingDirectory: '$(Build.SourcesDirectory)'
+    - script: .\onnxruntime_test_all.exe
+      displayName: Run onnxruntime_test_all.exe
+      condition: succeededOrFailed()
+      workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
       env:
         ORT_WEBGPU_EP_SHADER_DUMP_FILE: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\shader_dump.log'
 
