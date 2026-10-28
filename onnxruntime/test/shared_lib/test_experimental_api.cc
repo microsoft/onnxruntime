@@ -185,7 +185,13 @@ TEST_F(ExperimentalCApiTest, FileSourcesNeverFallBackToModelPaths) {
 }
 #endif
 
-#if !defined(__linux__) || defined(ORT_MINIMAL_BUILD) || defined(DISABLE_EXTERNAL_INITIALIZERS)
+#if defined(ORT_MINIMAL_BUILD)
+TEST_F(ExperimentalCApiTest, FileSourcesAreNotAdvertisedInMinimalBuilds) {
+  EXPECT_EQ(api_->GetExperimentalFunction(
+                "OrtApi_SessionOptionsSetExternalInitializerFileDescriptors_SinceV32"),
+            nullptr);
+}
+#elif !defined(__linux__) || defined(DISABLE_EXTERNAL_INITIALIZERS)
 TEST_F(ExperimentalCApiTest, FileSourcesRejectUnsupportedBuilds) {
   auto* fn = Ort::Experimental::
       Get_OrtApi_SessionOptionsSetExternalInitializerFileDescriptors_SinceV32_FnOrThrow(api_);

@@ -43,10 +43,11 @@ ORT_API_STATUS_IMPL(OrtApi_ExperimentalApiTest_SinceV28,
   API_IMPL_END
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 ORT_API_STATUS_IMPL(OrtApi_SessionOptionsSetExternalInitializerFileDescriptors_SinceV32,
                     OrtSessionOptions* options, const char* const* names,
                     const int* descriptors, size_t count) {
-#if defined(__linux__) && !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
+#if defined(__linux__) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
   API_IMPL_BEGIN
   ORT_API_RETURN_IF(options == nullptr || (count != 0 && (names == nullptr || descriptors == nullptr)),
                     ORT_INVALID_ARGUMENT, "Invalid external initializer file-source arguments");
@@ -80,6 +81,7 @@ ORT_API_STATUS_IMPL(OrtApi_SessionOptionsSetExternalInitializerFileDescriptors_S
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "File-source loading requires a full Linux build");
 #endif
 }
+#endif
 
 }  // namespace OrtExperimentalApis
 

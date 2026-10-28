@@ -37,6 +37,7 @@
  */
 ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtApi_ExperimentalApiTest, _Out_ int64_t* out)
 
+#if !defined(ORT_MINIMAL_BUILD)
 /** \brief Register a complete set of pre-opened read-only external initializer files on Linux.
  *
  * Descriptors are duplicated on success; callers retain ownership of their originals.
@@ -49,11 +50,12 @@ ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtApi_ExperimentalApiTest, _Out_ int64_t
  * and invalid ranges fail without filesystem fallback. Supports ONNX graph initializers,
  * including subgraphs, but not external tensor attributes or model packages.
  * This does not change execution-provider selection or provide a sandbox.
- * Unsupported platforms, minimal builds, and builds without external initializers return
- * ORT_NOT_IMPLEMENTED.
+ * Unsupported platforms and builds without external initializers return ORT_NOT_IMPLEMENTED.
+ * Minimal builds do not register this experimental entry.
  */
 ORT_EXPERIMENTAL_API(32, OrtStatusPtr, OrtApi_SessionOptionsSetExternalInitializerFileDescriptors,
                      _Inout_ OrtSessionOptions* options,
                      _In_reads_(count) const char* const* names,
                      _In_reads_(count) const int* descriptors,
                      size_t count)
+#endif
