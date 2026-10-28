@@ -12,7 +12,8 @@
 // back to an untagged allocation is caught here.
 //
 // This is a provider-world translation unit: it reaches into CUDA EP internals through the shared
-// provider bridge, so it must not include the core framework headers.
+// provider bridge, so it goes through provider_api.h instead of the core framework headers. The one
+// exception is stream_handles.h, which is header-only and already included by cuda_stream_handle.h.
 
 #include "gtest/gtest.h"
 
@@ -85,10 +86,12 @@ class EinsumCudaIntermediateTest : public ::testing::Test {
   // plugin build hosted by an ORT that cannot hand out its framework stream has no stream to tag
   // allocations with. Passing null for `alloc_stream` models that host.
   //
-  // The cuBLAS and cuDNN handles are left null: none of the helpers exercised here use them.
+  // The cuBLAS and cuDNN handles are left null: none of the helpers exercised here use them. The
+  // assets' gpu allocator is the recorder too, so the scratch buffers the reduce path takes from it
+  // are counted alongside the intermediates themselves.
   std::unique_ptr<EinsumOp::EinsumCudaAssets> MakeAssets(Stream* alloc_stream) {
     return std::make_unique<EinsumOp::EinsumCudaAssets>(stream_.get(), alloc_stream, device_prop_,
-                                                        nullptr, nullptr, device_allocator_, false);
+                                                        nullptr, nullptr, recording_allocator_, false);
   }
 
   void TearDown() override {
@@ -168,21 +171,44 @@ TEST_F(EinsumCudaIntermediateTest, DiagonalAllocatesOnTheRunStream) {
   EXPECT_EQ(ReadBack(*output), std::vector<float>({0.f, 4.f, 8.f}));
 }
 
-// The reduce path allocates inside cuda::ReductionOps::ReduceCompute. The reduction itself is a
-// matrix reduction over the trailing axis, so it stays on the fast path and needs no cuDNN handle.
+// The reduce path allocates inside cuda::ReductionOps::ReduceCompute: its output, plus a scratch
+// buffer for the reduction itself. The reduction is a matrix reduction over the trailing axis, so it
+// stays on the fast path and needs no cuDNN handle; that path always asks for a scratch buffer.
+std::unique_ptr<Tensor> ReduceTrailingAxis(const Tensor& input, const AllocatorPtr& allocator,
+                                           EinsumOp::EinsumCudaAssets* assets) {
+  const std::vector<int64_t> reduce_axes{1};
+  return EinsumOp::DeviceHelpers::CudaDeviceHelpers::ReduceSum<float>(
+      input, reduce_axes, /*keep_dims*/ true, allocator, /*input_shape_override*/ nullptr,
+      /*tp*/ nullptr, assets);
+}
+
 TEST_F(EinsumCudaIntermediateTest, ReduceSumAllocatesOnTheRunStream) {
   auto input = DeviceTensor(TensorShape({2, 3}), {0.f, 1.f, 2.f,
                                                   3.f, 4.f, 5.f});
 
-  const std::vector<int64_t> reduce_axes{1};
-  auto output = EinsumOp::DeviceHelpers::CudaDeviceHelpers::ReduceSum<float>(
-      *input, reduce_axes, /*keep_dims*/ true, recording_allocator_, /*input_shape_override*/ nullptr,
-      /*tp*/ nullptr, assets_.get());
+  auto output = ReduceTrailingAxis(*input, recording_allocator_, assets_.get());
 
   ASSERT_NE(output, nullptr);
-  EXPECT_EQ(recording_allocator_->stream_allocs, 1);
+  EXPECT_EQ(recording_allocator_->stream_allocs, 2);  // output + scratch
   EXPECT_EQ(recording_allocator_->untagged_allocs, 0);
   EXPECT_EQ(recording_allocator_->last_stream, stream_.get());
+
+  EXPECT_EQ(output->Shape(), TensorShape({2, 1}));
+  EXPECT_EQ(ReadBack(*output), std::vector<float>({3.f, 12.f}));
+}
+
+// As for CreateTensor, a null allocation stream must keep both the output and the scratch buffer
+// off the work stream.
+TEST_F(EinsumCudaIntermediateTest, ReduceSumAllocatesUntaggedWithoutAnAllocationStream) {
+  auto assets = MakeAssets(/*alloc_stream*/ nullptr);
+  auto input = DeviceTensor(TensorShape({2, 3}), {0.f, 1.f, 2.f,
+                                                  3.f, 4.f, 5.f});
+
+  auto output = ReduceTrailingAxis(*input, recording_allocator_, assets.get());
+
+  ASSERT_NE(output, nullptr);
+  EXPECT_EQ(recording_allocator_->stream_allocs, 0);
+  EXPECT_EQ(recording_allocator_->untagged_allocs, 2);  // output + scratch
 
   EXPECT_EQ(output->Shape(), TensorShape({2, 1}));
   EXPECT_EQ(ReadBack(*output), std::vector<float>({3.f, 12.f}));
