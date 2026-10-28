@@ -15,6 +15,7 @@
 #include <type_traits>
 
 #include "contrib_ops/cuda/bert/dynamic_sparse_attention_prefill.cuh"
+#include "contrib_ops/cuda/bert/dynamic_sparse_attention_prefill_int8.cuh"
 #include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_common.h"
 
@@ -2073,6 +2074,7 @@ Status LaunchDynamicSparseAttention(
       grouped_decode_threads_supported &&
       UseGroupedDecodeAttention(parameters, sizeof(T), max_shared_memory_per_block, data.quantized_cache);
   bool use_prefill_kernel = false;
+  bool use_int8_tc_prefill = false;
   if constexpr (std::is_same_v<T, __nv_bfloat16>) {
     if (!use_grouped_decode) {
       const bool enabled = ParseEnvironmentVariableWithDefault<int>("ORT_DSA_PREFILL_KERNEL", 1) != 0;
@@ -2101,6 +2103,13 @@ Status LaunchDynamicSparseAttention(
           parameters.num_heads % parameters.kv_num_heads == 0 &&
           parameters.num_heads / parameters.kv_num_heads <= dsa_prefill::kMaxGroup &&
           static_cast<size_t>(optin_shared) >= dsa_prefill::kSharedBytes;
+      // The tensor-core INT8 variant converts the cached rows in registers; it needs 16-byte cache rows and 8-byte
+      // output vectors (the BF16-dequantizing kernel above is the fallback).
+      use_int8_tc_prefill =
+          use_prefill_kernel && data.quantized_cache &&
+          ParseEnvironmentVariableWithDefault<int>("ORT_DSA_PREFILL_INT8_TC", 1) != 0 &&
+          IsAligned(data.present_key, 16) && IsAligned(data.present_value, 16) && IsAligned(data.output, 8) &&
+          static_cast<size_t>(optin_shared) >= dsa_prefill::kInt8SharedBytes;
     }
   }
   if (use_grouped_decode) {
@@ -2249,7 +2258,17 @@ Status LaunchDynamicSparseAttention(
     if constexpr (std::is_same_v<T, __nv_bfloat16>) {
       const dim3 grid(static_cast<unsigned>(parameters.batch_size * parameters.sequence_length),
                       static_cast<unsigned>(parameters.kv_num_heads));
-      if (data.quantized_cache) {
+      if (use_int8_tc_prefill) {
+        CUDA_RETURN_IF_ERROR(cudaFuncSetAttribute(
+            dsa_prefill::DynamicSparseAttentionPrefillInt8Kernel, cudaFuncAttributeMaxDynamicSharedMemorySize,
+            static_cast<int>(dsa_prefill::kInt8SharedBytes)));
+        dsa_prefill::DynamicSparseAttentionPrefillInt8Kernel<<<grid, dsa_prefill::kThreads,
+                                                               dsa_prefill::kInt8SharedBytes, stream>>>(
+            data.prepared_query, reinterpret_cast<const int8_t*>(data.present_key),
+            reinterpret_cast<const int8_t*>(data.present_value), data.selected_indices, data.selected_counts,
+            data.seqlens_k, data.output, parameters.sequence_length, parameters.num_heads, parameters.kv_num_heads,
+            parameters.cache_capacity, parameters.max_selected, parameters.scale, data.key_scale, data.value_scale);
+      } else if (data.quantized_cache) {
         CUDA_RETURN_IF_ERROR(cudaFuncSetAttribute(
             dsa_prefill::DynamicSparseAttentionPrefillKernel<true>, cudaFuncAttributeMaxDynamicSharedMemorySize,
             static_cast<int>(dsa_prefill::kSharedBytes)));

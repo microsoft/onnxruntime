@@ -593,14 +593,25 @@ TEST(DynamicSparseAttentionTest, GroupedDecodeRatio12ReferenceParity_CUDA) {
   }
 }
 
-// Selected-only prefill without a softmax sink, the configuration the tensor-core BF16 prefill kernel serves.
-DynamicSparseAttentionCase MakeSelectedOnlyPrefillCase(bool int8_cache) {
-  auto c = int8_cache ? MakeGroupedCacheCase(9, false, false, 2, 20, 2, true)
-                      : MakeGroupedCacheCase(9, false, true, 2, 20, 2);
+// Selected-only prefill without a softmax sink, the configuration the tensor-core prefill kernels serve. With
+// invalid_entries every fifth selected index is replaced by one that must be skipped (negative, in the future of the
+// query row, or outside the cache).
+DynamicSparseAttentionCase MakeSelectedOnlyPrefillCase(bool int8_cache, int num_heads = 20, int selected_count = 509,
+                                                       bool invalid_entries = false) {
+  auto c = int8_cache ? MakeGroupedCacheCase(9, false, false, 2, num_heads, 2, true, selected_count)
+                      : MakeGroupedCacheCase(9, false, true, 2, num_heads, 2, false, selected_count);
   c.head_sink.clear();
   c.smooth_softmax = 0;
   for (int row = 0; row < c.batch_size * c.sequence_length; ++row) {
     const int64_t b = row / c.sequence_length;
+    const int64_t position = c.seqlens_k[b] + 1 - c.sequence_length + row % c.sequence_length;
+    if (invalid_entries) {
+      const int32_t invalid_values[] = {-1, static_cast<int32_t>(position) + 1,
+                                        static_cast<int32_t>(c.cache_sequence_length) + 5, -7, 1 << 30};
+      for (int i = 3; i < c.selected_counts[row]; i += 5) {
+        c.selected_indices[row * c.max_selected + i] = invalid_values[(i / 5) % 5];
+      }
+    }
     for (int h = 0; h < c.num_heads; ++h) {
       const int64_t kv = h / (c.num_heads / c.kv_num_heads);
       const int64_t out = (row * c.num_heads + h) * c.head_size;
@@ -608,6 +619,7 @@ DynamicSparseAttentionCase MakeSelectedOnlyPrefillCase(bool int8_cache) {
       double denominator = 0.0;
       for (int i = 0; i < c.selected_counts[row]; ++i) {
         const int index = c.selected_indices[row * c.max_selected + i];
+        if (index < 0 || index > position || index >= c.cache_sequence_length) continue;
         const int64_t offset = ((b * c.kv_num_heads + kv) * c.cache_sequence_length + index) * c.head_size;
         double dot = 0.0;
         for (int d = 0; d < c.head_size; ++d) {
@@ -638,6 +650,30 @@ TEST(DynamicSparseAttentionTest, Int8CachePrefillBFloat16_CUDA) {
     ScopedEnvironmentVariables scoped_env_vars{
         EnvVarMap{{"ORT_DSA_PREFILL_KERNEL", prefill_env}}};
     RunDynamicSparseAttentionCase<BFloat16, int8_t>(c, DefaultCudaExecutionProvider());
+  }
+}
+
+// The tensor-core INT8 prefill kernel (ORT_DSA_PREFILL_INT8_TC=1) and the BF16-dequantizing one (=0) over query-head
+// group sizes 1, 6, 12 and 16 (padded to the 16-row MMA tile), candidate counts around the 64-candidate tile and
+// invalid selected indices.
+TEST(DynamicSparseAttentionTest, Int8CachePrefillTensorCoreKernel_CUDA) {
+  if (!DefaultCudaExecutionProvider()) GTEST_SKIP() << "CUDA EP not available.";
+  if (!CudaHasBF16Support()) GTEST_SKIP() << "CUDA device does not support BFloat16.";
+  for (int num_heads : {2, 12, 24, 32}) {
+    for (int selected_count : {1, 64, 65, 509}) {
+      for (bool invalid_entries : {false, true}) {
+        SCOPED_TRACE("num_heads=" + std::to_string(num_heads) + ", selected_count=" + std::to_string(selected_count) +
+                     ", invalid_entries=" + std::to_string(invalid_entries));
+        const auto c = MakeSelectedOnlyPrefillCase(true, num_heads, selected_count, invalid_entries);
+        for (const char* int8_tc_env : {"1", "0"}) {
+          SCOPED_TRACE(std::string("ORT_DSA_PREFILL_INT8_TC=") + int8_tc_env);
+          ScopedEnvironmentVariables scoped_env_vars{
+              EnvVarMap{{"ORT_DSA_PREFILL_KERNEL", "1"}, {"ORT_DSA_PREFILL_INT8_TC", int8_tc_env}}};
+          RunDynamicSparseAttentionCase<BFloat16, int8_t>(c, DefaultCudaExecutionProvider());
+        }
+        if (::testing::Test::HasFailure()) return;
+      }
+    }
   }
 }
 
@@ -2242,6 +2278,11 @@ std::vector<OffsetBufferCase> MakeOffsetBufferCases(bool int8_cache, bool auxili
     cases.push_back(MisalignedBuffer("key_scale", &BufferOffsets::key_scale, scale_bytes));
     cases.push_back(MisalignedBuffer("value_scale", &BufferOffsets::value_scale, scale_bytes));
     all.key_scale = all.value_scale = scale_bytes;
+    // 8-byte cache and 4-byte output alignment still serve the BF16-dequantizing prefill kernel, but not the 16-byte
+    // cache copies and 8-byte output stores of the tensor-core INT8 prefill kernel.
+    cases.push_back(MisalignedBuffer("key_cache_8_byte", &BufferOffsets::key_cache, 8));
+    cases.push_back(MisalignedBuffer("value_cache_8_byte", &BufferOffsets::value_cache, 8));
+    cases.push_back(MisalignedBuffer("output_4_byte", &BufferOffsets::output, 4));
   }
   if (auxiliary) {
     cases.push_back(MisalignedBuffer("auxiliary_key", &BufferOffsets::auxiliary_key, half_bytes));
@@ -2493,7 +2534,8 @@ TEST(DynamicSparseAttentionTest, Int8CacheGroupedDecodeMisalignedBuffers_CUDA) {
 TEST(DynamicSparseAttentionTest, Int8CachePrefillMisalignedBuffers_CUDA) {
   if (!DefaultCudaExecutionProvider()) GTEST_SKIP() << "CUDA EP not available.";
   if (!CudaHasBF16Support()) GTEST_SKIP() << "CUDA device does not support BFloat16.";
-  // Aligned buffers use the tensor-core prefill kernel; misaligned ones must fall back to the generic kernels.
+  // 16-byte cache / 8-byte output aligned buffers use the tensor-core INT8 prefill kernel, 8-byte / 4-byte aligned ones
+  // the BF16-dequantizing kernel and misaligned ones must fall back to the generic kernels.
   ExpectMisalignedBuffersMatch<BFloat16, int8_t>(MakeSelectedOnlyPrefillCase(true), true);
 }
 
