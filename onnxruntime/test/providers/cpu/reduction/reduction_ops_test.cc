@@ -7048,7 +7048,10 @@ TEST(ReductionOpTest, ReduceSum_int64_ExactAbove2Pow53) {
   const int64_t p53 = int64_t{1} << 53;
   const int64_t big = std::numeric_limits<int64_t>::max();
 
-  // Generic path: reduce a single axis of a 1-D tensor.
+  // Small dimensions bypass FastReduceRK and exercise scalar update()/get_value().
+  RunReduceSumInt64Cpu({2, 2}, {0}, {p53 + 1, p53, -p53, 1}, {2}, {1, p53 + 1});
+
+  // Full reductions exercise aggall().
   RunReduceSumInt64Cpu({2}, {0}, {p53 + 1, -p53}, {}, {1});
   RunReduceSumInt64Cpu({2}, {0}, {p53, 1}, {}, {p53 + 1});
   // Partial sum exceeds the int64 range, then cancels.
