@@ -183,8 +183,10 @@ struct SessionOptions {
                                                   gsl::span<std::pair<char*, const size_t>> files_buffers);
 #endif
 
+#if !defined(ORT_MINIMAL_BUILD)
   std::shared_ptr<const std::unordered_map<PathString, std::shared_ptr<RandomAccessFile>>>
       external_initializer_file_sources;
+#endif
 
   // custom function callback to create a thread
   OrtCustomCreateThreadFn custom_create_thread_fn = nullptr;

@@ -540,6 +540,7 @@ class PosixEnv : public Env {
     return Status::OK();
   }
 
+#if !defined(ORT_MINIMAL_BUILD)
   common::Status DuplicateReadOnlyFileDescriptor(
       int descriptor, std::shared_ptr<RandomAccessFile>& file) const override {
 #if defined(__linux__)
@@ -560,6 +561,7 @@ class PosixEnv : public Env {
                            "Pre-opened external initializer files require Linux.");
 #endif
   }
+#endif
 
   Status ReadFileIntoBuffer(const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
                             gsl::span<char> buffer) const override {
