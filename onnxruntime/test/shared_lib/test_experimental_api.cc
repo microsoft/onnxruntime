@@ -31,6 +31,7 @@
 
 #if (defined(_WIN32) || defined(__linux__) || defined(__ANDROID__) || defined(__APPLE__)) && !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
 #include "core/graph/onnx_protobuf.h"
+#include "test/util/include/scoped_env_vars.h"
 
 namespace {
 OrtFileHandle NativeFileHandle(FILE* file) {
@@ -551,6 +552,200 @@ TEST_F(ExperimentalCApiTest, FileSourcesRetainLargeAlignedAndUnalignedInitialize
       }
     }
   }
+}
+
+TEST_F(ExperimentalCApiTest, FileSourcesNormalizeBoolInitializers) {
+  auto* fn = Ort::Experimental::
+      Get_OrtApi_SessionOptionsSetExternalInitializerFileHandles_SinceV32_FnOrThrow(api_);
+  Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "bool-file-sources"};
+  for (int64_t length : {0, 127, 128, 256}) {
+    SCOPED_TRACE(length);
+    ScopedInitializerDirectory directory;
+    const auto path = directory.path / "weights.bin";
+    const uint8_t pattern[]{0, 1, 2, 255};
+    std::vector<uint8_t> bytes(static_cast<size_t>(length));
+    for (size_t i = 0; i < bytes.size(); ++i) {
+      bytes[i] = pattern[i % 4];
+    }
+    {
+      std::ofstream output(path, std::ios::binary);
+      output.exceptions(std::ios::badbit | std::ios::failbit);
+      if (!bytes.empty()) {
+        output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+      }
+    }
+    auto file = OpenReadOnlyInitializer(path);
+    const auto handle = NativeFileHandle(file.get());
+    const char* name = "weights.bin";
+    Ort::SessionOptions options;
+    options.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
+    Ort::ThrowOnError(fn(options, &name, &handle, 1));
+    file.reset();
+    auto model = MakeExternalInitializerModel(length, 0);
+    auto* graph = model.mutable_graph();
+    graph->mutable_initializer(0)->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+    graph->mutable_output(0)->mutable_type()->mutable_tensor_type()->set_elem_type(
+        ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+    auto* cast = graph->add_node();
+    cast->set_op_type("Cast");
+    cast->add_input("X");
+    cast->add_output("Z");
+    auto* to = cast->add_attribute();
+    to->set_name("to");
+    to->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+    to->set_i(ONNX_NAMESPACE::TensorProto_DataType_INT32);
+    auto* cast_output = graph->add_output();
+    cast_output->CopyFrom(graph->output(0));
+    cast_output->set_name("Z");
+    cast_output->mutable_type()->mutable_tensor_type()->set_elem_type(
+        ONNX_NAMESPACE::TensorProto_DataType_INT32);
+    const auto serialized = model.SerializeAsString();
+    Ort::Session session{env, serialized.data(), serialized.size(), options};
+    options = Ort::SessionOptions{nullptr};
+    const char* outputs[]{"Y", "Z"};
+    auto actual = session.Run(Ort::RunOptions{}, nullptr, nullptr, 0, outputs, 2);
+    ASSERT_EQ(actual.size(), 2u);
+    const auto* raw = static_cast<const uint8_t*>(actual[0].GetTensorRawData());
+    for (size_t i = 0; i < bytes.size(); ++i) {
+      const auto expected = bytes[i] == 0 ? 0 : 1;
+      ASSERT_EQ(raw[i], expected) << "BOOL byte " << i;
+      ASSERT_EQ(actual[1].GetTensorData<int32_t>()[i], expected) << "Cast element " << i;
+    }
+    std::ifstream original(path, std::ios::binary);
+    ASSERT_TRUE(original);
+    const std::vector<uint8_t> unchanged{std::istreambuf_iterator<char>{original}, {}};
+    EXPECT_EQ(unchanged, bytes) << "Normalization must not modify the source file";
+  }
+}
+
+TEST_F(ExperimentalCApiTest, FileSourcesInferSubgraphsWithoutWeightPaths) {
+  auto* fn = Ort::Experimental::
+      Get_OrtApi_SessionOptionsSetExternalInitializerFileHandles_SinceV32_FnOrThrow(api_);
+  ScopedInitializerDirectory directory;
+  const auto path = directory.path / "weights.bin";
+  const std::vector<float> expected(64, 3.25f);
+  {
+    std::ofstream output(path, std::ios::binary);
+    output.exceptions(std::ios::badbit | std::ios::failbit);
+    output.write(reinterpret_cast<const char*>(expected.data()),
+                 static_cast<std::streamsize>(expected.size() * sizeof(float)));
+  }
+  const auto missing_path = directory.path.filename().string() + ".bin";
+  ASSERT_FALSE(std::filesystem::exists(missing_path));
+  const char* name = missing_path.c_str();
+  auto file = OpenReadOnlyInitializer(path);
+  const auto handle = NativeFileHandle(file.get());
+  Ort::SessionOptions options;
+  options.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
+  Ort::ThrowOnError(fn(options, &name, &handle, 1));
+  file.reset();
+  auto model = MakeFileSourceTestModel(64);
+  auto* graph = model.mutable_graph();
+  graph->clear_input();
+  auto* condition = graph->add_input();
+  condition->set_name("condition");
+  auto* condition_type = condition->mutable_type()->mutable_tensor_type();
+  condition_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+  condition_type->mutable_shape();
+  auto* node = graph->mutable_node(0);
+  node->set_op_type("If");
+  node->clear_input();
+  node->add_input("condition");
+  for (const char* branch : {"then_branch", "else_branch"}) {
+    auto* attribute = node->add_attribute();
+    attribute->set_name(branch);
+    attribute->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+    auto branch_model = MakeExternalInitializerModel(64, 0);
+    branch_model.mutable_graph()->mutable_initializer(0)->mutable_external_data(0)->set_value(missing_path);
+    attribute->mutable_g()->CopyFrom(branch_model.graph());
+  }
+  const auto serialized = model.SerializeAsString();
+  Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "subgraph-file-sources"};
+  Ort::Session session{env, serialized.data(), serialized.size(), options};
+  options = Ort::SessionOptions{nullptr};
+  auto memory = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+  const char* inputs[]{"condition"};
+  const char* outputs[]{"Y"};
+  for (bool value : {false, true}) {
+    auto input = Ort::Value::CreateTensor<bool>(memory, &value, 1, nullptr, 0);
+    auto actual = session.Run(Ort::RunOptions{}, inputs, &input, 1, outputs, 1);
+    ASSERT_EQ(actual.size(), 1u);
+    ASSERT_EQ(actual[0].GetTensorTypeAndShapeInfo().GetElementCount(), expected.size());
+    for (size_t i = 0; i < expected.size(); ++i) {
+      EXPECT_FLOAT_EQ(actual[0].GetTensorData<float>()[i], expected[i]);
+    }
+  }
+}
+
+TEST_F(ExperimentalCApiTest, FileSourcesRejectExternalInitializerConstantCollisions) {
+  auto* fn = Ort::Experimental::
+      Get_OrtApi_SessionOptionsSetExternalInitializerFileHandles_SinceV32_FnOrThrow(api_);
+  auto model = MakeExternalInitializerModel(1, 0);
+  auto* graph = model.mutable_graph();
+  graph->mutable_initializer(0)->mutable_external_data(0)->set_value("testdata/Pads.bin");
+  auto* constant = graph->add_node();
+  constant->set_op_type("Constant");
+  constant->add_output("X");
+  auto* attribute = constant->add_attribute();
+  attribute->set_name("value");
+  attribute->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_TENSOR);
+  auto* tensor = attribute->mutable_t();
+  tensor->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  tensor->add_dims(1);
+  tensor->add_float_data(7.0f);
+  Ort::SessionOptions options;
+  Ort::ThrowOnError(fn(options, nullptr, nullptr, 0));
+  const auto serialized = model.SerializeAsString();
+  Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "constant-file-sources"};
+  try {
+    Ort::Session session{env, serialized.data(), serialized.size(), options};
+    FAIL() << "Constant outputs must not hide external initializers from the registry";
+  } catch (const Ort::Exception& error) {
+    EXPECT_NE(std::string{error.what()}.find("duplicate initializer names: X"), std::string::npos);
+  }
+}
+
+TEST_F(ExperimentalCApiTest, FileSourcesSurviveModelSuppliedSessionOptions) {
+  auto* fn = Ort::Experimental::
+      Get_OrtApi_SessionOptionsSetExternalInitializerFileHandles_SinceV32_FnOrThrow(api_);
+  const onnxruntime::test::ScopedEnvironmentVariables environment{{{"ORT_LOAD_CONFIG_FROM_MODEL", "1"}}};
+  Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "model-config-file-sources"};
+  auto model = MakeExternalInitializerModel(1, 0);
+  auto* config = model.add_metadata_props();
+  config->set_key("ort_config");
+  config->set_value(R"({"session_options":{"intra_op_num_threads":1,"graph_optimization_level":0}})");
+  model.mutable_graph()->mutable_initializer(0)->mutable_external_data(0)->set_value("testdata/Pads.bin");
+  const auto missing = model.SerializeAsString();
+  Ort::SessionOptions empty;
+  Ort::ThrowOnError(fn(empty, nullptr, nullptr, 0));
+  try {
+    Ort::Session session{env, missing.data(), missing.size(), empty};
+    FAIL() << "Model-supplied options must not discard a strict empty registry";
+  } catch (const Ort::Exception& error) {
+    EXPECT_NE(std::string{error.what()}.find("No registered external initializer file source"), std::string::npos);
+  }
+  ScopedInitializerDirectory directory;
+  const auto path = directory.path / "weights.bin";
+  const float expected = 7.0f;
+  {
+    std::ofstream output(path, std::ios::binary);
+    output.exceptions(std::ios::badbit | std::ios::failbit);
+    output.write(reinterpret_cast<const char*>(&expected), sizeof(expected));
+  }
+  auto file = OpenReadOnlyInitializer(path);
+  const auto handle = NativeFileHandle(file.get());
+  const char* name = "weights.bin";
+  Ort::SessionOptions options;
+  Ort::ThrowOnError(fn(options, &name, &handle, 1));
+  file.reset();
+  model.mutable_graph()->mutable_initializer(0)->mutable_external_data(0)->set_value(name);
+  const auto registered = model.SerializeAsString();
+  Ort::Session session{env, registered.data(), registered.size(), options};
+  options = Ort::SessionOptions{nullptr};
+  const char* outputs[]{"Y"};
+  auto actual = session.Run(Ort::RunOptions{}, nullptr, nullptr, 0, outputs, 1);
+  ASSERT_EQ(actual.size(), 1u);
+  EXPECT_FLOAT_EQ(actual[0].GetTensorData<float>()[0], expected);
 }
 #endif
 
