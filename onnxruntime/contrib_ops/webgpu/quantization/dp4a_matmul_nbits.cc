@@ -44,6 +44,7 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                              WGSL_TEMPLATE_PARAMETER(is_qualcomm, is_qualcomm_),
                              WGSL_TEMPLATE_PARAMETER(n_bits, nbits_),
                              WGSL_TEMPLATE_PARAMETER(output_type_i32, true),
+                             WGSL_TEMPLATE_PARAMETER(qc_wave128, SubgroupSize() == 128),
                              WGSL_TEMPLATE_VARIABLE(a, a),
                              WGSL_TEMPLATE_VARIABLE(b, b),
                              WGSL_TEMPLATE_VARIABLE(output, output),
@@ -161,14 +162,24 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
     return context.RunProgram(mul_program);
   }
 
-  constexpr uint32_t kTileSize = 64;
+  // Two 128-lane subgroups cover a 128x32 tile, with one activation row per lane.
+  const bool qc_wave128 = context.AdapterInfo().vendor == std::string_view{"qualcomm"} &&
+                          context.HasFeature(wgpu::FeatureName::SubgroupSizeControl) &&
+                          context.AdapterInfo().subgroupMinSize <= 128 &&
+                          context.AdapterInfo().subgroupMaxSize >= 128 &&
+                          nbits == 4 && block_size == 32 && M >= 128;
+  const uint32_t tile_m = qc_wave128 ? 128 : 64;
+  const uint32_t tile_n = qc_wave128 ? 32 : 64;
   TensorShape reshaped_y_shape{batch_count, M, N / kVec4Components};
-  uint32_t num_M_tile = (M + kTileSize - 1) / kTileSize;
-  uint32_t num_N_tile = (N + kTileSize - 1) / kTileSize;
+  uint32_t num_M_tile = (M + tile_m - 1) / tile_m;
+  uint32_t num_N_tile = (N + tile_n - 1) / tile_n;
   bool is_qualcomm = context.AdapterInfo().vendor == std::string_view{"qualcomm"};
   const bool acc_f32 = context.EnableMatmulFp32Accumulation();
   DP4AMatMulNBitsProgram mul_program{block_size, nbits, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, is_qualcomm, acc_f32};
   mul_program.SetWorkgroupSize(256);
+  if (qc_wave128) {
+    mul_program.SetSubgroupSize(128);
+  }
   mul_program.SetDispatchGroupSize(batch_count * num_M_tile * num_N_tile);
   mul_program.AddInputs({{&a_quant, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec4Components)},
                          {&a_scale, ProgramTensorMetadataDependency::TypeAndRank, 1},

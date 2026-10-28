@@ -92,6 +92,15 @@ Status MatMulNBits<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr
                                /*out*/ bool& is_packed,
                                /*out*/ PrePackedWeights* /*prepacked_weights*/) {
   is_packed = false;
+  if (tensor.Shape().Size() == 0) {
+    // Reject empty weights before fpA_intB prepacking can read their buffer.
+    if (input_idx == MatMulNBits_Input_B) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                             "CUDA MatMulNBits does not support empty B weights yet.");
+    }
+    // Leave empty quantization parameters for runtime validation: B may be a runtime input.
+    return Status::OK();
+  }
   constexpr int kInputIndexGroupIndex = 4;
   if (input_idx == kInputIndexGroupIndex) {
     const int64_t k_blocks = K_ / block_size_ + (K_ % block_size_ != 0);
@@ -946,6 +955,7 @@ void MatMulNBits<T>::InitGemmProfiler(int sm) {
   gemmProfiler_->setCudaKernelType(cuda_kernel_type, sm);
   gemmProfiler_->setWaveAwareGemv(wave_aware_gemv_);
   gemmProfiler_->setL2CacheBytes(static_cast<size_t>(this->GetDeviceProp().l2CacheSize));
+  gemmProfiler_->setDeviceInfo(device_prop.major * 10 + device_prop.minor, device_prop.multiProcessorCount);
   gemmProfiler_->setQuant(static_cast<int>(nbits_), has_bias_, has_zero_points_);
   gemmProfiler_->setGroupSize(static_cast<int>(block_size_));
   gemmProfiler_->setDecodeInterleave(weight_prepacked_ == kMatMulNBitsWeightPrepackedSm90 ? 1 : 4);
@@ -1227,6 +1237,10 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
   const auto* scales_data = scales->Data<T>();
   const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->DataRaw();
 #endif
+  if (b != nullptr && b->Shape().Size() == 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "CUDA MatMulNBits does not support empty B weights yet.");
+  }
   const auto* bias_data = bias == nullptr ? nullptr : bias->Data<T>();
 
   ORT_RETURN_IF_ERROR(matmul_nbits_helper::CheckInputs<Tensor>(
@@ -1377,6 +1391,9 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
           params.decode_variant = bestTactic->cudaKernelVariant >= 2 ? bestTactic->cudaKernelVariant : 0;
           params.paired_k = bestTactic->cudaKernelVariant == 1;
           params.wave_aware = wave_aware_gemv_;
+          const auto& device_prop = GetDeviceProp();
+          params.device_sm = device_prop.major * 10 + device_prop.minor;
+          params.device_sm_count = device_prop.multiProcessorCount;
           params.debug = fpA_intB_debug;
 
           // Launch the GEMV with the arch the weights were PACKED for (FpAIntBPackingSmForKernel),

@@ -25,6 +25,8 @@ struct PrefillWorkspace {
   size_t fc1_output;
   size_t activated_output;
   size_t fc2_output;
+  size_t repacked_weights = 0;
+  size_t transposed_scales = 0;
 
   size_t Reserve(size_t count, size_t element_size) {
     const size_t offset = bytes;
@@ -48,15 +50,250 @@ struct PrefillWorkspace {
     fc1_output = Reserve(SafeInt<size_t>(expanded) * params.inter_size * 2, sizeof(half));
     activated_output = Reserve(SafeInt<size_t>(expanded) * params.inter_size, sizeof(half));
     fc2_output = expanded_input;
+    if (params.weights_are_raw && params.block_size > 0) {
+      const size_t fc1_repack_bytes =
+          SafeInt<size_t>(params.num_experts) * params.inter_size * params.hidden_size;
+      const size_t fc2_repack_bytes =
+          SafeInt<size_t>(params.num_experts) * params.hidden_size * (params.inter_size / 2);
+      repacked_weights = Reserve(std::max(fc1_repack_bytes, fc2_repack_bytes), sizeof(uint8_t));
+      const size_t fc1_scale_elems =
+          SafeInt<size_t>(params.num_experts) * (params.inter_size * 2) * (params.hidden_size / params.block_size);
+      const size_t fc2_scale_elems =
+          SafeInt<size_t>(params.num_experts) * params.hidden_size * (params.inter_size / params.block_size);
+      transposed_scales = Reserve(std::max(fc1_scale_elems, fc2_scale_elems), sizeof(half));
+    }
   }
 };
+
+template <int SrcBits>
+__global__ void __launch_bounds__(256) RepackRawIntToSm80Int4ActiveExpertsKernel(
+    const uint8_t* __restrict__ raw_weights,
+    uint8_t* __restrict__ sm80_int4_weights,
+    const int64_t* __restrict__ expert_offsets,
+    int n,
+    int k) {
+  const int e = static_cast<int>(blockIdx.y);
+  if (expert_offsets != nullptr && __ldg(&expert_offsets[e + 1]) == __ldg(&expert_offsets[e])) {
+    return;
+  }
+  const int k_half_tiles = k >> 5;  // K / 32
+  const int num_uint4_per_expert = n * k_half_tiles;
+  const int idx_in_expert = static_cast<int>(blockIdx.x) * 256 + static_cast<int>(threadIdx.x);
+  if (idx_in_expert >= num_uint4_per_expert) {
+    return;
+  }
+
+  const int k_tiles = k >> 6;  // K / 64
+  const int k_half = idx_in_expert & 1;
+  const int n_low = (idx_in_expert >> 1) & 3;
+  const uint32_t idx8 = static_cast<uint32_t>(idx_in_expert >> 3);
+  const uint32_t n_high = idx8 / static_cast<uint32_t>(k_tiles);
+  const uint32_t k_tile = idx8 - n_high * static_cast<uint32_t>(k_tiles);
+  const int row = (static_cast<int>(n_high) << 2) | n_low;
+  const int half_k_idx = (static_cast<int>(k_tile) << 1) | k_half;
+  const size_t seg_idx = (static_cast<size_t>(e) * n + row) * k_half_tiles + half_k_idx;
+
+  uint32_t pkt[4];
+  if constexpr (SrcBits == 2) {
+    const uint2 w = __ldg(reinterpret_cast<const uint2*>(raw_weights) + seg_idx);
+    pkt[0] = w.x & 0xFFFFu;
+    pkt[1] = w.x >> 16;
+    pkt[2] = w.y & 0xFFFFu;
+    pkt[3] = w.y >> 16;
+  } else if constexpr (SrcBits == 3) {
+    const uint32_t* src_u32 = reinterpret_cast<const uint32_t*>(raw_weights) + seg_idx * 3;
+    const uint32_t w0 = __ldg(&src_u32[0]);
+    const uint32_t w1 = __ldg(&src_u32[1]);
+    const uint32_t w2 = __ldg(&src_u32[2]);
+    pkt[0] = w0 & 0x00FFFFFFu;
+    pkt[1] = __funnelshift_r(w0, w1, 24) & 0x00FFFFFFu;
+    pkt[2] = __funnelshift_r(w1, w2, 16) & 0x00FFFFFFu;
+    pkt[3] = w2 >> 8;
+  } else {
+    static_assert(SrcBits == 4);
+    const uint4 w = __ldg(reinterpret_cast<const uint4*>(raw_weights) + seg_idx);
+    pkt[0] = w.x;
+    pkt[1] = w.y;
+    pkt[2] = w.z;
+    pkt[3] = w.w;
+  }
+
+  uint32_t out_w[4];
+#pragma unroll
+  for (int s = 0; s < 4; ++s) {
+    if constexpr (SrcBits == 2) {
+      uint32_t word = 0x66666666u;
+#pragma unroll
+      for (int p = 0; p < 4; ++p) {
+        const uint32_t pair4 = (pkt[p] >> (4 * s)) & 0xFu;
+        const uint32_t u_even = pair4 & 0x3u;
+        const uint32_t u_odd = pair4 >> 2;
+        word += (u_even << (4 * p)) | (u_odd << (16 + 4 * p));
+      }
+      out_w[s] = word;
+    } else if constexpr (SrcBits == 3) {
+      uint32_t word = 0x44444444u;
+#pragma unroll
+      for (int p = 0; p < 4; ++p) {
+        const uint32_t pair6 = (pkt[p] >> (6 * s)) & 0x3Fu;
+        const uint32_t u_even = pair6 & 0x7u;
+        const uint32_t u_odd = pair6 >> 3;
+        word += (u_even << (4 * p)) | (u_odd << (16 + 4 * p));
+      }
+      out_w[s] = word;
+    } else {
+      uint32_t word = 0u;
+#pragma unroll
+      for (int p = 0; p < 4; ++p) {
+        const uint32_t pair8 = (pkt[p] >> (8 * s)) & 0xFFu;
+        const uint32_t u_even = pair8 & 0xFu;
+        const uint32_t u_odd = pair8 >> 4;
+        word |= (u_even << (4 * p)) | (u_odd << (16 + 4 * p));
+      }
+      out_w[s] = word;
+    }
+  }
+
+  const size_t out_idx = static_cast<size_t>(e) * num_uint4_per_expert + idx_in_expert;
+  reinterpret_cast<uint4*>(sm80_int4_weights)[out_idx] = make_uint4(out_w[0], out_w[1], out_w[2], out_w[3]);
+}
+
+void LaunchRepackRawIntToSm80Int4ActiveExperts(
+    const uint8_t* raw_weights, uint8_t* sm80_int4_weights, const int64_t* expert_offsets,
+    int num_experts, int n, int k, int src_bits, cudaStream_t stream) {
+  const size_t required_alignment = GetInt2MoePrefillRawWeightAlignment(src_bits);
+  ORT_ENFORCE(reinterpret_cast<uintptr_t>(raw_weights) % required_alignment == 0,
+              "Raw INT", src_bits, " prefill repack requires ", required_alignment, "-byte aligned weights.");
+  const int num_uint4_per_expert = n * (k >> 5);
+  const dim3 grid(static_cast<unsigned>((num_uint4_per_expert + 255) / 256), static_cast<unsigned>(num_experts));
+  if (src_bits == 2) {
+    RepackRawIntToSm80Int4ActiveExpertsKernel<2><<<grid, 256, 0, stream>>>(
+        raw_weights, sm80_int4_weights, expert_offsets, n, k);
+  } else if (src_bits == 3) {
+    RepackRawIntToSm80Int4ActiveExpertsKernel<3><<<grid, 256, 0, stream>>>(
+        raw_weights, sm80_int4_weights, expert_offsets, n, k);
+  } else {
+    ORT_ENFORCE(src_bits == 4, "Raw INT prefill repack requires 2, 3, or 4 bits");
+    RepackRawIntToSm80Int4ActiveExpertsKernel<4><<<grid, 256, 0, stream>>>(
+        raw_weights, sm80_int4_weights, expert_offsets, n, k);
+  }
+}
+
+template <typename T>
+__global__ void __launch_bounds__(256) TransposeScalesActiveExpertsVec8Kernel(
+    const T* __restrict__ raw_scales,
+    T* __restrict__ transposed_scales,
+    const int64_t* __restrict__ expert_offsets,
+    int rows,
+    int cols) {
+  const int e = static_cast<int>(blockIdx.z);
+  if (expert_offsets != nullptr && __ldg(&expert_offsets[e + 1]) == __ldg(&expert_offsets[e])) {
+    return;
+  }
+  __shared__ __align__(16) T s_tile[8][128 + 8];
+  const int tile_x = static_cast<int>(blockIdx.x);
+  const int tile_y = static_cast<int>(blockIdx.y);
+
+  const int tx = static_cast<int>(threadIdx.x) & 7;
+  const int ty = static_cast<int>(threadIdx.x) >> 3;
+
+  const size_t expert_stride = static_cast<size_t>(rows) * cols;
+  const T* in_e = raw_scales + static_cast<size_t>(e) * expert_stride;
+  T* out_e = transposed_scales + static_cast<size_t>(e) * expert_stride;
+
+  const int col_in = tile_x * 8 + tx;
+  const int row_base = tile_y * 128;
+  if (col_in < cols) {
+#pragma unroll
+    for (int j = 0; j < 128; j += 32) {
+      s_tile[tx][ty + j] = __ldg(&in_e[(row_base + ty + j) * cols + col_in]);
+    }
+  }
+  __syncthreads();
+
+  const int tid = static_cast<int>(threadIdx.x);
+  if (tid < 128) {
+    const int c = tid >> 4;
+    const int r8 = (tid & 15) * 8;
+    const int col_out = tile_x * 8 + c;
+    if (col_out < cols) {
+      *reinterpret_cast<uint4*>(&out_e[col_out * rows + row_base + r8]) =
+          *reinterpret_cast<const uint4*>(&s_tile[c][r8]);
+    }
+  }
+}
+
+template <typename T>
+__global__ void __launch_bounds__(256) TransposeScalesActiveExpertsKernel(
+    const T* __restrict__ raw_scales,
+    T* __restrict__ transposed_scales,
+    const int64_t* __restrict__ expert_offsets,
+    int rows,
+    int cols) {
+  const int e = static_cast<int>(blockIdx.z);
+  if (expert_offsets != nullptr && __ldg(&expert_offsets[e + 1]) == __ldg(&expert_offsets[e])) {
+    return;
+  }
+  __shared__ T s_tile[32][33];
+  const int tile_x = static_cast<int>(blockIdx.x);
+  const int tile_y = static_cast<int>(blockIdx.y);
+
+  const int tx = static_cast<int>(threadIdx.x) & 31;
+  const int ty = static_cast<int>(threadIdx.x) >> 5;
+
+  const size_t expert_stride = static_cast<size_t>(rows) * cols;
+  const T* in_e = raw_scales + static_cast<size_t>(e) * expert_stride;
+  T* out_e = transposed_scales + static_cast<size_t>(e) * expert_stride;
+
+  const int col_in = tile_x * 32 + tx;
+#pragma unroll
+  for (int j = 0; j < 32; j += 8) {
+    const int row_in = tile_y * 32 + ty + j;
+    if (row_in < rows && col_in < cols) {
+      s_tile[ty + j][tx] = __ldg(&in_e[row_in * cols + col_in]);
+    }
+  }
+  __syncthreads();
+
+  const int row_out = tile_y * 32 + tx;
+#pragma unroll
+  for (int j = 0; j < 32; j += 8) {
+    const int col_out = tile_x * 32 + ty + j;
+    if (col_out < cols && row_out < rows) {
+      out_e[col_out * rows + row_out] = s_tile[tx][ty + j];
+    }
+  }
+}
+
+template <typename T>
+void LaunchTransposeScalesActiveExperts(
+    const T* raw_scales, T* transposed_scales, const int64_t* expert_offsets,
+    int num_experts, int rows, int cols, cudaStream_t stream) {
+  if constexpr (sizeof(T) == 2) {
+    if ((rows & 127) == 0 && (reinterpret_cast<uintptr_t>(transposed_scales) & 15u) == 0) {
+      const int tiles_x = (cols + 7) >> 3;
+      const int tiles_y = rows >> 7;
+      const dim3 grid(static_cast<unsigned>(tiles_x), static_cast<unsigned>(tiles_y), static_cast<unsigned>(num_experts));
+      TransposeScalesActiveExpertsVec8Kernel<T><<<grid, 256, 0, stream>>>(
+          raw_scales, transposed_scales, expert_offsets, rows, cols);
+      return;
+    }
+  }
+  const int tiles_x = (cols + 31) >> 5;
+  const int tiles_y = (rows + 31) >> 5;
+  const dim3 grid(static_cast<unsigned>(tiles_x), static_cast<unsigned>(tiles_y), static_cast<unsigned>(num_experts));
+  TransposeScalesActiveExpertsKernel<T><<<grid, 256, 0, stream>>>(
+      raw_scales, transposed_scales, expert_offsets, rows, cols);
+}
 
 template <typename ElementType>
 void RunPackedGroupedGemm(const Int2MoePrefillParams& params,
                           const ElementType* activations, const uint8_t* weights,
-                          const void* scales, const int64_t* offsets, ElementType* output,
-                          int64_t num_rows, int num_columns, int reduction_size, int weight_bits) {
+                          const void* scales, const ElementType* biases, const int64_t* offsets,
+                          ElementType* output, int64_t num_rows, int num_columns, int reduction_size,
+                          int weight_bits) {
   if (weight_bits == 2) {
+    ORT_ENFORCE(biases == nullptr, "INT2 grouped GEMM does not support epilogue biases");
     Int2GroupedGemmParamsT<ElementType> gemm;
     gemm.activations = activations;
     gemm.packed_weights = weights;
@@ -76,7 +313,7 @@ void RunPackedGroupedGemm(const Int2MoePrefillParams& params,
   }
   ORT_ENFORCE(weight_bits == 4, "Packed INT prefill requires INT2 or INT4 weights");
   GroupedGemmInput<ElementType, cutlass::uint4b_t, ElementType, ElementType> gemm{
-      activations, offsets + 1, reinterpret_cast<const cutlass::uint4b_t*>(weights), static_cast<const ElementType*>(scales), nullptr, nullptr, output, nullptr, nullptr, ActivationType::Identity, num_rows, num_columns, reduction_size, params.num_experts, params.block_size, true, false, params.stream, {}, {}};
+      activations, offsets + 1, reinterpret_cast<const cutlass::uint4b_t*>(weights), static_cast<const ElementType*>(scales), nullptr, biases, output, nullptr, nullptr, ActivationType::Identity, num_rows, num_columns, reduction_size, params.num_experts, params.block_size, true, false, params.stream, {}, {}};
   gemm.gemm_config = cutlass_extensions::CutlassGemmConfig(
       cutlass_extensions::CutlassTileConfig::CtaShape32x128x64_WarpShape32x32x64,
       cutlass_extensions::SplitKStyle::NO_SPLIT_K, 1, 4);
@@ -97,6 +334,15 @@ void RunInt2MoePrefillImpl(const Int2MoePrefillParams& params, void* workspace) 
   auto* fc2_output = reinterpret_cast<ElementType*>(storage + layout.fc2_output);
   const int64_t expanded = params.num_rows * params.top_k;
 
+  // Raw (INT3) weights fold the expert biases into the GEMM epilogue, which adds them to the FP32 accumulators and
+  // rounds once, like the SIMT kernels. The packed INT2/INT4 path keeps adding them after the GEMM result is stored.
+  const auto* fc1_bias = static_cast<const ElementType*>(params.fc1_bias);
+  const auto* fc2_bias = static_cast<const ElementType*>(params.fc2_bias);
+  const ElementType* fc1_gemm_bias = params.weights_are_raw ? fc1_bias : nullptr;
+  const ElementType* fc1_activation_bias = params.weights_are_raw ? nullptr : fc1_bias;
+  const ElementType* fc2_gemm_bias = params.weights_are_raw ? fc2_bias : nullptr;
+  const ElementType* fc2_finalize_bias = params.weights_are_raw ? nullptr : fc2_bias;
+
   threeStepBuildExpertMapsSortFirstToken(
       params.selected_experts, permuted_experts, permuted_rows, params.unpermuted_to_permuted, offsets,
       reinterpret_cast<int*>(storage + layout.counts), reinterpret_cast<int*>(storage + layout.cumulative_counts),
@@ -108,9 +354,24 @@ void RunInt2MoePrefillImpl(const Int2MoePrefillParams& params, void* workspace) 
       params.num_rows, params.hidden_size,
       params.top_k, params.num_experts, quant_params, false, offsets, nullptr, nullptr, nullptr, params.stream);
 
-  RunPackedGroupedGemm(params, expanded_input, params.fc1_weights, params.fc1_scales,
-                       offsets, fc1_output, expanded, params.inter_size * 2,
-                       params.hidden_size, params.fc1_weight_bits);
+  if (params.weights_are_raw) {
+    auto* repacked_weights = reinterpret_cast<uint8_t*>(storage + layout.repacked_weights);
+    auto* transposed_scales = reinterpret_cast<ElementType*>(storage + layout.transposed_scales);
+    const int fc1_n = params.inter_size * 2;
+    const int fc1_k = params.hidden_size;
+    LaunchRepackRawIntToSm80Int4ActiveExperts(
+        params.fc1_weights, repacked_weights, offsets, params.num_experts,
+        fc1_n, fc1_k, params.fc1_weight_bits, params.stream);
+    LaunchTransposeScalesActiveExperts<ElementType>(
+        static_cast<const ElementType*>(params.fc1_scales), transposed_scales, offsets,
+        params.num_experts, fc1_n, fc1_k / params.block_size, params.stream);
+    RunPackedGroupedGemm(params, expanded_input, repacked_weights, transposed_scales, fc1_gemm_bias,
+                         offsets, fc1_output, expanded, fc1_n, fc1_k, /*weight_bits=*/4);
+  } else {
+    RunPackedGroupedGemm(params, expanded_input, params.fc1_weights, params.fc1_scales, fc1_gemm_bias,
+                         offsets, fc1_output, expanded, params.inter_size * 2,
+                         params.hidden_size, params.fc1_weight_bits);
+  }
 
   ActivationParams activation(ActivationType::Swiglu);
   activation.alpha = params.alpha;
@@ -118,21 +379,50 @@ void RunInt2MoePrefillImpl(const Int2MoePrefillParams& params, void* workspace) 
   activation.limit = params.limit;
   activation.swiglu_fusion = 1;
   doActivation<ElementType, ElementType, ElementType>(
-      activated_output, fc1_output, nullptr, static_cast<const ElementType*>(params.fc1_bias), true, offsets,
+      activated_output, fc1_output, nullptr, fc1_activation_bias, true, offsets,
       params.num_experts, params.inter_size, expanded, ActivationType::Swiglu,
       quant_params, false, nullptr, params.stream, activation);
 
-  RunPackedGroupedGemm(params, activated_output, params.fc2_weights, params.fc2_scales,
-                       offsets, fc2_output, expanded, params.hidden_size,
-                       params.inter_size, params.fc2_weight_bits);
+  if (params.weights_are_raw) {
+    auto* repacked_weights = reinterpret_cast<uint8_t*>(storage + layout.repacked_weights);
+    auto* transposed_scales = reinterpret_cast<ElementType*>(storage + layout.transposed_scales);
+    const int fc2_n = params.hidden_size;
+    const int fc2_k = params.inter_size;
+    LaunchRepackRawIntToSm80Int4ActiveExperts(
+        params.fc2_weights, repacked_weights, offsets, params.num_experts,
+        fc2_n, fc2_k, params.fc2_weight_bits, params.stream);
+    LaunchTransposeScalesActiveExperts<ElementType>(
+        static_cast<const ElementType*>(params.fc2_scales), transposed_scales, offsets,
+        params.num_experts, fc2_n, fc2_k / params.block_size, params.stream);
+    RunPackedGroupedGemm(params, activated_output, repacked_weights, transposed_scales, fc2_gemm_bias,
+                         offsets, fc2_output, expanded, fc2_n, fc2_k, /*weight_bits=*/4);
+  } else {
+    RunPackedGroupedGemm(params, activated_output, params.fc2_weights, params.fc2_scales, fc2_gemm_bias,
+                         offsets, fc2_output, expanded, params.hidden_size,
+                         params.inter_size, params.fc2_weight_bits);
+  }
   finalizeMoeRoutingKernelLauncher<ElementType, ElementType, ElementType>(
-      fc2_output, static_cast<ElementType*>(params.output), static_cast<const ElementType*>(params.fc2_bias),
+      fc2_output, static_cast<ElementType*>(params.output), fc2_finalize_bias,
       params.routing_weights, params.unpermuted_to_permuted,
       permuted_rows, params.selected_experts, offsets, params.num_rows, params.hidden_size, params.top_k,
       params.num_experts, MOEParallelismConfig{}, false, params.stream);
 }
 
 }  // namespace
+
+size_t GetInt2MoePrefillRawWeightAlignment(int weight_bits) {
+  // The widest load RepackRawIntToSm80Int4ActiveExpertsKernel issues on the raw weights, per bit width.
+  switch (weight_bits) {
+    case 2:
+      return alignof(uint2);
+    case 3:
+      return alignof(uint32_t);
+    case 4:
+      return alignof(uint4);
+    default:
+      ORT_THROW("Raw INT prefill repack requires 2, 3, or 4 bits, got ", weight_bits);
+  }
+}
 
 size_t GetInt2MoePrefillWorkspaceSize(const Int2MoePrefillParams& params) {
   return PrefillWorkspace(params).bytes;
