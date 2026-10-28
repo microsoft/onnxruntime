@@ -23,8 +23,13 @@ class SubgroupMatrixMatMulNBitsProgram final : public Program<SubgroupMatrixMatM
   SubgroupMatrixMatMulNBitsProgram(uint32_t nbits, SubgroupMatrixConfig config, uint32_t tile_m,
                                    uint32_t tile_n, uint32_t tile_k,
                                    bool has_zero_points, bool has_bias,
-                                   bool has_weight_idx, bool has_weight_idx_indirect, bool has_tail_buffer)
-      : Program{config.subgroupSize == 64 ? "SubgroupMatrixMatMulNBitsWave64" : "SubgroupMatrixMatMulNBits"},
+                                   bool has_weight_idx, bool has_weight_idx_indirect, bool has_tail_buffer,
+                                   bool experimental_fp32 = false)
+      : Program{experimental_fp32
+                    ? (config.componentType == wgpu::SubgroupMatrixComponentType::F16
+                           ? "ExperimentalSubgroupMatrixMatMulNBitsMixed"
+                           : "ExperimentalSubgroupMatrixMatMulNBitsF32")
+                    : (config.subgroupSize == 64 ? "SubgroupMatrixMatMulNBitsWave64" : "SubgroupMatrixMatMulNBits")},
         nbits_(nbits),
         config_(config),
         tile_m_(tile_m),
@@ -34,7 +39,8 @@ class SubgroupMatrixMatMulNBitsProgram final : public Program<SubgroupMatrixMatM
         has_bias_(has_bias),
         has_weight_idx_{has_weight_idx},
         has_weight_idx_indirect_{has_weight_idx_indirect},
-        has_tail_buffer_{has_tail_buffer} {};
+        has_tail_buffer_{has_tail_buffer},
+        experimental_fp32_{experimental_fp32} {};
   Status GenerateShaderCode(ShaderHelper& sh) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"M", ProgramUniformVariableDataType::Uint32},
@@ -56,6 +62,7 @@ class SubgroupMatrixMatMulNBitsProgram final : public Program<SubgroupMatrixMatM
   bool has_weight_idx_;
   bool has_weight_idx_indirect_;
   bool has_tail_buffer_;
+  bool experimental_fp32_;
 };
 
 Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales,
