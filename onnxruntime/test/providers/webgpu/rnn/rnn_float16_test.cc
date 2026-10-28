@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -13,6 +14,9 @@
 #include "gtest/gtest.h"
 #include "core/common/make_string.h"
 #include "core/graph/graph.h"
+#if !defined(ORT_USE_EP_API_ADAPTERS)
+#include "core/providers/webgpu/webgpu_context.h"
+#endif
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
@@ -190,6 +194,24 @@ std::vector<T> Convert(const std::vector<float>& values) {
   return result;
 }
 
+// Returns why the WebGPU EP can't run element type T, or an empty string if it can. Float16 needs the optional
+// ShaderF16 device feature; plugin-EP builds can't reach the WebGPU context, so they don't check it.
+template <typename T>
+std::string WebGpuSkipReason(const std::unique_ptr<IExecutionProvider>& ep) {
+  if (!ep) {
+    return "WebGPU execution provider is not available.";
+  }
+#if !defined(ORT_USE_EP_API_ADAPTERS)
+  if constexpr (std::is_same_v<T, MLFloat16>) {
+    const auto& context = webgpu::WebGpuContextFactory::GetContext(ep->GetDeviceId());
+    if (!context.DeviceHasFeature(wgpu::FeatureName::ShaderF16)) {
+      return "WebGPU adapter does not support shader-f16.";
+    }
+  }
+#endif
+  return {};
+}
+
 SessionOptions WebGpuOnly() {
   SessionOptions options;
   ORT_THROW_IF_ERROR(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
@@ -244,8 +266,8 @@ LstmCase MakeLstmCase(const RnnShape& s, const std::string& direction, const std
 template <typename T>
 void RunGru(const GruCase& cfg, float abs_tol, float rel_tol) {
   auto webgpu_ep = DefaultWebGpuExecutionProvider();
-  if (!webgpu_ep) {
-    GTEST_SKIP() << "WebGPU execution provider is not available.";
+  if (const auto reason = WebGpuSkipReason<T>(webgpu_ep); !reason.empty()) {
+    GTEST_SKIP() << reason;
   }
   const RnnShape& s = cfg.s;
   const int64_t dirs = NumDirections(cfg.direction);
@@ -311,8 +333,8 @@ void AddLstmInputsAndOutputs(OpTester& test, const LstmCase& cfg, const std::str
 template <typename T>
 void RunLstm(const LstmCase& cfg, float abs_tol, float rel_tol) {
   auto webgpu_ep = DefaultWebGpuExecutionProvider();
-  if (!webgpu_ep) {
-    GTEST_SKIP() << "WebGPU execution provider is not available.";
+  if (const auto reason = WebGpuSkipReason<T>(webgpu_ep); !reason.empty()) {
+    GTEST_SKIP() << reason;
   }
   OpTester test("LSTM", 14);
   AddLstmAttributes(test, cfg);
@@ -466,8 +488,8 @@ TEST(LSTMTest, WebGpu_Float16_StatePrecision) {
 // so that program must key on Y's element type.
 TEST(LSTMTest, WebGpu_SplitYOutputTypes) {
   auto webgpu_ep = DefaultWebGpuExecutionProvider();
-  if (!webgpu_ep) {
-    GTEST_SKIP() << "WebGPU execution provider is not available.";
+  if (const auto reason = WebGpuSkipReason<MLFloat16>(webgpu_ep); !reason.empty()) {
+    GTEST_SKIP() << reason;
   }
   LstmCase cfg = MakeLstmCase({4, 3, 3, 4}, "bidirectional", {"Sigmoid", "Tanh", "Tanh", "Sigmoid", "Relu", "Relu"});
   cfg.seq_lens = {4, 1, 3};
