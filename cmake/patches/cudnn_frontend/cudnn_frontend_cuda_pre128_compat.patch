@@ -1,0 +1,52 @@
+--- a/include/cudnn_frontend/experimental/attention_utils.h
++++ b/include/cudnn_frontend/experimental/attention_utils.h
+@@ -199,7 +199,8 @@
+ // will reject the configuration before these are called.
+ // ============================================================
+ 
+-#if !defined(NV_CUDNN_FRONTEND_USE_DYNAMIC_LOADING) && defined(CUDART_VERSION) && CUDART_VERSION < 12080
++// ORT binds CUDA directly even when cuDNN is dynamically loaded.
++#if defined(CUDART_VERSION) && CUDART_VERSION < 12080
+ 
+ // Stubs that return errors — OSS engines require CUDA 12.8+.
+ inline cudaError_t
+@@ -219,7 +220,7 @@
+     return cudaErrorNotSupported;
+ }
+ 
+-#else  // CUDART_VERSION >= 12080 or dynamic loading
++#else  // CUDART_VERSION >= 12080 or not defined
+ 
+ inline cudaError_t
+ cuda_library_load_data(cudaLibrary_t* library,
+@@ -280,7 +281,7 @@
+                            CUtensorMapSwizzle swizzle,
+                            CUtensorMapL2promotion l2Promotion,
+                            CUtensorMapFloatOOBfill oobFill) {
+-#if !defined(NV_CUDNN_FRONTEND_USE_DYNAMIC_LOADING) && defined(CUDART_VERSION) && CUDART_VERSION < 12080
++#if defined(CUDART_VERSION) && CUDART_VERSION < 12080
+     (void)tensorMap;
+     (void)tensorDataType;
+     (void)tensorRank;
+--- a/include/cudnn_frontend/plans.h
++++ b/include/cudnn_frontend/plans.h
+@@ -835,6 +835,9 @@
+ 
+     error_t
+     check_oss_sdpa_engine_support(int64_t sm_version) {
++#if defined(CUDART_VERSION) && CUDART_VERSION < 12080
++        return {error_code_t::GRAPH_NOT_SUPPORTED, "OSS SDPA engines require CUDA 12.8 or newer"};
++#endif
+         RETURN_CUDNN_FRONTEND_ERROR_IF(
+             !oss_sdpa_engine_, error_code_t::GRAPH_NOT_SUPPORTED, "No OSS engine registered");
+         cudnn_frontend::experimental::AttentionShape_t shape = {
+@@ -1068,6 +1071,9 @@
+ 
+     error_t
+     check_oss_rms_norm_silu_support(int64_t sm_version) {
++#if defined(CUDART_VERSION) && CUDART_VERSION < 12080
++        return {error_code_t::GRAPH_NOT_SUPPORTED, "OSS RmsNorm+SiLU engines require CUDA 12.8 or newer"};
++#endif
+         RETURN_CUDNN_FRONTEND_ERROR_IF(
+             !oss_rms_norm_silu_engine_, error_code_t::GRAPH_NOT_SUPPORTED, "No RmsNorm+SiLU OSS engine registered");
+         experimental::NormSiluShape_t shape;
