@@ -183,11 +183,6 @@ struct SessionOptions {
                                                   gsl::span<std::pair<char*, const size_t>> files_buffers);
 #endif
 
-#if !defined(ORT_MINIMAL_BUILD)
-  std::shared_ptr<const std::unordered_map<PathString, std::shared_ptr<RandomAccessFile>>>
-      external_initializer_file_sources;
-#endif
-
   // custom function callback to create a thread
   OrtCustomCreateThreadFn custom_create_thread_fn = nullptr;
 
@@ -241,6 +236,12 @@ struct SessionOptions {
   // Set via SessionOptionsSetWeightlessSourceModelBuffer.
   const void* weightless_source_model_data = nullptr;
   size_t weightless_source_model_data_size = 0;
+
+#if !defined(ORT_MINIMAL_BUILD)
+  // Keep additive state trailing so existing aggregate initializers retain their field order.
+  std::shared_ptr<const std::unordered_map<PathString, std::shared_ptr<RandomAccessFile>>>
+      external_initializer_file_sources{};
+#endif
 };
 
 inline std::ostream& operator<<(std::ostream& os, const SessionOptions& session_options) {
