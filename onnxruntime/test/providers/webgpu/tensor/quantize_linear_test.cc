@@ -542,10 +542,10 @@ void TestQuantizeDequantizeRoundTrip() {
   }
 
   QuantizeDequantizeTester<QuantType> test;
-  test.AddInput<FloatType>("x", {7}, FromFloats<FloatType>(x));
-  test.AddInput<FloatType>("scale", {}, {FloatType(kScale)});
-  test.AddInput<QuantType>("zero_point", {}, {kZeroPoint});
-  test.AddOutput<FloatType>("y", {7}, FromFloats<FloatType>(expected));
+  test.template AddInput<FloatType>("x", {7}, FromFloats<FloatType>(x));
+  test.template AddInput<FloatType>("scale", {}, {FloatType(kScale)});
+  test.template AddInput<QuantType>("zero_point", {}, {kZeroPoint});
+  test.template AddOutput<FloatType>("y", {7}, FromFloats<FloatType>(expected));
   SessionOptions options = WebGpuOnlySessionOptions();
   // Keep graph optimizers from folding away the Q -> DQ pair.
   options.graph_optimization_level = TransformerLevel::Default;
