@@ -3551,8 +3551,12 @@ TEST(MoETest, QMoETest_Int3AndMixedWidthCudaPrefillParity) {
 //     on (ORT_INT3_PREFILL_MIN_ROWS) the prefill kernels run instead, hence 12 tokens x top-4 = 48 routes here.
 // The kernel choice is not observable through the op, so each case is compared with a host reference that rounds
 // every dequantized weight to BF16 and accumulates in FP32, which the kernels match up to the summation order.
+// fc1_scale_exp and fc2_scale_exp multiply the FC1 and FC2 scales by 2^exp (power-of-two scaling is exact in BF16),
+// the input is divided by 2^fc1_scale_exp so the FC1 results are unchanged, and the output is 2^fc2_scale_exp times the
+// unscaled one, which the tolerance follows.
 static void RunQMoEBf16TensorCoreGemvParityCase(int64_t bits, int64_t block_size, int64_t hidden_size,
-                                                int64_t inter_size, const char* disable_tc = nullptr) {
+                                                int64_t inter_size, const char* disable_tc = nullptr,
+                                                int fc1_scale_exp = 0, int fc2_scale_exp = 0) {
   constexpr int64_t num_experts = 8;
   constexpr int64_t num_rows = 12;
   constexpr int64_t top_k = 4;
@@ -3590,7 +3594,7 @@ static void RunQMoEBf16TensorCoreGemvParityCase(int64_t bits, int64_t block_size
   };
   // The weight magnitude does not depend on the bit width, so the outputs stay O(1) for INT3 and INT4.
   const float base_scale = 0.125f / static_cast<float>(1 << bits);
-  const auto make_projection = [&](int64_t rows, int64_t cols) {
+  const auto make_projection = [&](int64_t rows, int64_t cols, int scale_exp) {
     Projection p;
     const int64_t blocks = cols / block_size;
     const int zero = 1 << (bits - 1);
@@ -3600,7 +3604,7 @@ static void RunQMoEBf16TensorCoreGemvParityCase(int64_t bits, int64_t block_size
     }
     p.scales.resize(static_cast<size_t>(rows * blocks));
     for (auto& scale : p.scales) {
-      scale = round_bf16(base_scale * static_cast<float>(1 + (rng() >> 8) % 5));
+      scale = round_bf16(std::ldexp(base_scale * static_cast<float>(1 + (rng() >> 8) % 5), scale_exp));
     }
     p.dequantized.resize(p.codes.size());
     for (int64_t r = 0; r < rows; ++r) {
@@ -3612,12 +3616,12 @@ static void RunQMoEBf16TensorCoreGemvParityCase(int64_t bits, int64_t block_size
     }
     return p;
   };
-  const auto fc1 = make_projection(num_experts * fc1_rows, hidden_size);
-  const auto fc2 = make_projection(num_experts * hidden_size, inter_size);
+  const auto fc1 = make_projection(num_experts * fc1_rows, hidden_size, fc1_scale_exp);
+  const auto fc2 = make_projection(num_experts * hidden_size, inter_size, fc2_scale_exp);
 
   std::vector<float> input(static_cast<size_t>(num_rows * hidden_size));
   for (auto& v : input) {
-    v = round_bf16(static_cast<float>(static_cast<int>((rng() >> 8) % 9) - 4) * 0.25f);
+    v = round_bf16(std::ldexp(static_cast<float>(static_cast<int>((rng() >> 8) % 9) - 4) * 0.25f, -fc1_scale_exp));
   }
 
   std::vector<float> router_probs(static_cast<size_t>(num_rows * num_experts), round_bf16(-8.0f));
@@ -3680,7 +3684,7 @@ static void RunQMoEBf16TensorCoreGemvParityCase(int64_t bits, int64_t block_size
   tester.AddInput<BFloat16>("fc2_scales", {num_experts, hidden_size, inter_size / block_size}, to_bf16(fc2.scales),
                             true);
   tester.AddOutput<BFloat16>("output", {num_rows, hidden_size}, to_bf16(expected));
-  tester.SetOutputTolerance(0.05f, 0.01f);
+  tester.SetOutputTolerance(std::ldexp(0.05f, fc2_scale_exp), 0.01f);
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCudaExecutionProvider());
@@ -3691,7 +3695,8 @@ static void RunQMoEBf16TensorCoreGemvParityCase(int64_t bits, int64_t block_size
         "ep.cuda.disable_qmoe_int3_tc", disable_tc));
     ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry("ep.cuda.disable_moe_gemv_tc", disable_tc));
   }
-  SCOPED_TRACE(MakeString("bits=", bits, " block_size=", block_size, " hidden=", hidden_size, " inter=", inter_size));
+  SCOPED_TRACE(MakeString("bits=", bits, " block_size=", block_size, " hidden=", hidden_size, " inter=", inter_size,
+                          " fc1_scale_exp=", fc1_scale_exp, " fc2_scale_exp=", fc2_scale_exp));
   tester.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
@@ -3739,6 +3744,27 @@ TEST(MoETest, QMoETest_Bf16Int3TensorCoreGemvParity) {
                             std::pair<int64_t, int64_t>{512, 768},
                             std::pair<int64_t, int64_t>{1024, 640}}) {
     RunQMoEBf16TensorCoreGemvParityCase(/*bits=*/3, /*block_size=*/64, shape.first, shape.second);
+  }
+}
+
+// The INT3 tensor-core dequantization multiplies by constants derived from each scale, so scales far from the usual
+// ones are checked on both projections: FC1 scales near 2^33 with FC2 scales near 2^-47, and the mirror image.
+TEST(MoETest, QMoETest_Bf16TensorCoreGemvExtremeScales) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device with compute capability 8.0 or newer is required.";
+  }
+  // Quick builds omit the native BF16 INT4 MoE runner, so QMoE cannot be constructed for INT4 there.
+#if defined(ORT_QUICK_BUILD)
+  const std::vector<int> bit_widths{3};
+#else
+  const std::vector<int> bit_widths{3, 4};
+#endif
+  for (int bits : bit_widths) {
+    const int64_t block_size = bits == 3 ? 64 : 32;
+    RunQMoEBf16TensorCoreGemvParityCase(bits, block_size, 512, 512, nullptr, /*fc1_scale_exp=*/40,
+                                        /*fc2_scale_exp=*/-40);
+    RunQMoEBf16TensorCoreGemvParityCase(bits, block_size, 512, 512, nullptr, /*fc1_scale_exp=*/-40,
+                                        /*fc2_scale_exp=*/40);
   }
 }
 #endif  // ENABLE_BF16
