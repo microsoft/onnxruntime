@@ -1740,29 +1740,42 @@ bool ValidateNodeForMoeOffload(const Node& node,
   };
 
   const std::string quant_type = moe_offload::MoeOffloadSessionPolicy::ToLowerAscii(get_str_attr("quant_type", "int"));
-  // The offload backend reads raw K-packed row-major NVFP4 bytes (quant_type='nvfp4', expert_weight_bits=4,
-  // weights_prepacked=1, block_size=16). Other formats remain on the standard GPU QMoE path in mode='auto' and are
-  // rejected in mode='required'.
-  if (quant_type != "nvfp4") {
-    out_reason = "unsupported quant_type='" + quant_type + "' (expected 'nvfp4')";
+  // Only NVFP4 with weights_prepacked=1, SM80-prepacked INT4 (weights_prepacked=1, block_size=32), or raw INT3
+  // (weights_prepacked=0, block_size in {32,64,128}) define layouts supported by the offload backend.
+  if (quant_type != "nvfp4" && quant_type != "int") {
+    out_reason = "unsupported quant_type='" + quant_type + "' (expected 'nvfp4' or 'int')";
     return false;
   }
   const int64_t weight_bits = get_int_attr("expert_weight_bits", 8);
   const int64_t fc1_bits = get_int_attr("fc1_expert_weight_bits", weight_bits);
   const int64_t fc2_bits = get_int_attr("fc2_expert_weight_bits", weight_bits);
-  const int64_t prepacked = get_int_attr("weights_prepacked", 0);
+  const int64_t fc3_bits = get_int_attr("fc3_expert_weight_bits", weight_bits);
+  const int64_t prepacked = get_int_attr("weights_prepacked", -1);
   const int64_t blk = get_int_attr("block_size", -1);
-  if (weight_bits != 4 || fc1_bits != 4 || fc2_bits != 4) {
-    out_reason = "unsupported expert_weight_bits=" + std::to_string(weight_bits) + " (expected 4)";
-    return false;
-  }
-  if (prepacked != 1) {
-    out_reason = "requires weights_prepacked=1 (offline K-packed row-major FP4)";
-    return false;
-  }
-  if (blk != -1 && blk != 16) {
-    out_reason = "invalid block_size=" + std::to_string(blk) + " for quant_type='nvfp4' (expected 16)";
-    return false;
+  const bool uniform_bits = (fc1_bits == weight_bits && fc2_bits == weight_bits && fc3_bits == weight_bits);
+  if (quant_type == "int") {
+    const bool is_int4_prepacked =
+        (uniform_bits && weight_bits == 4 && prepacked == 1 && blk == 32);
+    const bool is_int3_raw =
+        (uniform_bits && weight_bits == 3 && prepacked == 0 &&
+         (blk == 32 || blk == 64 || blk == 128));
+    if (!is_int4_prepacked && !is_int3_raw) {
+      out_reason = "quant_type='int' offload requires (bits=4, weights_prepacked=1, block_size=32) or (bits=3, weights_prepacked=0, block_size in {32,64,128})";
+      return false;
+    }
+  } else {
+    if (!uniform_bits || weight_bits != 4) {
+      out_reason = "unsupported expert_weight_bits=" + std::to_string(weight_bits) + " (expected 4)";
+      return false;
+    }
+    if (prepacked != 1) {
+      out_reason = "requires weights_prepacked=1 (offline K-packed row-major FP4)";
+      return false;
+    }
+    if (blk != -1 && blk != 16) {
+      out_reason = "invalid block_size=" + std::to_string(blk) + " for quant_type='nvfp4' (expected 16)";
+      return false;
+    }
   }
   const std::string act_type = moe_offload::MoeOffloadSessionPolicy::ToLowerAscii(get_str_attr("activation_type", ""));
   if (act_type != "swiglu") {
@@ -1770,7 +1783,8 @@ bool ValidateNodeForMoeOffload(const Node& node,
     return false;
   }
   const int64_t swiglu_fusion = get_int_attr("swiglu_fusion", 0);
-  if (swiglu_fusion != 0 && swiglu_fusion != 1) {
+  const bool is_int3_node = (quant_type == "int" && weight_bits == 3);
+  if (is_int3_node ? (swiglu_fusion != 1) : (swiglu_fusion != 0 && swiglu_fusion != 1)) {
     out_reason = "unsupported swiglu_fusion=" + std::to_string(swiglu_fusion) + " (expected interleaved SwiGLU)";
     return false;
   }
@@ -1810,6 +1824,10 @@ bool ValidateNodeForMoeOffload(const Node& node,
     }
     if (it->second->dims_size() != 3) {
       out_reason = "expert input slot " + std::to_string(req_slot) + " ('" + name + "') must be 3D";
+      return false;
+    }
+    if (it->second->dims(0) <= 0 || it->second->dims(1) <= 0 || it->second->dims(2) <= 0) {
+      out_reason = "expert input slot " + std::to_string(req_slot) + " ('" + name + "') must have positive dimensions";
       return false;
     }
     if (graph_output_names.find(name) != graph_output_names.end()) {

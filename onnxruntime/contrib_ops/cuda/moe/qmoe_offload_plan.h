@@ -21,9 +21,13 @@ struct Nvfp4BankDims {
 // Shape is any type with NumDimensions() and operator[] (for example TensorShape).
 template <typename Shape>
 inline Nvfp4BankDims ResolveNvfp4BankDims(const Shape& fc1_weights, const Shape& fc2_weights, int64_t scale_group,
-                                          uint64_t fc1_scale_bytes, uint64_t fc2_scale_bytes) {
+                                          uint64_t fc1_scale_bytes, uint64_t fc2_scale_bytes,
+                                          uint64_t scale_elem_bytes = 1) {
   Nvfp4BankDims dims;
-  if (fc1_weights.NumDimensions() != 3 || fc2_weights.NumDimensions() != 3 || scale_group <= 0) return dims;
+  if (fc1_weights.NumDimensions() != 3 || fc2_weights.NumDimensions() != 3 || scale_group <= 0 ||
+      scale_elem_bytes == 0) {
+    return dims;
+  }
   const int64_t experts = fc1_weights[0];
   const int64_t fc1_dim1 = fc1_weights[1];
   const int64_t fc1_dim2 = fc1_weights[2];
@@ -58,8 +62,60 @@ inline Nvfp4BankDims ResolveNvfp4BankDims(const Shape& fc1_weights, const Shape&
       inter % scale_group != 0) {
     return dims;
   }
-  const uint64_t fc1_scale_per_expert = static_cast<uint64_t>(2 * inter) * static_cast<uint64_t>(hidden / scale_group);
-  const uint64_t fc2_scale_per_expert = static_cast<uint64_t>(hidden) * static_cast<uint64_t>(inter / scale_group);
+  const uint64_t fc1_scale_per_expert =
+      static_cast<uint64_t>(2 * inter) * static_cast<uint64_t>(hidden / scale_group) * scale_elem_bytes;
+  const uint64_t fc2_scale_per_expert =
+      static_cast<uint64_t>(hidden) * static_cast<uint64_t>(inter / scale_group) * scale_elem_bytes;
+  if (fc1_scale_bytes % fc1_scale_per_expert != 0 || fc1_scale_bytes / fc1_scale_per_expert != static_cast<uint64_t>(experts) ||
+      fc2_scale_bytes % fc2_scale_per_expert != 0 || fc2_scale_bytes / fc2_scale_per_expert != static_cast<uint64_t>(experts)) {
+    return dims;
+  }
+  dims.valid = true;
+  dims.hidden = hidden;
+  dims.inter = inter;
+  return dims;
+}
+
+template <typename Shape>
+inline Nvfp4BankDims ResolveInt3BankDims(const Shape& fc1_weights, const Shape& fc2_weights, int64_t scale_group,
+                                         uint64_t fc1_scale_bytes, uint64_t fc2_scale_bytes,
+                                         uint64_t scale_elem_bytes = sizeof(uint16_t)) {
+  Nvfp4BankDims dims;
+  if (fc1_weights.NumDimensions() != 3 || fc2_weights.NumDimensions() != 3 ||
+      (scale_group != 32 && scale_group != 64 && scale_group != 128) || scale_elem_bytes == 0) {
+    return dims;
+  }
+  const int64_t experts = fc1_weights[0];
+  const int64_t fc1_dim1 = fc1_weights[1];
+  const int64_t fc1_dim2 = fc1_weights[2];
+  const int64_t fc2_dim1 = fc2_weights[1];
+  const int64_t fc2_dim2 = fc2_weights[2];
+  if (experts <= 0 || fc2_weights[0] != experts || fc1_dim1 <= 0 || fc1_dim2 <= 0 || fc2_dim1 <= 0 ||
+      fc2_dim2 <= 0) {
+    return dims;
+  }
+
+  constexpr int64_t kMaxDim = std::numeric_limits<int32_t>::max();
+  constexpr int64_t kMaxRawDim = 2 * kMaxDim;
+  if (fc1_dim1 > kMaxRawDim || fc1_dim2 > kMaxRawDim || fc2_dim1 > kMaxRawDim || fc2_dim2 > kMaxRawDim ||
+      (fc1_dim1 % 2) != 0) {
+    return dims;
+  }
+
+  const int64_t hidden = fc2_dim1;
+  const int64_t inter = fc1_dim1 / 2;
+  if (hidden <= 0 || inter <= 0 || hidden > kMaxDim || inter > kMaxDim || experts > kMaxDim ||
+      hidden % 8 != 0 || inter % 8 != 0 || hidden % scale_group != 0 || inter % scale_group != 0) {
+    return dims;
+  }
+  if (fc1_dim2 != (hidden * 3) / 8 || fc2_dim2 != (inter * 3) / 8) {
+    return dims;
+  }
+
+  const uint64_t fc1_scale_per_expert =
+      static_cast<uint64_t>(2 * inter) * static_cast<uint64_t>(hidden / scale_group) * scale_elem_bytes;
+  const uint64_t fc2_scale_per_expert =
+      static_cast<uint64_t>(hidden) * static_cast<uint64_t>(inter / scale_group) * scale_elem_bytes;
   if (fc1_scale_bytes % fc1_scale_per_expert != 0 || fc1_scale_bytes / fc1_scale_per_expert != static_cast<uint64_t>(experts) ||
       fc2_scale_bytes % fc2_scale_per_expert != 0 || fc2_scale_bytes / fc2_scale_per_expert != static_cast<uint64_t>(experts)) {
     return dims;

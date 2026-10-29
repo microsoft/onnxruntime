@@ -162,6 +162,7 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
                             int32_t* counts, int tile_rows) const;
   void RunAsyncCpu(AsyncTile& tile) const;
 
+  void CopyOrTransposeScaleBankToHost(size_t bank, const uint8_t* src, uint8_t* dst) const noexcept;
   bool shared_mode_ = false;
   bool v3_compact_shared_ = false;
   bool v4_planned_mode_ = false;
@@ -169,6 +170,9 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
   onnxruntime::moe_offload::MoeNodeExecutionPlan v4_plan_{};
   bool nvfp4_mode_ = false;
   bool mxfp4_mode_ = false;
+  bool int4_bank_mode_ = false;
+  bool int3_bank_mode_ = false;
+  int int3_block_size_ = 32;
   int moe_tc_min_rows_ = 33;
   int int3_tc_min_routes_ = 33;
   bool disable_int3_tc_prefill_ = false;
