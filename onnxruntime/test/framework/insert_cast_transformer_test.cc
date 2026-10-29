@@ -142,6 +142,293 @@ TEST(TransformerTest, InsertCastAllCPUTest) {
   }
 }
 
+// Regression tests for https://github.com/microsoft/onnxruntime/issues/33264.
+// Generated Cast value names must be unique independently of Cast node names.
+TEST(TransformerTest, InsertCastUsesUniqueValueNameForInputCast) {
+  auto model = std::make_shared<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
+  onnxruntime::Graph& graph = model->MainGraph();
+
+  TypeProto tensor_float_16;
+  tensor_float_16.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT16);
+  TypeProto tensor_float_32;
+  tensor_float_32.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+
+  auto& input = graph.GetOrCreateNodeArg("Grid", &tensor_float_16);
+  auto& anchor = graph.GetOrCreateNodeArg("anchor", &tensor_float_32);
+  auto& existing_cast_value = graph.GetOrCreateNodeArg("InsertedPrecisionFreeCast_Grid", &tensor_float_32);
+  auto& output = graph.GetOrCreateNodeArg("Y", &tensor_float_16);
+
+  // The value name matches the input Cast's generated value name, while its producer has a different node name.
+  auto& existing_value_producer =
+      graph.AddNode("existing_value_producer", "Identity", "Produce the pre-existing value", {&anchor},
+                    {&existing_cast_value});
+  const NodeIndex existing_value_producer_index = existing_value_producer.Index();
+  auto& relu = graph.AddNode("relu", "Relu", "Unassigned FP16 Relu", {&input}, {&output});
+  const NodeIndex relu_index = relu.Index();
+
+  graph.SetInputs({&input, &anchor});
+  graph.SetOutputs({&output, &existing_cast_value});
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  InsertCastTransformer transformer("Test", DefaultCpuExecutionProvider()->GetKernelRegistry().get());
+  bool modified = false;
+  ASSERT_STATUS_OK(transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger()));
+  EXPECT_TRUE(modified);
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  const Node* input_cast = nullptr;
+  for (const Node& node : graph.Nodes()) {
+    if (node.OpType() == "Cast" && node.InputDefs().size() == 1 && node.InputDefs()[0] == &input) {
+      input_cast = &node;
+      break;
+    }
+  }
+
+  ASSERT_NE(input_cast, nullptr);
+  ASSERT_EQ(input_cast->OutputDefs().size(), 1u);
+  EXPECT_NE(input_cast->OutputDefs()[0], &existing_cast_value);
+  EXPECT_NE(input_cast->OutputDefs()[0]->Name(), existing_cast_value.Name());
+  ASSERT_NE(input_cast->OutputDefs()[0]->TypeAsProto(), nullptr);
+  EXPECT_EQ(input_cast->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type(), TensorProto_DataType_FLOAT);
+
+  const Node* transformed_relu = graph.GetNode(relu_index);
+  ASSERT_NE(transformed_relu, nullptr);
+  EXPECT_EQ(transformed_relu->InputDefs()[0], input_cast->OutputDefs()[0]);
+  EXPECT_EQ(graph.GetNode(existing_value_producer_index)->OutputDefs()[0], &existing_cast_value);
+  EXPECT_TRUE(graph.IsOutput(&output));
+  EXPECT_TRUE(graph.IsOutput(&existing_cast_value));
+}
+
+TEST(TransformerTest, InsertCastUsesUniqueValueNameForOutputCast) {
+  auto model = std::make_shared<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
+  onnxruntime::Graph& graph = model->MainGraph();
+
+  TypeProto tensor_float_16;
+  tensor_float_16.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT16);
+  TypeProto tensor_float_32;
+  tensor_float_32.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+
+  auto& input = graph.GetOrCreateNodeArg("X", &tensor_float_16);
+  auto& anchor = graph.GetOrCreateNodeArg("anchor", &tensor_float_32);
+  auto& existing_cast_value = graph.GetOrCreateNodeArg("InsertedPrecisionFreeCast_Y", &tensor_float_32);
+  auto& output = graph.GetOrCreateNodeArg("Y", &tensor_float_16);
+
+  // The value name matches the output Cast's generated value name, while its producer has a different node name.
+  auto& existing_value_producer =
+      graph.AddNode("existing_value_producer", "Identity", "Produce the pre-existing value", {&anchor},
+                    {&existing_cast_value});
+  const NodeIndex existing_value_producer_index = existing_value_producer.Index();
+  auto& relu = graph.AddNode("relu", "Relu", "Unassigned FP16 Relu", {&input}, {&output});
+  const NodeIndex relu_index = relu.Index();
+
+  graph.SetInputs({&input, &anchor});
+  graph.SetOutputs({&output, &existing_cast_value});
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  InsertCastTransformer transformer("Test", DefaultCpuExecutionProvider()->GetKernelRegistry().get());
+  bool modified = false;
+  ASSERT_STATUS_OK(transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger()));
+  EXPECT_TRUE(modified);
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  const Node* output_cast = nullptr;
+  for (const Node& node : graph.Nodes()) {
+    if (node.OpType() == "Cast" && node.OutputDefs().size() == 1 && node.OutputDefs()[0] == &output) {
+      output_cast = &node;
+      break;
+    }
+  }
+
+  ASSERT_NE(output_cast, nullptr);
+  ASSERT_EQ(output_cast->InputDefs().size(), 1u);
+  EXPECT_NE(output_cast->InputDefs()[0], &existing_cast_value);
+  EXPECT_NE(output_cast->InputDefs()[0]->Name(), existing_cast_value.Name());
+  ASSERT_NE(output_cast->InputDefs()[0]->TypeAsProto(), nullptr);
+  EXPECT_EQ(output_cast->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type(), TensorProto_DataType_FLOAT);
+  ASSERT_NE(output_cast->OutputDefs()[0]->TypeAsProto(), nullptr);
+  EXPECT_EQ(output_cast->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type(), TensorProto_DataType_FLOAT16);
+
+  const Node* transformed_relu = graph.GetNode(relu_index);
+  ASSERT_NE(transformed_relu, nullptr);
+  EXPECT_EQ(transformed_relu->OutputDefs()[0], output_cast->InputDefs()[0]);
+  EXPECT_EQ(graph.GetNode(existing_value_producer_index)->OutputDefs()[0], &existing_cast_value);
+  EXPECT_TRUE(graph.IsOutput(&output));
+  EXPECT_TRUE(graph.IsOutput(&existing_cast_value));
+}
+
+TEST(TransformerTest, InsertCastSubgraphValueNameDoesNotShadowAncestorValue) {
+  auto model = std::make_shared<onnxruntime::Model>(
+      "test", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+      std::unordered_map<std::string, int>{{onnxruntime::kOnnxDomain, 12}},
+      std::vector<ONNX_NAMESPACE::FunctionProto>(), DefaultLoggingManager().DefaultLogger());
+  onnxruntime::Graph& graph = model->MainGraph();
+
+  TypeProto tensor_float_16;
+  tensor_float_16.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT16);
+  TypeProto tensor_float_32;
+  tensor_float_32.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  TypeProto tensor_bool;
+  tensor_bool.mutable_tensor_type()->set_elem_type(TensorProto_DataType_BOOL);
+
+  auto& input = graph.GetOrCreateNodeArg("Grid", &tensor_float_16);
+  auto& condition = graph.GetOrCreateNodeArg("condition", &tensor_bool);
+  auto& anchor = graph.GetOrCreateNodeArg("anchor", &tensor_float_32);
+  auto& ancestor_value = graph.GetOrCreateNodeArg("InsertedPrecisionFreeCast_Grid", &tensor_float_32);
+  auto& if_output = graph.GetOrCreateNodeArg("if_output", &tensor_float_16);
+
+  graph.AddNode("ancestor_value_producer", "Identity", "Produce the ancestor value", {&anchor}, {&ancestor_value});
+  auto& if_node = graph.AddNode("if", "If", "Branch captures Grid", {&condition}, {&if_output});
+  const NodeIndex if_node_index = if_node.Index();
+
+  auto make_branch = [](const std::string& graph_name, const std::string& node_name,
+                        const std::string& output_name) {
+    GraphProto branch;
+    branch.set_name(graph_name);
+    auto* relu = branch.add_node();
+    relu->set_name(node_name);
+    relu->set_op_type("Relu");
+    relu->add_input("Grid");  // Captured from the parent graph.
+    relu->add_output(output_name);
+    auto* output = branch.add_output();
+    output->set_name(output_name);
+    output->mutable_type()->mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT16);
+    return branch;
+  };
+
+  if_node.AddAttribute("then_branch", make_branch("then_branch", "then_relu", "then_output"));
+  if_node.AddAttribute("else_branch", make_branch("else_branch", "else_relu", "else_output"));
+
+  graph.SetInputs({&input, &condition, &anchor});
+  graph.SetOutputs({&if_output, &ancestor_value});
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  InsertCastTransformer transformer("Test", DefaultCpuExecutionProvider()->GetKernelRegistry().get());
+  bool modified = false;
+  ASSERT_STATUS_OK(transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger()));
+  EXPECT_TRUE(modified);
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  Node* resolved_if_node = graph.GetNode(if_node_index);
+  ASSERT_NE(resolved_if_node, nullptr);
+  Graph* then_graph = resolved_if_node->GetMutableGraphAttribute("then_branch");
+  ASSERT_NE(then_graph, nullptr);
+
+  const Node* input_cast = nullptr;
+  const Node* transformed_relu = nullptr;
+  for (const Node& node : then_graph->Nodes()) {
+    if (node.OpType() == "Cast" && node.InputDefs().size() == 1 && node.InputDefs()[0]->Name() == input.Name()) {
+      input_cast = &node;
+    } else if (node.Name() == "then_relu") {
+      transformed_relu = &node;
+    }
+  }
+
+  ASSERT_NE(input_cast, nullptr);
+  ASSERT_NE(transformed_relu, nullptr);
+  ASSERT_EQ(input_cast->OutputDefs().size(), 1u);
+  EXPECT_NE(input_cast->OutputDefs()[0], &ancestor_value);
+  EXPECT_NE(input_cast->OutputDefs()[0]->Name(), ancestor_value.Name());
+  ASSERT_NE(input_cast->OutputDefs()[0]->TypeAsProto(), nullptr);
+  EXPECT_EQ(input_cast->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type(), TensorProto_DataType_FLOAT);
+  EXPECT_EQ(transformed_relu->InputDefs()[0], input_cast->OutputDefs()[0]);
+  EXPECT_TRUE(then_graph->IsOutput(then_graph->GetNodeArg("then_output")));
+  EXPECT_TRUE(graph.IsOutput(&ancestor_value));
+  EXPECT_TRUE(graph.IsOutput(&if_output));
+}
+
+TEST(TransformerTest, InsertCastParentValueNameDoesNotConflictWithEarlierSubgraphValue) {
+  auto model = std::make_shared<onnxruntime::Model>(
+      "test", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+      std::unordered_map<std::string, int>{{onnxruntime::kOnnxDomain, 12}},
+      std::vector<ONNX_NAMESPACE::FunctionProto>(), DefaultLoggingManager().DefaultLogger());
+  onnxruntime::Graph& graph = model->MainGraph();
+
+  TypeProto tensor_float_16;
+  tensor_float_16.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT16);
+  TypeProto tensor_bool;
+  tensor_bool.mutable_tensor_type()->set_elem_type(TensorProto_DataType_BOOL);
+
+  auto& input = graph.GetOrCreateNodeArg("Grid", &tensor_float_16);
+  auto& condition = graph.GetOrCreateNodeArg("condition", &tensor_bool);
+  auto& if_output = graph.GetOrCreateNodeArg("if_output", &tensor_float_16);
+  auto& output = graph.GetOrCreateNodeArg("output", &tensor_float_16);
+
+  auto& if_node = graph.AddNode("if", "If", "Branch captures Grid", {&condition}, {&if_output});
+  const NodeIndex if_node_index = if_node.Index();
+
+  auto make_branch = [](const std::string& graph_name, const std::string& node_name,
+                        const std::string& output_name) {
+    GraphProto branch;
+    branch.set_name(graph_name);
+    auto* relu = branch.add_node();
+    relu->set_name(node_name);
+    relu->set_op_type("Relu");
+    relu->add_input("Grid");  // Captured from the parent graph.
+    relu->add_output(output_name);
+    auto* branch_output = branch.add_output();
+    branch_output->set_name(output_name);
+    branch_output->mutable_type()->mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT16);
+    return branch;
+  };
+
+  if_node.AddAttribute("then_branch", make_branch("then_branch", "then_relu", "then_output"));
+  if_node.AddAttribute("else_branch", make_branch("else_branch", "else_relu", "else_output"));
+
+  // Add depends on If's output, so the transformer recurses into If's branches before it
+  // inserts the parent graph's input Cast for Grid.
+  auto& add = graph.AddNode("add_after_if", "Add", "Consume Grid after If", {&input, &if_output}, {&output});
+  const NodeIndex add_index = add.Index();
+
+  graph.SetInputs({&input, &condition});
+  graph.SetOutputs({&output});
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  InsertCastTransformer transformer("Test", DefaultCpuExecutionProvider()->GetKernelRegistry().get());
+  bool modified = false;
+  ASSERT_STATUS_OK(transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger()));
+  EXPECT_TRUE(modified);
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  Node* resolved_if_node = graph.GetNode(if_node_index);
+  ASSERT_NE(resolved_if_node, nullptr);
+  Graph* then_graph = resolved_if_node->GetMutableGraphAttribute("then_branch");
+  ASSERT_NE(then_graph, nullptr);
+
+  const Node* subgraph_input_cast = nullptr;
+  for (const Node& node : then_graph->Nodes()) {
+    if (node.OpType() == "Cast" && node.InputDefs().size() == 1 && node.InputDefs()[0]->Name() == input.Name()) {
+      subgraph_input_cast = &node;
+      break;
+    }
+  }
+
+  const Node* parent_input_cast = nullptr;
+  for (const Node& node : graph.Nodes()) {
+    if (node.OpType() == "Cast" && node.InputDefs().size() == 1 && node.InputDefs()[0] == &input) {
+      parent_input_cast = &node;
+      break;
+    }
+  }
+
+  ASSERT_NE(subgraph_input_cast, nullptr);
+  ASSERT_NE(parent_input_cast, nullptr);
+  ASSERT_EQ(subgraph_input_cast->OutputDefs().size(), 1u);
+  ASSERT_EQ(parent_input_cast->OutputDefs().size(), 1u);
+  EXPECT_NE(parent_input_cast->OutputDefs()[0]->Name(), subgraph_input_cast->OutputDefs()[0]->Name());
+  ASSERT_NE(parent_input_cast->OutputDefs()[0]->TypeAsProto(), nullptr);
+  EXPECT_EQ(parent_input_cast->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type(),
+            TensorProto_DataType_FLOAT);
+  ASSERT_NE(subgraph_input_cast->OutputDefs()[0]->TypeAsProto(), nullptr);
+  EXPECT_EQ(subgraph_input_cast->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type(),
+            TensorProto_DataType_FLOAT);
+
+  const Node* transformed_add = graph.GetNode(add_index);
+  ASSERT_NE(transformed_add, nullptr);
+  EXPECT_EQ(transformed_add->InputDefs()[0], parent_input_cast->OutputDefs()[0]);
+  EXPECT_TRUE(then_graph->IsOutput(then_graph->GetNodeArg("then_output")));
+  EXPECT_TRUE(graph.IsOutput(&output));
+}
+
 TEST(TransformerTest, Fp16CastFallbackKeepsAttributeAndOutputTypeConsistent) {
   auto model = std::make_shared<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model->MainGraph();
