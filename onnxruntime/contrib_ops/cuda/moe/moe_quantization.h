@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/providers/cuda/cuda_kernel.h"
+#include "contrib_ops/cuda/cuda_session_options.h"
 #include "core/common/common.h"
 #include "core/framework/moe_offload_plan.h"
 #include "contrib_ops/cuda/moe/moe_base.h"
@@ -91,6 +92,8 @@ class QMoE final : public CudaKernel, public MoEBase, public onnxruntime::moe_of
   int64_t fc2_expert_weight_bits_;
   int64_t fc3_expert_weight_bits_;
   bool has_int3_ = false;
+  bool shared_int4_ = false;
+  bool direct_shared_layout_ = false;
   mutable std::atomic<bool> int3_content_validated_{false};
   // -1: not yet determined, 1: scales/zero points are constant initializers, 0: runtime inputs.
   mutable std::atomic<int> int3_content_constant_{-1};
@@ -144,6 +147,8 @@ class QMoE final : public CudaKernel, public MoEBase, public onnxruntime::moe_of
   // Routes INT3 and INT3-mixed prefill through the FP32 SIMT kernels, which evaluate SwiGLU from the FP32
   // accumulators. The default Tensor Core prefill stores the FC1 result as FP16/BF16 before the activation.
   bool disable_int3_tc_prefill_ = false;
+  int int3_tc_min_routes_ = 33;
+  int moe_tc_min_rows_ = 33;
 
   std::unique_ptr<onnxruntime::llm::kernels::cutlass_kernels::CutlassMoeFCRunnerInterface> m_moe_runner;
 

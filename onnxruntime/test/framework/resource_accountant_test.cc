@@ -819,6 +819,7 @@ TEST(RealAccountantTest, Factory_NoLimitNoStats) {
 TEST(RealAccountantTest, PartialWorkspaceEstimatorConfigDefaultsChunkPolicy) {
   const WorkspaceEstimatorConfig config{std::string{"1"}, std::string{"1,16"}};
   EXPECT_FALSE(config.cuda_matmul_nbits_m_chunk_size.has_value());
+  EXPECT_FALSE(config.cuda_fpa_intb_dequant_gemm_min_m.has_value());
   EXPECT_EQ(config.cuda_gqa_workspace_max_total_sequence_length, 0);
 }
 
@@ -866,6 +867,8 @@ TEST(RealAccountantTest, FactoryRetainsNarrowWorkspaceEstimatorConfig) {
   ASSERT_STATUS_OK(config.AddConfigEntry(
       kOrtSessionOptionsCudaMatMulNBitsMChunkSize, "4096"));
   ASSERT_STATUS_OK(config.AddConfigEntry(
+      kOrtSessionOptionsCudaFpAIntBDequantGemmMinM, "256"));
+  ASSERT_STATUS_OK(config.AddConfigEntry(
       kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLength, "4096"));
   ASSERT_STATUS_OK(config.AddConfigEntry(
       kOrtSessionOptionsKernelDispatchPolicy, "memory"));
@@ -881,6 +884,8 @@ TEST(RealAccountantTest, FactoryRetainsNarrowWorkspaceEstimatorConfig) {
   EXPECT_EQ(estimator_config.cuda_fpa_intb_profile_m, std::optional<std::string>{"1,16"});
   EXPECT_EQ(estimator_config.cuda_matmul_nbits_m_chunk_size,
             std::optional<std::string>{"4096"});
+  EXPECT_EQ(estimator_config.cuda_fpa_intb_dequant_gemm_min_m,
+            std::optional<std::string>{"256"});
   EXPECT_EQ(estimator_config.cuda_gqa_workspace_max_total_sequence_length,
             int64_t{4096});
   EXPECT_EQ(estimator_config.kernel_dispatch_policy,

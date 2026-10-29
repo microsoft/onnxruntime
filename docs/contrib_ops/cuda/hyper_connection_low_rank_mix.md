@@ -37,6 +37,27 @@ Read once per process, so set it before starting it.
   weight inputs (`norm_scale`, `down_weight`, `up_weight`, `inject_weight`) are
   constant initializers; `0` forces plain launches.
 
+`ProjectedSigmoidGateMulKernel`
+([gated_add_impl.cu](../../../onnxruntime/contrib_ops/cuda/bert/gated_add_impl.cu)),
+which precedes `HcDownKernel` in the Qwen3.8 decode graph, issues
+`griddepcontrol.launch_dependents` at its start on `SM90+`. When `HcDownKernel`
+is launched with PDL, its prologue (constant-weight prefetch) then overlaps with
+the gate-mul kernel, while its reads of the gate-mul output still wait for
+`griddepcontrol.wait`. The trigger has no effect for plain launches, changes no
+result and has no switch. Together with the same early trigger in the fpA_intB GEMV
+kernels (MatMulNBits) it shortens a Qwen3.8-Flash-Next `S = 8` decode cycle by 1.4-1.7%.
+
+`SigmoidF32` evaluates `expf(-|v|)` once and selects the numerator,
+`e = expf(-|v|); (v >= 0 ? 1 : e) / (1 + e)`. The textbook two-branch form passes the
+same argument to `expf` (`-v` for `v >= 0`, `v` otherwise), so the result is
+bit-identical for all 2^32 `float` values (checked exhaustively in a standalone harness,
+no fast-math). The branch itself was the cost: in the prefill pre-mix neighbouring
+elements have different signs, so nearly every warp executed both sides. For hidden
+2560, 4 branches and an 8192-token prefill chunk on an H200, `PreMixVec8Kernel` takes
+82.7 µs instead of 112.1 µs per launch and `ScaledSiluKernel` 6.1 µs instead of 7.3 µs,
+which shortens the TTFT by 0.3-1.1%. The fused decode kernels call the same function for
+at most eight rows, and decode time is unchanged within the noise of 0.3%.
+
 The rank-320 decode test (`HyperConnectionLowRankMixTest.FusedDecodeShapeRank320`)
 covers 1, 2, 3, 4, 7 and 8 rows.
 

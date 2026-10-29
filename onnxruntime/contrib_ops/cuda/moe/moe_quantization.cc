@@ -366,6 +366,19 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
   ORT_ENFORCE(int_dequant_max_scratch_bytes_ > 0,
               int_dequant_max_scratch_bytes_source, " must be greater than 0, got ",
               int_dequant_max_scratch_bytes_, ".");
+  int3_tc_min_routes_ = ReadCudaSessionOption(op_kernel_info, kOrtSessionOptionsCudaQmoeInt3TcMinRoutes,
+                                              "ORT_QMOE_INT3_TC_MIN_ROUTES", 33, 1, std::numeric_limits<int>::max());
+  moe_tc_min_rows_ = ReadCudaSessionOption(op_kernel_info, kOrtSessionOptionsCudaMoeGemvTcMinRows,
+                                           "ORT_MOE_GEMV_TC_MIN_ROWS", 33, 1, std::numeric_limits<int>::max());
+  // A threshold of 0 turns the corresponding tensor-core decode path off.
+  if (ReadCudaSessionOption(op_kernel_info, kOrtSessionOptionsCudaDisableQmoeInt3Tc,
+                            "ORT_DISABLE_QMOE_INT3_TC", 0, 0, 1) != 0) {
+    int3_tc_min_routes_ = 0;
+  }
+  if (ReadCudaSessionOption(op_kernel_info, kOrtSessionOptionsCudaDisableMoeGemvTc,
+                            "ORT_DISABLE_MOE_GEMV_TC", 0, 0, 1) != 0) {
+    moe_tc_min_rows_ = 0;
+  }
   const auto configured_disable_int3_tc_prefill =
       op_kernel_info.GetConfigOptions().GetConfigEntry(kQMoEDisableInt3TensorCorePrefillConfig);
   if (configured_disable_int3_tc_prefill.has_value()) {
@@ -477,6 +490,30 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
   bool is_fp16 = input_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16;
 #endif
   is_fp16_ = is_fp16;
+  const auto has_input = [&](size_t index) {
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
+    return index < op_kernel_info.GetInputCount() &&
+           !op_kernel_info.GetKernelInfo().GetInputName(index).empty();
+#else
+    const auto& inputs = op_kernel_info.node().InputDefs();
+    return index < inputs.size() && inputs[index] != nullptr && inputs[index]->Exists();
+#endif
+  };
+  bool has_auxiliary_inputs = false;
+  for (size_t index : {8, 9, 10, 11, 12, 13, 15, 16, 17, 18, 19, 20}) {
+    has_auxiliary_inputs = has_auxiliary_inputs || has_input(index);
+  }
+  const bool direct_swiglu = swiglu_fusion_ == 1 &&
+                             activation_type_ == onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Swiglu;
+  shared_int4_ = quant_type_ == "int" && weights_prepacked_mode == 1 &&
+                 expert_weight_bits_ == 4 && fc1_expert_weight_bits_ == 4 &&
+                 fc2_expert_weight_bits_ == 4 && fc3_expert_weight_bits_ == 4 &&
+                 block_size_ == 32 && direct_swiglu && !has_auxiliary_inputs;
+  direct_shared_layout_ = shared_int4_ ||
+                          (quant_type_ == "int" && weights_prepacked_mode == 0 &&
+                           expert_weight_bits_ == 3 && fc1_expert_weight_bits_ == 3 &&
+                           fc2_expert_weight_bits_ == 3 && fc3_expert_weight_bits_ == 3 &&
+                           direct_swiglu && !has_auxiliary_inputs);
   if (has_int3_) {
     ORT_ENFORCE(quant_type_ == "int" && weights_prepacked_mode == 0,
                 "INT3 CUDA QMoE requires quant_type='int' and weights_prepacked=0.");
@@ -981,10 +1018,6 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
           slice.total_bytes = t->SizeInBytes();
           slice.bytes_per_expert = t->SizeInBytes() / static_cast<size_t>(num_e);
           slice.host_data = (t->Location().device.Type() == OrtDevice::CPU) ? t->DataRaw() : nullptr;
-          if (slice.host_data != nullptr && slice.total_bytes > 0) {
-            static_cast<void>(onnxruntime::moe_offload::PromoteFileMappingToSharedReadOnly(
-                slice.host_data, slice.total_bytes));
-          }
           slice.is_file_mapped = onnxruntime::moe_offload::IsReloadableFileMapping(slice.host_data, slice.total_bytes);
           offload_source_desc_.banks[static_cast<size_t>(kind)] = std::move(slice);
         };
@@ -1147,7 +1180,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     }
     offload_backend_->SyncPrefillSlotTables(Stream(context));
   }
-  if (has_int3_) {
+  if (has_int3_ || shared_int4_) {
     return ComputeInt3(context);
   }
   const bool is_fp4 = (quant_type_ == "fp4");
@@ -2557,6 +2590,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
         p_fc2_scales);
   }
 
+  quant_params.tensor_core_min_rows = moe_tc_min_rows_;
   Tensor* output = context->Output(0, input->Shape());
 
   // ---------------------------------------------------------------------------
@@ -2699,14 +2733,15 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
             static_cast<const WeightType*>(packed_int_fc1),
             static_cast<const T*>(p_fc1_scales), fc1_bias, fc1_output,
             p_efto, p_exp, num_experts, expanded, inter, hidden, static_cast<int>(block_size_), sm_,
-            act_params, p_r2u, num_rows, nullptr, stream);
+            act_params, p_r2u, num_rows, nullptr, stream, moe_tc_min_rows_);
       };
       auto launch_fc2 = [&](auto* weight_type) {
         using WeightType = std::remove_pointer_t<decltype(weight_type)>;
         gemv::launch_moe_gemv_int_symmetric<T, WeightType>(
             fc1_output, static_cast<const WeightType*>(packed_int_fc2),
             static_cast<const T*>(p_fc2_scales), fc2_bias, fc2_output,
-            p_efto, p_exp, num_experts, expanded, hidden, inter, static_cast<int>(block_size_), sm_, stream);
+            p_efto, p_exp, num_experts, expanded, hidden, inter, static_cast<int>(block_size_), sm_, stream,
+            moe_tc_min_rows_);
       };
       if (fc1_expert_weight_bits_ == 2) {
         launch_fc1(static_cast<cutlass::uint2b_t*>(nullptr));
@@ -3735,47 +3770,59 @@ Status QMoE::ComputeInt3(OpKernelContext* context) const {
   const auto* second_zeros = context->Input<Tensor>(12);
   const auto* router_weights = context->Input<Tensor>(14);
   for (int index : {8, 9, 10, 13, 15, 16, 17, 18, 19, 20}) {
-    ORT_RETURN_IF_NOT(!context->Input<Tensor>(index), "INT3 QMoE does not accept input ", index, ".");
+    ORT_RETURN_IF_NOT(!context->Input<Tensor>(index), "Direct integer QMoE does not accept input ", index, ".");
   }
   ORT_RETURN_IF_NOT(input && router && first_weights && first_scales && second_weights && second_scales,
-                    "INT3 QMoE requires inputs 0, 1, 2, 3, 5, and 6.");
+                    "Direct integer QMoE requires inputs 0, 1, 2, 3, 5, and 6.");
   ORT_RETURN_IF_NOT(input->IsDataType<MLFloat16>() || input->IsDataType<BFloat16>(),
-                    "INT3 QMoE requires FP16/BF16 activations.");
+                    "Direct integer QMoE requires FP16/BF16 activations.");
   for (const auto* tensor : {router, first_scales, first_bias, second_scales, second_bias, router_weights}) {
     ORT_RETURN_IF_NOT(!tensor || tensor->DataType() == input->DataType(),
-                      "INT3 QMoE floating input types must match activations.");
+                      "Direct integer QMoE floating input types must match activations.");
   }
   for (const auto* tensor : {first_weights, second_weights, first_zeros, second_zeros}) {
-    ORT_RETURN_IF_NOT(!tensor || tensor->IsDataType<uint8_t>(), "INT3 QMoE packed tensors must be uint8.");
+    ORT_RETURN_IF_NOT(!tensor || tensor->IsDataType<uint8_t>(), "Direct integer QMoE packed tensors must be uint8.");
   }
   const auto& input_shape = input->Shape();
   ORT_RETURN_IF_NOT(input_shape.NumDimensions() == 2 || input_shape.NumDimensions() == 3,
-                    "INT3 QMoE input must have rank 2 or 3.");
+                    "Direct integer QMoE input must have rank 2 or 3.");
   const int64_t hidden = input_shape.GetDims().back();
-  ORT_RETURN_IF_NOT(hidden > 0 && hidden % block_size_ == 0, "INT3 QMoE hidden size must be positive and block aligned.");
+  ORT_RETURN_IF_NOT(hidden > 0 && hidden % block_size_ == 0, "Direct integer QMoE hidden size must be positive and block aligned.");
   ORT_RETURN_IF_NOT(first_weights->Shape().NumDimensions() == 3 && second_weights->Shape().NumDimensions() == 3,
-                    "INT3 QMoE weights must have rank 3.");
-  const int64_t first_rows = first_weights->Shape()[1];
+                    "Direct integer QMoE weights must have rank 3.");
+  ORT_RETURN_IF_NOT(first_scales->Shape().NumDimensions() == 3 &&
+                        second_scales->Shape().NumDimensions() == 3,
+                    "Direct integer QMoE scales must have rank 3.");
+  const int64_t first_rows = first_scales->Shape()[1];
   ORT_RETURN_IF_NOT(first_rows > 0 && first_rows % 2 == 0,
-                    "INT3 QMoE FC1 must contain interleaved gate/up rows.");
+                    "Direct integer QMoE FC1 must contain interleaved gate/up rows.");
   const int64_t intermediate = first_rows / 2;
-  ORT_RETURN_IF_NOT(intermediate % block_size_ == 0, "INT3 QMoE intermediate size must be block aligned.");
-  const int64_t experts = first_weights->Shape()[0];
-  ORT_RETURN_IF_NOT(experts > 0 && k_ > 0 && k_ <= experts, "INT3 QMoE requires 0 < k <= num_experts.");
+  ORT_RETURN_IF_NOT(intermediate % block_size_ == 0, "Direct integer QMoE intermediate size must be block aligned.");
+  const int64_t experts = first_scales->Shape()[0];
+  ORT_RETURN_IF_NOT(experts > 0 && k_ > 0 && k_ <= experts, "Direct integer QMoE requires 0 < k <= num_experts.");
   const int64_t rows = input_shape.Size() / hidden;
-  ORT_RETURN_IF_NOT(router->Shape() == TensorShape({rows, experts}), "INT3 QMoE router shape mismatch.");
+  ORT_RETURN_IF_NOT(router->Shape() == TensorShape({rows, experts}), "Direct integer QMoE router shape mismatch.");
   ORT_RETURN_IF_NOT(!router_weights || router_weights->Shape() == router->Shape(),
-                    "INT3 QMoE router_weights shape mismatch.");
+                    "Direct integer QMoE router_weights shape mismatch.");
   auto check_projection = [&](const Tensor* weights, const Tensor* scales, const Tensor* zeros,
                               const Tensor* bias, int64_t outputs, int64_t features, int64_t bits) -> Status {
-    ORT_RETURN_IF_NOT(weights->Shape() == TensorShape({experts, outputs, moe_helper::PackedByteCountWithPadding(features, bits)}),
-                      "INT3 QMoE raw projection shape mismatch.");
+    if (shared_int4_) {
+      ORT_RETURN_IF_NOT(features % 64 == 0 && outputs % 4 == 0,
+                        "Direct SM80 INT4 QMoE requires K divisible by 64 and N divisible by 4.");
+      const auto& shape = weights->Shape();
+      ORT_RETURN_IF_NOT(shape == TensorShape({experts, outputs, features / 2}) ||
+                            shape == TensorShape({experts, features, outputs / 2}),
+                        "Direct SM80 INT4 QMoE projection shape mismatch.");
+    } else {
+      ORT_RETURN_IF_NOT(weights->Shape() == TensorShape({experts, outputs, moe_helper::PackedByteCountWithPadding(features, bits)}),
+                        "Direct integer QMoE raw projection shape mismatch.");
+    }
     ORT_RETURN_IF_NOT(scales->Shape() == TensorShape({experts, outputs, features / block_size_}),
-                      "INT3 QMoE scale shape mismatch.");
+                      "Direct integer QMoE scale shape mismatch.");
     ORT_RETURN_IF_NOT(!zeros || zeros->Shape() == TensorShape({experts, outputs,
                                                                moe_helper::PackedByteCountWithPadding(features / block_size_, bits)}),
-                      "INT3 QMoE zero-point shape mismatch.");
-    ORT_RETURN_IF_NOT(!bias || bias->Shape() == TensorShape({experts, outputs}), "INT3 QMoE bias shape mismatch.");
+                      "Direct integer QMoE zero-point shape mismatch.");
+    ORT_RETURN_IF_NOT(!bias || bias->Shape() == TensorShape({experts, outputs}), "Direct integer QMoE bias shape mismatch.");
     return Status::OK();
   };
   ORT_RETURN_IF_ERROR(check_projection(first_weights, first_scales, first_zeros, first_bias,
@@ -3783,12 +3830,13 @@ Status QMoE::ComputeInt3(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(check_projection(second_weights, second_scales, second_zeros, second_bias,
                                        hidden, intermediate, fc2_expert_weight_bits_));
   Int3MoeParams params{};
+  params.tensor_core_min_routes = int3_tc_min_routes_;
   params.fc1 = {first_weights->Data<uint8_t>(), first_scales->DataRaw(),
                 first_zeros ? first_zeros->Data<uint8_t>() : nullptr,
-                first_bias ? first_bias->DataRaw() : nullptr, narrow<int>(fc1_expert_weight_bits_)};
+                first_bias ? first_bias->DataRaw() : nullptr, narrow<int>(fc1_expert_weight_bits_), shared_int4_};
   params.fc2 = {second_weights->Data<uint8_t>(), second_scales->DataRaw(),
                 second_zeros ? second_zeros->Data<uint8_t>() : nullptr,
-                second_bias ? second_bias->DataRaw() : nullptr, narrow<int>(fc2_expert_weight_bits_)};
+                second_bias ? second_bias->DataRaw() : nullptr, narrow<int>(fc2_expert_weight_bits_), shared_int4_};
   params.hidden = narrow<int>(hidden);
   params.intermediate = narrow<int>(intermediate);
   params.top_k = narrow<int>(k_);
@@ -3852,7 +3900,7 @@ Status QMoE::ComputeInt3(OpKernelContext* context) const {
     return tensor == nullptr || reinterpret_cast<uintptr_t>(tensor->DataRaw()) % alignment == 0;
   };
   const bool can_use_tc_prefill =
-      !disable_int3_tc_prefill_ && rows >= int3_prefill_min_rows &&
+      !direct_shared_layout_ && !disable_int3_tc_prefill_ && rows >= int3_prefill_min_rows &&
       first_zeros == nullptr && second_zeros == nullptr &&
       router_weights == nullptr && !use_sparse_mixer_ &&
       sm_ >= 80 && experts <= 512 &&
@@ -4028,7 +4076,7 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
   if (offload_node_registered_ && !offload_prepack_bypass_) {
     return Status::OK();
   }
-  if (has_int3_) return Status::OK();
+  if (has_int3_ || shared_int4_) return Status::OK();
   if (nvfp4_weights_row_major_ && (input_idx == 2 || input_idx == 5 ||
                                    (use_fp4_dequant_fallback_ && (input_idx == 3 || input_idx == 6)))) {
     return Status::OK();

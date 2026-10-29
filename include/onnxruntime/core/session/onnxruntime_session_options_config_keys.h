@@ -503,6 +503,25 @@ static const char* const kOrtSessionOptionsCudaFpAIntBGemvWaveAware = "ep.cuda.f
 static const char* const kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLength =
     "ep.cuda.gqa_workspace_max_total_sequence_length";
 
+/// CUDA DynamicSparseAttention kernel switches. Each is resolved once when the kernel is created, so a change needs a new
+/// session, and overrides the environment variable named below. The 0/1 switches accept only "0" and "1", and the
+/// thresholds a non-negative decimal integer; any other value, including an empty string, fails session initialization.
+/// "0" makes the INT8-cache BF16 prefill dequantize the gathered K/V tiles to BF16 instead of running FP16 tensor-core
+/// MMA on them. Default "1". Overrides ORT_DSA_PREFILL_INT8_TC.
+static const char* const kOrtSessionOptionsCudaDsaPrefillInt8Tc = "ep.cuda.dsa_prefill_int8_tc";
+
+/// "0" routes the BF16 prefill through the generic kernels. Default "1". Overrides ORT_DSA_PREFILL_KERNEL.
+static const char* const kOrtSessionOptionsCudaDsaPrefillKernel = "ep.cuda.dsa_prefill_kernel";
+
+/// "0" makes the INT8-cache BF16 decode (up to 8 query rows) use the CUDA-core grouped kernel instead of the split-K
+/// tensor-core kernel. Default "1". Overrides ORT_DSA_DECODE_INT8_TC.
+static const char* const kOrtSessionOptionsCudaDsaDecodeInt8Tc = "ep.cuda.dsa_decode_int8_tc";
+
+/// Number of 64-candidate tiles each CTA of the split-K tensor-core decode kernel consumes. "0" derives it from the
+/// problem size (about 384 CTAs in total). Default "0". Overrides ORT_DSA_DECODE_INT8_TC_TILES_PER_SPLIT.
+static const char* const kOrtSessionOptionsCudaDsaDecodeInt8TcTilesPerSplit =
+    "ep.cuda.dsa_decode_int8_tc_tiles_per_split";
+
 /// Reader-only, hardware-neutral kernel dispatch intent shared across operators and EPs.
 /// Valid values are "auto", "latency", "memory", and "safe"; matching is case-sensitive.
 /// Unset or empty values map to "auto". Other values cause INVALID_ARGUMENT during
@@ -537,6 +556,33 @@ static const char* const kOrtSessionOptionsCudaEnableGemmAutoTune = "ep.cuda.ena
 /// Overrides the ORT_GDN_BF16_PRECISION environment variable.
 static const char* const kOrtSessionOptionsCudaGatedDeltaNetBf16Precision =
     "ep.cuda.gated_delta_net_bf16_precision";
+
+/// CUDA tensor-core kernel switches of MatMulNBits and QMoE. Each is resolved once when the
+/// kernel is created, so a change needs a new session, and overrides the environment variable named below. The
+/// 0/1 switches accept only "0" and "1", and the thresholds a positive decimal integer (or "0" where stated); any other
+/// value, including an empty string, fails session initialization.
+/// "1" uses the scalar GEMV instead of the SM 9.0 tensor-core INT8 GEMV of MatMulNBits. Default "0".
+/// Overrides ORT_DISABLE_FPA_INTB_GEMV_TC.
+static const char* const kOrtSessionOptionsCudaDisableFpAIntBGemvTc = "ep.cuda.disable_fpa_intb_gemv_tc";
+
+/// "1" disables the BF16 tensor-core INT4 decode GEMV of QMoE. Default "0". Overrides ORT_DISABLE_MOE_GEMV_TC.
+static const char* const kOrtSessionOptionsCudaDisableMoeGemvTc = "ep.cuda.disable_moe_gemv_tc";
+
+/// "1" disables the BF16 tensor-core INT3 decode GEMV of QMoE. Default "0". Overrides ORT_DISABLE_QMOE_INT3_TC.
+static const char* const kOrtSessionOptionsCudaDisableQmoeInt3Tc = "ep.cuda.disable_qmoe_int3_tc";
+
+/// Minimum number of routed rows from which QMoE uses the tensor-core INT4 decode GEMV. Default 33.
+/// Overrides ORT_MOE_GEMV_TC_MIN_ROWS.
+static const char* const kOrtSessionOptionsCudaMoeGemvTcMinRows = "ep.cuda.moe_gemv_tc_min_rows";
+
+/// Minimum number of routes from which QMoE uses the tensor-core INT3 decode GEMV. Default 33.
+/// Overrides ORT_QMOE_INT3_TC_MIN_ROUTES.
+static const char* const kOrtSessionOptionsCudaQmoeInt3TcMinRoutes = "ep.cuda.qmoe_int3_tc_min_routes";
+
+/// Minimum number of rows M from which the INT8 MatMulNBits (fpA_intB path, no zero points, no bias) dequantizes the
+/// weight once and runs one cuBLAS GEMM instead of the row-chunked CUTLASS mixed-input GEMM. "0" disables. Default 512
+/// on SM 9.0 and 0 (disabled) on other architectures. Overrides ORT_FPA_INTB_DEQUANT_GEMM_MIN_M.
+static const char* const kOrtSessionOptionsCudaFpAIntBDequantGemmMinM = "ep.cuda.fpa_intb_dequant_gemm_min_m";
 
 /// <summary>
 /// This is a setting that contains string annotations or annotation prefixes to be matched

@@ -121,6 +121,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.RestorePadding">com.microsoft.RestorePadding</a>
   * <a href="#com.microsoft.Rfft">com.microsoft.Rfft</a>
   * <a href="#com.microsoft.RotaryEmbedding">com.microsoft.RotaryEmbedding</a>
+  * <a href="#com.microsoft.RouterGateUpProj">com.microsoft.RouterGateUpProj</a>
   * <a href="#com.microsoft.SampleOp">com.microsoft.SampleOp</a>
   * <a href="#com.microsoft.Sampling">com.microsoft.Sampling</a>
   * <a href="#com.microsoft.ScaledSiLU">com.microsoft.ScaledSiLU</a>
@@ -133,6 +134,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.SparsePagedAttention">com.microsoft.SparsePagedAttention</a>
   * <a href="#com.microsoft.SparseToDenseMatMul">com.microsoft.SparseToDenseMatMul</a>
   * <a href="#com.microsoft.SpeculativePrefixCommit">com.microsoft.SpeculativePrefixCommit</a>
+  * <a href="#com.microsoft.SwiGLU">com.microsoft.SwiGLU</a>
   * <a href="#com.microsoft.Tokenizer">com.microsoft.Tokenizer</a>
   * <a href="#com.microsoft.TorchEmbedding">com.microsoft.TorchEmbedding</a>
   * <a href="#com.microsoft.TransposeMatMul">com.microsoft.TransposeMatMul</a>
@@ -150,26 +152,26 @@ Do not modify directly.*
 ### <a name="com.microsoft.Attention"></a><a name="com.microsoft.attention">**com.microsoft.Attention**</a>
 
   Multi-Head Attention that can be either unidirectional (like GPT-2) or bidirectional (like BERT).
-  
+
   The weights for input projection of Q, K and V are merged. The data is stacked on the second dimension. Its shape
   is (input_hidden_size, hidden_size + hidden_size + v_hidden_size). Here hidden_size is the hidden dimension of Q and K,
   and v_hidden_size is that of V.
   Q, K and V hidden sizes must be positive multiples of num_heads. Their sum must match the weights' second dimension.
   When qkv_hidden_sizes is omitted, the weights' second dimension must be divisible by three.
-  
+
   The mask_index is optional. Besides raw attention mask with shape (batch_size, total_sequence_length)
   or (batch_size, sequence_length, total_sequence_length) with value 0 for masked and 1 otherwise,
   we support other two formats: When input has right-side padding, mask_index is one dimension with shape (batch_size),
   where value is actual sequence length excluding padding. When input has left-side padding, mask_index has
   shape (2 * batch_size), where the values are the exclusive end positions followed by the inclusive start positions.
-  
+
   When unidirectional is 1, each token only attends to previous tokens.
-  
+
   Both past and present state are optional. They shall be used together, and not allowed to use only one of them.
   The qkv_hidden_sizes is required only when K and V have different hidden sizes.
-  
+
   When there is past state, hidden dimension for Q, K and V shall be the same.
-  
+
   The total_sequence_length is past_sequence_length + kv_sequence_length. Here kv_sequence_length is the length of K or V.
   For self attention, kv_sequence_length equals to sequence_length (sequence length of Q).
   For cross attention, query and key might have different lengths.
@@ -241,133 +243,133 @@ This version of the operator has been available since version 1 of the 'com.micr
 
   Computes an one-layer RNN where its RNN Cell is an AttentionWrapper wrapped a LSTM Cell. The RNN layer
   contains following basic component: LSTM Cell, Bahdanau Attention Mechanism, AttentionWrapp.
-  
+
   Activation functions:
-  
+
     Relu(x)                - max(0, x)
-  
+
     Tanh(x)                - (1 - e^{-2x})/(1 + e^{-2x})
-  
+
     Sigmoid(x)             - 1/(1 + e^{-x})
-  
+
     (NOTE: Below are optional)
-  
+
     Affine(x)              - alpha*x + beta
-  
+
     LeakyRelu(x)           - x if x >= 0 else alpha * x
-  
+
     ThresholdedRelu(x)     - x if x >= alpha else 0
-  
+
     ScaledTanh(x)          - alpha*Tanh(beta*x)
-  
+
     HardSigmoid(x)         - min(max(alpha*x + beta, 0), 1)
-  
+
     Elu(x)                 - x if x >= 0 else alpha*(e^x - 1)
-  
+
     Softsign(x)            - x/(1 + |x|)
-  
+
     Softplus(x)            - log(1 + e^x)
-  
+
     Softmax(x)             - exp(x) / sum(exp(x))
-  
+
   Bahdanau Attention Mechanism:
       `M` -  Memory tensor.
-  
+
       `VALUES` - masked Memory by its real sequence length.
-  
+
       `MW` - Memory layer weight.
-  
+
       `KEYS` - Processed memory tensor by the memory layer.
                KEYS = M * MW
-  
+
       `Query` - Query tensor, normally at specific time step in sequence.
-  
+
       `QW` - Query layer weight in the attention mechanism
-  
+
       `PQ` - processed query,  = `Query` * `QW`
-  
+
       `V' - attention vector
-  
+
       `ALIGN` - calculated alignment based on Query and KEYS
           ALIGN = softmax(reduce_sum(`V` * Tanh(`KEYS` + `PQ`)))
-  
+
       `CONTEXT` - context based on `ALIGN` and `VALUES`
           CONTEXT = `ALIGN` * `VALUES`
-  
-  
+
+
   LSTM Cell:
     `X` - input tensor concat with attention state in the attention wrapper
-  
+
     `i` - input gate
-  
+
     `o` - output gate
-  
+
     `f` - forget gate
-  
+
     `c` - cell gate
-  
+
     `t` - time step (t-1 means previous time step)
-  
+
     `W[iofc]` - W parameter weight matrix for input, output, forget, and cell gates
-  
+
     `R[iofc]` - R recurrence weight matrix for input, output, forget, and cell gates
-  
+
     `Wb[iofc]` - W bias vectors for input, output, forget, and cell gates
-  
+
     `Rb[iofc]` - R bias vectors for input, output, forget, and cell gates
-  
+
     `P[iof]`  - P peephole weight vector for input, output, and forget gates
-  
+
     `WB[iofc]` - W parameter weight matrix for backward input, output, forget, and cell gates
-  
+
     `RB[iofc]` - R recurrence weight matrix for backward input, output, forget, and cell gates
-  
+
     `WBb[iofc]` - W bias vectors for backward input, output, forget, and cell gates
-  
+
     `RBb[iofc]` - R bias vectors for backward input, output, forget, and cell gates
-  
+
     `PB[iof]`  - P peephole weight vector for backward input, output, and forget gates
-  
+
     `H` - Hidden state
-  
+
     `num_directions` - 2 if direction == bidirectional else 1
-  
+
     Equations (Default: f=Sigmoid, g=Tanh, h=Tanh):
-  
+
       - it = f(Xt*(Wi^T) + Ht-1*(Ri^T) + Pi (.) Ct-1 + Wbi + Rbi)
-  
+
       - ft = f(Xt*(Wf^T) + Ht-1*(Rf^T) + Pf (.) Ct-1 + Wbf + Rbf)
-  
+
       - ct = g(Xt*(Wc^T) + Ht-1*(Rc^T) + Wbc + Rbc)
-  
+
       - Ct = ft (.) Ct-1 + it (.) ct
-  
+
       - ot = f(Xt*(Wo^T) + Ht-1*(Ro^T) + Po (.) Ct + Wbo + Rbo)
-  
+
       - Ht = ot (.) h(Ct)
-  
-  
+
+
   AttentionWrapp Notations:
     `lstm()' - wrapped inner cell.
              Ht, Ct = lstm(concat(Xt, ATTNt-1), Ct-1)
-  
+
     `am()` - attention mechanism the wrapper used.
              CONTEXTt, ALIGNt = am(Ht, ALIGNt-1)
-  
+
     `AW` - attention layer weights, optional.
-  
+
     `ATTN` - attention state, initial is zero. If `AW` provided, it is the output of the attention layer,
                   ATTNt = concat(Ht, CONTEXTt) * AW
              otherwise,
                   ATTNt = CONTEXTt
-  
+
   RNN layer output:
     `Y` - if needed is the sequence of Ht from lstm cell.
-  
+
     `Y_h` - is the last valid H from lstm cell.
-  
+
     `Y_c` - is the last valid C from lstm cell.
-  
+
 
 #### Version
 
@@ -621,7 +623,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.BiasGelu"></a><a name="com.microsoft.biasgelu">**com.microsoft.BiasGelu**</a>
 
   Bias Gelu.
-  It's an extension of Gelu. It takes the sum of input A and bias input B as the input of Gelu activation. 
+  It's an extension of Gelu. It takes the sum of input A and bias input B as the input of Gelu activation.
 
 #### Version
 
@@ -846,7 +848,7 @@ This version of the operator has been available since version 1 of the 'com.micr
   ```
   scale = 1. / (1. - ratio).
   ```
-  
+
   This op functions in much the same was as Dropout-11 and Dropout-13 do, except that the mask is output as a bit-packed uint32 tensor, instead of a boolean tensor.
 
 #### Version
@@ -980,29 +982,29 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.CausalConvWithState"></a><a name="com.microsoft.causalconvwithstate">**com.microsoft.CausalConvWithState**</a>
 
   Stateful causal depthwise convolution, generalized to N spatial dimensions.
-  
+
   Used by Gated DeltaNet (Qwen3.5) and Mamba (Jamba, FalconMamba) as a preprocessing step.
   Replaces the 3-op pattern (Concat + Conv + Slice) with a single fused operation.
-  
+
   The convolution is causal (looks only at current and past positions along the last
   spatial dimension) and depthwise (each channel is convolved independently with its own kernel).
-  
+
   Input layout is channels-first: (batch_size, channels, ...).
   Weight layout: (channels, 1, k_1, ...) for depthwise convolution.
   The carry state stores the last (k-1) positions along the causal axis for incremental decode.
-  
+
   The ndim attribute generalizes the op to 1D, 2D, or 3D spatial dimensions. Causality is
   enforced on the last spatial dimension only.
-  
+
   The optional activation attribute supports fused SiLU/Swish activation.
-  
+
   The dilation attribute spaces the kernel taps along the causal axis: output position t reads
   input positions t - (k_1 - 1 - j) * dilation for tap j. The receptive field therefore spans
   (k_1 - 1) * dilation positions before the current one, and the carry state grows to match:
   past_state and present_state hold (k_1 - 1) * dilation positions instead of k_1 - 1. Dilation 1
   (the default) is the undilated case and keeps the original state length, so models exported
   before the attribute existed are unaffected.
-  
+
   The channels_last attribute selects a sequence-major layout for the activations and the carry
   state, so a model that already produces channels-last activations does not have to transpose into
   and out of the channels-first layout. With channels_last = 1 and ndim = 1, input and output are
@@ -1139,7 +1141,7 @@ This version of the operator has been available since version 1 of the 'com.micr
   Reconstruct rolling convolution history after retaining a prefix of captured inputs, without
   performing convolution arithmetic. The WebGPU-only implementation copies FP16 or FP32 payload
   bits exactly, including signed zero and NaN payloads, and waits for checked GPU completion.
-  
+
   Inputs 0-2 are full rank-1 backing allocations of the same element type.
   CPU int64 metadata [8] is ordered as:
     source_offset_bytes, destination_offset_bytes, capture_offset_bytes,
@@ -1149,7 +1151,7 @@ This version of the operator has been available since version 1 of the 'com.micr
   All fields are nonnegative; channels must be positive; 0 <= kept_count <= capacity.
   Zero batch size, history width, or capture capacity is valid. Zero state size is a no-op.
   Geometry, backing byte extents and metadata must fit the implementation's uint32 indexing range.
-  
+
   The source view is the incoming snapshot immediately before capture, with layout
   [batch_size, channels, history_width]. Captured inputs have layout [batch_size, capacity, channels].
   capacity is the original capture stride, not kept_count. All retained inputs must have been captured.
@@ -1157,7 +1159,7 @@ This version of the operator has been available since version 1 of the 'com.micr
     destination[b,c,p] = source[b,c,p+k]                 if p+k < W
                        = capture[b,p+k-W,c]            otherwise.
   For k >= W only the last W inputs of the retained prefix are used; unused capture tails are not read.
-  
+
   The output must be explicitly prebound to the same full allocation as destination_backing.
   Destination backing must be distinct from source and capture backing, even for disjoint logical views.
   Only the designated destination view is modified; neighboring elements and all source/capture data
@@ -1448,17 +1450,17 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.DecoderMaskedSelfAttention"></a><a name="com.microsoft.decodermaskedselfattention">**com.microsoft.DecoderMaskedSelfAttention**</a>
 
   Self attention that supports input sequence length of 1.
-  
+
   The weights for input projection of Q, K and V are merged. The data is stacked on the second dimension. Its shape
   is (input_hidden_size, hidden_size + hidden_size + v_hidden_size). Here hidden_size is the hidden dimension of Q and K,
   and v_hidden_size is that of V.
-  
+
   The mask_index is optional. If it is provided, only raw attention mask with shape (batch_size, total_sequence_length) is supported currently.
-  
+
   Both past and present state need to be provided.
-  
+
   The qkv_hidden_sizes is required only when K and V have different hidden sizes.
-  
+
   The total_sequence_length is past_sequence_length + kv_sequence_length. Here kv_sequence_length is the length of K or V.
   Currently, only self attention is supported which means that kv_sequence_length equals to sequence_length (sequence length of Q).
 
@@ -1784,26 +1786,26 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.DynamicSparseAttention"></a><a name="com.microsoft.dynamicsparseattention">**com.microsoft.DynamicSparseAttention**</a>
 
   Model-neutral sparse grouped-query attention with a contiguous main KV cache.
-  
+
   `selected_indices` and `selected_counts` are produced by an external selector. The operator never computes selection
   scores or TopK indices. The first `selected_counts[q]` entries in each selected-index row are valid; remaining entries
   must be -1. Valid entries must be unique, non-negative request-local positions in the selected source.
-  
+
   `attention_mode="selected_only"` attends only to selected entries. `attention_mode="local_plus_selected"` jointly
   normalizes causally valid main-cache entries in `local_window_size` and selected auxiliary entries. An optional
   per-query-head sink can participate in either mode; it contributes to the shared softmax denominator but has no value
   vector. A row with no entries and no sink produces zero output.
-  
+
   Supported mode/source combinations:
-  
+
   - `selected_only` + `main`: Qwen4-Exp QSA-compatible execution.
   - `local_plus_selected` + `auxiliary`: DeepSeek V4 CSA-compatible execution and requires `local_window_size > 0`.
-  
+
   The main cache uses BNSH layout and ordinary contiguous append semantics. Selection changes reads, not cache writes.
   Auxiliary K/V use BNSH layout and are read-only. When `auxiliary_kv_shared=1`, auxiliary_value may be omitted and
   auxiliary_key is used as both K and V. DeepSeek-style post-attention inverse/conjugate RoPE and output projection remain
   the exporter's responsibility.
-  
+
   Main caches may instead use INT8 with positive finite float32 key_scale and value_scale vectors, one scale per
   KV-head channel. The cache is symmetric signed int8 without a zero point, like the 8-bit KV cache of GroupQueryAttention
   and PagedAttention; tensor(uint8) is reserved for packed 4-bit caches in those operators and is not accepted here.
@@ -2074,19 +2076,19 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.EngramGate"></a><a name="com.microsoft.engramgate">**com.microsoft.EngramGate**</a>
 
   Fuses the Engram gate.
-  
+
   The op consumes already projected keys in (batch_size, sequence_length, hc_mult, hidden_size) layout,
   the hidden-state queries in the same layout, an already projected value in
   (batch_size, sequence_length, hidden_size) layout that is shared by every hyper-connection, and the two
   RMSNorm scales. The key and value projections stay outside the op so they can run on the execution
   provider's tuned MatMul (weight prepacking, tensor cores, quantized weights) and so the value
   projection is computed once per token instead of once per hyper-connection.
-  
+
   It computes the Engram gate:
-  
+
   gate = sigmoid(sign(dot) * sqrt(max(abs(dot), 1e-6))) where
   dot = sum(RMSNorm(key) * RMSNorm(query)) / sqrt(hidden_size).
-  
+
   The output is gate * value, broadcast across the hyper-connections. The optional gated_value_normed
   output applies RMSNorm to gate * value with conv_norm_scale, which can feed a following
   CausalConvWithState. The final Engram residual value + short_conv(value) is then expressed with
@@ -2424,23 +2426,23 @@ This version of the operator has been available since version 1 of the 'com.micr
   Adds one tensor to another tensor scaled by a per-row gate. X and Y have shape (..., C). The
   leading dimensions of gate must match the leading dimensions of X (there is no broadcasting over
   them); the optional gate_weight input selects how the per-row gate is obtained.
-  
+
   Plain mode (gate_weight is not provided): gate has shape (..., 1) and is used directly as the
   gate, broadcast over C. No sigmoid is applied.
-  
+
     output = X + round_to_T(Y * gate)
-  
+
   For reduced-precision types, the product is rounded to T before the add, matching separate ONNX
   Mul and Add operators. This mode supports float, float16 and bfloat16, subject to execution provider kernel support.
-  
+
   Projected mode (gate_weight is provided): gate holds an activation with shape (..., K) and
   gate_weight has shape (K, 1). For every row, the gate is computed by projecting the activation
   with gate_weight and applying a sigmoid:
-  
+
     p      = round_to_bfloat16(sum_k(gate[..., k] * gate_weight[k]))
     s      = round_to_bfloat16(sigmoid(p))
     output = round_to_bfloat16(X + round_to_bfloat16(Y * s))
-  
+
   The dot product, the sigmoid and the multiplication and addition are evaluated in FP32 (the
   sigmoid is always computed in FP32, and the order of the FP32 accumulation over K is not
   specified); the result is rounded to bfloat16 after the projection, after the sigmoid, after the
@@ -2485,39 +2487,39 @@ This version of the operator has been available since version 1 of the 'com.micr
   Packed (token-major) gated delta network / linear attention with an explicit recurrent state.
   Implemented by CUDA and native WebGPU execution providers. WebGPU supports float and float16
   with scalar decay, `head_size_qk <= 256`, and compact state updates.
-  
+
   Layout. Query, key and value are token-major, so head counts are derived from the shapes
   rather than from attributes:
-  
+
     query [total_tokens, num_heads_q, head_size_qk]
     key   [total_tokens, num_heads_k, head_size_qk]
     value [total_tokens, num_heads_v, head_size_v]
-  
+
   Alternatively, key and value may be omitted and query contains packed QKV with shape
   `[total_tokens, 2 * num_heads_q * head_size_qk + num_heads_v * head_size_v]`.
   `initial_state` is required for packed QKV to determine the head counts and head sizes.
-  
+
   The leading token axis may instead be spelled as an explicit `[batch_size, sequence_length]`
   pair, making query/key/value (and the output) rank 4 and decay/beta rank 3. The memory layout
   is identical; the rank-4 spelling exists so an exporter can round-trip a `[B, S, H*D]`
   activation with static Reshape targets instead of Shape-derived ones. Ragged packing
   (`cu_seqlens`) requires the rank-3 spelling.
-  
+
   `num_heads_q` must equal `num_heads_k`, and `num_heads_v` must be a positive multiple of
   `num_heads_q` (inverse grouped-query attention: each query/key head is shared by
   `num_heads_v / num_heads_q` value heads). Decay, beta, the state and the output are all at
   `num_heads_v`.
-  
+
   Sequence packing. When `cu_seqlens` is provided it is a device int32 tensor of length
   `batch_size + 1` holding the exclusive prefix sums of the per-request token counts, so
   requests may have different lengths. When it is absent the packing is uniform and the batch
   size is taken from `initial_state`, which is then required.
-  
+
   State. `initial_state` and `final_state` are V-major, `[batch_size, num_heads_v, head_size_v,
   head_size_qk]`, and always float regardless of the query/key/value type: the recurrence
   boundary is where reduced precision hurts most. The two may be the same allocation; the
   implementation reads the whole incoming state before writing any of it.
-  
+
   Compact state updates. When `state_update_capacity` C is greater than zero, `capture_count`
   is required with shape `[batch_size]`. For request b, the first `capture_count[b]` local token
   transitions (clamped on device to `[0, min(C, sequence_length)]`) are emitted in one `state_update`
@@ -2528,37 +2530,37 @@ This version of the operator has been available since version 1 of the 'com.micr
   decay the decoded factors replay one transition as `S *= decay; S += outer(key, delta)`.
   Per-key-dimension decay is not supported when compact updates are enabled. `capture_count` is
   forbidden when C is zero.
-  
+
   The optional CPU input `state_update_active` has shape `[1]`. When zero, transition capture is
   disabled, `capture_count` is ignored, `state_update` is zero-filled, and the planner may use an
   engine that cannot emit compact updates. Omitting it preserves the conservative behavior of
   treating capture as active.
-  
+
   Recurrence, per value head, with S the [head_size_qk x head_size_v] state:
-  
+
     S_t = exp(g_t) S_{t-1} + k_t (beta_t (v_t - exp(g_t) S_{t-1}^T k_t))^T
     o_t = scale * S_t^T q_t
-  
+
   `update_rule` selects which terms are present: 'linear' drops both the decay and the delta
   retrieval, 'gated' keeps only the decay, 'delta' keeps only the retrieval, and 'gated_delta'
   keeps both.
-  
+
   The delta family ('delta' and 'gated_delta') requires L2-normalized keys. Without them the
   per-chunk system (I + M) is arbitrarily ill-conditioned and the recurrence diverges. Either
   normalize upstream or set `qk_l2_norm=1` to have the operator do it.
-  
+
   Fused activations. `gate_activation='softplus'` computes the effective decay in float32 from the
   raw projection carried by `decay`:
-  
+
     g = -exp(a_log) * Softplus(decay + dt_bias)
-  
+
   `beta_activation='sigmoid'` applies a sigmoid to `beta`, and `qk_l2_norm=1` L2-normalizes each
   query and key head vector. Folding these in avoids materializing the intermediates and keeps
   the gate arithmetic in float32 independent of the input type.
   Decay and beta may be float or the query element type (both use the same type). CUDA widens
   FP16/BF16 gate inputs to float before any gate arithmetic, avoiding standalone lossless casts.
   State, a_log, and dt_bias remain float. WebGPU currently accepts float decay and beta only.
-  
+
 
 #### Version
 
@@ -2640,14 +2642,14 @@ This version of the operator has been available since version 1 of the 'com.micr
   Replay one request's captured GatedDeltaNet transitions into an inactive recurrent-state row.
   The WebGPU implementation uses FP32 backing tensors and CPU metadata; it does not recompute
   normalization, gates, beta, or retrieval. It waits for checked GPU completion before returning.
-  
+
   `metadata` is int64 [11], ordered as:
     source_offset, destination_offset, decay_offset, key_offset, delta_offset,
     Hv, Dv, Dk, Hk, capacity, kept_count.
   Offsets are FP32-element offsets into the full backing tensors, not storage-binding byte offsets.
   All offsets are nonnegative; dimensions and capacity are positive; 1 <= kept_count <= capacity.
   The caller must ensure that all kept transitions were actually captured.
-  
+
   The source_state selected by source_offset must be the state snapshot from immediately before
   the captured GatedDeltaNet transitions began. Using the producer's final state or another
   same-shaped snapshot is invalid because captured delta is state-dependent.
@@ -2655,7 +2657,7 @@ This version of the operator has been available since version 1 of the 'com.micr
   capacity is the original capsule capture/layout capacity. kept_count only selects the leading
   transitions to replay; kept_count must NOT be substituted for capacity when deriving the
   decay/key/delta section offsets.
-  
+
   State rows have layout [Hv, Dv, Dk]. The capsule contains decay [capacity, Hv],
   key [capacity, Hk, Dk], and delta [capacity, Hv, Dv] starting at their respective offsets.
   For every state element (h,v,i):
@@ -2666,7 +2668,7 @@ This version of the operator has been available since version 1 of the 'com.micr
       s += key[t,hk,i] * delta[t,h,v]
     destination[h,v,i] = s
   Unused capsule tail entries are not read. All other destination elements are preserved.
-  
+
   The output must be explicitly prebound to the same full allocation as destination_backing.
   Destination backing must be distinct from source and capsule backing. This first implementation
   supports one descriptor, uint32 shader indexing and no graph capture.
@@ -2710,13 +2712,13 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.GatedRMSNorm"></a><a name="com.microsoft.gatedrmsnorm">**com.microsoft.GatedRMSNorm**</a>
 
   Gated RMS normalization as used by Mamba2 / gated DeltaNet attention outputs:
-  
+
     Y = X * rsqrt(mean(X^2) + epsilon) * scale * gate_activation(gate)
-  
+
   where `gate_activation` is one of:
   - `silu` or `swish`: `z * sigmoid(z)`
   - `sigmoid`: `sigmoid(z)`
-  
+
   The mean of squares is taken over the trailing `C` elements of each row, where `C` is the
   length of `scale`; the input's last dimension must be a multiple of `C`, which lets a
   per-head norm run on a packed (B, T, H * C) tensor without any surrounding Reshape.
@@ -3079,12 +3081,12 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.GemmaRotaryEmbedding"></a><a name="com.microsoft.gemmarotaryembedding">**com.microsoft.GemmaRotaryEmbedding**</a>
 
   GemmaRotaryEmbedding is the implementation of below part of rotary positional embeddings (RoPE). It implements below from modeling_gemma.py.
-  
+
   Here's onnxscript that was tested
-  
+
   from onnxscript import FLOAT, FLOAT16, script
   from onnxscript import opset18 as op
-  
+
   @script()
   def gemma_rotary_embedding(emb: FLOAT["bs", "seq_len", "dim"], q: FLOAT16["bs", "num_heads", "seq_len", "dim"], q_rot: FLOAT16["bs", "num_heads", "seq_len", "dim"], k: FLOAT16["bs", "num_heads", "seq_len", "dim"], k_rot: FLOAT16["bs", "num_heads", "seq_len", "dim"]):
     sin_val = op.Sin(emb)
@@ -3096,10 +3098,10 @@ This version of the operator has been available since version 1 of the 'com.micr
     q_embed = (q * casted_cos) + (q_rot * casted_sin)
     k_embed = (k * casted_cos) + (k_rot * casted_sin)
     return q_embed, k_embed
-  
+
   onnx_model = gemma_rotary_embedding.to_model_proto()
-  
-  
+
+
 
 #### Version
 
@@ -3215,7 +3217,7 @@ This version of the operator has been available since version 1 of the 'com.micr
         which are used to interpolate the output value `output[n, :, h, w]`.
         The GridSample operator is often used in doing grid generator and sampler in the [Spatial Transformer Networks](https://arxiv.org/abs/1506.02025).
         See also in [torch.nn.functional.grid_sample](https://pytorch.org/docs/master/generated/torch.nn.functional.grid_sample.html#torch-nn-functional-grid-sample).
-        
+
 
 #### Version
 
@@ -3261,13 +3263,13 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.GroupNorm"></a><a name="com.microsoft.groupnorm">**com.microsoft.GroupNorm**</a>
 
   Applies Group Normalization over a mini-batch of inputs as described in the paper Group Normalization (https://arxiv.org/abs/1803.08494).
-  
+
   This operator transforms input according to
     y = gamma * (x - mean) / sqrt(variance + epsilon) + beta
-  
+
   The input channels are separated into num_groups groups, each containing num_channels / num_groups channels. num_channels must be divisible by num_groups. The mean and standard-deviation are calculated separately over the each group.
   The weight and bias are per-channel affine transform parameter vectors of size num_channels.
-  
+
   The activation attribute can be used to enable activation after group normalization.
 
 #### Version
@@ -3318,40 +3320,40 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.GroupQueryAttention"></a><a name="com.microsoft.groupqueryattention">**com.microsoft.GroupQueryAttention**</a>
 
   Group Query Self/Cross Attention with KV Cache Quantization Support.
-  
+
   This operator implements grouped-query attention with past state (KV cache) support.
   It also supports optional float8, int8 or int4 quantization for the KV cache to reduce memory footprint.
-  
+
   **Cache Format:**
   The past and present KV cache tensors are expected in a BNSH format: `(batch_size, num_heads, cache_sequence_length, head_size)`, where `cache_sequence_length` is the length of the cached key/value sequences, or the maximum sequence length when past and present buffer sharing is used.
-  
+
   **Windowed KV Cache (`sliding_window_cache` attribute):**
   When `sliding_window_cache` is 1, the past/present buffers are window-sized instead of full-length and the operator evicts internally. Let `C` be the cache capacity (dimension 2 of `past_key`, which is also the sequence dimension of `present_key`), `W` be `local_window_size`, and `T` be the absolute number of tokens processed so far by this batch entry, i.e. `seqlens_k[b] + 1`. The scalar `total_sequence_length` input is only the batch maximum of `T`; the layout below is per batch entry, so a ragged batch gets a different resident range per entry. `C` must be at least `W`.
-  
+
   After a step, rows `[0, L)` of `present_key` and `present_value` hold the `L` most recent positions in increasing position order, so row `i` holds absolute position `T - L + i`. The retained positions are always physically contiguous and start at row 0; the layout never wraps around, so a ring-buffer layout cannot be exposed through these outputs. Rows `[L, C)` are unspecified. The resident count `L` is a function of `T` alone:
-  
+
   ```
   G = C - W + 1
   L(T) = T                            if T <= C
   L(T) = T - G * ceil((T - C) / G)    otherwise
   ```
-  
+
   Hence `min(T, W) <= L(T) <= min(T, C)`: the whole window stays resident, and eviction reclaims `G` positions at once rather than one position per step, so consumers must not assume that the cache is kept full at `min(T, C)`.
-  
+
     Because `L` depends only on `T`, the resulting layout is independent of how the tokens were split into steps: a multi-token step of `S` tokens (speculative decoding, chunked prefill) leaves exactly the layout that the same tokens would produce one at a time. Any `S >= 1` is accepted, including `S > C`; a step that would evict positions it still has to read is staged internally, so the capacity does not have to cover the step. When past context is present, the existing operator restriction still applies: `sequence_length > 1` requires `batch_size == 1`.
-  
+
     An execution provider may accept only part of the `C >= W` range. A configuration with `C < W` (equivalently, `W > C`) is invalid and is rejected with `INVALID_ARGUMENT`. The CUDA implementation requires `C == W`, so there `G` is 1 and `L(T)` is `min(T, C)`; a larger capacity is rejected. The CPU implementation accepts any `C >= W`, and slack above the window amortizes compaction over `G` steps.
-  
+
   To drop the last `k` tokens, for example after rejecting speculative draft tokens, re-run with the smaller `total_sequence_length` and `seqlens_k` and leave the buffer untouched. That is exact when `L(T - k) == L(T) - k`, which callers can evaluate with the formula above. Otherwise the shorter layout needs positions that have already been evicted, and the window has to be re-materialized.
-  
+
   **Quantization:**
   When quantization is enabled, `past_key` and `past_value` inputs can be of type `float8e4m3fn`, `uint8` or `int8`. The corresponding `k_scale` and `v_scale` tensors must be provided.
   The operator will output `present_key` and `present_value` in same format as the `past_key` and `past_value`.
-  
+
   For 4-bit quantization, the data type is uint8 where each byte contains two 4-bit values. The bit width of quantized KV cache can be set using `kv_cache_bit_width` attribute.
-  
+
   The shapes of the k_scale, v_scale tensors shall be broadcastable to present_key shape.
-  
+
   **Quantization Modes (`k_quant_type`, `v_quant_type` attributes):**
   - **"NONE"**: No quantization.
   - **"PER_TENSOR"**: A single scale for the entire tensor. Scale example shape: `[1]`.
@@ -3469,20 +3471,20 @@ This version of the operator has been available since version 1 of the 'com.micr
   One hyper-connection block with a low-rank gate network, fused into one operator. C = num_branches streams of
   width H are kept as one flattened (..., C * H) tensor. With the optional prologue the operator first applies the
   post-mix of the previous block (identity stream mix):
-  
+
     S[..., c, h] = streams[..., c, h] + prev_post_gate[..., c] * prev_block_output[..., h]
-  
+
   and otherwise S = streams. It then computes, with `rms` taken per branch over H:
-  
+
     hn[..., c, h] = S[..., c, h] / sqrt(mean_h(S[..., c, :]^2) + epsilon) * norm_scale[c, h]
     d             = ScaledSiLU(hn @ down_weight, silu_alpha)                   (..., R)
     g[..., c, h]  = sigmoid(d @ up_weight)                                    per stream and feature
     pre_output    = reduction_scale * sum_c(hn[..., c, h] * g[..., c, h])     (..., H)
     post_gate     = sigmoid((hn @ inject_weight) / gate_div) * gate_mul         (..., C)
-  
+
   pre_output is the input of the next transformer block and post_gate is prev_post_gate of the next call.
   streams_out is S (the streams after the prologue; a copy of streams when there is no prologue).
-  
+
   Numerics contract. Matrix products and reductions accumulate in float32. The result of every step is rounded
   to T once, as the output of the equivalent standard operator would be:
   S = cast_T(streams + prev_post_gate * prev_block_output), hn = cast_T(S * inv_rms * norm_scale),
@@ -3720,18 +3722,18 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.LinearAttention"></a><a name="com.microsoft.linearattention">**com.microsoft.LinearAttention**</a>
 
   Unified linear attention operator for autoregressive decoding (T=1) and prefill (T>1).
-  
+
   All inputs use 3D packed format [B, T, H*D]; q_num_heads and kv_num_heads are always
   required. The op internally unpacks to 4D for computation.
-  
+
   The update_rule attribute selects the recurrence type:
   - "linear": S_t = S_{t-1} + k_t ⊗ v_t; o_t = scale * q_t^T S_t
   - "gated": S_t = exp(g_t) * S_{t-1} + k_t ⊗ v_t; o_t = scale * q_t^T S_t
   - "delta": S_t = S_{t-1} + β_t * k_t ⊗ (v_t - S_{t-1}^T k_t); o_t = scale * q_t^T S_t
   - "gated_delta": S_t = exp(g_t) * S_{t-1} + β_t * k_t ⊗ (v_t - exp(g_t) * S_{t-1}^T k_t); o_t = scale * q_t^T S_t
-  
+
   where g_t is the decay (in log-space), β_t is the update rate, and ⊗ denotes outer product.
-  
+
   Semantics: Equivalent to running the recurrent update sequentially for each token,
   but may be implemented using chunk-parallel algorithms for GPU efficiency.
 
@@ -3795,16 +3797,16 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.LinearAttentionGate"></a><a name="com.microsoft.linearattentiongate">**com.microsoft.LinearAttentionGate**</a>
 
   Fuses the gate projections that feed LinearAttention's gated-delta recurrence:
-  
+
     decay = decay_scale * Softplus(a + dt_bias)
     beta  = Sigmoid(b)                            (only when b is provided)
-  
+
   Reference implementations compute the decay in float32 because exp(decay) inside the
   recurrence exponentially amplifies any precision loss. Exporters therefore emit
   Cast -> Add -> Softplus -> Mul -> Cast, which is five kernel launches on a tensor with
   only num_heads elements per token. This operator keeps the intermediates in float32
   registers so a single launch replaces the whole chain.
-  
+
   dt_bias and decay_scale are float32 per-head vectors of length H. decay_scale is the
   already-negated -exp(A_log) factor.
 
@@ -3849,10 +3851,10 @@ This version of the operator has been available since version 1 of the 'com.micr
   Longformer Self Attention with a local context and a global context. Tokens attend locally: Each token
   attends to its W previous tokens and W succeeding tokens with W being the window length. A selected few tokens
   attend globally to all other tokens.
-  
+
   The attention mask is of shape (batch_size, sequence_length), where sequence_length is a multiple of 2W after padding.
   Mask value < 0 (like -10000.0) means the token is masked, 0 otherwise.
-  
+
   Global attention flags have value 1 for the tokens attend globally and 0 otherwise.
 
 #### Version
@@ -3908,7 +3910,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
   MRotaryEmbedding is the fused implementation of Multimodal Rotary Positional Embeddings (M-RoPE) used by the
   Qwen family of vision-language models (Qwen2-VL, Qwen2.5-VL, Qwen3-VL, Qwen3-VL-MoE, Qwen3.5, Qwen3.5-MoE).
-  
+
   Unlike standard RoPE which uses a single 1D position per token, M-RoPE derives three positions per token
   (temporal T, height H, width W), each of which indexes into the same cos/sin cache. The half_rotary_embedding_dim
   axis of the cache is partitioned into 3 contiguous or interleaved sections (specified by `mrope_section`); each
@@ -3916,11 +3918,11 @@ This version of the operator has been available since version 1 of the 'com.micr
   are then concatenated (or interleaved) to produce a single per-token cos/sin vector of length
   half_rotary_embedding_dim. The standard RoPE rotation (as in RotaryEmbedding) is then applied using this
   combined vector.
-  
+
   For text-only tokens, T == H == W (all three position streams collapse to the ordinary sequential position),
   so this op is a strict superset of RotaryEmbedding: setting `mrope_section` to a single full-width section
   reduces this op to standard RoPE.
-  
+
   `mrope_layout` selects how the three sections are combined:
     - 0 (Sectioned / Chunked): the half_rotary_embedding_dim axis is split into 3 contiguous chunks according to
       `mrope_section` (i.e. [T]*section[0] + [H]*section[1] + [W]*section[2]). This is used by Qwen2-VL and
@@ -3986,14 +3988,14 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.MatMulBlockQuantizedFp4Weight"></a><a name="com.microsoft.matmulblockquantizedfp4weight">**com.microsoft.MatMulBlockQuantizedFp4Weight**</a>
 
   Weight-only NVFP4 (E2M1) matrix multiplication.
-  
+
   The weight tensor B is stored as packed NVFP4: two E2M1 values per byte (low nibble first).
   The dequantized weight value is `e2m1(B) * weight_scale_2 * e4m3(weight_scale[n, k / block_size])`,
   where `weight_scale` holds one E4M3 scale per `block_size` (default 16) consecutive K values and
   `weight_scale_2` is a single global fp32 scale. The weight is dequantized to the activation type
   (FP16/BF16) and multiplied with the FP16/BF16 activation. This path is architecture independent and
   runs on Hopper (SM90) as well as Blackwell.
-  
+
   The output columns `N` and the contraction dimension `K` are derived from the weight shape:
   `N = B.shape[0]` and `K = 2 * B.shape[1]`. `K` must therefore be even.
 
@@ -4049,15 +4051,15 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.MatMulBlockQuantizedFp8Weight"></a><a name="com.microsoft.matmulblockquantizedfp8weight">**com.microsoft.MatMulBlockQuantizedFp8Weight**</a>
 
   Block-scaled FP8 (E4M3) matrix multiplication with optional FP8 activation quantization.
-  
+
   The weight tensor B has shape [N, K] with one FP32 scale per `block_size` consecutive K values
   (`b_scale` of shape [N, ceil(K / block_size)]). The scaled weight value is
   `B_scaled[n, k] = fp8_e4m3(B[n, k]) * b_scale[n, k / block_size]`.
-  
+
   When the optional scalar `a_scale` is provided, the activation values used in the multiplication
   are `A_scaled = fp8_e4m3(A / a_scale) * a_scale` (W8A8). Otherwise, A retains its FP16/BF16
   precision (weight-only W8A16).
-  
+
   The operator multiplies the activation by the transpose of B_scaled and adds the optional bias.
   The output has shape [..., N] and the same element type as A.
 
@@ -4113,32 +4115,32 @@ This version of the operator has been available since version 1 of the 'com.micr
     2. Input B is quantized with 4 bits with quantization data type specified by attribute 'quant_type'. It is transposed, flattened and quantized blockwisely with block size specified by attribute 'block_size'.
        And block_size is not an arbitrary number and must be a power of 2 and not smaller than 16, like 16, 32, 64, 128,..
     3. Input B's quantization constants or scales are specified by input 'absmax'.
-  
+
     Input B is stored as uint8_t with shape: [(N * K + 1) / 2].
     Input absmax is stored in same type as original type of B(float32, float16) with shape like: [(N * K + block_size - 1) / block_size].
-  
-  
+
+
     1. (Default value) transB=True (Majorly used for forward pass)
       Shape of A: [D0, D1, ..., Dn, K]
       Shape of Dequanted B: [N, K], this is aligned with how PyTorch defined the linear weight, .e.g [out_features, in_features].
-  
+
       The computation math:
         dequant_B = dequant(B, absmax, quant_type, block_size)
         transposed_dequant_B = dequant_B^T
         output = A @ transposed_dequant_B
-  
+
       Shape of output: [D0, D1, ..., Dn, N]
-  
+
     2. transB=False (Majorly used for backward pass)
       Shape of A: [D0, D1, ..., Dn, N]
       Shape of Dequanted B: [N, K], this is aligned with how PyTorch defined the linear weight, .e.g [out_features, in_features].
-  
+
       The computation math:
         dequant_B = dequant(B, absmax, quant_type, block_size)
         output = A @ dequant_B
-  
+
       Shape of output: [D0, D1, ..., Dn, K]
-  
+
 
 #### Version
 
@@ -4324,20 +4326,20 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.MatMulNBits"></a><a name="com.microsoft.matmulnbits">**com.microsoft.MatMulNBits**</a>
 
   MatMulNBits performs a matrix multiplication where the right-hand-side matrix (weights) is quantized to N bits.
-  
+
   It is a fusion of two operations:
   1. Linear dequantization of the quantized weights using scale and (optionally) zero-point with formula:
      dequantized_weight = (quantized_weight - zero_point) * scale
   2. Matrix multiplication between the input matrix A and the dequantized weight matrix.
-  
+
   The logical weight matrix is 2D, with the input feature count and output feature count specified by attributes 'K' and 'N'.
   It is quantized block-wise along the K dimension with a block size specified by the 'block_size' attribute.
   The block size must be a power of 2 and not smaller than 16 (e.g., 16, 32, 64, 128). Each block has its own scale and zero-point.
   The quantization is performed using a bit-width specified by the 'bits' attribute, which can take values from 2 to 8.
-  
+
   The quantized weights are stored in a bit-packed format along the K dimension, with each block being represented by a blob of uint8.
   For example, for 4 bits, the first 4 bits are stored in the lower 4 bits of a byte, and the second 4 bits are stored in the higher 4 bits of a byte.
-  
+
   When weight_prepacked is 0, B may represent an omitted projection by replacing one or more dimensions of its
   packed shape (N, k_blocks, blob_size) with 0. All remaining dimensions must retain their normal values.
   In this case, Y is filled with zeros (or the broadcast bias, if provided). Its shape is still determined by A, K and N.
@@ -4407,32 +4409,32 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.MatMulNBitsMlp"></a><a name="com.microsoft.matmulnbitsmlp">**com.microsoft.MatMulNBitsMlp**</a>
 
   MatMulNBitsMlp fuses two MatMulNBits projections that share the same input and computes
-  
+
       gate = MatMulNBits(A, gate_weight) + gate_bias
       up = MatMulNBits(A, up_weight) + up_bias
       Y = activation(gate) * up
-  
+
   It can also optionally fuse SimplifiedLayerNormalization or SkipSimplifiedLayerNormalization before the
   two projections:
-  
+
     A_norm = SimplifiedLayerNormalization(A, norm_scale, epsilon)
       gate = MatMulNBits(A_norm, gate_weight) + gate_bias
       up = MatMulNBits(A_norm, up_weight) + up_bias
       Y = activation(gate) * up
-  
+
     A_norm = SkipSimplifiedLayerNormalization(A, skip, norm_scale, epsilon)
       gate = MatMulNBits(A_norm, gate_weight) + gate_bias
       up = MatMulNBits(A_norm, up_weight) + up_bias
       Y = activation(gate) * up
-  
+
   This operator is intended for decoder MLP patterns such as Qwen-style gate and up projections, but it remains
   semantically valid for both prefill and decode because the output shape is the standard MatMul result shape
   derived from the runtime shape of A and the shared attributes K and N.
-  
+
   The operator contract includes a string attribute describing the fused gate activation.
-  
+
   When fused from SkipSimplifiedLayerNormalization, the optional residual-sum output may also be materialized:
-  
+
     A_norm, input_skip_bias_sum = SkipSimplifiedLayerNormalization(A, skip, norm_scale, epsilon)
     gate = MatMulNBits(A_norm, gate_weight) + gate_bias
     up = MatMulNBits(A_norm, up_weight) + up_bias
@@ -4508,15 +4510,15 @@ This version of the operator has been available since version 1 of the 'com.micr
   MatMulNBitsQkv fuses either SimplifiedLayerNormalization (RMSNorm)
   or SkipSimplifiedLayerNormalization with three MatMulNBits projections that share the
   same normalized activation.
-  
+
     A_norm = SimplifiedLayerNormalization(A, norm_scale, epsilon)
     Q = MatMulNBits(A_norm, q_weight) + q_bias
     K = MatMulNBits(A_norm, k_weight) + k_bias
     V = MatMulNBits(A_norm, v_weight) + v_bias
-  
+
   If skip is provided, the operator computes the SkipSimplifiedLayerNormalization variant
   and may also return the input+skip residual sum as output 3.
-  
+
   This operator is intended as a decode-oriented QKV fusion primitive.
 
 #### Version
@@ -4652,7 +4654,7 @@ This version of the operator has been available since version 1 of the 'com.micr
         required. A 3D input is the dense convenience form and is processed as batch_size *
         sequence_length independent token rows. router_probs must contain one corresponding row per
         token in either form.
-  
+
         The SwiGLU (Swish-Gated Linear Unit) activation function is like:
            g = xW + b
            l = xV + c
@@ -4663,7 +4665,7 @@ This version of the operator has been available since version 1 of the 'com.micr
         When swiglu_fusion=0, two GEMMs are not fused, and they are FC1 and FC3 in the inputs.
         When swiglu_fusion=1, two GEMMs are fused so that g and l are computed in a single GEMM (FC1), and g and l are interleaved on each row of size 2 * inter_size.
         When swiglu_fusion=2, two GEMMs are fused, and g and l are concatenated on each row.
-        
+
 
 #### Version
 
@@ -4731,11 +4733,11 @@ This version of the operator has been available since version 1 of the 'com.micr
   Performs element-wise binary quantized multiplication (with Numpy-style broadcasting support).
   "This operator supports **multidirectional (i.e., Numpy-style) broadcasting**"
   The output of this op is the int32 accumulated result of the mul operation
-  
+
   ```
   C (int32) = (A - A_zero_point) * (B - B_zero_point)
   ```
-  
+
 
 #### Version
 
@@ -4774,7 +4776,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.MultiHeadAttention"></a><a name="com.microsoft.multiheadattention">**com.microsoft.MultiHeadAttention**</a>
 
   Multi-Head Self/Cross Attention. Bias from input projection is included.
-  
+
   The key padding mask is optional. When its shape is (batch_size, kv_sequence_length), value 0
   means padding or 1 otherwise. When key has right-side padding, its shape could be (batch_size): it is actual length of
   each key sequence excluding paddings.
@@ -4890,14 +4892,14 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.NGramHashMapping"></a><a name="com.microsoft.ngramhashmapping">**com.microsoft.NGramHashMapping**</a>
 
   Computes Engram n-gram hash ids from pre-compressed tokenizer ids.
-  
+
   For n in [2, max_ngram_size], the op creates causal shifts of input_ids, padding positions before the
   sequence with pad_id, and computes
   mix = shifted_0 * multipliers[0] xor ... xor shifted_(n-1) * multipliers[n-1].
   For every head of that n-gram order it emits mix modulo the corresponding head vocabulary size.
   The output layout is (batch_size, sequence_length, (max_ngram_size - 1) * n_head_per_ngram), with
   heads for n=2 first, then n=3, and so on.
-  
+
   An n-gram window reaches max_ngram_size - 1 positions before the current token. To keep the op causal
   across invocations (chunked prefill or autoregressive decode), the optional past_ids input carries
   those preceding ids and present_ids returns the ids to pass to the next call. Both have shape
@@ -4911,9 +4913,9 @@ This version of the operator has been available since version 1 of the 'com.micr
   past_ids and present_ids may use the same allocation. Such in-place execution is transaction-safe
   only when the whole operator call is unconditionally committed; a caller that may select a prefix or
   roll back must preserve past_ids.
-  
+
   Optional inputs add packed-sequence and Qwen4-Exp-style n-gram embedding support:
-  
+
   - eos_token_id, when provided together with reset_on_eos != 0, causes causal history to reset at EOS
     boundaries: any shifted position at or before the most recent EOS strictly before the current
     position is replaced with eos_token_id instead of the real token.
@@ -5171,25 +5173,25 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.PackedAttention"></a><a name="com.microsoft.packedattention">**com.microsoft.PackedAttention**</a>
 
   This is the packed version of Attention.
-  
+
   Sequences in one batch usually don't have same length and they are padded to have same length,
   e.g., below is a batch with 3 sequences and tokens* are padded.
     Sequence_0:   0,  1*, 2*,  3*
     Sequence_1:   4,  5,  6*,  7*
     Sequence_2:   8,  9,  10,  11
-  
+
   PackedAttention is designed to takes in packed input, i.e., only the real tokens without padding.
   An input as above will be packed into 3 tensors like below:
    - input ([h0, h4, h5, h8, h9, h10, h11])
    - token_offset: 0, 4, 5, 8, 9, 10, 11,  1*, 2*, 3*, 6*, 7*
    - cumulated_token_count: 0, 1, 1+2, 1+2+4
-  
+
   Input tensors contains the hidden embedding of real tokens.
   Token_offset records the offset of token in the unpacked input.
   cumulated_token_count records cumulated length of each sequence length.
-  
+
   The operator only supports BERT like model with padding on right now.
-  
+
 
 #### Version
 
@@ -5243,13 +5245,13 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.PackedMultiHeadAttention"></a><a name="com.microsoft.packedmultiheadattention">**com.microsoft.PackedMultiHeadAttention**</a>
 
   This is the packed version of MultiHeadAttention.
-  
+
   Sequences in one batch usually don't have same length and they are padded to have same length,
   e.g., below is a batch with 3 sequences and * is padding token.
     Sequence_0:   0,  1*, 2*,  3*
     Sequence_1:   4,  5,  6*,  7*
     Sequence_2:   8,  9,  10,  11
-  
+
   PackedMultiHeadAttention is designed to takes in packed input, i.e., only the real tokens without padding.
   An input as above will be packed into 3 tensors like below:
    - query ([q0, q4, q5, q8, q9, q10, q11])
@@ -5257,11 +5259,11 @@ This version of the operator has been available since version 1 of the 'com.micr
    - value ([v0, v4, v5, v8, v9, v10, v11])
    - token_offset: 0, 4, 5, 8, 9, 10, 11,  1*, 2*, 3*, 6*, 7*
    - cumulative_sequence_length: 0, 1, 1+2, 1+2+4
-  
+
   The query, key and value tensors contain result of hidden embedding of real tokens after input projections.
   Token_offset records the offset of token in the unpacked input.
   cumulative_sequence_length records cumulated length of each sequence length.
-  
+
   The operator only supports BERT like model with padding on right now.
 
 #### Version
@@ -5322,7 +5324,7 @@ This version of the operator has been available since version 1 of the 'com.micr
   [total_tokens, ...] axis instead of a dense [batch_size, sequence_length, ...] axis. It selects, for
   every packed query token, the sparse-attention candidates that a following SparsePagedAttention (or
   similar) operator is allowed to read.
-  
+
   Unlike SparseAttentionIndexer, this operator:
     * takes packed query/key tensors plus cumulative_sequence_lengths (request boundaries) and
       past_sequence_lengths (per-request past length) instead of a dense batch and a dense mask;
@@ -5334,10 +5336,10 @@ This version of the operator has been available since version 1 of the 'com.micr
       (the optional state_status output reports which requests were rejected and why);
     * additionally emits selected_counts, the exact number of active (non -1) entries per query, so
       that no downstream consumer needs to scan selected_indices for its query's true count.
-  
+
   Both policy_mode values keep the semantics of SparseAttentionIndexer, applied independently to each
   request's own packed token range and fixed-capacity state slice:
-  
+
     policy_mode = "qsa" ("query sparse attention" token indexer)
       Processes each request's new tokens sequentially: appends raw indexer keys to the generic
       pending buffer, and whenever it reaches compress_ratio tokens, mean-pools it, applies RMSNorm
@@ -5349,7 +5351,7 @@ This version of the operator has been available since version 1 of the 'com.micr
       past_sequence_lengths + local offset) followed by the causally visible tokens of the trailing
       incomplete block. There is no position_ids input: QSA positions are the request-local logical
       cache positions derived from past_sequence_lengths and cumulative_sequence_lengths.
-  
+
     policy_mode = "csa" ("compressed sparse attention" block indexer)
       Applies the same window-plan arithmetic as SparseAttentionIndexer (overlap/leftover/new window
       count) independently per request, using that request's own buffer_length and new token count;
@@ -5357,7 +5359,7 @@ This version of the operator has been available since version 1 of the 'com.micr
       rotated and appended to key_state. Queries are scored against every causally visible compressed
       entry with sum_h w_h * ReLU(q_h . k) and the index_topk highest scoring entry indices are
       emitted.
-  
+
   Common contract:
     * selected_indices is int32 with a fixed capacity that only depends on attributes:
       token_budget + compress_ratio - 1 for "qsa" (values are request-local token positions into the
@@ -5378,7 +5380,7 @@ This version of the operator has been available since version 1 of the 'com.micr
     * cumulative_sequence_lengths, past_sequence_lengths and past_state_lengths are read directly by
       the device kernel; a zero-token request row (a repeated cumulative offset) is valid and simply
       contributes no query rows for that request.
-  
+
   OgaEngine integration note: this operator only defines the ORT contrib op; wiring
   past_key_state / past_kv_buffer / past_gate_buffer / past_state_lengths as Engine-managed,
   per-request fixed-size state (analogous to a paged auxiliary cache) is expected to happen in the
@@ -5574,7 +5576,7 @@ This version of the operator has been available since version 1 of the 'com.micr
                       [0.0, 0.0, 4.5, 5.7],
                       ],
                       ]
-              
+
 
 #### Version
 
@@ -5616,16 +5618,16 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.PagedAttention"></a><a name="com.microsoft.pagedattention">**com.microsoft.PagedAttention**</a>
 
   Paged Attention.
-  
+
   This op leverages a block-based KV cache to enable continuous batching for LLMs. Currently, it is designed to work with
   the CUDA Execution Provider only.
-  
+
   In other attention ops, batch entries typically aren't of the same length, so they are padded.
   Below is a batch with 3 sequences where * denotes a padding token.
     Sequence_0:   0,  1*, 2*,  3*
     Sequence_1:   4,  5,  6*,  7*
     Sequence_2:   8,  9,  10,  11
-  
+
   PagedAttention is designed to take in packed input, i.e., only the real tokens without padding.
   For example, the input shown above will be packed into 3 tensors like below:
    - query ([q0, q4, q5, q8, q9, q10, q11])
@@ -5633,10 +5635,10 @@ This version of the operator has been available since version 1 of the 'com.micr
    - value ([v0, v4, v5, v8, v9, v10, v11])
    - cumulative_sequence_length: 0, 1, 1+2, 1+2+4
   This packing omits padding tokens.
-  
+
   The query, key and value tensors contain result of hidden embedding of real tokens after input projections.
   cumulative_sequence_length records cumulated length of each sequence length.
-  
+
 
 #### Version
 
@@ -5884,7 +5886,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.QLinearAdd"></a><a name="com.microsoft.qlinearadd">**com.microsoft.QLinearAdd**</a>
 
   Performs element-wise binary addition on 8 bit data types (with Numpy-style broadcasting support).
-  
+
   C = (A_scale * (A - A_zero_point) + B_scale * (B - B_zero_point))/C_scale + C_zero_point
 
 #### Version
@@ -5942,11 +5944,11 @@ This version of the operator has been available since version 1 of the 'com.micr
    output_spatial_shape[i] = ceil((input_spatial_shape[i] + pad_shape[i] - kernel_spatial_shape[i]) / strides_spatial_shape[i] + 1)
    ```
    if ceil_mode is enabled
-  
+
    ```
    * pad_shape[i] is sum of pads along axis i
    ```
-  
+
    `auto_pad` is a DEPRECATED attribute. If you are using them currently, the output spatial shape will be following:
    ```
    VALID: output_spatial_shape[i] = ceil((input_spatial_shape[i] - kernel_spatial_shape[i] + 1) / strides_spatial_shape[i])
@@ -5956,9 +5958,9 @@ This version of the operator has been available since version 1 of the 'com.micr
    ```
    pad_shape[i] = (output_spatial_shape[i] - 1) * strides_spatial_shape[i] + kernel_spatial_shape[i] - input_spatial_shape[i]
    ```
-  
+
   The output of each pooling window is divided by the number of elements (exclude pad when attribute count_include_pad is zero).
-  
+
   Input and output scales and zero points are used to convert the output to a new quantization range.
   Output = Dequantize(Input) -> AveragePool on fp32 data -> Quantize(output)
 
@@ -6226,7 +6228,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.QLinearMul"></a><a name="com.microsoft.qlinearmul">**com.microsoft.QLinearMul**</a>
 
   Performs element-wise binary multiplication on 8 bit data types (with Numpy-style broadcasting support).
-  
+
   C = ((A - A_zero_point) * (B - B_zero_point)) * (A_scale * B_scale)/C_scale + C_zero_point
 
 #### Version
@@ -6277,10 +6279,10 @@ This version of the operator has been available since version 1 of the 'com.micr
   with the exception that numpy default keepdims to False instead of True.
   Input and Output scales and zero points are used to requantize the output in a new range.
   This helps to improve accuracy as after ReduceMean operation the range of the output is expected to decrease.
-  
+
   ```
   "Output = Dequantize(Input) -> ReduceMean on fp32 data -> Quantize(output)",
-  
+
   ```
 
 #### Version
@@ -6330,7 +6332,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
   QLinearSigmoid takes quantized input data (Tensor), and quantize parameter for output, and produces one output data
   (Tensor<T>) where the function `f(x) = quantize(Sigmoid(dequantize(x)))`, is applied to the data tensor elementwise.
-  Wwhere the function `Sigmoid(x) = 1 / (1 + exp(-x))` 
+  Wwhere the function `Sigmoid(x) = 1 / (1 + exp(-x))`
 
 #### Version
 
@@ -6477,17 +6479,17 @@ This version of the operator has been available since version 1 of the 'com.micr
         required. A 3D input is the dense convenience form and is processed as batch_size *
         sequence_length independent token rows. router_probs and optional router_weights must contain
         one corresponding row per token in either form.
-  
+
         The quantized weights are stored in column major order per expert.
         The quantization block size can be specified. If not provided, column wise quantization is used.
-  
+
         For integer quantization, the formula of linear dequantization using scale and (optionally) zero-point is:
           dequantized_weight = (quantized_weight - zero_point) * scale
         When zero_point is not provided, the default value is 2^(bits-1): 2 for 2 bits, 8 for 4 bits, 128 for 8 bits.
-  
+
         For integer quantization, if block_size is provided, both hidden_size and inter_size must be divisible by the block size, and
         the dequantization is performed per block of size block_size along the K (input feature) dimension.
-  
+
         For quant_type='fp8', weights instead use row-major float8e4m3fn tensors shaped [num_experts, N, K].
         A positive block_size selects square block scaling with float32, float16, or bfloat16 fc*_scales tensors shaped
         [num_experts, ceil(N / block_size), ceil(K / block_size)]:
@@ -6501,15 +6503,15 @@ This version of the operator has been available since version 1 of the 'com.micr
         Other activation types and unsupported routing sizes retain the fallback.
         The WebGPU block-FP8 kernel supports block_size=128 with float32 scales and rejects projections
         that exceed 32-bit shader addressing or the device's per-dimension dispatch limit.
-  
+
         Packed byte dimensions are computed as logical_element_count * effective_expert_weight_bits / 8.
         Weight rows must be byte-aligned. Zero-point rows are padded to a whole byte when necessary.
-  
+
         fc1_expert_weight_bits, fc2_expert_weight_bits, and fc3_expert_weight_bits optionally override
         expert_weight_bits for the corresponding projection. An omitted override inherits expert_weight_bits.
         When SwiGLU is fused, FC3 is stored in FC1 and fc3_expert_weight_bits must be omitted or equal to
         fc1_expert_weight_bits after inheritance.
-  
+
         The SwiGLU (Swish-Gated Linear Unit) activation function is like:
            g = xW + b
            l = xV + c
@@ -6520,7 +6522,7 @@ This version of the operator has been available since version 1 of the 'com.micr
         When swiglu_fusion=0, two GEMMs are not fused, and they are FC1 and FC3 in the inputs.
         When swiglu_fusion=1, two GEMMs are fused so that g and l are computed in a single GEMM (FC1), and g and l are interleaved on each row of size 2 * inter_size.
         When swiglu_fusion=2, two GEMMs are fused, and g and l are concatenated on each row.
-        
+
     The raw INT3 profile extends version 1; execution support is provider-specific.
     For INT3, the requirements below supersede the legacy format descriptions above.
     Effective widths are 2, 3, 4, or 8. Models without INT3 retain the legacy format contracts.
@@ -7359,10 +7361,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.RemovePadding"></a><a name="com.microsoft.removepadding">**com.microsoft.RemovePadding**</a>
 
   Compress transformer input by removing paddings. It assumes padding is on the right side of sequence.
-  
+
   The input has padding with shape (batch_size, sequence_length, hidden_size). This will generate two outputs:
   output has shape (total_tokens, hidden_size); token_offset with shape (batch_size, sequence_length).
-  
+
   token_offset has offsets of all non-padding tokens first, then offset of all padding tokens. It is
   a list of batch_size * sequence_length elements, which is reshaped to 2D for convenience of shape inference.
 
@@ -7405,7 +7407,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.RestorePadding"></a><a name="com.microsoft.restorepadding">**com.microsoft.RestorePadding**</a>
 
   Restore paddings and fill padding with zeros.
-  
+
   The input has padding with shape (total_tokens, hidden_size) and token_offset with shape (batch_size, sequence_length).
   The output has shape (batch_size, sequence_length, hidden_size).
 
@@ -7531,6 +7533,56 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>M</tt> : tensor(int64)</dt>
 <dd>Constrain input and output types to integer tensors</dd>
+</dl>
+
+
+### <a name="com.microsoft.RouterGateUpProj"></a><a name="com.microsoft.routergateupproj">**com.microsoft.RouterGateUpProj**</a>
+
+  Fused first projection of a MoE layer with a shared expert. One GEMM Y = X * W, with N = router_size + 2 * inter, is split into the router logits Y[.., :router_size] and the gate/up halves of the shared expert Y[.., router_size:], gate first then up. The output router is Y[.., :router_size] rounded to T; the output activated is activation(gate, up), computed on the T-rounded gate and up values. With activation = 'swiglu' it uses the SwiGLU operator's `limit`, `activation_alpha` and `activation_beta`, so the op equals MatMul + Split + SwiGLU.
+  For up to 8 rows the CUDA kernel is a single deterministic tensor-core GEMV; other shapes use a GEMM and an elementwise kernel.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>activation</tt> : string</dt>
+<dd>Gated activation applied to the gate and up halves. Only 'swiglu' is defined.</dd>
+<dt><tt>activation_alpha</tt> : float</dt>
+<dd>SwiGLU multiplier inside the sigmoid.</dd>
+<dt><tt>activation_beta</tt> : float</dt>
+<dd>SwiGLU value added to the linear half.</dd>
+<dt><tt>limit</tt> : float</dt>
+<dd>SwiGLU clamp applied to both halves; zero or less disables it.</dd>
+<dt><tt>router_size</tt> : int (required)</dt>
+<dd>Number of leading columns of W that form the router logits.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>X</tt> : T</dt>
+<dd>Activation with shape (.., K).</dd>
+<dt><tt>W</tt> : T</dt>
+<dd>Weight with shape (K, router_size + 2 * inter).</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>router</tt> : T</dt>
+<dd>Router logits with shape (.., router_size).</dd>
+<dt><tt>activated</tt> : T</dt>
+<dd>Gated shared-expert activation with shape (.., inter).</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(bfloat16), tensor(float16)</dt>
+<dd>Constrain the data type to 16-bit floats.</dd>
 </dl>
 
 
@@ -7696,16 +7748,16 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.SkipGroupNorm"></a><a name="com.microsoft.skipgroupnorm">**com.microsoft.SkipGroupNorm**</a>
 
   This operator element-wise adds x, skip and bias, then apply group normalization and optional activation.
-  
+
   This operator transforms input according to
     s = x + skip + bias
     y = gamma * (s - mean) / sqrt(variance + epsilon) + beta
-  
+
   The input channels are separated into num_groups groups, each containing num_channels / num_groups channels.
   The num_channels must be divisible by num_groups.
   The mean and standard-deviation of s are calculated separately over the each group.
   The weight and bias are per-channel affine transform parameter vectors of size num_channels.
-  
+
   The activation attribute can be used to enable activation after group normalization.
 
 #### Version
@@ -7909,36 +7961,36 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.SparseAttention"></a><a name="com.microsoft.sparseattention">**com.microsoft.SparseAttention**</a>
 
   Block Sparse Attention used in Phi-3-small (https://arxiv.org/pdf/2404.14219).
-  
+
   It is inspired by Sparse Transformers (https://arxiv.org/pdf/1904.10509) and BigBird (https://arxiv.org/pdf/2007.14062).
-  
+
   block_mask can be used to configure sparse layout for different head.
   When number of sparse layout is 1, all heads have same sparse layout. Otherwise, different layouts are used cyclically.
   For example, given 4 layouts (S0, S1, S2, S3), 8 heads will have layouts like (S0, S1, S2, S3, S0, S1, S2, S3).
-  
+
   The block_row_indices and block_col_indices are the CSR representation of block mask. The block_col_indices might contain
   paddings at the right side when different layout has different number of non-zeros in block mask.
-  
+
   An example of block mask with 2 layouts where each layout is 4 x 4 blocks:
     [[[1, 0, 0, 0],
       [1, 1, 0, 0],
       [0, 1, 1, 0],
       [0, 1, 1, 1]],
-  
+
      [[1, 0, 0, 0],
       [1, 1, 0, 0],
       [1, 1, 1, 0],
       [1, 0, 1, 1]]]
-  
+
   The corresponding CSR format:
     block_col_indices = [[0,  0,  1,  1,  2,  1,  2,  3, -1], [0,  0,  1,  0,  1,  2,  0,  2,  3]]
     block_row_indices = [[0, 1, 3, 5, 8], [0, 1, 3, 6, 9]]
-  
+
   When do_rotary is True, cos_cache and sin_cache are required. Note that the maximum sequence length supported by cos
   or sin cache can be different from the maximum sequence length used by kv cache.
-  
+
   Only supports unidirectional attention with cache of past key and value in linear buffers.
-  
+
   For performance, past_key and present_key share same memory buffer, and past_value and present_value too.
 
 #### Version
@@ -8015,14 +8067,14 @@ This version of the operator has been available since version 1 of the 'com.micr
   Selects, for every query token, the sparse-attention candidates that the following attention
   operator is allowed to read. It covers the two indexer flavours used by recent sparse-attention
   decoders, chosen with the policy_mode attribute:
-  
+
     policy_mode = "qsa" ("query sparse attention" token indexer)
       Groups the tokens that are visible to a query into complete blocks of compress_ratio tokens,
       mean-pools the indexer keys of every block, normalizes and rotates the pooled key, scores it
       against the query heads with sum_h ReLU(q_h . k), keeps the token_budget / compress_ratio
       highest scoring blocks and emits the token indices of those blocks followed by the visible
       tokens of the trailing incomplete block.
-  
+
     policy_mode = "csa" ("compressed sparse attention" block indexer)
       Compresses every compress_ratio consecutive tokens into one entry with a softmax-gated pooling
       over a window of 2 * compress_ratio slots (the previous window contributes its "Ca" half and
@@ -8031,7 +8083,7 @@ This version of the operator has been available since version 1 of the 'com.micr
       sum_h w_h * ReLU(q_h . k), masks the entries a query may not attend to and emits the index_topk
       highest scoring entry indices. If a channel's softmax denominator is non-positive or non-finite
       (for example, all logits are -inf or any logit is +inf), its pooled value is zero.
-  
+
   Common contract:
     * selected_indices is int32 with a fixed capacity that only depends on attributes:
       token_budget + compress_ratio - 1 for "qsa" and index_topk for "csa". Unused entries are -1,
@@ -8047,7 +8099,7 @@ This version of the operator has been available since version 1 of the 'com.micr
       result is rounded once to the tensor element type.
     * Ties in the top-k selection are broken by the smaller entry index, and the emitted entries are
       ordered by decreasing score, so the result is deterministic.
-  
+
   State layout for policy_mode = "csa": the two slices of past_proj_buffer hold the key and gate
   projections that have not been folded into a compressed entry yet. When their length is >=
   compress_ratio, the first compress_ratio tokens are the previous complete window (the "Ca" operand
@@ -8141,7 +8193,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.SparsePagedAttention"></a><a name="com.microsoft.sparsepagedattention">**com.microsoft.SparsePagedAttention**</a>
 
   Selected-index attention over the PagedAttention main K/V cache.
-  
+
   Selection is supplied by an external indexer. selected_only attends selected entries;
   local_plus_selected combines a main-cache local window and selected entries in one softmax.
   Selected indices are request-local logical positions in the main cache or in a contiguous
@@ -8360,6 +8412,62 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.SwiGLU"></a><a name="com.microsoft.swiglu">**com.microsoft.SwiGLU**</a>
+
+  Clamped SwiGLU, the gated activation of a feed-forward or MoE expert block:
+    G = clamp(gate, max=limit)
+    L = clamp(up, min=-limit, max=limit)
+    output = G * Sigmoid(activation_alpha * G) * (L + activation_beta)
+  with the arithmetic done in float regardless of T, widened to double for the product when `activation_alpha * G` is below -87 so that a negative tail is not lost to float exp underflow. A `limit` of zero or less disables both clamps.
+
+  The result is rounded to T once, after the multiply by (L + activation_beta). With `round_activation` set, G * Sigmoid(activation_alpha * G) is first rounded to T, as a QuickGelu node followed by a Mul in T would, which keeps a fused QuickGelu + Mul bit-identical to the graph it replaces.
+
+  This uses the same activation_alpha / activation_beta formula and positive-limit clamping rule as MoE and QMoE. The no-clamp sentinel differs: here any `limit` of zero or less disables clamping, while MoE/QMoE use infinity when `swiglu_limit` is omitted and clamp finite values, including an explicit zero.
+  With `up` supplied and the default `limit` and `activation_beta`, it equals the ONNX SwiGLU operator (opset 28) with `alpha` = `activation_alpha`.
+
+  `up` is optional. When it is omitted, `gate` carries both halves of one `[.., 2 * inter]` projection -- gate first, then up -- and the split is done internally, so a fused sibling GEMM needs no `Split` node.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>activation_alpha</tt> : float</dt>
+<dd>Multiplier inside the sigmoid.</dd>
+<dt><tt>activation_beta</tt> : float</dt>
+<dd>Value added to the linear half. A zero value leaves it unchanged, including a negative zero.</dd>
+<dt><tt>limit</tt> : float</dt>
+<dd>Clamp applied to both halves; zero or less disables it.</dd>
+<dt><tt>round_activation</tt> : int</dt>
+<dd>If non-zero, round G * Sigmoid(activation_alpha * G) to T before multiplying by (L + activation_beta). Zero rounds only the final result.</dd>
+</dl>
+
+#### Inputs (1 - 2)
+
+<dl>
+<dt><tt>gate</tt> : T</dt>
+<dd>Gate half of the projection, or both halves concatenated.</dd>
+<dt><tt>up</tt> (optional) : T</dt>
+<dd>Up half of the projection, same shape as gate.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>Activated tensor, shaped like one half of the projection.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16), tensor(bfloat16), tensor(float)</dt>
+<dd>Constrain the activation type to float tensors.</dd>
+</dl>
+
+
 ### <a name="com.microsoft.Tokenizer"></a><a name="com.microsoft.tokenizer">**com.microsoft.Tokenizer**</a>
 
   Tokenizer divides each string in X into a vector of strings along the last axis. Allowed input shapes are [C] and [N, C].
@@ -8439,7 +8547,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
   Based on Torch operator Embedding, creates a lookup table of embedding vectors of fixed size,
          for a dictionary of fixed size.
-        
+
 
 #### Version
 
@@ -8529,7 +8637,7 @@ This version of the operator has been available since version 1 of the 'com.micr
         the main diagonal. A negative k value includes as many diagonals below the main diagonal.
         If upper is set to false, a positive k retains the lower triangular matrix including k diagonals above
         the main diagonal. A negative k value excludes as many diagonals below the main diagonal.
-        
+
 
 #### Version
 
@@ -8621,7 +8729,7 @@ This version of the operator has been available since version 1 of the 'com.micr
                   output_uniques = [2, 1, 3, 4]
                   output_idx = [0, 1, 1, 2, 3, 2]
                   output_counts = [1, 2, 2, 1]
-                
+
 
 #### Version
 
@@ -8657,13 +8765,13 @@ This version of the operator has been available since version 1 of the 'com.micr
 
   Stateful causal depthwise convolution over a packed, token-major batch of variable-length
   sequences (CUDA and WebGPU).
-  
+
   input and output have shape (total_tokens, channels). cumulative_sequence_length is a
   device-resident int32 tensor of shape (batch_size + 1); sequence i occupies
   [cumulative_sequence_length[i], cumulative_sequence_length[i + 1]). Every sequence contributes
   at least one token. weight has shape (channels, 1, kernel_size), and optional bias has shape
   (channels). The convolution never reads across a sequence boundary.
-  
+
   initial_state is required and has shape (batch_size, channels, state_length), where
   state_length = (kernel_size - 1) * dilation. It contains
   the committed raw activation samples immediately preceding this call. final_state has the same
@@ -8672,22 +8780,22 @@ This version of the operator has been available since version 1 of the 'com.micr
   initial_state and final_state may use the same allocation. Such in-place execution is
   transaction-safe only when the whole operator call is unconditionally committed; a caller that
   may select a prefix or roll back must preserve initial_state and replay the compact state update.
-  
+
   When state_update_capacity is positive, capture_count is required with shape (batch_size), and
   state_update has shape (batch_size, state_update_capacity, channels).
   For request b, slots [0, clamp(capture_count[b], 0,
   min(state_update_capacity, sequence_length[b]))) contain the original local input token values.
   These values represent the append component of each shift-left-and-append state transition.
   All remaining slots are zero. capture_count is forbidden when state_update_capacity is zero.
-  
+
   For memory-safety containment, each GPU work item validates cumulative_sequence_length[0] == 0,
   cumulative_sequence_length[batch_size] == total_tokens, and its local range
   0 <= start < end <= total_tokens before accessing input, state, or output.
   Malformed offsets cause affected work to return without those accesses; outputs are unspecified.
   This device-side containment is not a synchronous validation or rejection mechanism.
-  
+
   The optional activation attribute supports none, SiLU, and Swish.
-  
+
   The dilation attribute spaces the kernel taps along the sequence axis: local token t of a request
   reads that request's local positions t - (kernel_size - 1 - j) * dilation for tap j, and positions
   before the request's first token come from the carry state. The carry state therefore holds
@@ -8753,19 +8861,19 @@ This version of the operator has been available since version 1 of the 'com.micr
 
   Computes Engram n-gram hash ids from pre-compressed tokenizer ids over a packed, token-major batch
   of variable-length sequences.
-  
+
   input_ids has shape (total_tokens) and hash_ids has shape (total_tokens, (max_ngram_size - 1) *
   n_head_per_ngram). cumulative_sequence_length is a device-resident int32 tensor of shape
   (batch_size + 1); request i occupies [cumulative_sequence_length[i], cumulative_sequence_length[i +
   1]) of the packed buffer. Every request contributes at least one token.
-  
+
   For n in [2, max_ngram_size], the op creates causal shifts of each request's own tokens, padding
   positions before that request's start with pad_id (or its own past_ids history, see below), and
   computes mix = shifted_0 * multipliers[0] xor ... xor shifted_(n-1) * multipliers[n-1]. For every
   head of that n-gram order it emits mix modulo the corresponding head vocabulary size. The n-gram
   window never reads tokens belonging to a different packed request; it is clamped at each request's
   own boundary exactly like VarlenCausalConvWithState clamps its causal convolution.
-  
+
   An n-gram window reaches max_ngram_size - 1 positions before the current token. To keep the op
   causal across invocations (chunked prefill or autoregressive decode) for every concurrent request in
   the packed batch, the optional past_ids input carries those preceding ids per request and
@@ -8775,9 +8883,9 @@ This version of the operator has been available since version 1 of the 'com.micr
   sequence use pad_id, or eos_token_id when provided. Running NGramHashMapping once per sequence and running this op once over those
   sequences packed together (optionally split into packed chunks with present_ids threaded into
   past_ids) produce identical hash ids.
-  
+
   Optional inputs add Qwen4-Exp-style n-gram embedding support:
-  
+
   - eos_token_id, when provided together with reset_on_eos != 0, causes causal history to reset at EOS
     boundaries. Missing history is also filled with eos_token_id.
   - segment_ids, when provided, additionally resets causal history when adjacent tokens within one
