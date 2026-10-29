@@ -32,6 +32,8 @@ class DynamicSparseAttention final : public onnxruntime::cuda::CudaKernel {
   bool strict_validation_;
   bool prefill_kernel_;
   bool prefill_int8_tc_;
+  bool decode_int8_tc_;
+  int decode_int8_tc_tiles_per_split_;
   DynamicSparseAttentionMode attention_mode_;
   DynamicSparseAttentionKvSource selected_kv_source_;
 };

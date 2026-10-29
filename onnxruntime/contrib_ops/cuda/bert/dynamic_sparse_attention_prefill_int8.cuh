@@ -5,6 +5,12 @@
 // bfloat16 query / output, head_size 256). One CTA handles one (query row, KV head); the heads of the GQA group form
 // the M dimension of an m16n8k16 MMA (padded to 16).
 //
+// The same body also serves decode (kSplitK = true): the grid gets a third dimension, each CTA consumes a contiguous
+// range of the row's 64-candidate tiles and writes an un-normalized partial result (running maximum in the natural
+// logarithm domain, running sum, value-scaled accumulator) in the layout of the grouped decode kernel, which the
+// existing merge kernel combines. This replaces the CUDA-core grouped decode kernel, whose per-candidate dot product,
+// warp reduction and exponentials made it issue-bound, with the tensor-core pipeline below.
+//
 // The scales of the INT8 cache are per (kv head, channel) constants, so they leave the tile loop:
 //   * the key scale is folded into the query once per CTA: Q' = Q * key_scale (rounded once to fp16), S = Q' K_int8;
 //     a CTA whose Q' does not fit fp16 (or is not finite) evaluates its query heads in fp32 instead (AttendRowFp32);
@@ -105,13 +111,19 @@ __device__ __forceinline__ void Int8x4ToHalf2Strided(uint32_t w, uint32_t& even,
 // FP32 evaluation of the query heads of one (row, KV head), one warp per head and eight channels per lane, for rows
 // whose Q * key_scale leaves the FP16 range of the tensor-core path. Clipping there would break the cancellation
 // between large terms. `query` and `output` point at the first head of the group; `key_scale` and `value_scale` at the
-// KV head.
+// KV head. The candidates [begin, end) of `row_indices` are consumed: all of them for prefill, the range of the CTA
+// for a decode split. With kSplitK the un-normalized partial (running maximum in the natural logarithm domain, running
+// sum, value-scaled accumulator) of block partial_block + head * split_count goes to partial_*, as the main path does;
+// otherwise the normalized result goes to output.
+template <bool kSplitK>
 __device__ __noinline__ void AttendRowFp32(const __nv_bfloat16* __restrict__ query, const int8_t* __restrict__ key,
                                            const int8_t* __restrict__ value, const float* __restrict__ key_scale,
                                            const float* __restrict__ value_scale,
-                                           const int32_t* __restrict__ row_indices, int count, int total,
+                                           const int32_t* __restrict__ row_indices, int begin, int end, int total,
                                            int query_position, float scale, int group,
-                                           __nv_bfloat16* __restrict__ output, int warp, int lane) {
+                                           __nv_bfloat16* __restrict__ output, float* __restrict__ partial_max,
+                                           float* __restrict__ partial_sum, float* __restrict__ partial_output,
+                                           int partial_block, int split_count, int warp, int lane) {
   float ks[8];
 #pragma unroll
   for (int j = 0; j < 8; ++j) {
@@ -126,7 +138,7 @@ __device__ __noinline__ void AttendRowFp32(const __nv_bfloat16* __restrict__ que
     float numerator[8] = {};
     float maximum = -FLT_MAX;
     float denominator = 0.0f;
-    for (int i = 0; i < count; ++i) {
+    for (int i = begin; i < end; ++i) {
       const int index = row_indices[i];
       if (index < 0 || index >= total || index > query_position) {
         continue;
@@ -152,20 +164,37 @@ __device__ __noinline__ void AttendRowFp32(const __nv_bfloat16* __restrict__ que
       }
       maximum = next_max;
     }
-    const float inverse = denominator == 0.0f ? 0.0f : 1.0f / denominator;
+    if constexpr (kSplitK) {
+      const int block = partial_block + h * split_count;
+      if (lane == 0) {
+        partial_max[block] = maximum;
+        partial_sum[block] = denominator;
+      }
 #pragma unroll
-    for (int j = 0; j < 8; ++j) {
-      const int d = lane + j * 32;
-      output[static_cast<int64_t>(h) * kHeadDim + d] = __float2bfloat16_rn(numerator[j] * inverse * value_scale[d]);
+      for (int j = 0; j < 8; ++j) {
+        const int d = lane + j * 32;
+        partial_output[static_cast<int64_t>(block) * kHeadDim + d] = numerator[j] * value_scale[d];
+      }
+    } else {
+      const float inverse = denominator == 0.0f ? 0.0f : 1.0f / denominator;
+#pragma unroll
+      for (int j = 0; j < 8; ++j) {
+        const int d = lane + j * 32;
+        output[static_cast<int64_t>(h) * kHeadDim + d] = __float2bfloat16_rn(numerator[j] * inverse * value_scale[d]);
+      }
     }
   }
 }
 #endif
 
-// grid = (batch * sequence_length, kv_num_heads), block = kThreads, dynamic smem = kInt8SharedBytes.
+// grid = (batch * sequence_length, kv_num_heads) or, with kSplitK, (batch * sequence_length, kv_num_heads,
+// split_count); block = kThreads, dynamic smem = kInt8SharedBytes.
 // query: [rows, num_heads, 256] (already normalized / rotated); key, value: int8 [batch, kv_heads, capacity, 256];
-// key_scale, value_scale: float [kv_heads, 256].
-__global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionPrefillInt8Kernel(
+// key_scale, value_scale: float [kv_heads, 256]. The normalized result goes to output; with kSplitK the partials
+// go to partial_max / partial_sum [rows * num_heads * split_count] and partial_output [.., 256] instead, indexed
+// (row * num_heads + head) * split_count + split (output is unused; partial_output must be 16-byte aligned).
+template <bool kSplitK>
+__global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionInt8TcKernel(
     const __nv_bfloat16* __restrict__ query,
     const int8_t* __restrict__ key,
     const int8_t* __restrict__ value,
@@ -173,6 +202,10 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionPrefillInt8
     const int32_t* __restrict__ selected_counts,
     const int32_t* __restrict__ seqlens_k,
     __nv_bfloat16* __restrict__ output,
+    float* __restrict__ partial_max,
+    float* __restrict__ partial_sum,
+    float* __restrict__ partial_output,
+    int split_count,
     int sequence_length,
     int num_heads,
     int kv_num_heads,
@@ -211,6 +244,26 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionPrefillInt8
   const int8_t* key_base = key + kv_head_offset;
   const int8_t* value_base = value + kv_head_offset;
 
+  // The 64-candidate tiles this CTA consumes: all of the row's for prefill, a contiguous range for a decode split.
+  // A split without tiles only publishes an empty partial (maximum -FLT_MAX, sum 0), which the merge skips.
+  int tile_begin = 0;
+  int tiles = (count + kTile - 1) / kTile;
+  if constexpr (kSplitK) {
+    const int split = static_cast<int>(blockIdx.z);
+    const int tiles_per_split = (tiles + split_count - 1) / split_count;
+    const int first = min(tiles, split * tiles_per_split);
+    tiles = min(tiles, first + tiles_per_split) - first;
+    tile_begin = first;
+    if (tiles == 0) {
+      if (tid < group) {
+        const int partial_block = (row * num_heads + kv_head * group + tid) * split_count + split;
+        partial_max[partial_block] = -FLT_MAX;
+        partial_sum[partial_block] = 0.0f;
+      }
+      return;
+    }
+  }
+
   // Q' = Q * key_scale as fp16; the padding rows are zero so their (ignored) scores stay finite. A row whose Q' does
   // not fit fp16 (including inf / NaN) is evaluated in fp32 by the whole CTA instead. Underflow to fp16 subnormals
   // costs at most 2^-25 per element, below the rounding of the fp16 operands, so it stays on this path.
@@ -248,9 +301,20 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionPrefillInt8
   }
   if (__syncthreads_or(needs_fp32)) {
     // The condition is uniform across the CTA and no cp.async is in flight yet.
-    AttendRowFp32(query_group, key_base, value_base, key_scale + kv_head * kHeadDim, value_scale + kv_head * kHeadDim,
-                  row_indices, count, total, query_position, scale, group,
-                  output + (static_cast<int64_t>(row) * num_heads + kv_head * group) * kHeadDim, warp, lane);
+    const float* kv_key_scale = key_scale + kv_head * kHeadDim;
+    const float* kv_value_scale = value_scale + kv_head * kHeadDim;
+    if constexpr (kSplitK) {
+      const int partial_block = (row * num_heads + kv_head * group) * split_count + static_cast<int>(blockIdx.z);
+      AttendRowFp32<true>(query_group, key_base, value_base, kv_key_scale, kv_value_scale, row_indices,
+                          tile_begin * kTile, min(count, (tile_begin + tiles) * kTile), total, query_position, scale,
+                          group, nullptr, partial_max, partial_sum, partial_output, partial_block, split_count, warp,
+                          lane);
+    } else {
+      AttendRowFp32<false>(query_group, key_base, value_base, kv_key_scale, kv_value_scale, row_indices, 0, count,
+                           total, query_position, scale, group,
+                           output + (static_cast<int64_t>(row) * num_heads + kv_head * group) * kHeadDim, nullptr,
+                           nullptr, nullptr, 0, 1, warp, lane);
+    }
     return;
   }
 
@@ -272,10 +336,10 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionPrefillInt8
     return (raw >= 0 && raw < total && raw <= query_position && raw < capacity) ? raw : -1;
   };
 
-  const int tiles = (count + kTile - 1) / kTile;
+  const int first_candidate = tile_begin * kTile;
   if ((tid >> 6) < tiles) {
     const int tile = tid >> 6;
-    const int candidate = tile * kTile + (tid & 63);
+    const int candidate = first_candidate + tile * kTile + (tid & 63);
     sIdx[tile * kTile + (tid & 63)] = candidate < count ? resolve_index(row_indices[candidate]) : -1;
   }
   __syncthreads();
@@ -340,7 +404,7 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionPrefillInt8
     int raw_next2 = -1;
     const bool stage_next2 = (tile + 2 < tiles) && tid < kTile;
     if (stage_next2) {
-      const int candidate = (tile + 2) * kTile + tid;
+      const int candidate = first_candidate + (tile + 2) * kTile + tid;
       raw_next2 = candidate < count ? row_indices[candidate] : -1;
     }
 
@@ -494,33 +558,68 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionPrefillInt8
   const float inv0 = sum0 == 0.0f ? 0.0f : 1.0f / sum0;
   const float inv1 = sum1 == 0.0f ? 0.0f : 1.0f / sum1;
 
-  // Thread t owns channels 64 * warp + 16 * chunk + 4t + {0, 1, 2, 3}
-  // = (even tile c0, odd tile c0, even tile c1, odd tile c1).
-#pragma unroll
-  for (int chunk = 0; chunk < 4; ++chunk) {
-    const int dim = warp * 64 + chunk * 16 + t * 4;
-    const float4 vs = *reinterpret_cast<const float4*>(value_scale + kv_head * kHeadDim + dim);
-    if (r0 < group) {
-      __nv_bfloat16* dst = output + (static_cast<int64_t>(row) * num_heads + kv_head * group + r0) * kHeadDim + dim;
-      const __nv_bfloat162 lo =
-          __floats2bfloat162_rn(acc_o[2 * chunk][0] * inv0 * vs.x, acc_o[2 * chunk + 1][0] * inv0 * vs.y);
-      const __nv_bfloat162 hi =
-          __floats2bfloat162_rn(acc_o[2 * chunk][1] * inv0 * vs.z, acc_o[2 * chunk + 1][1] * inv0 * vs.w);
-      uint2 packed;
-      packed.x = *reinterpret_cast<const uint32_t*>(&lo);
-      packed.y = *reinterpret_cast<const uint32_t*>(&hi);
-      *reinterpret_cast<uint2*>(dst) = packed;
+  if constexpr (kSplitK) {
+    // Un-normalized partial of this split in the natural logarithm domain, as the merge kernel expects. Thread t owns
+    // channels 64 * warp + 16 * chunk + 4t + {0, 1, 2, 3} (see below), i.e. one float4 per chunk and row.
+    constexpr float kLn2 = 0.693147180559945309f;
+    const int split = static_cast<int>(blockIdx.z);
+    const int partial_block0 = (row * num_heads + kv_head * group + r0) * split_count + split;
+    const int partial_block1 = partial_block0 + 8 * split_count;
+    if (warp == 0 && t == 0) {
+      if (r0 < group) {
+        partial_max[partial_block0] = run_max0 * kLn2;
+        partial_sum[partial_block0] = sum0;
+      }
+      if (r0 + 8 < group) {
+        partial_max[partial_block1] = run_max1 * kLn2;
+        partial_sum[partial_block1] = sum1;
+      }
     }
-    if (r0 + 8 < group) {
-      __nv_bfloat16* dst = output + (static_cast<int64_t>(row) * num_heads + kv_head * group + r0 + 8) * kHeadDim + dim;
-      const __nv_bfloat162 lo =
-          __floats2bfloat162_rn(acc_o[2 * chunk][2] * inv1 * vs.x, acc_o[2 * chunk + 1][2] * inv1 * vs.y);
-      const __nv_bfloat162 hi =
-          __floats2bfloat162_rn(acc_o[2 * chunk][3] * inv1 * vs.z, acc_o[2 * chunk + 1][3] * inv1 * vs.w);
-      uint2 packed;
-      packed.x = *reinterpret_cast<const uint32_t*>(&lo);
-      packed.y = *reinterpret_cast<const uint32_t*>(&hi);
-      *reinterpret_cast<uint2*>(dst) = packed;
+#pragma unroll
+    for (int chunk = 0; chunk < 4; ++chunk) {
+      const int dim = warp * 64 + chunk * 16 + t * 4;
+      const float4 vs = *reinterpret_cast<const float4*>(value_scale + kv_head * kHeadDim + dim);
+      if (r0 < group) {
+        *reinterpret_cast<float4*>(partial_output + static_cast<int64_t>(partial_block0) * kHeadDim + dim) =
+            make_float4(acc_o[2 * chunk][0] * vs.x, acc_o[2 * chunk + 1][0] * vs.y, acc_o[2 * chunk][1] * vs.z,
+                        acc_o[2 * chunk + 1][1] * vs.w);
+      }
+      if (r0 + 8 < group) {
+        *reinterpret_cast<float4*>(partial_output + static_cast<int64_t>(partial_block1) * kHeadDim + dim) =
+            make_float4(acc_o[2 * chunk][2] * vs.x, acc_o[2 * chunk + 1][2] * vs.y, acc_o[2 * chunk][3] * vs.z,
+                        acc_o[2 * chunk + 1][3] * vs.w);
+      }
+    }
+  } else {
+    // Thread t owns channels 64 * warp + 16 * chunk + 4t + {0, 1, 2, 3}
+    // = (even tile c0, odd tile c0, even tile c1, odd tile c1).
+#pragma unroll
+    for (int chunk = 0; chunk < 4; ++chunk) {
+      const int dim = warp * 64 + chunk * 16 + t * 4;
+      const float4 vs = *reinterpret_cast<const float4*>(value_scale + kv_head * kHeadDim + dim);
+      if (r0 < group) {
+        __nv_bfloat16* dst = output + (static_cast<int64_t>(row) * num_heads + kv_head * group + r0) * kHeadDim + dim;
+        const __nv_bfloat162 lo =
+            __floats2bfloat162_rn(acc_o[2 * chunk][0] * inv0 * vs.x, acc_o[2 * chunk + 1][0] * inv0 * vs.y);
+        const __nv_bfloat162 hi =
+            __floats2bfloat162_rn(acc_o[2 * chunk][1] * inv0 * vs.z, acc_o[2 * chunk + 1][1] * inv0 * vs.w);
+        uint2 packed;
+        packed.x = *reinterpret_cast<const uint32_t*>(&lo);
+        packed.y = *reinterpret_cast<const uint32_t*>(&hi);
+        *reinterpret_cast<uint2*>(dst) = packed;
+      }
+      if (r0 + 8 < group) {
+        __nv_bfloat16* dst =
+            output + (static_cast<int64_t>(row) * num_heads + kv_head * group + r0 + 8) * kHeadDim + dim;
+        const __nv_bfloat162 lo =
+            __floats2bfloat162_rn(acc_o[2 * chunk][2] * inv1 * vs.x, acc_o[2 * chunk + 1][2] * inv1 * vs.y);
+        const __nv_bfloat162 hi =
+            __floats2bfloat162_rn(acc_o[2 * chunk][3] * inv1 * vs.z, acc_o[2 * chunk + 1][3] * inv1 * vs.w);
+        uint2 packed;
+        packed.x = *reinterpret_cast<const uint32_t*>(&lo);
+        packed.y = *reinterpret_cast<const uint32_t*>(&hi);
+        *reinterpret_cast<uint2*>(dst) = packed;
+      }
     }
   }
 #else
@@ -531,6 +630,10 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionPrefillInt8
   (void)selected_counts;
   (void)seqlens_k;
   (void)output;
+  (void)partial_max;
+  (void)partial_sum;
+  (void)partial_output;
+  (void)split_count;
   (void)sequence_length;
   (void)num_heads;
   (void)kv_num_heads;

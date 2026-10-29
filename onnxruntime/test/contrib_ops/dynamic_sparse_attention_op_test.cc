@@ -604,7 +604,7 @@ TEST(DynamicSparseAttentionTest, GroupedDecodeRatio12ReferenceParity_CUDA) {
   }
 }
 
-// Selected-only prefill without a softmax sink, the configuration the tensor-core prefill kernels serve. With
+// Selected-only attention without a softmax sink, the configuration the tensor-core kernels serve. With
 // invalid_entries every fifth selected index is replaced by one that must be skipped (negative, in the future of the
 // query row, or outside the cache).
 void ComputeSelectedOnlyPrefillExpectedOutput(DynamicSparseAttentionCase& c, bool int8_cache) {
@@ -640,9 +640,9 @@ void ComputeSelectedOnlyPrefillExpectedOutput(DynamicSparseAttentionCase& c, boo
 }
 
 DynamicSparseAttentionCase MakeSelectedOnlyPrefillCase(bool int8_cache, int num_heads = 20, int selected_count = 509,
-                                                       bool invalid_entries = false) {
-  auto c = int8_cache ? MakeGroupedCacheCase(9, false, false, 2, num_heads, 2, true, selected_count)
-                      : MakeGroupedCacheCase(9, false, true, 2, num_heads, 2, false, selected_count);
+                                                       bool invalid_entries = false, int sequence_length = 9) {
+  auto c = int8_cache ? MakeGroupedCacheCase(sequence_length, false, false, 2, num_heads, 2, true, selected_count)
+                      : MakeGroupedCacheCase(sequence_length, false, true, 2, num_heads, 2, false, selected_count);
   c.head_sink.clear();
   c.smooth_softmax = 0;
   if (int8_cache) {
@@ -720,6 +720,12 @@ TEST(DynamicSparseAttentionTest, Int8CachePrefillTensorCoreKernel_CUDA) {
 
 std::vector<std::pair<const char*, const char*>> PrefillKernelConfigs(const char* kernel, const char* int8_tc) {
   return {{kOrtSessionOptionsCudaDsaPrefillKernel, kernel}, {kOrtSessionOptionsCudaDsaPrefillInt8Tc, int8_tc}};
+}
+
+std::vector<std::pair<const char*, const char*>> DecodeKernelConfigs(const char* int8_tc,
+                                                                     const char* tiles_per_split = "0") {
+  return {{kOrtSessionOptionsCudaDsaDecodeInt8Tc, int8_tc},
+          {kOrtSessionOptionsCudaDsaDecodeInt8TcTilesPerSplit, tiles_per_split}};
 }
 
 // A CTA of the tensor-core INT8 kernel whose Q * key_scale does not fit fp16 evaluates its scores in fp32. The query
@@ -840,6 +846,138 @@ TEST(DynamicSparseAttentionTest, PrefillSessionOptions_CUDA) {
     RunDynamicSparseAttentionCase<BFloat16, int8_t>(c, DefaultCudaExecutionProvider(), expect_failure,
                                                     kOrtSessionOptionsCudaDsaPrefillInt8Tc,
                                                     {{kOrtSessionOptionsCudaDsaPrefillInt8Tc, invalid}});
+  }
+}
+
+// The split-K tensor-core INT8 decode kernel (ep.cuda.dsa_decode_int8_tc=1) and the CUDA-core grouped decode kernel
+// (=0) over 1-8 query rows per batch item (row 0 of the case has no selected candidate), query-head group sizes 4, 6,
+// 12 and 16 (padded to the 16-row MMA tile), candidate counts around the 64-candidate tile, invalid selected indices
+// and 1, 3 or the automatic number of 64-candidate tiles per split (a split without tiles publishes an empty partial).
+TEST(DynamicSparseAttentionTest, Int8CacheDecodeTensorCoreKernel_CUDA) {
+  if (!DefaultCudaExecutionProvider()) GTEST_SKIP() << "CUDA EP not available.";
+  if (!CudaHasBF16Support()) GTEST_SKIP() << "CUDA device does not support BFloat16.";
+  struct Config {
+    const char* decode_tc;
+    const char* tiles_per_split;
+  };
+  const Config configs[] = {{"1", "0"}, {"1", "1"}, {"1", "3"}, {"0", "0"}};
+  for (int sequence_length : {1, 3, 8}) {
+    for (int num_heads : {8, 12, 24, 32}) {
+      for (int selected_count : {1, 65, 509}) {
+        for (bool invalid_entries : {false, true}) {
+          SCOPED_TRACE("sequence_length=" + std::to_string(sequence_length) +
+                       ", num_heads=" + std::to_string(num_heads) +
+                       ", selected_count=" + std::to_string(selected_count) +
+                       ", invalid_entries=" + std::to_string(invalid_entries));
+          const auto c = MakeSelectedOnlyPrefillCase(true, num_heads, selected_count, invalid_entries, sequence_length);
+          for (const auto& config : configs) {
+            SCOPED_TRACE(std::string("dsa_decode_int8_tc=") + config.decode_tc +
+                         ", dsa_decode_int8_tc_tiles_per_split=" + config.tiles_per_split);
+            RunDynamicSparseAttentionCase<BFloat16, int8_t>(c, DefaultCudaExecutionProvider(),
+                                                            OpTester::ExpectResult::kExpectSuccess, "",
+                                                            DecodeKernelConfigs(config.decode_tc,
+                                                                                config.tiles_per_split));
+          }
+          if (::testing::Test::HasFailure()) return;
+        }
+      }
+    }
+  }
+}
+
+// A decode CTA whose Q * key_scale does not fit fp16 evaluates its range of candidates in fp32 and publishes an fp32
+// partial for the merge kernel. Multiplying every query by 2^28 and dividing the scale by 2^28 keeps the scores while
+// pushing every CTA past fp16, for any number of splits; a second case puts a huge query on a channel whose keys are
+// all zero for a single head of every other row, so that only some CTAs take the fp32 path.
+TEST(DynamicSparseAttentionTest, Int8DecodeQueryBeyondHalfRange_CUDA) {
+  if (!DefaultCudaExecutionProvider()) GTEST_SKIP() << "CUDA EP not available.";
+  if (!CudaHasBF16Support()) GTEST_SKIP() << "CUDA device does not support BFloat16.";
+  for (const char* tiles_per_split : {"0", "1", "3"}) {
+    const auto configs = DecodeKernelConfigs("1", tiles_per_split);
+    for (int sequence_length : {1, 3}) {
+      for (int num_heads : {8, 12, 32}) {
+        for (int selected_count : {1, 65, 509}) {
+          SCOPED_TRACE("tiles_per_split=" + std::string(tiles_per_split) +
+                       ", sequence_length=" + std::to_string(sequence_length) +
+                       ", num_heads=" + std::to_string(num_heads) +
+                       ", selected_count=" + std::to_string(selected_count));
+          auto c = MakeSelectedOnlyPrefillCase(true, num_heads, selected_count, true, sequence_length);
+          for (auto& q : c.query) q *= 0x1p28f;
+          c.scale *= 0x1p-28f;
+          ComputeSelectedOnlyPrefillExpectedOutput(c, true);
+          RunDynamicSparseAttentionCase<BFloat16, int8_t>(c, DefaultCudaExecutionProvider(),
+                                                          OpTester::ExpectResult::kExpectSuccess, "", configs);
+          if (::testing::Test::HasFailure()) return;
+        }
+      }
+    }
+
+    auto c = MakeSelectedOnlyPrefillCase(true, 24, 509, true, 3);
+    const int64_t channels = c.kv_num_heads * c.head_size;
+    constexpr int64_t kZeroChannel = 7;
+    for (int b = 0; b < c.batch_size; ++b) {
+      for (int64_t pos = 0; pos < c.cache_sequence_length; ++pos) {
+        const int64_t offset = ((b * c.kv_num_heads) * c.cache_sequence_length + pos) * c.head_size + kZeroChannel;
+        c.past_key[offset] = c.expected_present_key[offset] = 0.0f;
+      }
+    }
+    for (int64_t row = 0; row < c.batch_size * c.sequence_length; ++row) {
+      c.key[row * channels + kZeroChannel] = 0.0f;
+      const int64_t b = row / c.sequence_length;
+      const int64_t pos = c.seqlens_k[b] + 1 - c.sequence_length + row % c.sequence_length;
+      c.expected_present_key[((b * c.kv_num_heads) * c.cache_sequence_length + pos) * c.head_size + kZeroChannel] =
+          0.0f;
+      if (row % 2 == 1) c.query[(row * c.num_heads + 5) * c.head_size + kZeroChannel] = 1.0e7f;
+    }
+    ComputeSelectedOnlyPrefillExpectedOutput(c, true);
+    RunDynamicSparseAttentionCase<BFloat16, int8_t>(c, DefaultCudaExecutionProvider(),
+                                                    OpTester::ExpectResult::kExpectSuccess, "", configs);
+    if (::testing::Test::HasFailure()) return;
+  }
+}
+
+// Explicit ep.cuda.* entries take precedence over the environment, which is consulted only when no entry is set; an
+// invalid value from either source fails kernel construction.
+TEST(DynamicSparseAttentionTest, DecodeSessionOptions_CUDA) {
+  if (!DefaultCudaExecutionProvider()) GTEST_SKIP() << "CUDA EP not available.";
+  if (!CudaHasBF16Support()) GTEST_SKIP() << "CUDA device does not support BFloat16.";
+  const auto c = MakeSelectedOnlyPrefillCase(true, 12, 65, true, 3);
+  const auto expect_success = OpTester::ExpectResult::kExpectSuccess;
+  const auto expect_failure = OpTester::ExpectResult::kExpectFailure;
+
+  {
+    ScopedEnvironmentVariables env{
+        EnvVarMap{{"ORT_DSA_DECODE_INT8_TC", "invalid"}, {"ORT_DSA_DECODE_INT8_TC_TILES_PER_SPLIT", "invalid"}}};
+    for (const char* int8_tc : {"0", "1"}) {
+      for (const char* tiles_per_split : {"0", "2"}) {
+        SCOPED_TRACE(std::string("int8_tc=") + int8_tc + ", tiles_per_split=" + tiles_per_split);
+        RunDynamicSparseAttentionCase<BFloat16, int8_t>(c, DefaultCudaExecutionProvider(), expect_success, "",
+                                                        DecodeKernelConfigs(int8_tc, tiles_per_split));
+      }
+    }
+    RunDynamicSparseAttentionCase<BFloat16, int8_t>(c, DefaultCudaExecutionProvider(), expect_failure,
+                                                    "(ORT_DSA_DECODE_INT8_TC_TILES_PER_SPLIT)",
+                                                    {{kOrtSessionOptionsCudaDsaDecodeInt8Tc, "1"}});
+    RunDynamicSparseAttentionCase<BFloat16, int8_t>(c, DefaultCudaExecutionProvider(), expect_failure,
+                                                    "(ORT_DSA_DECODE_INT8_TC)",
+                                                    {{kOrtSessionOptionsCudaDsaDecodeInt8TcTilesPerSplit, "0"}});
+  }
+  for (const char* int8_tc : {"0", "1"}) {
+    ScopedEnvironmentVariables env{
+        EnvVarMap{{"ORT_DSA_DECODE_INT8_TC", int8_tc}, {"ORT_DSA_DECODE_INT8_TC_TILES_PER_SPLIT", "2"}}};
+    RunDynamicSparseAttentionCase<BFloat16, int8_t>(c, DefaultCudaExecutionProvider(), expect_success);
+  }
+  for (const char* invalid : {"2", "-1", "", "1x", "true"}) {
+    SCOPED_TRACE(std::string("value='") + invalid + "'");
+    RunDynamicSparseAttentionCase<BFloat16, int8_t>(c, DefaultCudaExecutionProvider(), expect_failure,
+                                                    kOrtSessionOptionsCudaDsaDecodeInt8Tc,
+                                                    {{kOrtSessionOptionsCudaDsaDecodeInt8Tc, invalid}});
+  }
+  for (const char* invalid : {"-1", "", "1x", "many"}) {
+    SCOPED_TRACE(std::string("value='") + invalid + "'");
+    RunDynamicSparseAttentionCase<BFloat16, int8_t>(c, DefaultCudaExecutionProvider(), expect_failure,
+                                                    kOrtSessionOptionsCudaDsaDecodeInt8TcTilesPerSplit,
+                                                    {{kOrtSessionOptionsCudaDsaDecodeInt8TcTilesPerSplit, invalid}});
   }
 }
 
@@ -2703,6 +2841,14 @@ TEST(DynamicSparseAttentionTest, Int8CachePrefillMisalignedBuffers_CUDA) {
   // 16-byte cache / 8-byte output aligned buffers use the tensor-core INT8 prefill kernel, 8-byte / 4-byte aligned ones
   // the BF16-dequantizing kernel and misaligned ones must fall back to the generic kernels.
   ExpectMisalignedBuffersMatch<BFloat16, int8_t>(MakeSelectedOnlyPrefillCase(true), true);
+}
+
+TEST(DynamicSparseAttentionTest, Int8CacheDecodeMisalignedBuffers_CUDA) {
+  if (!DefaultCudaExecutionProvider()) GTEST_SKIP() << "CUDA EP not available.";
+  if (!CudaHasBF16Support()) GTEST_SKIP() << "CUDA device does not support BFloat16.";
+  // 16-byte aligned buffers use the split-K tensor-core INT8 decode kernel; misaligned ones must fall back to the
+  // CUDA-core grouped decode kernel.
+  ExpectMisalignedBuffersMatch<BFloat16, int8_t>(MakeSelectedOnlyPrefillCase(true, 24, 509, false, 3), true);
 }
 
 TEST(DynamicSparseAttentionTest, FloatingCacheGroupedDecodeMisalignedBuffers_CUDA) {

@@ -513,6 +513,15 @@ static const char* const kOrtSessionOptionsCudaDsaPrefillInt8Tc = "ep.cuda.dsa_p
 /// "0" routes the BF16 prefill through the generic kernels. Default "1". Overrides ORT_DSA_PREFILL_KERNEL.
 static const char* const kOrtSessionOptionsCudaDsaPrefillKernel = "ep.cuda.dsa_prefill_kernel";
 
+/// "0" makes the INT8-cache BF16 decode (up to 8 query rows) use the CUDA-core grouped kernel instead of the split-K
+/// tensor-core kernel. Default "1". Overrides ORT_DSA_DECODE_INT8_TC.
+static const char* const kOrtSessionOptionsCudaDsaDecodeInt8Tc = "ep.cuda.dsa_decode_int8_tc";
+
+/// Number of 64-candidate tiles each CTA of the split-K tensor-core decode kernel consumes. "0" derives it from the
+/// problem size (about 384 CTAs in total). Default "0". Overrides ORT_DSA_DECODE_INT8_TC_TILES_PER_SPLIT.
+static const char* const kOrtSessionOptionsCudaDsaDecodeInt8TcTilesPerSplit =
+    "ep.cuda.dsa_decode_int8_tc_tiles_per_split";
+
 /// Reader-only, hardware-neutral kernel dispatch intent shared across operators and EPs.
 /// Valid values are "auto", "latency", "memory", and "safe"; matching is case-sensitive.
 /// Unset or empty values map to "auto". Other values cause INVALID_ARGUMENT during

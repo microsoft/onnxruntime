@@ -109,6 +109,11 @@ DynamicSparseAttention<T>::DynamicSparseAttention(const OpKernelInfo& info)
                                           "ORT_DSA_PREFILL_KERNEL", 1, 0, 1) != 0;
   prefill_int8_tc_ = ReadCudaSessionOption(info, kOrtSessionOptionsCudaDsaPrefillInt8Tc,
                                            "ORT_DSA_PREFILL_INT8_TC", 1, 0, 1) != 0;
+  decode_int8_tc_ = ReadCudaSessionOption(info, kOrtSessionOptionsCudaDsaDecodeInt8Tc,
+                                          "ORT_DSA_DECODE_INT8_TC", 1, 0, 1) != 0;
+  decode_int8_tc_tiles_per_split_ =
+      ReadCudaSessionOption(info, kOrtSessionOptionsCudaDsaDecodeInt8TcTilesPerSplit,
+                            "ORT_DSA_DECODE_INT8_TC_TILES_PER_SPLIT", 0, 0, std::numeric_limits<int>::max());
   strict_validation_ = ParseEnvironmentVariableWithDefault<bool>(kStrictValidation, false);
   attention_mode_ = ParseAttentionMode(
       info.GetAttrOrDefault<std::string>("attention_mode", "selected_only"));
@@ -209,6 +214,8 @@ Status DynamicSparseAttention<T>::ComputeInternal(OpKernelContext* context) cons
   DynamicSparseAttentionData<CudaT> data;
   data.prefill_kernel = prefill_kernel_;
   data.prefill_int8_tc = prefill_int8_tc_;
+  data.decode_int8_tc = decode_int8_tc_;
+  data.decode_int8_tc_tiles_per_split = decode_int8_tc_tiles_per_split_;
   data.query = reinterpret_cast<const CudaT*>(query->Data<T>());
   data.key = key == nullptr ? nullptr : reinterpret_cast<const CudaT*>(key->Data<T>());
   data.value = value == nullptr ? nullptr : reinterpret_cast<const CudaT*>(value->Data<T>());
