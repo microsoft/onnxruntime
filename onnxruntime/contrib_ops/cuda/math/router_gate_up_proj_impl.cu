@@ -45,8 +45,50 @@ __global__ void SplitActivationKernel(int64_t rows, int n, int router, int inter
 }
 
 template <typename V>
+__global__ void SplitActivationVec8Kernel(int64_t rows, int n_vecs, int router_vecs, int inter_vecs, float limit,
+                                          float alpha, float beta, const uint4* __restrict__ y,
+                                          uint4* __restrict__ router_out, uint4* __restrict__ act_out) {
+  const int out_vecs = router_vecs + inter_vecs;
+  const int64_t total = rows * out_vecs;
+  const int64_t stride = static_cast<int64_t>(gridDim.x) * blockDim.x;
+  for (int64_t i = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x; i < total; i += stride) {
+    const int64_t row = i / out_vecs;
+    const int vec_col = static_cast<int>(i - row * out_vecs);
+    const uint4* yr = y + row * n_vecs;
+    if (vec_col < router_vecs) {
+      router_out[row * router_vecs + vec_col] = __ldg(&yr[vec_col]);
+    } else {
+      const int j = vec_col - router_vecs;
+      const uint4 g_u4 = __ldg(&yr[router_vecs + j]);
+      const uint4 u_u4 = __ldg(&yr[router_vecs + inter_vecs + j]);
+      const V* g_vals = reinterpret_cast<const V*>(&g_u4);
+      const V* u_vals = reinterpret_cast<const V*>(&u_u4);
+      uint4 out_u4;
+      V* o_vals = reinterpret_cast<V*>(&out_u4);
+#pragma unroll
+      for (int k = 0; k < 8; ++k) {
+        FromFloat(SwiGluActivation(ToFloat(g_vals[k]), ToFloat(u_vals[k]), limit, alpha, beta), o_vals[k]);
+      }
+      act_out[row * inter_vecs + j] = out_u4;
+    }
+  }
+}
+
+template <typename V>
 void LaunchSplitActivation(cudaStream_t stream, int64_t rows, int64_t n, int64_t router, int64_t inter, float limit,
                            float alpha, float beta, const void* y, void* router_out, void* act_out) {
+  if ((router & 7) == 0 && (inter & 7) == 0 &&
+      ((reinterpret_cast<uintptr_t>(y) | reinterpret_cast<uintptr_t>(router_out) |
+        reinterpret_cast<uintptr_t>(act_out)) &
+       15u) == 0) {
+    const int64_t total_vecs = rows * ((router + inter) >> 3);
+    const int64_t want = (total_vecs + kSplitThreads - 1) / kSplitThreads;
+    const int blocks = static_cast<int>(want < 65535 ? want : 65535);
+    SplitActivationVec8Kernel<V><<<blocks, kSplitThreads, 0, stream>>>(
+        rows, static_cast<int>(n >> 3), static_cast<int>(router >> 3), static_cast<int>(inter >> 3), limit, alpha,
+        beta, static_cast<const uint4*>(y), static_cast<uint4*>(router_out), static_cast<uint4*>(act_out));
+    return;
+  }
   const int64_t total = rows * (router + inter);
   const int64_t want = (total + kSplitThreads - 1) / kSplitThreads;
   const int blocks = static_cast<int>(want < 65535 ? want : 65535);
