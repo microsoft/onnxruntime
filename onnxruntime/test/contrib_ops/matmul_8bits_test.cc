@@ -551,6 +551,25 @@ TEST(MatMulNBits, Fp16_Int8_Cuda) {
   TestMatMul8BitsTyped<MLFloat16, 32, 1024, 1024, 128>(abs_error, rel_error);
 }
 
+// fp16 single-row decode (M = 1) with K a multiple of 512: the wide M1 kernel
+// (ORT_MATMUL_NBITS_8BIT_M1_WIDE, on by default). Covers each column/unroll instantiation and
+// the odd-N fallback to the original M1 kernel.
+TEST(MatMulNBits, Fp16_8b_M1_Cuda) {
+  constexpr float abs_error = 0.1f;
+  constexpr float rel_error = 0.02f;
+  // K >= 4096: one column per warp, unroll 4 (K % 2048 == 0) or 1.
+  TestMatMul8BitsTyped<MLFloat16, 1, 64, 4096, 32>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 33, 8192, 128>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 40, 4608, 256>(abs_error, rel_error);
+  // K < 4096: two columns per warp, unroll 4, 2 or 1.
+  TestMatMul8BitsTyped<MLFloat16, 1, 128, 2048, 16>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 96, 1024, 64>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 64, 1536, 128>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 2, 512, 32>(abs_error, rel_error);
+  // Odd N with K < 4096 falls back to the original M1 kernel.
+  TestMatMul8BitsTyped<MLFloat16, 1, 33, 1024, 32>(abs_error, rel_error);
+}
+
 TEST(MatMulNBits, BFloat16_8bits) {
   if (!HasCudaEnvironment(800)) {
     GTEST_SKIP() << "Skipping BFloat16 8-bit MatMul tests on CUDA < 8.0";
