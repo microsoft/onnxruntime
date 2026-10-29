@@ -624,6 +624,8 @@ Status ApplyFlashAttentionPrefill(onnxruntime::webgpu::ComputeContext& context,
   }
   // The K tile (full head) and V slice (up to 16 vec4) are staged in workgroup memory for kv_step rows.
   // If that exceeds the device limit, fall back to the default config (64 threads, 16 KV rows per step).
+  // CanApplyDensePrefill checks storage for full K/V tiles with at least 16 rows,
+  // so the default configuration with sliced V staging is guaranteed to fit.
   const uint64_t head_size_vec = static_cast<uint64_t>(parameters.head_size_) / 4;
   const uint64_t vec4_bytes = (Q->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ? 2u : 4u) * 4u;
   if ((head_size_vec + std::min<uint64_t>(head_size_vec, 16)) * kv_step * vec4_bytes >
@@ -631,6 +633,9 @@ Status ApplyFlashAttentionPrefill(onnxruntime::webgpu::ComputeContext& context,
     workgroup_size = 64u;
     kv_step = 16u;
   }
+  ORT_ENFORCE((head_size_vec + std::min<uint64_t>(head_size_vec, 16)) * kv_step * vec4_bytes <=
+                  context.DeviceLimits().maxComputeWorkgroupStorageSize,
+              "FlashAttentionPrefill requires more workgroup storage than the device supports.");
   // Values below 8 select direct shared-memory reads, including without subgroups.
   const uint32_t shuffle_chunk = std::min(kv_step, subgroup_min_size);
   const uint32_t num_seq_tile = CeilDiv(static_cast<uint32_t>(parameters.sequence_length_), workgroup_size);
