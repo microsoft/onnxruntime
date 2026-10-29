@@ -1,7 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
 #include <atomic>
+#include <fstream>
 #include <sstream>
 
 #include "core/framework/allocation_planner.h"
@@ -13,8 +15,10 @@
 #include "core/optimizer/optimizer_execution_frame.h"
 #include "core/session/IOBinding.h"
 #include "core/session/inference_session.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/unittest_util/framework_test_utils.h"
 #include "test/util/include/asserts.h"
+#include "test/util/include/file_util.h"
 #include "gtest/gtest.h"
 
 namespace onnxruntime {
@@ -78,6 +82,7 @@ class GeneratePrng final : public OpKernel {
   explicit GeneratePrng(const OpKernelInfo& info) : OpKernel(info) {}
   Status Compute(OpKernelContext* ctx) const override {
     const TestPrng* input = ctx->Input<InputState>(0);
+    const uint64_t input_state = input->State();
     TestPrng* output = ctx->Output<OutputState>(1);
     if (input != output) {
       output->CopyFrom(*input);
@@ -85,6 +90,19 @@ class GeneratePrng final : public OpKernel {
       ++TestPrng::reused;
     }
     *ctx->Output(0, TensorShape{})->MutableData<float>() = output->Next();
+    if (ctx->InputCount() == 2) {
+      ORT_RETURN_IF_NOT(ctx->Input<InputState>(1)->State() == input_state,
+                        "Updating the output changed the second input before it was read.");
+    }
+    return Status::OK();
+  }
+};
+
+class PrngDestructionCount final : public OpKernel {
+ public:
+  explicit PrngDestructionCount(const OpKernelInfo& info) : OpKernel(info) {}
+  Status Compute(OpKernelContext* ctx) const override {
+    *ctx->Output(0, TensorShape{})->MutableData<int64_t>() = TestPrng::destroyed.load();
     return Status::OK();
   }
 };
@@ -111,6 +129,11 @@ class OpaqueReuseTest : public testing::Test {
     seed.Output(0, "state", "PRNG state", "T");
     seed.TypeConstraint("T", {"opaque(ort.test.prng,State)"}, "Test-only PRNG state");
     schemas.push_back(seed);
+    OpSchema destruction_count("DestructionCount", __FILE__, __LINE__);
+    destruction_count.SetDomain(kPrngDomain).SinceVersion(1);
+    destruction_count.Input(0, "dependency", "Sample from the preceding state transition", "tensor(float)");
+    destruction_count.Output(0, "count", "Objects already destroyed before this kernel", "tensor(int64)");
+    schemas.push_back(destruction_count);
     RegisterGenerate<TestPrng, TestPrng>(schemas, "Generate");
     RegisterGenerate<TestPrng, TestPrng>(schemas, "GenerateCopy", false);
     RegisterGenerate<TestPrng, TestPrng>(schemas, "GenerateRepeatedInput", true, true);
@@ -125,6 +148,13 @@ class OpaqueReuseTest : public testing::Test {
     ASSERT_STATUS_OK(registry_->RegisterCustomKernel(
         seed_def, [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& kernel) {
           kernel = std::make_unique<SeedPrng>(info);
+          return Status::OK();
+        }));
+    KernelDefBuilder destruction_count_def;
+    destruction_count_def.SetName("DestructionCount").SetDomain(kPrngDomain).SinceVersion(1).Provider(kCpuExecutionProvider);
+    ASSERT_STATUS_OK(registry_->RegisterCustomKernel(
+        destruction_count_def, [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& kernel) {
+          kernel = std::make_unique<PrngDestructionCount>(info);
           return Status::OK();
         }));
     model_ = std::make_unique<Model>(
@@ -177,10 +207,11 @@ class OpaqueReuseTest : public testing::Test {
     return model_->MainGraph().GetOrCreateNodeArg(name, &type);
   }
 
-  Node& AddSeed() {
+  Node& AddSeed(const std::string& seed = "seed", const std::string& state = "s0",
+                const std::string& name = "seed") {
     return model_->MainGraph().AddNode(
-        "seed", "Seed", "", {&Scalar("seed", ONNX_NAMESPACE::TensorProto_DataType_INT64)},
-        {&State("s0")}, nullptr, kPrngDomain);
+        name, "Seed", "", {&Scalar(seed, ONNX_NAMESPACE::TensorProto_DataType_INT64)},
+        {&State(state)}, nullptr, kPrngDomain);
   }
 
   template <typename InputState = TestPrng, typename OutputState = TestPrng>
@@ -194,7 +225,8 @@ class OpaqueReuseTest : public testing::Test {
   }
 
   std::unique_ptr<InferenceSession> Initialize(const std::vector<std::string>& outputs,
-                                               ExecutionMode mode = ExecutionMode::ORT_SEQUENTIAL) {
+                                               ExecutionMode mode = ExecutionMode::ORT_SEQUENTIAL,
+                                               const char* stream_config = nullptr) {
     auto& graph = model_->MainGraph();
     std::vector<const NodeArg*> output_args;
     for (const auto& name : outputs) output_args.push_back(graph.GetNodeArg(name));
@@ -205,6 +237,15 @@ class OpaqueReuseTest : public testing::Test {
     options.execution_mode = mode;
     options.intra_op_param.thread_pool_size = 1;
     options.inter_op_param.thread_pool_size = 2;
+    ScopedFileDeleter config_cleanup;
+    if (stream_config != nullptr) {
+      std::ofstream file{"opaque_reuse_streams.json"};
+      ORT_ENFORCE(file.is_open());
+      config_cleanup = ScopedFileDeleter{ORT_TSTR("opaque_reuse_streams.json")};
+      file << stream_config;
+      ORT_ENFORCE(file.good());
+      ORT_THROW_IF_ERROR(options.config_options.AddConfigEntry(kNodePartitionConfigFile, "opaque_reuse_streams.json"));
+    }
     auto session = std::make_unique<InferenceSession>(options, GetEnvironment());
     ORT_THROW_IF_ERROR(session->RegisterCustomRegistry(registry_));
     std::istringstream stream(model_->ToProto().SerializeAsString());
@@ -308,6 +349,125 @@ TEST_F(OpaqueReuseTest, ForkPreservesBothSequences) {
     EXPECT_EQ(TestPrng::copied.load(), 3 * (run + 1));
   }
 }
+
+TEST_F(OpaqueReuseTest, ReusedObjectsAreDestroyedBeforeLaterKernels) {
+  AddSeed();
+  AddGenerate("s0", "v1", "s1");
+  AddGenerate("s1", "v2", "s2");
+  auto& graph = model_->MainGraph();
+  graph.AddNode("destroyed_first", "DestructionCount", "",
+                {&Scalar("v2", ONNX_NAMESPACE::TensorProto_DataType_FLOAT)},
+                {&Scalar("destroyed_first", ONNX_NAMESPACE::TensorProto_DataType_INT64)}, nullptr, kPrngDomain);
+  AddSeed("destroyed_first", "s3", "second_seed");
+  AddGenerate("s3", "v3", "s4");
+  AddGenerate("s4", "v4", "s5");
+  graph.AddNode("destroyed_second", "DestructionCount", "",
+                {&Scalar("v4", ONNX_NAMESPACE::TensorProto_DataType_FLOAT)},
+                {&Scalar("destroyed_second", ONNX_NAMESPACE::TensorProto_DataType_INT64)}, nullptr, kPrngDomain);
+
+  for (const char* stream_config : {
+           static_cast<const char*>(nullptr),
+#ifdef ORT_ENABLE_STREAM
+           R"({"type":"DeviceBasedPartitioner","streams":[["seed","v1","v2","destroyed_first"],["second_seed","v3","v4","destroyed_second"]],"devices":["0","0"]})",
+#endif
+       }) {
+    SCOPED_TRACE(stream_config == nullptr ? "single stream" : "multiple streams");
+    const int destroyed_before = TestPrng::destroyed.load();
+    auto session = Initialize({"destroyed_first", "destroyed_second", "s2", "s5"},
+                              ExecutionMode::ORT_SEQUENTIAL, stream_config);
+    EXPECT_EQ(Plan(*session, "s1").alloc_kind, AllocKind::kReuse);
+    EXPECT_EQ(Plan(*session, "s4").alloc_kind, AllocKind::kReuse);
+    auto values = Run(*session, SeedFeed(), {"destroyed_first", "destroyed_second", "s2", "s5"});
+    EXPECT_EQ(*values[0].Get<Tensor>().Data<int64_t>(), destroyed_before + 1);
+    EXPECT_EQ(*values[1].Get<Tensor>().Data<int64_t>(), destroyed_before + 2);
+    EXPECT_EQ(TestPrng::destroyed.load(), destroyed_before + 2);
+    EXPECT_EQ(TestPrng::created.load() - TestPrng::destroyed.load(), 2);
+    OrtValue retained = values[2];
+    values.clear();
+    EXPECT_EQ(TestPrng::destroyed.load(), destroyed_before + 3);
+    EXPECT_EQ(retained.Get<TestPrng>().State(), 42u + 2 * 0x9e3779b97f4a7c15ULL);
+    retained = OrtValue{};
+    EXPECT_EQ(TestPrng::destroyed.load(), destroyed_before + 4);
+  }
+}
+
+TEST_F(OpaqueReuseTest, UnusedReusedOutputIsDestroyedBeforeLaterKernel) {
+  AddSeed();
+  AddGenerate("s0", "v1", "s1");
+  AddGenerate("s1", "v2", "s2");
+  model_->MainGraph().AddNode(
+      "destroyed", "DestructionCount", "", {&Scalar("v2", ONNX_NAMESPACE::TensorProto_DataType_FLOAT)},
+      {&Scalar("destroyed", ONNX_NAMESPACE::TensorProto_DataType_INT64)}, nullptr, kPrngDomain);
+  auto session = Initialize({"destroyed"});
+  ASSERT_EQ(Plan(*session, "s1").alloc_kind, AllocKind::kReuse);
+  ASSERT_EQ(Plan(*session, "s2").alloc_kind, AllocKind::kReuse);
+
+  auto values = Run(*session, SeedFeed(), {"destroyed"});
+
+  EXPECT_EQ(*values[0].Get<Tensor>().Data<int64_t>(), 1);
+  EXPECT_EQ(TestPrng::created.load(), 1);
+  EXPECT_EQ(TestPrng::destroyed.load(), 1);
+  EXPECT_EQ(TestPrng::reused.load(), 2);
+}
+
+#ifdef ORT_ENABLE_STREAM
+TEST_F(OpaqueReuseTest, MultiStreamRepeatedInputPreservesBothReads) {
+  AddSeed();
+  model_->MainGraph().AddNode(
+      "repeated_input", "GenerateRepeatedInput", "", {&State("s0"), &State("s0")},
+      {&Scalar("v1", ONNX_NAMESPACE::TensorProto_DataType_FLOAT), &State("s1")}, nullptr, kPrngDomain);
+  AddGenerate("s1", "v2", "s2");
+  model_->MainGraph().AddNode(
+      "finish", "Identity", "", {&Scalar("v2", ONNX_NAMESPACE::TensorProto_DataType_FLOAT)},
+      {&Scalar("result", ONNX_NAMESPACE::TensorProto_DataType_FLOAT)});
+  auto session = Initialize(
+      {"v1", "result", "s2"}, ExecutionMode::ORT_SEQUENTIAL,
+      R"({"type":"DeviceBasedPartitioner","streams":[["seed","repeated_input","v2"],["finish"]],"devices":["0","0"]})");
+  ASSERT_EQ(session->GetSessionState().GetExecutionPlan()->NumberOfValidStreams(), 2u);
+  EXPECT_EQ(Plan(*session, "s1").alloc_kind, AllocKind::kAllocate);
+  auto values = Run(*session, SeedFeed(), {"v1", "result", "s2"});
+  ExpectSamples(values);
+  EXPECT_EQ(TestPrng::reused.load(), 0);
+  EXPECT_EQ(TestPrng::copied.load(), 2);
+}
+
+TEST_F(OpaqueReuseTest, MultiStreamReuseLifetimeWaitsForAllConsumers) {
+  AddSeed();
+  AddGenerate("s0", "v1", "s1");
+  AddGenerate("s1", "left", "s2", "GenerateCopy");
+  AddGenerate("s1", "right", "s3", "GenerateCopy");
+  auto& graph = model_->MainGraph();
+  graph.AddNode("join", "Add", "",
+                {&Scalar("left", ONNX_NAMESPACE::TensorProto_DataType_FLOAT),
+                 &Scalar("right", ONNX_NAMESPACE::TensorProto_DataType_FLOAT)},
+                {&Scalar("sum", ONNX_NAMESPACE::TensorProto_DataType_FLOAT)});
+  graph.AddNode("destroyed", "DestructionCount", "",
+                {&Scalar("sum", ONNX_NAMESPACE::TensorProto_DataType_FLOAT)},
+                {&Scalar("destroyed", ONNX_NAMESPACE::TensorProto_DataType_INT64)}, nullptr, kPrngDomain);
+  auto session = Initialize(
+      {"v1", "left", "right", "destroyed", "s2", "s3"}, ExecutionMode::ORT_SEQUENTIAL,
+      R"({"type":"DeviceBasedPartitioner","streams":[["seed","v1","left","join","destroyed"],["right"]],"devices":["0","0"]})");
+  ASSERT_EQ(Plan(*session, "s1").alloc_kind, AllocKind::kReuse);
+  int reused_index;
+  ASSERT_STATUS_OK(session->GetSessionState().GetOrtValueNameIdxMap().GetIdx("s1", reused_index));
+  const auto& release_actions = session->GetSessionState().GetExecutionPlan()->release_actions;
+  const auto release = std::find_if(release_actions.begin(), release_actions.end(),
+                                    [reused_index](const auto& action) {
+                                      return action.value_index == static_cast<size_t>(reused_index);
+                                    });
+  ASSERT_NE(release, release_actions.end());
+  EXPECT_GT(release->ref_count, 1u);
+
+  auto values = Run(*session, SeedFeed(), {"v1", "left", "right", "destroyed", "s2", "s3"});
+
+  ExpectSamples(values);
+  EXPECT_EQ(*values[1].Get<Tensor>().Data<float>(), *values[2].Get<Tensor>().Data<float>());
+  EXPECT_EQ(*values[3].Get<Tensor>().Data<int64_t>(), 1);
+  EXPECT_EQ(TestPrng::created.load(), 3);
+  EXPECT_EQ(TestPrng::destroyed.load(), 1);
+  EXPECT_EQ(TestPrng::reused.load(), 1);
+}
+#endif
 
 TEST_F(OpaqueReuseTest, GraphOutputRemainsObservable) {
   AddSeed();
@@ -413,6 +573,49 @@ TEST_F(OpaqueReuseTest, GraphInputOutputAliasRequiresMayInplace) {
   EXPECT_EQ(state.Get<TestPrng>().State(), 42u);
   EXPECT_EQ(TestPrng::reused.load(), 0);
   EXPECT_EQ(TestPrng::copied.load(), 0);
+}
+
+TEST_F(OpaqueReuseTest, PassThroughAllowsSharedInputObjects) {
+  AddGenerate("a", "v1", "s1");
+  auto& graph = model_->MainGraph();
+  graph.SetInputs({&State("a"), &State("b")});
+  auto session = Initialize({"a", "b", "s1"});
+  OrtValue state = PrngValue(42);
+  const NameMLValMap feeds{{"a", state}, {"b", state}};
+
+  for (const auto& outputs : {std::vector<std::string>{"a", "b", "s1"},
+                              std::vector<std::string>{"b", "a", "s1"}}) {
+    for (int allocation = 0; allocation < 3; ++allocation) {
+      SCOPED_TRACE(outputs.front());
+      SCOPED_TRACE(allocation);
+      std::vector<OrtValue> fetches;
+      if (allocation != 0) {
+        fetches.resize(outputs.size());
+        if (allocation == 2) {
+          fetches[0] = fetches[1] = state;
+        }
+      }
+
+      ASSERT_STATUS_OK(session->Run(RunOptions{}, feeds, outputs, &fetches));
+
+      EXPECT_TRUE(fetches[0].SharesDataWith(state));
+      EXPECT_TRUE(fetches[1].SharesDataWith(state));
+      EXPECT_FALSE(fetches[2].SharesDataWith(state));
+      EXPECT_EQ(state.Get<TestPrng>().State(), 42u);
+      EXPECT_EQ(fetches[2].Get<TestPrng>().State(), 42u + 0x9e3779b97f4a7c15ULL);
+      EXPECT_EQ(TestPrng::reused.load(), 0);
+    }
+  }
+
+  const int copied_before = TestPrng::copied.load();
+  std::vector<OrtValue> fetches(3, state);
+  const std::vector<std::string> outputs{"a", "b", "s1"};
+  const auto status = session->Run(RunOptions{}, feeds, outputs, &fetches);
+  EXPECT_EQ(status.Code(), common::INVALID_ARGUMENT);
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("aliases multiple model inputs"));
+  EXPECT_EQ(state.Get<TestPrng>().State(), 42u);
+  EXPECT_EQ(TestPrng::copied.load(), copied_before);
+  EXPECT_EQ(TestPrng::reused.load(), 0);
 }
 
 TEST_F(OpaqueReuseTest, GraphInputOutputAliasRequiresLinearUse) {

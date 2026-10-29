@@ -3606,6 +3606,11 @@ common::Status InferenceSession::ValidateOpaqueInputOutputAliases(
       continue;
     }
 
+    // Frame setup replaces pass-through fetches with the feed. No mutable alias is requested.
+    if (std::find(feed_names.begin(), feed_names.end(), output_names[output_idx]) != feed_names.end()) {
+      continue;
+    }
+
     std::optional<size_t> matched_feed_idx;
     for (size_t feed_idx = 0; feed_idx < feeds.size(); ++feed_idx) {
       if (!IsOpaqueValue(feeds[feed_idx]) || !fetch.SharesDataWith(feeds[feed_idx])) {
@@ -3639,11 +3644,6 @@ common::Status InferenceSession::ValidateOpaqueInputOutputAliases(
       return ORT_MAKE_STATUS(
           ONNXRUNTIME, INVALID_ARGUMENT, "Opaque input '", input_name,
           "' aliases multiple model outputs. A mutable opaque input must alias exactly one output.");
-    }
-
-    // A graph value may be both an input and output without passing through a mutating kernel.
-    if (input_name == output_name) {
-      continue;
     }
 
     InlinedVector<SessionState::NodeInfo> input_node_info;

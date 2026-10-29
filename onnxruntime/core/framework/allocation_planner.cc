@@ -1454,7 +1454,13 @@ class PlannerImpl {
                   OrtValueIndex input_arg_index{};
                   if (value_map.GetIdx(p_input_arg->Name(), input_arg_index).IsOK() &&
                       allocation_plan[input_arg_index].alloc_kind == AllocKind::kAllocate) {
-                    if (value_consumer_map[input_arg_index].size() == 1 && SameSize(*p_input_arg, *p_output_arg)) {
+                    // A single consumer node may read the same opaque state more than once.
+                    const bool is_opaque = p_input_arg->TypeAsProto()->has_opaque_type();
+                    const auto input_uses = std::count(input_args.begin(), input_args.end(), p_input_arg) +
+                                            std::count(node->ImplicitInputDefs().begin(),
+                                                       node->ImplicitInputDefs().end(), p_input_arg);
+                    if (value_consumer_map[input_arg_index].size() == 1 && (!is_opaque || input_uses == 1) &&
+                        SameSize(*p_input_arg, *p_output_arg)) {
                       allocation_plan[output_idx_global].alloc_kind = AllocKind::kReuse;
                       allocation_plan[output_idx_global].reused_buffer = input_arg_index;
                       value_consumer_map[input_arg_index].insert(value_consumer_map[output_idx_global].begin(),
@@ -2014,12 +2020,27 @@ class PlannerImpl {
               // add current node as consumer for origin buffer
               ortvalue_to_consumers_map[origin].push_back(node_index);
             }
+            // Opaque reuse slots also own the object. Release each slot at its own last use;
+            // the origin above keeps the object alive until the entire reuse group is dead.
+            const auto& alloc = AllocPlan(value_idx);
+            if (alloc.alloc_kind == AllocKind::kReuse && alloc.value_type->GetTypeProto()->has_opaque_type()) {
+              ortvalue_to_consumers_map[value_idx].push_back(node_index);
+            }
           }
           return Status::OK();
         };
 
         ORT_RETURN_IF_ERROR(Node::ForEachWithIndex(node->InputDefs(), process_input));
         ORT_RETURN_IF_ERROR(Node::ForEachWithIndex(node->ImplicitInputDefs(), process_input));
+        for (const auto* output : node->OutputDefs()) {
+          if (!output->Exists()) continue;
+          const auto value_idx = Index(output->Name());
+          const auto& alloc = AllocPlan(value_idx);
+          if (alloc.alloc_kind == AllocKind::kReuse && alloc.value_type->GetTypeProto()->has_opaque_type()) {
+            // An unused opaque reuse output must still release its owning reference.
+            ortvalue_to_consumers_map[value_idx].push_back(node_index);
+          }
+        }
       }
     }
     // 2. build the release actions and fill into node's release list

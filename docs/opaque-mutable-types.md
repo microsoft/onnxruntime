@@ -154,6 +154,10 @@ For an accepted request:
 Binding distinct input and output objects remains fully supported. In that case the
 kernel preserves the input and writes the next state to the output object.
 
+A graph input returned unchanged as an output is a pass-through, not a mutable
+alias request. It remains supported even when multiple inputs share one caller
+object, with either preallocated or unallocated pass-through fetches.
+
 ### Why the direct relationship is required
 
 ORT has no generic operation for copying arbitrary opaque state back into a
@@ -220,6 +224,11 @@ input state.
 The object's class remains responsible for its private resources. ORT does not
 automatically pool internal buffers or infer deep-copy behavior.
 
+Owning references in graph-internal opaque reuse slots are released after their
+last use, including unused outputs. The original slot remains alive through the
+last use of the reuse group, so dead objects can release their private resources
+before later kernels execute rather than being retained until the run ends.
+
 ## Executable coverage
 
 [`OpaqueReuseTest`](../onnxruntime/test/framework/opaque_reuse_test.cc) defines
@@ -235,6 +244,10 @@ test-only opaque PRNG schemas and CPU kernels. It covers:
 - same-object model input/output binding through preallocated outputs and I/O binding;
 - pre-run rejection of non-linear boundary aliases, including executable `If`
   captures and repeated inputs;
+- multi-stream rejection of internal reuse when a kernel reads the same opaque
+  state in multiple input positions;
+- destruction of dead reused objects before later kernels execute;
+- pass-through outputs when multiple graph inputs share one caller object;
 - preservation of pass-through outputs regardless of fetch allocation or ordering; and
 - the distinct-output fallback at the model boundary.
 
