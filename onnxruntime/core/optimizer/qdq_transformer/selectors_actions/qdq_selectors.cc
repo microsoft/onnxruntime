@@ -7,6 +7,7 @@
 
 #include <cmath>
 
+#include "core/graph/constants.h"
 #include "core/graph/graph.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
@@ -797,7 +798,18 @@ bool MatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node&
     return dt_input == dt_output;
   } else {
     // can be converted to MatMulIntegerToFloat if EP supports that.
-    return matmulintegertofloat_allowed_;
+    if (!matmulintegertofloat_allowed_ || !Is8BitIntType(dt_input) || !Is8BitIntType(dt_weight)) {
+      return false;
+    }
+
+    // Scales and output share one floating type; the CPU kernel only supports FLOAT.
+    const int32_t dt_scale_a = dq_nodes[0]->InputDefs()[1]->TypeAsProto()->tensor_type().elem_type();
+    const int32_t dt_scale_b = dq_nodes[1]->InputDefs()[1]->TypeAsProto()->tensor_type().elem_type();
+    const int32_t dt_output = node.OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+    return dt_scale_a == dt_output && dt_scale_b == dt_output &&
+           (dt_output == ONNX_NAMESPACE::TensorProto::FLOAT ||
+            (dt_output == ONNX_NAMESPACE::TensorProto::FLOAT16 &&
+             node.GetExecutionProviderType() != kCpuExecutionProvider));
   }
 }
 

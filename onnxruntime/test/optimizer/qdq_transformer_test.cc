@@ -2753,6 +2753,164 @@ TEST(QDQTransformerTests, MatMulIntegerToFloat) {
   test_case({22, 11, 13, 15}, {15, 13}, false /*use_contrib_qdq*/);
 }
 
+template <typename InputAType, typename InputBType>
+void RunMatMulIntegerToFloatInputTypeTest(bool expect_fusion) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    // With unit scales and zero points, these inputs produce the reported MatMul result 11.
+    auto* input_a = builder.MakeInput<InputAType>({1, 2},
+                                                  std::vector<InputAType>{static_cast<InputAType>(1),
+                                                                          static_cast<InputAType>(2)});
+    auto* input_b = builder.MakeInput<InputBType>({2, 1},
+                                                  std::vector<InputBType>{static_cast<InputBType>(3),
+                                                                          static_cast<InputBType>(4)});
+    auto* dq_a_output = builder.MakeIntermediate<float>(std::vector<int64_t>{1, 2});
+    auto* dq_b_output = builder.MakeIntermediate<float>(std::vector<int64_t>{2, 1});
+    builder.AddDequantizeLinearNode<InputAType>(input_a, 1.0f, static_cast<InputAType>(0), dq_a_output);
+    builder.AddDequantizeLinearNode<InputBType>(input_b, 1.0f, static_cast<InputBType>(0), dq_b_output);
+
+    auto* output = builder.MakeOutput<float>(std::vector<int64_t>{1, 1});
+    builder.AddNode("MatMul", {dq_a_output, dq_b_output}, {output});
+  };
+
+  auto check_graph = [expect_fusion](InferenceSessionWrapper& session) {
+    auto op_counts = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_counts["MatMul"], expect_fusion ? 0 : 1);
+    EXPECT_EQ(op_counts["DequantizeLinear"], expect_fusion ? 0 : 2);
+    EXPECT_EQ(op_counts["com.microsoft.DequantizeLinear"], 0);
+    EXPECT_EQ(op_counts["com.microsoft.MatMulIntegerToFloat"], expect_fusion ? 1 : 0);
+  };
+
+  TransformerTester(build_test_case,
+                    check_graph,
+                    TransformerLevel::Level1,
+                    TransformerLevel::Level2,
+                    std::vector<int>{13, 19},
+                    1e-5 /*per_sample_tolerance*/,
+                    1e-5 /*relative_per_sample_tolerance*/);
+}
+
+TEST(QDQTransformerTests, MatMulIntegerToFloatPreservesInt32Inputs) {
+  RunMatMulIntegerToFloatInputTypeTest<int32_t, int8_t>(false);
+  RunMatMulIntegerToFloatInputTypeTest<uint8_t, int32_t>(false);
+  RunMatMulIntegerToFloatInputTypeTest<int32_t, int32_t>(false);
+}
+
+TEST(QDQTransformerTests, MatMulIntegerToFloatStillFusesSupported8BitInputs) {
+  RunMatMulIntegerToFloatInputTypeTest<uint8_t, uint8_t>(true);
+  RunMatMulIntegerToFloatInputTypeTest<uint8_t, int8_t>(true);
+}
+
+template <typename ScaleAType, typename ScaleBType, typename OutputType>
+void BuildMatMulIntegerToFloatDtypeCombinationGraph(ModelTestBuilder& builder,
+                                                    std::string execution_provider_type = {}) {
+  // Unit scales and zero points make this the same 11-result MatMul case for every dtype combination.
+  auto* input_a = builder.MakeInput<uint8_t>({1, 2}, std::vector<uint8_t>{1, 2});
+  auto* input_b = builder.MakeInput<int8_t>({2, 1}, std::vector<int8_t>{3, 4});
+  auto* scale_a = builder.MakeScalarInitializer<ScaleAType>(ScaleAType(1.0f));
+  auto* scale_b = builder.MakeScalarInitializer<ScaleBType>(ScaleBType(1.0f));
+  auto* zero_point_a = builder.MakeScalarInitializer<uint8_t>(uint8_t{0});
+  auto* zero_point_b = builder.MakeScalarInitializer<int8_t>(int8_t{0});
+  auto* dq_a_output = builder.MakeIntermediate<OutputType>(std::vector<int64_t>{1, 2});
+  auto* dq_b_output = builder.MakeIntermediate<OutputType>(std::vector<int64_t>{2, 1});
+
+  const auto output_dtype = static_cast<int64_t>(utils::ToTensorProtoElementType<OutputType>());
+  auto& dq_a = builder.AddNode("DequantizeLinear", {input_a, scale_a, zero_point_a}, {dq_a_output});
+  dq_a.AddAttribute("output_dtype", output_dtype);
+  auto& dq_b = builder.AddNode("DequantizeLinear", {input_b, scale_b, zero_point_b}, {dq_b_output});
+  dq_b.AddAttribute("output_dtype", output_dtype);
+
+  auto* output = builder.MakeOutput<OutputType>(std::vector<int64_t>{1, 1});
+  auto& matmul = builder.AddNode("MatMul", {dq_a_output, dq_b_output}, {output});
+  if (!execution_provider_type.empty()) {
+    dq_a.SetExecutionProviderType(execution_provider_type);
+    dq_b.SetExecutionProviderType(execution_provider_type);
+    matmul.SetExecutionProviderType(execution_provider_type);
+  }
+}
+
+template <typename ScaleAType, typename ScaleBType, typename OutputType>
+void RunMatMulIntegerToFloatDtypeCombinationTest() {
+  constexpr bool expect_fusion = std::is_same<ScaleAType, float>::value &&
+                                 std::is_same<ScaleBType, float>::value &&
+                                 std::is_same<OutputType, float>::value;
+
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildMatMulIntegerToFloatDtypeCombinationGraph<ScaleAType, ScaleBType, OutputType>(builder);
+  };
+
+  auto check_graph = [](InferenceSessionWrapper& session) {
+    auto op_counts = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_counts["com.microsoft.MatMulIntegerToFloat"], expect_fusion ? 1 : 0);
+    EXPECT_EQ(op_counts["MatMul"], expect_fusion ? 0 : 1);
+    EXPECT_EQ(op_counts["DequantizeLinear"], expect_fusion ? 0 : 2);
+  };
+
+  TransformerTester(build_test_case,
+                    check_graph,
+                    TransformerLevel::Level1,
+                    TransformerLevel::Level2,
+                    std::vector<int>{23, 25},
+                    1e-3 /*per_sample_tolerance*/,
+                    1e-3 /*relative_per_sample_tolerance*/);
+}
+
+TEST(QDQTransformerTests, MatMulIntegerToFloatCpuOnlyFusesAllFloat32Dtypes) {
+  RunMatMulIntegerToFloatDtypeCombinationTest<float, float, float>();
+  RunMatMulIntegerToFloatDtypeCombinationTest<float, float, MLFloat16>();
+  RunMatMulIntegerToFloatDtypeCombinationTest<float, MLFloat16, float>();
+  RunMatMulIntegerToFloatDtypeCombinationTest<MLFloat16, float, float>();
+  RunMatMulIntegerToFloatDtypeCombinationTest<MLFloat16, MLFloat16, float>();
+  RunMatMulIntegerToFloatDtypeCombinationTest<float, MLFloat16, MLFloat16>();
+  RunMatMulIntegerToFloatDtypeCombinationTest<MLFloat16, float, MLFloat16>();
+  RunMatMulIntegerToFloatDtypeCombinationTest<MLFloat16, MLFloat16, MLFloat16>();
+}
+
+template <typename ScaleAType, typename ScaleBType, typename OutputType>
+void CheckMatMulIntegerToFloatSelector(const std::string& execution_provider_type, bool expect_selection) {
+  const auto& logger = DefaultLoggingManager().DefaultLogger();
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 23;
+  Model model("MatMulIntegerToFloatSelectorTest", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {}, logger);
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+  BuildMatMulIntegerToFloatDtypeCombinationGraph<ScaleAType, ScaleBType, OutputType>(builder,
+                                                                                     execution_provider_type);
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  const GraphViewer graph_viewer(graph);
+  const Node* matmul_node = nullptr;
+  for (const auto& node : graph.Nodes()) {
+    if (node.OpType() == "MatMul") {
+      matmul_node = &node;
+      break;
+    }
+  }
+  ASSERT_NE(nullptr, matmul_node);
+
+  onnxruntime::QDQ::MatMulNodeGroupSelector selector(/*int8_allowed=*/true,
+                                                     /*matmulintegertofloat_allowed=*/true);
+  const auto result = selector.GetQDQSelection(graph_viewer, *matmul_node);
+  ASSERT_EQ(result.has_value(), expect_selection);
+  if (expect_selection) {
+    EXPECT_EQ(result->target_node, matmul_node->Index());
+    EXPECT_EQ(result->dq_nodes.size(), 2);
+    EXPECT_TRUE(result->q_nodes.empty());
+  }
+}
+
+TEST(QDQTransformerTests, MatMulIntegerToFloatSelectorHonorsProviderDtypeLimits) {
+  // These calls exercise selector policy only; they do not instantiate CPU or DML kernels.
+  CheckMatMulIntegerToFloatSelector<float, float, float>(kCpuExecutionProvider, true);
+  CheckMatMulIntegerToFloatSelector<float, float, float>(kDmlExecutionProvider, true);
+  CheckMatMulIntegerToFloatSelector<MLFloat16, MLFloat16, MLFloat16>(kCpuExecutionProvider, false);
+  CheckMatMulIntegerToFloatSelector<MLFloat16, MLFloat16, MLFloat16>(kDmlExecutionProvider, true);
+  CheckMatMulIntegerToFloatSelector<float, MLFloat16, float>(kDmlExecutionProvider, false);
+  CheckMatMulIntegerToFloatSelector<MLFloat16, float, float>(kDmlExecutionProvider, false);
+  CheckMatMulIntegerToFloatSelector<MLFloat16, MLFloat16, float>(kDmlExecutionProvider, false);
+}
+
 TEST(QDQTransformerTests, ConvRelu) {
   DNNL_GTEST_SKIP();
 
