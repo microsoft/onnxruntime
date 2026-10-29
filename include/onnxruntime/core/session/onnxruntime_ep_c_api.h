@@ -2302,9 +2302,9 @@ struct OrtEp {
    *
    * \note Initializer data in the provided graphs, whether obtained via OrtApi::ValueInfo_GetInitializerValue or
    *       received as a kernel input at compute time, is read-only. The EP must not modify it, including when passing
-   *          it to an underlying runtime or library without copying. Applications may supply this memory and, if they
-      *       still own it, reuse it after the session is released or compilation fails. Refer to
-      *       OrtModelEditorApi::AddInitializerToGraph.
+   *       it to an underlying runtime or library without copying. Applications may supply this memory and, if they
+   *       still own it, reuse it after the session is released or compilation fails. Refer to
+   *       OrtModelEditorApi::AddInitializerToGraph.
    *
    * \note As of version 1.24, implementation of this function is optional if the EP does not compile nodes and
    *       uses a kernel registry instead.

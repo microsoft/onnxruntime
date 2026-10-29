@@ -8056,7 +8056,8 @@ struct OrtModelEditorApi {
    *    If the caller still owns the memory, the data remains unchanged when a session or compilation that used it
    *    is released or fails. This applies to memory supplied through OrtApi::CreateTensorWithDataAsOrtValue.
    *    The caller can then reuse the same buffer for another session or compilation without copying or validating it.
-   *    Do not reuse memory supplied through OrtApi::CreateTensorWithDataAndDeleterAsOrtValue after ORT calls the deleter.
+   *    Do not reuse memory supplied through OrtApi::CreateTensorWithDataAndDeleterAsOrtValue after ORT calls
+   *    the deleter.
    *    The caller must not modify the data while ONNX Runtime is using it.
    *
    *    NOTE: A tensor containing pre-existing memory MUST have 128 bytes of data or more.
