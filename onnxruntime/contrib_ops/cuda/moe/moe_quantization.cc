@@ -981,6 +981,10 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
           slice.total_bytes = t->SizeInBytes();
           slice.bytes_per_expert = t->SizeInBytes() / static_cast<size_t>(num_e);
           slice.host_data = (t->Location().device.Type() == OrtDevice::CPU) ? t->DataRaw() : nullptr;
+          if (slice.host_data != nullptr && slice.total_bytes > 0) {
+            static_cast<void>(onnxruntime::moe_offload::PromoteFileMappingToSharedReadOnly(
+                slice.host_data, slice.total_bytes));
+          }
           slice.is_file_mapped = onnxruntime::moe_offload::IsReloadableFileMapping(slice.host_data, slice.total_bytes);
           offload_source_desc_.banks[static_cast<size_t>(kind)] = std::move(slice);
         };
