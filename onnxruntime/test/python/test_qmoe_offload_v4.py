@@ -655,7 +655,7 @@ class TestQMoEOffloadV4(unittest.TestCase):
                     cls._nvfp4_skip_reason = "This build does not enable USE_FP4_QMOE (NVFP4 QMoE)"
 
     def setUp(self):
-        if not self._nvfp4_supported and "int4_and_int3" not in self._testMethodName:
+        if not self._nvfp4_supported and not self._testMethodName.startswith(("test_v4_int4", "test_v4_int3")):
             self.skipTest(self._nvfp4_skip_reason or "This build does not enable USE_FP4_QMOE (NVFP4 QMoE)")
 
     @classmethod
@@ -1241,7 +1241,9 @@ class TestQMoEOffloadV4(unittest.TestCase):
                     s_ok = self._make_session(int_path, {"session.moe.offload.mode": "required"})
                     del s_ok
                 else:
-                    with self.assertRaisesRegex(Exception, "quant_type='int' offload requires|rejected node"):
+                    with self.assertRaisesRegex(
+                        Exception, "quant_type='int' offload requires|rejected node|INT3 requires.*weights_prepacked=0"
+                    ):
                         self._make_session(int_path, {"session.moe.offload.mode": "required"})
 
     def test_v4_embedded_heap_weights_bounded_cache_eviction_safety(self):
@@ -2489,14 +2491,14 @@ int main() {
                 for layer, count in tiles.items():
                     self.assertGreater(count, 0, f"{label}: layer {layer} must run the synchronous streaming path")
 
-            # Control: plain runs are observed and, since every route is cold, they drive promotions. Without this
-            # the checks below could pass just because nothing ever adapts in this configuration.
+            # Control: plain runs must record routes. CPU-disabled streaming keeps placement fixed, so promotions
+            # remain zero even though all of these ordinary cold routes are observed.
             control = run_session(warmup_runs=0, plain_runs=6)
             assert_streamed(control, "control")
             self.assertEqual(_resident_slots_per_layer(control), {0: 4, 1: 4})
             self.assertEqual(_resident_routes_per_layer(control), dict.fromkeys(range(2), 6 * rows * top_k))
             for layer, promotions in _resident_promotions_per_layer(control).items():
-                self.assertGreater(promotions, 0, f"layer {layer}: plain cold routes must drive promotions")
+                self.assertEqual(promotions, 0, f"layer {layer}: CPU-disabled streaming keeps placement fixed")
 
             # Warmup runs execute the same streaming path but feed no route counters, scores or promotions.
             warmup_only = run_session(warmup_runs=6, plain_runs=0)
@@ -2777,6 +2779,179 @@ int main() {
         self.assertGreater(zero_rel_l2, max_rel_l2 * 10.0)
         self.assertGreater(ref_peak, max_rel_inf * ref_peak * 10.0)
 
+    def test_v4_int4_cutlass_resident_and_bounded_streaming_multichunk_parity(self):
+        rows = 2304  # k=2 produces 4,608 routes in one tile, including a 512-route second chunk.
+        with (
+            tempfile.TemporaryDirectory() as tmpdir,
+            mock.patch.dict(
+                os.environ,
+                {
+                    "ORT_QMOE_SHARED_RESIDENT_LOG": "1",
+                    "ORT_QMOE_INT4_PREFILL_GEMM": "1",
+                    "ORT_QMOE_MAX_SYNC_TILE_TOKENS": "4096",
+                    "ORT_QMOE_SHARED_STREAM_ROWS": "4096",
+                    "ORT_QMOE_PREFILL_CHUNK_TOKENS": "4096",
+                },
+            ),
+        ):
+            for use_fp16 in (True, False):
+                model_dir = os.path.join(tmpdir, f"fp16_{use_fp16}")
+                os.makedirs(model_dir)
+                model = self._build_int_qmoe_model(model_dir, [(4, 32, 1)], use_fp16=use_fp16)
+                ref = self._make_session(model, {"session.moe.offload.mode": "disabled"})
+                run = self._run_fp16 if use_fp16 else self._run_bf16
+                rng = np.random.default_rng(33622)
+                x = rng.standard_normal((rows, 256), dtype=np.float32) * 0.5
+                for streaming in (False, True):
+                    with self.subTest(use_fp16=use_fp16, streaming=streaming):
+                        router = np.full((rows, 8), -10.0, dtype=np.float32)
+                        if streaming:
+                            router[: rows // 2, 1:3] = 10.0
+                            router[rows // 2 :, 4:6] = 10.0
+                        else:
+                            # The generated popularity profile places experts 0, 3, and 6 on GPU.
+                            router[:, [0, 3]] = 10.0
+                        expected = run(ref, x, router)
+                        with _capture_native_stderr() as captured:
+                            sess = self._make_session(
+                                model,
+                                {
+                                    "session.moe.offload.mode": "required",
+                                    "session.moe.offload.placement": "static",
+                                    "session.moe.offload.popularity_file": "expert-profile.bin",
+                                    "session.moe.offload.cpu_execution": "disabled" if streaming else "enabled",
+                                    "session.moe.offload.device_expert_bytes": str(64 + 3 * 55304),
+                                    # Two cache slots must serve a four-expert streaming wave.
+                                    "session.moe.offload.host_expert_bytes": str(2 * 55808),
+                                    "session.moe.offload.prefill_wave_experts": "4",
+                                },
+                            )
+                            actual = run(sess, x, router)
+                            del sess
+                            gc.collect()
+                        self._assert_int_offload_parity(expected, actual, f"cutlass({use_fp16=},{streaming=})")
+                        dispatched = re.findall(r"INT4 CUTLASS layer=0 routes=(\d+) capacity=(\d+)", captured[0])
+                        self.assertEqual(dispatched, [("4096", "4096"), ("512", "4096")], captured[0])
+                        hits = _resident_log_rows(captured[0])[0][1]
+                        self.assertEqual(hits, 0 if streaming else rows * 2, captured[0])
+                del ref
+                gc.collect()
+
+    def test_v4_int4_cutlass_scratch_budget_and_wave_limit(self):
+        with (
+            tempfile.TemporaryDirectory() as tmpdir,
+            mock.patch.dict(
+                os.environ,
+                {
+                    "ORT_QMOE_SHARED_RESIDENT_LOG": "1",
+                    "ORT_QMOE_INT4_PREFILL_GEMM": "1",
+                    "ORT_QMOE_MAX_SYNC_TILE_TOKENS": "512",
+                },
+            ),
+        ):
+            model = self._build_int_qmoe_model(tmpdir, [(4, 32, 1)])
+            ref = self._make_session(model, {"session.moe.offload.mode": "disabled"})
+            rng = np.random.default_rng(33623)
+            for rows, working_bytes in ((16, 2 << 20), (512, 3 << 20), (512, 9 << 18)):
+                with self.subTest(rows=rows, working_bytes=working_bytes):
+                    x = rng.standard_normal((rows, 256), dtype=np.float32) * 0.5
+                    router = np.full((rows, 8), -10.0, dtype=np.float32)
+                    router[:, 4:6] = 10.0
+                    expected = self._run_bf16(ref, x, router)
+                    with _capture_native_stderr() as captured:
+                        sess = self._make_session(
+                            model,
+                            {
+                                "session.moe.offload.mode": "required",
+                                "session.moe.offload.placement": "static",
+                                "session.moe.offload.popularity_file": "expert-profile.bin",
+                                "session.moe.offload.cpu_execution": "disabled",
+                                "session.moe.offload.device_expert_bytes": str(64 + 3 * 55304),
+                                "session.moe.offload.device_working_bytes": str(working_bytes),
+                                "session.moe.offload.host_expert_bytes": str(2 * 55808),
+                                "session.moe.offload.prefill_wave_experts": "1" if rows == 16 else "2",
+                            },
+                        )
+                        actual = self._run_bf16(sess, x, router)
+                        del sess
+                        gc.collect()
+                    self._assert_int_offload_parity(expected, actual, f"scratch({rows=},{working_bytes=})")
+                    dispatched = re.findall(r"INT4 CUTLASS layer=0 routes=(\d+) capacity=(\d+)", captured[0])
+                    if rows == 16:
+                        self.assertFalse(dispatched, captured[0])
+                        self.assertRegex(
+                            captured[0], r"stream layer=0 tiles=1 experts=2 routes=32 cpu_routes=0 waves=2\b"
+                        )
+                    elif working_bytes == 3 << 20:
+                        self.assertTrue(dispatched, captured[0])
+                        self.assertTrue(all(int(capacity) < 1024 for _, capacity in dispatched), captured[0])
+                        self.assertEqual(sum(int(routes) for routes, _ in dispatched), 1024, captured[0])
+                    else:
+                        self.assertFalse(dispatched, captured[0])
+            del ref
+            gc.collect()
+
+    def test_v4_int4_eight_token_hybrid_cuda_graph_replay(self):
+        cudart = _load_cudart()
+        if cudart is None:
+            self.skipTest("CUDA runtime library is required to update captured GPU inputs in place")
+        with (
+            tempfile.TemporaryDirectory() as tmpdir,
+            mock.patch.dict(os.environ, {"ORT_QMOE_SHARED_RESIDENT_LOG": "1", "ORT_QMOE_SHARED_CPU_TIMING": "1"}),
+            _capture_native_stderr() as captured,
+        ):
+            model = self._build_int_qmoe_model(tmpdir, [(4, 32, 1)])
+            graph_model = _wrap_qmoe_model_with_cast_io(model, os.path.join(tmpdir, "graph.onnx"), 256, 8)
+            ref = self._make_session(model, {"session.moe.offload.mode": "disabled"})
+            sess = self._make_session(
+                graph_model,
+                {
+                    "session.moe.offload.mode": "required",
+                    "session.moe.offload.placement": "static",
+                    "session.moe.offload.popularity_file": "expert-profile.bin",
+                    "session.moe.offload.cpu_execution": "enabled",
+                    "session.moe.offload.device_expert_bytes": str(64 + 2 * 55304),
+                    "session.moe.offload.host_expert_bytes": str(2 * 55808),
+                },
+                cuda_options={"enable_cuda_graph": "1", "min_num_runs_before_cuda_graph_capture": "2"},
+            )
+            device_id = self._device_id(self._selected_plugin_device())
+            x_ptr = _cuda_malloc(cudart, 8 * 256 * 4, device_id)
+            r_ptr = _cuda_malloc(cudart, 8 * 8 * 4, device_id)
+            try:
+                binding = sess.io_binding()
+                binding.bind_input("X_f32", "cuda", device_id, np.float32, [8, 256], x_ptr.value)
+                binding.bind_input("R_f32", "cuda", device_id, np.float32, [8, 8], r_ptr.value)
+                binding.bind_output("Y_f32", "cuda", device_id)
+                rng = np.random.default_rng(33624)
+                for step in range(8):
+                    x = _round_to_act_dtype(rng.standard_normal((8, 256), dtype=np.float32) * 0.5)
+                    router = np.full((8, 8), -10.0, dtype=np.float32)
+                    router[:, 0] = 10.0  # Resident hit on every token.
+                    router[:, 4 + step % 4] = 10.0  # Cold routes cycle through more than the host cache can hold.
+                    _cuda_upload(cudart, x_ptr, x)
+                    _cuda_upload(cudart, r_ptr, router)
+                    expected = self._run_bf16(ref, x, router)
+                    sess.run_with_iobinding(binding)
+                    actual = binding.copy_outputs_to_cpu()[0]
+                    self._assert_int_offload_parity(expected, actual, f"s8_graph(step={step})")
+                    # A missing CPU contribution must be observable even though every token has a resident hit.
+                    hit_only = np.full_like(router, -10.0)
+                    hit_only[:, 0] = 10.0
+                    half_hit = 0.5 * self._run_bf16(ref, x, hit_only)
+                    self.assertGreater(float(np.linalg.norm(expected - half_hit) / np.linalg.norm(expected)), 0.1)
+            finally:
+                cudart.cudaFree(x_ptr)
+                cudart.cudaFree(r_ptr)
+            del binding, sess, ref
+            gc.collect()
+        self.assertEqual(_resident_slots_per_layer(captured[0])[0], 2, captured[0])
+        calls, total_routes, cold_routes = _cpu_path_route_rows(captured[0])[0]
+        self.assertGreater(calls, 0, captured[0])
+        self.assertEqual(2 * cold_routes, total_routes, captured[0])
+        misses = re.findall(r"ssd_misses=(\d+)", captured[0])
+        self.assertTrue(misses and any(int(count) > 0 for count in misses), captured[0])
+
     def test_v4_int4_and_int3_offload_modes_and_numerical_parity(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             # 1. Prepacked INT4 (bits=4, block_size=32, weights_prepacked=1)
@@ -2828,7 +3003,7 @@ int main() {
             )
 
             rng = np.random.default_rng(202610)
-            for num_rows in (1, 2, 4, 16):
+            for num_rows in (1, 2, 4, 8, 16):
                 x = rng.standard_normal((num_rows, 256), dtype=np.float32) * 0.5
                 r = rng.standard_normal((num_rows, 8), dtype=np.float32)
                 y_ref = self._run_bf16(sess_int4_ref, x, r)
