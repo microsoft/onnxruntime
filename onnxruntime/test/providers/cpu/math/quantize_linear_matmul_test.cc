@@ -283,6 +283,39 @@ TEST(QuantizeLinearMatmulOpTest, QLinearMatMulAllInputExceptT1AreInitializers) {
   QLinearMatMul2DTest(true);
 }
 
+TEST(QuantizeLinearMatmulOpTest, QLinearMatMulZeroReductionNonEmptyOutput) {
+  for (bool b_is_initializer : {false, true}) {
+    SCOPED_TRACE(b_is_initializer ? "B initializer" : "B runtime input");
+    OpTester test("QLinearMatMul", 10);
+    test.AddInput<uint8_t>("T1", {2, 0}, std::vector<uint8_t>{});
+    test.AddInput<float>("a_scale", {}, {0.5f});
+    test.AddInput<uint8_t>("a_zero_point", {}, {13});
+    test.AddInput<uint8_t>("T2", {0, 3}, std::vector<uint8_t>{}, b_is_initializer);
+    test.AddInput<float>("b_scale", {}, {0.25f});
+    test.AddInput<uint8_t>("b_zero_point", {}, {7});
+    test.AddInput<float>("y_scale", {}, {0.125f});
+    test.AddInput<uint8_t>("y_zero_point", {}, {201});
+    test.AddOutput<uint8_t>("T3", {2, 3}, {201, 201, 201, 201, 201, 201});
+
+    test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+  }
+}
+
+TEST(QuantizeLinearMatmulOpTest, QLinearMatMulOneReductionControl) {
+  OpTester test("QLinearMatMul", 10);
+  test.AddInput<uint8_t>("T1", {2, 1}, {1, 2});
+  test.AddInput<float>("a_scale", {}, {0.5f});
+  test.AddInput<uint8_t>("a_zero_point", {}, {1});
+  test.AddInput<uint8_t>("T2", {1, 2}, {2, 0});
+  test.AddInput<float>("b_scale", {}, {0.25f});
+  test.AddInput<uint8_t>("b_zero_point", {}, {1});
+  test.AddInput<float>("y_scale", {}, {0.125f});
+  test.AddInput<uint8_t>("y_zero_point", {}, {97});
+  test.AddOutput<uint8_t>("T3", {2, 2}, {97, 97, 98, 96});
+
+  test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+}
+
 TEST(QuantizeLinearMatmulOpTest, PerColumn_2D) {
   OpTester test("QLinearMatMul", 10);
   test.AddInput<uint8_t>("a",
