@@ -41,6 +41,7 @@ limitations under the License.
 #include "contrib_ops/cuda/bert/unfused_attention.h"
 #include "contrib_ops/cuda/bert/group_query_attention_impl.h"
 #include "contrib_ops/cuda/bert/group_query_attention_workspace.h"
+#include "contrib_ops/cuda/bert/group_query_attention_split_decode.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "contrib_ops/cuda/bert/group_query_attention_qkv.cuh"
 #include "contrib_ops/cuda/bert/group_query_attention_qdq.cuh"
@@ -1180,6 +1181,28 @@ Status FlashAttention(
   bool is_bf16 = std::is_same<T, __nv_bfloat16>::value;
 
   DUMP_TENSOR_INIT();
+
+  if constexpr (std::is_same<T, half>::value && std::is_same<U, half>::value) {
+    if (data.use_split_decode) {
+      // One-token prep (QK-Norm, RoPE, append) and attention; total_seq_lens and past_seq_lens
+      // come from GetSequenceLengths.
+      half* q_out = reinterpret_cast<half*>(data.qkv_buffer);
+      const bool packed = parameters.is_packed_qkv;
+      ORT_RETURN_IF_ERROR(LaunchGqaSplitDecodePrep(
+          stream, packed ? data.query : nullptr, packed ? nullptr : data.query, packed ? nullptr : data.key,
+          packed ? nullptr : data.value, q_out, data.present_key, data.present_value, data.past_seq_lens,
+          data.position_ids, data.cos_cache, data.sin_cache, RopeMaxPosition(parameters),
+          parameters.do_rotary && data.cos_cache != nullptr && data.sin_cache != nullptr, data.q_norm_weight,
+          data.k_norm_weight, parameters.q_norm_epsilon, parameters.k_norm_epsilon, batch_size, num_heads,
+          kv_num_heads,
+          parameters.seqlen_present_kv_cache));
+      return LaunchGqaSplitDecode(stream, q_out, data.present_key, data.present_value, data.output,
+                                  data.total_seq_lens, scale, batch_size, kv_num_heads,
+                                  parameters.seqlen_present_kv_cache, data.split_decode_max_splits,
+                                  data.split_decode_partials,
+                                  data.split_decode_counters);
+    }
+  }
 
   const T* q_prep = nullptr;
   ORT_RETURN_IF_ERROR((PrepareQKV<T, U>(stream, max_threads_per_block, parameters, data, q_prep)));
