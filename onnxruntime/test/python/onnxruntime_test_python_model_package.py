@@ -146,6 +146,15 @@ class TestStableModelPackageApi(unittest.TestCase):
                 (output,) = session.run(None, {"X": x})
                 np.testing.assert_array_equal(output, x * MUL_1_WEIGHTS)
 
+            # Package sessions cannot be re-created from a model path, so these must fail cleanly.
+            session = sessions[0]
+            with self.assertRaises(NotImplementedError):
+                session.set_providers(["CPUExecutionProvider"])
+            with self.assertRaises(NotImplementedError):
+                session.enable_fallback()
+            (output,) = session.run(None, {"X": x})
+            np.testing.assert_array_equal(output, x * MUL_1_WEIGHTS)
+
 
 if __name__ == "__main__":
     unittest.main()
