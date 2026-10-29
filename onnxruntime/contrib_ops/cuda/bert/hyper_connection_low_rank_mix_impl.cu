@@ -51,10 +51,12 @@ constexpr int kMaxFusedHidden = kMaxVecIters * kThreads * 8;
 constexpr int kMaxFusedRank = 512;
 constexpr int kMaxFusedBranches = 8;
 
+// expf(-|v|) is the argument both branches of the textbook form pass to expf (-v for v >= 0, v for v < 0), so one expf and
+// one division give the bit-identical result (verified over all 2^32 fp32 bit patterns) without the divergent two-way
+// branch, which executed both paths in nearly every warp of the prefill pre-mix.
 __device__ __forceinline__ float SigmoidF32(float v) {
-  if (v >= 0.0f) return 1.0f / (1.0f + expf(-v));
-  const float e = expf(v);
-  return e / (1.0f + e);
+  const float e = expf(-fabsf(v));
+  return (v >= 0.0f ? 1.0f : e) / (1.0f + e);
 }
 
 template <typename T>
