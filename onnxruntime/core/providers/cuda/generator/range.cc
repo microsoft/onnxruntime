@@ -89,10 +89,9 @@ static Status ComputeRange(cudaStream_t stream, OpKernelContext* ctx) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "delta in Range operator can not be zero!");
   }
 
-  // Compute the element count in double, mirroring the CPU kernel's guard structure and error
-  // messages (core/providers/cpu/generator/range.cc ComputeRange) and the shape-inference path
-  // (core/graph/contrib_ops/range_schema_defs.cc CalcRangeDim). The operands are
-  // promoted to double before the subtraction so integral inputs cannot overflow in T.
+  // Compute the element count in double. This matches the CPU/contrib floating-point
+  // path, but integral inputs may lose precision here. Promoting before subtraction
+  // prevents signed overflow in T.
   double num = ceil((static_cast<double>(limit) - static_cast<double>(start)) / static_cast<double>(delta));
   if (!std::isfinite(num)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
