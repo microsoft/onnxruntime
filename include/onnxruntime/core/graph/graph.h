@@ -2104,6 +2104,9 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD)
+  // Only file-source injection requires materializing subgraphs before ONNX checking.
+  bool file_source_initializers_injected_ = false;
+
   IOnnxRuntimeOpSchemaCollectionPtr schema_registry_;
 
   // Currently to make the ORT in-memory graph work, we have to create a temporary op schema

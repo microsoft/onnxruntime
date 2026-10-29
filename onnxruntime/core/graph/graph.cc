@@ -3664,7 +3664,7 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
             node.SetOriginalNodeProto(nullptr);
           } else {
             NodeProto node_proto;
-            node.ToProto(node_proto, /*update_subgraphs=*/true);
+            node.ToProto(node_proto, /*update_subgraphs=*/file_source_initializers_injected_);
             checker::check_node(node_proto, ctx, lsc);
           }
         }
@@ -4458,6 +4458,7 @@ Status Graph::InjectExternalInitializersFromFileSources(
   std::vector<Graph*> subgraphs;
   FindAllSubgraphs(subgraphs);
   auto inject = [&](Graph& graph) -> Status {
+    graph.file_source_initializers_injected_ = true;
     std::vector<std::string> names;
     for (const auto& [name, tensor] : graph.GetAllInitializedTensors()) {
       if (utils::HasExternalDataInFile(*tensor)) {
