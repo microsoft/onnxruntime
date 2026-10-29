@@ -252,6 +252,8 @@ class Session:
         # self._sess is managed by the derived class and relies on bindings from C.InferenceSession
         self._sess = None
         self._enable_fallback = enable_fallback
+        # Sessions created from a model package cannot be re-created from a model path or bytes.
+        self._from_model_package = False
         # Captured graphs retain buffer signatures without extending the IOBinding lifetime.
         self._captured_graph_bindings: dict[int, tuple[weakref.ref, tuple]] = {}
 
@@ -323,6 +325,7 @@ class Session:
         means execute a node using CUDAExecutionProvider if capable,
         otherwise execute using CPUExecutionProvider.
         """
+        self._check_session_can_be_recreated("set_providers")
         # recreate the underlying C.InferenceSession
         self._reset_session(providers, provider_options)
 
@@ -339,7 +342,15 @@ class Session:
         If GPU is enabled, fall back to CUDAExecutionProvider.
         otherwise fall back to CPUExecutionProvider.
         """
+        self._check_session_can_be_recreated("enable_fallback")
         self._enable_fallback = True
+
+    def _check_session_can_be_recreated(self, method_name: str) -> None:
+        if self._from_model_package:
+            raise NotImplementedError(
+                f"{method_name}() is not supported for sessions created from a model package. "
+                "Create a new session with ModelPackageComponentContext.create_session() instead."
+            )
 
     def _validate_input(self, feed_input_names):
         missing_input_names = []
@@ -808,6 +819,7 @@ class InferenceSession(Session):
     def _from_initialized_c_session(cls, sess: C.InferenceSession) -> InferenceSession:
         obj = cls.__new__(cls)
         Session.__init__(obj, enable_fallback=False)
+        obj._from_model_package = True
         obj._bind_session(sess)
         return obj
 

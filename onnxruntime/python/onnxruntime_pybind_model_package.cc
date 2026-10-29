@@ -121,13 +121,36 @@ class PyModelPackage {
     if (!package_) {
       throw py::value_error("Model package is closed.");
     }
+    ThrowIfBusy();
     return package_.get();
   }
 
-  void Close() { package_.reset(); }
+  void Close() {
+    ThrowIfBusy();
+    package_.reset();
+  }
+
+  // Marks the package busy while a native call runs with the GIL released, so other Python
+  // threads cannot close or mutate it concurrently. Create and destroy it with the GIL held.
+  class BusyScope {
+   public:
+    explicit BusyScope(PyModelPackage& owner) : owner_(owner) { owner_.busy_ = true; }
+    ~BusyScope() { owner_.busy_ = false; }
+    ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(BusyScope);
+
+   private:
+    PyModelPackage& owner_;
+  };
 
  private:
+  void ThrowIfBusy() const {
+    if (busy_) {
+      throw std::runtime_error("Model package is in use by another thread.");
+    }
+  }
+
   Handle package_;
+  bool busy_ = false;
 };
 
 }  // namespace
@@ -262,8 +285,10 @@ void addModelPackageMethods(py::module& m) {
       }, py::arg("source_dir"))
       .def("commit", [](PyModelPackage& self, const std::optional<std::string>& destination,
                         ModelPackageWriteMode mode) {
+        ModelPackage* package = self.Get();
+        PyModelPackage::BusyScope busy{self};
         py::gil_scoped_release release;
-        CheckPackageStatus(ModelPackage_Commit(self.Get(), OptionalString(destination), mode));
+        CheckPackageStatus(ModelPackage_Commit(package, OptionalString(destination), mode));
       }, py::arg("dest_root") = std::nullopt, py::arg("mode") = MODEL_PACKAGE_WRITE_PRESERVE,
          "Commit in place, or to an empty destination. Shared asset sources must remain readable until commit.")
       .def("prune", [](PyModelPackage& self) {
