@@ -83,6 +83,14 @@ stages:
           TMPDIR: "$(Agent.TempDirectory)"
 
       - task: PythonScript@0
+        displayName: 'Stage Dawn Agility SDK from configured NuGet feed'
+        inputs:
+          scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\stage_dawn_agility_sdk.py'
+          arguments: >-
+            --source-dir "$(Build.SourcesDirectory)"
+            --mirror-dir "$(Build.BinariesDirectory)\cmake-deps-mirror"
+
+      - task: PythonScript@0
         displayName: 'Build'
         inputs:
           scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
@@ -93,6 +101,7 @@ stages:
             --cmake_generator "$(VSGenerator)"
             --parallel
             --use_vcpkg
+            --cmake_deps_mirror_dir "$(Build.BinariesDirectory)\cmake-deps-mirror"
             --use_vcpkg_ms_internal_asset_cache
             --use_binskim_compliant_compile_flags
             --update
