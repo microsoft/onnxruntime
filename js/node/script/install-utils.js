@@ -139,6 +139,10 @@ async function installPackages(packages, manifests, feeds) {
   }
 }
 
+function hasPackageVersion(packageInfo, version) {
+  return packageInfo?.versions?.includes(version.toLowerCase()) === true;
+}
+
 async function resolvePackage(type, index, packageName, version, integrity) {
   parseSha512Integrity(integrity);
 
@@ -158,8 +162,8 @@ async function resolvePackage(type, index, packageName, version, integrity) {
 
     // STEP.3 - get the package version info
     const packageInfo = await downloadJson(`${packageBaseUrl}${packageName.toLowerCase()}/index.json`);
-    if (!packageInfo.versions.includes(version.toLowerCase())) {
-      throw new Error(`Failed to find specific package versions for ${packageName} in ${index}`);
+    if (!hasPackageVersion(packageInfo, version)) {
+      return null;
     }
 
     // STEP.4 - generate the package URL
@@ -335,6 +339,7 @@ function parseInstallCudaFlag() {
 }
 
 module.exports = {
+  hasPackageVersion,
   installPackages,
   parseInstallFlag,
   verifyFileIntegrity,

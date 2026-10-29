@@ -10,7 +10,7 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
-const { verifyFileIntegrity } = require('./install-utils.js');
+const { hasPackageVersion, verifyFileIntegrity } = require('./install-utils.js');
 
 const withTempFile = async (contents, fn) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'onnxruntime-node-integrity-'));
@@ -43,4 +43,11 @@ test('rejects missing or malformed integrity metadata', async () => {
     await assert.rejects(verifyFileIntegrity(filepath, 'sha256-not-supported'), /Missing or invalid/);
     await assert.rejects(verifyFileIntegrity(filepath, 'sha512-YQ=='), /Missing or invalid/);
   });
+});
+
+test('treats unavailable package versions as fallback candidates', () => {
+  assert.equal(hasPackageVersion(null, '1.32.0'), false);
+  assert.equal(hasPackageVersion({}, '1.32.0'), false);
+  assert.equal(hasPackageVersion({ versions: ['1.31.0'] }, '1.32.0'), false);
+  assert.equal(hasPackageVersion({ versions: ['1.31.0', '1.32.0'] }, '1.32.0'), true);
 });

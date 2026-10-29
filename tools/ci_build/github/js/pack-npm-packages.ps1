@@ -132,25 +132,28 @@ Function Write-Node-NuGet-Integrity-Metadata {
             throw "Unsupported NuGet feed for Node installer integrity metadata: $($candidate.feed)"
         }
 
-        $nugetIndex=Invoke-RestMethod -Uri $feedIndex -UseBasicParsing
-        $packageBase=($nugetIndex.resources |
-            Where-Object { $_.'@type' -eq 'PackageBaseAddress/3.0.0' } |
-            Select-Object -First 1).'@id'
-        if (-not $packageBase) {
-            throw "Failed to find PackageBaseAddress in NuGet index: $feedIndex"
-        }
-
-        $packageKey="microsoft.ml.onnxruntime.gpu.linux"
-        $versionKey=$candidate.version.ToLower()
-        $packageUrl="$packageBase$packageKey/$versionKey/$packageKey.$versionKey.nupkg"
-        $tempPackage=Join-Path ([System.IO.Path]::GetTempPath()) "$packageKey.$versionKey.$PID.nupkg"
+        $tempPackage=$null
         try {
+            $nugetIndex=Invoke-RestMethod -Uri $feedIndex -UseBasicParsing
+            $packageBase=($nugetIndex.resources |
+                Where-Object { $_.'@type' -eq 'PackageBaseAddress/3.0.0' } |
+                Select-Object -First 1).'@id'
+            if (-not $packageBase) {
+                throw "Failed to find PackageBaseAddress in NuGet index"
+            }
+
+            $packageKey="microsoft.ml.onnxruntime.gpu.linux"
+            $versionKey=$candidate.version.ToLower()
+            $packageUrl="$packageBase$packageKey/$versionKey/$packageKey.$versionKey.nupkg"
+            $tempPackage=Join-Path ([System.IO.Path]::GetTempPath()) "$packageKey.$versionKey.$PID.nupkg"
             Invoke-WebRequest -Uri $packageUrl -OutFile $tempPackage -UseBasicParsing
             Add-Candidate $candidate.feed $candidate.version $tempPackage
         } catch {
-            Write-Warning "Skipping unavailable Node installer package $packageKey $($candidate.version): $($_.Exception.Message)"
+            Write-Warning "Skipping unavailable Node installer package $($candidate.version) from $($candidate.feed): $($_.Exception.Message)"
         } finally {
-            Remove-Item -Path $tempPackage -Force -ErrorAction SilentlyContinue
+            if ($tempPackage) {
+                Remove-Item -Path $tempPackage -Force -ErrorAction SilentlyContinue
+            }
         }
     }
 

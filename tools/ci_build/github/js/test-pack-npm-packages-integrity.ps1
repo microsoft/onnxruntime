@@ -23,6 +23,10 @@ if (-not $functionAst) {
 }
 Invoke-Expression $functionAst.Extent.Text
 
+Function Invoke-RestMethod {
+    throw "fixture feed unavailable"
+}
+
 foreach ($case in @(
     @{ Mode="release"; Version="1.32.0"; Feed="nuget" },
     @{ Mode="dev"; Version="1.32.0-dev-20261029-abc"; Feed="nuget_nightly" }
@@ -39,7 +43,7 @@ foreach ($case in @(
             "signed package fixture")
         [System.IO.File]::WriteAllText(
             (Join-Path $scriptDir "install-metadata-versions.js"),
-            "module.exports={nuget:[{feed:'$($case.Feed)',version:'$($case.Version)'}]};")
+            "module.exports={nuget:[{feed:'$($case.Feed)',version:'$($case.Version)'},{feed:'nuget',version:'0.0.0-unavailable'}]};")
 
         $TARGET="node"
         $MODE=$case.Mode
