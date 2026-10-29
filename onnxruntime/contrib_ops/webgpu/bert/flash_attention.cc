@@ -418,6 +418,27 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   }
   shader.AddOutput("output", ShaderUsage::UseUniform);
 
+  // The NVIDIA shared-memory path benefits from constant private-array indices.
+  // Bound source expansion to at most 32 vec4 terms per reduction. Both inputs
+  // to this choice already participate in the dense-prefill program cache hint.
+  const bool unroll_shm_inner = is_nvidia_ && qkv_head_size_ / 4 <= 32;
+  if (unroll_shm_inner) {
+    auto& impl = shader.AdditionalImplementation();
+    impl << "fn flash_qk_unrolled(k : u32) -> qk_precision {\n"
+         << "  var score = qk_precision(0);\n";
+    for (int i = 0; i < qkv_head_size_ / 4; ++i) {
+      impl << "  score += dot(vec4<qk_precision>(q_tile[" << i
+           << "u]), vec4<qk_precision>(k_tile[k][" << i << "u]));\n";
+    }
+    impl << "  return score;\n}\n"
+         << "fn flash_pv_unrolled(i : u32) -> q_value_t {\n"
+         << "  var acc = q_value_t(0);\n";
+    for (int k = 0; k < max_k_step_; ++k) {
+      impl << "  acc += v_tile[" << k << "u][i] * q_element_t(qk_scores[" << k << "u]);\n";
+    }
+    impl << "  return acc;\n}\n";
+  }
+
   return WGSL_TEMPLATE_APPLY(shader, "bert/flash_attention.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(bit_width, kv_cache_quantization_bits_),
                              WGSL_TEMPLATE_PARAMETER(compressed_head_size_u32, compressed_head_size_u32_),
@@ -432,6 +453,7 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
                              WGSL_TEMPLATE_PARAMETER(q_BNSH, q_BNSH_),
                              WGSL_TEMPLATE_PARAMETER(qkv_head_size, qkv_head_size_),
                              WGSL_TEMPLATE_PARAMETER(qkv_num_heads, qkv_num_heads_),
+                             WGSL_TEMPLATE_PARAMETER(unroll_shm_inner, unroll_shm_inner),
                              WGSL_TEMPLATE_PARAMETER(use_seqlen_k, use_seqlen_k_),
                              WGSL_TEMPLATE_PARAMETER(use_seqlens_q, use_seqlens_q_),
                              WGSL_TEMPLATE_PARAMETER(use_shm_path, use_shm_path_));
