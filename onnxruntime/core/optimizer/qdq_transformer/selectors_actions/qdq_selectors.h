@@ -80,8 +80,9 @@ class DropDQNodeGroupSelector : public NodeGroupSelector {
 // single input. default is to only support uint8.
 class UnaryNodeGroupSelector : public NodeGroupSelector {
  public:
-  explicit UnaryNodeGroupSelector(bool allow_16bit = true, bool allow_4bit = true)
-      : allow_16bit_(allow_16bit), allow_4bit_(allow_4bit) {}
+  explicit UnaryNodeGroupSelector(bool allow_16bit = true, bool allow_4bit = true,
+                                  bool allow_nonpositive_scale = true)
+      : allow_16bit_(allow_16bit), allow_4bit_(allow_4bit), allow_nonpositive_scale_(allow_nonpositive_scale) {}
 
  private:
   bool Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
@@ -90,6 +91,7 @@ class UnaryNodeGroupSelector : public NodeGroupSelector {
 
   bool allow_16bit_;
   bool allow_4bit_;
+  bool allow_nonpositive_scale_;
 };
 
 class ClipNodeGroupSelector : public NodeGroupSelector {
@@ -399,8 +401,9 @@ class DropDQNodesSelector : public BaseSelector {
 class UnarySelector : public BaseSelector {
  public:
   explicit UnarySelector(gsl::span<const char*> compatible_providers = {}, bool allow_16bit = false,
-                         bool allow_4bit = false)
-      : BaseSelector(std::make_unique<UnaryNodeGroupSelector>(allow_16bit, allow_4bit), compatible_providers) {}
+                         bool allow_4bit = false, bool allow_nonpositive_scale = true)
+      : BaseSelector(std::make_unique<UnaryNodeGroupSelector>(allow_16bit, allow_4bit, allow_nonpositive_scale),
+                     compatible_providers) {}
 };
 
 class BinarySelector : public BaseSelector {

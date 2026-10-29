@@ -111,6 +111,10 @@ Status QLinearSoftmax::Compute(OpKernelContext* ctx) const {
     return Status::OK();
   }
 
+  // A negative input scale reverses the lookup-table ordering and silently corrupts the output.
+  const float x_scale = *(ctx->Input<Tensor>(1)->Data<float>());
+  ORT_RETURN_IF_NOT(x_scale > 0, "QLinearSoftmax: x_scale must be positive, got ", x_scale);
+
   auto axis = static_cast<int>(HandleNegativeAxis(axis_, int64_t(X_shape.NumDimensions())));
 
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();

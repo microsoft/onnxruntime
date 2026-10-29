@@ -1329,6 +1329,43 @@ TEST(QDQTransformerTests, MaxpoolDontDropQDQForNegativeScale) {
   RunMaxPoolNegativeScaleDropQDQTestCase<uint16_t>();
 }
 
+template <typename QuantType>
+static void RunSoftmaxNegativeScaleFusionTestCase() {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    constexpr QuantType qmin = std::numeric_limits<QuantType>::min();
+    constexpr QuantType qmax = std::numeric_limits<QuantType>::max();
+
+    const std::vector<int64_t> input_shape = {1, 4};
+    auto* input_arg = builder.MakeInput<QuantType>(input_shape, qmin, qmax);
+    auto* output_arg = builder.MakeOutput();
+
+    auto* input_arg_dq = builder.MakeIntermediate();
+    auto* softmax_output = builder.MakeIntermediate();
+
+    builder.AddDequantizeLinearNode<QuantType>(input_arg, -0.105f, 0, input_arg_dq);
+    builder.AddNode("Softmax", {input_arg_dq}, {softmax_output}).AddAttribute("axis", int64_t{1});
+    builder.AddQuantizeLinearNode<QuantType>(softmax_output, 1.0f / 256.0f, 0, output_arg);
+  };
+
+  auto check_graph = [](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["com.microsoft.QLinearSoftmax"], 0);
+    EXPECT_EQ(op_to_count["Softmax"], 1);
+    EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
+    EXPECT_EQ(op_to_count["DequantizeLinear"], 1);
+  };
+
+  TransformerTester(build_test_case, check_graph,
+                    TransformerLevel::Level1, TransformerLevel::Level2,
+                    18 /*opset_version*/, 0.0f, 0.0f,
+                    std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
+}
+
+TEST(QDQTransformerTests, SoftmaxDontFuseForNegativeScale) {
+  RunSoftmaxNegativeScaleFusionTestCase<int8_t>();
+  RunSoftmaxNegativeScaleFusionTestCase<uint8_t>();
+}
+
 // Q/DQ around a MaxPool must still be dropped for the opset-22 MaxPool schema, not only MaxPool-12.
 TEST(QDQTransformerTests, MaxpoolDropQDQOpset22) {
   auto build_test_case = [](ModelTestBuilder& builder) {
