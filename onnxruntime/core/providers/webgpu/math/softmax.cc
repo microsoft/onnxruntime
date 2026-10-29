@@ -66,15 +66,18 @@ Status SoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
   int components = input.NumComponents();
 
   const std::string thread_max_scalar_decl = is_fp32_
-                                                 ? "var thread_max = x_element_t(-3.4028234663852886e+38f);\n"
-                                                 : "var thread_max = x_element_t(-65504.0h);\n";
+                                                 ? "var thread_max = f32(-3.4028234663852886e+38f);\n"
+                                                 : "var thread_max = f32(-65504.0h);\n";
 
   // Define shared memory for row max and row sum
   shader.AdditionalImplementation()
-      << "var<workgroup> row_max_shared : x_value_t;\n"
-      << "var<workgroup> row_sum_shared : x_value_t;\n"
-      << "var<workgroup> thread_max_scalar_shared : array<x_element_t, " << wg_ << ">;\n"
-      << "var<workgroup> thread_sum_scalar_shared : array<x_element_t, " << wg_ << ">;\n";
+      << "alias acc_value_t = " << (components == 4 ? "vec4<f32>" : components == 2 ? "vec2<f32>"
+                                                                                    : "f32")
+      << ";\n"
+      << "var<workgroup> row_max_shared : acc_value_t;\n"
+      << "var<workgroup> row_sum_shared : acc_value_t;\n"
+      << "var<workgroup> thread_max_scalar_shared : array<f32, " << wg_ << ">;\n"
+      << "var<workgroup> thread_sum_scalar_shared : array<f32, " << wg_ << ">;\n";
 
   // Define helper functions to get and set values
   shader.AdditionalImplementation()
@@ -98,13 +101,13 @@ Status SoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
       // Online accumulation: track scalar running max and scalar running sum.
       << thread_max_scalar_decl
-      << "  var thread_sum = x_element_t(0.0);\n"
+      << "  var thread_sum = f32(0.0);\n"
       << "  for (var col = lindex; col < cols; col += wg) {\n"
-      << "    let value = getValue(row, col, row_stride);\n"
-      << "    let value_max = x_element_t(" << MaxVector("value", components) << ");\n"
+      << "    let value = acc_value_t(getValue(row, col, row_stride));\n"
+      << "    let value_max = f32(" << MaxVector("value", components) << ");\n"
       << "    let new_max = max(thread_max, value_max);\n"
-      << "    let shifted_exp = exp(value - x_value_t(new_max));\n"
-      << "    thread_sum = thread_sum * exp(thread_max - new_max) + x_element_t(" << SumVector("shifted_exp", components) << ");\n"
+      << "    let shifted_exp = exp(value - acc_value_t(new_max));\n"
+      << "    thread_sum = thread_sum * exp(thread_max - new_max) + f32(" << SumVector("shifted_exp", components) << ");\n"
       << "    thread_max = new_max;\n"
       << "  }\n"
       << "  thread_max_scalar_shared[lindex] = thread_max;\n"
@@ -125,17 +128,17 @@ Status SoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << "    workgroupBarrier();\n"
       << "  }\n"
       << "  if (lindex == 0) {\n"
-      << "    row_max_shared = x_value_t(thread_max_scalar_shared[0]);\n"
-      << "    row_sum_shared = x_value_t(thread_sum_scalar_shared[0]);\n"
+      << "    row_max_shared = acc_value_t(thread_max_scalar_shared[0]);\n"
+      << "    row_sum_shared = acc_value_t(thread_sum_scalar_shared[0]);\n"
       << "  }\n"
       << "  workgroupBarrier();\n"
 
       // Calculate the final value for each element in the row
       << "  for (var col = lindex; col < cols; col += wg) {\n"
-      << "    var value = exp(getValue(row, col, row_stride) - row_max_shared) / row_sum_shared;\n"
+      << "    var value = exp(acc_value_t(getValue(row, col, row_stride)) - row_max_shared) / row_sum_shared;\n"
       << "    // max operation protects against NaN since all values should be >=0\n"
-      << "    value = max(value, x_value_t(0.0));\n"
-      << "    setValue(row, col, row_stride, value);\n"
+      << "    value = max(value, acc_value_t(0.0));\n"
+      << "    setValue(row, col, row_stride, x_value_t(value));\n"
       << "  }\n";
 
   return Status::OK();
