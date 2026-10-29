@@ -23,6 +23,10 @@
 //   * The group scale is applied to the dequantized weights before the MMA (one bf16 rounding per
 //     weight, the same contract as the CUTLASS grouped-GEMM path), because the four k groups of one
 //     MMA live in different lanes.
+//
+// Every warp only has about five K steps, so the loop is software pipelined (see the main loop): the weights,
+// scales and activations of step s + 1 are in flight while step s is computed. At decode batch sizes the kernel
+// is then limited by instruction issue (the dequantization is ~80% of the loop) rather than by DRAM latency.
 
 #pragma once
 
@@ -140,12 +144,18 @@ __device__ __forceinline__ void ComputeWord(float (&acc)[kM][4], int mb, const u
   MmaBf16(acc[mb], e2, o2, e3, o3, Comp<J>(b[2]), Comp<J>(b[3]));
 }
 
+// The kernels are latency bound and rely on several resident CTAs per SM, so the register allocation is capped for
+// that occupancy (ptxas otherwise hoists loads and spends the registers on deeper, but slower, schedules).
+constexpr int MinCtasPerSm(int m_blocks) {
+  return m_blocks >= 4 ? 5 : (m_blocks == 2 ? 6 : 9);
+}
+
 // kSwiglu = true : FC1 with interleaved (gate, up) columns; output [row][n / 2] after SwiGLU.
 // kSwiglu = false: plain GEMV; output [row][n].
 // kWarpsK warps split K (reduced through shared memory), kWarps / kWarpsK warps split the columns,
 // and every warp owns kM m-blocks (16 columns each).
 template <bool kSwiglu, int kWarpsK, int kM>
-__global__ void __launch_bounds__(kThreads) MoeGemvTcInt4Kernel(const Params p) {
+__global__ void __launch_bounds__(kThreads, MinCtasPerSm(kM)) MoeGemvTcInt4Kernel(const Params p) {
 #if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800)
   static_assert(kWarps % kWarpsK == 0, "warps must split evenly over K");
   constexpr int kWarpsN = kWarps / kWarpsK;
@@ -184,16 +194,17 @@ __global__ void __launch_bounds__(kThreads) MoeGemvTcInt4Kernel(const Params p) 
                         static_cast<int64_t>(step0) * 256 + (t >> 1) * 128 + (t & 1) * 16;
   const __nv_bfloat16* sptr = p.scales + static_cast<int64_t>(expert) * p.scale_expert_stride +
                               (static_cast<int64_t>(step0) * 4 + t) * n + col_w + 2 * g;
-  const __nv_bfloat16* aptr = nullptr;
-  if (g < routes) {
-    int src_row = row0 + g;
-    if constexpr (kSwiglu) {
-      if (p.permuted_row_to_source_row != nullptr) {
-        src_row = p.permuted_row_to_source_row[row0 + g] % p.num_rows;
-      }
+  // Lanes without a route (g >= routes) read the activations of the last route (same sectors, so no extra memory
+  // traffic); their MMA columns are never stored.
+  const int g_act = min(g, max(routes - 1, 0));
+  int src_row = row0 + g_act;
+  if constexpr (kSwiglu) {
+    if (p.permuted_row_to_source_row != nullptr) {
+      src_row = p.permuted_row_to_source_row[row0 + g_act] % p.num_rows;
     }
-    aptr = p.act + static_cast<int64_t>(src_row) * k + static_cast<int64_t>(step0) * kStepK + 32 * t;
   }
+  const __nv_bfloat16* aptr =
+      p.act + static_cast<int64_t>(src_row) * k + static_cast<int64_t>(step0) * kStepK + 32 * t;
 
   float acc[kM][4];
 #pragma unroll
@@ -203,41 +214,61 @@ __global__ void __launch_bounds__(kThreads) MoeGemvTcInt4Kernel(const Params p) 
       acc[mb][i] = 0.f;
     }
   }
+  const int64_t sstep = 4 * static_cast<int64_t>(n);  // scale elements per K step
+  auto load_weights = [&](const uint8_t* wp, const __nv_bfloat16* sp, int mb, uint4& e, uint4& o, uint32_t& c) {
+    const uint8_t* w = wp + static_cast<int64_t>(mb) * 4 * row_bytes;
+    e = LoadWeightsStreaming(w);
+    o = LoadWeightsStreaming(w + 32);
+    c = *reinterpret_cast<const uint32_t*>(sp + mb * kMmaM);
+  };
+  auto load_acts = [&](const __nv_bfloat16* ap, uint4(&dst)[4]) {
+    const uint4* a4 = reinterpret_cast<const uint4*>(ap);
+#pragma unroll
+    for (int i = 0; i < 4; ++i) {
+      dst[i] = a4[i];
+    }
+  };
+  auto compute_mb = [&](int mb, const uint4& we, const uint4& wo, uint32_t sc, const uint4(&bb)[4]) {
+    const uint32_t se = __byte_perm(sc, 0, 0x1010);
+    const uint32_t so = __byte_perm(sc, 0, 0x3232);
+    ComputeWord<0, kM>(acc, mb, we, wo, se, so, bb);
+    ComputeWord<1, kM>(acc, mb, we, wo, se, so, bb);
+    ComputeWord<2, kM>(acc, mb, we, wo, se, so, bb);
+    ComputeWord<3, kM>(acc, mb, we, wo, se, so, bb);
+  };
+
+  // Every warp only has a handful of K steps, so a plain load-then-compute loop exposes the full DRAM latency of
+  // each step. The registers of an m-block are therefore refilled with the next step's weights and scales right
+  // after they have been consumed, and the next activations are fetched at the top of the step: the loads of step
+  // s + 1 overlap the MMAs of step s. The summation order is that of the plain loop (bit-identical results).
+  // The loop is deliberately not peeled (a second copy of the ~600 instruction body made ptxas use 125 instead of
+  // 96 registers, i.e. one resident CTA less per SM, which cost more than the predicated loads).
+  uint4 we[kM], wo[kM];
+  uint32_t sc[kM];
   uint4 b[4];
 #pragma unroll
-  for (int i = 0; i < 4; ++i) {
-    b[i] = make_uint4(0u, 0u, 0u, 0u);
+  for (int mb = 0; mb < kM; ++mb) {
+    load_weights(wptr, sptr, mb, we[mb], wo[mb], sc[mb]);
   }
-
+  load_acts(aptr, b);
 #pragma unroll 1
   for (int s = 0; s < steps; ++s) {
-    uint4 we[kM], wo[kM];
-    uint32_t sc[kM];
+    const bool more = (s + 1) < steps;
+    uint4 bn[4];
+    load_acts(more ? aptr + kStepK : aptr, bn);
 #pragma unroll
     for (int mb = 0; mb < kM; ++mb) {
-      const uint8_t* w = wptr + static_cast<int64_t>(mb) * 4 * row_bytes;
-      we[mb] = LoadWeightsStreaming(w);
-      wo[mb] = LoadWeightsStreaming(w + 32);
-      sc[mb] = *reinterpret_cast<const uint32_t*>(sptr + mb * kMmaM);
-    }
-    if (g < routes) {
-      const uint4* a4 = reinterpret_cast<const uint4*>(aptr);
-#pragma unroll
-      for (int i = 0; i < 4; ++i) {
-        b[i] = a4[i];
+      compute_mb(mb, we[mb], wo[mb], sc[mb], b);
+      if (more) {
+        load_weights(wptr + 256, sptr + sstep, mb, we[mb], wo[mb], sc[mb]);
       }
     }
 #pragma unroll
-    for (int mb = 0; mb < kM; ++mb) {
-      const uint32_t se = __byte_perm(sc[mb], 0, 0x1010);
-      const uint32_t so = __byte_perm(sc[mb], 0, 0x3232);
-      ComputeWord<0, kM>(acc, mb, we[mb], wo[mb], se, so, b);
-      ComputeWord<1, kM>(acc, mb, we[mb], wo[mb], se, so, b);
-      ComputeWord<2, kM>(acc, mb, we[mb], wo[mb], se, so, b);
-      ComputeWord<3, kM>(acc, mb, we[mb], wo[mb], se, so, b);
+    for (int i = 0; i < 4; ++i) {
+      b[i] = bn[i];
     }
     wptr += 256;
-    sptr += 4 * static_cast<int64_t>(n);
+    sptr += sstep;
     aptr += kStepK;
   }
 
@@ -354,7 +385,7 @@ inline bool TryLaunchInt4Bf16(bool swiglu, const __nv_bfloat16* act, const uint8
   }
 
   cudaFuncAttributes attributes{};
-  const auto kernel = swiglu ? MoeGemvTcInt4Kernel<true, 4, 4> : MoeGemvTcInt4Kernel<false, 1, 2>;
+  const auto kernel = swiglu ? MoeGemvTcInt4Kernel<true, 4, 4> : MoeGemvTcInt4Kernel<false, 1, 1>;
   if (cudaFuncGetAttributes(&attributes, kernel) != cudaSuccess || attributes.ptxVersion < 80) {
     return false;
   }
@@ -381,10 +412,12 @@ inline bool TryLaunchInt4Bf16(bool swiglu, const __nv_bfloat16* act, const uint8
   p.k = static_cast<int>(k);
   p.num_rows = static_cast<int>(num_rows);
 
+  // FC1: the four warps split K (n = 1280 columns, five steps each). FC2: a warp owns one 16-column m-block and
+  // all of K (k = 640), which keeps the register footprint of the prefetching loop, and so the occupancy, smallest.
   if (swiglu) {
     Launch<true, 4, 4>(p, expanded_num_rows, stream);
   } else {
-    Launch<false, 1, 2>(p, expanded_num_rows, stream);
+    Launch<false, 1, 1>(p, expanded_num_rows, stream);
   }
   return true;
 }

@@ -251,6 +251,17 @@ dequantized weight tile. It needs SM80+, `hidden % 512 == 0` and
 `inter % 128 == 0`; other shapes and row counts keep the scalar kernel. Every
 weight is still rounded to BF16 individually, so the results differ from the
 scalar kernel only by the FP32 accumulation order (about one BF16 ulp).
+The K loop is software pipelined: the packed weights and scales of step `s + 1` are
+already in registers while step `s` is computed, and lanes without a route read the
+activations of the last route so that every load is unconditional. The loop is
+deliberately not peeled: `__launch_bounds__` carries the occupancy target (5, 6 or 9
+CTAs per SM for 4, 2 or 1 m-blocks per warp), and peeling or carrying the activation
+registers over the loop makes `ptxas` allocate more registers and lose a resident CTA.
+FC2 uses one warp per 16 columns over the whole K. The summation order is unchanged, so
+the pipelined kernels are bit-identical to the unpipelined ones. With 80 routes over 29
+experts (L2 flushed, launch overhead of about 5.5 µs included) FC1 takes 23.2 µs
+instead of 29.2 µs and FC2 16.1 µs instead of 19.0 µs, which shortens an all-INT4
+decode cycle by about 2%.
 `ORT_DISABLE_MOE_GEMV_TC=1` disables the kernels and `ORT_MOE_GEMV_TC_MIN_ROWS`
 (default `33`) moves the row threshold. Session options `ep.cuda.disable_moe_gemv_tc`
 and `ep.cuda.moe_gemv_tc_min_rows` take precedence. The disable flag accepts `0` or `1`,
