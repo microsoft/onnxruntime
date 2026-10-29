@@ -583,3 +583,76 @@ func TestIOBindingRejectsNULInNames(t *testing.T) {
 		t.Fatal("expected error for NUL in device-bound output name")
 	}
 }
+
+func TestIOBindingSynchronize(t *testing.T) {
+	sess, err := NewSession(testdataPath("add_f32.onnx"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sess.Close()
+	binding, err := NewIOBinding(sess)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer binding.Close()
+	a, err := CreateTensor([]int64{2, 3}, []float32{1, 2, 3, 4, 5, 6})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	b, err := CreateTensor([]int64{2, 3}, []float32{10, 20, 30, 40, 50, 60})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Close()
+	out, err := CreateTensor([]int64{2, 3}, make([]float32, 6))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer out.Close()
+	for _, entry := range []struct {
+		name   string
+		tensor *Tensor
+	}{{"A", a}, {"B", b}} {
+		if err := binding.BindInput(entry.name, entry.tensor); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := binding.BindOutput("C", out); err != nil {
+		t.Fatal(err)
+	}
+	if err := binding.SynchronizeInputs(); err != nil {
+		t.Fatal(err)
+	}
+	if err := binding.Run(nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := binding.SynchronizeOutputs(); err != nil {
+		t.Fatal(err)
+	}
+	values, err := TensorData[float32](out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, want := range []float32{11, 22, 33, 44, 55, 66} {
+		if values[i] != want {
+			t.Fatalf("output %d: %v", i, values)
+		}
+	}
+	sess.Close()
+	if err := binding.SynchronizeInputs(); err == nil {
+		t.Fatal("closed session accepted")
+	}
+	if err := binding.SynchronizeOutputs(); err == nil {
+		t.Fatal("closed session accepted")
+	}
+	binding.Close()
+	for _, closed := range []*IOBinding{binding, nil, {}} {
+		if err := closed.SynchronizeInputs(); err == nil {
+			t.Fatal("closed binding accepted")
+		}
+		if err := closed.SynchronizeOutputs(); err == nil {
+			t.Fatal("closed binding accepted")
+		}
+	}
+}

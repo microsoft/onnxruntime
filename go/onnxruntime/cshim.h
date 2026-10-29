@@ -3,16 +3,22 @@
 
 #include "onnxruntime_c_api.h"
 
-// Preferred API version (ORT >= 1.27.0, includes getter APIs).
-// Falls back to ORT_GO_API_VERSION_MIN for older libraries.
-#define ORT_GO_API_VERSION_MAX 27
+// Negotiate the highest supported API within the binding's loader range.
+#ifndef ORT_GO_API_VERSION_MAX
+#define ORT_GO_API_VERSION_MAX ORT_API_VERSION
+#endif
 #define ORT_GO_API_VERSION_MIN 17
+#if ORT_GO_API_VERSION_MAX < ORT_GO_API_VERSION_MIN || ORT_GO_API_VERSION_MAX > ORT_API_VERSION
+#error "ORT_GO_API_VERSION_MAX must be between 17 and ORT_API_VERSION"
+#endif
 
 // Initialize the global OrtApi pointer from a resolved OrtGetApiBase function.
-// Tries ORT_GO_API_VERSION_MAX first, falls back to ORT_GO_API_VERSION_MIN.
+// Starts at min(runtime minor, MAX) for version 1.N.x, otherwise MAX.
+// Falls back downward to ORT_GO_API_VERSION_MIN after rejected requests.
 // Returns 0 on success, 1 if apiBase is NULL, 2 if even min version unsupported.
 // Sets *actual_version to the version that was loaded.
 int ort_init_api(void* get_api_base_fn, int* actual_version);
+void ort_reset_api(void);
 
 // Environment
 OrtStatusPtr ort_CreateEnv(OrtLoggingLevel level, const char* logid, OrtEnv** out);
@@ -175,6 +181,7 @@ OrtStatusPtr ort_SessionEndProfiling(OrtSession* session, OrtAllocator* allocato
 
 // Version
 const char* ort_GetVersionString(void);
+OrtStatusPtr ort_GetBuildInfoString(const char** out);
 
 // Session options getters (since 1.27)
 OrtStatusPtr ort_GetMemPatternEnabled(const OrtSessionOptions* opts, int* out);
@@ -215,5 +222,42 @@ OrtStatusPtr ort_ReleaseAvailableProviders(char** ptr, int count);
 
 // Allocator free (for freeing names returned by SessionGetInputName etc.)
 void ort_AllocatorFree(OrtAllocator* allocator, void* ptr);
+
+// Plugin execution providers (API 22).
+OrtStatusPtr ort_RegisterExecutionProviderLibrary(OrtEnv* env, const char* name, const ORTCHAR_T* path);
+OrtStatusPtr ort_UnregisterExecutionProviderLibrary(OrtEnv* env, const char* name);
+OrtStatusPtr ort_GetEpDevices(const OrtEnv* env, const OrtEpDevice* const** out, size_t* count);
+OrtStatusPtr ort_SessionOptionsAppendExecutionProvider_V2(
+    OrtSessionOptions* opts, OrtEnv* env,
+    const OrtEpDevice* const* devices, size_t count,
+    const char* const* keys, const char* const* values, size_t num_options);
+OrtStatusPtr ort_SessionOptionsSetEpSelectionPolicy(OrtSessionOptions* opts, OrtExecutionProviderDevicePolicy policy);
+OrtStatusPtr ort_EpDevice_EpName(const OrtEpDevice* device, const char** out);
+OrtStatusPtr ort_EpDevice_EpVendor(const OrtEpDevice* device, const char** out);
+OrtStatusPtr ort_EpDevice_EpMetadata(const OrtEpDevice* device, const OrtKeyValuePairs** out);
+OrtStatusPtr ort_EpDevice_EpOptions(const OrtEpDevice* device, const OrtKeyValuePairs** out);
+OrtStatusPtr ort_EpDevice_Device(const OrtEpDevice* device, const OrtHardwareDevice** out);
+OrtStatusPtr ort_HardwareDevice_Type(const OrtHardwareDevice* device, OrtHardwareDeviceType* out);
+OrtStatusPtr ort_HardwareDevice_VendorId(const OrtHardwareDevice* device, uint32_t* out);
+OrtStatusPtr ort_HardwareDevice_Vendor(const OrtHardwareDevice* device, const char** out);
+OrtStatusPtr ort_HardwareDevice_DeviceId(const OrtHardwareDevice* device, uint32_t* out);
+OrtStatusPtr ort_HardwareDevice_Metadata(const OrtHardwareDevice* device, const OrtKeyValuePairs** out);
+OrtStatusPtr ort_GetKeyValuePairs(
+    const OrtKeyValuePairs* pairs, const char* const** keys,
+    const char* const** values, size_t* count);
+
+OrtStatusPtr ort_SetDeterministicCompute(OrtSessionOptions*, bool);
+OrtStatusPtr ort_SynchronizeBoundInputs(OrtIoBinding*);
+OrtStatusPtr ort_SynchronizeBoundOutputs(OrtIoBinding*);
+OrtStatusPtr ort_SessionOptionsSetWeightlessSourceModelBuffer(OrtSessionOptions*, const void*, size_t);
+OrtStatusPtr ort_copy_buffer(const void*, size_t, void**);
+
+OrtStatusPtr ort_SessionOptionsSetEpContextDataReadFunc(OrtSessionOptions*, OrtReadNamedBufferFunc, void*);
+OrtStatusPtr ort_reader_state(uintptr_t, void**);
+OrtStatus* ORT_API_CALL ort_reader_trampoline(void*, const char*, OrtAllocator*, void**, size_t*);
+OrtStatusPtr ort_reader_validate(OrtAllocator*);
+OrtStatusPtr ort_reader_copy(OrtAllocator*, const void*, size_t, void**, size_t*);
+OrtStatusPtr ort_reader_error(OrtErrorCode, const char*, size_t);
+OrtStatusPtr ort_reader_panic(void);
 
 #endif  // ORT_GO_CSHIM_H

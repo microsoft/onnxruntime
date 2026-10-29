@@ -30,11 +30,16 @@ type Session struct {
 	outputs   []IOInfo
 	nameCache map[string]*C.char
 	closed    bool
+	resources sessionResources
 }
 
 // NewSession creates a session from an ONNX model file.
 // If opts is nil, default options are used.
 func NewSession(modelPath string, opts *SessionOptions) (*Session, error) {
+	return newSession(modelPath, opts, (*SessionOptions).cloneLocked)
+}
+
+func newSession(modelPath string, opts *SessionOptions, clone func(*SessionOptions) (*SessionOptions, error)) (*Session, error) {
 	if err := checkInit(); err != nil {
 		return nil, err
 	}
@@ -53,22 +58,31 @@ func NewSession(modelPath string, opts *SessionOptions) (*Session, error) {
 	}
 	defer freePath()
 
-	if err := opts.lockUsable("create session"); err != nil {
+	snapshot, sessionEnv, err := reserveSessionCreationWithClone(opts, clone)
+	if err != nil {
 		return nil, err
 	}
+	var session *Session
+	defer func() { finishSessionCreation(snapshot, session) }()
 	var handle *C.OrtSession
-	createErr := checkStatus(C.ort_CreateSession(env, cPath, opts.handle, &handle))
-	opts.unlock()
-	if createErr != nil {
-		return nil, wrapErr("create session", createErr)
+	if err := checkStatus(C.ort_CreateSession(sessionEnv, cPath, snapshot.handle, &handle)); err != nil {
+		if handle != nil {
+			C.ort_ReleaseSession(handle)
+		}
+		return nil, wrapErr("create session", err)
 	}
 
-	return finalizeSession(handle)
+	session, err = finalizeSession(handle)
+	return session, err
 }
 
 // NewSessionFromBytes creates a session from an in-memory ONNX model.
 // If opts is nil, default options are used.
 func NewSessionFromBytes(model []byte, opts *SessionOptions) (*Session, error) {
+	return newSessionFromBytes(model, opts, (*SessionOptions).cloneLocked)
+}
+
+func newSessionFromBytes(model []byte, opts *SessionOptions, clone func(*SessionOptions) (*SessionOptions, error)) (*Session, error) {
 	if err := checkInit(); err != nil {
 		return nil, err
 	}
@@ -84,18 +98,23 @@ func NewSessionFromBytes(model []byte, opts *SessionOptions) (*Session, error) {
 		defer func() { _ = opts.Close() }()
 	}
 
-	if err := opts.lockUsable("create session from bytes"); err != nil {
+	snapshot, sessionEnv, err := reserveSessionCreationWithClone(opts, clone)
+	if err != nil {
 		return nil, err
 	}
+	var session *Session
+	defer func() { finishSessionCreation(snapshot, session) }()
 	var handle *C.OrtSession
-	createErr := checkStatus(C.ort_CreateSessionFromArray(
-		env, unsafe.Pointer(&model[0]), C.size_t(len(model)), opts.handle, &handle))
-	opts.unlock()
-	if createErr != nil {
-		return nil, wrapErr("create session from bytes", createErr)
+	if err := checkStatus(C.ort_CreateSessionFromArray(sessionEnv,
+		unsafe.Pointer(&model[0]), C.size_t(len(model)), snapshot.handle, &handle)); err != nil {
+		if handle != nil {
+			C.ort_ReleaseSession(handle)
+		}
+		return nil, wrapErr("create session from bytes", err)
 	}
 
-	return finalizeSession(handle)
+	session, err = finalizeSession(handle)
+	return session, err
 }
 
 // Inputs returns metadata for all model inputs.
@@ -356,8 +375,53 @@ func (s *Session) Close() error {
 	s.nameCache = nil
 	C.ort_ReleaseSession(s.handle)
 	s.handle = nil
+	s.resources.release()
 	sessionCount.Add(-1)
 	return nil
+}
+
+// reserveSessionCreation defines the options consistency boundary. Neither lock
+// remains held during native construction or introspection.
+func reserveSessionCreation(opts *SessionOptions) (*SessionOptions, *C.OrtEnv, error) {
+	return reserveSessionCreationWithClone(opts, (*SessionOptions).cloneLocked)
+}
+
+func reserveSessionCreationWithClone(opts *SessionOptions, clone func(*SessionOptions) (*SessionOptions, error)) (*SessionOptions, *C.OrtEnv, error) {
+	if err := opts.lockUsable("create session snapshot"); err != nil {
+		return nil, nil, err
+	}
+	defer opts.unlock()
+	mu.Lock()
+	defer mu.Unlock()
+	if err := checkInit(); err != nil {
+		return nil, nil, err
+	}
+	if err := opts.validateSessionResourcesLocked(); err != nil {
+		return nil, nil, err
+	}
+	inFlightSessionCreates++
+	snapshot, err := clone(opts)
+	if err != nil {
+		inFlightSessionCreates--
+		return nil, nil, err
+	}
+	return snapshot, env, nil
+}
+
+// Transfer the exact buffer and reader registration after native construction
+// and introspection succeed. Failed construction releases both with the snapshot.
+func finishSessionCreation(snapshot *SessionOptions, session *Session) {
+	if session != nil {
+		session.resources = snapshot.resources
+		snapshot.resources = sessionResources{}
+	}
+	_ = snapshot.Close()
+	mu.Lock()
+	if session != nil {
+		sessionCount.Add(1)
+	}
+	inFlightSessionCreates--
+	mu.Unlock()
 }
 
 func ensureOpts(opts *SessionOptions) (bool, *SessionOptions, error) {
@@ -372,13 +436,18 @@ func ensureOpts(opts *SessionOptions) (bool, *SessionOptions, error) {
 }
 
 func finalizeSession(handle *C.OrtSession) (*Session, error) {
-	inputs, err := introspectIO(handle, true)
+	return finalizeSessionWithIO(handle, func(input bool) ([]IOInfo, error) { return introspectIO(handle, input) })
+}
+
+// finalizeSessionWithIO consumes handle, including on introspection failure.
+func finalizeSessionWithIO(handle *C.OrtSession, inspect func(bool) ([]IOInfo, error)) (*Session, error) {
+	inputs, err := inspect(true)
 	if err != nil {
 		C.ort_ReleaseSession(handle)
 		return nil, err
 	}
 
-	outputs, err := introspectIO(handle, false)
+	outputs, err := inspect(false)
 	if err != nil {
 		C.ort_ReleaseSession(handle)
 		return nil, err
@@ -394,7 +463,6 @@ func finalizeSession(handle *C.OrtSession) (*Session, error) {
 		}
 	}
 
-	sessionCount.Add(1)
 	return &Session{
 		handle:    handle,
 		inputs:    inputs,
