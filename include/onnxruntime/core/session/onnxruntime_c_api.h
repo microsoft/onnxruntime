@@ -8052,8 +8052,11 @@ struct OrtModelEditorApi {
    *    This applies even though OrtApi::CreateTensorWithDataAsOrtValue takes a non-const pointer.
    *    Optimizations that modify initializer values, such as constant folding, layout transformation, and weight
    *    pre-packing, write the results to separately allocated memory.
-   *    When a session or compilation that used the memory is released or fails, the data remains unchanged. The caller
-   *    can reuse the same buffer for another session or compilation without copying or validating it.
+   *    Read-only treatment does not change the ownership or lifetime rules above.
+   *    If the caller still owns the memory, the data remains unchanged when a session or compilation that used it
+   *    is released or fails. This applies to memory supplied through OrtApi::CreateTensorWithDataAsOrtValue.
+   *    The caller can then reuse the same buffer for another session or compilation without copying or validating it.
+   *    Do not reuse memory supplied through OrtApi::CreateTensorWithDataAndDeleterAsOrtValue after ORT calls the deleter.
    *    The caller must not modify the data while ONNX Runtime is using it.
    *
    *    NOTE: A tensor containing pre-existing memory MUST have 128 bytes of data or more.
