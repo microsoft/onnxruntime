@@ -25,6 +25,11 @@ parameters:
 extends:
   template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
   parameters:
+    sdl:
+      codeql:
+        compiled:
+          enabled: false
+          justificationForDisabling: 'This pipeline runs supplemental nightly checks rather than compiled CodeQL security analysis.'
     pool:
       name: onnxruntime-Win-CPU-2022
       os: windows
