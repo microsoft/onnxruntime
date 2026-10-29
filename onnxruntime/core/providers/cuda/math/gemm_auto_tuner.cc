@@ -217,8 +217,11 @@ Status TimeGemmCandidates(cudaStream_t stream, const std::vector<GemmTuneCandida
   }
   for (int run = 0; run < kTimedRuns; ++run) {
     for (size_t slot = 0; slot < num_slots; ++slot) {
-      ORT_RETURN_IF_ERROR(LaunchL2Read(stream, l2.flush_buffer, l2.flush_bytes, num_sms));
-      ORT_RETURN_IF_ERROR(LaunchL2Read(stream, l2.hot_buffer, l2.hot_bytes, num_sms));
+      const char* candidate = slot == 0 ? "empty" : GemmKernelName(candidates[slot - 1].kernel);
+      ORT_RETURN_IF_ERROR(
+          LaunchL2Read(stream, l2.flush_buffer, l2.flush_bytes, num_sms, "flush", run, slot, candidate));
+      ORT_RETURN_IF_ERROR(
+          LaunchL2Read(stream, l2.hot_buffer, l2.hot_bytes, num_sms, "hot", run, slot, candidate));
       const size_t index = 2 * (static_cast<size_t>(run) * num_slots + slot);
       if (cuda_graph_replay) {
         CUDA_RETURN_IF_ERROR(cudaEventRecordWithFlags(events[index], stream, cudaEventRecordExternal));
