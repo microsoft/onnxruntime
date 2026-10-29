@@ -4557,13 +4557,13 @@ TEST_F(GraphTransformationTests, NoFuseNhwcConvGeluForCpuEp) {
 }
 
 TEST_F(GraphTransformationTests, NhwcConvActivationFusionPreservesOutput) {
-  // Build internal NHWC Conv(activation=Relu) -> Tanh to exercise fusion of an
-  // already-activated Conv. Input -1 and weight 1 should produce tanh(relu(-1)) = 0;
-  // overwriting Relu with Tanh instead produces tanh(-1), approximately -0.761594.
-  // After the actual transform, map only Conv's type/domain to the shared FusedConv
-  // interface, retaining its attributes. ModelTester runs the result on enabled EPs
-  // that support this model, including WebGPU, rather than always selecting CPU.
-  // Shape [1,1,1,1] makes NCHW/NHWC ordering identical, so no tensor transpose is needed.
+  // Ordinary CPU Conv + Relu fusion produces FusedConv, which this selector does
+  // not select again. A normal CPU Conv -> Relu -> Tanh test therefore passes even
+  // without the guard. Internal NHWC Conv retains its Conv type after fusion and
+  // can be selected again, so construct Conv(activation=Relu) -> Tanh directly in
+  // that domain and apply the shared transformer before choosing an execution EP.
+  // Input -1 and weight 1 should produce tanh(relu(-1)) = 0; overwriting Relu with
+  // Tanh instead produces tanh(-1), approximately -0.761594.
   Model model("ConvActivationFusionTest", false, ModelMetaData(), PathString(),
               IOnnxRuntimeOpSchemaRegistryList(),
               {{kOnnxDomain, 17}, {kMSDomain, 1}, {kMSInternalNHWCDomain, 17}}, {}, *logger_);
@@ -4584,6 +4584,12 @@ TEST_F(GraphTransformationTests, NhwcConvActivationFusionPreservesOutput) {
   ASSERT_STATUS_OK(transformer.Apply(graph, modified, *logger_));
   ASSERT_STATUS_OK(graph.Resolve());
 
+  // Both CPU and WebGPU support com.microsoft.FusedConv. Convert only the actual
+  // transformer's output type/domain to that shared interface, preserving all
+  // activation attributes and wiring, including an incorrect result without the
+  // guard. Converting before Apply() would bypass the Conv selector and hide the
+  // bug. Shape [1,1,1,1] makes NCHW/NHWC ordering identical, so this test-only
+  // conversion needs no tensor transpose.
   auto model_proto = model.ToProto();
   int converted_convs = 0;
   for (auto& node : *model_proto.mutable_graph()->mutable_node()) {
@@ -4602,7 +4608,10 @@ TEST_F(GraphTransformationTests, NhwcConvActivationFusionPreservesOutput) {
   ASSERT_STATUS_OK(Model::Save(executable_model, model_path));
 
   SessionOptions session_options;
-  // Execute the transformer's result without another optimization pass.
+  // Disable optional session optimizations when evaluating the transformed graph.
+  // ModelTester runs the same saved model in separate sessions for enabled EPs
+  // that support it. CPU uses its FusedConv kernel; WebGPU uses GPU kernels and
+  // may still perform the layout conversion required by its preferred NHWC format.
   session_options.graph_optimization_level = TransformerLevel::Default;
   ModelTester tester("NhwcConvActivationFusionPreservesOutput", model_path, 17);
   tester.AddInput<float>(input->Name().c_str(), {1, 1, 1, 1}, {-1.0f});
