@@ -81,18 +81,19 @@ class TestModelPackageAuthoring(unittest.TestCase):
             self.assertEqual(selected.get_selected_variant_name(), variant_name)
             session = selected.create_session()
             x = np.arange(6, dtype=np.float32).reshape(3, 2)
-            (output,) = session.run(["Y"], {"X": x}, None)
+            self.assertIsInstance(session, ort.InferenceSession)
+            (output,) = session.run(None, {"X": x})
             np.testing.assert_array_equal(output, x * MUL_1_WEIGHTS)
 
     def test_invalid_inputs_report_native_errors(self):
         with ort.ModelPackage() as package:
             with self.assertRaises(RuntimeError):
                 package.commit()
-            with self.assertRaises(RuntimeError):
+            with self.assertRaises(ValueError):
                 package.set_component_inline("model", "not json")
-            with self.assertRaises(RuntimeError):
+            with self.assertRaises(ValueError):
                 package.set_layout("invalid")
-            with self.assertRaises(RuntimeError):
+            with self.assertRaises(OSError):
                 ort.ModelPackage.open("missing-model-package-directory")
 
 
@@ -141,8 +142,8 @@ class TestStableModelPackageApi(unittest.TestCase):
             del component
             x = np.arange(6, dtype=np.float32).reshape(3, 2)
             for session in sessions:
-                self.assertIsInstance(session, C.InferenceSession)
-                (output,) = session.run(["Y"], {"X": x}, None)
+                self.assertIsInstance(session, ort.InferenceSession)
+                (output,) = session.run(None, {"X": x})
                 np.testing.assert_array_equal(output, x * MUL_1_WEIGHTS)
 
 

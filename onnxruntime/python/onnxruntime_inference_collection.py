@@ -788,6 +788,9 @@ class InferenceSession(Session):
         # initialize the C++ InferenceSession
         sess.initialize_session(providers, provider_options, disabled_optimizers)
 
+        self._bind_session(sess)
+
+    def _bind_session(self, sess):
         self._sess = sess
         self._sess_options = self._sess.session_options
         self._inputs_meta = self._sess.inputs_meta
@@ -800,6 +803,13 @@ class InferenceSession(Session):
         self._providers = self._sess.get_providers()
         self._provider_options = self._sess.get_provider_options()
         self._profiling_start_time_ns = self._sess.get_profiling_start_time_ns
+
+    @classmethod
+    def _from_initialized_c_session(cls, sess: C.InferenceSession) -> InferenceSession:
+        obj = cls.__new__(cls)
+        Session.__init__(obj, enable_fallback=False)
+        obj._bind_session(sess)
+        return obj
 
     def _release_captured_graphs(self) -> None:
         """Release every graph captured by the current session handle and unpin its IOBinding.
@@ -856,6 +866,18 @@ class InferenceSession(Session):
                 and providers[i][0] == "NvTensorrtRTXExecutionProvider"
             ):
                 C.register_nv_tensorrt_rtx_plugins_as_custom_ops(session_options, providers[i][1])
+
+
+if hasattr(C, "ModelPackageComponentContext"):
+
+    def _model_package_component_create_session(self, sess_options=None) -> InferenceSession:
+        """Create an initialized :class:`onnxruntime.InferenceSession` for the selected component variant.
+
+        ``None`` applies the package's session/provider options; explicit options override them.
+        """
+        return InferenceSession._from_initialized_c_session(self._create_session(sess_options))
+
+    C.ModelPackageComponentContext.create_session = _model_package_component_create_session
 
 
 def make_get_initializer_location_func_wrapper(
