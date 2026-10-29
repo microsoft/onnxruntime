@@ -212,6 +212,64 @@ TEST_F(ExperimentalCApiTest, ConsistentLookup) {
 }
 
 #if (defined(_WIN32) || defined(__linux__) || defined(__ANDROID__) || defined(__APPLE__)) && !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
+TEST_F(ExperimentalCApiTest, LegacyOrtLoopLoadsWithoutFileSources) {
+  const auto path = ORT_TSTR("testdata/ort_github_issue_4031.onnx.ort");
+  std::ifstream input("testdata/ort_github_issue_4031.onnx.ort", std::ios::binary);
+  ASSERT_TRUE(input);
+  const std::vector<char> bytes{std::istreambuf_iterator<char>{input}, {}};
+  ASSERT_FALSE(bytes.empty());
+  Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "legacy-ort-loop"};
+  auto memory = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+  const int64_t shape[]{1};
+  float value = 123.0f;
+  auto tensor = Ort::Value::CreateTensor<float>(memory, &value, 1, shape, 1);
+  const char* inputs[]{"state_var_in"};
+  const char* outputs[]{"state_var_out"};
+  for (int mode : {0, 1, 2, 3, 4}) {
+    SCOPED_TRACE(mode);
+    Ort::SessionOptions options;
+    if (mode == 2 || mode == 3) {
+      options.AddConfigEntry("session.use_ort_model_bytes_directly", "1");
+    }
+    if (mode == 3) {
+      options.AddConfigEntry("session.use_ort_model_bytes_for_initializers", "1");
+    }
+    if (mode == 4) {
+      options.AddConfigEntry("session.use_memory_mapped_ort_model", "1");
+    }
+    auto session = mode > 0 && mode < 4
+                       ? Ort::Session{env, bytes.data(), bytes.size(), options}
+                       : Ort::Session{env, path, options};
+    auto actual = session.Run(Ort::RunOptions{}, inputs, &tensor, 1, outputs, 1);
+    ASSERT_EQ(actual.size(), 1u);
+    ASSERT_EQ(actual[0].GetTensorTypeAndShapeInfo().GetShape(), std::vector<int64_t>{1});
+    EXPECT_FLOAT_EQ(actual[0].GetTensorData<float>()[0], 125.0f);
+  }
+}
+
+TEST_F(ExperimentalCApiTest, LegacyOrtLoopRoundTripWithoutFileSources) {
+  ScopedInitializerDirectory directory;
+  const auto path = directory.path / "loop.ort";
+  Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "legacy-ort-loop-round-trip"};
+  {
+    Ort::SessionOptions options;
+    options.AddConfigEntry("session.save_model_format", "ORT");
+    options.SetOptimizedModelFilePath(path.c_str());
+    Ort::Session original{env, ORT_TSTR("testdata/ort_github_issue_4031.onnx"), options};
+  }
+  Ort::Session restored{env, path.c_str(), Ort::SessionOptions{}};
+  auto memory = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+  const int64_t shape[]{1};
+  float value = 123.0f;
+  auto tensor = Ort::Value::CreateTensor<float>(memory, &value, 1, shape, 1);
+  const char* inputs[]{"state_var_in"};
+  const char* outputs[]{"state_var_out"};
+  auto actual = restored.Run(Ort::RunOptions{}, inputs, &tensor, 1, outputs, 1);
+  ASSERT_EQ(actual.size(), 1u);
+  ASSERT_EQ(actual[0].GetTensorTypeAndShapeInfo().GetShape(), std::vector<int64_t>{1});
+  EXPECT_FLOAT_EQ(actual[0].GetTensorData<float>()[0], 125.0f);
+}
+
 TEST_F(ExperimentalCApiTest, FileSourcesValidateArgumentsAndAccess) {
   auto* fn = Ort::Experimental::
       Get_OrtApi_SessionOptionsSetExternalInitializerFileHandles_SinceV32_FnOrThrow(api_);
