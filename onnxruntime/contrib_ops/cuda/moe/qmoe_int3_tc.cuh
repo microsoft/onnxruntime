@@ -1000,16 +1000,24 @@ constexpr int kFc2TileN = kFc2Warps * kFc2M * 16;
 // The dispatcher guarantees intermediate % 128 == 0 (FC1 n = 2 * intermediate) and hidden % kStepK == 0 (FC2 n).
 static_assert((2 * 128) % kFc1TileN == 0 && kStepK % kFc2TileN == 0, "the tiles must divide the supported sizes");
 
-// The raw-layout kernels are shared-memory heavy; ask for the maximum carveout once so that kFc1MinCtas / kFc2MinCtas
-// CTAs are co-resident on an SM.
+// The raw-layout kernels are shared-memory heavy. On SM 12.x (100 KB of shared memory per SM) ask for the maximum
+// carveout once so that kFc1MinCtas / kFc2MinCtas CTAs are co-resident on an SM. Other architectures keep the default
+// carveout: on H200 it already gives the same CTAs/SM (4 for FC1, 5 for FC2), and forcing the maximum only shrinks the
+// L1 that the weight streams rely on (10-20% slower decode and grouped prefill).
 inline void EnsureInt3TcCarveout() {
   static const bool carveout_set = []() {
-    (void)cudaFuncSetAttribute(Int3TcKernel<true, kFc1Warps, kFc1M, kFc1MinCtas>,
-                               cudaFuncAttributePreferredSharedMemoryCarveout,
-                               cudaSharedmemCarveoutMaxShared);
-    (void)cudaFuncSetAttribute(Int3TcKernel<false, kFc2Warps, kFc2M, kFc2MinCtas>,
-                               cudaFuncAttributePreferredSharedMemoryCarveout,
-                               cudaSharedmemCarveoutMaxShared);
+    int device = 0;
+    int cc_major = 0;
+    if (cudaGetDevice(&device) == cudaSuccess &&
+        cudaDeviceGetAttribute(&cc_major, cudaDevAttrComputeCapabilityMajor, device) == cudaSuccess &&
+        cc_major == 12) {
+      (void)cudaFuncSetAttribute(Int3TcKernel<true, kFc1Warps, kFc1M, kFc1MinCtas>,
+                                 cudaFuncAttributePreferredSharedMemoryCarveout,
+                                 cudaSharedmemCarveoutMaxShared);
+      (void)cudaFuncSetAttribute(Int3TcKernel<false, kFc2Warps, kFc2M, kFc2MinCtas>,
+                                 cudaFuncAttributePreferredSharedMemoryCarveout,
+                                 cudaSharedmemCarveoutMaxShared);
+    }
     (void)cudaGetLastError();
     return true;
   }();
