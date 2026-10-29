@@ -188,6 +188,17 @@ TEST(SqueezeOpTest, Squeeze_Empty_Axes_opset13) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
+TEST(SqueezeOpTest, ExplicitEmptyAxesPreservesInput) {
+  for (bool initializer : {false, true}) {
+    SCOPED_TRACE(initializer);
+    OpTester test("Squeeze", 13);
+    test.AddInput<float>("data", {1, 1}, {7.0f});
+    test.AddInput<int64_t>("axes", {0}, {}, initializer);
+    test.AddOutput<float>("squeezed", {1, 1}, {7.0f});
+    test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+  }
+}
+
 TEST(SqueezeOpTest, SqueezeNegAxis_axes_input) {
   auto run_test = [](bool axes_is_initializer) {
     OpTester test("Squeeze", 13);
