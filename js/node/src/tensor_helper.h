@@ -19,6 +19,8 @@ Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value&& value,
                                 std::shared_ptr<Ort::Session> session = {},
                                 std::shared_ptr<void> allocation_owner = {});
 
+Napi::Value TestGpuBuffersAlias(const Napi::CallbackInfo& info);
+
 enum DataLocation {
   DATA_LOCATION_NONE = 0,
   DATA_LOCATION_CPU = 1,

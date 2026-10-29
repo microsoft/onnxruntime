@@ -11,8 +11,6 @@
 #include "run_options_helper.h"
 #include "session_options_helper.h"
 #include "tensor_helper.h"
-#include <cstdint>
-#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -20,27 +18,26 @@
 
 namespace {
 struct InputAllocationOwner {
-  uintptr_t begin;
-  size_t size;
+  void* buffer;
   std::shared_ptr<void> owner;
 };
 
 std::shared_ptr<void> FindInputAllocationOwner(
     Ort::Value& value,
     const std::vector<InputAllocationOwner>& owners) {
-  if (value.GetTypeInfo().GetONNXType() != ONNX_TYPE_TENSOR) {
+  if (owners.empty() || value.GetTypeInfo().GetONNXType() != ONNX_TYPE_TENSOR) {
     return {};
   }
 
-  const auto begin = reinterpret_cast<uintptr_t>(value.GetTensorMutableRawData());
-  const auto size = value.GetTensorSizeInBytes();
-  if (size > std::numeric_limits<uintptr_t>::max() - begin) {
+  const auto memory_info = value.GetTensorMemoryInfo();
+  if (memory_info.GetDeviceType() != OrtMemoryInfoDeviceType_GPU ||
+      memory_info.GetAllocatorName() != "WebGPU_Buf") {
     return {};
   }
-  const auto end = begin + size;
+
+  const auto buffer = value.GetTensorMutableRawData();
   for (const auto& candidate : owners) {
-    if (candidate.size <= std::numeric_limits<uintptr_t>::max() - candidate.begin &&
-        begin >= candidate.begin && end <= candidate.begin + candidate.size) {
+    if (candidate.buffer == buffer) {
       return candidate.owner;
     }
   }
@@ -280,6 +277,7 @@ Napi::Object InferenceSessionWrap::Init(Napi::Env env, Napi::Object exports) {
 
   Napi::Function initOrtOnce = Napi::Function::New(env, InferenceSessionWrap::InitOrtOnce);
   exports.Set("initOrtOnce", initOrtOnce);
+  exports.Set("__testGpuBuffersAlias", Napi::Function::New(env, TestGpuBuffersAlias));
 
   return exports;
 }
@@ -562,8 +560,7 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
             NapiValueToOrtValue(env, value, cpuMemoryInfo, gpuBufferMemoryInfo, &allocation_owner);
         if (allocation_owner) {
           inputAllocationOwners.push_back(
-              {reinterpret_cast<uintptr_t>(input_value.GetTensorMutableRawData()),
-               input_value.GetTensorSizeInBytes(),
+              {input_value.GetTensorMutableRawData(),
                std::move(allocation_owner)});
         }
         inputValues.push_back(std::move(input_value));
@@ -593,7 +590,10 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
       Napi::Object result = Napi::Object::New(env);
 
       for (size_t i = 0; i < outputIndex; i++) {
-        if (reuseOutput[i]) {
+        if (reuseOutput[i] &&
+            outputValues[i].GetTypeInfo().GetONNXType() == ONNX_TYPE_TENSOR &&
+            outputValues[i].GetTensorTypeAndShapeInfo().GetElementType() !=
+                ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING) {
           result.Set(outputNames_cstr[i], fetch.Get(outputNames_cstr[i]));
           continue;
         }
