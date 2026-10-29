@@ -408,10 +408,41 @@ bool Int3ExpertForward(int64_t hidden, int64_t inter, const Int3ExpertView& view
                        bool force_scalar = false, bool apply_fc2_bias = false,
                        bool bf16_boundaries = false, bool fp16_boundaries = false);
 
+// NVFP4 and MXFP4 row-major CPU kernels (supports both BF16 and FP16 scale/boundary rounding).
+void Nvfp4GemmRange(const uint8_t* weights, const uint8_t* block_scales, float global_scale,
+                    const uint16_t* bias, bool bias_is_bf16, int64_t n_total, int64_t k,
+                    const float* a_reordered, int64_t m, float* out, int64_t out_stride,
+                    int64_t n_begin, int64_t n_end, bool force_scalar = false,
+                    bool round_scale_bf16 = true);
+
+void Mxfp4GemmRange(const uint8_t* weights, const uint8_t* block_scales, float global_scale,
+                    const uint16_t* bias, bool bias_is_bf16, int64_t n_total, int64_t k,
+                    const float* a_reordered, int64_t m, float* out, int64_t out_stride,
+                    int64_t n_begin, int64_t n_end, bool force_scalar = false,
+                    bool round_scale_bf16 = true);
+
+void Nvfp4Fc1SwiGluRange(int64_t hidden, int64_t inter, const Nvfp4ExpertView& view,
+                         const float* x_reordered, int64_t m, const SwiGluParams& swiglu,
+                         float* inter_reordered, int64_t n_begin, int64_t n_end,
+                         bool force_scalar = false, bool bf16_boundaries = true,
+                         bool fp16_boundaries = false);
+
+void Nvfp4Fc2Range(int64_t hidden, int64_t inter, const Nvfp4ExpertView& view,
+                   const float* inter_reordered, int64_t m, float* out,
+                   int64_t n_begin, int64_t n_end, bool force_scalar = false,
+                   bool apply_bias = false, bool round_scale_bf16 = true);
+
+// Convenience forward with owned scratch allocations, not for the allocation-free inference path.
+bool Nvfp4ExpertForward(int64_t hidden, int64_t inter, const Nvfp4ExpertView& view,
+                        const float* x, int64_t m, const SwiGluParams& swiglu, float* out,
+                        bool force_scalar = false, bool apply_fc2_bias = false,
+                        bool bf16_boundaries = true, bool fp16_boundaries = false);
+
 bool CompilerHasAvx512() noexcept;
 bool CpuHasAvx512();
 bool CompilerHasAvx2() noexcept;
 bool CpuHasAvx2FmaF16c();
+void SetFp4Group8MaskForTesting(int mask) noexcept;
 
 }  // namespace qmoe_shared
 }  // namespace contrib
@@ -438,6 +469,18 @@ int qmoe_int4_expert_contribution(const uint8_t* fc1_w, const uint16_t* fc1_s, c
                                   int64_t hidden, int64_t inter, const float* x, int64_t m,
                                   float* out, float alpha, float beta, float limit,
                                   int weights_prepacked, int is_bf16, int apply_fc2_bias, int force_scalar);
+int qmoe_nvfp4_expert_contribution_bf16(const uint8_t* fc1_w, const uint8_t* fc1_s, float fc1_g,
+                                        const uint8_t* fc2_w, const uint8_t* fc2_s, float fc2_g,
+                                        int64_t hidden, int64_t inter, const float* x, int64_t m,
+                                        float* out, float alpha, float beta, float limit,
+                                        int force_scalar);
+int64_t qmoe_nvfp4_block_bytes(int64_t hidden, int64_t inter);
+int qmoe_mxfp4_expert_contribution_bf16(const uint8_t* fc1_w, const uint8_t* fc1_s, float fc1_g,
+                                        const uint8_t* fc2_w, const uint8_t* fc2_s, float fc2_g,
+                                        int64_t hidden, int64_t inter, const float* x, int64_t m,
+                                        float* out, float alpha, float beta, float limit,
+                                        int force_scalar);
+int64_t qmoe_mxfp4_block_bytes(int64_t hidden, int64_t inter);
 void qmoe_shared_half_bits_to_float_row(const uint16_t* src, float* dst, int64_t count, int force_scalar);
 int qmoe_shared_is_file_backed_mapping(const void* data, size_t bytes);
 size_t qmoe_shared_evict_file_backed_pages(const void* data, size_t bytes);

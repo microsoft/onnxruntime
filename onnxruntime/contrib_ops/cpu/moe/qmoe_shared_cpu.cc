@@ -119,13 +119,21 @@ Status ComputeSharedQMoE(OpKernelContext* context, const SharedQMoEAttributes& a
   const auto* global_scale2 = context->Input<Tensor>(16);
   ORT_RETURN_IF_NOT(input && router && weights1 && scales1 && weights2 && scales2,
                     "Shared QMoE requires input, routing, weights, and scales.");
-  ORT_RETURN_IF_NOT(attributes.quant_type == "int" &&
-                        (attributes.weight_bits == 4 || attributes.weight_bits == 3),
-                    "Shared QMoE requires prepacked INT4 or raw INT3 configuration.");
-  ORT_RETURN_IF_NOT(global_scale1 == nullptr && global_scale2 == nullptr,
-                    "Shared integer QMoE does not accept global scales.");
+  const bool is_nvfp4 = (attributes.quant_type == "nvfp4");
+  const bool is_mxfp4 = (attributes.quant_type == "fp4");
+  const bool is_fp4 = is_nvfp4 || is_mxfp4;
+  ORT_RETURN_IF_NOT((attributes.quant_type == "int" && (attributes.weight_bits == 4 || attributes.weight_bits == 3)) ||
+                        (is_fp4 && attributes.weight_bits == 4),
+                    "Shared QMoE requires prepacked INT4, raw INT3, or row-major NVFP4/MXFP4 configuration.");
+  if (!is_fp4) {
+    ORT_RETURN_IF_NOT(global_scale1 == nullptr && global_scale2 == nullptr,
+                      "Shared integer QMoE does not accept global scales.");
+  } else if (is_nvfp4) {
+    ORT_RETURN_IF_NOT(global_scale1 != nullptr && global_scale2 != nullptr,
+                      "Shared NVFP4 QMoE requires fc1_global_scale and fc2_global_scale.");
+  }
   for (int index = 8; index < context->InputCount(); ++index) {
-    if (index == 14) continue;
+    if (index == 14 || (is_fp4 && (index == 15 || index == 16))) continue;
     ORT_RETURN_IF_NOT(context->Input<Tensor>(index) == nullptr,
                       "Shared QMoE does not support FC3, explicit zero points, or auxiliary scales.");
   }
@@ -139,9 +147,9 @@ Status ComputeSharedQMoE(OpKernelContext* context, const SharedQMoEAttributes& a
                     "Shared QMoE scales must have shape [E,N,K/block_size].");
   const int64_t hidden = input_shape[input_shape.NumDimensions() - 1];
   const int64_t experts = s1[0];
-  const int64_t block = attributes.block_size;
+  const int64_t block = is_nvfp4 ? 16 : (is_mxfp4 ? 32 : attributes.block_size);
   ORT_RETURN_IF_NOT(hidden > 0 && experts > 0 && s2[2] > 0 &&
-                        (block == 32 || block == 64 || block == 128),
+                        (is_nvfp4 ? (block == 16) : (block == 32 || block == 64 || block == 128)),
                     "Shared QMoE projection dimensions and block size must be valid.");
   const int64_t intermediate = narrow<int64_t>(SafeInt<size_t>(s2[2]) * block);
   const int64_t fc1_n = narrow<int64_t>(SafeInt<size_t>(intermediate) * 2);
@@ -165,9 +173,26 @@ Status ComputeSharedQMoE(OpKernelContext* context, const SharedQMoEAttributes& a
                     "Shared QMoE FC2 bias must have shape [E,H].");
 
   const ElementType boundary_type = GetElementType(*input);
-  const ElementType scale_type = GetElementType(*scales1);
-  ORT_RETURN_IF_NOT(GetElementType(*scales2) == scale_type,
-                    "Shared QMoE FC1 and FC2 scale types must match.");
+  ElementType scale_type = boundary_type;
+  if (is_nvfp4) {
+    ORT_RETURN_IF_NOT(scales1->IsDataType<Float8E4M3FN>() && scales2->IsDataType<Float8E4M3FN>(),
+                      "Shared NVFP4 QMoE requires float8e4m3fn block scales.");
+  } else if (is_mxfp4) {
+    ORT_RETURN_IF_NOT(scales1->IsDataType<Float8E8M0>() && scales2->IsDataType<Float8E8M0>(),
+                      "Shared MXFP4 QMoE requires float8e8m0 block scales.");
+  } else {
+    scale_type = GetElementType(*scales1);
+    ORT_RETURN_IF_NOT(GetElementType(*scales2) == scale_type,
+                      "Shared QMoE FC1 and FC2 scale types must match.");
+  }
+  if (global_scale1 != nullptr) {
+    ORT_RETURN_IF_NOT(global_scale1->IsDataType<float>() && global_scale1->Shape() == TensorShape({experts}),
+                      "Shared FP4 QMoE fc1_global_scale must be float [E].");
+  }
+  if (global_scale2 != nullptr) {
+    ORT_RETURN_IF_NOT(global_scale2->IsDataType<float>() && global_scale2->Shape() == TensorShape({experts}),
+                      "Shared FP4 QMoE fc2_global_scale must be float [E].");
+  }
   const ElementType bias1_type = bias1 ? GetElementType(*bias1) : boundary_type;
   const ElementType bias2_type = bias2 ? GetElementType(*bias2) : boundary_type;
   ORT_RETURN_IF_NOT(!bias1 || !bias2 || bias1_type == bias2_type,
@@ -249,6 +274,8 @@ Status ComputeSharedQMoE(OpKernelContext* context, const SharedQMoEAttributes& a
   const auto* w2_base = static_cast<const uint8_t*>(weights2->DataRaw());
   const auto* s2_base = static_cast<const uint8_t*>(scales2->DataRaw());
   const auto* b2_base = bias2 ? static_cast<const uint8_t*>(bias2->DataRaw()) : nullptr;
+  const float* g1_base = global_scale1 ? global_scale1->Data<float>() : nullptr;
+  const float* g2_base = global_scale2 ? global_scale2->Data<float>() : nullptr;
   const qmoe_shared::SwiGluParams swiglu{
       attributes.activation_alpha, attributes.activation_beta, attributes.swiglu_limit};
   const bool bf16_boundaries = (boundary_type == ElementType::kBFloat16);
@@ -263,6 +290,40 @@ Status ComputeSharedQMoE(OpKernelContext* context, const SharedQMoEAttributes& a
     for (size_t task = next_expert.fetch_add(1); task < active_experts.size(); task = next_expert.fetch_add(1)) {
       const int64_t expert = active_experts[task];
       const auto& routes = expert_routes[narrow<size_t>(expert)];
+      if (is_fp4) {
+        qmoe_shared::Nvfp4ExpertView view{};
+        view.fc1_weights = w1_base + static_cast<size_t>(expert) * w1_stride;
+        view.fc1_scales = s1_base + static_cast<size_t>(expert) * s1_stride;
+        view.fc1_global_scale = g1_base ? g1_base[expert] : 1.0f;
+        view.fc1_bias = b1_base ? reinterpret_cast<const uint16_t*>(b1_base + static_cast<size_t>(expert) * b1_stride)
+                                : nullptr;
+        view.fc2_weights = w2_base + static_cast<size_t>(expert) * w2_stride;
+        view.fc2_scales = s2_base + static_cast<size_t>(expert) * s2_stride;
+        view.fc2_global_scale = g2_base ? g2_base[expert] : 1.0f;
+        view.fc2_bias = b2_base ? reinterpret_cast<const uint16_t*>(b2_base + static_cast<size_t>(expert) * b2_stride)
+                                : nullptr;
+        view.bias_is_bf16 = (bias1_type == ElementType::kBFloat16);
+        view.is_mxfp4 = is_mxfp4;
+        for (size_t start = 0; start < routes.size(); start += kRowsPerTile) {
+          const int64_t count = narrow<int64_t>(std::min(routes.size() - start, narrow<size_t>(kRowsPerTile)));
+          for (int64_t r = 0; r < count; ++r) {
+            const size_t token = routes[start + r] / narrow<size_t>(attributes.top_k);
+            ReadActivationRowToFloat(input->DataRaw(), boundary_type, token * hidden, hidden, gathered + r * hidden);
+            qmoe_shared::ReorderNvfp4ActivationRow(gathered + r * hidden, reordered + r * hidden, hidden);
+          }
+          qmoe_shared::Nvfp4Fc1SwiGluRange(hidden, intermediate, view, reordered, count, swiglu,
+                                           activated, 0, fc1_n, /*force_scalar=*/false,
+                                           bf16_boundaries, fp16_boundaries);
+          qmoe_shared::Nvfp4Fc2Range(hidden, intermediate, view, activated, count, fc2,
+                                     0, hidden, /*force_scalar=*/false, /*apply_bias=*/true,
+                                     /*round_scale_bf16=*/!fp16_boundaries);
+          for (int64_t r = 0; r < count; ++r) {
+            float* destination = route_outputs.get() + routes[start + r] * hidden;
+            for (int64_t n = 0; n < hidden; ++n) destination[n] = RoundElement(fc2[r * hidden + n], boundary_type);
+          }
+        }
+        continue;
+      }
       if (attributes.weight_bits == 3) {
         qmoe_shared::Int3ExpertView view{};
         view.fc1_weights = w1_base + static_cast<size_t>(expert) * w1_stride;

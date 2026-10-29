@@ -952,14 +952,26 @@ QMoECPU<T>::QMoECPU(const OpKernelInfo& op_kernel_info)
   quant_type_ = op_kernel_info.GetAttrOrDefault<std::string>("quant_type", "int");
   const int64_t prepacked = op_kernel_info.GetAttrOrDefault<int64_t>("weights_prepacked", -1);
   ORT_ENFORCE(prepacked >= -1 && prepacked <= 1, "weights_prepacked must be -1, 0, or 1.");
+  const bool is_shared_fp4 = ((quant_type_ == "nvfp4" || quant_type_ == "fp4") && prepacked == 1);
+  if (quant_type_ == "nvfp4" && block_size_ == 0) block_size_ = 16;
+  if (quant_type_ == "fp4" && block_size_ == 0) block_size_ = 32;
   use_shared_layout_ = (quant_type_ == "int" && expert_weight_bits_ == 4 && prepacked == 1) ||
-                       expert_weight_bits_ == 3;
+                       expert_weight_bits_ == 3 || is_shared_fp4;
   if (use_shared_layout_) {
-    ORT_ENFORCE(quant_type_ == "int", "Shared CPU QMoE requires integer quantization.");
+    ORT_ENFORCE(quant_type_ == "int" || is_shared_fp4,
+                "Shared CPU QMoE requires integer, NVFP4, or MXFP4 quantization.");
     ORT_ENFORCE(expert_weight_bits_ == 4 || prepacked == 0,
                 "Shared CPU INT3 QMoE requires weights_prepacked=0.");
-    ORT_ENFORCE(block_size_ == 32 || block_size_ == 64 || block_size_ == 128,
-                "Shared CPU QMoE requires block_size 32, 64, or 128.");
+    if (quant_type_ == "nvfp4") {
+      ORT_ENFORCE(block_size_ == 16 && expert_weight_bits_ == 4,
+                  "Shared CPU NVFP4 QMoE requires expert_weight_bits=4 and block_size=16.");
+    } else if (quant_type_ == "fp4") {
+      ORT_ENFORCE(block_size_ == 32 && expert_weight_bits_ == 4,
+                  "Shared CPU MXFP4 QMoE requires expert_weight_bits=4 and block_size=32.");
+    } else {
+      ORT_ENFORCE(block_size_ == 32 || block_size_ == 64 || block_size_ == 128,
+                  "Shared CPU QMoE requires block_size 32, 64, or 128.");
+    }
     ORT_ENFORCE(fc1_expert_weight_bits_ == expert_weight_bits_ &&
                     fc2_expert_weight_bits_ == expert_weight_bits_ &&
                     fc3_expert_weight_bits_ == expert_weight_bits_,
@@ -968,7 +980,7 @@ QMoECPU<T>::QMoECPU(const OpKernelInfo& op_kernel_info)
                 "Shared CPU QMoE requires interleaved SwiGLU without sparse mixer.");
     const auto& input_defs = op_kernel_info.node().InputDefs();
     for (int index = 8; index < static_cast<int>(input_defs.size()); ++index) {
-      if (index == 14) continue;
+      if (index == 14 || (is_shared_fp4 && (index == 15 || index == 16))) continue;
       ORT_ENFORCE(!input_defs[index]->Exists(),
                   "Shared CPU QMoE does not support FC3, explicit zero points, or auxiliary scales.");
     }
@@ -2619,7 +2631,8 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())
-        .TypeConstraint("T2", DataTypeImpl::GetTensorType<float>()),
+        .TypeConstraint("T2", BuildKernelDefConstraints<float, Float8E8M0, Float8E4M3FN>())
+        .TypeConstraint("T4", DataTypeImpl::GetTensorType<float>()),
     QMoECPU<float>);
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(
@@ -2627,7 +2640,8 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())
-        .TypeConstraint("T2", DataTypeImpl::GetTensorType<MLFloat16>()),
+        .TypeConstraint("T2", BuildKernelDefConstraints<MLFloat16, Float8E8M0, Float8E4M3FN>())
+        .TypeConstraint("T4", DataTypeImpl::GetTensorType<float>()),
     QMoECPU<MLFloat16>);
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(
@@ -2635,7 +2649,8 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<BFloat16>())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())
-        .TypeConstraint("T2", DataTypeImpl::GetTensorType<BFloat16>()),
+        .TypeConstraint("T2", BuildKernelDefConstraints<BFloat16, Float8E8M0, Float8E4M3FN>())
+        .TypeConstraint("T4", DataTypeImpl::GetTensorType<float>()),
     QMoECPU<BFloat16>);
 
 }  // namespace contrib
