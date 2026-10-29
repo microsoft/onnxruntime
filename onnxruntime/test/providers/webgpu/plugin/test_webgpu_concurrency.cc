@@ -1463,7 +1463,8 @@ TEST_F(PluginEpWebGpuConcurrency, SessionAllocatorAndCpuBindingsDuringGraphCaptu
   Ort::SessionOptions options;
   options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_DISABLE_ALL);
   options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
-  options.AppendExecutionProvider_V2(*ort_env, {Device()}, {{"enableGraphCapture", "1"}});
+  const std::unordered_map<std::string, std::string> ep_options{{"enableGraphCapture", "1"}};
+  options.AppendExecutionProvider_V2(*ort_env, {Device()}, ep_options);
   const auto model_bytes = model.SerializeAsString();
   Ort::Session session(*ort_env, model_bytes.data(), model_bytes.size(), options);
 
