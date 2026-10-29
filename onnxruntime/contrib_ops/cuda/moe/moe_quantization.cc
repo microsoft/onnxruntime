@@ -376,6 +376,17 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
   ORT_ENFORCE(int_dequant_max_scratch_bytes_ > 0,
               int_dequant_max_scratch_bytes_source, " must be greater than 0, got ",
               int_dequant_max_scratch_bytes_, ".");
+  const auto configured_disable_int3_tc_prefill =
+      op_kernel_info.GetConfigOptions().GetConfigEntry(kQMoEDisableInt3TensorCorePrefillConfig);
+  if (configured_disable_int3_tc_prefill.has_value()) {
+    ORT_ENFORCE(*configured_disable_int3_tc_prefill == "0" || *configured_disable_int3_tc_prefill == "1",
+                kQMoEDisableInt3TensorCorePrefillConfig, " must be '0' or '1', got '",
+                *configured_disable_int3_tc_prefill, "'.");
+    disable_int3_tc_prefill_ = *configured_disable_int3_tc_prefill == "1";
+  } else {
+    disable_int3_tc_prefill_ =
+        onnxruntime::ParseEnvironmentVariableWithDefault<int>(kQMoEDisableInt3TensorCorePrefill, 0) != 0;
+  }
   ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("expert_weight_bits", &expert_weight_bits_).IsOK());
   ORT_ENFORCE(expert_weight_bits_ == 8 || expert_weight_bits_ == 4 || expert_weight_bits_ == 3 || expert_weight_bits_ == 2,
               "expert_weight_bits must be 2, 3, 4, or 8, but got ", expert_weight_bits_);
@@ -3163,8 +3174,118 @@ Status QMoE::ComputeInt3(OpKernelContext* context) const {
 #endif
   if (rows == 0) return Status::OK();
   const size_t element_size = input->DataType()->Size();
+
+  static const int int3_prefill_min_rows =
+      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_INT3_PREFILL_MIN_ROWS", 16);
+  namespace ck = onnxruntime::llm::kernels::cutlass_kernels;
+  // The Tensor Core path reads packed weights as 8/4/16-byte words (2/3/4 bits) and the activations and biases as
+  // 16-byte vectors. Externally bound tensors can start at any element boundary of a larger allocation, so
+  // misaligned operands use the byte-safe SIMT path. Scales are read element by element and need no check.
+  const auto is_aligned = [](const Tensor* tensor, size_t alignment) {
+    return tensor == nullptr || reinterpret_cast<uintptr_t>(tensor->DataRaw()) % alignment == 0;
+  };
+  const bool can_use_tc_prefill =
+      !disable_int3_tc_prefill_ && rows >= int3_prefill_min_rows &&
+      first_zeros == nullptr && second_zeros == nullptr &&
+      router_weights == nullptr && !use_sparse_mixer_ &&
+      sm_ >= 80 && experts <= 512 &&
+      hidden % 64 == 0 && intermediate % 64 == 0 &&
+      (block_size_ == 32 || block_size_ == 64 || block_size_ == 128) &&
+      is_aligned(first_weights, ck::GetInt2MoePrefillRawWeightAlignment(params.fc1.bits)) &&
+      is_aligned(second_weights, ck::GetInt2MoePrefillRawWeightAlignment(params.fc2.bits)) &&
+      is_aligned(input, 16) && is_aligned(output, 16) &&
+      is_aligned(first_bias, 16) && is_aligned(second_bias, 16);
+
+  if (can_use_tc_prefill) {
+    size_t prefill_tile_rows =
+        std::min<size_t>(rows, row_tile_size_ > 0 ? static_cast<size_t>(row_tile_size_) : size_t{2048});
+
+    ck::Int2MoePrefillParams prefill_params{};
+    prefill_params.fc1_weights = first_weights->Data<uint8_t>();
+    prefill_params.fc2_weights = second_weights->Data<uint8_t>();
+    prefill_params.fc1_scales = first_scales->DataRaw();
+    prefill_params.fc2_scales = second_scales->DataRaw();
+    prefill_params.fc1_bias = first_bias ? first_bias->DataRaw() : nullptr;
+    prefill_params.fc2_bias = second_bias ? second_bias->DataRaw() : nullptr;
+    prefill_params.is_bf16 = params.is_bfloat16;
+    prefill_params.num_rows = static_cast<int64_t>(prefill_tile_rows);
+    prefill_params.hidden_size = params.hidden;
+    prefill_params.inter_size = params.intermediate;
+    prefill_params.block_size = params.block_size;
+    prefill_params.fc1_weight_bits = params.fc1.bits;
+    prefill_params.fc2_weight_bits = params.fc2.bits;
+    prefill_params.weights_are_raw = true;
+    prefill_params.num_experts = params.num_experts;
+    prefill_params.top_k = params.top_k;
+    prefill_params.sm = sm_;
+    prefill_params.multiprocessor_count = GetDeviceProp().multiProcessorCount;
+    prefill_params.alpha = params.alpha;
+    prefill_params.beta = params.beta;
+    prefill_params.limit = params.limit;
+    prefill_params.stream = stream;
+
+    const size_t prefill_budget = static_cast<size_t>(int_dequant_max_scratch_bytes_);
+    const size_t min_prefill_tile_rows =
+        std::min<size_t>(prefill_tile_rows, static_cast<size_t>(std::max(1, int3_prefill_min_rows)));
+    size_t prefill_routes = 0;
+    size_t prefill_ws_bytes = 0;
+    size_t total_prefill_scratch_bytes = 0;
+    for (;;) {
+      prefill_params.num_rows = static_cast<int64_t>(prefill_tile_rows);
+      prefill_routes = SafeInt<size_t>(prefill_tile_rows) * k_;
+      prefill_ws_bytes = ck::GetInt2MoePrefillWorkspaceSize(prefill_params);
+      const size_t routing_scratch_bytes =
+          SafeInt<size_t>(prefill_routes) * (2 * sizeof(int) + sizeof(float));
+      total_prefill_scratch_bytes = SafeInt<size_t>(prefill_ws_bytes) + routing_scratch_bytes;
+      if (total_prefill_scratch_bytes <= prefill_budget || prefill_tile_rows <= min_prefill_tile_rows ||
+          row_tile_size_ > 0) {
+        break;
+      }
+      prefill_tile_rows = std::max<size_t>(min_prefill_tile_rows, prefill_tile_rows / 2);
+    }
+
+    if (total_prefill_scratch_bytes <= prefill_budget) {
+      auto selected = GetScratchBuffer<int>(prefill_routes, GetComputeStream(context));
+      auto scales = GetScratchBuffer<float>(prefill_routes, GetComputeStream(context));
+      auto unpermuted_to_permuted = GetScratchBuffer<int>(prefill_routes, GetComputeStream(context));
+      prefill_params.selected_experts = selected.get();
+      prefill_params.routing_weights = scales.get();
+      prefill_params.unpermuted_to_permuted = unpermuted_to_permuted.get();
+      auto prefill_workspace = GetScratchBuffer<void>(prefill_ws_bytes, GetComputeStream(context));
+
+      for (int64_t offset = 0; offset < rows; offset += static_cast<int64_t>(prefill_tile_rows)) {
+        const int cur_rows = narrow<int>(std::min<size_t>(prefill_tile_rows, static_cast<size_t>(rows - offset)));
+        if (params.is_bfloat16) {
+          LaunchSoftmaxTopK(reinterpret_cast<const __nv_bfloat16*>(router->DataRaw()) + offset * experts,
+                            scales.get(), selected.get(), cur_rows, params.num_experts,
+                            params.top_k, normalize_routing_weights_, stream);
+        } else {
+          LaunchSoftmaxTopK(reinterpret_cast<const half*>(router->DataRaw()) + offset * experts,
+                            scales.get(), selected.get(), cur_rows, params.num_experts,
+                            params.top_k, normalize_routing_weights_, stream);
+        }
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+        if (routing_snapshot_) {
+          ORT_RETURN_IF_ERROR(routing_snapshot_->Capture(
+              selected.get(), SafeInt<size_t>(cur_rows) * SafeInt<size_t>(k_), stream));
+        }
+#endif
+        prefill_params.input = static_cast<const char*>(input->DataRaw()) + offset * hidden * element_size;
+        prefill_params.output = static_cast<char*>(output->MutableDataRaw()) + offset * hidden * element_size;
+        prefill_params.num_rows = cur_rows;
+        ck::RunInt2MoePrefill(prefill_params, prefill_workspace.get());
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+        if (routing_snapshot_) {
+          ORT_RETURN_IF_ERROR(routing_snapshot_->Consume());
+        }
+#endif
+      }
+      return Status::OK();
+    }
+  }
+
   const size_t per_row_bytes =
-      SafeInt<size_t>(k_) * (SafeInt<size_t>(intermediate + hidden) * element_size + 3 * sizeof(int));
+      SafeInt<size_t>(k_) * (SafeInt<size_t>(intermediate + hidden) * element_size + 5 * sizeof(int));
   const size_t budget = std::min<size_t>(int_dequant_max_scratch_bytes_, size_t{64} << 20);
   ORT_RETURN_IF_NOT(per_row_bytes <= budget, "INT3 QMoE scratch budget cannot accommodate one token.");
   size_t tile_rows = std::min<size_t>(rows, budget / per_row_bytes);
@@ -3175,6 +3296,7 @@ Status QMoE::ComputeInt3(OpKernelContext* context) const {
   auto selected = GetScratchBuffer<int>(routes, GetComputeStream(context));
   auto scales = GetScratchBuffer<float>(routes, GetComputeStream(context));
   auto source_rows = GetScratchBuffer<int>(routes, GetComputeStream(context));
+  auto route_groups = GetScratchBuffer<int2>(routes, GetComputeStream(context));
   const size_t act_bytes = SafeInt<size_t>(routes) * intermediate * element_size;
   const size_t fc2_part_bytes = SafeInt<size_t>(routes) * hidden * element_size;
   auto activation = GetScratchBuffer<void>(act_bytes + fc2_part_bytes, GetComputeStream(context));
@@ -3184,13 +3306,31 @@ Status QMoE::ComputeInt3(OpKernelContext* context) const {
   params.routing_scales = scales.get();
   for (int64_t offset = 0; offset < rows; offset += tile_rows) {
     params.rows = narrow<int>(std::min<size_t>(tile_rows, rows - offset));
+    params.input = static_cast<const char*>(input->DataRaw()) + offset * hidden * element_size;
+    params.output = static_cast<char*>(output->MutableDataRaw()) + offset * hidden * element_size;
+    params.router_weights = router_weights
+                                ? static_cast<const char*>(router_weights->DataRaw()) + offset * experts * element_size
+                                : nullptr;
+    const int cur_routes = params.rows * params.top_k;
+    // Only the vectorized GEMV kernels consume route groups, so the scalar and non-vectorized fast fallbacks skip them.
+    const bool use_groups = !use_sparse_mixer_ && router_weights == nullptr && cur_routes > 0 && cur_routes <= 256 &&
+                            SelectInt3DecodeKernel(params) == Int3DecodeKernel::kFastVectorized;
+    params.route_groups = use_groups ? route_groups.get() : nullptr;
     const auto route = [&](const auto* logits) {
       if (use_sparse_mixer_) {
         LaunchSparseMixerTop2(logits, scales.get(), selected.get(), source_rows.get(),
                               params.rows, params.num_experts, stream);
+      } else if (use_groups &&
+                 LaunchFusedInt3RouteGroups(logits, scales.get(), selected.get(), route_groups.get(),
+                                            params.rows, params.num_experts, params.top_k,
+                                            normalize_routing_weights_, stream)) {
+        // Fused 1-CTA SoftmaxTopK + paired-first route grouping completed.
       } else {
         LaunchSoftmaxTopK(logits, scales.get(), selected.get(), params.rows, params.num_experts,
                           params.top_k, normalize_routing_weights_, stream);
+        if (use_groups) {
+          LaunchBuildInt3RouteGroups(selected.get(), route_groups.get(), cur_routes, stream);
+        }
       }
     };
     if (params.is_bfloat16) {
@@ -3204,11 +3344,6 @@ Status QMoE::ComputeInt3(OpKernelContext* context) const {
           selected.get(), SafeInt<size_t>(params.rows) * SafeInt<size_t>(k_), stream));
     }
 #endif
-    params.input = static_cast<const char*>(input->DataRaw()) + offset * hidden * element_size;
-    params.output = static_cast<char*>(output->MutableDataRaw()) + offset * hidden * element_size;
-    params.router_weights = router_weights
-                                ? static_cast<const char*>(router_weights->DataRaw()) + offset * experts * element_size
-                                : nullptr;
     CUDA_RETURN_IF_ERROR(LaunchInt3Moe(params, stream));
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
     if (routing_snapshot_) {
