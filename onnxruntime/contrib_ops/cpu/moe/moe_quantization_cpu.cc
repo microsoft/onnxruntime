@@ -930,15 +930,15 @@ QMoECPU<T>::QMoECPU(const OpKernelInfo& op_kernel_info)
   ORT_ENFORCE(activation_type_ != ActivationType::SwiGLU || swiglu_fusion_ == 1,
               "CPU QMoE only supports interleaved SwiGLU format. Please set swiglu_fusion=1.");
   ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("expert_weight_bits", &expert_weight_bits_).IsOK());
-  ORT_ENFORCE(expert_weight_bits_ == 2 || expert_weight_bits_ == 4 || expert_weight_bits_ == 8,
-              "Attribute 'expert_weight_bits' must be 2, 4, or 8.");
+  ORT_ENFORCE(expert_weight_bits_ == 2 || expert_weight_bits_ == 3 || expert_weight_bits_ == 4 || expert_weight_bits_ == 8,
+              "Attribute 'expert_weight_bits' must be 2, 3, 4, or 8.");
   fc1_expert_weight_bits_ = op_kernel_info.GetAttrOrDefault<int64_t>("fc1_expert_weight_bits", expert_weight_bits_);
   fc2_expert_weight_bits_ = op_kernel_info.GetAttrOrDefault<int64_t>("fc2_expert_weight_bits", expert_weight_bits_);
   fc3_expert_weight_bits_ = op_kernel_info.GetAttrOrDefault<int64_t>("fc3_expert_weight_bits", expert_weight_bits_);
-  ORT_ENFORCE((fc1_expert_weight_bits_ == 2 || fc1_expert_weight_bits_ == 4 || fc1_expert_weight_bits_ == 8) &&
-                  (fc2_expert_weight_bits_ == 2 || fc2_expert_weight_bits_ == 4 || fc2_expert_weight_bits_ == 8) &&
-                  (fc3_expert_weight_bits_ == 2 || fc3_expert_weight_bits_ == 4 || fc3_expert_weight_bits_ == 8),
-              "FC-specific expert weight bits must be 2, 4, or 8.");
+  ORT_ENFORCE((fc1_expert_weight_bits_ == 2 || fc1_expert_weight_bits_ == 3 || fc1_expert_weight_bits_ == 4 || fc1_expert_weight_bits_ == 8) &&
+                  (fc2_expert_weight_bits_ == 2 || fc2_expert_weight_bits_ == 3 || fc2_expert_weight_bits_ == 4 || fc2_expert_weight_bits_ == 8) &&
+                  (fc3_expert_weight_bits_ == 2 || fc3_expert_weight_bits_ == 3 || fc3_expert_weight_bits_ == 4 || fc3_expert_weight_bits_ == 8),
+              "FC-specific expert weight bits must be 2, 3, 4, or 8.");
   ORT_ENFORCE(swiglu_fusion_ == 0 || fc3_expert_weight_bits_ == fc1_expert_weight_bits_,
               "Fused SwiGLU requires FC1 and FC3 expert weight bits to match.");
   block_size_ = op_kernel_info.GetAttrOrDefault<int64_t>("block_size", 0);
@@ -952,8 +952,12 @@ QMoECPU<T>::QMoECPU(const OpKernelInfo& op_kernel_info)
   quant_type_ = op_kernel_info.GetAttrOrDefault<std::string>("quant_type", "int");
   const int64_t prepacked = op_kernel_info.GetAttrOrDefault<int64_t>("weights_prepacked", -1);
   ORT_ENFORCE(prepacked >= -1 && prepacked <= 1, "weights_prepacked must be -1, 0, or 1.");
-  use_shared_layout_ = (quant_type_ == "int" && expert_weight_bits_ == 4 && prepacked == 1);
+  use_shared_layout_ = (quant_type_ == "int" && expert_weight_bits_ == 4 && prepacked == 1) ||
+                       expert_weight_bits_ == 3;
   if (use_shared_layout_) {
+    ORT_ENFORCE(quant_type_ == "int", "Shared CPU QMoE requires integer quantization.");
+    ORT_ENFORCE(expert_weight_bits_ == 4 || prepacked == 0,
+                "Shared CPU INT3 QMoE requires weights_prepacked=0.");
     ORT_ENFORCE(block_size_ == 32 || block_size_ == 64 || block_size_ == 128,
                 "Shared CPU QMoE requires block_size 32, 64, or 128.");
     ORT_ENFORCE(fc1_expert_weight_bits_ == expert_weight_bits_ &&

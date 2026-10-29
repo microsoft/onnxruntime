@@ -119,8 +119,9 @@ Status ComputeSharedQMoE(OpKernelContext* context, const SharedQMoEAttributes& a
   const auto* global_scale2 = context->Input<Tensor>(16);
   ORT_RETURN_IF_NOT(input && router && weights1 && scales1 && weights2 && scales2,
                     "Shared QMoE requires input, routing, weights, and scales.");
-  ORT_RETURN_IF_NOT(attributes.quant_type == "int" && attributes.weight_bits == 4,
-                    "Shared QMoE requires prepacked INT4 configuration.");
+  ORT_RETURN_IF_NOT(attributes.quant_type == "int" &&
+                        (attributes.weight_bits == 4 || attributes.weight_bits == 3),
+                    "Shared QMoE requires prepacked INT4 or raw INT3 configuration.");
   ORT_RETURN_IF_NOT(global_scale1 == nullptr && global_scale2 == nullptr,
                     "Shared integer QMoE does not accept global scales.");
   for (int index = 8; index < context->InputCount(); ++index) {
@@ -262,6 +263,39 @@ Status ComputeSharedQMoE(OpKernelContext* context, const SharedQMoEAttributes& a
     for (size_t task = next_expert.fetch_add(1); task < active_experts.size(); task = next_expert.fetch_add(1)) {
       const int64_t expert = active_experts[task];
       const auto& routes = expert_routes[narrow<size_t>(expert)];
+      if (attributes.weight_bits == 3) {
+        qmoe_shared::Int3ExpertView view{};
+        view.fc1_weights = w1_base + static_cast<size_t>(expert) * w1_stride;
+        view.fc1_scales = reinterpret_cast<const uint16_t*>(s1_base + static_cast<size_t>(expert) * s1_stride);
+        view.fc1_bias = b1_base ? reinterpret_cast<const uint16_t*>(b1_base + static_cast<size_t>(expert) * b1_stride)
+                                : nullptr;
+        view.fc2_weights = w2_base + static_cast<size_t>(expert) * w2_stride;
+        view.fc2_scales = reinterpret_cast<const uint16_t*>(s2_base + static_cast<size_t>(expert) * s2_stride);
+        view.fc2_bias = b2_base ? reinterpret_cast<const uint16_t*>(b2_base + static_cast<size_t>(expert) * b2_stride)
+                                : nullptr;
+        view.block_size = block;
+        view.scale_is_bf16 = (scale_type == ElementType::kBFloat16);
+        view.bias_is_bf16 = (bias1_type == ElementType::kBFloat16);
+        view.scale_is_fp32 = (scale_type == ElementType::kFloat32);
+        view.bias_is_fp32 = (bias1_type == ElementType::kFloat32);
+        for (size_t start = 0; start < routes.size(); start += kRowsPerTile) {
+          const int64_t count = narrow<int64_t>(std::min(routes.size() - start, narrow<size_t>(kRowsPerTile)));
+          for (int64_t r = 0; r < count; ++r) {
+            const size_t token = routes[start + r] / narrow<size_t>(attributes.top_k);
+            ReadActivationRowToFloat(input->DataRaw(), boundary_type, token * hidden, hidden, gathered + r * hidden);
+          }
+          qmoe_shared::Int3Fc1SwiGluRange(hidden, intermediate, view, gathered, count, swiglu,
+                                          activated, 0, fc1_n, /*force_scalar=*/false,
+                                          bf16_boundaries, fp16_boundaries);
+          qmoe_shared::Int3Fc2Range(hidden, intermediate, view, activated, count, fc2,
+                                    0, hidden, /*force_scalar=*/false, /*apply_bias=*/true);
+          for (int64_t r = 0; r < count; ++r) {
+            float* destination = route_outputs.get() + routes[start + r] * hidden;
+            for (int64_t n = 0; n < hidden; ++n) destination[n] = RoundElement(fc2[r * hidden + n], boundary_type);
+          }
+        }
+        continue;
+      }
       qmoe_shared::Int4ExpertView view{};
       view.fc1_weights = w1_base + static_cast<size_t>(expert) * w1_stride;
       view.fc1_scales = reinterpret_cast<const uint16_t*>(s1_base + static_cast<size_t>(expert) * s1_stride);
