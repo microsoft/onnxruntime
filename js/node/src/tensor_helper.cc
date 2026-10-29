@@ -122,7 +122,9 @@ const std::unordered_map<std::string, ONNXTensorElementDataType> DATA_TYPE_NAME_
 };
 
 // currently only support tensor
-Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo* cpu_memory_info, OrtMemoryInfo* webgpu_memory_info) {
+Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo* cpu_memory_info,
+                               OrtMemoryInfo* webgpu_memory_info,
+                               std::shared_ptr<void>* allocation_owner) {
   ORT_NAPI_THROW_TYPEERROR_IF(!value.IsObject(), env, "Tensor must be an object.");
 
   // check 'dims'
@@ -229,6 +231,10 @@ Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo* 
       auto gpuBufferValue = tensorObject.Get("gpuBuffer");
       // nodejs: tensor.gpuBuffer is no longer a GPUBuffer in nodejs. we assume it is an external object (bind the OrtValue pointer).
       ORT_NAPI_THROW_TYPEERROR_IF(!gpuBufferValue.IsExternal(), env, "Tensor.gpuBuffer must be an external object.");
+      if (allocation_owner != nullptr) {
+        *allocation_owner = std::make_shared<Napi::Reference<Napi::Value>>(
+            Napi::Persistent(gpuBufferValue));
+      }
       Ort::Value dataValue(gpuBufferValue.As<Napi::External<OrtValue>>().Data());
       void* gpuBuffer = dataValue.GetTensorMutableRawData();
       dataValue.release();
@@ -243,6 +249,7 @@ namespace {
 struct GpuTensorLease {
   OrtValue* value{nullptr};
   std::shared_ptr<Ort::Session> session;
+  std::shared_ptr<void> allocation_owner;
 
   void Dispose() {
     if (value != nullptr) {
@@ -251,6 +258,7 @@ struct GpuTensorLease {
       }
       value = nullptr;
       session.reset();
+      allocation_owner.reset();
     }
   }
 
@@ -261,7 +269,8 @@ struct GpuTensorLease {
 }  // namespace
 
 Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value&& value,
-                                std::shared_ptr<Ort::Session> session) {
+                                std::shared_ptr<Ort::Session> session,
+                                std::shared_ptr<void> allocation_owner) {
   Napi::EscapableHandleScope scope(env);
 
   auto typeInfo = value.GetTypeInfo();
@@ -330,6 +339,7 @@ Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value&& value,
                                                .As<Napi::Function>();
       auto lease = std::make_unique<GpuTensorLease>();
       lease->session = std::move(session);
+      lease->allocation_owner = std::move(allocation_owner);
       lease->value = value.release();
       auto* lease_data = lease.get();
       auto gpu_buffer = Napi::External<OrtValue>::New(

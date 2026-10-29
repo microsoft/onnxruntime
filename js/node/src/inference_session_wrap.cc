@@ -11,12 +11,43 @@
 #include "run_options_helper.h"
 #include "session_options_helper.h"
 #include "tensor_helper.h"
+#include <cstdint>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
 namespace {
+struct InputAllocationOwner {
+  uintptr_t begin;
+  size_t size;
+  std::shared_ptr<void> owner;
+};
+
+std::shared_ptr<void> FindInputAllocationOwner(
+    Ort::Value& value,
+    const std::vector<InputAllocationOwner>& owners) {
+  if (value.GetTypeInfo().GetONNXType() != ONNX_TYPE_TENSOR) {
+    return {};
+  }
+
+  const auto begin = reinterpret_cast<uintptr_t>(value.GetTensorMutableRawData());
+  const auto size = value.GetTensorSizeInBytes();
+  if (size > std::numeric_limits<uintptr_t>::max() - begin) {
+    return {};
+  }
+  const auto end = begin + size;
+  for (const auto& candidate : owners) {
+    if (candidate.size <= std::numeric_limits<uintptr_t>::max() - candidate.begin &&
+        begin >= candidate.begin && end <= candidate.begin + candidate.size) {
+      return candidate.owner;
+    }
+  }
+
+  return {};
+}
+
 std::shared_ptr<Ort::Session> MakeSharedSession(
     std::unique_ptr<Ort::Session> session,
     std::shared_ptr<EpContextDataReadState> ep_context_data_read_state) {
@@ -514,6 +545,7 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
   std::vector<const char*> outputNames_cstr;
   std::vector<Ort::Value> outputValues;
   std::vector<bool> reuseOutput;
+  std::vector<InputAllocationOwner> inputAllocationOwners;
   size_t inputIndex = 0;
   size_t outputIndex = 0;
   Ort::MemoryInfo cpuMemoryInfo = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
@@ -525,7 +557,16 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
         inputIndex++;
         inputNames_cstr.push_back(name.c_str());
         auto value = feed.Get(name);
-        inputValues.push_back(NapiValueToOrtValue(env, value, cpuMemoryInfo, gpuBufferMemoryInfo));
+        std::shared_ptr<void> allocation_owner;
+        auto input_value =
+            NapiValueToOrtValue(env, value, cpuMemoryInfo, gpuBufferMemoryInfo, &allocation_owner);
+        if (allocation_owner) {
+          inputAllocationOwners.push_back(
+              {reinterpret_cast<uintptr_t>(input_value.GetTensorMutableRawData()),
+               input_value.GetTensorSizeInBytes(),
+               std::move(allocation_owner)});
+        }
+        inputValues.push_back(std::move(input_value));
       }
     }
     for (auto& name : outputNames_) {
@@ -552,7 +593,14 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
       Napi::Object result = Napi::Object::New(env);
 
       for (size_t i = 0; i < outputIndex; i++) {
-        result.Set(outputNames_cstr[i], OrtValueToNapiValue(env, std::move(outputValues[i]), session_));
+        if (reuseOutput[i]) {
+          result.Set(outputNames_cstr[i], fetch.Get(outputNames_cstr[i]));
+          continue;
+        }
+
+        auto allocation_owner = FindInputAllocationOwner(outputValues[i], inputAllocationOwners);
+        result.Set(outputNames_cstr[i],
+                   OrtValueToNapiValue(env, std::move(outputValues[i]), session_, std::move(allocation_owner)));
       }
       return scope.Escape(result);
     } else {
@@ -580,7 +628,9 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
 
       Napi::Object result = Napi::Object::New(env);
       for (size_t i = 0; i < outputIndex; i++) {
-        result.Set(outputNames_cstr[i], OrtValueToNapiValue(env, std::move(outputs[i]), session_));
+        auto allocation_owner = FindInputAllocationOwner(outputs[i], inputAllocationOwners);
+        result.Set(outputNames_cstr[i],
+                   OrtValueToNapiValue(env, std::move(outputs[i]), session_, std::move(allocation_owner)));
       }
       return scope.Escape(result);
     }
