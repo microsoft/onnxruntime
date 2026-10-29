@@ -28,10 +28,10 @@ Status TransposeKernel(ComputeContext& context, const Tensor* kernel, const Tens
 
 template <bool is_channels_last, bool is_fused>
 Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context) const {
-  bool has_bias = context.InputCount() > 2;
   const auto* input = context.Input<Tensor>(0);
   const Tensor* kernel = prepacked_kernel_ ? prepacked_kernel_.get() : context.Input<Tensor>(1);
-  const auto* bias = has_bias ? context.Input<Tensor>(2) : nullptr;
+  const auto* bias = context.Input<Tensor>(2);
+  const bool has_bias = bias != nullptr;
   TensorShape input_shape = input->Shape();
   ORT_ENFORCE(kernel != nullptr, "Conv kernel tensor is required.");
   // Prepacked kernels are stored permuted; recover the logical OIHW shape.

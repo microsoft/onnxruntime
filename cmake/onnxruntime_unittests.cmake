@@ -545,6 +545,7 @@ if (onnxruntime_USE_WEBGPU AND onnxruntime_USE_EP_API_ADAPTERS AND NOT onnxrunti
   file(GLOB onnxruntime_test_providers_webgpu_plugin_src CONFIGURE_DEPENDS
     "${TEST_SRC_DIR}/providers/webgpu/plugin/*.cc"
     "${TEST_SRC_DIR}/providers/webgpu/plugin/*.h"
+    "${TEST_SRC_DIR}/providers/webgpu/optional_bias_test.cc"
   )
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_webgpu_plugin_src})
 endif()
