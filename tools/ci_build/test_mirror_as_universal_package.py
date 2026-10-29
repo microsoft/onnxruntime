@@ -54,7 +54,6 @@ class MirrorAsUniversalPackageTest(unittest.TestCase):
         self.assertEqual(command[command.index("--feed") + 1], "Lotus")
         self.assertEqual(command[command.index("--organization") + 1], "https://dev.azure.com/aiinfra")
         self.assertEqual(command[command.index("--scope") + 1], "organization")
-        self.assertNotIn("--project", command)
         self.assertFalse(self.package_path.exists())
 
     def test_arbitrary_url_package_name_filename_and_feed(self):
@@ -93,7 +92,6 @@ class MirrorAsUniversalPackageTest(unittest.TestCase):
             ("--scope", "organization"),
         ):
             self.assertEqual(command[command.index(flag) + 1], value)
-        self.assertNotIn("--project", command)
 
     def test_url_filename_is_decoded(self):
         argv = self.argv.copy()

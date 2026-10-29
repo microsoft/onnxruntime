@@ -23,10 +23,6 @@ def parse_args():
             "or AZURE_DEVOPS_EXT_PAT with feed publishing permission. "
             "Obtain the expected SHA256 independently from the upstream source. "
             "The package contains only the downloaded file. Package versions are immutable. "
-            "Example: python tools\\ci_build\\mirror_as_universal_package.py "
-            "--url https://github.com/suzuki-shunsuke/pinact/releases/download/v4.0.0/pinact_windows_amd64.zip "
-            "--name pinact-windows-amd64 --version 4.0.0 "
-            "--sha256 800554b9f87c5136e9469ec9075a1f51fbea5ac402914d99f8afc4ec98a87901"
         ),
     )
 
