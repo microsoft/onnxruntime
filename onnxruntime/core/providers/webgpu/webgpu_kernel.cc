@@ -21,15 +21,30 @@ Status WebGpuKernel::Compute(OpKernelContext* p_op_kernel_context) const {
                          *this,
                          *p_op_kernel_context};
 
+  bool succeeded = false;
+  bool error_scope_active = false;
+  auto finish = gsl::finally([&]() {
+    if (!succeeded) {
+      ep_.MarkRunFailed();
+    }
+    if (error_scope_active) {
+      ORT_IGNORE_RETURN_VALUE(webgpu_context_.PopErrorScope());
+    }
+  });
   if (webgpu_context_.ValidationMode() >= ValidationMode::Full) {
     webgpu_context_.PushErrorScope();
+    error_scope_active = true;
   }
 
   Status s = ComputeInternal(context);
-
-  if (webgpu_context_.ValidationMode() >= ValidationMode::Full) {
-    ORT_RETURN_IF_ERROR(webgpu_context_.PopErrorScope());
+  if (error_scope_active) {
+    Status validation_status = webgpu_context_.PopErrorScope();
+    error_scope_active = false;
+    if (s.IsOK()) {
+      s = std::move(validation_status);
+    }
   }
+  succeeded = s.IsOK();
 
   return s;
 }

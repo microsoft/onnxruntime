@@ -189,6 +189,11 @@ Status Concat::ComputeInternal(ComputeContext& context) const {
       sizes_in_concat_axis.push_back(cumulative_size_in_concat_axis);
     }
 
+    input_index += num_inputs_this_concat;
+    if (output_size == 0) {
+      continue;
+    }
+
     offsets.pop_back();
     sizes_in_concat_axis.pop_back();
 
@@ -197,8 +202,6 @@ Status Concat::ComputeInternal(ComputeContext& context) const {
         .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
         .AddUniformVariables({gsl::span<const uint32_t>(offsets.data(), offsets.size()), gsl::span<const uint32_t>(sizes_in_concat_axis.data(), sizes_in_concat_axis.size()), output_size});
     ORT_RETURN_IF_ERROR(context.RunProgram(program));
-
-    input_index += num_inputs_this_concat;
   }
 
   return Status::OK();
