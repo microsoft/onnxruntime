@@ -344,6 +344,10 @@ Status Pool<PoolType, is_nhwc>::ComputeInternal(ComputeContext& context) const {
   const auto out_channel = x_shape[is_nhwc ? input_shape.size() - 1 : 1];
   const auto output_shape = pool_attrs_.SetOutputSize(x_shape, out_channel, &pads, is_nhwc);
   Tensor* Y = context.Output(0, output_shape);
+  // An empty output (e.g. a zero batch) has nothing to compute, and a zero-size dispatch is invalid.
+  if (Y->Shape().Size() == 0) {
+    return Status::OK();
+  }
 
   std::vector<uint32_t> kernel_strides(kernel_shape.size());
   ORT_ENFORCE(!kernel_shape.empty(), "kernel_shape must have at least one element.");

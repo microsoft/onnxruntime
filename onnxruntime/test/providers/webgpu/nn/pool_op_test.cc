@@ -338,5 +338,22 @@ TEST(PoolTest, LpPool_Float16NoOverflow_WebGpu) {
   }
 }
 
+// A zero batch gives an empty output, which the kernel must not dispatch: a zero-size dispatch is invalid.
+TEST(PoolTest, LpPool_ZeroBatch_WebGpu) {
+  LpPool2dTestCase tc;
+  tc.x_dims = {0, 4, 5, 6};
+  tc.kernel_shape = {3, 3};
+  RunWebGpuLpPool2dTest<float>(tc, /*is_nhwc=*/false);
+  RunWebGpuLpPool2dTest<MLFloat16>(tc, /*is_nhwc=*/false);
+}
+
+TEST(PoolTest, GlobalLpPool_ZeroBatch_WebGpu) {
+  LpPool2dTestCase tc;
+  tc.op_type = "GlobalLpPool";
+  tc.x_dims = {0, 4, 5, 6};
+  RunWebGpuLpPool2dTest<float>(tc, /*is_nhwc=*/false);
+  RunWebGpuLpPool2dTest<MLFloat16>(tc, /*is_nhwc=*/false);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
