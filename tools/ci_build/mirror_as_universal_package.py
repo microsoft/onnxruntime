@@ -102,6 +102,8 @@ def main():
             print("Download check completed; skipping publication.", flush=True)
             return
 
+        print(f"Publishing Universal Package: {args.name} version {args.version}", flush=True)
+
         command = [
             az,
             "artifacts",
@@ -127,7 +129,7 @@ def main():
 
         subprocess.run(command, check=True)
 
-        print(f"Published Universal Package: {args.name} version {args.version}", flush=True)
+        print("Mirrored downloaded file as Universal Package.", flush=True)
 
 
 if __name__ == "__main__":
