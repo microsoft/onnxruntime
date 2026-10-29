@@ -1610,6 +1610,35 @@ TEST_F(GraphTransformationTests, SkipLayerNormFusionTest) {
   TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format3_graph_output.onnx", 1, 1, 0, 0, logger_.get());
 }
 
+TEST_F(GraphTransformationTests, SkipLayerNormFusion_NoFusion_AddHasMultipleConsumers) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({2, 4, 8}, -1.0f, 1.0f);
+    auto* skip = builder.MakeInput<float>({2, 4, 8}, -1.0f, 1.0f);
+    auto* gamma = builder.MakeInitializer<float>({8}, {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f});
+    auto* beta = builder.MakeInitializer<float>({8}, {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
+
+    auto* add_out = builder.MakeIntermediate();
+    auto* ln_out = builder.MakeOutput();
+    auto* identity_out = builder.MakeOutput();
+
+    builder.AddNode("Add", {input, skip}, {add_out});
+    builder.AddNode("LayerNormalization", {add_out, gamma, beta}, {ln_out});
+    builder.AddNode("Identity", {add_out}, {identity_out});
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    auto op_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count["Add"] == 1);
+    TEST_RETURN_IF_NOT(op_count["LayerNormalization"] == 1);
+    TEST_RETURN_IF_NOT(op_count["com.microsoft.SkipLayerNormalization"] == 0);
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 17, *logger_,
+                                        std::make_unique<SkipLayerNormFusion>(),
+                                        TransformerLevel::Level2, 1, nullptr, post_graph_checker));
+}
+
 // SkipLayerNorm fusion should not be applied when gamma/beta have more than 1 dimension,
 // because the SkipLayerNormalization kernel requires 1D gamma/beta.
 TEST_F(GraphTransformationTests, SkipLayerNormFusion_3DGamma_NoFusion) {
