@@ -105,6 +105,10 @@ DynamicSparseAttention<T>::DynamicSparseAttention(const OpKernelInfo& info)
   rotary_interleaved_ = ParseBoolAttribute(info, "rotary_interleaved", 0);
   use_smooth_softmax_ = ParseBoolAttribute(info, "smooth_softmax", 0);
   auxiliary_kv_shared_ = ParseBoolAttribute(info, "auxiliary_kv_shared", 0);
+  prefill_kernel_ = ReadCudaSessionOption(info, kOrtSessionOptionsCudaDsaPrefillKernel,
+                                          "ORT_DSA_PREFILL_KERNEL", 1, 0, 1) != 0;
+  prefill_int8_tc_ = ReadCudaSessionOption(info, kOrtSessionOptionsCudaDsaPrefillInt8Tc,
+                                           "ORT_DSA_PREFILL_INT8_TC", 1, 0, 1) != 0;
   strict_validation_ = ParseEnvironmentVariableWithDefault<bool>(kStrictValidation, false);
   attention_mode_ = ParseAttentionMode(
       info.GetAttrOrDefault<std::string>("attention_mode", "selected_only"));
@@ -203,6 +207,8 @@ Status DynamicSparseAttention<T>::ComputeInternal(OpKernelContext* context) cons
 
   using CudaT = typename OrtToCudaType<T>::type;
   DynamicSparseAttentionData<CudaT> data;
+  data.prefill_kernel = prefill_kernel_;
+  data.prefill_int8_tc = prefill_int8_tc_;
   data.query = reinterpret_cast<const CudaT*>(query->Data<T>());
   data.key = key == nullptr ? nullptr : reinterpret_cast<const CudaT*>(key->Data<T>());
   data.value = value == nullptr ? nullptr : reinterpret_cast<const CudaT*>(value->Data<T>());
