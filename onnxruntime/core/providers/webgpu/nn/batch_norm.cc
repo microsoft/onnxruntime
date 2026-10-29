@@ -11,26 +11,28 @@
 namespace onnxruntime {
 namespace webgpu {
 
-#define WEBGPU_BATCH_NORM_VERSIONED_KERNEL(start, end, domain, is_nhwc) \
-  ONNX_OPERATOR_VERSIONED_KERNEL_EX(                                    \
-      BatchNormalization,                                               \
-      domain,                                                           \
-      start,                                                            \
-      end,                                                              \
-      kWebGpuExecutionProvider,                                         \
-      (*KernelDefBuilder::Create())                                     \
-          .TypeConstraint("T", WebGpuSupportedFloatTypes()),            \
-      BatchNormalization<is_nhwc>);
+namespace {
+KernelDefBuilder& BatchNormTypeConstraints(KernelDefBuilder& builder, int version) {
+  builder.TypeConstraint("T", WebGpuSupportedFloatTypes());
+  if (version == 14) {
+    builder.TypeConstraint("U", WebGpuSupportedFloatTypes());
+  } else if (version >= 15) {
+    builder.TypeConstraint("T1", WebGpuSupportedFloatTypes())
+        .TypeConstraint("T2", WebGpuSupportedFloatTypes());
+  }
+  return builder;
+}
+}  // namespace
 
-#define WEBGPU_BATCH_NORM_KERNEL(version, domain, is_nhwc)   \
-  ONNX_OPERATOR_KERNEL_EX(                                   \
-      BatchNormalization,                                    \
-      domain,                                                \
-      version,                                               \
-      kWebGpuExecutionProvider,                              \
-      (*KernelDefBuilder::Create())                          \
-          .TypeConstraint("T", WebGpuSupportedFloatTypes()), \
-      BatchNormalization<is_nhwc>);
+#define WEBGPU_BATCH_NORM_VERSIONED_KERNEL(start, end, domain, is_nhwc)                               \
+  ONNX_OPERATOR_VERSIONED_KERNEL_EX(BatchNormalization, domain, start, end, kWebGpuExecutionProvider, \
+                                    BatchNormTypeConstraints(*KernelDefBuilder::Create(), start),     \
+                                    BatchNormalization<is_nhwc>);
+
+#define WEBGPU_BATCH_NORM_KERNEL(version, domain, is_nhwc)                                \
+  ONNX_OPERATOR_KERNEL_EX(BatchNormalization, domain, version, kWebGpuExecutionProvider,  \
+                          BatchNormTypeConstraints(*KernelDefBuilder::Create(), version), \
+                          BatchNormalization<is_nhwc>);
 
 WEBGPU_BATCH_NORM_VERSIONED_KERNEL(7, 8, kOnnxDomain, false)
 WEBGPU_BATCH_NORM_VERSIONED_KERNEL(9, 13, kOnnxDomain, false)
@@ -48,7 +50,12 @@ Status BatchNormalizationProgram::GenerateShaderCode(ShaderHelper& shader) const
   const ShaderVariableHelper& B = shader.AddInput("B", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
   const ShaderVariableHelper& input_mean = shader.AddInput("input_mean", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
   const ShaderVariableHelper& input_var = shader.AddInput("input_var", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
-  const ShaderVariableHelper& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
+  const ShaderVariableHelper& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
+
+  shader.AdditionalImplementation() << "alias acc_value_t = "
+                                    << (output.NumComponents() == 4 ? "vec4<f32>" : output.NumComponents() == 2 ? "vec2<f32>"
+                                                                                                                : "f32")
+                                    << ";\n";
 
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
                             << "  var outputIndices = " << output.OffsetToIndices("global_idx") << ";\n";
@@ -78,13 +85,13 @@ Status BatchNormalizationProgram::GenerateShaderCode(ShaderHelper& shader) const
     }
   }
 
-  shader.MainFunctionBody() << "  let scale = " << scale.GetByOffset("cOffset") << ";\n"
-                            << "  let B = " << B.GetByOffset("cOffset") << ";\n"
-                            << "  let input_mean = " << input_mean.GetByOffset("cOffset") << ";\n"
-                            << "  let input_var = " << input_var.GetByOffset("cOffset") << ";\n"
+  shader.MainFunctionBody() << "  let scale = " << (scale.NumComponents() == 1 ? "f32" : "acc_value_t") << "(" << scale.GetByOffset("cOffset") << ");\n"
+                            << "  let B = " << (B.NumComponents() == 1 ? "f32" : "acc_value_t") << "(" << B.GetByOffset("cOffset") << ");\n"
+                            << "  let input_mean = " << (input_mean.NumComponents() == 1 ? "f32" : "acc_value_t") << "(" << input_mean.GetByOffset("cOffset") << ");\n"
+                            << "  let input_var = " << (input_var.NumComponents() == 1 ? "f32" : "acc_value_t") << "(" << input_var.GetByOffset("cOffset") << ");\n"
                             << "  let x = " << input_tensor.GetByOffset("global_idx") << ";\n"
-                            << "  let value = (x - input_mean) * inverseSqrt(input_var + " << epsilon_ << ") * scale + B;\n"
-                            << "  " << output.SetByOffset("global_idx", "value") << "\n";
+                            << "  let value = (acc_value_t(x) - acc_value_t(input_mean)) * inverseSqrt(acc_value_t(input_var) + " << epsilon_ << ") * acc_value_t(scale) + acc_value_t(B);\n"
+                            << "  " << output.SetByOffset("global_idx", "output_value_t(value)") << "\n";
 
   return Status::OK();
 }
