@@ -36,8 +36,9 @@ if ($TARGET -ne "node" -and $Args.Count -gt 3) {
     throw "Invalid argument count: $($Args.Count). Only 3 arguments are allowed for target '$TARGET'"
 }
 $VERSION_CANDIDATES=$Args[3] # optional, only for node target
-if ($TARGET -eq "node" -and $Args.Count -gt 4) {
-    throw "Invalid argument count: $($Args.Count). Only 4 arguments are allowed for target '$TARGET'"
+$SIGNED_NUGET_DIR=$Args[4] # optional, only for node target
+if ($TARGET -eq "node" -and $Args.Count -gt 5) {
+    throw "Invalid argument count: $($Args.Count). Only 5 arguments are allowed for target '$TARGET'"
 }
 
 Function Generate-Package-Version-Number {
@@ -81,58 +82,75 @@ Function Write-Node-NuGet-Integrity-Metadata {
         nuget_nightly="https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/nuget/v3/index.json"
     }
     $integrity=@{}
-    $availableCandidates=@()
+    $availableCandidates=[System.Collections.ArrayList]::new()
+
+    Function Get-File-Sha512Integrity([string]$Path) {
+        $hash=(Get-FileHash -Path $Path -Algorithm SHA512).Hash
+        $bytes=[byte[]]::new($hash.Length / 2)
+        for ($i=0; $i -lt $bytes.Length; $i++) {
+            $bytes[$i]=[Convert]::ToByte($hash.Substring($i * 2, 2), 16)
+        }
+        return "sha512-$([Convert]::ToBase64String($bytes))"
+    }
+
+    Function Add-Candidate([string]$Feed, [string]$Version, [string]$PackagePath) {
+        $versionKey=$Version.ToLower()
+        $packageKey="microsoft.ml.onnxruntime.gpu.linux"
+        if ($availableCandidates | Where-Object { $_.feed -eq $Feed -and $_.version -eq $Version }) {
+            return
+        }
+
+        $null=$availableCandidates.Add(@{
+            feed=$Feed
+            version=$Version
+        })
+        $integrity["$packageKey@$versionKey"]=Get-File-Sha512Integrity $PackagePath
+    }
+
+    if ($SIGNED_NUGET_DIR) {
+        $signedPackages=@(Get-ChildItem -Path $SIGNED_NUGET_DIR -Recurse -File |
+            Where-Object { $_.Name -match '^Microsoft\.ML\.OnnxRuntime\.Gpu\.Linux\.(?<version>.+)\.nupkg$' })
+        if ($signedPackages.Count -ne 1) {
+            throw "Expected one signed Microsoft.ML.OnnxRuntime.Gpu.Linux package in $SIGNED_NUGET_DIR, found $($signedPackages.Count)"
+        }
+        $signedPackage=$signedPackages[0]
+
+        $signedPackageMatch=[regex]::Match(
+            $signedPackage.Name,
+            '^Microsoft\.ML\.OnnxRuntime\.Gpu\.Linux\.(?<version>.+)\.nupkg$')
+        $signedFeed=if ($MODE -eq "dev") { "nuget_nightly" } else { "nuget" }
+        Add-Candidate $signedFeed $signedPackageMatch.Groups["version"].Value $signedPackage.FullName
+    }
 
     foreach ($candidate in $metadataVersions.nuget) {
+        if ($availableCandidates | Where-Object { $_.feed -eq $candidate.feed -and $_.version -eq $candidate.version }) {
+            continue
+        }
+
         $feedIndex=$feedIndexes[$candidate.feed]
         if (-not $feedIndex) {
             throw "Unsupported NuGet feed for Node installer integrity metadata: $($candidate.feed)"
         }
 
         $nugetIndex=Invoke-RestMethod -Uri $feedIndex -UseBasicParsing
-        $registrationBase=($nugetIndex.resources |
-            Where-Object { $_.'@type' -like 'RegistrationsBaseUrl/*' } |
+        $packageBase=($nugetIndex.resources |
+            Where-Object { $_.'@type' -eq 'PackageBaseAddress/3.0.0' } |
             Select-Object -First 1).'@id'
-        if (-not $registrationBase) {
-            throw "Failed to find RegistrationsBaseUrl in NuGet index: $feedIndex"
+        if (-not $packageBase) {
+            throw "Failed to find PackageBaseAddress in NuGet index: $feedIndex"
         }
 
-        $candidateIntegrity=@{}
-        $candidateAvailable=$true
-        foreach ($packageName in $packageNames) {
-            try {
-                $packageKey=$packageName.ToLower()
-                $versionKey=$candidate.version.ToLower()
-                $registration=Invoke-RestMethod -Uri "$registrationBase$packageKey/$versionKey.json" -UseBasicParsing
-                $catalogEntry=$registration.catalogEntry
-                if ($catalogEntry -is [string]) {
-                    $catalogEntry=Invoke-RestMethod -Uri $catalogEntry -UseBasicParsing
-                }
-                $packageHashAlgorithm=$catalogEntry.packageHashAlgorithm
-                $packageHash=$catalogEntry.packageHash
-                if (-not $packageHash) {
-                    $packageHashAlgorithm=$registration.packageHashAlgorithm
-                    $packageHash=$registration.packageHash
-                }
-                if ($packageHashAlgorithm -ne "SHA512" -or -not $packageHash) {
-                    throw "Missing SHA-512 package hash"
-                }
-                $candidateIntegrity["$packageKey@$versionKey"]="sha512-$packageHash"
-            } catch {
-                Write-Warning "Skipping unavailable Node installer package $packageName $($candidate.version): $($_.Exception.Message)"
-                $candidateAvailable=$false
-                break
-            }
-        }
-
-        if ($candidateAvailable) {
-            $availableCandidates += @{
-                feed=$candidate.feed
-                version=$candidate.version
-            }
-            foreach ($entry in $candidateIntegrity.GetEnumerator()) {
-                $integrity[$entry.Key]=$entry.Value
-            }
+        $packageKey="microsoft.ml.onnxruntime.gpu.linux"
+        $versionKey=$candidate.version.ToLower()
+        $packageUrl="$packageBase$packageKey/$versionKey/$packageKey.$versionKey.nupkg"
+        $tempPackage=Join-Path ([System.IO.Path]::GetTempPath()) "$packageKey.$versionKey.$PID.nupkg"
+        try {
+            Invoke-WebRequest -Uri $packageUrl -OutFile $tempPackage -UseBasicParsing
+            Add-Candidate $candidate.feed $candidate.version $tempPackage
+        } catch {
+            Write-Warning "Skipping unavailable Node installer package $packageKey $($candidate.version): $($_.Exception.Message)"
+        } finally {
+            Remove-Item -Path $tempPackage -Force -ErrorAction SilentlyContinue
         }
     }
 
