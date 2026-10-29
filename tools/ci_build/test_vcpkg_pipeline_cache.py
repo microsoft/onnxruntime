@@ -54,6 +54,20 @@ class VcpkgPipelineCacheTest(unittest.TestCase):
         self.assertIn("key", inputs)
         self.assertIn("path", inputs)
 
+    def test_linux_gpu_jobs_use_distinct_keys_under_1es(self):
+        stage = yaml.safe_load(
+            (_PIPELINES / "stages" / "nuget-linux-cuda-packaging-stage.yml").read_text(encoding="utf-8")
+        )["stages"][0]
+        keys = []
+        for job in stage["jobs"]:
+            cache_steps = [step for step in job["steps"] if step.get("template", "").endswith("setup-vcpkg-cache.yml")]
+            self.assertEqual(len(cache_steps), 1)
+            key = cache_steps[0]["parameters"]["key"]
+            self.assertEqual(key, f"$(System.StageName)-{job['job']}")
+            self.assertNotIn("$(System.JobName)", key)
+            keys.append(key)
+        self.assertEqual(len(keys), len(set(keys)))
+
     def test_vcpkg_build_steps_restore_cache_before_building(self):
         def find_steps(value):
             if isinstance(value, dict):

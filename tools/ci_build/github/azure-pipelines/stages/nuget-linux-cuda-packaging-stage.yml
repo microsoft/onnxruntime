@@ -40,6 +40,9 @@ stages:
         Repository: onnxruntimecuda${{ variables.CUDA_VERSION_MAJOR }}build
 
     - template: ../templates/setup-vcpkg-cache.yml
+      parameters:
+        # 1ES sets System.JobName to __default for both jobs in this stage.
+        key: '$(System.StageName)-Linux_C_API_Packaging_CUDA'
 
     - script: $(Build.SourcesDirectory)/tools/ci_build/github/linux/build_cuda_c_api_package.sh
       workingDirectory: $(Build.SourcesDirectory)
@@ -101,6 +104,8 @@ stages:
     - template: ../templates/set-version-number-variables-step.yml
 
     - template: ../templates/setup-vcpkg-cache.yml
+      parameters:
+        key: '$(System.StageName)-Linux_C_API_Packaging_TensorRT'
 
     - script: $(Build.SourcesDirectory)/tools/ci_build/github/linux/build_tensorrt_c_api_package.sh
       workingDirectory: $(Build.SourcesDirectory)
