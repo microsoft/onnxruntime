@@ -315,6 +315,57 @@ Status ReduceSharedProgram::GenerateShaderCode(ShaderHelper& shader) const {
   return Status::OK();
 }
 
+Status ArgMinMaxContiguousProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  const auto& input = shader.AddInput("input", ShaderUsage::UseValueTypeAlias);
+  const auto& output = shader.AddOutput("output", ShaderUsage::UseValueTypeAlias);
+  shader.AdditionalImplementation()
+      << "var<workgroup> best_values: array<f32, " << kWorkgroupSize << ">;\n"
+      << "var<workgroup> best_indices: array<u32, " << kWorkgroupSize << ">;\n"
+      << "fn is_nan(value: f32) -> bool {\n"
+      << "  return (bitcast<u32>(value) & 0x7fffffffu) > 0x7f800000u;\n"
+      << "}\n"
+      << "fn prefer(candidate: f32, index: u32, best: f32, best_index: u32) -> bool {\n"
+      << "  return !is_nan(candidate) && !is_nan(best) &&\n"
+      << "      (candidate " << (is_max_ ? ">" : "<") << " best ||\n"
+      << "       (candidate == best && index " << (select_last_index_ ? ">" : "<") << " best_index));\n"
+      << "}\n";
+  // Seed every lane from the first element: a leading NaN stays the incumbent,
+  // while later NaNs are ignored. Explicit index comparisons make ties independent
+  // of the reduction order, including signed zero and equal infinities.
+  shader.MainFunctionBody()
+      << "if (workgroup_idx >= uniforms.output_size) { return; }\n"
+      << "let offset = workgroup_idx * uniforms.reduce_size;\n"
+      << "var best = " << input.GetByOffset("offset") << ";\n"
+      << "var best_index = 0u;\n"
+      << "for (var k = local_idx; k < uniforms.reduce_size; k += " << kWorkgroupSize << "u) {\n"
+      << "  let candidate = " << input.GetByOffset("offset + k") << ";\n"
+      << "  if (prefer(candidate, k, best, best_index)) {\n"
+      << "    best = candidate;\n"
+      << "    best_index = k;\n"
+      << "  }\n"
+      << "}\n"
+      << "best_values[local_idx] = best;\n"
+      << "best_indices[local_idx] = best_index;\n"
+      << "workgroupBarrier();\n"
+      << "for (var stride = " << kWorkgroupSize / 2 << "u; stride > 0u; stride >>= 1u) {\n"
+      << "  if (local_idx < stride) {\n"
+      << "    let candidate = best_values[local_idx + stride];\n"
+      << "    let index = best_indices[local_idx + stride];\n"
+      << "    if (prefer(candidate, index, best, best_index)) {\n"
+      << "      best = candidate;\n"
+      << "      best_index = index;\n"
+      << "    }\n"
+      << "    best_values[local_idx] = best;\n"
+      << "    best_indices[local_idx] = best_index;\n"
+      << "  }\n"
+      << "  workgroupBarrier();\n"
+      << "}\n"
+      << "if (local_idx == 0u) {\n"
+      << output.SetByOffset("workgroup_idx", "output_value_t(best_index)") << "\n"
+      << "}\n";
+  return Status::OK();
+}
+
 template <bool allow_multi_axes>
 Status ReduceKernel<allow_multi_axes>::ComputeInternal(ComputeContext& context) const {
   const auto* input_tensor = context.Input(0);
@@ -416,6 +467,20 @@ Status ReduceKernel<allow_multi_axes>::ComputeInternal(ComputeContext& context) 
       are_axes_innermost = false;
       break;
     }
+  }
+  // Short rows can already expose enough parallelism across outputs; avoid the
+  // per-row workgroup and barrier overhead until the reduction is long enough.
+  constexpr size_t kArgMinMaxMinReduceSize = 256;
+  if (add_suffix && are_axes_innermost && input_tensor->IsDataType<float>() &&
+      !is_input_empty && reduce_size >= kArgMinMaxMinReduceSize) {
+    ArgMinMaxContiguousProgram program(name_ == "ArgMax", select_last_index_ != 0);
+    program.CacheHint(name_, select_last_index_)
+        .AddInput({input_tensor, ProgramTensorMetadataDependency::Type})
+        .AddOutput({context.Output(0, output_shape), ProgramTensorMetadataDependency::Type})
+        .SetWorkgroupSize(ArgMinMaxContiguousProgram::kWorkgroupSize)
+        .SetDispatchGroupSize(static_cast<uint32_t>(output_size))
+        .AddUniformVariables({{static_cast<uint32_t>(output_size)}, {static_cast<uint32_t>(reduce_size)}});
+    return context.RunProgram(program);
   }
   bool use_naive_reduction = name_ == "ArgMin" || name_ == "ArgMax" || (reduce_size < 32 && output_size > 1024) ||
                              (!are_axes_innermost && reduce_size <= kReduceNaiveMaxReduceSize &&

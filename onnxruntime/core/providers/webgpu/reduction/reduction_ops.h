@@ -74,6 +74,23 @@ class ReduceSharedProgram final : public Program<ReduceSharedProgram> {
   uint32_t workgroup_size_;
 };
 
+class ArgMinMaxContiguousProgram final : public Program<ArgMinMaxContiguousProgram> {
+ public:
+  static constexpr uint32_t kWorkgroupSize = 128;
+
+  ArgMinMaxContiguousProgram(bool is_max, bool select_last_index)
+      : Program{"ArgMinMaxContiguous"}, is_max_{is_max}, select_last_index_{select_last_index} {}
+
+  Status GenerateShaderCode(ShaderHelper& shader) const override;
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32},
+                                          {"reduce_size", ProgramUniformVariableDataType::Uint32});
+
+ private:
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ArgMinMaxContiguousProgram);
+  const bool is_max_;
+  const bool select_last_index_;
+};
+
 template <bool allow_multi_axes = true>
 class ReduceKernel : public WebGpuKernel, public ReduceKernelBase<allow_multi_axes> {
  protected:
