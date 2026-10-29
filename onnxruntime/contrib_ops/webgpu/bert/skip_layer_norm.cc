@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webgpu/nn/normalization_utils.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/string_macros.h"
 #include "core/providers/webgpu/webgpu_utils.h"
@@ -14,17 +15,64 @@ namespace webgpu {
 
 Status SkipLayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& x = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-  shader.AddInput("skip", ShaderUsage::UseUniform);
-  shader.AddInput("gamma", ShaderUsage::UseUniform);
-  if (hasBeta_) {
-    shader.AddInput("beta", ShaderUsage::UseUniform);
-  }
-  if (hasBias_) {
-    shader.AddInput("bias", ShaderUsage::UseUniform);
-  }
-  shader.AddOutput("output", ShaderUsage::UseUniform);
-  if (has_input_skip_bias_sum_) {
-    shader.AddOutput("input_skip_bias_sum", ShaderUsage::UseUniform);
+  const auto& skip = shader.AddInput("skip", ShaderUsage::UseUniform);
+  const auto& gamma = shader.AddInput("gamma", ShaderUsage::UseUniform);
+  const auto* beta_input = hasBeta_ ? &shader.AddInput("beta", ShaderUsage::UseUniform) : nullptr;
+  const auto* bias_input = hasBias_ ? &shader.AddInput("bias", ShaderUsage::UseUniform) : nullptr;
+  const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform);
+  const auto* sum_output = has_input_skip_bias_sum_ ? &shader.AddOutput("input_skip_bias_sum", ShaderUsage::UseUniform) : nullptr;
+
+  if (!simplified_) {
+    const int components = x.NumComponents();
+    shader.AdditionalImplementation()
+        << "alias acc_value_t = " << (components == 4 ? "vec4<f32>" : components == 2 ? "vec2<f32>"
+                                                                                      : "f32")
+        << ";\n"
+        << "var<workgroup> partial: array<acc_value_t, workgroup_size_x>;\n";
+    auto& body = shader.MainFunctionBody();
+    body << "let width = uniforms.hidden_size / uniforms.components;\n";
+    if (split_hidden_dim_) {
+      body << "if (workgroup_idx >= (width + workgroup_size_x - 1u) / workgroup_size_x) { return; }\n"
+           << "let row = 0u;\n";
+    } else {
+      body << "let row = workgroup_idx;\n"
+           << "if (row >= uniforms.norm_count) { return; }\n";
+    }
+    auto value = [&](const std::string& offset, const std::string& column) {
+      return "(" + x.GetByOffset(offset) + " + " +
+             skip.GetByOffset("(" + offset + ") % (uniforms.skip_size / uniforms.components)") +
+             (bias_input ? " + " + bias_input->GetByOffset(column) : "") + ")";
+    };
+    auto reduce = [&]() {
+      body << "workgroupBarrier();\n"
+           << "for (var stride = workgroup_size_x / 2u; stride > 0u; stride /= 2u) {\n"
+           << "  if (local_idx < stride) { partial[local_idx] += partial[local_idx + stride]; }\n"
+           << "  workgroupBarrier();\n}\n";
+    };
+    AppendStableNormalizationMean(shader, components, "width", "uniforms.hidden_size",
+                                  [&](const std::string& i) { return value("row * width + " + i, i); });
+    body << "let mean = norm_mean; let shift = norm_shift;\n"
+         << "var squared = acc_value_t(0);\n"
+         << "for (var j = local_idx; j < width; j += workgroup_size_x) {\n"
+         << "  let centered = norm_center(acc_value_t(" << value("row * width + j", "j") << "), acc_value_t(shift), acc_value_t(mean));\n"
+         << "  squared += centered * centered;\n}\n"
+         << "partial[local_idx] = squared;\n";
+    reduce();
+    body << "let inv_std = inverseSqrt(" << SumVector("partial[0]", components)
+         << " / f32(uniforms.hidden_size) + uniforms.epsilon);\n";
+    if (split_hidden_dim_) {
+      body << "let j = workgroup_idx * workgroup_size_x + local_idx;\n"
+           << "if (j < width) {\n";
+    } else {
+      body << "for (var j = local_idx; j < width; j += workgroup_size_x) {\n";
+    }
+    body << "  let offset = row * width + j;\n"
+         << "  let value = " << value("offset", "j") << ";\n"
+         << "  let normalized = norm_center(acc_value_t(value), acc_value_t(shift), acc_value_t(mean)) * inv_std;\n"
+         << "  " << output.SetByOffset("offset", "x_value_t(normalized * acc_value_t(" + gamma.GetByOffset("j") + ")" + (beta_input ? " + acc_value_t(" + beta_input->GetByOffset("j") + ")" : "") + ")") << "\n";
+    if (sum_output) body << "  " << sum_output->SetByOffset("offset", "value") << "\n";
+    body << "}\n";
+    return Status::OK();
   }
 
   std::string simpl1 = (simplified_) ? "" : "- mean * mean ";
@@ -201,11 +249,12 @@ Status RunSkipLayerNormProgram(ComputeContext& context,
       })
       .AddUniformVariables({
           {static_cast<uint32_t>(skip_size)},
+          {norm_count},
       });
 
   if (split_hidden_dim) {
     const uint32_t workgroup_size_x = 128;
-    const uint32_t dispatch_size_x = (has_input_skip_bias_sum ? 2 : 1) * hidden_size / (workgroup_size_x * components);
+    const uint32_t dispatch_size_x = (simplified && has_input_skip_bias_sum ? 2 : 1) * hidden_size / (workgroup_size_x * components);
     program.SetDispatchGroupSize(dispatch_size_x, 1, 1)
         .SetWorkgroupSize(workgroup_size_x);
   }
