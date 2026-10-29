@@ -1479,7 +1479,7 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
       return ep_factory;
     }
 #endif
-#if defined(USE_WEBGPU)
+#if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
     return onnxruntime::WebGpuProviderFactoryCreator::Create(session_options.config_options);
 #endif
   } else if (type == kCannExecutionProvider) {
