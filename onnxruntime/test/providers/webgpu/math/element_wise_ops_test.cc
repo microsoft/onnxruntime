@@ -247,6 +247,39 @@ TEST(MathOpTest, Pow_Int64Exponent_WebGpu) {
 }
 
 namespace {
+// 2^24 + 1 is the smallest odd integer f32 cannot represent: it rounds to the even 2^24, so a parity
+// taken after the f32 conversion gives Pow(-1, 2^24 + 1) = 1 instead of -1.
+constexpr int32_t kOddAboveF32Precision = (1 << 24) + 1;
+constexpr int32_t kEvenAboveF32Precision = 1 << 24;
+}  // namespace
+
+// int32 exponents take the vec4 shader paths (scalar-exponent broadcast and element-wise).
+TEST(MathOpTest, Pow_Int32ExponentParity_WebGpu) {
+  for (int32_t exponent : {kOddAboveF32Precision, -kOddAboveF32Precision}) {
+    SCOPED_TRACE(exponent);
+    TestPowBroadcast<float, int32_t>({2, 3}, std::vector<float>(6, -1.0f), {}, {exponent}, {2, 3},
+                                     std::vector<float>(6, -1.0f));
+  }
+  TestPowBroadcast<float, int32_t>(
+      {2, 3}, std::vector<float>(6, -1.0f), {2, 3},
+      {kOddAboveF32Precision, -kOddAboveF32Precision, kEvenAboveF32Precision, -kEvenAboveF32Precision, 1, 2},
+      {2, 3}, {-1.0f, -1.0f, 1.0f, 1.0f, -1.0f, 1.0f});
+}
+
+// int64 exponents take the per-element (component 1) shader paths.
+TEST(MathOpTest, Pow_Int64ExponentParity_WebGpu) {
+  for (int32_t exponent : {kOddAboveF32Precision, -kOddAboveF32Precision}) {
+    SCOPED_TRACE(exponent);
+    TestPowInt64Exponent<float>({2, 3}, std::vector<float>(6, -1.0f), {}, {exponent}, {2, 3},
+                                std::vector<float>(6, -1.0f));
+  }
+  TestPowInt64Exponent<float>(
+      {2, 3}, std::vector<float>(6, -1.0f), {2, 3},
+      {kOddAboveF32Precision, -kOddAboveF32Precision, kEvenAboveF32Precision, -kEvenAboveF32Precision, 1, 2},
+      {2, 3}, {-1.0f, -1.0f, 1.0f, 1.0f, -1.0f, 1.0f});
+}
+
+namespace {
 // Runs a bool binary op (And/Or/Xor) on WebGPU only, with CPU fallback disabled so a missing
 // kernel fails the test. Expected values are computed on the host with NumPy-style broadcasting.
 void RunLogicalBinaryWebGpu(const char* op_type, bool (*fn)(bool, bool),

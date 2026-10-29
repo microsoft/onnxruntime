@@ -435,8 +435,16 @@ static std::string GetMinImpl(int lhs_element_type, int /* rhs_element_type */) 
 WEBGPU_VARIADIC_IMPL(Max, "max_v(vec4<input_a_element_t>(a), vec4<input_b_element_t>(b))", GetMaxImpl)
 WEBGPU_VARIADIC_IMPL(Min, "min_v(vec4<input_a_element_t>(a), vec4<input_b_element_t>(b))", GetMinImpl)
 
-std::string GetPowImpl(int lhs_element_type, int /* rhs_element_type */) {
+std::string GetPowImpl(int lhs_element_type, int rhs_element_type) {
   SS(s, 1024);
+  // Take an integer exponent's parity from the integer itself. Converting it to f32 first rounds odd
+  // values above 2^24 to even ones (16777217 -> 16777216), which flips the sign for a negative base.
+  // int64 exponents are read as their low 32 bits, which keep the parity.
+  const bool is_integer_exponent = rhs_element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32 ||
+                                   rhs_element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32 ||
+                                   rhs_element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
+  const char* exponent_is_odd = is_integer_exponent ? "(b & input_b_element_t(1)) != input_b_element_t(0)"
+                                                    : "round(abs(f32(b)) % 2.0) == 1.0";
   std::string round_str;
   if (lhs_element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32) {
     round_str = "round";
@@ -453,17 +461,24 @@ std::string GetPowImpl(int lhs_element_type, int /* rhs_element_type */) {
         "  }\n";
   }
 
-  s << "fn pow_custom(a : input_a_element_t, b : f32) -> input_a_element_t {\n"
+  s << "fn pow_exponent_is_odd(b : input_b_element_t) -> bool {\n"
+       "  return "
+    << exponent_is_odd << ";\n"
+    << "}\n"
+       "fn pow_custom(a : input_a_element_t, b : f32, b_is_odd : bool) -> input_a_element_t {\n"
        "  if (b == 0.0) {\n"
        "    return input_a_element_t(1.0);\n"
        "  } else if (a < input_a_element_t(0.0) && b != floor(b)) {\n"
        "    return input_a_element_t(pow(f32(a), b)); // NaN\n"
        "  }\n"
     << use_pow_shortcut
-    << "  return select(sign(a), input_a_element_t(1.0), round(abs(b) % 2.0) != 1.0) * input_a_element_t(" << round_str << "(pow(f32(abs(a)), b)));\n"
+    << "  return select(input_a_element_t(1.0), sign(a), b_is_odd) * input_a_element_t(" << round_str << "(pow(f32(abs(a)), b)));\n"
     << "}\n"
        "fn pow_v(a : vec4<input_a_element_t>, b : vec4<input_b_element_t>) -> vec4<input_a_element_t> {\n"
-       "  return vec4<input_a_element_t>(pow_custom(a.x, f32(b.x)), pow_custom(a.y, f32(b.y)), pow_custom(a.z, f32(b.z)), pow_custom(a.w, f32(b.w)));\n"
+       "  return vec4<input_a_element_t>(pow_custom(a.x, f32(b.x), pow_exponent_is_odd(b.x)),\n"
+       "                                 pow_custom(a.y, f32(b.y), pow_exponent_is_odd(b.y)),\n"
+       "                                 pow_custom(a.z, f32(b.z), pow_exponent_is_odd(b.z)),\n"
+       "                                 pow_custom(a.w, f32(b.w), pow_exponent_is_odd(b.w)));\n"
        "}\n";
   return SS_GET(s);
 }
@@ -557,8 +572,8 @@ void RegisterBinaryElementwiseKernels(KernelRegistry& kernel_registry, bool enab
   // int64 base yet, so T stays on the non-int64 numeric constraints. Add schema-supported int64 Pow
   // in a follow-up and move it up to the int64-capable group above.
   // Pow gains a second "T1" (exponent) type constraint from opset 12. An int64 exponent is supported
-  // (the shader converts the exponent to f32); WebNN lowers reduceSumSquare over no axes to
-  // Pow(x, int64 2).
+  // (the shader converts the exponent to f32 for the magnitude and takes its parity from the integer);
+  // WebNN lowers reduceSumSquare over no axes to Pow(x, int64 2).
   RegisterBinaryOp(kernel_registry, "Pow", CreateBinaryOpKernel<Pow>, number_types, {{7, 11}});
   RegisterBinaryOp(kernel_registry, "Pow", CreateBinaryOpKernel<Pow>, number_types, {{12, 12}, {13, 14}, {15, std::nullopt}}, &int64_capable);
 
