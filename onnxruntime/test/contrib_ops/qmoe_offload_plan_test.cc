@@ -170,6 +170,42 @@ TEST(QMoEOffloadPlanTest, LargestInt32HiddenAndIntermediateSizesStillResolve) {
                    .valid);
 }
 
+TEST(QMoEOffloadPlanTest, RejectsZeroOrNegativeExpertCountsAndSupportsInt4AndInt3Banks) {
+  // E=0 must be rejected before per-expert division for NVFP4, INT4, and INT3.
+  EXPECT_FALSE(qmoe::ResolveNvfp4BankDims(TensorShape({0, 256, 128}), TensorShape({0, 128, 128}),
+                                          /*scale_group=*/32, 0, 0, /*scale_elem_bytes=*/2)
+                   .valid);
+  EXPECT_FALSE(qmoe::ResolveInt3BankDims(TensorShape({0, 256, 96}), TensorShape({0, 256, 48}),
+                                         /*scale_group=*/32, 0, 0)
+                   .valid);
+
+  // Valid prepacked INT4 (block_size=32, 2B FP16/BF16 scales) in both legacy [E,H,I]/[E,I,H/2] and standard layouts.
+  const uint64_t int4_fc1_s = 8ull * 256 * (256 / 32) * 2;
+  const uint64_t int4_fc2_s = 8ull * 256 * (128 / 32) * 2;
+  const auto int4_legacy = qmoe::ResolveNvfp4BankDims(
+      TensorShape({8, 256, 128}), TensorShape({8, 128, 128}), /*scale_group=*/32, int4_fc1_s, int4_fc2_s, 2);
+  ASSERT_TRUE(int4_legacy.valid);
+  EXPECT_EQ(int4_legacy.hidden, 256);
+  EXPECT_EQ(int4_legacy.inter, 128);
+
+  const auto int4_std = qmoe::ResolveNvfp4BankDims(
+      TensorShape({8, 256, 128}), TensorShape({8, 256, 64}), /*scale_group=*/32, int4_fc1_s, int4_fc2_s, 2);
+  ASSERT_TRUE(int4_std.valid);
+  EXPECT_EQ(int4_std.hidden, 256);
+  EXPECT_EQ(int4_std.inter, 128);
+
+  // Valid raw INT3 (block_size in {32, 64, 128}): FC1 [E, 2*I, (H*3)/8], FC2 [E, H, (I*3)/8].
+  for (int64_t blk : {32, 64, 128}) {
+    const uint64_t int3_fc1_s = static_cast<uint64_t>(8 * 256 * (256 / blk) * 2);
+    const uint64_t int3_fc2_s = static_cast<uint64_t>(8 * 256 * (128 / blk) * 2);
+    const auto int3_dims = qmoe::ResolveInt3BankDims(
+        TensorShape({8, 256, (256 * 3) / 8}), TensorShape({8, 256, (128 * 3) / 8}), blk, int3_fc1_s, int3_fc2_s);
+    ASSERT_TRUE(int3_dims.valid) << "blk=" << blk;
+    EXPECT_EQ(int3_dims.hidden, 256);
+    EXPECT_EQ(int3_dims.inter, 128);
+  }
+}
+
 namespace {
 
 qmoe::CrossLayerSite Site(const void* session, int64_t layer, bool doorbell_pending = false) {

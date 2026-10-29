@@ -686,6 +686,9 @@ struct Int3MoeParams {
   float limit = 0.0f;
   bool is_bfloat16 = false;
   bool tc_prepacked = false;
+  const int* source_route_ids = nullptr;
+  bool input_is_gathered = false;
+  int total_routes_override = 0;
 };
 
 // Kernel family LaunchInt3Moe dispatches for `params`. Only the vectorized GEMV kernels read
