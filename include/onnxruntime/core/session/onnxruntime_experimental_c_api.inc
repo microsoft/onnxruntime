@@ -50,6 +50,7 @@ ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtApi_ExperimentalApiTest, _Out_ int64_t
  * A zero count installs an empty registry; missing sources still fail without path fallback.
  * The registry is retained when loading session options from model metadata.
  * Tensor ranges are privately mapped without reopening or canonicalizing file paths.
+ * Subgraph checking does not inline mapped initializer payloads.
  * Small tensors may be inlined; unaligned numeric ranges and BOOL tensors are copied into owned storage.
  * BOOL elements are normalized to zero or one.
  * Files must remain immutable while dependent sessions/tensors exist. Missing sources
