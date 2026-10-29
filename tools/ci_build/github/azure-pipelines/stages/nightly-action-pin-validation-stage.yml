@@ -18,7 +18,7 @@ stages:
       persistCredentials: false
       submodules: false
 
-    # Example of mirroring a pinact release from a machine with GitHub access (from the repository root):
+    # Example of mirroring a pinact release (from the repository root):
     # python tools\ci_build\mirror_as_universal_package.py `
     #   --url https://github.com/suzuki-shunsuke/pinact/releases/download/v4.0.0/pinact_windows_amd64.zip `
     #   --name pinact-windows-amd64 --version 4.0.0 `
