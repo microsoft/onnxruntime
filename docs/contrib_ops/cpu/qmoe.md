@@ -9,6 +9,13 @@ The CPU QMoE kernel is implemented in:
 - `onnxruntime/contrib_ops/cpu/moe/moe_quantization_cpu.h`
 - `onnxruntime/contrib_ops/cpu/moe/moe_quantization_cpu.cc`
 - `onnxruntime/contrib_ops/cpu/moe/moe_helper.h`
+- `onnxruntime/contrib_ops/cpu/moe/qmoe_shared_cpu.{h,cc}`
+- `onnxruntime/contrib_ops/cpu/moe/qmoe_shared_layout.{h,cc}`
+- `onnxruntime/contrib_ops/cpu/moe/qmoe_shared_layout_int4_avx512.cc`
+- `onnxruntime/contrib_ops/cpu/moe/qmoe_shared_layout_int4_avx2.cc`
+- `onnxruntime/contrib_ops/cpu/moe/qmoe_shared_layout_int3_avx512.cc`
+- `onnxruntime/contrib_ops/cpu/moe/qmoe_shared_layout_int3_avx2.cc`
+- `onnxruntime/contrib_ops/cpu/moe/qmoe_shared_layout_fp4_avx512.cc`
 
 The operator schema itself is defined in:
 
