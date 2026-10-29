@@ -44,7 +44,7 @@ jobs:
           submodules: none
 
       - name: Setup Python 3.12
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
           architecture: x64
@@ -184,7 +184,7 @@ jobs:
           submodules: none
 
       - name: Setup Python 3.12
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
           architecture: x64
@@ -298,7 +298,7 @@ jobs:
           submodules: none
 
       - name: Setup Python 3.12
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
           architecture: x64
@@ -386,7 +386,7 @@ jobs:
           submodules: none
 
       - name: Setup Python 3.12
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
           architecture: x64
@@ -450,7 +450,7 @@ jobs:
           submodules: none
 
       - name: Setup Python 3.12
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
           architecture: x64
@@ -508,7 +508,7 @@ jobs:
           submodules: none
 
       - name: Setup Python 3.12
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
           architecture: x64
@@ -588,7 +588,7 @@ jobs:
           submodules: none
 
       - name: Setup Python 3.12
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
           architecture: x64
@@ -709,7 +709,7 @@ jobs:
           submodules: none
 
       - name: Setup Python 3.12
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
           architecture: x64
