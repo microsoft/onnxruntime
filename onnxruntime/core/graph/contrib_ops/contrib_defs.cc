@@ -628,6 +628,19 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BiasGelu, 1,
 
 constexpr const char* QuickGelu_ver1_doc = R"DOC(Compute x * Sigmoid(alpha * x).)DOC";
 ONNX_MS_OPERATOR_SET_SCHEMA(
+    Log1p, 1,
+    OpSchema()
+        .SetDomain(kMSDomain)
+        .SinceVersion(1)
+        .SetDoc("Computes log(1 + X) without first rounding 1 + X to the input type. "
+                "ORT CUDA/WebGPU fusion target; portable models should use ONNX Add followed by Log.")
+        .Input(0, "X", "Input tensor.", "T")
+        .Output(0, "Y", "Natural logarithm of one plus X.", "T")
+        .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+                        "Floating point tensors. Provider support varies.")
+        .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
     QuickGelu, 1,
     OpSchema()
         .SetDomain(kMSDomain)

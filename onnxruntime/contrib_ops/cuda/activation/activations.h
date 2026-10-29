@@ -80,6 +80,16 @@ class QuickGelu final : public UnaryElementwise {
   float alpha_;
 };
 
+template <typename T>
+class Log1p final : public UnaryElementwise {
+ public:
+  Log1p(const OpKernelInfo& info) : UnaryElementwise(info) {}
+  Status ComputeInternal(OpKernelContext* context) const override;
+
+ private:
+  CtxLog1p MakeFuncCtx() const { return {}; }
+};
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

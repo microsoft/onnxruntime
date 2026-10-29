@@ -63,6 +63,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.Irfft">com.microsoft.Irfft</a>
   * <a href="#com.microsoft.LinearAttention">com.microsoft.LinearAttention</a>
   * <a href="#com.microsoft.LinearAttentionGate">com.microsoft.LinearAttentionGate</a>
+  * <a href="#com.microsoft.Log1p">com.microsoft.Log1p</a>
   * <a href="#com.microsoft.LongformerAttention">com.microsoft.LongformerAttention</a>
   * <a href="#com.microsoft.MRotaryEmbedding">com.microsoft.MRotaryEmbedding</a>
   * <a href="#com.microsoft.MatMulBlockQuantizedFp4Weight">com.microsoft.MatMulBlockQuantizedFp4Weight</a>
@@ -3841,6 +3842,36 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain gate input and output types to float tensors.</dd>
 <dt><tt>TF</tt> : tensor(float)</dt>
 <dd>Constrain the per-head parameters to float32.</dd>
+</dl>
+
+
+### <a name="com.microsoft.Log1p"></a><a name="com.microsoft.log1p">**com.microsoft.Log1p**</a>
+
+  Computes log(1 + X) without first rounding 1 + X to the input type. ORT CUDA/WebGPU fusion target; portable models should use ONNX Add followed by Log.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs
+
+<dl>
+<dt><tt>X</tt> : T</dt>
+<dd>Input tensor.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>Natural logarithm of one plus X.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16), tensor(float), tensor(double), tensor(bfloat16)</dt>
+<dd>Floating point tensors. Provider support varies.</dd>
 </dl>
 
 
@@ -9137,5 +9168,4 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
-
 

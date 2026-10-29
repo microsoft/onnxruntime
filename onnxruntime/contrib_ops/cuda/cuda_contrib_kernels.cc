@@ -47,6 +47,10 @@ class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, QuickGelu);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, double, QuickGelu);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, QuickGelu);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, QuickGelu);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, Log1p);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, double, Log1p);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, Log1p);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, Log1p);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, TransposeMatMul);      // backward compatibility
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, double, TransposeMatMul);     // backward compatibility
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, TransposeMatMul);  // backward compatibility
@@ -421,6 +425,10 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, double, QuickGelu)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, QuickGelu)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, QuickGelu)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, Log1p)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, double, Log1p)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, Log1p)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, Log1p)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, TransposeMatMul)>,      // backward compatibility
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, double, TransposeMatMul)>,     // backward compatibility
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, TransposeMatMul)>,  // backward compatibility

@@ -59,6 +59,16 @@ struct OP_QuickGelu : public CtxQuickGelu {
   }
 };
 
+template <typename T>
+struct OP_Log1p : public CtxLog1p {
+  __device__ __inline__ T operator()(const T& a) const {
+    if constexpr (std::is_same_v<T, double>) {
+      return log1p(a);
+    }
+    return static_cast<T>(log1pf(static_cast<float>(a)));
+  }
+};
+
 #define UNARY_ACTIVATION_IMPL(name)                                        \
   UNARY_ACTIVATION_IMPL_DECLARATION(name) {                                \
     UnaryElementWiseImpl(stream,                                           \

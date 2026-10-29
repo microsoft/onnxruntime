@@ -81,6 +81,7 @@
 #include "core/optimizer/qdq_transformer/qdq_s8_to_u8.h"
 #include "core/optimizer/qdq_transformer/relu_quantizelinear.h"
 #include "core/optimizer/quick_gelu_fusion.h"
+#include "core/optimizer/log1p_fusion.h"
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
@@ -428,6 +429,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       // Expose pre-opset-20 tanh GELU to ConvActivationFusion on WebGPU.
       transformers.emplace_back(std::make_unique<FastGeluFusion>(cpu_cuda_dml_webgpu_eps));
       transformers.emplace_back(std::make_unique<QuickGeluFusion>(cpu_acl_cuda_dml_js_webgpu_eps));
+      transformers.emplace_back(std::make_unique<Log1pFusion>());
 
       // GeluApproximation has side effects which may change results. It needs to be manually enabled,
       // or alternatively the model can be updated offline using a model conversion script
