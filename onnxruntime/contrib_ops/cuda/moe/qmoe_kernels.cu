@@ -281,48 +281,19 @@ __global__ void SoftmaxTopKWarpBitonicKernel(const T* logits, float* topk_scales
 template <typename T, int kItemsPerLane, int kRowsPerBlock>
 __global__ void SoftmaxTopKWarpTopKKernel(const T* logits, float* topk_scales, int* topk_indices,
                                           int num_rows, int num_experts, int k, bool normalize_scales) {
-  constexpr int kWarpSize = onnxruntime::cuda::topk::kWarpSize;
   const int row = blockIdx.x * kRowsPerBlock + static_cast<int>(threadIdx.y);
   if (row >= num_rows) return;
 
   const int lane = threadIdx.x;
   const T* row_logits = logits + static_cast<size_t>(row) * num_experts;
 
-  // Padding lanes carry (-inf, INT_MAX) so that valid -inf expert scores sort ahead.
+  // Shared with the fused single-token routing prologue (moe_kernels.cu) so both pick the same
+  // experts with bit-identical scales.
   uint64_t keys[kItemsPerLane];
-  float local_max = onnxruntime::cuda::topk::kNegativeInfinity;
-#pragma unroll
-  for (int j = 0; j < kItemsPerLane; ++j) {
-    const int idx = j * kWarpSize + lane;
-    const float logit = (idx < num_experts) ? static_cast<float>(row_logits[idx])
-                                            : onnxruntime::cuda::topk::kNegativeInfinity;
-    keys[j] = onnxruntime::cuda::topk::PackStableSortKey(logit, (idx < num_experts) ? idx : INT_MAX);
-    local_max = fmaxf(local_max, logit);
-  }
-
-  // Softmax denominator over all experts (needed when normalize_scales is false;
-  // when true it cancels in the top-k normalization but is still correct).
-  const float max_val = WarpReduceMax(local_max);
-  float local_sum = 0.0f;
-#pragma unroll
-  for (int j = 0; j < kItemsPerLane; ++j) {
-    if (j * kWarpSize + lane < num_experts) {
-      local_sum += expf(onnxruntime::cuda::topk::UnpackStableSortScore(keys[j]) - max_val);
-    }
-  }
-  const float inv_sum = SafeInvSum(WarpReduceSum(local_sum));
-
-  // Every lane ends up holding the row's top kItemsPerLane keys, sorted descending.
-  onnxruntime::cuda::topk::WarpBitonicTopN<kItemsPerLane>(keys);
-
   float probs[kItemsPerLane];
-  float scale_sum = 0.0f;
-#pragma unroll
-  for (int j = 0; j < kItemsPerLane; ++j) {
-    probs[j] = SoftmaxScale(onnxruntime::cuda::topk::UnpackStableSortScore(keys[j]), max_val, inv_sum);
-    if (j < k) scale_sum += probs[j];
-  }
-  const float denom = TopKNormalizeDenom(normalize_scales, scale_sum);
+  float denom;
+  onnxruntime::cuda::topk::WarpSoftmaxTopN<T, kItemsPerLane>(row_logits, num_experts, k, normalize_scales, keys,
+                                                             probs, denom);
 
   // The results are replicated across the warp, so lane j simply writes rank j.
 #pragma unroll
