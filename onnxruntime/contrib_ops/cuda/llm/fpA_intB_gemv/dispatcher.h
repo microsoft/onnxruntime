@@ -19,42 +19,8 @@
 #include "core/common/common.h"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 
-#include <atomic>
 #include <cstdio>
 #include <type_traits>
-
-namespace onnxruntime::llm {
-namespace kernels {
-namespace fpA_intB_gemv {
-
-// SM count of the current device if it is sm_12x (consumer / workstation Blackwell), else 0.
-inline int GemvPickSmCount() {
-  int device = 0;
-  if (cudaGetDevice(&device) != cudaSuccess) {
-    return 0;
-  }
-  static constexpr int kMaxDevices = 16;
-  static std::atomic<int> cache[kMaxDevices];  // 0 = unknown, -1 = not sm_12x
-  int count = device >= 0 && device < kMaxDevices ? cache[device].load(std::memory_order_relaxed) : 0;
-  if (count == 0) {
-    int major = 0;
-    if (cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, device) != cudaSuccess ||
-        cudaDeviceGetAttribute(&count, cudaDevAttrMultiProcessorCount, device) != cudaSuccess) {
-      return 0;
-    }
-    if (major != 12) {
-      count = -1;
-    }
-    if (device >= 0 && device < kMaxDevices) {
-      cache[device].store(count, std::memory_order_relaxed);
-    }
-  }
-  return count > 0 ? count : 0;
-}
-
-}  // namespace fpA_intB_gemv
-}  // namespace kernels
-}  // namespace onnxruntime::llm
 
 namespace onnxruntime::llm {
 namespace kernels {
@@ -542,7 +508,7 @@ void exec_kernel(Params& params, cudaStream_t s) {
       params.alpha,
       params.m, params.n, params.k);
   if (params.debug) {
-    std::printf("[fpA_intB_debug] GEMV launch: paired_k=0 M=%d\n", params.m);
+    std::printf("[fpA_intB_debug] GEMV launch: paired_k=0 M=%d CtaN=%d\n", params.m, CtaN);
     std::fflush(stdout);
   }
 }
@@ -648,22 +614,48 @@ void dispatcher(Params& params, cudaStream_t s) {
   DISPATCHER_FOR_M(5, 5, CtaNLargeM, 128);
   DISPATCHER_FOR_M(6, 6, CtaNLargeM, 128);
   DISPATCHER_FOR_M(7, 7, CtaNLargeM, 128);
-  // M = 8 is the DFlash2 verify batch; its projections are sensitive to wave quantization. Only the
-  // fp16 int4 SM80-interleaved kernel was measured, so other types and layouts keep CtaNLargeM.
-  if constexpr (Details::kStepK == 32 && Details::kInterleave == 4 && !EnableZero && CtaNLargeM == 4 &&
-                std::is_same_v<typename Details::TypeDetailsA, FP16DetailsA>) {
-    int const sm_count = params.wave_aware && params.m == 8 ? GemvPickSmCount() : 0;
-    int const pick = PickGemvCtaN(params.wave_aware, params.m, params.n, Details::kInterleave, CtaNLargeM,
-                                  sm_count);
-    if (pick == CtaNLargeM / 2) {
+  // M = 8 is the DFlash2 verify batch. With the default tile its small-N projections launch only
+  // grid.y = n / (CtaNLargeM * kInterleave) blocks, too few to fill the GPU, so a half-width tile
+  // (CtaN = CtaNLargeM / 2) doubles the block count. The tile only decides which block covers which
+  // columns; each output keeps the same K reduction, so results are bit-identical.
+  // Only the SM80-interleaved INT4 (StepK 32) and INT8 (StepK 16) layouts without zero points qualify. The
+  // Hopper layout (kInterleave 1) and the zero-point kernels (CtaNLargeM 2) keep the default tile.
+  // A100 and H200 (reported by the caller in params.device_sm / device_sm_count) use same-shape
+  // timing-qualified rules for FP16/BF16 and INT4/INT8 with group size 32 / 64 / 128; on H200 INT8 always keeps
+  // the default tile. Activation scales and alpha-in-advance were not timed and keep the default tile there. A
+  // bias epilogue goes to the rule: A100 keeps the default tile, and H200 narrows its INT4 window because the
+  // half-width kernel is 6 - 32% slower than the default one with a bias except where the wave gain pays for it.
+  // In particular, A100 INT4 N = 4320 fills its 108 * 5 narrow-tile block slots; N = 4336 starts a second wave,
+  // and H200 INT4 N = 5280 fills 132 * 5 slots. Other and unreported devices retain the device-independent
+  // cutoffs.
+  if constexpr (((Details::kStepK == 32 && Details::kInterleave == 4) ||
+                 (Details::kStepK == 16 && Details::kInterleave == 2)) &&
+                !EnableZero && CtaNLargeM == 4) {
+    const M8GemvDevice device = GetM8GemvDevice(params.device_sm, params.device_sm_count);
+    constexpr bool kTimedEpilogue = !EnableActScale && !ApplyAlphaInAdvance &&
+                                    (GroupSize == 32 || GroupSize == 64 || GroupSize == 128);
+    if ((device == M8GemvDevice::kUnmeasured || kTimedEpilogue) &&
+        PickM8GemvCtaN(device, params.m, params.n, params.k, GroupSize, Details::kInterleave, EnableBias,
+                       CtaNLargeM) == CtaNLargeM / 2) {
       exec_kernel<Details, 8, CtaNLargeM / 2, 128, GroupSize, EnableActScale, EnableZero, EnableBias,
                   ApplyAlphaInAdvance>(params, s);
       return;
     }
-    if (pick == CtaNLargeM * 2) {
-      exec_kernel<Details, 8, CtaNLargeM * 2, 128, GroupSize, EnableActScale, EnableZero, EnableBias,
-                  ApplyAlphaInAdvance>(params, s);
-      return;
+    if constexpr (Details::kStepK == 32 && Details::kInterleave == 4 &&
+                  std::is_same_v<typename Details::TypeDetailsA, FP16DetailsA>) {
+      // Opt-in wave-aware tile (sm_12x only). Its SM count comes from the reported device as well.
+      int const pick = PickGemvCtaN(params.wave_aware, params.m, params.n, Details::kInterleave, CtaNLargeM,
+                                    GemvPickSmCount(params.device_sm, params.device_sm_count));
+      if (pick == CtaNLargeM / 2) {
+        exec_kernel<Details, 8, CtaNLargeM / 2, 128, GroupSize, EnableActScale, EnableZero, EnableBias,
+                    ApplyAlphaInAdvance>(params, s);
+        return;
+      }
+      if (pick == CtaNLargeM * 2) {
+        exec_kernel<Details, 8, CtaNLargeM * 2, 128, GroupSize, EnableActScale, EnableZero, EnableBias,
+                    ApplyAlphaInAdvance>(params, s);
+        return;
+      }
     }
   }
   DISPATCHER_FOR_M(8, 8, CtaNLargeM, 128);

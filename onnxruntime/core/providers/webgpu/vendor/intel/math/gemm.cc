@@ -85,7 +85,7 @@ Status ApplyGemmIntel(const Tensor* a,
   bool c_is_scalar = false;
   if (need_handle_bias) {
     const auto& c_shape = c->Shape();
-    int64_t c_last_dim = c_shape[c_shape.NumDimensions() - 1];
+    const int64_t c_last_dim = c_shape.NumDimensions() > 0 ? c_shape[c_shape.NumDimensions() - 1] : 1;
     // `C` in GEMM might be broadcast to the output, and broadcasting requires the components to be consistent.
     // So we use vec4 for C when its last dimension is N, and the output is also a vec4.
     c_components = (c_last_dim == N && output_components == 4) ? 4 : 1;
