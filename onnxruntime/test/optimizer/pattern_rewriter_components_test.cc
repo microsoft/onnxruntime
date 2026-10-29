@@ -530,6 +530,7 @@ TEST(CheckAndBindComponentTests, SessionConvertedInitializersSupportLiteralMatch
   }
 }
 
+#if !defined(__wasm__)  // Requires filesystem support.
 TEST(CheckAndBindComponentTests, DiskExternalConstantsUseOrtLoadingAndPropagateFailures) {
   const TemporaryDirectory directory(ORT_TSTR("pattern_rewriter_external_constants"));
   const auto model_path = std::filesystem::path(directory.Path()) / "model.onnx";
@@ -583,6 +584,7 @@ TEST(CheckAndBindComponentTests, DiskExternalConstantsUseOrtLoadingAndPropagateF
     if (scenario != 0) EXPECT_EQ(test.model.ToProto().SerializeAsString(), before);
   }
 }
+#endif
 
 TEST(CheckAndBindComponentTests, MemoryMarkersRequireOwnedMatchingStorageBeforeReading) {
   for (int scenario = 0; scenario < 5; ++scenario) {
@@ -625,6 +627,7 @@ TEST(CheckAndBindComponentTests, MemoryMarkersRequireOwnedMatchingStorageBeforeR
   }
 }
 
+#if !defined(__wasm__)  // Requires filesystem support.
 TEST(CheckAndBindComponentTests, DiskExternalScalarAndSingletonConstantsPreserveExactTypeAndRank) {
   const TemporaryDirectory directory(ORT_TSTR("pattern_rewriter_external_scalar"));
   const auto model_path = std::filesystem::path(directory.Path()) / "model.onnx";
@@ -681,6 +684,7 @@ TEST(CheckAndBindComponentTests, DiskExternalScalarAndSingletonConstantsPreserve
     }
   }
 }
+#endif
 
 TEST(CheckAndBindComponentTests, MalformedSupportedConstantsAreErrorsNotAlternativeRejections) {
   for (int storage = 0; storage < 3; ++storage) {
@@ -722,6 +726,7 @@ TEST(CheckAndBindComponentTests, MalformedSupportedConstantsAreErrorsNotAlternat
   }
 }
 
+#if !defined(__wasm__)  // Requires filesystem support.
 TEST(CheckAndBindComponentTests, EmptyExternalConstantsValidateFilesAndOffsetsWithoutReadingWholeFiles) {
   const TemporaryDirectory directory(ORT_TSTR("pattern_rewriter_empty_external"));
   const auto model_path = std::filesystem::path(directory.Path()) / "model.onnx";
@@ -779,6 +784,7 @@ TEST(CheckAndBindComponentTests, EmptyExternalConstantsValidateFilesAndOffsetsWi
     }
   }
 }
+#endif
 
 TEST(CheckAndBindComponentTests, ConstantReadersUseOwningScopeAndRespectLocalOverrides) {
   for (bool memory : {false, true}) {
