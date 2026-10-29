@@ -1,0 +1,38 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#pragma once
+
+#include <cstddef>
+
+#include "core/providers/cuda/cuda_common.h"
+
+namespace onnxruntime {
+namespace contrib {
+namespace cuda {
+
+enum class MoERouterScoring : int {
+  kSqrtSoftplus = 0,
+  kSoftmax = 1,
+  kSigmoid = 2,
+};
+
+struct MoERouterParams {
+  int num_tokens;
+  int num_experts;
+  int topk;
+  int local_expert_start;
+  int local_expert_count;
+  float route_scale;
+  MoERouterScoring scoring;
+};
+
+template <typename T>
+Status LaunchMoERouter(cudaStream_t stream, const MoERouterParams& params,
+                       size_t shared_memory_limit,
+                       const float* scores, const float* bias, const int64_t* expert_ids,
+                       T* router_probs, float* weight_scale);
+
+}  // namespace cuda
+}  // namespace contrib
+}  // namespace onnxruntime
