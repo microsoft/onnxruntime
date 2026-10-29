@@ -42,6 +42,9 @@ stages:
       pool:
         os: linux
         name: ${{ parameters.PoolName }}
+        ${{ if or(eq(parameters.PoolName, 'onnxruntime-Ubuntu2204-AMD-CPU'), eq(parameters.PoolName, 'onnxruntime-Ubuntu2404-AMD-CPU')) }}:
+          demands:
+          - ImageOverride -equals onnxruntime-ubuntu2404-nvme-x64
     variables:
     - name: runCodesignValidationInjection
       value: false

@@ -23,6 +23,9 @@ stages:
     pool:
       name: ${{ parameters.AgentPool }}
       os: 'linux'
+      ${{ if or(eq(parameters.AgentPool, 'onnxruntime-Ubuntu2204-AMD-CPU'), eq(parameters.AgentPool, 'onnxruntime-Ubuntu2404-AMD-CPU')) }}:
+        demands:
+        - ImageOverride -equals onnxruntime-ubuntu2404-nvme-x64
 
     variables:
     - template: ../../templates/common-variables.yml

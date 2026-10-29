@@ -18,6 +18,8 @@ jobs:
   pool:
     name: onnxruntime-Ubuntu2204-AMD-CPU
     os: linux
+    demands:
+    - ImageOverride -equals onnxruntime-ubuntu2404-nvme-x64
   variables:
     runCodesignValidationInjection: false
     ANDROID_AVD_HOME: $(Agent.TempDirectory)

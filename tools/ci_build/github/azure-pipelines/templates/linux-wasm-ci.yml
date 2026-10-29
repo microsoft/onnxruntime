@@ -49,6 +49,9 @@ jobs:
   pool:
     name: ${{ parameters.PoolName }}
     os: linux
+    ${{ if or(eq(parameters.PoolName, 'onnxruntime-Ubuntu2204-AMD-CPU'), eq(parameters.PoolName, 'onnxruntime-Ubuntu2404-AMD-CPU')) }}:
+      demands:
+      - ImageOverride -equals onnxruntime-ubuntu2404-nvme-x64
   variables:
     buildArch: x64
     CommonBuildArgs: '--parallel --config ${{ parameters.BuildConfig }} --skip_submodule_sync --build_wasm --enable_wasm_simd --enable_wasm_threads ${{ parameters.ExtraBuildArgs }}'

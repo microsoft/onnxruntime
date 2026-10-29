@@ -30,6 +30,8 @@ stages:
     ${{ else }}:
       name: onnxruntime-Ubuntu2404-AMD-CPU
       os: linux
+      demands:
+      - ImageOverride -equals onnxruntime-ubuntu2404-nvme-x64
   variables:
     ${{ if eq(parameters.arch, 'aarch64') }}:
       DockerBaseImage: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cpu_aarch64_almalinux8_gcc14:20251017.1

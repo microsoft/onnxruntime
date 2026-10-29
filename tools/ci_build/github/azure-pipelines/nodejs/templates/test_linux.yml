@@ -13,6 +13,9 @@ stages:
     timeoutInMinutes: 120
     pool:
       name: ${{ parameters.AgentPool }}
+      ${{ if or(eq(parameters.AgentPool, 'onnxruntime-Ubuntu2204-AMD-CPU'), eq(parameters.AgentPool, 'onnxruntime-Ubuntu2404-AMD-CPU')) }}:
+        demands:
+        - ImageOverride -equals onnxruntime-ubuntu2404-nvme-x64
 
     variables:
     - name: OnnxRuntimeBuildDirectory

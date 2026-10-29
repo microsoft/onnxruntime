@@ -12,6 +12,8 @@ stages:
     displayName: 'Restore and Use Build Parameters'
     pool:
       name: 'onnxruntime-Ubuntu2204-AMD-CPU'
+      demands:
+      - ImageOverride -equals onnxruntime-ubuntu2404-nvme-x64
     steps:
     - download: build # This refers to the 'build' pipeline alias defined in resources.
       artifact: 'parameters_artifact' # This must match the ArtifactName from the source pipeline.
@@ -173,7 +175,10 @@ stages:
     artifactPipelineResource: build
     previousStageName: Setup
     platform: linux-x64
-    agentPool: onnxruntime-Ubuntu2204-AMD-CPU
+    agentPool:
+      name: onnxruntime-Ubuntu2204-AMD-CPU
+      demands:
+      - ImageOverride -equals onnxruntime-ubuntu2404-nvme-x64
 
 - template: templates/test-binary-archive-stage.yml
   parameters:

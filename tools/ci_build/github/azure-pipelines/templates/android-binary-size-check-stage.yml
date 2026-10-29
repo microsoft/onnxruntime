@@ -31,7 +31,10 @@ stages:
     timeoutInMinutes: 60
     workspace:
       clean: all
-    pool: onnxruntime-Ubuntu2204-AMD-CPU
+    pool:
+      name: onnxruntime-Ubuntu2204-AMD-CPU
+      demands:
+      - ImageOverride -equals onnxruntime-ubuntu2404-nvme-x64
     steps:
     - template: jobs/checkout-and-git-redirect.yml
 

@@ -60,6 +60,9 @@ stages:
     pool:
       name: ${{ parameters.machine_pool }}
       os: linux
+      ${{ if or(eq(parameters.machine_pool, 'onnxruntime-Ubuntu2204-AMD-CPU'), eq(parameters.machine_pool, 'onnxruntime-Ubuntu2404-AMD-CPU')) }}:
+        demands:
+        - ImageOverride -equals onnxruntime-ubuntu2404-nvme-x64
       ${{ if eq(parameters.arch, 'aarch64') }}:
         hostArchitecture: Arm64
     templateContext:
