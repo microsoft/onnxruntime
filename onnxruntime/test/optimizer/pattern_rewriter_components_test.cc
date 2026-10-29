@@ -530,6 +530,7 @@ TEST(CheckAndBindComponentTests, SessionConvertedInitializersSupportLiteralMatch
   }
 }
 
+#if !defined(__wasm__)
 TEST(CheckAndBindComponentTests, DiskExternalConstantsUseOrtLoadingAndPropagateFailures) {
   const TemporaryDirectory directory(ORT_TSTR("pattern_rewriter_external_constants"));
   const auto model_path = std::filesystem::path(directory.Path()) / "model.onnx";
@@ -583,6 +584,7 @@ TEST(CheckAndBindComponentTests, DiskExternalConstantsUseOrtLoadingAndPropagateF
     if (scenario != 0) EXPECT_EQ(test.model.ToProto().SerializeAsString(), before);
   }
 }
+#endif
 
 TEST(CheckAndBindComponentTests, MemoryMarkersRequireOwnedMatchingStorageBeforeReading) {
   for (int scenario = 0; scenario < 5; ++scenario) {
