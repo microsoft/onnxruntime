@@ -1,8 +1,20 @@
 resources:
   pipelines:
+  # Completion triggers are evaluated from the default branch. Keep the legacy
+  # alias aligned with rel-1.30.1's YAML so its artifacts come from the right pipeline.
   - pipeline: build
+    source: 'Zip-Nuget-Java-Nodejs Packaging Pipeline'
+    trigger:
+      branches:
+        include:
+        - refs/heads/rel-1.30.1
+    branch: main
+  - pipeline: buildCuda13
     source: 'Nuget - Packaging - CUDA13'
-    trigger: true
+    trigger:
+      branches:
+        exclude:
+        - refs/heads/rel-1.30.1
     branch: main
   repositories:
   - repository: 1esPipelines
@@ -52,16 +64,21 @@ extends:
     - template: templates/final-jar-testing-win.yml
       parameters:
         PoolName: 'onnxruntime-Win-CPU-2022'
+        PipelineResource: buildCuda13
 
     - template: templates/final-jar-testing-linux.yml
       parameters:
         OS: linux
         PoolName: 'onnxruntime-Ubuntu2204-AMD-CPU'
+        PipelineResource: buildCuda13
 
     - template: templates/final-jar-testing-linux.yml
       parameters:
         OS: macOS
         PoolName: 'AcesShared'
         PoolDemands: 'ImageOverride -equals ACES_VM_SharedPool_Sequoia'
+        PipelineResource: buildCuda13
 
     - template: templates/final-jar-testing-gpu.yml
+      parameters:
+        PipelineResource: buildCuda13

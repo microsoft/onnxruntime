@@ -1,3 +1,8 @@
+parameters:
+- name: PipelineResource
+  type: string
+  default: build
+
 stages:
   - stage: GPU_JAR_Testing
     dependsOn: []
@@ -31,16 +36,16 @@ stages:
         inputs:
           mavenPomFile: '$(Build.SourcesDirectory)/tools/ci_build/java/pom.xml'
           goals: 'dependency:copy-dependencies'
-          options: '-DoutputDirectory=$(Pipeline.Workspace)/build/onnxruntime-java'
+          options: '-DoutputDirectory=$(Pipeline.Workspace)/${{ parameters.PipelineResource }}/onnxruntime-java'
           publishJUnitTestResults: false
           javaHomeOption: 'JDKVersion'
           jdkVersionOption: '1.17'
           mavenVersionOption: 'Default'
-      - download: build
+      - download: ${{ parameters.PipelineResource }}
         artifact: 'onnxruntime-java-gpu'
         displayName: 'Download Final Jar'
       - script: |
-          move $(Pipeline.Workspace)\build\onnxruntime-java-gpu\*.jar $(Pipeline.Workspace)\build\onnxruntime-java\
+          move $(Pipeline.Workspace)\${{ parameters.PipelineResource }}\onnxruntime-java-gpu\*.jar $(Pipeline.Workspace)\${{ parameters.PipelineResource }}\onnxruntime-java\
 
       - task: PowerShell@2
         displayName: 'Run Java Tests with PowerShell'
@@ -50,7 +55,7 @@ stages:
             # Exit script on any error
             $ErrorActionPreference = "Stop"
 
-            cd $(Pipeline.Workspace)/build/onnxruntime-java
+            cd $(Pipeline.Workspace)/${{ parameters.PipelineResource }}/onnxruntime-java
             del *.asc
             del *.sha256
             del *.sha512
@@ -60,12 +65,12 @@ stages:
             cd ..
             mkdir tests
             cd tests
-            jar xf $(Pipeline.Workspace)/build/onnxruntime-java/testing.jar
-            del $(Pipeline.Workspace)/build/onnxruntime-java/testing.jar
-            dir $(Pipeline.Workspace)/build/tests
+            jar xf $(Pipeline.Workspace)/${{ parameters.PipelineResource }}/onnxruntime-java/testing.jar
+            del $(Pipeline.Workspace)/${{ parameters.PipelineResource }}/onnxruntime-java/testing.jar
+            dir $(Pipeline.Workspace)/${{ parameters.PipelineResource }}/tests
             Write-Host "Running JUnit Tests..."
             & java -DUSE_CUDA=1 `
-              -cp "$(Pipeline.Workspace)\build\tests;$(Pipeline.Workspace)\build\onnxruntime-java\*" org.junit.platform.console.ConsoleLauncher --scan-classpath=$(Pipeline.Workspace)\build\tests `
+              -cp "$(Pipeline.Workspace)\${{ parameters.PipelineResource }}\tests;$(Pipeline.Workspace)\${{ parameters.PipelineResource }}\onnxruntime-java\*" org.junit.platform.console.ConsoleLauncher --scan-classpath=$(Pipeline.Workspace)\${{ parameters.PipelineResource }}\tests `
               --fail-if-no-tests --disable-banner --reports-dir "$($env:Build_ArtifactStagingDirectory)/TestResults"
 
       - task: PublishTestResults@2
@@ -120,28 +125,26 @@ stages:
           echo "Maven is now on the PATH."
           mvn --version
 
-      - download: build
+      - download: ${{ parameters.PipelineResource }}
         artifact: 'onnxruntime-java-gpu'
         displayName: 'Download Final Jar'
 
       # Rename the downloaded folder
       - script: |
-          mkdir -p $(Pipeline.Workspace)/build/onnxruntime-java
-          mv $(Pipeline.Workspace)/build/onnxruntime-java-gpu/* $(Pipeline.Workspace)/build/onnxruntime-java
+          mkdir -p $(Pipeline.Workspace)/${{ parameters.PipelineResource }}/onnxruntime-java
+          mv $(Pipeline.Workspace)/${{ parameters.PipelineResource }}/onnxruntime-java-gpu/* $(Pipeline.Workspace)/${{ parameters.PipelineResource }}/onnxruntime-java
 
       - task: Maven@4
         displayName: 'Download Dependencies'
         inputs:
           mavenPomFile: '$(Build.SourcesDirectory)/tools/ci_build/java/pom.xml'
           goals: 'dependency:copy-dependencies'
-          options: '-DoutputDirectory=$(Pipeline.Workspace)/build/onnxruntime-java'
+          options: '-DoutputDirectory=$(Pipeline.Workspace)/${{ parameters.PipelineResource }}/onnxruntime-java'
           publishJUnitTestResults: false
           javaHomeOption: 'Path'
           jdkDirectory: '/usr/lib/jvm/msopenjdk-17-amd64'
           jdkVersionOption: 'Default'
           mavenVersionOption: 'Default'
-
-      # Now all the jars are in the $(Pipeline.Workspace)/build folder
 
       - template: get-docker-image-steps.yml
         parameters:
@@ -154,7 +157,7 @@ stages:
           docker run --network=none --rm \
             --gpus all \
             --volume $(Build.SourcesDirectory):/onnxruntime_src \
-            --volume $(Pipeline.Workspace)/build:/build \
+            --volume $(Pipeline.Workspace)/${{ parameters.PipelineResource }}:/build \
             --volume /data/models:/build/models:ro \
             onnxruntimeubi8packagestest \
             /bin/bash /onnxruntime_src/tools/ci_build/github/linux/java_linux_final_test.sh -r /build -v $(OnnxRuntimeVersion)

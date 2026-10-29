@@ -16,6 +16,10 @@ parameters:
   type: string
   default: ''
 
+- name: PipelineResource
+  type: string
+  default: build
+
 stages:
 - stage: Final_Jar_Testing_${{parameters.OS}}
   dependsOn: []
@@ -85,7 +89,7 @@ stages:
       displayName: 'Install JDK 17 (macOS)'
       condition: and(succeeded(), eq(variables['Agent.OS'], 'Darwin'))
 
-    - download: build
+    - download: ${{ parameters.PipelineResource }}
       artifact: 'onnxruntime-java'
       displayName: 'Download Final Jar'
 
@@ -94,7 +98,7 @@ stages:
       inputs:
         mavenPomFile: '$(Build.SourcesDirectory)/tools/ci_build/java/pom.xml'
         goals: 'dependency:copy-dependencies'
-        options: '-DoutputDirectory=$(Pipeline.Workspace)/build/onnxruntime-java'
+        options: '-DoutputDirectory=$(Pipeline.Workspace)/${{ parameters.PipelineResource }}/onnxruntime-java'
         publishJUnitTestResults: false
         mavenVersionOption: 'Default'
         ${{ if eq(parameters.OS, 'macOS') }}:
@@ -111,7 +115,7 @@ stages:
         targetType: 'inline'
         script: |
           set -e -x
-          cd $(Pipeline.Workspace)/build/onnxruntime-java
+          cd $(Pipeline.Workspace)/${{ parameters.PipelineResource }}/onnxruntime-java
           rm -f *.asc
           rm -f *.sha256
           rm -f *.sha512
@@ -130,15 +134,15 @@ stages:
           java -version
 
           # 2. Extract
-          jar xf $(Pipeline.Workspace)/build/onnxruntime-java/testing.jar
-          rm -f $(Pipeline.Workspace)/build/onnxruntime-java/testing.jar
+          jar xf $(Pipeline.Workspace)/${{ parameters.PipelineResource }}/onnxruntime-java/testing.jar
+          rm -f $(Pipeline.Workspace)/${{ parameters.PipelineResource }}/onnxruntime-java/testing.jar
 
           # Identify main jar (avoiding sources and javadoc jars)
-          MAIN_JAR=$(ls $(Pipeline.Workspace)/build/onnxruntime-java/onnxruntime-*.jar | grep -v 'sources' | grep -v 'javadoc' | head -n 1)
+          MAIN_JAR=$(ls $(Pipeline.Workspace)/${{ parameters.PipelineResource }}/onnxruntime-java/onnxruntime-*.jar | grep -v 'sources' | grep -v 'javadoc' | head -n 1)
           echo "Extracting native libs from $MAIN_JAR"
           jar xf $MAIN_JAR ai/onnxruntime/native
 
-          ls -R $(Pipeline.Workspace)/build/tests/ai
+          ls -R $(Pipeline.Workspace)/${{ parameters.PipelineResource }}/tests/ai
           echo "Java Version"
           java -version
 
@@ -158,12 +162,12 @@ stages:
             if [[ "$os_name" == "Linux" ]]; then
               echo "Platform: Linux. Setting LD_LIBRARY_PATH."
               export LD_LIBRARY_PATH="$NATIVE_LIB_DIR:$(pwd):$LD_LIBRARY_PATH"
-              java -cp '$(Pipeline.Workspace)/build/tests:$(Pipeline.Workspace)/build/onnxruntime-java/*' org.junit.platform.console.ConsoleLauncher --scan-classpath=$(Pipeline.Workspace)/build/tests \
+              java -cp '$(Pipeline.Workspace)/${{ parameters.PipelineResource }}/tests:$(Pipeline.Workspace)/${{ parameters.PipelineResource }}/onnxruntime-java/*' org.junit.platform.console.ConsoleLauncher --scan-classpath=$(Pipeline.Workspace)/${{ parameters.PipelineResource }}/tests \
               --fail-if-no-tests --disable-banner --reports-dir "$(Build.ArtifactStagingDirectory)/TestResults"
             elif [[ "$os_name" == "Darwin" ]]; then
               echo "Platform: macOS. Setting DYLD_LIBRARY_PATH."
               export DYLD_LIBRARY_PATH="$NATIVE_LIB_DIR:$(pwd):$DYLD_LIBRARY_PATH"
-              java -DUSE_WEBGPU=1 -DUSE_COREML=1 -cp '$(Pipeline.Workspace)/build/tests:$(Pipeline.Workspace)/build/onnxruntime-java/*' org.junit.platform.console.ConsoleLauncher --scan-classpath=$(Pipeline.Workspace)/build/tests \
+              java -DUSE_WEBGPU=1 -DUSE_COREML=1 -cp '$(Pipeline.Workspace)/${{ parameters.PipelineResource }}/tests:$(Pipeline.Workspace)/${{ parameters.PipelineResource }}/onnxruntime-java/*' org.junit.platform.console.ConsoleLauncher --scan-classpath=$(Pipeline.Workspace)/${{ parameters.PipelineResource }}/tests \
               --fail-if-no-tests --disable-banner --reports-dir "$(Build.ArtifactStagingDirectory)/TestResults"
             fi
           else

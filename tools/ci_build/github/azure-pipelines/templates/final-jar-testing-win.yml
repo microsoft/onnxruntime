@@ -1,6 +1,9 @@
 parameters:
 - name: PoolName
   type: string
+- name: PipelineResource
+  type: string
+  default: build
 
 stages:
 - stage: Final_Jar_Testing_Windows
@@ -38,7 +41,7 @@ stages:
         echo "Maven is now on the PATH."
         mvn --version
 
-    - download: build
+    - download: ${{ parameters.PipelineResource }}
       artifact: 'onnxruntime-java'
       displayName: 'Download Final Jar'
 
@@ -47,7 +50,7 @@ stages:
       inputs:
         mavenPomFile: '$(Build.SourcesDirectory)/tools/ci_build/java/pom.xml'
         goals: 'dependency:copy-dependencies'
-        options: '-DoutputDirectory=$(Pipeline.Workspace)/build/onnxruntime-java'
+        options: '-DoutputDirectory=$(Pipeline.Workspace)/${{ parameters.PipelineResource }}/onnxruntime-java'
         publishJUnitTestResults: false
         javaHomeOption: 'JDKVersion'
         jdkVersionOption: '1.17'
@@ -60,7 +63,7 @@ stages:
         targetType: 'inline'
         script: |
           $ErrorActionPreference = "Stop"
-          cd $(Pipeline.Workspace)/build/onnxruntime-java
+          cd $(Pipeline.Workspace)/${{ parameters.PipelineResource }}/onnxruntime-java
           del *.asc
           del *.sha256
           del *.sha512
@@ -70,12 +73,12 @@ stages:
           cd ..
           mkdir tests
           cd tests
-          jar xf $(Pipeline.Workspace)/build/onnxruntime-java/testing.jar
-          del $(Pipeline.Workspace)/build/onnxruntime-java/testing.jar
-          dir $(Pipeline.Workspace)/build/tests
+          jar xf $(Pipeline.Workspace)/${{ parameters.PipelineResource }}/onnxruntime-java/testing.jar
+          del $(Pipeline.Workspace)/${{ parameters.PipelineResource }}/onnxruntime-java/testing.jar
+          dir $(Pipeline.Workspace)/${{ parameters.PipelineResource }}/tests
           Write-Host "Running JUnit Tests..."
           & java `
-            -cp "$(Pipeline.Workspace)\build\tests;$(Pipeline.Workspace)\build\onnxruntime-java\*" org.junit.platform.console.ConsoleLauncher --scan-classpath=$(Pipeline.Workspace)\build\tests `
+            -cp "$(Pipeline.Workspace)\${{ parameters.PipelineResource }}\tests;$(Pipeline.Workspace)\${{ parameters.PipelineResource }}\onnxruntime-java\*" org.junit.platform.console.ConsoleLauncher --scan-classpath=$(Pipeline.Workspace)\${{ parameters.PipelineResource }}\tests `
             --fail-if-no-tests --disable-banner --reports-dir "$($env:Build_ArtifactStagingDirectory)/TestResults"
 
     - task: PublishTestResults@2
