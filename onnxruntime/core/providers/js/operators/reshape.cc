@@ -7,10 +7,10 @@
 namespace onnxruntime {
 namespace js {
 
-ONNX_OPERATOR_KERNEL_EX(
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Reshape,
     kOnnxDomain,
-    21,
+    21, 24,
     kJsExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", JsepSupportedDataTypes())

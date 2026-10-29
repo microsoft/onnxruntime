@@ -94,7 +94,7 @@ Do not modify directly.*
 | ReduceSum | ai.onnx(1-10,11-12,13+) |  |
 | ReduceSumSquare | ai.onnx(1-10,11-12,13-17,18+) |  |
 | Relu | ai.onnx(6-12,13,14+) |  |
-| Reshape | ai.onnx(5-12,13,14-18,19-20,21+) | no GPU kernel |
+| Reshape | ai.onnx(5-12,13,14-18,19-20,21-24) | no GPU kernel |
 | Resize | ai.onnx(10,11-12,13-17,18,19+); com.ms.internal.nhwc(10,11-12,13-17,18,19+) | CoordinateTransformMode align_corners is not supported with downsampling |
 | RotaryEmbedding | com.microsoft(1+) |  |
 | ScatterND | ai.onnx(11-12,13-15,16-17,18+) |  |
@@ -116,5 +116,5 @@ Do not modify directly.*
 | ThresholdedRelu | ai.onnx(10+) |  |
 | Tile | ai.onnx(6-12,13+) |  |
 | Transpose | ai.onnx(1-12,13-20,21+) | need perf optimization |
-| Unsqueeze | ai.onnx(1-10,11-12,13-20,21+) |  |
+| Unsqueeze | ai.onnx(1-10,11-12,13-20,21-24) |  |
 | Where | ai.onnx(9-15,16+) |  |
