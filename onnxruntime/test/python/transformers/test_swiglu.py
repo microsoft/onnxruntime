@@ -250,6 +250,32 @@ class TestSwiGLU(unittest.TestCase):
         )[0]
         np.testing.assert_array_equal(fused, split)
 
+    def test_positive_limit_preserves_nan_inputs(self):
+        gate = np.array([[np.nan, 1.0, -100.0, 3.0, 1.0, 1.0]], dtype=np.float32)
+        up = np.array([[1.0, np.nan, np.nan, 1.0, -3.0, 3.0]], dtype=np.float32)
+        limit = 2.0
+        for elem in ELEM_TYPES:
+            for fused in (False, True):
+                for round_activation in (0, 1):
+                    with self.subTest(dtype=NAME_OF[elem], fused=fused, round_activation=round_activation):
+                        if fused:
+                            feeds = {"gate": np.concatenate((gate, up), axis=-1)}
+                        else:
+                            feeds = {"gate": gate, "up": up}
+                        shape = list(feeds["gate"].shape)
+                        got = run(build_swiglu(elem, limit, fused, shape, round_activation=round_activation), feeds)[0]
+                        want = rt(
+                            swiglu_reference(
+                                rt(torch.from_numpy(gate), elem),
+                                rt(torch.from_numpy(up), elem),
+                                limit,
+                                round_activation_to=elem if round_activation else None,
+                            ),
+                            elem,
+                        ).numpy()
+                        np.testing.assert_array_equal(np.isnan(got), [[True, True, True, False, False, False]])
+                        np.testing.assert_allclose(got, want, rtol=TOL[elem], atol=TOL[elem], equal_nan=True)
+
     def test_float32_negative_gate_large_up(self):
         gate = torch.tensor([[-17.0, -20.0, -30.0]], dtype=torch.float32)
         up = torch.full_like(gate, 1e8)

@@ -25,8 +25,10 @@ __device__ __forceinline__ float SwiGluActivation(float gate, float up, float li
   float g = gate;
   float l = up;
   if (limit > 0.0f) {
-    g = fminf(g, limit);
-    l = fminf(fmaxf(l, -limit), limit);
+    // Unlike fmin and fmax, these comparisons preserve NaNs.
+    if (g > limit) g = limit;
+    if (l < -limit) l = -limit;
+    if (l >  limit) l =  limit;
   }
   const float scaled = alpha * g;
   if (scaled < -87.0f) {
