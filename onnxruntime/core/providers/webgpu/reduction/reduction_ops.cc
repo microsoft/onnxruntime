@@ -342,11 +342,17 @@ Status ReduceSharedProgram::GenerateShaderCode(ShaderHelper& shader) const {
   if (is_arg_reduce) {
     shader.MainFunctionBody() << "aBestIndices[local_idx] = bestIndex;\n";
   }
-  shader.MainFunctionBody() << "workgroupBarrier();\n"
-                            << "var reduceSize = min(length, " << workgroup_size_ << ");\n"
-                            << "for (var currentSize = reduceSize / 2; reduceSize > 1; currentSize = reduceSize / 2) {\n"
-                            << "  let interval = DIV_CEIL(reduceSize, 2u);\n"
-                            << "  if (local_idx < currentSize) {\n"
+  shader.MainFunctionBody() << "workgroupBarrier();\n";
+  if (is_arg_reduce) {
+    // Arg dispatch fills a power-of-two workgroup; keep the tree bounds constant.
+    shader.MainFunctionBody() << "for (var interval = " << workgroup_size_ / 2
+                              << "u; interval > 0u; interval >>= 1u) {\n";
+  } else {
+    shader.MainFunctionBody() << "var reduceSize = min(length, " << workgroup_size_ << ");\n"
+                              << "for (var currentSize = reduceSize / 2; reduceSize > 1; currentSize = reduceSize / 2) {\n"
+                              << "  let interval = DIV_CEIL(reduceSize, 2u);\n";
+  }
+  shader.MainFunctionBody() << "  if (local_idx < " << (is_arg_reduce ? "interval" : "currentSize") << ") {\n"
                             << "    let candidate = aBestValues[local_idx + interval];\n";
   append_update(true);
   shader.MainFunctionBody() << "    aBestValues[local_idx] = bestValue;\n";
@@ -357,9 +363,11 @@ Status ReduceSharedProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             : reduce_op_type_ == ReduceOpType::Mean
                                 ? "(bestValue / output_element_t(uniforms.reduceSize))"
                                 : reduce_op_output_values_map[reduce_op_type_];
-  shader.MainFunctionBody() << "  }\n"
-                            << "  reduceSize = interval;\n"
-                            << "  workgroupBarrier();\n"
+  shader.MainFunctionBody() << "  }\n";
+  if (!is_arg_reduce) {
+    shader.MainFunctionBody() << "  reduceSize = interval;\n";
+  }
+  shader.MainFunctionBody() << "  workgroupBarrier();\n"
                             << "}\n"
                             << "if (local_idx == 0) {\n"
                             << "  let outputValue = output_value_t(" << output_value << ");\n"
@@ -474,6 +482,8 @@ Status ReduceKernel<allow_multi_axes>::ComputeInternal(ComputeContext& context) 
   // per-row workgroup and barrier overhead until the reduction is long enough.
   constexpr size_t kArgMinMaxMinReduceSize = 256;
   constexpr uint32_t kArgMinMaxWorkgroupSize = 128;
+  static_assert(kArgMinMaxWorkgroupSize > 0 && kArgMinMaxMinReduceSize >= kArgMinMaxWorkgroupSize &&
+                (kArgMinMaxWorkgroupSize & (kArgMinMaxWorkgroupSize - 1)) == 0);
   if (add_suffix && are_axes_innermost && input_tensor->IsDataType<float>() &&
       !is_input_empty && reduce_size >= kArgMinMaxMinReduceSize) {
     ReduceSharedProgram program(name_ + "Shared", reduce_op_type, kArgMinMaxWorkgroupSize);
