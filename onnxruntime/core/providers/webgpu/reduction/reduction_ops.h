@@ -61,34 +61,15 @@ class ReduceNaiveProgram final : public Program<ReduceNaiveProgram> {
 
 class ReduceSharedProgram final : public Program<ReduceSharedProgram> {
  public:
-  ReduceSharedProgram(std::string name, ReduceOpType reduce_op_type, uint32_t worgroup_size) : Program(name), reduce_op_type_(reduce_op_type), workgroup_size_(worgroup_size) {
-    if (reduce_op_type_ == ReduceOpType::ArgMax || reduce_op_type_ == ReduceOpType::ArgMin || reduce_op_type_ == ReduceOpType::ArgMax_select_last_index || reduce_op_type_ == ReduceOpType::ArgMin_select_last_index) {
-      ORT_THROW("ReduceSharedProgram: ArgMax/ArgMin is not supported in WebGPU yet.");
-    }
-  }
+  ReduceSharedProgram(std::string name, ReduceOpType reduce_op_type, uint32_t workgroup_size)
+      : Program(name), reduce_op_type_(reduce_op_type), workgroup_size_(workgroup_size) {}
   Status GenerateShaderCode(ShaderHelper& wgpuShaderModuleAddRef) const override;
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"reduceSize", ProgramUniformVariableDataType::Uint32});
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"reduceSize", ProgramUniformVariableDataType::Uint32},
+                                          {"outputSize", ProgramUniformVariableDataType::Uint32});
 
  private:
   const ReduceOpType reduce_op_type_;
   uint32_t workgroup_size_;
-};
-
-class ArgMinMaxContiguousProgram final : public Program<ArgMinMaxContiguousProgram> {
- public:
-  static constexpr uint32_t kWorkgroupSize = 128;
-
-  ArgMinMaxContiguousProgram(bool is_max, bool select_last_index)
-      : Program{"ArgMinMaxContiguous"}, is_max_{is_max}, select_last_index_{select_last_index} {}
-
-  Status GenerateShaderCode(ShaderHelper& shader) const override;
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32},
-                                          {"reduce_size", ProgramUniformVariableDataType::Uint32});
-
- private:
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ArgMinMaxContiguousProgram);
-  const bool is_max_;
-  const bool select_last_index_;
 };
 
 template <bool allow_multi_axes = true>
