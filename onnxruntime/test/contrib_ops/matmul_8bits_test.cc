@@ -270,8 +270,12 @@ void RunTest8Bits(const TestOptions8Bits& opts) {
 #endif
 }
 
+// The zero-point variants may run a different kernel than the variants without zero points, so they can take their
+// own tolerance (default: the same as the others).
 template <typename AType, int M, int N, int K, int block_size, int accuracy_level = 0>
-void TestMatMul8BitsTyped(float abs_error = 0.1f, float rel_error = 0.02f) {
+void TestMatMul8BitsTyped(float abs_error = 0.1f, float rel_error = 0.02f,
+                          std::optional<float> zp_abs_error = std::nullopt,
+                          std::optional<float> zp_rel_error = std::nullopt) {
   TestOptions8Bits base_opts{};
   base_opts.M = M, base_opts.N = N, base_opts.K = K;
   base_opts.block_size = block_size;
@@ -279,6 +283,10 @@ void TestMatMul8BitsTyped(float abs_error = 0.1f, float rel_error = 0.02f) {
 
   base_opts.output_abs_error = abs_error;
   base_opts.output_rel_error = rel_error;
+
+  TestOptions8Bits zp_base_opts = base_opts;
+  zp_base_opts.output_abs_error = zp_abs_error.value_or(abs_error);
+  zp_base_opts.output_rel_error = zp_rel_error.value_or(rel_error);
 
   {
     TestOptions8Bits opts = base_opts;
@@ -288,7 +296,7 @@ void TestMatMul8BitsTyped(float abs_error = 0.1f, float rel_error = 0.02f) {
   }
 
   {
-    TestOptions8Bits opts = base_opts;
+    TestOptions8Bits opts = zp_base_opts;
     opts.has_zero_point = true;
     opts.has_bias = false;
     RunTest8Bits<AType>(opts);
@@ -304,7 +312,7 @@ void TestMatMul8BitsTyped(float abs_error = 0.1f, float rel_error = 0.02f) {
   }
 
   {
-    TestOptions8Bits opts = base_opts;
+    TestOptions8Bits opts = zp_base_opts;
     opts.has_zero_point = true;
     opts.has_bias = true;
     RunTest8Bits<AType>(opts);
@@ -592,12 +600,16 @@ TEST(MatMulNBits, BFloat16_Int8_LargeM_DequantGemm_Cuda) {
       EnvVarMap{{"ORT_FPA_INTB_GEMM", "1"}, {"ORT_FPA_INTB_DEQUANT_GEMM_MIN_M", "512"}}};
   constexpr float abs_error = 0.055f;
   constexpr float rel_error = 0.02f;
-  TestMatMul8BitsTyped<BFloat16, 512, 256, 512, 32>(abs_error, rel_error);
-  TestMatMul8BitsTyped<BFloat16, 513, 512, 1024, 32>(abs_error, rel_error);
-  TestMatMul8BitsTyped<BFloat16, 1000, 128, 256, 32>(abs_error, rel_error);
+  // The zero-point variants run the CUTLASS path, which dequantizes in BF16 and is less accurate at K = 1024 than
+  // dequantize + cuBLAS; they use the tolerance of BFloat16_Int8_Gemm_Cuda.
+  constexpr float zp_abs_error = 0.5f;
+  constexpr float zp_rel_error = 0.05f;
+  TestMatMul8BitsTyped<BFloat16, 512, 256, 512, 32>(abs_error, rel_error, zp_abs_error, zp_rel_error);
+  TestMatMul8BitsTyped<BFloat16, 513, 512, 1024, 32>(abs_error, rel_error, zp_abs_error, zp_rel_error);
+  TestMatMul8BitsTyped<BFloat16, 1000, 128, 256, 32>(abs_error, rel_error, zp_abs_error, zp_rel_error);
   // Group sizes other than 32 are only fpA_intB-eligible in non-compact builds.
-  TestMatMul8BitsTyped<BFloat16, 600, 256, 512, 64>(abs_error, rel_error);
-  TestMatMul8BitsTyped<BFloat16, 700, 256, 1024, 128>(abs_error, rel_error);
+  TestMatMul8BitsTyped<BFloat16, 600, 256, 512, 64>(abs_error, rel_error, zp_abs_error, zp_rel_error);
+  TestMatMul8BitsTyped<BFloat16, 700, 256, 1024, 128>(abs_error, rel_error, zp_abs_error, zp_rel_error);
 }
 
 TEST(MatMulNBits, InvalidGIdx_OutOfRange_Cuda) {
