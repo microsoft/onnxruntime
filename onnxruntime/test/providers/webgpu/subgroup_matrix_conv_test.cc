@@ -101,6 +101,11 @@ static void ApplyExpectedActivation(const std::string& kind, const std::vector<f
 // here): where CanApplySubgroupMatrixConv() declines, the EP falls back to regular
 // conv, which must match the same reference -- so a failure is a real defect
 // either way, not a capability gap.
+//
+// `quantize_inputs` snaps X, W and B to {-0.5, 0, 0.5}, so every conv output is a
+// multiple of 0.25; f16 holds those exactly up to 512 (far beyond 0.25 * K + 0.5
+// for the shapes here), so outputs are exact even with f16 accumulation. Needed by discontinuous activations, where a
+// rounding difference right at the threshold would otherwise flip the output.
 static void RunConvTest(int64_t N, int64_t Cin, int64_t H, int64_t W,
                         int64_t Cout, int64_t kh, int64_t kw,
                         int64_t stride = 1, int64_t pad = 0, int64_t dilation = 1,
@@ -109,7 +114,8 @@ static void RunConvTest(int64_t N, int64_t Cin, int64_t H, int64_t W,
                         const std::vector<float>& activation_params = {},
                         float abs_err = 0.06f, float rel_err = 0.02f,
                         bool weight_is_initializer = true,
-                        const std::string& auto_pad = "NOTSET") {
+                        const std::string& auto_pad = "NOTSET",
+                        bool quantize_inputs = false) {
 #if defined(DISABLE_CONTRIB_OPS)
   if (!activation.empty()) {
     GTEST_SKIP() << "FusedConv requires contrib ops.";
@@ -135,6 +141,16 @@ static void RunConvTest(int64_t N, int64_t Cin, int64_t H, int64_t W,
   std::vector<float> w_vals(random.Gaussian<float>(AsSpan(w_dims), 0.0f, 0.25f));
   std::vector<float> b_vals = has_bias ? random.Gaussian<float>(AsSpan(b_dims), 0.0f, 0.25f)
                                        : std::vector<float>{};
+  if (quantize_inputs) {
+    auto quantize = [](std::vector<float>& values) {
+      for (float& v : values) {
+        v = 0.5f * std::clamp(std::round(v / 0.25f), -1.0f, 1.0f);
+      }
+    };
+    quantize(x_vals);
+    quantize(w_vals);
+    quantize(b_vals);
+  }
 
   std::vector<float> expected(static_cast<size_t>(N * Cout * out_h * out_w));
   ComputeExpectedConv(x_vals, w_vals, b_vals, expected, N, Cin, H, W, Cout, kh, kw,
@@ -320,9 +336,14 @@ TEST(SubgroupMatrixConv, FusedActivationParameterized) {
   RunConvTest(/*N=*/1, /*Cin=*/16, /*H=*/12, /*W=*/12, /*Cout=*/32, /*kh=*/3, /*kw=*/3,
               /*stride=*/1, /*pad=*/1, /*dilation=*/1, /*has_bias=*/true,
               /*activation=*/"Elu", /*activation_params=*/{1.0f});
+  // ThresholdedRelu jumps by alpha at the threshold, so random inputs could land an
+  // output right at it and flip with f16 rounding. Quantized inputs make every
+  // output a multiple of 0.25; alpha 0.125 sits halfway between two of them.
   RunConvTest(/*N=*/1, /*Cin=*/16, /*H=*/12, /*W=*/12, /*Cout=*/32, /*kh=*/3, /*kw=*/3,
               /*stride=*/1, /*pad=*/1, /*dilation=*/1, /*has_bias=*/true,
-              /*activation=*/"ThresholdedRelu", /*activation_params=*/{0.25f});
+              /*activation=*/"ThresholdedRelu", /*activation_params=*/{0.125f},
+              /*abs_err=*/0.06f, /*rel_err=*/0.02f, /*weight_is_initializer=*/true,
+              /*auto_pad=*/"NOTSET", /*quantize_inputs=*/true);
   // QuickGelu has two shader variants: alpha == 1 drops the multiply and the uniform.
   for (float alpha : {1.0f, 1.702f}) {
     RunConvTest(/*N=*/1, /*Cin=*/16, /*H=*/12, /*W=*/12, /*Cout=*/32, /*kh=*/3, /*kw=*/3,
