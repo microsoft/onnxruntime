@@ -4,6 +4,7 @@
 #pragma once
 
 #include <napi.h>
+#include <memory>
 #include <vector>
 
 #include "onnxruntime_cxx_api.h"
@@ -12,7 +13,8 @@
 Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo* cpu_memory_info, OrtMemoryInfo* webgpu_memory_info);
 
 // convert an OrtValue object to a Javascript OnnxValue object
-Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value&& value);
+Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value&& value,
+                                std::shared_ptr<Ort::Session> session = {});
 
 enum DataLocation {
   DATA_LOCATION_NONE = 0,
