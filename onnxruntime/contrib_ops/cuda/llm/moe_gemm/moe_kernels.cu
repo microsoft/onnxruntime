@@ -122,9 +122,9 @@ inline bool MoeFusedRoutingDisabledByEnv() {
   return disabled;
 }
 
-// Switch for the QMoE single-token decode fast paths, currently the fused routing prologue for
-// 64 < num_experts <= 256. Enabled by default; set ORT_QMOE_DECODE_FAST=0 to run the previous
-// kernels instead (A/B comparison).
+// Switch for the QMoE single-token decode fast paths: the fused routing prologue for
+// 64 < num_experts <= 256 and the expert-parallel INT8 FC2 fused-finalize GEMV. Enabled by
+// default; set ORT_QMOE_DECODE_FAST=0 to run the previous kernels instead (A/B comparison).
 inline bool QMoeDecodeFastEnabled() {
   static const bool enabled = [] {
 #if defined(_WIN32)
@@ -232,7 +232,8 @@ template <typename T, typename WeightType, typename ScaleBiasType, typename Outp
 bool tryLaunchMoeGemvIntSymmetricFusedFinalize(
     const T* input, const WeightType* weights, const ScaleBiasType* scales, const ScaleBiasType* weight_zeros,
     const ScaleBiasType* biases, OutputType* final_output, const int* unpermuted_row_to_permuted_row,
-    const int* permuted_row_to_expert, const float* unpermuted_final_scales, int num_experts_per_node,
+    const int* permuted_row_to_unpermuted_row, const int* permuted_row_to_expert,
+    const float* unpermuted_final_scales, int num_experts_per_node,
     int64_t num_rows, int64_t experts_per_token, int64_t expanded_num_rows, int64_t n, int64_t k, int sm,
     int group_size, bool disabled, cudaStream_t stream) {
   if constexpr ((std::is_same_v<WeightType, cutlass::uint4b_t> || std::is_same_v<WeightType, uint8_t>) &&
@@ -252,6 +253,17 @@ bool tryLaunchMoeGemvIntSymmetricFusedFinalize(
             sm, num_rows, experts_per_token, expanded_num_rows, n, k, weight_bits, group_size)) {
       return false;
     }
+    // Decode: one token, INT8 per-channel, no bias. All top_k experts are read concurrently instead
+    // of one after another per block.
+    if constexpr (std::is_same_v<T, half> && std::is_same_v<WeightType, uint8_t>) {
+      if (QMoeDecodeFastEnabled() && num_rows == 1 && group_size <= 0 && biases == nullptr &&
+          permuted_row_to_unpermuted_row != nullptr &&
+          onnxruntime::llm::kernels::moe_gemv::launch_moe_gemv_int8_fused_finalize_decode<T>(
+              input, weights, scales, final_output, permuted_row_to_unpermuted_row, permuted_row_to_expert,
+              unpermuted_final_scales, num_experts_per_node, experts_per_token, n, k, stream)) {
+        return true;
+      }
+    }
     onnxruntime::llm::kernels::moe_gemv::launch_moe_gemv_int_symmetric_fused_finalize<T, WeightType>(
         input, weights, scales, biases, final_output, unpermuted_row_to_permuted_row, permuted_row_to_expert,
         unpermuted_final_scales, num_experts_per_node, num_rows, experts_per_token, n, k, group_size, sm, stream);
@@ -264,6 +276,7 @@ bool tryLaunchMoeGemvIntSymmetricFusedFinalize(
     (void)biases;
     (void)final_output;
     (void)unpermuted_row_to_permuted_row;
+    (void)permuted_row_to_unpermuted_row;
     (void)permuted_row_to_expert;
     (void)unpermuted_final_scales;
     (void)num_experts_per_node;
@@ -2929,7 +2942,8 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
   const bool fc2_did_fused_finalize =
       tryLaunchMoeGemvIntSymmetricFusedFinalize<T, WeightType, ScaleBiasType, OutputType>(
           input, fc2_expert_weights, fc2_gemv_scales, fc2_gemv_zeros, fc2_expert_biases, final_output,
-          unpermuted_row_to_permuted_row, permuted_row_to_expert, unpermuted_final_scales, num_experts_per_node,
+          unpermuted_row_to_permuted_row, permuted_row_to_unpermuted_row, permuted_row_to_expert,
+          unpermuted_final_scales, num_experts_per_node,
           num_rows, /*experts_per_token=*/k, expanded_num_rows, /*n=*/hidden_size, /*k=*/inter_size,
           onnxruntime::llm::common::getSMVersion(), quant_params.groupwise.group_size,
           /*disabled=*/fc2_gemv_disabled || parallelism_config.tp_size > 1, stream);
