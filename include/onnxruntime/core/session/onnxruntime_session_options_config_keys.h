@@ -540,8 +540,8 @@ static const char* const kOrtSessionOptionsCudaGatedDeltaNetBf16Precision =
 
 /// CUDA tensor-core kernel switches of MatMulNBits and QMoE. Each is resolved once when the
 /// kernel is created, so a change needs a new session, and overrides the environment variable named below. The
-/// 0/1 switches accept only "0" and "1", and the thresholds a positive decimal integer; any other value, including an
-/// empty string, fails session initialization.
+/// 0/1 switches accept only "0" and "1", and the thresholds a positive decimal integer (or "0" where stated); any other
+/// value, including an empty string, fails session initialization.
 /// "1" uses the scalar GEMV instead of the SM 9.0 tensor-core INT8 GEMV of MatMulNBits. Default "0".
 /// Overrides ORT_DISABLE_FPA_INTB_GEMV_TC.
 static const char* const kOrtSessionOptionsCudaDisableFpAIntBGemvTc = "ep.cuda.disable_fpa_intb_gemv_tc";
@@ -559,6 +559,11 @@ static const char* const kOrtSessionOptionsCudaMoeGemvTcMinRows = "ep.cuda.moe_g
 /// Minimum number of routes from which QMoE uses the tensor-core INT3 decode GEMV. Default 33.
 /// Overrides ORT_QMOE_INT3_TC_MIN_ROUTES.
 static const char* const kOrtSessionOptionsCudaQmoeInt3TcMinRoutes = "ep.cuda.qmoe_int3_tc_min_routes";
+
+/// Minimum number of rows M from which the INT8 MatMulNBits (fpA_intB path, no zero points, no bias) dequantizes the
+/// weight once and runs one cuBLAS GEMM instead of the row-chunked CUTLASS mixed-input GEMM. "0" disables. Default 512
+/// on SM 9.0 and 0 (disabled) on other architectures. Overrides ORT_FPA_INTB_DEQUANT_GEMM_MIN_M.
+static const char* const kOrtSessionOptionsCudaFpAIntBDequantGemmMinM = "ep.cuda.fpa_intb_dequant_gemm_min_m";
 
 /// <summary>
 /// This is a setting that contains string annotations or annotation prefixes to be matched

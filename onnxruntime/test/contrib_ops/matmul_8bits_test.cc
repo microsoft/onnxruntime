@@ -562,6 +562,44 @@ TEST(MatMulNBits, BFloat16_Int8_Gemm_Cuda) {
   TestMatMul8BitsTyped<BFloat16, 32, 1024, 1024, 128>(abs_error, rel_error);
 }
 
+// M >= ORT_FPA_INTB_DEQUANT_GEMM_MIN_M (the environment fallback of ep.cuda.fpa_intb_dequant_gemm_min_m; no zero
+// points, no bias) runs as one dequantize + cuBLAS GEMM instead of row-chunked CUTLASS launches; the zero-point variants
+// of the same shapes keep the CUTLASS path. The threshold is set explicitly so that the path is also covered on
+// architectures where it is off by default. M = 513 and 1000 are not multiples of any tile.
+TEST(MatMulNBits, Fp16_Int8_LargeM_DequantGemm_Cuda) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "Skipping 8-bit large-M MatMul tests on CUDA < 8.0";
+  }
+
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{{"ORT_FPA_INTB_GEMM", "1"}, {"ORT_FPA_INTB_DEQUANT_GEMM_MIN_M", "512"}}};
+  constexpr float abs_error = 0.03f;
+  constexpr float rel_error = 0.01f;
+  TestMatMul8BitsTyped<MLFloat16, 512, 256, 512, 32>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 513, 512, 1024, 32>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1000, 128, 256, 32>(abs_error, rel_error);
+  // Group sizes other than 32 are only fpA_intB-eligible in non-compact builds.
+  TestMatMul8BitsTyped<MLFloat16, 600, 256, 512, 64>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 700, 256, 1024, 128>(abs_error, rel_error);
+}
+
+TEST(MatMulNBits, BFloat16_Int8_LargeM_DequantGemm_Cuda) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "Skipping 8-bit large-M MatMul tests on CUDA < 8.0";
+  }
+
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{{"ORT_FPA_INTB_GEMM", "1"}, {"ORT_FPA_INTB_DEQUANT_GEMM_MIN_M", "512"}}};
+  constexpr float abs_error = 0.055f;
+  constexpr float rel_error = 0.02f;
+  TestMatMul8BitsTyped<BFloat16, 512, 256, 512, 32>(abs_error, rel_error);
+  TestMatMul8BitsTyped<BFloat16, 513, 512, 1024, 32>(abs_error, rel_error);
+  TestMatMul8BitsTyped<BFloat16, 1000, 128, 256, 32>(abs_error, rel_error);
+  // Group sizes other than 32 are only fpA_intB-eligible in non-compact builds.
+  TestMatMul8BitsTyped<BFloat16, 600, 256, 512, 64>(abs_error, rel_error);
+  TestMatMul8BitsTyped<BFloat16, 700, 256, 1024, 128>(abs_error, rel_error);
+}
+
 TEST(MatMulNBits, InvalidGIdx_OutOfRange_Cuda) {
   if (!HasCudaEnvironment(0)) {
     GTEST_SKIP() << "CUDA not available";

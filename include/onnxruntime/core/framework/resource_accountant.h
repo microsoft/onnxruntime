@@ -72,6 +72,8 @@ struct WorkspaceEstimatorConfig {
   int64_t cuda_gqa_workspace_max_total_sequence_length = 0;
   // Raw session.kernel_dispatch_policy value; consumers share the framework parser.
   std::optional<std::string> kernel_dispatch_policy = std::nullopt;
+  // Raw ep.cuda.fpa_intb_dequant_gemm_min_m value; unset leaves the environment and architecture default in effect.
+  std::optional<std::string> cuda_fpa_intb_dequant_gemm_min_m = std::nullopt;
 };
 
 // Reads the caller-declared CUDA GQA envelope and validates its runtime ABI range.

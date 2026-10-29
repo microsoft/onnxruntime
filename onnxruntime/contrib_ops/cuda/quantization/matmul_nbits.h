@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <limits>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -102,6 +103,25 @@ constexpr const char* kFpAIntBGemvPairedKOption = "ORT_FPA_INTB_GEMV_PAIRED_K";
 constexpr const char* kMChunkSizeEnvVar = "ORT_MATMULNBITS_M_CHUNK_SIZE";
 // M chunking applies only when the M x (N + K) profiler buffers (A and C) would exceed this size.
 constexpr int64_t kMChunkMinBytes = 256 * 1024 * 1024;
+
+// Large-M INT8 prefill: dequantize the prepacked weights into a scratch [N, K] matrix and run one cuBLAS GEMM instead
+// of row-chunked CUTLASS mixed-input launches, which convert the weights again for every chunk. The session option
+// ep.cuda.fpa_intb_dequant_gemm_min_m (else this env var) sets the minimum M that takes this path; 0 disables it. The
+// default is tuned on Hopper only, so other architectures stay off unless it is set.
+constexpr const char* kFpAIntBDequantGemmMinMEnvVar = "ORT_FPA_INTB_DEQUANT_GEMM_MIN_M";
+constexpr int kFpAIntBDequantGemmDefaultMinM = 512;
+constexpr int64_t kFpAIntBDequantGemmMaxScratchBytes = 256 * 1024 * 1024;
+
+// Returns the configured minimum M for nodes that can use the path, else 0.
+inline int ComputeFpAIntBDequantGemmMinM(
+    int configured_min_m, int packing_sm, int64_t n, int64_t k, int64_t nbits, int64_t block_size,
+    bool has_zero_points, bool has_bias, size_t element_size) {
+  const bool group_ok = block_size >= 16 && (block_size & (block_size - 1)) == 0 && k % block_size == 0;
+  const bool supported = nbits == 8 && !has_zero_points && !has_bias && packing_sm == 80 && n % 16 == 0 &&
+                         k % 64 == 0 && group_ok &&
+                         n * k * static_cast<int64_t>(element_size) <= kFpAIntBDequantGemmMaxScratchBytes;
+  return supported ? configured_min_m : 0;
+}
 
 // Computes the prepack portion of the Level-1 estimate from model metadata only.
 // Persistent bytes describe newly allocated packed weight/scale/zero-point
@@ -306,6 +326,10 @@ class MatMulNBits final : public CudaKernel {
     m_chunk_size_ = static_cast<int>(FpAIntBProfileSafeMCap(m_chunk_size_));
     m_chunk_min_rows_ =
         ComputeMatMulNBitsFpAIntBChunkMinRows(N_, K_, sizeof(T));
+    // Parsed for every node so that an invalid value fails the session before any profiling starts.
+    const int dequant_gemm_min_m_option = ReadCudaSessionOption(
+        info, kOrtSessionOptionsCudaFpAIntBDequantGemmMinM, kFpAIntBDequantGemmMinMEnvVar,
+        sm_ == 90 ? kFpAIntBDequantGemmDefaultMinM : 0, 0, std::numeric_limits<int>::max());
     if (weight_prepacked_ == kMatMulNBitsWeightPrepackedSm90) {
       // See matmul_nbits_sm90_validation.h / matmul_nbits.cc for the validation logic (extracted
       // into a pure function of (sm, block_size) so it can be unit-tested without a Hopper GPU).
@@ -384,6 +408,9 @@ class MatMulNBits final : public CudaKernel {
         }
         RunGemmProfile(has_fpA_intB_gemv_, 1, max_m);
         has_fpA_intB_gemm_ = true;
+        dequant_gemm_min_m_ = ComputeFpAIntBDequantGemmMinM(
+            dequant_gemm_min_m_option, FpAIntBPackingSmForKernel(), N_, K_, nbits_, block_size_, has_zero_points_,
+            has_bias_, sizeof(T));
       }
 
       if (prepacked) {
@@ -434,8 +461,11 @@ class MatMulNBits final : public CudaKernel {
   // Level 2 (Phase-A memory roadmap, issue microsoft/onnxruntime#29775): instance-level workspace
   // estimate, callable after CreateKernels(). It is exact when runtime selects the CUTLASS GEMM
   // branch for the queried input-A shape. If runtime instead selects the CUDA GEMV tactic, which
-  // requests no workspace, the declaration is a safe upper bound. Declared only for the in-tree
-  // hierarchy; the plugin build inherits the adapter OpKernel's unbridged default no-op.
+  // requests no workspace, the declaration is a safe upper bound. For rows at or above the large-M
+  // INT8 threshold it is the larger of that workspace and the dequantized weight copy: exact when
+  // the dequantize route runs, an upper bound when CUDA graph capture or deterministic compute keeps
+  // the CUTLASS route. Declared only for the in-tree hierarchy; the plugin build inherits the
+  // adapter OpKernel's unbridged default no-op.
   Status DeclareWorkspaceRequirements(
       gsl::span<const WorkspaceInputShape> input_shapes,
       /*out*/ InlinedVector<WorkspaceRequirement>& requirements) const override;
@@ -447,8 +477,9 @@ class MatMulNBits final : public CudaKernel {
   // concurrent Run()s share one kernel instance; it is only meant for this pilot's single-threaded
   // tests. Do not build anything on top of it.
   //
-  // Every ComputeInternal() invocation first stores zero. The CUTLASS GEMM branch replaces it with
-  // the requested byte count; all early-return and no-workspace paths therefore remain zero.
+  // Every ComputeInternal() invocation first stores zero. The CUTLASS GEMM branch and the large-M
+  // dequantize branch replace it with the requested byte count; all early-return and no-workspace
+  // paths therefore remain zero.
   size_t LastComputeWorkspaceBytes() const { return last_compute_workspace_bytes_.load(std::memory_order_relaxed); }
 #endif
 
@@ -456,6 +487,9 @@ class MatMulNBits final : public CudaKernel {
 #if USE_FPA_INTB_GEMM
   int FpAIntBPackingSmForKernel() const;
   int64_t RequiredWeightPrepackedFormat() const;
+
+  // Bytes of the dequantized [N, K] weight copy used by the large-M INT8 route.
+  size_t DequantGemmScratchBytes() const { return static_cast<size_t>(N_) * static_cast<size_t>(K_) * sizeof(T); }
 
   int64_t FpAIntBRowsPerLaunch(int64_t m) const {
     return MatMulNBitsFpAIntBRowsPerLaunch(
@@ -502,6 +536,8 @@ class MatMulNBits final : public CudaKernel {
   int m_chunk_size_{0};
   // M above this is large enough for chunking to pay off (see kMChunkMinBytes).
   int64_t m_chunk_min_rows_{0};
+  // Minimum M for the dequantize + cuBLAS GEMM path (see kFpAIntBDequantGemmMinMEnvVar); 0 = not used by this node.
+  int dequant_gemm_min_m_{0};
 
   bool is_prepacked_weight_{false};
   bool is_prepacked_scale_{false};

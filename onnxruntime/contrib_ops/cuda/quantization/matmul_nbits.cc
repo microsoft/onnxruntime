@@ -714,6 +714,25 @@ static std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemoryImpl(
       estimate->runtime_transient_bytes = static_cast<size_t>(runtime_preparation_peak);
     }
 
+    // At or above the threshold, ComputeInternal replaces the CUTLASS GEMM, chunked or not, with one cuBLAS GEMM over
+    // a dequantized [N, K] copy of the weights. That route never profiles, so the copy only raises the ordinary
+    // workspace and the lazy-profile peak above keeps the CUTLASS workspace alone. Resolving the threshold here
+    // matches the kernel constructor: an invalid value leaves the node without a route-complete estimate.
+    if (estimate->runtime_workspace_bytes.has_value()) {
+      const int dequant_gemm_min_m = ComputeFpAIntBDequantGemmMinM(
+          ResolveCudaSessionOption(
+              options.dequant_gemm_min_m.has_value()
+                  ? std::optional<std::string>{std::string{*options.dequant_gemm_min_m}}
+                  : std::nullopt,
+              kOrtSessionOptionsCudaFpAIntBDequantGemmMinM, kFpAIntBDequantGemmMinMEnvVar,
+              device_sm == 90 ? kFpAIntBDequantGemmDefaultMinM : 0, 0, std::numeric_limits<int>::max()),
+          sm, N, K, nbits, block_size, has_zero_points, has_bias, element_size);
+      if (dequant_gemm_min_m > 0 && (!m.has_value() || *m >= dequant_gemm_min_m)) {
+        estimate->runtime_workspace_bytes = std::max<size_t>(
+            *estimate->runtime_workspace_bytes, static_cast<size_t>(SafeInt<size_t>(N) * K * element_size));
+      }
+    }
+
     return estimate;
   } catch (const OnnxRuntimeException&) {
     // Treat invalid or overflowing model-derived sizes as not estimable.
@@ -1200,7 +1219,12 @@ Status MatMulNBits<T>::DeclareWorkspaceRequirements(
   if (!ws.has_value() || *ws == 0) {
     return Status::OK();
   }
-  requirements.push_back(WorkspaceRequirement{*ws, /*slot_id=*/0, /*alignment_bytes=*/0});
+  // At or above the threshold ComputeInternal needs a dequantized copy of the weights instead of the GEMM workspace.
+  size_t declared_bytes = *ws;
+  if (dequant_gemm_min_m_ > 0 && *m64 >= dequant_gemm_min_m_) {
+    declared_bytes = std::max(declared_bytes, DequantGemmScratchBytes());
+  }
+  requirements.push_back(WorkspaceRequirement{declared_bytes, /*slot_id=*/0, /*alignment_bytes=*/0});
   return Status::OK();
 }
 #endif
@@ -1325,6 +1349,31 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
         cuda_kernel_type = nbits_ == 8   ? KernelType::BF16Int8Groupwise
                            : nbits_ == 4 ? KernelType::BF16Int4Groupwise
                                          : KernelType::BF16Int2Groupwise;
+      }
+
+      // Large M: dequantize the weights once into a scratch matrix and run a single cuBLAS GEMM. The row-chunked
+      // CUTLASS path below converts every weight element again for each chunk. Skipped under deterministic compute
+      // and CUDA graph capture (scratch allocation), which keep the CUTLASS path.
+      if (dequant_gemm_min_m_ > 0 && m >= dequant_gemm_min_m_ && bias_data == nullptr && !stream_is_capturing &&
+          !ctx->GetUseDeterministicCompute()) {
+        const size_t scratch_bytes = DequantGemmScratchBytes();
+        auto dequant_buffer = this->template GetScratchBuffer<void>(scratch_bytes, this->GetComputeStream(ctx));
+        if (onnxruntime::llm::kernels::fpA_intB_gemv::dequantize_int8_interleaved(
+                cuda_kernel_type, fpA_intB_weight, fpA_intB_scale_buffer_.get(), dequant_buffer.get(), n, k,
+                static_cast<int>(block_size_), stream)) {
+          last_compute_workspace_bytes_.store(scratch_bytes, std::memory_order_relaxed);
+          if (fpA_intB_debug) {
+            std::cout << "[fpA_intB_debug] M=" << m << " N=" << n << " K=" << k << " nbits=" << nbits_
+                      << " block_size=" << block_size_ << " kernel=dequant+cuBLAS" << std::endl;
+          }
+          const CudaT alpha = onnxruntime::cuda::OrtToCudaType<T>::FromFloat(1.f);
+          const CudaT zero = onnxruntime::cuda::OrtToCudaType<T>::FromFloat(0.f);
+          CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
+              GetCublasHandle(ctx), CUBLAS_OP_T, CUBLAS_OP_N, n, m, k, &alpha,
+              reinterpret_cast<const CudaT*>(dequant_buffer.get()), k, reinterpret_cast<const CudaT*>(a_data), k,
+              &zero, out_data, n, GetDeviceProp(), UseTF32()));
+          return Status::OK();
+        }
       }
 
       // Rows of A are independent, so a large M runs as row chunks. The workspace and any lazily

@@ -261,6 +261,14 @@ void kernel_launcher(int kernel_arch, Params& params, cudaStream_t s);
 
 bool is_supported(int device_arch, int kernel_arch, KernelType kernel_type);
 
+// Dequantizes symmetric INT8 weights in the SM80-interleaved layout that kernel_launcher reads for packing arch 80
+// into a row-major [n, k] matrix of the activation type of `type` (an FP16/BF16 Int8Groupwise kernel type).
+// `scales` is [k / group_size, n] and the weights are value + 128. Returns false without launching when the shape or
+// the pointers are unsupported: n % 16, k % 64, a group size that is not a power of two >= 16 dividing k, an
+// unaligned weight/scale/output pointer, or n * k / 32 >= 2^31.
+bool dequantize_int8_interleaved(KernelType type, const void* weight, const void* scales, void* out, int n, int k,
+                                 int group_size, cudaStream_t stream);
+
 }  // namespace fpA_intB_gemv
 }  // namespace kernels
 }  // namespace onnxruntime::llm

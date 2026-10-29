@@ -4,6 +4,7 @@
 #pragma once
 
 #include <charconv>
+#include <optional>
 #include <string>
 #include <system_error>
 #include "core/providers/cuda/cuda_kernel.h"
@@ -12,10 +13,10 @@
 
 namespace onnxruntime::contrib::cuda {
 
-// Call only from kernel construction. Explicit session configuration takes precedence over the environment.
-inline int ReadCudaSessionOption(const OpKernelInfo& info, const char* key, const char* env,
-                                 int default_value, int min_value, int max_value) {
-  const auto configured = info.GetConfigOptions().GetConfigEntry(key);
+// An explicit configured value takes precedence over the environment. Throws unless the result is an integer in
+// [min_value, max_value].
+inline int ResolveCudaSessionOption(const std::optional<std::string>& configured, const char* key, const char* env,
+                                    int default_value, int min_value, int max_value) {
   const std::string value = configured.has_value()
                                 ? *configured
                                 : ParseEnvironmentVariableWithDefault<std::string>(env, std::to_string(default_value));
@@ -25,6 +26,13 @@ inline int ReadCudaSessionOption(const OpKernelInfo& info, const char* key, cons
                   parsed >= min_value && parsed <= max_value,
               key, " (", env, ") must be an integer in [", min_value, ", ", max_value, "], got '", value, "'.");
   return parsed;
+}
+
+// Call only from kernel construction. Explicit session configuration takes precedence over the environment.
+inline int ReadCudaSessionOption(const OpKernelInfo& info, const char* key, const char* env,
+                                 int default_value, int min_value, int max_value) {
+  return ResolveCudaSessionOption(info.GetConfigOptions().GetConfigEntry(key), key, env, default_value, min_value,
+                                  max_value);
 }
 
 }  // namespace onnxruntime::contrib::cuda
