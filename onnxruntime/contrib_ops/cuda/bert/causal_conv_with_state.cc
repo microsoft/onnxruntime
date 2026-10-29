@@ -6,6 +6,7 @@
 #include "contrib_ops/cpu/bert/causal_conv_with_state_helper.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_type_conversion.h"
+#include "core/common/safeint.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -45,6 +46,16 @@ CausalConvWithState<T>::CausalConvWithState(const OpKernelInfo& info) : CudaKern
   // See LinearAttention: only the trailing per-position states are ever consumed, so a window
   // caps the allocation and the write traffic for long prompts. 0 keeps the plain single state.
   ORT_THROW_IF_ERROR(causal_conv_with_state_helper::ParseStateWindow(info, state_window_));
+  input_channels_ = SafeInt<int>(info.GetAttrOrDefault<int64_t>("input_channels", 0));
+  input_channel_offset_ = SafeInt<int>(info.GetAttrOrDefault<int64_t>("input_channel_offset", 0));
+  state_length_ = SafeInt<int>(info.GetAttrOrDefault<int64_t>("state_length", 0));
+  state_channels_last_ = SafeInt<int>(info.GetAttrOrDefault<int64_t>("state_channels_last", -1));
+  state_update_capacity_ = SafeInt<int>(info.GetAttrOrDefault<int64_t>("state_update_capacity", 0));
+  has_state_update_output_ = causal_conv_with_state_helper::HasOutput(info, 2);
+  ORT_ENFORCE(input_channels_ >= 0 && input_channel_offset_ >= 0 && state_length_ >= 0 &&
+                  state_channels_last_ >= -1 && state_channels_last_ <= 1 &&
+                  state_update_capacity_ >= 0 && state_update_capacity_ <= 8,
+              "invalid packed-channel or state attributes");
 }
 
 template <typename T>
@@ -59,6 +70,55 @@ Status CausalConvWithState<T>::ComputeInternal(OpKernelContext* context) const {
 
   const auto& input_shape = input_tensor->Shape();
   const auto& weight_shape = weight_tensor->Shape();
+
+  const bool extended = input_channels_ != 0 || input_channel_offset_ != 0 || state_length_ != 0 ||
+                        state_channels_last_ != -1 || state_update_capacity_ != 0 || has_state_update_output_;
+  if (extended) {
+    ORT_RETURN_IF_NOT(channels_last_ && state_window_ == 0 && input_shape.NumDimensions() == 3 &&
+                          weight_shape.NumDimensions() == 3 && weight_shape[1] == 1,
+                      "extended CausalConvWithState requires rank-3 channels-last input, rank-3 weight and state_window=0");
+    ORT_RETURN_IF_NOT(!has_state_update_output_ || state_update_capacity_ > 0,
+                      "extended CausalConvWithState state_update output requires state_update_capacity > 0");
+    const int batch = SafeInt<int>(input_shape[0]);
+    const int length = SafeInt<int>(input_shape[1]);
+    const int width = SafeInt<int>(input_shape[2]);
+    const int channels = input_channels_ == 0 ? width : input_channels_;
+    const int kernel = SafeInt<int>(weight_shape[2]);
+    const int pad = SafeInt<int>(kernel - 1) * dilation_;
+    const int state_length = state_length_ == 0 ? pad : state_length_;
+    const bool state_last = state_channels_last_ == -1 ? channels_last_ : state_channels_last_ != 0;
+    // The projection kernels map batch to grid.y and positions to grid.z, which CUDA caps at 65535.
+    ORT_RETURN_IF_NOT(batch > 0 && batch <= 65535 && length > 0 && length <= 65535,
+                      "extended CausalConvWithState requires 0 < batch <= 65535 and 0 < length <= 65535, got batch ",
+                      batch, ", length ", length);
+    ORT_RETURN_IF_NOT(channels > 0 && kernel > 0 && input_channel_offset_ <= width &&
+                          channels <= width - input_channel_offset_ && weight_shape[0] == channels &&
+                          state_length >= pad,
+                      "invalid extended CausalConvWithState dimensions");
+    ORT_RETURN_IF_NOT(bias_tensor == nullptr || bias_tensor->Shape() == TensorShape({channels}),
+                      "bias must match selected input channels");
+    const TensorShape state_shape = state_last ? TensorShape({batch, state_length, channels})
+                                               : TensorShape({batch, channels, state_length});
+    ORT_RETURN_IF_NOT(past_state_tensor == nullptr || past_state_tensor->Shape() == state_shape,
+                      "past_state must match configured state layout and length");
+    Tensor* output = context->Output(0, TensorShape({batch, length, channels}));
+    Tensor* present = context->Output(1, state_shape);
+    Tensor* state_update = state_update_capacity_ > 0 && has_state_update_output_
+                               ? context->Output(2, TensorShape({batch, state_update_capacity_, channels}))
+                               : nullptr;
+    using CudaT = typename OrtToCudaType<T>::type;
+    return LaunchCausalConvProjectionKernel<CudaT>(
+        Stream(context), reinterpret_cast<const CudaT*>(input_tensor->Data<T>()),
+        reinterpret_cast<const CudaT*>(weight_tensor->Data<T>()),
+        bias_tensor ? reinterpret_cast<const CudaT*>(bias_tensor->Data<T>()) : nullptr,
+        past_state_tensor ? reinterpret_cast<const CudaT*>(past_state_tensor->Data<T>()) : nullptr,
+        reinterpret_cast<CudaT*>(output->MutableData<T>()),
+        reinterpret_cast<CudaT*>(present->MutableData<T>()),
+        batch, channels, length, kernel, dilation_, width, input_channel_offset_, state_length,
+        state_last, activation_ != "none",
+        state_update ? reinterpret_cast<CudaT*>(state_update->MutableData<T>()) : nullptr,
+        state_update_capacity_);
+  }
 
   // Validate input rank and weight rank
   if (channels_last_) {

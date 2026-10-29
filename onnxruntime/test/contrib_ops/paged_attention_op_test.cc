@@ -25,6 +25,7 @@
 #include "core/providers/cuda/cuda_provider_options.h"
 #include "core/session/IOBinding.h"
 #include "core/session/inference_session.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "default_providers.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
@@ -88,14 +89,19 @@ struct IoBindingCase {
   std::vector<int32_t> past_seqlens;
   std::vector<std::vector<int32_t>> replay_past_seqlens;
   std::vector<int32_t> cumulative_seqlens_q;
+  std::vector<std::vector<int32_t>> replay_cumulative_seqlens_q;
   std::vector<int32_t> block_table;
   std::vector<int32_t> attention_metadata;
+  std::string skip_input_sanitizer;
   std::string expected_error;
   bool allow_malformed_sequence_metadata = false;
   bool skip_reference_check = false;
   bool verify_malformed_cache_unchanged = false;
   bool verify_malformed_output_finite = false;
   bool verify_malformed_output_zero = false;
+  std::vector<MLFloat16>* captured_output = nullptr;
+  std::vector<MLFloat16>* captured_key_cache = nullptr;
+  std::vector<MLFloat16>* captured_value_cache = nullptr;
 };
 
 // Masked positions get zero probability. Uses fp32 throughout to establish a
@@ -347,9 +353,16 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
               c.block_table.size() == static_cast<size_t>(batch_size * max_num_blocks_per_seq));
   ASSERT_TRUE(c.cumulative_seqlens_q.empty() ||
               c.cumulative_seqlens_q.size() == static_cast<size_t>(batch_size + 1));
+  ASSERT_TRUE(c.replay_cumulative_seqlens_q.empty() ||
+              c.replay_cumulative_seqlens_q.size() == c.replay_past_seqlens.size());
   if (!c.allow_malformed_sequence_metadata) {
     ASSERT_TRUE(c.cumulative_seqlens_q.empty() ||
                 (c.cumulative_seqlens_q.front() == 0 && c.cumulative_seqlens_q.back() == token_count));
+    for (const auto& replay_cum_q : c.replay_cumulative_seqlens_q) {
+      ASSERT_EQ(replay_cum_q.size(), static_cast<size_t>(batch_size + 1));
+      ASSERT_EQ(replay_cum_q.front(), 0);
+      ASSERT_EQ(replay_cum_q.back(), token_count);
+    }
     for (int32_t block_id : c.block_table) {
       ASSERT_GE(block_id, -1);
       ASSERT_LT(block_id, num_blocks);
@@ -481,6 +494,10 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
 
   SessionOptions session_options;
   session_options.session_logid = "PagedAttentionIoBindingTest";
+  if (!c.skip_input_sanitizer.empty()) {
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+        kOrtSessionOptionsPagedAttentionSkipInputSanitizer, c.skip_input_sanitizer.c_str()));
+  }
   InferenceSession session(session_options, GetEnvironment());
   ASSERT_NE(execution_provider, nullptr);
   IExecutionProvider* execution_provider_ptr = execution_provider.get();
@@ -497,7 +514,13 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
   ASSERT_NE(selected_device_memory_info, nullptr);
   const OrtMemoryInfo device_memory_info = *selected_device_memory_info;
   ASSERT_STATUS_OK(session.Load(model_stream));
-  ASSERT_STATUS_OK(session.Initialize());
+  const Status init_status = session.Initialize();
+  if (!c.expected_error.empty() && !init_status.IsOK()) {
+    EXPECT_NE(init_status.ErrorMessage().find(c.expected_error), std::string::npos)
+        << init_status.ErrorMessage();
+    return;
+  }
+  ASSERT_STATUS_OK(init_status);
   auto device_alloc = session.GetAllocator(device_memory_info);
   ASSERT_NE(device_alloc, nullptr);
 
@@ -530,6 +553,9 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
   std::vector<MLFloat16> key_data(token_count * kv_hidden_size, MLFloat16(0.03f));
   std::vector<MLFloat16> value_data(token_count * kv_hidden_size);
   std::vector<int32_t> cumulative_sequence_length_data = c.cumulative_seqlens_q;
+  if (cumulative_sequence_length_data.empty() && !c.replay_cumulative_seqlens_q.empty()) {
+    cumulative_sequence_length_data = c.replay_cumulative_seqlens_q.front();
+  }
   if (cumulative_sequence_length_data.empty()) {
     cumulative_sequence_length_data.resize(batch_size + 1);
     std::iota(cumulative_sequence_length_data.begin(), cumulative_sequence_length_data.end(), 0);
@@ -788,6 +814,9 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
       ORT_THROW_IF_ERROR(
           execution_provider_ptr->GetDataTransfer()->CopyTensor(cpu_past_seqlens,
                                                                 *past_seqlens_value.GetMutable<Tensor>()));
+      if (!c.replay_cumulative_seqlens_q.empty()) {
+        cumulative_sequence_length_data = c.replay_cumulative_seqlens_q[run_index];
+      }
       Tensor cpu_cumulative(DataTypeImpl::GetType<int32_t>(), TensorShape({batch_size + 1}),
                             cumulative_sequence_length_data.data(), cpu_alloc->Info());
       ORT_THROW_IF_ERROR(execution_provider_ptr->GetDataTransfer()->CopyTensor(
@@ -835,7 +864,11 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
         ORT_THROW_IF_ERROR(
             execution_provider_ptr->GetDataTransfer()->CopyTensor(
                 output_value.Get<Tensor>(), cpu_output));
-        for (const MLFloat16 value : cpu_output.DataAsSpan<MLFloat16>()) {
+        const auto output_span = cpu_output.DataAsSpan<MLFloat16>();
+        if (c.captured_output != nullptr) {
+          c.captured_output->assign(output_span.begin(), output_span.end());
+        }
+        for (const MLFloat16 value : output_span) {
           EXPECT_TRUE(std::isfinite(value.ToFloat()));
           if (c.verify_malformed_output_zero) {
             EXPECT_EQ(value.ToFloat(), 0.0f);
@@ -848,6 +881,10 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
     Tensor cpu_output(c.bf16_query ? DataTypeImpl::GetType<BFloat16>() : DataTypeImpl::GetType<MLFloat16>(),
                       TensorShape({token_count, hidden_size}), cpu_alloc);
     ORT_THROW_IF_ERROR(execution_provider_ptr->GetDataTransfer()->CopyTensor(output_value.Get<Tensor>(), cpu_output));
+    if (c.captured_output != nullptr && !c.bf16_query && run_index + 1 == run_count) {
+      const auto output_span = cpu_output.DataAsSpan<MLFloat16>();
+      c.captured_output->assign(output_span.begin(), output_span.end());
+    }
     for (int b = 0; b < batch_size; ++b) {
       for (int token = cumulative_sequence_length_data[b];
            token < cumulative_sequence_length_data[b + 1]; ++token) {
@@ -1021,6 +1058,16 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
                              TensorShape({num_blocks, block_size, kv_num_heads, head_size}), cpu_alloc);
   ORT_THROW_IF_ERROR(execution_provider_ptr->GetDataTransfer()->CopyTensor(outputs[1].Get<Tensor>(), cpu_key_cache_out));
   ORT_THROW_IF_ERROR(execution_provider_ptr->GetDataTransfer()->CopyTensor(outputs[2].Get<Tensor>(), cpu_value_cache_out));
+  if (!quantized_cache && !c.bf16_query) {
+    if (c.captured_key_cache != nullptr) {
+      const auto key_cache_span = cpu_key_cache_out.DataAsSpan<MLFloat16>();
+      c.captured_key_cache->assign(key_cache_span.begin(), key_cache_span.end());
+    }
+    if (c.captured_value_cache != nullptr) {
+      const auto value_cache_span = cpu_value_cache_out.DataAsSpan<MLFloat16>();
+      c.captured_value_cache->assign(value_cache_span.begin(), value_cache_span.end());
+    }
+  }
   for (int b = 0; b < batch_size; ++b) {
     for (int token = cumulative_sequence_length_data[b];
          token < cumulative_sequence_length_data[b + 1]; ++token) {
@@ -2247,6 +2294,258 @@ TEST(PagedAttention, Cuda_FlashSplitKvSkipsShortReplayRange) {
 #else
   GTEST_SKIP() << "Flash Attention is not enabled in this build.";
 #endif
+}
+
+TEST(PagedAttention, Cuda_FlashMultiTokenLongContextDoesNotUseVarlenSplitKv) {
+#if defined(USE_FLASH_ATTENTION)
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kDisableFlashAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableDecoderAttention, "1"},
+          {onnxruntime::contrib::attention::kEnableCudnnFlashAttention, "0"},
+          {"ORT_ENABLE_XQA", "0"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"}}};
+
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  if (GetCudaArchitecture() < 800) {
+    GTEST_SKIP() << "Flash Attention requires compute capability 8.0 or later.";
+  }
+
+  IoBindingCase c;
+  c.batch_size = 1;
+  c.token_count = 4;
+  c.num_heads = 2;
+  c.kv_num_heads = 1;
+  c.head_size = 128;
+  c.num_blocks = 8;
+  c.max_num_blocks_per_seq = 8;
+  c.past_seqlen = 1020;
+  c.cumulative_seqlens_q = {0, 4};
+  c.attention_metadata = {4, 1024, 1024};
+
+  testing::internal::CaptureStdout();
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+
+  EXPECT_NE(debug_output.find("SdpaKernel=FLASH_ATTENTION"), std::string::npos) << debug_output;
+  EXPECT_NE(debug_output.find("NumSplits=1"), std::string::npos) << debug_output;
+#else
+  GTEST_SKIP() << "Flash Attention is not enabled in this build.";
+#endif
+}
+
+namespace {
+
+void ExpectSkipSanitizerParity(const IoBindingCase& base_case,
+                               const std::string& skip_session_value = "1") {
+  std::vector<MLFloat16> default_output;
+  std::vector<MLFloat16> default_key_cache;
+  std::vector<MLFloat16> default_value_cache;
+  IoBindingCase default_case = base_case;
+  default_case.skip_input_sanitizer = "0";
+  default_case.captured_output = &default_output;
+  default_case.captured_key_cache = &default_key_cache;
+  default_case.captured_value_cache = &default_value_cache;
+
+  std::vector<MLFloat16> skip_output;
+  std::vector<MLFloat16> skip_key_cache;
+  std::vector<MLFloat16> skip_value_cache;
+  IoBindingCase skip_case = base_case;
+  skip_case.skip_input_sanitizer = skip_session_value;
+  skip_case.captured_output = &skip_output;
+  skip_case.captured_key_cache = &skip_key_cache;
+  skip_case.captured_value_cache = &skip_value_cache;
+
+  auto make_ep = [&]() {
+    if (base_case.enable_cuda_graph) {
+      OrtCUDAProviderOptionsV2 provider_options{};
+      provider_options.enable_cuda_graph = true;
+      return CudaExecutionProviderWithOptions(&provider_options);
+    }
+    return DefaultCudaExecutionProvider();
+  };
+
+  RunIoBindingCase(make_ep(), kCudaExecutionProvider, true, false, default_case);
+  RunIoBindingCase(make_ep(), kCudaExecutionProvider, true, false, skip_case);
+
+  ASSERT_EQ(skip_output.size(), default_output.size());
+  ASSERT_EQ(skip_key_cache.size(), default_key_cache.size());
+  ASSERT_EQ(skip_value_cache.size(), default_value_cache.size());
+  for (size_t i = 0; i < default_output.size(); ++i) {
+    EXPECT_EQ(skip_output[i].ToFloat(), default_output[i].ToFloat()) << "output index=" << i;
+  }
+  for (size_t i = 0; i < default_key_cache.size(); ++i) {
+    EXPECT_EQ(skip_key_cache[i].ToFloat(), default_key_cache[i].ToFloat()) << "key_cache index=" << i;
+    EXPECT_EQ(skip_value_cache[i].ToFloat(), default_value_cache[i].ToFloat()) << "value_cache index=" << i;
+  }
+}
+
+}  // namespace
+
+TEST(PagedAttention, Cuda_SkipInputSanitizerRaggedSmallBatchParity) {
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+
+  IoBindingCase c;
+  c.batch_size = 4;
+  c.token_count = 6;
+  c.num_heads = 2;
+  c.kv_num_heads = 1;
+  c.head_size = 64;
+  c.block_size = 16;
+  c.num_blocks = 8;
+  c.max_num_blocks_per_seq = 2;
+  c.cumulative_seqlens_q = {0, 2, 2, 5, 6};
+  c.past_seqlens = {3, 7, 18, 5};
+  c.block_table = {3, 7, 1, 5, 0, 4, 2, 6};
+  c.irregular_layout = true;
+
+  ExpectSkipSanitizerParity(c);
+  c.attention_metadata = {3, 24};
+  ExpectSkipSanitizerParity(c);
+}
+
+TEST(PagedAttention, Cuda_SkipInputSanitizerRaggedLargeBatchParity) {
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+
+  constexpr int kBatchSize = 260;
+  IoBindingCase c;
+  c.batch_size = kBatchSize;
+  c.num_heads = 2;
+  c.kv_num_heads = 1;
+  c.head_size = 8;
+  c.block_size = 16;
+  c.num_blocks = kBatchSize;
+  c.max_num_blocks_per_seq = 1;
+  c.irregular_layout = true;
+  c.cumulative_seqlens_q.resize(kBatchSize + 1, 0);
+  c.past_seqlens.resize(kBatchSize);
+  c.block_table.resize(kBatchSize);
+  constexpr int kQueryLengths[] = {0, 1, 2, 1};
+  for (int b = 0; b < kBatchSize; ++b) {
+    const int q_len = kQueryLengths[b % 4];
+    c.cumulative_seqlens_q[b + 1] = c.cumulative_seqlens_q[b] + q_len;
+    c.past_seqlens[b] = (b * 3) % 12;
+    c.block_table[b] = (b * 7 + 3) % kBatchSize;
+  }
+  c.token_count = c.cumulative_seqlens_q.back();
+  c.attention_metadata = {2, 16};
+
+  ExpectSkipSanitizerParity(c);
+}
+
+TEST(PagedAttention, Cuda_SkipInputSanitizerCudaGraphReplayChangingLengths) {
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+
+  IoBindingCase c;
+  c.batch_size = 3;
+  c.token_count = 4;
+  c.num_heads = 2;
+  c.kv_num_heads = 1;
+  c.head_size = 8;
+  c.block_size = 16;
+  c.num_blocks = 6;
+  c.max_num_blocks_per_seq = 2;
+  c.block_table = {2, 5, 0, 3, 1, 4};
+  c.replay_past_seqlens = {{1, 3, 2}, {2, 4, 2}, {4, 4, 3}, {5, 6, 4}};
+  c.replay_cumulative_seqlens_q = {{0, 1, 1, 4}, {0, 2, 3, 4}, {0, 0, 2, 4}, {0, 1, 2, 4}};
+  c.attention_metadata = {3, 16};
+  c.enable_cuda_graph = true;
+
+  ExpectSkipSanitizerParity(c);
+}
+
+TEST(PagedAttention, Cuda_SkipInputSanitizerEnvFallbackAndSessionOverride) {
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {"ORT_PAGED_ATTENTION_SKIP_SANITIZER", "1"},
+          {onnxruntime::contrib::attention::kDisableFlashAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableDecoderAttention, "0"},
+          {"ORT_ENABLE_XQA", "0"},
+          {"ORT_ENABLE_CUDNN_FLASH_ATTENTION", "0"}}};
+
+  // 1. Valid ragged input with unset session option uses the env var fallback and matches explicit "0".
+  IoBindingCase valid_ragged;
+  valid_ragged.batch_size = 3;
+  valid_ragged.token_count = 3;
+  valid_ragged.num_heads = 2;
+  valid_ragged.kv_num_heads = 1;
+  valid_ragged.head_size = 8;
+  valid_ragged.block_size = 16;
+  valid_ragged.num_blocks = 3;
+  valid_ragged.max_num_blocks_per_seq = 1;
+  valid_ragged.cumulative_seqlens_q = {0, 2, 2, 3};
+  valid_ragged.past_seqlens = {2, 5, 4};
+  valid_ragged.block_table = {2, 0, 1};
+  valid_ragged.irregular_layout = true;
+  ExpectSkipSanitizerParity(valid_ragged, /*skip_session_value=*/"");
+
+  // 2. When past_seqlens[0] == block_size (256) with query_length == 1 and max_num_blocks_per_seq == 1:
+  //    - DerivedSlotResolver bounds-checks block_idx_in_seq (1 >= 1) and skips the cache write safely.
+  //    - PagedDecodeSplitKV bounds-checks block_index < max_num_blocks_per_seq, attending safely over
+  //      slots 0..255 in block 0 and masking slot 256.
+  //    - With sanitizer bypassed via ORT_PAGED_ATTENTION_SKIP_SANITIZER=1 (unset session option),
+  //      sequence_validity is null so the output is NOT zero-masked (~0.02f).
+  //    - With explicit session option "0" overriding the env var, SanitizeSequenceLengths marks the
+  //      sequence invalid and MaskInvalidSequenceOutputs zeroes the output.
+  IoBindingCase boundary;
+  boundary.batch_size = 1;
+  boundary.token_count = 1;
+  boundary.num_heads = 1;
+  boundary.kv_num_heads = 1;
+  boundary.head_size = 8;
+  boundary.block_size = 256;
+  boundary.num_blocks = 1;
+  boundary.max_num_blocks_per_seq = 1;
+  boundary.cumulative_seqlens_q = {0, 1};
+  boundary.past_seqlens = {256};
+  boundary.block_table = {0};
+  boundary.attention_metadata = {1, 256};
+  boundary.allow_malformed_sequence_metadata = true;
+  boundary.skip_reference_check = true;
+  boundary.verify_malformed_cache_unchanged = true;
+  boundary.verify_malformed_output_finite = true;
+
+  std::vector<MLFloat16> env_fallback_output;
+  IoBindingCase env_fallback_case = boundary;
+  env_fallback_case.skip_input_sanitizer = "";
+  env_fallback_case.captured_output = &env_fallback_output;
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, env_fallback_case);
+  ASSERT_FALSE(env_fallback_output.empty());
+  for (const MLFloat16 v : env_fallback_output) {
+    EXPECT_NEAR(v.ToFloat(), 0.02f, 1e-3f);
+  }
+
+  IoBindingCase session_override_zero = boundary;
+  session_override_zero.skip_input_sanitizer = "0";
+  session_override_zero.verify_malformed_output_zero = true;
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, session_override_zero);
+}
+
+TEST(PagedAttention, Cuda_SkipInputSanitizerRejectsInvalidSessionConfigValue) {
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+
+  for (const char* invalid_value : {"2", "true", "-1"}) {
+    IoBindingCase c;
+    c.skip_input_sanitizer = invalid_value;
+    c.expected_error = "Invalid value for session.paged_attention.skip_input_sanitizer";
+    RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+  }
 }
 
 // -----------------------------------------------------------------------------

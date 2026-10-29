@@ -6983,6 +6983,54 @@ TEST(ReductionOpTest, ReduceMin_float_Opset20_NoKeepdims_Cuda) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
+TEST(ReductionOpTest, ArgMax_bfloat16_non_last_axis_Cuda) {
+  for (int64_t keepdims : {int64_t{0}, int64_t{1}}) {
+    OpTester test("ArgMax", 13);
+    test.AddAttribute("axis", int64_t{1});
+    test.AddAttribute("keepdims", keepdims);
+    test.AddInput<BFloat16>("data", {3, 2, 2},
+                            MakeBFloat16({1.0f, 4.0f,
+                                          3.0f, 2.0f,
+
+                                          8.0f, 5.0f,
+                                          7.0f, 6.0f,
+
+                                          9.0f, 12.0f,
+                                          11.0f, 10.0f}));
+    test.AddOutput<int64_t>("reduced", keepdims ? std::vector<int64_t>{3, 1, 2} : std::vector<int64_t>{3, 2},
+                            {1, 0,
+                             0, 1,
+                             1, 0});
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+}
+
+TEST(ReductionOpTest, ArgMin_bfloat16_non_last_axis_Cuda) {
+  for (int64_t keepdims : {int64_t{0}, int64_t{1}}) {
+    OpTester test("ArgMin", 13);
+    test.AddAttribute("axis", int64_t{1});
+    test.AddAttribute("keepdims", keepdims);
+    test.AddInput<BFloat16>("data", {3, 2, 2},
+                            MakeBFloat16({1.0f, 4.0f,
+                                          3.0f, 2.0f,
+
+                                          8.0f, 5.0f,
+                                          7.0f, 6.0f,
+
+                                          9.0f, 12.0f,
+                                          11.0f, 10.0f}));
+    test.AddOutput<int64_t>("reduced", keepdims ? std::vector<int64_t>{3, 1, 2} : std::vector<int64_t>{3, 2},
+                            {0, 1,
+                             1, 0,
+                             0, 1});
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+}
+
 #endif  // defined(USE_CUDA)
 
 // =============================================================================

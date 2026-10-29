@@ -121,6 +121,17 @@ without a stream submit before returning, but do not wait for GPU completion. A 
 Session Run uses a different recording, so the transfer must submit its copy first; the shared
 device queue orders it before later Session work.
 
+Streamless GPU-to-GPU vectors on one WebGPU context use one recording and one submission.
+This path is available with or without `ORT_ENABLE_STREAM`; explicit Session streams require
+a stream-enabled host.
+Copies are encoded in array order, including dependencies between entries. Empty tensors
+enqueue no work. Single copies, CPU transfers, explicit Session streams, and vectors spanning
+contexts keep their existing paths; mixed contexts are not merged. The recording and retained
+context are local to the call, so independent streamless vectors can run concurrently in
+concurrent mode. A failed call reports an error, may leave destinations partially updated,
+and does not retain unsubmitted commands for a later call. This uses the existing
+`OrtApi::CopyTensors` API (available since ORT 1.23); it adds no public API or ABI.
+
 Stream flush and notification activation submit the owning Session's recording without a CPU
 wait. Submission is still needed before streamless readbacks, such as node I/O dumps, use a
 different recording. GPU consumers rely on the shared queue's submission order, and CPU
@@ -214,6 +225,52 @@ are also checked before that external readback, including after a cancelled Run.
 Concurrent profiling, cross-device transfer, and successful arbitrary foreign stream overrides are not
 established by these tests. Performance must be measured separately.
 
+### Convolution state replay
+
+`com.microsoft::ConvStateReplay` version 1 reconstructs convolution history without
+convolution arithmetic. It is WebGPU-only and accepts FP16 or FP32 tensors. Inputs
+0-2 are full rank-1 source, capture, and inactive destination backing tensors of
+the same type. Input 3 is CPU `int64[8]`, ordered as:
+`source_offset_bytes, destination_offset_bytes, capture_offset_bytes,
+batch_size, channels, history_width, capacity, kept_count`.
+Offsets are bytes from the allocation base, aligned to the element size; FP16
+offsets need not be four-byte aligned. State views have layout
+`[batch_size, channels, history_width]`, and captured inputs have layout
+`[batch_size, capacity, channels]`. `capacity` is the original batch stride,
+not the retained count. All fields are nonnegative, channels must be positive,
+and `0 <= kept_count <= capacity`. Zero batch/history is a no-op; zero capacity
+is valid with zero retained inputs. Full view extents, including capture capacity,
+must fit their backings even when only part of a view is read.
+
+The caller must supply the incoming state immediately before capture and valid
+captured inputs for the retained prefix. With width `W` and retained count `k`,
+the output history is the final `W` entries of the concatenation of the incoming
+history and the first `k` captured inputs. Thus `k=0` copies the source, while
+`k>=W` selects only the last `W` inputs of the retained prefix.
+
+The output must be explicitly I/O-bound to the same full allocation as
+`destination_backing`; `.MayInplace` alone does not guarantee this. Destination
+backing must not alias source or capture backing, even for disjoint views. No
+other destination elements or source/capture payloads are modified.
+
+The kernel wraps the full opaque buffer handles as non-owning `uint32` tensors.
+`ProgramInput::BufferView` / `ProgramOutput::BufferView` supply word offsets via
+uniforms, while binding full allocations (or framework-aligned segments).
+FP16's remaining two-byte offset is a lane uniform. One invocation owns each
+destination word and merges selected 16-bit payloads with the original word at
+view boundaries, preserving adjacent halves without races. No floating-point
+loads, stores, conversions, or arithmetic are used, including for FP32, so
+signed zeros, subnormals and NaN payloads are preserved exactly. Backings must
+have WebGPU's four-byte allocation padding, including odd-sized FP16 tensors.
+
+The operation uses checked GPU completion before returning, like the separate
+GatedDeltaNet replay operator. Failure must not be treated as a committed state
+update. There is no graph-capture support or GenAI integration in this milestone.
+Metadata and backing byte extents are limited to uint32; geometry, alignment,
+bounds, output aliasing, dispatch, and device binding limits are checked.
+Integration should convert descriptor offsets to bytes, retain the original
+capture capacity, prebind the inactive bank, and publish it only after success.
+
 ### GatedDeltaNet state replay
 
 `com.microsoft::GatedDeltaNetStateReplay` version 1 is a WebGPU-only, FP32
@@ -264,8 +321,9 @@ completion returns failure rather than publishing success; destination contents
 on failure are unspecified and must not be committed. As with the context helper,
 errors from before the checked region remain the external caller's responsibility.
 
-This milestone has no graph-capture support, convolution replay, batching,
-or external session integration. Tests cover all kept prefixes at capacities
+This operator has no graph-capture support, batching, or external session
+integration; convolution replay uses the separate `ConvStateReplay` operator.
+Tests cover all kept prefixes at capacities
 1, 4, 7 and 8, non-divisible head mappings, Qwen's 230,720-byte capsule-row
 offset (64 modulo 256), segmented and shared source/capsule backing, poisoned
 tails, preservation, alias requirements and invalid metadata. GPU/CPU replay comparisons use

@@ -40,6 +40,10 @@ Status GatedAdd::ComputeInternal(ComputeContext& context) const {
   const auto* x = context.Input(0);
   const auto* y = context.Input(1);
   const auto* gate = context.Input(2);
+  const auto* gate_weight = context.Input(3);
+  if (gate_weight != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "GatedAdd gate_weight currently supports BFloat16 only");
+  }
   const TensorShape& shape = x->Shape();
 
   ORT_RETURN_IF_NOT(shape.NumDimensions() >= 1, "X must have rank >= 1");

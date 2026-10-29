@@ -635,6 +635,40 @@ TEST(TopKOperator, Top3ExplicitAxisInfinity) {
 }
 
 template <typename T>
+static void RunCpuTopK(int opset_version, int64_t k, int64_t largest, const std::vector<T>& input_vals,
+                       const std::vector<T>& expected_vals, const std::vector<int64_t>& expected_indices) {
+  OpTester test("TopK", opset_version);
+  if (largest != 1) {
+    test.AddAttribute("largest", largest);
+  }
+  test.AddInput<T>("X", {static_cast<int64_t>(input_vals.size())}, input_vals);
+  test.AddInput<int64_t>("K", {1}, {k});
+  test.AddOutput<T>("Values", {k}, expected_vals);
+  test.AddOutput<int64_t>("Indices", {k}, expected_indices);
+  test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+}
+
+// NaN ranks above every other value, as in the CUDA kernel. k = 1 uses the linear scan, k = 3 the heap and
+// k = 6 and k = 8 nth_element.
+template <typename T>
+static void top_k_nan_is_largest(int opset_version) {
+  const T nan = std::numeric_limits<T>::quiet_NaN();
+  const std::vector<T> input_vals = {1, nan, 3, 2, nan, -1, 5, 0};
+  RunCpuTopK<T>(opset_version, 1, 1, input_vals, {nan}, {1});
+  RunCpuTopK<T>(opset_version, 3, 1, input_vals, {nan, nan, 5}, {1, 4, 6});
+  RunCpuTopK<T>(opset_version, 6, 1, input_vals, {nan, nan, 5, 3, 2, 1}, {1, 4, 6, 2, 3, 0});
+  RunCpuTopK<T>(opset_version, 1, 0, input_vals, {-1}, {5});
+  RunCpuTopK<T>(opset_version, 3, 0, input_vals, {-1, 0, 1}, {5, 7, 0});
+  RunCpuTopK<T>(opset_version, 8, 0, input_vals, {-1, 0, 1, 2, 3, 5, nan, nan}, {5, 7, 0, 3, 2, 6, 1, 4});
+}
+
+TEST(TopKOperator, NaNIsLargest) {
+  top_k_nan_is_largest<float>(11);
+  top_k_nan_is_largest<double>(11);
+  top_k_nan_is_largest<float>(24);
+}
+
+template <typename T>
 static void top_1_explicit_axis_MultiD_input_smallest(int opset_version, int64_t sorted = 1) {
   std::vector<T> input_vals = {1, 2, 3, 4, 5, 6, 7, 8};
   std::vector<int64_t> input_dimensions = {2, 2, 2};

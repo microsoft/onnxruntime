@@ -9,6 +9,7 @@
 #include "core/graph/node_attr_utils.h"
 #include "core/optimizer/group_query_attention_pre_norm_fusion.h"
 #include "core/optimizer/utils.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
@@ -46,6 +47,8 @@ void SetWebGpu(Node& node) { node.SetExecutionProviderType(kWebGpuExecutionProvi
 struct BuildOptions {
   float q_epsilon = 1e-6f;
   float k_epsilon = 1e-6f;
+  float projection_scale = 1.0f;
+  bool preexisting_epsilon_overrides = false;
   // Sequence geometry for the Q/K/V projections that feed GQA.
   int64_t sequence_length = kSeq;
   // GQA control scalars.
@@ -73,9 +76,9 @@ void BuildQwenQkPostNormPattern(ModelTestBuilder& builder, const BuildOptions& o
 
   // Projection inputs (post linear projection, pre norm).
   NodeArg* q_proj = builder.MakeInput<MLFloat16>(
-      std::vector<int64_t>{kBatch, seq, kQHidden}, MLFloat16(-1.0f), MLFloat16(1.0f));
+      std::vector<int64_t>{kBatch, seq, kQHidden}, MLFloat16(-opts.projection_scale), MLFloat16(opts.projection_scale));
   NodeArg* k_proj = builder.MakeInput<MLFloat16>(
-      std::vector<int64_t>{kBatch, seq, kKvHidden}, MLFloat16(-1.0f), MLFloat16(1.0f));
+      std::vector<int64_t>{kBatch, seq, kKvHidden}, MLFloat16(-opts.projection_scale), MLFloat16(opts.projection_scale));
   NodeArg* v_proj = builder.MakeInput<MLFloat16>(
       std::vector<int64_t>{kBatch, seq, kKvHidden}, MLFloat16(-1.0f), MLFloat16(1.0f));
 
@@ -189,6 +192,10 @@ void BuildQwenQkPostNormPattern(ModelTestBuilder& builder, const BuildOptions& o
   gqa.AddAttribute("num_heads", static_cast<int64_t>(kNumHeads));
   gqa.AddAttribute("kv_num_heads", static_cast<int64_t>(kKvNumHeads));
   gqa.AddAttribute("do_rotary", opts.do_rotary);
+  if (opts.preexisting_epsilon_overrides) {
+    gqa.AddAttribute("q_norm_epsilon", 0.1f);
+    gqa.AddAttribute("k_norm_epsilon", 0.2f);
+  }
 
   SetWebGpu(q_inner_reshape);
   SetWebGpu(q_sln);
@@ -199,7 +206,7 @@ void BuildQwenQkPostNormPattern(ModelTestBuilder& builder, const BuildOptions& o
   SetWebGpu(gqa);
 }
 
-Status CheckFusedGraph(const Graph& graph) {
+Status CheckFusedGraphWithEpsilons(const Graph& graph, float q_epsilon, float k_epsilon) {
   const auto op_to_count = CountOpsInGraph(graph);
   if (OpCount(op_to_count, "com.microsoft.GroupQueryAttention") != 1 ||
       OpCount(op_to_count, "SimplifiedLayerNormalization") != 0 ||
@@ -223,9 +230,24 @@ Status CheckFusedGraph(const Graph& graph) {
     const auto& attrs = node.GetAttributes();
     auto eps_it = attrs.find("qk_norm_epsilon");
     ORT_RETURN_IF_NOT(eps_it != attrs.end(), "qk_norm_epsilon attribute missing.");
-    ORT_RETURN_IF_NOT(std::abs(eps_it->second.f() - 1e-6f) < 1e-9f, "qk_norm_epsilon value mismatch.");
+    ORT_RETURN_IF_NOT(eps_it->second.f() == q_epsilon, "qk_norm_epsilon value mismatch.");
+    const auto q_eps_it = attrs.find("q_norm_epsilon");
+    const auto k_eps_it = attrs.find("k_norm_epsilon");
+    if (q_epsilon == k_epsilon) {
+      ORT_RETURN_IF_NOT(q_eps_it == attrs.end() && k_eps_it == attrs.end(),
+                        "Equal epsilons should use the shared attribute.");
+    } else {
+      ORT_RETURN_IF_NOT(q_eps_it != attrs.end() && q_eps_it->second.f() == q_epsilon,
+                        "q_norm_epsilon value mismatch.");
+      ORT_RETURN_IF_NOT(k_eps_it != attrs.end() && k_eps_it->second.f() == k_epsilon,
+                        "k_norm_epsilon value mismatch.");
+    }
   }
   return Status::OK();
+}
+
+Status CheckFusedGraph(const Graph& graph) {
+  return CheckFusedGraphWithEpsilons(graph, 1e-6f, 1e-6f);
 }
 
 Status CheckUnfusedGraph(const Graph& graph) {
@@ -395,14 +417,120 @@ TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionMatchesUnfusedW
       []() { return DefaultWebGpuExecutionProvider(); });
 }
 
-TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionRejectsEpsilonMismatch) {
+TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionFusesDifferentEpsilons) {
   BuildOptions opts;
   opts.q_epsilon = 1e-6f;
   opts.k_epsilon = 1e-5f;
   auto build = [opts](ModelTestBuilder& builder) { BuildQwenQkPostNormPattern(builder, opts); };
+  auto check = [opts](const Graph& graph) {
+    return CheckFusedGraphWithEpsilons(graph, opts.q_epsilon, opts.k_epsilon);
+  };
   ASSERT_STATUS_OK(TestGraphTransformer(
       build, /*opset_version=*/21, *logger_, MakeWebGpuTransformer(),
-      TransformerLevel::Level2, /*steps=*/1, nullptr, CheckUnfusedGraph));
+      TransformerLevel::Level2, /*steps=*/1, nullptr, check));
+}
+
+TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionFusesSmallDifferentEpsilons) {
+  BuildOptions opts;
+  opts.q_epsilon = 1e-9f;
+  opts.k_epsilon = 1.9e-9f;
+  auto build = [opts](ModelTestBuilder& builder) { BuildQwenQkPostNormPattern(builder, opts); };
+  auto check = [opts](const Graph& graph) {
+    return CheckFusedGraphWithEpsilons(graph, opts.q_epsilon, opts.k_epsilon);
+  };
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build, /*opset_version=*/21, *logger_, MakeCudaWebGpuTransformer(),
+      TransformerLevel::Level2, /*steps=*/1, nullptr, check));
+}
+
+TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionFusesAdjacentEpsilons) {
+  BuildOptions opts;
+  opts.k_epsilon = std::nextafter(opts.q_epsilon, 1.0f);
+  auto build = [opts](ModelTestBuilder& builder) { BuildQwenQkPostNormPattern(builder, opts); };
+  auto check = [opts](const Graph& graph) {
+    return CheckFusedGraphWithEpsilons(graph, opts.q_epsilon, opts.k_epsilon);
+  };
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build, /*opset_version=*/21, *logger_, MakeCudaWebGpuTransformer(),
+      TransformerLevel::Level2, /*steps=*/1, nullptr, check));
+}
+
+TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionReplacesExistingEpsilonOverrides) {
+  for (bool different_epsilons : {false, true}) {
+    SCOPED_TRACE(different_epsilons);
+    BuildOptions opts;
+    opts.preexisting_epsilon_overrides = true;
+    if (different_epsilons) opts.k_epsilon = 1e-5f;
+    auto build = [opts](ModelTestBuilder& builder) { BuildQwenQkPostNormPattern(builder, opts); };
+    auto check = [opts](const Graph& graph) {
+      return CheckFusedGraphWithEpsilons(graph, opts.q_epsilon, opts.k_epsilon);
+    };
+    ASSERT_STATUS_OK(TestGraphTransformer(
+        build, /*opset_version=*/21, *logger_, MakeCudaWebGpuTransformer(),
+        TransformerLevel::Level2, /*steps=*/1, nullptr, check));
+  }
+}
+
+static void RunEpsilonFusionTest(bool use_cuda, int64_t sequence_length, bool equal_epsilons = false) {
+  auto ep_factory = [use_cuda]() {
+    return use_cuda ? DefaultCudaExecutionProvider() : DefaultWebGpuExecutionProvider();
+  };
+  if (!ep_factory()) {
+    GTEST_SKIP() << "Requested GPU EP is unavailable in this build.";
+  }
+
+  BuildOptions opts;
+  opts.q_epsilon = 1e-9f;
+  opts.k_epsilon = equal_epsilons ? opts.q_epsilon : 1.9e-9f;
+  opts.projection_scale = 1e-4f;
+  opts.sequence_length = sequence_length;
+  opts.seqlens_k = static_cast<int32_t>(sequence_length);
+  opts.total_sequence_length = opts.seqlens_k + 1;
+  const auto provider_type = use_cuda ? kCudaExecutionProvider : kWebGpuExecutionProvider;
+  auto build = [opts, provider_type](ModelTestBuilder& builder) {
+    BuildQwenQkPostNormPattern(builder, opts);
+    for (auto& node : builder.graph_.Nodes()) {
+      node.SetExecutionProviderType(provider_type);
+    }
+  };
+  auto check = [opts, provider_type](InferenceSessionWrapper& session) {
+    ASSERT_STATUS_OK(CheckFusedGraphWithEpsilons(session.GetGraph(), opts.q_epsilon, opts.k_epsilon));
+    for (const auto& node : session.GetGraph().Nodes()) {
+      if (node.OpType() == "GroupQueryAttention") {
+        EXPECT_EQ(node.GetExecutionProviderType(), provider_type);
+      }
+    }
+  };
+  RunWebGpuFusionTransformerTest(
+      build, check, TransformerLevel::Level1, TransformerLevel::Level2, 21,
+      1e-3, 1e-3, MakeCudaWebGpuTransformer(), ep_factory,
+      [](SessionOptions& options) {
+        ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+      });
+}
+
+TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionDifferentEpsilonsWebGpuDecode) {
+  RunEpsilonFusionTest(/*use_cuda=*/false, /*sequence_length=*/1);
+}
+
+TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionDifferentEpsilonsWebGpuPrefill) {
+  RunEpsilonFusionTest(/*use_cuda=*/false, /*sequence_length=*/2);
+}
+
+TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionDifferentEpsilonsCudaDecode) {
+  RunEpsilonFusionTest(/*use_cuda=*/true, /*sequence_length=*/1);
+}
+
+TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionDifferentEpsilonsCudaPrefill) {
+  RunEpsilonFusionTest(/*use_cuda=*/true, /*sequence_length=*/2);
+}
+
+TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionEqualEpsilonsCudaDecode) {
+  RunEpsilonFusionTest(/*use_cuda=*/true, /*sequence_length=*/1, /*equal_epsilons=*/true);
+}
+
+TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionEqualEpsilonsCudaPrefill) {
+  RunEpsilonFusionTest(/*use_cuda=*/true, /*sequence_length=*/2, /*equal_epsilons=*/true);
 }
 
 TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionRejectsNonPositiveEpsilon) {

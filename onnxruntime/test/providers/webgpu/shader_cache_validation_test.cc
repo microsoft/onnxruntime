@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 #include <atomic>
+#include <filesystem>
+#include <fstream>
 #include <thread>
 
 #include "gtest/gtest.h"
@@ -10,6 +12,7 @@
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/scoped_env_vars.h"
+#include "test/util/include/temp_dir.h"
 
 #if !defined(__wasm__) && !defined(USE_EXTERNAL_DAWN) && !defined(ORT_USE_EP_API_ADAPTERS)
 #include "core/framework/ort_value_name_idx_map.h"
@@ -119,6 +122,54 @@ TEST(WebGpuShaderCacheValidationTest, ChecksPendingAndCompletedDescriptionsWitho
 }
 
 #if !defined(__wasm__) && !defined(USE_EXTERNAL_DAWN) && !defined(ORT_USE_EP_API_ADAPTERS)
+TEST(WebGpuShaderCacheValidationTest, DumpsConfigurationAcrossIndependentCaches) {
+  auto provider = DefaultWebGpuExecutionProvider();
+  if (!provider) {
+    GTEST_SKIP() << "WebGPU EP is not available";
+  }
+  auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+  TemporaryDirectory temp_dir{ORT_TSTR("webgpu_shader_configuration_test")};
+  const auto dump_path = std::filesystem::path(temp_dir.Path()) / ORT_TSTR("shaders.txt");
+  ScopedEnvironmentVariables dumping{{{"ORT_WEBGPU_EP_SHADER_DUMP_FILE", ToUTF8String(dump_path.native())}}};
+  size_t generations = 0;
+  DiagnosticProgram program{1, 10, 2, generations};
+  auto build = [&](webgpu::WebGpuContext& device_context) {
+    webgpu::ProgramManager manager{device_context};
+    webgpu::PendingPipelineBuild pending;
+    pending.callback_context = std::make_shared<webgpu::PipelineCallbackContext>();
+    ASSERT_STATUS_OK(manager.Build(program, program.Metadata(), {}, {}, "same-key", 1, 1, 1,
+                                   pending.bind_group_layout, pending.shape_uniform_ranks,
+                                   pending.future, pending.callback_context));
+    ASSERT_STATUS_OK(device_context.Wait(pending.future));
+    ASSERT_STATUS_OK(pending.callback_context->status);
+  };
+  ASSERT_NO_FATAL_FAILURE(build(context));
+  ASSERT_NO_FATAL_FAILURE(build(context));
+  bool different_configuration = false;
+  RunWithExternalCompletionContext([&](auto& external_context, auto&, const auto&, auto&) {
+    different_configuration =
+        context.DeviceHasFeature(wgpu::FeatureName::Subgroups) !=
+            external_context.DeviceHasFeature(wgpu::FeatureName::Subgroups) ||
+        context.DeviceHasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix) !=
+            external_context.DeviceHasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix) ||
+        context.DeviceLimits().maxStorageBufferBindingSize != external_context.DeviceLimits().maxStorageBufferBindingSize;
+    ASSERT_NO_FATAL_FAILURE(build(external_context));
+  });
+  std::ifstream dump_file(dump_path);
+  ASSERT_TRUE(dump_file.is_open());
+  InlinedVector<std::string> headers;
+  for (std::string line; std::getline(dump_file, line);) {
+    if (line.starts_with("=== WebGPU Shader code [CacheDiagnosticTest, Configuration=\"") &&
+        line.ends_with(" Start ===")) {
+      EXPECT_NE(line.find("\", Key=\"same-key\"]"), std::string::npos);
+      headers.push_back(std::move(line));
+    }
+  }
+  ASSERT_EQ(headers.size(), 3u);
+  EXPECT_EQ(headers[0], headers[1]);
+  EXPECT_EQ(headers[0] != headers[2], different_configuration);
+}
+
 namespace {
 class DiagnosticKernel final : public OpKernel {
  public:
