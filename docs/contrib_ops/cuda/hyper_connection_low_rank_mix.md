@@ -37,16 +37,6 @@ Read once per process, so set it before starting it.
   weight inputs (`norm_scale`, `down_weight`, `up_weight`, `inject_weight`) are
   constant initializers; `0` forces plain launches.
 
-The kernels that precede `HcDownKernel` in the Qwen3.8 decode graph,
-`ProjectedSigmoidGateMulKernel`
-([gated_add_impl.cu](../../../onnxruntime/contrib_ops/cuda/bert/gated_add_impl.cu))
-and the fpA_intB GEMV kernels (scalar and tensor-core), issue
-`griddepcontrol.launch_dependents` at their start on `SM90+`. When `HcDownKernel`
-is launched with PDL, its prologue (constant-weight prefetch) then overlaps with
-them, while its reads of their output still wait for `griddepcontrol.wait`. The
-trigger has no effect for plain launches, changes no result and has no switch.
-On the Qwen3.8-Flash-Next `S = 8` decode it shortens a cycle by 1.4-1.7%.
-
 The rank-320 decode test (`HyperConnectionLowRankMixTest.FusedDecodeShapeRank320`)
 covers 1, 2, 3, 4, 7 and 8 rows.
 

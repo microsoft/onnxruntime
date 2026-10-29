@@ -56,11 +56,6 @@ __global__ void ProjectedSigmoidGateMulKernel(
     const __nv_bfloat16* attention, const __nv_bfloat16* activation,
     const __nv_bfloat16* weight, const __nv_bfloat16* residual, __nv_bfloat16* output,
     int64_t input_width, int64_t output_width) {
-  // Let a programmatic-dependent-launch successor (the hyper-connection down kernel) start and prefetch its constant
-  // weights while this kernel runs; it reads our output only after griddepcontrol.wait. No-op for plain launches.
-#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 900
-  asm volatile("griddepcontrol.launch_dependents;" ::: "memory");
-#endif
   const int64_t row = blockIdx.x;
   const float gate = ProjectedRowGate(activation, weight, row, input_width);
   const int64_t row_base = row * output_width;

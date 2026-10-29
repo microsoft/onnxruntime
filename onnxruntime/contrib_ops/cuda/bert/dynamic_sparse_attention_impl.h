@@ -50,8 +50,6 @@ struct DynamicSparseAttentionData {
   T* output = nullptr;
   float* attention_workspace = nullptr;
   bool quantized_cache = false;
-  bool prefill_kernel = true;
-  bool prefill_int8_tc = true;
   const float* key_scale = nullptr;
   const float* value_scale = nullptr;
 };
