@@ -591,17 +591,37 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     QuantizeLinear);
 
 // Opset 23 adds the `precision` attribute, which defaults to the y_scale type. The kernel divides in
-// f32, so it takes f32 y_scale only; GetCapability rejects any other explicit precision.
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(
-    QuantizeLinear,
-    kOnnxDomain,
-    23, 24,
-    kWebGpuExecutionProvider,
-    (*KernelDefBuilder::Create())
-        .TypeConstraint("T1", WebGpuSupportedFloatTypes())
-        .TypeConstraint("T2", DataTypeImpl::GetTensorType<float>())
-        .TypeConstraint("T3", QuantizeLinearOutputConstraints()),
-    QuantizeLinear);
+// f32, so it takes f32 y_scale only; GetCapability rejects any other explicit precision. Opsets 24, 25
+// and 28 only add y_scale/y types that this kernel does not register.
+#define WEBGPU_QUANTIZE_LINEAR_VERSIONED_KERNEL(start, end)           \
+  ONNX_OPERATOR_VERSIONED_KERNEL_EX(                                  \
+      QuantizeLinear,                                                 \
+      kOnnxDomain,                                                    \
+      start,                                                          \
+      end,                                                            \
+      kWebGpuExecutionProvider,                                       \
+      (*KernelDefBuilder::Create())                                   \
+          .TypeConstraint("T1", WebGpuSupportedFloatTypes())          \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<float>()) \
+          .TypeConstraint("T3", QuantizeLinearOutputConstraints()),   \
+      QuantizeLinear);
+
+#define WEBGPU_QUANTIZE_LINEAR_KERNEL(version)                        \
+  ONNX_OPERATOR_KERNEL_EX(                                            \
+      QuantizeLinear,                                                 \
+      kOnnxDomain,                                                    \
+      version,                                                        \
+      kWebGpuExecutionProvider,                                       \
+      (*KernelDefBuilder::Create())                                   \
+          .TypeConstraint("T1", WebGpuSupportedFloatTypes())          \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<float>()) \
+          .TypeConstraint("T3", QuantizeLinearOutputConstraints()),   \
+      QuantizeLinear);
+
+WEBGPU_QUANTIZE_LINEAR_VERSIONED_KERNEL(23, 23)
+WEBGPU_QUANTIZE_LINEAR_VERSIONED_KERNEL(24, 24)
+WEBGPU_QUANTIZE_LINEAR_VERSIONED_KERNEL(25, 27)
+WEBGPU_QUANTIZE_LINEAR_KERNEL(28)
 
 }  // namespace webgpu
 }  // namespace onnxruntime

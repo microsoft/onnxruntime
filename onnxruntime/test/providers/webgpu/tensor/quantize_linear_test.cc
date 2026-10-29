@@ -456,7 +456,7 @@ TEST(WebGpuQuantizeLinearTest, OpsetVersions) {
   }
   const std::vector<int8_t> int8_zero_point{-3};
   const std::vector<uint8_t> uint8_zero_point{100};
-  for (int opset : {10, 13, 19, 21, 23, 24}) {
+  for (int opset : {10, 13, 19, 21, 23, 24, 25, 28}) {
     SCOPED_TRACE(opset);
     RunQuantizeLinear<float, int8_t>(opset, {1001}, x, {}, {0.125f}, &int8_zero_point, expected_int8);
     RunQuantizeLinear<float, uint8_t>(opset, {1001}, x, {}, {0.125f}, &uint8_zero_point, expected_uint8);
@@ -467,46 +467,51 @@ TEST(WebGpuQuantizeLinearTest, OpsetVersions) {
 // From opset 23, x / y_scale is computed in the `precision` type, which defaults to the y_scale type.
 // The WebGPU kernel divides in f32, so a float16 y_scale or an explicit float16 precision must be left
 // to the CPU EP. CPU fallback stays enabled; an f32 division on WebGPU would give 5 and 3 below.
+// Opset 28 is omitted because the CPU EP has no QuantizeLinear-28 kernel to fall back to.
 TEST(WebGpuQuantizeLinearTest, Opset23PrecisionOtherThanFloat) {
-  {
-    auto provider = DefaultWebGpuExecutionProvider();
-    if (!provider) {
-      GTEST_SKIP() << "WebGPU EP is not available";
-    }
-    // 1.5 / 0.333251953125 is 4.5011 in f32 but 4.5 in float16, which rounds half to even to 4.
-    OpTester test("QuantizeLinear", 23);
-    test.AddInput<MLFloat16>("x", {1}, {MLFloat16(1.5f)});
-    test.AddInput<MLFloat16>("y_scale", {}, {MLFloat16(0.333251953125f)});
-    test.AddInput<int8_t>("y_zero_point", {}, {0});
-    test.AddOutput<int8_t>("y", {1}, {4});
-    test.ConfigEp(std::move(provider)).RunWithConfig();
+  if (!DefaultWebGpuExecutionProvider()) {
+    GTEST_SKIP() << "WebGPU EP is not available";
   }
-  {
-    auto provider = DefaultWebGpuExecutionProvider();
-    // 2.5001 is 2.5 in float16, which rounds half to even to 2.
-    OpTester test("QuantizeLinear", 23);
-    test.AddAttribute<int64_t>("precision", ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
-    test.AddInput<float>("x", {1}, {2.5001f});
-    test.AddInput<float>("y_scale", {}, {1.0f});
-    test.AddInput<int8_t>("y_zero_point", {}, {0});
-    test.AddOutput<int8_t>("y", {1}, {2});
-    test.ConfigEp(std::move(provider)).RunWithConfig();
+  for (int opset : {23, 24, 25}) {
+    SCOPED_TRACE(opset);
+    {
+      // 1.5 / 0.333251953125 is 4.5011 in f32 but 4.5 in float16, which rounds half to even to 4.
+      OpTester test("QuantizeLinear", opset);
+      test.AddInput<MLFloat16>("x", {1}, {MLFloat16(1.5f)});
+      test.AddInput<MLFloat16>("y_scale", {}, {MLFloat16(0.333251953125f)});
+      test.AddInput<int8_t>("y_zero_point", {}, {0});
+      test.AddOutput<int8_t>("y", {1}, {4});
+      test.ConfigEp(DefaultWebGpuExecutionProvider()).RunWithConfig();
+    }
+    {
+      // 2.5001 is 2.5 in float16, which rounds half to even to 2.
+      OpTester test("QuantizeLinear", opset);
+      test.AddAttribute<int64_t>("precision", ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+      test.AddInput<float>("x", {1}, {2.5001f});
+      test.AddInput<float>("y_scale", {}, {1.0f});
+      test.AddInput<int8_t>("y_zero_point", {}, {0});
+      test.AddOutput<int8_t>("y", {1}, {2});
+      test.ConfigEp(DefaultWebGpuExecutionProvider()).RunWithConfig();
+    }
   }
 }
 
 // An explicit f32 precision matches the kernel's division and stays on WebGPU.
 TEST(WebGpuQuantizeLinearTest, Opset23ExplicitFloatPrecision) {
-  auto provider = DefaultWebGpuExecutionProvider();
-  if (!provider) {
-    GTEST_SKIP() << "WebGPU EP is not available";
+  for (int opset : {23, 24, 25, 28}) {
+    SCOPED_TRACE(opset);
+    auto provider = DefaultWebGpuExecutionProvider();
+    if (!provider) {
+      GTEST_SKIP() << "WebGPU EP is not available";
+    }
+    OpTester test("QuantizeLinear", opset);
+    test.AddAttribute<int64_t>("precision", ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    test.AddInput<float>("x", {3}, {2.5001f, -2.5f, 7.75f});
+    test.AddInput<float>("y_scale", {}, {1.0f});
+    test.AddInput<int8_t>("y_zero_point", {}, {0});
+    test.AddOutput<int8_t>("y", {3}, {3, -2, 8});
+    test.Config(WebGpuOnlySessionOptions()).ConfigEp(std::move(provider)).RunWithConfig();
   }
-  OpTester test("QuantizeLinear", 23);
-  test.AddAttribute<int64_t>("precision", ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-  test.AddInput<float>("x", {3}, {2.5001f, -2.5f, 7.75f});
-  test.AddInput<float>("y_scale", {}, {1.0f});
-  test.AddInput<int8_t>("y_zero_point", {}, {0});
-  test.AddOutput<int8_t>("y", {3}, {3, -2, 8});
-  test.Config(WebGpuOnlySessionOptions()).ConfigEp(std::move(provider)).RunWithConfig();
 }
 
 // QuantizeLinear followed by DequantizeLinear, as in WebNN's "quantizeLinear then
