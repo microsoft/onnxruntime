@@ -13,13 +13,16 @@
 //
 // The scales of the INT8 cache are per (kv head, channel) constants, so they leave the tile loop:
 //   * the key scale is folded into the query once per CTA: Q' = Q * key_scale (rounded once to fp16), S = Q' K_int8;
-//     a CTA whose Q' does not fit fp16 (or is not finite) evaluates its query heads in fp32 instead (AttendRowFp32);
+//     a CTA whose Q' does not fit fp16 (or is not finite) evaluates its query heads in fp32 instead (AttendRowFp32).
+//     Products below 2^-25 flush to zero, which moves a score by at most 2^-10 * scale (256 channels, |K| <= 128), so
+//     the dispatcher selects this kernel only for scale <= kInt8TcMaxScale;
 //   * the value scale is applied to the output once per CTA: O = (P V_int8) * value_scale.
 // The gathered int8 rows stay int8 in shared memory (cp.async, double buffered, one tile ahead). A fragment read with
 // ldmatrix is converted to fp16 exactly in registers (1024 + (byte ^ 0x80) - 1152, "magic number" conversion) and
 // consumed by fp16 MMAs with fp32 accumulation, so the per-tile dequantization pass, its shared memory round trip and
 // its barriers of the BF16-dequantizing kernel disappear. The scores stay in registers; the only cross-warp exchanges
-// per tile are the row maxima and the fp16 probability tile.
+// per tile are the row maxima and the fp16 probability tile, which holds kInt8ProbScale * p so that the tail of the
+// softmax stays out of the fp16 subnormal range.
 //
 // The channel (reduction) dimension of S = Q' K^T is permuted so that one 4-byte ldmatrix element of a K row supplies
 // both B registers of an MMA k step: slot 2t+e <-> channel 16j + 4t + e and slot 2t+8+e <-> channel 16j + 4t + 2 + e,
@@ -43,6 +46,19 @@ constexpr int kInt8TileBytes = kTile * kInt8RowStride;
 constexpr int kInt8QStride = kHeadDim + 8;  // fp16 elements of the staged query rows
 constexpr int kInt8PStride = kTile + 8;     // fp16 elements
 constexpr int kIdxStages = 3;
+
+// The fp16 probability tile holds kInt8ProbScale * p for p in [0, 1]. Without the factor a candidate whose probability
+// is below 2^-25 rounds to zero although a large value scale can make its contribution matter; with it the flush point
+// drops to 2^-40 and the tile stays below the fp16 maximum. The PV accumulator carries the factor until the epilogue
+// removes it; the softmax denominator is accumulated in fp32 without it.
+constexpr float kInt8ProbScale = 32768.0f;  // 2^15
+constexpr float kInt8ProbInverseScale = 1.0f / kInt8ProbScale;
+
+// Largest softmax scale served by the kernel below (the op validates it as finite and non-negative). Rounding
+// Q * key_scale to fp16 flushes products below 2^-25 to zero, which moves a dot product by at most
+// 256 * 128 * 2^-25 = 2^-10 before the scale multiplies it; a larger scale would amplify that error, so the dispatcher
+// uses the BF16-dequantizing prefill / CUDA-core decode kernels for it.
+constexpr float kInt8TcMaxScale = 1.0f;
 
 // sK8[2] + sV8[2] (sQ aliases sK8[0] before the tile loop) + candidate indices + row maxima / sums + probabilities.
 constexpr size_t kInt8SharedBytes = 4 * static_cast<size_t>(kInt8TileBytes) + kIdxStages * kTile * sizeof(int32_t) +
@@ -266,7 +282,8 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionInt8TcKerne
 
   // Q' = Q * key_scale as fp16; the padding rows are zero so their (ignored) scores stay finite. A row whose Q' does
   // not fit fp16 (including inf / NaN) is evaluated in fp32 by the whole CTA instead. Underflow to fp16 subnormals
-  // costs at most 2^-25 per element, below the rounding of the fp16 operands, so it stays on this path.
+  // changes a product by at most 2^-25, i.e. a score by at most 2^-10 * scale, which the dispatcher keeps at the level
+  // of the fp16 rounding by requiring scale <= kInt8TcMaxScale.
   const __nv_bfloat16* query_group = query + (static_cast<int64_t>(row) * num_heads + kv_head * group) * kHeadDim;
   bool needs_fp32 = false;
   {
@@ -480,10 +497,10 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionInt8TcKerne
     run_max0 = new_max0;
     run_max1 = new_max1;
     {
-      const __half2 h00 = __floats2half2_rn(p00, p01);
-      const __half2 h01 = __floats2half2_rn(p02, p03);
-      const __half2 h10 = __floats2half2_rn(p10, p11);
-      const __half2 h11 = __floats2half2_rn(p12, p13);
+      const __half2 h00 = __floats2half2_rn(p00 * kInt8ProbScale, p01 * kInt8ProbScale);
+      const __half2 h01 = __floats2half2_rn(p02 * kInt8ProbScale, p03 * kInt8ProbScale);
+      const __half2 h10 = __floats2half2_rn(p10 * kInt8ProbScale, p11 * kInt8ProbScale);
+      const __half2 h11 = __floats2half2_rn(p12 * kInt8ProbScale, p13 * kInt8ProbScale);
       *reinterpret_cast<__half2*>(sP + r0 * kInt8PStride + cbase) = h00;
       *reinterpret_cast<__half2*>(sP + r0 * kInt8PStride + cbase + 8) = h01;
       *reinterpret_cast<__half2*>(sP + (r0 + 8) * kInt8PStride + cbase) = h10;
@@ -555,8 +572,9 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionInt8TcKerne
   const float4 ls1 = *reinterpret_cast<const float4*>(sM + (r0 + 8) * 4);
   const float sum0 = (ls0.x + ls0.y) + (ls0.z + ls0.w);
   const float sum1 = (ls1.x + ls1.y) + (ls1.z + ls1.w);
-  const float inv0 = sum0 == 0.0f ? 0.0f : 1.0f / sum0;
-  const float inv1 = sum1 == 0.0f ? 0.0f : 1.0f / sum1;
+  // acc_o carries kInt8ProbScale, which the normalization removes.
+  const float inv0 = sum0 == 0.0f ? 0.0f : kInt8ProbInverseScale / sum0;
+  const float inv1 = sum1 == 0.0f ? 0.0f : kInt8ProbInverseScale / sum1;
 
   if constexpr (kSplitK) {
     // Un-normalized partial of this split in the natural logarithm domain, as the merge kernel expects. Thread t owns
@@ -578,7 +596,10 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionInt8TcKerne
 #pragma unroll
     for (int chunk = 0; chunk < 4; ++chunk) {
       const int dim = warp * 64 + chunk * 16 + t * 4;
-      const float4 vs = *reinterpret_cast<const float4*>(value_scale + kv_head * kHeadDim + dim);
+      // acc_o carries kInt8ProbScale (the partial_sum above does not), which the value scale takes out.
+      const float4 vs_raw = *reinterpret_cast<const float4*>(value_scale + kv_head * kHeadDim + dim);
+      const float4 vs = make_float4(vs_raw.x * kInt8ProbInverseScale, vs_raw.y * kInt8ProbInverseScale,
+                                    vs_raw.z * kInt8ProbInverseScale, vs_raw.w * kInt8ProbInverseScale);
       if (r0 < group) {
         *reinterpret_cast<float4*>(partial_output + static_cast<int64_t>(partial_block0) * kHeadDim + dim) =
             make_float4(acc_o[2 * chunk][0] * vs.x, acc_o[2 * chunk + 1][0] * vs.y, acc_o[2 * chunk][1] * vs.z,

@@ -2130,10 +2130,12 @@ Status LaunchDynamicSparseAttention(
         use_prefill_kernel = attributes.ptxVersion >= 80;
       }
       // The tensor-core INT8 variant converts the cached rows in registers; it needs 16-byte cache rows and 8-byte
-      // output vectors (the BF16-dequantizing kernel above is the fallback).
+      // output vectors, and a softmax scale of at most kInt8TcMaxScale so that it does not amplify its fp16 rounding
+      // of Q * key_scale (the BF16-dequantizing kernel above is the fallback). The op validates the scale as finite and
+      // non-negative.
       use_int8_tc_prefill =
           use_prefill_kernel && data.quantized_cache &&
-          data.prefill_int8_tc &&
+          data.prefill_int8_tc && parameters.scale <= dsa_prefill::kInt8TcMaxScale &&
           IsAligned(data.present_key, 16) && IsAligned(data.present_value, 16) && IsAligned(data.output, 8) &&
           static_cast<size_t>(optin_shared) >= dsa_prefill::kInt8SharedBytes;
       if (use_int8_tc_prefill) {
@@ -2157,8 +2159,11 @@ Status LaunchDynamicSparseAttention(
       constexpr int kMaxGridDimY = 65535;
       // The kernel loads 16-byte query / scale vectors, gathers 16-byte cache chunks and stores 16-byte partials;
       // buffers bound through IOBinding can start at any element offset, so misaligned ones use the generic kernel.
+      // Like the prefill variant it needs a softmax scale of at most kInt8TcMaxScale, which keeps the fp16 rounding of
+      // Q * key_scale from being amplified.
       use_int8_tc_decode =
-          cc_major >= 8 && parameters.head_size == dsa_prefill::kHeadDim && !local_plus_selected &&
+          cc_major >= 8 && parameters.scale <= dsa_prefill::kInt8TcMaxScale &&
+          parameters.head_size == dsa_prefill::kHeadDim && !local_plus_selected &&
           parameters.selected_kv_source == DynamicSparseAttentionKvSource::kMain &&
           !parameters.use_smooth_softmax && parameters.max_selected > 0 && parameters.kv_num_heads <= kMaxGridDimY &&
           parameters.num_heads / parameters.kv_num_heads <= dsa_prefill::kMaxGroup &&
