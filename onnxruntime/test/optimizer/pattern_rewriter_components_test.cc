@@ -584,7 +584,7 @@ TEST(CheckAndBindComponentTests, DiskExternalConstantsUseOrtLoadingAndPropagateF
     if (scenario != 0) EXPECT_EQ(test.model.ToProto().SerializeAsString(), before);
   }
 }
-#endif
+#endif  // !defined(__wasm__)
 
 TEST(CheckAndBindComponentTests, MemoryMarkersRequireOwnedMatchingStorageBeforeReading) {
   for (int scenario = 0; scenario < 5; ++scenario) {
@@ -684,7 +684,7 @@ TEST(CheckAndBindComponentTests, DiskExternalScalarAndSingletonConstantsPreserve
     }
   }
 }
-#endif
+#endif  // !defined(__wasm__)
 
 TEST(CheckAndBindComponentTests, MalformedSupportedConstantsAreErrorsNotAlternativeRejections) {
   for (int storage = 0; storage < 3; ++storage) {
@@ -784,7 +784,7 @@ TEST(CheckAndBindComponentTests, EmptyExternalConstantsValidateFilesAndOffsetsWi
     }
   }
 }
-#endif
+#endif  // !defined(__wasm__)
 
 TEST(CheckAndBindComponentTests, ConstantReadersUseOwningScopeAndRespectLocalOverrides) {
   for (bool memory : {false, true}) {
