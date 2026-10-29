@@ -6,6 +6,7 @@
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
+#include "core/providers/webgpu/webgpu_utils.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -248,11 +249,14 @@ Status ResizeBilinearProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   std::string scales_index_str = GetElementAt("uniforms.scales", "axis", rank_);
   std::string input_shape_index_str = GetElementAt("uniforms.input_shape", "axis", rank_);
+  // With channels last, a value may pack several channels; they share the pixel's coordinates and weights.
+  const int components = input.NumComponents();
+  const std::string f32_value_type = components == 1 ? "f32" : MakeString("vec", components, "<f32>");
 
   std::stringstream extrapolation_ss;
   if (extrapolation_enabled_) {
     extrapolation_ss << "  if ((input_coord < 0.0 || input_coord > input_max_coord)) {\n"
-                     << "    " << output.SetByOffset("global_idx", "input_value_t(uniforms.extrapolation_value)") << ";\n"
+                     << "    " << output.SetByOffset("global_idx", "input_value_t(" + f32_value_type + "(uniforms.extrapolation_value))") << ";\n"
                      << "    return;\n"
                      << "  }\n";
   }
@@ -294,8 +298,8 @@ Status ResizeBilinearProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "  let x11 = select(select(" << input.GetByIndices("input_indices") << ", x10, end_of_h), x01, end_of_w);\n"
                             << "  let y_weight_1 = 1.0 - y_weight_0;\n"
                             << "  let x_weight_1 = 1.0 - x_weight_0;\n"
-                            << "  var value = input_value_t(f32(x00) * y_weight_1 * x_weight_1 + f32(x01) * y_weight_0 * x_weight_1 + f32(x10) * "
-                            << "y_weight_1 * x_weight_0 + f32(x11) * y_weight_0 * x_weight_0);\n"
+                            << "  var value = input_value_t(" << f32_value_type << "(x00) * y_weight_1 * x_weight_1 + " << f32_value_type << "(x01) * y_weight_0 * x_weight_1 + "
+                            << f32_value_type << "(x10) * y_weight_1 * x_weight_0 + " << f32_value_type << "(x11) * y_weight_0 * x_weight_0);\n"
                             << "  " << output.SetByOffset("global_idx", "value");
 
   return Status::OK();
@@ -319,14 +323,18 @@ Status ResizeBilinearImpl(ComputeContext& context,
   const bool channels_last = rank == 4 && scales[1] != 1.0f;
   const int32_t height_axis = channels_last ? 1 : rank - 2;
   const int32_t width_axis = channels_last ? 2 : rank - 1;
+  // The channel dim is then innermost and unscaled, so a thread can interpolate several channels at once.
+  const int components = channels_last ? GetMaxComponents(output_dims[3]) : 1;
+  output_size /= components;
 
   ResizeBilinearProgram program{coordinate_transform_mode, extrapolation_enabled, rank, height_axis, width_axis};
-  program.AddInput({input_tensor, ProgramTensorMetadataDependency::TypeAndRank})
-      .AddOutput({output_tensor, ProgramTensorMetadataDependency::Rank})
+  program.AddInput({input_tensor, ProgramTensorMetadataDependency::TypeAndRank, components})
+      .AddOutput({output_tensor, ProgramTensorMetadataDependency::Rank, components})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .CacheHint(std::to_string(static_cast<int>(extrapolation_enabled)),
                  std::to_string(static_cast<int>(coordinate_transform_mode)),
-                 channels_last)
+                 channels_last,
+                 components)
       .AddUniformVariables({{roi}, {scales}, {output_size}, {extrapolation_value}});
 
   return context.RunProgram(program);
