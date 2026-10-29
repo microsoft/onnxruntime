@@ -1794,10 +1794,10 @@ CUBIN_EXPORT __global__
       smem.warpRowSum[warpIdx.y][warpIdx.x].storeFromReg<false>(warp, regRowSum);
       unused(xBar.produced.arrive());
     }
-#if defined(XQA_PAGED_INT4)
+    // The last K prefetch (the initial one if this CTA has no tiles) may still be in flight. Land it before the
+    // post-processing warps reuse the shared memory.
     ldgsts::waitGroup<0>();
     __syncthreads();
-#endif
   } else {
     assert(warpIdx.z == 1);
 #if CTA_ROW_MAX_BACKWARD_METHOD == 3
@@ -2222,10 +2222,9 @@ CUBIN_EXPORT __global__
     }
     const GemmOutRegTile outTile = toFp16(acc);
 
-#if defined(XQA_PAGED_INT4)
+    // cp.async groups are tracked per thread: land the copies of all lanes before the shared memory is reused.
     ldgsts::waitGroup<0>();
     __syncwarp();
-#endif
     auto mergeAndSaveOutTile = [&](const GemmOutRegTile& tile, bool reorder) {
       if constexpr (gemm1NbWarpGrps == 1) {
         // swizzle in shared memory and write output global memory
@@ -2333,9 +2332,8 @@ CUBIN_EXPORT __global__
         // rescale and accumulate
         auto getTileBuf = [&](auto& buffers, uint32_t d) -> decltype(buffers[0][0][0])& { return buffers[warpGrpIdx][warpIdxInGrp][d]; };
         auto loadBufAsync = [&](uint32_t n) {
-#if defined(XQA_PAGED_INT4)
+          // All lanes must be done reading the tile buffer that this load overwrites.
           __syncwarp();
-#endif
           const uint32_t d = n / gemm1NbWarpGrps % nbTileBuffers;
           SharedMem::XSmemBuffer& dstTile = getTileBuf(mbbuf.tiles, d);
           SMemWarpRowMax& dstRowSum = getTileBuf(mbbuf.tileRowSums, d);
@@ -2360,9 +2358,8 @@ CUBIN_EXPORT __global__
           }
           ldgsts::commitGroup();
           ldgsts::waitGroup<1>();
-#if defined(XQA_PAGED_INT4)
+          // Each lane waits only for its own copies; the tile is read by the whole warp.
           __syncwarp();
-#endif
           const uint32_t d = n / gemm1NbWarpGrps % nbTileBuffers;
           WarpAcc tile = toWarpAcc(loadGemmOutTile(warp, mbbuf.tiles[warpGrpIdx][warpIdxInGrp][d]));
           const ThrdRegRowMax tileRowMax = getTileBuf(mbbuf.tileRowMax, d).loadToReg<false>(warp);
