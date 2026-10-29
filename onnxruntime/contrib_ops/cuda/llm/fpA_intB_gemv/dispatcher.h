@@ -496,10 +496,11 @@ void exec_kernel_paired(Params& params, cudaStream_t s) {
 }
 
 // Whether the tensor-core INT8 kernel (int8_tc_gemv.cuh) can run this launch. The kernel reads 16-byte vectors of the
-// activations and the weights, handles 1..8 rows, and needs whole 16-column tiles and whole 64-wide K tiles.
+// activations and the weights, handles 1..8 rows, and needs whole 16-column tiles and whole 64-wide K tiles. Its
+// epilogue has no alpha multiplier (the scalar epilogue computes alpha * acc + bias), so only alpha == 1 may use it.
 inline bool CanUseInt8TensorCore(const Params& params, int group_size) {
-  return params.tensor_core && params.device_sm == 90 && params.device_sm_count > 0 && params.m >= 1 &&
-         params.m <= dense_tc::kMaxRows && params.n % dense_tc::kMmaColumns == 0 &&
+  return params.tensor_core && params.alpha == 1.f && params.device_sm == 90 && params.device_sm_count > 0 &&
+         params.m >= 1 && params.m <= dense_tc::kMaxRows && params.n % dense_tc::kMmaColumns == 0 &&
          params.k % dense_tc::kTileK == 0 && params.k % group_size == 0 &&
          reinterpret_cast<uintptr_t>(params.act) % 16 == 0 && reinterpret_cast<uintptr_t>(params.weight) % 16 == 0;
 }

@@ -644,7 +644,8 @@ the rest of the session. Lazy profiling is skipped
 while a CUDA graph is being captured (profiling kernels/events/allocations are
 illegal during capture), so run a
 warmup inference **before** capture to tune any `M` buckets your captured graph
-needs. Set `ORT_FPA_INTB_PROFILE_M` (comma-separated) to override the bucket set;
+needs (a graph-enabled session does this itself for INT8 layers that take the
+large-`M` dequantization route, §6.6). Set `ORT_FPA_INTB_PROFILE_M` (comma-separated) to override the bucket set;
 its maximum also sets the initial
 profile range.
 
@@ -859,7 +860,8 @@ accumulation) and the 1-8 activation rows the B operand, so all activation rows 
   [dispatcher.h](../../../onnxruntime/contrib_ops/cuda/llm/fpA_intB_gemv/dispatcher.h)):
   `Params::tensor_core`, BF16 activations, symmetric INT8 weights in the SM80
   interleaved layout (no zero points, bias, activation scale or
-  alpha-in-advance), device SM 9.0, `1 <= M <= 8`, `N % 16 == 0`,
+  alpha-in-advance, and `alpha == 1` because the kernel does not apply it),
+  device SM 9.0, `1 <= M <= 8`, `N % 16 == 0`,
   `K % 64 == 0`, `K % block_size == 0` and 16-byte-aligned activation and
   weight pointers, and a loaded kernel compiled for SM80+ (checked via
   `cudaFuncGetAttributes`, including PTX JIT loads). Every other launch keeps the scalar kernel and its tile rule
@@ -925,7 +927,14 @@ and run one cuBLAS GEMM instead of the CUTLASS launches.
   `N * K * sizeof(T) <= 256 MiB`. A 1.3 GiB LM head therefore keeps CUTLASS.
   At run time the route is also skipped under CUDA graph capture (the scratch
   would be allocated during capture) and with deterministic compute, which keep
-  the CUTLASS path. Decode (`M <= 16`) is untouched at the default threshold;
+  the CUTLASS path. Because the captured launch uses the CUTLASS tactic of its
+  `M` bucket and cannot profile during capture, a session with CUDA graphs
+  enabled (`enable_cuda_graph` for the CUDA EP, the equivalent runtime
+  configuration for the plugin EP) tunes that bucket, and the remainder bucket
+  of a row-chunked `M`, in the warmup run that takes this route, before the
+  scratch is allocated. Without it the warmup would never profile the CUTLASS
+  path and the capture would fail with "No valid fpA_intB MatMulNBits tactic".
+  Decode (`M <= 16`) is untouched at the default threshold;
   a configured threshold below 17 would also move GEMV-sized `M` onto this route
   and is not recommended.
 - **Threshold.** `M >= ep.cuda.fpa_intb_dequant_gemm_min_m` (else
@@ -948,8 +957,9 @@ and run one cuBLAS GEMM instead of the CUTLASS launches.
   the threshold (the session option is passed to the estimator through
   `WorkspaceEstimatorConfig`; an invalid value leaves the node without a
   workspace estimate, like an invalid chunk size), and Level 2
-  (`DeclareWorkspaceRequirements`) declares the same maximum. The route never
-  profiles, so the lazy-profile peak keeps the CUTLASS figure. The Level-2
+  (`DeclareWorkspaceRequirements`) declares the same maximum. The route profiles
+  only in a graph-enabled session and then before the scratch exists, so the
+  lazy-profile peak keeps the CUTLASS figure. The Level-2
   figure is exact when the route runs and an upper bound when graph capture or
   deterministic compute keep CUTLASS. The last-compute workspace probe used by
   the tests reports the scratch size when the route ran.

@@ -12,15 +12,23 @@
 // and passes a tolerance-based comparison on some shapes.
 #if !defined(ORT_MINIMAL_BUILD) && defined(USE_CUDA)
 
+#include <array>
 #include <cstdint>
+#include <string>
 #include <vector>
 
+#include <cuda_runtime_api.h>
+
 #include "gtest/gtest.h"
+#include "core/graph/model.h"
+#include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/scoped_env_vars.h"
+
+extern std::unique_ptr<Ort::Env> ort_env;
 
 namespace onnxruntime {
 namespace test {
@@ -104,6 +112,66 @@ void ExpectExactDequantizedWeights(int64_t bits, bool deterministic = false, int
   test.RunWithConfig();
 }
 
+class ScopedCudaStream {
+ public:
+  ScopedCudaStream() { ORT_ENFORCE(cudaStreamCreateWithFlags(&stream_, cudaStreamNonBlocking) == cudaSuccess); }
+  ~ScopedCudaStream() { (void)cudaStreamDestroy(stream_); }
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ScopedCudaStream);
+  cudaStream_t get() const { return stream_; }
+
+ private:
+  cudaStream_t stream_ = nullptr;
+};
+
+// MatMulNBits(A[M, K] fp16, B, scales) -> Y[M, N] with 8-bit constant weights and block size 32.
+std::string BuildInt8MatMulNBitsModel(int64_t n, int64_t k, const std::vector<uint8_t>& codes,
+                                      const std::vector<MLFloat16>& scales) {
+  constexpr int64_t kBlockSize = 32;
+  ONNX_NAMESPACE::ModelProto model;
+  model.set_ir_version(ONNX_NAMESPACE::IR_VERSION);
+  model.add_opset_import()->set_version(13);
+  auto* contrib_opset = model.add_opset_import();
+  contrib_opset->set_domain(kMSDomain);
+  contrib_opset->set_version(1);
+  auto& graph = *model.mutable_graph();
+  graph.set_name("int8_large_m_cuda_graph");
+
+  auto set_value = [](ONNX_NAMESPACE::ValueInfoProto* value, const char* name, int64_t columns) {
+    value->set_name(name);
+    auto* type = value->mutable_type()->mutable_tensor_type();
+    type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+    type->mutable_shape()->add_dim()->set_dim_param("M");
+    type->mutable_shape()->add_dim()->set_dim_value(columns);
+  };
+  set_value(graph.add_input(), "A", k);
+  set_value(graph.add_output(), "Y", n);
+
+  auto* weights = graph.add_initializer();
+  weights->set_name("B");
+  weights->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
+  for (int64_t dim : {n, k / kBlockSize, kBlockSize}) weights->add_dims(dim);
+  weights->set_raw_data(codes.data(), codes.size());
+  auto* scale_tensor = graph.add_initializer();
+  scale_tensor->set_name("scales");
+  scale_tensor->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+  for (int64_t dim : {n, k / kBlockSize}) scale_tensor->add_dims(dim);
+  scale_tensor->set_raw_data(scales.data(), scales.size() * sizeof(MLFloat16));
+
+  auto* node = graph.add_node();
+  node->set_op_type("MatMulNBits");
+  node->set_domain(kMSDomain);
+  for (const char* input : {"A", "B", "scales"}) node->add_input(input);
+  node->add_output("Y");
+  for (const auto& [name, value] :
+       {std::pair<const char*, int64_t>{"K", k}, {"N", n}, {"bits", 8}, {"block_size", kBlockSize}}) {
+    auto* attribute = node->add_attribute();
+    attribute->set_name(name);
+    attribute->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+    attribute->set_i(value);
+  }
+  return model.SerializeAsString();
+}
+
 }  // namespace
 
 TEST(MatMulNBitsFpAIntBLayout, TensorCoreSessionOptions) {
@@ -160,8 +228,12 @@ TEST(MatMulNBitsFpAIntBLayout, Int8LargeMDequantGemmRoundTripsExactly) {
 }
 
 // The session option takes precedence over the environment, which is consulted only when no entry is set; an invalid
-// value from either source fails kernel construction.
+// value from either source fails kernel construction. Only the fpA_intB implementation parses the option, so a build
+// without it has nothing to fail on.
 TEST(MatMulNBitsFpAIntBLayout, Int8LargeMDequantGemmSessionOption) {
+#if !USE_FPA_INTB_GEMM
+  GTEST_SKIP() << "Requires fpA_intB kernels";
+#else
   if (!HasCudaEnvironment(800)) GTEST_SKIP() << "fpA_intB layout test requires SM80+";
   constexpr const char* kEnv = "ORT_FPA_INTB_DEQUANT_GEMM_MIN_M";
   {
@@ -178,6 +250,83 @@ TEST(MatMulNBitsFpAIntBLayout, Int8LargeMDequantGemmSessionOption) {
     SCOPED_TRACE(std::string("value='") + invalid + "'");
     ExpectExactDequantizedWeights(8, false, kLargeMK, invalid, kOrtSessionOptionsCudaFpAIntBDequantGemmMinM);
   }
+#endif
+}
+
+// A CUDA-graph-enabled session captures M above the profiled range on the CUTLASS path, which cannot profile while
+// capturing. The warmup runs take the dequantize route for this M, so the route has to tune the CUTLASS bucket itself.
+// The default profiled range ends at M = 2048, so M = 4096 is outside it. One-hot rows of A keep every result exact
+// on both paths, and each run scales A so that a replay that read stale input would be caught.
+TEST(MatMulNBitsFpAIntBLayout, Int8LargeMDequantGemmCudaGraphCapture) {
+#if !USE_FPA_INTB_GEMM
+  GTEST_SKIP() << "Requires fpA_intB kernels";
+#else
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "fpA_intB layout test requires SM80+";
+
+  constexpr int64_t kM = 4096, kGraphN = 256, kGraphK = 512, kBlockSize = 32, kZeroPoint = 128;
+  std::vector<uint8_t> codes(static_cast<size_t>(kGraphN * kGraphK));
+  unsigned seed = 11;
+  for (uint8_t& code : codes) {
+    seed = seed * 1103515245u + 12345u;
+    code = static_cast<uint8_t>(seed >> 16);
+  }
+  const std::vector<MLFloat16> scales(static_cast<size_t>(kGraphN * kGraphK / kBlockSize), MLFloat16(1.0f));
+  const std::string model = BuildInt8MatMulNBitsModel(kGraphN, kGraphK, codes, scales);
+
+  ScopedCudaStream stream;
+  Ort::SessionOptions options;
+  options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
+  options.AddConfigEntry(kOrtSessionOptionsCudaFpAIntBGemm, "1");
+  options.AddConfigEntry(kOrtSessionOptionsCudaFpAIntBDequantGemmMinM, "512");
+  options.SetIntraOpNumThreads(1);
+  Ort::CUDAProviderOptions cuda_options;
+  cuda_options.Update({{"enable_cuda_graph", "1"}});
+  cuda_options.UpdateWithValue("user_compute_stream", stream.get());
+  options.AppendExecutionProvider_CUDA_V2(*cuda_options);
+  Ort::Session session(*ort_env, model.data(), model.size(), options);
+
+  Ort::MemoryInfo memory_info("Cuda", OrtArenaAllocator, 0, OrtMemTypeDefault);
+  Ort::Allocator allocator(session, memory_info);
+  const std::array<int64_t, 2> a_shape{kM, kGraphK}, y_shape{kM, kGraphN};
+  auto a_tensor = Ort::Value::CreateTensor(allocator, a_shape.data(), a_shape.size(),
+                                           ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16);
+  auto y_tensor = Ort::Value::CreateTensor(allocator, y_shape.data(), y_shape.size(),
+                                           ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16);
+  Ort::IoBinding binding(session);
+  binding.BindInput("A", a_tensor);
+  binding.BindOutput("Y", y_tensor);
+
+  auto run_and_verify = [&](const char* graph_id, float alpha) {
+    SCOPED_TRACE(std::string("gpu_graph_id=") + graph_id + " alpha=" + std::to_string(alpha));
+    std::vector<MLFloat16> a(static_cast<size_t>(kM * kGraphK), MLFloat16(0.0f));
+    for (int64_t row = 0; row < kM; ++row) a[static_cast<size_t>(row * kGraphK + row % kGraphK)] = MLFloat16(alpha);
+    ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(a_tensor.GetTensorMutableRawData(), a.data(), a.size() * sizeof(MLFloat16),
+                                           cudaMemcpyHostToDevice, stream.get()));
+    ASSERT_EQ(cudaSuccess, cudaMemsetAsync(y_tensor.GetTensorMutableRawData(), 0xff,
+                                           static_cast<size_t>(kM * kGraphN) * sizeof(MLFloat16), stream.get()));
+    // Capture must start with no pending host-issued copies on the user stream.
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream.get()));
+    Ort::RunOptions run_options;
+    run_options.AddConfigEntry("gpu_graph_id", graph_id);
+    ASSERT_NO_THROW(session.Run(run_options, binding));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream.get()));
+    std::vector<MLFloat16> y(static_cast<size_t>(kM * kGraphN));
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(y.data(), y_tensor.GetTensorMutableRawData(), y.size() * sizeof(MLFloat16),
+                                      cudaMemcpyDeviceToHost));
+    for (int64_t row = 0; row < kM; ++row) {
+      for (int64_t col = 0; col < kGraphN; ++col) {
+        const int code = codes[static_cast<size_t>(col * kGraphK + row % kGraphK)];
+        ASSERT_EQ(y[static_cast<size_t>(row * kGraphN + col)].ToFloat(), alpha * static_cast<float>(code - kZeroPoint))
+            << "row=" << row << " column=" << col;
+      }
+    }
+  };
+
+  // Two regular warmup runs, then a capture run, then replays.
+  for (float alpha : {1.0f, 2.0f, 4.0f, -1.0f, 0.5f}) {
+    ASSERT_NO_FATAL_FAILURE(run_and_verify("1", alpha));
+  }
+#endif
 }
 
 }  // namespace test

@@ -715,9 +715,10 @@ static std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemoryImpl(
     }
 
     // At or above the threshold, ComputeInternal replaces the CUTLASS GEMM, chunked or not, with one cuBLAS GEMM over
-    // a dequantized [N, K] copy of the weights. That route never profiles, so the copy only raises the ordinary
-    // workspace and the lazy-profile peak above keeps the CUTLASS workspace alone. Resolving the threshold here
-    // matches the kernel constructor: an invalid value leaves the node without a route-complete estimate.
+    // a dequantized [N, K] copy of the weights. That route profiles only to prime a CUDA-graph-enabled session, and it
+    // does so before allocating the copy, so the copy only raises the ordinary workspace and the lazy-profile peak
+    // above keeps the CUTLASS workspace alone. Resolving the threshold here matches the kernel constructor: an
+    // invalid value leaves the node without a route-complete estimate.
     if (estimate->runtime_workspace_bytes.has_value()) {
       const int dequant_gemm_min_m = ComputeFpAIntBDequantGemmMinM(
           ResolveCudaSessionOption(
@@ -1351,11 +1352,24 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
                                          : KernelType::BF16Int2Groupwise;
       }
 
+      // Rows of A are independent, so a large M runs as row chunks. The workspace and any lazily
+      // profiled M bucket are then bounded by the chunk instead of the full M.
+      const int chunk_m = static_cast<int>(FpAIntBRowsPerLaunch(m));
+
       // Large M: dequantize the weights once into a scratch matrix and run a single cuBLAS GEMM. The row-chunked
       // CUTLASS path below converts every weight element again for each chunk. Skipped under deterministic compute
       // and CUDA graph capture (scratch allocation), which keep the CUTLASS path.
       if (dequant_gemm_min_m_ > 0 && m >= dequant_gemm_min_m_ && bias_data == nullptr && !stream_is_capturing &&
           !ctx->GetUseDeterministicCompute()) {
+        if (graph_capture_enabled_) {
+          // A graph-enabled session captures this M on the CUTLASS path, which cannot profile during capture, and the
+          // warmup runs that would normally tune it take this route instead. Tune the buckets now, before the scratch
+          // copy exists. A failed lookup is ignored here; the capture path reports it.
+          gemmProfiler_->getBestConfigOrProfile(chunk_m, gemmId_);
+          if (m % chunk_m != 0) {
+            gemmProfiler_->getBestConfigOrProfile(m % chunk_m, gemmId_);
+          }
+        }
         const size_t scratch_bytes = DequantGemmScratchBytes();
         auto dequant_buffer = this->template GetScratchBuffer<void>(scratch_bytes, this->GetComputeStream(ctx));
         if (onnxruntime::llm::kernels::fpA_intB_gemv::dequantize_int8_interleaved(
@@ -1375,10 +1389,6 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
           return Status::OK();
         }
       }
-
-      // Rows of A are independent, so a large M runs as row chunks. The workspace and any lazily
-      // profiled M bucket are then bounded by the chunk instead of the full M.
-      const int chunk_m = static_cast<int>(FpAIntBRowsPerLaunch(m));
 
       decltype(gemmProfiler_->getBestConfig(m, gemmId_)) bestTactic;
       int tactic_m = 0;

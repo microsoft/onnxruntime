@@ -152,9 +152,9 @@ class Int8TensorCoreGemvTest : public ::testing::Test {
   // Launches rows [first_row, first_row + rows) of the problem and returns their [rows][n] output. `reported_sm` and
   // `sm_count` are what MatMulNBits reports to the dispatcher. A non-null `log` receives the debug line of the launch.
   std::vector<bf16> Run(Problem& p, int rows, int first_row, bool tensor_core, int sm_count,
-                        std::string* log = nullptr, int reported_sm = 90) {
+                        std::string* log = nullptr, int reported_sm = 90, float alpha = 1.f) {
     wo::Params params(static_cast<const bf16*>(p.d_act.data()) + static_cast<size_t>(first_row) * p.k, nullptr,
-                      p.d_weight.data(), p.d_scales.data(), nullptr, nullptr, p.d_out.data(), 1.f, rows, p.n, p.k,
+                      p.d_weight.data(), p.d_scales.data(), nullptr, nullptr, p.d_out.data(), alpha, rows, p.n, p.k,
                       p.group_size, wo::KernelType::BF16Int8Groupwise);
     params.device_sm = reported_sm;
     params.device_sm_count = sm_count;
@@ -412,8 +412,8 @@ TEST_F(Int8TensorCoreGemvTest, LaunchConfigurationFollowsGridSize) {
   }
 }
 
-// Launches the kernel cannot take stay on the scalar kernel: the flag off, another device, an unreported SM count and
-// more than 8 rows.
+// Launches the kernel cannot take stay on the scalar kernel: the flag off, another device, an unreported SM count,
+// more than 8 rows and an alpha other than 1.
 TEST_F(Int8TensorCoreGemvTest, UnsupportedLaunchesUseScalarKernel) {
   constexpr int kSms = 132;
   Problem p(9, 5120, 64, 32, 5);
@@ -428,6 +428,30 @@ TEST_F(Int8TensorCoreGemvTest, UnsupportedLaunchesUseScalarKernel) {
   EXPECT_EQ(log.find("tensor_core=1"), std::string::npos) << "device SM 8.0: " << log;
   Run(p, 8, 0, true, 0, &log);
   EXPECT_EQ(log.find("tensor_core=1"), std::string::npos) << "unreported SM count: " << log;
+  Run(p, 8, 0, true, kSms, &log, 90, 2.f);
+  EXPECT_EQ(log.find("tensor_core=1"), std::string::npos) << "alpha = 2: " << log;
+}
+
+// The tensor-core epilogue has no alpha multiplier, so a launch with alpha != 1 has to run the scalar kernel, which
+// scales the accumulated sum. Scaling by a power of two is exact, so the output is the scalar kernel's alpha = 1 output
+// times alpha.
+TEST_F(Int8TensorCoreGemvTest, NonUnitAlphaScalesTheOutput) {
+  Problem p(8, 480, 640, 32, 6);
+  const std::vector<bf16> unscaled = Run(p, 8, 0, false, prop_.multiProcessorCount);
+  for (float alpha : {2.f, 0.5f}) {
+    SCOPED_TRACE("alpha=" + std::to_string(alpha));
+    std::string log;
+    const std::vector<bf16> scaled = Run(p, 8, 0, true, prop_.multiProcessorCount, &log, 90, alpha);
+    EXPECT_EQ(log.find("tensor_core=1"), std::string::npos) << log;
+    int mismatches = 0;
+    for (size_t i = 0; i < scaled.size(); ++i) {
+      if (__bfloat162float(scaled[i]) != alpha * __bfloat162float(unscaled[i]) && mismatches++ < 3) {
+        ADD_FAILURE() << "element " << i << ": got " << __bfloat162float(scaled[i]) << ", expected "
+                      << alpha * __bfloat162float(unscaled[i]);
+      }
+    }
+    EXPECT_EQ(mismatches, 0);
+  }
 }
 
 #endif  // USE_FPA_INTB_GEMM

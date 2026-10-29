@@ -411,6 +411,16 @@ class MatMulNBits final : public CudaKernel {
         dequant_gemm_min_m_ = ComputeFpAIntBDequantGemmMinM(
             dequant_gemm_min_m_option, FpAIntBPackingSmForKernel(), N_, K_, nbits_, block_size_, has_zero_points_,
             has_bias_, sizeof(T));
+        if (dequant_gemm_min_m_ > 0) {
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
+          graph_capture_enabled_ = onnxruntime::cuda::detail::GetCudaKernelAdapterRuntimeConfigForProvider(
+                                       info.GetExecutionProvider())
+                                       ->enable_cuda_graph;
+#else
+          graph_capture_enabled_ =
+              static_cast<const CUDAExecutionProvider*>(info.GetExecutionProvider())->IsGraphCaptureEnabled();
+#endif
+        }
       }
 
       if (prepacked) {
@@ -538,6 +548,9 @@ class MatMulNBits final : public CudaKernel {
   int64_t m_chunk_min_rows_{0};
   // Minimum M for the dequantize + cuBLAS GEMM path (see kFpAIntBDequantGemmMinMEnvVar); 0 = not used by this node.
   int dequant_gemm_min_m_{0};
+  // True when the session enables CUDA graphs. Only read when dequant_gemm_min_m_ > 0: such a node captures large M
+  // on the CUTLASS path, so the dequantize route must tune that path's M buckets during warmup.
+  bool graph_capture_enabled_{false};
 
   bool is_prepacked_weight_{false};
   bool is_prepacked_scale_{false};

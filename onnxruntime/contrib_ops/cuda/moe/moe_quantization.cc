@@ -378,6 +378,12 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
               int_dequant_max_scratch_bytes_, ".");
   int3_tc_min_routes_ = ReadCudaSessionOption(op_kernel_info, kOrtSessionOptionsCudaQmoeInt3TcMinRoutes,
                                               "ORT_QMOE_INT3_TC_MIN_ROUTES", 33, 1, std::numeric_limits<int>::max());
+  // Prepacked INT3 weights (below) run the tensor-core decode GEMV from the first route, because the coalesced layout
+  // is what makes it pay off at low route counts. A threshold the user chose has to hold for every decode launch, which
+  // needs the weights in their raw layout, so an explicit threshold above 1 disables the prepacking.
+  const bool int3_tc_min_routes_configured =
+      op_kernel_info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsCudaQmoeInt3TcMinRoutes).has_value() ||
+      onnxruntime::ParseEnvironmentVariable<std::string>("ORT_QMOE_INT3_TC_MIN_ROUTES").has_value();
   moe_tc_min_rows_ = ReadCudaSessionOption(op_kernel_info, kOrtSessionOptionsCudaMoeGemvTcMinRows,
                                            "ORT_MOE_GEMV_TC_MIN_ROWS", 33, 1, std::numeric_limits<int>::max());
   // A threshold of 0 turns the corresponding tensor-core decode path off.
@@ -527,6 +533,7 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
     const Tensor* fc2_w_init = nullptr;
     const Tensor* fc2_s_init = nullptr;
     if (!is_fp16_ && !use_sparse_mixer_ && !disable_int3_tc_prefill_ && int3_tc_min_routes_ > 0 &&
+        (!int3_tc_min_routes_configured || int3_tc_min_routes_ == 1) &&
         !has_optional_input(11) && !has_optional_input(12) && !has_optional_input(14) &&
         fc1_expert_weight_bits_ == 3 && fc2_expert_weight_bits_ == 3 && fc3_expert_weight_bits_ == 3 &&
         block_size_ == 64 && sm_ >= 80 && k_ > 0 && k_ <= 96 && CanUseInt3TcPrePack() &&
@@ -3387,10 +3394,33 @@ Status QMoE::ComputeInt3(OpKernelContext* context) const {
   params.fc2_partial = static_cast<char*>(activation.get()) + act_bytes;
   params.experts = selected.get();
   params.routing_scales = scales.get();
+  // Only the tensor-core kernels read the prepacked layout. They load the activations and store the output as 16-byte
+  // vectors, and an externally bound tensor can start at any element boundary of a larger allocation. A misaligned
+  // binding would select a byte-safe kernel that reads the prepacked weights as raw ones and returns wrong results, so
+  // such tensors are staged through aligned scratch instead. A tile starts at a multiple of `hidden` elements and
+  // prepacking requires hidden % 512 == 0, so every tile is as aligned as its tensor.
+  const bool stage_input = use_prepacked_int3 && !is_aligned(input, 16);
+  const bool stage_output = use_prepacked_int3 && !is_aligned(output, 16);
+  IAllocatorUniquePtr<void> staged_input;
+  IAllocatorUniquePtr<void> staged_output;
+  if (stage_input) {
+    staged_input = GetScratchBuffer<void>(SafeInt<size_t>(tile_rows) * hidden * element_size, GetComputeStream(context));
+  }
+  if (stage_output) {
+    staged_output = GetScratchBuffer<void>(SafeInt<size_t>(tile_rows) * hidden * element_size, GetComputeStream(context));
+  }
   for (int64_t offset = 0; offset < rows; offset += tile_rows) {
     params.rows = narrow<int>(std::min<size_t>(tile_rows, rows - offset));
-    params.input = static_cast<const char*>(input->DataRaw()) + offset * hidden * element_size;
-    params.output = static_cast<char*>(output->MutableDataRaw()) + offset * hidden * element_size;
+    const size_t tile_bytes = SafeInt<size_t>(params.rows) * hidden * element_size;
+    const char* tile_input = static_cast<const char*>(input->DataRaw()) + offset * hidden * element_size;
+    char* tile_output = static_cast<char*>(output->MutableDataRaw()) + offset * hidden * element_size;
+    if (stage_input) {
+      CUDA_RETURN_IF_ERROR(
+          cudaMemcpyAsync(staged_input.get(), tile_input, tile_bytes, cudaMemcpyDeviceToDevice, stream));
+      tile_input = static_cast<const char*>(staged_input.get());
+    }
+    params.input = tile_input;
+    params.output = stage_output ? staged_output.get() : tile_output;
     params.router_weights = router_weights
                                 ? static_cast<const char*>(router_weights->DataRaw()) + offset * experts * element_size
                                 : nullptr;
@@ -3398,6 +3428,8 @@ Status QMoE::ComputeInt3(OpKernelContext* context) const {
     // Only the vectorized GEMV kernels consume route groups, so the Tensor Core, scalar, and non-vectorized fast
     // fallbacks skip them.
     const Int3DecodeKernel decode_kernel = SelectInt3DecodeKernel(params);
+    ORT_RETURN_IF_NOT(!use_prepacked_int3 || decode_kernel == Int3DecodeKernel::kTensorCore,
+                      "INT3 QMoE prepacked weights can only be read by the tensor-core decode kernel.");
     const bool use_groups = !use_sparse_mixer_ && router_weights == nullptr && cur_routes > 0 && cur_routes <= 256 &&
                             decode_kernel == Int3DecodeKernel::kFastVectorized;
     const bool use_fused_route_topk_only =
@@ -3434,6 +3466,10 @@ Status QMoE::ComputeInt3(OpKernelContext* context) const {
     }
 #endif
     CUDA_RETURN_IF_ERROR(LaunchInt3Moe(params, stream));
+    if (stage_output) {
+      CUDA_RETURN_IF_ERROR(
+          cudaMemcpyAsync(tile_output, staged_output.get(), tile_bytes, cudaMemcpyDeviceToDevice, stream));
+    }
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
     if (routing_snapshot_) {
       ORT_RETURN_IF_ERROR(routing_snapshot_->Consume());

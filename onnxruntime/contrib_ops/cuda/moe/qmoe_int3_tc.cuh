@@ -20,7 +20,8 @@
 //     in shared memory to {x0,x4}, {x1,x5}, {x2,x6}, {x3,x7} so a group's four B registers are one LDS.128.
 //   * The dequantization rounds once to bf16 per weight like the GEMV kernels (one fused multiply-add on the
 //     subnormal-encoded codes, see kDequantShift), so weights are bit-identical to the GEMV path up to an exact power
-//     of two that finalize() removes; only the fp32 accumulation order differs.
+//     of two that the activations staged in shared memory carry the inverse of; only the fp32 accumulation order
+//     differs.
 // Route groups are derived in-kernel from the per-route expert ids: every run of up to 8 routes (in route order) of
 // one expert is led by its first route; CTAs of non-leading routes exit immediately.
 
@@ -113,17 +114,28 @@ __device__ __forceinline__ uint32_t UnitWindow(const uint32_t* w) {
 }
 
 // The 3-bit codes are decoded as subnormal bf16 values (exponent field 0, the code in the mantissa) so that one fused
-// multiply-add yields (code - 4) * scale * 2^-kDequantShift with a single rounding. That value is the old exact
-// (code - 4) * scale rounded once, scaled by a power of two, so the tensor core results are the old ones times
-// 2^-kDequantShift and finalize() undoes it exactly. The multiplier scale * 2^(133 - kDequantShift) must be finite
-// (scale < 2^55) and the smallest weight scale * 2^-kDequantShift must be a normal bf16 number (scale >= 2^-66). The
-// shift of 60 places that window around the scales real models use; zero is exact. A model with scales outside it
-// needs ep.cuda.disable_qmoe_int3_tc=1.
+// multiply-add yields (code - 4) * scale * 2^-kDequantShift with a single rounding. That value is the exact
+// (code - 4) * scale rounded once, scaled by a power of two. The activations are staged in shared memory multiplied by
+// 2^kDequantShift (ScaleActivations), so the products are the true ones and the fp32 accumulators hold the true dot
+// products. Rescaling the accumulators instead would lose every result below 2^(kDequantShift - 149), because the
+// shifted accumulator underflows long before the result does.
+// The multiplier scale * 2^(133 - kDequantShift) must be finite (scale < 2^55), the smallest weight
+// scale * 2^-kDequantShift must be a normal bf16 number (scale >= 2^-66) and the staged activations must be finite
+// (|activation| < 2^(128 - kDequantShift) = 2^68). The shift of 60 places the scale window around the scales real
+// models use and leaves the activations a range far beyond any model; zero is exact. A model outside these ranges needs
+// ep.cuda.disable_qmoe_int3_tc=1.
 constexpr int kDequantShift = 60;
-constexpr float kDequantRescale = static_cast<float>(1ull << kDequantShift);
 
 // bf16 bit pattern of 2^e (e + 127 in the exponent field).
 __host__ __device__ constexpr uint32_t Bf16Pow2Bits(int e) { return static_cast<uint32_t>(127 + e) << 7; }
+
+// Both bf16 halves of `pair` times 2^kDequantShift (exact unless the product overflows).
+__device__ __forceinline__ uint32_t ScaleActivations(uint32_t pair) {
+  constexpr uint32_t kScaleBits = Bf16Pow2Bits(kDequantShift) * 0x10001u;
+  const __nv_bfloat162 r = __hmul2(*reinterpret_cast<const __nv_bfloat162*>(&pair),
+                                   *reinterpret_cast<const __nv_bfloat162*>(&kScaleBits));
+  return *reinterpret_cast<const uint32_t*>(&r);
+}
 
 // {fma-multiplier, fma-addend} of a bf16x2 whose two halves hold the same scale.
 __device__ __forceinline__ void DequantOperands(uint32_t scale2, uint32_t& mul, uint32_t& add) {
@@ -401,10 +413,10 @@ __global__ void __launch_bounds__(kWarps * 32, kMinCtas) Int3TcCoalescedKernel(c
       uint4 v = make_uint4(0u, 0u, 0u, 0u);
       if (src != nullptr) {
         const uint4 x = *reinterpret_cast<const uint4*>(src + 8 * u);
-        v.x = __byte_perm(x.x, x.z, 0x5410);
-        v.y = __byte_perm(x.x, x.z, 0x7632);
-        v.z = __byte_perm(x.y, x.w, 0x5410);
-        v.w = __byte_perm(x.y, x.w, 0x7632);
+        v.x = ScaleActivations(__byte_perm(x.x, x.z, 0x5410));
+        v.y = ScaleActivations(__byte_perm(x.x, x.z, 0x7632));
+        v.z = ScaleActivations(__byte_perm(x.y, x.w, 0x5410));
+        v.w = ScaleActivations(__byte_perm(x.y, x.w, 0x7632));
       }
       const int h = u < ss_pieces ? ((u >> 4) & 3) : ((u >> 2) & 3);
       smem_u4[u * 8 + ((rs + 2 * h) & 7)] = v;
@@ -425,8 +437,8 @@ __global__ void __launch_bounds__(kWarps * 32, kMinCtas) Int3TcCoalescedKernel(c
         continue;
       }
       const int route = static_cast<int>((members >> (8 * slot)) & 0xffu);
-      float even = (h == 0 ? d.x : d.y) * kDequantRescale;
-      float odd = (h == 0 ? d.z : d.w) * kDequantRescale;
+      float even = h == 0 ? d.x : d.y;
+      float odd = h == 0 ? d.z : d.w;
       if constexpr (kSwiglu) {
         const int col = (tile_row0 >> 1) + 8 * mb + g2;
         if (bias != nullptr) {
@@ -704,7 +716,7 @@ __global__ void __launch_bounds__(kWarps * 32, kMinCtas) Int3TcKernel(const Para
   // Stage the activations of the group's routes (zero for unused slots) as 16-byte pieces of eight consecutive K
   // positions, pre-permuted to {x0,x4}, {x1,x5}, {x2,x6}, {x3,x7}. Piece u of route slot r lives at
   // (u * 8 + ((r + 2 h(u)) & 7)) * 16 bytes, where h(u) is the quad lane that consumes piece u, so that the readers
-  // of one LDS.128 phase hit eight different 16-byte bank groups.
+  // of one LDS.128 phase hit eight different 16-byte bank groups. The activations are multiplied by 2^kDequantShift.
   {
     const int rs = threadIdx.x & 7;
     const __nv_bfloat16* src = nullptr;
@@ -720,10 +732,10 @@ __global__ void __launch_bounds__(kWarps * 32, kMinCtas) Int3TcKernel(const Para
       uint4 v = make_uint4(0u, 0u, 0u, 0u);
       if (src != nullptr) {
         const uint4 x = *reinterpret_cast<const uint4*>(src + 8 * u);
-        v.x = __byte_perm(x.x, x.z, 0x5410);
-        v.y = __byte_perm(x.x, x.z, 0x7632);
-        v.z = __byte_perm(x.y, x.w, 0x5410);
-        v.w = __byte_perm(x.y, x.w, 0x7632);
+        v.x = ScaleActivations(__byte_perm(x.x, x.z, 0x5410));
+        v.y = ScaleActivations(__byte_perm(x.x, x.z, 0x7632));
+        v.z = ScaleActivations(__byte_perm(x.y, x.w, 0x5410));
+        v.w = ScaleActivations(__byte_perm(x.y, x.w, 0x7632));
       }
       const int h = u < ss_pieces ? ((u >> 4) & 3) : ((u >> 2) & 3);
       smem_u4[u * 8 + ((rs + 2 * h) & 7)] = v;
@@ -746,8 +758,8 @@ __global__ void __launch_bounds__(kWarps * 32, kMinCtas) Int3TcKernel(const Para
         continue;
       }
       const int route = static_cast<int>((members >> (8 * slot)) & 0xffu);
-      float even = (h == 0 ? d.x : d.y) * kDequantRescale;
-      float odd = (h == 0 ? d.z : d.w) * kDequantRescale;
+      float even = h == 0 ? d.x : d.y;
+      float odd = h == 0 ? d.z : d.w;
       if constexpr (kSwiglu) {
         const int col = (tile_row0 >> 1) + 8 * mb + g2;
         if (bias != nullptr) {
@@ -1007,6 +1019,8 @@ inline cudaError_t LaunchFc2(const Params& fc2, int intermediate, int total_rout
 
 inline bool CanLaunchBf16(const Int3MoeParams& params) {
   const int64_t total_routes = static_cast<int64_t>(params.rows) * params.top_k;
+  // Prepacked weights exist only when the user did not set a route threshold above 1 (see the QMoE constructor), and
+  // only these kernels read their layout, so they take the tensor-core path from the first route.
   const int min_routes = params.tc_prepacked ? 1 : params.tensor_core_min_routes;
   if (!params.is_bfloat16 || params.fc1.bits != 3 || params.fc2.bits != 3 || params.block_size != kBlockSize ||
       params.router_weights != nullptr || total_routes < min_routes || total_routes > kMaxTotalRoutes ||

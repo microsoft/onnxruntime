@@ -556,8 +556,10 @@ static const char* const kOrtSessionOptionsCudaDisableQmoeInt3Tc = "ep.cuda.disa
 /// Overrides ORT_MOE_GEMV_TC_MIN_ROWS.
 static const char* const kOrtSessionOptionsCudaMoeGemvTcMinRows = "ep.cuda.moe_gemv_tc_min_rows";
 
-/// Minimum number of routes from which QMoE uses the tensor-core INT3 decode GEMV. Default 33.
-/// Overrides ORT_QMOE_INT3_TC_MIN_ROUTES.
+/// Minimum number of routes from which QMoE uses the tensor-core INT3 decode GEMV. Default 33. Constant INT3 weights
+/// are repacked when the session is created into a layout that runs the tensor-core GEMV from the first route; setting
+/// this threshold above 1 (here or through ORT_QMOE_INT3_TC_MIN_ROUTES) keeps the weights in their raw layout, so that
+/// the threshold holds for every decode launch. Overrides ORT_QMOE_INT3_TC_MIN_ROUTES.
 static const char* const kOrtSessionOptionsCudaQmoeInt3TcMinRoutes = "ep.cuda.qmoe_int3_tc_min_routes";
 
 /// Minimum number of rows M from which the INT8 MatMulNBits (fpA_intB path, no zero points, no bias) dequantizes the
