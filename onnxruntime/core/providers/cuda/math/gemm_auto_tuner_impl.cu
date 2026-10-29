@@ -4,6 +4,9 @@
 #include "core/providers/cuda/math/gemm_auto_tuner.h"
 
 #include <algorithm>
+#include <thread>
+
+#include "core/providers/cuda/shared_inc/gemm_auto_tune_diagnostics.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -42,7 +45,8 @@ Status LaunchGpuDelay(cudaStream_t stream, uint64_t nanoseconds) {
   return CUDA_CALL(cudaGetLastError());
 }
 
-Status LaunchL2Read(cudaStream_t stream, const void* buffer, size_t bytes, int num_sms) {
+Status LaunchL2Read(cudaStream_t stream, const void* buffer, size_t bytes, int num_sms,
+                    const char* buffer_kind, int run, size_t slot, const char* candidate) {
   if (buffer == nullptr) {
     return Status::OK();
   }
@@ -56,8 +60,45 @@ Status LaunchL2Read(cudaStream_t stream, const void* buffer, size_t bytes, int n
   constexpr int kThreads = 512;
   const size_t max_blocks = static_cast<size_t>(std::max(num_sms, 1)) * 4;
   const int blocks = static_cast<int>(std::min(max_blocks, (count + kThreads - 1) / kThreads));
+
+  if (!IsGemmAutoTuneDiagnosticsEnabled()) {
+    L2ReadKernel<<<blocks, kThreads, 0, stream>>>(reinterpret_cast<const uint4*>(begin), count, nullptr);
+    return CUDA_CALL(cudaGetLastError());
+  }
+
+  const cudaError_t pre_launch_error = cudaPeekAtLastError();
+  cudaStreamCaptureStatus capture_status = cudaStreamCaptureStatusNone;
+  const cudaError_t capture_query_error = cudaStreamIsCapturing(stream, &capture_status);
   L2ReadKernel<<<blocks, kThreads, 0, stream>>>(reinterpret_cast<const uint4*>(begin), count, nullptr);
-  return CUDA_CALL(cudaGetLastError());
+  const cudaError_t post_launch_error = cudaPeekAtLastError();
+  const cudaError_t consumed_error = cudaGetLastError();
+
+  LOGS_DEFAULT(WARNING) << "[CUDA GEMM diagnostic] l2_read"
+                        << " thread=" << std::this_thread::get_id()
+                        << " kind=" << buffer_kind
+                        << " run=" << run
+                        << " slot=" << slot
+                        << " candidate=" << candidate
+                        << " stream=" << static_cast<void*>(stream)
+                        << " buffer=" << buffer
+                        << " bytes=" << bytes
+                        << " aligned_begin=" << reinterpret_cast<const void*>(begin)
+                        << " count_uint4=" << count
+                        << " num_sms=" << num_sms
+                        << " blocks=" << blocks
+                        << " threads=" << kThreads
+                        << " capture_query=" << static_cast<int>(capture_query_error)
+                        << ":" << cudaGetErrorName(capture_query_error)
+                        << " capture_status=" << static_cast<int>(capture_status)
+                        << " pre_peek=" << static_cast<int>(pre_launch_error)
+                        << ":" << cudaGetErrorName(pre_launch_error)
+                        << " post_peek=" << static_cast<int>(post_launch_error)
+                        << ":" << cudaGetErrorName(post_launch_error)
+                        << " consumed=" << static_cast<int>(consumed_error)
+                        << ":" << cudaGetErrorName(consumed_error);
+
+  return ::onnxruntime::CudaCall<cudaError, false>(
+      consumed_error, "cudaGetLastError()", "CUDA", cudaSuccess, "", __FILE__, __LINE__);
 }
 
 }  // namespace cuda

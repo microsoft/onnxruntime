@@ -3,10 +3,17 @@
 
 #include "cuda_allocator_plugin.h"
 
+#include <atomic>
+
+#include "core/providers/cuda/shared_inc/gemm_auto_tune_diagnostics.h"
+
 namespace onnxruntime {
 namespace cuda_plugin {
 
 namespace {
+
+std::atomic<uint64_t> next_allocation_attempt_id{1};
+thread_local CudaDeviceAllocationAttempt last_allocation_attempt;
 
 void RestoreDeviceIfKnown(bool restore_prev_device, int prev_device) noexcept {
   if (restore_prev_device) {
@@ -15,6 +22,10 @@ void RestoreDeviceIfKnown(bool restore_prev_device, int prev_device) noexcept {
 }
 
 }  // namespace
+
+CudaDeviceAllocationAttempt GetLastCudaDeviceAllocationAttempt() noexcept {
+  return last_allocation_attempt;
+}
 
 // ---------------------------------------------------------------------------
 // CudaDeviceAllocator — uses cudaMalloc/cudaFree for GPU device memory.
@@ -53,6 +64,12 @@ CudaDeviceAllocator::CudaDeviceAllocator(const OrtMemoryInfo* memory_info, int d
     return nullptr;
   }
   cudaError_t err = cudaMalloc(&p, size);
+  if (cuda::IsGemmAutoTuneDiagnosticsEnabled()) {
+    last_allocation_attempt = {
+        next_allocation_attempt_id.fetch_add(1, std::memory_order_relaxed),
+        size,
+        err};
+  }
   RestoreDeviceIfKnown(restore_prev_device, prev_device);
   if (err != cudaSuccess) {
     return nullptr;

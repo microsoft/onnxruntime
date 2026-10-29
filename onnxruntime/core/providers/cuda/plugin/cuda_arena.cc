@@ -18,16 +18,21 @@ limitations under the License.
 
 #include "cuda_arena.h"
 
+#include <atomic>
 #include <cassert>
 #include <map>
+#include <thread>
 
 #include "core/common/inlined_containers_fwd.h"
 #include "core/common/narrow.h"
+#include "core/providers/cuda/shared_inc/gemm_auto_tune_diagnostics.h"
 
 namespace onnxruntime {
 namespace cuda_plugin {
 
 namespace {
+std::atomic<uint64_t> next_diagnostic_extension_id{1};
+
 std::string GetAllocatorName(const OrtApi& api, OrtAllocator& allocator) {
   const OrtMemoryInfo* mem_info = allocator.Info(&allocator);
   const char* allocator_name;
@@ -101,6 +106,11 @@ ArenaImpl::Chunk* ArenaImpl::ChunkFromHandle(ChunkHandle h) {
 }
 
 OrtStatus* ArenaImpl::Extend(size_t rounded_bytes) {
+  const bool diagnostics_enabled = cuda::IsGemmAutoTuneDiagnosticsEnabled();
+  const uint64_t diagnostic_extension_id =
+      diagnostics_enabled ? next_diagnostic_extension_id.fetch_add(1, std::memory_order_relaxed) : 0;
+  size_t diagnostic_attempt_ordinal = 0;
+
   size_t available_bytes = config_.max_mem - static_cast<size_t>(stats_.total_allocated_bytes);
   available_bytes = (available_bytes / kMinAllocationSize) * kMinAllocationSize;
 
@@ -110,12 +120,41 @@ OrtStatus* ArenaImpl::Extend(size_t rounded_bytes) {
                                                                 << rounded_bytes);
   }
 
-  auto safe_alloc = [this](size_t alloc_bytes) {
+  auto safe_alloc = [this, diagnostics_enabled, diagnostic_extension_id, rounded_bytes,
+                     &diagnostic_attempt_ordinal](size_t alloc_bytes) {
+    ++diagnostic_attempt_ordinal;
+    const CudaDeviceAllocationAttempt before_attempt =
+        diagnostics_enabled ? GetLastCudaDeviceAllocationAttempt() : CudaDeviceAllocationAttempt{};
     void* new_mem = nullptr;
     ORT_TRY {
       new_mem = device_allocator_->Alloc(device_allocator_.get(), alloc_bytes);
     }
     ORT_CATCH(const std::bad_alloc&) {
+    }
+    if (diagnostics_enabled) {
+      const CudaDeviceAllocationAttempt after_attempt = GetLastCudaDeviceAllocationAttempt();
+      if (after_attempt.attempt_id != before_attempt.attempt_id) {
+        CUDA_ARENA_LOG(WARNING, "[CUDA GEMM diagnostic] arena_extend_attempt"
+                                    << " thread=" << std::this_thread::get_id()
+                                    << " extension_id=" << diagnostic_extension_id
+                                    << " ordinal=" << diagnostic_attempt_ordinal
+                                    << " rounded_request_bytes=" << rounded_bytes
+                                    << " attempted_bytes=" << alloc_bytes
+                                    << " cuda_attempt_id=" << after_attempt.attempt_id
+                                    << " cuda_requested_bytes=" << after_attempt.requested_bytes
+                                    << " cuda_status=" << static_cast<int>(after_attempt.status)
+                                    << ":" << cudaGetErrorName(after_attempt.status)
+                                    << " result=" << new_mem);
+      } else {
+        CUDA_ARENA_LOG(WARNING, "[CUDA GEMM diagnostic] arena_extend_attempt"
+                                    << " thread=" << std::this_thread::get_id()
+                                    << " extension_id=" << diagnostic_extension_id
+                                    << " ordinal=" << diagnostic_attempt_ordinal
+                                    << " rounded_request_bytes=" << rounded_bytes
+                                    << " attempted_bytes=" << alloc_bytes
+                                    << " cuda_attempt=unavailable"
+                                    << " result=" << new_mem);
+      }
     }
     return new_mem;
   };
@@ -181,8 +220,26 @@ OrtStatus* ArenaImpl::Extend(size_t rounded_bytes) {
   }
 
   if (mem_addr == nullptr) {
+    if (diagnostics_enabled) {
+      CUDA_ARENA_LOG(WARNING, "[CUDA GEMM diagnostic] arena_extend_result"
+                                  << " thread=" << std::this_thread::get_id()
+                                  << " extension_id=" << diagnostic_extension_id
+                                  << " rounded_request_bytes=" << rounded_bytes
+                                  << " attempts=" << diagnostic_attempt_ordinal
+                                  << " status=failed");
+    }
     CUDA_ARENA_RETURN_ERROR(ORT_EP_FAIL,
                             "Failed to allocate memory for requested buffer of size " << rounded_bytes);
+  }
+
+  if (diagnostics_enabled) {
+    CUDA_ARENA_LOG(WARNING, "[CUDA GEMM diagnostic] arena_extend_result"
+                                << " thread=" << std::this_thread::get_id()
+                                << " extension_id=" << diagnostic_extension_id
+                                << " rounded_request_bytes=" << rounded_bytes
+                                << " attempts=" << diagnostic_attempt_ordinal
+                                << " accepted_bytes=" << bytes
+                                << " result=" << mem_addr);
   }
 
   CUDA_ARENA_LOG(INFO, "Extended allocation by " << bytes << " bytes.");

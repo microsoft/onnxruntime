@@ -142,7 +142,8 @@ Status TuneGemmKernel(const GemmTuneKey& key, cudaStream_t stream, const std::ve
 Status LaunchGpuDelay(cudaStream_t stream, uint64_t nanoseconds);
 
 // Reads `bytes` of `buffer` through L2 (evicting other lines when the buffer is larger than L2).
-Status LaunchL2Read(cudaStream_t stream, const void* buffer, size_t bytes, int num_sms);
+Status LaunchL2Read(cudaStream_t stream, const void* buffer, size_t bytes, int num_sms,
+                    const char* buffer_kind, int run, size_t slot, const char* candidate);
 
 }  // namespace cuda
 }  // namespace onnxruntime

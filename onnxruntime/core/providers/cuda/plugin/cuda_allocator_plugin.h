@@ -11,6 +11,7 @@
 #include "cuda_plugin_utils.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <mutex>
 #include <sstream>
 #include <string>
@@ -94,6 +95,14 @@ struct AllocatorStats {
     return ss.str();
   }
 };
+
+struct CudaDeviceAllocationAttempt {
+  uint64_t attempt_id{0};
+  size_t requested_bytes{0};
+  cudaError_t status{cudaSuccess};
+};
+
+CudaDeviceAllocationAttempt GetLastCudaDeviceAllocationAttempt() noexcept;
 
 /// CUDA device memory allocator using cudaMalloc/cudaFree.
 /// Lifetime is managed by the EP factory (ReleaseAllocatorImpl), not by a Release callback.
