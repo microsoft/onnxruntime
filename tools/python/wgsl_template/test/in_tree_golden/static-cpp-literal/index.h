@@ -63,21 +63,6 @@ template <>
 Status ApplyTemplate<"math/subgroup_matrix_matmul.wgsl.template">(ShaderHelper& shader_helper, TemplateParameter<"math/subgroup_matrix_matmul.wgsl.template">::type params);
 
 //
-// Template: math/subgroup_matrix_matmul_pad_b.wgsl.template
-//
-
-template <>
-struct TemplateParameter<"math/subgroup_matrix_matmul_pad_b.wgsl.template"> {
-  using type = struct {
-    const ShaderVariableHelper* var_input_b;
-    const ShaderVariableHelper* var_output;
-  };
-};
-
-template <>
-Status ApplyTemplate<"math/subgroup_matrix_matmul_pad_b.wgsl.template">(ShaderHelper& shader_helper, TemplateParameter<"math/subgroup_matrix_matmul_pad_b.wgsl.template">::type params);
-
-//
 // Template: nn/conv_transpose3d.wgsl.template
 //
 

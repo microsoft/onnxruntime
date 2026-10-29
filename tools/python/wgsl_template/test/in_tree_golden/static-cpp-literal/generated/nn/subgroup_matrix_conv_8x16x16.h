@@ -46,9 +46,9 @@ Status ApplyTemplate<"nn/subgroup_matrix_conv_8x16x16.wgsl.template">(ShaderHelp
 //  22 | //
 //  23 | // Bias/activation: write_output(), built by the host from GetActivationSnippet.
 //  24 | //
-//  25 | // TODO: Honor EnableMatmulFp32Accumulation() like matmul_packed.cc does: when it
-//  26 | // is set, accumulate in f32 (an F16 x F16 -> F32 subgroup-matrix config, f32
-//  27 | // accumulators and scratch) instead of the f16 used today.
+//  25 | // TODO: Honor EnableMatmulFp32Accumulation(): when it is set, accumulate in
+//  26 | // f32 (an F16 x F16 -> F32 subgroup-matrix config, f32 accumulators and scratch)
+//  27 | // instead of the f16 used today.
 //  28 | //
 //  29 | // Host guarantees: K % sg_mat_k == 0; kTileN <= N_b so a trailing partial N tile
 //  30 | // can shift back in bounds. M is unconstrained (see load_im2col_vec).

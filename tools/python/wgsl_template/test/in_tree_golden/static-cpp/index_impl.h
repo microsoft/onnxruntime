@@ -31,19 +31,18 @@ std::string pass_as_string(T&& v) {
 }
 }  // namespace wgsl_detail
 
-#include "wgsl_template_gen/string_table.h"  // 8bfc19bf0715588a4f8171d90b06809ccad9f7e99fd3cce7fba664bb204d9004
+#include "wgsl_template_gen/string_table.h"  // d8512e85c71fdfecfd62698a93397a85b254bd8252958a716d07686169cc654d
 
 // Include template implementations
 
 #include "wgsl_template_gen/generated/math/matmul_gemv.h"  // 512f5afa8421c4630912b0d87d46061d43e1b3226fbbc6c993241b285adf2fc7
 #include "wgsl_template_gen/generated/math/subgroup_matrix_gemm_8x16x16.h"  // 4251accac15bcce4e64a1ec7582de07ee5626d6cfe05527a9187586ade097870
 #include "wgsl_template_gen/generated/math/subgroup_matrix_matmul.h"  // 82baad53c5eb895073a12f45a2bb5ff6e073bbe089448e0d5ba52255c4ee7ce7
-#include "wgsl_template_gen/generated/math/subgroup_matrix_matmul_pad_b.h"  // 8d25b9aab5a8f6d1d557f4c8efceb1bd44cdb2592a8483b396df8888c683a80c
-#include "wgsl_template_gen/generated/nn/conv_transpose3d.h"  // 33bd52e16ae1e748ef45b492ae4730f520eeb9706cab055391d296ec54265bab
-#include "wgsl_template_gen/generated/nn/im2col_matmul.h"  // 7185c8aeed8391c916822b35d16fcbfdd342e4c3cc5ea9a4d09667a2651a3c08
-#include "wgsl_template_gen/generated/nn/subgroup_matrix_conv_8x16x16.h"  // 398f225f4b34778fc8826d92cd6952806fa231f57aeaf840bfa98cc47e483c1c
-#include "wgsl_template_gen/generated/tensor/oihw_to_ohwi.h"  // f6adc81e9e253de771363ee54143064bffbefd468498f9e85e7a0f028d088678
-#include "wgsl_template_gen/generated/tensor/pad.h"  // 598f8f41c0336b04fab5705643f439a307d059fd8971812c207a2273b6976518
+#include "wgsl_template_gen/generated/nn/conv_transpose3d.h"  // fe4fa72ca102a8dd0838f5d1b3d11e9da768bdccc047bf408e216a7d9e7b2c26
+#include "wgsl_template_gen/generated/nn/im2col_matmul.h"  // b8f2a1b1f4e90e12f135bfb12b903cc812500f0270d1e45b9b765d852aade405
+#include "wgsl_template_gen/generated/nn/subgroup_matrix_conv_8x16x16.h"  // f1393cba3eae5b225339552e0fb530906e830bbe33ef7e01d491a97ad3280c32
+#include "wgsl_template_gen/generated/tensor/oihw_to_ohwi.h"  // 569d232410b0f89bd8548713a7372411f467096f464b37fe3819b3e39e882efe
+#include "wgsl_template_gen/generated/tensor/pad.h"  // 7930fb059c2e541aee0831b667703567f7492db892e2340fe92bf6f21d507c71
 
 #pragma pop_macro("MainFunctionStart")
 #pragma pop_macro("MainFunctionEnd")
