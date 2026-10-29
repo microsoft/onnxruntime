@@ -3548,7 +3548,8 @@ TEST(MoETest, QMoETest_Int3AndMixedWidthCudaPrefillParity) {
 // The BF16 decode GEMVs switch to tensor-core kernels once at least 33 rows are routed:
 //   - INT4 (moe_gemv_tc.cuh): block size 32, hidden % 512 == 0, inter % 128 == 0, inter >= 512, at most 80 routes.
 //   - INT3 (qmoe_int3_tc.cuh): block size 64, hidden % 512 == 0, inter % 128 == 0, at most 256 routes. From 16 tokens
-//     on (ORT_INT3_PREFILL_MIN_ROWS) the prefill kernels run instead, hence 12 tokens x top-4 = 48 routes here.
+//     on (ORT_INT3_PREFILL_MIN_ROWS) the prefill kernels run instead, hence 12 tokens x top-4 = 48 routes for decode
+//     and 20 tokens x top-4 = 80 routes for prefill (or 80-route kCompact80 in INT4).
 // The kernel choice is not observable through the op, so each case is compared with a host reference that rounds
 // every dequantized weight to BF16 and accumulates in FP32, which the kernels match up to the summation order.
 // fc1_scale_exp and fc2_scale_exp multiply the FC1 and FC2 scales by 2^exp (power-of-two scaling is exact in BF16),
@@ -3556,14 +3557,14 @@ TEST(MoETest, QMoETest_Int3AndMixedWidthCudaPrefillParity) {
 // unscaled one, which the tolerance follows.
 static void RunQMoEBf16TensorCoreGemvParityCase(int64_t bits, int64_t block_size, int64_t hidden_size,
                                                 int64_t inter_size, const char* disable_tc = nullptr,
-                                                int fc1_scale_exp = 0, int fc2_scale_exp = 0) {
+                                                int fc1_scale_exp = 0, int fc2_scale_exp = 0,
+                                                int64_t num_rows = 12) {
   constexpr int64_t num_experts = 8;
-  constexpr int64_t num_rows = 12;
   constexpr int64_t top_k = 4;
-  // Experts picked by each token. They are used by {12, 1, 12, 9, 8, 4, 2, 0} rows: groups of 8 rows of one expert
-  // that are full and partial, a single row, and an expert that is never routed. Picked experts share one router
-  // logit, so their normalized routing weights are exactly 1 / top_k.
-  static constexpr int selected_experts[num_rows][top_k] = {
+  // Experts picked by each token. For 12 tokens they are used by {12, 1, 12, 9, 8, 4, 2, 0} rows: groups of 8 rows of
+  // one expert that are full and partial, a single row, and an expert that is never routed. Picked experts share one
+  // router logit, so their normalized routing weights are exactly 1 / top_k.
+  static constexpr int base_selected_experts[12][top_k] = {
       {0, 2, 3, 4},
       {0, 2, 3, 4},
       {0, 2, 3, 4},
@@ -3627,7 +3628,7 @@ static void RunQMoEBf16TensorCoreGemvParityCase(int64_t bits, int64_t block_size
   std::vector<float> router_probs(static_cast<size_t>(num_rows * num_experts), round_bf16(-8.0f));
   for (int64_t r = 0; r < num_rows; ++r) {
     for (int64_t slot = 0; slot < top_k; ++slot) {
-      router_probs[static_cast<size_t>(r * num_experts + selected_experts[r][slot])] = round_bf16(4.0f);
+      router_probs[static_cast<size_t>(r * num_experts + base_selected_experts[r % 12][slot])] = round_bf16(4.0f);
     }
   }
 
@@ -3638,7 +3639,7 @@ static void RunQMoEBf16TensorCoreGemvParityCase(int64_t bits, int64_t block_size
     const float* x = &input[static_cast<size_t>(r * hidden_size)];
     std::fill(accumulated.begin(), accumulated.end(), 0.0f);
     for (int64_t slot = 0; slot < top_k; ++slot) {
-      const int64_t e = selected_experts[r][slot];
+      const int64_t e = base_selected_experts[r % 12][slot];
       for (int64_t j = 0; j < inter_size; ++j) {
         const float* gate_w = &fc1.dequantized[static_cast<size_t>((e * fc1_rows + 2 * j) * hidden_size)];
         const float* up_w = gate_w + hidden_size;
@@ -3647,6 +3648,10 @@ static void RunQMoEBf16TensorCoreGemvParityCase(int64_t bits, int64_t block_size
         for (int64_t c = 0; c < hidden_size; ++c) {
           gate += x[c] * gate_w[c];
           up += x[c] * up_w[c];
+        }
+        if (bits == 3 && num_rows >= 16) {
+          gate = round_bf16(gate);
+          up = round_bf16(up);
         }
         activation[static_cast<size_t>(j)] = round_bf16(gate / (1.0f + std::exp(-gate)) * up);
       }
@@ -3696,7 +3701,7 @@ static void RunQMoEBf16TensorCoreGemvParityCase(int64_t bits, int64_t block_size
     ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry("ep.cuda.disable_moe_gemv_tc", disable_tc));
   }
   SCOPED_TRACE(MakeString("bits=", bits, " block_size=", block_size, " hidden=", hidden_size, " inter=", inter_size,
-                          " fc1_scale_exp=", fc1_scale_exp, " fc2_scale_exp=", fc2_scale_exp));
+                          " fc1_scale_exp=", fc1_scale_exp, " fc2_scale_exp=", fc2_scale_exp, " rows=", num_rows));
   tester.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
@@ -3720,30 +3725,38 @@ TEST(MoETest, QMoETensorCoreSessionOptions) {
 
 #if !defined(ORT_QUICK_BUILD)
 // inter = 512 and 640 give FC2 K loops of 4 and 5 steps of 128; hidden = 1024 gives FC1 two K steps of 512.
+// num_rows = 20 x top-4 = 80 routes exercises the kCompact80 warp-ballot leader discovery path in FC2.
 TEST(MoETest, QMoETest_Bf16Int4TensorCoreGemvParity) {
   if (!HasCudaEnvironment(800)) {
     GTEST_SKIP() << "CUDA device with compute capability 8.0 or newer is required.";
   }
-  for (const auto& shape : {std::pair<int64_t, int64_t>{512, 512},
-                            std::pair<int64_t, int64_t>{512, 640},
-                            std::pair<int64_t, int64_t>{1024, 640}}) {
-    RunQMoEBf16TensorCoreGemvParityCase(/*bits=*/4, /*block_size=*/32, shape.first, shape.second);
+  for (int64_t rows : {int64_t{12}, int64_t{20}}) {
+    for (const auto& shape : {std::pair<int64_t, int64_t>{512, 512},
+                              std::pair<int64_t, int64_t>{512, 640},
+                              std::pair<int64_t, int64_t>{1024, 640}}) {
+      RunQMoEBf16TensorCoreGemvParityCase(/*bits=*/4, /*block_size=*/32, shape.first, shape.second, nullptr, 0, 0,
+                                          rows);
+    }
   }
 }
 #endif  // !ORT_QUICK_BUILD
 
 // FC2 consumes K in super-steps of 512 followed by (inter / 128) % 4 chunks of 128, so inter = 384, 512, 640 and 768
-// cover tails of 3, 0, 1 and 2 chunks.
+// cover tails of 3, 0, 1 and 2 chunks. num_rows = 12 exercises Int3TcCoalescedKernel (decode) and num_rows = 20
+// exercises RepackPrepackedInt3ToSm80Int4ActiveExpertsKernel + TransposeScalesActiveExpertsVec8Kernel<T, true> (prefill).
 TEST(MoETest, QMoETest_Bf16Int3TensorCoreGemvParity) {
   if (!HasCudaEnvironment(800)) {
     GTEST_SKIP() << "CUDA device with compute capability 8.0 or newer is required.";
   }
-  for (const auto& shape : {std::pair<int64_t, int64_t>{512, 384},
-                            std::pair<int64_t, int64_t>{512, 512},
-                            std::pair<int64_t, int64_t>{512, 640},
-                            std::pair<int64_t, int64_t>{512, 768},
-                            std::pair<int64_t, int64_t>{1024, 640}}) {
-    RunQMoEBf16TensorCoreGemvParityCase(/*bits=*/3, /*block_size=*/64, shape.first, shape.second);
+  for (int64_t rows : {int64_t{12}, int64_t{20}}) {
+    for (const auto& shape : {std::pair<int64_t, int64_t>{512, 384},
+                              std::pair<int64_t, int64_t>{512, 512},
+                              std::pair<int64_t, int64_t>{512, 640},
+                              std::pair<int64_t, int64_t>{512, 768},
+                              std::pair<int64_t, int64_t>{1024, 640}}) {
+      RunQMoEBf16TensorCoreGemvParityCase(/*bits=*/3, /*block_size=*/64, shape.first, shape.second, nullptr, 0, 0,
+                                          rows);
+    }
   }
 }
 

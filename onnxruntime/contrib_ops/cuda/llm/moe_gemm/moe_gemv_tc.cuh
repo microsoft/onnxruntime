@@ -77,6 +77,26 @@ __device__ __forceinline__ uint4 LoadWeightsStreaming(const void* ptr) {
   return v;
 }
 
+template <int MB>
+__device__ __forceinline__ void LoadWeightsAfterMb(int pred, const uint8_t*& wptr, const __nv_bfloat16* sptr_next,
+                                                   int64_t w_step, uint4& e, uint4& o, uint32_t& c) {
+  asm volatile(
+      "{\n\t"
+      ".reg .pred p;\n\t"
+      "setp.eq.b32 p, %9, 0;\n\t"
+      "@p bra L_skip_%=;\n\t"
+      "ld.global.nc.L1::no_allocate.v4.u32 {%0, %1, %2, %3}, [%10+256];\n\t"
+      "ld.global.nc.L1::no_allocate.v4.u32 {%4, %5, %6, %7}, [%10+288];\n\t"
+      "ld.global.u32 %8, [%11+%13];\n\t"
+      "L_skip_%=:\n\t"
+      "add.s64 %10, %10, %12;\n\t"
+      "}\n"
+      : "+r"(e.x), "+r"(e.y), "+r"(e.z), "+r"(e.w),
+        "+r"(o.x), "+r"(o.y), "+r"(o.z), "+r"(o.w),
+        "+r"(c), "+r"(pred), "+l"(wptr)
+      : "l"(sptr_next), "l"(w_step), "n"(MB * 32));
+}
+
 template <int J>
 __device__ __forceinline__ uint32_t Comp(const uint4& v) {
   if constexpr (J == 0) {
@@ -154,25 +174,15 @@ constexpr int MinCtasPerSm(int m_blocks) {
 // kSwiglu = false: plain GEMV; output [row][n].
 // kWarpsK warps split K (reduced through shared memory), kWarps / kWarpsK warps split the columns,
 // and every warp owns kM m-blocks (16 columns each).
-template <bool kSwiglu, int kWarpsK, int kM>
+// When kCompact80 is true (80 expanded rows and num_rows <= kMaxRoutes, so each expert run has <= 8 rows),
+// each warp discovers the active expert run leaders in registers via warp-ballot + fns.b32 and the grid is
+// launched as (n_tiles, expanded_num_rows) so all real leader CTAs pack contiguously into the first wave.
+template <bool kSwiglu, int kWarpsK, int kM, bool kCompact80 = false>
 __global__ void __launch_bounds__(kThreads, MinCtasPerSm(kM)) MoeGemvTcInt4Kernel(const Params p) {
 #if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800)
   static_assert(kWarps % kWarpsK == 0, "warps must split evenly over K");
   constexpr int kWarpsN = kWarps / kWarpsK;
   constexpr int kTileN = kWarpsN * kM * kMmaM;
-
-  const int row0 = blockIdx.x;
-  const int expert = p.permuted_row_to_expert[row0];
-  if (expert < 0 || expert >= p.num_experts) {
-    return;
-  }
-  const int64_t first = p.expert_first_token_offset[expert];
-  const int64_t last = p.expert_first_token_offset[expert + 1];
-  // Rows of one expert are contiguous; every kMaxRoutes-th row of a run leads a chunk.
-  if (((row0 - first) & (kMaxRoutes - 1)) != 0) {
-    return;
-  }
-  const int routes = (last - row0) < kMaxRoutes ? static_cast<int>(last - row0) : kMaxRoutes;
 
   const int lane = threadIdx.x & 31;
   const int warp = threadIdx.x >> 5;
@@ -182,9 +192,74 @@ __global__ void __launch_bounds__(kThreads, MinCtasPerSm(kM)) MoeGemvTcInt4Kerne
   const int wn = warp / kWarpsK;
   const int n = p.n;
   const int k = p.k;
-  const int col_w = blockIdx.y * kTileN + wn * (kM * kMmaM);
+  const int col_tile = kCompact80 ? static_cast<int>(blockIdx.x) : static_cast<int>(blockIdx.y);
+  const int cid = kCompact80 ? static_cast<int>(blockIdx.y) : static_cast<int>(blockIdx.x);
+  const int col_w = col_tile * kTileN + wn * (kM * kMmaM);
   const int steps = (k / kStepK) / kWarpsK;
   const int step0 = wk * steps;
+
+  int row0 = cid;
+  int expert = -1;
+  int routes = 0;
+  if constexpr (kCompact80) {
+    const int e0 = p.permuted_row_to_expert[lane];
+    const int e1 = p.permuted_row_to_expert[32 + lane];
+    const int e2 = (64 + lane < 80) ? p.permuted_row_to_expert[64 + lane] : -1;
+    const int p0 = __shfl_up_sync(0xffffffffu, e0, 1);
+    const int e0_last = __shfl_sync(0xffffffffu, e0, 31);
+    const int p1 = __shfl_up_sync(0xffffffffu, e1, 1);
+    const int e1_last = __shfl_sync(0xffffffffu, e1, 31);
+    const int p2 = __shfl_up_sync(0xffffffffu, e2, 1);
+
+    const uint32_t s0 = __ballot_sync(0xffffffffu, e0 >= 0 && (lane == 0 || e0 != p0));
+    const uint32_t s1 = __ballot_sync(0xffffffffu, e1 >= 0 && e1 != (lane == 0 ? e0_last : p1));
+    const uint32_t s2 = __ballot_sync(0xffffffffu, e2 >= 0 && e2 != (lane == 0 ? e1_last : p2));
+    const int last_s0 = s0 ? (31 - __clz(s0)) : 0;
+    const int last_s1 = s1 ? (31 - __clz(s1)) : last_s0;
+    const uint32_t low_mask = (2u << lane) - 1u;
+    const uint32_t low0 = s0 & low_mask;
+    const uint32_t low1 = s1 & low_mask;
+    const uint32_t low2 = s2 & low_mask;
+    const int f0 = low0 ? (31 - __clz(low0)) : 0;
+    const int f1 = low1 ? (31 - __clz(low1)) : last_s0;
+    const int f2 = low2 ? (31 - __clz(low2)) : last_s1;
+    const uint32_t m0 = __ballot_sync(0xffffffffu, e0 >= 0 && (((lane - f0) & (kMaxRoutes - 1)) == 0));
+    const uint32_t m1 = __ballot_sync(0xffffffffu, e1 >= 0 && (((lane - f1) & (kMaxRoutes - 1)) == 0));
+    const uint32_t m2 = __ballot_sync(0xffffffffu, e2 >= 0 && (((lane - f2) & (kMaxRoutes - 1)) == 0));
+
+    const int c0 = __popc(m0);
+    const int c1 = __popc(m1);
+    const int c2 = __popc(m2);
+    if (cid >= c0 + c1 + c2) {
+      return;
+    }
+    uint32_t pos = 0;
+    if (cid < c0) {
+      asm("fns.b32 %0, %1, 0, %2;\n" : "=r"(pos) : "r"(m0), "r"(cid + 1));
+    } else if (cid < c0 + c1) {
+      asm("fns.b32 %0, %1, 0, %2;\n" : "=r"(pos) : "r"(m1), "r"(cid - c0 + 1));
+      pos += 32;
+    } else {
+      asm("fns.b32 %0, %1, 0, %2;\n" : "=r"(pos) : "r"(m2), "r"(cid - c0 - c1 + 1));
+      pos += 64;
+    }
+    row0 = static_cast<int>(pos);
+    expert = p.permuted_row_to_expert[row0];
+    const int64_t last = p.expert_first_token_offset[expert + 1];
+    routes = (last - row0) < kMaxRoutes ? static_cast<int>(last - row0) : kMaxRoutes;
+  } else {
+    expert = p.permuted_row_to_expert[row0];
+    if (expert < 0 || expert >= p.num_experts) {
+      return;
+    }
+    const int64_t first = p.expert_first_token_offset[expert];
+    const int64_t last = p.expert_first_token_offset[expert + 1];
+    // Rows of one expert are contiguous; every kMaxRoutes-th row of a run leads a chunk.
+    if (((row0 - first) & (kMaxRoutes - 1)) != 0) {
+      return;
+    }
+    routes = (last - row0) < kMaxRoutes ? static_cast<int>(last - row0) : kMaxRoutes;
+  }
 
   // An interleaved weight row holds 4 real columns (k * 4 bits each = 2k bytes); inside a 64-wide K
   // tile the columns are 32-byte segments, and the two 16-byte halves of a segment are k groups.
@@ -215,6 +290,8 @@ __global__ void __launch_bounds__(kThreads, MinCtasPerSm(kM)) MoeGemvTcInt4Kerne
     }
   }
   const int64_t sstep = 4 * static_cast<int64_t>(n);  // scale elements per K step
+  const int64_t w_stride = 4 * row_bytes;
+  const int64_t w_wrap = 256 - (kM - 1) * w_stride;
   auto load_weights = [&](const uint8_t* wp, const __nv_bfloat16* sp, int mb, uint4& e, uint4& o, uint32_t& c) {
     const uint8_t* w = wp + static_cast<int64_t>(mb) * 4 * row_bytes;
     e = LoadWeightsStreaming(w);
@@ -251,26 +328,52 @@ __global__ void __launch_bounds__(kThreads, MinCtasPerSm(kM)) MoeGemvTcInt4Kerne
     load_weights(wptr, sptr, mb, we[mb], wo[mb], sc[mb]);
   }
   load_acts(aptr, b);
+  if constexpr (kM != 2) {
 #pragma unroll 1
-  for (int s = 0; s < steps; ++s) {
-    const bool more = (s + 1) < steps;
-    uint4 bn[4];
-    load_acts(more ? aptr + kStepK : aptr, bn);
+    for (int s = 0; s < steps; ++s) {
+      const bool more = (s + 1) < steps;
+      uint4 bn[4];
+      load_acts(more ? aptr + kStepK : aptr, bn);
 #pragma unroll
-    for (int mb = 0; mb < kM; ++mb) {
-      compute_mb(mb, we[mb], wo[mb], sc[mb], b);
-      if (more) {
-        load_weights(wptr + 256, sptr + sstep, mb, we[mb], wo[mb], sc[mb]);
+      for (int mb = 0; mb < kM; ++mb) {
+        compute_mb(mb, we[mb], wo[mb], sc[mb], b);
+        if (more) {
+          load_weights(wptr + 256, sptr + sstep, mb, we[mb], wo[mb], sc[mb]);
+        }
       }
-    }
 #pragma unroll
-    for (int i = 0; i < 4; ++i) {
-      b[i] = bn[i];
+      for (int i = 0; i < 4; ++i) {
+        b[i] = bn[i];
+      }
+      wptr += 256;
+      sptr += sstep;
+      aptr += kStepK;
     }
-    wptr += 256;
+  } else {
     sptr += sstep;
-    aptr += kStepK;
+#pragma unroll 1
+    for (int s = 0; s < steps; ++s) {
+      int more = (s + 1) < steps;
+      uint4 bn[4];
+      load_acts(more ? aptr + kStepK : aptr, bn);
+      compute_mb(0, we[0], wo[0], sc[0], b);
+      LoadWeightsAfterMb<0>(more, wptr, sptr, w_stride, we[0], wo[0], sc[0]);
+      compute_mb(1, we[1], wo[1], sc[1], b);
+      LoadWeightsAfterMb<1>(more, wptr, sptr, w_wrap, we[1], wo[1], sc[1]);
+#pragma unroll
+      for (int i = 0; i < 4; ++i) {
+        b[i] = bn[i];
+      }
+      sptr += sstep;
+      aptr += kStepK;
+    }
   }
+
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900)
+  if constexpr (!kSwiglu) {
+    asm volatile("griddepcontrol.launch_dependents;");
+  }
+#endif
 
   const __nv_bfloat16* bias = p.bias != nullptr ? p.bias + static_cast<int64_t>(expert) * n : nullptr;
   float alpha = p.alpha;
@@ -286,7 +389,7 @@ __global__ void __launch_bounds__(kThreads, MinCtasPerSm(kM)) MoeGemvTcInt4Kerne
   auto finalize = [&](const float4 d, int wn2, int mb, int l) {
     const int g2 = l >> 2;
     const int t2 = l & 3;
-    const int col = blockIdx.y * kTileN + (wn2 * kM + mb) * kMmaM + 2 * g2;
+    const int col = col_tile * kTileN + (wn2 * kM + mb) * kMmaM + 2 * g2;
 #pragma unroll
     for (int h = 0; h < 2; ++h) {
       const int route = 2 * t2 + h;
@@ -362,8 +465,16 @@ inline bool DeviceSupportsBf16Mma() {
 template <bool kSwiglu, int kWarpsK, int kM>
 inline void Launch(const Params& p, int64_t expanded_num_rows, cudaStream_t stream) {
   constexpr int kTileN = (kWarps / kWarpsK) * kM * kMmaM;
-  const dim3 grid(static_cast<unsigned>(expanded_num_rows), static_cast<unsigned>(p.n / kTileN));
-  MoeGemvTcInt4Kernel<kSwiglu, kWarpsK, kM><<<grid, kThreads, 0, stream>>>(p);
+  const unsigned n_tiles = static_cast<unsigned>(p.n / kTileN);
+  if constexpr (!kSwiglu && kM == 2) {
+    if (expanded_num_rows == 80 && (p.num_rows == 0 || p.num_rows <= kMaxRoutes)) {
+      const dim3 grid(n_tiles, static_cast<unsigned>(expanded_num_rows));
+      MoeGemvTcInt4Kernel<kSwiglu, kWarpsK, kM, true><<<grid, kThreads, 0, stream>>>(p);
+      return;
+    }
+  }
+  const dim3 grid(static_cast<unsigned>(expanded_num_rows), n_tiles);
+  MoeGemvTcInt4Kernel<kSwiglu, kWarpsK, kM, false><<<grid, kThreads, 0, stream>>>(p);
 }
 
 // Returns true when the tensor-core kernel handled the launch; false leaves the work to the scalar
@@ -412,10 +523,13 @@ inline bool TryLaunchInt4Bf16(bool swiglu, const __nv_bfloat16* act, const uint8
   p.k = static_cast<int>(k);
   p.num_rows = static_cast<int>(num_rows);
 
-  // FC1: the four warps split K (n = 1280 columns, five steps each). FC2: a warp owns one 16-column m-block and
-  // all of K (k = 640), which keeps the register footprint of the prefetching loop, and so the occupancy, smallest.
+  // FC1: the four warps split K (n = 1280 columns, five steps each). FC2: when compact leader scheduling is active
+  // (expanded_num_rows == 80), each warp owns two 16-column m-blocks (n_tiles = 20, 80 registers, 6 CTAs/SM = 792
+  // CTAs/wave) so all active CTAs fit in Wave 1; otherwise each warp owns one 16-column m-block.
   if (swiglu) {
     Launch<true, 4, 4>(p, expanded_num_rows, stream);
+  } else if (expanded_num_rows == 80 && (p.num_rows == 0 || p.num_rows <= kMaxRoutes)) {
+    Launch<false, 1, 2>(p, expanded_num_rows, stream);
   } else {
     Launch<false, 1, 1>(p, expanded_num_rows, stream);
   }

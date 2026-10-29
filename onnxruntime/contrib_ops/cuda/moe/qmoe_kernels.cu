@@ -3209,7 +3209,7 @@ cudaError_t LaunchInt3Typed(const Int3MoeParams& params, cudaStream_t stream) {
   const Int3DecodeKernel kernel = SelectInt3DecodeKernel(params);
 
   if (kernel != Int3DecodeKernel::kScalar) {
-    if (kernel == Int3DecodeKernel::kFastVectorized) {
+    if (kernel == Int3DecodeKernel::kTensorCore || kernel == Int3DecodeKernel::kFastVectorized) {
       if constexpr (std::is_same_v<T, __nv_bfloat16>) {
         cudaError_t tc_status = cudaSuccess;
         if (int3_tc::TryLaunchBf16(params, stream, tc_status)) {
@@ -3355,7 +3355,41 @@ Int3DecodeKernel SelectInt3DecodeKernel(const Int3MoeParams& params) {
       (reinterpret_cast<uintptr_t>(params.activation) & 15u) == 0 &&
       (reinterpret_cast<uintptr_t>(params.fc2_partial) & 15u) == 0 &&
       (reinterpret_cast<uintptr_t>(params.output) & 15u) == 0;
-  return can_use_vec_fast ? Int3DecodeKernel::kFastVectorized : Int3DecodeKernel::kFast;
+  if (!can_use_vec_fast) return Int3DecodeKernel::kFast;
+  if (params.is_bfloat16 && int3_tc::CanLaunchBf16(params)) {
+    return Int3DecodeKernel::kTensorCore;
+  }
+  return Int3DecodeKernel::kFastVectorized;
+}
+
+bool CanUseInt3TcPrePack() {
+  if (onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_VALIDATE_INT3_CONTENT", 0) != 0 ||
+      !int3_tc::DeviceSupportsBf16Mma()) {
+    return false;
+  }
+  cudaFuncAttributes fc1_attributes{}, fc2_attributes{};
+  if (cudaFuncGetAttributes(&fc1_attributes, int3_tc::Int3TcCoalescedKernel<true, 4, 2, 4, 0, 3>) != cudaSuccess ||
+      cudaFuncGetAttributes(&fc2_attributes, int3_tc::Int3TcCoalescedKernel<false, 4, 1, 8, 0, 3>) != cudaSuccess ||
+      fc1_attributes.ptxVersion < 80 || fc2_attributes.ptxVersion < 80) {
+    return false;
+  }
+  return true;
+}
+
+void LaunchPrePackInt3Weights(const uint8_t* raw_weights, uint8_t* packed_weights,
+                              int num_experts, int n, int k, cudaStream_t stream) {
+  const int total_mblocks = num_experts * (n >> 4);
+  const int pack_grid = (total_mblocks + 7) / 8;
+  int3_tc::PrePackInt3WeightsKernel<<<pack_grid, 256, 0, stream>>>(raw_weights, packed_weights, num_experts, n, k);
+  CUDA_CALL_THROW(cudaGetLastError());
+}
+
+void LaunchPrePackInt3Scales(const __nv_bfloat16* raw_scales, __nv_bfloat16* packed_scales,
+                             int num_experts, int n, int k, cudaStream_t stream) {
+  const int total_mblocks = num_experts * (n >> 4);
+  const int pack_grid = (total_mblocks + 7) / 8;
+  int3_tc::PrePackInt3ScalesKernel<<<pack_grid, 256, 0, stream>>>(raw_scales, packed_scales, num_experts, n, k);
+  CUDA_CALL_THROW(cudaGetLastError());
 }
 
 cudaError_t LaunchInt3Moe(const Int3MoeParams& params, cudaStream_t stream) {

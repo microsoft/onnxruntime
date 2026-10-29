@@ -2860,7 +2860,8 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
     finalizeMoeRoutingKernelLauncher<OutputType, T>(static_cast<const T*>(gemm_output), final_output,
                                                     fc2_expert_biases, unpermuted_final_scales, unpermuted_row_to_permuted_row, permuted_row_to_unpermuted_row,
                                                     token_selected_experts, expert_first_token_offset, num_rows, hidden_size, k, num_experts_per_node,
-                                                    parallelism_config, /*enable_alltoall=*/false, stream);
+                                                    parallelism_config, /*enable_alltoall=*/false, stream,
+                                                    /*early_routing_loads=*/fc2_did_gemv);
   }
   sync_check_cuda_error(stream);
 }
