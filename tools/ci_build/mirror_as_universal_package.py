@@ -118,7 +118,7 @@ def main():
             "--path",
             directory,
             "--description",
-            f"Mirrored file: {args.filename}",
+            f"Mirrored file: {args.filename}. SHA256: {actual_hash}.",
             "--detect",
             "false",
         ]
