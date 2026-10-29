@@ -145,6 +145,7 @@ export declare namespace WebGpu {
     ): undefined | [deviceId: number, instanceHandle: number, deviceHandle: number];
     webgpuOnCreateSession(sessionHandle: number): void;
     webgpuOnReleaseSession(sessionHandle: number): void;
+    webgpuGetDeviceId(sessionHandle: number): number;
     webgpuRegisterBuffer(buffer: GPUBuffer, sessionHandle: number, bufferHandle?: number): number;
     webgpuUnregisterBuffer(buffer: GPUBuffer): void;
     webgpuGetBuffer(bufferHandle: number): GPUBuffer;
@@ -362,6 +363,7 @@ export interface OrtInferenceAPIs {
     dimsOffset: number,
     dimsLength: number,
     dataLocation: number,
+    deviceId: number,
   ): number;
   _OrtGetTensorData(
     tensorHandle: number,
@@ -375,7 +377,13 @@ export interface OrtInferenceAPIs {
   _OrtReleaseLoraAdapter(adapterHandle: number): number;
   _OrtCreateBinding(sessionHandle: number): number;
   _OrtBindInput(bindingHandle: number, nameOffset: number, tensorHandle: number): Promise<number>;
-  _OrtBindOutput(bindingHandle: number, nameOffset: number, tensorHandle: number, location: number): number;
+  _OrtBindOutput(
+    bindingHandle: number,
+    nameOffset: number,
+    tensorHandle: number,
+    location: number,
+    deviceId: number,
+  ): number;
   _OrtClearBoundOutputs(ioBindingHandle: number): number;
   _OrtReleaseBinding(ioBindingHandle: number): number;
   _OrtRunWithBinding(
