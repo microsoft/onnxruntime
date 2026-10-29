@@ -6010,6 +6010,13 @@ struct OrtApi {
    * the initializer data on the first call to this function. If caller needs custom memory mapping,
    * use ValueInfo_GetExternalInitializerInfo to get the location of the initializer data.
    *
+   * The initializer data is read-only. Callers, including execution providers, must not modify it.
+   * The data may be memory that the application supplied through OrtModelEditorApi::AddInitializerToGraph with
+   * `data_is_external` set to true, or a read-only memory mapping.
+   * This also applies when an execution provider passes the data to an underlying runtime or library without
+   * copying it. If the data needs to be transformed (e.g., re-layout, quantization, or byte swapping),
+   * write the result to separate memory owned by the execution provider.
+   *
    * \param[in] value_info The OrtValueInfo instance.
    * \param[out] initializer_value Output parameter set to the initializer value or NULL. Do not cache the OrtValue
    *                               as it is released when the owning OrtGraph is released.
@@ -8039,6 +8046,15 @@ struct OrtModelEditorApi {
    *    is released.
    *    If using OrtApi::CreateTensorWithDataAndDeleterAsOrtValue, ORT will free the memory using the provided deleter as
    *    soon as the OrtValue is no longer in use.
+   *
+   *    The pre-existing memory is treated as read-only. Neither ONNX Runtime nor execution providers write to it
+   *    during model loading, graph optimization, compilation (including OrtCompileApi::CompileModel), or inference.
+   *    This applies even though OrtApi::CreateTensorWithDataAsOrtValue takes a non-const pointer.
+   *    Optimizations that modify initializer values, such as constant folding, layout transformation, and weight
+   *    pre-packing, write the results to separately allocated memory.
+   *    When a session or compilation that used the memory is released or fails, the data remains unchanged. The caller
+   *    can reuse the same buffer for another session or compilation without copying or validating it.
+   *    The caller must not modify the data while ONNX Runtime is using it.
    *
    *    NOTE: A tensor containing pre-existing memory MUST have 128 bytes of data or more.
    *          For smaller tensors use OrtApi::CreateTensorAsOrtValue.

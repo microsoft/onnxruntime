@@ -2300,6 +2300,11 @@ struct OrtEp {
    *       graphs are only valid for the duration of the call to Compile. Any graph/node/input/output
    *       names that are needed by the OrtNodeComputeInfo functions must be copied and stored by the OrtEp.
    *
+   * \note Initializer data in the provided graphs, whether obtained via OrtApi::ValueInfo_GetInitializerValue or
+   *       received as a kernel input at compute time, is read-only. The EP must not modify it, including when passing
+   *       it to an underlying runtime or library without copying. Applications may supply this memory and reuse it
+   *       after the session is released or compilation fails. Refer to OrtModelEditorApi::AddInitializerToGraph.
+   *
    * \note As of version 1.24, implementation of this function is optional if the EP does not compile nodes and
    *       uses a kernel registry instead.
    *
