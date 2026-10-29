@@ -10,6 +10,21 @@
 namespace onnxruntime {
 namespace webgpu {
 
+Status GatherRowsProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  const auto& data = shader.AddInput("data", ShaderUsage::UseValueTypeAlias);
+  const auto& indices = shader.AddInput("indices", ShaderUsage::UseValueTypeAlias);
+  const auto& output = shader.AddOutput("output", ShaderUsage::UseValueTypeAlias);
+
+  shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
+                            << "let row = global_idx / uniforms.row_size;\n"
+                            << "let col = global_idx % uniforms.row_size;\n"
+                            << "var index = " << indices.GetByOffset("row") << ";\n"
+                            << "if (index < 0) { index += indices_value_t(uniforms.axis_dim); }\n"
+                            << "let offset = u32(index) * uniforms.row_size + col;\n"
+                            << output.SetByOffset("global_idx", data.GetByOffset("offset"));
+  return Status::OK();
+}
+
 Status GatherProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& data = shader.AddInput("data", ShaderUsage::UseIndicesTypeAlias);
   const auto& indices = shader.AddInput("input_indices", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
@@ -112,6 +127,22 @@ Status Gather::ComputeInternal(ComputeContext& context) const {
   uint32_t data_size = onnxruntime::narrow<uint32_t>(p.output_tensor->Shape().Size());
   if (data_size == 0) {
     return Status::OK();
+  }
+
+  const auto& input_shape = p.input_tensor->Shape();
+  if (p.axis == 0 && p.input_tensor->IsDataType<float>() && input_shape.SizeFromDimension(1) % 4 == 0 &&
+      input_shape.Size() > 0) {
+    // Flatten row/vector pairs so narrow rows can share a workgroup. Row alignment
+    // ensures each vec4 access stays within a single gathered row.
+    const uint32_t output_size = data_size / 4;
+    const uint32_t row_size = onnxruntime::narrow<uint32_t>(input_shape.SizeFromDimension(1) / 4);
+    GatherRowsProgram program;
+    program.AddInputs({{p.input_tensor, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, 4},
+                       {p.indices_tensor, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten}})
+        .AddOutput({p.output_tensor, ProgramTensorMetadataDependency::Type, ProgramOutput::Flatten, 4})
+        .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
+        .AddUniformVariables({{output_size}, {row_size}, {onnxruntime::narrow<uint32_t>(input_shape[0])}});
+    return context.RunProgram(program);
   }
 
   bool pack_as_bytes = p.input_tensor->DataType() == DataTypeImpl::GetType<bool>() ||

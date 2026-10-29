@@ -19,6 +19,57 @@ namespace onnxruntime {
 namespace test {
 
 #ifdef USE_WEBGPU
+template <typename IndexType>
+static void TestGatherRows(int64_t width, int64_t axis, const TensorShapeVector& indices_shape) {
+  ConfigOptions provider_options{};
+  ASSERT_STATUS_OK(provider_options.AddConfigEntry(webgpu::options::kValidationMode, "full"));
+  auto provider = WebGpuExecutionProviderWithOptions(provider_options);
+  if (provider == nullptr) {
+    GTEST_SKIP() << "WebGPU EP is not available";
+  }
+
+  constexpr int64_t rows = 5;
+  InlinedVector<float> data;
+  data.reserve(rows * width);
+  for (int64_t i = 0; i < rows * width; ++i) {
+    data.push_back(static_cast<float>(i) / 8.0f);
+  }
+  InlinedVector<IndexType> indices{-5, 4, -1, 1, 0, 1, -2};
+  if (indices_shape.empty()) {
+    indices = {-1};
+  }
+  InlinedVector<float> expected;
+  expected.reserve(indices.size() * width);
+  for (auto index : indices) {
+    const int64_t row = index < 0 ? static_cast<int64_t>(index) + rows : static_cast<int64_t>(index);
+    expected.insert(expected.end(), data.begin() + row * width, data.begin() + (row + 1) * width);
+  }
+  TensorShapeVector output_shape = indices_shape;
+  output_shape.insert(output_shape.end(), {1, width});
+
+  OpTester test("Gather", 13);
+  test.AddAttribute<int64_t>("axis", axis);
+  test.AddInput<float>("data", {rows, 1, width}, data.data(), data.size());
+  test.AddInput<IndexType>("indices", indices_shape, indices.data(), indices.size());
+  test.AddOutput<float>("output", output_shape, expected.data(), expected.size());
+  SessionOptions options;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  test.Config(options).ConfigEp(std::move(provider)).RunWithConfig();
+}
+
+TEST(GatherOpTest, Gather_rows_webgpu) {
+  for (int64_t width : {1, 3, 4, 5, 127, 128, 129, 255, 256, 257, 1024}) {
+    for (int64_t axis : {0, -3}) {
+      for (const TensorShapeVector& indices_shape : {TensorShapeVector{}, TensorShapeVector{7}, TensorShapeVector{1, 7}}) {
+        SCOPED_TRACE(testing::Message() << "width=" << width << " axis=" << axis
+                                        << " indices_rank=" << indices_shape.size());
+        TestGatherRows<int32_t>(width, axis, indices_shape);
+        TestGatherRows<int64_t>(width, axis, indices_shape);
+      }
+    }
+  }
+}
+
 // Validates the WebGPU Gather kernel's packed-byte path for uint8 (bit-shift/mask read,
 // OR-shift assembly write). Without this test, a non-WebGPU build would only exercise
 // the CPU EP path and miss shader regressions.
