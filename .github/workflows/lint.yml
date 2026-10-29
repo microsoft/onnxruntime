@@ -7,12 +7,31 @@ on:
       - rel-*
   pull_request:
   workflow_dispatch:
+  schedule:
+    - cron: '23 6 * * *'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: true
 
 jobs:
+  lint-action-pins:
+    name: GitHub Actions pinning
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check action SHA pins
+        uses: suzuki-shunsuke/pinact-action@896d595f299e71d65b9d28349d6956abe144390a # v3.0.0
+        with:
+          fix: "false"
+          no_api: ${{ github.event_name != 'schedule' }}
+          verify: ${{ github.event_name == 'schedule' }}
+
   optional-lint:
     name: Optional Lint
     runs-on: ubuntu-latest
@@ -47,7 +66,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Setup Python
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           # Use a version pre-installed in the runner pool's read-only tool cache; requesting an
           # uncached version makes setup-python fail trying to write to /opt/hostedtoolcache.
