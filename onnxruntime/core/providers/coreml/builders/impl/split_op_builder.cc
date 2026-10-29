@@ -63,7 +63,7 @@ Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     std::unique_ptr<Operation> split_op = model_builder.CreateOperation(node, "split");
     AddOperationInput(*split_op, "axis", model_builder.AddScalarConstant(split_op->type(), "axis", axis));
 
-    if (input_defs.size() > 1) {
+    if (input_defs.size() > 1 && input_defs[1]->Exists()) {
       // if "split" is explicitly provided as an input
       const auto& const_init = *model_builder.GetConstantInitializer(input_defs[1]->Name());
       const Initializer unpacked_tensor(model_builder.GetGraphViewer().GetGraph(), const_init,
@@ -107,7 +107,7 @@ Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     auto* coreml_splitnd = layer->mutable_splitnd();
     coreml_splitnd->set_axis(axis);
 
-    if (input_defs.size() > 1) {
+    if (input_defs.size() > 1 && input_defs[1]->Exists()) {
       // if "split" is explicitly provided as an input
       // const auto& split_tensor = *model_builder.GetInitializerTensors().at(input_defs[1]->Name());
       const auto& const_init = *model_builder.GetConstantInitializer(input_defs[1]->Name());

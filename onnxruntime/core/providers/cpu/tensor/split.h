@@ -95,6 +95,12 @@ class SplitBase {
     axis_ = info.template GetAttrOrDefault<int64_t>("axis", 0);
 
     size_t num_inputs = info.GetInputCount();
+    if constexpr (requires { info.node().InputExists(size_t{1}); }) {
+      has_split_input_ = info.node().InputExists(1);
+    } else {
+      has_split_input_ = num_inputs > 1 && info.node().InputDefs()[1]->Exists();
+    }
+
     if (num_inputs == 1) {
       // optional
       if (info.GetAttrs("split", split_sizes_).IsOK()) {
@@ -109,7 +115,7 @@ class SplitBase {
       // the ONNX type/shape inferencing handles the check that num_outputs is > 0
       // ORT_ENFORCE(num_outputs_ != 0, "Invalid value in 'num_outputs' attribute of 0.");
 
-      if (num_outputs_ != -1 && info.GetInputCount() == 2) {
+      if (num_outputs_ != -1 && has_split_input_) {
         ORT_THROW("If 'num_outputs' is specified, the 'split' input should not be provided.");
       }
     }
@@ -118,6 +124,7 @@ class SplitBase {
   const uint32_t opset_;
   int64_t axis_;
   std::vector<int64_t> split_sizes_;
+  bool has_split_input_ = false;
   int64_t split_size_sum_ = -1;
   int64_t num_outputs_ = -1;
 };
