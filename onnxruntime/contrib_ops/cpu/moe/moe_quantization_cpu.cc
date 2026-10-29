@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/cpu/moe/moe_quantization_cpu.h"
+#include "contrib_ops/cpu/moe/qmoe_shared_cpu.h"
 #include "core/framework/allocator.h"
 #include "core/common/float16.h"
 #include "core/mlas/inc/mlas.h"
@@ -630,6 +631,8 @@ Status QMoECPU<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr all
                            /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;
 
+  if (use_shared_layout_) return Status::OK();
+
   if (fc1_expert_weight_bits_ != expert_weight_bits_ ||
       fc2_expert_weight_bits_ != expert_weight_bits_ ||
       fc3_expert_weight_bits_ != expert_weight_bits_) {
@@ -802,6 +805,8 @@ Status QMoECPU<T>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepa
                                              /*out*/ bool& used_shared_buffers) {
   used_shared_buffers = false;
 
+  if (use_shared_layout_) return Status::OK();
+
   auto parse_shape = [&](TensorShape& shape) -> Status {
     if (prepacked_buffers.size() <= 1) {
       return Status::OK();
@@ -943,6 +948,31 @@ QMoECPU<T>::QMoECPU(const OpKernelInfo& op_kernel_info)
     ORT_ENFORCE(block_size_ >= 16, "block_size must be >= 16 when provided.");
     ORT_ENFORCE((block_size_ & (block_size_ - 1)) == 0, "block_size must be a power of 2.");
   }
+
+  quant_type_ = op_kernel_info.GetAttrOrDefault<std::string>("quant_type", "int");
+  const int64_t prepacked = op_kernel_info.GetAttrOrDefault<int64_t>("weights_prepacked", -1);
+  ORT_ENFORCE(prepacked >= -1 && prepacked <= 1, "weights_prepacked must be -1, 0, or 1.");
+  use_shared_layout_ = (quant_type_ == "int" && expert_weight_bits_ == 4 && prepacked == 1);
+  if (use_shared_layout_) {
+    ORT_ENFORCE(block_size_ == 32 || block_size_ == 64 || block_size_ == 128,
+                "Shared CPU QMoE requires block_size 32, 64, or 128.");
+    ORT_ENFORCE(fc1_expert_weight_bits_ == expert_weight_bits_ &&
+                    fc2_expert_weight_bits_ == expert_weight_bits_ &&
+                    fc3_expert_weight_bits_ == expert_weight_bits_,
+                "Shared CPU QMoE does not yet support mixed projection bit widths.");
+    ORT_ENFORCE(activation_type_ == ActivationType::SwiGLU && swiglu_fusion_ == 1 && !use_sparse_mixer_,
+                "Shared CPU QMoE requires interleaved SwiGLU without sparse mixer.");
+    const auto& input_defs = op_kernel_info.node().InputDefs();
+    for (int index = 8; index < static_cast<int>(input_defs.size()); ++index) {
+      if (index == 14) continue;
+      ORT_ENFORCE(!input_defs[index]->Exists(),
+                  "Shared CPU QMoE does not support FC3, explicit zero points, or auxiliary scales.");
+    }
+    use_qnbit_gemm_ = false;
+    return;
+  }
+  ORT_ENFORCE((!std::is_same_v<T, BFloat16>),
+              "CPU bfloat16 QMoE requires a shared layout.");
 
   const auto use_mlas_q4_gemm = ParseEnvironmentVariable<bool>(kUseMlasQ4GemmMoe);
   if (use_mlas_q4_gemm.has_value()) {
@@ -1191,55 +1221,74 @@ Status QMoECPU<T>::PrePackQNBitExperts(const Tensor& tensor, int input_idx, Allo
 
 template <typename T>
 Status QMoECPU<T>::Compute(OpKernelContext* context) const {
-  const ComputeInputs inputs{
-      context->Input<Tensor>(0),
-      context->Input<Tensor>(1),
-      ((packed_fc1_ != nullptr) || (packed_fc1_lut_cache_ != nullptr) || (qnbit_fc1_.packed != nullptr)) ? nullptr : context->Input<Tensor>(2),
-      context->Input<Tensor>(3),
-      context->Input<Tensor>(4),
-      ((packed_fc2_ != nullptr) || (packed_fc2_lut_cache_ != nullptr) || (qnbit_fc2_.packed != nullptr)) ? nullptr : context->Input<Tensor>(5),
-      context->Input<Tensor>(6),
-      context->Input<Tensor>(7),
-      context->Input<Tensor>(8),
-      context->Input<Tensor>(9),
-      context->Input<Tensor>(10),
-      context->Input<Tensor>(11),
-      context->Input<Tensor>(12),
-      context->Input<Tensor>(13),
-      context->Input<Tensor>(14),
-  };
-
-  const bool has_fc1_prepacked = (packed_fc1_ != nullptr) || (packed_fc1_lut_cache_ != nullptr) || (qnbit_fc1_.packed != nullptr);
-  const bool has_fc2_prepacked = (packed_fc2_ != nullptr) || (packed_fc2_lut_cache_ != nullptr) || (qnbit_fc2_.packed != nullptr);
-
-  const TensorShape* fc1_shape_ptr = has_fc1_prepacked ? &fc1_shape_ : (inputs.fc1_experts_weights ? &inputs.fc1_experts_weights->Shape() : nullptr);
-  const TensorShape* fc2_shape_ptr = has_fc2_prepacked ? &fc2_shape_ : (inputs.fc2_experts_weights ? &inputs.fc2_experts_weights->Shape() : nullptr);
-  const TensorShape* fc3_shape_ptr = inputs.fc3_experts_weights ? &inputs.fc3_experts_weights->Shape() : nullptr;
-
-  MoEParameters moe_params;
-  ORT_RETURN_IF_ERROR(moe_helper::CheckInputs<Tensor>(
-      moe_params, inputs.input, inputs.router_probs,
-      fc1_shape_ptr, inputs.fc1_experts_bias, inputs.fc1_scales, inputs.fc1_zero_points,
-      fc2_shape_ptr, inputs.fc2_experts_bias, inputs.fc2_scales, inputs.fc2_zero_points,
-      fc3_shape_ptr, inputs.fc3_experts_bias, inputs.fc3_scales, inputs.fc3_zero_points,
-      moe_helper::MoEWeightBits{fc1_expert_weight_bits_,
-                                fc2_expert_weight_bits_,
-                                fc3_expert_weight_bits_},
-      activation_type_ == ActivationType::SwiGLU,
-      block_size_));
-
-  if (fc1_expert_weight_bits_ != expert_weight_bits_ ||
-      fc2_expert_weight_bits_ != expert_weight_bits_ ||
-      fc3_expert_weight_bits_ != expert_weight_bits_) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "Mixed-width QMoE execution is not yet implemented on CPU.");
+  if (use_shared_layout_) {
+    SharedQMoEAttributes attributes;
+    attributes.quant_type = quant_type_;
+    attributes.weight_bits = expert_weight_bits_;
+    attributes.block_size = block_size_;
+    attributes.top_k = k_;
+    attributes.normalize_routing_weights = normalize_routing_weights_;
+    attributes.activation_alpha = activation_alpha_;
+    attributes.activation_beta = activation_beta_;
+    attributes.swiglu_limit = swiglu_limit_;
+#if !defined(ORT_MINIMAL_BUILD)
+    attributes.track_experts = enable_moe_expert_tracking_;
+#endif
+    return ComputeSharedQMoE(context, attributes);
   }
+  if constexpr (std::is_same_v<T, BFloat16>) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "CPU bfloat16 QMoE requires a shared layout.");
+  } else {
+    const ComputeInputs inputs{
+        context->Input<Tensor>(0),
+        context->Input<Tensor>(1),
+        ((packed_fc1_ != nullptr) || (packed_fc1_lut_cache_ != nullptr) || (qnbit_fc1_.packed != nullptr)) ? nullptr : context->Input<Tensor>(2),
+        context->Input<Tensor>(3),
+        context->Input<Tensor>(4),
+        ((packed_fc2_ != nullptr) || (packed_fc2_lut_cache_ != nullptr) || (qnbit_fc2_.packed != nullptr)) ? nullptr : context->Input<Tensor>(5),
+        context->Input<Tensor>(6),
+        context->Input<Tensor>(7),
+        context->Input<Tensor>(8),
+        context->Input<Tensor>(9),
+        context->Input<Tensor>(10),
+        context->Input<Tensor>(11),
+        context->Input<Tensor>(12),
+        context->Input<Tensor>(13),
+        context->Input<Tensor>(14),
+    };
 
-  if (fc3_shape_ptr || inputs.fc3_experts_bias || inputs.fc3_scales || inputs.fc3_zero_points) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "FC3 gating is not yet implemented on CPU for QMoE");
+    const bool has_fc1_prepacked = (packed_fc1_ != nullptr) || (packed_fc1_lut_cache_ != nullptr) || (qnbit_fc1_.packed != nullptr);
+    const bool has_fc2_prepacked = (packed_fc2_ != nullptr) || (packed_fc2_lut_cache_ != nullptr) || (qnbit_fc2_.packed != nullptr);
+
+    const TensorShape* fc1_shape_ptr = has_fc1_prepacked ? &fc1_shape_ : (inputs.fc1_experts_weights ? &inputs.fc1_experts_weights->Shape() : nullptr);
+    const TensorShape* fc2_shape_ptr = has_fc2_prepacked ? &fc2_shape_ : (inputs.fc2_experts_weights ? &inputs.fc2_experts_weights->Shape() : nullptr);
+    const TensorShape* fc3_shape_ptr = inputs.fc3_experts_weights ? &inputs.fc3_experts_weights->Shape() : nullptr;
+
+    MoEParameters moe_params;
+    ORT_RETURN_IF_ERROR(moe_helper::CheckInputs<Tensor>(
+        moe_params, inputs.input, inputs.router_probs,
+        fc1_shape_ptr, inputs.fc1_experts_bias, inputs.fc1_scales, inputs.fc1_zero_points,
+        fc2_shape_ptr, inputs.fc2_experts_bias, inputs.fc2_scales, inputs.fc2_zero_points,
+        fc3_shape_ptr, inputs.fc3_experts_bias, inputs.fc3_scales, inputs.fc3_zero_points,
+        moe_helper::MoEWeightBits{fc1_expert_weight_bits_,
+                                  fc2_expert_weight_bits_,
+                                  fc3_expert_weight_bits_},
+        activation_type_ == ActivationType::SwiGLU,
+        block_size_));
+
+    if (fc1_expert_weight_bits_ != expert_weight_bits_ ||
+        fc2_expert_weight_bits_ != expert_weight_bits_ ||
+        fc3_expert_weight_bits_ != expert_weight_bits_) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                             "Mixed-width QMoE execution is not yet implemented on CPU.");
+    }
+
+    if (fc3_shape_ptr || inputs.fc3_experts_bias || inputs.fc3_scales || inputs.fc3_zero_points) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "FC3 gating is not yet implemented on CPU for QMoE");
+    }
+
+    return ComputeCommon(context, inputs, moe_params);
   }
-
-  return ComputeCommon(context, inputs, moe_params);
 }
 
 template <typename T>
@@ -2555,6 +2604,10 @@ template QMoECPU<MLFloat16>::QMoECPU(const OpKernelInfo& op_kernel_info);
 template Status QMoECPU<MLFloat16>::Compute(OpKernelContext* context) const;
 template Status QMoECPU<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc, bool& is_packed, PrePackedWeights* prepacked_weights);
 template Status QMoECPU<MLFloat16>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers, gsl::span<const size_t> prepacked_buffer_sizes, int input_idx, bool& used_shared_buffers);
+template QMoECPU<BFloat16>::QMoECPU(const OpKernelInfo& op_kernel_info);
+template Status QMoECPU<BFloat16>::Compute(OpKernelContext* context) const;
+template Status QMoECPU<BFloat16>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc, bool& is_packed, PrePackedWeights* prepacked_weights);
+template Status QMoECPU<BFloat16>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers, gsl::span<const size_t> prepacked_buffer_sizes, int input_idx, bool& used_shared_buffers);
 
 // Kernel Registration
 ONNX_OPERATOR_TYPED_KERNEL_EX(
@@ -2572,6 +2625,14 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<MLFloat16>()),
     QMoECPU<MLFloat16>);
+
+ONNX_OPERATOR_TYPED_KERNEL_EX(
+    QMoE, kMSDomain, 1, BFloat16, kCpuExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<BFloat16>())
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<BFloat16>()),
+    QMoECPU<BFloat16>);
 
 }  // namespace contrib
 }  // namespace onnxruntime
