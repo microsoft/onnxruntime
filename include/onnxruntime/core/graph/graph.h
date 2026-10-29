@@ -1991,6 +1991,8 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
                                        const ArgNameToTypeMap& name_to_type_map);
 
   void ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const;
+  void ToGraphProtoForFileSourceChecker(ONNX_NAMESPACE::GraphProto& graph_proto) const;
+  static void NodeToProtoForFileSourceChecker(const Node& node, ONNX_NAMESPACE::NodeProto& node_proto);
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
@@ -2104,7 +2106,7 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD)
-  // Only file-source injection requires materializing subgraphs before ONNX checking.
+  // File-source graphs use a payload-free subgraph view for ONNX checking.
   bool file_source_initializers_injected_ = false;
 
   IOnnxRuntimeOpSchemaCollectionPtr schema_registry_;

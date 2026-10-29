@@ -3614,6 +3614,54 @@ common::Status Graph::TypeCheckInputsAndInitializers() {
   return Status::OK();
 }
 
+void Graph::NodeToProtoForFileSourceChecker(const Node& node, NodeProto& node_proto) {
+  node.ToProto(node_proto);
+  const auto subgraphs = node.GetAttributeNameToSubgraphMap();
+  for (auto& attribute : *node_proto.mutable_attribute()) {
+    const auto subgraph = subgraphs.find(attribute.name());
+    if (subgraph != subgraphs.end()) {
+      subgraph->second->ToGraphProtoForFileSourceChecker(*attribute.mutable_g());
+    }
+  }
+}
+
+void Graph::ToGraphProtoForFileSourceChecker(GraphProto& graph_proto) const {
+  graph_proto = *graph_proto_;
+  graph_proto.clear_node();
+  GraphViewer viewer{*this};
+  for (const auto index : viewer.GetNodesInTopologicalOrder()) {
+    NodeToProtoForFileSourceChecker(*GetNode(index), *graph_proto.add_node());
+  }
+
+  InlinedHashSet<std::string> inputs;
+  for (const auto& input : graph_proto.input()) {
+    inputs.insert(input.name());
+  }
+  auto& initializers = *graph_proto.mutable_initializer();
+  initializers.erase(
+      std::remove_if(initializers.begin(), initializers.end(),
+                     [&](const TensorProto& tensor) {
+                       ORT_ENFORCE(!utils::HasExternalDataInFile(tensor),
+                                   "File-source initializer was not injected: ", tensor.name());
+                       if (!utils::HasExternalDataInMemory(tensor)) {
+                         return false;
+                       }
+                       ORT_ENFORCE(!tensor.name().empty(), "Tensor initializers must have a non-empty name");
+                       const bool new_input = inputs.insert(tensor.name()).second;
+                       ORT_ENFORCE(IrVersion() > 3 || !new_input,
+                                   tensor.name(), " in initializer but not in graph input");
+                       // Injection already checked these tensors' type, shape and file ranges.
+                       // Rebind their names in the checker view without copying mapped data.
+                       if (new_input) {
+                         auto* input = graph_proto.add_input();
+                         input->set_name(tensor.name());
+                         *input->mutable_type() = utils::TypeProtoFromTensorProto(tensor);
+                       }
+                       return true;
+                     }),
+      initializers.end());
+}
+
 Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
   CheckerContext ctx;
   ctx.set_ir_version(gsl::narrow_cast<int>(IrVersion()));
@@ -3664,7 +3712,11 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
             node.SetOriginalNodeProto(nullptr);
           } else {
             NodeProto node_proto;
-            node.ToProto(node_proto, /*update_subgraphs=*/file_source_initializers_injected_);
+            if (file_source_initializers_injected_) {
+              NodeToProtoForFileSourceChecker(node, node_proto);
+            } else {
+              node.ToProto(node_proto);
+            }
             checker::check_node(node_proto, ctx, lsc);
           }
         }
