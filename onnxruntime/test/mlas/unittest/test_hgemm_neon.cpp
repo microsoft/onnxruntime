@@ -465,6 +465,30 @@ class MlasNeonHGemmBTest : public MlasTestBase {
     Check<M, N>(C, ref, ldc);
   }
 
+  // With beta == 0, C may hold garbage such as NaN and must not leak into the result.
+  template <size_t M, size_t K, size_t N>
+  void TestHGemmNaNC(MLAS_FP16 alpha) {
+    auto InitializeBuffer = [this](MLAS_FP16* buffer, size_t count) {
+      for (size_t i = 0; i < count; i++) {
+        buffer[i] = MLAS_FP16(distrib_(gen_));
+      }
+    };
+    auto FillNaN = [](MLAS_FP16* buffer, size_t count) {
+      std::fill_n(buffer, count, MLAS_FP16(kFp16QuietNaN));
+    };
+
+    const size_t lda = ((K + 7) & ~7);
+    const size_t ldb = ((N + 7) & ~7) + 8;
+    const size_t ldc = ((N + 7) & ~7);
+    const auto* A = A_.GetFilledBuffer(M * lda, InitializeBuffer);
+    const auto* B = B_.GetFilledBuffer(K * ldb, InitializeBuffer);
+    auto* C = C_.GetFilledBuffer(M * ldc, FillNaN);
+    auto* ref = ref_.GetBuffer(M * ldc, true);
+    hgemm_neon::HGemm_B_Kernel(A, B, C, M, N, K, lda, ldb, ldc, alpha.val, MLAS_FP16(0.0f).val);
+    HGemm<M, K, N>(A, B, ref, alpha, MLAS_FP16(0.0f), lda, ldb, ldc);
+    Check<M, N>(C, ref, ldc);
+  }
+
  public:
   MlasNeonHGemmBTest()
       : seed_(172387), gen_(seed_), distrib_(-1.f, 1.f) {
@@ -514,6 +538,16 @@ class MlasNeonHGemmBTest : public MlasTestBase {
     TestHGemmFixed<2, 1, 1>(240.0f, 240.0f, 60000.0f, MLAS_FP16(1.0f), MLAS_FP16(1.0f));
     TestHGemmFixed<2, 1, 1>(100.0f, 50.0f, 60000.0f, MLAS_FP16(1.0f), MLAS_FP16(1.0f));
     TestHGemmFixed<2, 1, 1>(kFp16QuietNaN, 1.0f, 0.0f, MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+
+    // beta == 0 with NaN in C, for both row counts and column tails.
+    TestHGemmNaNC<1, 1, 1>(MLAS_FP16(0.5f));
+    TestHGemmNaNC<2, 1, 1>(MLAS_FP16(1.5f));
+    TestHGemmNaNC<1, 17, 15>(MLAS_FP16(0.5f));
+    TestHGemmNaNC<2, 15, 17>(MLAS_FP16(1.5f));
+    TestHGemmNaNC<1, 33, 31>(MLAS_FP16(2.0f));
+    TestHGemmNaNC<2, 32, 33>(MLAS_FP16(0.5f));
+    TestHGemmNaNC<2, 78, 263>(MLAS_FP16(1.5f));
+    TestHGemmNaNC<2, 17, 15>(MLAS_FP16(1.0f));
   }
 };
 

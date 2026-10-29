@@ -2610,7 +2610,7 @@ endif()
     set_target_properties(onnxruntime_mlas_test PROPERTIES FOLDER "ONNXRuntimeTest")
     if (onnxruntime_RUN_MLAS_TESTS)
       # The full suite is too slow for per-PR ARM64 CI, so focus on architecture-specific activation and FP16 paths.
-      set(onnxruntime_mlas_test_args "--gtest_filter=*FP16*:*Fp16*:Exp.*:Softmax*:Activation*")
+      set(onnxruntime_mlas_test_args "--gtest_filter=*FP16*:*Fp16*:*HGemm*:SveHalfGemm*:Exp.*:Softmax*:Activation*")
       if (onnxruntime_GENERATE_TEST_REPORTS)
         list(APPEND onnxruntime_mlas_test_args
           "--gtest_output=xml:$<SHELL_PATH:$<TARGET_FILE:onnxruntime_mlas_test>.$<CONFIG>.results.xml>")

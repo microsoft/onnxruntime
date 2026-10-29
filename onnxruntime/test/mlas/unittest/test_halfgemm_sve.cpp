@@ -121,6 +121,7 @@ class MlasSveHGemmEdgeTest : public MlasTestBase {
 
   // alpha * A must not be formed in FP16: 65504 * 2 overflows, but
   // alpha * (A x B) = 2 * 65504 / 1024 = 127.9375 is exact.
+  // A is transposed (lda = M) so that K == 1 does not take the NEON fallback.
   void TestAlphaNoOverflow(size_t M, size_t N, float beta) {
     constexpr size_t K = 1;
     const size_t ldc = N + 1;
@@ -131,7 +132,7 @@ class MlasSveHGemmEdgeTest : public MlasTestBase {
     });
     const float expected = MLAS_FP16(127.9375f + beta).ToFloat();
 
-    MlasGemm(CblasNoTrans, CblasNoTrans, M, N, K, A.data(), K, B.data(), N, C, ldc,
+    MlasGemm(CblasTrans, CblasNoTrans, M, N, K, A.data(), M, B.data(), N, C, ldc,
              MLAS_FP16(2.0f).val, MLAS_FP16(beta).val, nullptr);
 
     for (size_t i = 0; i < M; ++i) {
