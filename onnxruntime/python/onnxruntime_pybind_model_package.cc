@@ -23,11 +23,32 @@ namespace py = pybind11;
 
 namespace {
 
+// Translated to FileNotFoundError/OSError; a C++ type is safe to throw with the GIL released.
+struct PackageOsError : std::runtime_error {
+  PackageOsError(const char* message, bool not_found) : std::runtime_error(message), not_found_(not_found) {}
+  bool not_found_;
+};
+
 void CheckPackageStatus(ModelPackageStatus* status) {
   if (status != nullptr) {
     std::unique_ptr<ModelPackageStatus, decltype(&ModelPackageStatus_Release)> owned_status{
         status, ModelPackageStatus_Release};
-    throw std::runtime_error(ModelPackageStatus_Message(owned_status.get()));
+    const char* message = ModelPackageStatus_Message(owned_status.get());
+    switch (ModelPackageStatus_Code(owned_status.get())) {
+      case MODEL_PACKAGE_ERR_NOT_FOUND:
+      case MODEL_PACKAGE_ERR_ASSET_MISSING:
+        throw PackageOsError(message, true);
+      case MODEL_PACKAGE_ERR_IO:
+        throw PackageOsError(message, false);
+      case MODEL_PACKAGE_ERR_SCHEMA:
+      case MODEL_PACKAGE_ERR_VERSION:
+      case MODEL_PACKAGE_ERR_PATH_CONFINEMENT:
+      case MODEL_PACKAGE_ERR_ASSET_HASH_MISMATCH:
+      case MODEL_PACKAGE_ERR_INVALID_ARG:
+        throw std::invalid_argument(message);
+      default:
+        throw std::runtime_error(message);
+    }
   }
 }
 
@@ -112,6 +133,14 @@ class PyModelPackage {
 }  // namespace
 
 void addModelPackageMethods(py::module& m) {
+  py::register_exception_translator([](std::exception_ptr p) {
+    try {
+      if (p) std::rethrow_exception(p);
+    } catch (const PackageOsError& e) {
+      PyErr_SetString(e.not_found_ ? PyExc_FileNotFoundError : PyExc_OSError, e.what());
+    }
+  });
+
   py::enum_<ModelPackageWriteMode>(m, "ModelPackageWriteMode")
       .value("PRESERVE", MODEL_PACKAGE_WRITE_PRESERVE)
       .value("DENSE", MODEL_PACKAGE_WRITE_DENSE);
@@ -233,6 +262,7 @@ void addModelPackageMethods(py::module& m) {
       }, py::arg("source_dir"))
       .def("commit", [](PyModelPackage& self, const std::optional<std::string>& destination,
                         ModelPackageWriteMode mode) {
+        py::gil_scoped_release release;
         CheckPackageStatus(ModelPackage_Commit(self.Get(), OptionalString(destination), mode));
       }, py::arg("dest_root") = std::nullopt, py::arg("mode") = MODEL_PACKAGE_WRITE_PRESERVE,
          "Commit in place, or to an empty destination. Shared asset sources must remain readable until commit.")
@@ -257,11 +287,14 @@ void addModelPackageMethods(py::module& m) {
       .def("get_selected_variant_folder_path", [](const Ort::ModelPackageComponentContext& self) {
         return PathToUTF8String(self.GetSelectedVariantFolderPath());
       })
-      .def("create_session", [](Ort::ModelPackageComponentContext& self, const PySessionOptions* options) {
+      .def("_create_session", [](Ort::ModelPackageComponentContext& self, const PySessionOptions* options) {
         auto snapshot = options ? CreatePySessionOptionsSnapshot(*options) : PySessionOptionsSnapshot{};
         OrtSession* result = nullptr;
-        OrtPybindThrowIfError(ToStatusAndRelease(Ort::GetModelPackageApi().CreateSession(
-          GetOrtEnv(), self, options ? &snapshot.options : nullptr, &result)));
+        {
+          py::gil_scoped_release release;
+          OrtPybindThrowIfError(ToStatusAndRelease(Ort::GetModelPackageApi().CreateSession(
+            GetOrtEnv(), self, options ? &snapshot.options : nullptr, &result)));
+        }
         // The stable C API's OrtSession handle owns an internal InferenceSession.
         std::unique_ptr<InferenceSession> session{reinterpret_cast<InferenceSession*>(result)};
         return std::make_unique<PyInferenceSession>(std::move(session), snapshot);
@@ -287,8 +320,11 @@ void addModelPackageMethods(py::module& m) {
                                     const std::optional<std::string>& base, bool must_exist) {
         return self.ResolveStringRef(base ? base->c_str() : nullptr, ref.c_str(), must_exist);
       }, py::arg("string_ref"), py::arg("base_dir") = std::nullopt, py::arg("must_exist") = false)
-      .def("select_component", &Ort::ModelPackageContext::SelectComponent,
-           py::arg("component_name"), py::arg("options"));
+      .def("select_component", [](const Ort::ModelPackageContext& self, const std::string& component_name,
+                                  const Ort::ModelPackageOptions& options) {
+        py::gil_scoped_release release;
+        return self.SelectComponent(component_name.c_str(), options);
+      }, py::arg("component_name"), py::arg("options"));
 }
 
 }  // namespace onnxruntime::python
