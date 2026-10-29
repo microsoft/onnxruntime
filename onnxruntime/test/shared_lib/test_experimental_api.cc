@@ -6,6 +6,9 @@
 #include "core/session/onnxruntime_experimental_cxx_api.h"
 
 #include "gtest/gtest.h"
+#if defined(GTEST_HAS_ABSL) && !defined(GTEST_NO_ABSL_FLAGS)
+#include "absl/flags/reflection.h"
+#endif
 
 #include <cstdio>
 #include <chrono>
@@ -28,8 +31,14 @@
 #include <fcntl.h>
 #include <unistd.h>
 #endif
+#if defined(__linux__)
+#include <sys/resource.h>
+#endif
 
 #if (defined(_WIN32) || defined(__linux__) || defined(__ANDROID__) || defined(__APPLE__)) && !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
+#if defined(__linux__)
+#include "absl/base/config.h"
+#endif
 #include "core/graph/onnx_protobuf.h"
 #include "test/util/include/scoped_env_vars.h"
 
@@ -123,6 +132,135 @@ ONNX_NAMESPACE::ModelProto MakeExternalInitializerModel(int64_t length, int64_t 
   SetExternalFile(*tensor, "weights.bin", offset);
   return model;
 }
+
+ONNX_NAMESPACE::ModelProto MakeNestedFileSourceModel(int64_t length, int depth,
+                                                     const std::string& location) {
+  auto model = MakeExternalInitializerModel(length, 0);
+  auto* graph = model.mutable_graph();
+  graph->mutable_initializer(0)->mutable_external_data(0)->set_value(location);
+  if (depth == 0) {
+    return model;
+  }
+  graph->clear_initializer();
+  auto* condition = graph->add_input();
+  condition->set_name("condition");
+  auto* type = condition->mutable_type()->mutable_tensor_type();
+  type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+  type->mutable_shape();
+  auto* node = graph->mutable_node(0);
+  node->set_op_type("If");
+  node->clear_input();
+  node->add_input("condition");
+  auto branch = MakeNestedFileSourceModel(length, depth - 1, location);
+  branch.mutable_graph()->clear_input();
+  for (const char* name : {"then_branch", "else_branch"}) {
+    auto* attribute = node->add_attribute();
+    attribute->set_name(name);
+    attribute->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+    attribute->mutable_g()->CopyFrom(branch.graph());
+  }
+  return model;
+}
+
+ONNX_NAMESPACE::ModelProto MakeFileSourceLoopModel(int64_t length, const std::string& location) {
+  auto model = MakeFileSourceTestModel(length);
+  auto* graph = model.mutable_graph();
+  graph->mutable_input(0)->set_name("state");
+  auto* trips = graph->add_initializer();
+  trips->set_name("trips");
+  trips->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  trips->add_int64_data(2);
+  auto* condition = graph->add_initializer();
+  condition->set_name("condition");
+  condition->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+  condition->add_int32_data(1);
+  auto* loop = graph->mutable_node(0);
+  loop->set_op_type("Loop");
+  loop->clear_input();
+  for (const char* name : {"trips", "condition", "state"}) {
+    loop->add_input(name);
+  }
+  auto body_model = MakeExternalInitializerModel(length, 0);
+  auto* body = body_model.mutable_graph();
+  body->set_name("file-source-loop-body");
+  body->mutable_initializer(0)->mutable_external_data(0)->set_value(location);
+  for (const auto& entry : {std::pair{"iteration", ONNX_NAMESPACE::TensorProto_DataType_INT64},
+                            std::pair{"condition_in", ONNX_NAMESPACE::TensorProto_DataType_BOOL}}) {
+    auto* input = body->add_input();
+    input->set_name(entry.first);
+    auto* type = input->mutable_type()->mutable_tensor_type();
+    type->set_elem_type(entry.second);
+    type->mutable_shape();
+  }
+  auto* state = body->add_input();
+  state->CopyFrom(graph->input(0));
+  state->set_name("state_in");
+  auto* add = body->mutable_node(0);
+  add->set_op_type("Add");
+  add->clear_input();
+  add->add_input("state_in");
+  add->add_input("X");
+  add->set_output(0, "state_out");
+  body->mutable_output(0)->set_name("state_out");
+  auto* continue_loop = body->add_node();
+  continue_loop->set_op_type("Identity");
+  continue_loop->add_input("condition_in");
+  continue_loop->add_output("condition_out");
+  auto* condition_out = body->add_output();
+  condition_out->CopyFrom(body->input(1));
+  condition_out->set_name("condition_out");
+  body->mutable_output()->SwapElements(0, 1);
+  auto* attribute = loop->add_attribute();
+  attribute->set_name("body");
+  attribute->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+  attribute->mutable_g()->CopyFrom(*body);
+  return model;
+}
+
+#if defined(__linux__) && GTEST_HAS_DEATH_TEST && !defined(ABSL_HAVE_ADDRESS_SANITIZER) && \
+    !defined(ABSL_HAVE_MEMORY_SANITIZER) && !defined(ABSL_HAVE_THREAD_SANITIZER) &&        \
+    !defined(ABSL_HAVE_HWADDRESS_SANITIZER)
+// Shadow/quarantine memory is not part of the unsanitized payload-copy budget.
+int CheckSubgraphLoadingMemory(int depth) {
+  constexpr size_t kWeightBytes = 32 * 1024 * 1024;
+  constexpr long kMaximumGrowthKiB = kWeightBytes / 2 / 1024;
+  ScopedInitializerDirectory directory;
+  const auto path = directory.path / "weights.bin";
+  {
+    std::ofstream output(path, std::ios::binary);
+    output.exceptions(std::ios::badbit | std::ios::failbit);
+  }
+  std::filesystem::resize_file(path, kWeightBytes);
+  auto file = OpenReadOnlyInitializer(path);
+  const auto handle = NativeFileHandle(file.get());
+  const auto location = directory.path.filename().string() + ".bin";
+  const char* name = location.c_str();
+  auto model = MakeNestedFileSourceModel(kWeightBytes / sizeof(float), depth, location);
+  const auto bytes = model.SerializeAsString();
+  Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "bounded-subgraph-checker"};
+  Ort::SessionOptions options;
+  options.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
+  options.SetIntraOpNumThreads(1);
+  options.SetInterOpNumThreads(1);
+  auto* register_files = Ort::Experimental::
+      Get_OrtApi_SessionOptionsSetExternalInitializerFileHandles_SinceV32_FnOrThrow(&Ort::GetApi());
+  Ort::ThrowOnError(register_files(options, &name, &handle, 1));
+  file.reset();
+  struct rusage before{}, after{};
+  if (getrusage(RUSAGE_SELF, &before) != 0) {
+    throw std::runtime_error("Cannot measure peak resident memory before model loading");
+  }
+  Ort::Session session{env, bytes.data(), bytes.size(), options};
+  if (getrusage(RUSAGE_SELF, &after) != 0) {
+    throw std::runtime_error("Cannot measure peak resident memory after model loading");
+  }
+  const auto growth = after.ru_maxrss - before.ru_maxrss;
+  std::printf("depth=%d, peak growth=%ld KiB, budget=%ld KiB\n",
+              depth, growth, kMaximumGrowthKiB);
+  std::fflush(stdout);
+  return growth < kMaximumGrowthKiB ? 0 : 1;
+}
+#endif
 
 void SetSparseTestData(ONNX_NAMESPACE::SparseTensorProto& sparse, bool external_indices) {
   sparse.add_dims(1);
@@ -691,49 +829,117 @@ TEST_F(ExperimentalCApiTest, FileSourcesInferSubgraphsWithoutWeightPaths) {
   const auto missing_path = directory.path.filename().string() + ".bin";
   ASSERT_FALSE(std::filesystem::exists(missing_path));
   const char* name = missing_path.c_str();
+  Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "subgraph-file-sources"};
+  auto memory = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+  const char* inputs[]{"condition"};
+  const char* outputs[]{"Y"};
+  for (int depth : {1, 3}) {
+    SCOPED_TRACE(depth);
+    auto file = OpenReadOnlyInitializer(path);
+    const auto handle = NativeFileHandle(file.get());
+    Ort::SessionOptions options;
+    options.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
+    Ort::ThrowOnError(fn(options, &name, &handle, 1));
+    file.reset();
+    const auto serialized = MakeNestedFileSourceModel(64, depth, missing_path).SerializeAsString();
+    Ort::Session session{env, serialized.data(), serialized.size(), options};
+    options = Ort::SessionOptions{nullptr};
+    for (bool value : {false, true}) {
+      auto input = Ort::Value::CreateTensor<bool>(memory, &value, 1, nullptr, 0);
+      auto actual = session.Run(Ort::RunOptions{}, inputs, &input, 1, outputs, 1);
+      ASSERT_EQ(actual.size(), 1u);
+      ASSERT_EQ(actual[0].GetTensorTypeAndShapeInfo().GetElementCount(), expected.size());
+      for (size_t i = 0; i < expected.size(); ++i) {
+        EXPECT_FLOAT_EQ(actual[0].GetTensorData<float>()[i], expected[i]);
+      }
+    }
+  }
+}
+
+TEST_F(ExperimentalCApiTest, FileSourcesCheckLoopAndNestedGraphStructure) {
+  auto* fn = Ort::Experimental::
+      Get_OrtApi_SessionOptionsSetExternalInitializerFileHandles_SinceV32_FnOrThrow(api_);
+  ScopedInitializerDirectory directory;
+  const auto path = directory.path / "weights.bin";
+  const std::vector<float> weights(64, 3.25f);
+  {
+    std::ofstream output(path, std::ios::binary);
+    output.exceptions(std::ios::badbit | std::ios::failbit);
+    output.write(reinterpret_cast<const char*>(weights.data()),
+                 static_cast<std::streamsize>(weights.size() * sizeof(float)));
+  }
+  const auto location = directory.path.filename().string() + ".bin";
+  ASSERT_FALSE(std::filesystem::exists(location));
+  const char* name = location.c_str();
   auto file = OpenReadOnlyInitializer(path);
   const auto handle = NativeFileHandle(file.get());
   Ort::SessionOptions options;
   options.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
   Ort::ThrowOnError(fn(options, &name, &handle, 1));
   file.reset();
-  auto model = MakeFileSourceTestModel(64);
-  auto* graph = model.mutable_graph();
-  graph->clear_input();
-  auto* condition = graph->add_input();
-  condition->set_name("condition");
-  auto* condition_type = condition->mutable_type()->mutable_tensor_type();
-  condition_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_BOOL);
-  condition_type->mutable_shape();
-  auto* node = graph->mutable_node(0);
-  node->set_op_type("If");
-  node->clear_input();
-  node->add_input("condition");
-  for (const char* branch : {"then_branch", "else_branch"}) {
-    auto* attribute = node->add_attribute();
-    attribute->set_name(branch);
-    attribute->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
-    auto branch_model = MakeExternalInitializerModel(64, 0);
-    branch_model.mutable_graph()->mutable_initializer(0)->mutable_external_data(0)->set_value(missing_path);
-    attribute->mutable_g()->CopyFrom(branch_model.graph());
-  }
-  const auto serialized = model.SerializeAsString();
-  Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "subgraph-file-sources"};
+  Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "loop-file-sources"};
+  const auto serialized = MakeFileSourceLoopModel(64, location).SerializeAsString();
   Ort::Session session{env, serialized.data(), serialized.size(), options};
-  options = Ort::SessionOptions{nullptr};
   auto memory = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
-  const char* inputs[]{"condition"};
+  const int64_t shape[]{64};
+  std::vector<float> values(64, 1.0f);
+  auto input = Ort::Value::CreateTensor<float>(memory, values.data(), values.size(), shape, 1);
+  const char* inputs[]{"state"};
   const char* outputs[]{"Y"};
-  for (bool value : {false, true}) {
-    auto input = Ort::Value::CreateTensor<bool>(memory, &value, 1, nullptr, 0);
-    auto actual = session.Run(Ort::RunOptions{}, inputs, &input, 1, outputs, 1);
-    ASSERT_EQ(actual.size(), 1u);
-    ASSERT_EQ(actual[0].GetTensorTypeAndShapeInfo().GetElementCount(), expected.size());
-    for (size_t i = 0; i < expected.size(); ++i) {
-      EXPECT_FLOAT_EQ(actual[0].GetTensorData<float>()[i], expected[i]);
-    }
+  auto actual = session.Run(Ort::RunOptions{}, inputs, &input, 1, outputs, 1);
+  ASSERT_EQ(actual.size(), 1u);
+  ASSERT_EQ(actual[0].GetTensorTypeAndShapeInfo().GetElementCount(), weights.size());
+  for (size_t i = 0; i < weights.size(); ++i) {
+    EXPECT_FLOAT_EQ(actual[0].GetTensorData<float>()[i], 7.5f);
+  }
+  auto malformed = MakeNestedFileSourceModel(64, 1, location);
+  malformed.mutable_graph()->mutable_node(0)->mutable_attribute(0)->mutable_g()->clear_name();
+  const auto invalid = malformed.SerializeAsString();
+  try {
+    Ort::Session invalid_session{env, invalid.data(), invalid.size(), options};
+    FAIL() << "The metadata-only view must still reject malformed graph structure";
+  } catch (const Ort::Exception& error) {
+    EXPECT_NE(std::string{error.what()}.find("Field 'name' of 'graph'"), std::string::npos);
   }
 }
+
+#if defined(__linux__) && GTEST_HAS_DEATH_TEST && !defined(ABSL_HAVE_ADDRESS_SANITIZER) && \
+    !defined(ABSL_HAVE_MEMORY_SANITIZER) && !defined(ABSL_HAVE_THREAD_SANITIZER) &&        \
+    !defined(ABSL_HAVE_HWADDRESS_SANITIZER)
+TEST_F(ExperimentalCApiTest, FileSourcesBoundNestedCheckerMemory) {
+#if defined(GTEST_HAS_ABSL) && !defined(GTEST_NO_ABSL_FLAGS)
+  auto* death_test_style_flag = absl::FindCommandLineFlag("gtest_death_test_style");
+  ASSERT_NE(death_test_style_flag, nullptr);
+  const std::string previous_style = death_test_style_flag->CurrentValue();
+  std::string flag_error;
+  ASSERT_TRUE(death_test_style_flag->ParseFrom("threadsafe", &flag_error)) << flag_error;
+#else
+  const auto previous_style = GTEST_FLAG_GET(death_test_style);
+  GTEST_FLAG_SET(death_test_style, "threadsafe");
+#endif
+  // A fresh process makes the high-water mark independent of earlier tests.
+  for (int depth : {1, 3}) {
+    SCOPED_TRACE(depth);
+    EXPECT_EXIT(
+        {
+          int result = 1;
+          try {
+            result = CheckSubgraphLoadingMemory(depth);
+          } catch (const std::exception& error) {
+            std::fprintf(stderr, "%s\n", error.what());
+          }
+          _exit(result);
+        },
+        ::testing::ExitedWithCode(0), "");
+  }
+#if defined(GTEST_HAS_ABSL) && !defined(GTEST_NO_ABSL_FLAGS)
+  flag_error.clear();
+  EXPECT_TRUE(death_test_style_flag->ParseFrom(previous_style, &flag_error)) << flag_error;
+#else
+  GTEST_FLAG_SET(death_test_style, previous_style);
+#endif
+}
+#endif
 
 TEST_F(ExperimentalCApiTest, FileSourcesRejectExternalInitializerConstantCollisions) {
   auto* fn = Ort::Experimental::
