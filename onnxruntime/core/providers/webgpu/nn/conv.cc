@@ -242,8 +242,11 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
     return context.RunProgram(program);
   }
 
-  const auto same_size = is_channels_last && input_height == kernel_height && input_width == kernel_width && pads[0] == 0 && pads[1] == 0;
-  if (same_size || (kernel_height == 1 && kernel_width == 1 && pads[0] == 0 && pads[1] == 0 && strides[0] == 1 && strides[1] == 1)) {
+  const bool no_padding = std::all_of(pads.begin(), pads.end(), [](uint32_t pad) { return pad == 0; });
+  const bool same_size = is_channels_last && input_height == kernel_height && input_width == kernel_width &&
+                         no_padding && dilations[0] == 1 && dilations[1] == 1 &&
+                         output_height == 1 && output_width == 1;
+  if (same_size || (kernel_height == 1 && kernel_width == 1 && no_padding && strides[0] == 1 && strides[1] == 1)) {
     Tensor transposed_kernel;
     TensorShape matmul_a_shape;
     TensorShape matmul_b_shape;
@@ -393,7 +396,8 @@ Status Conv<is_channels_last, is_fused>::PrePackInternal(ComputeContextBase& con
   const int64_t kernel_width = dims[3];
 
   const bool is_1x1_conv =
-      (kernel_height == 1 && kernel_width == 1 && pads[0] == 0 && pads[1] == 0 &&
+      (kernel_height == 1 && kernel_width == 1 &&
+       std::all_of(pads.begin(), pads.end(), [](int64_t pad) { return pad == 0; }) &&
        strides[0] == 1 && strides[1] == 1);
 
   if constexpr (!is_channels_last) {
