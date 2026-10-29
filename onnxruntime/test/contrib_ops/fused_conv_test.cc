@@ -4,6 +4,7 @@
 #include "gtest/gtest.h"
 
 #include <array>
+#include <limits>
 
 #include "core/common/narrow.h"
 #include "core/framework/kernel_registry.h"
@@ -543,6 +544,62 @@ TEST(FusedConvTest, Cpu_NhwcDepthwiseConv2D_SymmetricPadding) {
 
   TestNhwcFusedConvFloatOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
   TestNhwcFusedConvFloatOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
+#endif
+}
+
+TEST(FusedConvTest, Cpu_NhwcDepthwiseConv2D_QuietNaNBias) {
+#if !defined(MLAS_TARGET_ARM64)
+  GTEST_SKIP() << "Float NHWC depthwise fast-path requires Arm64.";
+#else
+  constexpr int64_t height = 8;
+  constexpr int64_t width = 8;
+  constexpr int64_t channels = 8;
+  const vector<int64_t> input_shape = {1, height, width, channels};
+  const vector<int64_t> weight_shape = {channels, 1, 3, 3};
+  const vector<int64_t> pads = {1, 1, 1, 1};
+  const vector<int64_t> strides = {1, 1};
+
+  if (!HasFloatNhwcNoTransposeSupport(input_shape, weight_shape, pads, strides, channels)) {
+    GTEST_SKIP() << "Float NHWC depthwise fast-path is not available on this configuration.";
+  }
+
+  vector<float> input(height * width * channels);
+  vector<float> weights(channels * 3 * 3, 0.0f);
+  vector<float> bias(channels);
+  vector<float> expected_output(input.size());
+  bias[0] = std::numeric_limits<float>::quiet_NaN();
+  for (int64_t channel = 1; channel < channels; ++channel) {
+    bias[channel] = static_cast<float>(channel);
+  }
+
+  for (int64_t channel = 0; channel < channels; ++channel) {
+    const float weight = static_cast<float>(channel + 2);
+    weights[channel * 9 + 4] = weight;
+    for (int64_t pixel = 0; pixel < height * width; ++pixel) {
+      const size_t index = narrow<size_t>(pixel * channels + channel);
+      input[index] = static_cast<float>(pixel + channel + 1);
+      expected_output[index] = input[index] * weight + bias[channel];
+    }
+  }
+
+  const auto run_test = [&](bool bias_is_initializer) {
+    OpTester test("NhwcFusedConv", 1, onnxruntime::kMSDomain);
+    test.AddAttribute("group", channels);
+    test.AddAttribute("kernel_shape", vector<int64_t>{3, 3});
+    test.AddAttribute("pads", pads);
+    test.AddAttribute("strides", strides);
+    test.AddInput<float>("X", input_shape, input);
+    test.AddInput<float>("W", weight_shape, weights, true);
+    test.AddInput<float>("B", {channels}, bias, bias_is_initializer);
+    test.AddOutput<float>("Y", input_shape, expected_output);
+
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    test.ConfigEps(std::move(execution_providers)).RunWithConfig();
+  };
+
+  run_test(true);
+  run_test(false);
 #endif
 }
 
