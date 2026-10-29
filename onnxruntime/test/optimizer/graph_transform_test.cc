@@ -4556,14 +4556,15 @@ TEST_F(GraphTransformationTests, NoFuseNhwcConvGeluForCpuEp) {
   ASSERT_STATUS_OK(RunConvActivationFusion(build_test_case, *logger_, ExpectNotFused("Gelu"), 20));
 }
 
-TEST_F(GraphTransformationTests, NhwcConvActivationFusionPreservesOutputOnCpu) {
+TEST_F(GraphTransformationTests, NhwcConvActivationFusionPreservesOutput) {
   // Build internal NHWC Conv(activation=Relu) -> Tanh to exercise fusion of an
   // already-activated Conv. Input -1 and weight 1 should produce tanh(relu(-1)) = 0;
   // overwriting Relu with Tanh instead produces tanh(-1), approximately -0.761594.
-  // CPU cannot execute internal NHWC Conv directly, so after the actual transform
-  // we map only its type/domain to CPU FusedConv, retaining the resulting attributes.
+  // After the actual transform, map only Conv's type/domain to the shared FusedConv
+  // interface, retaining its attributes. ModelTester runs the result on enabled EPs
+  // that support this model, including WebGPU, rather than always selecting CPU.
   // Shape [1,1,1,1] makes NCHW/NHWC ordering identical, so no tensor transpose is needed.
-  Model model("ConvActivationFusionCpuTest", false, ModelMetaData(), PathString(),
+  Model model("ConvActivationFusionTest", false, ModelMetaData(), PathString(),
               IOnnxRuntimeOpSchemaRegistryList(),
               {{kOnnxDomain, 17}, {kMSDomain, 1}, {kMSInternalNHWCDomain, 17}}, {}, *logger_);
   Graph& graph = model.MainGraph();
@@ -4574,8 +4575,7 @@ TEST_F(GraphTransformationTests, NhwcConvActivationFusionPreservesOutputOnCpu) {
   auto* output = builder.MakeOutput();
   auto& conv = builder.AddNode("Conv", {input, weight}, {conv_out}, kMSInternalNHWCDomain);
   conv.AddAttribute("activation", "Relu");
-  conv.SetExecutionProviderType(kCpuExecutionProvider);
-  builder.AddNode("Tanh", {conv_out}, {output}).SetExecutionProviderType(kCpuExecutionProvider);
+  builder.AddNode("Tanh", {conv_out}, {output});
   builder.SetGraphOutputs();
   ASSERT_STATUS_OK(graph.Resolve());
 
@@ -4594,27 +4594,20 @@ TEST_F(GraphTransformationTests, NhwcConvActivationFusionPreservesOutputOnCpu) {
     }
   }
   ASSERT_EQ(converted_convs, 1);
-  std::string model_data;
-  ASSERT_TRUE(model_proto.SerializeToString(&model_data));
+  Model executable_model(std::move(model_proto), nullptr, *logger_);
+  ASSERT_STATUS_OK(executable_model.MainGraph().Resolve());
+  TemporaryDirectory temporary_dir(ORT_TSTR("NhwcConvActivationFusionPreservesOutput"),
+                                   /*delete_if_exists=*/false);
+  const auto model_path = temporary_dir.Path() + ORT_TSTR("/model.onnx");
+  ASSERT_STATUS_OK(Model::Save(executable_model, model_path));
 
   SessionOptions session_options;
   // Execute the transformer's result without another optimization pass.
   session_options.graph_optimization_level = TransformerLevel::Default;
-  InferenceSessionWrapper session{session_options, GetEnvironment()};
-  ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultCpuExecutionProvider()));
-  ASSERT_STATUS_OK(session.Load(model_data.data(), static_cast<int>(model_data.size())));
-  ASSERT_STATUS_OK(session.Initialize());
-  for (const auto& node : session.GetGraph().Nodes()) {
-    EXPECT_EQ(node.GetExecutionProviderType(), kCpuExecutionProvider);
-  }
-
-  RunOptions run_options;
-  std::vector<OrtValue> fetches;
-  ASSERT_STATUS_OK(session.Run(run_options, builder.feeds_, builder.output_names_, &fetches));
-  ASSERT_EQ(fetches.size(), 1U);
-  const auto& result = fetches[0].Get<Tensor>();
-  ASSERT_EQ(result.Shape().Size(), 1);
-  EXPECT_FLOAT_EQ(result.Data<float>()[0], 0.0f);
+  ModelTester tester("NhwcConvActivationFusionPreservesOutput", model_path, 17);
+  tester.AddInput<float>(input->Name().c_str(), {1, 1, 1, 1}, {-1.0f});
+  tester.AddOutput<float>(output->Name().c_str(), {1, 1, 1, 1}, {0.0f});
+  tester.Config(session_options).RunWithConfig();
 }
 
 #if defined(USE_WEBGPU)
