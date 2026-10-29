@@ -303,8 +303,7 @@ TEST(QDQTransformerTests, DQMatMulNotConvertedToMatMulNBits_ShapeMismatch) {
   // One representative type combo per rejection scenario (type doesn't affect rejection logic).
   // block size too small
   RunDQMatMulNotConverted_TypeShapeMismatch<UInt4x2, true>({12, 37}, {37, 12}, 0, 8, 0);
-  // block size too large
-  RunDQMatMulNotConverted_TypeShapeMismatch<UInt4x2, true>({12, 37}, {37, 12}, 0, 512, 0);
+  // Power-of-two blocks > 256 are fused on the CPU EP (see DQMatMulLargeBlock* tests) but not on CUDA (below).
   // block size not 2's power
   RunDQMatMulNotConverted_TypeShapeMismatch<Int4x2, false>({12, 37}, {37, 12}, 0, 17, 0);
   // not axis 0
@@ -317,8 +316,10 @@ TEST(QDQTransformerTests, DQMatMulNotConvertedToMatMulNBits_ShapeMismatch_Cuda) 
   // One representative type combo per rejection scenario.
   // block size too small
   RunDQMatMulNotConverted_TypeShapeMismatch<UInt4x2, true>({12, 37}, {37, 12}, 0, 8, 0, DefaultCudaExecutionProvider());
-  // block size too large
-  RunDQMatMulNotConverted_TypeShapeMismatch<UInt4x2, true>({12, 37}, {37, 12}, 0, 512, 0, DefaultCudaExecutionProvider());
+  // block size too large (CUDA only: without a CUDA EP this would run on CPU, which fuses blocks > 256)
+  if (auto cuda_ep = DefaultCudaExecutionProvider()) {
+    RunDQMatMulNotConverted_TypeShapeMismatch<UInt4x2, true>({12, 37}, {37, 12}, 0, 512, 0, std::move(cuda_ep));
+  }
   // block size not 2's power
   RunDQMatMulNotConverted_TypeShapeMismatch<Int4x2, false>({12, 37}, {37, 12}, 0, 17, 0, DefaultCudaExecutionProvider());
   // not axis 0
@@ -1468,6 +1469,251 @@ TEST(QDQTransformerTests, DQGemmNotConvertedToMatMulNBits_Alpha) {
                     TransformerLevel::Level2,
                     21 /*opset_version*/,
                     1e-5, 2e-5);
+}
+
+// ---------------------------------------------------------------------------
+// Authored blockwise DQ with block_size > 256 (CPU EP only)
+// ---------------------------------------------------------------------------
+// The CPU MatMulNBits kernel executes power-of-two blocks > 256 as 256-element sub-blocks, so the CPU EP fuses such
+// DQ -> MatMul pairs into a MatMulNBits that keeps the authored block_size. Other EPs keep rejecting them.
+
+struct LargeBlockDQOptions {
+  int64_t M{5};
+  int64_t K{1024};
+  int64_t N{24};
+  int64_t block_size{1024};
+  bool int8_weight{false};
+  bool a16_boundaries{false};  // UINT16 Q/DQ on the MatMul input and output
+  bool a8_branch{false};       // additional UINT8 activation / INT8 weight MatMul sharing the input
+};
+
+static void BuildLargeBlockDQMatMul(ModelTestBuilder& builder, const LargeBlockDQOptions& o) {
+  const int64_t k_blocks = (o.K + o.block_size - 1) / o.block_size;
+  NodeArg* x = builder.MakeInput<float>({o.M, o.K}, -1.0f, 1.0f);
+
+  NodeArg* activation = x;
+  if (o.a16_boundaries) {
+    NodeArg* q = builder.MakeIntermediate();
+    activation = builder.MakeIntermediate();
+    builder.AddQuantizeLinearNode<uint16_t>(x, 0.0004f, static_cast<uint16_t>(32768), q);
+    builder.AddDequantizeLinearNode<uint16_t>(q, 0.0004f, static_cast<uint16_t>(32768), activation);
+  }
+
+  NodeAttributes dq_attrs;
+  utils::SetNodeAttribute(utils::MakeAttribute("axis", static_cast<int64_t>(0)), dq_attrs);
+  utils::SetNodeAttribute(utils::MakeAttribute("block_size", o.block_size), dq_attrs);
+  NodeArg* weight_dq = builder.MakeIntermediate();
+  if (o.int8_weight) {
+    auto* w = builder.MakeInitializer<int8_t>({o.K, o.N}, static_cast<int8_t>(-127), static_cast<int8_t>(127));
+    auto* s = builder.MakeInitializer<float>({k_blocks, o.N}, 0.0002f, 0.001f);
+    auto* zp = builder.MakeInitializer<int8_t>({k_blocks, o.N}, static_cast<int8_t>(-5), static_cast<int8_t>(5));
+    builder.AddNode("DequantizeLinear", {w, s, zp}, {weight_dq}, "", &dq_attrs);
+  } else {
+    auto* w = builder.MakeInitializer<Int4x2>({o.K, o.N}, Int4x2(Int4x2::min_val, 0), Int4x2(Int4x2::max_val, 0));
+    auto* s = builder.MakeInitializer<float>({k_blocks, o.N}, 0.002f, 0.01f);
+    auto* zp = builder.MakeInitializer<Int4x2>({k_blocks, o.N}, Int4x2(-3, 0), Int4x2(3, 0));
+    builder.AddNode("DequantizeLinear", {w, s, zp}, {weight_dq}, "", &dq_attrs);
+  }
+
+  if (o.a16_boundaries) {
+    NodeArg* mm = builder.MakeIntermediate();
+    NodeArg* q = builder.MakeIntermediate();
+    builder.AddNode("MatMul", {activation, weight_dq}, {mm});
+    builder.AddQuantizeLinearNode<uint16_t>(mm, 0.0005f, static_cast<uint16_t>(32768), q);
+    builder.AddDequantizeLinearNode<uint16_t>(q, 0.0005f, static_cast<uint16_t>(32768), builder.MakeOutput());
+  } else {
+    builder.AddNode("MatMul", {activation, weight_dq}, {builder.MakeOutput()});
+  }
+
+  if (o.a8_branch) {
+    NodeArg* q8 = builder.MakeIntermediate();
+    NodeArg* dq8 = builder.MakeIntermediate();
+    builder.AddQuantizeLinearNode<uint8_t>(x, 0.01f, static_cast<uint8_t>(128), q8);
+    builder.AddDequantizeLinearNode<uint8_t>(q8, 0.01f, static_cast<uint8_t>(128), dq8);
+    auto* w8 = builder.MakeInitializer<int8_t>({o.K, 8}, static_cast<int8_t>(-64), static_cast<int8_t>(64));
+    NodeArg* w8_dq = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<int8_t>(w8, 0.0005f, static_cast<int8_t>(0), w8_dq);
+    NodeArg* mm8 = builder.MakeIntermediate();
+    builder.AddNode("MatMul", {dq8, w8_dq}, {mm8});
+    NodeArg* q8_out = builder.MakeIntermediate();
+    builder.AddQuantizeLinearNode<uint8_t>(mm8, 0.05f, static_cast<uint8_t>(128), q8_out);
+    builder.AddDequantizeLinearNode<uint8_t>(q8_out, 0.05f, static_cast<uint8_t>(128), builder.MakeOutput());
+  }
+}
+
+static int64_t MatMulNBitsBlockSize(const Graph& graph) {
+  for (const auto& node : graph.Nodes()) {
+    if (node.OpType() == "MatMulNBits") {
+      return node.GetAttributes().at("block_size").i();
+    }
+  }
+  return -1;
+}
+
+static int CountQuantizedActivations(const Graph& graph, int32_t elem_type, const char* op_type) {
+  int count = 0;
+  for (const auto& node : graph.Nodes()) {
+    if (node.OpType() != op_type) {
+      continue;
+    }
+    const NodeArg* arg = node.OpType() == "QuantizeLinear" ? node.OutputDefs()[0] : node.InputDefs()[0];
+    if (arg->TypeAsProto()->tensor_type().elem_type() == elem_type &&
+        (node.OpType() == "QuantizeLinear" || !graph.GetConstantInitializer(arg->Name(), true))) {
+      ++count;
+    }
+  }
+  return count;
+}
+
+TEST(QDQTransformerTests, DQMatMulLargeBlockConvertedOnCpu) {
+  for (int64_t block_size : {512, 1024, 2048}) {
+    for (int64_t K : {block_size, block_size / 2 + 37, 2 * block_size + 300}) {
+      for (bool int8_weight : {false, true}) {
+        LargeBlockDQOptions o;
+        o.K = K;
+        o.block_size = block_size;
+        o.int8_weight = int8_weight;
+        SCOPED_TRACE(::testing::Message() << "block=" << block_size << " K=" << K << " int8=" << int8_weight);
+        auto check_graph = [&](InferenceSessionWrapper& session) {
+          auto op_to_count = CountOpsInGraph(session.GetGraph());
+          EXPECT_EQ(op_to_count["MatMul"], 0);
+          EXPECT_EQ(op_to_count["com.microsoft.MatMulNBits"], 1);
+          EXPECT_EQ(op_to_count["DequantizeLinear"], 0);
+          EXPECT_EQ(MatMulNBitsBlockSize(session.GetGraph()), block_size);
+        };
+        auto add_session_options = [](SessionOptions& so) {
+          ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel, "1"));
+        };
+        TransformerTester([&](ModelTestBuilder& builder) { BuildLargeBlockDQMatMul(builder, o); }, check_graph,
+                          TransformerLevel::Level1, TransformerLevel::Level2, 21, 1e-4, 1e-4, nullptr,
+                          add_session_options);
+      }
+    }
+  }
+}
+
+TEST(QDQTransformerTests, DQMatMulLargeBlockKeepsAuthoredBlockForAnyBlockSizeOption) {
+  // session.qdq_matmulnbits_block_size only applies to per-tensor / per-channel DQs.
+  for (const char* option : {"0", "32", "-1", "128"}) {
+    LargeBlockDQOptions o;
+    o.K = 2048;
+    SCOPED_TRACE(option);
+    auto check_graph = [&](InferenceSessionWrapper& session) {
+      EXPECT_EQ(MatMulNBitsBlockSize(session.GetGraph()), 1024);
+    };
+    auto add_session_options = [option](SessionOptions& so) {
+      ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel, "1"));
+      ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsQDQMatMulNBitsBlockSize, option));
+    };
+    TransformerTester([&](ModelTestBuilder& builder) { BuildLargeBlockDQMatMul(builder, o); }, check_graph,
+                      TransformerLevel::Level1, TransformerLevel::Level2, 21, 1e-4, 1e-4, nullptr,
+                      add_session_options);
+  }
+}
+
+TEST(QDQTransformerTests, DQMatMulLargeBlockNotConvertedForNonCpuEp) {
+  LargeBlockDQOptions o;
+  for (const char* ep : {kCudaExecutionProvider, kDmlExecutionProvider, ""}) {
+    SCOPED_TRACE(ep);
+    auto pre = [ep](Graph& graph) {
+      for (auto& node : graph.Nodes()) {
+        node.SetExecutionProviderType(ep);
+      }
+      return Status::OK();
+    };
+    auto post = [](Graph& graph) {
+      auto op_to_count = CountOpsInGraph(graph);
+      EXPECT_EQ(op_to_count["com.microsoft.MatMulNBits"], 0);
+      EXPECT_EQ(op_to_count["MatMul"], 1);
+      return Status::OK();
+    };
+    ASSERT_STATUS_OK(TestGraphTransformer([&](ModelTestBuilder& builder) { BuildLargeBlockDQMatMul(builder, o); },
+                                          21, DefaultLoggingManager().DefaultLogger(),
+                                          std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()),
+                                          TransformerLevel::Level2, 1, pre, post));
+  }
+}
+
+// A16 activation DQ -> weight-DQ fusion producing a block-1024 MatMulNBits -> CPU block-256 execution ->
+// retained A16 output QDQ, next to an A8 branch that must keep its QLinearMatMul fusion.
+TEST(QDQTransformerTests, DQMatMulLargeBlockInsideA16BoundariesWithA8Branch) {
+  for (int64_t K : {1024, 2048 + 300}) {
+    LargeBlockDQOptions o;
+    o.K = K;
+    o.a16_boundaries = true;
+    o.a8_branch = true;
+    SCOPED_TRACE(::testing::Message() << "K=" << K);
+    auto check_graph = [](InferenceSessionWrapper& session) {
+      const Graph& graph = session.GetGraph();
+      auto op_to_count = CountOpsInGraph(graph);
+      EXPECT_EQ(op_to_count["MatMul"], 0);
+      EXPECT_EQ(op_to_count["com.microsoft.MatMulNBits"], 1);
+      EXPECT_EQ(op_to_count["QLinearMatMul"], 1);
+      EXPECT_EQ(MatMulNBitsBlockSize(graph), 1024);
+      EXPECT_EQ(CountQuantizedActivations(graph, ONNX_NAMESPACE::TensorProto_DataType_UINT16, "QuantizeLinear"), 2);
+      EXPECT_EQ(CountQuantizedActivations(graph, ONNX_NAMESPACE::TensorProto_DataType_UINT16, "DequantizeLinear"),
+                2);
+      // The A8 input Q remains (QLinearMatMul consumes its quantized output).
+      EXPECT_EQ(CountQuantizedActivations(graph, ONNX_NAMESPACE::TensorProto_DataType_UINT8, "QuantizeLinear"), 1);
+    };
+    auto add_session_options = [](SessionOptions& so) {
+      ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel, "1"));
+    };
+    // One 16-bit output step (0.0005) or one UINT8 step (0.05) for rounding-boundary flips.
+    TransformerTester([&](ModelTestBuilder& builder) { BuildLargeBlockDQMatMul(builder, o); }, check_graph,
+                      TransformerLevel::Level1, TransformerLevel::Level2, 21, 0.051, 0.0, nullptr,
+                      add_session_options);
+  }
+}
+
+// An already authored block-1024 MatMulNBits between UINT16 Q/DQ loads and runs unchanged on CPU, regardless of
+// the DQ fusion block size option.
+TEST(QDQTransformerTests, AuthoredLargeBlockMatMulNBitsInsideA16QDQ) {
+  constexpr int64_t M = 7, K = 1024, N = 64, block_size = 1024;
+  auto build = [](ModelTestBuilder& builder) {
+    NodeArg* x = builder.MakeInput<float>({M, K}, -1.0f, 1.0f);
+    NodeArg* q_in = builder.MakeIntermediate();
+    NodeArg* a = builder.MakeIntermediate();
+    builder.AddQuantizeLinearNode<uint16_t>(x, 0.0004f, static_cast<uint16_t>(32768), q_in);
+    builder.AddDequantizeLinearNode<uint16_t>(q_in, 0.0004f, static_cast<uint16_t>(32768), a);
+
+    auto* b = builder.MakeInitializer<uint8_t>({N, 1, block_size / 2}, static_cast<uint8_t>(0),
+                                               static_cast<uint8_t>(255));
+    auto* scales = builder.MakeInitializer<float>({N, 1}, 0.002f, 0.01f);
+    NodeAttributes attrs;
+    utils::SetNodeAttribute(utils::MakeAttribute("K", K), attrs);
+    utils::SetNodeAttribute(utils::MakeAttribute("N", N), attrs);
+    utils::SetNodeAttribute(utils::MakeAttribute("bits", static_cast<int64_t>(4)), attrs);
+    utils::SetNodeAttribute(utils::MakeAttribute("block_size", block_size), attrs);
+    utils::SetNodeAttribute(utils::MakeAttribute("accuracy_level", static_cast<int64_t>(4)), attrs);
+    NodeArg* mm = builder.MakeIntermediate();
+    builder.AddNode("MatMulNBits", {a, b, scales}, {mm}, kMSDomain, &attrs);
+
+    NodeArg* q_out = builder.MakeIntermediate();
+    builder.AddQuantizeLinearNode<uint16_t>(mm, 0.0005f, static_cast<uint16_t>(32768), q_out);
+    builder.AddDequantizeLinearNode<uint16_t>(q_out, 0.0005f, static_cast<uint16_t>(32768), builder.MakeOutput());
+  };
+
+  for (const char* option : {"", "32", "-1"}) {
+    SCOPED_TRACE(option);
+    auto check_graph = [expected_block_size = block_size](InferenceSessionWrapper& session) {
+      const Graph& graph = session.GetGraph();
+      EXPECT_EQ(MatMulNBitsBlockSize(graph), expected_block_size);
+      EXPECT_EQ(CountQuantizedActivations(graph, ONNX_NAMESPACE::TensorProto_DataType_UINT16, "QuantizeLinear"), 2);
+      EXPECT_EQ(CountQuantizedActivations(graph, ONNX_NAMESPACE::TensorProto_DataType_UINT16, "DequantizeLinear"),
+                2);
+      for (const auto& node : graph.Nodes()) {
+        EXPECT_EQ(node.GetExecutionProviderType(), kCpuExecutionProvider);
+      }
+    };
+    auto add_session_options = [option](SessionOptions& so) {
+      if (*option != '\0') {
+        ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsQDQMatMulNBitsBlockSize, option));
+      }
+    };
+    TransformerTester(build, check_graph, TransformerLevel::Level1, TransformerLevel::Level2, 21, 0.0, 0.0, nullptr,
+                      add_session_options);
+  }
 }
 
 // ---------------------------------------------------------------------------
