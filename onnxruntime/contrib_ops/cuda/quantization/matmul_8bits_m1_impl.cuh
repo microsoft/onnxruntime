@@ -6,6 +6,9 @@
 #include <cuda_bf16.h>
 #include <cuda_fp16.h>
 
+#include <cstdlib>
+#include <type_traits>
+
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cu_inc/cuda_type_helper.cuh"
 #include "contrib_ops/cuda/quantization/matmul_8bits_m1.cuh"
@@ -144,10 +147,176 @@ __global__ void __launch_bounds__(kM1WarpSize8Bits* kM1ColsPerThreadBlock8Bits) 
   if (lane_id == 0) output[n_id] = static_cast<T>(total);
 }
 
+// ---------------------------------------------------------------------------------------------
+// Wide fp16 M=1 kernel.
+//
+// MatMulFloat8bKernelM1 above reads 8 bytes of B per lane per loop iteration and stages the scales
+// in shared memory behind a __syncthreads(), so a warp keeps little memory in flight and pays one
+// extra global round trip before its first weight load. For decode-sized GEMVs (a few MB of
+// weights) that caps it far below DRAM bandwidth: on A100 it reads an 8.4 MB (N=2048, K=4096)
+// weight at ~0.6 TB/s.
+//
+// This kernel gives each warp kCols output columns, has every lane load 16 bytes of B per step and
+// issues kUnroll steps of loads before consuming any of them. Scales and zero points are read
+// straight from global memory (neighbouring lanes share their cache lines), and A is read with
+// 16-byte loads that hit L1. One warp per block keeps the grid fine-grained.
+// ---------------------------------------------------------------------------------------------
+constexpr int kWide8bLaneBytes = 16;                              // bytes of B per lane per step
+constexpr int kWide8bStep = kM1WarpSize8Bits * kWide8bLaneBytes;  // elements of K per warp step
+
+// sum over 16 elements of (q - zp) * a, fp32 accumulation. (q - zp) is exact in fp16.
+__device__ __forceinline__ float Dot16Elements8b(uint4 q, uint8_t zp, const uint4& a0, const uint4& a1) {
+  const uint32_t magic = 0x64646464u;  // fp16 1024.0 + byte, see AccumulateEightElements8b
+  const half2 zp_h2 = __half2half2(__ushort_as_half(static_cast<uint16_t>(0x6400u | zp)));
+  const uint32_t w[4] = {q.x, q.y, q.z, q.w};
+  const uint32_t a[8] = {a0.x, a0.y, a0.z, a0.w, a1.x, a1.y, a1.z, a1.w};
+  float acc = 0.f;
+#pragma unroll
+  for (int i = 0; i < 4; ++i) {
+    const float2 b_lo = __half22float2(__hsub2(bit_cast<half2>(__byte_perm(w[i], magic, 0x4140)), zp_h2));
+    const float2 b_hi = __half22float2(__hsub2(bit_cast<half2>(__byte_perm(w[i], magic, 0x4342)), zp_h2));
+    const float2 a_lo = __half22float2(bit_cast<half2>(a[2 * i]));
+    const float2 a_hi = __half22float2(bit_cast<half2>(a[2 * i + 1]));
+    acc = fmaf(a_lo.x, b_lo.x, acc);
+    acc = fmaf(a_lo.y, b_lo.y, acc);
+    acc = fmaf(a_hi.x, b_hi.x, acc);
+    acc = fmaf(a_hi.y, b_hi.y, acc);
+  }
+  return acc;
+}
+
+template <int block_size, bool has_zero_point, int kCols, int kUnroll>
+__global__ void __launch_bounds__(kM1WarpSize8Bits) MatMulFloat8bKernelM1Wide(
+    half* output, const half* a_data, const uint8_t* b_data_quant, const half* scales_data,
+    const uint8_t* zero_points, int k, int blocks_per_K) {
+  static_assert(block_size % kWide8bLaneBytes == 0, "a 16-byte chunk must not straddle quantization blocks");
+  const int lane = threadIdx.x;
+  const int64_t col0 = static_cast<int64_t>(blockIdx.x) * kCols;
+  float acc[kCols];
+#pragma unroll
+  for (int c = 0; c < kCols; ++c) acc[c] = 0.f;
+
+  for (int k0 = 0; k0 < k; k0 += kWide8bStep * kUnroll) {
+    uint4 q[kUnroll][kCols];
+    half scale[kUnroll][kCols];
+    uint8_t zp[kUnroll][kCols];
+    uint4 a0[kUnroll], a1[kUnroll];
+#pragma unroll
+    for (int u = 0; u < kUnroll; ++u) {
+      const int kk = k0 + u * kWide8bStep + lane * kWide8bLaneBytes;
+      const int block = kk / block_size;
+#pragma unroll
+      for (int c = 0; c < kCols; ++c) {
+        const int64_t col = col0 + c;
+        q[u][c] = __ldg(reinterpret_cast<const uint4*>(b_data_quant + col * k + kk));
+        scale[u][c] = scales_data[col * blocks_per_K + block];
+        zp[u][c] = has_zero_point ? zero_points[col * blocks_per_K + block] : kM1DefaultZeroPoint8Bits;
+      }
+      a0[u] = __ldg(reinterpret_cast<const uint4*>(a_data + kk));
+      a1[u] = __ldg(reinterpret_cast<const uint4*>(a_data + kk + 8));
+    }
+#pragma unroll
+    for (int u = 0; u < kUnroll; ++u) {
+#pragma unroll
+      for (int c = 0; c < kCols; ++c) {
+        acc[c] = fmaf(Dot16Elements8b(q[u][c], zp[u][c], a0[u], a1[u]), __half2float(scale[u][c]), acc[c]);
+      }
+    }
+  }
+
+#pragma unroll
+  for (int c = 0; c < kCols; ++c) {
+    float v = acc[c];
+#pragma unroll
+    for (int offset = kM1WarpSize8Bits / 2; offset > 0; offset >>= 1) v += __shfl_xor_sync(0xffffffffu, v, offset);
+    if (lane == 0) output[col0 + c] = __float2half(v);
+  }
+}
+
+template <int kCols, int kUnroll>
+void LaunchMatMulFloat8bKernelM1Wide(half* output, const half* a_data, const uint8_t* b_data_quant,
+                                     const half* scales_data, const uint8_t* zero_points, int n, int k,
+                                     int block_size, cudaStream_t stream) {
+  const int blocks_per_K = k / block_size;
+  const dim3 blocks(n / kCols);
+#define MATMUL_FLOAT8B_M1_WIDE_DISPATCH(bs)                                                        \
+  if (zero_points != nullptr) {                                                                    \
+    MatMulFloat8bKernelM1Wide<bs, true, kCols, kUnroll><<<blocks, kM1WarpSize8Bits, 0, stream>>>(  \
+        output, a_data, b_data_quant, scales_data, zero_points, k, blocks_per_K);                  \
+  } else {                                                                                         \
+    MatMulFloat8bKernelM1Wide<bs, false, kCols, kUnroll><<<blocks, kM1WarpSize8Bits, 0, stream>>>( \
+        output, a_data, b_data_quant, scales_data, nullptr, k, blocks_per_K);                      \
+  }
+  switch (block_size) {
+    case 16:
+      MATMUL_FLOAT8B_M1_WIDE_DISPATCH(16)
+      break;
+    case 32:
+      MATMUL_FLOAT8B_M1_WIDE_DISPATCH(32)
+      break;
+    case 64:
+      MATMUL_FLOAT8B_M1_WIDE_DISPATCH(64)
+      break;
+    case 128:
+      MATMUL_FLOAT8B_M1_WIDE_DISPATCH(128)
+      break;
+    case 256:
+      MATMUL_FLOAT8B_M1_WIDE_DISPATCH(256)
+      break;
+  }
+#undef MATMUL_FLOAT8B_M1_WIDE_DISPATCH
+}
+
+// Returns false (and launches nothing) when the shape is not covered; the caller then falls back.
+inline bool TryMatMul8BitsM1Wide(half* output, const half* a_data, const uint8_t* b_data_quant,
+                                 const half* scales_data, const uint8_t* zero_points, int n, int k, int block_size,
+                                 cudaStream_t stream) {
+  if (block_size != 16 && block_size != 32 && block_size != 64 && block_size != 128 && block_size != 256) {
+    return false;
+  }
+  if (k % kWide8bStep != 0 || k % block_size != 0) return false;
+  // Long K: one column per warp already keeps enough bytes in flight. Short K: two columns per warp
+  // share each A load. Chosen from A100 measurements at N=2048/K=4096 and N=5120/K=2048.
+  if (k >= 4096) {
+    if (k % (kWide8bStep * 4) == 0) {
+      LaunchMatMulFloat8bKernelM1Wide<1, 4>(output, a_data, b_data_quant, scales_data, zero_points, n, k,
+                                            block_size, stream);
+    } else {
+      LaunchMatMulFloat8bKernelM1Wide<1, 1>(output, a_data, b_data_quant, scales_data, zero_points, n, k,
+                                            block_size, stream);
+    }
+    return true;
+  }
+  if (n % 2 != 0) return false;
+  if (k % (kWide8bStep * 4) == 0) {
+    LaunchMatMulFloat8bKernelM1Wide<2, 4>(output, a_data, b_data_quant, scales_data, zero_points, n, k, block_size,
+                                          stream);
+  } else if (k % (kWide8bStep * 2) == 0) {
+    LaunchMatMulFloat8bKernelM1Wide<2, 2>(output, a_data, b_data_quant, scales_data, zero_points, n, k, block_size,
+                                          stream);
+  } else {
+    LaunchMatMulFloat8bKernelM1Wide<2, 1>(output, a_data, b_data_quant, scales_data, zero_points, n, k, block_size,
+                                          stream);
+  }
+  return true;
+}
+
 template <class T>
 bool TryMatMul8BitsM1(T* output, const T* a_data, const uint8_t* b_data_quant, const T* scales_data,
                       const uint8_t* zero_points, int n, int k, int block_size, size_t shared_mem_per_block,
                       cudaStream_t stream) {
+  if constexpr (std::is_same_v<T, half>) {
+    // ORT_MATMUL_NBITS_8BIT_M1_WIDE=0 keeps the original kernel (A/B comparison). std::getenv rather
+    // than the platform env-var helper, whose header clashes with provider_api.h macros here.
+    static const bool use_wide = [] {
+      const char* v = std::getenv("ORT_MATMUL_NBITS_8BIT_M1_WIDE");
+      return v == nullptr || std::atoi(v) != 0;
+    }();
+    if (use_wide &&
+        TryMatMul8BitsM1Wide(output, a_data, b_data_quant, scales_data, zero_points, n, k, block_size, stream)) {
+      return true;
+    }
+  }
   if (n % kM1ColsPerThreadBlock8Bits != 0 || k % kM1ElementsPerThreadPerIteration8Bits != 0) return false;
   constexpr int k_per_iter = kM1WarpSize8Bits * kM1ElementsPerThreadPerIteration8Bits;
   if (k_per_iter % block_size != 0 || k % block_size != 0) return false;
