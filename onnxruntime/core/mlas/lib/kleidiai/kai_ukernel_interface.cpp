@@ -60,8 +60,13 @@
 //   GEMM/QGEMM
 #include "kai/ukernels/matmul/matmul_clamp_f32_f32p_f32p/kai_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_qmx_mopa.h"
 #include "kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi8cxp/kai_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_qmx_mopa.h"
+#include "kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4c32p/kai_matmul_clamp_f32_qai8dxp1vlx4_qsi4c32p4vlx4_1vlx4vl_qmx_mopa.h"
+#include "kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4c32p/kai_matmul_clamp_f32_qai8dxp1x4_qsi4c32p4vlx4_1x4vl_qmx_dot.h"
+#include "kai/ukernels/matmul/matmul_clamp_f32_qsi8d32p_qai4c32p/kai_matmul_clamp_f32_qsi8d32p1vlx4_qai4c32p4vlx4_1vlx4vl_qmx_mopa.h"
+#include "kai/ukernels/matmul/matmul_clamp_f32_qsi8d32p_qai4c32p/kai_matmul_clamp_f32_qsi8d32p1x4_qai4c32p4vlx4_1x4vl_qmx_dot.h"
 //   IMATMUL
 #include "kai/ukernels/matmul/imatmul_clamp_f32_f32p_f32p/kai_imatmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_qmx_mopa.h"
+#include "kai/ukernels/matmul/imatmul_clamp_f16_f16p_f16p/kai_imatmul_clamp_f16_f16p2vlx2_f16p2vlx2_2vlx2vl_qmx_mopa.h"
 #endif // ENABLE_QMX_KERNELS
 
 // -------------------------------------------------------------------------------------------------
@@ -333,6 +338,23 @@ const KaiDynamicQGemmKernel qgemm_gemm_qmx =
 
 const KaiF32SgemmKernel sgemm_gemm_qmx =
     KAI_WRAP_UKERNEL_RUN_MATMUL_11(matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_qmx_mopa);
+const KaiF16IMatmulKernel imatmul_f16_conv_qmx =
+    KAI_WRAP_UKERNEL_RUN_IMATMUL_PACKED_7(imatmul_clamp_f16_f16p2vlx2_f16p2vlx2_2vlx2vl_qmx_mopa);
+const KaiQnbitGemmKernel qgemm_qai4c32_gemm_qmx =
+    KAI_WRAP_Q4_UKERNEL_RUN_MATMUL_11(matmul_clamp_f32_qai8dxp1vlx4_qsi4c32p4vlx4_1vlx4vl_qmx_mopa,
+                                      KaiQ4RhsPackLayout::SymmetricNxKInterleavedNrx4);
+
+const KaiQnbitGemmKernel qgemv_qai4c32_gemm_qmx =
+    KAI_WRAP_Q4_UKERNEL_RUN_MATMUL_11(matmul_clamp_f32_qai8dxp1x4_qsi4c32p4vlx4_1x4vl_qmx_dot,
+                                      KaiQ4RhsPackLayout::SymmetricNxKInterleavedNrx4);
+
+const KaiQnbitAsymGemmKernel qgemm_qsi8d32_gemm_qmx =
+    KAI_WRAP_Q4_UKERNEL_RUN_MATMUL_11(matmul_clamp_f32_qsi8d32p1vlx4_qai4c32p4vlx4_1vlx4vl_qmx_mopa,
+                                      KaiQ4RhsPackLayout::AsymmetricNxKInterleavedNrx4);
+
+const KaiQnbitAsymGemmKernel qgemv_qsi8d32_gemm_qmx =
+    KAI_WRAP_Q4_UKERNEL_RUN_MATMUL_11(matmul_clamp_f32_qsi8d32p1x4_qai4c32p4vlx4_1x4vl_qmx_dot,
+                                      KaiQ4RhsPackLayout::AsymmetricNxKInterleavedNrx4);
 #endif // ENABLE_QMX_KERNELS
 
 // Gemv kernels do not conform to the same ukernel interface layout
@@ -372,7 +394,14 @@ const KaiF32SgemvKernel sgemm_gemv_sme2 =
 const KaiQnbitGemmKernel& GetKleidiAIGemmUKernel() {
     if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2()) {
         return kai_matmul_clamp_f32_qai8dxp1vlx4_qsi4c32p4vlx4_1vlx4vl_sme2_mopa;
-    } else if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeon_I8MM()) {
+    } 
+#if defined(ENABLE_QMX_KERNELS)
+    if (ArmKleidiAI::vendor_name.compare("Qualcomm") == 0) {
+        KLEIDIAI_KERNEL_LOG("GEMM: Using QMX Kernel");
+        return qgemm_qai4c32_gemm_qmx;
+    }
+#endif // ENABLE_QMX_KERNELS      
+    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeon_I8MM()) {
         return kai_matmul_clamp_f32_qai8dxp4x8_qsi4c32p4x8_16x4x32_neon_i8mm;
     } else {
         return kai_matmul_clamp_f32_qai8dxp4x4_qsi4c32p4x4_16x4_neon_dotprod;
@@ -384,7 +413,14 @@ const KaiQnbitGemmKernel& GetKleidiAIGemvUKernel() {
     // the separate FEAT_DotProd feature.
     if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2()) {
         return kai_matmul_clamp_f32_qai8dxp1x4_qsi4c32p4vlx4_1x4vl_sme2_dot;
-    } else if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeon_I8MM()) {
+    } 
+#if defined(ENABLE_QMX_KERNELS)
+    if (ArmKleidiAI::vendor_name.compare("Qualcomm") == 0) {
+        KLEIDIAI_KERNEL_LOG("GEMV: Using QMX Kernel");
+        return qgemv_qai4c32_gemm_qmx;
+    }
+#endif // ENABLE_QMX_KERNELS    
+    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeon_I8MM()) {
         return kai_matmul_clamp_f32_qai8dxp1x8_qsi4c32p4x8_1x4x32_neon_dotprod;
     } else {
         return kai_matmul_clamp_f32_qai8dxp1x4_qsi4c32p4x4_1x4_neon_dotprod;
@@ -394,7 +430,14 @@ const KaiQnbitGemmKernel& GetKleidiAIGemvUKernel() {
 const KaiQnbitAsymGemmKernel& GetKleidiAIQai4GemmUKernel() {
     if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2()) {
         return kai_matmul_clamp_f32_qsi8d32p1vlx4_qai4c32p4vlx4_1vlx4vl_sme2_mopa;
-    } else if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeon_I8MM()) {
+    } 
+#if defined(ENABLE_QMX_KERNELS)
+    if (ArmKleidiAI::vendor_name.compare("Qualcomm") == 0) {
+        KLEIDIAI_KERNEL_LOG("QAI4 GEMM: Using QMX Kernel");
+        return qgemm_qsi8d32_gemm_qmx;
+    }
+#endif // ENABLE_QMX_KERNELS    
+    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeon_I8MM()) {
         return kai_matmul_clamp_f32_qsi8d32p4x8_qai4c32p4x8_8x4_neon_i8mm;
     } else {
         return kai_matmul_clamp_f32_qsi8d32p4x4_qai4c32p4x4_8x4_neon_dotprod;
@@ -404,7 +447,14 @@ const KaiQnbitAsymGemmKernel& GetKleidiAIQai4GemmUKernel() {
 const KaiQnbitAsymGemmKernel& GetKleidiAIQai4GemvUKernel() {
     if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2()) {
         return kai_matmul_clamp_f32_qsi8d32p1x4_qai4c32p4vlx4_1x4vl_sme2_dot;
-    } else if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeon_I8MM()) {
+    }
+#if defined(ENABLE_QMX_KERNELS)
+    if (ArmKleidiAI::vendor_name.compare("Qualcomm") == 0) {
+        KLEIDIAI_KERNEL_LOG("QAI4 GEMV: Using QMX Kernel");
+        return qgemv_qsi8d32_gemm_qmx;
+    }
+#endif // ENABLE_QMX_KERNELS    
+    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeon_I8MM()) {
         return kai_matmul_clamp_f32_qsi8d32p1x8_qai4c32p4x8_1x4_neon_dotprod;
     } else {
         return kai_matmul_clamp_f32_qsi8d32p1x4_qai4c32p4x4_1x4_neon_dotprod;
@@ -459,7 +509,16 @@ const KaiF16IMatmulKernel& GetKleidiAIF16IMatmulUKernel() {
     if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2()) {
         return imatmul_f16_conv_sme2;
     } else {
+#if defined(ENABLE_QMX_KERNELS)
+        if (ArmKleidiAI::vendor_name.compare("Qualcomm") == 0) {
+            KLEIDIAI_KERNEL_LOG("F16 IMATMUL: Using QMX Kernel");
+            return imatmul_f16_conv_qmx;
+        } else {
+            return imatmul_f16_conv_sme;
+        }
+#else
         return imatmul_f16_conv_sme;
+#endif // ENABLE_QMX_KERNELS
     }
 }
 
