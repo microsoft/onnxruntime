@@ -68,6 +68,37 @@ class VcpkgPipelineCacheTest(unittest.TestCase):
             keys.append(key)
         self.assertEqual(len(keys), len(set(keys)))
 
+    def test_windows_nodejs_builds_use_vcpkg_with_target_specific_caches(self):
+        document = yaml.safe_load(
+            (_PIPELINES / "stages" / "nodejs-win-packaging-stage.yml").read_text(encoding="utf-8")
+        )
+        steps = document["stages"][0]["jobs"][0]["steps"]
+        cache = next(step for step in steps if step.get("template", "").endswith("setup-vcpkg-cache.yml"))
+        key = cache["parameters"]["key"]
+        self.assertIn("${{ parameters.sln_platform }}", key)
+        self.assertIn("$(BuildConfig)", key)
+        self.assertNotIn("$(System.JobName)", key)
+        build = next(step for step in steps if "tools\\ci_build\\build.py" in step.get("powershell", ""))
+        self.assertLess(steps.index(cache), steps.index(build))
+        for flag in ("--use_vcpkg", "--use_vcpkg_ms_internal_asset_cache"):
+            self.assertIn(flag, build["powershell"].split())
+        pipeline = yaml.safe_load(
+            (_PIPELINES / "c-api-noopenmp-packaging-pipelines-cuda13.yml").read_text(encoding="utf-8")
+        )
+        nodejs_stages = [
+            stage["parameters"]
+            for stage in pipeline["extends"]["parameters"]["stages"]
+            if stage.get("template", "").endswith("nodejs-win-packaging-stage.yml")
+        ]
+        self.assertEqual({stage["sln_platform"] for stage in nodejs_stages}, {"x64", "arm64"})
+        for stage in nodejs_stages:
+            with self.subTest(arch=stage["sln_platform"]):
+                self.assertIn("--build_nodejs", stage["BuildCommand"])
+                self.assertIn("--use_dml", stage["BuildCommand"])
+                self.assertIn("--use_webgpu", stage["BuildCommand"])
+        arm64 = next(stage for stage in nodejs_stages if stage["sln_platform"] == "arm64")
+        self.assertIn("--arm64", arm64["BuildCommand"])
+
     def test_vcpkg_build_steps_restore_cache_before_building(self):
         def find_steps(value):
             if isinstance(value, dict):
