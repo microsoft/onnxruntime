@@ -503,8 +503,25 @@ void BufferManager::Upload(CommandRecordingState& recording, void* src, WGPUBuff
   // If the buffer is mapped, we can directly write to it.
   void* mapped_data = wgpuBufferGetMappedRange(dst, 0, WGPU_WHOLE_MAP_SIZE);  // ensure the buffer is mapped
   if (mapped_data) {
-    memcpy(mapped_data, src, size);
+    if (size > 0) {
+      memcpy(mapped_data, src, size);
+    }
     wgpuBufferUnmap(dst);
+    return;
+  }
+
+  if (size == 0) {
+    return;
+  }
+
+  // A100/Vulkan measurements improve through 1 MiB but can regress for larger
+  // transfers. Keep the cap at the largest consistently beneficial measured size.
+  constexpr size_t kMaxQueueUploadSize = 1024 * 1024;
+  if (size <= kMaxQueueUploadSize && recording.graph_capture_state == GraphCaptureState::Default && size % 4 == 0) {
+    // Queue writes copy host bytes before returning. Submit recorded readers first so the write
+    // cannot overtake them; Dawn owns staging lifetimes and can batch subsequent queue work.
+    ORT_THROW_IF_ERROR(context_.Flush(*this, recording));
+    context_.Device().GetQueue().WriteBuffer(wgpu::Buffer{dst}, 0, src, size);
     return;
   }
 

@@ -62,6 +62,12 @@ class SubgroupMatrixMatMulNBitsProgram final : public Program<SubgroupMatrixMatM
   bool has_tail_buffer_;
 };
 
+// Prepack one invocation's input. padded_M must cover every consumer's row tile.
+Status PrepackMatMulNBitsInput(const Tensor* a, uint32_t M, uint32_t K, uint32_t padded_M,
+                               const SubgroupMatrixConfig& config,
+                               onnxruntime::webgpu::ComputeContext& context, Tensor& packed);
+
+// prepacked_a must use the same input and subgroup layout, with sufficient row padding.
 Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales,
                                       const Tensor* zero_points, const Tensor* bias,
                                       uint32_t M,
@@ -74,10 +80,10 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
                                       Tensor* y,
                                       const uint32_t weight_index,
                                       const Tensor* weight_index_indirect = nullptr,
+                                      const Tensor* prepacked_a = nullptr,
                                       const Tensor* lora_t = nullptr,
                                       const Tensor* lora_b = nullptr,
                                       const Tensor* lora_b_scales = nullptr,
-                                      const Tensor* prepacked_a = nullptr,
                                       uint32_t narrow_tile_m = 0);
 
 Status ApplySubgroupMatrixMatMulNBitsQLoRA(

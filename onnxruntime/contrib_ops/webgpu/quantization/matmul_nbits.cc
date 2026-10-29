@@ -66,7 +66,7 @@ Status MatMulNBitsWideTileProgram::GenerateShaderCode(ShaderHelper& shader) cons
       WGSL_TEMPLATE_VARIABLE(output, output), WGSL_TEMPLATE_VARIABLE(scales, scales));
 }
 
-// Apply similar idea with DP4AMatMulNBitsKParallelProgram algorithm.
+// Uses the same K-parallel reduction strategy as DP4AMatMulNBitsKParallelProgram.
 Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& a = shader.AddInput("input_a", ShaderUsage::UseValueTypeAlias);
   const auto& b = shader.AddInput("input_b");
@@ -316,9 +316,9 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
                         const Tensor* bias, int64_t K_op, int64_t N_op, int64_t block_size_op, int64_t accuracy_level,
                         int64_t nbits, onnxruntime::webgpu::ComputeContext& context, Tensor* y,
                         const uint32_t weight_index, const Tensor* weight_index_indirect, uint32_t override_M,
+                        DP4AQuantizedInput* quantized_input,
                         const Tensor* lora_t, const Tensor* lora_b, const Tensor* lora_a_transposed,
-                        Tensor* lora_a_output, const Tensor* lora_b_scales, const Tensor* lora_a_scales,
-                        DP4AQuantizedInput* quantized_input) {
+                        Tensor* lora_a_output, const Tensor* lora_b_scales, const Tensor* lora_a_scales) {
   TensorShape b_shape({N_op, K_op});
   MatMulComputeHelper helper;
   ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape, false, true));
@@ -382,7 +382,7 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
                                         subgroup_matrix_config, M, has_weight_idx_indirect)) {
     return ApplySubgroupMatrixMatMulNBits(a, b, scales, zero_points, bias, M, N, K, static_cast<uint32_t>(nbits),
                                           zero_blocks_per_col, *subgroup_matrix_config, context, y, weight_index,
-                                          weight_index_indirect, lora_t, lora_b, lora_b_scales);
+                                          weight_index_indirect, nullptr, lora_t, lora_b, lora_b_scales);
   }
 
   // On FP32 only GPUs and Qualcomm GPUs, integer math is faster than FP32 therefore always use DP4A independent of
@@ -393,8 +393,8 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
                                     has_weight_idx_indirect, y)) {
     return ApplyDP4AMatrixMatMulNBits(a, b, scales, zero_points, bias, batch_count, M, dispatch_M, N, K, block_size,
                                       zero_blocks_per_col, kMinMForTileOptimization, static_cast<uint32_t>(nbits),
-                                      context, y, weight_index, weight_index_indirect, lora_t, lora_b, nullptr, nullptr,
-                                      lora_b_scales, quantized_input);
+                                      context, y, weight_index, weight_index_indirect, quantized_input, lora_t, lora_b,
+                                      nullptr, nullptr, lora_b_scales);
   }
 
   // This program is optimized for FP32/FP16 Block32 prefill.

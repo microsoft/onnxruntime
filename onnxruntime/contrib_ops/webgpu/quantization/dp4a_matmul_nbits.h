@@ -113,10 +113,10 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
                                   uint32_t K, uint32_t block_size, uint32_t zero_blocks_per_col,
                                   uint32_t min_M_for_tile_optimization, uint32_t nbits,
                                   onnxruntime::webgpu::ComputeContext& context, Tensor* y, const uint32_t weight_index,
-                                  const Tensor* weight_index_indirect = nullptr, const Tensor* lora_t = nullptr,
+                                  const Tensor* weight_index_indirect = nullptr,
+                                  DP4AQuantizedInput* quantized_input = nullptr, const Tensor* lora_t = nullptr,
                                   const Tensor* lora_b = nullptr, const Tensor* lora_at = nullptr,
                                   Tensor* lora_down = nullptr, const Tensor* lora_b_scales = nullptr,
-                                  DP4AQuantizedInput* quantized_input = nullptr,
                                   const Tensor* lora_a_scales = nullptr);
 
 // The optional M / has_weight_idx_indirect / y arguments fold the original

@@ -107,9 +107,10 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
                                   uint32_t K, uint32_t block_size, uint32_t zero_blocks_per_col,
                                   uint32_t min_M_for_tile_optimization, uint32_t nbits,
                                   onnxruntime::webgpu::ComputeContext& context, Tensor* y, const uint32_t weight_index,
-                                  const Tensor* weight_index_indirect, const Tensor* lora_t, const Tensor* lora_b,
+                                  const Tensor* weight_index_indirect, DP4AQuantizedInput* quantized_input,
+                                  const Tensor* lora_t, const Tensor* lora_b,
                                   const Tensor* lora_at, Tensor* lora_down, const Tensor* lora_b_scales,
-                                  DP4AQuantizedInput* quantized_input, const Tensor* lora_a_scales) {
+                                  const Tensor* lora_a_scales) {
   const bool has_qlora_down = lora_at != nullptr;
   ORT_RETURN_IF_NOT(!has_qlora_down || (lora_a_scales && lora_down && a->IsDataType<float>() && nbits == 4 &&
                                         block_size == 32 && M == 1 && dispatch_M == 1 &&

@@ -9,8 +9,10 @@
 namespace onnxruntime {
 namespace contrib {
 namespace webgpu {
-struct DP4AQuantizedInput;
+
 using namespace onnxruntime::webgpu;
+
+struct DP4AQuantizedInput;
 
 class MatMulNBitsWideTileProgram final : public Program<MatMulNBitsWideTileProgram> {
  public:
@@ -133,10 +135,10 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
                         const Tensor* bias, int64_t K_op, int64_t N_op, int64_t block_size_op, int64_t accuracy_level,
                         int64_t bits_op, onnxruntime::webgpu::ComputeContext& context, Tensor* y,
                         const uint32_t weight_index = 0, const Tensor* weight_index_indirect = nullptr,
-                        uint32_t override_M = 0, const Tensor* lora_t = nullptr, const Tensor* lora_b = nullptr,
+                        uint32_t override_M = 0, DP4AQuantizedInput* quantized_input = nullptr,
+                        const Tensor* lora_t = nullptr, const Tensor* lora_b = nullptr,
                         const Tensor* lora_a_transposed = nullptr, Tensor* lora_a_output = nullptr,
-                        const Tensor* lora_b_scales = nullptr, const Tensor* lora_a_scales = nullptr,
-                        DP4AQuantizedInput* quantized_input = nullptr);
+                        const Tensor* lora_b_scales = nullptr, const Tensor* lora_a_scales = nullptr);
 
 }  // namespace webgpu
 }  // namespace contrib

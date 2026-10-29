@@ -252,6 +252,8 @@ MatMulNBitsTiling SelectMatMulNBitsTiling(const SubgroupMatrixConfig& config,
   return {32, 64, 32, 128};
 }
 
+}  // namespace
+
 Status PrepackMatMulNBitsInput(const Tensor* a, uint32_t M, uint32_t K, uint32_t padded_M,
                                const SubgroupMatrixConfig& config, onnxruntime::webgpu::ComputeContext& context,
                                Tensor& packed) {
@@ -270,8 +272,6 @@ Status PrepackMatMulNBitsInput(const Tensor* a, uint32_t M, uint32_t K, uint32_t
   return context.RunProgram(program);
 }
 
-}  // namespace
-
 Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales,
                                       const Tensor* zero_points, const Tensor* bias,
                                       uint32_t M,
@@ -284,10 +284,10 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
                                       Tensor* y,
                                       const uint32_t weight_index,
                                       const Tensor* weight_index_indirect,
+                                      const Tensor* prepacked_a,
                                       const Tensor* lora_t,
                                       const Tensor* lora_b,
                                       const Tensor* lora_b_scales,
-                                      const Tensor* prepacked_a,
                                       uint32_t narrow_tile_m) {
   const bool has_zero_points = zero_points != nullptr;
   const bool has_bias = bias != nullptr;
@@ -435,10 +435,10 @@ Status ApplySubgroupMatrixMatMulNBitsQLoRA(
   ORT_RETURN_IF_ERROR(PrepackMatMulNBitsInput(x, M, K, padded_M, config, context, packed_x));
   ORT_RETURN_IF_ERROR(ApplySubgroupMatrixMatMulNBits(
       x, lora_a, lora_a_scales, nullptr, nullptr, M, 32, K, 8, K / 32, down_config, context, t,
-      0, nullptr, nullptr, nullptr, nullptr, &packed_x, kDownTileM));
+      0, nullptr, &packed_x, nullptr, nullptr, nullptr, kDownTileM));
   return ApplySubgroupMatrixMatMulNBits(
       x, w, scales, nullptr, nullptr, M, N, K, 4, CeilDiv(K / 32, 2u) * 2u, config, context, y,
-      0, nullptr, t, lora_b, lora_b_scales, &packed_x);
+      0, nullptr, &packed_x, t, lora_b, lora_b_scales);
 }
 
 bool CanApplySubgroupMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& context,

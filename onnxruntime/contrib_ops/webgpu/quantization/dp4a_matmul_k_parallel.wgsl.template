@@ -43,9 +43,9 @@ fn write_qlora_output(offset: u32, value: output_element_t) {
 
 const double_tile_size_k_vec = 2 * tile_size_k_vec;
 
-// Precision of the cross-tile accumulator, selected by the
-// "enableMatmulFp32Accumulation" provider option. SDP8AI itself is an exact integer
-// dot product; it is the accumulation over K that can overflow the f16 max (~65504).
+// Narrow outputs use FP32 cross-tile accumulation to limit reduction error;
+// other outputs follow "enableMatmulFp32Accumulation". SDP8AI itself is an exact
+// integer dot product; accumulation over K can overflow the f16 max (~65504).
 #if acc_f32
 alias acc_element_t = f32;
 #else

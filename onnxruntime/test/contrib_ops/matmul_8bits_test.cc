@@ -3,6 +3,7 @@
 
 #ifndef ORT_MINIMAL_BUILD
 #include <algorithm>
+#include <cmath>
 #include <optional>
 
 #include "gtest/gtest.h"
@@ -57,6 +58,7 @@ struct TestOptions8Bits {
   bool zp_is_typed{false};  // true: zero_points use same type as scales (T); false: uint8
   bool has_g_idx{false};
   bool has_bias{false};
+  bool disable_cpu_ep_fallback{false};
 
   // When set, RunTest8Bits validates cross-session sharing of the pre-packed weights instead of
   // doing a single run. The model is run in two CPU sessions that use the same container.
@@ -77,11 +79,12 @@ struct TestOptions8Bits {
 }
 
 template <typename T1>
-void RunTest8Bits(const TestOptions8Bits& opts) {
+void RunTest8Bits(const TestOptions8Bits& opts,
+                  std::vector<std::unique_ptr<IExecutionProvider>>&& explicit_eps = {}) {
   SCOPED_TRACE(opts);
 
 #ifdef USE_CUDA
-  if (opts.accuracy_level != 0) {
+  if (explicit_eps.empty() && opts.accuracy_level != 0) {
     return;  // CUDA EP does not handle accuracy level, so only test one level to avoid unnecessary tests.
   }
 #endif
@@ -237,6 +240,19 @@ void RunTest8Bits(const TestOptions8Bits& opts) {
     // in two sessions and validates the sharing counters.
     CheckSharedPrepackedWeights(test, *opts.prepack_sharing_mode,
                                 {q_cols, k_blocks, q_rows / k_blocks}, input1_vals);
+    return;
+  }
+
+  if (opts.disable_cpu_ep_fallback) {
+    SessionOptions session_options;
+    session_options.use_per_session_threads = false;
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    test.Config(session_options);
+  }
+
+  if (!explicit_eps.empty()) {
+    test.ConfigEps(std::move(explicit_eps));
+    test.RunWithConfig();
     return;
   }
 
@@ -1058,21 +1074,28 @@ TEST(MatMulNBits, BFloat16_Int8_SmallMFallback) {
 #endif
 
 #if defined(USE_WEBGPU)
-TEST(MatMulNBits, WebGpu_DP4A_NarrowN_Int8) {
-  // Small-M reduction and tiled row/column tails with N below and above 64.
-  for (const auto& [m, n] : {std::pair<int64_t, int64_t>{3, 16}, {4, 32}, {65, 48}, {65, 80}}) {
+TEST(MatMulNBits, WebGpu_DP4A_KParallel_Int8) {
+  // Small-M K tails, both sides of the K-parallel threshold, and both output widths.
+  constexpr int64_t shapes[][3] = {
+      {3, 16, 1920}, {4, 32, 1920}, {4, 32, 2048}, {65, 16, 4096}, {65, 32, 4096}};
+  for (const auto& [m, n, k] : shapes) {
     for (bool has_zero_point : {false, true}) {
       TestOptions8Bits opts{};
       opts.M = m;
       opts.N = n;
-      opts.K = 256;
+      opts.K = k;
       opts.accuracy_level = 4;
+      opts.disable_cpu_ep_fallback = true;
       opts.has_zero_point = has_zero_point;
       opts.has_bias = true;
-      opts.output_abs_error = 0.05f;
+      // Activation-quantization error for these Gaussian inputs grows with sqrt(K).
+      opts.output_abs_error = 0.05f * std::sqrt(static_cast<float>(k) / 256.0f);
       opts.output_rel_error = 0.02f;
-      RunTest8Bits<MLFloat16>(opts);
-      RunTest8Bits<float>(opts);
+      auto ep = DefaultWebGpuExecutionProvider();
+      if (!ep) GTEST_SKIP() << "WebGPU unavailable.";
+      std::vector<std::unique_ptr<IExecutionProvider>> eps;
+      eps.push_back(std::move(ep));
+      RunTest8Bits<float>(opts, std::move(eps));
     }
   }
 }

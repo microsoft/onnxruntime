@@ -159,7 +159,7 @@ class MatMulNBitsQLoRA final : public WebGpuKernel {
       ORT_RETURN_IF_ERROR(ApplyDP4AMatrixMatMulNBits(
           x, w, s, nullptr, nullptr, narrow<uint32_t>(x->Shape().Size() / k_), 1, 1, narrow<uint32_t>(n_),
           narrow<uint32_t>(k_), 32, narrow<uint32_t>(k_ / 32), kMinMForTileOptimization, 4, context, &base, 0, nullptr,
-          nullptr, nullptr, aq, &t, nullptr, nullptr, as));
+          nullptr, nullptr, nullptr, aq, &t, nullptr, as));
       return ApplyQLoRAOutput(context, &base, &t, bq, bs, y);
     }
     // For one input vector, append four rank-reduction workgroups to the generic
@@ -168,7 +168,7 @@ class MatMulNBitsQLoRA final : public WebGpuKernel {
     if (joint_down) {
       auto base = context.CreateGPUTensor(y->DataType(), y->Shape());
       ORT_RETURN_IF_ERROR(ApplyMatMulNBits(x, w, s, nullptr, nullptr, k_, n_, 32, accuracy_level_, 4, context, &base, 0,
-                                           nullptr, 0, nullptr, nullptr, aq, &t, nullptr, as));
+                                           nullptr, 0, nullptr, nullptr, nullptr, aq, &t, nullptr, as));
       return ApplyQLoRAOutput(context, &base, &t, bq, bs, y);
     }
     // FP32 small-M prefill can use the existing DP4A down kernel and share
@@ -180,16 +180,14 @@ class MatMulNBitsQLoRA final : public WebGpuKernel {
             : 0;
     DP4AQuantizedInput quantized_x;
     ORT_RETURN_IF_ERROR(ApplyMatMulNBits(x, aq, as, nullptr, nullptr, k_, 32, 32, down_accuracy, 8, context, &t, 0,
-                                         nullptr, 0, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-                                         &quantized_x));
+                                         nullptr, 0, &quantized_x));
     if (fuse_up) {
-      return ApplyMatMulNBits(x, w, s, nullptr, nullptr, k_, n_, 32, accuracy_level_, 4, context, y, 0, nullptr, 0, &t,
-                              bq, nullptr, nullptr, bs, nullptr, &quantized_x);
+      return ApplyMatMulNBits(x, w, s, nullptr, nullptr, k_, n_, 32, accuracy_level_, 4, context, y, 0, nullptr, 0,
+                              &quantized_x, &t, bq, nullptr, nullptr, bs);
     }
     auto base = context.CreateGPUTensor(y->DataType(), y->Shape());
     ORT_RETURN_IF_ERROR(ApplyMatMulNBits(x, w, s, nullptr, nullptr, k_, n_, 32, accuracy_level_, 4, context, &base, 0,
-                                         nullptr, 0, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-                                         &quantized_x));
+                                         nullptr, 0, &quantized_x));
     return ApplyQLoRAOutput(context, &base, &t, bq, bs, y);
   }
 

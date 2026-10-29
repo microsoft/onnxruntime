@@ -7,6 +7,7 @@
 
 #include <cmath>
 
+#include "core/graph/constants.h"
 #include "core/graph/graph.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
@@ -73,6 +74,38 @@ bool HasPerTensorQuantizationParams(const Node* node, bool allow_1d) {
   const auto& inputs = node->InputDefs();
   return is_supported(*inputs[1]) &&
          (inputs.size() < 3 || !inputs[2]->Exists() || is_supported(*inputs[2]));
+}
+
+bool HasSupportedQLinearMatMulBParams(const Node* node) {
+  if (HasPerTensorQuantizationParams(node, true)) {
+    return true;
+  }
+
+  const auto& inputs = node->InputDefs();
+  const auto* b_shape = inputs[0]->Shape();
+
+  if (!b_shape || b_shape->dim_size() != 2 ||
+      !b_shape->dim(1).has_dim_value()) {
+    return false;
+  }
+
+  // Per-column quantization must use B's last dimension.
+  const auto* axis_attr = graph_utils::GetNodeAttribute(*node, "axis");
+  const int64_t axis = axis_attr ? axis_attr->i() : 1;
+  if (axis != 1 && axis != -1) {
+    return false;
+  }
+
+  const int64_t n = b_shape->dim(1).dim_value();
+  const auto has_n_elements = [n](const NodeArg* arg) {
+    const auto* shape = arg->Shape();
+    return shape && shape->dim_size() == 1 && shape->dim(0).has_dim_value() &&
+           shape->dim(0).dim_value() == n;
+  };
+
+  return has_n_elements(inputs[1]) &&
+         (inputs.size() < 3 || !inputs[2]->Exists() ||
+          has_n_elements(inputs[2]));
 }
 }  // namespace
 
@@ -751,11 +784,32 @@ bool MatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node&
       return false;
     }
 
+    // QLinearMatMul only supports per-tensor quantization for A and Y. B may
+    // use per-column quantization, but the DQ axis is not carried into
+    // QLinearMatMul and must already describe that same last dimension.
+    if (check_qlinear_matmul_params_ &&
+        (!HasPerTensorQuantizationParams(dq_nodes[0], true) ||
+         !HasSupportedQLinearMatMulBParams(dq_nodes[1]) ||
+         !HasPerTensorQuantizationParams(q_nodes[0], true))) {
+      return false;
+    }
+
     int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
     return dt_input == dt_output;
   } else {
     // can be converted to MatMulIntegerToFloat if EP supports that.
-    return matmulintegertofloat_allowed_;
+    if (!matmulintegertofloat_allowed_ || !Is8BitIntType(dt_input) || !Is8BitIntType(dt_weight)) {
+      return false;
+    }
+
+    // Scales and output share one floating type; the CPU kernel only supports FLOAT.
+    const int32_t dt_scale_a = dq_nodes[0]->InputDefs()[1]->TypeAsProto()->tensor_type().elem_type();
+    const int32_t dt_scale_b = dq_nodes[1]->InputDefs()[1]->TypeAsProto()->tensor_type().elem_type();
+    const int32_t dt_output = node.OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+    return dt_scale_a == dt_output && dt_scale_b == dt_output &&
+           (dt_output == ONNX_NAMESPACE::TensorProto::FLOAT ||
+            (dt_output == ONNX_NAMESPACE::TensorProto::FLOAT16 &&
+             node.GetExecutionProviderType() != kCpuExecutionProvider));
   }
 }
 
