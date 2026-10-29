@@ -20,6 +20,52 @@
 namespace onnxruntime {
 namespace test {
 
+static void RunWebGpuEmptyPoolTest(const char* op_type, int opset,
+                                   const std::vector<int64_t>& input_shape,
+                                   const std::vector<int64_t>& kernel_shape,
+                                   const std::vector<int64_t>& output_shape,
+                                   bool count_include_pad = false) {
+  for (bool is_nhwc : {false, true}) {
+    SCOPED_TRACE(is_nhwc ? "NHWC" : "NCHW");
+    auto webgpu_ep = DefaultWebGpuExecutionProvider(is_nhwc);
+    if (webgpu_ep == nullptr) {
+      GTEST_SKIP() << "WebGPU EP is not available in this build.";
+    }
+
+    OpTester test(op_type, opset);
+    if (!kernel_shape.empty()) {
+      test.AddAttribute("kernel_shape", kernel_shape);
+    }
+    if (count_include_pad) {
+      test.AddAttribute("count_include_pad", int64_t{1});
+    }
+    test.AddInput<float>("X", input_shape, std::vector<float>(TensorShape(input_shape).Size(), 1.0f));
+    test.AddOutput<float>("Y", output_shape, {});
+
+    SessionOptions options;
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    test.Config(options).ConfigEp(std::move(webgpu_ep)).RunWithConfig();
+  }
+}
+
+TEST(PoolTest, AveragePool_EmptyOutput_WebGpu) {
+  // Cover both serial and parallel-reduction dispatch selection, including issue #32841.
+  RunWebGpuEmptyPoolTest("AveragePool", 19, {1, 6, 1, 3}, {2, 2}, {1, 6, 0, 2});
+  RunWebGpuEmptyPoolTest("AveragePool", 17, {1, 6, 64, 64}, {65, 65}, {1, 6, 0, 0}, true);
+}
+
+TEST(PoolTest, MaxPool_EmptyOutput_WebGpu) {
+  RunWebGpuEmptyPoolTest("MaxPool", 12, {1, 6, 1, 3}, {2, 2}, {1, 6, 0, 2});
+  RunWebGpuEmptyPoolTest("MaxPool", 12, {1, 6, 64, 64}, {65, 65}, {1, 6, 0, 0});
+}
+
+TEST(PoolTest, EmptyBatch_WebGpu) {
+  RunWebGpuEmptyPoolTest("AveragePool", 19, {0, 4, 3, 3}, {2, 2}, {0, 4, 2, 2});
+  RunWebGpuEmptyPoolTest("MaxPool", 12, {0, 4, 3, 3}, {2, 2}, {0, 4, 2, 2});
+  RunWebGpuEmptyPoolTest("GlobalAveragePool", 13, {0, 4, 3, 3}, {}, {0, 4, 1, 1});
+  RunWebGpuEmptyPoolTest("GlobalMaxPool", 13, {0, 4, 3, 3}, {}, {0, 4, 1, 1});
+}
+
 TEST(PoolTest, AveragePool_19_ceil_count_include_pad_1d_WebGpu) {
   auto webgpu_ep = DefaultWebGpuExecutionProvider();
   if (webgpu_ep == nullptr) {
