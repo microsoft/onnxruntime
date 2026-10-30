@@ -36,8 +36,9 @@ if ($TARGET -ne "node" -and $Args.Count -gt 3) {
     throw "Invalid argument count: $($Args.Count). Only 3 arguments are allowed for target '$TARGET'"
 }
 $VERSION_CANDIDATES=$Args[3] # optional, only for node target
-if ($TARGET -eq "node" -and $Args.Count -gt 4) {
-    throw "Invalid argument count: $($Args.Count). Only 4 arguments are allowed for target '$TARGET'"
+$SIGNED_NUGET_DIR=$Args[4] # optional, only for node target
+if ($TARGET -eq "node" -and $Args.Count -gt 5) {
+    throw "Invalid argument count: $($Args.Count). Only 5 arguments are allowed for target '$TARGET'"
 }
 
 Function Generate-Package-Version-Number {
@@ -64,6 +65,128 @@ Function Generate-Package-Version-Number {
 
 $JS_COMMON_DIR=Join-Path -Path "$ORT_ROOT" -ChildPath "js/common"
 $JS_TARGET_DIR=Join-Path -Path "$ORT_ROOT" -ChildPath "js/$TARGET"
+
+Function Write-Node-NuGet-Integrity-Metadata {
+    if ($TARGET -ne "node") {
+        return
+    }
+
+    $metadataVersionsPath=Join-Path -Path "$JS_TARGET_DIR" -ChildPath "script/install-metadata-versions.js"
+    $metadataVersionsRequirePath=$metadataVersionsPath.Replace('\', '/')
+    $metadataVersions=node -p "JSON.stringify(require('$metadataVersionsRequirePath'))" | ConvertFrom-Json
+    $packageNames=@(
+        "Microsoft.ML.OnnxRuntime.Gpu.Linux"
+    )
+    $feedIndexes=@{
+        nuget="https://api.nuget.org/v3/index.json"
+        nuget_nightly="https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/nuget/v3/index.json"
+    }
+    $integrity=@{}
+    $availableCandidates=[System.Collections.ArrayList]::new()
+
+    Function Get-File-Sha512Integrity([string]$Path) {
+        $hash=(Get-FileHash -Path $Path -Algorithm SHA512).Hash
+        $bytes=[byte[]]::new($hash.Length / 2)
+        for ($i=0; $i -lt $bytes.Length; $i++) {
+            $bytes[$i]=[Convert]::ToByte($hash.Substring($i * 2, 2), 16)
+        }
+        return "sha512-$([Convert]::ToBase64String($bytes))"
+    }
+
+    Function Add-Candidate([string]$Feed, [string]$Version, [string]$PackagePath) {
+        $versionKey=$Version.ToLower()
+        $packageKey="microsoft.ml.onnxruntime.gpu.linux"
+        if ($availableCandidates | Where-Object { $_.feed -eq $Feed -and $_.version -eq $Version }) {
+            return
+        }
+
+        $null=$availableCandidates.Add(@{
+            feed=$Feed
+            version=$Version
+        })
+        $integrity["$packageKey@$versionKey"]=Get-File-Sha512Integrity $PackagePath
+    }
+
+    if ($SIGNED_NUGET_DIR) {
+        $signedPackages=@(Get-ChildItem -Path $SIGNED_NUGET_DIR -Recurse -File |
+            Where-Object { $_.Name -match '^Microsoft\.ML\.OnnxRuntime\.Gpu\.Linux\.(?<version>.+)\.nupkg$' })
+        if ($signedPackages.Count -ne 1) {
+            throw "Expected one signed Microsoft.ML.OnnxRuntime.Gpu.Linux package in $SIGNED_NUGET_DIR, found $($signedPackages.Count)"
+        }
+        $signedPackage=$signedPackages[0]
+
+        $signedPackageMatch=[regex]::Match(
+            $signedPackage.Name,
+            '^Microsoft\.ML\.OnnxRuntime\.Gpu\.Linux\.(?<version>.+)\.nupkg$')
+        $signedFeed=if ($MODE -eq "dev") { "nuget_nightly" } else { "nuget" }
+        Add-Candidate $signedFeed $signedPackageMatch.Groups["version"].Value $signedPackage.FullName
+    }
+
+    foreach ($candidate in $metadataVersions.nuget) {
+        if ($availableCandidates | Where-Object { $_.feed -eq $candidate.feed -and $_.version -eq $candidate.version }) {
+            continue
+        }
+
+        $feedIndex=$feedIndexes[$candidate.feed]
+        if (-not $feedIndex) {
+            throw "Unsupported NuGet feed for Node installer integrity metadata: $($candidate.feed)"
+        }
+
+        $tempPackage=$null
+        try {
+            $nugetIndex=Invoke-RestMethod -Uri $feedIndex -UseBasicParsing
+            $packageBase=($nugetIndex.resources |
+                Where-Object { $_.'@type' -eq 'PackageBaseAddress/3.0.0' } |
+                Select-Object -First 1).'@id'
+            if (-not $packageBase) {
+                throw "Failed to find PackageBaseAddress in NuGet index"
+            }
+
+            $packageKey="microsoft.ml.onnxruntime.gpu.linux"
+            $versionKey=$candidate.version.ToLower()
+            $packageUrl="$packageBase$packageKey/$versionKey/$packageKey.$versionKey.nupkg"
+            $tempPackage=Join-Path ([System.IO.Path]::GetTempPath()) "$packageKey.$versionKey.$PID.nupkg"
+            Invoke-WebRequest -Uri $packageUrl -OutFile $tempPackage -UseBasicParsing
+            Add-Candidate $candidate.feed $candidate.version $tempPackage
+        } catch {
+            Write-Warning "Skipping unavailable Node installer package $($candidate.version) from $($candidate.feed): $($_.Exception.Message)"
+        } finally {
+            if ($tempPackage) {
+                Remove-Item -Path $tempPackage -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
+
+    if ($availableCandidates.Count -eq 0) {
+        throw "No downloadable NuGet package with SHA-512 integrity metadata is available for onnxruntime-node"
+    }
+
+    $versionsJson=@{ nuget=$availableCandidates } | ConvertTo-Json -Compress
+    $versionsFileContent=@"
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+// This file is generated by /js/scripts/update-version.ts and finalized by
+// tools/ci_build/github/js/pack-npm-packages.ps1.
+// Do not modify file content manually.
+
+module.exports = $versionsJson;
+"@
+    [System.IO.File]::WriteAllText($metadataVersionsPath, $versionsFileContent, [System.Text.UTF8Encoding]::new($false))
+
+    $integrityJson=$integrity | ConvertTo-Json -Compress
+    $integrityFileContent=@"
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+// This file is generated by tools/ci_build/github/js/pack-npm-packages.ps1.
+// Published onnxruntime-node packages must contain the SHA-512 digest of every downloaded NuGet package.
+
+module.exports = $integrityJson;
+"@
+    $integrityPath=Join-Path -Path "$JS_TARGET_DIR" -ChildPath "script/install-metadata-integrity.js"
+    [System.IO.File]::WriteAllText($integrityPath, $integrityFileContent, [System.Text.UTF8Encoding]::new($false))
+}
 
 if ($MODE -eq "dev") {
     # For @dev builds, we compares the following 2 package versions for onnxruntime-common:
@@ -184,6 +307,7 @@ if ($MODE -eq "dev") {
     npm run format
     popd
 
+    Write-Node-NuGet-Integrity-Metadata
     npm pack
     popd
 } elseif ($MODE -eq "release") {
@@ -192,6 +316,7 @@ if ($MODE -eq "dev") {
     npm pack
     popd
     pushd $JS_TARGET_DIR
+    Write-Node-NuGet-Integrity-Metadata
     npm pack
     popd
 } else {
@@ -219,6 +344,7 @@ if ($MODE -eq "dev") {
     npm run format
     popd
 
+    Write-Node-NuGet-Integrity-Metadata
     npm pack
     popd
 }

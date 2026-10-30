@@ -5,6 +5,7 @@
 
 const fs = require('fs');
 const https = require('https');
+const crypto = require('crypto');
 const { execFileSync } = require('child_process');
 const path = require('path');
 const os = require('os');
@@ -83,14 +84,44 @@ async function downloadJson(url) {
   });
 }
 
+function parseSha512Integrity(integrity) {
+  const match = /^sha512-([A-Za-z0-9+/]+={0,2})$/.exec(integrity ?? '');
+  if (!match) {
+    throw new Error(`Missing or invalid SHA-512 integrity metadata for downloaded package`);
+  }
+
+  const expected = Buffer.from(match[1], 'base64');
+  if (expected.length !== 64) {
+    throw new Error(`Missing or invalid SHA-512 integrity metadata for downloaded package`);
+  }
+
+  return expected;
+}
+
+async function verifyFileIntegrity(filepath, integrity) {
+  const expected = parseSha512Integrity(integrity);
+  const hash = crypto.createHash('sha512');
+  await new Promise((resolve, reject) => {
+    const input = fs.createReadStream(filepath);
+    input.on('data', (chunk) => hash.update(chunk));
+    input.on('end', resolve);
+    input.on('error', reject);
+  });
+
+  const actual = hash.digest();
+  if (actual.length !== expected.length || !crypto.timingSafeEqual(actual, expected)) {
+    throw new Error(`SHA-512 integrity check failed for downloaded package`);
+  }
+}
+
 async function installPackages(packages, manifests, feeds) {
   // Step.1: resolve packages
   const resolvedPackages = new Map();
   for (const packageCandidates of packages) {
     // iterate all candidates from packagesInfo and try to find the first one that exists
-    for (const { feed, version } of packageCandidates.versions) {
+    for (const { feed, version, integrity } of packageCandidates.versions) {
       const { type, index } = feeds[feed];
-      const pkg = await resolvePackage(type, index, packageCandidates.name, version);
+      const pkg = await resolvePackage(type, index, packageCandidates.name, version, integrity);
       if (pkg) {
         resolvedPackages.set(packageCandidates, pkg);
         break;
@@ -108,7 +139,13 @@ async function installPackages(packages, manifests, feeds) {
   }
 }
 
-async function resolvePackage(type, index, packageName, version) {
+function hasPackageVersion(packageInfo, version) {
+  return packageInfo?.versions?.includes(version.toLowerCase()) === true;
+}
+
+async function resolvePackage(type, index, packageName, version, integrity) {
+  parseSha512Integrity(integrity);
+
   // https://learn.microsoft.com/en-us/nuget/api/overview
   const nugetPackageUrlResolver = async (index, packageName, version) => {
     // STEP.1 - get Nuget package index
@@ -125,8 +162,8 @@ async function resolvePackage(type, index, packageName, version) {
 
     // STEP.3 - get the package version info
     const packageInfo = await downloadJson(`${packageBaseUrl}${packageName.toLowerCase()}/index.json`);
-    if (!packageInfo.versions.includes(version.toLowerCase())) {
-      throw new Error(`Failed to find specific package versions for ${packageName} in ${index}`);
+    if (!hasPackageVersion(packageInfo, version)) {
+      return null;
     }
 
     // STEP.4 - generate the package URL
@@ -149,6 +186,7 @@ async function resolvePackage(type, index, packageName, version) {
           // Download the NuGet package
           console.log(`Downloading ${packageUrl}`);
           await downloadFile(packageUrl, packageFilePath);
+          await verifyFileIntegrity(packageFilePath, integrity);
 
           // Load the NuGet package (which is a ZIP file)
           let zip;
@@ -301,6 +339,8 @@ function parseInstallCudaFlag() {
 }
 
 module.exports = {
+  hasPackageVersion,
   installPackages,
   parseInstallFlag,
+  verifyFileIntegrity,
 };

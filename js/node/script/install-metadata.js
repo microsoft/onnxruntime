@@ -4,6 +4,13 @@
 'use strict';
 
 const metadataVersions = require('./install-metadata-versions.js');
+const metadataIntegrity = require('./install-metadata-integrity.js');
+
+const getPackageVersions = (packageName) =>
+  metadataVersions.nuget.map((candidate) => ({
+    ...candidate,
+    integrity: metadataIntegrity[`${packageName.toLowerCase()}@${candidate.version.toLowerCase()}`],
+  }));
 
 const metadata = {
   // Requirements defines a list of manifest to install for a specific platform/architecture combination.
@@ -36,11 +43,11 @@ const metadata = {
   packages: {
     'nuget:win32/x64:cuda12': {
       name: 'Microsoft.ML.OnnxRuntime.Gpu.Windows',
-      versions: metadataVersions.nuget,
+      versions: getPackageVersions('Microsoft.ML.OnnxRuntime.Gpu.Windows'),
     },
     'nuget:linux/x64:cuda12': {
       name: 'Microsoft.ML.OnnxRuntime.Gpu.Linux',
-      versions: metadataVersions.nuget,
+      versions: getPackageVersions('Microsoft.ML.OnnxRuntime.Gpu.Linux'),
     },
   },
   feeds: {
