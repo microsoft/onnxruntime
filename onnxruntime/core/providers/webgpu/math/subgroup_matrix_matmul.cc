@@ -3,6 +3,7 @@
 
 #include "core/providers/webgpu/math/subgroup_matrix_tiling.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <limits>
 #include <memory>
@@ -15,10 +16,10 @@
 #include "core/providers/webgpu/compute_context.h"
 #include "core/providers/webgpu/math/matmul.h"
 #include "core/providers/webgpu/math/subgroup_matrix_config.h"
+#include "core/providers/webgpu/math/subgroup_matrix_pad_b.h"
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/vendor/intel/math/subgroup_matrix_tiling_selector.h"
-#include "core/providers/webgpu/webgpu_utils.h"
 namespace onnxruntime {
 namespace webgpu {
 
@@ -26,14 +27,18 @@ namespace webgpu {
 class SubgroupMatrixMatMulProgram final : public Program<SubgroupMatrixMatMulProgram> {
  public:
   SubgroupMatrixMatMulProgram(const Activation& activation, bool has_bias, SubgroupMatrixConfig config,
-                              uint32_t sg_mat_count_m, uint32_t sg_mat_count_n, uint32_t split_k)
+                              uint32_t sg_mat_count_m, uint32_t sg_mat_count_n, uint32_t split_k,
+                              uint32_t sg_grid_m, uint32_t sg_grid_n, uint32_t tile_k)
       : Program{"SubgroupMatrixMatMul"},
         activation_(activation),
         has_bias_(has_bias),
         config_(config),
         sg_mat_count_m_(sg_mat_count_m),
         sg_mat_count_n_(sg_mat_count_n),
-        split_k_(split_k) {}
+        split_k_(split_k),
+        sg_grid_m_(sg_grid_m),
+        sg_grid_n_(sg_grid_n),
+        tile_k_(tile_k) {}
   Status GenerateShaderCode(ShaderHelper& sh) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"M", ProgramUniformVariableDataType::Uint32},
                                           {"N", ProgramUniformVariableDataType::Uint32},
@@ -49,30 +54,35 @@ class SubgroupMatrixMatMulProgram final : public Program<SubgroupMatrixMatMulPro
   const uint32_t sg_mat_count_m_;
   const uint32_t sg_mat_count_n_;
   const uint32_t split_k_;
+  const uint32_t sg_grid_m_;
+  const uint32_t sg_grid_n_;
+  const uint32_t tile_k_;
 };
 
 namespace {
 
-// Copies a row-major f16 weight B [K, N] into a column-padded [K, N_b] buffer
-// (N_b >= N), zero-filling columns [N, N_b). Gives B an aligned row stride so the
-// subgroup-matrix f16 load's row-start alignment holds for any N.
-class SubgroupMatrixMatMulPadBProgram final : public Program<SubgroupMatrixMatMulPadBProgram> {
- public:
-  SubgroupMatrixMatMulPadBProgram() : Program{"SubgroupMatrixMatMulPadB"} {}
-  Status GenerateShaderCode(ShaderHelper& shader) const override {
-    const auto& input_b = shader.AddInput("input_b", ShaderUsage::UseValueTypeAlias);
-    const auto& output = shader.AddOutput("output", ShaderUsage::UseValueTypeAlias);
-    return WGSL_TEMPLATE_APPLY(shader, "math/subgroup_matrix_matmul_pad_b.wgsl.template",
-                               WGSL_TEMPLATE_VARIABLE(input_b, input_b),
-                               WGSL_TEMPLATE_VARIABLE(output, output));
+// A staged tiling reads A and B as vec4 so N must be a multiple of 4 and the template
+// unrolls at most 2x2 subgroup matrices per subgroup.
+bool IsStagedTilingSupported(const wgpu::Limits& limits, const SubgroupMatrixConfig& config,
+                             const SubgroupMatrixTiling& tiling, uint32_t N) {
+  const uint32_t cell_m = config.M * tiling.sg_grid_m;
+  const uint32_t cell_n = config.N * tiling.sg_grid_n;
+  if (N % 4 != 0 || tiling.split_k != 1 || cell_m == 0 || cell_n == 0 || tiling.tile_k == 0 ||
+      tiling.tile_k % config.K != 0 || tiling.tile_m % cell_m != 0 || tiling.tile_n % cell_n != 0 ||
+      tiling.tile_m / cell_m > 2 || tiling.tile_n / cell_n > 2) {
+    return false;
   }
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32},
-                                          {"N", ProgramUniformVariableDataType::Uint32},
-                                          {"N_b", ProgramUniformVariableDataType::Uint32});
-};
+  const uint64_t threads = uint64_t{config.subgroupSize} * tiling.sg_grid_m * tiling.sg_grid_n;
+  // Matches the scratch size in the template where each staged row is padded by 8 elements.
+  const uint64_t staged_elems = uint64_t{tiling.tile_m} * (tiling.tile_k + 8) + uint64_t{tiling.tile_k} * (tiling.tile_n + 8);
+  const uint64_t scratch_bytes = sizeof(uint16_t) * std::max(staged_elems, uint64_t{tiling.tile_m} * tiling.tile_n);
+  return threads <= limits.maxComputeInvocationsPerWorkgroup && threads <= limits.maxComputeWorkgroupSizeX &&
+         scratch_bytes <= limits.maxComputeWorkgroupStorageSize;
+}
 
 // Subgroup-matrix MatMul implementation. Loads both A and B directly from global
-// memory and runs the subgroup-matrix kernel during Compute. The class is
+// memory (or stages them in shared memory when the tiling sets tile_k) and runs the
+// subgroup-matrix kernel during Compute. The class is
 // intended to support all subgroup-matrix configs. For now 8x16x16 and 16x16x16
 // are implemented. The per-problem output tiling is supplied by a vendor-specific
 // selector kept internal to this impl.
@@ -135,6 +145,9 @@ class SubgroupMatrixMatMulImplInternal final : public SubgroupMatrixMatMulImpl {
     }
 
     const auto& config = config_;
+    if (tiling->tile_k > 0) {
+      return config.K != 0 && K % config.K == 0 && IsStagedTilingSupported(context.DeviceLimits(), config, *tiling, N);
+    }
     const uint32_t n_align = config.Is(16, 16, 16) ? 8 : 2;
     const bool needs_padded_b = N % n_align != 0;
     if (needs_padded_b && (!b_is_constant || N > std::numeric_limits<uint32_t>::max() - n_align)) {
@@ -194,10 +207,15 @@ class SubgroupMatrixMatMulImplInternal final : public SubgroupMatrixMatMulImpl {
                       "MatMul algorithm subgroup_matrix has no tiling for these inputs.");
 
     const auto& config = config_;
+    // Staged tilings read B through shared memory so they never need the padded copy.
+    const bool staged = tiling->tile_k > 0;
+    ORT_RETURN_IF_NOT(staged ? IsStagedTilingSupported(context.DeviceLimits(), config, *tiling, N)
+                             : tiling->sg_grid_m == 1 && tiling->sg_grid_n == 1,
+                      "MatMul algorithm subgroup_matrix got a tiling this device cannot run.");
     // Vulkan cooperative matrix loads need 16 byte aligned rows so the
     // 16x16x16 config pads B to a multiple of 8 columns.
     const uint32_t n_align = config.Is(16, 16, 16) ? 8 : 2;
-    const bool needs_padded_b = N % n_align != 0;
+    const bool needs_padded_b = !staged && N % n_align != 0;
     // Require whole subgroup-matrix K blocks. An unaligned B must be constant
     // because its padded copy is cached by this implementation.
     ORT_RETURN_IF_NOT(config.K != 0 && K % config.K == 0 &&
@@ -215,7 +233,7 @@ class SubgroupMatrixMatMulImplInternal final : public SubgroupMatrixMatMulImpl {
 
     // The kernel keeps its operand loads in bounds by shifting a trailing partial
     // tile back, which is only possible when the tile fits within M and N.
-    ORT_ENFORCE(M >= tiling->tile_m && N_b >= tiling->tile_n);
+    ORT_ENFORCE(staged || (M >= tiling->tile_m && N_b >= tiling->tile_n));
 
     // The optimized path will run: now materialize the aligned B for unaligned N.
     const Tensor* b_used = b;
@@ -229,17 +247,21 @@ class SubgroupMatrixMatMulImplInternal final : public SubgroupMatrixMatMulImpl {
     const uint32_t tile_m = tiling->tile_m;
     const uint32_t tile_n = tiling->tile_n;
     const uint32_t split_k = tiling->split_k;
-    const uint32_t sg_mat_count_m = tile_m / config.M;
-    const uint32_t sg_mat_count_n = tile_n / config.N;
-    ORT_ENFORCE(tile_m % config.M == 0 && tile_n % config.N == 0,
+    const uint32_t sg_grid_m = tiling->sg_grid_m;
+    const uint32_t sg_grid_n = tiling->sg_grid_n;
+    const uint32_t tile_k = tiling->tile_k;
+    const uint32_t sg_mat_count_m = tile_m / (config.M * sg_grid_m);
+    const uint32_t sg_mat_count_n = tile_n / (config.N * sg_grid_n);
+    ORT_ENFORCE(tile_m % (config.M * sg_grid_m) == 0 && tile_n % (config.N * sg_grid_n) == 0,
                 "Tiling must be a multiple of the subgroup-matrix shape: ",
                 tile_m, "x", tile_n, " vs ", config.M, "x", config.N);
     const uint32_t dispatch_x = (N + tile_n - 1) / tile_n;
     const uint32_t dispatch_y = (M + tile_m - 1) / tile_m;
 
     SubgroupMatrixMatMulProgram program{activation, has_bias, config,
-                                        sg_mat_count_m, sg_mat_count_n, split_k};
-    program.SetWorkgroupSize(config.subgroupSize * split_k);
+                                        sg_mat_count_m, sg_mat_count_n, split_k,
+                                        sg_grid_m, sg_grid_n, tile_k};
+    program.SetWorkgroupSize(config.subgroupSize * split_k * sg_grid_m * sg_grid_n);
     if (context.HasFeature(wgpu::FeatureName::SubgroupSizeControl)) {
       program.SetSubgroupSize(config.subgroupSize);
     }
@@ -248,9 +270,9 @@ class SubgroupMatrixMatMulImplInternal final : public SubgroupMatrixMatMulImpl {
                       static_cast<uint32_t>(config.componentType),
                       static_cast<uint32_t>(config.resultComponentType),
                       config.M, config.N, config.K, config.subgroupSize,
-                      sg_mat_count_m, sg_mat_count_n, split_k)
-        .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, 1},
-                    {b_used, ProgramTensorMetadataDependency::TypeAndRank, 1}})
+                      sg_mat_count_m, sg_mat_count_n, split_k, sg_grid_m, sg_grid_n, tile_k)
+        .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, staged ? 4 : 1},
+                    {b_used, ProgramTensorMetadataDependency::TypeAndRank, staged ? 4 : 1}})
         .AddOutput({output, ProgramTensorMetadataDependency::Rank, 1})
         .AddUniformVariables({{M}, {N}, {K}, {dispatch_x}, {N_b}});
     // Activation uniforms must remain last because definitions and values are matched by index.
@@ -264,45 +286,18 @@ class SubgroupMatrixMatMulImplInternal final : public SubgroupMatrixMatMulImpl {
   }
 
  private:
-  // Lazily builds an aligned copy of a constant weight B [..., K, N] with unaligned N
-  // by widening its last dim to an aligned N_b (zero-filling the extra columns) and
-  // caches it, so the per-run pad cost is paid once. Works for a 2D weight [K, N]
-  // and a batched weight [batch, K, N] alike: the pad pass treats B as a flat
-  // [rows, N] -> [rows, N_b] copy over rows = numel / N (= K, or batch*K), which is
-  // exactly the even-stride layout the kernel indexes via N_b. Runs the GPU pad pass
-  // on first use under call_once; the cached tensor is held for the kernel's
-  // lifetime. Only valid when B is a constant initializer (checked by the caller) -
-  // a runtime B changes per run and must not be cached.
+  // Lazily builds an aligned copy of a constant weight B with unaligned N, caching
+  // it so the per-run pad cost is paid once. Only valid when B is a constant
+  // initializer (checked by the caller) - a runtime B changes per run and must not
+  // be cached.
   Status EnsurePaddedB(ComputeContext& context,
                        const Tensor& b,
                        const TensorShape& b_shape,
                        uint32_t N,
                        uint32_t n_b) const {
-    TensorShapeVector padded_dims{b_shape.GetDims().begin(), b_shape.GetDims().end()};
-    padded_dims.back() = static_cast<int64_t>(n_b);
-    const TensorShape padded_shape{padded_dims};
-    const int64_t output_size_i64 = padded_shape.Size();
-    ORT_RETURN_IF_NOT(output_size_i64 <= static_cast<int64_t>(std::numeric_limits<uint32_t>::max()),
-                      "Cannot pad B because the padded tensor has ", output_size_i64,
-                      " elements, exceeding uint32_t shader indexing range.");
-    const uint32_t output_size = narrow<uint32_t>(output_size_i64);
-
     std::call_once(pad_once_, [&]() {
-      auto padded = std::make_unique<Tensor>(context.CreateGPUTensor(b.DataType(), padded_shape));
-      Status s = Status::OK();
-      // A zero-element padded tensor (e.g. a zero-batch or empty constant B) needs no
-      // pad pass - dispatching 0 workgroups is pointless and some drivers reject it.
-      // Just cache the empty tensor; the main kernel dispatches nothing for it.
-      if (output_size != 0) {
-        SubgroupMatrixMatMulPadBProgram program;
-        program.SetWorkgroupSize(WORKGROUP_SIZE)
-            .SetDispatchGroupSize(CeilDiv<uint32_t>(output_size, WORKGROUP_SIZE))
-            .AddInput({&b, ProgramTensorMetadataDependency::TypeAndRank, b_shape, 1})
-            .AddOutput({padded.get(), ProgramTensorMetadataDependency::TypeAndRank, padded->Shape(), 1})
-            .AddUniformVariables({{output_size}, {N}, {n_b}});
-        s = context.RunProgram(program);
-      }
-      if (s.IsOK()) {
+      std::unique_ptr<Tensor> padded;
+      if (PadSubgroupMatrixWeightColumns(context, b, b_shape, N, n_b, padded).IsOK()) {
         padded_b_ = std::move(padded);
       }
     });
@@ -322,14 +317,21 @@ class SubgroupMatrixMatMulImplInternal final : public SubgroupMatrixMatMulImpl {
 
 Status GenerateSubgroupMatrixShaderCode(ShaderHelper& shader, const SubgroupMatrixConfig& config,
                                         uint32_t sg_mat_count_m, uint32_t sg_mat_count_n,
-                                        uint32_t split_k) {
+                                        uint32_t split_k, uint32_t sg_grid_m, uint32_t sg_grid_n,
+                                        uint32_t tile_k, const ShaderVariableHelper& input_a,
+                                        const ShaderVariableHelper& input_b) {
   return WGSL_TEMPLATE_APPLY(shader, "math/subgroup_matrix_matmul.wgsl.template",
+                             WGSL_TEMPLATE_PARAMETER(sg_grid_m, sg_grid_m),
+                             WGSL_TEMPLATE_PARAMETER(sg_grid_n, sg_grid_n),
                              WGSL_TEMPLATE_PARAMETER(sg_mat_count_m, sg_mat_count_m),
                              WGSL_TEMPLATE_PARAMETER(sg_mat_count_n, sg_mat_count_n),
                              WGSL_TEMPLATE_PARAMETER(sg_mat_k, config.K),
                              WGSL_TEMPLATE_PARAMETER(sg_mat_m, config.M),
                              WGSL_TEMPLATE_PARAMETER(sg_mat_n, config.N),
-                             WGSL_TEMPLATE_PARAMETER(split_k, split_k));
+                             WGSL_TEMPLATE_PARAMETER(split_k, split_k),
+                             WGSL_TEMPLATE_PARAMETER(tile_k, tile_k),
+                             WGSL_TEMPLATE_VARIABLE(input_a, input_a),
+                             WGSL_TEMPLATE_VARIABLE(input_b, input_b));
 }
 
 // Default tiling used on any vendor without a specialized policy: a 64x64 output
@@ -345,11 +347,35 @@ SubgroupMatrixTilingSelector MakeDefaultTilingSelector() {
   };
 }
 
+// A 4x4 grid of subgroups stages K slices 64 deep and each subgroup accumulates 2x2 subgroup
+// matrices when the problem has at least 128 rows and 256 tiles of 64x64 and 1x1 otherwise.
+// Staging starts at 64 rows and below that only for outputs at least 8192 wide because the
+// default split K tiling fills the GPU better on small problems.
+SubgroupMatrixTilingSelector MakeStagedTilingSelector(const SubgroupMatrixConfig& config) {
+  return [config, fallback = MakeDefaultTilingSelector()](
+             const ComputeContext& context, uint32_t M, uint32_t N,
+             uint32_t K, uint32_t batch) -> std::optional<SubgroupMatrixTiling> {
+    if ((M >= 64 || N >= 8192) && K % config.K == 0) {
+      const auto& limits = context.DeviceLimits();
+      const bool large = M >= 128 && uint64_t{(M + 63) / 64} * ((N + 63) / 64) >= 256;
+      const SubgroupMatrixTiling tile128{config.M * 8, config.N * 8, 1, 4, 4, 64};
+      const SubgroupMatrixTiling tile64{config.M * 4, config.N * 4, 1, 4, 4, 64};
+      if (large && IsStagedTilingSupported(limits, config, tile128, N)) {
+        return tile128;
+      }
+      if (IsStagedTilingSupported(limits, config, tile64, N)) {
+        return tile64;
+      }
+    }
+    return fallback(context, M, N, K, batch);
+  };
+}
+
 }  // namespace
 
 Status SubgroupMatrixMatMulProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  shader.AddInput("input_a", ShaderUsage::UseUniform);
-  shader.AddInput("input_b", ShaderUsage::UseUniform);
+  const auto& input_a = shader.AddInput("input_a", ShaderUsage::UseUniform);
+  const auto& input_b = shader.AddInput("input_b", ShaderUsage::UseUniform);
   if (has_bias_) {
     shader.AddInput("bias", ShaderUsage::UseUniform);
   }
@@ -369,7 +395,8 @@ Status SubgroupMatrixMatMulProgram::GenerateShaderCode(ShaderHelper& shader) con
       << "}\n";
 
   if (config_.Is(8, 16, 16) || config_.Is(16, 16, 16)) {
-    return GenerateSubgroupMatrixShaderCode(shader, config_, sg_mat_count_m_, sg_mat_count_n_, split_k_);
+    return GenerateSubgroupMatrixShaderCode(shader, config_, sg_mat_count_m_, sg_mat_count_n_, split_k_,
+                                            sg_grid_m_, sg_grid_n_, tile_k_, input_a, input_b);
   }
   return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::NOT_IMPLEMENTED,
                 "Unsupported subgroup matrix config dimensions.");
@@ -384,11 +411,13 @@ std::unique_ptr<SubgroupMatrixMatMulImpl> CreateSubgroupMatrixMatMulImpl(const C
   if (!config) {
     return nullptr;
   }
-  // Intel GPUs use a tuned/heuristic tiling policy; every other vendor falls back
+  // Intel and NVIDIA GPUs use a tuned/heuristic tiling policy; every other vendor falls back
   // to a default tiling.
-  const bool is_intel = context.AdapterInfo().vendor == std::string_view{"intel"};
+  const auto vendor = context.AdapterInfo().vendor;
   SubgroupMatrixTilingSelector tiling_selector =
-      is_intel ? intel::CreateSubgroupMatrixTilingSelector(context) : MakeDefaultTilingSelector();
+      vendor == std::string_view{"intel"}    ? intel::CreateSubgroupMatrixTilingSelector(context)
+      : vendor == std::string_view{"nvidia"} ? MakeStagedTilingSelector(*config)
+                                             : MakeDefaultTilingSelector();
   if (!tiling_selector) {
     return nullptr;
   }
