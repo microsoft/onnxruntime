@@ -76,9 +76,10 @@ class Memcpy final : public OpKernel {
   Memcpy(const OpKernelInfo& info) : OpKernel(info) {}
 
   Status Compute(OpKernelContext* ctx) const override {
+    const auto& ep = *static_cast<const WebGpuExecutionProvider*>(Info().GetExecutionProvider());
+    std::lock_guard<std::recursive_mutex> lock{ep.Recording().mutex};
     const auto* X = ctx->Input<Tensor>(0);
     Tensor* Y = ctx->Output(0, X->Shape());
-    const auto& ep = *static_cast<const WebGpuExecutionProvider*>(Info().GetExecutionProvider());
     DataTransfer transfer(ep.BufferManager(), ep.Recording(), ep.GetDeviceId());
     return transfer.CopyTensor(*X, *Y);
   }
@@ -907,6 +908,7 @@ std::unique_ptr<profiling::EpProfiler> WebGpuExecutionProvider::GetProfiler() {
 }
 
 Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_options) {
+  std::lock_guard<std::recursive_mutex> lock{recording_->mutex};
 #if defined(ORT_USE_EP_API_ADAPTERS)
   const bool serialized = webgpu::ep::UseSerializedExecutionMode();
   if (serialized) {
@@ -973,6 +975,7 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
 }
 
 Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxruntime::RunOptions& run_options) {
+  std::lock_guard<std::recursive_mutex> lock{recording_->mutex};
   auto end_run = gsl::finally([&] {
     graph_buffer_mgr_active_ = false;
     run_active_.store(false);
@@ -1047,6 +1050,7 @@ bool WebGpuExecutionProvider::IsGraphCaptured(int graph_annotation_id) const {
 }
 
 Status WebGpuExecutionProvider::ReplayGraph(int graph_annotation_id, bool /*sync*/) {
+  std::lock_guard<std::recursive_mutex> lock{recording_->mutex};
 #if defined(ORT_USE_EP_API_ADAPTERS)
   const bool serialized_replay = webgpu::ep::UseSerializedExecutionMode() && !IsRunActive();
   if (serialized_replay) {
@@ -1080,6 +1084,7 @@ Status WebGpuExecutionProvider::ReplayGraph(int graph_annotation_id, bool /*sync
 }
 
 Status WebGpuExecutionProvider::ReleaseCapturedGraph(int graph_annotation_id) {
+  std::lock_guard<std::recursive_mutex> lock{recording_->mutex};
   // Release captured commands
   auto cmd_it = captured_graphs_.find(graph_annotation_id);
   if (cmd_it != captured_graphs_.end()) {
