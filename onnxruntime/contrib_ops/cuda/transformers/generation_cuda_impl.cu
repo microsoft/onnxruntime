@@ -1159,22 +1159,17 @@ __global__ void sampleMultinomialOnce(int32_t* dest,
 }
 
 // Only support n_sample = 1
-void TorchMultinomialKernelLauncher(float* d_input,
+void TorchMultinomialKernelLauncher(const cudaDeviceProp& device_prop,
+                                    float* d_input,
                                     float* d_sampled,
                                     int32_t* d_output,
                                     int batch_size,
                                     int vocab_size,
                                     int* d_presence_mask,
                                     cudaStream_t stream) {
-  // Store the props in class variables
-  int device;
-  CUDA_CALL_THROW(cudaGetDevice(&device));
-  cudaDeviceProp props;
-  CUDA_CALL_THROW(cudaGetDeviceProperties(&props, device));
-
-  int numSM = props.multiProcessorCount;
-  int maxThreads = props.maxThreadsPerBlock;
-  int warp_size = props.warpSize;
+  int numSM = device_prop.multiProcessorCount;
+  int maxThreads = device_prop.maxThreadsPerBlock;
+  int warp_size = device_prop.warpSize;
   int requiredWarps = (vocab_size + warp_size - 1) / warp_size;
   int requiredThreads = std::min(maxThreads, requiredWarps * warp_size);
   int requiredShared = requiredThreads * sizeof(float);

@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <functional>
+
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "contrib_ops/cuda/transformers/sampling.h"
@@ -33,11 +35,12 @@ CudaTensorConsoleDumper g_cuda_dumper_sampling;
 
 Sampling::Sampling(const OpKernelInfo& info)
     : onnxruntime::contrib::transformers::Sampling(info) {
+  const auto& device_prop = reinterpret_cast<const CUDAExecutionProvider*>(info.GetExecutionProvider())->GetDeviceProp();
   SetDeviceHelpers(GenerationCudaDeviceHelper::AddToFeeds,
                    GenerationCudaDeviceHelper::TopK,
                    GenerationCudaDeviceHelper::DeviceCopy<float>,
-                   GenerationCudaDeviceHelper::GreedySearchProcessLogits<float>,
-                   GenerationCudaDeviceHelper::GreedySearchProcessLogits<MLFloat16>,
+                   std::bind_front(GenerationCudaDeviceHelper::GreedySearchProcessLogits<float>, std::cref(device_prop)),
+                   std::bind_front(GenerationCudaDeviceHelper::GreedySearchProcessLogits<MLFloat16>, std::cref(device_prop)),
                    GenerationCudaDeviceHelper::InitGreedyState<float>,
                    GenerationCudaDeviceHelper::InitGreedyState<MLFloat16>);
 
@@ -48,7 +51,7 @@ Sampling::Sampling(const OpKernelInfo& info)
 
   SetConsoleDumper(&g_cuda_dumper_sampling);
 
-  gpu_device_prop_ = &reinterpret_cast<const CUDAExecutionProvider*>(info.GetExecutionProvider())->GetDeviceProp();
+  gpu_device_prop_ = &device_prop;
 
   gpu_device_arch_ = static_cast<const cudaDeviceProp*>(gpu_device_prop_)->major * 100 +
                      static_cast<const cudaDeviceProp*>(gpu_device_prop_)->minor * 10;
