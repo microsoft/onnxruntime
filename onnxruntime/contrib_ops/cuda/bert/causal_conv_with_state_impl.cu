@@ -593,9 +593,9 @@ Status ConfigureCausalConvSharedMemory(cudaStream_t stream, Kernel kernel, size_
   CUDA_RETURN_IF_ERROR(cudaFuncGetAttributes(&attributes, kernel));
   if (attributes.sharedSizeBytes > per_block_limit ||
       required > per_block_limit - attributes.sharedSizeBytes) return Status::OK();
-  ORT_RETURN_IF_NOT(attributes.maxDynamicSharedMemorySize >= 0,
+  ORT_RETURN_IF_NOT(attributes.maxDynamicSharedSizeBytes >= 0,
                     "CausalConvWithState: invalid dynamic shared-memory capacity.");
-  if (required > static_cast<size_t>(attributes.maxDynamicSharedMemorySize)) {
+  if (required > static_cast<size_t>(attributes.maxDynamicSharedSizeBytes)) {
     cudaStreamCaptureStatus capture_status;
     CUDA_RETURN_IF_ERROR(cudaStreamIsCapturing(stream, &capture_status));
     if (capture_status != cudaStreamCaptureStatusNone) return Status::OK();
