@@ -2006,6 +2006,11 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             if args.use_cuda:
                 log.info("Testing CUDA kernel execution")
                 run_subprocess([sys.executable, "onnxruntime_test_python_cuda_kernel.py"], cwd=cwd, dll_path=dll_path)
+                if not args.disable_contrib_ops and not args.enable_cuda_minimal_build:
+                    log.info("Testing ordered CUDA reductions")
+                    run_subprocess(
+                        [sys.executable, "onnxruntime_test_python_ordered_reductions.py"], cwd=cwd, dll_path=dll_path
+                    )
                 log.info("Testing CUDA Graph feature")
                 run_subprocess([sys.executable, "onnxruntime_test_python_cudagraph.py"], cwd=cwd, dll_path=dll_path)
                 log.info("Testing running inference concurrently")

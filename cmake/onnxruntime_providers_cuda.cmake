@@ -55,6 +55,9 @@
   set(onnxruntime_providers_cuda_src ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_shared_srcs} ${onnxruntime_providers_cuda_cu_srcs})
 
   # Collect CUDA contrib ops sources
+  # Ordered reductions retain subnormals even when a build enables CUDA fast math.
+  set_source_files_properties("${ONNXRUNTIME_ROOT}/contrib_ops/cuda/math/ordered_reductions.cu"
+    PROPERTIES COMPILE_OPTIONS "--ftz=false")
   file(GLOB_RECURSE onnxruntime_cuda_contrib_ops_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.h"
     "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cc"

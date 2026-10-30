@@ -84,6 +84,8 @@ Do not modify directly.*
   * <a href="#com.microsoft.NhwcConv">com.microsoft.NhwcConv</a>
   * <a href="#com.microsoft.NhwcFusedConv">com.microsoft.NhwcFusedConv</a>
   * <a href="#com.microsoft.NhwcMaxPool">com.microsoft.NhwcMaxPool</a>
+  * <a href="#com.microsoft.OrderedMatrixReduce128">com.microsoft.OrderedMatrixReduce128</a>
+  * <a href="#com.microsoft.OrderedRowReduce">com.microsoft.OrderedRowReduce</a>
   * <a href="#com.microsoft.PackedAttention">com.microsoft.PackedAttention</a>
   * <a href="#com.microsoft.PackedMultiHeadAttention">com.microsoft.PackedMultiHeadAttention</a>
   * <a href="#com.microsoft.PackedSparseAttentionIndexer">com.microsoft.PackedSparseAttentionIndexer</a>
@@ -5166,6 +5168,109 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(int8), tensor(uint8)</dt>
 <dd></dd>
+</dl>
+
+
+### <a name="com.microsoft.OrderedMatrixReduce128"></a><a name="com.microsoft.orderedmatrixreduce128">**com.microsoft.OrderedMatrixReduce128**</a>
+
+  Opt-in FLOAT sum over the penultimate dimension of X with shape
+  [...,128,128], producing Y with shape [...,128]. Empty prefixes are supported.
+  For each matrix and column, initialize A[lane,accumulator] to +0 in FLOAT.
+  For ascending group g=0..7, add X[g*16+accumulator*4+lane,column],
+  where lane and accumulator are each 0..3. For each lane, fold the four
+  accumulators left to right to produce P[lane]. Return
+  (P[0]+P[2])+(P[1]+P[3]). Each addition rounds to nearest, ties to even
+  in FLOAT, preserving subnormals. NaN payloads are not specified.
+
+  This addition order is the version-1 contract, not a guarantee of matching
+  every framework release or backend. FLOAT is required; no dtype
+  reinterpretation is performed. CUDA uses the caller's compute stream,
+  without scratch allocation or internal stream/device waits. No existing
+  reduction or graph optimization default is changed.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs
+
+<dl>
+<dt><tt>X</tt> : T</dt>
+<dd>FLOAT input with trailing dimensions [128,128].</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>FLOAT output with the penultimate dimension removed.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float)</dt>
+<dd>Only FLOAT tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.OrderedRowReduce"></a><a name="com.microsoft.orderedrowreduce">**com.microsoft.OrderedRowReduce**</a>
+
+  Opt-in FLOAT row sum (normalize=0) or mean (normalize=1) with a specified
+  floating-point addition order. X has rank >= 1 and last dimension `width`,
+  a power of two in [32,4096]. Y has shape [product(X.shape[:-1]),1].
+  Empty row sets are supported. FLOAT is required; inputs are not reinterpreted.
+
+  Let R be the number of rows, V=4 if width>128, otherwise V=1, and
+  T=min(width/V,512). For c in [2,4,8,16], in order, if R>=c set
+  T=min(width/V,512/c). For thread t and vector lane v, initialize A[v]
+  with X[row,t*V+v], then add X[row,(g*T+t)*V+v] for ascending
+  g=1..width/(T*V)-1. Fold A[0..V-1] left to right. Halve the T partials by adding the
+  upper half to the lower half until 32 remain, then use simultaneous
+  warp shuffle-down additions with ascending offsets 1,2,4,8,16.
+  Lane zero is the sum. Normalization multiplies that sum by 1/width.
+  Each addition and final multiplication rounds to nearest, ties to even
+  in FLOAT, preserving subnormals. Changing the number of rows can change
+  the addition order. NaN payloads are not specified.
+
+  This order is the version-1 contract, not a promise of bitwise agreement
+  with every framework, framework release, reduction backend, or compiler.
+  CUDA implementation uses the caller's compute stream, without scratch
+  allocation or internal stream/device waits. Existing ReduceSum/ReduceMean
+  operators and graph optimization defaults are unaffected.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>normalize</tt> : int</dt>
+<dd>0 for sum, 1 for mean.</dd>
+<dt><tt>width</tt> : int (required)</dt>
+<dd>Required last dimension; power of two in [32,4096].</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>X</tt> : T</dt>
+<dd>FLOAT input of rank >= 1.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>FLOAT output of shape [rows,1].</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float)</dt>
+<dd>Only FLOAT tensors.</dd>
 </dl>
 
 

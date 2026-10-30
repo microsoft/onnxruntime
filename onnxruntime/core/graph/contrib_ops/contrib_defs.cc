@@ -214,6 +214,142 @@ using ONNX_NAMESPACE::AttributeProto;
 using ONNX_NAMESPACE::OpSchema;
 using ONNX_NAMESPACE::OPTIONAL_VALUE;
 
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    OrderedRowReduce, 1,
+    OpSchema()
+        .SetDoc(R"DOC(
+Opt-in FLOAT row sum (normalize=0) or mean (normalize=1) with a specified
+floating-point addition order. X has rank >= 1 and last dimension `width`,
+a power of two in [32,4096]. Y has shape [product(X.shape[:-1]),1].
+Empty row sets are supported. FLOAT is required; inputs are not reinterpreted.
+
+Let R be the number of rows, V=4 if width>128, otherwise V=1, and
+T=min(width/V,512). For c in [2,4,8,16], in order, if R>=c set
+T=min(width/V,512/c). For thread t and vector lane v, initialize A[v]
+with X[row,t*V+v], then add X[row,(g*T+t)*V+v] for ascending
+g=1..width/(T*V)-1. Fold A[0..V-1] left to right. Halve the T partials by adding the
+upper half to the lower half until 32 remain, then use simultaneous
+warp shuffle-down additions with ascending offsets 1,2,4,8,16.
+Lane zero is the sum. Normalization multiplies that sum by 1/width.
+Each addition and final multiplication rounds to nearest, ties to even
+in FLOAT, preserving subnormals. Changing the number of rows can change
+the addition order. NaN payloads are not specified.
+
+This order is the version-1 contract, not a promise of bitwise agreement
+with every framework, framework release, reduction backend, or compiler.
+CUDA implementation uses the caller's compute stream, without scratch
+allocation or internal stream/device waits. Existing ReduceSum/ReduceMean
+operators and graph optimization defaults are unaffected.
+)DOC")
+        .Attr("width", "Required last dimension; power of two in [32,4096].", AttributeProto::INT)
+        .Attr("normalize", "0 for sum, 1 for mean.", AttributeProto::INT, int64_t{0})
+        .Input(0, "X", "FLOAT input of rank >= 1.", "T")
+        .Output(0, "Y", "FLOAT output of shape [rows,1].", "T")
+        .TypeConstraint("T", {"tensor(float)"}, "Only FLOAT tensors.")
+        .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+          const auto* width_attr = ctx.getAttribute("width");
+          if (!width_attr) {
+            fail_shape_inference("width is required");
+          }
+          const int64_t width = width_attr->i();
+          if (width < 32 || width > 4096 || (width & (width - 1)) != 0) {
+            fail_shape_inference("width must be a power of two in [32,4096]");
+          }
+          const int64_t normalize = getAttribute(ctx, "normalize", 0);
+          if (normalize != 0 && normalize != 1) {
+            fail_shape_inference("normalize must be zero or one");
+          }
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          auto* output = ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+          auto* rows_dim = output->add_dim();
+          output->add_dim()->set_dim_value(1);
+          if (!hasInputShape(ctx, 0)) {
+            return;
+          }
+          const auto& input = getInputShape(ctx, 0);
+          const int rank = input.dim_size();
+          if (rank == 0) {
+            fail_shape_inference("OrderedRowReduce input rank must be positive");
+          }
+          const auto& last = input.dim(rank - 1);
+          if (last.has_dim_value() && last.dim_value() != width) {
+            fail_shape_inference("Last dimension must match width");
+          }
+          bool known = true;
+          bool empty = false;
+          for (int i = 0; i < rank - 1; ++i) {
+            const auto& dim = input.dim(i);
+            if (dim.has_dim_value()) {
+              if (dim.dim_value() < 0) {
+                fail_shape_inference("Negative dimension");
+              }
+              empty |= dim.dim_value() == 0;
+            } else {
+              known = false;
+            }
+          }
+          if (empty) {
+            rows_dim->set_dim_value(0);
+          } else if (known) {
+            int64_t rows = 1;
+            for (int i = 0; i < rank - 1; ++i) {
+              const int64_t value = input.dim(i).dim_value();
+              if (rows > std::numeric_limits<int64_t>::max() / value) {
+                fail_shape_inference("Output dimension overflow");
+              }
+              rows *= value;
+            }
+            rows_dim->set_dim_value(rows);
+          } else if (rank == 2) {
+            *rows_dim = input.dim(0);
+          }
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    OrderedMatrixReduce128, 1,
+    OpSchema()
+        .SetDoc(R"DOC(
+Opt-in FLOAT sum over the penultimate dimension of X with shape
+[...,128,128], producing Y with shape [...,128]. Empty prefixes are supported.
+For each matrix and column, initialize A[lane,accumulator] to +0 in FLOAT.
+For ascending group g=0..7, add X[g*16+accumulator*4+lane,column],
+where lane and accumulator are each 0..3. For each lane, fold the four
+accumulators left to right to produce P[lane]. Return
+(P[0]+P[2])+(P[1]+P[3]). Each addition rounds to nearest, ties to even
+in FLOAT, preserving subnormals. NaN payloads are not specified.
+
+This addition order is the version-1 contract, not a guarantee of matching
+every framework release or backend. FLOAT is required; no dtype
+reinterpretation is performed. CUDA uses the caller's compute stream,
+without scratch allocation or internal stream/device waits. No existing
+reduction or graph optimization default is changed.
+)DOC")
+        .Input(0, "X", "FLOAT input with trailing dimensions [128,128].", "T")
+        .Output(0, "Y", "FLOAT output with the penultimate dimension removed.", "T")
+        .TypeConstraint("T", {"tensor(float)"}, "Only FLOAT tensors.")
+        .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          if (!hasInputShape(ctx, 0)) {
+            return;
+          }
+          const auto& input = getInputShape(ctx, 0);
+          const int rank = input.dim_size();
+          if (rank < 2) {
+            fail_shape_inference("OrderedMatrixReduce128 input must end in [128,128]");
+          }
+          for (int i = 0; i < rank; ++i) {
+            const auto& dim = input.dim(i);
+            if (dim.has_dim_value() && (dim.dim_value() < 0 || (i >= rank - 2 && dim.dim_value() != 128))) {
+              fail_shape_inference("OrderedMatrixReduce128 input must end in [128,128] with nonnegative dimensions");
+            }
+          }
+          auto* output = ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+          for (int i = 0; i < rank - 2; ++i) {
+            *output->add_dim() = input.dim(i);
+          }
+          output->add_dim()->set_dim_value(128);
+        }));
+
 void FusedMatMulShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   propagateElemTypeFromInputToOutput(ctx, 0, 0);
   auto transAAttr = ctx.getAttribute("transA");
