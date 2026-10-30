@@ -1,7 +1,16 @@
 # Experimental CUDA 13 wheels for CPython 3.11-3.14 (including Linux free-threaded builds).
-# Queue this pipeline manually; wheels are published only as pipeline artifacts.
+# Runs daily at 09:00 UTC on main; wheels are published only as pipeline artifacts.
 trigger: none
 pr: none
+
+schedules:
+- cron: '0 9 * * *'
+  displayName: CUDA 13 combined wheels nightly build
+  branches:
+    include:
+    - main
+  always: true
+
 # The `resources` specify the location and version of the 1ES PT.
 resources:
   repositories:
