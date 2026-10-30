@@ -641,6 +641,7 @@ export const prepareInputOutputTensor = async (
 
   let rawData: number;
   let dataByteLength: number;
+  let deviceId = 0;
 
   if (dataType === 'string' && (location === 'gpu-buffer' || location === 'ml-tensor')) {
     throw new Error('String tensor is not supported on GPU.');
@@ -663,6 +664,7 @@ export const prepareInputOutputTensor = async (
       }
 
       rawData = registerBuffer(gpuBuffer, sessionId);
+      deviceId = wasm.webgpuGetDeviceId!(sessionId);
     } else {
       const registerBuffer = wasm.jsepRegisterBuffer;
       if (!registerBuffer) {
@@ -737,6 +739,7 @@ export const prepareInputOutputTensor = async (
       dimsOffset,
       dims.length,
       dataLocationStringToEnum(actualLocation),
+      deviceId,
     );
     if (tensor === 0) {
       checkLastError(`Can't create tensor for input/output. session=${sessionId}, index=${index}.`);
@@ -877,7 +880,7 @@ export const run = async (
         if (location) {
           // output is pre-allocated, store and bind the tensor.
           preAllocatedOutputs.push(outputTensorHandles[i]);
-          const errorCode = wasm._OrtBindOutput(handle, outputNamesUTF8Encoded[index], outputTensorHandles[i], 0);
+          const errorCode = wasm._OrtBindOutput(handle, outputNamesUTF8Encoded[index], outputTensorHandles[i], 0, 0);
           if (errorCode !== 0) {
             checkLastError(`Can't bind pre-allocated output[${i}] for session=${sessionId}.`);
           }
@@ -888,6 +891,7 @@ export const run = async (
             outputNamesUTF8Encoded[index],
             0,
             outputPreferredLocationsEncoded[index],
+            wasm.webgpuGetDeviceId?.(sessionHandle) ?? 0,
           );
           if (errorCode !== 0) {
             checkLastError(`Can't bind output[${i}] to ${outputPreferredLocations[i]} for session=${sessionId}.`);
