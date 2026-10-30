@@ -3,8 +3,7 @@
 
 #pragma once
 
-#include <cstdlib>
-#include <cstring>
+#include "core/platform/env_var.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -12,10 +11,7 @@ namespace cuda {
 constexpr const char* kGemmAutoTuneDiagnosticsEnvVar = "ORT_CUDA_GEMM_AUTO_TUNE_DIAGNOSTICS";
 
 inline bool IsGemmAutoTuneDiagnosticsEnabled() {
-  static const bool enabled = [] {
-    const char* value = std::getenv(kGemmAutoTuneDiagnosticsEnvVar);
-    return value != nullptr && std::strcmp(value, "1") == 0;
-  }();
+  static const bool enabled = detail::GetEnvironmentVar(kGemmAutoTuneDiagnosticsEnvVar) == "1";
   return enabled;
 }
 
