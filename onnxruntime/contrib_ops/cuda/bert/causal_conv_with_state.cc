@@ -8,6 +8,9 @@
 #include "core/providers/cuda/cuda_type_conversion.h"
 #include "core/common/safeint.h"
 
+#include <algorithm>
+#include <limits>
+
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
@@ -135,14 +138,27 @@ Status CausalConvWithState<T>::ComputeInternal(OpKernelContext* context) const {
   ORT_RETURN_IF_NOT(weight_shape.NumDimensions() == 3,
                     "weight must be rank 3 (channels, 1, kernel_size), got rank ", weight_shape.NumDimensions());
 
-  const int batch_size = static_cast<int>(input_shape[0]);
-  const int channels = static_cast<int>(channels_last_ ? input_shape.SizeFromDimension(2)
-                                                       : input_shape[1]);
-  const int L = static_cast<int>(channels_last_ ? input_shape[1] : input_shape[2]);
-  const int K = static_cast<int>(weight_shape[2]);
-  const int pad = (K - 1) * dilation_;
-
-  ORT_RETURN_IF_NOT(L > 0, "input length must be positive, got ", L);
+  const int64_t batch = input_shape[0];
+  int64_t channel_count = input_shape[1];
+  if (channels_last_) {
+    channel_count = 1;
+    for (size_t axis = 2; axis < input_shape.NumDimensions(); ++axis) {
+      ORT_RETURN_IF_NOT(input_shape[axis] > 0 &&
+                            input_shape[axis] <= std::numeric_limits<int>::max() / channel_count,
+                        "input channels exceed positive native integer range");
+      channel_count *= input_shape[axis];
+    }
+  }
+  const int64_t length = channels_last_ ? input_shape[1] : input_shape[2];
+  const int64_t kernel = weight_shape[2];
+  const int state_slots = state_window_ > 0 ? state_window_ : 1;
+  ORT_RETURN_IF_ERROR(ValidateCausalConvNativeParameters(batch, channel_count, length, kernel,
+                                                         dilation_, state_slots, sizeof(T)));
+  const int batch_size = static_cast<int>(batch);
+  const int channels = static_cast<int>(channel_count);
+  const int L = static_cast<int>(length);
+  const int K = static_cast<int>(kernel);
+  const int pad = static_cast<int>((kernel - 1) * dilation_);
 
   // Validate weight shape compatibility
   ORT_RETURN_IF_NOT(weight_shape[0] == channels,
@@ -161,7 +177,6 @@ Status CausalConvWithState<T>::ComputeInternal(OpKernelContext* context) const {
   // where pad = (K-1)*dilation.
   // Right-aligned: token t lands in slot t + W - L, so slot W-1 always holds the state after the
   // last token (and is the slot past_state is read from).
-  const int state_slots = state_window_ > 0 ? state_window_ : 1;
   TensorShape state_shape;
   if (channels_last_) {
     ORT_RETURN_IF_ERROR(causal_conv_with_state_helper::CheckInputsChannelsLast(
@@ -174,6 +189,8 @@ Status CausalConvWithState<T>::ComputeInternal(OpKernelContext* context) const {
   // Allocate outputs
   Tensor* output_tensor = context->Output(0, input_shape);
   Tensor* present_state_tensor = context->Output(1, state_shape);
+  // Preserve all validation and both output shapes, but never launch a zero-sized CUDA grid.
+  if (batch_size == 0) return Status::OK();
 
   // The kernel writes slot t + W - L for every position t, i.e. slots max(0, W - L) .. W-1. When
   // the window is wider than the sequence, the leading W - L slots belong to positions before this
@@ -210,6 +227,7 @@ Status CausalConvWithState<T>::ComputeInternal(OpKernelContext* context) const {
       MakeCausalConvLayout(channels_last_, channels, pad),
       apply_silu,
       GetDeviceProp().maxThreadsPerBlock,
+      std::max(GetDeviceProp().sharedMemPerBlock, GetDeviceProp().sharedMemPerBlockOptin),
       state_slots);
 }
 

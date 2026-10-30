@@ -3590,7 +3590,7 @@ std::unique_ptr<onnxruntime::IExternalDataLoader> CUDAExecutionProvider::GetExte
 std::vector<std::unique_ptr<ComputeCapability>>
 CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
                                      const IKernelLookup& kernel_lookup,
-                                     const GraphOptimizerRegistry& /* graph_optimizer_registry */,
+                                     const GraphOptimizerRegistry& graph_optimizer_registry,
                                      IResourceAccountant* resource_accountant) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
   const logging::Logger& logger = *GetLogger();
@@ -3598,6 +3598,28 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   if (!graph.ModelPath().empty()) {
     SetSessionModelPath(graph.ModelPath());
   }
+
+  InlinedHashSet<NodeIndex> runtime_fusion_nodes;
+#if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
+  // The host adapter rejects filtered viewers (not exposed by the shared-provider wrapper).
+  if (resource_accountant == nullptr && !graph.IsSubgraph() && !IsNHWCPreferred()) {
+    // ID mirrors core/optimizer/cuda_runtime_fusion.h across the shared-provider bridge.
+    for (const char* rule : {"causal_conv_with_state_mobius_bf16_v1", "unit_swish_scaled_silu_v1"}) {
+      std::vector<std::unique_ptr<ComputeCapability>> offers;
+      ORT_THROW_IF_ERROR(g_host->SelectCudaRuntimeFusion(
+          graph, kernel_lookup, graph_optimizer_registry, rule, offers));
+      for (auto& capability : offers) {
+        const auto& nodes = capability->SubGraph()->Nodes();
+        if (std::any_of(nodes.begin(), nodes.end(),
+                        [&](NodeIndex id) { return runtime_fusion_nodes.count(id) != 0; })) continue;
+        runtime_fusion_nodes.insert(nodes.begin(), nodes.end());
+        result.push_back(std::move(capability));
+      }
+    }
+  }
+#else
+  ORT_UNUSED_PARAMETER(graph_optimizer_registry);
+#endif
 
   // Figure out the memory limit if accountant is available
   size_t memory_threshold = std::numeric_limits<size_t>::max();
@@ -3639,6 +3661,7 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
     const auto* p_node = graph.GetNode(node_index);
     if (p_node == nullptr)
       continue;
+    if (runtime_fusion_nodes.count(node_index)) continue;
 
     const auto& node = *p_node;
     if (!node.GetExecutionProviderType().empty()) {
