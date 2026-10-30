@@ -60,6 +60,8 @@ inline Status ComputeOutputShapeForAttention(
     parameters.kv_num_heads = kv_num_heads > 0 ? kv_num_heads : onnxruntime::narrow<int>(K->Shape()[1]);  // K.shape[1] or V.shape[1] (4D)
     parameters.q_num_heads = q_num_heads > 0 ? q_num_heads : onnxruntime::narrow<int>(Q->Shape()[1]);     // Q.shape[1] (4D)
 
+    ORT_ENFORCE(parameters.kv_num_heads > 0, "KV number of heads must be greater than 0");
+    ORT_ENFORCE(parameters.q_num_heads > 0, "Q number of heads must be greater than 0");
     ORT_ENFORCE(parameters.kv_num_heads == onnxruntime::narrow<int>(K->Shape()[1]), "kv_num_heads different from K.shape[1]");
     ORT_ENFORCE(parameters.kv_num_heads == onnxruntime::narrow<int>(V->Shape()[1]), "kv_num_heads different from V.shape[1]");
     ORT_ENFORCE(parameters.q_num_heads == onnxruntime::narrow<int>(Q->Shape()[1]), "q_num_heads different from Q.shape[1]");
@@ -86,6 +88,8 @@ inline Status ComputeOutputShapeForAttention(
     parameters.kv_num_heads = kv_num_heads;
     parameters.q_num_heads = q_num_heads;
 
+    ORT_ENFORCE(parameters.kv_num_heads > 0, "KV number of heads must be greater than 0");
+    ORT_ENFORCE(parameters.q_num_heads > 0, "Q number of heads must be greater than 0");
     // From shapes
     ORT_ENFORCE(Q->Shape()[2] % parameters.q_num_heads == 0, "inconsistent q_hidden_size, it should be a multiple of q_num_heads");
     ORT_ENFORCE(V->Shape()[2] % parameters.kv_num_heads == 0, "inconsistent v_hidden_size, it should be a multiple of kv_num_heads");
@@ -123,6 +127,7 @@ inline Status ComputeOutputShapeForAttention(
                static_cast<int64_t>(parameters.q_num_heads * parameters.v_head_size)};
   }
   parameters.total_sequence_length = parameters.past_sequence_length + parameters.kv_sequence_length;
+  parameters.checkParameters();
 
   // Handle nonpad_kv_seqlen (Opset 24+)
   if (nonpad_kv_seqlen != nullptr) {
@@ -170,9 +175,7 @@ inline Status ComputeOutputShapeForAttention(
               "attn_mask must be broadcastable to (batch_size, q_num_heads, q_sequence_length, total_sequence_length) but is not compatible with batch_size");
   ASSERT_TENSOR_DIMS(past_key, parameters.batch_size, parameters.kv_num_heads, parameters.past_sequence_length, parameters.head_size);
   ASSERT_TENSOR_DIMS(past_value, parameters.batch_size, parameters.kv_num_heads, parameters.past_sequence_length, parameters.v_head_size);
-
   parameters.scale = std::isnan(scale) ? static_cast<float>(1.0 / sqrt(parameters.head_size)) : scale;
-  parameters.checkParameters();
 
   present_key_shape = {static_cast<int64_t>(parameters.batch_size),
                        static_cast<int64_t>(parameters.kv_num_heads),
