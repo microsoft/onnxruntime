@@ -8719,7 +8719,9 @@ Status QMoEOffload::ComputeSharedAsync(OpKernelContext* context, const Tensor* i
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
     if (v4_planned_mode_ && v4_policy_.tail_substitution_threshold > 0.0f &&
-        tile_rows <= 4 && k_ > 0 && k_ <= 32 && resident_slots_ > 0 && resident_slots_ < num_experts_) {
+        tile_rows <= 4 && k_ > 0 && k_ <= 32 &&
+        v4_policy_.tail_substitution_min_rank < static_cast<int>(k_) &&
+        resident && !all_experts_resident) {
       auto* telemetry = use_persistent_decode ? decode_state_->telemetry : nullptr;
       if (is_bf16_) {
         CUDA_RETURN_IF_ERROR(LaunchQMoETailSubstitution(

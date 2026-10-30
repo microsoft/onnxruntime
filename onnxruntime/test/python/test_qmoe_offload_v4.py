@@ -1648,6 +1648,41 @@ with tempfile.TemporaryDirectory() as directory:
                         prefix + "tail_substitution_min_rank": "8",
                     },
                 )
+            # In mode=auto, a candidate QMoE node with k <= tail_substitution_min_rank that is rejected from offload
+            # because its expert initializer is shared with a non-offload consumer must not fail session creation.
+            shared_proto = onnx.load_model(model_path, load_external_data=False)
+            for attr in shared_proto.graph.node[0].attribute:
+                if attr.name == "k":
+                    attr.i = 4
+            shared_proto.graph.node.append(
+                helper.make_node(
+                    "Identity",
+                    ["model.layers.0.mlp.fc1_experts_weights"],
+                    ["shared_w1_tap"],
+                    name="NonOffloadInitializerConsumer",
+                )
+            )
+            shared_path = os.path.join(model_dir, "model_shared_init_k4.onnx")
+            onnx.save_model(shared_proto, shared_path)
+            with self.assertRaisesRegex(Exception, "shared with a non-offload consumer"):
+                self._make_session(
+                    shared_path,
+                    {
+                        **config,
+                        prefix + "tail_substitution_threshold": "0.01",
+                        prefix + "tail_substitution_min_rank": "6",
+                    },
+                )
+            auto_shared_session = self._make_session(
+                shared_path,
+                {
+                    **config,
+                    "session.moe.offload.mode": "auto",
+                    prefix + "tail_substitution_threshold": "0.01",
+                    prefix + "tail_substitution_min_rank": "6",
+                },
+            )
+            del auto_shared_session
             x = np.full((1, 256), 0.125, dtype=np.float32)
             router = np.linspace(3.0, -3.0, 16, dtype=np.float32).reshape(1, 16)
             with mock.patch.dict(os.environ, {"ORT_QMOE_SKIP_ZERO_COLD_DOORBELL": "1"}):

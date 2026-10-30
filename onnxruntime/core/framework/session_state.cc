@@ -1907,15 +1907,6 @@ Status PlaceMoeOffloadInitializersOnCpu(const GraphViewer& graph_viewer,
                                "' (", node.OpType(), "): ", reason, ".");
       }
       if (node_eligible) {
-        if (policy.tail_substitution_threshold > 0.0f) {
-          const auto k_attr = node.GetAttributes().find("k");
-          const int64_t top_k = k_attr == node.GetAttributes().end() ? 1 : k_attr->second.i();
-          if (policy.tail_substitution_min_rank >= top_k) {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                   "Invalid session.moe.offload.tail_substitution_min_rank for node '",
-                                   node.Name(), "': expected 0 <= min_rank < k=", top_k, ".");
-          }
-        }
         eligible_moe_nodes.insert(&node);
       }
     }
@@ -1968,6 +1959,18 @@ Status PlaceMoeOffloadInitializersOnCpu(const GraphViewer& graph_viewer,
         if (initialized_tensors.find(arg->Name()) != initialized_tensors.end()) {
           non_offload_consumed_initializers.insert(arg->Name());
         }
+      }
+    }
+  }
+
+  if (policy.tail_substitution_threshold > 0.0f) {
+    for (const Node* node : eligible_moe_nodes) {
+      const auto k_attr = node->GetAttributes().find("k");
+      const int64_t top_k = k_attr == node->GetAttributes().end() ? 1 : k_attr->second.i();
+      if (policy.tail_substitution_min_rank >= top_k) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Invalid session.moe.offload.tail_substitution_min_rank for node '",
+                               node->Name(), "': expected 0 <= min_rank < k=", top_k, ".");
       }
     }
   }
