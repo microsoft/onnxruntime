@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -70,6 +71,53 @@ TEST(TanTest, WebGpu_Float_ReductionRange) {
                                  6715.154296875f, -6715.154296875f, 11191.923828125f, -11191.923828125f,
                                  12866.392578125f, -12866.392578125f};
   RunTanOnWebGpu<float>(input, ExpectedTan(input), 1e-5f, 1e-5f);
+}
+
+// Inputs on both sides of the |k| < 8192 cutoff (|x| ~ 12867.17), of both signs, with lanes of each vec4 taking
+// different paths (lane 0 is past the cutoff in the first vec4 and below it in the second). Below the cutoff the
+// exact reduction must stay within 1e-5, which the built-in tan() misses by far. Past it the built-in tan() is used;
+// on NVIDIA D3D12 it is off by up to 2e-3 rad here and returns NaN next to poles, so those inputs are away from
+// poles and checked to 1e-2.
+TEST(TanTest, WebGpu_Float_FallbackCutoff) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU execution provider is not available.";
+  }
+  // {x, whether it is past the cutoff}
+  const std::vector<std::pair<float, bool>> cases{
+      // First vec4.
+      {12867.5f, true},
+      {12867.0f, false},
+      {-12868.0f, true},
+      {-12866.392578125f, false},
+      // Second vec4.
+      {-12867.0f, false},
+      {-12867.5f, true},
+      {12866.392578125f, false},
+      {12868.25f, true},
+  };
+  std::vector<float> input;
+  for (const auto& [x, past_cutoff] : cases) {
+    // k = round(x * 2/pi), as in the shader.
+    ASSERT_EQ(std::abs(std::nearbyint(x * 0.63661977236758134f)) >= 8192.0f, past_cutoff) << "x: " << x;
+    input.push_back(x);
+  }
+  const std::vector<float> expected = ExpectedTan(input);
+
+  SessionOptions options;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  OpTester test("Tan", 7);
+  test.AddInput<float>("input", {static_cast<int64_t>(input.size())}, input);
+  test.AddOutput<float>("output", {static_cast<int64_t>(expected.size())}, expected);
+  test.SetCustomOutputVerifier([&cases, &input, &expected](const std::vector<OrtValue>& fetches, const std::string&) {
+    const auto actual = fetches[0].Get<Tensor>().DataAsSpan<float>();
+    ASSERT_EQ(actual.size(), expected.size());
+    for (size_t i = 0; i < actual.size(); ++i) {
+      const float tolerance = cases[i].second ? 1e-2f : 1e-5f + 1e-5f * std::abs(expected[i]);
+      EXPECT_NEAR(actual[i], expected[i], tolerance) << "x: " << input[i];
+    }
+  });
+  test.Config(options).ConfigEp(std::move(webgpu_ep)).RunWithConfig();
 }
 
 TEST(TanTest, WebGpu_Float16_WebNNConformance) {
