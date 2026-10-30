@@ -95,7 +95,7 @@ TEST(MatMulNBitsQLoRA, RejectsUnsupportedWebGpuConfigurations) {
 }
 #endif  // ORT_NO_EXCEPTIONS
 
-TEST(MatMulNBitsQLoRA, PrefillSubgroupMatrixNumerics) {
+TEST(MatMulNBitsQLoRA, PrefillSubgroupMatrixCancellation) {
 #if defined(ORT_USE_EP_API_ADAPTERS)
   GTEST_SKIP() << "Hardware-specific dispatch checks require direct adapter capability inspection.";
 #else
@@ -117,20 +117,32 @@ TEST(MatMulNBitsQLoRA, PrefillSubgroupMatrixNumerics) {
   }
   // Include a partial row tile; the dispatch assertion below prevents a fallback
   // from hiding numerical failures in the subgroup-matrix kernel.
-  constexpr int64_t m = 65, k = 256, n = 128;
+  constexpr int64_t m = 65, k = 64, n = 128;
   OpTester test("MatMulNBitsQLoRA", 1, kMSDomain);
   test.AddAttribute<int64_t>("K", k);
   test.AddAttribute<int64_t>("N", n);
   test.AddAttribute<int64_t>("accuracy_level", 4);
-  test.AddInput<MLFloat16>("X", {1, m, k}, std::vector<MLFloat16>(m * k, MLFloat16(0.5f)));
+  test.AddInput<MLFloat16>("X", {1, m, k}, std::vector<MLFloat16>(m * k, MLFloat16(1.0f)));
   test.AddInput<uint8_t>("W", {n, k / 32, 16}, std::vector<uint8_t>(n * k / 2, 0x99), true);
   test.AddInput<MLFloat16>("S", {n, k / 32},
-                           std::vector<MLFloat16>(n * k / 32, MLFloat16(0.03125f)), true);
-  test.AddInput<uint8_t>("AQ", {32, k / 32, 32}, std::vector<uint8_t>(32 * k, 129));
-  test.AddInput<MLFloat16>("AS", {32, k / 32}, std::vector<MLFloat16>(k, MLFloat16(0.03125f)));
-  test.AddInput<uint8_t>("BQ", {n, 1, 32}, std::vector<uint8_t>(n * 32, 129));
-  test.AddInput<MLFloat16>("BS", {n, 1}, std::vector<MLFloat16>(n, MLFloat16(0.0625f)));
-  test.AddOutput<MLFloat16>("Y", {1, m, n}, std::vector<MLFloat16>(m * n, MLFloat16(12.0f)));
+                           std::vector<MLFloat16>(n * k / 32, MLFloat16(16.0f)), true);
+  // Base=1024, T[0]=1/16 and T[16]=1. The two matrix K steps contribute
+  // +0.5 and -1024. Accumulating directly into the FP16 base loses the 0.5.
+  std::vector<uint8_t> aq(32 * k, 128), bq(n * 32, 128);
+  std::vector<MLFloat16> as(k, MLFloat16(1.0f));
+  for (const int64_t rank : {0, 16}) {
+    std::fill_n(aq.begin() + rank * k, k, uint8_t{129});
+    std::fill_n(as.begin() + rank * (k / 32), k / 32, MLFloat16(rank == 0 ? 1.0f / 1024 : 1.0f / 64));
+  }
+  for (int64_t col = 0; col < n; ++col) {
+    bq[col * 32] = 129;
+    bq[col * 32 + 16] = 0;
+  }
+  test.AddInput<uint8_t>("AQ", {32, k / 32, 32}, aq);
+  test.AddInput<MLFloat16>("AS", {32, k / 32}, as);
+  test.AddInput<uint8_t>("BQ", {n, 1, 32}, bq);
+  test.AddInput<MLFloat16>("BS", {n, 1}, std::vector<MLFloat16>(n, MLFloat16(8.0f)));
+  test.AddOutput<MLFloat16>("Y", {1, m, n}, std::vector<MLFloat16>(m * n, MLFloat16(0.5f)));
 
   SessionOptions session_options;
   session_options.session_log_severity_level = static_cast<int>(logging::Severity::kINFO);

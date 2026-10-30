@@ -1,6 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cmath>
+#include <limits>
+#include <type_traits>
+
 #include "core/optimizer/matmul_nbits_qlora_fusion.h"
 #include "core/providers/webgpu/webgpu_provider_options.h"
 #include "core/session/IOBinding.h"
@@ -128,6 +132,69 @@ TEST_F(GraphTransformationTests, MatMulNBitsQLoRAFusionRequiresWebGpu) {
   ASSERT_STATUS_OK(session.Load(data.data(), static_cast<int>(data.size())));
   ASSERT_STATUS_OK(session.Initialize());
   ASSERT_STATUS_OK(CheckQLoRACount(session.GetGraph(), 0));
+}
+
+template <typename T>
+void RunQLoRAFusionEmptyDownPreservesUp(const logging::Logger& logger) {
+  if (!DefaultWebGpuExecutionProvider()) GTEST_SKIP() << "WebGPU unavailable.";
+  // Scalar output, joint decode, generic prefill, and subgroup-matrix prefill.
+  const int64_t shapes[][3] = {{1, 64, 1}, {1, 2176, 128}, {2, 64, 128}, {65, 64, 128}};
+  for (const auto& shape : shapes) {
+    const auto& [m, k, n] = shape;
+    SCOPED_TRACE(MakeString("M=", m, ", K=", k, ", N=", n));
+    Model model("Empty down, active up", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+                {{kOnnxDomain, 21}, {kMSDomain, 1}}, {}, logger);
+    ModelTestBuilder builder(model.MainGraph());
+    BuildQLoRA<T>(builder, m, k, n, 1, false, false, false, 0, true);
+    builder.SetGraphOutputs();
+    ASSERT_STATUS_OK(model.MainGraph().Resolve());
+    const auto& inputs = model.MainGraph().GetInputsIncludingInitializers();
+    ASSERT_EQ(inputs.size(), 5u);
+    // Keep the down weight AND its unused scale default empty. Override only up.
+    builder.feeds_.erase(inputs[1]->Name());
+    builder.feeds_.erase(inputs[2]->Name());
+    auto& weights = *builder.feeds_.at(inputs[3]->Name()).GetMutable<Tensor>();
+    auto& scales = *builder.feeds_.at(inputs[4]->Name()).GetMutable<Tensor>();
+    std::fill_n(weights.MutableData<uint8_t>(), weights.Shape().Size(), uint8_t{255});
+    const float scale = std::is_same_v<T, MLFloat16> ? 1024.0f : std::numeric_limits<float>::max() / 64;
+    std::fill_n(scales.MutableData<T>(), scales.Shape().Size(), T(scale));
+    const auto data = model.ToProto().SerializeAsString();
+    for (bool fused : {false, true}) {
+      SCOPED_TRACE(fused);
+      SessionOptions options;
+      options.graph_optimization_level = TransformerLevel::Level2;
+      if (!fused) {
+        ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableSpecifiedOptimizers,
+                                                               "MatMulNBitsQLoRAFusion"));
+      }
+      ASSERT_STATUS_OK(options.config_options.AddConfigEntry("session.disable_cpu_ep_fallback", "1"));
+      InferenceSessionWrapper session(options, GetEnvironment());
+      ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultWebGpuExecutionProvider()));
+      ASSERT_STATUS_OK(session.Load(data.data(), static_cast<int>(data.size())));
+      ASSERT_STATUS_OK(session.Initialize());
+      ASSERT_STATUS_OK(CheckQLoRACount(session.GetGraph(), fused ? 1 : 0));
+      std::vector<OrtValue> output;
+      ASSERT_STATUS_OK(session.Run(RunOptions{}, builder.feeds_, builder.output_names_, &output));
+      // All inputs are finite, but (255 - 128) * scale overflows during
+      // up-weight dequantization. Its multiplication by zero must still run.
+      const auto values = output[0].Get<Tensor>().DataAsSpan<T>();
+      EXPECT_TRUE(std::all_of(values.begin(), values.end(), [](T value) {
+        if constexpr (std::is_same_v<T, MLFloat16>) {
+          return value.IsNaN();
+        } else {
+          return std::isnan(value);
+        }
+      }));
+    }
+  }
+}
+
+TEST_F(GraphTransformationTests, MatMulNBitsQLoRAFusionEmptyDownPreservesUp) {
+  RunQLoRAFusionEmptyDownPreservesUp<MLFloat16>(*logger_);
+}
+
+TEST_F(GraphTransformationTests, MatMulNBitsQLoRAFusionEmptyDownPreservesUpFp32) {
+  RunQLoRAFusionEmptyDownPreservesUp<float>(*logger_);
 }
 
 TEST_F(GraphTransformationTests, MatMulNBitsQLoRAFusionNumerics) {

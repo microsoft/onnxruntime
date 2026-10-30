@@ -102,6 +102,17 @@ fn load_b(row : u32, pack_idx : u32, weight_offset : u32) -> PackT {
 
 // --- Main Compute ---
 
+#if has_qlora_up
+alias QLoRAElement = f16;
+const kQLoRAMatM = kSgMatDimM;
+const kQLoRAMatN = kSgMatDimN;
+const kQLoRAAddCount = 2u;
+const kQLoRABaseCapacity = kTileN * kChunkSizeK;
+const kQLoRADeltaCapacity = kTileM * kQLoRARank;
+const kQLoRASubgroups = kSgMatCountM;
+#include "quantization/subgroup_matrix_qlora_add.wgsl.template"
+#endif
+
 $MAIN {
   // Resolve the (possibly indirect) weight index once per workgroup.
 #if has_weight_idx_indirect
@@ -189,53 +200,50 @@ $MAIN {
   }
 
 #if has_qlora_up
-  // Reuse the subgroup-matrix accumulators for the rank-32 adapter-up product.
-  // Loading the row-major adapter activation into workgroup memory avoids the
-  // standalone subgroup layout and adapter-up dispatches.
-  for (var load_unit = local_idx; load_unit < kTileM * (kQLoRARank / 4u);
-       load_unit += workgroup_size_x) {
-    let row_in_tile = load_unit / (kQLoRARank / 4u);
-    let r4 = load_unit % (kQLoRARank / 4u);
-    let global_m = global_base_m + row_in_tile;
-    if (global_m < uniforms.M) {
-      let values = lora_t.getByOffset(global_m * (kQLoRARank / 4u) + r4);
-      let offset = row_in_tile * kQLoRARank + r4 * 4u;
-      for (var i = 0u; i < 4u; i++) {
-        lora_a[offset + i] = f16(values[i]);
+  for (var n = 0u; n < kSgMatCountN; n += kQLoRAAddCount) {
+    for (var load_unit = local_idx; load_unit < kTileM * (kQLoRARank / 4u);
+         load_unit += workgroup_size_x) {
+      let row_in_tile = load_unit / (kQLoRARank / 4u);
+      let r4 = load_unit % (kQLoRARank / 4u);
+      let global_m = global_base_m + row_in_tile;
+      if (global_m < uniforms.M) {
+        let values = lora_t.getByOffset(global_m * (kQLoRARank / 4u) + r4);
+        let offset = row_in_tile * kQLoRARank + r4 * 4u;
+        for (var i = 0u; i < 4u; i++) {
+          lora_a[offset + i] = f16(values[i]);
+        }
       }
     }
-  }
-  for (var load_unit = local_idx; load_unit < kTileN * (kQLoRARank / 4u);
-       load_unit += workgroup_size_x) {
-    let col_in_tile = load_unit / (kQLoRARank / 4u);
-    let r4 = load_unit % (kQLoRARank / 4u);
-    let global_n = global_base_n + col_in_tile;
-    if (global_n < uniforms.N) {
-      let values = qlora_weight(global_n, r4);
-      let offset = col_in_tile * kQLoRARank + r4 * 4u;
-      for (var i = 0u; i < 4u; i++) {
-        tile_b[offset + i] = f16(values[i]);
+    for (var load_unit = local_idx; load_unit < 32u * (kQLoRARank / 4u);
+         load_unit += workgroup_size_x) {
+      let col_in_tile = load_unit / (kQLoRARank / 4u);
+      let r4 = load_unit % (kQLoRARank / 4u);
+      let global_n = global_base_n + n * kSgMatDimN + col_in_tile;
+      if (global_n < uniforms.N) {
+        let values = qlora_weight(global_n, r4);
+        let offset = col_in_tile * kQLoRARank + r4 * 4u;
+        for (var i = 0u; i < 4u; i++) {
+          tile_b[offset + i] = f16(values[i]);
+        }
       }
     }
-  }
-  workgroupBarrier();
+    workgroupBarrier();
 
-  let lora_a_base = sg_idx * kSgMatDimM * kQLoRARank;
-  for (var k_idx = 0u; k_idx < kQLoRARank; k_idx += kSgMatDimK) {
-    var sg_mat_a: SgMatLeft = subgroupMatrixLoad<SgMatLeft, row_major>(&lora_a,
-                                                                       lora_a_base + k_idx,
-                                                                       kQLoRARank);
-    var sg_mat_offset_b = k_idx;
-    for (var sg_mat_n_idx = 0u; sg_mat_n_idx < kSgMatCountN; sg_mat_n_idx++) {
-      var sg_mat_b: SgMatRight = subgroupMatrixLoad<SgMatRight, col_major>(&tile_b,
-                                                                           sg_mat_offset_b,
-                                                                           kQLoRARank);
-      sg_mat_offset_b += kSgMatStrideN;
-      sg_mat_acc[sg_mat_n_idx] =
-          subgroupMatrixMultiplyAccumulate(sg_mat_a, sg_mat_b, sg_mat_acc[sg_mat_n_idx]);
+
+    let lora_a_base = sg_idx * kSgMatDimM * kQLoRARank;
+    var delta: QLoRAMatGroup;
+    for (var k = 0u; k < kQLoRARank; k += kSgMatDimK) {
+      let a = subgroupMatrixLoad<SgMatLeft, row_major>(&lora_a, lora_a_base + k, kQLoRARank);
+      for (var i = 0u; i < kQLoRAAddCount; i++) {
+        let b = subgroupMatrixLoad<SgMatRight, col_major>(&tile_b, i * kSgMatStrideN + k, kQLoRARank);
+        delta[i] = subgroupMatrixMultiplyAccumulate(a, b, delta[i]);
+      }
     }
+    let result = qlora_add(QLoRAMatGroup(sg_mat_acc[n], sg_mat_acc[n + 1u]), delta,
+                            &tile_b, &lora_a, sg_idx, local_idx % 32u, 32u);
+    sg_mat_acc[n] = result[0];
+    sg_mat_acc[n + 1u] = result[1];
   }
-  workgroupBarrier();
 #endif
 
   // Write out

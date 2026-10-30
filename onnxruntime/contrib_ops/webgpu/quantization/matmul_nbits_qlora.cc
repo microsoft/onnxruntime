@@ -132,10 +132,11 @@ class MatMulNBitsQLoRA final : public WebGpuKernel {
     ORT_RETURN_IF_ERROR(helper.Compute(x->Shape(), TensorShape({n_, k_}), false, true));
     auto* y = context.Output(0, helper.OutputShape());
     if (y->Shape().Size() == 0) return Status::OK();
-    if (rank_a == 0 || blocks_b == 0) {
+    if (blocks_b == 0) {
       return ApplyMatMulNBits(x, w, s, nullptr, nullptr, k_, n_, 32, accuracy_level_, 4, context, y);
     }
-    ORT_RETURN_IF_NOT(as->Shape() == TensorShape({32, k_ / 32}) && bs->Shape() == TensorShape({n_, 1}),
+    ORT_RETURN_IF_NOT((rank_a == 0 || as->Shape() == TensorShape({32, k_ / 32})) &&
+                          bs->Shape() == TensorShape({n_, 1}),
                       "Invalid adapter scales shape.");
     // With logical dequantized weights, Y = X * W + T * B_up, where T = X * A_down.
     // T keeps X's leading dimensions and replaces K with the adapter rank (32).
@@ -157,7 +158,7 @@ class MatMulNBitsQLoRA final : public WebGpuKernel {
                        context, accuracy_level_, 32, narrow<uint32_t>(helper.OutputOffsets().size()),
                        narrow<uint32_t>(n_), narrow<uint32_t>(k_), 4, x->IsDataType<MLFloat16>(),
                        base_subgroup_matrix_config, subgroup_m, false);
-    if (base_subgroup_matrix && base_subgroup_matrix_config->Is(8, 16, 16)) {
+    if (rank_a != 0 && base_subgroup_matrix && base_subgroup_matrix_config->Is(8, 16, 16)) {
       const auto down_config = SelectSubgroupMatrixConfig(
           context, {{wgpu::SubgroupMatrixComponentType::F16, wgpu::SubgroupMatrixComponentType::F32,
                      8, 16, 16, 32, true}});
@@ -167,7 +168,7 @@ class MatMulNBitsQLoRA final : public WebGpuKernel {
             *base_subgroup_matrix_config, *down_config, context, &t, y);
       }
     }
-    if (!fuse_up && m == 1 && x->IsDataType<float>() && base_dp4a && k_ >= 2048 && k_ <= 8192) {
+    if (rank_a != 0 && !fuse_up && m == 1 && x->IsDataType<float>() && base_dp4a && k_ >= 2048 && k_ <= 8192) {
       auto base = context.CreateGPUTensor(y->DataType(), y->Shape());
       ORT_RETURN_IF_ERROR(ApplyDP4AMatrixMatMulNBits(
           x, w, s, nullptr, nullptr, narrow<uint32_t>(x->Shape().Size() / k_), 1, 1, narrow<uint32_t>(n_),
@@ -177,7 +178,7 @@ class MatMulNBitsQLoRA final : public WebGpuKernel {
     }
     // For one input vector, append four rank-reduction workgroups to the generic
     // base dispatch. GenerateQLoRADown supplies their shader body; DP4A has its own.
-    const bool joint_down = !fuse_up && x->Shape().Size() == k_ && k_ >= 2048 && k_ <= 8192 && !base_dp4a;
+    const bool joint_down = rank_a != 0 && !fuse_up && x->Shape().Size() == k_ && k_ >= 2048 && k_ <= 8192 && !base_dp4a;
     if (joint_down) {
       auto base = context.CreateGPUTensor(y->DataType(), y->Shape());
       ORT_RETURN_IF_ERROR(ApplyMatMulNBits(x, w, s, nullptr, nullptr, k_, n_, 32, accuracy_level_, 4, context, &base, 0,
@@ -192,6 +193,8 @@ class MatMulNBitsQLoRA final : public WebGpuKernel {
             ? accuracy_level_
             : 0;
     DP4AQuantizedInput quantized_x;
+    // Empty down weights fill T with zeros. The active up projection must still
+    // run: its dequantized weights may overflow, and 0 * Inf must not be skipped.
     ORT_RETURN_IF_ERROR(ApplyMatMulNBits(x, aq, as, nullptr, nullptr, k_, 32, 32, down_accuracy, 8, context, &t, 0,
                                          nullptr, 0, &quantized_x));
     if (fuse_up) {

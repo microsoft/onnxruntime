@@ -103,7 +103,7 @@ same selection as decode. Graph fusion does not imply a single GPU dispatch.
 
 | Case | Execution |
 | --- | --- |
-| Either packed adapter is empty | Run ordinary base MatMulNBits, before allocating or dispatching adapter work. |
+| Up-projection packed weight is empty | Run ordinary base MatMulNBits, before allocating or dispatching adapter work. |
 | Prefill (`M > 1`) | Compute `T`, then fuse the up projection and addition into the base shader's output stage. |
 | Eligible decode (`M = 1`) | Compute base and down projections in separate workgroups of one dispatch, then run an up-plus-add output shader. |
 | Other decode shapes | Compute down and base projections separately, then run the up-plus-add output shader. |
@@ -136,7 +136,9 @@ the invocation and are not reused as cached values across different inputs.
 
 The [subgroup-matrix implementation](../onnxruntime/contrib_ops/webgpu/quantization/subgroup_matrix_matmul_nbits.cc)
 adds the up projection using matrix instructions in the base shader's output
-stage. On a compatible FP16 `8x16x16` configuration, a specialized path packs `X`
+stage. The adapter delta accumulates independently, rounds to FP16, and is added
+once to the base result within the same dispatch. On a compatible FP16
+`8x16x16` configuration, a specialized path packs `X`
 once for both projections, with row padding sufficient for both tile sizes.
 The narrow down projection uses FP32 matrix accumulation and stores `T` in the
 activation type; the base projection then consumes `T` for the fused up stage.
@@ -182,9 +184,10 @@ shapes and also list them as graph inputs:
 
 Declare the packed graph inputs' adapter axes as dynamic: axis 0 for `lora_A`
 and axis 1 for `lora_B`. This allows active rank-32 weights to override the empty
-defaults. Either empty packed weight disables the adapter. Scale-only or
-single-weight overrides therefore retain the base result; both packed weights
-activate the adapter using supplied scales or their defaults. Scale defaults may
+defaults. An empty up weight returns the base result. An empty down weight produces zero
+intermediate activations, but a nonempty up weight still executes: overflowing
+dequantization can produce NaNs even with zero activations. With finite
+dequantized up weights, this mixed state also returns the base result. Scale defaults may
 also be empty, but activation then requires supplying their active shapes and data.
 
 This convention relies on empty-weight MatMulNBits support in the raw graph.
