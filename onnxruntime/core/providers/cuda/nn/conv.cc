@@ -127,6 +127,11 @@ Status Conv<T, Layout>::CreateCudnnFeExecutionPlan(const onnxruntime::TensorShap
   s_.act_fused = fuse_act;
   s_.variant_pack.clear();  // clear variant pack, as stored pointers to tensors change
   s_.cudnn_fe_graph = std::make_unique<cudnn_frontend::graph::Graph>();
+  // Provide the SM version from the cached device properties. Otherwise check_support() queries it with
+  // cudaGetDeviceProperties() (cudnn_frontend 1.24 - 1.31), which costs ~1 ms on some systems and runs on
+  // every plan rebuild, i.e. for each Conv node whenever its input shape changes.
+  const cudaDeviceProp& device_prop = GetDeviceProp();
+  s_.cudnn_fe_graph->set_sm_version(device_prop.major * 10 + device_prop.minor);
   cudnn_frontend::DataType_t data_type = CudnnFeTensor::GetDataType<CudaT>();
   s_.cudnn_fe_graph->set_io_data_type(data_type).set_intermediate_data_type(data_type);
   if (data_type == cudnn_frontend::DataType_t::HALF) {
