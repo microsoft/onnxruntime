@@ -1263,7 +1263,7 @@ function(onnxruntime_apply_test_target_workarounds target)
   if (MSVC)
     # TODO: The test code for OpenVINO, QNN, and WebGPU is getting flagged with a warning from ABSL for unreachable code.
     # Need to figure out how those particular targets/build variants are failing, but regular windows is not.
-    target_compile_options(${target} PRIVATE "/wd4702")
+    target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:/wd4702>")
   endif()
 
   # TODO fix shorten-64-to-32 warnings
@@ -1614,6 +1614,10 @@ endif()
 # These also have some support for dynamically specified plugin EPs.
 if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
 set(onnxruntime_provider_test_target onnxruntime_provider_test)
+if(onnxruntime_USE_CUDA AND NOT onnxruntime_DISABLE_CONTRIB_OPS)
+  list(APPEND onnxruntime_provider_test_srcs
+    "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/matmul_4bits_m1_test.cu")
+endif()
 if (WIN32 AND TARGET onnxruntime_providers_cuda_ut)
   set(onnxruntime_provider_test_target onnxruntime_provider_test_executable)
 endif()
@@ -1657,6 +1661,15 @@ block()
     LIBS ${onnxruntime_provider_test_libs}
     DEPENDS ${onnxruntime_provider_test_deps}
   )
+
+  if (onnxruntime_USE_CUDA AND NOT onnxruntime_DISABLE_CONTRIB_OPS)
+    ort_configure_cuda_cccl(${onnxruntime_provider_test_target})
+    if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.8)
+      # Match the provider workaround for overflow diagnostics in CUDA math headers.
+      target_compile_options(${onnxruntime_provider_test_target} PRIVATE
+        "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=221>")
+    endif()
+  endif()
 
   # Match the non-plugin WebGPU test-source selection above.
   if (onnxruntime_USE_WEBGPU AND NOT onnxruntime_USE_EP_API_ADAPTERS)
