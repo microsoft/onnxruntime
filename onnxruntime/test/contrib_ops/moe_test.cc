@@ -272,7 +272,10 @@ static void RunCudaGegluTest(bool quantized, int fusion, int rows = 2, int top_k
   constexpr int inter = 128;
   constexpr int block = 32;
   constexpr float fp32_abs_tolerance = 3e-5f;
+  constexpr float low_precision_tolerance = std::is_same_v<ElementType, BFloat16> ? 0.02f : 0.001f;
+  const bool amplify_tanh_difference = !quantized && !std::is_same_v<ElementType, float>;
   float max_erf_tanh_separation = 0.0f;
+  float max_erf_tanh_tolerance_ratio = 0.0f;
   std::vector<ElementType> input(rows * hidden);
   std::vector<ElementType> expected(rows * hidden);
   std::vector<ElementType> router_probs(rows * experts);
@@ -298,6 +301,9 @@ static void RunCudaGegluTest(bool quantized, int fusion, int rows = 2, int top_k
       set_weight(fc1, qfc1, (expert * 2 * inter + up_row) * hidden + channel,
                  fc1_bits == 2 ? -1 - expert : 3 - expert, fc1_bits);
       set_weight(fc2, qfc2, (expert * hidden + channel) * inter + channel, 1, fc2_bits);
+      if (amplify_tanh_difference && channel < 2) {
+        fc2[(expert * hidden + channel) * inter + channel] = ElementType(256.0f);
+      }
       fc1_bias[expert * 2 * inter + gate_row] =
           ElementType(0.125f * (expert + 1) + 0.03125f * (channel % 5 - 2));
       fc1_bias[expert * 2 * inter + up_row] =
@@ -309,7 +315,10 @@ static void RunCudaGegluTest(bool quantized, int fusion, int rows = 2, int top_k
     router_probs[row * experts] = ElementType(row % 2 == 0 ? 1.0f : 0.0f);
     router_probs[row * experts + 1] = ElementType(row % 2 == 0 ? 0.0f : 1.0f);
     for (int channel = 0; channel < hidden; ++channel) {
-      const float value = static_cast<float>((channel + row) % 17 - 8) * 0.25f;
+      // Negative-tail channels amplify the tanh/erf difference past FP16/BF16 tolerances.
+      const float value = amplify_tanh_difference && channel < 2
+                              ? (channel == 0 ? -3.0f : -1.5f)
+                              : static_cast<float>((channel + row) % 17 - 8) * 0.25f;
       input[row * hidden + channel] = ElementType(value);
       float result = 0.0f;
       float erf_result = 0.0f;
@@ -328,9 +337,22 @@ static void RunCudaGegluTest(bool quantized, int fusion, int rows = 2, int top_k
         const float erf_gelu = 0.5f * gate * (1.0f + std::erf(gate / std::sqrt(2.0f)));
         erf_result += routing_weight * erf_gelu * up;
       }
+      if (amplify_tanh_difference && channel < 2) {
+        result *= 256.0f;
+        erf_result *= 256.0f;
+      }
       expected[row * hidden + channel] = ElementType(result);
       max_erf_tanh_separation = std::max(max_erf_tanh_separation, std::abs(result - erf_result));
+      const float rounded_result = static_cast<float>(expected[row * hidden + channel]);
+      const float rounded_erf_result = static_cast<float>(ElementType(erf_result));
+      max_erf_tanh_tolerance_ratio = std::max(
+          max_erf_tanh_tolerance_ratio,
+          std::abs(rounded_result - rounded_erf_result) /
+              (low_precision_tolerance * (1.0f + std::abs(rounded_result))));
     }
+  }
+  if (amplify_tanh_difference) {
+    ASSERT_GT(max_erf_tanh_tolerance_ratio, 2.0f);
   }
   OpTester tester(quantized ? "QMoE" : "MoE", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<int64_t>("k", top_k);
@@ -366,7 +388,7 @@ static void RunCudaGegluTest(bool quantized, int fusion, int rows = 2, int top_k
     tester.AddInput<ElementType>("fc2_experts_weights", {experts, hidden, inter}, fc2);
   }
   tester.AddOutput<ElementType>("output", {rows, hidden}, expected);
-  tester.SetOutputTolerance(std::is_same_v<ElementType, BFloat16> ? 0.02f : 0.001f);
+  tester.SetOutputTolerance(low_precision_tolerance);
   if constexpr (std::is_same_v<ElementType, float>) {
     // CUTLASS uses hardware fast-tanh: its activation error is amplified by
     // the up projection (2.3e-5 observed on SM80 for this input sweep).
@@ -406,9 +428,15 @@ TEST(MoETest, CudaGegluBFloat16) {
 }
 
 TEST(MoETest, CudaGegluQuantizedInt4Float16) {
+  if (!HasCudaEnvironment(750)) {
+    GTEST_SKIP() << "CUDA architecture does not support FP16 INT4";
+  }
+  testing::internal::CaptureStderr();
   for (int fusion : {1, 2})
     for (int rows : {1, 17})
       for (int top_k : {1, 2}) RunCudaGegluTest<MLFloat16>(true, fusion, rows, top_k);
+  const auto log = testing::internal::GetCapturedStderr();
+  EXPECT_EQ(log.find("No valid GEMM config found"), std::string::npos) << log;
 }
 
 #if !defined(ORT_QUICK_BUILD) && defined(ENABLE_BF16)
