@@ -39,5 +39,9 @@ function GetFile {
 cd /tmp/src
 
 echo "Installing Node.js"
-GetFile https://nodejs.org/dist/v22.17.1/node-v22.17.1-linux-x64.tar.gz /tmp/src/node-v22.17.1-linux-x64.tar.gz
-tar --strip 1 -xf /tmp/src/node-v22.17.1-linux-x64.tar.gz -C /usr
+NODE_VERSION=22.23.4
+NODE_ARCHIVE="/tmp/src/node-v${NODE_VERSION}-linux-x64.tar.gz"
+GetFile "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.gz" "$NODE_ARCHIVE"
+echo "b8492284c76a54baf58d61668dd0e41ee0fc98adabf9503d30f05d08f55b4406  $NODE_ARCHIVE" | sha256sum -c --strict -
+tar --strip 1 -xf "$NODE_ARCHIVE" -C /usr
+npm install --global --prefix /usr npm@11.21.1 --no-audit --no-fund

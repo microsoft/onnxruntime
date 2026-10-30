@@ -107,6 +107,7 @@ def main():
             "error",
             "buildx",
             "build",
+            "--pull",
             "--load",
             "--tag",
             full_image_name,
