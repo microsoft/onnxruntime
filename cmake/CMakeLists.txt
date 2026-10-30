@@ -1609,6 +1609,7 @@ if (Git_FOUND)
   endif()
 endif()
 string(APPEND ORT_BUILD_INFO "build type=${CMAKE_BUILD_TYPE}")
+configure_file(onnxruntime_build_info.h.in ${CMAKE_CURRENT_BINARY_DIR}/onnxruntime_build_info.h)
 configure_file(onnxruntime_config.h.in ${CMAKE_CURRENT_BINARY_DIR}/onnxruntime_config.h)
 get_property(onnxruntime_GENERATOR_IS_MULTI_CONFIG GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
 

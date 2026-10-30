@@ -9,6 +9,7 @@
 #include "core/common/path_string.h"
 #include "core/providers/get_execution_providers.h"
 #include "core/session/provider_bridge_ort.h"
+#include "onnxruntime_build_info.h"
 #include "onnxruntime_config.h"
 
 namespace onnxruntime {
