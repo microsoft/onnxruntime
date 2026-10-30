@@ -1560,10 +1560,10 @@ TEST(MathOpTest, Pow_Int32_ScalarDoubleExponent_3) {
 
 TEST(MathOpTest, Pow_Int64_ScalarFloatExponent_Overflow) {
   OpTester test("Pow", 12);
-  std::vector<int64_t> dims_x{1};
-  test.AddInput<int64_t>("X", dims_x, {4294967296LL});
+  std::vector<int64_t> dims_x{2};
+  test.AddInput<int64_t>("X", dims_x, {4294967296LL, 3});
   test.AddInput<float>("Y", {}, {2.0f});
-  test.AddOutput<int64_t>("Z", dims_x, {0});
+  test.AddOutput<int64_t>("Z", dims_x, {0, 9});
   test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
 }
 
