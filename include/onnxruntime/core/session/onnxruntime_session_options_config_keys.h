@@ -510,6 +510,25 @@ static const char* const kOrtSessionOptionsCudaFpAIntBGemvWaveAware = "ep.cuda.f
 static const char* const kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLength =
     "ep.cuda.gqa_workspace_max_total_sequence_length";
 
+/// CUDA DynamicSparseAttention kernel switches. Each is resolved once when the kernel is created, so a change needs a new
+/// session, and overrides the environment variable named below. The 0/1 switches accept only "0" and "1", and the
+/// thresholds a non-negative decimal integer; any other value, including an empty string, fails session initialization.
+/// "0" makes the INT8-cache BF16 prefill dequantize the gathered K/V tiles to BF16 instead of running FP16 tensor-core
+/// MMA on them. Default "1". Overrides ORT_DSA_PREFILL_INT8_TC.
+static const char* const kOrtSessionOptionsCudaDsaPrefillInt8Tc = "ep.cuda.dsa_prefill_int8_tc";
+
+/// "0" routes the BF16 prefill through the generic kernels. Default "1". Overrides ORT_DSA_PREFILL_KERNEL.
+static const char* const kOrtSessionOptionsCudaDsaPrefillKernel = "ep.cuda.dsa_prefill_kernel";
+
+/// "0" makes the INT8-cache BF16 decode (up to 8 query rows) use the CUDA-core grouped kernel instead of the split-K
+/// tensor-core kernel. Default "1". Overrides ORT_DSA_DECODE_INT8_TC.
+static const char* const kOrtSessionOptionsCudaDsaDecodeInt8Tc = "ep.cuda.dsa_decode_int8_tc";
+
+/// Number of 64-candidate tiles each CTA of the split-K tensor-core decode kernel consumes. "0" derives it from the
+/// problem size (about 384 CTAs in total). Default "0". Overrides ORT_DSA_DECODE_INT8_TC_TILES_PER_SPLIT.
+static const char* const kOrtSessionOptionsCudaDsaDecodeInt8TcTilesPerSplit =
+    "ep.cuda.dsa_decode_int8_tc_tiles_per_split";
+
 /// Reader-only, hardware-neutral kernel dispatch intent shared across operators and EPs.
 /// Valid values are "auto", "latency", "memory", and "safe"; matching is case-sensitive.
 /// Unset or empty values map to "auto". Other values cause INVALID_ARGUMENT during
