@@ -15,6 +15,9 @@ diagnostic 2803 is suppressed for CUDA 13.4, and host warnings C4459/C4267 are
 suppressed during compilation. No QUICK_BUILD reduction is enabled.
 Resume with -Mode Build. Do not reconfigure a populated FetchContent tree:
 some dependency patch steps are not idempotent. Use a new directory instead.
+This source includes OOM-only clearing for the retrying device and pinned allocators.
+The sibling cuda_plugin_allocator_regression_probe.cc is CPU-only; the real-runtime
+companion requires an explicitly supplied CUDA runtime DLL. Neither probe runs here.
 #>
 [CmdletBinding()]
 param(
@@ -30,7 +33,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$diagnosticSource = '6a15f89c13f8960d6dfc65bbd59b3cc4740867ea'
+$diagnosticSource = '78b46299f68d5facae2ac6d9872c94aff395dabf'
 $originalDiagnostic = '64c1a75e1715442956ca40d3c11106a29d0b910e'
 $providerBase = '123752d361d2da8ff592b347772f31362e0966bd'
 $scriptPath = 'tools/ci_build/github/windows/build_gemm_diagnostics.ps1'
@@ -79,7 +82,7 @@ $configureArguments += @(
     'onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON',
     'onnxruntime_BUILD_UNIT_TESTS=OFF',
     'onnxruntime_USE_FPA_INTB_GEMM=ON',
-    'onnxruntime_PLUGIN_EP_VERSION=0.4.0-dev+6a15f89'
+    'onnxruntime_PLUGIN_EP_VERSION=0.4.0-dev+78b4629'
 )
 $buildArguments = @(
     '--build', $binaryDirectory, '--config', 'Release',
