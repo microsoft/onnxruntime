@@ -80,6 +80,10 @@ CudaDeviceAllocator::CudaDeviceAllocator(const OrtMemoryInfo* memory_info, int d
                           << " cuda_status=" << static_cast<int>(err)
                           << " result=" << p;
   }
+  if (err == cudaErrorMemoryAllocation) {
+    // The arena can handle an expected OOM by retrying a smaller allocation.
+    static_cast<void>(cudaGetLastError());
+  }
   RestoreDeviceIfKnown(restore_prev_device, prev_device);
   if (err != cudaSuccess) {
     return nullptr;
