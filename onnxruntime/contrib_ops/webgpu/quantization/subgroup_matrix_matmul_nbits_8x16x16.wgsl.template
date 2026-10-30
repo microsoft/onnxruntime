@@ -231,7 +231,8 @@ $MAIN {
 
 
     let lora_a_base = sg_idx * kSgMatDimM * kQLoRARank;
-    var delta: QLoRAMatGroup;
+    // Reset the adapter accumulation for each output-column group.
+    var delta = QLoRAMatGroup();
     for (var k = 0u; k < kQLoRARank; k += kSgMatDimK) {
       let a = subgroupMatrixLoad<SgMatLeft, row_major>(&lora_a, lora_a_base + k, kQLoRARank);
       for (var i = 0u; i < kQLoRAAddCount; i++) {
