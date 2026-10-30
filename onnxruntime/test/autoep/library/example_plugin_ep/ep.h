@@ -64,6 +64,9 @@ class ExampleEp : public OrtEp, public ApiPtrs {
   struct Config {
     bool enable_ep_context = false;
     bool embed_ep_context_in_model = false;
+    // Deprecated "ep.enable_weightless_ep_context_nodes" option: when generating EPContext nodes, requests weightless
+    // mode without selecting one (see weightless_mode).
+    bool enable_weightless_ep_context_nodes = false;
     // Weightless mode selected by the app. Determines which constant initializers this EP copies.
     OrtWeightlessSupport weightless_mode = OrtWeightlessSupport_NONE;
     // Test-only: drop the constant initializers in weightless mode too (see kExampleEpTestWeightlessDropInitializers).
