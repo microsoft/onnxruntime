@@ -146,17 +146,20 @@ void Avx2FloatToBFloat16BitsRow(const float* src, uint16_t* dst, int64_t count) 
 template <bool ScaleIsBf16>
 inline __m256 RoundInt4WeightsAvx2(__m256 values, float scale) {
   values = _mm256_mul_ps(values, _mm256_set1_ps(scale));
-  if constexpr (!ScaleIsBf16)
+  // Use if constexpr/else so the BF16 path is discarded (not left unreachable) for FP16 scales; MSVC reports C4702.
+  if constexpr (!ScaleIsBf16) {
     return _mm256_cvtph_ps(_mm256_cvtps_ph(values, _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC));
-  const __m256i bits = _mm256_castps_si256(values);
-  const __m256i nonfinite = _mm256_cmpeq_epi32(_mm256_and_si256(bits, _mm256_set1_epi32(0x7f800000)),
-                                               _mm256_set1_epi32(0x7f800000));
-  const __m256i lsb = _mm256_and_si256(_mm256_srli_epi32(bits, 16), _mm256_set1_epi32(1));
-  const __m256i rounded = _mm256_and_si256(_mm256_add_epi32(bits, _mm256_add_epi32(_mm256_set1_epi32(0x7fff), lsb)),
-                                           _mm256_set1_epi32(static_cast<int>(0xffff0000u)));
-  const __m256 nan = _mm256_cmp_ps(values, values, _CMP_UNORD_Q);
-  values = _mm256_castsi256_ps(_mm256_blendv_epi8(rounded, bits, nonfinite));
-  return _mm256_blendv_ps(values, _mm256_castsi256_ps(_mm256_set1_epi32(0x7fc00000)), nan);
+  } else {
+    const __m256i bits = _mm256_castps_si256(values);
+    const __m256i nonfinite = _mm256_cmpeq_epi32(_mm256_and_si256(bits, _mm256_set1_epi32(0x7f800000)),
+                                                 _mm256_set1_epi32(0x7f800000));
+    const __m256i lsb = _mm256_and_si256(_mm256_srli_epi32(bits, 16), _mm256_set1_epi32(1));
+    const __m256i rounded = _mm256_and_si256(_mm256_add_epi32(bits, _mm256_add_epi32(_mm256_set1_epi32(0x7fff), lsb)),
+                                             _mm256_set1_epi32(static_cast<int>(0xffff0000u)));
+    const __m256 nan = _mm256_cmp_ps(values, values, _CMP_UNORD_Q);
+    values = _mm256_castsi256_ps(_mm256_blendv_epi8(rounded, bits, nonfinite));
+    return _mm256_blendv_ps(values, _mm256_castsi256_ps(_mm256_set1_epi32(0x7fc00000)), nan);
+  }
 }
 
 template <int RT, bool WeightsPrepacked, bool ScalesBlockMajor, bool ScaleIsBf16, bool DeferredScale>

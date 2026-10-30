@@ -158,17 +158,20 @@ void Avx512GemmRange(const uint8_t* weights, const uint16_t* scales, const uint1
 template <bool ScaleIsBf16>
 inline __m512 RoundInt4WeightsAvx512(__m512 values, float scale) {
   values = _mm512_mul_ps(values, _mm512_set1_ps(scale));
-  if constexpr (!ScaleIsBf16)
+  // Use if constexpr/else so the BF16 path is discarded (not left unreachable) for FP16 scales; MSVC reports C4702.
+  if constexpr (!ScaleIsBf16) {
     return _mm512_cvtph_ps(_mm512_cvtps_ph(values, _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC));
-  const __m512i bits = _mm512_castps_si512(values);
-  const __mmask16 finite = _mm512_cmpneq_epi32_mask(_mm512_and_si512(bits, _mm512_set1_epi32(0x7f800000)),
-                                                    _mm512_set1_epi32(0x7f800000));
-  const __m512i lsb = _mm512_and_si512(_mm512_srli_epi32(bits, 16), _mm512_set1_epi32(1));
-  const __m512i rounded = _mm512_and_si512(_mm512_add_epi32(bits, _mm512_add_epi32(_mm512_set1_epi32(0x7fff), lsb)),
-                                           _mm512_set1_epi32(static_cast<int>(0xffff0000u)));
-  const __mmask16 nan = _mm512_cmp_ps_mask(values, values, _CMP_UNORD_Q);
-  values = _mm512_castsi512_ps(_mm512_mask_mov_epi32(bits, finite, rounded));
-  return _mm512_mask_mov_ps(values, nan, _mm512_castsi512_ps(_mm512_set1_epi32(0x7fc00000)));
+  } else {
+    const __m512i bits = _mm512_castps_si512(values);
+    const __mmask16 finite = _mm512_cmpneq_epi32_mask(_mm512_and_si512(bits, _mm512_set1_epi32(0x7f800000)),
+                                                      _mm512_set1_epi32(0x7f800000));
+    const __m512i lsb = _mm512_and_si512(_mm512_srli_epi32(bits, 16), _mm512_set1_epi32(1));
+    const __m512i rounded = _mm512_and_si512(_mm512_add_epi32(bits, _mm512_add_epi32(_mm512_set1_epi32(0x7fff), lsb)),
+                                             _mm512_set1_epi32(static_cast<int>(0xffff0000u)));
+    const __mmask16 nan = _mm512_cmp_ps_mask(values, values, _CMP_UNORD_Q);
+    values = _mm512_castsi512_ps(_mm512_mask_mov_epi32(bits, finite, rounded));
+    return _mm512_mask_mov_ps(values, nan, _mm512_castsi512_ps(_mm512_set1_epi32(0x7fc00000)));
+  }
 }
 
 template <int RT, bool WeightsPrepacked, bool ScalesBlockMajor, bool ScaleIsBf16, bool DeferredScale>
