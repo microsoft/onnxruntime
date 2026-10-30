@@ -18,10 +18,9 @@
 //     a free permutation as long as A and B agree: the pair (code j, code j + 4) of every group of 8 codes is one
 //     packed bf16x2 A register (exactly the pairing of DequantizeInt3x8Bf16), and the activations are pre-permuted
 //     in shared memory to {x0,x4}, {x1,x5}, {x2,x6}, {x3,x7} so a group's four B registers are one LDS.128.
-//   * The dequantization rounds once to bf16 per weight like the GEMV kernels (one fused multiply-add on the
-//     subnormal-encoded codes, see kDequantShift), so weights are bit-identical to the GEMV path up to an exact power
-//     of two that the activations staged in shared memory carry the inverse of; only the fp32 accumulation order
-//     differs.
+//   * The dequantization is the packed bf16x2 routine used by the GEMV kernels (lop3 into normal bf16 {8 + c_lo,
+//     128 + c_hi}, exact centering by {12, 132}, and a single bf16 multiply by the block scale), so weights are
+//     bit-identical to the GEMV path across the entire finite bf16 domain; only the fp32 accumulation order differs.
 // Route groups are derived in-kernel from the per-route expert ids: every run of up to 8 routes (in route order) of
 // one expert is led by its first route; CTAs of non-leading routes exit immediately.
 
@@ -113,68 +112,37 @@ __device__ __forceinline__ uint32_t UnitWindow(const uint32_t* w) {
   }
 }
 
-// The 3-bit codes are decoded as subnormal bf16 values (exponent field 0, the code in the mantissa) so that one fused
-// multiply-add yields (code - 4) * scale * 2^-kDequantShift with a single rounding. That value is the exact
-// (code - 4) * scale rounded once, scaled by a power of two. The activations are staged in shared memory multiplied by
-// 2^kDequantShift (ScaleActivations), so the products are the true ones and the fp32 accumulators hold the true dot
-// products. Rescaling the accumulators instead would lose every result below 2^(kDequantShift - 149), because the
-// shifted accumulator underflows long before the result does.
-// The multiplier scale * 2^(133 - kDequantShift) must be finite (scale < 2^55), the smallest weight
-// scale * 2^-kDequantShift must be a normal bf16 number (scale >= 2^-66) and the staged activations must be finite
-// (|activation| < 2^(128 - kDequantShift) = 2^68). The shift of 60 places the scale window around the scales real
-// models use and leaves the activations a range far beyond any model; zero is exact. A model outside these ranges needs
-// ep.cuda.disable_qmoe_int3_tc=1.
-constexpr int kDequantShift = 60;
-
-// bf16 bit pattern of 2^e (e + 127 in the exponent field).
-__host__ __device__ constexpr uint32_t Bf16Pow2Bits(int e) { return static_cast<uint32_t>(127 + e) << 7; }
-
-// Both bf16 halves of `pair` times 2^kDequantShift (exact unless the product overflows).
-__device__ __forceinline__ uint32_t ScaleActivations(uint32_t pair) {
-  constexpr uint32_t kScaleBits = Bf16Pow2Bits(kDequantShift) * 0x10001u;
-  const __nv_bfloat162 r = __hmul2(*reinterpret_cast<const __nv_bfloat162*>(&pair),
-                                   *reinterpret_cast<const __nv_bfloat162*>(&kScaleBits));
-  return *reinterpret_cast<const uint32_t*>(&r);
-}
-
-// {fma-multiplier, fma-addend} of a bf16x2 whose two halves hold the same scale.
-__device__ __forceinline__ void DequantOperands(uint32_t scale2, uint32_t& mul, uint32_t& add) {
-  // The code at mantissa bit 4 (low half) is code * 2^-129 and the one at bit 0 (high half) code * 2^-133.
-  constexpr uint32_t kScaleMulBits =
-      (Bf16Pow2Bits(133 - kDequantShift) << 16) | Bf16Pow2Bits(129 - kDequantShift);
-  // -4 * 2^-kDequantShift in both halves (the sign bit is 0x8000).
-  constexpr uint32_t kScaleAddBits = (0x8000u | Bf16Pow2Bits(2 - kDequantShift)) * 0x10001u;
-  const __nv_bfloat162 s = *reinterpret_cast<const __nv_bfloat162*>(&scale2);
-  const __nv_bfloat162 m = __hmul2(s, *reinterpret_cast<const __nv_bfloat162*>(&kScaleMulBits));
-  const __nv_bfloat162 a = __hmul2(s, *reinterpret_cast<const __nv_bfloat162*>(&kScaleAddBits));
-  mul = *reinterpret_cast<const uint32_t*>(&m);
-  add = *reinterpret_cast<const uint32_t*>(&a);
-}
-
-// bf16x2 {bf16((c_lo - 4) * s * 2^-kDequantShift), bf16((c_hi - 4) * s * 2^-kDequantShift)} for the 3-bit codes at
-// window bits 4..6 and 16..18.
-__device__ __forceinline__ uint32_t DequantPair(uint32_t window, uint32_t mul, uint32_t add) {
-  uint32_t bits;
-  asm("and.b32 %0, %1, %2;" : "=r"(bits) : "r"(window), "n"(0x00070070u));
-  uint32_t r;
-  asm("fma.rn.bf16x2 %0, %1, %2, %3;" : "=r"(r) : "r"(bits), "r"(mul), "r"(add));
-  return r;
+// bf16x2 {bf16((c_lo - 4) * s), bf16((c_hi - 4) * s)} for the 3-bit codes at window bits 4..6 and 16..18: the
+// same exact-then-round-once arithmetic as DequantizeInt3x8Bf16. Placing the codes into the mantissa of normal bf16
+// {8 + c_lo, 128 + c_hi} and subtracting {12, 132} gives the exact centered integers in [-4, 3] before multiplying by
+// scale2, so zero effective weights (code == 4) are +0.0 for every finite bf16 scale and neither scales nor staged
+// activations require a restricted exponent window.
+__device__ __forceinline__ uint32_t DequantPair(uint32_t window, uint32_t scale2) {
+  uint32_t magic;
+  asm("lop3.b32 %0, %1, %2, %3, %4;"
+      : "=r"(magic)
+      : "r"(window), "n"(0x00070070u), "n"(0x43004100u), "n"((0xf0 & 0xcc) | 0xaa));
+  constexpr uint32_t kCenterBits = 0x43044140u;
+  const __nv_bfloat162 centered =
+      __hsub2(*reinterpret_cast<const __nv_bfloat162*>(&magic), *reinterpret_cast<const __nv_bfloat162*>(&kCenterBits));
+  const __nv_bfloat162 product = __hmul2(centered, *reinterpret_cast<const __nv_bfloat162*>(&scale2));
+  return *reinterpret_cast<const uint32_t*>(&product);
 }
 
 // One group of eight codes (24 bits at unit bit 24 A) of the even/odd row against one 16-byte activation piece.
 template <int A>
-__device__ __forceinline__ void GroupMma(float (&acc)[4], const uint32_t* we, const uint32_t* wo, uint32_t se_mul,
-                                         uint32_t se_add, uint32_t so_mul, uint32_t so_add, const uint4& b) {
+__device__ __forceinline__ void GroupMma(float (&acc)[4], const uint32_t* we, const uint32_t* wo, uint32_t se,
+                                         uint32_t so, const uint4& b) {
   constexpr int S = 24 * A;
-  const uint32_t e0 = DequantPair(UnitWindow<S - 4>(we), se_mul, se_add);
-  const uint32_t o0 = DequantPair(UnitWindow<S - 4>(wo), so_mul, so_add);
-  const uint32_t e1 = DequantPair(UnitWindow<S - 1>(we), se_mul, se_add);
-  const uint32_t o1 = DequantPair(UnitWindow<S - 1>(wo), so_mul, so_add);
+  const uint32_t e0 = DequantPair(UnitWindow<S - 4>(we), se);
+  const uint32_t o0 = DequantPair(UnitWindow<S - 4>(wo), so);
+  const uint32_t e1 = DequantPair(UnitWindow<S - 1>(we), se);
+  const uint32_t o1 = DequantPair(UnitWindow<S - 1>(wo), so);
   MmaBf16(acc, e0, o0, e1, o1, b.x, b.y);
-  const uint32_t e2 = DequantPair(UnitWindow<S + 2>(we), se_mul, se_add);
-  const uint32_t o2 = DequantPair(UnitWindow<S + 2>(wo), so_mul, so_add);
-  const uint32_t e3 = DequantPair(UnitWindow<S + 5>(we), se_mul, se_add);
-  const uint32_t o3 = DequantPair(UnitWindow<S + 5>(wo), so_mul, so_add);
+  const uint32_t e2 = DequantPair(UnitWindow<S + 2>(we), se);
+  const uint32_t o2 = DequantPair(UnitWindow<S + 2>(wo), so);
+  const uint32_t e3 = DequantPair(UnitWindow<S + 5>(we), se);
+  const uint32_t o3 = DequantPair(UnitWindow<S + 5>(wo), so);
   MmaBf16(acc, e2, o2, e3, o3, b.z, b.w);
 }
 
@@ -413,10 +381,10 @@ __global__ void __launch_bounds__(kWarps * 32, kMinCtas) Int3TcCoalescedKernel(c
       uint4 v = make_uint4(0u, 0u, 0u, 0u);
       if (src != nullptr) {
         const uint4 x = *reinterpret_cast<const uint4*>(src + 8 * u);
-        v.x = ScaleActivations(__byte_perm(x.x, x.z, 0x5410));
-        v.y = ScaleActivations(__byte_perm(x.x, x.z, 0x7632));
-        v.z = ScaleActivations(__byte_perm(x.y, x.w, 0x5410));
-        v.w = ScaleActivations(__byte_perm(x.y, x.w, 0x7632));
+        v.x = __byte_perm(x.x, x.z, 0x5410);
+        v.y = __byte_perm(x.x, x.z, 0x7632);
+        v.z = __byte_perm(x.y, x.w, 0x5410);
+        v.w = __byte_perm(x.y, x.w, 0x7632);
       }
       const int h = u < ss_pieces ? ((u >> 4) & 3) : ((u >> 2) & 3);
       smem_u4[u * 8 + ((rs + 2 * h) & 7)] = v;
@@ -471,13 +439,12 @@ __global__ void __launch_bounds__(kWarps * 32, kMinCtas) Int3TcCoalescedKernel(c
         for (int q = 0; q < 4; ++q) {
           bp[q] = *reinterpret_cast<const uint4*>(b_ss + (unit * 4 + q) * 128);
         }
-        uint32_t se_mul, se_add, so_mul, so_add;
-        DequantOperands(__byte_perm(se[set], 0, unit < 2 ? 0x1010 : 0x3232), se_mul, se_add);
-        DequantOperands(__byte_perm(so[set], 0, unit < 2 ? 0x1010 : 0x3232), so_mul, so_add);
-        GroupMma<0>(a, &we[set][3 * unit], &wo[set][3 * unit], se_mul, se_add, so_mul, so_add, bp[0]);
-        GroupMma<1>(a, &we[set][3 * unit], &wo[set][3 * unit], se_mul, se_add, so_mul, so_add, bp[1]);
-        GroupMma<2>(a, &we[set][3 * unit], &wo[set][3 * unit], se_mul, se_add, so_mul, so_add, bp[2]);
-        GroupMma<3>(a, &we[set][3 * unit], &wo[set][3 * unit], se_mul, se_add, so_mul, so_add, bp[3]);
+        const uint32_t se_u = __byte_perm(se[set], 0, unit < 2 ? 0x1010 : 0x3232);
+        const uint32_t so_u = __byte_perm(so[set], 0, unit < 2 ? 0x1010 : 0x3232);
+        GroupMma<0>(a, &we[set][3 * unit], &wo[set][3 * unit], se_u, so_u, bp[0]);
+        GroupMma<1>(a, &we[set][3 * unit], &wo[set][3 * unit], se_u, so_u, bp[1]);
+        GroupMma<2>(a, &we[set][3 * unit], &wo[set][3 * unit], se_u, so_u, bp[2]);
+        GroupMma<3>(a, &we[set][3 * unit], &wo[set][3 * unit], se_u, so_u, bp[3]);
       }
     };
 
@@ -558,13 +525,12 @@ __global__ void __launch_bounds__(kWarps * 32, kMinCtas) Int3TcCoalescedKernel(c
         }
 #pragma unroll
         for (int mb = 0; mb < kM; ++mb) {
-          uint32_t se_mul, se_add, so_mul, so_add;
-          DequantOperands(__byte_perm(se[mb], 0, unit < 2 ? 0x1010 : 0x3232), se_mul, se_add);
-          DequantOperands(__byte_perm(so[mb], 0, unit < 2 ? 0x1010 : 0x3232), so_mul, so_add);
-          GroupMma<0>(acc[mb], &we[mb][3 * unit], &wo[mb][3 * unit], se_mul, se_add, so_mul, so_add, bp[0]);
-          GroupMma<1>(acc[mb], &we[mb][3 * unit], &wo[mb][3 * unit], se_mul, se_add, so_mul, so_add, bp[1]);
-          GroupMma<2>(acc[mb], &we[mb][3 * unit], &wo[mb][3 * unit], se_mul, se_add, so_mul, so_add, bp[2]);
-          GroupMma<3>(acc[mb], &we[mb][3 * unit], &wo[mb][3 * unit], se_mul, se_add, so_mul, so_add, bp[3]);
+          const uint32_t se_u = __byte_perm(se[mb], 0, unit < 2 ? 0x1010 : 0x3232);
+          const uint32_t so_u = __byte_perm(so[mb], 0, unit < 2 ? 0x1010 : 0x3232);
+          GroupMma<0>(acc[mb], &we[mb][3 * unit], &wo[mb][3 * unit], se_u, so_u, bp[0]);
+          GroupMma<1>(acc[mb], &we[mb][3 * unit], &wo[mb][3 * unit], se_u, so_u, bp[1]);
+          GroupMma<2>(acc[mb], &we[mb][3 * unit], &wo[mb][3 * unit], se_u, so_u, bp[2]);
+          GroupMma<3>(acc[mb], &we[mb][3 * unit], &wo[mb][3 * unit], se_u, so_u, bp[3]);
         }
       }
       if (ss + 1 < nss) {
@@ -589,13 +555,10 @@ __global__ void __launch_bounds__(kWarps * 32, kMinCtas) Int3TcCoalescedKernel(c
       for (int mb = 0; mb < kM; ++mb) {
         const uint32_t rse = __byte_perm(rsc[mb], rsc[mb], 0x1010);
         const uint32_t rso = __byte_perm(rsc[mb], rsc[mb], 0x3232);
-        uint32_t se_mul, se_add, so_mul, so_add;
-        DequantOperands(rse, se_mul, se_add);
-        DequantOperands(rso, so_mul, so_add);
-        GroupMma<0>(acc[mb], &rwe[mb][0], &rwo[mb][0], se_mul, se_add, so_mul, so_add, bp[0]);
-        GroupMma<1>(acc[mb], &rwe[mb][0], &rwo[mb][0], se_mul, se_add, so_mul, so_add, bp[1]);
-        GroupMma<2>(acc[mb], &rwe[mb][0], &rwo[mb][0], se_mul, se_add, so_mul, so_add, bp[2]);
-        GroupMma<3>(acc[mb], &rwe[mb][0], &rwo[mb][0], se_mul, se_add, so_mul, so_add, bp[3]);
+        GroupMma<0>(acc[mb], &rwe[mb][0], &rwo[mb][0], rse, rso, bp[0]);
+        GroupMma<1>(acc[mb], &rwe[mb][0], &rwo[mb][0], rse, rso, bp[1]);
+        GroupMma<2>(acc[mb], &rwe[mb][0], &rwo[mb][0], rse, rso, bp[2]);
+        GroupMma<3>(acc[mb], &rwe[mb][0], &rwo[mb][0], rse, rso, bp[3]);
       }
     }
 
@@ -716,7 +679,7 @@ __global__ void __launch_bounds__(kWarps * 32, kMinCtas) Int3TcKernel(const Para
   // Stage the activations of the group's routes (zero for unused slots) as 16-byte pieces of eight consecutive K
   // positions, pre-permuted to {x0,x4}, {x1,x5}, {x2,x6}, {x3,x7}. Piece u of route slot r lives at
   // (u * 8 + ((r + 2 h(u)) & 7)) * 16 bytes, where h(u) is the quad lane that consumes piece u, so that the readers
-  // of one LDS.128 phase hit eight different 16-byte bank groups. The activations are multiplied by 2^kDequantShift.
+  // of one LDS.128 phase hit eight different 16-byte bank groups.
   {
     const int rs = threadIdx.x & 7;
     const __nv_bfloat16* src = nullptr;
@@ -732,10 +695,10 @@ __global__ void __launch_bounds__(kWarps * 32, kMinCtas) Int3TcKernel(const Para
       uint4 v = make_uint4(0u, 0u, 0u, 0u);
       if (src != nullptr) {
         const uint4 x = *reinterpret_cast<const uint4*>(src + 8 * u);
-        v.x = ScaleActivations(__byte_perm(x.x, x.z, 0x5410));
-        v.y = ScaleActivations(__byte_perm(x.x, x.z, 0x7632));
-        v.z = ScaleActivations(__byte_perm(x.y, x.w, 0x5410));
-        v.w = ScaleActivations(__byte_perm(x.y, x.w, 0x7632));
+        v.x = __byte_perm(x.x, x.z, 0x5410);
+        v.y = __byte_perm(x.x, x.z, 0x7632);
+        v.z = __byte_perm(x.y, x.w, 0x5410);
+        v.w = __byte_perm(x.y, x.w, 0x7632);
       }
       const int h = u < ss_pieces ? ((u >> 4) & 3) : ((u >> 2) & 3);
       smem_u4[u * 8 + ((rs + 2 * h) & 7)] = v;
@@ -793,13 +756,12 @@ __global__ void __launch_bounds__(kWarps * 32, kMinCtas) Int3TcKernel(const Para
         for (int q = 0; q < 4; ++q) {
           bp[q] = *reinterpret_cast<const uint4*>(b_ss + (unit * 4 + q) * 128);
         }
-        uint32_t se_mul, se_add, so_mul, so_add;
-        DequantOperands(__byte_perm(se[set], 0, unit < 2 ? 0x1010 : 0x3232), se_mul, se_add);
-        DequantOperands(__byte_perm(so[set], 0, unit < 2 ? 0x1010 : 0x3232), so_mul, so_add);
-        GroupMma<0>(a, &we[set][3 * unit], &wo[set][3 * unit], se_mul, se_add, so_mul, so_add, bp[0]);
-        GroupMma<1>(a, &we[set][3 * unit], &wo[set][3 * unit], se_mul, se_add, so_mul, so_add, bp[1]);
-        GroupMma<2>(a, &we[set][3 * unit], &wo[set][3 * unit], se_mul, se_add, so_mul, so_add, bp[2]);
-        GroupMma<3>(a, &we[set][3 * unit], &wo[set][3 * unit], se_mul, se_add, so_mul, so_add, bp[3]);
+        const uint32_t se_u = __byte_perm(se[set], 0, unit < 2 ? 0x1010 : 0x3232);
+        const uint32_t so_u = __byte_perm(so[set], 0, unit < 2 ? 0x1010 : 0x3232);
+        GroupMma<0>(a, &we[set][3 * unit], &wo[set][3 * unit], se_u, so_u, bp[0]);
+        GroupMma<1>(a, &we[set][3 * unit], &wo[set][3 * unit], se_u, so_u, bp[1]);
+        GroupMma<2>(a, &we[set][3 * unit], &wo[set][3 * unit], se_u, so_u, bp[2]);
+        GroupMma<3>(a, &we[set][3 * unit], &wo[set][3 * unit], se_u, so_u, bp[3]);
       }
     };
 
@@ -876,13 +838,12 @@ __global__ void __launch_bounds__(kWarps * 32, kMinCtas) Int3TcKernel(const Para
         }
 #pragma unroll
         for (int mb = 0; mb < kM; ++mb) {
-          uint32_t se_mul, se_add, so_mul, so_add;
-          DequantOperands(__byte_perm(se[mb], 0, unit < 2 ? 0x1010 : 0x3232), se_mul, se_add);
-          DequantOperands(__byte_perm(so[mb], 0, unit < 2 ? 0x1010 : 0x3232), so_mul, so_add);
-          GroupMma<0>(acc[mb], &we[mb][3 * unit], &wo[mb][3 * unit], se_mul, se_add, so_mul, so_add, bp[0]);
-          GroupMma<1>(acc[mb], &we[mb][3 * unit], &wo[mb][3 * unit], se_mul, se_add, so_mul, so_add, bp[1]);
-          GroupMma<2>(acc[mb], &we[mb][3 * unit], &wo[mb][3 * unit], se_mul, se_add, so_mul, so_add, bp[2]);
-          GroupMma<3>(acc[mb], &we[mb][3 * unit], &wo[mb][3 * unit], se_mul, se_add, so_mul, so_add, bp[3]);
+          const uint32_t se_u = __byte_perm(se[mb], 0, unit < 2 ? 0x1010 : 0x3232);
+          const uint32_t so_u = __byte_perm(so[mb], 0, unit < 2 ? 0x1010 : 0x3232);
+          GroupMma<0>(acc[mb], &we[mb][3 * unit], &wo[mb][3 * unit], se_u, so_u, bp[0]);
+          GroupMma<1>(acc[mb], &we[mb][3 * unit], &wo[mb][3 * unit], se_u, so_u, bp[1]);
+          GroupMma<2>(acc[mb], &we[mb][3 * unit], &wo[mb][3 * unit], se_u, so_u, bp[2]);
+          GroupMma<3>(acc[mb], &we[mb][3 * unit], &wo[mb][3 * unit], se_u, so_u, bp[3]);
         }
       }
       if (ss + 1 < nss) {
@@ -923,13 +884,10 @@ __global__ void __launch_bounds__(kWarps * 32, kMinCtas) Int3TcKernel(const Para
       }
 #pragma unroll
       for (int mb = 0; mb < kM; ++mb) {
-        uint32_t se_mul, se_add, so_mul, so_add;
-        DequantOperands(rse[mb], se_mul, se_add);
-        DequantOperands(rso[mb], so_mul, so_add);
-        GroupMma<0>(acc[mb], rwe[mb], rwo[mb], se_mul, se_add, so_mul, so_add, bp[0]);
-        GroupMma<1>(acc[mb], rwe[mb], rwo[mb], se_mul, se_add, so_mul, so_add, bp[1]);
-        GroupMma<2>(acc[mb], rwe[mb], rwo[mb], se_mul, se_add, so_mul, so_add, bp[2]);
-        GroupMma<3>(acc[mb], rwe[mb], rwo[mb], se_mul, se_add, so_mul, so_add, bp[3]);
+        GroupMma<0>(acc[mb], rwe[mb], rwo[mb], rse[mb], rso[mb], bp[0]);
+        GroupMma<1>(acc[mb], rwe[mb], rwo[mb], rse[mb], rso[mb], bp[1]);
+        GroupMma<2>(acc[mb], rwe[mb], rwo[mb], rse[mb], rso[mb], bp[2]);
+        GroupMma<3>(acc[mb], rwe[mb], rwo[mb], rse[mb], rso[mb], bp[3]);
       }
     }
 

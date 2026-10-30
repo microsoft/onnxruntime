@@ -3784,13 +3784,17 @@ TEST(MoETest, QMoETest_Bf16TensorCoreGemvExtremeScales) {
     RunQMoEBf16TensorCoreGemvParityCase(bits, block_size, 512, 512, nullptr, /*fc1_scale_exp=*/-40,
                                         /*fc2_scale_exp=*/40);
   }
+  RunQMoEBf16TensorCoreGemvParityCase(/*bits=*/3, /*block_size=*/64, 512, 512, nullptr, /*fc1_scale_exp=*/60,
+                                      /*fc2_scale_exp=*/-60);
+  RunQMoEBf16TensorCoreGemvParityCase(/*bits=*/3, /*block_size=*/64, 512, 512, nullptr, /*fc1_scale_exp=*/-60,
+                                      /*fc2_scale_exp=*/60);
 }
 
-// The INT3 tensor-core kernels fold 2^-60 into the dequantized weights and multiply every staged activation by 2^60,
-// so the FP32 accumulators hold the true dot products. Without the activation scaling they would hold results 2^60
-// times smaller, which flush to zero below about 2^-89. Zero FC1 weights with biases of 2^-22 give SwiGLU activations
-// of 2^-45, FC2 codes of +1 with scales of 2^-60 over K = 512 give 2^-96 per expert, and the four routing weights of
-// 1/4 sum to one. Constant weights run the prepacked coalesced kernel, runtime weights the raw-layout kernel.
+// The INT3 tensor-core kernels dequantize weights directly to unshifted BF16 values and stage activations without
+// rescaling, so the FP32 accumulators hold the true dot products instead of shifted ones that would flush to zero
+// below about 2^-89. Zero FC1 weights with biases of 2^-22 give SwiGLU activations of 2^-45, FC2 codes of +1 with
+// scales of 2^-60 over K = 512 give 2^-96 per expert, and the four routing weights of 1/4 sum to one. Constant
+// weights run the prepacked coalesced kernel, runtime weights the raw-layout kernel.
 static void RunQMoEBf16Int3TinyActivationCase(bool constant_weights) {
   constexpr int64_t num_experts = 8;
   constexpr int64_t top_k = 4;
@@ -3866,9 +3870,108 @@ TEST(MoETest, QMoETest_Bf16Int3TensorCoreTinyActivations) {
   RunQMoEBf16Int3TinyActivationCase(/*constant_weights=*/false);
 }
 
+// Zero effective weights (code 4) with extreme finite scales (2^60) and large finite activations (2^80) against zero
+// weights on both FC1 and FC2, comparing TC-enabled ("0") and TC-disabled ("1") across constant-prepacked and
+// raw-weight dispatch.
+static void RunQMoEBf16Int3ZeroWeightsExtremeDomainCase(bool constant_weights, const char* disable_tc,
+                                                        float fc1_scale_val, float fc2_scale_val,
+                                                        float input_val, float fc1_gate_bias_val,
+                                                        float fc1_up_bias_val, float fc2_bias_val) {
+  constexpr int64_t num_experts = 8;
+  constexpr int64_t top_k = 4;
+  constexpr int64_t num_rows = 12;
+  constexpr int64_t hidden_size = 512;
+  constexpr int64_t inter_size = 512;
+  constexpr int64_t fc1_rows = 2 * inter_size;
+  constexpr int64_t block_size = 64;
+  constexpr int64_t bits = 3;
+  constexpr uint8_t kZeroCode = 4;
+
+  const auto to_bf16 = [](const std::vector<float>& src) {
+    std::vector<BFloat16> dst(src.size());
+    for (size_t i = 0; i < src.size(); ++i) dst[i] = BFloat16(src[i]);
+    return dst;
+  };
+
+  const std::vector<uint8_t> fc1_codes(static_cast<size_t>(num_experts * fc1_rows * hidden_size), kZeroCode);
+  const std::vector<uint8_t> fc2_codes(static_cast<size_t>(num_experts * hidden_size * inter_size), kZeroCode);
+  const std::vector<float> fc1_scales(static_cast<size_t>(num_experts * fc1_rows * (hidden_size / block_size)),
+                                      fc1_scale_val);
+  const std::vector<float> fc2_scales(static_cast<size_t>(num_experts * hidden_size * (inter_size / block_size)),
+                                      fc2_scale_val);
+  std::vector<float> fc1_bias(static_cast<size_t>(num_experts * fc1_rows));
+  for (size_t i = 0; i < fc1_bias.size(); i += 2) {
+    fc1_bias[i] = fc1_gate_bias_val;
+    fc1_bias[i + 1] = fc1_up_bias_val;
+  }
+  const std::vector<float> fc2_bias(static_cast<size_t>(num_experts * hidden_size), fc2_bias_val);
+  const std::vector<float> input(static_cast<size_t>(num_rows * hidden_size), input_val);
+  const std::vector<float> expected(static_cast<size_t>(num_rows * hidden_size), fc2_bias_val);
+
+  std::vector<float> router_probs(static_cast<size_t>(num_rows * num_experts), -8.0f);
+  for (int64_t r = 0; r < num_rows; ++r) {
+    for (int64_t slot = 0; slot < top_k; ++slot) {
+      router_probs[static_cast<size_t>(r * num_experts + (r + slot) % num_experts)] = 4.0f;
+    }
+  }
+
+  OpTester tester("QMoE", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("k", top_k);
+  tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
+  tester.AddAttribute<std::string>("activation_type", "swiglu");
+  tester.AddAttribute<int64_t>("swiglu_fusion", 1);
+  tester.AddAttribute<int64_t>("expert_weight_bits", bits);
+  tester.AddAttribute<int64_t>("weights_prepacked", 0);
+  tester.AddAttribute<int64_t>("block_size", block_size);
+  tester.AddInput<BFloat16>("input", {num_rows, hidden_size}, to_bf16(input));
+  tester.AddInput<BFloat16>("router_probs", {num_rows, num_experts}, to_bf16(router_probs));
+  tester.AddInput<uint8_t>("fc1_experts_weights", {num_experts, fc1_rows, (hidden_size * bits + 7) / 8},
+                           PackLsbBits(fc1_codes, num_experts * fc1_rows, hidden_size, bits), constant_weights);
+  tester.AddInput<BFloat16>("fc1_scales", {num_experts, fc1_rows, hidden_size / block_size}, to_bf16(fc1_scales),
+                            constant_weights);
+  tester.AddInput<BFloat16>("fc1_experts_bias", {num_experts, fc1_rows}, to_bf16(fc1_bias));
+  tester.AddInput<uint8_t>("fc2_experts_weights", {num_experts, hidden_size, (inter_size * bits + 7) / 8},
+                           PackLsbBits(fc2_codes, num_experts * hidden_size, inter_size, bits), constant_weights);
+  tester.AddInput<BFloat16>("fc2_scales", {num_experts, hidden_size, inter_size / block_size}, to_bf16(fc2_scales),
+                            constant_weights);
+  tester.AddInput<BFloat16>("fc2_experts_bias", {num_experts, hidden_size}, to_bf16(fc2_bias));
+  tester.AddOutput<BFloat16>("output", {num_rows, hidden_size}, to_bf16(expected));
+  tester.SetOutputTolerance(0.0f, 0.0f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry("ep.cuda.disable_qmoe_int3_tc", disable_tc));
+  SCOPED_TRACE(MakeString("constant_weights=", constant_weights, " disable_tc=", disable_tc,
+                          " fc1_scale=", fc1_scale_val, " fc2_scale=", fc2_scale_val, " input=", input_val,
+                          " fc1_up_bias=", fc1_up_bias_val, " fc2_bias=", fc2_bias_val));
+  tester.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(MoETest, QMoETest_Bf16Int3TensorCoreZeroWeightsExtremeScalesAndActivations) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device with compute capability 8.0 or newer is required.";
+  }
+  const float scale_2p60 = std::ldexp(1.0f, 60);
+  const float act_2p80 = std::ldexp(1.0f, 80);
+  for (bool constant_weights : {true, false}) {
+    for (const char* disable_tc : {"0", "1"}) {
+      // Zero effective weights with 2^60 scales and zero input/bias (0 * 2^60 weight times 0 activation -> 0, not NaN).
+      RunQMoEBf16Int3ZeroWeightsExtremeDomainCase(constant_weights, disable_tc, scale_2p60, scale_2p60,
+                                                  /*input_val=*/0.0f, /*fc1_gate_bias_val=*/0.0f,
+                                                  /*fc1_up_bias_val=*/0.0f, /*fc2_bias_val=*/0.0f);
+      // Large finite activations (2^80 on FC1 input and on FC2 SwiGLU activation) against zero weights with 2^60 scales.
+      RunQMoEBf16Int3ZeroWeightsExtremeDomainCase(constant_weights, disable_tc, scale_2p60, scale_2p60,
+                                                  /*input_val=*/act_2p80, /*fc1_gate_bias_val=*/16.0f,
+                                                  /*fc1_up_bias_val=*/act_2p80, /*fc2_bias_val=*/3.5f);
+    }
+  }
+}
+
 // An explicitly configured route threshold applies to constant weights as well. The 12 tokens x top-4 = 48 routes stay
-// below 256, so the vectorized GEMV kernels have to run, and unlike the tensor-core kernels they accept FC1 scales far
-// below 2^-66. A threshold of 1 keeps the prepacked weights, which then serve every route count.
+// below 256, so the vectorized GEMV kernels run when the threshold is 256; a threshold of 1 keeps the prepacked
+// weights, which then serve every route count.
 TEST(MoETest, QMoETest_Bf16Int3ExplicitTensorCoreMinRoutes) {
   if (!HasCudaEnvironment(800)) {
     GTEST_SKIP() << "CUDA device with compute capability 8.0 or newer is required.";
