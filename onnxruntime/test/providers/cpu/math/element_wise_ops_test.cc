@@ -1421,9 +1421,9 @@ TEST(MathOpTest, Pow_ReciprocalSqrt_CUDA) {
 TEST(MathOpTest, Pow_ReciprocalSqrt_EdgeCases_CUDA) {
   const float inf = std::numeric_limits<float>::infinity();
   const float nan = std::numeric_limits<float>::quiet_NaN();
-  // The subnormal has an exact power-of-two result on the powf fallback.
-  const std::vector<float> bases{0.0f, -0.0f, inf, -inf, -4.0f, nan, 0x1p-148f, -0x1p-148f};
-  const std::vector<float> expected{inf, inf, 0.0f, 0.0f, nan, nan, 0x1p+74f, nan};
+  // The smallest subnormal distinguishes the powf fallback from direct rsqrtf.
+  const std::vector<float> bases{0.0f, -0.0f, inf, -inf, -4.0f, nan, 0x1p-149f, -0x1p-149f};
+  const std::vector<float> expected{inf, inf, 0.0f, 0.0f, nan, nan, 0x1.6a09e6p+74f, nan};
   for (int opset : {7, 12, 15}) {
     TestCudaPowReciprocalSqrt(opset, {8}, bases, {}, {-0.5f}, {8}, expected);
     TestCudaPowReciprocalSqrt(opset, {8}, bases, {8}, std::vector<float>(8, -0.5f), {8}, expected);
