@@ -22,6 +22,7 @@ inputs:
     type: string
     default: "16"
   use_cache:
+    description: "Install ccache for builds using build.py --use_cache."
     required: false
     type: boolean
     default: false
@@ -49,6 +50,11 @@ runs:
     - name: Install coreutils and ninja
       shell: bash
       run: brew install coreutils ninja
+
+    - name: Install ccache
+      if: inputs.use_cache == 'true'
+      shell: bash
+      run: brew install ccache
 
     - name: Install Java
       uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0

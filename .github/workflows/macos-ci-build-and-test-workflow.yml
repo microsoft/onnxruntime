@@ -56,6 +56,7 @@ jobs:
       build_flags: >
         --build_dir ./build
         --skip_submodule_sync
+        --use_cache
         --parallel
         --use_binskim_compliant_compile_flags
         --build_shared_lib
@@ -74,6 +75,12 @@ jobs:
       # A matrix entry may override the Xcode version via "xcode_version"; otherwise fall back to the default.
       # The Xcode version needs to be present on the image specified in the "runs-on" configuration.
       xcode_version: ${{ matrix.xcode_version || '26.3' }}
+
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      CCACHE_COMPILERCHECK: content
+      # Bound transfer/storage costs across the matrix; retain ccache's default compression and safety checks.
+      CCACHE_MAXSIZE: 1G
 
     steps:
       - name: Checkout code
@@ -116,6 +123,41 @@ jobs:
           xcode_version: ${{ env.xcode_version }}
           use_cache: true
 
+      - name: Identify compiler cache
+        id: compiler-cache
+        shell: bash
+        env:
+          CACHE_VARIANT: >-
+            ${{ matrix.machine }}-${{ matrix.target }}-${{ matrix.build_config }}-python-${{ inputs.python_version
+            }}-coreml-${{ inputs.use_coreml }}-xnnpack-${{ inputs.use_xnnpack }}-webgpu-${{ inputs.use_webgpu }}
+        run: |
+          set -euo pipefail
+          # Do not restore across runner image, selected Xcode/SDK, or ccache upgrades.
+          {
+            printf '%s\n' "$ImageOS" "$ImageVersion"
+            xcodebuild -version
+            xcrun clang --version
+            xcrun --sdk macosx --show-sdk-version
+            ccache --version
+          } > "$RUNNER_TEMP/ccache-toolchain.txt"
+          toolchain_hash=$(shasum -a 256 "$RUNNER_TEMP/ccache-toolchain.txt" | cut -d ' ' -f 1)
+          echo "prefix=macos-ccache-v1-${CACHE_VARIANT}-${toolchain_hash}-" >> "$GITHUB_OUTPUT"
+
+      - name: Restore compiler cache
+        id: restore-compiler-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ${{ steps.compiler-cache.outputs.prefix }}${{ github.sha }}
+          restore-keys: |
+            ${{ steps.compiler-cache.outputs.prefix }}
+
+      - name: Reset compiler cache statistics
+        shell: bash
+        run: |
+          ccache --show-config
+          ccache --zero-stats
+
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         id: onnx-node-tests-cache
         with:
@@ -143,6 +185,27 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: |
           python ./tools/ci_build/build.py --build ${{ env.build_flags }}
+
+      - name: Compiler cache statistics
+        if: ${{ always() && steps.restore-compiler-cache.outcome == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ccache --show-stats -vv | tee "$RUNNER_TEMP/ccache-stats.txt"
+          {
+            echo '### Compiler cache'
+            echo '```text'
+            cat "$RUNNER_TEMP/ccache-stats.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Save after compilation, before tests, so a test timeout does not discard a warm cache.
+      - name: Save compiler cache (main only)
+        if: ${{ success() && github.ref == 'refs/heads/main' && steps.restore-compiler-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ${{ steps.restore-compiler-cache.outputs.cache-primary-key }}
 
       - name: Install
         shell: bash
