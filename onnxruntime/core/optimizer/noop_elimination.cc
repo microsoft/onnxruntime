@@ -74,7 +74,7 @@ bool NoopElimination::SatisfyCondition(const Graph& graph, const Node& node, con
     int32_t data_type = initializer->data_type();
     Initializer add_init(graph, *initializer, graph.ModelPath());
 
-    float value = 0.0f;
+    double value = 0.0;
     switch (data_type) {
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
         value = *add_init.data<float>();
@@ -83,23 +83,23 @@ bool NoopElimination::SatisfyCondition(const Graph& graph, const Node& node, con
         value = math::halfToFloat(add_init.data<MLFloat16>()->val);
         break;
       case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
-        value = static_cast<float>(*add_init.data<double>());
+        value = *add_init.data<double>();
         break;
       case ONNX_NAMESPACE::TensorProto_DataType_INT32:
-        value = static_cast<float>(*add_init.data<int32_t>());
+        value = static_cast<double>(*add_init.data<int32_t>());
         break;
       case ONNX_NAMESPACE::TensorProto_DataType_INT64:
-        value = static_cast<float>(*add_init.data<int64_t>());
+        value = static_cast<double>(*add_init.data<int64_t>());
         break;
       default:
         return false;
     }
 
-    if (value != 0.0f && (op_type == "Add" || op_type == "Sub")) {
+    if (value != 0.0 && (op_type == "Add" || op_type == "Sub")) {
       return false;
     }
 
-    if (value != 1.0f && (op_type == "Mul" || op_type == "Div")) {
+    if (value != 1.0 && (op_type == "Mul" || op_type == "Div")) {
       return false;
     }
   }
