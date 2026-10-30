@@ -180,10 +180,21 @@ void ConfigureWeightLoadingAdapterOptions(
 
 WebGpuContext::~WebGpuContext() = default;
 
+bool WebGpuContext::IsFeatureEnabled(WebGpuFeature feature) const {
+  const auto index = static_cast<size_t>(feature);
+  return feature_requests_[index].value_or(kWebGpuFeatures[index].enabled_by_default);
+}
+
+bool WebGpuContext::IsDeviceFeatureAllowed(wgpu::FeatureName feature) const {
+  return feature != wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix ||
+         IsFeatureEnabled(WebGpuFeature::SubgroupMatrix);
+}
+
 void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
   std::call_once(init_flag_, [this, config]() {
     max_num_pending_dispatches_ = config.max_num_pending_dispatches;
     enable_robustness_ = config.enable_robustness;
+    feature_requests_ = config.feature_requests;
     adapter_index_ = config.adapter_index;
     adapter_power_preference_ = config.power_preference;
     adapter_backend_type_ = config.backend_type;
@@ -434,6 +445,9 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
     wgpu::SupportedFeatures supported_features;
     Device().GetFeatures(&supported_features);
     for (size_t i = 0; i < supported_features.featureCount; i++) {
+      if (!IsDeviceFeatureAllowed(supported_features.features[i])) {
+        continue;
+      }
       device_features_.insert(supported_features.features[i]);
     }
     // cache adapter info
@@ -518,6 +532,19 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
               ", powerPreference=", config.power_preference,
               ", dawnBackendType=", config.backend_type,
               " and cannot be applied to the existing device. Use a separate process or an externally supplied custom context/device.");
+  }
+
+  for (size_t i = 0; i < kWebGpuFeatures.size(); ++i) {
+    const auto& feature = kWebGpuFeatures[i];
+    const bool enabled = feature_requests_[i].value_or(feature.enabled_by_default);
+    if (config.feature_requests[i] && *config.feature_requests[i] != enabled) {
+      LOGS_DEFAULT(WARNING) << "WebGPU context feature " << feature.name << " is already initialized with enabled="
+                            << enabled << ". Requested value " << *config.feature_requests[i]
+                            << " will be ignored.";
+    } else if (!config.feature_requests[i] && enabled != feature.enabled_by_default) {
+      LOGS_DEFAULT(WARNING) << "This session shares a WebGPU context with feature " << feature.name
+                            << " enabled=" << enabled << ".";
+    }
   }
 
   if (config.enable_robustness_explicitly_set) {
@@ -1126,6 +1153,9 @@ std::vector<wgpu::FeatureName> WebGpuContext::GetAvailableRequiredFeatures(const
 #endif
   };
   for (auto feature : features) {
+    if (!IsDeviceFeatureAllowed(feature)) {
+      continue;
+    }
 #if !defined(__wasm__)
     if (feature == wgpu::FeatureName::BufferMapExtendedUsages && !AdapterCanMapDeviceLocalMemory(adapter)) {
       continue;

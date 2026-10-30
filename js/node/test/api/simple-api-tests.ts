@@ -5,6 +5,7 @@ import assert from 'assert';
 import { InferenceSession, Tensor } from 'onnxruntime-common';
 import * as path from 'path';
 
+import { binding } from '../../lib/binding';
 import { assertDataEqual, TEST_DATA_ROOT } from '../test-utils';
 
 const MODEL_TEST_TYPES_CASES: Array<{
@@ -115,6 +116,44 @@ describe('API Tests - simple API tests', () => {
         } else {
           assert.doesNotMatch(message, /weightLoadAcceleration|disk-to-GPU|DXGI|D3D12/);
         }
+      }
+    }
+  });
+
+  it('recognizes the WebGPU feature list options', async function () {
+    if (!binding.listSupportedBackends().some((backend) => backend.name === 'webgpu' && backend.bundled)) {
+      this.skip();
+    }
+    const model = path.join(TEST_DATA_ROOT, 'test_types_float.onnx');
+
+    for (const key of ['enableFeatures', 'disableFeatures'] as const) {
+      const session = new binding.InferenceSession();
+      try {
+        await session.loadModel(model, {
+          executionProviders: [{ name: 'webgpu', [key]: ['subgroupMatrix'] }],
+        });
+        session.dispose();
+      } catch (error) {
+        // A machine without a usable adapter can fail for unrelated reasons.
+        assert.doesNotMatch(String(error), /unrecognized option|must be a string array|must be strings/);
+      }
+    }
+  });
+
+  it('rejects malformed WebGPU feature arrays', async function () {
+    if (!binding.listSupportedBackends().some((backend) => backend.name === 'webgpu' && backend.bundled)) {
+      this.skip();
+    }
+    const model = path.join(TEST_DATA_ROOT, 'test_types_float.onnx');
+    for (const key of ['enableFeatures', 'disableFeatures'] as const) {
+      for (const value of ['subgroupMatrix', [1], [''], ['a,b'], ['a\0b'], Array(1)]) {
+        const session = new binding.InferenceSession();
+        await assert.rejects(async () => {
+          await session.loadModel(model, {
+            executionProviders: [{ name: 'webgpu', [key]: value }],
+          });
+          session.dispose();
+        }, /must be a string array|must be strings|invalid feature name/);
       }
     }
   });
