@@ -842,5 +842,176 @@ TEST(ExecutionFrameTestInit, SparseInitializerAsOutput) {
 }
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
 
+TEST(ExecutionFrameTestInit, FetchReusesPreallocatedScalarOutputForSingleElementVector) {
+  SessionOptions so;
+  so.enable_mem_pattern = true;
+
+  InferenceSession session(so, GetEnvironment());
+
+  onnxruntime::Model model("scalar_to_vector1_output_test", false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(),
+                           {{kOnnxDomain, 12}}, {}, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  TypeProto float_tensor;
+  float_tensor.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+
+  TypeProto float_vector1_tensor;
+  float_vector1_tensor.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  float_vector1_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+  auto& input_arg = graph.GetOrCreateNodeArg("X", &float_tensor);
+  auto& output_arg = graph.GetOrCreateNodeArg("Y", &float_vector1_tensor);
+  graph.AddNode("identity", "Identity", "identity", {&input_arg}, {&output_arg});
+  graph.SetInputs({&input_arg});
+  graph.SetOutputs({&output_arg});
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  std::string serialized;
+  ASSERT_TRUE(model.ToProto().SerializeToString(&serialized));
+  std::istringstream model_stream(serialized);
+  ASSERT_STATUS_OK(session.Load(model_stream));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
+
+  std::array<float, 1> input_data = {5.0f};
+  OrtValue input;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape({1}), input_data.data(), allocator->Info(), input);
+
+  // Pre-allocate scalar output ({}). Runtime output for this run is {1}.
+  OrtValue preallocated_output;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape({}), allocator, preallocated_output);
+  const void* preallocated_buffer = preallocated_output.Get<Tensor>().DataRaw();
+  std::vector<OrtValue> results = {preallocated_output};
+
+  RunOptions ro;
+  ASSERT_STATUS_OK(session.Run(ro,
+                               AsSpan({std::string("X")}), AsSpan({input}),
+                               AsSpan({std::string("Y")}), &results, nullptr));
+
+  ASSERT_EQ(results.size(), 1u);
+  ASSERT_TRUE(results[0].IsTensor());
+  EXPECT_EQ(results[0].Get<Tensor>().Shape(), TensorShape({1}));
+  EXPECT_EQ(results[0].Get<Tensor>().DataRaw(), preallocated_buffer);
+  EXPECT_EQ(results[0].Get<Tensor>().DataAsSpan<float>()[0], 5.0f);
+}
+
+TEST(ExecutionFrameTestInit, FetchFailsForEqualCountNonScalarShapeMismatch) {
+  // Regression test to ensure that equal element count but different shapes
+  // are NOT reused. For example, {2,3} vs {3,2} both have 6 elements but
+  // represent different tensor layouts and should not be reused.
+  SessionOptions so;
+  so.enable_mem_pattern = true;
+
+  InferenceSession session(so, GetEnvironment());
+
+  onnxruntime::Model model("equal_count_shape_mismatch_test", false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(),
+                           {{kOnnxDomain, 12}}, {}, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  TypeProto float_tensor;
+  float_tensor.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+
+  auto& input_arg = graph.GetOrCreateNodeArg("X", &float_tensor);
+  auto& output_arg = graph.GetOrCreateNodeArg("Y", &float_tensor);
+  graph.AddNode("identity", "Identity", "identity", {&input_arg}, {&output_arg});
+  graph.SetInputs({&input_arg});
+  graph.SetOutputs({&output_arg});
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  std::string serialized;
+  ASSERT_TRUE(model.ToProto().SerializeToString(&serialized));
+  std::istringstream model_stream(serialized);
+  ASSERT_STATUS_OK(session.Load(model_stream));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
+
+  std::array<float, 6> input_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  OrtValue input;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape({2, 3}), input_data.data(),
+                       allocator->Info(), input);
+
+  // Pre-allocate output with shape {3, 2} (same element count as {2,3}, but different shape)
+  OrtValue preallocated_output;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape({3, 2}), allocator, preallocated_output);
+
+  std::vector<OrtValue> results = {preallocated_output};
+
+  RunOptions ro;
+  auto status = session.Run(ro,
+                            AsSpan({std::string("X")}), AsSpan({input}),
+                            AsSpan({std::string("Y")}), &results, nullptr);
+
+  // This should fail because shapes don't match, even though element counts are equal
+  ASSERT_FALSE(status.IsOK());
+  ASSERT_EQ(status.Code(), common::StatusCode::INVALID_ARGUMENT);
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("pre-allocated"));
+}
+
+#ifdef ENABLE_STRIDED_TENSORS
+TEST_F(ExecutionFrameTest, ExactShapeReusesNonContiguousPreallocatedOutput) {
+  Model model("strided_output_test", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 12}}, {},
+              DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+  TypeProto tensor_float;
+  tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  NodeArg input_def("X", &tensor_float), output_def("Y", &tensor_float);
+  Node* node = &graph.AddNode("node1", "Relu", "Relu operator",
+                              ArgMap{&input_def}, ArgMap{&output_def});
+  node->SetExecutionProviderType(kCpuExecutionProvider);
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  auto cpu_xp = CreateCPUExecutionProvider();
+  auto xp_type = cpu_xp->Type();
+  ExecutionProviders execution_providers;
+  ASSERT_STATUS_OK(execution_providers.Add(xp_type, std::move(cpu_xp)));
+  KernelRegistryManager kernel_registry_manager;
+  ASSERT_STATUS_OK(kernel_registry_manager.RegisterKernels(execution_providers));
+
+  DataTransferManager dtm;
+  ExternalDataLoaderManager edlm;
+  profiling::Profiler profiler;
+  SessionOptions options;
+  SessionState state(graph, execution_providers, &tp_, nullptr, dtm, edlm,
+                     DefaultLoggingManager().DefaultLogger(), profiler, options);
+  ASSERT_STATUS_OK(state.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager));
+
+  int y_idx = -1;
+  ASSERT_STATUS_OK(state.GetOrtValueNameIdxMap().GetIdx("Y", y_idx));
+
+  const TensorShape shape({3, 2});
+  const TensorShapeVector strides{1, 3};
+  auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
+  OrtValue preallocated_output;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), shape, allocator,
+                       preallocated_output);
+  preallocated_output.GetMutable<Tensor>()->SetShapeAndStrides(shape, strides);
+  const void* buffer = preallocated_output.Get<Tensor>().DataRaw();
+  ASSERT_FALSE(preallocated_output.Get<Tensor>().IsContiguous());
+
+  std::vector<OrtValue> fetches{preallocated_output};
+  ExecutionFrame frame({}, {}, AsSpan({y_idx}), fetches, {},
+#ifdef ORT_ENABLE_STREAM
+                       {},
+#endif
+                       state);
+
+  const int output_arg_index = frame.GetNodeOffset(node->Index()) + 1;
+  OrtValue* output = nullptr;
+  ASSERT_STATUS_OK(frame.GetOrCreateNodeOutputMLValue(0, output_arg_index,
+                                                      &shape, output, *node));
+  ASSERT_NE(output, nullptr);
+  const Tensor& result = output->Get<Tensor>();
+  EXPECT_EQ(result.DataRaw(), buffer);
+  EXPECT_EQ(result.Shape(), shape);
+  EXPECT_THAT(result.Strides(), ::testing::ContainerEq(gsl::make_span(strides)));
+  EXPECT_FALSE(result.IsContiguous());
+}
+#endif  // ENABLE_STRIDED_TENSORS
+
 }  // namespace test
 }  // namespace onnxruntime
