@@ -71,14 +71,17 @@ KernelCreateInfo BuildKernelCreateInfo<void>() {
   return info;
 }
 
-class Memcpy final : public WebGpuKernel {
+class Memcpy final : public OpKernel {
  public:
-  Memcpy(const OpKernelInfo& info) : WebGpuKernel(info) {}
+  Memcpy(const OpKernelInfo& info) : OpKernel(info) {}
 
-  Status ComputeInternal(ComputeContext& ctx) const override {
-    const auto* X = ctx.Input<Tensor>(0);
-    Tensor* Y = ctx.Output(0, X->Shape());
-    return ctx.CopyTensor(*X, *Y);
+  Status Compute(OpKernelContext* ctx) const override {
+    const auto& ep = *static_cast<const WebGpuExecutionProvider*>(Info().GetExecutionProvider());
+    std::lock_guard<std::recursive_mutex> lock{ep.Recording().mutex};
+    const auto* X = ctx->Input<Tensor>(0);
+    Tensor* Y = ctx->Output(0, X->Shape());
+    DataTransfer transfer(ep.BufferManager(), ep.Recording(), ep.GetDeviceId());
+    return transfer.CopyTensor(*X, *Y);
   }
 };
 

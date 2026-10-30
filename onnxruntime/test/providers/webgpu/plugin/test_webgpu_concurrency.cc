@@ -1094,12 +1094,18 @@ TEST_F(PluginEpWebGpuConcurrency, SerialRunsAfterRejectedStreamOverride) {
 
   // This host error occurs after OnRunStart and skips OnRunEnd. Neither Session may be blocked,
   // including across threads in serialized compatibility mode where operations must not overlap.
+  FirstError recovery_error;
   for (int thread_id = 0; thread_id < kThreads; ++thread_id) {
-    std::thread worker([&]() {
-      RunWithCpuBoundInputAndOutput(*first_session, static_cast<float>(thread_id + 1));
+    std::thread worker([&, thread_id]() {
+      try {
+        RunWithCpuBoundInputAndOutput(*first_session, static_cast<float>(thread_id + 1));
+      } catch (const std::exception& ex) {
+        recovery_error.Set("thread " + std::to_string(thread_id) + ": " + ex.what());
+      }
     });
     worker.join();
   }
+  ASSERT_FALSE(recovery_error.Failed()) << recovery_error.Message();
   ASSERT_NO_THROW(RunWithCpuInputAndOutput(*second_session, 3.0f));
   run_options.SetSyncStream(nullptr);
   ASSERT_NO_THROW(first_session->Run(run_options, first_binding));
