@@ -1809,7 +1809,7 @@ full-model CUDA Graph:
      activations (`<= 20 KiB`) directly into UVA-mapped pinned host memory (`host_indices`, `host_input`),
      executes `__threadfence_system()`, increments the device sequence counter `*doorbell_seq_dev`,
      and writes `*doorbell_req_host = next_seq` to wake the persistent `DoorbellService` host thread.
-2. **Concurrent GPU Resident GEMV & CPU Cold-Expert AVX-512 Execution**:
+2. **Concurrent GPU Resident GEMV & CPU Cold-Expert SIMD Execution**:
    - **On the GPU (`stream`)**: `MoeGemvFp4DecodeKernel` executes FC1 (SwiGLU) and FC2 immediately on
      the GPU resident slab (`[C_l + S_l, ...]`). Because `MoeGemvFp4DecodeKernel` natively skips
      negative slot indices (`slot < 0`), **zero dummy slots (`dummy_slots = 0`)** are allocated or read.
@@ -1818,13 +1818,19 @@ full-model CUDA Graph:
    - **On the CPU (`DoorbellService` + `SpinPool`)**: `DoorbellService` detects `*doorbell_req_host == next_seq`
      and dispatches the missed experts across `SpinPool` workers pinned to distinct physical cores
      alternating across NUMA sockets / L3 CCDs (`DiscoverPhysicalCoreCount()`).
-   - **AVX-512 Cold-Expert Microkernels (`Fp4Group4Avx512<RT=1..4>`)**: Cold NVFP4 experts are
-     evaluated directly from their row-major `[N, K/2]` storage without weight conversion using
-     `_mm512_permutex2var_ps` 2D LUT permutes (`stack_fma = 0`, `stack_mov = 0`), multi-row contiguous
-     activation reuse (`RT = 1..4` tokens routed to the same cold expert share a single DDR5 weight
-     read), and a single fused `ParallelFor(total_fc1 + total_fc2)` coordinated by per-expert atomic
-     readiness counters (`fc1_done[slot]`) so each expert's FC2 tasks start immediately after its own
-     FC1 tasks finish. Results are written directly into UVA-mapped pinned `host_result`.
+   - **Cold-Expert SIMD Microkernels (`Fp4Group4Avx512<RT=1..4>`, `Int4Group8Avx512`, `Int4Group8Avx2<RT=1..4>`, `Int3Group4Avx512`)**:
+     Cold experts dispatch at runtime in order `AVX-512` $\to$ `AVX2+FMA+F16C` $\to$ scalar (`CpuHasAvx512()`,
+     `CpuHasAvx2FmaF16c()`). Cold NVFP4 experts use `Fp4Group4Avx512<RT=1..4>` directly from row-major
+     `[N, K/2]` storage using `_mm512_permutex2var_ps` 2D LUT permutes (`stack_fma = 0`, `stack_mov = 0`).
+     Cold INT4 experts (`block_size = 32`, both SM80 prepacked `ColumnMajorTileInterleave<64,4>` and raw
+     row-major `[N, K/2]`, with FP16 or BF16 scales/biases and row conversions) execute via `Avx512Int4GemmRange`
+     on AVX-512 hosts or `Avx2Int4GemmRange` (`Int4Group8Avx2` / `Int4Group4Avx2`) on AVX2+FMA+F16C hosts
+     (e.g., AMD EPYC Zen 2); setting `ORT_QMOE_CPU_DISABLE_AVX512=1` at process start forces AVX-512 hosts
+     onto the AVX2+FMA+F16C path for testing. Multi-row contiguous activation reuse (`RT = 1..4` tokens
+     routed to the same cold expert share a single DDR weight read) and a single fused
+     `ParallelFor(total_fc1 + total_fc2)` coordinated by per-expert atomic readiness counters (`fc1_done[slot]`)
+     allow each expert's FC2 tasks to start immediately after its own FC1 tasks finish. Results are written
+     directly into UVA-mapped pinned `host_result`.
 3. **Fused Wait, Merge, Finalize & Combine (`QMoEOffloadMergeFinalizeCombineKernel`)**:
    - Preloads GPU-resident `wave_output` hits and `shared_out` into registers while thread 0 spins on
      `*doorbell_done_host >= *doorbell_seq_dev`, then reads CPU cold outputs zero-copy from mapped
@@ -1903,7 +1909,7 @@ Implementation files:
 | [test_qmoe_fp4_cuda.py](onnxruntime/test/python/transformers/test_qmoe_fp4_cuda.py) | MXFP4 QMoE: quantization utilities, packing, FP16/BF16, SiLU/SwiGLU, top-k and expert-count variants. On SM80+ (including SM120) `TestQMoEFP4Sm80SingleWeightCopy` checks the SM80 grouped GEMM + fused GEMV regime against the dequant fallback. |
 | [test_qmoe_fp8_cuda.py](onnxruntime/test/python/transformers/test_qmoe_fp8_cuda.py) | Legacy FP8 W8A16 native/dequant paths and square-block FP8 fallback, separate FC3, fused SwiGLU, partial blocks, top-10, validation errors, and opt-in official Qwen dimensions. |
 | [test_qmoe_wfp4afp8_cuda.py](onnxruntime/test/python/transformers/test_qmoe_wfp4afp8_cuda.py) | WFP4AFP8 — native Blackwell path requires SM100+; SM<100 exercises the dequant fallback. |
-| [test_qmoe_shared_layout.py](onnxruntime/test/python/transformers/test_qmoe_shared_layout.py) | Shared 4-bit expert block layouts (`INT4`, `MXFP4`, `NVFP4`), scalar vs. AVX-512 cold-expert kernel parity, and `FileExpertStore` roundtrips. |
+| [test_qmoe_shared_layout.py](onnxruntime/test/python/transformers/test_qmoe_shared_layout.py) | Shared expert block layouts (`INT4`, `INT3`, `MXFP4`, `NVFP4`), scalar vs. AVX-512 and AVX2+FMA+F16C cold-expert kernel parity, and `FileExpertStore` roundtrips. |
 | [test_qmoe_offload_v4.py](onnxruntime/test/python/test_qmoe_offload_v4.py) | Portable QMoE Offload v4 (`session.moe.offload.*` on canonical `com.microsoft::QMoE`): rejection of invalid/legacy config keys, numerical parity across `disabled`, `auto`, `static`, `adaptive`, and `bounded_host` (`FileExpertStore`) modes for decode (`T=1,2,4`) and prefill (`T=16`), and full CUDA Graph capture and replay. |
 
 ### Reference computation

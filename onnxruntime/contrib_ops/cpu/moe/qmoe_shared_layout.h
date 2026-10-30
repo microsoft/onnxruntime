@@ -440,6 +440,23 @@ bool Nvfp4ExpertForward(int64_t hidden, int64_t inter, const Nvfp4ExpertView& vi
 
 bool CompilerHasAvx512() noexcept;
 bool CpuHasAvx512();
+void SetDisableAvx512ForTesting(bool disable) noexcept;
+bool IsAvx512DisabledForTesting() noexcept;
+
+struct ScopedDisableAvx512ForTesting {
+  ScopedDisableAvx512ForTesting() noexcept : previous_(IsAvx512DisabledForTesting()) {
+    SetDisableAvx512ForTesting(true);
+  }
+  ~ScopedDisableAvx512ForTesting() noexcept {
+    SetDisableAvx512ForTesting(previous_);
+  }
+  ScopedDisableAvx512ForTesting(const ScopedDisableAvx512ForTesting&) = delete;
+  ScopedDisableAvx512ForTesting& operator=(const ScopedDisableAvx512ForTesting&) = delete;
+
+ private:
+  bool previous_;
+};
+
 bool CompilerHasAvx2() noexcept;
 bool CpuHasAvx2FmaF16c();
 void SetFp4Group8MaskForTesting(int mask) noexcept;
@@ -461,6 +478,7 @@ int qmoe_shared_expert_contribution_fp16(const uint8_t* block, int64_t hidden, i
 int64_t qmoe_shared_block_bytes(int64_t hidden, int64_t inter);
 int qmoe_shared_cpu_has_avx512(void);
 int qmoe_shared_cpu_has_avx2(void);
+void qmoe_shared_set_disable_avx512_for_testing(int disable);
 int qmoe_shared_accepts_prepack_contract(int64_t weights_prepacked, int64_t block_size);
 int qmoe_shared_weight_code_at(const uint8_t* weights, int64_t n_total, int64_t k_total, int64_t n,
                                int64_t k);

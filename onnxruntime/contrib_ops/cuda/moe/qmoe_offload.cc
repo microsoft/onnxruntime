@@ -1894,7 +1894,6 @@ struct QMoEOffload::PersistentDecodeState {
   volatile uint64_t* doorbell_req_host = nullptr;
   volatile uint64_t* doorbell_done_host = nullptr;
   volatile int32_t* doorbell_tile_rows_host = nullptr;
-  volatile int32_t* cold_count_host = nullptr;
   QMoEOffloadTelemetry* telemetry = nullptr;
   uint64_t cpu_doorbell_wakeups = 0;
   int32_t* pinned_slot_table = nullptr;
@@ -1936,7 +1935,6 @@ struct QMoEOffload::PersistentDecodeState {
     doorbell_req_host = nullptr;
     doorbell_done_host = nullptr;
     doorbell_tile_rows_host = nullptr;
-    cold_count_host = nullptr;
     pinned_slot_table = nullptr;
   }
 
@@ -4357,7 +4355,6 @@ Status QMoEOffload::EnsurePersistentDecodeState(OpKernelContext* context, size_t
     decode_state_->doorbell_req_host = reinterpret_cast<volatile uint64_t*>(meta_ptr + 0);
     decode_state_->doorbell_done_host = reinterpret_cast<volatile uint64_t*>(meta_ptr + 8);
     decode_state_->doorbell_tile_rows_host = reinterpret_cast<volatile int32_t*>(meta_ptr + 16);
-    decode_state_->cold_count_host = reinterpret_cast<volatile int32_t*>(meta_ptr + 20);
     decode_state_->pinned_slot_table = reinterpret_cast<int32_t*>(meta_ptr + 256);
     decode_state_->last_serviced_seq = 0;
   }
@@ -4399,14 +4396,6 @@ Status QMoEOffload::EnsurePersistentDecodeState(OpKernelContext* context, size_t
 void QMoEOffload::ServiceDoorbell() const {
   if (!decode_state_ || !decode_state_->tile) return;
   ++decode_state_->cpu_doorbell_wakeups;
-  if (v4_policy_.skip_zero_cold_doorbell && resident_promotions_ == 0 &&
-      !DoorbellService::Instance().CrossLayerPromotionEnabled() &&
-      decode_state_->cold_count_host && *decode_state_->cold_count_host == 0) {
-    if (decode_state_->invocation_rec) decode_state_->invocation_rec->MarkCpuDone();
-    std::atomic_thread_fence(std::memory_order_release);
-    *decode_state_->doorbell_done_host = decode_state_->last_serviced_seq;
-    return;
-  }
   const int t_rows = std::max(1, static_cast<int>(*decode_state_->doorbell_tile_rows_host));
   decode_state_->tile->tile_rows = t_rows;
   try {
@@ -8787,7 +8776,7 @@ Status QMoEOffload::ComputeSharedAsync(OpKernelContext* context, const Tensor* i
           decode_state_->doorbell_tile_rows_host, tile_rows,
           v4_policy_.skip_zero_cold_doorbell && resident_promotions_ == 0 &&
               !DoorbellService::Instance().CrossLayerPromotionEnabled(),
-          decode_state_->doorbell_done_host, decode_state_->cold_count_host, decode_state_->telemetry));
+          decode_state_->doorbell_done_host, decode_state_->telemetry));
       ORT_RETURN_IF_ERROR(enqueue_hits());
       if (bias_gpu_ptr) {
         if (is_bf16_) {
