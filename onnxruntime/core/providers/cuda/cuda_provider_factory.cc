@@ -251,7 +251,6 @@ struct CUDA_Provider : Provider {
     info.use_tf32 = params->use_tf32 != 0;
     info.sdpa_kernel = params->sdpa_kernel;
     info.external_data_loader_reading_threads = params->external_data_loader_reading_threads;
-
     return std::make_shared<CUDAProviderFactory>(info);
   }
 

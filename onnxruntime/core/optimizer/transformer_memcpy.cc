@@ -296,7 +296,10 @@ void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node,
           // flow op (Loop, Scan, If) to do the necessary copy if the input crosses different provider.
           // PlannerImpl::ComputeUseCounts has matching logic so the allocation plan does the same thing
           if (!is_implicit_input) {
-            if (utils::IsInputOnCpu(node, kci, index)) {
+            const bool initializer_input_on_cpu =
+                initializer_tensor_proto != nullptr && kci != nullptr && kci->kernel_def != nullptr &&
+                kci->kernel_def->IsInitializerInputOnCpu(index);
+            if (utils::IsInputOnCpu(node, kci, index) || initializer_input_on_cpu) {
               non_provider_input_defs_.insert(&arg);
             } else {
               provider_input_defs_.insert(&arg);
@@ -470,7 +473,10 @@ bool TransformerMemcpyImpl::ProcessInitializers(const KernelRegistryManager& ker
     ORT_THROW_IF_ERROR(Node::ForEachWithIndex(
         p_node->InputDefs(),
         [kci, &p_node, &dup_replacements](const onnxruntime::NodeArg& arg, size_t index) {
-          if (utils::IsInputOnCpu(*p_node, kci, index)) dup_replacements.erase(&arg);
+          if (utils::IsInputOnCpu(*p_node, kci, index) ||
+              kci->kernel_def->IsInitializerInputOnCpu(index)) {
+            dup_replacements.erase(&arg);
+          }
           return Status::OK();
         }));
 

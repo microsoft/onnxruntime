@@ -27,6 +27,8 @@
 #include "core/providers/cuda/cudnn_loader.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
 
+#include <mutex>
+
 #ifndef USE_CUDA_MINIMAL
 #ifndef DISABLE_CONTRIB_OPS
 #include "contrib_ops/cuda/cuda_contrib_kernels.h"
@@ -1974,7 +1976,8 @@ class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 28, R
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 28, Einsum);
 #endif
 
-static Status RegisterCudaKernels(KernelRegistry& kernel_registry) {
+static Status RegisterCudaKernels(KernelRegistry& kernel_registry,
+                                  [[maybe_unused]] bool enable_host_pageable_gather = false) {
   static const BuildKernelCreateInfoFn function_table[] = {
       BuildKernelCreateInfo<void>,  // default entry to avoid the list become empty after ops-reducing
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, MemcpyFromHost)>,
@@ -3317,7 +3320,8 @@ static Status RegisterCudaKernels(KernelRegistry& kernel_registry) {
 
 #ifndef USE_CUDA_MINIMAL
 #ifndef DISABLE_CONTRIB_OPS
-  ORT_RETURN_IF_ERROR(::onnxruntime::contrib::cuda::RegisterCudaContribKernels(kernel_registry));
+  ORT_RETURN_IF_ERROR(::onnxruntime::contrib::cuda::RegisterCudaContribKernels(
+      kernel_registry, enable_host_pageable_gather));
 #endif
 
 #ifdef ENABLE_CUDA_NHWC_OPS
@@ -3338,6 +3342,8 @@ static Status RegisterCudaKernels(KernelRegistry& kernel_registry) {
 }  // namespace cuda
 
 static std::shared_ptr<KernelRegistry> s_kernel_registry;
+static std::shared_ptr<KernelRegistry> s_host_pageable_gather_kernel_registry;
+static std::mutex s_host_pageable_gather_kernel_registry_mutex;
 
 void InitializeRegistry() {
   s_kernel_registry = KernelRegistry::Create();
@@ -3352,9 +3358,38 @@ void DeleteRegistry() {
   // threads are stopped or the provider DLL is unloaded.
   onnxruntime::contrib::cuda::FlushMatMulNBitsTacticCaches();
   s_kernel_registry.reset();
+  s_host_pageable_gather_kernel_registry.reset();
 }
 
 std::shared_ptr<KernelRegistry> CUDAExecutionProvider::GetKernelRegistry() const {
+#if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS)
+  if (info_.enable_host_pageable_gather) {
+    int pageable_memory_access = 0;
+    int uses_host_page_tables = 0;
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 10020
+    const bool attributes_available =
+        cudaDeviceGetAttribute(&pageable_memory_access, cudaDevAttrPageableMemoryAccess, GetDeviceId()) == cudaSuccess &&
+        cudaDeviceGetAttribute(&uses_host_page_tables, cudaDevAttrPageableMemoryAccessUsesHostPageTables,
+                               GetDeviceId()) == cudaSuccess;
+    if (!attributes_available) {
+      cudaGetLastError();
+    }
+#endif
+
+    if (pageable_memory_access != 0 && uses_host_page_tables != 0) {
+      std::lock_guard<std::mutex> lock(s_host_pageable_gather_kernel_registry_mutex);
+      if (s_host_pageable_gather_kernel_registry == nullptr) {
+        auto registry = KernelRegistry::Create();
+        ORT_THROW_IF_ERROR(cuda::RegisterCudaKernels(*registry, true));
+#ifndef DISABLE_ML_OPS
+        ORT_THROW_IF_ERROR(cuda::RegisterOnnxMLOperatorKernels(*registry));
+#endif
+        s_host_pageable_gather_kernel_registry = std::move(registry);
+      }
+      return s_host_pageable_gather_kernel_registry;
+    }
+  }
+#endif
   return s_kernel_registry;
 }
 
