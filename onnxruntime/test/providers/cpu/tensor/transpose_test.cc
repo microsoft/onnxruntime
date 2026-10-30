@@ -470,6 +470,99 @@ TEST(TransposeOpTest, TwoDim_int16) {
   TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, {kOpenVINOExecutionProvider}, {7, 21});
 }
 
+// Row-major transpose of a [rows, cols] matrix.
+template <typename T>
+static std::vector<T> Transpose2DRef(const std::vector<T>& input, int64_t rows, int64_t cols) {
+  std::vector<T> result(input.size());
+  for (int64_t i = 0; i < rows; ++i) {
+    for (int64_t j = 0; j < cols; ++j) {
+      result[static_cast<size_t>(j * rows + i)] = input[static_cast<size_t>(i * cols + j)];
+    }
+  }
+  return result;
+}
+
+template <typename T>
+static void Expect2DTranspose(const std::vector<int64_t>& input_shape, const std::vector<T>& input_vals,
+                              const std::unordered_set<std::string>& excluded_provider_types = {},
+                              const std::vector<int>& opsets = {7, 21}) {
+  std::vector<int64_t> perm{1, 0};
+  const std::vector<int64_t> expected_shape{input_shape[1], input_shape[0]};
+  const std::vector<T> expected_vals = Transpose2DRef(input_vals, input_shape[0], input_shape[1]);
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, excluded_provider_types, opsets);
+}
+
+// Odd extents exercise the tile bounds checks.
+TEST(TransposeOpTest, TwoDim_int32_Tiled) {
+  const std::vector<int64_t> input_shape{37, 53};
+  std::vector<int32_t> input_vals(static_cast<size_t>(37 * 53));
+  for (size_t i = 0; i < input_vals.size(); ++i) input_vals[i] = static_cast<int32_t>(i);
+
+  Expect2DTranspose(input_shape, input_vals);
+}
+
+TEST(TransposeOpTest, TwoDim_int8_Tiled) {
+  const std::vector<int64_t> input_shape{64, 40};
+  std::vector<int8_t> input_vals(static_cast<size_t>(64 * 40));
+  for (size_t i = 0; i < input_vals.size(); ++i) input_vals[i] = static_cast<int8_t>(i % 100);
+
+  Expect2DTranspose(input_shape, input_vals, {kTensorrtExecutionProvider});
+}
+
+// bfloat16 has no cuBLAS transpose path.
+TEST(TransposeOpTest, TwoDim_bfloat16_Tiled) {
+  const std::vector<int64_t> input_shape{64, 40};
+  std::vector<BFloat16> input_vals(static_cast<size_t>(64 * 40));
+  for (size_t i = 0; i < input_vals.size(); ++i) input_vals[i] = BFloat16(static_cast<float>(i % 100));
+
+  Expect2DTranspose(input_shape, input_vals, {kTensorrtExecutionProvider, kOpenVINOExecutionProvider}, {13, 21});
+}
+
+// 15 rows take the generic kernel, 16 keeps the tile.
+TEST(TransposeOpTest, TwoDim_int8_TileExtent) {
+  for (const auto& input_shape : {std::vector<int64_t>{15, 64}, std::vector<int64_t>{15, 4096},
+                                  std::vector<int64_t>{16, 64}}) {
+    std::vector<int8_t> input_vals(static_cast<size_t>(input_shape[0] * input_shape[1]));
+    for (size_t i = 0; i < input_vals.size(); ++i) input_vals[i] = static_cast<int8_t>(i % 100);
+
+    Expect2DTranspose(input_shape, input_vals, {kTensorrtExecutionProvider});
+  }
+}
+
+// [1, m, n] with perm [0, 2, 1] collapses to the rank-2 case.
+TEST(TransposeOpTest, Transpose021_int32_Squeezed) {
+  const std::vector<int64_t> input_shape{1, 37, 53};
+  std::vector<int32_t> input_vals(static_cast<size_t>(1 * 37 * 53));
+  for (size_t i = 0; i < input_vals.size(); ++i) input_vals[i] = static_cast<int32_t>(i);
+
+  std::vector<int64_t> perm{0, 2, 1};
+  const std::vector<int64_t> expected_shape{1, 53, 37};
+  const std::vector<int32_t> expected_vals = Transpose2DRef(input_vals, 37, 53);
+
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, {}, {7, 21});
+}
+
+TEST(TransposeOpTest, Transpose021_int32_NarrowMiddle) {
+  const std::vector<int64_t> input_shape{8, 4, 128};
+  const size_t batch = 8, rows = 4, cols = 128;
+  std::vector<int32_t> input_vals(batch * rows * cols);
+  for (size_t i = 0; i < input_vals.size(); ++i) input_vals[i] = static_cast<int32_t>(i);
+
+  std::vector<int32_t> expected_vals;
+  expected_vals.reserve(input_vals.size());
+  for (size_t b = 0; b < batch; ++b) {
+    const std::vector<int32_t> slice(input_vals.begin() + b * rows * cols,
+                                     input_vals.begin() + (b + 1) * rows * cols);
+    const std::vector<int32_t> transposed = Transpose2DRef(slice, static_cast<int64_t>(rows),
+                                                           static_cast<int64_t>(cols));
+    expected_vals.insert(expected_vals.end(), transposed.begin(), transposed.end());
+  }
+
+  std::vector<int64_t> perm{0, 2, 1};
+  const std::vector<int64_t> expected_shape{8, 128, 4};
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, {}, {7, 21});
+}
+
 TEST(TransposeOpTest, TwoDim_mlfloat16) {
   std::vector<int64_t> input_shape({2, 3});
   std::vector<MLFloat16> input_vals;
@@ -826,8 +919,8 @@ TEST(TransposeOpTest, ThreeDimInnermostMovedFourAligned) {
 
 // Same shape and permutation as ThreeDimInnermostFixedFourAligned, but an integer element type:
 // an implementation that carries several elements per thread must do so for every type it accepts,
-// not only the floating-point ones. The existing TwoDim_int32 case does not cover this - a 2D
-// transpose takes the tiled path, where no such grouping applies.
+// not only the floating-point ones. The existing TwoDim_int32 case does not cover this - 2D transposes
+// use a different kernel, where no such grouping applies.
 TEST(TransposeOpTest, ThreeDimInnermostFixedFourAligned_int32) {
   std::vector<int64_t> input_shape({2, 3, 4});
   std::vector<int32_t> input_vals = {
@@ -1247,9 +1340,9 @@ TEST(TransposeOpTest, Transpose3DImpl) {
 
   // dim-1 or dim-2 is not power of 2.
   {
-    const std::vector<int64_t> X_dims{64, 12, 128};
+    const std::vector<int64_t> X_dims{64, 17, 128};
     const std::vector<int64_t> perm{0, 2, 1};
-    const std::vector<int64_t> Y_dims{64, 128, 12};
+    const std::vector<int64_t> Y_dims{64, 128, 17};
     TestTranspose(perm, X_dims, Y_dims);
   }
 
