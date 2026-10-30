@@ -64,6 +64,7 @@ TEST_P(CudaConvDynamicShapeTest, RebuildExecutionPlan) {
   OrtValue weights, bias;
   CreateMLValue<float>(allocator, {1, 1, 1}, {2.0f}, &weights);
   CreateMLValue<float>(allocator, {1}, {3.0f}, &bias);
+  const std::vector<std::string> output_names{"Y"};
   for (int64_t length : {4, 7, 4, 9}) {
     SCOPED_TRACE(length);
     std::vector<float> input(static_cast<size_t>(length));
@@ -74,7 +75,7 @@ TEST_P(CudaConvDynamicShapeTest, RebuildExecutionPlan) {
     CreateMLValue<float>(allocator, {1, 1, length}, input, &input_value);
     NameMLValMap feeds{{"X", input_value}, {"W", weights}, {"B", bias}};
     std::vector<OrtValue> fetches;
-    ASSERT_STATUS_OK(session.Run(RunOptions{}, feeds, {"Y"}, &fetches));
+    ASSERT_STATUS_OK(session.Run(RunOptions{}, feeds, output_names, &fetches));
     ASSERT_EQ(fetches.size(), 1u);
     const auto& output = fetches[0].Get<Tensor>();
     ASSERT_EQ(output.Shape(), TensorShape({1, 1, length}));
