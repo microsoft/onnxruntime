@@ -71,17 +71,14 @@ KernelCreateInfo BuildKernelCreateInfo<void>() {
   return info;
 }
 
-class Memcpy final : public OpKernel {
+class Memcpy final : public WebGpuKernel {
  public:
-  Memcpy(const OpKernelInfo& info) : OpKernel(info) {}
+  Memcpy(const OpKernelInfo& info) : WebGpuKernel(info) {}
 
-  Status Compute(OpKernelContext* ctx) const override {
-    const auto& ep = *static_cast<const WebGpuExecutionProvider*>(Info().GetExecutionProvider());
-    std::lock_guard<std::recursive_mutex> lock{ep.Recording().mutex};
-    const auto* X = ctx->Input<Tensor>(0);
-    Tensor* Y = ctx->Output(0, X->Shape());
-    DataTransfer transfer(ep.BufferManager(), ep.Recording(), ep.GetDeviceId());
-    return transfer.CopyTensor(*X, *Y);
+  Status ComputeInternal(ComputeContext& ctx) const override {
+    const auto* X = ctx.Input<Tensor>(0);
+    Tensor* Y = ctx.Output(0, X->Shape());
+    return ctx.CopyTensor(*X, *Y);
   }
 };
 
@@ -706,7 +703,11 @@ std::vector<AllocatorPtr> WebGpuExecutionProvider::CreatePreferredAllocators() {
           [this]() -> const webgpu::BufferManager& { return BufferManager(); },
           [this]() -> webgpu::CommandRecordingState& { return Recording(); },
           false,
-          [this]() { return !IsRunActive(); }),
+          [this]() { return !IsRunActive(); },
+          [this]() -> const webgpu::BufferManager& { return DefaultBufferManager(); },
+          [this](WGPUBuffer buffer, const webgpu::CommandRecordingState* recording) {
+            ReleaseBuffer(buffer, recording);
+          }),
   };
 }
 
@@ -814,7 +815,7 @@ std::vector<std::unique_ptr<ComputeCapability>> WebGpuExecutionProvider::GetCapa
 #endif  // !defined(ORT_USE_EP_API_ADAPTERS)
 
 std::unique_ptr<onnxruntime::IDataTransfer> WebGpuExecutionProvider::GetDataTransfer() const {
-  return std::make_unique<webgpu::DataTransfer>(BufferManager(), Recording(), context_id_);
+  return std::make_unique<webgpu::DataTransfer>(context_.BufferManager(), Recording(), context_id_);
 }
 
 #if defined(__wasm__)
@@ -917,6 +918,7 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
   bool started = false;
   auto release_on_error = gsl::finally([&] {
     if (serialized && !started) {
+      std::lock_guard<std::mutex> graph_lock{graph_buffer_mgrs_mutex_};
       graph_buffer_mgr_active_ = false;
       context_.SetActiveSerializedRecording(nullptr);
     }
@@ -942,28 +944,32 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
                   *graph_annotation_str);
     }
 
-    current_graph_annotation_id_ = graph_annotation_id;
-
     // Create a per-graph buffer manager on first encounter of each annotation ID
-    if (graph_annotation_id != -1) {
-      auto [it, inserted] = per_graph_buffer_mgrs_.try_emplace(graph_annotation_id, nullptr);
-      if (inserted) {
-        it->second = webgpu::BufferManagerFactory::Create(
-            context_,
-            webgpu::BufferCacheMode::Graph,
-            webgpu::BufferCacheMode::GraphSimple,
-            webgpu::BufferCacheMode::Disabled,
-            webgpu::BufferCacheMode::Disabled);
-        if (session_buffer_pool_) {
-          session_buffer_pool_->SeedInto(*it->second);
+    webgpu::BufferManager* graph_mgr = nullptr;
+    {
+      std::lock_guard<std::mutex> graph_lock{graph_buffer_mgrs_mutex_};
+      current_graph_annotation_id_ = graph_annotation_id;
+      if (graph_annotation_id != -1) {
+        auto [it, inserted] = per_graph_buffer_mgrs_.try_emplace(graph_annotation_id, nullptr);
+        if (inserted) {
+          it->second = webgpu::BufferManagerFactory::Create(
+              context_,
+              webgpu::BufferCacheMode::Graph,
+              webgpu::BufferCacheMode::GraphSimple,
+              webgpu::BufferCacheMode::Disabled,
+              webgpu::BufferCacheMode::Disabled);
+          if (session_buffer_pool_) {
+            session_buffer_pool_->SeedInto(*it->second);
+          }
         }
+        graph_mgr = it->second.get();
+        graph_buffer_mgr_active_ = true;
       }
-      graph_buffer_mgr_active_ = true;
+    }
 
-      if (IsGraphCaptureAllowed() && !IsGraphCaptured(graph_annotation_id)) {
-        auto& commands = captured_graphs_[graph_annotation_id];
-        context_.CaptureBegin(&commands, *it->second, *recording_);
-      }
+    if (graph_annotation_id != -1 && IsGraphCaptureAllowed() && !IsGraphCaptured(graph_annotation_id)) {
+      auto& commands = captured_graphs_[graph_annotation_id];
+      context_.CaptureBegin(&commands, *graph_mgr, *recording_);
     }
   }
 
@@ -977,7 +983,10 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
 Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxruntime::RunOptions& run_options) {
   std::lock_guard<std::recursive_mutex> lock{recording_->mutex};
   auto end_run = gsl::finally([&] {
-    graph_buffer_mgr_active_ = false;
+    {
+      std::lock_guard<std::mutex> graph_lock{graph_buffer_mgrs_mutex_};
+      graph_buffer_mgr_active_ = false;
+    }
     run_active_.store(false);
 #if defined(ORT_USE_EP_API_ADAPTERS)
     if (webgpu::ep::UseSerializedExecutionMode()) {
@@ -985,9 +994,19 @@ Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxrunti
     }
 #endif
   });
+  webgpu::BufferManager* active_mgr = &context_.BufferManager();
+  {
+    std::lock_guard<std::mutex> graph_lock{graph_buffer_mgrs_mutex_};
+    if (IsGraphCaptureEnabled() && graph_buffer_mgr_active_) {
+      auto it = per_graph_buffer_mgrs_.find(current_graph_annotation_id_);
+      if (it != per_graph_buffer_mgrs_.end()) {
+        active_mgr = it->second.get();
+      }
+    }
+  }
   // When capturing, flushing creates the replay-ready dispatch entries before
   // CaptureEnd() detaches their external storage.
-  Status flush_status = context_.Flush(BufferManager(), *recording_);
+  Status flush_status = context_.Flush(*active_mgr, *recording_);
 
   if (!flush_status.IsOK()) {
     if (IsGraphCaptureEnabled()) {
@@ -998,7 +1017,10 @@ Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxrunti
         commands_it->second.clear();
       }
     }
-    graph_buffer_mgr_active_ = false;
+    {
+      std::lock_guard<std::mutex> graph_lock{graph_buffer_mgrs_mutex_};
+      graph_buffer_mgr_active_ = false;
+    }
     if (context_.ValidationMode() >= ValidationMode::Basic) {
       static_cast<void>(context_.PopErrorScope());
     }
@@ -1031,7 +1053,10 @@ Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxrunti
 #endif  // ENABLE_PIX_FOR_WEBGPU_EP
 
   // Reset buffer manager routing after run completes
-  graph_buffer_mgr_active_ = false;
+  {
+    std::lock_guard<std::mutex> graph_lock{graph_buffer_mgrs_mutex_};
+    graph_buffer_mgr_active_ = false;
+  }
   run_active_.store(false);
 
   if (context_.ValidationMode() >= ValidationMode::Basic) {
@@ -1073,8 +1098,13 @@ Status WebGpuExecutionProvider::ReplayGraph(int graph_annotation_id, bool /*sync
   if (session_profiler_ && session_profiler_->Enabled()) {
     context_.StartProfiling();
   }
+  webgpu::BufferManager* graph_mgr = nullptr;
+  {
+    std::lock_guard<std::mutex> graph_lock{graph_buffer_mgrs_mutex_};
+    graph_mgr = per_graph_buffer_mgrs_.at(graph_annotation_id).get();
+  }
   context_.Replay(captured_graphs_.at(graph_annotation_id),
-                  *per_graph_buffer_mgrs_.at(graph_annotation_id),
+                  *graph_mgr,
                   *recording_);
   if (session_profiler_ && session_profiler_->Enabled()) {
     // Session-level profiling: collect into profiler's own events storage.
@@ -1098,12 +1128,15 @@ Status WebGpuExecutionProvider::ReleaseCapturedGraph(int graph_annotation_id) {
   captured_graph_ids_.erase(graph_annotation_id);
 
   // Release per-graph buffer manager (donate to session pool if enabled; otherwise destroy)
-  auto mgr_it = per_graph_buffer_mgrs_.find(graph_annotation_id);
-  if (mgr_it != per_graph_buffer_mgrs_.end()) {
-    if (session_buffer_pool_ && mgr_it->second) {
-      session_buffer_pool_->Donate(*mgr_it->second);
+  {
+    std::lock_guard<std::mutex> graph_lock{graph_buffer_mgrs_mutex_};
+    auto mgr_it = per_graph_buffer_mgrs_.find(graph_annotation_id);
+    if (mgr_it != per_graph_buffer_mgrs_.end()) {
+      if (session_buffer_pool_ && mgr_it->second) {
+        session_buffer_pool_->Donate(*mgr_it->second);
+      }
+      per_graph_buffer_mgrs_.erase(mgr_it);
     }
-    per_graph_buffer_mgrs_.erase(mgr_it);
   }
 
   // Clean up run count tracking
@@ -1113,13 +1146,33 @@ Status WebGpuExecutionProvider::ReleaseCapturedGraph(int graph_annotation_id) {
 }
 
 webgpu::BufferManager& WebGpuExecutionProvider::BufferManager() const {
-  if (IsGraphCaptureEnabled() && graph_buffer_mgr_active_) {
-    auto it = per_graph_buffer_mgrs_.find(current_graph_annotation_id_);
-    if (it != per_graph_buffer_mgrs_.end()) {
-      return *it->second;
+  if (IsGraphCaptureEnabled()) {
+    std::lock_guard<std::mutex> graph_lock{graph_buffer_mgrs_mutex_};
+    if (graph_buffer_mgr_active_ && kernel_compute_depth_ > 0) {
+      auto it = per_graph_buffer_mgrs_.find(current_graph_annotation_id_);
+      if (it != per_graph_buffer_mgrs_.end()) {
+        return *it->second;
+      }
     }
   }
   return context_.BufferManager();
+}
+
+webgpu::BufferManager& WebGpuExecutionProvider::DefaultBufferManager() const {
+  return context_.BufferManager();
+}
+
+void WebGpuExecutionProvider::ReleaseBuffer(WGPUBuffer buffer,
+                                            const webgpu::CommandRecordingState* recording) const {
+  if (IsGraphCaptureEnabled()) {
+    std::lock_guard<std::mutex> graph_lock{graph_buffer_mgrs_mutex_};
+    for (const auto& [_, mgr] : per_graph_buffer_mgrs_) {
+      if (mgr && mgr->TryRelease(buffer, recording)) {
+        return;
+      }
+    }
+  }
+  context_.BufferManager().Release(buffer, recording);
 }
 
 webgpu::BufferManager& WebGpuExecutionProvider::InitializerBufferManager() const {

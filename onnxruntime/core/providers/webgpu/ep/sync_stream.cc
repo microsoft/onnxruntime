@@ -85,7 +85,7 @@ common::Status CopyTensorOnWebGpuStream(const OrtSyncStream* stream, const void*
                                         bool src_is_gpu, void* dst_data, bool dst_is_gpu, size_t bytes) {
   auto& ep = WebGpuSyncStream::From(stream).ep_;
   std::lock_guard<std::recursive_mutex> lock{ep.Recording().mutex};
-  DataTransferImpl transfer(ep.BufferManager(), ep.Recording());
+  DataTransferImpl transfer(ep.DefaultBufferManager(), ep.Recording());
   return transfer.CopyTensor(src_data, src_is_gpu, dst_data, dst_is_gpu, bytes);
 }
 

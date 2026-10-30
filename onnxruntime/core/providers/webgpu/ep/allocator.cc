@@ -27,7 +27,7 @@ void* GpuBufferAllocator::AllocOnStream(size_t size, Stream* stream) {
   }
   auto& recording = recording_getter_();
   std::lock_guard<std::recursive_mutex> lock{recording.mutex};
-  return Allocate(size, recording, false);
+  return Allocate(size, buffer_manager_getter_(), recording, false);
 }
 
 namespace ep {
