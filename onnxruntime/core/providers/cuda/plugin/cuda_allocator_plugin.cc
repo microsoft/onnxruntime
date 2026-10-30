@@ -4,6 +4,7 @@
 #include "cuda_allocator_plugin.h"
 
 #include <atomic>
+#include <thread>
 
 #include "core/providers/cuda/shared_inc/gemm_auto_tune_diagnostics.h"
 
@@ -69,6 +70,15 @@ CudaDeviceAllocator::CudaDeviceAllocator(const OrtMemoryInfo* memory_info, int d
         next_allocation_attempt_id.fetch_add(1, std::memory_order_relaxed),
         size,
         err};
+    LOGS_DEFAULT(WARNING) << "[CUDA GEMM diagnostic] cuda_malloc"
+                          << " thread=" << std::this_thread::get_id()
+                          << " cuda_attempt_id=" << last_allocation_attempt.attempt_id
+                          << " requested_bytes=" << size
+                          << " device_id=" << alloc->device_id_
+                          << " previous_device=" << prev_device
+                          << " restore_previous_device=" << restore_prev_device
+                          << " cuda_status=" << static_cast<int>(err)
+                          << " result=" << p;
   }
   RestoreDeviceIfKnown(restore_prev_device, prev_device);
   if (err != cudaSuccess) {
