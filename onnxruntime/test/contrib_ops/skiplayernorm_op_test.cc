@@ -9,7 +9,10 @@
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
-#include "core/providers/webgpu/webgpu_provider_options.h"
+
+#if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
+#include "core/providers/webgpu/webgpu_context.h"
+#endif
 
 namespace onnxruntime {
 namespace test {
@@ -1328,12 +1331,27 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch2_Skip_Broadcast_Batch_Size_1) {
           no_batch_size);
 }
 
-#ifdef USE_WEBGPU
-// input, skip, output and input_skip_bias_sum are 13108 x 2560 floats = 134,225,920 bytes, just over a 128 MiB
-// maxStorageBufferBindingSize, so the WebGPU EP binds each of them as 2 segments. The rows that end up in the second
-// segment are checked like all the others.
-static void RunWebGpuLargerThanStorageBindingTest(bool simplified) {
-  constexpr int64_t rows = 13108;
+#if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
+// With a 16 KiB test-only maxStorageBufferBindingSize, input, skip, output and input_skip_bias_sum (3 x 2560 floats,
+// 30 KiB each) are each bound as 2 segments, and the boundary falls inside row 1. gamma and beta fit in one binding.
+static void RunWebGpuSegmentedStorageTest(bool simplified, bool has_input_skip_bias_sum) {
+  WebGpuExecutionProviderTestOptions options{};
+  options.max_storage_buffer_binding_size = 16 * 1024;
+  auto provider = WebGpuExecutionProviderWithTestOptions(options);
+  if (!provider) {
+    GTEST_SKIP() << "Artificial storage limits require the native test factory.";
+  }
+  if (has_input_skip_bias_sum) {
+    // Every split tensor takes 2 bindings: 10 for SkipLayerNormalization, 9 without beta.
+    const uint32_t required_bindings = simplified ? 9 : 10;
+    const auto& limits = webgpu::WebGpuContextFactory::GetContext(provider->GetDeviceId()).DeviceLimits();
+    if (limits.maxStorageBuffersPerShaderStage < required_bindings) {
+      GTEST_SKIP() << "Needs " << required_bindings << " storage buffers per shader stage, the device has "
+                   << limits.maxStorageBuffersPerShaderStage;
+    }
+  }
+
+  constexpr int64_t rows = 3;
   constexpr int64_t hidden_size = 2560;
   constexpr float epsilon = 1e-5f;
   const size_t size = static_cast<size_t>(rows * hidden_size);
@@ -1376,24 +1394,32 @@ static void RunWebGpuLargerThanStorageBindingTest(bool simplified) {
   }
   test.AddAttribute("epsilon", epsilon);
   test.AddOutput<float>("output", {rows, hidden_size}, output_data);
-  // The second and third outputs are reserved for something else
-  test.AddOptionalOutputEdge<float>();
-  test.AddOptionalOutputEdge<float>();
-  test.AddOutput<float>("skip_input_bias_add_output", {rows, hidden_size}, sum_output_data);
+  if (has_input_skip_bias_sum) {
+    // The second and third outputs are reserved for something else
+    test.AddOptionalOutputEdge<float>();
+    test.AddOptionalOutputEdge<float>();
+    test.AddOutput<float>("skip_input_bias_add_output", {rows, hidden_size}, sum_output_data);
+  }
 
-  ConfigOptions config_options{};
-  ORT_ENFORCE(config_options.AddConfigEntry(webgpu::options::kMaxStorageBufferBindingSize, "134217728").IsOK());
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(WebGpuExecutionProviderWithOptions(config_options));
+  execution_providers.push_back(std::move(provider));
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
-TEST(SkipLayerNormTest, SkipLayerNorm_WebGpu_LargerThanStorageBinding) {
-  RunWebGpuLargerThanStorageBindingTest(false);
+TEST(SkipLayerNormTest, SkipLayerNorm_WebGpu_SegmentedStorage) {
+  RunWebGpuSegmentedStorageTest(false, false);
 }
 
-TEST(SkipLayerNormTest, SkipSimplifiedLayerNorm_WebGpu_LargerThanStorageBinding) {
-  RunWebGpuLargerThanStorageBindingTest(true);
+TEST(SkipLayerNormTest, SkipLayerNorm_WebGpu_SegmentedStorage_InputSkipBiasSum) {
+  RunWebGpuSegmentedStorageTest(false, true);
+}
+
+TEST(SkipLayerNormTest, SkipSimplifiedLayerNorm_WebGpu_SegmentedStorage) {
+  RunWebGpuSegmentedStorageTest(true, false);
+}
+
+TEST(SkipLayerNormTest, SkipSimplifiedLayerNorm_WebGpu_SegmentedStorage_InputSkipBiasSum) {
+  RunWebGpuSegmentedStorageTest(true, true);
 }
 #endif
 
