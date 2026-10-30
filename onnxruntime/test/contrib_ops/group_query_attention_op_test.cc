@@ -282,7 +282,8 @@ static void RunGQACausalMaskTest(
     const std::vector<float>& expected_output,
     OpTester::ExpectResult expect = OpTester::ExpectResult::kExpectSuccess,
     const std::string& expected_message = "",
-    std::optional<int64_t> local_window_size = std::nullopt) {
+    std::optional<int64_t> local_window_size = std::nullopt,
+    std::optional<int64_t> right_padded_query = std::nullopt) {
   constexpr int batch_size = 1;
   constexpr int sequence_length = 2;
   constexpr int num_heads = 1;
@@ -312,6 +313,9 @@ static void RunGQACausalMaskTest(
   }
   if (local_window_size.has_value()) {
     tester.AddAttribute<int64_t>("local_window_size", *local_window_size);
+  }
+  if (right_padded_query.has_value()) {
+    tester.AddAttribute<int64_t>("right_padded_query", *right_padded_query);
   }
 
   std::vector<float> query(sequence_length * hidden_size, 0.0f);
@@ -787,6 +791,29 @@ TEST(GroupQueryAttentionTest, InvalidCausalValue_CUDA) {
   RunGQACausalMaskTest<MLFloat16>(
       GqaTargetEp::kCuda, 2, std::vector<float>(16, 0.0f),
       OpTester::ExpectResult::kExpectFailure, "causal must be 0 or 1.");
+}
+
+TEST(GroupQueryAttentionTest, RightPaddedQueryRejected_CPU) {
+  RunGQACausalMaskTest<float>(
+      GqaTargetEp::kCpu, 1, std::vector<float>(16, 0.0f),
+      OpTester::ExpectResult::kExpectFailure,
+      "right_padded_query is only supported by the CUDA execution provider.", std::nullopt, 1);
+}
+
+TEST(GroupQueryAttentionTest, InvalidRightPaddedQueryValue_CUDA) {
+  for (int64_t value : {-1, 2}) {
+    RunGQACausalMaskTest<MLFloat16>(
+        GqaTargetEp::kCuda, 1, std::vector<float>(16, 0.0f),
+        OpTester::ExpectResult::kExpectFailure,
+        "right_padded_query must be 0 or 1.", std::nullopt, value);
+  }
+}
+
+TEST(GroupQueryAttentionTest, RightPaddedQueryBidirectionalRejected_CUDA) {
+  RunGQACausalMaskTest<MLFloat16>(
+      GqaTargetEp::kCuda, 0, std::vector<float>(16, 0.0f),
+      OpTester::ExpectResult::kExpectFailure,
+      "right_padded_query=1 requires causal=1.", std::nullopt, 1);
 }
 
 #ifdef USE_WEBGPU
@@ -4187,7 +4214,8 @@ static void RunGQACudaCacheAliasingTest(
     std::optional<int32_t> decode_seqlens_k = std::nullopt,
     bool shared_cache_only = false,
     bool enable_flash_fast_decode = false,
-    bool packed_qkv = false) {
+    bool packed_qkv = false,
+    bool right_padded_query = false) {
   ScopedEnvironmentVariables scoped_env_vars{{
       {"ORT_DISABLE_FLASH_ATTENTION", use_flash ? "0" : "1"},
       {"ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION", "1"},
@@ -4240,6 +4268,9 @@ static void RunGQACudaCacheAliasingTest(
   auto& node = graph.AddNode("gqa", "GroupQueryAttention", "", inputs, outputs, nullptr, kMSDomain);
   node.AddAttribute("num_heads", static_cast<int64_t>(num_heads));
   node.AddAttribute("kv_num_heads", static_cast<int64_t>(kv_num_heads));
+  if (right_padded_query) {
+    node.AddAttribute("right_padded_query", int64_t{1});
+  }
   if (sliding_window_cache) {
     node.AddAttribute("sliding_window_cache", int64_t{1});
     node.AddAttribute("local_window_size", int64_t{cache_capacity});
@@ -4308,7 +4339,7 @@ static void RunGQACudaCacheAliasingTest(
   }
   auto key_value = make_gpu_value(key_data, kv_shape);
   auto value_value = make_gpu_value(value_data, kv_shape);
-  const int32_t seqlens_k_value = decode_seqlens_k.value_or(total_length - sequence_length);
+  const int32_t seqlens_k_value = decode_seqlens_k.value_or(total_length - 1);
   auto seqlens_value =
       make_gpu_value(std::vector<int32_t>(batch_size, seqlens_k_value), {batch_size});
   std::vector<int32_t> total_length_data{total_length};
@@ -4390,19 +4421,21 @@ static void RunGQACudaCacheAliasingTest(
       ASSERT_EQ(actual.size(), 3u);
       for (int batch = 0; batch < batch_size; ++batch) {
         for (int head = 0; head < kv_num_heads; ++head) {
+          const int valid_q_len = valid_windowed_cache
+                                      ? std::clamp(seqlens_k_value + 1 - (total_length - sequence_length),
+                                                   0, sequence_length)
+                                      : sequence_length;
           const int expected_cache_length =
               decode_seqlens_k.has_value() ? cache_capacity : (valid_windowed_cache ? cache_capacity : total_length);
-          const int append_offset = decode_seqlens_k.has_value()
+          const int append_offset = decode_seqlens_k.has_value() && !valid_windowed_cache
                                         ? std::clamp(seqlens_k_value, 0, cache_capacity - sequence_length)
                                         : (valid_windowed_cache ? cache_capacity : past_length);
           for (int token = 0; token < expected_cache_length; ++token) {
             for (int channel = 0; channel < head_size; ++channel) {
               const size_t cache_index = ((batch * kv_num_heads + head) * cache_capacity + token) * head_size + channel;
-              const int source_token = valid_windowed_cache && !decode_seqlens_k.has_value()
-                                           ? token + sequence_length
-                                           : token;
+              const int source_token = valid_windowed_cache ? token + valid_q_len : token;
               const bool from_new =
-                  source_token >= append_offset && source_token < append_offset + sequence_length;
+                  source_token >= append_offset && source_token < append_offset + valid_q_len;
               const size_t past_index =
                   ((batch * kv_num_heads + head) * cache_capacity + source_token) *
                       head_size +
@@ -4542,6 +4575,21 @@ TEST(GroupQueryAttentionTest, CudaWindowedStagingFlashUsesEffectiveKvLength) {
   }));
 #else
   GTEST_SKIP() << "FlashAttention is not compiled";
+#endif
+}
+
+TEST(GroupQueryAttentionTest, CudaWindowedRightPaddedChunkPrefill) {
+  constexpr int sequence_length = 3;
+  // total_length is 257 (past_length = 254, padded chunk = 3). Passing seqlens_k = 254 means
+  // total_valid_tokens = 255 (1 valid query token and 2 right-padding tokens in the chunk).
+  constexpr int32_t right_padded_seqlens_k = 254;
+  RunGQACudaCacheAliasingTest(false, true, sequence_length, nullptr, right_padded_seqlens_k,
+                              false, false, false, true);
+#if USE_FLASH_ATTENTION
+  if (HasCudaEnvironment(800)) {
+    RunGQACudaCacheAliasingTest(true, true, sequence_length, nullptr, right_padded_seqlens_k,
+                                false, false, false, true);
+  }
 #endif
 }
 
