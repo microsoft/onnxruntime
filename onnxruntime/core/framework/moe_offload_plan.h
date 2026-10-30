@@ -394,11 +394,10 @@ struct MoeOffloadSessionPolicy {
     }
 
     const auto skip_it = kv_map.find(kOrtSessionOptionsMoeOffloadSkipZeroColdDoorbell);
+    const char* env_skip = std::getenv("ORT_QMOE_SKIP_ZERO_COLD_DOORBELL");
     const std::string_view skip = (skip_it != kv_map.end())
                                       ? std::string_view(skip_it->second)
-                                      : (std::getenv("ORT_QMOE_SKIP_ZERO_COLD_DOORBELL") != nullptr
-                                             ? std::string_view(std::getenv("ORT_QMOE_SKIP_ZERO_COLD_DOORBELL"))
-                                             : std::string_view("0"));
+                                      : (env_skip != nullptr ? std::string_view(env_skip) : std::string_view("0"));
     if (skip != "0" && skip != "1") {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Invalid ", kOrtSessionOptionsMoeOffloadSkipZeroColdDoorbell,
