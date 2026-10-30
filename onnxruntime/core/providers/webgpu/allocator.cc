@@ -20,7 +20,9 @@ GpuBufferAllocator::GpuBufferAllocator(
     std::function<const BufferManager&()> buffer_manager_getter,
     std::function<CommandRecordingState&()> recording_getter,
     bool is_read_only_allocator,
-    std::function<bool()> should_submit_zero_initialize)
+    std::function<bool()> should_submit_zero_initialize,
+    std::function<const BufferManager&()> streamless_buffer_manager_getter,
+    std::function<void(WGPUBuffer, const CommandRecordingState*)> buffer_releaser)
     : IAllocator(
           OrtMemoryInfo(WEBGPU_BUFFER,
                         is_read_only_allocator ? OrtAllocatorType::OrtReadOnlyAllocator
@@ -28,8 +30,11 @@ GpuBufferAllocator::GpuBufferAllocator(
                         WebGpuDevice(context_id),
                         OrtMemTypeDefault)),
       buffer_manager_getter_{std::move(buffer_manager_getter)},
+      streamless_buffer_manager_getter_{streamless_buffer_manager_getter ? std::move(streamless_buffer_manager_getter)
+                                                                         : buffer_manager_getter_},
       recording_getter_{std::move(recording_getter)},
       should_submit_zero_initialize_{std::move(should_submit_zero_initialize)},
+      buffer_releaser_{std::move(buffer_releaser)},
       mapped_at_creation_{is_read_only_allocator && buffer_manager_getter_().SupportsUMA()},
       initialize_to_zero_{!is_read_only_allocator} {
 }
@@ -39,23 +44,25 @@ GpuBufferAllocator::GpuBufferAllocator(
 // defer clears during Run, where streamless copies flush the active Session before using another recording.
 // Other plugin allocations submit independent clears. Built-in callers can supply a different policy.
 void* GpuBufferAllocator::Alloc(size_t size) {
-  std::unique_lock<std::recursive_mutex> recording_lock;
-  if (recording_getter_) {
-    recording_lock = std::unique_lock<std::recursive_mutex>{recording_getter_().mutex};
-  }
 #if defined(ORT_USE_EP_API_ADAPTERS)
   if (ep::UseSerializedExecutionMode() && recording_getter_ && should_submit_zero_initialize_) {
-    return Allocate(size, recording_getter_(), should_submit_zero_initialize_());
+    auto& recording = recording_getter_();
+    std::lock_guard<std::recursive_mutex> lock{recording.mutex};
+    return Allocate(size, buffer_manager_getter_(), recording, should_submit_zero_initialize_());
   }
-  // Streamless clears are independent of Run and must not read its capture state.
+  // Streamless clears are independent of Run and must not read its capture state or per-graph managers.
   CommandRecordingState recording;
-  return Allocate(size, recording, true);
+  return Allocate(size, streamless_buffer_manager_getter_(), recording, true);
 #else
-  return Allocate(size, recording_getter_(), should_submit_zero_initialize_ && should_submit_zero_initialize_());
+  auto& recording = recording_getter_();
+  std::lock_guard<std::recursive_mutex> lock{recording.mutex};
+  return Allocate(size, buffer_manager_getter_(), recording,
+                  should_submit_zero_initialize_ && should_submit_zero_initialize_());
 #endif
 }
 
-void* GpuBufferAllocator::Allocate(size_t size, CommandRecordingState& recording, bool submit_zero_initialize) {
+void* GpuBufferAllocator::Allocate(size_t size, const BufferManager& buffer_manager,
+                                   CommandRecordingState& recording, bool submit_zero_initialize) {
   std::lock_guard<std::recursive_mutex> lock{recording.mutex};
   if (size == 0) {
     return nullptr;
@@ -64,20 +71,21 @@ void* GpuBufferAllocator::Allocate(size_t size, CommandRecordingState& recording
   wgpu::BufferUsage usage = mapped_at_creation_ ? wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::MapWrite
                                                 : wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Indirect;
 
-  auto buffer = buffer_manager_getter_().Create(recording, size, usage, initialize_to_zero_,
-                                                submit_zero_initialize);
+  auto buffer = buffer_manager.Create(recording, size, usage, initialize_to_zero_,
+                                      submit_zero_initialize);
   num_allocs_.fetch_add(1, std::memory_order_relaxed);
   return buffer;
 }
 
 void GpuBufferAllocator::Free(void* p) {
   if (p != nullptr) {
-    std::unique_lock<std::recursive_mutex> recording_lock;
-    if (recording_getter_) {
-      recording_lock = std::unique_lock<std::recursive_mutex>{recording_getter_().mutex};
+    const auto buffer = static_cast<WGPUBuffer>(p);
+    const CommandRecordingState* recording = recording_getter_ ? &recording_getter_() : nullptr;
+    if (buffer_releaser_) {
+      buffer_releaser_(buffer, recording);
+    } else {
+      streamless_buffer_manager_getter_().Release(buffer, recording);
     }
-    buffer_manager_getter_().Release(static_cast<WGPUBuffer>(p),
-                                     recording_getter_ ? &recording_getter_() : nullptr);
     num_allocs_.fetch_sub(1, std::memory_order_relaxed);
   }
 }
@@ -108,13 +116,17 @@ AllocatorPtr CreateWebGpuAllocator(int context_id,
                                    std::function<const BufferManager&()> buffer_manager_getter,
                                    std::function<CommandRecordingState&()> recording_getter,
                                    bool is_read_only_allocator,
-                                   std::function<bool()> should_submit_zero_initialize) {
+                                   std::function<bool()> should_submit_zero_initialize,
+                                   std::function<const BufferManager&()> streamless_buffer_manager_getter,
+                                   std::function<void(WGPUBuffer, const CommandRecordingState*)> buffer_releaser) {
   if (device_free) {
     return std::make_shared<WebGpuNoOpAllocator>(context_id, is_read_only_allocator);
   }
   return std::make_shared<GpuBufferAllocator>(context_id, std::move(buffer_manager_getter), std::move(recording_getter),
                                               is_read_only_allocator,
-                                              std::move(should_submit_zero_initialize));
+                                              std::move(should_submit_zero_initialize),
+                                              std::move(streamless_buffer_manager_getter),
+                                              std::move(buffer_releaser));
 }
 
 }  // namespace webgpu
