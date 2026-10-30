@@ -486,6 +486,12 @@ endif()
 message(STATUS "CUDA Plugin EP: cuDNN include: ${CUDA_PLUGIN_CUDNN_INCLUDE_DIR}")
 message(STATUS "CUDA Plugin EP: cuDNN runtime library: ${CUDA_PLUGIN_CUDNN_LIBRARY}")
 
+# With cuDNN in /usr drop CUDA_PLUGIN_CUDNN_INCLUDE_DIR; we do not want
+# "-isystem /usr/include" ahead of libstdc++, breaking #include_next mechanism.
+if(CUDA_PLUGIN_CUDNN_INCLUDE_DIR IN_LIST CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES)
+  set(CUDA_PLUGIN_CUDNN_INCLUDE_DIR "")
+endif()
+
 # Include directories — only public ORT headers + CUDA toolkit + cuDNN + internal headers for adapter
 target_include_directories(onnxruntime_providers_cuda_plugin PRIVATE
     ${REPO_ROOT}/include
