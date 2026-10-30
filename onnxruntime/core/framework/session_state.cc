@@ -1963,6 +1963,18 @@ Status PlaceMoeOffloadInitializersOnCpu(const GraphViewer& graph_viewer,
     }
   }
 
+  if (policy.tail_substitution_threshold > 0.0f) {
+    for (const Node* node : eligible_moe_nodes) {
+      const auto k_attr = node->GetAttributes().find("k");
+      const int64_t top_k = k_attr == node->GetAttributes().end() ? 1 : k_attr->second.i();
+      if (policy.tail_substitution_min_rank >= top_k) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Invalid session.moe.offload.tail_substitution_min_rank for node '",
+                               node->Name(), "': expected 0 <= min_rank < k=", top_k, ".");
+      }
+    }
+  }
+
   InlinedHashSet<std::string_view> initializers_to_place_on_cpu;
   for (const Node* node : eligible_moe_nodes) {
     const auto& input_defs = node->InputDefs();
