@@ -10,8 +10,9 @@ Builds the exact-base GEMM diagnostic CUDA plugin without running tests or insta
 Use a short checkout and build path. Supply an existing isolated Python environment.
 Dependencies use the CI internal asset cache and repository-pinned source archives;
 this script does not install Python packages or toolchains.
-This is a local toolchain variant: BinSkim/Spectre flags are omitted and cudafe
-diagnostic 2803 is suppressed for CUDA 13.4. No QUICK_BUILD reduction is enabled.
+This is a local toolchain variant: BinSkim/Spectre flags are omitted, cudafe
+diagnostic 2803 is suppressed for CUDA 13.4, and host warnings C4459/C4267 are
+suppressed during compilation. No QUICK_BUILD reduction is enabled.
 Resume with -Mode Build. Do not reconfigure a populated FetchContent tree:
 some dependency patch steps are not idempotent. Use a new directory instead.
 #>
@@ -29,13 +30,14 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$diagnosticSource = '64c1a75e1715442956ca40d3c11106a29d0b910e'
+$diagnosticSource = 'e586fd747b1b60f4c39c925ea96ca34e228afd60'
+$originalDiagnostic = '64c1a75e1715442956ca40d3c11106a29d0b910e'
 $providerBase = '123752d361d2da8ff592b347772f31362e0966bd'
 $scriptPath = 'tools/ci_build/github/windows/build_gemm_diagnostics.ps1'
 $repo = & git -C $PSScriptRoot rev-parse --show-toplevel
 if ($LASTEXITCODE -ne 0) { throw 'Cannot locate the repository.' }
 $source = & git -C $repo rev-parse HEAD
-$parent = & git -C $repo rev-parse "$diagnosticSource^"
+$parent = & git -C $repo rev-parse "$originalDiagnostic^"
 if ($LASTEXITCODE -ne 0 -or $parent -ne $providerBase) {
     throw 'The diagnostic commit must have the exact requested provider parent.'
 }
@@ -77,7 +79,7 @@ $configureArguments += @(
     'onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON',
     'onnxruntime_BUILD_UNIT_TESTS=OFF',
     'onnxruntime_USE_FPA_INTB_GEMM=ON',
-    'onnxruntime_PLUGIN_EP_VERSION=0.4.0-dev+64c1a75'
+    'onnxruntime_PLUGIN_EP_VERSION=0.4.0-dev+e586fd7'
 )
 $buildArguments = @(
     '--build', $binaryDirectory, '--config', 'Release',
@@ -86,7 +88,7 @@ $buildArguments = @(
 )
 Write-Host "HEAD=$source diagnostic_source=$diagnosticSource provider_base=$providerBase"
 Write-Host "Target=$Architecture; generator=$Generator; jobs=$Jobs; NVCC/Flash threads=1"
-Write-Host 'Variant: installed CUDA/cuDNN; no BinSkim/Spectre; cudafe 2803 suppressed.'
+Write-Host 'Variant: installed CUDA/cuDNN; no BinSkim/Spectre; cudafe 2803 and host C4459/C4267 suppressed.'
 Write-Host 'Diagnostics: ORT_CUDA_GEMM_AUTO_TUNE_DIAGNOSTICS=1; marker [CUDA GEMM diagnostic]'
 if ($Mode -eq 'Plan') {
     Write-Output (@{ executable = $Python; arguments = $configureArguments } | ConvertTo-Json -Depth 3)
@@ -106,10 +108,12 @@ if ($Mode -eq 'Build' -and -not (Test-Path -LiteralPath $cache)) {
 New-Item -ItemType Directory -Path $BuildDirectory -Force | Out-Null
 $recordPath = Join-Path $BuildDirectory 'diagnostic-build-inputs.json'
 $record = [ordered]@{
-    source = $source; diagnosticSource = $diagnosticSource; providerBase = $providerBase
+    source = $source; diagnosticSource = $diagnosticSource
+    originalDiagnostic = $originalDiagnostic; providerBase = $providerBase
     architecture = $Architecture; python = $Python; cmake = $CMake
     cudaHome = $CudaHome; cudnnHome = $CudnnHome; generator = $Generator
     configureArguments = $configureArguments; buildArguments = $buildArguments
+    hostWarningSuppressions = '/wd4459 /wd4267'
 }
 if ($Mode -eq 'Build') {
     $previous = Get-Content -LiteralPath $recordPath -Raw | ConvertFrom-Json
@@ -139,7 +143,13 @@ try {
     }
     if ($Mode -eq 'Configure') { return }
     $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-    Invoke-LoggedCommand $CMake $buildArguments (Join-Path $BuildDirectory "build-$stamp.log")
+    $previousClOptions = [Environment]::GetEnvironmentVariable('_CL_', 'Process')
+    try {
+        $env:_CL_ = "$previousClOptions /wd4459 /wd4267"
+        Invoke-LoggedCommand $CMake $buildArguments (Join-Path $BuildDirectory "build-$stamp.log")
+    } finally {
+        [Environment]::SetEnvironmentVariable('_CL_', $previousClOptions, 'Process')
+    }
     $dll = Join-Path $binaryDirectory 'Release\onnxruntime_providers_cuda.dll'
     $stream = [IO.File]::OpenRead($dll)
     $reader = [IO.BinaryReader]::new($stream)
@@ -156,7 +166,8 @@ try {
     $expectedMachine = if ($Architecture -eq 'ARM64') { 0xAA64 } else { 0x8664 }
     if ($machine -ne $expectedMachine) { throw ('Unexpected PE machine: {0:X4}' -f $machine) }
     $result = [ordered]@{
-        source = $source; diagnosticSource = $diagnosticSource; providerBase = $providerBase
+        source = $source; diagnosticSource = $diagnosticSource
+        originalDiagnostic = $originalDiagnostic; providerBase = $providerBase
         dll = $dll; sha256 = (Get-FileHash -LiteralPath $dll -Algorithm SHA256).Hash
         peMachine = ('{0:X4}' -f $machine)
         fileVersion = (Get-Item -LiteralPath $dll).VersionInfo.FileVersion
