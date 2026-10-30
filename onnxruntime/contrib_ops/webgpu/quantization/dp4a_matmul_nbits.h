@@ -33,15 +33,16 @@ class DP4AMatMulNBitsProgram final : public Program<DP4AMatMulNBitsProgram> {
   DP4AMatMulNBitsProgram(uint32_t block_size, uint32_t nbits,
                          bool has_zero_points, bool has_bias,
                          bool has_weight_idx, bool has_weight_idx_indirect, bool is_qualcomm,
-                         bool acc_f32) : Program{"DP4AMatMulNBits"},
-                                         block_size_(block_size),
-                                         nbits_(nbits),
-                                         has_bias_(has_bias),
-                                         has_zero_points_(has_zero_points),
-                                         has_weight_idx_(has_weight_idx),
-                                         has_weight_idx_indirect_(has_weight_idx_indirect),
-                                         is_qualcomm_(is_qualcomm),
-                                         acc_f32_(acc_f32) {}
+                         bool acc_f32, uint32_t group_m) : Program{"DP4AMatMulNBits"},
+                                                           block_size_(block_size),
+                                                           nbits_(nbits),
+                                                           has_bias_(has_bias),
+                                                           has_zero_points_(has_zero_points),
+                                                           has_weight_idx_(has_weight_idx),
+                                                           has_weight_idx_indirect_(has_weight_idx_indirect),
+                                                           is_qualcomm_(is_qualcomm),
+                                                           acc_f32_(acc_f32),
+                                                           group_m_(group_m) {}
   Status GenerateShaderCode(ShaderHelper& sh) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"batch_count", ProgramUniformVariableDataType::Uint32},
@@ -64,6 +65,8 @@ class DP4AMatMulNBitsProgram final : public Program<DP4AMatMulNBitsProgram> {
   bool has_weight_idx_indirect_;
   bool is_qualcomm_;
   bool acc_f32_;
+  // M-tiles walked per N-tile before advancing N; 1 is the plain N-fastest order.
+  uint32_t group_m_;
 };
 
 class DP4AMatMulNBitsKParallelProgram final : public Program<DP4AMatMulNBitsKParallelProgram> {
