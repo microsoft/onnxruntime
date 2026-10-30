@@ -470,7 +470,13 @@ Status Gemm<float>::Compute(OpKernelContext* context) const {
   } else if (K == 0) {
     ComputeGemmZeroK(M, N, alpha_, beta_, c_data, c_shape, y_data);
   } else {
-    GemmBroadcastBias(M, N, beta_, c_data, c_shape, y_data);
+    bool bias_fused = false;
+#if defined(MLAS_TARGET_ARM64) && !defined(FORCE_GENERIC_ALGORITHMS)
+    bias_fused = M == 1 && c_data != nullptr && beta_ != 0.0f && c_shape->Size() == N;
+#endif
+    if (!bias_fused) {
+      GemmBroadcastBias(M, N, beta_, c_data, c_shape, y_data);
+    }
     MlasGemm(
         trans_A_,
         static_cast<size_t>(M),
@@ -484,7 +490,8 @@ Status Gemm<float>::Compute(OpKernelContext* context) const {
         y_data,
         static_cast<size_t>(N),
         thread_pool,
-        &mlas_backend_kernel_selector_config_);
+        &mlas_backend_kernel_selector_config_,
+        bias_fused ? c_data : nullptr);
   }
 
   ComputeActivation(y_data, SafeInt<size_t>(M) * N, thread_pool);

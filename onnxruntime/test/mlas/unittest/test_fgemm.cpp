@@ -29,6 +29,43 @@ TEST(FGemmPackB, SizeBounds) {
   EXPECT_EQ(MlasGemmPackBSize(CblasNoTrans, CblasNoTrans, 5, 0, &config), size_t{0});
 }
 
+TEST(SGemm, PackedM1Bias) {
+#if !defined(MLAS_TARGET_ARM64) || defined(FORCE_GENERIC_ALGORITHMS)
+  GTEST_SKIP() << "Requires the AArch64 ASIMD sgemv_kernel";
+#else
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG config{};
+  MlasFgemmTest<float, true, false> test;
+  MatrixGuardBuffer<float> BufferBias;
+  MatrixGuardBuffer<uint8_t> BufferPackedB;
+  constexpr float alpha = 0.25f, beta = 0.5f;
+  for (const auto TransA : {CblasNoTrans, CblasTrans}) {
+    for (size_t N : {32, 33}) {
+      // Packed K blocks contain 256 elements; bias should only initialize the first
+      for (size_t K : {256, 513}) {
+        const size_t lda = TransA == CblasTrans ? 2 : K;
+        const float* A = test.BufferA.GetBuffer(TransA == CblasTrans ? K * lda : K);
+        const float* B = test.BufferB.GetBuffer(K * N);
+        float* Bias = BufferBias.GetBuffer(N);
+        std::fill_n(Bias, N, 0.5f);
+        float* C = test.BufferC.GetBuffer(N);
+        float* CReference = test.BufferCReference.GetBuffer(N, true);
+        std::fill_n(C, N, -1.0f);
+
+        const size_t PackedBSize = MlasGemmPackBSize(TransA, CblasNoTrans, N, K, &config);
+        ASSERT_NE(PackedBSize, size_t{0});
+        void* PackedB = BufferPackedB.GetBuffer(PackedBSize, true);
+        MlasGemmPackB(TransA, CblasNoTrans, N, K, B, N, PackedB, &config);
+        MlasGemm(TransA, 1, N, K, alpha, A, lda, PackedB, beta, C, N, nullptr, &config, Bias);
+        test.ReferenceGemm(TransA, CblasNoTrans, 1, N, K, 1, alpha, A, lda, B, N, beta, CReference, N, Bias);
+        for (size_t n = 0; n < N; ++n) {
+          ASSERT_EQ(C[n], CReference[n]) << "n=" << n;
+        }
+      }
+    }
+  }
+#endif
+}
+
 static size_t FGemmRegistLongExecute() {
   size_t count = 0;
 
