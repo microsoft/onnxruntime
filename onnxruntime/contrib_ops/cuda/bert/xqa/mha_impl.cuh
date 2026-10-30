@@ -1697,6 +1697,8 @@ CUBIN_EXPORT __global__
           if constexpr (!syncKTileEarly) {
             // synchronize k
             ldgsts::waitGroup<1>();
+            // Each lane waits only for its own copies; the K tile is read by the whole warp.
+            __syncwarp();
           }
           const SharedMem::QSmemBuffer& smemQ = smem.q[warpIdx.y][0];
           constexpr uint32_t qOffsetPerPart = exactDiv(elemsPerKHeadPart, inputElemsPerGrain);
@@ -1999,6 +2001,8 @@ CUBIN_EXPORT __global__
 #else
       assert(!alreadyComplete);
       ldgsts::waitGroup<nbVBuffers - 1>();
+      // Each lane waits only for its own copies; the V tile is read by the whole warp.
+      __syncwarp();
 #endif
     };
     auto testVTileLoad = [&](uint32_t idxVBar, ParityOrNone<grpLoadV> parity) { return test_wait_parity<grpLoadV>(getSmemVBar(idxVBar), parity); };

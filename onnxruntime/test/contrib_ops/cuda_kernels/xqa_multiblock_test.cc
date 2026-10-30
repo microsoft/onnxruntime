@@ -136,6 +136,18 @@ Config GroupedQueryConfig() {
   return config;
 }
 
+// Head size 256 has a single GEMM1 warp group, so the CTA output is staged in a different shared-memory buffer than
+// for head sizes 64 and 128.
+Config HeadSize256Config() {
+  Config config;
+  config.head_size = 256;
+  config.kv_heads = 12;
+  config.group_size = 4;
+  config.batch = 2;
+  config.repeats = 30;
+  return config;
+}
+
 // The short window leaves some sub-sequences without any token, and every head has its own attention sink.
 Config SlidingWindowSinkConfig() {
   Config config;
@@ -484,6 +496,8 @@ TEST_F(XqaMultiBlockTest, BFloat16) { Run<__nv_bfloat16>(StressConfig(), false);
 TEST_F(XqaMultiBlockTest, BFloat16GraphReplay) { Run<__nv_bfloat16>(StressConfig(), true); }
 TEST_F(XqaMultiBlockTest, Float16GroupedQueryHeadSize128) { Run<half>(GroupedQueryConfig(), false); }
 TEST_F(XqaMultiBlockTest, BFloat16GroupedQueryHeadSize128) { Run<__nv_bfloat16>(GroupedQueryConfig(), false); }
+TEST_F(XqaMultiBlockTest, Float16HeadSize256) { Run<half>(HeadSize256Config(), false); }
+TEST_F(XqaMultiBlockTest, BFloat16HeadSize256GraphReplay) { Run<__nv_bfloat16>(HeadSize256Config(), true); }
 TEST_F(XqaMultiBlockTest, Float16SlidingWindowAttentionSinks) { Run<half>(SlidingWindowSinkConfig(), true); }
 TEST_F(XqaMultiBlockTest, BFloat16SlidingWindowAttentionSinks) {
   Run<__nv_bfloat16>(SlidingWindowSinkConfig(), true);
