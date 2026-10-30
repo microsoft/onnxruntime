@@ -22,15 +22,33 @@ struct OrtStatus {
 namespace {
 thread_local cudaError_t last_error = cudaSuccess;
 cudaError_t injected_error = cudaErrorMemoryAllocation;
+size_t allocation_calls = 0;
 size_t malloc_calls = 0;
+size_t host_alloc_calls = 0;
 size_t free_calls = 0;
 size_t error_consumptions = 0;
 size_t raw_record_count = 0;
 std::array<size_t, 2> attempted_bytes{};
 std::array<std::string, 2> raw_records;
 
-OrtStatus* ORT_API_CALL MemoryInfoName(const OrtMemoryInfo*, const char** out) noexcept {
-  *out = "Cuda";
+cudaError_t Allocate(void** pointer, size_t bytes) {
+  if (allocation_calls >= attempted_bytes.size()) std::abort();
+  attempted_bytes[allocation_calls++] = bytes;
+  if (allocation_calls == 1) {
+    *pointer = nullptr;
+    last_error = injected_error;
+    return injected_error;
+  }
+  *pointer = std::malloc(bytes);
+  if (*pointer == nullptr) {
+    last_error = cudaErrorMemoryAllocation;
+    return cudaErrorMemoryAllocation;
+  }
+  return cudaSuccess;
+}
+
+OrtStatus* ORT_API_CALL MemoryInfoName(const OrtMemoryInfo* info, const char** out) noexcept {
+  *out = info->name.c_str();
   return nullptr;
 }
 
@@ -73,19 +91,8 @@ extern "C" cudaError_t CUDARTAPI cudaSetDevice(int) {
 }
 
 extern "C" cudaError_t CUDARTAPI cudaMalloc(void** pointer, size_t bytes) {
-  if (malloc_calls >= attempted_bytes.size()) std::abort();
-  attempted_bytes[malloc_calls++] = bytes;
-  if (malloc_calls == 1) {
-    *pointer = nullptr;
-    last_error = injected_error;
-    return injected_error;
-  }
-  *pointer = std::malloc(bytes);
-  if (*pointer == nullptr) {
-    last_error = cudaErrorMemoryAllocation;
-    return cudaErrorMemoryAllocation;
-  }
-  return cudaSuccess;
+  ++malloc_calls;
+  return Allocate(pointer, bytes);
 }
 
 extern "C" cudaError_t CUDARTAPI cudaFree(void* pointer) {
@@ -95,11 +102,12 @@ extern "C" cudaError_t CUDARTAPI cudaFree(void* pointer) {
 }
 
 extern "C" cudaError_t CUDARTAPI cudaHostAlloc(void** pointer, size_t bytes, unsigned int) {
-  *pointer = std::malloc(bytes);
-  return *pointer == nullptr ? cudaErrorMemoryAllocation : cudaSuccess;
+  ++host_alloc_calls;
+  return Allocate(pointer, bytes);
 }
 
 extern "C" cudaError_t CUDARTAPI cudaFreeHost(void* pointer) {
+  ++free_calls;
   std::free(pointer);
   return cudaSuccess;
 }
@@ -117,9 +125,11 @@ extern "C" cudaError_t CUDARTAPI cudaGetLastError() {
 }
 
 int main(int argc, char** argv) {
-  if (argc != 3 ||
+  if ((argc != 3 && argc != 4) ||
       (std::strcmp(argv[1], "--oom") != 0 && std::strcmp(argv[1], "--non-oom") != 0) ||
       (std::strcmp(argv[2], "--off") != 0 && std::strcmp(argv[2], "--on") != 0)) return 64;
+  if (argc == 4 && std::strcmp(argv[3], "--pinned") != 0 && std::strcmp(argv[3], "--device") != 0) return 64;
+  const bool pinned = argc == 4 && std::strcmp(argv[3], "--pinned") == 0;
   const bool oom = std::strcmp(argv[1], "--oom") == 0;
   const bool diagnostics = std::strcmp(argv[2], "--on") == 0;
   injected_error = oom ? cudaErrorMemoryAllocation : cudaErrorInvalidValue;
@@ -135,25 +145,31 @@ int main(int argc, char** argv) {
   OrtLogger logger{};
   onnxruntime::ep::adapter::LoggingManager::CreateDefaultLogger(&logger);
   OrtMemoryInfo info{};
+  info.name = pinned ? "CudaPinned" : "Cuda";
   using namespace onnxruntime::cuda_plugin;
   {
-    AllocatorUniquePtr raw(
-        new CudaDeviceAllocator(&info, 0),
-        [](OrtAllocator* allocator) { delete static_cast<CudaDeviceAllocator*>(allocator); });
+    AllocatorUniquePtr raw =
+        pinned
+            ? AllocatorUniquePtr(new CudaPinnedAllocator(&info),
+                                 [](OrtAllocator* allocator) { delete static_cast<CudaPinnedAllocator*>(allocator); })
+            : AllocatorUniquePtr(new CudaDeviceAllocator(&info, 0),
+                                 [](OrtAllocator* allocator) { delete static_cast<CudaDeviceAllocator*>(allocator); });
     ArenaConfig config;
     config.initial_chunk_size_bytes = 1024 * 1024;
     config.max_mem = 4 * 1024 * 1024;
     ArenaImpl arena(std::move(raw), config, api, logger);
     void* pointer = arena.Alloc(1024);
     std::cout << "CPU-only actual-object regression: injected=" << static_cast<int>(injected_error)
-              << " diagnostics=" << diagnostics << " malloc_calls=" << malloc_calls
+              << " diagnostics=" << diagnostics << " pinned=" << pinned << " malloc_calls=" << malloc_calls
+              << " host_alloc_calls=" << host_alloc_calls
               << " error_consumptions=" << error_consumptions << " after_retry=" << static_cast<int>(last_error)
               << '\n';
-    if (pointer == nullptr || arena.RequestedSize(pointer) != 1024 || malloc_calls != 2 ||
+    if (pointer == nullptr || arena.RequestedSize(pointer) != 1024 || allocation_calls != 2 ||
         attempted_bytes[0] != 1048576 || attempted_bytes[1] != 943872) return 66;
+    if (malloc_calls != (pinned ? 0u : 2u) || host_alloc_calls != (pinned ? 2u : 0u)) return 66;
     if (last_error != (oom ? cudaSuccess : injected_error) || error_consumptions != (oom ? 1u : 0u)) return 67;
-    if (raw_record_count != (diagnostics ? 2u : 0u)) return 68;
-    if (diagnostics &&
+    if (raw_record_count != (diagnostics && !pinned ? 2u : 0u)) return 68;
+    if (diagnostics && !pinned &&
         (raw_records[0].find(" cuda_status=" + std::to_string(static_cast<int>(injected_error))) == std::string::npos ||
          raw_records[1].find(" cuda_status=0") == std::string::npos)) return 69;
     arena.Free(pointer);

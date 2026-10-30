@@ -216,6 +216,10 @@ CudaPinnedAllocator::CudaPinnedAllocator(const OrtMemoryInfo* memory_info)
   if (size == 0) return nullptr;
   cudaError_t err = cudaHostAlloc(&p, size, cudaHostAllocDefault);
   if (err != cudaSuccess) {
+    if (err == cudaErrorMemoryAllocation) {
+      // The pinned arena can handle an expected OOM by retrying a smaller allocation.
+      static_cast<void>(cudaGetLastError());
+    }
     return nullptr;
   }
   return p;
