@@ -38,6 +38,9 @@
 #include "core/graph/graph_proto_serializer.h"
 #include "core/graph/model.h"
 #include "core/optimizer/graph_optimizer_registry.h"
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
+#include "core/optimizer/cuda_runtime_fusion.h"
+#endif
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.h"
 #include "core/platform/env.h"
@@ -1656,6 +1659,21 @@ struct ProviderHostImpl : ProviderHost {
   }
   KernelPilot* OpKernelContext__GetKernelPilot(const OpKernelContext* p) override {
     return p->GetKernelPilot();
+  }
+  Status SelectCudaRuntimeFusion(
+      const GraphViewer& graph, const IExecutionProvider::IKernelLookup& kernel_lookup,
+      const GraphOptimizerRegistry& registry, const std::string& rule_id,
+      std::vector<std::unique_ptr<ComputeCapability>>& capabilities) override {
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
+    return cuda_runtime_fusion::Select(graph, kernel_lookup, registry, rule_id, capabilities);
+#else
+    ORT_UNUSED_PARAMETER(graph);
+    ORT_UNUSED_PARAMETER(kernel_lookup);
+    ORT_UNUSED_PARAMETER(registry);
+    ORT_UNUSED_PARAMETER(rule_id);
+    ORT_UNUSED_PARAMETER(capabilities);
+    return Status::OK();
+#endif
   }
   // OpKernelInfo (wrapped)
   std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info) override { return onnxruntime::CopyOpKernelInfo(info); }
