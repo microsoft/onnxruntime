@@ -1,3 +1,4 @@
+#param qc_cooperative
 #param bit_width
 #param has_attention_bias
 #param has_head_sink
@@ -310,6 +311,89 @@ fn fetchVTile(k_idx: u32, vec_idx: u32, v_val: q_value_t) -> q_value_t {
 #endif
 
 $MAIN {
+#if qc_cooperative
+  // Four adjacent lanes own disjoint dimensions of one query and output row.
+  let bh = workgroup_idx / uniforms.num_seq_tile;
+  let batch = bh / num_heads;
+  if (batch >= uniforms.batch_size) {
+    return;
+  }
+  let head = bh % num_heads;
+  let rows_per_group = workgroup_size_x / 4u;
+  let row_start = (workgroup_idx % uniforms.num_seq_tile) * rows_per_group;
+  let row = row_start + local_idx / 4u;
+  let d_lane = local_idx % 4u;
+  let valid = row < uniforms.new_sequence_length;
+  let total = get_total_sequence_length(batch);
+  let past = u32(max(i32(total) - i32(uniforms.new_sequence_length), 0));
+  let end = min(total, past + row_start + rows_per_group);
+  let causal_end = min(total, past + row + 1u);
+  var qv : array<q_value_t, 8>;
+  var ov : array<vec4<f32>, 8>;
+#if q_BNSH
+  let q_base = (bh * uniforms.new_sequence_length + row) * 32u;
+#else
+  let q_base = ((batch * uniforms.new_sequence_length + row) * num_heads + head) * 32u;
+#endif
+  if (valid) {
+    for (var d = 0u; d < 8u; d++) {
+      qv[d] = q[q_base + d * 4u + d_lane] * q_element_t(uniforms.alpha);
+    }
+  }
+  // Accumulate the unnormalized output in f32; normalize once at the store.
+  var previous_max = qk_min_value;
+  var denominator = 0.0;
+  for (var start = 0u; start < end; start += 16u) {
+    for (var idx = local_idx; idx < 512u; idx += workgroup_size_x) {
+      let key_row = start + idx / 32u;
+      let offset = (bh / uniforms.n_reps * uniforms.present_sequence_length + key_row) * 32u + idx % 32u;
+      var kval = q_value_t(0);
+      var vval = q_value_t(0);
+      if (key_row < total) {
+        kval = present_key[offset];
+        vval = present_value[offset];
+      }
+      k_tile[idx / 32u][idx % 32u] = kval;
+      v_tile[idx / 32u][idx % 32u] = vval;
+    }
+    workgroupBarrier();
+    var scores : array<f32, 16>;
+    var block_max = previous_max;
+    for (var key = 0u; key < 16u; key++) {
+      var score = 0.0;
+      for (var d = 0u; d < 8u; d++) {
+        score += dot(vec4<f32>(qv[d]), vec4<f32>(k_tile[key][d * 4u + d_lane]));
+      }
+      score += subgroupShuffleXor(score, 1u);
+      score += subgroupShuffleXor(score, 2u);
+      score = select(qk_min_value, score, start + key < causal_end);
+      scores[key] = score;
+      block_max = max(block_max, score);
+    }
+    let correction = exp(previous_max - block_max);
+    denominator *= correction;
+    for (var key = 0u; key < 16u; key++) {
+      scores[key] = select(0.0, exp(scores[key] - block_max), start + key < causal_end);
+      denominator += scores[key];
+    }
+    for (var d = 0u; d < 8u; d++) {
+      var acc = ov[d] * correction;
+      for (var key = 0u; key < 16u; key++) {
+        acc += scores[key] * vec4<f32>(v_tile[key][d * 4u + d_lane]);
+      }
+      ov[d] = acc;
+    }
+    previous_max = block_max;
+    workgroupBarrier();
+  }
+  if (valid) {
+    let base = ((batch * uniforms.new_sequence_length + row) * num_heads + head) * 32u;
+    for (var d = 0u; d < 8u; d++) {
+      output[base + d * 4u + d_lane] = q_value_t(ov[d] / max(denominator, 1e-20));
+    }
+  }
+
+#else
   let batch_head_idx = u32(workgroup_idx / uniforms.num_seq_tile);
   let head_idx = batch_head_idx % num_heads;
   let batch_idx = batch_head_idx / num_heads;
@@ -705,5 +789,6 @@ $MAIN {
     writeo(batch_idx, q_idx_global, head_idx);
   }
  #endif
+#endif
 #endif
 }  // MAIN
