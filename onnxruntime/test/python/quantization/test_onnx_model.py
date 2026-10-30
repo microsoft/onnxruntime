@@ -15,6 +15,13 @@ from onnx import TensorProto, helper, numpy_helper
 from op_test_utils import check_op_type_order
 
 from onnxruntime.quantization.onnx_model import ONNXModel
+from onnxruntime.tools.onnx_graph_utils import (
+    get_children,
+    get_parent,
+    get_parents,
+    input_name_to_nodes,
+    output_name_to_node,
+)
 
 
 def generate_input_initializer(tensor_shape, tensor_dtype, input_name):
@@ -135,6 +142,65 @@ def construct_model_for_topo_sort_empty_input_output(model_path):
     onnx.save(model, model_path)
 
 
+class TestOnnxGraphUtils(unittest.TestCase):
+    def test_name_maps_ignore_empty_names_and_preserve_order(self):
+        first = helper.make_node("First", ["input", ""], ["shared", "", "first_output"], name="first")
+        second = helper.make_node("Second", ["shared", "shared"], ["shared"], name="second")
+
+        input_map = input_name_to_nodes([first, second])
+        self.assertNotIn("", input_map)
+        self.assertEqual([node.name for node in input_map["shared"]], ["second", "second"])
+
+        output_map = output_name_to_node([first, second])
+        self.assertNotIn("", output_map)
+        self.assertIs(output_map["shared"], second)
+        self.assertIs(output_map["first_output"], first)
+
+    def test_children_preserve_order_duplicates_and_output_selection(self):
+        parent = helper.make_node("Parent", [], ["first", "", "second"], name="parent")
+        first_child = helper.make_node("FirstChild", ["second", "first"], ["first_child"], name="first_child")
+        second_child = helper.make_node(
+            "SecondChild",
+            ["first", "", "first"],
+            ["second_child"],
+            name="second_child",
+        )
+        input_map = input_name_to_nodes([first_child, second_child])
+
+        self.assertEqual(
+            [node.name for node in get_children(parent, input_map)],
+            ["first_child", "second_child", "second_child", "first_child"],
+        )
+        self.assertEqual(
+            [node.name for node in get_children(parent, input_map, output_index=0)],
+            ["first_child", "second_child", "second_child"],
+        )
+        self.assertEqual(get_children(parent, input_map, output_index=1), [])
+        self.assertEqual([node.name for node in get_children(parent, input_map, output_index=2)], ["first_child"])
+        self.assertEqual(get_children(parent, input_map, output_index=3), [])
+
+    def test_parents_preserve_duplicates_and_handle_missing_inputs(self):
+        first_parent = helper.make_node("FirstParent", [], ["first"], name="first_parent")
+        second_parent = helper.make_node("SecondParent", [], ["second"], name="second_parent")
+        child = helper.make_node(
+            "Child",
+            ["second", "missing", "", "first", "first"],
+            ["child"],
+            name="child",
+        )
+        output_map = output_name_to_node([first_parent, second_parent])
+
+        self.assertEqual(
+            [node.name for node in get_parents(child, output_map)],
+            ["second_parent", "first_parent", "first_parent"],
+        )
+        self.assertIs(get_parent(child, 0, output_map), second_parent)
+        self.assertIsNone(get_parent(child, 1, output_map))
+        self.assertIsNone(get_parent(child, 2, output_map))
+        self.assertIs(get_parent(child, 3, output_map), first_parent)
+        self.assertIsNone(get_parent(child, 5, output_map))
+
+
 class TestONNXModel(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -167,6 +233,37 @@ class TestONNXModel(unittest.TestCase):
         check_op_type_order(self, onnx_model.model, ["Op1", "Op1", "Op3", "Op2"])
         onnx_model.topological_sort()
         check_op_type_order(self, onnx_model.model, ["Op1", "Op1", "Op2", "Op3"])
+
+    def test_navigation_searches_only_main_graph(self):
+        subgraph_node = helper.make_node("Identity", ["subgraph_input", ""], ["subgraph_output", ""], name="subgraph")
+        subgraph = helper.make_graph(
+            [subgraph_node],
+            "subgraph",
+            [],
+            [helper.make_tensor_value_info("subgraph_output", TensorProto.FLOAT, [1])],
+        )
+        main_node = helper.make_node(
+            "If",
+            ["condition", ""],
+            ["main_output", ""],
+            name="main",
+            then_branch=subgraph,
+            else_branch=subgraph,
+        )
+        graph = helper.make_graph(
+            [main_node],
+            "main_graph",
+            [helper.make_tensor_value_info("condition", TensorProto.BOOL, [])],
+            [helper.make_tensor_value_info("main_output", TensorProto.FLOAT, [1])],
+        )
+        onnx_model = ONNXModel(helper.make_model(graph))
+
+        input_map = onnx_model.input_name_to_nodes()
+        output_map = onnx_model.output_name_to_node()
+        self.assertEqual(set(input_map), {"condition"})
+        self.assertEqual(set(output_map), {"main_output"})
+        self.assertEqual(input_map["condition"][0].name, main_node.name)
+        self.assertEqual(output_map["main_output"].name, main_node.name)
 
 
 if __name__ == "__main__":
