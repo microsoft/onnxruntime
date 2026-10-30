@@ -7,12 +7,31 @@ on:
       - rel-*
   pull_request:
   workflow_dispatch:
+  schedule:
+    - cron: '23 6 * * *'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: true
 
 jobs:
+  lint-action-pins:
+    name: GitHub Actions pinning
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check action SHA pins
+        uses: suzuki-shunsuke/pinact-action@896d595f299e71d65b9d28349d6956abe144390a # v3.0.0
+        with:
+          fix: "false"
+          no_api: ${{ github.event_name != 'schedule' }}
+          verify: ${{ github.event_name == 'schedule' }}
+
   optional-lint:
     name: Optional Lint
     runs-on: ubuntu-latest
@@ -29,7 +48,7 @@ jobs:
           level: info
           filter_mode: diff_context
       - name: shellcheck # Static check shell scripts
-        uses: reviewdog/action-shellcheck@0722bbdb0d47f04c1b53b8734d2422ac63a45ec6 # v1.32.1
+        uses: reviewdog/action-shellcheck@d0b8d5fd7fad6afdb6e1b6ce1778892be4d1f427 # v1.34.1
         with:
           github_token: ${{ secrets.github_token }}
           reporter: github-pr-check
@@ -47,7 +66,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Setup Python
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           # Use a version pre-installed in the runner pool's read-only tool cache; requesting an
           # uncached version makes setup-python fail trying to write to /opt/hostedtoolcache.
@@ -77,7 +96,7 @@ jobs:
       - name: Upload SARIF file
         if: always()
         continue-on-error: true
-        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:
           # Path to SARIF file relative to the root of the repository
           sarif_file: lintrunner.sarif

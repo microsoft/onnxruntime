@@ -32,6 +32,14 @@ constexpr bool IsValidMatMulNBitsBlockSize(int64_t block_size) {
          (block_size & (block_size - 1)) == 0;
 }
 
+// Authored blockwise DQ block sizes above kMatMulNBitsMaxBlockSize are only fused for the CPU EP, whose
+// MatMulNBits kernel executes them as kMatMulNBitsMaxBlockSize sub-blocks. 2-bit weights are excluded.
+constexpr bool IsValidCpuLargeMatMulNBitsBlockSize(int64_t block_size, int64_t bits) {
+  return block_size > kMatMulNBitsMaxBlockSize &&
+         (block_size & (block_size - 1)) == 0 &&
+         (bits == 4 || bits == 8);
+}
+
 enum InputIndex : int {
   INPUT_ID = 0,
   SCALE_ID = 1,

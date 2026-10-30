@@ -285,7 +285,7 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetPrepareKernel(
     int chunks_per_pass) {
   using L = SplitLd<DK, DV, BT, 64>;
   using Tile = PrepTile<DK, DV, BT>;
-  extern __shared__ char smem_raw[];
+  extern __shared__ __align__(16) char smem_raw[];
   const PrepSmem<T, DK, DV, BT> s = CarvePrep<T, DK, DV, BT>(smem_raw);
 
   const int b = blockIdx.x, hv = blockIdx.y, c_local = blockIdx.z;
@@ -363,10 +363,10 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetPrepareKernel(
     const int64_t gi = tok * p.num_heads_v + hv;
     float g = 0.0f, be = 0.0f;
     if (tid < len) {
-      g = needs_decay ? EffectiveDecay(pack.decay[gi], pack.a_log, pack.dt_bias, hv,
+      g = needs_decay ? EffectiveDecay(LoadGate<T>(pack.decay, gi, pack.gates_in_input_type), pack.a_log, pack.dt_bias, hv,
                                        p.gate_activation)
                       : 0.0f;
-      be = pack.beta != nullptr ? EffectiveBeta(pack.beta[gi], p.beta_activation) : 1.0f;
+      be = pack.beta != nullptr ? EffectiveBeta(LoadGate<T>(pack.beta, gi, pack.gates_in_input_type), p.beta_activation) : 1.0f;
     }
     s.gc[tid] = g;
     s.beta[tid] = be;
@@ -521,10 +521,13 @@ __device__ __noinline__ void RunScanStepExactBf16Fallback(
       const int64_t gi = tok * p.num_heads_v + hv;
       float g = 0.0f, be = 0.0f;
       if (tid < len) {
-        g = needs_decay ? EffectiveDecay(pack.decay[gi], pack.a_log, pack.dt_bias, hv,
-                                         p.gate_activation)
+        g = needs_decay ? EffectiveDecay(LoadGate<T>(pack.decay, gi, pack.gates_in_input_type),
+                                         pack.a_log, pack.dt_bias, hv, p.gate_activation)
                         : 0.0f;
-        be = pack.beta != nullptr ? EffectiveBeta(pack.beta[gi], p.beta_activation) : 1.0f;
+        be = pack.beta != nullptr
+                 ? EffectiveBeta(LoadGate<T>(pack.beta, gi, pack.gates_in_input_type),
+                                 p.beta_activation)
+                 : 1.0f;
       }
       gc[tid] = g;
       beta[tid] = be;
@@ -662,7 +665,7 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetScanKernel(
     bool first_pass, bool last_pass) {
   using L = SplitLd<DK, DV, BT, DVB>;
   using Tile = PrepTile<DK, DV, BT>;
-  extern __shared__ char smem_raw[];
+  extern __shared__ __align__(16) char smem_raw[];
   const ScanSmem<T, DK, DV, BT, DVB> s = CarveScan<T, DK, DV, BT, DVB>(smem_raw);
 
   const int b = blockIdx.x, hv = blockIdx.y, v0 = blockIdx.z * DVB;

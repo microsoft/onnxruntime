@@ -211,6 +211,12 @@ Status CropAndResize<T>::Compute(OpKernelContext* context) const {
                       std::to_string(crop_size_dims.Size()));
   }
 
+  ORT_RETURN_IF(x_dims.NumDimensions() != 4, "Input 'X' must be a 4-D tensor, got rank: ", x_dims.NumDimensions());
+  ORT_RETURN_IF(rois_dims.NumDimensions() != 2,
+                "Input 'rois' must be a 2-D tensor, got rank: ", rois_dims.NumDimensions());
+  ORT_RETURN_IF(batch_indices_dims.NumDimensions() != 1,
+                "Input 'batch_indices' must be a 1-D tensor, got rank: ", batch_indices_dims.NumDimensions());
+
   auto channels = x_dims[1];
   auto num_rois = batch_indices_dims[0];
   auto num_roi_cols = rois_dims[1];

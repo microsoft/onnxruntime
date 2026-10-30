@@ -4,6 +4,7 @@
 #if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
 
 #include <cstdint>
+#include <string_view>
 #include <utility>
 
 #include "gtest/gtest.h"
@@ -21,7 +22,7 @@ namespace test {
 namespace {
 
 void RunMatMulNBitsTileTest(int64_t bits, int64_t M, int64_t N, int64_t K,
-                            bool has_zero_points, bool has_bias) {
+                            bool has_zero_points, bool has_bias, int64_t batch_count = 1) {
   SCOPED_TRACE(testing::Message() << "bits=" << bits << ", M=" << M << ", N=" << N << ", K=" << K
                                   << ", zero_points=" << has_zero_points << ", bias=" << has_bias);
 
@@ -40,7 +41,7 @@ void RunMatMulNBitsTileTest(int64_t bits, int64_t M, int64_t N, int64_t K,
   const int32_t default_zero_point = 1 << (bits - 1);
 
   RandomValueGenerator random{1234};
-  const auto a = FloatsToMLFloat16s(random.Gaussian<float>(AsSpan({M, K}), 0.0f, 0.25f));
+  const auto a = FloatsToMLFloat16s(random.Gaussian<float>(AsSpan({batch_count * M, K}), 0.0f, 0.25f));
   const auto weights = random.Uniform<int32_t>(AsSpan({N, K}), 0, (1 << bits) - 1);
   const auto bias = FloatsToMLFloat16s(random.Uniform<float>(AsSpan({N}), -0.5f, 0.5f));
   InlinedVector<uint8_t> packed_weights(N * blocks * blob_size, 0);
@@ -69,8 +70,8 @@ void RunMatMulNBitsTileTest(int64_t bits, int64_t M, int64_t N, int64_t K,
     }
   }
 
-  InlinedVector<MLFloat16> expected(M * N);
-  for (int64_t m = 0; m < M; ++m) {
+  InlinedVector<MLFloat16> expected(batch_count * M * N);
+  for (int64_t m = 0; m < batch_count * M; ++m) {
     for (int64_t n = 0; n < N; ++n) {
       float sum = 0.0f;
       for (int64_t k = 0; k < K; ++k) {
@@ -86,7 +87,11 @@ void RunMatMulNBitsTileTest(int64_t bits, int64_t M, int64_t N, int64_t K,
   test.AddAttribute<int64_t>("bits", bits);
   test.AddAttribute<int64_t>("block_size", block_size);
   test.AddAttribute<int64_t>("accuracy_level", 4);
-  test.AddInput<MLFloat16>("A", {M, K}, a);
+  const TensorShapeVector a_shape = batch_count == 1 ? TensorShapeVector{M, K}
+                                                     : TensorShapeVector{batch_count, M, K};
+  const TensorShapeVector y_shape = batch_count == 1 ? TensorShapeVector{M, N}
+                                                     : TensorShapeVector{batch_count, M, N};
+  test.AddInput<MLFloat16>("A", a_shape, a);
   test.AddInput<uint8_t>("B", {N, blocks, blob_size}, packed_weights.data(), packed_weights.size(), true);
   test.AddInput<MLFloat16>("scales", {N, blocks}, scales.data(), scales.size(), true);
   if (has_zero_points) {
@@ -98,7 +103,7 @@ void RunMatMulNBitsTileTest(int64_t bits, int64_t M, int64_t N, int64_t K,
   if (has_bias) {
     test.AddInput<MLFloat16>("bias", {N}, bias, true);
   }
-  test.AddOutput<MLFloat16>("Y", {M, N}, expected.data(), expected.size());
+  test.AddOutput<MLFloat16>("Y", y_shape, expected.data(), expected.size());
   test.SetOutputAbsErr("Y", 0.1f);
   test.SetOutputRelErr("Y", 0.02f);
 
@@ -144,6 +149,134 @@ TEST(WebGpuMatMulNBitsTest, Float16_4Bits_SubgroupMatrixTiles) {
 
 TEST(WebGpuMatMulNBitsTest, Float16_8Bits_SubgroupMatrixTiles) {
   RunMatMulNBitsTileTests(8);
+}
+
+TEST(WebGpuMatMulNBitsTest, DP4AQualcommWave128Tiles) {
+  auto provider = DefaultWebGpuExecutionProvider();
+  ASSERT_NE(provider, nullptr);
+  const auto& context = webgpu::WebGpuContextFactory::GetContext(provider->GetDeviceId());
+  if (context.AdapterInfo().vendor != std::string_view{"qualcomm"} ||
+      !context.DeviceHasFeature(wgpu::FeatureName::SubgroupSizeControl) ||
+      context.AdapterInfo().subgroupMinSize > 128 || context.AdapterInfo().subgroupMaxSize < 128) {
+    GTEST_SKIP() << "Requires Qualcomm 128-lane subgroup size control";
+  }
+  for (bool has_zero_points : {false, true}) {
+    for (bool has_bias : {false, true}) {
+      // Exercise both column subgroups and partially filled M and N tiles.
+      RunMatMulNBitsTileTest(4, 128, 32, 128, has_zero_points, has_bias);
+      RunMatMulNBitsTileTest(4, 129, 48, 256, has_zero_points, has_bias, 2);
+      RunMatMulNBitsTileTest(4, 257, 16, 128, has_zero_points, has_bias);
+    }
+  }
+}
+
+TEST(WebGpuMatMulNBitsTest, DP4AActivationScaleReuse) {
+  auto provider = DefaultWebGpuExecutionProvider();
+  ASSERT_NE(provider, nullptr);
+  const auto& context = webgpu::WebGpuContextFactory::GetContext(provider->GetDeviceId());
+  if (!context.DeviceHasFeature(wgpu::FeatureName::Subgroups) ||
+      context.AdapterInfo().vendor == std::string_view{"apple"}) {
+    GTEST_SKIP() << "Requires the DP4A path";
+  }
+
+  constexpr int64_t batch_count = 2;
+  constexpr int64_t N = 48;
+  constexpr int64_t K = 384;
+  constexpr int64_t block_size = 32;
+  for (int64_t M : {65, 129}) {
+    for (int64_t bits : {4, 8}) {
+      SCOPED_TRACE(testing::Message() << "M=" << M << ", bits=" << bits);
+      InlinedVector<float> a(batch_count * M * K);
+      InlinedVector<float> expected(batch_count * M * N);
+      for (int64_t batch = 0; batch < batch_count; ++batch) {
+        for (int64_t row = 0; row < M; ++row) {
+          for (int64_t k = 0; k < K; ++k) {
+            // Powers of two give distinct scales across blocks, rows, and batches.
+            a[(batch * M + row) * K + k] = static_cast<float>(1 << ((batch * 3 + row % 3 + (k / 128) * 2) % 7));
+          }
+          for (int64_t n = 0; n < N; ++n) {
+            const int64_t k = (n % (K / block_size)) * block_size + block_size - 1;
+            expected[(batch * M + row) * N + n] = a[(batch * M + row) * K + k];
+          }
+        }
+      }
+
+      // Each column selects the last activation of one K tile, including all
+      // four tiles sharing a scale and the transitions to the next scale.
+      const int64_t values_per_byte = 8 / bits;
+      InlinedVector<uint8_t> weights(N * K / values_per_byte, bits == 4 ? 0x88 : 0x80);
+      for (int64_t n = 0; n < N; ++n) {
+        const int64_t k = (n % (K / block_size)) * block_size + block_size - 1;
+        weights[(n * K + k) / values_per_byte] |= static_cast<uint8_t>(1 << ((k % values_per_byte) * bits));
+      }
+      InlinedVector<float> scales(N * K / block_size, 1.0f);
+      OpTester test("MatMulNBits", 1, kMSDomain);
+      test.AddAttribute<int64_t>("K", K);
+      test.AddAttribute<int64_t>("N", N);
+      test.AddAttribute<int64_t>("bits", bits);
+      test.AddAttribute<int64_t>("block_size", block_size);
+      test.AddAttribute<int64_t>("accuracy_level", 4);
+      test.AddInput<float>("A", {batch_count, M, K}, a.data(), a.size());
+      test.AddInput<uint8_t>("B", {N, K / block_size, block_size / values_per_byte}, weights.data(), weights.size(), true);
+      test.AddInput<float>("scales", {N, K / block_size}, scales.data(), scales.size(), true);
+      test.AddOutput<float>("Y", {batch_count, M, N}, expected.data(), expected.size());
+      test.SetOutputAbsErr("Y", 0.0001f);
+      test.SetOutputRelErr("Y", 0.00001f);
+      SessionOptions options;
+      ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+      test.Config(options).ConfigEp(DefaultWebGpuExecutionProvider()).RunWithConfig();
+    }
+  }
+}
+
+TEST(WebGpuMatMulNBitsTest, DP4AQuantizationLargeSubgroups) {
+  auto provider = DefaultWebGpuExecutionProvider();
+  ASSERT_NE(provider, nullptr);
+  const auto& context = webgpu::WebGpuContextFactory::GetContext(provider->GetDeviceId());
+  if (!context.DeviceHasFeature(wgpu::FeatureName::ShaderF16) ||
+      !context.DeviceHasFeature(wgpu::FeatureName::Subgroups) ||
+      context.AdapterInfo().subgroupMinSize <= 32) {
+    GTEST_SKIP() << "Requires subgroups wider than a 128-value quantization block";
+  }
+
+  constexpr int64_t M = 5;
+  constexpr int64_t N = 16;
+  for (int64_t K : {128, 256}) {
+    SCOPED_TRACE(K);
+    InlinedVector<MLFloat16> a(M * K, MLFloat16(0.0f));
+    InlinedVector<MLFloat16> expected(M * N);
+    for (int64_t m = 0; m < M; ++m) {
+      for (int64_t block = 0; block < K / 128; ++block) {
+        const bool large = (m * (K / 128) + block) % 2 != 0;
+        a[m * K + block * 128] = MLFloat16(large ? 64.0f : 0.5f);
+        a[m * K + block * 128 + 127] = MLFloat16(large ? 127.0f : 1.0f);
+      }
+      for (int64_t n = 0; n < N; ++n) {
+        expected[m * N + n] = a[m * K];
+      }
+    }
+    // Select the first activation. A reduction across the whole subgroup would
+    // mix the small and large blocks and quantize 0.5 to 1 instead of about 0.504.
+    InlinedVector<uint8_t> weights(N * K / 2, 0x88);
+    for (int64_t n = 0; n < N; ++n) {
+      weights[n * K / 2] = 0x89;
+    }
+    InlinedVector<MLFloat16> scales(N * K / 32, MLFloat16(1.0f));
+    OpTester test("MatMulNBits", 1, kMSDomain);
+    test.AddAttribute<int64_t>("K", K);
+    test.AddAttribute<int64_t>("N", N);
+    test.AddAttribute<int64_t>("bits", 4);
+    test.AddAttribute<int64_t>("block_size", 32);
+    test.AddAttribute<int64_t>("accuracy_level", 4);
+    test.AddInput<MLFloat16>("A", {M, K}, a.data(), a.size());
+    test.AddInput<uint8_t>("B", {N, K / 32, 16}, weights.data(), weights.size(), true);
+    test.AddInput<MLFloat16>("scales", {N, K / 32}, scales.data(), scales.size(), true);
+    test.AddOutput<MLFloat16>("Y", {M, N}, expected.data(), expected.size());
+    test.SetOutputAbsErr("Y", 0.01f);
+    SessionOptions options;
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    test.Config(options).ConfigEp(DefaultWebGpuExecutionProvider()).RunWithConfig();
+  }
 }
 
 }  // namespace test

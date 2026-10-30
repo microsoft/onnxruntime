@@ -293,8 +293,11 @@ Status MatMulNBitsMlp::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
   const bool has_skip_input = skip != nullptr;
   const bool has_skip_output = input_skip_bias_sum != nullptr;
 
+  // The fallback fills empty projections with zero/bias before applying the
+  // activation and product; an empty gate with bias need not yield zero.
   const bool is_decode_fast_path_candidate =
       M == 1 &&
+      gate_b->Shape().Size() != 0 && up_b->Shape().Size() != 0 &&
       bits_ == kFusedDecodeFastPathBits &&
       block_size == kFusedDecodeFastPathBlockSize;
   const bool has_norm_input = norm_scale != nullptr;
