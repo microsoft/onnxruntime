@@ -29,7 +29,7 @@ function createModel(
     type: { tensorType: { elemType: type, shape: { dim: dims.map((dimValue) => ({ dimValue })) } } },
   });
   const model = onnx.ModelProto.create({
-    irVersion: elemType >= 23 ? 12 : 10,
+    irVersion: opset >= 25 ? 13 : elemType >= 23 ? 12 : 10,
     opsetImport: [{ domain: '', version: opset }],
     graph: {
       name: `${opType}_${opset}`,
@@ -86,7 +86,7 @@ describe('WebGPU view operator registrations', function () {
     { type: 'uint32', elemType: onnx.TensorProto.DataType.UINT32, data: new Uint32Array([1, 2, 3, 0xffffffff]) },
   ] as const;
 
-  for (const opset of [21, 22, 23, 24]) {
+  for (const opset of [21, 22, 23, 24, 25, 26, 27, 28]) {
     for (const opType of ['Reshape', 'Unsqueeze'] as const) {
       for (const { type, elemType, data } of dataTypes) {
         it(`${opType}-${opset} preserves ${type} data without CPU fallback`, async function (this: Mocha.Context) {
@@ -149,11 +149,17 @@ describe('WebGPU view operator registrations', function () {
       });
     }
 
-    // The JS protobuf enum predates FLOAT4E2M1 (23) and FLOAT8E8M0 (24).
+    // The JS protobuf enum predates FLOAT4E2M1 (23), FLOAT8E8M0 (24), UINT2 (25), and INT2 (26).
     const unsupportedTypes = [
       { type: 'float64', elemType: onnx.TensorProto.DataType.DOUBLE },
       ...(opset >= 23 ? [{ type: 'float4e2m1', elemType: 23 }] : []),
       ...(opset >= 24 ? [{ type: 'float8e8m0', elemType: 24 }] : []),
+      ...(opset >= 25
+        ? [
+            { type: 'uint2', elemType: 25 },
+            { type: 'int2', elemType: 26 },
+          ]
+        : []),
     ];
     for (const opType of ['Reshape', 'Unsqueeze'] as const) {
       for (const { type, elemType } of unsupportedTypes) {
