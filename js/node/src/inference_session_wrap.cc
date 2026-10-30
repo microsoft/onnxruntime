@@ -4,6 +4,7 @@
 #include "onnxruntime_cxx_api.h"
 
 #include "common.h"
+#include "device_lock.h"
 #include "ep_context_data_read_helper.h"
 #include "inference_session_wrap.h"
 #include "ort_instance_data.h"
@@ -12,6 +13,7 @@
 #include "session_options_helper.h"
 #include "tensor_helper.h"
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -37,9 +39,24 @@ ModelBufferView GetModelBufferView(Napi::ArrayBuffer buffer, int64_t byteOffset,
   return {data, length};
 }
 
-void ReadSessionMetadata(Ort::Session& session, std::vector<std::string>& inputNames,
-                         std::vector<Ort::TypeInfo>& inputTypes, std::vector<std::string>& outputNames,
-                         std::vector<Ort::TypeInfo>& outputTypes) {
+}  // namespace
+
+std::shared_ptr<SessionCore> SessionCore::Create(bool requiresDeviceSerialization,
+                                                 std::shared_ptr<EpContextDataReadState> epContextDataReadState) {
+  auto core = std::shared_ptr<SessionCore>(new SessionCore{}, [](SessionCore* core) {
+    if (core->requiresDeviceSerialization) {
+      // Destroying the session tears down its execution provider, which is device work.
+      ReleaseUnderDeviceLock([core] { delete core; });
+    } else {
+      delete core;
+    }
+  });
+  core->requiresDeviceSerialization = requiresDeviceSerialization;
+  core->epContextDataReadState = std::move(epContextDataReadState);
+  return core;
+}
+
+void SessionCore::ReadSessionMetadata() {
   Ort::AllocatorWithDefaultOptions allocator;
 
   size_t count = session.GetInputCount();
@@ -59,9 +76,9 @@ void ReadSessionMetadata(Ort::Session& session, std::vector<std::string>& inputN
     outputNames.emplace_back(outputName.get());
     outputTypes.push_back(session.GetOutputTypeInfo(i));
   }
-}
 
-}  // namespace
+  cpuAllocator = Ort::Allocator(session, Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault));
+}
 
 /**
  * LoadModelWorker constructs the native Ort::Session on a libuv worker thread.
@@ -76,11 +93,12 @@ void ReadSessionMetadata(Ort::Session& session, std::vector<std::string>& inputN
 class LoadModelWorker : public Napi::AsyncWorker {
  public:
   LoadModelWorker(Napi::Env env, InferenceSessionWrap& wrap, const Napi::Object self, const Napi::Object options,
-                  Ort::SessionOptions&& sessionOptions,
+                  Ort::SessionOptions&& sessionOptions, bool requiresDeviceSerialization,
                   std::shared_ptr<EpContextDataReadState> epContextDataReadState,
                   std::vector<std::vector<char>>&& externalDataBuffers)
       : Napi::AsyncWorker{env, "onnxruntime.InferenceSession.loadModel"},
         wrap_{wrap},
+        requiresDeviceSerialization_{requiresDeviceSerialization},
         selfRef_{Napi::Persistent(self)},
         optionsRef_{Napi::Persistent(options)},
         externalDataBuffers_{std::move(externalDataBuffers)},
@@ -124,13 +142,15 @@ class LoadModelWorker : public Napi::AsyncWorker {
         return;
       }
 
+      core_ = SessionCore::Create(requiresDeviceSerialization_, epContextDataReadState_);
+      DeviceLock deviceLock{requiresDeviceSerialization_};
       if (useModelBuffer_) {
-        session_ = std::make_unique<Ort::Session>(ortObjects->env, modelData_, modelDataLength_, sessionOptions_);
+        core_->session = Ort::Session(ortObjects->env, modelData_, modelDataLength_, sessionOptions_);
       } else {
-        session_ = std::make_unique<Ort::Session>(ortObjects->env, modelPath_.c_str(), sessionOptions_);
+        core_->session = Ort::Session(ortObjects->env, modelPath_.c_str(), sessionOptions_);
       }
 
-      ReadSessionMetadata(*session_, inputNames_, inputTypes_, outputNames_, outputTypes_);
+      core_->ReadSessionMetadata();
     } catch (std::exception const& e) {
       ReleaseNativeSession();
       SetError(e.what());
@@ -145,8 +165,7 @@ class LoadModelWorker : public Napi::AsyncWorker {
     Napi::HandleScope scope{env};
 
     try {
-      wrap_.AdoptLoadedSession(std::move(session_), std::move(inputNames_), std::move(inputTypes_),
-                               std::move(outputNames_), std::move(outputTypes_), optionsRef_.Value());
+      wrap_.AdoptLoadedSession(std::move(core_), optionsRef_.Value());
     } catch (Napi::Error const& e) {
       ReleaseNativeSession();
       wrap_.ResetAfterFailedLoad();
@@ -173,13 +192,10 @@ class LoadModelWorker : public Napi::AsyncWorker {
   }
 
  private:
-  void ReleaseNativeSession() noexcept {
-    inputTypes_.clear();
-    outputTypes_.clear();
-    session_.reset(nullptr);
-  }
+  void ReleaseNativeSession() noexcept { core_.reset(); }
 
   InferenceSessionWrap& wrap_;
+  const bool requiresDeviceSerialization_;
 
   // Keeps the wrapper object and options object alive until the worker completes.
   Napi::ObjectReference selfRef_;
@@ -190,7 +206,6 @@ class LoadModelWorker : public Napi::AsyncWorker {
   Ort::SessionOptions sessionOptions_;
 
   // Strong snapshot of the callback state: it must outlive the native session under construction.
-  // Declared before `session_` so that the session is destroyed first.
   std::shared_ptr<EpContextDataReadState> epContextDataReadState_;
 
   std::basic_string<ORTCHAR_T> modelPath_;
@@ -199,11 +214,7 @@ class LoadModelWorker : public Napi::AsyncWorker {
   size_t modelDataLength_ = 0;
   std::vector<uint8_t> modelDataStorage_;
 
-  std::unique_ptr<Ort::Session> session_;
-  std::vector<std::string> inputNames_;
-  std::vector<Ort::TypeInfo> inputTypes_;
-  std::vector<std::string> outputNames_;
-  std::vector<Ort::TypeInfo> outputTypes_;
+  std::shared_ptr<SessionCore> core_;
 
   Napi::Promise::Deferred deferred_;
 };
@@ -254,47 +265,17 @@ InferenceSessionWrap::InferenceSessionWrap(const Napi::CallbackInfo& info)
     : Napi::ObjectWrap<InferenceSessionWrap>(info),
       initialized_(false),
       loading_(false),
-      disposed_(false),
-      session_(nullptr) {}
+      disposed_(false) {}
 
 InferenceSessionWrap::~InferenceSessionWrap() {
-  // If the ORT singleton has already been destroyed (e.g. during process shutdown when the
-  // cleanup hook fires before N-API finalizers run), we must not call into ORT to
-  // release owned ORT objects — doing so would crash. Intentionally leak in that case.
-  if (!OrtSingletonData::GetOrtObjects()) {
-    for (auto& type_info : inputTypes_) {
-      (void)type_info.release();
-    }
-    for (auto& type_info : outputTypes_) {
-      (void)type_info.release();
-    }
-    (void)ioBinding_.release();
-    (void)session_.release();
-  } else {
-    ioBinding_.reset(nullptr);
-    session_.reset(nullptr);
-  }
-
-  // The native session is gone, so the callback state can no longer be reached from ONNX Runtime.
+  core_.reset();
   ReleaseEpContextDataReadState();
 }
 
-void InferenceSessionWrap::AdoptLoadedSession(std::unique_ptr<Ort::Session> session,
-                                              std::vector<std::string> inputNames,
-                                              std::vector<Ort::TypeInfo> inputTypes,
-                                              std::vector<std::string> outputNames,
-                                              std::vector<Ort::TypeInfo> outputTypes, const Napi::Object options) {
-  this->session_ = std::move(session);
-  this->inputNames_ = std::move(inputNames);
-  this->inputTypes_ = std::move(inputTypes);
-  this->outputNames_ = std::move(outputNames);
-  this->outputTypes_ = std::move(outputTypes);
-
-  // cache preferred output locations
-  ParsePreferredOutputLocations(options, outputNames_, preferredOutputLocations_);
-  if (preferredOutputLocations_.size() > 0) {
-    ioBinding_ = std::make_unique<Ort::IoBinding>(*session_);
-  }
+void InferenceSessionWrap::AdoptLoadedSession(std::shared_ptr<SessionCore> core, const Napi::Object options) {
+  // Still unpublished, so it can be completed here.
+  ParsePreferredOutputLocations(options, core->outputNames, core->preferredOutputLocations);
+  this->core_ = std::move(core);
 
   this->loading_ = false;
   this->initialized_ = true;
@@ -303,19 +284,7 @@ void InferenceSessionWrap::AdoptLoadedSession(std::unique_ptr<Ort::Session> sess
 void InferenceSessionWrap::ResetAfterFailedLoad() noexcept {
   this->loading_ = false;
   this->initialized_ = false;
-
-  this->inputNames_.clear();
-  this->outputNames_.clear();
-  this->preferredOutputLocations_.clear();
-
-  if (OrtSingletonData::GetOrtObjects()) {
-    this->inputTypes_.clear();
-    this->outputTypes_.clear();
-    this->ioBinding_.reset(nullptr);
-    this->session_.reset(nullptr);
-  }
-
-  // Deterministic teardown: the callback state is released only after the native session is gone.
+  this->core_.reset();
   ReleaseEpContextDataReadState();
 }
 
@@ -328,7 +297,8 @@ void InferenceSessionWrap::ReleaseEpContextDataReadState() noexcept {
 
 Napi::Value InferenceSessionWrap::LoadModelSynchronously(const Napi::CallbackInfo& info, bool isModelPath,
                                                          const Napi::Object& options,
-                                                         Ort::SessionOptions&& sessionOptions) {
+                                                         Ort::SessionOptions&& sessionOptions,
+                                                         bool requiresDeviceSerialization) {
   Napi::Env env = info.Env();
   auto deferred = Napi::Promise::Deferred::New(env);
   this->loading_ = true;
@@ -337,31 +307,30 @@ Napi::Value InferenceSessionWrap::LoadModelSynchronously(const Napi::CallbackInf
     auto* ortObjects = OrtSingletonData::GetOrtObjects();
     ORT_NAPI_THROW_ERROR_IF(ortObjects == nullptr, env, "ONNX Runtime is not initialized.");
 
-    std::unique_ptr<Ort::Session> session;
-    if (isModelPath) {
-      auto value = info[0].As<Napi::String>();
+    auto core = SessionCore::Create(requiresDeviceSerialization, nullptr);
+    {
+      // Blocks this thread while another session on the device runs, as session creation does in any case.
+      DeviceLock deviceLock{requiresDeviceSerialization};
+      if (isModelPath) {
+        auto value = info[0].As<Napi::String>();
 #ifdef _WIN32
-      auto modelPath = value.Utf16Value();
-      std::wstring wideModelPath{modelPath.begin(), modelPath.end()};
-      session = std::make_unique<Ort::Session>(ortObjects->env, wideModelPath.c_str(), sessionOptions);
+        auto modelPath = value.Utf16Value();
+        std::wstring wideModelPath{modelPath.begin(), modelPath.end()};
+        core->session = Ort::Session(ortObjects->env, wideModelPath.c_str(), sessionOptions);
 #else
-      auto modelPath = value.Utf8Value();
-      session = std::make_unique<Ort::Session>(ortObjects->env, modelPath.c_str(), sessionOptions);
+        auto modelPath = value.Utf8Value();
+        core->session = Ort::Session(ortObjects->env, modelPath.c_str(), sessionOptions);
 #endif
-    } else {
-      const auto view = GetModelBufferView(info[0].As<Napi::ArrayBuffer>(),
-                                           info[1].As<Napi::Number>().Int64Value(),
-                                           info[2].As<Napi::Number>().Int64Value());
-      session = std::make_unique<Ort::Session>(ortObjects->env, view.data, view.size, sessionOptions);
+      } else {
+        const auto view = GetModelBufferView(info[0].As<Napi::ArrayBuffer>(),
+                                             info[1].As<Napi::Number>().Int64Value(),
+                                             info[2].As<Napi::Number>().Int64Value());
+        core->session = Ort::Session(ortObjects->env, view.data, view.size, sessionOptions);
+      }
     }
 
-    std::vector<std::string> inputNames;
-    std::vector<Ort::TypeInfo> inputTypes;
-    std::vector<std::string> outputNames;
-    std::vector<Ort::TypeInfo> outputTypes;
-    ReadSessionMetadata(*session, inputNames, inputTypes, outputNames, outputTypes);
-    AdoptLoadedSession(std::move(session), std::move(inputNames), std::move(inputTypes),
-                       std::move(outputNames), std::move(outputTypes), options);
+    core->ReadSessionMetadata();
+    AdoptLoadedSession(std::move(core), options);
     deferred.Resolve(env.Undefined());
   } catch (Napi::Error const& e) {
     ResetAfterFailedLoad();
@@ -402,17 +371,19 @@ Napi::Value InferenceSessionWrap::LoadModel(const Napi::CallbackInfo& info) {
     Ort::SessionOptions sessionOptions;
     ParseEpContextDataReadOptions(options, sessionOptions, this->epContextDataReadState_);
 
+    bool requiresDeviceSerialization = false;
     if (!this->epContextDataReadState_) {
-      ParseSessionOptions(options, sessionOptions);
-      return scope.Escape(LoadModelSynchronously(info, isModelPath, options, std::move(sessionOptions)));
+      ParseSessionOptions(options, sessionOptions, requiresDeviceSerialization);
+      return scope.Escape(LoadModelSynchronously(info, isModelPath, options, std::move(sessionOptions),
+                                                 requiresDeviceSerialization));
     }
 
     std::vector<std::vector<char>> externalDataBuffers;
-    ParseSessionOptions(options, sessionOptions, &externalDataBuffers);
+    ParseSessionOptions(options, sessionOptions, requiresDeviceSerialization, &externalDataBuffers);
 
     worker = std::make_unique<LoadModelWorker>(env, *this, info.This().As<Napi::Object>(), options,
-                                               std::move(sessionOptions), this->epContextDataReadState_,
-                                               std::move(externalDataBuffers));
+                                               std::move(sessionOptions), requiresDeviceSerialization,
+                                               this->epContextDataReadState_, std::move(externalDataBuffers));
 
     if (isModelPath) {
       auto value = info[0].As<Napi::String>();
@@ -456,8 +427,8 @@ Napi::Value InferenceSessionWrap::GetMetadata(const Napi::CallbackInfo& info) {
   ORT_NAPI_THROW_ERROR_IF(this->disposed_, env, "Session already disposed.");
 
   Napi::EscapableHandleScope scope(env);
-  auto& names = info.Data() != nullptr ? inputNames_ : outputNames_;
-  auto& types = info.Data() != nullptr ? inputTypes_ : outputTypes_;
+  auto& names = info.Data() != nullptr ? core_->inputNames : core_->outputNames;
+  auto& types = info.Data() != nullptr ? core_->inputTypes : core_->outputTypes;
   auto array = Napi::Array::New(env, types.size());
   for (uint32_t i = 0; i < types.size(); i++) {
     Napi::Object obj = Napi::Object::New(env);
@@ -478,6 +449,203 @@ Napi::Value InferenceSessionWrap::GetMetadata(const Napi::CallbackInfo& info) {
   return scope.Escape(array);
 }
 
+namespace {
+/**
+ * RunWorker runs one inference on a libuv worker thread.
+ *
+ * It holds its own reference to the SessionCore, so the session outlives the run even if dispose() is called or
+ * the wrapper is collected meanwhile. Everything ORT reads during the run is owned by the worker: CPU inputs are
+ * copies, gpu-buffer inputs and outputs are held by their DeviceValue, and preallocated CPU outputs are written
+ * only once the run has completed.
+ */
+class RunWorker : public Napi::AsyncWorker {
+ public:
+  RunWorker(Napi::Env env, std::shared_ptr<SessionCore> core)
+      : Napi::AsyncWorker{env, "onnxruntime.InferenceSession.run"},
+        core_{std::move(core)},
+        cpuMemoryInfo_{Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault)},
+        gpuBufferMemoryInfo_{"WebGPU_Buf", OrtDeviceAllocator, 0, OrtMemTypeDefault} {}
+
+  ~RunWorker() override {
+    // Output values left over after an error may be device-backed.
+    if (core_->requiresDeviceSerialization && !outputValues_.empty()) {
+      auto values = std::make_shared<std::vector<Ort::Value>>(std::move(outputValues_));
+      ReleaseUnderDeviceLock([values, core = core_] { values->clear(); });
+    }
+  }
+
+  // Read the run arguments. Runs on the JavaScript thread.
+  // @throw Napi::Error if an argument is invalid.
+  void Prepare(const Napi::Object feed, const Napi::Object fetch, const Napi::Object options) {
+    Napi::Env env = Env();
+    for (const auto& name : core_->inputNames) {
+      if (feed.Has(name)) {
+        auto input = NapiValueToOrtValue(env, feed.Get(name), false, cpuMemoryInfo_, core_->cpuAllocator,
+                                         gpuBufferMemoryInfo_);
+        inputNames_.push_back(name.c_str());
+        inputValues_.push_back(std::move(input.value));
+        if (input.device_value) {
+          deviceValues_.push_back(std::move(input.device_value));
+        }
+      }
+    }
+
+    for (size_t i = 0; i < core_->outputNames.size(); i++) {
+      const auto& name = core_->outputNames[i];
+      if (!fetch.Has(name)) {
+        continue;
+      }
+      auto value = fetch.Get(name);
+      Output output;
+      output.index = i;
+      if (value.IsNull()) {
+        outputValues_.emplace_back(nullptr);
+      } else {
+        auto preallocated = NapiValueToOrtValue(env, value, true, cpuMemoryInfo_, core_->cpuAllocator,
+                                                gpuBufferMemoryInfo_);
+        if (preallocated.device_value) {
+          // Device memory is only written in place through IoBinding: as a preallocated fetch, ORT may replace the
+          // value instead of filling it, and there is no copy back to fall back on.
+          ORT_NAPI_THROW_ERROR_IF(core_->preferredOutputLocations.empty(), env, "Preallocated output '", name,
+                                  "' is on a device, which requires the session to be created with "
+                                  "'preferredOutputLocation'.");
+          deviceValues_.push_back(std::move(preallocated.device_value));
+        } else {
+          output.data = Napi::Persistent(preallocated.data);
+          output.type = preallocated.type;
+          output.dims = std::move(preallocated.dims);
+        }
+        output.tensor = Napi::Persistent(value);
+        outputValues_.push_back(std::move(preallocated.value));
+      }
+      outputNames_.push_back(name.c_str());
+      outputs_.push_back(std::move(output));
+    }
+
+    ParseRunOptions(options, runOptions_);
+  }
+
+  // Queue the run. From here on the worker deletes itself once it has completed.
+  Napi::Promise Start() {
+    deferred_.emplace(Napi::Promise::Deferred::New(Env()));
+    Queue();
+    return deferred_->Promise();
+  }
+
+ protected:
+  void Execute() override {
+    {
+      DeviceLock deviceLock{core_->requiresDeviceSerialization};
+      try {
+        if (core_->preferredOutputLocations.empty()) {
+          core_->session.Run(runOptions_, inputNames_.data(), inputValues_.data(), inputValues_.size(),
+                             outputNames_.data(), outputValues_.data(), outputValues_.size());
+        } else {
+          Ort::IoBinding ioBinding{core_->session};
+          for (size_t i = 0; i < inputNames_.size(); i++) {
+            ioBinding.BindInput(inputNames_[i], inputValues_[i]);
+          }
+          for (size_t i = 0; i < outputs_.size(); i++) {
+            if (static_cast<OrtValue*>(outputValues_[i]) != nullptr) {
+              ioBinding.BindOutput(outputNames_[i], outputValues_[i]);
+            } else if (outputs_[i].tensor.IsEmpty() &&
+                       core_->preferredOutputLocations[outputs_[i].index] == DATA_LOCATION_GPU_BUFFER) {
+              ioBinding.BindOutput(outputNames_[i], gpuBufferMemoryInfo_);
+            } else {
+              ioBinding.BindOutput(outputNames_[i], cpuMemoryInfo_);
+            }
+          }
+          core_->session.Run(runOptions_, ioBinding);
+          outputValues_ = ioBinding.GetOutputValues();
+        }
+      } catch (const std::exception& e) {
+        SetError(e.what());
+        outputValues_.clear();
+      }
+
+      // Release what may refer to device memory while still holding the lock.
+      inputValues_.clear();
+      deviceValues_.clear();
+    }
+  }
+
+  void OnOK() override {
+    Napi::Env env = Env();
+    Napi::HandleScope scope{env};
+    try {
+      deferred_->Resolve(CreateResult(env));
+    } catch (const Napi::Error& e) {
+      deferred_->Reject(e.Value());
+    } catch (const std::exception& e) {
+      deferred_->Reject(Napi::Error::New(env, e.what()).Value());
+    }
+  }
+
+  void OnError(const Napi::Error& e) override { deferred_->Reject(e.Value()); }
+
+ private:
+  struct Output {
+    // index into SessionCore::outputNames
+    size_t index{0};
+    // the caller's Tensor, for a preallocated output; it is what the result holds for this output
+    Napi::Reference<Napi::Value> tensor;
+    // for a preallocated CPU output: its typed array, and the type and shape the result must have
+    Napi::Reference<Napi::Value> data;
+    ONNXTensorElementDataType type{ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED};
+    std::vector<int64_t> dims;
+  };
+
+  Napi::Object CreateResult(Napi::Env env) {
+    ORT_NAPI_THROW_ERROR_IF(outputValues_.size() != outputs_.size(), env, "Output count mismatch.");
+
+    // Creating a Tensor runs Javascript, which could detach a preallocated buffer. Create them all before any buffer
+    // is checked and written, and check every buffer before writing any, so a rejected run leaves them untouched.
+    std::vector<Napi::Value> values(outputs_.size());
+    for (size_t i = 0; i < outputs_.size(); i++) {
+      if (outputs_[i].tensor.IsEmpty()) {
+        values[i] = OrtValueToNapiValue(env, std::move(outputValues_[i]), core_);
+      }
+    }
+    for (size_t i = 0; i < outputs_.size(); i++) {
+      if (!outputs_[i].data.IsEmpty()) {
+        ValidatePreallocatedOutput(env, outputValues_[i], outputs_[i].data.Value(), outputs_[i].type,
+                                   outputs_[i].dims);
+      }
+    }
+    for (size_t i = 0; i < outputs_.size(); i++) {
+      if (!outputs_[i].data.IsEmpty()) {
+        CopyOrtValueToNapiTypedArray(outputValues_[i], outputs_[i].data.Value());
+      }
+      if (!outputs_[i].tensor.IsEmpty()) {
+        values[i] = outputs_[i].tensor.Value();
+      }
+    }
+
+    auto result = Napi::Object::New(env);
+    for (size_t i = 0; i < outputs_.size(); i++) {
+      result.Set(outputNames_[i], values[i]);
+    }
+    return result;
+  }
+
+  // Declared first so that it is released last: every value below may come from the session's allocators.
+  std::shared_ptr<SessionCore> core_;
+  Ort::MemoryInfo cpuMemoryInfo_;
+  Ort::MemoryInfo gpuBufferMemoryInfo_;
+  Ort::RunOptions runOptions_;
+
+  // The names point into core_, which does not change while it is alive.
+  std::vector<const char*> inputNames_;
+  std::vector<Ort::Value> inputValues_;
+  std::vector<DeviceValuePtr> deviceValues_;
+  std::vector<const char*> outputNames_;
+  std::vector<Ort::Value> outputValues_;
+  std::vector<Output> outputs_;
+
+  std::optional<Napi::Promise::Deferred> deferred_;
+};
+}  // namespace
+
 Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
   ORT_NAPI_THROW_ERROR_IF(!this->initialized_, env, "Session is not initialized.");
@@ -490,89 +658,21 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
 
   Napi::EscapableHandleScope scope(env);
 
-  auto feed = info[0].As<Napi::Object>();
-  auto fetch = info[1].As<Napi::Object>();
-
-  std::vector<const char*> inputNames_cstr;
-  std::vector<Ort::Value> inputValues;
-  std::vector<const char*> outputNames_cstr;
-  std::vector<Ort::Value> outputValues;
-  std::vector<bool> reuseOutput;
-  size_t inputIndex = 0;
-  size_t outputIndex = 0;
-  Ort::MemoryInfo cpuMemoryInfo = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
-  Ort::MemoryInfo gpuBufferMemoryInfo{"WebGPU_Buf", OrtDeviceAllocator, 0, OrtMemTypeDefault};
-
+  // The worker takes its reference to the session before any argument is read: a getter on a feed may call
+  // dispose(), and the run has to keep working with the session it started on.
+  auto worker = std::make_unique<RunWorker>(env, core_);
   try {
-    for (auto& name : inputNames_) {
-      if (feed.Has(name)) {
-        inputIndex++;
-        inputNames_cstr.push_back(name.c_str());
-        auto value = feed.Get(name);
-        inputValues.push_back(NapiValueToOrtValue(env, value, cpuMemoryInfo, gpuBufferMemoryInfo));
-      }
-    }
-    for (auto& name : outputNames_) {
-      if (fetch.Has(name)) {
-        outputIndex++;
-        outputNames_cstr.push_back(name.c_str());
-        auto value = fetch.Get(name);
-        reuseOutput.push_back(!value.IsNull());
-        outputValues.emplace_back(value.IsNull() ? Ort::Value{nullptr} : NapiValueToOrtValue(env, value, cpuMemoryInfo, gpuBufferMemoryInfo));
-      }
-    }
-
-    Ort::RunOptions runOptions{nullptr};
-    if (info.Length() > 2) {
-      runOptions = Ort::RunOptions{};
-      ParseRunOptions(info[2].As<Napi::Object>(), runOptions);
-    }
-    if (preferredOutputLocations_.size() == 0) {
-      session_->Run(runOptions == nullptr ? OrtSingletonData::GetOrtObjects()->default_run_options : runOptions,
-                    inputIndex == 0 ? nullptr : &inputNames_cstr[0], inputIndex == 0 ? nullptr : &inputValues[0],
-                    inputIndex, outputIndex == 0 ? nullptr : &outputNames_cstr[0],
-                    outputIndex == 0 ? nullptr : &outputValues[0], outputIndex);
-
-      Napi::Object result = Napi::Object::New(env);
-
-      for (size_t i = 0; i < outputIndex; i++) {
-        result.Set(outputNames_cstr[i], OrtValueToNapiValue(env, std::move(outputValues[i])));
-      }
-      return scope.Escape(result);
-    } else {
-      // IO binding
-      ORT_NAPI_THROW_ERROR_IF(preferredOutputLocations_.size() != outputNames_.size(), env,
-                              "Preferred output locations must have the same size as output names.");
-
-      for (size_t i = 0; i < inputIndex; i++) {
-        ioBinding_->BindInput(inputNames_cstr[i], inputValues[i]);
-      }
-      for (size_t i = 0; i < outputIndex; i++) {
-        // TODO: support preallocated output tensor (outputValues[i])
-
-        if (preferredOutputLocations_[i] == DATA_LOCATION_GPU_BUFFER) {
-          ioBinding_->BindOutput(outputNames_cstr[i], gpuBufferMemoryInfo);
-        } else {
-          ioBinding_->BindOutput(outputNames_cstr[i], cpuMemoryInfo);
-        }
-      }
-
-      session_->Run(runOptions == nullptr ? OrtSingletonData::GetOrtObjects()->default_run_options : runOptions, *ioBinding_);
-
-      auto outputs = ioBinding_->GetOutputValues();
-      ORT_NAPI_THROW_ERROR_IF(outputs.size() != outputIndex, env, "Output count mismatch.");
-
-      Napi::Object result = Napi::Object::New(env);
-      for (size_t i = 0; i < outputIndex; i++) {
-        result.Set(outputNames_cstr[i], OrtValueToNapiValue(env, std::move(outputs[i])));
-      }
-      return scope.Escape(result);
-    }
+    worker->Prepare(info[0].As<Napi::Object>(), info[1].As<Napi::Object>(),
+                    info.Length() > 2 ? info[2].As<Napi::Object>() : Napi::Object::New(env));
   } catch (Napi::Error const& e) {
     throw e;
   } catch (std::exception const& e) {
     ORT_NAPI_THROW_ERROR(env, e.what());
   }
+
+  auto promise = worker->Start();
+  worker.release();
+  return scope.Escape(promise);
 }
 
 Napi::Value InferenceSessionWrap::Dispose(const Napi::CallbackInfo& info) {
@@ -580,13 +680,11 @@ Napi::Value InferenceSessionWrap::Dispose(const Napi::CallbackInfo& info) {
   ORT_NAPI_THROW_ERROR_IF(!this->initialized_, env, "Session is not initialized.");
   ORT_NAPI_THROW_ERROR_IF(this->disposed_, env, "Session already disposed.");
 
-  this->inputTypes_.clear();
-  this->outputTypes_.clear();
+  // Runs still in flight hold their own reference and release the session when the last one completes.
+  this->core_.reset();
 
-  this->ioBinding_.reset(nullptr);
-  this->session_.reset(nullptr);
-
-  // Deterministic teardown: the native session is released before the state it can call into.
+  // A session kept alive by a run still holds the callback state through SessionCore; once released here, a late
+  // callback fails with a status instead of reaching JavaScript.
   this->ReleaseEpContextDataReadState();
 
   this->disposed_ = true;
@@ -602,7 +700,7 @@ Napi::Value InferenceSessionWrap::EndProfiling(const Napi::CallbackInfo& info) {
 
   Ort::AllocatorWithDefaultOptions allocator;
 
-  auto filename = session_->EndProfilingAllocated(allocator);
+  auto filename = core_->session.EndProfilingAllocated(allocator);
   Napi::String filenameValue = Napi::String::From(env, filename.get());
   return scope.Escape(filenameValue);
 }
