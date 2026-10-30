@@ -144,6 +144,14 @@
     # even when contrib ops are disabled so that the ONNX Attention kernel can compile and link.
     set(onnxruntime_cuda_bert_cc_srcs ${onnxruntime_cuda_contrib_ops_cc_srcs})
     list(FILTER onnxruntime_cuda_bert_cc_srcs INCLUDE REGEX ".*/contrib_ops/cuda/bert/.*")
+    # Exclude contrib kernels whose CPU validation helpers are disabled in this configuration.
+    list(REMOVE_ITEM onnxruntime_cuda_bert_cc_srcs
+      "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/bert/attention.cc"
+      "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/bert/decoder_masked_self_attention.cc"
+      "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/bert/embed_layer_norm.cc"
+      "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/bert/fast_gelu.cc"
+      "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/bert/longformer_attention.cc"
+    )
     set(onnxruntime_cuda_bert_cu_srcs ${onnxruntime_cuda_contrib_ops_cu_srcs})
     list(FILTER onnxruntime_cuda_bert_cu_srcs INCLUDE REGEX ".*/contrib_ops/cuda/bert/.*")
     source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_cuda_bert_cc_srcs} ${onnxruntime_cuda_bert_cu_srcs})
