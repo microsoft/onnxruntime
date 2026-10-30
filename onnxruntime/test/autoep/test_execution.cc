@@ -2122,6 +2122,38 @@ TEST(OrtEpLibrary, PluginEp_WeightlessMode_ExternalDependencies) {
         << "deprecated option test case " << i;
   }
 
+  // An EP built for a version without GetWeightlessSupport() (API version 28) may still handle weightless mode via its
+  // own options, so ORT determines the dependencies for it too: from the selected mode, or for the deprecated option,
+  // from the older "weightless_support" EP metadata ("all" for the example EP).
+  for (const char* weightless_mode : {"2", static_cast<const char*>(nullptr)}) {
+    std::filesystem::remove(output_model_file);
+
+    std::unordered_map<std::string, std::string> ep_options;
+    Ort::SessionOptions session_options;
+    if (weightless_mode != nullptr) {
+      session_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightlessMode, weightless_mode);
+    } else {
+      session_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightless, "1");
+    }
+    session_options.AddConfigEntry(kExampleEpTestWeightlessDropInitializers, "1");
+    session_options.AddConfigEntry(kExampleEpTestOrtVersion, "28");
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
+    compile_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_DISABLE_ALL);
+    compile_options.SetInputModelPath(mixed_model_file);
+    compile_options.SetOutputModelPath(output_model_file);
+    compile_options.SetEpContextEmbedMode(true);
+    ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
+
+    ONNX_NAMESPACE::ModelProto compiled_model;
+    ASSERT_NO_FATAL_FAILURE(LoadModelProtoFromFile(output_model_file, compiled_model));
+    ASSERT_EQ(GetModelMetadataValue(compiled_model, kOrtModelMetadata_ExternalDependencies),
+              std::optional<std::string>("source_model;external_weights"))
+        << "API version 28 EP, weightless mode " << (weightless_mode != nullptr ? weightless_mode : "deprecated");
+  }
+
   // Clean up.
   for (const ORTCHAR_T* file : {external_model_file, external_data_file, mixed_model_file, mixed_data_file,
                                 output_model_file, output_data_file}) {

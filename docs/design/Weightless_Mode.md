@@ -341,15 +341,17 @@ runtime:
 
 | Value | Recorded when |
 |---|---|
-| `"source_model"` | An EP keeps references to initializers stored inside the source model: `ALL` mode with EP-managed initializers. For the deprecated `"ep.enable_weightless"` option, which doesn't select a mode, ORT uses the value of `GetWeightlessSupport()` if it is a single mode. Otherwise, e.g. for `ALL_OR_EXTERNAL_ONLY`, it uses `EXTERNAL_ONLY` if every device reports `"external_only"` in the older `"weightless_support"` metadata, which keeps the EP's behavior from before 1.32, and `ALL` if not. |
+| `"source_model"` | An EP keeps references to initializers stored inside the source model: `ALL` mode with EP-managed initializers. For the deprecated `"ep.enable_weightless"` option, which doesn't select a mode, ORT uses the value of `GetWeightlessSupport()` if it is a single mode. Otherwise, e.g. for `ALL_OR_EXTERNAL_ONLY` or for an EP built for a version without `GetWeightlessSupport()`, it uses `EXTERNAL_ONLY` if every device reports `"external_only"` in the older `"weightless_support"` metadata, which keeps the EP's behavior from before 1.32, and `ALL` if not. |
 | `"external_weights"` | Initializers of the compiled model are stored in external files (external initializers file or buffer, or initializer location function), or an EP keeps references to the source model's external data files (`EXTERNAL_ONLY` or `ALL` with EP-managed initializers). |
 | `"ep_context_binary"` | An EP context binary is stored outside the model: an EPContext node has `embed_mode = 0` (e.g., `"ep.context_embed_mode"` = `"0"`). |
 
 Values are listed in this order, e.g., `"source_model;external_weights;ep_context_binary"`, and the value is empty
 if the model has none of these dependencies.
 ORT resolves the value from the session and compile options and from how each EP obtains its initializer data
-(`drop_constant_initializers`); it does not validate the dependencies: missing data is reported when a session is
-created from the model. Future versions may add values, so readers should ignore values they don't recognize.
+(`drop_constant_initializers`), including the initializers defined inside the subgraphs of compiled control flow
+nodes (e.g., `If` or `Loop`), and for all EPs, including EPs built for a version without `GetWeightlessSupport()`;
+it does not validate the dependencies: missing data is reported when a session is created from the model. Future
+versions may add values, so readers should ignore values they don't recognize.
 
 **Model packages.** A variant sets its session options in `executor_info["ort"].session_options` (see
 `onnxruntime/core/session/model_package/README.md`). `"ep.context_source_model_path"`,
