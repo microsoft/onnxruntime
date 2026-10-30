@@ -238,11 +238,13 @@ class MatMulNodeGroupSelector : public NodeGroupSelector {
   MatMulNodeGroupSelector(bool int8_allowed = true,
                           bool matmulintegertofloat_allowed = false,
                           bool allow_16bit = true,
-                          bool allow_4bit = true)
+                          bool allow_4bit = true,
+                          bool check_qlinear_matmul_params = false)
       : int8_allowed_(int8_allowed),
         matmulintegertofloat_allowed_(matmulintegertofloat_allowed),
         allow_16bit_(allow_16bit),
-        allow_4bit_(allow_4bit) {
+        allow_4bit_(allow_4bit),
+        check_qlinear_matmul_params_(check_qlinear_matmul_params) {
   }
 
  private:
@@ -253,6 +255,7 @@ class MatMulNodeGroupSelector : public NodeGroupSelector {
   bool matmulintegertofloat_allowed_;
   bool allow_16bit_;
   bool allow_4bit_;
+  bool check_qlinear_matmul_params_;
 };
 
 // Convert "1 DQ node for input B -> MatMul" to "MatMulNBits"
@@ -454,7 +457,8 @@ class MatMulSelector : public BaseSelector {
   MatMulSelector(bool int8_allowed, bool allow_16bit = false, bool allow_4bit = false,
                  gsl::span<const char*> compatible_providers = {})
       : BaseSelector(std::make_unique<MatMulNodeGroupSelector>(int8_allowed, /*matmulintegertofloat_allowed*/ true,
-                                                               allow_16bit, allow_4bit),
+                                                               allow_16bit, allow_4bit,
+                                                               /*check_qlinear_matmul_params*/ true),
                      compatible_providers) {}
 };
 
