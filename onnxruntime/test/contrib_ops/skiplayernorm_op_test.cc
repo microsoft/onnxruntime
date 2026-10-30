@@ -8,6 +8,8 @@
 #include "test/common/tensor_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
+#include "core/providers/webgpu/webgpu_provider_options.h"
 
 namespace onnxruntime {
 namespace test {
@@ -1325,6 +1327,75 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch2_Skip_Broadcast_Batch_Size_1) {
           broadcast_skip,
           no_batch_size);
 }
+
+#ifdef USE_WEBGPU
+// input, skip, output and input_skip_bias_sum are 13108 x 2560 floats = 134,225,920 bytes, just over a 128 MiB
+// maxStorageBufferBindingSize, so the WebGPU EP binds each of them as 2 segments. The rows that end up in the second
+// segment are checked like all the others.
+static void RunWebGpuLargerThanStorageBindingTest(bool simplified) {
+  constexpr int64_t rows = 13108;
+  constexpr int64_t hidden_size = 2560;
+  constexpr float epsilon = 1e-5f;
+  const size_t size = static_cast<size_t>(rows * hidden_size);
+
+  std::vector<float> input_data(size), skip_data(size), gamma_data(hidden_size), beta_data(hidden_size);
+  for (size_t i = 0; i < size; ++i) {
+    input_data[i] = static_cast<float>(i % 7) * 0.25f - 0.75f;
+    skip_data[i] = static_cast<float>(i % 5) * 0.125f - 0.25f;
+  }
+  for (int64_t j = 0; j < hidden_size; ++j) {
+    gamma_data[j] = 1.0f + 0.01f * static_cast<float>(j % 10);
+    beta_data[j] = 0.05f * static_cast<float>(j % 3);
+  }
+
+  std::vector<float> output_data(size), sum_output_data(size);
+  for (int64_t r = 0; r < rows; ++r) {
+    double mean = 0.0, mean_square = 0.0;
+    for (int64_t j = 0; j < hidden_size; ++j) {
+      const size_t k = static_cast<size_t>(r * hidden_size + j);
+      sum_output_data[k] = input_data[k] + skip_data[k];
+      mean += sum_output_data[k];
+      mean_square += static_cast<double>(sum_output_data[k]) * sum_output_data[k];
+    }
+    mean /= hidden_size;
+    mean_square /= hidden_size;
+    const double inv_std_dev = 1.0 / std::sqrt((simplified ? mean_square : mean_square - mean * mean) + epsilon);
+    for (int64_t j = 0; j < hidden_size; ++j) {
+      const size_t k = static_cast<size_t>(r * hidden_size + j);
+      const double normalized = (sum_output_data[k] - (simplified ? 0.0 : mean)) * inv_std_dev;
+      output_data[k] = static_cast<float>(normalized * gamma_data[j] + (simplified ? 0.0f : beta_data[j]));
+    }
+  }
+
+  OpTester test(simplified ? "SkipSimplifiedLayerNormalization" : "SkipLayerNormalization", 1, onnxruntime::kMSDomain);
+  test.AddInput<float>("input", {rows, hidden_size}, input_data);
+  test.AddInput<float>("skip", {rows, hidden_size}, skip_data);
+  test.AddInput<float>("gamma", {hidden_size}, gamma_data);
+  if (!simplified) {
+    test.AddInput<float>("beta", {hidden_size}, beta_data);
+  }
+  test.AddAttribute("epsilon", epsilon);
+  test.AddOutput<float>("output", {rows, hidden_size}, output_data);
+  // The second and third outputs are reserved for something else
+  test.AddOptionalOutputEdge<float>();
+  test.AddOptionalOutputEdge<float>();
+  test.AddOutput<float>("skip_input_bias_add_output", {rows, hidden_size}, sum_output_data);
+
+  ConfigOptions config_options{};
+  ORT_ENFORCE(config_options.AddConfigEntry(webgpu::options::kMaxStorageBufferBindingSize, "134217728").IsOK());
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(WebGpuExecutionProviderWithOptions(config_options));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(SkipLayerNormTest, SkipLayerNorm_WebGpu_LargerThanStorageBinding) {
+  RunWebGpuLargerThanStorageBindingTest(false);
+}
+
+TEST(SkipLayerNormTest, SkipSimplifiedLayerNorm_WebGpu_LargerThanStorageBinding) {
+  RunWebGpuLargerThanStorageBindingTest(true);
+}
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime
