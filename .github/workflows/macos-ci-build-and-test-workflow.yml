@@ -84,7 +84,7 @@ jobs:
       SCCACHE_DIR: ${{ github.workspace }}/.sccache
       SCCACHE_BASEDIRS: ${{ github.workspace }}
       # Bound transfer/storage costs across the matrix.
-      SCCACHE_CACHE_SIZE: 1G
+      SCCACHE_CACHE_SIZE: 10G
       # After validation, replace the opt-in/event/ref guard with github.ref == 'refs/heads/main'.
       SCCACHE_LOCAL_RW_MODE: >-
         ${{ github.event_name == 'workflow_dispatch' && inputs.write_compiler_cache &&
@@ -150,7 +150,7 @@ jobs:
             sccache --version
           } > "$RUNNER_TEMP/sccache-toolchain.txt"
           toolchain_hash=$(shasum -a 256 "$RUNNER_TEMP/sccache-toolchain.txt" | cut -d ' ' -f 1)
-          echo "prefix=macos-sccache-v1-${CACHE_VARIANT}-${toolchain_hash}-" >> "$GITHUB_OUTPUT"
+          echo "prefix=macos-sccache-v2-${CACHE_VARIANT}-${toolchain_hash}-" >> "$GITHUB_OUTPUT"
 
       - name: Restore compiler cache
         id: restore-compiler-cache
