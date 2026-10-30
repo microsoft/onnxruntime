@@ -1991,7 +1991,7 @@ ProviderLibrary::~ProviderLibrary() {
   // assert(!handle_); // We should already be unloaded at this point (disabled until Python shuts down deterministically)
 }
 
-Status ProviderLibrary::Load() {
+Status ProviderLibrary::Load(bool retain_library_on_missing_get_provider) {
   if (provider_) {
     return Status::OK();
   }
@@ -2001,21 +2001,25 @@ Status ProviderLibrary::Load() {
     if (!provider_) {
       ORT_RETURN_IF_ERROR(s_library_shared.Initialize());
 
-      if (absolute_) {
-        // If filename_ is not absolute it should not be loaded.
-        if (!std::filesystem::path{filename_}.is_absolute()) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "An absolute path must be specified.");
+      if (!handle_) {
+        if (absolute_) {
+          // If filename_ is not absolute it should not be loaded.
+          if (!std::filesystem::path{filename_}.is_absolute()) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "An absolute path must be specified.");
+          }
+          ORT_RETURN_IF_ERROR(Env::Default().LoadDynamicLibrary(filename_, false, &handle_));
+        } else {
+          auto full_path = Env::Default().GetRuntimePath() + filename_;
+          ORT_RETURN_IF_ERROR(Env::Default().LoadDynamicLibrary(full_path, false, &handle_));
         }
-        ORT_RETURN_IF_ERROR(Env::Default().LoadDynamicLibrary(filename_, false, &handle_));
-      } else {
-        auto full_path = Env::Default().GetRuntimePath() + filename_;
-        ORT_RETURN_IF_ERROR(Env::Default().LoadDynamicLibrary(full_path, false, &handle_));
       }
 
       Provider* (*PGetProvider)();
       auto status = Env::Default().GetSymbolFromLibrary(handle_, "GetProvider", (void**)&PGetProvider);
       if (!status.IsOK()) {
-        Unload();
+        if (!retain_library_on_missing_get_provider) {
+          Unload();
+        }
         return status;
       }
 

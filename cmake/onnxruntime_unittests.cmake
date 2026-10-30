@@ -1404,7 +1404,7 @@ endif()
 if(NOT onnxruntime_MINIMAL_BUILD AND NOT CMAKE_CROSSCOMPILING
   AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten"
   AND NOT CMAKE_SYSTEM_NAME STREQUAL "AIX")
-  foreach(fixture IN ITEMS shared valid missing_export)
+  foreach(fixture IN ITEMS shared valid missing_export plugin plugin_missing_export)
     set(probe_fixture onnxruntime_optional_probe_${fixture}_fixture)
     onnxruntime_add_shared_library(${probe_fixture}
       "${TEST_SRC_DIR}/shared_lib/optional_provider_probe_test_library.cc")
@@ -1426,10 +1426,11 @@ if(NOT onnxruntime_MINIMAL_BUILD AND NOT CMAKE_CROSSCOMPILING
       SOURCES ${probe_sources}
       LIBS ${onnxruntime_test_providers_libs} ${onnxruntime_test_common_libs}
       DEPENDS onnxruntime_optional_probe_shared_fixture onnxruntime_optional_probe_valid_fixture
-              onnxruntime_optional_probe_missing_export_fixture)
+              onnxruntime_optional_probe_missing_export_fixture onnxruntime_optional_probe_plugin_fixture
+              onnxruntime_optional_probe_plugin_missing_export_fixture)
     set_target_properties(${probe_target} PROPERTIES
       RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${probe_target}")
-    foreach(fixture IN ITEMS shared valid missing_export)
+    foreach(fixture IN ITEMS shared valid missing_export plugin plugin_missing_export)
       target_compile_definitions(${probe_target} PRIVATE
         ORT_OPTIONAL_PROBE_${fixture}_LIBRARY="$<TARGET_FILE_NAME:onnxruntime_optional_probe_${fixture}_fixture>")
       add_custom_command(TARGET ${probe_target} POST_BUILD
