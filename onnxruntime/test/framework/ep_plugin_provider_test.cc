@@ -1223,6 +1223,128 @@ TEST(PluginExecutionProviderTest, Compile_WeightlessSupportDoesNotMatchEpMetadat
   }
 }
 
+// Test that the external dependencies of the EPContext nodes generated in weightless mode include the initializers
+// defined inside the subgraphs of the compiled nodes. Here the EP compiles a whole If node whose then-branch uses a
+// branch-local initializer, which can't be an input of the fused node, so the EP obtains it itself and, in
+// OrtWeightlessSupport_ALL mode, depends on the source model for it.
+TEST(PluginExecutionProviderTest, Compile_WeightlessDependenciesIncludeSubgraphInitializers) {
+  auto set_tensor_type = [](ONNX_NAMESPACE::ValueInfoProto& value_info, const std::string& name, int32_t elem_type,
+                            std::initializer_list<int64_t> dims) {
+    value_info.set_name(name);
+    auto* tensor_type = value_info.mutable_type()->mutable_tensor_type();
+    tensor_type->set_elem_type(elem_type);
+    auto* shape = tensor_type->mutable_shape();
+    for (int64_t dim : dims) {
+      shape->add_dim()->set_dim_value(dim);
+    }
+  };
+
+  // Y = If(cond) { then: Mul(X, W), where W is a then-branch initializer } else { Identity(X) }
+  ONNX_NAMESPACE::ModelProto model_proto;
+  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  auto* opset = model_proto.add_opset_import();
+  opset->set_domain("");
+  opset->set_version(13);
+
+  ONNX_NAMESPACE::GraphProto then_branch;
+  then_branch.set_name("then_branch");
+  auto* w = then_branch.add_initializer();
+  w->set_name("W");
+  w->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  w->add_dims(2);
+  w->add_float_data(1.0f);
+  w->add_float_data(2.0f);
+  auto* mul = then_branch.add_node();
+  mul->set_op_type("Mul");
+  mul->add_input("X");
+  mul->add_input("W");
+  mul->add_output("then_out");
+  set_tensor_type(*then_branch.add_output(), "then_out", ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {2});
+
+  ONNX_NAMESPACE::GraphProto else_branch;
+  else_branch.set_name("else_branch");
+  auto* identity = else_branch.add_node();
+  identity->set_op_type("Identity");
+  identity->add_input("X");
+  identity->add_output("else_out");
+  set_tensor_type(*else_branch.add_output(), "else_out", ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {2});
+
+  auto* main_graph = model_proto.mutable_graph();
+  main_graph->set_name("main_graph");
+  set_tensor_type(*main_graph->add_input(), "cond", ONNX_NAMESPACE::TensorProto_DataType_BOOL, {});
+  set_tensor_type(*main_graph->add_input(), "X", ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {2});
+  set_tensor_type(*main_graph->add_output(), "Y", ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {2});
+  auto* if_node_proto = main_graph->add_node();
+  if_node_proto->set_op_type("If");
+  if_node_proto->set_name("if_node");
+  if_node_proto->add_input("cond");
+  if_node_proto->add_output("Y");
+  auto* then_attribute = if_node_proto->add_attribute();
+  then_attribute->set_name("then_branch");
+  then_attribute->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+  *then_attribute->mutable_g() = then_branch;
+  auto* else_attribute = if_node_proto->add_attribute();
+  else_attribute->set_name("else_branch");
+  else_attribute->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+  *else_attribute->mutable_g() = else_branch;
+
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(std::move(model_proto), model, nullptr, DefaultLoggingManager().DefaultLogger()));
+  Graph& graph = model->MainGraph();
+
+  // Fuse the If node, as the partitioner does before calling IExecutionProvider::Compile().
+  const Node* if_node = graph.GetProducerNode("Y");
+  ASSERT_NE(if_node, nullptr);
+  IndexedSubGraph indexed_sub_graph;
+  indexed_sub_graph.nodes.push_back(if_node->Index());
+  auto meta_def = std::make_unique<IndexedSubGraph::MetaDef>();
+  meta_def->name = "TestOrtEp_if_node";
+  meta_def->domain = "TestOrtEp";
+  meta_def->since_version = 1;
+  meta_def->inputs = {"cond", "X"};
+  meta_def->outputs = {"Y"};
+  indexed_sub_graph.SetMetaDef(std::move(meta_def));
+  GraphViewer graph_viewer(graph, indexed_sub_graph);
+  Node& fused_node = graph.BeginFuseSubGraph(indexed_sub_graph, "TestOrtEp_if_node");
+
+  auto hw_device = test_plugin_ep::MakeTestOrtHardwareDevice(OrtHardwareDeviceType_CPU);
+  auto ep_device = test_plugin_ep::MakeTestOrtEpDevice(hw_device.get());
+  ep_device->ep_metadata.Add(kOrtEpDevice_EpMetadataKey_WeightlessSupportedModes, "all");
+  const std::vector<const OrtEpDevice*> ep_devices{ep_device.get()};
+
+  Ort::SessionOptions session_options;
+  session_options.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
+  session_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightlessMode, "2");
+
+  auto ort_ep = std::make_unique<test_plugin_ep::TestOrtEp>();
+  ort_ep->GetWeightlessSupport = [](const OrtEp*, OrtWeightlessSupport* support) noexcept -> ::OrtStatus* {
+    *support = OrtWeightlessSupport_ALL;
+    return nullptr;
+  };
+  // ORT determines the dependencies before it calls OrtEp::Compile(), so the test EP stops the compilation there
+  // instead of creating compute infos and EPContext nodes.
+  ort_ep->Compile = [](OrtEp* this_ptr, const OrtGraph**, const OrtNode**, size_t, OrtNodeComputeInfo**,
+                       OrtNode**) noexcept -> ::OrtStatus* {
+    auto* test_ort_ep = static_cast<test_plugin_ep::TestOrtEp*>(this_ptr);
+    return test_ort_ep->ort_api->CreateStatus(ORT_FAIL, "Test EP stops after ORT determines the dependencies.");
+  };
+  ort_ep->ReleaseNodeComputeInfos = [](OrtEp*, OrtNodeComputeInfo**, size_t) noexcept {};
+
+  PluginExecutionProvider ep(UniqueOrtEp(ort_ep.release(), OrtEpDeleter{test_plugin_ep::g_test_ort_ep_factory}),
+                             *static_cast<const OrtSessionOptions*>(session_options),
+                             test_plugin_ep::g_test_ort_ep_factory, ep_devices, /*kernel_registry*/ nullptr,
+                             DefaultLoggingManager().DefaultLogger());
+
+  std::vector<NodeComputeInfo> node_compute_infos;
+  Status status = ep.Compile({IExecutionProvider::FusedNodeAndGraph{fused_node, graph_viewer}}, node_compute_infos);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Test EP stops after ORT determines the dependencies."));
+
+  const IExecutionProvider::EpContextExternalDependencies dependencies = ep.GetEpContextExternalDependencies();
+  EXPECT_TRUE(dependencies.source_model);
+  EXPECT_FALSE(dependencies.external_weights);
+}
+
 TEST(PluginExecutionProviderTest, IsConcurrentRunSupported) {
   auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp();
 

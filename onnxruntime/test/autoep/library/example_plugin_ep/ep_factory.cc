@@ -355,9 +355,9 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
                                                 config.advertise_ep_context_data_support));
   RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kExampleEpTestOrtVersion, "current",
                                                  test_ort_version));
-  if (test_ort_version != "current" && test_ort_version != "30") {
+  if (test_ort_version != "current" && test_ort_version != "30" && test_ort_version != "28") {
     return factory->ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
-                                         "Example EP test ORT version must be 'current' or '30'.");
+                                         "Example EP test ORT version must be 'current', '30' or '28'.");
   }
   RETURN_IF_ERROR(GetSessionConfigBoolOrDefault(*session_options, "ep.example.use_default_cpu_allocator",
                                                 false, config.use_default_cpu_allocator));
@@ -427,9 +427,10 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
   auto dummy_ep = std::make_unique<ExampleEp>(
       *factory, factory->ep_name_, config, *logger,
       Ort::EpContextConfig{Ort::ConstSessionOptions{session_options}});
-  if (test_ort_version == "30") {
-    // Keep the support callback populated to verify that ORT ignores it for older EP versions.
-    dummy_ep->ort_version_supported = 30;
+  if (test_ort_version == "30" || test_ort_version == "28") {
+    // Keep the support callbacks populated to verify that ORT ignores them for older EP versions. Version 28 predates
+    // GetWeightlessSupport().
+    dummy_ep->ort_version_supported = std::stoi(test_ort_version);
   }
   *ep = dummy_ep.release();
   return nullptr;
