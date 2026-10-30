@@ -3312,6 +3312,10 @@ def gqa_split_decode_test_cases():
         (4, 6000, 32, 4, True, True, False, 8),
         # A buffer much longer than the context: most launched splits exit at once.
         (2, 100, 32, 4, True, False, True, 8000),
+        # More (batch, kv head) pairs than SMs on most GPUs: one CTA per pair, or two splits when the last
+        # wave would be short (e.g. 128 pairs on 108 SMs).
+        (32, 1500, 32, 4, True, False, True, 8),
+        (40, 700, 32, 4, True, True, False, 8),
     ]
     for b, s2, n, n2, rotary, packed, qk_norm, extra in cases:
         config = GQAConfig(

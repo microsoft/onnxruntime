@@ -18,20 +18,19 @@ namespace cuda {
 // the new token (PrepareQKV has appended it).
 //
 // The flash path for this case launches a split-KV kernel over all query heads, a combine kernel and
-// two memsets of the split accumulators. This kernel runs one CTA per (batch, kv head, split); each
-// warp streams its own 8-key steps of the split straight from global memory into tensor-core mma
-// fragments, with the 8 query heads of the KV head as the rows of one m16 tile, so K and V are read
-// once for the whole group. The warps of a CTA are combined in shared memory and the last CTA of a
-// (batch, kv head) merges the per-split softmax partials, so there is no second kernel and no memset.
+// two memsets of the split accumulators. This kernel runs one CTA per (batch, kv head, split); its warps
+// stream 8-key steps of K and V through a cp.async ring in shared memory into tensor-core mma fragments,
+// with the 8 query heads of the KV head as the rows of one m16 tile, so K and V are read once for the
+// whole group. The warps of a CTA are combined in shared memory and the last CTA of a (batch, kv head)
+// merges the per-split softmax partials, so there is no second kernel and no memset.
 // Requires sm_80 (the kernel body is empty on older architectures; the Flash path gates it).
 //
 // A CUDA graph freezes the grid, so the kernel is launched with GqaSplitDecodeMaxSplits() splits per
 // (batch, kv head), which depends only on the batch size, the KV head count, the KV buffer length and
-// the GPU (about kGqaSplitDecodeCtasPerSm CTAs per SM). Each batch then uses
+// the GPU (one CTA per SM at a time). Each batch then uses
 // ceil(total_seq_len / kGqaSplitDecodeMinKeysPerSplit) of them (capped by the launched count), read
 // from total_seq_lens on the device; the remaining CTAs exit at once.
 constexpr int kGqaSplitDecodeMinKeysPerSplit = 128;
-constexpr int kGqaSplitDecodeCtasPerSm = 1;
 constexpr int kGqaSplitDecodeMaxSplits = 64;
 constexpr int kGqaSplitDecodeGroup = 8;
 constexpr int kGqaSplitDecodeHeadSize = 128;

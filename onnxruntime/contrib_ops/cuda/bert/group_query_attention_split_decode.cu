@@ -132,6 +132,29 @@ __device__ __forceinline__ void MmaK8(float& d0, float& d1, uint32_t a, uint32_t
 #endif
 }
 
+// 16-byte global -> shared copy that bypasses L1; with `valid` false the destination is zero-filled.
+__device__ __forceinline__ void CpAsync16(uint4* dst, const void* src, bool valid) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
+  asm volatile("cp.async.cg.shared.global [%0], [%1], 16, %2;" ::"r"(
+                   static_cast<uint32_t>(__cvta_generic_to_shared(dst))),
+               "l"(src), "r"(valid ? 16 : 0)
+               : "memory");
+#endif
+}
+
+__device__ __forceinline__ void CpAsyncCommit() {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
+  asm volatile("cp.async.commit_group;" ::: "memory");
+#endif
+}
+
+template <int kPending>
+__device__ __forceinline__ void CpAsyncWait() {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
+  asm volatile("cp.async.wait_group %0;" ::"n"(kPending) : "memory");
+#endif
+}
+
 __device__ __forceinline__ uint32_t PackHalf2(float lo, float hi) {
   const half2 h = __floats2half2_rn(lo, hi);
   return *reinterpret_cast<const uint32_t*>(&h);
@@ -143,38 +166,47 @@ __device__ __forceinline__ int OutChannel(int j, int r, int e) {
 }
 
 // grid (kv_num_heads, max_splits, batch), block kThreads. The grid is fixed per capture; the CTAs
-// beyond SplitCount(total) of their batch exit at once, so the split count follows the context length.
+// beyond the split count of their batch (from its context length) exit at once.
 //
 // Each warp runs an online softmax over its own 8-key steps of the split with tensor-core mma; the
-// 8 query heads of the KV head are rows 0-7 of the A operand (rows 8-15 are zero). Fragments are
-// loaded straight from global memory with 16-byte loads:
+// 8 query heads of the KV head are rows 0-7 of the A operand (rows 8-15 are zero):
 //  * Q * K^T: the reduction over channels may be permuted as long as Q and K agree, so lane (g, r)
-//    (g = lane / 4, r = lane % 4) loads channels 32 * blk + 8 * r .. + 7 of query head g and of key g of
-//    the step, and uses them as two k16 slices.
+//    (g = lane / 4, r = lane % 4) uses channels 32 * blk + 8 * r .. + 7 of query head g and of key g of
+//    the step as two k16 slices.
 //  * P * V: the score accumulators of lane (g, r) are P[g][2r..2r+1], which is the m16n8k8 A fragment.
 //    The B fragment needs V[2r..2r+1][n] for output tile j; with n -> channel (j < 8 ? 0 : 64) + 8 * g +
-//    (j & 7) lane (g, r) gets all of it from two 16-byte loads per key row, so outputs come out permuted
+//    (j & 7) lane (g, r) gets all of it from two 16-byte words per key row, so outputs come out permuted
 //    (OutChannel).
-// The next step's K and V are loaded before the current step is computed.
-__global__ void __launch_bounds__(kThreads) GqaSplitDecodeKernel(const half* __restrict__ q,
-                                                                 const half* __restrict__ k_cache,
-                                                                 const half* __restrict__ v_cache,
-                                                                 half* __restrict__ out,
-                                                                 const int* __restrict__ total_seq_lens, float scale,
-                                                                 int capacity, float* __restrict__ partials,
-                                                                 unsigned int* __restrict__ counters,
-                                                                 int keys_per_split) {
+// K and V reach the fragments through a per-warp ring of kStages steps in shared memory filled with
+// cp.async, kStages - 1 steps ahead. The copy moves whole 256-byte key rows, 16 lanes per row: loading the
+// fragments straight from global memory touches only 64 bytes of each 128-byte line of K per request, which
+// caps the streaming rate of an SM well below its share of DRAM bandwidth.
+template <int kStages>
+__global__ void __launch_bounds__(kThreads, 1) GqaSplitDecodeKernel(const half* __restrict__ q,
+                                                                    const half* __restrict__ k_cache,
+                                                                    const half* __restrict__ v_cache,
+                                                                    half* __restrict__ out,
+                                                                    const int* __restrict__ total_seq_lens,
+                                                                    float scale, int capacity,
+                                                                    float* __restrict__ partials,
+                                                                    unsigned int* __restrict__ counters) {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
+  // The ring is [warp][stage][K, V][key row][16-byte chunk]; after the main loop the same memory holds the
+  // per-warp outputs (s_red). The 128-byte alignment matters: at the
+  // default offset after the static shared variables every cp.async row straddles two 128-byte lines, which
+  // cost ~13% of the streaming rate on A100.
+  extern __shared__ __align__(128) uint4 s_ring[];
   __shared__ float s_m[kWarps][kGroup], s_l[kWarps][kGroup];
-  __shared__ __align__(16) float s_red[kWarps][kGroup][kHead];
   __shared__ float s_w[kGroup][kGqaSplitDecodeMaxSplits];
+  __shared__ float s_inv[kGroup];
   __shared__ bool s_last;
+  auto& s_red = *reinterpret_cast<float(*)[kWarps][kGroup][kHead]>(s_ring);
 
   const int kvh = blockIdx.x, split = blockIdx.y, b = blockIdx.z, tid = threadIdx.x;
   const int warp = tid / 32, lane = tid % 32, g = lane / 4, r = lane % 4;
   const int kv_heads = gridDim.x, max_splits = gridDim.y;
   const int total = total_seq_lens[b];
-  const int splits = SplitCount(total, max_splits, keys_per_split);
+  const int splits = SplitCount(total, max_splits, kGqaSplitDecodeMinKeysPerSplit);
   if (split >= splits) return;
   const int steps = (total + kStep - 1) / kStep;
   const int chunk = (steps + splits - 1) / splits * kStep;
@@ -185,30 +217,25 @@ __global__ void __launch_bounds__(kThreads) GqaSplitDecodeKernel(const half* __r
   uint4 qf[4];
 #pragma unroll
   for (int blk = 0; blk < 4; ++blk) qf[blk] = __ldg(reinterpret_cast<const uint4*>(qrow + 32 * blk + 8 * r));
-
   const int64_t cache_off = static_cast<int64_t>(bh) * capacity * kHead;
   const half* kb = k_cache + cache_off;
   const half* vb = v_cache + cache_off;
+  uint4* ring = s_ring + warp * kStages * 2 * kStep * 16;
 
-  // kr: K[base + g][32 * blk + 8r ..]; vr: V[base + 2r + e][(i ? 64 : 0) + 8g ..] at vr[2 * e + i].
-  uint4 kr[4], vr[4], kn[4], vn[4];
-  auto load_step = [&](int base, uint4(&kd)[4], uint4(&vd)[4]) {
-    const int key = base + g;
+  // Copies the 8 key rows of K and of V from `base` into ring stage `stage`. Chunks are XOR-swizzled within
+  // their 128-byte line so the fragment reads below are free of bank conflicts: K by (row & 1) << 2, V by
+  // ((row >> 1) & 3) << 1. Rows past the context are zero-filled: uninitialized cache memory could hold NaN,
+  // and 0 * NaN = NaN.
+  auto issue = [&](int base, int stage) {
+    uint4* dk = ring + stage * 2 * kStep * 16;
+    uint4* dv = dk + kStep * 16;
 #pragma unroll
-    for (int blk = 0; blk < 4; ++blk) {
-      const half* src = kb + static_cast<int64_t>(key) * kHead + 32 * blk + 8 * r;
-      kd[blk] = key < t1 ? __ldg(reinterpret_cast<const uint4*>(src)) : make_uint4(0, 0, 0, 0);
-    }
-#pragma unroll
-    for (int e = 0; e < 2; ++e) {
-      const int row = base + 2 * r + e;
-#pragma unroll
-      for (int i = 0; i < 2; ++i) {
-        // Rows past the context are zero: uninitialized cache memory could hold NaN, and 0 * NaN = NaN.
-        vd[2 * e + i] = row < t1 ? __ldg(reinterpret_cast<const uint4*>(vb + static_cast<int64_t>(row) * kHead +
-                                                                        (i ? 64 : 0) + 8 * g))
-                                 : make_uint4(0, 0, 0, 0);
-      }
+    for (int j = 0; j < kStep * 16 / 32; ++j) {
+      const int c = lane + 32 * j, row = c >> 4, col = c & 15;
+      const bool ok = base + row < t1;
+      const int64_t src = static_cast<int64_t>(ok ? base + row : t0) * kHead + 8 * col;
+      CpAsync16(dk + row * 16 + (col ^ ((row & 1) << 2)), kb + src, ok);
+      CpAsync16(dv + row * 16 + (col ^ (((row >> 1) & 3) << 1)), vb + src, ok);
     }
   };
 
@@ -218,10 +245,34 @@ __global__ void __launch_bounds__(kThreads) GqaSplitDecodeKernel(const half* __r
   float m = -FLT_MAX, l = 0.f;  // running max of row g (same in the 4 lanes of the row), lane-partial sum
 
   constexpr int kWarpStride = kWarps * kStep;
-  int base = t0 + warp * kStep;
-  if (base < t1) load_step(base, kr, vr);
-  for (; base < t1; base += kWarpStride) {
-    if (base + kWarpStride < t1) load_step(base + kWarpStride, kn, vn);
+  const int base0 = t0 + warp * kStep;
+  // One commit group per step, empty past the end: once step i + kStages - 1 is committed,
+  // wait_group<kStages - 1> means step i has landed.
+#pragma unroll
+  for (int s = 0; s < kStages - 1; ++s) {
+    if (base0 + s * kWarpStride < t1) issue(base0 + s * kWarpStride, s);
+    CpAsyncCommit();
+  }
+  int stage = 0;
+  for (int base = base0; base < t1; base += kWarpStride) {
+    __syncwarp();  // every lane is done reading the stage refilled below
+    const int ahead = base + (kStages - 1) * kWarpStride;
+    if (ahead < t1) issue(ahead, stage == 0 ? kStages - 1 : stage - 1);
+    CpAsyncCommit();
+    CpAsyncWait<kStages - 1>();
+    __syncwarp();  // the step was copied by other lanes of the warp
+    // kr[blk] = K[g][32 * blk + 8r ..]; vr[2e + i] = V[2r + e][(i ? 64 : 0) + 8g ..].
+    uint4 kr[4], vr[4];
+    const uint4* sk = ring + stage * 2 * kStep * 16;
+    const uint4* sv = sk + kStep * 16;
+#pragma unroll
+    for (int blk = 0; blk < 4; ++blk) kr[blk] = sk[g * 16 + ((4 * blk + r) ^ ((g & 1) << 2))];
+#pragma unroll
+    for (int e = 0; e < 2; ++e) {
+#pragma unroll
+      for (int i = 0; i < 2; ++i) vr[2 * e + i] = sv[(2 * r + e) * 16 + ((8 * i + g) ^ (r << 1))];
+    }
+    stage = stage == kStages - 1 ? 0 : stage + 1;
 
     // Two accumulator chains halve the dependent mma latency.
     float s0 = 0.f, s1 = 0.f, s2 = 0.f, s3 = 0.f;
@@ -250,12 +301,8 @@ __global__ void __launch_bounds__(kThreads) GqaSplitDecodeKernel(const half* __r
       o[j][1] *= corr;
       MmaK8(o[j][0], o[j][1], pa, bv);
     }
-#pragma unroll
-    for (int i = 0; i < 4; ++i) {
-      kr[i] = kn[i];
-      vr[i] = vn[i];
-    }
   }
+  CpAsyncWait<0>();
   l += __shfl_xor_sync(0xffffffffu, l, 1);
   l += __shfl_xor_sync(0xffffffffu, l, 2);
 
@@ -264,7 +311,7 @@ __global__ void __launch_bounds__(kThreads) GqaSplitDecodeKernel(const half* __r
     s_m[warp][g] = m;
     s_l[warp][g] = l;
   }
-  __syncthreads();
+  __syncthreads();  // also: every warp is done with its ring, which s_red overwrites
   float m_all = -FLT_MAX;
 #pragma unroll
   for (int w = 0; w < kWarps; ++w) m_all = fmaxf(m_all, s_m[w][g]);
@@ -275,6 +322,27 @@ __global__ void __launch_bounds__(kThreads) GqaSplitDecodeKernel(const half* __r
     for (int e = 0; e < 2; ++e) s_red[warp][g][OutChannel(j, r, e)] = o[j][e] * f;
   }
   __syncthreads();
+
+  if (splits == 1) {
+    // The CTA saw every key: normalize and write the output, with no partial, counter or merge.
+    if (tid < kGroup) {
+      float ma = -FLT_MAX, la = 0.f;
+#pragma unroll
+      for (int w = 0; w < kWarps; ++w) ma = fmaxf(ma, s_m[w][tid]);
+#pragma unroll
+      for (int w = 0; w < kWarps; ++w) la += s_m[w][tid] == -FLT_MAX ? 0.f : s_l[w][tid] * __expf(s_m[w][tid] - ma);
+      s_inv[tid] = 1.f / la;
+    }
+    __syncthreads();
+    half* ob = out + static_cast<int64_t>(bh) * kGroup * kHead;
+    for (int i = tid; i < kGroup * kHead; i += kThreads) {
+      float acc = 0.f;
+#pragma unroll
+      for (int w = 0; w < kWarps; ++w) acc += (&s_red[w][0][0])[i];
+      ob[i] = __float2half(acc * s_inv[i / kHead]);
+    }
+    return;
+  }
 
   // Publish this split's partial result, then let the last CTA of (b, kvh) merge all splits.
   // partials per (b, kvh): outputs [max_splits][kGroup][kHead], then stats [max_splits][kGroup][2].
@@ -362,15 +430,48 @@ __global__ void __launch_bounds__(kThreads) GqaSplitDecodeKernel(const half* __r
 #endif
 }
 
+constexpr size_t RingBytes(int stages) { return sizeof(uint4) * kWarps * stages * 2 * kStep * 16; }
+
+// Ring depth for this device: 4 steps (128 KB) where the per-block opt-in shared memory allows it (sm_80,
+// sm_87, sm_90), else 3 (96 KB, within the 99 KB of sm_86, sm_89 and sm_120).
+int RingStages() {
+  int device = 0, optin = 0;
+  if (cudaGetDevice(&device) != cudaSuccess ||
+      cudaDeviceGetAttribute(&optin, cudaDevAttrMaxSharedMemoryPerBlockOptin, device) != cudaSuccess) {
+    return 3;
+  }
+  return optin >= static_cast<int>(RingBytes(4)) + 4096 ? 4 : 3;  // + the static shared variables
+}
+
+template <int kStages>
+Status Launch(cudaStream_t stream, dim3 grid, const half* q, const half* k_cache, const half* v_cache, half* output,
+              const int* total_seq_lens, float scale, int capacity, float* partials, unsigned int* counters) {
+  constexpr int kBytes = static_cast<int>(RingBytes(kStages));
+  static_assert(sizeof(float) * kWarps * kGroup * kHead <= kBytes, "s_red must fit in the ring");
+  ORT_RETURN_IF_ERROR(CUDA_CALL(
+      cudaFuncSetAttribute(GqaSplitDecodeKernel<kStages>, cudaFuncAttributeMaxDynamicSharedMemorySize, kBytes)));
+  GqaSplitDecodeKernel<kStages><<<grid, kThreads, kBytes, stream>>>(q, k_cache, v_cache, output, total_seq_lens,
+                                                                     scale, capacity, partials, counters);
+  return CUDA_CALL(cudaGetLastError());
+}
+
 }  // namespace
 
 int GqaSplitDecodeMaxSplits(int batch_size, int kv_num_heads, int capacity, int num_sms) {
-  // About kGqaSplitDecodeCtasPerSm CTAs per SM when the context is long, and no more splits than the
-  // buffer can ever use.
+  // One CTA per SM at a time. While the (batch, kv head) pairs fit in one wave, split them to fill it but not
+  // beyond: a second wave or a merge costs more than it saves. With more pairs than SMs, one split per pair
+  // unless the last wave would keep fewer than a third of the SMs busy (too few to saturate DRAM), in which
+  // case two splits even out the waves.
   const int heads = batch_size * kv_num_heads;
-  const int by_occupancy = (kGqaSplitDecodeCtasPerSm * num_sms + heads - 1) / heads;
+  int splits = 1;
+  if (heads <= num_sms) {
+    splits = num_sms / heads;
+  } else {
+    const int tail = heads % num_sms;
+    splits = tail != 0 && tail < num_sms / 3 ? 2 : 1;
+  }
   const int by_capacity = (capacity + kGqaSplitDecodeMinKeysPerSplit - 1) / kGqaSplitDecodeMinKeysPerSplit;
-  return std::max(1, std::min({kGqaSplitDecodeMaxSplits, by_occupancy, by_capacity}));
+  return std::max(1, std::min({kGqaSplitDecodeMaxSplits, splits, by_capacity}));
 }
 
 size_t GqaSplitDecodePartialsBytes(int batch_size, int kv_num_heads, int max_splits) {
@@ -396,10 +497,12 @@ Status LaunchGqaSplitDecodePrep(cudaStream_t stream, const half* packed_qkv, con
 Status LaunchGqaSplitDecode(cudaStream_t stream, const half* q, const half* k_cache, const half* v_cache, half* output,
                             const int* total_seq_lens, float scale, int batch_size, int kv_num_heads, int capacity,
                             int max_splits, float* partials, unsigned int* counters) {
-  GqaSplitDecodeKernel<<<dim3(kv_num_heads, max_splits, batch_size), kThreads, 0, stream>>>(
-      q, k_cache, v_cache, output, total_seq_lens, scale, capacity, partials, counters,
-      kGqaSplitDecodeMinKeysPerSplit);
-  return CUDA_CALL(cudaGetLastError());
+  const int stages = RingStages();
+  const dim3 grid(kv_num_heads, max_splits, batch_size);
+  return stages == 4 ? Launch<4>(stream, grid, q, k_cache, v_cache, output, total_seq_lens, scale, capacity, partials,
+                                 counters)
+                     : Launch<3>(stream, grid, q, k_cache, v_cache, output, total_seq_lens, scale, capacity, partials,
+                                 counters);
 }
 
 }  // namespace cuda
