@@ -16,7 +16,9 @@
 //     a CTA whose Q' does not fit fp16 (or is not finite) evaluates its query heads in fp32 instead (AttendRowFp32).
 //     Products below 2^-25 flush to zero, which moves a score by at most 2^-10 * scale (256 channels, |K| <= 128), so
 //     the dispatcher selects this kernel only for scale <= kInt8TcMaxScale;
-//   * the value scale is applied to the output once per CTA: O = (P V_int8) * value_scale.
+//   * the value scale is applied to the output once per CTA: O = (P V_int8) * value_scale; a CTA whose value_scale
+//     exceeds kInt8TcMaxValueScale (so that a probability flushed below 2^-40 by the fp16 probability tile could
+//     still move the scaled output) is also evaluated in fp32 by AttendRowFp32.
 // The gathered int8 rows stay int8 in shared memory (cp.async, double buffered, one tile ahead). A fragment read with
 // ldmatrix is converted to fp16 exactly in registers (1024 + (byte ^ 0x80) - 1152, "magic number" conversion) and
 // consumed by fp16 MMAs with fp32 accumulation, so the per-tile dequantization pass, its shared memory round trip and
@@ -50,9 +52,12 @@ constexpr int kIdxStages = 3;
 // The fp16 probability tile holds kInt8ProbScale * p for p in [0, 1]. Without the factor a candidate whose probability
 // is below 2^-25 rounds to zero although a large value scale can make its contribution matter; with it the flush point
 // drops to 2^-40 and the tile stays below the fp16 maximum. The PV accumulator carries the factor until the epilogue
-// removes it; the softmax denominator is accumulated in fp32 without it.
+// removes it; the softmax denominator is accumulated in fp32 without it. When any channel has
+// |value_scale| > kInt8TcMaxValueScale (so that |p * V * value_scale| for p <= 2^-40 can exceed 2^-17), the CTA takes
+// AttendRowFp32 instead.
 constexpr float kInt8ProbScale = 32768.0f;  // 2^15
 constexpr float kInt8ProbInverseScale = 1.0f / kInt8ProbScale;
+constexpr float kInt8TcMaxValueScale = 65536.0f;  // 2^16
 
 // Largest softmax scale served by the kernel below (the op validates it as finite and non-negative). Rounding
 // Q * key_scale to fp16 flushes products below 2^-25 to zero, which moves a dot product by at most
@@ -125,12 +130,14 @@ __device__ __forceinline__ void Int8x4ToHalf2Strided(uint32_t w, uint32_t& even,
 }
 
 // FP32 evaluation of the query heads of one (row, KV head), one warp per head and eight channels per lane, for rows
-// whose Q * key_scale leaves the FP16 range of the tensor-core path. Clipping there would break the cancellation
-// between large terms. `query` and `output` point at the first head of the group; `key_scale` and `value_scale` at the
-// KV head. The candidates [begin, end) of `row_indices` are consumed: all of them for prefill, the range of the CTA
-// for a decode split. With kSplitK the un-normalized partial (running maximum in the natural logarithm domain, running
-// sum, value-scaled accumulator) of block partial_block + head * split_count goes to partial_*, as the main path does;
-// otherwise the normalized result goes to output.
+// whose Q * key_scale leaves the FP16 range of the tensor-core path or whose value_scale exceeds kInt8TcMaxValueScale.
+// Clipping Q * key_scale would break the cancellation between large terms, and a larger value_scale can amplify
+// probabilities below the 2^-40 FP16 probability-tile flush boundary. `query` and `output` point at the first head of
+// the group; `key_scale` and `value_scale` at the KV head. The candidates [begin, end) of `row_indices` are consumed:
+// all of them for prefill, the range of the CTA for a decode split. With kSplitK the un-normalized partial (running
+// maximum in the natural logarithm domain, running sum, value-scaled accumulator) of block
+// partial_block + head * split_count goes to partial_*, as the main path does; otherwise the normalized result goes to
+// output.
 template <bool kSplitK>
 __device__ __noinline__ void AttendRowFp32(const __nv_bfloat16* __restrict__ query, const int8_t* __restrict__ key,
                                            const int8_t* __restrict__ value, const float* __restrict__ key_scale,
@@ -141,9 +148,11 @@ __device__ __noinline__ void AttendRowFp32(const __nv_bfloat16* __restrict__ que
                                            float* __restrict__ partial_sum, float* __restrict__ partial_output,
                                            int partial_block, int split_count, int warp, int lane) {
   float ks[8];
+  float vs[8];
 #pragma unroll
   for (int j = 0; j < 8; ++j) {
     ks[j] = key_scale[lane + j * 32];
+    vs[j] = value_scale[lane + j * 32];
   }
   for (int h = warp; h < group; h += kThreads / 32) {
     float q[8];
@@ -172,11 +181,17 @@ __device__ __noinline__ void AttendRowFp32(const __nv_bfloat16* __restrict__ que
       const float score = dot * scale;
       const float next_max = fmaxf(maximum, score);
       const float correction = expf(maximum - next_max);
-      const float probability = expf(score - next_max);
-      denominator = denominator * correction + probability;
+      const float diff = score - next_max;
+      // Shift by 2^80 before expf when diff < -80 so tiny probabilities that value_scale brings back into range
+      // do not underflow fp32 before multiplying by vs[j].
+      const bool shift_exp = diff < -80.0f;
+      const float probability = expf(shift_exp ? diff + 80.0f * 0.693147180559945309f : diff);
+      const float prob_unscale = shift_exp ? 0x1p-80f : 1.0f;
+      denominator = denominator * correction + (shift_exp ? 0.0f : probability);
 #pragma unroll
       for (int j = 0; j < 8; ++j) {
-        numerator[j] = numerator[j] * correction + probability * static_cast<float>(value[offset + j * 32]);
+        const float pv = probability * static_cast<float>(value[offset + j * 32]);
+        numerator[j] = numerator[j] * correction + pv * (vs[j] * prob_unscale);
       }
       maximum = next_max;
     }
@@ -189,14 +204,14 @@ __device__ __noinline__ void AttendRowFp32(const __nv_bfloat16* __restrict__ que
 #pragma unroll
       for (int j = 0; j < 8; ++j) {
         const int d = lane + j * 32;
-        partial_output[static_cast<int64_t>(block) * kHeadDim + d] = numerator[j] * value_scale[d];
+        partial_output[static_cast<int64_t>(block) * kHeadDim + d] = numerator[j];
       }
     } else {
       const float inverse = denominator == 0.0f ? 0.0f : 1.0f / denominator;
 #pragma unroll
       for (int j = 0; j < 8; ++j) {
         const int d = lane + j * 32;
-        output[static_cast<int64_t>(h) * kHeadDim + d] = __float2bfloat16_rn(numerator[j] * inverse * value_scale[d]);
+        output[static_cast<int64_t>(h) * kHeadDim + d] = __float2bfloat16_rn(numerator[j] * inverse);
       }
     }
   }
@@ -281,15 +296,20 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionInt8TcKerne
   }
 
   // Q' = Q * key_scale as fp16; the padding rows are zero so their (ignored) scores stay finite. A row whose Q' does
-  // not fit fp16 (including inf / NaN) is evaluated in fp32 by the whole CTA instead. Underflow to fp16 subnormals
-  // changes a product by at most 2^-25, i.e. a score by at most 2^-10 * scale, which the dispatcher keeps at the level
-  // of the fp16 rounding by requiring scale <= kInt8TcMaxScale.
+  // not fit fp16 (including inf / NaN) or whose value_scale exceeds kInt8TcMaxValueScale is evaluated in fp32 by the
+  // whole CTA instead. Underflow to fp16 subnormals changes a product by at most 2^-25, i.e. a score by at most
+  // 2^-10 * scale, which the dispatcher keeps at the level of the fp16 rounding by requiring scale <= kInt8TcMaxScale.
   const __nv_bfloat16* query_group = query + (static_cast<int64_t>(row) * num_heads + kv_head * group) * kHeadDim;
   bool needs_fp32 = false;
   {
     const int chunk = tid & 31;
     const float4 k0 = *reinterpret_cast<const float4*>(key_scale + kv_head * kHeadDim + chunk * 8);
     const float4 k1 = *reinterpret_cast<const float4*>(key_scale + kv_head * kHeadDim + chunk * 8 + 4);
+    if (tid < kHeadDim / 4) {
+      const float4 v = *reinterpret_cast<const float4*>(value_scale + kv_head * kHeadDim + tid * 4);
+      needs_fp32 = !(fabsf(v.x) <= kInt8TcMaxValueScale) || !(fabsf(v.y) <= kInt8TcMaxValueScale) ||
+                   !(fabsf(v.z) <= kInt8TcMaxValueScale) || !(fabsf(v.w) <= kInt8TcMaxValueScale);
+    }
     auto to_half2 = [&needs_fp32](float x, float y) {
       needs_fp32 |= !(fabsf(x) <= 65504.0f) || !(fabsf(y) <= 65504.0f);
       return __floats2half2_rn(x, y);

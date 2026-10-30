@@ -851,19 +851,21 @@ DynamicSparseAttentionCase MakeTwoCandidateInt8Case(const TwoCandidateInt8Spec& 
 }
 
 // Every row but the first outputs `expected` on every channel. Prefill (9 rows per batch) and decode (3 rows) run
-// with the tensor-core INT8 kernels enabled.
+// with the tensor-core INT8 kernels both disabled (reference fallback) and enabled.
 void RunTwoCandidateInt8Case(const TwoCandidateInt8Spec& spec, float expected) {
   for (bool decode : {false, true}) {
-    SCOPED_TRACE(decode ? "decode" : "prefill");
     const auto c = MakeTwoCandidateInt8Case(spec, 12, decode ? 3 : 9);
     for (size_t i = 0; i < c.expected_output.size(); i += c.head_size) {
       const size_t row = i / (c.num_heads * c.head_size);
-      ASSERT_NEAR(c.expected_output[i], row == 0 ? 0.0f : expected, 1e-6f);
+      ASSERT_NEAR(c.expected_output[i], row == 0 ? 0.0f : expected, 1e-6f * std::max(1.0f, std::fabs(expected)));
     }
-    RunDynamicSparseAttentionCase<BFloat16, int8_t>(c, DefaultCudaExecutionProvider(),
-                                                    OpTester::ExpectResult::kExpectSuccess, "",
-                                                    decode ? DecodeKernelConfigs("1") : PrefillKernelConfigs("1", "1"));
-    if (::testing::Test::HasFailure()) return;
+    for (const char* int8_tc : {"0", "1"}) {
+      SCOPED_TRACE(std::string(decode ? "decode" : "prefill") + ", int8_tc=" + int8_tc);
+      RunDynamicSparseAttentionCase<BFloat16, int8_t>(
+          c, DefaultCudaExecutionProvider(), OpTester::ExpectResult::kExpectSuccess, "",
+          decode ? DecodeKernelConfigs(int8_tc) : PrefillKernelConfigs("1", int8_tc));
+      if (::testing::Test::HasFailure()) return;
+    }
   }
 }
 
@@ -886,22 +888,55 @@ TEST(DynamicSparseAttentionTest, Int8TensorCoreLargeSoftmaxScale_CUDA) {
 }
 
 // The tensor-core INT8 kernels pass the softmax probabilities to the PV mma as fp16 holding 2^15 * p (the factor leaves
-// in the epilogue), so a candidate keeps its contribution down to p = 2^-40 where plain fp16 flushes p below 2^-25. The
-// second candidate has probability e^-20 (score 320 * -1 / 16) and is the only one with a non-zero value, whose scale is
-// 2^28: the output is 2^28 * e^-20 / (1 + e^-20), not zero. The expected value is below 1, where the BF16 spacing is
-// smaller than the output tolerance.
+// in the epilogue), so a candidate keeps its contribution down to p = 2^-40 where plain fp16 flushes p below 2^-25;
+// when value_scale > 2^16 (kInt8TcMaxValueScale), the CTA evaluates the row/split in fp32 (AttendRowFp32) so that
+// probabilities below 2^-40 amplified by arbitrarily large finite value scales are preserved as well:
+//   1. query = 288 -> score -18, p = e^-18 ~= 2^-25.97 (flushes in unscaled fp16, kept by 2^15 * p on the TC path with
+//      value_scale = 2^16 <= kInt8TcMaxValueScale and value code 100);
+//   2. query = 320 -> score -20, p = e^-20 ~= 2^-28.85, value_scale = 2^28;
+//   3. query = 480 -> score -30, p = e^-30 ~= 2^-43.28 (flushes even 2^15 * p in fp16), value_scale = 2^60, output
+//      2^60 * e^-30 / (1 + e^-30) ~= 107886.05 via the AttendRowFp32 fallback.
 TEST(DynamicSparseAttentionTest, Int8TensorCoreTinyProbabilityLargeValueScale_CUDA) {
   if (!DefaultCudaExecutionProvider()) GTEST_SKIP() << "CUDA EP not available.";
   if (!CudaHasBF16Support()) GTEST_SKIP() << "CUDA device does not support BFloat16.";
-  TwoCandidateInt8Spec spec{};
-  spec.query = 320.0f;
-  spec.key_scale = 1.0f;
-  spec.value_scale = 0x1p28f;
-  spec.scale = 0.0625f;
-  spec.key_codes[1] = -1.0f;
-  spec.value_codes[1] = 1.0f;
-  const double tail = std::exp(-20.0);
-  RunTwoCandidateInt8Case(spec, static_cast<float>(0x1p28 * tail / (1.0 + tail)));
+  {
+    SCOPED_TRACE("tc_prob_scale_2p16");
+    TwoCandidateInt8Spec spec{};
+    spec.query = 288.0f;
+    spec.key_scale = 1.0f;
+    spec.value_scale = 0x1p16f;
+    spec.scale = 0.0625f;
+    spec.key_codes[1] = -1.0f;
+    spec.value_codes[1] = 100.0f;
+    const double tail = std::exp(-18.0);
+    RunTwoCandidateInt8Case(spec, static_cast<float>(100.0 * 0x1p16 * tail / (1.0 + tail)));
+    if (::testing::Test::HasFailure()) return;
+  }
+  {
+    SCOPED_TRACE("fp32_fallback_2p28");
+    TwoCandidateInt8Spec spec{};
+    spec.query = 320.0f;
+    spec.key_scale = 1.0f;
+    spec.value_scale = 0x1p28f;
+    spec.scale = 0.0625f;
+    spec.key_codes[1] = -1.0f;
+    spec.value_codes[1] = 1.0f;
+    const double tail = std::exp(-20.0);
+    RunTwoCandidateInt8Case(spec, static_cast<float>(0x1p28 * tail / (1.0 + tail)));
+    if (::testing::Test::HasFailure()) return;
+  }
+  {
+    SCOPED_TRACE("fp32_fallback_2p60");
+    TwoCandidateInt8Spec spec{};
+    spec.query = 480.0f;
+    spec.key_scale = 1.0f;
+    spec.value_scale = 0x1p60f;
+    spec.scale = 0.0625f;
+    spec.key_codes[1] = -1.0f;
+    spec.value_codes[1] = 1.0f;
+    const double tail = std::exp(-30.0);
+    RunTwoCandidateInt8Case(spec, static_cast<float>(0x1p60 * tail / (1.0 + tail)));
+  }
 }
 
 // Explicit ep.cuda.* entries take precedence over the environment, which is consulted only when no entry is set; an
