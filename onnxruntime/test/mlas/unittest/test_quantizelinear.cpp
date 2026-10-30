@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cstring>
+
 #include "test_util.h"
 
 template <typename QuantInt>
@@ -181,6 +183,76 @@ class MlasQuantizeLinear4BitTest : public MlasTestBase {
   }
 };
 
+template <typename QuantInt>
+class MlasQuantizeDequantizeLinearTest : public MlasTestBase {
+ private:
+  MatrixGuardBuffer<float> BufferInput;
+  MatrixGuardBuffer<float> BufferOutput;
+  MatrixGuardBuffer<float> BufferOutputReference;
+  MatrixGuardBuffer<QuantInt> BufferQuantized;
+
+  void Test(size_t N) {
+    float* Input = BufferInput.GetBuffer(N);
+    float* Output = BufferOutput.GetBuffer(N);
+    float* OutputReference = BufferOutputReference.GetBuffer(N);
+    QuantInt* Quantized = BufferQuantized.GetBuffer(N);
+
+    std::default_random_engine generator(static_cast<unsigned>(N));
+    const float Scale = std::uniform_real_distribution<float>(1e-4f, 1e-2f)(generator);
+    std::uniform_int_distribution<int32_t> zp_distribution(std::numeric_limits<QuantInt>::min(),
+                                                           std::numeric_limits<QuantInt>::max());
+    const QuantInt ZeroPoint = static_cast<QuantInt>(zp_distribution(generator));
+
+    // Values well past both saturation limits, rounding ties, and non-finite / signed-zero inputs.
+    const float Range = 70000.0f * Scale;
+    std::uniform_real_distribution<float> distribution(-Range, Range);
+    std::uniform_int_distribution<int32_t> tie_distribution(-40000, 40000);
+    const float Specials[] = {std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::infinity(),
+                              -std::numeric_limits<float>::infinity(), -0.0f, 0.0f, -0.4f * Scale};
+    for (size_t n = 0; n < N; n++) {
+      switch (n % 8) {
+        case 3:
+          Input[n] = (static_cast<float>(tie_distribution(generator)) + 0.5f) * Scale;
+          break;
+        case 5:
+          Input[n] = Specials[(n / 8) % (sizeof(Specials) / sizeof(Specials[0]))];
+          break;
+        default:
+          Input[n] = distribution(generator);
+      }
+    }
+
+    MlasQuantizeLinear(Input, Quantized, N, Scale, ZeroPoint);
+    for (size_t n = 0; n < N; n++) {
+      OutputReference[n] = static_cast<float>(static_cast<int32_t>(Quantized[n]) - static_cast<int32_t>(ZeroPoint)) *
+                           Scale;
+    }
+    MlasQuantizeDequantizeLinear(Input, Output, N, Scale, ZeroPoint);
+
+    for (size_t n = 0; n < N; n++) {
+      ASSERT_EQ(std::memcmp(&Output[n], &OutputReference[n], sizeof(float)), 0)
+          << "size=" << N << ", index=" << n << ", input=" << Input[n] << ", output=" << Output[n]
+          << ", expected=" << OutputReference[n];
+    }
+  }
+
+ public:
+  static const char* GetTestSuiteName() {
+    if constexpr (std::is_same_v<QuantInt, int16_t>) {
+      return "QuantizeDequantizeLinearS16";
+    } else {
+      return "QuantizeDequantizeLinearU16";
+    }
+  }
+
+  void ExecuteShort(void) override {
+    for (size_t n = 1; n <= 512; n++) {
+      Test(n);
+    }
+    Test(4099);
+  }
+};
+
 static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_execute) {
   size_t count = 0;
   if (is_short_execute) {
@@ -190,6 +262,8 @@ static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_exe
     count += MlasDirectShortExecuteTests<MlasQuantizeLinearTest<uint16_t>>::RegisterShortExecute();
     count += MlasDirectShortExecuteTests<MlasQuantizeLinear4BitTest<false>>::RegisterShortExecute();
     count += MlasDirectShortExecuteTests<MlasQuantizeLinear4BitTest<true>>::RegisterShortExecute();
+    count += MlasDirectShortExecuteTests<MlasQuantizeDequantizeLinearTest<int16_t>>::RegisterShortExecute();
+    count += MlasDirectShortExecuteTests<MlasQuantizeDequantizeLinearTest<uint16_t>>::RegisterShortExecute();
   }
   return count;
 });

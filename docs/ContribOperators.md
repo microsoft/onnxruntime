@@ -110,6 +110,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.QOrderedLongformerAttention">com.microsoft.QOrderedLongformerAttention</a>
   * <a href="#com.microsoft.QOrderedMatMul">com.microsoft.QOrderedMatMul</a>
   * <a href="#com.microsoft.QuantizeBFP">com.microsoft.QuantizeBFP</a>
+  * <a href="#com.microsoft.QuantizeDequantizeLinear">com.microsoft.QuantizeDequantizeLinear</a>
   * <a href="#com.microsoft.QuantizeLinear">com.microsoft.QuantizeLinear</a>
   * <a href="#com.microsoft.QuantizeWithOrder">com.microsoft.QuantizeWithOrder</a>
   * <a href="#com.microsoft.QuickGelu">com.microsoft.QuickGelu</a>
@@ -7036,6 +7037,46 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain y to uint8.</dd>
 <dt><tt>T3</tt> : tensor(int64)</dt>
 <dd>Constrain shape and strides to uint64.</dd>
+</dl>
+
+
+### <a name="com.microsoft.QuantizeDequantizeLinear"></a><a name="com.microsoft.quantizedequantizelinear">**com.microsoft.QuantizeDequantizeLinear**</a>
+
+  Computes DequantizeLinear(QuantizeLinear(x, y_scale, y_zero_point), y_scale, y_zero_point) with per-tensor
+  quantization parameters: y = (saturate(round(x / y_scale) + y_zero_point) - y_zero_point) * y_scale, where round is
+  round half to even and saturate clamps to the range of the zero point type. The quantized tensor is not materialized.
+  The CPU EP graph optimizer creates this operator from a QuantizeLinear whose output reaches only DequantizeLinear
+  nodes with the same scale and zero point, directly or through data-movement ops such as Transpose or Reshape.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs
+
+<dl>
+<dt><tt>x</tt> : T1</dt>
+<dd>N-D full precision input tensor.</dd>
+<dt><tt>y_scale</tt> : T1</dt>
+<dd>Scalar quantization scale.</dd>
+<dt><tt>y_zero_point</tt> : T2</dt>
+<dd>Scalar quantization zero point. Its type is the quantized type.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>y</tt> : T1</dt>
+<dd>N-D full precision output tensor with the same shape as 'x'.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T1</tt> : tensor(float)</dt>
+<dd>Constrain 'x', 'y_scale' and 'y' to float tensors.</dd>
+<dt><tt>T2</tt> : tensor(int16), tensor(uint16)</dt>
+<dd>Constrain 'y_zero_point' to 16-bit integer tensors.</dd>
 </dl>
 
 

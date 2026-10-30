@@ -1448,6 +1448,22 @@ MlasQuantizeLinear(
     OutputType ZeroPoint
     );
 
+//
+// QuantizeLinear followed by DequantizeLinear with the same per-tensor parameters, for 16-bit QuantType.
+// Bitwise equal to MlasQuantizeLinear over the same range followed by (Quantized - ZeroPoint) * Scale.
+//
+
+template<typename QuantType>
+void
+MLASCALL
+MlasQuantizeDequantizeLinear(
+    const float* Input,
+    float* Output,
+    size_t N,
+    float Scale,
+    QuantType ZeroPoint
+    );
+
 void
 MLASCALL
 MlasQuantizeLinearU4(
