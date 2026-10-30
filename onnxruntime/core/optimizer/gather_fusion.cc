@@ -334,6 +334,61 @@ Status GatherToSliceFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
       continue;
     }
 
+    // skip fusion when a negative step range has a negative limit
+    // range and slice handle negative end indices differently for negative-step ranges
+    const auto& range_inputs = node.InputDefs();
+    if (range_inputs.size() != 3) {
+      continue;
+    }
+    auto get_constant_integer = [&](const NodeArg& arg, int64_t& value) -> bool {
+      if (!optimizer_utils::IsScalar(arg)) {
+        return false;
+      }
+
+      const auto* tensor_proto =
+          graph_utils::GetConstantInitializer(graph, arg.Name());
+      if (tensor_proto == nullptr) {
+        return false;
+      }
+
+      Initializer init_const{graph, *tensor_proto, graph.ModelPath()};
+      if (init_const.size() < 1) {
+        return false;
+      }
+
+      if (tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto::INT32) {
+        value = static_cast<int64_t>(*init_const.data<int32_t>());
+        return true;
+      }
+
+      if (tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto::INT64) {
+        value = *init_const.data<int64_t>();
+        return true;
+      }
+
+      return false;
+    };
+
+    int64_t delta = 0;
+    int64_t limit = 0;
+
+    const bool has_constant_delta =
+        get_constant_integer(*range_inputs[2], delta);
+
+    if (!has_constant_delta) {
+      continue;
+    }
+
+    // Non-negative steps are not affected by this negative-step issue.
+    if (delta < 0) {
+      const bool has_constant_limit =
+          get_constant_integer(*range_inputs[1], limit);
+
+      if (!has_constant_limit || limit < 0) {
+        continue;
+      }
+    }
+
     InlinedVector<std::reference_wrapper<Node>> nodes_to_fuse{node, gather_node};
 
     auto& range_input_defs = node.MutableInputDefs();
