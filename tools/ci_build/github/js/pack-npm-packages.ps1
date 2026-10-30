@@ -62,6 +62,17 @@ Function Generate-Package-Version-Number {
     return @{ version = $version_number; commit = $version_commit }
 }
 
+Function Pack-Target {
+    if ($TARGET -eq "node" -and $env:ORT_NODE_SPLIT_PACKAGES -eq "1") {
+        npm run prepack
+        if ($LASTEXITCODE -ne 0) { throw "Node prepack failed" }
+        node ./script/pack-platforms.js
+        if ($LASTEXITCODE -ne 0) { throw "Node platform packaging failed" }
+    } else {
+        npm pack
+    }
+}
+
 $JS_COMMON_DIR=Join-Path -Path "$ORT_ROOT" -ChildPath "js/common"
 $JS_TARGET_DIR=Join-Path -Path "$ORT_ROOT" -ChildPath "js/$TARGET"
 
@@ -184,7 +195,7 @@ if ($MODE -eq "dev") {
     npm run format
     popd
 
-    npm pack
+    Pack-Target
     popd
 } elseif ($MODE -eq "release") {
     # release mode. always publish new package
@@ -192,7 +203,7 @@ if ($MODE -eq "dev") {
     npm pack
     popd
     pushd $JS_TARGET_DIR
-    npm pack
+    Pack-Target
     popd
 } else {
     # release candidate mode or custom mode. always publish new package
@@ -219,6 +230,6 @@ if ($MODE -eq "dev") {
     npm run format
     popd
 
-    npm pack
+    Pack-Target
     popd
 }
