@@ -241,6 +241,9 @@ class CUDA_ONNX_OP_TYPED_CLASS_NAME(1, float_float_MLFloat16, SimplifiedLayerNor
 class CUDA_ONNX_OP_TYPED_CLASS_NAME(1, MLFloat16_float_float, SimplifiedLayerNormalization);
 class CUDA_ONNX_OP_TYPED_CLASS_NAME(1, BFloat16_float_BFloat16, SimplifiedLayerNormalization);
 class CUDA_MS_OP_CLASS_NAME(1, Inverse);
+#if CUDART_VERSION >= 13000
+class CUDA_MS_OP_CLASS_NAME(1, UnitLowerTriangularSolve);
+#endif
 class CUDA_MS_OP_CLASS_NAME(1, MatMulBlockQuantizedFp4Weight);
 #if !defined(DISABLE_FLOAT8_TYPES)
 class CUDA_MS_OP_CLASS_NAME(1, MatMulBlockQuantizedFp8Weight);
@@ -614,6 +617,9 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_ONNX_OP_TYPED_CLASS_NAME(1, MLFloat16_float_float, SimplifiedLayerNormalization)>,
       BuildKernelCreateInfo<CUDA_ONNX_OP_TYPED_CLASS_NAME(1, BFloat16_float_BFloat16, SimplifiedLayerNormalization)>,
       BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, Inverse)>,
+#if CUDART_VERSION >= 13000
+      BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, UnitLowerTriangularSolve)>,
+#endif
       BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, MatMulBlockQuantizedFp4Weight)>,
 #if !defined(DISABLE_FLOAT8_TYPES)
       BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, MatMulBlockQuantizedFp8Weight)>,
