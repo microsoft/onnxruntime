@@ -49,7 +49,7 @@ ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtApi_ExperimentalApiTest, _Out_ int64_t
  * Graph initializer and Constant output names must be unique; duplicates are rejected before graph construction.
  * A zero count installs an empty registry; missing sources still fail without path fallback.
  * The registry is retained when loading session options from model metadata.
- * Tensor ranges are privately mapped without reopening or canonicalizing file paths.
+ * Tensor ranges are loaded or mapped from the registered handles without resolving or canonicalizing file paths.
  * Subgraph checking does not inline mapped initializer payloads.
  * Small tensors may be inlined; unaligned numeric ranges and BOOL tensors are copied into owned storage.
  * BOOL elements are normalized to zero or one.
