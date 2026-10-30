@@ -4311,6 +4311,7 @@ ORT_API(const OrtMemoryInfo*, OrtApis::EpDevice_MemoryInfo, _In_ const OrtEpDevi
 }
 
 ORT_API_STATUS_IMPL(OrtApis::EpDevice_GetMemoryCapacity, _In_ const OrtEpDevice* ep_device,
+                    _In_ OrtDeviceMemoryType memory_type,
                     _Out_ uint64_t* total_memory_bytes, _Out_ uint64_t* available_memory_bytes) {
   API_IMPL_BEGIN
   ORT_API_RETURN_IF(ep_device == nullptr, ORT_INVALID_ARGUMENT, "ep_device must not be null");
@@ -4327,7 +4328,7 @@ ORT_API_STATUS_IMPL(OrtApis::EpDevice_GetMemoryCapacity, _In_ const OrtEpDevice*
 
   uint64_t total{};
   uint64_t available{};
-  OrtStatus* status = factory->GetDeviceMemoryCapacity(factory, ep_device, &total, &available);
+  OrtStatus* status = factory->GetDeviceMemoryCapacity(factory, ep_device, memory_type, &total, &available);
   if (status != nullptr) {
     return status;
   }

@@ -66,6 +66,7 @@ class ProviderBridgeEpFactory : public EpFactoryInternalImpl {
   }
 
   OrtStatus* GetDeviceMemoryCapacity(const OrtEpDevice* ep_device,
+                                     OrtDeviceMemoryType memory_type,
                                      uint64_t* total_memory_bytes,
                                      uint64_t* available_memory_bytes) noexcept override {
     if (ep_factory_.ort_version_supported < 32 ||
@@ -74,7 +75,7 @@ class ProviderBridgeEpFactory : public EpFactoryInternalImpl {
                                    "GetDeviceMemoryCapacity is not implemented for this EP factory.");
     }
     return ep_factory_.GetDeviceMemoryCapacity(
-        &ep_factory_, ep_device, total_memory_bytes, available_memory_bytes);
+        &ep_factory_, ep_device, memory_type, total_memory_bytes, available_memory_bytes);
   }
 
   OrtStatus* CreateExternalResourceImporterForDevice(

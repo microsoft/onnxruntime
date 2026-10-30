@@ -101,6 +101,7 @@ class CudaEpFactory : public OrtEpFactory {
   static OrtStatus* ORT_API_CALL GetDeviceMemoryCapacityImpl(
       OrtEpFactory* this_ptr,
       const OrtEpDevice* ep_device,
+      OrtDeviceMemoryType memory_type,
       uint64_t* total_memory_bytes,
       uint64_t* available_memory_bytes) noexcept;
 

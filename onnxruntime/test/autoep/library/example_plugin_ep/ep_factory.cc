@@ -179,8 +179,13 @@ const char* ORT_API_CALL ExampleEpFactory::GetVersionImpl(const OrtEpFactory* th
 
 /*static*/
 OrtStatus* ORT_API_CALL ExampleEpFactory::GetDeviceMemoryCapacityImpl(
-    OrtEpFactory* /*this_ptr*/, const OrtEpDevice* /*ep_device*/,
+    OrtEpFactory* this_ptr, const OrtEpDevice* /*ep_device*/,
+    OrtDeviceMemoryType memory_type,
     uint64_t* total_memory_bytes, uint64_t* available_memory_bytes) noexcept {
+  if (memory_type != OrtDeviceMemoryType_DEFAULT) {
+    return static_cast<ExampleEpFactory*>(this_ptr)->ort_api.CreateStatus(
+        ORT_NOT_IMPLEMENTED, "Memory capacity queries support only device memory (DEFAULT)");
+  }
   *total_memory_bytes = 16ULL * 1024 * 1024 * 1024;
   *available_memory_bytes = 12ULL * 1024 * 1024 * 1024;
   return nullptr;

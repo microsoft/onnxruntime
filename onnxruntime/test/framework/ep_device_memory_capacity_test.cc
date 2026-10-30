@@ -82,7 +82,8 @@ TEST(EpDeviceMemoryCapacityTest, CudaCapacityPreservesContext) {
       ASSERT_EQ(cuCtxSetCurrent(current_context), CUDA_SUCCESS);
       uint64_t total = 0;
       uint64_t available = 0;
-      ASSERT_ORTSTATUS_OK(Ort::GetApi().EpDevice_GetMemoryCapacity(device, &total, &available));
+      ASSERT_ORTSTATUS_OK(Ort::GetApi().EpDevice_GetMemoryCapacity(
+          device, OrtDeviceMemoryType_DEFAULT, &total, &available));
       CUcontext after = nullptr;
       ASSERT_EQ(cuCtxGetCurrent(&after), CUDA_SUCCESS);
       EXPECT_EQ(after, current_context);
@@ -94,6 +95,25 @@ TEST(EpDeviceMemoryCapacityTest, CudaCapacityPreservesContext) {
       EXPECT_EQ(after, current_context);
       EXPECT_EQ(capacity.first, static_cast<uint64_t>(expected_total));
       EXPECT_LE(capacity.second, capacity.first);
+
+      total = 7;
+      available = 11;
+      Ort::Status unsupported_status{Ort::GetApi().EpDevice_GetMemoryCapacity(
+          device, OrtDeviceMemoryType_HOST_ACCESSIBLE, &total, &available)};
+      EXPECT_EQ(unsupported_status.GetErrorCode(), ORT_NOT_IMPLEMENTED);
+      EXPECT_EQ(total, 7u);
+      EXPECT_EQ(available, 11u);
+      ASSERT_EQ(cuCtxGetCurrent(&after), CUDA_SUCCESS);
+      EXPECT_EQ(after, current_context);
+
+      try {
+        device.GetMemoryCapacity(OrtDeviceMemoryType_HOST_ACCESSIBLE);
+        ADD_FAILURE() << "Expected an unsupported memory type to throw";
+      } catch (const Ort::Exception& exception) {
+        EXPECT_EQ(exception.GetOrtErrorCode(), ORT_NOT_IMPLEMENTED);
+      }
+      ASSERT_EQ(cuCtxGetCurrent(&after), CUDA_SUCCESS);
+      EXPECT_EQ(after, current_context);
     }
     ++tested;
   }

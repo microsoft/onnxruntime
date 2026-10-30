@@ -295,7 +295,13 @@ TEST(OrtEpLibrary, LoadUnloadPluginLibrary) {
   uint64_t total_memory_bytes = 0;
   uint64_t available_memory_bytes = 0;
   ASSERT_ORTSTATUS_OK(c_api->EpDevice_GetMemoryCapacity(
-      test_ep_device, &total_memory_bytes, &available_memory_bytes));
+      test_ep_device, OrtDeviceMemoryType_DEFAULT, &total_memory_bytes, &available_memory_bytes));
+  EXPECT_EQ(total_memory_bytes, 16ULL * 1024 * 1024 * 1024);
+  EXPECT_EQ(available_memory_bytes, 12ULL * 1024 * 1024 * 1024);
+
+  Ort::Status unsupported_status{c_api->EpDevice_GetMemoryCapacity(
+      test_ep_device, OrtDeviceMemoryType_HOST_ACCESSIBLE, &total_memory_bytes, &available_memory_bytes)};
+  EXPECT_EQ(unsupported_status.GetErrorCode(), ORT_NOT_IMPLEMENTED);
   EXPECT_EQ(total_memory_bytes, 16ULL * 1024 * 1024 * 1024);
   EXPECT_EQ(available_memory_bytes, 12ULL * 1024 * 1024 * 1024);
 
@@ -324,6 +330,16 @@ TEST(OrtEpLibrary, LoadUnloadPluginLibraryCxxApi) {
   const auto [total_memory_bytes, available_memory_bytes] = test_ep_device->GetMemoryCapacity();
   EXPECT_EQ(total_memory_bytes, 16ULL * 1024 * 1024 * 1024);
   EXPECT_EQ(available_memory_bytes, 12ULL * 1024 * 1024 * 1024);
+
+  const auto explicit_capacity = test_ep_device->GetMemoryCapacity(OrtDeviceMemoryType_DEFAULT);
+  EXPECT_EQ(explicit_capacity.first, total_memory_bytes);
+  EXPECT_EQ(explicit_capacity.second, available_memory_bytes);
+  try {
+    test_ep_device->GetMemoryCapacity(OrtDeviceMemoryType_HOST_ACCESSIBLE);
+    ADD_FAILURE() << "Expected an unsupported memory type to throw";
+  } catch (const Ort::Exception& exception) {
+    EXPECT_EQ(exception.GetOrtErrorCode(), ORT_NOT_IMPLEMENTED);
+  }
 
   // test all the C++ getters.
   // expected values are from \onnxruntime\test\autoep\library\example_plugin_ep\*.cc
@@ -386,7 +402,7 @@ TEST(OrtEpLibrary, UnsupportedMemoryCapacityQueryPreservesOutputs) {
   uint64_t total_memory_bytes = 7;
   uint64_t available_memory_bytes = 11;
   Ort::Status status{Ort::GetApi().EpDevice_GetMemoryCapacity(
-      *test_ep_device, &total_memory_bytes, &available_memory_bytes)};
+      *test_ep_device, OrtDeviceMemoryType_DEFAULT, &total_memory_bytes, &available_memory_bytes)};
   EXPECT_EQ(status.GetErrorCode(), ORT_NOT_IMPLEMENTED);
   EXPECT_EQ(total_memory_bytes, 7u);
   EXPECT_EQ(available_memory_bytes, 11u);

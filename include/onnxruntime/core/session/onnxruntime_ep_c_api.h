@@ -3324,6 +3324,8 @@ struct OrtEpFactory {
    *
    * This function is optional. Implementations must query the device when called because available
    * memory is dynamic. If the query is unsupported, leave this callback null or return ORT_NOT_IMPLEMENTED.
+   * Report capacity only for the selected memory type, without aggregating memory types. Return
+   * ORT_NOT_IMPLEMENTED for memory types whose capacity cannot be queried by this provider.
    * Total memory must be the device-global capacity exposed for this device, not a per-process or
    * per-context allocation budget. For partitioned or virtual devices, report the exposed device's
    * capacity, not the entire physical board's capacity. Available memory is a current free-memory
@@ -3334,6 +3336,7 @@ struct OrtEpFactory {
    *
    * \param[in] this_ptr The OrtEpFactory instance.
    * \param[in] ep_device The OrtEpDevice instance to query.
+   * \param[in] memory_type The memory type to query: DEFAULT or HOST_ACCESSIBLE.
    * \param[out] total_memory_bytes The device-global memory capacity in bytes.
    * \param[out] available_memory_bytes The current free device memory estimate in bytes.
    *
@@ -3343,6 +3346,7 @@ struct OrtEpFactory {
    */
   ORT_API2_STATUS(GetDeviceMemoryCapacity, _In_ OrtEpFactory* this_ptr,
                   _In_ const OrtEpDevice* ep_device,
+                  _In_ OrtDeviceMemoryType memory_type,
                   _Out_ uint64_t* total_memory_bytes, _Out_ uint64_t* available_memory_bytes);
 };
 

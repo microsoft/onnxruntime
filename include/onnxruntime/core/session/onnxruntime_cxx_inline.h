@@ -764,10 +764,11 @@ inline SyncStream EpDeviceImpl<T>::CreateSyncStream(ConstKeyValuePairs stream_op
 }
 
 template <typename T>
-inline std::pair<uint64_t, uint64_t> EpDeviceImpl<T>::GetMemoryCapacity() const {
+inline std::pair<uint64_t, uint64_t> EpDeviceImpl<T>::GetMemoryCapacity(OrtDeviceMemoryType memory_type) const {
   uint64_t total_memory_bytes{};
   uint64_t available_memory_bytes{};
-  ThrowOnError(GetApi().EpDevice_GetMemoryCapacity(this->p_, &total_memory_bytes, &available_memory_bytes));
+  ThrowOnError(GetApi().EpDevice_GetMemoryCapacity(this->p_, memory_type,
+                                                   &total_memory_bytes, &available_memory_bytes));
   return {total_memory_bytes, available_memory_bytes};
 }
 }  // namespace detail

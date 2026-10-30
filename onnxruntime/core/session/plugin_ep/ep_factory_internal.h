@@ -81,9 +81,10 @@ class EpFactoryInternal : public OrtEpFactory {
   }
 
   OrtStatus* GetDeviceMemoryCapacity(_In_ const OrtEpDevice* ep_device,
+                                     _In_ OrtDeviceMemoryType memory_type,
                                      _Out_ uint64_t* total_memory_bytes,
                                      _Out_ uint64_t* available_memory_bytes) noexcept {
-    return impl_->GetDeviceMemoryCapacity(ep_device, total_memory_bytes, available_memory_bytes);
+    return impl_->GetDeviceMemoryCapacity(ep_device, memory_type, total_memory_bytes, available_memory_bytes);
   }
 
   OrtStatus* ValidateCompiledModelCompatibilityInfo(_In_reads_(num_devices) const OrtHardwareDevice* const* devices,

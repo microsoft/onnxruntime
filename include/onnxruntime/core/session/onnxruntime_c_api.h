@@ -7725,10 +7725,14 @@ struct OrtApi {
    * The query may initialize provider resources. For example, CUDA may initialize the device's primary
    * context to query free memory, while preserving the calling thread's previous current CUDA context.
    *
-   * If the execution provider does not support this query, ORT_NOT_IMPLEMENTED is returned.
+   * Capacity is reported only for the selected memory type, not aggregated across memory types.
+   * If the execution provider does not support this query for the selected memory type,
+   * ORT_NOT_IMPLEMENTED is returned.
    * On failure, the output values are not modified.
    *
    * \param[in] ep_device The OrtEpDevice instance to query.
+   * \param[in] memory_type The memory type to query: device memory (DEFAULT) or shared/pinned
+   *                        host-accessible memory (HOST_ACCESSIBLE). Support is provider-dependent.
    * \param[out] total_memory_bytes The device-global memory capacity in bytes.
    * \param[out] available_memory_bytes The current free device memory estimate in bytes.
    *
@@ -7737,6 +7741,7 @@ struct OrtApi {
    * \since Version 1.32.
    */
   ORT_API2_STATUS(EpDevice_GetMemoryCapacity, _In_ const OrtEpDevice* ep_device,
+                  _In_ OrtDeviceMemoryType memory_type,
                   _Out_ uint64_t* total_memory_bytes, _Out_ uint64_t* available_memory_bytes);
 };
 

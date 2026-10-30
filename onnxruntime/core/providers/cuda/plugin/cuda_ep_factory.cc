@@ -125,10 +125,15 @@ const char* ORT_API_CALL CudaEpFactory::GetVersionImpl(const OrtEpFactory* this_
 /*static*/
 OrtStatus* ORT_API_CALL CudaEpFactory::GetDeviceMemoryCapacityImpl(
     OrtEpFactory* this_ptr, const OrtEpDevice* ep_device,
+    OrtDeviceMemoryType memory_type,
     uint64_t* total_memory_bytes, uint64_t* available_memory_bytes) noexcept {
   auto* factory = static_cast<CudaEpFactory*>(this_ptr);
+  if (memory_type != OrtDeviceMemoryType_DEFAULT) {
+    return factory->ort_api_.CreateStatus(ORT_NOT_IMPLEMENTED,
+                                          "CUDA memory capacity queries support only device memory (DEFAULT)");
+  }
   const OrtMemoryInfo* memory_info = factory->ort_api_.EpDevice_MemoryInfo(
-      ep_device, OrtDeviceMemoryType_DEFAULT);
+      ep_device, memory_type);
   if (memory_info == nullptr) {
     return factory->ort_api_.CreateStatus(ORT_FAIL, "CUDA device memory info is unavailable");
   }

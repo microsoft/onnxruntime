@@ -85,6 +85,7 @@ class EpFactoryInternalImpl {
 
   virtual OrtStatus* GetDeviceMemoryCapacity(
       _In_ const OrtEpDevice* /*ep_device*/,
+      _In_ OrtDeviceMemoryType /*memory_type*/,
       _Out_ uint64_t* /*total_memory_bytes*/,
       _Out_ uint64_t* /*available_memory_bytes*/) noexcept {
     return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED,
