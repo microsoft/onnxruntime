@@ -126,8 +126,16 @@ CUDAExecutionProviderInfo CUDAExecutionProviderInfo::FromProviderOptions(const P
           .AddAssignmentToReference(cuda::provider_option_names::kDoCopyInDefaultStream, info.do_copy_in_default_stream)
           .AddAssignmentToReference(cuda::provider_option_names::kCudnnConvUseMaxWorkspace, info.cudnn_conv_use_max_workspace)
           .AddAssignmentToReference(cuda::provider_option_names::kEnableCudaGraph, info.enable_cuda_graph)
-          .AddAssignmentToReference(cuda::provider_option_names::kMinNumRunsBeforeCudaGraphCapture,
-                                    info.min_num_runs_before_cuda_graph_capture)
+          .AddValueParser(
+              cuda::provider_option_names::kMinNumRunsBeforeCudaGraphCapture,
+              [&info](const std::string& value_str) -> Status {
+                ORT_RETURN_IF_ERROR(
+                    ParseStringWithClassicLocale(value_str, info.min_num_runs_before_cuda_graph_capture));
+                ORT_RETURN_IF_NOT(info.min_num_runs_before_cuda_graph_capture >= 0,
+                                  cuda::provider_option_names::kMinNumRunsBeforeCudaGraphCapture,
+                                  " must be a non-negative integer.");
+                return Status::OK();
+              })
           .AddAssignmentToReference(cuda::provider_option_names::kCudnnConv1dPadToNc1d, info.cudnn_conv1d_pad_to_nc1d)
           .AddAssignmentToReference(cuda::provider_option_names::kEnableCudnn, info.enable_cudnn)
           .AddValueParser(
@@ -203,6 +211,8 @@ ProviderOptions CUDAExecutionProviderInfo::ToProviderOptions(const CUDAExecution
       {cuda::provider_option_names::kDoCopyInDefaultStream, MakeStringWithClassicLocale(info.do_copy_in_default_stream)},
       {cuda::provider_option_names::kCudnnConvUseMaxWorkspace, MakeStringWithClassicLocale(info.cudnn_conv_use_max_workspace)},
       {cuda::provider_option_names::kEnableCudaGraph, MakeStringWithClassicLocale(info.enable_cuda_graph)},
+      {cuda::provider_option_names::kMinNumRunsBeforeCudaGraphCapture,
+       MakeStringWithClassicLocale(info.min_num_runs_before_cuda_graph_capture)},
       {cuda::provider_option_names::kCudnnConv1dPadToNc1d, MakeStringWithClassicLocale(info.cudnn_conv1d_pad_to_nc1d)},
       {cuda::provider_option_names::kEnableCudnn, MakeStringWithClassicLocale(info.enable_cudnn)},
       {cuda::provider_option_names::kTunableOpEnable, MakeStringWithClassicLocale(info.tunable_op.enable)},
@@ -231,6 +241,8 @@ ProviderOptions CUDAExecutionProviderInfo::ToProviderOptions(const OrtCUDAProvid
       {cuda::provider_option_names::kCudnnConvAlgoSearch, EnumToName(ort_cudnn_conv_algo_search_mapping, info.cudnn_conv_algo_search)},
       {cuda::provider_option_names::kDoCopyInDefaultStream, MakeStringWithClassicLocale(info.do_copy_in_default_stream)},
       {cuda::provider_option_names::kCudnnConvUseMaxWorkspace, MakeStringWithClassicLocale(info.cudnn_conv_use_max_workspace)},
+      {cuda::provider_option_names::kMinNumRunsBeforeCudaGraphCapture,
+       MakeStringWithClassicLocale(info.min_num_runs_before_cuda_graph_capture)},
       {cuda::provider_option_names::kCudnnConv1dPadToNc1d, MakeStringWithClassicLocale(info.cudnn_conv1d_pad_to_nc1d)},
       {cuda::provider_option_names::kEnableCudnn, MakeStringWithClassicLocale(true)},
       {cuda::provider_option_names::kTunableOpEnable, MakeStringWithClassicLocale(info.tunable_op_enable)},

@@ -3870,12 +3870,15 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
       // Exact-once scoped cleanup for every provider whose OnRunStart succeeded (v3 Section 5.1 / F2).
       bool providers_stopped = false;
-      auto stop_providers_once = [&]() noexcept {
+      auto stop_providers_once = [&](bool reached_end_of_run) noexcept {
         if (providers_stopped) return;
         providers_stopped = true;
         const bool synchronize_execution_providers =
             run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigDisableSynchronizeExecutionProviders, "0") == "0";
-        const bool run_succeeded = retval.IsOK() && !run_options.terminate && (std::uncaught_exceptions() == 0);
+        // A run that leaves RunImpl before the normal-path call below (early return or exception) never finished
+        // executing the graph, whatever retval says.
+        const bool run_succeeded = reached_end_of_run && retval.IsOK() && !run_options.terminate &&
+                                   (std::uncaught_exceptions() == 0);
         const RunOptions* effective_run_options = &run_options;
         // The failed-run marker is only consumed by the CUDA EP, which is not part of a pure minimal build.
         RunOptions failed_run_options;
@@ -3921,7 +3924,7 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
       };
       struct ProvidersStopGuard {
         decltype(stop_providers_once)& fn;
-        ~ProvidersStopGuard() { fn(); }
+        ~ProvidersStopGuard() { fn(false); }
       } providers_stop_guard{stop_providers_once};
 #endif
 
@@ -3965,7 +3968,7 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
 
       // info all execution providers InferenceSession:Run ended
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-      stop_providers_once();
+      stop_providers_once(true);
 #else
       for (auto* xp : exec_providers_to_stop) {
         bool synchronize_execution_providers = run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigDisableSynchronizeExecutionProviders, "0") == "0";

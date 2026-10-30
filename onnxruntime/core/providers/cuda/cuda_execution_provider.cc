@@ -326,6 +326,10 @@ void CUDAExecutionProvider::PerThreadContext::CaptureEnd(CudaGraphAnnotation_t c
   cuda_graph_.CaptureEnd(cuda_graph_annotation_id);
 }
 
+void CUDAExecutionProvider::PerThreadContext::DiscardCapture() noexcept {
+  cuda_graph_.DiscardCapture();
+}
+
 bool CUDAExecutionProvider::PerThreadContext::IsGraphCaptured(CudaGraphAnnotation_t graph_annotation_id) const {
   return cuda_graph_.IsGraphCaptured(graph_annotation_id);
 }
@@ -608,6 +612,9 @@ Status CUDAExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_opti
 
 Status CUDAExecutionProvider::OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& run_options) {
   const bool has_offload = qmoe_controller_ && qmoe_controller_->HasOffloadNodes();
+  // The session marks a run that did not complete (error, termination, or leaving before the graph executed).
+  const bool run_failed =
+      run_options.GetConfigOptions().GetConfigOrDefault("__ort.run_outcome", "ok") != "ok";
   // Every exit below (error status or exception) must still end the controller run, otherwise the controller stays
   // active and rejects later runs as overlapping.
   QMoEControllerRunRollback controller_rollback;
@@ -617,28 +624,34 @@ Status CUDAExecutionProvider::OnRunEnd(bool sync_stream, const onnxruntime::RunO
   CudaGraphAnnotation_t cuda_graph_annotation_id = GetPerThreadContext().GetCudaGraphAnnotationId(run_options);
   if (IsGraphCaptureEnabled() && !GetPerThreadContext().IsGraphCaptured(cuda_graph_annotation_id)) {
     if (GetPerThreadContext().IsGraphCaptureAllowed(cuda_graph_annotation_id)) {
-      GetPerThreadContext().CaptureEnd(cuda_graph_annotation_id);
-      capture_status = [&]() -> Status {
-        if (has_offload) {
-          ORT_RETURN_IF_ERROR(qmoe_controller_->OnBeforeGraphReplay(static_cast<cudaStream_t>(stream_)));
-        }
-        // CUDA work issued to a capturing stream doesn’t actually run on the GPU,
-        // so run the captured graph here to actually execute the work.
-        ORT_RETURN_IF_ERROR(GetPerThreadContext().ReplayGraph(cuda_graph_annotation_id, sync_stream));
-        if (has_offload) {
-          ORT_RETURN_IF_ERROR(qmoe_controller_->OnAfterGraphReplay(static_cast<cudaStream_t>(stream_), sync_stream));
-        }
-        return Status::OK();
-      }();
-    } else {
+      if (run_failed) {
+        // What was recorded is incomplete: drop it instead of instantiating and replaying it. The warm-up count is
+        // kept so the next successful run captures again.
+        GetPerThreadContext().DiscardCapture();
+      } else {
+        GetPerThreadContext().CaptureEnd(cuda_graph_annotation_id);
+        capture_status = [&]() -> Status {
+          if (has_offload) {
+            ORT_RETURN_IF_ERROR(qmoe_controller_->OnBeforeGraphReplay(static_cast<cudaStream_t>(stream_)));
+          }
+          // CUDA work issued to a capturing stream doesn’t actually run on the GPU,
+          // so run the captured graph here to actually execute the work.
+          ORT_RETURN_IF_ERROR(GetPerThreadContext().ReplayGraph(cuda_graph_annotation_id, sync_stream));
+          if (has_offload) {
+            ORT_RETURN_IF_ERROR(qmoe_controller_->OnAfterGraphReplay(static_cast<cudaStream_t>(stream_), sync_stream));
+          }
+          return Status::OK();
+        }();
+      }
+    } else if (!run_failed) {
+      // A failed warm-up run did not exercise the whole graph, so it does not count towards the runs required
+      // before capture.
       GetPerThreadContext().IncrementRegularRunCountBeforeGraphCapture(cuda_graph_annotation_id);
     }
   }
   if (has_offload) {
     controller_rollback.Release();
-    const bool run_succeeded =
-        capture_status.IsOK() &&
-        run_options.GetConfigOptions().GetConfigOrDefault("__ort.run_outcome", "ok") == "ok";
+    const bool run_succeeded = capture_status.IsOK() && !run_failed;
     auto controller_status = qmoe_controller_->OnRunEnd(sync_stream, run_succeeded);
     ORT_RETURN_IF_ERROR(capture_status);
     ORT_RETURN_IF_ERROR(controller_status);

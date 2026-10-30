@@ -12,6 +12,7 @@
 #include "cuda_graph_plugin.h"
 #include "core/providers/cuda/plugin/cuda_kernel_adapter.h"
 #include "cuda_allocator_plugin.h"
+#include "cuda_plugin_temp_space_allocator.h"
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/framework/allocator.h"
 #include "ep/get_capability_utils.h"
@@ -37,10 +38,6 @@ namespace {
 
 std::unique_ptr<IExecutionProvider> CreateCudaPluginProvider(std::string_view ep_name, const OrtEp* ort_ep) {
   return std::make_unique<::onnxruntime::CUDAExecutionProvider>(std::string{ep_name}, ort_ep);
-}
-
-AllocatorPtr CreateCudaPluginTempSpaceAllocator(int device_id) {
-  return std::make_shared<::onnxruntime::CUDAAllocator>(device_id, ::onnxruntime::CUDA);
 }
 
 AllocatorPtr CreateCudaPluginTempSpaceCpuAllocator() {
@@ -126,7 +123,7 @@ struct CudaEp::PerThreadContext {
 CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& logger)
     : onnxruntime::ep::adapter::Ep{CreateCudaPluginProvider(factory.GetEpName(), static_cast<const OrtEp*>(this)),
                                    CreateCudaPluginTempSpaceCpuAllocator(),
-                                   CreateCudaPluginTempSpaceAllocator(config.device_id)},
+                                   CreateCudaPluginTempSpaceAllocator(config.device_id, config.budget_account)},
       factory_(factory),
       name_(factory.GetEpName()),
       config_(config),
@@ -769,17 +766,17 @@ OrtStatus* ORT_API_CALL CudaEp::OnRunEndImpl(
   QMoEControllerRunRollback controller_rollback;
   controller_rollback.Arm(qmoe_controller);
 
+  // The session marks a run that did not complete (error, termination, or leaving before the graph executed).
+  bool run_failed = false;
+  if (run_options != nullptr) {
+    const char* outcome = ep->factory_.GetOrtApi().GetRunConfigEntry(run_options, "__ort.run_outcome");
+    run_failed = outcome != nullptr && std::strcmp(outcome, "ok") != 0;
+  }
+
   if (!ep->config_.enable_cuda_graph) {
     if (qmoe_controller) {
       controller_rollback.Release();
-      bool run_succeeded = true;
-      if (run_options != nullptr) {
-        const char* outcome = ep->factory_.GetOrtApi().GetRunConfigEntry(run_options, "__ort.run_outcome");
-        if (outcome != nullptr && std::strcmp(outcome, "ok") != 0) {
-          run_succeeded = false;
-        }
-      }
-      auto st = qmoe_controller->OnRunEnd(sync_stream, run_succeeded);
+      auto st = qmoe_controller->OnRunEnd(sync_stream, /*run_succeeded=*/!run_failed);
       if (!st.IsOK()) {
         return ep->factory_.GetOrtApi().CreateStatus(ORT_FAIL, st.ErrorMessage().c_str());
       }
@@ -795,7 +792,14 @@ OrtStatus* ORT_API_CALL CudaEp::OnRunEndImpl(
   CudaGraphAnnotation_t id = ep->GetGraphAnnotationId(run_options);
   bool replayed_graph = false;
   if (!context.cuda_graph.IsGraphCaptured(id)) {
-    if (context.cuda_graph.IsGraphCaptureAllowed(id, ep->config_.min_num_runs_before_cuda_graph_capture)) {
+    const bool capture_allowed =
+        context.cuda_graph.IsGraphCaptureAllowed(id, ep->config_.min_num_runs_before_cuda_graph_capture);
+    if (capture_allowed && run_failed) {
+      // What was recorded is incomplete: drop it instead of instantiating and replaying it. The warm-up count is
+      // kept so the next successful run captures again.
+      context.cuda_graph.DiscardCapture();
+      context.pre_capture_free_mem = 0;
+    } else if (capture_allowed) {
       context.cuda_graph.CaptureEnd(id);
 
       // Check if GPU memory was allocated during capture (which would make the
@@ -836,21 +840,16 @@ OrtStatus* ORT_API_CALL CudaEp::OnRunEndImpl(
           return ep->factory_.GetOrtApi().CreateStatus(ORT_FAIL, after_st.ErrorMessage().c_str());
         }
       }
-    } else {
+    } else if (!run_failed) {
+      // A failed warm-up run did not exercise the whole graph, so it does not count towards the runs required
+      // before capture.
       context.cuda_graph.IncrementRegularRunCount(id);
     }
   }
 
   if (qmoe_controller) {
     controller_rollback.Release();
-    bool run_succeeded = true;
-    if (run_options != nullptr) {
-      const char* outcome = ep->factory_.GetOrtApi().GetRunConfigEntry(run_options, "__ort.run_outcome");
-      if (outcome != nullptr && std::strcmp(outcome, "ok") != 0) {
-        run_succeeded = false;
-      }
-    }
-    auto st = qmoe_controller->OnRunEnd(sync_stream, run_succeeded);
+    auto st = qmoe_controller->OnRunEnd(sync_stream, /*run_succeeded=*/!run_failed);
     if (!st.IsOK()) {
       return ep->factory_.GetOrtApi().CreateStatus(ORT_FAIL, st.ErrorMessage().c_str());
     }

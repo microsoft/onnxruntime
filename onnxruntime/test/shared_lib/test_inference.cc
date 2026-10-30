@@ -4218,6 +4218,25 @@ TEST(CApiTest, TestConfigureCUDAProviderOptions) {
   Ort::Session session(*ort_env, model_uri.c_str(), session_options);
 }
 
+// min_num_runs_before_cuda_graph_capture has to survive the public OrtCUDAProviderOptionsV2 round trip
+// (Update -> stored options -> string form), otherwise the documented option never reaches the CUDA EP.
+TEST(CApiTest, TestCUDAProviderOptionsMinNumRunsBeforeCudaGraphCapture) {
+  Ort::CUDAProviderOptions cuda_options;
+  EXPECT_NE(cuda_options.GetCUDAProviderOptionsAsString().find("min_num_runs_before_cuda_graph_capture=2"),
+            std::string::npos);
+
+  cuda_options.Update({{"enable_cuda_graph", "1"}, {"min_num_runs_before_cuda_graph_capture", "8"}});
+  EXPECT_NE(cuda_options.GetCUDAProviderOptionsAsString().find("min_num_runs_before_cuda_graph_capture=8"),
+            std::string::npos);
+
+  // Update starts from the default options, so leaving the key out restores the default.
+  cuda_options.Update({{"enable_cuda_graph", "1"}});
+  EXPECT_NE(cuda_options.GetCUDAProviderOptionsAsString().find("min_num_runs_before_cuda_graph_capture=2"),
+            std::string::npos);
+
+  EXPECT_THROW(cuda_options.Update({{"min_num_runs_before_cuda_graph_capture", "-1"}}), Ort::Exception);
+}
+
 #endif
 
 namespace TestPerSessionCustomThreadHooks {

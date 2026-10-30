@@ -103,6 +103,20 @@ void CudaGraphManager::CaptureEnd(CudaGraphAnnotation_t id) {
   }
 }
 
+void CudaGraphManager::DiscardCapture() noexcept {
+  cudaGraph_t graph = nullptr;
+  // A capture invalidated by the failed run reports that here and yields no graph. The stream leaves capture mode
+  // either way.
+  const cudaError_t end_err = cudaStreamEndCapture(stream_, &graph);
+  if (graph != nullptr) {
+    static_cast<void>(cudaGraphDestroy(graph));
+  }
+  if (end_err != cudaSuccess) {
+    // Clear the recorded error so it is not attributed to later CUDA calls on this thread.
+    static_cast<void>(cudaGetLastError());
+  }
+}
+
 OrtStatus* CudaGraphManager::Replay(CudaGraphAnnotation_t id, bool sync) {
   if (!cuda_graph_set_.Contains(id)) {
     return Ort::GetApi().CreateStatus(

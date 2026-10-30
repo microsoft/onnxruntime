@@ -10,8 +10,10 @@
 #include "cuda_data_transfer_plugin.h"
 #include "cuda_stream_plugin.h"
 
+#include <memory>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -140,8 +142,13 @@ class CudaEpFactory : public OrtEpFactory {
     std::mutex arena_mutex;
     // One arena per CreateAllocator call: captured CUDA graphs keep using chunks their session freed.
     std::vector<DeviceArena> device_arenas;
+    struct PendingSessionAccount {
+      std::shared_ptr<SessionBudgetAccount> account;
+      // Hosts that do not identify the requesting OrtEp request its allocators on the thread that created it.
+      std::thread::id creator_thread;
+    };
     // Accounts queued by CreateEp, keyed by the OrtEp that owns them until its allocator is created.
-    std::unordered_map<const OrtEp*, std::shared_ptr<SessionBudgetAccount>> pending_session_accounts;
+    std::unordered_map<const OrtEp*, PendingSessionAccount> pending_session_accounts;
     std::unique_ptr<CudaArenaAllocator> pinned_arena;
     std::unique_ptr<CudaMempoolOrtAllocator> mempool_allocator;
     int num_pinned_arena_users = 0;

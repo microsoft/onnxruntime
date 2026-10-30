@@ -263,6 +263,10 @@ Stage 5: Runtime Execution
   allocations (`gpu_device_mem_limit` and `session.moe.offload.device_expert_bytes`). Reservations
   use RAII `Reservation` tokens (`Reserve` $\to$ `Commit`, or automatic rollback on failure) and
   two-phase `BeginFree` / `FinishFree` around `cudaFree`.
+  `gpu_device_mem_limit` (CUDA provider option, bytes, `0` = unlimited) is not the same as the older
+  `gpu_mem_limit`: `gpu_mem_limit` only caps the size of the BFC arena, whereas `gpu_device_mem_limit`
+  is charged on every `cudaMalloc` made through the session's CUDA allocators (BFC arena growth and
+  MoE offload buffers) and an allocation that would exceed it fails.
 - **Host Pinned Memory Ledger (`HostPinnedBudgetLedger`)**:
   Tracks both `cudaHostAlloc` buffers (`ReserveAllocated` / `BeginFreeAllocated` / `FinishFreeAllocated`)
   and `cudaHostRegister` page-aligned intervals (`RegisterHostRange` / `UnregisterHostRange`), merging

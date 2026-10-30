@@ -4,6 +4,7 @@
 #include "cuda_ep_factory.h"
 #include "cuda_device_mapping.h"
 #include "cuda_ep.h"
+#include "cuda_ep_account_binding.h"
 #include "cuda_plugin_kernels.h"
 #include "contrib_ops/cuda/quantization/matmul_nbits_tactic_cache.h"
 #include "core/common/string_utils.h"
@@ -21,6 +22,8 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <thread>
+#include <vector>
 
 #ifdef _WIN32
 #include <cuda.h>
@@ -135,6 +138,11 @@ bool HasCallerAllocatorOptions(const OrtApi& ort_api, const OrtKeyValuePairs* op
     if (std::strcmp(keys[i], kEpInstanceIdOptionKey) != 0) return true;
   }
   return false;
+}
+
+// An account without a finite limit or budget group cannot drop or add a limit when it is bound by mistake.
+bool IsUnrestrictedAccount(const SessionBudgetAccount& account) {
+  return account.GetAccountStats().limit == std::numeric_limits<size_t>::max() && account.GetBudgetGroup() == nullptr;
 }
 
 std::string ToUpper(std::string value) {
@@ -845,7 +853,8 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
   auto actual_ep = std::make_unique<CudaEp>(*factory, config, ep_logger);
   if (DeviceCacheEntry* entry = factory->FindDeviceCacheEntryByOrdinal(config.device_id)) {
     std::lock_guard<std::mutex> lock(entry->arena_mutex);
-    entry->pending_session_accounts[static_cast<const OrtEp*>(actual_ep.get())] = config.budget_account;
+    entry->pending_session_accounts[static_cast<const OrtEp*>(actual_ep.get())] = {config.budget_account,
+                                                                                   std::this_thread::get_id()};
   }
   *ep = actual_ep.release();
 
@@ -898,15 +907,15 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateAllocatorImpl(
     bool use_mempool = false;
     bool has_explicit_limit_opt = false;
     size_t explicit_session_limit = std::numeric_limits<size_t>::max();
-    const OrtEp* owning_ep = nullptr;
+    std::optional<uintptr_t> owning_ep;
     const bool has_caller_options = HasCallerAllocatorOptions(factory.ort_api_, allocator_options);
     if (allocator_options) {
       if (const char* ep_id = factory.ort_api_.GetKeyValue(allocator_options, kEpInstanceIdOptionKey);
           ep_id != nullptr && ep_id[0] != '\0') {
         try {
-          owning_ep = reinterpret_cast<const OrtEp*>(static_cast<uintptr_t>(std::stoull(std::string(ep_id))));
+          owning_ep = static_cast<uintptr_t>(std::stoull(std::string(ep_id)));
         } catch (...) {
-          owning_ep = nullptr;
+          owning_ep.reset();
         }
       }
       const char* v = factory.ort_api_.GetKeyValue(
@@ -927,26 +936,43 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateAllocatorImpl(
     std::lock_guard<std::mutex> lock{entry->arena_mutex};
 
     // The account is matched by the identity of the owning OrtEp, never by limit or queue order: two sessions with
-    // equal limits would otherwise be able to swap accounts and charge each other's budget group.
+    // equal limits would otherwise be able to swap accounts and charge each other's budget group. Hosts that predate
+    // ep_instance_id are matched by DecideAccountBinding, which rejects requests it cannot attribute instead of
+    // letting a limited session run without its limit.
+    std::vector<PendingAccountCandidate> pending_candidates;
+    pending_candidates.reserve(entry->pending_session_accounts.size());
+    for (const auto& [pending_ep, pending] : entry->pending_session_accounts) {
+      pending_candidates.push_back({reinterpret_cast<uintptr_t>(pending_ep), IsUnrestrictedAccount(*pending.account),
+                                    pending.creator_thread});
+    }
+    const AccountBindingDecision binding = DecideAccountBinding(owning_ep, has_explicit_limit_opt,
+                                                                std::this_thread::get_id(), pending_candidates);
+
     std::shared_ptr<SessionBudgetAccount> session_account;
-    if (owning_ep != nullptr) {
-      if (auto it = entry->pending_session_accounts.find(owning_ep); it != entry->pending_session_accounts.end()) {
-        session_account = std::move(it->second);
-        entry->pending_session_accounts.erase(it);
-      }
-    } else if (!has_explicit_limit_opt && !has_caller_options && !entry->pending_session_accounts.empty()) {
-      if (entry->pending_session_accounts.size() > 1) {
+    switch (binding.action) {
+      case AccountBindingAction::kBindPending:
+        if (auto it = entry->pending_session_accounts.find(reinterpret_cast<const OrtEp*>(binding.owner));
+            it != entry->pending_session_accounts.end()) {
+          session_account = std::move(it->second.account);
+          entry->pending_session_accounts.erase(it);
+        }
+        break;
+      case AccountBindingAction::kCreateExplicit:
+        session_account = std::make_shared<SessionBudgetAccount>(
+            GetCudaDeviceMemoryBudget(static_cast<OrtDevice::DeviceId>(req_device_id)), explicit_session_limit);
+        break;
+      case AccountBindingAction::kRejectAmbiguous:
         return factory.ort_api_.CreateStatus(
             ORT_INVALID_ARGUMENT,
-            "Ambiguous pending CUDA session memory accounts when creating session allocator without owning EP context.");
-      }
-      auto it = entry->pending_session_accounts.begin();
-      session_account = std::move(it->second);
-      entry->pending_session_accounts.erase(it);
-    }
-    if (!session_account && has_explicit_limit_opt) {
-      session_account = std::make_shared<SessionBudgetAccount>(
-          GetCudaDeviceMemoryBudget(static_cast<OrtDevice::DeviceId>(req_device_id)), explicit_session_limit);
+            (std::string("The CUDA plugin EP cannot tell which session an allocator request belongs to: the host "
+                         "did not provide the '") +
+             kEpInstanceIdOptionKey +
+             "' allocator option, and several sessions are being created on this device at the same time while at "
+             "least one of them has a gpu_device_mem_limit or session.moe.offload.budget_group. Create such "
+             "sessions one at a time, or use an ONNX Runtime host that provides it.")
+                .c_str());
+      case AccountBindingAction::kCreateFresh:
+        break;
     }
     if (!session_account) {
       const auto budget = GetCudaDeviceMemoryBudget(static_cast<OrtDevice::DeviceId>(req_device_id));

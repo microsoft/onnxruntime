@@ -1132,8 +1132,16 @@ class QMoESessionController {
             const auto& caps = nodes[i]->GetBackendCapabilities();
             const uint64_t base = caps.gpu_fixed_table_bytes +
                                   (caps.decode_kernel_skips_negative_slots ? 0ULL : caps.gpu_slot_bytes);
-            const uint64_t avail = (*ov.device_expert_bytes > base) ? (*ov.device_expert_bytes - base) : 0ULL;
-            node_slot_budget_bytes[i] = std::min(node_slot_budget_bytes[i], avail);
+            // The fixed tables and dummy slot are mandatory, so a cap that cannot hold them is rejected instead of
+            // being clamped to zero resident slots (which would silently admit the node at its fixed overhead).
+            if (*ov.device_expert_bytes < base) {
+              return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                     "MoE Offload session admission failed: node_overrides entry '", ov.node_name,
+                                     "' sets device_expert_bytes (", *ov.device_expert_bytes,
+                                     ") smaller than the fixed lookup table and dummy slot overhead (", base,
+                                     " bytes) of node '", desc.stable_node_id, "'.");
+            }
+            node_slot_budget_bytes[i] = std::min(node_slot_budget_bytes[i], *ov.device_expert_bytes - base);
           }
         }
       }
@@ -1147,8 +1155,14 @@ class QMoESessionController {
     if (!policy.device_expert_bytes.is_auto) {
       admitted_gpu_expert_budget = policy.device_expert_bytes.bytes;
     } else {
-      const uint64_t reserves = policy.reserve_device_bytes + policy.device_working_bytes;
-      admitted_gpu_expert_budget = (usable_free_vram > reserves) ? (usable_free_vram - reserves) : 0ULL;
+      // Subtract one reserve at a time: both reserves are user-provided and may be as large as UINT64_MAX, so their
+      // sum can wrap around and turn an impossible reserve into a tiny one.
+      const uint64_t after_reserve = (usable_free_vram > policy.reserve_device_bytes)
+                                         ? (usable_free_vram - policy.reserve_device_bytes)
+                                         : 0ULL;
+      admitted_gpu_expert_budget = (after_reserve > policy.device_working_bytes)
+                                       ? (after_reserve - policy.device_working_bytes)
+                                       : 0ULL;
     }
 
     if (admitted_gpu_expert_budget < total_base_bytes) {
@@ -1341,14 +1355,20 @@ class QMoESessionController {
     uint64_t total_full_cpu_bytes = 0;
     uint64_t min_bounded_host_bytes = 0;
     size_t partial_layers = 0;
+    // Smallest bounded host cache (in expert slots) each partially offloaded layer's backend can operate with.
+    std::vector<int32_t> min_host_cache_slots_for_node(num_layers, 0);
     for (size_t i = 0; i < num_layers; ++i) {
       const auto& desc = nodes[i]->GetSourceDescriptor();
       const auto& caps = nodes[i]->GetBackendCapabilities();
       total_full_cpu_bytes += static_cast<uint64_t>(desc.num_experts) * caps.cpu_slot_bytes;
       if (resident_counts[i] < desc.num_experts) {
         ++partial_layers;
-        total_cold_bytes += static_cast<uint64_t>(desc.num_experts - resident_counts[i]) * caps.cpu_slot_bytes;
-        min_bounded_host_bytes += caps.cpu_slot_bytes;
+        const int32_t cold_experts = desc.num_experts - resident_counts[i];
+        total_cold_bytes += static_cast<uint64_t>(cold_experts) * caps.cpu_slot_bytes;
+        min_host_cache_slots_for_node[i] = static_cast<int32_t>(
+            std::min<uint64_t>(std::max<uint64_t>(caps.min_host_cache_slots, 1ULL),
+                               static_cast<uint64_t>(cold_experts)));
+        min_bounded_host_bytes += static_cast<uint64_t>(min_host_cache_slots_for_node[i]) * caps.cpu_slot_bytes;
       }
     }
 
@@ -1360,13 +1380,28 @@ class QMoESessionController {
             ") is smaller than cold expert complement (", total_cold_bytes,
             " bytes) while allow_file_backing=0.");
       }
-      if (policy.allow_file_backing && policy.host_expert_bytes.bytes < total_cold_bytes &&
-          policy.host_expert_bytes.bytes < min_bounded_host_bytes) {
-        return ORT_MAKE_STATUS(
-            ONNXRUNTIME, FAIL,
-            "MoE Offload session admission failed: host_expert_bytes (", policy.host_expert_bytes.bytes,
-            ") is smaller than minimum bounded host cache capacity (", min_bounded_host_bytes,
-            " bytes across ", partial_layers, " partially offloaded layers).");
+      if (policy.allow_file_backing && policy.host_expert_bytes.bytes < total_cold_bytes) {
+        // A byte cap below the cold expert complement can only be honored by a bounded file-backed host cache.
+        for (size_t i = 0; i < num_layers; ++i) {
+          const auto& desc = nodes[i]->GetSourceDescriptor();
+          const auto& caps = nodes[i]->GetBackendCapabilities();
+          if (resident_counts[i] < desc.num_experts && caps.cpu_slot_bytes > 0 &&
+              !caps.supports_file_backed_bounded_host_cache) {
+            return ORT_MAKE_STATUS(
+                ONNXRUNTIME, FAIL,
+                "MoE Offload session admission failed: host_expert_bytes (", policy.host_expert_bytes.bytes,
+                ") is smaller than cold expert complement (", total_cold_bytes,
+                " bytes) and requires a file-backed bounded host cache, which node '", desc.stable_node_id,
+                "' does not support.");
+          }
+        }
+        if (policy.host_expert_bytes.bytes < min_bounded_host_bytes) {
+          return ORT_MAKE_STATUS(
+              ONNXRUNTIME, FAIL,
+              "MoE Offload session admission failed: host_expert_bytes (", policy.host_expert_bytes.bytes,
+              ") is smaller than minimum bounded host cache capacity (", min_bounded_host_bytes,
+              " bytes across ", partial_layers, " partially offloaded layers).");
+        }
       }
     }
 
@@ -1379,14 +1414,15 @@ class QMoESessionController {
     std::vector<int32_t> host_cache_counts(num_layers, 0);
     if (use_bounded_file_cache && partial_layers > 0) {
       uint64_t rem_host = std::min(policy.host_expert_bytes.bytes, total_cold_bytes);
-      // 1) Guarantee at least 1 bounded host cache slot for every partial layer first (F07).
+      // 1) Reserve each partial layer's required minimum number of bounded host cache slots first (F07). Admission
+      // above guarantees that these minimums fit in the host budget.
       for (size_t i = 0; i < num_layers; ++i) {
         const auto& desc = nodes[i]->GetSourceDescriptor();
         const auto& caps = nodes[i]->GetBackendCapabilities();
         const int32_t max_cold = desc.num_experts - resident_counts[i];
         if (max_cold <= 0 || caps.cpu_slot_bytes == 0) continue;
-        host_cache_counts[i] = 1;
-        rem_host -= caps.cpu_slot_bytes;
+        host_cache_counts[i] = min_host_cache_slots_for_node[i];
+        rem_host -= static_cast<uint64_t>(host_cache_counts[i]) * caps.cpu_slot_bytes;
       }
       // 2) Fast uniform base pass + water-filling remainder pass across layers with cold capacity.
       for (size_t i = 0; i < num_layers; ++i) {

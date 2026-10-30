@@ -929,6 +929,95 @@ TEST(QMoESharedLayoutTest, ModifiedPrivateReadOnlyMappingExcludedFromReloadAndEv
   std::filesystem::remove(tmp_path);
 }
 
+TEST(QMoESharedLayoutTest, PrivateReadOnlyMappingIsReloadableOnlyWhileEveryPageMatchesFile) {
+  const long page_raw = sysconf(_SC_PAGESIZE);
+  const size_t page_size = (page_raw > 0) ? static_cast<size_t>(page_raw) : 4096u;
+  const size_t total_bytes = page_size * 3;
+  constexpr uint8_t kFileByte = 0x11;
+  constexpr uint8_t kPrivateByte = 0x22;
+  // Without pagemap access, private mappings cannot be verified and are conservatively rejected.
+  const bool pagemap_readable = access("/proc/self/pagemap", R_OK) == 0;
+
+  const auto tmp_path = std::filesystem::temp_directory_path() /
+                        ("ort_qmoe_reloadable_mapping_test_" + std::to_string(getpid()) + ".bin");
+  {
+    std::vector<uint8_t> file_bytes(total_bytes, kFileByte);
+    std::ofstream out(tmp_path, std::ios::binary | std::ios::trunc);
+    ASSERT_TRUE(out.is_open());
+    out.write(reinterpret_cast<const char*>(file_bytes.data()), static_cast<std::streamsize>(file_bytes.size()));
+  }
+  const int fd = open(tmp_path.c_str(), O_RDONLY | O_CLOEXEC);
+  ASSERT_GE(fd, 0);
+
+  // Same discard the controller applies to uploaded experts, but only for mappings proven reloadable.
+  const auto discard_if_reloadable = [](void* data, size_t bytes) {
+    if (moe_offload::IsReloadableFileMapping(data, bytes)) {
+      EXPECT_EQ(madvise(data, bytes, MADV_DONTNEED), 0);
+    }
+  };
+
+  // Privately modify one byte of the middle page, then freeze the mapping to PROT_READ (r--p).
+  void* modified_map = mmap(nullptr, total_bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
+  ASSERT_NE(modified_map, MAP_FAILED);
+  auto* modified = static_cast<uint8_t*>(modified_map);
+  const size_t modified_offset = page_size + 7;
+  modified[modified_offset] = kPrivateByte;
+  ASSERT_EQ(mprotect(modified_map, total_bytes, PROT_READ), 0);
+
+  EXPECT_FALSE(moe_offload::IsReloadableFileMapping(modified_map, total_bytes));
+  EXPECT_FALSE(moe_offload::IsReloadableFileMapping(modified + page_size, page_size));
+  discard_if_reloadable(modified_map, total_bytes);
+  EXPECT_EQ(modified[modified_offset], kPrivateByte);
+  EXPECT_EQ(modified[0], kFileByte);
+
+  // Only the pages that were never modified are still reloadable from the file.
+  if (pagemap_readable) {
+    EXPECT_TRUE(moe_offload::IsReloadableFileMapping(modified_map, page_size));
+    EXPECT_TRUE(moe_offload::IsReloadableFileMapping(modified + 2 * page_size, page_size));
+  }
+
+  // A private mapping that was only read stays identical to the file, so it is reloadable and survives a discard.
+  void* clean_map = mmap(nullptr, total_bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
+  ASSERT_NE(clean_map, MAP_FAILED);
+  auto* clean = static_cast<const uint8_t*>(clean_map);
+  uint8_t checksum = 0;
+  for (size_t offset = 0; offset < total_bytes; offset += page_size) {
+    checksum ^= clean[offset];
+  }
+  EXPECT_EQ(checksum, kFileByte);
+  ASSERT_EQ(mprotect(clean_map, total_bytes, PROT_READ), 0);
+  if (pagemap_readable) {
+    EXPECT_TRUE(moe_offload::IsReloadableFileMapping(clean_map, total_bytes));
+  }
+  discard_if_reloadable(clean_map, total_bytes);
+  EXPECT_EQ(clean[modified_offset], kFileByte);
+
+  // A mapping that was never writable cannot hold private modifications.
+  void* read_only_map = mmap(nullptr, total_bytes, PROT_READ, MAP_PRIVATE, fd, 0);
+  ASSERT_NE(read_only_map, MAP_FAILED);
+  if (pagemap_readable) {
+    EXPECT_TRUE(moe_offload::IsReloadableFileMapping(read_only_map, total_bytes));
+  }
+
+  // A writable mapping is never reloadable, whatever its contents.
+  void* writable_map = mmap(nullptr, total_bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
+  ASSERT_NE(writable_map, MAP_FAILED);
+  EXPECT_FALSE(moe_offload::IsReloadableFileMapping(writable_map, total_bytes));
+
+  // A shared read-only mapping always reflects the file.
+  void* shared_map = mmap(nullptr, total_bytes, PROT_READ, MAP_SHARED, fd, 0);
+  ASSERT_NE(shared_map, MAP_FAILED);
+  EXPECT_TRUE(moe_offload::IsReloadableFileMapping(shared_map, total_bytes));
+
+  munmap(shared_map, total_bytes);
+  munmap(writable_map, total_bytes);
+  munmap(read_only_map, total_bytes);
+  munmap(clean_map, total_bytes);
+  munmap(modified_map, total_bytes);
+  close(fd);
+  std::filesystem::remove(tmp_path);
+}
+
 TEST(QMoESharedLayoutTest, PromoteCleanPrivateMappingAndParallelChunkedLoadPreservesBankBytes) {
   const long page_raw = sysconf(_SC_PAGESIZE);
   const size_t page_size = (page_raw > 0) ? static_cast<size_t>(page_raw) : 4096u;

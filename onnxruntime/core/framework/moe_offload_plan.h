@@ -441,8 +441,49 @@ struct MoeExpertBankSlice {
   uint64_t external_file_offset{0};
 };
 
+#if defined(__linux__)
+// Returns true when no page in [begin, begin + length) of a MAP_PRIVATE file mapping has been Copy-On-Write faulted
+// into anonymous or swap memory, i.e. every resident page is still the file's page-cache page and every other page is
+// refaulted from the file. Returns false if /proc/self/pagemap cannot be read, so callers fail closed.
+inline bool PrivateMappingPagesMatchFile(uintptr_t begin, size_t length, size_t page_size) noexcept {
+  if (length == 0 || page_size == 0) return false;
+  const int pm_fd = open("/proc/self/pagemap", O_RDONLY | O_CLOEXEC);
+  if (pm_fd < 0) return false;
+  const size_t first_vpn = begin / page_size;
+  const size_t num_pages = (length + page_size - 1) / page_size;
+  constexpr size_t kBatchPages = 512;
+  uint64_t pm_entries[kBatchPages];
+  bool matches_file = true;
+  for (size_t page_idx = 0; matches_file && page_idx < num_pages;) {
+    const size_t batch = std::min(kBatchPages, num_pages - page_idx);
+    const off_t pm_off = static_cast<off_t>((first_vpn + page_idx) * sizeof(uint64_t));
+    const ssize_t expected_bytes = static_cast<ssize_t>(batch * sizeof(uint64_t));
+    const ssize_t pr = pread(pm_fd, pm_entries, static_cast<size_t>(expected_bytes), pm_off);
+    if (pr != expected_bytes) {
+      matches_file = false;
+      break;
+    }
+    for (size_t i = 0; i < batch; ++i) {
+      const uint64_t pm_entry = pm_entries[i];
+      const bool present = ((pm_entry >> 63) & 1ULL) != 0;
+      const bool swapped = ((pm_entry >> 62) & 1ULL) != 0;
+      const bool file_page = ((pm_entry >> 61) & 1ULL) != 0;
+      if (swapped || (present && !file_page)) {
+        matches_file = false;
+        break;
+      }
+    }
+    page_idx += batch;
+  }
+  close(pm_fd);
+  return matches_file;
+}
+#endif
+
 // Returns true only when [data, data + bytes) is a verified read-only regular-file mapping
 // whose pages can be discarded with madvise(MADV_DONTNEED) and reloaded from the file on next fault.
+// A read-only MAP_PRIVATE mapping qualifies only if none of its pages was privately modified before the mapping was
+// made read-only; MADV_DONTNEED would silently revert such pages to the file contents.
 inline bool IsReloadableFileMapping(const void* data, size_t bytes) noexcept {
   if (data == nullptr || bytes == 0) return false;
 #if defined(__linux__)
@@ -475,6 +516,15 @@ inline bool IsReloadableFileMapping(const void* data, size_t bytes) noexcept {
     if (offset > file_size || (address - lo) > file_size - offset ||
         bytes > file_size - offset - (address - lo)) {
       return false;
+    }
+    if (perms[3] == 'p') {
+      const long page_raw = sysconf(_SC_PAGESIZE);
+      if (page_raw <= 0) return false;
+      const size_t page_size = static_cast<size_t>(page_raw);
+      const uintptr_t map_lo = address & ~(page_size - 1);
+      if (!PrivateMappingPagesMatchFile(map_lo, static_cast<size_t>(address - map_lo) + bytes, page_size)) {
+        return false;
+      }
     }
     return true;
   }
@@ -528,36 +578,9 @@ inline bool PromoteFileMappingToSharedReadOnly(const void* data, size_t bytes) n
     const uint64_t map_file_offset = offset + static_cast<uint64_t>(map_lo - lo);
 
     // Verify no page in [map_lo, map_lo + mapped_length) has been Copy-On-Write faulted into anonymous/swap memory.
-    const int pm_fd = open("/proc/self/pagemap", O_RDONLY | O_CLOEXEC);
-    if (pm_fd < 0) {
+    if (!PrivateMappingPagesMatchFile(map_lo, mapped_length, page_size)) {
       return false;
     }
-    const size_t first_vpn = map_lo / page_size;
-    const size_t num_pages = (mapped_length + page_size - 1) / page_size;
-    constexpr size_t kBatchPages = 512;
-    uint64_t pm_entries[kBatchPages];
-    for (size_t page_idx = 0; page_idx < num_pages;) {
-      const size_t batch = std::min(kBatchPages, num_pages - page_idx);
-      const off_t pm_off = static_cast<off_t>((first_vpn + page_idx) * sizeof(uint64_t));
-      const ssize_t expected_bytes = static_cast<ssize_t>(batch * sizeof(uint64_t));
-      const ssize_t pr = pread(pm_fd, pm_entries, static_cast<size_t>(expected_bytes), pm_off);
-      if (pr != expected_bytes) {
-        close(pm_fd);
-        return false;
-      }
-      for (size_t i = 0; i < batch; ++i) {
-        const uint64_t pm_entry = pm_entries[i];
-        const bool present = ((pm_entry >> 63) & 1ULL) != 0;
-        const bool swapped = ((pm_entry >> 62) & 1ULL) != 0;
-        const bool file_page = ((pm_entry >> 61) & 1ULL) != 0;
-        if (swapped || (present && !file_page)) {
-          close(pm_fd);
-          return false;
-        }
-      }
-      page_idx += batch;
-    }
-    close(pm_fd);
 
     const int fd = open(path.c_str(), O_RDONLY | O_CLOEXEC);
     if (fd < 0) return false;

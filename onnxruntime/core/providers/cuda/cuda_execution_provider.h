@@ -193,6 +193,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
     bool IsGraphCaptureAllowedOnRun(CudaGraphAnnotation_t cuda_graph_annotation_id) const;
     void CaptureBegin(CudaGraphAnnotation_t cuda_graph_annotation_id);
     void CaptureEnd(CudaGraphAnnotation_t cuda_graph_annotation_id);
+    void DiscardCapture() noexcept;
     bool IsGraphCaptured(CudaGraphAnnotation_t cuda_graph_annotation_id) const;
     CudaGraphAnnotation_t GetCudaGraphAnnotationId(const onnxruntime::RunOptions& run_options) const;
     Status ReplayGraph(CudaGraphAnnotation_t cuda_graph_annotation_id, bool sync = true);

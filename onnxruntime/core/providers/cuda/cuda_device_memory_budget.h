@@ -590,22 +590,88 @@ inline std::shared_ptr<HostPinnedBudgetLedger> GetCudaHostPinnedMemoryBudget() {
   return ledger;
 }
 
+// Process-wide registry of named budget groups shared by the sessions of one device (for example a target model and its
+// MTP head). Every handle returned by Acquire holds one lease on its group. A group is retired as soon as its last
+// lease is released and it carries no committed, pending, freeing or quarantined bytes, so a later group with the same
+// name starts from a clean limit and retired names do not accumulate. A group that still carries charges stays
+// registered so those charges keep counting against its limit.
+class CudaBudgetGroupRegistry {
+ public:
+  // Never destroyed, so group handles released during static destruction stay valid.
+  static CudaBudgetGroupRegistry& Instance() {
+    static CudaBudgetGroupRegistry* const instance = new CudaBudgetGroupRegistry();
+    return *instance;
+  }
+
+  std::shared_ptr<BudgetGroup> Acquire(int device_id, const std::string& group_name, size_t group_limit) {
+    std::string key = std::to_string(device_id) + ":" + (group_name.empty() ? "default" : group_name);
+    BudgetGroup* group = nullptr;
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      auto it = groups_.find(key);
+      if (it == groups_.end()) {
+        auto created = std::make_shared<BudgetGroup>(
+            GetCudaDeviceMemoryBudgetByOrdinal(device_id),
+            group_limit > 0 ? group_limit : std::numeric_limits<size_t>::max());
+        it = groups_.emplace(key, Entry{std::move(created), 0}).first;
+      } else if (group_limit > 0) {
+        it->second.group->JoinWithLimit(group_limit);
+      }
+      ++it->second.leases;
+      group = it->second.group.get();
+    }
+    // If the control block allocation throws, shared_ptr invokes the releaser, which returns the lease taken above.
+    return std::shared_ptr<BudgetGroup>(group, LeaseReleaser{this, std::move(key)});
+  }
+
+  size_t GroupCount() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return groups_.size();
+  }
+
+ private:
+  struct Entry {
+    std::shared_ptr<BudgetGroup> group;
+    size_t leases{0};
+  };
+
+  struct LeaseReleaser {
+    CudaBudgetGroupRegistry* registry;
+    std::string key;
+    void operator()(BudgetGroup*) const noexcept { registry->ReleaseLease(key); }
+  };
+
+  CudaBudgetGroupRegistry() = default;
+
+  void ReleaseLease(const std::string& key) noexcept {
+    // Declared before the lock so a retired group is destroyed after the registry mutex is released.
+    std::shared_ptr<BudgetGroup> retired;
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = groups_.find(key);
+    if (it == groups_.end()) return;
+    Entry& entry = it->second;
+    if (entry.leases > 0) --entry.leases;
+    if (entry.leases > 0) return;
+    const auto stats = entry.group->GetGroupStats();
+    if (stats.committed == 0 && stats.pending == 0) {
+      retired = std::move(entry.group);
+      groups_.erase(it);
+    }
+  }
+
+  mutable std::mutex mutex_;
+  std::unordered_map<std::string, Entry> groups_;
+};
+
 inline std::shared_ptr<BudgetGroup> GetCudaBudgetGroupByName(int device_id,
                                                              const std::string& group_name,
                                                              size_t group_limit = 0) {
-  static std::mutex group_mutex;
-  static std::unordered_map<std::string, std::shared_ptr<BudgetGroup>> groups;
-  const std::string key = std::to_string(device_id) + ":" + (group_name.empty() ? "default" : group_name);
-  std::lock_guard<std::mutex> lock(group_mutex);
-  auto& g = groups[key];
-  if (!g) {
-    g = std::make_shared<BudgetGroup>(
-        GetCudaDeviceMemoryBudgetByOrdinal(device_id),
-        group_limit > 0 ? group_limit : std::numeric_limits<size_t>::max());
-  } else if (group_limit > 0) {
-    g->JoinWithLimit(group_limit);
-  }
-  return g;
+  return CudaBudgetGroupRegistry::Instance().Acquire(device_id, group_name, group_limit);
+}
+
+// Number of named budget groups currently registered (live or retained because they still carry charges).
+inline size_t GetCudaBudgetGroupCount() {
+  return CudaBudgetGroupRegistry::Instance().GroupCount();
 }
 
 }  // namespace onnxruntime

@@ -354,11 +354,22 @@ enum class GraphCaptureOperation {
 // Use CPU kernels for capture runs and simulate replay without an EP-internal lock.
 class GraphCaptureTestExecutionProvider : public CPUExecutionProvider {
  public:
-  explicit GraphCaptureTestExecutionProvider(bool concurrent_run_supported)
-      : CPUExecutionProvider{CPUExecutionProviderInfo{}}, concurrent_run_supported_{concurrent_run_supported} {}
+  explicit GraphCaptureTestExecutionProvider(bool concurrent_run_supported, bool create_device_streams = false)
+      : CPUExecutionProvider{CPUExecutionProviderInfo{}},
+        concurrent_run_supported_{concurrent_run_supported},
+        create_device_streams_{create_device_streams} {}
 
   bool ConcurrentRunSupported() const override { return concurrent_run_supported_; }
   bool IsGraphCaptureEnabled() const override { return true; }
+
+  // A session only validates the stream override of a run when some provider creates device streams.
+  void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, AllocatorMap&) const override {
+    if (create_device_streams_) {
+      stream_handle_registry.RegisterCreateStreamFn(OrtDevice::CPU, [](const OrtDevice& device) {
+        return std::make_unique<Stream>(nullptr, device);
+      });
+    }
+  }
 
   bool IsGraphCaptured(int graph_annotation_id) const override {
     Notify(GraphCaptureOperation::Check);
@@ -372,6 +383,12 @@ class GraphCaptureTestExecutionProvider : public CPUExecutionProvider {
   }
 
   Status OnRunEnd(bool, const RunOptions& run_options) override {
+    // The session marks runs that did not complete successfully; this is the only signal a provider gets for them.
+    if (run_options.config_options.GetConfigOrDefault("__ort.run_outcome", "ok") == "ok") {
+      ++ok_run_end_count;
+    } else {
+      ++failed_run_end_count;
+    }
     if (run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigCudaGraphAnnotation, "0") != "-1" &&
         ++capture_run_count_ == 2) {
       captured_ = true;
@@ -395,6 +412,8 @@ class GraphCaptureTestExecutionProvider : public CPUExecutionProvider {
   std::function<void(GraphCaptureOperation)> on_operation;
   std::atomic<int> run_count{0};
   std::atomic<int> replay_count{0};
+  std::atomic<int> ok_run_end_count{0};
+  std::atomic<int> failed_run_end_count{0};
   bool fail_replay = false;
 
  private:
@@ -407,19 +426,20 @@ class GraphCaptureTestExecutionProvider : public CPUExecutionProvider {
   }
 
   const bool concurrent_run_supported_;
+  const bool create_device_streams_;
   std::atomic<bool> captured_{false};
   std::atomic<int> capture_run_count_{0};
 };
 
 class GraphCaptureSessionTest : public ::testing::Test {
  protected:
-  void CreateSession(bool concurrent_run_supported = false) {
+  void CreateSession(bool concurrent_run_supported = false, bool create_device_streams = false) {
     SessionOptions options;
     options.intra_op_param.thread_pool_size = 1;
     options.inter_op_param.thread_pool_size = 1;
     ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigForceSpinningStop, "1"));
     session_ = std::make_unique<InferenceSession>(options, GetEnvironment());
-    auto ep = std::make_unique<GraphCaptureTestExecutionProvider>(concurrent_run_supported);
+    auto ep = std::make_unique<GraphCaptureTestExecutionProvider>(concurrent_run_supported, create_device_streams);
     ep_ = ep.get();
     ASSERT_STATUS_OK(session_->RegisterExecutionProvider(std::move(ep)));
     ASSERT_STATUS_OK(session_->Load(MODEL_URI));
@@ -467,6 +487,43 @@ TEST_F(GraphCaptureSessionTest, ReplayFailureReleasesRunLock) {
   ASSERT_STATUS_OK(Execute(GraphCaptureOperation::Replay));
   EXPECT_EQ(ep_->run_count.load(), 4);
 }
+
+TEST_F(GraphCaptureSessionTest, TerminatedRunIsReportedToProvidersAsFailed) {
+  ASSERT_NO_FATAL_FAILURE(CreateSession());
+  RunOptions terminated;
+  terminated.terminate = true;
+  EXPECT_THAT(RunModelWithValues(*session_, terminated, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f}).ErrorMessage(),
+              testing::HasSubstr("terminate flag"));
+  EXPECT_EQ(ep_->run_count.load(), 1);
+  EXPECT_EQ(ep_->failed_run_end_count.load(), 1);
+  EXPECT_EQ(ep_->ok_run_end_count.load(), 0);
+
+  ASSERT_STATUS_OK(Execute(GraphCaptureOperation::Run));
+  EXPECT_EQ(ep_->failed_run_end_count.load(), 1);
+  EXPECT_EQ(ep_->ok_run_end_count.load(), 1);
+}
+
+#ifdef ORT_ENABLE_STREAM
+// The stream override is validated after the providers started the run but before any node executes, so this early
+// return must still tell the providers that the run failed. Otherwise a provider capturing the run would keep it.
+TEST_F(GraphCaptureSessionTest, RunRejectedBeforeExecutionIsReportedToProvidersAsFailed) {
+  ASSERT_NO_FATAL_FAILURE(CreateSession(/*concurrent_run_supported*/ false, /*create_device_streams*/ true));
+  // OrtSyncStream is the C API's opaque alias for Stream. The session only has a CPU stream, so none matches this one.
+  const OrtDevice absent_device(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA, 0);
+  Stream absent_stream(nullptr, absent_device);
+  RunOptions rejected;
+  rejected.sync_stream = reinterpret_cast<OrtSyncStream*>(&absent_stream);
+  EXPECT_THAT(RunModelWithValues(*session_, rejected, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f}).ErrorMessage(),
+              testing::HasSubstr("No matching stream found"));
+  EXPECT_EQ(ep_->run_count.load(), 1);
+  EXPECT_EQ(ep_->failed_run_end_count.load(), 1);
+  EXPECT_EQ(ep_->ok_run_end_count.load(), 0);
+
+  ASSERT_STATUS_OK(Execute(GraphCaptureOperation::Run));
+  EXPECT_EQ(ep_->failed_run_end_count.load(), 1);
+  EXPECT_EQ(ep_->ok_run_end_count.load(), 1);
+}
+#endif  // ORT_ENABLE_STREAM
 
 class GraphCaptureRunSerializationTest
     : public GraphCaptureSessionTest,
