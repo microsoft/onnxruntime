@@ -141,6 +141,10 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     KERNEL_CREATE_INFO(13, Reciprocal),
     KERNEL_CREATE_INFO_VERSIONED(6, 12, Sqrt),
     KERNEL_CREATE_INFO(13, Sqrt),
+    KERNEL_CREATE_INFO_VERSIONED(11, 21, Round),
+    KERNEL_CREATE_INFO(22, Round),
+    KERNEL_CREATE_INFO_VERSIONED(9, 12, Sign),
+    KERNEL_CREATE_INFO(13, Sign),
     KERNEL_CREATE_INFO_VERSIONED(6, 12, Exp),
     KERNEL_CREATE_INFO(13, Exp),
     KERNEL_CREATE_INFO_VERSIONED(9, 12, Erf),
@@ -166,6 +170,11 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     KERNEL_CREATE_INFO_VERSIONED(6, 12, Tanh),
     KERNEL_CREATE_INFO(13, Tanh),
     KERNEL_CREATE_INFO(1, Not),
+    KERNEL_CREATE_INFO_VERSIONED(9, 12, IsNaN),
+    KERNEL_CREATE_INFO_VERSIONED(13, 19, IsNaN),
+    KERNEL_CREATE_INFO(20, IsNaN),
+    KERNEL_CREATE_INFO_VERSIONED(10, 19, IsInf),
+    KERNEL_CREATE_INFO(20, IsInf),
 
     // // activations
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 11, float, Clip)>,
@@ -189,10 +198,12 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     KERNEL_CREATE_INFO(20, Gelu),
     KERNEL_CREATE_INFO_VERSIONED(1, 21, Softplus),
     KERNEL_CREATE_INFO(22, Softplus),
+    KERNEL_CREATE_INFO_VERSIONED(1, 21, Softsign),
+    KERNEL_CREATE_INFO(22, Softsign),
 
     // // binary - math
     // All binary elementwise ops (Add, Sub, Mul, Div, Max, Min, Equal, Greater, Less,
-    // GreaterOrEqual, LessOrEqual, Pow, PRelu, And) are registered via RegisterKernels
+    // GreaterOrEqual, LessOrEqual, Pow, PRelu, And, Or, Xor) are registered via RegisterKernels
     // through RegisterBinaryElementwiseKernels, with conditional int64 support.
 
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 1, 12, Shape)>,
@@ -520,7 +531,7 @@ std::unique_ptr<KernelRegistry> RegisterKernels(bool enable_graph_capture, bool 
   ORT_THROW_IF_ERROR(kernel_registry->Register(CreateExpandKernelInfo(13, enable_int64)));
 
   // Register all binary elementwise kernels (Add, Sub, Mul, Div, Max, Min, Equal, Greater,
-  // Less, GreaterOrEqual, LessOrEqual, Pow, PRelu, And) with conditional int64 support.
+  // Less, GreaterOrEqual, LessOrEqual, Pow, PRelu, And, Or, Xor) with conditional int64 support.
   RegisterBinaryElementwiseKernels(*kernel_registry, enable_int64);
 
   // Register Reshape kernels with conditional int64 support
