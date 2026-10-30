@@ -63,6 +63,22 @@ inline float Avx2BFloat16BitsToFloat(uint16_t b) noexcept {
   return result;
 }
 
+float Avx2RoundFp16Scalar(float v) noexcept {
+  const __m128i half_bits = _mm_cvtps_ph(_mm_set_ss(v), _MM_FROUND_TO_NEAREST_INT);
+  return _mm_cvtss_f32(_mm_cvtph_ps(half_bits));
+}
+
+void Avx2RoundFp16InPlace(float* buf, int64_t count) noexcept {
+  int64_t i = 0;
+  for (; i + 8 <= count; i += 8) {
+    const __m128i half_bits = _mm256_cvtps_ph(_mm256_loadu_ps(buf + i), _MM_FROUND_TO_NEAREST_INT);
+    _mm256_storeu_ps(buf + i, _mm256_cvtph_ps(half_bits));
+  }
+  for (; i < count; ++i) {
+    buf[i] = Avx2RoundFp16Scalar(buf[i]);
+  }
+}
+
 inline __m256 Avx2RoundBf16Vec(__m256 v) noexcept {
   const __m256i fbits = _mm256_castps_si256(v);
   const __m256i bias = _mm256_set1_epi32(0x7FFFu);

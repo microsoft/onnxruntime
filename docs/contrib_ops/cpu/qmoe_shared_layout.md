@@ -71,7 +71,8 @@ matrices or panels are materialized.
 
 - `qmoe_shared_layout_test.cc` checks independent layout fixtures, scalar, AVX2,
   and AVX-512 results, candidate dimensions, byte extents/strides, and read-only
-  guarded buffers.
+  guarded buffers. INT4 FP16 boundary tests compare F16C rounding against the
+  scalar path for partial ranges, including vector tails and multiple rows.
 - `test_qmoe_shared_direct.py` checks CPU/CUDA operator execution, dynamic banks,
   prepacking on/off, non-square aliases, mixed INT4/INT3 graphs, and 512-expert
   top-10 routing.
