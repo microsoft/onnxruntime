@@ -2634,7 +2634,8 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
   // Create GraphOptimizerRegistry instance for providing predefined graph optimizers and selection functions for EPs to lookup
   auto graph_optimizer_registry = std::make_unique<GraphOptimizerRegistry>(&sess_options,
                                                                            providers.Get(onnxruntime::kCpuExecutionProvider),
-                                                                           &logger);
+                                                                           &logger,
+                                                                           false /*capability_optimizations_supported*/);
 
   GraphPartitioner partitioner(kernel_registry_manager, providers, std::move(graph_optimizer_registry),
                                [&sess_options]() -> bool { return sess_options.IsLoadCancellationFlagSet(); });
