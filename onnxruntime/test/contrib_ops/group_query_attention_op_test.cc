@@ -2213,9 +2213,12 @@ TEST(GroupQueryAttentionTest, CheckRotaryCaches_CPUPolicy_Permits8Aligned) {
 }
 
 // ---------------------------------------------------------------------------
-// CUDA regression tests: when CUDA execution provider is available, verify that
-// the shared validation rejects rotary_dim=24 before kernel launch and accepts
-// rotary_dim=32.
+// Shared validation tests (CUDA EP):
+// Verify that the shared validation policy (which defaults to allow_8_aligned_rotary = false)
+// strictly rejects rotary_dim=24 before kernel launch, preventing dispatch to CUDA kernels
+// that require 16-element alignment (such as FlashDecoding fast-decode).
+// Also verify that an accepted legacy 16-aligned configuration (rotary_dim=32) passes validation
+// and computes numerically correct results matching the scalar reference.
 // ---------------------------------------------------------------------------
 
 TEST(GroupQueryAttentionTest, CUDA_FusedRoPE_RotaryDim24_RejectedByValidation) {
@@ -2224,7 +2227,7 @@ TEST(GroupQueryAttentionTest, CUDA_FusedRoPE_RotaryDim24_RejectedByValidation) {
   }
 
   constexpr int batch_size = 1;
-  constexpr int sequence_length = 1;  // single-token decode triggering FlashDecoding
+  constexpr int sequence_length = 1;
   constexpr int num_heads = 4;
   constexpr int kv_num_heads = 1;
   constexpr int head_size = 64;
@@ -2251,7 +2254,9 @@ TEST(GroupQueryAttentionTest, CUDA_FusedRoPE_RotaryDim24_RejectedByValidation) {
   tester.AddInput<int32_t>("seqlens_k", {batch_size}, {total_sequence_length - 1});
   tester.AddInput<int32_t>("total_sequence_length", {1}, {total_sequence_length}, /*is_initializer=*/true);
 
-  // rotary_dim = 24 -> cos_dims[1] = 12. Must be rejected for CUDA because 12 % 8 != 0.
+  // rotary_dim = 24 -> cos_dims[1] = 12. Must be rejected by shared validation because 12 % 8 != 0.
+  // This verifies that non-16-aligned rotary configurations are blocked at the validation layer
+  // before any kernel execution occurs.
   tester.AddInput<MLFloat16>("cos_cache", {total_sequence_length + 8, 12},
                              std::vector<MLFloat16>((total_sequence_length + 8) * 12, MLFloat16(1.0f)));
   tester.AddInput<MLFloat16>("sin_cache", {total_sequence_length + 8, 12},
@@ -2285,37 +2290,88 @@ TEST(GroupQueryAttentionTest, CUDA_FusedRoPE_RotaryDim32_Accepted) {
   constexpr int kv_hidden_size = kv_num_heads * head_size;
   constexpr int past_seq_len = 4;
   const int total_sequence_length = past_seq_len + sequence_length;
+  constexpr int rotary_dim = 32;
+  const int half_rotary = rotary_dim / 2;
+  const int max_seq_len = total_sequence_length + 8;
+
+  std::vector<float> query_data(batch_size * sequence_length * hidden_size);
+  std::vector<float> key_data(batch_size * sequence_length * kv_hidden_size);
+  std::vector<float> value_data(batch_size * sequence_length * kv_hidden_size);
+  std::vector<float> past_key_data(batch_size * kv_num_heads * past_seq_len * head_size, 0.0f);
+  std::vector<float> past_value_data(batch_size * kv_num_heads * past_seq_len * head_size, 0.0f);
+
+  for (size_t i = 0; i < query_data.size(); ++i) query_data[i] = 0.02f * static_cast<float>(i + 1);
+  for (size_t i = 0; i < key_data.size(); ++i) key_data[i] = 0.015f * static_cast<float>(i + 2);
+  for (size_t i = 0; i < value_data.size(); ++i) value_data[i] = 0.03f * static_cast<float>((i % 5) + 1);
+  for (size_t i = 0; i < past_key_data.size(); ++i) past_key_data[i] = 0.012f * static_cast<float>(i + 1);
+  for (size_t i = 0; i < past_value_data.size(); ++i) past_value_data[i] = 0.025f * static_cast<float>((i % 7) + 1);
+
+  std::vector<float> cos_cache(max_seq_len * half_rotary);
+  std::vector<float> sin_cache(max_seq_len * half_rotary);
+  for (int pos = 0; pos < max_seq_len; ++pos) {
+    for (int d = 0; d < half_rotary; ++d) {
+      const float freq = 1.0f / std::pow(10000.0f, 2.0f * static_cast<float>(d) / static_cast<float>(rotary_dim));
+      cos_cache[pos * half_rotary + d] = std::cos(static_cast<float>(pos) * freq);
+      sin_cache[pos * half_rotary + d] = std::sin(static_cast<float>(pos) * freq);
+    }
+  }
+
+  // Position IDs for the query token: pos = past_seq_len + s
+  std::vector<int64_t> position_ids(batch_size * sequence_length);
+  for (int s = 0; s < sequence_length; ++s) {
+    position_ids[s] = static_cast<int64_t>(past_seq_len + s);
+  }
+
+  // Compute expected outputs using independent reference
+  const auto ref = ComputeReferenceGQAWithRoPE(
+      query_data, key_data, value_data, past_key_data, past_value_data,
+      cos_cache, sin_cache, batch_size, sequence_length, past_seq_len,
+      num_heads, kv_num_heads, head_size, rotary_dim);
+
+  std::vector<MLFloat16> query_fp16(query_data.size());
+  for (size_t i = 0; i < query_data.size(); ++i) query_fp16[i] = MLFloat16(query_data[i]);
+  std::vector<MLFloat16> key_fp16(key_data.size());
+  for (size_t i = 0; i < key_data.size(); ++i) key_fp16[i] = MLFloat16(key_data[i]);
+  std::vector<MLFloat16> value_fp16(value_data.size());
+  for (size_t i = 0; i < value_data.size(); ++i) value_fp16[i] = MLFloat16(value_data[i]);
+  std::vector<MLFloat16> past_key_fp16(past_key_data.size());
+  for (size_t i = 0; i < past_key_data.size(); ++i) past_key_fp16[i] = MLFloat16(past_key_data[i]);
+  std::vector<MLFloat16> past_value_fp16(past_value_data.size());
+  for (size_t i = 0; i < past_value_data.size(); ++i) past_value_fp16[i] = MLFloat16(past_value_data[i]);
+  std::vector<MLFloat16> cos_cache_fp16(cos_cache.size());
+  for (size_t i = 0; i < cos_cache.size(); ++i) cos_cache_fp16[i] = MLFloat16(cos_cache[i]);
+  std::vector<MLFloat16> sin_cache_fp16(sin_cache.size());
+  for (size_t i = 0; i < sin_cache.size(); ++i) sin_cache_fp16[i] = MLFloat16(sin_cache[i]);
+
+  std::vector<MLFloat16> expected_output(ref.output.size());
+  for (size_t i = 0; i < ref.output.size(); ++i) expected_output[i] = MLFloat16(ref.output[i]);
+  std::vector<MLFloat16> expected_present_key(ref.present_key.size());
+  for (size_t i = 0; i < ref.present_key.size(); ++i) expected_present_key[i] = MLFloat16(ref.present_key[i]);
+  std::vector<MLFloat16> expected_present_value(ref.present_value.size());
+  for (size_t i = 0; i < ref.present_value.size(); ++i) expected_present_value[i] = MLFloat16(ref.present_value[i]);
 
   OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
   tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kv_num_heads));
   tester.AddAttribute<int64_t>("do_rotary", static_cast<int64_t>(1));
 
-  tester.AddInput<MLFloat16>("query", {batch_size, sequence_length, hidden_size},
-                             std::vector<MLFloat16>(hidden_size * sequence_length, MLFloat16(0.1f)));
-  tester.AddInput<MLFloat16>("key", {batch_size, sequence_length, kv_hidden_size},
-                             std::vector<MLFloat16>(kv_hidden_size * sequence_length, MLFloat16(0.1f)));
-  tester.AddInput<MLFloat16>("value", {batch_size, sequence_length, kv_hidden_size},
-                             std::vector<MLFloat16>(kv_hidden_size * sequence_length, MLFloat16(0.1f)));
-  tester.AddInput<MLFloat16>("past_key", {batch_size, kv_num_heads, past_seq_len, head_size},
-                             std::vector<MLFloat16>(kv_num_heads * past_seq_len * head_size, MLFloat16(0.1f)));
-  tester.AddInput<MLFloat16>("past_value", {batch_size, kv_num_heads, past_seq_len, head_size},
-                             std::vector<MLFloat16>(kv_num_heads * past_seq_len * head_size, MLFloat16(0.1f)));
+  tester.AddInput<MLFloat16>("query", {batch_size, sequence_length, hidden_size}, query_fp16);
+  tester.AddInput<MLFloat16>("key", {batch_size, sequence_length, kv_hidden_size}, key_fp16);
+  tester.AddInput<MLFloat16>("value", {batch_size, sequence_length, kv_hidden_size}, value_fp16);
+  tester.AddInput<MLFloat16>("past_key", {batch_size, kv_num_heads, past_seq_len, head_size}, past_key_fp16);
+  tester.AddInput<MLFloat16>("past_value", {batch_size, kv_num_heads, past_seq_len, head_size}, past_value_fp16);
   tester.AddInput<int32_t>("seqlens_k", {batch_size}, {total_sequence_length - 1});
   tester.AddInput<int32_t>("total_sequence_length", {1}, {total_sequence_length}, /*is_initializer=*/true);
+  tester.AddInput<MLFloat16>("cos_cache", {max_seq_len, half_rotary}, cos_cache_fp16);
+  tester.AddInput<MLFloat16>("sin_cache", {max_seq_len, half_rotary}, sin_cache_fp16);
+  tester.AddInput<int64_t>("position_ids", {batch_size, sequence_length}, position_ids);
 
-  // rotary_dim = 32 -> cos_dims[1] = 16 (16 % 8 == 0). Accepted legacy configuration.
-  tester.AddInput<MLFloat16>("cos_cache", {total_sequence_length + 8, 16},
-                             std::vector<MLFloat16>((total_sequence_length + 8) * 16, MLFloat16(1.0f)));
-  tester.AddInput<MLFloat16>("sin_cache", {total_sequence_length + 8, 16},
-                             std::vector<MLFloat16>((total_sequence_length + 8) * 16, MLFloat16(0.0f)));
+  tester.AddOutput<MLFloat16>("output", {batch_size, sequence_length, hidden_size}, expected_output);
+  tester.AddOutput<MLFloat16>("present_key", {batch_size, kv_num_heads, total_sequence_length, head_size}, expected_present_key);
+  tester.AddOutput<MLFloat16>("present_value", {batch_size, kv_num_heads, total_sequence_length, head_size}, expected_present_value);
 
-  tester.AddOutput<MLFloat16>("output", {batch_size, sequence_length, hidden_size},
-                              std::vector<MLFloat16>(batch_size * sequence_length * hidden_size, MLFloat16(0.0f)));
-  tester.AddOutput<MLFloat16>("present_key", {batch_size, kv_num_heads, total_sequence_length, head_size},
-                              std::vector<MLFloat16>(batch_size * kv_num_heads * total_sequence_length * head_size, MLFloat16(0.0f)));
-  tester.AddOutput<MLFloat16>("present_value", {batch_size, kv_num_heads, total_sequence_length, head_size},
-                              std::vector<MLFloat16>(batch_size * kv_num_heads * total_sequence_length * head_size, MLFloat16(0.0f)));
+  // Set FP16 numerical tolerance: 0.01f
+  tester.SetOutputTolerance(0.01f);
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCudaExecutionProvider());
