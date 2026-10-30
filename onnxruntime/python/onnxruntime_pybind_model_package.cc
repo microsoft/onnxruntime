@@ -169,145 +169,87 @@ void addModelPackageMethods(py::module& m) {
       .value("DENSE", MODEL_PACKAGE_WRITE_DENSE);
 
   py::class_<PyModelPackage>(m, "ModelPackage",
-                            "Author model packages using the native model package library. JSON arguments are strings.")
+                             "Author model packages using the native model package library. JSON arguments are strings.")
       .def(py::init([]() {
         ModelPackage* raw = nullptr;
         CheckPackageStatus(ModelPackage_New(&raw));
         return std::make_unique<PyModelPackage>(PyModelPackage::Handle{raw, ModelPackage_Close});
       }))
-      .def_static("open", [](const std::string& root, bool allow_external_paths,
-                             bool follow_symlinks, bool strict_unknown_fields) {
+      .def_static("open", [](const std::string& root, bool allow_external_paths, bool follow_symlinks, bool strict_unknown_fields) {
         ModelPackageOpenOptions options{allow_external_paths, follow_symlinks, strict_unknown_fields};
         ModelPackage* raw = nullptr;
         CheckPackageStatus(ModelPackage_Open(root.c_str(), &options, &raw));
-        return std::make_unique<PyModelPackage>(PyModelPackage::Handle{raw, ModelPackage_Close});
-      }, py::arg("package_root"), py::arg("allow_external_paths") = false,
-         py::arg("follow_symlinks") = true, py::arg("strict_unknown_fields") = true)
+        return std::make_unique<PyModelPackage>(PyModelPackage::Handle{raw, ModelPackage_Close}); }, py::arg("package_root"), py::arg("allow_external_paths") = false, py::arg("follow_symlinks") = true, py::arg("strict_unknown_fields") = true)
       .def("close", &PyModelPackage::Close)
       .def("__enter__", [](PyModelPackage& self) -> PyModelPackage& {
         self.Get();
-        return self;
-      }, py::return_value_policy::reference_internal)
-      .def("__exit__", [](PyModelPackage& self, const py::object&, const py::object&, const py::object&) {
-        self.Close();
-      })
-      .def("set_metadata", [](PyModelPackage& self, const std::optional<std::string>& name,
-                              const std::optional<std::string>& version,
-                              const std::optional<std::string>& description) {
-        CheckPackageStatus(ModelPackage_SetMetadata(self.Get(), OptionalString(name), OptionalString(version),
-                                                   OptionalString(description)));
-      }, py::arg("name") = std::nullopt, py::arg("version") = std::nullopt,
-         py::arg("description") = std::nullopt)
-      .def("set_layout", [](PyModelPackage& self, const std::string& layout) {
-        CheckPackageStatus(ModelPackage_SetLayout(self.Get(), layout.c_str()));
-      }, py::arg("layout"))
-      .def("set_component_inline", [](PyModelPackage& self, const std::string& name, const std::string& json) {
-        CheckPackageStatus(ModelPackage_SetComponentInline(self.Get(), name.c_str(), json.c_str()));
-      }, py::arg("name"), py::arg("component_json"))
-      .def("set_component_external", [](PyModelPackage& self, const std::string& name, const std::string& path) {
-        CheckPackageStatus(ModelPackage_SetComponentExternal(self.Get(), name.c_str(), path.c_str()));
-      }, py::arg("name"), py::arg("path"))
-      .def("remove_component", [](PyModelPackage& self, const std::string& name) {
-        CheckPackageStatus(ModelPackage_RemoveComponent(self.Get(), name.c_str()));
-      }, py::arg("name"))
-      .def("set_variant", [](PyModelPackage& self, const std::string& component, const std::string& variant,
-                             const std::string& json) {
-        CheckPackageStatus(ModelPackage_SetVariant(self.Get(), component.c_str(), variant.c_str(), json.c_str()));
-      }, py::arg("component_name"), py::arg("variant_name"), py::arg("variant_json"))
-      .def("remove_variant", [](PyModelPackage& self, const std::string& component, const std::string& variant) {
-        CheckPackageStatus(ModelPackage_RemoveVariant(self.Get(), component.c_str(), variant.c_str()));
-      }, py::arg("component_name"), py::arg("variant_name"))
-      .def("set_variant_executor_info_inline", [](PyModelPackage& self, const std::string& component,
-                                                  const std::string& variant, const std::string& ns,
-                                                  const std::string& json) {
-        CheckPackageStatus(ModelPackage_SetVariantExecutorInfoInline(
-            self.Get(), component.c_str(), variant.c_str(), ns.c_str(), json.c_str()));
-      }, py::arg("component_name"), py::arg("variant_name"), py::arg("namespace_key"), py::arg("info_json"))
-      .def("set_variant_executor_info_external", [](PyModelPackage& self, const std::string& component,
-                                                    const std::string& variant, const std::string& ns,
-                                                    const std::string& path) {
-        CheckPackageStatus(ModelPackage_SetVariantExecutorInfoExternal(
-            self.Get(), component.c_str(), variant.c_str(), ns.c_str(), path.c_str()));
-      }, py::arg("component_name"), py::arg("variant_name"), py::arg("namespace_key"), py::arg("path"))
-      .def("remove_variant_executor_info", [](PyModelPackage& self, const std::string& component,
-                                              const std::string& variant, const std::string& ns) {
-        CheckPackageStatus(ModelPackage_RemoveVariantExecutorInfo(
-            self.Get(), component.c_str(), variant.c_str(), ns.c_str()));
-      }, py::arg("component_name"), py::arg("variant_name"), py::arg("namespace_key"))
-      .def("set_additional_metadata_json", [](PyModelPackage& self, const std::string& scope,
-                                              const std::optional<std::string>& component,
-                                              const std::optional<std::string>& variant,
-                                              const std::optional<std::string>& json) {
-        CheckPackageStatus(ModelPackage_SetAdditionalMetadataJson(
-            self.Get(), scope.c_str(), OptionalString(component), OptionalString(variant), OptionalString(json)));
-      }, py::arg("scope"), py::arg("component_name") = std::nullopt,
-         py::arg("variant_name") = std::nullopt, py::arg("json") = std::nullopt)
-      .def("add_shared_asset", [](PyModelPackage& self, const std::string& source,
-                                  const std::optional<std::string>& expected_uri, bool copy_in) {
+        return self; }, py::return_value_policy::reference_internal)
+      .def("__exit__", [](PyModelPackage& self, const py::object&, const py::object&, const py::object&) { self.Close(); })
+      .def("set_metadata", [](PyModelPackage& self, const std::optional<std::string>& name, const std::optional<std::string>& version, const std::optional<std::string>& description) { CheckPackageStatus(ModelPackage_SetMetadata(self.Get(), OptionalString(name), OptionalString(version),
+                                                                                                                                                                                                                                    OptionalString(description))); }, py::arg("name") = std::nullopt, py::arg("version") = std::nullopt, py::arg("description") = std::nullopt)
+      .def("set_layout", [](PyModelPackage& self, const std::string& layout) { CheckPackageStatus(ModelPackage_SetLayout(self.Get(), layout.c_str())); }, py::arg("layout"))
+      .def("set_component_inline", [](PyModelPackage& self, const std::string& name, const std::string& json) { CheckPackageStatus(ModelPackage_SetComponentInline(self.Get(), name.c_str(), json.c_str())); }, py::arg("name"), py::arg("component_json"))
+      .def("set_component_external", [](PyModelPackage& self, const std::string& name, const std::string& path) { CheckPackageStatus(ModelPackage_SetComponentExternal(self.Get(), name.c_str(), path.c_str())); }, py::arg("name"), py::arg("path"))
+      .def("remove_component", [](PyModelPackage& self, const std::string& name) { CheckPackageStatus(ModelPackage_RemoveComponent(self.Get(), name.c_str())); }, py::arg("name"))
+      .def("set_variant", [](PyModelPackage& self, const std::string& component, const std::string& variant, const std::string& json) { CheckPackageStatus(ModelPackage_SetVariant(self.Get(), component.c_str(), variant.c_str(), json.c_str())); }, py::arg("component_name"), py::arg("variant_name"), py::arg("variant_json"))
+      .def("remove_variant", [](PyModelPackage& self, const std::string& component, const std::string& variant) { CheckPackageStatus(ModelPackage_RemoveVariant(self.Get(), component.c_str(), variant.c_str())); }, py::arg("component_name"), py::arg("variant_name"))
+      .def("set_variant_executor_info_inline", [](PyModelPackage& self, const std::string& component, const std::string& variant, const std::string& ns, const std::string& json) { CheckPackageStatus(ModelPackage_SetVariantExecutorInfoInline(
+                                                                                                                                                                                        self.Get(), component.c_str(), variant.c_str(), ns.c_str(), json.c_str())); }, py::arg("component_name"), py::arg("variant_name"), py::arg("namespace_key"), py::arg("info_json"))
+      .def("set_variant_executor_info_external", [](PyModelPackage& self, const std::string& component, const std::string& variant, const std::string& ns, const std::string& path) { CheckPackageStatus(ModelPackage_SetVariantExecutorInfoExternal(
+                                                                                                                                                                                          self.Get(), component.c_str(), variant.c_str(), ns.c_str(), path.c_str())); }, py::arg("component_name"), py::arg("variant_name"), py::arg("namespace_key"), py::arg("path"))
+      .def("remove_variant_executor_info", [](PyModelPackage& self, const std::string& component, const std::string& variant, const std::string& ns) { CheckPackageStatus(ModelPackage_RemoveVariantExecutorInfo(
+                                                                                                                                                           self.Get(), component.c_str(), variant.c_str(), ns.c_str())); }, py::arg("component_name"), py::arg("variant_name"), py::arg("namespace_key"))
+      .def("set_additional_metadata_json", [](PyModelPackage& self, const std::string& scope, const std::optional<std::string>& component, const std::optional<std::string>& variant, const std::optional<std::string>& json) { CheckPackageStatus(ModelPackage_SetAdditionalMetadataJson(
+                                                                                                                                                                                                                                    self.Get(), scope.c_str(), OptionalString(component), OptionalString(variant), OptionalString(json))); }, py::arg("scope"), py::arg("component_name") = std::nullopt, py::arg("variant_name") = std::nullopt, py::arg("json") = std::nullopt)
+      .def("add_shared_asset", [](PyModelPackage& self, const std::string& source, const std::optional<std::string>& expected_uri, bool copy_in) {
         const char* uri = nullptr;
         CheckPackageStatus(ModelPackage_AddSharedAsset(
             self.Get(), source.c_str(), OptionalString(expected_uri), copy_in, &uri));
-        return std::string{uri};
-      }, py::arg("source_dir"), py::arg("expected_uri") = std::nullopt, py::arg("copy_in") = true)
-      .def("remove_shared_asset", [](PyModelPackage& self, const std::string& uri) {
-        CheckPackageStatus(ModelPackage_RemoveSharedAsset(self.Get(), uri.c_str()));
-      }, py::arg("uri"))
-      .def("get_info", [](const PyModelPackage& self) {
-        return PackageInfoToDict(*ModelPackage_Info(self.Get()));
-      }, "Return package metadata, components, variants and shared assets as a dict.")
+        return std::string{uri}; }, py::arg("source_dir"), py::arg("expected_uri") = std::nullopt, py::arg("copy_in") = true)
+      .def("remove_shared_asset", [](PyModelPackage& self, const std::string& uri) { CheckPackageStatus(ModelPackage_RemoveSharedAsset(self.Get(), uri.c_str())); }, py::arg("uri"))
+      .def("get_info", [](const PyModelPackage& self) { return PackageInfoToDict(*ModelPackage_Info(self.Get())); }, "Return package metadata, components, variants and shared assets as a dict.")
       .def("get_component_json", [](const PyModelPackage& self, const std::string& component) {
         const char* json = nullptr;
         CheckPackageStatus(ModelPackage_GetComponentJson(self.Get(), component.c_str(), &json));
-        return std::string{json};
-      }, py::arg("component_name"))
-      .def("get_variant_json", [](const PyModelPackage& self, const std::string& component,
-                                 const std::string& variant) {
+        return std::string{json}; }, py::arg("component_name"))
+      .def("get_variant_json", [](const PyModelPackage& self, const std::string& component, const std::string& variant) {
         const char* json = nullptr;
         CheckPackageStatus(ModelPackage_GetVariantJson(self.Get(), component.c_str(), variant.c_str(), &json));
-        return std::string{json};
-      }, py::arg("component_name"), py::arg("variant_name"))
+        return std::string{json}; }, py::arg("component_name"), py::arg("variant_name"))
       .def("resolve_asset_uri", [](const PyModelPackage& self, const std::string& uri) {
         const char* path = nullptr;
         CheckPackageStatus(ModelPackage_ResolveAssetUri(self.Get(), uri.c_str(), &path));
-        return std::string{path};
-      }, py::arg("uri"))
-      .def("resolve_string_ref", [](const PyModelPackage& self, const std::string& ref,
-                                   const std::optional<std::string>& base, bool must_exist) {
+        return std::string{path}; }, py::arg("uri"))
+      .def("resolve_string_ref", [](const PyModelPackage& self, const std::string& ref, const std::optional<std::string>& base, bool must_exist) {
         const char* path = nullptr;
         CheckPackageStatus(ModelPackage_ResolveStringRef(
             self.Get(), OptionalString(base), ref.c_str(), must_exist, &path));
-        return std::string{path};
-      }, py::arg("string_ref"), py::arg("base_dir") = std::nullopt, py::arg("must_exist") = false)
+        return std::string{path}; }, py::arg("string_ref"), py::arg("base_dir") = std::nullopt, py::arg("must_exist") = false)
       .def_static("compute_directory_hash", [](const std::string& source) {
         const char* uri = nullptr;
         CheckPackageStatus(ModelPackage_ComputeDirectoryHash(source.c_str(), &uri));
-        return std::string{uri};
-      }, py::arg("source_dir"))
-      .def("commit", [](PyModelPackage& self, const std::optional<std::string>& destination,
-                        ModelPackageWriteMode mode) {
+        return std::string{uri}; }, py::arg("source_dir"))
+      .def("commit", [](PyModelPackage& self, const std::optional<std::string>& destination, ModelPackageWriteMode mode) {
         ModelPackage* package = self.Get();
         PyModelPackage::BusyScope busy{self};
         py::gil_scoped_release release;
-        CheckPackageStatus(ModelPackage_Commit(package, OptionalString(destination), mode));
-      }, py::arg("dest_root") = std::nullopt, py::arg("mode") = MODEL_PACKAGE_WRITE_PRESERVE,
-         "Commit in place, or to an empty destination. Shared asset sources must remain readable until commit.")
-      .def("prune", [](PyModelPackage& self) {
-        CheckPackageStatus(ModelPackage_Prune(self.Get()));
-      });
+        CheckPackageStatus(ModelPackage_Commit(package, OptionalString(destination), mode)); }, py::arg("dest_root") = std::nullopt, py::arg("mode") = MODEL_PACKAGE_WRITE_PRESERVE, "Commit in place, or to an empty destination. Shared asset sources must remain readable until commit.")
+      .def("prune", [](PyModelPackage& self) { CheckPackageStatus(ModelPackage_Prune(self.Get())); });
 
   py::class_<Ort::ModelPackageOptions>(m, "ModelPackageOptions",
-                                      "Execution provider configuration used for package variant selection.")
+                                       "Execution provider configuration used for package variant selection.")
       .def(py::init([](const PySessionOptions& options) {
-        auto snapshot = CreatePySessionOptionsSnapshot(options);
-        OrtModelPackageOptions* result = nullptr;
-        OrtPybindThrowIfError(ToStatusAndRelease(
-            Ort::GetModelPackageApi().CreateModelPackageOptionsFromSessionOptions(
-                GetOrtEnv(), &snapshot.options, &result)));
-        return Ort::ModelPackageOptions{result};
-      }), py::arg("sess_options"));
+             auto snapshot = CreatePySessionOptionsSnapshot(options);
+             OrtModelPackageOptions* result = nullptr;
+             OrtPybindThrowIfError(ToStatusAndRelease(
+                 Ort::GetModelPackageApi().CreateModelPackageOptionsFromSessionOptions(
+                     GetOrtEnv(), &snapshot.options, &result)));
+             return Ort::ModelPackageOptions{result};
+           }),
+           py::arg("sess_options"));
 
   py::class_<Ort::ModelPackageComponentContext>(m, "ModelPackageComponentContext",
-                                               "A selected component variant from an existing model package.")
+                                                "A selected component variant from an existing model package.")
       .def("get_selected_variant_name", &Ort::ModelPackageComponentContext::GetSelectedVariantName)
       .def("get_selected_variant_folder_path", [](const Ort::ModelPackageComponentContext& self) {
         return PathToUTF8String(self.GetSelectedVariantFolderPath());
@@ -322,34 +264,27 @@ void addModelPackageMethods(py::module& m) {
         }
         // The stable C API's OrtSession handle owns an internal InferenceSession.
         std::unique_ptr<InferenceSession> session{reinterpret_cast<InferenceSession*>(result)};
-        return std::make_unique<PyInferenceSession>(std::move(session), snapshot);
-      }, py::arg("sess_options") = static_cast<const PySessionOptions*>(nullptr),
+        return std::make_unique<PyInferenceSession>(std::move(session), snapshot); }, py::arg("sess_options") = static_cast<const PySessionOptions*>(nullptr),
            "Create an initialized InferenceSession. None applies the package's session/provider options; "
            "explicit options override them, while missing package path options are still added.");
 
   py::class_<Ort::ModelPackageContext>(m, "ModelPackageContext", "Open and inspect an existing model package.")
       .def(py::init([](const std::string& root) {
-        return Ort::ModelPackageContext{ToPathString(root).c_str()};
-      }), py::arg("package_root"))
+             return Ort::ModelPackageContext{ToPathString(root).c_str()};
+           }),
+           py::arg("package_root"))
       .def("get_schema_version", &Ort::ModelPackageContext::GetSchemaVersion)
       .def("get_component_count", &Ort::ModelPackageContext::GetComponentCount)
       .def("get_component_names", &Ort::ModelPackageContext::GetComponentNames)
       .def("get_variant_count", &Ort::ModelPackageContext::GetVariantCount, py::arg("component_name"))
       .def("get_variant_names", &Ort::ModelPackageContext::GetVariantNames, py::arg("component_name"))
-      .def("get_variant_ep_name", [](const Ort::ModelPackageContext& self, const std::string& component,
-                                     const std::string& variant) -> std::optional<std::string> {
+      .def("get_variant_ep_name", [](const Ort::ModelPackageContext& self, const std::string& component, const std::string& variant) -> std::optional<std::string> {
         const char* ep = self.GetVariantEpName(component.c_str(), variant.c_str());
-        return ep ? std::optional<std::string>{ep} : std::nullopt;
-      }, py::arg("component_name"), py::arg("variant_name"))
-      .def("resolve_string_ref", [](const Ort::ModelPackageContext& self, const std::string& ref,
-                                    const std::optional<std::string>& base, bool must_exist) {
-        return self.ResolveStringRef(base ? base->c_str() : nullptr, ref.c_str(), must_exist);
-      }, py::arg("string_ref"), py::arg("base_dir") = std::nullopt, py::arg("must_exist") = false)
-      .def("select_component", [](const Ort::ModelPackageContext& self, const std::string& component_name,
-                                  const Ort::ModelPackageOptions& options) {
+        return ep ? std::optional<std::string>{ep} : std::nullopt; }, py::arg("component_name"), py::arg("variant_name"))
+      .def("resolve_string_ref", [](const Ort::ModelPackageContext& self, const std::string& ref, const std::optional<std::string>& base, bool must_exist) { return self.ResolveStringRef(base ? base->c_str() : nullptr, ref.c_str(), must_exist); }, py::arg("string_ref"), py::arg("base_dir") = std::nullopt, py::arg("must_exist") = false)
+      .def("select_component", [](const Ort::ModelPackageContext& self, const std::string& component_name, const Ort::ModelPackageOptions& options) {
         py::gil_scoped_release release;
-        return self.SelectComponent(component_name.c_str(), options);
-      }, py::arg("component_name"), py::arg("options"));
+        return self.SelectComponent(component_name.c_str(), options); }, py::arg("component_name"), py::arg("options"));
 }
 
 }  // namespace onnxruntime::python
