@@ -3346,6 +3346,11 @@ This version of the operator has been available since version 1 of the 'com.micr
   
   To drop the last `k` tokens, for example after rejecting speculative draft tokens, re-run with the smaller `total_sequence_length` and `seqlens_k` and leave the buffer untouched. That is exact when `L(T - k) == L(T) - k`, which callers can evaluate with the formula above. Otherwise the shorter layout needs positions that have already been evicted, and the window has to be re-materialized.
   
+  **Right-Padded Prefill Chunks (fixed-shape execution):**
+  A prefill chunk may be right-padded to a fixed `sequence_length` `S` while only the first `Q_valid` rows (`1 <= Q_valid <= S`) of `query`, `key` and `value` are real tokens. Let `P` be the number of tokens already processed by a batch entry. The two length inputs then intentionally differ: `seqlens_k[b] + 1 = P + Q_valid` is the valid total, while `total_sequence_length` is the padded total `P + S`, from which the operator derives `P = total_sequence_length - S`. `total_sequence_length` therefore equals the batch maximum of `seqlens_k + 1` only when `Q_valid == S`. For example, with `P = 8`, `S = 4` and `Q_valid = 2`, pass `seqlens_k = 9` and `total_sequence_length = 12`.
+  
+  Only the `Q_valid` valid rows are appended to the KV cache and attended to; the outputs for the padding rows are unspecified. `attention_bias`, when provided, has query dimension `S` and key dimension the padded `total_sequence_length`, and `position_ids` has `S` entries per batch entry. The existing restriction applies: a multi-token step with past context requires `batch_size == 1`. This is supported by the CPU implementation for both full-length and windowed (`sliding_window_cache`) caches.
+  
   **Quantization:**
   When quantization is enabled, `past_key` and `past_value` inputs can be of type `float8e4m3fn`, `uint8` or `int8`. The corresponding `k_scale` and `v_scale` tensors must be provided.
   The operator will output `present_key` and `present_value` in same format as the `past_key` and `past_value`.
@@ -3416,9 +3421,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>past_value</tt> (optional) : T_CACHE</dt>
 <dd>past state value with support for format BNSH. When past_value uses same tensor as present_value(k-v cache), it is of length max_sequence_length... otherwise of length past_sequence_length. When sliding_window_cache is 1 this length is the window cache capacity C, which is chosen by the caller independently of the sequence length and must be at least local_window_size.</dd>
 <dt><tt>seqlens_k</tt> : M</dt>
-<dd>1D Tensor of shape (batch_size). Equivalent to (total_sequence_lengths - 1).</dd>
+<dd>1D Tensor of shape (batch_size). Equivalent to (total_sequence_lengths - 1), where the total counts only valid tokens. For a right-padded chunk this is past + valid_new - 1, not past + sequence_length - 1.</dd>
 <dt><tt>total_sequence_length</tt> : M</dt>
-<dd>Scalar tensor equivalent to the maximum total sequence length (past + new) of the batch. Used for checking inputs and determining prompt vs token generation case.</dd>
+<dd>Scalar tensor equivalent to the maximum total sequence length (past + new) of the batch. Used for checking inputs and determining prompt vs token generation case. For a right-padded chunk the new part counts the padded sequence_length, so this is past + sequence_length and can exceed max(seqlens_k) + 1.</dd>
 <dt><tt>cos_cache</tt> (optional) : T</dt>
 <dd>2D tensor with shape (max_sequence_length, head_size / 2).</dd>
 <dt><tt>sin_cache</tt> (optional) : T</dt>

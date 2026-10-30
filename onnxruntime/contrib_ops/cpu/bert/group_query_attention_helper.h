@@ -575,6 +575,31 @@ inline Status CheckNoQKOutput(int num_outputs, int qk_output) {
   return Status::OK();
 }
 
+// Resolves the past KV length and the number of valid query/KV tokens in the current step.
+// The two length inputs differ for a right-padded chunk: seqlens_k + 1 is the valid total
+// (past_sequence_length + valid_q_length), while max_total_sequence_length is the padded total
+// (past_sequence_length + sequence_length). For a subsequent prefill chunk (sequence_length > 1,
+// !is_first_prompt) the past length is therefore max_total_sequence_length - sequence_length; this is
+// only equal to the batch maximum of seqlens_k + 1 when valid_q_length == sequence_length.
+inline void ResolveGQAStepLengths(int64_t seqlens_k,
+                                  int sequence_length,
+                                  int max_total_sequence_length,
+                                  bool is_first_prompt,
+                                  int64_t& past_sequence_length,
+                                  int64_t& valid_q_length) noexcept {
+  const int64_t total_len = std::max<int64_t>(seqlens_k + 1, 0);
+  past_sequence_length = 0;
+  if (!is_first_prompt) {
+    const int64_t chunk_past_len = static_cast<int64_t>(max_total_sequence_length) - sequence_length;
+    if (sequence_length > 1 && chunk_past_len >= 0 && chunk_past_len < total_len) {
+      past_sequence_length = chunk_past_len;
+    } else {
+      past_sequence_length = std::max<int64_t>(total_len - sequence_length, 0);
+    }
+  }
+  valid_q_length = std::clamp<int64_t>(total_len - past_sequence_length, 0, sequence_length);
+}
+
 }  // namespace group_query_attention_helper
 }  // namespace contrib
 }  // namespace onnxruntime
