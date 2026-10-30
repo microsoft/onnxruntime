@@ -116,7 +116,7 @@ class InferenceSessionWrap : public Napi::ObjectWrap<InferenceSessionWrap> {
   bool initialized_;
   bool loading_;
   bool disposed_;
-  std::unique_ptr<Ort::Session> session_;
+  std::shared_ptr<Ort::Session> session_;
 
   // input/output metadata
   std::vector<std::string> inputNames_;

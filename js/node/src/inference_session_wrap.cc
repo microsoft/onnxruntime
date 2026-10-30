@@ -17,6 +17,50 @@
 #include <vector>
 
 namespace {
+struct InputAllocationOwner {
+  void* buffer;
+  std::shared_ptr<void> owner;
+};
+
+std::shared_ptr<void> FindInputAllocationOwner(
+    Ort::Value& value,
+    const std::vector<InputAllocationOwner>& owners) {
+  if (owners.empty() || value.GetTypeInfo().GetONNXType() != ONNX_TYPE_TENSOR) {
+    return {};
+  }
+
+  const auto memory_info = value.GetTensorMemoryInfo();
+  if (memory_info.GetDeviceType() != OrtMemoryInfoDeviceType_GPU ||
+      memory_info.GetAllocatorName() != "WebGPU_Buf") {
+    return {};
+  }
+
+  const auto buffer = value.GetTensorMutableRawData();
+  for (const auto& candidate : owners) {
+    if (candidate.buffer == buffer) {
+      return candidate.owner;
+    }
+  }
+
+  return {};
+}
+
+std::shared_ptr<Ort::Session> MakeSharedSession(
+    std::unique_ptr<Ort::Session> session,
+    std::shared_ptr<EpContextDataReadState> ep_context_data_read_state) {
+  return std::shared_ptr<Ort::Session>{
+      session.release(),
+      [state = std::move(ep_context_data_read_state)](Ort::Session* value) mutable {
+        if (!OrtSingletonData::GetOrtObjects()) {
+          (void)value->release();
+        }
+        delete value;
+        if (state) {
+          state->Release();
+          state.reset();
+        }
+      }};
+}
 
 struct ModelBufferView {
   const uint8_t* data = nullptr;
@@ -233,6 +277,7 @@ Napi::Object InferenceSessionWrap::Init(Napi::Env env, Napi::Object exports) {
 
   Napi::Function initOrtOnce = Napi::Function::New(env, InferenceSessionWrap::InitOrtOnce);
   exports.Set("initOrtOnce", initOrtOnce);
+  exports.Set("__testGpuBuffersAlias", Napi::Function::New(env, TestGpuBuffersAlias));
 
   return exports;
 }
@@ -269,10 +314,10 @@ InferenceSessionWrap::~InferenceSessionWrap() {
       (void)type_info.release();
     }
     (void)ioBinding_.release();
-    (void)session_.release();
+    session_.reset();
   } else {
     ioBinding_.reset(nullptr);
-    session_.reset(nullptr);
+    session_.reset();
   }
 
   // The native session is gone, so the callback state can no longer be reached from ONNX Runtime.
@@ -284,7 +329,7 @@ void InferenceSessionWrap::AdoptLoadedSession(std::unique_ptr<Ort::Session> sess
                                               std::vector<Ort::TypeInfo> inputTypes,
                                               std::vector<std::string> outputNames,
                                               std::vector<Ort::TypeInfo> outputTypes, const Napi::Object options) {
-  this->session_ = std::move(session);
+  this->session_ = MakeSharedSession(std::move(session), std::move(epContextDataReadState_));
   this->inputNames_ = std::move(inputNames);
   this->inputTypes_ = std::move(inputTypes);
   this->outputNames_ = std::move(outputNames);
@@ -312,7 +357,7 @@ void InferenceSessionWrap::ResetAfterFailedLoad() noexcept {
     this->inputTypes_.clear();
     this->outputTypes_.clear();
     this->ioBinding_.reset(nullptr);
-    this->session_.reset(nullptr);
+    this->session_.reset();
   }
 
   // Deterministic teardown: the callback state is released only after the native session is gone.
@@ -498,6 +543,7 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
   std::vector<const char*> outputNames_cstr;
   std::vector<Ort::Value> outputValues;
   std::vector<bool> reuseOutput;
+  std::vector<InputAllocationOwner> inputAllocationOwners;
   size_t inputIndex = 0;
   size_t outputIndex = 0;
   Ort::MemoryInfo cpuMemoryInfo = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
@@ -509,7 +555,15 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
         inputIndex++;
         inputNames_cstr.push_back(name.c_str());
         auto value = feed.Get(name);
-        inputValues.push_back(NapiValueToOrtValue(env, value, cpuMemoryInfo, gpuBufferMemoryInfo));
+        std::shared_ptr<void> allocation_owner;
+        auto input_value =
+            NapiValueToOrtValue(env, value, cpuMemoryInfo, gpuBufferMemoryInfo, &allocation_owner);
+        if (allocation_owner) {
+          inputAllocationOwners.push_back(
+              {input_value.GetTensorMutableRawData(),
+               std::move(allocation_owner)});
+        }
+        inputValues.push_back(std::move(input_value));
       }
     }
     for (auto& name : outputNames_) {
@@ -536,7 +590,17 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
       Napi::Object result = Napi::Object::New(env);
 
       for (size_t i = 0; i < outputIndex; i++) {
-        result.Set(outputNames_cstr[i], OrtValueToNapiValue(env, std::move(outputValues[i])));
+        if (reuseOutput[i] &&
+            outputValues[i].GetTypeInfo().GetONNXType() == ONNX_TYPE_TENSOR &&
+            outputValues[i].GetTensorTypeAndShapeInfo().GetElementType() !=
+                ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING) {
+          result.Set(outputNames_cstr[i], fetch.Get(outputNames_cstr[i]));
+          continue;
+        }
+
+        auto allocation_owner = FindInputAllocationOwner(outputValues[i], inputAllocationOwners);
+        result.Set(outputNames_cstr[i],
+                   OrtValueToNapiValue(env, std::move(outputValues[i]), session_, std::move(allocation_owner)));
       }
       return scope.Escape(result);
     } else {
@@ -564,7 +628,9 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
 
       Napi::Object result = Napi::Object::New(env);
       for (size_t i = 0; i < outputIndex; i++) {
-        result.Set(outputNames_cstr[i], OrtValueToNapiValue(env, std::move(outputs[i])));
+        auto allocation_owner = FindInputAllocationOwner(outputs[i], inputAllocationOwners);
+        result.Set(outputNames_cstr[i],
+                   OrtValueToNapiValue(env, std::move(outputs[i]), session_, std::move(allocation_owner)));
       }
       return scope.Escape(result);
     }
@@ -584,7 +650,7 @@ Napi::Value InferenceSessionWrap::Dispose(const Napi::CallbackInfo& info) {
   this->outputTypes_.clear();
 
   this->ioBinding_.reset(nullptr);
-  this->session_.reset(nullptr);
+  this->session_.reset();
 
   // Deterministic teardown: the native session is released before the state it can call into.
   this->ReleaseEpContextDataReadState();
