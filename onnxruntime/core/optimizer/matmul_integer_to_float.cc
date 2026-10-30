@@ -31,6 +31,142 @@ static bool CheckBiasShape(const TensorShapeProto* bias_shape) {
   return bias_last_dim > 1;
 }
 
+// Returns true if the tensor shape is a scalar (rank 0) or 1D tensor of size 1.
+// Matches the CPU kernel predicate IsScalarOr1ElementVector.
+static bool IsScalarOr1ElementVector(const TensorShapeProto* shape) {
+  if (shape == nullptr) {
+    return false;
+  }
+  int rank = shape->dim_size();
+  if (rank == 0) {
+    return true;
+  }
+  if (rank == 1 && shape->dim(0).has_dim_value() && shape->dim(0).dim_value() == 1) {
+    return true;
+  }
+  return false;
+}
+
+// Check if B_scale's shape is supported by MLAS direct GEMM quantization.
+// Supported shapes:
+// 1. Scalar or 1D tensor with size 1
+// 2. 1D tensor with size equal to the last dimension of B_shape when B_shape is 2D
+// 3. Multidimensional tensor matching B_shape except that the second-to-last dimension is 1
+static bool IsBScaleSupportedForGEMM(const TensorShapeProto* b_scale_shape, const TensorShapeProto* b_shape) {
+  if (b_scale_shape == nullptr) {
+    return false;
+  }
+  int b_scale_rank = b_scale_shape->dim_size();
+  if (b_scale_rank == 0 ||
+      (b_scale_rank == 1 && b_scale_shape->dim(0).has_dim_value() && b_scale_shape->dim(0).dim_value() == 1)) {
+    return true;
+  }
+  if (b_shape == nullptr) {
+    return false;
+  }
+  int b_rank = b_shape->dim_size();
+
+  // 1D per-column: b_scale is [N] and B is 2D [K, N]
+  if (b_scale_rank == 1 && b_rank == 2) {
+    if (b_scale_shape->dim(0).has_dim_value() && b_shape->dim(1).has_dim_value()) {
+      return b_scale_shape->dim(0).dim_value() == b_shape->dim(1).dim_value() ||
+             b_scale_shape->dim(0).dim_value() == 1;
+    }
+    // With dynamic or symbolic dimensions (e.g. dim_param), any valid 1D broadcast scale for a 2D B
+    // must align with the last dimension of B or be size 1, both of which are supported by MLAS.
+    return true;
+  }
+
+  // Multidimensional per-column: ranks match, rank > 1, second-to-last dim is 1, and other dims match B's dims
+  if (b_scale_rank != b_rank || b_scale_rank <= 1) {
+    return false;
+  }
+  if (!b_scale_shape->dim(b_scale_rank - 2).has_dim_value() ||
+      b_scale_shape->dim(b_scale_rank - 2).dim_value() != 1) {
+    return false;
+  }
+  for (int i = 0; i < b_scale_rank; ++i) {
+    if (i == b_scale_rank - 2) {
+      continue;
+    }
+    if (b_scale_shape->dim(i).has_dim_value() && b_shape->dim(i).has_dim_value()) {
+      if (b_scale_shape->dim(i).dim_value() != b_shape->dim(i).dim_value()) {
+        return false;
+      }
+    } else if (b_scale_shape->dim(i).has_dim_param() && b_shape->dim(i).has_dim_param()) {
+      if (b_scale_shape->dim(i).dim_param() != b_shape->dim(i).dim_param()) {
+        return false;
+      }
+    } else {
+      return false;
+    }
+  }
+  return true;
+}
+
+// Simulates MatMulIntegerToFloat::FixupScaleTensor ordering.
+// Returns false if scale tensor shapes cannot be evaluated or their ordering cannot be determined.
+static bool SimulateFixupScaleTensor(const TensorShapeProto* s0, const TensorShapeProto* s1,
+                                     const TensorShapeProto*& a_scale_shape,
+                                     const TensorShapeProto*& b_scale_shape) {
+  if (s0 == nullptr || s1 == nullptr) {
+    return false;
+  }
+  a_scale_shape = s0;
+  b_scale_shape = s1;
+
+  if (!IsScalarOr1ElementVector(a_scale_shape)) {
+    int a_scale_rank = a_scale_shape->dim_size();
+    if (a_scale_rank == 1) {
+      std::swap(a_scale_shape, b_scale_shape);
+    } else if (a_scale_rank > 1) {
+      const auto& last_dim = a_scale_shape->dim(a_scale_rank - 1);
+      if (!last_dim.has_dim_value()) {
+        return false;
+      }
+      if (last_dim.dim_value() != 1) {
+        std::swap(a_scale_shape, b_scale_shape);
+      }
+    }
+  } else if (!IsScalarOr1ElementVector(b_scale_shape)) {
+    int b_scale_rank = b_scale_shape->dim_size();
+    if (b_scale_rank > 1) {
+      const auto& second_last_dim = b_scale_shape->dim(b_scale_rank - 2);
+      if (!second_last_dim.has_dim_value()) {
+        return false;
+      }
+      if (second_last_dim.dim_value() != 1) {
+        std::swap(a_scale_shape, b_scale_shape);
+      }
+    }
+  }
+  return true;
+}
+
+// Bias can only be fused into MatMulIntegerToFloat / DynamicQuantizeMatMul if the GEMM kernel
+// can apply the scaling directly prior to adding the bias. If scaling must be deferred (e.g. matrix-shaped
+// scale), fusing Add would multiply the bias by the scale, altering graph semantics (issue #33331).
+static bool CanFuseBias(const Node& mul_node_right, const Node& matmulinteger_node) {
+  if (mul_node_right.InputDefs().size() < 2 || matmulinteger_node.InputDefs().size() < 2) {
+    return false;
+  }
+
+  const NodeArg* scale_arg_0 = mul_node_right.InputDefs()[0];
+  const NodeArg* scale_arg_1 = mul_node_right.InputDefs()[1];
+  const TensorShapeProto* s0 = scale_arg_0->Shape();
+  const TensorShapeProto* s1 = scale_arg_1->Shape();
+  const TensorShapeProto* b_shape = matmulinteger_node.InputDefs()[1]->Shape();
+
+  const TensorShapeProto* selected_a_scale = nullptr;
+  const TensorShapeProto* selected_b_scale = nullptr;
+  if (!SimulateFixupScaleTensor(s0, s1, selected_a_scale, selected_b_scale)) {
+    return false;
+  }
+
+  return IsScalarOr1ElementVector(selected_a_scale) &&
+         IsBScaleSupportedForGEMM(selected_b_scale, b_shape);
+}
+
 bool HasElementDataType(const NodeArg& node_arg, int32_t data_type) {
   if (!node_arg.Exists()) {
     return false;
@@ -179,7 +315,8 @@ Status MatMulIntegerToFloatFusion::ApplyImpl(Graph& graph, bool& modified, int g
     // Find bias node
     Node* p_add_node = nullptr;
     int idx = 0;
-    if (optimizer_utils::CheckOutputEdges(graph, mul_node, 1)) {
+    if (CanFuseBias(mul_node_right, matmulinteger_node) &&
+        optimizer_utils::CheckOutputEdges(graph, mul_node, 1)) {
       const Node* tmp_add_node = graph_utils::FirstChildByType(mul_node, "Add");
       if (nullptr != tmp_add_node) {
         // check both "inputs" to find bias, caters for edge case where bias index in InputDefs is not what is expected
