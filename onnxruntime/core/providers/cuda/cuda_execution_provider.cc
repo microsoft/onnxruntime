@@ -305,8 +305,9 @@ void CUDAExecutionProvider::PerThreadContext::CaptureBegin(CudaGraphAnnotation_t
   cuda_graph_.CaptureBegin(cuda_graph_annotation_id);
 }
 
-void CUDAExecutionProvider::PerThreadContext::CaptureEnd(CudaGraphAnnotation_t cuda_graph_annotation_id) {
-  cuda_graph_.CaptureEnd(cuda_graph_annotation_id);
+void CUDAExecutionProvider::PerThreadContext::CaptureEnd(CudaGraphAnnotation_t cuda_graph_annotation_id,
+                                                         bool capture_succeeded) {
+  cuda_graph_.CaptureEnd(cuda_graph_annotation_id, capture_succeeded);
 }
 
 bool CUDAExecutionProvider::PerThreadContext::IsGraphCaptured(CudaGraphAnnotation_t graph_annotation_id) const {
@@ -529,14 +530,21 @@ Status CUDAExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_opti
 }
 
 Status CUDAExecutionProvider::OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& run_options) {
+  return OnRunEnd(sync_stream, run_options, true);
+}
+
+Status CUDAExecutionProvider::OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& run_options,
+                                       bool run_succeeded) {
   CudaGraphAnnotation_t cuda_graph_annotation_id = GetPerThreadContext().GetCudaGraphAnnotationId(run_options);
   if (IsGraphCaptureEnabled() && !GetPerThreadContext().IsGraphCaptured(cuda_graph_annotation_id)) {
     if (GetPerThreadContext().IsGraphCaptureAllowed(cuda_graph_annotation_id)) {
-      GetPerThreadContext().CaptureEnd(cuda_graph_annotation_id);
+      GetPerThreadContext().CaptureEnd(cuda_graph_annotation_id, run_succeeded);
       // CUDA work issued to a capturing stream doesn’t actually run on the GPU,
       // so run the captured graph here to actually execute the work.
-      ORT_RETURN_IF_ERROR(GetPerThreadContext().ReplayGraph(cuda_graph_annotation_id, sync_stream));
-    } else {
+      if (run_succeeded) {
+        ORT_RETURN_IF_ERROR(GetPerThreadContext().ReplayGraph(cuda_graph_annotation_id, sync_stream));
+      }
+    } else if (run_succeeded) {
       GetPerThreadContext().IncrementRegularRunCountBeforeGraphCapture(cuda_graph_annotation_id);
     }
   }

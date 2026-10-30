@@ -2,10 +2,12 @@
 // Licensed under the MIT License.
 
 #include "core/session/plugin_ep/ep_plugin_provider_interfaces.h"
+#include "core/session/plugin_ep/run_options_internal.h"
 
 #include <algorithm>
 #include <gsl/gsl>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -864,6 +866,32 @@ Status PluginExecutionProvider::OnRunEnd(bool sync_stream, const RunOptions& run
   }
 
   return ToStatusAndRelease(ort_ep_->OnRunEnd(ort_ep_.get(), &run_options, sync_stream));
+}
+
+Status PluginExecutionProvider::OnRunEnd(bool sync_stream, const RunOptions& run_options, bool run_succeeded) {
+  if (ort_ep_->OnRunEnd == nullptr) {
+    return Base::OnRunEnd(sync_stream, run_options);
+  }
+  if (run_succeeded) {
+    return OnRunEnd(sync_stream, run_options);
+  }
+  std::optional<RunOptions> end_options;
+  Status preparation_status;
+  ORT_TRY {
+    end_options.emplace(run_options);
+    end_options->config_options.configurations[kEpRunSucceededConfigKey] = "0";
+  }
+  ORT_CATCH(const std::exception& exception) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      preparation_status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to prepare plugin run-end options: ", exception.what());
+    });
+  }
+  if (!preparation_status.IsOK()) {
+    const auto teardown_status = OnRunEnd(sync_stream, run_options);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, preparation_status.ErrorMessage(),
+                           "; OnRunEnd: ", teardown_status.ToString());
+  }
+  return OnRunEnd(sync_stream, *end_options);
 }
 
 Status PluginExecutionProvider::OnSessionInitializationEnd() {

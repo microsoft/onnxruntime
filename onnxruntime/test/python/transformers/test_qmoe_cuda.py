@@ -23,7 +23,9 @@ import os
 import time
 import unittest
 from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import nullcontext
+from threading import Barrier
 
 import numpy
 import torch
@@ -3257,6 +3259,426 @@ class TestQMoEOfflinePrepackedIntParity(unittest.TestCase):
                     session = self._build_session(fc1, fc2, bits, block_size, 1, **kwargs)
                     session.run(None, {"x": x, "router": router})
                 self.assertIn(f"{name}_scales shape [E,N,K/block_size]", str(ctx.exception))
+
+
+@unittest.skipUnless(torch.cuda.is_available(), "CUDA is required")
+class TestQMoEInt3Validation(unittest.TestCase):
+    hidden_size = 256
+    inter_size = 128
+    num_experts = 2
+    top_k = 2
+
+    @staticmethod
+    def _pack(codes, bits):
+        shifts = numpy.arange(bits, dtype=numpy.uint8)
+        binary = ((codes[..., None] >> shifts) & 1).reshape(*codes.shape[:-1], -1)
+        return numpy.packbits(binary, axis=-1, bitorder="little")
+
+    @staticmethod
+    def _unpack(packed, bits, features):
+        binary = numpy.unpackbits(packed, axis=-1, bitorder="little")[..., : features * bits]
+        return (binary.reshape(*packed.shape[:-1], features, bits) << numpy.arange(bits)).sum(axis=-1)
+
+    def _case(self, bits=(3, 3), block_size=32, dtype=torch.float16, dynamic=(), zeros=False, rows=3):
+        rng = numpy.random.default_rng(2025)
+        tensors = {
+            "x": torch.tensor(rng.normal(0, 0.2, (rows, self.hidden_size)), dtype=dtype),
+            "router": torch.tensor(rng.normal(size=(rows, self.num_experts)), dtype=dtype),
+        }
+        for prefix, outputs, features, width in (
+            ("fc1", 2 * self.inter_size, self.hidden_size, bits[0]),
+            ("fc2", self.hidden_size, self.inter_size, bits[1]),
+        ):
+            codes = rng.integers(0, 1 << width, (self.num_experts, outputs, features), dtype=numpy.uint8)
+            tensors[prefix + "_W"] = torch.from_numpy(self._pack(codes, width))
+            tensors[prefix + "_S"] = torch.tensor(
+                rng.uniform(0.01, 0.03, (self.num_experts, outputs, features // block_size)), dtype=dtype
+            )
+            if zeros:
+                zero_codes = numpy.full(
+                    (self.num_experts, outputs, features // block_size), 1 << (width - 1), dtype=numpy.uint8
+                )
+                tensors[prefix + "_Z"] = torch.from_numpy(self._pack(zero_codes, width))
+        float_type = TensorProto.FLOAT16 if dtype == torch.float16 else TensorProto.BFLOAT16
+        inputs = []
+        initializers = []
+        for name, tensor in tensors.items():
+            tensor_type = TensorProto.UINT8 if tensor.dtype == torch.uint8 else float_type
+            if name in ("x", "router") or name in dynamic:
+                inputs.append(helper.make_tensor_value_info(name, tensor_type, list(tensor.shape)))
+            else:
+                initializers.append(
+                    helper.make_tensor(
+                        name, tensor_type, list(tensor.shape), tensor.view(torch.uint8).numpy().tobytes(), raw=True
+                    )
+                )
+        node_inputs = ["x", "router", "fc1_W", "fc1_S", "", "fc2_W", "fc2_S"]
+        if zeros:
+            node_inputs += ["", "", "", "", "fc1_Z", "fc2_Z"]
+        node = helper.make_node(
+            "QMoE",
+            node_inputs,
+            ["y"],
+            domain="com.microsoft",
+            k=self.top_k,
+            normalize_routing_weights=1,
+            activation_type="swiglu",
+            swiglu_fusion=1,
+            expert_weight_bits=bits[0],
+            fc1_expert_weight_bits=bits[0],
+            fc2_expert_weight_bits=bits[1],
+            fc3_expert_weight_bits=bits[0],
+            weights_prepacked=0,
+            block_size=block_size,
+        )
+        graph = helper.make_graph(
+            [node],
+            "int3_validation",
+            inputs,
+            [helper.make_tensor_value_info("y", float_type, [rows, self.hidden_size])],
+            initializers,
+        )
+        model = helper.make_model(
+            graph, opset_imports=[helper.make_opsetid("", 20), helper.make_opsetid("com.microsoft", 1)]
+        )
+        model.ir_version = 10
+        return model, tensors
+
+    @staticmethod
+    def _session(model, scratch=None, tile=None, capture=False, provider_options=None):
+        options = onnxruntime.SessionOptions()
+        options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+        if scratch is not None:
+            options.add_session_config_entry("ep.cuda.qmoe_int_dequant_max_scratch_bytes", str(scratch))
+        if tile is not None:
+            options.add_session_config_entry("ep.cuda.qmoe_row_tile_size", str(tile))
+        provider = resolve_cuda_plugin_ep("CUDAExecutionProvider")
+        if capture or provider_options:
+            extra_options = dict(provider_options or {})
+            if capture:
+                extra_options["enable_cuda_graph"] = True
+            provider = (
+                (provider, extra_options)
+                if isinstance(provider, str)
+                else (provider[0], {**provider[1], **extra_options})
+            )
+        return onnxruntime.InferenceSession(model.SerializeToString(), options, providers=[provider])
+
+    def _binding(self, session, tensors):
+        binding = session.io_binding()
+        buffers = {}
+        for input_info in session.get_inputs() + session.get_overridable_initializers():
+            tensor = tensors[input_info.name].cuda()
+            buffers[input_info.name] = tensor
+            element_type = (
+                TensorProto.UINT8
+                if tensor.dtype == torch.uint8
+                else (TensorProto.FLOAT16 if tensor.dtype == torch.float16 else TensorProto.BFLOAT16)
+            )
+            binding.bind_input(input_info.name, "cuda", 0, element_type, tuple(tensor.shape), tensor.data_ptr())
+        output = torch.empty_like(tensors["x"], device="cuda")
+        element_type = TensorProto.FLOAT16 if output.dtype == torch.float16 else TensorProto.BFLOAT16
+        binding.bind_output("y", "cuda", 0, element_type, tuple(output.shape), output.data_ptr())
+        torch.cuda.synchronize()
+        return binding, buffers, output
+
+    @staticmethod
+    def _run(session, binding, output, run_options=None):
+        torch.cuda.synchronize()
+        session.run_with_iobinding(binding, run_options)
+        binding.synchronize_outputs()
+        return output.float().cpu().numpy().copy()
+
+    def _reference(self, tensors, bits, block_size):
+        dtype = tensors["x"].dtype
+        projections = []
+        for prefix, features, width in (("fc1", self.hidden_size, bits[0]), ("fc2", self.inter_size, bits[1])):
+            codes = self._unpack(tensors[prefix + "_W"].numpy(), width, features)
+            zero = 1 << (width - 1)
+            if prefix + "_Z" in tensors:
+                zero = self._unpack(tensors[prefix + "_Z"].numpy(), width, features // block_size)
+                zero = numpy.repeat(zero, block_size, axis=-1)
+            scales = numpy.repeat(tensors[prefix + "_S"].float().numpy(), block_size, axis=-1)
+            projections.append(torch.tensor((codes.astype(numpy.float32) - zero) * scales, dtype=dtype).float())
+        first, second = projections
+        expected = torch.zeros_like(tensors["x"], dtype=torch.float32)
+        routing = torch.softmax(tensors["router"].float(), dim=-1)
+        for expert in range(self.num_experts):
+            fused = tensors["x"].float() @ first[expert].T
+            activation = (F.silu(fused[:, 0::2]) * fused[:, 1::2]).to(dtype).float()
+            partial = (activation @ second[expert].T).to(dtype).float()
+            expected += routing[:, expert : expert + 1] * partial
+        return expected.to(dtype).float().numpy()
+
+    @parameterized.expand(
+        [
+            (f"{first}_{second}_{block}_{dtype}", (first, second), block, dtype)
+            for first, second in ((3, 3), (3, 4), (4, 3), (2, 3), (3, 2))
+            for block in (32, 64, 128)
+            for dtype in (torch.float16, torch.bfloat16)
+        ]
+    )
+    def test_dynamic_scales(self, _name, bits, block_size, dtype):
+        model, tensors = self._case(bits, block_size, dtype, dynamic=("fc1_S", "fc2_S"))
+        session = self._session(model)
+        binding, buffers, output = self._binding(session, tensors)
+        expected = self._reference(tensors, bits, block_size)
+        numpy.testing.assert_allclose(self._run(session, binding, output), expected, rtol=0.03, atol=0.002)
+        for name in ("fc1_S", "fc2_S"):
+            for invalid in (-1.0, float("inf"), float("-inf"), float("nan")):
+                with self.subTest(name=name, invalid=invalid):
+                    buffers[name].reshape(-1)[-1] = invalid
+                    with self.assertRaisesRegex(Exception, "finite nonnegative scales"):
+                        self._run(session, binding, output)
+                    buffers[name].copy_(tensors[name])
+                    numpy.testing.assert_allclose(self._run(session, binding, output), expected, rtol=0.03, atol=0.002)
+        buffers["fc1_S"].zero_()
+        numpy.testing.assert_array_equal(self._run(session, binding, output), numpy.zeros_like(expected))
+
+    def test_overridable_initializer_is_not_cached(self):
+        model, tensors = self._case()
+        model.graph.input.append(
+            helper.make_tensor_value_info("fc1_S", TensorProto.FLOAT16, list(tensors["fc1_S"].shape))
+        )
+        session = self._session(model)
+        binding, buffers, output = self._binding(session, tensors)
+        expected = self._run(session, binding, output)
+        buffers["fc1_S"].reshape(-1)[-1] = -1
+        with self.assertRaisesRegex(Exception, "finite nonnegative scales"):
+            self._run(session, binding, output)
+        buffers["fc1_S"].copy_(tensors["fc1_S"])
+        numpy.testing.assert_array_equal(self._run(session, binding, output), expected)
+
+    def test_empty_rows_validate_content(self):
+        model, tensors = self._case(dynamic=("fc1_S",), rows=0)
+        session = self._session(model, scratch=1)
+        feeds = {name: tensors[name].numpy() for name in ("x", "router", "fc1_S")}
+        self.assertEqual(session.run(None, feeds)[0].shape, (0, self.hidden_size))
+        feeds["fc1_S"].reshape(-1)[-1] = -1
+        with self.assertRaisesRegex(Exception, "finite nonnegative scales"):
+            session.run(None, feeds)
+        feeds["fc1_S"].reshape(-1)[-1] = 0
+        self.assertEqual(session.run(None, feeds)[0].shape, (0, self.hidden_size))
+
+    def test_initializer_scales(self):
+        for dtype in (torch.float16, torch.bfloat16):
+            for name in ("fc1_S", "fc2_S"):
+                for value in (0.0, -1.0, float("inf"), float("-inf"), float("nan")):
+                    with self.subTest(dtype=dtype, name=name, value=value):
+                        model, tensors = self._case(dtype=dtype)
+                        initializer = next(tensor for tensor in model.graph.initializer if tensor.name == name)
+                        tensors[name].reshape(-1)[-1] = value
+                        initializer.raw_data = tensors[name].view(torch.uint8).numpy().tobytes()
+                        if value == 0:
+                            session = self._session(model)
+                            binding, buffers, output = self._binding(session, tensors)
+                            self.assertTrue(numpy.isfinite(self._run(session, binding, output)).all())
+                        else:
+                            with self.assertRaisesRegex(Exception, "finite nonnegative scales"):
+                                session = self._session(model)
+                                binding, buffers, output = self._binding(session, tensors)
+                                self._run(session, binding, output)
+
+    @parameterized.expand(
+        [(f"{first}_{second}", (first, second)) for first, second in ((3, 3), (3, 4), (4, 3), (2, 3), (3, 2))]
+    )
+    def test_dynamic_zero_points(self, _name, bits):
+        block_size = 128
+        model, tensors = self._case(bits, block_size, dynamic=("fc1_Z", "fc2_Z"), zeros=True)
+        session = self._session(model)
+        binding, buffers, output = self._binding(session, tensors)
+        expected = self._reference(tensors, bits, block_size)
+        numpy.testing.assert_allclose(self._run(session, binding, output), expected, rtol=0.03, atol=0.002)
+        for name, width in (("fc1_Z", bits[0]), ("fc2_Z", bits[1])):
+            for mask in (1, 128):
+                buffers[name].reshape(-1)[-1] ^= mask
+                if width == 3:
+                    with self.assertRaisesRegex(Exception, "zero points equal to 4 with zero padding"):
+                        self._run(session, binding, output)
+                else:
+                    tensors_changed = dict(tensors)
+                    tensors_changed[name] = buffers[name].cpu()
+                    numpy.testing.assert_allclose(
+                        self._run(session, binding, output),
+                        self._reference(tensors_changed, bits, block_size),
+                        rtol=0.03,
+                        atol=0.002,
+                    )
+                buffers[name].copy_(tensors[name])
+                numpy.testing.assert_allclose(self._run(session, binding, output), expected, rtol=0.03, atol=0.002)
+
+    def test_scratch_boundaries_and_partial_tiles(self):
+        per_row = self.top_k * ((self.hidden_size + self.inter_size) * 2 + 3 * 4)
+        for rows, budget, tile in (
+            (0, 1, None),
+            (1, per_row - 1, None),
+            (1, per_row, None),
+            (5, per_row + 1, None),
+            (5, 2 * per_row - 1, None),
+            (5, 2 * per_row, None),
+            (5, 2 * per_row + 1, None),
+            (5, 5 * per_row, 2),
+        ):
+            with self.subTest(rows=rows, budget=budget, tile=tile):
+                model, tensors = self._case(rows=rows)
+                session = self._session(model, scratch=budget, tile=tile)
+                if rows == 0:
+                    actual = session.run(None, {"x": tensors["x"].numpy(), "router": tensors["router"].numpy()})[0]
+                    self.assertEqual(actual.shape, (0, self.hidden_size))
+                    continue
+                binding, buffers, output = self._binding(session, tensors)
+                if budget < per_row:
+                    with self.assertRaisesRegex(Exception, "scratch budget cannot accommodate one token"):
+                        self._run(session, binding, output)
+                else:
+                    numpy.testing.assert_allclose(
+                        self._run(session, binding, output), self._reference(tensors, (3, 3), 32), rtol=0.03, atol=0.002
+                    )
+
+    def test_decode_prefill_transitions(self):
+        model, initial_tensors = self._case(rows=1)
+        for value_info in (*model.graph.input, *model.graph.output):
+            value_info.type.tensor_type.shape.dim[0].dim_param = "tokens"
+        per_row = self.top_k * ((self.hidden_size + self.inter_size) * 2 + 3 * 4)
+        session = self._session(model, scratch=2 * per_row, tile=2)
+        for rows in (1, 5, 0, 3, 1):
+            with self.subTest(rows=rows):
+                _, tensors = self._case(rows=rows)
+                tensors.update(
+                    {name: tensor for name, tensor in initial_tensors.items() if name not in ("x", "router")}
+                )
+                if rows == 0:
+                    actual = session.run(None, {name: tensors[name].numpy() for name in ("x", "router")})[0]
+                    self.assertEqual(actual.shape, (0, self.hidden_size))
+                else:
+                    binding, buffers, output = self._binding(session, tensors)
+                    numpy.testing.assert_allclose(
+                        self._run(session, binding, output), self._reference(tensors, (3, 3), 32), rtol=0.03, atol=0.002
+                    )
+
+    @parameterized.expand([("implicit", False), ("explicit", True)])
+    def test_external_capture_requires_validated_initializers(self, _name, zeros):
+        model, tensors = self._case(zeros=zeros)
+        stream = torch.cuda.Stream()
+        session = self._session(model, provider_options={"user_compute_stream": str(stream.cuda_stream)})
+        binding, buffers, output = self._binding(session, tensors)
+        run_options = onnxruntime.RunOptions()
+        run_options.add_run_config_entry("disable_synchronize_execution_providers", "1")
+        graph = torch.cuda.CUDAGraph()
+        with (
+            torch.cuda.graph(graph, stream=stream),
+            self.assertRaisesRegex(Exception, "capture requires validated initializers"),
+        ):
+            session.run_with_iobinding(binding, run_options)
+        numpy.testing.assert_allclose(
+            self._run(session, binding, output), self._reference(tensors, (3, 3), 32), rtol=0.03, atol=0.002
+        )
+        graph = torch.cuda.CUDAGraph()
+        with torch.cuda.graph(graph, stream=stream):
+            session.run_with_iobinding(binding, run_options)
+        for factor in (1.0, 0.5, 1.25):
+            changed = {**tensors, "x": tensors["x"] * factor}
+            buffers["x"].copy_(changed["x"])
+            torch.cuda.synchronize()
+            graph.replay()
+            torch.cuda.synchronize()
+            numpy.testing.assert_allclose(
+                output.float().cpu().numpy(), self._reference(changed, (3, 3), 32), rtol=0.03, atol=0.002
+            )
+
+    @parameterized.expand(
+        [
+            (f"{first}_{second}_{dtype}", (first, second), dtype)
+            for first, second in ((3, 3), (3, 4), (4, 3))
+            for dtype in (torch.float16, torch.bfloat16)
+        ]
+    )
+    def test_repeated_calls(self, _name, bits, dtype):
+        for dynamic in ((), ("fc1_S", "fc2_S")):
+            with self.subTest(dynamic=dynamic):
+                model, tensors = self._case(bits, dtype=dtype, dynamic=dynamic)
+                session = self._session(model)
+                binding, buffers, output = self._binding(session, tensors)
+                cases = []
+                for factor in (0.5, 1.25):
+                    changed = {**tensors, "x": tensors["x"] * factor}
+                    if dynamic:
+                        changed["fc1_S"] = tensors["fc1_S"] * factor
+                    cases.append((changed, self._reference(changed, bits, 32)))
+                for iteration in range(12):
+                    changed, expected = cases[iteration % len(cases)]
+                    for name, buffer in buffers.items():
+                        buffer.copy_(changed[name])
+                    numpy.testing.assert_allclose(self._run(session, binding, output), expected, rtol=0.03, atol=0.002)
+
+    @parameterized.expand(
+        [
+            (f"{first}_{second}_{dtype}_{shared}_{dynamic}", (first, second), dtype, shared, dynamic)
+            for first, second in ((3, 3), (3, 4), (4, 3))
+            for dtype in (torch.float16, torch.bfloat16)
+            for shared in (False, True)
+            for dynamic in (False, True)
+        ]
+    )
+    def test_concurrent_runs(self, _name, bits, dtype, shared, dynamic):
+        dynamic_names = ("fc1_S", "fc2_S", "fc1_Z", "fc2_Z") if dynamic else ()
+        model, tensors = self._case(bits, dtype=dtype, dynamic=dynamic_names, zeros=dynamic)
+        shared_session = self._session(model) if shared else None
+        workers = []
+        for worker in range(3):
+            changed = {**tensors, "x": tensors["x"] * (0.5 + worker * 0.5)}
+            changed["router"] = tensors["router"].roll(worker, dims=0)
+            if dynamic:
+                changed["fc1_S"] = tensors["fc1_S"] * (0.75 + worker * 0.25)
+                changed["fc2_S"] = tensors["fc2_S"] * (1.25 - worker * 0.25)
+            session = shared_session if shared else self._session(model)
+            binding, buffers, output = self._binding(session, changed)
+            workers.append((session, binding, buffers, output, self._reference(changed, bits, 32)))
+        barrier = Barrier(len(workers))
+
+        def run_worker(state):
+            session, binding, buffers, output, expected = state
+            torch.cuda.set_device(0)
+            for _ in range(6):
+                barrier.wait(timeout=30)
+                session.run_with_iobinding(binding)
+                binding.synchronize_outputs()
+                actual = output.float().cpu().numpy().copy()
+                numpy.testing.assert_allclose(actual, expected, rtol=0.03, atol=0.002)
+
+        with ThreadPoolExecutor(max_workers=len(workers)) as executor:
+            list(executor.map(run_worker, workers))
+
+    @parameterized.expand(
+        [
+            ("constants", (), True),
+            ("implicit_zero_points", (), False),
+            ("dynamic_weights", ("fc1_W",), False),
+            ("scale", ("fc1_S",), True),
+            ("zero_point", ("fc2_Z",), True),
+        ]
+    )
+    def test_cuda_graph_content_policy(self, _name, dynamic, zeros):
+        model, tensors = self._case(dynamic=dynamic, zeros=zeros)
+        session = self._session(model, capture=True)
+        binding, buffers, output = self._binding(session, tensors)
+        warmup = onnxruntime.RunOptions()
+        warmup.add_run_config_entry("gpu_graph_id", "-1")
+        expected = self._run(session, binding, output, warmup)
+        numpy.testing.assert_allclose(expected, self._reference(tensors, (3, 3), 32), rtol=0.03, atol=0.002)
+        if any(name.endswith(("_S", "_Z")) for name in dynamic):
+            for attempt in range(3):
+                with (
+                    self.subTest(attempt=attempt),
+                    self.assertRaisesRegex(Exception, "capture requires immutable scale and zero-point initializers"),
+                ):
+                    self._run(session, binding, output)
+            output.zero_()
+            numpy.testing.assert_array_equal(self._run(session, binding, output, warmup), expected)
+        else:
+            for _ in range(3):
+                output.zero_()
+                numpy.testing.assert_array_equal(self._run(session, binding, output), expected)
 
 
 class TestQMoECudaGraph(unittest.TestCase):

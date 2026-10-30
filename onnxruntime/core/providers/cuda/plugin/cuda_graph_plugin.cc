@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "cuda_graph_plugin.h"
+#include "ep/adapters.h"
 
 #include <cuda_runtime_api.h>
 #include <stdexcept>
@@ -73,8 +74,22 @@ void CudaGraphManager::CaptureBegin(CudaGraphAnnotation_t id) {
   PL_CUDA_CALL_THROW(cudaStreamBeginCapture(stream_, cudaStreamCaptureModeThreadLocal));
 }
 
-void CudaGraphManager::CaptureEnd(CudaGraphAnnotation_t id) {
+void CudaGraphManager::CaptureEnd(CudaGraphAnnotation_t id, bool capture_succeeded) {
   cudaGraph_t graph = nullptr;
+  if (!capture_succeeded) {
+    const auto status = cudaStreamEndCapture(stream_, &graph);
+    if (graph != nullptr) {
+      const auto destroy_status = cudaGraphDestroy(graph);
+      if (destroy_status != cudaSuccess) {
+        LOGS_DEFAULT(WARNING) << "Failed to destroy discarded CUDA graph: " << cudaGetErrorString(destroy_status);
+      }
+    }
+    if (status != cudaSuccess && status != cudaErrorStreamCaptureInvalidated) {
+      LOGS_DEFAULT(WARNING) << "Failed to end discarded CUDA graph capture: " << cudaGetErrorString(status);
+    }
+    (void)cudaGetLastError();
+    return;
+  }
   PL_CUDA_CALL_THROW(cudaStreamEndCapture(stream_, &graph));
   if (graph == nullptr) {
     throw std::runtime_error("CudaGraphManager: cudaStreamEndCapture returned NULL graph");

@@ -3132,8 +3132,6 @@ Status QMoE::ComputeInt3(OpKernelContext* context) const {
   params.limit = swiglu_limit_;
   params.is_bfloat16 = !input->IsDataType<MLFloat16>();
   const auto stream = Stream(context);
-  // Cached validation is valid only when every scale/zero-point input is an immutable initializer;
-  // runtime-fed tensors are re-validated on each invocation (skipped while capturing a CUDA graph).
   int content_constant = int3_content_constant_.load(std::memory_order_relaxed);
   if (content_constant < 0) {
     const Tensor* unused = nullptr;
@@ -3144,10 +3142,15 @@ Status QMoE::ComputeInt3(OpKernelContext* context) const {
     int3_content_constant_.store(content_constant, std::memory_order_relaxed);
   }
   const bool need_validate =
-      (content_constant == 0 || !int3_content_validated_.load(std::memory_order_relaxed)) &&
-      (first_zeros != nullptr || second_zeros != nullptr ||
-       onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_VALIDATE_INT3_CONTENT", 0) != 0) &&
-      !onnxruntime::llm::common::isCapturing(stream);
+      content_constant == 0 || !int3_content_validated_.load(std::memory_order_relaxed);
+  if (need_validate && onnxruntime::llm::common::isCapturing(stream)) {
+    ORT_RETURN_IF_NOT(content_constant == 1,
+                      "INT3 QMoE CUDA graph capture requires immutable scale and zero-point initializers; "
+                      "dynamic content must be validated outside capture.");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "INT3 QMoE CUDA graph capture requires validated initializers. "
+                           "Run a warmup outside capture before capturing.");
+  }
   if (need_validate) {
     auto invalid = GetScratchBuffer<int>(1, GetComputeStream(context));
     CUDA_RETURN_IF_ERROR(cudaMemsetAsync(invalid.get(), 0, sizeof(int), stream));

@@ -197,6 +197,69 @@ values that require them are rejected at construction time:
 #endif
 ```
 
+### 3.1 Integer Execution Support
+
+The mode table above describes the standard INT4/INT8 paths. Integer QMoE
+also supports the following effective FC1/FC2 bit-width combinations through
+a separate raw packed execution path:
+
+| FC1/FC2 bits | Activation and scales | Block size | Weight layout | Activation mode |
+|--------------|-----------------------|------------|---------------|-----------------|
+| `(3,3)`, `(3,4)`, `(4,3)`, `(2,3)`, `(3,2)` | matching FP16 or BF16 | 32, 64, 128 | raw packed, `weights_prepacked=0` | interleaved fused SwiGLU, `activation_type="swiglu"`, `swiglu_fusion=1` |
+
+For these combinations, hidden and intermediate sizes must be positive
+multiples of the block size. CPU execution, offline prepacked INT3, split FC3
+projections, and other activation modes are not supported. The validation,
+capture, and token scratch rules below apply to this path whenever either
+projection uses INT3; they do not change INT2/INT4-only execution.
+
+### 3.2 Runtime Content Validation
+
+For the combinations in section 3.1, both projections' scales must be finite
+and nonnegative, including when zero points are omitted. Content validation is
+mandatory; zero scales are accepted. The bit-width-specific zero-point
+constraints are:
+
+| Projection width | Explicit zero-point content |
+|------------------|-----------------------------|
+| INT3 | Code 4 in every logical block; unused high bits in the last byte of each row must be zero. |
+| INT2/INT4 in a mixed pair | Existing asymmetric zero-point semantics; the INT3 code/padding rule does not apply. |
+
+Content validation runs before execution, including for zero-token inputs.
+Successful validation is cached only when **all** supplied scale and zero-point
+tensors are immutable initializers. Runtime-fed or overridable metadata is
+validated on every invocation outside CUDA graph capture. A failed invocation
+does not validate the content or prevent a later corrected feed from running.
+Packed weights are not included in this metadata cache.
+
+### 3.3 CUDA Graph Capture
+
+For the combinations in section 3.1, CUDA graph capture accepts only immutable
+metadata that was successfully validated by an earlier execution outside
+capture. ORT-managed CUDA EP graph sessions (`enable_cuda_graph=1`)
+automatically perform non-capturing warmup runs per `gpu_graph_id`, validating
+immutable initializers before capture. External stream capture requires an
+explicit non-capturing warmup first. To validate without triggering ORT-managed
+capture, use `gpu_graph_id=-1` for that run. Unvalidated initializers are
+rejected during capture with warmup guidance. Dynamic scales or zero points
+are rejected during capture even after a valid warmup; graph replay cannot
+revalidate changing content.
+
+### 3.4 Token Scratch Configuration
+
+For the combinations in section 3.1, the token scratch limit is the smaller of
+`ep.cuda.qmoe_int_dequant_max_scratch_bytes` and 64 MiB. For activation element
+size `S`, hidden size `H`, intermediate size `I`, and top-k `K`, each tile row
+requires `K * ((I + H) * S + 3 * sizeof(int))` bytes: SwiGLU activations, FC2
+partials, and three routing arrays (two integer arrays and one float array).
+A nonempty input is accepted when the limit accommodates at least one row;
+an exact one-row limit is sufficient. Larger inputs are tiled to fit, also
+respecting `ep.cuda.qmoe_row_tile_size` and kernel launch limits, with a partial
+last tile when needed. Zero-token inputs require no token scratch but still
+undergo shape and content validation. The small content-validation flag,
+model tensors, outputs, and execution-provider allocations are not part of
+this token scratch limit. This is not a bound on total session GPU memory.
+
 ---
 
 ## 4. Architecture Dispatch & Kernel Paths
