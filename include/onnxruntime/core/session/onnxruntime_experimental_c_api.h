@@ -38,6 +38,14 @@
 //
 // Auxiliary declarations
 //
+
+#ifdef _WIN32
+/** A native Windows file HANDLE, not a C runtime file descriptor. */
+typedef void* OrtFileHandle;
+#else
+/** A POSIX file descriptor. */
+typedef int OrtFileHandle;
+#endif
 // Declarations of auxiliary types or typedefs required by experimental APIs go here.
 //
 // For example, if an experimental API uses a new type, OrtExperimentalType, we would declare it in this file:

@@ -25,6 +25,8 @@
 
 namespace onnxruntime {
 
+class RandomAccessFile;
+
 enum class ExecutionOrder {
   DEFAULT = 0,           // default topological sort
   PRIORITY_BASED = 1,    // priority-based topological sort
@@ -229,6 +231,12 @@ struct SessionOptions {
 
   OrtReadNamedBufferFunc ep_context_data_read_func = nullptr;
   void* ep_context_data_read_state = nullptr;
+
+#if !defined(ORT_MINIMAL_BUILD)
+  // Keep additive state trailing so existing aggregate initializers retain their field order.
+  std::shared_ptr<const std::unordered_map<PathString, std::shared_ptr<RandomAccessFile>>>
+      external_initializer_file_sources{};
+#endif
 };
 
 inline std::ostream& operator<<(std::ostream& os, const SessionOptions& session_options) {

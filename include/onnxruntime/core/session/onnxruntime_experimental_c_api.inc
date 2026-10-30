@@ -36,3 +36,35 @@
  * \snippet{doc} snippets.dox OrtStatus Return Value
  */
 ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtApi_ExperimentalApiTest, _Out_ int64_t* out)
+
+#if !defined(ORT_MINIMAL_BUILD)
+/** \brief Register a complete set of pre-opened external initializer files.
+ *
+ * Supported on Windows, Linux, Android, macOS and iOS. Handles are duplicated on
+ * success; callers retain ownership of their originals. Windows uses native HANDLEs
+ * with read access; duplicates have only read access. POSIX requires read-only file
+ * descriptors. Only regular files are supported.
+ * Each name must be a flat relative ONNX external-data location. Registration replaces
+ * the previous set atomically. Sessions and cloned options retain the files independently.
+ * Graph initializer and Constant output names must be unique; duplicates are rejected before graph construction.
+ * A zero count installs an empty registry; missing sources still fail without path fallback.
+ * The registry is retained when loading session options from model metadata.
+ * Tensor ranges are loaded or mapped from the registered handles without resolving or canonicalizing file paths.
+ * Subgraph checking does not inline mapped initializer payloads.
+ * Small tensors may be inlined; unaligned numeric ranges and BOOL tensors are copied into owned storage.
+ * BOOL elements are normalized to zero or one.
+ * Files must remain immutable while dependent sessions/tensors exist. Missing sources
+ * and invalid ranges fail without filesystem fallback. Supports ONNX graph initializers,
+ * including subgraphs, but not external sparse tensors, external tensor attributes,
+ * external data in model-local functions, or model packages.
+ * Sessions without a registered file-source set retain their existing loading behavior.
+ * This does not change execution-provider selection or provide a sandbox.
+ * Unsupported platforms and builds without external initializers return ORT_NOT_IMPLEMENTED.
+ * Minimal builds do not register this experimental entry.
+ */
+ORT_EXPERIMENTAL_API(32, OrtStatusPtr, OrtApi_SessionOptionsSetExternalInitializerFileHandles,
+                     _Inout_ OrtSessionOptions* options,
+                     _In_reads_(count) const char* const* names,
+                     _In_reads_(count) const OrtFileHandle* handles,
+                     size_t count)
+#endif

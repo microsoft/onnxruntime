@@ -42,9 +42,11 @@ namespace onnxruntime {
 #ifdef _WIN32
 using PIDType = unsigned long;
 using FileOffsetType = int64_t;
+using FileHandle = void*;
 #else
 using PIDType = pid_t;
 using FileOffsetType = off_t;
+using FileHandle = int;
 #endif
 
 class EnvThread {
@@ -151,6 +153,10 @@ class RandomAccessFile {
    * An empty buffer succeeds for any nonnegative offset. On failure, buffer may be partially written.
    */
   virtual common::Status Read(FileOffsetType offset, gsl::span<char> buffer) const = 0;
+
+#ifdef _WIN32
+  virtual FileHandle GetNativeHandle() const noexcept { return nullptr; }
+#endif
 
  protected:
   RandomAccessFile() = default;
@@ -347,6 +353,14 @@ class Env {
                                               std::unique_ptr<RandomAccessFile>& /*file*/) const {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "This environment does not support random-access files.");
   }
+
+#if !defined(ORT_MINIMAL_BUILD)
+  virtual common::Status DuplicateReadOnlyFileHandle(
+      FileHandle /*handle*/, std::shared_ptr<RandomAccessFile>& /*file*/) const {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "Pre-opened external initializer files are unsupported on this platform.");
+  }
+#endif
 
  protected:
   Env();

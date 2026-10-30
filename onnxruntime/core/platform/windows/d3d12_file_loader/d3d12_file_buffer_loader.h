@@ -31,6 +31,7 @@ class D3D12FileBufferLoader {
     std::wstring path;
     uint64_t offset = 0;
     uint64_t length = 0;
+    HANDLE file_handle = nullptr;
   };
 
   struct CancellationToken {

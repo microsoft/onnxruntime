@@ -73,6 +73,14 @@ class IExternalDataLoader {
     return common::Status::OK();
   }
 
+  virtual common::Status RegisterLoadCandidate([[maybe_unused]] const PathString& data_file_name,
+                                               [[maybe_unused]] const RandomAccessFile& file,
+                                               [[maybe_unused]] std::string_view tensor_name,
+                                               [[maybe_unused]] FileOffsetType data_offset,
+                                               [[maybe_unused]] SafeInt<size_t> data_length) const {
+    return common::Status::OK();
+  }
+
   // Commits the complete set of registered candidates before tensor loading begins.
   // This is where a loader can coalesce file ranges, allocate destinations, perform
   // shared I/O or device work, and synchronize the results. On success, the loader
@@ -105,6 +113,16 @@ class IExternalDataLoader {
 #if defined(ENABLE_D3D12_FILE_LOADING)
   virtual common::Status LoadTensor([[maybe_unused]] const Env& env,
                                     [[maybe_unused]] const std::filesystem::path& data_file_path,
+                                    [[maybe_unused]] std::string_view tensor_name,
+                                    [[maybe_unused]] FileOffsetType data_offset,
+                                    [[maybe_unused]] SafeInt<size_t> data_length,
+                                    [[maybe_unused]] const std::shared_ptr<IAllocator>& allocator,
+                                    [[maybe_unused]] Tensor& tensor) const {
+    ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
+  }
+
+  virtual common::Status LoadTensor([[maybe_unused]] const PathString& data_file_name,
+                                    [[maybe_unused]] const RandomAccessFile& file,
                                     [[maybe_unused]] std::string_view tensor_name,
                                     [[maybe_unused]] FileOffsetType data_offset,
                                     [[maybe_unused]] SafeInt<size_t> data_length,

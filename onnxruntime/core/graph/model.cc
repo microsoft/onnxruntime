@@ -6,6 +6,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "core/common/inlined_containers.h"
@@ -49,6 +50,77 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 
 #if !defined(ORT_MINIMAL_BUILD)
+
+static Status ValidateFileSourceModel(const ModelProto& model) {
+  InlinedVector<std::pair<const GraphProto*, bool>> graphs{{&model.graph(), false}};
+  InlinedVector<std::pair<const AttributeProto*, bool>> attributes;
+  const auto add_nodes = [&](const auto& nodes, bool in_function) {
+    for (const auto& node : nodes) {
+      for (const auto& attribute : node.attribute()) {
+        attributes.emplace_back(&attribute, in_function);
+      }
+    }
+  };
+  const auto has_external_sparse_data = [](const SparseTensorProto& tensor) {
+    return utils::HasExternalData(tensor.values()) || utils::HasExternalData(tensor.indices());
+  };
+  for (const auto& function : model.functions()) {
+    add_nodes(function.node(), true);
+    for (const auto& attribute : function.attribute_proto()) {
+      attributes.emplace_back(&attribute, true);
+    }
+  }
+  while (!graphs.empty() || !attributes.empty()) {
+    if (!graphs.empty()) {
+      const auto [graph, in_function] = graphs.back();
+      graphs.pop_back();
+      InlinedHashSet<std::string> initializer_names;
+      for (const auto& tensor : graph->initializer()) {
+        ORT_RETURN_IF(!initializer_names.insert(tensor.name()).second,
+                      "File-source loading does not support duplicate initializer names: ", tensor.name());
+        ORT_RETURN_IF(in_function && utils::HasExternalData(tensor),
+                      "File-source loading does not support external data in model-local functions.");
+      }
+      for (const auto& tensor : graph->sparse_initializer()) {
+        ORT_RETURN_IF(!initializer_names.insert(tensor.values().name()).second,
+                      "File-source loading does not support duplicate initializer names: ", tensor.values().name());
+        ORT_RETURN_IF(has_external_sparse_data(tensor),
+                      "File-source loading does not support external sparse tensors.");
+      }
+      for (const auto& node : graph->node()) {
+        if (node.op_type() == "Constant") {
+          for (const auto& output : node.output()) {
+            ORT_RETURN_IF(!initializer_names.insert(output).second,
+                          "File-source loading does not support duplicate initializer names: ", output);
+          }
+        }
+      }
+      add_nodes(graph->node(), in_function);
+      continue;
+    }
+    const auto [attribute, in_function] = attributes.back();
+    attributes.pop_back();
+    ORT_RETURN_IF(attribute->has_t() && utils::HasExternalData(attribute->t()),
+                  "File-source loading does not support external tensor attributes.");
+    for (const auto& tensor : attribute->tensors()) {
+      ORT_RETURN_IF(utils::HasExternalData(tensor),
+                    "File-source loading does not support external tensor attributes.");
+    }
+    ORT_RETURN_IF(attribute->has_sparse_tensor() && has_external_sparse_data(attribute->sparse_tensor()),
+                  "File-source loading does not support external sparse tensors.");
+    for (const auto& tensor : attribute->sparse_tensors()) {
+      ORT_RETURN_IF(has_external_sparse_data(tensor),
+                    "File-source loading does not support external sparse tensors.");
+    }
+    if (attribute->has_g()) {
+      graphs.emplace_back(&attribute->g(), in_function);
+    }
+    for (const auto& graph : attribute->graphs()) {
+      graphs.emplace_back(&graph, in_function);
+    }
+  }
+  return Status::OK();
+}
 
 void Model::RemoveLocalFunctionsProtos(const InlinedHashSet<std::string>& retained) {
   auto* local_functions = model_proto_.mutable_functions();
@@ -200,6 +272,9 @@ Model::Model(const std::string& graph_name,
   }
 
   ORT_THROW_IF_ERROR(ValidateModelSubgraphDepth(model_proto_));
+  if (options.external_initializer_file_sources) {
+    ORT_THROW_IF_ERROR(ValidateFileSourceModel(model_proto_));
+  }
   ORT_THROW_IF_ERROR(ValidateModelLocalFunctionAcyclic(model_local_functions_));
 
   model_local_function_templates_maps_.reserve(model_proto_.functions().size());
@@ -225,6 +300,12 @@ Model::Model(const std::string& graph_name,
   GSL_SUPPRESS(r .11)
   graph_.reset(new Graph(*this, model_proto_.mutable_graph(), *p_domain_to_version, IrVersion(), schema_registry,
                          logger, options.strict_shape_type_inference));
+#if !defined(DISABLE_EXTERNAL_INITIALIZERS)
+  if (options.external_initializer_file_sources) {
+    ORT_THROW_IF_ERROR(graph_->InjectExternalInitializersFromFileSources(
+        *options.external_initializer_file_sources));
+  }
+#endif
 }
 
 Model::Model(const ModelProto& model_proto, const PathString& model_path,
@@ -337,6 +418,9 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
   }
 
   ORT_THROW_IF_ERROR(ValidateModelSubgraphDepth(model_proto_));
+  if (options.external_initializer_file_sources) {
+    ORT_THROW_IF_ERROR(ValidateFileSourceModel(model_proto_));
+  }
   ORT_THROW_IF_ERROR(ValidateModelLocalFunctionAcyclic(model_local_functions_));
 
   model_local_function_templates_maps_.reserve(model_proto_.functions().size());
@@ -362,6 +446,12 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
   GSL_SUPPRESS(r .11)
   graph_.reset(new Graph(*this, model_proto_.mutable_graph(), domain_to_version, IrVersion(), schema_registry,
                          logger, options.strict_shape_type_inference));
+#if !defined(DISABLE_EXTERNAL_INITIALIZERS)
+  if (options.external_initializer_file_sources) {
+    ORT_THROW_IF_ERROR(graph_->InjectExternalInitializersFromFileSources(
+        *options.external_initializer_file_sources));
+  }
+#endif
 }
 
 const NodeHashMap<std::string, std::unique_ptr<FunctionTemplate>>& Model::GetModelLocalFunctionTemplates() const {

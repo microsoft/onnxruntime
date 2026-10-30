@@ -19,6 +19,7 @@
 #include "core/common/inlined_containers.h"
 #include "core/framework/external_data_loader.h"
 #include "core/framework/session_state.h"
+#include "core/graph/model.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/inference_session.h"
@@ -306,6 +307,77 @@ TEST_F(ExternalDataLoaderLifetimeTest, RecreatesLoaderAfterFactoryFailure) {
 }
 #endif
 
+#endif
+
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
+TEST(ExternalDataLoaderManagerTest, FileSourceInitializersTrackEligibleRangesUntilReplacedOrCleaned) {
+  PathString data_path = ORT_TSTR("external_file_source_ranges_XXXXXX");
+  ScopedFileDeleter data_deleter;
+  std::string payload(512, '\0');
+  ASSERT_NO_FATAL_FAILURE(WriteTestFile(payload, data_path, data_deleter));
+
+  std::unique_ptr<RandomAccessFile> opened_file;
+  ASSERT_STATUS_OK(Env::Default().OpenRandomAccessFile(data_path.c_str(), opened_file));
+  std::shared_ptr<RandomAccessFile> shared_file{std::move(opened_file)};
+  auto files = std::make_shared<
+      std::unordered_map<PathString, std::shared_ptr<RandomAccessFile>>>();
+  files->emplace(ORT_TSTR("weights.bin"), shared_file);
+
+  ONNX_NAMESPACE::ModelProto model_proto;
+  model_proto.set_ir_version(ONNX_NAMESPACE::IR_VERSION);
+  model_proto.add_opset_import()->set_version(13);
+  auto& graph_proto = *model_proto.mutable_graph();
+  graph_proto.set_name("file_source_tracking");
+
+  auto add_external_tensor = [&](const char* name, int32_t data_type, int64_t dims,
+                                 int64_t offset, int64_t length) {
+    auto* tensor = graph_proto.add_initializer();
+    tensor->set_name(name);
+    tensor->set_data_type(data_type);
+    tensor->add_dims(dims);
+    tensor->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+    auto* loc = tensor->add_external_data();
+    loc->set_key("location");
+    loc->set_value("weights.bin");
+    auto* off = tensor->add_external_data();
+    off->set_key("offset");
+    off->set_value(std::to_string(offset));
+    auto* len = tensor->add_external_data();
+    len->set_key("length");
+    len->set_value(std::to_string(length));
+  };
+
+  add_external_tensor("large_aligned", ONNX_NAMESPACE::TensorProto_DataType_FLOAT, 64, 0, 256);
+  add_external_tensor("small_aligned", ONNX_NAMESPACE::TensorProto_DataType_FLOAT, 8, 256, 32);
+  add_external_tensor("unaligned_float", ONNX_NAMESPACE::TensorProto_DataType_FLOAT, 64, 1, 256);
+  add_external_tensor("bool_tensor", ONNX_NAMESPACE::TensorProto_DataType_BOOL, 16, 300, 16);
+
+  Model model(model_proto, PathString{}, nullptr, DefaultLoggingManager().DefaultLogger(),
+              ModelOptions(true, false, {}, files));
+  Graph& graph = model.MainGraph();
+
+  Graph::ExternalInitializerFileSource source;
+  ASSERT_TRUE(graph.HasExternalInitializerFileSource("large_aligned"));
+  ASSERT_TRUE(graph.GetExternalInitializerFileSource("large_aligned", source));
+  EXPECT_EQ(source.location, ORT_TSTR("weights.bin"));
+  EXPECT_EQ(source.file.get(), shared_file.get());
+  EXPECT_EQ(source.offset, 0);
+  EXPECT_EQ(source.length, 256u);
+
+  ASSERT_TRUE(graph.HasExternalInitializerFileSource("small_aligned"));
+  ASSERT_TRUE(graph.GetExternalInitializerFileSource("small_aligned", source));
+  EXPECT_EQ(source.offset, 256);
+  EXPECT_EQ(source.length, 32u);
+
+  EXPECT_FALSE(graph.HasExternalInitializerFileSource("unaligned_float"));
+  EXPECT_FALSE(graph.HasExternalInitializerFileSource("bool_tensor"));
+
+  graph.RemoveInitializedTensor("small_aligned");
+  EXPECT_FALSE(graph.HasExternalInitializerFileSource("small_aligned"));
+
+  graph.CleanAllInitializedTensors();
+  EXPECT_FALSE(graph.HasExternalInitializerFileSource("large_aligned"));
+}
 #endif
 
 #if defined(ENABLE_D3D12_FILE_LOADING)

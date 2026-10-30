@@ -109,6 +109,7 @@ struct D3D12FileBufferLoader::FileReadRegion {
 
 struct D3D12FileBufferLoader::FileReadPlan {
   std::wstring path;
+  HANDLE source_handle = nullptr;
   wil::unique_hfile file;
   wil::unique_hfile buffered_tail_file;
   uint64_t size = 0;
@@ -285,7 +286,11 @@ common::Status D3D12FileBufferLoader::LoadInternal(
   sizes.reserve(ranges.size());
   for (size_t index = 0; index < ranges.size(); ++index) {
     const auto& range = ranges[index];
-    if (range.path.empty()) {
+    const bool has_valid_handle =
+        range.file_handle != nullptr &&
+        range.file_handle != INVALID_HANDLE_VALUE;
+    if (range.file_handle == INVALID_HANDLE_VALUE ||
+        (range.path.empty() && !has_valid_handle)) {
       return ORT_MAKE_STATUS(
           ONNXRUNTIME, INVALID_ARGUMENT,
           "File range ", index, " has an empty path.");
@@ -509,35 +514,75 @@ common::Status D3D12FileBufferLoader::CreateFileReadPlan(
     std::vector<FileReadPlan>& files) {
   // Group ranges by source file so each file is opened once. Later, aligned
   // overlapping ranges are merged to avoid redundant unbuffered reads.
-  std::map<std::wstring, size_t> file_indices;
+  std::map<std::pair<HANDLE, std::wstring>, size_t> file_indices;
   for (size_t range_index = 0;
        range_index < ranges.size(); ++range_index) {
     const auto& range = ranges[range_index];
+    const std::pair<HANDLE, std::wstring> file_key{
+        range.file_handle,
+        range.file_handle != nullptr ? std::wstring{} : range.path};
     const auto [file_index_it, inserted] =
-        file_indices.try_emplace(range.path, files.size());
+        file_indices.try_emplace(file_key, files.size());
     if (inserted) {
       FileReadPlan file;
       file.path = range.path;
+      file.source_handle = range.file_handle;
       files.push_back(std::move(file));
     }
     files[file_index_it->second].buffer_source_indices.push_back(range_index);
   }
+
+  auto open_plan_handle = [](const FileReadPlan& file,
+                             DWORD reopen_flags,
+                             const char* create_op,
+                             const char* reopen_op,
+                             wil::unique_hfile& out_handle) -> common::Status {
+    if (file.source_handle != nullptr) {
+      constexpr DWORD kDesiredAccess =
+          FILE_READ_DATA | FILE_READ_ATTRIBUTES | SYNCHRONIZE;
+      for (DWORD share_mode :
+           {static_cast<DWORD>(FILE_SHARE_READ | FILE_SHARE_WRITE |
+                               FILE_SHARE_DELETE),
+            static_cast<DWORD>(FILE_SHARE_READ | FILE_SHARE_DELETE),
+            static_cast<DWORD>(FILE_SHARE_READ)}) {
+        out_handle.reset(ReOpenFile(
+            file.source_handle, kDesiredAccess, share_mode, reopen_flags));
+        if (out_handle) {
+          return common::Status::OK();
+        }
+        if (GetLastError() != ERROR_SHARING_VIOLATION) {
+          break;
+        }
+      }
+      const DWORD error = GetLastError();
+      return file.path.empty()
+                 ? Win32Error(reopen_op, error)
+                 : Win32FileError(reopen_op, file.path, error);
+    }
+
+    out_handle.reset(CreateFileW(
+        file.path.c_str(), GENERIC_READ, FILE_SHARE_READ,
+        nullptr, OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL | reopen_flags,
+        nullptr));
+    if (!out_handle) {
+      return Win32FileError(create_op, file.path, GetLastError());
+    }
+    return common::Status::OK();
+  };
 
   for (auto& file : files) {
     if (cancellation.IsCancellationRequested()) {
       return CancelledStatus();
     }
 
-    file.file.reset(CreateFileW(
-        file.path.c_str(), GENERIC_READ, FILE_SHARE_READ,
-        nullptr, OPEN_EXISTING,
-        FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED |
-            FILE_FLAG_NO_BUFFERING | FILE_FLAG_SEQUENTIAL_SCAN,
-        nullptr));
-    if (!file.file) {
-      return Win32FileError(
-          "CreateFileW(unbuffered)", file.path, GetLastError());
-    }
+    ORT_RETURN_IF_ERROR(open_plan_handle(
+        file,
+        FILE_FLAG_OVERLAPPED | FILE_FLAG_NO_BUFFERING |
+            FILE_FLAG_SEQUENTIAL_SCAN,
+        "CreateFileW(unbuffered)",
+        "ReOpenFile(unbuffered)",
+        file.file));
 
     LARGE_INTEGER file_size{};
     if (!GetFileSizeEx(file.file.get(), &file_size)) {
@@ -572,16 +617,12 @@ common::Status D3D12FileBufferLoader::CreateFileReadPlan(
           "upload_slot_size does not satisfy source file alignment.");
     }
     if (file.size % file.alignment != 0) {
-      file.buffered_tail_file.reset(CreateFileW(
-          file.path.c_str(), GENERIC_READ, FILE_SHARE_READ,
-          nullptr, OPEN_EXISTING,
-          FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED |
-              FILE_FLAG_SEQUENTIAL_SCAN,
-          nullptr));
-      if (!file.buffered_tail_file) {
-        return Win32FileError(
-            "CreateFileW(buffered tail)", file.path, GetLastError());
-      }
+      ORT_RETURN_IF_ERROR(open_plan_handle(
+          file,
+          FILE_FLAG_OVERLAPPED | FILE_FLAG_SEQUENTIAL_SCAN,
+          "CreateFileW(buffered tail)",
+          "ReOpenFile(buffered tail)",
+          file.buffered_tail_file));
     }
 
     std::sort(
