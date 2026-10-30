@@ -4368,6 +4368,9 @@ void Graph::RemoveInitializedTensor(const std::string& tensor_name) {
 
     // doesn't matter if it existed or not
     ORT_IGNORE_RETURN_VALUE(ortvalue_initializers_.erase(tensor_name));
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
+    ORT_IGNORE_RETURN_VALUE(external_initializer_file_sources_.erase(tensor_name));
+#endif
 
     SetGraphResolveNeeded();
   } else {
@@ -4452,6 +4455,9 @@ Status Graph::ReplaceInitializedTensorImpl(ONNX_NAMESPACE::TensorProto new_initi
   } else {
     ORT_IGNORE_RETURN_VALUE(ortvalue_initializers_.erase(initializer_name));
   }
+#if !defined(DISABLE_EXTERNAL_INITIALIZERS)
+  ORT_IGNORE_RETURN_VALUE(external_initializer_file_sources_.erase(initializer_name));
+#endif
 
   **existing_entry = std::move(new_initializer);
   if (is_sparse) {
@@ -4556,9 +4562,16 @@ Status Graph::InjectExternalInitializersFromFileSources(
             type, shape, mapping->get(),
             OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
       }
+      const bool can_load_from_file_source = (mapping != nullptr);
       auto replacement = utils::TensorToTensorProto(*tensor, name, true);
       if (!utils::HasExternalDataInMemory(replacement)) {
         ORT_RETURN_IF_ERROR(graph.ReplaceInitializedTensor(replacement, OrtValue{}));
+        if (can_load_from_file_source) {
+          graph.external_initializer_file_sources_.insert_or_assign(
+              name, ExternalInitializerFileSource{
+                        source->first, source->second,
+                        static_cast<int64_t>(info->GetOffset()), bytes});
+        }
         continue;
       }
       OrtValue value;
@@ -4571,6 +4584,12 @@ Status Graph::InjectExternalInitializersFromFileSources(
         Tensor::InitOrtValue(std::move(*tensor), value);
       }
       ORT_RETURN_IF_ERROR(graph.ReplaceInitializedTensor(replacement, value));
+      if (can_load_from_file_source) {
+        graph.external_initializer_file_sources_.insert_or_assign(
+            name, ExternalInitializerFileSource{
+                      source->first, source->second,
+                      static_cast<int64_t>(info->GetOffset()), bytes});
+      }
     }
     for (auto& node : graph.Nodes()) {
       if (node.ContainsSubgraph()) {
@@ -4791,6 +4810,9 @@ void Graph::CleanAllInitializedTensors() noexcept {
 #endif
 
   ortvalue_initializers_.clear();
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
+  external_initializer_file_sources_.clear();
+#endif
 }
 
 const ONNX_NAMESPACE::TensorProto* Graph::GetConstantInitializer(const std::string& initializer_name,

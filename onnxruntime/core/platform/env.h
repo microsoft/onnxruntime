@@ -154,6 +154,10 @@ class RandomAccessFile {
    */
   virtual common::Status Read(FileOffsetType offset, gsl::span<char> buffer) const = 0;
 
+#ifdef _WIN32
+  virtual FileHandle GetNativeHandle() const noexcept { return nullptr; }
+#endif
+
  protected:
   RandomAccessFile() = default;
 

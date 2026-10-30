@@ -848,6 +848,38 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   bool GetExternalInitializerInfo(const std::string& name, std::unique_ptr<ExternalDataInfo>& ext_info,
                                   bool check_outer_scope = false) const;
 
+  struct ExternalInitializerFileSource {
+    PathString location;
+    std::shared_ptr<RandomAccessFile> file;
+    int64_t offset = 0;
+    size_t length = 0;
+  };
+
+  bool HasExternalInitializerFileSource(const std::string& name) const noexcept {
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
+    return external_initializer_file_sources_.contains(name);
+#else
+    ORT_UNUSED_PARAMETER(name);
+    return false;
+#endif
+  }
+
+  bool GetExternalInitializerFileSource(const std::string& name,
+                                        ExternalInitializerFileSource& source) const {
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
+    const auto it = external_initializer_file_sources_.find(name);
+    if (it == external_initializer_file_sources_.end()) {
+      return false;
+    }
+    source = it->second;
+    return true;
+#else
+    ORT_UNUSED_PARAMETER(name);
+    ORT_UNUSED_PARAMETER(source);
+    return false;
+#endif
+  }
+
   /** Gets all the initializer tensors in this Graph. */
   const InitializedTensorSet& GetAllInitializedTensors() const noexcept { return name_to_initial_tensor_; }
 
@@ -2108,6 +2140,9 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 #if !defined(ORT_MINIMAL_BUILD)
   // File-source graphs use a payload-free subgraph view for ONNX checking.
   bool file_source_initializers_injected_ = false;
+#if !defined(DISABLE_EXTERNAL_INITIALIZERS)
+  InlinedHashMap<std::string, ExternalInitializerFileSource> external_initializer_file_sources_;
+#endif
 
   IOnnxRuntimeOpSchemaCollectionPtr schema_registry_;
 
