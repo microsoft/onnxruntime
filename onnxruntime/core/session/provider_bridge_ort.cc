@@ -1690,6 +1690,10 @@ struct ProviderHostImpl : ProviderHost {
     return std::make_unique<Tensor>(p_type, shape, std::move(allocator));
   }
 
+  std::unique_ptr<Tensor> Tensor__construct_on_stream(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator, Stream* stream) override {
+    return std::make_unique<Tensor>(p_type, shape, std::move(allocator), stream);
+  }
+
   std::unique_ptr<Tensor> Tensor__construct(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& alloc, ptrdiff_t offset) override {
     return std::make_unique<Tensor>(p_type, shape, p_data, alloc, offset);
   }

@@ -21,11 +21,13 @@ namespace EinsumOp {
 // Holds CUDA assets required for CUDA ops that need to be executed as part of the Einsum flow
 struct EinsumCudaAssets {
   explicit EinsumCudaAssets(Stream* ort_stream,
+                            Stream* alloc_stream,
                             const cudaDeviceProp& device_prop,
                             cublasHandle_t cublas_handle,
                             cudnnHandle_t cudnn_handle,
                             AllocatorPtr gpu_allocator,
                             bool use_tf32) : ort_stream_(ort_stream),
+                                             alloc_stream_(alloc_stream),
                                              device_prop_(&device_prop),
                                              cublas_handle_(cublas_handle),
                                              cudnn_handle_(cudnn_handle),
@@ -36,7 +38,15 @@ struct EinsumCudaAssets {
     return ort_stream_ ? static_cast<cudaStream_t>(ort_stream_->GetHandle()) : nullptr;
   }
 
+  // The stream Einsum's work is queued on. Used for the native CUDA handle and for the cuDNN and
+  // cuBLAS calls below - never for allocation, because in the plugin build this can be a shim that
+  // only carries that handle.
   Stream* ort_stream_;
+
+  // The stream intermediate allocations are tagged with, or null when none is available (see
+  // CudaKernel::GetAllocationStream). Null means the intermediate is allocated untagged.
+  Stream* alloc_stream_;
+
   const cudaDeviceProp* device_prop_;
   cublasHandle_t cublas_handle_;
   cudnnHandle_t cudnn_handle_;
@@ -54,7 +64,8 @@ Status Transpose(const gsl::span<const size_t>& permutation, const Tensor& input
 
 Status DataCopy(const Tensor& input, Tensor& output, void* einsum_cuda_assets);
 
-std::unique_ptr<Tensor> CreateTensor(const DataTypeImpl* type, const TensorShape& shape, AllocatorPtr allocator);
+std::unique_ptr<Tensor> CreateTensor(const DataTypeImpl* type, const TensorShape& shape, AllocatorPtr allocator,
+                                     void* einsum_cuda_assets);
 
 Status ZeroBuffer(Tensor& input, void* einsum_cuda_assets);
 
