@@ -361,9 +361,10 @@ namespace {
 
 class WindowsRandomAccessFile final : public RandomAccessFile {
  public:
-  explicit WindowsRandomAccessFile(wil::unique_hfile file_handle, bool copy_on_write = false)
-      : file_handle_(std::move(file_handle)), copy_on_write_(copy_on_write) {}
+  explicit WindowsRandomAccessFile(wil::unique_hfile file_handle) : file_handle_(std::move(file_handle)) {}
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WindowsRandomAccessFile);
+
+  FileHandle GetNativeHandle() const noexcept override { return file_handle_.get(); }
 
   Status GetLength(uint64_t& length) const override {
     LARGE_INTEGER file_size{};
@@ -429,8 +430,7 @@ class WindowsRandomAccessFile final : public RandomAccessFile {
     const uint64_t requested_end = SafeInt<uint64_t>(offset) + length;
     ORT_RETURN_IF(file_size < requested_end, "RandomAccessFile::Map: requested range exceeds file size.");
 
-    wil::unique_handle mapping{CreateFileMappingW(file_handle_.get(), nullptr,
-                                                  copy_on_write_ ? PAGE_WRITECOPY : PAGE_READONLY, 0, 0, nullptr)};
+    wil::unique_handle mapping{CreateFileMappingW(file_handle_.get(), nullptr, PAGE_READONLY, 0, 0, nullptr)};
     ORT_RETURN_IF(mapping.get() == nullptr,
                   "CreateFileMappingW failed: ", GetLastError());
 
@@ -441,7 +441,7 @@ class WindowsRandomAccessFile final : public RandomAccessFile {
     const SIZE_T mapped_length = SafeInt<SIZE_T>(offset_to_granularity) + length;
     const FileOffsetType mapped_offset = offset - offset_to_granularity;
     const uint64_t mapped_offset_u64 = static_cast<uint64_t>(mapped_offset);
-    void* const mapped_base = MapViewOfFile(mapping.get(), copy_on_write_ ? FILE_MAP_COPY : FILE_MAP_READ,
+    void* const mapped_base = MapViewOfFile(mapping.get(), FILE_MAP_READ,
                                             static_cast<DWORD>(mapped_offset_u64 >> 32),
                                             static_cast<DWORD>(mapped_offset_u64 & 0xFFFFFFFF),
                                             mapped_length);
@@ -516,7 +516,6 @@ class WindowsRandomAccessFile final : public RandomAccessFile {
   }
 
   wil::unique_hfile file_handle_;
-  bool copy_on_write_;
 };
 
 }  // namespace
@@ -536,7 +535,7 @@ Status WindowsEnv::DuplicateReadOnlyFileHandle(
                     "Cannot query external initializer file handle: ", GetLastError());
   ORT_RETURN_IF((information.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0,
                 "External initializer handle must identify a regular file.");
-  file = std::make_shared<WindowsRandomAccessFile>(std::move(copy), true);
+  file = std::make_shared<WindowsRandomAccessFile>(std::move(copy));
   return Status::OK();
 }
 #endif

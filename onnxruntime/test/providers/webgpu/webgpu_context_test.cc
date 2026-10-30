@@ -1920,7 +1920,10 @@ TEST(WebGpuContextTest, D3D12AcceleratedLoadsExternalTensorsAcrossFilesAndRanges
 }
 
 void RunD3D12AcceleratedExternalInitializerSessionTest(
-    const char* mode, bool fail_late_registration = false) {
+    const char* mode,
+    bool fail_late_registration = false,
+    bool use_file_sources = false,
+    size_t element_count = 15) {
   TemporaryDirectory temp_dir{
       ORT_TSTR("webgpu_d3d12_accelerated_session_test")};
   const auto model_path =
@@ -1928,17 +1931,18 @@ void RunD3D12AcceleratedExternalInitializerSessionTest(
   const auto data_path =
       std::filesystem::path{temp_dir.Path()} / ORT_TSTR("weights.bin");
   constexpr size_t kDataOffset = 32;
-  const std::array<float, 15> weights{
-      0.0f, 1.0f, 2.0f, 3.0f, 4.0f,
-      5.0f, 6.0f, 7.0f, 8.0f, 9.0f,
-      10.0f, 11.0f, 12.0f, 13.0f, 14.0f};
+  std::vector<float> weights(element_count);
+  for (size_t index = 0; index < element_count; ++index) {
+    weights[index] = static_cast<float>(index);
+  }
+  const size_t weights_byte_size = weights.size() * sizeof(float);
   {
     std::ofstream stream{data_path, std::ios::binary | std::ios::trunc};
     ASSERT_TRUE(stream.good());
     const std::array<char, kDataOffset> prefix{};
     stream.write(prefix.data(), static_cast<std::streamsize>(prefix.size()));
     stream.write(reinterpret_cast<const char*>(weights.data()),
-                 static_cast<std::streamsize>(sizeof(weights)));
+                 static_cast<std::streamsize>(weights_byte_size));
     ASSERT_TRUE(stream.good());
   }
 
@@ -1978,14 +1982,17 @@ void RunD3D12AcceleratedExternalInitializerSessionTest(
   offset->set_value(std::to_string(kDataOffset));
   auto* length = initializer->add_external_data();
   length->set_key("length");
-  length->set_value(std::to_string(sizeof(weights)));
+  length->set_value(std::to_string(weights_byte_size));
 
   auto* add = graph->add_node();
   add->set_op_type("Add");
   add->add_input("X");
   add->add_input("W");
   add->add_output("Y");
-  {
+  std::string serialized_model;
+  if (use_file_sources) {
+    ASSERT_TRUE(model.SerializeToString(&serialized_model));
+  } else {
     std::ofstream stream{model_path, std::ios::binary | std::ios::trunc};
     ASSERT_TRUE(stream.good());
     ASSERT_TRUE(model.SerializeToOstream(&stream));
@@ -1994,6 +2001,21 @@ void RunD3D12AcceleratedExternalInitializerSessionTest(
   SessionOptions session_options;
   ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
       kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  if (use_file_sources) {
+    wil::unique_hfile handle{CreateFileW(
+        data_path.c_str(), GENERIC_READ,
+        FILE_SHARE_READ | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL, nullptr)};
+    ASSERT_TRUE(handle.is_valid());
+    std::shared_ptr<RandomAccessFile> source_file;
+    ASSERT_STATUS_OK(
+        Env::Default().DuplicateReadOnlyFileHandle(handle.get(), source_file));
+    handle.reset();
+    auto sources = std::make_shared<
+        std::unordered_map<PathString, std::shared_ptr<RandomAccessFile>>>();
+    sources->emplace(ORT_TSTR("weights.bin"), std::move(source_file));
+    session_options.external_initializer_file_sources = std::move(sources);
+  }
   InferenceSession session{session_options, GetEnvironment()};
   auto provider = WebGpuProviderFactoryCreator::Create(
                       WeightLoadAccelerationOptions(mode))
@@ -2019,7 +2041,13 @@ void RunD3D12AcceleratedExternalInitializerSessionTest(
     return;
   }
   ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(provider)));
-  ASSERT_STATUS_OK(session.Load(model_path.native()));
+  if (use_file_sources) {
+    ASSERT_STATUS_OK(
+        session.Load(serialized_model.data(),
+                     static_cast<int>(serialized_model.size())));
+  } else {
+    ASSERT_STATUS_OK(session.Load(model_path.native()));
+  }
   ASSERT_STATUS_OK(session.Initialize());
 
   std::vector<float> input(weights.size(), 1.0f);
@@ -2054,6 +2082,10 @@ TEST(WebGpuContextTest, D3D12AcceleratedLoadsExternalInitializerThroughSession) 
   }
   RunD3D12AcceleratedExternalInitializerSessionTest(
       kWeightLoadAcceleration_Required);
+  RunD3D12AcceleratedExternalInitializerSessionTest(
+      kWeightLoadAcceleration_Required, false, true, 15);
+  RunD3D12AcceleratedExternalInitializerSessionTest(
+      kWeightLoadAcceleration_Required, false, true, 64);
 }
 
 TEST(WebGpuContextTest, LateRegistrationFailureRollsBackD3D12AcceleratedLoader) {

@@ -60,10 +60,22 @@ class D3D12AcceleratedExternalDataLoader final : public IExternalDataLoader {
                                        std::string_view tensor_name,
                                        FileOffsetType data_offset,
                                        SafeInt<size_t> data_length) const override;
+  common::Status RegisterLoadCandidate(const PathString& data_file_name,
+                                       const RandomAccessFile& file,
+                                       std::string_view tensor_name,
+                                       FileOffsetType data_offset,
+                                       SafeInt<size_t> data_length) const override;
   common::Status CommitLoadCandidates(const std::function<bool()>& is_canceled) const override;
   void EndLoad() const noexcept override;
   common::Status LoadTensor(const Env& env,
                             const std::filesystem::path& data_file_path,
+                            std::string_view tensor_name,
+                            FileOffsetType data_offset,
+                            SafeInt<size_t> data_length,
+                            const std::shared_ptr<IAllocator>& allocator,
+                            Tensor& tensor) const override;
+  common::Status LoadTensor(const PathString& data_file_name,
+                            const RandomAccessFile& file,
                             std::string_view tensor_name,
                             FileOffsetType data_offset,
                             SafeInt<size_t> data_length,
