@@ -8,6 +8,7 @@
 #include "core/graph/model.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/inference_session.h"
+#include "test/util/include/default_providers.h"
 #include "test/unittest_util/framework_test_utils.h"
 #include "test/test_environment.h"
 #include "test/util/include/inference_session_wrapper.h"
@@ -797,6 +798,169 @@ TEST(ExecutionFrameTestInit, FetchReusesPreallocatedScalarOutputForSingleElement
   EXPECT_EQ(results[0].Get<Tensor>().DataRaw(), preallocated_buffer);
   EXPECT_EQ(results[0].Get<Tensor>().DataAsSpan<float>()[0], 5.0f);
 }
+
+TEST(ExecutionFrameTestInit, SymbolicOutputValidatesScalarCompatibilityAtRuntime) {
+  onnxruntime::Model model("symbolic_scalar_output_test", false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 12}}, {},
+                           DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+  TypeProto tensor_type;
+  tensor_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_param("N");
+  auto& input_arg = graph.GetOrCreateNodeArg("X", &tensor_type);
+  auto& output_arg = graph.GetOrCreateNodeArg("Y", &tensor_type);
+  graph.AddNode("relu", "Relu", "", {&input_arg}, {&output_arg});
+  graph.SetInputs({&input_arg});
+  graph.SetOutputs({&output_arg});
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  std::string serialized;
+  ASSERT_TRUE(model.ToProto().SerializeToString(&serialized));
+  std::istringstream model_stream(serialized);
+  SessionOptions options;
+  InferenceSession session(options, GetEnvironment());
+  ASSERT_STATUS_OK(session.Load(model_stream));
+  ASSERT_STATUS_OK(session.Initialize());
+  auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
+
+  for (int64_t element_count : {1, 2}) {
+    SCOPED_TRACE(element_count);
+    std::vector<float> input_data(static_cast<size_t>(element_count), 5.0f);
+    OrtValue input;
+    Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape({element_count}), input_data.data(),
+                         allocator->Info(), input);
+    OrtValue output;
+    Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape({}), allocator, output);
+    output.GetMutable<Tensor>()->MutableData<float>()[0] = -1.0f;
+    const void* supplied_buffer = output.Get<Tensor>().DataRaw();
+    std::vector<OrtValue> results{output};
+    auto status = session.Run(RunOptions(), AsSpan({std::string("X")}), AsSpan({input}),
+                              AsSpan({std::string("Y")}), &results, nullptr);
+    if (element_count == 1) {
+      ASSERT_STATUS_OK(status);
+      const auto& result = results[0].Get<Tensor>();
+      EXPECT_EQ(result.Shape(), TensorShape({1}));
+      EXPECT_EQ(result.DataRaw(), supplied_buffer);
+      EXPECT_EQ(result.Data<float>()[0], 5.0f);
+    } else {
+      ASSERT_FALSE(status.IsOK());
+      EXPECT_EQ(status.Code(), common::StatusCode::INVALID_ARGUMENT);
+      EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("computed output shape"));
+      EXPECT_EQ(output.Get<Tensor>().Shape(), TensorShape({}));
+      EXPECT_EQ(output.Get<Tensor>().Data<float>()[0], -1.0f);
+    }
+  }
+
+  OrtValue scalar_input;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape({}), allocator, scalar_input);
+  scalar_input.GetMutable<Tensor>()->MutableData<float>()[0] = 5.0f;
+  std::vector<OrtValue> results;
+  auto status = session.Run(RunOptions(), AsSpan({std::string("X")}), AsSpan({scalar_input}),
+                            AsSpan({std::string("Y")}), &results, nullptr);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.Code(), common::StatusCode::INVALID_ARGUMENT);
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Invalid rank for input"));
+}
+
+TEST(ExecutionFrameTestInit, InitializerAndConstantReusePreallocatedScalarOutput) {
+  for (bool use_constant : {false, true}) {
+    SCOPED_TRACE(use_constant);
+    onnxruntime::Model model("scalar_initializer_output_test", false, ModelMetaData(), PathString(),
+                             IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 12}}, {},
+                             DefaultLoggingManager().DefaultLogger());
+    auto& graph = model.MainGraph();
+    TypeProto output_type;
+    output_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+    output_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+    auto& output_arg = graph.GetOrCreateNodeArg("Y", &output_type);
+    TensorProto value;
+    value.set_name("Y");
+    value.set_data_type(TensorProto_DataType_FLOAT);
+    value.add_dims(1);
+    value.add_float_data(5.0f);
+    if (use_constant) {
+      graph.AddNode("constant", "Constant", "", {}, {&output_arg}).AddAttribute("value", value);
+    } else {
+      graph.AddInitializedTensor(value);
+    }
+    graph.SetOutputs({&output_arg});
+    ASSERT_STATUS_OK(graph.Resolve());
+
+    std::string serialized;
+    ASSERT_TRUE(model.ToProto().SerializeToString(&serialized));
+    std::istringstream model_stream(serialized);
+    SessionOptions options;
+    InferenceSession session(options, GetEnvironment());
+    ASSERT_STATUS_OK(session.Load(model_stream));
+    ASSERT_STATUS_OK(session.Initialize());
+    EXPECT_EQ(session.GetSessionState().GetGraphViewer().NumberOfNodes(), 0);
+
+    auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
+    OrtValue output;
+    Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape({}), allocator, output);
+    const void* supplied_buffer = output.Get<Tensor>().DataRaw();
+    std::vector<OrtValue> results{output};
+    ASSERT_STATUS_OK(session.Run(RunOptions(), EmptySpan<std::string>(), EmptySpan<OrtValue>(),
+                                 AsSpan({std::string("Y")}), &results, nullptr));
+    ASSERT_EQ(results.size(), 1u);
+    const auto& result = results[0].Get<Tensor>();
+    EXPECT_EQ(result.Shape(), TensorShape({1}));
+    EXPECT_EQ(result.DataRaw(), supplied_buffer);
+    EXPECT_EQ(result.Data<float>()[0], 5.0f);
+  }
+}
+
+#ifdef USE_CUDA
+TEST(ExecutionFrameTestInit, CrossDeviceCopyReusesPreallocatedScalarOutput) {
+  auto cuda_provider = DefaultCudaExecutionProvider();
+  if (!cuda_provider) {
+    GTEST_SKIP() << "CUDA execution provider is unavailable";
+  }
+
+  onnxruntime::Model model("scalar_cross_device_output_test", false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 12}}, {},
+                           DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+  TypeProto tensor_type;
+  tensor_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+  auto& input_arg = graph.GetOrCreateNodeArg("X", &tensor_type);
+  auto& output_arg = graph.GetOrCreateNodeArg("Y", &tensor_type);
+  graph.AddNode("relu", "Relu", "", {&input_arg}, {&output_arg});
+  graph.SetInputs({&input_arg});
+  graph.SetOutputs({&output_arg});
+  ASSERT_STATUS_OK(graph.Resolve());
+  std::string serialized;
+  ASSERT_TRUE(model.ToProto().SerializeToString(&serialized));
+  std::istringstream model_stream(serialized);
+  SessionOptions options;
+  InferenceSession session(options, GetEnvironment());
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(cuda_provider)));
+  ASSERT_STATUS_OK(session.Load(model_stream));
+  ASSERT_STATUS_OK(session.Initialize());
+  for (const auto& node : session.GetSessionState().GetGraphViewer().Nodes()) {
+    if (node.OpType() == "Relu") {
+      ASSERT_EQ(node.GetExecutionProviderType(), kCudaExecutionProvider);
+    }
+  }
+
+  auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
+  std::array<float, 1> input_data{5.0f};
+  OrtValue input;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape({1}), input_data.data(), allocator->Info(), input);
+  OrtValue output;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape({}), allocator, output);
+  const void* supplied_buffer = output.Get<Tensor>().DataRaw();
+  std::vector<OrtValue> results{output};
+  ASSERT_STATUS_OK(session.Run(RunOptions(), AsSpan({std::string("X")}), AsSpan({input}),
+                               AsSpan({std::string("Y")}), &results, nullptr));
+  ASSERT_EQ(results.size(), 1u);
+  const auto& result = results[0].Get<Tensor>();
+  EXPECT_EQ(result.Shape(), TensorShape({1}));
+  EXPECT_EQ(result.DataRaw(), supplied_buffer);
+  EXPECT_EQ(result.Data<float>()[0], 5.0f);
+}
+#endif
 
 TEST(ExecutionFrameTestInit, FetchFailsForEqualCountNonScalarShapeMismatch) {
   // Regression test to ensure that equal element count but different shapes

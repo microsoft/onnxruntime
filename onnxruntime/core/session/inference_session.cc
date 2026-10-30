@@ -4,6 +4,7 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
 
+#include <algorithm>
 #include <memory>
 #include <sstream>
 #include <list>
@@ -3022,8 +3023,9 @@ common::Status InferenceSession::ValidateInputsOutputs(gsl::span<const std::stri
       if (opt_shape.has_value() && !opt_shape->GetDims().empty()) {
         const auto& actual_shape = input_output_tensor.Shape();
         const bool scalar_single_element_output_compatibility =
-            !is_inputs && actual_shape.Size() == 1 && opt_shape->Size() == 1 &&
-            (actual_shape.NumDimensions() == 0 || opt_shape->NumDimensions() == 0);
+          !is_inputs && actual_shape.NumDimensions() == 0 &&
+          std::all_of(opt_shape->GetDims().begin(), opt_shape->GetDims().end(),
+                [](int64_t dimension) { return dimension < 0 || dimension == 1; });
         if (!scalar_single_element_output_compatibility) {
           ORT_RETURN_IF_ERROR_SESSIONID_(CheckShapes(name, actual_shape, *opt_shape, input_output_moniker));
         }

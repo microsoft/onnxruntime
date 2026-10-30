@@ -62,6 +62,8 @@ bool IsMemcpyNode(const Node& node);
 // DEFAULT -> HOST_ACCESSIBLE is NOT valid (CPU cannot read device-only memory).
 bool CanSourceSatisfyTarget(const OrtDevice& src, const OrtDevice& tgt);
 
+common::Status NormalizePreallocatedOutputShape(const TensorShape& source_shape, Tensor& destination);
+
 common::Status CopyOneInputAcrossDevices(const SessionState& session_state, const std::string& input_name,
                                          const OrtValue& orig_mlvalue, OrtValue& new_mlvalue);
 

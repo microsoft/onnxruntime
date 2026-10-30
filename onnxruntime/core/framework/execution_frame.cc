@@ -98,6 +98,7 @@ void IExecutionFrame::UpdateFetches(gsl::span<const int> fetch_mlvalue_idxs,
           dest.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
         }
 
+        ORT_THROW_IF_ERROR(utils::NormalizePreallocatedOutputShape(src.Shape(), *dest.GetMutable<Tensor>()));
         ORT_THROW_IF_ERROR(CopyTensor(src, *dest.GetMutable<Tensor>()));
       }
     }
@@ -351,6 +352,7 @@ void IExecutionFrame::Init(gsl::span<const int> feed_mlvalue_idxs, gsl::span<con
           AllocatorPtr allocator = GetAllocator(src.Location().device);
           Tensor::InitOrtValue(src.DataType(), src.Shape(), std::move(allocator), dest);
         }
+        ORT_THROW_IF_ERROR(utils::NormalizePreallocatedOutputShape(src.Shape(), *dest.GetMutable<Tensor>()));
         ORT_THROW_IF_ERROR(CopyTensor(src, *dest.GetMutable<Tensor>()));
 #if !defined(DISABLE_SPARSE_TENSORS)
       }
