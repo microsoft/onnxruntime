@@ -16,10 +16,10 @@
 #include "core/providers/webgpu/compute_context.h"
 #include "core/providers/webgpu/math/matmul.h"
 #include "core/providers/webgpu/math/subgroup_matrix_config.h"
+#include "core/providers/webgpu/math/subgroup_matrix_pad_b.h"
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/vendor/intel/math/subgroup_matrix_tiling_selector.h"
-#include "core/providers/webgpu/webgpu_utils.h"
 namespace onnxruntime {
 namespace webgpu {
 
@@ -60,24 +60,6 @@ class SubgroupMatrixMatMulProgram final : public Program<SubgroupMatrixMatMulPro
 };
 
 namespace {
-
-// Copies a row-major f16 weight B [K, N] into a column-padded [K, N_b] buffer
-// (N_b >= N), zero-filling columns [N, N_b). Gives B an aligned row stride so the
-// subgroup-matrix f16 load's row-start alignment holds for any N.
-class SubgroupMatrixMatMulPadBProgram final : public Program<SubgroupMatrixMatMulPadBProgram> {
- public:
-  SubgroupMatrixMatMulPadBProgram() : Program{"SubgroupMatrixMatMulPadB"} {}
-  Status GenerateShaderCode(ShaderHelper& shader) const override {
-    const auto& input_b = shader.AddInput("input_b", ShaderUsage::UseValueTypeAlias);
-    const auto& output = shader.AddOutput("output", ShaderUsage::UseValueTypeAlias);
-    return WGSL_TEMPLATE_APPLY(shader, "math/subgroup_matrix_matmul_pad_b.wgsl.template",
-                               WGSL_TEMPLATE_VARIABLE(input_b, input_b),
-                               WGSL_TEMPLATE_VARIABLE(output, output));
-  }
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32},
-                                          {"N", ProgramUniformVariableDataType::Uint32},
-                                          {"N_b", ProgramUniformVariableDataType::Uint32});
-};
 
 // A staged tiling reads A and B as vec4 so N must be a multiple of 4 and the template
 // unrolls at most 2x2 subgroup matrices per subgroup.
@@ -304,45 +286,18 @@ class SubgroupMatrixMatMulImplInternal final : public SubgroupMatrixMatMulImpl {
   }
 
  private:
-  // Lazily builds an aligned copy of a constant weight B [..., K, N] with unaligned N
-  // by widening its last dim to an aligned N_b (zero-filling the extra columns) and
-  // caches it, so the per-run pad cost is paid once. Works for a 2D weight [K, N]
-  // and a batched weight [batch, K, N] alike: the pad pass treats B as a flat
-  // [rows, N] -> [rows, N_b] copy over rows = numel / N (= K, or batch*K), which is
-  // exactly the even-stride layout the kernel indexes via N_b. Runs the GPU pad pass
-  // on first use under call_once; the cached tensor is held for the kernel's
-  // lifetime. Only valid when B is a constant initializer (checked by the caller) -
-  // a runtime B changes per run and must not be cached.
+  // Lazily builds an aligned copy of a constant weight B with unaligned N, caching
+  // it so the per-run pad cost is paid once. Only valid when B is a constant
+  // initializer (checked by the caller) - a runtime B changes per run and must not
+  // be cached.
   Status EnsurePaddedB(ComputeContext& context,
                        const Tensor& b,
                        const TensorShape& b_shape,
                        uint32_t N,
                        uint32_t n_b) const {
-    TensorShapeVector padded_dims{b_shape.GetDims().begin(), b_shape.GetDims().end()};
-    padded_dims.back() = static_cast<int64_t>(n_b);
-    const TensorShape padded_shape{padded_dims};
-    const int64_t output_size_i64 = padded_shape.Size();
-    ORT_RETURN_IF_NOT(output_size_i64 <= static_cast<int64_t>(std::numeric_limits<uint32_t>::max()),
-                      "Cannot pad B because the padded tensor has ", output_size_i64,
-                      " elements, exceeding uint32_t shader indexing range.");
-    const uint32_t output_size = narrow<uint32_t>(output_size_i64);
-
     std::call_once(pad_once_, [&]() {
-      auto padded = std::make_unique<Tensor>(context.CreateGPUTensor(b.DataType(), padded_shape));
-      Status s = Status::OK();
-      // A zero-element padded tensor (e.g. a zero-batch or empty constant B) needs no
-      // pad pass - dispatching 0 workgroups is pointless and some drivers reject it.
-      // Just cache the empty tensor; the main kernel dispatches nothing for it.
-      if (output_size != 0) {
-        SubgroupMatrixMatMulPadBProgram program;
-        program.SetWorkgroupSize(WORKGROUP_SIZE)
-            .SetDispatchGroupSize(CeilDiv<uint32_t>(output_size, WORKGROUP_SIZE))
-            .AddInput({&b, ProgramTensorMetadataDependency::TypeAndRank, b_shape, 1})
-            .AddOutput({padded.get(), ProgramTensorMetadataDependency::TypeAndRank, padded->Shape(), 1})
-            .AddUniformVariables({{output_size}, {N}, {n_b}});
-        s = context.RunProgram(program);
-      }
-      if (s.IsOK()) {
+      std::unique_ptr<Tensor> padded;
+      if (PadSubgroupMatrixWeightColumns(context, b, b_shape, N, n_b, padded).IsOK()) {
         padded_b_ = std::move(padded);
       }
     });

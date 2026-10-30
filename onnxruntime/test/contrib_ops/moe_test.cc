@@ -3433,6 +3433,10 @@ void RunInt3AndMixedWidthCudaPrefillParityTest() {
       // Partial final row tile (16 + 3 = 19 rows with row_tile_size = 16)
       {3, 3, 64, 19, 16},
       {3, 4, 32, 19, 16},
+      // 64 rows * top_k 2 / 4 experts = 32 rows per expert: the packed INT4 grouped GEMM picks the 64-row CTA tile
+      {3, 3, 64, 64, 0},
+      {3, 4, 32, 64, 0},
+      {4, 3, 128, 64, 0},
   };
 
   for (const auto& tc : cases) {

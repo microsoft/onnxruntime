@@ -369,11 +369,8 @@ void ShaderVariableHelper::Impl(OStringStream& ss) const {
   }
   // Implementation of "fn set_{name}_by_offset" for multi-buffer segmented variables
   if (usage_ & ShaderUsage::UseSetByOffsetSegments) {
-    SS_APPEND(ss, "fn set_", name_, "_by_offset(global_offset: u32, value: ", ValueType(), ") {\n");
-    SS_APPEND(ss, "  const CHUNK_SIZE_IN_ELEMENTS: u32 = ", max_storage_buffer_binding_size_, "u / ", BYTES[static_cast<int>(type_)], "u;\n");
-    SS_APPEND(ss, "  let storage_offset: u32 = ", StorageOffset("global_offset"), ";\n");
-    SS_APPEND(ss, "  let buffer_index: u32 = storage_offset / CHUNK_SIZE_IN_ELEMENTS;\n");
-    SS_APPEND(ss, "  let local_offset: u32 = storage_offset % CHUNK_SIZE_IN_ELEMENTS;\n");
+    // Byte-packed types take one value per lane, as in the unsegmented SetByOffset, and pack them here.
+    std::string value_type{ValueType()};
     std::string stored_value = "value";
     if (type_ == ProgramVariableDataType::Int64) {
       stored_value = "vec2<u32>(u32(value), select(0u, 0xFFFFFFFFu, i32(value) < 0))";
@@ -381,7 +378,18 @@ void ShaderVariableHelper::Impl(OStringStream& ss) const {
       stored_value = "vec2<u32>(u32(value), 0u)";
     } else if (type_ == ProgramVariableDataType::Boolx4) {
       stored_value = "dot(vec4<u32>(0x1, 0x100, 0x10000, 0x1000000), vec4<u32>(value))";
+    } else if (type_ == ProgramVariableDataType::Uint8x4) {
+      value_type = "vec4<u32>";
+      stored_value = "dot(vec4<u32>(0x1u, 0x100u, 0x10000u, 0x1000000u), value & vec4<u32>(0xFFu))";
+    } else if (type_ == ProgramVariableDataType::Int8x4) {
+      value_type = "vec4<i32>";
+      stored_value = "dot(vec4<u32>(0x1u, 0x100u, 0x10000u, 0x1000000u), bitcast<vec4<u32>>(value) & vec4<u32>(0xFFu))";
     }
+    SS_APPEND(ss, "fn set_", name_, "_by_offset(global_offset: u32, value: ", value_type, ") {\n");
+    SS_APPEND(ss, "  const CHUNK_SIZE_IN_ELEMENTS: u32 = ", max_storage_buffer_binding_size_, "u / ", BYTES[static_cast<int>(type_)], "u;\n");
+    SS_APPEND(ss, "  let storage_offset: u32 = ", StorageOffset("global_offset"), ";\n");
+    SS_APPEND(ss, "  let buffer_index: u32 = storage_offset / CHUNK_SIZE_IN_ELEMENTS;\n");
+    SS_APPEND(ss, "  let local_offset: u32 = storage_offset % CHUNK_SIZE_IN_ELEMENTS;\n");
     SS_APPEND(ss, "  switch(buffer_index) {\n");
     SS_APPEND(ss, "    case 0u: { ", storage_name_, "[local_offset] = ", stored_value, "; return; }\n");
     for (uint32_t i = 1; i < segments_; ++i) {
@@ -463,7 +471,14 @@ std::string ShaderVariableHelper::SetByOffsetImpl(std::string_view offset, std::
       ss << "set_" << name_ << "_by_offset_storage(" << offset << "," << value << ");";
       return SS_GET(ss);
     }
-    ss << "set_" << name_ << "_by_offset(" << offset << "," << value << ");";
+    // Callers pass byte lanes as either vec4<u32> or vec4<i32>; convert to the setter's lane type.
+    if (type_ == ProgramVariableDataType::Uint8x4) {
+      ss << "set_" << name_ << "_by_offset(" << offset << ",vec4<u32>(" << value << "));";
+    } else if (type_ == ProgramVariableDataType::Int8x4) {
+      ss << "set_" << name_ << "_by_offset(" << offset << ",vec4<i32>(" << value << "));";
+    } else {
+      ss << "set_" << name_ << "_by_offset(" << offset << "," << value << ");";
+    }
     return SS_GET(ss);
   }
 
@@ -502,6 +517,13 @@ std::string ShaderVariableHelper::SetByOffsetImpl(std::string_view offset, std::
       ss << storage_name_ << "[" << storage_offset
          << "]=dot(vec4<u32>(0x1u, 0x100u, 0x10000u, 0x1000000u), (vec4<u32>("
          << value << ") & vec4<u32>(0xFFu)));";
+      break;
+    case onnxruntime::webgpu::ProgramVariableDataType::Int8x4:
+      // Pack 4 int8 elements (supplied as a vec4<i32>, one value per lane) like Uint8x4. The bitcast
+      // keeps each lane's two's-complement low byte, so negative values pack correctly.
+      ss << storage_name_ << "[" << storage_offset
+         << "]=dot(vec4<u32>(0x1u, 0x100u, 0x10000u, 0x1000000u), (bitcast<vec4<u32>>(vec4<i32>("
+         << value << ")) & vec4<u32>(0xFFu)));";
       break;
     default:
       ss << storage_name_ << "[" << storage_offset << "]=" << value << ";";
