@@ -99,7 +99,7 @@ punctuation) that make CSV quoting fragile.
 ```
 # ort_cuda_gemm_tactic_cache	v1
 # table	matmulnbits_fpa_intb
-# tactic_selection_version	4
+# tactic_selection_version	5
 # device_name	NVIDIA A100-SXM4-80GB
 # sm	80
 # multiprocessor_count	108
@@ -108,9 +108,9 @@ punctuation) that make CSV quoting fragile.
 # ort_version	1.23.0
 # ort_git_commit	<git-sha-or-unknown>
 # ort_build_config	Release
-n_16b	k	activation_dtype	weight_type	bits	block_size	has_zero_points	zero_point_dtype	gemv_enabled	has_bias	packing_sm	paired_gemv_mode	wave_aware_gemv	m_bucket	valid_config	sm_version	tile80	tile90	tile100	tile120	split_k_style	split_k	stages	cluster	mainloop	epilogue	tma	enable_cuda_kernel	cuda_kernel_variant
-12288	4096	half	uint4b_t	4	64	1	uint4b_t	1	0	80	0	0	1	1	80	23	0	0	0	1	1	3	0	0	0	0	1	0
-12288	4096	half	uint4b_t	4	64	1	uint4b_t	1	0	80	0	0	64	1	80	17	0	0	0	0	-1	4	0	0	0	0	0	0
+n_16b	k	activation_dtype	weight_type	bits	block_size	has_zero_points	zero_point_dtype	gemv_enabled	has_bias	packing_sm	paired_gemv_mode	wave_aware_gemv	tensor_core_gemv	m_bucket	valid_config	sm_version	tile80	tile90	tile100	tile120	split_k_style	split_k	stages	cluster	mainloop	epilogue	tma	enable_cuda_kernel	cuda_kernel_variant
+12288	4096	half	uint4b_t	4	64	1	uint4b_t	1	0	80	0	0	1	1	1	80	23	0	0	0	1	1	3	0	0	0	0	1	0
+12288	4096	half	uint4b_t	4	64	1	uint4b_t	1	0	80	0	0	1	64	1	80	17	0	0	0	0	-1	4	0	0	0	0	0	0
 ...
 ```
 
@@ -180,7 +180,7 @@ Use op-specific keys rather than a single sparse superset.
 matmulnbits_key = {
   n_16b, k, activation_dtype, weight_type, bits, block_size,
   has_zero_points, zero_point_dtype, gemv_enabled, has_bias, packing_sm,
-  paired_gemv_mode, wave_aware_gemv
+  paired_gemv_mode, wave_aware_gemv, tensor_core_gemv
 }
 
 qmoe_key = {
@@ -195,10 +195,13 @@ collapse to one entry. For `MatMulNBits`, `n_16b` is the value used by the exist
 For QMoE, the key includes the profiler parameters that affect `GemmProfilerBackend::init` so that
 cache reuse remains conservative.
 
-MatMulNBits keys separate paired-K modes (disabled, autotuned, forced) and wave-aware GEMV
-launches. `cuda_kernel_variant` preserves the selected GEMV implementation (0 = default,
+MatMulNBits keys separate paired-K modes (disabled, autotuned, forced), wave-aware GEMV
+launches, and whether the SM 9.0 tensor-core INT8 GEMV is allowed
+(`ep.cuda.disable_fpa_intb_gemv_tc`), so sessions with different settings never share profiled
+selections. `cuda_kernel_variant` preserves the selected GEMV implementation (0 = default,
 1 = paired-K, 2–7 = the six symmetric INT4 M=1 decode geometries). Selection version 4
-rejects older selections made before the streaming-L2 decode profiler and its new candidates.
+rejects older selections made before the streaming-L2 decode profiler and its new candidates;
+version 5 rejects selections made before the `tensor_core_gemv` key column existed.
 Loaded decode variants must still pass the current layout, dtype, quantization, M-bucket, and
 grid-limit checks before they are validated on the device.
 
