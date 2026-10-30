@@ -15,6 +15,8 @@
 #include <array>
 #include <cstdint>
 #include <string>
+#include <string_view>
+#include <unordered_map>
 #include <vector>
 
 #include <cuda_runtime_api.h>
@@ -112,6 +114,9 @@ void ExpectExactDequantizedWeights(int64_t bits, bool deterministic = false, int
   test.RunWithConfig();
 }
 
+#if USE_FPA_INTB_GEMM
+// Only the CUDA graph test below uses these helpers. Builds without the fpA_intB kernels skip that test, and an
+// unused helper would fail them under -Werror=unused-function.
 class ScopedCudaStream {
  public:
   ScopedCudaStream() { ORT_ENFORCE(cudaStreamCreateWithFlags(&stream_, cudaStreamNonBlocking) == cudaSuccess); }
@@ -171,6 +176,7 @@ std::string BuildInt8MatMulNBitsModel(int64_t n, int64_t k, const std::vector<ui
   }
   return model.SerializeAsString();
 }
+#endif  // USE_FPA_INTB_GEMM
 
 }  // namespace
 
@@ -279,14 +285,36 @@ TEST(MatMulNBitsFpAIntBLayout, Int8LargeMDequantGemmCudaGraphCapture) {
   options.AddConfigEntry(kOrtSessionOptionsCudaFpAIntBGemm, "1");
   options.AddConfigEntry(kOrtSessionOptionsCudaFpAIntBDequantGemmMinM, "512");
   options.SetIntraOpNumThreads(1);
+#if defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP)
+  // The plugin library does not export the in-tree provider bridge that AppendExecutionProvider_CUDA_V2 loads, so
+  // select the device that unit test main registered.
+  Ort::ConstEpDevice cuda_device;
+  for (const auto& ep_device : ort_env->GetEpDevices()) {
+    if (std::string_view{ep_device.EpName()} == kCudaExecutionProvider) {
+      cuda_device = ep_device;
+      break;
+    }
+  }
+  if (cuda_device == nullptr) GTEST_SKIP() << "CUDA plugin EP is not registered";
+  const std::unordered_map<std::string, std::string> provider_options{
+      {"enable_cuda_graph", "1"},
+      {"user_compute_stream", std::to_string(reinterpret_cast<uintptr_t>(stream.get()))}};
+  options.AppendExecutionProvider_V2(*ort_env, {cuda_device}, provider_options);
+#else
   Ort::CUDAProviderOptions cuda_options;
   cuda_options.Update({{"enable_cuda_graph", "1"}});
   cuda_options.UpdateWithValue("user_compute_stream", stream.get());
   options.AppendExecutionProvider_CUDA_V2(*cuda_options);
+#endif
   Ort::Session session(*ort_env, model.data(), model.size(), options);
 
+#if defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP)
+  auto allocator = ort_env->GetSharedAllocator(cuda_device.GetMemoryInfo(OrtDeviceMemoryType_DEFAULT));
+#else
   Ort::MemoryInfo memory_info("Cuda", OrtArenaAllocator, 0, OrtMemTypeDefault);
   Ort::Allocator allocator(session, memory_info);
+#endif
+  ASSERT_NE(allocator, nullptr);
   const std::array<int64_t, 2> a_shape{kM, kGraphK}, y_shape{kM, kGraphN};
   auto a_tensor = Ort::Value::CreateTensor(allocator, a_shape.data(), a_shape.size(),
                                            ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16);
