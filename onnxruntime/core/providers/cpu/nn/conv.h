@@ -1,8 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
+// SPDX-FileCopyrightText: Copyright 2026 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
 
 #pragma once
 
+#include <algorithm>
+#include <cmath>
 #include <mutex>
 
 #include "core/framework/op_kernel.h"
@@ -32,14 +35,19 @@ class Conv<float> : public OpKernel {
     SetupMlasBackendKernelSelectorFromConfigOptions(mlas_backend_kernel_selector_config_, info.GetConfigOptions());
 
 #if defined(USE_KLEIDIAI) && defined(MLAS_TARGET_ARM64)
-    if (channels_last_) {
-      const auto& input_defs = info.node().InputDefs();
-      const bool has_bias_input = input_defs.size() >= 3 && input_defs[2] != nullptr;
-      info.TryGetConstantInput(1, &constant_filter_tensor_);
-      if (has_bias_input) {
-        info.TryGetConstantInput(2, &constant_bias_tensor_);
+    const auto& input_defs = info.node().InputDefs();
+    const bool has_bias_input = input_defs.size() >= 3 && input_defs[2] != nullptr;
+    if (has_bias_input) {
+      info.TryGetConstantInput(2, &constant_bias_tensor_);
+      if (constant_bias_tensor_ != nullptr) {
+        const auto bias_values = constant_bias_tensor_->DataAsSpan<float>();
+        constant_bias_has_nan_ = std::any_of(bias_values.begin(), bias_values.end(),
+                                             [](float value) { return std::isnan(value); });
       }
+    }
 
+    if (channels_last_) {
+      info.TryGetConstantInput(1, &constant_filter_tensor_);
       can_cache_packed_filter_ =
           constant_filter_tensor_ != nullptr && (!has_bias_input || constant_bias_tensor_ != nullptr);
     }
@@ -62,10 +70,12 @@ class Conv<float> : public OpKernel {
                                         size_t filter_count_per_group,
                                         size_t input_channels_per_group,
                                         const TensorShapeVector& kernel_shape,
-                                        const TensorShapeVector& dilations) const;
+                                        const TensorShapeVector& dilations,
+                                        bool is_depthwise) const;
 
   const Tensor* constant_filter_tensor_{nullptr};
   const Tensor* constant_bias_tensor_{nullptr};
+  bool constant_bias_has_nan_{false};
   bool can_cache_packed_filter_{false};
   mutable std::once_flag packed_filter_once_;
   mutable Status packed_filter_status_;
