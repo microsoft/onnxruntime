@@ -1,4 +1,5 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
+# SPDX-FileCopyrightText: Copyright 2026 Arm Limited and/or its affiliates <open-source-office@arm.com>
 # Licensed under the MIT License.
 
 message(STATUS "Loading Dependencies URLs ...")
@@ -1033,7 +1034,11 @@ endif()
 
 if(onnxruntime_USE_KLEIDIAI)
   # Disable the KleidiAI tests
-  set(KLEIDIAI_BUILD_TESTS  OFF)
+  set(KLEIDIAI_BUILD_TESTS OFF)
+  set(KLEIDIAI_BUILD_EXPERIMENTAL_OPS ${onnxruntime_KLEIDIAI_OPS_AVAILABLE}
+      CACHE BOOL "Build KleidiAI experimental ops" FORCE)
+  set(KLEIDIAI_OPS_ENABLE_BUILD_BENCHMARK OFF CACHE BOOL "Build KleidiAI ops benchmark" FORCE)
+  set(KLEIDIAI_OPS_ENABLE_ANDROID ${ANDROID} CACHE BOOL "Build KleidiAI ops for Android" FORCE)
 
   onnxruntime_fetchcontent_declare(kleidiai URL ${DEP_URL_kleidiai} URL_HASH SHA1=${DEP_SHA1_kleidiai} EXCLUDE_FROM_ALL)
   onnxruntime_fetchcontent_makeavailable(kleidiai)

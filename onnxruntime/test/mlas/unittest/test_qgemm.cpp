@@ -1,17 +1,26 @@
+// SPDX-FileCopyrightText: Copyright 2026 Arm Limited and/or its affiliates <open-source-office@arm.com>
+// SPDX-License-Identifier: MIT
+
 #include "test_qgemm.h"
 #include "test_qgemm_fixture.h"
 
-TEST(QGemmPackB, SizeDoesNotIncludeDynamicQGemmPacking) {
-  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG selector_config{};
-  selector_config.use_kleidiai = false;
-  const size_t standard_packed_size = MlasGemmPackBSize(
-      1024, 1024, true /* AIsSigned */, true /* BIsSigned */, &selector_config);
-
-  selector_config.use_kleidiai = true;
-  const size_t packed_size_with_kleidiai_enabled = MlasGemmPackBSize(
-      1024, 1024, true /* AIsSigned */, true /* BIsSigned */, &selector_config);
-
-  ASSERT_EQ(packed_size_with_kleidiai_enabled, standard_packed_size);
+TEST(QGemmPackB, SizeIsIndependentOfBackendSelector) {
+  // Static QGEMM packing stays with MLAS regardless of whether dynamic
+  // KleidiAI kernels are enabled by the backend selector.
+  for (bool a_is_signed : {false, true}) {
+    for (bool b_is_signed : {false, true}) {
+      SCOPED_TRACE(testing::Message() << "AIsSigned=" << a_is_signed << " BIsSigned=" << b_is_signed);
+      const size_t default_packed_size = MlasGemmPackBSize(
+          1024, 1024, a_is_signed, b_is_signed, nullptr);
+      for (bool use_kleidiai : {false, true}) {
+        MLAS_BACKEND_KERNEL_SELECTOR_CONFIG selector_config{};
+        selector_config.use_kleidiai = use_kleidiai;
+        EXPECT_EQ(MlasGemmPackBSize(1024, 1024, a_is_signed, b_is_signed, &selector_config),
+                  default_packed_size)
+            << "use_kleidiai=" << use_kleidiai;
+      }
+    }
+  }
 }
 
 static size_t QGemmRegistLongExecute() {

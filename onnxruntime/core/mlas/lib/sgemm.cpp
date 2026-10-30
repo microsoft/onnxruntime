@@ -1,3 +1,9 @@
+//
+// SPDX-FileCopyrightText: Copyright 2026 Arm Limited and/or its affiliates <open-source-office@arm.com>
+//
+// SPDX-License-Identifier: MIT
+//
+
 /*++
 
 Copyright (c) Microsoft Corporation. All rights reserved.
@@ -15,7 +21,19 @@ Abstract:
 
 --*/
 
+#include <stdexcept>
+
 #include "mlasi.h"
+
+size_t
+MlasSgemmNativePackBSize(size_t N, size_t K)
+{
+    const size_t aligned_n =
+        (N + MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1) & ~(MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1);
+    const size_t bytes = aligned_n * K * sizeof(float);
+    const size_t alignment = MlasGetPreferredBufferAlignment();
+    return (bytes + alignment - 1) & ~(alignment - 1);
+}
 
 //
 // Define the number of rows from matrix A to transpose to a local buffer.
@@ -1529,12 +1547,52 @@ MlasGemmBatch(
     const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
     )
 {
-    // Override
-    if ((!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) &&
+    const bool can_use_override =
+        (!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) &&
         GetMlasPlatform().MlasSGemmBatchOverride != nullptr &&
-        // TODO: Remove once KAI supports transposing for A
-        TransA != CBLAS_TRANSPOSE::CblasTrans &&
-        GetMlasPlatform().MlasSGemmBatchOverride(TransA, TransB, M, N, K, Data, BatchSize, ThreadPool)){
+        TransA != CBLAS_TRANSPOSE::CblasTrans;
+    bool dispatch_per_entry = false;
+    if (can_use_override && GetMlasPlatform().MlasSGemmPackedBHasExtensionOverride != nullptr &&
+        Data != nullptr && BatchSize > 1 && M != 0) {
+        for (size_t batch = 0; batch < BatchSize; ++batch) {
+            if (!Data[batch].BIsPacked ||
+                GetMlasPlatform().MlasSGemmPackedBHasExtensionOverride(Data[batch].B, N, K)) {
+                dispatch_per_entry = true;
+                break;
+            }
+        }
+    }
+    if (dispatch_per_entry) {
+        // Decide independently for each entry. Retrying a partially completed
+        // batch would accumulate completed entries twice when beta is nonzero.
+        MLAS_BACKEND_KERNEL_SELECTOR_CONFIG fallback{};
+        fallback.use_kleidiai = false;
+        size_t fallback_start = 0;
+        for (size_t batch = 0; batch < BatchSize; ++batch) {
+            if (!GetMlasPlatform().MlasSGemmBatchOverride(
+                    TransA, TransB, M, N, K, &Data[batch], 1, ThreadPool)) {
+                continue;
+            }
+            // Group unhandled entries to preserve native cross-batch parallelism.
+            if (fallback_start < batch) {
+                MlasGemmBatch(
+                    TransA, TransB, M, N, K, &Data[fallback_start], batch - fallback_start, ThreadPool,
+                    &fallback
+                );
+            }
+            fallback_start = batch + 1;
+        }
+        if (fallback_start < BatchSize) {
+            MlasGemmBatch(
+                TransA, TransB, M, N, K, &Data[fallback_start], BatchSize - fallback_start, ThreadPool,
+                &fallback
+            );
+        }
+        return;
+    }
+    // Override
+    if (can_use_override &&
+        GetMlasPlatform().MlasSGemmBatchOverride(TransA, TransB, M, N, K, Data, BatchSize, ThreadPool)) {
         return;
     }
     //
@@ -1628,6 +1686,20 @@ Return Value:
 
 --*/
 {
+    if (GetMlasPlatform().MlasSGemmPackBExtensionSizeOverride != nullptr) {
+        // Keep a native prefix for fallback and an inspectable extension even
+        // when the backend is disabled. All packs use this allocation size.
+        const size_t native_size = MlasSgemmNativePackBSize(N, K);
+        const size_t extension_size = GetMlasPlatform().MlasSGemmPackBExtensionSizeOverride(
+            TransA, TransB, N, K,
+            !BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai
+        );
+        size_t bytes_required = 0;
+        if (MlasAddOverflowsSizeT(native_size, extension_size, &bytes_required)) {
+            MLAS_THROW_EX(std::overflow_error, "SGEMM packed buffer extension overflow.");
+        }
+        return bytes_required;
+    }
     //
     // Compute the number of bytes required to hold the packed buffer.
     //
@@ -1647,7 +1719,7 @@ Return Value:
     AlignedBytesRequired &= ~(BufferAlignment - 1);
 
     // KleidiAI or other override
-    #if defined(USE_KLEIDIAI)
+#if defined(USE_KLEIDIAI)
     if ((!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) &&
         GetMlasPlatform().MlasSGemmPackBSizeOverride != nullptr &&
         // TODO: Remove once KAI supports transposing for A
@@ -1655,11 +1727,11 @@ Return Value:
         size_t bytes_required;
         //TODO pass status by reference to indicate success/fail
         bytes_required = GetMlasPlatform().MlasSGemmPackBSizeOverride(TransA, TransB, N, K);
-        if (bytes_required != 0){// If ArmKleidiAI::MlasGemmPackBSize ran to completion
+        if (bytes_required != 0){
             return bytes_required;
         }
     }
-    #endif
+#endif
     MLAS_UNREFERENCED_PARAMETER(TransA);
     MLAS_UNREFERENCED_PARAMETER(TransB);
     MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
@@ -1707,8 +1779,19 @@ Return Value:
 
 --*/
 {
+    if (GetMlasPlatform().MlasSGemmPackBExtensionOverride != nullptr) {
+        if (N != 0 && K != 0) {
+            // A backend packing decline only invalidates the extension;
+            // native MLAS packing below supplies the fallback weights.
+            GetMlasPlatform().MlasSGemmPackBExtensionOverride(
+                TransA, TransB, N, K, B, ldb,
+                static_cast<std::byte*>(PackedB) + MlasSgemmNativePackBSize(N, K),
+                !BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai
+            );
+        }
+    }
 #if defined(USE_KLEIDIAI)
-    if ((!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) &&
+    else if ((!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) &&
         GetMlasPlatform().MlasSGemmPackBOverride != nullptr  &&
         // TODO: Remove once KAI supports transposing for A
         TransA != CBLAS_TRANSPOSE::CblasTrans    &&
