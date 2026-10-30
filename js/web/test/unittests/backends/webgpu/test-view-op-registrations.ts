@@ -61,7 +61,8 @@ function createModel(
       output: [valueInfo('y', elemType, outputDims)],
     },
   });
-  return onnx.ModelProto.encode(model).finish();
+  // Proxy mode transfers this buffer; keep protobufjs's shared allocation pool attached.
+  return onnx.ModelProto.encode(model).finish().slice();
 }
 
 describe('WebGPU view operator registrations', function () {
@@ -101,7 +102,7 @@ describe('WebGPU view operator registrations', function () {
             sessionOptions,
           );
           try {
-            const { y } = await session.run({ x: new Tensor(type, data, inputDims) });
+            const { y } = await session.run({ x: new Tensor(type, data.slice(), inputDims) });
             expect(y.type).to.equal(type);
             expect(y.dims).to.deep.equal(outputDims);
             const actual = y.data as typeof data;
@@ -137,7 +138,7 @@ describe('WebGPU view operator registrations', function () {
         );
         try {
           const { y } = await session.run({
-            x: new Tensor('float32', data, inputDims),
+            x: new Tensor('float32', data.slice(), inputDims),
             parameter: new Tensor('int64', BigInt64Array.from(parameter, BigInt), [parameter.length]),
           });
           expect(y.type).to.equal('float32');
