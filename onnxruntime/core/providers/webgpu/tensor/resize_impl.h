@@ -37,12 +37,18 @@ class ResizeNearestProgram final : public Program<ResizeNearestProgram> {
 
 class ResizeBilinearProgram final : public Program<ResizeBilinearProgram> {
  public:
+  // Interpolates along `height_axis` and `width_axis`: the last two dims, or dims 1 and 2 for a 4-D
+  // input with channels last.
   ResizeBilinearProgram(onnxruntime::ResizeCoordinateTransformationMode coordinate_transform_mode,
                         bool extrapolation_enabled,
-                        int32_t rank) : Program{"ResizeBilinear"},
-                                        coordinate_transform_mode_{coordinate_transform_mode},
-                                        extrapolation_enabled_{extrapolation_enabled},
-                                        rank_{rank} {}
+                        int32_t rank,
+                        int32_t height_axis,
+                        int32_t width_axis) : Program{"ResizeBilinear"},
+                                              coordinate_transform_mode_{coordinate_transform_mode},
+                                              extrapolation_enabled_{extrapolation_enabled},
+                                              rank_{rank},
+                                              height_axis_{height_axis},
+                                              width_axis_{width_axis} {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
@@ -55,6 +61,8 @@ class ResizeBilinearProgram final : public Program<ResizeBilinearProgram> {
   onnxruntime::ResizeCoordinateTransformationMode coordinate_transform_mode_;
   bool extrapolation_enabled_;
   int32_t rank_;
+  int32_t height_axis_;
+  int32_t width_axis_;
 };
 
 class ResizeTrilinearProgram final : public Program<ResizeTrilinearProgram> {
