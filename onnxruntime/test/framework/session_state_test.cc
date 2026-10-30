@@ -4,10 +4,13 @@
 #include <array>
 #include <chrono>
 #include <condition_variable>
+#include <cstring>
 #include <fstream>
 #include <iostream>
+#include <iterator>
 #include <mutex>
 #include <optional>
+#include <string_view>
 #include <thread>
 #include <absl/base/config.h>
 
@@ -44,6 +47,43 @@
 using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
 namespace test {
+
+TEST(PrePackedWeightsTest, EquivalenceRequiresMatchingLayoutAndContents) {
+  const AllocatorPtr allocator = CPUAllocator::DefaultInstance();
+
+  auto make_weights = [&](std::initializer_list<uint8_t> data) {
+    PrePackedWeights weights;
+    auto buffer = IAllocator::MakeUniquePtr<void>(allocator, data.size(), true);
+    std::memcpy(buffer.get(), data.begin(), data.size());
+    weights.buffers_.push_back(std::move(buffer));
+    weights.buffer_sizes_.push_back(data.size());
+    return weights;
+  };
+
+  const auto expected = make_weights({1, 2, 3, 4});
+  const auto identical = make_weights({1, 2, 3, 4});
+  EXPECT_TRUE(expected.IsEquivalentTo(identical));
+
+  const auto different_contents = make_weights({1, 2, 3, 5});
+  EXPECT_FALSE(expected.IsEquivalentTo(different_contents));
+
+  auto different_size = make_weights({1, 2, 3, 4});
+  different_size.buffer_sizes_[0] = 3;
+  EXPECT_FALSE(expected.IsEquivalentTo(different_size));
+
+  auto missing_buffer = make_weights({1, 2, 3, 4});
+  missing_buffer.buffers_.clear();
+  missing_buffer.buffer_sizes_.clear();
+  EXPECT_FALSE(expected.IsEquivalentTo(missing_buffer));
+
+  auto null_buffer = make_weights({1, 2, 3, 4});
+  null_buffer.buffers_[0].reset();
+  EXPECT_FALSE(expected.IsEquivalentTo(null_buffer));
+
+  auto kernel_owned = make_weights({1, 2, 3, 4});
+  kernel_owned.has_kernel_owned_packed_weights_ = true;
+  EXPECT_FALSE(expected.IsEquivalentTo(kernel_owned));
+}
 
 #ifndef ENABLE_TRAINING_CORE
 #ifndef __wasm__
@@ -1565,6 +1605,167 @@ class SessionStateTestSharedInitalizersWithPrePacking : public ::testing::Test {
     kernel_registry_manager.RegisterKernelRegistry(kernel_registry);
   }
 };
+
+enum class PrepackedMismatch {
+  None,
+  Contents,
+  Count,
+};
+
+static PrePackedWeights MakePrepackedTestWeights(PrepackedMismatch mismatch) {
+  const AllocatorPtr allocator = CPUAllocator::DefaultInstance();
+  constexpr size_t packed_size = sizeof(float) * 2;
+  PrePackedWeights weights;
+  auto buffer = IAllocator::MakeUniquePtr<void>(allocator, packed_size, true);
+  auto* data = static_cast<float*>(buffer.get());
+  data[0] = 1.2345f;
+  data[1] = mismatch == PrepackedMismatch::Contents ? 9.8765f : data[0] * 2.0f;
+  weights.buffers_.push_back(std::move(buffer));
+  weights.buffer_sizes_.push_back(packed_size);
+
+  if (mismatch == PrepackedMismatch::Count) {
+    weights.buffers_.push_back(IAllocator::MakeUniquePtr<void>(allocator, sizeof(float), true));
+    weights.buffer_sizes_.push_back(sizeof(float));
+  }
+
+  return weights;
+}
+
+static std::string PrepackedTestWeightsKey() {
+  const auto expected = MakePrepackedTestWeights(PrepackedMismatch::None);
+  return "PrePackingTest+" + std::to_string(expected.GetHash());
+}
+
+TEST_F(SessionStateTestSharedInitalizersWithPrePacking, RejectsIncompatiblePrepackedWeightsDuringFinalize) {
+  const std::filesystem::path model_path = "prepacked_mismatch_model.onnx";
+  const std::filesystem::path external_data_path = "prepacked_mismatch_model.bin";
+  ScopedFileDeleter model_deleter(model_path);
+  ScopedFileDeleter external_data_deleter(external_data_path);
+
+  {
+    SessionOptions save_options;
+    save_options.optimized_model_filepath = model_path;
+    ASSERT_STATUS_OK(
+        save_options.config_options.AddConfigEntry(kOrtSessionOptionsConfigDisablePrepacking, "0"));
+    ASSERT_STATUS_OK(
+        save_options.config_options.AddConfigEntry(kOrtSessionOptionsSavePrePackedConstantInitializers, "1"));
+
+    Model model("prepacked_mismatch_source", false, ModelMetaData(), PathString(),
+                IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
+                std::vector<ONNX_NAMESPACE::FunctionProto>(),
+                DefaultLoggingManager().DefaultLogger());
+    CreateSimpleGraph(model.MainGraph());
+    PlaceAllNodesToCPUEP(model.MainGraph());
+
+    SessionState session_state(model.MainGraph(),
+                               execution_providers,
+                               tp.get(),
+                               nullptr, /*inter_op_thread_pool*/
+                               dtm,
+                               edlm,
+                               DefaultLoggingManager().DefaultLogger(),
+                               profiler,
+                               save_options);
+    ASSERT_STATUS_OK(session_state.FinalizeSessionState(
+        std::basic_string<PATH_CHAR_TYPE>(), kernel_registry_manager, false));
+
+    ModelSavingOptions saving_options{4};
+    saving_options.align_offset = true;
+    ASSERT_STATUS_OK(Model::SaveWithExternalInitializers(
+        model, model_path, external_data_path, saving_options));
+  }
+
+  {
+    std::fstream external_data(external_data_path, std::ios::binary | std::ios::in | std::ios::out);
+    ASSERT_TRUE(external_data.good());
+    std::vector<char> bytes((std::istreambuf_iterator<char>(external_data)),
+                            std::istreambuf_iterator<char>());
+    const auto packed = MakePrepackedTestWeights(PrepackedMismatch::None);
+    const auto* packed_begin = static_cast<const char*>(packed.buffers_[0].get());
+    const std::string_view packed_bytes(packed_begin, packed.buffer_sizes_[0]);
+    const auto hit = std::search(bytes.begin(), bytes.end(), packed_bytes.begin(), packed_bytes.end());
+    ASSERT_NE(hit, bytes.end());
+    ASSERT_EQ(std::search(std::next(hit), bytes.end(), packed_bytes.begin(), packed_bytes.end()), bytes.end());
+    *hit ^= 1;
+    external_data.clear();
+    external_data.seekp(0);
+    external_data.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+    ASSERT_TRUE(external_data.good());
+  }
+
+  for (bool use_shared_container : {false, true}) {
+    SCOPED_TRACE(use_shared_container);
+    SessionOptions load_options;
+    ASSERT_STATUS_OK(
+        load_options.config_options.AddConfigEntry(kOrtSessionOptionsConfigDisablePrepacking, "0"));
+
+    OrtMemoryInfo mem_info(CPU, OrtDeviceAllocator);
+    std::vector<float> initializer_data(1, 1.0f);
+    OrtValue initializer;
+    PrepackedWeightsContainer shared_container;
+    PrepackedWeightsContainer* shared_container_ptr = nullptr;
+    if (use_shared_container) {
+      Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape({1}),
+                           initializer_data.data(), mem_info, initializer);
+      ASSERT_STATUS_OK(load_options.AddInitializer("node_0_input_1", &initializer));
+      shared_container_ptr = &shared_container;
+    }
+
+    std::shared_ptr<Model> model;
+    ASSERT_STATUS_OK(Model::Load(model_path, model, nullptr,
+                                 DefaultLoggingManager().DefaultLogger()));
+    PlaceAllNodesToCPUEP(model->MainGraph());
+    SessionState session_state(model->MainGraph(),
+                               execution_providers,
+                               tp.get(),
+                               nullptr, /*inter_op_thread_pool*/
+                               dtm,
+                               edlm,
+                               DefaultLoggingManager().DefaultLogger(),
+                               profiler,
+                               load_options,
+                               shared_container_ptr);
+    ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+        session_state.FinalizeSessionState(model_path, kernel_registry_manager, false),
+        "do not match the buffers generated by the current kernel");
+  }
+
+  {
+    SessionOptions options;
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(
+        kOrtSessionOptionsConfigDisablePrepacking, "0"));
+    OrtMemoryInfo mem_info(CPU, OrtDeviceAllocator);
+    std::vector<float> initializer_data(1, 1.0f);
+    OrtValue initializer;
+    Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape({1}),
+                         initializer_data.data(), mem_info, initializer);
+    ASSERT_STATUS_OK(options.AddInitializer("node_0_input_1", &initializer));
+
+    PrepackedWeightsContainer shared_container;
+    ASSERT_TRUE(shared_container.WriteWeight(
+        PrepackedTestWeightsKey(), MakePrepackedTestWeights(PrepackedMismatch::Count)));
+    Model model("prepacked_shared_mismatch", false, ModelMetaData(), PathString(),
+                IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
+                std::vector<ONNX_NAMESPACE::FunctionProto>(),
+                DefaultLoggingManager().DefaultLogger());
+    CreateSimpleGraph(model.MainGraph());
+    PlaceAllNodesToCPUEP(model.MainGraph());
+    SessionState session_state(model.MainGraph(),
+                               execution_providers,
+                               tp.get(),
+                               nullptr, /*inter_op_thread_pool*/
+                               dtm,
+                               edlm,
+                               DefaultLoggingManager().DefaultLogger(),
+                               profiler,
+                               options,
+                               &shared_container);
+    ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+        session_state.FinalizeSessionState(std::basic_string<PATH_CHAR_TYPE>(),
+                                           kernel_registry_manager),
+        "do not match the buffers generated by the current kernel");
+  }
+}
 
 TEST_F(SessionStateTestSharedInitalizersWithPrePacking, ParallelPrepackConvertsExceptionsToStatus) {
 #if defined(ORT_NO_EXCEPTIONS)
