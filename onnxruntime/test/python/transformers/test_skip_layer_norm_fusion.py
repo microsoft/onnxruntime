@@ -188,13 +188,13 @@ class TestFusion(unittest.TestCase):
         self.verify_skip_layer_norm_fusion(
             model_name,
             {
-                "Add": 0,
-                "LayerNormalization": 0,
-                "SkipLayerNormalization": 1,
+                "Add": 2,
+                "LayerNormalization": 1,
+                "SkipLayerNormalization": 0,
                 "Cast": 0,
             },
             ["input_1", "input_2", "layer_norm_weight", "layer_norm_bias"],
-            ["output", "", "", "layernorm_input"],
+            ["output"],
         )
         os.remove(model_name)
 
@@ -205,13 +205,13 @@ class TestFusion(unittest.TestCase):
         self.verify_skip_layer_norm_fusion(
             model_name,
             {
-                "Add": 0,
-                "LayerNormalization": 0,
-                "SkipLayerNormalization": 1,
+                "Add": 2,
+                "LayerNormalization": 1,
+                "SkipLayerNormalization": 0,
                 "Cast": 0,
             },
             ["matmul_output", "input_2", "layer_norm_weight", "layer_norm_bias", "bias"],
-            ["output", "", "", "layernorm_input"],
+            ["output"],
         )
         os.remove(model_name)
 
@@ -222,13 +222,13 @@ class TestFusion(unittest.TestCase):
         self.verify_skip_layer_norm_fusion(
             model_name,
             {
-                "Add": 0,
-                "LayerNormalization": 0,
-                "SkipLayerNormalization": 1,
+                "Add": 2,
+                "LayerNormalization": 1,
+                "SkipLayerNormalization": 0,
                 "Cast": 0,
             },
             ["matmul_output", "input_1", "layer_norm_weight", "layer_norm_bias", "bias"],
-            ["output", "", "", "layernorm_input"],
+            ["output"],
         )
         os.remove(model_name)
 
@@ -241,13 +241,13 @@ class TestFusion(unittest.TestCase):
         self.verify_skip_layer_norm_fusion(
             model_name,
             {
-                "Add": 0,
-                "LayerNormalization": 0,
-                "SkipLayerNormalization": 1,
+                "Add": 2,
+                "LayerNormalization": 1,
+                "SkipLayerNormalization": 0,
                 "Cast": 1,
             },
             ["matmul_output_cast", "input_2", "layer_norm_weight", "layer_norm_bias", "bias"],
-            ["output", "", "", "layernorm_input"],
+            ["output"],
         )
         os.remove(model_name)
 
@@ -260,14 +260,62 @@ class TestFusion(unittest.TestCase):
         self.verify_skip_layer_norm_fusion(
             model_name,
             {
-                "Add": 0,
-                "LayerNormalization": 0,
-                "SkipLayerNormalization": 1,
+                "Add": 2,
+                "LayerNormalization": 1,
+                "SkipLayerNormalization": 0,
                 "Cast": 1,
             },
             ["matmul_output_cast", "input_1", "layer_norm_weight", "layer_norm_bias", "bias"],
-            ["output", "", "", "layernorm_input"],
+            ["output"],
         )
+        os.remove(model_name)
+
+    def test_skip_layer_norm_multiple_consumers_block_fusion(self):
+        input_1 = helper.make_tensor_value_info("input_1", TensorProto.FLOAT, [1, 2, 3])
+        input_2 = helper.make_tensor_value_info("input_2", TensorProto.FLOAT, [1, 2, 3])
+        output = helper.make_tensor_value_info("output", TensorProto.FLOAT, [1, 2, 3])
+        consumer_output = helper.make_tensor_value_info("consumer_output", TensorProto.FLOAT, [1, 2, 3])
+
+        add_before_layer_norm = helper.make_node("Add", ["input_1", "input_2"], ["layernorm_input"], "add_layernorm")
+        layer_norm = helper.make_node(
+            "LayerNormalization",
+            ["layernorm_input", "layer_norm_weight", "layer_norm_bias"],
+            ["output"],
+            "layernorm",
+            axis=-1,
+            epsilon=0.000009999999747378752,
+        )
+        add_consumer = helper.make_node(
+            "Add",
+            ["layernorm_input", "consumer_bias"],
+            ["consumer_output"],
+            "add_consumer",
+        )
+
+        initializers = [
+            float_tensor("layer_norm_weight", [3]),
+            float_tensor("layer_norm_bias", [3]),
+            float_tensor("consumer_bias", [1, 2, 3]),
+        ]
+
+        graph = helper.make_graph(
+            [add_before_layer_norm, layer_norm, add_consumer],
+            "skip_layer_norm_multiple_consumers",
+            [input_1, input_2],
+            [output, consumer_output],
+            initializers,
+        )
+        model = helper.make_model(graph, opset_imports=(helper.make_opsetid("ai.onnx", 16),))
+        model_name = "skip_layer_norm_add_multiple_consumers.onnx"
+        onnx.save(model, model_name)
+
+        optimized_model = optimize_model(model_name, optimization_options=FusionOptions("bert"), opt_level=0)
+
+        self.assertEqual(len(optimized_model.get_nodes_by_op_type("Add")), 2)
+        self.assertEqual(len(optimized_model.get_nodes_by_op_type("LayerNormalization")), 1)
+        self.assertEqual(len(optimized_model.get_nodes_by_op_type("SkipLayerNormalization")), 0)
+        self.assertIn("consumer_output", [node.output[0] for node in optimized_model.get_nodes()])
+
         os.remove(model_name)
 
     def create_broadcast_test_model(
@@ -396,9 +444,9 @@ class TestFusion(unittest.TestCase):
         onnx.save(model, model_name)
         self.verify_skip_layer_norm_fusion(
             model_name,
-            {"Add": 0, "LayerNormalization": 0, "SkipLayerNormalization": 1, "Cast": 0},
+            {"Add": 1, "LayerNormalization": 1, "SkipLayerNormalization": 0, "Cast": 0},
             ["input_1", "input_2", "layer_norm_weight", "layer_norm_bias"],
-            ["output", "", "", "layernorm_input"],
+            ["output"],
         )
         os.remove(model_name)
 
