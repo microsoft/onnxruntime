@@ -1773,31 +1773,37 @@ static GQAReferenceExpected ComputeReferenceGQAWithRoPE(
     int past_seq_len,
     int num_heads,
     int kv_num_heads,
-    int head_size) {
+    int head_size,
+    int rotary_dim = 0) {
+  if (rotary_dim <= 0) {
+    rotary_dim = head_size;
+  }
   const int total_seq_len = past_seq_len + sequence_length;
   const int hidden_size = num_heads * head_size;
   const int kv_hidden_size = kv_num_heads * head_size;
-  const int half_rotary = head_size / 2;
+  const int half_rotary = rotary_dim / 2;
   const int groups = num_heads / kv_num_heads;
   const float scale = 1.0f / std::sqrt(static_cast<float>(head_size));
 
-  // 1. Apply independent RoPE to query and key
+  // 1. Apply independent RoPE to query and key (supporting full or partial rotary embeddings)
   std::vector<float> q_rotary(batch_size * num_heads * sequence_length * head_size);
   for (int b = 0; b < batch_size; ++b) {
     for (int h = 0; h < num_heads; ++h) {
       for (int s = 0; s < sequence_length; ++s) {
         const int pos = past_seq_len + s;
         for (int d = 0; d < head_size; ++d) {
-          const float cos_val = cos_cache[pos * half_rotary + (d % half_rotary)];
-          const float sin_val = sin_cache[pos * half_rotary + (d % half_rotary)];
           const float q_val = query_data[(b * sequence_length + s) * hidden_size + h * head_size + d];
-          float rot_val = 0.0f;
-          if (d < half_rotary) {
-            const float q_partner = query_data[(b * sequence_length + s) * hidden_size + h * head_size + (d + half_rotary)];
-            rot_val = q_val * cos_val - q_partner * sin_val;
-          } else {
-            const float q_partner = query_data[(b * sequence_length + s) * hidden_size + h * head_size + (d - half_rotary)];
-            rot_val = q_val * cos_val + q_partner * sin_val;
+          float rot_val = q_val;
+          if (d < rotary_dim) {
+            const float cos_val = cos_cache[pos * half_rotary + (d % half_rotary)];
+            const float sin_val = sin_cache[pos * half_rotary + (d % half_rotary)];
+            if (d < half_rotary) {
+              const float q_partner = query_data[(b * sequence_length + s) * hidden_size + h * head_size + (d + half_rotary)];
+              rot_val = q_val * cos_val - q_partner * sin_val;
+            } else {
+              const float q_partner = query_data[(b * sequence_length + s) * hidden_size + h * head_size + (d - half_rotary)];
+              rot_val = q_val * cos_val + q_partner * sin_val;
+            }
           }
           q_rotary[((b * num_heads + h) * sequence_length + s) * head_size + d] = rot_val;
         }
@@ -1811,16 +1817,18 @@ static GQAReferenceExpected ComputeReferenceGQAWithRoPE(
       for (int s = 0; s < sequence_length; ++s) {
         const int pos = past_seq_len + s;
         for (int d = 0; d < head_size; ++d) {
-          const float cos_val = cos_cache[pos * half_rotary + (d % half_rotary)];
-          const float sin_val = sin_cache[pos * half_rotary + (d % half_rotary)];
           const float k_val = key_data[(b * sequence_length + s) * kv_hidden_size + kv_h * head_size + d];
-          float rot_val = 0.0f;
-          if (d < half_rotary) {
-            const float k_partner = key_data[(b * sequence_length + s) * kv_hidden_size + kv_h * head_size + (d + half_rotary)];
-            rot_val = k_val * cos_val - k_partner * sin_val;
-          } else {
-            const float k_partner = key_data[(b * sequence_length + s) * kv_hidden_size + kv_h * head_size + (d - half_rotary)];
-            rot_val = k_val * cos_val + k_partner * sin_val;
+          float rot_val = k_val;
+          if (d < rotary_dim) {
+            const float cos_val = cos_cache[pos * half_rotary + (d % half_rotary)];
+            const float sin_val = sin_cache[pos * half_rotary + (d % half_rotary)];
+            if (d < half_rotary) {
+              const float k_partner = key_data[(b * sequence_length + s) * kv_hidden_size + kv_h * head_size + (d + half_rotary)];
+              rot_val = k_val * cos_val - k_partner * sin_val;
+            } else {
+              const float k_partner = key_data[(b * sequence_length + s) * kv_hidden_size + kv_h * head_size + (d - half_rotary)];
+              rot_val = k_val * cos_val + k_partner * sin_val;
+            }
           }
           k_rotary[((b * kv_num_heads + kv_h) * sequence_length + s) * head_size + d] = rot_val;
         }
@@ -1907,12 +1915,14 @@ static void VerifyCPUFusedRoPEWithReference(
     int sequence_length,
     int past_seq_len,
     int num_heads = 2,
-    int kv_num_heads = 1) {
+    int kv_num_heads = 1,
+    int rotary_dim = 0) {
   constexpr int batch_size = 1;
+  const int effective_rotary_dim = (rotary_dim <= 0) ? head_size : rotary_dim;
   const int hidden_size = num_heads * head_size;
   const int kv_hidden_size = kv_num_heads * head_size;
   const int total_sequence_length = past_seq_len + sequence_length;
-  const int half_rotary = head_size / 2;
+  const int half_rotary = effective_rotary_dim / 2;
   const int max_seq_len = total_sequence_length + 8;
 
   std::vector<float> query_data(batch_size * sequence_length * hidden_size);
@@ -1931,7 +1941,7 @@ static void VerifyCPUFusedRoPEWithReference(
   std::vector<float> sin_cache(max_seq_len * half_rotary);
   for (int pos = 0; pos < max_seq_len; ++pos) {
     for (int d = 0; d < half_rotary; ++d) {
-      const float freq = 1.0f / std::pow(10000.0f, 2.0f * static_cast<float>(d) / static_cast<float>(head_size));
+      const float freq = 1.0f / std::pow(10000.0f, 2.0f * static_cast<float>(d) / static_cast<float>(effective_rotary_dim));
       cos_cache[pos * half_rotary + d] = std::cos(static_cast<float>(pos) * freq);
       sin_cache[pos * half_rotary + d] = std::sin(static_cast<float>(pos) * freq);
     }
@@ -1947,7 +1957,7 @@ static void VerifyCPUFusedRoPEWithReference(
   const auto ref = ComputeReferenceGQAWithRoPE(
       query_data, key_data, value_data, past_key_data, past_value_data,
       cos_cache, sin_cache, batch_size, sequence_length, past_seq_len,
-      num_heads, kv_num_heads, head_size);
+      num_heads, kv_num_heads, head_size, effective_rotary_dim);
 
   OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
@@ -2009,7 +2019,7 @@ static void VerifyCPUFusedRoPEWithReference(
     EXPECT_NEAR(actual_present_value[i], ref.present_value[i], 1e-4f) << "Present value mismatch at " << i;
   }
 
-  std::cout << "[VERIFIED] head_size=" << head_size
+  std::cout << "[VERIFIED] head_size=" << head_size << " (rotary_dim=" << effective_rotary_dim << ")"
             << (past_seq_len == 0 ? " Prefill" : " Decode")
             << " (seq_len=" << sequence_length << ", past_seq_len=" << past_seq_len << ")"
             << " max_abs_diff: output=" << max_diff_out
@@ -2126,6 +2136,206 @@ TEST(GroupQueryAttentionTest, CPU_FusedRoPE_InvalidCosDims_Rejected) {
   tester.Run(OpTester::ExpectResult::kExpectFailure,
              "cos_cache dimension 1 must be <= head_size / 2 and a multiple of 4",
              {}, nullptr, &execution_providers);
+}
+
+// ---------------------------------------------------------------------------
+// Shared helper validation policy tests: verify that the default policy
+// preserves legacy / CUDA requirements (16-aligned head_size and 8-aligned cos_dims[1]),
+// while the explicit CPU policy allows 8-aligned head sizes and 4-aligned cos_dims[1].
+// ---------------------------------------------------------------------------
+
+namespace {
+struct MockRotaryCacheTensor {
+  TensorShape shape_;
+  const TensorShape& Shape() const { return shape_; }
+};
+}  // namespace
+
+TEST(GroupQueryAttentionTest, CheckRotaryCaches_LegacyPolicy_RejectsNon16Aligned) {
+  int rotary_dim = 0;
+
+  // Configuration from Copilot finding: head_size=64, cos_dims[1]=12 (rotary_dim=24).
+  // Under the shared/legacy policy (allow_8_aligned_rotary=false), cos_dims[1] % 8 != 0 must be rejected
+  // before reaching CUDA FlashDecoding which expects 16-aligned rotary_dim (8-aligned cos_dims[1]).
+  MockRotaryCacheTensor cos_cache_12{TensorShape({16, 12})};
+  MockRotaryCacheTensor sin_cache_12{TensorShape({16, 12})};
+  auto status = group_query_attention_helper::CheckRotaryCaches(
+      &cos_cache_12, &sin_cache_12, /*head_size=*/64, /*total_sequence_length=*/4,
+      rotary_dim, /*allow_8_aligned_rotary=*/false);
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_EQ(status.Category(), common::ONNXRUNTIME);
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("cos_cache dimension 1 must be <= head_size / 2 and a multiple of 8."));
+
+  // Accepted legacy configuration: head_size=64, cos_dims[1]=16 (rotary_dim=32).
+  MockRotaryCacheTensor cos_cache_16{TensorShape({16, 16})};
+  MockRotaryCacheTensor sin_cache_16{TensorShape({16, 16})};
+  status = group_query_attention_helper::CheckRotaryCaches(
+      &cos_cache_16, &sin_cache_16, /*head_size=*/64, /*total_sequence_length=*/4,
+      rotary_dim, /*allow_8_aligned_rotary=*/false);
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+  EXPECT_EQ(rotary_dim, 32);
+
+  // Legacy policy also rejects non-16-aligned head_size (e.g., head_size=24 or 8).
+  status = group_query_attention_helper::CheckRotaryCaches(
+      &cos_cache_12, &sin_cache_12, /*head_size=*/24, /*total_sequence_length=*/4,
+      rotary_dim, /*allow_8_aligned_rotary=*/false);
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("head_size shall be a multiple of 16. Got head_size % 16 == 8"));
+}
+
+TEST(GroupQueryAttentionTest, CheckRotaryCaches_CPUPolicy_Permits8Aligned) {
+  int rotary_dim = 0;
+
+  // CPU policy allows head_size=24, cos_dims[1]=12 (rotary_dim=24).
+  MockRotaryCacheTensor cos_cache_12{TensorShape({16, 12})};
+  MockRotaryCacheTensor sin_cache_12{TensorShape({16, 12})};
+  auto status = group_query_attention_helper::CheckRotaryCaches(
+      &cos_cache_12, &sin_cache_12, /*head_size=*/24, /*total_sequence_length=*/4,
+      rotary_dim, /*allow_8_aligned_rotary=*/true);
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+  EXPECT_EQ(rotary_dim, 24);
+
+  // CPU policy allows partial RoPE: head_size=32, cos_dims[1]=12 (rotary_dim=24).
+  status = group_query_attention_helper::CheckRotaryCaches(
+      &cos_cache_12, &sin_cache_12, /*head_size=*/32, /*total_sequence_length=*/4,
+      rotary_dim, /*allow_8_aligned_rotary=*/true);
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+  EXPECT_EQ(rotary_dim, 24);
+
+  // CPU policy allows head_size=8, cos_dims[1]=4 (rotary_dim=8) without upper bound truncation.
+  MockRotaryCacheTensor cos_cache_4{TensorShape({16, 4})};
+  MockRotaryCacheTensor sin_cache_4{TensorShape({16, 4})};
+  status = group_query_attention_helper::CheckRotaryCaches(
+      &cos_cache_4, &sin_cache_4, /*head_size=*/8, /*total_sequence_length=*/4,
+      rotary_dim, /*allow_8_aligned_rotary=*/true);
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+  EXPECT_EQ(rotary_dim, 8);
+}
+
+// ---------------------------------------------------------------------------
+// CUDA regression tests: when CUDA execution provider is available, verify that
+// the shared validation rejects rotary_dim=24 before kernel launch and accepts
+// rotary_dim=32.
+// ---------------------------------------------------------------------------
+
+TEST(GroupQueryAttentionTest, CUDA_FusedRoPE_RotaryDim24_RejectedByValidation) {
+  if (!DefaultCudaExecutionProvider()) {
+    GTEST_SKIP() << "CUDA EP not available";
+  }
+
+  constexpr int batch_size = 1;
+  constexpr int sequence_length = 1;  // single-token decode triggering FlashDecoding
+  constexpr int num_heads = 4;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 64;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+  constexpr int past_seq_len = 4;
+  const int total_sequence_length = past_seq_len + sequence_length;
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
+  tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kv_num_heads));
+  tester.AddAttribute<int64_t>("do_rotary", static_cast<int64_t>(1));
+
+  tester.AddInput<MLFloat16>("query", {batch_size, sequence_length, hidden_size},
+                             std::vector<MLFloat16>(hidden_size * sequence_length, MLFloat16(0.1f)));
+  tester.AddInput<MLFloat16>("key", {batch_size, sequence_length, kv_hidden_size},
+                             std::vector<MLFloat16>(kv_hidden_size * sequence_length, MLFloat16(0.1f)));
+  tester.AddInput<MLFloat16>("value", {batch_size, sequence_length, kv_hidden_size},
+                             std::vector<MLFloat16>(kv_hidden_size * sequence_length, MLFloat16(0.1f)));
+  tester.AddInput<MLFloat16>("past_key", {batch_size, kv_num_heads, past_seq_len, head_size},
+                             std::vector<MLFloat16>(kv_num_heads * past_seq_len * head_size, MLFloat16(0.1f)));
+  tester.AddInput<MLFloat16>("past_value", {batch_size, kv_num_heads, past_seq_len, head_size},
+                             std::vector<MLFloat16>(kv_num_heads * past_seq_len * head_size, MLFloat16(0.1f)));
+  tester.AddInput<int32_t>("seqlens_k", {batch_size}, {total_sequence_length - 1});
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {total_sequence_length}, /*is_initializer=*/true);
+
+  // rotary_dim = 24 -> cos_dims[1] = 12. Must be rejected for CUDA because 12 % 8 != 0.
+  tester.AddInput<MLFloat16>("cos_cache", {total_sequence_length + 8, 12},
+                             std::vector<MLFloat16>((total_sequence_length + 8) * 12, MLFloat16(1.0f)));
+  tester.AddInput<MLFloat16>("sin_cache", {total_sequence_length + 8, 12},
+                             std::vector<MLFloat16>((total_sequence_length + 8) * 12, MLFloat16(0.0f)));
+
+  tester.AddOutput<MLFloat16>("output", {batch_size, sequence_length, hidden_size},
+                              std::vector<MLFloat16>(batch_size * sequence_length * hidden_size, MLFloat16(0.0f)));
+  tester.AddOutput<MLFloat16>("present_key", {batch_size, kv_num_heads, total_sequence_length, head_size},
+                              std::vector<MLFloat16>(batch_size * kv_num_heads * total_sequence_length * head_size, MLFloat16(0.0f)));
+  tester.AddOutput<MLFloat16>("present_value", {batch_size, kv_num_heads, total_sequence_length, head_size},
+                              std::vector<MLFloat16>(batch_size * kv_num_heads * total_sequence_length * head_size, MLFloat16(0.0f)));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectFailure,
+             "cos_cache dimension 1 must be <= head_size / 2 and a multiple of 8",
+             {}, nullptr, &execution_providers);
+}
+
+TEST(GroupQueryAttentionTest, CUDA_FusedRoPE_RotaryDim32_Accepted) {
+  if (!DefaultCudaExecutionProvider()) {
+    GTEST_SKIP() << "CUDA EP not available";
+  }
+
+  constexpr int batch_size = 1;
+  constexpr int sequence_length = 1;
+  constexpr int num_heads = 4;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 64;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+  constexpr int past_seq_len = 4;
+  const int total_sequence_length = past_seq_len + sequence_length;
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
+  tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kv_num_heads));
+  tester.AddAttribute<int64_t>("do_rotary", static_cast<int64_t>(1));
+
+  tester.AddInput<MLFloat16>("query", {batch_size, sequence_length, hidden_size},
+                             std::vector<MLFloat16>(hidden_size * sequence_length, MLFloat16(0.1f)));
+  tester.AddInput<MLFloat16>("key", {batch_size, sequence_length, kv_hidden_size},
+                             std::vector<MLFloat16>(kv_hidden_size * sequence_length, MLFloat16(0.1f)));
+  tester.AddInput<MLFloat16>("value", {batch_size, sequence_length, kv_hidden_size},
+                             std::vector<MLFloat16>(kv_hidden_size * sequence_length, MLFloat16(0.1f)));
+  tester.AddInput<MLFloat16>("past_key", {batch_size, kv_num_heads, past_seq_len, head_size},
+                             std::vector<MLFloat16>(kv_num_heads * past_seq_len * head_size, MLFloat16(0.1f)));
+  tester.AddInput<MLFloat16>("past_value", {batch_size, kv_num_heads, past_seq_len, head_size},
+                             std::vector<MLFloat16>(kv_num_heads * past_seq_len * head_size, MLFloat16(0.1f)));
+  tester.AddInput<int32_t>("seqlens_k", {batch_size}, {total_sequence_length - 1});
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {total_sequence_length}, /*is_initializer=*/true);
+
+  // rotary_dim = 32 -> cos_dims[1] = 16 (16 % 8 == 0). Accepted legacy configuration.
+  tester.AddInput<MLFloat16>("cos_cache", {total_sequence_length + 8, 16},
+                             std::vector<MLFloat16>((total_sequence_length + 8) * 16, MLFloat16(1.0f)));
+  tester.AddInput<MLFloat16>("sin_cache", {total_sequence_length + 8, 16},
+                             std::vector<MLFloat16>((total_sequence_length + 8) * 16, MLFloat16(0.0f)));
+
+  tester.AddOutput<MLFloat16>("output", {batch_size, sequence_length, hidden_size},
+                              std::vector<MLFloat16>(batch_size * sequence_length * hidden_size, MLFloat16(0.0f)));
+  tester.AddOutput<MLFloat16>("present_key", {batch_size, kv_num_heads, total_sequence_length, head_size},
+                              std::vector<MLFloat16>(batch_size * kv_num_heads * total_sequence_length * head_size, MLFloat16(0.0f)));
+  tester.AddOutput<MLFloat16>("present_value", {batch_size, kv_num_heads, total_sequence_length, head_size},
+                              std::vector<MLFloat16>(batch_size * kv_num_heads * total_sequence_length * head_size, MLFloat16(0.0f)));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// ---------------------------------------------------------------------------
+// CPU partial RoPE numerical tests: verify that valid 8-aligned partial rotary
+// embeddings (previously excluded by 16-alignment) compute accurately against
+// the scalar reference.
+// ---------------------------------------------------------------------------
+
+TEST(GroupQueryAttentionTest, CPU_FusedRoPE_PartialRotary_HeadSize32_RotaryDim24_Prefill_MatchesReference) {
+  VerifyCPUFusedRoPEWithReference(/*head_size=*/32, /*sequence_length=*/4, /*past_seq_len=*/0,
+                                  /*num_heads=*/2, /*kv_num_heads=*/1, /*rotary_dim=*/24);
+}
+
+TEST(GroupQueryAttentionTest, CPU_FusedRoPE_PartialRotary_HeadSize32_RotaryDim24_ContinuationDecode_MatchesReference) {
+  VerifyCPUFusedRoPEWithReference(/*head_size=*/32, /*sequence_length=*/1, /*past_seq_len=*/4,
+                                  /*num_heads=*/2, /*kv_num_heads=*/1, /*rotary_dim=*/24);
 }
 
 // ---------------------------------------------------------------------------
