@@ -4,7 +4,7 @@
 #param acc_f32
 #param use_subgroups
 
-#use .getByOffset
+#use .getByOffset .setByOffset
 
 // Joint single-vector decode: the base projection and T = X * A_down share
 // one dispatch. lora_at stores rank-major packed INT8 weights; lora_down is
@@ -46,8 +46,8 @@ $MAIN {
       k4 += 1u;
       let x3 = vec4<qlora_acc_t>(x.getByOffset(k4));
       let rank0 = rank_base + rank_local + 0u;
-      let packed0 = lora_at[rank0 * (uniforms.K / 16u) + k / 16u];
-      let scale0 = lora_a_scales[rank0 * (uniforms.K / 32u) + k / 32u];
+      let packed0 = lora_at.getByOffset(rank0 * (uniforms.K / 16u) + k / 16u);
+      let scale0 = lora_a_scales.getByOffset(rank0 * (uniforms.K / 32u) + k / 32u);
       var sum0 = qlora_acc_t(0);
       sum0 += dot(x0, vec4<qlora_acc_t>(
           (vec4<output_element_t>(unpack4xU8(packed0[0])) - vec4<output_element_t>(128)) * scale0));
@@ -59,8 +59,8 @@ $MAIN {
           (vec4<output_element_t>(unpack4xU8(packed0[3])) - vec4<output_element_t>(128)) * scale0));
       partial0 += sum0;
       let rank1 = rank_base + rank_local + 4u;
-      let packed1 = lora_at[rank1 * (uniforms.K / 16u) + k / 16u];
-      let scale1 = lora_a_scales[rank1 * (uniforms.K / 32u) + k / 32u];
+      let packed1 = lora_at.getByOffset(rank1 * (uniforms.K / 16u) + k / 16u);
+      let scale1 = lora_a_scales.getByOffset(rank1 * (uniforms.K / 32u) + k / 32u);
       var sum1 = qlora_acc_t(0);
       sum1 += dot(x0, vec4<qlora_acc_t>(
           (vec4<output_element_t>(unpack4xU8(packed1[0])) - vec4<output_element_t>(128)) * scale1));
@@ -76,8 +76,8 @@ $MAIN {
     let result0 = subgroupAdd(f32(partial0));
     let result1 = subgroupAdd(f32(partial1));
     if (lane == 0u) {
-      lora_down[rank_base + rank_local] = output_element_t(result0);
-      lora_down[rank_base + rank_local + 4u] = output_element_t(result1);
+      lora_down.setByOffset(rank_base + rank_local, output_element_t(result0));
+      lora_down.setByOffset(rank_base + rank_local + 4u, output_element_t(result1));
     }
 #else
     let lane = local_idx % 32u;
@@ -94,8 +94,8 @@ $MAIN {
         let rank = rank_base + rank_offset + rank_local;
         let k = start + lane * 16u;
         if (k < uniforms.K) {
-          let packed = lora_at[rank * (uniforms.K / 16u) + k / 16u];
-          let scale = lora_a_scales[rank * (uniforms.K / 32u) + k / 32u];
+          let packed = lora_at.getByOffset(rank * (uniforms.K / 16u) + k / 16u);
+          let scale = lora_a_scales.getByOffset(rank * (uniforms.K / 32u) + k / 32u);
           var sum = qlora_acc_t(0);
           for (var i = 0u; i < 4u; i++) {
             let bv = (vec4<output_element_t>(unpack4xU8(packed[i])) - vec4<output_element_t>(128)) * scale;
@@ -109,7 +109,7 @@ $MAIN {
     if (local_idx < 8u) {
       var value = qlora_acc_t(0);
       for (var i = 0u; i < 32u; i++) { value += qlora_partials[local_idx][i]; }
-      lora_down[rank_base + local_idx] = output_element_t(value);
+      lora_down.setByOffset(rank_base + local_idx, output_element_t(value));
     }
 #endif
     // Adapter workgroups stop here; the remaining workgroups execute the base

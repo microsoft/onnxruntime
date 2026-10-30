@@ -14,18 +14,28 @@
 
 namespace onnxruntime::contrib::webgpu {
 
-Status GenerateQLoRADown(ShaderHelper& shader, const ShaderVariableHelper& x, bool acc_f32,
+Status GenerateQLoRADown(ShaderHelper& shader, const ShaderVariableHelper& x,
+                         const ShaderVariableHelper& lora_at, const ShaderVariableHelper& lora_a_scales,
+                         const ShaderVariableHelper& lora_down, bool acc_f32,
                          bool use_subgroups) {
   return WGSL_TEMPLATE_APPLY(shader, "quantization/matmul_nbits_qlora_down.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(acc_f32, acc_f32),
                              WGSL_TEMPLATE_PARAMETER(use_subgroups, use_subgroups),
+                             WGSL_TEMPLATE_VARIABLE(lora_a_scales, lora_a_scales),
+                             WGSL_TEMPLATE_VARIABLE(lora_at, lora_at),
+                             WGSL_TEMPLATE_VARIABLE(lora_down, lora_down),
                              WGSL_TEMPLATE_VARIABLE(x, x));
 }
 
-Status GenerateQLoRAUp(ShaderHelper& shader, bool acc_f32, bool vector_output) {
+Status GenerateQLoRAUp(ShaderHelper& shader, const ShaderVariableHelper& lora_t,
+                       const ShaderVariableHelper& lora_b, const ShaderVariableHelper& lora_b_scales,
+                       bool acc_f32, bool vector_output) {
   return WGSL_TEMPLATE_APPLY(shader, "quantization/matmul_nbits_qlora_up.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(acc_f32, acc_f32),
-                             WGSL_TEMPLATE_PARAMETER(vector_output, vector_output));
+                             WGSL_TEMPLATE_PARAMETER(vector_output, vector_output),
+                             WGSL_TEMPLATE_VARIABLE(lora_b, lora_b),
+                             WGSL_TEMPLATE_VARIABLE(lora_b_scales, lora_b_scales),
+                             WGSL_TEMPLATE_VARIABLE(lora_t, lora_t));
 }
 
 namespace {
@@ -40,15 +50,18 @@ class QLoRAOutputProgram final : public Program<QLoRAOutputProgram> {
                                           {"N", ProgramUniformVariableDataType::Uint32},
                                           {"M", ProgramUniformVariableDataType::Uint32});
   Status GenerateShaderCode(ShaderHelper& shader) const override {
-    shader.AddInput("base");
-    shader.AddInput("lora_t");
-    shader.AddInput("lora_b");
-    shader.AddInput("lora_b_scales");
-    shader.AddOutput("output", ShaderUsage::UseElementTypeAlias);
-    ORT_RETURN_IF_ERROR(GenerateQLoRAUp(shader, acc_f32_));
+    const auto& base = shader.AddInput("base");
+    const auto& lora_t = shader.AddInput("lora_t");
+    const auto& lora_b = shader.AddInput("lora_b");
+    const auto& lora_b_scales = shader.AddInput("lora_b_scales");
+    const auto& output = shader.AddOutput("output", ShaderUsage::UseElementTypeAlias);
+    ORT_RETURN_IF_ERROR(GenerateQLoRAUp(shader, lora_t, lora_b, lora_b_scales, acc_f32_));
+    const auto value = MakeString(base.GetByOffset("global_idx"),
+                                  " + qlora_delta(global_idx / uniforms.N, global_idx % uniforms.N)");
     shader.MainFunctionBody()
         << "if (global_idx >= uniforms.size) { return; }\n"
-        << "output[global_idx] = base[global_idx] + qlora_delta(global_idx / uniforms.N, global_idx % uniforms.N);\n";
+        << output.SetByOffset("global_idx", value)
+        << "\n";
     return Status::OK();
   }
 

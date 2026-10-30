@@ -35,10 +35,10 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
     shader.AddInput("weight_index_indirect", ShaderUsage::UseUniform);
   }
   if (has_qlora_up_) {
-    shader.AddInput("lora_t");
-    shader.AddInput("lora_b");
-    shader.AddInput("lora_b_scales");
-    ORT_RETURN_IF_ERROR(GenerateQLoRAUp(shader, acc_f32_, true));
+    const auto& lora_t = shader.AddInput("lora_t");
+    const auto& lora_b = shader.AddInput("lora_b");
+    const auto& lora_b_scales = shader.AddInput("lora_b_scales");
+    ORT_RETURN_IF_ERROR(GenerateQLoRAUp(shader, lora_t, lora_b, lora_b_scales, acc_f32_, true));
   }
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
   return WGSL_TEMPLATE_APPLY(
@@ -69,10 +69,10 @@ Status DP4AMatMulNBitsKParallelProgram::GenerateShaderCode(ShaderHelper& shader)
     shader.AddInput("weight_index_indirect", ShaderUsage::UseUniform);
   }
   if (has_qlora_up_) {
-    shader.AddInput("lora_t");
-    shader.AddInput("lora_b");
-    shader.AddInput("lora_b_scales");
-    ORT_RETURN_IF_ERROR(GenerateQLoRAUp(shader, acc_f32_));
+    const auto& lora_t = shader.AddInput("lora_t");
+    const auto& lora_b = shader.AddInput("lora_b");
+    const auto& lora_b_scales = shader.AddInput("lora_b_scales");
+    ORT_RETURN_IF_ERROR(GenerateQLoRAUp(shader, lora_t, lora_b, lora_b_scales, acc_f32_));
   }
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
 
@@ -81,10 +81,13 @@ Status DP4AMatMulNBitsKParallelProgram::GenerateShaderCode(ShaderHelper& shader)
   const uint32_t sub_tile_count = WorkgroupSizeX() / tile_size_k_vec_;
   ORT_ENFORCE(tile_size_ % sub_tile_count == 0, "tile_size_ must be divisible by sub_tile_count");
 
+  const ShaderVariableHelper* lora_a = nullptr;
+  const ShaderVariableHelper* lora_a_scales = nullptr;
+  const ShaderVariableHelper* lora_down = nullptr;
   if (has_qlora_down_) {
-    shader.AddInput("lora_a");
-    shader.AddInput("lora_a_scales");
-    shader.AddOutput("lora_down");
+    lora_a = &shader.AddInput("lora_a");
+    lora_a_scales = &shader.AddInput("lora_a_scales");
+    lora_down = &shader.AddOutput("lora_down");
   }
 
   return WGSL_TEMPLATE_APPLY(
@@ -98,7 +101,11 @@ Status DP4AMatMulNBitsKParallelProgram::GenerateShaderCode(ShaderHelper& shader)
       WGSL_TEMPLATE_PARAMETER(single_scale_weights, single_scale_weights_),
       WGSL_TEMPLATE_PARAMETER(sub_tile_count, sub_tile_count), WGSL_TEMPLATE_PARAMETER(tile_size, tile_size_),
       WGSL_TEMPLATE_PARAMETER(tile_size_k_vec, tile_size_k_vec_), WGSL_TEMPLATE_VARIABLE(a, a),
-      WGSL_TEMPLATE_VARIABLE(b, b), WGSL_TEMPLATE_VARIABLE(output, output), WGSL_TEMPLATE_VARIABLE(scales_a, scales_a),
+      WGSL_TEMPLATE_VARIABLE(b, b),
+      WGSL_TEMPLATE_OPTIONAL_VARIABLE(lora_a, lora_a),
+      WGSL_TEMPLATE_OPTIONAL_VARIABLE(lora_a_scales, lora_a_scales),
+      WGSL_TEMPLATE_OPTIONAL_VARIABLE(lora_down, lora_down),
+      WGSL_TEMPLATE_VARIABLE(output, output), WGSL_TEMPLATE_VARIABLE(scales_a, scales_a),
       WGSL_TEMPLATE_VARIABLE(scales_b, scales_b));
 }
 

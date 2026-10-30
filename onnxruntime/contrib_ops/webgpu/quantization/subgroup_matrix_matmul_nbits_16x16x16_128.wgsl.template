@@ -269,7 +269,7 @@ $MAIN {
         let global_m = global_base_m + tile_m;
         let offset = tile_m * kQLoRARank + r4 * 4u;
         if (global_m < uniforms.M) {
-            let values = lora_t[global_m * (kQLoRARank / 4u) + r4];
+            let values = lora_t.getByOffset(global_m * (kQLoRARank / 4u) + r4);
             for (var i = 0u; i < 4u; i++) {
                 lora_a[offset + i] = f16(values[i]);
             }

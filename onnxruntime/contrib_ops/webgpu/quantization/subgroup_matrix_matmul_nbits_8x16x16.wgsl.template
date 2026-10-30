@@ -198,7 +198,7 @@ $MAIN {
     let r4 = load_unit % (kQLoRARank / 4u);
     let global_m = global_base_m + row_in_tile;
     if (global_m < uniforms.M) {
-      let values = lora_t[global_m * (kQLoRARank / 4u) + r4];
+      let values = lora_t.getByOffset(global_m * (kQLoRARank / 4u) + r4);
       let offset = row_in_tile * kQLoRARank + r4 * 4u;
       for (var i = 0u; i < 4u; i++) {
         lora_a[offset + i] = f16(values[i]);

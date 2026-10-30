@@ -66,7 +66,8 @@ Status GenerateShaderCode16x16x16(ShaderHelper& shader,
                                   const ShaderVariableHelper& output,
                                   uint32_t nbits, const SubgroupMatrixConfig& config, uint32_t tile_size_m,
                                   uint32_t tile_size_n, uint32_t tile_size_k, bool has_zero_points, bool has_bias,
-                                  bool has_weight_idx, bool has_weight_idx_indirect, bool has_qlora_up) {
+                                  bool has_weight_idx, bool has_weight_idx_indirect, bool has_qlora_up,
+                                  const ShaderVariableHelper* lora_t) {
   // Use the configurable tiled shader for the 16x16x16 configs.
   return WGSL_TEMPLATE_APPLY(shader, "quantization/subgroup_matrix_matmul_nbits_16x16x16_128.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(has_bias, has_bias),
@@ -83,6 +84,7 @@ Status GenerateShaderCode16x16x16(ShaderHelper& shader,
                              WGSL_TEMPLATE_PARAMETER(tile_size_m, tile_size_m),
                              WGSL_TEMPLATE_PARAMETER(tile_size_n, tile_size_n),
                              WGSL_TEMPLATE_VARIABLE(input_b, b),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(lora_t, lora_t),
                              WGSL_TEMPLATE_VARIABLE(output, output),
                              WGSL_TEMPLATE_VARIABLE(scales_b, scales_b));
 }
@@ -93,7 +95,8 @@ Status GenerateShaderCode8x16x16(ShaderHelper& shader,
                                  const ShaderVariableHelper& output,
                                  uint32_t nbits, const SubgroupMatrixConfig& config, bool has_zero_points, bool has_bias,
                                  bool has_weight_idx, bool has_weight_idx_indirect, bool has_qlora_up,
-                                 uint32_t tile_m, uint32_t tile_n, bool has_tail_buffer) {
+                                 uint32_t tile_m, uint32_t tile_n, bool has_tail_buffer,
+                                 const ShaderVariableHelper* lora_t) {
   return WGSL_TEMPLATE_APPLY(shader, "quantization/subgroup_matrix_matmul_nbits_8x16x16.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(acc_f32, config.resultComponentType == wgpu::SubgroupMatrixComponentType::F32),
                              WGSL_TEMPLATE_PARAMETER(has_bias, has_bias),
@@ -110,6 +113,7 @@ Status GenerateShaderCode8x16x16(ShaderHelper& shader,
                              WGSL_TEMPLATE_PARAMETER(tile_m, tile_m),
                              WGSL_TEMPLATE_PARAMETER(tile_n, tile_n),
                              WGSL_TEMPLATE_VARIABLE(input_b, b),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(lora_t, lora_t),
                              WGSL_TEMPLATE_VARIABLE(output, output),
                              WGSL_TEMPLATE_VARIABLE(scales_b, scales_b));
 }
@@ -117,7 +121,8 @@ Status GenerateShaderCode8x16x16(ShaderHelper& shader,
 Status GenerateShaderCode8x8x8(ShaderHelper& shader, const ShaderVariableHelper& a, const ShaderVariableHelper& b,
                                const ShaderVariableHelper& scales_b,
                                const ShaderVariableHelper& output, uint32_t nbits, bool has_zero_points, bool has_bias,
-                               bool has_weight_idx, bool has_weight_idx_indirect, bool has_qlora_up) {
+                               bool has_weight_idx, bool has_weight_idx_indirect, bool has_qlora_up,
+                               const ShaderVariableHelper* lora_t) {
   return WGSL_TEMPLATE_APPLY(shader, "quantization/subgroup_matrix_matmul_nbits_8x8x8.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(has_bias, has_bias),
                              WGSL_TEMPLATE_PARAMETER(has_qlora_up, has_qlora_up),
@@ -128,6 +133,7 @@ Status GenerateShaderCode8x8x8(ShaderHelper& shader, const ShaderVariableHelper&
                              WGSL_TEMPLATE_PARAMETER(output_type_i32, false),
                              WGSL_TEMPLATE_VARIABLE(a, a),
                              WGSL_TEMPLATE_VARIABLE(b, b),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(lora_t, lora_t),
                              WGSL_TEMPLATE_VARIABLE(output, output),
                              WGSL_TEMPLATE_VARIABLE(scales_b, scales_b));
 }
@@ -145,11 +151,12 @@ Status SubgroupMatrixMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader
   if (has_weight_idx_indirect_) {
     shader.AddInput("weight_index_indirect", ShaderUsage::UseUniform);
   }
+  const ShaderVariableHelper* lora_t = nullptr;
   if (has_qlora_up_) {
-    shader.AddInput("lora_t", ShaderUsage::UseElementTypeAlias);
-    shader.AddInput("lora_b", ShaderUsage::UseElementTypeAlias);
-    shader.AddInput("lora_b_scales");
-    ORT_RETURN_IF_ERROR(GenerateQLoRAUp(shader, false));
+    lora_t = &shader.AddInput("lora_t", ShaderUsage::UseElementTypeAlias);
+    const auto& lora_b = shader.AddInput("lora_b", ShaderUsage::UseElementTypeAlias);
+    const auto& lora_b_scales = shader.AddInput("lora_b_scales");
+    ORT_RETURN_IF_ERROR(GenerateQLoRAUp(shader, *lora_t, lora_b, lora_b_scales, false));
   }
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
   if (has_tail_buffer_) {
@@ -158,16 +165,16 @@ Status SubgroupMatrixMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader
 
   if (config_.Is(8, 8, 8)) {
     return GenerateShaderCode8x8x8(shader, a, b, scales_b, output, nbits_, has_zero_points_, has_bias_,
-                                   has_weight_idx_, has_weight_idx_indirect_, has_qlora_up_);
+                                   has_weight_idx_, has_weight_idx_indirect_, has_qlora_up_, lora_t);
   } else if (config_.Is(8, 16, 16)) {
     return GenerateShaderCode8x16x16(shader, b, scales_b, output, nbits_, config_, has_zero_points_, has_bias_,
                                      has_weight_idx_, has_weight_idx_indirect_, has_qlora_up_, tile_m_, tile_n_,
-                                     has_tail_buffer_);
+                                     has_tail_buffer_, lora_t);
   } else if (config_.Is(16, 16, 16)) {
     return GenerateShaderCode16x16x16(shader, b, scales_b, output, nbits_, config_, tile_m_,
                                       tile_n_, tile_k_,
                                       has_zero_points_, has_bias_, has_weight_idx_,
-                                      has_weight_idx_indirect_, has_qlora_up_);
+                                      has_weight_idx_indirect_, has_qlora_up_, lora_t);
   } else {
     return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::NOT_IMPLEMENTED,
                   "Unsupported subgroup matrix config dimensions.");

@@ -43,10 +43,10 @@ Status MatMulNBitsWideTileProgram::GenerateShaderCode(ShaderHelper& shader) cons
     shader.AddInput("weight_index_indirect", ShaderUsage::UseUniform);
   }
   if (has_qlora_up_) {
-    shader.AddInput("lora_t", ShaderUsage::UseElementTypeAlias);
-    shader.AddInput("lora_b", ShaderUsage::UseElementTypeAlias);
-    shader.AddInput("lora_b_scales");
-    ORT_RETURN_IF_ERROR(GenerateQLoRAUp(shader, acc_f32_));
+    const auto& lora_t = shader.AddInput("lora_t", ShaderUsage::UseElementTypeAlias);
+    const auto& lora_b = shader.AddInput("lora_b", ShaderUsage::UseElementTypeAlias);
+    const auto& lora_b_scales = shader.AddInput("lora_b_scales");
+    ORT_RETURN_IF_ERROR(GenerateQLoRAUp(shader, lora_t, lora_b, lora_b_scales, acc_f32_));
   }
   const auto& output = shader.AddOutput("output", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
 
@@ -81,19 +81,18 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
     shader.AddInput("weight_index_indirect", ShaderUsage::UseUniform);
   }
   if (has_qlora_up_) {
-    shader.AddInput("lora_t", ShaderUsage::UseElementTypeAlias);
-    shader.AddInput("lora_b", ShaderUsage::UseElementTypeAlias);
-    shader.AddInput("lora_b_scales");
-    ORT_RETURN_IF_ERROR(GenerateQLoRAUp(shader, acc_f32_));
-  }
-  if (has_qlora_down_) {
-    shader.AddInput("lora_at");
-    shader.AddInput("lora_a_scales");
+    const auto& lora_t = shader.AddInput("lora_t", ShaderUsage::UseElementTypeAlias);
+    const auto& lora_b = shader.AddInput("lora_b", ShaderUsage::UseElementTypeAlias);
+    const auto& lora_b_scales = shader.AddInput("lora_b_scales");
+    ORT_RETURN_IF_ERROR(GenerateQLoRAUp(shader, lora_t, lora_b, lora_b_scales, acc_f32_));
   }
   const auto& output = shader.AddOutput("output", ShaderUsage::UseElementTypeAlias);
   if (has_qlora_down_) {
-    shader.AddOutput("lora_down", ShaderUsage::UseElementTypeAlias);
-    ORT_RETURN_IF_ERROR(GenerateQLoRADown(shader, a, acc_f32_, qlora_down_subgroups_));
+    const auto& lora_at = shader.AddInput("lora_at");
+    const auto& lora_a_scales = shader.AddInput("lora_a_scales");
+    const auto& lora_down = shader.AddOutput("lora_down", ShaderUsage::UseElementTypeAlias);
+    ORT_RETURN_IF_ERROR(GenerateQLoRADown(shader, a, lora_at, lora_a_scales, lora_down,
+                                          acc_f32_, qlora_down_subgroups_));
   }
 
   const uint32_t components_a = a.NumComponents();
@@ -264,14 +263,6 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   const uint32_t data_size = onnxruntime::narrow<uint32_t>(y->Shape().Size());
   if (data_size == 0) {
     return Status::OK();
-  }
-
-  if (empty_weights) {
-    // Record a fill dispatch so graph replay also overwrites the output. The
-    // MatMul shader uses [batch, row, column] coordinates, even for a vector A.
-    auto program = CreateMatMulFillBiasOrZeroBeforeSplitKProgram(
-        bias, y, false, 1.0f, 1, TensorShape({1, y->Shape().Size() / N_, N_}));
-    return context.RunProgram(program);
   }
 
   return ApplyMatMulNBits(a, b, scales, zero_points, bias, K_, N_, block_size_, accuracy_level_, bits_, context, y, 0);

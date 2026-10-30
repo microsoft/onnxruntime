@@ -89,10 +89,10 @@ fn qlora_down(group: u32, local_idx: u32) {
         if (block < uniforms.K32) {
             let offset = (rank_base + rank) * uniforms.K32 + block;
             // XOR maps unsigned INT8 with zero point 128 to signed packed INT8.
-            let w0 = lora_a[offset * 2u] ^ vec4<u32>(0x80808080u);
-            let w1 = lora_a[offset * 2u + 1u] ^ vec4<u32>(0x80808080u);
+            let w0 = lora_a.getByOffset(offset * 2u) ^ vec4<u32>(0x80808080u);
+            let w1 = lora_a.getByOffset(offset * 2u + 1u) ^ vec4<u32>(0x80808080u);
             partial += SDP8AI(tile_A[lane * 2u], w0, tile_A[lane * 2u + 1u], w1,
-                             scale_A[lane / 4u] * lora_a_scales[offset]);
+                             scale_A[lane / 4u] * lora_a_scales.getByOffset(offset));
         }
         workgroupBarrier();
     }
@@ -101,7 +101,7 @@ fn qlora_down(group: u32, local_idx: u32) {
     if (local_idx < 4u) {
         var sum = f32(0);
         for (var i = 0u; i < 32u; i++) { sum += inter_results[local_idx][i]; }
-        lora_down[batch * 32u + rank_base + local_idx] = sum;
+        lora_down.setByOffset(batch * 32u + rank_base + local_idx, sum);
     }
 }
 #endif

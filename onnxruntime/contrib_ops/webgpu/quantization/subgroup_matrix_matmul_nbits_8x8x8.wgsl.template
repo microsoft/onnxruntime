@@ -218,7 +218,7 @@ $MAIN {
     let col = idx % tile_k;
     let global_row = a_global_base + row;
     if (global_row < uniforms.M) {
-      tile_A[idx] = compute_precision(lora_t[global_row * 8u + col / 4u][col % 4u]);
+      tile_A[idx] = compute_precision(lora_t.getByOffset(global_row * 8u + col / 4u)[col % 4u]);
     }
   }
   for (var idx = local_idx; idx < tile_cols * tile_k; idx += workgroup_size_x) {

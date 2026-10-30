@@ -4,6 +4,8 @@
 #param acc_f32
 #param vector_output
 
+#use .getByOffset
+
 // T = X * A_down is stored in lora_t as eight vec4 values per row (rank 32).
 // These helpers compute the adapter contribution delta = T * B_up. The caller
 // adds delta to the base projection, either in its output stage or a separate
@@ -18,8 +20,8 @@ alias qlora_acc_t = output_element_t;
 fn qlora_weight(col: u32, r4: u32) -> vec4<output_element_t> {
   // Each output column has 32 packed INT8 weights in two vec4<u32> values.
   // r4 selects four consecutive ranks; 128 is the implicit zero point.
-  let packed = lora_b[col * 2u + r4 / 4u][r4 % 4u];
-  return (vec4<output_element_t>(unpack4xU8(packed)) - vec4<output_element_t>(128)) * lora_b_scales[col];
+  let packed = lora_b.getByOffset(col * 2u + r4 / 4u)[r4 % 4u];
+  return (vec4<output_element_t>(unpack4xU8(packed)) - vec4<output_element_t>(128)) * lora_b_scales.getByOffset(col);
 }
 
 fn qlora_delta(row: u32, col: u32) -> output_element_t {
@@ -28,8 +30,8 @@ fn qlora_delta(row: u32, col: u32) -> output_element_t {
   // generic tiles otherwise. Regrouping these sums can change FP16 rounding.
   if (uniforms.M >= 4u) {
     for (var r4 = 0u; r4 < 8u; r4 += 2u) {
-      let a0 = lora_t[row * 8u + r4];
-      let a1 = lora_t[row * 8u + r4 + 1u];
+      let a0 = lora_t.getByOffset(row * 8u + r4);
+      let a1 = lora_t.getByOffset(row * 8u + r4 + 1u);
       delta += dot(vec4<qlora_acc_t>(a0), vec4<qlora_acc_t>(qlora_weight(col, r4))) +
                dot(vec4<qlora_acc_t>(a1), vec4<qlora_acc_t>(qlora_weight(col, r4 + 1u)));
     }
@@ -38,7 +40,7 @@ fn qlora_delta(row: u32, col: u32) -> output_element_t {
       var sum = qlora_acc_t(0);
       for (var i = 0u; i < 4u; i++) {
         let r4 = block * 4u + i;
-        sum += dot(vec4<qlora_acc_t>(lora_t[row * 8u + r4]), vec4<qlora_acc_t>(qlora_weight(col, r4)));
+        sum += dot(vec4<qlora_acc_t>(lora_t.getByOffset(row * 8u + r4)), vec4<qlora_acc_t>(qlora_weight(col, r4)));
       }
       delta += sum;
     }
@@ -54,8 +56,8 @@ fn qlora_delta(row: u32, col: u32) -> output_element_t {
 fn qlora_delta4(row: u32, col: u32) -> vec4<output_element_t> {
   var delta = vec4<qlora_acc_t>(0);
   for (var r4 = 0u; r4 < 8u; r4 += 2u) {
-    let a0 = vec4<qlora_acc_t>(lora_t[row * 8u + r4]);
-    let a1 = vec4<qlora_acc_t>(lora_t[row * 8u + r4 + 1u]);
+    let a0 = vec4<qlora_acc_t>(lora_t.getByOffset(row * 8u + r4));
+    let a1 = vec4<qlora_acc_t>(lora_t.getByOffset(row * 8u + r4 + 1u));
     delta += vec4<qlora_acc_t>(
         dot(a0, vec4<qlora_acc_t>(qlora_weight(col, r4))),
         dot(a0, vec4<qlora_acc_t>(qlora_weight(col + 1u, r4))),
