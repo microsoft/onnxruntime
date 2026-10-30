@@ -529,6 +529,15 @@ TEST(TransposeOpTest, TwoDim_int8_TileExtent) {
   }
 }
 
+// The generic kernel's block count is computed in float above 2^24 elements, which drops the tail.
+TEST(TransposeOpTest, TwoDim_int8_LargeNonAligned) {
+  const std::vector<int64_t> input_shape{2, 16777217};
+  std::vector<int8_t> input_vals(static_cast<size_t>(2) * 16777217);
+  for (size_t i = 0; i < input_vals.size(); ++i) input_vals[i] = static_cast<int8_t>(i % 100 + 1);
+
+  Expect2DTranspose(input_shape, input_vals, {kTensorrtExecutionProvider});
+}
+
 // [1, m, n] with perm [0, 2, 1] collapses to the rank-2 case.
 TEST(TransposeOpTest, Transpose021_int32_Squeezed) {
   const std::vector<int64_t> input_shape{1, 37, 53};

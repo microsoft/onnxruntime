@@ -333,7 +333,7 @@ __global__ void TransposeKernel(int32_t shape_rank, const TArray<int64_t> input_
 
 Status TransposeImpl(cudaStream_t stream, size_t element_size, int32_t shape_rank, const TArray<int64_t>& input_strides,
                      const void* input_data, const TArray<fast_divmod>& fdm_output_strides, void* output_data, int N) {
-  int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
+  int blocksPerGrid = static_cast<int>(CeilDiv(N, GridDim::maxThreadsPerBlock));
   switch (element_size) {
     case sizeof(int8_t):
       TransposeKernel<int8_t><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
