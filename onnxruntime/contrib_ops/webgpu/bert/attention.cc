@@ -185,7 +185,7 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                                "  if (n + local_id.y < uniforms.N && w + local_id.x < uniforms.K) {\n"
                                "    var idx = TILE_SIZE * local_id.y + local_id.x;\n";
 
-  if ((feed_past_key_ && has_present_key_) || (past_present_share_buffer_ && !is_first_prompt_)) {
+  if (feed_past_key_ || (past_present_share_buffer_ && !is_first_prompt_)) {
     shader.MainFunctionBody() << "    if (n + local_id.y < past_sequence_length) {\n"
                               << "      let pastKeyOffset = (batch_head_idx / uniforms.n_reps) * uniforms.past_sequence_length * uniforms.K;\n"
                               << "      tileK[idx] = " << (past_present_share_buffer_ ? "present_key" : "past_key") << "[pastKeyOffset + (n + local_id.y) * uniforms.K + w + local_id.x];\n"
@@ -242,15 +242,15 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   return Status::OK();
 }
 
-Status ComputeAttentionProbs(onnxruntime::webgpu::ComputeContext& context, int output_count, const Tensor* Q,
+Status ComputeAttentionProbs(onnxruntime::webgpu::ComputeContext& context, const Tensor* Q,
                              const Tensor* K, const Tensor* past_key, const Tensor* attention_bias, Tensor* probs, Tensor* present_key,
                              WebgpuAttentionParameters& parameters, int past_sequence_length, int total_sequence_length,
                              const Tensor* seqlen_k) {
   const float alpha = parameters.scale_ == 0.0f ? 1.f / sqrt(static_cast<float>(parameters.head_size_))
                                                 : parameters.scale_;
 
-  const bool feed_past_key = present_key != nullptr && past_key != nullptr && past_key->SizeInBytes() > 0 && !parameters.past_present_share_buffer_;
-  const bool has_present_key = output_count > 1 && past_key;
+  const bool feed_past_key = past_key != nullptr && past_key->SizeInBytes() > 0 && !parameters.past_present_share_buffer_;
+  const bool has_present_key = present_key != nullptr;
   const bool has_attention_bias = attention_bias != nullptr;
   constexpr int tile_size = 12;
   const int components = parameters.head_size_ % 4 == 0 ? 4 : (parameters.head_size_ % 2 == 0 ? 2 : 1);
@@ -508,7 +508,7 @@ Status VxAttentionScoreProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "  if (n < uniforms.N && w + local_id.y < uniforms.K) {\n"
                             << "    var idx = TILE_SIZE * local_id.y + local_id.x;\n";
 
-  if ((feed_past_value_ && has_present_value_) || (past_present_share_buffer_ && !is_first_prompt_)) {
+  if (feed_past_value_ || (past_present_share_buffer_ && !is_first_prompt_)) {
     shader.MainFunctionBody() << "    if (w + local_id.y < past_sequence_length) {\n"
                               << "      let pastValueOffset = (batch_head_idx / uniforms.n_reps) * uniforms.N * uniforms.past_sequence_length + n;\n"
                               << "      tileK[idx] = " << (past_present_share_buffer_ ? "present_value" : "past_value") << "[pastValueOffset + (w + local_id.y) * uniforms.N];\n"
@@ -549,7 +549,7 @@ Status VxAttentionScoreProgram::GenerateShaderCode(ShaderHelper& shader) const {
   return Status::OK();
 }
 
-Status ComputeVxAttentionScore(onnxruntime::webgpu::ComputeContext& context, int output_count,
+Status ComputeVxAttentionScore(onnxruntime::webgpu::ComputeContext& context,
                                const Tensor* probs,
                                const Tensor* V,
                                const Tensor* past_value,
@@ -559,8 +559,8 @@ Status ComputeVxAttentionScore(onnxruntime::webgpu::ComputeContext& context, int
                                int past_sequence_length,
                                int total_sequence_length,
                                const Tensor* seqlen_k) {
-  const bool feed_past_value = present_value != nullptr && past_value != nullptr && past_value->SizeInBytes() > 0 && !parameters.past_present_share_buffer_;
-  const bool has_present_value = output_count > 1 && past_value != nullptr;
+  const bool feed_past_value = past_value != nullptr && past_value->SizeInBytes() > 0 && !parameters.past_present_share_buffer_;
+  const bool has_present_value = present_value != nullptr;
   const int components = parameters.v_head_size_ % 4 == 0 ? 4 : (parameters.v_head_size_ % 2 == 0 ? 2 : 1);
   constexpr int tile_size = 12;
   int tile_n_size = tile_size * components;
@@ -608,8 +608,7 @@ Status ApplyAttention(const Tensor* Q, const Tensor* K, const Tensor* V, const T
   if (context.IsGraphCaptureEnabled()) {
     ORT_NOT_IMPLEMENTED("Graph capture not implemented for non flash attention path");
   }
-  const int output_count = std::min({context.OutputCount(), 1 + (past_key != nullptr ? 1 : 0) + (past_value != nullptr ? 1 : 0)});
-  const int past_sequence_length = output_count > 1 ? parameters.past_sequence_length_ : 0;
+  const int past_sequence_length = parameters.past_sequence_length_;
   const int total_sequence_length =
       parameters.is_gqa_ ? parameters.total_sequence_length_ : past_sequence_length + parameters.kv_sequence_length_;
 
@@ -617,7 +616,7 @@ Status ApplyAttention(const Tensor* Q, const Tensor* K, const Tensor* V, const T
                                       parameters.sequence_length_, total_sequence_length});
   const TensorShape probs_shape(probs_dims);
   Tensor probs = context.CreateGPUTensor(Q->DataType(), probs_shape);
-  ORT_RETURN_IF_ERROR(ComputeAttentionProbs(context, output_count, Q, K, past_key, attention_bias, &probs, present_key,
+  ORT_RETURN_IF_ERROR(ComputeAttentionProbs(context, Q, K, past_key, attention_bias, &probs, present_key,
                                             parameters, past_sequence_length, total_sequence_length, seqlen_k));
 
   if (output_qk != nullptr) {
@@ -633,7 +632,7 @@ Status ApplyAttention(const Tensor* Q, const Tensor* K, const Tensor* V, const T
                                             parameters.is_first_prompt_, parameters.use_smooth_softmax_,
                                             head_sink, local_window_size));
 
-  ORT_RETURN_IF_ERROR(ComputeVxAttentionScore(context, output_count, &probs, V, past_value, output, present_value,
+  ORT_RETURN_IF_ERROR(ComputeVxAttentionScore(context, &probs, V, past_value, output, present_value,
                                               parameters, past_sequence_length, total_sequence_length, seqlen_k));
 
   return Status::OK();
@@ -669,7 +668,10 @@ Status PrepareQKV(onnxruntime::webgpu::ComputeContext& context, const WebgpuAtte
   Tensor packed_qkv = context.CreateGPUTensor(input->DataType(), TensorShape(packed_qkv_shape));
 
   // Prepare inputs for MatMul
-  std::vector<const Tensor*> matmul_inputs = {input, weights, bias};
+  std::vector<const Tensor*> matmul_inputs = {input, weights};
+  if (bias != nullptr) {
+    matmul_inputs.push_back(bias);
+  }
 
   // Call MatMul: packed_qkv = input * weights + bias
   ORT_RETURN_IF_ERROR(matmul_compute_dispatcher.Compute(

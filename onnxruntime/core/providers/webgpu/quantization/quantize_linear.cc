@@ -145,9 +145,14 @@ Status DequantizeLinearProgram::GenerateShaderCode(ShaderHelper& shader) const {
         << "let zero_point_value = input_element_t(0);\n";
   }
 
+  shader.AdditionalImplementation() << "alias acc_value_t = "
+                                    << (output.NumComponents() == 4 ? "vec4<f32>" : output.NumComponents() == 2 ? "vec2<f32>"
+                                                                                                                : "f32")
+                                    << ";\n";
+
   // compute and write output
   shader.MainFunctionBody()
-      << output.SetByOffset("global_idx", "(output_value_t(x_value) - scale_value_t(zero_point_value)) * scale_value");
+      << output.SetByOffset("global_idx", "output_value_t((acc_value_t(x_value) - acc_value_t(f32(zero_point_value))) * acc_value_t(f32(scale_value)))");
 
   return Status::OK();
 }

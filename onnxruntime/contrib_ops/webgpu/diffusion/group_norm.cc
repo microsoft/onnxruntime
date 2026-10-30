@@ -3,6 +3,7 @@
 
 #include "contrib_ops/webgpu/diffusion/group_norm.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
+#include "core/providers/webgpu/nn/normalization_utils.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/webgpu_utils.h"
@@ -22,55 +23,56 @@ Status GroupNormStatsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& x = shader.AddInput("x", ShaderUsage::UseUniform);
   const ShaderVariableHelper* skip = has_skip_ ? &shader.AddInput("skip", ShaderUsage::UseUniform) : nullptr;
   const ShaderVariableHelper* bias = has_bias_ ? &shader.AddInput("bias", ShaderUsage::UseUniform) : nullptr;
-  const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+  const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride | ShaderUsage::UseValueTypeAlias);
 
-  shader.AdditionalImplementation() << "alias f32_val_t = " << (components_ == 4 ? "vec4<f32>" : (components_ == 2 ? "vec2<f32>" : "f32")) << ";\n"
-                                    << "var<workgroup> workgroup_shared_sum : array<f32_val_t, " << workgroup_size_ << ">;\n"
-                                    << "var<workgroup> workgroup_shared_squared_sum : array<f32_val_t, " << workgroup_size_ << ">;\n"
-                                    << "const workgroup_size = " << workgroup_size_ << "u;\n";
-
-  shader.MainFunctionBody() << "  let n = workgroup_idx / uniforms.groups;\n"
-                            << "  let g = workgroup_idx % uniforms.groups;\n"
-                            << "  let count = uniforms.hw * uniforms.cg_comp;\n"
-                            << "  var sum = f32_val_t(0);\n"
-                            << "  var squared_sum = f32_val_t(0);\n"
-                            << "  for (var i = local_idx; i < count; i += workgroup_size) {\n"
-                            << "    let hw = i / uniforms.cg_comp;\n"
-                            << "    let k = i % uniforms.cg_comp;\n"
-                            << "    let c_idx = g * uniforms.cg_comp + k;\n"
-                            << "    let offset = (n * uniforms.hw + hw) * uniforms.c_comp + c_idx;\n"
-                            << "    var value = f32_val_t(" << x.GetByOffset("offset") << ");\n";
-  if (has_skip_) {
-    shader.MainFunctionBody() << "    value += f32_val_t("
-                              << skip->GetByOffset(skip_broadcast_ ? "n * uniforms.c_comp + c_idx" : "offset") << ");\n";
-  }
-  if (has_bias_) {
-    shader.MainFunctionBody() << "    value += f32_val_t(" << bias->GetByOffset("c_idx") << ");\n";
-  }
-  shader.MainFunctionBody() << "    sum += value;\n"
-                            << "    squared_sum += value * value;\n"
-                            << "  }\n"
-                            << "  workgroup_shared_sum[local_idx] = sum;\n"
-                            << "  workgroup_shared_squared_sum[local_idx] = squared_sum;\n"
-                            << "  workgroupBarrier();\n"
-                            << "  for (var curr_size = workgroup_size >> 1; curr_size > 0; curr_size = curr_size >> 1) {\n"
-                            << "    if (local_idx < curr_size) {\n"
-                            << "      workgroup_shared_sum[local_idx] = workgroup_shared_sum[local_idx] + workgroup_shared_sum[local_idx + curr_size];\n"
-                            << "      workgroup_shared_squared_sum[local_idx] = workgroup_shared_squared_sum[local_idx] + workgroup_shared_squared_sum[local_idx + curr_size];\n"
-                            << "    }\n"
-                            << "    workgroupBarrier();\n"
-                            << "  }\n"
-                            << "  if (local_idx == 0) {\n"
-                            << "    let element_count = f32(count * " << components_ << "u);\n"
-                            << "    let mean = " << SumVector("workgroup_shared_sum[0]", components_) << " / element_count;\n"
-                            << "    let squared_mean = " << SumVector("workgroup_shared_squared_sum[0]", components_) << " / element_count;\n"
-                            << "    let inv_std_dev = inverseSqrt(squared_mean - mean * mean + uniforms.epsilon);\n"
-                            << "    " << output.SetByOffset("workgroup_idx", "output_value_t(mean, inv_std_dev)") << ";\n"
-                            << "  }\n";
+  shader.AdditionalImplementation()
+      << "alias f32_val_t = " << (components_ == 4 ? "vec4<f32>" : components_ == 2 ? "vec2<f32>"
+                                                                                    : "f32")
+      << ";\n"
+      << "var<workgroup> partial: array<f32_val_t, " << workgroup_size_ << ">;\n";
+  auto& body = shader.MainFunctionBody();
+  body << "if (workgroup_idx >= uniforms.output_shape[0]) { return; }\n"
+       << "let n = workgroup_idx / uniforms.groups;\n"
+       << "let g = workgroup_idx % uniforms.groups;\n"
+       << "let count = uniforms.hw * uniforms.cg_comp;\n"
+       << "let element_count = f32(count * " << components_ << "u);\n";
+  auto load_loop = [&]() {
+    body << "for (var i = local_idx; i < count; i += workgroup_size_x) {\n"
+         << "  let hw = i / uniforms.cg_comp;\n"
+         << "  let c_idx = g * uniforms.cg_comp + i % uniforms.cg_comp;\n"
+         << "  let offset = (n * uniforms.hw + hw) * uniforms.c_comp + c_idx;\n"
+         << "  var value = f32_val_t(" << x.GetByOffset("offset") << ");\n";
+    if (skip) body << "  value += f32_val_t(" << skip->GetByOffset(skip_broadcast_ ? "n * uniforms.c_comp + c_idx" : "offset") << ");\n";
+    if (bias) body << "  value += f32_val_t(" << bias->GetByOffset("c_idx") << ");\n";
+  };
+  auto reduce = [&]() {
+    body << "workgroupBarrier();\n"
+         << "for (var stride = workgroup_size_x / 2u; stride > 0u; stride /= 2u) {\n"
+         << "  if (local_idx < stride) { partial[local_idx] += partial[local_idx + stride]; }\n"
+         << "  workgroupBarrier();\n}\n";
+  };
+  onnxruntime::webgpu::AppendStableNormalizationMean(shader, components_, "count", "element_count",
+                                                     [&](const std::string& i) {
+                                                       const auto channel = "(g * uniforms.cg_comp + (" + i + ") % uniforms.cg_comp)";
+                                                       const auto offset = "((n * uniforms.hw + (" + i + ") / uniforms.cg_comp) * uniforms.c_comp + " + channel + ")";
+                                                       return "f32_val_t(" + x.GetByOffset(offset) + ")" +
+                                                              (skip ? " + f32_val_t(" + skip->GetByOffset(skip_broadcast_ ? "n * uniforms.c_comp + " + channel : offset) + ")" : "") +
+                                                              (bias ? " + f32_val_t(" + bias->GetByOffset(channel) + ")" : "");
+                                                     });
+  body << "let mean = norm_mean; let shift = norm_shift;\nvar squared = f32_val_t(0);\n";
+  load_loop();
+  body << "  let centered = norm_center(value, f32_val_t(shift), f32_val_t(mean));\n  squared += centered * centered;\n}\n"
+       << "partial[local_idx] = squared;\n";
+  reduce();
+  body << "if (local_idx == 0u) {\n"
+       << "  let variance = " << SumVector("partial[0]", components_) << " / element_count;\n"
+       << "  let inv_std_dev = inverseSqrt(variance + uniforms.epsilon);\n"
+       << output.SetByOffset("workgroup_idx", "output_value_t(shift, mean, inv_std_dev, 0)") << "\n}\n";
   return Status::OK();
 }
 
 Status GroupNormApplyProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  onnxruntime::webgpu::AppendNormalizationCenter(shader, components_);
   const auto& x = shader.AddInput("x", ShaderUsage::UseUniform);
   const ShaderVariableHelper* skip = has_skip_ ? &shader.AddInput("skip", ShaderUsage::UseUniform) : nullptr;
   const ShaderVariableHelper* bias = has_bias_ ? &shader.AddInput("bias", ShaderUsage::UseUniform) : nullptr;
@@ -101,7 +103,7 @@ Status GroupNormApplyProgram::GenerateShaderCode(ShaderHelper& shader) const {
   if (has_sum_output_) {
     shader.MainFunctionBody() << "  " << sum_output->SetByOffset("global_idx", "sum_output_value_t(value)") << ";\n";
   }
-  shader.MainFunctionBody() << "  var result = (value - mean_inv_std.x) * mean_inv_std.y * gamma_v + beta_v;\n";
+  shader.MainFunctionBody() << "  var result = norm_center(value, f32_val_t(mean_inv_std.x), f32_val_t(mean_inv_std.y)) * mean_inv_std.z * gamma_v + beta_v;\n";
   if (use_silu_) {
     shader.MainFunctionBody() << "  result = result * (f32_val_t(1) / (f32_val_t(1) + exp(-result)));\n";
   }
@@ -166,8 +168,8 @@ Status GroupNorm::ComputeInternal(ComputeContext& context) const {
   const int64_t c_comp = channels / components;
   const int64_t cg_comp = channels_per_group / components;
 
-  // Pass 1: per-(batch, group) mean / inv_std, f32, shape [N * G, 2] accessed with 2 components.
-  TensorShape stats_shape{batch * groups, 2};
+  // Preserve the centering shift, residual mean and inverse standard deviation in FP32.
+  TensorShape stats_shape{batch * groups, 4};
   Tensor stats = context.CreateGPUTensor(DataTypeImpl::GetType<float>(), stats_shape);
   const uint32_t stats_workgroup_size = 256;
   const TensorShape x_flat_shape{batch * hw * c_comp};
@@ -177,7 +179,7 @@ Status GroupNorm::ComputeInternal(ComputeContext& context) const {
   GroupNormStatsProgram stats_program{components, stats_workgroup_size, has_skip, skip_broadcast, has_bias};
   stats_program.CacheHint(components, stats_workgroup_size, has_skip, skip_broadcast, has_bias)
       .AddInput({x, ProgramTensorMetadataDependency::Type, x_flat_shape, components})
-      .AddOutput({&stats, ProgramTensorMetadataDependency::None, TensorShape{batch * groups, 1}, 2})
+      .AddOutput({&stats, ProgramTensorMetadataDependency::None, TensorShape{batch * groups, 1}, 4})
       .SetDispatchGroupSize(static_cast<uint32_t>(batch * groups))
       .SetWorkgroupSize(stats_workgroup_size)
       .AddUniformVariables({{static_cast<uint32_t>(hw)},
@@ -211,7 +213,7 @@ Status GroupNorm::ComputeInternal(ComputeContext& context) const {
   if (has_bias) {
     apply_program.AddInput({bias, ProgramTensorMetadataDependency::Type, channel_flat_shape, components});
   }
-  apply_program.AddInputs({{&stats, ProgramTensorMetadataDependency::None, TensorShape{batch * groups, 1}, 2},
+  apply_program.AddInputs({{&stats, ProgramTensorMetadataDependency::None, TensorShape{batch * groups, 1}, 4},
                            {gamma, ProgramTensorMetadataDependency::Type, TensorShape{c_comp}, components},
                            {beta, ProgramTensorMetadataDependency::Type, TensorShape{c_comp}, components}});
   apply_program.AddOutput({y, ProgramTensorMetadataDependency::None, x_flat_shape, components});

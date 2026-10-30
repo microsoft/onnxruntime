@@ -103,12 +103,12 @@ Status WhereProgram::GenerateShaderCode(ShaderHelper& shader) const {
     const auto& output_indices = shader.AddIndices("output_indices");
 
     const auto single_assignment =
-        [&expression, &shader, &output_indices, &a_indices, &b_indices, &c_indices](
+        [&expression, &shader, &output_indices, &a_indices, &b_indices, &c_indices, &a_input, &b_input, &c_input](
             std::string_view rest_str, const std::string& x, std::string_view type_cast = "")
         -> void {
-      const std::string a_expression = "a_data[index_a" + x + "][component_a" + x + "]";
-      const std::string b_expression = "b_data[index_b" + x + "][component_b" + x + "]";
-      const std::string c_expression = "bool(c_data[index_c" + x + "] & (0xffu << u32(component_c" + x + " * 8)))";
+      const std::string a_expression = a_input.GetByOffset("index_a" + x) + "[component_a" + x + "]";
+      const std::string b_expression = b_input.GetByOffset("index_b" + x) + "[component_b" + x + "]";
+      const std::string c_expression = c_input.GetByOffset("index_c" + x) + "[component_c" + x + "]";
 
       shader.MainFunctionBody() << "let output_indices" << x << " = " << output_indices.OffsetToIndices("global_idx * 4 + " + x) << ";\n"
                                 << "let offset_a" << x << " = " << a_indices.BroadcastedIndicesToOffset("output_indices" + x, output_indices) << ";\n"

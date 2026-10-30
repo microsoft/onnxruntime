@@ -907,6 +907,7 @@ std::unique_ptr<profiling::EpProfiler> WebGpuExecutionProvider::GetProfiler() {
 }
 
 Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_options) {
+  run_failed_.store(false);
 #if defined(ORT_USE_EP_API_ADAPTERS)
   const bool serialized = webgpu::ep::UseSerializedExecutionMode();
   if (serialized) {
@@ -973,7 +974,19 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
 }
 
 Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxruntime::RunOptions& run_options) {
+  bool run_succeeded = false;
   auto end_run = gsl::finally([&] {
+    // Validation or replay can fail after capture has ended. Roll back the graph
+    // identity as well as its commands unless the entire run completed.
+    if (IsGraphCaptureEnabled() && !run_succeeded) {
+      context_.CaptureEnd(*recording_);
+      auto commands_it = captured_graphs_.find(current_graph_annotation_id_);
+      if (commands_it != captured_graphs_.end()) {
+        context_.ReleaseGraphResources(commands_it->second);
+        commands_it->second.clear();
+      }
+      captured_graph_ids_.erase(current_graph_annotation_id_);
+    }
     graph_buffer_mgr_active_ = false;
     run_active_.store(false);
 #if defined(ORT_USE_EP_API_ADAPTERS)
@@ -986,24 +999,16 @@ Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxrunti
   // CaptureEnd() detaches their external storage.
   Status flush_status = context_.Flush(BufferManager(), *recording_);
 
+  const bool abort_capture = IsGraphCaptureEnabled() &&
+                             (!flush_status.IsOK() || run_failed_.load() || run_options.terminate);
   if (!flush_status.IsOK()) {
-    if (IsGraphCaptureEnabled()) {
-      context_.CaptureEnd(*recording_);
-      auto commands_it = captured_graphs_.find(current_graph_annotation_id_);
-      if (commands_it != captured_graphs_.end()) {
-        context_.ReleaseGraphResources(commands_it->second);
-        commands_it->second.clear();
-      }
-    }
-    graph_buffer_mgr_active_ = false;
     if (context_.ValidationMode() >= ValidationMode::Basic) {
       static_cast<void>(context_.PopErrorScope());
     }
-    run_active_.store(false);
     return flush_status;
   }
 
-  if (IsGraphCaptureEnabled() && !IsGraphCaptured(current_graph_annotation_id_)) {
+  if (!abort_capture && IsGraphCaptureEnabled() && !IsGraphCaptured(current_graph_annotation_id_)) {
     if (current_graph_annotation_id_ != -1 && IsGraphCaptureAllowed()) {
       context_.CaptureEnd(*recording_);
       captured_graph_ids_.insert(current_graph_annotation_id_);
@@ -1027,15 +1032,11 @@ Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxrunti
   }
 #endif  // ENABLE_PIX_FOR_WEBGPU_EP
 
-  // Reset buffer manager routing after run completes
-  graph_buffer_mgr_active_ = false;
-  run_active_.store(false);
-
   if (context_.ValidationMode() >= ValidationMode::Basic) {
-    return context_.PopErrorScope();
-  } else {
-    return Status::OK();
+    ORT_RETURN_IF_ERROR(context_.PopErrorScope());
   }
+  run_succeeded = !abort_capture;
+  return Status::OK();
 }
 
 bool WebGpuExecutionProvider::IsGraphCaptureEnabled() const {

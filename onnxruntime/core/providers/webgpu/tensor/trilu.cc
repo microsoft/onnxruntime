@@ -30,9 +30,9 @@ Status TriluProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "let col = i32(global_idx % uniforms.matrix_w);\n"
                             << "let input_value = " << input.GetByOffset("global_idx") << ";\n";
   if (upper_) {
-    shader.MainFunctionBody() << "let value = select(input_value_t(0), input_value, (row + uniforms.k) <= col);\n";
+    shader.MainFunctionBody() << "let value = select(input_value_t(0), input_value, (col - row) >= uniforms.k);\n";
   } else {
-    shader.MainFunctionBody() << "let value = select(input_value_t(0), input_value, (row + uniforms.k) >= col);\n";
+    shader.MainFunctionBody() << "let value = select(input_value_t(0), input_value, (col - row) <= uniforms.k);\n";
   }
   shader.MainFunctionBody() << output.SetByOffset("global_idx", "value");
   return Status::OK();

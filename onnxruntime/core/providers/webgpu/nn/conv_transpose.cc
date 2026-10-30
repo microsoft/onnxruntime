@@ -111,7 +111,7 @@ Status ConvTranspose<is_channels_last>::ComputeInternal(ComputeContext& context)
   std::transform(local_strides.begin(), local_strides.end(), std::back_inserter(strides), transform_dim);
   std::transform(local_dilations.begin(), local_dilations.end(), std::back_inserter(dilations), transform_dim);
 
-  bool has_bias = context.InputCount() > 2;
+  const bool has_bias = context.Input<Tensor>(2) != nullptr;
   const auto* bias = has_bias ? context.Input<Tensor>(2) : nullptr;
   // Validate bias shape if provided
   if (has_bias && (bias->Shape().NumDimensions() != 1 || bias->Shape()[0] != num_output_channels)) {
