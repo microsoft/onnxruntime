@@ -752,6 +752,98 @@ TEST(QDQTransformerTests, MatMulGenericSelectorAllowsRankOnePerChannelBParameter
   ASSERT_EQ(graph.GetNode(selection.target_node)->OpType(), "MatMul");
 }
 
+#if !defined(DISABLE_FLOAT8_TYPES)
+// Float8 Q/DQ node groups must be left unchanged: the QLinear*/QGemm replacements only accept integer types, and
+// dropping the Q/DQ nodes would feed float8 tensors to ops like MaxPool or Slice that do not accept them.
+TEST(QDQTransformerTests, Float8QDQNodeGroupsAreNotFused) {
+  constexpr auto kFloat8 = ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN;
+  constexpr float kScale = 0.125f;
+  const std::vector<int64_t> input_shape{1, 4, 8, 8};
+
+  using AddTargetNode = std::function<void(ModelTestBuilder&, const std::vector<NodeArg*>&, NodeArg*)>;
+  auto test_case = [&](const std::string& op_type, int num_inputs, const AddTargetNode& add_target_node,
+                       int num_extra_dq_nodes = 0) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      std::vector<NodeArg*> dq_outputs;
+      for (int i = 0; i < num_inputs; ++i) {
+        auto* q_output = builder.MakeIntermediate();
+        auto* dq_output = builder.MakeIntermediate();
+        builder.AddQuantizeLinearNode(builder.MakeInput<float>(input_shape, -2.f, 2.f), kScale, 0, kFloat8,
+                                      q_output);
+        builder.AddDequantizeLinearNode(q_output, kScale, 0, kFloat8, dq_output);
+        dq_outputs.push_back(dq_output);
+      }
+
+      auto* target_output = builder.MakeIntermediate();
+      add_target_node(builder, dq_outputs, target_output);
+
+      auto* q_output = builder.MakeIntermediate();
+      builder.AddQuantizeLinearNode(target_output, kScale, 0, kFloat8, q_output);
+      builder.AddDequantizeLinearNode(q_output, kScale, 0, kFloat8, builder.MakeOutput());
+    };
+
+    auto check_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count[op_type], 1) << op_type;
+      EXPECT_EQ(op_to_count["QuantizeLinear"], num_inputs + 1) << op_type;
+      EXPECT_EQ(op_to_count["DequantizeLinear"], num_inputs + num_extra_dq_nodes + 1) << op_type;
+      for (const auto& [name, count] : op_to_count) {
+        const bool is_quantized_op = name.find("QLinear") != std::string::npos ||
+                                     name.find("QGemm") != std::string::npos;
+        EXPECT_FALSE(is_quantized_op && count > 0) << op_type << " was fused into " << name;
+      }
+    };
+
+    TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2, 21);
+  };
+
+  auto add_simple_node = [](const std::string& op_type) {
+    return [op_type](ModelTestBuilder& builder, const std::vector<NodeArg*>& inputs, NodeArg* output) {
+      builder.AddNode(op_type, inputs, {output});
+    };
+  };
+
+  auto add_pool_node = [](const std::string& op_type) {
+    return [op_type](ModelTestBuilder& builder, const std::vector<NodeArg*>& inputs, NodeArg* output) {
+      builder.AddNode(op_type, inputs, {output}).AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+    };
+  };
+
+  // Rules that replace the node group with a QLinear* op.
+  test_case(
+      "Conv", 1,
+      [&](ModelTestBuilder& builder, const std::vector<NodeArg*>& inputs, NodeArg* output) {
+        auto* weight = builder.MakeInitializer<Float8E4M3FN>({4, 4, 3, 3},
+                                                             std::vector<Float8E4M3FN>(144, Float8E4M3FN(0.25f)));
+        auto* dq_weight = builder.MakeIntermediate();
+        builder.AddDequantizeLinearNode(weight, 0.0625f, 0, kFloat8, dq_weight);
+        builder.AddConvNode(inputs[0], dq_weight, output);
+      },
+      1);
+  test_case("MatMul", 2, add_simple_node("MatMul"));
+  test_case("Add", 2, add_simple_node("Add"));
+  test_case("Mul", 2, add_simple_node("Mul"));
+  test_case("AveragePool", 1, add_pool_node("AveragePool"));
+  test_case("Softmax", 1, add_simple_node("Softmax"));
+  test_case("Concat", 2, [](ModelTestBuilder& builder, const std::vector<NodeArg*>& inputs, NodeArg* output) {
+    builder.AddNode("Concat", inputs, {output}).AddAttribute("axis", int64_t{1});
+  });
+
+  // Rules that drop the Q/DQ nodes around the target op.
+  test_case("MaxPool", 1, add_pool_node("MaxPool"));
+  test_case("Resize", 1, [](ModelTestBuilder& builder, const std::vector<NodeArg*>& inputs, NodeArg* output) {
+    auto* scales = builder.Make1DInitializer<float>({1.f, 1.f, 2.f, 2.f});
+    builder.AddNode("Resize", {inputs[0], builder.MakeEmptyInput(), scales}, {output});
+  });
+  test_case("Slice", 1, [](ModelTestBuilder& builder, const std::vector<NodeArg*>& inputs, NodeArg* output) {
+    auto* starts = builder.Make1DInitializer<int64_t>({0, 0});
+    auto* ends = builder.Make1DInitializer<int64_t>({2, 4});
+    auto* axes = builder.Make1DInitializer<int64_t>({1, 2});
+    builder.AddNode("Slice", {inputs[0], starts, ends, axes}, {output});
+  });
+}
+#endif  // !defined(DISABLE_FLOAT8_TYPES)
+
 TEST(QDQTransformerTests, Add) {
   QDQTransformerBinaryOpTests<uint8_t, uint8_t, uint8_t>("Add");
   QDQTransformerBinaryOpTests<int8_t, int8_t, int8_t>("Add");

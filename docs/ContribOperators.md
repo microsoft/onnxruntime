@@ -121,6 +121,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.RestorePadding">com.microsoft.RestorePadding</a>
   * <a href="#com.microsoft.Rfft">com.microsoft.Rfft</a>
   * <a href="#com.microsoft.RotaryEmbedding">com.microsoft.RotaryEmbedding</a>
+  * <a href="#com.microsoft.RouterGateUpProj">com.microsoft.RouterGateUpProj</a>
   * <a href="#com.microsoft.SampleOp">com.microsoft.SampleOp</a>
   * <a href="#com.microsoft.Sampling">com.microsoft.Sampling</a>
   * <a href="#com.microsoft.ScaledSiLU">com.microsoft.ScaledSiLU</a>
@@ -133,6 +134,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.SparsePagedAttention">com.microsoft.SparsePagedAttention</a>
   * <a href="#com.microsoft.SparseToDenseMatMul">com.microsoft.SparseToDenseMatMul</a>
   * <a href="#com.microsoft.SpeculativePrefixCommit">com.microsoft.SpeculativePrefixCommit</a>
+  * <a href="#com.microsoft.SwiGLU">com.microsoft.SwiGLU</a>
   * <a href="#com.microsoft.Tokenizer">com.microsoft.Tokenizer</a>
   * <a href="#com.microsoft.TorchEmbedding">com.microsoft.TorchEmbedding</a>
   * <a href="#com.microsoft.TransposeMatMul">com.microsoft.TransposeMatMul</a>
@@ -7534,6 +7536,56 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.RouterGateUpProj"></a><a name="com.microsoft.routergateupproj">**com.microsoft.RouterGateUpProj**</a>
+
+  Fused first projection of a MoE layer with a shared expert. One GEMM Y = X * W, with N = router_size + 2 * inter, is split into the router logits Y[.., :router_size] and the gate/up halves of the shared expert Y[.., router_size:], gate first then up. The output router is Y[.., :router_size] rounded to T; the output activated is activation(gate, up), computed on the T-rounded gate and up values. With activation = 'swiglu' it uses the SwiGLU operator's `limit`, `activation_alpha` and `activation_beta`, so the op equals MatMul + Split + SwiGLU.
+  For up to 8 rows the CUDA kernel is a single deterministic tensor-core GEMV; other shapes use a GEMM and an elementwise kernel.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>activation</tt> : string</dt>
+<dd>Gated activation applied to the gate and up halves. Only 'swiglu' is defined.</dd>
+<dt><tt>activation_alpha</tt> : float</dt>
+<dd>SwiGLU multiplier inside the sigmoid.</dd>
+<dt><tt>activation_beta</tt> : float</dt>
+<dd>SwiGLU value added to the linear half.</dd>
+<dt><tt>limit</tt> : float</dt>
+<dd>SwiGLU clamp applied to both halves; zero or less disables it.</dd>
+<dt><tt>router_size</tt> : int (required)</dt>
+<dd>Number of leading columns of W that form the router logits.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>X</tt> : T</dt>
+<dd>Activation with shape (.., K).</dd>
+<dt><tt>W</tt> : T</dt>
+<dd>Weight with shape (K, router_size + 2 * inter).</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>router</tt> : T</dt>
+<dd>Router logits with shape (.., router_size).</dd>
+<dt><tt>activated</tt> : T</dt>
+<dd>Gated shared-expert activation with shape (.., inter).</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(bfloat16), tensor(float16)</dt>
+<dd>Constrain the data type to 16-bit floats.</dd>
+</dl>
+
+
 ### <a name="com.microsoft.SampleOp"></a><a name="com.microsoft.sampleop">**com.microsoft.SampleOp**</a>
 
   Sample echo operator.
@@ -8357,6 +8409,62 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Token, control and pointer words.</dd>
 <dt><tt>I32</tt> : tensor(int32)</dt>
 <dd>Status words and cache lengths.</dd>
+</dl>
+
+
+### <a name="com.microsoft.SwiGLU"></a><a name="com.microsoft.swiglu">**com.microsoft.SwiGLU**</a>
+
+  Clamped SwiGLU, the gated activation of a feed-forward or MoE expert block:
+    G = clamp(gate, max=limit)
+    L = clamp(up, min=-limit, max=limit)
+    output = G * Sigmoid(activation_alpha * G) * (L + activation_beta)
+  with the arithmetic done in float regardless of T, widened to double for the product when `activation_alpha * G` is below -87 so that a negative tail is not lost to float exp underflow. A `limit` of zero or less disables both clamps.
+  
+  The result is rounded to T once, after the multiply by (L + activation_beta). With `round_activation` set, G * Sigmoid(activation_alpha * G) is first rounded to T, as a QuickGelu node followed by a Mul in T would, which keeps a fused QuickGelu + Mul bit-identical to the graph it replaces.
+  
+  This uses the same activation_alpha / activation_beta formula and positive-limit clamping rule as MoE and QMoE. The no-clamp sentinel differs: here any `limit` of zero or less disables clamping, while MoE/QMoE use infinity when `swiglu_limit` is omitted and clamp finite values, including an explicit zero.
+  With `up` supplied and the default `limit` and `activation_beta`, it equals the ONNX SwiGLU operator (opset 28) with `alpha` = `activation_alpha`.
+  
+  `up` is optional. When it is omitted, `gate` carries both halves of one `[.., 2 * inter]` projection -- gate first, then up -- and the split is done internally, so a fused sibling GEMM needs no `Split` node.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>activation_alpha</tt> : float</dt>
+<dd>Multiplier inside the sigmoid.</dd>
+<dt><tt>activation_beta</tt> : float</dt>
+<dd>Value added to the linear half. A zero value leaves it unchanged, including a negative zero.</dd>
+<dt><tt>limit</tt> : float</dt>
+<dd>Clamp applied to both halves; zero or less disables it.</dd>
+<dt><tt>round_activation</tt> : int</dt>
+<dd>If non-zero, round G * Sigmoid(activation_alpha * G) to T before multiplying by (L + activation_beta). Zero rounds only the final result.</dd>
+</dl>
+
+#### Inputs (1 - 2)
+
+<dl>
+<dt><tt>gate</tt> : T</dt>
+<dd>Gate half of the projection, or both halves concatenated.</dd>
+<dt><tt>up</tt> (optional) : T</dt>
+<dd>Up half of the projection, same shape as gate.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>Activated tensor, shaped like one half of the projection.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16), tensor(bfloat16), tensor(float)</dt>
+<dd>Constrain the activation type to float tensors.</dd>
 </dl>
 
 

@@ -9,6 +9,7 @@
 #include <vector>
 #include <memory>
 
+#include "core/common/float8.h"
 #include "core/common/inlined_containers_fwd.h"
 #include "core/common/span_utils.h"
 #include "core/graph/model.h"
@@ -52,6 +53,13 @@ static InlinedVector<std::byte> GetZeroPointBytes(int64_t zero_point, ONNX_NAMES
       auto span = gsl::as_bytes(gsl::make_span(&val, 1));
       return InlinedVector<std::byte>(span.begin(), span.end());
     }
+#if !defined(DISABLE_FLOAT8_TYPES)
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN: {
+      Float8E4M3FN val(static_cast<float>(zero_point));
+      auto span = gsl::as_bytes(gsl::make_span(&val, 1));
+      return InlinedVector<std::byte>(span.begin(), span.end());
+    }
+#endif
     default:
       ORT_THROW("Unhandled zero-point type ", type, ".");
   }
