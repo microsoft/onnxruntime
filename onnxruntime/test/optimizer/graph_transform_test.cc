@@ -14408,12 +14408,16 @@ TEST_F(GraphTransformationTests, DivMulFusion_MultiElementInitializer) {
 // `dropout_elimination.cc` remains as pure defense-in-depth against future
 // internal callers that may bypass shape inference.
 
-// These tests verify that STFTDecomposition skips malformed models
-// instead of crashing with OOB writes from negative initializer values.
+// Invalid initializers must be rejected by shape inference or skipped by
+// STFTDecomposition, depending on the ONNX version.
 TEST_F(GraphTransformationTests, STFTDecomposition_NegativeFrameLength) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "stft_negative_frame_length.onnx";
   std::shared_ptr<Model> model;
-  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  const auto status = Model::Load(model_uri, model, nullptr, *logger_);
+  if (!status.IsOK()) {
+    EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("frame_length must be greater than 0"));
+    return;
+  }
   Graph& graph = model->MainGraph();
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_EQ(op_to_count["STFT"], 1);
@@ -14432,7 +14436,11 @@ TEST_F(GraphTransformationTests, STFTDecomposition_NegativeFrameLength) {
 TEST_F(GraphTransformationTests, STFTDecomposition_NegativeFrameStep) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "stft_negative_frame_step.onnx";
   std::shared_ptr<Model> model;
-  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  const auto status = Model::Load(model_uri, model, nullptr, *logger_);
+  if (!status.IsOK()) {
+    EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("frame_step must be greater than 0"));
+    return;
+  }
   Graph& graph = model->MainGraph();
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_EQ(op_to_count["STFT"], 1);
