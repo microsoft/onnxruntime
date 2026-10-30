@@ -11940,20 +11940,20 @@ TEST_F(GraphTransformationTests, MatMulIntegerToFloatFusion_MatrixScale_WithBias
 }
 
 TEST_F(GraphTransformationTests, MatMulIntegerToFloatFusion_Scale1x1_WithBias_NoDQL_PreservesAdd_NumericalEquivalence) {
-  // Verifies that without DynamicQuantizeLinear, scales shaped as [1, 1] (0.5) and [N] (0.25)
+  // Verifies that without DynamicQuantizeLinear, scales shaped as [1, 1] (0.5) and [N] (0.25, 0.5)
   // are not mistakenly treated as scalar A scale.
   // FixupScaleTensor leaves their order unchanged, meaning a_scale has rank 2 [1, 1],
   // which is not a scalar according to the kernel's IsScalarOr1ElementVector predicate.
   // Add must be preserved outside the fusion to avoid multiplying bias by a_scale post-GEMM.
   // Numerical equivalence proves the unoptimized calculation matches:
-  // dot_product(8) * 0.5 * 0.25 + bias(2) = 1 + 2 = 3.
+  // dot_product([8, 12]) * 0.5 * [0.25, 0.5] + bias([2, 4]) = [1, 3] + [2, 4] = [3, 7].
   auto build_test_case = [](ModelTestBuilder& builder) {
     std::vector<uint8_t> a_data = {2, 2};
     auto* input_a = builder.MakeInput<uint8_t>({1, 2}, a_data);
     auto* a_zp = builder.MakeScalarInitializer<uint8_t>(0);
 
-    std::vector<uint8_t> b_data = {2, 2};
-    auto* b_quant = builder.MakeInitializer<uint8_t>({2, 1}, b_data);
+    std::vector<uint8_t> b_data = {2, 3, 2, 3};
+    auto* b_quant = builder.MakeInitializer<uint8_t>({2, 2}, b_data);
     auto* b_zp = builder.MakeScalarInitializer<uint8_t>(0);
 
     auto* matmul_out = builder.MakeIntermediate();
@@ -11964,7 +11964,7 @@ TEST_F(GraphTransformationTests, MatMulIntegerToFloatFusion_Scale1x1_WithBias_No
         .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
 
     auto* scale_a = builder.MakeInitializer<float>({1, 1}, {0.5f});
-    auto* scale_b = builder.Make1DInitializer<float>({0.25f});
+    auto* scale_b = builder.Make1DInitializer<float>({0.25f, 0.5f});
 
     auto* scale_product = builder.MakeIntermediate();
     builder.AddNode("Mul", {scale_a, scale_b}, {scale_product});
@@ -11972,7 +11972,7 @@ TEST_F(GraphTransformationTests, MatMulIntegerToFloatFusion_Scale1x1_WithBias_No
     auto* mul_out = builder.MakeIntermediate();
     builder.AddNode("Mul", {cast_out, scale_product}, {mul_out});
 
-    auto* bias = builder.Make1DInitializer<float>({2.0f});
+    auto* bias = builder.Make1DInitializer<float>({2.0f, 4.0f});
 
     auto* output = builder.MakeOutput();
     builder.AddNode("Add", {mul_out, bias}, {output});
@@ -11991,16 +11991,16 @@ TEST_F(GraphTransformationTests, MatMulIntegerToFloatFusion_Scale1x1_WithBias_No
 
 TEST_F(GraphTransformationTests,
        MatMulIntegerToFloatFusion_Scale1x1_Reversed_WithBias_NoDQL_PreservesAdd_NumericalEquivalence) {
-  // Same as above, but with scale inputs reversed: scale 0 is [N] (0.25) and scale 1 is [1, 1] (0.5).
+  // Same as above, but with scale inputs reversed: scale 0 is [N] (0.25, 0.5) and scale 1 is [1, 1] (0.5).
   // FixupScaleTensor swaps them, selecting [1, 1] as a_scale, which is rejected by IsScalarOr1ElementVector.
-  // Add must be preserved outside the fusion, yielding correct numerical output: 3.
+  // Add must be preserved outside the fusion, yielding correct numerical output: [3, 7].
   auto build_test_case = [](ModelTestBuilder& builder) {
     std::vector<uint8_t> a_data = {2, 2};
     auto* input_a = builder.MakeInput<uint8_t>({1, 2}, a_data);
     auto* a_zp = builder.MakeScalarInitializer<uint8_t>(0);
 
-    std::vector<uint8_t> b_data = {2, 2};
-    auto* b_quant = builder.MakeInitializer<uint8_t>({2, 1}, b_data);
+    std::vector<uint8_t> b_data = {2, 3, 2, 3};
+    auto* b_quant = builder.MakeInitializer<uint8_t>({2, 2}, b_data);
     auto* b_zp = builder.MakeScalarInitializer<uint8_t>(0);
 
     auto* matmul_out = builder.MakeIntermediate();
@@ -12010,7 +12010,7 @@ TEST_F(GraphTransformationTests,
     builder.AddNode("Cast", {matmul_out}, {cast_out})
         .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
 
-    auto* scale_b = builder.Make1DInitializer<float>({0.25f});
+    auto* scale_b = builder.Make1DInitializer<float>({0.25f, 0.5f});
     auto* scale_a = builder.MakeInitializer<float>({1, 1}, {0.5f});
 
     auto* scale_product = builder.MakeIntermediate();
@@ -12019,7 +12019,7 @@ TEST_F(GraphTransformationTests,
     auto* mul_out = builder.MakeIntermediate();
     builder.AddNode("Mul", {cast_out, scale_product}, {mul_out});
 
-    auto* bias = builder.Make1DInitializer<float>({2.0f});
+    auto* bias = builder.Make1DInitializer<float>({2.0f, 4.0f});
 
     auto* output = builder.MakeOutput();
     builder.AddNode("Add", {mul_out, bias}, {output});
