@@ -392,6 +392,14 @@ void PyModelCompiler::ClearEpContextDataWriteFunc() {
   }
 }
 
+onnxruntime::Status PyModelCompiler::SetEpContextBinaryInformation(const std::string& output_directory,
+                                                                   const std::string& model_name) {
+  std::lock_guard<std::mutex> lock{compilation_mutex_};
+  ORT_RETURN_IF(compilation_in_progress_,
+                "Cannot change the EPContext binary information while compilation is in progress.");
+  return model_compile_options_.SetEpContextBinaryInformation(output_directory, model_name);
+}
+
 PyModelCompiler::PyModelCompiler(onnxruntime::Environment& env, const OrtSessionOptions& sess_options,
                                  std::shared_ptr<PyEpSelectionRegistration> py_ep_selection_registration,
                                  std::shared_ptr<PyEpContextDataReadRegistration> py_ep_context_data_read_registration,

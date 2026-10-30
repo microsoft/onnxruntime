@@ -102,6 +102,16 @@ assert events == ["read", "selection", "write"], events
         )
         self.assertEqual(result.returncode, 0, msg=f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}")
 
+    def test_set_ep_context_binary_information(self):
+        compiler = onnxrt.ModelCompiler(onnxrt.SessionOptions(), get_name("mul_1.onnx"))
+        output_dir = os.path.join(self._tmp_dir_path, "")
+        compiler.set_ep_context_binary_information(output_dir, "model")
+
+        with self.assertRaises(InvalidArgument):
+            compiler.set_ep_context_binary_information("", "model")
+        with self.assertRaises(InvalidArgument):
+            compiler.set_ep_context_binary_information(output_dir, "")
+
     def test_compile_with_files_prefer_npu_policy(self):
         """
         Tests compiling a model (to/from files) using an EP selection policy (PREFER_NPU).

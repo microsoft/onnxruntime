@@ -76,6 +76,10 @@ endif()
 
 onnxruntime_add_shared_library_module(onnxruntime_pybind11_state ${onnxruntime_pybind_srcs})
 
+if(NOT onnxruntime_MINIMAL_BUILD AND TARGET model_package)
+  target_link_libraries(onnxruntime_pybind11_state PRIVATE model_package)
+endif()
+
 message(STATUS "Python_EXECUTABLE: ${Python_EXECUTABLE}")
 
 # Query Py_GIL_DISABLED (PEP 703)
