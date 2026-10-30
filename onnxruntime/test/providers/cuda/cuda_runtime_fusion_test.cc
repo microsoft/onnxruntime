@@ -51,24 +51,6 @@ std::unique_ptr<IExecutionProvider> ProductionMathCudaExecutionProvider() {
   return CudaExecutionProviderWithOptions(&options);
 }
 
-void AddTensorInfo(ONNX_NAMESPACE::ValueInfoProto& value, const std::string& name,
-                   std::initializer_list<int64_t> shape,
-                   int element_type = ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16) {
-  value.set_name(name);
-  auto* type = value.mutable_type()->mutable_tensor_type();
-  type->set_elem_type(element_type);
-  int axis = 0;
-  for (auto dim : shape) {
-    auto* dimension = type->mutable_shape()->add_dim();
-    if (dim < 0) {
-      dimension->set_dim_param("d" + std::to_string(axis));
-    } else {
-      dimension->set_dim_value(dim);
-    }
-    ++axis;
-  }
-}
-
 ONNX_NAMESPACE::NodeProto& AddOp(ONNX_NAMESPACE::GraphProto& graph, const std::string& op,
                                  std::initializer_list<const char*> inputs,
                                  std::initializer_list<const char*> outputs) {
@@ -78,25 +60,6 @@ ONNX_NAMESPACE::NodeProto& AddOp(ONNX_NAMESPACE::GraphProto& graph, const std::s
   for (auto input : inputs) node.add_input(input);
   for (auto output : outputs) node.add_output(output);
   return node;
-}
-
-void IntAttribute(ONNX_NAMESPACE::NodeProto& node, const char* name, int64_t value) {
-  auto* attr = node.add_attribute();
-  attr->set_name(name);
-  attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
-  attr->set_i(value);
-}
-
-void AddSmallConstant(ONNX_NAMESPACE::GraphProto& graph, const char* name,
-                      std::initializer_list<int64_t> shape, std::initializer_list<int64_t> values) {
-  auto& node = AddOp(graph, "Constant", {}, {name});
-  auto* attr = node.add_attribute();
-  attr->set_name("value");
-  attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_TENSOR);
-  auto* tensor = attr->mutable_t();
-  tensor->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
-  for (auto dim : shape) tensor->add_dims(dim);
-  for (auto value : values) tensor->add_int64_data(value);
 }
 
 struct ProfileCleanup {
@@ -342,7 +305,7 @@ TEST(CudaRuntimeFusionTest, UnitSwishModelRowsBFloat16BitwiseDefaultOptimization
   RunUnitSwishNumerics<BFloat16>(2, std::nullopt);
 }
 
-TEST(CudaRuntimeFusionTest, UnitSwishCausalMlpRank3BFloat16BitwiseDefaultOptimization) {
+TEST(CudaRuntimeFusionTest, UnitSwishRank3ModelRowsBFloat16BitwiseDefaultOptimization) {
   if (!CudaHasBF16Support()) GTEST_SKIP() << "CUDA BF16 requires SM80 or newer.";
   RunUnitSwishNumerics<BFloat16>(3, std::nullopt);
 }
