@@ -874,6 +874,124 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BiasSoftmax, 1,
                                     "Constrain input and output types to float tensors.")
                                 .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    SwiGLU, 1,
+    OpSchema()
+        .SetDoc(
+            "Clamped SwiGLU, the gated activation of a feed-forward or MoE expert block:\n"
+            "  G = clamp(gate, max=limit)\n"
+            "  L = clamp(up, min=-limit, max=limit)\n"
+            "  output = G * Sigmoid(activation_alpha * G) * (L + activation_beta)\n"
+            "with the arithmetic done in float regardless of T, widened to double for the product "
+            "when `activation_alpha * G` is below -87 so that a negative tail is not lost to "
+            "float exp underflow. A `limit` of zero or less disables both clamps.\n"
+            "\n"
+            "The result is rounded to T once, after the multiply by (L + activation_beta). With "
+            "`round_activation` set, G * Sigmoid(activation_alpha * G) is first rounded to T, as a "
+            "QuickGelu node followed by a Mul in T would, which keeps a fused QuickGelu + Mul "
+            "bit-identical to the graph it replaces.\n"
+            "\n"
+            "This uses the same activation_alpha / activation_beta formula and positive-limit "
+            "clamping rule as MoE and QMoE. The no-clamp sentinel differs: here any `limit` "
+            "of zero or less disables clamping, while MoE/QMoE use infinity when `swiglu_limit` "
+            "is omitted and clamp finite values, including an explicit zero.\n"
+            "With `up` supplied and the default `limit` and `activation_beta`, it "
+            "equals the ONNX SwiGLU operator (opset 28) with `alpha` = `activation_alpha`.\n"
+            "\n"
+            "`up` is optional. When it is omitted, `gate` carries both halves of one "
+            "`[.., 2 * inter]` projection -- gate first, then up -- and the split is done "
+            "internally, so a fused sibling GEMM needs no `Split` node.")
+        .Attr("limit", "Clamp applied to both halves; zero or less disables it.",
+              AttributeProto::FLOAT, 0.0f)
+        .Attr("activation_alpha", "Multiplier inside the sigmoid.", AttributeProto::FLOAT, 1.0f)
+        .Attr("activation_beta",
+              "Value added to the linear half. A zero value leaves it unchanged, including a negative zero.",
+              AttributeProto::FLOAT, 0.0f)
+        .Attr("round_activation",
+              "If non-zero, round G * Sigmoid(activation_alpha * G) to T before multiplying by "
+              "(L + activation_beta). Zero rounds only the final result.",
+              AttributeProto::INT, static_cast<int64_t>(0))
+        .Input(0, "gate", "Gate half of the projection, or both halves concatenated.", "T")
+        .Input(1, "up", "Up half of the projection, same shape as gate.", "T", OpSchema::Optional)
+        .Output(0, "output", "Activated tensor, shaped like one half of the projection.", "T")
+        .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
+                        "Constrain the activation type to float tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          if (!hasInputShape(ctx, 0)) return;
+          if (ctx.getNumInputs() > 1 && ctx.getInputType(1) != nullptr) {
+            propagateShapeFromInputToOutput(ctx, 0, 0);
+            return;
+          }
+          const auto& in = getInputShape(ctx, 0);
+          if (in.dim_size() == 0) fail_shape_inference("gate must not be a scalar.");
+          auto* out = ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+          for (int i = 0; i + 1 < in.dim_size(); ++i) *out->add_dim() = in.dim(i);
+          const auto& last = in.dim(in.dim_size() - 1);
+          auto* d = out->add_dim();
+          if (last.has_dim_value()) {
+            if (last.dim_value() % 2 != 0) fail_shape_inference("gate's last dim must be even.");
+            d->set_dim_value(last.dim_value() / 2);
+          }
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    RouterGateUpProj, 1,
+    OpSchema()
+        .SetDoc(
+            "Fused first projection of a MoE layer with a shared expert. One GEMM Y = X * W, with "
+            "N = router_size + 2 * inter, is split into the router logits Y[.., :router_size] and the "
+            "gate/up halves of the shared expert Y[.., router_size:], gate first then up. The output "
+            "router is Y[.., :router_size] rounded to T; the output activated is activation(gate, up), "
+            "computed on the T-rounded gate and up values. With activation = 'swiglu' it uses the SwiGLU "
+            "operator's `limit`, `activation_alpha` and `activation_beta`, so the op equals "
+            "MatMul + Split + SwiGLU.\n"
+            "For up to 8 rows the CUDA kernel is a single deterministic tensor-core GEMV; other shapes use a "
+            "GEMM and an elementwise kernel.")
+        .Attr("router_size", "Number of leading columns of W that form the router logits.",
+              AttributeProto::INT)
+        .Attr("activation", "Gated activation applied to the gate and up halves. Only 'swiglu' is defined.",
+              AttributeProto::STRING, std::string("swiglu"))
+        .Attr("limit", "SwiGLU clamp applied to both halves; zero or less disables it.",
+              AttributeProto::FLOAT, 0.0f)
+        .Attr("activation_alpha", "SwiGLU multiplier inside the sigmoid.", AttributeProto::FLOAT, 1.0f)
+        .Attr("activation_beta", "SwiGLU value added to the linear half.", AttributeProto::FLOAT, 0.0f)
+        .Input(0, "X", "Activation with shape (.., K).", "T")
+        .Input(1, "W", "Weight with shape (K, router_size + 2 * inter).", "T")
+        .Output(0, "router", "Router logits with shape (.., router_size).", "T")
+        .Output(1, "activated", "Gated shared-expert activation with shape (.., inter).", "T")
+        .TypeConstraint("T", {"tensor(bfloat16)", "tensor(float16)"}, "Constrain the data type to 16-bit floats.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          propagateElemTypeFromInputToOutput(ctx, 0, 1);
+          const int64_t router = getAttribute(ctx, "router_size", 0);
+          if (router <= 0) fail_shape_inference("router_size must be positive.");
+          if (getAttribute(ctx, "activation", std::string("swiglu")) != "swiglu") {
+            fail_shape_inference("activation must be 'swiglu'.");
+          }
+          if (!hasInputShape(ctx, 0) || !hasInputShape(ctx, 1)) return;
+          const auto& x = getInputShape(ctx, 0);
+          const auto& w = getInputShape(ctx, 1);
+          if (x.dim_size() == 0 || w.dim_size() != 2) {
+            fail_shape_inference("X must have rank >= 1 and W must have rank 2.");
+          }
+          auto* router_shape = ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+          auto* swish_shape = ctx.getOutputType(1)->mutable_tensor_type()->mutable_shape();
+          for (int i = 0; i + 1 < x.dim_size(); ++i) {
+            *router_shape->add_dim() = x.dim(i);
+            *swish_shape->add_dim() = x.dim(i);
+          }
+          router_shape->add_dim()->set_dim_value(router);
+          auto* inter = swish_shape->add_dim();
+          if (w.dim(1).has_dim_value()) {
+            const int64_t rest = w.dim(1).dim_value() - router;
+            if (rest <= 0 || rest % 2 != 0) {
+              fail_shape_inference("W's second dimension must be router_size plus an even positive number.");
+            }
+            inter->set_dim_value(rest / 2);
+          }
+        }));
+
 ONNX_MS_OPERATOR_SET_SCHEMA(BiasDropout, 1,
                             OpSchema()
                                 .SetDoc(
@@ -4069,13 +4187,20 @@ It is a fusion of two operations:
    dequantized_weight = (quantized_weight - zero_point) * scale
 2. Matrix multiplication between the input matrix A and the dequantized weight matrix.
 
-The weight matrix is a 2D constant matrix with the input feature count and output feature count specified by attributes 'K' and 'N'.
+The logical weight matrix is 2D, with the input feature count and output feature count specified by attributes 'K' and 'N'.
 It is quantized block-wise along the K dimension with a block size specified by the 'block_size' attribute.
 The block size must be a power of 2 and not smaller than 16 (e.g., 16, 32, 64, 128). Each block has its own scale and zero-point.
 The quantization is performed using a bit-width specified by the 'bits' attribute, which can take values from 2 to 8.
 
 The quantized weights are stored in a bit-packed format along the K dimension, with each block being represented by a blob of uint8.
 For example, for 4 bits, the first 4 bits are stored in the lower 4 bits of a byte, and the second 4 bits are stored in the higher 4 bits of a byte.
+
+When weight_prepacked is 0, B may represent an omitted projection by replacing one or more dimensions of its
+packed shape (N, k_blocks, blob_size) with 0. All remaining dimensions must retain their normal values.
+In this case, Y is filled with zeros (or the broadcast bias, if provided). Its shape is still determined by A, K and N.
+The contents of A, scales, zero_points and g_idx are not used; the quantization parameters may also be empty.
+This permits zero-sized defaults for optional weights, with dynamic input dimensions allowing nonempty overrides.
+Empty packed weights are currently supported by the CPU and WebGPU execution providers.
 )DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(MatMulNBits)
@@ -4106,6 +4231,7 @@ For example, for 4 bits, the first 4 bits are stored in the lower 4 bits of a by
       .Input(1, "B",
              "Packed uint8 tensor of shape (N, k_blocks, blob_size), "
              "where k_blocks = ceil(K / block_size) and blob_size = (block_size * bits / 8). "
+             "With weight_prepacked=0, one or more dimensions may be 0 to omit the projection as described above. "
              "The quantized weights are stored in a bit-packed format along the K dimension, packed within each block_size.",
              "T2")
       .Input(2, "scales", "Per-block scaling factors for dequantization with shape (N, k_blocks) and same data type as input A.", "T1")

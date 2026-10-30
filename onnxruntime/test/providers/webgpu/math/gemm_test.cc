@@ -27,11 +27,81 @@ const onnxruntime::RunOptions run_options = []() {
 
 const constexpr auto run_with_tunable_op = &run_options;
 
+template <typename T>
+void RunWebGpuGemmScalarBiasTest() {
+  // Cover packed vec4, scalar, and transposed vec4 inputs with scalar output,
+  // plus the reported transposed-A shape and Intel-subgroup-eligible shapes.
+  for (const auto& dimensions : {std::tuple<int64_t, int64_t, int64_t>{4, 12, 4},
+                                 {4, 11, 3},
+                                 {4, 12, 3},
+                                 {12288, 1, 1},
+                                 {64, 36, 512},
+                                 {64, 36, 513}}) {
+    const auto [rows, reduction_size, columns] = dimensions;
+    const bool transpose_a = rows == 12288;
+    const bool transpose_b = rows == 4 && reduction_size == 12 && columns == 3;
+    SCOPED_TRACE(::testing::PrintToString(dimensions));
+    for (const auto& bias_shape : {std::vector<int64_t>{}, {1}, {1, 1}}) {
+      SCOPED_TRACE(::testing::PrintToString(bias_shape));
+      for (float beta : {0.5f, 0.0f}) {
+        SCOPED_TRACE(beta);
+        ConfigOptions provider_options;
+        // Keep FP16 on the packed/subgroup paths instead of subgroup-matrix.
+        ASSERT_STATUS_OK(provider_options.AddConfigEntry(webgpu::options::kEnableMatmulFp32Accumulation, "1"));
+        auto webgpu_ep = WebGpuExecutionProviderWithOptions(provider_options);
+        if (!webgpu_ep) {
+          GTEST_SKIP() << "WebGPU execution provider is not available";
+        }
+        SessionOptions options;
+        ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+
+        std::vector<T> a(rows * reduction_size);
+        std::vector<T> b(reduction_size * columns);
+        std::vector<T> expected(rows * columns);
+        for (int64_t row = 0; row < rows; ++row) {
+          const float a_value = static_cast<float>(row % 7 + 1) * 0.25f;
+          for (int64_t k = 0; k < reduction_size; ++k) {
+            a[transpose_a ? k * rows + row : row * reduction_size + k] = T(a_value);
+          }
+          for (int64_t column = 0; column < columns; ++column) {
+            const float b_value = static_cast<float>(column % 5 - 2) * 0.5f;
+            expected[row * columns + column] = T(0.5f * a_value * b_value * static_cast<float>(reduction_size) - 2.0f * beta);
+          }
+        }
+        for (int64_t k = 0; k < reduction_size; ++k) {
+          for (int64_t column = 0; column < columns; ++column) {
+            b[transpose_b ? column * reduction_size + k : k * columns + column] = T(static_cast<float>(column % 5 - 2) * 0.5f);
+          }
+        }
+
+        OpTester test("Gemm", 13);
+        test.AddAttribute("alpha", 0.5f);
+        test.AddAttribute("beta", beta);
+        test.AddAttribute("transA", static_cast<int64_t>(transpose_a));
+        test.AddAttribute("transB", static_cast<int64_t>(transpose_b));
+        test.AddInput<T>("A", transpose_a ? std::vector<int64_t>{reduction_size, rows} : std::vector<int64_t>{rows, reduction_size}, a);
+        test.AddInput<T>("B", transpose_b ? std::vector<int64_t>{columns, reduction_size} : std::vector<int64_t>{reduction_size, columns}, b, transpose_a);
+        test.AddInput<T>("C", bias_shape, {T(-2.0f)}, transpose_a);
+        test.AddOutput<T>("Y", {rows, columns}, expected);
+        test.Config(options).ConfigEp(std::move(webgpu_ep)).RunWithConfig();
+      }
+    }
+  }
+}
+
 }  // namespace
 
 #endif
 
 #if defined(USE_WEBGPU)
+TEST(GemmOpTest, WebGpuScalarBiasFloat) {
+  RunWebGpuGemmScalarBiasTest<float>();
+}
+
+TEST(GemmOpTest, WebGpuScalarBiasFloat16) {
+  RunWebGpuGemmScalarBiasTest<MLFloat16>();
+}
+
 TEST(GemmOpTest, WebGpuPackedFp16LongReduction) {
   for (const auto& dimensions : {std::tuple<int64_t, int64_t, int64_t>{4, 900, 4},
                                  {4, 899, 3},

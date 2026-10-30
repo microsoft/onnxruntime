@@ -312,6 +312,15 @@ BINARY_BITWISE_OP(BitwiseOr, Or)
 
 #undef BINARY_BITWISE_OP
 #undef BINARY_BITWISE_OP_TYPED
+
+BINARY_OP_TYPED(BitwiseXor, 18, uint8_t)
+BINARY_OP_TYPED(BitwiseXor, 18, uint16_t)
+BINARY_OP_TYPED(BitwiseXor, 18, uint32_t)
+BINARY_OP_TYPED(BitwiseXor, 18, uint64_t)
+BINARY_OP_TYPED(BitwiseXor, 18, int8_t)
+BINARY_OP_TYPED(BitwiseXor, 18, int16_t)
+BINARY_OP_TYPED(BitwiseXor, 18, int32_t)
+BINARY_OP_TYPED(BitwiseXor, 18, int64_t)
 BINARY_OP_VERSIONED_HFD(PRelu, 7, 8)
 BINARY_OP_VERSIONED_HFD(PRelu, 9, 15)
 // Opset-16 adds BFloat16 to allowed types for the PRelu operator

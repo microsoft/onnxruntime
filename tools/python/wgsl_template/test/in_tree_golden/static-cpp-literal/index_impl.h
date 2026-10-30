@@ -36,10 +36,10 @@ std::string pass_as_string(T&& v) {
 
 #include "wgsl_template_gen/generated/math/matmul_gemv.h"  // ad945fab49f626209e741b76ac3900250cb43159d4ba8a3f66de12fad97f5c43
 #include "wgsl_template_gen/generated/math/subgroup_matrix_gemm_8x16x16.h"  // 1aaff98897bad5e6e46888a2948ca3ac245eda97bdbbe7463c7cec4b6da6d0a9
-#include "wgsl_template_gen/generated/math/subgroup_matrix_matmul.h"  // 5eb470fbe35d55b1ccfbf62f8d780a6f2798853a2628f81e19622f0b24a287f7
-#include "wgsl_template_gen/generated/math/subgroup_matrix_matmul_pad_b.h"  // c01fae062d8059604670635900f3dd036b692cc3d16ebb8a1e54491e83439e66
+#include "wgsl_template_gen/generated/math/subgroup_matrix_matmul.h"  // 5d2fd8c3de49c712eff366ac846315b048594f470c637908495e385ab8f45039
 #include "wgsl_template_gen/generated/nn/conv_transpose3d.h"  // 1d4758c416a863e99d7a7b09368c8ef8f90272fcbb271d5020b842a437aa7198
 #include "wgsl_template_gen/generated/nn/im2col_matmul.h"  // 9842e2aba8c56fad8744906918b044a4a018ce7cfe5efe78d1d18742ac4d3b87
+#include "wgsl_template_gen/generated/nn/subgroup_matrix_conv_8x16x16.h"  // b764e1c4821413b4edc39112d9dba8eb6cbfde8f9031110bb8feb2887c7ddb26
 #include "wgsl_template_gen/generated/tensor/oihw_to_ohwi.h"  // ea6d6ea3ad39540d34a2153b291792f6e419401941c9f1fcbc910a9d0880df54
 #include "wgsl_template_gen/generated/tensor/pad.h"  // 2c39520bb179cbd18964c7364065e3de93d7f99b6e3eacee1e662ec8c4b88c04
 

@@ -26,6 +26,8 @@ constexpr const char* kQMoERowTileSize = "ORT_QMOE_ROW_TILE_SIZE";
 constexpr const char* kQMoERowTileSizeConfig = "ep.cuda.qmoe_row_tile_size";
 constexpr const char* kQMoEIntDequantMaxScratchBytes = "ORT_QMOE_INT_DEQUANT_MAX_SCRATCH_BYTES";
 constexpr const char* kQMoEIntDequantMaxScratchBytesConfig = "ep.cuda.qmoe_int_dequant_max_scratch_bytes";
+constexpr const char* kQMoEDisableInt3TensorCorePrefill = "ORT_DISABLE_INT3_TENSORCORE_PREFILL";
+constexpr const char* kQMoEDisableInt3TensorCorePrefillConfig = "ep.cuda.qmoe_disable_int3_tensorcore_prefill";
 
 class QMoE final : public CudaKernel, public MoEBase {
  public:
@@ -126,6 +128,9 @@ class QMoE final : public CudaKernel, public MoEBase {
   bool enable_int2_prefill_ = false;
   int64_t row_tile_size_ = qmoe::kDisabledRowTileSize;
   int64_t int_dequant_max_scratch_bytes_ = int64_t{1} << 30;
+  // Routes INT3 and INT3-mixed prefill through the FP32 SIMT kernels, which evaluate SwiGLU from the FP32
+  // accumulators. The default Tensor Core prefill stores the FC1 result as FP16/BF16 before the activation.
+  bool disable_int3_tc_prefill_ = false;
 
   std::unique_ptr<onnxruntime::llm::kernels::cutlass_kernels::CutlassMoeFCRunnerInterface> m_moe_runner;
 

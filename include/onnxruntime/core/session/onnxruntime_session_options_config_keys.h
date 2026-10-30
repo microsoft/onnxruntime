@@ -43,6 +43,13 @@ static const char* const kOrtSessionOptionsConfigMoeExpertCounterAlpha =
 static const char* const kOrtSessionOptionsConfigMoeExpertCounterBeta =
     "session.moe_expert_counter_beta";
 
+// Controls weight scaling in the shared-layout CPU QMoE INT3/INT4 kernels only.
+// "0" (default): round each dequantized weight to the activation type before multiplication.
+// "1": accumulate the block dot product in FP32, then apply its scale, without per-weight rounding.
+// Deferred scaling can improve throughput but can change results, particularly under cancellation.
+// Currently does not affect NVFP4/MXFP4, legacy CPU QMoE kernels, or CUDA kernels.
+static const char* const kOrtSessionOptionsCpuQmoeDeferredScale = "ep.cpu.qmoe_deferred_scale";
+
 // A value of "1" means allocators registered in the env will be used. "0" means the allocators created in the session
 // will be used. Use this to override the usage of env allocators on a per session level.
 static const char* const kOrtSessionOptionsConfigUseEnvAllocators = "session.use_env_allocators";
@@ -717,7 +724,7 @@ static const char* const kOrtSessionOptionsQDQMatMulNBitsBlockSize = "session.qd
 
 // Enable the DQ->MatMulNBits fusion graph transformer.
 // "0": disabled (default). "1": enabled.
-// This is typically set automatically by InferenceSession when the NvTensorRTRTX EP is registered.
+// This is typically enabled automatically when the NvTensorRTRTX plugin EP is registered.
 static const char* const kOrtSessionOptionsEnableDQMatMulNBitsFusion = "session.enable_dq_matmulnbits_fusion";
 
 // THIS OPTION IS NOT A REGULAR SESSION OPTION SINCE IT CAN BE MODIFIED AT ANY TIME
@@ -950,3 +957,12 @@ static const char* const kOrtSessionOptionsConfigUsePerSessionThreads = "session
 // "0": disable; "1": enable.
 // Equivalent to OrtApi::SetDeterministicCompute.
 static const char* const kOrtSessionOptionsConfigUseDeterministicCompute = "session.use_deterministic_compute";
+
+// Skip device-side input sanitization (block_table clamping, sequence-length monotonicity/bounds
+// clamping, and invalid-sequence output masking) in PagedAttention when the caller guarantees
+// valid block_table, cumulative_seqlens_q, and past_seqlens inputs.
+// Option values:
+// - "0": Sanitize PagedAttention inputs on device. [DEFAULT]
+// - "1": Skip PagedAttention input sanitization.
+static const char* const kOrtSessionOptionsPagedAttentionSkipInputSanitizer =
+    "session.paged_attention.skip_input_sanitizer";

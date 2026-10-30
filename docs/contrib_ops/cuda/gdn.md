@@ -1,5 +1,95 @@
 # GatedDeltaNet — Operator Documentation
 
+## Experimental short-sequence CUDA dispatch
+
+Set process-level tuning options before the first applicable invocation:
+
+- `ORT_GDN_S2_SPECIALIZE=1` specializes packed QKV for a single request with
+  1 to 8 tokens, 16 query/key heads, 48 value heads, and 128-wide heads.
+  It additionally requires Qwen softplus-decay gates, sigmoid beta,
+  gated-delta updates, Q/K L2 normalization, uniform non-packed sequence
+  metadata, and no per-key decay, state-update tail pass, or short-row tail
+  pass.
+- `ORT_CAUSAL_CONV_S2_SPECIALIZE=1` specializes the companion
+  `CausalConvWithState` extended (packed-channel) projection path for kernel size
+  four, state length four and dilation one. Lengths below 16 use the per-position
+  specialized kernel and lengths of 16 or more use the tiled kernel (eight
+  positions per CTA). The `activation`
+  attribute (`none`, `silu` or `swish`; the last two are identical) is honored
+  as configured and is not part of the dispatch condition. Layout, optional
+  bias, and first-token state semantics are unchanged.
+
+Both specialization switches default to `1` and accept only `0` or `1`.
+Unsupported geometry retains generic dispatch. These options do not alter
+operator schemas, state layouts, or the default package configuration.
+
+### Benchmark
+
+Op-level GPU kernel time per call on NVIDIA H200 (SM90, driver 580.159.04, CUDA 13.0, ORT 1.32.0 integration build
+of this branch), measured 2026-10-27 at the Qwen3.8-Flash-Next rc3 production geometry
+(taken from the rc3 DFlash2 graph): `GatedDeltaNet` with packed BF16 QKV `(B, S, 10240)`, 16 q/k heads, 48 v heads,
+head size 128, FP32 state `(B, 48, 128, 128)`, BF16 decay/beta, `gated_delta`/`softplus`/`sigmoid`,
+`qk_l2_norm=1`, `state_update_capacity=7`; `CausalConvWithState` with BF16 `(B, S, 10240)` channels-last input,
+K=4, `state_length=4`, `dilation=1`, `silu`, `state_update_capacity=7`. Median kernel duration in microseconds
+(lower is better), specialized (`=1`, default) versus generic (`=0`) in a fresh process per setting. Outputs are
+bit-identical between the two settings for every row (max abs diff 0 on every output, including the state and
+`state_update`).
+
+`GatedDeltaNet` (`ORT_GDN_S2_SPECIALIZE`; S is tokens per request, S=8 is the production verification step):
+
+| Batch | S | QwenS2 (us) | Generic (us) | Speedup |
+|---:|---:|---:|---:|---:|
+| 1 | 1 | 4.83 | 6.05 | 1.25x |
+| 1 | 2 | 6.82 | 8.16 | 1.20x |
+| 1 | 4 | 10.94 | 12.74 | 1.16x |
+| 1 | 8 | 18.82 | 21.60 | 1.15x |
+| 2 | 8 | 40.74 | 40.74 | 1.00x (generic kernel; not eligible) |
+| 4 | 8 | 74.88 | 74.88 | 1.00x (generic kernel; not eligible) |
+| 8 | 8 | 142.24 | 142.24 | 1.00x (generic kernel; not eligible) |
+
+`CausalConvWithState` (`ORT_CAUSAL_CONV_S2_SPECIALIZE`):
+
+| Batch | S | Specialized (us) | Generic (us) | Speedup |
+|---:|---:|---:|---:|---:|
+| 1 | 1 | 1.76 | 2.21 | 1.25x |
+| 1 | 2 | 2.02 | 2.46 | 1.22x |
+| 1 | 4 | 2.30 | 2.75 | 1.19x |
+| 1 | 8 | 2.46 | 2.98 | 1.21x |
+| 2 | 8 | 2.94 | 3.49 | 1.18x |
+| 4 | 8 | 4.13 | 5.60 | 1.36x |
+| 8 | 8 | 6.78 | 9.28 | 1.37x |
+| 1 | 16 (tiled) | 3.90 | 3.36 | 0.86x |
+| 1 | 2048 (tiled) | 55.13 | 223.97 | 4.06x |
+
+QwenS2 trims 1.2-2.8 us (13-20%) from each single-request decode call; at S=8 that is 2.8 us x 36 GDN layers, or
+roughly 0.1 ms per verification cycle; the S<=8 convolution kernel saves about 0.5 us per call at batch 1 and
+more at larger batch. The tiled convolution kernel is the main win for prefill (4x at 2048 tokens), but at the
+smallest tiled length (S=16) it is slightly slower than the generic kernel (0.86x, +0.5 us), an absolute cost that is
+negligible next to the S>=2048 gain.
+
+End to end on the rc3 model (INT4 `all_int4`, decode ms per DFlash2 S=8 cycle, H200, median of 5 repetitions):
+
+| Context | Default | `ORT_GDN_S2_SPECIALIZE=0` |
+|---:|---:|---:|
+| 2K | 14.93 | 15.03 |
+| 8K | 15.07 | 15.17 |
+| 32K | 15.30 | 15.45 |
+
+That is +0.10 to +0.15 ms per cycle without QwenS2, i.e. QwenS2 decodes about 0.7-1.0% faster.
+`ORT_CAUSAL_CONV_S2_SPECIALIZE=0` leaves decode unchanged but raises time to first token by 2.9-3.1% (2K / 8K / 32K
+prompts: 0.1987 -> 0.2044 s, 0.8506 -> 0.8791 s, 3.5843 -> 3.6942 s).
+
+Methodology: each op is a single-node ONNX model with random BF16/FP32 inputs (fixed seeds), `state_update`
+capture enabled (`capture_count = min(S, 7)`), 48 copies of the node (distinct state tensors, like the 48 layers) in
+one CUDA-graph-captured session with IOBinding and device-resident inputs; 30 warm-up replays and 300 timed replays
+(14,400 kernel instances per row). Kernel durations come from Nsight Systems (`--cuda-graph-trace=node`), so host
+launch and inter-kernel gaps are excluded; the table gives the median of the three per-process medians (spread across
+processes <= 0.15 us, every row run on the same GPU as its counterpart). Wall-clock back-to-back graph replay
+(slope between 16- and 48-node graphs) agrees for the large kernels (conv S=2048: 54 vs 224 us; GDN S=8: 20.5 vs
+23.6 us, which includes about 1.8 us of per-node launch gap) but is noisy for kernels of a few microseconds, so it is
+not used here. Run `ORT_GDN_S2_SPECIALIZE=0/1` and `ORT_CAUSAL_CONV_S2_SPECIALIZE=0/1` in separate processes because
+the switches are cached on first use.
+
 This document describes the `com.microsoft::GatedDeltaNet` contrib operator: its schema and
 state contract, the chunked and warp-specialised CUDA engines and how one is selected, the
 consumer-Blackwell shared-memory constraint, and measured comparisons against
@@ -56,7 +146,7 @@ Source:
 |---|---|---|---|
 | `update_rule` | string | `gated_delta` | One of `linear`, `gated`, `delta`, `gated_delta`. Selects which of the decay and delta-retrieval terms are present. |
 | `scale` | float | `0.0` | Output scale. `0.0` means `1/sqrt(head_size_qk)`. |
-| `gate_activation` | string | `none` | `none` treats `decay` as the effective log-space decay. `qwen` computes `-exp(a_log) * Softplus(decay + dt_bias)` in float32. |
+| `gate_activation` | string | `none` | `none` treats `decay` as the effective log-space decay. `softplus` computes `-exp(a_log) * Softplus(decay + dt_bias)` in float32. `qwen` is accepted as a legacy alias of `softplus` with identical behavior. |
 | `beta_activation` | string | `none` | `none` treats `beta` as the effective update rate; `sigmoid` applies a sigmoid. |
 | `qk_l2_norm` | int | `0` | When `1`, L2-normalizes each query and key head vector in-kernel. |
 | `chunk_size` | int | `64` | Chunk length for the chunked engine. `32` pins the reduced shared-memory configuration (see §6). |
@@ -514,7 +604,7 @@ support three intermediate precision modes controlled by session option
 
 Measured on NVIDIA H200 (`sm_90a`, CUDA 13.0) at the Qwen3.8-Flash-Next geometry
 (`batch = 1`, `num_heads_q = num_heads_k = 16`, `num_heads_v = 32`, `head_size_qk = head_size_v = 128`,
-`update_rule = "gated_delta"`, `gate_activation = "qwen"`, `beta_activation = "sigmoid"`,
+`update_rule = "gated_delta"`, `gate_activation = "softplus"`, `beta_activation = "sigmoid"`,
 `qk_l2_norm = 1`, 36 GDN layers) against the sequential `float32` `recurrent` engine reference:
 
 | Sequence Length | Mode | 1-Op Latency (us) | 36-Layer Time (ms) | Output RMSE vs. `recurrent` | State RMSE vs. `recurrent` | Exact BF16 Output Match |

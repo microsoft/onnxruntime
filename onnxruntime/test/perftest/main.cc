@@ -156,6 +156,13 @@ Ort::Status CompileEpContextModel(Ort::Env& env, const perftest::PerformanceTest
 
   Ort::SessionOptions session_options;
 
+  // Enable profiling for the compile session too. Some EPs (e.g. OpenVINO) only embed profiling
+  // support in the compiled blob when profiling is enabled at compile time.
+  if (!test_config.run_config.profile_file.empty()) {
+    const auto compile_profile_file = test_config.run_config.profile_file + ORT_TSTR("_compile");
+    session_options.EnableProfiling(compile_profile_file.c_str());
+  }
+
   // Add EP devices if any (created by plugin EP)
   if (!test_config.registered_plugin_eps.empty()) {
     perftest::utils::AppendPluginExecutionProviders(env, session_options, test_config);

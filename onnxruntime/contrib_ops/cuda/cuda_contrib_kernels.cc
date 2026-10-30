@@ -161,6 +161,11 @@ class CUDA_ONNX_OP_TYPED_CLASS_NAME(1, MLFloat16, ParametricSoftplus);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, RotaryEmbedding);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, RotaryEmbedding);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, RotaryEmbedding);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, SwiGLU);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, SwiGLU);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, SwiGLU);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, RouterGateUpProj);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, RouterGateUpProj);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, MRotaryEmbedding);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, MRotaryEmbedding);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, MRotaryEmbedding);
@@ -282,9 +287,10 @@ class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, SparseAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, SparseAttentionIndexer);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, SparseAttentionIndexer);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, SparseAttentionIndexer);
-class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, PackedSparseAttentionIndexer);
-class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, PackedSparseAttentionIndexer);
-class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, PackedSparseAttentionIndexer);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, float_float, PackedSparseAttentionIndexer);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16_MLFloat16, PackedSparseAttentionIndexer);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16_BFloat16, PackedSparseAttentionIndexer);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16_float, PackedSparseAttentionIndexer);
 class CUDA_MS_OP_CLASS_NAME(1, PackedSparseAttentionIndexerMerge);
 
 class CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, uint8_t, float, int32_t, GatherBlockQuantized);
@@ -530,6 +536,11 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, RotaryEmbedding)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, RotaryEmbedding)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, RotaryEmbedding)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, SwiGLU)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, SwiGLU)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, SwiGLU)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, RouterGateUpProj)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, RouterGateUpProj)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, MRotaryEmbedding)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, MRotaryEmbedding)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, MRotaryEmbedding)>,
@@ -657,9 +668,10 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, SparseAttentionIndexer)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, SparseAttentionIndexer)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, SparseAttentionIndexer)>,
-      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, PackedSparseAttentionIndexer)>,
-      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, PackedSparseAttentionIndexer)>,
-      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, PackedSparseAttentionIndexer)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float_float, PackedSparseAttentionIndexer)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16_MLFloat16, PackedSparseAttentionIndexer)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16_BFloat16, PackedSparseAttentionIndexer)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16_float, PackedSparseAttentionIndexer)>,
       BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, PackedSparseAttentionIndexerMerge)>,
       BuildKernelCreateInfo<CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, uint8_t, float, int32_t, GatherBlockQuantized)>,
       BuildKernelCreateInfo<CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, uint8_t, float, int64_t, GatherBlockQuantized)>,

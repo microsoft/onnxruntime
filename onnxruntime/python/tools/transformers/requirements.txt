@@ -7,7 +7,7 @@ packaging
 transformers >= 5.10.1
 scipy
 sentencepiece
-pillow
+pillow >= 13.0.0
 
 # please follow https://pytorch.org/ to install PyTorch for your OS
 torch >= 2.6.0
