@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -94,18 +95,29 @@ float ReferenceLogSumExp(const float* values, size_t count) {
 }
 
 // Builds `num_rows` rows of `row_length` values by cycling through `row_patterns`, then reduces
-// the last axis and checks against ReferenceLogSumExp.
-void TestLogSumExpRows(const std::vector<std::vector<float>>& row_patterns, int64_t num_rows) {
+// the last axis and checks against ReferenceLogSumExp. Float16 values are rounded first.
+template <typename T>
+void TestLogSumExpRows(const std::vector<std::vector<float>>& row_patterns, int64_t num_rows, float abs_error) {
   const size_t row_length = row_patterns[0].size();
   std::vector<float> input;
   std::vector<float> expected;
   for (int64_t r = 0; r < num_rows; ++r) {
-    const auto& row = row_patterns[static_cast<size_t>(r) % row_patterns.size()];
+    std::vector<float> row = row_patterns[static_cast<size_t>(r) % row_patterns.size()];
+    if constexpr (std::is_same_v<T, MLFloat16>) {
+      for (float& v : row) {
+        v = MLFloat16(v).ToFloat();
+      }
+    }
     input.insert(input.end(), row.begin(), row.end());
     expected.push_back(ReferenceLogSumExp(row.data(), row.size()));
   }
-  RunReduceOnWebGpu<float>("ReduceLogSumExp", {num_rows, static_cast<int64_t>(row_length)}, input, {1}, 0,
-                           {num_rows}, expected, 1e-4f);
+  const std::vector<int64_t> input_shape{num_rows, static_cast<int64_t>(row_length)};
+  if constexpr (std::is_same_v<T, MLFloat16>) {
+    RunReduceOnWebGpu<MLFloat16>("ReduceLogSumExp", input_shape, FloatsToMLFloat16s(input), {1}, 0, {num_rows},
+                                 FloatsToMLFloat16s(expected), abs_error);
+  } else {
+    RunReduceOnWebGpu<float>("ReduceLogSumExp", input_shape, input, {1}, 0, {num_rows}, expected, abs_error);
+  }
 }
 
 // WebNN conformance reduceL2 float16 input. The sum of squares (~74000) exceeds the f16 range
@@ -146,6 +158,9 @@ TEST(ReductionOpTest, ReduceSum_Float16_SharedPath_IntermediateOverflow_WebGpu) 
 TEST(ReductionOpTest, ReduceMean_Float16_SharedPath_IntermediateOverflow_WebGpu) {
   RunReduceOnWebGpu<MLFloat16>("ReduceMean", {2}, FloatsToMLFloat16s({60000.0f, 60000.0f}), {0}, 0, {},
                                FloatsToMLFloat16s({60000.0f}));
+  // With 257-element rows, each invocation's own sum of 4 or 5 elements overflows f16.
+  RunReduceOnWebGpu<MLFloat16>("ReduceMean", {2, 257}, FloatsToMLFloat16s(std::vector<float>(514, 60000.0f)), {1}, 0,
+                               {2}, FloatsToMLFloat16s({60000.0f, 60000.0f}));
 }
 
 TEST(ReductionOpTest, ReduceLogSum_Float16_SharedPath_LargeSum_WebGpu) {
@@ -171,24 +186,48 @@ TEST(ReductionOpTest, ReduceLogSumExp_SharedPath_WebGpu) {
   }
   std::vector<float> one_pos_inf(64, 0.0f);
   one_pos_inf[37] = kInf;
-  TestLogSumExpRows({std::vector<float>(64, 100.0f),
-                     std::vector<float>(64, -100.0f),
-                     std::vector<float>(64, -kInf),
-                     neg_inf_and_three,
-                     one_pos_inf,
-                     increasing},
-                    6);
+  TestLogSumExpRows<float>({std::vector<float>(64, 100.0f),
+                            std::vector<float>(64, -100.0f),
+                            std::vector<float>(64, -kInf),
+                            neg_inf_and_three,
+                            one_pos_inf,
+                            increasing},
+                           6, 1e-4f);
+}
+
+TEST(ReductionOpTest, ReduceLogSumExp_SharedPath_LongRows_WebGpu) {
+  // 257-element rows make each invocation loop over several elements: 4 or 5 with several rows (64
+  // invocations); with one row (256 invocations), index 256 is invocation 0's second element. If
+  // the max loop misses the 1000 in a later chunk, exp(1000 - max) overflows. In sum_late every
+  // element contributes and index 256 dominates.
+  constexpr size_t kRowLength = 257;
+  std::vector<float> max_late(kRowLength);
+  std::vector<float> sum_late(kRowLength);
+  for (size_t i = 0; i < kRowLength; ++i) {
+    max_late[i] = 0.25f * static_cast<float>(i % 41) - 5.0f;
+    sum_late[i] = -0.125f * static_cast<float>(i % 23);
+  }
+  std::vector<float> max_mid = max_late;
+  max_late[256] = 1000.0f;
+  max_mid[130] = 1000.0f;
+  sum_late[256] = 3.0f;
+  TestLogSumExpRows<float>({max_late, max_mid, sum_late}, 3, 1e-4f);
+  TestLogSumExpRows<MLFloat16>({max_late, max_mid, sum_late}, 3, 0.01f);
+  for (const auto& row : {max_late, sum_late}) {
+    TestLogSumExpRows<float>({row}, 1, 1e-4f);
+    TestLogSumExpRows<MLFloat16>({row}, 1, 0.01f);
+  }
 }
 
 TEST(ReductionOpTest, ReduceLogSumExp_NaivePath_WebGpu) {
-  TestLogSumExpRows({{100.0f, 100.0f},
-                     {-100.0f, -99.0f},
-                     {-kInf, -kInf},
-                     {-kInf, 3.0f},
-                     {5.0f, -kInf},
-                     {kInf, 1.0f},
-                     {1.0f, kInf}},
-                    1036);
+  TestLogSumExpRows<float>({{100.0f, 100.0f},
+                            {-100.0f, -99.0f},
+                            {-kInf, -kInf},
+                            {-kInf, 3.0f},
+                            {5.0f, -kInf},
+                            {kInf, 1.0f},
+                            {1.0f, kInf}},
+                           1036, 1e-4f);
 }
 
 TEST(ReductionOpTest, ReduceLogSumExp_Float16_WebGpu) {
