@@ -231,7 +231,8 @@ void LaunchFilterLogitsKernel(float* d_sorted_logits_in,
                               cudaStream_t stream,
                               bool is_descending);
 
-void TorchMultinomialKernelLauncher(float* d_input,
+void TorchMultinomialKernelLauncher(const cudaDeviceProp& device_prop,
+                                    float* d_input,
                                     float* d_sampled,
                                     int32_t* d_output,
                                     int batch_size,

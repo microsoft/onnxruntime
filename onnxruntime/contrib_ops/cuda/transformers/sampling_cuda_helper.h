@@ -19,7 +19,8 @@ namespace contrib {
 namespace SamplingCudaHelper {
 
 template <typename T>
-Status Sample(AllocatorPtr& allocator,
+Status Sample(const cudaDeviceProp& device_prop,
+              AllocatorPtr& allocator,
               Stream* stream,
               gsl::span<T>& next_token_scores,
               transformers::ISamplingState<T>* sampling_state,
@@ -166,7 +167,8 @@ Status Sample(AllocatorPtr& allocator,
 
   gsl::span<int32_t>& d_indices = sampling_state->d_indices;
   gsl::span<int>& presence_mask = sampling_state->d_presence_mask;
-  cuda::TorchMultinomialKernelLauncher(d_softmaxed_score.data(),
+  cuda::TorchMultinomialKernelLauncher(device_prop,
+                                       d_softmaxed_score.data(),
                                        d_sampled.data(),
                                        d_indices.data(),
                                        parameters->batch_size,

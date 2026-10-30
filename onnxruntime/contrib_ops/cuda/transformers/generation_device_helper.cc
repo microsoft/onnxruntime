@@ -816,6 +816,7 @@ std::unique_ptr<transformers::IBeamScorer> CreateBeamScorer(const transformers::
 
 template <typename T>
 Status GreedySearchProcessLogits(
+    const cudaDeviceProp& device_prop,
     const OrtValue& logits,                                 // logits output of subgraph
     transformers::IGreedySearchState<T>* greedy_state,      // state
     transformers::ISamplingState<T>* sampling_state,        // buffers
@@ -963,7 +964,8 @@ Status GreedySearchProcessLogits(
   ORT_UNUSED_PARAMETER(output_scores);
 
   if (do_sampling) {
-    ORT_RETURN_IF_ERROR(SamplingCudaHelper::Sample(allocator,
+    ORT_RETURN_IF_ERROR(SamplingCudaHelper::Sample(device_prop,
+                                                   allocator,
                                                    stream,
                                                    next_token_scores,
                                                    sampling_state,
@@ -1460,6 +1462,7 @@ template Status ProcessLogits<float>(
     const IConsoleDumper* dumper);
 
 template Status GreedySearchProcessLogits<float>(
+    const cudaDeviceProp& device_prop,
     const OrtValue& logits,
     transformers::IGreedySearchState<float>* greedy_state,
     transformers::ISamplingState<float>* sampling_state,
@@ -1531,6 +1534,7 @@ template Status ProcessLogits<MLFloat16>(
     const IConsoleDumper* dumper);
 
 template Status GreedySearchProcessLogits<MLFloat16>(
+    const cudaDeviceProp& device_prop,
     const OrtValue& logits,
     transformers::IGreedySearchState<MLFloat16>* greedy_state,
     transformers::ISamplingState<MLFloat16>* sampling_state,
