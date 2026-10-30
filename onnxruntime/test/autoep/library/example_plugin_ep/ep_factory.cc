@@ -6,6 +6,7 @@
 #include <cassert>
 #include <limits>
 #include <optional>
+#include <string>
 #include <string_view>
 
 #include "ep.h"
@@ -214,8 +215,13 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::GetSupportedDevicesImpl(OrtEpFactory* 
     // Reporting "BNHS" without implementing that fusion would steer applications into a layout
     // this EP cannot execute any faster, and the transposes would run for real.
     factory->ort_api.AddKeyValuePair(ep_metadata.get(), kOrtEpDevice_EpMetadataKey_GqaPreferredValueLayout, "BNSH");
-    // Report weightless support for all initializers.
-    factory->ort_api.AddKeyValuePair(ep_metadata.get(), kOrtEpDevice_EpMetadataKey_WeightlessSupport, "all");
+    // Report weightless support for both external initializers only and all initializers. "weightless_support"
+    // keeps the value reported before "weightless_supported_modes" was introduced, for apps written for earlier
+    // versions.
+    factory->ort_api.AddKeyValuePair(ep_metadata.get(), kOrtEpDevice_EpMetadataKey_WeightlessSupport,
+                                     GetLegacyWeightlessSupportMetadata());  // "all" unless changed by a test.
+    factory->ort_api.AddKeyValuePair(ep_metadata.get(), kOrtEpDevice_EpMetadataKey_WeightlessSupportedModes,
+                                     "all_or_external_only");
     factory->ort_api.AddKeyValuePair(ep_options.get(), "run_really_fast", "true");
 
     // OrtEpDevice copies ep_metadata and ep_options.
@@ -349,9 +355,9 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
                                                 config.advertise_ep_context_data_support));
   RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kExampleEpTestOrtVersion, "current",
                                                  test_ort_version));
-  if (test_ort_version != "current" && test_ort_version != "30") {
+  if (test_ort_version != "current" && test_ort_version != "30" && test_ort_version != "28") {
     return factory->ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
-                                         "Example EP test ORT version must be 'current' or '30'.");
+                                         "Example EP test ORT version must be 'current', '30' or '28'.");
   }
   RETURN_IF_ERROR(GetSessionConfigBoolOrDefault(*session_options, "ep.example.use_default_cpu_allocator",
                                                 false, config.use_default_cpu_allocator));
@@ -360,14 +366,61 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
   RETURN_IF_ERROR(GetSessionConfigBoolOrDefault(*session_options, "ep.example.test_execute_ep_context",
                                                 false, config.test_execute_ep_context));
 
+  std::string test_weightless_support;
+  RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kExampleEpTestWeightlessSupport, "",
+                                                 test_weightless_support));
+  std::string weightless_mode;
+  RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kOrtSessionOptionEpEnableWeightlessMode, "",
+                                                 weightless_mode));
+  RETURN_IF_ERROR(GetSessionConfigBoolOrDefault(*session_options, kExampleEpTestWeightlessDropInitializers, false,
+                                                config.drop_initializers_in_weightless_mode));
+
+  // Record the deprecated weightless option, which ORT sets to match "ep.enable_weightless_mode" before calling
+  // CreateEp(). EPs built for earlier versions only know the deprecated option.
+  std::string enable_weightless;
+  RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kOrtSessionOptionEpEnableWeightless, "<not set>",
+                                                 enable_weightless));
+  const void* source_model_data = nullptr;
+  size_t source_model_data_length = 0;
+  RETURN_IF_ERROR(factory->ep_api.SessionOptionsGetWeightlessSourceModelBuffer(session_options, &source_model_data,
+                                                                               &source_model_data_length));
+  RecordWeightlessSourceModelBuffer(source_model_data, source_model_data_length);
+
+  RecordEnableWeightlessOption(enable_weightless == "<not set>" ? -1
+                               : enable_weightless == "0"       ? 0
+                               : enable_weightless == "1"       ? 1
+                                                                : 2);
+
+  // Also record the older weightless option, which ORT disables for an explicit OrtWeightlessSupport_NONE.
+  std::string enable_weightless_ep_context_nodes;
+  RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kOrtSessionOptionEpEnableWeightlessEpContextNodes,
+                                                 "<not set>", enable_weightless_ep_context_nodes));
+  RecordEnableWeightlessEpContextNodesOption(enable_weightless_ep_context_nodes == "<not set>" ? -1
+                                             : enable_weightless_ep_context_nodes == "0"       ? 0
+                                             : enable_weightless_ep_context_nodes == "1"       ? 1
+                                                                                               : 2);
+
+  // This EP supports several weightless modes, so it honors the mode the app selects with "ep.enable_weightless_mode"
+  // (ORT has validated the value). The deprecated options request weightless mode without selecting one; this EP then
+  // uses weightless mode for all initializers, which is what it reports in the "weightless_support" EP metadata.
+  if (!weightless_mode.empty()) {
+    config.weightless_mode = static_cast<OrtWeightlessSupport>(std::stoi(weightless_mode));
+  } else if (enable_weightless == "1" || (config.enable_ep_context && config.enable_weightless_ep_context_nodes)) {
+    config.weightless_mode = OrtWeightlessSupport_ALL;
+  }
+  if (!test_weightless_support.empty()) {
+    config.weightless_support = static_cast<OrtWeightlessSupport>(std::stoi(test_weightless_support));
+  }
+
   // The EpContextConfig wrapper captures a stable snapshot of the EPContext callbacks from the session options and
   // owns the snapshot handle. EXCEPTION_TO_RETURNED_STATUS_END converts extraction failures into an OrtStatus.
   auto dummy_ep = std::make_unique<ExampleEp>(
       *factory, factory->ep_name_, config, *logger,
       Ort::EpContextConfig{Ort::ConstSessionOptions{session_options}});
-  if (test_ort_version == "30") {
-    // Keep the support callback populated to verify that ORT ignores it for older EP versions.
-    dummy_ep->ort_version_supported = 30;
+  if (test_ort_version == "30" || test_ort_version == "28") {
+    // Keep the support callbacks populated to verify that ORT ignores them for older EP versions. Version 28 predates
+    // GetWeightlessSupport().
+    dummy_ep->ort_version_supported = std::stoi(test_ort_version);
   }
   *ep = dummy_ep.release();
   return nullptr;

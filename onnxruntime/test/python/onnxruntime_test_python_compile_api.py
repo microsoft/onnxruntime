@@ -178,6 +178,78 @@ assert events == ["read", "selection", "write"], events
 
         self.unregister_execution_provider_library(ep_name)
 
+    def test_compile_weightless_all_warns_about_copied_internal_initializers(self):
+        """
+        Tests that compiling in weightless mode OrtWeightlessSupport_ALL warns when the EP lets ORT provide the
+        initializers (drop_constant_initializers = false), and initializers stored inside the source model are copied
+        into the compiled model because no initializer location function is set. Also checks the
+        "external_dependencies" metadata of the compiled model. The warning is written to the native stderr, so the
+        model is compiled in a subprocess.
+        """
+        ep_lib_path = get_shared_library_filename_for_platform("example_plugin_ep")
+        try:
+            ep_lib_path = os.path.realpath(get_name(ep_lib_path))
+        except FileNotFoundError:
+            self.skipTest(f"Skipping test because EP library '{ep_lib_path}' cannot be found")
+
+        script = (
+            "import sys\n"
+            "import onnxruntime as ort\n"
+            "ep_lib_path, input_model, output_model, weights_file = sys.argv[1:5]\n"
+            "ort.register_execution_provider_library('example_ep', ep_lib_path)\n"
+            "ep_device = next(d for d in ort.get_ep_devices() if d.ep_name == 'example_ep')\n"
+            "so = ort.SessionOptions()\n"
+            "so.add_session_config_entry('ep.enable_weightless_mode', '2')\n"
+            "so.add_provider_for_devices([ep_device], {})\n"
+            "location_func = None\n"
+            "if weights_file:\n"
+            "    weights = open(weights_file, 'wb')\n"
+            "    def location_func(name, value, external_info):\n"
+            "        data = value.numpy().tobytes()\n"
+            "        offset = weights.tell()\n"
+            "        weights.write(data)\n"
+            "        return ort.OrtExternalInitializerInfo(weights_file, offset, len(data))\n"
+            "compiler = ort.ModelCompiler(\n"
+            "    so, input_model, embed_compiled_data_into_model=True, get_initializer_location_func=location_func\n"
+            ")\n"
+            "compiler.compile_to_file(output_model)\n"
+        )
+        env = dict(os.environ)
+        env["PYTHONPATH"] = os.pathsep.join(
+            [os.path.dirname(os.path.dirname(os.path.abspath(onnxrt.__file__))), env.get("PYTHONPATH", "")]
+        )
+
+        input_model_path = os.path.realpath(get_name("mul_1.onnx"))
+        output_model_path = os.path.join(self._tmp_dir_path, "weightless_all_ctx.onnx")
+        weights_path = os.path.join(self._tmp_dir_path, "weightless_all_weights.bin")
+
+        def compile_model(weights_file: str) -> tuple[str, str]:
+            if os.path.exists(output_model_path):
+                os.remove(output_model_path)
+            result = subprocess.run(
+                [sys.executable, "-c", script, ep_lib_path, input_model_path, output_model_path, weights_file],
+                capture_output=True,
+                text=True,
+                env=env,
+                check=True,
+            )
+            compiled_model = onnx.load(output_model_path, load_external_data=False)
+            metadata = {entry.key: entry.value for entry in compiled_model.metadata_props}
+            # On Windows, ORT writes log messages to stderr as UTF-16, so drop the NUL characters of ASCII text.
+            return result.stderr.replace("\x00", ""), metadata["external_dependencies"]
+
+        warning = "ORT copies them into the EPContext model because no initializer location function"
+
+        # The initializer "W" is copied into the compiled model.
+        stderr, external_dependencies = compile_model("")
+        self.assertIn(warning, stderr)
+        self.assertEqual(external_dependencies, "")
+
+        # The initializer location function stores "W" in a weights file that could be shared by model variants.
+        stderr, external_dependencies = compile_model(weights_path)
+        self.assertNotIn(warning, stderr)
+        self.assertEqual(external_dependencies, "external_weights")
+
     def test_external_ep_context_data_callbacks(self):
         ep_lib_path = get_shared_library_filename_for_platform("example_plugin_ep")
         try:

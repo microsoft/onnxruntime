@@ -27,9 +27,11 @@
 #include "core/graph/model.h"
 #include "core/optimizer/graph_optimizer_registry.h"
 #include "core/session/abi_devices.h"
+#include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/plugin_ep/ep_allocator_utils.h"
+#include "test/capturing_sink.h"
 #include "test/util/include/api_asserts.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/file_util.h"
@@ -325,6 +327,32 @@ TEST(PluginExecutionProviderFactoryTest, CreatePluginExecutionProviderFailsForTo
   ASSERT_FALSE(status.IsOK());
   EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("invalid ort_version_supported"));
   EXPECT_EQ(context.ep_factory.GetReleaseEpCount(), 1);
+}
+
+// Test that the "all_or_external_only" value is only recognized in the "weightless_supported_modes" EP metadata entry.
+// The older "weightless_support" entry only allows the values defined in version 1.29, so a mode selected with
+// "ep.enable_weightless_mode" is rejected before the EP is created.
+TEST(PluginExecutionProviderFactoryTest, CreatePluginExecutionProvider_WeightlessAggregateValueOnlyInNewMetadataKey) {
+  auto create = [](const char* metadata_key) -> Status {
+    test_plugin_ep::CreateProviderTestContext context;
+    context.ep_device->ep_metadata.Add(metadata_key, "all_or_external_only");
+    context.ep_factory.SetNextEp(std::make_unique<test_plugin_ep::TestOrtEp>());
+
+    Ort::SessionOptions session_options;
+    session_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightlessMode, "2");
+
+    std::unique_ptr<PluginExecutionProvider> plugin_ep;
+    return context.provider_factory.CreatePluginExecutionProvider(
+        *static_cast<const OrtSessionOptions*>(session_options), test_plugin_ep::GetDefaultOrtLogger(), plugin_ep);
+  };
+
+  ASSERT_STATUS_OK(create(kOrtEpDevice_EpMetadataKey_WeightlessSupportedModes));
+
+  Status status = create(kOrtEpDevice_EpMetadataKey_WeightlessSupport);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.Code(), common::EP_FAIL);
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("EP metadata 'weightless_support' = "
+                                                          "'all_or_external_only', which is not recognized"));
 }
 
 TEST(PluginExecutionProviderFactoryTest, CreatePluginExecutionProviderAcceptsHighVersion) {
@@ -1063,6 +1091,258 @@ TEST(PluginExecutionProviderTest, KernelDefCxxApis) {
                                     .Build();
     EXPECT_NO_FATAL_FAILURE(check_kernel_def(*expected_def, actual_def.GetConst()));
   }
+}
+
+// Test that Compile() logs a warning when the value returned by GetWeightlessSupport() does not match the weightless EP
+// metadata, and only fails if the EP does not support the requested mode.
+TEST(PluginExecutionProviderTest, Compile_WeightlessSupportDoesNotMatchEpMetadata) {
+  auto hw_device = test_plugin_ep::MakeTestOrtHardwareDevice(OrtHardwareDeviceType_CPU);
+  auto ep_device = test_plugin_ep::MakeTestOrtEpDevice(hw_device.get());
+  ep_device->ep_metadata.Add(kOrtEpDevice_EpMetadataKey_WeightlessSupportedModes, "all_or_external_only");
+  const std::vector<const OrtEpDevice*> ep_devices{ep_device.get()};
+
+  using GetWeightlessSupportFn = OrtStatus*(ORT_API_CALL*)(const OrtEp*, OrtWeightlessSupport*) noexcept;
+  GetWeightlessSupportFn external_only = [](const OrtEp*, OrtWeightlessSupport* support) noexcept -> ::OrtStatus* {
+    *support = OrtWeightlessSupport_EXTERNAL_ONLY;
+    return nullptr;
+  };
+  GetWeightlessSupportFn all_or_external_only = [](const OrtEp*,
+                                                   OrtWeightlessSupport* support) noexcept -> ::OrtStatus* {
+    *support = OrtWeightlessSupport_ALL_OR_EXTERNAL_ONLY;
+    return nullptr;
+  };
+
+  // Calls Compile() without fused nodes, which still validates the weightless mode, and returns the logged messages.
+  auto compile = [](const std::vector<const OrtEpDevice*>& ep_devices, const char* weightless_mode,
+                    GetWeightlessSupportFn get_weightless_support, std::vector<std::string>& messages) -> Status {
+    auto capturing_sink = std::make_unique<CapturingSink>();
+    CapturingSink* sink = capturing_sink.get();
+    logging::LoggingManager logging_manager(std::move(capturing_sink), logging::Severity::kWARNING, false,
+                                            logging::LoggingManager::InstanceType::Temporal);
+    std::unique_ptr<logging::Logger> logger = logging_manager.CreateLogger("WeightlessTest");
+
+    Ort::SessionOptions session_options;
+    session_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightlessMode, weightless_mode);
+
+    auto ort_ep = std::make_unique<test_plugin_ep::TestOrtEp>();
+    ort_ep->GetWeightlessSupport = get_weightless_support;
+    ort_ep->Compile = [](OrtEp*, const OrtGraph**, const OrtNode**, size_t, OrtNodeComputeInfo**,
+                         OrtNode**) noexcept -> ::OrtStatus* { return nullptr; };
+    ort_ep->ReleaseNodeComputeInfos = [](OrtEp*, OrtNodeComputeInfo**, size_t) noexcept {};
+
+    Status status;
+    {
+      PluginExecutionProvider ep(UniqueOrtEp(ort_ep.release(), OrtEpDeleter{test_plugin_ep::g_test_ort_ep_factory}),
+                                 *static_cast<const OrtSessionOptions*>(session_options),
+                                 test_plugin_ep::g_test_ort_ep_factory, ep_devices, /*kernel_registry*/ nullptr,
+                                 *logger);
+      std::vector<NodeComputeInfo> node_compute_infos;
+      status = ep.Compile({}, node_compute_infos);
+    }
+
+    messages = sink->Messages();
+    return status;
+  };
+
+  const std::string mismatch =
+      "GetWeightlessSupport() returns 'external_only', but the EP metadata of the EP's devices supports "
+      "'all_or_external_only' in common: EP metadata 'weightless_supported_modes' = 'all_or_external_only'";
+  auto has_mismatch_warning = [&mismatch](const std::vector<std::string>& messages) {
+    return std::any_of(messages.begin(), messages.end(), [&mismatch](const std::string& message) {
+      return message.find("[W:") != std::string::npos && message.find(mismatch) != std::string::npos;
+    });
+  };
+
+  // The requested mode is supported by both, so the mismatch is only a warning.
+  {
+    std::vector<std::string> messages;
+    ASSERT_STATUS_OK(compile(ep_devices, "1", external_only, messages));
+    EXPECT_TRUE(has_mismatch_warning(messages));
+  }
+
+  // The requested mode is not supported by GetWeightlessSupport(): the error includes the mismatch.
+  {
+    std::vector<std::string> messages;
+    Status status = compile(ep_devices, "2", external_only, messages);
+    ASSERT_FALSE(status.IsOK());
+    EXPECT_EQ(status.Code(), common::EP_FAIL);
+    EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr(mismatch));
+    EXPECT_TRUE(has_mismatch_warning(messages));
+  }
+
+  // GetWeightlessSupport() matches the EP metadata: no warning.
+  {
+    std::vector<std::string> messages;
+    ASSERT_STATUS_OK(compile(ep_devices, "1", all_or_external_only, messages));
+    EXPECT_FALSE(has_mismatch_warning(messages));
+  }
+
+  // "all_or_external_only" is not valid in the older "weightless_support" EP metadata entry, so it does not match.
+  {
+    auto legacy_ep_device = test_plugin_ep::MakeTestOrtEpDevice(hw_device.get());
+    legacy_ep_device->ep_metadata.Add(kOrtEpDevice_EpMetadataKey_WeightlessSupport, "all_or_external_only");
+    const std::vector<const OrtEpDevice*> legacy_ep_devices{legacy_ep_device.get()};
+
+    std::vector<std::string> messages;
+    ASSERT_STATUS_OK(compile(legacy_ep_devices, "1", all_or_external_only, messages));
+    const std::string legacy_mismatch =
+        "GetWeightlessSupport() returns 'all_or_external_only', but the EP metadata of the EP's devices includes "
+        "values that are not recognized: EP metadata 'weightless_support' = 'all_or_external_only'";
+    EXPECT_TRUE(std::any_of(messages.begin(), messages.end(), [&legacy_mismatch](const std::string& message) {
+      return message.find("[W:") != std::string::npos && message.find(legacy_mismatch) != std::string::npos;
+    }));
+  }
+
+  // An EP instance created for several devices supports the modes all of them support: here "external_only", common
+  // to a device that reports "all_or_external_only" and one that reports "external_only".
+  {
+    auto external_only_ep_device = test_plugin_ep::MakeTestOrtEpDevice(hw_device.get());
+    external_only_ep_device->ep_metadata.Add(kOrtEpDevice_EpMetadataKey_WeightlessSupportedModes, "external_only");
+    const std::vector<const OrtEpDevice*> heterogeneous_ep_devices{ep_device.get(), external_only_ep_device.get()};
+    auto has_any_warning = [](const std::vector<std::string>& messages) {
+      return std::any_of(messages.begin(), messages.end(), [](const std::string& message) {
+        return message.find("[W:") != std::string::npos &&
+               message.find("GetWeightlessSupport() returns") != std::string::npos;
+      });
+    };
+
+    // Matches the common support: no warning.
+    std::vector<std::string> messages;
+    ASSERT_STATUS_OK(compile(heterogeneous_ep_devices, "1", external_only, messages));
+    EXPECT_FALSE(has_any_warning(messages));
+
+    // Does not match the common support.
+    messages.clear();
+    ASSERT_STATUS_OK(compile(heterogeneous_ep_devices, "1", all_or_external_only, messages));
+    const std::string heterogeneous_mismatch =
+        "GetWeightlessSupport() returns 'all_or_external_only', but the EP metadata of the EP's devices supports "
+        "'external_only' in common:";
+    EXPECT_TRUE(std::any_of(messages.begin(), messages.end(), [&heterogeneous_mismatch](const std::string& message) {
+      return message.find("[W:") != std::string::npos && message.find(heterogeneous_mismatch) != std::string::npos;
+    }));
+  }
+}
+
+// Test that the external dependencies of the EPContext nodes generated in weightless mode include the initializers
+// defined inside the subgraphs of the compiled nodes. Here the EP compiles a whole If node whose then-branch uses a
+// branch-local initializer, which can't be an input of the fused node, so the EP obtains it itself and, in
+// OrtWeightlessSupport_ALL mode, depends on the source model for it.
+TEST(PluginExecutionProviderTest, Compile_WeightlessDependenciesIncludeSubgraphInitializers) {
+  auto set_tensor_type = [](ONNX_NAMESPACE::ValueInfoProto& value_info, const std::string& name, int32_t elem_type,
+                            std::initializer_list<int64_t> dims) {
+    value_info.set_name(name);
+    auto* tensor_type = value_info.mutable_type()->mutable_tensor_type();
+    tensor_type->set_elem_type(elem_type);
+    auto* shape = tensor_type->mutable_shape();
+    for (int64_t dim : dims) {
+      shape->add_dim()->set_dim_value(dim);
+    }
+  };
+
+  // Y = If(cond) { then: Mul(X, W), where W is a then-branch initializer } else { Identity(X) }
+  ONNX_NAMESPACE::ModelProto model_proto;
+  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  auto* opset = model_proto.add_opset_import();
+  opset->set_domain("");
+  opset->set_version(13);
+
+  ONNX_NAMESPACE::GraphProto then_branch;
+  then_branch.set_name("then_branch");
+  auto* w = then_branch.add_initializer();
+  w->set_name("W");
+  w->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  w->add_dims(2);
+  w->add_float_data(1.0f);
+  w->add_float_data(2.0f);
+  auto* mul = then_branch.add_node();
+  mul->set_op_type("Mul");
+  mul->add_input("X");
+  mul->add_input("W");
+  mul->add_output("then_out");
+  set_tensor_type(*then_branch.add_output(), "then_out", ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {2});
+
+  ONNX_NAMESPACE::GraphProto else_branch;
+  else_branch.set_name("else_branch");
+  auto* identity = else_branch.add_node();
+  identity->set_op_type("Identity");
+  identity->add_input("X");
+  identity->add_output("else_out");
+  set_tensor_type(*else_branch.add_output(), "else_out", ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {2});
+
+  auto* main_graph = model_proto.mutable_graph();
+  main_graph->set_name("main_graph");
+  set_tensor_type(*main_graph->add_input(), "cond", ONNX_NAMESPACE::TensorProto_DataType_BOOL, {});
+  set_tensor_type(*main_graph->add_input(), "X", ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {2});
+  set_tensor_type(*main_graph->add_output(), "Y", ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {2});
+  auto* if_node_proto = main_graph->add_node();
+  if_node_proto->set_op_type("If");
+  if_node_proto->set_name("if_node");
+  if_node_proto->add_input("cond");
+  if_node_proto->add_output("Y");
+  auto* then_attribute = if_node_proto->add_attribute();
+  then_attribute->set_name("then_branch");
+  then_attribute->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+  *then_attribute->mutable_g() = then_branch;
+  auto* else_attribute = if_node_proto->add_attribute();
+  else_attribute->set_name("else_branch");
+  else_attribute->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+  *else_attribute->mutable_g() = else_branch;
+
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(std::move(model_proto), model, nullptr, DefaultLoggingManager().DefaultLogger()));
+  Graph& graph = model->MainGraph();
+
+  // Fuse the If node, as the partitioner does before calling IExecutionProvider::Compile().
+  const Node* if_node = graph.GetProducerNode("Y");
+  ASSERT_NE(if_node, nullptr);
+  IndexedSubGraph indexed_sub_graph;
+  indexed_sub_graph.nodes.push_back(if_node->Index());
+  auto meta_def = std::make_unique<IndexedSubGraph::MetaDef>();
+  meta_def->name = "TestOrtEp_if_node";
+  meta_def->domain = "TestOrtEp";
+  meta_def->since_version = 1;
+  meta_def->inputs = {"cond", "X"};
+  meta_def->outputs = {"Y"};
+  indexed_sub_graph.SetMetaDef(std::move(meta_def));
+  GraphViewer graph_viewer(graph, indexed_sub_graph);
+  Node& fused_node = graph.BeginFuseSubGraph(indexed_sub_graph, "TestOrtEp_if_node");
+
+  auto hw_device = test_plugin_ep::MakeTestOrtHardwareDevice(OrtHardwareDeviceType_CPU);
+  auto ep_device = test_plugin_ep::MakeTestOrtEpDevice(hw_device.get());
+  ep_device->ep_metadata.Add(kOrtEpDevice_EpMetadataKey_WeightlessSupportedModes, "all");
+  const std::vector<const OrtEpDevice*> ep_devices{ep_device.get()};
+
+  Ort::SessionOptions session_options;
+  session_options.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
+  session_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightlessMode, "2");
+
+  auto ort_ep = std::make_unique<test_plugin_ep::TestOrtEp>();
+  ort_ep->GetWeightlessSupport = [](const OrtEp*, OrtWeightlessSupport* support) noexcept -> ::OrtStatus* {
+    *support = OrtWeightlessSupport_ALL;
+    return nullptr;
+  };
+  // ORT determines the dependencies before it calls OrtEp::Compile(), so the test EP stops the compilation there
+  // instead of creating compute infos and EPContext nodes.
+  ort_ep->Compile = [](OrtEp* this_ptr, const OrtGraph**, const OrtNode**, size_t, OrtNodeComputeInfo**,
+                       OrtNode**) noexcept -> ::OrtStatus* {
+    auto* test_ort_ep = static_cast<test_plugin_ep::TestOrtEp*>(this_ptr);
+    return test_ort_ep->ort_api->CreateStatus(ORT_FAIL, "Test EP stops after ORT determines the dependencies.");
+  };
+  ort_ep->ReleaseNodeComputeInfos = [](OrtEp*, OrtNodeComputeInfo**, size_t) noexcept {};
+
+  PluginExecutionProvider ep(UniqueOrtEp(ort_ep.release(), OrtEpDeleter{test_plugin_ep::g_test_ort_ep_factory}),
+                             *static_cast<const OrtSessionOptions*>(session_options),
+                             test_plugin_ep::g_test_ort_ep_factory, ep_devices, /*kernel_registry*/ nullptr,
+                             DefaultLoggingManager().DefaultLogger());
+
+  std::vector<NodeComputeInfo> node_compute_infos;
+  Status status = ep.Compile({IExecutionProvider::FusedNodeAndGraph{fused_node, graph_viewer}}, node_compute_infos);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Test EP stops after ORT determines the dependencies."));
+
+  const IExecutionProvider::EpContextExternalDependencies dependencies = ep.GetEpContextExternalDependencies();
+  EXPECT_TRUE(dependencies.source_model);
+  EXPECT_FALSE(dependencies.external_weights);
 }
 
 TEST(PluginExecutionProviderTest, IsConcurrentRunSupported) {
