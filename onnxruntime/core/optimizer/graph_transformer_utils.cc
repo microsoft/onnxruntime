@@ -79,6 +79,7 @@
 #include "core/optimizer/qdq_transformer/ensure_unique_dq_for_node_unit.h"
 #include "core/optimizer/qdq_transformer/qdq_propagation.h"
 #include "core/optimizer/qdq_transformer/qdq_s8_to_u8.h"
+#include "core/optimizer/qdq_transformer/quantize_dequantize_linear_fusion.h"
 #include "core/optimizer/qdq_transformer/relu_quantizelinear.h"
 #include "core/optimizer/quick_gelu_fusion.h"
 #include "core/optimizer/relu_clip_fusion.h"
@@ -525,6 +526,11 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       // PR #6351 implemented similar fusion-pattern for CUDA only, and can only fuse conv-add-relu,
       // while we can fuse more activation.
       transformers.emplace_back(std::make_unique<ConvAddActivationFusion>(cpu_ep));
+
+      // Runs after the Level2 Q/DQ node-unit fusions have converged, so it cannot hide a Q/DQ they could still use.
+      if (!disable_quant_qdq) {
+        transformers.emplace_back(std::make_unique<QuantizeDequantizeLinearFusion>(cpu_ep));
+      }
 #else
       ORT_UNUSED_PARAMETER(logger);
 #endif

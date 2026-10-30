@@ -1003,6 +1003,147 @@ MlasQuantizeLinearU4(
 
 #endif
 
+template<typename QuantType>
+void
+MlasQuantizeDequantizeLinearTwoPass(
+    const float* Input,
+    float* Output,
+    size_t N,
+    float Scale,
+    QuantType ZeroPoint
+    )
+{
+    // A multiple of 128 so each MlasQuantizeLinear call starts where QuantizeLinear's 128-element split would.
+    constexpr size_t ChunkSize = 512;
+    QuantType Quantized[ChunkSize];
+    const int32_t ZeroPointValue = ZeroPoint;
+
+    while (N > 0) {
+        const size_t Count = std::min(N, ChunkSize);
+        MlasQuantizeLinear(Input, Quantized, Count, Scale, ZeroPoint);
+        for (size_t n = 0; n < Count; n++) {
+            Output[n] = static_cast<float>(static_cast<int32_t>(Quantized[n]) - ZeroPointValue) * Scale;
+        }
+        Input += Count;
+        Output += Count;
+        N -= Count;
+    }
+}
+
+#if defined(MLAS_NEON64_INTRINSICS) || defined(MLAS_SSE2_INTRINSICS) || \
+    defined(MLAS_LSX_INTRINSICS)
+
+template<typename QuantType>
+void
+MlasQuantizeDequantizeLinearKernel(
+    const float* Input,
+    float* Output,
+    size_t N,
+    float Scale,
+    QuantType ZeroPoint
+    )
+/*++
+
+Routine Description:
+
+    This routine runs the per-element steps of MlasQuantizeLinearKernel and then
+    computes (Quantized - ZeroPoint) * Scale, without storing the quantized values.
+
+--*/
+{
+    constexpr int32_t MinimumValue = std::numeric_limits<QuantType>::lowest();
+    constexpr int32_t MaximumValue = std::numeric_limits<QuantType>::max();
+
+    auto ScaleVector = MlasBroadcastFloat32x4(Scale);
+    auto MinimumValueVector = MlasBroadcastFloat32x4(float(MinimumValue - ZeroPoint));
+    auto MaximumValueVector = MlasBroadcastFloat32x4(float(MaximumValue - ZeroPoint));
+    auto ZeroPointVector = MlasBroadcastInt32x4(ZeroPoint);
+
+    while (N >= 4) {
+
+        auto IntegerVector = MlasQuantizeLinearVector(MlasLoadFloat32x4(Input), ScaleVector,
+            MinimumValueVector, MaximumValueVector, ZeroPointVector);
+        IntegerVector = MlasSubtractInt32x4(IntegerVector, ZeroPointVector);
+        MlasStoreFloat32x4(Output, MlasMultiplyFloat32x4(MlasCastToFloat32x4(IntegerVector), ScaleVector));
+
+        Input += 4;
+        Output += 4;
+        N -= 4;
+    }
+
+    for (size_t n = 0; n < N; n++) {
+
+#if defined(MLAS_NEON64_INTRINSICS)
+        auto FloatVector = vld1q_dup_f32(Input + n);
+#elif defined(MLAS_LSX_INTRINSICS)
+        MLAS_FLOAT32X4 FloatVector = (MLAS_FLOAT32X4)__lsx_vldrepl_w(Input+n, 0);
+#else
+        auto FloatVector = _mm_load_ss(Input + n);
+#endif
+        auto IntegerVector = MlasQuantizeLinearVector(FloatVector, ScaleVector,
+            MinimumValueVector, MaximumValueVector, ZeroPointVector);
+        IntegerVector = MlasSubtractInt32x4(IntegerVector, ZeroPointVector);
+        MlasStoreLaneFloat32x4<0>(&Output[n],
+            MlasMultiplyFloat32x4(MlasCastToFloat32x4(IntegerVector), ScaleVector));
+    }
+}
+
+#endif
+
+template<typename QuantType>
+void
+MLASCALL
+MlasQuantizeDequantizeLinear(
+    const float* Input,
+    float* Output,
+    size_t N,
+    float Scale,
+    QuantType ZeroPoint
+    )
+{
+#if defined(MLAS_NEON64_INTRINSICS) || defined(MLAS_SSE2_INTRINSICS) || \
+    defined(MLAS_LSX_INTRINSICS)
+#if defined(MLAS_TARGET_AMD64)
+    // The single-pass kernel mirrors the default quantize kernel, so use two passes if another one is selected.
+    bool IsDefaultQuantizeKernel;
+    if constexpr (std::is_same_v<QuantType, uint16_t>) {
+        IsDefaultQuantizeKernel = GetMlasPlatform().QuantizeLinearU16Kernel == MlasQuantizeLinearU16Kernel;
+    } else {
+        IsDefaultQuantizeKernel = GetMlasPlatform().QuantizeLinearS16Kernel == MlasQuantizeLinearS16Kernel;
+    }
+    if (!IsDefaultQuantizeKernel) {
+        MlasQuantizeDequantizeLinearTwoPass(Input, Output, N, Scale, ZeroPoint);
+        return;
+    }
+#endif
+    MlasQuantizeDequantizeLinearKernel(Input, Output, N, Scale, ZeroPoint);
+#else
+    MlasQuantizeDequantizeLinearTwoPass(Input, Output, N, Scale, ZeroPoint);
+#endif
+}
+
+template
+void
+MLASCALL
+MlasQuantizeDequantizeLinear<uint16_t>(
+    const float* Input,
+    float* Output,
+    size_t N,
+    float Scale,
+    uint16_t ZeroPoint
+    );
+
+template
+void
+MLASCALL
+MlasQuantizeDequantizeLinear<int16_t>(
+    const float* Input,
+    float* Output,
+    size_t N,
+    float Scale,
+    int16_t ZeroPoint
+    );
+
 #if defined(MLAS_SSE2_INTRINSICS)
 
 template <typename OutputType>
