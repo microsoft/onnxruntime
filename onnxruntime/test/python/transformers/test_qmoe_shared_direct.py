@@ -292,7 +292,16 @@ class TestQMoESharedDirect(unittest.TestCase):
                         options.add_session_config_entry("session.disable_prepacking", "1")
                     if provider == "CUDAExecutionProvider":
                         options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
-                    session = ort.InferenceSession(model.SerializeToString(), options, providers=[provider])
+                    try:
+                        session = ort.InferenceSession(model.SerializeToString(), options, providers=[provider])
+                    except Exception as exc:
+                        if (
+                            provider == "CUDAExecutionProvider"
+                            and os.getenv("ORT_QMOE_REQUIRE_CUDA") != "1"
+                            and "Build configuration may be missing the corresponding kernel" in str(exc)
+                        ):
+                            continue
+                        raise
                     output = session.run(None, feeds)[0]
                     np.testing.assert_allclose(output, expected, rtol=0.025, atol=0.0016)
         self.assertEqual(before, [hashlib.sha256(value.tobytes()).digest() for value in feeds.values()])
