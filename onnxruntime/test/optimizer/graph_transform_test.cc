@@ -4475,6 +4475,61 @@ TEST_F(GraphTransformationTests, FuseNhwcConvErfForWebGpuEp) {
   ASSERT_STATUS_OK(RunConvActivationFusion(build_test_case, *logger_, check, 17));
 }
 
+TEST_F(GraphTransformationTests, NoFuseNhwcConvWithExistingActivation) {
+  // Graph-only coverage does not require the assigned EP to be available in this build.
+  for (const std::string ep : {"", kCpuExecutionProvider, kAclExecutionProvider,
+                               kJsExecutionProvider, kWebGpuExecutionProvider}) {
+    SCOPED_TRACE(ep.empty() ? "unassigned" : ep);
+    // The empty activation is a positive control: each EP must allow ordinary Conv + Tanh fusion.
+    for (const std::string activation : {"", "Relu", "Tanh", "LeakyRelu"}) {
+      SCOPED_TRACE(activation);
+      auto build_test_case = [&ep, &activation](ModelTestBuilder& builder) {
+        auto* input = builder.MakeInput<float>({1, 2, 2, 1}, -2.0f, 2.0f);
+        auto* weight = builder.MakeInitializer<float>({1, 1, 1, 1}, {1.0f});
+        auto* conv_out = builder.MakeIntermediate();
+        auto* output = builder.MakeOutput();
+        auto& conv = builder.AddNode("Conv", {input, weight}, {conv_out}, kMSInternalNHWCDomain);
+        conv.SetExecutionProviderType(ep);
+        if (!activation.empty()) {
+          conv.AddAttribute("activation", activation);
+        }
+        if (activation == "LeakyRelu") {
+          conv.AddAttribute("activation_params", std::vector<float>{0.25f});
+        }
+        builder.AddNode("Tanh", {conv_out}, {output}).SetExecutionProviderType(ep);
+      };
+      auto check = [&ep, &activation](Graph& graph) -> Status {
+        for (const auto& node : graph.Nodes()) {
+          ORT_RETURN_IF_NOT(node.GetExecutionProviderType() == ep, "execution provider assignment changed");
+        }
+        if (activation.empty()) {
+          return ExpectFusedInto(graph, "Tanh", {});
+        }
+
+        ORT_RETURN_IF_ERROR(ExpectNotFused("Tanh")(graph));
+        ORT_RETURN_IF_NOT(graph.NumberOfNodes() == 2, "expected Conv followed by Tanh");
+        for (const auto& node : graph.Nodes()) {
+          if (node.OpType() == "Conv") {
+            ORT_RETURN_IF_NOT(node.GetOutputEdgesCount() == 1 && node.OutputNodesBegin()->OpType() == "Tanh",
+                              "Tanh must still consume the fused Conv output");
+            const auto* attr = graph_utils::GetNodeAttribute(node, "activation");
+            ORT_RETURN_IF_NOT(attr && attr->s() == activation, "existing activation was replaced");
+            const auto* params = graph_utils::GetNodeAttribute(node, "activation_params");
+            if (activation == "LeakyRelu") {
+              ORT_RETURN_IF_NOT(params && params->floats_size() == 1 && params->floats(0) == 0.25f,
+                                "existing activation parameters were changed");
+            } else {
+              ORT_RETURN_IF_NOT(params == nullptr, "unexpected activation parameters");
+            }
+          }
+        }
+        return Status::OK();
+      };
+      EXPECT_STATUS_OK(RunConvActivationFusion(build_test_case, *logger_, check, 17));
+    }
+  }
+}
+
 // WebGPU has no Selu kernel.
 TEST_F(GraphTransformationTests, NoFuseNhwcConvSeluForWebGpuEp) {
   auto build_test_case = [](ModelTestBuilder& builder) {
@@ -4499,6 +4554,69 @@ TEST_F(GraphTransformationTests, NoFuseNhwcConvGeluForCpuEp) {
   };
 
   ASSERT_STATUS_OK(RunConvActivationFusion(build_test_case, *logger_, ExpectNotFused("Gelu"), 20));
+}
+
+TEST_F(GraphTransformationTests, NhwcConvActivationFusionPreservesOutput) {
+  // Ordinary CPU Conv + Relu fusion produces FusedConv, which this selector does
+  // not select again. A normal CPU Conv -> Relu -> Tanh test therefore passes even
+  // without the guard. Internal NHWC Conv retains its Conv type after fusion and
+  // can be selected again, so construct Conv(activation=Relu) -> Tanh directly in
+  // that domain and apply the shared transformer before choosing an execution EP.
+  // Input -1 and weight 1 should produce tanh(relu(-1)) = 0; overwriting Relu with
+  // Tanh instead produces tanh(-1), approximately -0.761594.
+  Model model("ConvActivationFusionTest", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(),
+              {{kOnnxDomain, 17}, {kMSDomain, 1}, {kMSInternalNHWCDomain, 17}}, {}, *logger_);
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+  auto* input = builder.MakeInput<float>({1, 1, 1, 1}, {-1.0f});
+  auto* weight = builder.MakeInitializer<float>({1, 1, 1, 1}, {1.0f});
+  auto* conv_out = builder.MakeIntermediate();
+  auto* output = builder.MakeOutput();
+  auto& conv = builder.AddNode("Conv", {input, weight}, {conv_out}, kMSInternalNHWCDomain);
+  conv.AddAttribute("activation", "Relu");
+  builder.AddNode("Tanh", {conv_out}, {output});
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  ConvActivationFusion transformer;
+  bool modified = false;
+  ASSERT_STATUS_OK(transformer.Apply(graph, modified, *logger_));
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  // Both CPU and WebGPU support com.microsoft.FusedConv. Convert only the actual
+  // transformer's output type/domain to that shared interface, preserving all
+  // activation attributes and wiring, including an incorrect result without the
+  // guard. Converting before Apply() would bypass the Conv selector and hide the
+  // bug. Shape [1,1,1,1] makes NCHW/NHWC ordering identical, so this test-only
+  // conversion needs no tensor transpose.
+  auto model_proto = model.ToProto();
+  int converted_convs = 0;
+  for (auto& node : *model_proto.mutable_graph()->mutable_node()) {
+    if (node.domain() == kMSInternalNHWCDomain && node.op_type() == "Conv") {
+      node.set_domain(kMSDomain);
+      node.set_op_type("FusedConv");
+      ++converted_convs;
+    }
+  }
+  ASSERT_EQ(converted_convs, 1);
+  Model executable_model(std::move(model_proto), nullptr, *logger_);
+  ASSERT_STATUS_OK(executable_model.MainGraph().Resolve());
+  TemporaryDirectory temporary_dir(ORT_TSTR("NhwcConvActivationFusionPreservesOutput"),
+                                   /*delete_if_exists=*/false);
+  const auto model_path = temporary_dir.Path() + ORT_TSTR("/model.onnx");
+  ASSERT_STATUS_OK(Model::Save(executable_model, model_path));
+
+  SessionOptions session_options;
+  // Disable optional session optimizations when evaluating the transformed graph.
+  // ModelTester runs the same saved model in separate sessions for enabled EPs
+  // that support it. CPU uses its FusedConv kernel; WebGPU uses GPU kernels and
+  // may still perform the layout conversion required by its preferred NHWC format.
+  session_options.graph_optimization_level = TransformerLevel::Default;
+  ModelTester tester("NhwcConvActivationFusionPreservesOutput", model_path, 17);
+  tester.AddInput<float>(input->Name().c_str(), {1, 1, 1, 1}, {-1.0f});
+  tester.AddOutput<float>(output->Name().c_str(), {1, 1, 1, 1}, {0.0f});
+  tester.Config(session_options).RunWithConfig();
 }
 
 #if defined(USE_WEBGPU)
