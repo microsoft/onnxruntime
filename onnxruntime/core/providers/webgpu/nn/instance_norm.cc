@@ -90,8 +90,7 @@ Status InstanceNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& input = shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   const auto& channel_scale_shift = shader.AddInput("channel_scale_shift", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
-  const int components = input.NumComponents();
-  const std::string f32_value_type = components == 1 ? "f32" : MakeString("vec", components, "<f32>");
+  const std::string f32_value_type = MakeScalarOrVectorType(input.NumComponents(), "f32");
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
                             << "let outputIndices = " << output.OffsetToIndices("global_idx") << ";\n"
                             << "let batch = outputIndices[0];\n"
@@ -108,7 +107,7 @@ Status InstanceNormProgramNHWC::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& input = shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& channel_scale_shift = shader.AddInput("channel_scale_shift", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
-  const std::string f32_value_type = components_ == 1 ? "f32" : MakeString("vec", components_, "<f32>");
+  const std::string f32_value_type = MakeScalarOrVectorType(components_, "f32");
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
                             << "let current_image_number = global_idx / (uniforms.C * uniforms.H);\n"
                             << "let current_channel_number = global_idx % uniforms.C;\n"

@@ -7,6 +7,7 @@
 #include "core/providers/webgpu/webgpu_kernel.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/program.h"
+#include "core/providers/webgpu/webgpu_utils.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -98,8 +99,7 @@ class QuickGelu : public LinearUnit {
 // 1 - poly * exp(...) cancels badly and loses about 2% for small inputs. `components` is the vector
 // width of x_value_t.
 inline std::string ErfImpl(int components = 4) {
-  return MakeString("alias erf_f32_t = ", components == 1 ? std::string{"f32"} : MakeString("vec", components, "<f32>"),
-                    R"(;
+  return MakeString("alias erf_f32_t = ", MakeScalarOrVectorType(components, "f32"), R"(;
 const r0 = 0.3275911;
 const r1 = 0.254829592;
 const r2 = -0.284496736;
