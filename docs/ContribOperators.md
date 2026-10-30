@@ -6495,11 +6495,14 @@ This version of the operator has been available since version 1 of the 'com.micr
           dequantized_weight[e, n, k] = float(weight[e, n, k]) * scale[e, n / block_size, k / block_size]
         Partial edge blocks are allowed. No zero points or activation scales are accepted.
         Without a positive block_size, FP8 uses the legacy per-expert fc*_global_scale inputs instead.
-        Block-scaled FP8 does not use global scales. Activations retain the input type (weight-only quantization).
-        On CUDA SM80-or-newer GPUs, SiLU/SwiGLU block-scaled FP8 uses fused weight-only GEMV/GEMM by default.
+        Block-scaled FP8 does not use global scales. By default activations retain the input type (weight-only quantization).
+        activation_quantization='dynamic_fp8' instead selects dynamic per-token K128 activation quantization,
+        with native FP8 dot products, FP32 block-scale accumulation and FP32 routed down-projection reduction.
+        On CUDA SM80-or-newer GPUs, weight-only SiLU/SwiGLU block-scaled FP8 uses fused GEMV/GEMM by default.
         These kernels decode and scale FP8 tiles on chip without materializing full FP16/BF16 weight buffers.
         Set ORT_ENABLE_FP8_FUSED=0 before session creation to select the compact dense-dequant fallback.
-        Other activation types and unsupported routing sizes retain the fallback.
+        Other activation types and unsupported routing sizes retain the fallback in weight-only mode.
+        Dynamic activation quantization rejects unsupported configurations instead of falling back to weight-only execution.
         The WebGPU block-FP8 kernel supports block_size=128 with float32 scales and rejects projections
         that exceed 32-bit shader addressing or the device's per-dimension dispatch limit.
   
@@ -6551,6 +6554,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Alpha parameter used in activation function.</dd>
 <dt><tt>activation_beta</tt> : float</dt>
 <dd>Beta parameter used in activation function.</dd>
+<dt><tt>activation_quantization</tt> : string</dt>
+<dd>'none' (default) retains weight-only execution. 'dynamic_fp8' quantizes consecutive groups of 128 features per token to saturating nearest-even E4M3FN using FP32 div.full normalization and scale max(amax(abs(x)),1e-10) * float32(1/448). Requires block-scaled FP8 weights, block_size=128, FP32 weight scales, FP32/FP16/BF16 inputs and 128-aligned projections. Gate/up outputs narrow to the input type; their FP32 SiLU/SwiGLU result is quantized directly for FC2. FC2 stays FP32, multiplies routing weights rounded to the input type, and reduces in FP32 before the final output cast. Biases, supplied activation/global scales, zero points, router_weights and nonstandard activation parameters are unsupported. CUDA requires native FP8 MMA (SM89+) and at most 65535 token/expert pairs.</dd>
 <dt><tt>activation_type</tt> : string</dt>
 <dd>Activation function to use. Choose from relu, gelu, silu, swiglu and identity. CUDA also supports relu2 (squared ReLU). Default is relu</dd>
 <dt><tt>block_size</tt> : int</dt>
@@ -6568,7 +6573,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>normalize_routing_weights</tt> : int</dt>
 <dd>Whether to normalize routing weights</dd>
 <dt><tt>quant_type</tt> : string</dt>
-<dd>Quantization type: 'int' for integer quantization (default), 'fp4' for MXFP4 quantization, 'nvfp4' for NVFP4 quantization, 'fp8' for FP8 e4m3 weight-only quantization, or 'wfp4afp8' for MXFP4 weight with FP8 activation. When quant_type is 'fp4' or 'nvfp4', weights are stored in E2M1 FP4 format (2 values per byte), fc*_scales inputs contain the FP4 block scales, and fc*_global_scale inputs must be provided. 'fp4' uses Float8E8M0 block scales with block_size 32; 'nvfp4' uses Float8E4M3FN block scales with block_size 16. 'fp8' uses float8e4m3fn weights and, when block_size > 0, float32, float16, or bfloat16 square-block scales in fc*_scales instead of fc*_global_scale. The INT3 profile requires integer quantization.</dd>
+<dd>Quantization type: 'int' for integer quantization (default), 'fp4' for MXFP4 quantization, 'nvfp4' for NVFP4 quantization, 'fp8' for FP8 e4m3 weights (weight-only unless activation_quantization is set), or 'wfp4afp8' for MXFP4 weight with FP8 activation. When quant_type is 'fp4' or 'nvfp4', weights are stored in E2M1 FP4 format (2 values per byte), fc*_scales inputs contain the FP4 block scales, and fc*_global_scale inputs must be provided. 'fp4' uses Float8E8M0 block scales with block_size 32; 'nvfp4' uses Float8E4M3FN block scales with block_size 16. 'fp8' uses float8e4m3fn weights and, when block_size > 0, float32, float16, or bfloat16 square-block scales in fc*_scales instead of fc*_global_scale. The INT3 profile requires integer quantization.</dd>
 <dt><tt>swiglu_fusion</tt> : int</dt>
 <dd>0: not fused, 1: fused and interleaved. 2: fused and not interleaved.</dd>
 <dt><tt>swiglu_limit</tt> : float</dt>
@@ -9194,5 +9199,3 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
-
-
