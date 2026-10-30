@@ -7,6 +7,7 @@
 #include "core/providers/webgpu/webgpu_kernel.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/program.h"
+#include "core/providers/webgpu/webgpu_utils.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -94,7 +95,11 @@ class QuickGelu : public LinearUnit {
   QuickGelu(const OpKernelInfo& info);
 };
 
-constexpr const char ErfImpl[] = R"(
+// Defines erf_v(v: x_value_t) -> x_value_t. It is evaluated in f32: in float16, the final
+// 1 - poly * exp(...) cancels badly and loses about 2% for small inputs. `components` is the vector
+// width of x_value_t.
+inline std::string ErfImpl(int components = 4) {
+  return MakeString("alias erf_f32_t = ", MakeScalarOrVectorType(components, "f32"), R"(;
 const r0 = 0.3275911;
 const r1 = 0.254829592;
 const r2 = -0.284496736;
@@ -102,12 +107,14 @@ const r3 = 1.421413741;
 const r4 = -1.453152027;
 const r5 = 1.061405429;
 
-fn erf_v(v: x_value_t) -> x_value_t {
+fn erf_v(v_in: x_value_t) -> x_value_t {
+  let v = erf_f32_t(v_in);
   let absv = abs(v);
   let x = 1.0 / (1.0 + r0 * absv);
-  return sign(v) * (1.0 - ((((r5 * x + r4) * x + r3) * x + r2) * x + r1) * x * exp(-absv * absv));
+  return x_value_t(sign(v) * (1.0 - ((((r5 * x + r4) * x + r3) * x + r2) * x + r1) * x * exp(-absv * absv)));
 }
-)";
+)");
+}
 
 constexpr const char HardSigmoidImpl[] = R"(
 fn hard_sigmoid_v(v: vec4<x_element_t>) -> vec4<x_element_t> {
@@ -165,7 +172,7 @@ fn quick_gelu_v(a: vec4<x_element_t>) -> vec4<x_element_t> {
 }
 )";
 
-// default GELU expression, depending on ErfImpl
+// default GELU expression, depending on ErfImpl()
 constexpr const char GeluExpr[] = "0.5 * a * (1.0 + erf_v(a * 0.7071067811865475))";
 
 // fast GELU expression, depending on TanhImpl
