@@ -161,6 +161,11 @@ class CUDA_ONNX_OP_TYPED_CLASS_NAME(1, MLFloat16, ParametricSoftplus);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, RotaryEmbedding);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, RotaryEmbedding);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, RotaryEmbedding);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, SwiGLU);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, SwiGLU);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, SwiGLU);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, RouterGateUpProj);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, RouterGateUpProj);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, MRotaryEmbedding);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, MRotaryEmbedding);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, MRotaryEmbedding);
@@ -531,6 +536,11 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, RotaryEmbedding)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, RotaryEmbedding)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, RotaryEmbedding)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, SwiGLU)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, SwiGLU)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, SwiGLU)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, RouterGateUpProj)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, RouterGateUpProj)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, MRotaryEmbedding)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, MRotaryEmbedding)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, MRotaryEmbedding)>,
