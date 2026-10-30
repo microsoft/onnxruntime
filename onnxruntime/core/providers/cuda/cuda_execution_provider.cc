@@ -3588,7 +3588,7 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   // The host adapter rejects filtered viewers (not exposed by the shared-provider wrapper).
   if (resource_accountant == nullptr && !graph.IsSubgraph() && !IsNHWCPreferred()) {
     // ID mirrors core/optimizer/cuda_runtime_fusion.h across the shared-provider bridge.
-    for (const char* rule : {"unit_swish_scaled_silu_v1"}) {
+    for (const char* rule : {"causal_conv_with_state_mobius_bf16_v1", "unit_swish_scaled_silu_v1"}) {
       std::vector<std::unique_ptr<ComputeCapability>> offers;
       ORT_THROW_IF_ERROR(g_host->SelectCudaRuntimeFusion(
           graph, kernel_lookup, graph_optimizer_registry, rule, offers));
