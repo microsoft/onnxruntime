@@ -1368,16 +1368,22 @@ class SymbolicShapeInference:
 
         sympy_shape = self._get_sympy_shape(node, 0)
         rank = len(sympy_shape)
+        axes = self._try_get_value(node, 3) if len(node.input) > 3 and node.input[3] else list(range(rank))
 
-        if pads is not None:
-            assert len(pads) == 2 * rank
-            new_sympy_shape = [
-                d + pad_up + pad_down
-                for d, pad_up, pad_down in zip(sympy_shape, pads[:rank], pads[rank:], strict=False)
-            ]
+        if axes is not None and all(is_literal(axis) for axis in axes):
+            new_sympy_shape = list(sympy_shape)
+            if pads is not None:
+                assert len(pads) == 2 * len(axes)
+            else:
+                unknown_shape = self._new_symbolic_shape(rank, node)
+            for i, raw_axis in enumerate(axes):
+                axis = handle_negative_axis(raw_axis, rank)
+                new_sympy_shape[axis] = (
+                    sympy_shape[axis] + pads[i] + pads[i + len(axes)] if pads is not None else unknown_shape[axis]
+                )
             self._update_computed_dims(new_sympy_shape)
         else:
-            # dynamic pads, create new symbolic dimensions
+            # Unknown axes can change any input dimension.
             new_sympy_shape = self._new_symbolic_shape(rank, node)
         output_tp = self.known_vi_[node.input[0]].type.tensor_type.elem_type
 
