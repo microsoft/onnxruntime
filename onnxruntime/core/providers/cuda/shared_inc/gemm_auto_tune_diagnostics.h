@@ -11,7 +11,7 @@ namespace cuda {
 constexpr const char* kGemmAutoTuneDiagnosticsEnvVar = "ORT_CUDA_GEMM_AUTO_TUNE_DIAGNOSTICS";
 
 inline bool IsGemmAutoTuneDiagnosticsEnabled() {
-  static const bool enabled = detail::GetEnvironmentVar(kGemmAutoTuneDiagnosticsEnvVar) == "1";
+  static const bool enabled = ::onnxruntime::detail::GetEnvironmentVar(kGemmAutoTuneDiagnosticsEnvVar) == "1";
   return enabled;
 }
 
