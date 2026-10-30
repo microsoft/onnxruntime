@@ -34,112 +34,112 @@ Status ApplyTemplate<"tensor/pad.wgsl.template">(ShaderHelper& shader_helper, Te
 MainFunctionStart();
 ss << __str_5;
 // 15 |   guardAgainstOutOfBoundsWorkgroupSizes(uniforms.output_size);
-ss << __str_257;
-ss << shader_helper.GuardAgainstOutOfBoundsWorkgroupSizes(__str_237);
+ss << __str_310;
+ss << shader_helper.GuardAgainstOutOfBoundsWorkgroupSizes(__str_290);
 ss << __str_29;
 // 16 |
 ss << __str_5;
 // 17 |   let constant_value =
-ss << __str_541;
+ss << __str_587;
 // 18 | #if is_float16
 if (__param_is_float16) {
 // 19 |       bitcast<vec2<f16>>(uniforms.constant_value)[0];
-ss << __str_542;
+ss << __str_588;
 // 20 | #else
 } else {
 // 21 |       bitcast<output_value_t>(uniforms.constant_value);
-ss << __str_543;
+ss << __str_589;
 // 22 | #endif
 }
 // 23 |
 // 24 | #if dim_value_zero
 if (__param_dim_value_zero) {
 // 25 |   output[global_idx] = constant_value;
-ss << __str_544;
+ss << __str_590;
 // 26 | #else
 } else {
 // 27 |   let output_indices = output.offsetToIndices(global_idx);
-ss << __str_258;
-ss << __var_output->OffsetToIndices(__str_238);
+ss << __str_311;
+ss << __var_output->OffsetToIndices(__str_291);
 ss << __str_29;
 // 28 |   var input_index = u32(0);
-ss << __str_545;
+ss << __str_591;
 // 29 |   var use_pad_value = false;
-ss << __str_546;
+ss << __str_592;
 // 30 |   var in_coord = i32(0);
-ss << __str_547;
+ss << __str_593;
 // 31 |
 ss << __str_5;
 // 32 |   for (var dim = 0; dim < output.rank && !use_pad_value; dim++) {
-ss << __str_548;
+ss << __str_594;
 ss << __var_output->Rank();
-ss << __str_549;
+ss << __str_595;
 // 33 |     let output_index = i32(getElementAt(output_indices, dim, output.rank));
-ss << __str_550;
-ss << GetElementAt(__str_239, __str_536, __var_output->Rank());
+ss << __str_596;
+ss << GetElementAt(__str_292, __str_582, __var_output->Rank());
 ss << __str_17;
 // 34 |     let lower_pads = getElementAt(uniforms.lower_pads, dim, output.rank);
-ss << __str_551;
-ss << GetElementAt(__str_537, __str_536, __var_output->Rank());
+ss << __str_597;
+ss << GetElementAt(__str_583, __str_582, __var_output->Rank());
 ss << __str_29;
 // 35 |     let data_shape = i32(getElementAt(uniforms.data_shape, dim, output.rank));
-ss << __str_552;
-ss << GetElementAt(__str_538, __str_536, __var_output->Rank());
+ss << __str_598;
+ss << GetElementAt(__str_584, __str_582, __var_output->Rank());
 ss << __str_17;
 // 36 | #if pad_mode == PAD_MODE_CONSTANT
 if (__param_pad_mode == 0) {
 // 37 |     if (output_index < lower_pads || output_index >= data_shape + lower_pads) {
-ss << __str_553;
+ss << __str_599;
 // 38 |         use_pad_value = true;
-ss << __str_554;
+ss << __str_600;
 // 39 | #elif pad_mode == PAD_MODE_EDGE
 } else if (__param_pad_mode == 2) {
 // 40 |     if (output_index < lower_pads) {
-ss << __str_555;
+ss << __str_601;
 // 41 |       in_coord = 0;
-ss << __str_556;
+ss << __str_602;
 // 42 |     } else if (output_index >= data_shape + lower_pads) {
-ss << __str_557;
+ss << __str_603;
 // 43 |       in_coord = data_shape - 1;
-ss << __str_558;
+ss << __str_604;
 // 44 | #elif pad_mode == PAD_MODE_REFLECT
 } else if (__param_pad_mode == 1) {
 // 45 |     if (output_index < lower_pads || output_index >= data_shape + lower_pads) {
-ss << __str_553;
+ss << __str_599;
 // 46 |       in_coord = output_index - lower_pads;
-ss << __str_559;
+ss << __str_605;
 // 47 |       if (in_coord < 0) {
-ss << __str_560;
+ss << __str_606;
 // 48 |         in_coord = -in_coord;
-ss << __str_561;
+ss << __str_607;
 // 49 |       }
-ss << __str_285;
+ss << __str_338;
 // 50 |       let _2n_1 = 2 * (data_shape - 1);
-ss << __str_562;
+ss << __str_608;
 // 51 |       in_coord = in_coord % _2n_1;
-ss << __str_563;
+ss << __str_609;
 // 52 |       if (in_coord >= data_shape) {
-ss << __str_564;
+ss << __str_610;
 // 53 |         in_coord = _2n_1 - in_coord;
-ss << __str_565;
+ss << __str_611;
 // 54 |       }
-ss << __str_285;
+ss << __str_338;
 // 55 | #else // PAD_MODE_WRAP
 } else {
 // 56 |     if (output_index < lower_pads) {
-ss << __str_555;
+ss << __str_601;
 // 57 |       in_coord = data_shape + output_index - lower_pads;
-ss << __str_566;
+ss << __str_612;
 // 58 |     } else if (output_index >= data_shape + lower_pads) {
-ss << __str_557;
+ss << __str_603;
 // 59 |       in_coord = output_index - data_shape - lower_pads;
-ss << __str_567;
+ss << __str_613;
 // 60 | #endif // pad_mode
 }
 // 61 |     } else {
-ss << __str_568;
+ss << __str_614;
 // 62 |         in_coord = output_index - lower_pads;
-ss << __str_569;
+ss << __str_615;
 // 63 |     }
 ss << __str_20;
 // 64 |
@@ -147,31 +147,31 @@ ss << __str_5;
 // 65 | #if pad_mode == PAD_MODE_WRAP
 if (__param_pad_mode == 3) {
 // 66 |     in_coord = ((in_coord % data_shape) + data_shape) % data_shape;
-ss << __str_570;
+ss << __str_616;
 // 67 | #endif
 }
 // 68 |
 // 69 |     input_index += select(u32(in_coord)
-ss << __str_571;
+ss << __str_617;
 // 70 | #if output.rank > 1
 if (__var_output->Rank() > 1) {
 // 71 |         * getElementAt(uniforms.data_stride, dim, output.rank - 1)
-ss << __str_572;
-ss << GetElementAt(__str_539, __str_536, __var_output->Rank() - 1);
+ss << __str_618;
+ss << GetElementAt(__str_585, __str_582, __var_output->Rank() - 1);
 ss << __str_5;
 // 72 | #endif
 }
 // 73 |         , u32(in_coord), dim == output.rank - 1);
-ss << __str_573;
+ss << __str_619;
 ss << __var_output->Rank();
-ss << __str_574;
+ss << __str_620;
 // 74 |   }
 ss << __str_11;
 // 75 |
 ss << __str_5;
 // 76 |   output.setByOffset(global_idx, select(data[input_index], constant_value, use_pad_value));
-ss << __str_257;
-ss << __var_output->SetByOffset(__str_238, __str_540);
+ss << __str_310;
+ss << __var_output->SetByOffset(__str_291, __str_586);
 ss << __str_29;
 // 77 | #endif
 }
