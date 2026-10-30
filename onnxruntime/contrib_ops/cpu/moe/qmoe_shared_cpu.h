@@ -18,6 +18,8 @@ struct SharedQMoEAttributes {
   int64_t top_k = 1;
   bool normalize_routing_weights = false;
   bool track_experts = false;
+  // Applies only to INT3/INT4; NVFP4/MXFP4 retain their existing scale/weight rounding.
+  bool deferred_scale = false;
   float activation_alpha = 1.0f;
   float activation_beta = 0.0f;
   float swiglu_limit = std::numeric_limits<float>::infinity();

@@ -89,11 +89,11 @@ void Avx2Int4GemmRange(const uint8_t* weights, const uint16_t* scales, const uin
                        bool scales_are_block_major, bool weights_are_prepacked,
                        bool scale_is_bf16, bool bias_is_bf16,
                        int64_t n_total, int64_t k, const float* a_reordered, int64_t m,
-                       float* out, int64_t out_stride, int64_t n_begin, int64_t n_end);
+                       float* out, int64_t out_stride, int64_t n_begin, int64_t n_end, bool deferred_scale);
 void Avx2Int3GemmRange(const uint8_t* weights, const uint16_t* scales, const uint16_t* bias,
                        int64_t block_size, bool scale_is_bf16, bool bias_is_bf16,
                        int64_t n_total, int64_t k, const float* a_natural, int64_t m,
-                       float* out, int64_t out_stride, int64_t n_begin, int64_t n_end);
+                       float* out, int64_t out_stride, int64_t n_begin, int64_t n_end, bool deferred_scale);
 void Avx2HalfBitsToFloatRow(const uint16_t* src, float* dst, int64_t count);
 void Avx2FloatToHalfBitsRow(const float* src, uint16_t* dst, int64_t count);
 void Avx2BFloat16BitsToFloatRow(const uint16_t* src, float* dst, int64_t count);
@@ -111,11 +111,11 @@ void Avx512Int4GemmRange(const uint8_t* weights, const uint16_t* scales, const u
                          bool scales_are_block_major, bool weights_are_prepacked,
                          bool scale_is_bf16, bool bias_is_bf16,
                          int64_t n_total, int64_t k, const float* a_reordered, int64_t m,
-                         float* out, int64_t out_stride, int64_t n_begin, int64_t n_end);
+                         float* out, int64_t out_stride, int64_t n_begin, int64_t n_end, bool deferred_scale);
 void Avx512Int3GemmRange(const uint8_t* weights, const uint16_t* scales, const uint16_t* bias,
                          int64_t block_size, bool scale_is_bf16, bool bias_is_bf16,
                          int64_t n_total, int64_t k, const float* a_natural, int64_t m,
-                         float* out, int64_t out_stride, int64_t n_begin, int64_t n_end);
+                         float* out, int64_t out_stride, int64_t n_begin, int64_t n_end, bool deferred_scale);
 void Avx512Nvfp4GemmRange(const uint8_t* weights, const uint8_t* block_scales, float global_scale,
                           const uint16_t* bias, bool bias_is_bf16, int64_t n_total, int64_t k,
                           const float* a_reordered, int64_t m, float* out, int64_t out_stride,
@@ -233,12 +233,19 @@ void ScalarGemmRange(const uint8_t* weights, const uint16_t* scales, const uint1
   }
 }
 
+inline float RoundIntegerWeight(float value, int weight_type) noexcept {
+  return weight_type == 1   ? BoundaryBFloat16::Round(value)
+         : weight_type == 0 ? BoundaryFloat16::Round(value)
+                            : value;
+}
+
 void ScalarInt4GemmRange(const uint8_t* weights, const uint16_t* scales, const uint16_t* bias,
-                         bool scales_are_block_major, bool weights_are_prepacked,
-                         bool scale_is_bf16, bool bias_is_bf16,
-                         int64_t n_total, int64_t k, const float* a_reordered, int64_t m,
-                         float* out, int64_t out_stride, int64_t n_begin, int64_t n_end,
-                         int64_t block_size = kBlockSize, bool scale_is_fp32 = false, bool bias_is_fp32 = false) {
+                         bool scales_are_block_major, bool weights_are_prepacked, bool scale_is_bf16, bool bias_is_bf16,
+                         int64_t n_total, int64_t k, const float* a_reordered, int64_t m, float* out,
+                         int64_t out_stride, int64_t n_begin, int64_t n_end, int64_t block_size = kBlockSize,
+                         bool scale_is_fp32 = false, bool bias_is_fp32 = false, int weight_type = -1,
+                         bool deferred_scale = false) {
+  if (weight_type < 0) weight_type = scale_is_fp32 ? 2 : (scale_is_bf16 ? 1 : 0);
   const int64_t eff_block = (block_size > 0 && (block_size % kBlockSize) == 0) ? block_size : kBlockSize;
   const int64_t blocks32 = k / kBlockSize;
   const int64_t scale_blocks = k / eff_block;
@@ -264,17 +271,19 @@ void ScalarInt4GemmRange(const uint8_t* weights, const uint16_t* scales, const u
                                    ? (group + (kb32 >> 1) * 128 + c * 32 + (kb32 & 1) * 16)
                                    : (raw_w_row + kb32 * 16);
         const float* ar = a_reordered + r * k + kb32 * kBlockSize;
-        float sum = 0.0f;
-        for (int b = 0; b < 16; ++b) {
-          sum += static_cast<float>((bytes[b] & 0x0F) - 8) * ar[b];
-          sum += static_cast<float>((bytes[b] >> 4) - 8) * ar[16 + b];
-        }
         const int64_t sb = kb32 / sub_blocks;
         const size_t s_idx = static_cast<size_t>(scales_are_block_major ? (sb * n_total + n) : (n * scale_blocks + sb));
         const float s_val = scale_is_fp32   ? scales_f32[s_idx]
                             : scale_is_bf16 ? BoundaryBFloat16::FromBits(scales[s_idx])
                                             : HalfToFloat(scales[s_idx]);
-        acc += sum * s_val;
+        float sum = 0.0f;
+        for (int b = 0; b < 16; ++b) {
+          const float lo = static_cast<float>((bytes[b] & 0x0F) - 8);
+          const float hi = static_cast<float>((bytes[b] >> 4) - 8);
+          sum += (deferred_scale ? lo : RoundIntegerWeight(lo * s_val, weight_type)) * ar[b];
+          sum += (deferred_scale ? hi : RoundIntegerWeight(hi * s_val, weight_type)) * ar[16 + b];
+        }
+        acc += deferred_scale ? sum * s_val : sum;
       }
       out[r * out_stride + (n - n_begin)] = acc + b_val;
     }
@@ -285,16 +294,17 @@ inline float RoundBf16Fast(float v) noexcept {
   return BoundaryBFloat16::Round(v);
 }
 
-void ScalarInt3GemmRange(const uint8_t* weights, const uint16_t* scales, const uint16_t* bias,
-                         int64_t block_size, bool scale_is_bf16, bool bias_is_bf16,
-                         int64_t /*n_total*/, int64_t k, const float* a_natural, int64_t m,
-                         float* out, int64_t out_stride, int64_t n_begin, int64_t n_end,
-                         bool scale_is_fp32 = false, bool bias_is_fp32 = false) {
+void ScalarInt3GemmRange(const uint8_t* weights, const uint16_t* scales, const uint16_t* bias, int64_t block_size,
+                         bool scale_is_bf16, bool bias_is_bf16, int64_t /*n_total*/, int64_t k, const float* a_natural,
+                         int64_t m, float* out, int64_t out_stride, int64_t n_begin, int64_t n_end,
+                         bool scale_is_fp32 = false, bool bias_is_fp32 = false, int weight_type = -1,
+                         bool deferred_scale = false) {
   const int64_t blocks = k / block_size;
   const int64_t raw_w_stride = (k * 3) / 8;
   const int64_t groups_per_block = block_size / 8;
   const float* scales_f32 = reinterpret_cast<const float*>(scales);
   const float* bias_f32 = reinterpret_cast<const float*>(bias);
+  if (weight_type < 0) weight_type = scale_is_fp32 ? 2 : (scale_is_bf16 ? 1 : 0);
   for (int64_t n = n_begin; n < n_end; ++n) {
     const uint8_t* w_row = weights + n * raw_w_stride;
     const uint16_t* s_row = scales + n * blocks;
@@ -311,6 +321,11 @@ void ScalarInt3GemmRange(const uint8_t* weights, const uint16_t* scales, const u
         const float s_val = scale_is_fp32   ? s_row_f32[kb]
                             : scale_is_bf16 ? BoundaryBFloat16::FromBits(s_row[kb])
                                             : HalfToFloat(s_row[kb]);
+        float rounded_weights[8];
+        for (int code = 0; code < 8; ++code) {
+          const float value = static_cast<float>(code - 4);
+          rounded_weights[code] = deferred_scale ? value : RoundIntegerWeight(value * s_val, weight_type);
+        }
         float sum = 0.0f;
         const uint8_t* p = w_row + kb * groups_per_block * 3;
         const float* ab = ar + kb * block_size;
@@ -319,11 +334,11 @@ void ScalarInt3GemmRange(const uint8_t* weights, const uint16_t* scales, const u
                                (static_cast<uint32_t>(p[3 * g + 1]) << 8) |
                                (static_cast<uint32_t>(p[3 * g + 2]) << 16);
           for (int j = 0; j < 8; ++j) {
-            const float code = static_cast<float>(static_cast<int>((w24 >> (3 * j)) & 0x7u) - 4);
-            sum += code * ab[g * 8 + j];
+            const unsigned code = (w24 >> (3 * j)) & 0x7u;
+            sum += rounded_weights[code] * ab[g * 8 + j];
           }
         }
-        acc += sum * s_val;
+        acc += deferred_scale ? sum * s_val : sum;
       }
       out[r * out_stride + (n - n_begin)] = acc + b_val;
     }
@@ -2387,12 +2402,12 @@ void Int4GemmRange(const uint8_t* weights, const uint16_t* scales, const uint16_
                    bool scale_is_bf16, bool bias_is_bf16,
                    int64_t n_total, int64_t k, const float* a_reordered, int64_t m,
                    float* out, int64_t out_stride, int64_t n_begin, int64_t n_end,
-                   bool force_scalar) {
+                   bool force_scalar, bool deferred_scale) {
 #if QMOE_COMPILER_SUPPORTS_AVX512
   if (!force_scalar && CpuHasAvx512()) {
     detail::Avx512Int4GemmRange(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
                                 scale_is_bf16, bias_is_bf16, n_total, k, a_reordered, m,
-                                out, out_stride, n_begin, n_end);
+                                out, out_stride, n_begin, n_end, deferred_scale);
     return;
   }
 #endif
@@ -2400,14 +2415,14 @@ void Int4GemmRange(const uint8_t* weights, const uint16_t* scales, const uint16_
   if (!force_scalar && CpuHasAvx2FmaF16c()) {
     detail::Avx2Int4GemmRange(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
                               scale_is_bf16, bias_is_bf16, n_total, k, a_reordered, m,
-                              out, out_stride, n_begin, n_end);
+                              out, out_stride, n_begin, n_end, deferred_scale);
     return;
   }
 #endif
   (void)force_scalar;
   ScalarInt4GemmRange(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
                       scale_is_bf16, bias_is_bf16, n_total, k, a_reordered, m,
-                      out, out_stride, n_begin, n_end);
+                      out, out_stride, n_begin, n_end, kBlockSize, false, false, -1, deferred_scale);
 }
 
 void Int4Fc1SwiGluRange(int64_t hidden, int64_t inter, const Int4ExpertView& view,
@@ -2423,20 +2438,21 @@ void Int4Fc1SwiGluRange(int64_t hidden, int64_t inter, const Int4ExpertView& vie
   const bool use_f16c = false;
 #endif
   const bool has_limit = std::isfinite(swiglu.limit);
-  const bool use_fast_gemm = (view.block_size == kBlockSize && !view.scale_is_fp32 && !view.bias_is_fp32);
+  const int scale_type = view.scale_is_fp32 ? 2 : (view.scale_is_bf16 ? 1 : 0);
+  const bool use_fast_gemm = view.block_size == kBlockSize && !view.scale_is_fp32 && !view.bias_is_fp32 &&
+                             (view.deferred_scale || view.weight_type < 0 || view.weight_type == scale_type);
   for (int64_t nb = n_begin; nb < n_end; nb += kChunk) {
     const int64_t ne = std::min(nb + kChunk, n_end);
     if (use_fast_gemm) {
       Int4GemmRange(view.fc1_weights, view.fc1_scales, view.fc1_bias,
                     view.scales_are_block_major, view.weights_are_prepacked,
                     view.scale_is_bf16, view.bias_is_bf16,
-                    n_total, hidden, x_reordered, m, tmp, kChunk, nb, ne, force_scalar);
+                    n_total, hidden, x_reordered, m, tmp, kChunk, nb, ne, force_scalar, view.deferred_scale);
     } else {
-      ScalarInt4GemmRange(view.fc1_weights, view.fc1_scales, view.fc1_bias,
-                          view.scales_are_block_major, view.weights_are_prepacked,
-                          view.scale_is_bf16, view.bias_is_bf16,
-                          n_total, hidden, x_reordered, m, tmp, kChunk, nb, ne,
-                          view.block_size, view.scale_is_fp32, view.bias_is_fp32);
+      ScalarInt4GemmRange(view.fc1_weights, view.fc1_scales, view.fc1_bias, view.scales_are_block_major,
+                          view.weights_are_prepacked, view.scale_is_bf16, view.bias_is_bf16, n_total, hidden,
+                          x_reordered, m, tmp, kChunk, nb, ne, view.block_size, view.scale_is_fp32, view.bias_is_fp32,
+                          view.weight_type, view.deferred_scale);
     }
     for (int64_t r = 0; r < m; ++r) {
       float* row_tmp = tmp + r * kChunk;
@@ -2481,18 +2497,19 @@ void Int4Fc2Range(int64_t hidden, int64_t inter, const Int4ExpertView& view,
                   const float* inter_reordered, int64_t m, float* out,
                   int64_t n_begin, int64_t n_end, bool force_scalar,
                   bool apply_bias) {
-  if (view.block_size == kBlockSize && !view.scale_is_fp32 && !view.bias_is_fp32) {
+  const int scale_type = view.scale_is_fp32 ? 2 : (view.scale_is_bf16 ? 1 : 0);
+  if (view.block_size == kBlockSize && !view.scale_is_fp32 && !view.bias_is_fp32 &&
+      (view.deferred_scale || view.weight_type < 0 || view.weight_type == scale_type)) {
     Int4GemmRange(view.fc2_weights, view.fc2_scales, apply_bias ? view.fc2_bias : nullptr,
                   view.scales_are_block_major, view.weights_are_prepacked,
                   view.scale_is_bf16, view.bias_is_bf16,
                   hidden, inter, inter_reordered, m, out + n_begin, hidden,
-                  n_begin, n_end, force_scalar);
+                  n_begin, n_end, force_scalar, view.deferred_scale);
   } else {
     ScalarInt4GemmRange(view.fc2_weights, view.fc2_scales, apply_bias ? view.fc2_bias : nullptr,
-                        view.scales_are_block_major, view.weights_are_prepacked,
-                        view.scale_is_bf16, view.bias_is_bf16,
-                        hidden, inter, inter_reordered, m, out + n_begin, hidden,
-                        n_begin, n_end, view.block_size, view.scale_is_fp32, view.bias_is_fp32);
+                        view.scales_are_block_major, view.weights_are_prepacked, view.scale_is_bf16, view.bias_is_bf16,
+                        hidden, inter, inter_reordered, m, out + n_begin, hidden, n_begin, n_end, view.block_size,
+                        view.scale_is_fp32, view.bias_is_fp32, view.weight_type, view.deferred_scale);
   }
 }
 
@@ -2530,24 +2547,24 @@ void Int3GemmRange(const uint8_t* weights, const uint16_t* scales, const uint16_
                    int64_t block_size, bool scale_is_bf16, bool bias_is_bf16,
                    int64_t n_total, int64_t k, const float* a_natural, int64_t m,
                    float* out, int64_t out_stride, int64_t n_begin, int64_t n_end,
-                   bool force_scalar) {
+                   bool force_scalar, bool deferred_scale) {
 #if QMOE_COMPILER_SUPPORTS_AVX512
   if (!force_scalar && CpuHasAvx512() && (block_size == 32 || block_size == 64 || block_size == 128)) {
     detail::Avx512Int3GemmRange(weights, scales, bias, block_size, scale_is_bf16, bias_is_bf16,
-                                n_total, k, a_natural, m, out, out_stride, n_begin, n_end);
+                                n_total, k, a_natural, m, out, out_stride, n_begin, n_end, deferred_scale);
     return;
   }
 #endif
 #if QMOE_COMPILER_SUPPORTS_AVX2
   if (!force_scalar && CpuHasAvx2FmaF16c() && (block_size == 32 || block_size == 64 || block_size == 128)) {
     detail::Avx2Int3GemmRange(weights, scales, bias, block_size, scale_is_bf16, bias_is_bf16,
-                              n_total, k, a_natural, m, out, out_stride, n_begin, n_end);
+                              n_total, k, a_natural, m, out, out_stride, n_begin, n_end, deferred_scale);
     return;
   }
 #endif
   (void)force_scalar;
   ScalarInt3GemmRange(weights, scales, bias, block_size, scale_is_bf16, bias_is_bf16,
-                      n_total, k, a_natural, m, out, out_stride, n_begin, n_end);
+                      n_total, k, a_natural, m, out, out_stride, n_begin, n_end, false, false, -1, deferred_scale);
 }
 
 void Int3Fc1SwiGluRange(int64_t hidden, int64_t inter, const Int3ExpertView& view,
@@ -2559,15 +2576,17 @@ void Int3Fc1SwiGluRange(int64_t hidden, int64_t inter, const Int3ExpertView& vie
   const int64_t n_total = 2 * inter;
   for (int64_t nb = n_begin; nb < n_end; nb += kChunk) {
     const int64_t ne = std::min(nb + kChunk, n_end);
-    if (!view.scale_is_fp32 && !view.bias_is_fp32) {
+    const int scale_type = view.scale_is_fp32 ? 2 : (view.scale_is_bf16 ? 1 : 0);
+    if (!view.scale_is_fp32 && !view.bias_is_fp32 &&
+        (view.deferred_scale || view.weight_type < 0 || view.weight_type == scale_type)) {
       Int3GemmRange(view.fc1_weights, view.fc1_scales, view.fc1_bias,
                     view.block_size, view.scale_is_bf16, view.bias_is_bf16,
-                    n_total, hidden, x_natural, m, tmp, kChunk, nb, ne, force_scalar);
+                    n_total, hidden, x_natural, m, tmp, kChunk, nb, ne, force_scalar, view.deferred_scale);
     } else {
       ScalarInt3GemmRange(view.fc1_weights, view.fc1_scales, view.fc1_bias,
                           view.block_size, view.scale_is_bf16, view.bias_is_bf16,
                           n_total, hidden, x_natural, m, tmp, kChunk, nb, ne,
-                          view.scale_is_fp32, view.bias_is_fp32);
+                          view.scale_is_fp32, view.bias_is_fp32, view.weight_type, view.deferred_scale);
     }
     for (int64_t r = 0; r < m; ++r) {
       const float* row_tmp = tmp + r * kChunk;
@@ -2576,10 +2595,8 @@ void Int3Fc1SwiGluRange(int64_t hidden, int64_t inter, const Int3ExpertView& vie
         const int64_t j = n / 2;
         const float gate_projection = row_tmp[n - nb];
         const float up_projection = row_tmp[(n - nb) + 1];
-        float gate = (fp16_boundaries && !bf16_boundaries) ? BoundaryFloat16::Round(gate_projection)
-                                                           : gate_projection;
-        float value = (fp16_boundaries && !bf16_boundaries) ? BoundaryFloat16::Round(up_projection)
-                                                            : up_projection;
+        float gate = gate_projection;
+        float value = up_projection;
         if (std::isfinite(swiglu.limit)) {
           gate = std::min(gate, swiglu.limit);
           value = std::clamp(value, -swiglu.limit, swiglu.limit);
@@ -2597,16 +2614,18 @@ void Int3Fc2Range(int64_t hidden, int64_t inter, const Int3ExpertView& view,
                   const float* inter_natural, int64_t m, float* out,
                   int64_t n_begin, int64_t n_end, bool force_scalar,
                   bool apply_bias) {
-  if (!view.scale_is_fp32 && !view.bias_is_fp32) {
+  const int scale_type = view.scale_is_fp32 ? 2 : (view.scale_is_bf16 ? 1 : 0);
+  if (!view.scale_is_fp32 && !view.bias_is_fp32 &&
+      (view.deferred_scale || view.weight_type < 0 || view.weight_type == scale_type)) {
     Int3GemmRange(view.fc2_weights, view.fc2_scales, apply_bias ? view.fc2_bias : nullptr,
                   view.block_size, view.scale_is_bf16, view.bias_is_bf16,
                   hidden, inter, inter_natural, m, out + n_begin, hidden,
-                  n_begin, n_end, force_scalar);
+                  n_begin, n_end, force_scalar, view.deferred_scale);
   } else {
     ScalarInt3GemmRange(view.fc2_weights, view.fc2_scales, apply_bias ? view.fc2_bias : nullptr,
                         view.block_size, view.scale_is_bf16, view.bias_is_bf16,
                         hidden, inter, inter_natural, m, out + n_begin, hidden,
-                        n_begin, n_end, view.scale_is_fp32, view.bias_is_fp32);
+                        n_begin, n_end, view.scale_is_fp32, view.bias_is_fp32, view.weight_type, view.deferred_scale);
   }
 }
 
@@ -2672,19 +2691,20 @@ void Nvfp4Fc1SwiGluRange(int64_t hidden, int64_t inter, const Nvfp4ExpertView& v
     const int64_t ne = std::min(nb + kChunk, n_end);
     if (view.is_mxfp4) {
       Mxfp4GemmRange(view.fc1_weights, view.fc1_scales, view.fc1_global_scale,
-                     view.fc1_bias, view.bias_is_bf16, n_total, hidden, x_reordered, m,
+                     view.bias_is_fp32 ? nullptr : view.fc1_bias, view.bias_is_bf16, n_total, hidden, x_reordered, m,
                      tmp, kChunk, nb, ne, force_scalar, round_scale_bf16);
     } else {
       Nvfp4GemmRange(view.fc1_weights, view.fc1_scales, view.fc1_global_scale,
-                     view.fc1_bias, view.bias_is_bf16, n_total, hidden, x_reordered, m,
+                     view.bias_is_fp32 ? nullptr : view.fc1_bias, view.bias_is_bf16, n_total, hidden, x_reordered, m,
                      tmp, kChunk, nb, ne, force_scalar, round_scale_bf16);
     }
     for (int64_t n = nb; n < ne; n += 2) {
       const int64_t j = n / 2;
       const int pos = Nvfp4ReorderedPosition(static_cast<int>(j & 31));
       for (int64_t r = 0; r < m; ++r) {
-        const float gate_projection = tmp[r * kChunk + (n - nb)];
-        const float up_projection = tmp[r * kChunk + (n - nb) + 1];
+        const float* bias = view.bias_is_fp32 ? reinterpret_cast<const float*>(view.fc1_bias) : nullptr;
+        const float gate_projection = tmp[r * kChunk + (n - nb)] + (bias ? bias[n] : 0.0f);
+        const float up_projection = tmp[r * kChunk + (n - nb) + 1] + (bias ? bias[n + 1] : 0.0f);
         float gate = gate_projection;
         float value = up_projection;
         if (std::isfinite(swiglu.limit)) {
@@ -2707,14 +2727,20 @@ void Nvfp4Fc2Range(int64_t hidden, int64_t inter, const Nvfp4ExpertView& view,
                    bool apply_bias, bool round_scale_bf16) {
   if (view.is_mxfp4) {
     Mxfp4GemmRange(view.fc2_weights, view.fc2_scales, view.fc2_global_scale,
-                   apply_bias ? view.fc2_bias : nullptr, view.bias_is_bf16,
+                   apply_bias && !view.bias_is_fp32 ? view.fc2_bias : nullptr, view.bias_is_bf16,
                    hidden, inter, inter_reordered, m, out + n_begin, hidden,
                    n_begin, n_end, force_scalar, round_scale_bf16);
   } else {
     Nvfp4GemmRange(view.fc2_weights, view.fc2_scales, view.fc2_global_scale,
-                   apply_bias ? view.fc2_bias : nullptr, view.bias_is_bf16,
+                   apply_bias && !view.bias_is_fp32 ? view.fc2_bias : nullptr, view.bias_is_bf16,
                    hidden, inter, inter_reordered, m, out + n_begin, hidden,
                    n_begin, n_end, force_scalar, round_scale_bf16);
+  }
+  if (apply_bias && view.bias_is_fp32 && view.fc2_bias) {
+    const auto* bias = reinterpret_cast<const float*>(view.fc2_bias);
+    for (int64_t r = 0; r < m; ++r) {
+      for (int64_t n = n_begin; n < n_end; ++n) out[r * hidden + n] += bias[n];
+    }
   }
 }
 

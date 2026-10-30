@@ -155,7 +155,23 @@ void Avx512GemmRange(const uint8_t* weights, const uint16_t* scales, const uint1
   }
 }
 
-template <int RT, bool WeightsPrepacked, bool ScalesBlockMajor, bool ScaleIsBf16>
+template <bool ScaleIsBf16>
+inline __m512 RoundInt4WeightsAvx512(__m512 values, float scale) {
+  values = _mm512_mul_ps(values, _mm512_set1_ps(scale));
+  if constexpr (!ScaleIsBf16)
+    return _mm512_cvtph_ps(_mm512_cvtps_ph(values, _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC));
+  const __m512i bits = _mm512_castps_si512(values);
+  const __mmask16 finite = _mm512_cmpneq_epi32_mask(_mm512_and_si512(bits, _mm512_set1_epi32(0x7f800000)),
+                                                    _mm512_set1_epi32(0x7f800000));
+  const __m512i lsb = _mm512_and_si512(_mm512_srli_epi32(bits, 16), _mm512_set1_epi32(1));
+  const __m512i rounded = _mm512_and_si512(_mm512_add_epi32(bits, _mm512_add_epi32(_mm512_set1_epi32(0x7fff), lsb)),
+                                           _mm512_set1_epi32(static_cast<int>(0xffff0000u)));
+  const __mmask16 nan = _mm512_cmp_ps_mask(values, values, _CMP_UNORD_Q);
+  values = _mm512_castsi512_ps(_mm512_mask_mov_epi32(bits, finite, rounded));
+  return _mm512_mask_mov_ps(values, nan, _mm512_castsi512_ps(_mm512_set1_epi32(0x7fc00000)));
+}
+
+template <int RT, bool WeightsPrepacked, bool ScalesBlockMajor, bool ScaleIsBf16, bool DeferredScale>
 void Int4Group8Avx512(const uint8_t* w_base, const uint8_t* next_w_base, const uint16_t* scales,
                       int64_t n_total, int64_t n0, int64_t k,
                       const float* a_reordered, float (&result)[8][RT]) {
@@ -195,11 +211,15 @@ void Int4Group8Avx512(const uint8_t* w_base, const uint8_t* next_w_base, const u
       const __m128i x = _mm_loadu_si128(reinterpret_cast<const __m128i*>(byte_ptr));
       const __m128i lo = _mm_and_si128(x, mask);
       const __m128i hi = _mm_and_si128(_mm_srli_epi16(x, 4), mask);
-      const __m512 wl = _mm512_cvtepi32_ps(_mm512_sub_epi32(_mm512_cvtepu8_epi32(lo), eight));
-      const __m512 wh = _mm512_cvtepi32_ps(_mm512_sub_epi32(_mm512_cvtepu8_epi32(hi), eight));
+      __m512 wl = _mm512_cvtepi32_ps(_mm512_sub_epi32(_mm512_cvtepu8_epi32(lo), eight));
+      __m512 wh = _mm512_cvtepi32_ps(_mm512_sub_epi32(_mm512_cvtepu8_epi32(hi), eight));
       const uint16_t s_bits = ScalesBlockMajor ? scales[kb * n_total + n0 + c] : scales[(n0 + c) * blocks + kb];
       const float s_val = ScaleIsBf16 ? Avx512BFloat16BitsToFloat(s_bits) : Avx512HalfBitsToFloat(s_bits);
-      const __m512 s = _mm512_set1_ps(s_val);
+      if constexpr (!DeferredScale) {
+        wl = RoundInt4WeightsAvx512<ScaleIsBf16>(wl, s_val);
+        wh = RoundInt4WeightsAvx512<ScaleIsBf16>(wh, s_val);
+      }
+      const __m512 s = _mm512_set1_ps(DeferredScale ? s_val : 1.0f);
       const __m512 prod0 = _mm512_fmadd_ps(wl, al0, _mm512_mul_ps(wh, ah0));
       a0 = _mm512_fmadd_ps(prod0, s, a0);
       if constexpr (RT >= 2) {
@@ -230,7 +250,7 @@ void Int4Group8Avx512(const uint8_t* w_base, const uint8_t* next_w_base, const u
   store_col(7, acc7_0, acc7_1);
 }
 
-template <int RT, bool WeightsPrepacked, bool ScalesBlockMajor, bool ScaleIsBf16>
+template <int RT, bool WeightsPrepacked, bool ScalesBlockMajor, bool ScaleIsBf16, bool DeferredScale>
 void Int4Group4Avx512(const uint8_t* w_base, const uint8_t* next_w_base, const uint16_t* scales,
                       int64_t n_total, int64_t n0, int64_t k,
                       const float* a_reordered, float (&result)[4][RT]) {
@@ -267,11 +287,15 @@ void Int4Group4Avx512(const uint8_t* w_base, const uint8_t* next_w_base, const u
       const __m128i x = _mm_loadu_si128(reinterpret_cast<const __m128i*>(byte_ptr));
       const __m128i lo = _mm_and_si128(x, mask);
       const __m128i hi = _mm_and_si128(_mm_srli_epi16(x, 4), mask);
-      const __m512 wl = _mm512_cvtepi32_ps(_mm512_sub_epi32(_mm512_cvtepu8_epi32(lo), eight));
-      const __m512 wh = _mm512_cvtepi32_ps(_mm512_sub_epi32(_mm512_cvtepu8_epi32(hi), eight));
+      __m512 wl = _mm512_cvtepi32_ps(_mm512_sub_epi32(_mm512_cvtepu8_epi32(lo), eight));
+      __m512 wh = _mm512_cvtepi32_ps(_mm512_sub_epi32(_mm512_cvtepu8_epi32(hi), eight));
       const uint16_t s_bits = ScalesBlockMajor ? scales[kb * n_total + n0 + c] : scales[(n0 + c) * blocks + kb];
       const float s_val = ScaleIsBf16 ? Avx512BFloat16BitsToFloat(s_bits) : Avx512HalfBitsToFloat(s_bits);
-      const __m512 s = _mm512_set1_ps(s_val);
+      if constexpr (!DeferredScale) {
+        wl = RoundInt4WeightsAvx512<ScaleIsBf16>(wl, s_val);
+        wh = RoundInt4WeightsAvx512<ScaleIsBf16>(wh, s_val);
+      }
+      const __m512 s = _mm512_set1_ps(DeferredScale ? s_val : 1.0f);
       for (int r = 0; r < RT; ++r) {
         const __m512 prod = _mm512_fmadd_ps(wl, al[r], _mm512_mul_ps(wh, ah[r]));
         acc[c][r] = _mm512_fmadd_ps(prod, s, acc[c][r]);
@@ -289,7 +313,7 @@ void Int4Group4Avx512(const uint8_t* w_base, const uint8_t* next_w_base, const u
   }
 }
 
-template <int RT>
+template <int RT, bool DeferredScale>
 void Int4RowTileAvx512(const uint8_t* weights, const uint16_t* scales, const uint16_t* bias,
                        bool scales_are_block_major, bool weights_are_prepacked,
                        bool scale_is_bf16, bool bias_is_bf16,
@@ -302,13 +326,13 @@ void Int4RowTileAvx512(const uint8_t* weights, const uint16_t* scales, const uin
     if (aligned_begin >= aligned_end) {
       Int4GemmRange(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
                     scale_is_bf16, bias_is_bf16, n_total, k, a_reordered, RT,
-                    out, out_stride, n_begin, n_end, /*force_scalar=*/true);
+                    out, out_stride, n_begin, n_end, /*force_scalar=*/true, DeferredScale);
       return;
     }
     if (n_begin < aligned_begin) {
       Int4GemmRange(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
                     scale_is_bf16, bias_is_bf16, n_total, k, a_reordered, RT,
-                    out, out_stride, n_begin, aligned_begin, /*force_scalar=*/true);
+                    out, out_stride, n_begin, aligned_begin, /*force_scalar=*/true, DeferredScale);
     }
     const int64_t group_stride = kColumnsInterleaved * k / 2;
     int64_t n0 = aligned_begin;
@@ -319,15 +343,19 @@ void Int4RowTileAvx512(const uint8_t* weights, const uint16_t* scales, const uin
         float result8[8][RT];
         if (scales_are_block_major) {
           if (scale_is_bf16) {
-            Int4Group8Avx512<RT, true, true, true>(group, next_group, scales, n_total, n0, k, a_reordered, result8);
+            Int4Group8Avx512<RT, true, true, true, DeferredScale>(group, next_group, scales, n_total, n0, k,
+                                                                  a_reordered, result8);
           } else {
-            Int4Group8Avx512<RT, true, true, false>(group, next_group, scales, n_total, n0, k, a_reordered, result8);
+            Int4Group8Avx512<RT, true, true, false, DeferredScale>(group, next_group, scales, n_total, n0, k,
+                                                                   a_reordered, result8);
           }
         } else {
           if (scale_is_bf16) {
-            Int4Group8Avx512<RT, true, false, true>(group, next_group, scales, n_total, n0, k, a_reordered, result8);
+            Int4Group8Avx512<RT, true, false, true, DeferredScale>(group, next_group, scales, n_total, n0, k,
+                                                                   a_reordered, result8);
           } else {
-            Int4Group8Avx512<RT, true, false, false>(group, next_group, scales, n_total, n0, k, a_reordered, result8);
+            Int4Group8Avx512<RT, true, false, false, DeferredScale>(group, next_group, scales, n_total, n0, k,
+                                                                    a_reordered, result8);
           }
         }
         for (int c = 0; c < 8; ++c) {
@@ -344,15 +372,19 @@ void Int4RowTileAvx512(const uint8_t* weights, const uint16_t* scales, const uin
       float result[4][RT];
       if (scales_are_block_major) {
         if (scale_is_bf16) {
-          Int4Group4Avx512<RT, true, true, true>(group, next_group, scales, n_total, n0, k, a_reordered, result);
+          Int4Group4Avx512<RT, true, true, true, DeferredScale>(group, next_group, scales, n_total, n0, k, a_reordered,
+                                                                result);
         } else {
-          Int4Group4Avx512<RT, true, true, false>(group, next_group, scales, n_total, n0, k, a_reordered, result);
+          Int4Group4Avx512<RT, true, true, false, DeferredScale>(group, next_group, scales, n_total, n0, k, a_reordered,
+                                                                 result);
         }
       } else {
         if (scale_is_bf16) {
-          Int4Group4Avx512<RT, true, false, true>(group, next_group, scales, n_total, n0, k, a_reordered, result);
+          Int4Group4Avx512<RT, true, false, true, DeferredScale>(group, next_group, scales, n_total, n0, k, a_reordered,
+                                                                 result);
         } else {
-          Int4Group4Avx512<RT, true, false, false>(group, next_group, scales, n_total, n0, k, a_reordered, result);
+          Int4Group4Avx512<RT, true, false, false, DeferredScale>(group, next_group, scales, n_total, n0, k,
+                                                                  a_reordered, result);
         }
       }
       for (int c = 0; c < 4; ++c) {
@@ -363,9 +395,9 @@ void Int4RowTileAvx512(const uint8_t* weights, const uint16_t* scales, const uin
       }
     }
     if (aligned_end < n_end) {
-      Int4GemmRange(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
-                    scale_is_bf16, bias_is_bf16, n_total, k, a_reordered, RT,
-                    out + (aligned_end - n_begin), out_stride, aligned_end, n_end, /*force_scalar=*/true);
+      Int4GemmRange(weights, scales, bias, scales_are_block_major, weights_are_prepacked, scale_is_bf16, bias_is_bf16,
+                    n_total, k, a_reordered, RT, out + (aligned_end - n_begin), out_stride, aligned_end, n_end,
+                    /*force_scalar=*/true, DeferredScale);
     }
   } else {
     const int64_t raw_w_stride = k / 2;
@@ -376,15 +408,19 @@ void Int4RowTileAvx512(const uint8_t* weights, const uint16_t* scales, const uin
       float result[4][RT];
       if (scales_are_block_major) {
         if (scale_is_bf16) {
-          Int4Group4Avx512<RT, false, true, true>(w_base, next_w, scales, n_total, n0, k, a_reordered, result);
+          Int4Group4Avx512<RT, false, true, true, DeferredScale>(w_base, next_w, scales, n_total, n0, k, a_reordered,
+                                                                 result);
         } else {
-          Int4Group4Avx512<RT, false, true, false>(w_base, next_w, scales, n_total, n0, k, a_reordered, result);
+          Int4Group4Avx512<RT, false, true, false, DeferredScale>(w_base, next_w, scales, n_total, n0, k, a_reordered,
+                                                                  result);
         }
       } else {
         if (scale_is_bf16) {
-          Int4Group4Avx512<RT, false, false, true>(w_base, next_w, scales, n_total, n0, k, a_reordered, result);
+          Int4Group4Avx512<RT, false, false, true, DeferredScale>(w_base, next_w, scales, n_total, n0, k, a_reordered,
+                                                                  result);
         } else {
-          Int4Group4Avx512<RT, false, false, false>(w_base, next_w, scales, n_total, n0, k, a_reordered, result);
+          Int4Group4Avx512<RT, false, false, false, DeferredScale>(w_base, next_w, scales, n_total, n0, k, a_reordered,
+                                                                   result);
         }
       }
       for (int c = 0; c < 4; ++c) {
@@ -397,7 +433,62 @@ void Int4RowTileAvx512(const uint8_t* weights, const uint16_t* scales, const uin
     if (n0 < n_end) {
       Int4GemmRange(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
                     scale_is_bf16, bias_is_bf16, n_total, k, a_reordered, RT,
-                    out + (n0 - n_begin), out_stride, n0, n_end, /*force_scalar=*/true);
+                    out + (n0 - n_begin), out_stride, n0, n_end, /*force_scalar=*/true, DeferredScale);
+    }
+  }
+}
+
+template <bool DeferredScale>
+void Avx512Int4GemmRangeImpl(const uint8_t* weights, const uint16_t* scales, const uint16_t* bias,
+                             bool scales_are_block_major, bool weights_are_prepacked,
+                             bool scale_is_bf16, bool bias_is_bf16,
+                             int64_t n_total, int64_t k, const float* a_reordered, int64_t m,
+                             float* out, int64_t out_stride, int64_t n_begin, int64_t n_end) {
+  int64_t r = 0;
+  while (r < m) {
+    const int64_t left = m - r;
+    const float* ar = a_reordered + r * k;
+    float* orow = out + r * out_stride;
+    if (left >= 8) {
+      Int4RowTileAvx512<8, DeferredScale>(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
+                                          scale_is_bf16, bias_is_bf16, n_total, k, ar, orow, out_stride, n_begin,
+                                          n_end);
+      r += 8;
+    } else if (left == 7) {
+      Int4RowTileAvx512<7, DeferredScale>(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
+                                          scale_is_bf16, bias_is_bf16, n_total, k, ar, orow, out_stride, n_begin,
+                                          n_end);
+      r += 7;
+    } else if (left == 6) {
+      Int4RowTileAvx512<6, DeferredScale>(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
+                                          scale_is_bf16, bias_is_bf16, n_total, k, ar, orow, out_stride, n_begin,
+                                          n_end);
+      r += 6;
+    } else if (left == 5) {
+      Int4RowTileAvx512<5, DeferredScale>(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
+                                          scale_is_bf16, bias_is_bf16, n_total, k, ar, orow, out_stride, n_begin,
+                                          n_end);
+      r += 5;
+    } else if (left == 4) {
+      Int4RowTileAvx512<4, DeferredScale>(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
+                                          scale_is_bf16, bias_is_bf16, n_total, k, ar, orow, out_stride, n_begin,
+                                          n_end);
+      r += 4;
+    } else if (left == 3) {
+      Int4RowTileAvx512<3, DeferredScale>(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
+                                          scale_is_bf16, bias_is_bf16, n_total, k, ar, orow, out_stride, n_begin,
+                                          n_end);
+      r += 3;
+    } else if (left == 2) {
+      Int4RowTileAvx512<2, DeferredScale>(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
+                                          scale_is_bf16, bias_is_bf16, n_total, k, ar, orow, out_stride, n_begin,
+                                          n_end);
+      r += 2;
+    } else {
+      Int4RowTileAvx512<1, DeferredScale>(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
+                                          scale_is_bf16, bias_is_bf16, n_total, k, ar, orow, out_stride, n_begin,
+                                          n_end);
+      r += 1;
     }
   }
 }
@@ -406,45 +497,13 @@ void Avx512Int4GemmRange(const uint8_t* weights, const uint16_t* scales, const u
                          bool scales_are_block_major, bool weights_are_prepacked,
                          bool scale_is_bf16, bool bias_is_bf16,
                          int64_t n_total, int64_t k, const float* a_reordered, int64_t m,
-                         float* out, int64_t out_stride, int64_t n_begin, int64_t n_end) {
-  int64_t r = 0;
-  while (r < m) {
-    const int64_t left = m - r;
-    const float* ar = a_reordered + r * k;
-    float* orow = out + r * out_stride;
-    if (left >= 8) {
-      Int4RowTileAvx512<8>(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
-                           scale_is_bf16, bias_is_bf16, n_total, k, ar, orow, out_stride, n_begin, n_end);
-      r += 8;
-    } else if (left == 7) {
-      Int4RowTileAvx512<7>(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
-                           scale_is_bf16, bias_is_bf16, n_total, k, ar, orow, out_stride, n_begin, n_end);
-      r += 7;
-    } else if (left == 6) {
-      Int4RowTileAvx512<6>(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
-                           scale_is_bf16, bias_is_bf16, n_total, k, ar, orow, out_stride, n_begin, n_end);
-      r += 6;
-    } else if (left == 5) {
-      Int4RowTileAvx512<5>(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
-                           scale_is_bf16, bias_is_bf16, n_total, k, ar, orow, out_stride, n_begin, n_end);
-      r += 5;
-    } else if (left == 4) {
-      Int4RowTileAvx512<4>(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
-                           scale_is_bf16, bias_is_bf16, n_total, k, ar, orow, out_stride, n_begin, n_end);
-      r += 4;
-    } else if (left == 3) {
-      Int4RowTileAvx512<3>(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
-                           scale_is_bf16, bias_is_bf16, n_total, k, ar, orow, out_stride, n_begin, n_end);
-      r += 3;
-    } else if (left == 2) {
-      Int4RowTileAvx512<2>(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
-                           scale_is_bf16, bias_is_bf16, n_total, k, ar, orow, out_stride, n_begin, n_end);
-      r += 2;
-    } else {
-      Int4RowTileAvx512<1>(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
-                           scale_is_bf16, bias_is_bf16, n_total, k, ar, orow, out_stride, n_begin, n_end);
-      r += 1;
-    }
+                         float* out, int64_t out_stride, int64_t n_begin, int64_t n_end, bool deferred_scale) {
+  if (deferred_scale) {
+    Avx512Int4GemmRangeImpl<true>(weights, scales, bias, scales_are_block_major, weights_are_prepacked, scale_is_bf16,
+                                  bias_is_bf16, n_total, k, a_reordered, m, out, out_stride, n_begin, n_end);
+  } else {
+    Avx512Int4GemmRangeImpl<false>(weights, scales, bias, scales_are_block_major, weights_are_prepacked, scale_is_bf16,
+                                   bias_is_bf16, n_total, k, a_reordered, m, out, out_stride, n_begin, n_end);
   }
 }
 

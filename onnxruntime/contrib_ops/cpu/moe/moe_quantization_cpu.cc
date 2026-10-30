@@ -928,6 +928,11 @@ template <typename T>
 QMoECPU<T>::QMoECPU(const OpKernelInfo& op_kernel_info)
     : OpKernel(op_kernel_info),
       MoEBaseCPU(op_kernel_info) {
+  const std::string deferred_scale = op_kernel_info.GetConfigOptions().GetConfigOrDefault(
+      kOrtSessionOptionsCpuQmoeDeferredScale, "0");
+  ORT_ENFORCE(deferred_scale == "0" || deferred_scale == "1",
+              kOrtSessionOptionsCpuQmoeDeferredScale, " must be '0' or '1', got '", deferred_scale, "'.");
+  deferred_scale_ = deferred_scale == "1";
   ORT_ENFORCE(activation_type_ != ActivationType::SwiGLU || swiglu_fusion_ == 1,
               "CPU QMoE only supports interleaved SwiGLU format. Please set swiglu_fusion=1.");
   ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("expert_weight_bits", &expert_weight_bits_).IsOK());
@@ -1243,6 +1248,7 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
     attributes.quant_type = quant_type_;
     attributes.weight_bits = expert_weight_bits_;
     attributes.block_size = block_size_;
+    attributes.deferred_scale = deferred_scale_;
     attributes.top_k = k_;
     attributes.normalize_routing_weights = normalize_routing_weights_;
     attributes.activation_alpha = activation_alpha_;

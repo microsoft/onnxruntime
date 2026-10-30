@@ -67,6 +67,29 @@ read the same banks. Code extraction, activation permutation, scale decoding,
 and boundary rounding happen inside the consuming kernel. No alternate weight
 matrices or panels are materialized.
 
+## Integer weight scaling
+
+The session option `ep.cpu.qmoe_deferred_scale` currently applies only to the
+shared-layout CPU INT3/INT4 kernels, including both projections. It does not
+affect NVFP4/MXFP4, legacy CPU QMoE kernels, or CUDA kernels.
+
+- `"0"` (default): round each dequantized weight to the activation type before
+  multiplying by the activation, then accumulate in FP32.
+- `"1"`: accumulate decoded integer codes times activations in FP32, then apply
+  the block scale without rounding each weight. This can improve throughput and
+  preserve more dequantization precision, but results can differ substantially
+  under cancellation and when experts move between CPU and GPU.
+
+```python
+options = onnxruntime.SessionOptions()
+options.add_session_config_entry("ep.cpu.qmoe_deferred_scale", "1")
+```
+
+This controls weight dequantization only. Bias handling, activation/output
+rounding, and SwiGLU projection boundaries are independent of this option.
+Low-level CPU offload callers select the same policy through
+`Int3ExpertView::deferred_scale` or `Int4ExpertView::deferred_scale`.
+
 ## Validation
 
 - `qmoe_shared_layout_test.cc` checks independent layout fixtures, scalar, AVX2,

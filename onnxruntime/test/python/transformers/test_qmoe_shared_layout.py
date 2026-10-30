@@ -452,7 +452,7 @@ class SharedLayoutTest(unittest.TestCase):
 
     def test_canonical_int3_qmoe_banks_block32_and_block64(self):
         rng = np.random.default_rng(20261025)
-        hidden, inter = 128, 64
+        hidden, inter = 128, 128
         n1 = 2 * inter
         lib = load_lib()
         self.assertEqual(lib.qmoe_int3_block_bytes(256, 128, 32), 43520)
@@ -468,7 +468,7 @@ class SharedLayoutTest(unittest.TestCase):
             b2 = ((w24 >> 16) & 0xFF).astype(np.uint8)
             return np.stack([b0, b1, b2], axis=-1).reshape(*codes.shape[:-1], (codes.shape[-1] * 3) // 8)
 
-        for block_size in (32, 64):
+        for block_size in (32, 64, 128):
             fc1_codes = rng.integers(0, 8, (n1, hidden), dtype=np.uint8)
             fc2_codes = rng.integers(0, 8, (hidden, inter), dtype=np.uint8)
             fc1_scales = (rng.random((n1, hidden // block_size)) * 0.02 + 0.001).astype(np.float16)
@@ -483,12 +483,20 @@ class SharedLayoutTest(unittest.TestCase):
             b1 = np.ascontiguousarray(fc1_bias.view(np.uint16))
             b2 = np.ascontiguousarray(fc2_bias.view(np.uint16))
 
-            w1_deq = (fc1_codes.astype(np.float32) - 4.0) * np.repeat(fc1_scales.astype(np.float32), block_size, axis=1)
-            w2_deq = (fc2_codes.astype(np.float32) - 4.0) * np.repeat(fc2_scales.astype(np.float32), block_size, axis=1)
+            w1_deq = (
+                ((fc1_codes.astype(np.float32) - 4.0) * np.repeat(fc1_scales.astype(np.float32), block_size, axis=1))
+                .astype(np.float16)
+                .astype(np.float32)
+            )
+            w2_deq = (
+                ((fc2_codes.astype(np.float32) - 4.0) * np.repeat(fc2_scales.astype(np.float32), block_size, axis=1))
+                .astype(np.float16)
+                .astype(np.float32)
+            )
 
             for rows in (1, 2, 3, 4):
                 x = (rng.standard_normal((rows, hidden)) * 0.5).astype(np.float32)
-                proj = (x @ w1_deq.T + fc1_bias.astype(np.float32)).astype(np.float16).astype(np.float32)
+                proj = x @ w1_deq.T + fc1_bias.astype(np.float32)
                 gate = np.minimum(proj[:, 0::2], np.float32(7.0))
                 up = np.clip(proj[:, 1::2], -np.float32(7.0), np.float32(7.0))
                 act = (gate / (1.0 + np.exp(-np.float32(1.702) * gate)) * (up + np.float32(1.0))).astype(np.float16)
@@ -543,6 +551,51 @@ class SharedLayoutTest(unittest.TestCase):
                     )
                     self.assertEqual(ok2, 1)
                     np.testing.assert_allclose(got_contrib, want_contrib, rtol=1e-4, atol=1e-4)
+
+    def test_int3_weight_rounding_before_cancellation(self):
+        lib = load_lib()
+        hidden = inter = 64
+        codes1 = np.full((2 * inter, hidden), 4, dtype=np.uint32)
+        codes2 = np.full((hidden, inter), 4, dtype=np.uint32)
+        codes1[1, :2] = [7, 5]
+        codes2[0, 0] = 5
+
+        def pack(codes):
+            words = np.bitwise_or.reduce(codes.reshape(*codes.shape[:-1], -1, 8) << np.arange(0, 24, 3), axis=-1)
+            return np.stack((words & 255, (words >> 8) & 255, words >> 16), axis=-1).astype(np.uint8)
+
+        weights1, weights2 = pack(codes1), pack(codes2)
+        scales1 = np.full((2 * inter, 1), 0x3F80, dtype=np.uint16)
+        scales2 = np.full((hidden, 1), 0x3F80, dtype=np.uint16)
+        scales1[1, 0] = 0x3DCD
+        bias = np.zeros(2 * inter, dtype=np.uint16)
+        bias[0] = 0x3F80
+        x = np.zeros((1, hidden), dtype=np.float32)
+        x[0, :2] = [1024, -3072]
+        for force_scalar in (0, 1):
+            out = np.zeros((1, hidden), dtype=np.float32)
+            ok = lib.qmoe_int3_expert_contribution(
+                weights1.ctypes.data,
+                scales1.ctypes.data,
+                bias.ctypes.data,
+                weights2.ctypes.data,
+                scales2.ctypes.data,
+                None,
+                hidden,
+                inter,
+                64,
+                x.ctypes.data,
+                1,
+                out.ctypes.data,
+                1.0,
+                0.0,
+                float("inf"),
+                1,
+                0,
+                force_scalar,
+            )
+            self.assertEqual(ok, 1)
+            self.assertEqual(out[0, 0], 0.365234375)
 
     def test_cpu_qmoe_prepacked_and_raw_parity(self):
         try:

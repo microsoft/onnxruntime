@@ -1226,5 +1226,65 @@ TEST(QMoESharedLayoutTest, Int3GuardPageAndReadOnlyBanks) {
 #endif
 }
 
+TEST(QMoESharedLayoutTest, IntegerDeferredScaleModesPreservePartialRanges) {
+  constexpr int64_t k = 128, n = 9;
+  for (int bits : {3, 4}) {
+    const int64_t row_bytes = k * bits / 8;
+    std::vector<uint8_t> weights(static_cast<size_t>(n * row_bytes));
+    for (int64_t column = 0; column < n; ++column) {
+      uint8_t* row = weights.data() + column * row_bytes;
+      if (bits == 4) {
+        std::fill(row, row + row_bytes, 0x88);
+        row[0] = 0x9b;  // Signed codes [3, 1, 0, ...].
+      } else {
+        for (int64_t i = 0; i < row_bytes; i += 3) {
+          row[i] = 0x24;
+          row[i + 1] = 0x49;
+          row[i + 2] = 0x92;
+        }
+        row[0] = 0x2f;
+      }
+    }
+    for (bool bf16 : {false, true}) {
+      const uint16_t scale = bf16 ? uint16_t{0x3dcd} : shared::FloatToHalf(0.1f);
+      const float typed_expected = bf16 ? 0.5f : -0.125f;
+      for (int64_t block : {int64_t{32}, int64_t{64}, int64_t{128}}) {
+        if (bits == 4 && block != 32) continue;  // The direct INT4 GEMM interface has block size 32.
+        std::vector<uint16_t> scales(static_cast<size_t>(n * k / block), scale);
+        for (int64_t rows : {int64_t{1}, int64_t{3}, int64_t{8}}) {
+          std::vector<float> x(static_cast<size_t>(rows * k), 0.0f), reordered(x.size());
+          for (int64_t r = 0; r < rows; ++r) {
+            x[r * k] = 1024;
+            x[r * k + 1] = -3072;
+            shared::ReorderRawInt4ActivationRow(x.data() + r * k, reordered.data() + r * k, k);
+          }
+          for (bool deferred : {false, true}) {
+            for (bool scalar : {false, true}) {
+              for (auto [begin, end] : {std::pair<int64_t, int64_t>{0, n}, {1, 8}}) {
+                std::vector<float> out(static_cast<size_t>(rows * n), -999.0f);
+                if (bits == 3) {
+                  shared::Int3GemmRange(weights.data(), scales.data(), nullptr, block, bf16, bf16, n, k,
+                                        x.data(), rows, out.data() + begin, n, begin, end, scalar, deferred);
+                } else {
+                  shared::Int4GemmRange(weights.data(), scales.data(), nullptr, false, false, bf16, bf16, n, k,
+                                        reordered.data(), rows, out.data() + begin, n, begin, end, scalar, deferred);
+                }
+                for (int64_t r = 0; r < rows; ++r) {
+                  for (int64_t c = 0; c < n; ++c) {
+                    const float expected = c < begin || c >= end ? -999.0f : (deferred ? 0.0f : typed_expected);
+                    EXPECT_EQ(out[r * n + c], expected)
+                        << "bits=" << bits << " bf16=" << bf16 << " block=" << block
+                        << " rows=" << rows << " deferred=" << deferred << " scalar=" << scalar << " c=" << c;
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
 }  // namespace
 }  // namespace onnxruntime::test

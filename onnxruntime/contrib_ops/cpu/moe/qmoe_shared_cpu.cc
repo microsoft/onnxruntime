@@ -153,6 +153,8 @@ Status ComputeSharedQMoE(OpKernelContext* context, const SharedQMoEAttributes& a
                         (is_nvfp4 ? (block == 16) : (block == 32 || block == 64 || block == 128)),
                     "Shared QMoE projection dimensions and block size must be valid.");
   const int64_t intermediate = narrow<int64_t>(SafeInt<size_t>(s2[2]) * block);
+  ORT_RETURN_IF_NOT(!is_fp4 || (hidden % 32 == 0 && intermediate % 32 == 0),
+                    "Shared FP4 QMoE hidden and intermediate dimensions must be divisible by 32.");
   const int64_t fc1_n = narrow<int64_t>(SafeInt<size_t>(intermediate) * 2);
   const int64_t rows = input_shape.Size() / hidden;
   ORT_RETURN_IF_NOT(s1[1] == fc1_n && s1[2] == hidden / block && hidden % block == 0 &&
@@ -313,6 +315,7 @@ Status ComputeSharedQMoE(OpKernelContext* context, const SharedQMoEAttributes& a
         view.fc2_bias = b2_base ? reinterpret_cast<const uint16_t*>(b2_base + static_cast<size_t>(expert) * b2_stride)
                                 : nullptr;
         view.bias_is_bf16 = (bias1_type == ElementType::kBFloat16);
+        view.bias_is_fp32 = (bias1_type == ElementType::kFloat32);
         view.is_mxfp4 = is_mxfp4;
         for (size_t start = 0; start < routes.size(); start += kRowsPerTile) {
           const int64_t count = narrow<int64_t>(std::min(routes.size() - start, narrow<size_t>(kRowsPerTile)));
@@ -350,6 +353,8 @@ Status ComputeSharedQMoE(OpKernelContext* context, const SharedQMoEAttributes& a
         view.bias_is_bf16 = (bias1_type == ElementType::kBFloat16);
         view.scale_is_fp32 = (scale_type == ElementType::kFloat32);
         view.bias_is_fp32 = (bias1_type == ElementType::kFloat32);
+        view.weight_type = bf16_boundaries ? 1 : (fp16_boundaries ? 0 : 2);
+        view.deferred_scale = attributes.deferred_scale;
         for (size_t start = 0; start < routes.size(); start += kRowsPerTile) {
           const int64_t count = narrow<int64_t>(std::min(routes.size() - start, narrow<size_t>(kRowsPerTile)));
           for (int64_t r = 0; r < count; ++r) {
@@ -385,6 +390,8 @@ Status ComputeSharedQMoE(OpKernelContext* context, const SharedQMoEAttributes& a
       view.bias_is_bf16 = (bias1_type == ElementType::kBFloat16);
       view.scale_is_fp32 = (scale_type == ElementType::kFloat32);
       view.bias_is_fp32 = (bias1_type == ElementType::kFloat32);
+      view.weight_type = bf16_boundaries ? 1 : (fp16_boundaries ? 0 : 2);
+      view.deferred_scale = attributes.deferred_scale;
 
       for (size_t start = 0; start < routes.size(); start += kRowsPerTile) {
         const int64_t count = narrow<int64_t>(std::min(routes.size() - start, narrow<size_t>(kRowsPerTile)));

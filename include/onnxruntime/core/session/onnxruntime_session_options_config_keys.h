@@ -43,6 +43,13 @@ static const char* const kOrtSessionOptionsConfigMoeExpertCounterAlpha =
 static const char* const kOrtSessionOptionsConfigMoeExpertCounterBeta =
     "session.moe_expert_counter_beta";
 
+// Controls weight scaling in the shared-layout CPU QMoE INT3/INT4 kernels only.
+// "0" (default): round each dequantized weight to the activation type before multiplication.
+// "1": accumulate the block dot product in FP32, then apply its scale, without per-weight rounding.
+// Deferred scaling can improve throughput but can change results, particularly under cancellation.
+// Currently does not affect NVFP4/MXFP4, legacy CPU QMoE kernels, or CUDA kernels.
+static const char* const kOrtSessionOptionsCpuQmoeDeferredScale = "ep.cpu.qmoe_deferred_scale";
+
 // A value of "1" means allocators registered in the env will be used. "0" means the allocators created in the session
 // will be used. Use this to override the usage of env allocators on a per session level.
 static const char* const kOrtSessionOptionsConfigUseEnvAllocators = "session.use_env_allocators";

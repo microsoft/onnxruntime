@@ -81,6 +81,9 @@ struct ExpertKey {
   uint64_t weight_revision = 0;
 };
 
+// Each store represents one layer, layout version, and weight revision. Keyed lookup
+// checks the model content ID (when both IDs are nonzero) and expert ID only;
+// callers must select the store for the other key fields.
 // Zero-copy tensor-backed ExpertStore seam (v3 Section 6).
 class TensorExpertStore {
  public:
@@ -119,6 +122,8 @@ class FileExpertStore {
     const void* data = nullptr;
     size_t expert_bytes = 0;
     size_t block_offset = 0;
+    // When supplied, data must equal the immutable file bytes at file_offset for
+    // the lifetime of the store, including when the bank is small and kept resident.
     const char* file_path = nullptr;
     uint64_t file_offset = 0;
   };
@@ -251,6 +256,10 @@ struct Int3ExpertView {
   bool bias_is_bf16 = true;
   bool scale_is_fp32 = false;
   bool bias_is_fp32 = false;
+  // Unless deferred_scale is true, round dequantized weights to the activation type.
+  // -1 follows scale type; 0 = FP16, 1 = BF16, 2 = FP32.
+  int weight_type = -1;
+  bool deferred_scale = false;
 };
 
 // Zero-copy view of one INT4 expert (works with canonical com.microsoft::QMoE bank tensors
@@ -269,6 +278,10 @@ struct Int4ExpertView {
   bool bias_is_bf16 = false;
   bool scale_is_fp32 = false;
   bool bias_is_fp32 = false;
+  // Integer-only scaling policy, also used by CPU offload callers of these helpers.
+  // -1 follows scale type; 0 = FP16, 1 = BF16, 2 = FP32.
+  int weight_type = -1;
+  bool deferred_scale = false;
 };
 
 // Zero-copy view of one NVFP4 or MXFP4 expert (works with either separate bank tensors or a contiguous block).
@@ -276,12 +289,13 @@ struct Nvfp4ExpertView {
   const uint8_t* fc1_weights = nullptr;  // [2*inter, hidden/2]
   const uint8_t* fc1_scales = nullptr;   // [2*inter, hidden/16] E4M3 (NVFP4) or [2*inter, hidden/32] E8M0 (MXFP4)
   float fc1_global_scale = 1.0f;
-  const uint16_t* fc1_bias = nullptr;    // optional [2*inter] in BF16 or FP16
+  const uint16_t* fc1_bias = nullptr;    // optional [2*inter] in BF16, FP16, or FP32
   const uint8_t* fc2_weights = nullptr;  // [hidden, inter/2]
   const uint8_t* fc2_scales = nullptr;   // [hidden, inter/16] E4M3 (NVFP4) or [hidden, inter/32] E8M0 (MXFP4)
   float fc2_global_scale = 1.0f;
-  const uint16_t* fc2_bias = nullptr;  // optional [hidden] in BF16 or FP16
+  const uint16_t* fc2_bias = nullptr;  // optional [hidden] in BF16, FP16, or FP32
   bool bias_is_bf16 = true;
+  bool bias_is_fp32 = false;
   bool is_mxfp4 = false;
 };
 
@@ -367,7 +381,7 @@ void Int4GemmRange(const uint8_t* weights, const uint16_t* scales, const uint16_
                    bool scale_is_bf16, bool bias_is_bf16,
                    int64_t n_total, int64_t k, const float* a_reordered, int64_t m,
                    float* out, int64_t out_stride, int64_t n_begin, int64_t n_end,
-                   bool force_scalar = false);
+                   bool force_scalar = false, bool deferred_scale = false);
 
 void Int4Fc1SwiGluRange(int64_t hidden, int64_t inter, const Int4ExpertView& view,
                         const float* x_reordered, int64_t m, const SwiGluParams& swiglu,
@@ -390,7 +404,7 @@ void Int3GemmRange(const uint8_t* weights, const uint16_t* scales, const uint16_
                    int64_t block_size, bool scale_is_bf16, bool bias_is_bf16,
                    int64_t n_total, int64_t k, const float* a_natural, int64_t m,
                    float* out, int64_t out_stride, int64_t n_begin, int64_t n_end,
-                   bool force_scalar = false);
+                   bool force_scalar = false, bool deferred_scale = false);
 
 void Int3Fc1SwiGluRange(int64_t hidden, int64_t inter, const Int3ExpertView& view,
                         const float* x_natural, int64_t m, const SwiGluParams& swiglu,

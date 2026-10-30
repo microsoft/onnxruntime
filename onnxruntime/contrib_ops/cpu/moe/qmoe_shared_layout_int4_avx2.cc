@@ -143,7 +143,23 @@ void Avx2FloatToBFloat16BitsRow(const float* src, uint16_t* dst, int64_t count) 
   for (; i < count; ++i) dst[i] = FloatToBFloat16(src[i]);
 }
 
-template <int RT, bool WeightsPrepacked, bool ScalesBlockMajor, bool ScaleIsBf16>
+template <bool ScaleIsBf16>
+inline __m256 RoundInt4WeightsAvx2(__m256 values, float scale) {
+  values = _mm256_mul_ps(values, _mm256_set1_ps(scale));
+  if constexpr (!ScaleIsBf16)
+    return _mm256_cvtph_ps(_mm256_cvtps_ph(values, _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC));
+  const __m256i bits = _mm256_castps_si256(values);
+  const __m256i nonfinite = _mm256_cmpeq_epi32(_mm256_and_si256(bits, _mm256_set1_epi32(0x7f800000)),
+                                               _mm256_set1_epi32(0x7f800000));
+  const __m256i lsb = _mm256_and_si256(_mm256_srli_epi32(bits, 16), _mm256_set1_epi32(1));
+  const __m256i rounded = _mm256_and_si256(_mm256_add_epi32(bits, _mm256_add_epi32(_mm256_set1_epi32(0x7fff), lsb)),
+                                           _mm256_set1_epi32(static_cast<int>(0xffff0000u)));
+  const __m256 nan = _mm256_cmp_ps(values, values, _CMP_UNORD_Q);
+  values = _mm256_castsi256_ps(_mm256_blendv_epi8(rounded, bits, nonfinite));
+  return _mm256_blendv_ps(values, _mm256_castsi256_ps(_mm256_set1_epi32(0x7fc00000)), nan);
+}
+
+template <int RT, bool WeightsPrepacked, bool ScalesBlockMajor, bool ScaleIsBf16, bool DeferredScale>
 void Int4Group8Avx2(const uint8_t* w_base, const uint8_t* next_w_base, const uint16_t* scales,
                     int64_t n_total, int64_t n0, int64_t k,
                     const float* a_reordered, float (&result)[8][RT]) {
@@ -186,13 +202,19 @@ void Int4Group8Avx2(const uint8_t* w_base, const uint8_t* next_w_base, const uin
       const __m128i x = _mm_loadu_si128(reinterpret_cast<const __m128i*>(byte_ptr));
       const __m128i lo = _mm_and_si128(x, mask);
       const __m128i hi = _mm_and_si128(_mm_srli_epi16(x, 4), mask);
-      const __m256 wl0 = _mm256_cvtepi32_ps(_mm256_sub_epi32(_mm256_cvtepu8_epi32(lo), eight));
-      const __m256 wl1 = _mm256_cvtepi32_ps(_mm256_sub_epi32(_mm256_cvtepu8_epi32(_mm_bsrli_si128(lo, 8)), eight));
-      const __m256 wh0 = _mm256_cvtepi32_ps(_mm256_sub_epi32(_mm256_cvtepu8_epi32(hi), eight));
-      const __m256 wh1 = _mm256_cvtepi32_ps(_mm256_sub_epi32(_mm256_cvtepu8_epi32(_mm_bsrli_si128(hi, 8)), eight));
+      __m256 wl0 = _mm256_cvtepi32_ps(_mm256_sub_epi32(_mm256_cvtepu8_epi32(lo), eight));
+      __m256 wl1 = _mm256_cvtepi32_ps(_mm256_sub_epi32(_mm256_cvtepu8_epi32(_mm_bsrli_si128(lo, 8)), eight));
+      __m256 wh0 = _mm256_cvtepi32_ps(_mm256_sub_epi32(_mm256_cvtepu8_epi32(hi), eight));
+      __m256 wh1 = _mm256_cvtepi32_ps(_mm256_sub_epi32(_mm256_cvtepu8_epi32(_mm_bsrli_si128(hi, 8)), eight));
       const uint16_t s_bits = ScalesBlockMajor ? scales[kb * n_total + n0 + c] : scales[(n0 + c) * blocks + kb];
       const float s_val = ScaleIsBf16 ? Avx2BFloat16BitsToFloat(s_bits) : Avx2HalfBitsToFloat(s_bits);
-      const __m256 s = _mm256_set1_ps(s_val);
+      if constexpr (!DeferredScale) {
+        wl0 = RoundInt4WeightsAvx2<ScaleIsBf16>(wl0, s_val);
+        wl1 = RoundInt4WeightsAvx2<ScaleIsBf16>(wl1, s_val);
+        wh0 = RoundInt4WeightsAvx2<ScaleIsBf16>(wh0, s_val);
+        wh1 = RoundInt4WeightsAvx2<ScaleIsBf16>(wh1, s_val);
+      }
+      const __m256 s = _mm256_set1_ps(DeferredScale ? s_val : 1.0f);
       const __m256 prod0_lo = _mm256_fmadd_ps(wl0, al0_0, _mm256_mul_ps(wh0, ah0_0));
       const __m256 prod0_hi = _mm256_fmadd_ps(wl1, al0_1, _mm256_mul_ps(wh1, ah0_1));
       a0 = _mm256_fmadd_ps(_mm256_add_ps(prod0_lo, prod0_hi), s, a0);
@@ -225,7 +247,7 @@ void Int4Group8Avx2(const uint8_t* w_base, const uint8_t* next_w_base, const uin
   store_col(7, acc7_0, acc7_1);
 }
 
-template <int RT, bool WeightsPrepacked, bool ScalesBlockMajor, bool ScaleIsBf16>
+template <int RT, bool WeightsPrepacked, bool ScalesBlockMajor, bool ScaleIsBf16, bool DeferredScale>
 void Int4Group4Avx2(const uint8_t* w_base, const uint8_t* next_w_base, const uint16_t* scales,
                     int64_t n_total, int64_t n0, int64_t k,
                     const float* a_reordered, float (&result)[4][RT]) {
@@ -280,13 +302,19 @@ void Int4Group4Avx2(const uint8_t* w_base, const uint8_t* next_w_base, const uin
       const __m128i x = _mm_loadu_si128(reinterpret_cast<const __m128i*>(byte_ptr));
       const __m128i lo = _mm_and_si128(x, mask);
       const __m128i hi = _mm_and_si128(_mm_srli_epi16(x, 4), mask);
-      const __m256 wl0 = _mm256_cvtepi32_ps(_mm256_sub_epi32(_mm256_cvtepu8_epi32(lo), eight));
-      const __m256 wl1 = _mm256_cvtepi32_ps(_mm256_sub_epi32(_mm256_cvtepu8_epi32(_mm_bsrli_si128(lo, 8)), eight));
-      const __m256 wh0 = _mm256_cvtepi32_ps(_mm256_sub_epi32(_mm256_cvtepu8_epi32(hi), eight));
-      const __m256 wh1 = _mm256_cvtepi32_ps(_mm256_sub_epi32(_mm256_cvtepu8_epi32(_mm_bsrli_si128(hi, 8)), eight));
+      __m256 wl0 = _mm256_cvtepi32_ps(_mm256_sub_epi32(_mm256_cvtepu8_epi32(lo), eight));
+      __m256 wl1 = _mm256_cvtepi32_ps(_mm256_sub_epi32(_mm256_cvtepu8_epi32(_mm_bsrli_si128(lo, 8)), eight));
+      __m256 wh0 = _mm256_cvtepi32_ps(_mm256_sub_epi32(_mm256_cvtepu8_epi32(hi), eight));
+      __m256 wh1 = _mm256_cvtepi32_ps(_mm256_sub_epi32(_mm256_cvtepu8_epi32(_mm_bsrli_si128(hi, 8)), eight));
       const uint16_t s_bits = ScalesBlockMajor ? scales[kb * n_total + n0 + c] : scales[(n0 + c) * blocks + kb];
       const float s_val = ScaleIsBf16 ? Avx2BFloat16BitsToFloat(s_bits) : Avx2HalfBitsToFloat(s_bits);
-      const __m256 s = _mm256_set1_ps(s_val);
+      if constexpr (!DeferredScale) {
+        wl0 = RoundInt4WeightsAvx2<ScaleIsBf16>(wl0, s_val);
+        wl1 = RoundInt4WeightsAvx2<ScaleIsBf16>(wl1, s_val);
+        wh0 = RoundInt4WeightsAvx2<ScaleIsBf16>(wh0, s_val);
+        wh1 = RoundInt4WeightsAvx2<ScaleIsBf16>(wh1, s_val);
+      }
+      const __m256 s = _mm256_set1_ps(DeferredScale ? s_val : 1.0f);
       const __m256 prod0_lo = _mm256_fmadd_ps(wl0, al0_0, _mm256_mul_ps(wh0, ah0_0));
       const __m256 prod0_hi = _mm256_fmadd_ps(wl1, al0_1, _mm256_mul_ps(wh1, ah0_1));
       a0 = _mm256_fmadd_ps(_mm256_add_ps(prod0_lo, prod0_hi), s, a0);
@@ -323,7 +351,7 @@ void Int4Group4Avx2(const uint8_t* w_base, const uint8_t* next_w_base, const uin
   store_col(3, acc3_0, acc3_1, acc3_2, acc3_3);
 }
 
-template <int RT>
+template <int RT, bool DeferredScale>
 void Int4RowTileAvx2(const uint8_t* weights, const uint16_t* scales, const uint16_t* bias,
                      bool scales_are_block_major, bool weights_are_prepacked,
                      bool scale_is_bf16, bool bias_is_bf16,
@@ -336,13 +364,13 @@ void Int4RowTileAvx2(const uint8_t* weights, const uint16_t* scales, const uint1
     if (aligned_begin >= aligned_end) {
       Int4GemmRange(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
                     scale_is_bf16, bias_is_bf16, n_total, k, a_reordered, RT,
-                    out, out_stride, n_begin, n_end, /*force_scalar=*/true);
+                    out, out_stride, n_begin, n_end, /*force_scalar=*/true, DeferredScale);
       return;
     }
     if (n_begin < aligned_begin) {
       Int4GemmRange(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
                     scale_is_bf16, bias_is_bf16, n_total, k, a_reordered, RT,
-                    out, out_stride, n_begin, aligned_begin, /*force_scalar=*/true);
+                    out, out_stride, n_begin, aligned_begin, /*force_scalar=*/true, DeferredScale);
     }
     const int64_t group_stride = kColumnsInterleaved * k / 2;
     int64_t n0 = aligned_begin;
@@ -353,15 +381,19 @@ void Int4RowTileAvx2(const uint8_t* weights, const uint16_t* scales, const uint1
         float result8[8][RT];
         if (scales_are_block_major) {
           if (scale_is_bf16) {
-            Int4Group8Avx2<RT, true, true, true>(group, next_group, scales, n_total, n0, k, a_reordered, result8);
+            Int4Group8Avx2<RT, true, true, true, DeferredScale>(group, next_group, scales, n_total, n0, k, a_reordered,
+                                                                result8);
           } else {
-            Int4Group8Avx2<RT, true, true, false>(group, next_group, scales, n_total, n0, k, a_reordered, result8);
+            Int4Group8Avx2<RT, true, true, false, DeferredScale>(group, next_group, scales, n_total, n0, k, a_reordered,
+                                                                 result8);
           }
         } else {
           if (scale_is_bf16) {
-            Int4Group8Avx2<RT, true, false, true>(group, next_group, scales, n_total, n0, k, a_reordered, result8);
+            Int4Group8Avx2<RT, true, false, true, DeferredScale>(group, next_group, scales, n_total, n0, k, a_reordered,
+                                                                 result8);
           } else {
-            Int4Group8Avx2<RT, true, false, false>(group, next_group, scales, n_total, n0, k, a_reordered, result8);
+            Int4Group8Avx2<RT, true, false, false, DeferredScale>(group, next_group, scales, n_total, n0, k,
+                                                                  a_reordered, result8);
           }
         }
         for (int c = 0; c < 8; ++c) {
@@ -378,15 +410,19 @@ void Int4RowTileAvx2(const uint8_t* weights, const uint16_t* scales, const uint1
       float result[4][RT];
       if (scales_are_block_major) {
         if (scale_is_bf16) {
-          Int4Group4Avx2<RT, true, true, true>(group, next_group, scales, n_total, n0, k, a_reordered, result);
+          Int4Group4Avx2<RT, true, true, true, DeferredScale>(group, next_group, scales, n_total, n0, k, a_reordered,
+                                                              result);
         } else {
-          Int4Group4Avx2<RT, true, true, false>(group, next_group, scales, n_total, n0, k, a_reordered, result);
+          Int4Group4Avx2<RT, true, true, false, DeferredScale>(group, next_group, scales, n_total, n0, k, a_reordered,
+                                                               result);
         }
       } else {
         if (scale_is_bf16) {
-          Int4Group4Avx2<RT, true, false, true>(group, next_group, scales, n_total, n0, k, a_reordered, result);
+          Int4Group4Avx2<RT, true, false, true, DeferredScale>(group, next_group, scales, n_total, n0, k, a_reordered,
+                                                               result);
         } else {
-          Int4Group4Avx2<RT, true, false, false>(group, next_group, scales, n_total, n0, k, a_reordered, result);
+          Int4Group4Avx2<RT, true, false, false, DeferredScale>(group, next_group, scales, n_total, n0, k, a_reordered,
+                                                                result);
         }
       }
       for (int c = 0; c < 4; ++c) {
@@ -397,9 +433,9 @@ void Int4RowTileAvx2(const uint8_t* weights, const uint16_t* scales, const uint1
       }
     }
     if (aligned_end < n_end) {
-      Int4GemmRange(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
-                    scale_is_bf16, bias_is_bf16, n_total, k, a_reordered, RT,
-                    out + (aligned_end - n_begin), out_stride, aligned_end, n_end, /*force_scalar=*/true);
+      Int4GemmRange(weights, scales, bias, scales_are_block_major, weights_are_prepacked, scale_is_bf16, bias_is_bf16,
+                    n_total, k, a_reordered, RT, out + (aligned_end - n_begin), out_stride, aligned_end, n_end,
+                    /*force_scalar=*/true, DeferredScale);
     }
   } else {
     const int64_t raw_w_stride = k / 2;
@@ -410,15 +446,19 @@ void Int4RowTileAvx2(const uint8_t* weights, const uint16_t* scales, const uint1
       float result[4][RT];
       if (scales_are_block_major) {
         if (scale_is_bf16) {
-          Int4Group4Avx2<RT, false, true, true>(w_base, next_w, scales, n_total, n0, k, a_reordered, result);
+          Int4Group4Avx2<RT, false, true, true, DeferredScale>(w_base, next_w, scales, n_total, n0, k, a_reordered,
+                                                               result);
         } else {
-          Int4Group4Avx2<RT, false, true, false>(w_base, next_w, scales, n_total, n0, k, a_reordered, result);
+          Int4Group4Avx2<RT, false, true, false, DeferredScale>(w_base, next_w, scales, n_total, n0, k, a_reordered,
+                                                                result);
         }
       } else {
         if (scale_is_bf16) {
-          Int4Group4Avx2<RT, false, false, true>(w_base, next_w, scales, n_total, n0, k, a_reordered, result);
+          Int4Group4Avx2<RT, false, false, true, DeferredScale>(w_base, next_w, scales, n_total, n0, k, a_reordered,
+                                                                result);
         } else {
-          Int4Group4Avx2<RT, false, false, false>(w_base, next_w, scales, n_total, n0, k, a_reordered, result);
+          Int4Group4Avx2<RT, false, false, false, DeferredScale>(w_base, next_w, scales, n_total, n0, k, a_reordered,
+                                                                 result);
         }
       }
       for (int c = 0; c < 4; ++c) {
@@ -431,7 +471,38 @@ void Int4RowTileAvx2(const uint8_t* weights, const uint16_t* scales, const uint1
     if (n0 < n_end) {
       Int4GemmRange(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
                     scale_is_bf16, bias_is_bf16, n_total, k, a_reordered, RT,
-                    out + (n0 - n_begin), out_stride, n0, n_end, /*force_scalar=*/true);
+                    out + (n0 - n_begin), out_stride, n0, n_end, /*force_scalar=*/true, DeferredScale);
+    }
+  }
+}
+
+template <bool DeferredScale>
+void Avx2Int4GemmRangeImpl(const uint8_t* weights, const uint16_t* scales, const uint16_t* bias,
+                           bool scales_are_block_major, bool weights_are_prepacked,
+                           bool scale_is_bf16, bool bias_is_bf16,
+                           int64_t n_total, int64_t k, const float* a_reordered, int64_t m,
+                           float* out, int64_t out_stride, int64_t n_begin, int64_t n_end) {
+  int64_t r = 0;
+  while (r < m) {
+    const int64_t left = m - r;
+    const float* ar = a_reordered + r * k;
+    float* orow = out + r * out_stride;
+    if (left >= 4) {
+      Int4RowTileAvx2<4, DeferredScale>(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
+                                        scale_is_bf16, bias_is_bf16, n_total, k, ar, orow, out_stride, n_begin, n_end);
+      r += 4;
+    } else if (left == 3) {
+      Int4RowTileAvx2<3, DeferredScale>(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
+                                        scale_is_bf16, bias_is_bf16, n_total, k, ar, orow, out_stride, n_begin, n_end);
+      r += 3;
+    } else if (left == 2) {
+      Int4RowTileAvx2<2, DeferredScale>(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
+                                        scale_is_bf16, bias_is_bf16, n_total, k, ar, orow, out_stride, n_begin, n_end);
+      r += 2;
+    } else {
+      Int4RowTileAvx2<1, DeferredScale>(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
+                                        scale_is_bf16, bias_is_bf16, n_total, k, ar, orow, out_stride, n_begin, n_end);
+      r += 1;
     }
   }
 }
@@ -440,29 +511,13 @@ void Avx2Int4GemmRange(const uint8_t* weights, const uint16_t* scales, const uin
                        bool scales_are_block_major, bool weights_are_prepacked,
                        bool scale_is_bf16, bool bias_is_bf16,
                        int64_t n_total, int64_t k, const float* a_reordered, int64_t m,
-                       float* out, int64_t out_stride, int64_t n_begin, int64_t n_end) {
-  int64_t r = 0;
-  while (r < m) {
-    const int64_t left = m - r;
-    const float* ar = a_reordered + r * k;
-    float* orow = out + r * out_stride;
-    if (left >= 4) {
-      Int4RowTileAvx2<4>(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
-                         scale_is_bf16, bias_is_bf16, n_total, k, ar, orow, out_stride, n_begin, n_end);
-      r += 4;
-    } else if (left == 3) {
-      Int4RowTileAvx2<3>(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
-                         scale_is_bf16, bias_is_bf16, n_total, k, ar, orow, out_stride, n_begin, n_end);
-      r += 3;
-    } else if (left == 2) {
-      Int4RowTileAvx2<2>(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
-                         scale_is_bf16, bias_is_bf16, n_total, k, ar, orow, out_stride, n_begin, n_end);
-      r += 2;
-    } else {
-      Int4RowTileAvx2<1>(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
-                         scale_is_bf16, bias_is_bf16, n_total, k, ar, orow, out_stride, n_begin, n_end);
-      r += 1;
-    }
+                       float* out, int64_t out_stride, int64_t n_begin, int64_t n_end, bool deferred_scale) {
+  if (deferred_scale) {
+    Avx2Int4GemmRangeImpl<true>(weights, scales, bias, scales_are_block_major, weights_are_prepacked, scale_is_bf16,
+                                bias_is_bf16, n_total, k, a_reordered, m, out, out_stride, n_begin, n_end);
+  } else {
+    Avx2Int4GemmRangeImpl<false>(weights, scales, bias, scales_are_block_major, weights_are_prepacked, scale_is_bf16,
+                                 bias_is_bf16, n_total, k, a_reordered, m, out, out_stride, n_begin, n_end);
   }
 }
 
@@ -470,7 +525,7 @@ void Avx2GemmRange(const uint8_t* weights, const uint16_t* scales, const uint16_
                    const float* a, int64_t m, float* out, int64_t out_stride, int64_t n_begin, int64_t n_end) {
   Avx2Int4GemmRange(weights, scales, bias, /*scales_are_block_major=*/true, /*weights_are_prepacked=*/true,
                     /*scale_is_bf16=*/false, /*bias_is_bf16=*/false, n_total, k, a, m,
-                    out, out_stride, n_begin, n_end);
+                    out, out_stride, n_begin, n_end, /*deferred_scale=*/true);
 }
 
 }  // namespace detail
