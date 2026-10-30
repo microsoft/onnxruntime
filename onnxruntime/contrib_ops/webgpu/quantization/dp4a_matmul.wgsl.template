@@ -11,6 +11,7 @@
 #param qc_wave128
 #param has_weight_idx
 #param has_weight_idx_indirect
+#param per_channel
 
 #use .getByOffset .setByOffset
 
@@ -40,6 +41,10 @@
 // The medium size matmul is implemented using dot4I8Packed, so the inputs for
 // this shader require A to be int8 quantized with block size 128. B is regular
 // matmulnbits input with block size 32.
+//
+// per_channel: B has one scale per column (block_size == K) and A one per row, so the
+// whole K is accumulated in int32 and both scales are applied once at the end.
+// Requires no zero points; only implemented for the 16-lane subtile layout (!is_qualcomm).
 
 #if qc_wave128
 const tile_m = 128;
@@ -56,9 +61,13 @@ const tile_size_k_vec = 2;
 
 // Shared memory
 var<workgroup> tile_A : array<array<vec4<u32>, tile_m>, tile_size_k_vec>;                     // tile_m x 32
+#if !per_channel
 var<workgroup> scale_A : array<output_element_t, tile_m>;                                     // tile_m x 1
+#endif
 var<workgroup> tile_B : array<array<vec4<u32>, tile_n>, tile_size_k_vec>;                     // tile_n x 32
+#if !per_channel
 var<workgroup> scale_B : array<output_element_t, tile_n>;                                     // tile_n x 1
+#endif
 
 #if has_zero_points
     var<workgroup> zeroes : array<i32, tile_n>;
@@ -72,11 +81,13 @@ fn loadSHMA(batch:u32, a_global_base:u32, kidx_v:u32, row: u32, col: u32)
         return;
     }
     tile_A[col][row] = a.getByOffset(batch*uniforms.M*uniforms.K16+a_global*uniforms.K16+kidx_v+col);
+#if !per_channel
     // A 128-value quantization block shares its scale across four 32-value K tiles.
     if (col == 0 && kidx_v % 8u == 0u)
     {
         scale_A[row] = scales_a.getByOffset(batch*uniforms.M*(uniforms.K/128) + a_global*(uniforms.K/128) + kidx_v/8);
     }
+#endif
 }
 
 #if n_bits == 4
@@ -99,6 +110,9 @@ fn loadSHMA(batch:u32, a_global_base:u32, kidx_v:u32, row: u32, col: u32)
         const actual_weight_idx : u32 = 0;
         let b_value = b.getByOffset(b_global * uniforms.K16+kidx_v + col);
 #endif
+#if per_channel
+        tile_B[col][row] = DequantizedFrom4BitsTo8Bits(b_value, default_zero_point);
+#else
         let block_idx = kidx_v/(block_size/16);
         let zero = mm_read_zero(actual_weight_idx, b_global, block_idx, uniforms.N, uniforms.zero_blocks_per_col);
         tile_B[col][row] = DequantizedFrom4BitsTo8Bits(b_value, zero);
@@ -108,6 +122,7 @@ fn loadSHMA(batch:u32, a_global_base:u32, kidx_v:u32, row: u32, col: u32)
             let b_scale_offset = actual_weight_idx * uniforms.N * (uniforms.K/block_size);
             scale_B[row] = scales_b.getByOffset(b_scale_offset + b_global*(uniforms.K/block_size) + block_idx);
         }
+#endif
     }
 #endif
 
@@ -134,6 +149,7 @@ fn loadSHMA(batch:u32, a_global_base:u32, kidx_v:u32, row: u32, col: u32)
         let b_value = b.getByOffset(b_global * uniforms.K16 + kidx_v + col);
 #endif
         tile_B[col][row] = AlignWithZeroPoint(b_value);
+#if !per_channel
         if (col == 0)
         {
             // kidx_v - each kidx_v covers 16 values of k
@@ -144,6 +160,7 @@ fn loadSHMA(batch:u32, a_global_base:u32, kidx_v:u32, row: u32, col: u32)
             zeroes[row] = mm_read_zero(actual_weight_idx, b_global, block_idx, uniforms.N, uniforms.zero_blocks_per_col);
 #endif
         }
+#endif
     }
 #endif
 
@@ -180,10 +197,25 @@ fn loadSHMA(batch:u32, a_global_base:u32, kidx_v:u32, row: u32, col: u32)
     }
 #endif
 
+#if per_channel
+    fn DP8AI(a1:vec4<u32>, b1:vec4<u32>, a2:vec4<u32>, b2:vec4<u32>) -> i32
+    {
+        var local_sum = dot4I8Packed(a1[0], b1[0]);
+        local_sum += dot4I8Packed(a1[1], b1[1]);
+        local_sum += dot4I8Packed(a1[2], b1[2]);
+        local_sum += dot4I8Packed(a1[3], b1[3]);
+        local_sum += dot4I8Packed(a2[0], b2[0]);
+        local_sum += dot4I8Packed(a2[1], b2[1]);
+        local_sum += dot4I8Packed(a2[2], b2[2]);
+        local_sum += dot4I8Packed(a2[3], b2[3]);
+        return local_sum;
+    }
+#endif
+
 // Precision of the cross-tile accumulator, selected by the
 // "enableMatmulFp32Accumulation" provider option. SDP8AI is an exact integer
 // dot4I8Packed dot product; it is the accumulation across K tiles that can saturate f16.
-#if acc_f32
+#if acc_f32 || per_channel
 alias acc_element_t = f32;
 #else
 alias acc_element_t = output_element_t;
@@ -252,6 +284,12 @@ $MAIN {
     var lane_output2: vec4<acc_element_t>;
     var lane_output3: vec4<acc_element_t>;
     var lane_output4: vec4<acc_element_t>;
+#if per_channel
+    var lane_iacc1: vec4<i32>;
+    var lane_iacc2: vec4<i32>;
+    var lane_iacc3: vec4<i32>;
+    var lane_iacc4: vec4<i32>;
+#endif
 #endif
     // K's vectorization is 16 items per index. See input_a/input_b.
     // tile_size_k_vec - is the k tile size in vectorized space (1/16). That is
@@ -276,6 +314,58 @@ $MAIN {
 #endif
         workgroupBarrier();
 
+#if per_channel
+        // Compute phase (per_channel): 16 x 32 x 16 subtile, int32 accumulation, no scales.
+        var own_a0: vec4<u32> = tile_A[0][base_A + a_idx];
+        var own_a1: vec4<u32> = tile_A[1][base_A + a_idx];
+        if (sg_size == 16)
+        {
+            var own_b0: vec4<u32> = tile_B[0][base_B + sg_id];
+            var own_b1: vec4<u32> = tile_B[1][base_B + sg_id];
+            lane_iacc1[0] += DP8AI(own_a0, subgroupShuffle(own_b0, 0), own_a1, subgroupShuffle(own_b1, 0));
+            lane_iacc1[1] += DP8AI(own_a0, subgroupShuffle(own_b0, 1), own_a1, subgroupShuffle(own_b1, 1));
+            lane_iacc1[2] += DP8AI(own_a0, subgroupShuffle(own_b0, 2), own_a1, subgroupShuffle(own_b1, 2));
+            lane_iacc1[3] += DP8AI(own_a0, subgroupShuffle(own_b0, 3), own_a1, subgroupShuffle(own_b1, 3));
+
+            lane_iacc2[0] += DP8AI(own_a0, subgroupShuffle(own_b0, 4), own_a1, subgroupShuffle(own_b1, 4));
+            lane_iacc2[1] += DP8AI(own_a0, subgroupShuffle(own_b0, 5), own_a1, subgroupShuffle(own_b1, 5));
+            lane_iacc2[2] += DP8AI(own_a0, subgroupShuffle(own_b0, 6), own_a1, subgroupShuffle(own_b1, 6));
+            lane_iacc2[3] += DP8AI(own_a0, subgroupShuffle(own_b0, 7), own_a1, subgroupShuffle(own_b1, 7));
+
+            lane_iacc3[0] += DP8AI(own_a0, subgroupShuffle(own_b0, 8), own_a1, subgroupShuffle(own_b1, 8));
+            lane_iacc3[1] += DP8AI(own_a0, subgroupShuffle(own_b0, 9), own_a1, subgroupShuffle(own_b1, 9));
+            lane_iacc3[2] += DP8AI(own_a0, subgroupShuffle(own_b0, 10), own_a1, subgroupShuffle(own_b1, 10));
+            lane_iacc3[3] += DP8AI(own_a0, subgroupShuffle(own_b0, 11), own_a1, subgroupShuffle(own_b1, 11));
+
+            lane_iacc4[0] += DP8AI(own_a0, subgroupShuffle(own_b0, 12), own_a1, subgroupShuffle(own_b1, 12));
+            lane_iacc4[1] += DP8AI(own_a0, subgroupShuffle(own_b0, 13), own_a1, subgroupShuffle(own_b1, 13));
+            lane_iacc4[2] += DP8AI(own_a0, subgroupShuffle(own_b0, 14), own_a1, subgroupShuffle(own_b1, 14));
+            lane_iacc4[3] += DP8AI(own_a0, subgroupShuffle(own_b0, 15), own_a1, subgroupShuffle(own_b1, 15));
+        }
+        else
+        {
+            // Other subgroup sizes: read B straight from shared memory (broadcast reads).
+            lane_iacc1[0] += DP8AI(own_a0, tile_B[0][base_B + 0], own_a1, tile_B[1][base_B + 0]);
+            lane_iacc1[1] += DP8AI(own_a0, tile_B[0][base_B + 1], own_a1, tile_B[1][base_B + 1]);
+            lane_iacc1[2] += DP8AI(own_a0, tile_B[0][base_B + 2], own_a1, tile_B[1][base_B + 2]);
+            lane_iacc1[3] += DP8AI(own_a0, tile_B[0][base_B + 3], own_a1, tile_B[1][base_B + 3]);
+
+            lane_iacc2[0] += DP8AI(own_a0, tile_B[0][base_B + 4], own_a1, tile_B[1][base_B + 4]);
+            lane_iacc2[1] += DP8AI(own_a0, tile_B[0][base_B + 5], own_a1, tile_B[1][base_B + 5]);
+            lane_iacc2[2] += DP8AI(own_a0, tile_B[0][base_B + 6], own_a1, tile_B[1][base_B + 6]);
+            lane_iacc2[3] += DP8AI(own_a0, tile_B[0][base_B + 7], own_a1, tile_B[1][base_B + 7]);
+
+            lane_iacc3[0] += DP8AI(own_a0, tile_B[0][base_B + 8], own_a1, tile_B[1][base_B + 8]);
+            lane_iacc3[1] += DP8AI(own_a0, tile_B[0][base_B + 9], own_a1, tile_B[1][base_B + 9]);
+            lane_iacc3[2] += DP8AI(own_a0, tile_B[0][base_B + 10], own_a1, tile_B[1][base_B + 10]);
+            lane_iacc3[3] += DP8AI(own_a0, tile_B[0][base_B + 11], own_a1, tile_B[1][base_B + 11]);
+
+            lane_iacc4[0] += DP8AI(own_a0, tile_B[0][base_B + 12], own_a1, tile_B[1][base_B + 12]);
+            lane_iacc4[1] += DP8AI(own_a0, tile_B[0][base_B + 13], own_a1, tile_B[1][base_B + 13]);
+            lane_iacc4[2] += DP8AI(own_a0, tile_B[0][base_B + 14], own_a1, tile_B[1][base_B + 14]);
+            lane_iacc4[3] += DP8AI(own_a0, tile_B[0][base_B + 15], own_a1, tile_B[1][base_B + 15]);
+        }
+#else
         // Compute phase: Perform matmul for this subtile 16 x 32 x 16.
         // Step 1: Load from shared memory into registers across entire subgroup.
         var own_a0: vec4<u32> = tile_A[0][base_A + a_idx];
@@ -444,6 +534,7 @@ $MAIN {
         }
  #endif
 #endif
+#endif  // per_channel
         workgroupBarrier();
     }
 
@@ -465,6 +556,32 @@ $MAIN {
     // This creates a shader requirement that uniforms.N % 16 == 0
     if (a_global < uniforms.M && b_global < uniforms.N)
     {
+#if per_channel
+        // Apply the per-row A scale and the per-column B scales ([N] per weight) once.
+#if has_weight_idx
+#if has_weight_idx_indirect
+        let actual_weight_idx_scale = weight_index_indirect[uniforms.weight_idx];
+#else
+        let actual_weight_idx_scale = uniforms.weight_idx;
+#endif
+        let b_scale_base = actual_weight_idx_scale * uniforms.N + b_global;
+#else
+        let b_scale_base = b_global;
+#endif
+        let scale_a_row = f32(scales_a.getByOffset(batch * uniforms.M + a_global));
+        let scale_b1 = vec4<f32>(f32(scales_b.getByOffset(b_scale_base)), f32(scales_b.getByOffset(b_scale_base + 1)),
+                                 f32(scales_b.getByOffset(b_scale_base + 2)), f32(scales_b.getByOffset(b_scale_base + 3)));
+        let scale_b2 = vec4<f32>(f32(scales_b.getByOffset(b_scale_base + 4)), f32(scales_b.getByOffset(b_scale_base + 5)),
+                                 f32(scales_b.getByOffset(b_scale_base + 6)), f32(scales_b.getByOffset(b_scale_base + 7)));
+        let scale_b3 = vec4<f32>(f32(scales_b.getByOffset(b_scale_base + 8)), f32(scales_b.getByOffset(b_scale_base + 9)),
+                                 f32(scales_b.getByOffset(b_scale_base + 10)), f32(scales_b.getByOffset(b_scale_base + 11)));
+        let scale_b4 = vec4<f32>(f32(scales_b.getByOffset(b_scale_base + 12)), f32(scales_b.getByOffset(b_scale_base + 13)),
+                                 f32(scales_b.getByOffset(b_scale_base + 14)), f32(scales_b.getByOffset(b_scale_base + 15)));
+        lane_output1 = vec4<f32>(lane_iacc1) * scale_a_row * scale_b1;
+        lane_output2 = vec4<f32>(lane_iacc2) * scale_a_row * scale_b2;
+        lane_output3 = vec4<f32>(lane_iacc3) * scale_a_row * scale_b3;
+        lane_output4 = vec4<f32>(lane_iacc4) * scale_a_row * scale_b4;
+#endif
 #if is_qualcomm
  #if has_bias
         // Bias is added in acc_element_t and only downcast to output_element_t at the store,

@@ -18,6 +18,16 @@ Status DP4AMatMulQuantizeProgram::GenerateShaderCode(ShaderHelper& shader) const
                              WGSL_TEMPLATE_VARIABLE(output, output), WGSL_TEMPLATE_VARIABLE(scales, scales));
 }
 
+Status DP4AMatMulQuantizePerTokenProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  const auto& a = shader.AddInput("input_a", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+  const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform);
+  const auto& scales = shader.AddOutput("scales", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
+  return WGSL_TEMPLATE_APPLY(shader, "quantization/dp4a_quantize_per_token.wgsl.template",
+                             WGSL_TEMPLATE_VARIABLE(a, a),
+                             WGSL_TEMPLATE_VARIABLE(output, output),
+                             WGSL_TEMPLATE_VARIABLE(scales, scales));
+}
+
 Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& a = shader.AddInput("input_a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   const auto& scales_a = shader.AddInput("scales_a", ShaderUsage::UseUniform);
@@ -44,6 +54,7 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                              WGSL_TEMPLATE_PARAMETER(is_qualcomm, is_qualcomm_),
                              WGSL_TEMPLATE_PARAMETER(n_bits, nbits_),
                              WGSL_TEMPLATE_PARAMETER(output_type_i32, true),
+                             WGSL_TEMPLATE_PARAMETER(per_channel, per_channel_),
                              WGSL_TEMPLATE_PARAMETER(qc_wave128, SubgroupSize() == 128),
                              WGSL_TEMPLATE_VARIABLE(a, a),
                              WGSL_TEMPLATE_VARIABLE(b, b),
@@ -112,29 +123,6 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
   constexpr uint32_t kVec2Components = 2;
   constexpr uint32_t kU32Components = 4;
 
-  DP4AQuantizedInput local_input;
-  auto& input = quantized_input ? *quantized_input : local_input;
-  if (!input.values) {
-    constexpr uint32_t kBlockSizeA = 128;
-    DP4AMatMulQuantizeProgram quantize_program;
-    quantize_program.SetWorkgroupSize(64);
-    uint32_t tile_size = 64 * kVec4Components;
-    quantize_program.SetDispatchGroupSize((batch_count * M * K + tile_size - 1) / tile_size, 1, 1);
-    TensorShape a_quant_shape{batch_count, M, K / kU32Components};
-    Tensor a_quant = context.CreateGPUTensor(DataTypeImpl::GetType<uint32_t>(), a_quant_shape);
-    TensorShapeVector a_scales_dims({batch_count, 1, M, K / kBlockSizeA});
-    Tensor a_scale = context.CreateGPUTensor(a->DataType(), a_scales_dims);
-    quantize_program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec4Components)}})
-        .AddOutputs({{&a_quant, ProgramTensorMetadataDependency::Rank, a_quant.Shape(), 1},
-                     {&a_scale, ProgramTensorMetadataDependency::Rank, 1}})
-        .AddUniformVariable({batch_count * M * K / kU32Components});
-    ORT_RETURN_IF_ERROR(context.RunProgram(quantize_program));
-    input.values.emplace(std::move(a_quant));
-    input.scales.emplace(std::move(a_scale));
-  }
-  const auto& a_quant = *input.values;
-  const auto& a_scale = *input.scales;
-
   const bool has_zero_points = zero_points != nullptr;
   const bool has_bias = bias != nullptr;
   const bool has_weight_idx_indirect = weight_index_indirect != nullptr;
@@ -146,7 +134,53 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
   // overhead; shorter K benefits more from the tiled kernel's reuse across M.
   const bool use_k_parallel = M < min_M_for_tile_optimization || (small_n && K >= 2048);
   // Indirect expert weights can differ by row, so they also require the row-wise kernel.
-  if (use_k_parallel || has_weight_idx_indirect) {
+  const bool use_k_parallel_program = use_k_parallel || has_weight_idx_indirect;
+  const bool is_qualcomm = context.AdapterInfo().vendor == std::string_view{"qualcomm"};
+  const bool per_channel = !use_k_parallel_program && block_size == K && !has_zero_points &&
+                           !is_qualcomm && (nbits == 4 || nbits == 8);
+
+  // Activation quantization. The per-channel path needs one scale per row; the blockwise
+  // kernels one per 128 K elements. The two layouts are not interchangeable, so a shared
+  // workspace produced with the other granularity is re-quantized.
+  constexpr uint32_t kBlockSizeA = 128;
+  const uint32_t a_block_size = per_channel ? K : kBlockSizeA;
+  DP4AQuantizedInput local_input;
+  auto& input = quantized_input ? *quantized_input : local_input;
+  if (!input.values || input.a_block_size != a_block_size) {
+    TensorShape a_quant_shape{batch_count, M, K / kU32Components};
+    Tensor a_quant = context.CreateGPUTensor(DataTypeImpl::GetType<uint32_t>(), a_quant_shape);
+    Tensor a_scale;
+    if (per_channel) {
+      DP4AMatMulQuantizePerTokenProgram quantize_program;
+      quantize_program.SetWorkgroupSize(256);
+      quantize_program.SetDispatchGroupSize(batch_count * M, 1, 1);
+      a_scale = context.CreateGPUTensor(a->DataType(), TensorShapeVector({batch_count, M}));
+      quantize_program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec4Components)}})
+          .AddOutputs({{&a_quant, ProgramTensorMetadataDependency::Rank, a_quant.Shape(), 1},
+                       {&a_scale, ProgramTensorMetadataDependency::Rank, 1}})
+          .AddUniformVariable({K / kU32Components});
+      ORT_RETURN_IF_ERROR(context.RunProgram(quantize_program));
+    } else {
+      DP4AMatMulQuantizeProgram quantize_program;
+      quantize_program.SetWorkgroupSize(64);
+      uint32_t tile_size = 64 * kVec4Components;
+      quantize_program.SetDispatchGroupSize((batch_count * M * K + tile_size - 1) / tile_size, 1, 1);
+      TensorShapeVector a_scales_dims({batch_count, 1, M, K / kBlockSizeA});
+      a_scale = context.CreateGPUTensor(a->DataType(), a_scales_dims);
+      quantize_program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec4Components)}})
+          .AddOutputs({{&a_quant, ProgramTensorMetadataDependency::Rank, a_quant.Shape(), 1},
+                       {&a_scale, ProgramTensorMetadataDependency::Rank, 1}})
+          .AddUniformVariable({batch_count * M * K / kU32Components});
+      ORT_RETURN_IF_ERROR(context.RunProgram(quantize_program));
+    }
+    input.values.emplace(std::move(a_quant));
+    input.scales.emplace(std::move(a_scale));
+    input.a_block_size = a_block_size;
+  }
+  const auto& a_quant = *input.values;
+  const auto& a_scale = *input.scales;
+
+  if (use_k_parallel_program) {
     const uint32_t tile_size_k_vec = 32;
     // Keep more workgroups available when there are only a few input rows.
     const uint32_t tile_size_n = small_n && M >= min_M_for_tile_optimization ? N : 4;
@@ -196,10 +230,9 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
   TensorShape reshaped_y_shape{batch_count, M, N / kVec4Components};
   uint32_t num_M_tile = (M + tile_m - 1) / tile_m;
   uint32_t num_N_tile = (N + tile_n - 1) / tile_n;
-  bool is_qualcomm = context.AdapterInfo().vendor == std::string_view{"qualcomm"};
   const bool acc_f32 = context.EnableMatmulFp32Accumulation();
   const uint32_t group_m = nbits == 8 ? 8 : 1;
-  DP4AMatMulNBitsProgram mul_program{block_size, nbits, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, is_qualcomm, acc_f32, group_m};
+  DP4AMatMulNBitsProgram mul_program{block_size, nbits, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, is_qualcomm, acc_f32, group_m, per_channel};
   mul_program.SetWorkgroupSize(256);
   if (qc_wave128) {
     mul_program.SetSubgroupSize(128);
@@ -220,7 +253,7 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
                             {zero_blocks_per_col},
                             {weight_index}})
       .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, reshaped_y_shape, static_cast<int>(kVec4Components)})
-      .CacheHint("Block" + std::to_string(block_size), nbits, has_zero_points, is_qualcomm, has_bias, has_weight_idx, has_weight_idx_indirect, acc_f32, group_m);
+      .CacheHint("Block" + std::to_string(block_size), nbits, has_zero_points, is_qualcomm, has_bias, has_weight_idx, has_weight_idx_indirect, acc_f32, group_m, per_channel);
   if (has_zero_points) {
     mul_program.AddInput({zero_points, ProgramTensorMetadataDependency::None, {(zero_points->Shape().Size() + 3) / 4}, 4});
   }
