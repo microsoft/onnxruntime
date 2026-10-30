@@ -6339,9 +6339,8 @@ int QMoEOffload::RunColdExperts(CpuWork& work, int group_count, const ActT* host
       }
     }
     const auto t_fc1 = timed ? now() : std::chrono::steady_clock::time_point{};
-    auto fc1_task = [&](ptrdiff_t task) {
-      const int slot = static_cast<int>(task) / fc1_tasks;
-      const int begin = (static_cast<int>(task) % fc1_tasks) * fc1_cols_;
+    auto fc1_task_for_slot = [&](int slot, int col_tile) {
+      const int begin = col_tile * fc1_cols_;
       const int end = std::min(begin + fc1_cols_, 2 * inter_size_);
       const int cnt = group[slot].count;
       const float* act_in = (static_cast<size_t>(slot) < CpuWork::kMaxGroupSlots)
@@ -6405,9 +6404,11 @@ int QMoEOffload::RunColdExperts(CpuWork& work, int group_count, const ActT* host
                                     false, cpu_fp16_boundaries_);
       }
     };
-    auto fc2_task = [&](ptrdiff_t task) {
-      const int slot = static_cast<int>(task) / fc2_tasks;
-      const int begin = (static_cast<int>(task) % fc2_tasks) * fc2_cols_;
+    auto fc1_task = [&](ptrdiff_t task) {
+      fc1_task_for_slot(static_cast<int>(task) / fc1_tasks, static_cast<int>(task) % fc1_tasks);
+    };
+    auto fc2_task_for_slot = [&](int slot, int col_tile) {
+      const int begin = col_tile * fc2_cols_;
       const int end = std::min(begin + fc2_cols_, hidden_size_);
       const uint8_t* ssd_blk = use_ssd ? group_ssd_leases[slot].data : nullptr;
       if (int3_bank_mode_) {
@@ -6478,73 +6479,25 @@ int QMoEOffload::RunColdExperts(CpuWork& work, int group_count, const ActT* host
         }
       }
     };
+    auto fc2_task = [&](ptrdiff_t task) {
+      fc2_task_for_slot(static_cast<int>(task) / fc2_tasks, static_cast<int>(task) % fc2_tasks);
+    };
     std::chrono::steady_clock::time_point t_fc2{};
-    const ptrdiff_t total_load =
-        static_cast<ptrdiff_t>(miss_load_slots.size()) * qmoe_shared::FileExpertStore::kLoadChunksPerExpert;
     const ptrdiff_t total_fc1 = static_cast<ptrdiff_t>(group_size) * fc1_tasks;
     const ptrdiff_t total_fc2 = static_cast<ptrdiff_t>(group_size) * fc2_tasks;
-    std::atomic<bool> load_failed{false};
+    bool group_ok = true;
     if (per_expert_ready && static_cast<size_t>(group_size) <= CpuWork::kMaxGroupSlots) {
-      auto fused_task = [&](ptrdiff_t task) {
-        if (task < total_load) {
-          const int m_idx = static_cast<int>(task) / qmoe_shared::FileExpertStore::kLoadChunksPerExpert;
-          const int chunk_idx = static_cast<int>(task) % qmoe_shared::FileExpertStore::kLoadChunksPerExpert;
-          const int slot = miss_load_slots[static_cast<size_t>(m_idx)];
-          const int32_t exp_id = group_expert_ids[slot];
-          if (!file_expert_store_.LoadExpertChunk(exp_id, work.slot_load_dst[slot], chunk_idx)) {
-            load_failed.store(true, std::memory_order_relaxed);
-          }
-          if (work.slot_ready[slot].value.fetch_add(1, std::memory_order_acq_rel) + 1 ==
-              qmoe_shared::FileExpertStore::kLoadChunksPerExpert) {
-            const bool ok = !load_failed.load(std::memory_order_relaxed) &&
-                            file_expert_store_.FinishLoadExpert(exp_id, true, &group_ssd_leases[slot]);
-            if (!ok) {
-              static_cast<void>(file_expert_store_.FinishLoadExpert(exp_id, false, nullptr));
-              lease_held[slot] = 0;
-              load_failed.store(true, std::memory_order_relaxed);
-            }
-            for (int s = slot; s < group_size; ++s) {
-              if (group_expert_ids[s] == exp_id) {
-                if (s != slot) {
-                  group_ssd_leases[s] = group_ssd_leases[slot];
-                }
-                if (ok && nvfp4_mode_) {
-                  work.slot_view[s] = make_nvfp4_view(group[s].expert, group_ssd_leases[slot].data);
-                }
-                work.slot_ready[s].value.store(kReadyDoneVal, std::memory_order_release);
-              }
-            }
-          }
-        } else if (task < total_load + total_fc1) {
-          const ptrdiff_t fc1_idx = task - total_load;
-          const int slot = static_cast<int>(fc1_idx) / fc1_tasks;
-          while (work.slot_ready[slot].value.load(std::memory_order_acquire) < kReadyDoneVal) {
-#if defined(_MSC_VER) && (defined(_M_AMD64) || defined(_M_IX86))
-            _mm_pause();
-#elif defined(__x86_64__) || defined(__i386__)
-            __builtin_ia32_pause();
-#endif
-          }
-          if (!load_failed.load(std::memory_order_relaxed)) {
-            fc1_task(fc1_idx);
-          }
-          work.fc1_done[slot].value.fetch_add(1, std::memory_order_release);
-        } else {
-          const ptrdiff_t fc2_idx = task - total_load - total_fc1;
-          const int slot = static_cast<int>(fc2_idx) / fc2_tasks;
-          while (work.fc1_done[slot].value.load(std::memory_order_acquire) < fc1_tasks) {
-#if defined(_MSC_VER) && (defined(_M_AMD64) || defined(_M_IX86))
-            _mm_pause();
-#elif defined(__x86_64__) || defined(__i386__)
-            __builtin_ia32_pause();
-#endif
-          }
-          if (!load_failed.load(std::memory_order_relaxed)) {
-            fc2_task(fc2_idx);
-          }
+      auto on_slot_lease_ready = [&](int s, const qmoe_shared::ExpertBlockLease& lease) {
+        if (nvfp4_mode_) {
+          work.slot_view[s] = make_nvfp4_view(group[s].expert, lease.data);
         }
       };
-      run_parallel(total_load + total_fc1 + total_fc2, fused_task);
+      group_ok = qmoe_shared::RunReadyFirstFusedColdExpertGroup<CpuWork::kMaxGroupSlots>(
+          file_expert_store_, group_size, use_ssd ? group_expert_ids.data() : nullptr,
+          miss_load_slots.data(), miss_load_slots.size(), work.slot_load_dst.data(),
+          use_ssd ? group_ssd_leases.data() : nullptr, use_ssd ? lease_held.data() : nullptr,
+          fc1_tasks, fc2_tasks, work.slot_ready.get(), work.fc1_done.get(),
+          on_slot_lease_ready, fc1_task_for_slot, fc2_task_for_slot, run_parallel);
       t_fc2 = timed ? now() : std::chrono::steady_clock::time_point{};
     } else {
       run_parallel(total_fc1, fc1_task);
@@ -6559,8 +6512,7 @@ int QMoEOffload::RunColdExperts(CpuWork& work, int group_count, const ActT* host
         }
       }
       miss_load_slots.clear();
-      ORT_ENFORCE(!load_failed.load(std::memory_order_relaxed),
-                  "QMoEOffload FileExpertStore parallel chunk load failed.");
+      ORT_ENFORCE(group_ok, "QMoEOffload FileExpertStore parallel chunk load failed.");
     }
     const auto t_write = timed ? now() : std::chrono::steady_clock::time_point{};
     if (compact) {
