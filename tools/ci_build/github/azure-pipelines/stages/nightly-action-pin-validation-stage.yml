@@ -1,0 +1,52 @@
+stages:
+- stage: Action_Pin_Validation
+  displayName: GitHub Actions pin validation
+  dependsOn: []
+  jobs:
+  - job: Validate
+    displayName: Verify action SHA pins and version comments
+    timeoutInMinutes: 10
+    workspace:
+      clean: all
+    pool:
+      name: onnxruntime-Win-CPU-2022
+      os: windows
+    steps:
+    - checkout: self
+      clean: true
+      fetchDepth: 1
+      persistCredentials: false
+      submodules: false
+
+    # Example of mirroring a pinact release (from the repository root):
+    # python tools\ci_build\mirror_as_universal_package.py `
+    #   --url https://github.com/suzuki-shunsuke/pinact/releases/download/v4.0.0/pinact_windows_amd64.zip `
+    #   --name pinact-windows-amd64 --version 4.0.0 `
+    #   --sha256 800554b9f87c5136e9469ec9075a1f51fbea5ac402914d99f8afc4ec98a87901
+    - task: UniversalPackages@0
+      displayName: Download pinact
+      inputs:
+        command: download
+        feedsToUse: internal
+        vstsFeed: Lotus
+        vstsFeedPackage: pinact-windows-amd64
+        vstsPackageVersion: '4.0.0'
+        downloadDirectory: '$(Agent.TempDirectory)\pinact-package'
+
+    - powershell: |
+        $ErrorActionPreference = 'Stop'
+        $expectedHash = '800554b9f87c5136e9469ec9075a1f51fbea5ac402914d99f8afc4ec98a87901'
+        $archivePath = "$(Agent.TempDirectory)\pinact-package\pinact_windows_amd64.zip"
+        $extractPath = "$(Agent.TempDirectory)\pinact"
+        $actualHash = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash
+        if ($actualHash -ne $expectedHash) {
+          throw "pinact archive SHA256 mismatch: expected $expectedHash, got $actualHash"
+        }
+        Expand-Archive -LiteralPath $archivePath -DestinationPath $extractPath -Force
+      displayName: Verify and extract pinact
+
+    - powershell: |
+        & "$(Agent.TempDirectory)\pinact\pinact.exe" run --fix=false --verify
+        exit $LASTEXITCODE
+      displayName: Verify action SHA pins
+      workingDirectory: '$(Build.SourcesDirectory)'

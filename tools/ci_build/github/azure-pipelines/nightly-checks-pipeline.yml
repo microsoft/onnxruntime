@@ -17,6 +17,11 @@ resources:
     ref: refs/tags/release
 
 parameters:
+- name: run_action_pin_validation
+  displayName: Run GitHub Actions pin validation
+  type: boolean
+  default: true
+
 - name: run_webgpu_shader_validation
   displayName: Run WebGPU shader validation
   type: boolean
@@ -34,5 +39,7 @@ extends:
       name: onnxruntime-Win-CPU-2022
       os: windows
     stages:
+    - ${{ if parameters.run_action_pin_validation }}:
+      - template: stages/nightly-action-pin-validation-stage.yml
     - ${{ if parameters.run_webgpu_shader_validation }}:
       - template: stages/nightly-webgpu-shader-validation-stage.yml
