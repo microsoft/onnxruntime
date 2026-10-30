@@ -30,7 +30,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$diagnosticSource = 'e586fd747b1b60f4c39c925ea96ca34e228afd60'
+$diagnosticSource = '6a15f89c13f8960d6dfc65bbd59b3cc4740867ea'
 $originalDiagnostic = '64c1a75e1715442956ca40d3c11106a29d0b910e'
 $providerBase = '123752d361d2da8ff592b347772f31362e0966bd'
 $scriptPath = 'tools/ci_build/github/windows/build_gemm_diagnostics.ps1'
@@ -79,7 +79,7 @@ $configureArguments += @(
     'onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON',
     'onnxruntime_BUILD_UNIT_TESTS=OFF',
     'onnxruntime_USE_FPA_INTB_GEMM=ON',
-    'onnxruntime_PLUGIN_EP_VERSION=0.4.0-dev+e586fd7'
+    'onnxruntime_PLUGIN_EP_VERSION=0.4.0-dev+6a15f89'
 )
 $buildArguments = @(
     '--build', $binaryDirectory, '--config', 'Release',
