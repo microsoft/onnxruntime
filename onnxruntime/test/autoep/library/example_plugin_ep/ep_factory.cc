@@ -372,9 +372,8 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
   std::string weightless_mode;
   RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kOrtSessionOptionEpEnableWeightlessMode, "",
                                                  weightless_mode));
-  std::string test_weightless_drop_initializers;
-  RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kExampleEpTestWeightlessDropInitializers, "0",
-                                                 test_weightless_drop_initializers));
+  RETURN_IF_ERROR(GetSessionConfigBoolOrDefault(*session_options, kExampleEpTestWeightlessDropInitializers, false,
+                                                config.drop_initializers_in_weightless_mode));
 
   // Record the deprecated weightless option, which ORT sets to match "ep.enable_weightless_mode" before calling
   // CreateEp(). EPs built for earlier versions only know the deprecated option.
@@ -401,26 +400,17 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
                                              : enable_weightless_ep_context_nodes == "1"       ? 1
                                                                                                : 2);
 
-  ExampleEp::Config config = {};
-  config.enable_ep_context = ep_context_enable == "1";
-  config.embed_ep_context_in_model = ep_context_embed_mode == "1";
-  config.ep_context_output_model_path = std::move(ep_context_output_model_path);
-
   // This EP supports several weightless modes, so it honors the mode the app selects with "ep.enable_weightless_mode"
   // (ORT has validated the value). The deprecated options request weightless mode without selecting one; this EP then
   // uses weightless mode for all initializers, which is what it reports in the "weightless_support" EP metadata.
   if (!weightless_mode.empty()) {
     config.weightless_mode = static_cast<OrtWeightlessSupport>(std::stoi(weightless_mode));
-  } else if (enable_weightless == "1" || (config.enable_ep_context && weightless_ep_context_nodes_enable == "1")) {
+  } else if (enable_weightless == "1" || (config.enable_ep_context && config.enable_weightless_ep_context_nodes)) {
     config.weightless_mode = OrtWeightlessSupport_ALL;
   }
-  config.drop_initializers_in_weightless_mode = test_weightless_drop_initializers == "1";
   if (!test_weightless_support.empty()) {
     config.weightless_support = static_cast<OrtWeightlessSupport>(std::stoi(test_weightless_support));
   }
-  config.advertise_ep_context_data_support = advertise_ep_context_data_support == "1";
-  config.use_default_cpu_allocator = use_default_cpu_allocator == "1";
-  config.test_read_ep_context_during_compile = test_read_ep_context_during_compile == "1";
 
   // The EpContextConfig wrapper captures a stable snapshot of the EPContext callbacks from the session options and
   // owns the snapshot handle. EXCEPTION_TO_RETURNED_STATUS_END converts extraction failures into an OrtStatus.
