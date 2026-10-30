@@ -330,6 +330,50 @@ TEST(QMoESharedLayoutTest, Avx2BFloat16AndHalfConversionMatchScalarIncludingNaNs
   }
 }
 
+TEST(QMoESharedLayoutTest, Avx2Int4Fp16BoundariesMatchScalarForPartialRanges) {
+  if (!shared::CpuHasAvx2FmaF16c()) GTEST_SKIP() << "AVX2+FMA+F16C kernels are not available";
+  constexpr int64_t hidden = 32;
+  constexpr int64_t inter = 96;
+  constexpr int64_t n_total = 2 * inter;
+  constexpr float sentinel = 12345.0f;
+  const std::array<float, 10> projections{
+      0.0f, -0.0f, 1.00048828125f, 1.00146484375f, -1.00048828125f,
+      -1.00146484375f, 0.0000000298023223876953125f, -0.0000000298023223876953125f,
+      5.501953125f, -5.501953125f};
+  std::vector<uint8_t> weights(static_cast<size_t>(n_total * hidden / 2), 0x88);
+  std::vector<uint16_t> scales(static_cast<size_t>(n_total), shared::FloatToHalf(1.0f));
+  std::vector<float> bias(static_cast<size_t>(n_total));
+  for (size_t i = 0; i < bias.size(); ++i) bias[i] = projections[i % projections.size()];
+
+  shared::Int4ExpertView view{};
+  view.fc1_weights = weights.data();
+  view.fc1_scales = scales.data();
+  view.fc1_bias = reinterpret_cast<const uint16_t*>(bias.data());
+  view.weights_are_prepacked = false;
+  // FP32 bias keeps the GEMM scalar, isolating the F16C boundary rounding path.
+  view.bias_is_fp32 = true;
+  const shared::SwiGluParams swiglu{1.702f, 1.0f, std::numeric_limits<float>::infinity()};
+  const std::array<std::pair<int64_t, int64_t>, 8> ranges{
+      {{0, 0}, {0, 2}, {0, 6}, {0, 8}, {0, 10}, {2, 136}, {128, n_total}, {0, n_total}}};
+  for (int64_t rows : {int64_t{1}, int64_t{shared::kMaxRowsPerCall}}) {
+    std::vector<float> input(static_cast<size_t>(rows * hidden), 0.0f);
+    for (const auto& [begin, end] : ranges) {
+      SCOPED_TRACE(testing::Message() << "rows=" << rows << " range=[" << begin << "," << end << ")");
+      std::vector<float> expected(static_cast<size_t>(rows * inter + 2), sentinel);
+      std::vector<float> actual(expected.size(), sentinel);
+      shared::Int4Fc1SwiGluRange(hidden, inter, view, input.data(), rows, swiglu, expected.data() + 1,
+                                 begin, end, /*force_scalar=*/true,
+                                 /*bf16_boundaries=*/false, /*fp16_boundaries=*/true);
+      shared::Int4Fc1SwiGluRange(hidden, inter, view, input.data(), rows, swiglu, actual.data() + 1,
+                                 begin, end, /*force_scalar=*/false,
+                                 /*bf16_boundaries=*/false, /*fp16_boundaries=*/true);
+      EXPECT_EQ(actual, expected);
+      EXPECT_EQ(actual.front(), sentinel);
+      EXPECT_EQ(actual.back(), sentinel);
+    }
+  }
+}
+
 TEST(QMoESharedLayoutTest, Avx512BFloat16ConversionMatchesScalarIncludingNaNs) {
   if (!shared::CpuHasAvx512()) GTEST_SKIP() << "AVX-512 kernels are not available";
   const std::array<uint32_t, 18> patterns{
