@@ -14,6 +14,7 @@
 #include "gtest/gtest.h"
 
 #include "core/framework/execution_provider.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 
@@ -53,7 +54,11 @@ std::vector<std::unique_ptr<IExecutionProvider>> GetExecutionProviders() {
 template <typename T>
 void RunTests(T& test, std::vector<std::unique_ptr<IExecutionProvider>>&& execution_providers) {
   for (size_t idx = 0; idx < execution_providers.size(); ++idx) {
-    test.ConfigEp(std::move(execution_providers[idx])).RunWithConfig();
+    SessionOptions options;
+    if (execution_providers[idx] && execution_providers[idx]->Type() == kCudaExecutionProvider) {
+      ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    }
+    test.Config(options).ConfigEp(std::move(execution_providers[idx])).RunWithConfig();
   }
   execution_providers.clear();
 }
@@ -106,6 +111,131 @@ class GridSampleCustomTest : public ::testing::Test {
 
 using GridSampleCustomTestTypes = ::testing::Types<float, MLFloat16>;
 TYPED_TEST_SUITE(GridSampleCustomTest, GridSampleCustomTestTypes);
+
+#ifdef USE_CUDA
+namespace {
+void RunCudaOnly(OpTester& test) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA execution provider is not available.";
+  }
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(std::move(cuda_ep));
+#ifdef ENABLE_CUDA_NHWC_OPS
+  providers.push_back(DefaultCudaNHWCExecutionProvider());
+#endif
+  RunTests(test, std::move(providers));
+}
+}  // namespace
+
+TEST(GridSampleCudaTest, Float16SubpixelCoordinates) {
+  // FP16 arithmetic rounds 1 + 2^-11 to 1, losing a quarter-pixel offset here.
+  std::vector<MLFloat16> input(1024);
+  for (size_t i = 0; i < input.size(); ++i) {
+    input[i] = MLFloat16(static_cast<float>(i % 2));
+  }
+  for (int opset : {16, 20, 22}) {
+    SCOPED_TRACE(opset);
+    OpTester test("GridSample", opset);
+    test.AddAttribute("mode", std::string(opset < 20 ? "bilinear" : "linear"));
+    test.AddAttribute("align_corners", int64_t{0});
+    test.AddInput<MLFloat16>("X", {1, 1, 1, 1024}, input);
+    test.AddInput<MLFloat16>("grid", {1, 1, 1, 2}, {MLFloat16(0.00048828125f), MLFloat16(0.0f)});
+    test.AddOutput<MLFloat16>("Y", {1, 1, 1, 1}, {MLFloat16(0.25f)});
+    RunCudaOnly(test);
+  }
+}
+
+TEST(GridSampleCudaTest, Float16CubicAccumulation) {
+  // Cubic interpolation has negative coefficients; intermediate sums can exceed
+  // the FP16 range even when the final interpolated value is representable.
+  for (int opset : {16, 20, 22}) {
+    SCOPED_TRACE(opset);
+    OpTester test("GridSample", opset);
+    test.AddAttribute("mode", std::string(opset < 20 ? "bicubic" : "cubic"));
+    test.AddAttribute("align_corners", int64_t{0});
+    test.AddInput<MLFloat16>("X", {1, 1, 4, 4}, std::vector<MLFloat16>(16, MLFloat16(60000.0f)));
+    test.AddInput<MLFloat16>("grid", {1, 1, 1, 2}, {MLFloat16(0.0f), MLFloat16(0.0f)});
+    test.AddOutput<MLFloat16>("Y", {1, 1, 1, 1}, {MLFloat16(60000.0f)});
+    RunCudaOnly(test);
+  }
+}
+
+TEST(GridSampleCudaTest, Float16SubpixelCoordinates3D) {
+  std::vector<MLFloat16> input(1024);
+  for (size_t i = 0; i < input.size(); ++i) {
+    input[i] = MLFloat16(static_cast<float>(i % 2));
+  }
+  for (int opset : {20, 22}) {
+    SCOPED_TRACE(opset);
+    OpTester test("GridSample", opset);
+    test.AddAttribute("align_corners", int64_t{0});
+    test.AddInput<MLFloat16>("X", {1, 1, 1024, 1, 1}, input);
+    test.AddInput<MLFloat16>("grid", {1, 1, 1, 1, 3},
+                             {MLFloat16(0.0f), MLFloat16(0.0f), MLFloat16(0.00048828125f)});
+    test.AddOutput<MLFloat16>("Y", {1, 1, 1, 1, 1}, {MLFloat16(0.25f)});
+    RunCudaOnly(test);
+  }
+}
+
+TEST(GridSampleCudaTest, Float16LargeOutput2D) {
+  // The launch size must not be converted to FP16: 257 * 257 exceeds 65504.
+  constexpr int64_t side = 257;
+  for (int opset : {16, 20, 22}) {
+    SCOPED_TRACE(opset);
+    OpTester test("GridSample", opset);
+    test.AddInput<MLFloat16>("X", {1, 1, 1, 1}, {MLFloat16(2.0f)});
+    test.AddInput<MLFloat16>("grid", {1, side, side, 2},
+                             std::vector<MLFloat16>(side * side * 2, MLFloat16(0.0f)));
+    test.AddOutput<MLFloat16>("Y", {1, 1, side, side},
+                              std::vector<MLFloat16>(side * side, MLFloat16(2.0f)));
+    RunCudaOnly(test);
+  }
+}
+
+TEST(GridSampleCudaTest, Float16LargeOutput3D) {
+  constexpr int64_t side = 41;
+  for (int opset : {20, 22}) {
+    SCOPED_TRACE(opset);
+    OpTester test("GridSample", opset);
+    test.AddInput<MLFloat16>("X", {1, 1, 1, 1, 1}, {MLFloat16(2.0f)});
+    test.AddInput<MLFloat16>("grid", {1, side, side, side, 3},
+                             std::vector<MLFloat16>(side * side * side * 3, MLFloat16(0.0f)));
+    test.AddOutput<MLFloat16>("Y", {1, 1, side, side, side},
+                              std::vector<MLFloat16>(side * side * side, MLFloat16(2.0f)));
+    RunCudaOnly(test);
+  }
+}
+
+TEST(GridSampleCudaTest, Float16NonFiniteCoordinates) {
+  const auto nan = MLFloat16(std::numeric_limits<float>::quiet_NaN());
+  const auto inf = MLFloat16(std::numeric_limits<float>::infinity());
+  const auto neg_inf = MLFloat16(-std::numeric_limits<float>::infinity());
+  for (bool is_3d : {false, true}) {
+    for (const std::string mode : {"nearest", "linear", "cubic"}) {
+      if (is_3d && mode == "cubic") {
+        continue;
+      }
+      for (const std::string padding : {"border", "reflection"}) {
+        SCOPED_TRACE(::testing::Message() << is_3d << "/" << mode << "/" << padding);
+        OpTester test("GridSample", 20);
+        test.AddAttribute("mode", mode);
+        test.AddAttribute("padding_mode", padding);
+        if (is_3d) {
+          test.AddInput<MLFloat16>("X", {1, 1, 2, 2, 2}, std::vector<MLFloat16>(8, MLFloat16(1.0f)));
+          test.AddInput<MLFloat16>("grid", {1, 1, 1, 2, 3}, {nan, inf, neg_inf, inf, nan, neg_inf});
+          test.AddOutput<MLFloat16>("Y", {1, 1, 1, 1, 2}, {MLFloat16(1.0f), MLFloat16(1.0f)});
+        } else {
+          test.AddInput<MLFloat16>("X", {1, 1, 2, 2}, std::vector<MLFloat16>(4, MLFloat16(1.0f)));
+          test.AddInput<MLFloat16>("grid", {1, 1, 2, 2}, {nan, nan, inf, neg_inf});
+          test.AddOutput<MLFloat16>("Y", {1, 1, 1, 2}, {MLFloat16(1.0f), MLFloat16(1.0f)});
+        }
+        RunCudaOnly(test);
+      }
+    }
+  }
+}
+#endif
 
 TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_4D_linear_zeros_mixed_bounds_right_bottom) {
   // Crafts grid points that mix fully in-bounds sampling with cases where either the right, bottom,
@@ -822,8 +952,7 @@ TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_4D_nearest_border_nonzero_s
 //
 // These mirror the coordinate-hardening cases above but also run on the CUDA execution provider (when
 // built) to cover the equivalent float->int64 cast hardening in
-// onnxruntime/core/providers/cuda/tensor/grid_sample_impl.cu. They are float-only because
-// the CUDA GridSample kernel is registered for float only, and they use constant-valued
+// onnxruntime/core/providers/cuda/tensor/grid_sample_impl.cu. They use float inputs and constant-valued
 // images so the expected output is well-defined regardless of which in-range pixel each
 // (now clamped) index resolves to.
 // -----------------------------------------------------------------------------------------
