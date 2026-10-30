@@ -406,6 +406,9 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
 
   block_size_ = op_kernel_info.GetAttrOrDefault<int64_t>("block_size", -1);
   this->quant_type_ = op_kernel_info.GetAttrOrDefault<std::string>("quant_type", "int");
+  ORT_ENFORCE(activation_type_ != onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Geglu ||
+                  quant_type_ == "int",
+              "CUDA QMoE GEGLU currently supports only quant_type='int'.");
   ORT_ENFORCE(quant_type_ == "int" || quant_type_ == "fp4" || quant_type_ == "nvfp4" ||
                   quant_type_ == "fp8" || quant_type_ == "wfp4afp8",
               "quant_type must be 'int', 'fp4', 'nvfp4', 'fp8', or 'wfp4afp8', but got '", quant_type_, "'");
@@ -976,6 +979,9 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   }
 
   bool is_fused_swiglu = activation_type_ == onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Swiglu;
+  // GEGLU shares gated shapes, not the SwiGLU-only GEMV/prefill implementations.
+  const bool is_fused_gated = is_fused_swiglu ||
+                              activation_type_ == onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Geglu;
   MoEParameters moe_params;
   // Prefer the cached shapes when PrePack consumed the source initializer.
   const TensorShape& fc1_shape = weights_consumed_by_prepack ? fc1_weights_shape_ : fc1_experts_weights->Shape();
@@ -988,7 +994,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       moe_helper::MoEWeightBits{fc1_expert_weight_bits_,
                                 fc2_expert_weight_bits_,
                                 fc3_expert_weight_bits_},
-      is_fused_swiglu, block_size_));
+      is_fused_gated, block_size_));
   if (is_block_fp8) {
     const int64_t fc1_n = is_fused_swiglu ? 2 * moe_params.inter_size : moe_params.inter_size;
     ORT_RETURN_IF_NOT(fc1_shape == TensorShape({moe_params.num_experts, fc1_n, moe_params.hidden_size}) &&
@@ -1025,7 +1031,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                       "INT2 or mixed-width CUDA QMoE requires inter_size to be divisible by block_size, got inter_size=",
                       moe_params.inter_size, " and block_size=", block_size_, ".");
 
-    const int64_t fc1_n = is_fused_swiglu ? moe_params.inter_size * 2 : moe_params.inter_size;
+    const int64_t fc1_n = is_fused_gated ? moe_params.inter_size * 2 : moe_params.inter_size;
     const int64_t fc1_k = moe_params.hidden_size;
     const int64_t fc2_n = moe_params.hidden_size;
     const int64_t fc2_k = moe_params.inter_size;
@@ -2721,7 +2727,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                     fc1_scales != nullptr && fc2_scales != nullptr,
                 "INT2 or mixed-width CUDA QMoE requires raw weights and scales for FC1 and FC2.");
 
-    const int fc1_n = static_cast<int>(is_fused_swiglu ? moe_params.inter_size * 2 : moe_params.inter_size);
+    const int fc1_n = static_cast<int>(is_fused_gated ? moe_params.inter_size * 2 : moe_params.inter_size);
     const int fc1_k = static_cast<int>(moe_params.hidden_size);
     const int fc2_n = static_cast<int>(moe_params.hidden_size);
     const int fc2_k = static_cast<int>(moe_params.inter_size);
