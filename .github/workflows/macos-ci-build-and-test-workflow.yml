@@ -20,6 +20,11 @@ on:
         required: false
         type: string
         default: "3.14"
+      write_compiler_cache:
+        description: "Opt in to compiler-cache writes during manual feature-branch validation."
+        required: false
+        type: boolean
+        default: false
       matrix_include:
         required: false
         type: string
@@ -56,7 +61,7 @@ jobs:
       build_flags: >
         --build_dir ./build
         --skip_submodule_sync
-        --use_cache
+        --use_cache --cache_tool sccache
         --parallel
         --use_binskim_compliant_compile_flags
         --build_shared_lib
@@ -76,11 +81,15 @@ jobs:
       # The Xcode version needs to be present on the image specified in the "runs-on" configuration.
       xcode_version: ${{ matrix.xcode_version || '26.3' }}
 
-      CCACHE_DIR: ${{ github.workspace }}/.ccache
-      CCACHE_BASEDIR: ${{ github.workspace }}
-      CCACHE_COMPILERCHECK: content
-      # Bound transfer/storage costs across the matrix; retain ccache's default compression and safety checks.
-      CCACHE_MAXSIZE: 1G
+      SCCACHE_DIR: ${{ github.workspace }}/.sccache
+      SCCACHE_BASEDIRS: ${{ github.workspace }}
+      # Bound transfer/storage costs across the matrix.
+      SCCACHE_CACHE_SIZE: 1G
+      # After validation, replace the opt-in/event/ref guard with github.ref == 'refs/heads/main'.
+      SCCACHE_LOCAL_RW_MODE: >-
+        ${{ github.event_name == 'workflow_dispatch' && inputs.write_compiler_cache &&
+            github.ref == 'refs/heads/eserscor-dev/erscor/2026/10/30-mac-compiler-cachi' &&
+            'READ_WRITE' || 'READ_ONLY' }}
 
     steps:
       - name: Checkout code
@@ -132,31 +141,32 @@ jobs:
             }}-coreml-${{ inputs.use_coreml }}-xnnpack-${{ inputs.use_xnnpack }}-webgpu-${{ inputs.use_webgpu }}
         run: |
           set -euo pipefail
-          # Do not restore across runner image, selected Xcode/SDK, or ccache upgrades.
+          # Do not restore across runner image, selected Xcode/SDK, or sccache upgrades.
           {
             printf '%s\n' "$ImageOS" "$ImageVersion"
             xcodebuild -version
             xcrun clang --version
             xcrun --sdk macosx --show-sdk-version
-            ccache --version
-          } > "$RUNNER_TEMP/ccache-toolchain.txt"
-          toolchain_hash=$(shasum -a 256 "$RUNNER_TEMP/ccache-toolchain.txt" | cut -d ' ' -f 1)
-          echo "prefix=macos-ccache-v1-${CACHE_VARIANT}-${toolchain_hash}-" >> "$GITHUB_OUTPUT"
+            sccache --version
+          } > "$RUNNER_TEMP/sccache-toolchain.txt"
+          toolchain_hash=$(shasum -a 256 "$RUNNER_TEMP/sccache-toolchain.txt" | cut -d ' ' -f 1)
+          echo "prefix=macos-sccache-v1-${CACHE_VARIANT}-${toolchain_hash}-" >> "$GITHUB_OUTPUT"
 
       - name: Restore compiler cache
         id: restore-compiler-cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ${{ env.CCACHE_DIR }}
+          path: ${{ env.SCCACHE_DIR }}
           key: ${{ steps.compiler-cache.outputs.prefix }}${{ github.sha }}
           restore-keys: |
             ${{ steps.compiler-cache.outputs.prefix }}
 
-      - name: Reset compiler cache statistics
+      - name: Start compiler cache
+        id: start-compiler-cache
         shell: bash
         run: |
-          ccache --show-config
-          ccache --zero-stats
+          sccache --start-server
+          sccache --zero-stats
 
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         id: onnx-node-tests-cache
@@ -187,24 +197,31 @@ jobs:
           python ./tools/ci_build/build.py --build ${{ env.build_flags }}
 
       - name: Compiler cache statistics
-        if: ${{ always() && steps.restore-compiler-cache.outcome == 'success' }}
+        if: ${{ always() && steps.start-compiler-cache.outcome == 'success' }}
         shell: bash
         run: |
           set -euo pipefail
-          ccache --show-stats -vv | tee "$RUNNER_TEMP/ccache-stats.txt"
+          sccache --show-stats | tee "$RUNNER_TEMP/sccache-stats.txt"
           {
             echo '### Compiler cache'
             echo '```text'
-            cat "$RUNNER_TEMP/ccache-stats.txt"
+            cat "$RUNNER_TEMP/sccache-stats.txt"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # Save after compilation, before tests, so a test timeout does not discard a warm cache.
-      - name: Save compiler cache (main only)
-        if: ${{ success() && github.ref == 'refs/heads/main' && steps.restore-compiler-cache.outputs.cache-hit != 'true' }}
+      - name: Stop compiler cache
+        if: ${{ always() && steps.start-compiler-cache.outcome == 'success' }}
+        shell: bash
+        run: sccache --stop-server
+
+      # Stop the server before snapshotting; save before tests to preserve successful compiles on test timeout.
+      - name: Save compiler cache (validation only)
+        if: >-
+          ${{ success() && env.SCCACHE_LOCAL_RW_MODE == 'READ_WRITE' &&
+              steps.restore-compiler-cache.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ${{ env.CCACHE_DIR }}
+          path: ${{ env.SCCACHE_DIR }}
           key: ${{ steps.restore-compiler-cache.outputs.cache-primary-key }}
 
       - name: Install

@@ -127,6 +127,68 @@ class BuildArgsTest(unittest.TestCase):
 
         warn.assert_not_called()
 
+    def test_compiler_cache_defaults_to_ccache(self):
+        args = self._parse("--use_cache", platform_name="linux")
+        self.assertEqual(args.cache_tool, "ccache")
+
+    def test_unknown_compiler_cache_is_rejected(self):
+        with mock.patch("sys.stderr"), self.assertRaises(SystemExit):
+            self._parse("--use_cache", "--cache_tool", "unknown", platform_name="linux")
+
+    def test_compiler_cache_launchers(self):
+        for platform_name, tool, use_cache, use_cuda in (
+            ("linux", "ccache", True, False),
+            ("macos", "sccache", True, False),
+            ("linux", "sccache", True, True),
+            ("linux", "sccache", False, False),
+        ):
+            with self.subTest(platform_name=platform_name, tool=tool, use_cache=use_cache, use_cuda=use_cuda):
+                arguments = ["--cache_tool", tool]
+                if use_cache:
+                    arguments.append("--use_cache")
+                if use_cuda:
+                    arguments.append("--use_cuda")
+                args = self._parse(*arguments, platform_name=platform_name)
+                with (
+                    tempfile.TemporaryDirectory() as build_dir,
+                    mock.patch.object(build, "is_windows", return_value=False),
+                    mock.patch.object(build, "is_linux", return_value=platform_name == "linux"),
+                    mock.patch.object(build, "is_macOS", return_value=platform_name == "macos"),
+                    mock.patch.object(build, "run_subprocess") as run,
+                ):
+                    build.generate_build_tree(
+                        cmake_path="cmake",
+                        source_dir=str(Path(__file__).resolve().parents[2]),
+                        build_dir=build_dir,
+                        cuda_home="",
+                        cudnn_home="",
+                        nccl_home="",
+                        tensorrt_home="",
+                        migraphx_home="",
+                        acl_home="",
+                        acl_libs="",
+                        qnn_home="",
+                        snpe_root="",
+                        cann_home="",
+                        path_to_protoc_exe="",
+                        configs=["Debug"],
+                        cmake_extra_defines=[],
+                        args=args,
+                        cmake_extra_args=[],
+                    )
+                run.assert_called_once()
+                command = run.call_args.args[0]
+                launchers = [arg for arg in command if "_COMPILER_LAUNCHER=" in arg]
+                expected = (
+                    [f"-DCMAKE_CXX_COMPILER_LAUNCHER={tool}", f"-DCMAKE_C_COMPILER_LAUNCHER={tool}"]
+                    if use_cache
+                    else []
+                )
+                if use_cache and use_cuda:
+                    expected.append(f"-DCMAKE_CUDA_COMPILER_LAUNCHER={tool}")
+                self.assertEqual(launchers, expected)
+                self.assertEqual("-Donnxruntime_BUILD_CACHE=ON" in command, use_cache)
+
 
 class StalePythonCacheArgsTest(unittest.TestCase):
     def _args_for_cached_python(self, cached_executable: str | None):

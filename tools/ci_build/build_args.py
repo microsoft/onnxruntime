@@ -160,7 +160,13 @@ def add_core_build_args(parser: argparse.ArgumentParser) -> None:
         "--build_apple_framework", action="store_true", help="Build a macOS/iOS framework for ONNXRuntime."
     )
     parser.add_argument("--enable_lto", action="store_true", help="Enable Link Time Optimization (LTO).")
-    parser.add_argument("--use_cache", action="store_true", help="Use ccache in CI")
+    parser.add_argument("--use_cache", action="store_true", help="Enable compiler caching in CI")
+    parser.add_argument(
+        "--cache_tool",
+        choices=("ccache", "sccache"),
+        default="ccache",
+        help="Compiler cache to use with --use_cache (default: ccache).",
+    )
     parser.add_argument(
         "--use_binskim_compliant_compile_flags",
         action="store_true",
