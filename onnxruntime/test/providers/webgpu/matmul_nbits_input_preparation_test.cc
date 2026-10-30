@@ -119,12 +119,17 @@ class MatMulNBitsInputPreparationTest : public ::testing::Test {
       }
       const void* quantized_values = nullptr;
       const void* quantized_scales = nullptr;
-      for (uint32_t projection = 0; projection < 2; ++projection) {
+      uint32_t previous_a_block_size = 0;
+      const bool per_channel_available = context.AdapterInfo().vendor != std::string_view{"qualcomm"};
+      const uint32_t num_projections = subgroup_matrix ? 2 : 4;
+      for (uint32_t projection = 0; projection < num_projections; ++projection) {
         const uint32_t N = subgroup_matrix ? 64 : (projection == 0 ? 16 : 64);
-        const uint32_t bits = projection == 0 ? 8 : 4;
-        auto b = Upload<uint8_t>({N, K / 32, 4 * bits},
+        const uint32_t bits = projection == 1 ? 4 : 8;
+        const uint32_t block_size = projection == 2 ? K : 32;
+        const uint32_t blocks = K / block_size;
+        auto b = Upload<uint8_t>({N, blocks, block_size * bits / 8},
                                  std::vector<uint8_t>(N * K * bits / 8, bits == 8 ? 131 : 0x99));
-        auto scales = Upload<T>({N, K / 32}, std::vector<T>(N * K / 32, T(0.125f)));
+        auto scales = Upload<T>({N, blocks}, std::vector<T>(N * blocks, T(0.125f)));
         Tensor shared(DataTypeImpl::GetType<T>(), TensorShape{M, N}, allocator_);
         Tensor fresh(DataTypeImpl::GetType<T>(), TensorShape{M, N}, allocator_);
         if (subgroup_matrix) {
@@ -135,19 +140,22 @@ class MatMulNBitsInputPreparationTest : public ::testing::Test {
               &a, &b, &scales, nullptr, nullptr, M, N, K, bits, K / 32, *config, context, &fresh, 0));
         } else {
           ASSERT_STATUS_OK(quantization::ApplyDP4AMatrixMatMulNBits(
-              &a, &b, &scales, nullptr, nullptr, 1, M, M, N, K, 32, K / 32, 4, bits,
+              &a, &b, &scales, nullptr, nullptr, 1, M, M, N, K, block_size, blocks, 4, bits,
               context, &shared, 0, nullptr, &workspace));
           ASSERT_TRUE(workspace.values.has_value());
           ASSERT_TRUE(workspace.scales.has_value());
-          if (projection == 0) {
-            quantized_values = workspace.values->DataRaw();
-            quantized_scales = workspace.scales->DataRaw();
-          } else {
+          const uint32_t expected_a_block_size = projection == 2 && per_channel_available ? K : 128;
+          EXPECT_EQ(workspace.a_block_size, expected_a_block_size);
+          const bool expect_reuse = projection != 0 && expected_a_block_size == previous_a_block_size;
+          if (expect_reuse) {
             EXPECT_EQ(workspace.values->DataRaw(), quantized_values);
             EXPECT_EQ(workspace.scales->DataRaw(), quantized_scales);
           }
+          quantized_values = workspace.values->DataRaw();
+          quantized_scales = workspace.scales->DataRaw();
+          previous_a_block_size = workspace.a_block_size;
           ASSERT_STATUS_OK(quantization::ApplyDP4AMatrixMatMulNBits(
-              &a, &b, &scales, nullptr, nullptr, 1, M, M, N, K, 32, K / 32, 4, bits, context, &fresh, 0));
+              &a, &b, &scales, nullptr, nullptr, 1, M, M, N, K, block_size, blocks, 4, bits, context, &fresh, 0));
         }
         EXPECT_EQ(Download<T>(shared), Download<T>(fresh));
       }
