@@ -5,7 +5,7 @@ We're always looking for your help to improve the product (bug fixes, new featur
 ## Contribute a code change
 
 * Start by reading the [Engineering Design](https://onnxruntime.ai/docs/reference/high-level-design.html). More documentation can be found in the [repo docs folder](./docs/) and [on the repo wiki](https://github.com/microsoft/onnxruntime/wiki), as well as the user facing docs on the [ONNX Runtime website](https://onnxruntime.ai/docs).
-* If your change is non-trivial or introduces new public facing APIs (discussed in more detail below) please use the [feature request issue template](https://github.com/microsoft/onnxruntime/issues/new?template=feature_request.md) to discuss it with the team and get consensus on the basic design and direction first. For all other changes, you can directly create a pull request (PR) and we'll be happy to take a look.
+* If your change is non-trivial or introduces new public facing APIs (discussed in more detail below) please use the [feature request issue template](https://github.com/microsoft/onnxruntime/issues/new?template=07-feature_request.yml) to discuss it with the team and get consensus on the basic design and direction first. For all other changes, you can directly create a pull request (PR) and we'll be happy to take a look.
 * Make sure your PR adheres to the [PR Guidelines](./docs/PR_Guidelines.md) and [Coding Conventions and Standards](./docs/Coding_Conventions_and_Standards.md) established by the team.
 * If you're unsure about any of the above and want to contribute, you're welcome to [start a discussion](https://github.com/microsoft/onnxruntime/discussions) with the team.
 
@@ -23,7 +23,7 @@ If lint issues are found, the commit is blocked. Run `lintrunner -a` to auto-fix
 
 ## Propose a new public API
 
- ONNX Runtime has a collection of [public APIs](./README.md#api-documentation).  Some of these APIs make their way back into the Windows OS.  We make compatibility commitments for these APIs and follow a structured process when adding to them.  Please use the [Feature Request issue template](https://github.com/microsoft/onnxruntime/issues/new?template=feature_request.md) before starting any PRs that affect any of the public APIs.
+ ONNX Runtime has a collection of [public APIs](./README.md#api-documentation).  Some of these APIs make their way back into the Windows OS.  We make compatibility commitments for these APIs and follow a structured process when adding to them.  Please use the [Feature Request issue template](https://github.com/microsoft/onnxruntime/issues/new?template=07-feature_request.yml) before starting any PRs that affect any of the public APIs.
 
  If your proposal contributes the Windows Machine Learning WinRT API and will affect the Windows.AI.MachineLearning namespace, please review [Windows ML main principles](./docs/WinML_principles.md) before you submit your request.
 
