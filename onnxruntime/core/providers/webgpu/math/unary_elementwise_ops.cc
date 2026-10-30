@@ -72,13 +72,23 @@ Status UnaryElementwise::ComputeInternal(ComputeContext& context) const {
 // math
 //
 
+namespace {
+// Float and int32 types. WGSL sign() and unary minus support f32, f16 and i32, but not u32.
+const std::vector<MLDataType>& SignedNumberTypes() {
+  static const std::vector<MLDataType> types{DataTypeImpl::GetTensorType<float>(),
+                                             DataTypeImpl::GetTensorType<MLFloat16>(),
+                                             DataTypeImpl::GetTensorType<int32_t>()};
+  return types;
+}
+}  // namespace
+
 WEBGPU_ELEMENTWISE_IMPL(Abs, "abs(a)")
-WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Abs, 6, 12, WebGpuSupportedFloatTypes())
-WEBGPU_ELEMENTWISE_KERNEL(Abs, 13, WebGpuSupportedFloatTypes())
+WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Abs, 6, 12, WebGpuSupportedNumberTypes())
+WEBGPU_ELEMENTWISE_KERNEL(Abs, 13, WebGpuSupportedNumberTypes())
 
 WEBGPU_ELEMENTWISE_IMPL(Neg, "-a")
-WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Neg, 6, 12, WebGpuSupportedFloatTypes())
-WEBGPU_ELEMENTWISE_KERNEL(Neg, 13, WebGpuSupportedFloatTypes())
+WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Neg, 6, 12, SignedNumberTypes())
+WEBGPU_ELEMENTWISE_KERNEL(Neg, 13, SignedNumberTypes())
 
 WEBGPU_ELEMENTWISE_IMPL(Floor, "floor(a)")
 WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Floor, 6, 12, WebGpuSupportedFloatTypes())
@@ -95,6 +105,15 @@ WEBGPU_ELEMENTWISE_KERNEL(Reciprocal, 13, WebGpuSupportedFloatTypes())
 WEBGPU_ELEMENTWISE_IMPL(Sqrt, "sqrt(a)")
 WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Sqrt, 6, 12, WebGpuSupportedFloatTypes())
 WEBGPU_ELEMENTWISE_KERNEL(Sqrt, 13, WebGpuSupportedFloatTypes())
+
+// WGSL round() rounds half to even, as ONNX Round requires.
+WEBGPU_ELEMENTWISE_IMPL(Round, "round(a)")
+WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Round, 11, 21, WebGpuSupportedFloatTypes())
+WEBGPU_ELEMENTWISE_KERNEL(Round, 22, WebGpuSupportedFloatTypes())
+
+WEBGPU_ELEMENTWISE_IMPL(Sign, "sign(a)")
+WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Sign, 9, 12, SignedNumberTypes())
+WEBGPU_ELEMENTWISE_KERNEL(Sign, 13, SignedNumberTypes())
 
 // Evaluated in f32: float16 exp() is up to 2 ULP off, which WebNN conformance rejects.
 WEBGPU_ELEMENTWISE_IMPL(Exp, "x_value_t(exp(vec4<f32>(a)))", "", ShaderUsage::UseValueTypeAlias)
@@ -216,6 +235,124 @@ WEBGPU_ELEMENTWISE_KERNEL(Atanh, 9, WebGpuSupportedFloatTypes())
 
 WEBGPU_ELEMENTWISE_IMPL(Not, "!a")
 WEBGPU_ELEMENTWISE_BOOLEAN_KERNEL(Not, 1)
+
+//
+// IsNaN / IsInf
+//
+
+// Classifies floats on their raw IEEE-754 bit patterns. WGSL lets implementations assume floats
+// are never NaN/Inf, so float comparisons such as `x != x` may be folded away. f16 lanes are split
+// out of the raw 32-bit words rather than widened to f32, so detection does not rely on a NaN
+// surviving a conversion.
+class FloatClassifyKernel : public WebGpuKernel {
+ public:
+  FloatClassifyKernel(const OpKernelInfo& info, std::string kernel_name, std::string expression)
+      : WebGpuKernel{info}, kernel_name_{std::move(kernel_name)}, expression_{std::move(expression)} {}
+
+ protected:
+  std::string cache_hint_;
+
+ private:
+  Status ComputeInternal(ComputeContext& context) const final {
+    const auto* input_tensor = context.Input(0);
+    auto* output_tensor = context.Output(0, input_tensor->Shape());
+    const int64_t size = input_tensor->Shape().Size();
+    if (size == 0) {
+      return Status::OK();
+    }
+
+    const bool is_f16 = input_tensor->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;
+    const std::string additional_impl = is_f16 ? R"(
+const abs_mask = 0x7fffu;
+const inf_bits = 0x7c00u;
+const sign_bit = 0x8000u;
+fn float_bits(v: vec4<f16>) -> vec4<u32> {
+  let w = bitcast<vec2<u32>>(v);
+  return vec4<u32>(w.x & 0xffffu, w.x >> 16u, w.y & 0xffffu, w.y >> 16u);
+}
+)"
+                                               : R"(
+const abs_mask = 0x7fffffffu;
+const inf_bits = 0x7f800000u;
+const sign_bit = 0x80000000u;
+fn float_bits(v: vec4<f32>) -> vec4<u32> {
+  return bitcast<vec4<u32>>(v);
+}
+)";
+
+    const uint32_t vec_size = onnxruntime::narrow<uint32_t>((size + 3) / 4);
+    UnaryElementwiseProgram program{kernel_name_, expression_, additional_impl, ShaderUsage::None};
+    program
+        .AddInputs({{input_tensor, ProgramTensorMetadataDependency::Type, {vec_size}, 4}})
+        .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::None, {vec_size}, 4}})
+        .SetDispatchGroupSize((vec_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
+        .AddUniformVariables({{vec_size}, {}});
+    if (!cache_hint_.empty()) {
+      program.CacheHint(cache_hint_);
+    }
+    return context.RunProgram(program);
+  }
+
+  std::string kernel_name_;
+  std::string expression_;
+};
+
+class IsNaN final : public FloatClassifyKernel {
+ public:
+  IsNaN(const OpKernelInfo& info)
+      : FloatClassifyKernel{info, "IsNaN", "(float_bits(a) & vec4<u32>(abs_mask)) > vec4<u32>(inf_bits)"} {}
+};
+
+class IsInf final : public FloatClassifyKernel {
+ public:
+  IsInf(const OpKernelInfo& info)
+      : FloatClassifyKernel{info, "IsInf", MakeExpression(info)} {
+    cache_hint_ = MakeString(DetectPositive(info), DetectNegative(info));
+  }
+
+ private:
+  static bool DetectPositive(const OpKernelInfo& info) {
+    return info.GetAttrOrDefault<int64_t>("detect_positive", 1) != 0;
+  }
+  static bool DetectNegative(const OpKernelInfo& info) {
+    return info.GetAttrOrDefault<int64_t>("detect_negative", 1) != 0;
+  }
+  static std::string MakeExpression(const OpKernelInfo& info) {
+    const bool detect_positive = DetectPositive(info);
+    const bool detect_negative = DetectNegative(info);
+    const std::string is_inf = "((float_bits(a) & vec4<u32>(abs_mask)) == vec4<u32>(inf_bits))";
+    const std::string is_negative = "((float_bits(a) & vec4<u32>(sign_bit)) != vec4<u32>(0u))";
+    if (detect_positive && detect_negative) {
+      return is_inf;
+    }
+    if (detect_positive) {
+      return is_inf + " & !" + is_negative;
+    }
+    if (detect_negative) {
+      return is_inf + " & " + is_negative;
+    }
+    return "vec4<bool>(false)";
+  }
+};
+
+#define WEBGPU_FLOAT_CLASSIFY_KERNEL_DEF(T1_TYPES) \
+  KernelDefBuilder()                               \
+      .TypeConstraint("T1", T1_TYPES)              \
+      .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>())
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(IsNaN, kOnnxDomain, 9, 12, kWebGpuExecutionProvider,
+                                  WEBGPU_FLOAT_CLASSIFY_KERNEL_DEF(WebGpuSupportedFloatTypes()), IsNaN);
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(IsNaN, kOnnxDomain, 13, 19, kWebGpuExecutionProvider,
+                                  WEBGPU_FLOAT_CLASSIFY_KERNEL_DEF(WebGpuSupportedFloatTypes()), IsNaN);
+ONNX_OPERATOR_KERNEL_EX(IsNaN, kOnnxDomain, 20, kWebGpuExecutionProvider,
+                        WEBGPU_FLOAT_CLASSIFY_KERNEL_DEF(WebGpuSupportedFloatTypes()), IsNaN);
+// The IsInf-10 schema has no float16; it was added in opset 20.
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(IsInf, kOnnxDomain, 10, 19, kWebGpuExecutionProvider,
+                                  WEBGPU_FLOAT_CLASSIFY_KERNEL_DEF(DataTypeImpl::GetTensorType<float>()), IsInf);
+ONNX_OPERATOR_KERNEL_EX(IsInf, kOnnxDomain, 20, kWebGpuExecutionProvider,
+                        WEBGPU_FLOAT_CLASSIFY_KERNEL_DEF(WebGpuSupportedFloatTypes()), IsInf);
+
+#undef WEBGPU_FLOAT_CLASSIFY_KERNEL_DEF
 
 // No longer support Clip < opset 11 (where min and max are attributes)
 //
@@ -480,6 +617,19 @@ class Softplus final : public UnaryElementwise {
 
 WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Softplus, 1, 21, WebGpuSupportedFloatTypes())
 WEBGPU_ELEMENTWISE_KERNEL(Softplus, 22, WebGpuSupportedFloatTypes())
+
+// For |v| >= 2^24, 1 + |v| == |v| and the quotient is exactly +/-1. Dividing directly can give 0 for
+// huge |v| because GPUs flush the subnormal reciprocal of the divisor. f32 also keeps f16 accurate.
+constexpr const char SoftsignImpl[] = R"(
+fn softsign_v(a: x_value_t) -> x_value_t {
+  let v = vec4<f32>(a);
+  return x_value_t(select(v / (1.0 + abs(v)), sign(v), abs(v) >= vec4<f32>(16777216.0)));
+}
+)";
+
+WEBGPU_ELEMENTWISE_IMPL(Softsign, "softsign_v(a)", SoftsignImpl, ShaderUsage::UseValueTypeAlias)
+WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Softsign, 1, 21, WebGpuSupportedFloatTypes())
+WEBGPU_ELEMENTWISE_KERNEL(Softsign, 22, WebGpuSupportedFloatTypes())
 
 }  // namespace webgpu
 }  // namespace onnxruntime

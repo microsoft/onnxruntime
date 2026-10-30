@@ -187,6 +187,24 @@ To read more about lintrunner, see [wiki](https://github.com/pytorch/pytorch/wik
 To update an existing linting rule or create a new one, modify `.lintrunner.toml` or create a
 new adapter following examples in https://github.com/justinchuby/lintrunner-adapters.
 
+### GitHub Actions pinning
+
+The Lint workflow also uses [pinact](https://github.com/suzuki-shunsuke/pinact) to check that GitHub Actions and reusable
+workflows use full-length commit SHAs with version comments. Pull requests, pushes, and manual runs check pinning without
+GitHub API calls. After installing pinact v4.0.0, run the same read-only check locally:
+
+```sh
+pinact run --fix=false --no-api
+```
+
+The full Lint workflow also runs nightly at 06:23 UTC. On scheduled runs, pinact uses authenticated GitHub API calls to
+verify that version comments match their commits. To reproduce this read-only verification locally, provide a GitHub token
+via `GITHUB_TOKEN` and run:
+
+```sh
+pinact run --fix=false --verify
+```
+
 ## Python Code Style
 
 Follow the [Black formatter](https://black.readthedocs.io)'s coding style when possible. A maximum line length of 120 characters is allowed for consistency with the C++ code.

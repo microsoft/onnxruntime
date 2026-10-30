@@ -314,9 +314,15 @@ void RunPackedGroupedGemm(const Int2MoePrefillParams& params,
   ORT_ENFORCE(weight_bits == 4, "Packed INT prefill requires INT2 or INT4 weights");
   GroupedGemmInput<ElementType, cutlass::uint4b_t, ElementType, ElementType> gemm{
       activations, offsets + 1, reinterpret_cast<const cutlass::uint4b_t*>(weights), static_cast<const ElementType*>(scales), nullptr, biases, output, nullptr, nullptr, ActivationType::Identity, num_rows, num_columns, reduction_size, params.num_experts, params.block_size, true, false, params.stream, {}, {}};
+  // Same crossover as PickPrefillTactic in moe_quantization.cc: the 64-row CTA wins once experts average >= 24 rows.
+  const double rows_per_expert =
+      params.num_experts > 0 ? static_cast<double>(num_rows) / static_cast<double>(params.num_experts) : 0.0;
+  const auto tile_config =
+      rows_per_expert >= 24.0
+          ? cutlass_extensions::CutlassTileConfig::CtaShape64x128x64_WarpShape64x32x64
+          : cutlass_extensions::CutlassTileConfig::CtaShape32x128x64_WarpShape32x32x64;
   gemm.gemm_config = cutlass_extensions::CutlassGemmConfig(
-      cutlass_extensions::CutlassTileConfig::CtaShape32x128x64_WarpShape32x32x64,
-      cutlass_extensions::SplitKStyle::NO_SPLIT_K, 1, 4);
+      tile_config, cutlass_extensions::SplitKStyle::NO_SPLIT_K, 1, 4);
   MoeGemmRunner<ElementType, cutlass::uint4b_t, ElementType> runner(params.sm, params.multiprocessor_count);
   runner.moeGemm(gemm, {});
 }

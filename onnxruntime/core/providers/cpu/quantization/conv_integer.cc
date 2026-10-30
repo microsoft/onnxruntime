@@ -53,10 +53,10 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
     filter_offset = *static_cast<const uint8_t*>(W_Zero_Point->DataRaw());
   }
 
+  ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(X, W));
   const int64_t N = X->Shape()[0];
   const int64_t C = X->Shape()[1];
   const int64_t M = W->Shape()[0];
-  ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(X, W));
 
   TensorShapeVector kernel_shape;
   ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(W->Shape(), kernel_shape));
