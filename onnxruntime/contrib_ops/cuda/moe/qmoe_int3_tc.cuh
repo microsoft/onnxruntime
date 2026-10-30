@@ -54,6 +54,11 @@ struct Params {
   const __nv_bfloat16* scales;  // [experts * n][k / 64]
   const __nv_bfloat16* bias;    // [experts][n] or nullptr
   const int* experts;           // [total_routes]
+  const int* source_route_ids;  // optional [total_routes] source row map for FC1
+  const int* sorted_routes;     // optional [total_routes] grouped route ids
+  const Int3ExpertTileDesc* tile_descs;
+  const int* num_tiles_ptr;
+  bool input_is_gathered;
   int total_routes;
   int num_experts;
   int top_k;
@@ -622,43 +627,62 @@ __global__ void __launch_bounds__(kWarps * 32, kMinCtas) Int3TcKernel(const Para
   const int g = lane >> 2;
   const int t = lane & 3;
 
-  // Routes of this expert: this CTA leads the run of (up to) eight routes starting at its own route when it is the
-  // 8m-th route of the expert. Every warp derives the same result, so exits are CTA-uniform.
-  const int r0 = blockIdx.x;
-  const int total = p.total_routes;
-  const int expert = __ldg(p.experts + r0);
-  int ev[8];
-#pragma unroll
-  for (int i = 0; i < 8; ++i) {
-    const int idx = i * 32 + lane;
-    ev[i] = idx < total ? __ldg(p.experts + idx) : -1;
-  }
-  if (expert < 0 || expert >= p.num_experts) {
-    return;
-  }
-  const int c0 = r0 >> 5;
-  const int b0 = r0 & 31;
-  uint32_t match[8];
-  int rank = 0;
-#pragma unroll
-  for (int i = 0; i < 8; ++i) {
-    match[i] = __ballot_sync(0xffffffffu, ev[i] == expert);
-    const uint32_t below = i < c0 ? 0xffffffffu : (i == c0 ? ((1u << b0) - 1u) : 0u);
-    rank += __popc(match[i] & below);
-  }
-  if ((rank & (kMaxRoutes - 1)) != 0) {
-    return;
-  }
+  int expert = -1;
   int count = 0;
   uint64_t members = 0;
+  int grouped_routes[kMaxRoutes];
+  if (p.tile_descs != nullptr) {
+    const int tile_idx = blockIdx.x;
+    if (tile_idx >= __ldg(p.num_tiles_ptr)) {
+      return;
+    }
+    const Int3ExpertTileDesc desc = p.tile_descs[tile_idx];
+    expert = desc.expert;
+    count = desc.count;
+    if (expert < 0 || expert >= p.num_experts || count <= 0) {
+      return;
+    }
 #pragma unroll
-  for (int i = 0; i < 8; ++i) {
-    uint32_t bits = match[i] & (i < c0 ? 0u : (i == c0 ? (0xffffffffu << b0) : 0xffffffffu));
-    while (bits != 0u && count < kMaxRoutes) {
-      const int pos = (i << 5) + (__ffs(bits) - 1);
-      bits &= bits - 1u;
-      members |= static_cast<uint64_t>(pos) << (8 * count);
-      ++count;
+    for (int i = 0; i < kMaxRoutes; ++i) {
+      grouped_routes[i] = (i < count) ? __ldg(&p.sorted_routes[desc.start_idx + i]) : 0;
+    }
+  } else {
+    // Routes of this expert: this CTA leads the run of (up to) eight routes starting at its own route when it is the
+    // 8m-th route of the expert. Every warp derives the same result, so exits are CTA-uniform.
+    const int r0 = blockIdx.x;
+    const int total = p.total_routes;
+    expert = __ldg(p.experts + r0);
+    int ev[8];
+#pragma unroll
+    for (int i = 0; i < 8; ++i) {
+      const int idx = i * 32 + lane;
+      ev[i] = idx < total ? __ldg(p.experts + idx) : -1;
+    }
+    if (expert < 0 || expert >= p.num_experts) {
+      return;
+    }
+    const int c0 = r0 >> 5;
+    const int b0 = r0 & 31;
+    uint32_t match[8];
+    int rank = 0;
+#pragma unroll
+    for (int i = 0; i < 8; ++i) {
+      match[i] = __ballot_sync(0xffffffffu, ev[i] == expert);
+      const uint32_t below = i < c0 ? 0xffffffffu : (i == c0 ? ((1u << b0) - 1u) : 0u);
+      rank += __popc(match[i] & below);
+    }
+    if ((rank & (kMaxRoutes - 1)) != 0) {
+      return;
+    }
+#pragma unroll
+    for (int i = 0; i < 8; ++i) {
+      uint32_t bits = match[i] & (i < c0 ? 0u : (i == c0 ? (0xffffffffu << b0) : 0xffffffffu));
+      while (bits != 0u && count < kMaxRoutes) {
+        const int pos = (i << 5) + (__ffs(bits) - 1);
+        bits &= bits - 1u;
+        members |= static_cast<uint64_t>(pos) << (8 * count);
+        ++count;
+      }
     }
   }
 
@@ -721,8 +745,15 @@ __global__ void __launch_bounds__(kWarps * 32, kMinCtas) Int3TcKernel(const Para
     const int rs = threadIdx.x & 7;
     const __nv_bfloat16* src = nullptr;
     if (rs < count) {
-      const int route = static_cast<int>((members >> (8 * rs)) & 0xffu);
-      const int row = kSwiglu ? route / p.top_k : route;
+      const int route = (p.tile_descs != nullptr)
+                            ? grouped_routes[rs]
+                            : static_cast<int>((members >> (8 * rs)) & 0xffu);
+      const int row = kSwiglu
+                          ? (p.input_is_gathered
+                                 ? route
+                                 : (p.source_route_ids != nullptr ? __ldg(&p.source_route_ids[route])
+                                                                  : (route / p.top_k)))
+                          : route;
       src = static_cast<const __nv_bfloat16*>(p.input) + static_cast<int64_t>(row) * k;
     }
     const int pieces = k >> 3;
@@ -757,7 +788,9 @@ __global__ void __launch_bounds__(kWarps * 32, kMinCtas) Int3TcKernel(const Para
       if (slot >= count) {
         continue;
       }
-      const int route = static_cast<int>((members >> (8 * slot)) & 0xffu);
+      const int route = (p.tile_descs != nullptr)
+                            ? grouped_routes[slot]
+                            : static_cast<int>((members >> (8 * slot)) & 0xffu);
       float even = h == 0 ? d.x : d.y;
       float odd = h == 0 ? d.z : d.w;
       if constexpr (kSwiglu) {
@@ -967,8 +1000,35 @@ constexpr int kFc2TileN = kFc2Warps * kFc2M * 16;
 // The dispatcher guarantees intermediate % 128 == 0 (FC1 n = 2 * intermediate) and hidden % kStepK == 0 (FC2 n).
 static_assert((2 * 128) % kFc1TileN == 0 && kStepK % kFc2TileN == 0, "the tiles must divide the supported sizes");
 
-inline cudaError_t LaunchFc1(const Params& fc1, int hidden, int total_routes, bool tc_prepacked, cudaStream_t stream) {
+// The raw-layout kernels are shared-memory heavy. On SM 12.x (100 KB of shared memory per SM) ask for the maximum
+// carveout once so that kFc1MinCtas / kFc2MinCtas CTAs are co-resident on an SM. Other architectures keep the default
+// carveout: on H200 it already gives the same CTAs/SM (4 for FC1, 5 for FC2), and forcing the maximum only shrinks the
+// L1 that the weight streams rely on (10-20% slower decode and grouped prefill).
+inline void EnsureInt3TcCarveout() {
+  static const bool carveout_set = []() {
+    int device = 0;
+    int cc_major = 0;
+    if (cudaGetDevice(&device) == cudaSuccess &&
+        cudaDeviceGetAttribute(&cc_major, cudaDevAttrComputeCapabilityMajor, device) == cudaSuccess &&
+        cc_major == 12) {
+      (void)cudaFuncSetAttribute(Int3TcKernel<true, kFc1Warps, kFc1M, kFc1MinCtas>,
+                                 cudaFuncAttributePreferredSharedMemoryCarveout,
+                                 cudaSharedmemCarveoutMaxShared);
+      (void)cudaFuncSetAttribute(Int3TcKernel<false, kFc2Warps, kFc2M, kFc2MinCtas>,
+                                 cudaFuncAttributePreferredSharedMemoryCarveout,
+                                 cudaSharedmemCarveoutMaxShared);
+    }
+    (void)cudaGetLastError();
+    return true;
+  }();
+  (void)carveout_set;
+}
+
+// `grid_x` is the number of route (or, for grouped launches, expert tile) CTAs. The prepacked kernels run one CTA
+// per route, so grid_x is the number of routes for them.
+inline cudaError_t LaunchFc1(const Params& fc1, int hidden, int grid_x, bool tc_prepacked, cudaStream_t stream) {
   if (tc_prepacked) {
+    const int total_routes = grid_x;
     if (total_routes <= 32 || (fc1.n % 256) != 0) {
       const dim3 grid(static_cast<unsigned>(total_routes), static_cast<unsigned>(fc1.n / kFc1TileN));
       if (total_routes <= 96) {
@@ -989,17 +1049,19 @@ inline cudaError_t LaunchFc1(const Params& fc1, int hidden, int total_routes, bo
       }
     }
   } else {
-    const dim3 grid(static_cast<unsigned>(total_routes), static_cast<unsigned>(fc1.n / kFc1TileN));
+    EnsureInt3TcCarveout();
+    const dim3 grid(static_cast<unsigned>(grid_x), static_cast<unsigned>(fc1.n / kFc1TileN));
     Int3TcKernel<true, kFc1Warps, kFc1M, kFc1MinCtas>
         <<<grid, kFc1Warps * 32, static_cast<size_t>(hidden) * 16, stream>>>(fc1);
   }
   return cudaGetLastError();
 }
 
-inline cudaError_t LaunchFc2(const Params& fc2, int intermediate, int total_routes, bool tc_prepacked,
+inline cudaError_t LaunchFc2(const Params& fc2, int intermediate, int grid_x, bool tc_prepacked,
                              cudaStream_t stream) {
-  const dim3 grid(static_cast<unsigned>(total_routes), static_cast<unsigned>(fc2.n / kFc2TileN));
+  const dim3 grid(static_cast<unsigned>(grid_x), static_cast<unsigned>(fc2.n / kFc2TileN));
   if (tc_prepacked) {
+    const int total_routes = grid_x;
     if (total_routes <= 32) {
       Int3TcCoalescedKernel<false, 4, 1, 5, 0, 3>
           <<<grid, 4 * 32, static_cast<size_t>(intermediate) * 16, stream>>>(fc2);
@@ -1011,14 +1073,21 @@ inline cudaError_t LaunchFc2(const Params& fc2, int intermediate, int total_rout
           <<<grid, 4 * 32, static_cast<size_t>(intermediate) * 16, stream>>>(fc2);
     }
   } else {
+    EnsureInt3TcCarveout();
     Int3TcKernel<false, kFc2Warps, kFc2M, kFc2MinCtas>
         <<<grid, kFc2Warps * 32, static_cast<size_t>(intermediate) * 16, stream>>>(fc2);
   }
   return cudaGetLastError();
 }
 
+// Offloaded calls pass the number of routes explicitly (the route-to-expert map may hold more routes than rows * top_k).
+inline int64_t TotalRoutes(const Int3MoeParams& params) {
+  return (params.total_routes_override > 0) ? static_cast<int64_t>(params.total_routes_override)
+                                            : static_cast<int64_t>(params.rows) * params.top_k;
+}
+
 inline bool CanLaunchBf16(const Int3MoeParams& params) {
-  const int64_t total_routes = static_cast<int64_t>(params.rows) * params.top_k;
+  const int64_t total_routes = TotalRoutes(params);
   // Prepacked weights exist only when the user did not set a route threshold above 1 (see the QMoE constructor), and
   // only these kernels read their layout, so they take the tensor-core path from the first route.
   const int min_routes = params.tc_prepacked ? 1 : params.tensor_core_min_routes;
@@ -1052,7 +1121,7 @@ inline bool TryLaunchBf16(const Int3MoeParams& params, cudaStream_t stream, cuda
   if (!CanLaunchBf16(params)) {
     return false;
   }
-  const int64_t total_routes = static_cast<int64_t>(params.rows) * params.top_k;
+  const int64_t total_routes = TotalRoutes(params);
 
   Params fc1{};
   fc1.input = params.input;
@@ -1061,6 +1130,8 @@ inline bool TryLaunchBf16(const Int3MoeParams& params, cudaStream_t stream, cuda
   fc1.scales = static_cast<const __nv_bfloat16*>(params.fc1.scales);
   fc1.bias = static_cast<const __nv_bfloat16*>(params.fc1.bias);
   fc1.experts = params.experts;
+  fc1.source_route_ids = params.source_route_ids;
+  fc1.input_is_gathered = params.input_is_gathered;
   fc1.total_routes = static_cast<int>(total_routes);
   fc1.num_experts = params.num_experts;
   fc1.top_k = params.top_k;
@@ -1089,6 +1160,79 @@ inline bool TryLaunchBf16(const Int3MoeParams& params, cudaStream_t stream, cuda
   fc2.k = params.intermediate;
 
   status = LaunchFc2(fc2, params.intermediate, static_cast<int>(total_routes), params.tc_prepacked, stream);
+  return true;
+}
+
+inline bool TryLaunchBf16Grouped(const Int3MoeParams& params, const int* sorted_routes,
+                                 const Int3ExpertTileDesc* tile_descs, const int* num_tiles_ptr,
+                                 int max_tiles, cudaStream_t stream, cudaError_t& status) {
+  const int64_t total_routes = TotalRoutes(params);
+  // The grouped kernels read the raw weight layout; prepacked weights only exist for the one-CTA-per-route kernels.
+  if (!params.is_bfloat16 || params.fc1.bits != 3 || params.fc2.bits != 3 || params.block_size != kBlockSize ||
+      params.router_weights != nullptr || params.tc_prepacked || max_tiles <= 0 || max_tiles > 65535 ||
+      params.hidden % kStepK != 0 || params.intermediate % 128 != 0 ||
+      static_cast<int64_t>(params.hidden) * 16 > kMaxSharedBytes ||
+      static_cast<int64_t>(params.intermediate) * 16 > kMaxSharedBytes ||
+      (reinterpret_cast<uintptr_t>(params.fc1.weights) & 15u) != 0 ||
+      (reinterpret_cast<uintptr_t>(params.fc2.weights) & 15u) != 0 ||
+      (reinterpret_cast<uintptr_t>(params.fc1.scales) & 3u) != 0 ||
+      (reinterpret_cast<uintptr_t>(params.fc2.scales) & 3u) != 0 ||
+      params.fc1.zeros != nullptr || params.fc2.zeros != nullptr ||
+      sorted_routes == nullptr || tile_descs == nullptr || num_tiles_ptr == nullptr ||
+      params.tensor_core_min_routes == 0 || !DeviceSupportsBf16Mma()) {
+    return false;
+  }
+
+  cudaFuncAttributes fc1_attributes{}, fc2_attributes{};
+  if (cudaFuncGetAttributes(&fc1_attributes, Int3TcKernel<true, kFc1Warps, kFc1M, kFc1MinCtas>) != cudaSuccess ||
+      cudaFuncGetAttributes(&fc2_attributes, Int3TcKernel<false, kFc2Warps, kFc2M, kFc2MinCtas>) != cudaSuccess ||
+      fc1_attributes.ptxVersion < 80 || fc2_attributes.ptxVersion < 80) {
+    return false;
+  }
+
+  Params fc1{};
+  fc1.input = params.input;
+  fc1.out = params.activation;
+  fc1.weights = params.fc1.weights;
+  fc1.scales = static_cast<const __nv_bfloat16*>(params.fc1.scales);
+  fc1.bias = static_cast<const __nv_bfloat16*>(params.fc1.bias);
+  fc1.experts = params.experts;
+  fc1.source_route_ids = params.source_route_ids;
+  fc1.sorted_routes = sorted_routes;
+  fc1.tile_descs = tile_descs;
+  fc1.num_tiles_ptr = num_tiles_ptr;
+  fc1.input_is_gathered = params.input_is_gathered;
+  fc1.total_routes = static_cast<int>(total_routes);
+  fc1.num_experts = params.num_experts;
+  fc1.top_k = params.top_k;
+  fc1.n = 2 * params.intermediate;
+  fc1.k = params.hidden;
+  fc1.alpha = params.alpha;
+  fc1.beta = params.beta;
+  fc1.limit = params.limit;
+
+  status = LaunchFc1(fc1, params.hidden, max_tiles, /*tc_prepacked=*/false, stream);
+  if (status != cudaSuccess) {
+    return true;
+  }
+
+  Params fc2{};
+  fc2.input = params.activation;
+  fc2.out = params.fc2_partial;
+  fc2.weights = params.fc2.weights;
+  fc2.scales = static_cast<const __nv_bfloat16*>(params.fc2.scales);
+  fc2.bias = static_cast<const __nv_bfloat16*>(params.fc2.bias);
+  fc2.experts = params.experts;
+  fc2.sorted_routes = sorted_routes;
+  fc2.tile_descs = tile_descs;
+  fc2.num_tiles_ptr = num_tiles_ptr;
+  fc2.total_routes = static_cast<int>(total_routes);
+  fc2.num_experts = params.num_experts;
+  fc2.top_k = params.top_k;
+  fc2.n = params.hidden;
+  fc2.k = params.intermediate;
+
+  status = LaunchFc2(fc2, params.intermediate, max_tiles, /*tc_prepacked=*/false, stream);
   return true;
 }
 

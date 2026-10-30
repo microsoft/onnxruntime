@@ -33,6 +33,9 @@ and have been significantly modified for ONNX Runtime — see
 11. [WFP4AFP8 Details](#11-wfp4afp8-details)
 12. [Future / Deferred Modes](#12-future--deferred-modes)
   - [12.1 MoE GEMV Optimization Summary](#121-moe-gemv-optimization-summary)
+12b. [Portable CPU/GPU Offload (`session.moe.offload.*`)](#12b-portable-cpugpu-offload-sessionmoeoffload)
+  - [12b.1 Supported Quantization Encodings & Tensor Shapes](#12b1-supported-quantization-encodings--tensor-shapes)
+  - [12b.2 CUDA Operator Execution (Doorbell Decode, Adaptive Promotion & Hybrid Prefill)](#12b2-cuda-operator-execution-doorbell-decode-adaptive-promotion--hybrid-prefill)
 13. [Testing](#13-testing)
 14. [Build Configuration](#14-build-configuration)
   - [14.1 MSVC and TMA grouped MoE GEMM](#141-msvc-and-tma-grouped-moe-gemm)
@@ -1754,6 +1757,142 @@ onnxruntime/test/python/transformers/profile_qmoe_gemv.sh \
 
 ---
 
+## 12b. Portable CPU/GPU Offload (`session.moe.offload.*`)
+
+`com.microsoft::QMoE` supports **portable runtime CPU/GPU offload** controlled by
+`session.moe.offload.*` session options so a single canonical `model.onnx` package runs across
+full-HBM GPUs, VRAM-constrained GPUs with ample host RAM, and VRAM- + host-RAM-constrained systems.
+
+For the core framework architecture — including external storage layout and `4096`-byte page alignment,
+`PromoteFileMappingToSharedReadOnly`, the `expert-profile.bin` (`STRP` v1) popularity profile, the full
+`session.moe.offload.*` configuration key reference and `onnxruntime-genai` `runtime_profiles`, the
+five-stage `SessionState` planning pipeline, and the CUDA memory budget ledger and lifecycle hooks — see
+**[docs/moe-cpu-offload/qmoe_offload.md](../../moe-cpu-offload/qmoe_offload.md)** (and
+**[docs/contrib_ops/cpu/qmoe_shared_layout.md](../cpu/qmoe_shared_layout.md)** for the shared-layout
+CPU kernels and byte-preserving `FileExpertStore`).
+
+---
+
+### 12b.1 Supported Quantization Encodings & Tensor Shapes
+
+Exporters emit standard `com.microsoft::QMoE` nodes with **no offload-specific operator attributes,
+inputs, or outputs**.
+
+| Encoding | `quant_type` | `expert_weight_bits` | `block_size` | `weights_prepacked` | `swiglu_fusion` | Required Expert Input Slots |
+| :--- | :---: | :---: | :---: | :---: | :---: | :--- |
+| **NVFP4 (W4A16)** | `"nvfp4"` | `4` | `16` | `1` (offline K-packed row-major) | `1` (interleaved) | • **Slot 2 (`fc1_experts_weights`)**: `uint8`, physical `[E, 2*I, H/2]` (logical `[E, H, I]`)<br>• **Slot 3 (`fc1_scales`)**: `float8e4m3fn`, `[E, 2*I, H/16]`<br>• **Slot 5 (`fc2_experts_weights`)**: `uint8`, physical `[E, H, I/2]` (logical `[E, I, H/2]`)<br>• **Slot 6 (`fc2_scales`)**: `float8e4m3fn`, `[E, H, I/16]`<br>• **Slot 15 (`fc1_global_scale`)**: `float32`, `[E]`<br>• **Slot 16 (`fc2_global_scale`)**: `float32`, `[E]`<br>• *(Optional)* **Slots 4, 7**: `fc1_experts_bias` `[E, 2*I]`, `fc2_experts_bias` `[E, H]` (`fp16`/`bf16`) |
+| **Prepacked INT4 (W4A16)** | `"int"` | `4` | `32` | `1` (SM80 `fpA_intB` layout) | `1` (interleaved) | • **Slot 2 (`fc1_experts_weights`)**: `uint8`, `[E, H, I]` or `[E, 2*I, H/2]`<br>• **Slot 3 (`fc1_scales`)**: `fp16`/`bf16`, `[E, 2*I, H/32]`<br>• **Slot 5 (`fc2_experts_weights`)**: `uint8`, `[E, I, H/2]` or `[E, H, I/2]`<br>• **Slot 6 (`fc2_scales`)**: `fp16`/`bf16`, `[E, H, I/32]`<br>• *(Optional)* **Slots 4, 7**: `fc1_experts_bias` `[E, 2*I]`, `fc2_experts_bias` `[E, H]` (`fp16`/`bf16`) |
+| **Raw INT3 (W3A16)** | `"int"` | `3` | `32`, `64`, or `128` | `0` (raw packed 3-bit codes) | `1` (interleaved) | • **Slot 2 (`fc1_experts_weights`)**: `uint8`, `[E, 2*I, (H*3)/8]`<br>• **Slot 3 (`fc1_scales`)**: `fp16`/`bf16`, `[E, 2*I, H/block_size]`<br>• **Slot 5 (`fc2_experts_weights`)**: `uint8`, `[E, H, (I*3)/8]`<br>• **Slot 6 (`fc2_scales`)**: `fp16`/`bf16`, `[E, H, I/block_size]`<br>• *(Optional)* **Slots 4, 7**: `fc1_experts_bias` `[E, 2*I]`, `fc2_experts_bias` `[E, H]` (`fp16`/`bf16`) |
+
+> **Eligibility note**: When `session.moe.offload.mode="auto"`, any `MoE`/`QMoE` node outside the
+> table above keeps its initializers on GPU and executes through the standard CUDA `MoE`/`QMoE` path.
+> When `session.moe.offload.mode="required"`, unsupported nodes or shared non-offload initializer
+> consumers fail fast during session initialization with `ORT_INVALID_ARGUMENT`.
+
+---
+
+### 12b.2 CUDA Operator Execution (Doorbell Decode, Adaptive Promotion & Hybrid Prefill)
+
+#### 1. Decode Path (`rows <= async_max_tokens`): Device-Doorbell CUDA-Graph Hybrid Execution
+
+During decode (`1..4` tokens, including multi-draft MTP verification), launching per-layer host
+callbacks (`cudaLaunchHostFunc`) or separate D2H/H2D `cudaMemcpyAsync` calls would break CUDA Graph
+capture and add ~20 us/layer of driver wakeup latency. Instead, `QMoEOffload` uses a **Device-Doorbell
+Host Worker Protocol** ([qmoe_kernels.cu](onnxruntime/contrib_ops/cuda/moe/qmoe_kernels.cu),
+[qmoe_offload.cc](onnxruntime/contrib_ops/cuda/moe/qmoe_offload.cc)) where all per-layer GPU kernels
+execute on the primary compute stream with fixed device/pinned addresses and capture into a single
+full-model CUDA Graph:
+
+1. **Router & Fused Doorbell Classification (`SoftmaxTopK` $\to$ `QMoEOffloadClassifyKernel<<<1, 256, 0, stream>>>`)**:
+   - Classifies each of the $\text{rows} \times k$ routes against `slot_table_dev_[expert]`.
+   - Routes with `slot >= 0` are marked as GPU hits; routes with `slot < 0` are marked as CPU misses.
+   - If any route misses, thread block 0 copies `topk_indices` (`<= 160 B`) and the BF16/FP16 input
+     activations (`<= 20 KiB`) directly into UVA-mapped pinned host memory (`host_indices`, `host_input`),
+     executes `__threadfence_system()`, increments the device sequence counter `*doorbell_seq_dev`,
+     and writes `*doorbell_req_host = next_seq` to wake the persistent `DoorbellService` host thread.
+2. **Concurrent GPU Resident GEMV & CPU Cold-Expert AVX-512 Execution**:
+   - **On the GPU (`stream`)**: `MoeGemvFp4DecodeKernel` executes FC1 (SwiGLU) and FC2 immediately on
+     the GPU resident slab (`[C_l + S_l, ...]`). Because `MoeGemvFp4DecodeKernel` natively skips
+     negative slot indices (`slot < 0`), **zero dummy slots (`dummy_slots = 0`)** are allocated or read.
+     When followed by a shared expert (`SharedExpertDown`), the shared-expert projection is also
+     launched before waiting on the CPU doorbell.
+   - **On the CPU (`DoorbellService` + `SpinPool`)**: `DoorbellService` detects `*doorbell_req_host == next_seq`
+     and dispatches the missed experts across `SpinPool` workers pinned to distinct physical cores
+     alternating across NUMA sockets / L3 CCDs (`DiscoverPhysicalCoreCount()`).
+   - **AVX-512 Cold-Expert Microkernels (`Fp4Group4Avx512<RT=1..4>`)**: Cold NVFP4 experts are
+     evaluated directly from their row-major `[N, K/2]` storage without weight conversion using
+     `_mm512_permutex2var_ps` 2D LUT permutes (`stack_fma = 0`, `stack_mov = 0`), multi-row contiguous
+     activation reuse (`RT = 1..4` tokens routed to the same cold expert share a single DDR5 weight
+     read), and a single fused `ParallelFor(total_fc1 + total_fc2)` coordinated by per-expert atomic
+     readiness counters (`fc1_done[slot]`) so each expert's FC2 tasks start immediately after its own
+     FC1 tasks finish. Results are written directly into UVA-mapped pinned `host_result`.
+3. **Fused Wait, Merge, Finalize & Combine (`QMoEOffloadMergeFinalizeCombineKernel`)**:
+   - Preloads GPU-resident `wave_output` hits and `shared_out` into registers while thread 0 spins on
+     `*doorbell_done_host >= *doorbell_seq_dev`, then reads CPU cold outputs zero-copy from mapped
+     pinned `host_result`, accumulates all $k$ weighted expert contributions in exact `k_idx = 0..k-1`
+     FP32 FMA order, adds `shared_out`, and triggers Hopper Programmatic Dependent Launch
+     (`cudaTriggerProgrammaticLaunchCompletion`) so the post-MLP `HcBlockKernel` overlaps its weight
+     prefetch with the doorbell spin.
+
+#### 2. Adaptive Residency & Between-Step Background Promotion (`StepBetweenRuns`)
+
+When `session.moe.offload.placement="adaptive"`, each partially offloaded layer allocates
+$P_l = C_l + 2$ physical slots (`spare_slots = 2`):
+
+- **Marginal-Latency & Presence-EMA Scoring**: Each decode invocation updates per-expert routing scores
+  with continuous exponential decay ($d = 2^{-\Delta R / R_{\text{half}}}$) and a 32-invocation presence
+  EMA, weighting the first row routed to a cold expert in an invocation at `1.0` and subsequent rows
+  in the same invocation at `marginal_row_weight_` (`0.8`).
+- **Safe In-Slab Promotion (`PromoteResident`)**: At step boundaries (`OnBeforeGraphReplay` /
+  `StepBetweenRuns`), completed background promotions (`cudaEventQuery(promo_ready_) == cudaSuccess`)
+  update the host slot map, flip the double-buffered `slot_table_dev_` epoch (`CurrentSlotTableDev()`),
+  and copy the `2 KiB` updated slot table to GPU HBM. New promotions copy candidate expert banks
+  into a free spare slot on low-priority `promo_stream_` before retiring the victim slot, bounded
+  globally per step by `SessionPromotionBudget` (`16` experts / `64 MiB` per step, using a
+  pre-allocated double-buffered pinned bounce ring with parallel `SharedSpinPool` chunk copies when
+  host banks are unpinned).
+- **Bounded Host Cache Victim Swapping (`SwapHostCandidateForVictim`)**: When `FileExpertStore` is
+  active, promoting a cached host expert $e_{\text{cand}}$ to GPU HBM and evicting GPU victim
+  $e_{\text{victim}}$ overwrites $e_{\text{cand}}$'s host cache slot in-place via D2H copy from the
+  GPU victim slot (`BeginReplace` / `FinishReplace`), keeping GPU and host residency 100% disjoint
+  and avoiding future disk reads if $e_{\text{victim}}$ is routed again.
+
+#### 3. Prefill Path (`rows > async_max_tokens`): Hybrid UVA + Compact Streaming DMA
+
+During prefill (`rows > 4`, e.g., `512`–`2,048` token chunks), CPU execution is bypassed in favor of
+GPU tensor-core grouped GEMMs fed by **Hybrid Three-Source Dequantization**
+([qmoe_offload.cc](onnxruntime/contrib_ops/cuda/moe/qmoe_offload.cc),
+[qmoe_kernels.cu](onnxruntime/contrib_ops/cuda/moe/qmoe_kernels.cu)):
+
+1. **Zero-Copy Reuse of GPU HBM & Host Cache (`QMoEDequantizeNvfp4RowMajorKernel`)**:
+   - For each compaction pass (`runner_num_experts`, typically `64` or `128`), `EnqueuePrefillPassDmaLocked`
+     inspects `expert_active_mask`, `expert_slot_` (GPU HBM), and `file_store_expert_slot_` (UVA-pinned
+     `FileExpertStore`).
+   - Inactive experts (`active_mask < 0`) are skipped entirely (`h_cold_map[i] = -1`).
+   - Experts already resident in the layer's GPU slab (`resident_slot >= 0`) are dequantized directly
+     from GPU HBM (`4.8 TB/s`) with zero PCIe transfer (`h_cold_map[i] = -1`).
+   - Experts resident in the UVA-mapped `FileExpertStore` host cache (`host_slot >= 0`) are encoded as
+     `h_cold_map[i] = -2 - host_slot` and dequantized directly over PCIe UVA without CPU staging copies.
+   - Only the remaining uncached cold experts (`M` experts) are packed in parallel by `SharedSpinPool`
+     into double-buffered pinned `host_staging[buf_idx]` (`h_cold_map[i] = 0 .. M-1`) and transferred
+     asynchronously on high-priority `dma_stream` while the compute stream executes the previous pass's
+     grouped GEMM.
+2. **Dynamic Tail-Layer Slab Lending & Warm Seeding (`FinalizeQMoEPrefillAndSeedDecode`)**:
+   - For long prompts (`> 2,048` tokens, up to `64K`), `TryPrepareQMoEPrefillDmaLayer` temporarily lends
+     `4.4 GiB–7.2 GiB` of tail-layer resident slabs before allocating the prefill DMA workspace so peak
+     GPU VRAM never exceeds the decode envelope.
+   - When prefill finishes (`FinalizeQMoEPrefillAndSeedDecode`), the prefill DMA workspace and any
+     temporary host staging buffers are freed *before* restoring lent resident slabs, and the prompt
+     routing histogram (`hist_dev`) warm-seeds the initial decode resident set.
+
+Implementation files:
+- [docs/moe-cpu-offload/qmoe_offload.md](../../moe-cpu-offload/qmoe_offload.md) — `session.moe.offload.*` session options, 5-stage planner, and CUDA EP memory/lifecycle architecture;
+- [qmoe_shared_layout.h](onnxruntime/contrib_ops/cpu/moe/qmoe_shared_layout.h), [qmoe_shared_layout.cc](onnxruntime/contrib_ops/cpu/moe/qmoe_shared_layout.cc) — shared expert layouts, AVX-512 / AVX2 microkernels, and byte-preserving `FileExpertStore`;
+- [qmoe_spin_pool.h](onnxruntime/contrib_ops/cuda/moe/qmoe_spin_pool.h) — NUMA/CCD-pinned `SpinPool` (`DiscoverPhysicalCoreCount`) and `CpuBudgetGroup`;
+- [moe_quantization.cc](onnxruntime/contrib_ops/cuda/moe/moe_quantization.cc), [qmoe_offload.cc](onnxruntime/contrib_ops/cuda/moe/qmoe_offload.cc), [qmoe_kernels.cu](onnxruntime/contrib_ops/cuda/moe/qmoe_kernels.cu) — `QMoE` `IMoeOffloadNode` integration, doorbell CUDA-graph decode, adaptive promotion, and hybrid UVA + compact DMA prefill.
+
+---
+
 ## 13. Testing
 
 | Test file | Coverage |
@@ -1765,6 +1904,8 @@ onnxruntime/test/python/transformers/profile_qmoe_gemv.sh \
 | [test_qmoe_fp4_cuda.py](onnxruntime/test/python/transformers/test_qmoe_fp4_cuda.py) | MXFP4 QMoE: quantization utilities, packing, FP16/BF16, SiLU/SwiGLU, top-k and expert-count variants. On SM80+ (including SM120) `TestQMoEFP4Sm80SingleWeightCopy` checks the SM80 grouped GEMM + fused GEMV regime against the dequant fallback. |
 | [test_qmoe_fp8_cuda.py](onnxruntime/test/python/transformers/test_qmoe_fp8_cuda.py) | Legacy FP8 W8A16 native/dequant paths and square-block FP8 fallback, separate FC3, fused SwiGLU, partial blocks, top-10, validation errors, and opt-in official Qwen dimensions. |
 | [test_qmoe_wfp4afp8_cuda.py](onnxruntime/test/python/transformers/test_qmoe_wfp4afp8_cuda.py) | WFP4AFP8 — native Blackwell path requires SM100+; SM<100 exercises the dequant fallback. |
+| [test_qmoe_shared_layout.py](onnxruntime/test/python/transformers/test_qmoe_shared_layout.py) | Shared 4-bit expert block layouts (`INT4`, `MXFP4`, `NVFP4`), scalar vs. AVX-512 cold-expert kernel parity, and `FileExpertStore` roundtrips. |
+| [test_qmoe_offload_v4.py](onnxruntime/test/python/test_qmoe_offload_v4.py) | Portable QMoE Offload v4 (`session.moe.offload.*` on canonical `com.microsoft::QMoE`): rejection of invalid/legacy config keys, numerical parity across `disabled`, `auto`, `static`, `adaptive`, and `bounded_host` (`FileExpertStore`) modes for decode (`T=1,2,4`) and prefill (`T=16`), and full CUDA Graph capture and replay. |
 
 ### Reference computation
 

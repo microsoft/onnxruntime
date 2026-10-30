@@ -32,6 +32,469 @@ int Compute1DGridSize(int num_elements, int block_size) {
 
 constexpr float kTopKNormalizeEpsilon = onnxruntime::cuda::topk::kTopKNormalizeEpsilon;
 
+template <typename T>
+__global__ void QMoEOffloadGatherKernel(
+    const T* input, const int* route_ids, T* gathered, int hidden_size, int k) {
+  const size_t source_row = static_cast<size_t>(route_ids[blockIdx.x] / k);
+  const size_t target_row = blockIdx.x;
+  for (size_t column = threadIdx.x; column < static_cast<size_t>(hidden_size); column += blockDim.x) {
+    gathered[target_row * hidden_size + column] = input[source_row * hidden_size + column];
+  }
+}
+
+template <typename T>
+__global__ void QMoEOffloadScatterKernel(
+    const T* wave_output, const int* route_ids, T* contributions,
+    int hidden_size, int tile_rows, int k) {
+  const int route_id = route_ids[blockIdx.x];
+  const size_t target_row = static_cast<size_t>(route_id % k) * tile_rows + route_id / k;
+  const size_t source_row = blockIdx.x;
+  for (size_t column = threadIdx.x; column < static_cast<size_t>(hidden_size); column += blockDim.x) {
+    contributions[target_row * hidden_size + column] = wave_output[source_row * hidden_size + column];
+  }
+}
+
+__global__ void QMoEOffloadMetadataKernel(float* unit_scales, int* identity_permutation, int route_count) {
+  const size_t route = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (route < static_cast<size_t>(route_count)) {
+    unit_scales[route] = 1.0f;
+    identity_permutation[route] = static_cast<int>(route);
+  }
+}
+
+__global__ void QMoEOffloadSourceRowsKernel(int* source_rows, int route_count, int k) {
+  const int route = static_cast<int>(blockIdx.x * blockDim.x + threadIdx.x);
+  if (route < route_count) {
+    source_rows[route] = route / k;
+  }
+}
+
+template <typename T>
+__global__ void QMoEOffloadScatterBiasKernel(
+    const T* wave_bias, const int* compact_experts, const int* route_ids, T* route_bias, int hidden_size) {
+  const size_t source_row = compact_experts[blockIdx.x];
+  const size_t target_row = route_ids[blockIdx.x];
+  for (size_t column = threadIdx.x; column < static_cast<size_t>(hidden_size); column += blockDim.x) {
+    route_bias[target_row * hidden_size + column] = wave_bias[source_row * hidden_size + column];
+  }
+}
+
+cudaError_t LaunchQMoEOffloadScatterBias(
+    const half* wave_bias, const int* compact_experts, const int* route_ids, half* route_bias,
+    int route_count, int hidden_size, cudaStream_t stream) {
+  if (route_count <= 0) return cudaSuccess;
+  QMoEOffloadScatterBiasKernel<<<route_count, 256, 0, stream>>>(
+      wave_bias, compact_experts, route_ids, route_bias, hidden_size);
+  return cudaGetLastError();
+}
+
+cudaError_t LaunchQMoEOffloadScatterBias(
+    const __nv_bfloat16* wave_bias, const int* compact_experts, const int* route_ids, __nv_bfloat16* route_bias,
+    int route_count, int hidden_size, cudaStream_t stream) {
+  if (route_count <= 0) return cudaSuccess;
+  QMoEOffloadScatterBiasKernel<<<route_count, 256, 0, stream>>>(
+      wave_bias, compact_experts, route_ids, route_bias, hidden_size);
+  return cudaGetLastError();
+}
+
+cudaError_t LaunchQMoEOffloadGather(
+    const half* input, const int* route_ids, half* gathered,
+    int route_count, int hidden_size, int k, cudaStream_t stream) {
+  if (route_count <= 0) return cudaSuccess;
+  QMoEOffloadGatherKernel<<<route_count, 256, 0, stream>>>(input, route_ids, gathered, hidden_size, k);
+  return cudaGetLastError();
+}
+
+cudaError_t LaunchQMoEOffloadGather(
+    const __nv_bfloat16* input, const int* route_ids, __nv_bfloat16* gathered,
+    int route_count, int hidden_size, int k, cudaStream_t stream) {
+  if (route_count <= 0) return cudaSuccess;
+  QMoEOffloadGatherKernel<<<route_count, 256, 0, stream>>>(input, route_ids, gathered, hidden_size, k);
+  return cudaGetLastError();
+}
+
+cudaError_t LaunchQMoEOffloadScatter(
+    const half* wave_output, const int* route_ids, half* contributions,
+    int route_count, int hidden_size, int tile_rows, int k, cudaStream_t stream) {
+  if (route_count <= 0) return cudaSuccess;
+  QMoEOffloadScatterKernel<<<route_count, 256, 0, stream>>>(
+      wave_output, route_ids, contributions, hidden_size, tile_rows, k);
+  return cudaGetLastError();
+}
+
+cudaError_t LaunchQMoEOffloadScatter(
+    const __nv_bfloat16* wave_output, const int* route_ids, __nv_bfloat16* contributions,
+    int route_count, int hidden_size, int tile_rows, int k, cudaStream_t stream) {
+  if (route_count <= 0) return cudaSuccess;
+  QMoEOffloadScatterKernel<<<route_count, 256, 0, stream>>>(
+      wave_output, route_ids, contributions, hidden_size, tile_rows, k);
+  return cudaGetLastError();
+}
+
+cudaError_t LaunchQMoEOffloadMetadata(
+    float* unit_scales, int* identity_permutation, int route_count, cudaStream_t stream) {
+  if (route_count <= 0) return cudaSuccess;
+  const int blocks = route_count / 256 + (route_count % 256 != 0);
+  QMoEOffloadMetadataKernel<<<blocks, 256, 0, stream>>>(
+      unit_scales, identity_permutation, route_count);
+  return cudaGetLastError();
+}
+
+cudaError_t LaunchQMoEOffloadSourceRows(
+    int* source_rows, int route_count, int k, cudaStream_t stream) {
+  if (route_count <= 0) return cudaSuccess;
+  const int blocks = route_count / 256 + (route_count % 256 != 0);
+  QMoEOffloadSourceRowsKernel<<<blocks, 256, 0, stream>>>(source_rows, route_count, k);
+  return cudaGetLastError();
+}
+
+__global__ void QMoEOffloadClassifyKernel(
+    const int* topk_indices, const int* expert_slot, int route_count, int row_count,
+    int* hit_ids, int* hit_compact, int* hit_flag, int dummy_slot,
+    float* unit_scales, int* identity_permutation, int k_for_source_rows,
+    int* host_indices_out, const uint4* input_dev, uint4* host_input_out, int input_vec4_count,
+    uint64_t* doorbell_seq_dev, volatile uint64_t* doorbell_req_host,
+    volatile int32_t* doorbell_tile_rows_host, int tile_rows,
+    bool skip_zero_cold, volatile uint64_t* doorbell_done_host,
+    volatile int32_t* cold_count_host, QMoEOffloadTelemetry* telemetry) {
+  const int row = blockIdx.x * blockDim.x + threadIdx.x;
+  int exp = 0;
+  int slot = -1;
+  if (row < row_count) {
+    if (unit_scales != nullptr) unit_scales[row] = 1.0f;
+    if (identity_permutation != nullptr) identity_permutation[row] = row;
+    const int route = row < route_count ? row : 0;
+    exp = topk_indices[route];
+    slot = (row < route_count) ? expert_slot[exp] : -1;
+    hit_ids[row] = (k_for_source_rows > 0 && row < route_count) ? (route / k_for_source_rows) : route;
+    hit_compact[row] = slot < 0 ? dummy_slot : slot;
+    if (row < route_count) {
+      hit_flag[row] = slot >= 0;
+    }
+  }
+  const bool has_doorbell = (doorbell_seq_dev != nullptr && doorbell_req_host != nullptr && gridDim.x == 1);
+  const int is_cold = (row < route_count) ? (slot < 0) : 0;
+  const int cold_count = has_doorbell ? __syncthreads_count(is_cold) : 0;
+  const bool zero_cold_bypass = has_doorbell && skip_zero_cold && cold_count == 0 && doorbell_done_host != nullptr;
+  if (!zero_cold_bypass) {
+    if (row < route_count && host_indices_out != nullptr) {
+      host_indices_out[row] = exp;
+    }
+    if (input_dev != nullptr && host_input_out != nullptr) {
+      for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < input_vec4_count; i += gridDim.x * blockDim.x) {
+        host_input_out[i] = input_dev[i];
+      }
+    }
+  }
+  if (has_doorbell) {
+    if (zero_cold_bypass) {
+      if (threadIdx.x == 0) {
+        const uint64_t next_seq = *doorbell_seq_dev + 1;
+        *doorbell_seq_dev = next_seq;
+        if (telemetry != nullptr) {
+          ++telemetry->layer_calls;
+          telemetry->last_route_count = route_count;
+          telemetry->last_cold_count = 0;
+          ++telemetry->zero_cold_short_circuits;
+        }
+        *doorbell_done_host = next_seq;
+        // Single system fence orders done before request with zero preceding 4 KB PCIe payload writes.
+        __threadfence_system();
+        *doorbell_req_host = next_seq;
+      }
+    } else {
+      __syncthreads();
+      if (threadIdx.x == 0) {
+        if (cold_count_host != nullptr) {
+          *cold_count_host = cold_count;
+        }
+        if (doorbell_tile_rows_host != nullptr) {
+          *doorbell_tile_rows_host = tile_rows;
+        }
+        __threadfence_system();
+        const uint64_t next_seq = *doorbell_seq_dev + 1;
+        *doorbell_seq_dev = next_seq;
+        if (telemetry != nullptr) {
+          ++telemetry->layer_calls;
+          telemetry->cold_routes += cold_count;
+          telemetry->last_route_count = route_count;
+          telemetry->last_cold_count = cold_count;
+        }
+        *doorbell_req_host = next_seq;
+        __threadfence_system();
+      }
+    }
+  }
+}
+
+template <typename T>
+__global__ void QMoEOffloadMergeKernel(
+    const T* wave_output, const T* cpu_rows, const int* hit_flag, T* contributions,
+    int hidden_size, int tile_rows, int k,
+    const uint64_t* doorbell_seq_dev, const volatile uint64_t* doorbell_done_host) {
+  const int route = blockIdx.x;
+  const size_t target_row = static_cast<size_t>(route % k) * tile_rows + route / k;
+  const int is_hit = hit_flag[route];
+  T* dst = contributions + target_row * hidden_size;
+  if (is_hit) {
+    const T* source = wave_output + static_cast<size_t>(route) * hidden_size;
+    if ((hidden_size & 7) == 0) {
+      const uint4* src4 = reinterpret_cast<const uint4*>(source);
+      uint4* dst4 = reinterpret_cast<uint4*>(dst);
+      const size_t vec_count = static_cast<size_t>(hidden_size) >> 3;
+      for (size_t i = threadIdx.x; i < vec_count; i += blockDim.x) {
+        dst4[i] = src4[i];
+      }
+    } else {
+      for (size_t column = threadIdx.x; column < static_cast<size_t>(hidden_size); column += blockDim.x) {
+        dst[column] = source[column];
+      }
+    }
+    if (route == 0 && doorbell_seq_dev != nullptr && doorbell_done_host != nullptr && threadIdx.x == 0) {
+      const uint64_t expected = *doorbell_seq_dev;
+      while (*doorbell_done_host < expected) {
+#if __CUDA_ARCH__ >= 700
+        __nanosleep(100);
+#endif
+      }
+      __threadfence_system();
+    }
+  } else {
+    if (doorbell_seq_dev != nullptr && doorbell_done_host != nullptr) {
+      if (threadIdx.x == 0) {
+        const uint64_t expected = *doorbell_seq_dev;
+        while (*doorbell_done_host < expected) {
+#if __CUDA_ARCH__ >= 700
+          __nanosleep(100);
+#endif
+        }
+        __threadfence_system();
+      }
+      __syncthreads();
+    }
+    const T* source = cpu_rows + target_row * hidden_size;
+    if ((hidden_size & 7) == 0) {
+      const uint4* src4 = reinterpret_cast<const uint4*>(source);
+      uint4* dst4 = reinterpret_cast<uint4*>(dst);
+      const size_t vec_count = static_cast<size_t>(hidden_size) >> 3;
+      for (size_t i = threadIdx.x; i < vec_count; i += blockDim.x) {
+        dst4[i] = src4[i];
+      }
+    } else {
+      for (size_t column = threadIdx.x; column < static_cast<size_t>(hidden_size); column += blockDim.x) {
+        dst[column] = source[column];
+      }
+    }
+  }
+}
+
+cudaError_t LaunchQMoEOffloadClassify(
+    const int* topk_indices, const int* expert_slot, int route_count, int row_count,
+    int* hit_ids, int* hit_compact, int* hit_flag, cudaStream_t stream, int dummy_slot,
+    float* unit_scales, int* identity_permutation, int k_for_source_rows,
+    int* host_indices_out, const void* input_dev, void* host_input_out, int input_vec4_count,
+    uint64_t* doorbell_seq_dev, volatile uint64_t* doorbell_req_host,
+    volatile int32_t* doorbell_tile_rows_host, int tile_rows,
+    bool skip_zero_cold, volatile uint64_t* doorbell_done_host,
+    volatile int32_t* cold_count_host, QMoEOffloadTelemetry* telemetry) {
+  if (row_count <= 0) return cudaSuccess;
+  if (doorbell_seq_dev != nullptr && doorbell_req_host != nullptr && row_count <= 256) {
+    QMoEOffloadClassifyKernel<<<1, 256, 0, stream>>>(
+        topk_indices, expert_slot, route_count, row_count, hit_ids, hit_compact, hit_flag, dummy_slot,
+        unit_scales, identity_permutation, k_for_source_rows,
+        host_indices_out, reinterpret_cast<const uint4*>(input_dev),
+        reinterpret_cast<uint4*>(host_input_out), input_vec4_count,
+        doorbell_seq_dev, doorbell_req_host, doorbell_tile_rows_host, tile_rows,
+        skip_zero_cold, doorbell_done_host, cold_count_host, telemetry);
+    return cudaGetLastError();
+  }
+  const int blocks = row_count / 128 + (row_count % 128 != 0);
+  QMoEOffloadClassifyKernel<<<blocks, 128, 0, stream>>>(
+      topk_indices, expert_slot, route_count, row_count, hit_ids, hit_compact, hit_flag, dummy_slot,
+      unit_scales, identity_permutation, k_for_source_rows,
+      host_indices_out, reinterpret_cast<const uint4*>(input_dev),
+      reinterpret_cast<uint4*>(host_input_out), input_vec4_count,
+      nullptr, nullptr, nullptr, tile_rows, false, nullptr, nullptr, nullptr);
+  return cudaGetLastError();
+}
+
+cudaError_t LaunchQMoEOffloadMerge(
+    const half* wave_output, const half* cpu_rows, const int* hit_flag, half* contributions,
+    int route_count, int hidden_size, int tile_rows, int k, cudaStream_t stream,
+    const uint64_t* doorbell_seq_dev, const volatile uint64_t* doorbell_done_host) {
+  if (route_count <= 0) return cudaSuccess;
+  QMoEOffloadMergeKernel<<<route_count, 256, 0, stream>>>(
+      wave_output, cpu_rows, hit_flag, contributions, hidden_size, tile_rows, k,
+      doorbell_seq_dev, doorbell_done_host);
+  return cudaGetLastError();
+}
+
+cudaError_t LaunchQMoEOffloadMerge(
+    const __nv_bfloat16* wave_output, const __nv_bfloat16* cpu_rows, const int* hit_flag, __nv_bfloat16* contributions,
+    int route_count, int hidden_size, int tile_rows, int k, cudaStream_t stream,
+    const uint64_t* doorbell_seq_dev, const volatile uint64_t* doorbell_done_host) {
+  if (route_count <= 0) return cudaSuccess;
+  QMoEOffloadMergeKernel<<<route_count, 256, 0, stream>>>(
+      wave_output, cpu_rows, hit_flag, contributions, hidden_size, tile_rows, k,
+      doorbell_seq_dev, doorbell_done_host);
+  return cudaGetLastError();
+}
+
+__global__ void QMoEOffloadMergeFinalizeCombineKernel(
+    const __nv_bfloat16* wave_output, const __nv_bfloat16* cpu_rows, const int* hit_flag,
+    const float* scales, __nv_bfloat16* routed_out, __nv_bfloat16* shared_out,
+    int hidden_size, int tile_rows, int k,
+    const uint64_t* doorbell_seq_dev, const volatile uint64_t* doorbell_done_host, int trigger) {
+  const int original_row = blockIdx.x;
+  if (original_row >= tile_rows) return;
+  __shared__ int s_hit[16];
+  __shared__ float s_scale[16];
+  if (threadIdx.x < k && threadIdx.x < 16) {
+    const int route = original_row * k + threadIdx.x;
+    s_hit[threadIdx.x] = hit_flag[route];
+    s_scale[threadIdx.x] = scales[route];
+  }
+  __syncthreads();
+#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900))
+  if (trigger == 1) {
+    asm volatile("griddepcontrol.launch_dependents;" ::: "memory");
+  }
+#endif
+  const int num_vec4 = hidden_size >> 3;
+  const uint4* wave_v = reinterpret_cast<const uint4*>(wave_output);
+  const uint4* cpu_v = reinterpret_cast<const uint4*>(cpu_rows);
+  uint4* routed_v = reinterpret_cast<uint4*>(routed_out);
+  uint4* shared_v = reinterpret_cast<uint4*>(shared_out);
+
+  uint4 preloaded_wave[16];
+  uint4 preloaded_shared = make_uint4(0, 0, 0, 0);
+  const bool single_pass = (num_vec4 <= static_cast<int>(blockDim.x));
+  if (single_pass && static_cast<int>(threadIdx.x) < num_vec4) {
+    if (shared_v != nullptr) {
+      preloaded_shared = shared_v[static_cast<size_t>(original_row) * num_vec4 + threadIdx.x];
+    }
+    for (int k_idx = 0; k_idx < k && k_idx < 16; ++k_idx) {
+      if (s_hit[k_idx]) {
+        const int route = original_row * k + k_idx;
+        preloaded_wave[k_idx] = wave_v[static_cast<size_t>(route) * num_vec4 + threadIdx.x];
+      }
+    }
+  }
+  if (threadIdx.x == 0 && doorbell_seq_dev != nullptr && doorbell_done_host != nullptr) {
+    const uint64_t expected = *doorbell_seq_dev;
+    while (*doorbell_done_host < expected) {
+#if __CUDA_ARCH__ >= 700
+      __nanosleep(100);
+#endif
+    }
+    __threadfence_system();
+  }
+  __syncthreads();
+
+  for (int elem_idx = threadIdx.x; elem_idx < num_vec4; elem_idx += blockDim.x) {
+    float acc[8] = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
+    for (int k_idx = 0; k_idx < k; ++k_idx) {
+      const int route = original_row * k + k_idx;
+      const size_t target_row = static_cast<size_t>(k_idx) * tile_rows + original_row;
+      const uint4 raw = s_hit[k_idx]
+                            ? (single_pass ? preloaded_wave[k_idx] : wave_v[static_cast<size_t>(route) * num_vec4 + elem_idx])
+                            : cpu_v[target_row * num_vec4 + elem_idx];
+      const float scale = s_scale[k_idx];
+      const __nv_bfloat162* b2 = reinterpret_cast<const __nv_bfloat162*>(&raw);
+#pragma unroll
+      for (int i = 0; i < 4; ++i) {
+        const float2 f2 = __bfloat1622float2(b2[i]);
+        acc[2 * i + 0] = acc[2 * i + 0] + scale * f2.x;
+        acc[2 * i + 1] = acc[2 * i + 1] + scale * f2.y;
+      }
+    }
+    uint4 routed_u4;
+    __nv_bfloat162* r2 = reinterpret_cast<__nv_bfloat162*>(&routed_u4);
+#pragma unroll
+    for (int i = 0; i < 4; ++i) {
+      r2[i] = __floats2bfloat162_rn(acc[2 * i + 0], acc[2 * i + 1]);
+    }
+    if (shared_v != nullptr) {
+      const uint4 shared_u4 = single_pass
+                                  ? preloaded_shared
+                                  : shared_v[static_cast<size_t>(original_row) * num_vec4 + elem_idx];
+      const __nv_bfloat162* s2 = reinterpret_cast<const __nv_bfloat162*>(&shared_u4);
+      uint4 comb_u4;
+      __nv_bfloat162* c2 = reinterpret_cast<__nv_bfloat162*>(&comb_u4);
+#pragma unroll
+      for (int i = 0; i < 4; ++i) {
+        const float2 rf = __bfloat1622float2(r2[i]);
+        const float2 sf = __bfloat1622float2(s2[i]);
+        c2[i] = __floats2bfloat162_rn(rf.x + sf.x, rf.y + sf.y);
+      }
+      shared_v[static_cast<size_t>(original_row) * num_vec4 + elem_idx] = comb_u4;
+    } else if (routed_v != nullptr) {
+      routed_v[static_cast<size_t>(original_row) * num_vec4 + elem_idx] = routed_u4;
+    }
+  }
+#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900))
+  if (trigger == 2 || trigger == 0) {
+    asm volatile("griddepcontrol.launch_dependents;" ::: "memory");
+  }
+#endif
+}
+
+__global__ void QMoESharedExpertCombineKernel(
+    __nv_bfloat16* shared_out, const __nv_bfloat16* routed_out, int vec4_count, int trigger) {
+#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900))
+  if (trigger == 1) {
+    asm volatile("griddepcontrol.launch_dependents;" ::: "memory");
+  }
+#endif
+  uint4* shared_v = reinterpret_cast<uint4*>(shared_out);
+  const uint4* routed_v = reinterpret_cast<const uint4*>(routed_out);
+  for (int idx = blockIdx.x * blockDim.x + threadIdx.x; idx < vec4_count; idx += gridDim.x * blockDim.x) {
+    const uint4 r4 = routed_v[idx];
+    const uint4 s4 = shared_v[idx];
+    uint4 d4;
+    const __nv_bfloat162* r2 = reinterpret_cast<const __nv_bfloat162*>(&r4);
+    const __nv_bfloat162* s2 = reinterpret_cast<const __nv_bfloat162*>(&s4);
+    __nv_bfloat162* d2 = reinterpret_cast<__nv_bfloat162*>(&d4);
+#pragma unroll
+    for (int i = 0; i < 4; ++i) {
+      const float2 rf = __bfloat1622float2(r2[i]);
+      const float2 sf = __bfloat1622float2(s2[i]);
+      d2[i] = __floats2bfloat162_rn(rf.x + sf.x, rf.y + sf.y);
+    }
+    shared_v[idx] = d4;
+  }
+#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900))
+  if (trigger == 2) {
+    asm volatile("griddepcontrol.launch_dependents;" ::: "memory");
+  }
+#endif
+}
+
+cudaError_t LaunchQMoEOffloadMergeFinalizeCombine(
+    const __nv_bfloat16* wave_output, const __nv_bfloat16* cpu_rows, const int* hit_flag,
+    const float* scales, __nv_bfloat16* routed_out, __nv_bfloat16* shared_out,
+    int hidden_size, int tile_rows, int k, cudaStream_t stream,
+    const uint64_t* doorbell_seq_dev, const volatile uint64_t* doorbell_done_host,
+    int trigger) {
+  if (tile_rows <= 0 || hidden_size <= 0) return cudaSuccess;
+  const int num_vec4 = hidden_size >> 3;
+  const int threads = (num_vec4 == 320) ? 320 : 256;
+  QMoEOffloadMergeFinalizeCombineKernel<<<tile_rows, threads, 0, stream>>>(
+      wave_output, cpu_rows, hit_flag, scales, routed_out, shared_out,
+      hidden_size, tile_rows, k, doorbell_seq_dev, doorbell_done_host, trigger);
+  return cudaGetLastError();
+}
+
+cudaError_t LaunchQMoESharedExpertCombine(
+    __nv_bfloat16* shared_out, const __nv_bfloat16* routed_out,
+    int count, int trigger, cudaStream_t stream) {
+  if (count <= 0) return cudaSuccess;
+  const int vec4_count = count >> 3;
+  const int blocks = std::min(16, (vec4_count + 255) / 256);
+  QMoESharedExpertCombineKernel<<<blocks, 256, 0, stream>>>(shared_out, routed_out, vec4_count, trigger);
+  return cudaGetLastError();
+}
+
 // Shared with the fused routing prologue in the LLM MoE runner (moe_kernels.cu); see
 // core/providers/cuda/cu_inc/topk_warp_sort.cuh for why these live in a header.
 using onnxruntime::cuda::topk::SafeInvSum;
@@ -1724,13 +2187,19 @@ __global__ void QMoEMarkActiveExpertsKernel(
 }
 
 __global__ void QMoECompactExpertMapKernel(
-    int* expert_to_compact, int* compact_to_expert, int num_experts, int expert_capacity) {
+    int* expert_to_compact, int* compact_to_expert, int num_experts, int expert_capacity, int pass_offset) {
   // Expert counts are small; a serial prefix preserves ascending expert order deterministically.
+  int active_index = 0;
   int slot = 0;
   for (int expert = 0; expert < num_experts; ++expert) {
     if (expert_to_compact[expert] == 0) {
-      expert_to_compact[expert] = slot;
-      compact_to_expert[slot++] = expert;
+      if (active_index >= pass_offset && slot < expert_capacity) {
+        expert_to_compact[expert] = slot;
+        compact_to_expert[slot++] = expert;
+      } else {
+        expert_to_compact[expert] = -1;
+      }
+      ++active_index;
     }
   }
   for (; slot < expert_capacity; ++slot) {
@@ -1754,9 +2223,11 @@ void LaunchQMoECompactExperts(
     int num_experts,
     int expert_capacity,
     int64_t num_routes,
-    cudaStream_t stream) {
+    cudaStream_t stream,
+    int pass_offset) {
   ORT_ENFORCE(num_experts > 0 && num_routes > 0 &&
-                  expert_capacity >= std::min<int64_t>(num_experts, num_routes) &&
+                  expert_capacity > 0 &&
+                  (pass_offset > 0 || expert_capacity >= std::min<int64_t>(num_experts, num_routes) || expert_capacity <= num_experts) &&
                   expert_capacity <= num_experts,
               "Invalid QMoE compact expert capacity.");
   CUDA_CALL_THROW(cudaMemsetAsync(expert_to_compact, 0xff, static_cast<size_t>(num_experts) * sizeof(int), stream));
@@ -1764,7 +2235,7 @@ void LaunchQMoECompactExperts(
   const int grid = onnxruntime::narrow<int>((num_routes - 1) / block + 1);
   QMoEMarkActiveExpertsKernel<<<grid, block, 0, stream>>>(expert_indices, expert_to_compact, num_routes);
   CUDA_CALL_THROW(cudaGetLastError());
-  QMoECompactExpertMapKernel<<<1, 1, 0, stream>>>(expert_to_compact, compact_to_expert, num_experts, expert_capacity);
+  QMoECompactExpertMapKernel<<<1, 1, 0, stream>>>(expert_to_compact, compact_to_expert, num_experts, expert_capacity, pass_offset);
   CUDA_CALL_THROW(cudaGetLastError());
   QMoERemapExpertsKernel<<<grid, block, 0, stream>>>(expert_indices, compact_indices, expert_to_compact, num_routes);
   CUDA_CALL_THROW(cudaGetLastError());
@@ -1847,6 +2318,90 @@ __global__ void QMoEFp8ExpertTilesKernel(const int64_t* expert_offsets, int* til
 void LaunchQMoEFp8ExpertTiles(const int64_t* expert_offsets, int* tile_offsets,
                               int num_experts, cudaStream_t stream) {
   QMoEFp8ExpertTilesKernel<<<1, 1, 0, stream>>>(expert_offsets, tile_offsets, num_experts);
+  CUDA_CALL_THROW(cudaGetLastError());
+}
+
+__global__ void QMoERemapExpertRangeKernel(
+    const int* __restrict__ expert_indices,
+    int* __restrict__ compact_indices,
+    int64_t num_routes,
+    int pass_start,
+    int expert_capacity) {
+  const int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (index < num_routes) {
+    const int e = expert_indices[index];
+    compact_indices[index] = (e >= pass_start && e < pass_start + expert_capacity) ? (e - pass_start) : -1;
+  }
+}
+
+__global__ void QMoEAccumulateExpertHistogramKernel(
+    const int* __restrict__ expert_indices,
+    int64_t num_routes,
+    int num_experts,
+    int* __restrict__ global_hist) {
+  __shared__ int smem_hist[1024];
+  const int capped = num_experts <= 1024 ? num_experts : 1024;
+  for (int i = threadIdx.x; i < capped; i += blockDim.x) {
+    smem_hist[i] = 0;
+  }
+  __syncthreads();
+  for (int64_t r = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+       r < num_routes;
+       r += static_cast<int64_t>(gridDim.x) * blockDim.x) {
+    const int e = expert_indices[r];
+    if (e >= 0 && e < capped) {
+      atomicAdd(&smem_hist[e], 1);
+    }
+  }
+  __syncthreads();
+  for (int i = threadIdx.x; i < capped; i += blockDim.x) {
+    const int c = smem_hist[i];
+    if (c > 0) {
+      atomicAdd(&global_hist[i], c);
+    }
+  }
+}
+
+void LaunchQMoEMarkActiveExperts(
+    const int* expert_indices,
+    int* expert_active_mask,
+    int num_experts,
+    int64_t num_routes,
+    cudaStream_t stream) {
+  if (num_experts <= 0 || num_routes <= 0) return;
+  CUDA_CALL_THROW(cudaMemsetAsync(expert_active_mask, 0xff, static_cast<size_t>(num_experts) * sizeof(int), stream));
+  constexpr int block = 256;
+  const int grid = onnxruntime::narrow<int>((num_routes - 1) / block + 1);
+  QMoEMarkActiveExpertsKernel<<<grid, block, 0, stream>>>(expert_indices, expert_active_mask, num_routes);
+  CUDA_CALL_THROW(cudaGetLastError());
+}
+
+void LaunchQMoERemapExpertRange(
+    const int* expert_indices,
+    int* compact_indices,
+    int64_t num_routes,
+    int pass_start,
+    int expert_capacity,
+    cudaStream_t stream) {
+  if (num_routes <= 0) return;
+  constexpr int block = 256;
+  const int grid = onnxruntime::narrow<int>((num_routes - 1) / block + 1);
+  QMoERemapExpertRangeKernel<<<grid, block, 0, stream>>>(
+      expert_indices, compact_indices, num_routes, pass_start, expert_capacity);
+  CUDA_CALL_THROW(cudaGetLastError());
+}
+
+void LaunchQMoEAccumulateExpertHistogram(
+    const int* expert_indices,
+    int64_t num_routes,
+    int num_experts,
+    int* global_hist,
+    cudaStream_t stream) {
+  if (num_routes <= 0 || num_experts <= 0 || global_hist == nullptr) return;
+  constexpr int block = 256;
+  const int grid = std::min<int>(onnxruntime::narrow<int>((num_routes + block - 1) / block), 32);
+  QMoEAccumulateExpertHistogramKernel<<<grid, block, 0, stream>>>(
+      expert_indices, num_routes, num_experts, global_hist);
   CUDA_CALL_THROW(cudaGetLastError());
 }
 
@@ -1986,6 +2541,50 @@ template void LaunchQMoEFp8Activation<__nv_bfloat16>(const __nv_bfloat16*, const
 template void LaunchQMoEFp8Activation<half, float>(const float*, const half*, half*, const int*, int, int, int, float, float, float, cudaStream_t);
 template void LaunchQMoEFp8Activation<__nv_bfloat16, float>(const float*, const __nv_bfloat16*, __nv_bfloat16*, const int*, int, int, int, float, float, float, cudaStream_t);
 
+template <typename T>
+__global__ void QMoEAccumulatePassOutputKernel(
+    float* __restrict__ accum,
+    const T* __restrict__ pass_output,
+    T* __restrict__ final_output,
+    int64_t count,
+    bool write_final) {
+  const int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (idx < count) {
+    const float sum = accum[idx] + static_cast<float>(pass_output[idx]);
+    accum[idx] = sum;
+    if (write_final) {
+      final_output[idx] = static_cast<T>(sum);
+    }
+  }
+}
+
+void LaunchQMoEAccumulatePassOutput(
+    float* accum,
+    const half* pass_output,
+    half* final_output,
+    int64_t count,
+    bool write_final,
+    cudaStream_t stream) {
+  if (count <= 0) return;
+  constexpr int block = 256;
+  const int grid = onnxruntime::narrow<int>((count + block - 1) / block);
+  QMoEAccumulatePassOutputKernel<half><<<grid, block, 0, stream>>>(accum, pass_output, final_output, count, write_final);
+  CUDA_CALL_THROW(cudaGetLastError());
+}
+
+void LaunchQMoEAccumulatePassOutput(
+    float* accum,
+    const __nv_bfloat16* pass_output,
+    __nv_bfloat16* final_output,
+    int64_t count,
+    bool write_final,
+    cudaStream_t stream) {
+  if (count <= 0) return;
+  constexpr int block = 256;
+  const int grid = onnxruntime::narrow<int>((count + block - 1) / block);
+  QMoEAccumulatePassOutputKernel<__nv_bfloat16><<<grid, block, 0, stream>>>(accum, pass_output, final_output, count, write_final);
+  CUDA_CALL_THROW(cudaGetLastError());
+}
 template <typename T>
 __global__ void QMoEDequantizeFp8WeightsKernel(
     const uint8_t* weights,
@@ -2182,7 +2781,16 @@ __global__ void QMoEDequantizeNvfp4RowMajorKernel(
     int k,
     const int* __restrict__ compact_to_expert,
     const T* __restrict__ bias,
-    T* __restrict__ output_bias) {
+    T* __restrict__ output_bias,
+    const uint8_t* __restrict__ resident_packed_weights = nullptr,
+    const uint8_t* __restrict__ resident_block_scales = nullptr,
+    const int* __restrict__ resident_expert_to_slot = nullptr,
+    int pass_start_expert = -1,
+    const int* __restrict__ expert_active_mask = nullptr,
+    const uint8_t* __restrict__ host_packed_weights = nullptr,
+    const uint8_t* __restrict__ host_block_scales = nullptr,
+    size_t host_expert_stride = 0,
+    const int* __restrict__ host_expert_to_slot = nullptr) {
   const int groups_per_row = k >> 5;
   const int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   const int64_t total = static_cast<int64_t>(num_experts) * n * groups_per_row;
@@ -2193,13 +2801,48 @@ __global__ void QMoEDequantizeNvfp4RowMajorKernel(
   const int group = static_cast<int>(index - global_row * groups_per_row);
   const int output_expert = static_cast<int>(global_row / n);
   const int row = static_cast<int>(global_row - static_cast<int64_t>(output_expert) * n);
-  const int expert = compact_to_expert ? compact_to_expert[output_expert] : output_expert;
-  if (expert < 0) {
+  const int expert = (pass_start_expert >= 0)
+                         ? (pass_start_expert + output_expert)
+                         : (compact_to_expert ? compact_to_expert[output_expert] : output_expert);
+  if (expert < 0 || (expert_active_mask != nullptr && expert_active_mask[expert] < 0)) {
     return;
   }
-  const int64_t source_row = static_cast<int64_t>(expert) * n + row;
-  const uint4 packed = *reinterpret_cast<const uint4*>(packed_weights + source_row * (k >> 1) + (static_cast<int64_t>(group) << 4));
-  const uint16_t scale_pair = *reinterpret_cast<const uint16_t*>(block_scales + source_row * (k >> 4) + (group << 1));
+  const int resident_slot = (resident_expert_to_slot != nullptr) ? resident_expert_to_slot[expert] : -1;
+  const bool use_resident = (resident_slot >= 0 && resident_packed_weights != nullptr && resident_block_scales != nullptr);
+  int host_slot = -1;
+  int cold_index = (pass_start_expert >= 0) ? output_expert : expert;
+  if (!use_resident && host_expert_to_slot != nullptr) {
+    if (pass_start_expert >= 0) {
+      const int map_val = host_expert_to_slot[output_expert];
+      if (map_val <= -2 && host_packed_weights != nullptr) {
+        host_slot = -2 - map_val;
+        cold_index = -1;
+      } else {
+        cold_index = map_val;
+      }
+    } else if (host_packed_weights != nullptr) {
+      host_slot = host_expert_to_slot[expert];
+    }
+  }
+  const bool use_host_cache = (host_slot >= 0 && host_packed_weights != nullptr && host_block_scales != nullptr && host_expert_stride > 0);
+  if (!use_resident && !use_host_cache && cold_index < 0) {
+    return;
+  }
+  const size_t w_row_bytes = static_cast<size_t>(k >> 1);
+  const size_t s_row_bytes = static_cast<size_t>(k >> 4);
+  const uint8_t* w_expert_base = use_resident
+                                     ? (resident_packed_weights + static_cast<size_t>(resident_slot) * n * w_row_bytes)
+                                     : (use_host_cache
+                                            ? (host_packed_weights + static_cast<size_t>(host_slot) * host_expert_stride)
+                                            : (packed_weights + static_cast<size_t>(cold_index) * n * w_row_bytes));
+  const uint8_t* s_expert_base = use_resident
+                                     ? (resident_block_scales + static_cast<size_t>(resident_slot) * n * s_row_bytes)
+                                     : (use_host_cache
+                                            ? (host_block_scales + static_cast<size_t>(host_slot) * host_expert_stride)
+                                            : (block_scales + static_cast<size_t>(cold_index) * n * s_row_bytes));
+  const int64_t orig_source_row = static_cast<int64_t>(expert) * n + row;
+  const uint4 packed = *reinterpret_cast<const uint4*>(w_expert_base + static_cast<size_t>(row) * w_row_bytes + (static_cast<int64_t>(group) << 4));
+  const uint16_t scale_pair = *reinterpret_cast<const uint16_t*>(s_expert_base + static_cast<size_t>(row) * s_row_bytes + (group << 1));
   const float global_scale = global_scales[expert];
   const uint32_t words[4] = {packed.x, packed.y, packed.z, packed.w};
 
@@ -2224,7 +2867,7 @@ __global__ void QMoEDequantizeNvfp4RowMajorKernel(
     dst[v] = staged[v];
   }
   if (bias && group == 0) {
-    output_bias[global_row] = bias[source_row];
+    output_bias[global_row] = bias[orig_source_row];
   }
 }
 
@@ -2241,10 +2884,19 @@ void LaunchQMoEDequantizeNvfp4WeightsImpl(
     const int* compact_to_expert,
     const T* bias,
     T* output_bias,
-    bool weights_row_major) {
+    bool weights_row_major,
+    const uint8_t* resident_packed_weights = nullptr,
+    const uint8_t* resident_block_scales = nullptr,
+    const int* resident_expert_to_slot = nullptr,
+    int pass_start_expert = -1,
+    const int* expert_active_mask = nullptr,
+    const uint8_t* host_packed_weights = nullptr,
+    const uint8_t* host_block_scales = nullptr,
+    size_t host_expert_stride = 0,
+    const int* host_expert_to_slot = nullptr) {
   ORT_ENFORCE(bias == nullptr || output_bias != nullptr, "QMoE NVFP4 bias gathering requires an output buffer.");
   constexpr int block = 256;
-  if (!weights_row_major && !compact_to_expert && !bias && QMoEDequantizeFp4VecApplies<16>(num_experts, n, k)) {
+  if (!weights_row_major && !compact_to_expert && pass_start_expert < 0 && !bias && QMoEDequantizeFp4VecApplies<16>(num_experts, n, k)) {
     const dim3 tile_block(kQMoEDequantizeFp4TileK / kQMoEDequantizeFp4VecK, kQMoEDequantizeFp4TileN);
     const dim3 tile_grid((n + kQMoEDequantizeFp4TileN - 1) / kQMoEDequantizeFp4TileN,
                          k / kQMoEDequantizeFp4TileK, num_experts);
@@ -2257,7 +2909,9 @@ void LaunchQMoEDequantizeNvfp4WeightsImpl(
     const int64_t threads = static_cast<int64_t>(num_experts) * n * (k / 32);
     const int64_t blocks = (threads + block - 1) / block;
     QMoEDequantizeNvfp4RowMajorKernel<T><<<onnxruntime::narrow<int>(blocks), block, 0, stream>>>(
-        packed_weights, block_scales, global_scales, output, num_experts, n, k, compact_to_expert, bias, output_bias);
+        packed_weights, block_scales, global_scales, output, num_experts, n, k, compact_to_expert, bias, output_bias,
+        resident_packed_weights, resident_block_scales, resident_expert_to_slot, pass_start_expert, expert_active_mask,
+        host_packed_weights, host_block_scales, host_expert_stride, host_expert_to_slot);
     CUDA_CALL_THROW(cudaGetLastError());
     return;
   }
@@ -2281,9 +2935,21 @@ void LaunchQMoEDequantizeNvfp4Weights(
     const int* compact_to_expert,
     const half* bias,
     half* output_bias,
-    bool weights_row_major) {
+    bool weights_row_major,
+    const uint8_t* resident_packed_weights,
+    const uint8_t* resident_block_scales,
+    const int* resident_expert_to_slot,
+    int pass_start_expert,
+    const int* expert_active_mask,
+    const uint8_t* host_packed_weights,
+    const uint8_t* host_block_scales,
+    size_t host_expert_stride,
+    const int* host_expert_to_slot) {
   LaunchQMoEDequantizeNvfp4WeightsImpl(packed_weights, block_scales, global_scales, output, num_experts, n, k,
-                                       stream, compact_to_expert, bias, output_bias, weights_row_major);
+                                       stream, compact_to_expert, bias, output_bias, weights_row_major,
+                                       resident_packed_weights, resident_block_scales, resident_expert_to_slot,
+                                       pass_start_expert, expert_active_mask,
+                                       host_packed_weights, host_block_scales, host_expert_stride, host_expert_to_slot);
 }
 
 void LaunchQMoEDequantizeNvfp4Weights(
@@ -2298,9 +2964,21 @@ void LaunchQMoEDequantizeNvfp4Weights(
     const int* compact_to_expert,
     const __nv_bfloat16* bias,
     __nv_bfloat16* output_bias,
-    bool weights_row_major) {
+    bool weights_row_major,
+    const uint8_t* resident_packed_weights,
+    const uint8_t* resident_block_scales,
+    const int* resident_expert_to_slot,
+    int pass_start_expert,
+    const int* expert_active_mask,
+    const uint8_t* host_packed_weights,
+    const uint8_t* host_block_scales,
+    size_t host_expert_stride,
+    const int* host_expert_to_slot) {
   LaunchQMoEDequantizeNvfp4WeightsImpl(packed_weights, block_scales, global_scales, output, num_experts, n, k,
-                                       stream, compact_to_expert, bias, output_bias, weights_row_major);
+                                       stream, compact_to_expert, bias, output_bias, weights_row_major,
+                                       resident_packed_weights, resident_block_scales, resident_expert_to_slot,
+                                       pass_start_expert, expert_active_mask,
+                                       host_packed_weights, host_block_scales, host_expert_stride, host_expert_to_slot);
 }
 
 // NVFP4 counterpart of QMoECombineFp4ScalesForGemvKernel. Identical [E, n, k_blocks] ->
@@ -2607,7 +3285,6 @@ __device__ __forceinline__ void Unpack8CenteredCodes(
   const uint32_t w_aligned = AlignPackedCodeWord<Bits>(w0, bit_shift);
   Unpack8CenteredCodesFromWord<Bits>(w_aligned, out_q);
 }
-
 template <typename T, int Bits>
 __device__ __forceinline__ float Int3WeightElem(
     const Int3Projection& projection, size_t row, int logical_k, int block_size, int feature) {
@@ -2627,15 +3304,23 @@ __device__ __forceinline__ float Int3WeightElem(
 
 template <typename T, int Bits>
 __global__ void FusedFc1ScalarKernel(Int3MoeParams params) {
+  const size_t total_routes = (params.total_routes_override > 0)
+                                  ? static_cast<size_t>(params.total_routes_override)
+                                  : (static_cast<size_t>(params.rows) * params.top_k);
   const size_t item = static_cast<size_t>(blockIdx.x) * 4 + threadIdx.x / 32;
-  const size_t count = static_cast<size_t>(params.rows) * params.top_k * params.intermediate;
+  const size_t count = total_routes * params.intermediate;
   if (item >= count) return;
   const int lane = threadIdx.x % 32;
   const size_t route = item / params.intermediate;
   const int column = item % params.intermediate;
   const int expert = params.experts[route];
+  if (expert < 0) return;
   const size_t weight_row = static_cast<size_t>(expert) * (2 * params.intermediate) + 2 * column;
-  const auto* input = static_cast<const T*>(params.input) + (route / params.top_k) * params.hidden;
+  const int token = params.input_is_gathered
+                        ? static_cast<int>(route)
+                        : (params.source_route_ids ? params.source_route_ids[route]
+                                                   : static_cast<int>(route / params.top_k));
+  const auto* input = static_cast<const T*>(params.input) + static_cast<size_t>(token) * params.hidden;
   float gate = 0.0f;
   float up = 0.0f;
   for (int feature = lane; feature < params.hidden; feature += 32) {
@@ -2658,6 +3343,32 @@ __global__ void FusedFc1ScalarKernel(Int3MoeParams params) {
 }
 
 template <typename T, int Bits>
+__global__ void Fc2RouteScalarKernel(Int3MoeParams params) {
+  const size_t total_routes = (params.total_routes_override > 0)
+                                  ? static_cast<size_t>(params.total_routes_override)
+                                  : (static_cast<size_t>(params.rows) * params.top_k);
+  const size_t item = static_cast<size_t>(blockIdx.x) * 4 + threadIdx.x / 32;
+  if (item >= total_routes * params.hidden) return;
+  const int lane = threadIdx.x % 32;
+  const size_t route = item / params.hidden;
+  const int column = item % params.hidden;
+  const int expert = params.experts[route];
+  if (expert < 0) return;
+  const size_t weight_row = static_cast<size_t>(expert) * params.hidden + column;
+  const auto* input = static_cast<const T*>(params.activation) + route * params.intermediate;
+  float value = 0.0f;
+  for (int feature = lane; feature < params.intermediate; feature += 32) {
+    value += static_cast<float>(input[feature]) *
+             Int3WeightElem<T, Bits>(params.fc2, weight_row, params.intermediate, params.block_size, feature);
+  }
+  value = WarpReduceSum(value);
+  if (lane == 0) {
+    if (params.fc2.bias) value += static_cast<float>(static_cast<const T*>(params.fc2.bias)[weight_row]);
+    static_cast<T*>(params.fc2_partial)[route * params.hidden + column] = static_cast<T>(value);
+  }
+}
+
+template <typename T, int Bits>
 __global__ void Fc2AndFinalizeScalarKernel(Int3MoeParams params) {
   const size_t item = static_cast<size_t>(blockIdx.x) * 4 + threadIdx.x / 32;
   if (item >= static_cast<size_t>(params.rows) * params.hidden) return;
@@ -2667,7 +3378,9 @@ __global__ void Fc2AndFinalizeScalarKernel(Int3MoeParams params) {
   float output = 0.0f;
   for (int selected = 0; selected < params.top_k; ++selected) {
     const size_t route = token * params.top_k + selected;
-    const size_t weight_row = static_cast<size_t>(params.experts[route]) * params.hidden + column;
+    const int expert = params.experts[route];
+    if (expert < 0) continue;
+    const size_t weight_row = static_cast<size_t>(expert) * params.hidden + column;
     const auto* input = static_cast<const T*>(params.activation) + route * params.intermediate;
     float value = 0.0f;
     for (int feature = lane; feature < params.intermediate; feature += 32) {
@@ -2679,7 +3392,7 @@ __global__ void Fc2AndFinalizeScalarKernel(Int3MoeParams params) {
       if (params.fc2.bias) value += static_cast<float>(static_cast<const T*>(params.fc2.bias)[weight_row]);
       value = static_cast<float>(static_cast<T>(value));
       const float scale = params.router_weights
-                              ? static_cast<float>(static_cast<const T*>(params.router_weights)[token * params.num_experts + params.experts[route]])
+                              ? static_cast<float>(static_cast<const T*>(params.router_weights)[token * params.num_experts + expert])
                               : params.routing_scales[route];
       output += value * scale;
     }
@@ -2709,16 +3422,24 @@ __global__ void __launch_bounds__(128, 7) FusedFc1FastVecKernel(Int3MoeParams pa
     route1 = grp.y;
     if (route0 < 0) return;
   }
+  const int expert = __ldg(&params.experts[route0]);
+  if (expert < 0) return;
 
   const int vec_count = params.hidden >> 3;
-  const int token0 = route0 / params.top_k;
+  const int token0 = params.input_is_gathered
+                         ? route0
+                         : (params.source_route_ids ? __ldg(&params.source_route_ids[route0])
+                                                    : (route0 / params.top_k));
   const uint4* in_u4_0 =
       reinterpret_cast<const uint4*>(static_cast<const T*>(params.input) + static_cast<size_t>(token0) * params.hidden);
   for (int i = static_cast<int>(threadIdx.x); i < vec_count; i += 128) {
     s_raw[i] = __ldg(&in_u4_0[i]);
   }
   if (route1 >= 0) {
-    const int token1 = route1 / params.top_k;
+    const int token1 = params.input_is_gathered
+                           ? route1
+                           : (params.source_route_ids ? __ldg(&params.source_route_ids[route1])
+                                                      : (route1 / params.top_k));
     const uint4* in_u4_1 = reinterpret_cast<const uint4*>(
         static_cast<const T*>(params.input) + static_cast<size_t>(token1) * params.hidden);
     uint4* s_raw1 = s_raw + vec_count;
@@ -2737,7 +3458,6 @@ __global__ void __launch_bounds__(128, 7) FusedFc1FastVecKernel(Int3MoeParams pa
   const int col0 = static_cast<int>(blockIdx.x) * kColsPerBlock + warp_id * kColsPerWarp;
   if (col0 >= params.intermediate) return;
 
-  const int expert = __ldg(&params.experts[route0]);
   const size_t row0 = static_cast<size_t>(expert) * (2 * params.intermediate) + 2 * col0;
   const size_t row_bytes = (static_cast<size_t>(params.hidden) * Bits) / 8;
   const size_t blocks = static_cast<size_t>(params.hidden) / BlockSize;
@@ -2855,6 +3575,8 @@ __global__ void __launch_bounds__(128, 6) Fc2RouteFastVecKernel(Int3MoeParams pa
     route1 = grp.y;
     if (route0 < 0) return;
   }
+  const int exp_id = __ldg(&params.experts[route0]);
+  if (exp_id < 0) return;
 
   const int vec_count = params.intermediate >> 3;
   const uint4* act_u4_0 = reinterpret_cast<const uint4*>(
@@ -2879,8 +3601,6 @@ __global__ void __launch_bounds__(128, 6) Fc2RouteFastVecKernel(Int3MoeParams pa
   const int sub_lane = static_cast<int>(threadIdx.x) & 15;
   const int col0 = static_cast<int>(blockIdx.x) * kColsPerBlock + half_warp_id * kColsPerHalfWarp;
   if (col0 >= params.hidden) return;
-
-  const int exp_id = __ldg(&params.experts[route0]);
   const size_t w_row0 = static_cast<size_t>(exp_id) * params.hidden + col0;
   const size_t row_bytes = (static_cast<size_t>(params.intermediate) * Bits) / 8;
   const size_t blocks = static_cast<size_t>(params.intermediate) / BlockSize;
@@ -3021,14 +3741,38 @@ __global__ void __launch_bounds__(128) FinalizeRoutesVec8Kernel(Int3MoeParams pa
   *reinterpret_cast<uint4*>(static_cast<T*>(params.output) + token * params.hidden + col) = out_u4;
 }
 
+template <typename T>
+__device__ __forceinline__ void UnpackVec8ToFloat4Pair(const uint4& u, float4& a0, float4& a1) {
+  if constexpr (std::is_same_v<T, __nv_bfloat16>) {
+    const float2 f0 = __bfloat1622float2(*reinterpret_cast<const __nv_bfloat162*>(&u.x));
+    const float2 f1 = __bfloat1622float2(*reinterpret_cast<const __nv_bfloat162*>(&u.y));
+    const float2 f2 = __bfloat1622float2(*reinterpret_cast<const __nv_bfloat162*>(&u.z));
+    const float2 f3 = __bfloat1622float2(*reinterpret_cast<const __nv_bfloat162*>(&u.w));
+    a0 = make_float4(f0.x, f0.y, f1.x, f1.y);
+    a1 = make_float4(f2.x, f2.y, f3.x, f3.y);
+  } else {
+    const float2 f0 = __half22float2(*reinterpret_cast<const half2*>(&u.x));
+    const float2 f1 = __half22float2(*reinterpret_cast<const half2*>(&u.y));
+    const float2 f2 = __half22float2(*reinterpret_cast<const half2*>(&u.z));
+    const float2 f3 = __half22float2(*reinterpret_cast<const half2*>(&u.w));
+    a0 = make_float4(f0.x, f0.y, f1.x, f1.y);
+    a1 = make_float4(f2.x, f2.y, f3.x, f3.y);
+  }
+}
+
 template <typename T, int Bits>
 __global__ void __launch_bounds__(256) FusedFc1FastKernel(Int3MoeParams params) {
   extern __shared__ float s_input[];
   const size_t route = blockIdx.y;
+  const int expert = __ldg(&params.experts[route]);
+  if (expert < 0) return;
   const int warp_id = threadIdx.x >> 5;
   const int lane = threadIdx.x & 31;
   const int col0 = static_cast<int>(blockIdx.x) * 16 + warp_id * 2;
-  const size_t token = route / params.top_k;
+  const size_t token = params.input_is_gathered
+                           ? route
+                           : (params.source_route_ids ? static_cast<size_t>(__ldg(&params.source_route_ids[route]))
+                                                      : (route / params.top_k));
   const T* in_row = static_cast<const T*>(params.input) + token * params.hidden;
   for (int i = threadIdx.x; i < params.hidden; i += 256) {
     s_input[i] = static_cast<float>(__ldg(&in_row[i]));
@@ -3037,7 +3781,6 @@ __global__ void __launch_bounds__(256) FusedFc1FastKernel(Int3MoeParams params) 
   if (col0 >= params.intermediate) return;
   const bool has_col1 = (col0 + 1) < params.intermediate;
 
-  const int expert = __ldg(&params.experts[route]);
   const size_t row0 = static_cast<size_t>(expert) * (2 * params.intermediate) + 2 * col0;
   const size_t row_bytes = (static_cast<size_t>(params.hidden) * Bits) / 8;
   const size_t blocks = static_cast<size_t>(params.hidden) / params.block_size;
@@ -3102,6 +3845,8 @@ template <typename T, int Bits>
 __global__ void __launch_bounds__(256) Fc2RouteFastKernel(Int3MoeParams params) {
   extern __shared__ float s_act[];
   const size_t route = blockIdx.y;
+  const int exp_id = __ldg(&params.experts[route]);
+  if (exp_id < 0) return;
   const int warp_id = threadIdx.x >> 5;
   const int lane = threadIdx.x & 31;
   const int half_id = lane >> 4;
@@ -3117,7 +3862,6 @@ __global__ void __launch_bounds__(256) Fc2RouteFastKernel(Int3MoeParams params) 
   if (col0 >= params.hidden) return;
   const bool has_col1 = (col0 + 1) < params.hidden;
 
-  const int exp_id = __ldg(&params.experts[route]);
   const size_t w_row0 = static_cast<size_t>(exp_id) * params.hidden + col0;
   const size_t row_bytes = (static_cast<size_t>(params.intermediate) * Bits) / 8;
   const size_t blocks = static_cast<size_t>(params.intermediate) / params.block_size;
@@ -3201,22 +3945,462 @@ __global__ void CheckInt3ContentKernel(Int3Projection projection, size_t rows, i
   }
 }
 
+template <int kGroupRows>
+__global__ void __launch_bounds__(512) BuildInt3ExpertTilesKernel(
+    const int* __restrict__ experts, int total_routes, int num_experts,
+    int* __restrict__ sorted_routes, Int3ExpertTileDesc* __restrict__ tile_descs, int* __restrict__ num_tiles_out) {
+  __shared__ int s_counts[512];
+  __shared__ int s_offsets[512];
+  __shared__ int s_tile_offsets[512];
+  __shared__ int s_write_pos[512];
+
+  const int tid = threadIdx.x;
+  s_counts[tid] = 0;
+  __syncthreads();
+
+  for (int r = tid; r < total_routes; r += 512) {
+    const int e = __ldg(&experts[r]);
+    if (e >= 0 && e < num_experts) {
+      atomicAdd(&s_counts[e], 1);
+    }
+  }
+  __syncthreads();
+
+  if (tid == 0) {
+    int run_off = 0;
+    int run_tile = 0;
+    for (int e = 0; e < num_experts; ++e) {
+      const int c = s_counts[e];
+      s_offsets[e] = run_off;
+      s_write_pos[e] = run_off;
+      s_tile_offsets[e] = run_tile;
+      run_off += c;
+      run_tile += (c + kGroupRows - 1) / kGroupRows;
+    }
+    *num_tiles_out = run_tile;
+  }
+  __syncthreads();
+
+  for (int r = tid; r < total_routes; r += 512) {
+    const int e = __ldg(&experts[r]);
+    if (e >= 0 && e < num_experts) {
+      const int pos = atomicAdd(&s_write_pos[e], 1);
+      sorted_routes[pos] = r;
+    }
+  }
+  if (tid < num_experts) {
+    const int c = s_counts[tid];
+    const int num_t = (c + kGroupRows - 1) / kGroupRows;
+    const int base_start = s_offsets[tid];
+    const int base_tile = s_tile_offsets[tid];
+    for (int t = 0; t < num_t; ++t) {
+      const int rem = c - t * kGroupRows;
+      tile_descs[base_tile + t] =
+          Int3ExpertTileDesc{tid, base_start + t * kGroupRows, rem < kGroupRows ? rem : kGroupRows};
+    }
+  }
+}
+
+template <typename T, int Bits, int kGroupRows>
+__global__ void __launch_bounds__(256, 4) FusedFc1GroupedFastKernel(
+    Int3MoeParams params, const int* __restrict__ sorted_routes,
+    const Int3ExpertTileDesc* __restrict__ tile_descs, const int* __restrict__ num_tiles_ptr) {
+  const int tile_idx = blockIdx.y;
+  if (tile_idx >= __ldg(num_tiles_ptr)) return;
+  const Int3ExpertTileDesc desc = tile_descs[tile_idx];
+  const int expert = desc.expert;
+  const int count = desc.count;
+
+  __shared__ int s_routes[kGroupRows];
+  extern __shared__ char smem_raw[];
+  T* s_input = reinterpret_cast<T*>(smem_raw);
+
+  if (threadIdx.x < count) {
+    s_routes[threadIdx.x] = __ldg(&sorted_routes[desc.start_idx + threadIdx.x]);
+  }
+  __syncthreads();
+
+  const int vec_len = params.hidden / 8;
+  for (int r = 0; r < count; ++r) {
+    const size_t route = static_cast<size_t>(s_routes[r]);
+    const size_t token = params.input_is_gathered
+                             ? route
+                             : (params.source_route_ids ? static_cast<size_t>(__ldg(&params.source_route_ids[route]))
+                                                        : (route / params.top_k));
+    const uint4* in_row4 = reinterpret_cast<const uint4*>(static_cast<const T*>(params.input) + token * params.hidden);
+    uint4* s_row4 = reinterpret_cast<uint4*>(s_input + static_cast<size_t>(r) * params.hidden);
+    for (int v = threadIdx.x; v < vec_len; v += 256) {
+      s_row4[v] = __ldg(&in_row4[v]);
+    }
+  }
+  __syncthreads();
+
+  const int warp_id = threadIdx.x >> 5;
+  const int lane = threadIdx.x & 31;
+  const int col0 = static_cast<int>(blockIdx.x) * 16 + warp_id * 2;
+  if (col0 >= params.intermediate) return;
+  const bool has_col1 = (col0 + 1) < params.intermediate;
+
+  const int block_shift = __ffs(params.block_size) - 1;
+  const size_t row0 = static_cast<size_t>(expert) * (2 * params.intermediate) + 2 * col0;
+  const size_t row_bytes = (static_cast<size_t>(params.hidden) * Bits) / 8;
+  const size_t blocks = static_cast<size_t>(params.hidden >> block_shift);
+  const uint8_t* w_g0 = params.fc1.weights + row0 * row_bytes;
+  const uint8_t* w_u0 = w_g0 + row_bytes;
+  const uint8_t* w_g1 = has_col1 ? (w_u0 + row_bytes) : w_g0;
+  const uint8_t* w_u1 = has_col1 ? (w_g1 + row_bytes) : w_u0;
+  const T* s_g0 = static_cast<const T*>(params.fc1.scales) + row0 * blocks;
+  const T* s_u0 = s_g0 + blocks;
+  const T* s_g1 = has_col1 ? (s_u0 + blocks) : s_g0;
+  const T* s_u1 = has_col1 ? (s_g1 + blocks) : s_u0;
+
+  float gate0[kGroupRows]{};
+  float up0[kGroupRows]{};
+  float gate1[kGroupRows]{};
+  float up1[kGroupRows]{};
+
+  const int full_iters = params.hidden >> 8;
+  for (int iter = 0, feature = lane * 8; iter < full_iters; ++iter, feature += 256) {
+    const int blk = feature >> block_shift;
+    float q_g0[8], q_u0[8], q_g1[8], q_u1[8];
+    Unpack8CenteredCodes<Bits>(w_g0, iter, lane, q_g0);
+    Unpack8CenteredCodes<Bits>(w_u0, iter, lane, q_u0);
+    const float sc_g0 = static_cast<float>(__ldg(&s_g0[blk]));
+    const float sc_u0 = static_cast<float>(__ldg(&s_u0[blk]));
+#pragma unroll
+    for (int i = 0; i < 8; ++i) {
+      q_g0[i] = static_cast<float>(static_cast<T>(q_g0[i] * sc_g0));
+      q_u0[i] = static_cast<float>(static_cast<T>(q_u0[i] * sc_u0));
+    }
+    if (has_col1) {
+      Unpack8CenteredCodes<Bits>(w_g1, iter, lane, q_g1);
+      Unpack8CenteredCodes<Bits>(w_u1, iter, lane, q_u1);
+      const float sc_g1 = static_cast<float>(__ldg(&s_g1[blk]));
+      const float sc_u1 = static_cast<float>(__ldg(&s_u1[blk]));
+#pragma unroll
+      for (int i = 0; i < 8; ++i) {
+        q_g1[i] = static_cast<float>(static_cast<T>(q_g1[i] * sc_g1));
+        q_u1[i] = static_cast<float>(static_cast<T>(q_u1[i] * sc_u1));
+      }
+    }
+#pragma unroll
+    for (int r = 0; r < kGroupRows; ++r) {
+      if (r < count) {
+        const uint4 u = *reinterpret_cast<const uint4*>(&s_input[static_cast<size_t>(r) * params.hidden + feature]);
+        float4 a0, a1;
+        UnpackVec8ToFloat4Pair<T>(u, a0, a1);
+        gate0[r] += a0.x * q_g0[0] + a0.y * q_g0[1] + a0.z * q_g0[2] + a0.w * q_g0[3] +
+                    a1.x * q_g0[4] + a1.y * q_g0[5] + a1.z * q_g0[6] + a1.w * q_g0[7];
+        up0[r] += a0.x * q_u0[0] + a0.y * q_u0[1] + a0.z * q_u0[2] + a0.w * q_u0[3] +
+                  a1.x * q_u0[4] + a1.y * q_u0[5] + a1.z * q_u0[6] + a1.w * q_u0[7];
+        if (has_col1) {
+          gate1[r] += a0.x * q_g1[0] + a0.y * q_g1[1] + a0.z * q_g1[2] + a0.w * q_g1[3] +
+                      a1.x * q_g1[4] + a1.y * q_g1[5] + a1.z * q_g1[6] + a1.w * q_g1[7];
+          up1[r] += a0.x * q_u1[0] + a0.y * q_u1[1] + a0.z * q_u1[2] + a0.w * q_u1[3] +
+                    a1.x * q_u1[4] + a1.y * q_u1[5] + a1.z * q_u1[6] + a1.w * q_u1[7];
+        }
+      }
+    }
+  }
+
+  float b0 = 0.0f, b1 = 0.0f, b2 = 0.0f, b3 = 0.0f;
+  if (lane == 0 && params.fc1.bias) {
+    const T* b_ptr = static_cast<const T*>(params.fc1.bias) + row0;
+    b0 = static_cast<float>(b_ptr[0]);
+    b1 = static_cast<float>(b_ptr[1]);
+    if (has_col1) {
+      b2 = static_cast<float>(b_ptr[2]);
+      b3 = static_cast<float>(b_ptr[3]);
+    }
+  }
+
+#pragma unroll
+  for (int r = 0; r < kGroupRows; ++r) {
+    if (r < count) {
+      float g0 = WarpReduceSum(gate0[r]);
+      float u0 = WarpReduceSum(up0[r]);
+      float g1 = WarpReduceSum(gate1[r]);
+      float u1 = WarpReduceSum(up1[r]);
+      if (lane == 0) {
+        g0 = fminf(g0 + b0, params.limit);
+        u0 = fminf(fmaxf(u0 + b1, -params.limit), params.limit);
+        const size_t route = static_cast<size_t>(s_routes[r]);
+        T* out_ptr = static_cast<T*>(params.activation) + route * params.intermediate + col0;
+        out_ptr[0] = static_cast<T>((g0 / (1.0f + expf(-params.alpha * g0))) * (u0 + params.beta));
+        if (has_col1) {
+          g1 = fminf(g1 + b2, params.limit);
+          u1 = fminf(fmaxf(u1 + b3, -params.limit), params.limit);
+          out_ptr[1] = static_cast<T>((g1 / (1.0f + expf(-params.alpha * g1))) * (u1 + params.beta));
+        }
+      }
+    }
+  }
+}
+
+template <typename T, int Bits, int kGroupRows>
+__global__ void __launch_bounds__(256, 3) Fc2GroupedFastKernel(
+    Int3MoeParams params, const int* __restrict__ sorted_routes,
+    const Int3ExpertTileDesc* __restrict__ tile_descs, const int* __restrict__ num_tiles_ptr) {
+  const int tile_idx = blockIdx.y;
+  if (tile_idx >= __ldg(num_tiles_ptr)) return;
+  const Int3ExpertTileDesc desc = tile_descs[tile_idx];
+  const int exp_id = desc.expert;
+  const int count = desc.count;
+
+  __shared__ int s_routes[kGroupRows];
+  extern __shared__ float s_act[];
+
+  if (threadIdx.x < count) {
+    s_routes[threadIdx.x] = __ldg(&sorted_routes[desc.start_idx + threadIdx.x]);
+  }
+  __syncthreads();
+
+  const int vec_len = params.intermediate / 8;
+  for (int r = 0; r < count; ++r) {
+    const size_t route = static_cast<size_t>(s_routes[r]);
+    const uint4* act_row4 =
+        reinterpret_cast<const uint4*>(static_cast<const T*>(params.activation) + route * params.intermediate);
+    float4* s_row4 = reinterpret_cast<float4*>(s_act + static_cast<size_t>(r) * params.intermediate);
+    for (int v = threadIdx.x; v < vec_len; v += 256) {
+      float4 a0, a1;
+      UnpackVec8ToFloat4Pair<T>(__ldg(&act_row4[v]), a0, a1);
+      s_row4[v * 2 + 0] = a0;
+      s_row4[v * 2 + 1] = a1;
+    }
+  }
+  __syncthreads();
+
+  const int warp_id = threadIdx.x >> 5;
+  const int lane = threadIdx.x & 31;
+  const int half_id = lane >> 4;
+  const int sub_lane = lane & 15;
+  const int col0 = static_cast<int>(blockIdx.x) * 64 + warp_id * 8 + half_id * 4;
+  if (col0 >= params.hidden) return;
+  const bool has_col1 = (col0 + 1) < params.hidden;
+  const bool has_col2 = (col0 + 2) < params.hidden;
+  const bool has_col3 = (col0 + 3) < params.hidden;
+
+  const int block_shift = __ffs(params.block_size) - 1;
+  const size_t w_row0 = static_cast<size_t>(exp_id) * params.hidden + col0;
+  const size_t row_bytes = (static_cast<size_t>(params.intermediate) * Bits) / 8;
+  const size_t blocks = static_cast<size_t>(params.intermediate >> block_shift);
+  const uint8_t* w0_ptr = params.fc2.weights + w_row0 * row_bytes;
+  const uint8_t* w1_ptr = has_col1 ? (w0_ptr + row_bytes) : w0_ptr;
+  const uint8_t* w2_ptr = has_col2 ? (w1_ptr + row_bytes) : w0_ptr;
+  const uint8_t* w3_ptr = has_col3 ? (w2_ptr + row_bytes) : w0_ptr;
+  const T* s0_ptr = static_cast<const T*>(params.fc2.scales) + w_row0 * blocks;
+  const T* s1_ptr = has_col1 ? (s0_ptr + blocks) : s0_ptr;
+  const T* s2_ptr = has_col2 ? (s1_ptr + blocks) : s0_ptr;
+  const T* s3_ptr = has_col3 ? (s2_ptr + blocks) : s0_ptr;
+  const int num_iters128 = params.intermediate >> 7;
+
+  float v0[kGroupRows]{};
+  float v1[kGroupRows]{};
+  float v2[kGroupRows]{};
+  float v3[kGroupRows]{};
+  for (int iter = 0, feature = sub_lane * 8; iter < num_iters128; ++iter, feature += 128) {
+    const int blk = feature >> block_shift;
+    float q0[8], q1[8];
+    Unpack8CenteredCodes128<Bits>(w0_ptr, iter, sub_lane, q0);
+    const float sc0 = static_cast<float>(__ldg(&s0_ptr[blk]));
+#pragma unroll
+    for (int i = 0; i < 8; ++i) q0[i] = static_cast<float>(static_cast<T>(q0[i] * sc0));
+    if (has_col1) {
+      Unpack8CenteredCodes128<Bits>(w1_ptr, iter, sub_lane, q1);
+      const float sc1 = static_cast<float>(__ldg(&s1_ptr[blk]));
+#pragma unroll
+      for (int i = 0; i < 8; ++i) q1[i] = static_cast<float>(static_cast<T>(q1[i] * sc1));
+    }
+#pragma unroll
+    for (int r = 0; r < kGroupRows; ++r) {
+      if (r < count) {
+        const float* row_act = s_act + static_cast<size_t>(r) * params.intermediate + feature;
+        const float4 a0 = *reinterpret_cast<const float4*>(row_act);
+        const float4 a1 = *reinterpret_cast<const float4*>(row_act + 4);
+        v0[r] += a0.x * q0[0] + a0.y * q0[1] + a0.z * q0[2] + a0.w * q0[3] +
+                 a1.x * q0[4] + a1.y * q0[5] + a1.z * q0[6] + a1.w * q0[7];
+        if (has_col1) {
+          v1[r] += a0.x * q1[0] + a0.y * q1[1] + a0.z * q1[2] + a0.w * q1[3] +
+                   a1.x * q1[4] + a1.y * q1[5] + a1.z * q1[6] + a1.w * q1[7];
+        }
+      }
+    }
+    if (has_col2) {
+      Unpack8CenteredCodes128<Bits>(w2_ptr, iter, sub_lane, q0);
+      const float sc2 = static_cast<float>(__ldg(&s2_ptr[blk]));
+#pragma unroll
+      for (int i = 0; i < 8; ++i) q0[i] = static_cast<float>(static_cast<T>(q0[i] * sc2));
+      if (has_col3) {
+        Unpack8CenteredCodes128<Bits>(w3_ptr, iter, sub_lane, q1);
+        const float sc3 = static_cast<float>(__ldg(&s3_ptr[blk]));
+#pragma unroll
+        for (int i = 0; i < 8; ++i) q1[i] = static_cast<float>(static_cast<T>(q1[i] * sc3));
+      }
+#pragma unroll
+      for (int r = 0; r < kGroupRows; ++r) {
+        if (r < count) {
+          const float* row_act = s_act + static_cast<size_t>(r) * params.intermediate + feature;
+          const float4 a0 = *reinterpret_cast<const float4*>(row_act);
+          const float4 a1 = *reinterpret_cast<const float4*>(row_act + 4);
+          v2[r] += a0.x * q0[0] + a0.y * q0[1] + a0.z * q0[2] + a0.w * q0[3] +
+                   a1.x * q0[4] + a1.y * q0[5] + a1.z * q0[6] + a1.w * q0[7];
+          if (has_col3) {
+            v3[r] += a0.x * q1[0] + a0.y * q1[1] + a0.z * q1[2] + a0.w * q1[3] +
+                     a1.x * q1[4] + a1.y * q1[5] + a1.z * q1[6] + a1.w * q1[7];
+          }
+        }
+      }
+    }
+  }
+
+  float b0 = 0.0f, b1 = 0.0f, b2 = 0.0f, b3 = 0.0f;
+  if (sub_lane == 0 && params.fc2.bias) {
+    const T* b_ptr = static_cast<const T*>(params.fc2.bias) + w_row0;
+    b0 = static_cast<float>(b_ptr[0]);
+    if (has_col1) b1 = static_cast<float>(b_ptr[1]);
+    if (has_col2) b2 = static_cast<float>(b_ptr[2]);
+    if (has_col3) b3 = static_cast<float>(b_ptr[3]);
+  }
+
+#pragma unroll
+  for (int r = 0; r < kGroupRows; ++r) {
+    if (r < count) {
+      float sum0 = v0[r], sum1 = v1[r], sum2 = v2[r], sum3 = v3[r];
+#pragma unroll
+      for (int d = 8; d > 0; d >>= 1) {
+        sum0 += __shfl_down_sync(0xffffffffu, sum0, d);
+        sum1 += __shfl_down_sync(0xffffffffu, sum1, d);
+        sum2 += __shfl_down_sync(0xffffffffu, sum2, d);
+        sum3 += __shfl_down_sync(0xffffffffu, sum3, d);
+      }
+      if (sub_lane == 0) {
+        const size_t route = static_cast<size_t>(s_routes[r]);
+        T* part_ptr = static_cast<T*>(params.fc2_partial) + route * params.hidden + col0;
+        part_ptr[0] = static_cast<T>(sum0 + b0);
+        if (has_col1) part_ptr[1] = static_cast<T>(sum1 + b1);
+        if (has_col2) part_ptr[2] = static_cast<T>(sum2 + b2);
+        if (has_col3) part_ptr[3] = static_cast<T>(sum3 + b3);
+      }
+    }
+  }
+}
+
 template <typename T>
 cudaError_t LaunchInt3Typed(const Int3MoeParams& params, cudaStream_t stream) {
-  const size_t total_routes = static_cast<size_t>(params.rows) * params.top_k;
+  const size_t total_routes = (params.total_routes_override > 0)
+                                  ? static_cast<size_t>(params.total_routes_override)
+                                  : (static_cast<size_t>(params.rows) * params.top_k);
   const size_t fc1_smem = static_cast<size_t>(params.hidden) * sizeof(float);
   const size_t fc2_smem = static_cast<size_t>(params.intermediate) * sizeof(float);
   const Int3DecodeKernel kernel = SelectInt3DecodeKernel(params);
 
   if (kernel != Int3DecodeKernel::kScalar) {
+    constexpr int kGroupRows = 8;
+    const size_t grouped_fc1_smem = static_cast<size_t>(kGroupRows) * params.hidden * sizeof(T);
+    const size_t grouped_fc2_smem = static_cast<size_t>(kGroupRows) * params.intermediate * sizeof(float);
+    const size_t grouped_static_smem = static_cast<size_t>(kGroupRows) * sizeof(int);
+    const bool is_power_of_two_block = (params.block_size & (params.block_size - 1)) == 0;
+    const bool use_grouped_prefill =
+        total_routes >= 32 && params.grouped_workspace != nullptr && is_power_of_two_block &&
+        params.num_experts > 0 && params.num_experts <= 512 &&
+        grouped_fc1_smem + grouped_static_smem <= 48 * 1024 &&
+        grouped_fc2_smem + grouped_static_smem <= 48 * 1024;
+
+    if (use_grouped_prefill) {
+      static const bool grouped_carveout_set = []() {
+        (void)cudaFuncSetAttribute(FusedFc1GroupedFastKernel<T, 2, kGroupRows>,
+                                   cudaFuncAttributePreferredSharedMemoryCarveout,
+                                   cudaSharedmemCarveoutMaxShared);
+        (void)cudaFuncSetAttribute(FusedFc1GroupedFastKernel<T, 3, kGroupRows>,
+                                   cudaFuncAttributePreferredSharedMemoryCarveout,
+                                   cudaSharedmemCarveoutMaxShared);
+        (void)cudaFuncSetAttribute(FusedFc1GroupedFastKernel<T, 4, kGroupRows>,
+                                   cudaFuncAttributePreferredSharedMemoryCarveout,
+                                   cudaSharedmemCarveoutMaxShared);
+        (void)cudaFuncSetAttribute(Fc2GroupedFastKernel<T, 2, kGroupRows>,
+                                   cudaFuncAttributePreferredSharedMemoryCarveout,
+                                   cudaSharedmemCarveoutMaxShared);
+        (void)cudaFuncSetAttribute(Fc2GroupedFastKernel<T, 3, kGroupRows>,
+                                   cudaFuncAttributePreferredSharedMemoryCarveout,
+                                   cudaSharedmemCarveoutMaxShared);
+        (void)cudaFuncSetAttribute(Fc2GroupedFastKernel<T, 4, kGroupRows>,
+                                   cudaFuncAttributePreferredSharedMemoryCarveout,
+                                   cudaSharedmemCarveoutMaxShared);
+        (void)cudaGetLastError();
+        return true;
+      }();
+      (void)grouped_carveout_set;
+      const int total_r = static_cast<int>(total_routes);
+      const int max_tiles = total_r / kGroupRows + std::min<int>(total_r, params.num_experts);
+      int* sorted_routes = params.grouped_workspace;
+      int* num_tiles_dev = sorted_routes + total_r;
+      auto* tile_descs = reinterpret_cast<Int3ExpertTileDesc*>(num_tiles_dev + 4);
+
+      BuildInt3ExpertTilesKernel<kGroupRows><<<1, 512, 0, stream>>>(
+          params.experts, total_r, params.num_experts, sorted_routes, tile_descs, num_tiles_dev);
+      auto status = cudaGetLastError();
+      if (status != cudaSuccess) return status;
+
+      if constexpr (std::is_same_v<T, __nv_bfloat16>) {
+        cudaError_t tc_status = cudaSuccess;
+        if (int3_tc::TryLaunchBf16Grouped(params, sorted_routes, tile_descs, num_tiles_dev, max_tiles, stream,
+                                          tc_status)) {
+          if (tc_status != cudaSuccess) return tc_status;
+          if (params.output != nullptr) {
+            const dim3 fin_grid(static_cast<unsigned>((params.hidden + 255) / 256), static_cast<unsigned>(params.rows));
+            FinalizeRoutesFastKernel<T><<<fin_grid, 256, 0, stream>>>(params);
+            return cudaGetLastError();
+          }
+          return cudaSuccess;
+        }
+      }
+
+      const dim3 fc1_grid(static_cast<unsigned>((params.intermediate + 15) / 16), static_cast<unsigned>(max_tiles));
+      if (params.fc1.bits == 2) {
+        FusedFc1GroupedFastKernel<T, 2, kGroupRows><<<fc1_grid, 256, grouped_fc1_smem, stream>>>(
+            params, sorted_routes, tile_descs, num_tiles_dev);
+      } else if (params.fc1.bits == 3) {
+        FusedFc1GroupedFastKernel<T, 3, kGroupRows><<<fc1_grid, 256, grouped_fc1_smem, stream>>>(
+            params, sorted_routes, tile_descs, num_tiles_dev);
+      } else {
+        FusedFc1GroupedFastKernel<T, 4, kGroupRows><<<fc1_grid, 256, grouped_fc1_smem, stream>>>(
+            params, sorted_routes, tile_descs, num_tiles_dev);
+      }
+      status = cudaGetLastError();
+      if (status != cudaSuccess) return status;
+
+      const dim3 fc2_grid(static_cast<unsigned>((params.hidden + 63) / 64), static_cast<unsigned>(max_tiles));
+      if (params.fc2.bits == 2) {
+        Fc2GroupedFastKernel<T, 2, kGroupRows><<<fc2_grid, 256, grouped_fc2_smem, stream>>>(
+            params, sorted_routes, tile_descs, num_tiles_dev);
+      } else if (params.fc2.bits == 3) {
+        Fc2GroupedFastKernel<T, 3, kGroupRows><<<fc2_grid, 256, grouped_fc2_smem, stream>>>(
+            params, sorted_routes, tile_descs, num_tiles_dev);
+      } else {
+        Fc2GroupedFastKernel<T, 4, kGroupRows><<<fc2_grid, 256, grouped_fc2_smem, stream>>>(
+            params, sorted_routes, tile_descs, num_tiles_dev);
+      }
+      status = cudaGetLastError();
+      if (status != cudaSuccess) return status;
+
+      if (params.output != nullptr) {
+        const dim3 fin_grid(static_cast<unsigned>((params.hidden + 255) / 256), static_cast<unsigned>(params.rows));
+        FinalizeRoutesFastKernel<T><<<fin_grid, 256, 0, stream>>>(params);
+        return cudaGetLastError();
+      }
+      return cudaSuccess;
+    }
+
     if (kernel == Int3DecodeKernel::kTensorCore || kernel == Int3DecodeKernel::kFastVectorized) {
       if constexpr (std::is_same_v<T, __nv_bfloat16>) {
         cudaError_t tc_status = cudaSuccess;
         if (int3_tc::TryLaunchBf16(params, stream, tc_status)) {
           if (tc_status != cudaSuccess) return tc_status;
-          const dim3 tc_fin_grid(static_cast<unsigned>((params.hidden / 8 + 127) / 128),
-                                 static_cast<unsigned>(params.rows));
-          FinalizeRoutesVec8Kernel<T><<<tc_fin_grid, 128, 0, stream>>>(params);
+          if (params.output != nullptr) {
+            const dim3 tc_fin_grid(static_cast<unsigned>((params.hidden / 8 + 127) / 128),
+                                   static_cast<unsigned>(params.rows));
+            FinalizeRoutesVec8Kernel<T><<<tc_fin_grid, 128, 0, stream>>>(params);
+          }
           return cudaGetLastError();
         }
       }
@@ -3269,14 +4453,16 @@ cudaError_t LaunchInt3Typed(const Int3MoeParams& params, cudaStream_t stream) {
       status = cudaGetLastError();
       if (status != cudaSuccess) return status;
 
-      if (params.router_weights == nullptr) {
-        const dim3 fin_vec_grid(static_cast<unsigned>((params.hidden / 8 + 127) / 128),
-                                static_cast<unsigned>(params.rows));
-        FinalizeRoutesVec8Kernel<T><<<fin_vec_grid, 128, 0, stream>>>(params);
-      } else {
-        const dim3 fin_grid(static_cast<unsigned>((params.hidden + 255) / 256),
-                            static_cast<unsigned>(params.rows));
-        FinalizeRoutesFastKernel<T><<<fin_grid, 256, 0, stream>>>(params);
+      if (params.output != nullptr) {
+        if (params.router_weights == nullptr) {
+          const dim3 fin_vec_grid(static_cast<unsigned>((params.hidden / 8 + 127) / 128),
+                                  static_cast<unsigned>(params.rows));
+          FinalizeRoutesVec8Kernel<T><<<fin_vec_grid, 128, 0, stream>>>(params);
+        } else {
+          const dim3 fin_grid(static_cast<unsigned>((params.hidden + 255) / 256),
+                              static_cast<unsigned>(params.rows));
+          FinalizeRoutesFastKernel<T><<<fin_grid, 256, 0, stream>>>(params);
+        }
       }
       return cudaGetLastError();
     }
@@ -3305,28 +4491,45 @@ cudaError_t LaunchInt3Typed(const Int3MoeParams& params, cudaStream_t stream) {
     status = cudaGetLastError();
     if (status != cudaSuccess) return status;
 
-    const dim3 fin_grid(static_cast<unsigned>((params.hidden + 255) / 256), static_cast<unsigned>(params.rows));
-    FinalizeRoutesFastKernel<T><<<fin_grid, 256, 0, stream>>>(ungrouped_params);
-    return cudaGetLastError();
+    if (params.output != nullptr) {
+      const dim3 fin_grid(static_cast<unsigned>((params.hidden + 255) / 256), static_cast<unsigned>(params.rows));
+      FinalizeRoutesFastKernel<T><<<fin_grid, 256, 0, stream>>>(ungrouped_params);
+      return cudaGetLastError();
+    }
+    return cudaSuccess;
   }
 
   const size_t fc1_count = total_routes * params.intermediate;
   const size_t fc2_count = static_cast<size_t>(params.rows) * params.hidden;
+  const unsigned int fc1_blocks = static_cast<unsigned int>((fc1_count + 3) / 4);
+  const unsigned int fc2_blocks = static_cast<unsigned int>((fc2_count + 3) / 4);
   if (params.fc1.bits == 2) {
-    FusedFc1ScalarKernel<T, 2><<<(fc1_count + 3) / 4, 128, 0, stream>>>(params);
+    FusedFc1ScalarKernel<T, 2><<<fc1_blocks, 128, 0, stream>>>(params);
   } else if (params.fc1.bits == 3) {
-    FusedFc1ScalarKernel<T, 3><<<(fc1_count + 3) / 4, 128, 0, stream>>>(params);
+    FusedFc1ScalarKernel<T, 3><<<fc1_blocks, 128, 0, stream>>>(params);
   } else {
-    FusedFc1ScalarKernel<T, 4><<<(fc1_count + 3) / 4, 128, 0, stream>>>(params);
+    FusedFc1ScalarKernel<T, 4><<<fc1_blocks, 128, 0, stream>>>(params);
   }
   auto status = cudaGetLastError();
   if (status != cudaSuccess) return status;
+  if (params.output == nullptr && params.fc2_partial != nullptr) {
+    const size_t fc2_route_count = total_routes * params.hidden;
+    const unsigned int fc2_route_blocks = static_cast<unsigned int>((fc2_route_count + 3) / 4);
+    if (params.fc2.bits == 2) {
+      Fc2RouteScalarKernel<T, 2><<<fc2_route_blocks, 128, 0, stream>>>(params);
+    } else if (params.fc2.bits == 3) {
+      Fc2RouteScalarKernel<T, 3><<<fc2_route_blocks, 128, 0, stream>>>(params);
+    } else {
+      Fc2RouteScalarKernel<T, 4><<<fc2_route_blocks, 128, 0, stream>>>(params);
+    }
+    return cudaGetLastError();
+  }
   if (params.fc2.bits == 2) {
-    Fc2AndFinalizeScalarKernel<T, 2><<<(fc2_count + 3) / 4, 128, 0, stream>>>(params);
+    Fc2AndFinalizeScalarKernel<T, 2><<<fc2_blocks, 128, 0, stream>>>(params);
   } else if (params.fc2.bits == 3) {
-    Fc2AndFinalizeScalarKernel<T, 3><<<(fc2_count + 3) / 4, 128, 0, stream>>>(params);
+    Fc2AndFinalizeScalarKernel<T, 3><<<fc2_blocks, 128, 0, stream>>>(params);
   } else {
-    Fc2AndFinalizeScalarKernel<T, 4><<<(fc2_count + 3) / 4, 128, 0, stream>>>(params);
+    Fc2AndFinalizeScalarKernel<T, 4><<<fc2_blocks, 128, 0, stream>>>(params);
   }
   return cudaGetLastError();
 }
@@ -3334,9 +4537,15 @@ cudaError_t LaunchInt3Typed(const Int3MoeParams& params, cudaStream_t stream) {
 }  // namespace
 
 Int3DecodeKernel SelectInt3DecodeKernel(const Int3MoeParams& params) {
-  const size_t total_routes = static_cast<size_t>(params.rows) * params.top_k;
+  const size_t total_routes = (params.total_routes_override > 0)
+                                  ? static_cast<size_t>(params.total_routes_override)
+                                  : (static_cast<size_t>(params.rows) * params.top_k);
   const size_t fc1_smem = static_cast<size_t>(params.hidden) * sizeof(float);
   const size_t fc2_smem = static_cast<size_t>(params.intermediate) * sizeof(float);
+  const size_t max_grouped_tiles = (total_routes + 7) / 8 + static_cast<size_t>(params.num_experts);
+  const bool routes_fit_grid =
+      (total_routes <= 65535 && params.rows <= 65535) ||
+      (params.grouped_workspace != nullptr && total_routes >= 32 && max_grouped_tiles <= 65535);
   const bool can_use_fast =
       params.fc2_partial != nullptr &&
       params.fc1.zeros == nullptr && params.fc2.zeros == nullptr &&
@@ -3344,7 +4553,7 @@ Int3DecodeKernel SelectInt3DecodeKernel(const Int3MoeParams& params) {
       params.block_size >= 8 && params.block_size % 8 == 0 &&
       (reinterpret_cast<uintptr_t>(params.fc1.weights) & 3u) == 0 &&
       (reinterpret_cast<uintptr_t>(params.fc2.weights) & 3u) == 0 &&
-      total_routes <= 65535 && params.rows <= 65535 &&
+      routes_fit_grid &&
       fc1_smem <= 48 * 1024 && fc2_smem <= 48 * 1024;
   if (!can_use_fast) return Int3DecodeKernel::kScalar;
 
@@ -3354,7 +4563,7 @@ Int3DecodeKernel SelectInt3DecodeKernel(const Int3MoeParams& params) {
       (reinterpret_cast<uintptr_t>(params.input) & 15u) == 0 &&
       (reinterpret_cast<uintptr_t>(params.activation) & 15u) == 0 &&
       (reinterpret_cast<uintptr_t>(params.fc2_partial) & 15u) == 0 &&
-      (reinterpret_cast<uintptr_t>(params.output) & 15u) == 0;
+      (params.output == nullptr || (reinterpret_cast<uintptr_t>(params.output) & 15u) == 0);
   if (!can_use_vec_fast) return Int3DecodeKernel::kFast;
   if (params.is_bfloat16 && int3_tc::CanLaunchBf16(params)) {
     return Int3DecodeKernel::kTensorCore;
