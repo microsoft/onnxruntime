@@ -128,13 +128,15 @@ struct CapturedCommand {
   std::variant<DispatchCommandInfo, CapturedBufferCopy> operation;
 };
 
-// A command recording timeline has one caller at a time. ORT serializes Run on a Session;
-// plugin streamless operations use independent encoders. BufferManager synchronizes buffer
-// releases from concurrent allocator callers separately from command recording.
+// ORT serializes Run, but Session-stream copies/allocations (e.g., CPU BindInput) can overlap it.
+// Guard shared recording operations, not the Run lifetime: OnRunEnd can be skipped on host errors.
+// Reentrancy is needed for kernels that allocate or copy, and OnRunEnd calling ReplayGraph.
+// Streamless plugin operations use independent recordings; buffer releases synchronize separately.
 struct CommandRecordingState {
   CommandRecordingState() = default;
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CommandRecordingState);
 
+  std::recursive_mutex mutex;
   wgpu::CommandEncoder command_encoder;
   wgpu::ComputePassEncoder compute_pass_encoder;
   uint32_t num_pending_dispatches = 0;

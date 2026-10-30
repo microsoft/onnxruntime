@@ -6,6 +6,7 @@
 
 #include <atomic>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <span>
 #include <string>
@@ -20,6 +21,7 @@
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/math/matmul_algorithm.h"
 #include "core/providers/webgpu/session_buffer_pool.h"
+#include "core/providers/webgpu/webgpu_context.h"
 #include "core/providers/webgpu/webgpu_provider_options.h"
 
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
@@ -131,6 +133,18 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   webgpu::BufferManager& BufferManager() const;
   webgpu::BufferManager& InitializerBufferManager() const;
   webgpu::CommandRecordingState& Recording() const { return *recording_; }
+
+  class ScopedKernelCompute {
+   public:
+    explicit ScopedKernelCompute(const WebGpuExecutionProvider& ep)
+        : lock_{ep.Recording().mutex} {}
+    ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ScopedKernelCompute);
+
+   private:
+    std::unique_lock<std::recursive_mutex> lock_;
+  };
+
+  ScopedKernelCompute EnterKernelCompute() const { return ScopedKernelCompute{*this}; }
   AllocatorPtr PrepackAllocator() const { return prepack_allocator_; }
   std::span<const std::string> GetForceCpuNodeNames() const { return force_cpu_node_names_; }
   uint32_t MultiRotaryCacheConcatOffset() const { return multi_rotary_cache_concat_offset_; }

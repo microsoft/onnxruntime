@@ -230,6 +230,35 @@ class PluginEpWebGpuConcurrency : public ::testing::Test {
     VerifyOutput(output_data, value);
   }
 
+  void RunWithCpuBoundInputAndOutput(Ort::Session& session, float value, int iterations = 1) const {
+    const auto cpu_memory = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+    std::array<float, kElements> input_data{};
+    std::array<float, kElements> output_data{};
+    auto input = Ort::Value::CreateTensor<float>(
+        cpu_memory, input_data.data(), input_data.size(), kShape.data(), kShape.size());
+    auto output = Ort::Value::CreateTensor<float>(
+        cpu_memory, output_data.data(), output_data.size(), kShape.data(), kShape.size());
+    Ort::IoBinding binding(session);
+    // CPU rebinding can replace the device buffers, so these runs must stay eager.
+    Ort::RunOptions run_options;
+    run_options.AddConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation, "-1");
+    for (int iteration = 0; iteration < iterations; ++iteration) {
+      const float current_value = value + static_cast<float>(iteration);
+      input_data.fill(current_value);
+      output_data.fill(-1.0f);
+      if (iteration % 2 == 0) {
+        binding.ClearBoundInputs();
+        binding.ClearBoundOutputs();
+      }
+      binding.BindInput("X", input);
+      binding.BindOutput("Y", output);
+      binding.SynchronizeInputs();
+      session.Run(run_options, binding);
+      binding.SynchronizeOutputs();
+      VerifyOutput(output_data, current_value);
+    }
+  }
+
   void RunWithCpuInputAndGpuOutput(Ort::Session& session, float value) const {
     const auto cpu_memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
     std::array<float, kElements> input_data{};
@@ -1063,7 +1092,14 @@ TEST_F(PluginEpWebGpuConcurrency, SerialRunsAfterRejectedStreamOverride) {
   ASSERT_NE(rejected.GetErrorMessage().find("No matching stream found to override from OrtRunOptions"),
             std::string::npos);
 
-  // This host error occurs after OnRunStart and skips OnRunEnd. Neither Session may be blocked.
+  // This host error occurs after OnRunStart and skips OnRunEnd. Neither Session may be blocked,
+  // including across threads in serialized compatibility mode where operations must not overlap.
+  for (int thread_id = 0; thread_id < kThreads; ++thread_id) {
+    std::thread worker([&]() {
+      RunWithCpuBoundInputAndOutput(*first_session, static_cast<float>(thread_id + 1));
+    });
+    worker.join();
+  }
   ASSERT_NO_THROW(RunWithCpuInputAndOutput(*second_session, 3.0f));
   run_options.SetSyncStream(nullptr);
   ASSERT_NO_THROW(first_session->Run(run_options, first_binding));
@@ -1077,6 +1113,36 @@ TEST_F(PluginEpWebGpuConcurrency, SerialRunsAfterRejectedStreamOverride) {
     ASSERT_NO_THROW(RunWithCpuInputAndOutput(*first_session, static_cast<float>(iteration + 1)));
     ASSERT_NO_THROW(RunWithCpuInputAndOutput(*second_session, -static_cast<float>(iteration + 1)));
   }
+}
+
+TEST_F(PluginEpWebGpuConcurrency, ConcurrentRunsAfterRejectedStreamOverride) {
+  auto first_session = CreateSession();
+  auto second_session = CreateSession();
+  const auto gpu_memory = Device().GetMemoryInfo(OrtDeviceMemoryType_DEFAULT);
+  Ort::Allocator first_allocator(*first_session, gpu_memory);
+  auto first_input = Ort::Value::CreateTensor<float>(first_allocator, kShape.data(), kShape.size());
+  auto first_output = Ort::Value::CreateTensor<float>(first_allocator, kShape.data(), kShape.size());
+  Ort::IoBinding first_binding(*first_session);
+  first_binding.BindInput("X", first_input);
+  first_binding.BindOutput("Y", first_output);
+
+  const OrtDevice foreign_device{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA, 0};
+  Stream foreign_stream{nullptr, foreign_device};
+  Ort::RunOptions run_options;
+  run_options.SetSyncStream(reinterpret_cast<OrtSyncStream*>(&foreign_stream));
+  Ort::Status rejected{Ort::GetApi().RunWithBinding(*first_session, run_options, first_binding)};
+  ASSERT_FALSE(rejected.IsOK());
+  ASSERT_EQ(rejected.GetErrorCode(), ORT_INVALID_ARGUMENT);
+
+  FirstError recovery_error;
+  RunWorkers(recovery_error, [&](int thread_id) {
+    if (thread_id % 2 == 0) {
+      RunWithCpuBoundInputAndOutput(*first_session, static_cast<float>(thread_id + 1), kIterations);
+    } else {
+      RunWithCpuBoundInputAndOutput(*second_session, -static_cast<float>(thread_id + 1), kIterations);
+    }
+  });
+  ASSERT_FALSE(recovery_error.Failed()) << recovery_error.Message();
 }
 
 TEST_F(PluginEpWebGpuConcurrency, DifferentSessionsCpuBindInputReusesDirtyGpuBuffersConcurrently) {
@@ -1247,6 +1313,31 @@ TEST_F(PluginEpWebGpuConcurrency, SameSessionRunsAreSerialized) {
   RunWorkers(error, [&](int thread_id) {
     for (int iteration = 0; iteration < kIterations && !error.Failed(); ++iteration) {
       RunWithCpuInputAndOutput(*session, static_cast<float>(thread_id * kIterations + iteration + 1));
+    }
+  });
+  ASSERT_FALSE(error.Failed()) << error.Message();
+}
+
+TEST_F(PluginEpWebGpuConcurrency, SameSessionIndependentCpuBindingsRunConcurrently) {
+  auto session = CreateSession();
+  FirstError error;
+  RunWorkers(error, [&](int thread_id) {
+    RunWithCpuBoundInputAndOutput(*session, static_cast<float>(thread_id * kIterations + 1), kIterations);
+  });
+  ASSERT_FALSE(error.Failed()) << error.Message();
+}
+
+TEST_F(PluginEpWebGpuConcurrency, SameSessionCpuBindingsOverlapDirectRuns) {
+  auto session = CreateSession();
+  FirstError error;
+  RunWorkers(error, [&](int thread_id) {
+    for (int iteration = 0; iteration < kIterations && !error.Failed(); ++iteration) {
+      const float value = static_cast<float>(thread_id * kIterations + iteration + 1);
+      if (thread_id % 2 == 0) {
+        RunWithCpuBoundInputAndOutput(*session, value);
+      } else {
+        RunWithCpuInputAndOutput(*session, value);
+      }
     }
   });
   ASSERT_FALSE(error.Failed()) << error.Message();
