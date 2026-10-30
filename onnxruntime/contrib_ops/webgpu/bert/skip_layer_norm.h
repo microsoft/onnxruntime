@@ -32,7 +32,8 @@ class SkipLayerNormProgram final : public Program<SkipLayerNormProgram> {
       {"components", ProgramUniformVariableDataType::Uint32},
       {"hidden_size", ProgramUniformVariableDataType::Uint32},
       {"epsilon", ProgramUniformVariableDataType::Float32},
-      {"skip_size", ProgramUniformVariableDataType::Uint32});
+      {"skip_size", ProgramUniformVariableDataType::Uint32},
+      {"norm_count", ProgramUniformVariableDataType::Uint32});
 
  private:
   bool hasBeta_;
