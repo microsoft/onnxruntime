@@ -158,7 +158,6 @@ jobs:
 
       # WebGPU EP tests
       - name: Run ort-web tests - WebGPU EP
-        continue-on-error: true
         shell: cmd
         run: |
           mkdir ${{ runner.temp }}\web\test\07

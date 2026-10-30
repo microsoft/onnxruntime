@@ -874,6 +874,67 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BiasSoftmax, 1,
                                     "Constrain input and output types to float tensors.")
                                 .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    SwiGLU, 1,
+    OpSchema()
+        .SetDoc(
+            "Clamped SwiGLU, the gated activation of a feed-forward or MoE expert block:\n"
+            "  G = clamp(gate, max=limit)\n"
+            "  L = clamp(up, min=-limit, max=limit)\n"
+            "  output = G * Sigmoid(activation_alpha * G) * (L + activation_beta)\n"
+            "with the arithmetic done in float regardless of T, widened to double for the product "
+            "when `activation_alpha * G` is below -87 so that a negative tail is not lost to "
+            "float exp underflow. A `limit` of zero or less disables both clamps.\n"
+            "\n"
+            "The result is rounded to T once, after the multiply by (L + activation_beta). With "
+            "`round_activation` set, G * Sigmoid(activation_alpha * G) is first rounded to T, as a "
+            "QuickGelu node followed by a Mul in T would, which keeps a fused QuickGelu + Mul "
+            "bit-identical to the graph it replaces.\n"
+            "\n"
+            "This uses the same activation_alpha / activation_beta formula and positive-limit "
+            "clamping rule as MoE and QMoE. The no-clamp sentinel differs: here any `limit` "
+            "of zero or less disables clamping, while MoE/QMoE use infinity when `swiglu_limit` "
+            "is omitted and clamp finite values, including an explicit zero.\n"
+            "With `up` supplied and the default `limit` and `activation_beta`, it "
+            "equals the ONNX SwiGLU operator (opset 28) with `alpha` = `activation_alpha`.\n"
+            "\n"
+            "`up` is optional. When it is omitted, `gate` carries both halves of one "
+            "`[.., 2 * inter]` projection -- gate first, then up -- and the split is done "
+            "internally, so a fused sibling GEMM needs no `Split` node.")
+        .Attr("limit", "Clamp applied to both halves; zero or less disables it.",
+              AttributeProto::FLOAT, 0.0f)
+        .Attr("activation_alpha", "Multiplier inside the sigmoid.", AttributeProto::FLOAT, 1.0f)
+        .Attr("activation_beta",
+              "Value added to the linear half. A zero value leaves it unchanged, including a negative zero.",
+              AttributeProto::FLOAT, 0.0f)
+        .Attr("round_activation",
+              "If non-zero, round G * Sigmoid(activation_alpha * G) to T before multiplying by "
+              "(L + activation_beta). Zero rounds only the final result.",
+              AttributeProto::INT, static_cast<int64_t>(0))
+        .Input(0, "gate", "Gate half of the projection, or both halves concatenated.", "T")
+        .Input(1, "up", "Up half of the projection, same shape as gate.", "T", OpSchema::Optional)
+        .Output(0, "output", "Activated tensor, shaped like one half of the projection.", "T")
+        .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
+                        "Constrain the activation type to float tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          if (!hasInputShape(ctx, 0)) return;
+          if (ctx.getNumInputs() > 1 && ctx.getInputType(1) != nullptr) {
+            propagateShapeFromInputToOutput(ctx, 0, 0);
+            return;
+          }
+          const auto& in = getInputShape(ctx, 0);
+          if (in.dim_size() == 0) fail_shape_inference("gate must not be a scalar.");
+          auto* out = ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+          for (int i = 0; i + 1 < in.dim_size(); ++i) *out->add_dim() = in.dim(i);
+          const auto& last = in.dim(in.dim_size() - 1);
+          auto* d = out->add_dim();
+          if (last.has_dim_value()) {
+            if (last.dim_value() % 2 != 0) fail_shape_inference("gate's last dim must be even.");
+            d->set_dim_value(last.dim_value() / 2);
+          }
+        }));
+
 ONNX_MS_OPERATOR_SET_SCHEMA(BiasDropout, 1,
                             OpSchema()
                                 .SetDoc(

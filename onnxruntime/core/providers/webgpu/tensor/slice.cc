@@ -16,7 +16,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     1, 9,
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", WebGpuSupportedFloatTypes()),
+        .TypeConstraint("T", WebGpuSupportedNumberTypes()),
     Slice);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
@@ -25,7 +25,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     10, 10,
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", WebGpuSupportedFloatTypes())
+        .TypeConstraint("T", WebGpuSupportedNumberTypes())
         .InputMemoryType(OrtMemTypeCPU, 1)
         .InputMemoryType(OrtMemTypeCPU, 2)
         .InputMemoryType(OrtMemTypeCPU, 3)
@@ -38,7 +38,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     11, 12,
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", WebGpuSupportedFloatTypes())
+        .TypeConstraint("T", WebGpuSupportedNumberTypes())
         .InputMemoryType(OrtMemTypeCPU, 1)
         .InputMemoryType(OrtMemTypeCPU, 2)
         .InputMemoryType(OrtMemTypeCPU, 3)
@@ -51,7 +51,7 @@ ONNX_OPERATOR_KERNEL_EX(
     13,
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", WebGpuSupportedFloatTypes())
+        .TypeConstraint("T", WebGpuSupportedNumberTypes())
         .InputMemoryType(OrtMemTypeCPU, 1)
         .InputMemoryType(OrtMemTypeCPU, 2)
         .InputMemoryType(OrtMemTypeCPU, 3)
