@@ -197,9 +197,9 @@ __global__ void QMoEOffloadClassifyKernel(
     hit_compact[row] = slot < 0 ? dummy_slot : slot;
     if (row < route_count) {
       hit_flag[row] = (slot >= 0) || skipped_tail;
-      if (telemetry != nullptr && topk_scales_for_telemetry != nullptr && row < 256) {
+      if (telemetry != nullptr && row < 256) {
         telemetry->last_indices[row] = exp;
-        telemetry->last_weights[row] = topk_scales_for_telemetry[row];
+        telemetry->last_weights[row] = (topk_scales_for_telemetry != nullptr) ? topk_scales_for_telemetry[row] : 0.0f;
       }
     }
   }
@@ -448,7 +448,8 @@ __global__ void QMoETailSubstitutionKernel(
             ? sqrtf(prob_gap * fmaxf(0.0f, scale_gap))
             : prob_gap;
     const bool scale_within_bound =
-        !normalize_scales || min_rank == 0 || orig_scale <= fmaxf(threshold * 25.0f, 0.050f);
+        !normalize_scales || min_rank == 0 || scale_gap <= threshold ||
+        orig_scale <= fmaxf(threshold * 25.0f, 0.050f);
     if (best_expert < num_experts && effective_gap <= threshold && scale_within_bound) {
       if (lane == 0) {
         row_indices[rank] = best_expert;
@@ -456,7 +457,7 @@ __global__ void QMoETailSubstitutionKernel(
         selected[best_expert / 32] |= uint32_t{1} << (best_expert % 32);
       }
       sub_rank_mask |= (uint32_t{1} << rank);
-      sub_orig_scale_mass += orig_scale;
+      sub_orig_scale_mass += row_scales[rank];
       ++substitutions;
       __syncwarp();
     }
