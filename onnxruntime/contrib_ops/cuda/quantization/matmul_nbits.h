@@ -425,28 +425,22 @@ class MatMulNBits final : public CudaKernel {
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  bool& is_packed, PrePackedWeights* prepacked_weights) override;
 
-#if USE_FPA_INTB_GEMM
 #ifndef BUILD_CUDA_EP_AS_PLUGIN
-  // Level 2 (Phase-A memory roadmap, issue microsoft/onnxruntime#29775): instance-level workspace
-  // estimate, callable after CreateKernels(). It is exact when runtime selects the CUTLASS GEMM
-  // branch for the queried input-A shape. If runtime instead selects the CUDA GEMV tactic, which
-  // requests no workspace, the declaration is a safe upper bound. Declared only for the in-tree
-  // hierarchy; the plugin build inherits the adapter OpKernel's unbridged default no-op.
+  // Bounds CUTLASS workspace or legacy dequantization scratch, including row chunking.
+  // GEMV may need no workspace. Plugin kernels retain the adapter's no-op declaration.
   Status DeclareWorkspaceRequirements(
       gsl::span<const WorkspaceInputShape> input_shapes,
       /*out*/ InlinedVector<WorkspaceRequirement>& requirements) const override;
+#if !defined(ORT_MINIMAL_BUILD)
+  bool SupportsPreallocatedWorkspace() const noexcept override { return true; }
+#endif
 #endif
 
-  // TEST INSTRUMENTATION ONLY - not a runtime API. Records the workspace size requested by the most
-  // recent ComputeInternal() call (zero when it requested none) so a test can verify the Level-2
-  // estimate against the real runtime request. This atomic is not correlated to a specific Run() when
-  // concurrent Run()s share one kernel instance; it is only meant for this pilot's single-threaded
-  // tests. Do not build anything on top of it.
-  //
-  // Every ComputeInternal() invocation first stores zero. The CUTLASS GEMM branch replaces it with
-  // the requested byte count; all early-return and no-workspace paths therefore remain zero.
+  // Test-only probes for the last invocation; not correlated across concurrent Runs.
   size_t LastComputeWorkspaceBytes() const { return last_compute_workspace_bytes_.load(std::memory_order_relaxed); }
-#endif
+  bool LastComputeUsedPreallocatedWorkspace() const {
+    return last_compute_used_preallocated_workspace_.load(std::memory_order_relaxed);
+  }
 
  private:
 #if USE_FPA_INTB_GEMM
@@ -510,9 +504,10 @@ class MatMulNBits final : public CudaKernel {
   IAllocatorUniquePtr<void> fpA_intB_scale_buffer_;
   IAllocatorUniquePtr<void> fpA_intB_zero_buffer_;
 
-  // TEST INSTRUMENTATION ONLY (see LastComputeWorkspaceBytes above).
-  mutable std::atomic<size_t> last_compute_workspace_bytes_{0};
 #endif
+  // Test probes describe the last invocation, not an individual concurrent Run.
+  mutable std::atomic<size_t> last_compute_workspace_bytes_{0};
+  mutable std::atomic<bool> last_compute_used_preallocated_workspace_{false};
 };
 
 }  // namespace cuda

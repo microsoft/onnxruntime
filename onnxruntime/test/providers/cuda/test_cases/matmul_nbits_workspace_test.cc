@@ -564,6 +564,8 @@ TEST(MatMulNBitsWorkspace, EligibilitySm90PrepackedConstraints) {
 }
 #endif
 
+#endif  // USE_FPA_INTB_GEMM
+
 // ---------------------------------------------------------------------------
 // Provider-world probe (Major 1). The end-to-end test that proves Level 1 == Level 2 == runtime
 // lives in matmul_nbits_e2e_workspace_test.cc, which runs a real InferenceSession and therefore
@@ -576,11 +578,14 @@ TEST(MatMulNBitsWorkspace, EligibilitySm90PrepackedConstraints) {
 // MatMulNBits before calling.
 // ---------------------------------------------------------------------------
 size_t GetMatMulNBitsLastComputeWorkspaceBytes(const OpKernel* kernel) {
-  const auto* mm_kernel = static_cast<const MatMulNBits<MLFloat16>*>(kernel);
+  const auto* mm_kernel = static_cast<const contrib::cuda::MatMulNBits<MLFloat16>*>(kernel);
   return mm_kernel->LastComputeWorkspaceBytes();
 }
 
-#endif  // USE_FPA_INTB_GEMM
+bool GetMatMulNBitsLastComputeUsedPreallocatedWorkspace(const OpKernel* kernel) {
+  const auto* mm_kernel = static_cast<const contrib::cuda::MatMulNBits<MLFloat16>*>(kernel);
+  return mm_kernel->LastComputeUsedPreallocatedWorkspace();
+}
 
 }  // namespace test
 }  // namespace onnxruntime

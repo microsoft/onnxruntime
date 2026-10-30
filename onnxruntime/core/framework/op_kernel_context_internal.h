@@ -4,6 +4,11 @@
 #pragma once
 
 #include <functional>
+#if !defined(ORT_MINIMAL_BUILD)
+#include <algorithm>
+#include "core/framework/execution_frame.h"
+#include "core/framework/sequential_execution_plan.h"
+#endif
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
 #include "core/session/onnxruntime_c_api.h"
@@ -26,6 +31,9 @@ class OpKernelContextInternal : public OpKernelContext {
                                    profiling::Profiler* run_profiler = nullptr)
       : OpKernelContext(&frame, &kernel, stream, session_state.GetThreadPool(), logger),
         session_state_(session_state),
+#if !defined(ORT_MINIMAL_BUILD)
+        execution_frame_(frame),
+#endif
         terminate_flag_(terminate_flag),
         run_profiler_(run_profiler) {
     const auto& implicit_inputs = kernel.Node().ImplicitInputDefs();
@@ -48,6 +56,41 @@ class OpKernelContextInternal : public OpKernelContext {
     }
 #endif
   }
+
+#if !defined(ORT_MINIMAL_BUILD)
+  ~OpKernelContextInternal() override {
+    for (const auto* plan : active_workspace_plans_) {
+      execution_frame_.ReleasePlannedWorkspace(plan->pattern_id, plan->location);
+    }
+  }
+
+  Status GetPreallocatedWorkspace(int slot_id, size_t requested_bytes, void** workspace) override {
+    *workspace = nullptr;
+    const auto* execution_plan = session_state_.GetExecutionPlan();
+    if (execution_plan == nullptr) {
+      return Status::OK();
+    }
+    const auto node_plan = execution_plan->workspace_allocation_plan.find(GetNodeIndex());
+    if (node_plan == execution_plan->workspace_allocation_plan.end()) {
+      return Status::OK();
+    }
+    for (const auto& plan : node_plan->second) {
+      if (plan.slot_id != slot_id || requested_bytes > plan.size_bytes) {
+        continue;
+      }
+      ORT_RETURN_IF(std::find(active_workspace_plans_.begin(), active_workspace_plans_.end(), &plan) !=
+                        active_workspace_plans_.end(),
+                    "Workspace slot ", slot_id, " was requested more than once by node ", GetNodeIndex());
+      ORT_RETURN_IF_ERROR(execution_frame_.GetPlannedWorkspace(
+          plan.pattern_id, plan.location, plan.allocation_bytes, plan.alignment_bytes, workspace));
+      active_workspace_plans_.push_back(&plan);
+      return Status::OK();
+    }
+    LOGS(Logger(), VERBOSE) << "No declared workspace fits node " << GetNodeIndex()
+                            << " slot=" << slot_id << " bytes=" << requested_bytes;
+    return Status::OK();
+  }
+#endif
 
   bool GetUseDeterministicCompute() const override {
     return session_state_.GetUseDeterministicCompute();
@@ -163,6 +206,10 @@ class OpKernelContextInternal : public OpKernelContext {
 #endif
 
   const SessionState& session_state_;
+#if !defined(ORT_MINIMAL_BUILD)
+  IExecutionFrame& execution_frame_;
+  InlinedVector<const SequentialExecutionPlan::WorkspaceAllocationPlan*> active_workspace_plans_;
+#endif
   const bool& terminate_flag_;
   profiling::Profiler* run_profiler_;
   std::vector<const OrtValue*> implicit_input_values_;

@@ -6,10 +6,12 @@
 #include <cstdint>
 #include <limits>
 #include <vector>
+#include "core/common/parse_string.h"
 #include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_type_conversion.h"
 #include "core/platform/env_var_utils.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "contrib_ops/cuda/bert/group_query_attention_impl.h"
 #include "contrib_ops/cuda/bert/group_query_attention.h"
 #include "contrib_ops/cuda/bert/group_query_attention_workspace.h"
@@ -138,6 +140,15 @@ GroupQueryAttention<T, U>::GroupQueryAttention(const OpKernelInfo& info)
   k_quant_type_ = StringToKVQuantizationType(info.GetAttrOrDefault<std::string>("k_quant_type", "NONE"));
   v_quant_type_ = StringToKVQuantizationType(info.GetAttrOrDefault<std::string>("v_quant_type", "NONE"));
   kv_cache_bit_width_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("kv_cache_bit_width", 0));
+  const auto envelope = info.GetConfigOptions().GetConfigEntry(
+      kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLength);
+  if (envelope.has_value()) {
+    ORT_ENFORCE(TryParseStringWithClassicLocale(*envelope, max_total_sequence_length_) &&
+                    max_total_sequence_length_ >= 0 &&
+                    max_total_sequence_length_ <= std::numeric_limits<int32_t>::max(),
+                kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLength,
+                " must be a decimal integer in [0, INT32_MAX], but got: '", *envelope, "'");
+  }
 
   constexpr bool kIsFp16OrBf16 = std::is_same_v<T, MLFloat16> || std::is_same_v<T, BFloat16>;
   // XQA defaults on for fp16/bf16; ORT_ENABLE_XQA=0 disables it explicitly.
@@ -217,6 +228,7 @@ Status GroupQueryAttention<T, U>::DeclareWorkspaceRequirements(
     gsl::span<const WorkspaceInputShape> input_shapes,
     InlinedVector<WorkspaceRequirement>& requirements) const {
   requirements.clear();
+  declared_workspace_bytes_.store(0, std::memory_order_relaxed);
   GQAWorkspaceEstimateConfig config;
   config.qkv_element_size = sizeof(T);
   config.cache_element_size = sizeof(U);
@@ -225,6 +237,7 @@ Status GroupQueryAttention<T, U>::DeclareWorkspaceRequirements(
   config.causal = is_unidirectional_ ? 1 : 0;
   config.local_window_size = local_window_size_;
   config.sliding_window_cache = sliding_window_cache_;
+  config.max_total_sequence_length = max_total_sequence_length_;
   config.do_rotary = do_rotary_;
   config.smooth_softmax = use_smooth_softmax_;
   config.softcap = softcap_;
@@ -251,6 +264,9 @@ Status GroupQueryAttention<T, U>::DeclareWorkspaceRequirements(
       config, input_shapes, GetDeviceProp(), *kernel_options_);
   if (estimate.has_value()) {
     SetGroupQueryAttentionWorkspaceRequirements(*estimate, requirements);
+    if (!requirements.empty()) {
+      declared_workspace_bytes_.store(requirements.front().size_bytes, std::memory_order_relaxed);
+    }
   }
   return Status::OK();
 }
@@ -274,6 +290,8 @@ Status GroupQueryAttention<T, U>::DeclareWorkspaceRequirements(
 // 11. head_sink        (Tensor) - Attention sink for GPT-OSS
 template <typename T, typename U>
 Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) const {
+  last_compute_planned_regions_.store(0, std::memory_order_relaxed);
+  last_compute_dynamic_regions_.store(0, std::memory_order_relaxed);
   auto ort_stream = GetOrtStream(context);
 
   const Tensor* query = context->Input<Tensor>(0);
@@ -476,12 +494,46 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   IAllocatorUniquePtr<void> rotary_buffer;
   IAllocatorUniquePtr<void> fmha_buffer;
   IAllocatorUniquePtr<void> unpacked_qkv_buffer;
-  IAllocatorUniquePtr<int> seq_lens_buffer;
+  IAllocatorUniquePtr<void> seq_lens_buffer;
 
   // Flash Attention buffers
   IAllocatorUniquePtr<void> softmax_lse_buffer;
   IAllocatorUniquePtr<void> softmax_lse_accum_buffer;
   IAllocatorUniquePtr<void> out_accum_buffer;
+
+  const size_t declared_bytes = declared_workspace_bytes_.load(std::memory_order_relaxed);
+  void* planned_workspace = nullptr;
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+  if (declared_bytes != 0) {
+    // Scalar values are not part of the pattern key. Trace even an out-of-envelope first Run.
+    ORT_RETURN_IF_ERROR(context->GetPreallocatedWorkspace(0, declared_bytes, &planned_workspace));
+    if (!parameters.is_windowed_kv_cache &&
+        (parameters.total_sequence_length <= 0 ||
+         parameters.total_sequence_length > max_total_sequence_length_)) {
+      planned_workspace = nullptr;
+    }
+  }
+#endif
+  size_t workspace_offset = 0;
+  size_t planned_regions = 0;
+  size_t dynamic_regions = 0;
+  auto allocate_workspace = [&](size_t bytes, IAllocatorUniquePtr<void>& fallback) -> void* {
+    if (bytes == 0) {
+      return nullptr;
+    }
+    if (planned_workspace != nullptr) {
+      const size_t offset = (SafeInt<size_t>(workspace_offset) + kGQAWorkspaceAlignment - 1) /
+                            kGQAWorkspaceAlignment * kGQAWorkspaceAlignment;
+      if (offset <= declared_bytes && bytes <= declared_bytes - offset) {
+        workspace_offset = SafeInt<size_t>(offset) + bytes;
+        ++planned_regions;
+        return static_cast<uint8_t*>(planned_workspace) + offset;
+      }
+    }
+    ++dynamic_regions;
+    fallback = GetScratchBuffer<void>(bytes, GetComputeStream(context));
+    return fallback.get();
+  };
 
   data.position_ids = (position_ids != nullptr) ? position_ids->Data<int64_t>() : nullptr;
 
@@ -581,19 +633,19 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
                     "GQA cache preparation sizing failed: ", cache_preparation.status.message);
   const auto& cache_sizes = cache_preparation.sizes;
 
-  IAllocatorUniquePtr<CudaU> separate_past_buffer;
+  IAllocatorUniquePtr<void> separate_past_buffer;
   if (past_key_shared != past_value_shared) {
     // Nonshared preprocessing overwrites present KV, so preserve the aliased past cache first.
     const size_t past_bytes = cache_sizes.separate_past_bytes;
-    separate_past_buffer = GetScratchBuffer<CudaU>(past_bytes / sizeof(CudaU), GetComputeStream(context));
+    auto* separate_past = static_cast<CudaU*>(allocate_workspace(past_bytes, separate_past_buffer));
     if (past_bytes != 0) {
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(separate_past_buffer.get(), shared_past->DataRaw(), past_bytes,
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(separate_past, shared_past->DataRaw(), past_bytes,
                                            cudaMemcpyDeviceToDevice, Stream(context)));
     }
     if (past_key_shared) {
-      data.past_key = separate_past_buffer.get();
+      data.past_key = separate_past;
     } else {
-      data.past_value = separate_past_buffer.get();
+      data.past_value = separate_past;
     }
   }
 
@@ -623,21 +675,21 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     windowed_cache_capacity = parameters.seqlen_present_kv_cache;
     staged_cache_capacity = static_cast<int>(cache_sizes.effective_kv_cache_capacity);
     const size_t staged_bytes = cache_sizes.staged_cache_bytes;
-    staged_key_buffer = GetScratchBuffer<void>(staged_bytes, GetComputeStream(context));
-    staged_value_buffer = GetScratchBuffer<void>(staged_bytes, GetComputeStream(context));
+    void* staged_key = allocate_workspace(staged_bytes, staged_key_buffer);
+    void* staged_value = allocate_workspace(staged_bytes, staged_value_buffer);
 
     ORT_RETURN_IF_ERROR(LaunchCopyKvCacheWindow(
-        staged_key_buffer.get(), staged_value_buffer.get(),
+        staged_key, staged_value,
         windowed_present_key, windowed_present_value,
         parameters.batch_size, parameters.kv_num_heads,
         /*src_capacity=*/windowed_cache_capacity, /*dst_capacity=*/staged_cache_capacity,
         /*rows=*/windowed_cache_capacity, /*src_offsets=*/nullptr,
         static_cast<int>(dense_head_size * sizeof(U)), Stream(context)));
 
-    data.past_key = reinterpret_cast<const CudaU*>(staged_key_buffer.get());
-    data.past_value = reinterpret_cast<const CudaU*>(staged_value_buffer.get());
-    data.present_key = reinterpret_cast<CudaU*>(staged_key_buffer.get());
-    data.present_value = reinterpret_cast<CudaU*>(staged_value_buffer.get());
+    data.past_key = reinterpret_cast<const CudaU*>(staged_key);
+    data.past_value = reinterpret_cast<const CudaU*>(staged_value);
+    data.present_key = reinterpret_cast<CudaU*>(staged_key);
+    data.present_value = reinterpret_cast<CudaU*>(staged_value);
 
     parameters.kv_cache_capacity = staged_cache_capacity;
     parameters.seqlen_past_kv_cache = staged_cache_capacity;
@@ -757,8 +809,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
                         "GQA XQA workspace sizing failed: ", xqa.status.message);
       const GQAXqaWorkspaceRecipe& recipe = xqa.recipe;
 
-      xqa_scratch_buffer = this->GetScratchBuffer<void>(recipe.total_backend_bytes, GetComputeStream(context));
-      data.xqa_buffer = xqa_scratch_buffer.get();
+      data.xqa_buffer = allocate_workspace(recipe.total_backend_bytes, xqa_scratch_buffer);
       data.xqa_buffer_bytes = recipe.internal_scratch_bytes;
 
       char* xqa_base = reinterpret_cast<char*>(data.xqa_buffer);
@@ -850,23 +901,23 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     const size_t softmax_lse_accum_bytes = recipe.softmax_lse_accumulator_bytes;
     const size_t out_accum_bytes = recipe.output_accumulator_bytes;
 
-    softmax_lse_buffer = GetScratchBuffer<void>(softmax_lse_bytes, GetComputeStream(context));
-    softmax_lse_accum_buffer = GetScratchBuffer<void>(softmax_lse_accum_bytes, GetComputeStream(context));
-    out_accum_buffer = GetScratchBuffer<void>(out_accum_bytes, GetComputeStream(context));
+    void* softmax_lse = allocate_workspace(softmax_lse_bytes, softmax_lse_buffer);
+    void* softmax_lse_accum = allocate_workspace(softmax_lse_accum_bytes, softmax_lse_accum_buffer);
+    void* out_accum = allocate_workspace(out_accum_bytes, out_accum_buffer);
 
     auto cuda_stream = Stream(context);
     if (softmax_lse_accum_bytes > 0) {
       // Initialize to 0 is fine because Flash kernel will write -inf to it if needed.
       // However, the standard Flash kernel often doesn't zero it globally.
-      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(softmax_lse_accum_buffer.get(), 0, softmax_lse_accum_bytes, cuda_stream));
+      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(softmax_lse_accum, 0, softmax_lse_accum_bytes, cuda_stream));
     }
     if (out_accum_bytes > 0) {
-      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(out_accum_buffer.get(), 0, out_accum_bytes, cuda_stream));
+      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(out_accum, 0, out_accum_bytes, cuda_stream));
     }
 
-    data.softmax_lse = reinterpret_cast<CudaT*>(softmax_lse_buffer.get());
-    data.softmax_lse_accum = reinterpret_cast<CudaT*>(softmax_lse_accum_buffer.get());
-    data.out_accum = reinterpret_cast<CudaT*>(out_accum_buffer.get());
+    data.softmax_lse = reinterpret_cast<CudaT*>(softmax_lse);
+    data.softmax_lse_accum = reinterpret_cast<CudaT*>(softmax_lse_accum);
+    data.out_accum = reinterpret_cast<CudaT*>(out_accum);
   }
 #endif
 
@@ -882,9 +933,9 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
         workspace_problem, data.use_flash_attention_fast_decode, seq_lens_vectors, seq_lens_bytes);
     ORT_RETURN_IF_NOT(seq_lens_status.IsOK(),
                       "GQA sequence-length sizing failed: ", seq_lens_status.message);
-    seq_lens_buffer = GetScratchBuffer<int>(seq_lens_bytes / sizeof(int), GetComputeStream(context));
-    data.past_seq_lens = seq_lens_buffer.get();
-    data.total_seq_lens = seq_lens_buffer.get() + parameters.batch_size;
+    auto* sequence_lengths = static_cast<int*>(allocate_workspace(seq_lens_bytes, seq_lens_buffer));
+    data.past_seq_lens = sequence_lengths;
+    data.total_seq_lens = sequence_lengths + parameters.batch_size;
     data.padded_seq_lens = data.total_seq_lens + parameters.batch_size;
     if (parameters.is_windowed_kv_cache) {
       data.cache_past_seq_lens = data.padded_seq_lens + parameters.batch_size;
@@ -917,8 +968,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   // CUDA graph replays). K and V shift in the same kernel, so each needs its own half.
   IAllocatorUniquePtr<void> compaction_buffer;
   if (parameters.is_windowed_kv_cache && staged_cache_capacity == 0) {
-    compaction_buffer = GetScratchBuffer<void>(cache_sizes.compaction_bytes, GetComputeStream(context));
-    data.compaction_scratch = compaction_buffer.get();
+    data.compaction_scratch = allocate_workspace(cache_sizes.compaction_bytes, compaction_buffer);
   }
 
 #if USE_MEMORY_EFFICIENT_ATTENTION
@@ -949,13 +999,9 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
       fmha_buffer_bytes = mea.recipe.output_accumulator_bytes;
     }
 
-    k_buffer = GetScratchBuffer<void>(kv_buffer_bytes, GetComputeStream(context));
-    v_buffer = GetScratchBuffer<void>(kv_buffer_bytes, GetComputeStream(context));
-    fmha_buffer = GetScratchBuffer<void>(fmha_buffer_bytes, GetComputeStream(context));
-
-    data.k = reinterpret_cast<CudaT*>(k_buffer.get());
-    data.v = reinterpret_cast<CudaT*>(v_buffer.get());
-    data.fmha_buffer = reinterpret_cast<CudaT*>(fmha_buffer.get());
+    data.k = reinterpret_cast<CudaT*>(allocate_workspace(kv_buffer_bytes, k_buffer));
+    data.v = reinterpret_cast<CudaT*>(allocate_workspace(kv_buffer_bytes, v_buffer));
+    data.fmha_buffer = reinterpret_cast<CudaT*>(allocate_workspace(fmha_buffer_bytes, fmha_buffer));
   }
 #endif
 
@@ -974,8 +1020,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
                     "GQA QKV preparation sizing failed: ", qkv_status.message);
 
   if (qkv_preprocess_bytes > 0) {
-    unpacked_qkv_buffer = GetScratchBuffer<void>(qkv_preprocess_bytes, GetComputeStream(context));
-    data.qkv_buffer = reinterpret_cast<CudaT*>(unpacked_qkv_buffer.get());
+    data.qkv_buffer = reinterpret_cast<CudaT*>(allocate_workspace(qkv_preprocess_bytes, unpacked_qkv_buffer));
   }
 
   // ---------------------------------------------------------------------
@@ -1001,12 +1046,14 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
                       "GQA unfused attention workspace sizing failed: ", unfused.status.message);
     const GQAUnfusedWorkspaceRecipe& recipe = unfused.recipe;
 
-    unfused_scratch = GetScratchBuffer<void>(recipe.total_backend_bytes, GetComputeStream(context));
-    auto* base = reinterpret_cast<uint8_t*>(unfused_scratch.get());
+    auto* base = static_cast<uint8_t*>(allocate_workspace(recipe.total_backend_bytes, unfused_scratch));
     data.unfused_q_bnsh = reinterpret_cast<CudaT*>(base + recipe.q_bnsh_offset_bytes);
     data.unfused_y_bnsh = reinterpret_cast<CudaT*>(base + recipe.y_bnsh_offset_bytes);
     data.unfused_workspace = reinterpret_cast<void*>(base + recipe.qk_offset_bytes);
   }
+
+  last_compute_planned_regions_.store(planned_regions, std::memory_order_relaxed);
+  last_compute_dynamic_regions_.store(dynamic_regions, std::memory_order_relaxed);
 
   if (kernel_options_->AllowDebugInfo()) {
     AttentionKernelDebugInfo debug_info;

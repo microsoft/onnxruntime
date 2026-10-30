@@ -503,6 +503,15 @@ static const char* const kOrtSessionOptionsCudaFpAIntBGemvWaveAware = "ep.cuda.f
 static const char* const kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLength =
     "ep.cuda.gqa_workspace_max_total_sequence_length";
 
+/// Opt in with "1" to include supported kernel workspace in run-scoped activation memory patterns.
+/// The default is "0". Sequential execution is required. The first compatible full Run traces
+/// workspace while using dynamic scratch; subsequent Runs reuse the current frame's backing buffer.
+/// Only one declared slot per opted-in kernel is supported. Missing patterns and requests exceeding
+/// the declared usable size retain dynamic scratch. Minimal builds and partial-training execution
+/// do not cache combined activation/workspace patterns.
+static const char* const kOrtSessionOptionsEnableStaticWorkspacePreallocation =
+    "session.enable_static_workspace_preallocation";
+
 /// Reader-only, hardware-neutral kernel dispatch intent shared across operators and EPs.
 /// Valid values are "auto", "latency", "memory", and "safe"; matching is case-sensitive.
 /// Unset or empty values map to "auto". Other values cause INVALID_ARGUMENT during

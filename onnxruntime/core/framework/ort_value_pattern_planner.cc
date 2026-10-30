@@ -52,6 +52,20 @@ common::Status OrtValuePatternPlanner::TraceFree(int ort_value_index) {
   return common::Status::OK();
 }
 
+common::Status OrtValuePatternPlanner::TraceAllocation(int pattern_id, const OrtDevice& location, size_t size) {
+  const auto it = planner_map_.find(location);
+  ORT_RETURN_IF(it == planner_map_.end(), "No memory-pattern planner for workspace device ", location.ToString());
+  it->second.TraceAllocation(pattern_id, size);
+  return common::Status::OK();
+}
+
+common::Status OrtValuePatternPlanner::TraceFree(int pattern_id, const OrtDevice& location) {
+  const auto it = planner_map_.find(location);
+  ORT_RETURN_IF(it == planner_map_.end(), "No memory-pattern planner for workspace device ", location.ToString());
+  it->second.TraceFree(pattern_id);
+  return common::Status::OK();
+}
+
 common::Status OrtValuePatternPlanner::GeneratePatterns(MemoryPatternGroup& out) {
   out.locations.reserve(planner_map_.size());
   out.patterns.reserve(planner_map_.size());

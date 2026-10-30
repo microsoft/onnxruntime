@@ -341,7 +341,79 @@ std::optional<size_t> EstimateWorkspaceFromGraphProtoShape(
 }
 #endif
 
+#if !defined(ORT_MINIMAL_BUILD) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
+void CheckPlannedMatMulNBitsWorkspace(bool use_fpa, bool force_chunked) {
+  ScopedEnvironmentVariables env_vars(
+      EnvVarMap{{"ORT_MATMULNBITS_FORCE_CHUNKED", std::string(force_chunked ? "1" : "0")},
+                {"ORT_MATMULNBITS_CHUNK_SIZE", std::string("64")}});
+  SessionOptions options;
+  options.graph_optimization_level = TransformerLevel::Default;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsEnableStaticWorkspacePreallocation, "1"));
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsCudaFpAIntBGemm, use_fpa ? "1" : "0"));
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsCudaFpAIntBProfileM, "256"));
+  InferenceSessionWrapper session(options, GetEnvironment());
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(
+      std::make_shared<CUDAExecutionProvider>(CUDAExecutionProviderInfo{})));
+  const auto model = BuildMatMulNBitsModelBytes(nullptr, 0, kE2eM, kE2eN, kE2eK, 0, false);
+  ASSERT_STATUS_OK(session.Load(model.data(), static_cast<int>(model.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+  const auto& state = session.GetSessionState();
+  ASSERT_TRUE(state.GetEnableMemoryPattern());
+  const Node* node = FindNodeByOpType(session.GetGraph(), "MatMulNBits");
+  ASSERT_NE(node, nullptr);
+  ASSERT_EQ(node->GetExecutionProviderType(), kCudaExecutionProvider);
+  const auto* kernel = state.GetKernel(node->Index());
+  ASSERT_NE(kernel, nullptr);
+  const auto& plans = state.GetExecutionPlan()->workspace_allocation_plan.at(node->Index());
+  ASSERT_EQ(plans.size(), 1u);
+  const auto& plan = plans.front();
+  ASSERT_GT(plan.size_bytes, 0u);
+  if (!use_fpa) {
+    EXPECT_EQ(plan.size_bytes, (force_chunked ? 64 : kE2eN) * kE2eK * sizeof(MLFloat16));
+  }
+
+  std::vector<MLFloat16> values(static_cast<size_t>(kE2eM * kE2eK), MLFloat16(1.0f));
+  OrtValue input;
+  CreateMLValue<MLFloat16>(std::array<int64_t, 2>{kE2eM, kE2eK}, values.data(), OrtMemoryInfo(), &input);
+  NameMLValMap feeds{{"A", input}};
+  const std::vector<std::string> output_names{"Y"};
+  for (size_t run = 0; run < 3; ++run) {
+    SCOPED_TRACE(MakeString("run=", run, ", fpA=", use_fpa, ", chunked=", force_chunked));
+    std::vector<OrtValue> outputs;
+    ASSERT_STATUS_OK(session.Run(feeds, output_names, &outputs));
+    EXPECT_EQ(GetMatMulNBitsLastComputeUsedPreallocatedWorkspace(kernel), run != 0);
+    EXPECT_EQ(GetMatMulNBitsLastComputeWorkspaceBytes(kernel), plan.size_bytes);
+    ASSERT_EQ(outputs.size(), 1u);
+    const auto& output = outputs[0].Get<Tensor>();
+    ASSERT_EQ(output.Shape(), TensorShape({kE2eM, kE2eN}));
+    for (const auto value : output.DataAsSpan<MLFloat16>()) {
+      EXPECT_FLOAT_EQ(value.ToFloat(), -8.0f * static_cast<float>(kE2eK));
+    }
+  }
+}
+#endif
+
 }  // namespace
+
+#if !defined(ORT_MINIMAL_BUILD) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
+TEST(MatMulNBitsWorkspace, LegacyWorkspaceUsesPlannedBlock) {
+  if (CudaDeviceComputeCapabilityOrNegative() < 0) {
+    GTEST_SKIP() << "A CUDA device is required.";
+  }
+  CheckPlannedMatMulNBitsWorkspace(false, false);
+  CheckPlannedMatMulNBitsWorkspace(false, true);
+}
+
+#if USE_FPA_INTB_GEMM
+TEST(MatMulNBitsWorkspace, CutlassWorkspaceUsesPlannedBlock) {
+  if (CudaDeviceComputeCapabilityOrNegative() < kMinFpAIntBSm) {
+    GTEST_SKIP() << "fpA/intB requires a CUDA device with SM >= " << kMinFpAIntBSm;
+  }
+  CheckPlannedMatMulNBitsWorkspace(true, false);
+}
+#endif
+#endif
 
 #if USE_FPA_INTB_GEMM
 // Charge lazy prefill scratch without adding decode's constructor-only rotating buffers.

@@ -3,11 +3,20 @@
 
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cuda/cuda_external_data_loader.h"
+#if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
+#include "contrib_ops/cuda/bert/group_query_attention.h"
+#endif
 #include "test/providers/cuda/test_cases/cuda_test_bridge.h"
 
 namespace onnxruntime::test {
 
 #if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
+CudaWorkspaceUsageForTest GetGroupQueryAttentionWorkspaceUsageForTest(const void* kernel) {
+  const auto* gqa = static_cast<const contrib::cuda::GroupQueryAttention<MLFloat16, MLFloat16>*>(
+      static_cast<const OpKernel*>(kernel));
+  return {gqa->LastComputePlannedWorkspaceRegions(), gqa->LastComputeDynamicWorkspaceRegions()};
+}
+
 std::optional<contrib::cuda::GQAWorkspaceEstimateConfig> GetGroupQueryAttentionWorkspaceEstimateConfigForTest(
     const void* node, bool head_sink_is_constant_initializer,
     int64_t max_total_sequence_length,

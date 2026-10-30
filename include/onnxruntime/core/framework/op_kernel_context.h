@@ -21,6 +21,17 @@ class OpKernelContext {
 
   virtual ~OpKernelContext() = default;
 
+  // The returned pointer is non-owning and valid only during this kernel invocation. A null
+  // pointer requires dynamic scratch, including while the first compatible Run traces the slot.
+#if !defined(ORT_MINIMAL_BUILD)
+  virtual
+#endif
+      Status
+      GetPreallocatedWorkspace(int /*slot_id*/, size_t /*requested_bytes*/, void** workspace) {
+    *workspace = nullptr;
+    return Status::OK();
+  }
+
   /**
   Return the number of inputs for a variadic argument.
   @param arg_num The operator argument number.
