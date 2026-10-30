@@ -3,6 +3,7 @@
 
 #if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
 
+#include <algorithm>
 #include <cstdint>
 #include <string_view>
 #include <utility>
@@ -10,6 +11,7 @@
 #include "gtest/gtest.h"
 
 #include "core/common/inlined_containers.h"
+#include "core/common/logging/logging.h"
 #include "core/common/span_utils.h"
 #include "core/providers/webgpu/webgpu_context.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -141,7 +143,161 @@ void RunMatMulNBitsTileTests(int64_t bits) {
   }
 }
 
+template <typename T = MLFloat16>
+void RunSmallMSimtTest(const std::vector<int64_t>& a_shape, int64_t N, bool expect_simt,
+                       bool has_zero_points = false, bool has_bias = false, int64_t block_size = 32, int64_t bits = 4,
+                       bool random_values = false) {
+  const int64_t K = a_shape.back();
+  const int64_t rows = TensorShape(a_shape).Size() / K;
+  SCOPED_TRACE(testing::Message() << "A=" << TensorShape(a_shape) << ", N=" << N
+                                  << ", block_size=" << block_size << ", bits=" << bits
+                                  << ", type=" << DataTypeImpl::GetType<T>());
+  auto provider = DefaultWebGpuExecutionProvider();
+  if (!provider) {
+    GTEST_SKIP() << "WebGPU EP is unavailable";
+  }
+  const auto& context = webgpu::WebGpuContextFactory::GetContext(provider->GetDeviceId());
+  if (!context.DeviceHasFeature(wgpu::FeatureName::ShaderF16)) {
+    GTEST_SKIP() << "WebGPU adapter does not support shader-f16";
+  }
+
+  const int64_t blocks = (K + block_size - 1) / block_size;
+  const int64_t values_per_byte = 8 / bits;
+  const int64_t blob_size = block_size / values_per_byte;
+  const int64_t zero_bytes = (blocks + values_per_byte - 1) / values_per_byte;
+  const int default_zero = 1 << (bits - 1);
+  InlinedVector<T> a(rows * K);
+  InlinedVector<uint8_t> b(N * blocks * blob_size);
+  InlinedVector<T> scales(N * blocks);
+  InlinedVector<uint8_t> zeros(N * zero_bytes, 0);
+  InlinedVector<T> bias(N);
+  for (int64_t i = 0; i < rows * K; ++i) {
+    a[i] = T(static_cast<float>(i % 17 - 8) / 16.0f);
+  }
+  for (size_t i = 0; i < b.size(); ++i) {
+    b[i] = static_cast<uint8_t>((i * 29 + 7) % 256);
+  }
+  for (int64_t col = 0; col < N; ++col) {
+    bias[col] = T(static_cast<float>(col % 7 - 3) / 16.0f);
+    for (int64_t block = 0; block < blocks; ++block) {
+      scales[col * blocks + block] = T(static_cast<float>(1 + block % 3) / (bits == 8 ? 2048.0f : 128.0f));
+      const int zero = default_zero + static_cast<int>((col + block) % 3) - 1;
+      zeros[col * zero_bytes + block / values_per_byte] |=
+          static_cast<uint8_t>(zero << (bits * (block % values_per_byte)));
+    }
+  }
+  if (random_values) {
+    RandomValueGenerator random{2814};
+    const auto values = random.Gaussian<float>(AsSpan({rows, K}), 0.0f, 0.25f);
+    const auto scale_values = random.Uniform<float>(AsSpan({N, blocks}), 0.001f, 0.017f);
+    std::transform(values.begin(), values.end(), a.begin(), [](float v) { return T(v); });
+    std::transform(scale_values.begin(), scale_values.end(), scales.begin(), [](float v) { return T(v); });
+  }
+  // Match weight dequantization precision, then independently decode and accumulate in FP64.
+  InlinedVector<T> expected(rows * N);
+  for (int64_t row = 0; row < rows; ++row) {
+    // The activation pattern repeats every 17 rows, including in the large-batch case.
+    if (!random_values && row >= 17) {
+      std::copy_n(expected.begin() + (row % 17) * N, N, expected.begin() + row * N);
+      continue;
+    }
+    for (int64_t col = 0; col < N; ++col) {
+      double sum = has_bias ? static_cast<float>(bias[col]) : 0.0;
+      for (int64_t inner = 0; inner < K; ++inner) {
+        const auto packed = b[(col * blocks + inner / block_size) * blob_size +
+                              (inner % block_size) / values_per_byte];
+        const int weight = (packed >> (bits * (inner % values_per_byte))) & ((1 << bits) - 1);
+        const int zero = has_zero_points
+                             ? (zeros[col * zero_bytes + (inner / block_size) / values_per_byte] >>
+                                (bits * ((inner / block_size) % values_per_byte))) &
+                                   ((1 << bits) - 1)
+                             : default_zero;
+        const T dequantized(static_cast<float>(weight - zero) *
+                            static_cast<float>(scales[col * blocks + inner / block_size]));
+        sum += static_cast<double>(static_cast<float>(a[row * K + inner])) * static_cast<float>(dequantized);
+      }
+      expected[row * N + col] = T(static_cast<float>(sum));
+    }
+  }
+
+  OpTester test("MatMulNBits", 1, kMSDomain);
+  test.AddAttribute<int64_t>("K", K);
+  test.AddAttribute<int64_t>("N", N);
+  test.AddAttribute<int64_t>("bits", bits);
+  test.AddAttribute<int64_t>("block_size", block_size);
+  test.AddAttribute<int64_t>("accuracy_level", 4);
+  test.AddInput<T>("A", a_shape, a.data(), a.size());
+  test.AddInput<uint8_t>("B", {N, blocks, blob_size}, b.data(), b.size(), true);
+  test.AddInput<T>("scales", {N, blocks}, scales.data(), scales.size(), true);
+  if (has_zero_points) {
+    test.AddInput<uint8_t>("zero_points", {N, zero_bytes}, zeros.data(), zeros.size(), true);
+  } else {
+    test.AddOptionalInputEdge<uint8_t>();
+  }
+  test.AddOptionalInputEdge<int32_t>();
+  if (has_bias) {
+    test.AddInput<T>("bias", {N}, bias.data(), bias.size(), true);
+  }
+  auto output_shape = a_shape;
+  output_shape.back() = N;
+  test.AddOutput<T>("Y", output_shape, expected.data(), expected.size());
+  test.SetOutputTolerance(expect_simt ? (random_values ? 0.002f : 0.0f) : 0.1f, 0.0f);
+
+  const auto severity = logging::LoggingManager::DefaultLogger().GetSeverity();
+  logging::LoggingManager::SetDefaultLoggerSeverity(logging::Severity::kINFO);
+  auto restore_severity = gsl::finally([severity] {
+    logging::LoggingManager::SetDefaultLoggerSeverity(severity);
+  });
+  SessionOptions options;
+  options.session_log_severity_level = static_cast<int>(logging::Severity::kINFO);
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  testing::internal::CaptureStderr();
+  test.Config(options).ConfigEp(std::move(provider)).RunWithConfig();
+  const auto log = testing::internal::GetCapturedStderr();
+  EXPECT_NE(log.find("Starting program \""), std::string::npos) << "No shader dispatch was observed.";
+  EXPECT_EQ(log.find("Starting program \"MatMulNBitsSmallMSimt") != std::string::npos, expect_simt) << log;
+}
+
 }  // namespace
+
+TEST(WebGpuMatMulNBitsTest, SmallMSimtRowsAndOptionalInputs) {
+  for (int64_t M = 1; M <= 9; ++M) {
+    RunSmallMSimtTest({M, 4096}, 4096, M >= 2 && M <= 8, M % 2 == 0, M % 3 == 0);
+  }
+}
+
+TEST(WebGpuMatMulNBitsTest, SmallMSimtThresholdsAndTails) {
+  RunSmallMSimtTest({4, 4095}, 4096, false);
+  RunSmallMSimtTest({4, 4096}, 4095, false);
+  RunSmallMSimtTest({3, 4097}, 4101, true, true, true);
+  RunSmallMSimtTest({5, 4128}, 4097, true, true, true);
+  RunSmallMSimtTest({4, 4096}, 4096, false, true, true, 64);
+}
+
+TEST(WebGpuMatMulNBitsTest, SmallMSimtNonDyadicScales) {
+  RunSmallMSimtTest({6, 4128}, 4101, true, true, true, 32, 4, true);
+}
+
+TEST(WebGpuMatMulNBitsTest, SmallMSimtBatchesAreNotMatrixRows) {
+  RunSmallMSimtTest({3, 4, 4096}, 4096, true, true, true);
+  RunSmallMSimtTest({2, 8, 4096}, 4096, true);
+  RunSmallMSimtTest({2, 2, 3, 4096}, 4096, true, true);
+  RunSmallMSimtTest({4, 1, 4096}, 4096, false);
+  RunSmallMSimtTest({2, 9, 4096}, 4096, false);
+  RunSmallMSimtTest({129, 2, 4096}, 4096, true);
+}
+
+TEST(WebGpuMatMulNBitsTest, SmallMSimtNarrowProjectionFallback) {
+  for (int64_t M : {2, 4, 8}) {
+    RunSmallMSimtTest({M, 5120}, 1024, false, true, true);
+  }
+}
+
+TEST(WebGpuMatMulNBitsTest, SmallMSimtOtherQuantizationFallbacks) {
+  RunSmallMSimtTest<float>({4, 4096}, 4096, false, true, true);
+  RunSmallMSimtTest({4, 4096}, 4096, false, true, true, 32, 2);
+  RunSmallMSimtTest({4, 4096}, 4096, false, true, true, 32, 8);
+}
 
 TEST(WebGpuMatMulNBitsTest, Float16_4Bits_SubgroupMatrixTiles) {
   RunMatMulNBitsTileTests(4);
