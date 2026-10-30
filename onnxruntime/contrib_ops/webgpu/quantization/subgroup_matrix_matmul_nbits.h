@@ -20,16 +20,20 @@ using namespace onnxruntime::webgpu;
 
 class SubgroupMatrixMatMulNBitsProgram final : public Program<SubgroupMatrixMatMulNBitsProgram> {
  public:
-  SubgroupMatrixMatMulNBitsProgram(uint32_t nbits, SubgroupMatrixConfig config, bool has_zero_points, bool has_bias, bool has_weight_idx, bool has_weight_idx_indirect, uint32_t tile_m, uint32_t tile_n, bool has_tail_buffer)
-      : Program{"SubgroupMatrixMatMulNBits"},
+  SubgroupMatrixMatMulNBitsProgram(uint32_t nbits, SubgroupMatrixConfig config, uint32_t tile_m,
+                                   uint32_t tile_n, uint32_t tile_k,
+                                   bool has_zero_points, bool has_bias,
+                                   bool has_weight_idx, bool has_weight_idx_indirect, bool has_tail_buffer)
+      : Program{config.subgroupSize == 64 ? "SubgroupMatrixMatMulNBitsWave64" : "SubgroupMatrixMatMulNBits"},
         nbits_(nbits),
         config_(config),
+        tile_m_(tile_m),
+        tile_n_(tile_n),
+        tile_k_(tile_k),
         has_zero_points_(has_zero_points),
         has_bias_(has_bias),
         has_weight_idx_{has_weight_idx},
         has_weight_idx_indirect_{has_weight_idx_indirect},
-        tile_m_(tile_m),
-        tile_n_(tile_n),
         has_tail_buffer_{has_tail_buffer} {};
   Status GenerateShaderCode(ShaderHelper& sh) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
@@ -44,15 +48,22 @@ class SubgroupMatrixMatMulNBitsProgram final : public Program<SubgroupMatrixMatM
  private:
   uint32_t nbits_;
   SubgroupMatrixConfig config_;
+  uint32_t tile_m_;
+  uint32_t tile_n_;
+  uint32_t tile_k_;
   bool has_zero_points_;
   bool has_bias_;
   bool has_weight_idx_;
   bool has_weight_idx_indirect_;
-  uint32_t tile_m_;
-  uint32_t tile_n_;
   bool has_tail_buffer_;
 };
 
+// Prepack one invocation's input. padded_M must cover every consumer's row tile.
+Status PrepackMatMulNBitsInput(const Tensor* a, uint32_t M, uint32_t K, uint32_t padded_M,
+                               const SubgroupMatrixConfig& config,
+                               onnxruntime::webgpu::ComputeContext& context, Tensor& packed);
+
+// prepacked_a must use the same input and subgroup layout, with sufficient row padding.
 Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales,
                                       const Tensor* zero_points, const Tensor* bias,
                                       uint32_t M,
@@ -64,7 +75,8 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
                                       onnxruntime::webgpu::ComputeContext& context,
                                       Tensor* y,
                                       const uint32_t weight_index,
-                                      const Tensor* weight_index_indirect = nullptr);
+                                      const Tensor* weight_index_indirect = nullptr,
+                                      const Tensor* prepacked_a = nullptr);
 
 bool CanApplySubgroupMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& context,
                                        uint64_t accuracy_level,

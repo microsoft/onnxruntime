@@ -34,6 +34,29 @@ python build_wheel.py --binary_dir ./build/Release --version 0.1.0.devYYYYMMDD -
 
 The script combines the pre-built plugin EP binaries with the package source to produce a platform-specific wheel.
 
+The following files are required under `--binary_dir` for each platform:
+
+| Platform | Required files |
+|---|---|
+| Windows | `onnxruntime_providers_webgpu.dll`, `dxcompiler.dll` |
+| Linux | `libonnxruntime_providers_webgpu.so` |
+| macOS | `libonnxruntime_providers_webgpu.dylib` |
+
+### Windows Agility SDK inputs
+
+Local non-Agility builds may omit the SDK DLLs. For Agility-enabled builds, place both files under `--binary_dir`:
+
+- `D3D12/D3D12Core.dll`
+- `D3D12/d3d12SDKLayers.dll`
+
+Use `--use-dawn-agility-sdk` to include and require both files:
+
+```bash
+python build_wheel.py --binary_dir ./build/Release --version 0.1.0.devYYYYMMDD --output_dir ./dist --use-dawn-agility-sdk
+```
+
+The flag is supported only for Windows wheels; it does not enable Agility in the plugin.
+
 ## Testing
 
 Install the wheel and dependencies in a clean environment, then run the smoke test:
@@ -61,6 +84,10 @@ a host wheel built from this checkout with `--use_webgpu shared_lib --build_whee
 using the locally built host and plugin wheels and reusing the dependencies installed for the job.
 The minimum-runtime package tests leave it disabled.
 Set `ORT_WEBGPU_TEST_REQUIRE_EP_DEVICE=1` to fail instead of skipping inference when no WebGPU device is available.
+
+Set `ORT_WEBGPU_TEST_REQUIRE_AGILITY_SDK=1` to require the SDK DLLs in an installed Windows wheel, as the Windows
+release tests do. Otherwise, the smoke test allows local non-Agility wheels without a `D3D12` directory, but still
+checks both DLLs when that directory exists.
 
 ## Versioning
 

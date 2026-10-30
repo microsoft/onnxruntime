@@ -57,8 +57,11 @@ class D3D12FileBufferLoader {
 
   static common::Status Create(
       ID3D12Device* device,
+      std::unique_ptr<D3D12FileBufferLoader>& loader) noexcept;
+  static common::Status Create(
+      ID3D12Device* device,
       std::unique_ptr<D3D12FileBufferLoader>& loader,
-      const Config& config = {}) noexcept;
+      const Config& config) noexcept;
 
   ~D3D12FileBufferLoader();
 
@@ -71,8 +74,11 @@ class D3D12FileBufferLoader {
   // Resource widths may include padding; ranges specify the loaded data lengths.
   common::Status Load(
       const std::vector<BufferSource>& ranges,
+      BufferCollection& result) noexcept;
+  common::Status Load(
+      const std::vector<BufferSource>& ranges,
       BufferCollection& result,
-      const CancellationToken& cancellation = {}) noexcept;
+      const CancellationToken& cancellation) noexcept;
 
  private:
   struct FileReadRegion;

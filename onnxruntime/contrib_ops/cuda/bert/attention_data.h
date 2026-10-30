@@ -128,7 +128,6 @@ struct GroupQueryAttentionData {
   // Both are non-null together (validated in the op) and trigger the fused normalization before RoPE.
   const T* q_norm_weight = nullptr;
   const T* k_norm_weight = nullptr;
-  float qk_norm_epsilon = 1e-6f;
 
   const float* k_scale = nullptr;
   const float* v_scale = nullptr;
@@ -232,7 +231,9 @@ struct PagedAttentionData {
   const float* v_scale = nullptr;
   const int* cumulative_seqlens_q = nullptr;
   const int* past_seqlens = nullptr;
+  const int* sequence_validity = nullptr;
   const int* block_table = nullptr;
+  const int* cudnn_block_table = nullptr;
   // Optional explicit write slots, one per query token, into the cache viewed as
   // [num_blocks * block_size, kv_num_heads, head_size]. A value of -1 suppresses the K/V store
   // for that token (prefix cache hit / rejected speculative token). nullptr keeps the legacy

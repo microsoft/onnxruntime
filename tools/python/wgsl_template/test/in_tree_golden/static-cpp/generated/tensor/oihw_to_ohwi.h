@@ -19,105 +19,105 @@ Status ApplyTemplate<"tensor/oihw_to_ohwi.wgsl.template">(ShaderHelper& shader_h
 //  4 | #use .getByOffset .setByOffset
 //  5 |
 //  6 | fn load_src(co : u32, ci : u32, h_w : u32) -> src_element_t {
-ss << __str_403;
+ss << __str_558;
 //  7 |   if (co < uniforms.O && ci < uniforms.I && h_w < uniforms.H * uniforms.W) {
-ss << __str_404;
+ss << __str_559;
 //  8 |     let offset = co * uniforms.I * uniforms.H * uniforms.W +
-ss << __str_405;
+ss << __str_560;
 //  9 |                  ci * uniforms.H * uniforms.W +
-ss << __str_406;
+ss << __str_561;
 // 10 |                  h_w;
-ss << __str_407;
+ss << __str_562;
 // 11 |     return src.getByOffset(offset);
-ss << __str_347;
-ss << __var_src->GetByOffset(__str_402);
-ss << __str_25;
+ss << __str_397;
+ss << __var_src->GetByOffset(__str_557);
+ss << __str_29;
 // 12 |   }
-ss << __str_16;
+ss << __str_11;
 // 13 |   return src_element_t();
-ss << __str_408;
+ss << __str_563;
 // 14 | }
-ss << __str_341;
+ss << __str_391;
 // 15 |
 ss << __str_5;
 // 16 | fn write_output(co : u32, h_w : u32, ci : u32, value : output_element_t) {
-ss << __str_409;
+ss << __str_564;
 // 17 |   if (co < uniforms.O && ci < uniforms.I && h_w < uniforms.H * uniforms.W) {
-ss << __str_404;
+ss << __str_559;
 // 18 |     let offset = co * uniforms.H * uniforms.W * uniforms.I +
-ss << __str_410;
+ss << __str_565;
 // 19 |                  h_w * uniforms.I +
-ss << __str_411;
+ss << __str_566;
 // 20 |                  ci;
-ss << __str_412;
+ss << __str_567;
 // 21 |     output.setByOffset(offset, value);
-ss << __str_24;
-ss << __var_output->SetByOffset(__str_402, __str_318);
-ss << __str_25;
+ss << __str_28;
+ss << __var_output->SetByOffset(__str_557, __str_368);
+ss << __str_29;
 // 22 |   }
-ss << __str_16;
+ss << __str_11;
 // 23 | }
-ss << __str_341;
+ss << __str_391;
 // 24 |
 ss << __str_5;
 // 25 | var<workgroup> data_cache : array<array<src_element_t, 64>, 4>;
-ss << __str_413;
+ss << __str_568;
 // 26 |
 ss << __str_5;
 // 27 | $MAIN {
 MainFunctionStart();
 ss << __str_5;
 // 28 |   let group_co : u32 = workgroup_idx / uniforms.Ci_tiles;
-ss << __str_414;
+ss << __str_569;
 // 29 |   let group_ci : u32 = (workgroup_idx % uniforms.Ci_tiles) * 64;
-ss << __str_415;
+ss << __str_570;
 // 30 |
 ss << __str_5;
 // 31 |   if (group_co >= uniforms.O || group_ci >= uniforms.I) {
-ss << __str_416;
+ss << __str_571;
 // 32 |     return;
-ss << __str_417;
+ss << __str_10;
 // 33 |   }
-ss << __str_16;
+ss << __str_11;
 // 34 |
 ss << __str_5;
 // 35 |   for (var h_w_idx = 0u; h_w_idx < uniforms.H_W_tiles; h_w_idx++) {
-ss << __str_418;
+ss << __str_572;
 // 36 |     // load
 ss << __str_5;
 // 37 |     for (var ci_idx = 0u; ci_idx < 64u; ci_idx += 16u) {
-ss << __str_419;
+ss << __str_573;
 // 38 |       let load_ci_idx = ci_idx + local_idx / 4;
-ss << __str_420;
+ss << __str_574;
 // 39 |       let load_h_w_idx = local_idx % 4;
-ss << __str_421;
+ss << __str_575;
 // 40 |
 ss << __str_5;
 // 41 |       data_cache[load_h_w_idx][load_ci_idx] = load_src(group_co,
-ss << __str_422;
+ss << __str_576;
 // 42 |                                                        group_ci + load_ci_idx,
-ss << __str_423;
+ss << __str_577;
 // 43 |                                                        h_w_idx * 4 + load_h_w_idx);
-ss << __str_424;
+ss << __str_578;
 // 44 |     }
-ss << __str_15;
+ss << __str_20;
 // 45 |     workgroupBarrier();
-ss << __str_22;
+ss << __str_26;
 // 46 |
 ss << __str_5;
 // 47 |     // store
 // 48 |     for (var local_h_w_idx = 0u; local_h_w_idx < 4u; local_h_w_idx++) {
-ss << __str_425;
+ss << __str_579;
 // 49 |       let output_data = data_cache[local_h_w_idx][local_idx];
-ss << __str_426;
+ss << __str_580;
 // 50 |       write_output(group_co, h_w_idx * 4 + local_h_w_idx, group_ci + local_idx, output_data);
-ss << __str_427;
+ss << __str_581;
 // 51 |     }
-ss << __str_15;
+ss << __str_20;
 // 52 |     workgroupBarrier();
-ss << __str_22;
+ss << __str_26;
 // 53 |   }
-ss << __str_16;
+ss << __str_11;
 // 54 | }  // MAIN
 MainFunctionEnd();
 ss << __str_5;

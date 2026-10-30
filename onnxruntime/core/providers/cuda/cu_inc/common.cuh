@@ -311,6 +311,13 @@ __device__ __inline__ double _Log(double a) { return log(a); }
 template <>
 __device__ __inline__ half _Log(half a) { return half(logf((float)a)); }
 
+// Keeps the exponent non-positive without cancelling small negative-input results.
+__device__ __inline__ float _Sigmoid(float a) {
+  if (a > 0.0f) return 1.0f / (1.0f + expf(-a));
+  const float exp_a = expf(a);
+  return exp_a / (1.0f + exp_a);
+}
+
 template <typename T>
 __device__ __inline T _Tanh(T a);
 
@@ -501,6 +508,10 @@ __device__ __inline__ half _Gelu(half a) {
 
 template <typename T>
 __device__ __inline__ T _Mod(T a, T b) {
+  if (a == std::numeric_limits<T>::min() && b == T(-1)) {
+    return T(0);
+  }
+
   T r = a % b;
   T zero = T(0);
   if ((r > zero && b < zero) || (r < zero && b > zero)) {
@@ -545,6 +556,10 @@ __device__ __inline__ BFloat16 _Mod(BFloat16 a, BFloat16 b) {
 
 template <typename T>
 __device__ __inline__ T _Fmod(T a, T b) {
+  if (a == std::numeric_limits<T>::min() && b == T(-1)) {
+    return T(0);
+  }
+
   return a % b;
 }
 
