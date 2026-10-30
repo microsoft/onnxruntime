@@ -280,36 +280,97 @@ Status ReduceNaiveProgram::GenerateShaderCode(ShaderHelper& shader) const {
 }
 
 Status ReduceSharedProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  const auto& input = shader.AddInput("_A", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-  const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+  const bool is_arg_max = reduce_op_type_ == ReduceOpType::ArgMax ||
+                          reduce_op_type_ == ReduceOpType::ArgMax_select_last_index;
+  const bool is_arg_min = reduce_op_type_ == ReduceOpType::ArgMin ||
+                          reduce_op_type_ == ReduceOpType::ArgMin_select_last_index;
+  const bool is_arg_reduce = is_arg_max || is_arg_min;
+  const bool select_last_index = reduce_op_type_ == ReduceOpType::ArgMax_select_last_index ||
+                                 reduce_op_type_ == ReduceOpType::ArgMin_select_last_index;
+  const auto usage = ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias |
+                     ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias;
+  const auto& input = shader.AddInput("_A", usage);
+  const auto& output = shader.AddOutput("output", usage);
+  // Arg reductions compare input values but produce indices in a different type.
+  const char* value_type = is_arg_reduce ? "_A_value_t" : "output_value_t";
   shader.AdditionalImplementation()
-      << "var<workgroup> aBestValues : array<output_value_t, " << workgroup_size_ << ">;\n\n"
+      << "var<workgroup> aBestValues : array<" << value_type << ", " << workgroup_size_ << ">;\n\n"
       << "fn DIV_CEIL(a : u32, b : u32) -> u32 {\n"
       << "  return ((a - 1u) / b + 1u);\n"
       << "}\n";
-  shader.MainFunctionBody() << "let outputIndex = global_idx / " << workgroup_size_ << ";\n"
-                            << "let offset = outputIndex * uniforms.reduceSize;\n"
-                            << "var bestValue = output_value_t(" << reduce_op_init_values_map[reduce_op_type_] << ");\n"
+  if (is_arg_reduce) {
+    shader.AdditionalImplementation()
+        << "var<workgroup> aBestIndices : array<u32, " << workgroup_size_ << ">;\n"
+        << "fn is_nan(value: f32) -> bool {\n"
+        << "  return (bitcast<u32>(value) & 0x7fffffffu) > 0x7f800000u;\n"
+        << "}\n"
+        << "fn prefer(candidate: f32, index: u32, best: f32, best_index: u32) -> bool {\n"
+        << "  return !is_nan(candidate) && !is_nan(best) &&\n"
+        << "      (candidate " << (is_arg_max ? ">" : "<") << " best ||\n"
+        << "       (candidate == best && index " << (select_last_index ? ">" : "<") << " best_index));\n"
+        << "}\n";
+  }
+  auto append_update = [&](bool shared) {
+    if (is_arg_reduce) {
+      shader.MainFunctionBody()
+          << "let candidateIndex = " << (shared ? "aBestIndices[local_idx + interval]" : "k") << ";\n"
+          << "if (prefer(candidate, candidateIndex, bestValue, bestIndex)) {\n"
+          << "  bestValue = candidate;\n"
+          << "  bestIndex = candidateIndex;\n"
+          << "}\n";
+    } else {
+      const auto& expression = (shared ? reduce_op_shared_code_map : reduce_op_code_map)[reduce_op_type_];
+      shader.MainFunctionBody() << "bestValue = " << expression << ";\n";
+    }
+  };
+  shader.MainFunctionBody() << "let outputIndex = workgroup_idx;\n"
+                            << "if (outputIndex >= uniforms.outputSize) { return; }\n"
+                            << "let offset = outputIndex * uniforms.reduceSize;\n";
+  if (is_arg_reduce) {
+    // Seed every lane from the first element: a leading NaN stays the incumbent,
+    // while later NaNs are ignored. Explicit indices preserve ties across lanes.
+    shader.MainFunctionBody() << "var bestIndex = 0u;\n";
+  }
+  const auto initial_value = is_arg_reduce ? input.GetByOffset("offset") : reduce_op_init_values_map[reduce_op_type_];
+  shader.MainFunctionBody() << "var bestValue = " << value_type << "(" << initial_value << ");\n"
                             << "let length = uniforms.reduceSize;\n"
                             << "for (var k = local_idx; k < length; k += " << workgroup_size_ << ") {\n"
-                            << "  let candidate = output_value_t(" << input.GetByOffset("offset + k") << ");\n"
-                            << "  bestValue = " << reduce_op_code_map[reduce_op_type_] << ";\n"
-                            << "}\n"
-                            << "aBestValues[local_idx] = bestValue;\n"
-                            << "workgroupBarrier();\n"
-                            << "var reduceSize = min(length, " << workgroup_size_ << ");\n"
-                            << "for (var currentSize = reduceSize / 2; reduceSize > 1; currentSize = reduceSize / 2) {\n"
-                            << "  let interval = DIV_CEIL(reduceSize, 2u);\n"
-                            << "  if (local_idx < currentSize) {\n"
-                            << "    let candidate = aBestValues[local_idx + interval];\n"
-                            << "    bestValue = " << reduce_op_shared_code_map[reduce_op_type_] << ";\n"
-                            << "    aBestValues[local_idx] = bestValue;\n"
-                            << "  }\n"
-                            << "  reduceSize = interval;\n"
-                            << "  workgroupBarrier();\n"
+                            << "  let candidate = " << value_type << "(" << input.GetByOffset("offset + k") << ");\n";
+  append_update(false);
+  shader.MainFunctionBody() << "}\n"
+                            << "aBestValues[local_idx] = bestValue;\n";
+  if (is_arg_reduce) {
+    shader.MainFunctionBody() << "aBestIndices[local_idx] = bestIndex;\n";
+  }
+  shader.MainFunctionBody() << "workgroupBarrier();\n";
+  if (is_arg_reduce) {
+    // Arg dispatch fills a power-of-two workgroup; keep the tree bounds constant.
+    shader.MainFunctionBody() << "for (var interval = " << workgroup_size_ / 2
+                              << "u; interval > 0u; interval >>= 1u) {\n";
+  } else {
+    shader.MainFunctionBody() << "var reduceSize = min(length, " << workgroup_size_ << ");\n"
+                              << "for (var currentSize = reduceSize / 2; reduceSize > 1; currentSize = reduceSize / 2) {\n"
+                              << "  let interval = DIV_CEIL(reduceSize, 2u);\n";
+  }
+  shader.MainFunctionBody() << "  if (local_idx < " << (is_arg_reduce ? "interval" : "currentSize") << ") {\n"
+                            << "    let candidate = aBestValues[local_idx + interval];\n";
+  append_update(true);
+  shader.MainFunctionBody() << "    aBestValues[local_idx] = bestValue;\n";
+  if (is_arg_reduce) {
+    shader.MainFunctionBody() << "aBestIndices[local_idx] = bestIndex;\n";
+  }
+  const auto output_value = is_arg_reduce ? "bestIndex"
+                            : reduce_op_type_ == ReduceOpType::Mean
+                                ? "(bestValue / output_element_t(uniforms.reduceSize))"
+                                : reduce_op_output_values_map[reduce_op_type_];
+  shader.MainFunctionBody() << "  }\n";
+  if (!is_arg_reduce) {
+    shader.MainFunctionBody() << "  reduceSize = interval;\n";
+  }
+  shader.MainFunctionBody() << "  workgroupBarrier();\n"
                             << "}\n"
                             << "if (local_idx == 0) {\n"
-                            << "  let outputValue = output_value_t(" << (reduce_op_type_ == ReduceOpType::Mean ? "(bestValue / output_element_t(uniforms.reduceSize))" : reduce_op_output_values_map[reduce_op_type_]) << ");\n"
+                            << "  let outputValue = output_value_t(" << output_value << ");\n"
                             << "  " << output.SetByOffset("outputIndex", "outputValue") << ";\n"
                             << "}\n";
   return Status::OK();
@@ -417,6 +478,23 @@ Status ReduceKernel<allow_multi_axes>::ComputeInternal(ComputeContext& context) 
       break;
     }
   }
+  // Short rows can already expose enough parallelism across outputs; avoid the
+  // per-row workgroup and barrier overhead until the reduction is long enough.
+  constexpr size_t kArgMinMaxMinReduceSize = 256;
+  constexpr uint32_t kArgMinMaxWorkgroupSize = 128;
+  static_assert(kArgMinMaxWorkgroupSize > 0 && kArgMinMaxMinReduceSize >= kArgMinMaxWorkgroupSize &&
+                (kArgMinMaxWorkgroupSize & (kArgMinMaxWorkgroupSize - 1)) == 0);
+  if (add_suffix && are_axes_innermost && input_tensor->IsDataType<float>() &&
+      !is_input_empty && reduce_size >= kArgMinMaxMinReduceSize) {
+    ReduceSharedProgram program(name_ + "Shared", reduce_op_type, kArgMinMaxWorkgroupSize);
+    program.CacheHint(select_last_index_)
+        .AddInput({input_tensor, ProgramTensorMetadataDependency::TypeAndRank})
+        .AddOutput({context.Output(0, output_shape), ProgramTensorMetadataDependency::TypeAndRank})
+        .SetWorkgroupSize(kArgMinMaxWorkgroupSize)
+        .SetDispatchGroupSize(static_cast<uint32_t>(output_size))
+        .AddUniformVariables({{static_cast<uint32_t>(reduce_size)}, {static_cast<uint32_t>(output_size)}});
+    return context.RunProgram(program);
+  }
   bool use_naive_reduction = name_ == "ArgMin" || name_ == "ArgMax" || (reduce_size < 32 && output_size > 1024) ||
                              (!are_axes_innermost && reduce_size <= kReduceNaiveMaxReduceSize &&
                               output_size > kReduceNaiveMinOutputSize) ||
@@ -484,7 +562,7 @@ Status ReduceKernel<allow_multi_axes>::ComputeInternal(ComputeContext& context) 
         .AddOutput({context.Output(0, output_shape), ProgramTensorMetadataDependency::TypeAndRank})
         .SetDispatchGroupSize(static_cast<uint32_t>(output_size))
         .SetWorkgroupSize(workgroup_size)
-        .AddUniformVariable({static_cast<uint32_t>(reduce_size)});
+        .AddUniformVariables({{static_cast<uint32_t>(reduce_size)}, {static_cast<uint32_t>(output_size)}});
     return context.RunProgram(program);
   }
 }

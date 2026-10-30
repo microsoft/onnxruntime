@@ -61,13 +61,11 @@ class ReduceNaiveProgram final : public Program<ReduceNaiveProgram> {
 
 class ReduceSharedProgram final : public Program<ReduceSharedProgram> {
  public:
-  ReduceSharedProgram(std::string name, ReduceOpType reduce_op_type, uint32_t worgroup_size) : Program(name), reduce_op_type_(reduce_op_type), workgroup_size_(worgroup_size) {
-    if (reduce_op_type_ == ReduceOpType::ArgMax || reduce_op_type_ == ReduceOpType::ArgMin || reduce_op_type_ == ReduceOpType::ArgMax_select_last_index || reduce_op_type_ == ReduceOpType::ArgMin_select_last_index) {
-      ORT_THROW("ReduceSharedProgram: ArgMax/ArgMin is not supported in WebGPU yet.");
-    }
-  }
+  ReduceSharedProgram(std::string name, ReduceOpType reduce_op_type, uint32_t workgroup_size)
+      : Program(name), reduce_op_type_(reduce_op_type), workgroup_size_(workgroup_size) {}
   Status GenerateShaderCode(ShaderHelper& wgpuShaderModuleAddRef) const override;
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"reduceSize", ProgramUniformVariableDataType::Uint32});
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"reduceSize", ProgramUniformVariableDataType::Uint32},
+                                          {"outputSize", ProgramUniformVariableDataType::Uint32});
 
  private:
   const ReduceOpType reduce_op_type_;
