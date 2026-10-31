@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <limits>
 #include <type_traits>
 #include <utility>
 #include <core/common/safeint.h>
@@ -583,13 +584,16 @@ void DequantizeSubByteShortRows(size_t M, size_t K, size_t N, size_t quant_block
         size_t k = row_begin % K;
         size_t block = quant_block_size ? k / quant_block_size : 0;
         size_t in_block = quant_block_size ? k % quant_block_size : 0;
+        size_t zps_begin = std::numeric_limits<size_t>::max();
         for (size_t row = row_begin; row < row_end; ++row) {
           const int8_t* row_values = values + (row - row_begin) * N;
           OutT* row_output = output + row * N;
           if constexpr (blocked) {
             const size_t s = (m * num_blocks + block) * N;
-            if (zero_point) {
+            // Rows of the same block share their N zero points, so unpack them only when the block changes.
+            if (zero_point && s != zps_begin) {
               UnpackSubByteElements<T, elements_per_byte>(zero_point, s, N, zps);
+              zps_begin = s;
             }
             for (size_t i = 0; i < N; ++i) {
               row_output[i] = static_cast<OutT>(static_cast<float>(static_cast<int32_t>(row_values[i]) - zps[i]) *

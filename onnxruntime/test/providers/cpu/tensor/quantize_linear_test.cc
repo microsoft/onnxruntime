@@ -4378,7 +4378,7 @@ TEST(QuantizeLinearOp21BlockedTest, Float8_NoZeroPoint_LastAxis) {
 // contiguous per-element scales (quantize axis last), and partial last blocks.
 template <typename T>
 void DequantizeLinearSubByteMatchesReference(const std::vector<int64_t>& dims, int64_t axis, int64_t block_size,
-                                             bool use_zero_point) {
+                                             bool use_zero_point, int num_threads = 0) {
   using UnpackedType = typename T::UnpackedType;
   constexpr size_t elements_per_byte = std::is_same_v<T, Int4x2> || std::is_same_v<T, UInt4x2> ? 2 : 4;
 
@@ -4437,9 +4437,9 @@ void DequantizeLinearSubByteMatchesReference(const std::vector<int64_t>& dims, i
   if (use_zero_point) test.AddInput<T>("x_zero_point", scale_dims, zero_point);
   test.AddOutput<float>("y", dims, expected);
   test.SetOutputTolerance(0.0f, 0.0f);
-  std::vector<std::unique_ptr<IExecutionProvider>> eps;
-  eps.push_back(DefaultCpuExecutionProvider());
-  test.Run(BaseTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
+  SessionOptions so;
+  so.intra_op_param.thread_pool_size = num_threads;
+  test.Config(so).ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
 }
 
 template <typename T>
@@ -4462,6 +4462,21 @@ void DequantizeLinearSubByteMatchesReferenceAllShapes() {
   for (const auto& c : cases) {
     for (bool use_zero_point : {true, false}) {
       DequantizeLinearSubByteMatchesReference<T>(c.dims, c.axis, c.block_size, use_zero_point);
+    }
+  }
+
+  // Large enough for TryParallelFor to split the work across a 4-thread pool, so units run concurrently.
+  const std::vector<Case> parallel_cases{
+      {{16, 4096, 7}, 1, 0},   // per-axis, short rows
+      {{4, 3, 40001}, 1, 0},   // per-axis, long rows starting mid-byte
+      {{8, 30001}, 1, 0},      // per-axis on the last axis
+      {{8, 30001}, 1, 32},     // blocked on the last axis
+      {{65536, 7}, 0, 16},     // blocked, short rows
+      {{40, 7001}, 0, 8},      // blocked, long rows starting mid-byte
+  };
+  for (const auto& c : parallel_cases) {
+    for (bool use_zero_point : {true, false}) {
+      DequantizeLinearSubByteMatchesReference<T>(c.dims, c.axis, c.block_size, use_zero_point, 4);
     }
   }
 }
