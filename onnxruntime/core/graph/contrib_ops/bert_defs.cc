@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <string>
 #include <tuple>
@@ -5927,6 +5928,82 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               updateOutputShape(ctx, 1, *state_shape);
             }
           }
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    CausalRightAttention, 1,
+    OpSchema()
+        .SetDoc(R"DOC(
+Native-precision scaled dot-product attention with an explicit right-aligned causal contract:
+
+  scores[b,h,i,j] = scale * dot(Q[b,h,i,:], K[b,h,j,:])
+  Y[b,h,i,:] = softmax(scores[b,h,i,:], allowed j <= T - S + i) * V[b,h,:,:]
+
+Q has shape [B,H,S,256] and K/V have shape [B,H,T,256]. Inputs and output have the
+same float16 or bfloat16 type. B is in [1,8], H in [1,32], and 1 <= S <= T <= 256.
+Every query therefore has at least one allowed key. There is no arbitrary mask,
+dropout, grouped-head expansion, rotary embedding, or cache update.
+The query axis denotes sequence positions, not head groups folded into query rows.
+A mask can be omitted only when it is known to equal the specified causal pattern.
+
+The CUDA implementation requires compute capability 9.x and memory-efficient
+attention enabled at build time. It uses native-precision CUTLASS operands with
+float32 accumulation, an aligned additive bias, and no Flash/unfused fallback.
+CUDA graph capture is not supported. This is an opt-in operator and does not
+change the dispatch or mask validation of existing Attention operators.
+)DOC")
+        .Attr("scale", "Finite positive multiplier for Q times transposed K.", AttributeProto::FLOAT)
+        .Input(0, "Q", "Native-precision query with shape [B,H,S,256].", "T")
+        .Input(1, "K", "Native-precision key with shape [B,H,T,256].", "T")
+        .Input(2, "V", "Native-precision value with the same shape as K.", "T")
+        .Output(0, "Y", "Attention output with the same shape and type as Q.", "T")
+        .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)"}, "Native 16-bit floating-point tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          const auto* scale = ctx.getAttribute("scale");
+          if (scale == nullptr || !std::isfinite(scale->f()) || scale->f() <= 0) {
+            fail_shape_inference("CausalRightAttention scale must be finite and positive");
+          }
+          const TensorShapeProto* shapes[3]{};
+          constexpr int64_t limits[]{8, 32, 256, 256};
+          for (size_t input = 0; input < 3; ++input) {
+            if (!hasInputShape(ctx, input)) continue;
+            const auto& shape = getInputShape(ctx, input);
+            if (shape.dim_size() != 4) {
+              fail_shape_inference("CausalRightAttention inputs must have rank 4");
+            }
+            shapes[input] = &shape;
+            for (int axis = 0; axis < 4; ++axis) {
+              const auto& dim = shape.dim(axis);
+              if (dim.has_dim_value() &&
+                  (dim.dim_value() < 1 || dim.dim_value() > limits[axis] ||
+                   (axis == 3 && dim.dim_value() != 256))) {
+                fail_shape_inference("CausalRightAttention requires B=1..8, H=1..32, S/T=1..256, D=256");
+              }
+            }
+          }
+          auto check_equal = [](const TensorShapeProto* left, const TensorShapeProto* right, int axis) {
+            if (left != nullptr && right != nullptr &&
+                left->dim(axis).has_dim_value() && right->dim(axis).has_dim_value() &&
+                left->dim(axis).dim_value() != right->dim(axis).dim_value()) {
+              fail_shape_inference("CausalRightAttention batch, heads and head size must match; K/V shapes must match");
+            }
+          };
+          for (int axis = 0; axis < 4; ++axis) {
+            check_equal(shapes[1], shapes[2], axis);
+            if (axis != 2) {
+              check_equal(shapes[0], shapes[1], axis);
+              check_equal(shapes[0], shapes[2], axis);
+            }
+          }
+          for (size_t input = 1; input < 3; ++input) {
+            if (shapes[0] != nullptr && shapes[input] != nullptr &&
+                shapes[0]->dim(2).has_dim_value() && shapes[input]->dim(2).has_dim_value() &&
+                shapes[0]->dim(2).dim_value() > shapes[input]->dim(2).dim_value()) {
+              fail_shape_inference("CausalRightAttention requires query length S <= key length T");
+            }
+          }
+          propagateShapeFromInputToOutput(ctx, 0, 0);
         }));
 
 constexpr const char* LinearAttentionGate_ver1_doc = R"DOC(
