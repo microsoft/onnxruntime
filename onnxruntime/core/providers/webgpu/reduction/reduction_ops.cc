@@ -225,8 +225,66 @@ ReduceOpType StringToReduceOp(std::string name) {
   return reduce_op_types[name];
 }
 
+namespace {
+void AppendIntegerMeanHelpers(ShaderHelper& shader, bool is_unsigned) {
+  shader.AdditionalImplementation() << R"(
+fn mean_merge(a: vec2<u32>, b: vec2<u32>) -> vec2<u32> {
+  let low = a.x + b.x;
+  return vec2<u32>(low, a.y + b.y + u32(low < a.x));
+}
+fn mean_add(a: vec2<u32>, value: output_value_t) -> vec2<u32> {
+)" << "  let high = " << (is_unsigned ? "0u" : "select(0u, 0xffffffffu, value < 0)")
+                                    << ";\n"
+                                    << R"(  return mean_merge(a, vec2<u32>(u32(value), high));
+}
+fn integer_mean(sum: vec2<u32>, count: u32) -> output_value_t {
+  if (count == 0u) { return output_value_t(0); }
+  var magnitude = sum;
+)" << "  let negative = " << (is_unsigned ? "false" : "(sum.y & 0x80000000u) != 0u")
+                                    << ";\n"
+                                    << R"(  if (negative) {
+    let low = ~sum.x + 1u;
+    magnitude = vec2<u32>(low, ~sum.y + u32(low == 0u));
+  }
+  // The mean fits the input type, so the high word is smaller than the divisor.
+  var remainder = magnitude.y;
+  var quotient = 0u;
+  for (var bit = 32u; bit > 0u; bit--) {
+    let carry = (remainder & 0x80000000u) != 0u;
+    remainder = (remainder << 1u) | ((magnitude.x >> (bit - 1u)) & 1u);
+    if (carry || remainder >= count) {
+      remainder -= count;
+      quotient |= 1u << (bit - 1u);
+    }
+  }
+)" << (is_unsigned ? "  return quotient;\n" : "  return select(i32(quotient), -i32(quotient), negative);\n")
+                                    << "}\n";
+}
+}  // namespace
+
 Status ReduceNaiveProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  const auto& code = reduce_op_naive_code_map.at(reduce_op_type_);
+  auto code = reduce_op_naive_code_map.at(reduce_op_type_);
+  const bool integer = Outputs()[0].tensor->IsDataType<int32_t>() ||
+                       Outputs()[0].tensor->IsDataType<uint32_t>() ||
+                       Outputs()[0].tensor->IsDataType<int64_t>();
+  if (integer && reduce_op_type_ == ReduceOpType::Mean) {
+    AppendIntegerMeanHelpers(shader, Outputs()[0].tensor->IsDataType<uint32_t>());
+    code = {"var sum = vec2<u32>(0);", "sum = mean_add(sum, current_element);",
+            "let output_value = integer_mean(sum, uniforms.reduce_size);"};
+  } else if (integer && reduce_op_type_ == ReduceOpType::Sum) {
+    code = {"var sum = output_value_t(0);", "sum += output_value_t(current_element);",
+            "let output_value = sum;"};
+  } else if (integer && reduce_op_type_ == ReduceOpType::Prod) {
+    code = {"var product = output_value_t(1);", "product *= output_value_t(current_element);",
+            "let output_value = product;"};
+  } else if (reduce_op_type_ == ReduceOpType::LogSumExp) {
+    code = {"var maximum = -3.4028234663852886e+38f; var exp_sum = 0.0f;",
+            "let v = f32(current_element);"
+            "if (v == maximum) { exp_sum += 1.0; }"
+            "else if (v > maximum) { exp_sum = exp_sum * exp(maximum - v) + 1.0; maximum = v; }"
+            "else { exp_sum += exp(v - maximum); }",
+            "let output_value = output_value_t(maximum + log(exp_sum));"};
+  }
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   if (is_input_empty_) {
     shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
@@ -282,12 +340,59 @@ Status ReduceNaiveProgram::GenerateShaderCode(ShaderHelper& shader) const {
 Status ReduceSharedProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& input = shader.AddInput("_A", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+  if (reduce_op_type_ == ReduceOpType::Mean &&
+      (Outputs()[0].tensor->IsDataType<int32_t>() || Outputs()[0].tensor->IsDataType<uint32_t>() ||
+       Outputs()[0].tensor->IsDataType<int64_t>())) {
+    AppendIntegerMeanHelpers(shader, Outputs()[0].tensor->IsDataType<uint32_t>());
+    shader.AdditionalImplementation() << "var<workgroup> integer_sums: array<vec2<u32>, workgroup_size_x>;\n";
+    shader.MainFunctionBody()
+        << "if (workgroup_idx >= uniforms.output_size) { return; }\n"
+        << "let offset = workgroup_idx * uniforms.reduceSize;\n"
+        << "var sum = vec2<u32>(0);\n"
+        << "for (var k = local_idx; k < uniforms.reduceSize; k += workgroup_size_x) {\n"
+        << "  sum = mean_add(sum, " << input.GetByOffset("offset + k") << ");\n}\n"
+        << "integer_sums[local_idx] = sum;\nworkgroupBarrier();\n"
+        << "for (var stride = workgroup_size_x / 2u; stride > 0u; stride /= 2u) {\n"
+        << "  if (local_idx < stride) { integer_sums[local_idx] = mean_merge(integer_sums[local_idx], integer_sums[local_idx + stride]); }\n"
+        << "  workgroupBarrier();\n}\n"
+        << "if (local_idx == 0u) {\n"
+        << output.SetByOffset("workgroup_idx", "integer_mean(integer_sums[0], uniforms.reduceSize)") << "\n}\n";
+    return Status::OK();
+  }
+  if (reduce_op_type_ == ReduceOpType::LogSumExp) {
+    shader.AdditionalImplementation()
+        << "var<workgroup> maxima: array<f32, workgroup_size_x>;\n"
+        << "var<workgroup> sums: array<f32, workgroup_size_x>;\n";
+    auto& body = shader.MainFunctionBody();
+    body << "if (workgroup_idx >= uniforms.output_size) { return; }\n"
+         << "let offset = workgroup_idx * uniforms.reduceSize;\n"
+         << "var maximum = -3.4028234663852886e+38f; var sum = 0.0f;\n"
+         << "for (var k = local_idx; k < uniforms.reduceSize; k += workgroup_size_x) {\n"
+         << "  let value = f32(" << input.GetByOffset("offset + k") << ");\n"
+         << "  if (value == maximum) { sum += 1.0; }\n"
+         << "  else if (value > maximum) { sum = sum * exp(maximum - value) + 1.0; maximum = value; }\n"
+         << "  else { sum += exp(value - maximum); }\n}\n"
+         << "maxima[local_idx] = maximum; sums[local_idx] = sum;\n"
+         << "workgroupBarrier();\n"
+         << "for (var stride = workgroup_size_x / 2u; stride > 0u; stride /= 2u) {\n"
+         << "  if (local_idx < stride) {\n"
+         << "    let other_max = maxima[local_idx + stride]; let other_sum = sums[local_idx + stride];\n"
+         << "    if (maximum == other_max) { sum += other_sum; }\n"
+         << "    else if (other_max > maximum) { sum = sum * exp(maximum - other_max) + other_sum; maximum = other_max; }\n"
+         << "    else { sum += other_sum * exp(other_max - maximum); }\n"
+         << "    maxima[local_idx] = maximum; sums[local_idx] = sum;\n"
+         << "  }\n  workgroupBarrier();\n}\n"
+         << "if (local_idx == 0u) {\n"
+         << output.SetByOffset("workgroup_idx", "output_value_t(maximum + log(sum))") << "\n}\n";
+    return Status::OK();
+  }
   shader.AdditionalImplementation()
       << "var<workgroup> aBestValues : array<output_value_t, " << workgroup_size_ << ">;\n\n"
       << "fn DIV_CEIL(a : u32, b : u32) -> u32 {\n"
       << "  return ((a - 1u) / b + 1u);\n"
       << "}\n";
-  shader.MainFunctionBody() << "let outputIndex = global_idx / " << workgroup_size_ << ";\n"
+  shader.MainFunctionBody() << "if (workgroup_idx >= uniforms.output_size) { return; }\n"
+                            << "let outputIndex = global_idx / " << workgroup_size_ << ";\n"
                             << "let offset = outputIndex * uniforms.reduceSize;\n"
                             << "var bestValue = output_value_t(" << reduce_op_init_values_map[reduce_op_type_] << ");\n"
                             << "let length = uniforms.reduceSize;\n"
@@ -484,7 +589,7 @@ Status ReduceKernel<allow_multi_axes>::ComputeInternal(ComputeContext& context) 
         .AddOutput({context.Output(0, output_shape), ProgramTensorMetadataDependency::TypeAndRank})
         .SetDispatchGroupSize(static_cast<uint32_t>(output_size))
         .SetWorkgroupSize(workgroup_size)
-        .AddUniformVariable({static_cast<uint32_t>(reduce_size)});
+        .AddUniformVariables({{static_cast<uint32_t>(reduce_size)}, {static_cast<uint32_t>(output_size)}});
     return context.RunProgram(program);
   }
 }
