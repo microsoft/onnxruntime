@@ -506,19 +506,23 @@ static const char* const kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLengt
 /// CUDA DynamicSparseAttention kernel switches. Each is resolved once when the kernel is created, so a change needs a new
 /// session, and overrides the environment variable named below. The 0/1 switches accept only "0" and "1", and the
 /// thresholds a non-negative decimal integer; any other value, including an empty string, fails session initialization.
-/// "0" makes the INT8-cache BF16 prefill dequantize the gathered K/V tiles to BF16 instead of running FP16 tensor-core
-/// MMA on them. Default "1". Overrides ORT_DSA_PREFILL_INT8_TC.
+/// "1" makes the INT8-cache BF16 prefill run FP16 tensor-core MMA on the gathered K/V tiles instead of dequantizing them
+/// to BF16 (opt-in; the tensor-core kernel has different numerics). Default "0". Overrides ORT_DSA_PREFILL_INT8_TC.
 static const char* const kOrtSessionOptionsCudaDsaPrefillInt8Tc = "ep.cuda.dsa_prefill_int8_tc";
 
 /// "0" routes the BF16 prefill through the generic kernels. Default "1". Overrides ORT_DSA_PREFILL_KERNEL.
 static const char* const kOrtSessionOptionsCudaDsaPrefillKernel = "ep.cuda.dsa_prefill_kernel";
 
-/// "0" makes the INT8-cache BF16 decode (up to 8 query rows) use the CUDA-core grouped kernel instead of the split-K
-/// tensor-core kernel. Default "1". Overrides ORT_DSA_DECODE_INT8_TC.
+/// "1" makes the INT8-cache BF16 decode (up to 8 query rows) use the split-K tensor-core kernel instead of the
+/// CUDA-core grouped kernel (opt-in; the tensor-core kernel accumulates in a different order and does not reproduce
+/// the CUDA-core results bit for bit). Default "0". Overrides ORT_DSA_DECODE_INT8_TC.
 static const char* const kOrtSessionOptionsCudaDsaDecodeInt8Tc = "ep.cuda.dsa_decode_int8_tc";
 
-/// Number of 64-candidate tiles each CTA of the split-K tensor-core decode kernel consumes. "0" derives it from the
-/// problem size (about 384 CTAs in total). Default "0". Overrides ORT_DSA_DECODE_INT8_TC_TILES_PER_SPLIT.
+/// Requested number of 64-candidate tiles each CTA of the split-K tensor-core decode kernel consumes. "0" derives it from
+/// the problem size and the device: the smallest power of two with which all CTAs fit one wave of the CTAs that can be
+/// resident on the device. A positive value is a target: the number of splits is ceil(tiles / value), limited to 32 and
+/// to the split count of the decode workspace, so a small value on a long candidate list is raised and the last split
+/// may hold fewer tiles. Default "0". Overrides ORT_DSA_DECODE_INT8_TC_TILES_PER_SPLIT.
 static const char* const kOrtSessionOptionsCudaDsaDecodeInt8TcTilesPerSplit =
     "ep.cuda.dsa_decode_int8_tc_tiles_per_split";
 

@@ -12,19 +12,35 @@
 // warp reduction and exponentials made it issue-bound, with the tensor-core pipeline below.
 //
 // The scales of the INT8 cache are per (kv head, channel) constants, so they leave the tile loop:
-//   * the key scale is folded into the query once per CTA: Q' = Q * key_scale (rounded once to fp16), S = Q' K_int8;
-//     a CTA whose Q' does not fit fp16 (or is not finite) evaluates its query heads in fp32 instead (AttendRowFp32).
-//     Products below 2^-25 flush to zero, which moves a score by at most 2^-10 * scale (256 channels, |K| <= 128), so
-//     the dispatcher selects this kernel only for scale <= kInt8TcMaxScale;
-//   * the value scale is applied to the output once per CTA: O = (P V_int8) * value_scale; a CTA whose value_scale
-//     exceeds kInt8TcMaxValueScale (so that a probability flushed below 2^-40 by the fp16 probability tile could
-//     still move the scaled output) is also evaluated in fp32 by AttendRowFp32.
+//   * the key scale is folded into the query once per CTA: Q' = Q * key_scale (rounded once to fp16), S = Q' K_int8.
+//     Rounding Q' moves the logit of any candidate by at most scale * 128 * sum_d |Q'_d - fp16(Q'_d)| (|K| <= 128).
+//     The CTA evaluates this bound for every query head and evaluates its heads in fp32 instead (AttendRowFp32) when
+//     it exceeds kInt8TcQueryErrorBudget, so that a query whose large terms cancel cannot amplify the rounding; the
+//     same happens when Q' does not fit fp16 or is not finite. The bound includes the flush of products below 2^-25,
+//     and the dispatcher selects this kernel only for scale <= kInt8TcMaxScale, which keeps the bound far below the
+//     budget for ordinary data;
+//   * the value scale is applied to the output once per CTA: O = (P V_int8) * value_scale. A probability below 2^-29
+//     (more than kInt8TcTailDepth nats below the running maximum) leaves the normal range of the fp16 probability tile
+//     and loses precision (below 2^-40 it flushes to zero), which a large value scale could amplify. A CTA with a
+//     channel |value_scale| > kInt8TcMaxValueScale therefore tracks how far below the running maximum its valid
+//     candidates are and, only if one of them is deeper than kInt8TcTailDepth, discards the tile loop and evaluates
+//     its heads in fp32 as well. A value scale at or below kInt8TcMaxValueScale never takes this path. Above it, a CTA
+//     takes it when one of its heads has a candidate kInt8TcTailDepth nats below its running maximum, about 7 standard
+//     deviations of Gaussian logits over 2048 candidates: a fraction of the CTAs when the standard deviation is about
+//     3 nats, practically none for 1 nat. The documentation lists measurements.
 // The gathered int8 rows stay int8 in shared memory (cp.async, double buffered, one tile ahead). A fragment read with
 // ldmatrix is converted to fp16 exactly in registers (1024 + (byte ^ 0x80) - 1152, "magic number" conversion) and
 // consumed by fp16 MMAs with fp32 accumulation, so the per-tile dequantization pass, its shared memory round trip and
 // its barriers of the BF16-dequantizing kernel disappear. The scores stay in registers; the only cross-warp exchanges
 // per tile are the row maxima and the fp16 probability tile, which holds kInt8ProbScale * p so that the tail of the
 // softmax stays out of the fp16 subnormal range.
+//
+// Scores and the running maximum are kept in the natural logarithm domain and only the difference to the new maximum
+// is scaled by log2(e) for ex2: the difference of two nearby large logits is then exact, which the product with log2(e)
+// would round away. Decode (kSplitK) splits the probability tile into an fp16 high part and an fp16 residual (about
+// 22 significant bits together), because the signed sum of large value codes can cancel to a value far below the 2^-11
+// rounding of a single fp16 probability; both parts multiply the same converted V fragments. The prefill variant keeps
+// the single fp16 tile (as does the BF16-dequantizing kernel, whose bfloat16 tile is coarser still).
 //
 // The channel (reduction) dimension of S = Q' K^T is permuted so that one 4-byte ldmatrix element of a K row supplies
 // both B registers of an MMA k step: slot 2t+e <-> channel 16j + 4t + e and slot 2t+8+e <-> channel 16j + 4t + 2 + e,
@@ -52,22 +68,35 @@ constexpr int kIdxStages = 3;
 // The fp16 probability tile holds kInt8ProbScale * p for p in [0, 1]. Without the factor a candidate whose probability
 // is below 2^-25 rounds to zero although a large value scale can make its contribution matter; with it the flush point
 // drops to 2^-40 and the tile stays below the fp16 maximum. The PV accumulator carries the factor until the epilogue
-// removes it; the softmax denominator is accumulated in fp32 without it. When any channel has
-// |value_scale| > kInt8TcMaxValueScale (so that |p * V * value_scale| for p <= 2^-40 can exceed 2^-17), the CTA takes
-// AttendRowFp32 instead.
+// removes it; the softmax denominator is accumulated in fp32 without it. A probability below 2^-29 is a subnormal
+// fp16 value of the tile (kInt8TcTailDepth nats below the running maximum). When some channel has
+// |value_scale| > kInt8TcMaxValueScale (so that |p * V * value_scale| for p <= 2^-40 can exceed 2^-17) and a valid
+// candidate is that deep, the CTA takes AttendRowFp32 instead.
 constexpr float kInt8ProbScale = 32768.0f;  // 2^15
 constexpr float kInt8ProbInverseScale = 1.0f / kInt8ProbScale;
 constexpr float kInt8TcMaxValueScale = 65536.0f;  // 2^16
+constexpr float kInt8TcTailDepth = 20.0f;         // nats; 2^-29 is 20.1
 
-// Largest softmax scale served by the kernel below (the op validates it as finite and non-negative). Rounding
-// Q * key_scale to fp16 flushes products below 2^-25 to zero, which moves a dot product by at most
-// 256 * 128 * 2^-25 = 2^-10 before the scale multiplies it; a larger scale would amplify that error, so the dispatcher
-// uses the BF16-dequantizing prefill / CUDA-core decode kernels for it.
+// Largest softmax scale served by the kernel below (the op validates it as finite and non-negative). The error
+// bound on Q * key_scale rounded to fp16 grows linearly with it, so a larger scale would send ordinary data to the
+// fp32 fallback; the dispatcher uses the BF16-dequantizing prefill / CUDA-core decode kernels for it instead.
 constexpr float kInt8TcMaxScale = 1.0f;
 
+// Largest bound on the change of a logit caused by rounding Q * key_scale to fp16 that the tensor-core path accepts:
+// scale * 128 * sum_d |Q'_d - fp16(Q'_d)| of the query head (see the top). For a normal-range Q' the bound is at most
+// 2^-4 * scale * sum_d |Q'_d|, an eighth of what rounding the cache to INT8 can move the same logit, so ordinary
+// queries stay far below the budget, while a query whose large terms cancel to a small logit (the INT8 error of an
+// exactly representable cache is zero there) exceeds it by orders of magnitude and is evaluated in fp32. The bound is
+// about 0.015 for unit-RMS queries scaled by the q-norm weights and the key scales of the Qwen3.8-Flash-Next DSA
+// layers (docs/contrib_ops/cuda/dynamic_sparse_attention.md lists how it grows with the query magnitude).
+constexpr float kInt8TcQueryErrorBudget = 0.125f;
+
 // sK8[2] + sV8[2] (sQ aliases sK8[0] before the tile loop) + candidate indices + row maxima / sums + probabilities.
+constexpr size_t kInt8PBytes = kMaxGroup * kInt8PStride * sizeof(__half);
 constexpr size_t kInt8SharedBytes = 4 * static_cast<size_t>(kInt8TileBytes) + kIdxStages * kTile * sizeof(int32_t) +
-                                    kMaxGroup * 4 * sizeof(float) + kMaxGroup * kInt8PStride * sizeof(__half);
+                                    kMaxGroup * 4 * sizeof(float) + kInt8PBytes;
+// The split-K (decode) variant adds the tile of fp16 probability residuals.
+constexpr size_t kInt8SplitKSharedBytes = kInt8SharedBytes + kInt8PBytes;
 
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
 __device__ __forceinline__ void CpAsync16Zfill(uint32_t smem_dst, const void* gmem_src, bool valid) {
@@ -129,15 +158,17 @@ __device__ __forceinline__ void Int8x4ToHalf2Strided(uint32_t w, uint32_t& even,
   odd = Half2MinusBias(b);
 }
 
-// FP32 evaluation of the query heads of one (row, KV head), one warp per head and eight channels per lane, for rows
-// whose Q * key_scale leaves the FP16 range of the tensor-core path or whose value_scale exceeds kInt8TcMaxValueScale.
-// Clipping Q * key_scale would break the cancellation between large terms, and a larger value_scale can amplify
-// probabilities below the 2^-40 FP16 probability-tile flush boundary. `query` and `output` point at the first head of
+// FP32 evaluation of the query heads of one (row, KV head), one warp per head and eight channels per lane, for CTAs
+// the tensor-core path cannot serve accurately: Q * key_scale leaves the FP16 range or its rounding error bound exceeds
+// kInt8TcQueryErrorBudget (clipping or rounding would break the cancellation between large terms), or a value_scale
+// above kInt8TcMaxValueScale meets a probability below the normal range of the FP16 probability tile (the tile flushes
+// below 2^-40 and a large value scale can amplify that). `query` and `output` point at the first head of
 // the group; `key_scale` and `value_scale` at the KV head. The candidates [begin, end) of `row_indices` are consumed:
 // all of them for prefill, the range of the CTA for a decode split. With kSplitK the un-normalized partial (running
 // maximum in the natural logarithm domain, running sum, value-scaled accumulator) of block
 // partial_block + head * split_count goes to partial_*, as the main path does; otherwise the normalized result goes to
-// output.
+// output. Every candidate is read from global memory once per head and handled serially, so this path is one to two
+// orders of magnitude slower than the tensor-core one.
 template <bool kSplitK>
 __device__ __noinline__ void AttendRowFp32(const __nv_bfloat16* __restrict__ query, const int8_t* __restrict__ key,
                                            const int8_t* __restrict__ value, const float* __restrict__ key_scale,
@@ -219,7 +250,7 @@ __device__ __noinline__ void AttendRowFp32(const __nv_bfloat16* __restrict__ que
 #endif
 
 // grid = (batch * sequence_length, kv_num_heads) or, with kSplitK, (batch * sequence_length, kv_num_heads,
-// split_count); block = kThreads, dynamic smem = kInt8SharedBytes.
+// split_count); block = kThreads, dynamic smem = kInt8SharedBytes (kInt8SplitKSharedBytes with kSplitK).
 // query: [rows, num_heads, 256] (already normalized / rotated); key, value: int8 [batch, kv_heads, capacity, 256];
 // key_scale, value_scale: float [kv_heads, 256]. The normalized result goes to output; with kSplitK the partials
 // go to partial_max / partial_sum [rows * num_heads * split_count] and partial_output [.., 256] instead, indexed
@@ -253,6 +284,8 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionInt8TcKerne
   float* sM = reinterpret_cast<float*>(sIdx + kIdxStages * kTile);
   __half* sP = reinterpret_cast<__half*>(sM + kMaxGroup * 4);
   __half* sQ = reinterpret_cast<__half*>(smem_raw);
+  // kSplitK only: fp16 residual of the probability tile, right behind sP (see kInt8SplitKSharedBytes).
+  [[maybe_unused]] __half* sPResidual = sP + kMaxGroup * kInt8PStride;
 
   const int tid = threadIdx.x;
   const int lane = tid & 31;
@@ -295,30 +328,41 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionInt8TcKerne
     }
   }
 
-  // Q' = Q * key_scale as fp16; the padding rows are zero so their (ignored) scores stay finite. A row whose Q' does
-  // not fit fp16 (including inf / NaN) or whose value_scale exceeds kInt8TcMaxValueScale is evaluated in fp32 by the
-  // whole CTA instead. Underflow to fp16 subnormals changes a product by at most 2^-25, i.e. a score by at most
-  // 2^-10 * scale, which the dispatcher keeps at the level of the fp16 rounding by requiring scale <= kInt8TcMaxScale.
+  // Q' = Q * key_scale as fp16; the padding rows are zero so their (ignored) scores stay finite. The whole CTA is
+  // evaluated in fp32 by AttendRowFp32 instead when Q' of a head does not fit fp16 (including inf / NaN), when the bound
+  // scale * 128 * sum_d |Q'_d - fp16(Q'_d)| on the rounding error of a logit exceeds kInt8TcQueryErrorBudget for a
+  // head, or when a value_scale is not finite. A finite value_scale above kInt8TcMaxValueScale only arms the check of
+  // the probability depth after the tile loop.
   const __nv_bfloat16* query_group = query + (static_cast<int64_t>(row) * num_heads + kv_head * group) * kHeadDim;
   bool needs_fp32 = false;
+  bool large_value_scale = false;
   {
     const int chunk = tid & 31;
     const float4 k0 = *reinterpret_cast<const float4*>(key_scale + kv_head * kHeadDim + chunk * 8);
     const float4 k1 = *reinterpret_cast<const float4*>(key_scale + kv_head * kHeadDim + chunk * 8 + 4);
     if (tid < kHeadDim / 4) {
       const float4 v = *reinterpret_cast<const float4*>(value_scale + kv_head * kHeadDim + tid * 4);
-      needs_fp32 = !(fabsf(v.x) <= kInt8TcMaxValueScale) || !(fabsf(v.y) <= kInt8TcMaxValueScale) ||
-                   !(fabsf(v.z) <= kInt8TcMaxValueScale) || !(fabsf(v.w) <= kInt8TcMaxValueScale);
+      needs_fp32 = !(fabsf(v.x) <= FLT_MAX) || !(fabsf(v.y) <= FLT_MAX) || !(fabsf(v.z) <= FLT_MAX) ||
+                   !(fabsf(v.w) <= FLT_MAX);
+      large_value_scale = fabsf(v.x) > kInt8TcMaxValueScale || fabsf(v.y) > kInt8TcMaxValueScale ||
+                          fabsf(v.z) > kInt8TcMaxValueScale || fabsf(v.w) > kInt8TcMaxValueScale;
     }
-    auto to_half2 = [&needs_fp32](float x, float y) {
+    // Sum of |Q' - fp16(Q')| over the eight channels of this lane (NaN when Q' is not finite or leaves fp16).
+    float rounding_error = 0.0f;
+    auto to_half2 = [&needs_fp32, &rounding_error](float x, float y) {
       needs_fp32 |= !(fabsf(x) <= 65504.0f) || !(fabsf(y) <= 65504.0f);
-      return __floats2half2_rn(x, y);
+      const __half2 h = __floats2half2_rn(x, y);
+      const float2 rounded = __half22float2(h);
+      rounding_error += fabsf(x - rounded.x) + fabsf(y - rounded.y);
+      return h;
     };
+    const float error_scale = scale * 128.0f;
 #pragma unroll
     for (int i = 0; i < kMaxGroup / 4; ++i) {
       const int r = (tid >> 5) + 4 * i;
       uint4 packed = make_uint4(0, 0, 0, 0);
       if (r < group) {
+        rounding_error = 0.0f;
         const uint4 q = *reinterpret_cast<const uint4*>(query_group + static_cast<int64_t>(r) * kHeadDim + chunk * 8);
         const float2 q01 = __bfloat1622float2(*reinterpret_cast<const __nv_bfloat162*>(&q.x));
         const float2 q23 = __bfloat1622float2(*reinterpret_cast<const __nv_bfloat162*>(&q.y));
@@ -332,12 +376,19 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionInt8TcKerne
         packed.y = *reinterpret_cast<const uint32_t*>(&h23);
         packed.z = *reinterpret_cast<const uint32_t*>(&h45);
         packed.w = *reinterpret_cast<const uint32_t*>(&h67);
+        // The warp covers all 256 channels of row r (r < group is uniform across it): a butterfly sum gives the
+        // bound on the logit error of head r in every lane.
+#pragma unroll
+        for (int offset = 16; offset > 0; offset >>= 1) {
+          rounding_error += __shfl_xor_sync(0xffffffffu, rounding_error, offset);
+        }
+        needs_fp32 |= !(rounding_error * error_scale <= kInt8TcQueryErrorBudget);
       }
       *reinterpret_cast<uint4*>(sQ + r * kInt8QStride + chunk * 8) = packed;
     }
   }
-  if (__syncthreads_or(needs_fp32)) {
-    // The condition is uniform across the CTA and no cp.async is in flight yet.
+  // The condition is uniform across the CTA and no cp.async is in flight yet.
+  auto attend_fp32 = [&]() {
     const float* kv_key_scale = key_scale + kv_head * kHeadDim;
     const float* kv_value_scale = value_scale + kv_head * kHeadDim;
     if constexpr (kSplitK) {
@@ -352,6 +403,9 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionInt8TcKerne
                            output + (static_cast<int64_t>(row) * num_heads + kv_head * group) * kHeadDim, nullptr,
                            nullptr, nullptr, 0, 1, warp, lane);
     }
+  };
+  if (__syncthreads_or(needs_fp32)) {
+    attend_fp32();
     return;
   }
 
@@ -367,7 +421,8 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionInt8TcKerne
     qf[j][2] = lo.y;
     qf[j][3] = hi.y;
   }
-  __syncthreads();  // sQ aliases sK8[0]
+  // sQ aliases sK8[0]: this barrier also tells the CTA whether the probability depth has to be checked (see below).
+  const bool check_tail_depth = __syncthreads_or(large_value_scale);
 
   auto resolve_index = [&](int raw) -> int {
     return (raw >= 0 && raw < total && raw <= query_position && raw < capacity) ? raw : -1;
@@ -384,6 +439,7 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionInt8TcKerne
   const uint32_t k_smem_base = static_cast<uint32_t>(__cvta_generic_to_shared(sK8));
   const uint32_t v_smem_base = static_cast<uint32_t>(__cvta_generic_to_shared(sV8));
   const uint32_t p_smem_base = static_cast<uint32_t>(__cvta_generic_to_shared(sP));
+  [[maybe_unused]] const uint32_t p_residual_smem_base = p_smem_base + static_cast<uint32_t>(kInt8PBytes);
   const int load_chunk = tid & 15;
 
   // 16 B per lane: 16 lanes per candidate row, 8 rows per pass, 8 passes per tile (K and V).
@@ -410,13 +466,16 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionInt8TcKerne
   for (int n = 0; n < 8; ++n) {
     acc_o[n][0] = acc_o[n][1] = acc_o[n][2] = acc_o[n][3] = 0.0f;
   }
-  // Softmax state of rows r0 / r0 + 8: the running maximum is identical in all threads of the row, the running sum only
-  // covers this thread's columns (merged across threads and warps after the loop).
+  // Softmax state of rows r0 / r0 + 8: the running maximum (natural logarithm domain) is identical in all threads of
+  // the row, the running sum only covers this thread's columns (merged across threads and warps after the loop).
   float run_max0 = -FLT_MAX;
   float run_max1 = -FLT_MAX;
   float run_sum0 = 0.0f;
   float run_sum1 = 0.0f;
-  const float scale_log2 = scale * 1.44269504088896341f;
+  // Most negative (score - running maximum) of a valid candidate seen by this thread; only tracked when a value scale
+  // is large.
+  float lowest_depth = 0.0f;
+  constexpr float kLog2e = 1.44269504088896341f;
 
   // Shared memory byte addresses that do not change from tile to tile.
   const uint32_t k_lane_offset =
@@ -470,7 +529,7 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionInt8TcKerne
       }
     }
 
-    // Scores in the log2 domain; invalid candidates are masked.
+    // Scores in the natural logarithm domain; invalid candidates are masked.
     const int cbase = warp * 16 + 2 * t;
     const int2 ia = *reinterpret_cast<const int2*>(sIdx + idx_cur * kTile + cbase);
     const int2 ib = *reinterpret_cast<const int2*>(sIdx + idx_cur * kTile + cbase + 8);
@@ -478,14 +537,14 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionInt8TcKerne
     const bool va1 = ia.y >= 0;
     const bool vb0 = ib.x >= 0;
     const bool vb1 = ib.y >= 0;
-    const float s00 = va0 ? acc_s[0][0] * scale_log2 : -FLT_MAX;
-    const float s01 = va1 ? acc_s[0][1] * scale_log2 : -FLT_MAX;
-    const float s02 = vb0 ? acc_s[1][0] * scale_log2 : -FLT_MAX;
-    const float s03 = vb1 ? acc_s[1][1] * scale_log2 : -FLT_MAX;
-    const float s10 = va0 ? acc_s[0][2] * scale_log2 : -FLT_MAX;
-    const float s11 = va1 ? acc_s[0][3] * scale_log2 : -FLT_MAX;
-    const float s12 = vb0 ? acc_s[1][2] * scale_log2 : -FLT_MAX;
-    const float s13 = vb1 ? acc_s[1][3] * scale_log2 : -FLT_MAX;
+    const float s00 = va0 ? acc_s[0][0] * scale : -FLT_MAX;
+    const float s01 = va1 ? acc_s[0][1] * scale : -FLT_MAX;
+    const float s02 = vb0 ? acc_s[1][0] * scale : -FLT_MAX;
+    const float s03 = vb1 ? acc_s[1][1] * scale : -FLT_MAX;
+    const float s10 = va0 ? acc_s[0][2] * scale : -FLT_MAX;
+    const float s11 = va1 ? acc_s[0][3] * scale : -FLT_MAX;
+    const float s12 = vb0 ? acc_s[1][2] * scale : -FLT_MAX;
+    const float s13 = vb1 ? acc_s[1][3] * scale : -FLT_MAX;
     float m0 = fmaxf(fmaxf(s00, s01), fmaxf(s02, s03));
     float m1 = fmaxf(fmaxf(s10, s11), fmaxf(s12, s13));
     m0 = fmaxf(m0, __shfl_xor_sync(0xffffffffu, m0, 1));
@@ -502,31 +561,69 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionInt8TcKerne
     const float4 mx1 = *reinterpret_cast<const float4*>(sM + (r0 + 8) * 4);
     const float new_max0 = fmaxf(run_max0, fmaxf(fmaxf(mx0.x, mx0.y), fmaxf(mx0.z, mx0.w)));
     const float new_max1 = fmaxf(run_max1, fmaxf(fmaxf(mx1.x, mx1.y), fmaxf(mx1.z, mx1.w)));
-    const float alpha0 = FastExp2(run_max0 - new_max0);
-    const float alpha1 = FastExp2(run_max1 - new_max1);
-    const float p00 = va0 ? FastExp2(s00 - new_max0) : 0.0f;
-    const float p01 = va1 ? FastExp2(s01 - new_max0) : 0.0f;
-    const float p02 = vb0 ? FastExp2(s02 - new_max0) : 0.0f;
-    const float p03 = vb1 ? FastExp2(s03 - new_max0) : 0.0f;
-    const float p10 = va0 ? FastExp2(s10 - new_max1) : 0.0f;
-    const float p11 = va1 ? FastExp2(s11 - new_max1) : 0.0f;
-    const float p12 = vb0 ? FastExp2(s12 - new_max1) : 0.0f;
-    const float p13 = vb1 ? FastExp2(s13 - new_max1) : 0.0f;
+    // The differences to the new maximum are formed in the natural logarithm domain, where nearby large logits are
+    // still distinct, and only then scaled by log2(e) for ex2.
+    const float alpha0 = FastExp2((run_max0 - new_max0) * kLog2e);
+    const float alpha1 = FastExp2((run_max1 - new_max1) * kLog2e);
+    const float d00 = s00 - new_max0;
+    const float d01 = s01 - new_max0;
+    const float d02 = s02 - new_max0;
+    const float d03 = s03 - new_max0;
+    const float d10 = s10 - new_max1;
+    const float d11 = s11 - new_max1;
+    const float d12 = s12 - new_max1;
+    const float d13 = s13 - new_max1;
+    const float p00 = va0 ? FastExp2(d00 * kLog2e) : 0.0f;
+    const float p01 = va1 ? FastExp2(d01 * kLog2e) : 0.0f;
+    const float p02 = vb0 ? FastExp2(d02 * kLog2e) : 0.0f;
+    const float p03 = vb1 ? FastExp2(d03 * kLog2e) : 0.0f;
+    const float p10 = va0 ? FastExp2(d10 * kLog2e) : 0.0f;
+    const float p11 = va1 ? FastExp2(d11 * kLog2e) : 0.0f;
+    const float p12 = vb0 ? FastExp2(d12 * kLog2e) : 0.0f;
+    const float p13 = vb1 ? FastExp2(d13 * kLog2e) : 0.0f;
     run_sum0 = run_sum0 * alpha0 + ((p00 + p01) + (p02 + p03));
     run_sum1 = run_sum1 * alpha1 + ((p10 + p11) + (p12 + p13));
     run_max0 = new_max0;
     run_max1 = new_max1;
+    if (check_tail_depth) {
+      const float low0 = fminf(fminf(va0 ? d00 : 0.0f, va1 ? d01 : 0.0f), fminf(vb0 ? d02 : 0.0f, vb1 ? d03 : 0.0f));
+      const float low1 = fminf(fminf(va0 ? d10 : 0.0f, va1 ? d11 : 0.0f), fminf(vb0 ? d12 : 0.0f, vb1 ? d13 : 0.0f));
+      lowest_depth = fminf(lowest_depth, fminf(low0, low1));
+    }
     {
-      const __half2 h00 = __floats2half2_rn(p00 * kInt8ProbScale, p01 * kInt8ProbScale);
-      const __half2 h01 = __floats2half2_rn(p02 * kInt8ProbScale, p03 * kInt8ProbScale);
-      const __half2 h10 = __floats2half2_rn(p10 * kInt8ProbScale, p11 * kInt8ProbScale);
-      const __half2 h11 = __floats2half2_rn(p12 * kInt8ProbScale, p13 * kInt8ProbScale);
+      const float x00 = p00 * kInt8ProbScale;
+      const float x01 = p01 * kInt8ProbScale;
+      const float x02 = p02 * kInt8ProbScale;
+      const float x03 = p03 * kInt8ProbScale;
+      const float x10 = p10 * kInt8ProbScale;
+      const float x11 = p11 * kInt8ProbScale;
+      const float x12 = p12 * kInt8ProbScale;
+      const float x13 = p13 * kInt8ProbScale;
+      const __half2 h00 = __floats2half2_rn(x00, x01);
+      const __half2 h01 = __floats2half2_rn(x02, x03);
+      const __half2 h10 = __floats2half2_rn(x10, x11);
+      const __half2 h11 = __floats2half2_rn(x12, x13);
       *reinterpret_cast<__half2*>(sP + r0 * kInt8PStride + cbase) = h00;
       *reinterpret_cast<__half2*>(sP + r0 * kInt8PStride + cbase + 8) = h01;
       *reinterpret_cast<__half2*>(sP + (r0 + 8) * kInt8PStride + cbase) = h10;
       *reinterpret_cast<__half2*>(sP + (r0 + 8) * kInt8PStride + cbase + 8) = h11;
+      if constexpr (kSplitK) {
+        // What the fp16 tile lost: P = P_hi + P_residual keeps about 22 significant bits.
+        const float2 f00 = __half22float2(h00);
+        const float2 f01 = __half22float2(h01);
+        const float2 f10 = __half22float2(h10);
+        const float2 f11 = __half22float2(h11);
+        *reinterpret_cast<__half2*>(sPResidual + r0 * kInt8PStride + cbase) =
+            __floats2half2_rn(x00 - f00.x, x01 - f00.y);
+        *reinterpret_cast<__half2*>(sPResidual + r0 * kInt8PStride + cbase + 8) =
+            __floats2half2_rn(x02 - f01.x, x03 - f01.y);
+        *reinterpret_cast<__half2*>(sPResidual + (r0 + 8) * kInt8PStride + cbase) =
+            __floats2half2_rn(x10 - f10.x, x11 - f10.y);
+        *reinterpret_cast<__half2*>(sPResidual + (r0 + 8) * kInt8PStride + cbase + 8) =
+            __floats2half2_rn(x12 - f11.x, x13 - f11.y);
+      }
     }
-    __syncthreads();  // (3) the probability tile is visible
+    __syncthreads();  // (3) the probability tile (and its residual) is visible
 
     // The maximum rarely changes after the first tiles: skip the accumulator rescale when the whole warp is unchanged.
     if (__any_sync(0xffffffffu, alpha0 != 1.0f || alpha1 != 1.0f)) {
@@ -539,13 +636,18 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionInt8TcKerne
       }
     }
 
-    // O += P V for this warp's 64 output channels (four 16-channel chunks, each an even and an odd n tile).
+    // O += P V for this warp's 64 output channels (four 16-channel chunks, each an even and an odd n tile). With kSplitK
+    // the residual tile multiplies the same converted V fragments.
     {
       const uint32_t v_addr = v_smem_base + stage * kInt8TileBytes + v_lane_offset;
 #pragma unroll
       for (int kk = 0; kk < kTile / 16; ++kk) {
         uint32_t a[4];
         LdmatrixX4Addr(a, p_smem_base + p_lane_offset + kk * 32);
+        uint32_t a_residual[4] = {0, 0, 0, 0};
+        if constexpr (kSplitK) {
+          LdmatrixX4Addr(a_residual, p_residual_smem_base + p_lane_offset + kk * 32);
+        }
 #pragma unroll
         for (int cp = 0; cp < 2; ++cp) {
           uint32_t r[4];
@@ -559,10 +661,18 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionInt8TcKerne
           Int8x4ToHalf2Strided(r[1], e1, o1);
           MmaF16(acc_o[4 * cp], a, e0, e1);
           MmaF16(acc_o[4 * cp + 1], a, o0, o1);
+          if constexpr (kSplitK) {
+            MmaF16(acc_o[4 * cp], a_residual, e0, e1);
+            MmaF16(acc_o[4 * cp + 1], a_residual, o0, o1);
+          }
           Int8x4ToHalf2Strided(r[2], e0, o0);
           Int8x4ToHalf2Strided(r[3], e1, o1);
           MmaF16(acc_o[4 * cp + 2], a, e0, e1);
           MmaF16(acc_o[4 * cp + 3], a, o0, o1);
+          if constexpr (kSplitK) {
+            MmaF16(acc_o[4 * cp + 2], a_residual, e0, e1);
+            MmaF16(acc_o[4 * cp + 3], a_residual, o0, o1);
+          }
         }
       }
     }
@@ -573,6 +683,14 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionInt8TcKerne
     idx_cur = idx_next;
     idx_next = idx_next2;
     idx_next2 = idx_next2 + 1 == kIdxStages ? 0 : idx_next2 + 1;
+  }
+
+  // A large value scale amplifies probabilities that the fp16 tile represents with a large relative error or not at
+  // all (below 2^-29). The condition is uniform across the CTA and no cp.async copy is in flight here; the tile loop
+  // wrote nothing to global memory, so the fp32 path simply starts over from the inputs.
+  if (check_tail_depth && __syncthreads_or(lowest_depth < -kInt8TcTailDepth)) {
+    attend_fp32();
+    return;
   }
 
   // Merge the per-thread running sums: across the four threads of a row, then across the four warps.
@@ -599,36 +717,38 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionInt8TcKerne
   if constexpr (kSplitK) {
     // Un-normalized partial of this split in the natural logarithm domain, as the merge kernel expects. Thread t owns
     // channels 64 * warp + 16 * chunk + 4t + {0, 1, 2, 3} (see below), i.e. one float4 per chunk and row.
-    constexpr float kLn2 = 0.693147180559945309f;
     const int split = static_cast<int>(blockIdx.z);
     const int partial_block0 = (row * num_heads + kv_head * group + r0) * split_count + split;
     const int partial_block1 = partial_block0 + 8 * split_count;
     if (warp == 0 && t == 0) {
       if (r0 < group) {
-        partial_max[partial_block0] = run_max0 * kLn2;
+        partial_max[partial_block0] = run_max0;
         partial_sum[partial_block0] = sum0;
       }
       if (r0 + 8 < group) {
-        partial_max[partial_block1] = run_max1 * kLn2;
+        partial_max[partial_block1] = run_max1;
         partial_sum[partial_block1] = sum1;
       }
     }
 #pragma unroll
     for (int chunk = 0; chunk < 4; ++chunk) {
       const int dim = warp * 64 + chunk * 16 + t * 4;
-      // acc_o carries kInt8ProbScale (the partial_sum above does not), which the value scale takes out.
-      const float4 vs_raw = *reinterpret_cast<const float4*>(value_scale + kv_head * kHeadDim + dim);
-      const float4 vs = make_float4(vs_raw.x * kInt8ProbInverseScale, vs_raw.y * kInt8ProbInverseScale,
-                                    vs_raw.z * kInt8ProbInverseScale, vs_raw.w * kInt8ProbInverseScale);
+      // acc_o carries kInt8ProbScale (the partial_sum above does not). Removing it before the multiplication by the
+      // value scale keeps a tiny scale (or the product) from underflowing in the factor.
+      const float4 vs = *reinterpret_cast<const float4*>(value_scale + kv_head * kHeadDim + dim);
       if (r0 < group) {
         *reinterpret_cast<float4*>(partial_output + static_cast<int64_t>(partial_block0) * kHeadDim + dim) =
-            make_float4(acc_o[2 * chunk][0] * vs.x, acc_o[2 * chunk + 1][0] * vs.y, acc_o[2 * chunk][1] * vs.z,
-                        acc_o[2 * chunk + 1][1] * vs.w);
+            make_float4((acc_o[2 * chunk][0] * kInt8ProbInverseScale) * vs.x,
+                        (acc_o[2 * chunk + 1][0] * kInt8ProbInverseScale) * vs.y,
+                        (acc_o[2 * chunk][1] * kInt8ProbInverseScale) * vs.z,
+                        (acc_o[2 * chunk + 1][1] * kInt8ProbInverseScale) * vs.w);
       }
       if (r0 + 8 < group) {
         *reinterpret_cast<float4*>(partial_output + static_cast<int64_t>(partial_block1) * kHeadDim + dim) =
-            make_float4(acc_o[2 * chunk][2] * vs.x, acc_o[2 * chunk + 1][2] * vs.y, acc_o[2 * chunk][3] * vs.z,
-                        acc_o[2 * chunk + 1][3] * vs.w);
+            make_float4((acc_o[2 * chunk][2] * kInt8ProbInverseScale) * vs.x,
+                        (acc_o[2 * chunk + 1][2] * kInt8ProbInverseScale) * vs.y,
+                        (acc_o[2 * chunk][3] * kInt8ProbInverseScale) * vs.z,
+                        (acc_o[2 * chunk + 1][3] * kInt8ProbInverseScale) * vs.w);
       }
     }
   } else {
