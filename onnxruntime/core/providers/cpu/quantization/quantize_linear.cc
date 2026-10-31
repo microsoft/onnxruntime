@@ -572,8 +572,10 @@ void DequantizeSubByteShortRows(size_t M, size_t K, size_t N, size_t quant_block
         alignas(64) int8_t values[kSubByteChunk];
         alignas(64) int8_t zps[kSubByteChunk];
         UnpackSubByteElements<T, elements_per_byte>(input, row_begin * N, (row_end - row_begin) * N, values);
-        if (blocked && !zero_point) {
-          std::fill_n(zps, N, int8_t{0});
+        if constexpr (blocked) {
+          if (!zero_point) {
+            std::fill_n(zps, N, int8_t{0});
+          }
         }
 
         // Walk (m, k) and the block of k without a division per row.
@@ -605,9 +607,11 @@ void DequantizeSubByteShortRows(size_t M, size_t K, size_t N, size_t quant_block
             ++m;
             block = 0;
             in_block = 0;
-          } else if (blocked && ++in_block == quant_block_size) {
-            in_block = 0;
-            ++block;
+          } else if constexpr (blocked) {
+            if (++in_block == quant_block_size) {
+              in_block = 0;
+              ++block;
+            }
           }
         }
       });
