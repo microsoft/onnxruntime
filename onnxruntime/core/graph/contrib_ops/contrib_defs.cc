@@ -935,6 +935,63 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           }
         }));
 
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    RouterGateUpProj, 1,
+    OpSchema()
+        .SetDoc(
+            "Fused first projection of a MoE layer with a shared expert. One GEMM Y = X * W, with "
+            "N = router_size + 2 * inter, is split into the router logits Y[.., :router_size] and the "
+            "gate/up halves of the shared expert Y[.., router_size:], gate first then up. The output "
+            "router is Y[.., :router_size] rounded to T; the output activated is activation(gate, up), "
+            "computed on the T-rounded gate and up values. With activation = 'swiglu' it uses the SwiGLU "
+            "operator's `limit`, `activation_alpha` and `activation_beta`, so the op equals "
+            "MatMul + Split + SwiGLU.\n"
+            "For up to 8 rows the CUDA kernel is a single deterministic tensor-core GEMV; other shapes use a "
+            "GEMM and an elementwise kernel.")
+        .Attr("router_size", "Number of leading columns of W that form the router logits.",
+              AttributeProto::INT)
+        .Attr("activation", "Gated activation applied to the gate and up halves. Only 'swiglu' is defined.",
+              AttributeProto::STRING, std::string("swiglu"))
+        .Attr("limit", "SwiGLU clamp applied to both halves; zero or less disables it.",
+              AttributeProto::FLOAT, 0.0f)
+        .Attr("activation_alpha", "SwiGLU multiplier inside the sigmoid.", AttributeProto::FLOAT, 1.0f)
+        .Attr("activation_beta", "SwiGLU value added to the linear half.", AttributeProto::FLOAT, 0.0f)
+        .Input(0, "X", "Activation with shape (.., K).", "T")
+        .Input(1, "W", "Weight with shape (K, router_size + 2 * inter).", "T")
+        .Output(0, "router", "Router logits with shape (.., router_size).", "T")
+        .Output(1, "activated", "Gated shared-expert activation with shape (.., inter).", "T")
+        .TypeConstraint("T", {"tensor(bfloat16)", "tensor(float16)"}, "Constrain the data type to 16-bit floats.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          propagateElemTypeFromInputToOutput(ctx, 0, 1);
+          const int64_t router = getAttribute(ctx, "router_size", 0);
+          if (router <= 0) fail_shape_inference("router_size must be positive.");
+          if (getAttribute(ctx, "activation", std::string("swiglu")) != "swiglu") {
+            fail_shape_inference("activation must be 'swiglu'.");
+          }
+          if (!hasInputShape(ctx, 0) || !hasInputShape(ctx, 1)) return;
+          const auto& x = getInputShape(ctx, 0);
+          const auto& w = getInputShape(ctx, 1);
+          if (x.dim_size() == 0 || w.dim_size() != 2) {
+            fail_shape_inference("X must have rank >= 1 and W must have rank 2.");
+          }
+          auto* router_shape = ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+          auto* swish_shape = ctx.getOutputType(1)->mutable_tensor_type()->mutable_shape();
+          for (int i = 0; i + 1 < x.dim_size(); ++i) {
+            *router_shape->add_dim() = x.dim(i);
+            *swish_shape->add_dim() = x.dim(i);
+          }
+          router_shape->add_dim()->set_dim_value(router);
+          auto* inter = swish_shape->add_dim();
+          if (w.dim(1).has_dim_value()) {
+            const int64_t rest = w.dim(1).dim_value() - router;
+            if (rest <= 0 || rest % 2 != 0) {
+              fail_shape_inference("W's second dimension must be router_size plus an even positive number.");
+            }
+            inter->set_dim_value(rest / 2);
+          }
+        }));
+
 ONNX_MS_OPERATOR_SET_SCHEMA(BiasDropout, 1,
                             OpSchema()
                                 .SetDoc(
