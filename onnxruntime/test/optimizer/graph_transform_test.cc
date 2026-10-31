@@ -5490,6 +5490,86 @@ TEST_F(GraphTransformationTests, MatMulAddFusion_NeedReshape_3D) {
                                         1, pre_graph_checker, post_graph_checker));
 }
 
+TEST_F(GraphTransformationTests, MatMulAddFusion_EmptyReshapeDimensions) {
+  struct TestCase {
+    std::vector<int64_t> input_dims;
+    int64_t output_columns;
+  };
+  const std::vector<TestCase> cases{
+      {{2, 0, 4}, 5},
+      {{0, 2, 4}, 5},
+      {{2, 3, 0}, 5},
+      {{2, 3, 4}, 0},
+      {{0}, 5},
+      {{2, 0, 0}, 5},
+      {{2, 0, 3, 4}, 5},
+  };
+  for (int opset : {7, 13, 14, 18}) {
+    for (const auto& test_case : cases) {
+      SCOPED_TRACE(opset);
+      SCOPED_TRACE(TensorShape(test_case.input_dims).ToString());
+      SCOPED_TRACE(test_case.output_columns);
+      auto build_test_case = [&test_case](ModelTestBuilder& builder) {
+        const auto& input_dims = test_case.input_dims;
+        auto output_dims = input_dims;
+        if (input_dims.size() == 1) {
+          output_dims = {test_case.output_columns};
+        } else {
+          output_dims.back() = test_case.output_columns;
+        }
+        auto* input = builder.MakeInput<float>(input_dims, 1.0f, 1.0f);
+        auto* weights = builder.MakeInput<float>({input_dims.back(), test_case.output_columns}, 1.0f, 1.0f);
+        auto* bias = builder.MakeInput<float>({test_case.output_columns}, 1.0f, 1.0f);
+        auto* intermediate = builder.MakeIntermediate();
+        auto* output = builder.MakeOutput<float>(output_dims);
+        builder.AddNode("MatMul", {input, weights}, {intermediate});
+        builder.AddNode("Add", {intermediate, bias}, {output});
+      };
+      auto check_unfused = [](InferenceSessionWrapper& session) {
+        auto counts = CountOpsInGraph(session.GetGraph());
+        EXPECT_EQ(counts["Gemm"], 0);
+        EXPECT_EQ(counts["Reshape"], 0);
+        EXPECT_EQ(counts["MatMul"], 1);
+        EXPECT_EQ(counts["Add"], 1);
+      };
+      TransformerTester(build_test_case, check_unfused, TransformerLevel::Default,
+                        TransformerLevel::Level1, opset, 0.0, 0.0,
+                        std::make_unique<MatMulAddFusion>());
+    }
+  }
+}
+
+TEST_F(GraphTransformationTests, MatMulAddFusion_NonemptyReshapeDimensions) {
+  const std::vector<std::vector<int64_t>> shapes{{4}, {2, 3, 4}, {2, 3, 2, 4}};
+  for (int opset : {7, 13, 14, 18}) {
+    for (const auto& input_dims : shapes) {
+      SCOPED_TRACE(opset);
+      SCOPED_TRACE(TensorShape(input_dims).ToString());
+      auto build_test_case = [&input_dims](ModelTestBuilder& builder) {
+        auto output_dims = input_dims;
+        output_dims.back() = 5;
+        auto* input = builder.MakeInput<float>(input_dims, 1.0f, 1.0f);
+        auto* weights = builder.MakeInput<float>({input_dims.back(), 5}, 1.0f, 1.0f);
+        auto* bias = builder.MakeInput<float>({5}, 1.0f, 1.0f);
+        auto* intermediate = builder.MakeIntermediate();
+        auto* output = builder.MakeOutput<float>(output_dims);
+        builder.AddNode("MatMul", {input, weights}, {intermediate});
+        builder.AddNode("Add", {intermediate, bias}, {output});
+      };
+      auto check_fused = [](InferenceSessionWrapper& session) {
+        auto counts = CountOpsInGraph(session.GetGraph());
+        EXPECT_EQ(counts["Gemm"], 1);
+        EXPECT_EQ(counts["Reshape"], 2);
+        EXPECT_EQ(counts["MatMul"], 0);
+        EXPECT_EQ(counts["Add"], 0);
+      };
+      TransformerTester(build_test_case, check_fused, TransformerLevel::Default,
+                        TransformerLevel::Level1, opset, 0.0, 0.0,
+                        std::make_unique<MatMulAddFusion>());
+    }
+  }
+}
+
 // With attention pattern, but targeting an execution provider that does not perform
 // AttentionFusion, fuse into GEMM should still be happen, rather than skipping them
 TEST_F(GraphTransformationTests, MatMulAddFusion_PreserveAttentionPattern) {
