@@ -383,7 +383,7 @@ Status ProgramManager::Build(const ProgramBase& program,
 
   // TODO: a new cache hierarchy for constants.
   //
-  // Explaination:
+  // Explanation:
   // Currently, we use Uniforms for dynamic data. This helps to reduce the number of program artifacts.
   //
   // "dynamic data" here means the data the determined at runtime, such as the shape of the input tensor.
@@ -401,7 +401,7 @@ Status ProgramManager::Build(const ProgramBase& program,
   size_t constant_count = program.OverridableConstants().size();
 
   // making a copy of the constant names is required because they are stored as std::string_view in the program
-  // metadata. A value of std::string_view is not guaranteed to be a C-stlye string (null-terminated) and hence
+  // metadata. A value of std::string_view is not guaranteed to be a C-style string (null-terminated) and hence
   // cannot be used directly in the WebGPU API (which expects a const char*).
   std::vector<std::string> constant_names;
   constant_names.reserve(constant_count);

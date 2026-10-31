@@ -454,7 +454,7 @@ MlasLutGemm(
      *
      * Currently, we only support FP32, add FP16 support later which requires conversion buffer
      *
-     * LUT Buffer for FP32 : K * M * 4 * sizeof(uint8_t) bytes + lut_scale_size * m * 2 * sizeof(float) bytes  + allignment
+     * LUT Buffer for FP32 : K * M * 4 * sizeof(uint8_t) bytes + lut_scale_size * m * 2 * sizeof(float) bytes  + alignment
      *
      */
 
