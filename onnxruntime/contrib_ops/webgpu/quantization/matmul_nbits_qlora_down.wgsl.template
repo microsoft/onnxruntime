@@ -1,0 +1,119 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#param acc_f32
+#param use_subgroups
+
+#use .getByOffset .setByOffset
+
+// Joint single-vector decode: the base projection and T = X * A_down share
+// one dispatch. lora_at stores rank-major packed INT8 weights; lora_down is
+// the rank-32 intermediate T consumed by the later up projection.
+#if acc_f32
+alias qlora_acc_t = f32;
+#else
+alias qlora_acc_t = output_element_t;
+#endif
+
+#if !use_subgroups
+var<workgroup> qlora_x_tile: array<vec4<output_element_t>, 128>;
+var<workgroup> qlora_partials: array<array<qlora_acc_t, 32>, 8>;
+#endif
+
+$MAIN {
+  // Four appended workgroups compute eight ranks each. Normalizing the dispatch
+  // to multiple dimensions may add padding workgroups, which must not write T.
+  let qlora_base_groups = uniforms.num_N_tile;
+  if (workgroup_idx >= qlora_base_groups + 4u) { return; }
+  if (workgroup_idx >= qlora_base_groups) {
+    let rank_base = (workgroup_idx - qlora_base_groups) * 8u;
+#if use_subgroups
+    // Each of the four 32-lane subgroups computes two ranks. Subgroup membership
+    // need not match consecutive local invocation indices, so use subgroup IDs.
+    let lane = sg_id;
+    let rank_local = subgroup_index;
+    var partial0 = qlora_acc_t(0);
+    var partial1 = qlora_acc_t(0);
+    for (var k = lane * 16u; k < uniforms.K; k += 512u) {
+      var k4 = k / 4u;
+      // Unrolling keeps the four X vectors in registers for reuse by both ranks
+      // and fixes the dot-product grouping that determines FP16 rounding.
+      let x0 = vec4<qlora_acc_t>(x.getByOffset(k4));
+      k4 += 1u;
+      let x1 = vec4<qlora_acc_t>(x.getByOffset(k4));
+      k4 += 1u;
+      let x2 = vec4<qlora_acc_t>(x.getByOffset(k4));
+      k4 += 1u;
+      let x3 = vec4<qlora_acc_t>(x.getByOffset(k4));
+      let rank0 = rank_base + rank_local + 0u;
+      let packed0 = lora_at.getByOffset(rank0 * (uniforms.K / 16u) + k / 16u);
+      let scale0 = lora_a_scales.getByOffset(rank0 * (uniforms.K / 32u) + k / 32u);
+      var sum0 = qlora_acc_t(0);
+      sum0 += dot(x0, vec4<qlora_acc_t>(
+          (vec4<output_element_t>(unpack4xU8(packed0[0])) - vec4<output_element_t>(128)) * scale0));
+      sum0 += dot(x1, vec4<qlora_acc_t>(
+          (vec4<output_element_t>(unpack4xU8(packed0[1])) - vec4<output_element_t>(128)) * scale0));
+      sum0 += dot(x2, vec4<qlora_acc_t>(
+          (vec4<output_element_t>(unpack4xU8(packed0[2])) - vec4<output_element_t>(128)) * scale0));
+      sum0 += dot(x3, vec4<qlora_acc_t>(
+          (vec4<output_element_t>(unpack4xU8(packed0[3])) - vec4<output_element_t>(128)) * scale0));
+      partial0 += sum0;
+      let rank1 = rank_base + rank_local + 4u;
+      let packed1 = lora_at.getByOffset(rank1 * (uniforms.K / 16u) + k / 16u);
+      let scale1 = lora_a_scales.getByOffset(rank1 * (uniforms.K / 32u) + k / 32u);
+      var sum1 = qlora_acc_t(0);
+      sum1 += dot(x0, vec4<qlora_acc_t>(
+          (vec4<output_element_t>(unpack4xU8(packed1[0])) - vec4<output_element_t>(128)) * scale1));
+      sum1 += dot(x1, vec4<qlora_acc_t>(
+          (vec4<output_element_t>(unpack4xU8(packed1[1])) - vec4<output_element_t>(128)) * scale1));
+      sum1 += dot(x2, vec4<qlora_acc_t>(
+          (vec4<output_element_t>(unpack4xU8(packed1[2])) - vec4<output_element_t>(128)) * scale1));
+      sum1 += dot(x3, vec4<qlora_acc_t>(
+          (vec4<output_element_t>(unpack4xU8(packed1[3])) - vec4<output_element_t>(128)) * scale1));
+      partial1 += sum1;
+    }
+    // FP32 avoids half-precision rounding at each step of the subgroup tree.
+    let result0 = subgroupAdd(f32(partial0));
+    let result1 = subgroupAdd(f32(partial1));
+    if (lane == 0u) {
+      lora_down.setByOffset(rank_base + rank_local, output_element_t(result0));
+      lora_down.setByOffset(rank_base + rank_local + 4u, output_element_t(result1));
+    }
+#else
+    let lane = local_idx % 32u;
+    let rank_local = local_idx / 32u;
+    // Match the generic INT8 MatMulNBits tile, dot grouping and reduction order
+    // so the FP16 rounding behavior is preserved in this shared-memory fallback.
+    for (var start = 0u; start < uniforms.K; start += 512u) {
+      let k4 = start / 4u + local_idx;
+      var xv = vec4<output_element_t>(0);
+      if (k4 < uniforms.K / 4u) { xv = x.getByOffset(k4); }
+      qlora_x_tile[local_idx] = xv;
+      workgroupBarrier();
+      for (var rank_offset = 0u; rank_offset < 8u; rank_offset += 4u) {
+        let rank = rank_base + rank_offset + rank_local;
+        let k = start + lane * 16u;
+        if (k < uniforms.K) {
+          let packed = lora_at.getByOffset(rank * (uniforms.K / 16u) + k / 16u);
+          let scale = lora_a_scales.getByOffset(rank * (uniforms.K / 32u) + k / 32u);
+          var sum = qlora_acc_t(0);
+          for (var i = 0u; i < 4u; i++) {
+            let bv = (vec4<output_element_t>(unpack4xU8(packed[i])) - vec4<output_element_t>(128)) * scale;
+            sum += dot(vec4<qlora_acc_t>(qlora_x_tile[lane * 4u + i]), vec4<qlora_acc_t>(bv));
+          }
+          qlora_partials[rank_offset + rank_local][lane] += sum;
+        }
+      }
+      workgroupBarrier();
+    }
+    if (local_idx < 8u) {
+      var value = qlora_acc_t(0);
+      for (var i = 0u; i < 32u; i++) { value += qlora_partials[local_idx][i]; }
+      lora_down.setByOffset(rank_base + local_idx, output_element_t(value));
+    }
+#endif
+    // Adapter workgroups stop here; the remaining workgroups execute the base
+    // MatMulNBits body appended after this template.
+    return;
+  }
+}
