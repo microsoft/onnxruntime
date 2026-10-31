@@ -2026,20 +2026,32 @@ class TestSwigluQMoE(unittest.TestCase):
 
     @parameterized.expand(
         [
-            # (num_experts, top_k, hidden_size, intermediate_size, has_bias)
+            # (num_experts, top_k, hidden_size, intermediate_size, has_bias, onnx_dtype)
             # Fused single-token routing for 64 < num_experts <= 256 plus the INT8 per-channel FC2
             # decode kernel with the finalize fused in (instantiated for top-8, intermediate 768,
             # no expert biases).
-            (128, 8, 2048, 768, False),
+            (128, 8, 2048, 768, False, TensorProto.FLOAT16),
             # Fused routing only: with expert biases, or an FC2 shape that is not instantiated, FC2
             # takes the existing kernel.
-            (128, 8, 2048, 768, True),
-            (128, 8, 512, 512, False),
-            (96, 4, 512, 512, True),
+            (128, 8, 2048, 768, True, TensorProto.FLOAT16),
+            (128, 8, 512, 512, False, TensorProto.FLOAT16),
+            (96, 4, 512, 512, True, TensorProto.FLOAT16),
+            # top_k below the per-lane capacity of the warp top-k (4 for E <= 128, 8 above), so the
+            # j < k masks of the fused routing matter, at both ends of its 64 < E <= 256 range.
+            (65, 2, 512, 512, False, TensorProto.FLOAT16),
+            (200, 5, 512, 512, False, TensorProto.FLOAT16),
+            (256, 8, 512, 512, False, TensorProto.FLOAT16),
+            # bf16 router logits.
+            (128, 8, 512, 512, False, TensorProto.BFLOAT16),
+            (200, 5, 512, 512, True, TensorProto.BFLOAT16),
         ]
     )
-    def test_swiglu_qmoe_decode_fast_parity(self, num_experts, top_k, hidden_size, intermediate_size, has_bias):
+    def test_swiglu_qmoe_decode_fast_parity(
+        self, num_experts, top_k, hidden_size, intermediate_size, has_bias, onnx_dtype
+    ):
         # One token, INT8 per-channel: the shapes the ORT_QMOE_DECODE_FAST paths (on by default) handle.
+        if onnx_dtype == TensorProto.BFLOAT16 and not has_bf16_qmoe():
+            self.skipTest("BF16 QMoE requires Ampere+ GPU")
         torch.manual_seed(46)
         numpy.random.seed(46)
 
@@ -2055,7 +2067,7 @@ class TestSwigluQMoE(unittest.TestCase):
             batch_size=1,
             sequence_length=1,
             quant_bits=8,
-            onnx_dtype=TensorProto.FLOAT16,
+            onnx_dtype=onnx_dtype,
             use_asymmetric_quant=False,
         )
         if not has_bias:
@@ -2063,7 +2075,21 @@ class TestSwigluQMoE(unittest.TestCase):
             for expert in swiglu_moe.experts:
                 expert.w1.bias = None
                 expert.w2.bias = None
-        swiglu_moe.parity_check()
+        if not swiglu_moe.recreate_onnx_model():
+            # create_ort_session only prints the error, so re-create the session here to tell a
+            # runner that is compiled out (ORT_QUICK_BUILD drops the bf16 int4/int8 runners) from a failure.
+            sess_options = onnxruntime.SessionOptions()
+            sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
+            try:
+                onnxruntime.InferenceSession(
+                    swiglu_moe.moe_onnx_graph, sess_options, providers=[resolve_cuda_plugin_ep("CUDAExecutionProvider")]
+                )
+            except Exception as e:
+                if "Build configuration may be missing the corresponding kernel" in str(e):
+                    self.skipTest(f"QMoE runner not enabled in this build (e.g. ORT_QUICK_BUILD): {e}")
+                raise
+            raise AssertionError("Model update failed")
+        swiglu_moe.parity_check(recreate_model=False)
 
     @parameterized.expand(qmoe_cutlass_gemm_blockwise_test_cases)
     def test_swiglu_qmoe_blockwise_cutlass_gemm_parity(self, batch_size, sequence_length, quant_bits, block_size):
