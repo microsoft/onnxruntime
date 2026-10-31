@@ -2543,6 +2543,9 @@ int main() {
                         size=(num_experts, inter_size, hidden_size // 2),
                         dtype=np.uint8,
                     )
+                elif bits == 2 and prepacked == 1:
+                    fc1_w = rng.integers(0, 256, size=(num_experts, hidden_size, inter_size // 2), dtype=np.uint8)
+                    fc2_w = rng.integers(0, 256, size=(num_experts, inter_size, hidden_size // 4), dtype=np.uint8)
                 elif bits == 3 and prepacked == 0:
                     fc1_w = rng.integers(
                         0, 256, size=(num_experts, 2 * inter_size, (hidden_size * 3) // 8), dtype=np.uint8
@@ -3424,6 +3427,104 @@ with tempfile.TemporaryDirectory() as directory:
             )
             with self.assertRaisesRegex(Exception, "positive dimensions|rejected node|ShapeInferenceError|invalid"):
                 self._make_session(m_e0, {"session.moe.offload.mode": "required"})
+
+            # 4. Prepacked INT2 (bits=2, weights_prepacked=1) with block_size=32 and block_size=64, plus a
+            # 3-layer mixed INT4 (b32) + INT3 (b64) + INT2 (b64) model matching qmoe_2b375_x02_y14_z32_dp23_b64.
+            dir_int2_mix = os.path.join(tmpdir, "int2_b32_b64")
+            dir_int4_int3_int2 = os.path.join(tmpdir, "int4_int3_int2_mix")
+            os.makedirs(dir_int2_mix, exist_ok=True)
+            os.makedirs(dir_int4_int3_int2, exist_ok=True)
+
+            m_int2 = self._build_int_qmoe_model(
+                dir_int2_mix,
+                layer_specs=[(2, 32, 1), (2, 64, 1)],
+                num_experts=8,
+                hidden_size=512,
+                inter_size=128,
+                top_k=4,
+                seed=2029,
+            )
+            # H=512, I=128, INT2 b32: 32768 + 16384 + 8192 + 4096 + 8 = 61,448 B gpu slot; 61,952 B host stride
+            # H=512, I=128, INT2 b64: 32768 + 16384 + 4096 + 2048 + 8 = 55,304 B gpu slot; 55,808 B host stride
+            int2_b32_slot = 61448
+            int2_b64_slot = 55304
+            int2_b32_host = 61952
+            int2_b64_host = 55808
+            budget_int2 = 2 * fixed_bytes + 4 * int2_b32_slot + 4 * int2_b64_slot
+
+            sess_int2_ref = self._make_session(m_int2, {"session.moe.offload.mode": "disabled"})
+            sess_int2_off = self._make_session(
+                m_int2,
+                {
+                    "session.moe.offload.mode": "required",
+                    "session.moe.offload.placement": "adaptive",
+                    "session.moe.offload.device_expert_bytes": str(budget_int2),
+                    "session.moe.offload.host_expert_bytes": str(2 * (int2_b32_host + int2_b64_host)),
+                    "session.moe.offload.popularity_file": "expert-profile.bin",
+                },
+            )
+            sess_int2_stream = self._make_session(
+                m_int2,
+                {
+                    "session.moe.offload.mode": "required",
+                    "session.moe.offload.placement": "static",
+                    "session.moe.offload.cpu_execution": "disabled",
+                    "session.moe.offload.device_expert_bytes": str(budget_int2),
+                },
+            )
+            for num_rows in (1, 2, 4, 8, 16, 64, 256):
+                x = rng.standard_normal((num_rows, 512), dtype=np.float32) * 0.5
+                r = rng.standard_normal((num_rows, 8), dtype=np.float32)
+                y_ref = self._run_bf16(sess_int2_ref, x, r)
+                for name, s in (("int2_adaptive", sess_int2_off), ("int2_gpu_stream", sess_int2_stream)):
+                    y_cand = self._run_bf16(s, x, r)
+                    self.assertLess(
+                        float(np.max(np.abs(y_ref - y_cand))),
+                        5e-2,
+                        f"INT2 offload mismatch in {name} at T={num_rows}",
+                    )
+            del sess_int2_stream, sess_int2_off, sess_int2_ref
+
+            m_tri_mix = self._build_int_qmoe_model(
+                dir_int4_int3_int2,
+                layer_specs=[(4, 32, 1), (3, 64, 0), (2, 64, 1)],
+                num_experts=8,
+                hidden_size=512,
+                inter_size=128,
+                top_k=4,
+                seed=2030,
+                with_bias=True,
+            )
+            fc1_b_slot = 2 * 128 * 2  # 512 B
+            fc2_b_layer = 8 * 512 * 2  # 8192 B
+            tri_fixed = fixed_bytes + 2 * fc2_b_layer + 8 * fc1_b_slot
+            budget_tri = (
+                3 * tri_fixed
+                + 4 * (int4_h512_slot + fc1_b_slot)
+                + 4 * (int3_h512_slot + fc1_b_slot)
+                + 4 * (int2_b64_slot + fc1_b_slot)
+            )
+            sess_tri_ref = self._make_session(m_tri_mix, {"session.moe.offload.mode": "disabled"})
+            sess_tri_off = self._make_session(
+                m_tri_mix,
+                {
+                    "session.moe.offload.mode": "required",
+                    "session.moe.offload.placement": "adaptive",
+                    "session.moe.offload.device_expert_bytes": str(budget_tri),
+                    "session.moe.offload.popularity_file": "expert-profile.bin",
+                },
+            )
+            for num_rows in (1, 2, 4, 8, 16, 64):
+                x = rng.standard_normal((num_rows, 512), dtype=np.float32) * 0.25
+                r = rng.standard_normal((num_rows, 8), dtype=np.float32)
+                y_ref = self._run_bf16(sess_tri_ref, x, r)
+                y_off = self._run_bf16(sess_tri_off, x, r)
+                self.assertLess(
+                    float(np.max(np.abs(y_ref - y_off))),
+                    5e-2,
+                    f"Mixed INT4+INT3+INT2 offload mismatch at T={num_rows}",
+                )
+            del sess_tri_off, sess_tri_ref
 
 
 def _background_thread_lifecycle_child(model_path: str) -> int:

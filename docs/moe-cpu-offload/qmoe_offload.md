@@ -11,8 +11,8 @@ Related operator and kernel documentation:
 
 ## 1. Overview
 
-Large Mixture-of-Experts models (such as 48-layer $\times$ 512-expert NVFP4 or INT4/INT3 models with
-45 GiB–63 GiB of routed expert weights) often exceed the VRAM of 24 GiB–32 GiB consumer and
+Large Mixture-of-Experts models (such as 48-layer $\times$ 512-expert NVFP4 or INT4/INT3/INT2 models with
+37 GiB–63 GiB of routed expert weights) often exceed the VRAM of 24 GiB–32 GiB consumer and
 workstation GPUs. Rather than exporting a separate hardware-specific operator or baking GPU slot
 counts into the ONNX graph, ONNX Runtime supports **portable runtime CPU/GPU offload** on standard
 `com.microsoft::QMoE` nodes (row-major NVFP4 with `weights_prepacked=1`, SM80-prepacked INT4 with

@@ -1759,8 +1759,11 @@ bool ValidateNodeForMoeOffload(const Node& node,
     const bool is_int3_raw =
         (uniform_bits && weight_bits == 3 && prepacked == 0 &&
          (blk == 32 || blk == 64 || blk == 128));
-    if (!is_int4_prepacked && !is_int3_raw) {
-      out_reason = "quant_type='int' offload requires (bits=4, weights_prepacked=1, block_size=32) or (bits=3, weights_prepacked=0, block_size in {32,64,128})";
+    const bool is_int2_prepacked =
+        (weight_bits == 2 && fc1_bits == 2 && fc2_bits == 2 && prepacked == 1 &&
+         (blk == 32 || blk == 64 || blk == 128));
+    if (!is_int4_prepacked && !is_int3_raw && !is_int2_prepacked) {
+      out_reason = "quant_type='int' offload requires (bits=4, weights_prepacked=1, block_size=32), (bits=3, weights_prepacked=0, block_size in {32,64,128}), or (bits=2, weights_prepacked=1, block_size in {32,64,128})";
       return false;
     }
   } else {

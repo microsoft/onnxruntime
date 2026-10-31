@@ -156,7 +156,7 @@ qmoe::SpinPool& SharedSpinPool(int threads) {
     return *fast;
   }
   qmoe::SpinPool& pool = SharedSpinPools().GetOrCreate(eff_threads, [](int pool_threads) {
-    const int default_spin_us = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_POOL_SPIN_US", 2000);
+    const int default_spin_us = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_POOL_SPIN_US", 15000);
     qmoe::CpuBudgetGroup::Default().ConfigureDecodeSpinUs(default_spin_us);
     return std::make_unique<qmoe::SpinPool>(pool_threads, default_spin_us);
   });
@@ -325,6 +325,13 @@ class SessionPromotionBudget {
     for (int b = 0; b < 2; ++b) st.EnsureCapacity(b, max_bytes);
   }
 
+  size_t GetAccountedBytes(const void* session_key) noexcept {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = sessions_.find(session_key);
+    if (it == sessions_.end()) return 0;
+    return it->second.pinned_accounted[0] + it->second.pinned_accounted[1];
+  }
+
   bool TryAcquire(const void* session_key, uint64_t step_seq, int max_promotions,
                   size_t max_bytes, size_t promo_bytes,
                   bool need_pinned_bounce = false, uint8_t** out_pinned_bounce = nullptr,
@@ -401,24 +408,31 @@ class SessionPromotionBudget {
     }
 
     void EnsureCapacity(int b, size_t bytes) noexcept {
-      if (pinned_bounce[b] != nullptr && pinned_cap[b] >= bytes) return;
+      size_t eff_bytes = bytes;
+      if (session_pinned_budget) {
+        const size_t pinned_limit = session_pinned_budget->GetStats().limit;
+        if (pinned_limit > 0 && pinned_limit < std::numeric_limits<size_t>::max() / 2) {
+          eff_bytes = std::min(eff_bytes, std::max<size_t>(size_t{4} << 20, pinned_limit / 6));
+        }
+      }
+      if (pinned_bounce[b] != nullptr && pinned_cap[b] >= eff_bytes) return;
       ReleaseSlot(b);
       auto host_ledger = GetCudaHostPinnedMemoryBudget();
       CudaDeviceMemoryBudget::Reservation sess_res;
       CudaDeviceMemoryBudget::Reservation host_res;
       try {
-        if (session_pinned_budget) sess_res = session_pinned_budget->Reserve(bytes);
-        if (host_ledger) host_res = host_ledger->ReserveAllocated(bytes);
+        if (session_pinned_budget) sess_res = session_pinned_budget->Reserve(eff_bytes);
+        if (host_ledger) host_res = host_ledger->ReserveAllocated(eff_bytes);
       } catch (...) {
         return;
       }
       void* p = nullptr;
-      if (cudaHostAlloc(&p, bytes, cudaHostAllocPortable) == cudaSuccess && p != nullptr) {
+      if (cudaHostAlloc(&p, eff_bytes, cudaHostAllocPortable) == cudaSuccess && p != nullptr) {
         if (sess_res.Active()) sess_res.Commit();
         if (host_res.Active()) host_res.Commit();
         pinned_bounce[b] = static_cast<uint8_t*>(p);
-        pinned_cap[b] = bytes;
-        pinned_accounted[b] = bytes;
+        pinned_cap[b] = eff_bytes;
+        pinned_accounted[b] = eff_bytes;
       } else {
         static_cast<void>(cudaGetLastError());
       }
@@ -2336,7 +2350,7 @@ class QMoEOffload::DoorbellService {
         const int spin_us =
             (qmoe::CpuBudgetGroup::Default().CurrentPhase() == qmoe::CpuBudgetGroup::Phase::kPrefillOrAux)
                 ? 0
-                : 2000;
+                : 15000;
         if (std::chrono::steady_clock::now() - idle_since > std::chrono::microseconds(spin_us)) {
           std::unique_lock<std::mutex> cv_lock(cv_mutex_);
           sleeping_.store(true, std::memory_order_seq_cst);
@@ -2517,9 +2531,11 @@ QMoEOffload::QMoEOffload(const OpKernelInfo& info,
 
   int4_bank_mode_ = (desc.quant_type == "int" && desc.weight_bits == 4 && desc.weights_prepacked == 1);
   int3_bank_mode_ = (desc.quant_type == "int" && desc.weight_bits == 3 && desc.weights_prepacked == 0);
+  int2_bank_mode_ = (desc.quant_type == "int" && desc.weight_bits == 2 && desc.weights_prepacked == 1);
   int3_block_size_ = static_cast<int>(desc.block_size > 0 ? desc.block_size : 32);
+  int2_block_size_ = static_cast<int>(desc.block_size > 0 ? desc.block_size : 64);
   mxfp4_mode_ = (desc.quant_type == "mxfp4" || desc.quant_type == "fp4");
-  nvfp4_mode_ = (desc.quant_type == "nvfp4") || mxfp4_mode_ || int4_bank_mode_ || int3_bank_mode_;
+  nvfp4_mode_ = (desc.quant_type == "nvfp4") || mxfp4_mode_ || int4_bank_mode_ || int3_bank_mode_ || int2_bank_mode_;
   doorbell_enabled_ = plan.enable_hybrid_cpu_decode && nvfp4_mode_;
   overlap_shared_expert_ = true;
   fuse_merge_finalize_ = true;
@@ -3224,13 +3240,15 @@ Status QMoEOffload::ComputeInternal(OpKernelContext* context) const {
 void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
   const int64_t expected_block_size = int3_bank_mode_
                                           ? static_cast<int64_t>(int3_block_size_)
+                                      : int2_bank_mode_
+                                          ? static_cast<int64_t>(int2_block_size_)
                                           : ((mxfp4_mode_ || int4_bank_mode_) ? 32 : 16);
   // MoEBase defaults an omitted block_size to 0, whereas QMoE (which admitted this node) treats an omitted value as
   // -1 and normalizes it to the quant_type's fixed block size. Re-read with the QMoE default so both agree.
   const int64_t declared_block_size = info.GetAttrOrDefault<int64_t>("block_size", -1);
-  if (int4_bank_mode_ || int3_bank_mode_) {
+  if (int4_bank_mode_ || int3_bank_mode_ || int2_bank_mode_) {
     ORT_ENFORCE(declared_block_size == expected_block_size,
-                "QMoEOffload INT4/INT3 mode requires explicit block_size=", expected_block_size, ", got ", declared_block_size, ".");
+                "QMoEOffload INT4/INT3/INT2 mode requires explicit block_size=", expected_block_size, ", got ", declared_block_size, ".");
   } else {
     ORT_ENFORCE(declared_block_size == -1 || declared_block_size == expected_block_size,
                 "QMoEOffload FP4 mode requires block_size=", expected_block_size, ", got ", declared_block_size, ".");
@@ -3240,7 +3258,7 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
   if (int3_bank_mode_) {
     ORT_ENFORCE(prepacked == 0, "QMoEOffload INT3 mode requires weights_prepacked=0.");
   } else {
-    ORT_ENFORCE(prepacked == 1, "QMoEOffload FP4/INT4 mode requires weights_prepacked=1.");
+    ORT_ENFORCE(prepacked == 1, "QMoEOffload FP4/INT4/INT2 mode requires weights_prepacked=1.");
   }
   ORT_ENFORCE(activation_type_ == onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Swiglu &&
                   (int3_bank_mode_ ? (swiglu_fusion_ == 1) : (swiglu_fusion_ == 0 || swiglu_fusion_ == 1)) &&
@@ -3285,12 +3303,12 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
                     info.TryGetConstantInput(5, &nvfp4_fc2_w_) && nvfp4_fc2_w_ &&
                     info.TryGetConstantInput(6, &nvfp4_fc2_s_) && nvfp4_fc2_s_,
                 "QMoEOffload bank mode requires constant CPU initializers for slots 2, 3, 5, 6.");
-    if (int4_bank_mode_ || int3_bank_mode_) {
+    if (int4_bank_mode_ || int3_bank_mode_ || int2_bank_mode_) {
       ORT_ENFORCE((nvfp4_fc1_s_->IsDataType<BFloat16>() || nvfp4_fc1_s_->IsDataType<MLFloat16>()) &&
                       nvfp4_fc1_s_->GetElementType() == nvfp4_fc2_s_->GetElementType(),
-                  "QMoEOffload INT4/INT3 bank mode requires FP16 or BF16 block scales.");
+                  "QMoEOffload INT4/INT3/INT2 bank mode requires FP16 or BF16 block scales.");
       ORT_ENFORCE(is_bf16_ ? nvfp4_fc1_s_->IsDataType<BFloat16>() : nvfp4_fc1_s_->IsDataType<MLFloat16>(),
-                  "QMoEOffload INT4/INT3 scale dtype must match activation dtype.");
+                  "QMoEOffload INT4/INT3/INT2 scale dtype must match activation dtype.");
     } else if (mxfp4_mode_) {
       ORT_ENFORCE(nvfp4_fc1_s_->IsDataType<Float8E8M0>() && nvfp4_fc2_s_->IsDataType<Float8E8M0>(),
                   "QMoEOffload MXFP4 requires Float8E8M0 block scales.");
@@ -3304,13 +3322,14 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
     }
     const auto& fc1_shape = nvfp4_fc1_w_->Shape();
     const auto& fc2_shape = nvfp4_fc2_w_->Shape();
-    const uint64_t scale_elem_bytes = (int4_bank_mode_ || int3_bank_mode_) ? sizeof(uint16_t) : sizeof(uint8_t);
+    const uint64_t scale_elem_bytes = (int4_bank_mode_ || int3_bank_mode_ || int2_bank_mode_) ? sizeof(uint16_t) : sizeof(uint8_t);
     const auto bank_dims =
         int3_bank_mode_
             ? qmoe::ResolveInt3BankDims(fc1_shape, fc2_shape, expected_block_size,
                                         nvfp4_fc1_s_->SizeInBytes(), nvfp4_fc2_s_->SizeInBytes(), scale_elem_bytes)
             : qmoe::ResolveNvfp4BankDims(fc1_shape, fc2_shape, expected_block_size,
-                                         nvfp4_fc1_s_->SizeInBytes(), nvfp4_fc2_s_->SizeInBytes(), scale_elem_bytes);
+                                         nvfp4_fc1_s_->SizeInBytes(), nvfp4_fc2_s_->SizeInBytes(), scale_elem_bytes,
+                                         int2_bank_mode_ ? 4 : 2);
     ORT_ENFORCE(bank_dims.valid,
                 "QMoEOffload weight/scale banks are inconsistent: fc1_weights=", fc1_shape,
                 ", fc2_weights=", fc2_shape, ", fc1_scales_bytes=", nvfp4_fc1_s_->SizeInBytes(),
@@ -3323,6 +3342,9 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
     const bool layout_ok = int3_bank_mode_
                                ? qmoe_shared::MakeInt3ExpertBlockLayout(
                                      hidden_size_, inter_size_, int3_block_size_, &nvfp4_layout_)
+                           : int2_bank_mode_
+                               ? qmoe_shared::MakeInt2ExpertBlockLayout(
+                                     hidden_size_, inter_size_, int2_block_size_, &nvfp4_layout_)
                                : ((mxfp4_mode_ && !int4_bank_mode_)
                                       ? qmoe_shared::MakeMxfp4ExpertBlockLayout(hidden_size_, inter_size_, &nvfp4_layout_)
                                       : qmoe_shared::MakeNvfp4ExpertBlockLayout(hidden_size_, inter_size_, &nvfp4_layout_));
@@ -3331,6 +3353,8 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
     const auto& fc2_s_shape = nvfp4_fc2_s_->Shape();
     const int64_t scale_group = int3_bank_mode_
                                     ? static_cast<int64_t>(int3_block_size_)
+                                : int2_bank_mode_
+                                    ? static_cast<int64_t>(int2_block_size_)
                                     : ((mxfp4_mode_ || int4_bank_mode_) ? 32 : 16);
     ORT_ENFORCE(fc1_s_shape.NumDimensions() == 3 && fc2_s_shape.NumDimensions() == 3 &&
                     fc1_s_shape[0] == num_experts_ && fc2_s_shape[0] == num_experts_ &&
@@ -3344,7 +3368,7 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
                       nvfp4_fc1_g_->Location().device.Type() == OrtDevice::CPU,
                   "QMoEOffload fc1_global_scale must be a constant CPU initializer.");
     } else {
-      ORT_ENFORCE(mxfp4_mode_ || int4_bank_mode_ || int3_bank_mode_,
+      ORT_ENFORCE(mxfp4_mode_ || int4_bank_mode_ || int3_bank_mode_ || int2_bank_mode_,
                   "QMoEOffload NVFP4 requires fc1_global_scale at slot 15.");
     }
     if (InputExists(info, 16)) {
@@ -3352,13 +3376,13 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
                       nvfp4_fc2_g_->Location().device.Type() == OrtDevice::CPU,
                   "QMoEOffload fc2_global_scale must be a constant CPU initializer.");
     } else {
-      ORT_ENFORCE(mxfp4_mode_ || int4_bank_mode_ || int3_bank_mode_,
+      ORT_ENFORCE(mxfp4_mode_ || int4_bank_mode_ || int3_bank_mode_ || int2_bank_mode_,
                   "QMoEOffload NVFP4 requires fc2_global_scale at slot 16.");
     }
     if (!nvfp4_fc1_g_ || !nvfp4_fc2_g_) {
       default_global_scales_.assign(static_cast<size_t>(num_experts_), 1.0f);
     }
-    if (!mxfp4_mode_ && !int4_bank_mode_ && !int3_bank_mode_) {
+    if (!mxfp4_mode_ && !int4_bank_mode_ && !int3_bank_mode_ && !int2_bank_mode_) {
       auto check_fast_scales = [this](const Tensor* g_tensor) -> bool {
         const float* scales = g_tensor ? g_tensor->Data<float>() : default_global_scales_.data();
         if (!scales) return false;
@@ -3397,7 +3421,7 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
                                 ? static_cast<int64_t>(v4_policy_.pinned_bytes)
                                 : info.GetAttrOrDefault<int64_t>("pinned_staging_bytes", int64_t{32} << 20);
   token_tile_size_ = static_cast<int>(tile);
-  const int default_max_sync_tile = (int4_bank_mode_ || int3_bank_mode_) ? 256 : token_tile_size_;
+  const int default_max_sync_tile = (int4_bank_mode_ || int3_bank_mode_ || int2_bank_mode_) ? 256 : token_tile_size_;
   max_sync_tile_tokens_ = static_cast<int>(
       info.GetAttrOrDefault<int64_t>("max_sync_tile_tokens",
                                      ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_MAX_SYNC_TILE_TOKENS", default_max_sync_tile)));
@@ -3497,7 +3521,7 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
   continuous_decay_ = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_CONTINUOUS_DECAY", 1) == 1;
   bg_promo_stream_ = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_BG_PROMO_STREAM", 1) == 1;
   cpu_fp16_boundaries_ = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_CPU_FP16_BOUNDARIES", 0) == 1;
-  const bool is_int_bank = int4_bank_mode_ || int3_bank_mode_;
+  const bool is_int_bank = int4_bank_mode_ || int3_bank_mode_ || int2_bank_mode_;
   const int default_stream_rows =
       ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_STREAM_ROWS", is_int_bank ? 8192 : 0);
   if (v4_planned_mode_ &&
@@ -3566,6 +3590,14 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
         static_cast<size_t>(SafeInt<size_t>(hidden_size_) * ((inter_size_ * 3) / 8)),
         static_cast<size_t>(SafeInt<size_t>(2) * inter_size_ * (hidden_size_ / int3_block_size_) * sizeof(uint16_t)),
         static_cast<size_t>(SafeInt<size_t>(hidden_size_) * (inter_size_ / int3_block_size_) * sizeof(uint16_t)),
+        sizeof(float),
+        sizeof(float)};
+  } else if (int2_bank_mode_) {
+    resident_bank_bytes_ = {
+        static_cast<size_t>(SafeInt<size_t>(2) * inter_size_ * (hidden_size_ / 4)),
+        static_cast<size_t>(SafeInt<size_t>(hidden_size_) * (inter_size_ / 4)),
+        static_cast<size_t>(SafeInt<size_t>(2) * inter_size_ * (hidden_size_ / int2_block_size_) * sizeof(uint16_t)),
+        static_cast<size_t>(SafeInt<size_t>(hidden_size_) * (inter_size_ / int2_block_size_) * sizeof(uint16_t)),
         sizeof(float),
         sizeof(float)};
   } else {
@@ -4372,9 +4404,10 @@ void QMoEOffload::InitializeComplementMode() {
 }
 
 void QMoEOffload::CopyOrTransposeScaleBankToHost(size_t bank, const uint8_t* src, uint8_t* dst) const noexcept {
-  if (int4_bank_mode_ && (bank == 2 || bank == 3)) {
+  if ((int4_bank_mode_ || int2_bank_mode_) && (bank == 2 || bank == 3)) {
+    const int64_t scale_blk = int2_bank_mode_ ? int64_t{int2_block_size_} : int64_t{32};
     const int64_t rows = (bank == 2) ? (int64_t{2} * inter_size_) : int64_t{hidden_size_};
-    const int64_t cols = (bank == 2) ? (int64_t{hidden_size_} / 32) : (int64_t{inter_size_} / 32);
+    const int64_t cols = (bank == 2) ? (int64_t{hidden_size_} / scale_blk) : (int64_t{inter_size_} / scale_blk);
     qmoe_shared::TransposeInt4Scales(reinterpret_cast<const uint16_t*>(src),
                                      reinterpret_cast<uint16_t*>(dst), rows, cols);
   } else {
@@ -4383,7 +4416,7 @@ void QMoEOffload::CopyOrTransposeScaleBankToHost(size_t bank, const uint8_t* src
 }
 
 void QMoEOffload::InitializeBoundedHostCache() {
-  ORT_ENFORCE(nvfp4_mode_ && !expert_blocks_ && (mxfp4_mode_ || int4_bank_mode_ || int3_bank_mode_ || (nvfp4_fc1_g_ && nvfp4_fc2_g_)) &&
+  ORT_ENFORCE(nvfp4_mode_ && !expert_blocks_ && (mxfp4_mode_ || int4_bank_mode_ || int3_bank_mode_ || int2_bank_mode_ || (nvfp4_fc1_g_ && nvfp4_fc2_g_)) &&
                   (stream_rows_ == 0 || v4_planned_mode_),
               "Bounded host cache requires file-backed banks, valid global scales, and no legacy shared streaming.");
   // A deterministic per-layer share is independent of construction order and other sessions.
@@ -4434,7 +4467,7 @@ void QMoEOffload::InitializeBoundedHostCache() {
 
 bool QMoEOffload::SwapHostCandidateForVictim(int candidate, int evicted, int victim_slab_slot,
                                              cudaStream_t stream) const {
-  if (!nvfp4_mode_ || int3_bank_mode_ || int4_bank_mode_ || host_cache_bytes_ == 0 || !resident_slab_ || evicted < 0 ||
+  if (!nvfp4_mode_ || int3_bank_mode_ || int4_bank_mode_ || int2_bank_mode_ || host_cache_bytes_ == 0 || !resident_slab_ || evicted < 0 ||
       victim_slab_slot < 0 || !swap_victim_to_host_cache_) {
     return false;
   }
@@ -5392,7 +5425,7 @@ void QMoEOffload::CopyExpertToResidentSlot(int expert, int slot, cudaStream_t st
   for (size_t bank = 0; bank < 6; ++bank) {
     const size_t dst_off = resident_bank_offsets_[bank] + SafeInt<size_t>(slot) * resident_bank_bytes_[bank];
     const uint8_t* copy_src = src_ptrs[bank];
-    if (int4_bank_mode_ && (bank == 2 || bank == 3)) {
+    if ((int4_bank_mode_ || int2_bank_mode_) && (bank == 2 || bank == 3)) {
       if (scale_transpose_buf.size() < resident_bank_bytes_[bank]) {
         scale_transpose_buf.resize(resident_bank_bytes_[bank]);
       }
@@ -5546,7 +5579,7 @@ void QMoEOffload::BatchCopyExpertsToResidentSlots(
     for (size_t bank = 0; bank < 6; ++bank) {
       const size_t dst_off = resident_bank_offsets_[bank] + SafeInt<size_t>(slot) * resident_bank_bytes_[bank];
       const uint8_t* copy_src = base + offsets[bank];
-      const bool xpose = int4_bank_mode_ && (bank == 2 || bank == 3);
+      const bool xpose = (int4_bank_mode_ || int2_bank_mode_) && (bank == 2 || bank == 3);
       if (xpose) {
         if (batch_scale_transpose_buf.size() < resident_bank_bytes_[bank]) {
           batch_scale_transpose_buf.resize(resident_bank_bytes_[bank]);
@@ -6243,14 +6276,15 @@ Status QMoEOffload::PromoteResident(cudaStream_t stream, const InlinedVector<Inl
             bounce_off += (resident_bank_bytes_[bank] + 255u) & ~size_t{255u};
           }
           constexpr size_t kChunkBytes = 64u << 10;
-          const size_t copy_banks = int4_bank_mode_ ? 2 : 4;
+          const bool xpose_scales = int4_bank_mode_ || int2_bank_mode_;
+          const size_t copy_banks = xpose_scales ? 2 : 4;
           std::array<size_t, 5> bank_chunk_prefix{};
           for (size_t b = 0; b < copy_banks; ++b) {
             const size_t chunks = (resident_bank_bytes_[b] + kChunkBytes - 1) / kChunkBytes;
             bank_chunk_prefix[b + 1] = bank_chunk_prefix[b] + chunks;
           }
           const ptrdiff_t weight_chunks = static_cast<ptrdiff_t>(bank_chunk_prefix[copy_banks]);
-          const ptrdiff_t xpose_tasks = int4_bank_mode_ ? 2 : 0;
+          const ptrdiff_t xpose_tasks = xpose_scales ? 2 : 0;
           auto copy_chunk = [&](ptrdiff_t c_idx) noexcept {
             if (c_idx >= weight_chunks) {
               const size_t sb = static_cast<size_t>(2 + (c_idx - weight_chunks));
@@ -6280,7 +6314,7 @@ Status QMoEOffload::PromoteResident(cudaStream_t stream, const InlinedVector<Inl
         for (size_t bank = 0; bank < 6; ++bank) {
           const size_t slot_offset = resident_bank_offsets_[bank] + static_cast<size_t>(SafeInt<size_t>(target_slot) * resident_bank_bytes_[bank]);
           const uint8_t* copy_src = host_sources[bank];
-          const bool need_sync_xpose = int4_bank_mode_ && pinned_bounce_slot == nullptr && (bank == 2 || bank == 3);
+          const bool need_sync_xpose = (int4_bank_mode_ || int2_bank_mode_) && pinned_bounce_slot == nullptr && (bank == 2 || bank == 3);
           if (need_sync_xpose) {
             if (promo_scale_transpose_buf.size() < resident_bank_bytes_[bank]) {
               promo_scale_transpose_buf.resize(resident_bank_bytes_[bank]);
@@ -6496,7 +6530,7 @@ Status QMoEOffload::PromoteResident(cudaStream_t stream, const InlinedVector<Inl
           const size_t landing_offset = SafeInt<size_t>(landing.slot) * resident_bank_bytes_[bank];
           source = stream_shared_->landing + stream_bank_offsets_[landing.buffer][bank] + landing_offset;
         }
-        const bool need_sync_xpose = int4_bank_mode_ && !reuse && (bank == 2 || bank == 3);
+        const bool need_sync_xpose = (int4_bank_mode_ || int2_bank_mode_) && !reuse && (bank == 2 || bank == 3);
         if (need_sync_xpose) {
           if (sync_promo_scale_transpose_buf.size() < resident_bank_bytes_[bank]) {
             sync_promo_scale_transpose_buf.resize(resident_bank_bytes_[bank]);
@@ -6831,7 +6865,9 @@ int QMoEOffload::RunColdExperts(CpuWork& work, int group_count, const ActT* host
             ActToFloatRow(host_input + static_cast<size_t>(token) * hidden_size_, token_row, hidden_size_);
           } else {
             ActToFloatRow(host_input + static_cast<size_t>(token) * hidden_size_, work.natural.data(), hidden_size_);
-            if (nvfp4_mode_ && !int4_bank_mode_) {
+            if (int2_bank_mode_) {
+              qmoe_shared::ReorderInt2ActivationRow(work.natural.data(), token_row, hidden_size_);
+            } else if (nvfp4_mode_ && !int4_bank_mode_) {
               qmoe_shared::ReorderNvfp4ActivationRow(work.natural.data(), token_row, hidden_size_);
             } else {
               qmoe_shared::ReorderActivationRow(work.natural.data(), token_row, hidden_size_);
@@ -6888,6 +6924,26 @@ int QMoEOffload::RunColdExperts(CpuWork& work, int group_count, const ActT* host
         i3v.bias_is_bf16 = is_bf16_;
         qmoe_shared::Int3Fc1SwiGluRange(
             hidden_size_, inter_size_, i3v, act_in,
+            cnt, activation, work.intermediate.data() + slot * call_rows * inter_size_,
+            begin, end, false, /*bf16_boundaries=*/is_bf16_, /*fp16_boundaries=*/!is_bf16_);
+      } else if (int2_bank_mode_) {
+        const auto nv_view = (static_cast<size_t>(slot) < CpuWork::kMaxGroupSlots)
+                                 ? work.slot_view[slot]
+                                 : make_nvfp4_view(group[slot].expert, ssd_blk);
+        qmoe_shared::Int2ExpertView i2v{};
+        i2v.fc1_weights = nv_view.fc1_weights;
+        i2v.fc1_scales = reinterpret_cast<const uint16_t*>(nv_view.fc1_scales);
+        i2v.fc1_bias = nv_view.fc1_bias;
+        i2v.fc2_weights = nv_view.fc2_weights;
+        i2v.fc2_scales = reinterpret_cast<const uint16_t*>(nv_view.fc2_scales);
+        i2v.fc2_bias = nv_view.fc2_bias;
+        i2v.block_size = int2_block_size_;
+        i2v.scales_are_block_major = false;
+        i2v.weights_are_prepacked = true;
+        i2v.scale_is_bf16 = is_bf16_;
+        i2v.bias_is_bf16 = is_bf16_;
+        qmoe_shared::Int2Fc1SwiGluRange(
+            hidden_size_, inter_size_, i2v, act_in,
             cnt, activation, work.intermediate.data() + slot * call_rows * inter_size_,
             begin, end, false, /*bf16_boundaries=*/is_bf16_, /*fp16_boundaries=*/!is_bf16_);
       } else if (int4_bank_mode_) {
@@ -6950,6 +7006,26 @@ int QMoEOffload::RunColdExperts(CpuWork& work, int group_count, const ActT* host
         i3v.bias_is_bf16 = is_bf16_;
         qmoe_shared::Int3Fc2Range(
             hidden_size_, inter_size_, i3v, work.intermediate.data() + slot * call_rows * inter_size_,
+            group[slot].count, work.result.data() + slot * call_rows * hidden_size_,
+            begin, end, false, /*apply_bias=*/false);
+      } else if (int2_bank_mode_) {
+        const auto nv_view = (static_cast<size_t>(slot) < CpuWork::kMaxGroupSlots)
+                                 ? work.slot_view[slot]
+                                 : make_nvfp4_view(group[slot].expert, ssd_blk);
+        qmoe_shared::Int2ExpertView i2v{};
+        i2v.fc1_weights = nv_view.fc1_weights;
+        i2v.fc1_scales = reinterpret_cast<const uint16_t*>(nv_view.fc1_scales);
+        i2v.fc1_bias = nv_view.fc1_bias;
+        i2v.fc2_weights = nv_view.fc2_weights;
+        i2v.fc2_scales = reinterpret_cast<const uint16_t*>(nv_view.fc2_scales);
+        i2v.fc2_bias = nv_view.fc2_bias;
+        i2v.block_size = int2_block_size_;
+        i2v.scales_are_block_major = false;
+        i2v.weights_are_prepacked = true;
+        i2v.scale_is_bf16 = is_bf16_;
+        i2v.bias_is_bf16 = is_bf16_;
+        qmoe_shared::Int2Fc2Range(
+            hidden_size_, inter_size_, i2v, work.intermediate.data() + slot * call_rows * inter_size_,
             group[slot].count, work.result.data() + slot * call_rows * hidden_size_,
             begin, end, false, /*apply_bias=*/false);
       } else if (int4_bank_mode_) {
@@ -7482,14 +7558,14 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
     const size_t one_wave_s_bytes =
         SafeInt<size_t>(wave_experts) * (resident_bank_bytes_[2] + resident_bank_bytes_[3]);
     const size_t base_host_bytes = host_bytes;
-    const size_t mandatory_stage_bytes = streaming && int4_bank_mode_ ? 2 * one_wave_s_bytes : 0;
+    const size_t mandatory_stage_bytes = streaming && (int4_bank_mode_ || int2_bank_mode_) ? 2 * one_wave_s_bytes : 0;
     if (mandatory_stage_bytes > 0) AddSlab(mandatory_stage_bytes, host_bytes);
     const bool gpu_fits = held_landing_bytes <= effective_gpu_limit && gpu_bytes <= effective_gpu_limit - held_landing_bytes;
     if (gpu_fits && host_bytes <= pinned_avail) {
       host_bytes = base_host_bytes;
       const size_t base_host_aligned = (SafeInt<size_t>(host_bytes) + 255) / 256 * 256;
       stage_weight_banks = 0;
-      if (streaming && (int4_bank_mode_ || (int3_bank_mode_ && !expert_blocks_)) &&
+      if (streaming && (int4_bank_mode_ || int2_bank_mode_ || (int3_bank_mode_ && !expert_blocks_)) &&
           !int_bank_uses_cache && !all_expert_banks_registered_) {
         if (base_host_aligned + 2 * (one_wave_w_bytes + one_wave_s_bytes) <= pinned_avail) {
           stage_weight_banks = 2;
@@ -7637,7 +7713,68 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
       CUDA_RETURN_IF_ERROR(LaunchInt3Moe(p, stream));
       return Status::OK();
     }
-    if (int4_bank_mode_) {
+    if (int2_bank_mode_) {
+      const int prefill_tc_min_rows = moe_tc_min_rows_ > 0 ? 1 : 0;
+      if (is_bf16_) {
+        gemv::launch_moe_gemv_int_symmetric_interleaved_swiglu<__nv_bfloat16, cutlass::uint2b_t>(
+            static_cast<const __nv_bfloat16*>(act_in),
+            reinterpret_cast<const cutlass::uint2b_t*>(fc1_w),
+            reinterpret_cast<const __nv_bfloat16*>(fc1_s),
+            static_cast<const __nv_bfloat16*>(fc1_bias_dev),
+            reinterpret_cast<__nv_bfloat16*>(nvfp4_inter_buf),
+            nullptr, expert_map, num_exp, num_r, inter_size_, hidden_size_, int2_block_size_, sm_,
+            runner_activation, nullptr, num_r, nullptr, stream
+#if __has_include("contrib_ops/cuda/cuda_session_options.h")
+            ,
+            prefill_tc_min_rows
+#endif
+        );
+        CUDA_RETURN_IF_ERROR(cudaGetLastError());
+        gemv::launch_moe_gemv_int_symmetric<__nv_bfloat16, cutlass::uint2b_t>(
+            reinterpret_cast<const __nv_bfloat16*>(nvfp4_inter_buf),
+            reinterpret_cast<const cutlass::uint2b_t*>(fc2_w),
+            reinterpret_cast<const __nv_bfloat16*>(fc2_s),
+            nullptr,
+            static_cast<__nv_bfloat16*>(out_buf),
+            nullptr, expert_map, num_exp, num_r, hidden_size_, inter_size_, int2_block_size_, sm_, stream
+#if __has_include("contrib_ops/cuda/cuda_session_options.h")
+            ,
+            prefill_tc_min_rows
+#endif
+        );
+        CUDA_RETURN_IF_ERROR(cudaGetLastError());
+      } else {
+        gemv::launch_moe_gemv_int_symmetric_interleaved_swiglu<half, cutlass::uint2b_t>(
+            static_cast<const half*>(act_in),
+            reinterpret_cast<const cutlass::uint2b_t*>(fc1_w),
+            reinterpret_cast<const half*>(fc1_s),
+            static_cast<const half*>(fc1_bias_dev),
+            reinterpret_cast<half*>(nvfp4_inter_buf),
+            nullptr, expert_map, num_exp, num_r, inter_size_, hidden_size_, int2_block_size_, sm_,
+            runner_activation, nullptr, num_r, nullptr, stream
+#if __has_include("contrib_ops/cuda/cuda_session_options.h")
+            ,
+            moe_tc_min_rows_
+#endif
+        );
+        CUDA_RETURN_IF_ERROR(cudaGetLastError());
+        gemv::launch_moe_gemv_int_symmetric<half, cutlass::uint2b_t>(
+            reinterpret_cast<const half*>(nvfp4_inter_buf),
+            reinterpret_cast<const cutlass::uint2b_t*>(fc2_w),
+            reinterpret_cast<const half*>(fc2_s),
+            nullptr,
+            static_cast<half*>(out_buf),
+            nullptr, expert_map, num_exp, num_r, hidden_size_, inter_size_, int2_block_size_, sm_, stream
+#if __has_include("contrib_ops/cuda/cuda_session_options.h")
+            ,
+            moe_tc_min_rows_
+#endif
+        );
+        CUDA_RETURN_IF_ERROR(cudaGetLastError());
+      }
+      return Status::OK();
+    }
+    if (xpose_scales) {
       if (use_int4_runner && num_r >= 64 && num_r >= num_exp * 4 && num_r <= wave_route_slots) {
         const auto int4_quant = is_bf16_
                                     ? ck::QuantParams::GroupWise(32, reinterpret_cast<const __nv_bfloat16*>(fc1_s),
@@ -7977,7 +8114,8 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
           }
         }
 
-        if (int4_bank_mode_ || (int3_bank_mode_ && !expert_blocks_)) {
+        if (int4_bank_mode_ || int2_bank_mode_ || (int3_bank_mode_ && !expert_blocks_)) {
+          const bool xpose_scales = int4_bank_mode_ || int2_bank_mode_;
           if (wave >= 2) {
             CUDA_RETURN_IF_ERROR(cudaEventSynchronize(shared.copy_done[wave - 2]));
             release_bank_leases(bank_idx);
@@ -8042,7 +8180,7 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
                 lease_guard.MarkDeviceReadsComplete();
                 lease_guard.Release();
               }
-              if (int4_bank_mode_) {
+              if (xpose_scales) {
                 CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
                     shared.landing + offsets[2], wave_s1_pinned,
                     static_cast<size_t>(SafeInt<size_t>(count) * resident_bank_bytes_[2]),
@@ -8098,7 +8236,7 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
                 }
                 file_expert_store_.Prefetch(pf_ids.data(), pf_ids.size(), ++ssd_prefetch_gen_);
               }
-              if (int4_bank_mode_) {
+              if (xpose_scales) {
                 auto stage_ssd_scales_fn = [&](ptrdiff_t r_idx) noexcept {
                   const int r = static_cast<int>(r_idx);
                   CopyOrTransposeScaleBankToHost(
@@ -8163,7 +8301,7 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
               } else if (part == 2) {
                 std::memcpy(wave_w2_pinned + static_cast<size_t>(r) * w2_bytes,
                             fc2_w_base + static_cast<size_t>(exp_id) * w2_bytes, w2_bytes);
-              } else if (int4_bank_mode_) {
+              } else if (xpose_scales) {
                 CopyOrTransposeScaleBankToHost(
                     2, fc1_s_base + static_cast<size_t>(SafeInt<size_t>(exp_id) * s1_bytes),
                     wave_s1_pinned + static_cast<size_t>(SafeInt<size_t>(r) * s1_bytes));
@@ -8198,7 +8336,7 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
                 shared.landing + offsets[3], wave_s2_pinned,
                 static_cast<size_t>(SafeInt<size_t>(count) * resident_bank_bytes_[3]),
                 cudaMemcpyHostToDevice, shared.copy_stream));
-          } else if (int4_bank_mode_) {
+          } else if (xpose_scales) {
             const uint8_t* fc1_w_base = static_cast<const uint8_t*>(nvfp4_fc1_w_->DataRaw());
             const uint8_t* fc2_w_base = static_cast<const uint8_t*>(nvfp4_fc2_w_->DataRaw());
             const uint8_t* fc1_s_base = static_cast<const uint8_t*>(nvfp4_fc1_s_->DataRaw());
@@ -9077,6 +9215,66 @@ Status QMoEOffload::ComputeSharedAsync(OpKernelContext* context, const Tensor* i
         p.input_is_gathered = false;
         p.total_routes_override = routes;
         CUDA_RETURN_IF_ERROR(LaunchInt3Moe(p, stream));
+        return Status::OK();
+      }
+      if (int2_bank_mode_) {
+        if (is_bf16_) {
+          gemv::launch_moe_gemv_int_symmetric_interleaved_swiglu<__nv_bfloat16, cutlass::uint2b_t>(
+              reinterpret_cast<const __nv_bfloat16*>(input->DataRaw()),
+              reinterpret_cast<const cutlass::uint2b_t*>(fc1_w),
+              reinterpret_cast<const __nv_bfloat16*>(fc1_s),
+              static_cast<const __nv_bfloat16*>(fc1_bias_dev),
+              reinterpret_cast<__nv_bfloat16*>(nvfp4_inter_buf),
+              nullptr, hit_compact, physical_slots_, routes, inter_size_, hidden_size_, int2_block_size_, sm_,
+              runner_activation, hit_ids, tile_rows, nullptr, stream
+#if __has_include("contrib_ops/cuda/cuda_session_options.h")
+              ,
+              moe_tc_min_rows_
+#endif
+          );
+          CUDA_RETURN_IF_ERROR(cudaGetLastError());
+          gemv::launch_moe_gemv_int_symmetric<__nv_bfloat16, cutlass::uint2b_t>(
+              reinterpret_cast<const __nv_bfloat16*>(nvfp4_inter_buf),
+              reinterpret_cast<const cutlass::uint2b_t*>(fc2_w),
+              reinterpret_cast<const __nv_bfloat16*>(fc2_s),
+              nullptr,
+              reinterpret_cast<__nv_bfloat16*>(wave_output),
+              nullptr, hit_compact, physical_slots_, routes, hidden_size_, inter_size_, int2_block_size_, sm_, stream
+#if __has_include("contrib_ops/cuda/cuda_session_options.h")
+              ,
+              moe_tc_min_rows_
+#endif
+          );
+          CUDA_RETURN_IF_ERROR(cudaGetLastError());
+        } else {
+          gemv::launch_moe_gemv_int_symmetric_interleaved_swiglu<half, cutlass::uint2b_t>(
+              reinterpret_cast<const half*>(input->DataRaw()),
+              reinterpret_cast<const cutlass::uint2b_t*>(fc1_w),
+              reinterpret_cast<const half*>(fc1_s),
+              static_cast<const half*>(fc1_bias_dev),
+              reinterpret_cast<half*>(nvfp4_inter_buf),
+              nullptr, hit_compact, physical_slots_, routes, inter_size_, hidden_size_, int2_block_size_, sm_,
+              runner_activation, hit_ids, tile_rows, nullptr, stream
+#if __has_include("contrib_ops/cuda/cuda_session_options.h")
+              ,
+              moe_tc_min_rows_
+#endif
+          );
+          CUDA_RETURN_IF_ERROR(cudaGetLastError());
+          gemv::launch_moe_gemv_int_symmetric<half, cutlass::uint2b_t>(
+              reinterpret_cast<const half*>(nvfp4_inter_buf),
+              reinterpret_cast<const cutlass::uint2b_t*>(fc2_w),
+              reinterpret_cast<const half*>(fc2_s),
+              nullptr,
+              reinterpret_cast<half*>(wave_output),
+              nullptr, hit_compact, physical_slots_, routes, hidden_size_, inter_size_, int2_block_size_, sm_, stream
+#if __has_include("contrib_ops/cuda/cuda_session_options.h")
+              ,
+              moe_tc_min_rows_
+#endif
+          );
+          CUDA_RETURN_IF_ERROR(cudaGetLastError());
+        }
         return Status::OK();
       }
       if (int4_bank_mode_) {
