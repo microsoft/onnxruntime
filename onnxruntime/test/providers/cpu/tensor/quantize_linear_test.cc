@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <limits>
+#include <random>
 #include <tuple>
 #include <type_traits>
 
@@ -4372,6 +4373,129 @@ TEST(QuantizeLinearOp21BlockedTest, Float8_NoZeroPoint_LastAxis) {
   }
 }
 #endif
+// Compares sub-byte DequantizeLinear against a scalar reference on shapes that cover every loop path of the
+// CPU kernel: rows shorter and longer than its internal chunk, rows that start in the middle of a packed byte,
+// contiguous per-element scales (quantize axis last), and partial last blocks.
+template <typename T>
+void DequantizeLinearSubByteMatchesReference(const std::vector<int64_t>& dims, int64_t axis, int64_t block_size,
+                                             bool use_zero_point, int num_threads = 0) {
+  using UnpackedType = typename T::UnpackedType;
+  constexpr size_t elements_per_byte = std::is_same_v<T, Int4x2> || std::is_same_v<T, UInt4x2> ? 2 : 4;
+
+  size_t M = 1, N = 1;
+  for (int64_t i = 0; i < axis; ++i) M *= static_cast<size_t>(dims[i]);
+  for (size_t i = static_cast<size_t>(axis) + 1; i < dims.size(); ++i) N *= static_cast<size_t>(dims[i]);
+  const size_t K = static_cast<size_t>(dims[axis]);
+  const size_t num_blocks = block_size ? (K + block_size - 1) / block_size : K;
+
+  std::vector<int64_t> scale_dims;
+  if (block_size) {
+    scale_dims = dims;
+    scale_dims[axis] = static_cast<int64_t>(num_blocks);
+  } else {
+    scale_dims = {dims[axis]};
+  }
+  const size_t num_scales = block_size ? M * num_blocks * N : K;
+
+  std::mt19937 rng(static_cast<uint32_t>(M * 1000003 + K * 1009 + N * 31 + block_size));
+  std::uniform_int_distribution<int> q_dist(T::min_val, T::max_val);
+  std::uniform_real_distribution<float> scale_dist(-2.0f, 2.0f);
+
+  auto random_packed = [&](size_t count, std::vector<int>& unpacked) {
+    std::vector<T> packed((count + elements_per_byte - 1) / elements_per_byte);
+    unpacked.resize(count);
+    for (size_t i = 0; i < count; ++i) {
+      unpacked[i] = q_dist(rng);
+      packed[i / elements_per_byte].SetElem(i % elements_per_byte, static_cast<UnpackedType>(unpacked[i]));
+    }
+    return packed;
+  };
+
+  std::vector<int> x_values, zp_values;
+  std::vector<T> x = random_packed(M * K * N, x_values);
+  std::vector<T> zero_point = random_packed(num_scales, zp_values);
+  std::vector<float> scale(num_scales);
+  for (auto& s : scale) s = scale_dist(rng);
+
+  std::vector<float> expected(M * K * N);
+  for (size_t m = 0; m < M; ++m) {
+    for (size_t k = 0; k < K; ++k) {
+      for (size_t n = 0; n < N; ++n) {
+        const size_t i = (m * K + k) * N + n;
+        const size_t s = block_size ? (m * num_blocks + k / block_size) * N + n : k;
+        const int zp = use_zero_point ? zp_values[s] : 0;
+        expected[i] = static_cast<float>(x_values[i] - zp) * scale[s];
+      }
+    }
+  }
+
+  OpTester test("DequantizeLinear", 25);
+  test.AddAttribute<int64_t>("axis", axis);
+  if (block_size) test.AddAttribute<int64_t>("block_size", block_size);
+  test.AddInput<T>("x", dims, x);
+  test.AddInput<float>("x_scale", scale_dims, scale);
+  if (use_zero_point) test.AddInput<T>("x_zero_point", scale_dims, zero_point);
+  test.AddOutput<float>("y", dims, expected);
+  test.SetOutputTolerance(0.0f, 0.0f);
+  SessionOptions so;
+  so.intra_op_param.thread_pool_size = num_threads;
+  test.Config(so).ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+}
+
+template <typename T>
+void DequantizeLinearSubByteMatchesReferenceAllShapes() {
+  struct Case {
+    std::vector<int64_t> dims;
+    int64_t axis;
+    int64_t block_size;
+  };
+  const std::vector<Case> cases{
+      {{3, 700, 5}, 1, 0},    // per-axis, short rows
+      {{3, 5, 1101}, 1, 0},   // per-axis, long rows starting mid-byte
+      {{4, 1301}, 1, 0},      // per-axis on the last axis
+      {{4, 1301}, 1, 32},     // blocked on the last axis, short blocks
+      {{3, 1301}, 1, 600},    // blocked on the last axis, long blocks
+      {{70, 9}, 0, 16},       // blocked, short rows
+      {{33, 1031}, 0, 8},     // blocked, long rows starting mid-byte
+      {{2, 37, 3, 7}, 1, 5},  // blocked on a middle axis
+  };
+  for (const auto& c : cases) {
+    for (bool use_zero_point : {true, false}) {
+      DequantizeLinearSubByteMatchesReference<T>(c.dims, c.axis, c.block_size, use_zero_point);
+    }
+  }
+
+  // Large enough for TryParallelFor to split the work across a 4-thread pool, so units run concurrently.
+  const std::vector<Case> parallel_cases{
+      {{16, 4096, 7}, 1, 0},   // per-axis, short rows
+      {{4, 3, 40001}, 1, 0},   // per-axis, long rows starting mid-byte
+      {{8, 30001}, 1, 0},      // per-axis on the last axis
+      {{8, 30001}, 1, 32},     // blocked on the last axis
+      {{65536, 7}, 0, 16},     // blocked, short rows
+      {{40, 7001}, 0, 8},      // blocked, long rows starting mid-byte
+  };
+  for (const auto& c : parallel_cases) {
+    for (bool use_zero_point : {true, false}) {
+      DequantizeLinearSubByteMatchesReference<T>(c.dims, c.axis, c.block_size, use_zero_point, 4);
+    }
+  }
+}
+
+TEST(DequantizeLinearOp21BlockedTest, SubByteMatchesReference_Int4) {
+  DequantizeLinearSubByteMatchesReferenceAllShapes<Int4x2>();
+}
+
+TEST(DequantizeLinearOp21BlockedTest, SubByteMatchesReference_UInt4) {
+  DequantizeLinearSubByteMatchesReferenceAllShapes<UInt4x2>();
+}
+
+TEST(DequantizeLinearOp21BlockedTest, SubByteMatchesReference_Int2) {
+  DequantizeLinearSubByteMatchesReferenceAllShapes<Int2x4>();
+}
+
+TEST(DequantizeLinearOp21BlockedTest, SubByteMatchesReference_UInt2) {
+  DequantizeLinearSubByteMatchesReferenceAllShapes<UInt2x4>();
+}
 }  // namespace blocked_quantization
 }  // namespace test
 }  // namespace onnxruntime
