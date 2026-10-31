@@ -3495,6 +3495,239 @@ The output columns `N` and the contraction dimension `K` are derived from the we
         }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
+    MatMulNVFP4A16, 1,
+    OpSchema()
+        .SetDoc(R"DOC(NVFP4 weight-only matrix multiplication with FP32 global scaling in the epilogue.
+
+A has shape [..., K], rank at least one, with FP16 or BF16 elements. B is UINT8
+[N, K/2], containing low-nibble-first E2M1 pairs. K must be divisible by 16.
+weight_scale is UINT8 [N, K/16] containing raw E4M3 scale bytes; weight_scale_2
+is a one-element FP32 global scale tensor. N and K derive from B.
+
+Let round_T denote round-to-nearest-even to A's element type. Local weight
+operands are round_T(e2m1(B) * e4m3(weight_scale)), without the global scale.
+Products and accumulation use FP32. The global scale multiplies the FP32
+accumulator before the only output rounding:
+Y = round_T((A @ local_weight.T) * weight_scale_2).
+This ordering applies for every M, including general prefill. The summation
+order is unspecified. The output has shape [..., N]. Empty dimensions and
+K=0 (empty FP32 sum times the global scale) are supported.
+
+There are no attributes, activation quantization, reciprocal scale semantics,
+or fused bias. Add bias separately in the native output type when required.
+CUDA uses direct packed execution for small M only when the tensor-core GEMV
+sub-path is available and enabled. Other cases use temporary local FP16/BF16
+weights and FP32 accumulators, never persistent expanded weights.
+This is not native FP4-by-FP4 tensor-core execution or a full-model memory claim.
+It does not change the defaults or arithmetic of MatMulBlockQuantizedFp4Weight.
+)DOC")
+        .Input(0, "A", "FP16/BF16 activation with rank at least one and shape [..., K].", "T")
+        .Input(1, "B", "Packed E2M1 bytes [N, K/2], low nibble first.", "T1")
+        .Input(2, "weight_scale", "Raw E4M3 scale bytes [N, K/16].", "T1")
+        .Input(3, "weight_scale_2", "One-element FP32 global multiplier applied after accumulation.", "T2")
+        .Output(0, "Y", "Output [..., N] with the same element type as A.", "T")
+        .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)"}, "Activation and output type.")
+        .TypeConstraint("T1", {"tensor(uint8)"}, "Packed E2M1 weights and E4M3 scale bytes.")
+        .TypeConstraint("T2", {"tensor(float)"}, "Global FP32 scale.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          if (hasInputShape(ctx, 0) && getInputShape(ctx, 0).dim_size() < 1) {
+            fail_shape_inference("A must have rank at least 1.");
+          }
+          if (hasInputShape(ctx, 2) && getInputShape(ctx, 2).dim_size() != 2) {
+            fail_shape_inference("weight_scale must have shape [N, K/16].");
+          }
+          if (hasInputShape(ctx, 3)) {
+            for (const auto& dim : getInputShape(ctx, 3).dim()) {
+              if (dim.has_dim_value() && dim.dim_value() != 1) {
+                fail_shape_inference("weight_scale_2 must contain one element.");
+              }
+            }
+          }
+          if (!hasInputShape(ctx, 1)) {
+            return;
+          }
+          const auto& b_shape = getInputShape(ctx, 1);
+          if (b_shape.dim_size() != 2) {
+            fail_shape_inference("B must have shape [N, K/2].");
+          }
+          if (hasInputShape(ctx, 2)) {
+            const auto& scale_shape = getInputShape(ctx, 2);
+            if (scale_shape.dim(0).has_dim_value() && b_shape.dim(0).has_dim_value() &&
+                scale_shape.dim(0).dim_value() != b_shape.dim(0).dim_value()) {
+              fail_shape_inference("weight_scale must have shape [N, K/16].");
+            }
+          }
+          if (b_shape.dim(1).has_dim_value()) {
+            const int64_t half_k = b_shape.dim(1).dim_value();
+            if (half_k < 0 || half_k > std::numeric_limits<int64_t>::max() / 2 || half_k % 8 != 0) {
+              fail_shape_inference("K must be divisible by 16.");
+            }
+            if (hasInputShape(ctx, 2)) {
+              const auto& scales_k = getInputShape(ctx, 2).dim(1);
+              if (scales_k.has_dim_value() && scales_k.dim_value() != half_k / 8) {
+                fail_shape_inference("weight_scale must have shape [N, K/16].");
+              }
+            }
+            if (hasInputShape(ctx, 0)) {
+              const auto& a_shape = getInputShape(ctx, 0);
+              const auto& a_k = a_shape.dim(a_shape.dim_size() - 1);
+              if (a_k.has_dim_value() && a_k.dim_value() != half_k * 2) {
+                fail_shape_inference("A's last dimension must equal K.");
+              }
+            }
+          }
+          if (hasInputShape(ctx, 0)) {
+            const auto& a_shape = getInputShape(ctx, 0);
+            for (int i = 0; i < a_shape.dim_size() - 1; ++i) {
+              appendSingleDimCopiedFromInputTypeToOutputType(ctx, 0, 0, i);
+            }
+            appendSingleDimCopiedFromInputTypeToOutputType(ctx, 1, 0, 0);
+          }
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    MatMulGGMLQ8_0, 1,
+    OpSchema()
+        .SetDoc(R"DOC(Weight-only matrix multiplication with raw serialized GGML Q8_0 blocks.
+
+A has shape [..., K], rank at least one. B is UINT8 of shape [N, K/32, 34].
+Each 34-byte block contains a little-endian FP16 scale d followed by 32 signed
+two's-complement INT8 values q, in K order. Decode d*q in FP32, then round each
+complete reconstructed weight to A's element type T, not the scale alone.
+There are no attributes, zero points, padding, external scales or prepacking.
+
+Let round_T denote round-to-nearest-even to T. Products and accumulation use
+FP32. Round the matmul result to T before optional bias addition:
+Y = round_T(round_T(A @ round_T(dequantize(B)).T) + bias).
+Bias addition uses FP32 followed by round_T; without bias only the matmul output
+rounding applies. For FLOAT round_T is the identity. Summation order is unspecified.
+N and K derive from B; K must equal 32 times B's second dimension. The output has
+shape [..., N]. Empty dimensions, including K=0, are supported.
+CUDA reads packed bytes directly, without a persistent expanded weight or
+full-matrix dequantization buffer. This does not change MatMulNBits semantics.
+)DOC")
+        .Input(0, "A", "Activation tensor with rank at least one and shape [..., K].", "T")
+        .Input(1, "B", "Raw serialized GGML Q8_0 blocks of shape [N, K/32, 34].", "T1")
+        .Input(2, "bias", "Optional bias [N], added after rounding the matmul output to T.", "T", OpSchema::Optional)
+        .Output(0, "Y", "Output of shape [..., N] with the same type as A.", "T")
+        .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Activation, bias and output element types.")
+        .TypeConstraint("T1", {"tensor(uint8)"}, "Raw serialized weight bytes.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          if (hasInputShape(ctx, 0) && getInputShape(ctx, 0).dim_size() < 1) {
+            fail_shape_inference("A must have rank at least 1.");
+          }
+          if (!hasInputShape(ctx, 1)) {
+            return;
+          }
+          const auto& b_shape = getInputShape(ctx, 1);
+          if (b_shape.dim_size() != 3 || (b_shape.dim(2).has_dim_value() && b_shape.dim(2).dim_value() != 34)) {
+            fail_shape_inference("B must have shape [N, K/32, 34].");
+          }
+          if (ctx.hasInput(2) && hasInputShape(ctx, 2)) {
+            const auto& bias_shape = getInputShape(ctx, 2);
+            if (bias_shape.dim_size() != 1 ||
+                (bias_shape.dim(0).has_dim_value() && b_shape.dim(0).has_dim_value() &&
+                 bias_shape.dim(0).dim_value() != b_shape.dim(0).dim_value())) {
+              fail_shape_inference("bias must have shape [N].");
+            }
+          }
+          if (!hasInputShape(ctx, 0)) {
+            return;
+          }
+          const auto& a_shape = getInputShape(ctx, 0);
+          const auto& last = a_shape.dim(a_shape.dim_size() - 1);
+          if (last.has_dim_value() && b_shape.dim(1).has_dim_value()) {
+            const int64_t blocks = b_shape.dim(1).dim_value();
+            if (blocks < 0 || blocks > std::numeric_limits<int64_t>::max() / 32 ||
+                last.dim_value() != blocks * 32) {
+              fail_shape_inference("A's last dimension must equal 32 times B's block count.");
+            }
+          }
+          for (int i = 0; i < a_shape.dim_size() - 1; ++i) {
+            appendSingleDimCopiedFromInputTypeToOutputType(ctx, 0, 0, i);
+          }
+          appendSingleDimCopiedFromInputTypeToOutputType(ctx, 1, 0, 0);
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    MatMulGGMLIQ2XXS, 1,
+    OpSchema()
+        .SetDoc(R"DOC(Weight-only matrix multiplication with serialized GGML IQ2_XXS weights.
+
+A has shape [..., K]. B has shape [N, K/256, 66], with no padding or transposition:
+each 66-byte block contains a little-endian FP16 superblock scale followed by eight
+8-byte records. Each record contains four byte indices into the canonical 256x8
+IQ2_XXS magnitude grid and a little-endian uint32 containing four 7-bit sign indices
+in bits 0..27 and a 4-bit local scale in bits 28..31. The eighth sign bit is the
+parity of the seven stored sign bits. A decoded element is
+d * (0.5 + local_scale) * 0.25 * grid[index, j] * sign[j].
+The grid is fixed by GGML IQ2_XXS; this is not affine integer quantization.
+
+Let round_T denote round-to-nearest-even to A's element type. Weight decoding
+uses FP32, then each complete reconstructed weight is rounded to T before
+FP32 multiplication and accumulation. The matmul result is rounded to T before
+optional bias addition: Y = round_T(round_T(A @ round_T(dequantize(B)).T) + bias).
+The bias addition uses FP32 followed by round_T. Without bias, there is only
+the matmul output rounding. For FLOAT, round_T is the identity. The summation
+order is unspecified. This ordering preserves native BF16 reconstructed operands.
+K must equal 256 times B's second dimension. N and K are derived from B.
+The output has shape [..., N]. Empty dimensions, including K=0, are supported.
+The CUDA kernel reads packed blocks directly without a persistent expanded
+weight or full-matrix dequantization buffer.
+
+Format reference:
+https://github.com/ggml-org/llama.cpp/blob/b76b13379d3b7d67ab0bc424516bb6fd2522bd8e/ggml/src/ggml-quants.c#L2489-L2514
+)DOC")
+        .Input(0, "A", "Activation tensor with rank at least one and shape [..., K].", "T")
+        .Input(1, "B", "Raw serialized GGML IQ2_XXS blocks of shape [N, K/256, 66].", "T1")
+        .Input(2, "bias", "Optional bias of shape [N], added after rounding the matmul output to T.", "T", OpSchema::Optional)
+        .Output(0, "Y", "Output tensor of shape [..., N], with the same type as A.", "T")
+        .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Activation, bias and output element types.")
+        .TypeConstraint("T1", {"tensor(uint8)"}, "Serialized weight bytes.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          if (hasInputShape(ctx, 0) && getInputShape(ctx, 0).dim_size() < 1) {
+            fail_shape_inference("A must have rank at least 1.");
+          }
+          if (!hasInputShape(ctx, 1)) {
+            return;
+          }
+          const auto& b_shape = getInputShape(ctx, 1);
+          if (b_shape.dim_size() != 3 ||
+              (b_shape.dim(2).has_dim_value() && b_shape.dim(2).dim_value() != 66)) {
+            fail_shape_inference("B must have shape [N, K/256, 66].");
+          }
+          if (hasInputShape(ctx, 2)) {
+            const auto& bias_shape = getInputShape(ctx, 2);
+            if (bias_shape.dim_size() != 1 ||
+                (bias_shape.dim(0).has_dim_value() && b_shape.dim(0).has_dim_value() &&
+                 bias_shape.dim(0).dim_value() != b_shape.dim(0).dim_value())) {
+              fail_shape_inference("bias must have shape [N].");
+            }
+          }
+          if (!hasInputShape(ctx, 0)) {
+            return;
+          }
+          const auto& a_shape = getInputShape(ctx, 0);
+          const auto& a_k = a_shape.dim(a_shape.dim_size() - 1);
+          if (b_shape.dim(1).has_dim_value()) {
+            const auto k_blocks = b_shape.dim(1).dim_value();
+            if (k_blocks < 0 || k_blocks > std::numeric_limits<int64_t>::max() / 256 ||
+                (a_k.has_dim_value() && a_k.dim_value() != k_blocks * 256)) {
+              fail_shape_inference("A's last dimension must equal 256 times B's block count.");
+            }
+          }
+          for (int i = 0; i < a_shape.dim_size() - 1; ++i) {
+            appendSingleDimCopiedFromInputTypeToOutputType(ctx, 0, 0, i);
+          }
+          appendSingleDimCopiedFromInputTypeToOutputType(ctx, 1, 0, 0);
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
     MatMulBlockQuantizedFp8Weight, 1,
     OpSchema()
         .SetDoc(R"DOC(Block-scaled FP8 (E4M3) matrix multiplication with optional FP8 activation quantization.
