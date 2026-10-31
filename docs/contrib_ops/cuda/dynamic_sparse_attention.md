@@ -272,8 +272,10 @@ and P.V in a different FP32 order, so their outputs are close but not bit-identi
 End-to-end numbers are preliminary. In the Qwen3.8-Flash-Next packages, an earlier revision of these kernels
 (one round of consecutive A/B runs, not alternated) shortened the time to first token by 4.0 to 4.8% at 2048, 8.4 to 9.5%
 at 8192 and 7.6 to 9.4% at 32768 prompt tokens, the speculative-decoding cycle (S = 8) by 4.6 to 6.8% at 2K, 8K and 32K
-context, and the 8192-row prefill launch from 7.9 to 2.8 ms. They have not been reproduced for the current revision of
-the kernels, whose numerics changed (see [Rollout](#rollout)).
+context, and the 8192-row prefill launch from 7.9 to 2.8 ms. They are single A/B rounds without raw timings or
+confidence intervals and have not been reproduced for the current revision of the kernels, whose numerics changed (see
+[Rollout](#rollout)). A shorter speculative-decoding cycle is not better user-visible throughput by itself: the accepted
+tokens per cycle and the time per accepted token were not measured.
 
 `ORT_DSA_PREFILL_INT8_TC=0` and `ORT_DSA_DECODE_INT8_TC=0` (the defaults) run the previous kernels exactly. The tests
 `Int8CachePrefillTensorCoreKernel_CUDA` and `Int8CacheDecodeTensorCoreKernel_CUDA` compare the tensor-core kernels with a
