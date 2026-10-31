@@ -53,6 +53,7 @@ class GroupQueryAttention final : public CudaKernel {
   bool enable_xqa_;                         // True when ORT_ENABLE_XQA != 0 (default: on) and T is fp16/bf16.
   bool enable_cudnn_flash_attention_;       // cuDNN SDPA explicitly enabled (env / sdpa_kernel)
   bool auto_enable_cudnn_flash_attention_;  // auto-prefer cuDNN SDPA on SM>=90 when no explicit kernel pinned
+  bool reject_cudnn_sdpa_graph_for_test_;   // ORT_TEST_ONLY_GQA_REJECT_CUDNN_SDPA_GRAPH: treat the build probe as rejected
 
   KVQuantizationType k_quant_type_;
   KVQuantizationType v_quant_type_;
