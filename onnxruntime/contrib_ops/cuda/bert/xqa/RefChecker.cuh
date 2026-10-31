@@ -52,12 +52,12 @@ struct RefChecker {
 
  private:
   template <typename T>
-  void initMember(T& dst, char const* varName);
+  void initMember(T& dst, const char* varName);
 };
 
 template <typename T, size_t d0, size_t d1, size_t d2, size_t d3>
 std::enable_if_t<std::is_same_v<std::decay_t<T>, float> || std::is_same_v<std::decay_t<T>, half>, std::string>
-makeFileName(T (&dst)[d0][d1][d2][d3], char const* varName) {
+makeFileName(T (&dst)[d0][d1][d2][d3], const char* varName) {
   std::stringstream ss;
   ss << varName << '_' << d0 << 'x' << d1 << 'x' << d2 << 'x' << d3 << '_'
      << (std::is_same_v<std::decay_t<T>, float> ? "f32" : "f16") << ".bin";
@@ -66,7 +66,7 @@ makeFileName(T (&dst)[d0][d1][d2][d3], char const* varName) {
 
 template <typename T, size_t d0, size_t d1, size_t d2>
 std::enable_if_t<std::is_same_v<std::decay_t<T>, float> || std::is_same_v<std::decay_t<T>, half>, std::string>
-makeFileName(T (&dst)[d0][d1][d2], char const* varName) {
+makeFileName(T (&dst)[d0][d1][d2], const char* varName) {
   std::stringstream ss;
   ss << varName << '_' << d0 << 'x' << d1 << 'x' << d2 << '_'
      << (std::is_same_v<std::decay_t<T>, float> ? "f32" : "f16") << ".bin";
@@ -75,7 +75,7 @@ makeFileName(T (&dst)[d0][d1][d2], char const* varName) {
 
 template <typename T, size_t d0, size_t d1>
 std::enable_if_t<std::is_same_v<std::decay_t<T>, float> || std::is_same_v<std::decay_t<T>, half>, std::string>
-makeFileName(T (&dst)[d0][d1], char const* varName) {
+makeFileName(T (&dst)[d0][d1], const char* varName) {
   std::stringstream ss;
   ss << varName << '_' << d0 << 'x' << d1 << '_' << (std::is_same_v<std::decay_t<T>, float> ? "f32" : "f16")
      << ".bin";
@@ -83,8 +83,8 @@ makeFileName(T (&dst)[d0][d1], char const* varName) {
 }
 
 template <typename T>
-void RefChecker::initMember(T& dst, char const* varName) {
-  std::string const filename = makeFileName(dst, varName);
+void RefChecker::initMember(T& dst, const char* varName) {
+  const std::string filename = makeFileName(dst, varName);
   printf("loading %s\n", filename.c_str());
   namespace fs = std::filesystem;
   assert(fs::exists(filename));

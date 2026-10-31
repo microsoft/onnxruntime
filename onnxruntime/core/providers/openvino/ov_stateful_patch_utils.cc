@@ -1,6 +1,8 @@
 // Copyright (C) Intel Corporation
 // Licensed under the MIT License
 
+#include <regex>
+
 #include "core/providers/openvino/ov_stateful_patch_utils.h"
 #include "core/providers/shared_library/provider_api.h"
 #include "core/common/common.h"
@@ -180,21 +182,27 @@ std::pair<std::vector<std::string>, std::unordered_set<std::string>> ExtractKVPa
   std::vector<std::string> key_value_output_names;
   std::unordered_set<std::string> unique_patterns;
 
-  const std::string prefix = "present_";
-  const size_t prefix_len = prefix.length();
+  // Supported KV-cache output naming conventions, expressed as regular expressions.
+  // To support a new convention, add its regex below.
+  //   - Underscore style (HF/optimum): "present_<pattern>_<index>", e.g. "present_key_cross_0".
+  //     The captured <pattern> (e.g. "key_cross") is recorded and later used to pair the
+  //     corresponding input tensor.
+  //   - Dot style (ORT GenAI export):  "present.<layer>.<key|value>", e.g. "present.0.key".
+  //     No pairing pattern is produced, so unique_patterns is left empty for this style and
+  //     ExtractInputKVTensors falls back to substring matching ("key_values") to pair the
+  //     corresponding "past_key_values.*" inputs, which are enumerated in the same layer order.
+  static const std::regex underscore_pattern(R"(^present_(.+)_\d+$)");
+  static const std::regex dot_pattern(R"(^present\.\d+\.(?:key|value)$)");
+
   for (const ov::Output<ov::Node>& output : model->outputs()) {
-    const auto& names = output.get_names();
-    for (const auto& name : names) {
-      if (name.find(prefix) == 0 && name.length() > prefix_len) {
-        size_t last_underscore_pos = name.rfind('_');
-        // Extract pattern between "present_" and the last underscore
-        if (last_underscore_pos != std::string::npos && last_underscore_pos > prefix_len) {
-          std::string pattern = name.substr(prefix_len, last_underscore_pos - prefix_len);
-          if (!pattern.empty()) {
-            unique_patterns.insert(pattern);
-            key_value_output_names.push_back(name);
-          }
-        }
+    for (const auto& name : output.get_names()) {
+      std::smatch match;
+      if (std::regex_match(name, match, underscore_pattern)) {
+        unique_patterns.insert(match[1].str());
+        key_value_output_names.push_back(name);
+        break;
+      } else if (std::regex_match(name, dot_pattern)) {
+        key_value_output_names.push_back(name);
         break;
       }
     }

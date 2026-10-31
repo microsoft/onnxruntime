@@ -1,6 +1,7 @@
 // Copyright (c) Intel Corporation. All rights reserved.
 // Licensed under the MIT License.
 #include "core/providers/openvino/ov_tracing.h"
+#include "core/platform/telemetry_strings.h"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -24,10 +25,11 @@ TRACELOGGING_DEFINE_PROVIDER(
 #endif
 
 namespace {
-std::string EscapeJsonString(const std::string& input) {
+std::string EscapeJsonString(std::string_view input) {
+  input = onnxruntime::telemetry_detail::TelemetryStringView(input);
   std::string escaped;
   // Reserve extra space for escaping
-  escaped.reserve(input.size() + input.size() / 5);
+  escaped.reserve(input.size() * 6);
 
   for (char c : input) {
     switch (c) {
@@ -134,48 +136,46 @@ UINT64 OVTracing::Keyword() const {
 
 void OVTracing::LogAllRuntimeOptions(uint32_t session_id, const SessionContext& ctx) const {
   if (!IsEnabled()) return;
+  telemetry_detail::TelemetryStrings strings;
 
   // Log OpenVINO SDK version separately
   TraceLoggingWrite(ov_tracing_provider_handle, "OV.SDK.Version",
                     TraceLoggingLevel(WINEVENT_LEVEL_VERBOSE),
                     TraceLoggingUInt32(session_id, "session_id"),
-                    TraceLoggingString(ctx.openvino_sdk_version.c_str(), "openvino_sdk_version"));
+                    TraceLoggingString(strings.Utf8(ctx.openvino_sdk_version), "openvino_sdk_version"));
 
   constexpr std::string_view provider_prefix = "ep.openvinoexecutionprovider.";
-  std::ostringstream provider_opts;
-  std::ostringstream session_opts;
+  std::string provider_opts = "{";
+  std::string session_opts = "{";
   bool provider_first = true;
   bool session_first = true;
 
-  provider_opts << "{";
-  session_opts << "{";
-
   // Segregate options based on prefix
+  size_t option_count = 0;
   for (const auto& [key, value] : ctx.runtime_config.options) {
+    if (option_count++ == telemetry_detail::kMaxTelemetryCollectionEntries) break;
     if (!value.empty()) {
-      if (key.starts_with(provider_prefix)) {
-        // Provider option
-        if (!provider_first) provider_opts << ",";
-        provider_opts << "\"" << key << "\":\"" << EscapeJsonString(value) << "\"";
-        provider_first = false;
-      } else {
-        // Session option
-        if (!session_first) session_opts << ",";
-        session_opts << "\"" << key << "\":\"" << EscapeJsonString(value) << "\"";
-        session_first = false;
+      auto& output = key.starts_with(provider_prefix) ? provider_opts : session_opts;
+      auto& first = key.starts_with(provider_prefix) ? provider_first : session_first;
+      const std::string entry = "\"" + EscapeJsonString(key) + "\":\"" + EscapeJsonString(value) + "\"";
+      // Keep complete JSON entries and reserve space for the closing brace.
+      if (entry.size() + (first ? 0 : 1) + 1 <= kMaxTelemetryStringLength - output.size()) {
+        if (!first) output += ",";
+        output += entry;
+        first = false;
       }
     }
   }
 
-  provider_opts << "}";
-  session_opts << "}";
+  provider_opts += "}";
+  session_opts += "}";
 
   // Log provider options only if there are any
   if (!provider_first) {
     TraceLoggingWrite(ov_tracing_provider_handle, "OVEP.Provider.Options",
                       TraceLoggingLevel(WINEVENT_LEVEL_VERBOSE),
                       TraceLoggingUInt32(session_id, "session_id"),
-                      TraceLoggingString(provider_opts.str().c_str(), "provider_options"));
+                      TraceLoggingString(provider_opts.c_str(), "provider_options"));
   }
 
   // Log session options only if there are any
@@ -183,7 +183,7 @@ void OVTracing::LogAllRuntimeOptions(uint32_t session_id, const SessionContext& 
     TraceLoggingWrite(ov_tracing_provider_handle, "OVEP.Session.Options",
                       TraceLoggingLevel(WINEVENT_LEVEL_VERBOSE),
                       TraceLoggingUInt32(session_id, "session_id"),
-                      TraceLoggingString(session_opts.str().c_str(), "session_options"));
+                      TraceLoggingString(session_opts.c_str(), "session_options"));
   }
 }
 

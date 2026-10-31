@@ -43,6 +43,7 @@ from util import (  # noqa: E402
     parse_qnn_version_from_sdk_yaml,
     run,
 )
+from vcpkg_tool_info import get_vcpkg_release_tag  # noqa: E402
 
 log = get_logger("build")
 
@@ -146,6 +147,13 @@ def run_subprocess(
     my_env.update(env)
     log.info(" ".join(args))
     return run(*args, cwd=cwd, capture_stdout=capture_stdout, shell=shell, env=my_env)
+
+
+def get_onnx_backend_test_environment(_use_cuda):
+    return {
+        "ALLOW_RELEASED_ONNX_OPSET_ONLY": "1",
+        "ORT_BACKEND_TEST_ALLOW_UNRELEASED_OPSETS": "0",
+    }
 
 
 def update_submodules(source_dir):
@@ -267,7 +275,8 @@ def generate_vcpkg_install_options(build_dir, args):
         vcpkg_install_options.append("--x-feature=webnn-ep")
     if args.use_xnnpack:
         vcpkg_install_options.append("--x-feature=xnnpack-ep")
-
+    if args.use_telemetry and not args.use_windows_telemetry and not args.android and not args.build_wasm:
+        vcpkg_install_options.append("--x-feature=telemetry")
     overlay_triplets_dir = None
 
     folder_name_parts = []
@@ -301,15 +310,23 @@ def generate_vcpkg_install_options(build_dir, args):
 
     # Config asset cache
     if args.use_vcpkg_ms_internal_asset_cache:
-        terrapin_cmd_path = shutil.which("TerrapinRetrievalTool")
-        if terrapin_cmd_path is None:
-            terrapin_cmd_path = "C:\\local\\Terrapin\\TerrapinRetrievalTool.exe"
-            if not os.path.exists(terrapin_cmd_path):
-                terrapin_cmd_path = None
+        terrapin_path_candidates = [
+            args.terrapin_retrieval_tool_path,
+            shutil.which("TerrapinRetrievalTool"),
+        ]
+        if is_windows():
+            terrapin_path_candidates.append("C:\\local\\Terrapin\\TerrapinRetrievalTool.exe")
+
+        terrapin_cmd_path = next(
+            (path for path in terrapin_path_candidates if path is not None and os.path.exists(path)),
+            None,
+        )
+
         if terrapin_cmd_path is not None:
+            quoted_terrapin_cmd_path = f'"{terrapin_cmd_path}"' if is_windows() else shlex.quote(terrapin_cmd_path)
             vcpkg_install_options.append(
                 "--x-asset-sources=x-script,"
-                + terrapin_cmd_path
+                + quoted_terrapin_cmd_path
                 + " -b https://vcpkg.storage.devpackages.microsoft.io/artifacts/ -a true -u Environment -p {url} -s {sha512} -d {dst}\\;x-block-origin"
             )
         else:
@@ -320,6 +337,66 @@ def generate_vcpkg_install_options(build_dir, args):
     return vcpkg_install_options
 
 
+def _get_vctools_install_dir(args):
+    vctools_dir = os.environ.get("VCToolsInstallDir")  # noqa: SIM112
+    if vctools_dir:
+        return Path(vctools_dir)
+
+    vswhere_candidates = []
+    program_files_x86 = os.environ.get("ProgramFiles(x86)")  # noqa: SIM112
+    if program_files_x86:
+        vswhere_candidates.append(Path(program_files_x86) / "Microsoft Visual Studio" / "Installer" / "vswhere.exe")
+    if vswhere_path := shutil.which("vswhere.exe"):
+        vswhere_candidates.append(Path(vswhere_path))
+
+    installation_paths = []
+    for vswhere_path in vswhere_candidates:
+        if not vswhere_path.is_file():
+            continue
+        try:
+            result = subprocess.run(
+                [
+                    str(vswhere_path),
+                    "-products",
+                    "*",
+                    "-property",
+                    "installationPath",
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+        except OSError:
+            continue
+        if result.returncode == 0 and result.stdout.strip():
+            installation_paths = [Path(path) for path in result.stdout.splitlines() if path.strip()]
+            break
+
+    for installation_path in installation_paths:
+        msvc_root = installation_path / "VC" / "Tools" / "MSVC"
+        if args.msvc_toolset:
+            matching_toolsets = sorted(
+                (path for path in msvc_root.glob(f"{args.msvc_toolset}*") if path.is_dir()),
+                key=lambda path: version_to_tuple(path.name),
+                reverse=True,
+            )
+            if matching_toolsets:
+                return matching_toolsets[0]
+            continue
+
+        default_version_file = installation_path / "VC" / "Auxiliary" / "Build" / "Microsoft.VCToolsVersion.default.txt"
+        try:
+            default_version = default_version_file.read_text(encoding="utf-8").strip()
+        except OSError:
+            continue
+        if default_version:
+            vctools_dir = msvc_root / default_version
+            if vctools_dir.is_dir():
+                return vctools_dir
+
+    return None
+
+
 def get_msvc_spectre_lib_dir(args):
     """Return the directory that holds the MSVC Spectre-mitigated CRT/STL static libraries for the
     target architecture, or None if it cannot be located.
@@ -328,10 +405,11 @@ def get_msvc_spectre_lib_dir(args):
     CRT/STL static libraries (libcmt.lib, libcpmt.lib, libvcruntime.lib) that get linked into the
     binaries also need to be the Spectre-mitigated variants, otherwise BinSkim BA2024
     (EnableSpectreMitigations) still fails. Those variants ship in the "C++ Spectre-mitigated libs"
-    Visual Studio component under %VCToolsInstallDir%\\lib\\spectre\\<arch>.
+    Visual Studio component under %VCToolsInstallDir%\\lib\\spectre\\<arch>. When the build is not
+    running in a Visual Studio Developer Command Prompt, locate the selected toolset with vswhere.
     """
-    vctools_dir = os.environ.get("VCToolsInstallDir")  # noqa: SIM112
-    if not vctools_dir:
+    vctools_dir = _get_vctools_install_dir(args)
+    if vctools_dir is None:
         return None
     if args.arm:
         arch = "arm"
@@ -345,15 +423,34 @@ def get_msvc_spectre_lib_dir(args):
         # Default to the target architecture selected by vcvarsall.bat (x86, x64, arm, arm64),
         # falling back to x64 which is what the official Windows release packages use.
         arch = os.environ.get("VSCMD_ARG_TGT_ARCH", "x64")
-    spectre_dir = Path(vctools_dir) / "lib" / "spectre" / arch
+    spectre_dir = vctools_dir / "lib" / "spectre" / arch
     if spectre_dir.is_dir():
         return str(spectre_dir)
     # Some toolsets do not ship a dedicated arm64ec folder; those reuse the arm64 Spectre libraries.
     if args.arm64ec:
-        fallback = Path(vctools_dir) / "lib" / "spectre" / "arm64"
+        fallback = vctools_dir / "lib" / "spectre" / "arm64"
         if fallback.is_dir():
             return str(fallback)
     return None
+
+
+def stale_python_cache_args(config_build_dir: str) -> list[str]:
+    """CMake arguments that drop the FindPython cache when the build tree was configured for another Python.
+
+    FindPython re-resolves most results for a new Python_EXECUTABLE but keeps the cached header directory, so
+    Development.Module and NumPy are then reported missing and the Python::NumPy target is not created.
+    """
+    cache = Path(config_build_dir) / "CMakeCache.txt"
+    if not cache.is_file():
+        return []
+    prefix = "_Python_EXECUTABLE:INTERNAL="
+    for line in cache.read_text(encoding="utf-8", errors="replace").splitlines():
+        if line.startswith(prefix):
+            cached = os.path.normcase(os.path.realpath(line[len(prefix) :]))
+            if cached != os.path.normcase(os.path.realpath(sys.executable)):
+                return ["-U", "_Python_*"]
+            break
+    return []
 
 
 def generate_build_tree(
@@ -364,7 +461,6 @@ def generate_build_tree(
     cudnn_home,
     nccl_home,
     tensorrt_home,
-    tensorrt_rtx_home,
     migraphx_home,
     acl_home,
     acl_libs,
@@ -391,11 +487,22 @@ def generate_build_tree(
     disable_optional_type = "optional" in types_to_disable
     disable_sparse_tensors = "sparsetensor" in types_to_disable
     disable_string_type = "string" in types_to_disable
+    # VitisAI and OpenVINO providers currently only support the full protobuf option. Resolve this once: the
+    # vcpkg triplets (which decide how the ONNX port is built) and the CMake configure must agree, otherwise
+    # ONNX and ONNX Runtime end up with different protobuf runtimes in the same binary.
+    use_full_protobuf = bool(
+        args.use_full_protobuf or args.use_openvino or args.use_vitisai or args.gen_doc or args.enable_generic_interface
+    )
+    # Select 1DS by default, including on Windows; TraceLogging requires explicit opt-in.
+    telemetry_backend = "WINDOWS" if args.use_windows_telemetry else "1DS"
+
+    cmake_args.append("-Donnxruntime_USE_TELEMETRY=" + ("ON" if args.use_telemetry else "OFF"))
+    cmake_args.append("-Donnxruntime_TELEMETRY_BACKEND=" + telemetry_backend)
+    cmake_args.append("-Donnxruntime_USE_WINDOWS_TELEMETRY=" + ("ON" if args.use_windows_telemetry else "OFF"))
     if is_windows():
         cmake_args += [
             "-Donnxruntime_USE_DML=" + ("ON" if args.use_dml else "OFF"),
             "-Donnxruntime_USE_WINML=" + ("ON" if args.use_winml else "OFF"),
-            "-Donnxruntime_USE_TELEMETRY=" + ("ON" if args.use_telemetry else "OFF"),
             "-Donnxruntime_ENABLE_PIX_FOR_WEBGPU_EP=" + ("ON" if args.enable_pix_capture else "OFF"),
         ]
 
@@ -457,13 +564,11 @@ def generate_build_tree(
         "-Donnxruntime_ENABLE_MICROSOFT_INTERNAL=" + ("ON" if args.enable_msinternal else "OFF"),
         "-Donnxruntime_USE_VITISAI=" + ("ON" if args.use_vitisai else "OFF"),
         "-Donnxruntime_USE_TENSORRT=" + ("ON" if args.use_tensorrt else "OFF"),
-        "-Donnxruntime_USE_NV=" + ("ON" if args.use_nv_tensorrt_rtx else "OFF"),
         "-Donnxruntime_USE_TENSORRT_BUILTIN_PARSER="
         + ("ON" if args.use_tensorrt_builtin_parser and not args.use_tensorrt_oss_parser else "OFF"),
         # interface variables are used only for building onnxruntime/onnxruntime_shared.dll but not EPs
         "-Donnxruntime_USE_TENSORRT_INTERFACE=" + ("ON" if args.enable_generic_interface else "OFF"),
         "-Donnxruntime_USE_CUDA_INTERFACE=" + ("ON" if args.enable_generic_interface else "OFF"),
-        "-Donnxruntime_USE_NV_INTERFACE=" + ("ON" if args.enable_generic_interface else "OFF"),
         "-Donnxruntime_USE_OPENVINO_INTERFACE=" + ("ON" if args.enable_generic_interface else "OFF"),
         "-Donnxruntime_USE_VITISAI_INTERFACE=" + ("ON" if args.enable_generic_interface else "OFF"),
         "-Donnxruntime_USE_QNN_INTERFACE=" + ("ON" if args.enable_generic_interface else "OFF"),
@@ -495,7 +600,12 @@ def generate_build_tree(
         "-Donnxruntime_USE_ACL=" + ("ON" if args.use_acl else "OFF"),
         "-Donnxruntime_USE_JSEP=" + ("ON" if args.use_jsep else "OFF"),
         "-Donnxruntime_USE_WEBGPU=" + ("ON" if args.use_webgpu else "OFF"),
+        # The WebGPU EP library kind selects these. Emit them unconditionally, including the OFF case, so that
+        # reusing a build directory cannot leak a previous build's setting in via the CMake cache.
+        "-Donnxruntime_USE_EP_API_ADAPTERS=" + ("ON" if args.use_webgpu in ("shared_lib", "static_plugin") else "OFF"),
+        "-Donnxruntime_WEBGPU_STATIC_PLUGIN=" + ("ON" if args.use_webgpu == "static_plugin" else "OFF"),
         "-Donnxruntime_USE_EXTERNAL_DAWN=" + ("ON" if args.use_external_dawn else "OFF"),
+        "-DDAWN_USE_AGILITY_SDK=" + ("ON" if args.use_dawn_agility_sdk else "OFF"),
         # Training related flags
         "-Donnxruntime_ENABLE_NVTX_PROFILE=" + ("ON" if args.enable_nvtx_profile else "OFF"),
         "-Donnxruntime_ENABLE_TRAINING=" + ("ON" if args.enable_training else "OFF"),
@@ -577,7 +687,14 @@ def generate_build_tree(
             vcpkg_installation_root = os.path.join(os.path.abspath(build_dir), "vcpkg")
             if not os.path.exists(vcpkg_installation_root):
                 run_subprocess(
-                    ["git", "clone", "-b", "2025.08.27", "https://github.com/microsoft/vcpkg.git", "--recursive"],
+                    [
+                        "git",
+                        "clone",
+                        "-b",
+                        get_vcpkg_release_tag(),
+                        "https://github.com/microsoft/vcpkg.git",
+                        "--recursive",
+                    ],
                     cwd=build_dir,
                 )
         vcpkg_toolchain_path = Path(vcpkg_installation_root) / "scripts" / "buildsystems" / "vcpkg.cmake"
@@ -640,24 +757,28 @@ def generate_build_tree(
                 not args.disable_wasm_exception_catching,
                 args.minimal_build is not None,
                 args.enable_address_sanitizer,
-                args.use_full_protobuf,
+                use_full_protobuf,
             )
         elif args.android:
             generate_android_triplets(
-                build_dir, configs, args.android_cpp_shared, args.android_api, args.use_full_protobuf
+                build_dir,
+                configs,
+                args.android_cpp_shared,
+                args.android_api,
+                use_full_protobuf,
             )
         elif is_windows():
-            generate_windows_triplets(build_dir, configs, args.msvc_toolset, args.use_full_protobuf)
+            generate_windows_triplets(build_dir, configs, args.msvc_toolset, use_full_protobuf)
         elif is_macOS():
             osx_target = args.apple_deploy_target
             if args.apple_deploy_target is None:
                 osx_target = os.environ.get("MACOSX_DEPLOYMENT_TARGET")
             if osx_target is not None:
                 log.info(f"Setting VCPKG_OSX_DEPLOYMENT_TARGET to {osx_target}")
-            generate_macos_triplets(build_dir, configs, osx_target, args.use_full_protobuf)
+            generate_macos_triplets(build_dir, configs, osx_target, use_full_protobuf, args.use_telemetry)
         else:
             # Linux, *BSD, AIX or other platforms
-            generate_linux_triplets(build_dir, configs, args.use_full_protobuf)
+            generate_linux_triplets(build_dir, configs, use_full_protobuf, args.use_telemetry)
         add_default_definition(cmake_extra_defines, "CMAKE_TOOLCHAIN_FILE", str(vcpkg_toolchain_path))
 
         # Choose the cmake triplet
@@ -740,8 +861,6 @@ def generate_build_tree(
 
     if args.use_tensorrt:
         cmake_args.append("-Donnxruntime_TENSORRT_HOME=" + tensorrt_home)
-    if args.use_nv_tensorrt_rtx:
-        cmake_args.append("-Donnxruntime_TENSORRT_RTX_HOME=" + tensorrt_rtx_home)
 
     if args.use_cuda:
         nvcc_threads = number_of_nvcc_threads(args)
@@ -813,8 +932,7 @@ def generate_build_tree(
             "-Donnxruntime_USE_OPENVINO_AUTO=" + ("ON" if args.use_openvino.startswith("AUTO") else "OFF"),
         ]
 
-    # VitisAI and OpenVINO providers currently only support full_protobuf option.
-    if args.use_full_protobuf or args.use_openvino or args.use_vitisai or args.gen_doc or args.enable_generic_interface:
+    if use_full_protobuf:
         cmake_args += ["-Donnxruntime_USE_FULL_PROTOBUF=ON", "-DProtobuf_USE_STATIC_LIBS=ON"]
 
     if args.use_cuda and not is_windows():
@@ -891,7 +1009,8 @@ def generate_build_tree(
     if not args.use_webgpu:
         if args.use_external_dawn:
             raise BuildError("External Dawn (--use_external_dawn) must be enabled with WebGPU (--use_webgpu).")
-
+        if args.use_dawn_agility_sdk:
+            raise BuildError("Dawn Agility SDK (--use_dawn_agility_sdk) must be enabled with WebGPU (--use_webgpu).")
         if is_windows():
             if args.enable_pix_capture:
                 raise BuildError(
@@ -899,9 +1018,26 @@ def generate_build_tree(
                 )
     elif args.use_webgpu == "shared_lib":
         # Shared library build (plugin EP)
-        cmake_args += ["-Donnxruntime_USE_EP_API_ADAPTERS=ON"]
         if args.build_wasm:
             raise BuildError("Only static library build of WebGPU EP is supported for WebAssembly build.")
+
+    if args.use_dawn_agility_sdk:
+        if not is_windows():
+            raise BuildError("Dawn Agility SDK (--use_dawn_agility_sdk) is only supported on Windows.")
+
+        if args.arm or args.arm64ec:
+            raise BuildError(
+                "Dawn Agility SDK (--use_dawn_agility_sdk) does not support Windows ARM32 or ARM64EC. "
+                "Use an x86, x64, or ARM64 target."
+            )
+
+        if args.build_csharp or args.build_nuget or args.build_java or args.build_nodejs:
+            raise BuildError(
+                "--use_dawn_agility_sdk is not supported with --build_csharp, --build_nuget, "
+                "--build_java, or --build_nodejs because those build paths do not deploy "
+                "the required D3D12 runtime DLLs. "
+                "For the standalone WebGPU EP NuGet package, use plugin-ep-webgpu/csharp/pack_nuget.py."
+            )
 
     if args.use_snpe:
         cmake_args += ["-Donnxruntime_USE_SNPE=ON"]
@@ -1274,7 +1410,7 @@ def generate_build_tree(
             cxxflags = cflags.copy()
         config_build_dir = get_config_build_dir(build_dir, config)
         os.makedirs(config_build_dir, exist_ok=True)
-        temp_cmake_args = cmake_args.copy()
+        temp_cmake_args = cmake_args.copy() + stale_python_cache_args(config_build_dir)
         if cflags is not None and cxxflags is not None and len(cflags) != 0 and len(cxxflags) != 0:
             temp_cmake_args += [
                 "-DCMAKE_C_FLAGS={}".format(" ".join(cflags)),
@@ -1753,8 +1889,6 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
         dll_path_list = []
         if args.use_tensorrt:
             dll_path_list.append(os.path.join(args.tensorrt_home, "lib"))
-        if args.use_nv_tensorrt_rtx:
-            dll_path_list.append(os.path.join(args.tensorrt_rtx_home, "lib"))
 
         dll_path = None
         if len(dll_path_list) > 0:
@@ -1805,10 +1939,50 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                     dll_path=dll_path,
                     python_path=python_path,
                 )
+            elif not args.skip_pip_install and args.use_cuda and is_linux() and not args.disable_contrib_ops:
+                # CUDA weight-packer parity tests also run without the transformers suite.
+                run_subprocess(
+                    [
+                        sys.executable,
+                        "-m",
+                        "pip",
+                        "install",
+                        "torch==2.10.0",
+                        "--index-url",
+                        "https://download.pytorch.org/whl/cpu",
+                    ],
+                    cwd=cwd,
+                    dll_path=dll_path,
+                    python_path=python_path,
+                )
 
             run_subprocess(
                 [sys.executable, "onnxruntime_test_python.py"], cwd=cwd, dll_path=dll_path, python_path=python_path
             )
+            run_subprocess(
+                [sys.executable, "onnxruntime_test_python_fpa_intb_tune.py"],
+                cwd=cwd,
+                dll_path=dll_path,
+                python_path=python_path,
+            )
+
+            if not args.disable_contrib_ops:
+                log.info("Testing QMoE expert distribution analysis")
+                run_subprocess(
+                    [
+                        sys.executable,
+                        os.path.join(
+                            source_dir,
+                            "onnxruntime",
+                            "test",
+                            "python",
+                            "test_qmoe_expert_distribution.py",
+                        ),
+                    ],
+                    cwd=cwd,
+                    dll_path=dll_path,
+                    python_path=python_path,
+                )
 
             log.info("Testing Global Thread Pool feature")
             run_subprocess([sys.executable, "onnxruntime_test_python_global_threadpool.py"], cwd=cwd, dll_path=dll_path)
@@ -1830,6 +2004,8 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 run_subprocess([sys.executable, "onnxruntime_test_python_iobinding.py"], cwd=cwd, dll_path=dll_path)
 
             if args.use_cuda:
+                log.info("Testing CUDA kernel execution")
+                run_subprocess([sys.executable, "onnxruntime_test_python_cuda_kernel.py"], cwd=cwd, dll_path=dll_path)
                 log.info("Testing CUDA Graph feature")
                 run_subprocess([sys.executable, "onnxruntime_test_python_cudagraph.py"], cwd=cwd, dll_path=dll_path)
                 log.info("Testing running inference concurrently")
@@ -1876,6 +2052,21 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                     run_subprocess(
                         [sys.executable, "-m", "unittest", "discover", "-s", "quantization", "-v"],
                         cwd=cwd,
+                        dll_path=dll_path,
+                    )
+                    run_subprocess(
+                        [
+                            sys.executable,
+                            "-m",
+                            "pytest",
+                            "-q",
+                            "-p",
+                            "no:cacheprovider",
+                            "--rootdir=.",
+                            "--confcutdir=.",
+                            "test_reference.py",
+                        ],
+                        cwd=os.path.join(cwd, "quantization", "qmoe_packed_reference"),
                         dll_path=dll_path,
                     )
 
@@ -1930,7 +2121,13 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 if not args.skip_onnx_tests:
                     run_subprocess([os.path.join(cwd, "onnx_test_runner"), "test_models"], cwd=cwd)
                     if config != "Debug":
-                        run_subprocess([sys.executable, "onnx_backend_test_series.py"], cwd=cwd, dll_path=dll_path)
+                        # Set the opset policy explicitly so the child process does not inherit the CI default.
+                        run_subprocess(
+                            [sys.executable, "onnx_backend_test_series.py"],
+                            cwd=cwd,
+                            dll_path=dll_path,
+                            env=get_onnx_backend_test_environment(args.use_cuda),
+                        )
 
             if not args.skip_keras_test:
                 try:
@@ -2047,10 +2244,6 @@ def build_python_wheel(
                 args.append(f"--qnn_version={qnn_version}")
         elif use_azure:
             args.append("--use_azure")
-        elif wheel_name_suffix == "trt-rtx":
-            cuda_version = cuda_version or parse_cuda_version_from_json(cuda_home)
-            if cuda_version:
-                args.append(f"--cuda_version={cuda_version}")
 
         run_subprocess(args, cwd=cwd)
 
@@ -2451,9 +2644,6 @@ def main():
 
     # if using tensorrt, setup tensorrt paths
     tensorrt_home = ""
-    tensorrt_rtx_home = ""
-    if args.use_nv_tensorrt_rtx:
-        tensorrt_rtx_home = args.tensorrt_rtx_home
     if args.use_tensorrt:
         tensorrt_home = setup_tensorrt_vars(args)
 
@@ -2590,7 +2780,6 @@ def main():
             cudnn_home,
             nccl_home,
             tensorrt_home,
-            tensorrt_rtx_home,
             migraphx_home,
             acl_home,
             acl_libs,

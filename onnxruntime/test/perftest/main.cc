@@ -11,6 +11,7 @@
 #include "performance_runner.h"
 #include "utils.h"
 #include "strings_helper.h"
+#include "test/util/include/telemetry_test_environment.h"
 #include <google/protobuf/stubs/common.h>
 
 using namespace onnxruntime;
@@ -107,6 +108,7 @@ int wmain(int argc, wchar_t* argv[]) {
 #else
 int main(int argc, char* argv[]) {
 #endif
+  onnxruntime::test::SuppressTelemetryForTests();
   int retval = -1;
   ORT_TRY {
     retval = real_main(argc, argv);
@@ -153,6 +155,13 @@ Ort::Status CompileEpContextModel(Ort::Env& env, const perftest::PerformanceTest
   const auto provider_name = test_config.machine_config.provider_type_name;
 
   Ort::SessionOptions session_options;
+
+  // Enable profiling for the compile session too. Some EPs (e.g. OpenVINO) only embed profiling
+  // support in the compiled blob when profiling is enabled at compile time.
+  if (!test_config.run_config.profile_file.empty()) {
+    const auto compile_profile_file = test_config.run_config.profile_file + ORT_TSTR("_compile");
+    session_options.EnableProfiling(compile_profile_file.c_str());
+  }
 
   // Add EP devices if any (created by plugin EP)
   if (!test_config.registered_plugin_eps.empty()) {

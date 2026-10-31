@@ -3,8 +3,6 @@
 
 #pragma once
 
-#if !defined(__wasm__)
-
 #include <cstdint>
 #include <string_view>
 
@@ -23,5 +21,3 @@ uint32_t HwSubgroups(std::string_view arch);
 }  // namespace intel
 }  // namespace webgpu
 }  // namespace onnxruntime
-
-#endif  // !defined(__wasm__)

@@ -21,7 +21,9 @@ winml::ITensor LoadTensorFromProtobufFile(const std::wstring& filePath, bool isF
 // LoadTensorFloat16FromProtobufFile takes a path to a FP16 data file and loads it into a 16bit array
 winml::TensorFloat16Bit LoadTensorFloat16FromProtobufFile(const std::wstring& filePath);
 
-winml::LearningModel CreateModel(winml::TensorKind kind, const std::vector<int64_t>& shape, uint32_t num_elements = 1);
+winml::LearningModel CreateModel(
+  winml::TensorKind kind, const std::vector<int64_t>& shape, uint32_t num_elements = 1, bool image_input = false
+);
 
 // Populates TensorProto with tensor from protobuf file
 bool LoadOnnxTensorFromProtobufFile(onnx::TensorProto& tensor, std::wstring filePath);

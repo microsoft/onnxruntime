@@ -567,6 +567,22 @@ TEST(Random, RandomUniformGpu) {
   RunRandomUniformGpuTest(dims2, -5.f, 5.f, 312.f, TensorProto_DataType::TensorProto_DataType_FLOAT16, true, false);
   RunRandomUniformGpuTest(dims2, 0.f, 8.f, 456.f, TensorProto_DataType::TensorProto_DataType_BFLOAT16, false, false, 22);
 }
+
+// A zero-sized output is legal in ONNX. The CUDA kernel must not divide by the resulting zero grid size.
+TEST(Random, RandomEmptyOutputGpu) {
+  auto run_test = [](const char* op) {
+    OpTester test(op, 7);
+    test.AddAttribute("seed", 123.f);
+    test.AddAttribute<int64_t>("dtype", TensorProto_DataType::TensorProto_DataType_FLOAT);
+    std::vector<int64_t> dims{0, 4};
+    test.AddAttribute("shape", dims);
+    test.AddOutput<float>("Y", dims, {});
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCpuExecutionProvider, kTensorrtExecutionProvider});
+  };
+
+  run_test("RandomNormal");
+  run_test("RandomUniform");
+}
 #endif
 
 }  // namespace test

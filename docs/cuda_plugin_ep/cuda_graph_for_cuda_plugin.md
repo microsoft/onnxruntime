@@ -135,6 +135,7 @@ CUDA graph capture requires that all memory allocations happen during warmup, no
 - The graph stream created by `CudaEp::PerThreadContext` flows through `CudaSyncStream::InitHandlesWithExternalStream()` so stream-aware arena allocation uses the same `cudaStream_t` during warm-up, capture, and replay.
 - `CudaSyncStream::OnSessionRunEndImpl()` resets arena chunk-to-stream assignments via `factory_.ResetDeviceArenaChunksUsingStream()` at the end of each run, even for graph-enabled runs. `OnSessionRunEnd` executes before the stream collection is recycled into the current thread's pool bucket.
 - The plugin allocator's `OrtMemoryInfo::alloc_type` stays as `OrtDeviceAllocator`; the arena remains opaque to ORT core.
+- Each session owns its device arena. Chunks that a captured graph reads and writes are freed back to the arena after capture, so they must never be handed to another session whose work would overwrite them between replays.
 
 ### Concurrent Run Support
 
@@ -142,7 +143,7 @@ Concurrent `Session::Run()` is advertised by the CUDA plugin EP when the host OR
 
 - `CudaEp::PerThreadContext` still owns graph stream, graph manager, warm-up run counts, and memory watermark state per thread. This keeps graph bookkeeping thread-local and avoids sharing captured graph executables across threads.
 - Plugin kernels now obtain the framework `OrtSyncStream*` through `KernelContext_GetSyncStream` and use it only for scratch/workspace allocation bookkeeping. CUDA work still launches on the raw `cudaStream_t` from `KernelContext_GetGPUComputeStream`.
-- Stream-tagged scratch chunks let the shared arena apply its normal cross-stream reuse rules for overlapping runs on different CUDA streams.
+- Stream-tagged scratch chunks let the session's arena apply its normal cross-stream reuse rules for overlapping runs on different CUDA streams.
 - When the negotiated ORT API version does not include `KernelContext_GetSyncStream`, `CudaKernel::GetScratchBuffer` falls back to a null stream tag and `CudaEp::IsConcurrentRunSupportedImpl()` returns false.
 
 ## Verification

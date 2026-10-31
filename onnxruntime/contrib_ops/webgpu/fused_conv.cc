@@ -14,9 +14,8 @@ using onnxruntime::webgpu::Conv;
 template <bool is_channels_last>
 class FusedConv final : public Conv<is_channels_last, true> {
  public:
-  FusedConv(const OpKernelInfo& info) : Conv<is_channels_last, true>(info) {
-    ORT_ENFORCE(GetFusedActivationAttr(info, Conv<is_channels_last, true>::activation_).IsOK());
-  }
+  // The Conv<_, is_fused = true> base already parses the activation attribute.
+  FusedConv(const OpKernelInfo& info) : Conv<is_channels_last, true>(info) {}
 };
 
 ONNX_OPERATOR_KERNEL_EX(

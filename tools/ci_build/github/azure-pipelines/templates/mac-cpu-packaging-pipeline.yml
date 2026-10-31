@@ -48,7 +48,7 @@ stages:
         targetPath: $(Build.ArtifactStagingDirectory)
         artifactName: 'onnxruntime-osx' # The files in this artifact are signed
     steps:
-    - checkout: self
+    - template: jobs/checkout-and-git-redirect.yml
 
     - task: UsePythonVersion@0
       inputs:

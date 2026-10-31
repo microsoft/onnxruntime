@@ -3,6 +3,7 @@
 
 #include "core/session/plugin_ep/ep_plugin_provider_interfaces.h"
 
+#include <algorithm>
 #include <gsl/gsl>
 #include <memory>
 #include <string>
@@ -17,6 +18,7 @@
 #include "core/common/inlined_containers.h"
 #include <limits>
 
+#include "core/graph/constants.h"
 #include "core/graph/ep_api_types.h"
 #include "core/graph/model_editor_api_types.h"
 #include "core/session/abi_devices.h"
@@ -25,9 +27,11 @@
 #include "core/session/abi_logger.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/allocator_adapters.h"
+#include "core/session/plugin_ep/ep_allocator_utils.h"
 #include "core/session/plugin_ep/ep_kernel_registration.h"
 #include "core/session/plugin_ep/ep_event_profiling.h"
 #include "core/session/ort_apis.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/providers/partitioning_utils.h"
 
 namespace onnxruntime {
@@ -185,10 +189,15 @@ PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessio
       kernel_registry_(std::move(kernel_registry)) {
   generate_ep_ctx_model_ = session_options.value.GetEpContextGenerationOptions().enable;
 
+  // Record if the app requested weightless mode. Validation is deferred to Compile().
+  weightless_requested_ =
+      session_options.value.config_options.GetConfigOrDefault(kOrtSessionOptionEpEnableWeightless, "0") != "0";
+
   // Extract EP-scoped session config entries.
   // Arena options go to session_arena_options_; the rest go to provider_options_.
   {
-    const std::string ep_prefix = OrtSessionOptions::GetProviderOptionPrefix(ort_ep_->GetName(ort_ep_.get()));
+    const std::string ep_name = ort_ep_->GetName(ort_ep_.get());
+    const std::string ep_prefix = OrtSessionOptions::GetProviderOptionPrefix(ep_name.c_str());
     const std::string arena_prefix = ep_prefix + "arena.";
     const bool extract_arena = ep_factory_.CreateAllocator && !ort_ep_->CreateAllocator;
 
@@ -197,19 +206,60 @@ PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessio
         continue;
       }
 
+      const std::string bare_key = key.substr(ep_prefix.size());
       if (key.compare(0, arena_prefix.size(), arena_prefix) == 0) {
         if (extract_arena) {
           if (!session_arena_options_) {
             session_arena_options_.emplace();
           }
-          session_arena_options_->Add(key.substr(ep_prefix.size()).c_str(), value.c_str());
+          session_arena_options_->Add(bare_key.c_str(), value.c_str());
         }
         continue;
       }
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+      // Also map standard CUDA EP arena option names (e.g. "arena_extend_strategy") into session_arena_options_.
+      if (extract_arena) {
+        const char* mapped_arena_key = nullptr;
+        if (bare_key == "arena_extend_strategy") {
+          mapped_arena_key = "arena.extend_strategy";
+        } else if (bare_key == "initial_chunk_size_bytes") {
+          mapped_arena_key = "arena.initial_chunk_size_bytes";
+        } else if (bare_key == "max_dead_bytes_per_chunk") {
+          mapped_arena_key = "arena.max_dead_bytes_per_chunk";
+        } else if (bare_key == "initial_growth_chunk_size_bytes") {
+          mapped_arena_key = "arena.initial_growth_chunk_size_bytes";
+        } else if (bare_key == "max_power_of_two_extend_bytes") {
+          mapped_arena_key = "arena.max_power_of_two_extend_bytes";
+        } else if (bare_key == "max_mem") {
+          mapped_arena_key = "arena.max_mem";
+        }
+        if (mapped_arena_key != nullptr) {
+          if (!session_arena_options_) {
+            session_arena_options_.emplace();
+          }
+          session_arena_options_->Add(mapped_arena_key, value.c_str());
+        }
+      }
+#endif
+
       // Store the bare option name (strip the EP-specific prefix) for GetProviderOptions().
-      provider_options_[key.substr(ep_prefix.size())] = value;
+      provider_options_[bare_key] = value;
     }
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+    // The per-session device memory limit is a session-level key rather than an EP-scoped option. Hand it to the CUDA
+    // plugin EP's allocator factory so an allocator request that no pending session account owns still gets the limit.
+    if (extract_arena && ep_name == kCudaExecutionProvider) {
+      if (const auto device_mem_limit = session_options.value.config_options.GetConfigEntry(
+              kOrtSessionOptionsMoeOffloadGpuDeviceMemLimit)) {
+        if (!session_arena_options_) {
+          session_arena_options_.emplace();
+        }
+        session_arena_options_->Add("gpu_device_mem_limit", device_mem_limit->c_str());
+      }
+    }
+#endif
   }
 
   for (const auto* ep_device : ep_devices_) {
@@ -329,6 +379,24 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
                             << node_for_other_ep->OpType() << " node with name '"
                             << node_for_other_ep->Name() << "'.";
       continue;
+    }
+
+    // Plugin accounting cannot receive Level-1 estimates yet. Reject the whole
+    // group rather than use generic or profiled costs for an unproven GQA bound.
+    if (resource_accountant != nullptr && Type() == kCudaExecutionProvider) {
+      const auto unproven_gqa = std::find_if(
+          node_grouping.nodes.begin(), node_grouping.nodes.end(), [](const EpNode* ep_node) {
+            const Node& node = ep_node->GetInternalNode();
+            return node.GetExecutionProviderType().empty() &&
+                   node.OpType() == "GroupQueryAttention" && node.Domain() == kMSDomain;
+          });
+      if (unproven_gqa != node_grouping.nodes.end()) {
+        LOGS(logger, WARNING)
+            << Type() << " declining capacity-aware assignment for GroupQueryAttention node "
+            << (*unproven_gqa)->GetInternalNode().Name()
+            << " because the plugin accounting path has no proven route-aware workspace estimate.";
+        continue;
+      }
     }
 
     if (node_grouping.kind == OrtEpGraphSupportInfo::NodeGroupingKind::kSingleAssignedNode) {
@@ -582,6 +650,36 @@ Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fu
   ORT_RETURN_IF(ort_ep_->ReleaseNodeComputeInfos == nullptr, "OrtEp for ", Type(),
                 " did not provide a valid ReleaseNodeComputeInfos() function");
 
+  // Validate EP weightless support if the app requested it.
+  if (weightless_requested_) {
+    if (ort_ep_->ort_version_supported >= 29) {
+      if (ort_ep_->GetWeightlessSupport == nullptr) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                               "Weightless mode requested (ep.enable_weightless=1) but EP '", Type(),
+                               "' does not implement GetWeightlessSupport.");
+      }
+
+      OrtWeightlessSupport support = OrtWeightlessSupport_NONE;
+      auto* ort_status = ort_ep_->GetWeightlessSupport(ort_ep_.get(), &support);
+      if (ort_status != nullptr) {
+        return ToStatusAndRelease(ort_status);
+      }
+
+      if (support == OrtWeightlessSupport_NONE) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                               "Weightless mode requested (ep.enable_weightless=1) but EP '", Type(),
+                               "' does not support weightless mode on this device.");
+      }
+    } else {
+      LOGS(GetEpLoggerOrDefault(), INFO) << "Weightless mode requested (ep.enable_weightless=1) but EP '"
+                                         << Type() << "' was compiled with API version "
+                                         << ort_ep_->ort_version_supported
+                                         << " which predates GetWeightlessSupport (version 29). "
+                                         << "ORT cannot verify EP weightless support. "
+                                         << "The EP may still handle weightless via its own provider options.";
+    }
+  }
+
   const logging::Logger& logger = GetEpLoggerOrDefault();
   const size_t num_graphs = fused_nodes_and_graphs.size();
   std::vector<std::unique_ptr<EpGraph>> api_graphs_holder;
@@ -697,6 +795,21 @@ const InlinedVector<const Node*> PluginExecutionProvider::GetEpContextNodes() co
   }
 
   return result;
+}
+
+Status PluginExecutionProvider::GetEpContextDataCallbackSupport(uint32_t& supported_flags) const {
+  supported_flags = OrtEpContextDataCallbackSupportFlags_NONE;
+  if (ort_ep_->ort_version_supported < 31 || ort_ep_->GetEpContextDataCallbackSupport == nullptr) {
+    return Status::OK();
+  }
+
+  OrtStatus* ort_status = ort_ep_->GetEpContextDataCallbackSupport(ort_ep_.get(), &supported_flags);
+  ORT_RETURN_IF_ERROR(ToStatusAndRelease(ort_status));
+
+  constexpr uint32_t known_flags = OrtEpContextDataCallbackSupportFlags_READ | OrtEpContextDataCallbackSupportFlags_WRITE;
+  ORT_RETURN_IF(supported_flags & ~known_flags, "OrtEp for ", Type(),
+                " returned unknown EPContext data support flags: ", supported_flags, ".");
+  return Status::OK();
 }
 
 namespace {
@@ -826,66 +939,46 @@ std::unique_ptr<onnxruntime::IDataTransfer> PluginExecutionProvider::GetDataTran
 
   if (ep_factory_.CreateDataTransfer != nullptr) {
     OrtStatus* status = ep_factory_.CreateDataTransfer(&ep_factory_, &data_transfer_impl);
+    plugin_ep::OrtDataTransferImplUniquePtr owned_impl{data_transfer_impl};
     if (status != nullptr) {
       ORT_THROW("Error creating data transfer: ", ToStatusAndRelease(status).ToString());
     }
+
+    if (owned_impl != nullptr) {
+      return std::make_unique<plugin_ep::DataTransfer>(std::move(owned_impl));
+    }
   }
 
-  if (data_transfer_impl == nullptr) {
-    return {};
-  }
-
-  return std::make_unique<plugin_ep::DataTransfer>(*data_transfer_impl);
+  return {};
 }
 
 std::vector<AllocatorPtr> PluginExecutionProvider::CreatePreferredAllocators() {
   std::vector<AllocatorPtr> allocators;
   allocators.reserve(allocator_mem_infos_.size());
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  // Identify the OrtEp the allocators are created for so a factory shared by several sessions can bind each allocator
+  // to the right session state instead of guessing from device-wide queues.
+  OrtKeyValuePairs allocator_options_storage;
+  if (session_arena_options_) {
+    allocator_options_storage = *session_arena_options_;
+  }
+  allocator_options_storage.Add("ep_instance_id",
+                                std::to_string(reinterpret_cast<uintptr_t>(ort_ep_.get())).c_str());
+  const OrtKeyValuePairs* allocator_options = &allocator_options_storage;
+#else
   const OrtKeyValuePairs* allocator_options = session_arena_options_ ? &*session_arena_options_ : nullptr;
+#endif
+
+  auto* ep_factory = &ep_factory_;
 
   for (const auto* memory_info : allocator_mem_infos_) {
-    OrtAllocator* ort_allocator_ptr = nullptr;
-
-    if (!ort_ep_->CreateAllocator && !ep_factory_.CreateAllocator) {
-      ORT_THROW("The OrtEpDevice requires the EP library to implement an allocator, but none were found.");
-    }
-
-    // prefer OrtEp function if available, otherwise fall back to using the OrtEpFactory implementation.
-    OrtStatus* ort_status = ort_ep_->CreateAllocator
-                                ? ort_ep_->CreateAllocator(ort_ep_.get(), memory_info, &ort_allocator_ptr)
-                                : ep_factory_.CreateAllocator(&ep_factory_, memory_info, allocator_options,
-                                                              &ort_allocator_ptr);
-
-    // throw or log? start with throw
-    if (ort_status != nullptr) {
-      ORT_THROW("Error creating allocator: ", ToStatusAndRelease(ort_status).ToString());
-    }
-
-    if (ort_allocator_ptr->Info(ort_allocator_ptr)->alloc_type == OrtAllocatorType::OrtArenaAllocator) {
-      ORT_THROW(
-          "OrtEpFactory returned an allocator with OrtAllocatorType of OrtArenaAllocator. "
-          "This type is reserved for ONNX Runtime internal usage only, as any arena usage by the "
-          "EP library should be opaque to ORT");
-    }
-
-    auto* ep_factory = &ep_factory_;
-    auto ort_allocator = OrtAllocatorUniquePtr(
-        ort_allocator_ptr,
-        [ep_factory](OrtAllocator* allocator) {
-          ep_factory->ReleaseAllocator(ep_factory, allocator);
-        });
-
-    // Use the arena wrapper when the allocator supports Shrink(), matching
-    // the logic in Environment::CreateSharedAllocatorImpl. This ensures
-    // per-session plugin arenas are visible to ShrinkMemoryArenas.
     AllocatorPtr alloc_ptr;
-    if (ort_allocator->version >= 25 && ort_allocator->Shrink != nullptr) {
-      alloc_ptr = std::make_shared<IArenaImplWrappingOrtAllocator>(std::move(ort_allocator));
-    } else {
-      alloc_ptr = std::make_shared<IAllocatorImplWrappingOrtAllocator>(std::move(ort_allocator));
+    ORT_THROW_IF_ERROR(ep_allocator_utils::CreateAndWrapEpAllocator(ort_ep_.get(), *ep_factory, *memory_info,
+                                                                    allocator_options, alloc_ptr));
+    if (alloc_ptr != nullptr) {
+      allocators.push_back(std::move(alloc_ptr));
     }
-    allocators.push_back(std::move(alloc_ptr));
   }
 
   return allocators;
@@ -911,9 +1004,9 @@ void PluginExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistr
 
     registry.RegisterCreateStreamFn(
         device_type,
-        [mem_info, this](const OrtDevice& device) {
+        [this](const OrtDevice& device) {
           OrtSyncStreamImpl* stream = nullptr;
-          const OrtMemoryDevice* memory_device = static_cast<const OrtMemoryDevice*>(&mem_info->device);
+          const OrtMemoryDevice* memory_device = static_cast<const OrtMemoryDevice*>(&device);
 
           // prefer OrtEp function if available, otherwise fall back to using the OrtEpFactory implementation.
           OrtStatus* status = ort_ep_->CreateSyncStreamForDevice

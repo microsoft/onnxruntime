@@ -49,7 +49,7 @@ class DeviceStreamCollection {
   // This API is used to cleanup some resources at the end of an iteration.
   Status CleanUp(bool sync_streams);
 
-  Stream* GetRootStream() const;
+  Stream* GetStreamForDevice(const OrtDevice& device) const;
 
  private:
   std::unique_ptr<DeviceStreamCollectionImpl> impl_;

@@ -113,6 +113,22 @@ const OrtMemoryInfo* OrtAllocatorImplWrappingIAllocator::Info() const {
 }
 
 std::unordered_map<std::string, std::string> OrtAllocatorImplWrappingIAllocator::Stats() const {
+  // Plugin EP allocators are not available in a pure minimal build.
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  const auto* ort_allocator = i_allocator_->GetWrappedOrtAllocator();
+  if (ort_allocator != nullptr && ort_allocator->version >= kOrtAllocatorStatsMinVersion && ort_allocator->GetStats) {
+    Ort::UnownedAllocator allocator(const_cast<OrtAllocator*>(ort_allocator));
+    Ort::KeyValuePairs kvps = allocator.GetStats();
+    std::vector<const char*> keys, values;
+    kvps.GetKeyValuePairs(keys, values);
+    std::unordered_map<std::string, std::string> entries;
+    for (size_t index = 0; index < keys.size(); ++index) {
+      entries.emplace(keys[index], values[index]);
+    }
+    return entries;
+  }
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
   AllocatorStats stats{};
   i_allocator_->GetStats(&stats);
 
@@ -139,9 +155,8 @@ onnxruntime::AllocatorPtr OrtAllocatorImplWrappingIAllocator::GetWrappedIAllocat
 
 IAllocatorImplWrappingOrtAllocator::IAllocatorImplWrappingOrtAllocator(OrtAllocator* ort_allocator)
     : IAllocator(*ort_allocator->Info(ort_allocator)) {
-  ort_allocator_ = OrtAllocatorUniquePtr(ort_allocator, [](OrtAllocator*) {
-    // no-op
-  });
+  void (*noop_deleter)(OrtAllocator*) = [](OrtAllocator*) {};
+  ort_allocator_ = OrtAllocatorUniquePtr(ort_allocator, noop_deleter);
 }
 
 IAllocatorImplWrappingOrtAllocator::IAllocatorImplWrappingOrtAllocator(OrtAllocatorUniquePtr ort_allocator)

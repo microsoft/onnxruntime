@@ -1,0 +1,93 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+//
+// PagedAttention — rotary embedding for one packed 2-D token tensor.
+//
+// Scope for Phase 1b.2:
+//   - Rotates Q (n_heads = num_heads) or K (n_heads = kv_num_heads).
+//   - Non-packed layout only; the packed-QKV + rotary variant lands in 1b.2b.
+//
+// Address model (matches paged_attention_impl.cu::RotaryEmbeddingTNH):
+//   For each output element (t, n, h):
+//     b        : sequence index for token t
+//     s        : offset of t inside sequence b
+//     past     : past_seqlens[b]
+//     position : past + s
+//     If h >= rotary_dim: output[t, n*H+h] = input[t, n*H+h]  (pass-through)
+//     Else (interleaved):
+//       cache_idx = (h / 2) % (rotary_dim / 2)
+//       j = (h even) ? h + 1 : h - 1
+//       sign = (h even) ? -1 : +1
+//       output = input[t, n*H+h] * cos + sign * input[t, n*H+j] * sin
+//     Else (split):
+//       cache_idx = h % (rotary_dim / 2)
+//       j = (h + rotary_dim/2) % rotary_dim
+//       sign = (h < rotary_dim/2) ? -1 : +1
+//       output = input[t, n*H+h] * cos + sign * input[t, n*H+j] * sin
+
+#use guardAgainstOutOfBoundsWorkgroupSizes
+#use .getByIndices .getByOffset .setByIndices
+
+$MAIN {
+  guardAgainstOutOfBoundsWorkgroupSizes(uniforms.dispatch_size);
+
+  // global_idx enumerates (token_idx, head_idx, dim_idx) row-major:
+  //   dim_idx   = global_idx % head_size
+  //   head_idx  = (global_idx / head_size) % n_heads
+  //   token_idx = global_idx / (n_heads * head_size)
+  let h = global_idx % uniforms.head_size;
+  let n = (global_idx / uniforms.head_size) % uniforms.n_heads;
+  let t = global_idx / (uniforms.n_heads * uniforms.head_size);
+
+  var b: u32 = 0u;
+  for (var i: u32 = 0u; i < uniforms.batch_size; i = i + 1u) {
+    let hi = u32(cumulative_sequence_length.getByOffset(i + 1u));
+    if (t < hi) {
+      b = i;
+      break;
+    }
+  }
+  let cum_lo = u32(cumulative_sequence_length.getByOffset(b));
+  let s = t - cum_lo;
+  let past = u32(past_seqlens.getByOffset(b));
+  let position_id = past + s;
+
+  let head_off = n * uniforms.head_size;
+  let dst_col = head_off + h;
+
+  // Dims outside the rotary region pass through unchanged.
+  if (h >= uniforms.rotary_dim) {
+    let x = input.getByIndices(vec2<u32>(t, dst_col));
+    output.setByIndices(vec2<u32>(t, dst_col), x);
+    return;
+  }
+
+  let half_rot = uniforms.rotary_dim / 2u;
+
+  // Resolve the paired dim j inside the head, the cos/sin cache column,
+  // and whether the sin term is added (sign_pos = true → +x_j*sin) or
+  // subtracted (sign_pos = false → -x_j*sin).
+  var cache_idx: u32 = 0u;
+  var j: u32 = 0u;
+  var sign_pos: bool = false;
+  if (uniforms.interleaved != 0u) {
+    cache_idx = (h / 2u) % half_rot;
+    let even = (h % 2u == 0u);
+    // even h has j = h + 1 with sign -,  odd h has j = h - 1 with sign +
+    j = select(h - 1u, h + 1u, even);
+    sign_pos = !even;
+  } else {
+    cache_idx = h % half_rot;
+    // low half has j = h + half with sign -,  high half has j = h - half with sign +
+    j = (h + half_rot) % uniforms.rotary_dim;
+    sign_pos = (h >= half_rot);
+  }
+
+  let cos_v = cos_cache.getByIndices(vec2<u32>(position_id, cache_idx));
+  let sin_v = sin_cache.getByIndices(vec2<u32>(position_id, cache_idx));
+
+  let x_h = input.getByIndices(vec2<u32>(t, head_off + h));
+  let x_j = input.getByIndices(vec2<u32>(t, head_off + j));
+  let sin_term = select(-x_j * sin_v, x_j * sin_v, sign_pos);
+  output.setByIndices(vec2<u32>(t, dst_col), x_h * cos_v + sin_term);
+}

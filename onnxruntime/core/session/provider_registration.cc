@@ -11,6 +11,7 @@
 #include "core/framework/error_code_helper.h"
 #include "core/framework/provider_options.h"
 #include "core/graph/constants.h"
+#include "core/platform/telemetry_strings.h"
 #include "core/providers/provider_factory_creators.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/onnxruntime_c_api.h"
@@ -26,9 +27,6 @@
 #include "core/providers/dml/dml_provider_factory_creator.h"
 #endif
 
-#if defined(USE_NV) || defined(USE_NV_PROVIDER_INTERFACE)
-#include "core/providers/nv_tensorrt_rtx/nv_provider_options.h"
-#endif
 using namespace onnxruntime;
 
 namespace onnxruntime {
@@ -100,7 +98,6 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     JS,
     VitisAI,
     CoreML,
-    NvTensorRtRtx,  // TensorRt EP for RTX GPUs.
     MIGraphX,
     CPU
   };
@@ -111,7 +108,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     const char* canonical_name = nullptr;
   };
 
-  static std::array<EpToAppend, 14> supported_eps = {
+  static std::array<EpToAppend, 13> supported_eps = {
       EpToAppend{EpID::DML, "DML", kDmlExecutionProvider},
       EpToAppend{EpID::QNN, "QNN", kQnnExecutionProvider},
       EpToAppend{EpID::OpenVINO, "OpenVINO", kOpenVINOExecutionProvider},
@@ -123,7 +120,6 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
       EpToAppend{EpID::JS, "JS", kJsExecutionProvider},
       EpToAppend{EpID::VitisAI, "VitisAI", kVitisAIExecutionProvider},
       EpToAppend{EpID::CoreML, "CoreML", kCoreMLExecutionProvider},
-      EpToAppend{EpID::NvTensorRtRtx, "NvTensorRtRtx", kNvTensorRTRTXExecutionProvider},
       EpToAppend{EpID::MIGraphX, "MIGraphX", kMIGraphXExecutionProvider},
       EpToAppend{EpID::CPU, "CPU", kCpuExecutionProvider}};
 
@@ -137,15 +133,18 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
   }
 
 #if defined(_WIN32) && defined(ONNXRUNTIME_ENABLE_INSTRUMENT)
+  size_t option_count = 0;
   for (const auto& config_pair : provider_options) {
+    if (option_count++ == telemetry_detail::kMaxTelemetryCollectionEntries) break;
+    telemetry_detail::TelemetryStrings strings;
     TraceLoggingWrite(
         telemetry_provider_handle,
         "ProviderOptionsAppendExecutionProvider",
         TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Session)),
         TraceLoggingLevel(WINEVENT_LEVEL_INFO),
-        TraceLoggingString(provider_name, "ProviderName"),
-        TraceLoggingString(config_pair.first.c_str(), "Key"),
-        TraceLoggingString(config_pair.second.c_str(), "Value"));
+        TraceLoggingString(strings.Utf8(provider_name), "ProviderName"),
+        TraceLoggingString(strings.Utf8(config_pair.first), "Key"),
+        TraceLoggingString(strings.Utf8(config_pair.second), "Value"));
   }
 #endif
 
@@ -179,6 +178,20 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
 
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, str_builder.str().c_str());
   };
+
+#if !defined(ORT_MINIMAL_BUILD)
+  // The provider-bridge NvTensorRtRtx EP is deprecated. Report the plugin EP flow with the deprecation error.
+  // Minimal builds never included this EP, so they keep the generic unknown-provider error to save binary size.
+  if (strcmp(provider_name, "NvTensorRtRtx") == 0 || strcmp(provider_name, kNvTensorRTRTXExecutionProvider) == 0) {
+    return OrtApis::CreateStatus(
+        ORT_INVALID_ARGUMENT,
+        (std::string("The '") + provider_name +
+         "' execution provider is no longer built into ONNX Runtime. Use the NVIDIA TensorRT RTX plugin EP "
+         "instead: register its library with RegisterExecutionProviderLibrary, select an OrtEpDevice from "
+         "GetEpDevices, and append it with SessionOptionsAppendExecutionProvider_V2.")
+            .c_str());
+  }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
   auto ep_to_append_iter = std::find_if(supported_eps.begin(), supported_eps.end(),
                                         [&provider_name](const EpToAppend& elem) -> bool {
@@ -311,19 +324,6 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     case EpID::CoreML: {
 #if defined(USE_COREML)
       options->provider_factories.push_back(CoreMLProviderFactoryCreator::Create(provider_options));
-#else
-      status = create_not_supported_status();
-#endif
-      break;
-    }
-    case EpID::NvTensorRtRtx: {
-#if defined(USE_NV) || defined(USE_NV_PROVIDER_INTERFACE)
-      auto factory = onnxruntime::NvProviderFactoryCreator::Create(provider_options, &(options->value));
-      if (factory) {
-        options->provider_factories.push_back(factory);
-      } else {
-        status = create_failed_to_load_provider_status();
-      }
 #else
       status = create_not_supported_status();
 #endif

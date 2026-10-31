@@ -9,6 +9,13 @@ The CPU QMoE kernel is implemented in:
 - `onnxruntime/contrib_ops/cpu/moe/moe_quantization_cpu.h`
 - `onnxruntime/contrib_ops/cpu/moe/moe_quantization_cpu.cc`
 - `onnxruntime/contrib_ops/cpu/moe/moe_helper.h`
+- `onnxruntime/contrib_ops/cpu/moe/qmoe_shared_cpu.{h,cc}`
+- `onnxruntime/contrib_ops/cpu/moe/qmoe_shared_layout.{h,cc}`
+- `onnxruntime/contrib_ops/cpu/moe/qmoe_shared_layout_int4_avx512.cc`
+- `onnxruntime/contrib_ops/cpu/moe/qmoe_shared_layout_int4_avx2.cc`
+- `onnxruntime/contrib_ops/cpu/moe/qmoe_shared_layout_int3_avx512.cc`
+- `onnxruntime/contrib_ops/cpu/moe/qmoe_shared_layout_int3_avx2.cc`
+- `onnxruntime/contrib_ops/cpu/moe/qmoe_shared_layout_fp4_avx512.cc`
 
 The operator schema itself is defined in:
 
@@ -27,6 +34,18 @@ At a high level, the CPU kernel executes QMoE in five stages:
 5. Scatter and accumulate weighted expert outputs back to the final output tensor.
 
 The implementation keeps routing and accumulation shared across bit-widths. The main bit-width-specific differences are in how expert weights are prepared and how the FC1/FC2 GEMMs are executed.
+
+### Packed token inputs
+
+Both CPU `MoE` and `QMoE` accept token-major packed input with shape
+`(total_tokens, hidden_size)` and routing data with shape
+`(total_tokens, num_experts)`. Tokens from variable-length sequences can be
+concatenated without padding; sequence boundaries are not needed because each
+token is routed and processed independently. The output preserves the packed
+shape `(total_tokens, hidden_size)`.
+
+The existing padded shape `(batch_size, sequence_length, hidden_size)` remains
+supported. It is flattened internally to the same token-major representation.
 
 ## Supported Data Types and Weight Bit-Widths
 

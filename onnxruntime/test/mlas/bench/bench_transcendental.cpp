@@ -121,7 +121,7 @@ void RunUnfusedUnaryBenchmark(benchmark::State& state,
   state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * bytes_per_iteration);
 }
 
-static void UnaryKernelArgs(benchmark::internal::Benchmark* b) {
+static void UnaryKernelArgs(benchmark::Benchmark* b) {
   for (int n : {1, 15, 16, 31, 32, 63, 64, 127, 128, 255, 256, 511, 512, 1024, 4096, 16384, 65536, 262144}) {
     b->Arg(n);
   }

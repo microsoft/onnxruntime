@@ -11,6 +11,7 @@
 
 #include "gtest/gtest.h"
 
+#include "core/framework/resource_accountant.h"
 #include "core/graph/onnx_protobuf.h"
 
 #include "core/graph/graph_utils.h"
@@ -242,11 +243,12 @@ TEST_F(GraphTransformationTests, LayerNormWithSubDupFusionTest) {
 }
 
 void BuildLayerNorm(ModelTestBuilder& builder, std::vector<int64_t> reduce1_axes = {-1},
-                    std::vector<int64_t> reduce2_axes = {-1}) {
+                    std::vector<int64_t> reduce2_axes = {-1}, bool epsilon_input_first = false,
+                    float epsilon = 1e-5f) {
   std::vector<int64_t> input_shape = {2, 3, 3, 3};
   auto* data_arg = builder.MakeInput<MLFloat16>(input_shape);
   auto* pow_initializer = builder.MakeInitializer<float>({}, {2.0f});
-  auto* add_initializer = builder.MakeInitializer<float>({}, {1e-5f});
+  auto* add_initializer = builder.MakeInitializer<float>({}, {epsilon});
   std::vector<int64_t> normalized_shape = {};
   int64_t normalized_shape_size = 1;
   auto raxes = reduce1_axes;
@@ -294,7 +296,11 @@ void BuildLayerNorm(ModelTestBuilder& builder, std::vector<int64_t> reduce1_axes
   } else {
     builder.AddNode("ReduceMean", {pow_out}, {reduce_mean_out_2}).AddAttribute("axes", reduce2_axes);
   }
-  builder.AddNode("Add", {reduce_mean_out_2, add_initializer}, {add_out_1});
+  if (epsilon_input_first) {
+    builder.AddNode("Add", {add_initializer, reduce_mean_out_2}, {add_out_1});
+  } else {
+    builder.AddNode("Add", {reduce_mean_out_2, add_initializer}, {add_out_1});
+  }
   builder.AddNode("Sqrt", {add_out_1}, {sqrt_out});
   builder.AddNode("Div", {cast_out_1, sqrt_out}, {div_out});
   builder.AddNode("Cast", {div_out}, {cast_out_2})
@@ -341,6 +347,31 @@ TEST_F(GraphTransformationTests, LayerNormWithCastFusionTest_5) {
                                         TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer_2),
                                         TransformerLevel::Level2, 1, pre_graph_checker, post_graph_checker));
+}
+
+TEST_F(GraphTransformationTests, LayerNormFusionAddEpsilonInput0) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildLayerNorm(builder, {-1}, {-1}, true, 1e-4f);
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count.at("LayerNormalization") == 1);
+    for (const Node& node : graph.Nodes()) {
+      if (node.OpType() == "LayerNormalization") {
+        const auto epsilon_it = node.GetAttributes().find("epsilon");
+        TEST_RETURN_IF_NOT(epsilon_it != node.GetAttributes().end());
+        TEST_RETURN_IF_NOT(epsilon_it->second.f() == 1e-4f);
+      }
+    }
+    return Status::OK();
+  };
+
+  const InlinedHashSet<std::string_view> compatible_execution_providers;
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_test_case, 14, *logger_,
+      std::make_unique<LayerNormFusion>(compatible_execution_providers, TransformerLevel::Level2),
+      TransformerLevel::Level2, 1, nullptr, post_graph_checker));
 }
 
 TEST_F(GraphTransformationTests, LayerNormWithCastFusionTest_6) {
@@ -495,6 +526,187 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionTest) {
       EXPECT_TRUE(false) << "Unexpected node " << node.Name();
     }
   }
+}
+
+TEST_F(GraphTransformationTests, LayerNormFusionsRejectLossyDoubleEpsilon) {
+  auto build_layer_norm = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<double>({{2, 4}});
+    auto* scale = builder.MakeInitializer<double>({4}, {1.0, 1.0, 1.0, 1.0});
+    auto* bias = builder.MakeInitializer<double>({4}, {0.0, 0.0, 0.0, 0.0});
+    auto* exponent = builder.MakeScalarInitializer<double>(2.0);
+    auto* epsilon = builder.MakeScalarInitializer<double>(1e-50);
+    auto* mean1 = builder.MakeIntermediate();
+    auto* sub = builder.MakeIntermediate();
+    auto* squared = builder.MakeIntermediate();
+    auto* mean2 = builder.MakeIntermediate();
+    auto* variance = builder.MakeIntermediate();
+    auto* stddev = builder.MakeIntermediate();
+    auto* normalized = builder.MakeIntermediate();
+    auto* scaled = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("ReduceMean", {input}, {mean1}).AddAttribute("axes", std::vector<int64_t>{-1});
+    builder.AddNode("Sub", {input, mean1}, {sub});
+    builder.AddNode("Pow", {sub, exponent}, {squared});
+    builder.AddNode("ReduceMean", {squared}, {mean2}).AddAttribute("axes", std::vector<int64_t>{-1});
+    builder.AddNode("Add", {mean2, epsilon}, {variance});
+    builder.AddNode("Sqrt", {variance}, {stddev});
+    builder.AddNode("Div", {sub, stddev}, {normalized});
+    builder.AddNode("Mul", {normalized, scale}, {scaled});
+    builder.AddNode("Add", {scaled, bias}, {output});
+  };
+
+  auto build_simplified_layer_norm = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<double>({{2, 4}});
+    auto* scale = builder.MakeInitializer<double>({4}, {1.0, 1.0, 1.0, 1.0});
+    auto* exponent = builder.MakeScalarInitializer<double>(2.0);
+    auto* epsilon = builder.MakeScalarInitializer<double>(1e-50);
+    auto* squared = builder.MakeIntermediate();
+    auto* mean = builder.MakeIntermediate();
+    auto* variance = builder.MakeIntermediate();
+    auto* stddev = builder.MakeIntermediate();
+    auto* normalized = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("Pow", {input, exponent}, {squared});
+    builder.AddNode("ReduceMean", {squared}, {mean}).AddAttribute("axes", std::vector<int64_t>{-1});
+    builder.AddNode("Add", {mean, epsilon}, {variance});
+    builder.AddNode("Sqrt", {variance}, {stddev});
+    builder.AddNode("Div", {input, stddev}, {normalized});
+    builder.AddNode("Mul", {normalized, scale}, {output});
+  };
+
+  auto check_not_fused = [](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF(op_to_count.count("LayerNormalization") != 0);
+    TEST_RETURN_IF(op_to_count.count("SimplifiedLayerNormalization") != 0);
+    TEST_RETURN_IF_NOT(op_to_count.at("Pow") == 1);
+    return Status::OK();
+  };
+
+  const InlinedHashSet<std::string_view> compatible_execution_providers;
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_layer_norm, 14, *logger_,
+      std::make_unique<LayerNormFusion>(compatible_execution_providers, TransformerLevel::Level2),
+      TransformerLevel::Level2, 1, check_not_fused, check_not_fused));
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_simplified_layer_norm, 14, *logger_,
+      std::make_unique<SimplifiedLayerNormFusion>(),
+      TransformerLevel::Level2, 1, check_not_fused, check_not_fused));
+}
+
+TEST_F(GraphTransformationTests, LayerNormFusionsAllowExactDoubleEpsilon) {
+  auto build_layer_norm = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<double>({{2, 4}});
+    auto* scale = builder.MakeInitializer<double>({4}, {1.0, 1.0, 1.0, 1.0});
+    auto* bias = builder.MakeInitializer<double>({4}, {0.0, 0.0, 0.0, 0.0});
+    auto* exponent = builder.MakeScalarInitializer<double>(2.0);
+    auto* epsilon = builder.MakeScalarInitializer<double>(0.125);
+    auto* mean1 = builder.MakeIntermediate();
+    auto* sub = builder.MakeIntermediate();
+    auto* squared = builder.MakeIntermediate();
+    auto* mean2 = builder.MakeIntermediate();
+    auto* variance = builder.MakeIntermediate();
+    auto* stddev = builder.MakeIntermediate();
+    auto* normalized = builder.MakeIntermediate();
+    auto* scaled = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("ReduceMean", {input}, {mean1}).AddAttribute("axes", std::vector<int64_t>{-1});
+    builder.AddNode("Sub", {input, mean1}, {sub});
+    builder.AddNode("Pow", {sub, exponent}, {squared});
+    builder.AddNode("ReduceMean", {squared}, {mean2}).AddAttribute("axes", std::vector<int64_t>{-1});
+    builder.AddNode("Add", {mean2, epsilon}, {variance});
+    builder.AddNode("Sqrt", {variance}, {stddev});
+    builder.AddNode("Div", {sub, stddev}, {normalized});
+    builder.AddNode("Mul", {normalized, scale}, {scaled});
+    builder.AddNode("Add", {scaled, bias}, {output});
+  };
+
+  auto build_simplified_layer_norm = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<double>({{2, 4}});
+    auto* scale = builder.MakeInitializer<double>({4}, {1.0, 1.0, 1.0, 1.0});
+    auto* exponent = builder.MakeScalarInitializer<double>(2.0);
+    auto* epsilon = builder.MakeScalarInitializer<double>(0.125);
+    auto* squared = builder.MakeIntermediate();
+    auto* mean = builder.MakeIntermediate();
+    auto* variance = builder.MakeIntermediate();
+    auto* stddev = builder.MakeIntermediate();
+    auto* normalized = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("Pow", {input, exponent}, {squared});
+    builder.AddNode("ReduceMean", {squared}, {mean}).AddAttribute("axes", std::vector<int64_t>{-1});
+    builder.AddNode("Add", {mean, epsilon}, {variance});
+    builder.AddNode("Sqrt", {variance}, {stddev});
+    builder.AddNode("Div", {input, stddev}, {normalized});
+    builder.AddNode("Mul", {normalized, scale}, {output});
+  };
+
+  auto make_checker = [](std::string_view fused_op) {
+    return [fused_op](Graph& graph) {
+      TEST_RETURN_IF_NOT(OpCount(CountOpsInGraph(graph), std::string{fused_op}) == 1);
+      for (const Node& node : graph.Nodes()) {
+        if (node.OpType() == fused_op) {
+          const auto epsilon_it = node.GetAttributes().find("epsilon");
+          TEST_RETURN_IF_NOT(epsilon_it != node.GetAttributes().end());
+          TEST_RETURN_IF_NOT(epsilon_it->second.f() == 0.125f);
+        }
+      }
+      return Status::OK();
+    };
+  };
+
+  const InlinedHashSet<std::string_view> compatible_execution_providers;
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_layer_norm, 14, *logger_,
+      std::make_unique<LayerNormFusion>(compatible_execution_providers, TransformerLevel::Level2),
+      TransformerLevel::Level2, 1, nullptr, make_checker("LayerNormalization")));
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_simplified_layer_norm, 14, *logger_, std::make_unique<SimplifiedLayerNormFusion>(),
+      TransformerLevel::Level2, 1, nullptr, make_checker("SimplifiedLayerNormalization")));
+}
+
+TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionPreservesIntegerToFloatCastEpsilon) {
+  constexpr uint64_t kEpsilonSource = (uint64_t{1} << 63) + (uint64_t{1} << 39) + 1;
+  auto build_test_case = [=](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({{2, 4}});
+    auto* scale = builder.MakeInitializer<float>({4}, {1.0f, 1.0f, 1.0f, 1.0f});
+    auto* exponent = builder.MakeScalarInitializer<float>(2.0f);
+    auto* epsilon_source = builder.MakeScalarInitializer<uint64_t>(kEpsilonSource);
+    auto* epsilon = builder.MakeIntermediate();
+    auto* squared = builder.MakeIntermediate();
+    auto* mean = builder.MakeIntermediate();
+    auto* variance = builder.MakeIntermediate();
+    auto* stddev = builder.MakeIntermediate();
+    auto* normalized = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("Cast", {epsilon_source}, {epsilon})
+        .AddAttribute("to", static_cast<int64_t>(TensorProto_DataType_FLOAT));
+    builder.AddNode("Pow", {input, exponent}, {squared});
+    builder.AddNode("ReduceMean", {squared}, {mean}).AddAttribute("axes", std::vector<int64_t>{-1});
+    builder.AddNode("Add", {mean, epsilon}, {variance});
+    builder.AddNode("Sqrt", {variance}, {stddev});
+    builder.AddNode("Div", {input, stddev}, {normalized});
+    builder.AddNode("Mul", {normalized, scale}, {output});
+  };
+
+  auto check_after = [=](Graph& graph) {
+    TEST_RETURN_IF_NOT(OpCount(CountOpsInGraph(graph), "SimplifiedLayerNormalization") == 1);
+    for (const Node& node : graph.Nodes()) {
+      if (node.OpType() == "SimplifiedLayerNormalization") {
+        const auto epsilon_it = node.GetAttributes().find("epsilon");
+        TEST_RETURN_IF_NOT(epsilon_it != node.GetAttributes().end());
+        TEST_RETURN_IF_NOT(epsilon_it->second.f() == static_cast<float>(kEpsilonSource));
+      }
+    }
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_test_case, 17, *logger_, std::make_unique<SimplifiedLayerNormFusion>(),
+      TransformerLevel::Level2, 1, nullptr, check_after));
 }
 
 TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionSharedCastPowExponent) {
@@ -935,7 +1147,8 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormWithCastsFusionTestCudaEp) {
   }
 }
 
-static void TestGQAFusion(const std::basic_string<ORTCHAR_T>& file_path, int matmulnbits_count, int matmul_count, logging::Logger* logger) {
+static void TestGQAFusion(const std::basic_string<ORTCHAR_T>& file_path, int matmulnbits_count, int matmul_count,
+                          logging::Logger* logger, bool verify_workspace_reservations = false) {
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(file_path, p_model, nullptr, *logger).IsOK());
   Graph& graph = p_model->MainGraph();
@@ -943,13 +1156,240 @@ static void TestGQAFusion(const std::basic_string<ORTCHAR_T>& file_path, int mat
   onnxruntime::GraphTransformerManager graph_transformation_mgr{3};
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<GroupQueryAttentionFusion>(), TransformerLevel::Level2));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger));
+
+  NodeWorkspaceReservationMap reservations;
+  size_t total_reserved_bytes = 0;
+  if (verify_workspace_reservations) {
+    for (const Node& node : graph.Nodes()) {
+      reservations.insert_or_assign(
+          node.Index(), WorkspaceEstimateSelection{10, WorkspaceEstimateSource::kFallback});
+      total_reserved_bytes += 10;
+    }
+    graph.SetNodeReplacementCallback(
+        [&reservations](const Graph&,
+                        gsl::span<const NodeIndex> source_node_indices,
+                        NodeIndex destination_node_index) {
+          ConsolidateWorkspaceReservations(
+              reservations, source_node_indices, destination_node_index);
+        });
+  }
+
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger));
+  graph.SetNodeReplacementCallback({});
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["com.microsoft.RotaryEmbedding"] == 0);
   ASSERT_TRUE(op_to_count["com.microsoft.MatMulNBits"] == matmulnbits_count);
   ASSERT_TRUE(op_to_count["MatMul"] == matmul_count);
   ASSERT_TRUE(op_to_count["com.microsoft.GroupQueryAttention"] == 1);
+
+  if (verify_workspace_reservations) {
+    size_t consolidated_reserved_bytes = 0;
+    bool found_fused_projection_reservation = false;
+    for (const auto& [node_index, reservation] : reservations) {
+      const Node* node = graph.GetNode(node_index);
+      ASSERT_NE(node, nullptr) << "Workspace reservation was orphaned at node index " << node_index;
+      consolidated_reserved_bytes += reservation.bytes;
+      if ((node->OpType() == "MatMulNBits" || node->OpType() == "MatMul") &&
+          reservation.bytes > 10) {
+        found_fused_projection_reservation = true;
+      }
+    }
+    EXPECT_EQ(consolidated_reserved_bytes, total_reserved_bytes);
+    EXPECT_TRUE(found_fused_projection_reservation);
+  }
+}
+
+static void TestQuantizedGQAFusionRejectsInitializerShape(const std::string& initializer_name,
+                                                          logging::Logger* logger) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/gqa_fusion_quantized_simple.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger));
+  Graph& graph = model->MainGraph();
+
+  const TensorProto* initializer = nullptr;
+  ASSERT_TRUE(graph.GetInitializedTensor(initializer_name, initializer));
+  TensorProto malformed_initializer = *initializer;
+  malformed_initializer.clear_dims();
+  malformed_initializer.add_dims(1);
+  graph.RemoveInitializedTensor(initializer_name);
+  graph.AddInitializedTensor(malformed_initializer);
+
+  GraphTransformerManager graph_transformation_mgr{3};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<GroupQueryAttentionFusion>(),
+                                                     TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger));
+
+  const auto op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count.at("com.microsoft.MatMulNBits"), 3);
+  EXPECT_EQ(op_to_count.at("com.microsoft.RotaryEmbedding"), 2);
+  EXPECT_EQ(op_to_count.at("com.microsoft.GroupQueryAttention"), 1);
+}
+
+enum class RotaryEmbeddingDomain {
+  kOnnx,
+  kMS,
+};
+
+static void BuildRotaryEmbeddingGQAFusionGraph(ModelTestBuilder& builder,
+                                               RotaryEmbeddingDomain rotary_domain,
+                                               bool include_position_ids,
+                                               int64_t q_interleaved = 0,
+                                               int64_t k_interleaved = 0,
+                                               int64_t rotary_embedding_dim = 0,
+                                               int64_t gqa_num_heads = 2) {
+  constexpr int64_t batch_size = 1;
+  constexpr int64_t sequence_length = 2;
+  constexpr int64_t input_hidden_size = 8;
+  constexpr int64_t num_heads = 2;
+  constexpr int64_t kv_num_heads = 1;
+  const int64_t head_size = rotary_embedding_dim == 0 ? 16 : 32;
+  const int64_t q_hidden_size = num_heads * head_size;
+  const int64_t kv_hidden_size = kv_num_heads * head_size;
+  constexpr int64_t max_sequence_length = 8;
+  const int64_t half_rotary_dim = (rotary_embedding_dim == 0 ? head_size : rotary_embedding_dim) / 2;
+
+  auto make_weight = [&builder](int64_t rows, int64_t cols, float value) {
+    return builder.MakeInitializer<MLFloat16>(
+        {rows, cols}, std::vector<MLFloat16>(static_cast<size_t>(rows * cols), MLFloat16(value)));
+  };
+
+  NodeArg* input = builder.MakeInput<MLFloat16>({{batch_size, sequence_length, input_hidden_size}});
+  NodeArg* q_weight = make_weight(input_hidden_size, q_hidden_size, 0.5f);
+  NodeArg* k_weight = make_weight(input_hidden_size, kv_hidden_size, 0.25f);
+  NodeArg* v_weight = make_weight(input_hidden_size, kv_hidden_size, 0.125f);
+
+  NodeArg* q_matmul_out =
+      builder.MakeIntermediate<MLFloat16>(std::vector<int64_t>{batch_size, sequence_length, q_hidden_size});
+  NodeArg* k_matmul_out =
+      builder.MakeIntermediate<MLFloat16>(std::vector<int64_t>{batch_size, sequence_length, kv_hidden_size});
+  NodeArg* v_matmul_out =
+      builder.MakeIntermediate<MLFloat16>(std::vector<int64_t>{batch_size, sequence_length, kv_hidden_size});
+  builder.AddNode("MatMul", {input, q_weight}, {q_matmul_out});
+  builder.AddNode("MatMul", {input, k_weight}, {k_matmul_out});
+  builder.AddNode("MatMul", {input, v_weight}, {v_matmul_out});
+
+  const std::vector<int64_t> cache_shape = include_position_ids
+                                               ? std::vector<int64_t>{max_sequence_length, half_rotary_dim}
+                                               : std::vector<int64_t>{batch_size, sequence_length, half_rotary_dim};
+  NodeArg* cos_cache = builder.MakeInput<MLFloat16>(cache_shape);
+  NodeArg* sin_cache = builder.MakeInput<MLFloat16>(cache_shape);
+  NodeArg* position_ids = include_position_ids
+                              ? builder.MakeInput<int64_t>({{batch_size, sequence_length}})
+                              : nullptr;
+
+  NodeArg* q_rotary_out =
+      builder.MakeIntermediate<MLFloat16>(std::vector<int64_t>{batch_size, sequence_length, q_hidden_size});
+  NodeArg* k_rotary_out =
+      builder.MakeIntermediate<MLFloat16>(std::vector<int64_t>{batch_size, sequence_length, kv_hidden_size});
+
+  std::vector<NodeArg*> q_rotary_inputs;
+  std::vector<NodeArg*> k_rotary_inputs;
+  const char* rotary_domain_name =
+      rotary_domain == RotaryEmbeddingDomain::kMS ? kMSDomain : kOnnxDomain;
+  if (rotary_domain == RotaryEmbeddingDomain::kMS) {
+    q_rotary_inputs = {q_matmul_out, position_ids, cos_cache, sin_cache};
+    k_rotary_inputs = {k_matmul_out, position_ids, cos_cache, sin_cache};
+  } else {
+    q_rotary_inputs = {q_matmul_out, cos_cache, sin_cache};
+    k_rotary_inputs = {k_matmul_out, cos_cache, sin_cache};
+    if (position_ids != nullptr) {
+      q_rotary_inputs.push_back(position_ids);
+      k_rotary_inputs.push_back(position_ids);
+    }
+  }
+
+  Node& q_rotary = builder.AddNode("RotaryEmbedding", q_rotary_inputs, {q_rotary_out}, rotary_domain_name);
+  q_rotary.AddAttribute("num_heads", num_heads);
+  q_rotary.AddAttribute("interleaved", q_interleaved);
+  q_rotary.AddAttribute("rotary_embedding_dim", rotary_embedding_dim);
+  Node& k_rotary = builder.AddNode("RotaryEmbedding", k_rotary_inputs, {k_rotary_out}, rotary_domain_name);
+  k_rotary.AddAttribute("num_heads", kv_num_heads);
+  k_rotary.AddAttribute("interleaved", k_interleaved);
+  k_rotary.AddAttribute("rotary_embedding_dim", rotary_embedding_dim);
+
+  NodeArg* past_key =
+      builder.MakeInput<MLFloat16>({{batch_size, kv_num_heads, max_sequence_length, head_size}});
+  NodeArg* past_value =
+      builder.MakeInput<MLFloat16>({{batch_size, kv_num_heads, max_sequence_length, head_size}});
+  NodeArg* seqlens_k = builder.MakeInput<int32_t>({{batch_size}});
+  NodeArg* total_sequence_length = builder.MakeInput<int32_t>({{1}});
+  NodeArg* gqa_output =
+      builder.MakeOutput<MLFloat16>(std::vector<int64_t>{batch_size, sequence_length, q_hidden_size});
+
+  Node& gqa = builder.AddNode("GroupQueryAttention",
+                              {q_rotary_out, k_rotary_out, v_matmul_out, past_key, past_value,
+                               seqlens_k, total_sequence_length},
+                              {gqa_output},
+                              kMSDomain);
+  gqa.AddAttribute("num_heads", gqa_num_heads);
+  gqa.AddAttribute("kv_num_heads", kv_num_heads);
+}
+
+static Status CheckOnnxRotaryEmbeddingGQANotFused(Graph& graph) {
+  const auto op_to_count = CountOpsInGraph(graph);
+  TEST_RETURN_IF_NOT(OpCount(op_to_count, "RotaryEmbedding") == 2);
+  TEST_RETURN_IF_NOT(OpCount(op_to_count, "MatMul") == 3);
+  TEST_RETURN_IF_NOT(OpCount(op_to_count, "com.microsoft.GroupQueryAttention") == 1);
+
+  for (const Node& node : graph.Nodes()) {
+    if (node.OpType() != "GroupQueryAttention") {
+      continue;
+    }
+
+    TEST_RETURN_IF_NOT(node.InputDefs().size() == 7);
+    const auto& attrs = node.GetAttributes();
+    auto do_rotary_attr = attrs.find("do_rotary");
+    TEST_RETURN_IF_NOT(do_rotary_attr == attrs.end() || do_rotary_attr->second.i() == 0);
+  }
+
+  return Status::OK();
+}
+
+static Status CheckMsRotaryEmbeddingGQANotFused(Graph& graph) {
+  const auto op_to_count = CountOpsInGraph(graph);
+  TEST_RETURN_IF_NOT(OpCount(op_to_count, "com.microsoft.RotaryEmbedding") == 2);
+  TEST_RETURN_IF_NOT(OpCount(op_to_count, "MatMul") == 3);
+  TEST_RETURN_IF_NOT(OpCount(op_to_count, "com.microsoft.GroupQueryAttention") == 1);
+
+  for (const Node& node : graph.Nodes()) {
+    if (node.OpType() != "GroupQueryAttention") {
+      continue;
+    }
+
+    TEST_RETURN_IF_NOT(node.InputDefs().size() == 7);
+    const auto& attrs = node.GetAttributes();
+    const auto do_rotary_attr = attrs.find("do_rotary");
+    TEST_RETURN_IF_NOT(do_rotary_attr == attrs.end() || do_rotary_attr->second.i() == 0);
+  }
+
+  return Status::OK();
+}
+
+static Status CheckMsRotaryEmbeddingGQAFused(Graph& graph, int64_t expected_interleaved) {
+  const auto op_to_count = CountOpsInGraph(graph);
+  TEST_RETURN_IF_NOT(OpCount(op_to_count, "com.microsoft.RotaryEmbedding") == 0);
+  TEST_RETURN_IF_NOT(OpCount(op_to_count, "MatMul") == 1);
+  TEST_RETURN_IF_NOT(OpCount(op_to_count, "com.microsoft.GroupQueryAttention") == 1);
+
+  for (const Node& node : graph.Nodes()) {
+    if (node.OpType() != "GroupQueryAttention") {
+      continue;
+    }
+
+    const auto& input_defs = node.InputDefs();
+    TEST_RETURN_IF_NOT(input_defs.size() == 10);
+    TEST_RETURN_IF_NOT(input_defs[9] != nullptr && input_defs[9]->Exists());
+
+    const auto& attrs = node.GetAttributes();
+    const auto do_rotary_attr = attrs.find("do_rotary");
+    TEST_RETURN_IF_NOT(do_rotary_attr != attrs.end() && do_rotary_attr->second.i() == 1);
+    const auto interleaved_attr = attrs.find("rotary_interleaved");
+    TEST_RETURN_IF_NOT(interleaved_attr != attrs.end() &&
+                       interleaved_attr->second.i() == expected_interleaved);
+  }
+
+  return Status::OK();
 }
 
 static void TestSkipLayerNormFusion(const std::basic_string<ORTCHAR_T>& file_path, int add_count, int ln_count,
@@ -977,6 +1417,72 @@ static void TestSkipLayerNormFusion(const std::basic_string<ORTCHAR_T>& file_pat
   ASSERT_TRUE(op_to_count["LayerNormalization"] == ln_count);
   ASSERT_TRUE(op_to_count["com.microsoft.SkipLayerNormalization"] == skip_ln_count);
   ASSERT_TRUE(op_to_count["Cast"] == cast_count);
+}
+
+TEST_F(GraphTransformationTests, LayerNormFusionZeroNormalizedDimension) {
+  for (int opset : {10, 17, 18}) {
+    for (int64_t axis : {-1, 1}) {
+      for (const std::vector<int64_t>& shape : {std::vector<int64_t>{1, 0}, {0, 4}, {2, 4}, {2, -1}}) {
+        SCOPED_TRACE(MakeString("opset=", opset, " axis=", axis, " shape=", shape[0], ",", shape[1]));
+        const bool symbolic = shape[1] == -1;
+        const bool should_fuse = shape[1] != 0;
+        auto build_test_case = [&](ModelTestBuilder& builder) {
+          auto* input = symbolic ? builder.MakeInput<float>(shape)
+                                 : builder.MakeInput<float>(shape, -1.0f, 1.0f);
+          const int64_t hidden_size = symbolic ? 4 : shape[1];
+          auto* scale = builder.MakeInitializer<float>({hidden_size}, std::vector<float>(hidden_size, 1.0f));
+          auto* bias = builder.MakeInitializer<float>({hidden_size}, std::vector<float>(hidden_size, 0.0f));
+          auto* two = builder.MakeInitializer<float>({}, {2.0f});
+          auto* epsilon = builder.MakeInitializer<float>({}, {1e-5f});
+          auto* mean = builder.MakeIntermediate();
+          auto* centered = builder.MakeIntermediate();
+          auto* squared = builder.MakeIntermediate();
+          auto* variance = builder.MakeIntermediate();
+          auto* variance_epsilon = builder.MakeIntermediate();
+          auto* stddev = builder.MakeIntermediate();
+          auto* normalized = builder.MakeIntermediate();
+          auto* scaled = builder.MakeIntermediate();
+          auto* output = builder.MakeOutput();
+          auto add_reduce_mean = [&](NodeArg* in, NodeArg* out) {
+            if (opset >= 18) {
+              auto* axes = builder.MakeInitializer<int64_t>({1}, {axis});
+              builder.AddNode("ReduceMean", {in, axes}, {out});
+            } else {
+              builder.AddNode("ReduceMean", {in}, {out}).AddAttribute("axes", std::vector<int64_t>{axis});
+            }
+          };
+          add_reduce_mean(input, mean);
+          builder.AddNode("Sub", {input, mean}, {centered});
+          builder.AddNode("Pow", {centered, two}, {squared});
+          add_reduce_mean(squared, variance);
+          builder.AddNode("Add", {variance, epsilon}, {variance_epsilon});
+          builder.AddNode("Sqrt", {variance_epsilon}, {stddev});
+          builder.AddNode("Div", {centered, stddev}, {normalized});
+          builder.AddNode("Mul", {scale, normalized}, {scaled});
+          builder.AddNode("Add", {scaled, bias}, {output});
+        };
+        auto check_graph = [&](const Graph& graph) {
+          auto counts = CountOpsInGraph(graph);
+          TEST_RETURN_IF_NOT(counts["LayerNormalization"] == (should_fuse ? 1 : 0));
+          TEST_RETURN_IF_NOT(counts["ReduceMean"] == (should_fuse ? 0 : 2));
+          return Status::OK();
+        };
+        const auto level = opset >= 17 ? TransformerLevel::Level1 : TransformerLevel::Level2;
+        const InlinedHashSet<std::string_view> compatible_eps = {};
+        if (symbolic) {
+          ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset, *logger_,
+                                                std::make_unique<LayerNormFusion>(compatible_eps, level),
+                                                level, 1, nullptr, check_graph));
+        } else {
+          auto check_session = [&](InferenceSessionWrapper& session) {
+            ASSERT_STATUS_OK(check_graph(session.GetGraph()));
+          };
+          TransformerTester(build_test_case, check_session, TransformerLevel::Default, level, opset,
+                            1e-5, 1e-5, std::make_unique<LayerNormFusion>(compatible_eps, level));
+        }
+      }
+    }
+  }
 }
 
 // Current-opset regression tests for LayerNorm and SkipLayerNorm fusions.
@@ -1136,9 +1642,99 @@ TEST_F(GraphTransformationTests, SkipLayerNormFusion_3DGamma_NoFusion) {
 }
 
 TEST_F(GraphTransformationTests, GroupQueryAttentionFusionTest) {
-  TestGQAFusion(MODEL_FOLDER "fusion/gqa_fusion_quantized_simple.onnx", 1, 0, logger_.get());
+  TestGQAFusion(
+      MODEL_FOLDER "fusion/gqa_fusion_quantized_simple.onnx", 1, 0, logger_.get(),
+      /*verify_workspace_reservations=*/true);
   TestGQAFusion(MODEL_FOLDER "fusion/gqa_fusion_different_head_sizes.onnx", 0, 1, logger_.get());
   TestGQAFusion(MODEL_FOLDER "fusion/gqa_fusion_quantized_different_head_sizes.onnx", 1, 0, logger_.get());
+}
+
+TEST_F(GraphTransformationTests, GroupQueryAttentionFusionSkipsOnnxRotaryEmbeddingTest) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildRotaryEmbeddingGQAFusionGraph(builder, RotaryEmbeddingDomain::kOnnx, true);
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 23, *logger_,
+                                        std::make_unique<GroupQueryAttentionFusion>(),
+                                        TransformerLevel::Level2, 3, nullptr,
+                                        CheckOnnxRotaryEmbeddingGQANotFused));
+}
+
+TEST_F(GraphTransformationTests, GroupQueryAttentionFusionSkipsOnnxRotaryEmbeddingInterleavedTest) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildRotaryEmbeddingGQAFusionGraph(builder, RotaryEmbeddingDomain::kOnnx, true, 1, 1);
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 23, *logger_,
+                                        std::make_unique<GroupQueryAttentionFusion>(),
+                                        TransformerLevel::Level2, 3, nullptr,
+                                        CheckOnnxRotaryEmbeddingGQANotFused));
+}
+
+TEST_F(GraphTransformationTests, GroupQueryAttentionFusionSkipsOnnxRotaryEmbeddingPartialRotaryTest) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildRotaryEmbeddingGQAFusionGraph(builder, RotaryEmbeddingDomain::kOnnx, true, 0, 0, 16);
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 23, *logger_,
+                                        std::make_unique<GroupQueryAttentionFusion>(),
+                                        TransformerLevel::Level2, 3, nullptr,
+                                        CheckOnnxRotaryEmbeddingGQANotFused));
+}
+
+TEST_F(GraphTransformationTests, GroupQueryAttentionFusionOnnxRotaryEmbeddingInterleavedMismatchTest) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildRotaryEmbeddingGQAFusionGraph(builder, RotaryEmbeddingDomain::kOnnx, true, 0, 1);
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 23, *logger_,
+                                        std::make_unique<GroupQueryAttentionFusion>(),
+                                        TransformerLevel::Level2, 3, nullptr,
+                                        CheckOnnxRotaryEmbeddingGQANotFused));
+}
+
+TEST_F(GraphTransformationTests, GroupQueryAttentionFusionOnnxRotaryEmbeddingNoPositionIdsTest) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildRotaryEmbeddingGQAFusionGraph(builder, RotaryEmbeddingDomain::kOnnx, false);
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 23, *logger_,
+                                        std::make_unique<GroupQueryAttentionFusion>(),
+                                        TransformerLevel::Level2, 3, nullptr,
+                                        CheckOnnxRotaryEmbeddingGQANotFused));
+}
+
+TEST_F(GraphTransformationTests, GroupQueryAttentionFusionMsRotaryEmbeddingForwardsPositionIdsTest) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildRotaryEmbeddingGQAFusionGraph(builder, RotaryEmbeddingDomain::kMS, true, 1, 1);
+  };
+  auto check_fused_graph = [](Graph& graph) {
+    return CheckMsRotaryEmbeddingGQAFused(graph, 1);
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 23, *logger_,
+                                        std::make_unique<GroupQueryAttentionFusion>(),
+                                        TransformerLevel::Level2, 3, nullptr,
+                                        check_fused_graph));
+}
+
+TEST_F(GraphTransformationTests, GroupQueryAttentionFusionSkipsMismatchedProjectionSizesTest) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildRotaryEmbeddingGQAFusionGraph(builder, RotaryEmbeddingDomain::kMS, true, 0, 0, 0, 3);
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 23, *logger_,
+                                        std::make_unique<GroupQueryAttentionFusion>(),
+                                        TransformerLevel::Level2, 3, nullptr,
+                                        CheckMsRotaryEmbeddingGQANotFused));
+}
+
+TEST_F(GraphTransformationTests, GroupQueryAttentionFusionSkipsMismatchedScaleShape) {
+  TestQuantizedGQAFusionRejectsInitializerShape("scales_q", logger_.get());
+}
+
+TEST_F(GraphTransformationTests, GroupQueryAttentionFusionSkipsMismatchedZeroPointShape) {
+  TestQuantizedGQAFusionRejectsInitializerShape("zero_points_q", logger_.get());
 }
 
 TEST_F(GraphTransformationTests, SkipLayerNormFusionWithCastTest) {
@@ -2279,26 +2875,16 @@ TEST_F(GraphTransformationTests, LayerNormFusion_ZeroElementEpsilon) {
   // Must handle zero-element epsilon gracefully.
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
-  // Verify the fusion fired and produced a LayerNormalization with the
-  // default epsilon (1e-5f), per the zero-element fallback in
-  // layer_norm_fusion.cc.
+  // A non-scalar epsilon cannot be represented by the fused float attribute,
+  // so the original graph must remain unchanged.
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  EXPECT_EQ(op_to_count["LayerNormalization"], 1);
-  EXPECT_EQ(op_to_count["ReduceMean"], 0);
-  EXPECT_EQ(op_to_count["Sub"], 0);
-  EXPECT_EQ(op_to_count["Pow"], 0);
-  EXPECT_EQ(op_to_count["Sqrt"], 0);
-  EXPECT_EQ(op_to_count["Div"], 0);
-  EXPECT_EQ(op_to_count["Mul"], 0);
-
-  for (const auto& node : graph.Nodes()) {
-    if (node.OpType() == "LayerNormalization") {
-      const auto& attrs = node.GetAttributes();
-      auto it = attrs.find("epsilon");
-      ASSERT_NE(it, attrs.end());
-      EXPECT_FLOAT_EQ(it->second.f(), 1e-5f);
-    }
-  }
+  EXPECT_EQ(op_to_count["LayerNormalization"], 0);
+  EXPECT_EQ(op_to_count["ReduceMean"], 2);
+  EXPECT_EQ(op_to_count["Sub"], 1);
+  EXPECT_EQ(op_to_count["Pow"], 1);
+  EXPECT_EQ(op_to_count["Sqrt"], 1);
+  EXPECT_EQ(op_to_count["Div"], 1);
+  EXPECT_EQ(op_to_count["Mul"], 1);
 }
 
 // Test: SimplifiedLayerNormFusion gracefully handles a zero-element epsilon initializer.
@@ -2388,25 +2974,15 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormFusion_ZeroElementEpsilon) {
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<SimplifiedLayerNormFusion>(), TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
-  // Verify the fusion fired and produced a SimplifiedLayerNormalization with
-  // the default epsilon (1e-5f), per the zero-element fallback in
-  // layer_norm_fusion.cc.
+  // A non-scalar epsilon cannot be represented by the fused float attribute,
+  // so the original graph must remain unchanged.
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  EXPECT_EQ(op_to_count["SimplifiedLayerNormalization"], 1);
-  EXPECT_EQ(op_to_count["Pow"], 0);
-  EXPECT_EQ(op_to_count["ReduceMean"], 0);
-  EXPECT_EQ(op_to_count["Sqrt"], 0);
-  EXPECT_EQ(op_to_count["Div"], 0);
-  EXPECT_EQ(op_to_count["Mul"], 0);
-
-  for (const auto& node : graph.Nodes()) {
-    if (node.OpType() == "SimplifiedLayerNormalization") {
-      const auto& attrs = node.GetAttributes();
-      auto it = attrs.find("epsilon");
-      ASSERT_NE(it, attrs.end());
-      EXPECT_FLOAT_EQ(it->second.f(), 1e-5f);
-    }
-  }
+  EXPECT_EQ(op_to_count["SimplifiedLayerNormalization"], 0);
+  EXPECT_EQ(op_to_count["Pow"], 1);
+  EXPECT_EQ(op_to_count["ReduceMean"], 1);
+  EXPECT_EQ(op_to_count["Sqrt"], 1);
+  EXPECT_EQ(op_to_count["Div"], 1);
+  EXPECT_EQ(op_to_count["Mul"], 1);
 }
 
 #endif

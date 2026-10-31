@@ -1,19 +1,18 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// Fused TurboQuant: Split packed QKV + Rotary K + Hadamard + Quantize K/V + Rotary Q.
+// Fused Q4 TurboQuant: split packed QKV, apply rotary to Q/K, then
+// apply Walsh-Hadamard and centroid quantization to K/V.
 //
 // A single dispatch handles all three components:
-//   Workgroups [0, num_kv_slices):                K — split from packed QKV, apply rotary, WHT, quantize, write to present_key
-//   Workgroups [num_kv_slices, 2*num_kv_slices):  V — split from packed QKV, WHT, quantize, write to present_value
+//   Workgroups [0, num_kv_slices):                K — split from packed QKV, apply rotary, quantize, write to present_key
+//   Workgroups [num_kv_slices, 2*num_kv_slices):  V — split from packed QKV, quantize, write to present_value
 //   Workgroups [2*num_kv_slices, total):           Q — split from packed QKV, apply rotary, write to query output
 //
-// K/V path: apply Walsh-Hadamard butterfly transform in shared memory, compute L2 norm,
-// quantize each element to a 4-bit centroid index, pack 8 indices per u32, and store
-// norm (as bitcast<u32>(f32)) followed by packed index words.
+// K/V path: apply Walsh-Hadamard, L2 normalization, and centroid quantization.
 // Q path: per-element rotary embedding and return (no shared memory or barriers needed).
 //
-// Output layout per KV head: [norm_u32, packed_indices_0, ..., packed_indices_(HEAD_SIZE/8 - 1)]
+// Output layout per KV head: [scale_u32, packed_values_0, ...]
 
 #param hadamard_size_log2
 #param half_rotary_dim
@@ -38,38 +37,59 @@ var<workgroup> hadamard_buffer : array<f32, HEAD_SIZE>;
 #endif
 
 var<workgroup> scale_reduction_buffer : array<f32, 64>;
-// Reuse shared memory for packing: store centroid indices (0-15) as u32 per element.
+// Reuse shared memory for packing: store one centroid index per element.
 var<workgroup> index_buffer : array<u32, HEAD_SIZE>;
 
 $MAIN {
-  // Compute total_seq_length.
-#if use_seqlen_k
-  let total_seq_length = u32(seqlen_k[0u]) + 1u;
-#else
-  let total_seq_length = uniforms.total_sequence_length;
-#endif
-  let past_seq_length = total_seq_length - uniforms.kv_sequence_length;
-
-  // Base position offset for rotary embedding cos/sin cache lookup.
-  let position_id = past_seq_length;
-#if use_multi_rotary_cache_concat
-  let base_position = select(0u, multi_rotary_cache_concat_offset, total_seq_length > multi_rotary_cache_concat_offset);
-#else
-  let base_position = 0u;
-#endif
-
-  // Prepare indirect dispatch buffer (first workgroup, first thread only).
-#if prepare_indirect_dispatch
-  if (workgroup_idx == 0u && local_idx == 0u) {
-    let num_total_seq_length_tile = (total_seq_length + uniforms.tile_size - 1u) / uniforms.tile_size;
-    populate_indirect_dispatch_buffer(num_total_seq_length_tile, uniforms.num_heads * uniforms.num_q_tiles, uniforms.batch_size);
-  }
-#endif
-
   // Map flat workgroup index to logical component (Q, K, or V).
   let num_kv_slices = uniforms.num_kv_slices;
   let is_q = workgroup_idx >= 2u * num_kv_slices;
   let is_value = !is_q && workgroup_idx >= num_kv_slices;
+
+  // Compute batch based on workgroup type.
+  var batch: u32;
+  if (is_q) {
+    let q_slice = workgroup_idx - 2u * num_kv_slices;
+    if (q_slice >= uniforms.num_q_slices) { return; }
+    batch = q_slice / (uniforms.kv_sequence_length * uniforms.num_heads);
+  } else {
+    let kv_slice = select(workgroup_idx, workgroup_idx - num_kv_slices, is_value);
+    if (kv_slice >= num_kv_slices) { return; }
+    batch = kv_slice / (uniforms.kv_num_heads * uniforms.kv_sequence_length);
+  }
+
+  // Compute the logical total sequence length for this batch.
+#if use_seqlen_k
+  let raw_total_seq_length = u32(max(seqlen_k[batch], 0)) + 1u;
+  let per_batch_total_seq_length = min(raw_total_seq_length, uniforms.present_seq_length);
+#else
+  let per_batch_total_seq_length = uniforms.total_sequence_length;
+#endif
+  let past_seq_length = per_batch_total_seq_length - min(per_batch_total_seq_length, uniforms.kv_sequence_length);
+
+  // Base position offset for rotary embedding cos/sin cache lookup.
+#if prepare_indirect_dispatch
+  let raw_global_total_seq_length = total_sequence_length_input[0];
+  let global_total_seq_length =
+      min(u32(max(raw_global_total_seq_length, 0)), uniforms.present_seq_length);
+#else
+  let global_total_seq_length = uniforms.total_sequence_length;
+#endif
+#if use_multi_rotary_cache_concat
+  let base_position = select(0u, multi_rotary_cache_concat_offset, global_total_seq_length > multi_rotary_cache_concat_offset);
+#else
+  let base_position = 0u;
+#endif
+  let max_rotary_position = min(uniforms.cos_cache_shape[0], uniforms.sin_cache_shape[0]);
+
+  // Prepare indirect dispatch buffer (first workgroup, first thread only).
+#if prepare_indirect_dispatch
+  if (workgroup_idx == 0u && local_idx == 0u) {
+    let num_total_seq_length_tile =
+        (global_total_seq_length + uniforms.tile_size - 1u) / uniforms.tile_size;
+    populate_indirect_dispatch_buffer(num_total_seq_length_tile, uniforms.num_heads * uniforms.num_q_tiles, uniforms.batch_size);
+  }
+#endif
 
   // ============ Q WORKGROUP PATH (early return, no shared memory/barriers) ============
   if (is_q) {
@@ -77,7 +97,6 @@ $MAIN {
     if (q_slice >= uniforms.num_q_slices) { return; }
 
     // Unflatten q_slice into (batch, seq, head).
-    let batch = q_slice / (uniforms.kv_sequence_length * uniforms.num_heads);
     let head = (q_slice / uniforms.kv_sequence_length) % uniforms.num_heads;
     let seq = q_slice % uniforms.kv_sequence_length;
 
@@ -92,11 +111,17 @@ $MAIN {
 
     // Position index for rotary embedding cos/sin lookup.
     let seq_position_id = past_seq_length + seq;
+    let valid_rotary_position =
+        base_position < max_rotary_position && seq_position_id < max_rotary_position - base_position;
 
     // Apply rotary embedding: rotate first HALF_ROTARY_DIM pairs.
     for (var i = local_idx; i < HALF_ROTARY_DIM; i += workgroup_size_x) {
-      let cos_v = cos_cache.getByIndices(vec2<u32>(base_position + seq_position_id, i));
-      let sin_v = sin_cache.getByIndices(vec2<u32>(base_position + seq_position_id, i));
+      var cos_v = cos_cache_value_t(1);
+      var sin_v = cos_cache_value_t(0);
+      if (valid_rotary_position) {
+        cos_v = cos_cache.getByIndices(vec2<u32>(base_position + seq_position_id, i));
+        sin_v = sin_cache.getByIndices(vec2<u32>(base_position + seq_position_id, i));
+      }
 
       let q_i = packed_qkv.getByOffset(q_src_base + i);
       let q_j = packed_qkv.getByOffset(q_src_base + i + HALF_ROTARY_DIM);
@@ -120,10 +145,14 @@ $MAIN {
   let kv_slice = select(workgroup_idx, workgroup_idx - num_kv_slices, is_value);
   if (kv_slice >= num_kv_slices) { return; }
 
-  // Unflatten kv_slice into (batch, head, seq).
-  let batch = kv_slice / (uniforms.kv_num_heads * uniforms.kv_sequence_length);
+  // Unflatten kv_slice into (head, seq) — batch already computed above.
   let head = (kv_slice / uniforms.kv_sequence_length) % uniforms.kv_num_heads;
   let seq = kv_slice % uniforms.kv_sequence_length;
+
+  // Skip K/V slices beyond this batch's logical total sequence length.
+  if (seq >= per_batch_total_seq_length) {
+    return;
+  }
 
   // Compute destination offset in present_key/present_value (u32 packed, BNSH layout).
 #if past_present_share_buffer
@@ -143,13 +172,19 @@ $MAIN {
 
   // Position index for rotary embedding cos/sin lookup (K only).
   let seq_position_id = past_seq_length + seq;
+  let valid_rotary_position =
+      base_position < max_rotary_position && seq_position_id < max_rotary_position - base_position;
 
   // Load from packed QKV into shared memory (f32). K gets rotary, V loads directly.
   if (!is_value) {
     // K path: apply rotary embedding during load.
     for (var i = local_idx; i < HALF_ROTARY_DIM; i += workgroup_size_x) {
-      let cos_v = f32(cos_cache.getByIndices(vec2<u32>(base_position + seq_position_id, i)));
-      let sin_v = f32(sin_cache.getByIndices(vec2<u32>(base_position + seq_position_id, i)));
+      var cos_v = 1.0f;
+      var sin_v = 0.0f;
+      if (valid_rotary_position) {
+        cos_v = f32(cos_cache.getByIndices(vec2<u32>(base_position + seq_position_id, i)));
+        sin_v = f32(sin_cache.getByIndices(vec2<u32>(base_position + seq_position_id, i)));
+      }
 
       let k_i = f32(packed_qkv.getByOffset(src_base + i));
       let k_j = f32(packed_qkv.getByOffset(src_base + i + HALF_ROTARY_DIM));
@@ -195,39 +230,37 @@ $MAIN {
     }
     workgroupBarrier();
   }
-  let l2_norm = sqrt(scale_reduction_buffer[0]);
-  let inv_l2 = select(0.0f, 1.0f / l2_norm, l2_norm > 0.0f);
+  let quant_scale = sqrt(scale_reduction_buffer[0]);
+  let inv_quant_scale = select(0.0f, 1.0f / quant_scale, quant_scale > 0.0f);
 
   // Quantize: compute centroid index for each element and store in index_buffer.
   for (var i = local_idx; i < HEAD_SIZE; i += workgroup_size_x) {
-    let unit_val = hadamard_buffer[i] * inv_l2;
+    let unit_val = hadamard_buffer[i] * inv_quant_scale;
     index_buffer[i] = snap_to_centroid_index(unit_val);
   }
   workgroupBarrier();
 
-  // Pack 8 indices per u32 word and write to output.
-  // Thread 0 writes the norm word.
+  // Pack quantized values into u32 words and write to output.
+  // Thread 0 writes the fp32 scale word.
   if (local_idx == 0u) {
     if (!is_value) {
-      present_key.setByOffset(present_base, bitcast<u32>(l2_norm));
+      present_key.setByOffset(present_base, bitcast<u32>(quant_scale));
     } else {
-      present_value.setByOffset(present_base, bitcast<u32>(l2_norm));
+      present_value.setByOffset(present_base, bitcast<u32>(quant_scale));
     }
   }
 
-  // Each thread packs one or more u32 words (HEAD_SIZE/8 words total).
-  let num_packed_words = HEAD_SIZE >> 3u;
+  let num_packed_words = HEAD_SIZE / 8u;
   for (var w = local_idx; w < num_packed_words; w += workgroup_size_x) {
-    let base_elem = w << 3u;
-    var packed = 0u;
-    packed |= (index_buffer[base_elem + 0u] & 0xFu);
-    packed |= (index_buffer[base_elem + 1u] & 0xFu) << 4u;
-    packed |= (index_buffer[base_elem + 2u] & 0xFu) << 8u;
-    packed |= (index_buffer[base_elem + 3u] & 0xFu) << 12u;
-    packed |= (index_buffer[base_elem + 4u] & 0xFu) << 16u;
-    packed |= (index_buffer[base_elem + 5u] & 0xFu) << 20u;
-    packed |= (index_buffer[base_elem + 6u] & 0xFu) << 24u;
-    packed |= (index_buffer[base_elem + 7u] & 0xFu) << 28u;
+    let base_elem = w * 8u;
+    let packed = (index_buffer[base_elem] & 0xFu) |
+                 ((index_buffer[base_elem + 1u] & 0xFu) << 4u) |
+                 ((index_buffer[base_elem + 2u] & 0xFu) << 8u) |
+                 ((index_buffer[base_elem + 3u] & 0xFu) << 12u) |
+                 ((index_buffer[base_elem + 4u] & 0xFu) << 16u) |
+                 ((index_buffer[base_elem + 5u] & 0xFu) << 20u) |
+                 ((index_buffer[base_elem + 6u] & 0xFu) << 24u) |
+                 ((index_buffer[base_elem + 7u] & 0xFu) << 28u);
     if (!is_value) {
       present_key.setByOffset(present_base + 1u + w, packed);
     } else {

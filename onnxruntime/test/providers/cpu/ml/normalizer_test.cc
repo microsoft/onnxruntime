@@ -187,5 +187,13 @@ TEST(Normalizer, InvalidNorm) {
   RunTest(input, dims, output, "InvalidNormValue", OpTester::ExpectResult::kExpectFailure);
 }
 
+TEST(Normalizer, ScalarInputRejected) {
+  for (const char* const norm : {"MAX", "L1", "L2"}) {
+    RunTest<float>({1.0f}, {}, {0.0f}, norm,
+                   OpTester::ExpectResult::kExpectFailure,
+                   "must have rank 1 or 2");
+  }
+}
+
 }  // namespace test
 }  // namespace onnxruntime

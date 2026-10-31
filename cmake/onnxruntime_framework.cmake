@@ -36,7 +36,14 @@ elseif(onnxruntime_ENABLE_TRITON)
 endif()
 
 if (onnxruntime_MINIMAL_BUILD)
-  set(onnxruntime_framework_src_exclude)
+  set(onnxruntime_framework_src_exclude
+    "${ONNXRUNTIME_ROOT}/core/framework/kernel_pilot.h"
+    "${ONNXRUNTIME_ROOT}/core/framework/kernel_pilot.cc"
+    "${ONNXRUNTIME_ROOT}/core/framework/kernel_pilot_moe_expert_selection.h"
+    "${ONNXRUNTIME_ROOT}/core/framework/kernel_pilot_moe_expert_selection.cc"
+    "${ONNXRUNTIME_ROOT}/core/framework/kernel_pilot_moe_expert_state.h"
+    "${ONNXRUNTIME_ROOT}/core/framework/kernel_pilot_moe_expert_state.cc"
+  )
 
   # custom ops support must be explicitly enabled in a minimal build. exclude if not.
   if (NOT onnxruntime_MINIMAL_BUILD_CUSTOM_OPS)
@@ -63,7 +70,7 @@ endif()
 if(onnxruntime_ENABLE_INSTRUMENT)
   target_compile_definitions(onnxruntime_framework PRIVATE ONNXRUNTIME_ENABLE_INSTRUMENT)
 endif()
-if(onnxruntime_USE_TENSORRT OR onnxruntime_USE_NCCL OR onnxruntime_USE_NV)
+if(onnxruntime_USE_TENSORRT OR onnxruntime_USE_NCCL)
 # TODO: for now, core framework depends on CUDA. It should be moved to TensorRT EP
 # TODO: provider_bridge_ort.cc should not include nccl.h
 target_include_directories(onnxruntime_framework PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})

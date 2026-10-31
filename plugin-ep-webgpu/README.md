@@ -3,7 +3,8 @@
 Packaging sources for the ONNX Runtime WebGPU plugin Execution Provider (EP), distributed as a standalone artifact
 that plugs into an existing ONNX Runtime installation rather than being built into the main `onnxruntime` binary.
 
-For more information about plugin EPs, see the documentation [here](https://onnxruntime.ai/docs/execution-providers/plugin-ep-libraries/).
+For more information about plugin EPs, see the
+[plugin EP libraries documentation](https://onnxruntime.ai/docs/execution-providers/plugin-ep-libraries/).
 
 ## Contents
 
@@ -14,6 +15,8 @@ For more information about plugin EPs, see the documentation [here](https://onnx
   of truth shared by all packages built from this directory. The packages do not declare a hard dependency on a
   specific ONNX Runtime package; instead, this version string is injected into each package's README at build/pack
   time, and the native plugin EP code validates compatibility at registration time.
+- [`paths.txt`](paths.txt) — Specifies directories and paths that are related to the WebGPU EP. These paths are used to
+  filter the commits considered when identifying changes between releases, e.g., for generating release notes.
 - [`python/`](python/) — Sources and build script for the `onnxruntime-ep-webgpu` Python wheel. See
   [`python/README.md`](python/README.md) for build and test instructions.
 - [`csharp/`](csharp/) — Sources and packaging script for the `Microsoft.ML.OnnxRuntime.EP.WebGpu` NuGet package. See
@@ -24,17 +27,60 @@ For more information about plugin EPs, see the documentation [here](https://onnx
 The plugin EP is built as a shared library (`onnxruntime_providers_webgpu.{dll,so,dylib}`) by the main ONNX Runtime
 build (`--use_webgpu shared_lib`). The resulting binaries are then packaged into:
 
-- A Python wheel (`onnxruntime-ep-webgpu`), built from [`python/`](python/).
-- A NuGet package (`Microsoft.ML.OnnxRuntime.EP.WebGpu`), built from [`csharp/`](csharp/).
-- A universal package published to the internal ORT-Nightly feed for Windows (x64 / arm64), Linux x64, and macOS
-  arm64.
+- Per-platform Python wheels for `onnxruntime-ep-webgpu`, built from [`python/`](python/).
+- A multi-platform NuGet package `Microsoft.ML.OnnxRuntime.EP.WebGpu`, built from [`csharp/`](csharp/).
+- Per-platform zip packages for Foundry Local consumption.
 
-Packaging is driven by the `WebGPU Plugin EP Packaging Pipeline`
-([`tools/ci_build/github/azure-pipelines/plugin-webgpu-pipeline.yml`](../tools/ci_build/github/azure-pipelines/plugin-webgpu-pipeline.yml)),
-and post-build smoke tests run in the companion `WebGPU Plugin EP Test Pipeline`
-([`tools/ci_build/github/azure-pipelines/plugin-webgpu-test-pipeline.yml`](../tools/ci_build/github/azure-pipelines/plugin-webgpu-test-pipeline.yml)).
+On Windows, the packages also bundle the DirectX Shader Compiler runtime (`dxcompiler.dll`) from the
+[DXC GitHub releases](https://github.com/microsoft/DirectXShaderCompiler/releases); CI fetches it automatically.
+The Windows Python wheels, NuGet package, and Foundry Local zip packages produced by CI also bundle the pinned preview
+D3D12 Agility SDK runtime. See the [Agility SDK guidance](../docs/BuildWithDawnAgilitySDK.md) for Windows, driver, and
+Developer Mode prerequisites.
+
+Packaging is driven by the *WebGPU Plugin EP Packaging Pipeline*
+([`plugin-webgpu-pipeline.yml`](../tools/ci_build/github/azure-pipelines/plugin-webgpu-pipeline.yml)),
+and post-build smoke tests run in the companion *WebGPU Plugin EP Test Pipeline*
+([`plugin-webgpu-test-pipeline.yml`](../tools/ci_build/github/azure-pipelines/plugin-webgpu-test-pipeline.yml)).
+
+The packaging pipeline only uploads its outputs as Azure DevOps pipeline artifacts — it does not push to PyPI,
+nuget.org, or the ORT-Nightly feed. Publishing to public feeds is handled by separate release pipelines.
 
 ## Usage
+
+### Runtime compatibility and concurrency
+
+The minimum runtime is ORT 1.24.4. The default execution path depends on the host version:
+
+| ORT version | Execution path |
+| --- | --- |
+| 1.28.x starting at 1.28.3 | Concurrent independent Sessions |
+| 1.30.x starting at 1.30.1 | Concurrent independent Sessions |
+| 1.31 and later | Concurrent independent Sessions |
+| Other supported versions, including 1.29.x | Serialized compatibility |
+
+Both paths use Session-owned command recordings; there is no context-owned legacy recording.
+The serialized compatibility path requires serializing all WebGPU operations on the same device,
+including operations on different Sessions, I/O binding, Env copies, allocation, and Session
+creation/destruction. Use sequential graph execution. Multiple Sessions can be used in sequence;
+overlapping operations are unsupported and are not detected or serialized by the plugin.
+
+The concurrent path supports independent Sessions running concurrently. This does not
+permit overlapping I/O binding and Run on the same Session. Set `ORT_WEBGPU_EP_FORCE_LEGACY=1`
+before registering the plugin to test the serialized path on a host that supports concurrent
+Sessions. The existing override name is retained for compatibility. This process-wide override
+cannot enable concurrency on unsupported hosts.
+
+Both paths retain cached-buffer clearing and dispatch batching. The serial path does not submit
+after every kernel. Serialized-mode Session ordinary allocations submit cached-buffer clears outside
+Run and defer them during Run using `!IsRunActive()`. Kernels use ordinary Tensor allocation
+through that same Session allocator for temporary space, without requiring the host's kernel stream API.
+Under the serialized, non-reentrant calling contract, public allocations occur outside Run.
+Env allocations and concurrent-mode ordinary allocations continue to submit independent clears,
+including during Run; concurrent-mode scratch uses an explicit stream.
+Streamless copies in serialized mode submit the active Session's pending work before
+using their own independent recording.
+See the [execution design](../onnxruntime/core/providers/webgpu/ep/README.md)
+for the stream and allocator contracts.
 
 Once installed, the plugin EP is registered at runtime. Example in Python:
 
@@ -44,11 +90,25 @@ import onnxruntime_ep_webgpu as webgpu_ep
 
 ort.register_execution_provider_library("webgpu", webgpu_ep.get_library_path())
 
-devices = [d for d in ort.get_ep_devices() if d.ep_name == webgpu_ep.get_ep_name()]
+# The WebGPU EP currently accepts one EP device. Select a physical Dawn adapter independently.
+webgpu_ep_device = next((d for d in ort.get_ep_devices() if d.ep_name == webgpu_ep.get_ep_name()), None)
+if webgpu_ep_device is None:
+    raise RuntimeError("No WebGPU EP device found.")
+
 sess_options = ort.SessionOptions()
-sess_options.add_provider_for_devices(devices, {})
+sess_options.add_provider_for_devices(
+  [webgpu_ep_device],
+  {"adapterIndex": "0"},
+)
 session = ort.InferenceSession("model.onnx", sess_options=sess_options)
 ```
+
+`adapterIndex` is a zero-based index into Dawn's adapter enumeration for the requested backend, using the power
+preference as an ordering and selection hint.
+It selects a physical adapter; `deviceId` remains the ORT WebGPU context identifier and does not select a GPU.
+The default context owns one device per process, so use a separate process for each adapter, or supply a custom
+`webgpuInstance`/`webgpuDevice` pair for multiple devices in one process. Omit `adapterIndex` to retain Dawn's
+automatic adapter selection.
 
 See the user-facing package READMEs (bundled into the published packages) for full per-language usage:
 

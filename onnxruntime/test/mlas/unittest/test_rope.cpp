@@ -125,9 +125,14 @@ class RoPEShortExecuteTest : public MlasTestFixture<MlasRoPETest<T>> {
 };
 
 // Enable RoPE tests on platforms where RopeDispatch is assigned.
-#if defined(MLAS_TARGET_AMD64) || (defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV))
+#if defined(MLAS_TARGET_AMD64) || (defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV)) || defined(MLAS_TARGET_ARM64)
 static size_t RoPERegisterAllShortExecuteTests() {
-  return RoPEShortExecuteTest<float>::RegisterShortExecuteTests() + RoPEShortExecuteTest<MLFloat16>::RegisterShortExecuteTests();
+  size_t tests_registered = RoPEShortExecuteTest<float>::RegisterShortExecuteTests();
+  // fp16 RoPE on ARM64 already has dedicated coverage in test_rope_neon_fp16.cpp.
+#if defined(MLAS_TARGET_AMD64) || (defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV))
+  tests_registered += RoPEShortExecuteTest<MLFloat16>::RegisterShortExecuteTests();
+#endif
+  return tests_registered;
 }
 
 static UNUSED_VARIABLE bool added_to_main = AddTestRegister(

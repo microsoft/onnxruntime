@@ -4,12 +4,15 @@
 #include "manifest_parser.h"
 
 #include <algorithm>
+#include <array>
+#include <charconv>
 #include <cerrno>
 #include <cstring>
 #include <fstream>
 #include <set>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <system_error>
 
 #include "path_resolver.h"
@@ -55,7 +58,7 @@ constexpr const char* kDeviceKey = "device";
 constexpr const char* kCompatibilityStringKey = "compatibility_string";
 constexpr const char* kExecutorInfoKey = "executor_info";
 
-static const std::set<std::string> kManifestKnownKeys = {
+constexpr std::array<std::string_view, 8> kManifestKnownKeys = {
     kSchemaVersionKey,
     kPackageNameKey,
     kPackageVersionKey,
@@ -66,13 +69,13 @@ static const std::set<std::string> kManifestKnownKeys = {
     kAdditionalMetadataKey,
 };
 
-static const std::set<std::string> kComponentKnownKeys = {
+constexpr std::array<std::string_view, 3> kComponentKnownKeys = {
     kComponentNameKey,
     kVariantsKey,
     kAdditionalMetadataKey,
 };
 
-static const std::set<std::string> kVariantKnownKeys = {
+constexpr std::array<std::string_view, 6> kVariantKnownKeys = {
     kVariantDirectoryKey,
     kEpKey,
     kDeviceKey,
@@ -84,8 +87,9 @@ static const std::set<std::string> kVariantKnownKeys = {
 ModelPackageStatus* ReadFileToString(const fs::path& path, std::string* out) {
   std::ifstream f(path, std::ios::binary);
   if (!f) {
+    const std::error_code error_code(errno, std::generic_category());
     return MakeStatus(MODEL_PACKAGE_ERR_IO,
-                      "Cannot open file: '" + path.string() + "': " + std::strerror(errno));
+                      "Cannot open file: '" + path.u8string() + "': " + error_code.message());
   }
   std::ostringstream buf;
   buf << f.rdbuf();
@@ -96,11 +100,10 @@ ModelPackageStatus* ReadFileToString(const fs::path& path, std::string* out) {
 ModelPackageStatus* ParseJsonFile(const fs::path& path, ordered_json* out) {
   std::string contents;
   if (auto* s = ReadFileToString(path, &contents)) return s;
-  try {
-    *out = ordered_json::parse(contents);
-  } catch (const ordered_json::parse_error& e) {
+  *out = ordered_json::parse(contents, nullptr, false);
+  if (out->is_discarded()) {
     return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
-                      "Failed to parse JSON at '" + path.string() + "': " + e.what());
+                      "Failed to parse JSON at '" + path.u8string() + "'.");
   }
   return nullptr;
 }
@@ -112,13 +115,14 @@ ModelPackageStatus* ExpectObject(const ordered_json& j, const std::string& where
   return nullptr;
 }
 
+template <size_t N>
 ModelPackageStatus* CheckUnknownFields(const ordered_json& obj,
-                                       const std::set<std::string>& known,
+                                       const std::array<std::string_view, N>& known,
                                        const std::string& where,
                                        bool strict) {
   if (!strict) return nullptr;
   for (auto it = obj.begin(); it != obj.end(); ++it) {
-    if (known.find(it.key()) == known.end()) {
+    if (std::find(known.begin(), known.end(), std::string_view{it.key()}) == known.end()) {
       return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
                         where + ": unknown field '" + it.key() + "'.");
     }
@@ -244,7 +248,7 @@ ModelPackageStatus* ParseVariant(const fs::path& component_dir,
   out->resolved_directory = resolved_dir;
   out->resolved_directory_attempted = true;
   if (resolved_dir.has_value()) {
-    out->resolved_directory_cache = resolved_dir->string();
+    out->resolved_directory_cache = resolved_dir->u8string();
   }
 
   return nullptr;
@@ -311,7 +315,9 @@ ModelPackageStatus* LoadComponentForEntry(const fs::path& manifest_dir,
     std::error_code ec;
     if (fs::is_directory(resolved, ec)) {
       resolved /= kComponentFileName;
-      if (!fs::exists(resolved)) {
+      bool has_component = fs::exists(resolved, ec);
+      if (ec) return MakeStatus(MODEL_PACKAGE_ERR_IO, "component '" + name + "': " + ec.message());
+      if (!has_component) {
         return MakeStatus(MODEL_PACKAGE_ERR_NOT_FOUND,
                           "component '" + name + "': directory has no '" +
                               kComponentFileName + "'.");
@@ -381,15 +387,17 @@ ModelPackageStatus* LoadSharedAssets(ModelPackage* pkg, const PathResolverOption
   std::error_code ec;
   if (!pkg->package_root.empty() && fs::is_directory(assets_root, ec)) {
     std::vector<std::string> discovered;
-    for (const auto& entry : fs::directory_iterator(assets_root, ec)) {
-      if (ec) break;
+    std::error_code iter_ec;
+    for (fs::directory_iterator it(assets_root, iter_ec), end; !iter_ec && it != end; it.increment(iter_ec)) {
+      const auto& entry = *it;
       if (!entry.is_directory(ec)) continue;
-      std::string name = entry.path().filename().string();
+      std::string name = entry.path().filename().u8string();
       std::string uri = SharedAssetUriFromDirName(name);
       if (uri.empty()) continue;  // not a sha256-<hex> dir; ignore (.tmp staging, etc.)
       if (!seen.insert(uri).second) continue;
       discovered.push_back(std::move(uri));
     }
+    if (iter_ec) return MakeStatus(MODEL_PACKAGE_ERR_IO, "iterate '" + assets_root.u8string() + "': " + iter_ec.message());
     std::sort(discovered.begin(), discovered.end());
     for (auto& uri : discovered) ordered_uris.push_back(std::move(uri));
   }
@@ -421,7 +429,7 @@ ModelPackageStatus* LoadSharedAssets(ModelPackage* pkg, const PathResolverOption
       resolved = assets_root / DefaultSharedAssetDirName(uri);
     }
     rec->resolved_path = resolved;
-    rec->resolved_path_cache = resolved.string();
+    rec->resolved_path_cache = resolved.u8string();
     pkg->shared_asset_index_by_uri.emplace(uri, pkg->shared_assets.size());
     pkg->shared_assets.push_back(std::move(rec));
   }
@@ -446,12 +454,8 @@ ModelPackageStatus* ParseSchemaVersion(ModelPackage* pkg) {
     const std::string minor_str = (dot == std::string::npos) ? std::string("0") : sv.substr(dot + 1);
     auto parse_part = [](const std::string& s, int64_t* out) -> bool {
       if (s.empty() || s.find_first_not_of("0123456789") != std::string::npos) return false;
-      try {
-        *out = std::stoll(s);
-      } catch (const std::exception&) {
-        return false;
-      }
-      return true;
+      const auto [end, error] = std::from_chars(s.data(), s.data() + s.size(), *out);
+      return error == std::errc{} && end == s.data() + s.size();
     };
     if (dot != std::string::npos && minor_str.find('.') != std::string::npos) {
       return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
@@ -619,18 +623,15 @@ ModelPackageStatus* ResolveExecutorInfoEntry(const ModelPackage* pkg,
         return nullptr;
       }
       return MakeStatus(MODEL_PACKAGE_ERR_IO,
-                        "Cannot open executor_info file: '" + resolved.string() + "'.");
+                        "Cannot open executor_info file: '" + resolved.u8string() + "'.");
     }
     std::ostringstream buf;
     buf << f.rdbuf();
     std::string contents = buf.str();
-    try {
-      auto _ = ordered_json::parse(contents);
-      (void)_;
-    } catch (const std::exception& e) {
+    if (ordered_json::parse(contents, nullptr, false).is_discarded()) {
       return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
                         std::string("Failed to parse executor_info JSON at '") +
-                            resolved.string() + "': " + e.what());
+                            resolved.u8string() + "'.");
     }
     *dst_json = std::move(contents);
     return nullptr;
@@ -669,7 +670,7 @@ ModelPackageStatus* ParsePackage(const fs::path& package_root,
   std::error_code ec;
   if (!fs::exists(package_root, ec) || !fs::is_directory(package_root, ec)) {
     return MakeStatus(MODEL_PACKAGE_ERR_IO,
-                      "package_root '" + package_root.string() + "' is not a directory.");
+                      "package_root '" + package_root.u8string() + "' is not a directory.");
   }
   pkg->package_root = fs::canonical(package_root, ec);
   if (ec) pkg->package_root = package_root;

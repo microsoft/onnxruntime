@@ -121,6 +121,12 @@ class PrepackedWeightsForGraph {
                                                                const std::string& key,
                                                                const PrePackedWeights& refer_to_if_absent);
 
+  // Discards any existing entry. In save mode, replaces it with a non-owning reference to refer_to;
+  // otherwise, removes it from the container.
+  void DiscardAndReplaceWithReferenceIfSaving(const std::string& weight_name,
+                                              const std::string& key,
+                                              const PrePackedWeights& refer_to);
+
   bool IsSaveModeOn() const noexcept {
     return save_mode_on_;
   }

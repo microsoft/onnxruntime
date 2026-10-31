@@ -15,7 +15,16 @@
      const char *error = reinterpret_cast<const char *>(dlerror());
      if (!handle || error) {
          // If opening the library fails, throw an exception with the error message
-@@ -85,13 +92,22 @@
+@@ -82,5 +89,8 @@
+      if (user_lib) {
+           if (user_lib[0] != '\0') {
++#ifdef _WIN32
++            SetLastError(0);
++#endif
+                HMODULE handle    = dlopen(user_lib, RTLD_NOW);
+                const char *error = reinterpret_cast<const char *>(dlerror());
+                if (!handle || error) {
+@@ -85,13 +95,22 @@
      dlerror();
  
      // List of potential libcudart libraries (Adding major version to support python package)

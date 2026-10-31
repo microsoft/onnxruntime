@@ -6,6 +6,7 @@
 #include "core/common/common.h"
 #include "core/graph/graph.h"
 #include "core/framework/fuse_nodes_funcs.h"
+#include "core/framework/resource_accountant.h"
 #include "core/framework/transform_layout_functions.h"
 #include "core/optimizer/graph_optimizer_registry.h"
 
@@ -57,6 +58,13 @@ class GraphPartitioner {
   }
 
   // Run partitioning.
+  //
+  // Output-model serialization (only when ep_context_gen_options is enabled, e.g. via the Compile API): if
+  // a compiling EP produced EPContext nodes, that model is serialized here at the end of partition.
+  // Otherwise, for a compile-only session (the Compile API with no compiled nodes), the plain optimized
+  // graph is emitted by InferenceSession (not here) at a point chosen by the optimization level - before
+  // the Level2+ loop for < Level2, or after all transforms for >= Level2 (to capture the L2-L4 fusions).
+  // Callers distinguish via AnyEpContextNodesProduced().
   Status Partition(Graph& graph, FuncManager& func_mgr,
                    const layout_transformation::TransformLayoutFunction& transform_layout_function,
                    const ConfigOptions& config_options,
@@ -64,7 +72,14 @@ class GraphPartitioner {
                    LayeringIndex* layering_index,
                    Mode mode = Mode::kNormal,
                    const epctx::ModelGenOptions& ep_context_gen_options = {},
-                   const layout_transformation::DebugGraphFn& debug_graph_fn = {}) const;
+                   bool ep_context_data_read_callback_registered = false,
+                   const layout_transformation::DebugGraphFn& debug_graph_fn = {},
+                   WorkspaceReservationMap* workspace_reservations = nullptr) const;
+
+#ifndef ORT_MINIMAL_BUILD
+  // Returns true if any execution provider produced EPContext (compiled) nodes during partitioning.
+  bool AnyEpContextNodesProduced() const;
+#endif
 
   bool IsLoadCancellationFlagSet() const {
     return check_load_cancellation_fn_ && check_load_cancellation_fn_();
@@ -84,12 +99,16 @@ class GraphPartitioner {
   /// <param name="model">model instance</param>
   /// <param name="execution_providers">execution providers considered</param>
   /// <param name="kernel_registry_manager">registry manager</param>
+  /// <param name="config_options">session config options</param>
   /// <param name="logger">session logger</param>
+  /// <param name="registered_ep_context_data_callbacks">READ/WRITE flags for the session's registered callbacks</param>
   /// <returns></returns>
   Status InlineFunctionsAOT(Model& model,
                             const ExecutionProviders& execution_providers,
                             const KernelRegistryManager& kernel_registry_manager,
-                            const logging::Logger& logger) const;
+                            const ConfigOptions& config_options,
+                            const logging::Logger& logger,
+                            uint32_t registered_ep_context_data_callbacks) const;
 #endif
 
  private:
@@ -100,6 +119,14 @@ class GraphPartitioner {
   std::unique_ptr<GraphOptimizerRegistry> graph_optimizer_registry_;
   CheckLoadCancellationFn check_load_cancellation_fn_;
   OnPartitionAssignmentFunction on_partition_assignment_fn_;
+#ifndef ORT_MINIMAL_BUILD
+  // Shared by AOT and fallback inlining so neither path can bypass the cumulative limit.
+  mutable bool function_expansion_limits_initialized_ = false;
+  mutable size_t function_expansion_node_limit_ = 0;
+  mutable size_t function_expansion_byte_limit_ = 0;
+  mutable size_t expanded_function_node_count_ = 0;
+  mutable size_t expanded_function_proto_bytes_ = 0;
+#endif
 };
 
 }  // namespace onnxruntime

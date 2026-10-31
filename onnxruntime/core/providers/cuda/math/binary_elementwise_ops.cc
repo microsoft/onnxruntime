@@ -292,6 +292,14 @@ BINARY_OP_REGISTER_VERSIONED_CLASS_HFD(Pow, Pow_7, 7, 11)
 BINARY_LOGICALOP_TYPED(And, 7, bool)
 BINARY_LOGICALOP_TYPED(Or, 7, bool)
 BINARY_LOGICALOP_TYPED(Xor, 7, bool)
+BINARY_OP_TYPED(BitwiseXor, 18, uint8_t)
+BINARY_OP_TYPED(BitwiseXor, 18, uint16_t)
+BINARY_OP_TYPED(BitwiseXor, 18, uint32_t)
+BINARY_OP_TYPED(BitwiseXor, 18, uint64_t)
+BINARY_OP_TYPED(BitwiseXor, 18, int8_t)
+BINARY_OP_TYPED(BitwiseXor, 18, int16_t)
+BINARY_OP_TYPED(BitwiseXor, 18, int32_t)
+BINARY_OP_TYPED(BitwiseXor, 18, int64_t)
 BINARY_OP_VERSIONED_HFD(PRelu, 7, 8)
 BINARY_OP_VERSIONED_HFD(PRelu, 9, 15)
 // Opset-16 adds BFloat16 to allowed types for the PRelu operator
@@ -467,7 +475,14 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
                         BuildKernelDefConstraints<int32_t, int64_t, uint32_t, uint64_t, float, double, MLFloat16>()),
     Mod);
 
-ONNX_OPERATOR_KERNEL_EX(Mod, kOnnxDomain, 13, kCudaExecutionProvider,
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Mod, kOnnxDomain, 13, 27, kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", BuildKernelDefConstraints<int32_t, int64_t, uint32_t, uint64_t, float, double, MLFloat16,
+                                                       BFloat16>()),
+    Mod);
+
+ONNX_OPERATOR_KERNEL_EX(Mod, kOnnxDomain, 28, kCudaExecutionProvider,
                         (*KernelDefBuilder::Create())
                             .TypeConstraint("T", BuildKernelDefConstraints<int32_t, int64_t, uint32_t, uint64_t, float,
                                                                            double, MLFloat16, BFloat16>()),
@@ -478,10 +493,10 @@ Status Mod::ComputeInternal(OpKernelContext* context) const {
   BinaryElementwisePreparation prepare;
   ORT_RETURN_IF_ERROR(Prepare(context, &prepare));
   auto element_type = prepare.lhs_tensor->GetElementType();
-  ORT_ENFORCE(fmod_ || element_type == on::TensorProto_DataType_INT32 ||
+  ORT_ENFORCE(fmod_ || supports_float_floor_mod_ || element_type == on::TensorProto_DataType_INT32 ||
                   element_type == on::TensorProto_DataType_INT64 || element_type == on::TensorProto_DataType_UINT32 ||
                   element_type == on::TensorProto_DataType_UINT64,
-              "Non-fmod can support integer types only.");
+              "Non-fmod Mod supports floating-point types only starting in opset 28 (set fmod=1 for older opsets).");
 #define CASE_MOD_ELEMENT_TYPE(name, onnx_type, data_type)                                                           \
   case onnx_type: {                                                                                                 \
     Impl_##name<typename ToCudaType<data_type>::MappedType>(                                                        \
@@ -514,6 +529,10 @@ Status Mod::ComputeInternal(OpKernelContext* context) const {
       CASE_MOD_ELEMENT_TYPE(Mod, on::TensorProto_DataType_INT64, int64_t);
       CASE_MOD_ELEMENT_TYPE(Mod, on::TensorProto_DataType_UINT32, uint32_t);
       CASE_MOD_ELEMENT_TYPE(Mod, on::TensorProto_DataType_UINT64, uint64_t);
+      CASE_MOD_ELEMENT_TYPE(Mod, on::TensorProto_DataType_FLOAT, float);
+      CASE_MOD_ELEMENT_TYPE(Mod, on::TensorProto_DataType_DOUBLE, double);
+      CASE_MOD_ELEMENT_TYPE(Mod, on::TensorProto_DataType_FLOAT16, MLFloat16);
+      CASE_MOD_ELEMENT_TYPE(Mod, on::TensorProto_DataType_BFLOAT16, BFloat16);
       default:
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "Unsupported element type: ", DataTypeImpl::ToString(prepare.lhs_tensor->DataType()));

@@ -228,6 +228,7 @@ Status BiasSkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int grap
     // Snapshot attributes and execution provider type from the original SLN node.
     const NodeAttributes sln_attrs = sln_node.GetAttributes();
     const std::string sln_ep = sln_node.GetExecutionProviderType();
+    const std::array source_node_indices{p_add->Index(), sln_node.Index()};
 
     // Capture outgoing edges from the original SLN node BEFORE removing any nodes.
     // RemoveNodeOutputEdges clears the edge list, so this must precede removal to
@@ -242,9 +243,9 @@ Status BiasSkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int grap
     // Remove the original Add and SkipLayerNormalization nodes (and their output edges)
     // before adding the fused node to maintain the single-producer invariant for NodeArgs.
     graph_utils::RemoveNodeOutputEdges(graph, *p_add);
-    graph.RemoveNode(p_add->Index());
+    graph.RemoveNode(source_node_indices[0]);
     graph_utils::RemoveNodeOutputEdges(graph, sln_node);
-    graph.RemoveNode(sln_node.Index());
+    graph.RemoveNode(source_node_indices[1]);
 
     // The fused 5-input SkipLayerNormalization:
     //   input[0] = original SLN input[0] (unless the bias-Add was at SLN input[0])
@@ -280,6 +281,7 @@ Status BiasSkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int grap
     }
 
     new_sln_node.SetExecutionProviderType(sln_ep);
+    graph.NotifyNodeReplacement(source_node_indices, new_sln_node.Index());
 
     // Rewire all downstream consumers from the original SLN node to the new fused node.
     for (const auto& edge_info : sln_output_edges) {

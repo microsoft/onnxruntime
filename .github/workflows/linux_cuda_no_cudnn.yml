@@ -5,10 +5,15 @@ on:
     branches: [main, 'rel-*']
     paths:
       - '.github/workflows/linux_cuda_no_cudnn.yml'
+      - 'cmake/onnxruntime_cuda_cccl.cmake'
       - 'cmake/onnxruntime_providers_cuda.cmake'
       - 'cmake/onnxruntime_python.cmake'
       - 'onnxruntime/__init__.py'
       - 'onnxruntime/core/providers/cuda/**'
+      - 'onnxruntime/contrib_ops/cuda/quantization/matmul_nbits*'
+      - 'onnxruntime/test/providers/cuda/test_cases/matmul_nbits*'
+      - 'onnxruntime/test/providers/cuda/test_cases/cuda_test_bridge.*'
+      - 'include/onnxruntime/core/framework/level1_memory_estimate.h'
   workflow_dispatch:
 
 concurrency:
@@ -26,7 +31,7 @@ jobs:
     name: Build Linux CUDA x64 Release without cuDNN link
     uses: ./.github/workflows/reusable_linux_build.yml
     with:
-      pool_name: "onnxruntime-github-Ubuntu2204-AMD-CPU"
+      pool_name: "ort-github-linux-16-amd-wcus-ss"
       build_config: Release
       architecture: x64
       dockerfile_path: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
@@ -45,6 +50,7 @@ jobs:
         --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON
         --cmake_extra_defines onnxruntime_QUICK_BUILD=ON
         --cmake_extra_defines onnxruntime_USE_FPA_INTB_GEMM=OFF
+        --cmake_extra_defines onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON
       python_path_prefix: 'PATH=/opt/python/cp312-cp312/bin:$PATH'
       run_tests: false
       upload_build_output: true
@@ -56,20 +62,16 @@ jobs:
   smoke-linux-cuda-no-cudnn-x64-release:
     name: Smoke Linux CUDA x64 Release without cuDNN runtime use
     needs: build-linux-cuda-no-cudnn-x64-release
-    runs-on:
-      - self-hosted
-      - "1ES.Pool=onnxruntime-github-linux-a10"
-      - "1ES.ImageOverride=onnxruntime-ubuntu2204-CUDA-A10-Test"
-      - "JobId=smoke-linux-cuda-no-cudnn-x64-release-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+    runs-on: [ort-github-linux-6-a10-scus-ss]
     timeout-minutes: 210
     permissions:
       contents: read
       packages: read
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: microsoft/onnxruntime-github-actions/build-docker-image@8bad63a3c05d448311dfa8e5f531171c97471aa1
+      - uses: microsoft/onnxruntime-github-actions/build-docker-image@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
         id: build_docker_image_step
         with:
           dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
@@ -81,7 +83,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download Build Artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: build-output-x64-Release
           path: ${{ runner.temp }}/Release
@@ -96,6 +98,22 @@ jobs:
               fi
             done < perms.txt
           fi
+
+      - name: Run legacy MatMulNBits workspace tests with fpA disabled
+        run: |
+          docker run --rm --gpus all \
+            -v "${{ runner.temp }}/Release:/build/Release" \
+            "${{ steps.build_docker_image_step.outputs.full-image-name }}" \
+            bash -lc 'set -euo pipefail
+          cd /build/Release/Release
+          export LD_LIBRARY_PATH=/usr/local/cuda-13.0/lib64:${LD_LIBRARY_PATH:-}
+          GTEST_FILTER=MatMulNBitsWorkspace.* GTEST_COLOR=no \
+            ./onnxruntime_provider_test --gtest_filter=CUDA_EP_Unittest.All | tee /tmp/matmul_nbits_legacy.log
+          for test in LegacyWorkspacePlanMatchesRuntimeChunkPolicy \
+                      LegacyLevel1EstimateRemainsAvailableWithoutFpA \
+                      GetCapabilityBudgetChargesLegacyDequantWorkspace; do
+            grep -F "[       OK ] MatMulNBitsWorkspace.$test " /tmp/matmul_nbits_legacy.log
+          done'
 
       - name: Verify CUDA provider has no direct cuDNN or cuFFT dependency
         run: |

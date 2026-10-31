@@ -22,8 +22,8 @@
 
 struct SpecDecParams {
   uint32_t qSeqLen;
-  uint32_t const* qCuSeqLens;  // [nbReq + 1]
-  MaskType const* mask;        // [nbReq][qSeqLen][divUp(qSeqLen, 32)] or [qCuSeqLen[nbReq]][divUp(qSeqLen, 32)]
+  const uint32_t* qCuSeqLens;  // [nbReq + 1]
+  const MaskType* mask;        // [nbReq][qSeqLen][divUp(qSeqLen, 32)] or [qCuSeqLen[nbReq]][divUp(qSeqLen, 32)]
 };
 
 #endif

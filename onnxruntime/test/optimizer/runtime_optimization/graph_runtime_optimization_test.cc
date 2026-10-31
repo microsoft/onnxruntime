@@ -17,6 +17,7 @@
 #include "core/flatbuffers/schema/ort.fbs.h"
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/kernel_registry.h"
+#include "core/framework/resource_accountant.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/model.h"
 #include "core/optimizer/graph_transformer_mgr.h"
@@ -169,6 +170,48 @@ TEST(GraphRuntimeOptimizationTest, SaveRuntimeOptimizationToOrtFormat) {
   }
 }
 
+TEST(GraphRuntimeOptimizationTest, ReplaceWithNewTransfersWorkspaceReservations) {
+  const auto logger = DefaultLoggingManager().CreateLogger("graph_runtime_optimization_test");
+  const auto model_path = ORT_TSTR("testdata/transform/runtime_optimization/add_with_surrounding_identities.onnx");
+
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_path, model, nullptr, *logger));
+
+  Graph& graph = model->MainGraph();
+  for (auto& node : graph.Nodes()) {
+    node.SetExecutionProviderType(kCpuExecutionProvider);
+  }
+
+  NodeWorkspaceReservationMap reservations;
+  for (const auto& node : graph.Nodes()) {
+    reservations.insert_or_assign(
+        node.Index(), WorkspaceEstimateSelection{size_t{10}, WorkspaceEstimateSource::kEstimator});
+  }
+
+  InlinedVector<NodeIndex> replaced_node_indices;
+  NodeIndex replacement_node_index = 0;
+  graph.SetNodeReplacementCallback(
+      [&reservations, &replaced_node_indices, &replacement_node_index](
+          const Graph&, gsl::span<const NodeIndex> source_node_indices, NodeIndex destination_node_index) {
+        replaced_node_indices.assign(source_node_indices.begin(), source_node_indices.end());
+        replacement_node_index = destination_node_index;
+        ConsolidateWorkspaceReservations(reservations, source_node_indices, destination_node_index);
+      });
+
+  auto test_transformer = std::make_unique<sat::TestTransformer>(SatApplyContextVariant{});
+  auto transformer_manager = GraphTransformerManager{/* steps */ 5};
+  ASSERT_STATUS_OK(transformer_manager.Register(std::move(test_transformer), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(transformer_manager.ApplyTransformers(graph, TransformerLevel::Level1, *logger));
+  graph.SetNodeReplacementCallback({});
+
+  ASSERT_FALSE(replaced_node_indices.empty());
+  ASSERT_NE(graph.GetNode(replacement_node_index), nullptr);
+  EXPECT_EQ(reservations.at(replacement_node_index).bytes, replaced_node_indices.size() * size_t{10});
+  for (NodeIndex node_index : replaced_node_indices) {
+    EXPECT_EQ(reservations.count(node_index), size_t{0});
+  }
+}
+
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 #if !defined(DISABLE_CONTRIB_OPS)
@@ -234,6 +277,8 @@ void SaveAndLoadRuntimeOptimizationsForModel(
     {
       SessionOptions so{};
       ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigLoadModelFormat, "ORT"));
+      ASSERT_STATUS_OK(
+          so.config_options.AddConfigEntry(kOrtSessionOptionsConfigEnableSavedRuntimeOptimizations, "1"));
       so.graph_optimization_level = TransformerLevel::Level2;
 
       ASSERT_NO_FATAL_FAILURE(LoadAndInitializeSession(
@@ -256,6 +301,8 @@ void CheckNhwcTransformerIsApplied(const PathString& ort_model_path,
   // load and replay runtime optimizations
   SessionOptions so{};
   ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigLoadModelFormat, "ORT"));
+  ASSERT_STATUS_OK(
+      so.config_options.AddConfigEntry(kOrtSessionOptionsConfigEnableSavedRuntimeOptimizations, "1"));
   so.graph_optimization_level = TransformerLevel::Level3;
 
   GraphCheckerFn graph_checker = [](const Graph& graph) {
@@ -325,6 +372,19 @@ void CheckFreeDimensionOverrideIsApplied(const PathString& model_path,
 };
 #endif  // !defined(ORT_MINIMAL_BUILD)
 }  // namespace
+
+TEST(GraphRuntimeOptimizationTest, SavedRuntimeOptimizationsDisabledByDefault) {
+  SessionOptions so{};
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigLoadModelFormat, "ORT"));
+  so.graph_optimization_level = TransformerLevel::Level2;
+
+  ASSERT_NO_FATAL_FAILURE(LoadAndInitializeSession(
+      so,
+      ORT_TSTR("testdata/transform/runtime_optimization/qdq_convs.runtime_optimizations.ort"),
+      [](const OpCountMap& loaded_ops, const OpCountMap& initialized_ops) {
+        EXPECT_EQ(initialized_ops, loaded_ops);
+      }));
+}
 
 TEST(GraphRuntimeOptimizationTest, QDQConv) {
   SaveAndLoadRuntimeOptimizationsForModel(

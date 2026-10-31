@@ -200,6 +200,13 @@ class Xor final : public BinaryElementwise<ShouldBroadcast> {
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
+template <typename T>
+class BitwiseXor final : public BinaryElementwise<ShouldBroadcast> {
+ public:
+  BitwiseXor(const OpKernelInfo& info) : BinaryElementwise(info) {}
+  Status ComputeInternal(OpKernelContext* context) const override;
+};
+
 // PRelu is activation function, but it's closer to binary elementwise ops in implementation
 template <typename T>
 class PRelu final : public BinaryElementwise<ShouldBroadcast> {
@@ -221,11 +228,13 @@ class Mod final : public BinaryElementwise<ShouldBroadcast> {
   Mod(const OpKernelInfo& info) : BinaryElementwise(info) {
     int64_t fmod = info.GetAttrOrDefault<int64_t>("fmod", 0LL);
     fmod_ = fmod != 0;
+    supports_float_floor_mod_ = info.node().SinceVersion() >= 28;
   }
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
   bool fmod_{false};
+  bool supports_float_floor_mod_{false};
 };
 
 template <typename T, typename CudaT>

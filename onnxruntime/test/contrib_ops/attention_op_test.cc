@@ -1,16 +1,262 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <functional>
+#include <limits>
+
 #include "gtest/gtest.h"
+#include "core/graph/model.h"
+#include "core/session/inference_session.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/test_environment.h"
+#include "test/util/include/scoped_env_vars.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "test/contrib_ops/attention_op_test_helper.h"
 
 namespace onnxruntime {
 using contrib::AttentionMaskType;
 namespace test {
+
+namespace {
+
+struct AttentionProjectionCase {
+  std::vector<int64_t> hidden_sizes;
+  int64_t width;
+  const char* expected_error;
+};
+
+InlinedVector<AttentionProjectionCase> InvalidAttentionProjections() {
+  constexpr int64_t max = (std::numeric_limits<int64_t>::max)();
+  return {{{4}, 12, "qkv_hidden_sizes attribute should have 3 elements"},
+          {{4, 4}, 12, "qkv_hidden_sizes attribute should have 3 elements"},
+          {{4, 4, 4, 4}, 12, "qkv_hidden_sizes attribute should have 3 elements"},
+          {{8, 8, 8}, 12, "same length as sum of Q/K/V hidden sizes"},
+          {{2, 2, 4}, 12, "same length as sum of Q/K/V hidden sizes"},
+          {{2, 4, 6}, 12, "first element should be same as the second"},
+          {{3, 3, 6}, 12, "hidden_size should be divisible by num_heads"},
+          {{-2, -2, 16}, 12, "qkv_hidden_sizes values should be positive"},
+          {{8, 8, -4}, 12, "qkv_hidden_sizes values should be positive"},
+          {{0, 0, 12}, 12, "qkv_hidden_sizes values should be positive"},
+          {{4, 4, 0}, 8, "qkv_hidden_sizes values should be positive"},
+          {{max - 1, max - 1, 4}, 12, "hidden sizes must be in [1, INT_MAX]"},
+          {{}, 13, "must be a multiple of 3"},
+          {{}, 0, "hidden sizes must be in [1, INT_MAX]"}};
+}
+
+void SetUpAttentionProjectionTest(OpTester& tester, const AttentionProjectionCase& test_case, bool constant_weights) {
+  // Leave input shapes unknown so these cases reach kernel validation, not ONNX shape inference.
+  tester.AddShapeToTensorData(false);
+  tester.AddAttribute<int64_t>("num_heads", 2);
+  if (!test_case.hidden_sizes.empty()) {
+    tester.AddAttribute<std::vector<int64_t>>("qkv_hidden_sizes", test_case.hidden_sizes);
+  }
+  tester.AddInput<float>("input", {1, 1, 4}, std::vector<float>(4, 1.0f));
+  tester.AddInput<float>("weights", {4, test_case.width},
+                         std::vector<float>(narrow<size_t>(4 * test_case.width), 1.0f), constant_weights);
+  tester.AddInput<float>("bias", {test_case.width}, std::vector<float>(narrow<size_t>(test_case.width), 0.0f));
+  tester.AddOutput<float>("output", {1, 1, 4}, std::vector<float>(4, 0.0f));
+}
+
+using AttentionEpFactory = std::function<std::unique_ptr<IExecutionProvider>()>;
+
+void RunAttentionProjectionFailures(const AttentionEpFactory& create_ep) {
+  for (bool constant_weights : {false, true}) {
+    for (const auto& test_case : InvalidAttentionProjections()) {
+      SCOPED_TRACE(MakeString("constant_weights=", constant_weights, " width=", test_case.width,
+                              " error=", test_case.expected_error));
+      OpTester tester("Attention", 1, kMSDomain);
+      SetUpAttentionProjectionTest(tester, test_case, constant_weights);
+      SessionOptions options;
+      ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigDisablePrepacking, "1"));
+      tester.Config(options)
+          .Config(OpTester::ExpectResult::kExpectFailure, test_case.expected_error)
+          .ConfigEp(create_ep())
+          .RunWithConfig();
+    }
+  }
+}
+
+void RunAttentionWeightRankFailures(const AttentionEpFactory& create_ep) {
+  for (const std::vector<int64_t>& dims : {std::vector<int64_t>{}, {12}, {1, 4, 12}}) {
+    for (bool constant_weights : {false, true}) {
+      SCOPED_TRACE(MakeString("rank=", dims.size(), " constant_weights=", constant_weights));
+      OpTester tester("Attention", 1, kMSDomain);
+      tester.AddShapeToTensorData(false);
+      tester.AddAttribute<int64_t>("num_heads", 2);
+      tester.AddInput<float>("input", {1, 1, 4}, std::vector<float>(4, 1.0f));
+      tester.AddInput<float>("weights", dims,
+                             std::vector<float>(narrow<size_t>(TensorShape(dims).Size()), 1.0f), constant_weights);
+      tester.AddInput<float>("bias", {12}, std::vector<float>(12, 0.0f));
+      tester.AddOutput<float>("output", {1, 1, 4}, std::vector<float>(4, 0.0f));
+      tester.Config(OpTester::ExpectResult::kExpectFailure, "Input 'weights' is expected to have 2 dimensions")
+          .ConfigEp(create_ep())
+          .RunWithConfig();
+    }
+  }
+}
+
+void RunAttentionProjectionLimitTest(const AttentionEpFactory& create_ep) {
+  OpTester tester("Attention", 1, kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", 1);
+  tester.AddAttribute<std::vector<int64_t>>("qkv_hidden_sizes", {32768, 32768, 3});
+  tester.AddInput<float>("input", {1, 65536, 1}, std::vector<float>(65536, 1.0f));
+  tester.AddInput<float>("weights", {1, 65539}, std::vector<float>(65539, 1.0f));
+  tester.AddInput<float>("bias", {65539}, std::vector<float>(65539, 0.0f));
+  tester.AddOutput<float>("output", {1, 65536, 3}, std::vector<float>(65536 * 3, 0.0f));
+  tester.Config(OpTester::ExpectResult::kExpectFailure, "Attention projection size exceeds the supported range")
+      .ConfigEp(create_ep())
+      .RunWithConfig();
+}
+
+#ifndef ENABLE_TRAINING
+class AttentionInitializationTester : public OpTester {
+ public:
+  AttentionInitializationTester() : OpTester("Attention", 1, kMSDomain) {}
+
+  void ExpectInitializationFailure(const char* expected_error) {
+    SetTestFunctionCalled();
+    auto& model = BuildModel();
+    ASSERT_STATUS_OK(model.MainGraph().Resolve());
+    const std::string model_bytes = model.ToProto().SerializeAsString();
+    InferenceSession session(SessionOptions{}, GetEnvironment());
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultCpuExecutionProvider()));
+    ASSERT_STATUS_OK(session.Load(model_bytes.data(), narrow<int>(model_bytes.size())));
+    const auto status = session.Initialize();
+    EXPECT_FALSE(status.IsOK());
+    EXPECT_NE(status.ErrorMessage().find(expected_error), std::string::npos) << status.ErrorMessage();
+  }
+};
+#endif
+
+}  // namespace
+
+TEST(ContribOpAttentionTest, InvalidProjectionSizesCPU) {
+  RunAttentionProjectionFailures([] { return DefaultCpuExecutionProvider(); });
+}
+
+TEST(ContribOpAttentionTest, InvalidWeightsRankCPU) {
+  RunAttentionWeightRankFailures([] { return DefaultCpuExecutionProvider(); });
+}
+
+TEST(ContribOpAttentionTest, ProjectionSizeLimitCPU) {
+  RunAttentionProjectionLimitTest([] { return DefaultCpuExecutionProvider(); });
+}
+
+#ifndef ENABLE_TRAINING
+// Full training builds disable prepacking. Other EPs do not use the CPU Attention prepacker.
+TEST(ContribOpAttentionTest, InvalidProjectionSizesDuringPrepack) {
+  for (const auto& test_case : InvalidAttentionProjections()) {
+    SCOPED_TRACE(MakeString("width=", test_case.width, " error=", test_case.expected_error));
+    AttentionInitializationTester tester;
+    SetUpAttentionProjectionTest(tester, test_case, true);
+    tester.ExpectInitializationFailure(test_case.expected_error);
+  }
+}
+#endif
+
+// These EPs share AttentionBase validation. DirectML and JSEP use independent validation paths.
+#ifdef USE_CUDA
+TEST(ContribOpAttentionTest, InvalidProjectionSizesCUDA) {
+  if (!HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "CUDA is unavailable.";
+  }
+  RunAttentionProjectionFailures([] { return DefaultCudaExecutionProvider(); });
+}
+
+TEST(ContribOpAttentionTest, InvalidWeightsRankCUDA) {
+  if (!HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "CUDA is unavailable.";
+  }
+  RunAttentionWeightRankFailures([] { return DefaultCudaExecutionProvider(); });
+}
+
+TEST(ContribOpAttentionTest, ProjectionSizeLimitCUDA) {
+  if (!HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "CUDA is unavailable.";
+  }
+  RunAttentionProjectionLimitTest([] { return DefaultCudaExecutionProvider(); });
+}
+
+// CPU and WebGPU Attention do not support this shared-cache route.
+TEST(ContribOpAttentionTest, InvalidSharedCacheSequenceLengthCUDA) {
+  if (!HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "CUDA is unavailable.";
+  }
+  for (int32_t past_length : {-1, 2, 3}) {
+    SCOPED_TRACE(past_length);
+    OpTester tester("Attention", 1, kMSDomain);
+    tester.AddAttribute<int64_t>("num_heads", 1);
+    tester.AddAttribute<int64_t>("past_present_share_buffer", 1);
+    tester.AddInput<float>("input", {1, 1, 4}, std::vector<float>(4, 1.0f));
+    tester.AddInput<float>("weights", {4, 12}, std::vector<float>(48, 1.0f));
+    tester.AddInput<float>("bias", {12}, std::vector<float>(12, 0.0f));
+    tester.AddOptionalInputEdge<int32_t>();
+    tester.AddInput<float>("past", {2, 1, 1, 2, 4}, std::vector<float>(16, 0.0f));
+    tester.AddOptionalInputEdge<float>();
+    tester.AddInput<int32_t>("past_sequence_length", {}, {past_length});
+    tester.AddOutput<float>("output", {1, 1, 4}, std::vector<float>(4, 0.0f));
+    tester.AddOutput<float>("present", {2, 1, 1, 2, 4}, std::vector<float>(16, 0.0f));
+    tester.Config(OpTester::ExpectResult::kExpectFailure,
+                  past_length < 0 ? "past_sequence_length must be in [0, INT_MAX]"
+                                  : "must not exceed past cache capacity")
+        .ConfigEp(DefaultCudaExecutionProvider())
+        .RunWithConfig();
+  }
+}
+#endif
+
+TEST(ContribOpAttentionTest, InvalidProjectionSizesWebGPU) {
+  if (DefaultWebGpuExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "WebGPU is unavailable.";
+  }
+  RunAttentionProjectionFailures([] { return DefaultWebGpuExecutionProvider(); });
+}
+
+TEST(ContribOpAttentionTest, InvalidWeightsRankWebGPU) {
+  if (DefaultWebGpuExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "WebGPU is unavailable.";
+  }
+  RunAttentionWeightRankFailures([] { return DefaultWebGpuExecutionProvider(); });
+}
+
+TEST(ContribOpAttentionTest, OptionalBiasCPU) {
+  for (bool constant_weights : {false, true}) {
+    SCOPED_TRACE(constant_weights);
+    OpTester tester("Attention", 1, kMSDomain);
+    tester.AddAttribute<int64_t>("num_heads", 2);
+    tester.AddAttribute<std::vector<int64_t>>("qkv_hidden_sizes", {2, 2, 4});
+    tester.AddInput<float>("input", {1, 1, 3}, {1.0f, 2.0f, 3.0f});
+    tester.AddInput<float>("weights", {3, 8}, std::vector<float>(24, 1.0f), constant_weights);
+    tester.AddOptionalInputEdge<float>();
+    tester.AddOutput<float>("output", {1, 1, 4}, std::vector<float>(4, 6.0f));
+    tester.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+  }
+}
+
+// CUDA GEMM requires a positive leading dimension, so exercise empty input projections only on CPU.
+TEST(ContribOpAttentionTest, ZeroInputHiddenSizeCPU) {
+  for (bool constant_weights : {false, true}) {
+    for (bool has_bias : {false, true}) {
+      SCOPED_TRACE(MakeString("constant_weights=", constant_weights, " has_bias=", has_bias));
+      OpTester tester("Attention", 1, kMSDomain);
+      tester.AddAttribute<int64_t>("num_heads", 1);
+      tester.AddInput<float>("input", {1, 2, 0}, {});
+      tester.AddInput<float>("weights", {0, 6}, {}, constant_weights);
+      if (has_bias) {
+        tester.AddInput<float>("bias", {6}, {1.0f, 1.0f, 2.0f, 2.0f, 3.0f, 4.0f});
+      } else {
+        tester.AddOptionalInputEdge<float>();
+      }
+      const std::vector<float> expected = has_bias ? std::vector<float>{3.0f, 4.0f, 3.0f, 4.0f}
+                                                   : std::vector<float>(4, 0.0f);
+      tester.AddOutput<float>("output", {1, 2, 2}, expected);
+      tester.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+    }
+  }
+}
 
 template <typename T>
 std::vector<T> ReorderToKvCache(
@@ -131,6 +377,7 @@ static void RunAttentionTest(
     std::vector<int64_t> mask_index_dims_4 = {batch_size, 1};
     std::vector<int64_t> mask_index_dims_5 = {batch_size, sequence_length, total_sequence_length};
     std::vector<int64_t> mask_index_dims_6 = {batch_size, 1, max_sequence_length, max_sequence_length};
+    std::vector<int64_t> mask_index_dims_7 = {3 * batch_size + 2};
     std::vector<int64_t> mask_index_dims;
     switch (mask_type) {
       case AttentionMaskType::MASK_1D_KEY_SEQ_LEN:
@@ -150,6 +397,9 @@ static void RunAttentionTest(
         break;
       case AttentionMaskType::MASK_4D_MEGATRON:
         mask_index_dims = mask_index_dims_6;
+        break;
+      case AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START:
+        mask_index_dims = mask_index_dims_7;
         break;
       default:
         assert(0);  // shall not reach here.
@@ -880,6 +1130,110 @@ TEST(ContribOpAttentionTest, Causal_EmptyPastState) {
                    batch_size, sequence_length, hidden_size, number_of_heads, use_float16, is_unidirectional,
                    use_past_state, past_sequence_length, &past_data, &present_data);
 }
+
+TEST(ContribOpAttentionTest, CudnnFlashAttentionWithKeySequenceLengthMask) {
+#if !defined(USE_CUDA) || !GTEST_HAS_STREAM_REDIRECTION
+  GTEST_SKIP() << "Kernel selection verification requires CUDA and stdout capture support.";
+#else
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "cuDNN SDPA requires a CUDA device with compute capability 8.0 or later.";
+  }
+
+  constexpr int batch_size = 1;
+  constexpr int sequence_length = 2;
+  constexpr int hidden_size = 64;
+  constexpr int number_of_heads = 2;
+
+  std::vector<float> input_data(sequence_length * hidden_size);
+  for (int i = 0; i < hidden_size; ++i) {
+    input_data[i] = static_cast<float>((i % 7) - 3) / 8.0f;
+    input_data[hidden_size + i] = static_cast<float>((i % 5) - 2) / 4.0f;
+  }
+
+  std::vector<float> weight_data(hidden_size * 3 * hidden_size, 0.0f);
+  for (int i = 0; i < hidden_size; ++i) {
+    weight_data[i * 3 * hidden_size + i] = 1.0f;
+    weight_data[i * 3 * hidden_size + hidden_size + i] = 1.0f;
+    weight_data[i * 3 * hidden_size + 2 * hidden_size + i] = 1.0f;
+  }
+  std::vector<float> bias_data(3 * hidden_size, 0.0f);
+
+  // Only the first key/value token is valid, so both output tokens must equal its value.
+  // Use a non-zero attention bias to cover bias forwarding through the cuDNN path.
+  std::vector<int32_t> mask_index_data = {1};
+  std::vector<float> attention_bias_data = {
+      0.25f, -0.5f, 0.75f, -1.0f,
+      -0.25f, 0.5f, -0.75f, 1.0f};
+  std::vector<float> output_data(2 * hidden_size);
+  std::copy_n(input_data.begin(), hidden_size, output_data.begin());
+  std::copy_n(input_data.begin(), hidden_size, output_data.begin() + hidden_size);
+
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kDisableFlashAttention, "1"},
+          {onnxruntime::contrib::attention::kEnableCudnnFlashAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableFusedSelfAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"}}};
+
+  constexpr bool use_float16 = true;
+  constexpr bool is_unidirectional = false;
+  testing::internal::CaptureStdout();
+  RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
+                   batch_size, sequence_length, hidden_size, number_of_heads,
+                   use_float16, is_unidirectional,
+                   false /*use_past_state*/, 0 /*past_sequence_length*/, nullptr, nullptr,
+                   AttentionMaskType::MASK_1D_KEY_SEQ_LEN, 0 /*input_hidden_size*/, 0 /*max_sequence_length*/,
+                   false /*disable_cpu*/, false /*disable_cuda*/, false /*disable_dml*/, false /*disable_webgpu*/,
+                   {} /*qkv_sizes*/, attention_bias_data);
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+  if (debug_output.find("cuDNN Flash Attention is disabled") != std::string::npos) {
+    GTEST_SKIP() << debug_output;
+  }
+  EXPECT_NE(debug_output.find("SdpaKernel=CUDNN_FLASH_ATTENTION"), std::string::npos)
+      << debug_output;
+#endif
+}
+
+#if USE_MEMORY_EFFICIENT_ATTENTION
+TEST(ContribOpAttentionTest, MemoryEfficientAttentionWithKeySequenceLengthStartMask) {
+  if (!HasCudaEnvironment(530)) {
+    GTEST_SKIP() << "CUDA execution provider not available";
+  }
+
+  constexpr int batch_size = 1;
+  constexpr int sequence_length = 16;
+  constexpr int hidden_size = 32;
+  constexpr int number_of_heads = 1;
+
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kDisableFlashAttention, "1"},
+          {onnxruntime::contrib::attention::kEnableCudnnFlashAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableFusedSelfAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "0"}}};
+
+  const std::vector<float> input_data(batch_size * sequence_length * hidden_size, 0.0f);
+  const std::vector<float> weight_data(hidden_size * 3 * hidden_size, 0.0f);
+  const std::vector<float> bias_data(3 * hidden_size, 0.0f);
+  const std::vector<int32_t> mask_index_data{
+      sequence_length,
+      0, sequence_length,
+      0, sequence_length};
+  const std::vector<float> output_data(batch_size * sequence_length * hidden_size, 0.0f);
+
+  RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
+                   batch_size, sequence_length, hidden_size, number_of_heads,
+                   true /*use_float16*/, false /*is_unidirectional*/,
+                   false /*use_past_state*/, 0 /*past_sequence_length*/, nullptr, nullptr,
+                   AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START,
+                   0 /*input_hidden_size*/, 0 /*max_sequence_length*/,
+                   true /*disable_cpu*/, false /*disable_cuda*/,
+                   true /*disable_dml*/, true /*disable_webgpu*/);
+}
+#endif
 
 TEST(ContribOpAttentionTest, AttentionEmptyPastState) {
   RawAttentionEmptyPastState(false);
@@ -2316,6 +2670,80 @@ TEST(ContribOpAttentionTest, DISABLED_Attention_Mask1D_Fp16_B2_FusedNoPadding) {
 
 #ifndef ENABLE_TRAINING
 // Prepacking is disabled in full training build so no need to test the feature in a training build.
+TEST(ContribOpAttentionTest, SharedPrepackedWeightsUnequalHiddenSizes) {
+  std::vector<float> weight_data(24, 1.0f);
+  OpTester tester("Attention", 1, kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", 2);
+  tester.AddAttribute<std::vector<int64_t>>("qkv_hidden_sizes", {2, 2, 4});
+  tester.AddInput<float>("input", {1, 1, 3}, {1.0f, 2.0f, 3.0f});
+  tester.AddInput<float>("weights", {3, 8}, weight_data, true);
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOutput<float>("output", {1, 1, 4}, std::vector<float>(4, 6.0f));
+
+  OrtValue weights;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape({3, 8}),
+                       weight_data.data(),
+                       OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), weights);
+  SessionOptions options;
+  ASSERT_STATUS_OK(options.AddInitializer("weights", &weights));
+  tester.EnableSharingOfPrePackedWeightsAcrossSessions();
+
+  size_t packed_count = 0;
+  size_t shared_count = 0;
+  tester.Config(options).ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig(&packed_count, &shared_count);
+  EXPECT_EQ(shared_count, 0U);
+  EXPECT_EQ(tester.GetNumPrePackedWeightsShared(), packed_count);
+  if (packed_count == 0) {
+    GTEST_SKIP() << "MLAS does not prepack this layout on this platform.";
+  }
+  const size_t first_packed_count = packed_count;
+  tester.Config(options).ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig(&packed_count, &shared_count);
+  EXPECT_EQ(packed_count, first_packed_count);
+  EXPECT_EQ(shared_count, packed_count);
+}
+
+TEST(ContribOpAttentionTest, PrePackRejectsQkvHiddenSizeMismatch) {
+  OpTester tester("Attention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", 2);
+  tester.AddAttribute<std::vector<int64_t>>("qkv_hidden_sizes", {8, 8, 8});
+
+  tester.AddInput<float>("input", {1, 1, 4}, std::vector<float>(4, 0.0f));
+  tester.AddInput<float>("weight", {4, 12}, std::vector<float>(48, 0.0f), true);
+  tester.AddInput<float>("bias", {12}, std::vector<float>(12, 0.0f));
+  tester.AddOptionalInputEdge<int32_t>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<int32_t>();
+  tester.AddOutput<float>("output", {1, 1, 8}, std::vector<float>(8, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectFailure,
+             "Input 'weights' dimension 1 should have same length as sum of Q/K/V hidden sizes",
+             {}, nullptr, &execution_providers);
+}
+
+TEST(ContribOpAttentionTest, PrePackRejectsNonpositiveQkvHiddenSize) {
+  OpTester tester("Attention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", 2);
+  tester.AddAttribute<std::vector<int64_t>>("qkv_hidden_sizes", {8, 0, 8});
+
+  tester.AddInput<float>("input", {1, 1, 4}, std::vector<float>(4, 0.0f));
+  tester.AddInput<float>("weight", {4, 16}, std::vector<float>(64, 0.0f), true);
+  tester.AddInput<float>("bias", {16}, std::vector<float>(16, 0.0f));
+  tester.AddOptionalInputEdge<int32_t>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<int32_t>();
+  tester.AddOutput<float>("output", {1, 1, 8}, std::vector<float>(8, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectFailure,
+             "qkv_hidden_sizes values should be positive",
+             {}, nullptr, &execution_providers);
+}
+
 TEST(ContribOpAttentionTest, SharedPrepackedWeights) {
   int batch_size = 2;
   int sequence_length = 2;

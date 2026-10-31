@@ -7,11 +7,24 @@
 #include <cublas_v2.h>
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "contrib_ops/cpu/bert/attention_parameters.h"
-#include "contrib_ops/cuda/bert/attention_data.h"
+#include "contrib_ops/cuda/bert/packed_attention_data.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
+
+__host__ __device__ constexpr int64_t AdvanceTokenOffsetValidationIndex(
+    int64_t index,
+    int32_t grid_dimension,
+    int32_t block_dimension) {
+  return index + static_cast<int64_t>(grid_dimension) * block_dimension;
+}
+
+Status ValidatePackedMultiHeadAttentionTokenOffset(
+    const int32_t* token_offset,
+    int32_t token_offset_count,
+    int32_t* validation_flag,
+    cudaStream_t stream);
 
 template <typename T>
 Status QkvToContext(

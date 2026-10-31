@@ -209,7 +209,7 @@ TensorFloat16Bit ProtobufHelpers::LoadTensorFloat16FromProtobufFile(const std::w
 }
 
 winml::LearningModel ProtobufHelpers::CreateModel(
-  winml::TensorKind kind, const std::vector<int64_t>& shape, uint32_t num_elements
+  winml::TensorKind kind, const std::vector<int64_t>& shape, uint32_t num_elements, bool image_input
 ) {
   onnx::ModelProto model;
   model.set_ir_version(onnx::Version::IR_VERSION);
@@ -292,6 +292,9 @@ winml::LearningModel ProtobufHelpers::CreateModel(
     onnx::ValueInfoProto& variable = *graph.add_input();
     variable.set_name("input");
     variable.mutable_type()->mutable_tensor_type()->set_elem_type(dataType);
+    if (image_input) {
+      variable.mutable_type()->set_denotation("IMAGE");
+    }
     for (auto dim : shape) {
       if (dim == -1) {
         variable.mutable_type()->mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_param(&dim_param, 1);

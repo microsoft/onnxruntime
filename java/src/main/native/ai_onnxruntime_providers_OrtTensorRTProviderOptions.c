@@ -57,7 +57,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_providers_OrtTensorRTProviderOptions_
     for (jsize i = 0; i < keyLength; i++) {
       jobject key = (*jniEnv)->GetObjectArrayElement(jniEnv, jKeyArr, i);
       (*jniEnv)->ReleaseStringUTFChars(jniEnv,key,keys[i]);
-      jobject value = (*jniEnv)->GetObjectArrayElement(jniEnv, jKeyArr, i);
+      jobject value = (*jniEnv)->GetObjectArrayElement(jniEnv, jValueArr, i);
       (*jniEnv)->ReleaseStringUTFChars(jniEnv,value,values[i]);
     }
     free((void*)keys);

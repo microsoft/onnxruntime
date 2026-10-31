@@ -20,7 +20,7 @@ stages:
 
       - template: jobs/download_win_gpu_library.yml
         parameters:
-          CudaVersion: 12.8
+          CudaVersion: 13.0
           DownloadCUDA: true
           DownloadTRT: true
 
@@ -88,11 +88,13 @@ stages:
       - name: runCodesignValidationInjection
         value: false
       - name: docker_base_image
-        value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14:20251017.1
+        value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda13_x64_almalinux8_gcc14:20251107.1
+      - template: common-variables.yml
+      - name: linux_trt_version
+        value: ${{ variables.linux_trt_version_cuda13 }}
       timeoutInMinutes: 60
       steps:
-      - checkout: self
-        submodules: false
+      - template: jobs/checkout-and-git-redirect.yml
 
       - template: set-version-number-variables-step.yml
 
@@ -124,7 +126,8 @@ stages:
 
       # Rename the downloaded folder
       - script: |
-          mv $(Pipeline.Workspace)/build/onnxruntime-java-gpu $(Pipeline.Workspace)/build/onnxruntime-java
+          mkdir -p $(Pipeline.Workspace)/build/onnxruntime-java
+          mv $(Pipeline.Workspace)/build/onnxruntime-java-gpu/* $(Pipeline.Workspace)/build/onnxruntime-java
 
       - task: Maven@4
         displayName: 'Download Dependencies'

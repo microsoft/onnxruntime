@@ -1,0 +1,2052 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#include <cmath>
+#include <cstdint>
+#include <algorithm>
+#include <iterator>
+#include <optional>
+#include <sstream>
+#include <string>
+#include <type_traits>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
+#include <memory>
+
+#include "gtest/gtest.h"
+#include "core/framework/execution_provider.h"
+#include "core/framework/sequential_execution_plan.h"
+#include "core/framework/session_state.h"
+#include "core/graph/model.h"
+#include "core/graph/node_attr_utils.h"
+#include "core/session/inference_session.h"
+#include "test/common/tensor_op_test_utils.h"
+#include "test/providers/provider_test_utils.h"
+#include "test/unittest_util/graph_transform_test_builder.h"
+#include "test/util/include/asserts.h"
+#include "test/util/include/default_providers.h"
+#include "test/util/include/inference_session_wrapper.h"
+#include "test/util/include/test_environment.h"
+
+namespace onnxruntime {
+namespace test {
+
+namespace {
+
+constexpr float kEpsilon = 1.0e-5f;
+
+float Sigmoid(float x) {
+  if (x > 0.0f) {
+    return 1.0f / (1.0f + std::exp(-x));
+  }
+  const float exp_x = std::exp(x);
+  return exp_x / (1.0f + exp_x);
+}
+
+template <typename T>
+std::vector<T> ToTensorType(const std::vector<float>& data) {
+  if constexpr (std::is_same_v<T, MLFloat16>) {
+    return ToFloat16(data);
+  } else if constexpr (std::is_same_v<T, BFloat16>) {
+    return ToBFloat16(data);
+  } else {
+    return data;
+  }
+}
+
+// Returns false when the execution provider required by T is unavailable. This must be checked before
+// an OpTester is constructed: BaseTester's destructor traps when a tester is destroyed without running.
+template <typename T>
+bool IsTypeSupported() {
+  if constexpr (std::is_same_v<T, BFloat16>) {
+    return DefaultCudaExecutionProvider() != nullptr;
+  } else {
+    return true;
+  }
+}
+
+// Runs the tester on CUDA only for BFloat16, otherwise on the default set of execution providers.
+template <typename T>
+void RunOnSupportedProviders(OpTester& test) {
+  if constexpr (std::is_same_v<T, BFloat16>) {
+    std::vector<std::unique_ptr<IExecutionProvider>> providers;
+    providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+  } else {
+    test.Run();
+  }
+}
+
+// Deterministic values bounded to [-1, 1]. Deterministic inputs keep the expectations in the
+// vectorized tests reproducible, and the bound matters because a plain ramp would grow without
+// limit over the hundreds of channels the multi-iteration reduction test needs, saturating the gate
+// and hiding exactly the accumulation errors that case is meant to catch.
+std::vector<float> MakeWave(size_t count, float phase, float step) {
+  std::vector<float> values(count);
+  for (size_t i = 0; i < count; ++i) {
+    values[i] = std::sin(phase + step * static_cast<float>(i));
+  }
+  return values;
+}
+
+// Reference for the gate pre-activation, sign(dot) * sqrt(max(abs(dot), 1e-6)).
+// std::copysign is deliberately avoided: it maps a zero dot product to +sqrt(1e-6) instead of zero.
+float GateArg(float dot) {
+  if (dot == 0.0f) {
+    return 0.0f;
+  }
+  const float magnitude = std::sqrt(std::max(std::abs(dot), 1.0e-6f));
+  return dot < 0.0f ? -magnitude : magnitude;
+}
+
+// ---------------------------------------------------------------------------------------------
+// EngramGate
+// ---------------------------------------------------------------------------------------------
+
+// Reference EngramGate for a single (token, hyper-connection) row with unit norm scales.
+float EngramGateReference(const std::vector<float>& key, const std::vector<float>& query) {
+  const auto hidden_size = static_cast<float>(key.size());
+  float key_sum_sq = 0.0f;
+  float query_sum_sq = 0.0f;
+  for (size_t c = 0; c < key.size(); ++c) {
+    key_sum_sq += key[c] * key[c];
+    query_sum_sq += query[c] * query[c];
+  }
+  const float key_inv = 1.0f / std::sqrt(key_sum_sq / hidden_size + kEpsilon);
+  const float query_inv = 1.0f / std::sqrt(query_sum_sq / hidden_size + kEpsilon);
+  float dot = 0.0f;
+  for (size_t c = 0; c < key.size(); ++c) {
+    dot += key[c] * key_inv * query[c] * query_inv;
+  }
+  dot /= std::sqrt(hidden_size);
+  return Sigmoid(GateArg(dot));
+}
+
+template <typename T>
+void RunEngramGateTest(float tolerance) {
+  if (!IsTypeSupported<T>()) {
+    GTEST_SKIP() << "No execution provider available for this type";
+  }
+  const std::vector<float> key{0.0f, 2.5f};
+  const std::vector<float> query{3.0f, 4.0f};
+  const std::vector<float> value{2.0f, -1.5f};
+  const std::vector<float> unit_scale{1.0f, 1.0f};
+
+  const float gate = EngramGateReference(key, query);
+  const std::vector<float> expected{gate * value[0], gate * value[1]};
+
+  OpTester test("EngramGate", 1, kMSDomain);
+  test.AddAttribute<float>("epsilon", kEpsilon);
+  test.AddInput<T>("key", {1, 1, 1, 2}, ToTensorType<T>(key));
+  test.AddInput<T>("query", {1, 1, 1, 2}, ToTensorType<T>(query));
+  test.AddInput<T>("value", {1, 1, 2}, ToTensorType<T>(value));
+  test.AddInput<T>("key_norm_scale", {1, 2}, ToTensorType<T>(unit_scale));
+  test.AddInput<T>("query_norm_scale", {1, 2}, ToTensorType<T>(unit_scale));
+  test.AddOutput<T>("output", {1, 1, 1, 2}, ToTensorType<T>(expected), false, tolerance, tolerance);
+  RunOnSupportedProviders<T>(test);
+}
+
+// Verifies gated_value_normed: RMSNorm is applied independently to each hyper-connection branch
+// (each hidden_size-sized slice), not over the concatenated hc_mult * hidden_size dimension.
+template <typename T>
+void RunEngramGateNormedTest(float tolerance) {
+  if (!IsTypeSupported<T>()) {
+    GTEST_SKIP() << "No execution provider available for this type";
+  }
+  constexpr int64_t hc_mult = 2;
+  constexpr int64_t hidden_size = 2;
+  const std::vector<float> key{0.5f, 1.0f, -0.25f, 0.75f};
+  const std::vector<float> query{3.0f, 4.0f, -1.0f, 2.0f};
+  const std::vector<float> value{2.0f, -1.5f};
+  const std::vector<float> key_scale{1.0f, 1.0f, 1.5f, 0.5f};
+  const std::vector<float> query_scale{1.0f, 1.0f, 1.0f, 2.0f};
+  const std::vector<float> conv_scale{1.0f, 2.0f, 0.5f, 1.0f};
+
+  std::vector<float> gated_value(static_cast<size_t>(hc_mult * hidden_size));
+  for (int64_t g = 0; g < hc_mult; ++g) {
+    float key_sum_sq = 0.0f;
+    float query_sum_sq = 0.0f;
+    for (int64_t c = 0; c < hidden_size; ++c) {
+      key_sum_sq += key[static_cast<size_t>(g * hidden_size + c)] * key[static_cast<size_t>(g * hidden_size + c)];
+      query_sum_sq +=
+          query[static_cast<size_t>(g * hidden_size + c)] * query[static_cast<size_t>(g * hidden_size + c)];
+    }
+    const float key_inv = 1.0f / std::sqrt(key_sum_sq / static_cast<float>(hidden_size) + kEpsilon);
+    const float query_inv = 1.0f / std::sqrt(query_sum_sq / static_cast<float>(hidden_size) + kEpsilon);
+    float dot = 0.0f;
+    for (int64_t c = 0; c < hidden_size; ++c) {
+      const size_t i = static_cast<size_t>(g * hidden_size + c);
+      dot += key[i] * key_inv * key_scale[i] * query[i] * query_inv * query_scale[i];
+    }
+    dot /= std::sqrt(static_cast<float>(hidden_size));
+    const float gate = Sigmoid(GateArg(dot));
+    for (int64_t c = 0; c < hidden_size; ++c) {
+      gated_value[static_cast<size_t>(g * hidden_size + c)] = gate * value[static_cast<size_t>(c)];
+    }
+  }
+
+  const std::vector<T> rounded_gated_value = ToTensorType<T>(gated_value);
+  std::vector<float> expected_normed(static_cast<size_t>(hc_mult * hidden_size));
+  for (int64_t g = 0; g < hc_mult; ++g) {
+    float sum_sq = 0.0f;
+    for (int64_t c = 0; c < hidden_size; ++c) {
+      const float gated = static_cast<float>(rounded_gated_value[static_cast<size_t>(g * hidden_size + c)]);
+      sum_sq += gated * gated;
+    }
+    const float inv_rms = 1.0f / std::sqrt(sum_sq / static_cast<float>(hidden_size) + kEpsilon);
+    for (int64_t c = 0; c < hidden_size; ++c) {
+      const size_t i = static_cast<size_t>(g * hidden_size + c);
+      expected_normed[i] = static_cast<float>(rounded_gated_value[i]) * inv_rms * conv_scale[i];
+    }
+  }
+
+  OpTester test("EngramGate", 1, kMSDomain);
+  test.AddAttribute<float>("epsilon", kEpsilon);
+  test.AddInput<T>("key", {1, 1, hc_mult, hidden_size}, ToTensorType<T>(key));
+  test.AddInput<T>("query", {1, 1, hc_mult, hidden_size}, ToTensorType<T>(query));
+  test.AddInput<T>("value", {1, 1, hidden_size}, ToTensorType<T>(value));
+  test.AddInput<T>("key_norm_scale", {hc_mult, hidden_size}, ToTensorType<T>(key_scale));
+  test.AddInput<T>("query_norm_scale", {hc_mult, hidden_size}, ToTensorType<T>(query_scale));
+  test.AddInput<T>("conv_norm_scale", {hc_mult, hidden_size}, ToTensorType<T>(conv_scale));
+  test.AddOutput<T>("output", {1, 1, hc_mult, hidden_size}, ToTensorType<T>(gated_value), false, tolerance,
+                    tolerance);
+  test.AddOutput<T>("gated_value_normed", {1, 1, hc_mult, hidden_size}, ToTensorType<T>(expected_normed), false,
+                    tolerance, tolerance);
+  RunOnSupportedProviders<T>(test);
+}
+
+// Exercises hc_mult > 1 and non-unit norm scales for an arbitrary hidden_size. hidden_size == 4
+// selects the WebGPU vec4 component path through the gate reduction and the broadcast pass, and
+// hc_mult > 1 makes a per-row rather than per-token scale lookup observable.
+//
+// Both GPU reductions stride over hidden_size (CUDA by blockDim.x == 256, WGSL by the workgroup size
+// 64 over hidden_size / components), so only a hidden_size above those strides takes a second
+// iteration and actually accumulates into the per-thread partials.
+template <typename T>
+void RunEngramGateVectorizedTest(float tolerance, int64_t hidden) {
+  if (!IsTypeSupported<T>()) {
+    GTEST_SKIP() << "No execution provider available for this type";
+  }
+  constexpr int64_t kBatch = 1;
+  constexpr int64_t kSequence = 2;
+  constexpr int64_t kHcMult = 2;
+  const int64_t rows = kBatch * kSequence * kHcMult;
+
+  const std::vector<float> key = MakeWave(static_cast<size_t>(rows * hidden), -0.9f, 0.3f);
+  const std::vector<float> query = MakeWave(static_cast<size_t>(rows * hidden), 1.2f, -0.25f);
+  const std::vector<float> value = MakeWave(static_cast<size_t>(kBatch * kSequence * hidden), 0.4f, 0.35f);
+  const std::vector<float> key_scale = MakeWave(static_cast<size_t>(kHcMult * hidden), 0.6f, 0.1f);
+  const std::vector<float> query_scale = MakeWave(static_cast<size_t>(kHcMult * hidden), 1.4f, -0.15f);
+
+  std::vector<float> expected(static_cast<size_t>(rows * hidden));
+  for (int64_t row = 0; row < rows; ++row) {
+    const int64_t g = row % kHcMult;
+    const int64_t token = row / kHcMult;
+    float key_sum_sq = 0.0f;
+    float query_sum_sq = 0.0f;
+    for (int64_t c = 0; c < hidden; ++c) {
+      const float k = key[static_cast<size_t>(row * hidden + c)];
+      const float q = query[static_cast<size_t>(row * hidden + c)];
+      key_sum_sq += k * k;
+      query_sum_sq += q * q;
+    }
+    const float key_inv = 1.0f / std::sqrt(key_sum_sq / static_cast<float>(hidden) + kEpsilon);
+    const float query_inv = 1.0f / std::sqrt(query_sum_sq / static_cast<float>(hidden) + kEpsilon);
+    float dot = 0.0f;
+    for (int64_t c = 0; c < hidden; ++c) {
+      const auto scale_index = static_cast<size_t>(g * hidden + c);
+      const float normed_key = key[static_cast<size_t>(row * hidden + c)] * key_inv * key_scale[scale_index];
+      const float normed_query =
+          query[static_cast<size_t>(row * hidden + c)] * query_inv * query_scale[scale_index];
+      dot += normed_key * normed_query;
+    }
+    dot /= std::sqrt(static_cast<float>(hidden));
+    const float gate = Sigmoid(GateArg(dot));
+    for (int64_t c = 0; c < hidden; ++c) {
+      expected[static_cast<size_t>(row * hidden + c)] = gate * value[static_cast<size_t>(token * hidden + c)];
+    }
+  }
+
+  OpTester test("EngramGate", 1, kMSDomain);
+  test.AddAttribute<float>("epsilon", kEpsilon);
+  test.AddInput<T>("key", {kBatch, kSequence, kHcMult, hidden}, ToTensorType<T>(key));
+  test.AddInput<T>("query", {kBatch, kSequence, kHcMult, hidden}, ToTensorType<T>(query));
+  test.AddInput<T>("value", {kBatch, kSequence, hidden}, ToTensorType<T>(value));
+  test.AddInput<T>("key_norm_scale", {kHcMult, hidden}, ToTensorType<T>(key_scale));
+  test.AddInput<T>("query_norm_scale", {kHcMult, hidden}, ToTensorType<T>(query_scale));
+  test.AddOutput<T>("output", {kBatch, kSequence, kHcMult, hidden}, ToTensorType<T>(expected), false, tolerance,
+                    tolerance);
+  RunOnSupportedProviders<T>(test);
+}
+
+// ---------------------------------------------------------------------------------------------
+// NGramHashMapping
+// ---------------------------------------------------------------------------------------------
+
+constexpr int64_t kMaxNGramSize = 3;
+constexpr int64_t kHeadsPerNGram = 2;
+constexpr int64_t kPadId = 9;
+
+// Reference NGramHashMapping for a single batch row. `history` holds the kMaxNGramSize - 1 ids that
+// precede `ids`, right-aligned, and lets the same reference cover both the full and the chunked runs.
+template <typename T>
+std::vector<T> NGramHashMappingReference(const std::vector<T>& ids,
+                                         const std::vector<T>& history,
+                                         const std::vector<T>& multipliers,
+                                         const std::vector<T>& vocab_sizes,
+                                         int64_t pad_id = kPadId,
+                                         std::optional<int64_t> eos_token_id = std::nullopt,
+                                         bool reset_on_eos = false,
+                                         const std::vector<T>* head_offsets = nullptr,
+                                         int64_t max_ngram_size = kMaxNGramSize,
+                                         int64_t heads_per_ngram = kHeadsPerNGram) {
+  const int64_t sequence_length = static_cast<int64_t>(ids.size());
+  const int64_t state_length = max_ngram_size - 1;
+  const int64_t num_heads = state_length * heads_per_ngram;
+  std::vector<T> output(static_cast<size_t>(sequence_length * num_heads));
+
+  const T missing_history_value = eos_token_id.has_value() ? static_cast<T>(*eos_token_id) : static_cast<T>(pad_id);
+  auto combined_at = [&](int64_t idx) -> T {
+    if (idx >= state_length) {
+      return ids[static_cast<size_t>(idx - state_length)];
+    }
+    const int64_t slot = idx;
+    if (history.empty() || slot < 0) {
+      return missing_history_value;
+    }
+    return history[static_cast<size_t>(slot)];
+  };
+
+  for (int64_t t = 0; t < sequence_length; ++t) {
+    const int64_t idx = state_length + t;
+    int64_t last_reset = -(state_length + 2);
+    if (reset_on_eos && eos_token_id.has_value()) {
+      for (int64_t j = idx - 1; j >= idx - state_length && j >= 0; --j) {
+        if (combined_at(j) == static_cast<T>(*eos_token_id)) {
+          last_reset = j;
+          break;
+        }
+      }
+    }
+    for (int64_t n = 2; n <= max_ngram_size; ++n) {
+      T mix = 0;
+      for (int64_t k = 0; k < n; ++k) {
+        const int64_t source = idx - k;
+        const T token = (last_reset >= source) ? missing_history_value : combined_at(source);
+        // Multiplication wraps on overflow, matching the kernel's unsigned arithmetic.
+        using U = std::make_unsigned_t<T>;
+        const T product = static_cast<T>(static_cast<U>(token) *
+                                         static_cast<U>(multipliers[static_cast<size_t>(k)]));
+        mix = k == 0 ? product : static_cast<T>(mix ^ product);
+      }
+      for (int64_t h = 0; h < heads_per_ngram; ++h) {
+        const int64_t out_h = (n - 2) * heads_per_ngram + h;
+        const T mod = vocab_sizes[static_cast<size_t>(out_h)];
+        T value = static_cast<T>(mix % mod);
+        if (value < 0) {
+          value = static_cast<T>(value + mod);
+        }
+        if (head_offsets != nullptr) {
+          using U = std::make_unsigned_t<T>;
+          value = static_cast<T>(static_cast<U>(value) + static_cast<U>((*head_offsets)[static_cast<size_t>(out_h)]));
+        }
+        output[static_cast<size_t>(t * num_heads + out_h)] = value;
+      }
+    }
+  }
+  return output;
+}
+
+constexpr int64_t kEosTokenId = 7;
+
+// The eos boundary must be honored across calls too: an eos token carried in via past_ids from a
+// previous chunk must still reset the n-gram context for windows in the current chunk that reach
+// back across it, and running in one call or as chunks with present_ids threaded through must agree.
+template <typename T>
+void RunNGramHashMappingEosAcrossChunksTest() {
+  const std::vector<T> ids{3, static_cast<T>(kEosTokenId), 5, 6};
+  const std::vector<T> multipliers{11, 13, 17};
+  const std::vector<T> vocab_sizes{101, 103, 107, 109};
+  const std::vector<T> full =
+      NGramHashMappingReference<T>(ids, {}, multipliers, vocab_sizes, kPadId, kEosTokenId, true);
+
+  auto run_chunk = [&](const std::vector<T>& chunk, const std::vector<T>& past,
+                       const std::vector<T>& expected_hash_ids, const std::vector<T>& expected_present) {
+    OpTester test("NGramHashMapping", 1, kMSDomain);
+    test.AddAttribute<int64_t>("max_ngram_size", kMaxNGramSize);
+    test.AddAttribute<int64_t>("n_head_per_ngram", kHeadsPerNGram);
+    test.AddAttribute<int64_t>("pad_id", kPadId);
+    test.AddAttribute<int64_t>("reset_on_eos", 1);
+    test.AddInput<T>("input_ids", {1, static_cast<int64_t>(chunk.size())}, chunk);
+    test.AddInput<T>("multipliers", {3}, multipliers);
+    test.AddInput<T>("vocab_sizes", {4}, vocab_sizes);
+    if (past.empty()) {
+      test.AddOptionalInputEdge<T>();
+    } else {
+      test.AddInput<T>("past_ids", {1, 2}, past);
+    }
+    test.AddOptionalInputEdge<T>();  // head_offsets
+    test.AddInput<T>("eos_token_id", {}, {static_cast<T>(kEosTokenId)});
+    test.AddOutput<T>("hash_ids", {1, static_cast<int64_t>(chunk.size()), 4}, expected_hash_ids);
+    test.AddOutput<T>("present_ids", {1, 2}, expected_present);
+    test.Run();
+  };
+
+  const std::vector<T> prefill{ids[0], ids[1]};
+  run_chunk(prefill, {}, std::vector<T>(full.begin(), full.begin() + 8), {ids[0], ids[1]});
+  run_chunk({ids[2]}, {ids[0], ids[1]}, std::vector<T>(full.begin() + 8, full.begin() + 12),
+            {ids[1], ids[2]});
+  run_chunk({ids[3]}, {ids[1], ids[2]}, std::vector<T>(full.begin() + 12, full.end()),
+            {ids[2], ids[3]});
+}
+
+// EOS reset must scan the whole past_ids window, not only the immediately previous token.
+template <typename T>
+void RunNGramHashMappingEosInteriorPastTest() {
+  constexpr int64_t max_ngram_size = 4;
+  constexpr int64_t heads_per_ngram = 1;
+  constexpr int64_t eos_token_id = 9;
+  const std::vector<T> ids{5};
+  const std::vector<T> past{7, static_cast<T>(eos_token_id), 4};
+  const std::vector<T> multipliers{11, 13, 17, 19};
+  const std::vector<T> vocab_sizes{101, 103, 107};
+  const std::vector<T> expected = NGramHashMappingReference<T>(
+      ids, past, multipliers, vocab_sizes, kPadId, eos_token_id, true, nullptr, max_ngram_size, heads_per_ngram);
+
+  OpTester test("NGramHashMapping", 1, kMSDomain);
+  test.AddAttribute<int64_t>("max_ngram_size", max_ngram_size);
+  test.AddAttribute<int64_t>("n_head_per_ngram", heads_per_ngram);
+  test.AddAttribute<int64_t>("pad_id", kPadId);
+  test.AddAttribute<int64_t>("reset_on_eos", 1);
+  test.AddInput<T>("input_ids", {1, 1}, ids);
+  test.AddInput<T>("multipliers", {4}, multipliers);
+  test.AddInput<T>("vocab_sizes", {3}, vocab_sizes);
+  test.AddInput<T>("past_ids", {1, 3}, past);
+  test.AddOptionalInputEdge<T>();  // head_offsets
+  test.AddInput<T>("eos_token_id", {}, {static_cast<T>(eos_token_id)});
+  test.AddOutput<T>("hash_ids", {1, 1, 3}, expected);
+  test.AddOutput<T>("present_ids", {1, 3}, {static_cast<T>(eos_token_id), 4, 5});
+  test.Run();
+}
+
+template <typename T>
+void RunNGramHashMappingEosTokenIdRankOneRejectedTest() {
+  OpTester test("NGramHashMapping", 1, kMSDomain);
+  test.AddAttribute<int64_t>("max_ngram_size", kMaxNGramSize);
+  test.AddAttribute<int64_t>("n_head_per_ngram", kHeadsPerNGram);
+  test.AddAttribute<int64_t>("pad_id", kPadId);
+  test.AddAttribute<int64_t>("reset_on_eos", 1);
+  test.AddInput<T>("input_ids", {1, 1}, {3});
+  test.AddInput<T>("multipliers", {3}, {11, 13, 17});
+  test.AddInput<T>("vocab_sizes", {4}, {101, 103, 107, 109});
+  test.AddOptionalInputEdge<T>();  // past_ids
+  test.AddOptionalInputEdge<T>();  // head_offsets
+  test.AddInput<T>("eos_token_id", {1}, {static_cast<T>(kEosTokenId)});
+  test.AddOutput<T>("hash_ids", {1, 1, 4}, std::vector<T>(4, T{}));
+  test.AddOutput<T>("present_ids", {1, 2}, std::vector<T>(2, T{}));
+  test.Run(OpTester::ExpectResult::kExpectFailure, "eos_token_id must be a scalar");
+}
+
+template <typename T>
+void RunNGramHashMappingHeadOffsetsInvalidVocabGpuTest(std::unique_ptr<IExecutionProvider> ep) {
+  OpTester test("NGramHashMapping", 1, kMSDomain);
+  test.AddAttribute<int64_t>("max_ngram_size", kMaxNGramSize);
+  test.AddAttribute<int64_t>("n_head_per_ngram", kHeadsPerNGram);
+  test.AddAttribute<int64_t>("pad_id", kPadId);
+  test.AddInput<T>("input_ids", {1, 1}, {3});
+  test.AddInput<T>("multipliers", {3}, {11, 13, 17});
+  test.AddInput<T>("vocab_sizes", {4}, {101, 0, 107, 0});
+  test.AddOptionalInputEdge<T>();  // past_ids
+  test.AddInput<T>("head_offsets", {4}, {1000, 2000, 3000, 4000});
+  test.AddOutput<T>("hash_ids", {1, 1, 4}, {1084, 0, 3098, 0});
+  test.AddOutput<T>("present_ids", {1, 2}, {static_cast<T>(kPadId), 3});
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(std::move(ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+
+// Negative ids and a negative pad_id are the only way to reach two branches that the positive-id
+// tests leave dead on every EP: the `result < 0 -> result + mod` correction in PositiveMod, and the
+// sign handling in WrappedMultiply. WGSL's `%` in particular follows C truncation for negative
+// operands, which is worth pinning rather than assuming.
+template <typename T>
+void RunNGramHashMappingNegativeIdsTest() {
+  constexpr int64_t kNegativePadId = -4;
+  const std::vector<T> ids{-5, 7, -3, 2};
+  const std::vector<T> multipliers{11, 13, 17};
+  const std::vector<T> vocab_sizes{101, 103, 107, 109};
+  const std::vector<T> expected =
+      NGramHashMappingReference<T>(ids, {}, multipliers, vocab_sizes, kNegativePadId);
+  // Pins the reference, and the values themselves: every entry is a positive residue even though
+  // most of the underlying mixes are negative, which is exactly the PositiveMod correction.
+  ASSERT_EQ(expected, (std::vector<T>{5, 5, 36, 38,
+                                      87, 89, 78, 78,
+                                      78, 82, 47, 47,
+                                      52, 54, 35, 37}));
+  for (const T value : expected) {
+    ASSERT_GE(value, 0);
+  }
+
+  OpTester test("NGramHashMapping", 1, kMSDomain);
+  test.AddAttribute<int64_t>("max_ngram_size", kMaxNGramSize);
+  test.AddAttribute<int64_t>("n_head_per_ngram", kHeadsPerNGram);
+  test.AddAttribute<int64_t>("pad_id", kNegativePadId);
+  test.AddInput<T>("input_ids", {1, 4}, ids);
+  test.AddInput<T>("multipliers", {3}, multipliers);
+  test.AddInput<T>("vocab_sizes", {4}, vocab_sizes);
+  test.AddOptionalInputEdge<T>();
+  test.AddOutput<T>("hash_ids", {1, 4, 4}, expected);
+  test.AddOutput<T>("present_ids", {1, 2}, {ids[2], ids[3]});
+  test.Run();
+}
+
+// Verifies head_offsets is applied as a fixed additive offset after the modulo, per output head.
+template <typename T>
+void RunNGramHashMappingHeadOffsetsTest() {
+  OpTester test("NGramHashMapping", 1, kMSDomain);
+  test.AddAttribute<int64_t>("max_ngram_size", kMaxNGramSize);
+  test.AddAttribute<int64_t>("n_head_per_ngram", kHeadsPerNGram);
+  test.AddAttribute<int64_t>("pad_id", kPadId);
+  test.AddInput<T>("input_ids", {1, 4}, {3, 4, 5, 6});
+  test.AddInput<T>("multipliers", {3}, {11, 13, 17});
+  test.AddInput<T>("vocab_sizes", {4}, {101, 103, 107, 109});
+  test.AddOptionalInputEdge<T>();
+  test.AddInput<T>("head_offsets", {4}, {1000, 2000, 3000, 4000});
+  test.AddOutput<T>("hash_ids", {1, 4, 4},
+                    {1084, 2084, 3098, 4096,
+                     1011, 2011, 3039, 4037,
+                     1003, 2003, 3048, 4048,
+                     1003, 2003, 3071, 4071});
+  test.AddOutput<T>("present_ids", {1, 2}, {5, 6});
+  test.Run();
+}
+
+// Verifies reset_on_eos substitutes eos_token_id for shifts crossing an EOS boundary.
+template <typename T>
+void RunNGramHashMappingEosResetTest() {
+  OpTester test("NGramHashMapping", 1, kMSDomain);
+  test.AddAttribute<int64_t>("max_ngram_size", 3);
+  test.AddAttribute<int64_t>("n_head_per_ngram", 1);
+  test.AddAttribute<int64_t>("pad_id", 0);
+  test.AddAttribute<int64_t>("reset_on_eos", 1);
+  test.AddInput<T>("input_ids", {1, 4}, {3, 9, 5, 6});
+  test.AddInput<T>("multipliers", {3}, {11, 13, 17});
+  test.AddInput<T>("vocab_sizes", {2}, {101, 103});
+  test.AddOptionalInputEdge<T>();
+  test.AddOptionalInputEdge<T>();
+  test.AddInput<T>("eos_token_id", {}, {9});
+  test.AddOutput<T>("hash_ids", {1, 4, 2},
+                    {84, 102,
+                     68, 15,
+                     66, 13,
+                     3, 51});
+  test.AddOutput<T>("present_ids", {1, 2}, {5, 6});
+  test.Run();
+}
+
+// Verifies segment_ids resets causal history at packed-sequence boundaries within input_ids.
+template <typename T>
+void RunNGramHashMappingSegmentIdsTest() {
+  OpTester test("NGramHashMapping", 1, kMSDomain);
+  test.AddAttribute<int64_t>("max_ngram_size", 3);
+  test.AddAttribute<int64_t>("n_head_per_ngram", 1);
+  test.AddAttribute<int64_t>("pad_id", 0);
+  test.AddInput<T>("input_ids", {1, 4}, {3, 4, 5, 6});
+  test.AddInput<T>("multipliers", {3}, {11, 13, 17});
+  test.AddInput<T>("vocab_sizes", {2}, {101, 103});
+  test.AddOptionalInputEdge<T>();
+  test.AddOptionalInputEdge<T>();
+  test.AddOptionalInputEdge<T>();
+  test.AddInput<int32_t>("segment_ids", {1, 4}, {0, 0, 1, 1});
+  test.AddOutput<T>("hash_ids", {1, 4, 2},
+                    {33, 33,
+                     11, 11,
+                     55, 55,
+                     3, 3});
+  test.AddOutput<T>("present_ids", {1, 2}, {5, 6});
+  test.Run();
+}
+
+// A non-positive head vocabulary size has no meaningful modulo. The CPU kernel rejects it rather
+// than silently emitting a constant hash id of 0 for that head.
+template <typename T>
+void RunNGramHashMappingNonPositiveVocabTest() {
+  const std::vector<T> ids{3, 4, 5, 6};
+  const std::vector<T> multipliers{11, 13, 17};
+  // Head 2 is invalid; the other three are the usual primes.
+  const std::vector<T> vocab_sizes{101, 103, 0, 109};
+
+  OpTester test("NGramHashMapping", 1, kMSDomain);
+  test.AddAttribute<int64_t>("max_ngram_size", kMaxNGramSize);
+  test.AddAttribute<int64_t>("n_head_per_ngram", kHeadsPerNGram);
+  test.AddAttribute<int64_t>("pad_id", kPadId);
+  test.AddInput<T>("input_ids", {1, 4}, ids);
+  test.AddInput<T>("multipliers", {3}, multipliers);
+  test.AddInput<T>("vocab_sizes", {4}, vocab_sizes);
+  test.AddOptionalInputEdge<T>();
+  test.AddOutput<T>("hash_ids", {1, 4, 4}, std::vector<T>(16, T{0}));
+  test.AddOutput<T>("present_ids", {1, 2}, {ids[2], ids[3]});
+  // The validation is CPU-only by design: on GPU EPs vocab_sizes lives on the device and checking it
+  // would force a synchronization on every Compute call.
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "vocab_sizes must be positive", {}, nullptr,
+           &execution_providers);
+}
+
+template <typename T>
+void RunNGramHashMappingTest() {
+  const std::vector<T> ids{3, 4, 5, 6};
+  const std::vector<T> multipliers{11, 13, 17};
+  const std::vector<T> vocab_sizes{101, 103, 107, 109};
+  const std::vector<T> expected = NGramHashMappingReference<T>(ids, {}, multipliers, vocab_sizes);
+  // Guards the reference itself against silent drift.
+  ASSERT_EQ(expected, (std::vector<T>{84, 84, 98, 96,
+                                      11, 11, 39, 37,
+                                      3, 3, 48, 48,
+                                      3, 3, 71, 71}));
+
+  OpTester test("NGramHashMapping", 1, kMSDomain);
+  test.AddAttribute<int64_t>("max_ngram_size", kMaxNGramSize);
+  test.AddAttribute<int64_t>("n_head_per_ngram", kHeadsPerNGram);
+  test.AddAttribute<int64_t>("pad_id", kPadId);
+  test.AddInput<T>("input_ids", {1, 4}, ids);
+  test.AddInput<T>("multipliers", {3}, multipliers);
+  test.AddInput<T>("vocab_sizes", {4}, vocab_sizes);
+  test.AddOptionalInputEdge<T>();
+  test.AddOutput<T>("hash_ids", {1, 4, 4}, expected);
+  test.AddOutput<T>("present_ids", {1, 2}, {ids[2], ids[3]});
+  test.Run();
+}
+
+// A decode step must hash the same n-gram window as the corresponding position of a full-sequence
+// run. Without past_ids the preceding tokens would silently fall back to pad_id.
+template <typename T>
+void RunNGramHashMappingChunkedTest() {
+  const std::vector<T> ids{3, 4, 5, 6};
+  const std::vector<T> multipliers{11, 13, 17};
+  const std::vector<T> vocab_sizes{101, 103, 107, 109};
+  const std::vector<T> full = NGramHashMappingReference<T>(ids, {}, multipliers, vocab_sizes);
+
+  auto run_chunk = [&](const std::vector<T>& chunk, const std::vector<T>& past,
+                       const std::vector<T>& expected_hash_ids, const std::vector<T>& expected_present) {
+    OpTester test("NGramHashMapping", 1, kMSDomain);
+    test.AddAttribute<int64_t>("max_ngram_size", kMaxNGramSize);
+    test.AddAttribute<int64_t>("n_head_per_ngram", kHeadsPerNGram);
+    test.AddAttribute<int64_t>("pad_id", kPadId);
+    test.AddInput<T>("input_ids", {1, static_cast<int64_t>(chunk.size())}, chunk);
+    test.AddInput<T>("multipliers", {3}, multipliers);
+    test.AddInput<T>("vocab_sizes", {4}, vocab_sizes);
+    if (past.empty()) {
+      test.AddOptionalInputEdge<T>();
+    } else {
+      test.AddInput<T>("past_ids", {1, 2}, past);
+    }
+    test.AddOutput<T>("hash_ids", {1, static_cast<int64_t>(chunk.size()), 4}, expected_hash_ids);
+    test.AddOutput<T>("present_ids", {1, 2}, expected_present);
+    test.Run();
+  };
+
+  // Prefill of the first two tokens, then a decode step per remaining token, threading present_ids.
+  const std::vector<T> prefill{ids[0], ids[1]};
+  run_chunk(prefill, {}, std::vector<T>(full.begin(), full.begin() + 8), {ids[0], ids[1]});
+
+  // Decode token 2 with the prefill history.
+  run_chunk({ids[2]}, {ids[0], ids[1]}, std::vector<T>(full.begin() + 8, full.begin() + 12),
+            {ids[1], ids[2]});
+
+  // Decode token 3 with the history returned by the previous step.
+  run_chunk({ids[3]}, {ids[1], ids[2]}, std::vector<T>(full.begin() + 12, full.end()),
+            {ids[2], ids[3]});
+}
+
+// An empty input_ids tensor must still thread history through present_ids unchanged. This is the
+// only case that reaches the WebGPU kernel's sequence_length == 0 specialization, which drops the
+// input_ids binding entirely because WebGPU rejects zero-sized storage bindings.
+template <typename T>
+void RunNGramHashMappingEmptySequenceTest() {
+  const std::vector<T> multipliers{11, 13, 17};
+  const std::vector<T> vocab_sizes{101, 103, 107, 109};
+  const std::vector<T> past{3, 4};
+
+  auto run = [&](bool with_past) {
+    OpTester test("NGramHashMapping", 1, kMSDomain);
+    test.AddAttribute<int64_t>("max_ngram_size", kMaxNGramSize);
+    test.AddAttribute<int64_t>("n_head_per_ngram", kHeadsPerNGram);
+    test.AddAttribute<int64_t>("pad_id", kPadId);
+    test.AddInput<T>("input_ids", {1, 0}, {});
+    test.AddInput<T>("multipliers", {3}, multipliers);
+    test.AddInput<T>("vocab_sizes", {4}, vocab_sizes);
+    if (with_past) {
+      test.AddInput<T>("past_ids", {1, 2}, past);
+    } else {
+      test.AddOptionalInputEdge<T>();
+    }
+    test.AddOutput<T>("hash_ids", {1, 0, 4}, {});
+    // With no new tokens the window is unchanged; without a past_ids it is all pad_id.
+    test.AddOutput<T>("present_ids", {1, 2},
+                      with_past ? past : std::vector<T>{static_cast<T>(kPadId), static_cast<T>(kPadId)});
+    test.Run();
+  };
+
+  run(/*with_past=*/true);
+  run(/*with_past=*/false);
+}
+
+// Batch strides are only observable when batch_size > 1: with a single row every `b * stride` term
+// is zero, so a wrong stride in the hash kernel or in the present-state walk is invisible.
+template <typename T>
+void RunNGramHashMappingBatchedTest() {
+  constexpr int64_t kBatch = 3;
+  constexpr int64_t kSequence = 4;
+  const std::vector<T> multipliers{11, 13, 17};
+  const std::vector<T> vocab_sizes{101, 103, 107, 109};
+  // Distinct per-row values so a row picked up from the wrong batch offset changes the result.
+  const std::vector<std::vector<T>> rows{{3, 4, 5, 6}, {17, 2, 31, 8}, {40, 41, 42, 43}};
+  const std::vector<std::vector<T>> past{{1, 2}, {19, 23}, {29, 37}};
+
+  std::vector<T> ids;
+  std::vector<T> past_ids;
+  std::vector<T> expected_hash;
+  std::vector<T> expected_present;
+  for (int64_t b = 0; b < kBatch; ++b) {
+    const auto& row = rows[static_cast<size_t>(b)];
+    const auto& history = past[static_cast<size_t>(b)];
+    const std::vector<T> row_hash = NGramHashMappingReference<T>(row, history, multipliers, vocab_sizes);
+    ids.insert(ids.end(), row.begin(), row.end());
+    past_ids.insert(past_ids.end(), history.begin(), history.end());
+    expected_hash.insert(expected_hash.end(), row_hash.begin(), row_hash.end());
+    expected_present.insert(expected_present.end(), row.end() - (kMaxNGramSize - 1), row.end());
+  }
+
+  OpTester test("NGramHashMapping", 1, kMSDomain);
+  test.AddAttribute<int64_t>("max_ngram_size", kMaxNGramSize);
+  test.AddAttribute<int64_t>("n_head_per_ngram", kHeadsPerNGram);
+  test.AddAttribute<int64_t>("pad_id", kPadId);
+  test.AddInput<T>("input_ids", {kBatch, kSequence}, ids);
+  test.AddInput<T>("multipliers", {3}, multipliers);
+  test.AddInput<T>("vocab_sizes", {4}, vocab_sizes);
+  test.AddInput<T>("past_ids", {kBatch, kMaxNGramSize - 1}, past_ids);
+  test.AddOutput<T>("hash_ids", {kBatch, kSequence, (kMaxNGramSize - 1) * kHeadsPerNGram}, expected_hash);
+  test.AddOutput<T>("present_ids", {kBatch, kMaxNGramSize - 1}, expected_present);
+  test.Run();
+}
+
+// `MayInplace(3, 1)` is only a hint: the allocation planner honors it when past_ids is an
+// intermediate whose last consumer is the node, and never for a graph input or a graph output.
+// OpTester always feeds past_ids as a graph input, so the barrier-separated read/write design in the
+// CUDA and WebGPU present-state kernels is unreachable from those tests. Chaining three decode steps
+// makes the middle node's past_ids an intermediate with a single consumer, which is exactly the
+// shape the planner aliases -- so the middle node runs with past_ids and present_ids on one buffer.
+template <typename T>
+void RunNGramHashMappingInPlaceTest(std::unique_ptr<IExecutionProvider> ep) {
+  constexpr int64_t kBatch = 2;
+  constexpr int64_t kStateLength = kMaxNGramSize - 1;
+  constexpr int64_t kNumHeads = kStateLength * kHeadsPerNGram;
+  constexpr size_t kSteps = 3;
+
+  const std::vector<T> multipliers{11, 13, 17};
+  const std::vector<T> vocab_sizes{101, 103, 107, 109};
+  // Per batch row: the initial window, then one new token per decode step.
+  const std::vector<std::vector<T>> initial_past{{1, 2}, {19, 23}};
+  const std::vector<std::vector<T>> step_tokens{{3, 31}, {4, 37}, {5, 41}};
+
+  std::vector<T> past_ids_feed;
+  for (const auto& row : initial_past) {
+    past_ids_feed.insert(past_ids_feed.end(), row.begin(), row.end());
+  }
+
+  // Reference: replay the decode loop on the host, one batch row at a time.
+  std::vector<std::vector<T>> history = initial_past;
+  std::vector<std::vector<T>> expected_hash(kSteps);
+  std::vector<T> expected_final_present;
+  for (size_t step = 0; step < kSteps; ++step) {
+    for (int64_t b = 0; b < kBatch; ++b) {
+      const std::vector<T> chunk{step_tokens[step][static_cast<size_t>(b)]};
+      const std::vector<T> row_hash =
+          NGramHashMappingReference<T>(chunk, history[static_cast<size_t>(b)], multipliers, vocab_sizes);
+      expected_hash[step].insert(expected_hash[step].end(), row_hash.begin(), row_hash.end());
+      auto& row_history = history[static_cast<size_t>(b)];
+      row_history.erase(row_history.begin());
+      row_history.push_back(chunk[0]);
+    }
+  }
+  for (const auto& row : history) {
+    expected_final_present.insert(expected_final_present.end(), row.begin(), row.end());
+  }
+
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 17}, {kMSDomain, 1}};
+  Model model("NGramHashMappingInPlace", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+              DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+
+  NodeAttributes attributes;
+  attributes["max_ngram_size"] = utils::MakeAttribute(std::string("max_ngram_size"), kMaxNGramSize);
+  attributes["n_head_per_ngram"] = utils::MakeAttribute(std::string("n_head_per_ngram"), kHeadsPerNGram);
+  attributes["pad_id"] = utils::MakeAttribute(std::string("pad_id"), kPadId);
+
+  auto* multipliers_arg = builder.MakeInput<T>({kMaxNGramSize}, multipliers);
+  auto* vocab_sizes_arg = builder.MakeInput<T>({kNumHeads}, vocab_sizes);
+  NodeArg* past_arg = builder.MakeInput<T>({kBatch, kStateLength}, past_ids_feed);
+
+  std::vector<std::string> present_names;
+  for (size_t step = 0; step < kSteps; ++step) {
+    auto* input_ids_arg = builder.MakeInput<T>({kBatch, 1}, step_tokens[step]);
+    auto* hash_arg = builder.MakeOutput();
+    // Only the last step's present_ids is a graph output; the planner refuses to alias those.
+    const bool is_last = step + 1 == kSteps;
+    auto* present_arg = is_last ? builder.MakeOutput() : builder.MakeIntermediate();
+    builder.AddNode("NGramHashMapping", {input_ids_arg, multipliers_arg, vocab_sizes_arg, past_arg},
+                    {hash_arg, present_arg}, kMSDomain, &attributes);
+    present_names.push_back(present_arg->Name());
+    past_arg = present_arg;
+  }
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+
+  SessionOptions session_options;
+  InferenceSessionWrapper session{session_options, GetEnvironment()};
+  if (ep != nullptr) {
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(ep)));
+  }
+  std::istringstream model_istream(model_data);
+  ASSERT_STATUS_OK(session.Load(model_istream));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  // Pin the aliasing itself: without this the test would silently degrade to a plain chained run if
+  // the hint were dropped or the planner changed.
+  const SessionState& session_state = session.GetSessionState();
+  int middle_present = -1;
+  int middle_past = -1;
+  ASSERT_STATUS_OK(session_state.GetOrtValueNameIdxMap().GetIdx(present_names[1], middle_present));
+  ASSERT_STATUS_OK(session_state.GetOrtValueNameIdxMap().GetIdx(present_names[0], middle_past));
+  const auto& alloc_plan = session_state.GetPerValueAllocPlan();
+  EXPECT_EQ(alloc_plan[static_cast<size_t>(middle_present)].alloc_kind, AllocKind::kReuse);
+  EXPECT_EQ(alloc_plan[static_cast<size_t>(middle_present)].reused_buffer, middle_past);
+
+  std::vector<OrtValue> fetches;
+  ASSERT_STATUS_OK(session.Run(RunOptions{}, builder.feeds_, builder.output_names_, &fetches));
+
+  // MakeOutput() appends to output_names_ in creation order, so the fetches are hash_0, hash_1,
+  // hash_2, then the final present_ids.
+  ASSERT_EQ(fetches.size(), kSteps + 1);
+  for (size_t step = 0; step < kSteps; ++step) {
+    const Tensor& hash = fetches[step].Get<Tensor>();
+    ASSERT_EQ(hash.Shape(), TensorShape({kBatch, 1, kNumHeads}));
+    const auto span = hash.DataAsSpan<T>();
+    EXPECT_EQ(std::vector<T>(span.begin(), span.end()), expected_hash[step]) << "step " << step;
+  }
+  const Tensor& present = fetches[kSteps].Get<Tensor>();
+  ASSERT_EQ(present.Shape(), TensorShape({kBatch, kStateLength}));
+  const auto present_span = present.DataAsSpan<T>();
+  EXPECT_EQ(std::vector<T>(present_span.begin(), present_span.end()), expected_final_present);
+}
+
+#ifdef USE_CUDA
+void RunVarlenNGramHashMappingInPlaceCudaTest() {
+  constexpr int64_t kStateLength = kMaxNGramSize - 1;
+  constexpr int64_t kNumHeads = kStateLength * kHeadsPerNGram;
+  constexpr size_t kSteps = 3;
+  const std::vector<int32_t> multipliers{11, 13, 17};
+  const std::vector<int32_t> vocab_sizes{101, 103, 107, 109};
+  const std::vector<int32_t> cu_seqlens{0, 1};
+  const std::vector<int32_t> initial_past{1, 2};
+  const std::vector<int32_t> step_tokens{3, 4, 5};
+
+  std::vector<int32_t> expected_hash;
+  std::vector<int32_t> history = initial_past;
+  for (const int32_t token : step_tokens) {
+    const auto hash = NGramHashMappingReference<int32_t>(
+        {token}, history, multipliers, vocab_sizes);
+    expected_hash.insert(expected_hash.end(), hash.begin(), hash.end());
+    history.erase(history.begin());
+    history.push_back(token);
+  }
+
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 17}, {kMSDomain, 1}};
+  Model model("VarlenNGramHashMappingInPlace", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+              DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+  NodeAttributes attributes;
+  attributes["max_ngram_size"] = utils::MakeAttribute(std::string("max_ngram_size"), kMaxNGramSize);
+  attributes["n_head_per_ngram"] = utils::MakeAttribute(std::string("n_head_per_ngram"), kHeadsPerNGram);
+  attributes["pad_id"] = utils::MakeAttribute(std::string("pad_id"), kPadId);
+
+  auto* multipliers_arg = builder.MakeInput<int32_t>({kMaxNGramSize}, multipliers);
+  auto* vocab_sizes_arg = builder.MakeInput<int32_t>({kNumHeads}, vocab_sizes);
+  auto* cu_seqlens_arg = builder.MakeInput<int32_t>({2}, cu_seqlens);
+  auto* past_arg = builder.MakeInput<int32_t>({1, kStateLength}, initial_past);
+  std::vector<std::string> present_names;
+  for (size_t step = 0; step < kSteps; ++step) {
+    auto* input_ids_arg = builder.MakeInput<int32_t>({1}, {step_tokens[step]});
+    auto* hash_arg = builder.MakeOutput();
+    auto* present_arg = step + 1 == kSteps ? builder.MakeOutput() : builder.MakeIntermediate();
+    builder.AddNode("VarlenNGramHashMapping",
+                    {input_ids_arg, multipliers_arg, vocab_sizes_arg, cu_seqlens_arg, past_arg},
+                    {hash_arg, present_arg}, kMSDomain, &attributes);
+    present_names.push_back(present_arg->Name());
+    past_arg = present_arg;
+  }
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  std::string model_data;
+  ASSERT_TRUE(model.ToProto().SerializeToString(&model_data));
+  InferenceSessionWrapper session{SessionOptions{}, GetEnvironment()};
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (cuda_ep == nullptr) {
+    GTEST_SKIP() << "CUDA execution provider is unavailable";
+  }
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(cuda_ep)));
+  std::istringstream model_istream(model_data);
+  ASSERT_STATUS_OK(session.Load(model_istream));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  const auto& session_state = session.GetSessionState();
+  int middle_present = -1;
+  int middle_past = -1;
+  ASSERT_STATUS_OK(session_state.GetOrtValueNameIdxMap().GetIdx(present_names[1], middle_present));
+  ASSERT_STATUS_OK(session_state.GetOrtValueNameIdxMap().GetIdx(present_names[0], middle_past));
+  const auto& alloc_plan = session_state.GetPerValueAllocPlan();
+  EXPECT_EQ(alloc_plan[static_cast<size_t>(middle_present)].alloc_kind, AllocKind::kReuse);
+  EXPECT_EQ(alloc_plan[static_cast<size_t>(middle_present)].reused_buffer, middle_past);
+
+  std::vector<OrtValue> fetches;
+  ASSERT_STATUS_OK(session.Run(RunOptions{}, builder.feeds_, builder.output_names_, &fetches));
+  ASSERT_EQ(fetches.size(), kSteps + 1);
+  for (size_t step = 0; step < kSteps; ++step) {
+    const auto& hash = fetches[step].Get<Tensor>();
+    EXPECT_EQ(std::vector<int32_t>(hash.DataAsSpan<int32_t>().begin(), hash.DataAsSpan<int32_t>().end()),
+              std::vector<int32_t>(expected_hash.begin() + step * kNumHeads,
+                                   expected_hash.begin() + (step + 1) * kNumHeads));
+  }
+}
+#endif
+
+template <typename T>
+std::vector<int32_t> CuSeqLensFrom(const std::vector<std::vector<T>>& sequences) {
+  std::vector<int32_t> cu_seqlens{0};
+  int32_t total = 0;
+  for (const auto& seq : sequences) {
+    total += static_cast<int32_t>(seq.size());
+    cu_seqlens.push_back(total);
+  }
+  return cu_seqlens;
+}
+
+// The n-gram hash ids for a packed batch must equal running NGramHashMapping once per request and
+// concatenating token-major, because the varlen op is required to clamp its window at each
+// request's own boundary instead of the flat buffer's.
+template <typename T>
+std::vector<T> VarlenNGramHashMappingReference(const std::vector<std::vector<T>>& sequences,
+                                               const std::vector<std::vector<T>>& histories,
+                                               const std::vector<T>& multipliers,
+                                               const std::vector<T>& vocab_sizes,
+                                               int64_t pad_id = kPadId) {
+  std::vector<T> output;
+  for (size_t b = 0; b < sequences.size(); ++b) {
+    const std::vector<T> history = histories.empty() ? std::vector<T>{} : histories[b];
+    const std::vector<T> per_request =
+        NGramHashMappingReference<T>(sequences[b], history, multipliers, vocab_sizes, pad_id);
+    output.insert(output.end(), per_request.begin(), per_request.end());
+  }
+  return output;
+}
+
+template <typename T>
+std::vector<T> PresentIdsReference(const std::vector<T>& ids, const std::vector<T>& history,
+                                   int64_t pad_id = kPadId);
+
+template <typename T>
+std::vector<T> VarlenNGramHashMappingQwenReference(
+    const std::vector<std::vector<T>>& sequences,
+    const std::vector<std::vector<T>>& histories,
+    const std::vector<std::vector<int32_t>>& segment_ids,
+    const std::vector<T>& multipliers,
+    const std::vector<T>& vocab_sizes,
+    const std::vector<T>& head_offsets,
+    T eos_token_id,
+    const std::vector<std::vector<int32_t>>& past_segment_ids = {}) {
+  constexpr int64_t state_length = kMaxNGramSize - 1;
+  std::vector<T> output;
+
+  for (size_t b = 0; b < sequences.size(); ++b) {
+    std::vector<T> combined = histories[b];
+    combined.insert(combined.end(), sequences[b].begin(), sequences[b].end());
+    int64_t last_reset = -1;
+    for (int64_t i = 0; i < state_length; ++i) {
+      if (combined[static_cast<size_t>(i)] == eos_token_id) {
+        last_reset = i;
+      }
+    }
+    if (!past_segment_ids.empty()) {
+      for (int64_t i = 1; i < state_length; ++i) {
+        if (past_segment_ids[b][static_cast<size_t>(i)] !=
+            past_segment_ids[b][static_cast<size_t>(i - 1)]) {
+          last_reset = std::max(last_reset, i - 1);
+        }
+      }
+      if (segment_ids[b][0] != past_segment_ids[b][static_cast<size_t>(state_length - 1)]) {
+        last_reset = state_length - 1;
+      }
+    }
+
+    for (int64_t t = 0; t < static_cast<int64_t>(sequences[b].size()); ++t) {
+      const int64_t idx = state_length + t;
+      if (t > 0) {
+        const int64_t previous = idx - 1;
+        if (combined[static_cast<size_t>(previous)] == eos_token_id ||
+            segment_ids[b][static_cast<size_t>(t)] != segment_ids[b][static_cast<size_t>(t - 1)]) {
+          last_reset = previous;
+        }
+      }
+
+      for (int64_t n = 2; n <= kMaxNGramSize; ++n) {
+        T mix = 0;
+        for (int64_t k = 0; k < n; ++k) {
+          const int64_t source = idx - k;
+          const T token = source <= last_reset ? eos_token_id : combined[static_cast<size_t>(source)];
+          using U = std::make_unsigned_t<T>;
+          const T product = static_cast<T>(static_cast<U>(token) *
+                                           static_cast<U>(multipliers[static_cast<size_t>(k)]));
+          mix = k == 0 ? product : static_cast<T>(mix ^ product);
+        }
+        for (int64_t h = 0; h < kHeadsPerNGram; ++h) {
+          const int64_t out_h = (n - 2) * kHeadsPerNGram + h;
+          T value = static_cast<T>(mix % vocab_sizes[static_cast<size_t>(out_h)]);
+          if (value < 0) {
+            value = static_cast<T>(value + vocab_sizes[static_cast<size_t>(out_h)]);
+          }
+          using U = std::make_unsigned_t<T>;
+          output.push_back(static_cast<T>(
+              static_cast<U>(value) + static_cast<U>(head_offsets[static_cast<size_t>(out_h)])));
+        }
+      }
+    }
+  }
+
+  return output;
+}
+
+template <typename T>
+void RunVarlenNGramHashMappingQwenTest() {
+  constexpr T eos_token_id = 9;
+  constexpr int64_t state_length = kMaxNGramSize - 1;
+  constexpr int64_t num_heads = state_length * kHeadsPerNGram;
+  const std::vector<std::vector<T>> sequences{{4, 5, eos_token_id, 6, 7}, {3, 4, 5}};
+  const std::vector<std::vector<T>> histories{{1, 2}, {eos_token_id, 8}};
+  const std::vector<std::vector<int32_t>> segment_ids{{0, 0, 0, 0, 1}, {0, 0, 0}};
+  const std::vector<T> multipliers{11, 13, 17, 19};
+  const std::vector<T> vocab_sizes{101, 103, 107, 109};
+  const std::vector<T> head_offsets{1000, 2000, 3000, 4000};
+  const std::vector<T> expected_hash = VarlenNGramHashMappingQwenReference(
+      sequences, histories, segment_ids, multipliers, vocab_sizes, head_offsets, eos_token_id);
+
+  std::vector<T> flat_ids;
+  std::vector<T> flat_history;
+  std::vector<int32_t> flat_segment_ids;
+  std::vector<T> expected_present;
+  for (size_t b = 0; b < sequences.size(); ++b) {
+    flat_ids.insert(flat_ids.end(), sequences[b].begin(), sequences[b].end());
+    flat_history.insert(flat_history.end(), histories[b].begin(), histories[b].end());
+    flat_segment_ids.insert(flat_segment_ids.end(), segment_ids[b].begin(), segment_ids[b].end());
+    const auto present = PresentIdsReference(sequences[b], histories[b], eos_token_id);
+    expected_present.insert(expected_present.end(), present.begin(), present.end());
+  }
+  const std::vector<int32_t> cu_seqlens = CuSeqLensFrom(sequences);
+  const int64_t total_tokens = static_cast<int64_t>(flat_ids.size());
+  const int64_t batch_size = static_cast<int64_t>(sequences.size());
+
+  OpTester test("VarlenNGramHashMapping", 1, kMSDomain);
+  test.AddAttribute<int64_t>("max_ngram_size", kMaxNGramSize);
+  test.AddAttribute<int64_t>("n_head_per_ngram", kHeadsPerNGram);
+  test.AddAttribute<int64_t>("pad_id", kPadId);
+  test.AddAttribute<int64_t>("reset_on_eos", 1);
+  test.AddInput<T>("input_ids", {total_tokens}, flat_ids);
+  test.AddInput<T>("multipliers", {4}, multipliers);
+  test.AddInput<T>("vocab_sizes", {4}, vocab_sizes);
+  test.AddInput<int32_t>("cumulative_sequence_length", {batch_size + 1}, cu_seqlens);
+  test.AddInput<T>("past_ids", {batch_size, state_length}, flat_history);
+  test.AddInput<T>("head_offsets", {4}, head_offsets);
+  test.AddInput<T>("eos_token_id", {}, {eos_token_id});
+  test.AddInput<int32_t>("segment_ids", {total_tokens}, flat_segment_ids);
+  test.AddOutput<T>("hash_ids", {total_tokens, num_heads}, expected_hash);
+  test.AddOutput<T>("present_ids", {batch_size, state_length}, expected_present);
+  test.Run();
+}
+
+template <typename T>
+void RunVarlenNGramHashMappingEosPaddingTest() {
+  constexpr T eos_token_id = 9;
+  const std::vector<std::vector<T>> sequences{{4}};
+  const std::vector<std::vector<T>> eos_history{{eos_token_id, eos_token_id}};
+  const std::vector<std::vector<int32_t>> segment_ids{{0}};
+  const std::vector<T> multipliers{11, 13, 17};
+  const std::vector<T> vocab_sizes{101, 103, 107, 109};
+  const std::vector<T> zero_offsets(4, T{});
+  const std::vector<T> expected_hash = VarlenNGramHashMappingQwenReference(
+      sequences, eos_history, segment_ids, multipliers, vocab_sizes, zero_offsets, eos_token_id);
+
+  OpTester test("VarlenNGramHashMapping", 1, kMSDomain);
+  test.AddAttribute<int64_t>("max_ngram_size", kMaxNGramSize);
+  test.AddAttribute<int64_t>("n_head_per_ngram", kHeadsPerNGram);
+  test.AddAttribute<int64_t>("pad_id", kPadId);
+  test.AddAttribute<int64_t>("reset_on_eos", 1);
+  test.AddInput<T>("input_ids", {1}, sequences[0]);
+  test.AddInput<T>("multipliers", {3}, multipliers);
+  test.AddInput<T>("vocab_sizes", {4}, vocab_sizes);
+  test.AddInput<int32_t>("cumulative_sequence_length", {2}, {0, 1});
+  test.AddOptionalInputEdge<T>();
+  test.AddOptionalInputEdge<T>();
+  test.AddInput<T>("eos_token_id", {}, {eos_token_id});
+  test.AddOutput<T>("hash_ids", {1, 4}, expected_hash);
+  test.AddOutput<T>("present_ids", {1, 2}, {eos_token_id, 4});
+  test.Run();
+}
+
+template <typename T>
+void RunVarlenNGramHashMappingEosTokenIdRankOneRejectedTest() {
+  OpTester test("VarlenNGramHashMapping", 1, kMSDomain);
+  test.AddAttribute<int64_t>("max_ngram_size", kMaxNGramSize);
+  test.AddAttribute<int64_t>("n_head_per_ngram", kHeadsPerNGram);
+  test.AddAttribute<int64_t>("pad_id", kPadId);
+  test.AddAttribute<int64_t>("reset_on_eos", 1);
+  test.AddInput<T>("input_ids", {1}, {3});
+  test.AddInput<T>("multipliers", {3}, {11, 13, 17});
+  test.AddInput<T>("vocab_sizes", {4}, {101, 103, 107, 109});
+  test.AddInput<int32_t>("cumulative_sequence_length", {2}, {0, 1});
+  test.AddOptionalInputEdge<T>();  // past_ids
+  test.AddOptionalInputEdge<T>();  // head_offsets
+  test.AddInput<T>("eos_token_id", {1}, {static_cast<T>(kEosTokenId)});
+  test.AddOutput<T>("hash_ids", {1, 4}, std::vector<T>(4, T{}));
+  test.AddOutput<T>("present_ids", {1, 2}, std::vector<T>(2, T{}));
+  test.Run(OpTester::ExpectResult::kExpectFailure, "eos_token_id must be a scalar");
+}
+
+template <typename T>
+void RunVarlenNGramHashMappingHeadOffsetsOverflowTest() {
+  constexpr int64_t state_length = kMaxNGramSize - 1;
+  constexpr int64_t num_heads = state_length * kHeadsPerNGram;
+  const std::vector<std::vector<T>> sequences{{3}};
+  const std::vector<std::vector<T>> histories{
+      {static_cast<T>(kPadId), static_cast<T>(kPadId)}};
+  const std::vector<std::vector<int32_t>> segments{{0}};
+  const std::vector<T> multipliers{11, 13, 17};
+  const std::vector<T> vocab_sizes{101, 103, 107, 109};
+  const std::vector<T> head_offsets(static_cast<size_t>(num_heads), std::numeric_limits<T>::max());
+  const std::vector<T> expected_hash = VarlenNGramHashMappingQwenReference(
+      sequences, histories, segments, multipliers, vocab_sizes, head_offsets, T{});
+
+  OpTester test("VarlenNGramHashMapping", 1, kMSDomain);
+  test.AddAttribute<int64_t>("max_ngram_size", kMaxNGramSize);
+  test.AddAttribute<int64_t>("n_head_per_ngram", kHeadsPerNGram);
+  test.AddAttribute<int64_t>("pad_id", kPadId);
+  test.AddInput<T>("input_ids", {1}, sequences[0]);
+  test.AddInput<T>("multipliers", {3}, multipliers);
+  test.AddInput<T>("vocab_sizes", {num_heads}, vocab_sizes);
+  test.AddInput<int32_t>("cumulative_sequence_length", {2}, {0, 1});
+  test.AddOptionalInputEdge<T>();
+  test.AddInput<T>("head_offsets", {num_heads}, head_offsets);
+  test.AddOutput<T>("hash_ids", {1, num_heads}, expected_hash);
+  test.AddOutput<T>("present_ids", {1, state_length}, {static_cast<T>(kPadId), 3});
+  test.Run();
+}
+
+template <typename T>
+void RunVarlenNGramHashMappingSegmentStateTest() {
+  constexpr T eos_token_id = 9;
+  constexpr int64_t state_length = kMaxNGramSize - 1;
+  constexpr int64_t num_heads = state_length * kHeadsPerNGram;
+  const std::vector<T> multipliers{11, 13, 17};
+  const std::vector<T> vocab_sizes{101, 103, 107, 109};
+  const std::vector<T> head_offsets{1000, 2000, 3000, 4000};
+
+  const auto run_case = [&](const std::vector<int32_t>& past_segments,
+                            const std::vector<int32_t>& expected_present_segments) {
+    const std::vector<std::vector<T>> sequences{{6}};
+    const std::vector<std::vector<T>> histories{{4, 5}};
+    const std::vector<std::vector<int32_t>> segments{{1}};
+    const std::vector<std::vector<int32_t>> history_segments{past_segments};
+    const std::vector<T> expected_hash = VarlenNGramHashMappingQwenReference(
+        sequences, histories, segments, multipliers, vocab_sizes, head_offsets, eos_token_id, history_segments);
+
+    OpTester test("VarlenNGramHashMapping", 1, kMSDomain);
+    test.AddAttribute<int64_t>("max_ngram_size", kMaxNGramSize);
+    test.AddAttribute<int64_t>("n_head_per_ngram", kHeadsPerNGram);
+    test.AddAttribute<int64_t>("pad_id", kPadId);
+    test.AddAttribute<int64_t>("reset_on_eos", 1);
+    test.AddInput<T>("input_ids", {1}, sequences[0]);
+    test.AddInput<T>("multipliers", {3}, multipliers);
+    test.AddInput<T>("vocab_sizes", {num_heads}, vocab_sizes);
+    test.AddInput<int32_t>("cumulative_sequence_length", {2}, {0, 1});
+    test.AddInput<T>("past_ids", {1, state_length}, histories[0]);
+    test.AddInput<T>("head_offsets", {num_heads}, head_offsets);
+    test.AddInput<T>("eos_token_id", {}, {eos_token_id});
+    test.AddInput<int32_t>("segment_ids", {1}, segments[0]);
+    test.AddInput<int32_t>("past_segment_ids", {1, state_length}, past_segments);
+    test.AddOutput<T>("hash_ids", {1, num_heads}, expected_hash);
+    test.AddOutput<T>("present_ids", {1, state_length}, {5, 6});
+    test.AddOutput<int32_t>("present_segment_ids", {1, state_length}, expected_present_segments);
+    test.Run();
+  };
+
+  // A boundary may occur either exactly between calls or within the cached trailing window.
+  run_case({0, 0}, {0, 1});
+  run_case({0, 1}, {1, 1});
+}
+
+// present_ids for a single request: the right-aligned trailing window of (history ++ ids), padded
+// with pad_id for positions before the start of the whole (unpacked) sequence.
+template <typename T>
+std::vector<T> PresentIdsReference(const std::vector<T>& ids, const std::vector<T>& history,
+                                   int64_t pad_id) {
+  constexpr int64_t state_length = kMaxNGramSize - 1;
+  const int64_t local_length = static_cast<int64_t>(ids.size());
+  std::vector<T> present(static_cast<size_t>(state_length));
+  for (int64_t j = 0; j < state_length; ++j) {
+    const int64_t source_t = local_length - state_length + j;
+    if (source_t >= 0) {
+      present[static_cast<size_t>(j)] = ids[static_cast<size_t>(source_t)];
+      continue;
+    }
+    const int64_t slot = state_length + source_t;
+    present[static_cast<size_t>(j)] =
+        (!history.empty() && slot >= 0 && slot < state_length) ? history[static_cast<size_t>(slot)]
+                                                               : static_cast<T>(pad_id);
+  }
+  return present;
+}
+
+// Equivalence between one VarlenNGramHashMapping call over a packed multi-sequence buffer and
+// running NGramHashMapping separately per sequence and concatenating the results.
+template <typename T>
+void RunVarlenNGramHashMappingTest() {
+  const std::vector<std::vector<T>> sequences{{3, 4, 5}, {7, 8}, {1}};
+  const std::vector<T> multipliers{11, 13, 17};
+  const std::vector<T> vocab_sizes{101, 103, 107, 109};
+
+  std::vector<T> flat_ids;
+  for (const auto& seq : sequences) {
+    flat_ids.insert(flat_ids.end(), seq.begin(), seq.end());
+  }
+  const std::vector<int32_t> cu_seqlens = CuSeqLensFrom(sequences);
+  const int64_t total_tokens = static_cast<int64_t>(flat_ids.size());
+  const int64_t batch_size = static_cast<int64_t>(sequences.size());
+
+  const std::vector<T> expected_hash =
+      VarlenNGramHashMappingReference<T>(sequences, {}, multipliers, vocab_sizes);
+  std::vector<T> expected_present;
+  for (const auto& seq : sequences) {
+    const std::vector<T> present = PresentIdsReference<T>(seq, {});
+    expected_present.insert(expected_present.end(), present.begin(), present.end());
+  }
+
+  OpTester test("VarlenNGramHashMapping", 1, kMSDomain);
+  test.AddAttribute<int64_t>("max_ngram_size", kMaxNGramSize);
+  test.AddAttribute<int64_t>("n_head_per_ngram", kHeadsPerNGram);
+  test.AddAttribute<int64_t>("pad_id", kPadId);
+  test.AddInput<T>("input_ids", {total_tokens}, flat_ids);
+  test.AddInput<T>("multipliers", {3}, multipliers);
+  test.AddInput<T>("vocab_sizes", {4}, vocab_sizes);
+  test.AddInput<int32_t>("cumulative_sequence_length", {batch_size + 1}, cu_seqlens);
+  test.AddOptionalInputEdge<T>();
+  test.AddOutput<T>("hash_ids", {total_tokens, 4}, expected_hash);
+  test.AddOutput<T>("present_ids", {batch_size, 2}, expected_present);
+  test.Run();
+}
+
+// Pins that the packed op never reads across a sequence boundary: the reference for the packed
+// buffer must actually disagree with what a naive (batch_size=1) reshape of the same flat buffer
+// would produce at the boundary token, otherwise this test would pass vacuously.
+template <typename T>
+void RunVarlenNGramHashMappingBoundaryTest() {
+  const std::vector<std::vector<T>> sequences{{100, 101, 102}, {5, 6}};
+  const std::vector<T> multipliers{11, 13, 17};
+  const std::vector<T> vocab_sizes{101, 103, 107, 109};
+
+  std::vector<T> flat_ids;
+  for (const auto& seq : sequences) {
+    flat_ids.insert(flat_ids.end(), seq.begin(), seq.end());
+  }
+  const std::vector<int32_t> cu_seqlens = CuSeqLensFrom(sequences);
+  const int64_t total_tokens = static_cast<int64_t>(flat_ids.size());
+  const int64_t batch_size = static_cast<int64_t>(sequences.size());
+  constexpr int64_t num_heads = (kMaxNGramSize - 1) * kHeadsPerNGram;
+
+  const std::vector<T> expected_hash =
+      VarlenNGramHashMappingReference<T>(sequences, {}, multipliers, vocab_sizes);
+  const std::vector<T> naive_flattened = NGramHashMappingReference<T>(flat_ids, {}, multipliers, vocab_sizes);
+
+  const int64_t boundary_token = static_cast<int64_t>(sequences[0].size());  // first token of sequence 1
+  bool differs_at_boundary = false;
+  for (int64_t h = 0; h < num_heads; ++h) {
+    if (expected_hash[static_cast<size_t>(boundary_token * num_heads + h)] !=
+        naive_flattened[static_cast<size_t>(boundary_token * num_heads + h)]) {
+      differs_at_boundary = true;
+      break;
+    }
+  }
+  ASSERT_TRUE(differs_at_boundary) << "test fixture does not exercise the sequence-boundary clamp";
+
+  std::vector<T> expected_present;
+  for (const auto& seq : sequences) {
+    const std::vector<T> present = PresentIdsReference<T>(seq, {});
+    expected_present.insert(expected_present.end(), present.begin(), present.end());
+  }
+
+  OpTester test("VarlenNGramHashMapping", 1, kMSDomain);
+  test.AddAttribute<int64_t>("max_ngram_size", kMaxNGramSize);
+  test.AddAttribute<int64_t>("n_head_per_ngram", kHeadsPerNGram);
+  test.AddAttribute<int64_t>("pad_id", kPadId);
+  test.AddInput<T>("input_ids", {total_tokens}, flat_ids);
+  test.AddInput<T>("multipliers", {3}, multipliers);
+  test.AddInput<T>("vocab_sizes", {4}, vocab_sizes);
+  test.AddInput<int32_t>("cumulative_sequence_length", {batch_size + 1}, cu_seqlens);
+  test.AddOptionalInputEdge<T>();
+  test.AddOutput<T>("hash_ids", {total_tokens, 4}, expected_hash);
+  test.AddOutput<T>("present_ids", {batch_size, 2}, expected_present);
+  test.Run();
+}
+
+// Negative ids exercise the same PositiveMod/WrappedMultiply corrections as the non-varlen
+// negative-id test, across two concurrently packed requests.
+template <typename T>
+void RunVarlenNGramHashMappingNegativeIdsTest() {
+  constexpr int64_t kNegativePadId = -4;
+  const std::vector<std::vector<T>> sequences{{-5, 7, -3, 2}, {-1, 6}};
+  const std::vector<T> multipliers{11, 13, 17};
+  const std::vector<T> vocab_sizes{101, 103, 107, 109};
+
+  std::vector<T> flat_ids;
+  for (const auto& seq : sequences) {
+    flat_ids.insert(flat_ids.end(), seq.begin(), seq.end());
+  }
+  const std::vector<int32_t> cu_seqlens = CuSeqLensFrom(sequences);
+  const int64_t total_tokens = static_cast<int64_t>(flat_ids.size());
+  const int64_t batch_size = static_cast<int64_t>(sequences.size());
+
+  const std::vector<T> expected_hash =
+      VarlenNGramHashMappingReference<T>(sequences, {}, multipliers, vocab_sizes, kNegativePadId);
+  for (const T value : expected_hash) {
+    ASSERT_GE(value, 0);
+  }
+  std::vector<T> expected_present;
+  for (const auto& seq : sequences) {
+    const std::vector<T> present = PresentIdsReference<T>(seq, {}, kNegativePadId);
+    expected_present.insert(expected_present.end(), present.begin(), present.end());
+  }
+
+  OpTester test("VarlenNGramHashMapping", 1, kMSDomain);
+  test.AddAttribute<int64_t>("max_ngram_size", kMaxNGramSize);
+  test.AddAttribute<int64_t>("n_head_per_ngram", kHeadsPerNGram);
+  test.AddAttribute<int64_t>("pad_id", kNegativePadId);
+  test.AddInput<T>("input_ids", {total_tokens}, flat_ids);
+  test.AddInput<T>("multipliers", {3}, multipliers);
+  test.AddInput<T>("vocab_sizes", {4}, vocab_sizes);
+  test.AddInput<int32_t>("cumulative_sequence_length", {batch_size + 1}, cu_seqlens);
+  test.AddOptionalInputEdge<T>();
+  test.AddOutput<T>("hash_ids", {total_tokens, 4}, expected_hash);
+  test.AddOutput<T>("present_ids", {batch_size, 2}, expected_present);
+  test.Run();
+}
+
+// Same rejection as NGramHashMapping's non-positive vocab_sizes test; validation is CPU-only.
+template <typename T>
+void RunVarlenNGramHashMappingNonPositiveVocabTest() {
+  const std::vector<T> ids{3, 4, 5, 6};
+  const std::vector<T> multipliers{11, 13, 17};
+  const std::vector<T> vocab_sizes{101, 103, 0, 109};
+  const std::vector<int32_t> cu_seqlens{0, 4};
+
+  OpTester test("VarlenNGramHashMapping", 1, kMSDomain);
+  test.AddAttribute<int64_t>("max_ngram_size", kMaxNGramSize);
+  test.AddAttribute<int64_t>("n_head_per_ngram", kHeadsPerNGram);
+  test.AddAttribute<int64_t>("pad_id", kPadId);
+  test.AddInput<T>("input_ids", {4}, ids);
+  test.AddInput<T>("multipliers", {3}, multipliers);
+  test.AddInput<T>("vocab_sizes", {4}, vocab_sizes);
+  test.AddInput<int32_t>("cumulative_sequence_length", {2}, cu_seqlens);
+  test.AddOptionalInputEdge<T>();
+  test.AddOutput<T>("hash_ids", {4, 4}, std::vector<T>(16, T{0}));
+  test.AddOutput<T>("present_ids", {1, 2}, {ids[2], ids[3]});
+  // Same as NGramHashMapping: vocab_sizes lives on the device for GPU EPs, so this check is CPU-only.
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "vocab_sizes must be positive", {}, nullptr,
+           &execution_providers);
+}
+
+// Packed prefill of two concurrent requests followed by a packed single-token decode step per
+// request, threading present_ids independently per request. Analogous to
+// RunNGramHashMappingChunkedTest but exercising multiple sequences packed together per call.
+template <typename T>
+void RunVarlenNGramHashMappingChunkedTest() {
+  const std::vector<std::vector<T>> sequences{{3, 4, 5, 6}, {20, 21, 22, 23}};
+  const std::vector<T> multipliers{11, 13, 17};
+  const std::vector<T> vocab_sizes{101, 103, 107, 109};
+  std::vector<std::vector<T>> full_refs;
+  for (const auto& seq : sequences) {
+    full_refs.push_back(NGramHashMappingReference<T>(seq, {}, multipliers, vocab_sizes));
+  }
+
+  auto run_chunk = [&](const std::vector<std::vector<T>>& chunks, const std::vector<std::vector<T>>& pasts,
+                       const std::vector<std::vector<T>>& expected_hash_per_request,
+                       const std::vector<std::vector<T>>& expected_presents) {
+    std::vector<T> flat_ids;
+    for (const auto& c : chunks) {
+      flat_ids.insert(flat_ids.end(), c.begin(), c.end());
+    }
+    std::vector<T> expected_hash;
+    for (const auto& h : expected_hash_per_request) {
+      expected_hash.insert(expected_hash.end(), h.begin(), h.end());
+    }
+    std::vector<T> expected_present;
+    for (const auto& p : expected_presents) {
+      expected_present.insert(expected_present.end(), p.begin(), p.end());
+    }
+    const std::vector<int32_t> cu_seqlens = CuSeqLensFrom(chunks);
+    const int64_t total_tokens = static_cast<int64_t>(flat_ids.size());
+    const int64_t batch_size = static_cast<int64_t>(chunks.size());
+
+    OpTester test("VarlenNGramHashMapping", 1, kMSDomain);
+    test.AddAttribute<int64_t>("max_ngram_size", kMaxNGramSize);
+    test.AddAttribute<int64_t>("n_head_per_ngram", kHeadsPerNGram);
+    test.AddAttribute<int64_t>("pad_id", kPadId);
+    test.AddInput<T>("input_ids", {total_tokens}, flat_ids);
+    test.AddInput<T>("multipliers", {3}, multipliers);
+    test.AddInput<T>("vocab_sizes", {4}, vocab_sizes);
+    test.AddInput<int32_t>("cumulative_sequence_length", {batch_size + 1}, cu_seqlens);
+    if (pasts.empty()) {
+      test.AddOptionalInputEdge<T>();
+    } else {
+      std::vector<T> flat_past;
+      for (const auto& p : pasts) {
+        flat_past.insert(flat_past.end(), p.begin(), p.end());
+      }
+      test.AddInput<T>("past_ids", {batch_size, 2}, flat_past);
+    }
+    test.AddOutput<T>("hash_ids", {total_tokens, 4}, expected_hash);
+    test.AddOutput<T>("present_ids", {batch_size, 2}, expected_present);
+    test.Run();
+  };
+
+  // Packed prefill: the first two tokens of each of the two concurrent requests.
+  const std::vector<std::vector<T>> prefill{{sequences[0][0], sequences[0][1]},
+                                            {sequences[1][0], sequences[1][1]}};
+  run_chunk(prefill, {},
+            {std::vector<T>(full_refs[0].begin(), full_refs[0].begin() + 8),
+             std::vector<T>(full_refs[1].begin(), full_refs[1].begin() + 8)},
+            prefill);
+
+  // Packed decode of token index 2 for both requests, using each request's own prefill history.
+  const std::vector<std::vector<T>> decode2{{sequences[0][2]}, {sequences[1][2]}};
+  const std::vector<std::vector<T>> present_after_decode2{{prefill[0][1], sequences[0][2]},
+                                                          {prefill[1][1], sequences[1][2]}};
+  run_chunk(decode2, prefill,
+            {std::vector<T>(full_refs[0].begin() + 8, full_refs[0].begin() + 12),
+             std::vector<T>(full_refs[1].begin() + 8, full_refs[1].begin() + 12)},
+            present_after_decode2);
+
+  // Packed decode of token index 3 for both requests, using the history returned above.
+  const std::vector<std::vector<T>> decode3{{sequences[0][3]}, {sequences[1][3]}};
+  const std::vector<std::vector<T>> present_after_decode3{{sequences[0][2], sequences[0][3]},
+                                                          {sequences[1][2], sequences[1][3]}};
+  run_chunk(decode3, present_after_decode2,
+            {std::vector<T>(full_refs[0].begin() + 12, full_refs[0].end()),
+             std::vector<T>(full_refs[1].begin() + 12, full_refs[1].end())},
+            present_after_decode3);
+}
+
+template <typename T>
+void RunVarlenNGramHashMappingStateUpdateTest() {
+  constexpr int64_t state_length = 2;
+  constexpr int64_t capacity = 3;
+  const std::vector<T> input_ids{10, 11, 12, 13, 20, 21};
+  const std::vector<T> past_ids{1, 2, 3, 4};
+
+  OpTester test("VarlenNGramHashMapping", 1, kMSDomain);
+  test.AddAttribute<int64_t>("max_ngram_size", state_length + 1);
+  test.AddAttribute<int64_t>("n_head_per_ngram", kHeadsPerNGram);
+  test.AddAttribute<int64_t>("pad_id", kPadId);
+  test.AddAttribute<int64_t>("state_update_capacity", capacity);
+  test.AddInput<T>("input_ids", {6}, input_ids);
+  test.AddInput<T>("multipliers", {3}, {11, 13, 17});
+  test.AddInput<T>("vocab_sizes", {4}, {101, 103, 107, 109});
+  test.AddInput<int32_t>("cumulative_sequence_length", {3}, {0, 4, 6});
+  test.AddInput<T>("past_ids", {2, state_length}, past_ids);
+  test.AddOptionalInputEdge<T>();
+  test.AddOptionalInputEdge<T>();
+  test.AddOptionalInputEdge<int32_t>();
+  test.AddOptionalInputEdge<int32_t>();
+  test.AddInput<int32_t>("capture_count", {2}, {2, 3});
+  test.AddOutput<T>("hash_ids", {6, 4},
+                    VarlenNGramHashMappingReference<T>({{10, 11, 12, 13}, {20, 21}},
+                                                       {{1, 2}, {3, 4}}, {11, 13, 17},
+                                                       {101, 103, 107, 109}));
+  test.AddOutput<T>("present_ids", {2, state_length}, {12, 13, 20, 21});
+  test.AddOptionalOutputEdge<int32_t>();
+  test.AddOutput<T>("state_update", {2, capacity, state_length},
+                    {2, 10, 10, 11, kPadId, kPadId,
+                     4, 20, 20, 21, kPadId, kPadId});
+  test.Run();
+}
+
+void RunVarlenNGramHashMappingCaptureCountShapeTest() {
+#if defined(ORT_NO_EXCEPTIONS)
+  GTEST_SKIP() << "Static shape inference failures abort when exceptions are disabled.";
+#endif
+  OpTester test("VarlenNGramHashMapping", 1, kMSDomain);
+  test.AddAttribute<int64_t>("max_ngram_size", 3);
+  test.AddAttribute<int64_t>("n_head_per_ngram", 1);
+  test.AddAttribute<int64_t>("pad_id", kPadId);
+  test.AddAttribute<int64_t>("state_update_capacity", 1);
+  test.AddInput<int64_t>("input_ids", {2}, {10, 20});
+  test.AddInput<int64_t>("multipliers", {3}, {11, 13, 17});
+  test.AddInput<int64_t>("vocab_sizes", {2}, {101, 103});
+  test.AddInput<int32_t>("cumulative_sequence_length", {3}, {0, 1, 2});
+  test.AddOptionalInputEdge<int64_t>();
+  test.AddOptionalInputEdge<int64_t>();
+  test.AddOptionalInputEdge<int64_t>();
+  test.AddOptionalInputEdge<int32_t>();
+  test.AddOptionalInputEdge<int32_t>();
+  test.AddInput<int32_t>("capture_count", {1}, {1});
+  test.AddOutput<int64_t>("hash_ids", {2, 2}, std::vector<int64_t>(4));
+  test.AddOptionalOutputEdge<int64_t>();
+  test.AddOptionalOutputEdge<int32_t>();
+  test.AddOutput<int64_t>("state_update", {2, 1, 2}, std::vector<int64_t>(4));
+  test.Run(OpTester::ExpectResult::kExpectFailure, "capture_count must have shape (batch_size)");
+}
+
+template <typename T>
+void RunVarlenNGramHashMappingStateUpdateEosFillTest() {
+  constexpr int64_t state_length = 2;
+  constexpr int64_t eos_id = 99;
+
+  OpTester test("VarlenNGramHashMapping", 1, kMSDomain);
+  test.AddAttribute<int64_t>("max_ngram_size", state_length + 1);
+  test.AddAttribute<int64_t>("n_head_per_ngram", kHeadsPerNGram);
+  test.AddAttribute<int64_t>("pad_id", kPadId);
+  test.AddAttribute<int64_t>("state_update_capacity", 2);
+  test.AddInput<T>("input_ids", {2}, {10, 11});
+  test.AddInput<T>("multipliers", {3}, {11, 13, 17});
+  test.AddInput<T>("vocab_sizes", {4}, {101, 103, 107, 109});
+  test.AddInput<int32_t>("cumulative_sequence_length", {2}, {0, 2});
+  test.AddOptionalInputEdge<T>();
+  test.AddOptionalInputEdge<T>();
+  test.AddInput<T>("eos_token_id", {}, {static_cast<T>(eos_id)});
+  test.AddOptionalInputEdge<int32_t>();
+  test.AddOptionalInputEdge<int32_t>();
+  test.AddInput<int32_t>("capture_count", {1}, {2});
+  test.AddOutput<T>("hash_ids", {2, 4},
+                    VarlenNGramHashMappingReference<T>({{10, 11}}, {}, {11, 13, 17},
+                                                       {101, 103, 107, 109}, eos_id));
+  test.AddOptionalOutputEdge<T>();
+  test.AddOptionalOutputEdge<int32_t>();
+  test.AddOutput<T>("state_update", {1, 2, state_length},
+                    {static_cast<T>(eos_id), 10, 10, 11});
+  test.Run();
+}
+
+// cumulative_sequence_length content (values, not just shape) is validated on the host only for
+// the CPU EP, so malformed content there surfaces as an OpTester failure with a specific message.
+// GPU EPs cannot afford a host round-trip to validate device-resident cu_seqlens content on every
+// call, so they instead validate on-device once per Compute() call and, when invalid, deterministic-
+// ally fall back to defaults (zero hash_ids, pad_id present_ids) covering the *entire* output --
+// this is exercised for CUDA/WebGPU by RunVarlenNGramHashMappingMalformedCuSeqlensDefaultsTest below.
+template <typename T>
+void RunVarlenNGramHashMappingMalformedCuSeqlensTest(const std::vector<int32_t>& cu_seqlens,
+                                                     int64_t total_tokens,
+                                                     const std::string& expected_error) {
+  const int64_t batch_size = static_cast<int64_t>(cu_seqlens.size()) - 1;
+  const std::vector<T> ids(static_cast<size_t>(total_tokens), T{1});
+  const std::vector<T> multipliers{11, 13, 17};
+  const std::vector<T> vocab_sizes{101, 103, 107, 109};
+
+  OpTester test("VarlenNGramHashMapping", 1, kMSDomain);
+  test.AddAttribute<int64_t>("max_ngram_size", kMaxNGramSize);
+  test.AddAttribute<int64_t>("n_head_per_ngram", kHeadsPerNGram);
+  test.AddAttribute<int64_t>("pad_id", kPadId);
+  test.AddInput<T>("input_ids", {total_tokens}, ids);
+  test.AddInput<T>("multipliers", {3}, multipliers);
+  test.AddInput<T>("vocab_sizes", {4}, vocab_sizes);
+  test.AddInput<int32_t>("cumulative_sequence_length", {batch_size + 1}, cu_seqlens);
+  test.AddOptionalInputEdge<T>();
+  test.AddOutput<T>("hash_ids", {total_tokens, 4}, std::vector<T>(static_cast<size_t>(total_tokens * 4)));
+  test.AddOutput<T>("present_ids", {batch_size, 2}, std::vector<T>(static_cast<size_t>(batch_size * 2)));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, expected_error, {}, nullptr, &execution_providers);
+}
+
+// GPU EPs validate cu_seqlens content on-device once per call and, when it's globally invalid
+// (including cases where every individual request's own start < end / end <= total_tokens check
+// would locally pass, e.g. descending or repeated offsets), fall back to deterministic defaults for
+// the *entire* output instead of failing: zero hash_ids, pad_id present_ids. This exercises exactly
+// the offsets patterns called out in review 5107886057 (descending, repeated, wrong first, wrong
+// final) on CUDA/WebGPU, where the previous per-request-only local checks could otherwise let two
+// requests race on an overlapping output range.
+#if defined(USE_CUDA) || defined(USE_WEBGPU)
+void RunVarlenNGramHashMappingMalformedCuSeqlensDefaultsTest(
+    const std::vector<int32_t>& cu_seqlens, int32_t total_tokens,
+    std::unique_ptr<IExecutionProvider> execution_provider, bool include_present_ids = true) {
+  using T = int32_t;
+  const int64_t batch_size = static_cast<int64_t>(cu_seqlens.size()) - 1;
+  const std::vector<T> ids(static_cast<size_t>(total_tokens), T{1});
+  const std::vector<T> multipliers{11, 13, 17};
+  const std::vector<T> vocab_sizes{101, 103, 107, 109};
+
+  OpTester test("VarlenNGramHashMapping", 1, kMSDomain);
+  test.AddAttribute<int64_t>("max_ngram_size", kMaxNGramSize);
+  test.AddAttribute<int64_t>("n_head_per_ngram", kHeadsPerNGram);
+  test.AddAttribute<int64_t>("pad_id", kPadId);
+  test.AddInput<T>("input_ids", {total_tokens}, ids);
+  test.AddInput<T>("multipliers", {3}, multipliers);
+  test.AddInput<T>("vocab_sizes", {4}, vocab_sizes);
+  test.AddInput<int32_t>("cumulative_sequence_length", {batch_size + 1}, cu_seqlens);
+  test.AddOptionalInputEdge<T>();
+  test.AddOutput<T>("hash_ids", {total_tokens, 4}, std::vector<T>(static_cast<size_t>(total_tokens * 4), T{0}));
+  if (include_present_ids) {
+    test.AddOutput<T>("present_ids", {batch_size, 2},
+                      std::vector<T>(static_cast<size_t>(batch_size * 2), static_cast<T>(kPadId)));
+  } else {
+    test.AddOptionalOutputEdge<T>();
+  }
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(execution_provider));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif  // defined(USE_CUDA) || defined(USE_WEBGPU)
+
+}  // namespace
+
+TEST(EngramOpsTest, NGramHashMappingEmptySequenceInt64) {
+  RunNGramHashMappingEmptySequenceTest<int64_t>();
+}
+
+// int32 is the only type the WebGPU kernel supports, so this is what covers its zero-length
+// specialization.
+TEST(EngramOpsTest, NGramHashMappingEmptySequenceInt32) {
+  RunNGramHashMappingEmptySequenceTest<int32_t>();
+}
+
+TEST(EngramOpsTest, NGramHashMappingInt64) {
+  RunNGramHashMappingTest<int64_t>();
+}
+
+// int32 is the only type the WebGPU kernel supports, so it must be covered explicitly.
+TEST(EngramOpsTest, NGramHashMappingInt32) {
+  RunNGramHashMappingTest<int32_t>();
+}
+
+TEST(EngramOpsTest, NGramHashMappingChunkedMatchesFullSequenceInt64) {
+  RunNGramHashMappingChunkedTest<int64_t>();
+}
+
+// int32 is the only type the WebGPU kernel supports, so this is the case that gives the WebGPU
+// past_ids/present_ids shaders any execution coverage at all.
+TEST(EngramOpsTest, NGramHashMappingChunkedMatchesFullSequenceInt32) {
+  RunNGramHashMappingChunkedTest<int32_t>();
+}
+
+TEST(EngramOpsTest, NGramHashMappingHeadOffsetsInt64) {
+  RunNGramHashMappingHeadOffsetsTest<int64_t>();
+}
+
+TEST(EngramOpsTest, NGramHashMappingHeadOffsetsInt32) {
+  RunNGramHashMappingHeadOffsetsTest<int32_t>();
+}
+
+TEST(EngramOpsTest, NGramHashMappingEosResetInt64) {
+  RunNGramHashMappingEosResetTest<int64_t>();
+}
+
+TEST(EngramOpsTest, NGramHashMappingEosResetInt32) {
+  RunNGramHashMappingEosResetTest<int32_t>();
+}
+
+TEST(EngramOpsTest, NGramHashMappingEosAcrossChunksInt64) {
+  RunNGramHashMappingEosAcrossChunksTest<int64_t>();
+}
+
+TEST(EngramOpsTest, NGramHashMappingEosAcrossChunksInt32) {
+  RunNGramHashMappingEosAcrossChunksTest<int32_t>();
+}
+
+TEST(EngramOpsTest, NGramHashMappingEosInteriorPastInt64) {
+  RunNGramHashMappingEosInteriorPastTest<int64_t>();
+}
+
+TEST(EngramOpsTest, NGramHashMappingEosInteriorPastInt32) {
+  RunNGramHashMappingEosInteriorPastTest<int32_t>();
+}
+
+TEST(EngramOpsTest, NGramHashMappingRejectsRankOneEosTokenIdInt64) {
+  RunNGramHashMappingEosTokenIdRankOneRejectedTest<int64_t>();
+}
+
+TEST(EngramOpsTest, NGramHashMappingRejectsRankOneEosTokenIdInt32) {
+  RunNGramHashMappingEosTokenIdRankOneRejectedTest<int32_t>();
+}
+
+TEST(EngramOpsTest, NGramHashMappingSegmentIdsInt64) {
+  RunNGramHashMappingSegmentIdsTest<int64_t>();
+}
+
+TEST(EngramOpsTest, NGramHashMappingSegmentIdsInt32) {
+  RunNGramHashMappingSegmentIdsTest<int32_t>();
+}
+
+TEST(EngramOpsTest, NGramHashMappingNegativeIdsInt64) {
+  RunNGramHashMappingNegativeIdsTest<int64_t>();
+}
+
+TEST(EngramOpsTest, NGramHashMappingNegativeIdsInt32) {
+  RunNGramHashMappingNegativeIdsTest<int32_t>();
+}
+
+TEST(EngramOpsTest, NGramHashMappingRejectsNonPositiveVocabSizeInt64) {
+  RunNGramHashMappingNonPositiveVocabTest<int64_t>();
+}
+
+TEST(EngramOpsTest, NGramHashMappingRejectsNonPositiveVocabSizeInt32) {
+  RunNGramHashMappingNonPositiveVocabTest<int32_t>();
+}
+
+TEST(EngramOpsTest, NGramHashMappingBatchedInt64) {
+  RunNGramHashMappingBatchedTest<int64_t>();
+}
+
+TEST(EngramOpsTest, NGramHashMappingBatchedInt32) {
+  RunNGramHashMappingBatchedTest<int32_t>();
+}
+
+TEST(EngramOpsTest, NGramHashMappingInPlaceCpu) {
+  RunNGramHashMappingInPlaceTest<int64_t>(nullptr);
+  RunNGramHashMappingInPlaceTest<int32_t>(nullptr);
+}
+
+#ifdef USE_CUDA
+TEST(EngramOpsTest, NGramHashMappingInPlaceCuda) {
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA execution provider is not available";
+  }
+  RunNGramHashMappingInPlaceTest<int64_t>(DefaultCudaExecutionProvider());
+  RunNGramHashMappingInPlaceTest<int32_t>(DefaultCudaExecutionProvider());
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingInPlaceCuda) {
+  RunVarlenNGramHashMappingInPlaceCudaTest();
+}
+
+TEST(EngramOpsTest, NGramHashMappingHeadOffsetsSkipInvalidVocabCuda) {
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA execution provider is not available";
+  }
+  RunNGramHashMappingHeadOffsetsInvalidVocabGpuTest<int64_t>(DefaultCudaExecutionProvider());
+  RunNGramHashMappingHeadOffsetsInvalidVocabGpuTest<int32_t>(DefaultCudaExecutionProvider());
+}
+#endif
+
+#ifdef USE_WEBGPU
+// int32 is the only type the WebGPU kernel registers.
+TEST(EngramOpsTest, NGramHashMappingInPlaceWebGpu) {
+  // A null provider is the CPU convention in RunNGramHashMappingInPlaceTest, so fail closed here
+  // instead of silently degrading into a CPU run that never exercises NGramPresentIdsProgram.
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (webgpu_ep == nullptr) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  RunNGramHashMappingInPlaceTest<int32_t>(std::move(webgpu_ep));
+}
+
+TEST(EngramOpsTest, NGramHashMappingHeadOffsetsSkipInvalidVocabWebGpu) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (webgpu_ep == nullptr) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  RunNGramHashMappingHeadOffsetsInvalidVocabGpuTest<int32_t>(std::move(webgpu_ep));
+}
+#endif
+
+TEST(EngramOpsTest, EngramGateFloat) {
+  RunEngramGateTest<float>(1e-4f);
+}
+
+TEST(EngramOpsTest, EngramGateFloat16) {
+  RunEngramGateTest<MLFloat16>(2e-3f);
+}
+
+TEST(EngramOpsTest, EngramGateVectorizedFloat) {
+  RunEngramGateVectorizedTest<float>(1e-4f, 4);
+}
+
+TEST(EngramOpsTest, EngramGateVectorizedFloat16) {
+  RunEngramGateVectorizedTest<MLFloat16>(3e-3f, 4);
+}
+
+// 260 channels is the smallest multiple of 4 above both accumulation strides (CUDA's blockDim.x of
+// 256 and, with components == 4, the WGSL workgroup size of 64 over hidden_size / 4 == 65), so this
+// is the only case where either strided reduction loop runs more than once per thread.
+TEST(EngramOpsTest, EngramGateMultiIterationReductionFloat) {
+  RunEngramGateVectorizedTest<float>(1e-4f, 260);
+}
+
+TEST(EngramOpsTest, EngramGateMultiIterationReductionFloat16) {
+  RunEngramGateVectorizedTest<MLFloat16>(5e-3f, 260);
+}
+
+TEST(EngramOpsTest, EngramGateBFloat16) {
+  RunEngramGateTest<BFloat16>(2e-2f);
+}
+
+TEST(EngramOpsTest, EngramGateNormedFloat) {
+  RunEngramGateNormedTest<float>(1e-4f);
+}
+
+TEST(EngramOpsTest, EngramGateNormedFloat16) {
+  RunEngramGateNormedTest<MLFloat16>(2e-3f);
+}
+
+TEST(EngramOpsTest, EngramGateNormedBFloat16) {
+  RunEngramGateNormedTest<BFloat16>(2e-2f);
+}
+
+// A zero dot product must produce a gate of exactly 0.5 on every EP. Orthogonal key/query rows make
+// the dot product vanish, which would silently become sigmoid(sqrt(1e-6)) if copysign were used.
+TEST(EngramOpsTest, EngramGateZeroDotProduct) {
+  const std::vector<float> key{1.0f, 0.0f};
+  const std::vector<float> query{0.0f, 1.0f};
+  const std::vector<float> value{1.0f, -1.0f};
+  const std::vector<float> unit_scale{1.0f, 1.0f};
+  const std::vector<float> expected{0.5f * value[0], 0.5f * value[1]};
+
+  OpTester test("EngramGate", 1, kMSDomain);
+  test.AddAttribute<float>("epsilon", kEpsilon);
+  test.AddInput<float>("key", {1, 1, 1, 2}, key);
+  test.AddInput<float>("query", {1, 1, 1, 2}, query);
+  test.AddInput<float>("value", {1, 1, 2}, value);
+  test.AddInput<float>("key_norm_scale", {1, 2}, unit_scale);
+  test.AddInput<float>("query_norm_scale", {1, 2}, unit_scale);
+  test.AddOutput<float>("output", {1, 1, 1, 2}, expected, false, 1e-5f, 1e-5f);
+  test.Run();
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingMatchesPerSequenceInt64) {
+  RunVarlenNGramHashMappingTest<int64_t>();
+}
+
+// int32 is the only type the WebGPU kernel supports, so it must be covered explicitly.
+TEST(EngramOpsTest, VarlenNGramHashMappingMatchesPerSequenceInt32) {
+  RunVarlenNGramHashMappingTest<int32_t>();
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingQwenInt64) {
+  RunVarlenNGramHashMappingQwenTest<int64_t>();
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingQwenInt32) {
+  RunVarlenNGramHashMappingQwenTest<int32_t>();
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingSegmentStateInt64) {
+  RunVarlenNGramHashMappingSegmentStateTest<int64_t>();
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingSegmentStateInt32) {
+  RunVarlenNGramHashMappingSegmentStateTest<int32_t>();
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingEosPaddingInt64) {
+  RunVarlenNGramHashMappingEosPaddingTest<int64_t>();
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingEosPaddingInt32) {
+  RunVarlenNGramHashMappingEosPaddingTest<int32_t>();
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingEosTokenIdRankOneRejectedInt64) {
+  RunVarlenNGramHashMappingEosTokenIdRankOneRejectedTest<int64_t>();
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingEosTokenIdRankOneRejectedInt32) {
+  RunVarlenNGramHashMappingEosTokenIdRankOneRejectedTest<int32_t>();
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingHeadOffsetsOverflowInt64) {
+  RunVarlenNGramHashMappingHeadOffsetsOverflowTest<int64_t>();
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingHeadOffsetsOverflowInt32) {
+  RunVarlenNGramHashMappingHeadOffsetsOverflowTest<int32_t>();
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingNoCrossSequenceLeakageInt64) {
+  RunVarlenNGramHashMappingBoundaryTest<int64_t>();
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingNoCrossSequenceLeakageInt32) {
+  RunVarlenNGramHashMappingBoundaryTest<int32_t>();
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingChunkedMatchesFullSequenceInt64) {
+  RunVarlenNGramHashMappingChunkedTest<int64_t>();
+}
+
+// int32 is the only type the WebGPU kernel supports, so this is the case that gives the WebGPU
+// past_ids/present_ids shaders any execution coverage at all.
+TEST(EngramOpsTest, VarlenNGramHashMappingChunkedMatchesFullSequenceInt32) {
+  RunVarlenNGramHashMappingChunkedTest<int32_t>();
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingStateUpdateInt64) {
+  RunVarlenNGramHashMappingStateUpdateTest<int64_t>();
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingStateUpdateInt32) {
+  RunVarlenNGramHashMappingStateUpdateTest<int32_t>();
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingStateUpdateEosFillInt64) {
+  RunVarlenNGramHashMappingStateUpdateEosFillTest<int64_t>();
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingStateUpdateEosFillInt32) {
+  RunVarlenNGramHashMappingStateUpdateEosFillTest<int32_t>();
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingRejectsInvalidCaptureCountShape) {
+  RunVarlenNGramHashMappingCaptureCountShapeTest();
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingNegativeIdsInt64) {
+  RunVarlenNGramHashMappingNegativeIdsTest<int64_t>();
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingNegativeIdsInt32) {
+  RunVarlenNGramHashMappingNegativeIdsTest<int32_t>();
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingRejectsNonPositiveVocabSizeInt64) {
+  RunVarlenNGramHashMappingNonPositiveVocabTest<int64_t>();
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingRejectsNonPositiveVocabSizeInt32) {
+  RunVarlenNGramHashMappingNonPositiveVocabTest<int32_t>();
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingRejectsNonzeroFirstOffset) {
+  RunVarlenNGramHashMappingMalformedCuSeqlensTest<int64_t>({1, 3}, 3, "cumulative_sequence_length[0] must be 0");
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingRejectsWrongFinalOffset) {
+  RunVarlenNGramHashMappingMalformedCuSeqlensTest<int64_t>(
+      {0, 2}, 3, "cumulative_sequence_length[batch_size] must equal total_tokens");
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingRejectsDescendingOffsets) {
+  RunVarlenNGramHashMappingMalformedCuSeqlensTest<int64_t>(
+      {0, 3, 2, 4}, 4, "cumulative_sequence_length must be strictly increasing");
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingRejectsRepeatedOffsets) {
+  RunVarlenNGramHashMappingMalformedCuSeqlensTest<int64_t>(
+      {0, 2, 2, 4}, 4, "cumulative_sequence_length must be strictly increasing");
+}
+
+// A statically-shaped cumulative_sequence_length with fewer than 2 elements has no valid
+// batch_size (batch_size = shape[0] - 1 would be <= 0), so shape inference must reject it up
+// front rather than silently inferring a present_ids batch dimension of -1 or 0.
+void RunVarlenNGramHashMappingShapeInferenceRejectsShortCuSeqlensTest(int64_t cu_seqlens_len,
+                                                                      bool include_present_ids = true,
+                                                                      bool rank2 = false,
+                                                                      const char* expected_error =
+                                                                          "VarlenNGramHashMapping: cumulative_sequence_length must have at least 2 elements") {
+  using T = int64_t;
+  const std::vector<T> ids{1, 2, 3};
+  const std::vector<T> multipliers{11, 13, 17};
+  const std::vector<T> vocab_sizes{101, 103, 107, 109};
+  const std::vector<int32_t> cu_seqlens(static_cast<size_t>(cu_seqlens_len), 0);
+
+  OpTester test("VarlenNGramHashMapping", 1, kMSDomain);
+  test.AddAttribute<int64_t>("max_ngram_size", kMaxNGramSize);
+  test.AddAttribute<int64_t>("n_head_per_ngram", kHeadsPerNGram);
+  test.AddAttribute<int64_t>("pad_id", kPadId);
+  test.AddInput<T>("input_ids", {3}, ids);
+  test.AddInput<T>("multipliers", {3}, multipliers);
+  test.AddInput<T>("vocab_sizes", {4}, vocab_sizes);
+  test.AddInput<int32_t>("cumulative_sequence_length", rank2 ? std::vector<int64_t>{1, cu_seqlens_len} : std::vector<int64_t>{cu_seqlens_len},
+                         cu_seqlens);
+  test.AddOptionalInputEdge<T>();
+  test.AddOutput<T>("hash_ids", {3, 4}, std::vector<T>(12, T{0}));
+  if (include_present_ids) {
+    test.AddOutput<T>("present_ids", {1, 2}, std::vector<T>(2, T{0}));
+  } else {
+    test.AddOptionalOutputEdge<T>();
+  }
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           expected_error);
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingShapeInferenceRejectsEmptyCuSeqlens) {
+  RunVarlenNGramHashMappingShapeInferenceRejectsShortCuSeqlensTest(0);
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingShapeInferenceRejectsSingleElementCuSeqlens) {
+  RunVarlenNGramHashMappingShapeInferenceRejectsShortCuSeqlensTest(1);
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingShapeInferenceRejectsEmptyCuSeqlensWithoutPresentIds) {
+  RunVarlenNGramHashMappingShapeInferenceRejectsShortCuSeqlensTest(0, false);
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingShapeInferenceRejectsSingleElementCuSeqlensWithoutPresentIds) {
+  RunVarlenNGramHashMappingShapeInferenceRejectsShortCuSeqlensTest(1, false);
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingShapeInferenceRejectsNon1DCuSeqlensWithoutPresentIds) {
+  RunVarlenNGramHashMappingShapeInferenceRejectsShortCuSeqlensTest(
+      2, false, true, "VarlenNGramHashMapping: cumulative_sequence_length must have rank 1");
+}
+
+#ifdef USE_CUDA
+TEST(EngramOpsTest, VarlenNGramHashMappingMalformedCuSeqlensDefaultsCuda) {
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA execution provider is not available";
+  }
+  RunVarlenNGramHashMappingMalformedCuSeqlensDefaultsTest({1, 3}, 3, DefaultCudaExecutionProvider());
+  RunVarlenNGramHashMappingMalformedCuSeqlensDefaultsTest({0, 2}, 3, DefaultCudaExecutionProvider());
+  RunVarlenNGramHashMappingMalformedCuSeqlensDefaultsTest({0, 3, 2, 4}, 4, DefaultCudaExecutionProvider());
+  RunVarlenNGramHashMappingMalformedCuSeqlensDefaultsTest({0, 2, 2, 4}, 4, DefaultCudaExecutionProvider());
+}
+#endif
+
+#ifdef USE_WEBGPU
+TEST(EngramOpsTest, VarlenNGramHashMappingMalformedCuSeqlensDefaultsWebGpu) {
+  if (DefaultWebGpuExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  RunVarlenNGramHashMappingMalformedCuSeqlensDefaultsTest({1, 3}, 3, DefaultWebGpuExecutionProvider());
+  RunVarlenNGramHashMappingMalformedCuSeqlensDefaultsTest({0, 2}, 3, DefaultWebGpuExecutionProvider());
+  RunVarlenNGramHashMappingMalformedCuSeqlensDefaultsTest({0, 3, 2, 4}, 4, DefaultWebGpuExecutionProvider());
+  RunVarlenNGramHashMappingMalformedCuSeqlensDefaultsTest({0, 2, 2, 4}, 4, DefaultWebGpuExecutionProvider());
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingWebGpuWithoutPresentIds) {
+  if (DefaultWebGpuExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  RunVarlenNGramHashMappingMalformedCuSeqlensDefaultsTest({1, 3}, 3, DefaultWebGpuExecutionProvider(), false);
+}
+#endif
+
+}  // namespace test
+}  // namespace onnxruntime

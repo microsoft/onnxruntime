@@ -2,12 +2,27 @@
 // Licensed under the MIT License.
 
 #include <filesystem>
+#include <gsl/gsl>
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include "core/framework/data_types.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/onnxruntime_env_config_keys.h"
+
+// Exercise the header-only adapters without changing the host test's EP build mode.
+#pragma push_macro("EP_ENFORCE")
+#undef EP_ENFORCE
+#define EP_ENFORCE ORT_ENFORCE
+#pragma push_macro("ORT_EP_API_ADAPTER_HEADER_INCLUDED")
+#undef ORT_EP_API_ADAPTER_HEADER_INCLUDED
+#define ORT_EP_API_ADAPTER_HEADER_INCLUDED
+#include "ep/adapter/allocator.h"
+#include "ep/adapter/kernel_def_builder.h"
+#include "ep/adapter/tensor_helper.h"
+#pragma pop_macro("ORT_EP_API_ADAPTER_HEADER_INCLUDED")
+#pragma pop_macro("EP_ENFORCE")
 
 #include "test/autoep/test_autoep_utils.h"
 #include "test/util/include/api_asserts.h"
@@ -19,6 +34,132 @@ extern "C" void ortenv_teardown();
 
 namespace onnxruntime {
 namespace test {
+
+TEST(OrtEpLibrary, GetTensorDataTypeUsesOrtElementTypes) {
+  const auto& ep_api = Ort::GetEpApi();
+  const struct {
+    ONNXTensorElementDataType ort_type;
+    int proto_type;
+    size_t storage_bytes;
+  } types[] = {
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, ONNX_NAMESPACE::TensorProto_DataType_FLOAT, 20},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT2, ONNX_NAMESPACE::TensorProto_DataType_UINT2, 2},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT2, ONNX_NAMESPACE::TensorProto_DataType_INT2, 2},
+#if !defined(DISABLE_FLOAT4_TYPES)
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT4E2M1, ONNX_NAMESPACE::TensorProto_DataType_FLOAT4E2M1, 3},
+#endif
+#if !defined(DISABLE_FLOAT8_TYPES)
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E8M0, ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E8M0, 5},
+#endif
+  };
+  Ort::AllocatorWithDefaultOptions allocator;
+  const int64_t shape[] = {5};
+  for (const auto& [ort_type, proto_type, storage_bytes] : types) {
+    SCOPED_TRACE(ort_type);
+    const OrtDataType* data_type = nullptr;
+    ASSERT_ORTSTATUS_OK(ep_api.GetTensorDataType(ort_type, &data_type));
+    ASSERT_NE(data_type, nullptr);
+    const auto* ml_type = reinterpret_cast<const DataTypeImpl*>(data_type);
+    const auto* type_proto = ml_type->GetTypeProto();
+    ASSERT_NE(type_proto, nullptr);
+    EXPECT_EQ(type_proto->tensor_type().elem_type(), proto_type);
+    const auto* tensor_type = ml_type->AsTensorType();
+    ASSERT_NE(tensor_type, nullptr);
+    const auto* primitive_type = tensor_type->GetElementType()->AsPrimitiveDataType();
+    ASSERT_NE(primitive_type, nullptr);
+    EXPECT_EQ(primitive_type->GetDataType(), proto_type);
+    EXPECT_EQ(ep::adapter::MLDataTypeToOrtDataType(ml_type), data_type);
+    EXPECT_EQ(ep::adapter::TryMLDataTypeToOrtDataType(ml_type), data_type);
+
+    auto value = Ort::Value::CreateTensor(allocator, shape, 1, ort_type);
+    auto tensor = ep::adapter::CreateTensorFromApiValue(value);
+    EXPECT_EQ(tensor.DataType()->AsPrimitiveDataType()->GetDataType(), proto_type);
+    EXPECT_EQ(tensor.SizeInBytes(), storage_bytes);
+    EXPECT_EQ(tensor.DataRaw(), value.GetTensorRawData());
+  }
+#if defined(DISABLE_FLOAT8_TYPES)
+  const OrtDataType* data_type = nullptr;
+  Ort::Status status(ep_api.GetTensorDataType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E8M0, &data_type));
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_EQ(status.GetErrorCode(), ORT_NOT_IMPLEMENTED);
+  EXPECT_EQ(data_type, nullptr);
+#endif
+}
+
+namespace {
+struct MemoryInfoOnlyOrtAllocator : OrtAllocator {
+  explicit MemoryInfoOnlyOrtAllocator(const OrtMemoryInfo* memory_info) : OrtAllocator{}, memory_info_{memory_info} {
+    version = ORT_API_VERSION;
+    Alloc = AllocImpl;
+    Free = FreeImpl;
+    Info = InfoImpl;
+  }
+
+  static void* ORT_API_CALL AllocImpl(OrtAllocator* /*this_ptr*/, size_t /*size*/) noexcept { return nullptr; }
+  static void ORT_API_CALL FreeImpl(OrtAllocator* /*this_ptr*/, void* /*p*/) noexcept {}
+  static const OrtMemoryInfo* ORT_API_CALL InfoImpl(const OrtAllocator* this_ptr) noexcept {
+    return static_cast<const MemoryInfoOnlyOrtAllocator*>(this_ptr)->memory_info_;
+  }
+
+  const OrtMemoryInfo* memory_info_;
+};
+}  // namespace
+
+// The allocator adapter must rebuild OrtMemoryInfo through the C API instead of copying the opaque struct, whose
+// layout can differ between ORT and a plugin EP built with different STL settings.
+TEST(OrtEpLibrary, AllocatorAdapterRebuildsMemoryInfoFromApi) {
+  // The C API does not expose alignment, so a non-zero alignment distinguishes a rebuild from a struct copy.
+  const Ort::MemoryInfo api_memory_info{"AdapterTestAllocator", OrtMemoryInfoDeviceType_GPU, 0x1234, 3,
+                                        OrtDeviceMemoryType_HOST_ACCESSIBLE, 64, OrtReadOnlyAllocator};
+  MemoryInfoOnlyOrtAllocator ort_allocator{api_memory_info};
+
+  ep::adapter::IAllocatorWrappingOrtAllocator allocator{&ort_allocator};
+  const OrtMemoryInfo& info = allocator.Info();
+  EXPECT_EQ(info.name, "AdapterTestAllocator");
+  EXPECT_EQ(info.alloc_type, OrtReadOnlyAllocator);
+  EXPECT_EQ(info.mem_type, OrtMemTypeCPU);
+  EXPECT_EQ(info.device.Type(), OrtDevice::GPU);
+  EXPECT_EQ(info.device.MemType(), OrtDevice::MemType::HOST_ACCESSIBLE);
+  EXPECT_EQ(info.device.Vendor(), 0x1234u);
+  EXPECT_EQ(info.device.Id(), 3);
+  EXPECT_EQ(info.device.GetAlignment(), 0u);
+  const auto& source_info = *static_cast<const OrtMemoryInfo*>(api_memory_info);
+  EXPECT_TRUE(info.device.EqualIgnoringAlignment(source_info.device));
+  EXPECT_EQ(info.name, source_info.name);
+  EXPECT_EQ(info.mem_type, source_info.mem_type);
+  EXPECT_EQ(info.alloc_type, source_info.alloc_type);
+}
+
+// An EP-local OrtMemoryInfo returned to ORT (e.g. from OrtAllocator::Info) must be recreated through the C API.
+TEST(OrtEpLibrary, AdapterCreatesApiMemoryInfoFromEpLocalInfo) {
+  const OrtMemoryInfo ep_infos[] = {
+      {"AdapterDeviceAllocator", OrtDeviceAllocator,
+       OrtDevice{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0x10DE, 2, 256}, OrtMemTypeDefault},
+      {"AdapterHostAllocator", OrtReadOnlyAllocator,
+       OrtDevice{OrtDevice::NPU, OrtDevice::MemType::HOST_ACCESSIBLE, 0x1234, 1, 64}, OrtMemTypeCPU},
+  };
+  for (const auto& ep_info : ep_infos) {
+    SCOPED_TRACE(ep_info.ToString());
+    Ort::MemoryInfo api_info = ep::adapter::CreateApiMemoryInfo(ep_info);
+    ASSERT_NE(static_cast<const OrtMemoryInfo*>(api_info), nullptr);
+    EXPECT_NE(static_cast<const OrtMemoryInfo*>(api_info), &ep_info);
+    EXPECT_EQ(api_info.GetAllocatorName(), ep_info.name);
+    EXPECT_EQ(api_info.GetAllocatorType(), ep_info.alloc_type);
+    EXPECT_EQ(api_info.GetMemoryType(), ep_info.mem_type);
+    EXPECT_EQ(api_info.GetDeviceType(), static_cast<OrtMemoryInfoDeviceType>(ep_info.device.Type()));
+    EXPECT_EQ(api_info.GetDeviceMemoryType(), static_cast<OrtDeviceMemoryType>(ep_info.device.MemType()));
+    EXPECT_EQ(api_info.GetVendorId(), ep_info.device.Vendor());
+    EXPECT_EQ(api_info.GetDeviceId(), ep_info.device.Id());
+    EXPECT_TRUE(*static_cast<const OrtMemoryInfo*>(api_info) == ep_info);
+  }
+}
+
+TEST(OrtEpLibrary, RegisterMissingPluginLibrary) {
+  const auto missing_path = Utils::example_ep_info.library_path.parent_path() / "missing_ep_library";
+  Ort::Status status{Ort::GetApi().RegisterExecutionProviderLibrary(*ort_env, "missing_ep_library",
+                                                                    missing_path.c_str())};
+  ASSERT_FALSE(status.IsOK());
+}
 
 TEST(OrtEpLibrary, LoadUnloadPluginLibrary) {
   const std::filesystem::path& library_path = Utils::example_ep_info.library_path;
@@ -72,6 +213,12 @@ TEST(OrtEpLibrary, LoadUnloadPluginLibraryCxxApi) {
   ASSERT_STREQ(metadata.GetValue("supported_devices"), "CrackGriffin 7+");
   // Verify the example plugin's expected os_driver_version value.
   ASSERT_STREQ(metadata.GetValue(kOrtEpDevice_EpMetadataKey_OSDriverVersion), "31.0.101.1000");
+  // Verify the example plugin's advertised GroupQueryAttention Value cache layout preference. It is
+  // "BNSH" because the example EP does not fuse the Transpose -> GQA -> Transpose sequence; only an
+  // EP that does should report "BNHS".
+  ASSERT_STREQ(metadata.GetValue(kOrtEpDevice_EpMetadataKey_GqaPreferredValueLayout), "BNSH");
+  // Verify the example plugin reports weightless support for all initializers.
+  ASSERT_STREQ(metadata.GetValue(kOrtEpDevice_EpMetadataKey_WeightlessSupport), "all");
 
   auto options = test_ep_device->EpOptions();
   ASSERT_STREQ(options.GetValue("run_really_fast"), "true");
@@ -99,6 +246,37 @@ TEST(OrtEpLibrary, LoadUnloadPluginLibraryCxxApi) {
 
   // and this should unload it without throwing
   ort_env->UnregisterExecutionProviderLibrary(registration_name.c_str());
+}
+
+TEST(OrtEpLibrary, FailedRegistrationLeavesEnvironmentUnchanged) {
+  const std::filesystem::path& library_path = Utils::example_ep_info.library_path;
+  const std::string& registration_name = Utils::example_ep_info.registration_name;
+  const size_t initial_device_count = ort_env->GetEpDevices().size();
+
+  Utils::LoadExampleEpHooksPtr hooks;
+  ASSERT_NO_FATAL_FAILURE(Utils::LoadExampleEpHooks(Utils::example_ep_info, hooks));
+  ASSERT_NE(hooks->set_create_data_transfer_failure, nullptr);
+
+  {
+    // Fail registration with a data transfer creation failure.
+    hooks->set_create_data_transfer_failure(1);
+    auto reset_failure = gsl::finally([&] { hooks->set_create_data_transfer_failure(0); });
+
+    Ort::Status status{Ort::GetApi().RegisterExecutionProviderLibrary(
+        *ort_env, registration_name.c_str(), library_path.c_str())};
+    ASSERT_FALSE(status.IsOK());
+
+    // The failed library must not contribute any EP devices to the environment.
+    EXPECT_EQ(ort_env->GetEpDevices().size(), initial_device_count);
+  }
+
+  // The same registration name must remain available after the failed attempt.
+  ort_env->RegisterExecutionProviderLibrary(registration_name.c_str(), library_path.c_str());
+  EXPECT_EQ(ort_env->GetEpDevices().size(), initial_device_count + 1);
+  ort_env->UnregisterExecutionProviderLibrary(registration_name.c_str());
+
+  // The successful registration must still support a normal unregister lifecycle.
+  EXPECT_EQ(ort_env->GetEpDevices().size(), initial_device_count);
 }
 
 // Test loading example_plugin_ep_virt_gpu and its associated OrtEpDevice/OrtHardwareDevice.

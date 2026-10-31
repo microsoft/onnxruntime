@@ -765,6 +765,28 @@ TEST(MLOpTest, TreeRegressorCategoricalsFolding) {
   test.Run();
 }
 
+TEST(MLOpTest, TreeRegressorRejectsCategoricalCycle) {
+  OpTester test("TreeEnsembleRegressor", 3, onnxruntime::kMLDomain);
+
+  test.AddAttribute("nodes_truenodeids", std::vector<int64_t>{1, 0, 0});
+  test.AddAttribute("nodes_falsenodeids", std::vector<int64_t>{1, 0, 0});
+  test.AddAttribute("nodes_treeids", std::vector<int64_t>{0, 0, 0});
+  test.AddAttribute("nodes_nodeids", std::vector<int64_t>{0, 1, 2});
+  test.AddAttribute("nodes_featureids", std::vector<int64_t>{0, 0, 0});
+  test.AddAttribute("nodes_values", std::vector<float>{1.0f, 1.0f, 0.0f});
+  test.AddAttribute("nodes_modes", std::vector<std::string>{"BRANCH_EQ", "BRANCH_EQ", "LEAF"});
+  test.AddAttribute("target_treeids", std::vector<int64_t>{0});
+  test.AddAttribute("target_nodeids", std::vector<int64_t>{2});
+  test.AddAttribute("target_ids", std::vector<int64_t>{0});
+  test.AddAttribute("target_weights", std::vector<float>{1.0f});
+  test.AddAttribute("n_targets", static_cast<int64_t>(1));
+
+  test.AddInput<float>("X", {1, 1}, {0.0f});
+  test.AddOutput<float>("Y", {1, 1}, {0.0f});
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Cycle detected while folding categorical nodes");
+}
+
 TEST(MLOpTest, TreeRegressorTrueNodeBeforeNode) {
   OpTester test("TreeEnsembleRegressor", 3, onnxruntime::kMLDomain);
 

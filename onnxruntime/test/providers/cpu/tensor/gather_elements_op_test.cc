@@ -9,12 +9,32 @@
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 
+#ifdef USE_CUDA
+#include <limits>
+
+#include "core/providers/cuda/tensor/gather_elements_common.h"
+#endif
+
 #if defined(ENABLE_STRIDED_TENSORS) && defined(USE_CUDA)
 #include "test/providers/kernel_compute_test_utils.h"
 #endif
 
 namespace onnxruntime {
 namespace test {
+
+#ifdef USE_CUDA
+TEST(GatherElementsOpTest, CudaElementCountRange) {
+  EXPECT_TRUE(cuda::IsGatherElementsElementCountSupported(0));
+  EXPECT_TRUE(cuda::IsGatherElementsElementCountSupported(std::numeric_limits<int32_t>::max()));
+  EXPECT_FALSE(cuda::IsGatherElementsElementCountSupported(
+      static_cast<int64_t>(std::numeric_limits<int32_t>::max()) + 1));
+  EXPECT_FALSE(cuda::IsGatherElementsElementCountSupported(4294967301LL));
+  EXPECT_FALSE(cuda::IsGatherElementsElementCountSupported(-1));
+  const auto error = cuda::GatherElementsElementCountErrorMessage(4294967301LL);
+  EXPECT_NE(error.find("4294967301"), std::string::npos);
+  EXPECT_NE(error.find("2147483647"), std::string::npos);
+}
+#endif
 
 namespace {
 

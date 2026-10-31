@@ -32,6 +32,8 @@
 
 #include <cublas_v2.h>
 #include <cudnn.h>
+#include "core/providers/cuda/bounded_pinned_pool.h"
+#include "core/providers/cuda/qmoe_session_controller.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/cudnn_loader.h"
 #include "core/providers/cuda/cufft_loader.h"
@@ -505,6 +507,7 @@ class PluginKernelCollector {
 // which is initialized in CudaEpFactory::CudaEpFactory.
 
 #include <cstring>
+#include <filesystem>  // NOLINT(build/c++17)
 #include <limits>
 #include <memory>
 #include <mutex>
@@ -537,8 +540,41 @@ struct CudaKernelAdapterRuntimeConfig {
   int sdpa_kernel = 0;
   int device_id = 0;
   bool do_copy_in_default_stream = true;
+  bool enable_cuda_graph = false;
   cudaDeviceProp device_prop{};
   onnxruntime::AttentionKernelOptions attention_kernel_options;
+  std::mutex captured_host_buffers_mutex;
+  std::vector<std::shared_ptr<void>> captured_host_buffers;
+  std::mutex qmoe_pinned_pool_mutex;
+  std::shared_ptr<onnxruntime::cuda::BoundedPinnedPool> qmoe_pinned_pool;
+  std::shared_ptr<onnxruntime::cuda::QMoESessionController> qmoe_controller =
+      std::make_shared<onnxruntime::cuda::QMoESessionController>();
+
+  void RetainBufferForGraphCapture(std::shared_ptr<void> buffer) {
+    std::lock_guard<std::mutex> lock(captured_host_buffers_mutex);
+    captured_host_buffers.push_back(std::move(buffer));
+  }
+
+  // Path of the model the EP partitioned (recorded in GetCapability); empty if loaded from bytes.
+  void SetModelPath(std::filesystem::path path) {
+    if (!path.empty() && path.is_relative()) {
+      std::error_code ec;
+      std::filesystem::path abs_path = std::filesystem::absolute(path, ec);
+      if (!ec && !abs_path.empty()) {
+        path = std::move(abs_path);
+      }
+    }
+    std::lock_guard<std::mutex> lock(model_path_mutex);
+    model_path = std::move(path);
+  }
+  std::filesystem::path GetModelPath() const {
+    std::lock_guard<std::mutex> lock(model_path_mutex);
+    return model_path;
+  }
+
+ private:
+  mutable std::mutex model_path_mutex;
+  std::filesystem::path model_path;
 };
 template <typename T>
 struct SizeOf {
@@ -564,18 +600,6 @@ struct SizeOf<void> {
 
   bytes = count_or_bytes * element_size;
   return true;
-}
-
-template <typename T>
-IConstantBuffer<T>* GetConstOnesBufferForDevice(int device_id) {
-  static std::mutex mutex;
-  static std::unordered_map<int, std::unique_ptr<IConstantBuffer<T>>> buffers;
-  std::lock_guard<std::mutex> lock(mutex);
-  auto& buffer = buffers[device_id];
-  if (!buffer) {
-    buffer = CreateConstantOnes<T>();
-  }
-  return buffer.get();
 }
 
 struct DefaultCudaHandles {
@@ -765,6 +789,15 @@ inline void SetCudaKernelAdapterRuntimeConfigForProvider(
   config->sdpa_kernel = init_config.sdpa_kernel;
   config->device_id = init_config.device_id;
   config->do_copy_in_default_stream = init_config.do_copy_in_default_stream;
+  config->enable_cuda_graph = init_config.enable_cuda_graph;
+  if (init_config.qmoe_controller && init_config.qmoe_controller->DeviceId() == init_config.device_id) {
+    config->qmoe_controller = init_config.qmoe_controller;
+  } else {
+    config->qmoe_controller = std::make_shared<onnxruntime::cuda::QMoESessionController>(init_config.device_id);
+    if (init_config.qmoe_controller && init_config.qmoe_controller->BudgetAccount()) {
+      config->qmoe_controller->SetBudgetAccount(init_config.qmoe_controller->BudgetAccount());
+    }
+  }
   PL_CUDA_CALL_THROW(cudaGetDeviceProperties(&config->device_prop, config->device_id));
 }
 
@@ -848,6 +881,20 @@ struct _IsInf<nv_bfloat16, detect_positive, detect_negative> {
     } else {
       return false;
     }
+  }
+};
+
+// cuda_utils.h only specializes NumericLimits for onnxruntime::BFloat16. Without this the plugin's
+// nv_bfloat16 mapping falls back to std::numeric_limits, whose primary template returns 0, so
+// kernels that pad with Lowest() (TopK, reductions) rank the padding above every negative input.
+template <>
+struct NumericLimits<nv_bfloat16> {
+  __inline__ __host__ __device__ static nv_bfloat16 Lowest() {
+    return __nv_bfloat16_raw{0xFF7FU};  // -3.38953139e38
+  }
+
+  __inline__ __host__ __device__ static nv_bfloat16 Max() {
+    return __nv_bfloat16_raw{0x7F7FU};  // 3.38953139e38
   }
 };
 #endif
@@ -1147,6 +1194,10 @@ class CudaKernel : public OpKernel {
 
     return device_prop_;
   }
+  inline int GetDeviceId() const { return device_id_; }
+  std::filesystem::path GetSessionModelPath() const { return runtime_config_->GetModelPath(); }
+  // Identifies the session (execution provider instance) that owns this kernel.
+  const void* GetSessionKey() const { return runtime_config_.get(); }
   int GetCudnnConvAlgo() const { return runtime_config_->cudnn_conv_algo; }
   bool GetCudnnConvUseMaxWorkspace() const { return runtime_config_->cudnn_conv_use_max_workspace; }
   bool GetCudnnConv1dPadToNc1d() const { return runtime_config_->cudnn_conv1d_pad_to_nc1d; }
@@ -1168,14 +1219,6 @@ class CudaKernel : public OpKernel {
   PluginTuningContextStub* GetTuningContext() const {
     static PluginTuningContextStub stub;
     return &stub;
-  }
-
-  // GetConstOnes: returns a device buffer of constant ones.
-  // Delegates to IConstantBuffer from cuda_utils.h (compiled in cuda_utils.cu).
-  template <typename T>
-  const T* GetConstOnes(size_t count, cudaStream_t stream) const {
-    auto* buf = detail::GetConstOnesBufferForDevice<T>(device_id_);
-    return buf->GetBuffer(stream, count);
   }
 
   template <typename T>
@@ -1258,6 +1301,42 @@ class CudaKernel : public OpKernel {
   }
 
   template <typename T>
+  inline void RetainBufferForGraphCapture(IAllocatorUniquePtr<T> buffer) const {
+    auto deleter = buffer.get_deleter();
+    runtime_config_->RetainBufferForGraphCapture(
+        std::shared_ptr<void>(buffer.release(),
+                              [deleter](void* p) { deleter(static_cast<T*>(p)); }));
+  }
+
+  inline IAllocatorUniquePtr<uint8_t> AllocateReusableQMoEPinnedBuffer(
+      size_t bytes, size_t limit, std::shared_ptr<bool> completed) const {
+    std::shared_ptr<onnxruntime::cuda::BoundedPinnedPool> pool;
+    if (runtime_config_->qmoe_controller) {
+      pool = runtime_config_->qmoe_controller->GetOrCreatePinnedPool(limit);
+      ORT_ENFORCE(pool != nullptr && pool->Limit() == limit, "QMoE pinned-pool limits conflict within one provider.");
+    } else {
+      std::lock_guard<std::mutex> lock(runtime_config_->qmoe_pinned_pool_mutex);
+      if (!runtime_config_->qmoe_pinned_pool) {
+        runtime_config_->qmoe_pinned_pool = std::make_shared<onnxruntime::cuda::BoundedPinnedPool>(
+            limit, [](size_t size) -> void* {
+              void* pointer = nullptr;
+              return cudaHostAlloc(&pointer, size, cudaHostAllocDefault) == cudaSuccess ? pointer : nullptr; },
+            [](void* pointer) { cudaFreeHost(pointer); });
+      }
+      pool = runtime_config_->qmoe_pinned_pool;
+      ORT_ENFORCE(pool->Limit() == limit, "QMoE pinned-pool limits conflict within one provider.");
+    }
+    auto* pointer = static_cast<uint8_t*>(pool->Acquire(bytes));
+    return IAllocatorUniquePtr<uint8_t>(pointer, [pool, completed = std::move(completed)](uint8_t* buffer) {
+      pool->Release(buffer, *completed);
+    });
+  }
+
+  inline std::shared_ptr<onnxruntime::cuda::QMoESessionController> GetQMoESessionController() const {
+    return runtime_config_->qmoe_controller;
+  }
+
+  template <typename T>
   class CudaAsyncBuffer {
    public:
     CudaAsyncBuffer(const CudaKernel* ok) : gpu_(nullptr, [](T*) {}), count_(0), op_kernel_(ok) {}
@@ -1286,7 +1365,15 @@ class CudaKernel : public OpKernel {
           ORT_THROW("CUDA async buffer copy size overflow for ", count_, " elements");
         }
         if (cudaMemcpyAsync(gpu_.get(), cpu_.get(), bytes, cudaMemcpyHostToDevice, static_cast<cudaStream_t>(s)) != cudaSuccess) return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::FAIL, "Memcpy fail");
-        op_kernel_->AddDeferredReleaseCPUPtr(cpu_.release(), s);
+        cudaStreamCaptureStatus capture_status = cudaStreamCaptureStatusNone;
+        if (s != nullptr) {
+          CUDA_RETURN_IF_ERROR(cudaStreamIsCapturing(static_cast<cudaStream_t>(s), &capture_status));
+        }
+        if (capture_status != cudaStreamCaptureStatusNone) {
+          op_kernel_->RetainBufferForGraphCapture(std::move(cpu_));
+        } else {
+          op_kernel_->AddDeferredReleaseCPUPtr(cpu_.release(), s);
+        }
       }
       return Status::OK();
     }

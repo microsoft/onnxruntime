@@ -60,6 +60,24 @@ MlasFp16AccelerationSupported()
 #endif
 }
 
+bool MLASCALL
+MlasHalfGemmAccelerationSupported(
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+    )
+{
+    if ((!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) &&
+        GetMlasPlatform().MlasHalfGemmBatchOverride != nullptr) {
+        return true;
+    }
+
+#if (defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)) || \
+    (defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV_ZVFH))
+    return MlasFp16AccelerationSupported();
+#else
+    return false;
+#endif
+}
+
 static bool
 TryGetHalfGemmBackendSelectorConfig(
     size_t BatchN,
@@ -125,7 +143,7 @@ MlasHalfGemmBatch(
     if (TryGetHalfGemmBackendSelectorConfig(BatchN, DataParams, BackendKernelSelectorConfig) &&
         GetMlasPlatform().MlasHalfGemmBatchOverride != nullptr &&
         GetMlasPlatform().MlasHalfGemmBatchOverride(
-            M, N, K, BatchN, DataParams, ThreadPool, BackendKernelSelectorConfig)) {
+            M, N, K, BatchN, DataParams, ThreadPool)) {
         return;
     }
 
@@ -137,6 +155,11 @@ MlasHalfGemmBatch(
             MLAS_THROW_EX(
                 std::runtime_error,
                 "backend-native halfgemm packed B is not supported by generic MLAS halfgemm");
+        }
+        if (DataParams[gemm_i].BIsTransposed) {
+            MLAS_THROW_EX(
+                std::runtime_error,
+                "transposed unpacked B is not supported by generic MLAS halfgemm");
         }
     }
 
@@ -472,6 +495,10 @@ MlasHGemmSupported(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB
 ) {
+    if (!MlasFp16AccelerationSupported()) {
+        return false;
+    }
+
     auto* dispatch = GetMlasPlatform().HGemmDispatch;
     if (TransA == CblasNoTrans && TransB == CblasTrans) {
         return dispatch &&

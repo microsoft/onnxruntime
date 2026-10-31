@@ -1,11 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#param acc_f32
 #param block_size
 #param n_bits
 #param has_bias
 #param has_zero_points
 #param is_qualcomm
+#param qc_wave128
 #param has_weight_idx
 #param has_weight_idx_indirect
 
@@ -35,10 +37,16 @@
 // 512B of registry from each lane.
 //
 // The medium size matmul is implemented using dot4I8Packed, so the inputs for
-// this shader require A to be int8 quantized with block size 64. B is regular
+// this shader require A to be int8 quantized with block size 128. B is regular
 // matmulnbits input with block size 32.
 
-const tile_size = 64;
+#if qc_wave128
+const tile_m = 128;
+const tile_n = 32;
+#else
+const tile_m = 64;
+const tile_n = 64;
+#endif
 const subtile_size = 16;
 const tile_size_k =  32;
 const vec_factor = 4;
@@ -46,13 +54,13 @@ const u32_factor = 4;
 const tile_size_k_vec = 2;
 
 // Shared memory
-var<workgroup> tile_A : array<array<vec4<u32>, tile_size>, tile_size_k_vec>;                     // 64 x 32
-var<workgroup> scale_A : array<output_element_t, tile_size>;                                     // 64 x 1
-var<workgroup> tile_B : array<array<vec4<u32>, tile_size>, tile_size_k_vec>;                     // 64 x 32
-var<workgroup> scale_B : array<output_element_t, tile_size>;                                     // 64 x 1
+var<workgroup> tile_A : array<array<vec4<u32>, tile_m>, tile_size_k_vec>;                     // tile_m x 32
+var<workgroup> scale_A : array<output_element_t, tile_m>;                                     // tile_m x 1
+var<workgroup> tile_B : array<array<vec4<u32>, tile_n>, tile_size_k_vec>;                     // tile_n x 32
+var<workgroup> scale_B : array<output_element_t, tile_n>;                                     // tile_n x 1
 
 #if has_zero_points
-    var<workgroup> zeroes : array<i32, tile_size>;
+    var<workgroup> zeroes : array<i32, tile_n>;
 #endif
 
 fn loadSHMA(batch:u32, a_global_base:u32, kidx_v:u32, row: u32, col: u32)
@@ -63,9 +71,9 @@ fn loadSHMA(batch:u32, a_global_base:u32, kidx_v:u32, row: u32, col: u32)
         return;
     }
     tile_A[col][row] = a.getByOffset(batch*uniforms.M*uniforms.K16+a_global*uniforms.K16+kidx_v+col);
-    if (col == 0)
+    // A 128-value quantization block shares its scale across four 32-value K tiles.
+    if (col == 0 && kidx_v % 8u == 0u)
     {
-        // kidx_v - covers 16 values of k
         scale_A[row] = scales_a.getByOffset(batch*uniforms.M*(uniforms.K/128) + a_global*(uniforms.K/128) + kidx_v/8);
     }
 }
@@ -91,7 +99,7 @@ fn loadSHMA(batch:u32, a_global_base:u32, kidx_v:u32, row: u32, col: u32)
         let b_value = b.getByOffset(b_global * uniforms.K16+kidx_v + col);
 #endif
         let block_idx = kidx_v/(block_size/16);
-        let zero = mm_read_zero(b_global, block_idx, uniforms.N, uniforms.zero_blocks_per_col);
+        let zero = mm_read_zero(actual_weight_idx, b_global, block_idx, uniforms.N, uniforms.zero_blocks_per_col);
         tile_B[col][row] = DequantizedFrom4BitsTo8Bits(b_value, zero);
         if (col == 0)
         {
@@ -132,7 +140,7 @@ fn loadSHMA(batch:u32, a_global_base:u32, kidx_v:u32, row: u32, col: u32)
             let b_scale_offset = actual_weight_idx * uniforms.N * (uniforms.K/block_size);
             scale_B[row] = scales_b.getByOffset(b_scale_offset + b_global*(uniforms.K/block_size) + block_idx);
 #if has_zero_points
-            zeroes[row] = mm_read_zero(b_global, block_idx, uniforms.N, uniforms.zero_blocks_per_col);
+            zeroes[row] = mm_read_zero(actual_weight_idx, b_global, block_idx, uniforms.N, uniforms.zero_blocks_per_col);
 #endif
         }
     }
@@ -161,7 +169,7 @@ fn loadSHMA(batch:u32, a_global_base:u32, kidx_v:u32, row: u32, col: u32)
 #endif
         let block_idx = kidx_v/(block_size/16);
 #if has_zero_points
-        let zero = mm_read_zero(b_global, block_idx, uniforms.N, uniforms.zero_blocks_per_col);
+        let zero = mm_read_zero(actual_weight_idx, b_global, block_idx, uniforms.N, uniforms.zero_blocks_per_col);
         tile_B[col][row] = DequantizedFrom2BitsTo8Bits(b_value, zero);
 #else
         tile_B[col][row] = DequantizedFrom2BitsTo8Bits(b_value);
@@ -169,6 +177,15 @@ fn loadSHMA(batch:u32, a_global_base:u32, kidx_v:u32, row: u32, col: u32)
         let b_scale_offset = actual_weight_idx * uniforms.N * (uniforms.K/block_size);
         scale_B[row] = scales_b.getByOffset(b_scale_offset + b_global*(uniforms.K/block_size) + block_idx);
     }
+#endif
+
+// Precision of the cross-tile accumulator, selected by the
+// "enableMatmulFp32Accumulation" provider option. SDP8AI is an exact integer
+// dot4I8Packed dot product; it is the accumulation across K tiles that can saturate f16.
+#if acc_f32
+alias acc_element_t = f32;
+#else
+alias acc_element_t = output_element_t;
 #endif
 
 $MAIN {
@@ -187,8 +204,8 @@ $MAIN {
     if (batch >= uniforms.batch_count) {
         return;
     }
-    let a_global_base = u32((workgroup_idx / uniforms.num_N_tile) % uniforms.num_M_tile) * tile_size;
-    let b_global_base = (workgroup_idx % uniforms.num_N_tile) * tile_size;
+    let a_global_base = u32((workgroup_idx / uniforms.num_N_tile) % uniforms.num_M_tile) * tile_m;
+    let b_global_base = (workgroup_idx % uniforms.num_N_tile) * tile_n;
     let load_AorB = u32(local_idx/128);
     let load_row = u32((local_idx%128)/2);
     let load_col = u32(local_idx%2);
@@ -204,12 +221,9 @@ $MAIN {
     var a_idx = u32(local_idx % subtile_size);
 
 #if is_qualcomm
-    // subtile_idx is always 0
-    // subtile_idy is one of {0,1,2,3}
-    // The subtile is now rectangular 64x16 for qualcomm case and we have 4 subtiles, this way we don't need to
-    // increase the number of lane_output each thread needs to track. That is if we want to use a subtile that is 64x64
-    // we would need var lane_outputs: array<output_element_t, 64>;
-    if (sg_size == 64) {
+    // Qualcomm uses four 64x16 subtiles or two 128x16 subtiles. Each lane
+    // owns one activation row and accumulates 16 output columns.
+    if (sg_size == tile_m) {
         subtile_id = u32(local_idx / sg_size);
         subtile_idx = u32(subtile_id / 4);
         subtile_idy = u32(subtile_id % 4);
@@ -217,12 +231,12 @@ $MAIN {
         base_B = subtile_idy * 16;
         a_idx = sg_id;
     }
-    var lane_outputs: array<output_element_t, 16>;
+    var lane_outputs: array<acc_element_t, 16>;
 #else
-    var lane_output1: vec4<output_element_t>;
-    var lane_output2: vec4<output_element_t>;
-    var lane_output3: vec4<output_element_t>;
-    var lane_output4: vec4<output_element_t>;
+    var lane_output1: vec4<acc_element_t>;
+    var lane_output2: vec4<acc_element_t>;
+    var lane_output3: vec4<acc_element_t>;
+    var lane_output4: vec4<acc_element_t>;
 #endif
     // K's vectorization is 16 items per index. See input_a/input_b.
     // tile_size_k_vec - is the k tile size in vectorized space (1/16). That is
@@ -230,6 +244,12 @@ $MAIN {
     for (var kidx_v:u32 = 0; kidx_v < uniforms.K16; kidx_v+=tile_size_k_vec)
     {
         // Load Phase: Populate shared memory for the workgroup.
+#if qc_wave128
+        loadSHMA(batch, a_global_base, kidx_v, local_idx / 2u, local_idx % 2u);
+        if (local_idx < 64u) {
+            loadSHMB(b_global_base, kidx_v, local_idx / 2u, local_idx % 2u);
+        }
+#else
         if (load_AorB == 0)
         {
             loadSHMA(batch, a_global_base, kidx_v, load_row, load_col);
@@ -238,6 +258,7 @@ $MAIN {
         {
             loadSHMB(b_global_base, kidx_v, load_row, load_col);
         }
+#endif
         workgroupBarrier();
 
         // Compute phase: Perform matmul for this subtile 16 x 32 x 16.
@@ -248,7 +269,7 @@ $MAIN {
 
 #if has_zero_points && n_bits == 8
  #if is_qualcomm
-        if (sg_size == 64)
+        if (sg_size == tile_m)
         {
             var own_b0: vec4<u32>;
             var own_b1: vec4<u32>;
@@ -330,7 +351,7 @@ $MAIN {
  #endif
 #else
  #if is_qualcomm
-        if (sg_size == 64)
+        if (sg_size == tile_m)
         {
             var own_b0: vec4<u32>;
             var own_b1: vec4<u32>;
@@ -431,76 +452,80 @@ $MAIN {
     {
 #if is_qualcomm
  #if has_bias
-        let bias_vec1 = vec4<output_element_t>(
-            bias[b_global + 0 + b_bias_offset],
-            bias[b_global + 1 + b_bias_offset],
-            bias[b_global + 2 + b_bias_offset],
-            bias[b_global + 3 + b_bias_offset]
+        // Bias is added in acc_element_t and only downcast to output_element_t at the store,
+        // so an f32 accumulator (acc_f32) stays in range through the bias add too.
+        let bias_vec1 = vec4<acc_element_t>(
+            acc_element_t(bias[b_global + 0 + b_bias_offset]),
+            acc_element_t(bias[b_global + 1 + b_bias_offset]),
+            acc_element_t(bias[b_global + 2 + b_bias_offset]),
+            acc_element_t(bias[b_global + 3 + b_bias_offset])
         );
-        let bias_vec2 = vec4<output_element_t>(
-            bias[b_global + 4 + b_bias_offset],
-            bias[b_global + 5 + b_bias_offset],
-            bias[b_global + 6 + b_bias_offset],
-            bias[b_global + 7 + b_bias_offset]
+        let bias_vec2 = vec4<acc_element_t>(
+            acc_element_t(bias[b_global + 4 + b_bias_offset]),
+            acc_element_t(bias[b_global + 5 + b_bias_offset]),
+            acc_element_t(bias[b_global + 6 + b_bias_offset]),
+            acc_element_t(bias[b_global + 7 + b_bias_offset])
         );
-        let bias_vec3 = vec4<output_element_t>(
-            bias[b_global + 8 + b_bias_offset],
-            bias[b_global + 9 + b_bias_offset],
-            bias[b_global + 10 + b_bias_offset],
-            bias[b_global + 11 + b_bias_offset]
+        let bias_vec3 = vec4<acc_element_t>(
+            acc_element_t(bias[b_global + 8 + b_bias_offset]),
+            acc_element_t(bias[b_global + 9 + b_bias_offset]),
+            acc_element_t(bias[b_global + 10 + b_bias_offset]),
+            acc_element_t(bias[b_global + 11 + b_bias_offset])
         );
-        let bias_vec4 = vec4<output_element_t>(
-            bias[b_global + 12 + b_bias_offset],
-            bias[b_global + 13 + b_bias_offset],
-            bias[b_global + 14 + b_bias_offset],
-            bias[b_global + 15 + b_bias_offset]
+        let bias_vec4 = vec4<acc_element_t>(
+            acc_element_t(bias[b_global + 12 + b_bias_offset]),
+            acc_element_t(bias[b_global + 13 + b_bias_offset]),
+            acc_element_t(bias[b_global + 14 + b_bias_offset]),
+            acc_element_t(bias[b_global + 15 + b_bias_offset])
         );
-        output.setByOffset(output_idx, vec4<output_element_t>(lane_outputs[0], lane_outputs[1], lane_outputs[2], lane_outputs[3]) + bias_vec1);
-        output.setByOffset(output_idx+1, vec4<output_element_t>(lane_outputs[4], lane_outputs[5], lane_outputs[6], lane_outputs[7]) + bias_vec2);
-        output.setByOffset(output_idx+2, vec4<output_element_t>(lane_outputs[8], lane_outputs[9], lane_outputs[10], lane_outputs[11]) + bias_vec3);
-        output.setByOffset(output_idx+3, vec4<output_element_t>(lane_outputs[12], lane_outputs[13], lane_outputs[14], lane_outputs[15]) + bias_vec4);
+        output.setByOffset(output_idx, vec4<output_element_t>(vec4<acc_element_t>(lane_outputs[0], lane_outputs[1], lane_outputs[2], lane_outputs[3]) + bias_vec1));
+        output.setByOffset(output_idx+1, vec4<output_element_t>(vec4<acc_element_t>(lane_outputs[4], lane_outputs[5], lane_outputs[6], lane_outputs[7]) + bias_vec2));
+        output.setByOffset(output_idx+2, vec4<output_element_t>(vec4<acc_element_t>(lane_outputs[8], lane_outputs[9], lane_outputs[10], lane_outputs[11]) + bias_vec3));
+        output.setByOffset(output_idx+3, vec4<output_element_t>(vec4<acc_element_t>(lane_outputs[12], lane_outputs[13], lane_outputs[14], lane_outputs[15]) + bias_vec4));
  #else
-        output.setByOffset(output_idx, vec4<output_element_t>(lane_outputs[0], lane_outputs[1], lane_outputs[2], lane_outputs[3]));
-        output.setByOffset(output_idx+1, vec4<output_element_t>(lane_outputs[4], lane_outputs[5], lane_outputs[6], lane_outputs[7]));
-        output.setByOffset(output_idx+2, vec4<output_element_t>(lane_outputs[8], lane_outputs[9], lane_outputs[10], lane_outputs[11]));
-        output.setByOffset(output_idx+3, vec4<output_element_t>(lane_outputs[12], lane_outputs[13], lane_outputs[14], lane_outputs[15]));
+        output.setByOffset(output_idx, vec4<output_element_t>(vec4<acc_element_t>(lane_outputs[0], lane_outputs[1], lane_outputs[2], lane_outputs[3])));
+        output.setByOffset(output_idx+1, vec4<output_element_t>(vec4<acc_element_t>(lane_outputs[4], lane_outputs[5], lane_outputs[6], lane_outputs[7])));
+        output.setByOffset(output_idx+2, vec4<output_element_t>(vec4<acc_element_t>(lane_outputs[8], lane_outputs[9], lane_outputs[10], lane_outputs[11])));
+        output.setByOffset(output_idx+3, vec4<output_element_t>(vec4<acc_element_t>(lane_outputs[12], lane_outputs[13], lane_outputs[14], lane_outputs[15])));
  #endif
 #else
  #if has_bias
         // TODO: wanted to use vec4 for bias but for some reason that fails ut. Later.
-        let bias_vec1 = vec4<output_element_t>(
-            bias[b_global + 0 + b_bias_offset],
-            bias[b_global + 1 + b_bias_offset],
-            bias[b_global + 2 + b_bias_offset],
-            bias[b_global + 3 + b_bias_offset]
+        // Bias is added in acc_element_t and only downcast to output_element_t at the store,
+        // so an f32 accumulator (acc_f32) stays in range through the bias add too.
+        let bias_vec1 = vec4<acc_element_t>(
+            acc_element_t(bias[b_global + 0 + b_bias_offset]),
+            acc_element_t(bias[b_global + 1 + b_bias_offset]),
+            acc_element_t(bias[b_global + 2 + b_bias_offset]),
+            acc_element_t(bias[b_global + 3 + b_bias_offset])
         );
-        let bias_vec2 = vec4<output_element_t>(
-            bias[b_global + 4 + b_bias_offset],
-            bias[b_global + 5 + b_bias_offset],
-            bias[b_global + 6 + b_bias_offset],
-            bias[b_global + 7 + b_bias_offset]
+        let bias_vec2 = vec4<acc_element_t>(
+            acc_element_t(bias[b_global + 4 + b_bias_offset]),
+            acc_element_t(bias[b_global + 5 + b_bias_offset]),
+            acc_element_t(bias[b_global + 6 + b_bias_offset]),
+            acc_element_t(bias[b_global + 7 + b_bias_offset])
         );
-        let bias_vec3 = vec4<output_element_t>(
-            bias[b_global + 8 + b_bias_offset],
-            bias[b_global + 9 + b_bias_offset],
-            bias[b_global + 10 + b_bias_offset],
-            bias[b_global + 11 + b_bias_offset]
+        let bias_vec3 = vec4<acc_element_t>(
+            acc_element_t(bias[b_global + 8 + b_bias_offset]),
+            acc_element_t(bias[b_global + 9 + b_bias_offset]),
+            acc_element_t(bias[b_global + 10 + b_bias_offset]),
+            acc_element_t(bias[b_global + 11 + b_bias_offset])
         );
-        let bias_vec4 = vec4<output_element_t>(
-            bias[b_global + 12 + b_bias_offset],
-            bias[b_global + 13 + b_bias_offset],
-            bias[b_global + 14 + b_bias_offset],
-            bias[b_global + 15 + b_bias_offset]
+        let bias_vec4 = vec4<acc_element_t>(
+            acc_element_t(bias[b_global + 12 + b_bias_offset]),
+            acc_element_t(bias[b_global + 13 + b_bias_offset]),
+            acc_element_t(bias[b_global + 14 + b_bias_offset]),
+            acc_element_t(bias[b_global + 15 + b_bias_offset])
         );
-        output.setByOffset(output_idx, lane_output1 + bias_vec1);
-        output.setByOffset(output_idx+1, lane_output2 + bias_vec2);
-        output.setByOffset(output_idx+2, lane_output3 + bias_vec3);
-        output.setByOffset(output_idx+3, lane_output4 + bias_vec4);
+        output.setByOffset(output_idx, vec4<output_element_t>(lane_output1 + bias_vec1));
+        output.setByOffset(output_idx+1, vec4<output_element_t>(lane_output2 + bias_vec2));
+        output.setByOffset(output_idx+2, vec4<output_element_t>(lane_output3 + bias_vec3));
+        output.setByOffset(output_idx+3, vec4<output_element_t>(lane_output4 + bias_vec4));
  #else
-        output.setByOffset(output_idx, lane_output1);
-        output.setByOffset(output_idx+1, lane_output2);
-        output.setByOffset(output_idx+2, lane_output3);
-        output.setByOffset(output_idx+3, lane_output4);
+        output.setByOffset(output_idx, vec4<output_element_t>(lane_output1));
+        output.setByOffset(output_idx+1, vec4<output_element_t>(lane_output2));
+        output.setByOffset(output_idx+2, vec4<output_element_t>(lane_output3));
+        output.setByOffset(output_idx+3, vec4<output_element_t>(lane_output4));
  #endif
 #endif
     }

@@ -57,35 +57,31 @@ class TestUpsample(unittest.TestCase):
         return model
 
     def test_upsample_to_resize_conversion(self):
-        """
-        Test that deprecated Upsample ops are converted to Resize ops.
-        """
+        """Test that deprecated Upsample ops are converted to Resize ops."""
         model = self.build_upsample_model()
         input_path = self.temp_path / "input_model.onnx"
-        output_path = self.temp_path / "preprocessed_model.onnx"
-
         onnx.save_model(model, input_path)
 
-        # Verify original model has Upsample op
         self.assertEqual(model.graph.node[0].op_type, "Upsample")
         self.assertEqual(model.opset_import[0].version, 10)
 
-        quant_pre_process(
-            input_model=str(input_path),
-            output_model_path=str(output_path),
-            skip_optimization=True,
-            skip_onnx_shape=True,
-            skip_symbolic_shape=True,
-        )
+        for skip_optimization in (True, False):
+            with self.subTest(skip_optimization=skip_optimization):
+                output_path = self.temp_path / f"preprocessed_model_{skip_optimization}.onnx"
+                quant_pre_process(
+                    input_model=str(input_path),
+                    output_model_path=str(output_path),
+                    skip_optimization=skip_optimization,
+                    skip_onnx_shape=True,
+                    skip_symbolic_shape=True,
+                )
 
-        self.assertTrue(output_path.exists())
-        preprocessed_model = onnx.load(str(output_path))
-
-        # Verify Upsample was converted to Resize and opset was upgraded
-        node_types = [node.op_type for node in preprocessed_model.graph.node]
-        assert "Resize" in node_types
-        assert "Upsample" not in node_types
-        assert preprocessed_model.opset_import[0].version >= 11
+                self.assertTrue(output_path.exists())
+                preprocessed_model = onnx.load(str(output_path))
+                node_types = [node.op_type for node in preprocessed_model.graph.node]
+                self.assertIn("Resize", node_types)
+                self.assertNotIn("Upsample", node_types)
+                self.assertGreaterEqual(preprocessed_model.opset_import[0].version, 11)
 
 
 class TestClip(unittest.TestCase):

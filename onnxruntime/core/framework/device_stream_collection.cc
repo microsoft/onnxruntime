@@ -9,25 +9,12 @@
 
 namespace onnxruntime {
 
-struct DummyNotification : public synchronize::Notification {
-  DummyNotification(Stream& s) : Notification(s) {}
-  void Activate() override {}
-};
-
-struct DummyStream : Stream {
-  DummyStream(StreamHandle h, const OrtDevice& d) : Stream(h, d) {}
-  std::unique_ptr<synchronize::Notification> CreateNotification(size_t /*num_consumers*/) override {
-    return std::make_unique<DummyNotification>(*this);
-  }
-};
-
 class DeviceStreamCollectionImpl {
  public:
   DeviceStreamCollectionImpl(size_t num_streams, const AllocatorMap& allocators, bool is_main_graph)
       : num_streams_(num_streams), allocators_(allocators), is_main_graph_(is_main_graph) {
     device_streams_.resize(num_streams, nullptr);
     owned_streams_.reserve(num_streams);
-    root_stream_ = std::make_unique<DummyStream>(nullptr, root_stream_device_);
   }
 
   ~DeviceStreamCollectionImpl() {
@@ -65,7 +52,16 @@ class DeviceStreamCollectionImpl {
     for (auto& stream : owned_streams_) {
       ReleaseSingleStreamBuffers(stream.get());
     }
-    ReleaseSingleStreamBuffers(root_stream_.get());
+    // A user-provided override stream is not in owned_streams_, but memory-pattern and activation
+    // buffers are allocated on it (see GetStreamForDevice / GetStream), so untag them here too so a
+    // future run can reuse the memory.
+    if (stream_override_) {
+      ReleaseSingleStreamBuffers(stream_override_->second);
+    }
+
+    // Note: Non-owned streams set via SetDeviceStream() (e.g., parent_stream from UpdateWithParentStream)
+    // are untagged by their owning collection's CleanUp(), not by this collection.
+
     return Status::OK();
   }
 
@@ -115,8 +111,21 @@ class DeviceStreamCollectionImpl {
 
   size_t NumStreams() { return num_streams_; }
 
-  Stream* GetRootStream() {
-    return root_stream_.get();
+  Stream* GetStreamForDevice(const OrtDevice& device) const {
+    // Prefer a user-provided override stream for the device: input data is provided on that stream
+    // and allocations must synchronize with it. Otherwise use the device stream bound for this
+    // collection.
+    if (stream_override_ && stream_override_->second->GetDevice() == device) {
+      return stream_override_->second;
+    }
+
+    for (Stream* stream : device_streams_) {
+      if (stream != nullptr && stream->GetDevice() == device) {
+        return stream;
+      }
+    }
+
+    return nullptr;
   }
 
  private:
@@ -130,11 +139,6 @@ class DeviceStreamCollectionImpl {
   std::optional<std::pair<size_t, Stream*>> stream_override_;
   const AllocatorMap& allocators_;
   bool is_main_graph_ = false;
-  // This is used in ExecutionFrame when memory pattern is enabled, to allocate the peak size memory
-  // labeled this stream in the current thread, instead of the default stream which will be used in all the threads
-  // (thus caused thread safe issue)
-  std::unique_ptr<Stream> root_stream_;
-  OrtDevice root_stream_device_;
   void ReleaseSingleStreamBuffers();
 };
 
@@ -171,8 +175,8 @@ Stream* DeviceStreamCollection::GetStream(size_t stream_idx) const {
   return impl_->GetStream(stream_idx);
 }
 
-Stream* DeviceStreamCollection::GetRootStream() const {
-  return impl_->GetRootStream();
+Stream* DeviceStreamCollection::GetStreamForDevice(const OrtDevice& device) const {
+  return impl_->GetStreamForDevice(device);
 }
 
 DeviceStreamCollectionHolder::DeviceStreamCollectionHolder(const SessionState* session_state)

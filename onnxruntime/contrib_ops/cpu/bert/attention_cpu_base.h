@@ -50,7 +50,7 @@ class AttentionCPUBase : public AttentionBase {
     auto* tp = context->GetOperatorThreadPool();
 
     Tensor* present = nullptr;
-    if (past_sequence_length == 0) {
+    if (past_sequence_length == 0 && !past_present_share_buffer) {
       if (present_key == nullptr && present_value == nullptr) {
         present = GetPresent(context, past, batch_size, v_head_size, kv_sequence_length, past_sequence_length);
       } else if (past_key != nullptr && past_value != nullptr) {
@@ -325,7 +325,8 @@ class AttentionCPUBase : public AttentionBase {
             } else if (nullptr != present_key) {
               if (past_present_share_buffer) {
                 k = present_key + cache_chunk_length * i;
-                memcpy(const_cast<T*>(k) + past_chunk_length, K + head_size * i, head_size * sizeof(T));
+                memcpy(const_cast<T*>(k) + past_chunk_length, K + kv_input_chunk_length * i,
+                       kv_input_chunk_length * sizeof(T));
               } else {
                 k = ConcatStateChunk(past_key, k, present_key, past_chunk_length, present_chunk_length, i);
               }
@@ -391,7 +392,8 @@ class AttentionCPUBase : public AttentionBase {
             } else if (nullptr != present_key) {
               if (past_present_share_buffer) {
                 k = present_key + cache_chunk_length * i;
-                memcpy(const_cast<T*>(k) + past_chunk_length, K + head_size * i, head_size * sizeof(T));
+                memcpy(const_cast<T*>(k) + past_chunk_length, K + kv_input_chunk_length * i,
+                       kv_input_chunk_length * sizeof(T));
               } else {
                 k = ConcatStateChunk(past_key, k, present_key, past_chunk_length, present_chunk_length, i);
               }
@@ -545,7 +547,8 @@ class AttentionCPUBase : public AttentionBase {
             } else if (nullptr != present_value) {
               if (past_present_share_buffer) {
                 v = present_value + cache_chunk_length * i;
-                memcpy(const_cast<T*>(v) + past_chunk_length, V + v_head_size * i, v_head_size * sizeof(T));
+                memcpy(const_cast<T*>(v) + past_chunk_length, V + kv_input_chunk_length * i,
+                       kv_input_chunk_length * sizeof(T));
               } else {
                 v = ConcatStateChunk(past_value, v, present_value, past_chunk_length, present_chunk_length, i);
               }

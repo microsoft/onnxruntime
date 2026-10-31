@@ -591,6 +591,43 @@ struct MLAS_HALF_ACTIVATION_FUNCTION<MlasHardSigmoidActivation>
     }
 };
 
+template<>
+struct MLAS_HALF_ACTIVATION_FUNCTION<MlasHardSwishActivation>
+{
+    MLAS_FLOAT16X8 AlphaBroadcast;
+    MLAS_FLOAT16X8 BetaBroadcast;
+    MLAS_FLOAT16X8 MinimumBroadcast;
+    MLAS_FLOAT16X8 MaximumBroadcast;
+
+    // HardSwish(x) = x * clamp(x/6 + 0.5, 0, 1) — fixed parameters, no MLAS_ACTIVATION fields consumed.
+    MLAS_HALF_ACTIVATION_FUNCTION(const MLAS_ACTIVATION& /*Activation*/)
+    {
+        AlphaBroadcast = MlasBroadcastFloat16x8(MLAS_Float2Half(1.0f / 6.0f));
+        BetaBroadcast = MlasBroadcastFloat16x8(MLAS_Float2Half(0.5f));
+        MinimumBroadcast = MlasZeroFloat16x8();
+        MaximumBroadcast = MlasBroadcastFloat16x8(MLAS_Float2Half(1.0f));
+    }
+
+    MLAS_FLOAT16X8 Activate(MLAS_FLOAT16X8 Value)
+    {
+        MLAS_FLOAT16X8 Gate = MlasMultiplyAddFloat16(Value, AlphaBroadcast, BetaBroadcast);
+        Gate = MlasMinimumFloat16(MaximumBroadcast, Gate);
+        Gate = MlasMaximumFloat16(MinimumBroadcast, Gate);
+
+        return MlasMultiplyFloat16(Value, Gate);
+    }
+
+    MLAS_FLOAT16X4 Activate(MLAS_FLOAT16X4 Value)
+    {
+        MLAS_FLOAT16X4 Gate = MlasMultiplyAddFloat16(Value, MlasToLowHalfFloat16x4(AlphaBroadcast),
+                                                     MlasToLowHalfFloat16x4(BetaBroadcast));
+        Gate = MlasMinimumFloat16(MlasToLowHalfFloat16x4(MaximumBroadcast), Gate);
+        Gate = MlasMaximumFloat16(MlasToLowHalfFloat16x4(MinimumBroadcast), Gate);
+
+        return MlasMultiplyFloat16(Value, Gate);
+    }
+};
+
 template<MLAS_ACTIVATION_KIND ActivationKind>
 inline
 void
@@ -818,6 +855,18 @@ MLAS_HALF_GEMM_ACTIVATION_PROCESSOR::Process(
             } else {
                 MlasActivationKernel<MlasHardSigmoidActivation>(Activation_, Buffer, StartM, StartN,
                                                                 CountM, CountN, ldc);
+            }
+            break;
+        }
+
+        case MlasHardSwishActivation: {
+            if (SumBuf_) {
+                MlasActivationKernel<MlasHardSwishActivation>(
+                    Activation_, Buffer, reinterpret_cast<const _mlas_fp16_*>(SumBuf_), StartM,
+                    StartN, CountM, CountN, ldc);
+            } else {
+                MlasActivationKernel<MlasHardSwishActivation>(Activation_, Buffer, StartM, StartN,
+                                                              CountM, CountN, ldc);
             }
             break;
         }

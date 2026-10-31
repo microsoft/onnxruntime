@@ -116,7 +116,7 @@ if (onnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB)
       onnxruntime_graph
       onnxruntime_mlas
       onnxruntime_optimizer
-      onnxruntime_providers
+      ${onnxruntime_providers_target}
       ${PROVIDERS_JS}
       ${PROVIDERS_XNNPACK}
       ${PROVIDERS_WEBNN}
@@ -172,6 +172,7 @@ else()
     file(GLOB_RECURSE onnxruntime_webassembly_src_exc CONFIGURE_DEPENDS
       "${ONNXRUNTIME_ROOT}/wasm/api.cc"
       "${ONNXRUNTIME_ROOT}/core/session/onnxruntime_c_api.cc"
+      "${ONNXRUNTIME_ROOT}/core/session/lora_adapters.cc"
     )
     message(STATUS "onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING_ON_API set")
     set_source_files_properties(${onnxruntime_webassembly_src_exc} PROPERTIES COMPILE_FLAGS "-sDISABLE_EXCEPTION_CATCHING=0")
@@ -189,7 +190,7 @@ else()
     onnxruntime_graph
     onnxruntime_mlas
     onnxruntime_optimizer
-    onnxruntime_providers
+    ${onnxruntime_providers_target}
     ${PROVIDERS_JS}
     ${PROVIDERS_XNNPACK}
     ${PROVIDERS_WEBNN}
@@ -274,7 +275,7 @@ else()
     if (onnxruntime_ENABLE_WEBASSEMBLY_JSPI)
       target_link_options(onnxruntime_webassembly PRIVATE
         "SHELL:-s JSPI=1"
-        "SHELL:-s JSPI_EXPORTS=[OrtAppendExecutionProvider,OrtCreateSession,OrtRun,OrtRunWithBinding,OrtBindInput]"
+        "SHELL:-s JSPI_EXPORTS=[OrtAppendExecutionProvider,OrtAppendExecutionProviderV2,OrtCreateSession,OrtRun,OrtRunWithBinding,OrtBindInput]"
       )
     else()
       # NOTE: "-s ASYNCIFY=1" is required for JSEP to work with WebGPU
@@ -282,12 +283,20 @@ else()
       #       build time. See https://emscripten.org/docs/porting/asyncify.html for more details.
       #
       # if any of the above is enabled, we need to use the asyncify library
+      #
+      # asyncify_remove.txt lists code that never reaches an async import (graph construction, ONNX schema and shape
+      # inference, protobuf parsing). Asyncify instruments it anyway because it makes indirect calls, which roughly
+      # doubles some large functions; WebKit's optimizing wasm tier then needs several GB to compile them.
       target_link_options(onnxruntime_webassembly PRIVATE
         "SHELL:--pre-js \"${ONNXRUNTIME_ROOT}/wasm/pre-async.js\""
         "SHELL:-s ASYNCIFY=1"
         "SHELL:-s ASYNCIFY_STACK_SIZE=65536"
+        "SHELL:-s ASYNCIFY_REMOVE=@\"${ONNXRUNTIME_ROOT}/wasm/asyncify_remove.txt\""
       )
-      list(APPEND onnxruntime_webassembly_script_deps "${ONNXRUNTIME_ROOT}/wasm/pre-async.js")
+      list(APPEND onnxruntime_webassembly_script_deps
+        "${ONNXRUNTIME_ROOT}/wasm/pre-async.js"
+        "${ONNXRUNTIME_ROOT}/wasm/asyncify_remove.txt"
+      )
     endif()
   endif()
 

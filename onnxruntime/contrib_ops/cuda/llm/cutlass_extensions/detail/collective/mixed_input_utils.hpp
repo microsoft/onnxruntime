@@ -379,7 +379,7 @@ struct MixedGroupedGemmInputUtils {
           constexpr uint32_t immLut = (0xf0 & 0xcc) ^ 0xaa;
           asm volatile(
               "{\n"
-              "  lop3 .b32 %0, %2, %4, %5, %6;\n"
+              "  lop3.b32 %0, %2, %4, %5, %6;\n"
               "  xor  .b32 %1, %3, %5;        \n"
               "}\n"
               : "=r"(scale_pos_[0]), "=r"(scale_pos_[1])

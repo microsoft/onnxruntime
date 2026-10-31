@@ -2311,7 +2311,8 @@ Return Value:
 
 --*/
 {
-#if defined(MLAS_TARGET_AMD64)
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_USE_SVE) || \
+    (defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV))
     GetMlasPlatform().ReduceMinimumMaximumF32Kernel(Input, Min, Max, N);
 #else
     MlasReduceMinimumMaximumF32Kernel(Input, Min, Max, N);

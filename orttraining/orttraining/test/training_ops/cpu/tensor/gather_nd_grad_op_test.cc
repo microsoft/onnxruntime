@@ -116,6 +116,29 @@ TEST(GatherNDGradOpTest, GatherNDGrad_batch_dims_two_negative_indices) {
   test.Run();
 }
 
+#ifdef USE_CUDA
+TEST(GatherNDGradOpTest, GatherNDGrad_invalid_index_cuda_skips_update) {
+  if (!HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "CUDA not available";
+  }
+
+  OpTester test("GatherNDGrad", 1, kMSDomain);
+  test.AddAttribute<int64_t>("batch_dims", 0);
+  test.AddInput<int64_t>("shape", {3}, {2LL, 2LL, 3LL});
+  test.AddInput<int64_t>("indices", {2, 2}, {0LL, 1LL, 2LL, 0LL});
+  test.AddInput<float>("update", {2, 3}, ValueRange(6, 1.0f));
+  test.AddOutput<float>("output", {2, 2, 3}, {0, 0, 0, 1, 2, 3, 0, 0, 0, 0, 0, 0});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> cuda_only_ep;
+  cuda_only_ep.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess,
+           "",
+           {},
+           nullptr,
+           &cuda_only_ep);
+}
+#endif
+
 }  // namespace test
 }  // namespace onnxruntime
 

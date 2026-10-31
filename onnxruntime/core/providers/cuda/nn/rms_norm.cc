@@ -6,26 +6,19 @@
 #include "core/providers/cuda/nn/layer_norm_impl.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cpu/nn/layer_norm_helper.h"
+#include <limits>
 #include <vector>
 
 namespace onnxruntime {
 namespace cuda {
 
-// For T and V both are double, we need U to be double
-template <typename T, typename V>
-using MeanVarType = typename std::conditional<
-    std::is_same<T, double>::value && std::is_same<V, double>::value,
-    double,
-    float>::type;
-
-// RMSNorm uses LayerNorm kernel, which only supports X and scale both
-// being the same data type.
+// The default stage-one stash is FP32 independently of input and scale types.
 #define REGISTER_KERNEL_TYPED(T, V)                                                                 \
   ONNX_OPERATOR_TYPED_KERNEL_EX(RMSNormalization, kOnnxDomain, 23, T##_##V, kCudaExecutionProvider, \
                                 (*KernelDefBuilder::Create())                                       \
                                     .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())          \
                                     .TypeConstraint("V", DataTypeImpl::GetTensorType<V>()),         \
-                                RMSNorm<T, MeanVarType<T, V>, V>);
+                                RMSNorm<T, float, V>);
 
 REGISTER_KERNEL_TYPED(float, float)
 REGISTER_KERNEL_TYPED(float, MLFloat16)
@@ -43,6 +36,11 @@ RMSNorm<T, U, V>::RMSNorm(const OpKernelInfo& op_kernel_info)
   float tmp_epsilon;
   ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &tmp_epsilon).IsOK());
   epsilon_ = tmp_epsilon;
+  stash_type_ = op_kernel_info.GetAttrOrDefault<int64_t>("stash_type", 1);
+  ORT_ENFORCE(stash_type_ == 1 ||
+                  (stash_type_ == 11 && std::is_same_v<T, double> && std::is_same_v<V, double>),
+              "CUDA RMSNormalization supports stash_type=1 (FLOAT), or stash_type=11 (DOUBLE) "
+              "with double input and scale.");
 }
 
 template <typename T, typename U, typename V>
@@ -76,16 +74,40 @@ Status RMSNorm<T, U, V>::ComputeInternal(OpKernelContext* ctx) const {
     return Status::OK();
   }
 
-  // For RMSNorm, we don't need mean and inv_var data, so we can pass nullptr.
-  CudaU* mean_data = nullptr;
-  CudaU* inv_var_data = nullptr;
+  // Validate that norm_size won't cause integer overflow in host-side arithmetic.
+  // HostApplyLayerNorm computes: (n2 + 4 * warp_size - 1) where warp_size is typically 32.
+  // Maximum safe value: INT_MAX - (4 * max_warp_size) to prevent overflow.
+  // Using 256 as a conservative upper bound for 4 * warp_size.
+  constexpr int MAX_WARP_FACTOR = 256;
+  const int MAX_NORM_SIZE = std::numeric_limits<int>::max() - MAX_WARP_FACTOR;
 
-  // simplified should always be true for RMSNorm
-  HostApplyLayerNorm<CudaT, CudaU, CudaV, true>(
-      GetDeviceProp(), Stream(ctx), Y_data, mean_data, inv_var_data, X_data,
-      onnxruntime::narrow<int>(params.num_rows), onnxruntime::narrow<int>(params.norm_size), epsilon_,
-      scale_data, bias_data,
-      onnxruntime::narrow<int>(params.broadcast_param));
+  ORT_RETURN_IF(params.num_rows > 0 &&
+                    (params.norm_size > MAX_NORM_SIZE ||
+                     params.norm_size > std::numeric_limits<int>::max() / params.num_rows),
+                "RMSNormalization input is too large for CUDA kernel indexing: norm_size exceeds safe limits or num_rows * norm_size exceeds INT_MAX");
+
+  // Unlike historical SimplifiedLayerNormalization, ONNX RMSNorm rounds before scaling.
+  if constexpr (std::is_same_v<CudaT, double> && std::is_same_v<CudaV, double>) {
+    if (stash_type_ == 11) {
+      HostApplyLayerNorm<CudaT, double, CudaV, true, true>(
+          GetDeviceProp(), Stream(ctx), Y_data, nullptr, nullptr, X_data,
+          onnxruntime::narrow<int>(params.num_rows), onnxruntime::narrow<int>(params.norm_size), epsilon_,
+          scale_data, bias_data,
+          onnxruntime::narrow<int>(params.broadcast_param));
+    } else {
+      HostApplyLayerNorm<CudaT, CudaU, CudaV, true, true>(
+          GetDeviceProp(), Stream(ctx), Y_data, nullptr, nullptr, X_data,
+          onnxruntime::narrow<int>(params.num_rows), onnxruntime::narrow<int>(params.norm_size), epsilon_,
+          scale_data, bias_data,
+          onnxruntime::narrow<int>(params.broadcast_param));
+    }
+  } else {
+    HostApplyLayerNorm<CudaT, CudaU, CudaV, true, true>(
+        GetDeviceProp(), Stream(ctx), Y_data, nullptr, nullptr, X_data,
+        onnxruntime::narrow<int>(params.num_rows), onnxruntime::narrow<int>(params.norm_size), epsilon_,
+        scale_data, bias_data,
+        onnxruntime::narrow<int>(params.broadcast_param));
+  }
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
   return Status::OK();
 }

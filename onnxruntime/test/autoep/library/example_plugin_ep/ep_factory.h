@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <array>
 #include <mutex>
 
 #include "ep_arena.h"
@@ -17,16 +18,15 @@
 /// </summary>
 class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
  public:
-  ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtLogger& default_logger);
+  ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtLogger& default_logger,
+                   bool create_duplicate_virtual_devices = false);
+  ~ExampleEpFactory();
 
   OrtDataTransferImpl* GetDataTransfer() const {
     return data_transfer_impl_.get();
   }
 
-  // Get the shared arena allocator if created.
-  ArenaAllocator* GetArenaAllocator() const {
-    return arena_allocator_.get();
-  }
+  OrtStatus* ResetArenaChunksUsingStream(const OrtSyncStreamImpl* stream_impl);
 
   // Get the EP version string.
   const std::string& GetEpVersionString() const {
@@ -91,6 +91,13 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
       const OrtEpDevice* ep_device,
       OrtExternalResourceImporterImpl** out_importer) noexcept;
 
+  static OrtStatus* ORT_API_CALL InitGraphicsInteropImpl(OrtEpFactory* this_ptr,
+                                                         const OrtEpDevice* ep_device,
+                                                         const OrtGraphicsInteropConfig* config) noexcept;
+
+  static OrtStatus* ORT_API_CALL DeinitGraphicsInteropImpl(OrtEpFactory* this_ptr,
+                                                           const OrtEpDevice* ep_device) noexcept;
+
   static OrtStatus* ORT_API_CALL GetHardwareDeviceIncompatibilityDetailsImpl(
       OrtEpFactory* this_ptr,
       const OrtHardwareDevice* hw,
@@ -122,6 +129,8 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
   const std::string vendor_{"Contoso"};    // EP vendor name
   const uint32_t vendor_id_{0xB357};       // EP vendor ID
   const std::string ep_version_{"0.1.0"};  // EP version
+  const bool create_duplicate_virtual_devices_{false};
+  std::array<OrtHardwareDevice*, 2> virtual_hardware_devices_{};
 
   // CPU allocator so we can control the arena behavior. optional as ORT always provides a CPU allocator if needed.
   Ort::MemoryInfo default_memory_info_;
@@ -131,7 +140,10 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
   bool arena_allocator_using_default_settings_{true};
   std::unique_ptr<ArenaAllocator> arena_allocator_;  // shared device allocator that uses an arena
   uint32_t num_arena_users_{0};
-  std::mutex mutex_;  // mutex to protect arena_allocator_ and num_arena_users_
+  std::mutex mutex_;  // mutex to protect arena_allocator_, num_arena_users_ and graphics_interop_initialized_
+
+  // The example EP has a single device, so one flag tracks its graphics interop state.
+  bool graphics_interop_initialized_{false};
 
   std::unique_ptr<ExampleDataTransfer> data_transfer_impl_;  // data transfer implementation for this factory
 

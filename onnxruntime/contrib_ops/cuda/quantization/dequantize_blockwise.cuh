@@ -47,6 +47,18 @@ struct BlkQuantTraits {
 };
 
 template <class T, typename ZeroT>
+Status Dequantize2Bits(
+    T* output,
+    const uint8_t* quant_data,
+    const T* scales_data,
+    const ZeroT* zero_points,
+    const int32_t* reorder_idx,
+    int k,
+    int n,
+    int block_size,
+    cudaStream_t stream);
+
+template <class T, typename ZeroT>
 Status Dequantize4Bits(
     T* output,
     const uint8_t* quant_data,
@@ -82,7 +94,9 @@ Status DequantizeNBits(
     int n,
     int block_size,
     cudaStream_t stream) {
-  if (bits == 4) {
+  if (bits == 2) {
+    return Dequantize2Bits<T, ZeroT>(output, quant_data, scales_data, zero_points, reorder_idx, k, n, block_size, stream);
+  } else if (bits == 4) {
     return Dequantize4Bits<T, ZeroT>(output, quant_data, scales_data, zero_points, reorder_idx, k, n, block_size, stream);
   } else {
     ORT_ENFORCE(bits == 8);

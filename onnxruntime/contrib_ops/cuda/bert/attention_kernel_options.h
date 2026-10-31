@@ -5,9 +5,25 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include "contrib_ops/cpu/bert/attention_parameters.h"
 
 namespace onnxruntime {
+namespace contrib {
+namespace cuda {
+// Prefer native H512 decode over MEA; prefills retain MEA's bounded workspace.
+inline bool PreferNativeGqa(const GroupQueryAttentionParameters& parameters,
+                            int device_major, bool is_inputs_quantized, bool has_head_sink) {
+  return !parameters.is_first_prompt && parameters.sequence_length == 1 && device_major >= 8 &&
+         parameters.num_heads != parameters.kv_num_heads &&
+         parameters.head_size == 512 && !is_inputs_quantized &&
+         !parameters.use_smooth_softmax && !has_head_sink &&
+         parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BNSH;
+}
+}  // namespace cuda
+}  // namespace contrib
+
 struct AttentionKernelDebugInfo {
+  std::optional<bool> use_latent_attention = std::nullopt;
   std::optional<bool> use_xqa = std::nullopt;
   std::optional<bool> use_flash_attention = std::nullopt;
   std::optional<bool> use_lean_attention = std::nullopt;
@@ -17,6 +33,10 @@ struct AttentionKernelDebugInfo {
   std::optional<bool> use_trt_flash_attention = std::nullopt;
   std::optional<bool> use_trt_cross_attention = std::nullopt;
   std::optional<bool> use_decoder_attention = std::nullopt;
+  std::optional<int> num_splits = std::nullopt;
+  std::optional<int> gqa_group_size = std::nullopt;
+  std::optional<int> effective_kv_length_bound = std::nullopt;
+  std::optional<bool> xqa_page_table_expanded = std::nullopt;
   void SetTrtFusedKernel(bool enable_trt_flash_attention, int sequence_length);
   void Print(const char* operator_name, const std::string& node_name, bool is_float16, bool is_bfloat16) const;
 };

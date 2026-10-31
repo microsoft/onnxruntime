@@ -37,6 +37,10 @@ CoreMLExecutionProvider::CoreMLExecutionProvider(const CoreMLOptions& options)
 
 CoreMLExecutionProvider::~CoreMLExecutionProvider() {}
 
+ProviderOptions CoreMLExecutionProvider::GetProviderOptions() const {
+  return coreml_options_.ToProviderOptions();
+}
+
 std::vector<std::unique_ptr<ComputeCapability>>
 CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
                                        const IKernelLookup& /*kernel_lookup*/,

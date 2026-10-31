@@ -125,6 +125,8 @@ if(onnxruntime_BUILD_UNIT_TESTS)
         ${onnxruntime_objc_headers}
         ${onnxruntime_objc_test_srcs})
 
+    target_link_libraries(onnxruntime_objc_test PRIVATE onnxruntime)
+
     onnxruntime_configure_target(onnxruntime_objc_test)
 
     target_include_directories(onnxruntime_objc_test

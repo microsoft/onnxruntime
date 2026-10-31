@@ -1206,8 +1206,8 @@ fp32 default and the fp16-accumulation experiment:
 - Added CUDA provider kernel: `MatMulFloatInt4RouterKernel<T>`.
 - Dispatch: `TryMatMul4Bits` selects the specialized kernel only for the exact
   shape above. For clean A/B measurement, set
-  `ORT_DISABLE_QMOE_ROUTER_GEMV_SPECIALIZATION=1` to force the generic
-  `MatMulFloatInt4Kernel` route.
+  `ORT_DISABLE_QMOE_ROUTER_GEMV_SPECIALIZATION=1` to force the generic 4-bit
+  M=1 route.
 - Motivation: avoiding 32 router logits in global memory is small. The more
   direct win is reducing overhead in the special `N=32`, `K=2880` int4 router
   GEMV itself.
@@ -1249,7 +1249,7 @@ Kernel summary rows from the no-CUDA-graph profile:
 
 | Kernel | Total ns | Instances | Avg ns |
 |--------|---------:|----------:|-------:|
-| generic `MatMulFloatInt4Kernel<__half, 32, false>` | 3318180 | 343 | 9674.0 |
+| generic 4-bit M=1 GEMV (pre-split profile) | 3318180 | 343 | 9674.0 |
 | specialized `MatMulFloatInt4RouterKernel<__half>` | 655863 | 168 | 3903.9 |
 | `SoftmaxTopKWarpBitonicKernel<__half, 8>` | 439868 | 192 | 2291.0 |
 
@@ -1399,3 +1399,239 @@ cd ~/onnxruntime/build/cu130/Release
 ```
 
 Result: graph transformer tests `3 passed`; provider test `1 passed`.
+
+## 2026-06-21: NVFP4 GEMV Packed E2M1 Dequantize (`prmt` Quad Decode)
+
+### Change Under Test
+
+- Scope: `Fp4I2FConverter` in
+  `onnxruntime/contrib_ops/cuda/llm/fpA_intB_gemv/details.h`, i.e. every MXFP4 /
+  NVFP4 QMoE GEMV kernel instantiated from `moe_gemv_fp4.cu` (`moe_gemv_kernel`
+  and `moe_gemv_interleaved_swiglu_kernel`). INT4/INT8 use `I2FConverter` and are
+  untouched.
+- `Fp4I2FConverter::convert<N>()` previously decoded one E2M1 code at a time.
+  Even though `decode()` was already branchless (a `prmt.b32` byte-select into a
+  packed magnitude table), the surrounding per-element mask / shift / or / pack
+  sequence dominated: ~53 ALU instructions per 8 codes.
+- New packed path (`decode_quad`) taken whenever `N % 8 == 0`, which covers both
+  live FP4 configurations (`ColumnMajor` `StepK=8` used by NVFP4, and the opt-in
+  `ColumnMajorInterleaved` `StepK=32` used by MXFP4):
+  - Load the weights a whole 32-bit word (eight codes) at a time.
+  - `mag = w & 0x77777777` keeps the three magnitude bits per nibble and clears
+    bit 3 so `prmt` stays in byte-select mode instead of sign-replicate mode.
+  - `sgn = (w >> 3) & 0x11111111` becomes `0x00`/`0x80` sign bytes with one
+    `prmt`.
+  - One further `prmt` performs **four** magnitude table lookups at once, and one
+    or two more expand the bytes into two packed `half2` / `bfloat16x2` words.
+- Numerically this is a pure instruction-count change: the magnitude constants
+  are the same exact `half`/`bf16` encodings of `{0, 0.5, 1, 1.5, 2, 3, 4, 6}`,
+  and nibble `i` still maps to output element `i`, so `pack_to_vec2`/`mma` need
+  no changes. There is no env var; the packed path is unconditional on device.
+
+### Bit-Exactness
+
+A standalone harness compared `decode_quad` against the per-element reference for
+both `half` and `__nv_bfloat16`. The reachable input space is only 2^16 wide (a
+`decode_quad` call is fully described by its 4x3-bit magnitude selector plus its
+4x1-bit sign selector), so the sweep of 256x256x64 randomized 32-bit words covers
+every reachable pattern -- this is an exhaustive check, not a sample:
+
+```
+cuda=no error mismatches=0
+```
+
+### SASS Instruction Count (sm_90, CUDA 13.0)
+
+Same object (`moe_gemv_fp4.cu.o`), built with and without the change:
+
+| Kernel (fp16, `ColumnMajor`, CtaN=8, Threads=128, GroupSize=16) | Before | After | Delta |
+|---|---:|---:|---:|
+| `moe_gemv_interleaved_swiglu_kernel` (fc1) | 1088 | 760 | -30.1% |
+| `moe_gemv_kernel` (fc2) | 960 | 640 | -33.3% |
+| whole object, all FP4 instantiations | 300552 | 180112 | -40.1% |
+
+### Repro Notes
+
+Model: `qwen3.6_nvfp4_fp8dense_statscale_mtp_int8head_fp8kv_v10_w4`
+(hidden 2048, inter 512, 256 experts, top_k 8, NVFP4 block_size 16, 40 layers),
+H200 SXM, single GPU.
+
+```bash
+source ~/git/venv/bin/activate
+export CUDA_HOME=/home/tianlei/cuda13.0 CUDNN_HOME=/home/tianlei/cudnn_9.23_cuda13
+export LD_LIBRARY_PATH=/home/tianlei/ort_home_cu130_fp4_bench/lib:$CUDA_HOME/lib64:$CUDNN_HOME/lib:$LD_LIBRARY_PATH
+export CUDA_VISIBLE_DEVICES=0 ORT_ENABLE_FP4_GEMV=1 ORT_MTP_DIRECT_ARENA_COMMIT=1 ORT_FP4_GEMV_AUTOTUNE=0
+# per-kernel timing: CUDA graph OFF so nsys reports real per-launch durations
+nsys profile -t cuda --capture-range=cudaProfilerApi --capture-range-end=stop \
+  -o /tmp/qmoe --force-overwrite true --export=sqlite \
+  python scripts/h200_18/profile_mtp_decode.py $MODEL $HEAD off 3 20 10
+nsys stats --report cuda_gpu_kern_sum --format csv /tmp/qmoe.sqlite | grep moe_gemv
+# end-to-end: CUDA graph ON
+python scripts/h200_18/profile_mtp_decode.py $MODEL $HEAD on 3 200 50
+```
+
+Caveat that cost time here: this workspace has **three** copies of
+`libonnxruntime_providers_cuda.so` (`onnxruntime/capi`, `onnxruntime_genai`, and
+the `ort_home` lib dir). A/B swaps must replace all three, otherwise both arms
+silently load the same library and report identical numbers.
+
+### Nsight Systems Per-Kernel Results (CUDA graph OFF, 800 launches each)
+
+Interleaved base/new reps, `ORT_FP4_GEMV_AUTOTUNE=0` (shipping default tiling):
+
+| Kernel | Before (us) | After (us) | Delta |
+|---|---:|---:|---:|
+| `moe_gemv_interleaved_swiglu_kernel` (fc1) | 33.14 / 33.24 | 26.34 / 26.13 | **-20.9%** |
+| `moe_gemv_kernel` (fc2) | 30.21 / 30.19 | 22.22 / 22.20 | **-26.5%** |
+
+40 launches of each per decode step, so about `-0.60 ms/step` of GPU time.
+
+### Model-Level Decode Benchmark (CUDA graph ON, 200 steps, 50 warmup)
+
+Interleaved reps; `ms/step` is the clean metric because `tok/s` also moves with
+the MTP acceptance rate.
+
+| Rep | Before ms/step | After ms/step |
+|---|---:|---:|
+| 1 | 11.663 | 11.061 |
+| 2 | 11.572 | 11.032 |
+| 3 | 11.594 | 11.035 |
+| mean | 11.610 | 11.043 |
+
+**-4.9% step time (+5.1% step rate).** Every "after" rep beat every "before" rep.
+
+### Validation
+
+```bash
+cd onnxruntime/test/python/transformers
+ORT_ENABLE_FP4_GEMV=1 python -m pytest -q test_qmoe_nvfp4_cuda.py   # 22 passed
+ORT_ENABLE_FP4_GEMV=0 python -m pytest -q test_qmoe_nvfp4_cuda.py   # 22 passed
+```
+
+### Decision
+
+- Keep the change. It is bit-exact, has no env gate, and is the largest single
+  QMoE NVFP4 GEMV win measured so far.
+- After this change the kernels are no longer dominated by dequantize. The next
+  FP4 GEMV lever is **tiling**, not the converter.
+
+### Follow-Up: Tiling Default Is Still Wrong For These Shapes
+
+`moe_gemv_fp4.cu` defaults to `Threads=128` with `StepK=8`, so `CtaK = 1024`.
+For fc2 (`k = 512`) half the threads in every block do no work at all. Enabling
+the existing autotuner picks `CtaN=8, Threads=64` for **both** GEMVs:
+
+| Config | fc1 (us) | fc2 (us) | ms/step |
+|---|---:|---:|---:|
+| `ORT_FP4_GEMV_AUTOTUNE=0` (default) | 26.2 | 22.2 | 11.028 / 11.004 |
+| `ORT_FP4_GEMV_AUTOTUNE=1` | 23.9 | 17.5 | 10.787 / 10.751 |
+
+Another `-0.24 ms/step` (`-2.2%`) is available. `ORT_FP4_GEMV_AUTOTUNE` is off by
+default because it synchronizes the inference stream, and it is skipped during
+CUDA-graph capture, so the fix should be an analytic default (at minimum, drop to
+`Threads=64` when `StepK * Threads > k`) rather than relying on the autotuner.
+Resolved by the next section.
+
+## 2026-07-28: Analytic Default Tiling For The FP4 GEMV
+
+### Change Under Test
+
+Follow-up to the previous section, which showed the shipping FP4 GEMV tiling
+(`CtaN=8, Threads=128`) is not the best choice for the NVFP4 decode shapes but
+that the only way to get the better one was `ORT_FP4_GEMV_AUTOTUNE=1`. The
+autotuner is off by default because it synchronizes the inference stream, and it
+is skipped during CUDA-graph capture, so in practice it never runs in the
+configuration that matters.
+
+New `gemv::Fp4MoeGemvDefaultConfig(expanded_num_rows, n, k)` in
+`moe_gemv_fp4.cu` derives the tiling from the shape instead. `moe_quantization.cc`
+now seeds `fc1_config` / `fc2_config` from it rather than from `kDefault`; the
+autotuner, when enabled, still overrides it and the per-shape cache is unchanged.
+Only `Threads` is derived. `CtaN` stays at `kDefaultCtaN`, so the analytic config
+never changes which shapes `is_moe_gemv_fp4_supported` accepts. Note that
+`Threads` is a tiling knob but **not** a bit-exact one: a block walks K in strides
+of `CtaK = StepK * Threads` and the epilogue reduces across `Threads / 32` warps,
+so changing it changes the floating-point summation order and the low bits of the
+result can move.
+
+Two clauses, both about the fact that the grid is `(expanded_num_rows, n / CtaN)`
+and therefore does **not** depend on `Threads`:
+
+- **(a) Idle threads.** A block walks K in strides of `CtaK = StepK * Threads`
+  (`StepK = 8` for the ColumnMajor FP4 layout). When `CtaK > k` the tail of every
+  block never enters the K loop. NVFP4 fc2 has `k = inter_size = 512` against
+  `CtaK = 1024`, i.e. half of every block does nothing. `k < 1024 -> Threads=64`.
+- **(b) Epilogue width.** MAC work per block is fixed by `(CtaN, k)` regardless of
+  `Threads`, but the epilogue reduces partials across `Threads/32` warps through
+  shared memory. A narrower block does the same math with half the barriers and a
+  shallower reduction tree. This is gated on the grid being large enough that the
+  SM still fills: these kernels use ~72 registers/thread on sm_90 (~900 resident
+  threads/SM), which a 128-thread block reaches with ~7 resident blocks and a
+  64-thread block only with ~14, so the threshold is **16 blocks/SM**
+  (`expanded_num_rows * (n / CtaN) >= 16 * multiProcessorCount`).
+
+`ORT_FP4_GEMV_DEFAULT_TILING=0` restores the fixed `kDefault` tiling.
+
+### Selected Configs
+
+Qwen3.6-35B-A3B-NVFP4 MTP decode (hidden 2048, inter 512, 256 experts, top_k 8,
+expanded 32), H200, 132 SMs:
+
+| GEMV | n | k | blocks | Clause | Chosen |
+|---|---:|---:|---:|---|---|
+| fc1 (swiglu) | 1024 | 2048 | 4096 (31/SM) | (b) | `Threads=64` |
+| fc2 | 2048 | 512 | 8192 (62/SM) | (a) | `Threads=64` |
+
+Single-token decode (expanded 8) keeps `Threads=128` for fc1 (1024 blocks, 7.8/SM,
+below the clause (b) threshold) and still takes `Threads=64` for fc2 via clause
+(a), which is the intended behavior.
+
+The analytic choice reproduces the autotuner's pick exactly:
+
+| Kernel | `AUTOTUNE=1` (us) | Analytic default (us) |
+|---|---:|---:|
+| `moe_gemv_interleaved_swiglu_kernel` (fc1) | 23.93 | 23.89 / 24.05 |
+| `moe_gemv_kernel` (fc2) | 17.46 | 17.48 / 17.52 |
+
+### Model-Level Decode Benchmark (CUDA graph ON, 200 steps, 50 warmup)
+
+Same binary for both arms, toggled with `ORT_FP4_GEMV_DEFAULT_TILING`, interleaved
+reps. Final threshold (16 blocks/SM):
+
+| Rep | Fixed default ms/step | Analytic default ms/step |
+|---|---:|---:|
+| 1 | 10.986 | 10.739 |
+| 2 | 11.002 | 10.725 |
+| 3 | 11.061 | 10.742 |
+| mean | 11.016 | 10.735 |
+
+**-2.6% step time.** Every analytic rep beat every fixed-default rep. An earlier
+build with the threshold at 8 blocks/SM measured -2.3% on the same shapes; the
+16 blocks/SM threshold is the more conservative choice and loses nothing here.
+
+Combined with the packed E2M1 decode from the previous section, decode goes from
+11.610 ms/step to 10.735 ms/step, **-7.5%**.
+
+### Validation
+
+```bash
+cd onnxruntime/test/python/transformers
+ORT_ENABLE_FP4_GEMV=1 python -m pytest -q test_qmoe_nvfp4_cuda.py   # 22 passed
+ORT_ENABLE_FP4_GEMV=0 python -m pytest -q test_qmoe_nvfp4_cuda.py   # 22 passed
+ORT_ENABLE_FP4_GEMV=1 ORT_FP4_GEMV_DEFAULT_TILING=0 \
+  python -m pytest -q test_qmoe_nvfp4_cuda.py                       # 22 passed
+```
+
+### Decision
+
+- Keep. Every config computes the same dot products with the same accumulation
+  dtype, so this is purely about picking the faster launch shape, and it now
+  happens without a stream sync and works under CUDA graph capture. The summation
+  order does depend on `Threads`, so the choice is not bit-neutral; the tests
+  cover both clauses of the heuristic and the `=0` opt-out.
+- Clause (a) is unconditional and carries most of the win (fc2: 22.2 -> 17.5 us).
+  Clause (b) adds the fc1 win (26.2 -> 23.9 us) and is the part that generalizes
+  least, hence the deliberately conservative occupancy-derived threshold and the
+  `ORT_FP4_GEMV_DEFAULT_TILING=0` opt-out.
+- The autotuner is still the right tool for shapes the heuristic gets wrong; it
+  now starts from a better default and overrides it only when it measures a win.

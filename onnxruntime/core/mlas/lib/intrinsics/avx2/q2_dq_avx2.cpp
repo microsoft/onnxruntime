@@ -17,9 +17,13 @@ Abstract:
     significant bits first. The word is broadcast across all lanes and each
     lane extracts its element with a variable shift. The scale is applied as
     a separate multiply and add (not fused) so the results stay bit-identical
-    to the scalar kernel. GCC and Clang default to -ffp-contract=fast at -O2,
-    so the build compiles this TU with -ffp-contract=off there; MSVC does not
-    contract under its default /fp:precise.
+    to the scalar kernel. GCC and Clang can fuse the two into an FMA in their
+    default configurations, which would change the result, so the build passes
+    -ffp-contract=off for this TU; MSVC does not contract under its default
+    /fp:precise. The scalar kernel's TU is compiled without FMA in the default
+    build and cannot contract; a build that enables FMA globally (for example
+    -march=x86-64-v3) can still fuse there and drift from this kernel by one
+    ulp.
 
 --*/
 

@@ -7,6 +7,7 @@
 #include "core/framework/utils.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include <gsl/gsl>
+#include <limits>
 #include "contrib_ops/cpu/transformers/subgraph_gpt.h"
 #include "contrib_ops/cpu/utils/dump_tensor.h"
 
@@ -166,11 +167,20 @@ Status GptSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_inputs,
 
   // Logits shape is like (batch_size, seq_len, 50257). Here 50257 is the vocabulary size.
   const ONNX_NAMESPACE::TensorShapeProto* logits_shape = subgraph_outputs[0]->Shape();
+  ORT_RETURN_IF(logits_shape == nullptr,
+                "subgraph logits output shape cannot be nullptr");
   ORT_RETURN_IF(logits_shape->dim_size() != 3,
                 "subgraph logits output is expected to have 3 dimension, got ", logits_shape->dim_size());
 
   ORT_RETURN_IF(!logits_shape->dim(2).has_dim_value() || logits_shape->dim(2).dim_value() <= 0,
-                "subgraph past state dimension 2 shall have a positive value for vocabulary size");
+                "subgraph logits dimension 2 shall have a positive value for vocabulary size");
+
+  ORT_RETURN_IF(past_shape->dim(2).dim_value() > std::numeric_limits<int>::max(),
+                "subgraph past state dimension 2 is too large for int");
+  ORT_RETURN_IF(past_shape->dim(4).dim_value() > std::numeric_limits<int>::max(),
+                "subgraph past state dimension 4 is too large for int");
+  ORT_RETURN_IF(logits_shape->dim(2).dim_value() > std::numeric_limits<int>::max(),
+                "subgraph logits dimension 2 is too large for int");
 
   // Save parameters related to the subgraph.
   num_heads = static_cast<int>(past_shape->dim(2).dim_value());

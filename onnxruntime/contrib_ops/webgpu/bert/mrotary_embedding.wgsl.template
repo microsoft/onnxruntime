@@ -1,0 +1,75 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#param interleaved
+#param position_ids_use_storage_type
+#param sectioned
+#param transposed
+
+#use .getByOffset .setByOffset
+
+$MAIN {
+  if (global_idx >= uniforms.output_size) {
+    return;
+  }
+
+  let channel = global_idx % uniforms.head_size;
+#if transposed
+  let sequence = (global_idx / uniforms.head_size) % uniforms.sequence_length;
+  let batch = global_idx / (uniforms.head_size * uniforms.sequence_length * uniforms.num_heads);
+#else
+  let sequence = (global_idx / (uniforms.head_size * uniforms.num_heads)) % uniforms.sequence_length;
+  let batch = global_idx / (uniforms.head_size * uniforms.num_heads * uniforms.sequence_length);
+#endif
+
+  if (channel >= uniforms.rotary_embedding_dim) {
+    output.setByOffset(global_idx, input.getByOffset(global_idx));
+    return;
+  }
+
+  let half_rotary_embedding_dim = uniforms.rotary_embedding_dim / 2u;
+#if interleaved
+  let cache_idx = channel / 2u;
+  let pair_idx = select(channel - 1u, channel + 1u, channel % 2u == 0u);
+  let sign = select(input_element_t(1.0), input_element_t(-1.0), channel % 2u == 0u);
+#else
+  let cache_idx = channel % half_rotary_embedding_dim;
+  let pair_idx = (channel + half_rotary_embedding_dim) % uniforms.rotary_embedding_dim;
+  let sign = select(input_element_t(1.0), input_element_t(-1.0), channel < half_rotary_embedding_dim);
+#endif
+
+  var stream = 0u;
+#if sectioned
+  if (cache_idx >= uniforms.mrope_section[0] &&
+      cache_idx < uniforms.mrope_section[0] + uniforms.mrope_section[1]) {
+    stream = 1u;
+  } else if (cache_idx >= uniforms.mrope_section[0] + uniforms.mrope_section[1]) {
+    stream = 2u;
+  }
+#else
+  if (cache_idx % 3u == 1u && cache_idx / 3u < uniforms.mrope_section[1]) {
+    stream = 1u;
+  } else if (cache_idx % 3u == 2u && cache_idx / 3u < uniforms.mrope_section[2]) {
+    stream = 2u;
+  }
+#endif
+
+  let position_ids_idx =
+      (stream * uniforms.batch_size + batch) * uniforms.sequence_length + sequence;
+  // int64 values are stored as vec2<u32>; read both words so negative and
+  // otherwise out-of-range values pass through unchanged.
+  let position_id_bits = position_ids.getByOffset(position_ids_idx, position_ids_use_storage_type);
+  if (position_id_bits.y != 0u || position_id_bits.x >= uniforms.max_sequence_length) {
+    output.setByOffset(global_idx, input.getByOffset(global_idx));
+    return;
+  }
+
+  let cache_offset = position_id_bits.x * half_rotary_embedding_dim + cache_idx;
+  let scale = input_element_t(uniforms.scale);
+  let cos_value = cos_cache.getByOffset(cache_offset) * scale;
+  let sin_value = sin_cache.getByOffset(cache_offset) * scale;
+  let head_offset = global_idx - channel;
+  let value = input.getByOffset(global_idx) * cos_value +
+              sign * input.getByOffset(head_offset + pair_idx) * sin_value;
+  output.setByOffset(global_idx, value);
+}  // MAIN

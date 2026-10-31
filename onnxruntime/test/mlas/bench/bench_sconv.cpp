@@ -335,7 +335,7 @@ void SCONV_NCHW_THREADED(benchmark::State& state, const char* /*dummy*/) {
   }
 }
 
-static void ResNet50(benchmark::internal::Benchmark* b) {
+static void ResNet50(benchmark::Benchmark* b) {
   b->ArgNames(ArgNamesForConv(2));
 
   //************************* Conv 1 *************************
@@ -397,7 +397,7 @@ static void ResNet50(benchmark::internal::Benchmark* b) {
 
 BENCHMARK_CAPTURE(SCONV_NCHW, ResNet50, "")->Apply(ResNet50)->UseRealTime();
 
-static void TeamsModel(benchmark::internal::Benchmark* b) {
+static void TeamsModel(benchmark::Benchmark* b) {
   b->ArgNames(ArgNamesForConv(2));
   //    Rank, N, G, Cpg, Fpg,  I,   , K, , P, , , , S, , D, ,
   b->Args({2, 1, 1, 40, 24, 24, 40, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1});   // fused conv_349 => 24x40
@@ -424,7 +424,7 @@ static void TeamsModel(benchmark::internal::Benchmark* b) {
 BENCHMARK_CAPTURE(SCONV_NCHW, TeamsModel, "")->Apply(TeamsModel)->UseRealTime();
 BENCHMARK_CAPTURE(SCONV_NCHW_THREADED, TeamsModel, "")->Apply(TeamsModel)->UseRealTime();
 
-static void MobileClip(benchmark::internal::Benchmark* b) {
+static void MobileClip(benchmark::Benchmark* b) {
   b->ArgNames(ArgNamesForConv(2));
 
   // 7x7 grouped depthwise-multiplier-2 shapes.
@@ -441,7 +441,7 @@ static void MobileClip(benchmark::internal::Benchmark* b) {
 BENCHMARK_CAPTURE(SCONV_NCHW, MobileClip, "")->Apply(MobileClip)->UseRealTime();
 BENCHMARK_CAPTURE(SCONV_NCHW_THREADED, MobileClip, "")->Apply(MobileClip)->UseRealTime();
 
-static void KleidiAiNhwcComparison(benchmark::internal::Benchmark* b) {
+static void KleidiAiNhwcComparison(benchmark::Benchmark* b) {
   b->ArgNames(ArgNamesForConv(2));
 
   // Dense 3x3 conv shapes that fit the Arm SME / KleidiAI NHWC fast-path envelope.
@@ -456,7 +456,7 @@ static void KleidiAiNhwcComparison(benchmark::internal::Benchmark* b) {
 BENCHMARK_CAPTURE(SCONV_NCHW, KleidiAiNhwcComparison_NchwBaseline, "")->Apply(KleidiAiNhwcComparison)->UseRealTime();
 BENCHMARK_CAPTURE(SCONV_NHWC_KLEIDIAI, KleidiAiNhwcComparison_NhwcFastPath, "")->Apply(KleidiAiNhwcComparison)->UseRealTime();
 
-static void General_Conv2d(benchmark::internal::Benchmark* b) {
+static void General_Conv2d(benchmark::Benchmark* b) {
   b->ArgNames(ArgNamesForConv(2));
   b->ArgsProduct(
       {{2},       // Rank,

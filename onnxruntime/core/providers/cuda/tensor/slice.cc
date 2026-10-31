@@ -6,6 +6,9 @@
 #include "core/providers/cpu/tensor/slice_helper.h"
 #include "core/providers/cuda/tensor/slice_impl.h"
 
+#include <cstdint>
+#include <limits>
+
 namespace onnxruntime {
 namespace cuda {
 // this really doesn't need to be a typed registration as the indices come from attributes and can only be int64.
@@ -102,6 +105,90 @@ static Status SliceImpCore(cudaStream_t stream,
                    output_shape.Size());
 }
 
+static bool TryConvertInt64ToSizeT(int64_t value, size_t& converted_value) {
+  if (value < 0 || static_cast<uint64_t>(value) > std::numeric_limits<size_t>::max()) {
+    return false;
+  }
+
+  converted_value = static_cast<size_t>(value);
+  return true;
+}
+
+static bool TryMultiply(size_t lhs, size_t rhs, size_t& product) {
+  if (lhs != 0 && rhs > std::numeric_limits<size_t>::max() / lhs) {
+    return false;
+  }
+
+  product = lhs * rhs;
+  return true;
+}
+
+// Detect whether a step-1 slice selects a single contiguous block of the input tensor.
+// This is the case when the slice only trims leading dimensions: scanning from the right,
+// every axis is fully included until the first trimmed ("pivot") axis, and every axis to the
+// left of the pivot selects exactly one element. When true, the output is the contiguous
+// sub-region input_ptr + offset_in_elements and can be produced with a single device-to-device
+// memcpy instead of the per-element slice kernel.
+static bool TryComputeContiguousSliceOffset(gsl::span<const int64_t> input_dims,
+                                            gsl::span<const int64_t> output_dims,
+                                            const TArray<int64_t>& starts_buffer,
+                                            const TArray<int64_t>& steps_buffer,
+                                            size_t& offset_in_elements) {
+  const int32_t rank = static_cast<int32_t>(input_dims.size());
+  if (rank == 0 || static_cast<int32_t>(output_dims.size()) != rank ||
+      starts_buffer.Size() != rank || steps_buffer.Size() != rank) {
+    return false;
+  }
+
+  // Only step-1 slices can be contiguous.
+  for (int32_t i = 0; i < rank; ++i) {
+    if (steps_buffer[i] != 1) {
+      return false;
+    }
+  }
+
+  // Find the first trimmed axis scanning from the right (the pivot).
+  int32_t pivot = -1;
+  for (int32_t i = rank - 1; i >= 0; --i) {
+    if (output_dims[i] != input_dims[i]) {
+      pivot = i;
+      break;
+    }
+  }
+
+  // Every axis to the left of the pivot must select exactly one element, otherwise the
+  // selected region is split into multiple non-adjacent blocks.
+  for (int32_t i = 0; i < pivot; ++i) {
+    if (output_dims[i] != 1) {
+      return false;
+    }
+  }
+
+  // Compute the offset of the first selected element (in elements).
+  size_t offset = 0;
+  size_t stride = 1;
+  for (int32_t i = rank - 1; i >= 0; --i) {
+    size_t start = 0;
+    size_t input_dim = 0;
+    if (!TryConvertInt64ToSizeT(starts_buffer[i], start) ||
+        !TryConvertInt64ToSizeT(input_dims[i], input_dim) ||
+        start > input_dim) {
+      return false;
+    }
+
+    size_t offset_increment = 0;
+    if (!TryMultiply(start, stride, offset_increment) ||
+        offset > std::numeric_limits<size_t>::max() - offset_increment ||
+        !TryMultiply(stride, input_dim, stride)) {
+      return false;
+    }
+
+    offset += offset_increment;
+  }
+  offset_in_elements = offset;
+  return true;
+}
+
 namespace SliceCuda {
 
 static Status ComputeSliceStrides(const TensorShape& input_shape, TArray<int64_t>& input_strides,
@@ -192,10 +279,18 @@ Status Slice<dynamic>::ComputeInternal(OpKernelContext* ctx) const {
 
   ORT_RETURN_IF_ERROR(SliceCuda::ComputeSliceStrides(input_shape, input_strides, output_strides, compute_metadata));
 
+  gsl::span<const int64_t> sliced_input_dims = input_dimensions;
+  gsl::span<const int64_t> sliced_output_dims = compute_metadata.output_dims_;
+  if (compute_metadata.p_flattened_input_dims_) {
+    sliced_input_dims = compute_metadata.flattened_input_dims_;
+    sliced_output_dims = compute_metadata.flattened_output_dims_;
+  }
+
   // It may seem that we may use `SliceImpCore()` directly, but we need to go through `CallSliceImp()` because
   // `ComputeInternal()` is shared between the inferencing and training kernels and the training kernel overrides
   // `CallSliceImp()`
-  ORT_RETURN_IF_ERROR(CallSliceImp(input_tensor->DataType()->Size(), input_dimensions.size(), starts_buffer,
+  ORT_RETURN_IF_ERROR(CallSliceImp(input_tensor->DataType()->Size(), input_dimensions.size(),
+                                   sliced_input_dims, sliced_output_dims, starts_buffer,
                                    steps_buffer, input_strides,
                                    output_strides, ctx,
                                    output_shape));
@@ -217,12 +312,45 @@ Status Slice<dynamic>::FillInputVectors(OpKernelContext* ctx, TensorShapeVector&
 }
 
 template <bool dynamic>
-Status Slice<dynamic>::CallSliceImp(size_t element_size, size_t dimension_count, const TArray<int64_t>& starts_buffer,
+Status Slice<dynamic>::CallSliceImp(size_t element_size, size_t dimension_count,
+                                    gsl::span<const int64_t> sliced_input_dims,
+                                    gsl::span<const int64_t> sliced_output_dims,
+                                    const TArray<int64_t>& starts_buffer,
                                     const TArray<int64_t>& steps_buffer, const TArray<int64_t>& input_strides,
                                     const TArray<fast_divmod>& output_strides, OpKernelContext* ctx,
                                     const TensorShape& output_shape) const {
   const auto* input_tensor = ctx->Input<Tensor>(0);
   auto* output_tensor = ctx->Output(0, output_shape);
+
+  const int64_t output_size = output_shape.Size();
+  if (output_size == 0) {
+    return Status::OK();
+  }
+
+  // Fast path: when the slice selects a single contiguous block of the input (only leading
+  // dimensions are trimmed and all steps are 1), we can copy the block directly with a single
+  // device-to-device memcpy and skip the per-element slice kernel entirely.
+  size_t offset_in_elements = 0;
+  size_t output_elements = 0;
+  size_t input_elements = 0;
+  if (TryComputeContiguousSliceOffset(sliced_input_dims, sliced_output_dims,
+                                      starts_buffer, steps_buffer, offset_in_elements)) {
+    if (TryConvertInt64ToSizeT(output_size, output_elements) &&
+        TryConvertInt64ToSizeT(input_tensor->Shape().Size(), input_elements) &&
+        offset_in_elements <= input_elements &&
+        output_elements <= input_elements - offset_in_elements) {
+      size_t byte_offset = 0;
+      size_t copy_size = 0;
+      if (TryMultiply(offset_in_elements, element_size, byte_offset) &&
+          TryMultiply(output_elements, element_size, copy_size)) {
+        const char* input_data = static_cast<const char*>(input_tensor->DataRaw()) + byte_offset;
+        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_tensor->MutableDataRaw(), input_data,
+                                             copy_size,
+                                             cudaMemcpyDeviceToDevice, Stream(ctx)));
+        return Status::OK();
+      }
+    }
+  }
 
   return SliceImpCore(Stream(ctx),
                       input_tensor->DataRaw(),

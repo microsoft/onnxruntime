@@ -3,7 +3,24 @@
 
 #include "contrib_ops/cuda/quantization/matmul_nbits.h"
 
+#include <algorithm>
 #include <cstdint>
+#include <filesystem>  // NOLINT(build/c++17)
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
+#if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#include <corecrt_startup.h>
+#endif
 
 #include "core/common/status.h"
 #include "core/common/float16.h"
@@ -19,6 +36,7 @@
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_preprocessors.h"
 #include "contrib_ops/cuda/llm/common/cuda_runtime_utils.h"
 #include "contrib_ops/cuda/quantization/matmul_nbits_sm90_validation.h"
+#include "contrib_ops/cuda/quantization/matmul_nbits_tactic_cache.h"
 #endif
 #include "contrib_ops/cuda/llm/common/logger.h"
 #include "contrib_ops/cpu/quantization/matmul_nbits_helper.h"
@@ -32,24 +50,749 @@ namespace contrib {
 namespace cuda {
 using namespace onnxruntime::cuda;
 
+namespace {
+
+Status ValidateGroupIndexRange(const Tensor* group_index, int64_t k_blocks, cudaStream_t stream) {
+  if (group_index == nullptr) {
+    return Status::OK();
+  }
+
+  const size_t g_idx_size = static_cast<size_t>(group_index->Shape().Size());
+  const int32_t* g_idx_data = group_index->Data<int32_t>();
+  std::vector<int32_t> g_idx_host;
+  if (group_index->Location().device.Type() != OrtDevice::CPU) {
+    cudaStreamCaptureStatus capture_status{};
+    CUDA_RETURN_IF_ERROR(cudaStreamIsCapturing(stream, &capture_status));
+    ORT_RETURN_IF_NOT(capture_status == cudaStreamCaptureStatusNone,
+                      "MatMulNBits group_index validation cannot run during CUDA graph capture; "
+                      "constant initializers require one warmup inference before capture, and runtime group_index "
+                      "inputs are not supported during capture.");
+    g_idx_host.resize(g_idx_size);
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(g_idx_host.data(), g_idx_data, g_idx_size * sizeof(int32_t),
+                                         cudaMemcpyDeviceToHost, stream));
+    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+    g_idx_data = g_idx_host.data();
+  }
+
+  for (size_t i = 0; i < g_idx_size; ++i) {
+    if (g_idx_data[i] < 0 || g_idx_data[i] >= k_blocks) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "group_index value at index ", i, " is ", g_idx_data[i],
+                             ", which is out of valid range [0, ", k_blocks, ")");
+    }
+  }
+
+  return Status::OK();
+}
+
+}  // namespace
+
+template <typename T>
+Status MatMulNBits<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                               /*out*/ bool& is_packed,
+                               /*out*/ PrePackedWeights* /*prepacked_weights*/) {
+  is_packed = false;
+  if (tensor.Shape().Size() == 0) {
+    // Reject empty weights before fpA_intB prepacking can read their buffer.
+    if (input_idx == MatMulNBits_Input_B) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                             "CUDA MatMulNBits does not support empty B weights yet.");
+    }
+    // Leave empty quantization parameters for runtime validation: B may be a runtime input.
+    return Status::OK();
+  }
+  constexpr int kInputIndexGroupIndex = 4;
+  if (input_idx == kInputIndexGroupIndex) {
+    const int64_t k_blocks = K_ / block_size_ + (K_ % block_size_ != 0);
+    ORT_RETURN_IF_ERROR(ValidateGroupIndexRange(&tensor, k_blocks, cudaStreamLegacy));
+    is_group_index_validated_.store(true, std::memory_order_release);
+    return Status::OK();
+  }
+
+#if USE_FPA_INTB_GEMM
+  if constexpr (std::is_same_v<T, MLFloat16> || std::is_same_v<T, BFloat16>) {
+    if (has_fpA_intB_gemm_) {
+      cudaStream_t stream = cudaStreamLegacy;
+      if (input_idx == MatMulNBits_Input_B) {
+        ORT_RETURN_IF_ERROR(PrePack_B(tensor, alloc, stream, is_packed));
+        is_prepacked_weight_ = is_packed;
+      } else if (input_idx == MatMulNBits_Input_Scale) {
+        ORT_RETURN_IF_ERROR(PrePack_Scale(tensor, alloc, stream));
+        is_prepacked_scale_ = true;
+        is_packed = true;
+      } else if (input_idx == MatMulNBits_Input_ZeroPoint && has_zero_points_) {
+        ORT_RETURN_IF_ERROR(PrePack_ZeroPoint(tensor, alloc, stream));
+        is_prepacked_zero_point_ = true;
+        is_packed = true;
+      }
+    }
+  }
+#else
+  ORT_UNUSED_PARAMETER(alloc);
+#endif
+
+  return Status::OK();
+}
+
 #if USE_FPA_INTB_GEMM
 using onnxruntime::llm::kernels::weight_only::GemmPluginProfilerManager;
 using onnxruntime::llm::kernels::weight_only::WeightOnlyGroupwiseQuantGemmPluginProfiler;
 using onnxruntime::llm::kernels::weight_only::WeightTypeId;
 static GemmPluginProfilerManager<WeightOnlyGroupwiseQuantGemmPluginProfiler> s_profilerManager;
 
+namespace {
+// Process-global registry of persistent tactic caches, keyed by their resolved file location so that
+// identical shapes are tuned once and reused across sessions and nodes that share a location.
+struct GlobalTacticCacheRegistry {
+  std::mutex mutex;
+  std::unordered_map<std::string, std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache>> caches;
+};
+
+GlobalTacticCacheRegistry& GetGlobalTacticCacheRegistry() {
+  // Leaked on purpose: a CUDA EP owned by another static may be destroyed after this library's statics.
+  static auto* registry = new GlobalTacticCacheRegistry();
+  return *registry;
+}
+
+bool IsWindowsDllShutdownInProgress() {
+#if defined(_WIN32)
+  using RtlDllShutdownInProgressFn = BOOLEAN(NTAPI*)();
+  static const auto rtl_dll_shutdown_in_progress = reinterpret_cast<RtlDllShutdownInProgressFn>(
+      ::GetProcAddress(::GetModuleHandleW(L"ntdll.dll"), "RtlDllShutdownInProgress"));
+  return rtl_dll_shutdown_in_progress != nullptr && rtl_dll_shutdown_in_progress() != 0;
+#else
+  return false;
+#endif
+}
+
+void FlushAllTacticCaches(bool log_failures, bool allow_blocking) {
+  if (IsWindowsDllShutdownInProgress()) {
+    return;
+  }
+  try {
+    auto& registry = GetGlobalTacticCacheRegistry();
+    std::vector<std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache>> caches;
+    {
+      std::unique_lock<std::mutex> lock(registry.mutex, std::defer_lock);
+      if (allow_blocking) {
+        lock.lock();
+      } else if (!lock.try_lock()) {
+        return;
+      }
+      caches.reserve(registry.caches.size());
+      for (const auto& entry : registry.caches) {
+        caches.push_back(entry.second);
+      }
+    }
+    // Flush outside the registry lock so file I/O never blocks session creation on another thread.
+    for (const auto& cache : caches) {
+      if (cache == nullptr) {
+        continue;
+      }
+      if (IsWindowsDllShutdownInProgress()) {
+        return;
+      }
+      try {
+        auto status = allow_blocking ? cache->Flush() : cache->TryFlush();
+        if (!status.IsOK() && log_failures) {
+          ORT_LLM_LOG_WARNING("Failed to flush MatMulNBits gemm tactic cache: " + status.ErrorMessage());
+        }
+      } catch (...) {
+        // Swallow: cache persistence is best-effort and must not escape teardown.
+      }
+    }
+  } catch (...) {
+    // Registry snapshot allocation must not escape teardown either.
+  }
+}
+
+void OnProcessExitFlushTacticCaches() {
+  FlushAllTacticCaches(/*log_failures*/ false, /*allow_blocking*/ false);
+}
+
+void RegisterProcessExitTacticCacheFlusher() {
+#if defined(_WIN32)
+  // Static destructors in a Windows DLL run during DLL_PROCESS_DETACH, after ExitProcess has
+  // already stopped worker threads (which may still hold a registry or cache mutex). Register a
+  // process-wide CRT exit callback instead so live sessions save during exit() before worker
+  // threads are stopped, and pin the DLL so the callback address stays valid if the provider is
+  // unloaded earlier.
+  static std::once_flag once;
+  std::call_once(once, []() {
+    HMODULE module = nullptr;
+    if (::GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_PIN,
+                             reinterpret_cast<LPCWSTR>(&OnProcessExitFlushTacticCaches), &module)) {
+      _crt_atexit(&OnProcessExitFlushTacticCaches);
+    }
+  });
+#endif
+}
+
+// Saves tactics of sessions still alive at process exit / module unload without blocking during
+// Windows DLL shutdown. Does not log: the default logger may be gone.
+struct ExitTacticCacheFlusher {
+  ~ExitTacticCacheFlusher() { FlushAllTacticCaches(/*log_failures*/ false, /*allow_blocking*/ false); }
+};
+ExitTacticCacheFlusher s_exit_tactic_cache_flusher;
+}  // namespace
+
+// Returns the process-global cache for `file_path` (creating, loading, and registering it on first
+// use). Returns nullptr when the location is already bound to a different GPU's signature (e.g. one
+// explicit prefix shared by heterogeneous devices). When `load` is set, an existing cache is re-read
+// if the file changed since it was last loaded or written, so each new session starts from the
+// latest file. Tactics are only staged in memory while sessions run; the disk write happens in
+// FlushMatMulNBitsTacticCaches() when a session closes.
+static std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> GetGlobalMatMulNBitsTacticCache(
+    std::string file_path, onnxruntime::llm::gemm_cache::HardwareSignature signature, bool load) {
+  using onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache;
+  auto& registry = GetGlobalTacticCacheRegistry();
+  std::lock_guard<std::mutex> lock(registry.mutex);
+  auto it = registry.caches.find(file_path);
+  if (it != registry.caches.end()) {
+    if (!it->second->Signature().StrictMatches(signature)) {
+      ORT_LLM_LOG_WARNING("fpA_intB tactic cache " + file_path +
+                          " is already used by a different GPU in this process; persistence is disabled for " +
+                          signature.device_name);
+      return nullptr;
+    }
+    if (load) {
+      static_cast<void>(it->second->ReloadIfChanged());
+    }
+    return it->second;
+  }
+
+  RegisterProcessExitTacticCacheFlusher();
+  auto cache = std::make_shared<MatMulNBitsTacticCache>(file_path, std::move(signature));
+  auto status = cache->Load();
+  static_cast<void>(status);  // A missing/mismatched file simply yields an empty cache.
+  registry.caches.emplace(std::move(file_path), cache);
+  return cache;
+}
+
+// Flushes every registered tactic cache to disk when a session closes. This is the only place tuned
+// tactics reach disk, which keeps file I/O off session creation and inference. Best-effort and
+// dirty-guarded (Flush() is a no-op when nothing new was staged), so calling it once per CUDA EP
+// teardown is cheap even when several sessions share the process. Safe to call from a destructor:
+// never throws.
+void FlushMatMulNBitsTacticCaches() {
+  FlushAllTacticCaches(/*log_failures*/ true, /*allow_blocking*/ true);
+}
+
+void FlushMatMulNBitsTacticCachesForShutdown() {
+  FlushAllTacticCaches(/*log_failures*/ false, /*allow_blocking*/ false);
+}
+
+std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> GetGlobalMatMulNBitsTacticCacheForTesting(
+    std::string file_path, onnxruntime::llm::gemm_cache::HardwareSignature signature, bool load) {
+  return GetGlobalMatMulNBitsTacticCache(std::move(file_path), std::move(signature), load);
+}
+
+std::unique_lock<std::mutex> LockMatMulNBitsTacticCacheRegistryForTesting() {
+  return std::unique_lock<std::mutex>(GetGlobalTacticCacheRegistry().mutex);
+}
+
 constexpr auto kScaleAndZeros = cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS;
 constexpr auto kScaleOnly = cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY;
 
+// Single source of truth for the fpA_intB / CUTLASS weight-only-GEMM eligibility decision. See the
+// declaration in matmul_nbits.h. Kept in lockstep with the MatMulNBits constructor's path selection.
+bool CheckFpAIntBEligibility(int32_t input0_elem_type, int64_t N, int64_t K,
+                             int64_t nbits, int64_t block_size,
+                             int64_t weight_prepacked, bool has_zero_points, bool has_g_idx, bool has_bias,
+                             int device_sm, int fpa_intb_option) {
+#if USE_COMPACT_FPA_INTB_GEMM
+  const bool dtype_ok = input0_elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ||
+                        input0_elem_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
+#else
+  ORT_UNUSED_PARAMETER(has_zero_points);
+  ORT_UNUSED_PARAMETER(has_bias);
+  // The fpA_intB path consumes FP16 or BF16 input A only. CUDA also registers an FP32 MatMulNBits
+  // variant that must never be reported as fpA_intB-eligible.
+  const bool dtype_ok = (input0_elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ||
+                         input0_elem_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16);
+#endif
+  if (!dtype_ok) {
+    return false;
+  }
+  if (input0_elem_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16 && device_sm < 80) {
+    return false;
+  }
+
+  // A prepacked weight is already stored in the fpA_intB layout, so the path cannot be turned off
+  // by the option; an unprepacked weight requires the option to be enabled.
+  const bool prepacked = weight_prepacked != kMatMulNBitsWeightNotPrepacked;
+  const bool enable_fpa_intb = prepacked || (fpa_intb_option != 0);
+  if (!enable_fpa_intb) {
+    return false;
+  }
+
+  // weight_prepacked must be one of the three known formats.
+  if (weight_prepacked != kMatMulNBitsWeightNotPrepacked &&
+      weight_prepacked != kMatMulNBitsWeightPrepackedSm80 &&
+      weight_prepacked != kMatMulNBitsWeightPrepackedSm90) {
+    return false;
+  }
+
+#if USE_COMPACT_FPA_INTB_GEMM
+  // 2-bit needs block_size >= 64 (one B fragment spans a whole 64-element K tile), so the
+  // compact set carries block_size 64 for it where 4/8-bit carry 32.
+  const bool base_ok = (nbits == 2 ? block_size == 64 : block_size == 32) &&
+                       (nbits == 2 || nbits == 4 || nbits == 8) &&
+                       !has_zero_points && !has_g_idx && !has_bias &&
+                       weight_prepacked != kMatMulNBitsWeightPrepackedSm90 &&
+                       N % (nbits == 8 ? 32 : (nbits == 4 ? 64 : 128)) == 0 &&
+                       K % block_size == 0 && device_sm >= 75;
+#else
+  // block_size in {32,64,128} already guarantees block_size != 0, so K % block_size is well-defined.
+  // 2-bit shares the SM80 column-interleaved layout but has no native SM90 kernel, so the Hopper
+  // prepacked layout is rejected for it below.
+  const bool base_ok = (block_size == 32 || block_size == 64 || block_size == 128) &&
+                       (nbits == 2 || nbits == 4 || nbits == 8) &&
+                       !has_g_idx &&
+                       N % (nbits == 8 ? 32 : (nbits == 4 ? 64 : 128)) == 0 &&
+                       K % block_size == 0 &&
+                       device_sm >= 75;
+#endif
+  if (!base_ok) {
+    return false;
+  }
+
+  // 2-bit weights have no native SM90 (Hopper) mixed-GEMM kernel; they always use the SM80 layout.
+  if (nbits == 2 && weight_prepacked == kMatMulNBitsWeightPrepackedSm90) {
+    return false;
+  }
+
+  // At 2 bits one B fragment (one ldsm.x4 per warp) spans a whole 64-element K tile and the GEMV
+  // applies one scale to each thread's 64-element run, so a quantization group cannot be smaller
+  // than 64.
+  if (nbits == 2 && block_size < 64) {
+    return false;
+  }
+
+  // The native SM90 (Hopper) prepacked layout requires an SM90 device and block_size 64 or 128.
+  if (weight_prepacked == kMatMulNBitsWeightPrepackedSm90 &&
+      !(device_sm == 90 && (block_size == 64 || block_size == 128))) {
+    return false;
+  }
+
+  return true;
+}
+#endif
+
+std::optional<int64_t> ComputeMatMulNBitsLeadingDimProduct(gsl::span<const int64_t> input_a_shape) {
+  if (input_a_shape.empty()) {
+    return std::nullopt;
+  }
+
+  // Establish a known-empty output before rejecting unknown dimensions or doing arithmetic.
+  // This also avoids reporting overflow for a huge prefix whose later leading dimension is zero.
+  for (size_t i = 0; i + 1 < input_a_shape.size(); ++i) {
+    if (input_a_shape[i] == 0) {
+      return 0;
+    }
+  }
+
+  SafeInt<int64_t> m(1);
+  try {
+    for (size_t i = 0; i + 1 < input_a_shape.size(); ++i) {
+      if (input_a_shape[i] < 0) {
+        return std::nullopt;
+      }
+      m *= input_a_shape[i];
+    }
+  } catch (const OnnxRuntimeException&) {
+    return std::nullopt;
+  }
+
+  return static_cast<int64_t>(m);
+}
+
+// Product of all leading (non-K) dimensions of input A, i.e. the GEMM "m". Returns nullopt when the
+// shape is missing or any non-zero leading dimension is not statically known.
+static std::optional<int64_t> StaticLeadingDimProduct(const NodeArg* input_a) {
+  if (input_a == nullptr) {
+    return std::nullopt;
+  }
+  const ONNX_NAMESPACE::TensorShapeProto* shape = input_a->Shape();
+  if (shape == nullptr || shape->dim_size() < 1) {
+    return std::nullopt;
+  }
+
+  TensorShapeVector dimensions;
+  dimensions.reserve(static_cast<size_t>(shape->dim_size()));
+  for (const auto& dimension : shape->dim()) {
+    if (!dimension.has_dim_value()) {
+      dimensions.push_back(-1);
+    } else {
+      dimensions.push_back(dimension.dim_value());
+    }
+  }
+
+  return ComputeMatMulNBitsLeadingDimProduct(dimensions);
+}
+
+static std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemoryImpl(
+    const Node& node, const cudaDeviceProp& device_prop, std::optional<int64_t> m,
+    MatMulNBitsMemoryEstimateOptions options) {
+  auto get_attr = [&node](const std::string& name, int64_t default_value) -> int64_t {
+    // Iterate rather than use attrs.find(): in the provider-bridge (shared library) build,
+    // NodeAttributes exposes bridged iterators (IteratorHolder) that do not support find()/
+    // operator== or iter->second, but range iteration with attr.first/attr.second works. This
+    // matches how CUDAExecutionProvider reads node attributes elsewhere.
+    const auto& attrs = node.GetAttributes();
+    for (const auto& attr : attrs) {
+      if (attr.first == name) {
+        return attr.second.i();
+      }
+    }
+    return default_value;
+  };
+
+  const auto& input_defs = node.InputDefs();
+  if (input_defs.empty() || input_defs[0] == nullptr) {
+    return std::nullopt;
+  }
+  const NodeArg* input_a = input_defs[0];
+  const auto* type_proto = input_a->TypeAsProto();
+  if (type_proto == nullptr || !type_proto->has_tensor_type()) {
+    return std::nullopt;
+  }
+  const int32_t input0_elem_type = type_proto->tensor_type().elem_type();
+  const size_t element_size =
+      input0_elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT
+          ? sizeof(float)
+      : input0_elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ||
+              input0_elem_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16
+          ? sizeof(uint16_t)
+          : 0;
+  if (element_size == 0) {
+    return std::nullopt;
+  }
+
+  const int64_t N = get_attr("N", 0);
+  const int64_t K = get_attr("K", 0);
+  const int64_t nbits = get_attr("bits", 0);
+  const int64_t block_size = get_attr("block_size", 0);
+  const int64_t weight_prepacked = get_attr("weight_prepacked", kMatMulNBitsWeightNotPrepacked);
+  if (nbits != 2 && nbits != 4 && nbits != 8) {
+    return std::nullopt;
+  }
+
+  constexpr int kInputIndexGroupIndex = 4;
+  constexpr int kInputIndexZeroPoints = 3;
+  constexpr int kInputIndexBias = 5;
+  const bool has_zero_points = input_defs.size() > kInputIndexZeroPoints &&
+                               input_defs[kInputIndexZeroPoints] != nullptr &&
+                               input_defs[kInputIndexZeroPoints]->Exists();
+  const bool has_g_idx = input_defs.size() > kInputIndexGroupIndex &&
+                         input_defs[kInputIndexGroupIndex] != nullptr &&
+                         input_defs[kInputIndexGroupIndex]->Exists();
+  const bool has_bias = input_defs.size() > kInputIndexBias &&
+                        input_defs[kInputIndexBias] != nullptr &&
+                        input_defs[kInputIndexBias]->Exists();
+
+  const auto estimate_legacy_route = [&]() -> std::optional<Level1MemoryEstimate> {
+    if (weight_prepacked != kMatMulNBitsWeightNotPrepacked) {
+      return std::nullopt;
+    }
+
+    // The fused legacy helpers decide at launch time whether they can run.
+    // Reserve the dequantize+GEMM catch-all so every reachable legacy route
+    // remains covered without duplicating those kernel predicates.
+    // Keep env defaults and clamping identical to the constructor's legacy
+    // N-chunk policy; the fpA-only M-chunk session option does not apply here.
+    int64_t chunk_target_rows =
+        ParseEnvironmentVariableWithDefault<int64_t>(
+            kChunkSizeEnvVar, kDefaultChunkTargetRows);
+    if (chunk_target_rows < 1) {
+      chunk_target_rows = kDefaultChunkTargetRows;
+    }
+    const bool force_chunked =
+        ParseEnvironmentVariableWithDefault<int>(kForceChunkedEnvVar, 0) != 0;
+    const auto legacy_plan = ComputeMatMulNBitsLegacyWorkspacePlan(
+        N, K, block_size, element_size,
+        /*can_chunk=*/!has_g_idx, force_chunked, chunk_target_rows);
+    if (!legacy_plan.has_value()) {
+      return std::nullopt;
+    }
+
+    Level1MemoryEstimate legacy_estimate;
+    legacy_estimate.runtime_workspace_bytes =
+        legacy_plan->workspace_bytes;
+    return legacy_estimate;
+  };
+
+#if USE_FPA_INTB_GEMM
+  const int device_sm = device_prop.major * 10 + device_prop.minor;
+
+  const std::string fpa_intb_gemm =
+      options.fpa_intb_gemm.has_value()
+          ? std::string{*options.fpa_intb_gemm}
+          : ParseEnvironmentVariableWithDefault<std::string>(kFpAIntBGemmOption, "");
+  const int fpa_intb_option =
+      ParseFpAIntBEnabled(fpa_intb_gemm) ? 1 : 0;
+
+  const bool fpa_intb_eligible = CheckFpAIntBEligibility(
+      input0_elem_type, N, K, nbits, block_size, weight_prepacked,
+      has_zero_points, has_g_idx, has_bias, device_sm, fpa_intb_option);
+  if (!fpa_intb_eligible) {
+    return estimate_legacy_route();
+  }
+
+  auto estimate = ComputeMatMulNBitsPrepackMemoryEstimate(
+      N, K, nbits, block_size, weight_prepacked, has_zero_points);
+  if (!estimate.has_value()) {
+    return std::nullopt;
+  }
+
+  try {
+    const std::string profile_m_value =
+        options.profile_m.has_value()
+            ? std::string{*options.profile_m}
+            : ParseEnvironmentVariableWithDefault<std::string>(
+                  onnxruntime::llm::kernels::weight_only::kEnvProfileM, "");
+    const std::vector<int> profile_m =
+        WeightOnlyGroupwiseQuantGemmPluginProfiler::ParseProfileMList(
+            profile_m_value);
+    int requested_constructor_profile_max_m =
+        profile_m.empty() ? onnxruntime::llm::kernels::weight_only::kDefaultProfileMaxM
+                          : profile_m.back();
+    const std::string m_chunk_size_value =
+        options.m_chunk_size.has_value()
+            ? std::string{*options.m_chunk_size}
+            : ParseEnvironmentVariableWithDefault<std::string>(
+                  kMChunkSizeEnvVar, "");
+    const int m_chunk_size = static_cast<int>(
+        FpAIntBProfileSafeMCap(
+            ParseMatMulNBitsMChunkSize(m_chunk_size_value)));
+    const bool force_chunked =
+        ParseEnvironmentVariableWithDefault<int>(kForceChunkedEnvVar, 0) != 0;
+    const int64_t m_chunk_min_rows =
+        ComputeMatMulNBitsFpAIntBChunkMinRows(
+            N, K, element_size);
+    if (m_chunk_size > 0) {
+      const int64_t maximum_unchunked_rows =
+          force_chunked
+              ? m_chunk_size
+              : std::max<int64_t>(m_chunk_size, m_chunk_min_rows);
+      requested_constructor_profile_max_m =
+          static_cast<int>(std::min<int64_t>(
+              requested_constructor_profile_max_m,
+              maximum_unchunked_rows));
+    }
+    const int constructor_profile_max_m =
+        onnxruntime::llm::kernels::weight_only::RoundUpProfileM(
+            requested_constructor_profile_max_m,
+            onnxruntime::llm::kernels::weight_only::kMaxProfileM);
+
+    const int sm = EffectiveFpAIntBWorkspaceSm(device_sm, weight_prepacked);
+    const int packing_ratio = onnxruntime::llm::kernels::weight_only::FP16_BITS / SafeInt<int>(nbits);
+    const int packed_n = SafeInt<int>(N) / packing_ratio;
+    const int original_n = packed_n * packing_ratio;
+    const auto compute_profiler_scratch = [&](int profile_bucket_m) -> std::optional<size_t> {
+      const auto profiler_runner_workspace =
+          onnxruntime::llm::kernels::cutlass_kernels::ComputeFpAIntBGemmWorkspaceSize(
+              profile_bucket_m, original_n, SafeInt<int>(K), sm,
+              device_prop.multiProcessorCount);
+      if (!profiler_runner_workspace.has_value()) {
+        return std::nullopt;
+      }
+      return onnxruntime::llm::kernels::weight_only::ComputeWeightOnlyGemmProfilerScratchSize(
+          profile_bucket_m, SafeInt<size_t>(packed_n), SafeInt<size_t>(K), SafeInt<int>(nbits),
+          SafeInt<size_t>(block_size), *profiler_runner_workspace,
+          profile_bucket_m == 1 && nbits == 4 && block_size == 32 && !has_bias && !has_zero_points &&
+                  weight_prepacked != kMatMulNBitsWeightPrepackedSm90
+              ? static_cast<size_t>(device_prop.l2CacheSize)
+              : 0);
+    };
+
+    const auto constructor_profile_scratch = [&]() -> std::optional<size_t> {
+      size_t peak = 0;
+      for (int profile_bucket_m : WeightOnlyGroupwiseQuantGemmPluginProfiler::GetInitialProfileMBuckets(
+               1, constructor_profile_max_m, profile_m)) {
+        const auto scratch = compute_profiler_scratch(profile_bucket_m);
+        if (!scratch.has_value()) {
+          return std::nullopt;
+        }
+        peak = std::max(peak, *scratch);
+      }
+      return peak;
+    }();
+    if (!constructor_profile_scratch.has_value()) {
+      return std::nullopt;
+    }
+    // Kernel construction profiling and PrePack_B conversion happen sequentially.
+    estimate->initialization_scratch_bytes =
+        std::max(estimate->initialization_scratch_bytes, *constructor_profile_scratch);
+
+    std::optional<int64_t> maximum_runtime_rows;
+    if (m.has_value()) {
+      maximum_runtime_rows =
+          options.input_shape_is_upper_bound
+              ? MatMulNBitsFpAIntBMaxRowsPerLaunch(
+                    *m, m_chunk_size, m_chunk_min_rows,
+                    force_chunked)
+              : MatMulNBitsFpAIntBRowsPerLaunch(
+                    *m, m_chunk_size, m_chunk_min_rows,
+                    force_chunked);
+    } else if (m_chunk_size > 0) {
+      maximum_runtime_rows =
+          force_chunked
+              ? m_chunk_size
+              : std::max<int64_t>(m_chunk_size,
+                                  m_chunk_min_rows);
+    }
+    if (maximum_runtime_rows.has_value()) {
+      estimate->runtime_workspace_bytes =
+          onnxruntime::llm::kernels::cutlass_kernels::ComputeFpAIntBGemmWorkspaceSize(
+              SafeInt<int>(*maximum_runtime_rows), original_n,
+              SafeInt<int>(K), sm,
+              device_prop.multiProcessorCount);
+    }
+
+    std::optional<int> lazy_profile_m;
+    if (!m.has_value() && !maximum_runtime_rows.has_value()) {
+      // A dynamic M can request any rounded bucket at runtime.
+      lazy_profile_m = onnxruntime::llm::kernels::weight_only::kMaxProfileM;
+    } else if (maximum_runtime_rows.value_or(0) > 0) {
+      const auto initial_profile_m =
+          WeightOnlyGroupwiseQuantGemmPluginProfiler::GetInitialProfileMBuckets(
+              1, constructor_profile_max_m, profile_m);
+      const bool rows_are_upper_bound =
+          options.input_shape_is_upper_bound ||
+          !m.has_value() ||
+          *maximum_runtime_rows != *m;
+      if (rows_are_upper_bound) {
+        const int maximum_runtime_profile_m =
+            onnxruntime::llm::kernels::weight_only::RoundUpProfileM(
+                SafeInt<int>(*maximum_runtime_rows),
+                onnxruntime::llm::kernels::weight_only::kMaxProfileM);
+        // M=1 is always profiled at construction. Scratch for the remaining
+        // buckets is nondecreasing in M, so retain the largest missing bucket.
+        for (int candidate_m = 1; candidate_m <= maximum_runtime_profile_m; candidate_m *= 2) {
+          if (std::find(initial_profile_m.begin(), initial_profile_m.end(), candidate_m) ==
+              initial_profile_m.end()) {
+            lazy_profile_m = candidate_m;
+          }
+          if (candidate_m == maximum_runtime_profile_m) {
+            break;
+          }
+        }
+      } else {
+        const int runtime_profile_m =
+            onnxruntime::llm::kernels::weight_only::RoundUpProfileM(
+                SafeInt<int>(*maximum_runtime_rows),
+                onnxruntime::llm::kernels::weight_only::kMaxProfileM);
+        const bool initially_profiled =
+            std::find(initial_profile_m.begin(), initial_profile_m.end(),
+                      *maximum_runtime_rows) != initial_profile_m.end() ||
+            std::find(initial_profile_m.begin(), initial_profile_m.end(), runtime_profile_m) != initial_profile_m.end();
+        if (!initially_profiled) {
+          lazy_profile_m = runtime_profile_m;
+        }
+      }
+    }
+
+    if (lazy_profile_m.has_value()) {
+      const auto lazy_profile_scratch = compute_profiler_scratch(*lazy_profile_m);
+      if (!lazy_profile_scratch.has_value()) {
+        return std::nullopt;
+      }
+      SafeInt<size_t> runtime_preparation_peak = *lazy_profile_scratch;
+      const bool can_chunk =
+          m_chunk_size > 0 &&
+          (!m.has_value() ||
+           MatMulNBitsFpAIntBRowsPerLaunch(
+               *m, m_chunk_size, m_chunk_min_rows, force_chunked) < *m);
+      if (can_chunk) {
+        if (!estimate->runtime_workspace_bytes.has_value()) {
+          return std::nullopt;
+        }
+        // A partial tail can profile while the preceding GEMM's workspace is still retained.
+        runtime_preparation_peak += *estimate->runtime_workspace_bytes;
+      }
+      estimate->runtime_transient_bytes = static_cast<size_t>(runtime_preparation_peak);
+    }
+
+    // At or above the threshold, ComputeInternal replaces the CUTLASS GEMM, chunked or not, with one cuBLAS GEMM over
+    // a dequantized [N, K] copy of the weights. That route profiles only to prime a CUDA-graph-enabled session, and it
+    // does so before allocating the copy, so the copy only raises the ordinary workspace and the lazy-profile peak
+    // above keeps the CUTLASS workspace alone. Resolving the threshold here matches the kernel constructor: an
+    // invalid value leaves the node without a route-complete estimate.
+    if (estimate->runtime_workspace_bytes.has_value()) {
+      const int dequant_gemm_min_m = ComputeFpAIntBDequantGemmMinM(
+          ResolveCudaSessionOption(
+              options.dequant_gemm_min_m.has_value()
+                  ? std::optional<std::string>{std::string{*options.dequant_gemm_min_m}}
+                  : std::nullopt,
+              kOrtSessionOptionsCudaFpAIntBDequantGemmMinM, kFpAIntBDequantGemmMinMEnvVar,
+              device_sm == 90 ? kFpAIntBDequantGemmDefaultMinM : 0, 0, std::numeric_limits<int>::max()),
+          sm, N, K, nbits, block_size, has_zero_points, has_bias, element_size);
+      if (dequant_gemm_min_m > 0 && (!m.has_value() || *m >= dequant_gemm_min_m)) {
+        estimate->runtime_workspace_bytes = std::max<size_t>(
+            *estimate->runtime_workspace_bytes, static_cast<size_t>(SafeInt<size_t>(N) * K * element_size));
+      }
+    }
+
+    return estimate;
+  } catch (const OnnxRuntimeException&) {
+    // Treat invalid or overflowing model-derived sizes as not estimable.
+    return std::nullopt;
+  }
+#else
+  ORT_UNUSED_PARAMETER(device_prop);
+  ORT_UNUSED_PARAMETER(m);
+  ORT_UNUSED_PARAMETER(options);
+  ORT_UNUSED_PARAMETER(nbits);
+  ORT_UNUSED_PARAMETER(has_zero_points);
+  ORT_UNUSED_PARAMETER(has_bias);
+  return estimate_legacy_route();
+#endif
+}
+
+std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemory(
+    const Node& node, const cudaDeviceProp& device_prop,
+    MatMulNBitsMemoryEstimateOptions options) {
+  const auto& input_defs = node.InputDefs();
+  const NodeArg* input_a = input_defs.empty() ? nullptr : input_defs[0];
+  return EstimateMatMulNBitsMemoryImpl(
+      node, device_prop, StaticLeadingDimProduct(input_a), options);
+}
+
+std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemory(
+    const Node& node, gsl::span<const int64_t> input_a_shape, const cudaDeviceProp& device_prop,
+    MatMulNBitsMemoryEstimateOptions options) {
+  const auto& input_defs = node.InputDefs();
+  const NodeArg* input_a = input_defs.empty() ? nullptr : input_defs[0];
+  options.input_shape_is_upper_bound =
+      options.input_shape_is_upper_bound && !StaticLeadingDimProduct(input_a).has_value();
+  return EstimateMatMulNBitsMemoryImpl(
+      node, device_prop, ComputeMatMulNBitsLeadingDimProduct(input_a_shape), options);
+}
+
+std::optional<size_t> EstimateMatMulNBitsWorkspace(
+    const Node& node, const cudaDeviceProp& device_prop) {
+  const auto estimate = EstimateMatMulNBitsMemory(node, device_prop);
+  return estimate.has_value() ? estimate->runtime_workspace_bytes : std::nullopt;
+}
+
+std::optional<size_t> EstimateMatMulNBitsWorkspace(
+    const Node& node, gsl::span<const int64_t> input_a_shape, const cudaDeviceProp& device_prop) {
+  const auto estimate = EstimateMatMulNBitsMemory(node, input_a_shape, device_prop);
+  return estimate.has_value() ? estimate->runtime_workspace_bytes : std::nullopt;
+}
+
+#if USE_FPA_INTB_GEMM
 template <typename T>
 int MatMulNBits<T>::FpAIntBPackingSmForKernel() const {
   // Select the native SM90 (Hopper) mixed-weight layout only when the weights were prepacked for it
   // (weight_prepacked_ == 2) AND the device is SM90. Otherwise use the SM80 layout, which is also
   // used as the SM90 compatibility path for runtime-prepacked (or SM80-prepacked) weights.
-  if (sm_ == 90 && weight_prepacked_ == kMatMulNBitsWeightPrepackedSm90) {
-    return 90;
-  }
-  return 80;
+  //
+  // Delegates to the shared EffectiveFpAIntBWorkspaceSm() (matmul_nbits.h) so the compiler - not a
+  // comment - enforces that this (Level 2 / runtime) and the Level-1 workspace estimate resolve the
+  // effective arch identically. Both must stay a single expression.
+  return EffectiveFpAIntBWorkspaceSm(sm_, weight_prepacked_);
 }
 
 template <typename T>
@@ -61,7 +804,7 @@ int64_t MatMulNBits<T>::RequiredWeightPrepackedFormat() const {
 // here (non-inline, single definition, inside the CUDA EP translation unit that observes
 // COMPILE_HOPPER_TMA_GEMMS).
 bool IsNativeSm90FpAIntBGemmCompiled() {
-#if defined(COMPILE_HOPPER_TMA_GEMMS)
+#if defined(COMPILE_HOPPER_TMA_GEMMS) && !defined(USE_COMPACT_FPA_INTB_GEMM)
   return true;
 #else
   return false;
@@ -71,10 +814,10 @@ bool IsNativeSm90FpAIntBGemmCompiled() {
 void ValidateSm90PrepackedWeightSupport(int sm, int64_t block_size) {
   // The native SM90 (Hopper TMA/WGMMA) mixed-GEMM kernel requires a compute-capability 9.0
   // device and a block_size that is a multiple of the Hopper K tile (128 / sizeof(half) = 64).
-  // block_size=32 is only supported by the SM80/Ampere-class kernel + GEMV path.
+  // block_size=32 is only supported by the non-Hopper kernel + GEMV path.
   ORT_ENFORCE(sm == 90,
               "weight_prepacked=2 (SM90 layout) requires a compute capability 9.0 (Hopper) device, but got sm ", sm);
-#if !defined(COMPILE_HOPPER_TMA_GEMMS)
+#if !defined(COMPILE_HOPPER_TMA_GEMMS) || defined(USE_COMPACT_FPA_INTB_GEMM)
   // The native SM90 (Hopper) fpA_intB TMA/WGMMA kernel is not compiled in this build (for
   // example Windows/MSVC, where CUDA 13 NVCC host stubs hit MSVC C2719 with over-aligned TMA
   // parameters; see docs/contrib_ops/cuda/moe_qmoe.md section 14.1). The SM90 weight layout
@@ -91,60 +834,169 @@ void ValidateSm90PrepackedWeightSupport(int sm, int64_t block_size) {
 
 template <typename T>
 void MatMulNBits<T>::InitGemmProfiler(int sm) {
+  // Resolve the persistent tactic cache from session config (falls back to env vars).
+  namespace gc = onnxruntime::llm::gemm_cache;
+  const auto& info = this->Info();
+  const std::string mode = ResolveFpAIntBConfigOrEnv(info, gc::kSessionConfigCacheMode, gc::kEnvCacheMode);
+  const std::optional<gc::CacheAccess> parsed_access = gc::ParseCacheAccess(mode);
+  ORT_ENFORCE(parsed_access.has_value(), "Invalid ", gc::kSessionConfigCacheMode, " value '", mode,
+              "'. Expected load_save, load, or save.");
+  const gc::CacheAccess cache_access = *parsed_access;
+  const std::string to_model = ResolveFpAIntBConfigOrEnv(info, gc::kSessionConfigCacheToModel, gc::kEnvCacheToModel);
+  const std::optional<bool> use_sidecar = gc::ParseCacheFlag(to_model);
+  ORT_ENFORCE(use_sidecar.has_value(), "Invalid ", gc::kSessionConfigCacheToModel, " value '", to_model,
+              "'. Expected 0 or 1.");
+  std::string sidecar_prefix;
+  if (*use_sidecar) {
+    // Empty for models loaded from bytes, in which case the other locations still apply.
+    std::filesystem::path model_path = this->GetSessionModelPath();
+    if (!model_path.empty() && model_path.is_relative()) {
+      std::error_code ec;
+      std::filesystem::path abs_path = std::filesystem::absolute(model_path, ec);
+      if (!ec && !abs_path.empty()) {
+        model_path = std::move(abs_path);
+      }
+    }
+    const auto model_path_u8 = model_path.u8string();
+    sidecar_prefix.assign(model_path_u8.begin(), model_path_u8.end());
+  }
+
+  const auto& device_prop = this->GetDeviceProp();
+  const gc::HardwareSignature cache_signature = gc::HardwareSignature::FromDevice(
+      device_prop.name, device_prop.major * 10 + device_prop.minor, device_prop.multiProcessorCount);
+  std::string cache_file_path = gc::MatMulNBitsTacticCache::ResolveFilePath(
+      info.GetConfigOptions().GetConfigOrDefault(gc::kSessionConfigCacheDir, ""),
+      info.GetConfigOptions().GetConfigOrDefault(gc::kSessionConfigCachePrefix, ""), cache_signature,
+      sidecar_prefix);
+
   gemmProfiler_ = s_profilerManager.createGemmPluginProfiler(/*inference*/ false);
 
   using onnxruntime::llm::kernels::fpA_intB_gemv::KernelType;
   KernelType cuda_kernel_type;
+#if USE_COMPACT_FPA_INTB_GEMM
   if constexpr (std::is_same_v<T, MLFloat16>) {
-    cuda_kernel_type = nbits_ == 8 ? KernelType::FP16Int8Groupwise : KernelType::FP16Int4Groupwise;
+    ORT_ENFORCE((nbits_ == 2 || nbits_ == 4 || nbits_ == 8) &&
+                block_size_ == (nbits_ == 2 ? 64 : 32) && !has_zero_points_ && !has_bias_);
+    if (nbits_ == 8) {
+      cuda_kernel_type = KernelType::FP16Int8Groupwise;
+      weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<half, uint8_t, kScaleOnly>>();
+    } else if (nbits_ == 4) {
+      cuda_kernel_type = KernelType::FP16Int4Groupwise;
+      weightOnlyGemmRunner_ =
+          std::make_shared<CutlassFpAIntBGemmRunner<half, cutlass::uint4b_t, kScaleOnly>>();
+    } else {
+      cuda_kernel_type = KernelType::FP16Int2Groupwise;
+      weightOnlyGemmRunner_ =
+          std::make_shared<CutlassFpAIntBGemmRunner<half, cutlass::uint2b_t, kScaleOnly>>();
+    }
+  } else if constexpr (std::is_same_v<T, BFloat16>) {
+    ORT_ENFORCE((nbits_ == 2 || nbits_ == 4 || nbits_ == 8) &&
+                block_size_ == (nbits_ == 2 ? 64 : 32) && !has_zero_points_ && !has_bias_);
+    if (nbits_ == 8) {
+      cuda_kernel_type = KernelType::BF16Int8Groupwise;
+      weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<__nv_bfloat16, uint8_t, kScaleOnly>>();
+    } else if (nbits_ == 4) {
+      cuda_kernel_type = KernelType::BF16Int4Groupwise;
+      weightOnlyGemmRunner_ =
+          std::make_shared<CutlassFpAIntBGemmRunner<__nv_bfloat16, cutlass::uint4b_t, kScaleOnly>>();
+    } else {
+      cuda_kernel_type = KernelType::BF16Int2Groupwise;
+      weightOnlyGemmRunner_ =
+          std::make_shared<CutlassFpAIntBGemmRunner<__nv_bfloat16, cutlass::uint2b_t, kScaleOnly>>();
+    }
+  } else {
+    ORT_THROW("Compact fpA_intB GEMM only supports FP16/BF16 activations");
+  }
+#else
+  if constexpr (std::is_same_v<T, MLFloat16>) {
+    cuda_kernel_type = nbits_ == 8   ? KernelType::FP16Int8Groupwise
+                       : nbits_ == 4 ? KernelType::FP16Int4Groupwise
+                                     : KernelType::FP16Int2Groupwise;
     if (has_zero_points_) {
       if (nbits_ == 8) {
         weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<half, uint8_t, kScaleAndZeros>>();
       } else if (nbits_ == 4) {
         weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<half, cutlass::uint4b_t, kScaleAndZeros>>();
+      } else if (nbits_ == 2) {
+        weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<half, cutlass::uint2b_t, kScaleAndZeros>>();
       }
     } else {
       if (nbits_ == 8) {
         weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<half, uint8_t, kScaleOnly>>();
       } else if (nbits_ == 4) {
         weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<half, cutlass::uint4b_t, kScaleOnly>>();
+      } else if (nbits_ == 2) {
+        weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<half, cutlass::uint2b_t, kScaleOnly>>();
       }
     }
   } else if constexpr (std::is_same_v<T, BFloat16>) {
-    cuda_kernel_type = nbits_ == 8 ? KernelType::BF16Int8Groupwise : KernelType::BF16Int4Groupwise;
+    cuda_kernel_type = nbits_ == 8   ? KernelType::BF16Int8Groupwise
+                       : nbits_ == 4 ? KernelType::BF16Int4Groupwise
+                                     : KernelType::BF16Int2Groupwise;
     if (has_zero_points_) {
       if (nbits_ == 8) {
         weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<__nv_bfloat16, uint8_t, kScaleAndZeros>>();
       } else if (nbits_ == 4) {
         weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<__nv_bfloat16, cutlass::uint4b_t, kScaleAndZeros>>();
+      } else if (nbits_ == 2) {
+        weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<__nv_bfloat16, cutlass::uint2b_t, kScaleAndZeros>>();
       }
     } else {
       if (nbits_ == 8) {
         weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<__nv_bfloat16, uint8_t, kScaleOnly>>();
       } else if (nbits_ == 4) {
         weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<__nv_bfloat16, cutlass::uint4b_t, kScaleOnly>>();
+      } else if (nbits_ == 2) {
+        weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<__nv_bfloat16, cutlass::uint2b_t, kScaleOnly>>();
       }
     }
   }
+#endif
 
-  // On SM90 the half/bf16 weight-only path can run either the native Hopper (SM90 TMA/WGMMA) kernel
-  // or the SM80 (Ampere) mixed-GEMM kernel (which also runs on Hopper via GemmFpAIntB::operator()).
+  // The half/bf16 weight-only path can run either the native Hopper (SM90 TMA/WGMMA) kernel or the
+  // non-Hopper mixed-GEMM kernels.
   //   - Native SM90 (sm == 90): keep the runner targeting SM90 so getConfigs() enumerates Hopper
   //     tactics (tile_config_sm90) and getWorkspaceSize() reserves the stream-K workspace; opt in to
   //     the native kernel via setUseSm90Native(true).
-  //   - SM80 compat (sm == 80 while the device is SM90): force the runner to SM80 so tactic
-  //     enumeration and workspace sizing stay consistent with the dispatched SM80 kernel (the runner
-  //     otherwise defaults to the detected device SM and would enumerate Hopper tactics the SM80
-  //     dispatch cannot consume, leaving no CUTLASS GEMM tactic for M>=16).
+  //   - Non-Hopper compact mode: target SM75 below Ampere, SM89 on Ada, and the SM80 compatibility
+  //     kernel otherwise. Full mode retains its existing device-specific selection, except that an
+  //     SM90 device using the SM80 weight layout is forced to the SM80 compatibility path.
+#if USE_COMPACT_FPA_INTB_GEMM
+  const int runner_sm = sm_ < 80 ? sm_ : (sm_ == 89 ? 89 : 80);
+  weightOnlyGemmRunner_->setArch(runner_sm);
+#else
   if (sm == 90) {
     weightOnlyGemmRunner_->setUseSm90Native(true);
   } else if (sm_ == 90) {
     weightOnlyGemmRunner_->setArch(sm);
   }
+#endif
 
   gemmProfiler_->setCudaKernelType(cuda_kernel_type, sm);
+  gemmProfiler_->setWaveAwareGemv(wave_aware_gemv_);
+  gemmProfiler_->setTensorCoreGemv(tensor_core_gemv_);
+  gemmProfiler_->setL2CacheBytes(static_cast<size_t>(this->GetDeviceProp().l2CacheSize));
+  gemmProfiler_->setDeviceInfo(device_prop.major * 10 + device_prop.minor, device_prop.multiProcessorCount);
   gemmProfiler_->setQuant(static_cast<int>(nbits_), has_bias_, has_zero_points_);
   gemmProfiler_->setGroupSize(static_cast<int>(block_size_));
+  gemmProfiler_->setDecodeInterleave(weight_prepacked_ == kMatMulNBitsWeightPrepackedSm90 ? 1 : 4);
+
+  if (!cache_file_path.empty()) {
+    // Persisted sessions use a session-local profile map so they deduplicate identical shapes
+    // within the session while loading new or retuned tactics from the persistent cache rather
+    // than reusing stale entries from the process-global map.
+    gemmProfiler_->setPersistentCache(
+        GetGlobalMatMulNBitsTacticCache(std::move(cache_file_path), cache_signature, cache_access.load),
+        cache_access,
+        s_profilerManager.getSessionProfileMap(this->GetSessionKey()));
+  }
+  const std::string tuning_results_prefix =
+      info.GetConfigOptions().GetConfigOrDefault(gc::kSessionConfigTuningResultsPrefix, "");
+  if (!tuning_results_prefix.empty()) {
+    gemmProfiler_->setTuningResultsCache(GetGlobalMatMulNBitsTacticCache(
+        gc::MatMulNBitsTacticCache::ResolveFilePath("", tuning_results_prefix, cache_signature), cache_signature,
+        /*load*/ false));
+  }
 
   auto allocator = this->Info().GetAllocator(OrtMemType::OrtMemTypeDefault);
   gemmProfiler_->setAllocator(allocator);
@@ -152,48 +1004,21 @@ void MatMulNBits<T>::InitGemmProfiler(int sm) {
 
 template <typename T>
 void MatMulNBits<T>::RunGemmProfile(bool hasWeightOnlyCudaKernel, int min_m, int max_m) {
-  // Number of 16-bit elements after casting int8/int4 to fp16.
-  int n_16b = static_cast<int>(N_ / (nbits_ == 8 ? 2 : 4));
+  // Number of 16-bit elements after casting int2/int4/int8 to fp16.
+  int n_16b = static_cast<int>(N_ / (16 / nbits_));
 
   // Include the packing/kernel SM in the GEMM id so the SM80-compatibility and native SM90 kernels
   // (which need different tactics) do not share profiled configs for the same (N, K, dtype).
   const int kernel_sm = FpAIntBPackingSmForKernel();
-  if constexpr (std::is_same_v<T, MLFloat16>) {
-    gemmId_ = GemmIdCore(n_16b, static_cast<int>(K_), onnxruntime::llm::nvinfer::DataType::kHALF, kernel_sm);
-  } else if constexpr (std::is_same_v<T, BFloat16>) {
-    gemmId_ = GemmIdCore(n_16b, static_cast<int>(K_), onnxruntime::llm::nvinfer::DataType::kBF16, kernel_sm);
-  }
+  const auto dtype = std::is_same_v<T, BFloat16> ? onnxruntime::llm::nvinfer::DataType::kBF16
+                                                 : onnxruntime::llm::nvinfer::DataType::kHALF;
+  gemmId_ = GemmIdCore(n_16b, static_cast<int>(K_), dtype, kernel_sm, static_cast<int>(nbits_),
+                       static_cast<int>(block_size_), has_zero_points_, hasWeightOnlyCudaKernel, has_bias_,
+                       this->GetDeviceProp().name, wave_aware_gemv_, paired_gemv_mode_, this->GetDeviceId());
 
   GemmDims dims = {min_m, max_m, n_16b, K_};
+  gemmId_.tensor_core = tensor_core_gemv_;
   gemmProfiler_->profileTactics(weightOnlyGemmRunner_, gemmId_.dtype, dims, gemmId_, hasWeightOnlyCudaKernel);
-}
-
-template <typename T>
-Status MatMulNBits<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
-                               /*out*/ bool& is_packed,
-                               /*out*/ PrePackedWeights* /*prepacked_weights*/) {
-  is_packed = false;
-  if constexpr (std::is_same_v<T, MLFloat16> || std::is_same_v<T, BFloat16>) {
-    if (has_fpA_intB_gemm_) {
-      cudaStream_t stream = cudaStreamLegacy;  // Use default stream for prepacking.
-      if (input_idx == MatMulNBits_Input_B) {
-        ORT_RETURN_IF_ERROR(PrePack_B(tensor, alloc, stream, is_packed));
-        is_prepacked_weight_ = is_packed;
-      } else if (input_idx == MatMulNBits_Input_Scale) {
-        ORT_RETURN_IF_ERROR(PrePack_Scale(tensor, alloc, stream));
-        is_prepacked_scale_ = true;
-        is_packed = true;
-      } else if (input_idx == MatMulNBits_Input_ZeroPoint) {
-        if (has_zero_points_) {
-          ORT_RETURN_IF_ERROR(PrePack_ZeroPoint(tensor, alloc, stream));
-          is_prepacked_zero_point_ = true;
-          is_packed = true;
-        }
-      }
-    }
-  }
-
-  return Status::OK();
 }
 
 template <typename T>
@@ -240,15 +1065,19 @@ Status MatMulNBits<T>::PrePack_B([[maybe_unused]] const Tensor& tensor,
       // Transpose the weight and add default zero point.
       onnxruntime::llm::kernels::fpA_intB_gemv::unpack_uint4_transposed_to_int8_direct_cuda(
           stream, packed_transposed_weight, blob_data, static_cast<int>(n), static_cast<int>(k));
+    } else if (nbits_ == 2) {
+      onnxruntime::llm::kernels::fpA_intB_gemv::unpack_uint2_transposed_to_int8_direct_cuda(
+          stream, packed_transposed_weight, blob_data, static_cast<int>(n), static_cast<int>(k));
     } else {
       onnxruntime::llm::kernels::fpA_intB_gemv::transpose_uint8_matrix_and_convert_to_int8(
           stream, packed_transposed_weight, blob_data, static_cast<int>(n), static_cast<int>(k));
     }
 
     using onnxruntime::llm::kernels::weight_only::QuantType;
-    QuantType quant_type = nbits_ == 4 ? QuantType::W4_A16 : QuantType::W8_A16;
+    QuantType quant_type = nbits_ == 4 ? QuantType::W4_A16 : (nbits_ == 2 ? QuantType::W2_A16 : QuantType::W8_A16);
 
-    auto permutation_map_buffer = this->GetTransientScratchBuffer<int32_t>(32);
+    // The LDSM row-permutation tile is 8 * kInterleave rows: 16 for 8-bit, 32 for 4-bit, 64 for 2-bit.
+    auto permutation_map_buffer = this->GetTransientScratchBuffer<int32_t>(64);
     onnxruntime::llm::kernels::weight_only::preprocess_weights_for_mixed_gemm_cuda(
         stream,
         FpAIntBPackingSmForKernel(),
@@ -311,24 +1140,30 @@ Status MatMulNBits<T>::PrePack_ZeroPoint([[maybe_unused]] const Tensor& tensor,
     fpA_intB_zero_buffer_ = IAllocator::MakeUniquePtr<void>(alloc, scale_bytes, true);  // Transient buffer.
     CudaT* scaled_zero_points = reinterpret_cast<CudaT*>(fpA_intB_zero_buffer_.get());
 
+    constexpr float kDefaultZeroPoint2Bit = 2.0f;
     constexpr float kDefaultZeroPoint4Bit = 8.0f;
     constexpr float kDefaultZeroPoint8Bit = 128.0f;
-    const float default_zero_point = nbits_ == 4 ? kDefaultZeroPoint4Bit : kDefaultZeroPoint8Bit;
+    const float default_zero_point = nbits_ == 4 ? kDefaultZeroPoint4Bit
+                                                 : (nbits_ == 2 ? kDefaultZeroPoint2Bit : kDefaultZeroPoint8Bit);
     const auto* zero_points_data = tensor.DataRaw();
 
     // The scaled zero point will be zero for the default zero point, so there is no need to scale when it is nullptr.
     if (!tensor.IsDataType<T>()) {  // zero point is uint8_t type
       if (nbits_ == 4) {
-        onnxruntime::llm::kernels::fpA_intB_gemv::launch_scaled_zero_point_kernel<true, CudaT, uint8_t>(
+        onnxruntime::llm::kernels::fpA_intB_gemv::launch_scaled_zero_point_kernel<4, CudaT, uint8_t>(
+            stream, reinterpret_cast<const uint8_t*>(zero_points_data),
+            transposed_scales, scaled_zero_points, static_cast<int>(n), static_cast<int>(k_blocks), default_zero_point);
+      } else if (nbits_ == 2) {
+        onnxruntime::llm::kernels::fpA_intB_gemv::launch_scaled_zero_point_kernel<2, CudaT, uint8_t>(
             stream, reinterpret_cast<const uint8_t*>(zero_points_data),
             transposed_scales, scaled_zero_points, static_cast<int>(n), static_cast<int>(k_blocks), default_zero_point);
       } else {
-        onnxruntime::llm::kernels::fpA_intB_gemv::launch_scaled_zero_point_kernel<false, CudaT, uint8_t>(
+        onnxruntime::llm::kernels::fpA_intB_gemv::launch_scaled_zero_point_kernel<0, CudaT, uint8_t>(
             stream, reinterpret_cast<const uint8_t*>(zero_points_data),
             transposed_scales, scaled_zero_points, static_cast<int>(n), static_cast<int>(k_blocks), default_zero_point);
       }
     } else {  // zero point is not uint8_t type
-      onnxruntime::llm::kernels::fpA_intB_gemv::launch_scaled_zero_point_kernel<false, CudaT, CudaT>(
+      onnxruntime::llm::kernels::fpA_intB_gemv::launch_scaled_zero_point_kernel<0, CudaT, CudaT>(
           stream, reinterpret_cast<const CudaT*>(zero_points_data),
           transposed_scales, scaled_zero_points, static_cast<int>(n), static_cast<int>(k_blocks), default_zero_point);
     }
@@ -341,8 +1176,68 @@ Status MatMulNBits<T>::PrePack_ZeroPoint([[maybe_unused]] const Tensor& tensor,
 }
 #endif
 
+#if USE_FPA_INTB_GEMM && !defined(BUILD_CUDA_EP_AS_PLUGIN)
+// Level 2 (Phase-A memory roadmap, issue microsoft/onnxruntime#29775). Uses the constructed runner
+// state and effective arch from ComputeInternal(). The size is exact for its CUTLASS GEMM branch.
+// Runtime may instead select the CUDA GEMV tactic, which requests no workspace; in that case this is
+// a safe upper bound. Unknown/negative dimensions and arithmetic overflow use dynamic fallback.
+// The shared formula returns zero for empty output; a zero-sized requirement is omitted.
+template <typename T>
+Status MatMulNBits<T>::DeclareWorkspaceRequirements(
+    gsl::span<const WorkspaceInputShape> input_shapes,
+    /*out*/ InlinedVector<WorkspaceRequirement>& requirements) const {
+  requirements.clear();
+  if (!has_fpA_intB_gemm_ || weightOnlyGemmRunner_ == nullptr) {
+    return Status::OK();
+  }
+
+  // Input A is the only input needed for this estimate. Missing or unknown unrelated optional
+  // inputs do not suppress declaration.
+  const TensorShape* a_shape = GetWorkspaceInputShape(input_shapes, 0).GetShape();
+  if (a_shape == nullptr) {
+    return Status::OK();
+  }
+
+  // Input A is the same tensor as ctx->Input(0) in Compute(). m = product of all its dims except
+  // the last (K), which comes from the kernel attribute and may remain unknown here.
+  const std::optional<int64_t> m64 =
+      ComputeMatMulNBitsLeadingDimProduct(a_shape->GetDims());
+  if (!m64.has_value()) {
+    return Status::OK();
+  }
+  // ComputeInternal sizes the workspace for one M chunk.
+  const int64_t workspace_m = FpAIntBRowsPerLaunch(*m64);
+  // Feed the SAME effective arch the runner resolved after setArch() - not the raw sm_ member.
+  const int effective_sm = FpAIntBPackingSmForKernel();
+  std::optional<size_t> ws;
+  try {
+    ws = onnxruntime::llm::kernels::cutlass_kernels::ComputeFpAIntBGemmWorkspaceSize(
+        SafeInt<int>(workspace_m), SafeInt<int>(N_), SafeInt<int>(K_),
+        effective_sm, this->GetDeviceProp().multiProcessorCount);
+  } catch (const OnnxRuntimeException&) {
+    return Status::OK();
+  }
+  if (!ws.has_value() || *ws == 0) {
+    return Status::OK();
+  }
+  // At or above the threshold ComputeInternal needs a dequantized copy of the weights instead of the GEMM workspace.
+  size_t declared_bytes = *ws;
+  if (dequant_gemm_min_m_ > 0 && *m64 >= dequant_gemm_min_m_) {
+    declared_bytes = std::max(declared_bytes, DequantGemmScratchBytes());
+  }
+  requirements.push_back(WorkspaceRequirement{declared_bytes, /*slot_id=*/0, /*alignment_bytes=*/0});
+  return Status::OK();
+}
+#endif
+
 template <typename T>
 Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
+#if USE_FPA_INTB_GEMM
+  // TEST verification hook only. Record every invocation, including validation failures, empty
+  // outputs, and GEMV/non-fpA_intB paths, so the value always describes the latest call.
+  last_compute_workspace_bytes_.store(0, std::memory_order_relaxed);
+#endif
+
   if constexpr (std::is_same_v<T, BFloat16>) {
     if (sm_ < 80) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
@@ -369,10 +1264,16 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
   const auto* scales_data = scales->Data<T>();
   const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->DataRaw();
 #endif
+  if (b != nullptr && b->Shape().Size() == 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "CUDA MatMulNBits does not support empty B weights yet.");
+  }
   const auto* bias_data = bias == nullptr ? nullptr : bias->Data<T>();
 
   ORT_RETURN_IF_ERROR(matmul_nbits_helper::CheckInputs<Tensor>(
       a, b, scales, zero_points, reorder_idx, bias, N_, K_, block_size_, nbits_));
+  ORT_RETURN_IF(nbits_ == 2 && reorder_idx != nullptr,
+                "CUDA MatMulNBits does not support g_idx (reorder_idx) for 2-bit weights.");
 
   const auto* a_data = a->Data<T>();
   const auto* reorder_idx_data = reorder_idx == nullptr ? nullptr : reorder_idx->Data<int32_t>();
@@ -385,18 +1286,30 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   Tensor* Y = ctx->Output(0, helper.OutputShape());
 
-  // Bail out early if the output is going to be empty
-  if (Y->Shape().Size() == 0)
+  // Empty input (M == 0) produces an empty output; nothing reads the weights or g_idx.
+  if (Y->Shape().Size() == 0) {
     return Status::OK();
+  }
 
   cudaStream_t stream = this->Stream(ctx);
+  if (reorder_idx != nullptr) {
+    const int64_t k_blocks = K_ / block_size_ + (K_ % block_size_ != 0);
+    if (!group_index_is_initializer_) {
+      ORT_RETURN_IF_ERROR(ValidateGroupIndexRange(reorder_idx, k_blocks, stream));
+    } else if (!is_group_index_validated_.load(std::memory_order_acquire)) {
+      std::lock_guard<std::mutex> lock(group_index_validation_mutex_);
+      if (!is_group_index_validated_.load(std::memory_order_relaxed)) {
+        ORT_RETURN_IF_ERROR(ValidateGroupIndexRange(reorder_idx, k_blocks, stream));
+        is_group_index_validated_.store(true, std::memory_order_release);
+      }
+    }
+  }
 
   typedef typename onnxruntime::cuda::OrtToCudaType<T>::type CudaT;
 
   int m = SafeInt<int>(helper.M());
   int n = SafeInt<int>(helper.N());
   int k = SafeInt<int>(helper.K());
-
   DUMP_TENSOR_INIT();
 
 #if USE_FPA_INTB_GEMM
@@ -420,93 +1333,194 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
       // single-bucket profiling. Note: a null cudaStream_t is the default stream (a valid capture
       // target under per-thread default streams), so query the capture status unconditionally.
       const bool stream_is_capturing = onnxruntime::llm::common::isCapturing(stream);
-      auto const bestTactic = stream_is_capturing ? gemmProfiler_->getBestConfig(m, gemmId_)
-                                                  : gemmProfiler_->getBestConfigOrProfile(m, gemmId_);
-      if (!bestTactic.has_value()) {
-        return ORT_MAKE_STATUS(
-            ONNXRUNTIME, FAIL,
-            "No valid fpA_intB MatMulNBits tactic for M=", m, ", N=", n, ", K=", k,
-            stream_is_capturing
-                ? ". The M bucket was not profiled before CUDA graph capture; run a warmup inference outside capture first."
-                : "");
-      }
 
       // Env-gated diagnostics (ORT_FPA_INTB_DEBUG=1): dump the selected tactic, the kernel path
       // (GEMV CUDA kernel vs CUTLASS GEMM), the weight format, and the device/packing SM so that
-      // SM90 correctness issues (e.g. running the SM80 kernel on Hopper) can be traced.
+      // SM90 layout-selection issues can be traced.
       static const bool fpA_intB_debug =
           ParseEnvironmentVariableWithDefault<int>("ORT_FPA_INTB_DEBUG", 0) != 0;
-      if (fpA_intB_debug) {
-        const char* weight_fmt = is_prepacked_weight_ ? "runtime-prepacked(SM80 layout)"
-                                                      : (weight_prepacked_ == kMatMulNBitsWeightPrepackedSm80 ? "offline-prepacked-SM80"
-                                                                                                              : (weight_prepacked_ == kMatMulNBitsWeightPrepackedSm90 ? "offline-prepacked-SM90"
-                                                                                                                                                                      : "raw"));
-        std::cout << "[fpA_intB_debug] M=" << m << " N=" << n << " K=" << k
-                  << " nbits=" << nbits_ << " block_size=" << block_size_
-                  << " device_sm=" << sm_
-                  << " packing_sm=" << FpAIntBPackingSmForKernel()
-                  << " has_bias=" << (bias_data != nullptr ? 1 : 0)
-                  << " has_zero_points=" << (has_zero_points_ ? 1 : 0)
-                  << " weight_format=" << weight_fmt
-                  << " kernel=" << (bestTactic->enableCudaKernel ? "GEMV(cuda)" : (FpAIntBPackingSmForKernel() == 90 ? "CUTLASS(sm90 gemm)" : "CUTLASS(sm80 gemm)"))
-                  << " tactic=" << bestTactic->toString()
-                  << std::endl;
+
+      using onnxruntime::llm::kernels::fpA_intB_gemv::KernelType;
+      KernelType cuda_kernel_type;
+      if constexpr (std::is_same<T, MLFloat16>::value) {
+        cuda_kernel_type = nbits_ == 8   ? KernelType::FP16Int8Groupwise
+                           : nbits_ == 4 ? KernelType::FP16Int4Groupwise
+                                         : KernelType::FP16Int2Groupwise;
+      } else if constexpr (std::is_same<T, BFloat16>::value) {
+        cuda_kernel_type = nbits_ == 8   ? KernelType::BF16Int8Groupwise
+                           : nbits_ == 4 ? KernelType::BF16Int4Groupwise
+                                         : KernelType::BF16Int2Groupwise;
       }
 
-#if ORT_LLM_VERBOSE > 1
-      std::cout << "Best tactic for m=" << m << ", n=" << n << ", k=" << k << "group_size=" << block_size_
-                << " is: " << bestTactic->toString() << std::endl;
-#endif
+      // Rows of A are independent, so a large M runs as row chunks. The workspace and any lazily
+      // profiled M bucket are then bounded by the chunk instead of the full M.
+      const int chunk_m = static_cast<int>(FpAIntBRowsPerLaunch(m));
 
-      if (bestTactic->enableCudaKernel) {
-        using onnxruntime::llm::kernels::fpA_intB_gemv::KernelType;
-        KernelType cuda_kernel_type;
-        if constexpr (std::is_same<T, MLFloat16>::value) {
-          cuda_kernel_type = nbits_ == 8 ? KernelType::FP16Int8Groupwise : KernelType::FP16Int4Groupwise;
-        } else if constexpr (std::is_same<T, BFloat16>::value) {
-          cuda_kernel_type = nbits_ == 8 ? KernelType::BF16Int8Groupwise : KernelType::BF16Int4Groupwise;
+      // Large M: dequantize the weights once into a scratch matrix and run a single cuBLAS GEMM. The row-chunked
+      // CUTLASS path below converts every weight element again for each chunk. Skipped under deterministic compute
+      // and CUDA graph capture (scratch allocation), which keep the CUTLASS path.
+      if (dequant_gemm_min_m_ > 0 && m >= dequant_gemm_min_m_ && bias_data == nullptr && !stream_is_capturing &&
+          !ctx->GetUseDeterministicCompute()) {
+        if (graph_capture_enabled_) {
+          // A graph-enabled session captures this M on the CUTLASS path, which cannot profile during capture, and the
+          // warmup runs that would normally tune it take this route instead. Tune the buckets now, before the scratch
+          // copy exists. A failed lookup is ignored here; the capture path reports it.
+          gemmProfiler_->getBestConfigOrProfile(chunk_m, gemmId_);
+          if (m % chunk_m != 0) {
+            gemmProfiler_->getBestConfigOrProfile(m % chunk_m, gemmId_);
+          }
+        }
+        const size_t scratch_bytes = DequantGemmScratchBytes();
+        auto dequant_buffer = this->template GetScratchBuffer<void>(scratch_bytes, this->GetComputeStream(ctx));
+        if (onnxruntime::llm::kernels::fpA_intB_gemv::dequantize_int8_interleaved(
+                cuda_kernel_type, fpA_intB_weight, fpA_intB_scale_buffer_.get(), dequant_buffer.get(), n, k,
+                static_cast<int>(block_size_), stream)) {
+          last_compute_workspace_bytes_.store(scratch_bytes, std::memory_order_relaxed);
+          if (fpA_intB_debug) {
+            std::cout << "[fpA_intB_debug] M=" << m << " N=" << n << " K=" << k << " nbits=" << nbits_
+                      << " block_size=" << block_size_ << " kernel=dequant+cuBLAS" << std::endl;
+          }
+          const CudaT alpha = onnxruntime::cuda::OrtToCudaType<T>::FromFloat(1.f);
+          const CudaT zero = onnxruntime::cuda::OrtToCudaType<T>::FromFloat(0.f);
+          CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
+              GetCublasHandle(ctx), CUBLAS_OP_T, CUBLAS_OP_N, n, m, k, &alpha,
+              reinterpret_cast<const CudaT*>(dequant_buffer.get()), k, reinterpret_cast<const CudaT*>(a_data), k,
+              &zero, out_data, n, GetDeviceProp(), UseTF32()));
+          return Status::OK();
+        }
+      }
+
+      decltype(gemmProfiler_->getBestConfig(m, gemmId_)) bestTactic;
+      int tactic_m = 0;
+      IAllocatorUniquePtr<void> workspace_buffer;
+      size_t workspace_size = 0;
+      bool workspace_allocated = false;
+
+      for (int row_start = 0; row_start < m; row_start += chunk_m) {
+        const int rows = std::min(chunk_m, m - row_start);
+        // Only a trailing partial chunk can change rows, so this looks up at most two tactics.
+        if (rows != tactic_m) {
+          bestTactic = ctx->GetUseDeterministicCompute()
+                           ? gemmProfiler_->getDeterministicConfig(rows)
+                           : (stream_is_capturing ? gemmProfiler_->getBestConfig(rows, gemmId_)
+                                                  : gemmProfiler_->getBestConfigOrProfile(rows, gemmId_));
+          if (!bestTactic.has_value()) {
+            return ORT_MAKE_STATUS(
+                ONNXRUNTIME, FAIL,
+                "No valid fpA_intB MatMulNBits tactic for M=", rows, ", N=", n, ", K=", k,
+                stream_is_capturing
+                    ? ". The M bucket was not profiled before CUDA graph capture; run a warmup inference outside capture first."
+                    : "");
+          }
+          tactic_m = rows;
+
+          if (fpA_intB_debug) {
+            const char* weight_fmt = is_prepacked_weight_ ? "runtime-prepacked(SM80 layout)"
+                                                          : (weight_prepacked_ == kMatMulNBitsWeightPrepackedSm80 ? "offline-prepacked-SM80"
+                                                                                                                  : (weight_prepacked_ == kMatMulNBitsWeightPrepackedSm90 ? "offline-prepacked-SM90"
+                                                                                                                                                                          : "raw"));
+            std::cout << "[fpA_intB_debug] M=" << m << " chunk_M=" << rows << " N=" << n << " K=" << k
+                      << " nbits=" << nbits_ << " block_size=" << block_size_
+                      << " device_sm=" << sm_
+                      << " packing_sm=" << FpAIntBPackingSmForKernel()
+                      << " has_bias=" << (bias_data != nullptr ? 1 : 0)
+                      << " has_zero_points=" << (has_zero_points_ ? 1 : 0)
+                      << " weight_format=" << weight_fmt
+                      << " kernel=" << (bestTactic->enableCudaKernel ? "GEMV(cuda)" : (FpAIntBPackingSmForKernel() == 90 ? "CUTLASS(hopper gemm)" : "CUTLASS(non-hopper gemm)"))
+                      << " tactic=" << bestTactic->toString()
+                      << std::endl;
+          }
+
+#if ORT_LLM_VERBOSE > 1
+          std::cout << "Best tactic for m=" << rows << ", n=" << n << ", k=" << k << "group_size=" << block_size_
+                    << " is: " << bestTactic->toString() << std::endl;
+#endif
         }
 
-        void const* pre_quant_scale_ptr = nullptr;
-        bool apply_alpha_in_advance = false;
-        float alpha = 1.0f;
-        onnxruntime::llm::kernels::fpA_intB_gemv::Params params(
-            a_data, pre_quant_scale_ptr, fpA_intB_weight,
-            fpA_intB_scale_buffer_.get(), has_zero_points_ ? fpA_intB_zero_buffer_.get() : nullptr,
-            bias_data, out_data,
-            alpha, m, n, k, static_cast<int>(block_size_), cuda_kernel_type, apply_alpha_in_advance);
+        const T* chunk_a_data = a_data + static_cast<size_t>(row_start) * static_cast<size_t>(k);
+        CudaT* chunk_out_data = out_data + static_cast<size_t>(row_start) * static_cast<size_t>(n);
 
-        // Launch the GEMV with the arch the weights were PACKED for (FpAIntBPackingSmForKernel),
-        // not the raw device SM. The GEMV interleave layout is arch-dependent: arch in [90,100)
-        // uses ColumnMajorInterleavedForHopper while the SM80 packing uses ColumnMajorInterleaved.
-        // PrePack_B packs the SM80 layout, and the tactic profiler also profiles with the packing
-        // arch, so passing the device SM (e.g. 90) here would read the SM80-packed weights with the
-        // Hopper interleave and produce wrong results.
-        onnxruntime::llm::kernels::fpA_intB_gemv::kernel_launcher(FpAIntBPackingSmForKernel(), params, stream);
-      } else {
-        const size_t workspace_size = weightOnlyGemmRunner_->getWorkspaceSize(m, n, k);
-        auto workspace_buffer = this->template GetScratchBuffer<void>(workspace_size, this->GetComputeStream(ctx));
+        if (bestTactic->enableCudaKernel) {
+          void const* pre_quant_scale_ptr = nullptr;
+          bool apply_alpha_in_advance = false;
+          float alpha = 1.0f;
+          onnxruntime::llm::kernels::fpA_intB_gemv::Params params(
+              chunk_a_data, pre_quant_scale_ptr, fpA_intB_weight,
+              fpA_intB_scale_buffer_.get(), has_zero_points_ ? fpA_intB_zero_buffer_.get() : nullptr,
+              bias_data, chunk_out_data,
+              alpha, rows, n, k, static_cast<int>(block_size_), cuda_kernel_type, apply_alpha_in_advance);
+          params.decode_variant = bestTactic->cudaKernelVariant >= 2 ? bestTactic->cudaKernelVariant : 0;
+          params.paired_k = bestTactic->cudaKernelVariant == 1;
+          params.wave_aware = wave_aware_gemv_;
+          params.tensor_core = tensor_core_gemv_;
+          const auto& device_prop = GetDeviceProp();
+          params.device_sm = device_prop.major * 10 + device_prop.minor;
+          params.device_sm_count = device_prop.multiProcessorCount;
+          params.debug = fpA_intB_debug;
 
-        weightOnlyGemmRunner_->gemm(
-            a_data,
-            fpA_intB_weight,
-            fpA_intB_scale_buffer_.get(),
-            has_zero_points_ ? fpA_intB_zero_buffer_.get() : nullptr,
-            bias_data,
-            1.f,
-            out_data,
-            m, n, k,
-            static_cast<int>(block_size_),
-            *bestTactic,
-            reinterpret_cast<char*>(workspace_buffer.get()),
-            workspace_size,
-            stream);
+          // Launch the GEMV with the arch the weights were PACKED for (FpAIntBPackingSmForKernel),
+          // not the raw device SM. The GEMV interleave layout is arch-dependent: arch in [90,100)
+          // uses ColumnMajorInterleavedForHopper while the SM80 packing uses ColumnMajorInterleaved.
+          // PrePack_B packs the SM80 layout, and the tactic profiler also profiles with the packing
+          // arch, so passing the device SM (e.g. 90) here would read the SM80-packed weights with the
+          // Hopper interleave and produce wrong results.
+          onnxruntime::llm::kernels::fpA_intB_gemv::kernel_launcher(FpAIntBPackingSmForKernel(), params, stream);
+        } else {
+          if (!workspace_allocated) {
+            // Sized for a full chunk; the workspace size is non-decreasing in M, so it also covers
+            // a smaller trailing chunk.
+            workspace_size = weightOnlyGemmRunner_->getWorkspaceSize(chunk_m, n, k);
+            workspace_buffer = this->template GetScratchBuffer<void>(workspace_size, this->GetComputeStream(ctx));
+            workspace_allocated = true;
+            // TEST verification hook only. Relaxed ordering is sufficient: the pilot's single-threaded
+            // tests only read this after the compute call has returned, so no cross-thread happens-before
+            // relationship needs to be established here.
+            last_compute_workspace_bytes_.store(workspace_size, std::memory_order_relaxed);
+          }
+
+          weightOnlyGemmRunner_->gemm(
+              chunk_a_data,
+              fpA_intB_weight,
+              fpA_intB_scale_buffer_.get(),
+              has_zero_points_ ? fpA_intB_zero_buffer_.get() : nullptr,
+              bias_data,
+              1.f,
+              chunk_out_data,
+              rows, n, k,
+              static_cast<int>(block_size_),
+              *bestTactic,
+              reinterpret_cast<char*>(workspace_buffer.get()),
+              workspace_size,
+              stream);
+        }
       }
 
       return Status::OK();
     }
   }
 #endif
+
+#if USE_FPA_INTB_GEMM
+  const bool unaligned4_has_fpA_intB = has_fpA_intB_gemm_;
+#else
+  constexpr bool unaligned4_has_fpA_intB = false;
+#endif
+  if constexpr (std::is_same_v<T, MLFloat16>) {
+    if (IsUnaligned4FastPathEligible(
+            unaligned4_fast_path_, true, m, n, k, static_cast<int>(nbits_), static_cast<int>(block_size_),
+            column_wise_quant_blk_, zero_points != nullptr, bias != nullptr, reorder_idx != nullptr,
+            unaligned4_has_fpA_intB, force_chunked_) &&
+        TryMatMulUnaligned4Bits<CudaT>(
+            reinterpret_cast<CudaT*>(Y->MutableData<T>()), reinterpret_cast<const CudaT*>(a_data),
+            blob_data, reinterpret_cast<const CudaT*>(scales_data), m, n, k,
+            GetDeviceProp().sharedMemPerBlock, stream)) {
+      if (unaligned4_log_.ShouldLog(m == 1)) {
+        CUDA_RETURN_IF_ERROR(cudaPeekAtLastError());
+        unaligned4_log_.Log(m == 1, this->Node().Name(), m, k, n);
+      }
+      return Status::OK();
+    }
+  }
 
   if ((reorder_idx_data == nullptr) && (!zero_points || !zero_points->IsDataType<T>())) {
     // First, try the fused fast path. It handles bias only for the GPT-OSS router GEMV
@@ -524,7 +1538,8 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
             k,
             SafeInt<int>(block_size_),
             GetDeviceProp().sharedMemPerBlock,
-            stream)) {
+            stream,
+            sm_)) {
       return Status::OK();
     }
 
@@ -545,7 +1560,8 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
             k,
             SafeInt<int>(block_size_),
             GetDeviceProp().sharedMemPerBlock,
-            stream)) {
+            stream,
+            sm_)) {
       LaunchMatMulNBitsBiasAdd<CudaT>(
           reinterpret_cast<CudaT*>(Y->MutableData<T>()),
           reinterpret_cast<const CudaT*>(bias_data),
@@ -560,32 +1576,22 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
   // fall back to the generic dequantize + GEMM path (which ignores bias) and add the
   // bias with a separate kernel after the GEMM completes.
 
-  int64_t K_padded = (K_ + block_size_ - 1) / block_size_ * block_size_;
-
-  // Chunked dequant+GEMM trades peak scratch memory for repeated kernel launches.
-  // Thresholds:
-  //   256 MB  – scratch budget; above this the full N*K_padded buffer would dominate
-  //             device memory and risk OOM on consumer GPUs (8–12 GB).
-  //   N > 2*chunk_target_rows (default 65536) – ensures at least two chunks so the
-  //             overhead of per-chunk cuBLAS calls is amortised.
-  //   chunk_target_rows (default 32768) – chosen so that each dequant+GEMM tile is
-  //             large enough to saturate SMs while keeping scratch ≤ ~128 MB.
-  // Only column-wise quantization without reorder_idx is supported; row-wise layouts
-  // interleave K blocks across N and cannot be sliced along the N axis.
+  const auto legacy_workspace = ComputeMatMulNBitsLegacyWorkspacePlan(
+      N_, K_, block_size_, sizeof(T),
+      column_wise_quant_blk_ && reorder_idx_data == nullptr,
+      force_chunked_, chunk_target_rows_);
+  ORT_RETURN_IF_NOT(legacy_workspace.has_value(),
+                    "MatMulNBits legacy workspace size overflow.");
+  int64_t K_padded = legacy_workspace->k_padded;
+  const bool will_use_chunked = legacy_workspace->use_chunked;
   const int64_t chunk_target_rows = chunk_target_rows_;
-  const int64_t scratch_bytes = N_ * K_padded * static_cast<int64_t>(sizeof(T));
-  const bool will_use_chunked = column_wise_quant_blk_ &&
-                                (reorder_idx_data == nullptr) &&
-                                (force_chunked_ ||
-                                 ((scratch_bytes > 256 * 1024 * 1024) &&
-                                  (N_ > chunk_target_rows * 2)));
-
-  // Allocate scratch: full size normally, chunk size if chunked path will be used
-  const int64_t scratch_n = will_use_chunked ? chunk_target_rows : N_;
-  IAllocatorUniquePtr<T> b_data_ptr = this->template GetScratchBuffer<T>(scratch_n * K_padded, this->GetComputeStream(ctx));
+  IAllocatorUniquePtr<T> b_data_ptr =
+      this->template GetScratchBuffer<T>(
+          legacy_workspace->workspace_bytes / sizeof(T),
+          this->GetComputeStream(ctx));
   auto* b_data = b_data_ptr.get();
 
-  // Column-wise dequant helper: dispatches 8-bit / 4-bit × typed / uint8 zero-points.
+  // Column-wise dequant helper: dispatches 8/4/2-bit x typed / uint8 zero-points.
   // Used by both the full-N and chunked paths so the offset math stays in one place.
   const int64_t blocks_per_col = K_padded / block_size_;
   auto dequant_column_wise = [&](const uint8_t* chunk_blob,
@@ -593,31 +1599,18 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
                                  const void* chunk_zp,
                                  const int32_t* chunk_reorder_idx,
                                  int n_rows) -> Status {
-    if (nbits_ == 8) {
-      if (zero_points && zero_points->IsDataType<T>()) {
-        return Dequantize8Bits(
-            reinterpret_cast<CudaT*>(b_data), chunk_blob, chunk_scales,
-            static_cast<const CudaT*>(chunk_zp), chunk_reorder_idx,
-            SafeInt<int>(K_padded), n_rows, SafeInt<int>(block_size_), stream);
-      } else {
-        return Dequantize8Bits(
-            reinterpret_cast<CudaT*>(b_data), chunk_blob, chunk_scales,
-            static_cast<const uint8_t*>(chunk_zp), chunk_reorder_idx,
-            SafeInt<int>(K_padded), n_rows, SafeInt<int>(block_size_), stream);
-      }
-    } else {
-      if (zero_points && zero_points->IsDataType<T>()) {
-        return Dequantize4Bits(
-            reinterpret_cast<CudaT*>(b_data), chunk_blob, chunk_scales,
-            static_cast<const CudaT*>(chunk_zp), chunk_reorder_idx,
-            SafeInt<int>(K_padded), n_rows, SafeInt<int>(block_size_), stream);
-      } else {
-        return Dequantize4Bits(
-            reinterpret_cast<CudaT*>(b_data), chunk_blob, chunk_scales,
-            static_cast<const uint8_t*>(chunk_zp), chunk_reorder_idx,
-            SafeInt<int>(K_padded), n_rows, SafeInt<int>(block_size_), stream);
-      }
+    const bool typed_zero_points = zero_points && zero_points->IsDataType<T>();
+    if (typed_zero_points) {
+      return DequantizeNBits(
+          SafeInt<int>(nbits_), reinterpret_cast<CudaT*>(b_data), chunk_blob, chunk_scales,
+          static_cast<const CudaT*>(chunk_zp), chunk_reorder_idx,
+          SafeInt<int>(K_padded), n_rows, SafeInt<int>(block_size_), stream);
     }
+
+    return DequantizeNBits(
+        SafeInt<int>(nbits_), reinterpret_cast<CudaT*>(b_data), chunk_blob, chunk_scales,
+        static_cast<const uint8_t*>(chunk_zp), chunk_reorder_idx,
+        SafeInt<int>(K_padded), n_rows, SafeInt<int>(block_size_), stream);
   };
 
   // Skip full dequant when chunked path will handle it in the GEMM loop
@@ -646,6 +1639,9 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
           stream));
     } else {
       // row-wise block (4-bit)
+      ORT_RETURN_IF_NOT(nbits_ == 4,
+                        "CUDA MatMulNBits row-wise quantization blocks are only implemented for bits = 4 or 8, but got bits = ",
+                        nbits_);
       K_padded = K_;
       ORT_RETURN_IF_ERROR(DequantizeBlockwise4b(
           reinterpret_cast<CudaT*>(b_data),
@@ -685,17 +1681,17 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
         ORT_ENFORCE(column_wise_quant_blk_, "Chunked path requires column-wise quantization blocks");
 
         // Compute per-chunk pointers into the column-wise-packed weight, scale, and ZP arrays.
-        const uint8_t* chunk_blob = blob_data + n_start * (nbits_ == 8 ? K_padded : K_padded / 2);
+        const int64_t elements_per_byte = 8 / nbits_;
+        const uint8_t* chunk_blob = blob_data + n_start * (K_padded / elements_per_byte);
         const auto* chunk_scales = reinterpret_cast<const CudaT*>(scales_data) + n_start * blocks_per_col;
         const void* chunk_zp = nullptr;
         if (zero_points_data) {
           if (zero_points && zero_points->IsDataType<T>()) {
             chunk_zp = reinterpret_cast<const CudaT*>(zero_points_data) + n_start * blocks_per_col;
-          } else if (nbits_ == 8) {
-            chunk_zp = static_cast<const uint8_t*>(zero_points_data) + n_start * blocks_per_col;
           } else {
-            // 4-bit ZP: packed, offset by n_start * ceil(blocks_per_col / 2)
-            chunk_zp = static_cast<const uint8_t*>(zero_points_data) + n_start * ((blocks_per_col + 1) / 2);
+            // uint8 ZP rows are bit-packed: ceil(blocks_per_col / elements_per_byte) bytes per output channel.
+            chunk_zp = static_cast<const uint8_t*>(zero_points_data) +
+                       n_start * ((blocks_per_col + elements_per_byte - 1) / elements_per_byte);
           }
         }
         ORT_RETURN_IF_ERROR(dequant_column_wise(

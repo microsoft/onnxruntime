@@ -10,6 +10,8 @@ namespace onnxruntime {
 namespace contrib {
 namespace transformers {
 
+Status ValidateWhisperEncoderInputNames(const NodeArg& encoder_input, const NodeArg& decoder_input);
+
 // A class for whisper encoder subgraph with validation to support float inputs.
 class WhisperEncoderSubgraph : public T5EncoderSubgraph {
  public:

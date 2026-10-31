@@ -141,6 +141,80 @@ template Status LaunchZeroOutputForFullyMaskedBatches<__half>(
 template Status LaunchZeroOutputForFullyMaskedBatches<__nv_bfloat16>(
     __nv_bfloat16*, const int*, int, int64_t, cudaStream_t, int);
 
+// Fused zero-fully-masked-batches + BSNH -> BNSH transpose (cuDNN SDPA decode tier, 4D output).
+// One thread per output element, grid-stride so the (capped) grid covers any size.
+// Indexing mirrors contrib::cuda::Transpose_BSNH_to_BNSH (TransposeQKV with chunk_num == 1):
+//   in_offset  = ((b * S + s) * N + n) * H + h   (BSNH)
+//   out_offset = ((b * N + n) * S + s) * H + h   (BNSH)
+// Iterating over the output index keeps the stores fully coalesced.
+template <typename T>
+__global__ void TransposeBSNHtoBNSHWithZeroMaskKernel(
+    const T* __restrict__ input,
+    T* __restrict__ output,
+    const int* __restrict__ seqlens_k,
+    const int sequence_length,
+    const int num_heads,
+    const int head_size,
+    const int64_t total_elements) {
+  const int64_t elements_per_head = static_cast<int64_t>(sequence_length) * head_size;
+  const int64_t elements_per_batch = elements_per_head * num_heads;
+
+  for (int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+       idx < total_elements;
+       idx += static_cast<int64_t>(gridDim.x) * blockDim.x) {
+    // Decompose the BNSH output index.
+    const int b = static_cast<int>(idx / elements_per_batch);
+    const int64_t rem_b = idx - static_cast<int64_t>(b) * elements_per_batch;
+    const int n = static_cast<int>(rem_b / elements_per_head);
+    const int64_t rem_n = rem_b - static_cast<int64_t>(n) * elements_per_head;
+    const int s = static_cast<int>(rem_n / head_size);
+    const int h = static_cast<int>(rem_n - static_cast<int64_t>(s) * head_size);
+
+    if (seqlens_k[b] == 0) {
+      output[idx] = T(0.0f);
+    } else {
+      const int64_t in_offset = ((static_cast<int64_t>(b) * sequence_length + s) * num_heads + n) *
+                                    head_size +
+                                h;
+      output[idx] = input[in_offset];
+    }
+  }
+}
+
+template <typename T>
+Status LaunchTransposeBSNHtoBNSHWithZeroMask(
+    const T* input,
+    T* output,
+    const int* seqlens_k,
+    int batch_size,
+    int sequence_length,
+    int num_heads,
+    int head_size,
+    cudaStream_t stream,
+    int max_threads_per_block) {
+  const int64_t total = static_cast<int64_t>(batch_size) * sequence_length * num_heads * head_size;
+  if (total == 0) {
+    return Status::OK();
+  }
+
+  int threads = static_cast<int>(std::min(static_cast<int64_t>(max_threads_per_block), total));
+  int64_t blocks = (total + threads - 1) / threads;
+  constexpr int64_t kMaxGridDimX = 65535;
+  unsigned int grid_size = static_cast<unsigned int>(std::min(blocks, kMaxGridDimX));
+
+  TransposeBSNHtoBNSHWithZeroMaskKernel<T><<<grid_size, threads, 0, stream>>>(
+      input, output, seqlens_k, sequence_length, num_heads, head_size, total);
+
+  return CUDA_CALL(cudaGetLastError());
+}
+
+template Status LaunchTransposeBSNHtoBNSHWithZeroMask<float>(
+    const float*, float*, const int*, int, int, int, int, cudaStream_t, int);
+template Status LaunchTransposeBSNHtoBNSHWithZeroMask<__half>(
+    const __half*, __half*, const int*, int, int, int, int, cudaStream_t, int);
+template Status LaunchTransposeBSNHtoBNSHWithZeroMask<__nv_bfloat16>(
+    const __nv_bfloat16*, __nv_bfloat16*, const int*, int, int, int, int, cudaStream_t, int);
+
 // Zero output rows fully masked by the intersection of the causal frontier and an
 // explicit additive attention bias (composed is_causal + attn_mask), per onnx#8068
 // "fully-masked-row -> 0" (Bug-2). The MEA/CUTLASS path uses a finite mask sentinel,

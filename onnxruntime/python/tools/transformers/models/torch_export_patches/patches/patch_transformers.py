@@ -3,7 +3,9 @@ import sys
 from dataclasses import dataclass
 from typing import Any
 
+import packaging.version as pv
 import torch
+from transformers import __version__ as transformers_version
 from transformers.cache_utils import Cache, DynamicCache, StaticCache
 from transformers.generation.utils import GenerationMixin
 from transformers.modeling_attn_mask_utils import AttentionMaskConverter
@@ -98,7 +100,11 @@ class patched_DynamicCache:
     `transformers/#36652 <https://github.com/huggingface/transformers/pull/36652>`_.
     """
 
-    _PATCHES_ = ["reorder_cache", "update", "crop", "from_batch_splits", "get_seq_length"]
+    _PATCHES_ = (
+        []
+        if pv.Version(transformers_version) >= pv.Version("5.0")
+        else ["reorder_cache", "update", "crop", "from_batch_splits", "get_seq_length"]
+    )
     _PATCHED_CLASS_ = DynamicCache
 
     def get_seq_length(self, layer_idx: int | None = 0) -> int:
@@ -212,11 +218,15 @@ class patched_GenerationMixin:
     `transformers/#36652 <https://github.com/huggingface/transformers/pull/36652>`_.
     """
 
-    _PATCHES_ = [
-        "_cache_dependant_input_preparation",
-        "_cache_dependant_input_preparation_exporting",
-        "prepare_inputs_for_generation",
-    ]
+    _PATCHES_ = (
+        []
+        if pv.Version(transformers_version) >= pv.Version("5.0")
+        else [
+            "_cache_dependant_input_preparation",
+            "_cache_dependant_input_preparation_exporting",
+            "prepare_inputs_for_generation",
+        ]
+    )
     _PATCHED_CLASS_ = GenerationMixin
 
     def _cache_dependant_input_preparation(
@@ -309,13 +319,11 @@ class patched_GenerationMixin:
                         torch.cond(
                             cache_position[-1] >= input_ids.shape[1],
                             branch_2,
-                            lambda input_ids, cache_position: (
-                                torch.cond(
-                                    input_ids.shape[1] != cache_position.shape[0],
-                                    branch_3,
-                                    (lambda input_ids, cache_position: input_ids),
-                                    [input_ids, cache_position],
-                                )
+                            lambda input_ids, cache_position: torch.cond(
+                                input_ids.shape[1] != cache_position.shape[0],
+                                branch_3,
+                                (lambda input_ids, cache_position: input_ids),
+                                [input_ids, cache_position],
                             ),
                             [input_ids, cache_position],
                         ),

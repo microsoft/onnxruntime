@@ -2,12 +2,18 @@
 // Licensed under the MIT License.
 
 #include "cuda_ep_factory.h"
+#include "cuda_device_mapping.h"
 #include "cuda_ep.h"
+#include "cuda_ep_account_binding.h"
 #include "cuda_plugin_kernels.h"
+#include "contrib_ops/cuda/quantization/matmul_nbits_tactic_cache.h"
 #include "core/common/string_utils.h"
+#include "core/providers/cuda/cuda_allocator.h"
 #include "core/session/onnxruntime_c_api.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include <algorithm>
 #include <cassert>
+#include <charconv>
 #include <cctype>
 #include <cstdint>
 #include <cstring>
@@ -17,6 +23,12 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <thread>
+#include <vector>
+
+#ifdef _WIN32
+#include <cuda.h>
+#endif
 
 namespace onnxruntime {
 namespace cuda_plugin {
@@ -49,8 +61,27 @@ CudaEpFactory::CudaEpFactory(const OrtApi& ort_api, const OrtEpApi& ep_api,
 }
 
 CudaEpFactory::~CudaEpFactory() {
+  // Save any tactic caches of sessions still alive when the factory is released, before worker
+  // threads are stopped or the plugin DLL is unloaded.
+  onnxruntime::contrib::cuda::FlushMatMulNBitsTacticCaches();
+
+  for (auto& [key, entry] : device_cache_) {
+    static_cast<void>(key);
+    for (auto& arena : entry.device_arenas) {
+      if (arena.has_quarantine || arena.abandoned) {
+        // Completion of quarantined work is unknown. Intentionally abandon the arena so its
+        // device regions cannot be freed while the retained stream may still reference them.
+        static_cast<void>(arena.allocator.release());
+      }
+    }
+  }
+
   if (kernel_registry_ != nullptr) {
     ep_api_.ReleaseKernelRegistry(kernel_registry_);
+  }
+
+  for (const auto& entry : runtime_discovered_hardware_devices_) {
+    ep_api_.ReleaseHardwareDevice(entry.second);
   }
 }
 
@@ -97,6 +128,24 @@ const char* ORT_API_CALL CudaEpFactory::GetVersionImpl(const OrtEpFactory* this_
 
 namespace {
 
+// True when the options carry anything besides the EP instance identity that ORT adds to every allocator request.
+bool HasCallerAllocatorOptions(const OrtApi& ort_api, const OrtKeyValuePairs* options) {
+  if (options == nullptr) return false;
+  const char* const* keys = nullptr;
+  const char* const* values = nullptr;
+  size_t count = 0;
+  ort_api.GetKeyValuePairs(options, &keys, &values, &count);
+  for (size_t i = 0; i < count; ++i) {
+    if (std::strcmp(keys[i], kEpInstanceIdOptionKey) != 0) return true;
+  }
+  return false;
+}
+
+// An account without a finite limit or budget group cannot drop or add a limit when it is bound by mistake.
+bool IsUnrestrictedAccount(const SessionBudgetAccount& account) {
+  return account.GetAccountStats().limit == std::numeric_limits<size_t>::max() && account.GetBudgetGroup() == nullptr;
+}
+
 std::string ToUpper(std::string value) {
   std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
     return static_cast<char>(std::toupper(c));
@@ -138,6 +187,44 @@ bool IsCudaMempoolUnsupportedStatus(const OrtApi& ort_api, const OrtStatus* stat
   return msg != nullptr &&
          (std::strstr(msg, "cudaErrorNotSupported") != nullptr ||
           std::strstr(msg, "operation not supported") != nullptr);
+}
+
+std::string GetCudaDeviceIdentity(int cuda_ordinal) {
+#ifdef _WIN32
+  CUdevice device;
+  char luid[8]{};
+  unsigned int node_mask = 0;
+  if (cuDeviceGet(&device, cuda_ordinal) == CUDA_SUCCESS &&
+      cuDeviceGetLuid(luid, &node_mask, device) == CUDA_SUCCESS) {
+    uint64_t luid_value = 0;
+    static_assert(sizeof(luid_value) == sizeof(luid));
+    std::memcpy(&luid_value, luid, sizeof(luid_value));
+    return std::to_string(luid_value);
+  }
+#else
+  char pci_bus_id[32]{};
+  if (cudaDeviceGetPCIBusId(pci_bus_id, sizeof(pci_bus_id), cuda_ordinal) == cudaSuccess) {
+    return NormalizePciBusId(pci_bus_id);
+  }
+#endif
+
+  return {};
+}
+
+std::string GetHardwareDeviceIdentity(const OrtApi& ort_api,
+                                      const OrtHardwareDevice& device) {
+  const OrtKeyValuePairs* metadata = ort_api.HardwareDevice_Metadata(&device);
+  if (metadata == nullptr) {
+    return {};
+  }
+
+#ifdef _WIN32
+  const char* luid = ort_api.GetKeyValue(metadata, "LUID");
+  return luid == nullptr ? std::string{} : std::string{luid};
+#else
+  const char* pci_bus_id = ort_api.GetKeyValue(metadata, "pci_bus_id");
+  return pci_bus_id == nullptr ? std::string{} : NormalizePciBusId(pci_bus_id);
+#endif
 }
 
 }  // namespace
@@ -187,7 +274,90 @@ OrtStatus* ORT_API_CALL CudaEpFactory::GetSupportedDevicesImpl(
     cuda_device_count = 0;  // no CUDA devices available
   }
 
-  int cuda_device_index = 0;
+  InlinedVector<std::string> cuda_device_identities;
+  InlinedVector<uint8_t> assigned_cuda_ordinals;
+  cuda_device_identities.reserve(cuda_device_count);
+  assigned_cuda_ordinals.reserve(cuda_device_count);
+  for (int cuda_ordinal = 0; cuda_ordinal < cuda_device_count; ++cuda_ordinal) {
+    cuda_device_identities.emplace_back(GetCudaDeviceIdentity(cuda_ordinal));
+    assigned_cuda_ordinals.push_back(0);
+  }
+
+  auto add_ep_device = [&](const OrtHardwareDevice& device, int cuda_ordinal) -> OrtStatus* {
+    const auto device_key = CudaEpFactory::MakeDeviceKey(factory->ort_api_, device, cuda_ordinal);
+    DeviceCacheEntry* cache_entry = nullptr;
+    {
+      std::lock_guard<std::mutex> lock(factory->device_cache_mutex_);
+      auto [it, inserted] = factory->device_cache_.try_emplace(device_key);
+      if (inserted) {
+        it->second.cuda_device_id = cuda_ordinal;
+        it->second.device_memory_info = Ort::MemoryInfo{"Cuda",
+                                                        OrtMemoryInfoDeviceType_GPU,
+                                                        factory->vendor_id_,
+                                                        static_cast<uint32_t>(cuda_ordinal),
+                                                        OrtDeviceMemoryType_DEFAULT,
+                                                        /*alignment is default*/ 0,
+                                                        OrtAllocatorType::OrtDeviceAllocator};
+        it->second.pinned_memory_info = Ort::MemoryInfo{"CudaPinned",
+                                                        OrtAllocatorType::OrtDeviceAllocator,
+                                                        cuda_ordinal,
+                                                        OrtMemType::OrtMemTypeCPU};
+      }
+
+      cache_entry = &it->second;
+      factory->ordinal_to_device_key_[cuda_ordinal] = device_key;
+    }
+
+    OrtKeyValuePairs* ep_metadata = nullptr;
+    OrtKeyValuePairs* ep_options = nullptr;
+    factory->ort_api_.CreateKeyValuePairs(&ep_metadata);
+    factory->ort_api_.CreateKeyValuePairs(&ep_options);
+    factory->ort_api_.AddKeyValuePair(ep_metadata, "cuda_device_id", std::to_string(cuda_ordinal).c_str());
+    factory->ort_api_.AddKeyValuePair(ep_options, "device_id", std::to_string(cuda_ordinal).c_str());
+
+    cudaDeviceProp prop;
+    if (cudaGetDeviceProperties(&prop, cuda_ordinal) == cudaSuccess) {
+      factory->ort_api_.AddKeyValuePair(ep_metadata, "cuda_device_name", prop.name);
+      factory->ort_api_.AddKeyValuePair(
+          ep_metadata, "cuda_compute_capability",
+          (std::to_string(prop.major) + "." + std::to_string(prop.minor)).c_str());
+    }
+
+    OrtEpDevice* ep_device = nullptr;
+    auto* status = factory->ep_api_.CreateEpDevice(factory, &device, ep_metadata, ep_options,
+                                                   &ep_device);
+    factory->ort_api_.ReleaseKeyValuePairs(ep_metadata);
+    factory->ort_api_.ReleaseKeyValuePairs(ep_options);
+
+    if (status != nullptr) {
+      return status;
+    }
+
+    auto release_current_ep_device = [factory](OrtEpDevice* device_to_release) {
+      factory->ep_api_.ReleaseEpDevice(device_to_release);
+    };
+    std::unique_ptr<OrtEpDevice, decltype(release_current_ep_device)> ep_device_guard(
+        ep_device, release_current_ep_device);
+
+    status = factory->ep_api_.EpDevice_AddAllocatorInfo(ep_device, cache_entry->device_memory_info);
+    if (status != nullptr) {
+      return status;
+    }
+
+    status = factory->ep_api_.EpDevice_AddAllocatorInfo(ep_device, cache_entry->pinned_memory_info);
+    if (status != nullptr) {
+      return status;
+    }
+
+    ep_devices[num_ep_devices++] = ep_device_guard.release();
+    return nullptr;
+  };
+
+  InlinedVector<const OrtHardwareDevice*> hardware_devices_without_identity;
+  hardware_devices_without_identity.reserve(num_devices);
+
+  // Reserve all exact hardware identity matches before considering devices
+  // without identity, so an unknown device cannot consume a later exact match.
   for (size_t i = 0; i < num_devices && num_ep_devices < max_ep_devices; ++i) {
     const OrtHardwareDevice& device = *hw_devices[i];
     auto hw_type = factory->ort_api_.HardwareDevice_Type(&device);
@@ -201,92 +371,111 @@ OrtStatus* ORT_API_CALL CudaEpFactory::GetSupportedDevicesImpl(
         continue;  // Skip non-NVIDIA GPUs
       }
 
-      // CUDA uses contiguous ordinals for CUDA-visible NVIDIA devices. Build that
-      // mapping from the filtered hardware-device list instead of relying on the
-      // ORT hardware device id, which is not guaranteed to be a CUDA ordinal.
-      int current_device_id = cuda_device_index++;
-
-      // Validate the assigned ordinal is within the range of CUDA-visible devices.
-      // If hardware enumeration reports GPUs not visible to CUDA (e.g. due to
-      // CUDA_VISIBLE_DEVICES), skip them to avoid failures in allocator/stream creation.
-      if (current_device_id >= cuda_device_count) {
+      const std::string hardware_device_identity =
+          GetHardwareDeviceIdentity(factory->ort_api_, device);
+      if (hardware_device_identity.empty()) {
+        hardware_devices_without_identity.push_back(&device);
         continue;
       }
-      const auto device_key = CudaEpFactory::MakeDeviceKey(factory->ort_api_, device, current_device_id);
-      DeviceCacheEntry* cache_entry = nullptr;
+
+      auto cuda_ordinal = FindCudaOrdinalForHardwareDeviceIdentity(
+          hardware_device_identity, cuda_device_identities, assigned_cuda_ordinals);
+      if (!cuda_ordinal.has_value()) {
+        continue;
+      }
+
+      assigned_cuda_ordinals[*cuda_ordinal] = 1;
+      if (auto* status = add_ep_device(device, *cuda_ordinal); status != nullptr) {
+        return release_ep_devices(status);
+      }
+    }
+  }
+
+  // Preserve the previous positional behavior only when both sides lack a
+  // platform identity. Never assign an unidentified hardware device to a CUDA
+  // ordinal with a known identity.
+  for (const OrtHardwareDevice* device : hardware_devices_without_identity) {
+    if (num_ep_devices >= max_ep_devices) {
+      break;
+    }
+
+    auto cuda_ordinal =
+        FindCudaOrdinalWithoutIdentity(cuda_device_identities, assigned_cuda_ordinals);
+    if (!cuda_ordinal.has_value()) {
+      continue;
+    }
+
+    assigned_cuda_ordinals[*cuda_ordinal] = 1;
+    if (auto* status = add_ep_device(*device, *cuda_ordinal); status != nullptr) {
+      return release_ep_devices(status);
+    }
+  }
+
+  // Platform discovery may not expose every CUDA-visible device. In particular, WSL
+  // provides CUDA through /dev/dxg but sysfs reports Microsoft synthetic adapters,
+  // which the NVIDIA factory must not claim. Create descriptors for any remaining
+  // CUDA ordinals using the CUDA runtime as the authoritative device source.
+  for (int cuda_ordinal = 0;
+       cuda_ordinal < cuda_device_count && num_ep_devices < max_ep_devices;
+       ++cuda_ordinal) {
+    if (assigned_cuda_ordinals[cuda_ordinal] != 0) {
+      continue;
+    }
+
+    OrtHardwareDevice* runtime_device = nullptr;
+    {
+      std::lock_guard<std::mutex> lock(factory->device_cache_mutex_);
+      auto it = factory->runtime_discovered_hardware_devices_.find(cuda_ordinal);
+      if (it != factory->runtime_discovered_hardware_devices_.end()) {
+        runtime_device = it->second;
+      }
+    }
+
+    if (runtime_device == nullptr) {
+      OrtKeyValuePairs* hw_metadata = nullptr;
+      factory->ort_api_.CreateKeyValuePairs(&hw_metadata);
+      factory->ort_api_.AddKeyValuePair(hw_metadata, "cuda_runtime_discovered", "1");
+
+      cudaDeviceProp prop;
+      if (cudaGetDeviceProperties(&prop, cuda_ordinal) == cudaSuccess) {
+        factory->ort_api_.AddKeyValuePair(hw_metadata, "Discrete",
+                                          prop.integrated == 0 ? "1" : "0");
+      }
+
+      if (!cuda_device_identities[cuda_ordinal].empty()) {
+#ifdef _WIN32
+        factory->ort_api_.AddKeyValuePair(hw_metadata, "LUID",
+                                          cuda_device_identities[cuda_ordinal].c_str());
+#else
+        factory->ort_api_.AddKeyValuePair(hw_metadata, "pci_bus_id",
+                                          cuda_device_identities[cuda_ordinal].c_str());
+#endif
+      }
+
+      auto* status = factory->ep_api_.CreateHardwareDevice(
+          OrtHardwareDeviceType::OrtHardwareDeviceType_GPU,
+          factory->vendor_id_,
+          /*device_id*/ 0,
+          factory->vendor_.c_str(),
+          hw_metadata,
+          &runtime_device);
+      factory->ort_api_.ReleaseKeyValuePairs(hw_metadata);
+      if (status != nullptr) {
+        return release_ep_devices(status);
+      }
+
       {
         std::lock_guard<std::mutex> lock(factory->device_cache_mutex_);
-        auto [it, inserted] = factory->device_cache_.try_emplace(device_key);
-        if (inserted) {
-          it->second.cuda_device_id = current_device_id;
-          it->second.device_memory_info = Ort::MemoryInfo{"Cuda",
-                                                          OrtMemoryInfoDeviceType_GPU,
-                                                          factory->vendor_id_,
-                                                          static_cast<uint32_t>(current_device_id),
-                                                          OrtDeviceMemoryType_DEFAULT,
-                                                          /*alignment is default*/ 0,
-                                                          OrtAllocatorType::OrtDeviceAllocator};
-          it->second.pinned_memory_info = Ort::MemoryInfo{"CudaPinned",
-                                                          OrtAllocatorType::OrtDeviceAllocator,
-                                                          current_device_id,
-                                                          OrtMemType::OrtMemTypeCPU};
-        }
-
-        cache_entry = &it->second;
-        current_device_id = cache_entry->cuda_device_id;
-        // Build ordinal → key mapping for CreateAllocatorImpl lookups.
-        factory->ordinal_to_device_key_[current_device_id] = device_key;
-      }
-
-      OrtKeyValuePairs* ep_metadata = nullptr;
-      OrtKeyValuePairs* ep_options = nullptr;
-      factory->ort_api_.CreateKeyValuePairs(&ep_metadata);
-      factory->ort_api_.CreateKeyValuePairs(&ep_options);
-      factory->ort_api_.AddKeyValuePair(ep_metadata, "cuda_device_id", std::to_string(current_device_id).c_str());
-      factory->ort_api_.AddKeyValuePair(ep_options, "device_id", std::to_string(current_device_id).c_str());
-
-      // Get CUDA device properties for metadata
-      {
-        cudaDeviceProp prop;
-        if (cudaGetDeviceProperties(&prop, current_device_id) == cudaSuccess) {
-          factory->ort_api_.AddKeyValuePair(ep_metadata, "cuda_device_name", prop.name);
-          factory->ort_api_.AddKeyValuePair(
-              ep_metadata, "cuda_compute_capability",
-              (std::to_string(prop.major) + "." + std::to_string(prop.minor)).c_str());
+        auto [it, inserted] = factory->runtime_discovered_hardware_devices_.emplace(cuda_ordinal, runtime_device);
+        if (!inserted) {
+          factory->ep_api_.ReleaseHardwareDevice(runtime_device);
+          runtime_device = it->second;
         }
       }
+    }
 
-      OrtEpDevice* ep_device = nullptr;
-      auto* status = factory->ep_api_.CreateEpDevice(factory, &device, ep_metadata, ep_options,
-                                                     &ep_device);
-      factory->ort_api_.ReleaseKeyValuePairs(ep_metadata);
-      factory->ort_api_.ReleaseKeyValuePairs(ep_options);
-
-      if (status != nullptr) {
-        return release_ep_devices(status);
-      }
-
-      auto release_current_ep_device = [factory](OrtEpDevice* device) {
-        factory->ep_api_.ReleaseEpDevice(device);
-      };
-      // ep_device_guard owns the current device. On error, release_ep_devices cleans up
-      // previously committed devices [0, num_ep_devices), while the guard cleans up this one.
-      std::unique_ptr<OrtEpDevice, decltype(release_current_ep_device)> ep_device_guard(ep_device, release_current_ep_device);
-
-      // Register allocator info for GPU device memory
-      status = factory->ep_api_.EpDevice_AddAllocatorInfo(ep_device, cache_entry->device_memory_info);
-      if (status != nullptr) {
-        return release_ep_devices(status);
-      }
-
-      // Register allocator info for pinned host memory associated with the
-      // same CUDA ordinal as the device allocator above.
-      status = factory->ep_api_.EpDevice_AddAllocatorInfo(ep_device, cache_entry->pinned_memory_info);
-      if (status != nullptr) {
-        return release_ep_devices(status);
-      }
-
-      ep_devices[num_ep_devices++] = ep_device_guard.release();
+    if (auto* status = add_ep_device(*runtime_device, cuda_ordinal); status != nullptr) {
+      return release_ep_devices(status);
     }
   }
 
@@ -502,6 +691,20 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
   const std::string gpu_external_alloc_key = ep_options_prefix + "gpu_external_alloc";
   const std::string gpu_external_free_key = ep_options_prefix + "gpu_external_free";
   const std::string gpu_external_empty_cache_key = ep_options_prefix + "gpu_external_empty_cache";
+  // The per-session device memory limit is a session-level key shared with the bundled CUDA EP rather than an
+  // EP-scoped option.
+  const auto device_mem_limit = try_get_session_config(kOrtSessionOptionsMoeOffloadGpuDeviceMemLimit);
+  size_t device_limit_bytes = 0;
+  if (device_mem_limit) {
+    const auto parsed = std::from_chars(device_mem_limit->data(),
+                                        device_mem_limit->data() + device_mem_limit->size(),
+                                        device_limit_bytes);
+    if (parsed.ec != std::errc{} || parsed.ptr != device_mem_limit->data() + device_mem_limit->size()) {
+      return factory->ort_api_.CreateStatus(
+          ORT_INVALID_ARGUMENT,
+          (std::string(kOrtSessionOptionsMoeOffloadGpuDeviceMemLimit) + " must be a nonnegative byte count").c_str());
+    }
+  }
 
   // Prefer canonical EP-scoped keys, then fall back to historical flat session config names.
   read_session_config_bool(
@@ -533,6 +736,15 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
   read_session_config_non_negative_int(
       {min_runs_key, "ep.cuda.min_num_runs_before_cuda_graph_capture"},
       config.min_num_runs_before_cuda_graph_capture);
+
+  const bool use_env_allocators =
+      try_get_session_config("session.use_env_allocators").value_or("0") == "1";
+  if (config.enable_cuda_graph && use_env_allocators) {
+    return factory->ort_api_.CreateStatus(
+        ORT_INVALID_ARGUMENT,
+        "CUDA graph capture is incompatible with session.use_env_allocators=1 because captured graphs require a "
+        "session-scoped device arena.");
+  }
 
   // --- Stream and allocator options ---
   read_session_config_bool(
@@ -627,7 +839,29 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
   }
 
   const OrtLogger& ep_logger = logger ? *logger : factory->default_logger_;
+  const bool has_session_budget =
+      (device_limit_bytes > 0 && device_limit_bytes != std::numeric_limits<size_t>::max());
+  if (has_session_budget && (config.external_alloc != nullptr || config.external_free != nullptr)) {
+    return factory->ort_api_.CreateStatus(
+        ORT_INVALID_ARGUMENT,
+        (std::string(kOrtSessionOptionsMoeOffloadGpuDeviceMemLimit) + " does not support external CUDA allocators")
+            .c_str());
+  }
+  const auto budget = GetCudaDeviceMemoryBudget(static_cast<OrtDevice::DeviceId>(config.device_id));
+  config.device_mem_limit = device_limit_bytes;
+  config.budget_account = std::make_shared<SessionBudgetAccount>(
+      budget, has_session_budget ? device_limit_bytes : std::numeric_limits<size_t>::max());
+  if (auto group_opt = try_get_session_config("session.moe.offload.budget_group");
+      group_opt.has_value() && !group_opt->empty()) {
+    config.budget_account->SetBudgetGroup(GetCudaBudgetGroupByName(
+        config.device_id, *group_opt, has_session_budget ? device_limit_bytes : 0));
+  }
   auto actual_ep = std::make_unique<CudaEp>(*factory, config, ep_logger);
+  if (DeviceCacheEntry* entry = factory->FindDeviceCacheEntryByOrdinal(config.device_id)) {
+    std::lock_guard<std::mutex> lock(entry->arena_mutex);
+    entry->pending_session_accounts[static_cast<const OrtEp*>(actual_ep.get())] = {config.budget_account,
+                                                                                   std::this_thread::get_id()};
+  }
   *ep = actual_ep.release();
 
   return nullptr;
@@ -636,7 +870,8 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
 }
 
 /*static*/
-void ORT_API_CALL CudaEpFactory::ReleaseEpImpl(OrtEpFactory* /*this_ptr*/, OrtEp* ep) noexcept {
+void ORT_API_CALL CudaEpFactory::ReleaseEpImpl(OrtEpFactory* this_ptr, OrtEp* ep) noexcept {
+  static_cast<CudaEpFactory*>(this_ptr)->ForgetPendingSessionAccount(ep);
   delete static_cast<CudaEp*>(ep);
 }
 
@@ -676,13 +911,90 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateAllocatorImpl(
 
     // Check if the caller requested CUDA native mempool instead of the BFC arena.
     bool use_mempool = false;
+    bool has_explicit_limit_opt = false;
+    size_t explicit_session_limit = std::numeric_limits<size_t>::max();
+    std::optional<uintptr_t> owning_ep;
+    const bool has_caller_options = HasCallerAllocatorOptions(factory.ort_api_, allocator_options);
     if (allocator_options) {
+      if (const char* ep_id = factory.ort_api_.GetKeyValue(allocator_options, kEpInstanceIdOptionKey);
+          ep_id != nullptr && ep_id[0] != '\0') {
+        try {
+          owning_ep = static_cast<uintptr_t>(std::stoull(std::string(ep_id)));
+        } catch (...) {
+          owning_ep.reset();
+        }
+      }
       const char* v = factory.ort_api_.GetKeyValue(
           allocator_options, CudaMempoolOrtAllocator::ConfigKeyNames::UseCudaMempool);
       use_mempool = (v != nullptr && std::string(v) == "1");
+      // Explicit limit for requests that no OrtEp owns. The host fills it from session.moe.offload.gpu_device_mem_limit;
+      // callers of CreateSharedAllocator can pass it themselves.
+      if (const char* lim_v = factory.ort_api_.GetKeyValue(allocator_options, "gpu_device_mem_limit");
+          lim_v != nullptr && lim_v[0] != '\0') {
+        has_explicit_limit_opt = true;
+        try {
+          const uint64_t parsed = std::stoull(std::string(lim_v));
+          explicit_session_limit = (parsed > 0) ? static_cast<size_t>(parsed) : std::numeric_limits<size_t>::max();
+        } catch (...) {
+          explicit_session_limit = std::numeric_limits<size_t>::max();
+        }
+      }
     }
 
     std::lock_guard<std::mutex> lock{entry->arena_mutex};
+
+    // The account is matched by the identity of the owning OrtEp, never by limit or queue order: two sessions with
+    // equal limits would otherwise be able to swap accounts and charge each other's budget group. Hosts that predate
+    // ep_instance_id are matched by DecideAccountBinding, which rejects requests it cannot attribute instead of
+    // letting a limited session run without its limit.
+    std::vector<PendingAccountCandidate> pending_candidates;
+    pending_candidates.reserve(entry->pending_session_accounts.size());
+    for (const auto& [pending_ep, pending] : entry->pending_session_accounts) {
+      pending_candidates.push_back({reinterpret_cast<uintptr_t>(pending_ep), IsUnrestrictedAccount(*pending.account),
+                                    pending.creator_thread});
+    }
+    const AccountBindingDecision binding = DecideAccountBinding(owning_ep, has_explicit_limit_opt,
+                                                                std::this_thread::get_id(), pending_candidates);
+
+    std::shared_ptr<SessionBudgetAccount> session_account;
+    switch (binding.action) {
+      case AccountBindingAction::kBindPending:
+        if (auto it = entry->pending_session_accounts.find(reinterpret_cast<const OrtEp*>(binding.owner));
+            it != entry->pending_session_accounts.end()) {
+          session_account = std::move(it->second.account);
+          entry->pending_session_accounts.erase(it);
+        }
+        break;
+      case AccountBindingAction::kCreateExplicit:
+        session_account = std::make_shared<SessionBudgetAccount>(
+            GetCudaDeviceMemoryBudget(static_cast<OrtDevice::DeviceId>(req_device_id)), explicit_session_limit);
+        break;
+      case AccountBindingAction::kRejectAmbiguous:
+        return factory.ort_api_.CreateStatus(
+            ORT_INVALID_ARGUMENT,
+            (std::string("The CUDA plugin EP cannot tell which session an allocator request belongs to: the host "
+                         "did not provide the '") +
+             kEpInstanceIdOptionKey +
+             "' allocator option, and several sessions are being created on this device at the same time while at "
+             "least one of them has a session.moe.offload.gpu_device_mem_limit or session.moe.offload.budget_group. "
+             "Create such sessions one at a time, or use an ONNX Runtime host that provides it.")
+                .c_str());
+      case AccountBindingAction::kCreateFresh:
+        break;
+    }
+    if (!session_account) {
+      const auto budget = GetCudaDeviceMemoryBudget(static_cast<OrtDevice::DeviceId>(req_device_id));
+      const size_t pending_limit = (!has_caller_options && budget)
+                                       ? budget->ConsumePendingSessionLimit()
+                                       : std::numeric_limits<size_t>::max();
+      session_account = std::make_shared<SessionBudgetAccount>(budget, pending_limit);
+    }
+
+    if (use_mempool && session_account->GetAccountStats().limit != std::numeric_limits<size_t>::max()) {
+      return factory.ort_api_.CreateStatus(
+          ORT_INVALID_ARGUMENT,
+          (std::string(kOrtSessionOptionsMoeOffloadGpuDeviceMemLimit) + " does not support CUDA memory pools").c_str());
+    }
 
     if (use_mempool) {
       if (!entry->mempool_allocator) {
@@ -709,21 +1021,17 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateAllocatorImpl(
       }
     }
 
-    if (!entry->device_arena) {
-      AllocatorUniquePtr raw_allocator(
-          new CudaDeviceAllocator(memory_info, req_device_id),
-          [](OrtAllocator* p) { delete static_cast<CudaDeviceAllocator*>(p); });
-      status = CudaArenaAllocator::Create(CudaAllocatorKind::kDevice, memory_info,
-                                          std::move(raw_allocator), allocator_options,
-                                          factory.ort_api_, factory.default_logger_,
-                                          entry->device_arena);
-      if (status != nullptr) return status;
-    } else if (allocator_options) {
-      LogWarning(factory.ort_api_, factory.default_logger_, ORT_FILE, __LINE__, __FUNCTION__,
-                 "CUDA device arena already exists; session arena options are ignored.");
-    }
-    ++entry->num_device_arena_users;
-    *allocator = entry->device_arena.get();
+    const SessionBudgetAccount* arena_owner = session_account.get();
+    AllocatorUniquePtr raw_allocator(
+        new CudaDeviceAllocator(memory_info, req_device_id, factory.ort_api_, std::move(session_account)),
+        [](OrtAllocator* p) { delete static_cast<CudaDeviceAllocator*>(p); });
+    std::unique_ptr<CudaArenaAllocator> arena;
+    status = CudaArenaAllocator::Create(CudaAllocatorKind::kDevice, memory_info,
+                                        std::move(raw_allocator), allocator_options,
+                                        factory.ort_api_, factory.default_logger_, arena);
+    if (status != nullptr) return status;
+    entry->device_arenas.push_back(DeviceArena{std::move(arena), false, false, arena_owner, false});
+    *allocator = entry->device_arenas.back().allocator.get();
     return nullptr;
   }
 
@@ -749,7 +1057,7 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateAllocatorImpl(
                                           factory.ort_api_, factory.default_logger_,
                                           entry->pinned_arena);
       if (status != nullptr) return status;
-    } else if (allocator_options) {
+    } else if (HasCallerAllocatorOptions(factory.ort_api_, allocator_options)) {
       LogWarning(factory.ort_api_, factory.default_logger_, ORT_FILE, __LINE__, __FUNCTION__,
                  "CUDA pinned arena already exists; session arena options are ignored.");
     }
@@ -777,14 +1085,15 @@ void ORT_API_CALL CudaEpFactory::ReleaseAllocatorImpl(
     std::lock_guard<std::mutex> cache_lock(factory->device_cache_mutex_);
     for (auto& [key, entry] : factory->device_cache_) {
       std::lock_guard<std::mutex> lock{entry.arena_mutex};
-      if (allocator == entry.device_arena.get()) {
-        if (entry.num_device_arena_users <= 0) {
-          LogWarning(factory->ort_api_, factory->default_logger_, ORT_FILE, __LINE__,
-                     "CudaEpFactory::ReleaseAllocatorImpl",
-                     "Refcount underflow in ReleaseAllocatorImpl (device_arena). Ignoring release.");
-          return;
+      auto device_arena = std::find_if(entry.device_arenas.begin(), entry.device_arenas.end(),
+                                       [allocator](const DeviceArena& arena) {
+                                         return arena.allocator.get() == allocator;
+                                       });
+      if (device_arena != entry.device_arenas.end()) {
+        if (device_arena->has_quarantine || device_arena->abandoned) {
+          static_cast<void>(device_arena->allocator.release());
         }
-        if (--entry.num_device_arena_users == 0) entry.device_arena.reset();
+        entry.device_arenas.erase(device_arena);
         return;
       }
       if (allocator == entry.pinned_arena.get()) {
@@ -892,21 +1201,153 @@ CudaEpFactory::DeviceCacheEntry* CudaEpFactory::FindDeviceCacheEntryByOrdinal(in
   return FindDeviceCacheEntryByOrdinalLocked(cuda_ordinal);
 }
 
-CudaArenaAllocator* CudaEpFactory::GetDeviceArenaForDevice(int device_id) {
-  // Pointer stability: std::unordered_map is node-based; entries are never erased.
-  DeviceCacheEntry* entry = FindDeviceCacheEntryByOrdinal(device_id);
-  if (!entry) return nullptr;
-  std::lock_guard<std::mutex> lock{entry->arena_mutex};
-  return entry->device_arena.get();
-}
-
 OrtStatus* CudaEpFactory::ResetDeviceArenaChunksUsingStream(int device_id,
                                                             const OrtSyncStreamImpl* stream_impl) {
-  DeviceCacheEntry* entry = FindDeviceCacheEntryByOrdinal(device_id);
-  if (!entry) return nullptr;
-  std::lock_guard<std::mutex> lock{entry->arena_mutex};
-  if (!entry->device_arena) return nullptr;
-  return entry->device_arena->ResetChunksUsingStream(stream_impl);
+  OrtStatus* status = nullptr;
+  ORT_TRY {
+    DeviceCacheEntry* entry = FindDeviceCacheEntryByOrdinal(device_id);
+    if (!entry) return nullptr;
+    std::lock_guard<std::mutex> lock{entry->arena_mutex};
+    for (auto& arena : entry->device_arenas) {
+      status = arena.allocator->ResetChunksUsingStream(stream_impl);
+      if (status != nullptr) return status;
+    }
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = ort_api_.CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
+    });
+  }
+  ORT_CATCH(...) {
+    status = ort_api_.CreateStatus(ORT_RUNTIME_EXCEPTION, "ResetDeviceArenaChunksUsingStream failed.");
+  }
+  return status;
+}
+
+OrtStatus* CudaEpFactory::QuarantineDeviceArenaChunksUsingStream(
+    int device_id, const OrtSyncStreamImpl* stream_impl) {
+  OrtStatus* status = nullptr;
+  ORT_TRY {
+    DeviceCacheEntry* entry = FindDeviceCacheEntryByOrdinal(device_id);
+    if (!entry) return nullptr;
+    std::lock_guard<std::mutex> lock{entry->arena_mutex};
+    for (auto& arena : entry->device_arenas) {
+      bool quarantined = false;
+      status = arena.allocator->QuarantineChunksUsingStream(stream_impl, quarantined);
+      if (status != nullptr) return status;
+      arena.has_quarantine = arena.has_quarantine || quarantined;
+    }
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = ort_api_.CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
+    });
+  }
+  ORT_CATCH(...) {
+    status = ort_api_.CreateStatus(ORT_RUNTIME_EXCEPTION, "QuarantineDeviceArenaChunksUsingStream failed.");
+  }
+  return status;
+}
+
+OrtStatus* CudaEpFactory::QuarantineAndAbandonDeviceArena(
+    int device_id, const OrtSyncStreamImpl* stream_impl) noexcept {
+  OrtStatus* status = nullptr;
+  ORT_TRY {
+    std::lock_guard<std::mutex> cache_lock(device_cache_mutex_);
+    DeviceCacheEntry* entry = FindDeviceCacheEntryByOrdinalLocked(device_id);
+    if (!entry) return nullptr;
+    std::lock_guard<std::mutex> arena_lock{entry->arena_mutex};
+
+    for (auto& arena : entry->device_arenas) {
+      arena.allocator->Abandon();
+      arena.abandoned = true;
+    }
+
+    for (auto& arena : entry->device_arenas) {
+      bool quarantined = false;
+      status = arena.allocator->QuarantineChunksUsingStream(stream_impl, quarantined);
+      arena.has_quarantine = arena.has_quarantine || quarantined;
+      if (status != nullptr) return status;
+    }
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = ort_api_.CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
+    });
+  }
+  ORT_CATCH(...) {
+    status = ort_api_.CreateStatus(ORT_RUNTIME_EXCEPTION, "QuarantineAndAbandonDeviceArena failed.");
+  }
+  return status;
+}
+
+void CudaEpFactory::AbandonDeviceArena(int device_id) noexcept {
+  ORT_TRY {
+    std::lock_guard<std::mutex> cache_lock(device_cache_mutex_);
+    DeviceCacheEntry* entry = FindDeviceCacheEntryByOrdinalLocked(device_id);
+    if (!entry) return;
+    std::lock_guard<std::mutex> arena_lock{entry->arena_mutex};
+    for (auto& arena : entry->device_arenas) {
+      arena.allocator->Abandon();
+      arena.abandoned = true;
+    }
+  }
+  ORT_CATCH(...) {
+    // Last-resort path from a noexcept release callback. There is no safe way to
+    // free an arena whose stream completion and chunk detachment are both unknown.
+  }
+}
+
+void CudaEpFactory::ShrinkEligibleDeviceArenas(int device_id, const SessionBudgetAccount* owner) noexcept {
+  ORT_TRY {
+    DeviceCacheEntry* entry = FindDeviceCacheEntryByOrdinal(device_id);
+    if (!entry || owner == nullptr) return;
+    bool shrunk = false;
+    {
+      std::lock_guard<std::mutex> arena_lock{entry->arena_mutex};
+      for (auto& arena : entry->device_arenas) {
+        if (arena.owner == owner && !arena.abandoned && !arena.has_quarantine && !arena.graph_capture_started &&
+            arena.allocator && arena.allocator->IsShrinkEnabled()) {
+          OrtStatus* st = arena.allocator->Shrink(arena.allocator.get());
+          if (st != nullptr) {
+            ort_api_.ReleaseStatus(st);
+          }
+          shrunk = true;
+        }
+      }
+    }
+    if (shrunk) {
+      ::onnxruntime::cuda::NotifyQMoEDeviceArenasShrunk(device_id);
+    }
+  }
+  ORT_CATCH(...) {
+  }
+}
+
+void CudaEpFactory::MarkSessionGraphCapture(int device_id, const SessionBudgetAccount* owner) noexcept {
+  ORT_TRY {
+    DeviceCacheEntry* entry = FindDeviceCacheEntryByOrdinal(device_id);
+    if (!entry || owner == nullptr) return;
+    std::lock_guard<std::mutex> arena_lock{entry->arena_mutex};
+    for (auto& arena : entry->device_arenas) {
+      if (arena.owner == owner) arena.graph_capture_started = true;
+    }
+  }
+  ORT_CATCH(...) {
+  }
+}
+
+void CudaEpFactory::ForgetPendingSessionAccount(const OrtEp* ep) noexcept {
+  ORT_TRY {
+    std::lock_guard<std::mutex> lock(device_cache_mutex_);
+    for (auto& [key, entry] : device_cache_) {
+      static_cast<void>(key);
+      std::lock_guard<std::mutex> arena_lock{entry.arena_mutex};
+      entry.pending_session_accounts.erase(ep);
+    }
+  }
+  ORT_CATCH(...) {
+  }
 }
 
 }  // namespace cuda_plugin

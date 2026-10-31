@@ -9,6 +9,22 @@
 namespace onnxruntime {
 namespace webgpu {
 
+Status ConvTranspose3DProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  const auto& x = shader.AddInput("x");
+  const auto& w = shader.AddInput("w");
+  const auto& output = shader.AddOutput("output");
+  const auto* bias = has_bias_ ? &shader.AddInput("bias") : nullptr;
+  return WGSL_TEMPLATE_APPLY(shader, "nn/conv_transpose3d.wgsl.template",
+                             WGSL_TEMPLATE_PARAMETER(components, components_),
+                             WGSL_TEMPLATE_PARAMETER(has_bias, has_bias_),
+                             WGSL_TEMPLATE_PARAMETER(is_channels_last, is_channels_last_),
+                             WGSL_TEMPLATE_PARAMETER(is_prepacked, is_prepacked_),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(bias, bias),
+                             WGSL_TEMPLATE_VARIABLE(output, output),
+                             WGSL_TEMPLATE_VARIABLE(w, w),
+                             WGSL_TEMPLATE_VARIABLE(x, x));
+}
+
 Status ConvTranspose2DProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& dy = shader.AddInput("dy", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& w = shader.AddInput("w", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
@@ -51,7 +67,8 @@ Status ConvTranspose2DProgram::GenerateShaderCode(ShaderHelper& shader) const {
         ss << "let wValue = " << w.GetByIndices("w_indices_t(u32(wRPerm), u32(wCPerm), inputChannel, wOutChannel / " + std::to_string(b_components_) + ")") << ";\n"
            << "dotProd = dotProd + xValue * wValue;\n";
       } else if (a_components_ == b_components_ && components_ == 1) {
-        ss << "let wValue = " << w.GetByIndices("w_indices_t(u32(wRPerm), u32(wCPerm), inputChannel, wOutChannel)") << ";\n"
+        // With one output channel per group, weight vectors span input channels.
+        ss << "let wValue = " << w.GetByIndices("w_indices_t(u32(wRPerm), u32(wCPerm), inputChannel / " + std::to_string(b_components_) + ", wOutChannel)") << ";\n"
            << "dotProd = dotProd + dot(xValue, wValue);\n";
       } else {
         for (uint32_t i = 0; i < a_components_; ++i) {
@@ -130,7 +147,7 @@ Status ConvTranspose2DProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "    var inputChannel = groupId * uniforms.input_channels_per_group;\n";
   if (pack_input_as4_) {
     shader.MainFunctionBody() << "    let dy_indices = dy_indices_t(batch, idyR, idyC, inputChannel / " << a_components_ << ");\n"
-                              << "    let w_indices = w_indices_t(u32(wRPerm), u32(wCPerm), inputChannel, wOutChannel / " << b_components_ << ");\n"
+                              << "    let w_indices = w_indices_t(u32(wRPerm), u32(wCPerm), inputChannel / " << b_components_ << ", wOutChannel);\n"
                               << "    var x_offset = " << dy.IndicesToOffset("dy_indices") << ";\n"
                               << "    var w_offset = " << w.IndicesToOffset("w_indices") << ";\n";
   }

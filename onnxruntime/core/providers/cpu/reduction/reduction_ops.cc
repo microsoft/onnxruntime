@@ -885,9 +885,12 @@ bool check_and_reduce_empty_set_input(OpKernelContext* ctx, const gsl::span<cons
     ORT_ENFORCE(axes.empty(), "Axes input and attribute should not both be present for reduction.");
     // second input holds the axes.
     const Tensor* axes_tensor = ctx->Input<Tensor>(1);
-    auto nDims = static_cast<size_t>(axes_tensor->Shape()[0]);
-    const auto* data = axes_tensor->Data<int64_t>();
-    input_axes.insert(input_axes.begin(), data, data + nDims);
+    if (axes_tensor != nullptr) {
+      ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 1,
+                  "An axes tensor must be a vector tensor.");
+      const auto axes_data = axes_tensor->DataAsSpan<int64_t>();
+      input_axes.assign(axes_data.begin(), axes_data.end());
+    }
   } else {
     input_axes.resize(axes.size());
     std::copy(axes.begin(), axes.end(), input_axes.begin());
@@ -895,6 +898,10 @@ bool check_and_reduce_empty_set_input(OpKernelContext* ctx, const gsl::span<cons
 
   gsl::span<const int64_t> shape_dims = input_shape.GetDims();
   const int64_t input_shape_size = narrow<int64_t>(shape_dims.size());
+  for (auto& axis : input_axes) {
+    axis = HandleNegativeAxis(axis, input_shape_size);
+  }
+
   TensorShapeVector output_shape_vector;
   for (int64_t i = 0; i < input_shape_size; ++i) {
     if (input_axes.empty() || std::find(input_axes.begin(), input_axes.end(), i) != input_axes.end()) {
@@ -925,7 +932,9 @@ inline void ApplyNoopEmptyAxesElementwise(OpKernelContext* ctx) {
   Tensor* Y = ctx->Output(0, shape);
 
   if constexpr (!ReduceAggTraits<AGG>::kHasPreOp && !ReduceAggTraits<AGG>::kHasPostOp) {
-    std::memcpy(Y->MutableDataRaw(), X->DataRaw(), X->SizeInBytes());
+    if (X->SizeInBytes() > 0) {
+      std::memcpy(Y->MutableDataRaw(), X->DataRaw(), X->SizeInBytes());
+    }
 
   } else {
     using Tin = typename AGG::input_type;
@@ -968,14 +977,14 @@ template <typename AGG>
 void CommonReduce1Loop(OpKernelContext* ctx,
                        const gsl::span<const int64_t>& axes_, int64_t keepdims_,
                        bool noop_with_empty_axes) {
-  if (check_and_reduce_empty_set_input<AGG>(ctx, axes_, keepdims_ != 0)) {
-    return;
-  }
-
   TensorShapeVector tmp_axes;
   auto effective_axes = GetEffectiveAxes(ctx, axes_, tmp_axes);
   if (effective_axes.empty() && noop_with_empty_axes) {
     ApplyNoopEmptyAxesElementwise<AGG>(ctx);
+    return;
+  }
+
+  if (check_and_reduce_empty_set_input<AGG>(ctx, axes_, keepdims_ != 0)) {
     return;
   }
 
@@ -1013,14 +1022,14 @@ template <typename AGG>
 void CommonReduce2Loops(OpKernelContext* ctx,
                         const gsl::span<const int64_t>& axes_, int64_t keepdims_,
                         bool noop_with_empty_axes) {
-  if (check_and_reduce_empty_set_input<AGG>(ctx, axes_, keepdims_ != 0)) {
-    return;
-  }
-
   TensorShapeVector tmp_axes;
   auto effective_axes = GetEffectiveAxes(ctx, axes_, tmp_axes);
   if (effective_axes.empty() && noop_with_empty_axes) {
     ApplyNoopEmptyAxesElementwise<AGG>(ctx);
+    return;
+  }
+
+  if (check_and_reduce_empty_set_input<AGG>(ctx, axes_, keepdims_ != 0)) {
     return;
   }
 

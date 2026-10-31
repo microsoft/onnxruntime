@@ -3,13 +3,13 @@ numpy==2.2.6; python_version < "3.11"
 numpy==2.4.2; python_version >= "3.11"
 mypy
 pytest
-setuptools==78.1.1
+setuptools==84.1.0
 wheel==0.45.1
 argparse
 sympy==1.14
 flatbuffers
-protobuf==6.33.5
+protobuf==6.33.6
 packaging
 onnxscript==0.6.2
 onnx-ir==0.1.16
-onnx==1.22.0
+onnx==1.23.2

@@ -413,10 +413,10 @@ std::vector<CutlassGemmConfig> get_candidate_configs(
   if (sm == 90 && (config_type_param & CutlassGemmConfig::HOPPER)) {
     return get_candidate_configs_sm90(config_type_param);
   }
-  if (sm >= 100 && sm != 120 && (config_type_param & CutlassGemmConfig::BLACKWELL)) {
+  if (sm >= 100 && sm != 120 && sm != 121 && (config_type_param & CutlassGemmConfig::BLACKWELL)) {
     return get_candidate_configs_sm100(config_type_param);
   }
-  if (sm == 120 && (config_type_param & CutlassGemmConfig::BLACKWELL)) {
+  if ((sm == 120 || sm == 121) && (config_type_param & CutlassGemmConfig::BLACKWELL)) {
     return get_candidate_configs_sm120(config_type_param);
   }
 

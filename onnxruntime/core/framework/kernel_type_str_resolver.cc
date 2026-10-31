@@ -5,6 +5,7 @@
 
 #include <mutex>  // for std::lock_guard
 
+#include "core/common/narrow.h"
 #include "core/flatbuffers/schema/ort.fbs.h"
 #include "core/flatbuffers/flatbuffers_utils.h"
 #include "core/graph/op_identifier_utils.h"
@@ -167,7 +168,7 @@ Status KernelTypeStrResolver::SaveToOrtFormat(
         auto fbs_arg = fbs::CreateArgTypeAndIndex(
             builder,
             arg.first == ArgType::kInput ? fbs::ArgType::INPUT : fbs::ArgType::OUTPUT,
-            gsl::narrow<uint32_t>(arg.second));
+            narrow<uint32_t>(arg.second));
         fbs_args.push_back(fbs_arg);
       }
 
