@@ -118,6 +118,7 @@ class GemmIdCore {
   std::string device_name;
   // Distinguishes optional GEMV tactic sets and launch heuristics for the same shape.
   bool wave_aware = false;
+  bool tensor_core = false;
   int tag = 0;
 
   GemmIdCore(int n_, int k_, nvinfer::DataType const& dtype_, int sm_ = 0, int bits_ = 0, int group_size_ = 0,
@@ -161,7 +162,7 @@ class GemmIdCore {
     out << " has_zeros=" << id.has_zeros << " gemv=" << id.gemv_enabled << " has_bias=" << id.has_bias;
     out << " device=" << id.device_name << " device_id=" << id.device_id;
     out << " tag=" << id.tag;
-    out << " wave_aware=" << id.wave_aware;
+    out << " wave_aware=" << id.wave_aware << " tensor_core=" << id.tensor_core;
     return out;
   }
 
@@ -170,7 +171,7 @@ class GemmIdCore {
     return n == id.n && k == id.k && dtype == id.dtype && sm == id.sm && quant_bits == id.quant_bits &&
            group_size == id.group_size && has_zeros == id.has_zeros && gemv_enabled == id.gemv_enabled &&
            has_bias == id.has_bias && device_name == id.device_name && device_id == id.device_id && tag == id.tag &&
-           wave_aware == id.wave_aware;
+           wave_aware == id.wave_aware && tensor_core == id.tensor_core;
   }
 };
 
@@ -187,7 +188,7 @@ struct GemmIdCoreHash {
     auto h7 = std::hash<int>{}(id.tag);
     auto h8 = std::hash<bool>{}(id.wave_aware);
     auto h9 = std::hash<int>{}(id.device_id);
-    return h1 ^ h2 ^ h3 ^ h4 ^ h5 ^ h6 ^ h7 ^ h8 ^ h9;
+    return h1 ^ h2 ^ h3 ^ h4 ^ h5 ^ h6 ^ h7 ^ h8 ^ h9 ^ (std::hash<bool>{}(id.tensor_core) << 1);
   }
 };
 

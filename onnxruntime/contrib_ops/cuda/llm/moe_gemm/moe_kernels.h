@@ -115,6 +115,7 @@ struct MOEParallelismConfig {
 };
 
 struct QuantParams {
+  int tensor_core_min_rows = 33;  // 0 disables tensor-core INT4 GEMV.
   // Int weight only quantization params
   struct
   {
