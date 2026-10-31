@@ -315,8 +315,8 @@ TEST(WebGpuContextTest, NativeProfilingUsesCpuOriginAcrossRunsAndSubmissions) {
   context.SetProfilingStartTime(origin);
   int64_t previous_timestamp = 0;
   for (int run = 0; run < 2; ++run) {
-    context.StartProfiling();
     const auto earliest = TimeDiffMicroSeconds(origin);
+    context.StartProfiling();
     int64_t queue_released = earliest;
     for (int submit = 0; submit < 2; ++submit) {
       webgpu::DispatchCommandInfo dispatch;
@@ -347,10 +347,24 @@ TEST(WebGpuContextTest, NativeProfilingUsesCpuOriginAcrossRunsAndSubmissions) {
     profiling::Events events;
     context.CollectProfilingData(events);
     const auto latest = TimeDiffMicroSeconds(origin);
-    ASSERT_EQ(events.size(), 2u);
-    // Submission anchoring would put this event before the CPU released the queue.
-    EXPECT_GE(events.front().ts, queue_released - 1000);
+    profiling::Events gpu_events;
+    size_t cpu_events = 0;
     for (const auto& event : events) {
+      if (event.args.contains("clock_alignment")) {
+        gpu_events.push_back(event);
+      } else {
+        ++cpu_events;
+        EXPECT_EQ(event.args.at("execution_side"), "cpu");
+        EXPECT_GE(event.ts, earliest - 1000);
+        EXPECT_LE(event.ts + event.dur, latest + 1000);
+        EXPECT_GE(event.dur, 0);
+      }
+    }
+    ASSERT_EQ(gpu_events.size(), 2u);
+    EXPECT_GT(cpu_events, 0u);
+    // Submission anchoring would put this event before the CPU released the queue.
+    EXPECT_GE(gpu_events.front().ts, queue_released - 1000);
+    for (const auto& event : gpu_events) {
       EXPECT_EQ(event.args.at("clock_alignment"), "d3d12_clock_calibration");
       EXPECT_GE(event.ts, earliest - 1000);
       EXPECT_LE(event.ts + event.dur, latest + 1000);
@@ -359,6 +373,14 @@ TEST(WebGpuContextTest, NativeProfilingUsesCpuOriginAcrossRunsAndSubmissions) {
       previous_timestamp = event.ts;
     }
   }
+  webgpu::DispatchCommandInfo unprofiled_dispatch;
+  unprofiled_dispatch.compute_pipeline = pipeline;
+  unprofiled_dispatch.bind_group = bind_group;
+  webgpu_ep.Recording().deferred_dispatches.push_back(std::move(unprofiled_dispatch));
+  ASSERT_STATUS_OK(context.FlushAndWaitChecked(webgpu_ep.BufferManager(), webgpu_ep.Recording()));
+  profiling::Events unprofiled_events;
+  context.CollectProfilingData(unprofiled_events);
+  EXPECT_TRUE(unprofiled_events.empty());
 #else
   GTEST_SKIP() << "Native D3D12 clock calibration requires bundled Dawn on Windows.";
 #endif

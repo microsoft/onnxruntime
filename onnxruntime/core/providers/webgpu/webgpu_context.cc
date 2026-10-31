@@ -542,7 +542,9 @@ ID3D12Device* WebGpuContext::WeightLoadingD3D12Device() const {
 #endif
 
 Status WebGpuContext::Wait(wgpu::Future f) {
+  const auto profile_start = StartCpuProfileEvent();
   auto status = instance_.WaitAny(f, UINT64_MAX);
+  RecordCpuProfileEvent("WebGPU::Wait", profile_start);
   if (status == wgpu::WaitStatus::Success) {
     return Status::OK();
   }
@@ -612,6 +614,7 @@ Status WebGpuContext::EncodeDeferredDispatches(CommandRecordingState& recording)
   if (recording.deferred_dispatches.empty()) {
     return Status::OK();
   }
+  const auto profile_start = StartCpuProfileEvent();
 
   ORT_RETURN_IF_NOT(static_cast<size_t>(recording.num_pending_dispatches) +
                             recording.deferred_dispatches.size() <=
@@ -649,6 +652,7 @@ Status WebGpuContext::EncodeDeferredDispatches(CommandRecordingState& recording)
   }
 
   reset_deferred_state();
+  RecordCpuProfileEvent("WebGPU::Encode", profile_start);
   return result;
 }
 
@@ -1197,12 +1201,27 @@ void WebGpuContext::WriteTimestamp(CommandRecordingState& recording, uint32_t qu
   compute_pass_encoder.WriteTimestamp(query_set_, query_index);
 }
 
+std::optional<TimePoint> WebGpuContext::StartCpuProfileEvent() const {
+  return is_profiling_ ? std::make_optional(std::chrono::high_resolution_clock::now()) : std::nullopt;
+}
+
+void WebGpuContext::RecordCpuProfileEvent(const char* name, const std::optional<TimePoint>& start) {
+  if (start) {
+    const auto end = std::chrono::high_resolution_clock::now();
+    cpu_events_.emplace_back(profiling::API_EVENT, logging::GetProcessId(), logging::GetThreadId(), name,
+                             TimeDiffMicroSeconds(profiling_start_time_, *start),
+                             TimeDiffMicroSeconds(*start, end),
+                             InlinedHashMap<std::string, std::string>{{"execution_side", "cpu"}});
+  }
+}
+
 void WebGpuContext::StartProfiling() {
   if (query_type_ == TimestampQueryType::None) {
     return;
   }
 
   is_profiling_ = true;
+  const auto profile_start = StartCpuProfileEvent();
   // profiling_start_time_ is supplied separately via SetProfilingStartTime, which is
   // driven by WebGpuProfiler::StartProfiling and carries the ORT profiler's CPU time
   // base for both session-level and run-level profiling.
@@ -1234,9 +1253,11 @@ void WebGpuContext::StartProfiling() {
                              wgpu::BufferUsage::CopyDst;
     query_resolve_buffer_ = device_.CreateBuffer(&bufferDescriptor);
   }
+  RecordCpuProfileEvent("WebGPU::StartProfiling", profile_start);
 }
 
 void WebGpuContext::CollectProfilingData(profiling::Events& events) {
+  const auto profile_start = StartCpuProfileEvent();
   if (!pending_queries_.empty()) {
     // The fallback anchors the first GPU event at CPU submission, so it cannot
     // represent queueing delay. Native calibration preserves that delay.
@@ -1318,6 +1339,9 @@ void WebGpuContext::CollectProfilingData(profiling::Events& events) {
     pending_queries_.clear();
   }
 
+  RecordCpuProfileEvent("WebGPU::ProfileReadback", profile_start);
+  events.insert(events.end(), std::make_move_iterator(cpu_events_.begin()), std::make_move_iterator(cpu_events_.end()));
+  cpu_events_.clear();
   is_profiling_ = false;
 }
 
@@ -1518,8 +1542,10 @@ Status WebGpuContext::Flush(const webgpu::BufferManager& buffer_mgr,
     pending_queries_.emplace_back(std::move(recording.pending_kernels), query_read_buffer);
     recording.pending_kernels.clear();
   }
+  const auto profile_start = StartCpuProfileEvent();
   auto command_buffer = recording.command_encoder.Finish();
   device_queue_.Submit(1, &command_buffer);
+  RecordCpuProfileEvent("WebGPU::Submit", profile_start);
   refresh_pending_buffers();
 #if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
   std::vector<std::function<void()>> pending_release_callbacks;
