@@ -16,7 +16,6 @@ from pathlib import Path
 
 import numpy as np
 import onnx
-from onnx import numpy_helper
 
 import onnxruntime as ort
 
@@ -97,7 +96,7 @@ def _numpy_nvfp4_qmoe_reference(
         elif t.data_type == TensorProto.FLOAT16:
             init_map[t.name] = np.frombuffer(raw, dtype=np.float16).reshape(dims).astype(np.float32).copy()
         else:
-            init_map[t.name] = numpy_helper.to_array(t).astype(np.float32)
+            init_map[t.name] = onnx.numpy_helper.to_array(t).astype(np.float32)
 
     cur = _round_to_act_dtype(x_f32, use_fp16=use_fp16)
     qmoe_idx = 0
@@ -1616,7 +1615,6 @@ int main() {
             self._assert_parity(ya_np, ya_got, "res_owner_a")
             self._assert_parity(yb_np, yb_got, "zero_res_b")
             self.assertGreater(float(np.max(np.abs(ya_got - yb_got))), 0.1)
-            del sess_zero_res, sess_res_owner
 
     def test_v4_decode_capture_prefill_reclaim_and_recapture_replay(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1808,7 +1806,6 @@ int main() {
                 )
                 with self.assertRaisesRegex(Exception, "device_working_bytes"):
                     self._run_bf16(sess, x_pref, r_pref)
-                del sess
 
 
 if __name__ == "__main__":
