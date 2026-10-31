@@ -3,15 +3,18 @@
 
 #pragma once
 
-#include "core/common/common.h"
 #include "core/providers/cuda/cuda_kernel.h"
+#include "core/common/common.h"
+#include "core/framework/moe_offload_plan.h"
 #include "contrib_ops/cuda/moe/moe_base.h"
+#include "contrib_ops/cuda/moe/qmoe_offload.h"
 #include "contrib_ops/cuda/moe/qmoe_row_tiling.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_kernels.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemm_profiler.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemv_fp4.h"
 
 #include <atomic>
+#include <memory>
 #include <mutex>
 #include <unordered_map>
 
@@ -29,13 +32,23 @@ constexpr const char* kQMoEIntDequantMaxScratchBytesConfig = "ep.cuda.qmoe_int_d
 constexpr const char* kQMoEDisableInt3TensorCorePrefill = "ORT_DISABLE_INT3_TENSORCORE_PREFILL";
 constexpr const char* kQMoEDisableInt3TensorCorePrefillConfig = "ep.cuda.qmoe_disable_int3_tensorcore_prefill";
 
-class QMoE final : public CudaKernel, public MoEBase {
+class QMoE final : public CudaKernel, public MoEBase, public onnxruntime::moe_offload::IMoeOffloadNode {
  public:
   explicit QMoE(const OpKernelInfo& op_kernel_info);
+  ~QMoE() override;
   Status ComputeInternal(OpKernelContext* ctx) const override;
   Status ComputeInt3(OpKernelContext* ctx) const;
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  bool& is_packed, PrePackedWeights* prepacked_weights) override;
+
+  const onnxruntime::moe_offload::MoeExpertSourceDescriptor& GetSourceDescriptor() const noexcept override {
+    return offload_source_desc_;
+  }
+  const onnxruntime::moe_offload::MoeBackendCapabilities& GetBackendCapabilities() const noexcept override {
+    return offload_capabilities_;
+  }
+  Status InitializeAdmittedPlan(const onnxruntime::moe_offload::MoeOffloadSessionPolicy& policy,
+                                const onnxruntime::moe_offload::MoeNodeExecutionPlan& plan) override;
 
  private:
   // PrePack helpers - each handles one category of input tensor.
@@ -128,6 +141,10 @@ class QMoE final : public CudaKernel, public MoEBase {
   bool enable_int2_prefill_ = false;
   int64_t row_tile_size_ = qmoe::kDisabledRowTileSize;
   int64_t int_dequant_max_scratch_bytes_ = int64_t{1} << 30;
+  // Static prefill options resolved once in the constructor so they cannot change between runs of a session.
+  // The automatic expert-compaction cap is derived from the offload policy only for planned offload nodes.
+  int max_compact_experts_option_ = 0;
+  bool dequant_transient_option_ = false;
   // Routes INT3 and INT3-mixed prefill through the FP32 SIMT kernels, which evaluate SwiGLU from the FP32
   // accumulators. The default Tensor Core prefill stores the FC1 result as FP16/BF16 before the activation.
   bool disable_int3_tc_prefill_ = false;
@@ -324,6 +341,20 @@ class QMoE final : public CudaKernel, public MoEBase {
 
   mutable std::mutex fp4_gemv_tune_cache_mutex_;
   mutable std::unordered_map<Fp4GemvTuneKey, Fp4GemvTuneResult, Fp4GemvTuneKeyHash> fp4_gemv_tune_cache_;
+
+  // v4 MoE Offload state
+  int32_t offload_layer_index_{-1};
+  int offload_registered_dev_id_{-1};
+  const uint8_t* offload_registered_fc1_w_{nullptr};
+  bool offload_node_registered_{false};
+  bool offload_prepack_bypass_{false};
+  IAllocatorUniquePtr<void> offload_gpu_fc1_bias_;
+  IAllocatorUniquePtr<void> offload_gpu_fc2_bias_;
+  onnxruntime::moe_offload::MoeOffloadSessionPolicy offload_policy_{};
+  onnxruntime::moe_offload::MoeExpertSourceDescriptor offload_source_desc_{};
+  onnxruntime::moe_offload::MoeBackendCapabilities offload_capabilities_{};
+  onnxruntime::moe_offload::MoeNodeExecutionPlan offload_plan_{};
+  std::unique_ptr<QMoEOffload> offload_backend_;
 };
 
 }  // namespace cuda

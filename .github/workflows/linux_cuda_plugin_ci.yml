@@ -144,6 +144,7 @@ jobs:
               python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
               cd /build/Release/Release
               python /onnxruntime_src/onnxruntime/test/python/onnxruntime_test_python_fpa_intb_tune.py
+              python /onnxruntime_src/onnxruntime/test/python/test_qmoe_offload_v4.py
               cd /onnxruntime_src/onnxruntime/test/python/transformers
               python test_cuda_plugin_ep.py
             "

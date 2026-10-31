@@ -87,6 +87,53 @@ inline ScratchLayout MakeScratchLayout(size_t runner_workspace_bytes,
   return ScratchLayout{scales_bytes, indices_bytes, permutation_bytes, total_bytes};
 }
 
+// Sizing inputs for the transient device buffers a planned prefill call allocates next to the runner scratch.
+struct PrefillAuxLayout {
+  bool use_expert_compaction = false;
+  int64_t num_experts = 0;         // experts in the node (expert -> compact slot map)
+  int64_t runner_num_experts = 0;  // experts per wave (compact slot -> expert map and compacted biases)
+  int64_t hidden_size = 0;
+  int64_t fc1_bias_cols = 0;  // 0 when the node has no FC1 bias
+  int64_t fc2_bias_cols = 0;  // 0 when the node has no FC2 bias
+  int num_compact_passes = 1;
+  size_t activation_bytes = 0;         // element size of the activation and output tensors
+  size_t global_scale_copy_bytes = 0;  // device copies of CPU-resident global scales (non-DMA dequant path)
+};
+
+// Expert compaction maps, compacted biases, global-scale copies and the multi-pass output/accumulator buffers. All of
+// them stay live for the whole row-tile loop together with the runner scratch.
+inline size_t PrefillAuxBytes(const RowTilePlan& row_tile_plan, int64_t experts_per_token,
+                              const PrefillAuxLayout& layout) {
+  SafeInt<size_t> bytes = layout.global_scale_copy_bytes;
+  if (layout.use_expert_compaction) {
+    bytes += SafeInt<size_t>(row_tile_plan.rows_per_tile) * experts_per_token * sizeof(int);
+    bytes += SafeInt<size_t>(layout.num_experts) * sizeof(int);
+    bytes += SafeInt<size_t>(layout.runner_num_experts) * sizeof(int);
+    bytes += SafeInt<size_t>(layout.runner_num_experts) * layout.fc1_bias_cols * layout.activation_bytes;
+    bytes += SafeInt<size_t>(layout.runner_num_experts) * layout.fc2_bias_cols * layout.activation_bytes;
+  }
+  if (layout.num_compact_passes > 1) {
+    const SafeInt<size_t> tile_elements = SafeInt<size_t>(row_tile_plan.rows_per_tile) * layout.hidden_size;
+    bytes += tile_elements * layout.activation_bytes;
+    bytes += tile_elements * sizeof(float);
+  }
+  return bytes;
+}
+
+// Aggregate transient device requirement of one planned prefill call. `live_bytes` is everything the caller keeps
+// allocated for the whole call except the dequantized weights (runner scratch plus PrefillAuxBytes). The dequantized
+// weights live either in the arena or inside the persistent DMA workspace, never in both, so
+// `dma_workspace_holds_dequant` keeps them from being counted twice.
+inline size_t PrefillWorkingSetBytes(size_t live_bytes, size_t dma_workspace_bytes, size_t dequant_bytes,
+                                     bool dma_workspace_holds_dequant) {
+  SafeInt<size_t> total = live_bytes;
+  total += dma_workspace_bytes;
+  if (!dma_workspace_holds_dequant) {
+    total += dequant_bytes;
+  }
+  return total;
+}
+
 }  // namespace qmoe
 }  // namespace cuda
 }  // namespace contrib

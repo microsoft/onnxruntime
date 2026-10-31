@@ -218,6 +218,10 @@ jobs:
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
+          python ..\test_qmoe_offload_v4.py
+          if ($lastExitCode -ne 0) {
+            exit $lastExitCode
+          }
 
     env:
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
