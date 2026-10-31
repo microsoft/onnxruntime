@@ -5,6 +5,7 @@
 
 import contextlib
 import ctypes
+import json
 import os
 import struct
 import subprocess
@@ -12,6 +13,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import numpy as np
 import onnx
@@ -106,13 +108,7 @@ def _build_canonical_nvfp4_qmoe_model(
         cur_in = "X"
         if non_moe_gpu_init_elements > 0:
             non_moe_arr = np.zeros((1, hidden_size), dtype=np.uint16)
-            add_tensor(
-                wf,
-                "non_moe_gpu_bias_init",
-                non_moe_arr,
-                act_onnx_dtype,
-                force_embedded=True,
-            )
+            add_tensor(wf, "non_moe_gpu_bias_init", non_moe_arr, act_onnx_dtype, force_embedded=True)
             nodes.append(
                 helper.make_node(
                     "Add",
@@ -219,17 +215,7 @@ def _build_canonical_nvfp4_qmoe_model(
     if short_profile_pairs is not None:
         pairs = pairs[:short_profile_pairs]
     with open(prof_path, "wb") as pf:
-        pf.write(
-            struct.pack(
-                "<6I",
-                0x50525453,
-                1,
-                num_layers,
-                num_experts,
-                num_layers * num_experts,
-                len(pairs),
-            )
-        )
+        pf.write(struct.pack("<6I", 0x50525453, 1, num_layers, num_experts, num_layers * num_experts, len(pairs)))
         pf.writelines(struct.pack("<2H", l_id, e_id) for l_id, e_id in pairs)
 
     graph_inputs = [helper.make_tensor_value_info("X", act_onnx_dtype, ["T", hidden_size])]
@@ -263,18 +249,31 @@ def _build_canonical_nvfp4_qmoe_model(
 class TestQMoEOffloadV4(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        plugin_path = os.environ.get("QWEN_PROVIDER")
+        plugin_path = os.environ.get("QWEN_PROVIDER") or os.environ.get("ORT_CUDA_PLUGIN_PATH")
         if plugin_path and os.path.exists(plugin_path):
             with contextlib.suppress(Exception):
                 ort.unregister_execution_provider_library("CUDAExecutionProvider")
             with contextlib.suppress(Exception):
                 ort.register_execution_provider_library("CUDAExecutionProvider", plugin_path)
+        has_cuda = "CUDAExecutionProvider" in ort.get_available_providers() or any(
+            d.ep_name == "CUDAExecutionProvider" for d in getattr(ort, "get_ep_devices", list)()
+        )
+        if not has_cuda:
+            raise unittest.SkipTest("CUDAExecutionProvider is not available")
 
     def _make_session(self, model_path: str, config_entries: dict, cuda_options: dict | None = None):
         so = ort.SessionOptions()
         so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
         for k, v in config_entries.items():
             so.add_session_config_entry(k, str(v))
+        devices = (
+            [d for d in ort.get_ep_devices() if d.ep_name == "CUDAExecutionProvider"]
+            if hasattr(ort, "get_ep_devices")
+            else []
+        )
+        if devices:
+            so.add_provider_for_devices([devices[0]], cuda_options or {})
+            return ort.InferenceSession(model_path, sess_options=so)
         providers = [("CUDAExecutionProvider", cuda_options or {})]
         return ort.InferenceSession(model_path, sess_options=so, providers=providers)
 
@@ -319,12 +318,7 @@ class TestQMoEOffloadV4(unittest.TestCase):
     def test_v4_portable_qmoe_modes_and_numerical_parity(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             model_path = _build_canonical_nvfp4_qmoe_model(
-                tmpdir,
-                num_layers=2,
-                num_experts=16,
-                hidden_size=128,
-                inter_size=64,
-                top_k=4,
+                tmpdir, num_layers=2, num_experts=16, hidden_size=128, inter_size=64, top_k=4
             )
             # Per-expert slot bytes for H=128, I=64, block=16:
             # 2*64*64 + 128*32 + 2*64*8 + 128*4 + 8 = 8192 + 4096 + 1024 + 512 + 8 = 13,832 B
@@ -405,22 +399,14 @@ class TestQMoEOffloadV4(unittest.TestCase):
                     y_cand_f32 = self._run_bf16(s, x, r)
                     max_diff = float(np.max(np.abs(y_base_f32 - y_cand_f32)))
                     self.assertLess(
-                        max_diff,
-                        5e-2,
-                        f"Numerical mismatch in mode={name} at T={num_rows}: max_diff={max_diff}",
+                        max_diff, 5e-2, f"Numerical mismatch in mode={name} at T={num_rows}: max_diff={max_diff}"
                     )
 
             # Also verify FP16 activation parity across baseline and offload modes
             dir_fp16 = os.path.join(tmpdir, "fp16")
             os.makedirs(dir_fp16, exist_ok=True)
             model_fp16 = _build_canonical_nvfp4_qmoe_model(
-                dir_fp16,
-                num_layers=2,
-                num_experts=16,
-                hidden_size=128,
-                inter_size=64,
-                top_k=4,
-                use_fp16=True,
+                dir_fp16, num_layers=2, num_experts=16, hidden_size=128, inter_size=64, top_k=4, use_fp16=True
             )
             sess_fp16_base = self._make_session(model_fp16, {"session.moe.offload.mode": "disabled"})
             sess_fp16_off = self._make_session(
@@ -580,12 +566,7 @@ class TestQMoEOffloadV4(unittest.TestCase):
     def test_v4_cuda_graph_capture_and_replay(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             model_path = _build_canonical_nvfp4_qmoe_model(
-                tmpdir,
-                num_layers=2,
-                num_experts=16,
-                hidden_size=128,
-                inter_size=64,
-                top_k=4,
+                tmpdir, num_layers=2, num_experts=16, hidden_size=128, inter_size=64, top_k=4
             )
             slot_bytes = 13832
             fixed_table_bytes = 2 * 16 * 4
@@ -599,18 +580,9 @@ class TestQMoEOffloadV4(unittest.TestCase):
             # Wrap inputs/outputs in FLOAT <-> BFLOAT16 Cast on GPU so CUDA Graph capture has 100% GPU I/O
             m = onnx.load_model(model_path, load_external_data=False)
             m.graph.node.insert(
-                0,
-                helper.make_node(
-                    "Cast",
-                    inputs=["R_f32"],
-                    outputs=["router_probs"],
-                    to=TensorProto.BFLOAT16,
-                ),
+                0, helper.make_node("Cast", inputs=["R_f32"], outputs=["router_probs"], to=TensorProto.BFLOAT16)
             )
-            m.graph.node.insert(
-                0,
-                helper.make_node("Cast", inputs=["X_f32"], outputs=["X"], to=TensorProto.BFLOAT16),
-            )
+            m.graph.node.insert(0, helper.make_node("Cast", inputs=["X_f32"], outputs=["X"], to=TensorProto.BFLOAT16))
             m.graph.node.append(helper.make_node("Cast", inputs=["Y"], outputs=["Y_f32"], to=TensorProto.FLOAT))
             del m.graph.input[:]
             m.graph.input.extend(
@@ -647,18 +619,12 @@ class TestQMoEOffloadV4(unittest.TestCase):
                 so.add_session_config_entry(k, v)
             if devices:
                 so.add_provider_for_devices(
-                    [devices[0]],
-                    {
-                        "enable_cuda_graph": "1",
-                        "min_num_runs_before_cuda_graph_capture": "2",
-                    },
+                    [devices[0]], {"enable_cuda_graph": "1", "min_num_runs_before_cuda_graph_capture": "2"}
                 )
                 sess_graph = ort.InferenceSession(cg_model_path, sess_options=so)
             else:
                 sess_graph = ort.InferenceSession(
-                    cg_model_path,
-                    sess_options=so,
-                    providers=[("CUDAExecutionProvider", {"enable_cuda_graph": "1"})],
+                    cg_model_path, sess_options=so, providers=[("CUDAExecutionProvider", {"enable_cuda_graph": "1"})]
                 )
 
             def round_bf16(a: np.ndarray) -> np.ndarray:
@@ -685,10 +651,7 @@ class TestQMoEOffloadV4(unittest.TestCase):
 
             def upload(ptr: ctypes.c_void_p, arr: np.ndarray):
                 arr = np.ascontiguousarray(arr, dtype=np.float32)
-                self.assertEqual(
-                    cudart.cudaMemcpy(ptr, arr.ctypes.data_as(ctypes.c_void_p), arr.nbytes, 1),
-                    0,
-                )
+                self.assertEqual(cudart.cudaMemcpy(ptr, arr.ctypes.data_as(ctypes.c_void_p), arr.nbytes, 1), 0)
 
             # Update the captured GPU inputs in place with different activations and routes on every replay so a
             # stale doorbell, host-result or scratch buffer cannot match the reference by accident.
@@ -715,11 +678,7 @@ class TestQMoEOffloadV4(unittest.TestCase):
                     sess_graph.run_with_iobinding(binding)
                     y_cand = binding.copy_outputs_to_cpu()[0]
                     max_diff = float(np.max(np.abs(y_ref - y_cand)))
-                    self.assertLess(
-                        max_diff,
-                        5e-2,
-                        f"CUDA graph replay mismatch at step {step}: max_diff={max_diff}",
-                    )
+                    self.assertLess(max_diff, 5e-2, f"CUDA graph replay mismatch at step {step}: max_diff={max_diff}")
             finally:
                 cudart.cudaFree(x_ptr)
                 cudart.cudaFree(r_ptr)
@@ -1022,13 +981,7 @@ class TestQMoEOffloadV4(unittest.TestCase):
     def test_v4_ordinary_cuda_ep_and_plugin_controller_budget_enforcement(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             model_path = _build_canonical_nvfp4_qmoe_model(
-                tmpdir,
-                num_layers=2,
-                num_experts=16,
-                hidden_size=128,
-                inter_size=64,
-                top_k=4,
-                seed=950,
+                tmpdir, num_layers=2, num_experts=16, hidden_size=128, inter_size=64, top_k=4, seed=950
             )
             slot_bytes = 13832
             fixed_bytes = 2 * 16 * 4
@@ -1042,11 +995,7 @@ class TestQMoEOffloadV4(unittest.TestCase):
             so_ord.add_session_config_entry("session.moe.offload.mode", "required")
             so_ord.add_session_config_entry("session.moe.offload.cpu_execution", "auto")
             so_ord.add_session_config_entry("session.moe.offload.device_expert_bytes", str(budget_partial))
-            sess_ord = ort.InferenceSession(
-                model_path,
-                sess_options=so_ord,
-                providers=[("CUDAExecutionProvider", {})],
-            )
+            sess_ord = ort.InferenceSession(model_path, sess_options=so_ord, providers=[("CUDAExecutionProvider", {})])
 
             rng = np.random.default_rng(951)
             for t_rows in (1, 2, 4):
@@ -1085,10 +1034,7 @@ class TestQMoEOffloadV4(unittest.TestCase):
                     np.ones((1, 16), dtype=np.float32),
                 )
 
-    @unittest.skipIf(
-        sys.platform == "win32",
-        "Requires POSIX g++ toolchain for standalone header/allocator probe.",
-    )
+    @unittest.skipIf(sys.platform == "win32", "Requires POSIX g++ toolchain for standalone header/allocator probe.")
     def test_v4_budget_group_migration_and_concurrent_allocator_address_reuse(self):
         repo_root = Path(__file__).resolve().parents[3]
         budget_hdr = repo_root / "onnxruntime/core/providers/cuda/cuda_device_memory_budget.h"
@@ -1211,15 +1157,7 @@ int main() {
             bin_file = Path(tmpdir) / "probe"
             src_file.write_text(probe_src)
             subprocess.check_call(
-                [
-                    "g++",
-                    "-O2",
-                    "-std=c++17",
-                    f"-I{repo_root / 'onnxruntime'}",
-                    str(src_file),
-                    "-o",
-                    str(bin_file),
-                ]
+                ["g++", "-O2", "-std=c++17", f"-I{repo_root / 'onnxruntime'}", str(src_file), "-o", str(bin_file)]
             )
             subprocess.check_call([str(bin_file)])
 
@@ -1270,51 +1208,25 @@ int main() {
             cur_in = "X"
             for l_idx, (bits, blk_size, prepacked) in enumerate(layer_specs):
                 if bits == 4 and prepacked == 1:
-                    fc1_w = rng.integers(
-                        0,
-                        256,
-                        size=(num_experts, hidden_size, inter_size),
-                        dtype=np.uint8,
-                    )
-                    fc2_w = rng.integers(
-                        0,
-                        256,
-                        size=(num_experts, inter_size, hidden_size // 2),
-                        dtype=np.uint8,
-                    )
+                    fc1_w = rng.integers(0, 256, size=(num_experts, hidden_size, inter_size), dtype=np.uint8)
+                    fc2_w = rng.integers(0, 256, size=(num_experts, inter_size, hidden_size // 2), dtype=np.uint8)
                 elif bits == 3 and prepacked == 0:
                     fc1_w = rng.integers(
-                        0,
-                        256,
-                        size=(num_experts, 2 * inter_size, (hidden_size * 3) // 8),
-                        dtype=np.uint8,
+                        0, 256, size=(num_experts, 2 * inter_size, (hidden_size * 3) // 8), dtype=np.uint8
                     )
-                    fc2_w = rng.integers(
-                        0,
-                        256,
-                        size=(num_experts, hidden_size, (inter_size * 3) // 8),
-                        dtype=np.uint8,
-                    )
+                    fc2_w = rng.integers(0, 256, size=(num_experts, hidden_size, (inter_size * 3) // 8), dtype=np.uint8)
                 else:
                     pack_factor = 8 // bits
                     fc1_w = rng.integers(
-                        0,
-                        256,
-                        size=(num_experts, 2 * inter_size, hidden_size // pack_factor),
-                        dtype=np.uint8,
+                        0, 256, size=(num_experts, 2 * inter_size, hidden_size // pack_factor), dtype=np.uint8
                     )
                     fc2_w = rng.integers(
-                        0,
-                        256,
-                        size=(num_experts, hidden_size, inter_size // pack_factor),
-                        dtype=np.uint8,
+                        0, 256, size=(num_experts, hidden_size, inter_size // pack_factor), dtype=np.uint8
                     )
 
-                s1_f32 = rng.uniform(
-                    0.005,
-                    0.03,
-                    size=(num_experts, 2 * inter_size, hidden_size // blk_size),
-                ).astype(np.float32)
+                s1_f32 = rng.uniform(0.005, 0.03, size=(num_experts, 2 * inter_size, hidden_size // blk_size)).astype(
+                    np.float32
+                )
                 s2_f32 = rng.uniform(0.005, 0.03, size=(num_experts, hidden_size, inter_size // blk_size)).astype(
                     np.float32
                 )
@@ -1353,16 +1265,7 @@ int main() {
                 out_name = "Y" if l_idx == len(layer_specs) - 1 else f"H_{l_idx}"
                 node = helper.make_node(
                     "QMoE",
-                    inputs=[
-                        cur_in,
-                        "router_probs",
-                        w1_name,
-                        s1_name,
-                        b1_name,
-                        w2_name,
-                        s2_name,
-                        b2_name,
-                    ],
+                    inputs=[cur_in, "router_probs", w1_name, s1_name, b1_name, w2_name, s2_name, b2_name],
                     outputs=[out_name],
                     name=f"model/layers.{l_idx}/mlp/QMoE_node_{l_idx}",
                     domain="com.microsoft",
@@ -1385,13 +1288,7 @@ int main() {
         with open(prof_path, "wb") as pf:
             pf.write(
                 struct.pack(
-                    "<6I",
-                    0x50525453,
-                    1,
-                    len(layer_specs),
-                    num_experts,
-                    len(layer_specs) * num_experts,
-                    len(pairs),
+                    "<6I", 0x50525453, 1, len(layer_specs), num_experts, len(layer_specs) * num_experts, len(pairs)
                 )
             )
             pf.writelines(struct.pack("<2H", l_id, e_id) for l_id, e_id in pairs)
@@ -1408,14 +1305,195 @@ int main() {
         )
         model = helper.make_model(
             graph,
-            opset_imports=[
-                helper.make_opsetid("", 20),
-                helper.make_opsetid("com.microsoft", 1),
-            ],
+            opset_imports=[helper.make_opsetid("", 20), helper.make_opsetid("com.microsoft", 1)],
         )
         model_path = os.path.join(model_dir, "model.onnx")
         onnx.save_model(model, model_path)
         return model_path
+
+    def _build_decode_optimization_model(
+        self,
+        model_dir: str,
+        num_layers: int = 2,
+        use_fp16: bool = True,
+        num_experts: int = 16,
+        resident_slots: int = 10,
+    ):
+        model_path = self._build_int_qmoe_model(
+            model_dir,
+            layer_specs=[(4, 32, 1)] * num_layers,
+            num_experts=num_experts,
+            hidden_size=256,
+            inter_size=128,
+            top_k=8,
+            use_fp16=use_fp16,
+        )
+        pairs = [(layer, expert) for expert in range(num_experts) for layer in range(num_layers)]
+        Path(model_dir, "expert-profile.bin").write_bytes(
+            struct.pack("<6I", 0x50525453, 1, num_layers, num_experts, num_layers * num_experts, len(pairs))
+            + b"".join(struct.pack("<2H", *pair) for pair in pairs)
+        )
+        config = {
+            "session.moe.offload.mode": "required",
+            "session.moe.offload.placement": "static",
+            "session.moe.offload.device_expert_bytes": str(num_layers * (2 * num_experts * 4 + resident_slots * 55304)),
+            "session.moe.offload.popularity_file": "expert-profile.bin",
+            "session.moe.offload.cpu_threads": "4",
+        }
+        return model_path, config
+
+    def _run_decode_with_telemetry(
+        self, model_path: str, config: dict, cases: list, use_fp16: bool = True, cuda_graph: bool = False
+    ):
+        with tempfile.TemporaryFile(mode="w+b") as capture:
+            saved_stderr = os.dup(2)
+            try:
+                os.dup2(capture.fileno(), 2)
+                with mock.patch.dict(os.environ, {"ORT_QMOE_OFFLOAD_TELEMETRY": "1"}):
+                    options = {"enable_cuda_graph": "1"} if cuda_graph else None
+                    session = self._make_session(model_path, config, options)
+                    self.assertEqual(session.get_providers()[0], "CUDAExecutionProvider")
+                    if cuda_graph:
+                        self.assertTrue(use_fp16)
+                        x_value = ort.OrtValue.ortvalue_from_numpy(cases[0][0].astype(np.float16), "cuda", 0)
+                        r_value = ort.OrtValue.ortvalue_from_numpy(cases[0][1].astype(np.float16), "cuda", 0)
+                        y_value = ort.OrtValue.ortvalue_from_shape_and_type(cases[0][0].shape, np.float16, "cuda", 0)
+                        binding = session.io_binding()
+                        binding.bind_ortvalue_input("X", x_value)
+                        binding.bind_ortvalue_input("router_probs", r_value)
+                        binding.bind_ortvalue_output("Y", y_value)
+                        outputs = []
+                        for x, router in cases:
+                            x_value.update_inplace(x.astype(np.float16))
+                            r_value.update_inplace(router.astype(np.float16))
+                            session.run_with_iobinding(binding)
+                            outputs.append(y_value.numpy().astype(np.float32))
+                        del binding
+                    else:
+                        run = self._run_fp16 if use_fp16 else self._run_bf16
+                        outputs = [run(session, x, router) for x, router in cases]
+                    del session
+            finally:
+                if sys.exc_info()[0] is not None:
+                    capture.seek(0)
+                    os.write(saved_stderr, capture.read())
+                os.dup2(saved_stderr, 2)
+                os.close(saved_stderr)
+            capture.seek(0)
+            native_log = capture.read().decode("utf-8")
+        prefix = "QMoEOffload telemetry "
+        telemetry = [json.loads(line.split(prefix, 1)[1]) for line in native_log.splitlines() if prefix in line]
+        self.assertTrue(telemetry, native_log)
+        return outputs, telemetry
+
+    def test_v4_zero_cold_doorbell_bitwise_parity_and_transitions(self):
+        with tempfile.TemporaryDirectory() as model_dir:
+            model_path, config = self._build_decode_optimization_model(model_dir)
+            rng = np.random.default_rng(33575)
+            cases = []
+            for rows, cold in ((1, False), (4, False), (1, True), (16, True), (2, False), (1, True), (1, False)):
+                x = rng.standard_normal((rows, 256), dtype=np.float32) * 0.25
+                router = np.tile(np.linspace(3.0, -3.0, 16, dtype=np.float32), (rows, 1))
+                if cold:
+                    router[:, 12:14] = 4.0
+                cases.append((x, router))
+            baseline, baseline_stats = self._run_decode_with_telemetry(model_path, config, cases)
+            optimized, optimized_stats = self._run_decode_with_telemetry(
+                model_path, {**config, "session.moe.offload.skip_zero_cold_doorbell": "1"}, cases
+            )
+            for original, actual in zip(baseline, optimized, strict=True):
+                np.testing.assert_array_equal(original.view(np.uint32), actual.view(np.uint32))
+            self.assertGreater(sum(item["zero_cold_short_circuits"] for item in optimized_stats), 0)
+            self.assertGreater(sum(item["cpu_doorbell_wakeups"] for item in optimized_stats), 0)
+            self.assertGreater(sum(item["cold_routes"] for item in optimized_stats), 0)
+            self.assertEqual(sum(item["zero_cold_short_circuits"] for item in baseline_stats), 0)
+            for item in optimized_stats:
+                self.assertEqual(item["done_seq"], item["launched_seq"])
+                self.assertEqual(item["done_seq"], item["request_seq"])
+                self.assertEqual(item["done_seq"], item["last_serviced_seq"])
+            with self.subTest("adaptive observations retain CPU service"):
+                _, adaptive_stats = self._run_decode_with_telemetry(
+                    model_path,
+                    {
+                        **config,
+                        "session.moe.offload.placement": "adaptive",
+                        "session.moe.offload.skip_zero_cold_doorbell": "1",
+                    },
+                    [cases[0], cases[2], cases[0]],
+                )
+                self.assertEqual(sum(item["zero_cold_short_circuits"] for item in adaptive_stats), 0)
+                self.assertGreater(sum(item["cpu_doorbell_wakeups"] for item in adaptive_stats), 0)
+
+    def test_v4_zero_cold_doorbell_cuda_graph_replay(self):
+        with tempfile.TemporaryDirectory() as model_dir:
+            model_path, config = self._build_decode_optimization_model(model_dir, num_layers=4)
+            rng = np.random.default_rng(33577)
+            cases = []
+            for step in range(128):
+                x = rng.standard_normal((1, 256), dtype=np.float32) * 0.25
+                router = np.linspace(3.0, -3.0, 16, dtype=np.float32).reshape(1, 16)
+                if step % 3 == 1:
+                    router[:, 12:14] = 4.0
+                cases.append((x, router))
+            baseline, _ = self._run_decode_with_telemetry(model_path, config, cases)
+            optimized, stats = self._run_decode_with_telemetry(
+                model_path, {**config, "session.moe.offload.skip_zero_cold_doorbell": "1"}, cases, cuda_graph=True
+            )
+            for original, actual in zip(baseline, optimized, strict=True):
+                np.testing.assert_array_equal(original.view(np.uint32), actual.view(np.uint32))
+            for item in stats:
+                self.assertGreater(item["zero_cold_short_circuits"], 0)
+                self.assertGreater(item["cpu_doorbell_wakeups"], 0)
+                self.assertEqual(item["done_seq"], item["request_seq"])
+                self.assertEqual(item["done_seq"], item["launched_seq"])
+
+    def test_v4_zero_cold_doorbell_retains_cross_layer_promotion_service(self):
+        script = """
+import sys
+import tempfile
+import numpy as np
+sys.path.insert(0, sys.argv[1])
+from test_qmoe_offload_v4 import TestQMoEOffloadV4
+TestQMoEOffloadV4.setUpClass()
+case = TestQMoEOffloadV4()
+with tempfile.TemporaryDirectory() as directory:
+    model, config = case._build_decode_optimization_model(directory, num_layers=1)
+    x = np.full((1, 256), 0.125, dtype=np.float32)
+    router = np.linspace(3.0, -3.0, 16, dtype=np.float32).reshape(1, 16)
+    baseline, _ = case._run_decode_with_telemetry(model, config, [(x, router)])
+    actual, stats = case._run_decode_with_telemetry(
+        model, {**config, "session.moe.offload.skip_zero_cold_doorbell": "1"}, [(x, router)]
+    )
+    np.testing.assert_array_equal(baseline[0].view(np.uint32), actual[0].view(np.uint32))
+    assert stats[0]["zero_cold_short_circuits"] == 0, stats
+    assert stats[0]["cpu_doorbell_wakeups"] == 1, stats
+"""
+        environment = dict(os.environ, ORT_QMOE_CROSS_LAYER_PROMO="1")
+        environment.pop("ORT_QMOE_SHARED_EXPERT_BRIDGE_PTR", None)
+        result = subprocess.run(
+            [sys.executable, "-c", script, str(Path(__file__).resolve().parent)],
+            env=environment,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_v4_skip_zero_cold_doorbell_policy_validation_and_env_precedence(self):
+        with tempfile.TemporaryDirectory() as model_dir:
+            model_path, config = self._build_decode_optimization_model(model_dir, num_layers=1)
+            key = "session.moe.offload.skip_zero_cold_doorbell"
+            for invalid in ("2", "-1", "invalid"):
+                with self.subTest(value=invalid), self.assertRaisesRegex(Exception, "Invalid " + key):
+                    self._make_session(model_path, {**config, key: invalid})
+            x = np.full((1, 256), 0.125, dtype=np.float32)
+            router = np.linspace(3.0, -3.0, 16, dtype=np.float32).reshape(1, 16)
+            with mock.patch.dict(os.environ, {"ORT_QMOE_SKIP_ZERO_COLD_DOORBELL": "1"}):
+                _, enabled = self._run_decode_with_telemetry(model_path, config, [(x, router)])
+                _, explicit_zero = self._run_decode_with_telemetry(model_path, {**config, key: "0"}, [(x, router)])
+            self.assertEqual(enabled[0]["zero_cold_short_circuits"], 1)
+            self.assertEqual(explicit_zero[0]["zero_cold_short_circuits"], 0)
 
     def test_v4_int4_and_int3_offload_modes_and_numerical_parity(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1423,12 +1501,7 @@ int main() {
             dir_int4 = os.path.join(tmpdir, "int4_b32")
             os.makedirs(dir_int4, exist_ok=True)
             m_int4 = self._build_int_qmoe_model(
-                dir_int4,
-                layer_specs=[(4, 32, 1), (4, 32, 1)],
-                num_experts=8,
-                hidden_size=256,
-                inter_size=128,
-                top_k=2,
+                dir_int4, layer_specs=[(4, 32, 1), (4, 32, 1)], num_experts=8, hidden_size=256, inter_size=128, top_k=2
             )
             # H=256, I=128, INT4 b32: 32768 + 16384 + 4096 + 2048 + 8 = 55,304 B gpu slot; 55,808 B host stride
             int4_slot_bytes = 55304
@@ -1467,7 +1540,7 @@ int main() {
             )
 
             rng = np.random.default_rng(202610)
-            for num_rows in (1, 2, 4, 16):
+            for num_rows in (1, 2, 4, 8, 16, 64, 256):
                 x = rng.standard_normal((num_rows, 256), dtype=np.float32) * 0.5
                 r = rng.standard_normal((num_rows, 8), dtype=np.float32)
                 y_ref = self._run_bf16(sess_int4_ref, x, r)
@@ -1538,14 +1611,11 @@ int main() {
                     "session.moe.offload.device_expert_bytes": str(budget_int3),
                 },
             )
-            for num_rows in (1, 2, 4, 16):
+            for num_rows in (1, 2, 4, 8, 16, 64):
                 x = rng.standard_normal((num_rows, 256), dtype=np.float32) * 0.5
                 r = rng.standard_normal((num_rows, 8), dtype=np.float32)
                 y_ref = self._run_bf16(sess_int3_ref, x, r)
-                for name, s in (
-                    ("int3_adaptive", sess_int3_off),
-                    ("int3_gpu_stream", sess_int3_stream),
-                ):
+                for name, s in (("int3_adaptive", sess_int3_off), ("int3_gpu_stream", sess_int3_stream)):
                     y_cand = self._run_bf16(s, x, r)
                     self.assertLess(
                         float(np.max(np.abs(y_ref - y_cand))),
@@ -1569,7 +1639,7 @@ int main() {
                     "session.moe.offload.popularity_file": "expert-profile.bin",
                 },
             )
-            for num_rows in (1, 2, 4, 16):
+            for num_rows in (1, 2, 4, 8, 16, 64):
                 x = rng.standard_normal((num_rows, 256), dtype=np.float32) * 0.5
                 r = rng.standard_normal((num_rows, 8), dtype=np.float32)
                 y_ref = self._run_bf16(sess_mix_ref, x, r)
@@ -1581,16 +1651,13 @@ int main() {
                 )
             del sess_mix_off, sess_mix_ref
 
-            # 3. INT3 scalar fallback shape (H=128, I=128, block_size=32)
+            # 3. INT3 scalar fallback shape (H=128, I=128, block_size=32) and Tensor-Core shape (H=512, I=128, b64)
             dir_int3_scalar = os.path.join(tmpdir, "int3_h128_scalar")
+            dir_int3_tc = os.path.join(tmpdir, "int3_h512_tc")
             os.makedirs(dir_int3_scalar, exist_ok=True)
+            os.makedirs(dir_int3_tc, exist_ok=True)
             m_int3_scalar = self._build_int_qmoe_model(
-                dir_int3_scalar,
-                layer_specs=[(3, 32, 0)],
-                num_experts=8,
-                hidden_size=128,
-                inter_size=128,
-                top_k=2,
+                dir_int3_scalar, layer_specs=[(3, 32, 0)], num_experts=8, hidden_size=128, inter_size=128, top_k=2
             )
             int3_h128_slot = 2 * 128 * 48 + 128 * 48 + 2 * 128 * 4 * 2 + 128 * 4 * 2 + 8
             s_scalar_ref = self._make_session(m_int3_scalar, {"session.moe.offload.mode": "disabled"})
@@ -1612,17 +1679,47 @@ int main() {
                 )
             del s_scalar_off, s_scalar_ref
 
+            m_int3_tc = self._build_int_qmoe_model(
+                dir_int3_tc,
+                layer_specs=[(4, 32, 1), (3, 64, 0)],
+                num_experts=8,
+                hidden_size=512,
+                inter_size=128,
+                top_k=4,
+            )
+            int4_h512_slot = 2 * 128 * 256 + 512 * 64 + 2 * 128 * 16 * 2 + 512 * 4 * 2 + 8
+            int3_h512_slot = 2 * 128 * 192 + 512 * 48 + 2 * 128 * 8 * 2 + 512 * 2 * 2 + 8
+            with mock.patch.dict(
+                os.environ,
+                {"ORT_QMOE_INT3_TC_MIN_ROUTES": "1", "ORT_MOE_GEMV_TC_MIN_ROWS": "1"},
+            ):
+                s_tc_ref = self._make_session(m_int3_tc, {"session.moe.offload.mode": "disabled"})
+                s_tc_off = self._make_session(
+                    m_int3_tc,
+                    {
+                        "session.moe.offload.mode": "required",
+                        "session.moe.offload.placement": "static",
+                        "session.moe.offload.device_expert_bytes": str(
+                            2 * fixed_bytes + 4 * int4_h512_slot + 4 * int3_h512_slot
+                        ),
+                        "session.moe.offload.popularity_file": "expert-profile.bin",
+                    },
+                )
+            for num_rows in (1, 8, 16, 64):
+                x = rng.standard_normal((num_rows, 512), dtype=np.float32) * 0.5
+                r = rng.standard_normal((num_rows, 8), dtype=np.float32)
+                self.assertLess(
+                    float(np.max(np.abs(self._run_bf16(s_tc_ref, x, r) - self._run_bf16(s_tc_off, x, r)))),
+                    5e-2,
+                )
+            del s_tc_off, s_tc_ref
+
             # 4. Unsupported quant_type='int' attribute combinations (e.g., raw INT4 weights_prepacked=0) must be
             # rejected in mode=required and ignored in mode=auto.
             dir_raw_int4 = os.path.join(tmpdir, "raw_int4")
             os.makedirs(dir_raw_int4, exist_ok=True)
             m_raw_int4 = self._build_int_qmoe_model(
-                dir_raw_int4,
-                layer_specs=[(4, 32, 0)],
-                num_experts=8,
-                hidden_size=256,
-                inter_size=128,
-                top_k=2,
+                dir_raw_int4, layer_specs=[(4, 32, 0)], num_experts=8, hidden_size=256, inter_size=128, top_k=2
             )
             with self.assertRaisesRegex(Exception, "quant_type='int' offload requires"):
                 self._make_session(m_raw_int4, {"session.moe.offload.mode": "required"})
