@@ -4450,6 +4450,32 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                static_cast<int>(weight_bits), static_cast<int>(block_size_));
   };
 
+  const auto int_scale_supports_packed_execution = [&](int64_t weight_bits) {
+    if ((!enable_int2_gemv_ && !enable_int2_prefill_) ||
+        activation_type_ != onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Swiglu ||
+        swiglu_fusion_ != 1 || (block_size_ != 32 && block_size_ != 64 && block_size_ != 128)) {
+      return false;
+    }
+
+    const auto& shape = tensor.Shape();
+    if (shape.NumDimensions() != 3 || block_size_ <= 0 ||
+        shape[2] > std::numeric_limits<int64_t>::max() / block_size_) {
+      return false;
+    }
+
+    const int64_t reduction_size = shape[2] * block_size_;
+    if (enable_int2_prefill_ && shape[0] > 0 && shape[0] <= 512 &&
+        shape[1] > 0 && shape[1] <= std::numeric_limits<int>::max() && shape[1] % 64 == 0 &&
+        reduction_size > 0 && reduction_size <= std::numeric_limits<int>::max() && reduction_size % 64 == 0) {
+      return true;
+    }
+
+    return enable_int2_gemv_ && (block_size_ == 32 || block_size_ == 64 || block_size_ == 128) &&
+           onnxruntime::llm::kernels::moe_gemv::is_moe_gemv_supported(
+               sm_, /*expanded_num_rows=*/1, shape[1], reduction_size,
+               static_cast<int>(weight_bits), static_cast<int>(block_size_));
+  };
+
   cudaStream_t stream = 0;  // Use default stream for PrePack operations
 
   DUMP_TENSOR_INIT();
@@ -4659,7 +4685,8 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
       }
     } else if (quant_type_ == "int") {
       if (uses_packed_int_decode) {
-        if (packed_fc1_weights_ || weights_prepacked_) {
+        if (packed_fc1_weights_ || weights_prepacked_ ||
+            int_scale_supports_packed_execution(fc1_expert_weight_bits_)) {
           if (weights_prepacked_) {
             // The initializer is released below, so cache its shape for validation at Run time.
             fc1_scales_shape_ = tensor.Shape();
@@ -4716,7 +4743,8 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
       }
     } else if (quant_type_ == "int") {
       if (uses_packed_int_decode) {
-        if (packed_fc2_weights_ || weights_prepacked_) {
+        if (packed_fc2_weights_ || weights_prepacked_ ||
+            int_scale_supports_packed_execution(fc2_expert_weight_bits_)) {
           if (weights_prepacked_) {
             // The initializer is released below, so cache its shape for validation at Run time.
             fc2_scales_shape_ = tensor.Shape();
