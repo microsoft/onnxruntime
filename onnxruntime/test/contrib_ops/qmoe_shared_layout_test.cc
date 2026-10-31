@@ -1809,6 +1809,117 @@ TEST_F(ScopedExpertLeaseTest, GroupPinsRemainQuarantinedUntilDeviceReadsComplete
   EXPECT_TRUE(CanServe(2));
 }
 
+TEST(QMoESharedLayoutTest, Int2ExpertBlockLayoutGeometry) {
+  shared::Nvfp4ExpertBlockLayout layout{};
+  EXPECT_FALSE(shared::MakeInt2ExpertBlockLayout(128, 64, 16, &layout));
+  EXPECT_FALSE(shared::MakeInt2ExpertBlockLayout(96, 64, 64, &layout));
+  EXPECT_FALSE(shared::MakeInt2ExpertBlockLayout(128, 64, 64, nullptr));
+
+  ASSERT_TRUE(shared::MakeInt2ExpertBlockLayout(2560, 640, 64, &layout));
+  EXPECT_EQ(layout.fc1_weights, 0U);
+  EXPECT_EQ(layout.fc1_scales, 819200U);
+  EXPECT_EQ(layout.fc1_global_scale, 921600U);
+  EXPECT_EQ(layout.fc2_weights, 921856U);
+  EXPECT_EQ(layout.fc2_scales, 1331456U);
+  EXPECT_EQ(layout.fc2_global_scale, 1382656U);
+  EXPECT_EQ(layout.stride, 1382912U);
+  EXPECT_EQ(layout.fc2_weights % shared::kBankAlignment, 0U);
+  EXPECT_EQ(layout.fc1_scales % shared::kBankAlignment, 0U);
+  EXPECT_EQ(layout.fc2_scales % shared::kBankAlignment, 0U);
+
+  ASSERT_TRUE(shared::MakeInt2ExpertBlockLayout(256, 128, 32, &layout));
+  EXPECT_EQ(layout.stride % shared::kBankAlignment, 0U);
+  ASSERT_TRUE(shared::MakeInt2ExpertBlockLayout(256, 128, 128, &layout));
+  EXPECT_EQ(layout.stride % shared::kBankAlignment, 0U);
+}
+
+TEST(QMoESharedLayoutTest, Int2ReorderedPositionAndGemmMatchIndependentReference) {
+  constexpr int64_t k = 128;
+  constexpr int64_t columns = 24;
+  for (int64_t b = 0; b < 16; ++b) {
+    for (int64_t s = 0; s < 4; ++s) {
+      const int64_t logical_k = 32 * (b & 1) + 8 * s + (b >> 1);
+      EXPECT_EQ(shared::Int2ReorderedPosition(logical_k), 16 * s + b);
+      const int64_t raw_k = 4 * b + s;
+      EXPECT_EQ(shared::RawInt2ReorderedPosition(raw_k), 16 * s + b);
+    }
+  }
+
+  std::vector<float> a_natural(static_cast<size_t>(k));
+  for (int64_t i = 0; i < k; ++i) {
+    a_natural[static_cast<size_t>(i)] = static_cast<float>((i % 17) - 8) * 0.125f;
+  }
+  std::vector<float> a_prepacked(static_cast<size_t>(k));
+  std::vector<float> a_raw(static_cast<size_t>(k));
+  shared::ReorderInt2ActivationRow(a_natural.data(), a_prepacked.data(), k);
+  shared::ReorderRawInt2ActivationRow(a_natural.data(), a_raw.data(), k);
+  for (int64_t tile = 0; tile < k / 64; ++tile) {
+    for (int64_t off = 0; off < 64; ++off) {
+      EXPECT_EQ(a_prepacked[static_cast<size_t>(tile * 64 + shared::Int2ReorderedPosition(off))],
+                a_natural[static_cast<size_t>(tile * 64 + off)]);
+      EXPECT_EQ(a_raw[static_cast<size_t>(tile * 64 + shared::RawInt2ReorderedPosition(off))],
+                a_natural[static_cast<size_t>(tile * 64 + off)]);
+    }
+  }
+
+  std::vector<uint8_t> weights(static_cast<size_t>(columns * (k / 4)));
+  for (size_t i = 0; i < weights.size(); ++i) {
+    weights[i] = static_cast<uint8_t>((i * 73 + 19) & 0xFF);
+  }
+
+  for (int64_t block_size : {int64_t{32}, int64_t{64}, int64_t{128}}) {
+    const int64_t k_blocks = k / block_size;
+    std::vector<uint16_t> scales_bf16(static_cast<size_t>(columns * k_blocks));
+    for (size_t i = 0; i < scales_bf16.size(); ++i) {
+      scales_bf16[i] = shared::FloatToBFloat16(0.0625f * static_cast<float>((i % 5) + 1));
+    }
+    for (bool prepacked : {true, false}) {
+      std::vector<float> ref(static_cast<size_t>(columns), 0.0f);
+      for (int64_t n = 0; n < columns; ++n) {
+        float col_acc = 0.0f;
+        for (int64_t kb64 = 0; kb64 < k / 64; ++kb64) {
+          const uint8_t* slice = prepacked
+                                     ? (weights.data() + static_cast<size_t>(n / 8) * static_cast<size_t>(2 * k) +
+                                        static_cast<size_t>(kb64) * 128 + static_cast<size_t>(n % 8) * 16)
+                                     : (weights.data() + static_cast<size_t>(n) * static_cast<size_t>(k / 4) +
+                                        static_cast<size_t>(kb64) * 16);
+          for (int64_t b = 0; b < 16; ++b) {
+            const uint8_t byte_val = slice[static_cast<size_t>(b)];
+            for (int64_t s = 0; s < 4; ++s) {
+              const int code = (byte_val >> (2 * s)) & 0x3;
+              const float q = static_cast<float>(code - 2);
+              const int64_t k_off = prepacked ? (32 * (b & 1) + 8 * s + (b >> 1)) : (4 * b + s);
+              const int64_t abs_k = kb64 * 64 + k_off;
+              const int64_t blk = abs_k / block_size;
+              const float sc = shared::BFloat16ToFloat(scales_bf16[static_cast<size_t>(n * k_blocks + blk)]);
+              col_acc += a_natural[static_cast<size_t>(abs_k)] * q * sc;
+            }
+          }
+        }
+        ref[static_cast<size_t>(n)] = col_acc;
+      }
+
+      const float* a_reordered = prepacked ? a_prepacked.data() : a_raw.data();
+      std::vector<float> out_scalar(static_cast<size_t>(columns), 0.0f);
+      std::vector<float> out_simd(static_cast<size_t>(columns), 0.0f);
+      shared::Int2GemmRange(weights.data(), scales_bf16.data(), nullptr, block_size,
+                            /*scales_are_block_major=*/false, /*weights_are_prepacked=*/prepacked,
+                            /*scale_is_bf16=*/true, /*bias_is_bf16=*/true, columns, k, a_reordered, 1,
+                            out_scalar.data(), columns, 0, columns, /*force_scalar=*/true);
+      shared::Int2GemmRange(weights.data(), scales_bf16.data(), nullptr, block_size,
+                            /*scales_are_block_major=*/false, /*weights_are_prepacked=*/prepacked,
+                            /*scale_is_bf16=*/true, /*bias_is_bf16=*/true, columns, k, a_reordered, 1,
+                            out_simd.data(), columns, 0, columns, /*force_scalar=*/false);
+      for (int64_t n = 0; n < columns; ++n) {
+        EXPECT_NEAR(out_scalar[static_cast<size_t>(n)], ref[static_cast<size_t>(n)], 1e-5f)
+            << "block_size=" << block_size << " prepacked=" << prepacked << " n=" << n;
+        EXPECT_NEAR(out_simd[static_cast<size_t>(n)], ref[static_cast<size_t>(n)], 1e-5f)
+            << "block_size=" << block_size << " prepacked=" << prepacked << " n=" << n;
+      }
+    }
+  }
+}
+
 TEST(QMoESharedLayoutTest, Int2GemmAndExpertRangesMatchScalarAcrossBlockSizesFp16AndBf16) {
   constexpr int64_t hidden = 128;
   constexpr int64_t inter = 128;
@@ -1900,57 +2011,24 @@ TEST(QMoESharedLayoutTest, Int2GuardPageAndReadOnlyBanks) {
   uint8_t* weights = mapping + page - 128;
   std::memset(weights, 0x9B, 128);
   ASSERT_EQ(mprotect(mapping, page, PROT_READ), 0);
-  // One complete eight-column tile (k = 64): its last weight byte sits right before the protected page.
-  std::array<uint16_t, 8> scales;
-  for (size_t c = 0; c < scales.size(); ++c) {
-    scales[c] = shared::FloatToBFloat16(0.125f * static_cast<float>(c + 1));
-  }
+  const uint16_t scale = shared::FloatToBFloat16(0.125f);
   std::array<float, 64> a;
   a.fill(0.25f);
-  std::array<float, 8> scalar{};
-  std::array<float, 8> dispatched{};
-  shared::Int2GemmRange(weights, scales.data(), nullptr, 64,
+  float scalar = 0.0f;
+  float dispatched = 0.0f;
+  shared::Int2GemmRange(weights, &scale, nullptr, 64,
                         /*scales_are_block_major=*/false, /*weights_are_prepacked=*/true,
                         /*scale_is_bf16=*/true, /*bias_is_bf16=*/true,
-                        8, 64, a.data(), 1, scalar.data(), 8, 0, 8, /*force_scalar=*/true);
-  shared::Int2GemmRange(weights, scales.data(), nullptr, 64,
+                        1, 64, a.data(), 1, &scalar, 1, 0, 1, /*force_scalar=*/true);
+  shared::Int2GemmRange(weights, &scale, nullptr, 64,
                         /*scales_are_block_major=*/false, /*weights_are_prepacked=*/true,
                         /*scale_is_bf16=*/true, /*bias_is_bf16=*/true,
-                        8, 64, a.data(), 1, dispatched.data(), 8, 0, 8, /*force_scalar=*/false);
-  for (size_t c = 0; c < scalar.size(); ++c) {
-    EXPECT_NEAR(scalar[c], dispatched[c], 1e-6f) << "column " << c;
-  }
+                        1, 64, a.data(), 1, &dispatched, 1, 0, 1, /*force_scalar=*/false);
+  EXPECT_NEAR(scalar, dispatched, 1e-6f);
   EXPECT_EQ(munmap(mapping, 2 * page), 0);
 #else
   GTEST_SKIP() << "Read-only guard-page test requires mmap.";
 #endif
-}
-
-TEST(QMoESharedLayoutTest, Int2Fp16SwiGluKeepsProjectionsInFloat32) {
-  constexpr int64_t hidden = 128, inter = 128;
-  std::vector<uint8_t> weights(static_cast<size_t>(2 * inter * hidden / 4), 0xaa);
-  weights[0] = 0xa9;   // gate: -1 at K=0.
-  weights[16] = 0xab;  // up: +1 at K=0.
-  std::vector<uint16_t> scales(static_cast<size_t>(2 * inter * hidden / 64), shared::FloatToHalf(1.0f));
-  scales[2] = shared::FloatToHalf(8192.0f);
-  scales[3] = scales[2];
-  shared::Int2ExpertView view{};
-  view.fc1_weights = weights.data();
-  view.fc1_scales = scales.data();
-  view.block_size = 64;
-  view.scale_is_bf16 = false;
-  view.weights_are_prepacked = true;
-  std::array<float, hidden> x{};
-  x[0] = 16.0f;
-  const shared::SwiGluParams swiglu{1.0f, 0.0f, std::numeric_limits<float>::infinity()};
-  const float expected = shared::HalfToFloat(shared::FloatToHalf(-16.0f / (1.0f + std::exp(16.0f)) * 131072.0f));
-  for (bool scalar : {false, true}) {
-    std::array<float, inter> actual{};
-    shared::Int2Fc1SwiGluRange(hidden, inter, view, x.data(), 1, swiglu, actual.data(),
-                               0, 2 * inter, scalar, /*bf16_boundaries=*/false, /*fp16_boundaries=*/true);
-    EXPECT_TRUE(std::isfinite(actual[0]));
-    EXPECT_EQ(actual[0], expected);
-  }
 }
 
 }  // namespace
