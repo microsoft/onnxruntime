@@ -43,8 +43,5 @@ struct OrtCUDAProviderOptionsV2 {
   int fuse_conv_bias = 0;                                                                                      // Enable CUDNN Frontend kernel fusing, results in JIT compiles
   int sdpa_kernel = 0;                                                                                         // Scaled Dot Product Attention kernel option
   size_t external_data_loader_reading_threads = 4;                                                             // Number of CPU read tasks per external-data staging buffer. 0 disables the loader; 1 disables parallel reads.
-  size_t gpu_device_mem_limit = 0;                                                                             // Per-session limit, in bytes, on device memory allocated through the session's CUDA allocators (BFC arena growth, MoE offload buffers, ...). 0 means no limit.
-                                                                                                               // Not the same as gpu_mem_limit above, which only caps the size of the BFC arena. An allocation that would exceed this limit fails.
-                                                                                                               // Not supported with external CUDA allocators or CUDA memory pools.
   int min_num_runs_before_cuda_graph_capture = 2;                                                              // Number of regular (warm-up) runs before CUDA graph capture starts. Only used when enable_cuda_graph is set.
 };

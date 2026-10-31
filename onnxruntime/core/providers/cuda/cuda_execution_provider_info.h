@@ -53,6 +53,8 @@ struct CUDAExecutionProviderInfo {
   // Per-session limit, in bytes, on device memory allocated through the session's CUDA allocators (BFC arena growth,
   // MoE offload buffers, ...). 0 means no limit. Unlike `gpu_mem_limit`, which only caps the size of the BFC arena,
   // an allocation that would exceed this limit fails. Not supported with external CUDA allocators or CUDA memory pools.
+  // This is not a provider option and is not part of OrtCUDAProviderOptionsV2: CUDAProviderFactory::CreateProvider
+  // fills it from the session config entry session.moe.offload.gpu_device_mem_limit.
   size_t gpu_device_mem_limit{0};
 
   ArenaExtendStrategy arena_extend_strategy{ArenaExtendStrategy::kNextPowerOfTwo};  // Will be over-ridden by contents of `default_memory_arena_cfg` (if specified)

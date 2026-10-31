@@ -778,7 +778,8 @@ class QMoESessionController {
     usable_free = (usable_free > driver_reserve) ? (usable_free - driver_reserve) : 0ULL;
 #endif
 
-    // Also respect CudaDeviceMemoryBudget limit (e.g. gpu_device_mem_limit) if configured.
+    // Also respect the device-wide CudaDeviceMemoryBudget limit if configured. Per-session limits such as
+    // session.moe.offload.gpu_device_mem_limit are applied through the session budget account.
     if (auto dev_budget = GetCudaDeviceMemoryBudgetByOrdinal(device_id)) {
       const auto stats = dev_budget->GetStats();
       if (stats.limit < std::numeric_limits<size_t>::max()) {

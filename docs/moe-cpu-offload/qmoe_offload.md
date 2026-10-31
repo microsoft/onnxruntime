@@ -105,6 +105,7 @@ session creation with `ORT_INVALID_ARGUMENT`.
 | `session.moe.offload.host_working_bytes` | Positive integer bytes | `67108864` (`64 MiB`) | Upper bound on transient CPU thread-pool scratch buffers. |
 | `session.moe.offload.pinned_bytes` | `"auto"` or non-negative integer bytes | `67108864` (`64 MiB`) | Upper bound on pinned host DMA staging and promotion bounce buffers. |
 | `session.moe.offload.budget_group` | String identifier | `""` (per-session) | Optional cross-session budget group name shared across target and draft sessions on the same GPU. |
+| `session.moe.offload.gpu_device_mem_limit` | Non-negative integer bytes | `0` (no limit) | Per-session cap on the bytes this session may allocate on the GPU through its CUDA allocators (BFC arena growth and MoE offload buffers). It is read when the CUDA EP is created, so it must be set before the session is created. Honored by both the bundled CUDA EP and the CUDA plugin EP; it is not part of `OrtCUDAProviderOptionsV2`. Not the same as `gpu_mem_limit` (see §5.1). Not supported together with an external CUDA allocator or a CUDA memory pool. |
 | `session.moe.offload.allow_file_backing` | `"0"`, `"1"` | `"1"` | Allows `FileExpertStore` to read uncached cold experts from the backing weight files when `host_expert_bytes` is bounded. |
 | `session.moe.offload.cpu_threads` | Non-negative integer | `0` (`auto`) | Number of `SpinPool` worker threads for cold-expert CPU execution (`0` auto-detects physical cores via `DiscoverPhysicalCoreCount()`). |
 | `session.moe.offload.async_max_tokens` | Non-negative integer | `8` | Token threshold separating hybrid doorbell decode (`rows <= async_max_tokens`) from GPU streaming DMA prefill (`rows > async_max_tokens`). |
@@ -260,13 +261,16 @@ Stage 5: Runtime Execution
 
 - **Device Memory Budget (`CudaDeviceMemoryBudget` & `SessionBudgetAccount`)**:
   Tracks per-device and per-session (or named `budget_group`) committed and in-flight GPU HBM
-  allocations (`gpu_device_mem_limit` and `session.moe.offload.device_expert_bytes`). Reservations
-  use RAII `Reservation` tokens (`Reserve` $\to$ `Commit`, or automatic rollback on failure) and
-  two-phase `BeginFree` / `FinishFree` around `cudaFree`.
-  `gpu_device_mem_limit` (CUDA provider option, bytes, `0` = unlimited) is not the same as the older
-  `gpu_mem_limit`: `gpu_mem_limit` only caps the size of the BFC arena, whereas `gpu_device_mem_limit`
-  is charged on every `cudaMalloc` made through the session's CUDA allocators (BFC arena growth and
-  MoE offload buffers) and an allocation that would exceed it fails.
+  allocations (`session.moe.offload.gpu_device_mem_limit` and `session.moe.offload.device_expert_bytes`).
+  Reservations use RAII `Reservation` tokens (`Reserve` $\to$ `Commit`, or automatic rollback on failure)
+  and two-phase `BeginFree` / `FinishFree` around `cudaFree`.
+  `session.moe.offload.gpu_device_mem_limit` (session config key, bytes, `0` or unset = unlimited) is not
+  the same as the older `gpu_mem_limit` CUDA provider option: `gpu_mem_limit` only caps the size of the
+  BFC arena, whereas `session.moe.offload.gpu_device_mem_limit` is charged on every `cudaMalloc` made
+  through the session's CUDA allocators (BFC arena growth and MoE offload buffers) and an allocation that
+  would exceed it fails. It is a session config key rather than a CUDA provider option so that
+  `OrtCUDAProviderOptionsV2` (public API) keeps its layout; both the bundled CUDA EP and the CUDA plugin EP
+  read it when they are created.
 - **Host Pinned Memory Ledger (`HostPinnedBudgetLedger`)**:
   Tracks both `cudaHostAlloc` buffers (`ReserveAllocated` / `BeginFreeAllocated` / `FinishFreeAllocated`)
   and `cudaHostRegister` page-aligned intervals (`RegisterHostRange` / `UnregisterHostRange`), merging

@@ -1179,6 +1179,32 @@ TEST(InferenceSessionTests, LoadModelTwiceReturnsError) {
   ASSERT_THAT(status.ErrorMessage(), ::testing::HasSubstr("already contains a loaded model"));
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
+// session.moe.offload.gpu_device_mem_limit is read by the CUDA EPs when they are created, but every session validates the
+// session.moe.offload.* keys when it is initialized (unknown keys are rejected), so a session without a CUDA EP must
+// still accept a well-formed value.
+TEST(InferenceSessionTests, MoeOffloadGpuDeviceMemLimitIsAcceptedWithoutCudaEp) {
+  for (const char* limit : {"0", "1073741824"}) {
+    SCOPED_TRACE(limit);
+    SessionOptions so;
+    so.session_logid = "InferenceSessionTests.MoeOffloadGpuDeviceMemLimitIsAcceptedWithoutCudaEp";
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsMoeOffloadGpuDeviceMemLimit, limit));
+    InferenceSession session_object{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
+    ASSERT_STATUS_OK(session_object.Initialize());
+  }
+}
+
+TEST(InferenceSessionTests, MoeOffloadGpuDeviceMemLimitRejectsMalformedValue) {
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.MoeOffloadGpuDeviceMemLimitRejectsMalformedValue";
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsMoeOffloadGpuDeviceMemLimit, "1 GiB"));
+  InferenceSession session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(session_object.Initialize(), kOrtSessionOptionsMoeOffloadGpuDeviceMemLimit);
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
 TEST(InferenceSessionTests, FailedLoadAndInitializeRecordProfilingEvents) {
   SessionOptions so;
   ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigEnableMoeExpertStatistics, "invalid"));

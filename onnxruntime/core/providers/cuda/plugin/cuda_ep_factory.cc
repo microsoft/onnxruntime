@@ -10,6 +10,7 @@
 #include "core/common/string_utils.h"
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/session/onnxruntime_c_api.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include <algorithm>
 #include <cassert>
 #include <charconv>
@@ -690,15 +691,18 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
   const std::string gpu_external_alloc_key = ep_options_prefix + "gpu_external_alloc";
   const std::string gpu_external_free_key = ep_options_prefix + "gpu_external_free";
   const std::string gpu_external_empty_cache_key = ep_options_prefix + "gpu_external_empty_cache";
-  const auto device_mem_limit = try_get_session_config(ep_options_prefix + "gpu_device_mem_limit");
+  // The per-session device memory limit is a session-level key shared with the bundled CUDA EP rather than an
+  // EP-scoped option.
+  const auto device_mem_limit = try_get_session_config(kOrtSessionOptionsMoeOffloadGpuDeviceMemLimit);
   size_t device_limit_bytes = 0;
   if (device_mem_limit) {
     const auto parsed = std::from_chars(device_mem_limit->data(),
                                         device_mem_limit->data() + device_mem_limit->size(),
                                         device_limit_bytes);
     if (parsed.ec != std::errc{} || parsed.ptr != device_mem_limit->data() + device_mem_limit->size()) {
-      return factory->ort_api_.CreateStatus(ORT_INVALID_ARGUMENT,
-                                            "gpu_device_mem_limit must be a nonnegative byte count");
+      return factory->ort_api_.CreateStatus(
+          ORT_INVALID_ARGUMENT,
+          (std::string(kOrtSessionOptionsMoeOffloadGpuDeviceMemLimit) + " must be a nonnegative byte count").c_str());
     }
   }
 
@@ -838,8 +842,10 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
   const bool has_session_budget =
       (device_limit_bytes > 0 && device_limit_bytes != std::numeric_limits<size_t>::max());
   if (has_session_budget && (config.external_alloc != nullptr || config.external_free != nullptr)) {
-    return factory->ort_api_.CreateStatus(ORT_INVALID_ARGUMENT,
-                                          "gpu_device_mem_limit does not support external CUDA allocators");
+    return factory->ort_api_.CreateStatus(
+        ORT_INVALID_ARGUMENT,
+        (std::string(kOrtSessionOptionsMoeOffloadGpuDeviceMemLimit) + " does not support external CUDA allocators")
+            .c_str());
   }
   const auto budget = GetCudaDeviceMemoryBudget(static_cast<OrtDevice::DeviceId>(config.device_id));
   config.device_mem_limit = device_limit_bytes;
@@ -921,6 +927,8 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateAllocatorImpl(
       const char* v = factory.ort_api_.GetKeyValue(
           allocator_options, CudaMempoolOrtAllocator::ConfigKeyNames::UseCudaMempool);
       use_mempool = (v != nullptr && std::string(v) == "1");
+      // Explicit limit for requests that no OrtEp owns. The host fills it from session.moe.offload.gpu_device_mem_limit;
+      // callers of CreateSharedAllocator can pass it themselves.
       if (const char* lim_v = factory.ort_api_.GetKeyValue(allocator_options, "gpu_device_mem_limit");
           lim_v != nullptr && lim_v[0] != '\0') {
         has_explicit_limit_opt = true;
@@ -968,8 +976,8 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateAllocatorImpl(
                          "did not provide the '") +
              kEpInstanceIdOptionKey +
              "' allocator option, and several sessions are being created on this device at the same time while at "
-             "least one of them has a gpu_device_mem_limit or session.moe.offload.budget_group. Create such "
-             "sessions one at a time, or use an ONNX Runtime host that provides it.")
+             "least one of them has a session.moe.offload.gpu_device_mem_limit or session.moe.offload.budget_group. "
+             "Create such sessions one at a time, or use an ONNX Runtime host that provides it.")
                 .c_str());
       case AccountBindingAction::kCreateFresh:
         break;
@@ -983,8 +991,9 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateAllocatorImpl(
     }
 
     if (use_mempool && session_account->GetAccountStats().limit != std::numeric_limits<size_t>::max()) {
-      return factory.ort_api_.CreateStatus(ORT_INVALID_ARGUMENT,
-                                           "gpu_device_mem_limit does not support CUDA memory pools");
+      return factory.ort_api_.CreateStatus(
+          ORT_INVALID_ARGUMENT,
+          (std::string(kOrtSessionOptionsMoeOffloadGpuDeviceMemLimit) + " does not support CUDA memory pools").c_str());
     }
 
     if (use_mempool) {

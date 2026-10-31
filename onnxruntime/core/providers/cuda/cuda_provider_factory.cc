@@ -7,9 +7,11 @@
 #include "core/providers/cuda/cuda_provider_factory_creator.h"
 #include "core/providers/cuda/cuda_provider_options.h"
 
+#include <charconv>
 #include <chrono>
 #include <memory>
 #include <string>
+#include <system_error>
 
 #include <gsl/gsl>
 
@@ -20,6 +22,7 @@
 #include "core/providers/cuda/cuda_stream_handle.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 #ifdef ENABLE_NVTX_PROFILE
 #include "nvtx_profile.h"
@@ -44,6 +47,8 @@ struct CUDAProviderFactory : IExecutionProviderFactory {
   ~CUDAProviderFactory() override {}
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
+  std::unique_ptr<IExecutionProvider> CreateProvider(const OrtSessionOptions& session_options,
+                                                     const OrtLogger& session_logger) override;
 
  private:
   CUDAExecutionProviderInfo info_;
@@ -51,6 +56,26 @@ struct CUDAProviderFactory : IExecutionProviderFactory {
 
 std::unique_ptr<IExecutionProvider> CUDAProviderFactory::CreateProvider() {
   return std::make_unique<CUDAExecutionProvider>(info_);
+}
+
+std::unique_ptr<IExecutionProvider> CUDAProviderFactory::CreateProvider(const OrtSessionOptions& session_options,
+                                                                        const OrtLogger& /*session_logger*/) {
+  CUDAExecutionProviderInfo info = info_;
+
+  // The per-session device memory limit is a session config entry, not a provider option, so that it does not have to
+  // be added to OrtCUDAProviderOptionsV2.
+  if (const auto limit = session_options.GetConfigOptions().GetConfigEntry(
+          kOrtSessionOptionsMoeOffloadGpuDeviceMemLimit)) {
+    size_t limit_bytes = 0;
+    const char* const limit_end = limit->data() + limit->size();
+    const auto parsed = std::from_chars(limit->data(), limit_end, limit_bytes);
+    ORT_ENFORCE(parsed.ec == std::errc{} && parsed.ptr == limit_end,
+                kOrtSessionOptionsMoeOffloadGpuDeviceMemLimit, " must be a nonnegative byte count, got '", *limit,
+                "'.");
+    info.gpu_device_mem_limit = limit_bytes;
+  }
+
+  return std::make_unique<CUDAExecutionProvider>(info);
 }
 
 struct ProviderInfo_CUDA_Impl final : ProviderInfo_CUDA {
@@ -233,7 +258,6 @@ struct CUDA_Provider : Provider {
     CUDAExecutionProviderInfo info{};
     info.device_id = gsl::narrow<OrtDevice::DeviceId>(params->device_id);
     info.gpu_mem_limit = params->gpu_mem_limit;
-    info.gpu_device_mem_limit = params->gpu_device_mem_limit;
     info.arena_extend_strategy = params->arena_extend_strategy;
     info.cudnn_conv_algo_search = params->cudnn_conv_algo_search;
     info.do_copy_in_default_stream = params->do_copy_in_default_stream != 0;
@@ -271,7 +295,6 @@ struct CUDA_Provider : Provider {
     cuda_options.device_id = internal_options.device_id;
     cuda_options.cudnn_conv_algo_search = internal_options.cudnn_conv_algo_search;
     cuda_options.gpu_mem_limit = internal_options.gpu_mem_limit;
-    cuda_options.gpu_device_mem_limit = internal_options.gpu_device_mem_limit;
     cuda_options.arena_extend_strategy = internal_options.arena_extend_strategy;
     cuda_options.do_copy_in_default_stream = internal_options.do_copy_in_default_stream;
     cuda_options.has_user_compute_stream = internal_options.has_user_compute_stream;

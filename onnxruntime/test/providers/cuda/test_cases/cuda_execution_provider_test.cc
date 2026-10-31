@@ -11,6 +11,7 @@
 #include <functional>
 #include <iostream>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include <cuda_runtime_api.h>
@@ -265,6 +266,53 @@ TEST(CudaProviderInfoTest, V2ProviderOptionsCarryMinNumRunsBeforeCudaGraphCaptur
   options = CUDAExecutionProviderInfo::ToProviderOptions(v2_options);
   ASSERT_EQ(options.count(kMinNumRunsKey), 1u);
   EXPECT_EQ(options.at(kMinNumRunsKey), "5");
+}
+
+// The per-session device memory limit is the session config entry session.moe.offload.gpu_device_mem_limit. It is
+// not a provider option and not a member of the public OrtCUDAProviderOptionsV2, so the provider-option parser must
+// reject it instead of silently dropping it, and neither serializer may emit it.
+TEST(CudaProviderInfoTest, GpuDeviceMemLimitIsNotAProviderOption) {
+  EXPECT_THROW(CUDAExecutionProviderInfo::FromProviderOptions({{"gpu_device_mem_limit", "1024"}}), std::exception);
+
+  CUDAExecutionProviderInfo info;
+  info.gpu_device_mem_limit = 1024;
+  EXPECT_EQ(CUDAExecutionProviderInfo::ToProviderOptions(info).count("gpu_device_mem_limit"), 0u);
+  EXPECT_EQ(CUDAExecutionProviderInfo::ToProviderOptions(OrtCUDAProviderOptionsV2{}).count("gpu_device_mem_limit"), 0u);
+}
+
+// The limit still has to take part in the provider identity (e.g. the hash used to cache providers).
+TEST(CudaProviderInfoTest, GpuDeviceMemLimitParticipatesInProviderInfoHash) {
+  CUDAExecutionProviderInfo info;
+  CUDAExecutionProviderInfo limited = info;
+  limited.gpu_device_mem_limit = 1024;
+  EXPECT_NE(std::hash<CUDAExecutionProviderInfo>{}(info), std::hash<CUDAExecutionProviderInfo>{}(limited));
+}
+
+namespace {
+void* UnusedExternalAlloc(size_t /*bytes*/) { return nullptr; }
+void UnusedExternalFree(void* /*p*/) {}
+}  // namespace
+
+// An external allocator replaces the allocator that the session's device memory limit is charged to, so the
+// combination is rejected when the provider is created. The external allocator cannot be set through the public
+// provider-options C API, only through the provider-options map (e.g. from Python).
+TEST(CudaProviderInfoTest, GpuDeviceMemLimitIsRejectedWithExternalAllocator) {
+  CUDAExecutionProviderInfo info;
+  info.external_allocator_info = CUDAExecutionProviderExternalAllocatorInfo(
+      reinterpret_cast<void*>(&UnusedExternalAlloc), reinterpret_cast<void*>(&UnusedExternalFree), nullptr);
+
+  // Without a limit the external allocator is accepted, so the rejection below is caused by the limit.
+  EXPECT_NO_THROW(CUDAExecutionProvider{info});
+
+  info.gpu_device_mem_limit = size_t{1} << 30;
+  try {
+    CUDAExecutionProvider ep(info);
+    FAIL() << "Expected a device memory limit together with an external CUDA allocator to be rejected.";
+  } catch (const std::exception& ex) {
+    const std::string message = ex.what();
+    EXPECT_NE(message.find("session.moe.offload.gpu_device_mem_limit"), std::string::npos) << message;
+    EXPECT_NE(message.find("does not support external CUDA allocators"), std::string::npos) << message;
+  }
 }
 
 }  // namespace test

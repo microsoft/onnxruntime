@@ -26,7 +26,8 @@ struct PendingAccountCandidate {
 enum class AccountBindingAction {
   /// Charge the allocator to the pending account of AccountBindingDecision::owner.
   kBindPending,
-  /// The request carries gpu_device_mem_limit: create an account with exactly that limit.
+  /// The request carries the gpu_device_mem_limit allocator option (the host fills it from
+  /// session.moe.offload.gpu_device_mem_limit): create an account with exactly that limit.
   kCreateExplicit,
   /// No pending account can be attributed to the request: create a new account.
   kCreateFresh,

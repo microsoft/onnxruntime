@@ -97,6 +97,7 @@ struct MoeOffloadSessionPolicy {
   bool pinned_bytes_explicit{false};         // True when session.moe.offload.pinned_bytes was explicitly set
   uint64_t reserve_device_bytes{0};          // External KV/state/capture/child-session reserve
   std::string budget_group{};                // Optional cross-session budget group name (empty = per-session)
+  uint64_t gpu_device_mem_limit{0};          // Per-session cap on CUDA device allocations, in bytes (0 = no limit)
 
   bool allow_file_backing{true};
   bool popularity_file_explicit{false};
@@ -345,6 +346,12 @@ struct MoeOffloadSessionPolicy {
         }
       } else if (key == kOrtSessionOptionsMoeOffloadBudgetGroup) {
         out.budget_group = std::string(TrimAscii(val));
+      } else if (key == kOrtSessionOptionsMoeOffloadGpuDeviceMemLimit) {
+        if (!TryParseUint64(val, out.gpu_device_mem_limit)) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "Invalid ", kOrtSessionOptionsMoeOffloadGpuDeviceMemLimit, " value '", val,
+                                 "'; expected non-negative integer bytes (0 = no limit).");
+        }
       } else if (key == kOrtSessionOptionsMoeOffloadAllowFileBacking) {
         if (val == "1" || ToLowerAscii(val) == "true") {
           out.allow_file_backing = true;

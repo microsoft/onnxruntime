@@ -4218,6 +4218,104 @@ TEST(CApiTest, TestConfigureCUDAProviderOptions) {
   Ort::Session session(*ort_env, model_uri.c_str(), session_options);
 }
 
+namespace {
+
+constexpr const char* kCudaDeviceMemLimitSessionKey = "session.moe.offload.gpu_device_mem_limit";
+
+// Builds a CUDA session on mul_1.onnx whose initializer W is uploaded to the device during session creation, so a
+// per-session device limit takes effect as soon as the session is created.
+template <typename AppendCudaProvider>
+Ort::Session CreateMul1CudaSession(const char* device_mem_limit, AppendCudaProvider&& append_cuda_provider) {
+  Ort::SessionOptions session_options;
+  if (device_mem_limit != nullptr) {
+    session_options.AddConfigEntry(kCudaDeviceMemLimitSessionKey, device_mem_limit);
+  }
+  append_cuda_provider(session_options);
+  const std::basic_string<ORTCHAR_T> model_uri = MODEL_URI;
+  return Ort::Session(*ort_env, model_uri.c_str(), session_options);
+}
+
+void ExpectMul1Runs(Ort::Session& session) {
+  std::vector<float> x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  const std::vector<int64_t> x_shape = {3, 2};
+  const auto cpu_memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+  Ort::Value input = Ort::Value::CreateTensor<float>(cpu_memory_info, x.data(), x.size(),
+                                                     x_shape.data(), x_shape.size());
+  const char* input_names[] = {"X"};
+  const char* output_names[] = {"Y"};
+  auto outputs = session.Run(Ort::RunOptions{nullptr}, input_names, &input, 1, output_names, 1);
+  ASSERT_EQ(outputs.size(), 1u);
+  const std::vector<float> expected = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
+  const float* y = outputs[0].GetTensorData<float>();
+  for (size_t i = 0; i < expected.size(); ++i) {
+    EXPECT_EQ(y[i], expected[i]) << "at index " << i;
+  }
+}
+
+}  // namespace
+
+// The per-session CUDA device memory limit is a session config entry, not a member of the public
+// OrtCUDAProviderOptionsV2 struct, so it applies whichever provider-option API appended the CUDA EP.
+TEST(CApiTest, TestCUDASessionDeviceMemLimitWithV2Options) {
+  Ort::CUDAProviderOptions cuda_options;
+  const auto append_cuda_v2 = [&](Ort::SessionOptions& so) { so.AppendExecutionProvider_CUDA_V2(*cuda_options); };
+
+  // Unset, an explicit 0 (unlimited) and a generous limit all behave the same.
+  for (const char* limit : {static_cast<const char*>(nullptr), "0", "1073741824"}) {
+    SCOPED_TRACE(limit == nullptr ? "<unset>" : limit);
+    auto session = CreateMul1CudaSession(limit, append_cuda_v2);
+    ExpectMul1Runs(session);
+  }
+
+  // A limit below the first device allocation fails the session instead of being ignored.
+  try {
+    auto session = CreateMul1CudaSession("1024", append_cuda_v2);
+    FAIL() << "Expected session creation to fail once the device memory limit is exhausted.";
+  } catch (const Ort::Exception& e) {
+    EXPECT_THAT(e.what(), testing::HasSubstr("CUDA device memory budget exhausted"));
+  }
+}
+
+TEST(CApiTest, TestCUDASessionDeviceMemLimitWithV1Options) {
+  OrtCUDAProviderOptions cuda_options{};
+  const auto append_cuda_v1 = [&](Ort::SessionOptions& so) { so.AppendExecutionProvider_CUDA(cuda_options); };
+
+  {
+    auto session = CreateMul1CudaSession("1073741824", append_cuda_v1);
+    ExpectMul1Runs(session);
+  }
+
+  try {
+    auto session = CreateMul1CudaSession("1024", append_cuda_v1);
+    FAIL() << "Expected session creation to fail once the device memory limit is exhausted.";
+  } catch (const Ort::Exception& e) {
+    EXPECT_THAT(e.what(), testing::HasSubstr("CUDA device memory budget exhausted"));
+  }
+}
+
+TEST(CApiTest, TestCUDASessionDeviceMemLimitRejectsInvalidValues) {
+  Ort::CUDAProviderOptions cuda_options;
+  const auto append_cuda_v2 = [&](Ort::SessionOptions& so) { so.AppendExecutionProvider_CUDA_V2(*cuda_options); };
+
+  for (const char* bad_value : {"", "-1", "abc", "1.5", "1 GiB", "18446744073709551616"}) {
+    SCOPED_TRACE(std::string("value='") + bad_value + "'");
+    try {
+      auto session = CreateMul1CudaSession(bad_value, append_cuda_v2);
+      FAIL() << "Expected session creation to reject an invalid device memory limit.";
+    } catch (const Ort::Exception& e) {
+      EXPECT_THAT(e.what(), testing::HasSubstr(kCudaDeviceMemLimitSessionKey));
+    }
+  }
+}
+
+// The per-session device memory limit is a session config entry, so the provider-option surface must neither accept
+// nor report a gpu_device_mem_limit option.
+TEST(CApiTest, TestCUDAProviderOptionsDoNotCarryDeviceMemLimit) {
+  Ort::CUDAProviderOptions cuda_options;
+  EXPECT_EQ(cuda_options.GetCUDAProviderOptionsAsString().find("gpu_device_mem_limit"), std::string::npos);
+  EXPECT_THROW(cuda_options.Update({{"gpu_device_mem_limit", "1024"}}), Ort::Exception);
+}
+
 // min_num_runs_before_cuda_graph_capture has to survive the public OrtCUDAProviderOptionsV2 round trip
 // (Update -> stored options -> string form), otherwise the documented option never reaches the CUDA EP.
 TEST(CApiTest, TestCUDAProviderOptionsMinNumRunsBeforeCudaGraphCapture) {

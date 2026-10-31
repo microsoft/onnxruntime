@@ -980,6 +980,12 @@ static const char* const kOrtSessionOptionsMoeOffloadHostWorkingBytes = "session
 static const char* const kOrtSessionOptionsMoeOffloadPinnedBytes = "session.moe.offload.pinned_bytes";
 static const char* const kOrtSessionOptionsMoeOffloadReserveDeviceBytes = "session.moe.offload.reserve_device_bytes";
 static const char* const kOrtSessionOptionsMoeOffloadBudgetGroup = "session.moe.offload.budget_group";
+// Per-session limit, in bytes, on device memory allocated through the session's CUDA allocators (BFC arena growth,
+// MoE offload buffers, ...). An allocation that would exceed the limit fails.
+// This is not the CUDA EP provider option `gpu_mem_limit`, which only caps the size of the BFC arena.
+// "0" or unset means no limit. Not supported with external CUDA allocators or CUDA memory pools.
+// Honored by both the CUDA EP and the CUDA plugin EP. Must be set before the session is created.
+static const char* const kOrtSessionOptionsMoeOffloadGpuDeviceMemLimit = "session.moe.offload.gpu_device_mem_limit";
 static const char* const kOrtSessionOptionsMoeOffloadAllowFileBacking = "session.moe.offload.allow_file_backing";
 static const char* const kOrtSessionOptionsMoeOffloadCpuThreads = "session.moe.offload.cpu_threads";
 static const char* const kOrtSessionOptionsMoeOffloadAsyncMaxTokens = "session.moe.offload.async_max_tokens";

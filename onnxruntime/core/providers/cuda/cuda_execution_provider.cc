@@ -173,10 +173,10 @@ AllocatorPtr CUDAExecutionProvider::CreateCudaAllocator(const CUDAAllocatorParam
       (cuda_allocator_params.budget_account != nullptr &&
        cuda_allocator_params.budget_account->GetAccountStats().limit != std::numeric_limits<size_t>::max());
   ORT_ENFORCE(!device_budget_enabled || !external_allocator_info.UseExternalAllocator(),
-              "gpu_device_mem_limit does not support external CUDA allocators");
+              kOrtSessionOptionsMoeOffloadGpuDeviceMemLimit, " does not support external CUDA allocators");
   ORT_ENFORCE(!device_budget_enabled || cuda_allocator_params.arena_cfg == nullptr ||
                   cuda_allocator_params.arena_cfg->use_cuda_mempool != 1,
-              "gpu_device_mem_limit does not support CUDA memory pools");
+              kOrtSessionOptionsMoeOffloadGpuDeviceMemLimit, " does not support CUDA memory pools");
   if (external_allocator_info.UseExternalAllocator()) {
     AllocatorCreationInfo default_memory_info(
         [external_allocator_info](OrtDevice::DeviceId id) {
@@ -382,7 +382,7 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
     qmoe_controller_->SetBudgetAccount(session_budget_account_);
   }
   ORT_ENFORCE(info_.gpu_device_mem_limit == 0 || !info_.external_allocator_info.UseExternalAllocator(),
-              "gpu_device_mem_limit does not support external CUDA allocators");
+              kOrtSessionOptionsMoeOffloadGpuDeviceMemLimit, " does not support external CUDA allocators");
 #ifndef ENABLE_CUDA_NHWC_OPS
   ORT_ENFORCE(info_.prefer_nhwc == 0, "This build does not support NHWC layout");
 #endif

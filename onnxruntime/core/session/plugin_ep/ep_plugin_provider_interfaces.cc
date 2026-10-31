@@ -196,7 +196,8 @@ PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessio
   // Extract EP-scoped session config entries.
   // Arena options go to session_arena_options_; the rest go to provider_options_.
   {
-    const std::string ep_prefix = OrtSessionOptions::GetProviderOptionPrefix(ort_ep_->GetName(ort_ep_.get()));
+    const std::string ep_name = ort_ep_->GetName(ort_ep_.get());
+    const std::string ep_prefix = OrtSessionOptions::GetProviderOptionPrefix(ep_name.c_str());
     const std::string arena_prefix = ep_prefix + "arena.";
     const bool extract_arena = ep_factory_.CreateAllocator && !ort_ep_->CreateAllocator;
 
@@ -232,8 +233,6 @@ PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessio
           mapped_arena_key = "arena.max_power_of_two_extend_bytes";
         } else if (bare_key == "max_mem") {
           mapped_arena_key = "arena.max_mem";
-        } else if (bare_key == "gpu_device_mem_limit") {
-          mapped_arena_key = "gpu_device_mem_limit";
         }
         if (mapped_arena_key != nullptr) {
           if (!session_arena_options_) {
@@ -247,6 +246,20 @@ PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessio
       // Store the bare option name (strip the EP-specific prefix) for GetProviderOptions().
       provider_options_[bare_key] = value;
     }
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+    // The per-session device memory limit is a session-level key rather than an EP-scoped option. Hand it to the CUDA
+    // plugin EP's allocator factory so an allocator request that no pending session account owns still gets the limit.
+    if (extract_arena && ep_name == kCudaExecutionProvider) {
+      if (const auto device_mem_limit = session_options.value.config_options.GetConfigEntry(
+              kOrtSessionOptionsMoeOffloadGpuDeviceMemLimit)) {
+        if (!session_arena_options_) {
+          session_arena_options_.emplace();
+        }
+        session_arena_options_->Add("gpu_device_mem_limit", device_mem_limit->c_str());
+      }
+    }
+#endif
   }
 
   for (const auto* ep_device : ep_devices_) {
