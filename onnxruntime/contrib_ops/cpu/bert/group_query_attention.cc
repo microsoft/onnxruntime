@@ -272,7 +272,8 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
                                                                 /*max_threads_per_block=*/0,
                                                                 /*kv_cache_extra_bits=*/0,
                                                                 sliding_window_cache_,
-                                                                local_window_size_));
+                                                                local_window_size_,
+                                                                /*allow_8_aligned_rotary=*/true));
 
   ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckCustomAttentionInputs(position_ids,
                                                                                attention_bias,

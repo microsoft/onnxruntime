@@ -183,7 +183,7 @@ Status CheckPast(const T* past_key, const T* past_value, int batch_size, int kv_
 
 template <typename T>
 Status CheckRotaryCaches(const T* cos_cache, const T* sin_cache, int head_size, int total_sequence_length,
-                         int& rotary_dim) {
+                         int& rotary_dim, bool allow_8_aligned_rotary = false) {
   if (cos_cache->Shape() != sin_cache->Shape()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "cos_cache and sin_cache must have the same shape. Got cos_cache shape ",
@@ -192,10 +192,12 @@ Status CheckRotaryCaches(const T* cos_cache, const T* sin_cache, int head_size, 
 
   const auto& cos_dims = cos_cache->Shape().GetDims();
 
-  if (head_size % 16 != 0) {
+  const int head_size_align = allow_8_aligned_rotary ? 8 : 16;
+  if (head_size % head_size_align != 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "head_size shall be a multiple of 16. Got head_size % 16 == ",
-                           head_size % 16);
+                           "head_size shall be a multiple of ", head_size_align,
+                           ". Got head_size % ", head_size_align, " == ",
+                           head_size % head_size_align);
   }
 
   if (cos_dims[0] < total_sequence_length) {
@@ -203,9 +205,11 @@ Status CheckRotaryCaches(const T* cos_cache, const T* sin_cache, int head_size, 
                            "cos_cache dimension 0 shall not be less than total_sequence_length.");
   }
 
-  if (cos_dims[1] > (head_size / 16) * 8 || cos_dims[1] % 8 != 0) {
+  const int cos_dim_align = allow_8_aligned_rotary ? 4 : 8;
+  if (cos_dims[1] > head_size / 2 || cos_dims[1] % cos_dim_align != 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "cos_cache dimension 1 must be <= head_size / 2 and a multiple of 8.");
+                           "cos_cache dimension 1 must be <= head_size / 2 and a multiple of ",
+                           cos_dim_align, ".");
   }
 
   rotary_dim = static_cast<int>(cos_dims[1] * 2);
@@ -231,7 +235,8 @@ Status CheckInputs(const T* query,
                    int max_threads_per_block = 0,
                    int kv_cache_extra_bits = 0,
                    bool sliding_window_cache = false,
-                   int local_window_size = -1) {
+                   int local_window_size = -1,
+                   bool allow_8_aligned_rotary = false) {
   if (max_threads_per_block > 0 && num_heads > max_threads_per_block) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "num_heads should be no larger than ", max_threads_per_block);
   }
@@ -404,7 +409,8 @@ Status CheckInputs(const T* query,
   int rotary_max_position = 0;
   int rotary_dim = 0;
   if (cos_cache != nullptr && sin_cache != nullptr) {
-    ORT_RETURN_IF_ERROR(CheckRotaryCaches(cos_cache, sin_cache, head_size, total_sequence_length, rotary_dim));
+    ORT_RETURN_IF_ERROR(CheckRotaryCaches(cos_cache, sin_cache, head_size, total_sequence_length, rotary_dim,
+                                          allow_8_aligned_rotary));
     rotary_max_position = static_cast<int>(cos_cache->Shape().GetDims()[0]);
 
     // Validate seqlens_k against rotary cache size when rotary embeddings are enabled.
