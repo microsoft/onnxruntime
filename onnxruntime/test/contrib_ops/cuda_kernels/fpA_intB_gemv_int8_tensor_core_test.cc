@@ -89,11 +89,11 @@ struct Problem {
 
   void UploadActivations() { d_act.Upload(act.data()); }
 
-  // Row t becomes a one at K position first + t (zero elsewhere), for all rows.
-  void SetOneHotActivations(int first) {
+  // Row t becomes `value` at K position first + t (zero elsewhere), for all rows.
+  void SetOneHotActivations(int first, float value = 1.f) {
     std::fill(act.begin(), act.end(), __float2bfloat16(0.f));
     for (int t = 0; t < m; ++t) {
-      act[static_cast<size_t>(t) * k + first + t] = __float2bfloat16(1.f);
+      act[static_cast<size_t>(t) * k + first + t] = __float2bfloat16(value);
     }
     UploadActivations();
   }
@@ -105,19 +105,20 @@ struct Problem {
   DeviceBuffer d_act, d_weight, d_scales, d_out;
 };
 
-// Scales of random sign and 7-bit mantissa with exponents spread over 2^-110 .. 2^100, so that (q - 128) * scale
-// rounds to bf16 in many different ways. Columns 0..7 hold +-2^64 and +-2^-80 in every group.
+// Scales of random sign and 7-bit mantissa with exponents spread over 2^-133 .. 2^100 (including bf16 subnormals), so
+// that (q - 128) * scale rounds to bf16 in many different ways. Columns 0..7 hold +-2^64, +-2^-80, +-2^-127 and
+// +-2^-130 in every group.
 void SetWideRangeScales(Problem& p, uint32_t seed) {
   std::mt19937 gen(seed);
   for (bf16& s : p.scales) {
     const float magnitude =
-        std::ldexp(1.f + static_cast<float>(gen() % 128) / 128.f, static_cast<int>(gen() % 211) - 110);
+        std::ldexp(1.f + static_cast<float>(gen() % 128) / 128.f, static_cast<int>(gen() % 234) - 133);
     s = __float2bfloat16(((gen() & 1) != 0 ? 1.f : -1.f) * magnitude);
   }
-  constexpr float kExtremes[] = {0x1p64f, -0x1p64f, 0x1p-80f, -0x1p-80f};
+  constexpr float kExtremes[] = {0x1p64f, -0x1p64f, 0x1p-80f, -0x1p-80f, 0x1p-127f, -0x1p-127f, 0x1p-130f, -0x1p-130f};
   for (int g = 0; g < p.k / p.group_size; ++g) {
     for (int c = 0; c < 8; ++c) {
-      p.scales[static_cast<size_t>(g) * p.n + c] = __float2bfloat16(kExtremes[c % 4]);
+      p.scales[static_cast<size_t>(g) * p.n + c] = __float2bfloat16(kExtremes[c]);
     }
   }
   p.d_scales.Upload(p.scales.data());
@@ -302,33 +303,50 @@ TEST_F(Int8TensorCoreGemvTest, WideScaleRangeMatchesScalarKernel) {
   }
 }
 
-// The kernel handles every finite scale of magnitude >= 2^-119 whose products stay finite. A fixed power-of-two
-// pre-scaling of the weight codes would overflow for code 129 with scale 2^64 and flush the weight to zero for scale
-// 2^-80, so uniform codes at the exponent extremes are compared against the bf16 rounding of the exact product.
+// The kernel handles every finite bf16 scale (including subnormal scales below 2^-119 down to 2^-133) whose products
+// stay finite. A fixed power-of-two pre-scaling of the weight codes would overflow for code 129 with scale 2^64 and
+// flush the weight to zero for scale 2^-80, while dividing the weight by 128 before rounding to bf16 would lose or
+// distort tiny weights below 2^-119 (such as code 129 with scale 2^-130 or code 131 with scale 2^-127). Uniform codes
+// at the exponent extremes are compared against the bf16 rounding of the exact product and the scalar kernel.
 TEST_F(Int8TensorCoreGemvTest, ExtremeScalesMatchReferenceWeights) {
-  constexpr float kMagnitudes[] = {0x1p100f, 0x1p64f, 0x1p-80f, 0x1p-110f, 0x1p-119f};
+  constexpr float kMagnitudes[] = {0x1p100f, 0x1p64f, 0x1p-80f, 0x1p-110f, 0x1p-119f, 0x1p-120f, 0x1p-126f,
+                                   0x1p-127f, 0x1p-130f, 0x1p-133f};
   for (int group_size : GroupSizes()) {
     Problem p(8, 480, 128, group_size, 1);
-    p.SetOneHotActivations(0);
-    for (int code : {0, 1, 127, 128, 129, 254, 255}) {
-      std::fill(p.weight.begin(), p.weight.end(), static_cast<uint8_t>(code));
-      p.d_weight.Upload(p.weight.data());
-      for (float magnitude : kMagnitudes) {
-        for (float scale : {magnitude, -magnitude}) {
-          SCOPED_TRACE(testing::Message() << "group=" << group_size << " code=" << code << " scale=" << scale);
-          std::fill(p.scales.begin(), p.scales.end(), __float2bfloat16(scale));
-          p.d_scales.Upload(p.scales.data());
-          const float expected = __bfloat162float(__float2bfloat16(static_cast<float>(code - 128) * scale));
-          const std::vector<bf16> scalar = Run(p, 8, 0, false, prop_.multiProcessorCount);
-          for (size_t i = 0; i < scalar.size(); ++i) {
-            ASSERT_EQ(__bfloat162float(scalar[i]), expected) << "scalar kernel, output " << i;
+    for (float act_val : {1.f, 0x1p120f}) {
+      p.SetOneHotActivations(0, act_val);
+      for (int code : {0, 1, 125, 127, 128, 129, 131, 254, 255}) {
+        std::fill(p.weight.begin(), p.weight.end(), static_cast<uint8_t>(code));
+        p.d_weight.Upload(p.weight.data());
+        for (float magnitude : kMagnitudes) {
+          if (act_val > 1.f && magnitude > 0x1p-119f) {
+            continue;
           }
-          for (int sm_count : {16, 11, 5, 4}) {
-            std::string log;
-            const std::vector<bf16> tc = Run(p, 8, 0, true, sm_count, &log);
-            ASSERT_NE(log.find("tensor_core=1"), std::string::npos) << log;
-            for (size_t i = 0; i < tc.size(); ++i) {
-              ASSERT_EQ(__bfloat162float(tc[i]), expected) << "sm_count=" << sm_count << ", output " << i;
+          for (float scale : {magnitude, -magnitude}) {
+            SCOPED_TRACE(testing::Message()
+                         << "group=" << group_size << " act=" << act_val << " code=" << code << " scale=" << scale);
+            std::fill(p.scales.begin(), p.scales.end(), __float2bfloat16(scale));
+            p.d_scales.Upload(p.scales.data());
+            const float weight_bf16 =
+                __bfloat162float(__float2bfloat16(static_cast<float>(code - 128) * __bfloat162float(__float2bfloat16(scale))));
+            const float expected = __bfloat162float(__float2bfloat16(weight_bf16 * act_val));
+            const std::vector<bf16> scalar = Run(p, 8, 0, false, prop_.multiProcessorCount);
+            for (size_t i = 0; i < scalar.size(); ++i) {
+              ASSERT_EQ(__bfloat162float(scalar[i]), expected) << "scalar kernel, output " << i;
+            }
+            for (int rows : {1, 8}) {
+              if (rows == 1 && (code != 129 || magnitude != 0x1p-130f) && (code != 131 || magnitude != 0x1p-127f)) {
+                continue;
+              }
+              for (int sm_count : {16, 11, 5, 4}) {
+                std::string log;
+                const std::vector<bf16> tc = Run(p, rows, 0, true, sm_count, &log);
+                ASSERT_NE(log.find("tensor_core=1"), std::string::npos) << log;
+                for (size_t i = 0; i < tc.size(); ++i) {
+                  ASSERT_EQ(__bfloat162float(tc[i]), expected)
+                      << "rows=" << rows << " sm_count=" << sm_count << ", output " << i;
+                }
+              }
             }
           }
         }

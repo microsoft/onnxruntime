@@ -23,11 +23,10 @@
 //
 // Dequantization. The stored byte is q = value + 128. Placed alone in a bf16 lane, the bits 0x00qq are exactly
 // q * 2^-133 (bf16 subnormals continue linearly into the first normal binade, so this holds for all 0 <= q <= 255).
-// One fma.rn.bf16x2 with 2^126 and -1 turns them into (q - 128) / 128, which is exact for every code and independent of
-// the scale. A second one multiplies by the group scale and gives the same single bf16 rounding of (q - 128) * scale
-// that the scalar kernel and the CUTLASS path apply, divided by 128. The FP32 accumulators are multiplied by 128 at
-// the end. Unlike a shift folded into the scale, this cannot overflow for any finite scale, and the weights stay normal
-// bf16 numbers down to |weight| = 2^-119.
+// One fma.rn.bf16x2 with 2^126 and -1 turns them into (q - 128) / 128, and a mul.rn.bf16x2 by 128 produces the exact
+// bf16 integer (q - 128) for every code, independent of the scale. A second mul.rn.bf16x2 by the group scale gives the
+// same single bf16 rounding of (q - 128) * scale that the scalar kernel and the CUTLASS path apply across the entire
+// finite bf16 scale range (including subnormal scales down to 2^-133), with no post-accumulation unscaling.
 
 #pragma once
 
@@ -73,6 +72,12 @@ __device__ __forceinline__ uint32_t Bf16x2Fma(uint32_t a, uint32_t b, uint32_t c
   return d;
 }
 
+__device__ __forceinline__ uint32_t Bf16x2Mul(uint32_t a, uint32_t b) {
+  uint32_t d;
+  asm("mul.rn.bf16x2 %0, %1, %2;\n" : "=r"(d) : "r"(a), "r"(b));
+  return d;
+}
+
 __device__ __forceinline__ void MmaBf16(float (&d)[4], uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3,
                                         uint32_t b0, uint32_t b1) {
 #if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800)
@@ -83,17 +88,16 @@ __device__ __forceinline__ void MmaBf16(float (&d)[4], uint32_t a0, uint32_t a1,
 #endif
 }
 
-// bf16x2 {2^126, 2^126}, {-1, -1} and {-0, -0}.
+// bf16x2 {2^126, 2^126}, {-1, -1} and {128, 128}.
 constexpr uint32_t kCodeScale = 0x7E807E80u;
 constexpr uint32_t kMinusOne = 0xBF80BF80u;
-constexpr uint32_t kNegZero = 0x80008000u;
-// The dequantized weights carry a factor 2^-7 that the epilogue removes.
-constexpr float kUnscale = 128.0f;
+constexpr uint32_t kScale128 = 0x43004300u;
 
-// bf16x2 {(q_lo - 128) * scale / 128, (q_hi - 128) * scale / 128} for bytes {q_lo, q_hi} of the lanes of `bytes` (the
-// two bytes are already placed in the low byte of each 16-bit lane) and the scale duplicated into both lanes.
+// bf16x2 {(q_lo - 128) * scale, (q_hi - 128) * scale} for bytes {q_lo, q_hi} of the lanes of `bytes` (the two bytes
+// are already placed in the low byte of each 16-bit lane) and the scale duplicated into both lanes.
 __device__ __forceinline__ uint32_t Dequant(uint32_t bytes, uint32_t scale) {
-  return Bf16x2Fma(Bf16x2Fma(bytes, kCodeScale, kMinusOne), scale, kNegZero);
+  const uint32_t centered = Bf16x2Mul(Bf16x2Fma(bytes, kCodeScale, kMinusOne), kScale128);
+  return Bf16x2Mul(centered, scale);
 }
 
 template <int ColTiles>
@@ -239,12 +243,12 @@ __global__ void __launch_bounds__(KWarps * 32, MinBlocks)
     const int col_lo = col0 + ct * kMmaColumns + (ln >> 2);
     const int tok = 2 * (ln & 3);
     if (tok < m) {
-      out[static_cast<int64_t>(tok) * n + col_lo] = __float2bfloat16_rn(sum.x * kUnscale);
-      out[static_cast<int64_t>(tok) * n + col_lo + 8] = __float2bfloat16_rn(sum.z * kUnscale);
+      out[static_cast<int64_t>(tok) * n + col_lo] = __float2bfloat16_rn(sum.x);
+      out[static_cast<int64_t>(tok) * n + col_lo + 8] = __float2bfloat16_rn(sum.z);
     }
     if (tok + 1 < m) {
-      out[static_cast<int64_t>(tok + 1) * n + col_lo] = __float2bfloat16_rn(sum.y * kUnscale);
-      out[static_cast<int64_t>(tok + 1) * n + col_lo + 8] = __float2bfloat16_rn(sum.w * kUnscale);
+      out[static_cast<int64_t>(tok + 1) * n + col_lo] = __float2bfloat16_rn(sum.y);
+      out[static_cast<int64_t>(tok + 1) * n + col_lo + 8] = __float2bfloat16_rn(sum.w);
     }
   }
 #endif

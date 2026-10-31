@@ -871,16 +871,16 @@ accumulation) and the 1-8 activation rows the B operand, so all activation rows 
   words feed each `mma`.
 - **Numerics.** The stored byte `q = value + 128`, placed in a BF16 lane, is
   exactly `q * 2^-133`. One `fma.rn.bf16x2` with `2^126` and `-1` turns a pair
-  of them into `(q - 128) / 128` (exact) and a second one multiplies by the
-  group scale, so a weight is `bf16_rn((q - 128) * scale) / 128`; the epilogue
-  multiplies the FP32 accumulators by 128 (exact). The weights therefore equal
-  the scalar kernel's `bf16_rn((q - 128) * scale)` for every scale with
-  `|scale| >= 2^-119` and a weight that is finite in BF16. No scale-dependent
-  pre-scaling is involved, so large scales cannot overflow and small ones are
-  not flushed to zero. Scales below `2^-119` round their weights to fewer
-  bits. Products accumulate in FP32 and the warps' partial sums are reduced
-  through shared memory in a fixed order, so a row's result does not depend on
-  `M`.
+  of them into `(q - 128) / 128` (exact), a `mul.rn.bf16x2` by `128` produces
+  the exact BF16 integer `q - 128`, and a second `mul.rn.bf16x2` multiplies by
+  the group scale, so a weight is `bf16_rn((q - 128) * scale)` with no
+  post-accumulation unscaling. The weights therefore equal the scalar kernel's
+  `bf16_rn((q - 128) * scale)` across the entire finite BF16 scale range
+  (including subnormal scales below `2^-119` down to `2^-133`). No
+  scale-dependent pre-scaling is involved, so large scales cannot overflow and
+  tiny scales are not rounded prematurely or flushed to zero. Products
+  accumulate in FP32 and the warps' partial sums are reduced through shared
+  memory in a fixed order, so a row's result does not depend on `M`.
 - **Launch configuration.** `LaunchInt8TcGemvAuto` picks the K split (4 or 8
   warps), the prefetch depth and the blocks per SM from the block count
   `N / 16` relative to the SM count, so that the grid fits in one wave.
@@ -899,14 +899,29 @@ accumulation) and the 1-8 activation rows the B operand, so all activation rows 
   The resolved flag is passed to the tactic profiler (§6.3) and dispatch.
   In-memory and persistent tactic-cache keys include the flag, and the
   selection-version bump invalidates measurements from the previous kernel.
-- **Measured (H200, `M = 8`, `block_size = 32`, cold weights).** `in_proj`
-  (`N = 16480`, `K = 2560`) 24.9 → 13.0 µs, `out_proj` (`N = 2560`,
-  `K = 6144`) 12.7 → 9.7 µs, `N = 13952`, `K = 2560` about 20 → 11.8 µs. In the
-  Qwen3.8-Flash-Next `S = 8` decode this shortens a cycle by 3.8-6.9% at 2K,
-  8K and 32K context. These were measured with an earlier dequantization that
-  folded a fixed `2^67` shift into the scale. The one above gives bit-identical
-  outputs on typical scales and takes 0.6-2.4% longer in a standalone kernel
-  benchmark (`M = 1-8`, `N = 2560-16480`, `K = 2560-6144`, group size 32-128).
+- **Measured (H200, `M = 8`, `block_size = 32`, cold weights).** With the final
+  range-free dequantization above, standalone kernel latency against the scalar
+  `fpA_intB_gemv` kernel is `24.9 → 14.3 µs` for `in_proj` (`N = 16480`,
+  `K = 2560`), `12.7 → 10.6 µs` for `out_proj` (`N = 2560`, `K = 6144`), and
+  `~20.0 → 12.6 µs` for `N = 13952`, `K = 2560` (earlier versions that folded
+  `2^67` into the scale or kept a `1/128` weight factor took `13.0 / 9.7 / 11.8 µs`
+  and `13.5 / 10.0 / 12.1 µs`). On the final revision of #33689 (merged with
+  `main` `0a12bc0480`, #33714 `ebde3f13e5`, #33707 `204d6593c0`, and
+  #33650 / #32126 `78d59a59c7`; GenAI #2808 `5d561a2f5`; `B = 1`, DFlash2
+  `S = 8`, mean of 2 rotated GPU rounds x median of 5 runs), toggling
+  `ORT_DISABLE_FPA_INTB_GEMV_TC` from `1` to `0` shortens the decode cycle at
+  2K / 8K / 32K context by `-4.5% / -4.7% / -4.3%` (`11.37 → 10.85`,
+  `11.54 → 10.99`, `11.74 → 11.24 ms`) on `all_int4`, `-5.3% / -4.1% / -5.2%`
+  (`11.29 → 10.70`, `11.38 → 10.91`, `11.78 → 11.16 ms`) on `top16`, and
+  `-5.1% / -5.3% / -4.9%` (`11.29 → 10.71`, `11.47 → 10.87`,
+  `11.81 → 11.23 ms`) on `top08`. Across the full #33689 diff (baseline provider
+  built from the same companion PRs without #33689 vs the final #33689 provider,
+  with all other PRs and package options held constant), the decode cycle at
+  2K / 8K / 32K drops from `13.82 / 13.96 / 14.02 ms` to
+  `10.85 / 10.99 / 11.24 ms` (`-21.4% / -21.3% / -19.9%`) on `all_int4`,
+  `14.29 / 14.66 / 14.59 ms` to `10.70 / 10.91 / 11.16 ms`
+  (`-25.1% / -25.6% / -23.5%`) on `top16`, and `14.42 / 14.51 / 14.92 ms` to
+  `10.71 / 10.87 / 11.23 ms` (`-25.7% / -25.1% / -24.7%`) on `top08`.
 
 ### 6.6 Large-M INT8: dequantize once + cuBLAS (SM 9.0 default)
 
@@ -947,9 +962,36 @@ and run one cuBLAS GEMM instead of the CUTLASS launches.
   faster than CUTLASS for 128-512-token prompts: the extra pass reads 1 B and
   writes 2 B per weight, so the route only pays once the GEMM is large.
 - **Numerics.** A weight is `(q - 128) * scale` in fp32 with one rounding to the
-  activation type, the same value the GEMV kernels use. Only the fp32 accumulation
-  order of the GEMM differs from CUTLASS, so a near-tie in the first generated
-  token can flip.
+  activation type, the same value the GEMV kernels and the CUTLASS converter use
+  (probing all `93.6M` weights of the Qwen3.8-Flash-Next `16480 x 2560`,
+  `2560 x 6144`, and `13952 x 2560` nodes with `M = 512` identity slices gives `0`
+  mismatches between `dequant+cuBLAS` and CUTLASS). Against an FP64 reference of
+  those exact BF16 weights at `M = 512, 1024, 2048, 4096, 8192`, `dequant+cuBLAS`
+  has `1.11e-4 .. 1.87e-4` relative RMS error across all shapes: its output is
+  bitwise identical (`0.0` difference) to CUTLASS whenever CUTLASS selects
+  `split_k = 1` (`16480 x 2560` and `13952 x 2560` at all `M`, and `2560 x 6144`
+  at `M = 4096, 8192`), and is closer to the FP64 reference than CUTLASS on
+  `2560 x 6144` at `M = 512, 1024, 2048` (`1.83e-4` vs `2.15e-3 .. 2.98e-3`
+  relative RMS, cosine similarity `>= 0.9999956`), where CUTLASS reduces split-K
+  partial sums in BF16. In full-model long-prompt verification on the final
+  #33689 stack (`ep.cuda.fpa_intb_dequant_gemm_min_m = 512` vs `0`, with all
+  other settings held constant; `ORT_FPA_INTB_DEBUG=1` confirms `97`
+  `dequant+cuBLAS` launches per prefill chunk at `M = 512, 1024, 2048, 4096, 8192`,
+  `388` launches across four 8192-token chunks at `32768`, and `0` launches when
+  `min_m = 0` or `M = 256`):
+  - Across 55 natural-text prompts per package (`10` each at `512, 1024, 2048,
+    4096, 8192` tokens and `5` at `32768` tokens = `165` pairs across `all_int4`,
+    `top16`, `top08`), the first generated token agrees in `158 / 165` (`95.8%`)
+    runs (`53/55`, `53/55`, `52/55`; `100%` at `4096` and `32768`).
+  - Across the 27 natural MMLU-Pro prompts with `>= 512` tokens (`512..1150`
+    tokens) on all three packages (`81` evaluations), `min_m = 512` scores
+    `54 / 81` (`66.7%`, `17 / 17 / 20`) vs `51 / 81` (`63.0%`, `17 / 16 / 18`)
+    for `min_m = 0`, with `80 / 81` (`98.8%`) first-token agreement.
+  - Across 30 MMLU-Pro prompts per package padded with natural-text history to
+    exact lengths `1024, 2048, 4096` (`10` per length = `90` evaluations),
+    `min_m = 512` scores `57 / 90` (`63.3%`, `21 / 18 / 18`) vs `56 / 90`
+    (`62.2%`, `19 / 19 / 18`) for `min_m = 0`, with `81 / 90` (`90.0%`) answer
+    agreement and `84 / 90` (`93.3%`) first-token agreement.
 - **Memory.** The scratch is `N * K * sizeof(T)` bytes (84 MB for the largest
   Qwen3.8-Flash-Next layer, `in_proj`), taken from the arena for one call.
   Both estimates charge it: the Level-1 workspace becomes
@@ -966,9 +1008,20 @@ and run one cuBLAS GEMM instead of the CUTLASS launches.
 - **Measured (H200, BF16, group 32).** `in_proj` (`N = 16480`, `K = 2560`):
   dequantization 50 us, dequantization + GEMM 110 us at `M = 512` and 944 us at
   `M = 8192` against CUTLASS 128 / 2050 us. `out_proj` (`N = 2560`, `K = 6144`):
-  22 us, 47 us and 350 us against CUTLASS 723 us at `M = 8192`. In the
-  Qwen3.8-Flash-Next prefill (`all_int4` package) TTFT drops by 5.8% at 1024
-  tokens, 8.5% at 2048 and 11.8% at 8192; prompts under 512 tokens are unchanged.
+  22 us, 47 us and 350 us against CUTLASS 723 us at `M = 8192`. On the final
+  #33689 stack (`main` `0a12bc0480` + #33714 `ebde3f13e5` + #33707 `204d6593c0` +
+  #33650 / #32126 `78d59a59c7` + #33689 final head, GenAI #2808 `5d561a2f5`,
+  package config `prefill.chunk = 8192` and `qmoe_row_tile_size = 8192`, 2 rotated
+  GPU rounds x median of 5 runs), enabling the route (`min_m = 512` vs `0`)
+  reduces TTFT at `512 / 1024 / 2048 / 8192 / 32768` tokens by
+  `-2.6% / -3.5% / -6.8% / -11.0% / -11.2%` (`650.5 → 579.2 ms` at 8192,
+  `2752.6 → 2444.2 ms` at 32768) on `all_int4`,
+  `-3.8% / -5.4% / -7.4% / -11.8% / -11.2%` (`672.1 → 593.1 ms` at 8192,
+  `2839.7 → 2522.0 ms` at 32768) on `top16`, and
+  `-0.6% / -3.7% / -6.5% / -11.2% / -10.8%` (`674.5 → 599.2 ms` at 8192,
+  `2850.7 → 2544.0 ms` at 32768) on `top08` (and `-10.7% / -11.2% / -10.9%` at
+  8192, `-11.5% / -11.2% / -10.7%` at 32768 against the baseline provider built
+  without #33689); prompts under 512 tokens are unchanged.
 
 ---
 
