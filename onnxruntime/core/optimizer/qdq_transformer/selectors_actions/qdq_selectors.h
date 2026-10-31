@@ -80,8 +80,9 @@ class DropDQNodeGroupSelector : public NodeGroupSelector {
 // single input. default is to only support uint8.
 class UnaryNodeGroupSelector : public NodeGroupSelector {
  public:
-  explicit UnaryNodeGroupSelector(bool allow_16bit = true, bool allow_4bit = true)
-      : allow_16bit_(allow_16bit), allow_4bit_(allow_4bit) {}
+  explicit UnaryNodeGroupSelector(bool allow_16bit = true, bool allow_4bit = true,
+                                  bool allow_nonpositive_scale = true)
+      : allow_16bit_(allow_16bit), allow_4bit_(allow_4bit), allow_nonpositive_scale_(allow_nonpositive_scale) {}
 
  private:
   bool Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
@@ -90,6 +91,7 @@ class UnaryNodeGroupSelector : public NodeGroupSelector {
 
   bool allow_16bit_;
   bool allow_4bit_;
+  bool allow_nonpositive_scale_;
 };
 
 class ClipNodeGroupSelector : public NodeGroupSelector {
@@ -109,8 +111,9 @@ class ClipNodeGroupSelector : public NodeGroupSelector {
 // 2 DQ nodes providing input -> node -> Q
 class BinaryNodeGroupSelector : public NodeGroupSelector {
  public:
-  explicit BinaryNodeGroupSelector(bool allow_16bit = true, bool allow_4bit = true)
-      : allow_16bit_(allow_16bit), allow_4bit_(allow_4bit) {}
+  explicit BinaryNodeGroupSelector(bool allow_16bit = true, bool allow_4bit = true,
+                                   bool require_scalar_quant_params = false)
+      : allow_16bit_(allow_16bit), allow_4bit_(allow_4bit), require_scalar_quant_params_(require_scalar_quant_params) {}
 
  private:
   bool Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
@@ -119,13 +122,15 @@ class BinaryNodeGroupSelector : public NodeGroupSelector {
 
   bool allow_16bit_;
   bool allow_4bit_;
+  bool require_scalar_quant_params_;
 };
 
 // Variadic DQ nodes -> node -> Q
 class VariadicNodeGroupSelector : public NodeGroupSelector {
  public:
-  explicit VariadicNodeGroupSelector(bool allow_16bit = true, bool allow_4bit = true)
-      : allow_16bit_(allow_16bit), allow_4bit_(allow_4bit) {}
+  explicit VariadicNodeGroupSelector(bool allow_16bit = true, bool allow_4bit = true,
+                                     bool require_per_tensor_quant_params = false)
+      : allow_16bit_(allow_16bit), allow_4bit_(allow_4bit), require_per_tensor_quant_params_(require_per_tensor_quant_params) {}
 
  private:
   bool Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
@@ -134,6 +139,7 @@ class VariadicNodeGroupSelector : public NodeGroupSelector {
 
   bool allow_16bit_;
   bool allow_4bit_;
+  bool require_per_tensor_quant_params_;
 };
 
 // DQ node -> Split -> multiple Q nodes with equal quantization types.
@@ -234,11 +240,13 @@ class MatMulNodeGroupSelector : public NodeGroupSelector {
   MatMulNodeGroupSelector(bool int8_allowed = true,
                           bool matmulintegertofloat_allowed = false,
                           bool allow_16bit = true,
-                          bool allow_4bit = true)
+                          bool allow_4bit = true,
+                          bool check_qlinear_matmul_params = false)
       : int8_allowed_(int8_allowed),
         matmulintegertofloat_allowed_(matmulintegertofloat_allowed),
         allow_16bit_(allow_16bit),
-        allow_4bit_(allow_4bit) {
+        allow_4bit_(allow_4bit),
+        check_qlinear_matmul_params_(check_qlinear_matmul_params) {
   }
 
  private:
@@ -249,14 +257,22 @@ class MatMulNodeGroupSelector : public NodeGroupSelector {
   bool matmulintegertofloat_allowed_;
   bool allow_16bit_;
   bool allow_4bit_;
+  bool check_qlinear_matmul_params_;
 };
 
-// Convert "1 DQ node for input B -> MatMul" to "MatMulNBits"
+// Fuse the constant weight DQ into MatMul/Gemm, preserving surrounding integer QDQ for CPU INT4 weights.
+// allow_16bit_activation_boundaries also permits INT16/UINT16 activation boundaries for other weight types.
 class DQMatMulNodeGroupSelector : public NodeGroupSelector {
+ public:
+  explicit DQMatMulNodeGroupSelector(bool allow_16bit_activation_boundaries = false)
+      : allow_16bit_activation_boundaries_(allow_16bit_activation_boundaries) {}
+
  private:
   bool Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
+
+  bool allow_16bit_activation_boundaries_;
 };
 
 // Input: DQ nodes for A, B and optional C
@@ -392,15 +408,16 @@ class DropDQNodesSelector : public BaseSelector {
 class UnarySelector : public BaseSelector {
  public:
   explicit UnarySelector(gsl::span<const char*> compatible_providers = {}, bool allow_16bit = false,
-                         bool allow_4bit = false)
-      : BaseSelector(std::make_unique<UnaryNodeGroupSelector>(allow_16bit, allow_4bit), compatible_providers) {}
+                         bool allow_4bit = false, bool allow_nonpositive_scale = true)
+      : BaseSelector(std::make_unique<UnaryNodeGroupSelector>(allow_16bit, allow_4bit, allow_nonpositive_scale),
+                     compatible_providers) {}
 };
 
 class BinarySelector : public BaseSelector {
  public:
   explicit BinarySelector(gsl::span<const char*> compatible_providers = {}, bool allow_16bit = false,
                           bool allow_4bit = false)
-      : BaseSelector(std::make_unique<BinaryNodeGroupSelector>(allow_16bit, allow_4bit), compatible_providers) {}
+      : BaseSelector(std::make_unique<BinaryNodeGroupSelector>(allow_16bit, allow_4bit, true), compatible_providers) {}
 };
 
 // Variadic DQ nodes -> node -> Q
@@ -409,7 +426,7 @@ class InputVariadicSelector : public BaseSelector {
   explicit InputVariadicSelector(bool allow_16bit = false,
                                  bool allow_4bit = false,
                                  gsl::span<const char*> compatible_providers = {})
-      : BaseSelector(std::make_unique<VariadicNodeGroupSelector>(allow_16bit, allow_4bit),
+      : BaseSelector(std::make_unique<VariadicNodeGroupSelector>(allow_16bit, allow_4bit, true),
                      compatible_providers) {}
 
   void UpdateBuilder(NodesToOptimizeIndicesBuilder&) const override;
@@ -450,18 +467,22 @@ class MatMulSelector : public BaseSelector {
   MatMulSelector(bool int8_allowed, bool allow_16bit = false, bool allow_4bit = false,
                  gsl::span<const char*> compatible_providers = {})
       : BaseSelector(std::make_unique<MatMulNodeGroupSelector>(int8_allowed, /*matmulintegertofloat_allowed*/ true,
-                                                               allow_16bit, allow_4bit),
+                                                               allow_16bit, allow_4bit,
+                                                               /*check_qlinear_matmul_params*/ true),
                      compatible_providers) {}
 };
 
 // Replace the constant weight DQ and MatMul/Gemm while preserving activation/output QDQ.
 class DQMatMulToMatMulNBitsSelector : public BaseSelector {
  public:
-  explicit DQMatMulToMatMulNBitsSelector(gsl::span<const char*> compatible_providers = {})
-      : BaseSelector(std::make_unique<DQMatMulNodeGroupSelector>(), compatible_providers) {}
+  explicit DQMatMulToMatMulNBitsSelector(gsl::span<const char*> compatible_providers = {},
+                                         bool allow_16bit_activation_boundaries = false)
+      : BaseSelector(std::make_unique<DQMatMulNodeGroupSelector>(allow_16bit_activation_boundaries),
+                     compatible_providers) {}
 
-  std::optional<NodesToOptimizeIndices> Select(const GraphViewer& graph_viewer,
-                                               const Node& node) const override;
+  // The selection contains only the weight DQ (the one feeding input 1) and the target, with no output nodes.
+  // Activation/bias DQs and output Qs are left outside the selection so they are not removed.
+  std::optional<NodesToOptimizeIndices> Select(const GraphViewer& graph_viewer, const Node& node) const override;
 };
 
 // Input: DQ nodes for A, B and optional C

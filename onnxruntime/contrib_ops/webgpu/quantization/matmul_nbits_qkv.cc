@@ -233,7 +233,10 @@ Status MatMulNBitsQkv::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
   const bool exceeds_storage_buffer_limit =
       required_storage_buffers > context.DeviceLimits().maxStorageBuffersPerShaderStage;
 
-  if (would_use_subgroup_unfused || would_use_dp4a_unfused || would_use_wide_tile_unfused ||
+  // The decode shader reads every projection's packed weights. The fallback
+  // handles empty projections individually and keeps nonempty projections active.
+  const bool has_empty_weights = q_b->Shape().Size() == 0 || k_b->Shape().Size() == 0 || v_b->Shape().Size() == 0;
+  if (has_empty_weights || would_use_subgroup_unfused || would_use_dp4a_unfused || would_use_wide_tile_unfused ||
       M != 1) {
     Tensor normalized_a = context.CreateGPUTensor(a->DataType(), a->Shape());
 

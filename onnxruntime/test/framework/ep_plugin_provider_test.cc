@@ -11,6 +11,7 @@
 #include <fstream>
 #include <functional>
 #include <limits>
+#include <optional>
 #include "gsl/gsl"
 #include "gtest/gtest.h"
 
@@ -155,9 +156,11 @@ struct MakeTestOrtEpResult {
 // `setup` runs on the raw TestOrtEp before PluginExecutionProvider is constructed --
 // callbacks consulted at construction time (e.g., GetDefaultMemoryDevice seeding
 // default_device_) must be configured here.
+// `session_options` defaults to empty session options; pass entries to exercise the host's session config handling.
 MakeTestOrtEpResult MakeTestOrtEp(OrtEpFactory& ep_factory,
                                   std::vector<const OrtEpDevice*> ep_devices,
-                                  std::function<void(TestOrtEp&)> setup = nullptr) {
+                                  std::function<void(TestOrtEp&)> setup = nullptr,
+                                  const Ort::SessionOptions* session_options = nullptr) {
   // Default OrtHardwareDevice and OrtEpDevice used if the caller does not explicitly provide ep_devices.
   static std::unique_ptr<OrtHardwareDevice> ort_hw_device = MakeTestOrtHardwareDevice(OrtHardwareDeviceType_CPU);
   static std::unique_ptr<OrtEpDevice> ort_ep_device = MakeTestOrtEpDevice(ort_hw_device.get());
@@ -167,7 +170,9 @@ MakeTestOrtEpResult MakeTestOrtEp(OrtEpFactory& ep_factory,
   if (setup) {
     setup(*ort_ep_raw);
   }
-  auto ort_session_options = Ort::SessionOptions{};
+  const Ort::SessionOptions default_session_options{};
+  const Ort::SessionOptions& ort_session_options = session_options != nullptr ? *session_options
+                                                                              : default_session_options;
 
   if (ep_devices.empty()) {
     ep_devices.push_back(ort_ep_device.get());
@@ -1695,6 +1700,105 @@ TEST(PluginExecutionProviderTest, CreatePreferredAllocators_RejectsAllocatorWith
   EXPECT_EQ(g_fake_allocator_release_count, 1);
 }
 #endif  // !defined(ORT_NO_EXCEPTIONS)
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+namespace {
+
+// What the host handed OrtEpFactory::CreateAllocator while creating a PluginExecutionProvider's allocators.
+struct CapturedAllocatorOptions {
+  int calls{0};
+  std::optional<std::string> device_mem_limit;
+};
+
+CapturedAllocatorOptions g_captured_allocator_options;
+
+OrtStatus* ORT_API_CALL CapturingFactoryCreateAllocator(OrtEpFactory*, const OrtMemoryInfo*,
+                                                        const OrtKeyValuePairs* options,
+                                                        OrtAllocator** out) noexcept {
+  ++g_captured_allocator_options.calls;
+  if (options != nullptr) {
+    if (const char* limit = Ort::GetApi().GetKeyValue(options, "gpu_device_mem_limit")) {
+      g_captured_allocator_options.device_mem_limit = limit;
+    }
+  }
+  *out = nullptr;
+  return nullptr;
+}
+
+const char* ORT_API_CALL CudaEpName(const OrtEp*) noexcept {
+  return kCudaExecutionProvider;
+}
+
+// Creates the allocators of a PluginExecutionProvider built from `session_config` and reports what its factory saw.
+CapturedAllocatorOptions CaptureAllocatorOptions(
+    bool is_cuda_ep, const std::vector<std::pair<std::string, std::string>>& session_config) {
+  g_captured_allocator_options = {};
+
+  auto ort_device = test_plugin_ep::MakeTestOrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT);
+  auto ort_memory_info = std::make_unique<OrtMemoryInfo>("FakeGPU", OrtAllocatorType::OrtDeviceAllocator,
+                                                         ort_device, OrtMemTypeDefault);
+  auto ort_hw_device = test_plugin_ep::MakeTestOrtHardwareDevice(OrtHardwareDeviceType_GPU);
+
+  test_plugin_ep::TestOrtEpFactory ep_factory;
+  ep_factory.CreateAllocator = CapturingFactoryCreateAllocator;
+  ep_factory.ReleaseAllocator = FakeReleaseAllocator;
+  auto ort_ep_device = test_plugin_ep::MakeTestOrtEpDevice(ort_hw_device.get(), ep_factory, ort_memory_info.get(),
+                                                           /*host_accessible_memory_info*/ nullptr);
+
+  Ort::SessionOptions session_options;
+  for (const auto& [key, value] : session_config) {
+    session_options.AddConfigEntry(key.c_str(), value.c_str());
+  }
+
+  auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp(
+      ep_factory, {ort_ep_device.get()},
+      [is_cuda_ep](test_plugin_ep::TestOrtEp& test_ep) {
+        if (is_cuda_ep) {
+          test_ep.GetName = CudaEpName;
+        }
+      },
+      &session_options);
+
+  static_cast<void>(ep->CreatePreferredAllocators());
+  return g_captured_allocator_options;
+}
+
+}  // namespace
+
+// session.moe.offload.gpu_device_mem_limit is a session-level key, not an ep.cuda.* option. The host hands it to the
+// CUDA plugin EP's allocator factory so an allocator request that no pending session account owns still gets the limit.
+TEST(PluginExecutionProviderTest, CreatePreferredAllocators_ForwardsSessionDeviceMemLimitToCudaEp) {
+  const auto captured = CaptureAllocatorOptions(
+      /*is_cuda_ep*/ true, {{kOrtSessionOptionsMoeOffloadGpuDeviceMemLimit, "4096"}});
+
+  EXPECT_EQ(captured.calls, 1);
+  ASSERT_TRUE(captured.device_mem_limit.has_value());
+  EXPECT_EQ(*captured.device_mem_limit, "4096");
+}
+
+TEST(PluginExecutionProviderTest, CreatePreferredAllocators_OmitsDeviceMemLimitWhenSessionKeyIsUnset) {
+  const auto captured = CaptureAllocatorOptions(/*is_cuda_ep*/ true, {{"ep.cuda.arena.max_mem", "2097152"}});
+
+  EXPECT_EQ(captured.calls, 1);
+  EXPECT_FALSE(captured.device_mem_limit.has_value());
+}
+
+TEST(PluginExecutionProviderTest, CreatePreferredAllocators_DoesNotForwardDeviceMemLimitToOtherEps) {
+  const auto captured = CaptureAllocatorOptions(
+      /*is_cuda_ep*/ false, {{kOrtSessionOptionsMoeOffloadGpuDeviceMemLimit, "4096"}});
+
+  EXPECT_EQ(captured.calls, 1);
+  EXPECT_FALSE(captured.device_mem_limit.has_value());
+}
+
+// The limit is spelled only as the session-level key; an EP-scoped spelling is not an alias for it.
+TEST(PluginExecutionProviderTest, CreatePreferredAllocators_IgnoresEpScopedDeviceMemLimit) {
+  const auto captured = CaptureAllocatorOptions(/*is_cuda_ep*/ true, {{"ep.cuda.gpu_device_mem_limit", "4096"}});
+
+  EXPECT_EQ(captured.calls, 1);
+  EXPECT_FALSE(captured.device_mem_limit.has_value());
+}
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 TEST(PluginExecutionProviderTest, IsGraphCaptureEnabled) {
   auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp();

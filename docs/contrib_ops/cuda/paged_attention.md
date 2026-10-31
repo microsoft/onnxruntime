@@ -83,8 +83,7 @@ never populated or consumed), `head_sink` / smooth softmax, QK-Norm, quantized c
 
 Structural limits in the current implementation:
 
-- `batch_size <= 256` — `LaunchGetCumulativeSeqlensKV` uses a per-block `cub::BlockScan` with 256
-  threads and independent blocks.
+- Sequence metadata is canonicalized with a single-CTA `cub::BlockScan` kernel (`FusedSanitizeSequenceLengthsSmallBatchKernel`, `workspace_bytes = 0`) for `batch_size < 256` and parallel device kernels with grid-wide CUB scans for `batch_size >= 256`, so this path has no fixed batch-size limit. Trusted runtimes that already validate `block_table`, `cumulative_sequence_length`, and `past_seqlens` can set `session.paged_attention.skip_input_sanitizer` (`"1"`) or `ORT_PAGED_ATTENTION_SKIP_SANITIZER=1` to bypass device-side sanitization and invalid-sequence output masking, using the single-kernel `LaunchGetCumulativeSeqlensKV` path.
 - `block_size % 256 == 0` — see [§18](#18-known-defects-to-fix-first); this is almost certainly a bug.
   *(Partly true. It is a genuine FlashAttention tiling constraint, but a head-size-dependent one. See
   the implementation note in §18.1: validation now accepts any power-of-two `block_size >= 16` and
@@ -180,6 +179,24 @@ matches the landing order in [§19](#19-phasing), so the schema grows monotonica
 
 For `k_cache_dtype=v_cache_dtype="int4"`, the cache tensors use `uint8` storage and their last
 dimension is `(head_size + 1) / 2`, not `head_size`.
+
+`cumulative_sequence_length`, `past_seqlens`, and `block_table` are sanitized on the CUDA compute
+stream before any cache address is resolved:
+
+- cumulative query offsets are clamped to `[0, token_count]`, made nondecreasing, and fixed to start
+  at zero and end at `token_count`;
+- a negative `past_seqlens` value, or one that leaves insufficient capacity for that sequence's
+  query tokens, suppresses that sequence's cache writes and produces zero output;
+- `block_table == -1` remains the supported unmapped-page sentinel; values `< -1` or
+  `>= num_blocks` are converted to that sentinel. Sentinel pages are excluded from attention while
+  mapped pages remain attendable.
+
+When `attention_metadata` supplies replay-wide bounds, or while a CUDA Graph is being captured or
+replayed, sanitization is entirely device-side and malformed values follow the behavior above.
+Without metadata, a backend that needs exact host lengths for workspace sizing or XQA eligibility
+performs the existing device-to-host length readback. On that diagnostic path, malformed
+`cumulative_sequence_length` or `past_seqlens` returns `INVALID_ARGUMENT` instead of being silently
+sanitized. Block-table safety remains device-side on every path.
 
 `max_context_len` is the largest per-sequence total KV length in the batch, bounded above by
 `block_table.shape[1] * block_size`.
@@ -520,9 +537,8 @@ measurable win for large batches and eliminates the OOB failure mode. The kernel
 
 - Rank 1, `shape[0] == token_count`.
 - Element type `int32`.
-- Range checking on device is a debug-build assertion only; host-side range checking would require a
-  D→H copy per step. The op documents that out-of-range values are undefined behavior, consistent
-  with `block_table` today.
+- Range checking is performed on device without a host synchronization. `-1` suppresses the write;
+  values below `-1` or at/above `num_blocks * block_size` are also treated as suppressed writes.
 
 ### 5.5 Why not derive-only
 
@@ -791,9 +807,11 @@ when reusing a directory configured with the feature disabled. INT8 kernels are 
 > - **Both §8.5 read paths are implemented.** Multi-token steps normally use
 >   `GatherAndExpandPagedKVCache` to dequantize while gathering, and the Flash varlen path uses the
 >   gathered grouped layout. A metadata-bounded speculative step of 2–8 query tokens uses paged XQA
->   directly at `group_size = 6`: H256 supports causal and non-causal attention with matching native
+>   directly: H256 supports causal and non-causal attention at `group_size = 6` with matching native
 >   FP16/BF16 query and cache types, FP16 query/output with an INT8/FP8 cache, or FP16 query/output
->   with a `PER_CHANNEL` INT4 cache; causal H128 supports FP16 query/output with an INT8 cache.
+>   with a `PER_CHANNEL` INT4 cache, plus BF16 query/output with an INT8 cache at
+>   `group_size ∈ {6, 16}`; causal H128 supports FP16 query/output with an INT8 cache at
+>   `group_size = 6`.
 >   Quantized `PER_CHANNEL` K scales reach XQA when scale folding is enabled. INT4 with `PER_TENSOR`
 >   scales, BF16-query INT4, and disabled per-channel folding use portable paged decode for
 >   metadata-bounded speculative steps. Non-causal H128 multi-token steps use a portable or gathered
@@ -817,11 +835,12 @@ when reusing a directory configured with the feature disabled. INT8 kernels are 
 > one token per sequence, `head_size ∈ {64, 128, 256}`, `group_size ∈ {4, 6, 8, 16, 32}`, no softcap,
 > a block size divisible by 128, and an INT8/FP8 cache with `PER_TENSOR` or `PER_CHANNEL` K scales.
 > Separate speculative XQA specializations cover matching native FP16/BF16 query and cache
-> types, FP16 query/output with an INT8/FP8 cache, and FP16 query/output with a `PER_CHANNEL` INT4
-> cache when scale folding is enabled. These H256 paths require `attention_metadata` to bound the
-> longest query to 2–8 tokens and `group_size = 6`. An additional H128 specialization covers FP16
-> query/output with an INT8 cache at `group_size = 6` for causal attention. These kernels write
-> packed token-major output and support ragged batches. A
+> types, FP16 query/output with an INT8/FP8 cache, FP16 query/output with a `PER_CHANNEL` INT4
+> cache when scale folding is enabled (all at `head_size = 256, group_size = 6`), and BF16
+> query/output with an INT8 cache at `head_size = 256, group_size ∈ {6, 16}` when
+> `attention_metadata` bounds the longest query to 2–8 tokens. An additional H128 specialization
+> covers FP16 query/output with an INT8 cache at `group_size = 6` for causal attention. These kernels
+> write packed token-major output and support ragged batches. A
 > native FP16-cache specialization additionally covers `head_size = 256, group_size = 6`, the
 > Qwen3.8 full-attention geometry, when `attention_metadata` proves one-token-per-sequence decode
 > without a host readback. The CUDA image selected at runtime must contain compatible XQA device code
@@ -879,7 +898,8 @@ when reusing a directory configured with the feature disabled. INT8 kernels are 
 >   in-sequence position from `cumulative_seqlens_q` on device, and masks against
 >   `past_seqlens[b] + q_index + 1`, so the kernel is correct for arbitrary ragged input (including
 >   full prefill) and a wrong heuristic only costs speed. That is what removes the D→H sync.
-> - **Multi-token XQA gating.** The speculative H256/group-6 XQA specializations, plus the causal
+> - **Multi-token XQA gating.** The speculative H256 XQA specializations (`group_size = 6`, plus
+>   `group_size ∈ {6, 16}` for BF16-query/INT8-cache), as well as the causal
 >   FP16-query/INT8-cache H128/group-6 specialization, are gated on the `attention_metadata` query
 >   bound being in `[2, 8]`, *not* on `token_count <= batch_size`: a zero-heavy ragged step can
 >   satisfy the aggregate test while still carrying a multi-token
@@ -1388,9 +1408,10 @@ as GQA does, so that `ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO=1` works uniformly 
 > `max_query_len == 1` because its output layout is one row per batch index rather than per query
 > token. Quantized-cache XQA may obtain the latter from `attention_metadata` or, failing that, from
 > the readback. A separate token-major speculative XQA path uses replay-safe metadata bounds
-> instead of an aggregate token-count heuristic: it admits `max_query_len` 2–8 when the H256/group-6
-> specialization is eligible for matching native FP16/BF16 query and cache types or FP16 query with
-> an INT8/FP8 cache or a `PER_CHANNEL` INT4 cache, or when the H128/group-6
+> instead of an aggregate token-count heuristic: it admits `max_query_len` 2–8 when an H256
+> specialization is eligible (`group_size = 6` for matching native FP16/BF16 query and cache types
+> or FP16 query with an INT8/FP8 cache or a `PER_CHANNEL` INT4 cache; `group_size ∈ {6, 16}` for
+> BF16 query with an INT8 cache), or when the H128/group-6
 > causal FP16-query/INT8-cache specialization is eligible, including batches with inactive zero-query
 > requests. Native-cache XQA requires
 > metadata and otherwise remains on Flash when eligible or uses the portable paged decoder. The
@@ -1451,7 +1472,6 @@ Consolidated, to be implemented in `paged_attention_helper::CheckInputs`. Every 
 - `block_table` rank 2 with `dim0 == batch_size`.
 - `cos_cache`/`sin_cache` both present or both absent; required when `do_rotary == 1`.
 - `key_cache_out` must alias `key_cache`; same for value.
-- `batch_size <= 256` (BlockScan limitation — to be lifted, see §18).
 
 **Corrected:**
 - `block_size` must be a power of two in `{16, 32, 64, 128, 256}` (**replaces** `block_size % 256 == 0`; see §18).
@@ -1552,7 +1572,7 @@ reference oracle for every shared feature and catches drift automatically. Run i
 - `block_table` entries of `-1` (unmapped) are masked out.
 - Ragged batches including sequences with **zero** new tokens.
 - `token_count == 0` early-out.
-- `batch_size` at and just above the BlockScan limit (must error, not corrupt).
+- `batch_size` at and above the former 256-sequence BlockScan limit.
 - Sliding-window block pruning: pruned run bit-matches the unpruned run.
 - Rolling sliding-window cache (§9.3): a run holding only `ceil(W / block_size) + 1` blocks per
   sequence, recycled through `slot_mapping` with the evicted `block_table` entries set to `-1`,
@@ -1658,9 +1678,12 @@ These block the feature work and should land ahead of it.
    `block_table`. Guard with an early `return` when
    `token_id >= cumulative_seqlens_q[batch_size]`. (`slot_mapping` removes the search entirely on the
    write path, but the gather path still needs the fix.)
-3. **`batch_size <= 256`.** Replace the per-block `cub::BlockScan` with a grid-wide scan (or a single
-   256-thread block doing a strided serial scan) so continuous batching is not capped at 256
-   concurrent sequences — a real limit for a serving op.
+3. **`batch_size <= 256`.** **Fixed.** Sequence metadata canonicalization uses a single-CTA fused
+   `cub::BlockScan` kernel (`FusedSanitizeSequenceLengthsSmallBatchKernel`) for `batch_size < 256`
+   and grid-wide CUB scans for `batch_size >= 256`, so continuous batching is no longer capped at
+   256 concurrent sequences while small-batch decode avoids multi-kernel launch overhead. Trusted
+   runtimes can also set `session.paged_attention.skip_input_sanitizer` (`"1"`) or
+   `ORT_PAGED_ATTENTION_SKIP_SANITIZER=1` to skip device-side sanitization altogether.
 4. **Per-step D→H synchronization — and it blocks CUDA graph capture.** ~~`max_query_len` (and
    `total_kv_tokens` for MEA) are obtained via `cudaStreamSynchronize` every step, once per layer.
    This is not only a throughput bug for the op's primary use case: `cudaStreamSynchronize` on a

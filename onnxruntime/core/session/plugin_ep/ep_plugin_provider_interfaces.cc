@@ -196,7 +196,8 @@ PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessio
   // Extract EP-scoped session config entries.
   // Arena options go to session_arena_options_; the rest go to provider_options_.
   {
-    const std::string ep_prefix = OrtSessionOptions::GetProviderOptionPrefix(ort_ep_->GetName(ort_ep_.get()));
+    const std::string ep_name = ort_ep_->GetName(ort_ep_.get());
+    const std::string ep_prefix = OrtSessionOptions::GetProviderOptionPrefix(ep_name.c_str());
     const std::string arena_prefix = ep_prefix + "arena.";
     const bool extract_arena = ep_factory_.CreateAllocator && !ort_ep_->CreateAllocator;
 
@@ -205,19 +206,60 @@ PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessio
         continue;
       }
 
+      const std::string bare_key = key.substr(ep_prefix.size());
       if (key.compare(0, arena_prefix.size(), arena_prefix) == 0) {
         if (extract_arena) {
           if (!session_arena_options_) {
             session_arena_options_.emplace();
           }
-          session_arena_options_->Add(key.substr(ep_prefix.size()).c_str(), value.c_str());
+          session_arena_options_->Add(bare_key.c_str(), value.c_str());
         }
         continue;
       }
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+      // Also map standard CUDA EP arena option names (e.g. "arena_extend_strategy") into session_arena_options_.
+      if (extract_arena) {
+        const char* mapped_arena_key = nullptr;
+        if (bare_key == "arena_extend_strategy") {
+          mapped_arena_key = "arena.extend_strategy";
+        } else if (bare_key == "initial_chunk_size_bytes") {
+          mapped_arena_key = "arena.initial_chunk_size_bytes";
+        } else if (bare_key == "max_dead_bytes_per_chunk") {
+          mapped_arena_key = "arena.max_dead_bytes_per_chunk";
+        } else if (bare_key == "initial_growth_chunk_size_bytes") {
+          mapped_arena_key = "arena.initial_growth_chunk_size_bytes";
+        } else if (bare_key == "max_power_of_two_extend_bytes") {
+          mapped_arena_key = "arena.max_power_of_two_extend_bytes";
+        } else if (bare_key == "max_mem") {
+          mapped_arena_key = "arena.max_mem";
+        }
+        if (mapped_arena_key != nullptr) {
+          if (!session_arena_options_) {
+            session_arena_options_.emplace();
+          }
+          session_arena_options_->Add(mapped_arena_key, value.c_str());
+        }
+      }
+#endif
+
       // Store the bare option name (strip the EP-specific prefix) for GetProviderOptions().
-      provider_options_[key.substr(ep_prefix.size())] = value;
+      provider_options_[bare_key] = value;
     }
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+    // The per-session device memory limit is a session-level key rather than an EP-scoped option. Hand it to the CUDA
+    // plugin EP's allocator factory so an allocator request that no pending session account owns still gets the limit.
+    if (extract_arena && ep_name == kCudaExecutionProvider) {
+      if (const auto device_mem_limit = session_options.value.config_options.GetConfigEntry(
+              kOrtSessionOptionsMoeOffloadGpuDeviceMemLimit)) {
+        if (!session_arena_options_) {
+          session_arena_options_.emplace();
+        }
+        session_arena_options_->Add("gpu_device_mem_limit", device_mem_limit->c_str());
+      }
+    }
+#endif
   }
 
   for (const auto* ep_device : ep_devices_) {
@@ -914,7 +956,19 @@ std::vector<AllocatorPtr> PluginExecutionProvider::CreatePreferredAllocators() {
   std::vector<AllocatorPtr> allocators;
   allocators.reserve(allocator_mem_infos_.size());
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  // Identify the OrtEp the allocators are created for so a factory shared by several sessions can bind each allocator
+  // to the right session state instead of guessing from device-wide queues.
+  OrtKeyValuePairs allocator_options_storage;
+  if (session_arena_options_) {
+    allocator_options_storage = *session_arena_options_;
+  }
+  allocator_options_storage.Add("ep_instance_id",
+                                std::to_string(reinterpret_cast<uintptr_t>(ort_ep_.get())).c_str());
+  const OrtKeyValuePairs* allocator_options = &allocator_options_storage;
+#else
   const OrtKeyValuePairs* allocator_options = session_arena_options_ ? &*session_arena_options_ : nullptr;
+#endif
 
   auto* ep_factory = &ep_factory_;
 

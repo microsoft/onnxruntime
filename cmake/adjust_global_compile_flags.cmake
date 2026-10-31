@@ -153,13 +153,7 @@ else()
   endif()
 endif()
 
-# If this is only enabled in an onnxruntime_ORT_MODEL_FORMAT_ONLY build we don't need ONNX changes
-# as we (currently) only pull in data_type_utils.cc/h which doesn't throw
 if (onnxruntime_DISABLE_EXCEPTIONS)
-  if (NOT onnxruntime_MINIMAL_BUILD)
-    message(FATAL_ERROR "onnxruntime_MINIMAL_BUILD required for onnxruntime_DISABLE_EXCEPTIONS")
-  endif()
-
   if (onnxruntime_ENABLE_PYTHON)
     # pybind11 highly depends on C++ exceptions.
     message(FATAL_ERROR "onnxruntime_ENABLE_PYTHON must be disabled for onnxruntime_DISABLE_EXCEPTIONS")
@@ -178,7 +172,10 @@ if (onnxruntime_DISABLE_EXCEPTIONS)
     string(APPEND CMAKE_CXX_FLAGS " /wd4834 /wd4702")
     add_compile_definitions("_HAS_EXCEPTIONS=0")
   else()
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-exceptions -fno-unwind-tables -fno-asynchronous-unwind-tables")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-exceptions")
+    if (onnxruntime_MINIMAL_BUILD)
+      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-unwind-tables -fno-asynchronous-unwind-tables")
+    endif()
   endif()
 endif()
 
