@@ -2330,17 +2330,11 @@ def build_nuget_package(
     if sln != "OnnxRuntime.CSharp.sln" and have_exclude_mobile_targets_option is False:
         extra_options.append("/p:IncludeMobileTargets=false")
 
-    # we have to use msbuild directly if including Xamarin targets as dotnet only supports MAUI (.net6)
-    use_dotnet = sln != "OnnxRuntime.CSharp.sln"
-
     # build csharp bindings and create nuget package for each config
     for config in configs:
         configuration = "/p:Configuration=" + config
         extra_options += [configuration, "/p:Platform=Any CPU"]
-        if use_dotnet:
-            cmd_args = ["dotnet", "restore", sln, "--configfile", "NuGet.CSharp.config", *extra_options]
-        else:
-            cmd_args = ["msbuild", sln, "/t:restore", "/p:RestoreConfigFile=NuGet.CSharp.config", *extra_options]
+        cmd_args = ["dotnet", "restore", sln, "--configfile", "NuGet.CSharp.config", *extra_options]
 
         # set build directory based on build_dir arg
         native_dir = os.path.normpath(os.path.join(source_dir, build_dir))
@@ -2349,8 +2343,8 @@ def build_nuget_package(
         run_subprocess(cmd_args, cwd=csharp_build_dir)
 
         if not use_winml:
-            cmd_args = ["dotnet"] if use_dotnet else []
-            cmd_args += [
+            cmd_args = [
+                "dotnet",
                 "msbuild",
                 sln,
                 package_name,
@@ -2388,8 +2382,8 @@ def build_nuget_package(
 
         nuget_exe_arg = '/p:NugetExe="' + nuget_exe + '"'
 
-        cmd_args = ["dotnet"] if use_dotnet else []
-        cmd_args += [
+        cmd_args = [
+            "dotnet",
             "msbuild",
             "OnnxRuntime.CSharp.proj",
             target_name,

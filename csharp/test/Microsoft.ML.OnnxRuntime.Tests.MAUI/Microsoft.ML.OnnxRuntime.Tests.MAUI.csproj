@@ -7,15 +7,9 @@
 
   <!-- General app properties -->
   <PropertyGroup>
-    <!-- TODO: Currently running into build issues with net8.0-ios and net8.0-maccatalyst that is
-    blocking packaging pipelines.
-    (Empty ResolveFrameworkReference.RuntimePackPath for Microsoft.NETCore.App)
-
-    Disabling those targets until the issues are resolved. -->
-    <!-- <TargetFrameworks>net8.0-android;net8.0-ios;net8.0-maccatalyst</TargetFrameworks> -->
-
-    <TargetFrameworks>net9.0-android</TargetFrameworks>
-    <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows'))">$(TargetFrameworks);net8.0-windows10.0.19041.0</TargetFrameworks>
+    <!-- iOS and Mac Catalyst remain disabled pending resolution of their packaging issues. -->
+    <TargetFrameworks>net10.0-android</TargetFrameworks>
+    <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows'))">$(TargetFrameworks);net10.0-windows10.0.19041.0</TargetFrameworks>
 
     <!-- Note for MacCatalyst:
     The default runtime is maccatalyst-x64, except in Release config, in which case the default is maccatalyst-x64;maccatalyst-arm64.
@@ -104,8 +98,8 @@ Microsoft.ML.OnnxRuntime.Tests.Common project -->
     <PackageReference Include="DeviceRunners.XHarness.Xunit" Version="0.1.0-preview.2" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
     <PackageReference Include="Microsoft.DotNet.XHarness.TestRunners.Xunit" Version="9.0.0-prerelease.24374.1" />
-    <PackageReference Include="Microsoft.Maui.Controls" Version="8.0.70" />
-    <PackageReference Include="Microsoft.Maui.Controls.Compatibility" Version="8.0.70" />
+    <PackageReference Include="Microsoft.Maui.Controls" Version="$(MauiVersion)" />
+    <PackageReference Include="Microsoft.Maui.Controls.Compatibility" Version="$(MauiVersion)" />
     <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="8.0.0" />
     <PackageReference Include="xunit" Version="2.9.0" />
     <PackageReference Include="xunit.runner.utility" Version="2.9.0" />

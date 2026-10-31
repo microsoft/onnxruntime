@@ -3,7 +3,7 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <Platforms>AnyCPU;x86</Platforms>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <OnnxRuntimeCsharpRoot>$(ProjectDir)..\..</OnnxRuntimeCsharpRoot>
     <SignAssembly>false</SignAssembly>
     <Configurations>Debug;Release;RelWithDebInfo</Configurations>

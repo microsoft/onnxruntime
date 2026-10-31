@@ -8,7 +8,7 @@ steps:
   displayName: 'Install .NET SDK'
   inputs:
     packageType: sdk
-    version: '8.x'
+    version: '10.x'
   ${{ if ne(parameters.architecture, '') }}:
     env:
       PROCESSOR_ARCHITECTURE: ${{ parameters.architecture }}

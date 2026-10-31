@@ -9,7 +9,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 
-#if NET8_0_OR_GREATER
+#if NET10_0_OR_GREATER
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -97,7 +97,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <exception cref="OnnxRuntimeException"></exception>
         ReadOnlySpan<T> GetTensorDataAsSpan<T>() where T : unmanaged;
 
-#if NET8_0_OR_GREATER
+#if NET10_0_OR_GREATER
         /// <summary>
         /// Returns a ReadOnlyTensorSpan<typeparamref name="T"/> over tensor native buffer that
         /// provides a read-only view.
@@ -363,7 +363,7 @@ namespace Microsoft.ML.OnnxRuntime
             return MemoryMarshal.Cast<byte, T>(byteSpan);
         }
 
-#if NET8_0_OR_GREATER
+#if NET10_0_OR_GREATER
         /// <summary>
         /// Returns a ReadOnlyTensorSpan<typeparamref name="T"/> over tensor native buffer that
         /// provides a read-only view.
@@ -410,7 +410,7 @@ namespace Microsoft.ML.OnnxRuntime
             return MemoryMarshal.Cast<byte, T>(byteSpan);
         }
 
-#if NET8_0_OR_GREATER
+#if NET10_0_OR_GREATER
         /// <summary>
         /// Returns a TensorSpan<typeparamref name="T"/> over tensor native buffer.
         ///
@@ -445,7 +445,7 @@ namespace Microsoft.ML.OnnxRuntime
             return GetTensorBufferRawData(typeof(byte));
         }
 
-#if NET8_0_OR_GREATER
+#if NET10_0_OR_GREATER
         /// <summary>
         /// Provides mutable raw native buffer access.
         /// </summary>
@@ -844,7 +844,7 @@ namespace Microsoft.ML.OnnxRuntime
             return OrtValue.CreateTensorValueFromMemory(OrtMemoryInfo.DefaultInstance, new Memory<T>(data), shape);
         }
 
-#if NET8_0_OR_GREATER
+#if NET10_0_OR_GREATER
         /// <summary>
         /// This is a factory method creates a native Onnxruntime OrtValue containing a tensor on top of the existing tensor managed memory.
         /// The method will attempt to pin managed memory so no copying occurs when data is passed down

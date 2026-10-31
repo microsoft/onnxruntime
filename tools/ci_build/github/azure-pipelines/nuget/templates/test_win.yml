@@ -59,6 +59,7 @@ stages:
         arguments: 'amd64'
         modifyEnvironment: true
 
+    - template: ../../templates/setup-dotnet.yml
 
     - download: build
       displayName: 'Download Nuget'
@@ -78,7 +79,7 @@ stages:
 
     - script: |
        @echo "Running Runtest.bat"
-       test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Pipeline.Workspace)\build\drop-signed-nuget-${{ parameters.ArtifactSuffix }} net8.0 x64 $(NuGetPackageVersionNumber)
+       test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Pipeline.Workspace)\build\drop-signed-nuget-${{ parameters.ArtifactSuffix }} net10.0 x64 $(NuGetPackageVersionNumber)
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
       displayName: 'Run End to End Test (C#) .Net Core x64'
       env:
