@@ -252,6 +252,11 @@ Status ComputeSharedQMoE(OpKernelContext* context, const SharedQMoEAttributes& a
       for (int64_t j = 0; j < probability_count; ++j) {
         denominator += std::exp(ranking[narrow<size_t>(j)].logit - max_logit);
       }
+    } else if (attributes.normalize_routing_weights) {
+      for (int64_t j = 0; j < attributes.top_k; ++j) {
+        denominator += ReadElement(router_weights->DataRaw(), router_weight_type,
+                                   narrow<size_t>(row * experts + ranking[narrow<size_t>(j)].expert));
+      }
     }
     for (int64_t j = 0; j < attributes.top_k; ++j) {
       const int expert = ranking[narrow<size_t>(j)].expert;
@@ -260,7 +265,7 @@ Status ComputeSharedQMoE(OpKernelContext* context, const SharedQMoEAttributes& a
       float scale = router_weights ? ReadElement(router_weights->DataRaw(), router_weight_type,
                                                  narrow<size_t>(row * experts + expert))
                                    : std::exp(ranking[narrow<size_t>(j)].logit - max_logit);
-      if (router_weights == nullptr) {
+      if (router_weights == nullptr || attributes.normalize_routing_weights) {
         scale = denominator == 0.0f ? 0.0f : scale / denominator;
       }
       route_scales.get()[route] = scale;

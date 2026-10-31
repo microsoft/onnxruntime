@@ -1667,6 +1667,110 @@ TEST(QMoESharedLayoutTest, Int2GemmAndExpertRangesMatchScalarAcrossBlockSizesFp1
   }
 }
 
+TEST(QMoESharedLayoutTest, Int2ScalesBeforeLargeActivationProducts) {
+  constexpr int64_t k = 128;
+  constexpr int64_t columns = 16;
+  constexpr int64_t rows = 3;
+  const std::vector<uint8_t> weights(static_cast<size_t>(columns * k / 4), 0);  // All weights are -2.
+  for (int64_t block : {32, 64, 128}) {
+    for (bool bf16 : {false, true}) {
+      const int64_t blocks = k / block;
+      std::vector<uint16_t> scales(static_cast<size_t>(columns * blocks));
+      for (size_t i = 0; i < scales.size(); ++i) {
+        const float s = 1e-4f * static_cast<float>(1 + i % 3);
+        scales[i] = bf16 ? shared::FloatToBFloat16(s) : shared::FloatToHalf(s);
+      }
+      for (bool prepacked : {false, true}) {
+        std::vector<float> natural(static_cast<size_t>(rows * k), 0.0f);
+        natural[33] = -2e38f;  // One unscaled product overflows.
+        natural[static_cast<size_t>(k + 97)] = -2e38f;
+        std::fill(natural.begin() + 2 * k, natural.end(), -1e37f);  // The unscaled sum overflows.
+        std::vector<float> reordered(natural.size());
+        for (int64_t r = 0; r < rows; ++r) {
+          if (prepacked) {
+            shared::ReorderInt2ActivationRow(natural.data() + r * k, reordered.data() + r * k, k);
+          } else {
+            shared::ReorderRawInt2ActivationRow(natural.data() + r * k, reordered.data() + r * k, k);
+          }
+        }
+        // Full groups and four-column subranges exercise both vector tile implementations.
+        for (const auto& [begin, end] : {std::pair<int64_t, int64_t>{0, columns}, {4, 12}}) {
+          for (bool scalar : {false, true}) {
+            std::vector<float> output(static_cast<size_t>(rows * columns));
+            shared::Int2GemmRange(weights.data(), scales.data(), nullptr, block, false, prepacked,
+                                  bf16, false, columns, k, reordered.data(), rows, output.data(), columns,
+                                  begin, end, scalar);
+            for (int64_t r = 0; r < rows; ++r) {
+              for (int64_t n = begin; n < end; ++n) {
+                double expected = 0;
+                for (int64_t i = 0; i < k; ++i) {
+                  const auto bits = scales[static_cast<size_t>(n * blocks + i / block)];
+                  const double scale = bf16 ? shared::BFloat16ToFloat(bits) : shared::HalfToFloat(bits);
+                  expected += -2.0 * scale * natural[static_cast<size_t>(r * k + i)];
+                }
+                const float actual = output[static_cast<size_t>(r * columns + n - begin)];
+                ASSERT_TRUE(std::isfinite(actual));
+                EXPECT_NEAR(actual / expected, 1.0, 2e-6)
+                    << "block=" << block << " bf16=" << bf16 << " prepacked=" << prepacked;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+TEST(QMoESharedLayoutTest, Int2SwiGluKeepsLargeProjectionsInFloat32) {
+  constexpr int64_t hidden = 128;
+  constexpr int64_t inter = 128;
+  constexpr int64_t columns = 2 * inter;
+  for (int64_t block : {32, 64, 128}) {
+    for (bool prepacked : {false, true}) {
+      std::vector<uint8_t> weights(static_cast<size_t>(columns * hidden / 4));
+      std::vector<uint16_t> scales(static_cast<size_t>(columns * hidden / block));
+      for (int64_t n = 0; n < columns; ++n) {
+        // Gate weight -2, up weight +1; only the first activation is nonzero.
+        for (int64_t tile = 0; tile < hidden / 64; ++tile) {
+          const int64_t offset = prepacked ? (n / 8 * 2 * hidden + tile * 128 + n % 8 * 16)
+                                           : (n * hidden / 4 + tile * 16);
+          std::fill_n(weights.data() + offset, 16, (n % 2 == 0) ? 0 : 0xFF);
+        }
+        std::fill_n(scales.data() + n * (hidden / block), hidden / block,
+                    shared::FloatToHalf((n % 2 == 0) ? 1.0f : 1e-6f));
+      }
+      shared::Int2ExpertView view{};
+      view.fc1_weights = weights.data();
+      view.fc1_scales = scales.data();
+      view.block_size = block;
+      view.scale_is_bf16 = false;
+      view.weights_are_prepacked = prepacked;
+      for (bool scalar : {false, true}) {
+        for (float activation : {-40000.0f, 40000.0f}) {
+          std::vector<float> natural(static_cast<size_t>(hidden), 0.0f), reordered(natural.size());
+          natural[0] = activation;
+          if (prepacked) {
+            shared::ReorderInt2ActivationRow(natural.data(), reordered.data(), hidden);
+          } else {
+            shared::ReorderRawInt2ActivationRow(natural.data(), reordered.data(), hidden);
+          }
+          std::vector<float> output(static_cast<size_t>(inter));
+          shared::Int2Fc1SwiGluRange(hidden, inter, view, reordered.data(), 1, {}, output.data(),
+                                     0, columns, scalar, false, true);
+          const double gate = -2.0 * activation;
+          const double up = shared::HalfToFloat(shared::FloatToHalf(1e-6f)) * static_cast<double>(activation);
+          const float expected = shared::HalfToFloat(shared::FloatToHalf(
+              static_cast<float>(gate / (1.0 + std::exp(-gate)) * up)));
+          for (float value : output) {
+            ASSERT_TRUE(std::isfinite(value));
+            EXPECT_EQ(value, expected);
+          }
+        }
+      }
+    }
+  }
+}
+
 TEST(QMoESharedLayoutTest, Int2GuardPageAndReadOnlyBanks) {
 #if defined(__linux__)
   const size_t page = static_cast<size_t>(sysconf(_SC_PAGESIZE));
@@ -1677,20 +1781,20 @@ TEST(QMoESharedLayoutTest, Int2GuardPageAndReadOnlyBanks) {
   uint8_t* weights = mapping + page - 128;
   std::memset(weights, 0x9B, 128);
   ASSERT_EQ(mprotect(mapping, page, PROT_READ), 0);
-  const uint16_t scale = shared::FloatToBFloat16(0.125f);
+  std::array<uint16_t, 8> scales;
+  scales.fill(shared::FloatToBFloat16(0.125f));
   std::array<float, 64> a;
   a.fill(0.25f);
-  float scalar = 0.0f;
-  float dispatched = 0.0f;
-  shared::Int2GemmRange(weights, &scale, nullptr, 64,
+  std::array<float, 8> scalar{}, dispatched{};
+  shared::Int2GemmRange(weights, scales.data(), nullptr, 64,
                         /*scales_are_block_major=*/false, /*weights_are_prepacked=*/true,
                         /*scale_is_bf16=*/true, /*bias_is_bf16=*/true,
-                        1, 64, a.data(), 1, &scalar, 1, 0, 1, /*force_scalar=*/true);
-  shared::Int2GemmRange(weights, &scale, nullptr, 64,
+                        8, 64, a.data(), 1, scalar.data(), 8, 0, 8, /*force_scalar=*/true);
+  shared::Int2GemmRange(weights, scales.data(), nullptr, 64,
                         /*scales_are_block_major=*/false, /*weights_are_prepacked=*/true,
                         /*scale_is_bf16=*/true, /*bias_is_bf16=*/true,
-                        1, 64, a.data(), 1, &dispatched, 1, 0, 1, /*force_scalar=*/false);
-  EXPECT_NEAR(scalar, dispatched, 1e-6f);
+                        8, 64, a.data(), 1, dispatched.data(), 8, 0, 8, /*force_scalar=*/false);
+  for (size_t n = 0; n < scalar.size(); ++n) EXPECT_NEAR(scalar[n], dispatched[n], 1e-6f);
   EXPECT_EQ(munmap(mapping, 2 * page), 0);
 #else
   GTEST_SKIP() << "Read-only guard-page test requires mmap.";

@@ -404,13 +404,13 @@ void ScalarInt2GemmRange(const uint8_t* weights, const uint16_t* scales, const u
               const float w = static_cast<float>(static_cast<int>((bytes[b] >> (2 * s)) & 0x3u) - 2);
               const bool second_half = weights_are_prepacked ? ((b & 1) != 0) : (b >= 8);
               if (second_half) {
-                sum1 += w * as[b];
+                sum1 += (w * s1) * as[b];
               } else {
-                sum0 += w * as[b];
+                sum0 += (w * s0) * as[b];
               }
             }
           }
-          acc += sum0 * s0 + sum1 * s1;
+          acc += sum0 + sum1;
         } else {
           const int64_t sb = (eff_block == 64) ? kb64 : (kb64 >> 1);
           const float s_val = read_scale(n, sb);
@@ -419,10 +419,10 @@ void ScalarInt2GemmRange(const uint8_t* weights, const uint16_t* scales, const u
             const float* as = ar + s * 16;
             for (int b = 0; b < 16; ++b) {
               const float w = static_cast<float>(static_cast<int>((bytes[b] >> (2 * s)) & 0x3u) - 2);
-              sum += w * as[b];
+              sum += (w * s_val) * as[b];
             }
           }
-          acc += sum * s_val;
+          acc += sum;
         }
       }
       out[r * out_stride + (n - n_begin)] = acc + b_val;
@@ -2859,21 +2859,13 @@ void Int2Fc1SwiGluRange(int64_t hidden, int64_t inter, const Int2ExpertView& vie
     for (int64_t r = 0; r < m; ++r) {
       float* row_tmp = tmp + r * kChunk;
       float* row_out = inter_reordered + r * inter;
-#if QMOE_COMPILER_SUPPORTS_AVX2
-      if (use_f16c) {
-        detail::Avx2RoundFp16InPlace(row_tmp, ne - nb);
-      }
-#endif
       for (int64_t n = nb; n < ne; n += 2) {
         const int64_t j = n / 2;
         const int pos = view.weights_are_prepacked ? Int2ReorderedPosition(static_cast<int>(j & 63))
                                                    : RawInt2ReorderedPosition(static_cast<int>(j & 63));
-        const float gate_projection = row_tmp[n - nb];
-        const float up_projection = row_tmp[(n - nb) + 1];
-        float gate = (fp16_boundaries && !bf16_boundaries && !use_f16c) ? BoundaryFloat16::Round(gate_projection)
-                                                                        : gate_projection;
-        float value = (fp16_boundaries && !bf16_boundaries && !use_f16c) ? BoundaryFloat16::Round(up_projection)
-                                                                         : up_projection;
+        // Keep projections in FP32 through SwiGLU, as in the fused INT2 CUDA path.
+        float gate = row_tmp[n - nb];
+        float value = row_tmp[(n - nb) + 1];
         if (has_limit) {
           gate = std::min(gate, swiglu.limit);
           value = std::clamp(value, -swiglu.limit, swiglu.limit);
@@ -3306,11 +3298,13 @@ int qmoe_file_store_test_heap_eviction_safety(void) {
 
 #if !defined(QMOE_SHARED_SEPARATE_AVX2_TU) && QMOE_COMPILER_SUPPORTS_AVX2
 #include "contrib_ops/cpu/moe/qmoe_shared_layout_int4_avx2.cc"
+#include "contrib_ops/cpu/moe/qmoe_shared_layout_int2_avx2.cc"
 #include "contrib_ops/cpu/moe/qmoe_shared_layout_int3_avx2.cc"
 #endif
 
 #if !defined(QMOE_SHARED_SEPARATE_AVX512_TU) && QMOE_COMPILER_SUPPORTS_AVX512
 #include "contrib_ops/cpu/moe/qmoe_shared_layout_int4_avx512.cc"
+#include "contrib_ops/cpu/moe/qmoe_shared_layout_int2_avx512.cc"
 #include "contrib_ops/cpu/moe/qmoe_shared_layout_int3_avx512.cc"
 #include "contrib_ops/cpu/moe/qmoe_shared_layout_fp4_avx512.cc"
 #endif

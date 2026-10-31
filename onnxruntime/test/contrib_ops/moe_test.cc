@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
 #include <memory>
@@ -5558,6 +5559,187 @@ TEST(MoETest, QMoETest_CPU_RouterWeights) {
   expected_output_norm.insert(expected_output_norm.end(), static_cast<size_t>(hidden_size), 1.5f);
   expected_output_norm.insert(expected_output_norm.end(), static_cast<size_t>(hidden_size), 7.0f / 3.0f);
   run_test(1, expected_output_norm);
+}
+
+// Pack from logical [E,N,K] codes without using the shared-layout implementation.
+static std::vector<uint8_t> PackQMoEInt2Sm80(const std::vector<uint8_t>& codes,
+                                             int64_t experts, int64_t n, int64_t k) {
+  std::vector<uint8_t> packed(static_cast<size_t>(experts * n * k / 4), 0);
+  for (int64_t e = 0; e < experts; ++e) {
+    for (int64_t c = 0; c < n; ++c) {
+      for (int64_t i = 0; i < k; ++i) {
+        const int64_t byte = e * n * k / 4 + (c / 8) * (2 * k) + (i / 64) * 128 +
+                             (c % 8) * 16 + 2 * (i % 8) + (i % 64) / 32;
+        const int shift = static_cast<int>(2 * ((i % 32) / 8));
+        packed[static_cast<size_t>(byte)] |= static_cast<uint8_t>(codes[static_cast<size_t>((e * n + c) * k + i)] << shift);
+      }
+    }
+  }
+  return packed;
+}
+
+template <typename T>
+static void RunQMoECpuPrepackedInt2Test(int64_t block, bool sm80_shape, bool bias1, bool bias2) {
+  constexpr int64_t rows = 5, experts = 3, hidden = 128, inter = 256;
+  std::vector<T> input(static_cast<size_t>(rows * hidden));
+  for (size_t i = 0; i < input.size(); ++i) input[i] = T((static_cast<int>(i * 7 % 23) - 11) * 0.03125f);
+  const std::vector<T> logits = {T(1.0f), T(4.0f), T(2.0f), T(5.0f), T(3.0f), T(1.0f), T(2.0f), T(1.0f), T(5.0f),
+                                 T(3.0f), T(3.0f), T(1.0f), T(4.0f), T(1.0f), T(4.0f)};
+  std::vector<uint8_t> codes1(static_cast<size_t>(experts * 2 * inter * hidden));
+  std::vector<uint8_t> codes2(static_cast<size_t>(experts * hidden * inter));
+  auto make_codes = [](std::vector<uint8_t>& codes, int64_t n, int64_t k) {
+    for (int64_t e = 0; e < experts; ++e) {
+      for (int64_t c = 0; c < n; ++c) {
+        for (int64_t i = 0; i < k; ++i) {
+          codes[static_cast<size_t>((e * n + c) * k + i)] =
+              static_cast<uint8_t>((i * 13 + c * 7 + e * 3 + (i * c) % 11) % 4);
+        }
+      }
+    }
+  };
+  make_codes(codes1, 2 * inter, hidden);
+  make_codes(codes2, hidden, inter);
+  const auto weights1 = PackQMoEInt2Sm80(codes1, experts, 2 * inter, hidden);
+  const auto weights2 = PackQMoEInt2Sm80(codes2, experts, hidden, inter);
+  std::vector<T> scales1(static_cast<size_t>(experts * 2 * inter * hidden / block));
+  std::vector<T> scales2(static_cast<size_t>(experts * hidden * inter / block));
+  for (size_t i = 0; i < scales1.size(); ++i) scales1[i] = T(0.015625f * static_cast<float>(1 + i % 3));
+  for (size_t i = 0; i < scales2.size(); ++i) scales2[i] = T(0.015625f * static_cast<float>(1 + i % 5));
+  std::vector<T> b1(static_cast<size_t>(experts * 2 * inter)), b2(static_cast<size_t>(experts * hidden));
+  for (size_t i = 0; i < b1.size(); ++i) b1[i] = T((static_cast<int>(i % 5) - 2) * 0.03125f);
+  for (size_t i = 0; i < b2.size(); ++i) b2[i] = T((static_cast<int>(i % 7) - 3) * 0.0625f);
+
+  // Compute each expert in natural order, rounding only activation and output boundaries.
+  std::vector<float> expert_outputs(static_cast<size_t>(rows * experts * hidden));
+  for (int64_t r = 0; r < rows; ++r) {
+    for (int64_t e = 0; e < experts; ++e) {
+      std::vector<float> activated(static_cast<size_t>(inter));
+      for (int64_t j = 0; j < inter; ++j) {
+        double projections[2]{};
+        for (int p = 0; p < 2; ++p) {
+          const int64_t n = 2 * j + p;
+          double sum = bias1 ? static_cast<float>(b1[static_cast<size_t>(e * 2 * inter + n)]) : 0.0;
+          for (int64_t i = 0; i < hidden; ++i) {
+            const int code = codes1[static_cast<size_t>((e * 2 * inter + n) * hidden + i)];
+            const double scale = static_cast<float>(scales1[static_cast<size_t>((e * 2 * inter + n) * (hidden / block) + i / block)]);
+            sum += static_cast<float>(input[static_cast<size_t>(r * hidden + i)]) * (code - 2) * scale;
+          }
+          projections[p] = static_cast<float>(sum);
+        }
+        const double gate = projections[0], up = projections[1];
+        activated[static_cast<size_t>(j)] = static_cast<float>(T(static_cast<float>(gate / (1.0 + std::exp(-gate)) * up)));
+      }
+      for (int64_t n = 0; n < hidden; ++n) {
+        double sum = bias2 ? static_cast<float>(b2[static_cast<size_t>(e * hidden + n)]) : 0.0;
+        for (int64_t i = 0; i < inter; ++i) {
+          const int code = codes2[static_cast<size_t>((e * hidden + n) * inter + i)];
+          const double scale = static_cast<float>(scales2[static_cast<size_t>((e * hidden + n) * (inter / block) + i / block)]);
+          sum += activated[static_cast<size_t>(i)] * (code - 2) * scale;
+        }
+        expert_outputs[static_cast<size_t>((r * experts + e) * hidden + n)] = static_cast<float>(T(static_cast<float>(sum)));
+      }
+    }
+  }
+
+  struct RoutingCase {
+    int64_t top_k;
+    bool explicit_weights;
+    bool normalize;
+    int zero_sum;  // 1: all selected weights zero, 2: nonzero selected weights cancel.
+  };
+  for (const auto& route : {RoutingCase{1, true, true, 0}, {2, true, false, 0}, {2, true, true, 0}, {2, true, true, 1}, {2, true, true, 2}, {2, false, true, 0}, {2, false, false, 0}}) {
+    SCOPED_TRACE(testing::Message() << "block=" << block << " sm80_shape=" << sm80_shape
+                                    << " top_k=" << route.top_k << " explicit=" << route.explicit_weights
+                                    << " normalize=" << route.normalize << " zero_sum=" << route.zero_sum);
+    std::vector<T> router_weights(static_cast<size_t>(rows * experts)), expected(static_cast<size_t>(rows * hidden));
+    for (int64_t r = 0; r < rows; ++r) {
+      std::array<int64_t, experts> ranking{0, 1, 2};
+      std::sort(ranking.begin(), ranking.end(), [&](int64_t a, int64_t b) {
+        const float x = static_cast<float>(logits[static_cast<size_t>(r * experts + a)]);
+        const float y = static_cast<float>(logits[static_cast<size_t>(r * experts + b)]);
+        return x > y || (x == y && a < b);
+      });
+      float denominator = 0;
+      std::array<float, experts> probabilities{};
+      for (int64_t j = 0; j < experts; ++j) {
+        const auto e = ranking[static_cast<size_t>(j)];
+        const float weight = route.zero_sum == 1   ? (j < route.top_k ? 0.0f : 1.0f)
+                             : route.zero_sum == 2 ? (j == 0 ? 0.25f : (j == 1 ? -0.25f : 1.0f))
+                                                   : 0.25f * static_cast<float>(j + 1);
+        router_weights[static_cast<size_t>(r * experts + e)] = T(weight);
+        probabilities[static_cast<size_t>(j)] = route.explicit_weights
+                                                    ? weight
+                                                    : std::exp(static_cast<float>(logits[static_cast<size_t>(r * experts + e)]) -
+                                                               static_cast<float>(logits[static_cast<size_t>(r * experts + ranking[0])]));
+        if (j < route.top_k || (!route.explicit_weights && !route.normalize)) {
+          denominator += probabilities[static_cast<size_t>(j)];
+        }
+      }
+      for (int64_t n = 0; n < hidden; ++n) {
+        float sum = 0;
+        for (int64_t j = 0; j < route.top_k; ++j) {
+          const float probability = probabilities[static_cast<size_t>(j)];
+          const float scale = route.explicit_weights && !route.normalize ? probability
+                              : denominator == 0                         ? 0.0f
+                                                                         : probability / denominator;
+          sum += scale * expert_outputs[static_cast<size_t>((r * experts + ranking[static_cast<size_t>(j)]) * hidden + n)];
+        }
+        expected[static_cast<size_t>(r * hidden + n)] = T(sum);
+      }
+    }
+
+    OpTester tester("QMoE", 1, kMSDomain);
+    tester.AddAttribute<int64_t>("expert_weight_bits", 2);
+    tester.AddAttribute<int64_t>("weights_prepacked", 1);
+    tester.AddAttribute<int64_t>("block_size", block);
+    tester.AddAttribute<int64_t>("k", route.top_k);
+    tester.AddAttribute<int64_t>("normalize_routing_weights", route.normalize);
+    tester.AddAttribute<std::string>("activation_type", "swiglu");
+    tester.AddAttribute<int64_t>("swiglu_fusion", 1);
+    tester.AddInput<T>("input", {rows, hidden}, input);
+    tester.AddInput<T>("router_probs", {rows, experts}, logits);
+    tester.AddInput<uint8_t>("fc1_experts_weights", sm80_shape ? std::vector<int64_t>{experts, hidden, inter / 2} : std::vector<int64_t>{experts, 2 * inter, hidden / 4}, weights1, true);
+    tester.AddInput<T>("fc1_scales", {experts, 2 * inter, hidden / block}, scales1, true);
+    if (bias1)
+      tester.AddInput<T>("fc1_experts_bias", {experts, 2 * inter}, b1, true);
+    else
+      tester.AddOptionalInputEdge<T>();
+    tester.AddInput<uint8_t>("fc2_experts_weights", sm80_shape ? std::vector<int64_t>{experts, inter, hidden / 4} : std::vector<int64_t>{experts, hidden, inter / 4}, weights2, true);
+    tester.AddInput<T>("fc2_scales", {experts, hidden, inter / block}, scales2, true);
+    if (bias2)
+      tester.AddInput<T>("fc2_experts_bias", {experts, hidden}, b2, true);
+    else
+      tester.AddOptionalInputEdge<T>();
+    if (route.explicit_weights) {
+      tester.AddOptionalInputEdge<uint8_t>();  // fc3_experts_weights
+      tester.AddOptionalInputEdge<T>();        // fc3_scales
+      tester.AddOptionalInputEdge<T>();        // fc3_experts_bias
+      tester.AddOptionalInputEdge<uint8_t>();  // fc1_zero_points
+      tester.AddOptionalInputEdge<uint8_t>();  // fc2_zero_points
+      tester.AddOptionalInputEdge<uint8_t>();  // fc3_zero_points
+      tester.AddInput<T>("router_weights", {rows, experts}, router_weights);
+    }
+    tester.AddOutput<T>("output", {rows, hidden}, expected);
+    tester.SetOutputTolerance(std::is_same_v<T, BFloat16> ? 0.002f : (std::is_same_v<T, MLFloat16> ? 0.0002f : 1e-5f));
+    std::vector<std::unique_ptr<IExecutionProvider>> providers;
+    providers.push_back(DefaultCpuExecutionProvider());
+    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+  }
+}
+
+TEST(MoETest, QMoETest_CPU_PrepackedInt2_Float32) {
+  RunQMoECpuPrepackedInt2Test<float>(32, false, false, false);
+  RunQMoECpuPrepackedInt2Test<float>(128, true, true, true);
+}
+
+TEST(MoETest, QMoETest_CPU_PrepackedInt2_Float16) {
+  RunQMoECpuPrepackedInt2Test<MLFloat16>(64, false, true, false);
+  RunQMoECpuPrepackedInt2Test<MLFloat16>(32, true, false, true);
+}
+
+TEST(MoETest, QMoETest_CPU_PrepackedInt2_BFloat16) {
+  RunQMoECpuPrepackedInt2Test<BFloat16>(128, false, false, true);
+  RunQMoECpuPrepackedInt2Test<BFloat16>(64, true, true, false);
 }
 
 // Test for CPU MoE implementation
