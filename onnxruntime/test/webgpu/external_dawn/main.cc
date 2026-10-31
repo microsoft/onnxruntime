@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <fstream>
 #include <iostream>
 #include <limits>
 #include <memory>
@@ -24,6 +25,101 @@
 #include "dawn/native/DawnNative.h"
 
 namespace {
+// Instrument the host proc table, so these checks also exercise an external ORT DLL.
+std::atomic<size_t> timestamp_queries{0};
+std::atomic<size_t> timestamp_writes{0};
+std::atomic<size_t> timestamp_resolves{0};
+std::atomic<size_t> query_buffers{0};
+
+DawnProcTable ProfilingProcs() {
+  auto procs = dawn::native::GetProcs();
+  procs.deviceCreateQuerySet = [](WGPUDevice device, const WGPUQuerySetDescriptor* descriptor) {
+    if (descriptor->type == WGPUQueryType_Timestamp) {
+      ++timestamp_queries;
+    }
+    return dawn::native::GetProcs().deviceCreateQuerySet(device, descriptor);
+  };
+  procs.commandEncoderBeginComputePass = [](WGPUCommandEncoder encoder, const WGPUComputePassDescriptor* descriptor) {
+    if (descriptor && descriptor->timestampWrites) {
+      ++timestamp_writes;
+    }
+    return dawn::native::GetProcs().commandEncoderBeginComputePass(encoder, descriptor);
+  };
+  procs.computePassEncoderWriteTimestamp = [](WGPUComputePassEncoder encoder, WGPUQuerySet queries, uint32_t index) {
+    ++timestamp_writes;
+    dawn::native::GetProcs().computePassEncoderWriteTimestamp(encoder, queries, index);
+  };
+  procs.commandEncoderResolveQuerySet = [](WGPUCommandEncoder encoder, WGPUQuerySet queries, uint32_t first,
+                                           uint32_t count, WGPUBuffer destination, uint64_t offset) {
+    ++timestamp_resolves;
+    dawn::native::GetProcs().commandEncoderResolveQuerySet(encoder, queries, first, count, destination, offset);
+  };
+  procs.deviceCreateBuffer = [](WGPUDevice device, const WGPUBufferDescriptor* descriptor) {
+    if ((descriptor->usage & WGPUBufferUsage_QueryResolve) != 0) {
+      ++query_buffers;
+    }
+    return dawn::native::GetProcs().deviceCreateBuffer(device, descriptor);
+  };
+  return procs;
+}
+
+void TestProfiling(Ort::Env& env, const uint8_t* model, size_t model_size,
+                   std::unordered_map<std::string, std::string> provider_options) {
+  const auto procs = ProfilingProcs();
+  provider_options["dawnProcTable"] = std::to_string(reinterpret_cast<uintptr_t>(&procs));
+  const std::array<int64_t, 3> shape{3, 4, 5};
+  std::array<float, 60> data{};
+  data.fill(-2.0f);
+  auto memory = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+  auto input = Ort::Value::CreateTensor<float>(memory, data.data(), data.size(), shape.data(), shape.size());
+  const char* input_names[] = {"x"};
+  const char* output_names[] = {"y"};
+  for (const bool profile : {false, true, false}) {
+    const std::array counts_before{timestamp_queries.load(), timestamp_writes.load(),
+                                   timestamp_resolves.load(), query_buffers.load()};
+    Ort::SessionOptions options;
+    options.AddConfigEntry("session.disable_cpu_ep_fallback", "1");
+    if (profile) {
+      options.EnableProfiling(ORT_TSTR("external_dawn_profile"));
+    }
+    options.AppendExecutionProvider("WebGPU", provider_options);
+    Ort::Session session{env, model, model_size, options};
+    for (size_t run = 0; run < 2; ++run) {
+      auto outputs = session.Run(Ort::RunOptions{nullptr}, input_names, &input, 1, output_names, 1);
+      const auto* result = outputs.at(0).GetTensorData<float>();
+      for (size_t index = 0; index < data.size(); ++index) {
+        if (result[index] != 2.0f) {
+          throw std::runtime_error("Profiling test did not produce the expected GPU output.");
+        }
+      }
+    }
+    if (!profile) {
+      const std::array counts_after{timestamp_queries.load(), timestamp_writes.load(),
+                                    timestamp_resolves.load(), query_buffers.load()};
+      if (counts_before != counts_after) {
+        throw std::runtime_error("Timestamp work was performed with profiling disabled.");
+      }
+      std::cout << "Profiling off: zero additional timestamp queries, writes, resolves and query buffers." << std::endl;
+    } else {
+      if (timestamp_queries == 0 || timestamp_writes == 0 || timestamp_resolves < 2 || query_buffers == 0) {
+        throw std::runtime_error("Profiling did not exercise timestamp queries on both runs.");
+      }
+      Ort::AllocatorWithDefaultOptions allocator;
+      auto path = session.EndProfilingAllocated(allocator);
+      std::ifstream file{path.get()};
+      const std::string trace{std::istreambuf_iterator<char>{file}, std::istreambuf_iterator<char>{}};
+      if (trace.find("first_submit") == std::string::npos ||
+          trace.find("d3d12_clock_calibration") != std::string::npos ||
+          trace.find("WebGPU::Submit") == std::string::npos || trace.find("WebGPU::Wait") == std::string::npos) {
+        throw std::runtime_error("External profiling trace did not identify submission-time alignment.");
+      }
+      std::cout << "Profiling on: queries=" << timestamp_queries << ", writes=" << timestamp_writes
+                << ", resolves=" << timestamp_resolves << ", query buffers=" << query_buffers
+                << "; trace=" << path.get() << std::endl;
+    }
+  }
+}
+
 struct HostCache {
   std::mutex mutex;
   std::unordered_map<std::string, std::vector<std::byte>> blobs;
@@ -80,6 +176,7 @@ int main(int argc, char* argv[]) {
   bool host_device_mode = false;
   bool no_implicit_sync = false;
   bool cache_callback_failure = false;
+  bool profiling_test = false;
   std::basic_string<ORTCHAR_T> plugin_path;
   int retval = 0;
   HostCache host_cache;
@@ -93,6 +190,8 @@ int main(int argc, char* argv[]) {
         no_proc_table = true;
       } else if (argument == ORT_TSTR("--host_device")) {
         host_device_mode = true;
+      } else if (argument == ORT_TSTR("--profiling")) {
+        profiling_test = true;
       } else if (argument == ORT_TSTR("--no_implicit_sync")) {
         no_implicit_sync = true;
       } else if (argument == ORT_TSTR("--cache_callback_failure")) {
@@ -104,6 +203,9 @@ int main(int argc, char* argv[]) {
       } else {
         throw std::runtime_error("Invalid external Dawn test argument.");
       }
+    }
+    if (profiling_test && (no_proc_table || no_implicit_sync || cache_callback_failure || !plugin_path.empty())) {
+      throw std::runtime_error("--profiling supports only the optional --host_device argument.");
     }
     for (size_t cache_pass = 0; cache_pass < (host_device_mode ? 3u : 1u); ++cache_pass) {
       size_t hits_before = 0;
@@ -128,7 +230,8 @@ int main(int argc, char* argv[]) {
         if (adapters.empty()) {
           throw std::runtime_error("No native Dawn adapter was found for the host device.");
         }
-        const wgpu::FeatureName device_feature = wgpu::FeatureName::ImplicitDeviceSynchronization;
+        const std::array device_features{wgpu::FeatureName::ImplicitDeviceSynchronization,
+                                         wgpu::FeatureName::TimestampQuery};
         wgpu::DawnCacheDeviceDescriptor cache_descriptor{};
         cache_descriptor.isolationKey = cache_pass == 2 ? "ort-external-host-isolated-cache" : "ort-external-host-cache";
         cache_descriptor.SetDawnLoadCacheDataCallback(
@@ -143,8 +246,8 @@ int main(int argc, char* argv[]) {
             &host_cache);
         wgpu::DeviceDescriptor device_descriptor{};
         device_descriptor.nextInChain = &cache_descriptor;
-        device_descriptor.requiredFeatureCount = no_implicit_sync ? 0 : 1;
-        device_descriptor.requiredFeatures = no_implicit_sync ? nullptr : &device_feature;
+        device_descriptor.requiredFeatureCount = no_implicit_sync ? 0 : (profiling_test ? 2 : 1);
+        device_descriptor.requiredFeatures = no_implicit_sync ? nullptr : device_features.data();
         host_device = wgpu::Device::Acquire(adapters.front().CreateDevice(&device_descriptor));
         if (!host_device) {
           throw std::runtime_error("Native Dawn host device creation failed.");
@@ -179,6 +282,10 @@ int main(int argc, char* argv[]) {
         provider_options["webgpuInstance"] = std::to_string(reinterpret_cast<uintptr_t>(host_instance->Get()));
         provider_options["webgpuDevice"] = std::to_string(reinterpret_cast<uintptr_t>(host_device.Get()));
         provider_options["preserveDevice"] = "1";
+      }
+      if (profiling_test) {
+        TestProfiling(env, MODEL_DATA, sizeof(MODEL_DATA), provider_options);
+        return 0;
       }
       Ort::ConstEpDevice webgpu_device{nullptr};
       if (!plugin_path.empty()) {

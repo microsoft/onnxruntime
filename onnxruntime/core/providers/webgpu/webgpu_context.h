@@ -425,6 +425,9 @@ class WebGpuContext final {
     AtPasses
   };
 
+  std::optional<TimePoint> StartCpuProfileEvent() const;
+  void RecordCpuProfileEvent(const char* name, const std::optional<TimePoint>& start);
+
   static uint64_t ResolveMaxStorageBufferBindingSize(
       uint64_t max_storage_buffer_binding_size,
       uint64_t test_only_max_storage_buffer_binding_size) {
@@ -551,6 +554,7 @@ class WebGpuContext final {
   bool is_profiling_ = false;
   // Shared GPU profiling events for run-level profiling.
   profiling::Events events_;
+  profiling::Events cpu_events_;
   bool preserve_device_;
   WeightLoadAccelerationMode weight_load_acceleration_mode_{
       WeightLoadAccelerationMode::Off};
