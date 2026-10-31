@@ -74,7 +74,11 @@ __device__ __forceinline__ uint32_t Bf16x2Fma(uint32_t a, uint32_t b, uint32_t c
 
 __device__ __forceinline__ uint32_t Bf16x2Mul(uint32_t a, uint32_t b) {
   uint32_t d;
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900)
   asm("mul.rn.bf16x2 %0, %1, %2;\n" : "=r"(d) : "r"(a), "r"(b));
+#else
+  asm("fma.rn.bf16x2 %0, %1, %2, %3;\n" : "=r"(d) : "r"(a), "r"(b), "r"(0x80008000u));
+#endif
   return d;
 }
 

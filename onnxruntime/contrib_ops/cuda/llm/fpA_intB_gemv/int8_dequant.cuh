@@ -93,7 +93,7 @@ __global__ void __launch_bounds__(kThreads)
   const int tile = chunk >> 2;
   const int t = chunk & 3;
 
-  const uint8_t* wp = weight + static_cast<int64_t>(pair) * 2 * k + tile * 128 + t * 16;
+  const uint8_t* wp = weight + static_cast<int64_t>(pair) * 2 * k + static_cast<int64_t>(tile) * 128 + t * 16;
   const uint4 q0 = LoadWeights(wp);
   const uint4 q1 = LoadWeights(wp + 64);
 
@@ -114,7 +114,7 @@ __global__ void __launch_bounds__(kThreads)
     hi1[w] = DequantPair<T>(w1[w], 8, 24, s1);
   }
 
-  T* o0 = out + static_cast<int64_t>(2 * pair) * k + chunk * kChunkK;
+  T* o0 = out + static_cast<int64_t>(2 * pair) * k + static_cast<int64_t>(chunk) * kChunkK;
   T* o1 = o0 + k;
   reinterpret_cast<uint4*>(o0)[0] = make_uint4(lo0[0], lo0[1], lo0[2], lo0[3]);
   reinterpret_cast<uint4*>(o0)[1] = make_uint4(hi0[0], hi0[1], hi0[2], hi0[3]);
