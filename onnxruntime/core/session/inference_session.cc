@@ -3852,23 +3852,10 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
       }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-      // info all execution providers InferenceSession:Run started
-      // TODO: only call OnRunStart for all providers in-use
-      for (auto& xp : execution_providers_) {
-        // call OnRunStart and add to exec_providers_to_stop if successful
-        auto start_func = [&xp, &exec_providers_to_stop, &run_options]() {
-          auto status = xp->OnRunStart(run_options);
-          if (status.IsOK())
-            exec_providers_to_stop.push_back(xp.get());
-
-          return status;
-        };
-
-        ORT_CHECK_AND_SET_RETVAL(start_func());
-      }
-
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
       // Exact-once scoped cleanup for every provider whose OnRunStart succeeded (v3 Section 5.1 / F2).
+      // It must be in place before any provider starts: when a later provider throws from OnRunStart, unwinding
+      // still has to end the run on the providers that already started it.
       bool providers_stopped = false;
       auto stop_providers_once = [&](bool reached_end_of_run) noexcept {
         if (providers_stopped) return;
@@ -3927,6 +3914,21 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
         ~ProvidersStopGuard() { fn(false); }
       } providers_stop_guard{stop_providers_once};
 #endif
+
+      // info all execution providers InferenceSession:Run started
+      // TODO: only call OnRunStart for all providers in-use
+      for (auto& xp : execution_providers_) {
+        // call OnRunStart and add to exec_providers_to_stop if successful
+        auto start_func = [&xp, &exec_providers_to_stop, &run_options]() {
+          auto status = xp->OnRunStart(run_options);
+          if (status.IsOK())
+            exec_providers_to_stop.push_back(xp.get());
+
+          return status;
+        };
+
+        ORT_CHECK_AND_SET_RETVAL(start_func());
+      }
 
 #ifdef ENABLE_TRAINING
       if (run_options.only_execute_path_to_fetches) {

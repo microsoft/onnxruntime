@@ -94,13 +94,15 @@ void AddNodeOverride(MoeOffloadSessionPolicy& policy, const std::string& node_na
   policy.node_overrides.push_back(std::move(spec));
 }
 
-common::Status PlanSession(const MoeOffloadSessionPolicy& policy, std::initializer_list<MockOffloadNode*> nodes) {
+common::Status PlanSession(const MoeOffloadSessionPolicy& policy, std::initializer_list<MockOffloadNode*> nodes,
+                           QMoESessionController::SessionPlanReport* report = nullptr) {
   QMoESessionController controller(/*device_id=*/0);
   for (MockOffloadNode* node : nodes) {
     int32_t layer_index = node->GetSourceDescriptor().layer_index;
     controller.RegisterMoeOffloadNode(node, policy, layer_index);
   }
-  return controller.PlanAndAdmitSession();
+  QMoESessionController::SessionPlanReport discarded;
+  return controller.PlanAndAdmitSession(report != nullptr ? *report : discarded);
 }
 
 void ExpectAdmissionFailure(const common::Status& status, const std::string& expected_message) {
@@ -412,6 +414,69 @@ TEST(QMoEOffloadAdmissionTest, AutoDeviceBudgetUsesFreeDeviceMemoryWhenNothingIs
   const common::Status status = PlanSession(policy, {&node});
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
   EXPECT_EQ(node.Plan().resident_slots, 4);
+}
+
+// The controller is header-only code that the EPs and the test modules compile against different logging back ends, so
+// it hands what it wants logged to its caller instead of logging it.
+TEST(QMoEOffloadAdmissionTest, CommittedPlanIsReportedToTheCallerToLog) {
+  MockOffloadNode capped(0, 4);
+  MockOffloadNode open(1, 4);
+  MoeOffloadSessionPolicy policy = StaticPolicy(2 * kFixedTableBytes + 5 * kDeviceSlotBytes);
+  AddNodeOverride(policy, capped.Name(), kFixedTableBytes + kDeviceSlotBytes);
+
+  QMoESessionController::SessionPlanReport report;
+  const common::Status status = PlanSession(policy, {&capped, &open}, &report);
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  ASSERT_EQ(capped.Plan().resident_slots + open.Plan().resident_slots, 5);
+
+  const std::string spare_slots = std::to_string(capped.Plan().spare_slots + open.Plan().spare_slots);
+  EXPECT_EQ(report.summary,
+            "QMoE Offload v4 session plan committed across 2 layers: total_resident_slots=5, total_spare_slots=" +
+                spare_slots + ", admitted_gpu_expert_mib=0, bounded_file_cache=0");
+}
+
+TEST(QMoEOffloadAdmissionTest, CommittedPlanReportsWhetherTheBoundedFileCacheIsUsed) {
+  MockOffloadNode node(0, kPartialExperts);
+  EnableBoundedHostCache(node, /*min_host_cache_slots=*/3);
+
+  QMoESessionController::SessionPlanReport report;
+  const common::Status status = PlanSession(PartiallyResidentPolicy(3 * kHostSlotBytes), {&node}, &report);
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  ASSERT_TRUE(node.Plan().use_file_backing);
+
+  EXPECT_NE(report.summary.find("committed across 1 layers: total_resident_slots=2,"), std::string::npos)
+      << report.summary;
+  EXPECT_NE(report.summary.find(", bounded_file_cache=1"), std::string::npos) << report.summary;
+}
+
+TEST(QMoEOffloadAdmissionTest, RejectedPlanReportsNothingToLog) {
+  MockOffloadNode node(0, 4);
+  QMoESessionController::SessionPlanReport report;
+  report.summary = "left over from an earlier call";
+  report.paging_warning = "left over from an earlier call";
+
+  ExpectAdmissionFailure(PlanSession(StaticPolicy(kFixedTableBytes - 1), {&node}, &report),
+                         "is smaller than fixed lookup table and dummy slot overhead");
+  EXPECT_TRUE(report.summary.empty());
+  EXPECT_TRUE(report.paging_warning.empty());
+}
+
+TEST(QMoEOffloadAdmissionTest, PlanThatIsAlreadyCommittedIsNotReportedAgain) {
+  MockOffloadNode node(0, 4);
+  const MoeOffloadSessionPolicy policy = StaticPolicy(1000);
+  QMoESessionController controller(/*device_id=*/0);
+  int32_t layer_index = 0;
+  controller.RegisterMoeOffloadNode(&node, policy, layer_index);
+
+  QMoESessionController::SessionPlanReport first;
+  ASSERT_TRUE(controller.PlanAndAdmitSession(first).IsOK());
+  EXPECT_FALSE(first.summary.empty());
+
+  QMoESessionController::SessionPlanReport second;
+  ASSERT_TRUE(controller.PlanAndAdmitSession(second).IsOK());
+  EXPECT_TRUE(second.summary.empty());
+  EXPECT_TRUE(second.paging_warning.empty());
+  EXPECT_EQ(node.InitializeCalls(), 1);
 }
 
 #if defined(__linux__)

@@ -553,7 +553,14 @@ Status CUDAExecutionProvider::Sync() const {
 
 Status CUDAExecutionProvider::OnSessionInitializationEnd() {
   if (qmoe_controller_) {
-    ORT_RETURN_IF_ERROR(qmoe_controller_->PlanAndAdmitSession());
+    onnxruntime::cuda::QMoESessionController::SessionPlanReport report;
+    ORT_RETURN_IF_ERROR(qmoe_controller_->PlanAndAdmitSession(report));
+    if (!report.paging_warning.empty()) {
+      LOGS_DEFAULT(WARNING) << report.paging_warning;
+    }
+    if (!report.summary.empty()) {
+      LOGS_DEFAULT(INFO) << report.summary;
+    }
   }
   return Status::OK();
 }

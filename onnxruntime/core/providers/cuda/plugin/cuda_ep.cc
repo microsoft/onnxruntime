@@ -636,9 +636,21 @@ OrtStatus* ORT_API_CALL CudaEp::OnSessionInitializationEndImpl(OrtEp* this_ptr) 
     auto runtime_cfg = onnxruntime::cuda::detail::GetCudaKernelAdapterRuntimeConfigForProvider(
         static_cast<const void*>(ep->EpImpl()));
     if (runtime_cfg && runtime_cfg->qmoe_controller) {
-      auto st = runtime_cfg->qmoe_controller->PlanAndAdmitSession();
+      onnxruntime::cuda::QMoESessionController::SessionPlanReport report;
+      auto st = runtime_cfg->qmoe_controller->PlanAndAdmitSession(report);
       if (!st.IsOK()) {
         return ep->factory_.GetOrtApi().CreateStatus(ORT_FAIL, st.ErrorMessage().c_str());
+      }
+      const OrtApi& ort_api = ep->factory_.GetOrtApi();
+      if (!report.paging_warning.empty()) {
+        Ort::Status log_status(ort_api.Logger_LogMessage(&ep->logger_, ORT_LOGGING_LEVEL_WARNING,
+                                                         report.paging_warning.c_str(),
+                                                         ORT_FILE, __LINE__, __FUNCTION__));
+      }
+      if (!report.summary.empty()) {
+        Ort::Status log_status(ort_api.Logger_LogMessage(&ep->logger_, ORT_LOGGING_LEVEL_INFO,
+                                                         report.summary.c_str(),
+                                                         ORT_FILE, __LINE__, __FUNCTION__));
       }
     }
   }

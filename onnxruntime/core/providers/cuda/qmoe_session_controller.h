@@ -351,6 +351,14 @@ class QMoESessionController {
     std::function<common::Status(cudaStream_t, bool)> after_replay;
   };
 
+  // What PlanAndAdmitSession wants logged. This header is compiled into the built-in EP, the plugin EP and the test
+  // modules against different logging back ends, and inline code of a test module must not read the host's default
+  // logger, which is host data. The caller therefore logs these with its own logger.
+  struct SessionPlanReport {
+    std::string paging_warning;  // Windows only: GPU memory was paged out to WDDM shared memory while materializing.
+    std::string summary;         // The plan this call committed. Empty when there was nothing to plan.
+  };
+
   explicit QMoESessionController(int device_id = 0)
       : device_id_(device_id),
         landing_ring_(std::make_shared<QMoESessionLandingRing>()),
@@ -1039,7 +1047,8 @@ class QMoESessionController {
   }
 #endif
 
-  common::Status PlanAndAdmitSession() {
+  common::Status PlanAndAdmitSession(SessionPlanReport& report) {
+    report = SessionPlanReport{};
     std::vector<onnxruntime::moe_offload::IMoeOffloadNode*> nodes;
     onnxruntime::moe_offload::MoeOffloadSessionPolicy policy;
     {
@@ -1537,26 +1546,20 @@ class QMoESessionController {
         GetCurrentProcess(), static_cast<SIZE_T>(-1), static_cast<SIZE_T>(-1), 0));
     uint64_t non_local_after = 0;
     QueryPlatformUsableDeviceMemory(device_id_, nullptr, nullptr, &non_local_after);
-#ifdef LOGS_DEFAULT
     if (non_local_after > non_local_before + (64ULL << 20)) {
-      LOGS_DEFAULT(WARNING) << "QMoE Offload v4 detected Windows WDDM Shared GPU Memory (non-local) paging delta of "
-                            << ((non_local_after - non_local_before) >> 20)
-                            << " MiB after session materialization. Increase session.moe.offload.reserve_device_bytes "
-                               "or reduce session.moe.offload.device_expert_bytes.";
+      report.paging_warning =
+          "QMoE Offload v4 detected Windows WDDM Shared GPU Memory (non-local) paging delta of " +
+          std::to_string((non_local_after - non_local_before) >> 20) +
+          " MiB after session materialization. Increase session.moe.offload.reserve_device_bytes "
+          "or reduce session.moe.offload.device_expert_bytes.";
     }
-#else
-    (void)non_local_before;
-    (void)non_local_after;
-#endif
 #endif
 
-#ifdef LOGS_DEFAULT
-    LOGS_DEFAULT(INFO) << "QMoE Offload v4 session plan committed across " << num_layers
-                       << " layers: total_resident_slots=" << total_resident_slots
-                       << ", total_spare_slots=" << total_spare_slots
-                       << ", admitted_gpu_expert_mib=" << (total_admitted_gpu_bytes >> 20)
-                       << ", bounded_file_cache=" << (use_bounded_file_cache ? 1 : 0);
-#endif
+    report.summary = "QMoE Offload v4 session plan committed across " + std::to_string(num_layers) +
+                     " layers: total_resident_slots=" + std::to_string(total_resident_slots) +
+                     ", total_spare_slots=" + std::to_string(total_spare_slots) +
+                     ", admitted_gpu_expert_mib=" + std::to_string(total_admitted_gpu_bytes >> 20) +
+                     ", bounded_file_cache=" + (use_bounded_file_cache ? "1" : "0");
 
     plan_committed = true;
     return common::Status::OK();

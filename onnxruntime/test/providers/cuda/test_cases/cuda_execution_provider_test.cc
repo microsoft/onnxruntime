@@ -21,6 +21,7 @@
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_provider_options.h"
 #include "core/providers/cuda/cuda_stream_handle.h"
+#include "test/test_environment.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -103,15 +104,26 @@ namespace {
 
 constexpr const char* kMinNumRunsKey = "min_num_runs_before_cuda_graph_capture";
 
-std::unique_ptr<CUDAExecutionProvider> CreateGraphCaptureProvider(int min_num_runs_before_capture) {
-  CUDAExecutionProviderInfo info;
-  info.enable_cuda_graph = true;
-  info.min_num_runs_before_cuda_graph_capture = min_num_runs_before_capture;
-  auto ep = std::make_unique<CUDAExecutionProvider>(info);
-  // Starting a capture logs through the provider's logger, which a session normally sets.
-  ep->SetLogger(&logging::LoggingManager::DefaultLogger());
-  return ep;
-}
+// A graph-capture provider together with the logger a session would set for it, because starting a capture logs through
+// that logger. This module cannot read the host's default logger (host data that a Windows DLL has to import), so the
+// logger is created by a host function instead.
+class GraphCaptureProvider {
+ public:
+  explicit GraphCaptureProvider(int min_num_runs_before_capture)
+      : logger_(onnxruntime::test::DefaultLoggingManager().CreateLogger("CudaGraphCaptureTest")) {
+    CUDAExecutionProviderInfo info;
+    info.enable_cuda_graph = true;
+    info.min_num_runs_before_cuda_graph_capture = min_num_runs_before_capture;
+    provider_ = std::make_unique<CUDAExecutionProvider>(info);
+    provider_->SetLogger(logger_.get());
+  }
+
+  CUDAExecutionProvider& operator*() const { return *provider_; }
+
+ private:
+  std::unique_ptr<logging::Logger> logger_;
+  std::unique_ptr<CUDAExecutionProvider> provider_;  // Declared last so that it is destroyed before its logger.
+};
 
 // InferenceSession reports a run that did not complete to the providers through this run config entry.
 onnxruntime::RunOptions RunOptionsForOutcome(bool run_failed) {
@@ -172,7 +184,7 @@ constexpr size_t kBufferBytes = 64;
 
 // A warm-up run that failed did not execute the whole graph, so it must not bring the first capture closer.
 TEST(CudaGraphCaptureRunOutcomeTest, FailedWarmupRunsDoNotCountTowardsCapture) {
-  const auto ep_owner = CreateGraphCaptureProvider(/*min_num_runs_before_capture=*/2);
+  const GraphCaptureProvider ep_owner(/*min_num_runs_before_capture=*/2);
   CUDAExecutionProvider& ep = *ep_owner;
   ZeroedDeviceBuffer buffer(kBufferBytes);
   const auto enqueue_work = [&](cudaStream_t stream) { buffer.FillAsync(0x11, stream); };
@@ -191,7 +203,7 @@ TEST(CudaGraphCaptureRunOutcomeTest, FailedWarmupRunsDoNotCountTowardsCapture) {
 // Work recorded by a run that failed while capturing is incomplete. It must be dropped instead of being instantiated and
 // replayed, and a later successful run must capture again.
 TEST(CudaGraphCaptureRunOutcomeTest, FailedRunDuringCaptureIsDiscardedInsteadOfReplayed) {
-  const auto ep_owner = CreateGraphCaptureProvider(/*min_num_runs_before_capture=*/1);
+  const GraphCaptureProvider ep_owner(/*min_num_runs_before_capture=*/1);
   CUDAExecutionProvider& ep = *ep_owner;
   ZeroedDeviceBuffer buffer(kBufferBytes);
 
@@ -213,7 +225,7 @@ TEST(CudaGraphCaptureRunOutcomeTest, FailedRunDuringCaptureIsDiscardedInsteadOfR
 // A failed run can leave the capture invalidated. Discarding it must neither throw nor leave the CUDA error behind
 // for unrelated calls to trip over.
 TEST(CudaGraphCaptureRunOutcomeTest, InvalidatedCaptureOfFailedRunIsDiscardedWithoutLeavingAnError) {
-  const auto ep_owner = CreateGraphCaptureProvider(/*min_num_runs_before_capture=*/1);
+  const GraphCaptureProvider ep_owner(/*min_num_runs_before_capture=*/1);
   CUDAExecutionProvider& ep = *ep_owner;
 
   EXPECT_FALSE(RunProviderOnce(ep, /*run_failed=*/false));

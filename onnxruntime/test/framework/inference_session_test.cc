@@ -582,6 +582,107 @@ INSTANTIATE_TEST_SUITE_P(
         std::make_tuple(GraphCaptureOperation::Check, GraphCaptureOperation::Release, false),
         std::make_tuple(GraphCaptureOperation::Replay, GraphCaptureOperation::Replay, true)));
 
+namespace {
+// Keeps per-run state like the QMoE controller: it refuses to start a run while its previous run was never ended.
+class RunLifecycleTestExecutionProvider : public CPUExecutionProvider {
+ public:
+  RunLifecycleTestExecutionProvider() : CPUExecutionProvider{CPUExecutionProviderInfo{}} {}
+
+  Status OnRunStart(const RunOptions&) override {
+    ORT_RETURN_IF(run_active, "The previous run of this provider was never ended.");
+    run_active = true;
+    return Status::OK();
+  }
+
+  Status OnRunEnd(bool, const RunOptions& run_options) override {
+    run_active = false;
+    if (run_options.config_options.GetConfigOrDefault("__ort.run_outcome", "ok") == "ok") {
+      ++ok_run_end_count;
+    } else {
+      ++failed_run_end_count;
+    }
+    return Status::OK();
+  }
+
+  bool run_active = false;
+  int ok_run_end_count = 0;
+  int failed_run_end_count = 0;
+
+ private:
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(RunLifecycleTestExecutionProvider);
+};
+
+// Registered after RunLifecycleTestExecutionProvider, so the session starts the run on that provider first.
+class FailingRunStartTestExecutionProvider : public IExecutionProvider {
+ public:
+  explicit FailingRunStartTestExecutionProvider(bool throw_exception)
+      : IExecutionProvider{"FailingRunStartTestExecutionProvider"}, throw_exception_{throw_exception} {}
+
+  std::shared_ptr<KernelRegistry> GetKernelRegistry() const override { return std::make_shared<KernelRegistry>(); }
+
+  Status OnRunStart(const RunOptions&) override {
+    if (fail_run_start) {
+      if (throw_exception_) {
+        ORT_THROW("OnRunStart failed for testing");
+      }
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "OnRunStart failed for testing");
+    }
+    return Status::OK();
+  }
+
+  Status OnRunEnd(bool, const RunOptions&) override {
+    ++run_end_count;
+    return Status::OK();
+  }
+
+  bool fail_run_start = true;
+  int run_end_count = 0;
+
+ private:
+  const bool throw_exception_;
+};
+}  // namespace
+
+class RunStartFailureTest : public ::testing::TestWithParam<bool> {};
+
+// A provider that started the run must be ended as failed even when a provider that starts later throws or fails.
+// Otherwise it stays in the middle of a run and rejects every later run of the session.
+TEST_P(RunStartFailureTest, ProvidersThatStartedTheRunAreEndedAsFailedAndTheSessionRunsAgain) {
+  SessionOptions options;
+  options.intra_op_param.thread_pool_size = 1;
+  options.inter_op_param.thread_pool_size = 1;
+  InferenceSession session{options, GetEnvironment()};
+  auto first = std::make_unique<RunLifecycleTestExecutionProvider>();
+  auto* first_ep = first.get();
+  auto second = std::make_unique<FailingRunStartTestExecutionProvider>(/*throw_exception*/ GetParam());
+  auto* second_ep = second.get();
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(first)));
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(second)));
+  ASSERT_STATUS_OK(session.Load(MODEL_URI));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  const std::vector<float> values{1.f, 2.f, 3.f, 4.f, 5.f, 6.f};
+  EXPECT_THAT(RunModelWithValues(session, RunOptions{}, values).ErrorMessage(),
+              testing::HasSubstr("OnRunStart failed for testing"));
+  EXPECT_FALSE(first_ep->run_active);
+  EXPECT_EQ(first_ep->failed_run_end_count, 1);
+  EXPECT_EQ(first_ep->ok_run_end_count, 0);
+  // The provider that failed to start the run never owned it.
+  EXPECT_EQ(second_ep->run_end_count, 0);
+
+  second_ep->fail_run_start = false;
+  ASSERT_STATUS_OK(RunModelWithValues(session, RunOptions{}, values));
+  EXPECT_FALSE(first_ep->run_active);
+  EXPECT_EQ(first_ep->failed_run_end_count, 1);
+  EXPECT_EQ(first_ep->ok_run_end_count, 1);
+  EXPECT_EQ(second_ep->run_end_count, 1);
+}
+
+INSTANTIATE_TEST_SUITE_P(InferenceSession, RunStartFailureTest, ::testing::Bool(),
+                         [](const ::testing::TestParamInfo<bool>& info) {
+                           return info.param ? "LaterProviderThrows" : "LaterProviderReturnsError";
+                         });
+
 class ProfileEventCapturingSink final : public logging::ISink {
  public:
   void SendImpl(const Timestamp&, const std::string&, const Capture&) override {}
