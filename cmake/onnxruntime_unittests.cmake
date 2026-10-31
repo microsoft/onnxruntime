@@ -1350,6 +1350,10 @@ AddTest(
 )
 target_include_directories(onnxruntime_test_all PRIVATE ${ONNXRUNTIME_ROOT}/core/flatbuffers/schema) # ort.fbs.h
 
+if(onnxruntime_USE_CUDA AND NOT onnxruntime_MINIMAL_BUILD)
+  target_link_libraries(onnxruntime_test_all PRIVATE CUDA::cuda_driver)
+endif()
+
 onnxruntime_apply_test_target_workarounds(onnxruntime_test_all)
 
 if(NOT onnxruntime_MINIMAL_BUILD AND NOT CMAKE_CROSSCOMPILING

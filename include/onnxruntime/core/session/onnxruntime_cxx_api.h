@@ -1187,6 +1187,9 @@ struct EpDeviceImpl : Ort::detail::Base<T> {
   ConstHardwareDevice Device() const;
   ConstMemoryInfo GetMemoryInfo(OrtDeviceMemoryType memory_type) const;       ///< Wraps EpDevice_MemoryInfo
   SyncStream CreateSyncStream(ConstKeyValuePairs stream_options = {}) const;  /// Wraps EpDevice_CreateSyncStream
+  /// Total and available memory in bytes for the selected memory type. Throws if unsupported.
+  std::pair<uint64_t, uint64_t> GetMemoryCapacity(
+      OrtDeviceMemoryType memory_type = OrtDeviceMemoryType_DEFAULT) const;
 };
 }  // namespace detail
 

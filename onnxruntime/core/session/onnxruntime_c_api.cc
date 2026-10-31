@@ -4310,6 +4310,35 @@ ORT_API(const OrtMemoryInfo*, OrtApis::EpDevice_MemoryInfo, _In_ const OrtEpDevi
   }
 }
 
+ORT_API_STATUS_IMPL(OrtApis::EpDevice_GetMemoryCapacity, _In_ const OrtEpDevice* ep_device,
+                    _In_ OrtDeviceMemoryType memory_type,
+                    _Out_ uint64_t* total_memory_bytes, _Out_ uint64_t* available_memory_bytes) {
+  API_IMPL_BEGIN
+  ORT_API_RETURN_IF(ep_device == nullptr, ORT_INVALID_ARGUMENT, "ep_device must not be null");
+  ORT_API_RETURN_IF(total_memory_bytes == nullptr, ORT_INVALID_ARGUMENT,
+                    "total_memory_bytes must not be null");
+  ORT_API_RETURN_IF(available_memory_bytes == nullptr, ORT_INVALID_ARGUMENT,
+                    "available_memory_bytes must not be null");
+
+  OrtEpFactory* factory = ep_device->GetMutableFactory();
+  ORT_API_RETURN_IF(factory == nullptr || factory->ort_version_supported < 32 ||
+                        factory->GetDeviceMemoryCapacity == nullptr,
+                    ORT_NOT_IMPLEMENTED,
+                    "The execution provider does not support device memory capacity queries");
+
+  uint64_t total{};
+  uint64_t available{};
+  OrtStatus* status = factory->GetDeviceMemoryCapacity(factory, ep_device, memory_type, &total, &available);
+  if (status != nullptr) {
+    return status;
+  }
+
+  *total_memory_bytes = total;
+  *available_memory_bytes = available;
+  return nullptr;
+  API_IMPL_END
+}
+
 namespace {
 OrtStatus* GetInputOutputMemoryInfo(const OrtSession* ort_session,
                                     InferenceSession::SessionInputOutputType type,
@@ -4952,6 +4981,7 @@ static constexpr OrtApi ort_api_1_to_29 = {
 
     &OrtApis::SessionOptionsSetEpContextDataReadFunc,
     &OrtApis::GetModelPackageApi,
+    &OrtApis::EpDevice_GetMemoryCapacity,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

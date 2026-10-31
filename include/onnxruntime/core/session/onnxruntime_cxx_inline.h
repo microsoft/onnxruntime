@@ -762,6 +762,15 @@ inline SyncStream EpDeviceImpl<T>::CreateSyncStream(ConstKeyValuePairs stream_op
   ThrowOnError(GetApi().CreateSyncStreamForEpDevice(this->p_, stream_options, &stream));
   return SyncStream{stream};
 }
+
+template <typename T>
+inline std::pair<uint64_t, uint64_t> EpDeviceImpl<T>::GetMemoryCapacity(OrtDeviceMemoryType memory_type) const {
+  uint64_t total_memory_bytes{};
+  uint64_t available_memory_bytes{};
+  ThrowOnError(GetApi().EpDevice_GetMemoryCapacity(this->p_, memory_type,
+                                                   &total_memory_bytes, &available_memory_bytes));
+  return {total_memory_bytes, available_memory_bytes};
+}
 }  // namespace detail
 
 inline EpDevice::EpDevice(OrtEpFactory& ep_factory, ConstHardwareDevice& hardware_device,

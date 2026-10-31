@@ -7711,6 +7711,43 @@ struct OrtApi {
    * \since Version 1.31.
    */
   const OrtModelPackageApi*(ORT_API_CALL* GetModelPackageApi)(void);
+
+  /** \brief Get the current device memory capacity for an execution provider device.
+   *
+   * The execution provider queries the device when this function is called. `total_memory_bytes`
+   * reports device-global memory capacity exposed by the provider for this device, not a per-process
+   * or per-context allocation budget. For partitioned or virtual devices, this is the capacity of
+   * the exposed device, not necessarily the entire physical board.
+   * `available_memory_bytes` is a current free-memory estimate, not a reservation or a guarantee that
+   * an allocation of that size will succeed. It may change immediately after this call, and allocator
+   * caches or process limits may further constrain allocations.
+   *
+   * The query may initialize provider resources. For example, CUDA may initialize the device's primary
+   * context to query free memory, while preserving the calling thread's previous current CUDA context.
+  * If no other component retains that primary context (for example, a live CUDA EP session), each
+  * query may create and destroy it, incurring substantial initialization latency and transient device
+  * memory allocations on every call. Frequent polling in this state can be expensive. Under severe
+  * device memory pressure, context initialization may fail with an out-of-memory error instead of
+  * returning a near-zero available-memory estimate.
+   *
+   * Capacity is reported only for the selected memory type, not aggregated across memory types.
+   * If the execution provider does not support this query for the selected memory type,
+   * ORT_NOT_IMPLEMENTED is returned.
+   * On failure, the output values are not modified.
+   *
+   * \param[in] ep_device The OrtEpDevice instance to query.
+   * \param[in] memory_type The memory type to query: device memory (DEFAULT) or shared/pinned
+   *                        host-accessible memory (HOST_ACCESSIBLE). Support is provider-dependent.
+   * \param[out] total_memory_bytes The device-global memory capacity in bytes.
+   * \param[out] available_memory_bytes The current free device memory estimate in bytes.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.32.
+   */
+  ORT_API2_STATUS(EpDevice_GetMemoryCapacity, _In_ const OrtEpDevice* ep_device,
+                  _In_ OrtDeviceMemoryType memory_type,
+                  _Out_ uint64_t* total_memory_bytes, _Out_ uint64_t* available_memory_bytes);
 };
 
 /*
