@@ -342,6 +342,30 @@ class QMoE final : public CudaKernel, public MoEBase, public onnxruntime::moe_of
   mutable std::mutex fp4_gemv_tune_cache_mutex_;
   mutable std::unordered_map<Fp4GemvTuneKey, Fp4GemvTuneResult, Fp4GemvTuneKeyHash> fp4_gemv_tune_cache_;
 
+  // v4 MoE Offload. Offload is opt-in: the helpers below run only for a node whose session policy enables offload
+  // (offload_node_registered_ is true after SetUpOffload), so a non-offload node never touches the offload state.
+  // Parses the session offload policy into offload_policy_. Returns the session controller when offload is enabled
+  // for this node, else nullptr.
+  std::shared_ptr<onnxruntime::cuda::QMoESessionController> ParseOffloadPolicy(const OpKernelInfo& info);
+  // Builds the offload descriptors of an eligible node and registers it with the controller.
+  void SetUpOffload(const OpKernelInfo& info, onnxruntime::cuda::QMoESessionController& controller);
+  // Returns false when the node cannot use the offload backend (mode='required' throws instead).
+  bool BuildOffloadDescriptors(const OpKernelInfo& info, const onnxruntime::cuda::QMoESessionController& controller);
+  void ParseOffloadLayerIndex(const OpKernelInfo& info);
+  void RegisterDenseLayerHostWeights(const OpKernelInfo& info);
+  // Runs decode-sized inputs on the offload backend and sets handled. For larger inputs it syncs the backend's slot
+  // tables and sets handled to false so the caller continues on the standard prefill path.
+  Status TryComputeWithOffloadBackend(OpKernelContext* context, bool& handled) const;
+  // Sizes the prefill expert wave of a planned offload node so one wave's dequantized weights fit the offload
+  // working budget.
+  Status LimitOffloadPrefillWave(const MoEParameters& moe_params, bool use_nvfp4_compaction, int full_active_experts,
+                                 int& eff_compact_experts) const;
+  // Charges the aux buffers on top of the runner scratch against the offload working budget.
+  Status CheckOffloadPrefillLiveBytes(const qmoe::PrefillAuxLayout& aux_layout, const qmoe::RowTilePlan& row_tile_plan,
+                                      size_t total_scratch_bytes, size_t& planned_live_bytes) const;
+  // Charges the dequantized weights on top of the live bytes against the offload working budget.
+  Status CheckOffloadPrefillWorkingSet(size_t planned_live_bytes, size_t dequant_weight_bytes) const;
+
   // v4 MoE Offload state
   int32_t offload_layer_index_{-1};
   int offload_registered_dev_id_{-1};

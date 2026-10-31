@@ -455,9 +455,9 @@ class QMoESessionController {
     return first_err;
   }
 
-  bool HasOffloadNodes() const {
-    std::lock_guard<std::mutex> lock(mutex_);
-    return registered_nodes_ > 0;
+  // Called on every Run by the EP hooks, so it must stay cheap for sessions without offload nodes.
+  bool HasOffloadNodes() const noexcept {
+    return registered_nodes_.load(std::memory_order_acquire) > 0;
   }
 
   bool IsShuttingDown() const noexcept {
@@ -1617,7 +1617,8 @@ class QMoESessionController {
   std::atomic<uint64_t> graph_generation_{0};
   QMoERunControls run_controls_;
   mutable std::mutex mutex_;
-  size_t registered_nodes_ = 0;
+  // Written under mutex_; read without it by HasOffloadNodes().
+  std::atomic<size_t> registered_nodes_{0};
   bool run_in_flight_ = false;
   uint64_t current_run_id_ = 0;
   uint64_t next_invocation_id_ = 0;
