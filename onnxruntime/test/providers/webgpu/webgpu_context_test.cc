@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -12,10 +13,12 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <utility>
 #include <vector>
 
 #include "gtest/gtest.h"
+#include <gsl/util>
 #if defined(GTEST_HAS_ABSL) && !defined(GTEST_NO_ABSL_FLAGS)
 #include "absl/flags/reflection.h"
 #endif
@@ -48,6 +51,10 @@
 #if !defined(__wasm__) && !defined(USE_EXTERNAL_DAWN)
 #include "dawn/native/DawnNative.h"
 #include "test/providers/webgpu/webgpu_context_test_helper.h"
+#endif
+
+#if defined(_WIN32) && defined(DAWN_ENABLE_D3D12) && !defined(USE_EXTERNAL_DAWN)
+#include "dawn/native/D3D12Backend.h"
 #endif
 
 namespace onnxruntime {
@@ -259,6 +266,102 @@ void TestCopyAfterDeferredDispatch(bool upload, bool checked_completion = false)
 
 TEST(WebGpuContextTest, UploadFollowsDeferredDispatch) {
   TestCopyAfterDeferredDispatch(true);
+}
+
+TEST(WebGpuContextTest, NativeProfilingUsesCpuOriginAcrossRunsAndSubmissions) {
+#if defined(_WIN32) && defined(DAWN_ENABLE_D3D12) && !defined(USE_EXTERNAL_DAWN)
+  ConfigOptions options;
+  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  ASSERT_NE(ep, nullptr);
+  auto& webgpu_ep = static_cast<WebGpuExecutionProvider&>(*ep);
+  auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+  if (context.AdapterInfo().backendType != wgpu::BackendType::D3D12 ||
+      !context.DeviceHasFeature(wgpu::FeatureName::TimestampQuery)) {
+    GTEST_SKIP() << "D3D12 timestamp queries are unavailable.";
+  }
+  RecordProperty("adapter", std::string{std::string_view{context.AdapterInfo().device}});
+  auto native_device = dawn::native::d3d12::GetD3D12Device(context.Device().Get());
+  auto native_queue = dawn::native::d3d12::GetD3D12CommandQueue(context.Device().Get());
+  ASSERT_NE(native_device, nullptr);
+  ASSERT_NE(native_queue, nullptr);
+
+  wgpu::ShaderSourceWGSL source{};
+  source.code = R"(
+    @group(0) @binding(0) var<storage, read_write> output: array<u32>;
+    @compute @workgroup_size(1)
+    fn main() { output[0] = 42u; }
+  )";
+  wgpu::ShaderModuleDescriptor shader_desc{};
+  shader_desc.nextInChain = &source;
+  wgpu::ComputePipelineDescriptor pipeline_desc{};
+  pipeline_desc.compute.module = context.Device().CreateShaderModule(&shader_desc);
+  pipeline_desc.compute.entryPoint = "main";
+  auto pipeline = context.Device().CreateComputePipeline(&pipeline_desc);
+  wgpu::BufferDescriptor buffer_desc{};
+  buffer_desc.size = sizeof(uint32_t);
+  buffer_desc.usage = wgpu::BufferUsage::Storage;
+  auto output = context.Device().CreateBuffer(&buffer_desc);
+  wgpu::BindGroupEntry entry{};
+  entry.buffer = output;
+  entry.size = sizeof(uint32_t);
+  wgpu::BindGroupDescriptor bind_group_desc{};
+  bind_group_desc.layout = pipeline.GetBindGroupLayout(0);
+  bind_group_desc.entryCount = 1;
+  bind_group_desc.entries = &entry;
+  auto bind_group = context.Device().CreateBindGroup(&bind_group_desc);
+
+  // An origin before either run catches incorrectly resetting the session timeline.
+  const auto origin = std::chrono::high_resolution_clock::now() - std::chrono::seconds(1);
+  context.SetProfilingStartTime(origin);
+  int64_t previous_timestamp = 0;
+  for (int run = 0; run < 2; ++run) {
+    context.StartProfiling();
+    const auto earliest = TimeDiffMicroSeconds(origin);
+    int64_t queue_released = earliest;
+    for (int submit = 0; submit < 2; ++submit) {
+      webgpu::DispatchCommandInfo dispatch;
+      dispatch.compute_pipeline = pipeline;
+      dispatch.bind_group = bind_group;
+      dispatch.pending_kernel_info.emplace("profile", "test", "dispatch", "key",
+                                           std::vector<webgpu::ProgramInput>{},
+                                           std::vector<webgpu::ProgramOutput>{});
+      auto& recording = webgpu_ep.Recording();
+      recording.deferred_dispatches.push_back(std::move(dispatch));
+      recording.has_unsubmitted_work.store(true, std::memory_order_relaxed);
+      Microsoft::WRL::ComPtr<ID3D12Fence> gate;
+      // Always release the queue, including if Flush throws or a test assertion fails.
+      auto release_queue = gsl::finally([&gate]() {
+        if (gate) gate->Signal(1);
+      });
+      if (submit == 0) {
+        ASSERT_TRUE(SUCCEEDED(native_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&gate))));
+        ASSERT_TRUE(SUCCEEDED(native_queue->Wait(gate.Get(), 1)));
+        const auto flush_status = context.Flush(webgpu_ep.BufferManager(), recording);
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        queue_released = TimeDiffMicroSeconds(origin);
+        ASSERT_TRUE(SUCCEEDED(gate->Signal(1)));
+        ASSERT_STATUS_OK(flush_status);
+      }
+      ASSERT_STATUS_OK(context.FlushAndWaitChecked(webgpu_ep.BufferManager(), recording));
+    }
+    profiling::Events events;
+    context.CollectProfilingData(events);
+    const auto latest = TimeDiffMicroSeconds(origin);
+    ASSERT_EQ(events.size(), 2u);
+    // Submission anchoring would put this event before the CPU released the queue.
+    EXPECT_GE(events.front().ts, queue_released - 1000);
+    for (const auto& event : events) {
+      EXPECT_EQ(event.args.at("clock_alignment"), "d3d12_clock_calibration");
+      EXPECT_GE(event.ts, earliest - 1000);
+      EXPECT_LE(event.ts + event.dur, latest + 1000);
+      EXPECT_GE(event.ts, previous_timestamp);
+      EXPECT_GE(event.dur, 0);
+      previous_timestamp = event.ts;
+    }
+  }
+#else
+  GTEST_SKIP() << "Native D3D12 clock calibration requires bundled Dawn on Windows.";
+#endif
 }
 
 TEST(WebGpuQueueUploadTest, SizesSourceOffsetsAndPartialWrites) {
