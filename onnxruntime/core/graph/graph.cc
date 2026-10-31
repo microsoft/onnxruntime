@@ -7022,6 +7022,7 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
       ORT_RETURN_IF_ERROR(fbs::utils::LoadInitializerOrtFormat(*fbs_tensor, *initializer, load_options));
       auto p = name_to_initial_tensor_.emplace(initializer->name(), initializer);
       if (!p.second) {
+        ORT_IGNORE_RETURN_VALUE(ortvalue_initializers_.erase(initializer->name()));
         LOGS(logger_, WARNING) << "Duplicate initializer (dense or ConstantNode): '" << initializer->name()
                                << "' the model will use the latest encountered initializer"
                                << ". Please, fix your model.";
@@ -7061,6 +7062,7 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
       ORT_RETURN_IF_ERROR(utils::SparseTensorProtoToDenseTensorProto(sparse_initializer, model_path, initializer));
       auto p = name_to_initial_tensor_.emplace(initializer.name(), &initializer);
       if (!p.second) {
+        ORT_IGNORE_RETURN_VALUE(ortvalue_initializers_.erase(initializer.name()));
         LOGS(logger_, WARNING) << "Duplicate initializer (dense, sparse or ConstantNode): '" << initializer.name()
                                << "' the model will use the latest encountered initializer"
                                << ". Please, fix your model.";
