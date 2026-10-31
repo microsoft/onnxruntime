@@ -3,6 +3,7 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
 #include "core/util/math.h"
 
 namespace onnxruntime {
@@ -99,6 +100,17 @@ TEST(InverseContribOpTest, one_dim_input_fails) {
   test.AddInput<float>("X", {4}, {4.f, 7.f, 2.f, 6.f});
   test.AddOutput<float>("Y", {4}, {0.f, 0.f, 0.f, 0.f});
   test.Run(OpTester::ExpectResult::kExpectFailure, "rank must be >= 2");
+}
+
+TEST(InverseContribOpTest, non_square_input_rejected) {
+  OpTester test("Inverse", 1, kMSDomain);
+  test.AddShapeToTensorData(false);  // must precede AddInput/AddOutput: rank/dims are then unknown at load
+  test.AddInput<float>("X", {1, 3, 2}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f});
+  test.AddOutput<float>("Y", {1, 3, 2}, {0.f, 0.f, 0.f, 0.f, 0.f, 0.f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "must form a square matrix", {}, nullptr, &execution_providers);
 }
 
 }  // namespace test
