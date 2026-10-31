@@ -28,7 +28,6 @@ namespace qmoe = contrib::cuda::qmoe;
 namespace {
 
 constexpr int kSpinUs = 50;
-constexpr const char* kWorkerThreadName = "qmoe-spin";
 
 std::unique_ptr<qmoe::SpinPool> MakePool(int threads) {
   return std::make_unique<qmoe::SpinPool>(threads, kSpinUs);
@@ -42,6 +41,8 @@ int64_t SumWithPool(qmoe::SpinPool& pool, ptrdiff_t count) {
 }
 
 #if defined(__linux__)
+constexpr const char* kWorkerThreadName = "qmoe-spin";
+
 // Worker threads are only observable through /proc, so tests that need the real thread count are Linux-only.
 int CountThreadsNamed(const std::string& name) {
   int count = 0;

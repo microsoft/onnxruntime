@@ -101,7 +101,9 @@ def _load_cudart():
     return None
 
 
-def _cuda_malloc(cudart, nbytes: int) -> ctypes.c_void_p:
+def _cuda_malloc(cudart, nbytes: int, device_id: int = 0) -> ctypes.c_void_p:
+    with contextlib.suppress(AttributeError):
+        cudart.cudaSetDevice(ctypes.c_int(device_id))
     ptr = ctypes.c_void_p()
     status = cudart.cudaMalloc(ctypes.byref(ptr), ctypes.c_size_t(nbytes))
     if status != 0:
@@ -640,7 +642,9 @@ class TestQMoEOffloadV4(unittest.TestCase):
         if plugin_dev is not None:
             so.add_provider_for_devices([plugin_dev], cuda_options or {})
             return ort.InferenceSession(model_path, sess_options=so)
-        providers = [("CUDAExecutionProvider", cuda_options or {})]
+        opts = dict(cuda_options or {})
+        opts.setdefault("device_id", "0")
+        providers = [("CUDAExecutionProvider", opts)]
         return ort.InferenceSession(model_path, sess_options=so, providers=providers)
 
     def _assert_parity(

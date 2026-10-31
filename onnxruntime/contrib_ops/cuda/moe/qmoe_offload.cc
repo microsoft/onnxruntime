@@ -916,11 +916,16 @@ bool TryGetQMoEResidentLayerSlabView(
   bool coverage_computed = false;
   if (locked->owner && locked->owner->host_cache_mapped_ && locked->file_store_ptr != nullptr) {
     locked->owner->SyncPrefillSlotTables(stream);
-    if (const uint8_t* cache_base = locked->file_store_ptr->CacheBase()) {
-      out_view->host_fc1_weights = cache_base + locked->nvfp4_layout.fc1_weights;
-      out_view->host_fc2_weights = cache_base + locked->nvfp4_layout.fc2_weights;
-      out_view->host_fc1_scales = cache_base + locked->nvfp4_layout.fc1_scales;
-      out_view->host_fc2_scales = cache_base + locked->nvfp4_layout.fc2_scales;
+    if (uint8_t* cache_base = locked->file_store_ptr->CacheBase()) {
+      void* mapped_dev_ptr = nullptr;
+      const uint8_t* dev_cache_base =
+          (cudaHostGetDevicePointer(&mapped_dev_ptr, cache_base, 0) == cudaSuccess && mapped_dev_ptr != nullptr)
+              ? static_cast<const uint8_t*>(mapped_dev_ptr)
+              : cache_base;
+      out_view->host_fc1_weights = dev_cache_base + locked->nvfp4_layout.fc1_weights;
+      out_view->host_fc2_weights = dev_cache_base + locked->nvfp4_layout.fc2_weights;
+      out_view->host_fc1_scales = dev_cache_base + locked->nvfp4_layout.fc1_scales;
+      out_view->host_fc2_scales = dev_cache_base + locked->nvfp4_layout.fc2_scales;
       out_view->host_expert_stride = locked->nvfp4_layout.stride;
       out_view->host_slot_table_dev = locked->slot_table_dev_ptr + num_experts;
       out_view->all_experts_cached = true;
@@ -1061,10 +1066,13 @@ bool TryPrepareQMoEPrefillDmaLayer(
       if (matched->owner) {
         if (matched->owner->host_cache_bytes_ > 0) {
           bounded_host_cache = true;
-          const size_t covered = matched->owner->host_cache_mapped_
+          const bool use_host_uva =
+              matched->owner->host_cache_mapped_ &&
+              (ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_PREFILL_DMA_USE_HOST_UVA", 0) != 0);
+          const size_t covered = use_host_uva
                                      ? (matched->owner->file_expert_store_.CacheSlots() +
                                         static_cast<size_t>(matched->owner->base_resident_slots_))
-                                     : 0;
+                                     : static_cast<size_t>(matched->owner->base_resident_slots_);
           if (covered < static_cast<size_t>(num_experts)) {
             has_uncached_cold_experts = true;
           }
@@ -1542,7 +1550,9 @@ bool TryPrepareQMoEPrefillDmaLayer(
   static_cast<void>(TryGetQMoEResidentLayerSlabView(
       device_id, layer_index, num_experts, hidden_size, inter_size, &res_view, exec_stream, fc1_w,
       req_session_scope));
-  state.use_uva_in_dma_pass = (res_view.host_fc1_weights != nullptr);
+  state.use_uva_in_dma_pass =
+      (res_view.host_fc1_weights != nullptr) &&
+      (ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_PREFILL_DMA_USE_HOST_UVA", 0) != 0);
 
   out_view->dequant_fc1_weights = use_arena_dequant ? nullptr : (state.workspace_dev + state.dequant_fc1_offset);
   out_view->dequant_fc2_weights = use_arena_dequant ? nullptr : (state.workspace_dev + state.dequant_fc2_offset);
@@ -5036,8 +5046,13 @@ void QMoEOffload::SyncPrefillSlotTables(cudaStream_t stream) const {
         file_expert_store_.SnapshotExpertToSlot(file_store_expert_slot_.data(), num_experts_);
         table_changed = true;
       }
-    } else if (table_changed) {
-      file_expert_store_.SnapshotExpertToSlot(file_store_expert_slot_.data(), num_experts_);
+    } else {
+      InlinedVector<int32_t> latest_slots(static_cast<size_t>(num_experts_), -1);
+      file_expert_store_.SnapshotExpertToSlot(latest_slots.data(), num_experts_);
+      if (latest_slots != file_store_expert_slot_) {
+        file_store_expert_slot_ = std::move(latest_slots);
+        table_changed = true;
+      }
     }
     if (table_changed) {
       int* dst_host_table = CurrentSlotTableDev() + num_experts_;

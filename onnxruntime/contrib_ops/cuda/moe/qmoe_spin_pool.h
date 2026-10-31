@@ -156,16 +156,16 @@ inline std::vector<int> NumaBalancedCpuOrder(const std::vector<cpu_set_t>& node_
 class ScopedCpuAffinity {
  public:
   explicit ScopedCpuAffinity(int cpu) noexcept {
-    if (cpu < 0 || cpu >= CPU_SETSIZE || pthread_getaffinity_np(pthread_self(), sizeof(saved_), &saved_) != 0 ||
+    if (cpu < 0 || cpu >= CPU_SETSIZE || sched_getaffinity(0, sizeof(saved_), &saved_) != 0 ||
         !CPU_ISSET(cpu, &saved_)) return;
     if (CPU_COUNT(&saved_) == 1) return;
     cpu_set_t target;
     CPU_ZERO(&target);
     CPU_SET(cpu, &target);
-    restore_ = pthread_setaffinity_np(pthread_self(), sizeof(target), &target) == 0;
+    restore_ = sched_setaffinity(0, sizeof(target), &target) == 0;
   }
   ~ScopedCpuAffinity() {
-    if (restore_) static_cast<void>(pthread_setaffinity_np(pthread_self(), sizeof(saved_), &saved_));
+    if (restore_) static_cast<void>(sched_setaffinity(0, sizeof(saved_), &saved_));
   }
   ScopedCpuAffinity(const ScopedCpuAffinity&) = delete;
   ScopedCpuAffinity& operator=(const ScopedCpuAffinity&) = delete;
@@ -175,6 +175,13 @@ class ScopedCpuAffinity {
   bool restore_{};
 };
 #elif defined(_WIN32)
+inline bool IsWinEnvEnabled(const char* name, bool default_value) noexcept {
+  char buf[16]{};
+  const DWORD n = GetEnvironmentVariableA(name, buf, static_cast<DWORD>(sizeof(buf)));
+  if (n == 0 || n >= sizeof(buf)) return default_value;
+  return std::strcmp(buf, "0") != 0;
+}
+
 inline std::vector<int> DiscoverWindowsBalancedCpuOrder(int* out_l3_domains = nullptr) {
   DWORD_PTR proc_mask = 0, sys_mask = 0;
   if (!GetProcessAffinityMask(GetCurrentProcess(), &proc_mask, &sys_mask) || proc_mask == 0) {
@@ -364,12 +371,11 @@ class SpinPool final {
                    threads, numa_node_count_, cpus.c_str());
     }
 #elif defined(_WIN32)
-    const char* pin_env = std::getenv("ORT_QMOE_NUMA_PIN_WORKERS");
-    const bool enable_pin = (pin_env == nullptr || std::strcmp(pin_env, "0") != 0);
+    const bool enable_pin = IsWinEnvEnabled("ORT_QMOE_NUMA_PIN_WORKERS", true);
     if (enable_pin) {
       worker_cpus_ = DiscoverWindowsBalancedCpuOrder(&numa_node_count_);
     }
-    if (const char* log = std::getenv("ORT_QMOE_NUMA_DIAGNOSTICS"); log && std::strcmp(log, "0") != 0) {
+    if (IsWinEnvEnabled("ORT_QMOE_NUMA_DIAGNOSTICS", false)) {
       std::string cpus;
       for (int i = 0; i < threads; ++i) {
         if (i > 0) cpus += ',';
@@ -509,7 +515,7 @@ class SpinPool final {
       cpu_set_t mask;
       CPU_ZERO(&mask);
       CPU_SET(cpu, &mask);
-      if (pthread_setaffinity_np(pthread_self(), sizeof(mask), &mask) == 0) {
+      if (sched_setaffinity(0, sizeof(mask), &mask) == 0) {
         pinned_workers_.fetch_add(1, std::memory_order_release);
       } else {
         affinity_failures_.fetch_add(1, std::memory_order_release);
