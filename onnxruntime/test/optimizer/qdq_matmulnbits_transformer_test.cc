@@ -1403,8 +1403,8 @@ TEST(QDQTransformerTests, DQGemmConvertedToMatMulNBits_WithDQBias) {
   RunDQGemmConvertedWithDQBias<Int4x2, true>({12, 37}, {37, 12}, 0, 16, 0);
 }
 
-// Negative test: DQ -> Gemm with transB=1 should NOT be fused.
-TEST(QDQTransformerTests, DQGemmNotConvertedToMatMulNBits_TransB) {
+// Blockwise DQ with transB=1 is not supported by the transpose fusion.
+TEST(QDQTransformerTests, DQGemmNotConvertedToMatMulNBits_BlockwiseTransB) {
   auto build_test_case = [](ModelTestBuilder& builder) {
     auto* input_arg = builder.MakeInput<float>({12, 37}, -100.0f, 100.0f);
     auto* output_arg = builder.MakeOutput();
@@ -1436,6 +1436,101 @@ TEST(QDQTransformerTests, DQGemmNotConvertedToMatMulNBits_TransB) {
                     TransformerLevel::Level2,
                     21 /*opset_version*/,
                     1e-5, 2e-5);
+}
+
+template <typename T>
+void RunDQMatMulPreserveQDQ(bool use_zp, bool per_channel, bool with_bias,
+                            int64_t rows, int64_t channels, int64_t reduction,
+                            bool is_gemm = true) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({rows, reduction}, -1.0f, 1.0f);
+    auto* activation_scale = builder.MakeScalarInitializer<float>(0.0001f);
+    auto* activation_zp = builder.MakeScalarInitializer<uint16_t>(32768);
+    auto* activation_q = builder.MakeIntermediate();
+    auto* activation_dq = builder.MakeIntermediate();
+    builder.AddNode("QuantizeLinear", {input, activation_scale, activation_zp}, {activation_q});
+    builder.AddNode("DequantizeLinear", {activation_q, activation_scale, activation_zp}, {activation_dq});
+    // A graph output also consumes the activation DQ; it must not be removed.
+    builder.AddNode("Identity", {activation_dq}, {builder.MakeOutput()});
+
+    const std::vector<int64_t> weight_shape = is_gemm ? std::vector<int64_t>{channels, reduction}
+                                                      : std::vector<int64_t>{reduction, channels};
+    auto* weight = builder.MakeInitializer<T>(
+        weight_shape, T(T::min_val, 0), T(T::max_val, 0));
+    const std::vector<int64_t> parameter_shape = per_channel ? std::vector<int64_t>{channels}
+                                                             : std::vector<int64_t>{};
+    auto* scale = builder.MakeInitializer<float>(parameter_shape, 0.01f, 0.03f);
+    auto* weight_dq = builder.MakeIntermediate();
+    NodeAttributes dq_attrs;
+    utils::SetNodeAttribute(utils::MakeAttribute("axis", int64_t{is_gemm ? 0 : 1}), dq_attrs);
+    if (use_zp) {
+      auto* zp = builder.MakeInitializer<T>(parameter_shape, T(0, 0), T(2, 0));
+      builder.AddNode("DequantizeLinear", {weight, scale, zp}, {weight_dq}, "", &dq_attrs);
+    } else {
+      builder.AddNode("DequantizeLinear", {weight, scale}, {weight_dq}, "", &dq_attrs);
+    }
+
+    NodeAttributes gemm_attrs;
+    utils::SetNodeAttribute(utils::MakeAttribute("transB", int64_t{1}), gemm_attrs);
+    auto* gemm_output = builder.MakeOutput();
+    if (with_bias) {
+      auto* bias = builder.MakeInitializer<int8_t>({channels}, int8_t{-3}, int8_t{3});
+      auto* bias_scale = builder.MakeScalarInitializer<float>(0.01f);
+      auto* bias_zp = builder.MakeScalarInitializer<int8_t>(0);
+      auto* bias_dq = builder.MakeIntermediate();
+      builder.AddNode("DequantizeLinear", {bias, bias_scale, bias_zp}, {bias_dq});
+      builder.AddNode("Gemm", {activation_dq, weight_dq, bias_dq}, {gemm_output}, "", &gemm_attrs);
+    } else if (is_gemm) {
+      builder.AddNode("Gemm", {activation_dq, weight_dq}, {gemm_output}, "", &gemm_attrs);
+    } else {
+      builder.AddNode("MatMul", {activation_dq, weight_dq}, {gemm_output});
+    }
+    auto* output_scale = builder.MakeScalarInitializer<float>(0.01f);
+    auto* output_zp = builder.MakeScalarInitializer<uint16_t>(32768);
+    auto* output_q = builder.MakeIntermediate();
+    builder.AddNode("QuantizeLinear", {gemm_output, output_scale, output_zp}, {output_q});
+    builder.AddNode("DequantizeLinear", {output_q, output_scale, output_zp}, {builder.MakeOutput()});
+  };
+  auto check_graph = [&](InferenceSessionWrapper& session) {
+    auto counts = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(counts["Gemm"], 0);
+    EXPECT_EQ(counts["MatMul"], 0);
+    EXPECT_EQ(counts["com.microsoft.MatMulNBits"], 1);
+    EXPECT_EQ(counts["QuantizeLinear"], 2);
+    // EnsureUniqueDQForNodeUnit duplicates the shared activation DQ.
+    EXPECT_EQ(counts["DequantizeLinear"], with_bias ? 4 : 3);
+    for (const auto& node : session.GetGraph().Nodes()) {
+      if (node.OpType() == "MatMulNBits") {
+        EXPECT_EQ(node.GetAttributes().at("K").i(), reduction);
+        EXPECT_EQ(node.GetAttributes().at("N").i(), channels);
+        EXPECT_EQ(node.GetAttributes().at("accuracy_level").i(), 0);
+      }
+    }
+  };
+  auto options = [](SessionOptions& so) {
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel, "0"));
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsEnableQuantQDQCleanup, "0"));
+  };
+  TransformerTester(build_test_case, check_graph, TransformerLevel::Level1,
+                    TransformerLevel::Level2, 21, 1e-5, 2e-5, nullptr, options);
+}
+
+TEST(QDQTransformerTests, DQGemmTransposedPreservesActivationAndOutputQDQ) {
+  for (bool use_zp : {false, true}) {
+    for (bool per_channel : {false, true}) {
+      RunDQMatMulPreserveQDQ<Int4x2>(use_zp, per_channel, true, 3, 5, 37);
+      RunDQMatMulPreserveQDQ<UInt4x2>(use_zp, per_channel, false, 1, 7, 19);
+    }
+  }
+}
+
+TEST(QDQTransformerTests, DQMatMulConvertedToMatMulNBits_PreservesActivationAndOutputQDQ) {
+  for (bool use_zp : {false, true}) {
+    for (bool per_channel : {false, true}) {
+      RunDQMatMulPreserveQDQ<Int4x2>(use_zp, per_channel, false, 3, 5, 37, false);
+      RunDQMatMulPreserveQDQ<UInt4x2>(use_zp, per_channel, false, 1, 7, 19, false);
+    }
+  }
 }
 
 // Negative test: DQ -> Gemm with alpha != 1.0 should NOT be fused.
