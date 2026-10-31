@@ -2159,7 +2159,7 @@ TEST(GroupQueryAttentionTest, CheckRotaryCaches_LegacyPolicy_RejectsNon16Aligned
   // before reaching CUDA FlashDecoding which expects 16-aligned rotary_dim (8-aligned cos_dims[1]).
   MockRotaryCacheTensor cos_cache_12{TensorShape({16, 12})};
   MockRotaryCacheTensor sin_cache_12{TensorShape({16, 12})};
-  auto status = group_query_attention_helper::CheckRotaryCaches(
+  auto status = contrib::group_query_attention_helper::CheckRotaryCaches(
       &cos_cache_12, &sin_cache_12, /*head_size=*/64, /*total_sequence_length=*/4,
       rotary_dim, /*allow_8_aligned_rotary=*/false);
   EXPECT_FALSE(status.IsOK());
@@ -2169,14 +2169,14 @@ TEST(GroupQueryAttentionTest, CheckRotaryCaches_LegacyPolicy_RejectsNon16Aligned
   // Accepted legacy configuration: head_size=64, cos_dims[1]=16 (rotary_dim=32).
   MockRotaryCacheTensor cos_cache_16{TensorShape({16, 16})};
   MockRotaryCacheTensor sin_cache_16{TensorShape({16, 16})};
-  status = group_query_attention_helper::CheckRotaryCaches(
+  status = contrib::group_query_attention_helper::CheckRotaryCaches(
       &cos_cache_16, &sin_cache_16, /*head_size=*/64, /*total_sequence_length=*/4,
       rotary_dim, /*allow_8_aligned_rotary=*/false);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   EXPECT_EQ(rotary_dim, 32);
 
   // Legacy policy also rejects non-16-aligned head_size (e.g., head_size=24 or 8).
-  status = group_query_attention_helper::CheckRotaryCaches(
+  status = contrib::group_query_attention_helper::CheckRotaryCaches(
       &cos_cache_12, &sin_cache_12, /*head_size=*/24, /*total_sequence_length=*/4,
       rotary_dim, /*allow_8_aligned_rotary=*/false);
   EXPECT_FALSE(status.IsOK());
@@ -2189,14 +2189,14 @@ TEST(GroupQueryAttentionTest, CheckRotaryCaches_CPUPolicy_Permits8Aligned) {
   // CPU policy allows head_size=24, cos_dims[1]=12 (rotary_dim=24).
   MockRotaryCacheTensor cos_cache_12{TensorShape({16, 12})};
   MockRotaryCacheTensor sin_cache_12{TensorShape({16, 12})};
-  auto status = group_query_attention_helper::CheckRotaryCaches(
+  auto status = contrib::group_query_attention_helper::CheckRotaryCaches(
       &cos_cache_12, &sin_cache_12, /*head_size=*/24, /*total_sequence_length=*/4,
       rotary_dim, /*allow_8_aligned_rotary=*/true);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   EXPECT_EQ(rotary_dim, 24);
 
   // CPU policy allows partial RoPE: head_size=32, cos_dims[1]=12 (rotary_dim=24).
-  status = group_query_attention_helper::CheckRotaryCaches(
+  status = contrib::group_query_attention_helper::CheckRotaryCaches(
       &cos_cache_12, &sin_cache_12, /*head_size=*/32, /*total_sequence_length=*/4,
       rotary_dim, /*allow_8_aligned_rotary=*/true);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
@@ -2205,7 +2205,7 @@ TEST(GroupQueryAttentionTest, CheckRotaryCaches_CPUPolicy_Permits8Aligned) {
   // CPU policy allows head_size=8, cos_dims[1]=4 (rotary_dim=8) without upper bound truncation.
   MockRotaryCacheTensor cos_cache_4{TensorShape({16, 4})};
   MockRotaryCacheTensor sin_cache_4{TensorShape({16, 4})};
-  status = group_query_attention_helper::CheckRotaryCaches(
+  status = contrib::group_query_attention_helper::CheckRotaryCaches(
       &cos_cache_4, &sin_cache_4, /*head_size=*/8, /*total_sequence_length=*/4,
       rotary_dim, /*allow_8_aligned_rotary=*/true);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
