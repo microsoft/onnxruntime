@@ -70,6 +70,8 @@ stages:
 
       - template: ../templates/set-nightly-build-option-variable-step.yml
 
+      - template: ../templates/setup-vcpkg-cache.yml
+
       - template: ../templates/set-plugin-ep-build-variables-step.yml
         parameters:
           package_version: ${{ parameters.package_version }}

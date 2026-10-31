@@ -115,6 +115,8 @@ stages:
           Repository: onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}xtrt86build${{ parameters.arch }}
 
 
+      - template: ../templates/setup-vcpkg-cache.yml
+
       - task: Bash@3
         displayName: 'Build Python Wheel - ${{ parameters.python_version }}'
         inputs:

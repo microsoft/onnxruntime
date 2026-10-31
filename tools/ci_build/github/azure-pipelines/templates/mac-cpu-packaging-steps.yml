@@ -11,6 +11,8 @@ parameters:
 
 
 steps:
+- template: setup-vcpkg-cache.yml
+
 - script: |
       set -e -x
       rm -rf $(Build.BinariesDirectory)/Release

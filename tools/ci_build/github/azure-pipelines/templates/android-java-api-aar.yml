@@ -105,6 +105,8 @@ jobs:
 
   - template: use-android-ndk.yml
 
+  - template: setup-vcpkg-cache.yml
+
   - task: CmdLine@2
     displayName: Build Android AAR Packages
     inputs:
@@ -125,6 +127,8 @@ jobs:
           USE_QNN="0"
         fi
         docker run -e SYSTEM_COLLECTIONURI --rm \
+          --volume "${VCPKG_DEFAULT_BINARY_CACHE}:/vcpkg-binary-cache" \
+          -e VCPKG_DEFAULT_BINARY_CACHE=/vcpkg-binary-cache \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
           --volume $ANDROID_HOME:/android_home \

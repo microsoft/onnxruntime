@@ -1,0 +1,32 @@
+# Cache only vcpkg binary archives, not installed trees or build directories.
+# Cache@2 saves successful runs in branch-isolated scopes, including PR scopes.
+# Include once per build job after checkout. Native builds inherit the exported
+# cache path; Docker builds must mount it and set the corresponding container path.
+parameters:
+- name: key
+  type: string
+  default: '$(System.StageName)-$(System.JobName)'
+
+steps:
+- pwsh: |
+    New-Item -ItemType Directory -Path $env:VCPKG_CACHE_PATH -Force | Out-Null
+    Write-Host "##vso[task.setvariable variable=VCPKG_DEFAULT_BINARY_CACHE]$env:VCPKG_CACHE_PATH"
+  displayName: Configure vcpkg binary cache
+  env:
+    VCPKG_CACHE_PATH: $(Agent.TempDirectory)/vcpkg-binary-cache
+
+- task: Cache@2
+  displayName: Restore and save vcpkg binary cache
+  inputs:
+    # Include Build.SourceVersion so each commit can save newly built ABIs instead
+    # of leaving an immutable cache frozen after toolchain/image changes.
+    key: >-
+      "vcpkg-cache-v1" | "$(Agent.OS)" | "$(Agent.OSArchitecture)" |
+      "$(System.DefinitionId)" | "${{ parameters.key }}" |
+      cmake/vcpkg.json,cmake/vcpkg-configuration.json,cmake/vcpkg-ports/**,tools/ci_build/vcpkg_tool_info.json,tools/python/util/vcpkg_helpers.py |
+      "$(Build.SourceVersion)"
+    # Release branches may restore exact keys, but must not fall back to older caches.
+    ${{ if not(startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-')) }}:
+      restoreKeys: |
+        "vcpkg-cache-v1" | "$(Agent.OS)" | "$(Agent.OSArchitecture)" | "$(System.DefinitionId)" | "${{ parameters.key }}"
+    path: $(Agent.TempDirectory)/vcpkg-binary-cache
