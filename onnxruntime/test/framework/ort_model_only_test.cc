@@ -443,6 +443,57 @@ TEST(OrtModelTest, RejectsInputArgCountTotalOverflow) {
   }
 }
 
+TEST(OrtModelTest, AcceptsSupportedNodeAttributeOrtFormat) {
+  const auto buffer = BuildOrtModelBuffer([](flatbuffers::FlatBufferBuilder& builder) {
+    std::vector<flatbuffers::Offset<fbs::ValueInfo>> node_args{
+        fbs::CreateValueInfoDirect(builder, "x", "", CreateFloatTensorTypeInfo(builder, 1)),
+        fbs::CreateValueInfoDirect(builder, "y", "", CreateFloatTensorTypeInfo(builder, 1))};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> inputs{builder.CreateSharedString("x")};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> outputs{builder.CreateSharedString("y")};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> implicit_inputs;
+    std::vector<flatbuffers::Offset<fbs::Attribute>> attributes{
+        fbs::CreateAttributeDirect(builder, "axis", "", fbs::AttributeType::INT, 0.0f, 0)};
+    std::vector<int32_t> input_arg_counts{1};
+    std::vector<flatbuffers::Offset<fbs::Node>> nodes{
+        fbs::CreateNodeDirect(builder, "n0", "", "", 13, 0, "Softmax",
+                              fbs::NodeType::Primitive, nullptr,
+                              &inputs, &outputs, &attributes,
+                              &input_arg_counts, &implicit_inputs)};
+
+    return fbs::CreateGraphDirect(builder, nullptr, &node_args, &nodes, 1, nullptr, &inputs, &outputs);
+  });
+
+  ASSERT_STATUS_OK(LoadOrtBuffer(buffer));
+}
+
+TEST(OrtModelTest, RejectsUnsupportedNodeAttributeTypeOrtFormat) {
+  for (const auto attr_type : {fbs::AttributeType::UNDEFINED, fbs::AttributeType::SPARSE_TENSOR}) {
+    const auto buffer = BuildOrtModelBuffer([attr_type](flatbuffers::FlatBufferBuilder& builder) {
+      std::vector<flatbuffers::Offset<fbs::ValueInfo>> node_args{
+          fbs::CreateValueInfoDirect(builder, "x", "", CreateFloatTensorTypeInfo(builder, 1)),
+          fbs::CreateValueInfoDirect(builder, "y", "", CreateFloatTensorTypeInfo(builder, 1))};
+      std::vector<flatbuffers::Offset<flatbuffers::String>> inputs{builder.CreateSharedString("x")};
+      std::vector<flatbuffers::Offset<flatbuffers::String>> outputs{builder.CreateSharedString("y")};
+      std::vector<flatbuffers::Offset<flatbuffers::String>> implicit_inputs;
+      std::vector<flatbuffers::Offset<fbs::Attribute>> attributes{
+          fbs::CreateAttributeDirect(builder, "axis", "", attr_type)};
+      std::vector<int32_t> input_arg_counts{1};
+      std::vector<flatbuffers::Offset<fbs::Node>> nodes{
+          fbs::CreateNodeDirect(builder, "n0", "", "", 13, 0, "Softmax",
+                                fbs::NodeType::Primitive, nullptr,
+                                &inputs, &outputs, &attributes,
+                                &input_arg_counts, &implicit_inputs)};
+
+      return fbs::CreateGraphDirect(builder, nullptr, &node_args, &nodes, 1, nullptr, &inputs, &outputs);
+    });
+
+    const auto status = LoadOrtBuffer(buffer);
+    ASSERT_FALSE(status.IsOK());
+    EXPECT_THAT(status.ErrorMessage(),
+                testing::HasSubstr("Invalid or unsupported attribute type"));
+  }
+}
+
 #if !defined(ORT_MINIMAL_BUILD)
 TEST(OrtModelTest, NormalizesValidVariadicInputArgCounts) {
   const auto buffer = BuildOrtModelBuffer([](flatbuffers::FlatBufferBuilder& builder) {

@@ -570,7 +570,9 @@ Status LoadAttributeOrtFormat(const fbs::Attribute& fbs_attr,
     } break;
 
     default:
-      break;
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "Invalid or unsupported attribute type: ",
+                             static_cast<int>(type), ". Invalid ORT format model.");
   }
 
   return Status::OK();
