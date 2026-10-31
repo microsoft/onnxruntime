@@ -553,12 +553,12 @@ __device__ __forceinline__ uint4 LoadWeightStreaming(const void* ptr) {
 // The activation row is staged as FP32 in shared memory and must fit the default 48 KiB limit.
 static constexpr int kDecodeMaxK = 8192;
 // Default enablement (ORT_FP4_GEMV_DECODE_KERNEL=1) is restricted to the H200-measured decode envelope:
-// SM90, up to 20 expanded rows, N and K up to 2560, and verified table-free scale eligibility
+// SM90, up to 64 expanded rows, N and K up to 3072, and verified table-free scale eligibility
 // (|global_scale| * 448 < 3.98). Set ORT_FP4_GEMV_DECODE_KERNEL=2 to opt into the full kernel envelope
 // (SM90+, up to 80 expanded rows, K <= 8192, any even N, and the generic Fp4I2FConverter scale fallback).
-static constexpr int kDecodeDefaultMaxN = 2560;
-static constexpr int kDecodeDefaultMaxK = 2560;
-static constexpr int64_t kDecodeDefaultMaxExpandedRows = 20;
+static constexpr int kDecodeDefaultMaxN = 3072;
+static constexpr int kDecodeDefaultMaxK = 3072;
+static constexpr int64_t kDecodeDefaultMaxExpandedRows = 64;
 // Tiling of the two KLanes variants (KLanes = 8 for K > 1024, 4 otherwise): warps per CTA, K tiles per
 // prefetch batch and the min-blocks-per-SM hint that caps registers. Tuned on H200 for the Qwen3.8 FC1
 // (N=1280, K=2560, fused SwiGLU) and FC2 (N=2560, K=640) shapes at 10 expanded rows.

@@ -852,8 +852,8 @@ debug switches.
 | `ORT_ENABLE_FP4_GEMV` | on | Fused MXFP4 GEMV decode kernel. Set to `0` to force the dequant-to-dense fallback (debugging/bisecting). Active in the SM80+ fallback regime, and as the decode arm when native CUTLASS prefill is enabled. |
 | `ORT_FP4_GEMV_AUTOTUNE` | `0` | Opt-in per-shape autotune of the GEMV CtaN/Threads tiling. Enabling it synchronizes the first uncached inference for each shape. |
 | `ORT_FP4_GEMV_AUTOTUNE_LOG` | `0` | Set to `1` to log the chosen GEMV configs per shape. |
-| `ORT_FP4_GEMV_DECODE_KERNEL` | `1` | NVFP4 offline K-packed (`weights_prepacked=1`) decode GEMV mode: `1` (default) enables `MoeGemvFp4DecodeKernel` in the measured SM90 decode envelope (`expanded_num_rows <= 20`, `N, K <= 2560`, and per-projection `|global_scale| * 448 < 3.98`); `0` forces `MoeGemvFp4RawKPackedKernel`; `2` opts into the full kernel envelope (`SM90+`, `expanded_num_rows <= 80`, `K <= 8192`, including the generic scale decoder). Outputs are bit-identical across all modes. Read once per process. See [§9b.2](#9b2-fused-gemv-decode-group-16). |
-| `ORT_FP4_GEMV_FUSED_ROUTE` | `1` | Single-CTA fused softmax + top-k + expert-map decode routing kernel for offline K-packed NVFP4 on SM90+ (`num_rows <= 4`, `num_experts == 512`, `k in {1, 2, 4, 6, 8, 10}`). Bit-identical to `LaunchSoftmaxTopK` + `fusedBuildExpertMapsSortFirstToken`; set to `0` to disable. |
+| `ORT_FP4_GEMV_DECODE_KERNEL` | `1` | NVFP4 offline K-packed (`weights_prepacked=1`) decode GEMV mode: `1` (default) enables `MoeGemvFp4DecodeKernel` in the measured SM90 decode envelope (`expanded_num_rows <= 64`, `N, K <= 3072`, and per-projection `|global_scale| * 448 < 3.98`); `0` forces `MoeGemvFp4RawKPackedKernel`; `2` opts into the full kernel envelope (`SM90+`, `expanded_num_rows <= 80`, `K <= 8192`, including the generic scale decoder). Outputs are bit-identical across all modes. Read once per process. See [§9b.2](#9b2-fused-gemv-decode-group-16). |
+| `ORT_FP4_GEMV_FUSED_ROUTE` | `1` | Single-CTA fused softmax + top-k + expert-map decode routing kernel for offline K-packed NVFP4 on SM90+ (`num_rows <= 8, num_experts == 512, k in {1, 2, 4, 6, 8, 10}` or `num_rows <= 8, num_experts == 256, k in {1, 2, 4, 6, 8}`). Bit-identical to `LaunchSoftmaxTopK` + `fusedBuildExpertMapsSortFirstToken`; set to `0` to disable. |
 | `ORT_FP4_GEMV_PDL` | `1` | Programmatic dependent launch (`cudaLaunchAttributeProgrammaticStreamSerialization`) overlapping FC1 -> FC2 -> finalize on the offline K-packed NVFP4 decode path on SM90+. Set to `0` to disable. |
 | `ORT_FP4_GEMV_FC1_PDL` | `0` | Opt-in programmatic dependent launch of FC1 behind the fused routing kernel. Off by default. |
 | `ORT_FP4_GEMV_INTERLEAVED` | `0` | **Experimental, opt-in.** Routes the MXFP4 decode GEMV through the `ColumnMajorInterleaved` weight layout (`kInterleave=4`, `kStepK=32`) with dtype-conditional accumulation. fp16 gets faster decode; bf16 stays accuracy-safe. Default off keeps the shipping `ColumnMajor` path byte-for-byte unchanged. See [§9.10](#910-interleaved-gemv-layout--dtype-conditional-accumulation). |
@@ -1140,7 +1140,7 @@ By default (`ORT_FP4_GEMV_DECODE_KERNEL=1`), dispatch is restricted to the H200-
 - `SM90` (`sm == 90`) with a selected CUDA image compiled for `SM90` or newer (`attributes.ptxVersion >= 90`;
   forward-compatible builds using pre-SM90 PTX such as `CMAKE_CUDA_ARCHITECTURES=80` fall back to
   `MoeGemvFp4RawKPackedKernel`),
-- FP16 or BF16, at most 20 expanded rows, `K % 32 == 0`, `K <= 2560`, even `N <= 2560`, and 16/2/16-byte aligned
+- FP16 or BF16, at most 64 expanded rows, `K % 32 == 0`, `K <= 3072`, even `N <= 3072`, and 16/2/16-byte aligned
   weight/scale/activation pointers,
 - Per-projection table-free scale eligibility (`|global_scale| * 448 < 3.98` for every expert in the projection),
   recorded independently for FC1 and FC2 during `PrePack`. Projections whose scales exceed this bound stay on
