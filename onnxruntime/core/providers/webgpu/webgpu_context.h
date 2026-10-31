@@ -20,6 +20,7 @@
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/webgpu_provider_options.h"
 #include "core/providers/webgpu/program_manager.h"
+#include "core/providers/webgpu/timestamp_calibration.h"
 #include "core/providers/webgpu/webgpu_utils.h"
 
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
@@ -424,6 +425,9 @@ class WebGpuContext final {
     AtPasses
   };
 
+  std::optional<TimePoint> StartCpuProfileEvent() const;
+  void RecordCpuProfileEvent(const char* name, const std::optional<TimePoint>& start);
+
   static uint64_t ResolveMaxStorageBufferBindingSize(
       uint64_t max_storage_buffer_binding_size,
       uint64_t test_only_max_storage_buffer_binding_size) {
@@ -538,7 +542,9 @@ class WebGpuContext final {
   // info of queries pending appending to profiling events
   std::vector<PendingQueryInfo> pending_queries_;
 
-  uint64_t gpu_timestamp_offset_ = 0;
+  std::optional<uint64_t> gpu_timestamp_offset_;
+  std::optional<TimestampCalibration> timestamp_calibration_;
+  bool can_calibrate_timestamps_ = false;
   // ORT profiler's CPU time base, set via SetProfilingStartTime; GPU timestamps are
   // aligned to it. See SetProfilingStartTime.
   TimePoint profiling_start_time_;
@@ -548,6 +554,7 @@ class WebGpuContext final {
   bool is_profiling_ = false;
   // Shared GPU profiling events for run-level profiling.
   profiling::Events events_;
+  profiling::Events cpu_events_;
   bool preserve_device_;
   WeightLoadAccelerationMode weight_load_acceleration_mode_{
       WeightLoadAccelerationMode::Off};
