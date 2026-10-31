@@ -342,3 +342,19 @@ pipelines:
           lastModifiedDate: 2026-10-14
         spotbugs:
           lastModifiedDate: 2026-10-14
+  2353:
+    retail:
+      source:
+        policheck:
+          lastModifiedDate: 2026-10-31
+        eslint:
+          lastModifiedDate: 2026-10-31
+        psscriptanalyzer:
+          lastModifiedDate: 2026-10-31
+        armory:
+          lastModifiedDate: 2026-10-31
+      binary:
+        binskim:
+          lastModifiedDate: 2026-10-31
+        spotbugs:
+          lastModifiedDate: 2026-10-31
