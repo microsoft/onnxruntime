@@ -17,6 +17,84 @@
     }                                                        \
   } while (0)
 
+int StatefulApiCDdimConsumer(OrtSession* session, int sequential, const OrtValue* init,
+                             const OrtValue* positive, const OrtValue* negative,
+                             OrtStatefulStepResult** retained_out) {
+  const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+  const OrtStatefulApi* stateful = api->GetStatefulApi();
+  OrtStatus* status = NULL;
+  OrtSessionLoopOptions* options = NULL;
+  OrtSessionLoop* loop = NULL;
+  OrtStatefulExecution* execution = NULL;
+  OrtStatefulStepResult* first = NULL;
+  OrtStatefulStepResult* result = NULL;
+  OrtStatefulLoopConfig config = {0};
+  OrtStatefulDdimConfig ddim = {0};
+  OrtStatefulInputs inputs = {0};
+  OrtStatefulStepInfo info = {0};
+  const int64_t shape[4] = {1, 1, 1, 3};
+  const char* output_names[1] = {"latents"};
+  const OrtStatefulExitCondition exit = {ORT_STATEFUL_MAX_ITERATIONS, 2, NULL, NULL, 0};
+  const OrtStatefulNamedValue values[3] = {{"init", init}, {"positive", positive}, {"negative", negative}};
+  int code = 0;
+  config.struct_size = sizeof(config);
+  config.output_names = output_names;
+  config.num_outputs = 1;
+  config.exit_conditions = &exit;
+  config.num_exit_conditions = 1;
+  ddim.struct_size = sizeof(ddim);
+  ddim.profile = ORT_STATEFUL_DDIM_SD15_V1;
+  ddim.latent_shape = shape;
+  ddim.num_dimensions = 4;
+  ddim.num_inference_steps = 2;
+  ddim.guidance_scale = 7.5f;
+  ddim.guidance_mode = sequential ? ORT_STATEFUL_DDIM_GUIDANCE_SEQUENTIAL : ORT_STATEFUL_DDIM_GUIDANCE_BATCHED;
+  ddim.timestep_format = ORT_STATEFUL_DDIM_TIMESTEP_FLOAT32_SCALAR;
+  ddim.latent_input = "sample";
+  ddim.timestep_input = "time";
+  ddim.conditioning_input = "conditioning";
+  ddim.prediction_output = "epsilon";
+  ddim.initialization_input = "init";
+  ddim.positive_conditioning_input = "positive";
+  ddim.negative_conditioning_input = "negative";
+  ddim.latent_output = "latents";
+  CHECK(stateful->CreateSessionLoopOptions(&config, &options));
+  CHECK(stateful->SessionLoopOptionsSetDdim(options, &ddim));
+  CHECK(stateful->CreateSessionLoop(session, options, &loop));
+  CHECK(stateful->SessionLoopOptionsSetDdim(options, NULL));
+  inputs.struct_size = sizeof(inputs);
+  inputs.inputs = values;
+  inputs.num_inputs = 3;
+  CHECK(stateful->CreateLoopExecution(loop, &inputs, &execution));
+  CHECK(stateful->StatefulExecutionStep(execution, &first));
+  CHECK(stateful->StatefulStepResultGetInfo(first, sizeof(info), &info));
+  if (!info.executed || info.completed || info.iterations != 1 || info.invocations != (sequential ? 2 : 1)) {
+    fprintf(stderr, "Incorrect C11 DDIM first-step progress\n");
+    code = 60;
+    goto cleanup;
+  }
+  CHECK(stateful->StatefulExecutionRun(execution, &result));
+  CHECK(stateful->StatefulStepResultGetInfo(result, sizeof(info), &info));
+  if (!info.completed || info.iterations != 2 || info.invocations != (sequential ? 4 : 2) ||
+      info.generated_tokens != 0 || info.has_generated_token) {
+    fprintf(stderr, "Incorrect C11 DDIM completion progress\n");
+    code = 61;
+    goto cleanup;
+  }
+  CHECK(stateful->StatefulExecutionReset(execution));
+  if (retained_out != NULL) {
+    *retained_out = result;
+    result = NULL;
+  }
+cleanup:
+  stateful->ReleaseStatefulStepResult(result);
+  stateful->ReleaseStatefulStepResult(first);
+  stateful->ReleaseStatefulExecution(execution);
+  stateful->ReleaseSessionLoop(loop);
+  stateful->ReleaseSessionLoopOptions(options);
+  return code;
+}
+
 static int StatefulApiCPackageChainTestImpl(const OrtEnv* env, const ORTCHAR_T* path,
                                             const OrtSessionOptions* prefill_options,
                                             const OrtSessionOptions* decode_options,

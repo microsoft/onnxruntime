@@ -6,7 +6,9 @@
 #include <cstdint>
 #include <initializer_list>
 #include <string>
+#include <utility>
 
+#include "core/diffusion/ddim.h"
 #include "core/graph/onnx_protobuf.h"
 
 namespace onnxruntime {
@@ -132,6 +134,63 @@ inline ONNX_NAMESPACE::ModelProto MakeDenoiserModel() {
   SetTensorType(*graph.add_input(), "timestep", ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {});
   SetTensorType(*graph.add_output(), "noise_prediction", ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {1, 1, 2, 2});
   AddNode(graph, "Add", {"latent", "timestep"}, "noise_prediction");
+  return model;
+}
+
+inline DdimOptions MakeDdimOptions(int64_t steps = 3) {
+  DdimOptions options;
+  options.latent_shape = {1, 1, 1, 3};
+  options.num_inference_steps = steps;
+  options.guidance_scale = 7.5f;
+  options.timestep_format = DdimTimestepFormat::Float32Scalar;
+  options.latent_input = "sample";
+  options.timestep_input = "time";
+  options.conditioning_input = "conditioning";
+  options.prediction_output = "epsilon";
+  options.initialization_input = "init";
+  options.positive_conditioning_input = "positive";
+  options.negative_conditioning_input = "negative";
+  options.latent_output = "latents";
+  return options;
+}
+
+inline ONNX_NAMESPACE::ModelProto MakeDdimDenoiserModel(const DdimOptions& options) {
+  auto model = MakeModel("stateful_ddim_denoiser");
+  auto& graph = *model.mutable_graph();
+  const auto& shape = options.latent_shape;
+  const int64_t batch = shape[0] * (options.guidance_mode == DdimGuidanceMode::Batched ? 2 : 1);
+  const bool integer = options.timestep_format == DdimTimestepFormat::Int64Scalar ||
+                       options.timestep_format == DdimTimestepFormat::Int64Vector;
+  const bool vector = options.timestep_format == DdimTimestepFormat::Int64Vector ||
+                      options.timestep_format == DdimTimestepFormat::Float32Vector;
+  SetTensorType(*graph.add_input(), options.latent_input.c_str(), ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+                {batch, shape[1], shape[2], shape[3]});
+  SetTensorType(*graph.add_input(), options.timestep_input.c_str(),
+                integer ? ONNX_NAMESPACE::TensorProto_DataType_INT64 : ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+                vector ? std::initializer_list<int64_t>{1} : std::initializer_list<int64_t>{});
+  SetTensorType(*graph.add_input(), options.conditioning_input.c_str(), ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+                {batch, 1, 1, 1});
+  SetTensorType(*graph.add_output(), options.prediction_output.c_str(), ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+                {batch, shape[1], shape[2], shape[3]});
+  for (const auto& [name, value] : {std::pair{"latent_scale", 0.125f}, std::pair{"time_scale", 0.0001f}}) {
+    auto* initializer = graph.add_initializer();
+    initializer->set_name(name);
+    initializer->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    initializer->add_float_data(value);
+  }
+  std::string time = options.timestep_input;
+  if (integer) {
+    auto& cast = AddNode(graph, "Cast", {time.c_str()}, "float_timestep");
+    auto* attribute = cast.add_attribute();
+    attribute->set_name("to");
+    attribute->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+    attribute->set_i(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    time = "float_timestep";
+  }
+  AddNode(graph, "Mul", {options.latent_input.c_str(), "latent_scale"}, "scaled_latent");
+  AddNode(graph, "Mul", {time.c_str(), "time_scale"}, "scaled_timestep");
+  AddNode(graph, "Add", {"scaled_latent", "scaled_timestep"}, "time_prediction");
+  AddNode(graph, "Add", {"time_prediction", options.conditioning_input.c_str()}, options.prediction_output.c_str());
   return model;
 }
 

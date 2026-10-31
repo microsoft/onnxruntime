@@ -1,6 +1,7 @@
 # Stateful Session Execution: Execution Plan
 
-**Status:** Approved; M01-M11 complete and published for review; M12-M24 pending.
+**Status:** Approved; M01-M11 complete and published for review; M12 in progress;
+M13-M24 pending.
 M05: [PR #15](https://github.com/onnxruntime/ort-state/pull/15).
 M05's requested generation-folder layout follow-up is complete in the same PR.
 **Source:** [Approved specification](SPEC.md), approved 2026-10-15.
@@ -10,6 +11,9 @@ were separately approved on 2026-10-19.
 **M11 refinement:** SPEC Appendix K and the detailed M11 plan were separately
 approved 2026-10-20. CPU-first implementation is verified; GPU qualification
 resumed on 2026-10-21 after a compatible toolchain was supplied.
+**M12 refinement:** SPEC Appendix L was separately approved on 2026-10-30.
+The detailed M12 execution plan was separately approved on 2026-10-30;
+implementation is authorized and starting.
 
 ## 1. Approval and tracking
 
@@ -22,7 +26,7 @@ resumed on 2026-10-21 after a compatible toolchain was supplied.
 - [x] Review this plan with the user and obtain approval before implementation.
 - [ ] Complete the milestone stack and its validation gates.
 
-M01-M11 are complete and M12-M24 are pending. Check tasks when their
+M01-M11 are complete, M12 is in progress and M13-M24 are pending. Check tasks when their
 outcome is verified, not when code has merely been written. Record blockers, exact validation commands,
 results, evidence locations, and PR links in the affected milestone as work
 proceeds. Update this checklist and `SCRATCHPAD.md` at each meaningful checkpoint.
@@ -102,7 +106,7 @@ their functional milestone still requires the CPU/CUDA evidence below.
 
 Stack order is the row order. The dependency column records actual semantic
 prerequisites; the previous branch is also the mechanical Git base.
-M01-M11 are **complete**; M12-M24 are **pending**.
+M01-M11 are **complete**; M12 is **in progress**; M13-M24 are **pending**.
 
 | Done | ID | Intended PR / branch suffix | Semantic prerequisites |
 | --- | --- | --- | --- |
@@ -3199,23 +3203,481 @@ remain.
 
 ### M12 - DDIM scheduler and denoising execution policy
 
-**Outcome:** Stateful diffusion iteration, not LLM-specific cache emulation.
+**Status:** CPU/CUDA qualification verified; publication in progress.
+**Specification:** [Approved Appendix L](SPEC.md#appendix-l-m12-ddim-denoising-policy-approved).
+**Proposed branch/base:** `state/m12-ddim-policy` on verified M11
+`0586ee3acfc1456d1d48bdd060e4789eb0b99c98` /
+[#25](https://github.com/onnxruntime/ort-state/pull/25).
+**Delivery:** One intended, independently documented/tested stacked PR; no merge.
+**Outcome:** Stateful deterministic DDIM iteration through the existing native
+loop/chain and public C/C++/package surfaces, not LLM-specific cache emulation.
+The full Stable Diffusion package/image demonstration remains M15.
 
-- [ ] Implement one documented SD 1.5 DDIM convention: timestep schedule, noise/
-  latent update, model prediction interpretation, and guidance combination.
-- [ ] Bind timesteps/latents/model outputs through SessionLoop; expose supported
-  scheduler configuration programmatically and through native package policies.
-- [ ] Make seeded initialization/reset reproducible and validate configuration.
-  Document any CPU coefficient/latent work and required CUDA transfers.
+#### Approval and current prerequisites
 
-**CPU test plan:** Independent analytical/reference DDIM steps and multi-step
-trajectory; guidance scale boundaries; timestep/count/shape validation; seed
-replay after reset; retained latent ownership; scheduler error/cancellation.
-**CUDA test plan:** Tiny CUDA denoiser loop matches reference within specified
-tolerances; verify device placement, transfers, step count, and resource lifetime.
-A device-native scheduler is not required, but host work must be explicit.
-**Completion gate:** New scheduler/policy production lines meet coverage and
-shared rules; coefficients/trajectory references and tolerances are documented.
+- [x] Interview the user about reference, guidance, initialization, CPU/CUDA scope,
+  precision, batch, Step/reset/cancellation, exits and per-execution controls.
+- [x] Explicitly confirm no additional requirements before specification drafting.
+- [x] Draft/review Appendix L and obtain specification approval (2026-10-30).
+- [x] Prepare this detailed plan from the approved specification.
+- [x] Review the detailed plan and obtain separate implementation approval.
+- [ ] Implement, qualify and publish only after that approval.
+
+Read-only inspection on 2026-10-30 confirms clean M11 baseline/remote head,
+CUDA13.0.48, the matching cuDNN installation, profiler/sanitizer tools and eight
+idle A100 GPUs. Existing CPU/plugin builds use Clang/LLVM instrumentation;
+legacy CUDA uses GCC. These are prerequisites, **not M12 build/test results**.
+Recheck availability and shared-machine workloads when implementation starts.
+
+Root filesystem free space is about21GB; `/home` has about122GB free. Preserve
+matching M11 measured binaries/libraries/profiles/device objects before reusing
+their build trees. Prefer a bounded artifact archive plus incremental builds
+over copying complete build/dependency trees. Leave old13.1 trees untouched.
+Do not install GPU tooling, alter global driver settings or delete other work.
+
+#### Tasks, dependencies, outcomes and tests
+
+| Task | Actual prerequisites | Intended outcome |
+| --- | --- | --- |
+| D0 | Plan approval | Verified branch/base, preserved M11 proof, usable CPU/CUDA/reference tools and fresh baseline results. |
+| D1 | D0 | Independent numerical fixtures and reusable CPU DDIM/guidance/initialization core. |
+| D2 | D1 | Native loop policy, complete-update Step/reset semantics, logical ports and accurate invocation counts. |
+| D3 | D2 | Chain validation/wiring/state/output publication and downstream latent handoff. |
+| D4 | D2, D3 | Append-only public configuration and equivalent C/C++ execution. |
+| D5 | D3, D4 | Strict declarative package policy using the same native implementation/owned Sessions. |
+| D6 | D4, D5 | Complete CPU native/public/package/SDK/error/lifetime qualification. |
+| D7 | D0, D6 | Real CUDA denoiser parity, both guidance paths, stream/transfer/lifetime evidence. |
+| D8 | D6, D7 | Measured100% new executable production lines and compatibility regression closure. |
+| D9 | D8 | Current documentation/evidence and one ready stacked PR on M11. |
+
+- [x] **D0 - Establish and preserve the baseline.** Create the proposed branch
+  from the verified M11 head after approval; inspect applicable instructions and
+  current tools/configuration. Archive only required matching M11 host binaries,
+  shared libraries, profiles, device proof/object and hashes before rebuilding;
+  retain source identity via the commit. Reuse valid build caches/dependency
+  sources, not obsolete13.1 artifacts. Stage required testdata in fresh output
+  trees if needed.
+  **Tests:** Record fresh CPU native/public, plugin native/unfiltered-public and
+  legacy native/selected-public baseline counts, nonzero execution and skips.
+  Verify loader paths, actual CUDA ordinal/stream selection and tool versions.
+  Establish the pinned numerical-reference command in the isolated environment;
+  restore missing packages only after a genuine missing-dependency failure.
+
+- [x] **D1 - Implement and independently verify the numerical core.** Add
+  internal `core/diffusion/` options/state and CPU math using existing ORT tensor,
+  allocation, status and checked-arithmetic patterns. Implement the fixed
+  `sd15_ddim_v1` profile: scaled-linear coefficients, leading-offset1 schedule,
+  epsilon/eta0 update, private MT19937_64/Box-Muller initialization and both
+  guidance input/combination helpers. Keep reusable math separate from Session
+  orchestration; do not introduce a general policy/plugin framework.
+  **Tests:** Independent analytical one-step cases and pinned Diffusers
+  v0.35.1 trajectories from supplied latents; coefficient/intermediate checkpoints;
+  schedule1/2/50/999 and invalid0/negative/1000; g=0/1/>1; batch>1/nontrivial
+  dimensions; seed0/largeuint64, odd-size normal generation, independent RNG
+  contexts and exact same-build replay. Cover NaN/Inf, enum/rank/dimension errors
+  and arithmetic overflow without attempting real OOM allocations.
+
+- [x] **D2 - Integrate native SessionLoop execution.** Add optional DDIM options
+  and per-execution state. Validate explicitly named model ports, four timestep
+  formats, managed inputs and logical initialization/conditioning feeds.
+  Accept only CPUuint64scalar seed or matching CPUFP32NCHW initialization;
+  normalize neither invalid dtypes nor GPU logical feeds silently.
+  Support exactly the explicit matching MaxIterations exit and reject conflicting
+  token/cache/feedback/finite-input features. Keep the existing generic/token
+  paths unchanged.
+  **Tests:** One Step performs one complete update and1/2 actual calls, preserving
+  x across sequential guidance calls. Publish only validated CPU latent snapshots;
+  distinguish them from raw prediction outputs. Cover pre-Step initialization,
+  all timestep encodings, both guidance modes, state inspection, completion-only
+  Step, reset, boundary cancellation and controlled failures in either call.
+  Prior results must remain unchanged after advancement/failure/Reset/release.
+
+- [x] **D3 - Wire every chain surface.** Extend loop/chain port validation only
+  where DDIM needs typed logical inputs and policy-produced latent outputs.
+  Handle external inputs, earlier component outputs and retained-state sources,
+  explicit state writers, final outputs and downstream consumers. Do not weaken
+  ordinary model metadata checks or mutate the Session graph to fake a port.
+  Replace the existing chain `+1 per executed Step` assumption with actual
+  invocation deltas, preserving ordinary/token bootstrap counting.
+  **Tests:** Tiny ordinary-conditioning producer -> DDIM loop -> ordinary latent
+  consumer, both direct-output and retained-state handoff; invalid static and
+  dynamic types/shapes, missing/colliding names, source order and independent
+  executions. Assert k/2k DDIM invocation counts and correct whole-chain totals.
+  Re-run M11 sample-only/zero-budget and ordinary mixed-component regressions.
+
+- [x] **D4 - Add public C/C++ configuration and tests.** Add the size-tagged DDIM
+  record/enums and append the setter to `OrtStatefulApi` plus its initializer.
+  Add C++ Set/Clear wrappers. Copy names/configuration transactionally, clear
+  DDIM on complete base-config replacement, and leave existing definitions
+  unchanged. Reuse execution inputs/results; fix the standalone public
+  `invocations = iterations` assumption to report actual model calls.
+  **Tests:** Genuine C11 and C++17 consumers, public native-loop/chain parity,
+  Set/Clear/replacement/rollback, NULL/size/enum/range/name validation, old-prefix
+  ABI clients, unchanged failed out-parameters and no-exceptions-client success.
+  Confirm no ORT_API_VERSION bump or old public layout/array-stride change.
+
+- [x] **D5 - Load DDIM from Model Packages.** Parse strict `loop.ddim` fields
+  into the same typed native options; retain explicit chain choice and ordinary
+  package SessionOptions/variant/path precedence. Update factory and chain
+  output selection so they select the logical latent output instead of
+  blindly exposing all raw ONNX outputs. No second scheduler implementation.
+  **Tests:** Equivalent programmatic/package trajectories, both guidance modes,
+  seed/supplied initialization, logical feeds from external/earlier/state
+  sources, per-step SessionOptions, repeated components and owned Session
+  lifetime. Reject unknown profiles/fields, incompatible models, conflicting
+  exits/policies and invalid references. Exercise save/export/reopen with actual
+  tiny local ONNX files, opaque other namespaces and legacy package behavior.
+
+- [x] **D6 - Close CPU/API/lifetime qualification.** Complete all native/public
+  reference matrices and genuine standalone SDK clients. Use controlled local
+  allocators/failure fixtures where necessary, not production-only test hooks,
+  huge allocation attempts or global allocator mutation.
+  **Tests:** CPU loop/chain/package parity, S=1/2 and50-step reference trajectories,
+  cheap999-step core trajectory, both guidance branches, g0/1/>1, N1/N>1,
+  four timestep formats, reset/cancel/failure and retained outputs after owner
+  teardown. Verify existing minimal/unsupported factory behavior using actual
+  production-source probes where applicable; do not label a source probe a
+  complete minimal build. Run independent public C++17/no-exceptions and frozen
+  M11-header clients, plus standalone Model Package shared/static tests.
+
+- [x] **D7 - Qualify real CUDA denoising and transfers.** Use tiny deterministic
+  FP32 denoisers with observable latent/timestep/conditioning dependence.
+  Prove actual CUDA assignment/dispatch and fail the targeted CUDA case rather
+  than accepting CPU fallback. Keep all scheduler/guidance/result work on CPU.
+  Exercise plugin CUDA and applicable legacy CUDA Session behavior without
+  advertising new cache/sampler hooks.
+  **Tests:** Native/programmatic/public/package parity for batched and sequential
+  guidance, N>1, seeded/supplied initialization, reset and nondefault Session
+  stream. Check retained CPU latents after Session/package/registration release.
+  Run focused memcheck/leak checks and applicable racecheck/synccheck.
+  Dedicated trace cases must avoid caller diagnostic GPU reads and classify
+  setup/weights separately from Run feeds/predictions.
+
+- [x] **D8 - Close coverage, formatting and regressions.** Instrument all new
+  production core/native/chain/parser/API/inline/glue paths. Map independently
+  verified CPU/plugin/minimal evidence to the M12 diff against M11; inspect hash
+  mismatches rather than merge incompatible profile layouts. Explicitly report
+  executable covered/total counts and any uncovered locations.
+  **Tests:** Reach100% without line exclusions, stale objects or rounded partial
+  results. Report cumulative stack new-line coverage with source-safe mappings;
+  re-execute modified earlier code. Final CPU/plugin native and unfiltered public,
+  selected legacy compatibility, SDK/standalone tests and pinned style/whitespace
+  checks must pass. No device-line gate is waived: no new device code is planned;
+  a device implementation change requires revised scope/approval and coverage.
+
+- [ ] **D9 - Document and publish.** Update public Doxygen and the ORT Model
+  Package integration README with profile/RNG/port names, logical initialization
+  union, both guidance conventions, explicit matching exit, progress/output/state
+  semantics, CPU-only policy work, CUDA transfer evidence and limitations.
+  Update SPEC/TASKS/SCRATCHPAD status and exact commands/results.
+  **Tests:** Review documentation examples against executed tiny fixtures,
+  inspect/preserve the repository PR template and verify the one ready/open PR
+  uses the M11 base and synchronized tested head. No merge or M13 work.
+
+#### Source scope and implementation constraints
+
+Expected cohesive surfaces are new internal diffusion header/source and native
+tests; existing SessionLoop/SessionChain, stateful C implementation, three public
+C/C++ headers, ORT chain parser/factory, relevant CPU/CUDA/public-C tests, CMake
+source/test registration and related documentation. This crosses the preferred
+ten-file target because the same behavior must be wired through every existing
+surface; do not hide missing integration to shrink the diff or add cosmetic work.
+One intended PR remains the proposal for this review; request a plan amendment
+before any scope/PR split or GPU-native implementation.
+
+Known coupled assumptions requiring explicit changes/tests:
+
+1. SessionLoop currently accepts only graph-input/output names.
+2. SessionChain rebuilds loop output selection from every model graph output;
+   the package factory does the same.
+3. Chain input/state/source compatibility uses model NodeArgs, not logical policy
+   feeds/results. Preserve genuine metadata validation with small policy-aware
+   helpers and stable ownership, not unchecked casts or broad acceptance.
+4. Chain invocation accounting adds1 per executed Step; standalone C API reports
+   iterations as invocations. Sequential guidance requires real counts at both
+   surfaces without altering M11 sample-only events.
+5. Session I/O CPU staging counters are payload observations, not DMA evidence.
+
+#### Numerical and transfer acceptance
+
+- Pinned reference:
+  Diffusersv0.35.1/`0f252be0ed42006c125ef4429156cb13ae6c1d60`, with the exact
+  Appendix L profile, not the public PNDM scheduler implementation.
+  Generate/check tiny golden values without downloading model weights.
+- Per-element check is `abs(actual-expected) <= atol + rtol*abs(expected)`.
+  Coefficients/single steps: atol=rtol=1e-5. Trajectories/CPU-CUDA parity:
+  atol=rtol=1e-4. Use supplied common initial latents when comparing schedulers;
+  verify the ORT RNG separately. No automatic tolerance widening.
+- Final trace fixture proposal: S=3, `[N,C,H,W]=[2,2,3,5]`, L=60 FP32 elements.
+  Batched guidance reads back one2L prediction per update:3 copies of480 bytes.
+  Sequential guidance reads back twoL predictions per update:6 copies of240 bytes.
+  Required prediction payload is therefore1440 bytes in either mode.
+  Verify these counts/bytes from actual dedicated traces; any additional DtoH
+  must be identified and explained, not silently counted as expected prediction.
+- Report HtoD latents, conditioning, timestep and model/weight copies separately.
+  Include setup copies honestly if the profiler capture contains setup. No
+  device-only/compact-readback/performance claim is appropriate for this policy.
+
+#### Proposed commands (not M12 validation results)
+
+Resolve existing valid build/cache/reference paths at D0; the following is the
+intended command structure. No build/test/reference installation has run for M12.
+
+```bash
+source .venv/bin/activate
+ROOT="$(git rev-parse --show-toplevel)"
+CPU_BUILD="$ROOT/build/state-cpu/RelWithDebInfo"
+GPU_BUILD="$ROOT/build/state-cuda-plugin-m11-13.0/RelWithDebInfo"
+LEGACY_BUILD="$ROOT/build/state-cuda-legacy-m11-13.0/RelWithDebInfo"
+
+# After preserving M11 artifacts and registering the new sources:
+cmake -S "$ROOT/cmake" -B "$CPU_BUILD"
+cmake --build "$CPU_BUILD" \
+  --target onnxruntime_session_loop_test onnxruntime_autoep_test --parallel 8
+(
+  cd "$CPU_BUILD"
+  mkdir -p coverage/m12/focused
+  export LLVM_PROFILE_FILE="$PWD/coverage/m12/focused/%m-%p.profraw"
+  ./onnxruntime_session_loop_test --gtest_filter='*Ddim*'
+  ./onnxruntime_autoep_test --gtest_filter='*Ddim*'
+)
+
+# Reconfigure valid CUDA caches after new source/CMake changes:
+cmake --compile-no-warning-as-error -S "$ROOT/cmake" -B "$GPU_BUILD"
+cmake --build "$GPU_BUILD" \
+  --target onnxruntime_session_loop_test onnxruntime_autoep_test --parallel 8
+(
+  cd "$GPU_BUILD"
+  export LD_LIBRARY_PATH="$PWD:/home/tianlei/cudnn_9.23_cuda13/lib:/home/tianlei/cuda13.0/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+  mkdir -p coverage/m12/focused
+  export LLVM_PROFILE_FILE="$PWD/coverage/m12/focused/%m-%p.profraw"
+  ./onnxruntime_session_loop_test --gtest_filter='*Ddim*'
+  ./onnxruntime_autoep_test --gtest_filter='*Ddim*'
+  /usr/local/cuda/bin/compute-sanitizer --tool memcheck --leak-check full \
+    --error-exitcode 99 ./onnxruntime_autoep_test --gtest_filter='*Ddim*'
+  /usr/local/cuda/bin/compute-sanitizer --tool memcheck --leak-check full \
+    --error-exitcode 99 ./onnxruntime_session_loop_test --gtest_filter='*Ddim*'
+)
+```
+
+Final CPU and plugin commands run both executables **unfiltered**, with fresh
+`coverage/m12/final` profiles. Build the legacy targets with their valid cache,
+then run native unfiltered and public with the existing selector extended to
+include the new DDIM suites:
+
+```bash
+./onnxruntime_autoep_test \
+  --gtest_filter='AutoEpSelection.CudaEP:*Stateful*:*Ddim*:ModelPackageApiTest.*:*ModelPackageChain*'
+```
+
+All commands run from the corresponding output directory, with matching loader
+paths. Record expected/new nonzero counts and no unintended skips; adjust planned
+suite names to actual registrations before claiming a selector passed.
+Standalone package tests use their existing shared/static build directories and
+`ctest --test-dir "$PACKAGE_BUILD" --output-on-failure`.
+
+Dedicated profiling uses separate proposed
+`CudaDdimPackageTest.TransferBatched` and `.TransferSequential` cases:
+
+```bash
+/usr/local/cuda/bin/nsys profile --trace=cuda --sample=none --cpuctxsw=none \
+  --force-overwrite=true -o "$EVIDENCE/m12-ddim-batched" \
+  ./onnxruntime_autoep_test --gtest_filter='CudaDdimPackageTest.TransferBatched'
+/usr/local/cuda/bin/compute-sanitizer --tool racecheck --error-exitcode 99 \
+  ./onnxruntime_autoep_test --gtest_filter='CudaDdimPackageTest.Transfer*'
+/usr/local/cuda/bin/compute-sanitizer --tool synccheck --error-exitcode 99 \
+  ./onnxruntime_autoep_test --gtest_filter='CudaDdimPackageTest.Transfer*'
+```
+
+Repeat the Nsight command for sequential guidance with a distinct output;
+export/inspect actual CUPTI copy tables. These are intended selectors, not
+currently existing tests. No Nsight Compute source proof is substituted for host
+coverage, and no new CUDA source is expected.
+
+Merge profiles only with their matching objects per build configuration. Use
+`llvm-cov` on native test, public test and shared-library mappings, plus genuine
+SDK/minimal object mappings where new lines require them. Save per-file
+covered/total counts, source/object/profile hashes and mismatch diagnostics in
+session evidence. Keep reports/scripts rather than committing generated ONNX
+fixtures, build products or real model weights.
+
+#### Completion gates
+
+- [x] Specification and detailed execution plan are separately approved.
+- [x] Fixed-profile scheduler/guidance/RNG match independent CPU references.
+- [x] Native loop/chain and public C/C++ semantics/counts/lifetimes pass.
+- [x] Programmatic/package parity, explicit logical feeds and downstream latent
+  handoff pass with actual tiny local models.
+- [x] Genuine C11/C++17/no-exceptions/frozen-prefix and applicable minimal/
+  standalone compatibility checks pass.
+- [x] Real CUDA denoiser tests prove both guidance conventions, nondefault-stream
+  behavior, expected prediction readbacks and zero applicable sanitizer errors.
+- [x] Every new executable production line reaches measured100%, with modified
+  earlier surfaces re-exercised and cumulative coverage reported safely.
+- [x] Final CPU/plugin/selected-legacy regressions and style checks pass.
+- [ ] Documentation/evidence are current and one correct-base stacked PR is
+  ready for human review.
+
+Until every gate passes, M12 is not complete. Specification approval authorizes
+this plan preparation only; wait for its separate review/approval before coding,
+building or publishing M12. No M13 work or automatic merge is authorized.
+
+**Implementation authorization:** The user approved this detailed plan on
+2026-10-30. Branch `state/m12-ddim-policy` was created on the verified M11 head.
+Fresh CPU69/148, CUDA-plugin132/204 and legacy120/69 baseline suites pass with
+no reported skips. Matching M11 CPU/plugin binaries/libraries/profiles/device
+object were archived with hashes before rebuilding. Genuine reference imports
+failed first for missing Diffusers, then Torch; the existing isolated environment
+now has Diffusers0.35.1 and CPU-only Torch2.8.0+cpu. The actual pinned reference
+generated coefficient/1/2/50/999-step trajectory values without model downloads.
+At that initial checkpoint only the numerical core was being built/tested.
+
+**CPU qualification checkpoint (2026-10-31):** Native85/85 and unfiltered public
+153/153 pass, with no reported skips. DDIM-focused selectors execute16 native
+tests and5 public tests; matrices inside those cases cover both guidance modes,
+all four model timestep formats, seed/supplied initialization, independent
+concurrent executions, 1/2/50-step native trajectories and999-step core reference
+trajectory, explicit invariant forwarding, typed seed sources through ordinary
+producer output/retained state, downstream latent handoff, cancellation at the
+complete-update boundary, first/second invocation failures and fail-fast
+nonfinite predictions.
+
+Independent public-only C++17 and no-exceptions SDK consumers pass both guidance
+modes (4 executions), including programmatic/package parity, real invocation
+counts, Reset and retained CPU values after owner teardown. Genuine frozen
+M11-commit C11/C++17 header clients pass against the new library. Standalone
+Model Package shared/static tests pass5/5 each. A separately compiled actual
+`ORT_MINIMAL_BUILD` package-factory source probe returns NOT_IMPLEMENTED and
+preserves its output; this is not claimed as a complete minimal build. M11's
+measured minimal object/profiles remain untouched.
+
+Final matching-source CPU unit evidence measures **537/537 new executable
+production lines** against M11, including math, loop/chain, parser/factory, C API
+and C++ inline wrappers. The initial13 uncovered locations were closed with
+actual immutable-options, invariant/managed-input and typed producer/state
+cases, not exclusions. The final CPU map audit classifies366 dormant hash-zero
+maps and no nonzero function-hash mismatch. GPU/regression closure remains
+required before completion/publication.
+
+CUDA-plugin and legacy13.0 builds are in progress using their valid M11 caches
+and matching libraries. No GPU DDIM result, sanitizer success, transfer count or
+M12 completion is claimed yet. Dedicated GPU cases are authored for12
+guidance/scale/initialization combinations, nondefault stream, retained CPU
+values after library unregistration, device-logical-feed rejection and both
+prediction-readback traces. No new CUDA kernel or device source was authored.
+
+The first plugin regeneration omitted M11's command-line
+`--compile-no-warning-as-error` option (it is not preserved merely by reusing the
+cache), enabling `-Werror`/NVCC all-warnings-as-errors. The rebuild then stopped on
+pre-existing braced-scalar-initializer warnings in unchanged GroupQueryAttention
+registration. Restored the exact M11 warning policy and restarted the build;
+no unrelated source or dispatch flags were changed. This setup failure is not a
+GPU test failure or a passed qualification result.
+
+The legacy regeneration had the same omitted M11 command-line warning policy.
+GCC additionally identified two dangling-else warnings around new GoogleTest
+macros; both new test sites now use explicit braces. Left the pre-existing M11
+test warning untouched and restored legacy's exact baseline policy as well.
+Both correct-policy CUDA builds remain active.
+
+One counter-ordering correction computes each component's invocation delta
+before adding it to the checked chain total, avoiding an unnecessary
+intermediate overflow at very large cumulative counts. Fresh CPU final-2
+native85/85/public153/153 and **537/537** new lines pass afterwards; the matching
+map audit again finds366 dormant hash-zero maps and no nonzero mismatch.
+No GPU result or ready PR is claimed at this checkpoint.
+
+#### Final CPU/CUDA qualification (2026-10-31)
+
+All implementation/qualification gates pass; only D9 publication remains.
+Final source-safe results:
+
+| Configuration | Native | Public/AutoEP |
+| --- | --- | --- |
+| CPU, Clang18 | 85/85 | 153/153 unfiltered |
+| CUDA plugin, Clang18 host/NVCC13.0/GCC13 | 157/157 | 216/216 unfiltered |
+| Legacy CUDA, GCC13 | 145/145 | 76/76 selected |
+
+No reported skips. Final focused plugin DDIM suites execute25 native and12
+public tests; legacy focused DDIM suites execute25 native and7 public tests.
+The plugin matrix contains12 guidance/scale/initialization configurations with
+nontrivial batch/dimensions and a nondefault stream. Deliberately different CPU
+variant weights prevent wrong variant selection from satisfying the reference.
+Native/public provider-assignment checks and disabled CPU fallback prove actual
+CUDA denoiser work, not value-only parity.
+
+- New production executable host lines: **537/537 (100%)**.
+- Current-tree cumulative mapped host lines against stack base
+  `1988019b6e23ac4def4628cddd603c1bfb504fe8`: **4752/4752 (100%)**.
+  CPU `coverage/m12/final-3`, plugin `coverage/m12/final`, independently built
+  standalone package tests and actual minimal-source probe are mapped separately;
+  no incompatible profile merge, line exclusion or percentage rounding.
+- Profile audits: CPU366/plugin1008/standalone9/minimal17 dormant hash-zero maps,
+  **no nonzero function-hash mismatch**. Declaration/table-initializer-only
+  changes have no executable-line denominator.
+- No CUDA source/kernel was authored. Unchanged greedy source SHA remains
+  `92837bc204a43c0e2ca0f7da8b5f0a037d5a6200d572a235412d9530e587cbcd`;
+  parent device evidence is retained and current device conformance re-executed.
+- Seed0 and full-uint64-maximum initialization additionally match independently
+  generated MT19937_64/Box-Muller goldens, rather than only testing replay.
+- Actual Nsight/CUPTI copies for S=3, `[2,2,3,5]`:
+
+  | Guidance | All prediction DtoH | All HtoD, including setup |
+  | --- | --- | --- |
+  | Batched | 3x480 =1440 bytes | 11 copies,1508 bytes |
+  | Sequential | 6x240 =1440 bytes | 20 copies,1520 bytes |
+
+  No additional DtoH in either dedicated trace. HtoD is classified as two
+  four-byte weight setup copies, latent/conditioning feeds and one four-byte
+  timestep per invocation. Both traces include setup. Full prediction readback
+  is intentional CPU policy work; no device-only/compact-readback/performance
+  claim is made.
+- Compute Sanitizer memcheck: plugin all25 native/all12 public DDIM tests,
+  legacy GPU9 native/2 public tests and standalone GPU SDK all report
+  **zero errors and zero leaked bytes**. Racecheck and synccheck each execute
+  both dedicated guidance cases: zero hazards/errors/warnings.
+- Independent public-only C++17 and no-exceptions GPU clients pass both guidance
+  modes (4 executions), including library unregistration and retained CPU values.
+  CPU SDK, genuine C11, frozen M11 C/C++ clients and standalone shared/static/
+  instrumented tests remain verified. The inherited narrow M08 sanitizer timing
+  limitation is unchanged; the normal unfiltered native suite includes/passes
+  that test. No new test or memory error was excluded.
+
+Exact final functional and sanitizer commands (from each output directory with
+matching CUDA/cuDNN loader paths):
+
+```bash
+# CPU: passed85/153; final3 profiles match current test bodies and runtime:
+LLVM_PROFILE_FILE="$PWD/coverage/m12/final-3/%m-%p.profraw" ./onnxruntime_session_loop_test
+LLVM_PROFILE_FILE="$PWD/coverage/m12/final-3/%m-%p.profraw" ./onnxruntime_autoep_test
+# CUDA plugin: passed157/216, both unfiltered:
+LLVM_PROFILE_FILE="$PWD/coverage/m12/final/%m-%p.profraw" ./onnxruntime_session_loop_test
+LLVM_PROFILE_FILE="$PWD/coverage/m12/final/%m-%p.profraw" ./onnxruntime_autoep_test
+# Legacy: passed145/76; the public selector is intentionally not unfiltered:
+./onnxruntime_session_loop_test
+./onnxruntime_autoep_test \
+  --gtest_filter='AutoEpSelection.CudaEP:*Stateful*:*Ddim*:ModelPackageApiTest.*:*ModelPackageChain*'
+# Plugin memcheck: passed25/12 respectively, zero errors/leaks:
+compute-sanitizer --tool memcheck --leak-check full --error-exitcode 99 \
+  ./onnxruntime_session_loop_test --gtest_filter='*Ddim*'
+compute-sanitizer --tool memcheck --leak-check full --error-exitcode 99 \
+  ./onnxruntime_autoep_test --gtest_filter='*Ddim*'
+# Plugin racecheck/synccheck: each passed2/2, zero hazards/errors:
+compute-sanitizer --tool racecheck --error-exitcode 99 \
+  ./onnxruntime_autoep_test --gtest_filter='CudaDdimPackageTest.Transfer*'
+compute-sanitizer --tool synccheck --error-exitcode 99 \
+  ./onnxruntime_autoep_test --gtest_filter='CudaDdimPackageTest.Transfer*'
+```
+
+Tool full paths are `/usr/local/cuda/bin/{compute-sanitizer,nsys}`. Matching loader
+paths, exact SDK/frozen/minimal/standalone commands, source/object/profile hashes,
+trace databases/reports, numerical/RNG references and independent verification
+scripts are retained in session files under `m12-*`. The actual CUDA plugin is
+`libonnxruntime_providers_cuda.so`. Pinned lintrunner, strict C11 syntax,
+clang-format and whitespace checks pass. No dependency/toolchain installation
+occurred beyond the genuinely missing pinned CPU reference packages.
+
+One ready stacked PR on M11 remains the publication gate. No merge or M13 work.
 
 ### M13 - Python bindings
 

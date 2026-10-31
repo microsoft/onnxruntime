@@ -96,6 +96,7 @@ V1_PREFIX(OrtStatefulProviderCapabilities, device_id)
 V1_PREFIX(OrtStatefulDispatchInfo, failures)
 V1_PREFIX(OrtStatefulStagingInfo, cpu_snapshot_copy_bytes)
 V1_PREFIX(OrtStatefulGenerationBootstrapConfig, logits_position)
+V1_PREFIX(OrtStatefulDdimConfig, latent_output)
 #undef V1_PREFIX
 
 template <typename T>
@@ -388,7 +389,7 @@ Status Advance(OrtStatefulExecution& execution, bool run, std::unique_ptr<OrtSta
     ORT_RETURN_IF_ERROR(run ? (*loop)->Run(value) : (*loop)->Step(value));
     result->info.kind = ORT_STATEFUL_LOOP_RESULT;
     LoopInfo(value, *result);
-    result->info.invocations = value.iterations;
+    result->info.invocations = value.invocations;
     for (size_t i = 0; i < value.outputs.size(); ++i) {
       result->collections[0].owned.emplace_back(execution.loop_output_names[i], value.outputs[i]);
       result->collections[1].owned.emplace_back(execution.loop_output_names[i], value.outputs[i]);
@@ -448,6 +449,43 @@ DEFINE_OPTIONS(SessionLoopOptions, OrtStatefulLoopConfig, SessionLoopOptions, Lo
 DEFINE_OPTIONS(SessionChainOptions, OrtStatefulChainConfig, SessionChainOptions, ChainConfig, {})
 DEFINE_OPTIONS(KVCacheOptions, OrtStatefulKVCacheConfig, InlinedVector<KVCacheSpec>,
                CacheConfig, options->provider = {})
+
+ORT_API_STATUS_IMPL(SessionLoopOptionsSetDdim, OrtSessionLoopOptions* options,
+                    const OrtStatefulDdimConfig* config) {
+  API_IMPL_BEGIN
+  CHECK_POINTERS(options);
+  if (!config) {
+    options->value->ddim.reset();
+    return nullptr;
+  }
+  ORT_API_RETURN_IF_STATUS_NOT_OK(Sized(config));
+  ORT_API_RETURN_IF_STATUS_NOT_OK(Enum(config->profile, 0));
+  ORT_API_RETURN_IF_STATUS_NOT_OK(Enum(config->guidance_mode, 1));
+  ORT_API_RETURN_IF_STATUS_NOT_OK(Enum(config->timestep_format, 3));
+  ORT_API_RETURN_IF(config->num_dimensions != 4, ORT_INVALID_ARGUMENT, "DDIM requires four latent dimensions");
+  CHECK_POINTERS(config->latent_shape);
+  DdimOptions value;
+  std::copy_n(config->latent_shape, 4, value.latent_shape.begin());
+  value.num_inference_steps = config->num_inference_steps;
+  value.guidance_scale = config->guidance_scale;
+  value.guidance_mode = static_cast<DdimGuidanceMode>(config->guidance_mode);
+  value.timestep_format = static_cast<DdimTimestepFormat>(config->timestep_format);
+  for (const auto& [source, target] : {
+           std::pair{config->latent_input, &value.latent_input},
+           std::pair{config->timestep_input, &value.timestep_input},
+           std::pair{config->conditioning_input, &value.conditioning_input},
+           std::pair{config->prediction_output, &value.prediction_output},
+           std::pair{config->initialization_input, &value.initialization_input},
+           std::pair{config->positive_conditioning_input, &value.positive_conditioning_input},
+           std::pair{config->negative_conditioning_input, &value.negative_conditioning_input},
+           std::pair{config->latent_output, &value.latent_output}}) {
+    ORT_API_RETURN_IF_STATUS_NOT_OK(Name(source, *target));
+  }
+  ORT_API_RETURN_IF_STATUS_NOT_OK(DdimScheduler::Validate(value));
+  options->value->ddim = std::move(value);
+  return nullptr;
+  API_IMPL_END
+}
 
 ORT_API_STATUS_IMPL(CreateSessionLoop,
                     OrtSession* session,
@@ -947,6 +985,7 @@ static constexpr OrtStatefulApi stateful_api = {
     &KVCacheManagerRequiresReset,
     &StatefulExecutionGetStagingInfo,
     &SessionChainOptionsSetGenerationBootstrap,
+    &SessionLoopOptionsSetDdim,
 };
 
 #undef CHECK_POINTERS

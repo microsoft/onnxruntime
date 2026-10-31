@@ -2997,6 +2997,10 @@ struct SessionLoopOptions : detail::Base<OrtSessionLoopOptions> {
   explicit SessionLoopOptions(std::nullptr_t) {}
   explicit SessionLoopOptions(const OrtStatefulLoopConfig& config);
   SessionLoopOptions& SetConfig(const OrtStatefulLoopConfig& config);
+  /// Attach a copied DDIM policy; SetConfig clears it. \since Version 1.32.
+  SessionLoopOptions& SetDdim(const OrtStatefulDdimConfig& config);
+  /// Clear the optional DDIM policy without changing other options. \since Version 1.32.
+  SessionLoopOptions& ClearDdim();
   /// Copied policy; SetConfig resets it.
   SessionLoopOptions& SetProvider(OrtStatefulProviderFeature feature,
                                   const OrtStatefulProviderSelection& selection);

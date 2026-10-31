@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -21,6 +22,7 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/util/include/stateful_execution_test_utils.h"
+#include "test/util/include/ddim_test_utils.h"
 #include "test/util/include/temp_dir.h"
 
 extern std::unique_ptr<Ort::Env> ort_env;
@@ -1078,6 +1080,198 @@ TEST_F(CudaBootstrapPackageTest, C11AndGpuValuesSurviveOwnedSessionsAndLibraryUn
   EXPECT_EQ(ReadBytes(logits), bytes);
   logits = Ort::StatefulValue(nullptr);
 }
+
+class CudaDdimPackageTest : public CudaCacheApiIntegrationTest {
+ protected:
+  class Inputs {
+   public:
+    Inputs(const DdimOptions& policy, bool seeded = false) {
+      Ort::AllocatorWithDefaultOptions allocator;
+      initial = seeded ? Ort::Value::CreateTensor<uint64_t>(allocator, nullptr, 0)
+                       : Ort::Value::CreateTensor<float>(allocator, policy.latent_shape.data(), 4);
+      if (seeded) {
+        *initial.GetTensorMutableData<uint64_t>() = 0;
+      } else {
+        const auto count = initial.GetTensorTypeAndShapeInfo().GetElementCount();
+        const std::array<float, 3> samples{0.125f, -0.25f, 1.f};
+        for (size_t i = 0; i < count; ++i) initial.GetTensorMutableData<float>()[i] = samples[i % samples.size()];
+      }
+      const std::array<int64_t, 4> shape{policy.latent_shape[0], 1, 1, 1};
+      positive = Ort::Value::CreateTensor<float>(allocator, shape.data(), 4);
+      negative = Ort::Value::CreateTensor<float>(allocator, shape.data(), 4);
+      std::fill_n(positive.GetTensorMutableData<float>(), shape[0], 0.25f);
+      std::fill_n(negative.GetTensorMutableData<float>(), shape[0], -0.5f);
+    }
+
+    OrtStatefulInputs Description() {
+      named = {{{"init", initial}, {"positive", positive}, {"negative", negative}}};
+      OrtStatefulInputs inputs{};
+      inputs.struct_size = sizeof(inputs);
+      inputs.inputs = named.data();
+      inputs.num_inputs = named.size();
+      return inputs;
+    }
+    Ort::Value initial{nullptr}, positive{nullptr}, negative{nullptr};
+    ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Inputs);
+
+   private:
+    std::array<OrtStatefulNamedValue, 3> named;
+  };
+
+  std::unique_ptr<TemporaryDirectory> DdimPackage(const DdimOptions& policy) {
+    using Json = nlohmann::ordered_json;
+    const auto root = std::filesystem::temp_directory_path() /
+                      ("ort_m12_ddim_cuda_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    auto directory = std::make_unique<TemporaryDirectory>(root.native(), false);
+    Json manifest{{"schema_version", "1.1"}};
+    for (const char* variant : {"cpu", "cuda"}) {
+      const bool gpu = std::string_view(variant) == "cuda";
+      auto model = stateful::MakeDdimDenoiserModel(policy);
+      if (!gpu) model.mutable_graph()->mutable_initializer(0)->set_float_data(0, 0.25f);
+      const std::string relative = std::string("denoiser/") + variant;
+      std::filesystem::create_directories(root / relative);
+      std::ofstream output(root / relative / "denoiser.onnx", std::ios::binary);
+      ORT_ENFORCE(model.SerializeToOstream(&output));
+      manifest["components"]["denoiser"]["variants"][variant] = {
+          {"variant_directory", relative},
+          {"ep", gpu ? "CUDAExecutionProvider" : "CPUExecutionProvider"},
+          {"device", gpu ? "gpu" : "cpu"},
+          {"executor_info", {{"ort", {{"model_file", "denoiser.onnx"}}}}}};
+    }
+    manifest["chains"]["denoise"] = stateful::DdimChainJson(policy);
+    std::ofstream(root / "manifest.json") << manifest.dump(2);
+    return directory;
+  }
+
+  Ort::SessionLoop DdimLoop(Ort::Session& session, const DdimOptions& policy) {
+    const char* names[]{"latents"};
+    const OrtStatefulExitCondition exit{ORT_STATEFUL_MAX_ITERATIONS, policy.num_inference_steps, nullptr, nullptr, 0};
+    OrtStatefulLoopConfig config{};
+    config.struct_size = sizeof(config);
+    config.output_names = names;
+    config.num_outputs = 1;
+    config.exit_conditions = &exit;
+    config.num_exit_conditions = 1;
+    Ort::SessionLoopOptions options(config);
+    options.SetDdim(stateful::PublicDdimConfig(policy));
+    return Ort::SessionLoop(session, options);
+  }
+
+  void Transfer(DdimGuidanceMode mode) {
+    auto policy = stateful::MakeDdimOptions(3);
+    policy.latent_shape = {2, 2, 3, 5};
+    policy.guidance_mode = mode;
+    policy.timestep_format = DdimTimestepFormat::Float32Vector;
+    auto files = DdimPackage(policy);
+    auto options = Options();
+    Ort::ModelPackageContext package(files->Path().c_str());
+    const OrtModelPackageChainConfig config{sizeof(config), "denoise", options, nullptr, 0};
+    auto chain = package.CreateSessionChain(*ort_env, config);
+    Inputs values(policy);
+    const auto inputs = values.Description();
+    auto execution = chain.CreateExecution(inputs);
+    auto result = execution.Run();
+    const auto latent = Named(result, "latents");
+    EXPECT_EQ(latent.GetTensorMemoryInfo().GetDeviceType(), OrtMemoryInfoDeviceType_CPU);
+    EXPECT_EQ(latent.GetTensorTypeAndShapeInfo().GetElementCount(), 60u);
+    EXPECT_EQ(result.GetInfo().invocations, mode == DdimGuidanceMode::Batched ? 3 : 6);
+    const auto staging = execution.GetStagingInfo(0);
+    EXPECT_EQ(staging.cpu_output_bytes, 1440u);
+    EXPECT_EQ(staging.cpu_snapshot_copy_bytes, 1440u);
+    EXPECT_TRUE(std::isfinite(latent.GetTensorData<float>()[0]));
+  }
+};
+
+TEST_F(CudaDdimPackageTest, CpuProgrammaticPackageParityGuidanceSeedsAndNondefaultStream) {
+  cudaStream_t stream = nullptr;
+  ASSERT_EQ(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking), cudaSuccess);
+  auto release = [](cudaStream_t value) { EXPECT_EQ(cudaStreamDestroy(value), cudaSuccess); };
+  std::unique_ptr<std::remove_pointer_t<cudaStream_t>, decltype(release)> stream_owner(stream, release);
+  for (const auto mode : {DdimGuidanceMode::Batched, DdimGuidanceMode::Sequential}) {
+    for (const float scale : {0.f, 1.f, 7.5f}) {
+      auto policy = stateful::MakeDdimOptions(3);
+      policy.guidance_mode = mode;
+      policy.guidance_scale = scale;
+      policy.latent_shape = {2, 2, 3, 5};
+      policy.timestep_format = DdimTimestepFormat::Float32Vector;
+      auto gpu = Session(true, stream, stateful::MakeDdimDenoiserModel(policy));
+      auto cpu = Session(false, nullptr, stateful::MakeDdimDenoiserModel(policy));
+      auto gpu_loop = DdimLoop(gpu, policy);
+      auto cpu_loop = DdimLoop(cpu, policy);
+      auto files = DdimPackage(policy);
+      auto options = Options(true, stream);
+      Ort::ModelPackageContext package(files->Path().c_str());
+      const OrtModelPackageChainConfig config{sizeof(config), "denoise", options, nullptr, 0};
+      auto chain = package.CreateSessionChain(*ort_env, config);
+      for (const bool seeded : {false, true}) {
+        Inputs values(policy, seeded);
+        const auto inputs = values.Description();
+        auto execution = chain.CreateExecution(inputs);
+        auto result = execution.Run();
+        auto expected = cpu_loop.CreateExecution(inputs).Run();
+        auto programmatic = gpu_loop.CreateExecution(inputs).Run();
+        auto latent = Named(result, "latents");
+        const auto reference = Named(expected, "latents");
+        const auto gpu_value = Named(programmatic, "latents");
+        ASSERT_EQ(latent.GetTensorTypeAndShapeInfo().GetElementCount(), 60u);
+        EXPECT_EQ(latent.GetTensorMemoryInfo().GetDeviceType(), OrtMemoryInfoDeviceType_CPU);
+        EXPECT_EQ(result.GetInfo().invocations, mode == DdimGuidanceMode::Batched ? 3 : 6);
+        for (size_t i = 0; i < 60; ++i) {
+          const float target = reference.GetTensorData<float>()[i];
+          const float tolerance = 1e-4f + 1e-4f * std::abs(target);
+          EXPECT_NEAR(latent.GetTensorData<float>()[i], target, tolerance);
+          EXPECT_NEAR(gpu_value.GetTensorData<float>()[i], target, tolerance);
+        }
+        execution.Reset();
+        EXPECT_EQ(Named(execution.Run(), "latents").GetTensorData<float>()[0], latent.GetTensorData<float>()[0]);
+      }
+    }
+  }
+}
+
+TEST_F(CudaDdimPackageTest, CpuLatentsSurviveOwnedSessionsAndLibraryUnregistration) {
+  Ort::Env env(ORT_LOGGING_LEVEL_ERROR, "m12-owned-cuda");
+  env.RegisterExecutionProviderLibrary("m12-cuda", ORT_UNIT_TEST_CUDA_PLUGIN_EP_LIBRARY_PATH);
+  auto options = Options(true, nullptr, 0, env);
+  auto policy = stateful::MakeDdimOptions(2);
+  auto files = DdimPackage(policy);
+  Ort::ModelPackageContext package(files->Path().c_str());
+  const OrtModelPackageChainConfig config{sizeof(config), "denoise", options, nullptr, 0};
+  auto chain = package.CreateSessionChain(env, config);
+  Inputs values(policy);
+  const auto inputs = values.Description();
+  auto execution = chain.CreateExecution(inputs);
+  auto result = execution.Run();
+  auto latent = Named(result, "latents");
+  execution.Reset();
+  execution = Ort::StatefulExecution(nullptr);
+  chain = Ort::SessionChain(nullptr);
+  package = Ort::ModelPackageContext(nullptr);
+  result = Ort::StatefulStepResult(nullptr);
+  options = Ort::SessionOptions(nullptr);
+  env.UnregisterExecutionProviderLibrary("m12-cuda");
+  EXPECT_EQ(latent.GetTensorMemoryInfo().GetDeviceType(), OrtMemoryInfoDeviceType_CPU);
+  EXPECT_NEAR(latent.GetTensorData<float>()[0], -8.022068f, 1e-4f + 1e-4f * 8.022068f);
+}
+
+TEST_F(CudaDdimPackageTest, DeviceLogicalInitializationIsRejectedWithoutHiddenReadback) {
+  auto policy = stateful::MakeDdimOptions(2);
+  auto session = Session(true, nullptr, stateful::MakeDdimDenoiserModel(policy));
+  auto loop = DdimLoop(session, policy);
+  Inputs values(policy);
+  void* pointer = nullptr;
+  ASSERT_EQ(cudaMalloc(&pointer, 3 * sizeof(float)), cudaSuccess);
+  auto release = [](void* value) { EXPECT_EQ(cudaFree(value), cudaSuccess); };
+  std::unique_ptr<void, decltype(release)> owner(pointer, release);
+  const Ort::MemoryInfo memory("Cuda", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  values.initial = Ort::Value::CreateTensor<float>(memory, static_cast<float*>(pointer), 3,
+                                                   policy.latent_shape.data(), 4);
+  const auto inputs = values.Description();
+  EXPECT_THROW(loop.CreateExecution(inputs), Ort::Exception);
+}
+
+TEST_F(CudaDdimPackageTest, TransferBatched) { Transfer(DdimGuidanceMode::Batched); }
+TEST_F(CudaDdimPackageTest, TransferSequential) { Transfer(DdimGuidanceMode::Sequential); }
 
 TEST_F(CudaBootstrapPackageTest, BootstrapPackageTransfer) {
   auto files = Package(3, false, true, true, true, false, 257);

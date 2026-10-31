@@ -4,6 +4,8 @@
 #include "core/session/model_package/model_package_chain.h"
 
 #include <algorithm>
+#include <array>
+#include <cmath>
 #include <limits>
 #include <nlohmann/json.hpp>
 
@@ -268,6 +270,54 @@ Status Generation(const Json& value, const StepIndices& indices, size_t index, M
   return Status::OK();
 }
 
+Status Ddim(const Json& value, DdimOptions& out) {
+  ORT_RETURN_IF_ERROR(Object(value, {"profile", "latent_shape", "num_inference_steps", "guidance_scale",
+                                     "guidance_mode", "timestep_format", "latent_input", "timestep_input",
+                                     "conditioning_input", "prediction_output", "initialization_input",
+                                     "positive_conditioning_input", "negative_conditioning_input", "latent_output"}));
+  DdimOptions options;
+  ORT_RETURN_IF_ERROR(String(value, "profile", options.profile));
+  const auto shape = value.find("latent_shape");
+  ORT_RETURN_IF(shape == value.end() || !shape->is_array() || shape->size() != 4,
+                "DDIM latent_shape requires four dimensions");
+  for (size_t i = 0; i < 4; ++i) ORT_RETURN_IF_ERROR(Integer((*shape)[i], options.latent_shape[i]));
+  ORT_RETURN_IF_ERROR(IntField(value, "num_inference_steps", options.num_inference_steps));
+  const auto scale = value.find("guidance_scale");
+  ORT_RETURN_IF(scale == value.end() || !scale->is_number(), "DDIM requires numeric guidance_scale");
+  const double number = scale->get<double>();
+  ORT_RETURN_IF(!std::isfinite(number) || number < 0 || number > std::numeric_limits<float>::max(),
+                "DDIM guidance_scale must be finite, nonnegative FP32");
+  options.guidance_scale = static_cast<float>(number);
+  std::string mode, format;
+  ORT_RETURN_IF_ERROR(String(value, "guidance_mode", mode));
+  if (mode == "batched")
+    options.guidance_mode = DdimGuidanceMode::Batched;
+  else if (mode == "sequential")
+    options.guidance_mode = DdimGuidanceMode::Sequential;
+  else
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unknown DDIM guidance mode");
+  ORT_RETURN_IF_ERROR(String(value, "timestep_format", format));
+  const std::array<std::pair<std::string_view, DdimTimestepFormat>, 4> formats{{{"int64_scalar", DdimTimestepFormat::Int64Scalar}, {"int64_vector", DdimTimestepFormat::Int64Vector}, {"float32_scalar", DdimTimestepFormat::Float32Scalar}, {"float32_vector", DdimTimestepFormat::Float32Vector}}};
+  const auto found = std::find_if(formats.begin(), formats.end(), [&](const auto& entry) {
+    return entry.first == format;
+  });
+  ORT_RETURN_IF(found == formats.end(), "Unknown DDIM timestep format");
+  options.timestep_format = found->second;
+  for (const auto& [key, target] : {
+           std::pair{"latent_input", &options.latent_input}, std::pair{"timestep_input", &options.timestep_input},
+           std::pair{"conditioning_input", &options.conditioning_input},
+           std::pair{"prediction_output", &options.prediction_output},
+           std::pair{"initialization_input", &options.initialization_input},
+           std::pair{"positive_conditioning_input", &options.positive_conditioning_input},
+           std::pair{"negative_conditioning_input", &options.negative_conditioning_input},
+           std::pair{"latent_output", &options.latent_output}}) {
+    ORT_RETURN_IF_ERROR(String(value, key, *target));
+  }
+  ORT_RETURN_IF_ERROR(DdimScheduler::Validate(options));
+  out = std::move(options);
+  return Status::OK();
+}
+
 Status Step(const Json& value, const StepIndices& indices, const CacheSpecs& specs, size_t index,
             ModelPackageChainDefinition& result) {
   std::string kind;
@@ -310,7 +360,7 @@ Status Step(const Json& value, const StepIndices& indices, const CacheSpecs& spe
   ORT_RETURN_IF(config == value.end(), "session_loop requires loop configuration");
   ORT_RETURN_IF_ERROR(
       Object(*config, {"finite_input_names", "nonempty_input", "feedback", "exit_conditions", "generated_token_output",
-                       "generation", "sampler", "cache_provider", "kv_caches"}));
+                       "generation", "sampler", "cache_provider", "kv_caches", "ddim"}));
   result.loops[index].emplace();
   auto& options = *result.loops[index];
   if (const auto finite = config->find("finite_input_names"); finite != config->end()) {
@@ -356,6 +406,11 @@ Status Step(const Json& value, const StepIndices& indices, const CacheSpecs& spe
     if (const auto provider = sampler->find("provider"); provider != sampler->end()) {
       ORT_RETURN_IF_ERROR(Provider(*provider, options.sampler_provider));
     }
+  }
+  if (const auto ddim = config->find("ddim"); ddim != config->end()) {
+    DdimOptions policy;
+    ORT_RETURN_IF_ERROR(Ddim(*ddim, policy));
+    options.ddim = std::move(policy);
   }
   return Status::OK();
 }

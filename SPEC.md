@@ -12,7 +12,12 @@ separately approved on 2026-10-19.
 preparation. The CPU-first `TASKS.md` plan was separately approved on 2026-10-20;
 GPU qualification was resumed and verified on 2026-10-21 with compatible tooling.
 M11 is published for review in [#25](https://github.com/onnxruntime/ort-state/pull/25),
-stacked on M10; later milestones are not started.
+stacked on M10.
+**M12 refinement:** The requirements interview completed on 2026-10-30.
+Appendix L was approved by the user for detailed plan preparation.
+The detailed M12 plan was separately approved on 2026-10-30 and implementation
+and CPU/CUDA qualification are verified on 2026-10-31; publication is in progress.
+M13 and later implementation milestones are not started.
 
 ## 1. Purpose
 
@@ -2760,3 +2765,331 @@ OrtStatus* CreateSessionChain(
 - Review and approve this appendix first. Only then prepare and separately
   review the detailed TASKS plan. Do not implement, publish or begin M12 merely
   because the user requested starting this milestone.
+
+## Appendix L. M12 DDIM denoising policy (approved)
+
+**Interview completed:** 2026-10-30. The user explicitly confirmed there were no
+additional requirements before drafting. This appendix refines SD-3/SD-4 and the
+M12 milestone; it does not authorize implementation.
+**Specification approved:** 2026-10-30, for detailed execution-plan preparation.
+The detailed M12 execution plan was separately approved on 2026-10-30.
+
+### L.1 Confirmed outcome and scope
+
+- Implement one SD 1.5-compatible, deterministic DDIM policy, using a pinned
+  Diffusers DDIMScheduler convention and `eta = 0`.
+- Support both native seeded Gaussian initialization and caller-supplied initial
+  latents. Seed/initial latents are per-execution data; step count, guidance scale
+  and guidance convention belong to the immutable definition/package policy.
+- Support FP32 only, with rank-four `[N, C, H, W]` latents and any positive batch
+  N compatible with the selected model. Positive C/H/W are explicitly configured,
+  not inferred from a filename or an assumed image resolution.
+- Support both concatenated classifier-free guidance (one model invocation per
+  timestep) and separate unconditional/conditional invocations (two per timestep).
+- Execute scheduler, initialization and guidance arithmetic on CPU, including
+  when the denoiser Session uses CUDA. Full-tensor transfers are expected and
+  must be documented and measured, not presented as GPU-resident scheduling.
+- One successful Step is one complete guidance/prediction/DDIM latent update.
+  Return an immutable CPU latent snapshot and progress. Reset replays the
+  original initialization. Cancellation is observed at complete-update boundaries.
+- Reject zero inference steps. Do not add stochastic DDIM, FP16, other prediction
+  types, checkpoint/resume, image-to-image, VAE scaling, tokenization, image
+  preprocessing/postprocessing, model downloads, GPU-native scheduler kernels or
+  a general callback/script engine. The full Stable Diffusion demo remains M15.
+- Reuse SessionLoop/SessionChain, the existing execution/result APIs and ordinary
+  retained state. Do not represent diffusion state as KV cache or token history.
+  Ordinary stateless Sessions and existing generation policies remain unchanged.
+
+### L.2 Pinned numerical convention
+
+The reference is Diffusers **v0.35.1**, commit
+`0f252be0ed42006c125ef4429156cb13ae6c1d60`, specifically
+[DDIMScheduler](https://github.com/huggingface/diffusers/blob/0f252be0ed42006c125ef4429156cb13ae6c1d60/src/diffusers/schedulers/scheduling_ddim.py).
+This is an explicit reproducibility pin, not a claim to track the latest release.
+Its use as a numerical reference does not add a production Python dependency.
+
+Use the following fixed profile, identified as `sd15_ddim_v1`:
+
+| Parameter | Value |
+| --- | --- |
+| Training timesteps | 1000 |
+| Beta schedule | `scaled_linear` |
+| Beta start / end | 0.00085 / 0.012 |
+| Prediction interpretation | `epsilon` |
+| Timestep spacing / offset | `leading` / 1 |
+| `set_alpha_to_one` | false |
+| `clip_sample` / thresholding | false / false |
+| Zero-terminal-SNR rescaling | false |
+| `eta` | 0 |
+| Initial-noise sigma / model-input scaling | 1 / identity |
+
+The public [SD 1.5 scheduler configuration](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5/blob/main/scheduler/scheduler_config.json)
+is a **PNDM** configuration. Only the explicitly listed compatible parameters
+above inform this DDIM profile; do not interpret PNDM-only settings such as
+`skip_prk_steps` as DDIM behavior or claim to reproduce PNDM trajectories.
+
+For S inference steps, let `r = floor(1000 / S)` and define
+`t_i = (S - 1 - i) * r + 1`, for `i = 0 .. S - 1`.
+Reject any schedule containing a timestep outside `[0, 999]` before execution.
+With this fixed offset, the supported range is **1 through 999 steps**;
+1000 steps would start at invalid index1000 and is explicitly rejected rather
+than reproducing an out-of-range reference access. Examples:
+
+- S=1: `[1]`.
+- S=2: `[501, 1]`.
+- S=50: `[981, 961, ..., 1]`.
+
+Construct FP32 betas by squaring an FP32 linear spacing between the square roots
+of the beta endpoints. Let `A_t` be the cumulative product of `1 - beta_j`
+through timestep t. Use the pinned FP32 reference within documented tolerances,
+not a requirement for cross-library bitwise identity.
+
+For current latents x, guided prediction e, timestep t and `p = t - r`, use
+`A_p` when p is nonnegative, otherwise use `A_0`:
+
+```text
+x0 = (x - sqrt(1 - A_t) * e) / sqrt(A_t)
+x_next = sqrt(A_previous) * x0 + sqrt(1 - A_previous) * e
+```
+
+Do not add variance noise, clip x0, rescale guidance, apply VAE normalization or
+recompute epsilon from a clipped prediction. Reject nonfinite policy inputs,
+predictions or computed results explicitly rather than publishing invalid state.
+
+### L.3 Initialization, shapes and model ports
+
+- The definition fixes `latent_shape = [N,C,H,W]`. Any positive N is supported;
+  batch and dimensions must match actual model metadata and execution tensors.
+  Dynamic model dimensions do not remove execution-time shape checks.
+- Explicitly name the model latent input, timestep input, conditioning input and
+  epsilon prediction output. Validate FP32 latent/conditioning/prediction
+  metadata. Do not guess conventional graph-port names.
+- Explicitly select a timestep format: int64 or FP32, each as a scalar or
+  one-element vector. Feed the exact selected schedule value. Other timestep
+  encodings are unsupported rather than broadcast or converted implicitly.
+- Conditioning inputs are separate positive/conditional and negative/
+  unconditional CPU FP32 tensors with identical nonempty shapes and leading
+  dimension N. Validate their rank and dimensions against the model after the
+  chosen guidance convention's batch transformation.
+- Additional model inputs can use existing invariant bindings; they are not
+  automatically duplicated, guessed or modified by this policy.
+- Use one explicitly named logical `initialization_input` to avoid optional
+  chain bindings or new execution-creation APIs. Its typed value is exactly one
+  of: a CPU scalar **uint64 seed**, or a CPU FP32 tensor matching `latent_shape`.
+  This is a declared two-type input contract, not shape/name-based inference.
+  Other dtypes/ranks/devices fail explicitly.
+- Likewise, explicitly name logical positive/negative conditioning inputs.
+  Logical inputs are policy-owned feeds, not extra ONNX graph inputs; reject
+  collisions and attempts to bind policy-managed model ports separately.
+- Copy supplied initial latents into private execution state. Do not mutate
+  caller storage. They are already diffusion-space x at the initial timestep,
+  not a clean image or a tensor requiring automatic noise addition.
+- For seeded initialization, use a private `std::mt19937_64` engine initialized
+  from the full uint64 seed, never a global RNG. Convert consecutive engine
+  outputs to double uniforms using their upper53 bits:
+  `u1 = ((a >> 11) + 1) / 2^53`, `u2 = (b >> 11) / 2^53`.
+  Use the Box-Muller cosine then sine pair, cast to FP32, and fill in contiguous
+  NCHW order; discard the final partner for an odd element count.
+- Reset must reproduce the original initialization and trajectory on the same
+  build/platform with the same deterministic model/configuration. CPU and CUDA
+  use the same host initializer, but CUDA arithmetic may differ within the
+  approved tolerances. Do not promise PyTorch RNG equivalence or cross-platform
+  transcendental-function bit identity.
+- Existing external-buffer, Env and programmatic Session lifetime obligations
+  remain applicable. Initial latent storage and published state/results are
+  owned independently of temporary caller handles.
+
+### L.4 Guidance conventions
+
+For finite, nonnegative guidance scale g, combine unconditional and conditional
+predictions using `e = e_unconditional + g * (e_conditional - e_unconditional)`.
+Test g=0, g=1 and values greater than1. Negative/nonfinite scale is invalid.
+
+- **`batched`:** concatenate two copies of x in unconditional-then-conditional
+  order along batch, and concatenate conditioning tensors in that same order.
+  Run the denoiser once with batch2N and split its prediction into equal halves.
+- **`sequential`:** run the same denoiser Session twice at the same timestep
+  with identical, unchanged x: unconditional conditioning first, conditional
+  conditioning second, each with batch N. The first call cannot advance x.
+- In either mode, validate all predictions before combining them and publishing
+  the latent update. Do not omit a branch for scale0/1: invocation counts remain
+  exactly one or two per complete update.
+- Guidance mode is definition-time policy. Validate the selected model's static
+  batch dimensions accordingly; do not switch conventions or retry another
+  backend/model after failure.
+
+### L.5 Loop lifecycle, exits, state and counters
+
+- Require an explicit existing `max_iterations` exit whose limit equals S.
+  Do not silently insert an exit or let conflicting limits truncate the
+  configured schedule. For this first DDIM profile, require exactly that exit;
+  finite input sequences, boolean/token exits, generic feedback, generation,
+  KV cache and sampler policies cannot be mixed into the same DDIM loop.
+  This restriction does not change ordinary loops' supported exits/features.
+- Preparation/initialization does not invoke the model or increment iterations.
+  On each successful Step, run the required prediction(s), combine guidance,
+  update latents, advance one timestep and then publish the complete update.
+- `executed=true` means model work occurred, as in existing APIs. Iterations
+  count complete denoising updates; the existing invocation counter counts actual
+  denoiser calls. After k successful updates, counts are k/k in batched mode and
+  k/2k in sequential mode. Chain totals include actual calls in other components.
+  Generated-token counters remain zero; do not infer invocations from iterations.
+- After update S, report completion with the explicit MaxIterations reason.
+  A subsequent Step does no model/RNG/update work, reports `executed=false`,
+  preserves counters and can return the same retained final latent value.
+- Configure a distinct logical `latent_output` name for the policy-produced
+  updated tensor. It is not an alias for the raw ONNX epsilon output.
+  Expose it through ordinary named loop/chain outputs, retained-state inspection
+  and explicit downstream chain/state bindings. For M12, DDIM's selected output
+  is this latent value; raw prediction/debug-output export is not added.
+- Initial/current latents and schedule position belong to the execution, not
+  the immutable definition or KV manager. Definitions support independent
+  executions and RNG state. Existing results remain immutable across later
+  Step, Run, Reset, cancellation, failure and execution/definition release.
+- Cancel may be called concurrently; Step/Run/Reset remain sequential. Observe
+  cancellation before starting the next complete update, not between sequential
+  guidance calls or through GPU preemption. The existing cancellation/error
+  invalidation contract applies; failed/possibly advanced executions require
+  Reset, and a failed Reset remains invalid.
+- If prediction two, validation, allocation or scheduler arithmetic fails, do
+  not publish a half-updated latent or success result. Preserve prior immutable
+  results, report contextual errors and require Reset before further execution.
+- Reset restores initial latents/RNG, schedule index, counters, completion and
+  cancellation state without altering prior snapshots. Reuse original feeds;
+  changing seed/initial latents requires a new execution.
+
+### L.6 Native and public C/C++ integration
+
+- Place reusable scheduler/guidance/initialization code under
+  `onnxruntime/core/diffusion/`, separate from token generation and Session
+  orchestration. Keep SessionLoop/SessionChain responsible for invocation,
+  wiring, lifecycle and progress; package parsing is not another DDIM engine.
+- Add one optional typed DDIM configuration to native loop options. Provide a
+  size-tagged `OrtStatefulDdimConfig` carrying the fixed profile identifier,
+  configured dimensions, step count, guidance mode/scale, explicit model ports,
+  timestep format, logical input names and latent output name.
+- Append `SessionLoopOptionsSetDdim` to `OrtStatefulApi`, copying configuration
+  and allowing NULL to clear it. Add conventional C++ Set/Clear wrappers. Do not
+  change old table prefixes, existing config-array strides, public result layouts
+  or ORT_API_VERSION. Apply the API version's normal Doxygen/ownership rules.
+- Setting DDIM is transactional. Replacing the complete base loop configuration
+  clears any attached DDIM configuration; configuring a new one requires its
+  explicit setter. Existing definitions are unaffected by option mutations.
+- Reuse existing named execution inputs, Step/Run/Reset/Cancel, state/output
+  access and size-safe progress/staging queries. No separate public scheduler
+  object or specialized execution-creation API is required.
+- Package-created definitions retain Sessions using M11 ownership. Caller-owned
+  programmatic Sessions retain their existing lifetime obligations.
+- Cover genuine C11, public C++17 and no-exceptions consumers, ABI-prefix/
+  unsupported-build behavior, and error paths with unchanged failed out-parameters.
+
+### L.7 Declarative Model Package policy
+
+Extend only the selected ORT `session_loop` configuration with a strict `ddim`
+object. Its fields correspond to the same typed native configuration; use
+existing named-chain selection, component variant selection and SessionOptions
+precedence. Standalone Model Package metadata remains ORT-independent.
+
+Illustrative ORT step execution payload, not a full package:
+
+```json
+{
+  "kind": "session_loop",
+  "inputs": {
+    "init": {"kind": "external_input", "name": "init"},
+    "positive": {"kind": "external_input", "name": "positive"},
+    "negative": {"kind": "external_input", "name": "negative"}
+  },
+  "loop": {
+    "ddim": {
+      "profile": "sd15_ddim_v1",
+      "latent_shape": [1, 4, 64, 64],
+      "num_inference_steps": 50,
+      "guidance_scale": 7.5,
+      "guidance_mode": "batched",
+      "latent_input": "sample",
+      "timestep_input": "timestep",
+      "timestep_format": "float32_vector",
+      "conditioning_input": "encoder_hidden_states",
+      "prediction_output": "out_sample",
+      "initialization_input": "init",
+      "positive_conditioning_input": "positive",
+      "negative_conditioning_input": "negative",
+      "latent_output": "denoised_latents"
+    },
+    "exit_conditions": [{"kind": "max_iterations", "limit": 50}]
+  }
+}
+```
+
+The component's actual model must match these explicitly chosen port names and
+shapes. An execution supplies `init` as either the declared seed scalar or latent
+tensor. Positive/negative conditioning may also be bound from earlier component
+outputs or retained state using existing declarative sources. Downstream
+components consume `denoised_latents` as an explicit named loop output/state,
+not hidden scheduler state or an executable transition.
+
+Reject unknown fields/profiles/enums, contradictory policies/limits, bad
+references, logical/model name collisions and incompatible model metadata.
+Reject incompatible execution tensor data before advancement when available.
+Preserve legacy package behavior and opaque unrelated consumer namespaces.
+No inference-time seed/step/guidance override is read from private metadata.
+Declared initialization, conditioning and invariant feeds may vary between
+executions; step count and guidance configuration do not.
+
+### L.8 CPU/CUDA responsibilities and observability
+
+- The policy's working latents, coefficients, guidance and published results are
+  CPU FP32. Required logical initialization/conditioning feeds are CPU tensors.
+  A GPU-only logical feed is explicitly unsupported in this first profile.
+- CPU or CUDA denoiser selection uses ordinary Session configuration, not cache/
+  sampler provider capabilities. Do not imply that legacy CUDA gains native
+  stateful cache/sampler hooks; this policy requires none.
+- With a CUDA denoiser, stage model inputs and read required predictions back
+  through supported ORT Session I/O. Distinguish unconditional/conditional calls,
+  model/weight transfers, timestep/conditioning transfers, prediction readback
+  and any snapshot copies. Do not replace real measurements with payload counters.
+- Existing CPU staging counters remain payload observations, not DMA counters.
+  Include both sequential guidance calls and actual snapshot-copy work accurately;
+  report actual HtoD/DtoH counts and bytes separately from profiler evidence.
+- Respect Session task streams and host readiness. Do not add a device-wide
+  synchronization or global CUDA/driver setting change as a shortcut.
+- Prove that the tiny denoiser's meaningful work actually runs on CUDA, with
+  distinct CPU/CUDA variants or assignment/dispatch evidence preventing a
+  silent CPU-fallback parity pass. Exercise a nondefault stream and actual
+  resource teardown. No GPU-native DDIM or device-only pipeline claim is made.
+
+### L.9 Acceptance and approval gates
+
+- Independently verify coefficient tables, leading timesteps, previous/final
+  alpha and analytical updates, plus pinned-reference multi-step trajectories.
+  Use explicit supplied latents for numerical comparison so RNG differences
+  cannot masquerade as scheduler differences.
+- For finite deterministic FP32 fixtures, require per-element
+  `abs(actual - expected) <= atol + rtol * abs(expected)`: `atol=rtol=1e-5`
+  for coefficients/single-step comparisons and `atol=rtol=1e-4` for trajectories
+  and CPU/CUDA denoiser parity. Record fixtures and intermediate checkpoints.
+  A failure requires investigation, not automatic tolerance relaxation.
+- Cover both guidance conventions, N=1 and N>1, nontrivial C/H/W, g=0/1/>1,
+  all four timestep encodings, supplied/seeded initialization, seed0 and large
+  uint64 seeds, reproducible reset and independent/concurrent executions.
+- Cover S=0 rejection, S=1/2/50/999, invalid1000/negative counts, malformed
+  metadata/configuration/bindings, NaN/Inf, shape/type/device mismatch,
+  arithmetic/allocation overflow and failures in either guidance invocation.
+- Verify identical programmatic/package C/C++ behavior, actual 1/2-call
+  invocation counts, final/intermediate CPU latents, ordinary chain handoff,
+  completion-only calls, boundary cancellation, failed-reset invalidation and
+  immutable retained results after all supported owner-release sequences.
+- Run CPU qualification and real CUDA denoiser parity, transfer, stream and
+  lifetime checks. Exercise applicable legacy CUDA compatibility without
+  broadening previous cache/sampler capability claims.
+- Measure 100% of all new executable production host/native/parser/C/C++ inline/
+  glue lines with matching source/artifacts/profiles, including CUDA I/O and
+  failure paths. No new device implementation is planned; any later device-code
+  scope change requires revised approval and independent device-line coverage.
+- Maintain the shared scratchpad and task checklist. Deliver one intended,
+  independently documented/tested M12 PR stacked on verified M11, with exact
+  selectors/results, coverage and transfer evidence. No automatic merge or M13.
+- Review and approve this appendix first. Only then prepare and separately
+  review the detailed M12 TASKS plan; do not infer either approval from the
+  instruction to start M12.

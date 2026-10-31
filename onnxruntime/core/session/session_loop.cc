@@ -36,6 +36,10 @@ SessionLoop::SessionLoop(InferenceSession& session, SessionLoopOptions options,
       fetch_names_(options_.output_names),
       cache_provider_(std::move(cache_provider)),
       sampler_provider_(std::move(sampler_provider)) {
+  if (options_.ddim) {
+    fetch_names_ = {options_.ddim->prediction_output};
+    return;
+  }
   auto add_output = [&](const std::string& name) {
     if (FindOutput(fetch_names_, name) == fetch_names_.size()) {
       fetch_names_.push_back(name);
@@ -70,6 +74,19 @@ Status SessionLoop::Create(InferenceSession& session, SessionLoopOptions options
   const auto& outputs = *session.GetModelOutputs().second;
   for (const auto* input : inputs) {
     ORT_RETURN_IF_ERROR(CheckTensorType(*input));
+  }
+  if (options.ddim) {
+    ORT_RETURN_IF_ERROR(DdimScheduler::Validate(*options.ddim));
+    ORT_RETURN_IF(options.generation || !options.feedback.empty() || !options.kv_caches.empty() ||
+                      !options.finite_input_names.empty() || !options.nonempty_input.empty() ||
+                      !options.generated_token_output.empty(),
+                  "DDIM cannot be combined with generation, feedback, cache or finite input policies");
+    ORT_RETURN_IF(options.output_names.size() != 1 || options.output_names[0] != options.ddim->latent_output,
+                  "DDIM requires its explicitly selected logical latent output");
+    ORT_RETURN_IF(options.exit_conditions.size() != 1 ||
+                      options.exit_conditions[0].kind != LoopExitKind::MaxIterations ||
+                      options.exit_conditions[0].limit != options.ddim->num_inference_steps,
+                  "DDIM requires an explicit matching MaxIterations exit");
   }
   InlinedHashSet<std::string> destinations;
   for (const auto& name : options.finite_input_names) {
@@ -122,6 +139,7 @@ Status SessionLoop::Create(InferenceSession& session, SessionLoopOptions options
   }
   InlinedHashSet<std::string> selected;
   for (const auto& name : options.output_names) {
+    if (options.ddim) continue;
     const auto* output = FindArgument(outputs, name);
     ORT_RETURN_IF_NOT(output && selected.insert(name).second, "Invalid or duplicate selected output: ", name);
     ORT_RETURN_IF_ERROR(CheckTensorType(*output));
@@ -197,6 +215,9 @@ Status SessionLoop::Create(InferenceSession& session, SessionLoopOptions options
   }
   auto loop = std::shared_ptr<SessionLoop>(
       new SessionLoop(session, std::move(options), std::move(cache_provider), std::move(sampler_provider)));
+  if (loop->options_.ddim) {
+    ORT_RETURN_IF_ERROR(loop->ConfigureDdim());
+  }
   if (loop->cache_provider_.Selection().device_type != OrtMemoryInfoDeviceType_CPU) {
     InlinedHashSet<std::string> device_inputs, device_outputs;
     for (const auto& item : loop->options_.kv_caches) {
@@ -217,6 +238,7 @@ Status SessionLoop::Create(InferenceSession& session, SessionLoopOptions options
 Status SessionLoop::ConfigureDeviceValues(const StatefulProviderBinding& provider,
                                           InlinedHashSet<std::string> inputs,
                                           InlinedHashSet<std::string> outputs) {
+  ORT_RETURN_IF(options_.ddim, "DDIM requires CPU logical inputs and outputs");
   const auto& selection = provider.Selection();
   ORT_RETURN_IF_NOT(selection.device_type == OrtMemoryInfoDeviceType_GPU &&
                         selection.provider_name == kCudaExecutionProvider,
@@ -290,17 +312,22 @@ Status SessionLoop::ValidateInputs(const SessionLoopInputs& inputs) const {
   ORT_RETURN_IF(inputs.inputs.size() + finite.size() + options_.kv_caches.size() + managed.size() != arguments.size(),
                 "SessionLoop input count mismatch");
   for (const auto& [name, value] : inputs.inputs) {
-    const auto* argument = FindArgument(arguments, name);
+    const auto* argument = InputArgument(name);
     ORT_RETURN_IF_NOT(argument && !finite.contains(name), "Unknown or conflicting invariant input: ", name);
     ORT_RETURN_IF(std::find(managed.begin(), managed.end(), name) != managed.end(),
                   "Managed generation inputs cannot also be invariant feeds");
     ORT_RETURN_IF(std::any_of(options_.kv_caches.begin(), options_.kv_caches.end(),
                               [&](const auto& item) { return item.input_name == name; }),
                   "Managed KV cache inputs cannot also be supplied as invariant feeds");
-    ORT_RETURN_IF_ERROR(CheckInput(*argument, value));
+    ORT_RETURN_IF_ERROR(CheckValue(name, value));
     if (device_inputs_.contains(name)) {
       ORT_RETURN_IF(value.Get<Tensor>().Location().device != device_allocator_->Info().device,
                     "Device-value input requires matching GPU storage: ", name);
+    }
+    if (options_.ddim) {
+      ORT_RETURN_IF(inputs.inputs.at(options_.ddim->positive_conditioning_input).Get<Tensor>().Shape() !=
+                        inputs.inputs.at(options_.ddim->negative_conditioning_input).Get<Tensor>().Shape(),
+                    "DDIM conditioning shapes differ");
     }
   }
   ORT_RETURN_IF(finite.empty() && !inputs.batches.empty(), "Batches require finite input names");
@@ -346,9 +373,11 @@ Status SessionLoop::CreateExecution(SessionLoopInputs inputs, std::unique_ptr<Se
   }
   auto generation = options_.generation ? std::make_shared<TokenGenerationState>() : nullptr;
   auto sampler = options_.generation ? std::make_shared<StatefulDispatch>(sampler_provider_) : nullptr;
-  out = std::unique_ptr<SessionLoopExecution>(
+  auto execution = std::unique_ptr<SessionLoopExecution>(
       new SessionLoopExecution(shared_from_this(), std::move(inputs), std::move(cache), std::move(generation),
                                std::move(sampler), true));
+  ORT_RETURN_IF_ERROR(execution->InitializeDdim());
+  out = std::move(execution);
   return Status::OK();
 }
 
@@ -357,9 +386,11 @@ Status SessionLoop::CreateExecutionWithCache(SessionLoopInputs inputs, std::shar
                                              std::shared_ptr<StatefulDispatch> sampler,
                                              std::unique_ptr<SessionLoopExecution>& out) const {
   ORT_RETURN_IF_ERROR(ValidateInputs(inputs));
-  out = std::unique_ptr<SessionLoopExecution>(
+  auto execution = std::unique_ptr<SessionLoopExecution>(
       new SessionLoopExecution(shared_from_this(), std::move(inputs), std::move(cache), std::move(generation),
                                std::move(sampler), false));
+  ORT_RETURN_IF_ERROR(execution->InitializeDdim());
+  out = std::move(execution);
   return Status::OK();
 }
 
@@ -473,6 +504,7 @@ Status SessionLoopExecution::Step(SessionLoopStepResult& out) {
 
   // Any exception or error after this point conservatively invalidates mutable state.
   requires_reset_ = true;
+  if (loop_->ddim_) return StepDdim(out);
   std::unique_ptr<IOBinding> binding;
   ORT_RETURN_IF_ERROR(loop_->session_.NewIOBinding(&binding));
   auto bind_input = [&](const std::string& name, const OrtValue& value) -> Status {
@@ -525,6 +557,7 @@ Status SessionLoopExecution::Step(SessionLoopStepResult& out) {
   }
   RunOptions run_options;
   ORT_RETURN_IF_ERROR(loop_->session_.Run(run_options, *binding));
+  progress_.invocations = SafeInt<int64_t>(progress_.invocations) + 1;
   if (!loop_->device_provider_) {
     ORT_RETURN_IF_ERROR(binding->SynchronizeOutputs());
   }
@@ -623,6 +656,7 @@ Status SessionLoopExecution::Run(SessionLoopStepResult& out) {
 Status SessionLoopExecution::GetState(LoopFeeds& out) const {
   ORT_RETURN_IF(requires_reset_, "SessionLoop state requires Reset after a failed execution");
   LoopFeeds state;
+  if (loop_->ddim_) state.emplace(loop_->options_.ddim->latent_output, ddim_latents_);
   for (size_t i = 0; i < loop_->options_.feedback.size(); ++i) {
     const auto& name = loop_->options_.feedback[i].input_name;
     state.emplace(name, feedback_.empty() ? initial_inputs_.inputs.at(name) : feedback_[i]);
@@ -667,6 +701,7 @@ Status SessionLoopExecution::Reset() {
     }
   }
   feedback_.clear();
+  ddim_latents_ = ddim_initial_;
   progress_ = {};
   cancelled_.store(false);
   requires_reset_ = false;

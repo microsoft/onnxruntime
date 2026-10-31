@@ -1535,6 +1535,16 @@ inline SessionLoopOptions& SessionLoopOptions::SetConfig(const OrtStatefulLoopCo
   return *this;
 }
 
+inline SessionLoopOptions& SessionLoopOptions::SetDdim(const OrtStatefulDdimConfig& config) {
+  ThrowOnError(GetStatefulApi().SessionLoopOptionsSetDdim(p_, &config));
+  return *this;
+}
+
+inline SessionLoopOptions& SessionLoopOptions::ClearDdim() {
+  ThrowOnError(GetStatefulApi().SessionLoopOptionsSetDdim(p_, nullptr));
+  return *this;
+}
+
 inline SessionLoop::SessionLoop(const Session& session, const SessionLoopOptions& options) {
   ThrowOnError(GetStatefulApi().CreateSessionLoop(session, options, &p_));
 }

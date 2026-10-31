@@ -3,8 +3,11 @@
 
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <functional>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <sstream>
@@ -28,6 +31,7 @@
 #include "test/util/include/asserts.h"
 #include "test/util/include/api_asserts.h"
 #include "test/util/include/stateful_execution_test_utils.h"
+#include "test/util/include/ddim_test_utils.h"
 
 extern std::unique_ptr<Ort::Env> ort_env;
 extern "C" int StatefulApiCPackageChainTest(const OrtEnv* env, const ORTCHAR_T* path);
@@ -201,6 +205,22 @@ struct ProviderObservations {
   bool return_null = false;
   std::unordered_map<std::string, std::string> config;
 };
+
+nlohmann::ordered_json BuildDdimChainPackage(const std::filesystem::path& root, const DdimOptions& options) {
+  const auto model = stateful::MakeDdimDenoiserModel(options);
+  std::filesystem::create_directories(root.parent_path() / "models");
+  const auto source = root.parent_path() / "models/denoiser.onnx";
+  {
+    std::ofstream file(source, std::ios::binary);
+    ORT_ENFORCE(model.SerializeToOstream(&file));
+  }
+  BuildPackage(root, "denoiser", {{"cpu", "CPUExecutionProvider", "cpu", "", source, {}, {}}}, "1.1");
+  nlohmann::ordered_json manifest;
+  std::ifstream(root / "manifest.json") >> manifest;
+  manifest["chains"]["denoise"] = stateful::DdimChainJson(options);
+  std::ofstream(root / "manifest.json") << manifest.dump(2);
+  return manifest;
+}
 
 nlohmann::ordered_json BuildGenerationChainPackage(const std::filesystem::path& root, int64_t budget,
                                                    bool cached = true, bool auxiliary = false, bool half = false) {
@@ -436,6 +456,215 @@ TEST(ModelPackageApiTest, ExportedModelsRunWithoutSourcePackage) {
     CheckSquareModel(session);
     std::filesystem::remove_all(root);
   }
+}
+
+TEST(ModelPackageDdimTest, ProgrammaticParityAllTimestepsInitializationAndOwnedExports) {
+  for (const auto mode : {DdimGuidanceMode::Batched, DdimGuidanceMode::Sequential}) {
+    for (const auto format : {DdimTimestepFormat::Int64Scalar, DdimTimestepFormat::Int64Vector,
+                              DdimTimestepFormat::Float32Scalar, DdimTimestepFormat::Float32Vector}) {
+      const auto root = ChainTestRoot();
+      auto policy = stateful::MakeDdimOptions(2);
+      policy.guidance_mode = mode;
+      policy.timestep_format = format;
+      BuildDdimChainPackage(root / "source", policy);
+      {
+        ::ModelPackage* raw = nullptr;
+        std::unique_ptr<ModelPackageStatus, decltype(&ModelPackageStatus_Release)> status(
+            ModelPackage_Open(ToUTF8String((root / "source").native()).c_str(), nullptr, &raw),
+            ModelPackageStatus_Release);
+        ASSERT_EQ(status.get(), nullptr);
+        std::unique_ptr<::ModelPackage, decltype(&ModelPackage_Close)> source(raw, ModelPackage_Close);
+        status.reset(ModelPackage_Commit(source.get(), ToUTF8String((root / "exported").native()).c_str(),
+                                         MODEL_PACKAGE_WRITE_PRESERVE));
+        ASSERT_EQ(status.get(), nullptr);
+      }
+      std::filesystem::rename(root / "source", root / "unavailable");
+      Ort::SessionOptions session_options;
+      session_options.SetIntraOpNumThreads(1).SetInterOpNumThreads(1);
+      const OrtModelPackageChainConfig chain_config{sizeof(chain_config), "denoise", session_options, nullptr, 0};
+      const auto bytes = stateful::MakeDdimDenoiserModel(policy).SerializeAsString();
+      Ort::Session session(*ort_env, bytes.data(), bytes.size(), session_options);
+      const char* output_names[]{"latents"};
+      const OrtStatefulExitCondition exit{ORT_STATEFUL_MAX_ITERATIONS, 2, nullptr, nullptr, 0};
+      OrtStatefulLoopConfig loop_config{};
+      loop_config.struct_size = sizeof(loop_config);
+      loop_config.output_names = output_names;
+      loop_config.num_outputs = 1;
+      loop_config.exit_conditions = &exit;
+      loop_config.num_exit_conditions = 1;
+      Ort::SessionLoopOptions loop_options(loop_config);
+      loop_options.SetDdim(stateful::PublicDdimConfig(policy));
+      Ort::SessionLoop loop(session, loop_options);
+      for (const bool seeded : {false, true}) {
+        Ort::ModelPackageContext package((root / "exported").c_str());
+        auto chain = package.CreateSessionChain(*ort_env, chain_config);
+        Ort::AllocatorWithDefaultOptions allocator;
+        auto initial = seeded
+                           ? Ort::Value::CreateTensor<uint64_t>(allocator, nullptr, 0)
+                           : Ort::Value::CreateTensor<float>(allocator, policy.latent_shape.data(), 4);
+        if (seeded) {
+          *initial.GetTensorMutableData<uint64_t>() = std::numeric_limits<uint64_t>::max();
+        } else {
+          const std::array<float, 3> values{0.125f, -0.25f, 1.f};
+          std::copy(values.begin(), values.end(), initial.GetTensorMutableData<float>());
+        }
+        const std::array<int64_t, 4> shape{1, 1, 1, 1};
+        auto positive = Ort::Value::CreateTensor<float>(allocator, shape.data(), 4);
+        auto negative = Ort::Value::CreateTensor<float>(allocator, shape.data(), 4);
+        *positive.GetTensorMutableData<float>() = 0.25f;
+        *negative.GetTensorMutableData<float>() = -0.5f;
+        const OrtStatefulNamedValue named[]{{"init", initial}, {"positive", positive}, {"negative", negative}};
+        OrtStatefulInputs inputs{};
+        inputs.struct_size = sizeof(inputs);
+        inputs.inputs = named;
+        inputs.num_inputs = 3;
+        auto execution = chain.CreateExecution(inputs);
+        package = Ort::ModelPackageContext(nullptr);
+        chain = Ort::SessionChain(nullptr);
+        auto result = execution.Run();
+        auto expected = loop.CreateExecution(inputs).Run();
+        ASSERT_EQ(result.GetOutputs().size(), 1u);
+        auto latent = result.GetOutputs()[0].value;
+        EXPECT_THAT(latent.GetTensorTypeAndShapeInfo().GetShape(), ::testing::ElementsAre(1, 1, 1, 3));
+        const auto reference = expected.GetOutputs()[0].value;
+        EXPECT_EQ(latent.GetTensorMemoryInfo().GetDeviceType(), OrtMemoryInfoDeviceType_CPU);
+        EXPECT_EQ(result.GetInfo().invocations, mode == DdimGuidanceMode::Batched ? 2 : 4);
+        for (size_t i = 0; i < 3; ++i) {
+          EXPECT_EQ(latent.GetTensorData<float>()[i], reference.GetTensorData<float>()[i]);
+        }
+        execution.Reset();
+        EXPECT_EQ(execution.Run().GetOutputs()[0].value.GetTensorData<float>()[0], latent.GetTensorData<float>()[0]);
+        execution = Ort::StatefulExecution(nullptr);
+        result = Ort::StatefulStepResult(nullptr);
+        EXPECT_TRUE(std::isfinite(latent.GetTensorData<float>()[0]));
+      }
+      std::filesystem::remove_all(root);
+    }
+  }
+}
+
+TEST(ModelPackageDdimTest, TypedSeedProducerOutputAndScalarValidation) {
+  const auto root = ChainTestRoot();
+  const auto path = root / "package";
+  auto manifest = BuildDdimChainPackage(path, stateful::MakeDdimOptions(2));
+  auto model = stateful::MakeModel("ddim_seed_source");
+  auto& graph = *model.mutable_graph();
+  stateful::SetTensorType(*graph.add_input(), "seed_input", ONNX_NAMESPACE::TensorProto_DataType_UINT64, {});
+  stateful::SetTensorType(*graph.add_output(), "seed_output", ONNX_NAMESPACE::TensorProto_DataType_UINT64, {});
+  stateful::AddNode(graph, "Identity", {"seed_input"}, "seed_output");
+  std::filesystem::create_directories(path / "seed/cpu");
+  {
+    std::ofstream output(path / "seed/cpu/seed.onnx", std::ios::binary);
+    ORT_ENFORCE(model.SerializeToOstream(&output));
+  }
+  manifest["components"]["seed"]["variants"]["cpu"] =
+      {{"variant_directory", "seed/cpu"}, {"ep", "CPUExecutionProvider"}, {"device", "cpu"}, {"executor_info", {{"ort", {{"model_file", "seed.onnx"}}}}}};
+  using Json = nlohmann::ordered_json;
+  auto& steps = manifest["chains"]["denoise"]["steps"];
+  steps[0]["executor_info"]["ort"]["inputs"]["init"] =
+      {{"kind", "model_output"}, {"step", "seed"}, {"output", "seed_output"}};
+  Json seed_step{{"id", "seed"}, {"component", "seed"}};
+  seed_step["executor_info"]["ort"]["kind"] = "session";
+  seed_step["executor_info"]["ort"]["inputs"]["seed_input"] = {{"kind", "external_input"}, {"name", "seed"}};
+  steps.insert(steps.begin(), std::move(seed_step));
+  std::ofstream(path / "manifest.json") << manifest.dump(2);
+  Ort::ModelPackageContext package(path.c_str());
+  Ort::SessionOptions options;
+  options.SetIntraOpNumThreads(1).SetInterOpNumThreads(1);
+  const OrtModelPackageChainConfig config{sizeof(config), "denoise", options, nullptr, 0};
+  auto chain = package.CreateSessionChain(*ort_env, config);
+  Ort::AllocatorWithDefaultOptions allocator;
+  auto seed = Ort::Value::CreateTensor<uint64_t>(allocator, nullptr, 0);
+  *seed.GetTensorMutableData<uint64_t>() = 0;
+  const std::array<int64_t, 4> shape{1, 1, 1, 1};
+  auto positive = Ort::Value::CreateTensor<float>(allocator, shape.data(), 4);
+  auto negative = Ort::Value::CreateTensor<float>(allocator, shape.data(), 4);
+  *positive.GetTensorMutableData<float>() = 0.25f;
+  *negative.GetTensorMutableData<float>() = -0.5f;
+  const OrtStatefulNamedValue named[]{{"seed", seed}, {"positive", positive}, {"negative", negative}};
+  OrtStatefulInputs inputs{};
+  inputs.struct_size = sizeof(inputs);
+  inputs.inputs = named;
+  inputs.num_inputs = 3;
+  auto execution = chain.CreateExecution(inputs);
+  auto result = execution.Run();
+  EXPECT_EQ(result.GetInfo().invocations, 3);
+  const auto retained = result.GetOutputs()[0].value;
+  execution.Reset();
+  EXPECT_EQ(execution.Run().GetOutputs()[0].value.GetTensorData<float>()[0], retained.GetTensorData<float>()[0]);
+  auto state_manifest = manifest;
+  state_manifest["chains"]["denoise"]["steps"][0]["executor_info"]["ort"]["state_outputs"] =
+      {{"initial_seed", "seed_output"}};
+  state_manifest["chains"]["denoise"]["steps"][1]["executor_info"]["ort"]["inputs"]["init"] =
+      {{"kind", "state"}, {"name", "initial_seed"}};
+  std::ofstream(path / "manifest.json") << state_manifest.dump(2);
+  Ort::ModelPackageContext state_package(path.c_str());
+  auto state_chain = state_package.CreateSessionChain(*ort_env, config);
+  const auto state_result = state_chain.CreateExecution(inputs).Run();
+  EXPECT_EQ(state_result.GetOutputs()[0].value.GetTensorData<float>()[0], retained.GetTensorData<float>()[0]);
+  stateful::SetTensorType(*graph.mutable_input(0), "seed_input", ONNX_NAMESPACE::TensorProto_DataType_UINT64, {1});
+  stateful::SetTensorType(*graph.mutable_output(0), "seed_output", ONNX_NAMESPACE::TensorProto_DataType_UINT64, {1});
+  {
+    std::ofstream output(path / "seed/cpu/seed.onnx", std::ios::binary | std::ios::trunc);
+    ORT_ENFORCE(model.SerializeToOstream(&output));
+  }
+  EXPECT_THROW(package.CreateSessionChain(*ort_env, config), Ort::Exception);
+  std::filesystem::remove_all(root);
+}
+
+TEST(ModelPackageDdimTest, InvalidPoliciesPreserveOutputAndExistingChain) {
+  const auto root = ChainTestRoot();
+  const auto path = root / "package";
+  const auto policy = stateful::MakeDdimOptions(2);
+  const auto manifest = BuildDdimChainPackage(path, policy);
+  Ort::ModelPackageContext package(path.c_str());
+  Ort::SessionOptions options;
+  options.SetIntraOpNumThreads(1).SetInterOpNumThreads(1);
+  const OrtModelPackageChainConfig config{sizeof(config), "denoise", options, nullptr, 0};
+  auto chain = package.CreateSessionChain(*ort_env, config);
+  using Json = nlohmann::ordered_json;
+  const InlinedVector<std::function<void(Json&)>> mutations{
+      [](Json& value) { value.erase("profile"); },
+      [](Json& value) { value["profile"] = "pndm"; },
+      [](Json& value) { value["latent_shape"] = Json::array(); },
+      [](Json& value) { value["latent_shape"][0] = 1.5; },
+      [](Json& value) { value["num_inference_steps"] = 0; },
+      [](Json& value) { value["num_inference_steps"] = 1000; },
+      [](Json& value) { value["num_inference_steps"] = "2"; },
+      [](Json& value) { value["guidance_scale"] = false; },
+      [](Json& value) { value["guidance_scale"] = -1; },
+      [](Json& value) { value["guidance_scale"] = 1e300; },
+      [](Json& value) { value["guidance_mode"] = "unknown"; },
+      [](Json& value) { value["timestep_format"] = "guess"; },
+      [](Json& value) { value["latent_input"] = "missing"; },
+      [](Json& value) { value["positive_conditioning_input"] = "negative"; },
+      [](Json& value) { value["eta"] = 0; }};
+  for (const auto& mutation : mutations) {
+    auto invalid = manifest;
+    mutation(invalid["chains"]["denoise"]["steps"][0]["executor_info"]["ort"]["loop"]["ddim"]);
+    std::ofstream(path / "manifest.json") << invalid.dump(2);
+    Ort::ModelPackageContext candidate(path.c_str());
+    OrtSessionChain* output = chain;
+    Ort::Status status(GetModelPackageFns().CreateSessionChain(*ort_env, candidate, &config, &output));
+    EXPECT_NE(status.GetErrorCode(), ORT_OK);
+    EXPECT_EQ(output, static_cast<OrtSessionChain*>(chain));
+    if (output != static_cast<OrtSessionChain*>(chain)) Ort::GetStatefulApi().ReleaseSessionChain(output);
+  }
+  Ort::AllocatorWithDefaultOptions allocator;
+  auto seed = Ort::Value::CreateTensor<uint64_t>(allocator, nullptr, 0);
+  *seed.GetTensorMutableData<uint64_t>() = 0;
+  const std::array<int64_t, 4> shape{1, 1, 1, 1};
+  auto positive = Ort::Value::CreateTensor<float>(allocator, shape.data(), 4);
+  auto negative = Ort::Value::CreateTensor<float>(allocator, shape.data(), 4);
+  *positive.GetTensorMutableData<float>() = 0.25f;
+  *negative.GetTensorMutableData<float>() = -0.5f;
+  const OrtStatefulNamedValue named[]{{"init", seed}, {"positive", positive}, {"negative", negative}};
+  OrtStatefulInputs inputs{};
+  inputs.struct_size = sizeof(inputs);
+  inputs.inputs = named;
+  inputs.num_inputs = 3;
+  EXPECT_EQ(chain.CreateExecution(inputs).Run().GetInfo().iterations, 2);
+  std::filesystem::remove_all(root);
 }
 
 TEST(ModelPackageChainTest, BootstrapBudgetsOwnedSessionsAndSourceIndependentExports) {
