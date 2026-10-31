@@ -8,9 +8,11 @@
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <mutex>
 #include <stdexcept>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 #if defined(_MSC_VER) && (defined(_M_AMD64) || defined(_M_IX86))
@@ -327,6 +329,16 @@ inline size_t SpinPoolBatchSize(size_t count, size_t threads, size_t requested) 
   return std::min(requested, std::max(size_t{1}, count / threads));
 }
 
+// Names the calling thread so QMoE background threads can be told apart in debuggers and in
+// /proc/<pid>/task/*/comm. Linux limits a name to 15 characters; best effort elsewhere.
+inline void NameCurrentThread(const char* name) noexcept {
+#if defined(__linux__)
+  static_cast<void>(pthread_setname_np(pthread_self(), name));
+#else
+  static_cast<void>(name);
+#endif
+}
+
 // Unified bounded CPU expert service (v3 Section 8.3 / F9).
 // Used by both synchronous and asynchronous (Option A stream callback) execution paths.
 // Generation-tagged claims prevent late workers from executing a later job with stale metadata.
@@ -490,6 +502,7 @@ class SpinPool final {
   }
 
   void Loop(int worker_idx) {
+    NameCurrentThread("qmoe-spin");
 #if defined(__linux__)
     const int cpu = CpuForWorker(worker_idx);
     if (cpu >= 0) {
@@ -555,6 +568,46 @@ class SpinPool final {
   uint64_t generation_ = 0;
   void (*function_)(void*, size_t) = nullptr;
   void* data_ = nullptr;
+};
+
+// Pools shared by every QMoE kernel of the process, keyed by participant count. They are created on first use and
+// stopped only by Shutdown(). Provider teardown calls it explicitly: a pool destroyed by a static destructor joins its
+// workers while the Windows loader lock is held during FreeLibrary, and a thread cannot exit without that lock.
+class SpinPoolRegistry final {
+ public:
+  // Returns the pool with `threads` participants, building it with `make(threads)` (which must return a non-null
+  // std::unique_ptr<SpinPool>) when absent. A factory that throws leaves the registry unchanged.
+  template <typename MakePool>
+  SpinPool& GetOrCreate(int threads, MakePool&& make) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = pools_.find(threads);
+    if (it == pools_.end()) {
+      std::unique_ptr<SpinPool> pool = make(threads);
+      if (!pool) throw std::logic_error("QMoE pool factory returned no pool.");
+      it = pools_.emplace(threads, std::move(pool)).first;
+    }
+    return *it->second;
+  }
+
+  // Stops and joins every pool; callers must guarantee that none is in use. Pools are rebuilt on demand afterwards.
+  void Shutdown() noexcept {
+    std::unordered_map<int, std::unique_ptr<SpinPool>> retired;
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      retired.swap(pools_);
+    }
+    // Joined outside the lock so an exiting worker never contends with the registry mutex.
+    retired.clear();
+  }
+
+  size_t PoolCount() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return pools_.size();
+  }
+
+ private:
+  mutable std::mutex mutex_;
+  std::unordered_map<int, std::unique_ptr<SpinPool>> pools_;
 };
 
 // Host CPU budget group coordinating SpinPool spin policy across prefill/embedding/Engram and decode phases (v3 Section 8.3 / F9).

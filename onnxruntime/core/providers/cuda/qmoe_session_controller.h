@@ -7,6 +7,7 @@
 // crossing the C ABI with core-internal types.
 #pragma once
 
+#include <algorithm>
 #include <atomic>
 #include <condition_variable>
 #include <cstddef>
@@ -69,10 +70,13 @@
 #include "core/framework/moe_offload_plan.h"
 #include "core/providers/cuda/bounded_pinned_pool.h"
 #include "core/providers/cuda/cuda_device_memory_budget.h"
+#include "core/providers/cuda/qmoe_run_controls.h"
 
 namespace onnxruntime::cuda {
 
-using QMoEDeviceArenasShrunkHook = void (*)(int device_id) noexcept;
+// `session_scope` identifies the session whose arenas were shrunk (the address of its QMoESessionController), or is
+// null when the session has no offload nodes.
+using QMoEDeviceArenasShrunkHook = void (*)(int device_id, const void* session_scope) noexcept;
 
 inline std::atomic<QMoEDeviceArenasShrunkHook>& GetQMoEDeviceArenasShrunkHook() noexcept {
   static std::atomic<QMoEDeviceArenasShrunkHook> hook{nullptr};
@@ -83,9 +87,9 @@ inline void SetQMoEDeviceArenasShrunkHook(QMoEDeviceArenasShrunkHook fn) noexcep
   GetQMoEDeviceArenasShrunkHook().store(fn, std::memory_order_release);
 }
 
-inline void NotifyQMoEDeviceArenasShrunk(int device_id) noexcept {
+inline void NotifyQMoEDeviceArenasShrunk(int device_id, const void* session_scope) noexcept {
   if (auto fn = GetQMoEDeviceArenasShrunkHook().load(std::memory_order_acquire)) {
-    fn(device_id);
+    fn(device_id, session_scope);
   }
 }
 
@@ -478,8 +482,28 @@ class QMoESessionController {
     return common::Status::OK();
   }
 
+  // Applies the QMoE controls carried by the Run()'s config entries (see qmoe_run_controls.h). Call it right after a
+  // successful OnRunStart(); lookup(key, value) reports whether the Run supplied `key`. A malformed entry fails the
+  // Run, and the caller ends the controller run as it does for any other OnRunStart failure.
+  template <typename LookupFn>
+  common::Status ApplyRunControls(LookupFn&& lookup) {
+    std::string error;
+    if (!run_controls_.Apply(std::forward<LookupFn>(lookup), error)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, error);
+    }
+    return common::Status::OK();
+  }
+
+  QMoERunControls& RunControls() noexcept { return run_controls_; }
+
+  // A record stands for one logical execution of a node. A run that captures a CUDA graph registers it while
+  // capturing and again when the captured graph is replayed right away, with no OnRunStart in between. Keeping both
+  // entries would drain, and commit the observation of, that one execution twice.
   void RegisterInvocation(std::shared_ptr<QMoEInvocationRecord> inv) {
     std::lock_guard<std::mutex> lock(mutex_);
+    if (std::find(active_invocations_.begin(), active_invocations_.end(), inv) != active_invocations_.end()) {
+      return;
+    }
     inv->run_id = current_run_id_;
     inv->invocation_id = ++next_invocation_id_;
     active_invocations_.push_back(std::move(inv));
@@ -499,8 +523,11 @@ class QMoESessionController {
     }
 
     // Hold run_in_flight_ until all device/CPU completion draining and observation commits finish (F19).
-    auto release_in_flight = [this](bool* active) noexcept {
+    // The run's controls end with it, on every exit path; a hand-off request only counts for a completed run.
+    bool run_completed = false;
+    auto release_in_flight = [this, &run_completed](bool* active) noexcept {
       if (*active) {
+        run_controls_.EndRun(run_completed);
         std::lock_guard<std::mutex> lock(mutex_);
         run_in_flight_ = false;
       }
@@ -565,13 +592,22 @@ class QMoESessionController {
 
     // Whole-run observation atomicity (v3 Section 5.1 & 7.1):
     // Commit staged observations only when the overall run and all invocations succeeded.
-    if (run_succeeded && first_error.IsOK()) {
-      for (auto& inv : invocations) {
-        if (inv && inv->commit_observation) {
-          inv->commit_observation();
-        }
+    // A staged observation is taken out of its record either way, so it is applied at most once and a discarded
+    // one cannot leak into a later run that reuses the record.
+    const bool commit_observations = run_succeeded && first_error.IsOK();
+    for (auto& inv : invocations) {
+      if (!inv) continue;
+      std::function<void()> commit;
+      {
+        std::lock_guard<std::mutex> inv_lock(inv->mutex);
+        commit = std::move(inv->commit_observation);
+        inv->commit_observation = nullptr;
+      }
+      if (commit_observations && commit) {
+        commit();
       }
     }
+    run_completed = commit_observations;
     return first_error;
   }
 
@@ -1579,6 +1615,7 @@ class QMoESessionController {
   int device_id_ = 0;
   std::atomic<bool> shutting_down_{false};
   std::atomic<uint64_t> graph_generation_{0};
+  QMoERunControls run_controls_;
   mutable std::mutex mutex_;
   size_t registered_nodes_ = 0;
   bool run_in_flight_ = false;

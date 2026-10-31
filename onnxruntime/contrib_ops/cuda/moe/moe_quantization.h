@@ -141,6 +141,10 @@ class QMoE final : public CudaKernel, public MoEBase, public onnxruntime::moe_of
   bool enable_int2_prefill_ = false;
   int64_t row_tile_size_ = qmoe::kDisabledRowTileSize;
   int64_t int_dequant_max_scratch_bytes_ = int64_t{1} << 30;
+  // Static prefill options resolved once in the constructor so they cannot change between runs of a session.
+  // The automatic expert-compaction cap is derived from the offload policy only for planned offload nodes.
+  int max_compact_experts_option_ = 0;
+  bool dequant_transient_option_ = false;
   // Routes INT3 and INT3-mixed prefill through the FP32 SIMT kernels, which evaluate SwiGLU from the FP32
   // accumulators. The default Tensor Core prefill stores the FC1 result as FP16/BF16 before the activation.
   bool disable_int3_tc_prefill_ = false;

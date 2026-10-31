@@ -19,6 +19,8 @@
 #include "core/common/safeint.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 #include "contrib_ops/cuda/moe/qmoe_kernels.h"
+#include "contrib_ops/cuda/moe/qmoe_offload_plan.h"
+#include "contrib_ops/cuda/llm/common/env_utils.h"
 #include "contrib_ops/cuda/llm/common/env_utils.h"
 #include "contrib_ops/cuda/llm/common/logger.h"
 #include "contrib_ops/cuda/llm/common/cuda_runtime_utils.h"
@@ -366,6 +368,10 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
   ORT_ENFORCE(int_dequant_max_scratch_bytes_ > 0,
               int_dequant_max_scratch_bytes_source, " must be greater than 0, got ",
               int_dequant_max_scratch_bytes_, ".");
+  max_compact_experts_option_ =
+      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_MAX_COMPACT_EXPERTS", 0);
+  dequant_transient_option_ =
+      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_DEQUANT_TRANSIENT", 0) != 0;
   const auto configured_disable_int3_tc_prefill =
       op_kernel_info.GetConfigOptions().GetConfigEntry(kQMoEDisableInt3TensorCorePrefillConfig);
   if (configured_disable_int3_tc_prefill.has_value()) {
@@ -912,6 +918,14 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
       if (input_slot_exists(15)) static_cast<void>(op_kernel_info.TryGetConstantInput(15, &fc1_g));
       if (input_slot_exists(16)) static_cast<void>(op_kernel_info.TryGetConstantInput(16, &fc2_g));
 
+      // Standard QMoE also accepts FC1 [E,2*I,H/2] and FC2 [E,H,I/2] next to the legacy [E,H,I] and [E,I,H/2] weight
+      // shapes, so H and I come from whichever form is present. The block scales ([E,N,K/16] in both forms) must match
+      // the derived sizes, which keeps the budgets below and the backend's per-expert slicing consistent.
+      const auto bank_dims = has_const_weights
+                                 ? onnxruntime::contrib::cuda::qmoe::ResolveNvfp4BankDims(
+                                       fc1_w->Shape(), fc2_w->Shape(), 16, fc1_s->SizeInBytes(), fc2_s->SizeInBytes())
+                                 : onnxruntime::contrib::cuda::qmoe::Nvfp4BankDims{};
+
       const bool is_interleaved_swiglu =
           (activation_type_ == onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Swiglu) &&
           (swiglu_fusion_ == 0 || swiglu_fusion_ == 1);
@@ -926,6 +940,7 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
           !use_sparse_mixer_ &&
           !has_unsupported_slot &&
           has_const_weights &&
+          bank_dims.valid &&
           nvfp4_globals_ok;
 
       if (!node_eligible) {
@@ -934,11 +949,12 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
                     "': quant_type='", quant_type_, "', nvfp4_row_major_weights=", nvfp4_weights_row_major_,
                     " (requires quant_type='nvfp4' and weights_prepacked=1)",
                     ", swiglu_fusion=", swiglu_fusion_, ", use_sparse_mixer=", use_sparse_mixer_,
-                    ", unsupported_slot=", bad_slot_idx, ", has_const_cpu_weights=", has_const_weights);
+                    ", unsupported_slot=", bad_slot_idx, ", has_const_cpu_weights=", has_const_weights,
+                    ", valid_bank_shapes=", bank_dims.valid);
       } else {
         const int32_t num_e = static_cast<int32_t>(fc1_w->Shape()[0]);
-        const int32_t hid = static_cast<int32_t>(fc1_w->Shape()[1]);
-        const int32_t inter = static_cast<int32_t>(fc2_w->Shape()[1]);
+        const int32_t hid = static_cast<int32_t>(bank_dims.hidden);
+        const int32_t inter = static_cast<int32_t>(bank_dims.inter);
         const size_t blk = 16u;
 
         offload_source_desc_.op_type = "QMoE";
@@ -1743,23 +1759,15 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
           effective_row_tile_size != qmoe::kDisabledRowTileSize && !use_fp4_gemv && !use_packed_int_gemv);
   const bool use_nvfp4_compaction = is_nvfp4 && !route_native_fp4 && !use_fp4_gemv;
   const bool use_expert_compaction = is_block_fp8 || use_nvfp4_compaction;
-#if defined(_WIN32)
-  static const int max_compact_experts_env =
-      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_MAX_COMPACT_EXPERTS", 64);
-#else
-  static const int max_compact_experts_env =
-      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_MAX_COMPACT_EXPERTS", 0);
-#endif
   const bool is_planned_offload =
       (offload_backend_ != nullptr) || offload_node_registered_;
-  const int default_compact_experts =
-      (is_planned_offload && max_compact_experts_env <= 0)
-          ? static_cast<int>(offload_policy_.prefill_wave_experts)
-          : max_compact_experts_env;
+  // Compaction is off by default on every platform. Only planned offload nodes derive an automatic cap, from the
+  // policy's prefill wave size, when ORT_QMOE_MAX_COMPACT_EXPERTS is unset.
   const int dynamic_compact_experts =
-      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_CURRENT_MAX_COMPACT_EXPERTS", default_compact_experts);
-  static const bool dequant_transient_env =
-      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_DEQUANT_TRANSIENT", 0) != 0;
+      (is_planned_offload && max_compact_experts_option_ <= 0)
+          ? static_cast<int>(offload_policy_.prefill_wave_experts)
+          : max_compact_experts_option_;
+  const bool dequant_transient_env = dequant_transient_option_;
   const int full_active_experts =
       (use_nvfp4_compaction && (dynamic_compact_experts > 0 || is_planned_offload))
           ? narrow<int>(moe_params.num_experts)
@@ -1969,10 +1977,36 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   const qmoe::ScratchLayout scratch_layout =
       qmoe::MakeScratchLayout(workspace_size, row_tile_plan, k_);
   const size_t total_scratch_bytes = scratch_layout.total_bytes;
+  // One aggregate budget covers everything a planned prefill call keeps live together: the runner scratch plus the
+  // compaction maps, compacted biases and multi-pass accumulators counted here, then the dequantized weights and,
+  // when the DMA path is used, its staging workspace.
+  size_t planned_live_bytes = total_scratch_bytes;
   if (is_planned_offload && offload_policy_.device_working_bytes > 0) {
-    ORT_RETURN_IF(total_scratch_bytes > offload_policy_.device_working_bytes,
-                  "QMoE prefill runner scratch (", total_scratch_bytes,
-                  " bytes) exceeds configured session.moe.offload.device_working_bytes (",
+    qmoe::PrefillAuxLayout aux_layout;
+    aux_layout.use_expert_compaction = use_expert_compaction;
+    aux_layout.num_experts = moe_params.num_experts;
+    aux_layout.runner_num_experts = runner_num_experts;
+    aux_layout.hidden_size = moe_params.hidden_size;
+    aux_layout.fc1_bias_cols =
+        fc1_experts_bias_optional ? moe_params.inter_size * (is_fused_swiglu ? 2 : 1) : int64_t{0};
+    aux_layout.fc2_bias_cols = fc2_experts_bias_optional ? moe_params.hidden_size : int64_t{0};
+    aux_layout.num_compact_passes = num_compact_passes;
+    aux_layout.activation_bytes = input->DataType()->Size();
+    const auto cpu_global_scale_copy_bytes = [&](const auto& packed_scale, const Tensor* scale) -> size_t {
+      return (!packed_scale && scale != nullptr && scale->Location().device.Type() == OrtDevice::CPU)
+                 ? static_cast<size_t>(SafeInt<size_t>(moe_params.num_experts) * sizeof(float))
+                 : size_t{0};
+    };
+    aux_layout.global_scale_copy_bytes =
+        SafeInt<size_t>(cpu_global_scale_copy_bytes(packed_fc1_global_scale_, fc1_global_scale)) +
+        cpu_global_scale_copy_bytes(packed_fc2_global_scale_, fc2_global_scale);
+    planned_live_bytes = SafeInt<size_t>(total_scratch_bytes) +
+                         qmoe::PrefillAuxBytes(row_tile_plan, static_cast<int64_t>(k_), aux_layout);
+    ORT_RETURN_IF(planned_live_bytes > offload_policy_.device_working_bytes,
+                  "QMoE prefill runner scratch (", total_scratch_bytes, " bytes) and compaction buffers (",
+                  planned_live_bytes - total_scratch_bytes,
+                  " bytes) exceed configured "
+                  "session.moe.offload.device_working_bytes (",
                   offload_policy_.device_working_bytes, " bytes).");
   }
 
@@ -2741,8 +2775,10 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     // interleaved layout, the decode GEMV either un-permutes that same buffer in-register
     // (fc*_gemv_sm80_layout, the single-copy default) or reads the dedicated GEMV-native copy
     // in gemv_fp4_fc*_weights_decode_.
+    // The uploaded packed_fp4_fc*_weights_ copy is only the raw layout for row-major NVFP4 offload nodes; otherwise it is
+    // the native K-packed prepack, so ORT_NVFP4_GEMV_RAW_LAYOUT=1 must read the original tensors.
     const uint8_t* gemv_fc1_weight = use_raw_nvfp4_gemv
-                                         ? (packed_fp4_fc1_weights_
+                                         ? ((nvfp4_weights_row_major_ && packed_fp4_fc1_weights_)
                                                 ? static_cast<const uint8_t*>(packed_fp4_fc1_weights_.get())
                                                 : static_cast<const uint8_t*>(fc1_experts_weights->DataRaw()))
                                          : static_cast<const uint8_t*>(
@@ -2751,7 +2787,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                                                     : gemv_fp4_fc1_weights_)
                                                    .get());
     const uint8_t* gemv_fc2_weight = use_raw_nvfp4_gemv
-                                         ? (packed_fp4_fc2_weights_
+                                         ? ((nvfp4_weights_row_major_ && packed_fp4_fc2_weights_)
                                                 ? static_cast<const uint8_t*>(packed_fp4_fc2_weights_.get())
                                                 : static_cast<const uint8_t*>(fc2_experts_weights->DataRaw()))
                                          : static_cast<const uint8_t*>(
@@ -3100,6 +3136,10 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   }
   IAllocatorUniquePtr<void> dequant_fc1_weights;
   IAllocatorUniquePtr<void> dequant_fc2_weights;
+  // Device copies of CPU-resident NVFP4 global scales. The dequantize callbacks keep only raw pointers into them, so
+  // they must outlive every dequantize launch, including the ones issued from the row-tile loop.
+  IAllocatorUniquePtr<float> transient_fc1_global_scale;
+  IAllocatorUniquePtr<float> transient_fc2_global_scale;
   IAllocatorUniquePtr<void> compact_fc1_bias;
   IAllocatorUniquePtr<void> compact_fc2_bias;
   IAllocatorUniquePtr<int> compact_expert_indices;
@@ -3202,12 +3242,13 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     size_t fc2_bytes = SafeInt<size_t>(num_experts) * fc2_n * fc2_k * element_size;
     dequant_weight_bytes = SafeInt<size_t>(fc1_bytes) + fc2_bytes;
     if (is_planned_offload && offload_policy_.device_working_bytes > 0) {
-      const size_t total_working_req = static_cast<size_t>(SafeInt<size_t>(total_scratch_bytes) + dequant_weight_bytes);
-      ORT_RETURN_IF(dequant_weight_bytes > offload_policy_.device_working_bytes ||
-                        total_working_req > offload_policy_.device_working_bytes,
-                    "QMoE prefill dequantized weight and runner workspace (",
-                    total_working_req,
-                    " bytes) exceeds configured session.moe.offload.device_working_bytes (",
+      // Necessary for every path: the DMA path adds its staging workspace in TryPrepareQMoEPrefillDmaLayer and the
+      // dequantized weights are counted once either way.
+      const size_t total_working_req = qmoe::PrefillWorkingSetBytes(planned_live_bytes, 0, dequant_weight_bytes, false);
+      ORT_RETURN_IF(total_working_req > offload_policy_.device_working_bytes,
+                    "QMoE prefill working set (", total_working_req,
+                    " bytes: runner scratch, compaction buffers and dequantized weights) exceeds configured "
+                    "session.moe.offload.device_working_bytes (",
                     offload_policy_.device_working_bytes, " bytes).");
     }
 
@@ -3239,7 +3280,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
             static_cast<const uint8_t*>(fc2_experts_weights->DataRaw()),
             static_cast<const uint8_t*>(p_fc2_block_scales),
             host_fc2_g,
-            stream, &prefill_dma_view, sess_scope);
+            stream, &prefill_dma_view, sess_scope, planned_live_bytes);
         if (!use_prefill_dma) prefill_dma_lease.reset();
       }
       if (!use_prefill_dma) {
@@ -3314,10 +3355,30 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                      prefill_dma_view.host_fc2_weights, prefill_dma_view.host_fc2_scales);
       };
     } else {
-      ORT_RETURN_IF(nvfp4_weights_row_major_ &&
-                        (offload_plan_.use_file_backing ||
-                         ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_HOST_CACHE_MIB", 0) > 0) &&
-                        !resident_view.all_experts_cached,
+      // packed_fp4_fc*_weights_ holds a GPU copy of the raw row-major NVFP4 banks only for row-major offload nodes.
+      // For other layouts it holds the native K-packed prepacked weights, which this N-packed decode cannot read.
+      const uint8_t* fc1_w_ptr = (nvfp4_weights_row_major_ && packed_fp4_fc1_weights_)
+                                     ? static_cast<const uint8_t*>(packed_fp4_fc1_weights_.get())
+                                     : static_cast<const uint8_t*>(fc1_experts_weights->DataRaw());
+      const uint8_t* fc2_w_ptr = (nvfp4_weights_row_major_ && packed_fp4_fc2_weights_)
+                                     ? static_cast<const uint8_t*>(packed_fp4_fc2_weights_.get())
+                                     : static_cast<const uint8_t*>(fc2_experts_weights->DataRaw());
+      // Experts outside the GPU slab and the mapped host cache are read straight from the banks selected above, so
+      // each of them must be device-accessible (device, managed or registered host memory). A pageable CPU bank would
+      // fault with an illegal address.
+      const auto is_device_accessible = [](const void* ptr) {
+        if (ptr == nullptr) return false;
+        cudaPointerAttributes attr{};
+        if (cudaPointerGetAttributes(&attr, ptr) != cudaSuccess) {
+          static_cast<void>(cudaGetLastError());
+          return false;
+        }
+        return attr.type == cudaMemoryTypeDevice || attr.type == cudaMemoryTypeManaged ||
+               (attr.type == cudaMemoryTypeHost && attr.devicePointer != nullptr);
+      };
+      ORT_RETURN_IF(nvfp4_weights_row_major_ && !resident_view.all_experts_cached &&
+                        !(is_device_accessible(fc1_w_ptr) && is_device_accessible(fc2_w_ptr) &&
+                          is_device_accessible(p_fc1_block_scales) && is_device_accessible(p_fc2_block_scales)),
                     "Bounded prefill with incomplete GPU/host cache coverage requires prefill staging DMA. "
                     "Enable ORT_QMOE_ENABLE_PREFILL_STAGING_DMA and provide sufficient workspace; "
                     "pageable expert banks cannot be read directly by the GPU.");
@@ -3327,8 +3388,6 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       dequant_fc2_weights = dequant_transient_env
                                 ? GetTransientScratchBuffer<void>(fc2_bytes)
                                 : GetScratchBuffer<void>(fc2_bytes, GetComputeStream(context));
-      IAllocatorUniquePtr<float> transient_fc1_global_scale;
-      IAllocatorUniquePtr<float> transient_fc2_global_scale;
       if (!packed_fc1_global_scale_ && fc1_global_scale &&
           fc1_global_scale->Location().device.Type() == OrtDevice::CPU) {
         transient_fc1_global_scale = GetScratchBuffer<float>(
@@ -3349,7 +3408,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       }
       dequantize_fp4 = [&, fc1_n, fc1_k, fc2_n, fc2_k, num_experts,
                         p_fc1_block_scales, p_fc1_global_scale, p_fc2_block_scales, p_fc2_global_scale,
-                        resident_view, fc1_bias_gpu_src, fc2_bias_gpu_src]() {
+                        fc1_w_ptr, fc2_w_ptr, resident_view, fc1_bias_gpu_src, fc2_bias_gpu_src]() {
         // Choose the FP4 (MXFP4 / E8M0, block 32) or NVFP4 (E4M3, block 16) dequant launcher.
         auto dequant = [&](const uint8_t* weights, const uint8_t* block_scales, const float* global_scale,
                            void* out, int n, int k, const void* bias_ptr, void* output_bias,
@@ -3383,12 +3442,6 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
         };
         const float* fc1_g_ptr = static_cast<const float*>(p_fc1_global_scale);
         const float* fc2_g_ptr = static_cast<const float*>(p_fc2_global_scale);
-        const uint8_t* fc1_w_ptr = packed_fp4_fc1_weights_
-                                       ? static_cast<const uint8_t*>(packed_fp4_fc1_weights_.get())
-                                       : static_cast<const uint8_t*>(fc1_experts_weights->DataRaw());
-        const uint8_t* fc2_w_ptr = packed_fp4_fc2_weights_
-                                       ? static_cast<const uint8_t*>(packed_fp4_fc2_weights_.get())
-                                       : static_cast<const uint8_t*>(fc2_experts_weights->DataRaw());
         dequant(fc1_w_ptr,
                 static_cast<const uint8_t*>(p_fc1_block_scales),
                 fc1_g_ptr,

@@ -13,6 +13,7 @@
 #include "core/framework/moe_offload_plan.h"
 #include "core/providers/cuda/qmoe_session_controller.h"
 #include "contrib_ops/cuda/moe/moe_base.h"
+#include "contrib_ops/cuda/moe/qmoe_offload_plan.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_kernels.h"
 #include "contrib_ops/cpu/moe/qmoe_shared_layout.h"
 #include "contrib_ops/cuda/moe/qmoe_callback_timing.h"
@@ -33,6 +34,9 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
   ~QMoEOffload() override;
   Status ComputeInternal(OpKernelContext* context) const override;
   void SyncPrefillSlotTables(cudaStream_t stream = nullptr) const;
+  // Stops the process-wide doorbell and shared CPU pool threads unless a backend is alive. Reached through
+  // ShutdownQMoEBackgroundServices() in qmoe_background_services.h.
+  static void ShutdownBackgroundServices() noexcept;
   struct SharedLayerCache;
   friend bool TryGetQMoEResidentLayerSlabView(int device_id, int64_t layer_index, int num_experts,
                                               int hidden_size, int inter_size, QMoEResidentLayerSlabView* out_view,
@@ -44,7 +48,7 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
       const uint8_t* fc1_w, const uint8_t* fc1_s, const float* fc1_g,
       const uint8_t* fc2_w, const uint8_t* fc2_s, const float* fc2_g,
       cudaStream_t exec_stream, QMoEPrefillPassDmaView* out_view,
-      const void* session_scope);
+      const void* session_scope, size_t caller_working_bytes);
   friend bool BeginQMoEPrefillDmaPass(
       int device_id, int64_t layer_index, int pass_idx, int num_passes, int runner_num_experts,
       cudaStream_t exec_stream, QMoEPrefillPassDmaView* out_view,
@@ -57,6 +61,16 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
   friend void UnregisterQMoEDenseLayerHostWeights(int device_id, int64_t layer_index, const uint8_t* fc1_w);
 
  private:
+  // Counted in the process-wide total that gates ShutdownBackgroundServices(). Declared first so that it is released
+  // after every other member.
+  struct LiveBackendCount {
+    LiveBackendCount() noexcept;
+    ~LiveBackendCount();
+    LiveBackendCount(const LiveBackendCount&) = delete;
+    LiveBackendCount& operator=(const LiveBackendCount&) = delete;
+  };
+  LiveBackendCount live_backend_count_;
+
   enum Buffer : size_t {
     Fc1Weights,
     Fc2Weights,
@@ -130,7 +144,9 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
     int target_slot = -1;
     int victim_slot = -1;
     int evicted_expert = -1;
+    uint64_t placement_epoch = 0;  // target placement the request was planned against
   };
+  qmoe::CrossLayerSite DescribeCrossLayerSite() const noexcept;
   bool TryPrepareCrossLayerPromotion(CrossLayerPromoRequest* out_req) const noexcept;
   bool ExecuteCrossLayerPromotionDma(const CrossLayerPromoRequest& req, uint8_t* pinned_bounce_buf,
                                      size_t bounce_cap) const noexcept;

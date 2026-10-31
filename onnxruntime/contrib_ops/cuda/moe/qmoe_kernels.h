@@ -528,7 +528,10 @@ bool TryPrepareQMoEPrefillDmaLayer(
     const uint8_t* fc1_w, const uint8_t* fc1_s, const float* fc1_g,
     const uint8_t* fc2_w, const uint8_t* fc2_s, const float* fc2_g,
     cudaStream_t exec_stream, QMoEPrefillPassDmaView* out_view,
-    const void* session_scope = nullptr);
+    const void* session_scope = nullptr,
+    // Device bytes the caller keeps live for the whole prefill call besides the dequantized weights (runner scratch,
+    // compaction maps, biases and multi-pass buffers). Counted with the DMA workspace against device_working_bytes.
+    size_t caller_working_bytes = 0);
 
 bool BeginQMoEPrefillDmaPass(
     int device_id, int64_t layer_index, int pass_idx, int num_passes, int runner_num_experts,
@@ -542,7 +545,7 @@ void PrefetchNextQMoEPrefillDmaPass(
 void EndQMoEPrefillDmaPassDequant(
     int device_id, int pass_idx, cudaStream_t exec_stream);
 
-void OnQMoEDeviceArenasShrunk(int device_id) noexcept;
+void OnQMoEDeviceArenasShrunk(int device_id, const void* session_scope) noexcept;
 void FinalizeQMoEPrefillAndSeedDecode(int device_id, cudaStream_t stream = nullptr,
                                       const void* caller_scope = nullptr);
 

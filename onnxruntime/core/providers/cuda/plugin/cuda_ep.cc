@@ -689,13 +689,12 @@ OrtStatus* ORT_API_CALL CudaEp::OnRunStartImpl(
 
   auto* ep = static_cast<CudaEp*>(this_ptr);
   QMoEControllerRunRollback controller_rollback;
-  if (!ep->config_.enable_cuda_graph) {
-    ep->factory_.ShrinkEligibleDeviceArenas(ep->config_.device_id, ep->config_.budget_account.get());
-  }
+  std::shared_ptr<onnxruntime::cuda::QMoESessionController> qmoe_controller;
   if (ep->EpImpl() != nullptr) {
     auto runtime_cfg = onnxruntime::cuda::detail::GetCudaKernelAdapterRuntimeConfigForProvider(
         static_cast<const void*>(ep->EpImpl()));
     if (runtime_cfg && runtime_cfg->qmoe_controller && runtime_cfg->qmoe_controller->HasOffloadNodes()) {
+      qmoe_controller = runtime_cfg->qmoe_controller;
       const char* strict_env = std::getenv("ORT_QMOE_REJECT_DISABLE_SYNC");
       if (strict_env != nullptr && std::strcmp(strict_env, "1") == 0 && run_options != nullptr) {
         const char* no_sync =
@@ -706,14 +705,28 @@ OrtStatus* ORT_API_CALL CudaEp::OnRunStartImpl(
               "QMoEOffload does not support disable_synchronize_execution_providers=1; required completion sync cannot be skipped.");
         }
       }
-      auto st = runtime_cfg->qmoe_controller->OnRunStart();
+      auto st = qmoe_controller->OnRunStart();
       if (!st.IsOK()) {
         return ep->factory_.GetOrtApi().CreateStatus(ORT_FAIL, st.ErrorMessage().c_str());
       }
-      controller_rollback.Arm(runtime_cfg->qmoe_controller);
+      controller_rollback.Arm(qmoe_controller);
+      if (run_options != nullptr) {
+        const OrtApi& ort_api = ep->factory_.GetOrtApi();
+        st = qmoe_controller->ApplyRunControls([&](const char* key, std::string& value) {
+          const char* entry = ort_api.GetRunConfigEntry(run_options, key);
+          if (entry == nullptr) return false;
+          value = entry;
+          return true;
+        });
+        if (!st.IsOK()) {
+          return ort_api.CreateStatus(ORT_INVALID_ARGUMENT, st.ErrorMessage().c_str());
+        }
+      }
     }
   }
   if (!ep->config_.enable_cuda_graph) {
+    ep->factory_.ShrinkEligibleDeviceArenas(ep->config_.device_id, ep->config_.budget_account.get(),
+                                            qmoe_controller.get());
     controller_rollback.Release();
     return nullptr;
   }
@@ -894,16 +907,17 @@ bool ORT_API_CALL CudaEp::IsGraphCapturedImpl(const OrtEp* this_ptr, int graph_a
   }
 
   try {
-    if (const char* handoff_env = std::getenv("ORT_QMOE_PREFILL_HANDOFF_DONE");
-        handoff_env != nullptr && std::strcmp(handoff_env, "1") == 0) {
-      ep->factory_.ShrinkEligibleDeviceArenas(ep->config_.device_id, ep->config_.budget_account.get());
-    }
     auto& context = ep->GetPerThreadContext();
     if (ep->EpImpl() != nullptr) {
       auto runtime_cfg = onnxruntime::cuda::detail::GetCudaKernelAdapterRuntimeConfigForProvider(
           static_cast<const void*>(ep->EpImpl()));
       if (runtime_cfg && runtime_cfg->qmoe_controller) {
-        const uint64_t cur_gen = runtime_cfg->qmoe_controller->GraphGeneration();
+        const auto& qmoe_controller = runtime_cfg->qmoe_controller;
+        if (qmoe_controller->RunControls().HandoffDonePending()) {
+          ep->factory_.ShrinkEligibleDeviceArenas(ep->config_.device_id, ep->config_.budget_account.get(),
+                                                  qmoe_controller.get());
+        }
+        const uint64_t cur_gen = qmoe_controller->GraphGeneration();
         if (cur_gen != context.last_qmoe_graph_gen) {
           context.cuda_graph.Reset();
           context.last_qmoe_graph_gen = cur_gen;

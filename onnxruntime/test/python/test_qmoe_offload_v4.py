@@ -5,14 +5,18 @@
 
 import contextlib
 import ctypes
+import gc
 import os
+import re
 import struct
 import subprocess
 import sys
 import tempfile
 import threading
+import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import numpy as np
 import onnx
@@ -63,6 +67,144 @@ def _round_to_act_dtype(arr: np.ndarray, use_fp16: bool = False) -> np.ndarray:
     return _bfloat16_u16_to_float32(_float32_to_bfloat16_u16(arr))
 
 
+def _cuda_device_compute_capability(ordinal: int = 0) -> tuple[int, int] | None:
+    """Returns (major, minor) from the CUDA driver API, or None when the device cannot be queried."""
+    lib_names = ("nvcuda.dll",) if sys.platform == "win32" else ("libcuda.so.1", "libcuda.so")
+    cuda = None
+    for lib_name in lib_names:
+        with contextlib.suppress(OSError):
+            cuda = ctypes.CDLL(lib_name)
+            break
+    if cuda is None:
+        return None
+    try:
+        device = ctypes.c_int()
+        major = ctypes.c_int()
+        minor = ctypes.c_int()
+        # CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR / _MINOR
+        if (
+            cuda.cuInit(0) != 0
+            or cuda.cuDeviceGet(ctypes.byref(device), ctypes.c_int(ordinal)) != 0
+            or cuda.cuDeviceGetAttribute(ctypes.byref(major), 75, device) != 0
+            or cuda.cuDeviceGetAttribute(ctypes.byref(minor), 76, device) != 0
+        ):
+            return None
+    except (AttributeError, OSError):
+        return None
+    return int(major.value), int(minor.value)
+
+
+def _load_cudart():
+    for lib_name in ("libcudart.so.13", "libcudart.so.12", "libcudart.so", "cudart64_13.dll", "cudart64_12.dll"):
+        with contextlib.suppress(OSError):
+            return ctypes.CDLL(lib_name)
+    return None
+
+
+def _cuda_malloc(cudart, nbytes: int) -> ctypes.c_void_p:
+    ptr = ctypes.c_void_p()
+    status = cudart.cudaMalloc(ctypes.byref(ptr), ctypes.c_size_t(nbytes))
+    if status != 0:
+        raise RuntimeError(f"cudaMalloc({nbytes}) failed with status {status}")
+    return ptr
+
+
+def _cuda_upload(cudart, device_ptr: ctypes.c_void_p, arr: np.ndarray) -> None:
+    arr = np.ascontiguousarray(arr, dtype=np.float32)
+    status = cudart.cudaMemcpy(device_ptr, arr.ctypes.data_as(ctypes.c_void_p), arr.nbytes, 1)  # cudaMemcpyHostToDevice
+    if status != 0:
+        raise RuntimeError(f"cudaMemcpy failed with status {status}")
+
+
+def _wrap_qmoe_model_with_cast_io(model_path: str, out_path: str, hidden_size: int, num_experts: int) -> str:
+    """Wraps a single-router canonical model in FLOAT <-> BFLOAT16 casts so CUDA Graph tests can bind GPU buffers."""
+    m = onnx.load_model(model_path, load_external_data=False)
+    m.graph.node.insert(
+        0, helper.make_node("Cast", inputs=["R_f32"], outputs=["router_probs"], to=TensorProto.BFLOAT16)
+    )
+    m.graph.node.insert(0, helper.make_node("Cast", inputs=["X_f32"], outputs=["X"], to=TensorProto.BFLOAT16))
+    m.graph.node.append(helper.make_node("Cast", inputs=["Y"], outputs=["Y_f32"], to=TensorProto.FLOAT))
+    del m.graph.input[:]
+    m.graph.input.extend(
+        [
+            helper.make_tensor_value_info("X_f32", TensorProto.FLOAT, ["T", hidden_size]),
+            helper.make_tensor_value_info("R_f32", TensorProto.FLOAT, ["T", num_experts]),
+        ]
+    )
+    del m.graph.output[:]
+    m.graph.output.append(helper.make_tensor_value_info("Y_f32", TensorProto.FLOAT, ["T", hidden_size]))
+    onnx.save_model(m, out_path)
+    return out_path
+
+
+@contextlib.contextmanager
+def _capture_native_stderr():
+    """Captures file-descriptor 2, which is where the C++ backend prints its diagnostics."""
+    sys.stderr.flush()
+    saved_fd = os.dup(2)
+    captured = []
+    with tempfile.TemporaryFile(mode="w+b") as tmp:
+        os.dup2(tmp.fileno(), 2)
+        try:
+            yield captured
+        finally:
+            sys.stderr.flush()
+            os.dup2(saved_fd, 2)
+            os.close(saved_fd)
+            tmp.seek(0)
+            captured.append(tmp.read().decode(errors="replace"))
+
+
+_RESIDENT_LOG_RE = re.compile(r"resident layer=(\d+) slots=(\d+) hit_routes=(\d+) routes=(\d+)")
+
+
+def _resident_log_rows(log_text: str) -> dict[int, tuple[int, int, int]]:
+    """Parses the per-layer (slots, hit_routes, routes) totals that the backend prints when it is destroyed.
+
+    The backend prints them only when ORT_QMOE_SHARED_RESIDENT_LOG=1 is set before the session is created.
+    """
+    rows = {
+        int(m.group(1)): (int(m.group(2)), int(m.group(3)), int(m.group(4)))
+        for m in _RESIDENT_LOG_RE.finditer(log_text)
+    }
+    if not rows:
+        raise AssertionError(
+            "No 'QMoEOffload resident layer=...' lines were captured from native stderr; the backend prints them "
+            f"when it is destroyed. Captured output:\n{log_text[-2000:]}"
+        )
+    return rows
+
+
+def _resident_slots_per_layer(log_text: str) -> dict[int, int]:
+    return {layer: slots for layer, (slots, _, _) in _resident_log_rows(log_text).items()}
+
+
+def _resident_route_stats(log_text: str) -> dict[int, tuple[int, int]]:
+    return {layer: (hit_routes, routes) for layer, (_, hit_routes, routes) in _resident_log_rows(log_text).items()}
+
+
+def _resident_routes_per_layer(log_text: str) -> dict[int, int]:
+    return {layer: routes for layer, (_, _, routes) in _resident_log_rows(log_text).items()}
+
+
+def _run_qmoe_bf16(sess, x_f32: np.ndarray, r_f32: np.ndarray, run_options=None) -> np.ndarray:
+    x_bf16 = _float32_to_bfloat16_u16(x_f32)
+    r_bf16 = _float32_to_bfloat16_u16(r_f32)
+    ort_x = ort.OrtValue.ortvalue_from_numpy_with_onnx_type(x_bf16, TensorProto.BFLOAT16)
+    ort_r = ort.OrtValue.ortvalue_from_numpy_with_onnx_type(r_bf16, TensorProto.BFLOAT16)
+    out = sess.run_with_ort_values(["Y"], {"X": ort_x, "router_probs": ort_r}, run_options)[0]
+    raw_bytes = bytes((ctypes.c_uint16 * int(np.prod(x_f32.shape))).from_address(out.data_ptr()))
+    return _bfloat16_u16_to_float32(np.frombuffer(raw_bytes, dtype=np.uint16).reshape(x_f32.shape))
+
+
+def _qmoe_background_thread_names() -> list[str]:
+    names = []
+    for task_dir in Path("/proc/self/task").iterdir():
+        with contextlib.suppress(OSError):
+            names.append((task_dir / "comm").read_text().strip())
+    return sorted(name for name in names if name.startswith("qmoe-"))
+
+
 def _dequant_nvfp4_row_major(w_u8: np.ndarray, s_u8: np.ndarray, g_f32: np.ndarray, n: int, k: int) -> np.ndarray:
     ne = w_u8.shape[0]
     w_flat = w_u8.reshape(ne, n, k // 2)
@@ -81,7 +223,13 @@ def _numpy_nvfp4_qmoe_reference(
     r_f32: np.ndarray | list[np.ndarray],
     use_fp16: bool = False,
     dropped_rank: int | None = None,
+    dropped_route: tuple[int, int, int] | None = None,
 ) -> np.ndarray:
+    """Reference output for the canonical NVFP4 QMoE chain.
+
+    dropped_rank removes that top-k rank for every row of every layer. dropped_route=(layer, row, rank) removes a
+    single expert contribution, which lets tests prove that their tolerances can detect one lost route.
+    """
     model = onnx.load_model(model_path, load_external_data=True)
     init_map = {}
     for t in model.graph.initializer:
@@ -111,6 +259,7 @@ def _numpy_nvfp4_qmoe_reference(
         norm_weights = int(attrs.get("normalize_routing_weights", 1)) != 0
 
         r_in = r_f32[qmoe_idx] if isinstance(r_f32, (list, tuple)) else r_f32
+        layer_idx = qmoe_idx
         qmoe_idx += 1
         logits = _round_to_act_dtype(r_in, use_fp16=use_fp16)
         logits_shift = logits - np.max(logits, axis=-1, keepdims=True)
@@ -127,7 +276,8 @@ def _numpy_nvfp4_qmoe_reference(
 
         ne = fc1_w_u8.shape[0]
         hid = cur.shape[1]
-        inter = fc2_w_u8.shape[1]
+        # FC1 scales are [E, 2*I, H/blk] in every weight layout, unlike the weight dims that differ between layouts.
+        inter = fc1_s_u8.shape[1] // 2
         fc1_w = _round_to_act_dtype(_dequant_nvfp4_row_major(fc1_w_u8, fc1_s_u8, fc1_g, 2 * inter, hid), use_fp16)
         fc2_w = _round_to_act_dtype(_dequant_nvfp4_row_major(fc2_w_u8, fc2_s_u8, fc2_g, hid, inter), use_fp16)
 
@@ -142,6 +292,8 @@ def _numpy_nvfp4_qmoe_reference(
             row_acc = np.zeros((hid,), dtype=np.float32)
             for rank_idx, (e_id, w_scale) in enumerate(zip(order, weights, strict=False)):
                 if dropped_rank is not None and rank_idx == dropped_rank:
+                    continue
+                if dropped_route is not None and dropped_route == (layer_idx, row, rank_idx):
                     continue
                 proj1 = fc1_w[e_id] @ cur[row]
                 if fc1_b is not None:
@@ -174,7 +326,15 @@ def _build_canonical_nvfp4_qmoe_model(
     layer_experts: list[int] | None = None,
     quant_type: str = "nvfp4",
     use_fp16: bool = False,
+    weight_layout: str = "legacy",
 ) -> str:
+    """Builds a chain of QMoE layers with random NVFP4 weights.
+
+    weight_layout="legacy" emits FC1 [E, H, I] and FC2 [E, I, H/2]; "standard" emits FC1 [E, 2*I, H/2] and
+    FC2 [E, H, I/2]. Both layouts carry identical bytes for a given seed.
+    """
+    if weight_layout not in ("legacy", "standard"):
+        raise ValueError(f"unknown weight_layout {weight_layout!r}")
     rng = np.random.default_rng(seed)
     ext_filename = "weights.data"
     ext_path = os.path.join(model_dir, ext_filename)
@@ -243,6 +403,9 @@ def _build_canonical_nvfp4_qmoe_model(
             ne = layer_experts[l_idx] if layer_experts is not None else num_experts
             fc1_w = rng.integers(0, 256, size=(ne, hidden_size, inter_size), dtype=np.uint8)
             fc2_w = rng.integers(0, 256, size=(ne, inter_size, hidden_size // 2), dtype=np.uint8)
+            if weight_layout == "standard":
+                fc1_w = fc1_w.reshape(ne, 2 * inter_size, hidden_size // 2)
+                fc2_w = fc2_w.reshape(ne, hidden_size, inter_size // 2)
             if is_mxfp4:
                 # E8M0 scale codes: 125 = 2^-2 = 0.25, 126 = 2^-1 = 0.5
                 scale_choices = np.array([124, 125, 126], dtype=np.uint8)
@@ -409,8 +572,33 @@ class TestQMoEOffloadV4(unittest.TestCase):
                 with contextlib.suppress(Exception):
                     ort.register_execution_provider_library("CUDAExecutionProvider", str(ort_capi))
                     cls._use_plugin_ep = True
+        cls._skip_unless_nvfp4_offload_supported()
 
-    def _get_plugin_cuda_device(self):
+    @classmethod
+    def _skip_unless_nvfp4_offload_supported(cls):
+        """Skips the suite where required NVFP4 offload cannot work: no CUDA EP, SM < 80, or a build without FP4 QMoE."""
+        plugin_dev = cls._selected_plugin_device()
+        if "CUDAExecutionProvider" not in ort.get_available_providers() and plugin_dev is None:
+            raise unittest.SkipTest("The CUDA execution provider is not available")
+
+        capability = _cuda_device_compute_capability(cls._device_id(plugin_dev))
+        if capability is not None and capability < (8, 0):
+            raise unittest.SkipTest(
+                f"QMoE NVFP4 offload requires an SM80 or newer GPU, found SM{capability[0]}{capability[1]}"
+            )
+
+        # USE_FP4_QMOE is a build-time option, so ask the kernel itself. Any other probe failure is left to the
+        # tests, which report it with their own context.
+        with tempfile.TemporaryDirectory() as probe_dir:
+            probe_path = _build_canonical_nvfp4_qmoe_model(probe_dir, num_layers=1, embedded_initializers=True)
+            try:
+                cls._make_session(probe_path, {"session.moe.offload.mode": "disabled"})
+            except Exception as e:
+                if "USE_FP4_QMOE" in str(e):
+                    raise unittest.SkipTest("This build does not enable USE_FP4_QMOE (NVFP4 QMoE)") from e
+
+    @classmethod
+    def _get_plugin_cuda_device(cls):
         with contextlib.suppress(Exception):
             devices = [
                 d
@@ -422,8 +610,23 @@ class TestQMoEOffloadV4(unittest.TestCase):
                 return devices[0]
         return None
 
+    @classmethod
+    def _selected_plugin_device(cls, prefer_plugin: bool = False):
+        """The plugin EP device _make_session binds, or None when it uses the ordinary CUDAExecutionProvider."""
+        plugin_dev = cls._get_plugin_cuda_device()
+        if (prefer_plugin or "CUDAExecutionProvider" not in ort.get_available_providers()) and plugin_dev is not None:
+            return plugin_dev
+        return None
+
+    @staticmethod
+    def _device_id(plugin_dev) -> int:
+        if plugin_dev is None:
+            return 0
+        return int(plugin_dev.ep_options.get("device_id", plugin_dev.ep_metadata.get("cuda_device_id", "0")))
+
+    @classmethod
     def _make_session(
-        self,
+        cls,
         model_path: str,
         config_entries: dict,
         cuda_options: dict | None = None,
@@ -433,8 +636,8 @@ class TestQMoEOffloadV4(unittest.TestCase):
         so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
         for k, v in config_entries.items():
             so.add_session_config_entry(k, str(v))
-        plugin_dev = self._get_plugin_cuda_device()
-        if (prefer_plugin or "CUDAExecutionProvider" not in ort.get_available_providers()) and plugin_dev is not None:
+        plugin_dev = cls._selected_plugin_device(prefer_plugin)
+        if plugin_dev is not None:
             so.add_provider_for_devices([plugin_dev], cuda_options or {})
             return ort.InferenceSession(model_path, sess_options=so)
         providers = [("CUDAExecutionProvider", cuda_options or {})]
@@ -471,13 +674,7 @@ class TestQMoEOffloadV4(unittest.TestCase):
         )
 
     def _run_bf16(self, sess, x_f32: np.ndarray, r_f32: np.ndarray) -> np.ndarray:
-        x_bf16 = _float32_to_bfloat16_u16(x_f32)
-        r_bf16 = _float32_to_bfloat16_u16(r_f32)
-        ort_x = ort.OrtValue.ortvalue_from_numpy_with_onnx_type(x_bf16, TensorProto.BFLOAT16)
-        ort_r = ort.OrtValue.ortvalue_from_numpy_with_onnx_type(r_bf16, TensorProto.BFLOAT16)
-        out = sess.run_with_ort_values(["Y"], {"X": ort_x, "router_probs": ort_r})[0]
-        raw_bytes = bytes((ctypes.c_uint16 * int(np.prod(x_f32.shape))).from_address(out.data_ptr()))
-        return _bfloat16_u16_to_float32(np.frombuffer(raw_bytes, dtype=np.uint16).reshape(x_f32.shape))
+        return _run_qmoe_bf16(sess, x_f32, r_f32)
 
     def test_discarded_prototype_features_rejected(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -795,32 +992,7 @@ class TestQMoEOffloadV4(unittest.TestCase):
             sess_ref = self._make_session(model_path, {"session.moe.offload.mode": "disabled"})
 
             # Wrap inputs/outputs in FLOAT <-> BFLOAT16 Cast on GPU so CUDA Graph capture has 100% GPU I/O
-            m = onnx.load_model(model_path, load_external_data=False)
-            m.graph.node.insert(
-                0,
-                helper.make_node(
-                    "Cast",
-                    inputs=["R_f32"],
-                    outputs=["router_probs"],
-                    to=TensorProto.BFLOAT16,
-                ),
-            )
-            m.graph.node.insert(
-                0,
-                helper.make_node("Cast", inputs=["X_f32"], outputs=["X"], to=TensorProto.BFLOAT16),
-            )
-            m.graph.node.append(helper.make_node("Cast", inputs=["Y"], outputs=["Y_f32"], to=TensorProto.FLOAT))
-            del m.graph.input[:]
-            m.graph.input.extend(
-                [
-                    helper.make_tensor_value_info("X_f32", TensorProto.FLOAT, ["T", 128]),
-                    helper.make_tensor_value_info("R_f32", TensorProto.FLOAT, ["T", 16]),
-                ]
-            )
-            del m.graph.output[:]
-            m.graph.output.append(helper.make_tensor_value_info("Y_f32", TensorProto.FLOAT, ["T", 128]))
-            cg_model_path = os.path.join(tmpdir, "model_cg.onnx")
-            onnx.save_model(m, cg_model_path)
+            cg_model_path = _wrap_qmoe_model_with_cast_io(model_path, os.path.join(tmpdir, "model_cg.onnx"), 128, 16)
 
             devices = [
                 d
@@ -862,17 +1034,7 @@ class TestQMoEOffloadV4(unittest.TestCase):
             def round_bf16(a: np.ndarray) -> np.ndarray:
                 return _bfloat16_u16_to_float32(_float32_to_bfloat16_u16(a))
 
-            cudart = None
-            for lib_name in (
-                "libcudart.so.13",
-                "libcudart.so.12",
-                "libcudart.so",
-                "cudart64_13.dll",
-                "cudart64_12.dll",
-            ):
-                with contextlib.suppress(OSError):
-                    cudart = ctypes.CDLL(lib_name)
-                    break
+            cudart = _load_cudart()
             if cudart is None:
                 self.skipTest("CUDA runtime library is required to update captured GPU inputs in place")
 
@@ -1632,48 +1794,15 @@ int main() {
             budget_1l = fixed_table_bytes + 8 * slot_bytes
             per_layer_decode_pinned = 262912
 
-            m = onnx.load_model(model_path, load_external_data=False)
-            m.graph.node.insert(
-                0,
-                helper.make_node("Cast", inputs=["R_f32"], outputs=["router_probs"], to=TensorProto.BFLOAT16),
+            cg_model_path = _wrap_qmoe_model_with_cast_io(
+                model_path, os.path.join(tmpdir, "model_cg_reclaim.onnx"), 128, 16
             )
-            m.graph.node.insert(
-                0,
-                helper.make_node("Cast", inputs=["X_f32"], outputs=["X"], to=TensorProto.BFLOAT16),
-            )
-            m.graph.node.append(helper.make_node("Cast", inputs=["Y"], outputs=["Y_f32"], to=TensorProto.FLOAT))
-            del m.graph.input[:]
-            m.graph.input.extend(
-                [
-                    helper.make_tensor_value_info("X_f32", TensorProto.FLOAT, ["T", 128]),
-                    helper.make_tensor_value_info("R_f32", TensorProto.FLOAT, ["T", 16]),
-                ]
-            )
-            del m.graph.output[:]
-            m.graph.output.append(helper.make_tensor_value_info("Y_f32", TensorProto.FLOAT, ["T", 128]))
-            cg_model_path = os.path.join(tmpdir, "model_cg_reclaim.onnx")
-            onnx.save_model(m, cg_model_path)
 
-            cudart = None
-            for lib_name in (
-                "libcudart.so.13",
-                "libcudart.so.12",
-                "libcudart.so",
-                "cudart64_13.dll",
-                "cudart64_12.dll",
-            ):
-                with contextlib.suppress(OSError):
-                    cudart = ctypes.CDLL(lib_name)
-                    break
+            cudart = _load_cudart()
             if cudart is None:
                 self.skipTest("CUDA runtime library is required to update captured GPU inputs in place")
 
-            plugin_dev = self._get_plugin_cuda_device()
-            dev_id = (
-                int(plugin_dev.ep_options.get("device_id", plugin_dev.ep_metadata.get("cuda_device_id", "0")))
-                if plugin_dev is not None
-                else 0
-            )
+            dev_id = self._device_id(self._selected_plugin_device(prefer_plugin=True))
 
             old_proactive = os.environ.get("ORT_QMOE_PREFILL_PROACTIVE_LEND")
             os.environ["ORT_QMOE_PREFILL_PROACTIVE_LEND"] = "0"
@@ -1807,6 +1936,359 @@ int main() {
                 with self.assertRaisesRegex(Exception, "device_working_bytes"):
                     self._run_bf16(sess, x_pref, r_pref)
 
+    def test_v4_one_slot_cold_routes_each_dominant_and_a_lost_route_is_detected(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model_path = _build_canonical_nvfp4_qmoe_model(
+                tmpdir,
+                num_layers=2,
+                num_experts=16,
+                hidden_size=128,
+                inter_size=64,
+                top_k=4,
+                seed=1101,
+            )
+            slot_bytes = 13832
+            fixed_table_bytes = 2 * 16 * 4
+            host_slot_stride = 14336
+            budget_small = 2 * fixed_table_bytes + 12 * slot_bytes
+            rng = np.random.default_rng(1103)
+            steps_per_cold_set = 6
+            total_rows = 0
+            # Every row is dominated by one cold expert (softmax weight ~0.996) and the dominant expert rotates through
+            # the whole cold set. Losing any single dominant contribution then moves the output far outside the parity
+            # tolerance, which dropped_route proves below for every layer and row, so a passing comparison on the real
+            # run means that every cold route was computed and merged.
+            with (
+                mock.patch.dict(os.environ, {"ORT_QMOE_SHARED_RESIDENT_LOG": "1"}),
+                _capture_native_stderr() as captured,
+            ):
+                sess = self._make_session(
+                    model_path,
+                    {
+                        "session.moe.offload.mode": "required",
+                        "session.moe.offload.placement": "adaptive",
+                        "session.moe.offload.device_expert_bytes": str(budget_small),
+                        "session.moe.offload.host_expert_bytes": str(2 * host_slot_stride),
+                        "session.moe.offload.allow_file_backing": "1",
+                    },
+                )
+                for phase, cold_set in enumerate(([12, 13, 14, 15], [8, 9, 10, 11])):
+                    for step in range(steps_per_cold_set):
+                        rows = 1 + step % 2
+                        total_rows += rows
+                        x = rng.standard_normal((rows, 128), dtype=np.float32) * 0.5
+                        r = np.full((rows, 16), -10.0, dtype=np.float32)
+                        for row in range(rows):
+                            dominant = cold_set[(step + row) % len(cold_set)]
+                            r[row, [e for e in cold_set if e != dominant]] = [2.0, 1.0, 0.0]
+                            r[row, dominant] = 8.0
+                        y_ref = _numpy_nvfp4_qmoe_reference(model_path, x, r)
+                        y_got = self._run_bf16(sess, x, r)
+                        label = f"one_slot_dominant_cold(phase={phase},step={step})"
+                        self._assert_parity(y_ref, y_got, label)
+                        for layer in range(2):
+                            for row in range(rows):
+                                y_lost = _numpy_nvfp4_qmoe_reference(model_path, x, r, dropped_route=(layer, row, 0))
+                                with self.assertRaisesRegex(AssertionError, "mismatch"):
+                                    self._assert_parity(
+                                        y_ref, y_lost, f"{label}, lost route (layer={layer}, row={row})"
+                                    )
+                del sess
+                gc.collect()
+
+            # The workload must really have been served from the cold path, not from the resident set.
+            for layer, (hit_routes, routes) in _resident_route_stats(captured[0]).items():
+                self.assertEqual(routes, total_rows * 4, f"layer {layer} observes every executed row once")
+                self.assertGreater(routes - hit_routes, routes // 2, f"layer {layer} mostly routes to cold experts")
+
+    def test_v4_cuda_graph_capture_and_immediate_replay_observe_each_execution_once(self):
+        cudart = _load_cudart()
+        if cudart is None:
+            self.skipTest("CUDA runtime library is required to update captured GPU inputs in place")
+        rows, top_k, steps, min_runs_before_capture = 2, 4, 4, 2
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model_path = _build_canonical_nvfp4_qmoe_model(
+                tmpdir,
+                num_layers=2,
+                num_experts=16,
+                hidden_size=128,
+                inter_size=64,
+                top_k=top_k,
+                seed=1501,
+            )
+            cg_model_path = _wrap_qmoe_model_with_cast_io(
+                model_path, os.path.join(tmpdir, "model_cg_routes.onnx"), 128, 16
+            )
+            slot_bytes = 13832
+            fixed_table_bytes = 2 * 16 * 4
+            offload_config = {
+                "session.moe.offload.mode": "required",
+                "session.moe.offload.placement": "adaptive",
+                # 6 resident slots per layer, so every route is classified against a partial resident set.
+                "session.moe.offload.device_expert_bytes": str(2 * fixed_table_bytes + 16 * slot_bytes),
+                "session.moe.offload.popularity_file": "expert-profile.bin",
+            }
+
+            def observed_routes_per_layer(prefer_plugin: bool, enable_cuda_graph: bool) -> dict[int, int]:
+                cuda_options = (
+                    {
+                        "enable_cuda_graph": "1",
+                        "min_num_runs_before_cuda_graph_capture": str(min_runs_before_capture),
+                    }
+                    if enable_cuda_graph
+                    else {}
+                )
+                dev_id = self._device_id(self._selected_plugin_device(prefer_plugin))
+                rng = np.random.default_rng(1502)
+                x_ptr = _cuda_malloc(cudart, rows * 128 * 4)
+                r_ptr = _cuda_malloc(cudart, rows * 16 * 4)
+                try:
+                    # The backend prints its route totals when it is destroyed, so the session has to go away
+                    # inside the capture window.
+                    with (
+                        mock.patch.dict(os.environ, {"ORT_QMOE_SHARED_RESIDENT_LOG": "1"}),
+                        _capture_native_stderr() as captured,
+                    ):
+                        sess = self._make_session(
+                            cg_model_path, offload_config, cuda_options=cuda_options, prefer_plugin=prefer_plugin
+                        )
+                        binding = sess.io_binding()
+                        binding.bind_input("X_f32", "cuda", dev_id, np.float32, [rows, 128], x_ptr.value)
+                        binding.bind_input("R_f32", "cuda", dev_id, np.float32, [rows, 16], r_ptr.value)
+                        binding.bind_output("Y_f32", "cuda", dev_id)
+                        for _ in range(steps):
+                            _cuda_upload(cudart, x_ptr, rng.standard_normal((rows, 128), dtype=np.float32) * 0.5)
+                            _cuda_upload(cudart, r_ptr, rng.standard_normal((rows, 16), dtype=np.float32) * 2.0)
+                            sess.run_with_iobinding(binding)
+                            binding.copy_outputs_to_cpu()
+                        del binding
+                        del sess
+                        gc.collect()
+                finally:
+                    cudart.cudaFree(x_ptr)
+                    cudart.cudaFree(r_ptr)
+                return _resident_routes_per_layer(captured[0])
+
+            routes_per_execution = rows * top_k
+            plugin_flavors = (False, True) if self._get_plugin_cuda_device() is not None else (False,)
+            for prefer_plugin in plugin_flavors:
+                with self.subTest(prefer_plugin=prefer_plugin):
+                    self.assertEqual(
+                        observed_routes_per_layer(prefer_plugin, enable_cuda_graph=False),
+                        dict.fromkeys(range(2), steps * routes_per_execution),
+                        "without CUDA Graph every Run observes its routes once",
+                    )
+                    # ORT keeps re-running the first Run() until the graph is captured, so that Run executes
+                    # min_num_runs_before_cuda_graph_capture regular runs plus the capture run (which is replayed
+                    # right away); each later Run replays once. Counting the capture run and its immediate replay as
+                    # two observations of one execution would add another rows * top_k routes per layer.
+                    self.assertEqual(
+                        observed_routes_per_layer(prefer_plugin, enable_cuda_graph=True),
+                        dict.fromkeys(range(2), (steps + min_runs_before_capture) * routes_per_execution),
+                        "with CUDA Graph every executed run, capture included, is observed exactly once",
+                    )
+
+    def test_v4_standard_weight_layout_with_hidden_size_other_than_128(self):
+        hidden_size, inter_size, num_experts, num_layers = 256, 64, 16, 2
+        slot_bytes = (
+            (2 * inter_size * hidden_size // 2)
+            + (hidden_size * inter_size // 2)
+            + (2 * inter_size * hidden_size // 16)
+            + (hidden_size * inter_size // 16)
+            + 8
+        )
+        fixed_table_bytes = 2 * num_experts * 4
+        planned_slots = {}
+        # Both layouts hold identical bytes, so one numpy reference serves them. H=256/I=64 is the shape whose
+        # dimensions are mixed up when H and I are read from the legacy weight layout only (H=128, I=256).
+        for weight_layout in ("standard", "legacy"):
+            with self.subTest(weight_layout=weight_layout), tempfile.TemporaryDirectory() as tmpdir:
+                model_path = _build_canonical_nvfp4_qmoe_model(
+                    tmpdir,
+                    num_layers=num_layers,
+                    num_experts=num_experts,
+                    hidden_size=hidden_size,
+                    inter_size=inter_size,
+                    top_k=4,
+                    seed=1201,
+                    weight_layout=weight_layout,
+                )
+                with (
+                    mock.patch.dict(os.environ, {"ORT_QMOE_SHARED_RESIDENT_LOG": "1"}),
+                    _capture_native_stderr() as captured,
+                ):
+                    sess = self._make_session(
+                        model_path,
+                        {
+                            "session.moe.offload.mode": "required",
+                            "session.moe.offload.placement": "adaptive",
+                            # Partial residency for decode and for the prefill waves.
+                            "session.moe.offload.device_expert_bytes": str(
+                                num_layers * fixed_table_bytes + 10 * slot_bytes
+                            ),
+                            "session.moe.offload.popularity_file": "expert-profile.bin",
+                        },
+                    )
+                    rng = np.random.default_rng(1202)
+                    for t_rows in (1, 4, 16):
+                        x = rng.standard_normal((t_rows, hidden_size), dtype=np.float32) * 0.5
+                        r = rng.standard_normal((t_rows, num_experts), dtype=np.float32)
+                        y_ref = _numpy_nvfp4_qmoe_reference(model_path, x, r)
+                        y_got = self._run_bf16(sess, x, r)
+                        self._assert_parity(y_ref, y_got, f"{weight_layout}_layout_h{hidden_size}(T={t_rows})")
+                    del sess
+                    gc.collect()
+                planned_slots[weight_layout] = _resident_slots_per_layer(captured[0])
+
+        # The admission planner charges every expert slot from H and I. Both layouts have the same H, I and bytes, so
+        # they must buy the same slots; reading the standard layout as H=128/I=256 doubles the charge per slot.
+        if len(planned_slots) == 2:
+            self.assertEqual(
+                planned_slots["standard"],
+                planned_slots["legacy"],
+                "the weight layout must not change the number of resident slots the device budget buys",
+            )
+
+    def test_v4_per_run_controls_are_validated_and_scoped_to_their_run(self):
+        rows, top_k = 2, 4
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model_path = _build_canonical_nvfp4_qmoe_model(
+                tmpdir,
+                num_layers=2,
+                num_experts=16,
+                hidden_size=128,
+                inter_size=64,
+                top_k=top_k,
+                seed=1601,
+            )
+            slot_bytes = 13832
+            fixed_table_bytes = 2 * 16 * 4
+            offload_config = {
+                "session.moe.offload.mode": "required",
+                "session.moe.offload.placement": "adaptive",
+                "session.moe.offload.device_expert_bytes": str(2 * fixed_table_bytes + 16 * slot_bytes),
+                "session.moe.offload.popularity_file": "expert-profile.bin",
+            }
+            rng = np.random.default_rng(1602)
+
+            def step_inputs():
+                return (
+                    rng.standard_normal((rows, 128), dtype=np.float32) * 0.5,
+                    rng.standard_normal((rows, 16), dtype=np.float32),
+                )
+
+            warmup = ort.RunOptions()
+            warmup.add_run_config_entry("ep.cuda.qmoe_in_warmup", "1")
+            malformed = ort.RunOptions()
+            malformed.add_run_config_entry("ep.cuda.qmoe_prefill_total_tokens", "abc")
+
+            # ORT_QMOE_IN_WARMUP used to switch the whole process into warmup; it is not read any more, and the
+            # controls travel with the Run that carries them instead of through process-wide state.
+            with (
+                mock.patch.dict(os.environ, {"ORT_QMOE_SHARED_RESIDENT_LOG": "1", "ORT_QMOE_IN_WARMUP": "1"}),
+                _capture_native_stderr() as captured,
+            ):
+                sess = self._make_session(model_path, offload_config)
+                sess_ref = self._make_session(model_path, {"session.moe.offload.mode": "disabled"})
+
+                for _ in range(3):
+                    x, r = step_inputs()
+                    self._assert_parity(self._run_bf16(sess_ref, x, r), self._run_bf16(sess, x, r), "plain_run")
+
+                for _ in range(2):
+                    x, r = step_inputs()
+                    self._assert_parity(
+                        self._run_bf16(sess_ref, x, r), _run_qmoe_bf16(sess, x, r, warmup), "warmup_run"
+                    )
+
+                with self.assertRaisesRegex(Exception, "(?i)INVALID_ARGUMENT|qmoe_prefill_total_tokens"):
+                    x, r = step_inputs()
+                    _run_qmoe_bf16(sess, x, r, malformed)
+
+                # Neither the warmup flag nor the rejected value sticks to the session.
+                x, r = step_inputs()
+                self._assert_parity(self._run_bf16(sess_ref, x, r), self._run_bf16(sess, x, r), "run_after_controls")
+                del sess
+                del sess_ref
+                gc.collect()
+
+            self.assertEqual(
+                _resident_routes_per_layer(captured[0]),
+                dict.fromkeys(range(2), 4 * rows * top_k),
+                "only the 3 plain runs and the final run may be observed",
+            )
+
+    @unittest.skipUnless(sys.platform.startswith("linux"), "QMoE background threads are enumerated through /proc")
+    def test_v4_background_threads_are_joined_when_the_cuda_ep_library_is_unregistered(self):
+        if self._get_plugin_cuda_device() is None:
+            self.skipTest("Requires the CUDA plugin EP, whose library unload has to stop the process-wide QMoE threads")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model_path = _build_canonical_nvfp4_qmoe_model(
+                tmpdir,
+                num_layers=2,
+                num_experts=16,
+                hidden_size=128,
+                inter_size=64,
+                top_k=4,
+                seed=1701,
+            )
+            result = subprocess.run(
+                [sys.executable, str(Path(__file__).resolve()), "--background-thread-child", model_path],
+                env={**os.environ, "ORT_QMOE_SHARED_CPU_THREADS": "4"},
+                capture_output=True,
+                text=True,
+                timeout=300,
+                check=False,
+            )
+        self.assertEqual(
+            result.returncode,
+            0,
+            f"child process failed with {result.returncode}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr[-4000:]}",
+        )
+
+
+def _background_thread_lifecycle_child(model_path: str) -> int:
+    """Child-process half of the EP-library unregistration test.
+
+    Unregistering the CUDA EP library removes it for the rest of the process, so it cannot run in the test process.
+    """
+    TestQMoEOffloadV4.setUpClass()
+    slot_bytes = 13832
+    sess = TestQMoEOffloadV4._make_session(
+        model_path,
+        {
+            "session.moe.offload.mode": "required",
+            "session.moe.offload.placement": "adaptive",
+            "session.moe.offload.device_expert_bytes": str(2 * (2 * 16 * 4) + 16 * slot_bytes),
+            "session.moe.offload.popularity_file": "expert-profile.bin",
+        },
+    )
+    rng = np.random.default_rng(1702)
+    for _ in range(4):
+        x = rng.standard_normal((2, 128), dtype=np.float32) * 0.5
+        r = rng.standard_normal((2, 16), dtype=np.float32)
+        _run_qmoe_bf16(sess, x, r)
+    running = _qmoe_background_thread_names()
+    if not running:
+        print("expected the QMoE doorbell and spin threads to be running after the decode steps")
+        return 1
+    del sess
+    gc.collect()
+
+    ort.unregister_execution_provider_library("CUDAExecutionProvider")
+    remaining = _qmoe_background_thread_names()
+    deadline = time.monotonic() + 30
+    while remaining and time.monotonic() < deadline:
+        time.sleep(0.05)
+        remaining = _qmoe_background_thread_names()
+    if remaining:
+        print(f"{len(remaining)} QMoE background threads are still running after unregistration: {remaining}")
+        return 1
+    print(f"{len(running)} QMoE background threads were joined by the EP library unregistration")
+    return 0
+
 
 if __name__ == "__main__":
+    if len(sys.argv) == 3 and sys.argv[1] == "--background-thread-child":
+        sys.exit(_background_thread_lifecycle_child(sys.argv[2]))
     unittest.main()

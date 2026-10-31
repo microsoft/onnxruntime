@@ -102,7 +102,7 @@ session creation with `ORT_INVALID_ARGUMENT`.
 | `session.moe.offload.device_expert_bytes` | `"auto"` or integer bytes | `"auto"` | Maximum GPU HBM bytes for all MoE resident + spare expert slabs and lookup tables in the session. `"auto"` uses `usable_free_vram - reserve_device_bytes - device_working_bytes`. |
 | `session.moe.offload.host_expert_bytes` | `"auto"` or integer bytes | `"auto"` | Maximum host RAM bytes for cold experts. `"auto"` uses direct `MAP_SHARED` `mmap` over the external weight files (or cgroup-bounded cache when host RAM is constrained). A finite value smaller than total expert bytes enables the bounded `FileExpertStore` LRU host cache and evicts `mmap` source pages via `madvise(MADV_DONTNEED)`. |
 | `session.moe.offload.reserve_device_bytes` | `"auto"` or integer bytes | `0` | GPU VRAM bytes reserved for post-initialization KV/GDN caches, child sessions (`mtp.onnx`), and CUDA Graph pools when `device_expert_bytes="auto"`. |
-| `session.moe.offload.device_working_bytes` | Positive integer bytes | `268435456` (`256 MiB`) | Upper bound on transient GPU streaming/dequant workspace. |
+| `session.moe.offload.device_working_bytes` | Positive integer bytes | `268435456` (`256 MiB`) | Upper bound on the aggregate transient GPU working set of one prefill call: runner scratch, expert-compaction maps, compacted biases, multi-pass accumulators, DMA staging, and the dequantized expert weights (counted once, whether they live in the arena or in the DMA workspace). A call whose aggregate does not fit fails with an error naming this option. |
 | `session.moe.offload.host_working_bytes` | Positive integer bytes | `67108864` (`64 MiB`) | Upper bound on transient CPU thread-pool scratch buffers. |
 | `session.moe.offload.pinned_bytes` | `"auto"` or non-negative integer bytes | `67108864` (`64 MiB`) | Upper bound on pinned host DMA staging and promotion bounce buffers. |
 | `session.moe.offload.budget_group` | String identifier | `""` (per-session) | Optional cross-session budget group name shared across target and draft sessions on the same GPU. |
@@ -293,3 +293,65 @@ own a `QMoESessionController` instance and invoke:
    expert promotions (`StepBetweenRuns`) and increments `GraphGeneration()` only when a captured graph's
    device pointer bindings change, allowing in-slab slot-table flips to reuse captured CUDA Graphs
    without recapture.
+
+Each logical execution of a QMoE node is one invocation record, and its routing observation is applied exactly
+once. A run that captures a CUDA graph registers the record while capturing and again for the immediate replay of
+the captured graph (no `OnRunStart` in between); `RegisterInvocation` keeps a single entry, so that execution is
+drained and observed once. Observations are staged on the record and taken out of it when the run ends, so they
+are applied at most once and never for a failed run. Note that ORT keeps re-running the first `Run()` until the
+graph is captured (`min_num_runs_before_cuda_graph_capture` regular runs plus the capture run), and each of those
+executions is a separate logical execution that is observed on its own.
+
+### 5.3 Per-Run Controls (`ep.cuda.qmoe_*` Run Config Entries) ([qmoe_run_controls.h](../../onnxruntime/core/providers/cuda/qmoe_run_controls.h))
+
+An application steers the prefill/decode hand-off by attaching run config entries to `Run()`
+(`RunOptions.add_run_config_entry(...)` in Python, `AddRunConfigEntry` in the C API). `OnRunStart` validates and
+applies them to the session's `QMoERunControls`. The values live on the session, so one session never observes or
+consumes another session's signals, and the library never calls `setenv` while other threads read the environment.
+
+| Run Config Key | Allowed Values | Lifetime | Description |
+| :--- | :--- | :--- | :--- |
+| `ep.cuda.qmoe_in_warmup` | `"0"`, `"1"` | This `Run()` only | `"1"` marks a warm-up run: it does not feed expert scores, route statistics, or promotions. |
+| `ep.cuda.qmoe_prefill_new_turn` | `"0"`, `"1"` | This `Run()` only; consumed once, by layer 0 | `"1"` marks the first run of a new conversation turn: prefill state left over from the previous turn is finalized and reset once. |
+| `ep.cuda.qmoe_prefill_total_tokens` | Non-negative 32-bit integer | Sticky: stays on the session until a later run supplies a new value | Total prompt tokens of the turn being prefilled. |
+| `ep.cuda.qmoe_prefill_handoff_done` | `"0"`, `"1"` | Armed only when the run completes successfully; consumed once | `"1"` marks the last prefill run of a turn. After it completes successfully, the hand-off to decode stays pending until the next prefill-to-decode finalization consumes it. A failed run never arms it. |
+
+- An entry that is not supplied takes its default (`"0"`) for that run, so a run never inherits the flags of an
+  earlier run.
+- A malformed value (a flag other than `"0"`/`"1"`, or a negative or non-numeric token count) fails that run with
+  `ORT_INVALID_ARGUMENT` before any QMoE node executes, applies none of the entries, and leaves the session usable.
+- The process environment variables `ORT_QMOE_IN_WARMUP`, `ORT_QMOE_PREFILL_NEW_TURN`,
+  `ORT_QMOE_PREFILL_TOTAL_TOKENS`, and `ORT_QMOE_PREFILL_HANDOFF_DONE` used by earlier prototypes are no longer read.
+- Limitation: a `Run()` that replays an already captured CUDA graph does not reach `OnRunStart`, so it cannot carry
+  these entries. Attach them to runs that execute eagerly (warm-up and prefill runs).
+
+### 5.4 Background Services & Provider Shutdown ([qmoe_background_services.h](../../onnxruntime/contrib_ops/cuda/moe/qmoe_background_services.h))
+
+Cold-expert CPU execution uses process-wide background threads that are started on demand by the first QMoE
+offload run and shared by every session in the process: the doorbell service (`qmoe-doorbell`), the shared CPU spin
+pools (`qmoe-spin`, see `session.moe.offload.cpu_threads`), and, only while `ORT_QMOE_CROSS_LAYER_PROMO=1`, the
+promotion worker (`qmoe-promo`). The threads are named, so they can be told apart in a debugger or in
+`/proc/<pid>/task/*/comm`.
+
+Joining a thread from a static destructor while `FreeLibrary` holds the Windows loader lock deadlocks, so the
+provider does not rely on static destruction. `CUDA_Provider::Shutdown()` (bundled EP) and `~CudaEpFactory()`
+(plugin EP) call `ShutdownQMoEBackgroundServices()` before the library can be unloaded. The call is idempotent,
+stops the doorbell service first and the spin pools after it, and does nothing while any QMoE offload backend is
+still alive (each backend holds a live-backend lease). The services start again on demand if a QMoE kernel is
+created afterwards. The bounded `FileExpertStore` read workers are owned per kernel and stop with the kernel.
+
+### 5.5 Cross-Layer Promotion Look-Ahead (Experimental, `ORT_QMOE_CROSS_LAYER_PROMO=1`)
+
+Cross-layer promotion is off by default. When enabled, the doorbell worker can rewrite the slot table and host
+maps of the next layer while it services the current layer. That is only sound for a layer that has not classified
+its routes for the current step, so a promotion request is published only when all of the following hold
+(`IsCrossLayerLookaheadTarget` / `CanPublishCrossLayerPromotion` in
+[qmoe_offload_plan.h](../../onnxruntime/contrib_ops/cuda/moe/qmoe_offload_plan.h)):
+
+- The target is a later layer of the same session as the servicing layer. One session runs on one stream and
+  rejects overlapped runs, so a later layer is still queued behind the servicing layer's merge kernel. A layer of
+  another session has no such ordering and may already have classified with the old placement.
+- The target has no pending doorbell request, which would mean it has already classified for this step.
+- The target's placement epoch still equals the epoch the request was planned against. If the target changed its
+  own placement in the meantime, the request is cancelled (after its staged copy completes) instead of landing in a
+  reused slot.

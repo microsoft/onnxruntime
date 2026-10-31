@@ -77,5 +77,50 @@ TEST(QMoERowTilingTest, BoundsFp8ExpertsByRoutesInTile) {
   EXPECT_THROW((void)qmoe::MaxActiveExperts(decode, 512, 513), OnnxRuntimeException);
 }
 
+TEST(QMoERowTilingTest, PrefillAuxBytesCoversCompactionBiasAndMultiPassBuffers) {
+  const auto plan = qmoe::MakeRowTilePlan(64, 16, true);
+  qmoe::PrefillAuxLayout layout;
+  layout.use_expert_compaction = true;
+  layout.num_experts = 16;
+  layout.runner_num_experts = 8;
+  layout.hidden_size = 128;
+  layout.fc1_bias_cols = 128;
+  layout.fc2_bias_cols = 128;
+  layout.num_compact_passes = 2;
+  layout.activation_bytes = 2;
+  layout.global_scale_copy_bytes = 128;
+
+  const size_t compact_indices = 16 * 4 * sizeof(int);
+  const size_t expert_to_compact = 16 * sizeof(int);
+  const size_t compact_to_expert = 8 * sizeof(int);
+  const size_t biases = 2 * (8 * 128 * 2);
+  const size_t multi_pass = 16 * 128 * 2 + 16 * 128 * sizeof(float);
+  EXPECT_EQ(qmoe::PrefillAuxBytes(plan, 4, layout),
+            compact_indices + expert_to_compact + compact_to_expert + biases + multi_pass + 128);
+
+  layout.num_compact_passes = 1;
+  layout.fc1_bias_cols = 0;
+  layout.fc2_bias_cols = 0;
+  EXPECT_EQ(qmoe::PrefillAuxBytes(plan, 4, layout), compact_indices + expert_to_compact + compact_to_expert + 128);
+
+  layout.use_expert_compaction = false;
+  EXPECT_EQ(qmoe::PrefillAuxBytes(plan, 4, layout), 128u);
+}
+
+TEST(QMoERowTilingTest, PrefillWorkingSetCountsDequantizedWeightsOnce) {
+  constexpr size_t live_bytes = 1000;
+  constexpr size_t dma_workspace_bytes = 400;
+  constexpr size_t dequant_bytes = 300;
+
+  // The DMA workspace already carries the dequantized weights.
+  EXPECT_EQ(qmoe::PrefillWorkingSetBytes(live_bytes, dma_workspace_bytes, dequant_bytes, true), 1400u);
+  // Staging-only DMA workspace: the dequantized weights sit in the arena and are added once.
+  EXPECT_EQ(qmoe::PrefillWorkingSetBytes(live_bytes, dma_workspace_bytes, dequant_bytes, false), 1700u);
+  // No DMA workspace.
+  EXPECT_EQ(qmoe::PrefillWorkingSetBytes(live_bytes, 0, dequant_bytes, false), 1300u);
+  EXPECT_THROW((void)qmoe::PrefillWorkingSetBytes(std::numeric_limits<size_t>::max(), 1, 0, true),
+               OnnxRuntimeException);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

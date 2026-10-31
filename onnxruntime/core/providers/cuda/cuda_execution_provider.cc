@@ -600,6 +600,13 @@ Status CUDAExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_opti
     }
     ORT_RETURN_IF_ERROR(qmoe_controller_->OnRunStart());
     controller_rollback.Arm(qmoe_controller_.get());
+    ORT_RETURN_IF_ERROR(qmoe_controller_->ApplyRunControls(
+        [&run_options](const char* key, std::string& value) {
+          auto entry = run_options.GetConfigOptions().GetConfigEntry(key);
+          if (!entry.has_value()) return false;
+          value = std::move(*entry);
+          return true;
+        }));
     if (IsGraphCaptureEnabled()) {
       const uint64_t cur_gen = qmoe_controller_->GraphGeneration();
       if (cur_gen != GetPerThreadContext().LastQMoEGraphGen()) {
