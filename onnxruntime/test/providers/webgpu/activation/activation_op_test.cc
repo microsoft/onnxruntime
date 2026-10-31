@@ -2,17 +2,50 @@
 // Licensed under the MIT License.
 
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <utility>
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 #include "test/common/tensor_op_test_utils.h"
 
 namespace onnxruntime {
 namespace test {
+namespace {
+
+// Runs Relu-14 on WebGPU only, with CPU fallback disabled so a missing kernel fails the test.
+void RunReluInt32OnWebGpu(const std::vector<int64_t>& shape, const std::vector<int32_t>& input,
+                          const std::vector<int32_t>& expected) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (webgpu_ep == nullptr) {
+    GTEST_SKIP() << "WebGPU EP is not available in this build.";
+  }
+  SessionOptions options;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+
+  OpTester test("Relu", 14);
+  test.AddInput<int32_t>("X", shape, input);
+  test.AddOutput<int32_t>("Y", shape, expected);
+  test.Config(options).ConfigEp(std::move(webgpu_ep)).RunWithConfig();
+}
+
+}  // namespace
+
+// WebNN conformance "relu int32 4D tensor" failed to build because WebGPU Relu was registered for float types only.
+TEST(WebGpuActivationTest, Relu_Int32_Opset14_WebGpu) {
+  constexpr int32_t kInt32Min = std::numeric_limits<int32_t>::min();
+  constexpr int32_t kInt32Max = std::numeric_limits<int32_t>::max();
+
+  // 7 elements leave a partial trailing vec4.
+  RunReluInt32OnWebGpu({7}, {kInt32Min, -1, 0, 1, kInt32Max, -42, 42}, {0, 0, 0, 1, kInt32Max, 0, 42});
+  // 8 elements fill two vec4s exactly.
+  RunReluInt32OnWebGpu({1, 2, 2, 2}, {kInt32Min, -1, 0, 1, kInt32Max, -kInt32Max, 7, -7},
+                       {0, 0, 0, 1, kInt32Max, 0, 7, 0});
+}
 
 // PRelu is registered on WebGPU for opsets 7-8, 9-15 and 16 (a single kernel). The PRelu tests
 // in cpu/activation run at OpTester's default opset (7); these two cover the other registrations. float16 is
