@@ -17,6 +17,7 @@
 #if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
 #include "contrib_ops/cuda/bert/group_query_attention_workspace_estimate.h"
 #endif
+#include "contrib_ops/cuda/bert/group_query_attention_split_decode.h"
 #include "contrib_ops/cpu/bert/group_query_attention_helper.h"
 #include "contrib_ops/cuda/bert/cudnn_fmha/cudnn_flash_attention.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
@@ -142,6 +143,9 @@ GroupQueryAttention<T, U>::GroupQueryAttention(const OpKernelInfo& info)
   constexpr bool kIsFp16OrBf16 = std::is_same_v<T, MLFloat16> || std::is_same_v<T, BFloat16>;
   // XQA defaults on for fp16/bf16; ORT_ENABLE_XQA=0 disables it explicitly.
   enable_xqa_ = kIsFp16OrBf16 && (ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_XQA", 1) != 0);
+  // ORT_GQA_SPLIT_DECODE=1 opts in to the single-token split decode kernel (off by default).
+  enable_split_decode_ = std::is_same_v<T, MLFloat16> && std::is_same_v<U, MLFloat16> &&
+                         (ParseEnvironmentVariableWithDefault<int>("ORT_GQA_SPLIT_DECODE", 0) != 0);
 
   kernel_options_ = this->GetAttentionKernelOptions();
 
@@ -692,11 +696,40 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   xqa_inputs.k_quant_type = k_quant_type_;
   xqa_inputs.v_quant_type = v_quant_type_;
 
+  // Single-token decode shapes the split decode kernel handles (group_query_attention_split_decode.h).
+  // It runs on the Flash path, replacing PrepareQKV and the Flash split-KV kernels.
+  const bool split_decode_shape_ok =
+      enable_split_decode_ && !parameters.is_first_prompt && parameters.sequence_length == 1 &&
+      parameters.past_present_share_buffer && !is_inputs_quantized &&
+      parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BNSH &&
+      parameters.num_heads == kGqaSplitDecodeGroup * parameters.kv_num_heads &&
+      parameters.head_size == kGqaSplitDecodeHeadSize && parameters.softcap == 0.0f &&
+      !parameters.use_smooth_softmax && head_sink == nullptr && parameters.local_window_size <= 0 &&
+      !parameters.is_windowed_kv_cache && parameters.kv_sequence_length == 1 &&
+      // q_out is the qkv scratch, which the Flash path only allocates for these:
+      (parameters.do_rotary || parameters.is_packed_qkv) &&
+      (!parameters.do_rotary ||
+       (!parameters.rotary_interleaved && parameters.rotary_dim == parameters.head_size));
+  // When opted in, these shapes take the split decode kernel in place of XQA, cuDNN SDPA and the Flash
+  // fast-decode kernel, provided Flash can run.
+#if USE_FLASH_ATTENTION
+  const bool prefer_split_decode = split_decode_shape_ok &&
+                                   IsGQAFlashEligibleSeqFree<T>(device_prop,
+                                                                has_attention_bias,
+                                                                disable_flash_attention_,
+                                                                parameters.head_size,
+                                                                parameters.num_heads,
+                                                                parameters.kv_num_heads);
+#else
+  constexpr bool prefer_split_decode = false;
+#endif
+
   // Phase and actual past/present buffer aliasing are per-Run facts, not partition-time inputs.
   const bool xqa_phase_ok = !parameters.is_first_prompt &&
                             parameters.sequence_length == 1 &&
                             parameters.kv_sequence_length > 0;  // Shared KV (kv_seq=0) has no new K/V to append
-  if (xqa_phase_ok && parameters.past_present_share_buffer && IsGQAXqaEligibleSeqFree<U>(xqa_inputs)) {
+  if (!prefer_split_decode && xqa_phase_ok && parameters.past_present_share_buffer &&
+      IsGQAXqaEligibleSeqFree<U>(xqa_inputs)) {
     data.use_xqa = true;
 
     if (data.use_xqa) {
@@ -779,7 +812,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   // and no sliding window. Rotary and packed QKV are handled by PrepareQKV before the kernel runs;
   // cuDNN handles grouped-query attention natively. Keep this path bias-free because an arbitrary
   // attention bias cannot be composed with cuDNN's fused bottom-right causal mask.
-  bool use_cudnn_sdpa = !data.use_xqa &&
+  bool use_cudnn_sdpa = !data.use_xqa && !prefer_split_decode &&
                         IsGQACudnnSdpaCoreEligibleSeqFree<T, U>(
                             has_attention_bias,
                             is_inputs_quantized,
@@ -821,11 +854,37 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   // It is also disabled for a windowed KV cache: the kernel derives both the absolute RoPE position
   // and the cache append offset from a single seqlens_k value, which those two no longer share.
   // Explicit RoPE positions may differ from cache offsets and require position-aware PrepareQKV.
-  data.use_flash_attention_fast_decode = use_flash_attention && !disable_flash_decode_ && !parameters.is_first_prompt &&
+  data.use_flash_attention_fast_decode = use_flash_attention && !disable_flash_decode_ && !prefer_split_decode &&
+                                         !parameters.is_first_prompt &&
                                          parameters.sequence_length == 1 && parameters.kv_sequence_length > 0 &&
                                          parameters.past_present_share_buffer && !is_inputs_quantized &&
                                          !parameters.use_qk_norm && !parameters.is_windowed_kv_cache &&
                                          (!parameters.do_rotary || data.position_ids == nullptr);
+
+  // Single-token decode on the regular Flash path (PrepareQKV appends the token, then attention):
+  // run the split decode kernel instead of the flash split-KV + combine kernels.
+  data.use_split_decode = split_decode_shape_ok && use_flash_attention && !data.use_flash_attention_fast_decode;
+  if (data.use_split_decode) {
+    // The launched split count does not depend on the sequence lengths, so it is the same in every graph replay.
+    data.split_decode_max_splits = GqaSplitDecodeMaxSplits(parameters.batch_size, parameters.kv_num_heads,
+                                                           parameters.seqlen_present_kv_cache,
+                                                           GetDeviceProp().multiProcessorCount);
+    const size_t partials_bytes =
+        GqaSplitDecodePartialsBytes(parameters.batch_size, parameters.kv_num_heads, data.split_decode_max_splits);
+    const size_t counters_bytes = GqaSplitDecodeCountersBytes(parameters.batch_size, parameters.kv_num_heads);
+    std::lock_guard<std::mutex> lock(split_decode_mutex_);
+    if (split_decode_partials_bytes_ < partials_bytes) {
+      split_decode_partials_ = GetScratchBuffer<void>(partials_bytes, nullptr);
+      split_decode_partials_bytes_ = partials_bytes;
+    }
+    if (split_decode_counters_bytes_ < counters_bytes) {
+      split_decode_counters_ = GetScratchBuffer<void>(counters_bytes, nullptr);
+      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(split_decode_counters_.get(), 0, counters_bytes, Stream(context)));
+      split_decode_counters_bytes_ = counters_bytes;
+    }
+    data.split_decode_partials = reinterpret_cast<float*>(split_decode_partials_.get());
+    data.split_decode_counters = reinterpret_cast<unsigned int*>(split_decode_counters_.get());
+  }
 
   if (use_flash_attention) {
     // Flash-specific buffer sizes (softmax LSE and the optional split accumulators) come from the
@@ -855,12 +914,12 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     out_accum_buffer = GetScratchBuffer<void>(out_accum_bytes, GetComputeStream(context));
 
     auto cuda_stream = Stream(context);
-    if (softmax_lse_accum_bytes > 0) {
+    if (softmax_lse_accum_bytes > 0 && !data.use_split_decode) {
       // Initialize to 0 is fine because Flash kernel will write -inf to it if needed.
       // However, the standard Flash kernel often doesn't zero it globally.
       CUDA_RETURN_IF_ERROR(cudaMemsetAsync(softmax_lse_accum_buffer.get(), 0, softmax_lse_accum_bytes, cuda_stream));
     }
-    if (out_accum_bytes > 0) {
+    if (out_accum_bytes > 0 && !data.use_split_decode) {
       CUDA_RETURN_IF_ERROR(cudaMemsetAsync(out_accum_buffer.get(), 0, out_accum_bytes, cuda_stream));
     }
 

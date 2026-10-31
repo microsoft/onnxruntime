@@ -2903,6 +2903,71 @@ class TestGQAQKNorm(unittest.TestCase):
             )
 
 
+def gqa_split_decode_test_cases():
+    """Single-token decode shapes routed to the split decode kernel (ORT_GQA_SPLIT_DECODE=1, opt-in):
+    Flash path, shared buffer, 8 query heads per KV head, head size 128, RoPE over the full head
+    (non-interleaved) or packed QKV without RoPE."""
+    cases = [
+        # (batch, past, num_heads, kv_num_heads, rotary, packed, qk_norm, extra buffer length)
+        (1, 1, 32, 4, True, False, True, 8),
+        (2, 127, 32, 4, True, False, True, 8),
+        (3, 31, 32, 4, True, True, True, 8),
+        (1, 1000, 16, 2, True, True, True, 8),
+        (2, 2047, 64, 8, True, False, True, 8),
+        (2, 300, 32, 4, True, False, False, 8),
+        (1, 4095, 32, 4, True, True, False, 8),
+        (2, 513, 32, 4, False, True, False, 8),
+        (2, 64, 32, 4, False, True, True, 8),
+        # Long contexts: the split count is capped by the SM count, so splits get long.
+        (1, 8191, 32, 4, True, False, True, 8),
+        (4, 6000, 32, 4, True, True, False, 8),
+        # A buffer much longer than the context: most launched splits exit at once.
+        (2, 100, 32, 4, True, False, True, 8000),
+    ]
+    for b, s2, n, n2, rotary, packed, qk_norm, extra in cases:
+        config = GQAConfig(
+            batch_size=b,
+            q_sequence_length=1,
+            kv_sequence_length=1,
+            past_kv_sequence_length=s2,
+            buffer_sequence_length=s2 + 1 + extra,
+            num_heads=n,
+            kv_num_heads=n2,
+            head_size=128,
+            rotary=rotary,
+            rotary_interleaved=False,
+            packed=packed,
+            share_buffer=True,
+            has_qk_norm=qk_norm,
+        )
+        yield f"b{b}_past{s2}_buf{s2 + 1 + extra}_nh{n}_{n2}_rot{rotary}_pkd{packed}_qknorm{qk_norm}", config
+
+
+@unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
+class TestGQASplitDecode(unittest.TestCase):
+    @parameterized.expand(gqa_split_decode_test_cases())
+    def test_gqa_split_decode(self, name, config):
+        def run():
+            parity_check_gqa_past(
+                config=config,
+                ep="CUDAExecutionProvider",
+                device="cuda",
+                torch_type=torch.float16,
+                ort_type=TensorProto.FLOAT16,
+                causal=True,
+                rtol=rtol["fp16"],
+                atol=atol["fp16"],
+            )
+
+        # ORT_GQA_SPLIT_DECODE=1 (opt-in) runs these shapes on split decode in place of XQA, cuDNN SDPA and
+        # the Flash fast-decode path; the debug info reports the Flash backend.
+        with scoped_env_var("ORT_GQA_SPLIT_DECODE", "1"):
+            self.assertEqual(get_sdpa_kernel_from_debug_info(run), "FLASH_ATTENTION")
+        # Off (the default): the existing backends.
+        with scoped_env_var("ORT_GQA_SPLIT_DECODE", "0"):
+            run()
+
+
 @unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
 @unittest.skipIf(not has_quantized_kv_cache(), "Quantized KV Cache is not available, skipping tests.")
 class TestFlashGQABF16QuantizedKV(unittest.TestCase):
