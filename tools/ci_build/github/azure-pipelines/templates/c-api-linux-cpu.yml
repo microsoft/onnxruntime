@@ -66,12 +66,16 @@ jobs:
         DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --secret id=PIP_INDEX_URL"
         Repository: onnxruntimecpubuildcentos8${{parameters.OnnxruntimeArch}}_packaging
 
+  - template: setup-vcpkg-cache.yml
+
   - task: CmdLine@2
     inputs:
       script: |
         set -e -x
         mkdir -p $HOME/.onnx
         docker run -e SYSTEM_COLLECTIONURI --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build \
+        --volume "${VCPKG_DEFAULT_BINARY_CACHE}:/vcpkg-binary-cache" \
+        -e VCPKG_DEFAULT_BINARY_CACHE=/vcpkg-binary-cache \
         -e NPM_CONFIG_USERCONFIG=/tmp/.npmrc \
         -e PIP_INDEX_URL \
         --volume "${NPM_CONFIG_USERCONFIG}:/tmp/.npmrc:ro" \

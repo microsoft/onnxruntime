@@ -183,6 +183,8 @@ stages:
 
       - template: set-version-number-variables-step.yml
 
+      - template: setup-vcpkg-cache.yml
+
       - script: python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\windows\python\requirements.txt
 
       - template: set-variable.yml
