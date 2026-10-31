@@ -138,7 +138,7 @@ class TestParallelRun(unittest.TestCase):
                 if time.time() - t_time < hang_time:
                     continue
                 else:
-                    print("Hang occured, ending test")
+                    print("Hang occurred, ending test")
                     exit(1)
             if threads_complete[0] == num_threads:
                 break

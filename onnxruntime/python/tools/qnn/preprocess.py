@@ -106,7 +106,7 @@ def qnn_preprocess_model(
     """Preprocess ONNX model for QNN.
 
     Args:
-        model_input: A path or ONNX ModelProto specifiying the model to be preprocessed.
+        model_input: A path or ONNX ModelProto specifying the model to be preprocessed.
         model_output: A path specifying where the preprocessed model to be saved.
         fuse_layernorm: A bool specifying whether to fuse the matched sequence into a single LayerNormalization node.
             Defaults to False.

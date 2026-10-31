@@ -187,8 +187,8 @@ struct Fused_Moe_Kernel_traits_sm80 {
 
   static constexpr int kSmemSize = static_cast<int>(sizeof(SharedStorage));
 
-  static constexpr bool can_implement(int const avaliable_smem_size) {
-    return avaliable_smem_size > kSmemSize;
+  static constexpr bool can_implement(int const available_smem_size) {
+    return available_smem_size > kSmemSize;
   }
 
   // #endif

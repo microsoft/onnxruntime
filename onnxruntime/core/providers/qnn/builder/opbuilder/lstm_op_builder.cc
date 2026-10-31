@@ -48,9 +48,9 @@ class LSTMOpBuilder : public BaseOpBuilder {
                 initial_h.shape = Y_h.shape = initial_c.shape = Y_c.shape = [batch_size, num_directions, hidden_size].
 
   ONNX LSTM optional outputs:
-  out[0]: Y [seq_length, num_directions, batch_size, hidden_size] = stack of out[0] from QNN_LSTM with varient directions
-  out[1]: Y_h [num_directions, batch_size, hidden_size] = stack of out[2] from QNN_LSTM with varient directions
-  out[2]: Y_c [num_directions, batch_size, hidden_size] = stack of out[1] from QNN_LSTM with varient directions
+  out[0]: Y [seq_length, num_directions, batch_size, hidden_size] = stack of out[0] from QNN_LSTM with variant directions
+  out[1]: Y_h [num_directions, batch_size, hidden_size] = stack of out[2] from QNN_LSTM with variant directions
+  out[2]: Y_c [num_directions, batch_size, hidden_size] = stack of out[1] from QNN_LSTM with variant directions
 
   QNN LSTM inputs:
   in[0]: x_t: 2D of shape [batch_size, input_size] or

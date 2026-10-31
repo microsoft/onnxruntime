@@ -198,10 +198,10 @@ std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
         }
 
         supported_group.push_back(&node);
-        const Node* redundent_clip_node = node_unit->GetRedundantClipNode();
-        if (redundent_clip_node) {
-          supported_group.push_back(redundent_clip_node);
-          supported_group_border.erase(redundent_clip_node);
+        const Node* redundant_clip_node = node_unit->GetRedundantClipNode();
+        if (redundant_clip_node) {
+          supported_group.push_back(redundant_clip_node);
+          supported_group_border.erase(redundant_clip_node);
         }
 
         for (const auto& q : node_unit->GetQNodes()) {

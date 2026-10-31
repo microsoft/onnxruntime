@@ -103,7 +103,7 @@ class AllocationPlanTestUtility {
       EXPECT_EQ(plan.allocation_plan[i].alloc_kind, expected[i]) << "Error in allocation kind at position " << i;
     }
   }
-  // The free list has been re-implmented.
+  // The free list has been re-implemented.
   // remove those checkers first.
   // TODO: add the tests for new release plan.
 };

@@ -71,7 +71,7 @@ bool ExpandOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer,
   const auto& input_defs = node.InputDefs();
   const auto& shape_name = input_defs[1]->Name();
 
-  // We need a constant which can not be overriden by input
+  // We need a constant which can not be overridden by input
   const auto* shape_init = graph_viewer.GetConstantInitializer(shape_name);
   if (!shape_init) {
     LOGS(logger, VERBOSE) << "The shape must be a constant initializer.";
