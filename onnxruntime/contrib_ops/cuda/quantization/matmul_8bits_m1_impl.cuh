@@ -6,6 +6,7 @@
 #include <cuda_bf16.h>
 #include <cuda_fp16.h>
 
+#include <cstdint>
 #include <cstdlib>
 #include <type_traits>
 
@@ -275,6 +276,12 @@ inline bool TryMatMul8BitsM1Wide(half* output, const half* a_data, const uint8_t
     return false;
   }
   if (k % kWide8bStep != 0 || k % block_size != 0) return false;
+  // A and B are read with 16-byte vector loads. B is a prepacked initializer, but A can be a
+  // user-bound buffer at an arbitrary offset, so an unaligned pointer falls back to the original kernel.
+  if (reinterpret_cast<uintptr_t>(a_data) % kWide8bLaneBytes != 0 ||
+      reinterpret_cast<uintptr_t>(b_data_quant) % kWide8bLaneBytes != 0) {
+    return false;
+  }
   // Long K: one column per warp already keeps enough bytes in flight. Short K: two columns per warp
   // share each A load. Chosen from A100 measurements at N=2048/K=4096 and N=5120/K=2048.
   if (k >= 4096) {
@@ -287,6 +294,7 @@ inline bool TryMatMul8BitsM1Wide(half* output, const half* a_data, const uint8_t
     }
     return true;
   }
+  // Defensive only: TryMatMul8Bits already requires N % 8 == 0.
   if (n % 2 != 0) return false;
   if (k % (kWide8bStep * 4) == 0) {
     LaunchMatMulFloat8bKernelM1Wide<2, 4>(output, a_data, b_data_quant, scales_data, zero_points, n, k, block_size,
