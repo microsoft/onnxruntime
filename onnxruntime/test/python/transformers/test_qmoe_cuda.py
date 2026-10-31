@@ -2024,6 +2024,47 @@ class TestSwigluQMoE(unittest.TestCase):
         )
         swiglu_moe.parity_check()
 
+    @parameterized.expand(
+        [
+            # (num_experts, top_k, hidden_size, intermediate_size, has_bias)
+            # Fused single-token routing for 64 < num_experts <= 256 plus the INT8 per-channel FC2
+            # decode kernel with the finalize fused in (instantiated for top-8, intermediate 768,
+            # no expert biases).
+            (128, 8, 2048, 768, False),
+            # Fused routing only: with expert biases, or an FC2 shape that is not instantiated, FC2
+            # takes the existing kernel.
+            (128, 8, 2048, 768, True),
+            (128, 8, 512, 512, False),
+            (96, 4, 512, 512, True),
+        ]
+    )
+    def test_swiglu_qmoe_decode_fast_parity(self, num_experts, top_k, hidden_size, intermediate_size, has_bias):
+        # One token, INT8 per-channel: the shapes the ORT_QMOE_DECODE_FAST paths (on by default) handle.
+        torch.manual_seed(46)
+        numpy.random.seed(46)
+
+        config = SwigluMoeConfig(
+            hidden_size=hidden_size,
+            intermediate_size=intermediate_size,
+            num_local_experts=num_experts,
+            num_experts_per_token=top_k,
+        )
+
+        swiglu_moe = SwigluMoEBlock(
+            config,
+            batch_size=1,
+            sequence_length=1,
+            quant_bits=8,
+            onnx_dtype=TensorProto.FLOAT16,
+            use_asymmetric_quant=False,
+        )
+        if not has_bias:
+            # Without fc1/fc2 bias inputs, as in Qwen3-MoE.
+            for expert in swiglu_moe.experts:
+                expert.w1.bias = None
+                expert.w2.bias = None
+        swiglu_moe.parity_check()
+
     @parameterized.expand(qmoe_cutlass_gemm_blockwise_test_cases)
     def test_swiglu_qmoe_blockwise_cutlass_gemm_parity(self, batch_size, sequence_length, quant_bits, block_size):
         torch.manual_seed(44)
@@ -2212,6 +2253,20 @@ def _qmoe_gemv_benchmark_cases():
             "onnx_dtype": "FLOAT16",
             "quant_bits": 4,
             "block_size": 0,
+        },
+        {
+            # Qwen3-30B-A3B MoE layer: INT8 per-channel, no expert biases.
+            "name": "qwen3_30b_a3b_m1_top8_int8_fp16_2048x768_e128",
+            "batch_size": 1,
+            "sequence_length": 1,
+            "hidden_size": 2048,
+            "intermediate_size": 768,
+            "num_experts": 128,
+            "top_k": 8,
+            "onnx_dtype": "FLOAT16",
+            "quant_bits": 8,
+            "block_size": 0,
+            "has_bias": False,
         },
         {
             "name": "blockwise_int4_b64_m1_top2_fp16_1024x4096_e8",
@@ -2403,6 +2458,13 @@ def run_qmoe_gemv_benchmark(case):
         block_size=case.get("block_size", 0),
         use_asymmetric_quant=False,
     )
+    if not case.get("has_bias", True):
+        # The block builds its graph with fc1/fc2 biases in __init__; rebuild it without them.
+        for expert in qmoe.experts:
+            expert.w1.bias = None
+            expert.w2.bias = None
+        if not qmoe.recreate_onnx_model():
+            raise RuntimeError("Failed to rebuild the QMoE benchmark model without biases")
     hidden_states = torch.randn(
         case["batch_size"], case["sequence_length"], case["hidden_size"], device=device, dtype=torch_dtype
     )
@@ -2414,6 +2476,7 @@ def run_qmoe_gemv_benchmark(case):
         "disable_gemv": os.getenv("ORT_DISABLE_MOE_GEMV") == "1",
         "disable_splitk2_swiglu": os.getenv("ORT_DISABLE_MOE_GEMV_SPLITK2_SWIGLU") == "1",
         "expanded_num_rows": case["batch_size"] * case["sequence_length"] * case["top_k"],
+        "has_bias": case.get("has_bias", True),
         "has_invalid_output": bool(torch.isnan(output).any() or torch.isinf(output).any()),
         "latency_ms": qmoe.last_ort_latency_ms,
         "quant_bits": case.get("quant_bits", 4),

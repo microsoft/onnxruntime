@@ -275,6 +275,60 @@ __device__ __forceinline__ void WarpBitonicTopN(uint64_t (&keys)[N]) {
 }
 
 /**
+ * @brief Single-warp softmax + top-k of one row of `num_experts` router logits.
+ *
+ * Lane `l` reads experts l, l + 32, l + 64, ... (strided so the loads stay coalesced).
+ * On return every lane holds the row's top kItemsPerLane packed keys in `keys`, sorted
+ * descending (see WarpBitonicTopN), their softmax probabilities in `probs`, and the
+ * normalization denominator of the first k of them in `denom`; rank j's routing weight is
+ * `normalize_scales ? probs[j] / denom : probs[j]`. Requires num_experts <= 32 * kItemsPerLane
+ * and k <= kItemsPerLane.
+ *
+ * This is the body of SoftmaxTopKWarpTopKKernel (contrib_ops/cuda/moe/qmoe_kernels.cu). The fused
+ * single-token routing prologue in contrib_ops/cuda/llm/moe_gemm/moe_kernels.cu calls it as well,
+ * so the two produce bit-identical expert selections and scales.
+ */
+template <typename T, int kItemsPerLane>
+__device__ __forceinline__ void WarpSoftmaxTopN(const T* row_logits, int num_experts, int k, bool normalize_scales,
+                                                uint64_t (&keys)[kItemsPerLane], float (&probs)[kItemsPerLane],
+                                                float& denom) {
+  const int lane = LaneId();
+
+  // Padding lanes carry (-inf, INT_MAX) so that valid -inf expert scores sort ahead.
+  float local_max = kNegativeInfinity;
+#pragma unroll
+  for (int j = 0; j < kItemsPerLane; ++j) {
+    const int idx = j * kWarpSize + lane;
+    const float logit = (idx < num_experts) ? static_cast<float>(row_logits[idx]) : kNegativeInfinity;
+    keys[j] = PackStableSortKey(logit, (idx < num_experts) ? idx : INT_MAX);
+    local_max = fmaxf(local_max, logit);
+  }
+
+  // Softmax denominator over all experts (needed when normalize_scales is false;
+  // when true it cancels in the top-k normalization but is still correct).
+  const float max_val = WarpReduceMax(local_max);
+  float local_sum = 0.0f;
+#pragma unroll
+  for (int j = 0; j < kItemsPerLane; ++j) {
+    if (j * kWarpSize + lane < num_experts) {
+      local_sum += expf(UnpackStableSortScore(keys[j]) - max_val);
+    }
+  }
+  const float inv_sum = SafeInvSum(WarpReduceSum(local_sum));
+
+  // Every lane ends up holding the row's top kItemsPerLane keys, sorted descending.
+  WarpBitonicTopN<kItemsPerLane>(keys);
+
+  float scale_sum = 0.0f;
+#pragma unroll
+  for (int j = 0; j < kItemsPerLane; ++j) {
+    probs[j] = SoftmaxScale(UnpackStableSortScore(keys[j]), max_val, inv_sum);
+    if (j < k) scale_sum += probs[j];
+  }
+  denom = TopKNormalizeDenom(normalize_scales, scale_sum);
+}
+
+/**
  * @brief Single-warp CUB merge sort of up to `BufferSize` (score, index) pairs
  *        held in shared memory, producing a descending order.
  *

@@ -4,6 +4,7 @@
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemv.h"
 
 #include <cuda_fp16.h>
+#include <cstring>
 #include <type_traits>
 
 #include "core/common/common.h"
@@ -1054,6 +1055,108 @@ static void dispatch_moe_gemv_fused_finalize_group_size(
 #undef LAUNCH_MOE_GEMV_FUSED_FINALIZE
 }
 
+// Single-token FC2 GEMV with the MoE finalize fused in, for decode (INT8, fp16 activations).
+//
+// moe_gemv_fused_finalize_kernel walks a token's top_k experts one after another inside each
+// block, with two __syncthreads per expert, so for top_k = 8 it is latency bound (about 15 us on
+// A100 for the 12.6 MB FC2 read of a Qwen3-Omni MoE layer). Here one warp owns one output column and
+// every lane issues all of its weight and activation loads, for all top_k experts, before consuming
+// any of them; expert ids and coefficients (routing weight * channel scale) are per warp and ready
+// before the loads, so there is no block-wide barrier.
+//
+// Weights are read in the prepacked SM80 fpA_intB layout (ColumnMajorInterleaved, TileK 64,
+// Interleave 2, int8 stored with a +128 bias): interleaved row r holds columns 2r and 2r+1 in
+// alternating 64-element tiles, so the j-th 16-element chunk of column c (k in [16 j, 16 j + 16)) is
+// at byte ((j / 4) * 2 + c) * 64 + (j % 4) * 16 of the row. Inside a chunk, byte 2m holds k = 16 j + m
+// and byte 2m + 1 holds k = 16 j + 8 + m (FastInterleavedAndBiasedNumericArrayConverter plus the
+// layout's Mapper), so the byte pairs (b0, b2) and (b1, b3) of each 32-bit word are the fp16 pairs
+// (k, k + 1) and (k + 8, k + 9) after the usual 0x6400 magic and subtracting 1024 + 128.
+//
+// Numerics: products and sums are fp32 and the channel scale is applied once per expert, so results
+// are close to, but not bit-identical with, the dequantize-then-fma path of the general kernel.
+//
+// grid = n / Warps, block = Warps * 32. TopK / InterSize are compile time (all loads unrolled).
+template <int Warps, int TopK, int InterSize>
+__global__ void __launch_bounds__(Warps * 32) moe_gemv_int8_fused_finalize_decode_kernel(
+    const half* __restrict__ act, const uint8_t* __restrict__ weight, const half* __restrict__ scales,
+    half* __restrict__ out, const int* __restrict__ permuted_row_to_unpermuted_row,
+    const int* __restrict__ permuted_row_to_expert, const float* __restrict__ final_scales, int num_experts,
+    int64_t weight_expert_stride, int n) {
+#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 750))
+  constexpr int kRowChunks = InterSize / 16;  // 16-element chunks per expert and column
+  constexpr int kChunks = TopK * kRowChunks;
+  static_assert(InterSize % 64 == 0 && kChunks % 32 == 0, "chunks must spread evenly over the lanes");
+  constexpr int kPerLane = kChunks / 32;
+  const int lane = threadIdx.x & 31, warp = threadIdx.x >> 5;
+  const int col = static_cast<int>(blockIdx.x) * Warps + warp;
+  const int interleaved_row = col >> 1, col_in_row = col & 1;
+
+  __shared__ int s_expert[Warps][TopK];
+  __shared__ float s_coef[Warps][TopK];
+  if (lane < TopK) {
+    // Permuted row `lane` is one of this token's top_k rows; a row whose expert is not local
+    // contributes nothing (as in moe_gemv_fused_finalize_kernel).
+    int expert = permuted_row_to_expert[lane];
+    float coef = 0.f;
+    if (expert >= 0 && expert < num_experts) {
+      const float routing = final_scales == nullptr ? 1.f : final_scales[permuted_row_to_unpermuted_row[lane]];
+      coef = routing * __half2float(scales[static_cast<int64_t>(expert) * n + col]);
+    } else {
+      expert = 0;
+    }
+    s_expert[warp][lane] = expert;
+    s_coef[warp][lane] = coef;
+  }
+  __syncwarp();
+
+  uint4 q[kPerLane], a0[kPerLane], a1[kPerLane];
+#pragma unroll
+  for (int p = 0; p < kPerLane; ++p) {
+    const int c = p * 32 + lane;
+    const int slot = c / kRowChunks, j = c % kRowChunks;
+    q[p] = __ldg(reinterpret_cast<const uint4*>(weight + s_expert[warp][slot] * weight_expert_stride +
+                                                static_cast<int64_t>(interleaved_row) * (2 * InterSize) +
+                                                ((j >> 2) * 2 + col_in_row) * 64 + (j & 3) * 16));
+    // The FC1 output is a few KB read by every warp: keep it in L1.
+    const half* a = act + slot * InterSize + j * 16;
+    a0[p] = __ldg(reinterpret_cast<const uint4*>(a));
+    a1[p] = __ldg(reinterpret_cast<const uint4*>(a + 8));
+  }
+
+  const uint32_t magic = 0x64646464u;
+  const half2 bias = __halves2half2(__ushort_as_half(0x6480u), __ushort_as_half(0x6480u));  // 1024 + 128
+  float acc = 0.f;
+#pragma unroll
+  for (int p = 0; p < kPerLane; ++p) {
+    const int c = p * 32 + lane;
+    const uint32_t w[4] = {q[p].x, q[p].y, q[p].z, q[p].w};
+    const uint32_t x[8] = {a0[p].x, a0[p].y, a0[p].z, a0[p].w, a1[p].x, a1[p].y, a1[p].z, a1[p].w};
+    float d = 0.f;
+#pragma unroll
+    for (int i = 0; i < 4; ++i) {
+      uint32_t lo, hi;
+      asm("prmt.b32 %0,%1,%2,%3;\n" : "=r"(lo) : "r"(w[i]), "n"(magic), "n"(0x5250));
+      asm("prmt.b32 %0,%1,%2,%3;\n" : "=r"(hi) : "r"(w[i]), "n"(magic), "n"(0x5351));
+      half2 lo_h, hi_h, xl, xh;
+      memcpy(&lo_h, &lo, sizeof(lo));
+      memcpy(&hi_h, &hi, sizeof(hi));
+      memcpy(&xl, &x[i], sizeof(xl));
+      memcpy(&xh, &x[4 + i], sizeof(xh));
+      const float2 wl = __half22float2(__hsub2(lo_h, bias)), wh = __half22float2(__hsub2(hi_h, bias));
+      const float2 al = __half22float2(xl), ah = __half22float2(xh);
+      d = fmaf(wl.x, al.x, d);
+      d = fmaf(wl.y, al.y, d);
+      d = fmaf(wh.x, ah.x, d);
+      d = fmaf(wh.y, ah.y, d);
+    }
+    acc = fmaf(s_coef[warp][c / kRowChunks], d, acc);
+  }
+#pragma unroll
+  for (int offset = 16; offset > 0; offset >>= 1) acc += __shfl_xor_sync(0xffffffffu, acc, offset);
+  if (lane == 0) out[col] = __float2half(acc);
+#endif
+}
+
 }  // namespace fpA_intB_gemv
 
 namespace moe_gemv {
@@ -1295,6 +1398,27 @@ void launch_moe_gemv_int_symmetric_fused_finalize(
   }
 }
 
+template <typename T>
+bool launch_moe_gemv_int8_fused_finalize_decode(
+    const T* act, const uint8_t* weight, const T* scales, T* out, const int* permuted_row_to_unpermuted_row,
+    const int* permuted_row_to_expert, const float* final_scales, int num_experts, int64_t experts_per_token,
+    int64_t n, int64_t k, cudaStream_t stream) {
+  static_assert(std::is_same_v<T, half>, "the decode FC2 kernel is only instantiated for fp16");
+  using Details = typename DetailsForTAndWeight<T, uint8_t>::Details;
+  // The kernel hard-codes this prepacked layout; fail the build if the prepack layout changes.
+  static_assert(Details::kInterleave == 2 && Details::LayoutDetails::kTileSize == 64 && Details::kStepK == 16 &&
+                    Details::kElemsPerByteW == 1,
+                "moe_gemv_int8_fused_finalize_decode_kernel assumes the SM80 int8 ColumnMajorInterleaved layout");
+  constexpr int kWarps = 2;  // one interleaved row per block
+  if (experts_per_token == 8 && k == 768 && n % kWarps == 0) {
+    fiv::moe_gemv_int8_fused_finalize_decode_kernel<kWarps, 8, 768><<<static_cast<unsigned>(n / kWarps), kWarps * 32, 0, stream>>>(
+        act, weight, scales, out, permuted_row_to_unpermuted_row, permuted_row_to_expert, final_scales, num_experts,
+        n * k, static_cast<int>(n));
+    return true;
+  }
+  return false;
+}
+
 template <typename T, typename WeightType>
 void launch_moe_gemv_int_symmetric_interleaved_swiglu(
     const T* act, const WeightType* weight, const T* scales, const T* bias, T* out,
@@ -1380,6 +1504,9 @@ template void launch_moe_gemv_int_symmetric_fused_finalize<half, cutlass::uint4b
 template void launch_moe_gemv_int_symmetric_fused_finalize<half, uint8_t>(
     const half*, const uint8_t*, const half*, const half*, half*, const int*, const int*, const float*,
     int, int64_t, int64_t, int64_t, int64_t, int, int, cudaStream_t);
+template bool launch_moe_gemv_int8_fused_finalize_decode<half>(
+    const half*, const uint8_t*, const half*, half*, const int*, const int*, const float*, int, int64_t, int64_t,
+    int64_t, cudaStream_t);
 template void launch_moe_gemv_int_symmetric_interleaved_swiglu<half, cutlass::uint4b_t>(
     const half*, const cutlass::uint4b_t*, const half*, const half*, half*, const int64_t*, const int*, int,
     int64_t, int64_t, int64_t, int, int, cutlass_kernels::ActivationParams, const int*, int64_t, float*, cudaStream_t);

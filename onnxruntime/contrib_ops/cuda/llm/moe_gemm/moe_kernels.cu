@@ -27,6 +27,7 @@
 #include <limits>
 #include <random>
 #include <sstream>
+#include <string>
 
 // Ignore CUTLASS warnings about type punning
 #ifdef __GNUC__
@@ -121,6 +122,26 @@ inline bool MoeFusedRoutingDisabledByEnv() {
   return disabled;
 }
 
+// Switch for the QMoE single-token decode fast paths: the fused routing prologue for
+// 64 < num_experts <= 256 and the expert-parallel INT8 FC2 fused-finalize GEMV. Enabled by
+// default; set ORT_QMOE_DECODE_FAST=0 to run the previous kernels instead (A/B comparison).
+inline bool QMoeDecodeFastEnabled() {
+  static const bool enabled = [] {
+#if defined(_WIN32)
+    char* env = nullptr;
+    size_t env_len = 0;
+    const bool off = _dupenv_s(&env, &env_len, "ORT_QMOE_DECODE_FAST") == 0 && env != nullptr &&
+                     std::string(env) == "0";
+    std::free(env);
+    return !off;
+#else
+    const char* env = std::getenv("ORT_QMOE_DECODE_FAST");
+    return !(env != nullptr && std::string(env) == "0");
+#endif
+  }();
+  return enabled;
+}
+
 template <typename T, typename WeightType, typename ScaleBiasType>
 constexpr bool MoeGemvSplitK2SwiGLUSupported() {
   return std::is_same_v<T, half> && std::is_same_v<WeightType, cutlass::uint4b_t> &&
@@ -211,7 +232,8 @@ template <typename T, typename WeightType, typename ScaleBiasType, typename Outp
 bool tryLaunchMoeGemvIntSymmetricFusedFinalize(
     const T* input, const WeightType* weights, const ScaleBiasType* scales, const ScaleBiasType* weight_zeros,
     const ScaleBiasType* biases, OutputType* final_output, const int* unpermuted_row_to_permuted_row,
-    const int* permuted_row_to_expert, const float* unpermuted_final_scales, int num_experts_per_node,
+    const int* permuted_row_to_unpermuted_row, const int* permuted_row_to_expert,
+    const float* unpermuted_final_scales, int num_experts_per_node,
     int64_t num_rows, int64_t experts_per_token, int64_t expanded_num_rows, int64_t n, int64_t k, int sm,
     int group_size, bool disabled, cudaStream_t stream) {
   if constexpr ((std::is_same_v<WeightType, cutlass::uint4b_t> || std::is_same_v<WeightType, uint8_t>) &&
@@ -231,6 +253,17 @@ bool tryLaunchMoeGemvIntSymmetricFusedFinalize(
             sm, num_rows, experts_per_token, expanded_num_rows, n, k, weight_bits, group_size)) {
       return false;
     }
+    // Decode: one token, INT8 per-channel, no bias. All top_k experts are read concurrently instead
+    // of one after another per block.
+    if constexpr (std::is_same_v<T, half> && std::is_same_v<WeightType, uint8_t>) {
+      if (QMoeDecodeFastEnabled() && num_rows == 1 && group_size <= 0 && biases == nullptr &&
+          permuted_row_to_unpermuted_row != nullptr &&
+          onnxruntime::llm::kernels::moe_gemv::launch_moe_gemv_int8_fused_finalize_decode<T>(
+              input, weights, scales, final_output, permuted_row_to_unpermuted_row, permuted_row_to_expert,
+              unpermuted_final_scales, num_experts_per_node, experts_per_token, n, k, stream)) {
+        return true;
+      }
+    }
     onnxruntime::llm::kernels::moe_gemv::launch_moe_gemv_int_symmetric_fused_finalize<T, WeightType>(
         input, weights, scales, biases, final_output, unpermuted_row_to_permuted_row, permuted_row_to_expert,
         unpermuted_final_scales, num_experts_per_node, num_rows, experts_per_token, n, k, group_size, sm, stream);
@@ -243,6 +276,7 @@ bool tryLaunchMoeGemvIntSymmetricFusedFinalize(
     (void)biases;
     (void)final_output;
     (void)unpermuted_row_to_permuted_row;
+    (void)permuted_row_to_unpermuted_row;
     (void)permuted_row_to_expert;
     (void)unpermuted_final_scales;
     (void)num_experts_per_node;
@@ -662,6 +696,93 @@ __global__ void fusedRoutingBuildExpertMapsSingleTokenKernel(
   }
 }
 
+// The same fusion for 64 < num_experts <= 256 and experts_per_token <= 8, i.e. exactly the shapes
+// for which the standalone path (DispatchSoftmaxTopK in contrib_ops/cuda/moe/qmoe_kernels.cu)
+// launches SoftmaxTopKWarpTopKKernel. Softmax and top-k come from the same WarpSoftmaxTopN helper
+// that kernel uses, so the selected experts and their scales are bit-identical to the unfused
+// path, and the maps below are the ones fusedBuildExpertMapsSortFirstToken builds for one token.
+// After WarpSoftmaxTopN every lane holds all k selections, so each lane derives its own outputs
+// without shuffles.
+template <typename T, int kItemsPerLane>
+__global__ void fusedRoutingBuildExpertMapsSingleTokenWarpTopKKernel(
+    const T* router_logits, int* token_selected_experts, float* token_final_scales,
+    int* permuted_row_to_unpermuted_row, int* unpermuted_row_to_permuted_row,
+    int* permuted_token_selected_experts, int64_t* expert_first_token_offset, const int num_experts,
+    const int experts_per_token, const bool normalize_routing_weights) {
+  namespace topk = onnxruntime::cuda::topk;
+  const int lane = static_cast<int>(threadIdx.x);
+  const int k = experts_per_token;
+
+  // Wait PDL before reading router_logits
+#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900))
+  asm volatile("griddepcontrol.wait;");
+#endif
+
+  uint64_t keys[kItemsPerLane];
+  float probs[kItemsPerLane];
+  float denom;
+  topk::WarpSoftmaxTopN<T, kItemsPerLane>(router_logits, num_experts, k, normalize_routing_weights, keys, probs,
+                                          denom);
+
+  int selected[kItemsPerLane];
+#pragma unroll
+  for (int j = 0; j < kItemsPerLane; ++j) {
+    selected[j] = topk::UnpackStableSortIndex(keys[j]);
+  }
+
+  // Lane r < k owns rank r, which is unpermuted row r (num_tokens is 1). Selected experts are
+  // distinct, so its permuted row is the number of selections with a smaller expert id - the
+  // order cub::BlockRadixRank produces in the general prologue.
+  int expert = 0;
+  float scale = 0.0f;
+  int permuted_row = 0;
+#pragma unroll
+  for (int j = 0; j < kItemsPerLane; ++j) {
+    if (j == lane) {
+      expert = selected[j];
+      scale = normalize_routing_weights ? (probs[j] / denom) : probs[j];
+    }
+  }
+#pragma unroll
+  for (int j = 0; j < kItemsPerLane; ++j) {
+    permuted_row += (j < k && selected[j] < expert) ? 1 : 0;
+  }
+
+#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900))
+  asm volatile("griddepcontrol.launch_dependents;");
+#endif
+
+  if (lane < k) {
+    token_selected_experts[lane] = expert;
+    token_final_scales[lane] = scale;
+    permuted_row_to_unpermuted_row[permuted_row] = lane;
+    unpermuted_row_to_permuted_row[lane] = permuted_row;
+    permuted_token_selected_experts[permuted_row] = expert;
+  }
+
+  // expert_first_token_offset[e] is the number of selected experts with an id below e, for
+  // e in [0, num_experts]. The last entry is the total number of expanded rows.
+  for (int e = lane; e <= num_experts; e += topk::kWarpSize) {
+    int below = 0;
+#pragma unroll
+    for (int j = 0; j < kItemsPerLane; ++j) {
+      below += (j < k && selected[j] < e) ? 1 : 0;
+    }
+    expert_first_token_offset[e] = below;
+  }
+}
+
+// Mirrors the SoftmaxTopKWarpTopKKernel branch of DispatchSoftmaxTopK (qmoe_kernels.cu).
+constexpr int kFusedRoutingWarpTopKMaxExperts = 256;
+constexpr int kFusedRoutingWarpTopKMaxK = 8;
+
+// The single-token warp top-k fusion covers exactly the shapes for which the standalone softmax/top-k
+// uses the same algorithm, so the routing does not change.
+inline bool useFusedRoutingWarpTopK(int num_experts, int experts_per_token) {
+  return QMoeDecodeFastEnabled() && num_experts > onnxruntime::cuda::topk::kWarpMergeMaxSize &&
+         num_experts <= kFusedRoutingWarpTopKMaxExperts && experts_per_token <= kFusedRoutingWarpTopKMaxK;
+}
+
 bool isFusedMoeRoutingSupported(const int64_t num_tokens, const int num_experts,
                                 const int num_experts_per_node, const int experts_per_token,
                                 const int ep_size) {
@@ -669,7 +790,11 @@ bool isFusedMoeRoutingSupported(const int64_t num_tokens, const int num_experts,
       num_experts < 1 || experts_per_token < 1 || experts_per_token > num_experts) {
     return false;
   }
-  if (num_tokens == 1 && num_experts <= onnxruntime::cuda::topk::kWarpBitonicMaxSize) {
+  // One warp, one token: lane e owns expert e (num_experts <= 32), or experts e, e + 32, ... with the
+  // top k kept in registers (useFusedRoutingWarpTopK).
+  if (num_tokens == 1 &&
+      (num_experts <= onnxruntime::cuda::topk::kWarpBitonicMaxSize ||
+       useFusedRoutingWarpTopK(num_experts, experts_per_token))) {
     return true;
   }
   return onnxruntime::contrib::cuda::CanUseFusedRouteMaps(
@@ -687,7 +812,8 @@ bool launchFusedRoutingBuildExpertMaps(const T* router_logits, int* token_select
   // The runner is also instantiated for narrow activation types (fp8/fp4) that can never be a
   // router logit dtype; reject those here so the caller does not have to.
   if constexpr (std::is_same_v<T, float> || std::is_same_v<T, half> || std::is_same_v<T, __nv_bfloat16>) {
-    if (num_tokens == 1 && num_experts <= onnxruntime::cuda::topk::kWarpBitonicMaxSize) {
+    if (num_tokens == 1 && (num_experts <= onnxruntime::cuda::topk::kWarpBitonicMaxSize ||
+                            useFusedRoutingWarpTopK(num_experts, experts_per_token))) {
       cudaLaunchConfig_t config;
       config.gridDim = 1;
       config.blockDim = onnxruntime::cuda::topk::kWarpSize;
@@ -699,11 +825,20 @@ bool launchFusedRoutingBuildExpertMaps(const T* router_logits, int* token_select
       config.numAttrs = 1;
       config.attrs = attrs;
 
-      CUDA_CALL_THROW(cudaLaunchKernelEx(&config, &fusedRoutingBuildExpertMapsSingleTokenKernel<T>, router_logits,
-                                         token_selected_experts, token_final_scales, permuted_row_to_unpermuted_row,
-                                         unpermuted_row_to_permuted_row, permuted_token_selected_experts,
-                                         expert_first_token_offset, num_experts, experts_per_token,
-                                         normalize_routing_weights));
+      // Same kernel choice as DispatchSoftmaxTopK, including the per-lane capacity of the
+      // warp top-k: max(k, ceil(num_experts / 32)) rounded up to 4 or 8.
+      auto kernel = &fusedRoutingBuildExpertMapsSingleTokenKernel<T>;
+      if (num_experts > onnxruntime::cuda::topk::kWarpBitonicMaxSize) {
+        const int items_per_lane =
+            std::max(experts_per_token, (num_experts + onnxruntime::cuda::topk::kWarpSize - 1) /
+                                            onnxruntime::cuda::topk::kWarpSize);
+        kernel = items_per_lane <= 4 ? &fusedRoutingBuildExpertMapsSingleTokenWarpTopKKernel<T, 4>
+                                     : &fusedRoutingBuildExpertMapsSingleTokenWarpTopKKernel<T, 8>;
+      }
+      CUDA_CALL_THROW(cudaLaunchKernelEx(&config, kernel, router_logits, token_selected_experts, token_final_scales,
+                                         permuted_row_to_unpermuted_row, unpermuted_row_to_permuted_row,
+                                         permuted_token_selected_experts, expert_first_token_offset, num_experts,
+                                         experts_per_token, normalize_routing_weights));
       return true;
     }
 
@@ -2807,7 +2942,8 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
   const bool fc2_did_fused_finalize =
       tryLaunchMoeGemvIntSymmetricFusedFinalize<T, WeightType, ScaleBiasType, OutputType>(
           input, fc2_expert_weights, fc2_gemv_scales, fc2_gemv_zeros, fc2_expert_biases, final_output,
-          unpermuted_row_to_permuted_row, permuted_row_to_expert, unpermuted_final_scales, num_experts_per_node,
+          unpermuted_row_to_permuted_row, permuted_row_to_unpermuted_row, permuted_row_to_expert,
+          unpermuted_final_scales, num_experts_per_node,
           num_rows, /*experts_per_token=*/k, expanded_num_rows, /*n=*/hidden_size, /*k=*/inter_size,
           onnxruntime::llm::common::getSMVersion(), quant_params.groupwise.group_size,
           /*disabled=*/fc2_gemv_disabled || parallelism_config.tp_size > 1, stream);

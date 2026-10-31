@@ -68,6 +68,21 @@ void launch_moe_gemv_int_symmetric_fused_finalize(
     int num_experts, int64_t num_rows, int64_t experts_per_token, int64_t n, int64_t k, int group_size, int sm,
     cudaStream_t stream);
 
+// Single-token (num_rows == 1) variant of launch_moe_gemv_int_symmetric_fused_finalize for INT8
+// per-channel weights without bias. Instead of walking the top_k experts one after another in
+// each block, every lane issues its weight loads for all experts at once. Returns false, launching
+// nothing, when the shape is not covered (currently experts_per_token == 8 and k == 768 only); the
+// caller then falls back to the general fused-finalize kernel.
+//   act:   [experts_per_token, k] FC1 output in permuted order
+//   permuted_row_to_unpermuted_row: [experts_per_token]; for one token the unpermuted row is k_idx
+//   final_scales: [experts_per_token] routing weights indexed by k_idx, or nullptr for 1.0
+// T must be half.
+template <typename T>
+bool launch_moe_gemv_int8_fused_finalize_decode(
+    const T* act, const uint8_t* weight, const T* scales, T* out, const int* permuted_row_to_unpermuted_row,
+    const int* permuted_row_to_expert, const float* final_scales, int num_experts, int64_t experts_per_token,
+    int64_t n, int64_t k, cudaStream_t stream);
+
 // Launches symmetric INT MoE GEMV and fuses interleaved SwiGLU activation.
 // weight/bias use raw FC1 output width n = 2 * inter_size. Scales are
 // [num_experts, n] for group_size <= 0 and [num_experts, k_blocks, n] for
