@@ -187,6 +187,8 @@ fn qlora_up(base: QLoRAMatGroup, a_offset: u32, b_offset: u32,
     let global_col = b_global_base + row;
     if (global_col < uniforms.N) {
       tile_B[idx] = compute_precision(qlora_weight(global_col, col / 4u)[col % 4u]);
+    } else {
+      tile_B[idx] = compute_precision(0);
     }
   }
   workgroupBarrier();

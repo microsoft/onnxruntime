@@ -206,11 +206,15 @@ $MAIN {
       let row_in_tile = load_unit / (kQLoRARank / 4u);
       let r4 = load_unit % (kQLoRARank / 4u);
       let global_m = global_base_m + row_in_tile;
+      let offset = row_in_tile * kQLoRARank + r4 * 4u;
       if (global_m < uniforms.M) {
         let values = lora_t.getByOffset(global_m * (kQLoRARank / 4u) + r4);
-        let offset = row_in_tile * kQLoRARank + r4 * 4u;
         for (var i = 0u; i < 4u; i++) {
           lora_a[offset + i] = f16(values[i]);
+        }
+      } else {
+        for (var i = 0u; i < 4u; i++) {
+          lora_a[offset + i] = f16(0.0);
         }
       }
     }
@@ -219,11 +223,15 @@ $MAIN {
       let col_in_tile = load_unit / (kQLoRARank / 4u);
       let r4 = load_unit % (kQLoRARank / 4u);
       let global_n = global_base_n + n * kSgMatDimN + col_in_tile;
+      let offset = col_in_tile * kQLoRARank + r4 * 4u;
       if (global_n < uniforms.N) {
         let values = qlora_weight(global_n, r4);
-        let offset = col_in_tile * kQLoRARank + r4 * 4u;
         for (var i = 0u; i < 4u; i++) {
           tile_b[offset + i] = f16(values[i]);
+        }
+      } else {
+        for (var i = 0u; i < 4u; i++) {
+          tile_b[offset + i] = f16(0.0);
         }
       }
     }
