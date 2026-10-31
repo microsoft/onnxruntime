@@ -45,7 +45,8 @@ is launched with PDL, its prologue (constant-weight prefetch) then overlaps with
 the gate-mul kernel, while its reads of the gate-mul output still wait for
 `griddepcontrol.wait`. The trigger has no effect for plain launches, changes no
 result and has no switch. Together with the same early trigger in the fpA_intB GEMV
-kernels (MatMulNBits) it shortens a Qwen3.8-Flash-Next `S = 8` decode cycle by 1.4-1.7%.
+kernels (MatMulNBits) it shortened a Qwen3.8-Flash-Next `S = 8` decode cycle by 1.4-1.7% in a
+preliminary end-to-end A/B on an H200 (one round, not alternated, no confidence interval).
 
 `SigmoidF32` evaluates `expf(-|v|)` once and selects the numerator,
 `e = expf(-|v|); (v >= 0 ? 1 : e) / (1 + e)`. The textbook two-branch form passes the
@@ -54,9 +55,12 @@ bit-identical for all 2^32 `float` values (checked exhaustively in a standalone 
 no fast-math). The branch itself was the cost: in the prefill pre-mix neighbouring
 elements have different signs, so nearly every warp executed both sides. For hidden
 2560, 4 branches and an 8192-token prefill chunk on an H200, `PreMixVec8Kernel` takes
-82.7 µs instead of 112.1 µs per launch and `ScaledSiluKernel` 6.1 µs instead of 7.3 µs,
-which shortens the TTFT by 0.3-1.1%. The fused decode kernels call the same function for
-at most eight rows, and decode time is unchanged within the noise of 0.3%.
+82.7 µs instead of 112.1 µs per launch and `ScaledSiluKernel` 6.1 µs instead of 7.3 µs.
+The TTFT shortened by 0.3-1.1% in a preliminary end-to-end A/B (median of 5 repetitions,
+faster in 9 of 9 package and context cells), which is about the size of the roughly 1%
+noise between repetitions, so the kernel times are the firmer evidence. The fused decode
+kernels call the same function for at most eight rows, and decode time is unchanged within
+the noise of 0.3%.
 
 The rank-320 decode test (`HyperConnectionLowRankMixTest.FusedDecodeShapeRank320`)
 covers 1, 2, 3, 4, 7 and 8 rows.
