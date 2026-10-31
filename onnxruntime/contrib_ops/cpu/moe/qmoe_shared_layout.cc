@@ -94,6 +94,11 @@ void Avx2Int3GemmRange(const uint8_t* weights, const uint16_t* scales, const uin
                        int64_t block_size, bool scale_is_bf16, bool bias_is_bf16,
                        int64_t n_total, int64_t k, const float* a_natural, int64_t m,
                        float* out, int64_t out_stride, int64_t n_begin, int64_t n_end, bool deferred_scale);
+void Avx2Int2GemmRange(const uint8_t* weights, const uint16_t* scales, const uint16_t* bias,
+                       int64_t block_size, bool scales_are_block_major, bool weights_are_prepacked,
+                       bool scale_is_bf16, bool bias_is_bf16,
+                       int64_t n_total, int64_t k, const float* a_reordered, int64_t m,
+                       float* out, int64_t out_stride, int64_t n_begin, int64_t n_end);
 void Avx2HalfBitsToFloatRow(const uint16_t* src, float* dst, int64_t count);
 void Avx2FloatToHalfBitsRow(const float* src, uint16_t* dst, int64_t count);
 void Avx2BFloat16BitsToFloatRow(const uint16_t* src, float* dst, int64_t count);
@@ -116,6 +121,11 @@ void Avx512Int3GemmRange(const uint8_t* weights, const uint16_t* scales, const u
                          int64_t block_size, bool scale_is_bf16, bool bias_is_bf16,
                          int64_t n_total, int64_t k, const float* a_natural, int64_t m,
                          float* out, int64_t out_stride, int64_t n_begin, int64_t n_end, bool deferred_scale);
+void Avx512Int2GemmRange(const uint8_t* weights, const uint16_t* scales, const uint16_t* bias,
+                         int64_t block_size, bool scales_are_block_major, bool weights_are_prepacked,
+                         bool scale_is_bf16, bool bias_is_bf16,
+                         int64_t n_total, int64_t k, const float* a_reordered, int64_t m,
+                         float* out, int64_t out_stride, int64_t n_begin, int64_t n_end);
 void Avx512Nvfp4GemmRange(const uint8_t* weights, const uint8_t* block_scales, float global_scale,
                           const uint16_t* bias, bool bias_is_bf16, int64_t n_total, int64_t k,
                           const float* a_reordered, int64_t m, float* out, int64_t out_stride,
@@ -339,6 +349,81 @@ void ScalarInt3GemmRange(const uint8_t* weights, const uint16_t* scales, const u
           }
         }
         acc += deferred_scale ? sum * s_val : sum;
+      }
+      out[r * out_stride + (n - n_begin)] = acc + b_val;
+    }
+  }
+}
+
+void ScalarInt2GemmRange(const uint8_t* weights, const uint16_t* scales, const uint16_t* bias,
+                         int64_t block_size, bool scales_are_block_major, bool weights_are_prepacked,
+                         bool scale_is_bf16, bool bias_is_bf16,
+                         int64_t n_total, int64_t k, const float* a_reordered, int64_t m,
+                         float* out, int64_t out_stride, int64_t n_begin, int64_t n_end,
+                         bool scale_is_fp32 = false, bool bias_is_fp32 = false) {
+  constexpr int64_t kInt2ColsInterleaved = 8;
+  constexpr int64_t kTileK = 64;
+  const int64_t eff_block = (block_size == 32 || block_size == 64 || block_size == 128) ? block_size : 64;
+  const int64_t tiles64 = k / kTileK;
+  const int64_t scale_blocks = k / eff_block;
+  const int64_t raw_w_stride = k / 4;
+  const float* scales_f32 = reinterpret_cast<const float*>(scales);
+  const float* bias_f32 = reinterpret_cast<const float*>(bias);
+  auto read_scale = [&](int64_t n, int64_t sb) -> float {
+    const size_t s_idx = static_cast<size_t>(scales_are_block_major ? (sb * n_total + n) : (n * scale_blocks + sb));
+    return scale_is_fp32   ? scales_f32[s_idx]
+           : scale_is_bf16 ? BoundaryBFloat16::FromBits(scales[s_idx])
+                           : HalfToFloat(scales[s_idx]);
+  };
+  for (int64_t n = n_begin; n < n_end; ++n) {
+    const uint8_t* group = weights_are_prepacked
+                               ? (weights + (n / kInt2ColsInterleaved) * (kInt2ColsInterleaved * (k / 4)))
+                               : nullptr;
+    const int64_t c = n % kInt2ColsInterleaved;
+    const uint8_t* raw_w_row = weights_are_prepacked ? nullptr : (weights + n * raw_w_stride);
+    const float b_val = (bias != nullptr)
+                            ? (bias_is_fp32   ? bias_f32[n]
+                               : bias_is_bf16 ? BoundaryBFloat16::FromBits(bias[n])
+                                              : HalfToFloat(bias[n]))
+                            : 0.0f;
+    for (int64_t r = 0; r < m; ++r) {
+      float acc = 0.0f;
+      for (int64_t kb64 = 0; kb64 < tiles64; ++kb64) {
+        const uint8_t* bytes = weights_are_prepacked
+                                   ? (group + kb64 * 128 + c * 16)
+                                   : (raw_w_row + kb64 * 16);
+        const float* ar = a_reordered + r * k + kb64 * kTileK;
+        if (eff_block == 32) {
+          const float s0 = read_scale(n, 2 * kb64);
+          const float s1 = read_scale(n, 2 * kb64 + 1);
+          float sum0 = 0.0f;
+          float sum1 = 0.0f;
+          for (int s = 0; s < 4; ++s) {
+            const float* as = ar + s * 16;
+            for (int b = 0; b < 16; ++b) {
+              const float w = static_cast<float>(static_cast<int>((bytes[b] >> (2 * s)) & 0x3u) - 2);
+              const bool second_half = weights_are_prepacked ? ((b & 1) != 0) : (b >= 8);
+              if (second_half) {
+                sum1 += w * as[b];
+              } else {
+                sum0 += w * as[b];
+              }
+            }
+          }
+          acc += sum0 * s0 + sum1 * s1;
+        } else {
+          const int64_t sb = (eff_block == 64) ? kb64 : (kb64 >> 1);
+          const float s_val = read_scale(n, sb);
+          float sum = 0.0f;
+          for (int s = 0; s < 4; ++s) {
+            const float* as = ar + s * 16;
+            for (int b = 0; b < 16; ++b) {
+              const float w = static_cast<float>(static_cast<int>((bytes[b] >> (2 * s)) & 0x3u) - 2);
+              sum += w * as[b];
+            }
+          }
+          acc += sum * s_val;
+        }
       }
       out[r * out_stride + (n - n_begin)] = acc + b_val;
     }
@@ -2087,6 +2172,49 @@ bool MakeInt3ExpertBlockLayout(int64_t hidden, int64_t inter, int64_t block_size
   return true;
 }
 
+bool MakeInt2ExpertBlockLayout(int64_t hidden, int64_t inter, int64_t block_size, Nvfp4ExpertBlockLayout* layout) {
+  if (layout == nullptr || hidden <= 0 || inter <= 0 ||
+      (block_size != 32 && block_size != 64 && block_size != 128)) {
+    return false;
+  }
+  if (hidden > static_cast<int64_t>(std::numeric_limits<int>::max()) ||
+      inter > static_cast<int64_t>(std::numeric_limits<int>::max() / 2)) {
+    return false;
+  }
+  if (hidden % block_size != 0 || inter % block_size != 0 || hidden % 64 != 0 || inter % 64 != 0) {
+    return false;
+  }
+  const size_t h = static_cast<size_t>(hidden);
+  const size_t i = static_cast<size_t>(inter);
+  const size_t blk = static_cast<size_t>(block_size);
+  size_t n1 = 0;
+  if (!CheckedMulSize(2, i, &n1)) return false;
+
+  auto add_bank = [](size_t current_off, size_t raw_bytes, size_t* bank_off, size_t* next_off) -> bool {
+    *bank_off = current_off;
+    size_t aligned = 0;
+    if (!CheckedAlignUp(raw_bytes, kBankAlignment, &aligned)) return false;
+    return CheckedAddSize(current_off, aligned, next_off);
+  };
+
+  Nvfp4ExpertBlockLayout l;
+  l.hidden = hidden;
+  l.inter = inter;
+  size_t off = 0;
+  size_t bytes = 0;
+
+  if (!CheckedMulSize(n1, h / 4, &bytes) || !add_bank(off, bytes, &l.fc1_weights, &off)) return false;
+  if (!CheckedMulSize(n1, (h / blk) * sizeof(uint16_t), &bytes) || !add_bank(off, bytes, &l.fc1_scales, &off)) return false;
+  if (!add_bank(off, sizeof(float), &l.fc1_global_scale, &off)) return false;
+  if (!CheckedMulSize(h, i / 4, &bytes) || !add_bank(off, bytes, &l.fc2_weights, &off)) return false;
+  if (!CheckedMulSize(h, (i / blk) * sizeof(uint16_t), &bytes) || !add_bank(off, bytes, &l.fc2_scales, &off)) return false;
+  if (!add_bank(off, sizeof(float), &l.fc2_global_scale, &off)) return false;
+
+  l.stride = off;
+  *layout = l;
+  return true;
+}
+
 int ReorderedPosition(int k_offset_in_block) {
   static constexpr int kLut[32] = {
       0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30,
@@ -2112,6 +2240,29 @@ void ReorderRawInt4ActivationRow(const float* src, float* dst, int64_t k) {
     for (int b = 0; b < 16; ++b) {
       d[b] = s[2 * b];
       d[16 + b] = s[2 * b + 1];
+    }
+  }
+}
+
+void ReorderInt2ActivationRow(const float* src, float* dst, int64_t k) {
+  for (int64_t kb64 = 0; kb64 < k / 64; ++kb64) {
+    const float* s = src + kb64 * 64;
+    float* d = dst + kb64 * 64;
+    for (int m = 0; m < 32; ++m) {
+      d[2 * m] = s[m];
+      d[2 * m + 1] = s[32 + m];
+    }
+  }
+}
+
+void ReorderRawInt2ActivationRow(const float* src, float* dst, int64_t k) {
+  for (int64_t kb64 = 0; kb64 < k / 64; ++kb64) {
+    const float* s = src + kb64 * 64;
+    float* d = dst + kb64 * 64;
+    for (int sc = 0; sc < 4; ++sc) {
+      for (int b = 0; b < 16; ++b) {
+        d[sc * 16 + b] = s[4 * b + sc];
+      }
     }
   }
 }
@@ -2643,6 +2794,153 @@ bool Int3ExpertForward(int64_t hidden, int64_t inter, const Int3ExpertView& view
   Int3Fc1SwiGluRange(hidden, inter, view, x, m, swiglu, inter_buf.data(),
                      0, 2 * inter, force_scalar, bf16_boundaries, fp16_boundaries);
   Int3Fc2Range(hidden, inter, view, inter_buf.data(), m, out,
+               0, hidden, force_scalar, apply_fc2_bias);
+  return true;
+}
+
+void Int2GemmRange(const uint8_t* weights, const uint16_t* scales, const uint16_t* bias,
+                   int64_t block_size, bool scales_are_block_major, bool weights_are_prepacked,
+                   bool scale_is_bf16, bool bias_is_bf16,
+                   int64_t n_total, int64_t k, const float* a_reordered, int64_t m,
+                   float* out, int64_t out_stride, int64_t n_begin, int64_t n_end,
+                   bool force_scalar) {
+#if QMOE_COMPILER_SUPPORTS_AVX512
+  if (!force_scalar && CpuHasAvx512() && (block_size == 32 || block_size == 64 || block_size == 128)) {
+    detail::Avx512Int2GemmRange(weights, scales, bias, block_size, scales_are_block_major, weights_are_prepacked,
+                                scale_is_bf16, bias_is_bf16, n_total, k, a_reordered, m,
+                                out, out_stride, n_begin, n_end);
+    return;
+  }
+#endif
+#if QMOE_COMPILER_SUPPORTS_AVX2
+  if (!force_scalar && CpuHasAvx2FmaF16c() && (block_size == 32 || block_size == 64 || block_size == 128)) {
+    detail::Avx2Int2GemmRange(weights, scales, bias, block_size, scales_are_block_major, weights_are_prepacked,
+                              scale_is_bf16, bias_is_bf16, n_total, k, a_reordered, m,
+                              out, out_stride, n_begin, n_end);
+    return;
+  }
+#endif
+  (void)force_scalar;
+  ScalarInt2GemmRange(weights, scales, bias, block_size, scales_are_block_major, weights_are_prepacked,
+                      scale_is_bf16, bias_is_bf16, n_total, k, a_reordered, m,
+                      out, out_stride, n_begin, n_end);
+}
+
+void Int2Fc1SwiGluRange(int64_t hidden, int64_t inter, const Int2ExpertView& view,
+                        const float* x_reordered, int64_t m, const SwiGluParams& swiglu,
+                        float* inter_reordered, int64_t n_begin, int64_t n_end,
+                        bool force_scalar, bool bf16_boundaries, bool fp16_boundaries) {
+  constexpr int64_t kChunk = 128;
+  float tmp[kMaxRowsPerCall * kChunk];
+  const int64_t n_total = 2 * inter;
+#if QMOE_COMPILER_SUPPORTS_AVX2
+  const bool use_f16c = !force_scalar && fp16_boundaries && !bf16_boundaries && CpuHasAvx2FmaF16c();
+#else
+  const bool use_f16c = false;
+#endif
+  const bool has_limit = std::isfinite(swiglu.limit);
+  const bool use_fast_gemm =
+      (view.block_size == 32 || view.block_size == 64 || view.block_size == 128) &&
+      !view.scale_is_fp32 && !view.bias_is_fp32;
+  for (int64_t nb = n_begin; nb < n_end; nb += kChunk) {
+    const int64_t ne = std::min(nb + kChunk, n_end);
+    if (use_fast_gemm) {
+      Int2GemmRange(view.fc1_weights, view.fc1_scales, view.fc1_bias,
+                    view.block_size, view.scales_are_block_major, view.weights_are_prepacked,
+                    view.scale_is_bf16, view.bias_is_bf16,
+                    n_total, hidden, x_reordered, m, tmp, kChunk, nb, ne, force_scalar);
+    } else {
+      ScalarInt2GemmRange(view.fc1_weights, view.fc1_scales, view.fc1_bias,
+                          view.block_size, view.scales_are_block_major, view.weights_are_prepacked,
+                          view.scale_is_bf16, view.bias_is_bf16,
+                          n_total, hidden, x_reordered, m, tmp, kChunk, nb, ne,
+                          view.scale_is_fp32, view.bias_is_fp32);
+    }
+    for (int64_t r = 0; r < m; ++r) {
+      float* row_tmp = tmp + r * kChunk;
+      float* row_out = inter_reordered + r * inter;
+#if QMOE_COMPILER_SUPPORTS_AVX2
+      if (use_f16c) {
+        detail::Avx2RoundFp16InPlace(row_tmp, ne - nb);
+      }
+#endif
+      for (int64_t n = nb; n < ne; n += 2) {
+        const int64_t j = n / 2;
+        const int pos = view.weights_are_prepacked ? Int2ReorderedPosition(static_cast<int>(j & 63))
+                                                   : RawInt2ReorderedPosition(static_cast<int>(j & 63));
+        const float gate_projection = row_tmp[n - nb];
+        const float up_projection = row_tmp[(n - nb) + 1];
+        float gate = (fp16_boundaries && !bf16_boundaries && !use_f16c) ? BoundaryFloat16::Round(gate_projection)
+                                                                        : gate_projection;
+        float value = (fp16_boundaries && !bf16_boundaries && !use_f16c) ? BoundaryFloat16::Round(up_projection)
+                                                                         : up_projection;
+        if (has_limit) {
+          gate = std::min(gate, swiglu.limit);
+          value = std::clamp(value, -swiglu.limit, swiglu.limit);
+        }
+        const float act = gate / (1.0f + std::exp(-swiglu.alpha * gate)) * (value + swiglu.beta);
+#if QMOE_COMPILER_SUPPORTS_AVX2
+        const float rounded_act = bf16_boundaries   ? RoundBf16Fast(act)
+                                  : use_f16c        ? detail::Avx2RoundFp16Scalar(act)
+                                  : fp16_boundaries ? BoundaryFloat16::Round(act)
+                                                    : act;
+#else
+        const float rounded_act = bf16_boundaries   ? RoundBf16Fast(act)
+                                  : fp16_boundaries ? BoundaryFloat16::Round(act)
+                                                    : act;
+#endif
+        row_out[(j & ~int64_t{63}) + pos] = rounded_act;
+      }
+    }
+  }
+}
+
+void Int2Fc2Range(int64_t hidden, int64_t inter, const Int2ExpertView& view,
+                  const float* inter_reordered, int64_t m, float* out,
+                  int64_t n_begin, int64_t n_end, bool force_scalar,
+                  bool apply_bias) {
+  if ((view.block_size == 32 || view.block_size == 64 || view.block_size == 128) &&
+      !view.scale_is_fp32 && !view.bias_is_fp32) {
+    Int2GemmRange(view.fc2_weights, view.fc2_scales, apply_bias ? view.fc2_bias : nullptr,
+                  view.block_size, view.scales_are_block_major, view.weights_are_prepacked,
+                  view.scale_is_bf16, view.bias_is_bf16,
+                  hidden, inter, inter_reordered, m, out + n_begin, hidden,
+                  n_begin, n_end, force_scalar);
+  } else {
+    ScalarInt2GemmRange(view.fc2_weights, view.fc2_scales, apply_bias ? view.fc2_bias : nullptr,
+                        view.block_size, view.scales_are_block_major, view.weights_are_prepacked,
+                        view.scale_is_bf16, view.bias_is_bf16,
+                        hidden, inter, inter_reordered, m, out + n_begin, hidden,
+                        n_begin, n_end, view.scale_is_fp32, view.bias_is_fp32);
+  }
+}
+
+bool Int2ExpertForward(int64_t hidden, int64_t inter, const Int2ExpertView& view,
+                       const float* x, int64_t m, const SwiGluParams& swiglu, float* out,
+                       bool force_scalar, bool apply_fc2_bias,
+                       bool bf16_boundaries, bool fp16_boundaries) {
+  if (m < 1 || m > kMaxRowsPerCall || hidden <= 0 || inter <= 0 ||
+      (view.block_size != 32 && view.block_size != 64 && view.block_size != 128) ||
+      (hidden % view.block_size) != 0 || (inter % view.block_size) != 0 ||
+      (hidden % 64) != 0 || (inter % 64) != 0) {
+    return false;
+  }
+  if (view.weights_are_prepacked && (((2 * inter) % 8) != 0 || (hidden % 8) != 0)) {
+    return false;
+  }
+  if (!view.fc1_weights || !view.fc1_scales || !view.fc2_weights || !view.fc2_scales) return false;
+  std::vector<float> xr(static_cast<size_t>(m * hidden));
+  std::vector<float> inter_buf(static_cast<size_t>(m * inter));
+  for (int64_t r = 0; r < m; ++r) {
+    if (view.weights_are_prepacked) {
+      ReorderInt2ActivationRow(x + r * hidden, xr.data() + r * hidden, hidden);
+    } else {
+      ReorderRawInt2ActivationRow(x + r * hidden, xr.data() + r * hidden, hidden);
+    }
+  }
+  Int2Fc1SwiGluRange(hidden, inter, view, xr.data(), m, swiglu, inter_buf.data(),
+                     0, 2 * inter, force_scalar, bf16_boundaries, fp16_boundaries);
+  Int2Fc2Range(hidden, inter, view, inter_buf.data(), m, out,
                0, hidden, force_scalar, apply_fc2_bias);
   return true;
 }
