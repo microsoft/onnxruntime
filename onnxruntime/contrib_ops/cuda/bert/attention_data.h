@@ -189,6 +189,12 @@ struct GroupQueryAttentionData {
   // GQA-capable unfused fallback (issue #28195): used when Flash/MEA/XQA are all ineligible,
   // e.g. fp16 head_size > 256 with past_key, or GQA on old GPUs without MEA/Flash support.
   bool use_unfused = false;
+  // Single-token split decode (group_query_attention_split_decode.h): replaces the flash call in
+  // FlashAttention() for fp16, group size 8, head size 128 on a BNSH cache.
+  bool use_split_decode = false;
+  int split_decode_max_splits = 0;
+  float* split_decode_partials = nullptr;
+  unsigned int* split_decode_counters = nullptr;
 
   // XQA buffer
   void* xqa_buffer = nullptr;

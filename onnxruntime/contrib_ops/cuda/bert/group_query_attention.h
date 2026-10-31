@@ -5,6 +5,7 @@
 
 #include <atomic>
 #include <memory>
+#include <mutex>
 #include "core/providers/cuda/cuda_kernel.h"
 #include "contrib_ops/cuda/bert/group_query_attention_impl.h"
 #include "contrib_ops/cuda/bert/attention_kernel_options.h"
@@ -60,6 +61,15 @@ class GroupQueryAttention final : public CudaKernel {
 
   static constexpr int kZerosCount = 256;  // In prompt case we create a zero buffer of size 256 for seqlen (assume batch_size <= 256)
   IAllocatorUniquePtr<int> zeros_;
+  // Split decode path (see group_query_attention_split_decode.h). Its partials and counters persist
+  // across runs (the counters must start at zero, and allocating during CUDA graph capture is not
+  // allowed), so they live on the kernel and only grow, which happens in the warm-up runs.
+  bool enable_split_decode_ = false;
+  mutable std::mutex split_decode_mutex_;
+  mutable IAllocatorUniquePtr<void> split_decode_partials_;
+  mutable IAllocatorUniquePtr<void> split_decode_counters_;
+  mutable size_t split_decode_partials_bytes_ = 0;
+  mutable size_t split_decode_counters_bytes_ = 0;
   // FP32 head_sink cached in PrePack for the XQA path (empty when head_sink is not a constant initializer).
   IAllocatorUniquePtr<float> xqa_head_sink_;
   int xqa_head_sink_count_ = 0;  // Number of elements in xqa_head_sink_ (0 when not prepacked).
