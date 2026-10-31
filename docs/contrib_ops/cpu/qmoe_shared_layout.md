@@ -60,10 +60,13 @@ rewrite is required.
 `Int2Fc1SwiGluRange`, `Int2Fc2Range`, `Nvfp4Fc1SwiGluRange`, `Nvfp4Fc2Range`)
 implemented across `qmoe_shared_layout.cc`,
 `qmoe_shared_layout_int4_avx512.cc`, `qmoe_shared_layout_int4_avx2.cc`,
+`qmoe_shared_layout_int2_avx512.cc`, `qmoe_shared_layout_int2_avx2.cc`,
 `qmoe_shared_layout_int3_avx512.cc`, `qmoe_shared_layout_int3_avx2.cc`, and
 `qmoe_shared_layout_fp4_avx512.cc`.
 It performs no weight/scale conversion during initialization or execution; the
-caller owns activation and output workspace.
+caller owns activation and output workspace. INT2 applies block scales before
+activation products and keeps FC1 projections in FP32 through SwiGLU, rounding
+only its activation output to the boundary dtype.
 
 Scalar, runtime-dispatched AVX2, and runtime-dispatched AVX-512 implementations
 read the same banks. Code extraction, activation permutation, scale decoding,
@@ -99,6 +102,9 @@ Low-level CPU offload callers select the same policy through
   and AVX-512 results, candidate dimensions, byte extents/strides, and read-only
   guarded buffers. INT4 FP16 boundary tests compare F16C rounding against the
   scalar path for partial ranges, including vector tails and multiple rows.
+- `moe_test.cc` checks prepacked INT2 CPU operator execution against independently
+  packed multi-expert banks and a natural-order reference, including both weight
+  shapes, FP32/FP16/BF16, optional biases, and normalized explicit routing.
 - `test_qmoe_shared_direct.py` checks CPU/CUDA operator execution, dynamic banks,
   prepacking on/off, non-square aliases, mixed INT4/INT3 graphs, and 512-expert
   top-10 routing.
