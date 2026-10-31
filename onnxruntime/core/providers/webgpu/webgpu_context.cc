@@ -187,6 +187,8 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
     adapter_index_ = config.adapter_index;
     adapter_power_preference_ = config.power_preference;
     adapter_backend_type_ = config.backend_type;
+    // Native backend access is only safe with the bundled Dawn implementation.
+    can_calibrate_timestamps_ = config.device == nullptr && config.dawn_proc_table == nullptr;
 
     ORT_ENFORCE(!config.adapter_index || config.device == nullptr,
                 "adapterIndex cannot be used with an externally supplied WebGPU device.");
@@ -1204,7 +1206,14 @@ void WebGpuContext::StartProfiling() {
   // profiling_start_time_ is supplied separately via SetProfilingStartTime, which is
   // driven by WebGpuProfiler::StartProfiling and carries the ORT profiler's CPU time
   // base for both session-level and run-level profiling.
-  gpu_timestamp_offset_ = 0;
+  gpu_timestamp_offset_.reset();
+#if defined(_WIN32) && defined(DAWN_ENABLE_D3D12) && !defined(USE_EXTERNAL_DAWN)
+  timestamp_calibration_ = can_calibrate_timestamps_
+                               ? CalibrateTimestamps(device_, adapter_info_.backendType, profiling_start_time_)
+                               : std::nullopt;
+#else
+  timestamp_calibration_.reset();
+#endif
   profiling_first_submit_cpu_offset_us_ = -1;
 
   const uint32_t query_count = max_num_pending_dispatches_ * 2;
@@ -1229,9 +1238,8 @@ void WebGpuContext::StartProfiling() {
 
 void WebGpuContext::CollectProfilingData(profiling::Events& events) {
   if (!pending_queries_.empty()) {
-    // Shift GPU timestamps (which start from 0 at the first submit) onto the ORT
-    // profiler's CPU timeline by adding the CPU elapsed time from profiling_start_time_
-    // to that first submit. This keeps GPU events aligned with ORT CPU events.
+    // The fallback anchors the first GPU event at CPU submission, so it cannot
+    // represent queueing delay. Native calibration preserves that delay.
     int64_t cpu_offset_us = profiling_first_submit_cpu_offset_us_ > 0
                                 ? profiling_first_submit_cpu_offset_us_
                                 : 0;
@@ -1279,23 +1287,26 @@ void WebGpuContext::CollectProfilingData(profiling::Events& events) {
           shapes << "outputs[" << s << "] = " << output_shapes[s].ToString() << " ";
         }
 
-        if (gpu_timestamp_offset_ == 0) {
+        if (!gpu_timestamp_offset_) {
           gpu_timestamp_offset_ = mapped_data[i * 2];
         }
-        uint64_t start_time = mapped_data[i * 2] - gpu_timestamp_offset_;
-        uint64_t end_time = mapped_data[i * 2 + 1] - gpu_timestamp_offset_;
+        const uint64_t start_time = mapped_data[i * 2];
+        const uint64_t end_time = mapped_data[i * 2 + 1];
+        const TimestampCalibration calibration = timestamp_calibration_.value_or(
+            TimestampCalibration{*gpu_timestamp_offset_, cpu_offset_us * 1000});
 
         InlinedHashMap<std::string, std::string> event_args = {
             {"shapes", SS_GET(shapes)},
             {"cache_key", pending_kernel_info.cache_key},
+            {"clock_alignment", timestamp_calibration_ ? "d3d12_clock_calibration" : "first_submit"},
         };
 
         profiling::EventRecord event(profiling::API_EVENT,
                                      -1,
                                      -1,
                                      pending_kernel_info.name,
-                                     static_cast<int64_t>(std::round(start_time / 1000.0)) + cpu_offset_us,
-                                     static_cast<int64_t>(std::round((end_time - start_time) / 1000.0)),
+                                     calibration.ToCpuMicroseconds(start_time),
+                                     calibration.DurationMicroseconds(end_time - start_time),
                                      event_args);
         events.emplace_back(std::move(event));
       }

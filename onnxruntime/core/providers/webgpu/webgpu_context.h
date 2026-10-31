@@ -20,6 +20,7 @@
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/webgpu_provider_options.h"
 #include "core/providers/webgpu/program_manager.h"
+#include "core/providers/webgpu/timestamp_calibration.h"
 #include "core/providers/webgpu/webgpu_utils.h"
 
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
@@ -538,7 +539,9 @@ class WebGpuContext final {
   // info of queries pending appending to profiling events
   std::vector<PendingQueryInfo> pending_queries_;
 
-  uint64_t gpu_timestamp_offset_ = 0;
+  std::optional<uint64_t> gpu_timestamp_offset_;
+  std::optional<TimestampCalibration> timestamp_calibration_;
+  bool can_calibrate_timestamps_ = false;
   // ORT profiler's CPU time base, set via SetProfilingStartTime; GPU timestamps are
   // aligned to it. See SetProfilingStartTime.
   TimePoint profiling_start_time_;
