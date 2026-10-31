@@ -2363,9 +2363,9 @@ struct ConstValueImpl : Base<T> {
   void GetOpaqueData(const char* domain, const char* type_name, R&) const;  ///< Wraps OrtApi::GetOpaqueValue
 
   bool IsTensor() const;  ///< Returns true if Value is a tensor, false for other types like map/sequence/etc
-  bool HasValue() const;  /// < Return true if OrtValue contains data and returns false if the OrtValue is a None
+  bool HasValue() const;  ///< Return true if OrtValue contains data and returns false if the OrtValue is a None
 
-  size_t GetCount() const;  // If a non tensor, returns 2 for map and N for sequence, where N is the number of elements
+  size_t GetCount() const;  ///< If a non tensor, returns 2 for map and N for sequence, where N is the element count
   Value GetValue(int index, OrtAllocator* allocator) const;
 
   /// <summary>
@@ -3481,27 +3481,27 @@ struct ConstValueInfoImpl : Base<T> {
   using B = Base<T>;
   using B::B;
 
-  /// < A wrapper around OrtApi::GetValueInfoName
+  /// A wrapper around OrtApi::GetValueInfoName
   std::string GetName() const;
-  /// < A wrapper around OrtApi::GetValueInfoTypeInfo
+  /// A wrapper around OrtApi::GetValueInfoTypeInfo
   ConstTypeInfo TypeInfo() const;
-  ///< Wraps OrtApi::ValueInfo_GetProducerNode
+  /// Wraps OrtApi::ValueInfo_GetProducerNode
   ValueInfoConsumerProducerInfo GetProducerNode() const;
-  /// < A wrapper around OrtApi::ValueInfo_GetValueConsumers
+  /// A wrapper around OrtApi::ValueInfo_GetValueConsumers
   std::vector<ValueInfoConsumerProducerInfo> GetConsumers() const;
-  /// < A wrapper around OrtApi::ValueInfo_GetInitializerValue
+  /// A wrapper around OrtApi::ValueInfo_GetInitializerValue
   Status GetInitializer(ConstValue& value) const;
-  /// < A wrapper around OrtApi::ValueInfo_GetExternalInitializerInfo
+  /// A wrapper around OrtApi::ValueInfo_GetExternalInitializerInfo
   Status GetExternalInitializerInfo(ExternalInitializerInfo& info) const;
-  /// < A wrapper around OrtApi::ValueInfo_IsRequiredGraphInput
+  /// A wrapper around OrtApi::ValueInfo_IsRequiredGraphInput
   bool IsRequiredGraphInput() const;
-  /// < A wrapper around OrtApi::ValueInfo_IsOptionalGraphInput
+  /// A wrapper around OrtApi::ValueInfo_IsOptionalGraphInput
   bool IsOptionalGraphInput() const;
-  /// < A wrapper around OrtApi::ValueInfo_IsGraphOutput
+  /// A wrapper around OrtApi::ValueInfo_IsGraphOutput
   bool IsGraphOutput() const;
-  /// < A wrapper around OrtApi::ValueInfo_IsConstantInitializer
+  /// A wrapper around OrtApi::ValueInfo_IsConstantInitializer
   bool IsConstantInitializer() const;
-  /// < A wrapper around OrtApi::ValueInfo_IsFromOuterScope
+  /// A wrapper around OrtApi::ValueInfo_IsFromOuterScope
   bool IsFromOuterScope() const;
 };
 }  // namespace detail
