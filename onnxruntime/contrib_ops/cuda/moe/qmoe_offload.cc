@@ -3121,7 +3121,7 @@ Status QMoEOffload::ComputeInternal(OpKernelContext* context) const {
       if (route_bias != nullptr) {
         CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadScatterBias(
             reinterpret_cast<const half*>(base + offsets_[Fc2Bias]), compact_experts, route_ids,
-            route_bias, wave.route_count, hidden_size_, stream));
+            route_bias, wave.route_count, hidden_size_, wave.expert_count, stream));
       }
       CUDA_RETURN_IF_ERROR(drain.Synchronize());
     }
@@ -7285,11 +7285,11 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
       if (is_bf16_) {
         CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadScatterBias(
             reinterpret_cast<const __nv_bfloat16*>(bias_gpu_ptr), indices, identity,
-            reinterpret_cast<__nv_bfloat16*>(route_bias), routes, hidden_size_, stream));
+            reinterpret_cast<__nv_bfloat16*>(route_bias), routes, hidden_size_, num_experts_, stream));
       } else {
         CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadScatterBias(
             reinterpret_cast<const half*>(bias_gpu_ptr), indices, identity,
-            reinterpret_cast<half*>(route_bias), routes, hidden_size_, stream));
+            reinterpret_cast<half*>(route_bias), routes, hidden_size_, num_experts_, stream));
       }
     }
     if (is_bf16_) {
@@ -7902,7 +7902,7 @@ Status QMoEOffload::ComputeSharedAsync(OpKernelContext* context, const Tensor* i
     // Skip CPU D2H, host callback, and H2D result upload when all E experts are resident on GPU.
     if (static_full_resident) {
       CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadClassify(
-          indices, CurrentSlotTableDev(), routes,
+          indices, CurrentSlotTableDev(), num_experts_, routes,
           compute_rows, hit_ids, hit_compact, hit_flag, stream, dummy_slot_index_,
           unit_scales, identity, nvfp4_mode_ ? static_cast<int>(k_) : 0));
       ORT_RETURN_IF_ERROR(enqueue_hits());
@@ -7923,11 +7923,11 @@ Status QMoEOffload::ComputeSharedAsync(OpKernelContext* context, const Tensor* i
         if (is_bf16_) {
           CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadScatterBias(
               reinterpret_cast<const __nv_bfloat16*>(bias_gpu_ptr), indices, identity,
-              reinterpret_cast<__nv_bfloat16*>(route_bias), routes, hidden_size_, stream));
+              reinterpret_cast<__nv_bfloat16*>(route_bias), routes, hidden_size_, num_experts_, stream));
         } else {
           CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadScatterBias(
               reinterpret_cast<const half*>(bias_gpu_ptr), indices, identity,
-              reinterpret_cast<half*>(route_bias), routes, hidden_size_, stream));
+              reinterpret_cast<half*>(route_bias), routes, hidden_size_, num_experts_, stream));
         }
       }
       if (is_bf16_) {
@@ -7988,7 +7988,7 @@ Status QMoEOffload::ComputeSharedAsync(OpKernelContext* context, const Tensor* i
       const int input_vec4_count =
           static_cast<int>((SafeInt<size_t>(tile_rows) * hidden_size_ * elem_size) / sizeof(uint4));
       CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadClassify(
-          indices, CurrentSlotTableDev(), routes,
+          indices, CurrentSlotTableDev(), num_experts_, routes,
           compute_rows, hit_ids, hit_compact, hit_flag, stream, dummy_slot_index_,
           unit_scales, identity, nvfp4_mode_ ? static_cast<int>(k_) : 0,
           host_indices, input->DataRaw(), host_input, input_vec4_count,
@@ -7999,11 +7999,11 @@ Status QMoEOffload::ComputeSharedAsync(OpKernelContext* context, const Tensor* i
         if (is_bf16_) {
           CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadScatterBias(
               reinterpret_cast<const __nv_bfloat16*>(bias_gpu_ptr), indices, identity,
-              reinterpret_cast<__nv_bfloat16*>(route_bias), routes, hidden_size_, stream));
+              reinterpret_cast<__nv_bfloat16*>(route_bias), routes, hidden_size_, num_experts_, stream));
         } else {
           CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadScatterBias(
               reinterpret_cast<const half*>(bias_gpu_ptr), indices, identity,
-              reinterpret_cast<half*>(route_bias), routes, hidden_size_, stream));
+              reinterpret_cast<half*>(route_bias), routes, hidden_size_, num_experts_, stream));
         }
       }
       if (is_bf16_) {
@@ -8133,7 +8133,7 @@ Status QMoEOffload::ComputeSharedAsync(OpKernelContext* context, const Tensor* i
     trace(qmoe::CallbackEvent::SourceD2HQueued, reinterpret_cast<uintptr_t>(callback_stream));
     if (resident) {
       CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadClassify(
-          indices, CurrentSlotTableDev(), routes,
+          indices, CurrentSlotTableDev(), num_experts_, routes,
           compute_rows, hit_ids, hit_compact, hit_flag, stream, dummy_slot_index_,
           unit_scales, identity, nvfp4_mode_ ? static_cast<int>(k_) : 0));
       if (!aux) ORT_RETURN_IF_ERROR(enqueue_hits());
@@ -8318,11 +8318,11 @@ Status QMoEOffload::ComputeSharedAsync(OpKernelContext* context, const Tensor* i
         if (is_bf16_) {
           CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadScatterBias(
               reinterpret_cast<const __nv_bfloat16*>(bias_gpu_ptr), indices, identity,
-              reinterpret_cast<__nv_bfloat16*>(route_bias), routes, hidden_size_, stream));
+              reinterpret_cast<__nv_bfloat16*>(route_bias), routes, hidden_size_, num_experts_, stream));
         } else {
           CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadScatterBias(
               reinterpret_cast<const half*>(bias_gpu_ptr), indices, identity,
-              reinterpret_cast<half*>(route_bias), routes, hidden_size_, stream));
+              reinterpret_cast<half*>(route_bias), routes, hidden_size_, num_experts_, stream));
         }
       }
       trace(qmoe::CallbackEvent::MergeWaitBegin);
@@ -8350,11 +8350,11 @@ Status QMoEOffload::ComputeSharedAsync(OpKernelContext* context, const Tensor* i
       if (is_bf16_) {
         CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadScatterBias(
             reinterpret_cast<const __nv_bfloat16*>(bias_gpu_ptr), indices, identity,
-            reinterpret_cast<__nv_bfloat16*>(route_bias), routes, hidden_size_, stream));
+            reinterpret_cast<__nv_bfloat16*>(route_bias), routes, hidden_size_, num_experts_, stream));
       } else {
         CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadScatterBias(
             reinterpret_cast<const half*>(bias_gpu_ptr), indices, identity,
-            reinterpret_cast<half*>(route_bias), routes, hidden_size_, stream));
+            reinterpret_cast<half*>(route_bias), routes, hidden_size_, num_experts_, stream));
       }
     }
     if (is_bf16_) {

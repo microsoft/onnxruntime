@@ -1,6 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+// The spin pool reports errors with exceptions (std::invalid_argument, std::logic_error and a try/catch around worker
+// start-up), so the header cannot be compiled without exception support and this whole file is excluded from such
+// builds.
+#ifndef ORT_NO_EXCEPTIONS
+
 #include <atomic>
 #include <chrono>
 #include <cstdint>
@@ -9,7 +14,8 @@
 #include <string>
 #include <thread>
 
-#if defined(__linux__)
+// Worker threads are observed through /proc and pthread_getname_np, which Android only declares from API level 26.
+#if defined(__linux__) && !defined(__ANDROID__)
 #include <pthread.h>
 
 #include <filesystem>
@@ -40,7 +46,7 @@ int64_t SumWithPool(qmoe::SpinPool& pool, ptrdiff_t count) {
   return sum.load();
 }
 
-#if defined(__linux__)
+#if defined(__linux__) && !defined(__ANDROID__)
 constexpr const char* kWorkerThreadName = "qmoe-spin";
 
 // Worker threads are only observable through /proc, so tests that need the real thread count are Linux-only.
@@ -143,7 +149,7 @@ TEST(QMoESpinPoolRegistryTest, ShutdownRightAfterWorkDoesNotHang) {
   EXPECT_EQ(registry.PoolCount(), size_t{0});
 }
 
-#if defined(__linux__)
+#if defined(__linux__) && !defined(__ANDROID__)
 TEST(QMoESpinPoolRegistryTest, NameCurrentThreadSetsTheCallingThreadName) {
   char name[16] = {};
   std::thread worker([&name] {
@@ -191,3 +197,5 @@ TEST(QMoESpinPoolRegistryTest, DestroyingTheRegistryJoinsWorkerThreads) {
 
 }  // namespace test
 }  // namespace onnxruntime
+
+#endif  // !ORT_NO_EXCEPTIONS

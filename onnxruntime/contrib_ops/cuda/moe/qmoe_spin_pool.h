@@ -8,9 +8,13 @@
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <memory>
 #include <mutex>
 #include <stdexcept>
+#include <string>
 #include <thread>
 #include <unordered_map>
 #include <vector>
@@ -19,14 +23,20 @@
 #include <intrin.h>
 #endif
 
+// CPU pinning and NUMA discovery use the Linux scheduler and sysfs interfaces. Android also defines __linux__, but its
+// CPU topology belongs to the platform scheduler (ORT's posix thread pool skips affinity there as well), so pools on
+// Android run unpinned.
+#if defined(__linux__) && !defined(__ANDROID__)
+#define QMOE_SPIN_POOL_LINUX_AFFINITY 1
+#endif
+
 #if defined(__linux__)
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
-#include <fstream>
 #include <pthread.h>
+#endif
+
+#if defined(QMOE_SPIN_POOL_LINUX_AFFINITY)
+#include <fstream>
 #include <sched.h>
-#include <string>
 #include <sys/syscall.h>
 #include <unistd.h>
 #elif defined(_WIN32)
@@ -37,15 +47,11 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
-#include <string>
 #endif
 
 namespace onnxruntime::contrib::cuda::qmoe {
 
-#if defined(__linux__)
+#if defined(QMOE_SPIN_POOL_LINUX_AFFINITY)
 inline void ParseLinuxCpuRangeList(const std::string& text, std::vector<int>* out) {
   size_t pos = 0;
   while (pos < text.size()) {
@@ -281,7 +287,7 @@ inline std::vector<int> DiscoverWindowsBalancedCpuOrder(int* out_l3_domains = nu
 #endif
 
 inline int DiscoverPhysicalCoreCount() {
-#if defined(__linux__)
+#if defined(QMOE_SPIN_POOL_LINUX_AFFINITY)
   const auto node_sets = DiscoverAllowedNumaNodeCpuSets();
   cpu_set_t seen;
   CPU_ZERO(&seen);
@@ -353,7 +359,7 @@ class SpinPool final {
  public:
   explicit SpinPool(int threads, int spin_us = 2000) : spin_us_(spin_us) {
     if (threads < 1) throw std::invalid_argument("QMoE pool threads must be positive.");
-#if defined(__linux__)
+#if defined(QMOE_SPIN_POOL_LINUX_AFFINITY)
     const char* pin_env = std::getenv("ORT_QMOE_NUMA_PIN_WORKERS");
     const bool enable_pin = (pin_env == nullptr || std::strcmp(pin_env, "0") != 0);
     if (enable_pin) {
@@ -432,7 +438,7 @@ class SpinPool final {
   }
 
   int CpuForWorker(int worker) const noexcept {
-#if defined(__linux__) || defined(_WIN32)
+#if defined(QMOE_SPIN_POOL_LINUX_AFFINITY) || defined(_WIN32)
     return worker >= 0 && static_cast<size_t>(worker) < worker_cpus_.size() ? worker_cpus_[worker] : -1;
 #else
     (void)worker;
@@ -459,7 +465,7 @@ class SpinPool final {
 
   void Run(size_t count, void (*function)(void*, size_t), void* data, size_t requested_batch) {
     if (count == 0) return;
-#if defined(__linux__)
+#if defined(QMOE_SPIN_POOL_LINUX_AFFINITY)
     // The submitting thread participates as worker zero; restore arbitrary ORT
     // callers' affinity when the job ends instead of permanently pinning them.
     ScopedCpuAffinity caller_affinity(CpuForWorker(0));
@@ -509,7 +515,7 @@ class SpinPool final {
 
   void Loop(int worker_idx) {
     NameCurrentThread("qmoe-spin");
-#if defined(__linux__)
+#if defined(QMOE_SPIN_POOL_LINUX_AFFINITY)
     const int cpu = CpuForWorker(worker_idx);
     if (cpu >= 0) {
       cpu_set_t mask;
@@ -556,7 +562,7 @@ class SpinPool final {
   int numa_node_count_{0};
   std::atomic<int> pinned_workers_{0};
   std::atomic<int> affinity_failures_{0};
-#if defined(__linux__)
+#if defined(QMOE_SPIN_POOL_LINUX_AFFINITY)
   std::vector<cpu_set_t> node_masks_;
   std::vector<int> worker_cpus_;
 #elif defined(_WIN32)
@@ -657,3 +663,5 @@ class CpuBudgetGroup final {
 };
 
 }  // namespace onnxruntime::contrib::cuda::qmoe
+
+#undef QMOE_SPIN_POOL_LINUX_AFFINITY

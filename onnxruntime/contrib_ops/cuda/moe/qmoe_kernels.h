@@ -80,15 +80,19 @@ cudaError_t LaunchQMoEOffloadMetadata(
 cudaError_t LaunchQMoEOffloadSourceRows(
     int* source_rows, int route_count, int k, cudaStream_t stream);
 
+// `source_row_count` is the number of valid rows of `wave_bias`; a `compact_experts` entry outside [0, source_row_count)
+// yields a zero bias row.
 cudaError_t LaunchQMoEOffloadScatterBias(
     const half* wave_bias, const int* compact_experts, const int* route_ids, half* route_bias,
-    int route_count, int hidden_size, cudaStream_t stream);
+    int route_count, int hidden_size, int source_row_count, cudaStream_t stream);
 cudaError_t LaunchQMoEOffloadScatterBias(
     const __nv_bfloat16* wave_bias, const int* compact_experts, const int* route_ids, __nv_bfloat16* route_bias,
-    int route_count, int hidden_size, cudaStream_t stream);
+    int route_count, int hidden_size, int source_row_count, cudaStream_t stream);
 
+// `expert_slot` has `num_experts` entries. A routed index outside [0, num_experts) is classified as a miss (never
+// reads `expert_slot`) and is forwarded unchanged through `host_indices_out` so the host can reject the invocation.
 cudaError_t LaunchQMoEOffloadClassify(
-    const int* topk_indices, const int* expert_slot, int route_count, int row_count,
+    const int* topk_indices, const int* expert_slot, int num_experts, int route_count, int row_count,
     int* hit_ids, int* hit_compact, int* hit_flag, cudaStream_t stream,
     int dummy_slot = 0, float* unit_scales = nullptr, int* identity_permutation = nullptr,
     int k_for_source_rows = 0, int* host_indices_out = nullptr,
@@ -333,6 +337,10 @@ void LaunchQMoEPackFp4ScalesForTmaWs(
     cudaStream_t stream);
 
 // Keeps the original routing IDs intact. Unused compact_to_expert slots are -1.
+// By default one launch compacts every routed expert, so `expert_capacity` must be at least
+// min(num_experts, num_routes) and `pass_offset` must be 0. With `partial_pass` the launch is one pass of a multi-pass
+// sequence: it maps only the routed experts whose rank in ascending expert order falls in
+// [pass_offset, pass_offset + expert_capacity), and routes to experts of other passes are mapped to -1.
 void LaunchQMoECompactExperts(
     const int* expert_indices,
     int* compact_indices,
@@ -342,7 +350,8 @@ void LaunchQMoECompactExperts(
     int expert_capacity,
     int64_t num_routes,
     cudaStream_t stream,
-    int pass_offset = 0);
+    int pass_offset = 0,
+    bool partial_pass = false);
 
 void LaunchQMoEMarkActiveExperts(
     const int* expert_indices,

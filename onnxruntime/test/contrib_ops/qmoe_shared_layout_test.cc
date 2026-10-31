@@ -1535,6 +1535,8 @@ TEST_F(ScopedExpertLeaseTest, ReleasesPinOnEarlyReturn) {
   EXPECT_TRUE(CanServe(2));
 }
 
+// Throwing is not available in builds compiled without exceptions; ReleasesPinOnEarlyReturn covers the scope guard there.
+#ifndef ORT_NO_EXCEPTIONS
 TEST_F(ScopedExpertLeaseTest, ReleasesPinWhenAnExceptionUnwinds) {
   try {
     shared::ExpertBlockLease lease{};
@@ -1545,6 +1547,7 @@ TEST_F(ScopedExpertLeaseTest, ReleasesPinWhenAnExceptionUnwinds) {
   }
   EXPECT_TRUE(CanServe(1));
 }
+#endif  // !ORT_NO_EXCEPTIONS
 
 TEST_F(ScopedExpertLeaseTest, TryAcquireCachedPinIsAlsoGuarded) {
   ASSERT_TRUE(CanServe(0));  // make expert 0 resident

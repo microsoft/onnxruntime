@@ -68,31 +68,38 @@ __global__ void QMoEOffloadSourceRowsKernel(int* source_rows, int route_count, i
   }
 }
 
+// `compact_experts` is device routing output, so it is bounded by `source_row_count`: a route whose expert is outside
+// it (for example the -1 that SoftmaxTopK leaves for a row without a finite probability) receives a zero bias row
+// instead of an out-of-bounds read. The host rejects the same expert before the result is consumed.
 template <typename T>
 __global__ void QMoEOffloadScatterBiasKernel(
-    const T* wave_bias, const int* compact_experts, const int* route_ids, T* route_bias, int hidden_size) {
-  const size_t source_row = compact_experts[blockIdx.x];
+    const T* wave_bias, const int* compact_experts, const int* route_ids, T* route_bias, int hidden_size,
+    int source_row_count) {
+  const int source = compact_experts[blockIdx.x];
+  const bool in_range = static_cast<unsigned int>(source) < static_cast<unsigned int>(source_row_count);
+  const size_t source_row = static_cast<size_t>(source);
   const size_t target_row = route_ids[blockIdx.x];
   for (size_t column = threadIdx.x; column < static_cast<size_t>(hidden_size); column += blockDim.x) {
-    route_bias[target_row * hidden_size + column] = wave_bias[source_row * hidden_size + column];
+    route_bias[target_row * hidden_size + column] =
+        in_range ? wave_bias[source_row * hidden_size + column] : static_cast<T>(0.0f);
   }
 }
 
 cudaError_t LaunchQMoEOffloadScatterBias(
     const half* wave_bias, const int* compact_experts, const int* route_ids, half* route_bias,
-    int route_count, int hidden_size, cudaStream_t stream) {
+    int route_count, int hidden_size, int source_row_count, cudaStream_t stream) {
   if (route_count <= 0) return cudaSuccess;
   QMoEOffloadScatterBiasKernel<<<route_count, 256, 0, stream>>>(
-      wave_bias, compact_experts, route_ids, route_bias, hidden_size);
+      wave_bias, compact_experts, route_ids, route_bias, hidden_size, source_row_count);
   return cudaGetLastError();
 }
 
 cudaError_t LaunchQMoEOffloadScatterBias(
     const __nv_bfloat16* wave_bias, const int* compact_experts, const int* route_ids, __nv_bfloat16* route_bias,
-    int route_count, int hidden_size, cudaStream_t stream) {
+    int route_count, int hidden_size, int source_row_count, cudaStream_t stream) {
   if (route_count <= 0) return cudaSuccess;
   QMoEOffloadScatterBiasKernel<<<route_count, 256, 0, stream>>>(
-      wave_bias, compact_experts, route_ids, route_bias, hidden_size);
+      wave_bias, compact_experts, route_ids, route_bias, hidden_size, source_row_count);
   return cudaGetLastError();
 }
 
@@ -147,8 +154,12 @@ cudaError_t LaunchQMoEOffloadSourceRows(
   return cudaGetLastError();
 }
 
+// `expert_slot` has `num_experts` entries. `topk_indices` is device routing output and can hold an index outside
+// [0, num_experts) (SoftmaxTopK leaves -1 for a row without a finite probability, e.g. all-NaN router logits). Such a
+// route is classified as a miss and its raw index is forwarded through `host_indices_out`, where the host rejects it
+// and fails the invocation.
 __global__ void QMoEOffloadClassifyKernel(
-    const int* topk_indices, const int* expert_slot, int route_count, int row_count,
+    const int* topk_indices, const int* expert_slot, int num_experts, int route_count, int row_count,
     int* hit_ids, int* hit_compact, int* hit_flag, int dummy_slot,
     float* unit_scales, int* identity_permutation, int k_for_source_rows,
     int* host_indices_out, const uint4* input_dev, uint4* host_input_out, int input_vec4_count,
@@ -160,7 +171,8 @@ __global__ void QMoEOffloadClassifyKernel(
     if (identity_permutation != nullptr) identity_permutation[row] = row;
     const int route = row < route_count ? row : 0;
     const int exp = topk_indices[route];
-    const int slot = (row < route_count) ? expert_slot[exp] : -1;
+    const bool valid_expert = static_cast<unsigned int>(exp) < static_cast<unsigned int>(num_experts);
+    const int slot = (row < route_count && valid_expert) ? expert_slot[exp] : -1;
     hit_ids[row] = (k_for_source_rows > 0 && row < route_count) ? (route / k_for_source_rows) : route;
     hit_compact[row] = slot < 0 ? dummy_slot : slot;
     if (row < route_count) {
@@ -176,6 +188,9 @@ __global__ void QMoEOffloadClassifyKernel(
     }
   }
   if (doorbell_seq_dev != nullptr && doorbell_req_host != nullptr && gridDim.x == 1) {
+    // Every thread that wrote host-visible data (host_indices_out, host_input_out) must order those writes at system
+    // scope itself: the barrier alone does not make them visible to the host before thread 0 rings the doorbell.
+    __threadfence_system();
     __syncthreads();
     if (threadIdx.x == 0) {
       if (doorbell_tile_rows_host != nullptr) {
@@ -252,7 +267,7 @@ __global__ void QMoEOffloadMergeKernel(
 }
 
 cudaError_t LaunchQMoEOffloadClassify(
-    const int* topk_indices, const int* expert_slot, int route_count, int row_count,
+    const int* topk_indices, const int* expert_slot, int num_experts, int route_count, int row_count,
     int* hit_ids, int* hit_compact, int* hit_flag, cudaStream_t stream, int dummy_slot,
     float* unit_scales, int* identity_permutation, int k_for_source_rows,
     int* host_indices_out, const void* input_dev, void* host_input_out, int input_vec4_count,
@@ -261,7 +276,7 @@ cudaError_t LaunchQMoEOffloadClassify(
   if (row_count <= 0) return cudaSuccess;
   if (doorbell_seq_dev != nullptr && doorbell_req_host != nullptr && row_count <= 256) {
     QMoEOffloadClassifyKernel<<<1, 256, 0, stream>>>(
-        topk_indices, expert_slot, route_count, row_count, hit_ids, hit_compact, hit_flag, dummy_slot,
+        topk_indices, expert_slot, num_experts, route_count, row_count, hit_ids, hit_compact, hit_flag, dummy_slot,
         unit_scales, identity_permutation, k_for_source_rows,
         host_indices_out, reinterpret_cast<const uint4*>(input_dev),
         reinterpret_cast<uint4*>(host_input_out), input_vec4_count,
@@ -270,7 +285,7 @@ cudaError_t LaunchQMoEOffloadClassify(
   }
   const int blocks = row_count / 128 + (row_count % 128 != 0);
   QMoEOffloadClassifyKernel<<<blocks, 128, 0, stream>>>(
-      topk_indices, expert_slot, route_count, row_count, hit_ids, hit_compact, hit_flag, dummy_slot,
+      topk_indices, expert_slot, num_experts, route_count, row_count, hit_ids, hit_compact, hit_flag, dummy_slot,
       unit_scales, identity_permutation, k_for_source_rows,
       host_indices_out, reinterpret_cast<const uint4*>(input_dev),
       reinterpret_cast<uint4*>(host_input_out), input_vec4_count,
@@ -2184,12 +2199,20 @@ void LaunchQMoECompactExperts(
     int expert_capacity,
     int64_t num_routes,
     cudaStream_t stream,
-    int pass_offset) {
-  ORT_ENFORCE(num_experts > 0 && num_routes > 0 &&
-                  expert_capacity > 0 &&
-                  (pass_offset > 0 || expert_capacity >= std::min<int64_t>(num_experts, num_routes) || expert_capacity <= num_experts) &&
-                  expert_capacity <= num_experts,
+    int pass_offset,
+    bool partial_pass) {
+  ORT_ENFORCE(num_experts > 0 && num_routes > 0 && expert_capacity > 0 && expert_capacity <= num_experts,
               "Invalid QMoE compact expert capacity.");
+  if (partial_pass) {
+    // One pass of a multi-pass launch: only the active experts [pass_offset, pass_offset + expert_capacity) are
+    // mapped, so the capacity may be smaller than the number of routed experts.
+    ORT_ENFORCE(pass_offset >= 0 && pass_offset < num_experts, "Invalid QMoE compact expert pass offset.");
+  } else {
+    // A single pass must hold every routed expert; otherwise the excess experts map to -1 and their routes are dropped.
+    ORT_ENFORCE(pass_offset == 0, "QMoE compact expert pass offset requires a partial pass.");
+    ORT_ENFORCE(expert_capacity >= std::min<int64_t>(num_experts, num_routes),
+                "QMoE compact expert capacity cannot hold every routed expert.");
+  }
   CUDA_CALL_THROW(cudaMemsetAsync(expert_to_compact, 0xff, static_cast<size_t>(num_experts) * sizeof(int), stream));
   constexpr int block = 256;
   const int grid = onnxruntime::narrow<int>((num_routes - 1) / block + 1);
@@ -2311,6 +2334,9 @@ __global__ void QMoEAccumulateExpertHistogramKernel(
     const int e = expert_indices[r];
     if (e >= 0 && e < capped) {
       atomicAdd(&smem_hist[e], 1);
+    } else if (e >= capped && e < num_experts) {
+      // The block-local histogram covers only the first `capped` experts; larger expert banks count the tail directly.
+      atomicAdd(&global_hist[e], 1);
     }
   }
   __syncthreads();

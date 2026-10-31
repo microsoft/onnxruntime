@@ -3662,7 +3662,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                                    expert_to_compact.get(), compact_to_expert.get(),
                                    narrow<int>(moe_params.num_experts), runner_num_experts,
                                    tile_routes, stream,
-                                   pass_idx * runner_num_experts);
+                                   pass_idx * runner_num_experts, /*partial_pass=*/true);
           dequantize_fp4();
         }
         {
