@@ -2,6 +2,10 @@
 // Copyright (c) 2023 NVIDIA Corporation.
 // Licensed under the MIT License.
 
+#if defined(_MSC_VER)
+#pragma warning(disable : 4996)
+#endif
+
 // provider_api.h must be first to set SHARED_PROVIDER
 #include "core/providers/shared_library/provider_api.h"
 
@@ -51,7 +55,7 @@
 // The header is self-contained (no contrib/CUTLASS dependencies) and resolves to an inline no-op
 // when the fpA_intB path is not compiled in.
 #include "contrib_ops/cuda/quantization/matmul_nbits_tactic_cache.h"
-#if !defined(DISABLE_CONTRIB_OPS) && USE_FPA_INTB_GEMM
+#if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS)
 #include "contrib_ops/cuda/quantization/matmul_nbits_workspace_estimate.h"
 #endif
 
@@ -162,6 +166,17 @@ AllocatorPtr CUDAExecutionProvider::CreateCudaAllocator(const CUDAAllocatorParam
   ORT_ENFORCE(cuda_allocator_params.external_alloc_info != nullptr,
               "CUDAAllocatorParams.external_alloc_info is nullptr.");
   const auto& external_allocator_info = *(cuda_allocator_params.external_alloc_info);
+  const bool device_budget_enabled =
+      (cuda_allocator_params.provider_info != nullptr &&
+       cuda_allocator_params.provider_info->gpu_device_mem_limit > 0 &&
+       cuda_allocator_params.provider_info->gpu_device_mem_limit != std::numeric_limits<size_t>::max()) ||
+      (cuda_allocator_params.budget_account != nullptr &&
+       cuda_allocator_params.budget_account->GetAccountStats().limit != std::numeric_limits<size_t>::max());
+  ORT_ENFORCE(!device_budget_enabled || !external_allocator_info.UseExternalAllocator(),
+              kOrtSessionOptionsMoeOffloadGpuDeviceMemLimit, " does not support external CUDA allocators");
+  ORT_ENFORCE(!device_budget_enabled || cuda_allocator_params.arena_cfg == nullptr ||
+                  cuda_allocator_params.arena_cfg->use_cuda_mempool != 1,
+              kOrtSessionOptionsMoeOffloadGpuDeviceMemLimit, " does not support CUDA memory pools");
   if (external_allocator_info.UseExternalAllocator()) {
     AllocatorCreationInfo default_memory_info(
         [external_allocator_info](OrtDevice::DeviceId id) {
@@ -209,9 +224,10 @@ AllocatorPtr CUDAExecutionProvider::CreateCudaAllocator(const CUDAAllocatorParam
 
       return mempool_allocator;
     } else {
+      auto budget_account = cuda_allocator_params.budget_account;
       AllocatorCreationInfo default_memory_info(
-          [](OrtDevice::DeviceId id) {
-            return std::make_unique<CUDAAllocator>(id, CUDA);
+          [budget_account](OrtDevice::DeviceId id) {
+            return std::make_unique<CUDAAllocator>(id, CUDA, budget_account);
           },
           cuda_allocator_params.device_id,
           true,
@@ -258,6 +274,7 @@ CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId de
   }
 #endif
   cuda_graph_.SetStream(stream);
+  min_num_runs_before_cuda_graph_capture_ = info.min_num_runs_before_cuda_graph_capture;
 }
 
 CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
@@ -309,6 +326,10 @@ void CUDAExecutionProvider::PerThreadContext::CaptureEnd(CudaGraphAnnotation_t c
   cuda_graph_.CaptureEnd(cuda_graph_annotation_id);
 }
 
+void CUDAExecutionProvider::PerThreadContext::DiscardCapture() noexcept {
+  cuda_graph_.DiscardCapture();
+}
+
 bool CUDAExecutionProvider::PerThreadContext::IsGraphCaptured(CudaGraphAnnotation_t graph_annotation_id) const {
   return cuda_graph_.IsGraphCaptured(graph_annotation_id);
 }
@@ -351,8 +372,17 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
     : IExecutionProvider{onnxruntime::kCudaExecutionProvider,
                          OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA,
                                    info.device_id)},
+      qmoe_controller_{std::make_shared<onnxruntime::cuda::QMoESessionController>(info.device_id)},
+      session_budget_account_{std::make_shared<SessionBudgetAccount>(
+          GetCudaDeviceMemoryBudget(info.device_id),
+          info.gpu_device_mem_limit > 0 ? info.gpu_device_mem_limit : std::numeric_limits<size_t>::max())},
       info_{info},
       tuning_context_(this, &info_.tunable_op) {
+  if (qmoe_controller_) {
+    qmoe_controller_->SetBudgetAccount(session_budget_account_);
+  }
+  ORT_ENFORCE(info_.gpu_device_mem_limit == 0 || !info_.external_allocator_info.UseExternalAllocator(),
+              kOrtSessionOptionsMoeOffloadGpuDeviceMemLimit, " does not support external CUDA allocators");
 #ifndef ENABLE_CUDA_NHWC_OPS
   ORT_ENFORCE(info_.prefer_nhwc == 0, "This build does not support NHWC layout");
 #endif
@@ -422,6 +452,9 @@ CUDAExecutionProvider::~CUDAExecutionProvider() {
   // No-op in builds without onnxruntime_USE_FPA_INTB_GEMM. The plugin EP flushes from ~CudaEp.
   onnxruntime::contrib::cuda::FlushMatMulNBitsTacticCaches();
 
+  if (qmoe_controller_) {
+    qmoe_controller_->Shutdown();
+  }
   // clean up thread local context caches
   {
     std::lock_guard<std::mutex> lock(context_state_.mutex);
@@ -518,27 +551,119 @@ Status CUDAExecutionProvider::Sync() const {
   return Status::OK();
 }
 
+Status CUDAExecutionProvider::OnSessionInitializationEnd() {
+  if (qmoe_controller_) {
+    onnxruntime::cuda::QMoESessionController::SessionPlanReport report;
+    ORT_RETURN_IF_ERROR(qmoe_controller_->PlanAndAdmitSession(report));
+    if (!report.paging_warning.empty()) {
+      LOGS_DEFAULT(WARNING) << report.paging_warning;
+    }
+    if (!report.summary.empty()) {
+      LOGS_DEFAULT(INFO) << report.summary;
+    }
+  }
+  return Status::OK();
+}
+
+namespace {
+// Ends a controller run on scope exit unless released; ORT does not call OnRunEnd for a provider whose OnRunStart failed.
+class QMoEControllerRunRollback {
+ public:
+  QMoEControllerRunRollback() = default;
+  QMoEControllerRunRollback(const QMoEControllerRunRollback&) = delete;
+  QMoEControllerRunRollback& operator=(const QMoEControllerRunRollback&) = delete;
+  ~QMoEControllerRunRollback() {
+    if (controller_ != nullptr) {
+      try {
+        static_cast<void>(controller_->OnRunEnd(/*sync_stream=*/false, /*run_succeeded=*/false));
+      } catch (...) {
+      }
+    }
+  }
+  void Arm(onnxruntime::cuda::QMoESessionController* controller) { controller_ = controller; }
+  void Release() { controller_ = nullptr; }
+
+ private:
+  onnxruntime::cuda::QMoESessionController* controller_ = nullptr;
+};
+}  // namespace
+
 Status CUDAExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_options) {
+  QMoEControllerRunRollback controller_rollback;
+  if (qmoe_controller_ && qmoe_controller_->HasOffloadNodes()) {
+    const char* strict_env = std::getenv("ORT_QMOE_REJECT_DISABLE_SYNC");
+    if (strict_env != nullptr && std::strcmp(strict_env, "1") == 0 &&
+        run_options.GetConfigOptions().GetConfigOrDefault(kOrtRunOptionsConfigDisableSynchronizeExecutionProviders, "0") == "1") {
+      return ORT_MAKE_STATUS(
+          ONNXRUNTIME, INVALID_ARGUMENT,
+          "QMoEOffload does not support disable_synchronize_execution_providers=1; required completion sync cannot be skipped.");
+    }
+    ORT_RETURN_IF_ERROR(qmoe_controller_->OnRunStart());
+    controller_rollback.Arm(qmoe_controller_.get());
+    if (IsGraphCaptureEnabled()) {
+      const uint64_t cur_gen = qmoe_controller_->GraphGeneration();
+      if (cur_gen != GetPerThreadContext().LastQMoEGraphGen()) {
+        GetPerThreadContext().ResetForQMoEGraphGen(cur_gen);
+      }
+    }
+  }
   CudaGraphAnnotation_t cuda_graph_annotation_id = GetPerThreadContext().GetCudaGraphAnnotationId(run_options);
   if (IsGraphCaptureEnabled() && !GetPerThreadContext().IsGraphCaptured(cuda_graph_annotation_id) &&
       GetPerThreadContext().IsGraphCaptureAllowed(cuda_graph_annotation_id)) {
     LOGS(*GetLogger(), INFO) << "Capturing the cuda graph for this model";
     GetPerThreadContext().CaptureBegin(cuda_graph_annotation_id);
   }
+  controller_rollback.Release();
   return Status::OK();
 }
 
 Status CUDAExecutionProvider::OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& run_options) {
+  const bool has_offload = qmoe_controller_ && qmoe_controller_->HasOffloadNodes();
+  // The session marks a run that did not complete (error, termination, or leaving before the graph executed).
+  const bool run_failed =
+      run_options.GetConfigOptions().GetConfigOrDefault("__ort.run_outcome", "ok") != "ok";
+  // Every exit below (error status or exception) must still end the controller run, otherwise the controller stays
+  // active and rejects later runs as overlapping.
+  QMoEControllerRunRollback controller_rollback;
+  if (has_offload) controller_rollback.Arm(qmoe_controller_.get());
+
+  Status capture_status = Status::OK();
   CudaGraphAnnotation_t cuda_graph_annotation_id = GetPerThreadContext().GetCudaGraphAnnotationId(run_options);
   if (IsGraphCaptureEnabled() && !GetPerThreadContext().IsGraphCaptured(cuda_graph_annotation_id)) {
     if (GetPerThreadContext().IsGraphCaptureAllowed(cuda_graph_annotation_id)) {
-      GetPerThreadContext().CaptureEnd(cuda_graph_annotation_id);
-      // CUDA work issued to a capturing stream doesn’t actually run on the GPU,
-      // so run the captured graph here to actually execute the work.
-      ORT_RETURN_IF_ERROR(GetPerThreadContext().ReplayGraph(cuda_graph_annotation_id, sync_stream));
-    } else {
+      if (run_failed) {
+        // What was recorded is incomplete: drop it instead of instantiating and replaying it. The warm-up count is
+        // kept so the next successful run captures again.
+        GetPerThreadContext().DiscardCapture();
+      } else {
+        GetPerThreadContext().CaptureEnd(cuda_graph_annotation_id);
+        capture_status = [&]() -> Status {
+          if (has_offload) {
+            ORT_RETURN_IF_ERROR(qmoe_controller_->OnBeforeGraphReplay(static_cast<cudaStream_t>(stream_)));
+          }
+          // CUDA work issued to a capturing stream doesn’t actually run on the GPU,
+          // so run the captured graph here to actually execute the work.
+          ORT_RETURN_IF_ERROR(GetPerThreadContext().ReplayGraph(cuda_graph_annotation_id, sync_stream));
+          if (has_offload) {
+            ORT_RETURN_IF_ERROR(qmoe_controller_->OnAfterGraphReplay(static_cast<cudaStream_t>(stream_), sync_stream));
+          }
+          return Status::OK();
+        }();
+      }
+    } else if (!run_failed) {
+      // A failed warm-up run did not exercise the whole graph, so it does not count towards the runs required
+      // before capture.
       GetPerThreadContext().IncrementRegularRunCountBeforeGraphCapture(cuda_graph_annotation_id);
     }
+  }
+  if (has_offload) {
+    controller_rollback.Release();
+    const bool run_succeeded = capture_status.IsOK() && !run_failed;
+    auto controller_status = qmoe_controller_->OnRunEnd(sync_stream, run_succeeded);
+    ORT_RETURN_IF_ERROR(capture_status);
+    ORT_RETURN_IF_ERROR(controller_status);
+  } else {
+    ORT_RETURN_IF_ERROR(capture_status);
   }
 
   if (sync_stream) {
@@ -567,10 +692,34 @@ bool CUDAExecutionProvider::IsGraphCaptureEnabled() const {
 }
 
 bool CUDAExecutionProvider::IsGraphCaptured(int graph_annotation_id) const {
+  if (qmoe_controller_ && qmoe_controller_->HasOffloadNodes()) {
+    const uint64_t cur_gen = qmoe_controller_->GraphGeneration();
+    if (cur_gen != GetPerThreadContext().LastQMoEGraphGen()) {
+      GetPerThreadContext().ResetForQMoEGraphGen(cur_gen);
+    }
+  }
   return GetPerThreadContext().IsGraphCaptured(graph_annotation_id);
 }
 
 Status CUDAExecutionProvider::ReplayGraph(int graph_annotation_id, bool sync) {
+  if (qmoe_controller_ && qmoe_controller_->HasOffloadNodes()) {
+    ORT_RETURN_IF_ERROR(qmoe_controller_->OnRunStart());
+    auto prep_st = qmoe_controller_->OnBeforeGraphReplay(static_cast<cudaStream_t>(stream_));
+    if (!prep_st.IsOK()) {
+      static_cast<void>(qmoe_controller_->OnRunEnd(/*sync_stream=*/false, /*run_succeeded=*/false));
+      return prep_st;
+    }
+    auto replay_st = GetPerThreadContext().ReplayGraph(graph_annotation_id, /*sync=*/true);
+    if (!replay_st.IsOK()) {
+      static_cast<void>(qmoe_controller_->OnRunEnd(/*sync_stream=*/false, /*run_succeeded=*/false));
+      return replay_st;
+    }
+    auto after_st = qmoe_controller_->OnAfterGraphReplay(static_cast<cudaStream_t>(stream_), sync);
+    auto end_st = qmoe_controller_->OnRunEnd(sync, after_st.IsOK());
+    ORT_RETURN_IF_ERROR(after_st);
+    ORT_RETURN_IF_ERROR(end_st);
+    return Status::OK();
+  }
   return GetPerThreadContext().ReplayGraph(graph_annotation_id, sync);
 }
 
@@ -589,6 +738,9 @@ void CUDAExecutionProvider::SetSessionModelPath(std::filesystem::path path) cons
   }
   std::lock_guard<std::mutex> lock(model_path_mutex_);
   model_path_ = std::move(path);
+  if (qmoe_controller_) {
+    qmoe_controller_->SetModelPath(model_path_);
+  }
 }
 
 std::filesystem::path CUDAExecutionProvider::GetSessionModelPath() const {
@@ -721,6 +873,14 @@ class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kO
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 7, bool, And);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 7, bool, Or);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 7, bool, Xor);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 18, uint8_t, BitwiseXor);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 18, uint16_t, BitwiseXor);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 18, uint32_t, BitwiseXor);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 18, uint64_t, BitwiseXor);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 18, int8_t, BitwiseXor);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 18, int16_t, BitwiseXor);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 18, int32_t, BitwiseXor);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 18, int64_t, BitwiseXor);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 6, 7, Sum);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 8, 12, Sum);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 6, 11, Max);
@@ -1384,6 +1544,18 @@ class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain,
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, BFloat16, ReduceSum);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, 27, Mod);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 28, Mod);
+class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, 27, uint8_t, BitShift);
+class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, 27, uint16_t, BitShift);
+class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, 27, uint32_t, BitShift);
+class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, 27, uint64_t, BitShift);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 28, uint8_t, BitShift);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 28, uint16_t, BitShift);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 28, uint32_t, BitShift);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 28, uint64_t, BitShift);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 28, int8_t, BitShift);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 28, int16_t, BitShift);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 28, int32_t, BitShift);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 28, int64_t, BitShift);
 class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, 18, int8_t, QuantizeLinear);
 class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, 18, uint8_t, QuantizeLinear);
 class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, 18, int8_t, DequantizeLinear);
@@ -1392,9 +1564,11 @@ class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kO
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, float, ArgMax);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, double, ArgMax);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, MLFloat16, ArgMax);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, BFloat16, ArgMax);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, float, ArgMin);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, double, ArgMin);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, MLFloat16, ArgMin);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, BFloat16, ArgMin);
 
 // OpSet 14
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 14, CumSum);
@@ -2050,6 +2224,14 @@ static Status RegisterCudaKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 7, bool, And)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 7, bool, Or)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 7, bool, Xor)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 18, uint8_t, BitwiseXor)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 18, uint16_t, BitwiseXor)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 18, uint32_t, BitwiseXor)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 18, uint64_t, BitwiseXor)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 18, int8_t, BitwiseXor)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 18, int16_t, BitwiseXor)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 18, int32_t, BitwiseXor)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 18, int64_t, BitwiseXor)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 6, 7, Sum)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 8, 12, Sum)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 6, 11, Max)>,
@@ -2714,6 +2896,18 @@ static Status RegisterCudaKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, BFloat16, ReduceSum)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, 27, Mod)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 28, Mod)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, 27, uint8_t, BitShift)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, 27, uint16_t, BitShift)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, 27, uint32_t, BitShift)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, 27, uint64_t, BitShift)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 28, uint8_t, BitShift)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 28, uint16_t, BitShift)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 28, uint32_t, BitShift)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 28, uint64_t, BitShift)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 28, int8_t, BitShift)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 28, int16_t, BitShift)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 28, int32_t, BitShift)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 28, int64_t, BitShift)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, 18, int8_t, QuantizeLinear)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, 18, uint8_t, QuantizeLinear)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, 18, int8_t, DequantizeLinear)>,
@@ -2722,9 +2916,11 @@ static Status RegisterCudaKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, float, ArgMax)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, double, ArgMax)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, MLFloat16, ArgMax)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, BFloat16, ArgMax)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, float, ArgMin)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, double, ArgMin)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, MLFloat16, ArgMin)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, BFloat16, ArgMin)>,
 
       // OpSet 14
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 14, CumSum)>,
@@ -3668,7 +3864,7 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       auto* node = graph.GetNode(node_index);
       std::optional<Level1MemoryEstimate> level1_memory_estimate;
 
-#if !defined(DISABLE_CONTRIB_OPS) && USE_FPA_INTB_GEMM
+#if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS)
       // Level 1 (Phase-A memory roadmap, issue microsoft/onnxruntime#29775): a partition-time,
       // kernel-independent memory estimate for MatMulNBits. Runtime workspace and prepack
       // allocations remain separate so their different lifetimes are visible in reporting.
@@ -3676,6 +3872,7 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
         const auto& estimator_config = resource_accountant->GetWorkspaceEstimatorConfig();
         const auto& fpa_intb_gemm = estimator_config.cuda_fpa_intb_gemm;
         const auto& profile_m = estimator_config.cuda_fpa_intb_profile_m;
+        const auto& m_chunk_size = estimator_config.cuda_matmul_nbits_m_chunk_size;
         const auto& inferred_shapes = resource_accountant->GetMaxShapeInferenceResult();
         const auto& input_defs = node->InputDefs();
         const TensorShape* input_a_shape =
@@ -3689,14 +3886,18 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
             profile_m.has_value()
                 ? std::optional<std::string_view>{*profile_m}
                 : std::nullopt,
-            /*input_shape_is_upper_bound=*/input_a_shape != nullptr};
+            /*input_shape_is_upper_bound=*/input_a_shape != nullptr,
+            m_chunk_size.has_value()
+                ? std::optional<std::string_view>{*m_chunk_size}
+                : std::nullopt};
         level1_memory_estimate =
             input_a_shape != nullptr
                 ? contrib::cuda::EstimateMatMulNBitsMemory(
                       *node, input_a_shape->GetDims(), GetDeviceProp(), estimate_options)
                 : contrib::cuda::EstimateMatMulNBitsMemory(
                       *node, GetDeviceProp(), estimate_options);
-        if (level1_memory_estimate.has_value()) {
+        if (level1_memory_estimate.has_value() &&
+            level1_memory_estimate->runtime_workspace_bytes.has_value()) {
           LOGS(logger, VERBOSE) << "Level-1 memory estimate for " << node->Name()
                                 << ": runtime workspace="
                                 << level1_memory_estimate->runtime_workspace_bytes.value_or(0)
@@ -3706,13 +3907,19 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
                                 << level1_memory_estimate->persistent_prepack_bytes
                                 << " bytes, initialization scratch="
                                 << level1_memory_estimate->initialization_scratch_bytes << " bytes";
+        } else {
+          LOGS(logger, WARNING)
+              << "CUDA_EP declining capacity-aware assignment for MatMulNBits node "
+              << node->Name() << " because "
+              << (level1_memory_estimate.has_value()
+                      ? "ordinary runtime workspace is unknown for the admitted input shapes."
+                      : "no proven route-complete memory estimate is available for this configuration.");
+          continue;
         }
       }
 #endif
 
 #if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
-      // PackedAttention and PackedMultiHeadAttention remain log-only. Their
-      // route-aware workspace is not added to the partition budget yet.
       if (node != nullptr &&
           (node->OpType() == "PackedAttention" ||
            node->OpType() == "PackedMultiHeadAttention") &&
@@ -3724,16 +3931,23 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
             *node, gsl::make_span(input_shapes), GetDeviceProp(),
             *GetAttentionKernelOptions());
         if (ws.has_value()) {
-          LOGS(logger, INFO) << "Level-1 workspace estimate for " << node->Name()
-                             << ": " << ws->total_workspace_bytes << " bytes";
+          Level1MemoryEstimate estimate;
+          contrib::cuda::SetPackedAttentionLevel1MemoryEstimate(*ws, estimate);
+          level1_memory_estimate = estimate;
+          LOGS(logger, VERBOSE) << "Level-1 memory estimate for " << node->Name()
+                                << ": runtime workspace="
+                                << ws->total_workspace_bytes << " bytes";
+        } else {
+          LOGS(logger, WARNING)
+              << "CUDA_EP declining capacity-aware assignment for " << node->OpType()
+              << " node " << node->Name()
+              << " because required shape metadata or a proven route-complete workspace estimate is unavailable.";
+          continue;
         }
       }
 
       if (node != nullptr && node->OpType() == "GroupQueryAttention" &&
           node->Domain() == kMSDomain) {
-        // Unlike PA/PMHA above, GQA participates in #31962 accounting. A
-        // successful estimate is supplied to ComputeResourceCount and can
-        // affect the CUDA partition acceptance decision.
         const auto input_shapes = ResolveNodeInputShapes(
             *node, &graph.GetGraph(),
             resource_accountant->GetMaxShapeInferenceResult());
@@ -3856,6 +4070,7 @@ std::vector<AllocatorPtr> CUDAExecutionProvider::CreatePreferredAllocators() {
   params.external_alloc_info = &info_.external_allocator_info;
   params.arena_cfg = info_.default_memory_arena_cfg;
   params.logger = GetLogger();
+  params.budget_account = session_budget_account_;
 
   return std::vector<AllocatorPtr>{
       CreateCudaAllocator(params),

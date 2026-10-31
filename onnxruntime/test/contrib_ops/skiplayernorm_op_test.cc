@@ -8,6 +8,11 @@
 #include "test/common/tensor_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
+
+#if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
+#include "core/providers/webgpu/webgpu_context.h"
+#endif
 
 namespace onnxruntime {
 namespace test {
@@ -1325,6 +1330,98 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch2_Skip_Broadcast_Batch_Size_1) {
           broadcast_skip,
           no_batch_size);
 }
+
+#if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
+// With a 16 KiB test-only maxStorageBufferBindingSize, input, skip, output and input_skip_bias_sum (3 x 2560 floats,
+// 30 KiB each) are each bound as 2 segments, and the boundary falls inside row 1. gamma and beta fit in one binding.
+static void RunWebGpuSegmentedStorageTest(bool simplified, bool has_input_skip_bias_sum) {
+  WebGpuExecutionProviderTestOptions options{};
+  options.max_storage_buffer_binding_size = 16 * 1024;
+  auto provider = WebGpuExecutionProviderWithTestOptions(options);
+  if (!provider) {
+    GTEST_SKIP() << "Artificial storage limits require the native test factory.";
+  }
+  if (has_input_skip_bias_sum) {
+    // Every split tensor takes 2 bindings: 10 for SkipLayerNormalization, 9 without beta.
+    const uint32_t required_bindings = simplified ? 9 : 10;
+    const auto& limits = webgpu::WebGpuContextFactory::GetContext(provider->GetDeviceId()).DeviceLimits();
+    if (limits.maxStorageBuffersPerShaderStage < required_bindings) {
+      GTEST_SKIP() << "Needs " << required_bindings << " storage buffers per shader stage, the device has "
+                   << limits.maxStorageBuffersPerShaderStage;
+    }
+  }
+
+  constexpr int64_t rows = 3;
+  constexpr int64_t hidden_size = 2560;
+  constexpr float epsilon = 1e-5f;
+  const size_t size = static_cast<size_t>(rows * hidden_size);
+
+  std::vector<float> input_data(size), skip_data(size), gamma_data(hidden_size), beta_data(hidden_size);
+  for (size_t i = 0; i < size; ++i) {
+    input_data[i] = static_cast<float>(i % 7) * 0.25f - 0.75f;
+    skip_data[i] = static_cast<float>(i % 5) * 0.125f - 0.25f;
+  }
+  for (int64_t j = 0; j < hidden_size; ++j) {
+    gamma_data[j] = 1.0f + 0.01f * static_cast<float>(j % 10);
+    beta_data[j] = 0.05f * static_cast<float>(j % 3);
+  }
+
+  std::vector<float> output_data(size), sum_output_data(size);
+  for (int64_t r = 0; r < rows; ++r) {
+    double mean = 0.0, mean_square = 0.0;
+    for (int64_t j = 0; j < hidden_size; ++j) {
+      const size_t k = static_cast<size_t>(r * hidden_size + j);
+      sum_output_data[k] = input_data[k] + skip_data[k];
+      mean += sum_output_data[k];
+      mean_square += static_cast<double>(sum_output_data[k]) * sum_output_data[k];
+    }
+    mean /= hidden_size;
+    mean_square /= hidden_size;
+    const double inv_std_dev = 1.0 / std::sqrt((simplified ? mean_square : mean_square - mean * mean) + epsilon);
+    for (int64_t j = 0; j < hidden_size; ++j) {
+      const size_t k = static_cast<size_t>(r * hidden_size + j);
+      const double normalized = (sum_output_data[k] - (simplified ? 0.0 : mean)) * inv_std_dev;
+      output_data[k] = static_cast<float>(normalized * gamma_data[j] + (simplified ? 0.0f : beta_data[j]));
+    }
+  }
+
+  OpTester test(simplified ? "SkipSimplifiedLayerNormalization" : "SkipLayerNormalization", 1, onnxruntime::kMSDomain);
+  test.AddInput<float>("input", {rows, hidden_size}, input_data);
+  test.AddInput<float>("skip", {rows, hidden_size}, skip_data);
+  test.AddInput<float>("gamma", {hidden_size}, gamma_data);
+  if (!simplified) {
+    test.AddInput<float>("beta", {hidden_size}, beta_data);
+  }
+  test.AddAttribute("epsilon", epsilon);
+  test.AddOutput<float>("output", {rows, hidden_size}, output_data);
+  if (has_input_skip_bias_sum) {
+    // The second and third outputs are reserved for something else
+    test.AddOptionalOutputEdge<float>();
+    test.AddOptionalOutputEdge<float>();
+    test.AddOutput<float>("skip_input_bias_add_output", {rows, hidden_size}, sum_output_data);
+  }
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(provider));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(SkipLayerNormTest, SkipLayerNorm_WebGpu_SegmentedStorage) {
+  RunWebGpuSegmentedStorageTest(false, false);
+}
+
+TEST(SkipLayerNormTest, SkipLayerNorm_WebGpu_SegmentedStorage_InputSkipBiasSum) {
+  RunWebGpuSegmentedStorageTest(false, true);
+}
+
+TEST(SkipLayerNormTest, SkipSimplifiedLayerNorm_WebGpu_SegmentedStorage) {
+  RunWebGpuSegmentedStorageTest(true, false);
+}
+
+TEST(SkipLayerNormTest, SkipSimplifiedLayerNorm_WebGpu_SegmentedStorage_InputSkipBiasSum) {
+  RunWebGpuSegmentedStorageTest(true, true);
+}
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

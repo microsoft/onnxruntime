@@ -1631,6 +1631,21 @@ Return Value:
     //
     // Compute the number of bytes required to hold the packed buffer.
     //
+    size_t AlignedN;
+    size_t BytesRequired;
+    size_t AlignedBytesRequired;
+    const size_t BufferAlignment = MlasGetPreferredBufferAlignment();
+    if (MlasAddOverflowsSizeT(N, MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1, &AlignedN)) {
+        return 0;
+    }
+    AlignedN &= ~(MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1);
+    if (MlasMultiplyOverflowsSizeT(AlignedN, K, &BytesRequired) ||
+        MlasMultiplyOverflowsSizeT(BytesRequired, sizeof(float), &BytesRequired) ||
+        MlasAddOverflowsSizeT(BytesRequired, BufferAlignment - 1, &AlignedBytesRequired)) {
+        return 0;
+    }
+    AlignedBytesRequired &= ~(BufferAlignment - 1);
+
     // KleidiAI or other override
     #if defined(USE_KLEIDIAI)
     if ((!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) &&
@@ -1648,17 +1663,6 @@ Return Value:
     MLAS_UNREFERENCED_PARAMETER(TransA);
     MLAS_UNREFERENCED_PARAMETER(TransB);
     MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
-
-
-
-    const size_t AlignedN =
-        (N + MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1) & ~(MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1);
-
-    const size_t BytesRequired = AlignedN * K * sizeof(float);
-    const size_t BufferAlignment = MlasGetPreferredBufferAlignment();
-    const size_t AlignedBytesRequired = (BytesRequired + BufferAlignment - 1) &
-        ~(BufferAlignment - 1);
-
     return AlignedBytesRequired;
 }
 

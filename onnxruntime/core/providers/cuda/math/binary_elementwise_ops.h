@@ -200,6 +200,13 @@ class Xor final : public BinaryElementwise<ShouldBroadcast> {
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
+template <typename T>
+class BitwiseXor final : public BinaryElementwise<ShouldBroadcast> {
+ public:
+  BitwiseXor(const OpKernelInfo& info) : BinaryElementwise(info) {}
+  Status ComputeInternal(OpKernelContext* context) const override;
+};
+
 // PRelu is activation function, but it's closer to binary elementwise ops in implementation
 template <typename T>
 class PRelu final : public BinaryElementwise<ShouldBroadcast> {
