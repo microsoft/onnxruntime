@@ -1,7 +1,6 @@
 # Stateful Session Execution: Execution Plan
 
-**Status:** Approved; M01-M11 complete and published for review; M12 in progress;
-M13-M24 pending.
+**Status:** Approved; M01-M12 complete and published for review; M13-M24 pending.
 M05: [PR #15](https://github.com/onnxruntime/ort-state/pull/15).
 M05's requested generation-folder layout follow-up is complete in the same PR.
 **Source:** [Approved specification](SPEC.md), approved 2026-10-15.
@@ -13,7 +12,7 @@ approved 2026-10-20. CPU-first implementation is verified; GPU qualification
 resumed on 2026-10-21 after a compatible toolchain was supplied.
 **M12 refinement:** SPEC Appendix L was separately approved on 2026-10-30.
 The detailed M12 execution plan was separately approved on 2026-10-30;
-implementation is authorized and starting.
+CPU/CUDA qualification and publication completed on 2026-10-31.
 
 ## 1. Approval and tracking
 
@@ -26,7 +25,7 @@ implementation is authorized and starting.
 - [x] Review this plan with the user and obtain approval before implementation.
 - [ ] Complete the milestone stack and its validation gates.
 
-M01-M11 are complete, M12 is in progress and M13-M24 are pending. Check tasks when their
+M01-M12 are complete and M13-M24 are pending. Check tasks when their
 outcome is verified, not when code has merely been written. Record blockers, exact validation commands,
 results, evidence locations, and PR links in the affected milestone as work
 proceeds. Update this checklist and `SCRATCHPAD.md` at each meaningful checkpoint.
@@ -106,7 +105,7 @@ their functional milestone still requires the CPU/CUDA evidence below.
 
 Stack order is the row order. The dependency column records actual semantic
 prerequisites; the previous branch is also the mechanical Git base.
-M01-M11 are **complete**; M12 is **in progress**; M13-M24 are **pending**.
+M01-M12 are **complete**; M13-M24 are **pending**.
 
 | Done | ID | Intended PR / branch suffix | Semantic prerequisites |
 | --- | --- | --- | --- |
@@ -121,7 +120,7 @@ M01-M11 are **complete**; M12 is **in progress**; M13-M24 are **pending**.
 | [x] | M09 | Native CUDA greedy sampling / `cuda-greedy` | M07, M08 |
 | [x] | M10 | Standalone package schema and authoring / `package-schema` | M01, M03 |
 | [x] | M11 | ORT package-to-chain loading / `package-runtime` | M06, M07, M08, M09, M10 |
-| [ ] | M12 | DDIM scheduler and denoising state / `ddim-policy` | M03, M06, M08 |
+| [x] | M12 | DDIM scheduler and denoising state / `ddim-policy` | M03, M06, M08 |
 | [ ] | M13 | Python API and package parity / `python-api` | M06, M11, M12 |
 | [ ] | M14 | Local Phi-3 package and text demo / `phi3-demo` | M05, M08, M09, M11, M13 |
 | [ ] | M15 | Local Stable Diffusion package and image demo / `sd15-demo` | M11, M12, M13 |
@@ -3203,12 +3202,15 @@ remain.
 
 ### M12 - DDIM scheduler and denoising execution policy
 
-**Status:** CPU/CUDA qualification verified; publication in progress.
+**Status:** Complete; CPU/CUDA qualified and published for review on 2026-10-31.
 **Specification:** [Approved Appendix L](SPEC.md#appendix-l-m12-ddim-denoising-policy-approved).
 **Proposed branch/base:** `state/m12-ddim-policy` on verified M11
 `0586ee3acfc1456d1d48bdd060e4789eb0b99c98` /
 [#25](https://github.com/onnxruntime/ort-state/pull/25).
 **Delivery:** One intended, independently documented/tested stacked PR; no merge.
+**PR:** [#26](https://github.com/onnxruntime/ort-state/pull/26), OPEN and ready for
+review on the M11 base. Qualified implementation commit
+`ae416c8708513316be6e59ae74faade73a105fd4`.
 **Outcome:** Stateful deterministic DDIM iteration through the existing native
 loop/chain and public C/C++/package surfaces, not LLM-specific cache emulation.
 The full Stable Diffusion package/image demonstration remains M15.
@@ -3221,7 +3223,7 @@ The full Stable Diffusion package/image demonstration remains M15.
 - [x] Draft/review Appendix L and obtain specification approval (2026-10-30).
 - [x] Prepare this detailed plan from the approved specification.
 - [x] Review the detailed plan and obtain separate implementation approval.
-- [ ] Implement, qualify and publish only after that approval.
+- [x] Implement, qualify and publish only after that approval.
 
 Read-only inspection on 2026-10-30 confirms clean M11 baseline/remote head,
 CUDA13.0.48, the matching cuDNN installation, profiler/sanitizer tools and eight
@@ -3365,7 +3367,7 @@ Do not install GPU tooling, alter global driver settings or delete other work.
   checks must pass. No device-line gate is waived: no new device code is planned;
   a device implementation change requires revised scope/approval and coverage.
 
-- [ ] **D9 - Document and publish.** Update public Doxygen and the ORT Model
+- [x] **D9 - Document and publish.** Update public Doxygen and the ORT Model
   Package integration README with profile/RNG/port names, logical initialization
   union, both guidance conventions, explicit matching exit, progress/output/state
   semantics, CPU-only policy work, CUDA transfer evidence and limitations.
@@ -3515,7 +3517,7 @@ fixtures, build products or real model weights.
 - [x] Every new executable production line reaches measured100%, with modified
   earlier surfaces re-exercised and cumulative coverage reported safely.
 - [x] Final CPU/plugin/selected-legacy regressions and style checks pass.
-- [ ] Documentation/evidence are current and one correct-base stacked PR is
+- [x] Documentation/evidence are current and one correct-base stacked PR is
   ready for human review.
 
 Until every gate passes, M12 is not complete. Specification approval authorizes
@@ -3589,7 +3591,7 @@ No GPU result or ready PR is claimed at this checkpoint.
 
 #### Final CPU/CUDA qualification (2026-10-31)
 
-All implementation/qualification gates pass; only D9 publication remains.
+All implementation/qualification/publication gates pass.
 Final source-safe results:
 
 | Configuration | Native | Public/AutoEP |
@@ -3677,7 +3679,12 @@ scripts are retained in session files under `m12-*`. The actual CUDA plugin is
 clang-format and whitespace checks pass. No dependency/toolchain installation
 occurred beyond the genuinely missing pinned CPU reference packages.
 
-One ready stacked PR on M11 remains the publication gate. No merge or M13 work.
+[#26](https://github.com/onnxruntime/ort-state/pull/26) is OPEN, not draft, on
+`state/m11-package-chain-loading` / #25. Its body preserves the repository
+template and records exact validation commands/results and limitations. The
+qualified source, matching measured binaries/profiles, traces, verification
+scripts and hashes are retained. Only inspected generated fixtures and hashed
+unmeasured client binaries were cleaned. No merge or M13 work.
 
 ### M13 - Python bindings
 

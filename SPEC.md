@@ -16,7 +16,8 @@ stacked on M10.
 **M12 refinement:** The requirements interview completed on 2026-10-30.
 Appendix L was approved by the user for detailed plan preparation.
 The detailed M12 plan was separately approved on 2026-10-30 and implementation
-and CPU/CUDA qualification are verified on 2026-10-31; publication is in progress.
+and CPU/CUDA qualification are verified on 2026-10-31. M12 is published for review
+in [#26](https://github.com/onnxruntime/ort-state/pull/26), stacked on M11.
 M13 and later implementation milestones are not started.
 
 ## 1. Purpose
