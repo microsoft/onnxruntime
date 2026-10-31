@@ -1,5 +1,95 @@
 # GatedDeltaNet — Operator Documentation
 
+## Experimental short-sequence CUDA dispatch
+
+Set process-level tuning options before the first applicable invocation:
+
+- `ORT_GDN_S2_SPECIALIZE=1` specializes packed QKV for a single request with
+  1 to 8 tokens, 16 query/key heads, 48 value heads, and 128-wide heads.
+  It additionally requires Qwen softplus-decay gates, sigmoid beta,
+  gated-delta updates, Q/K L2 normalization, uniform non-packed sequence
+  metadata, and no per-key decay, state-update tail pass, or short-row tail
+  pass.
+- `ORT_CAUSAL_CONV_S2_SPECIALIZE=1` specializes the companion
+  `CausalConvWithState` extended (packed-channel) projection path for kernel size
+  four, state length four and dilation one. Lengths below 16 use the per-position
+  specialized kernel and lengths of 16 or more use the tiled kernel (eight
+  positions per CTA). The `activation`
+  attribute (`none`, `silu` or `swish`; the last two are identical) is honored
+  as configured and is not part of the dispatch condition. Layout, optional
+  bias, and first-token state semantics are unchanged.
+
+Both specialization switches default to `1` and accept only `0` or `1`.
+Unsupported geometry retains generic dispatch. These options do not alter
+operator schemas, state layouts, or the default package configuration.
+
+### Benchmark
+
+Op-level GPU kernel time per call on NVIDIA H200 (SM90, driver 580.159.04, CUDA 13.0, ORT 1.32.0 integration build
+of this branch), measured 2026-10-27 at the Qwen3.8-Flash-Next rc3 production geometry
+(taken from the rc3 DFlash2 graph): `GatedDeltaNet` with packed BF16 QKV `(B, S, 10240)`, 16 q/k heads, 48 v heads,
+head size 128, FP32 state `(B, 48, 128, 128)`, BF16 decay/beta, `gated_delta`/`softplus`/`sigmoid`,
+`qk_l2_norm=1`, `state_update_capacity=7`; `CausalConvWithState` with BF16 `(B, S, 10240)` channels-last input,
+K=4, `state_length=4`, `dilation=1`, `silu`, `state_update_capacity=7`. Median kernel duration in microseconds
+(lower is better), specialized (`=1`, default) versus generic (`=0`) in a fresh process per setting. Outputs are
+bit-identical between the two settings for every row (max abs diff 0 on every output, including the state and
+`state_update`).
+
+`GatedDeltaNet` (`ORT_GDN_S2_SPECIALIZE`; S is tokens per request, S=8 is the production verification step):
+
+| Batch | S | QwenS2 (us) | Generic (us) | Speedup |
+|---:|---:|---:|---:|---:|
+| 1 | 1 | 4.83 | 6.05 | 1.25x |
+| 1 | 2 | 6.82 | 8.16 | 1.20x |
+| 1 | 4 | 10.94 | 12.74 | 1.16x |
+| 1 | 8 | 18.82 | 21.60 | 1.15x |
+| 2 | 8 | 40.74 | 40.74 | 1.00x (generic kernel; not eligible) |
+| 4 | 8 | 74.88 | 74.88 | 1.00x (generic kernel; not eligible) |
+| 8 | 8 | 142.24 | 142.24 | 1.00x (generic kernel; not eligible) |
+
+`CausalConvWithState` (`ORT_CAUSAL_CONV_S2_SPECIALIZE`):
+
+| Batch | S | Specialized (us) | Generic (us) | Speedup |
+|---:|---:|---:|---:|---:|
+| 1 | 1 | 1.76 | 2.21 | 1.25x |
+| 1 | 2 | 2.02 | 2.46 | 1.22x |
+| 1 | 4 | 2.30 | 2.75 | 1.19x |
+| 1 | 8 | 2.46 | 2.98 | 1.21x |
+| 2 | 8 | 2.94 | 3.49 | 1.18x |
+| 4 | 8 | 4.13 | 5.60 | 1.36x |
+| 8 | 8 | 6.78 | 9.28 | 1.37x |
+| 1 | 16 (tiled) | 3.90 | 3.36 | 0.86x |
+| 1 | 2048 (tiled) | 55.13 | 223.97 | 4.06x |
+
+QwenS2 trims 1.2-2.8 us (13-20%) from each single-request decode call; at S=8 that is 2.8 us x 36 GDN layers, or
+roughly 0.1 ms per verification cycle; the S<=8 convolution kernel saves about 0.5 us per call at batch 1 and
+more at larger batch. The tiled convolution kernel is the main win for prefill (4x at 2048 tokens), but at the
+smallest tiled length (S=16) it is slightly slower than the generic kernel (0.86x, +0.5 us), an absolute cost that is
+negligible next to the S>=2048 gain.
+
+End to end on the rc3 model (INT4 `all_int4`, decode ms per DFlash2 S=8 cycle, H200, median of 5 repetitions):
+
+| Context | Default | `ORT_GDN_S2_SPECIALIZE=0` |
+|---:|---:|---:|
+| 2K | 14.93 | 15.03 |
+| 8K | 15.07 | 15.17 |
+| 32K | 15.30 | 15.45 |
+
+That is +0.10 to +0.15 ms per cycle without QwenS2, i.e. QwenS2 decodes about 0.7-1.0% faster.
+`ORT_CAUSAL_CONV_S2_SPECIALIZE=0` leaves decode unchanged but raises time to first token by 2.9-3.1% (2K / 8K / 32K
+prompts: 0.1987 -> 0.2044 s, 0.8506 -> 0.8791 s, 3.5843 -> 3.6942 s).
+
+Methodology: each op is a single-node ONNX model with random BF16/FP32 inputs (fixed seeds), `state_update`
+capture enabled (`capture_count = min(S, 7)`), 48 copies of the node (distinct state tensors, like the 48 layers) in
+one CUDA-graph-captured session with IOBinding and device-resident inputs; 30 warm-up replays and 300 timed replays
+(14,400 kernel instances per row). Kernel durations come from Nsight Systems (`--cuda-graph-trace=node`), so host
+launch and inter-kernel gaps are excluded; the table gives the median of the three per-process medians (spread across
+processes <= 0.15 us, every row run on the same GPU as its counterpart). Wall-clock back-to-back graph replay
+(slope between 16- and 48-node graphs) agrees for the large kernels (conv S=2048: 54 vs 224 us; GDN S=8: 20.5 vs
+23.6 us, which includes about 1.8 us of per-node launch gap) but is noisy for kernels of a few microseconds, so it is
+not used here. Run `ORT_GDN_S2_SPECIALIZE=0/1` and `ORT_CAUSAL_CONV_S2_SPECIALIZE=0/1` in separate processes because
+the switches are cached on first use.
+
 This document describes the `com.microsoft::GatedDeltaNet` contrib operator: its schema and
 state contract, the chunked and warp-specialised CUDA engines and how one is selected, the
 consumer-Blackwell shared-memory constraint, and measured comparisons against
@@ -26,7 +116,7 @@ Source:
 6. [Shared Memory and Consumer Blackwell (SM120)](#6-shared-memory-and-consumer-blackwell-sm120)
 7. [Benchmarks](#7-benchmarks)
 8. [Accuracy](#8-accuracy)
-9. [Environment Variables](#9-environment-variables)
+9. [Session Options and Environment Variables](#9-session-options-and-environment-variables)
 10. [Testing](#10-testing)
 11. [Known Limitations and Future Work](#11-known-limitations-and-future-work)
 
@@ -56,7 +146,7 @@ Source:
 |---|---|---|---|
 | `update_rule` | string | `gated_delta` | One of `linear`, `gated`, `delta`, `gated_delta`. Selects which of the decay and delta-retrieval terms are present. |
 | `scale` | float | `0.0` | Output scale. `0.0` means `1/sqrt(head_size_qk)`. |
-| `gate_activation` | string | `none` | `none` treats `decay` as the effective log-space decay. `qwen` computes `-exp(a_log) * Softplus(decay + dt_bias)` in float32. |
+| `gate_activation` | string | `none` | `none` treats `decay` as the effective log-space decay. `softplus` computes `-exp(a_log) * Softplus(decay + dt_bias)` in float32. `qwen` is accepted as a legacy alias of `softplus` with identical behavior. |
 | `beta_activation` | string | `none` | `none` treats `beta` as the effective update rate; `sigmoid` applies a sigmoid. |
 | `qk_l2_norm` | int | `0` | When `1`, L2-normalizes each query and key head vector in-kernel. |
 | `chunk_size` | int | `64` | Chunk length for the chunked engine. `32` pins the reduced shared-memory configuration (see §6). |
@@ -79,9 +169,9 @@ Source:
 | 10 | `state_update_active` | `(1)` in CPU memory | int32 | no |
 
 Input slot 7 contains `A_log`. The operator evaluates the fused gate, beta, and normalization
-arithmetic in float32 and applies `scale` to the recurrence output. The float16 D=128 Qwen
-shape is supported by recurrent, fused chunked, and split chunked engines; non-float16 inputs
-remain on the recurrent engine.
+arithmetic in float32 and applies `scale` to the recurrence output. Both `float16` and
+`bfloat16` `D=128` Qwen shapes are supported by the recurrent, fused chunked, and split chunked
+engines; `float32` inputs remain on the recurrent engine.
 
 ### Outputs
 
@@ -200,8 +290,8 @@ shared-memory requirement, and execution binds a `VariantPack` of device pointer
 `SelectPlan` requires all of the following for the chunked engine, and falls back to the
 sequential engine otherwise: `total_tokens >= 32 * batch_size`,
 `head_size_qk == head_size_v == 128`, `num_heads_q == num_heads_k`,
-`num_heads_v % num_heads_q == 0`, scalar (not per-key-dimension) decay, `float16` input, SM80
-or newer, and enough shared memory. Active compact capture does not disqualify the chunked
+`num_heads_v % num_heads_q == 0`, scalar (not per-key-dimension) decay, `float16` or `bfloat16`
+input, SM80 or newer, and enough shared memory. Active compact capture does not disqualify the chunked
 engine: rows with positive `capture_count` are skipped by the chunked pass and handled by a
 recurrent tail pass. Ragged rows shorter than the crossover use the same tail mechanism.
 
@@ -474,10 +564,102 @@ aggregate quality advantage, while native won all 40 paired speculative-throughp
 3.9%-6.6%. The unpublished compatibility attribute and its reduced-precision kernel paths
 were therefore removed; the operator exposes only the native fused arithmetic.
 
-## 9. Environment Variables
+### BFloat16 Intermediate Precision vs. Performance (`ep.cuda.gated_delta_net_bf16_precision`)
 
-| Variable | Values | Description |
+When the operator I/O type `T` is `bfloat16`, the chunked and split-chunked prefill engines
+support three intermediate precision modes controlled by session option
+`ep.cuda.gated_delta_net_bf16_precision` (or environment variable `ORT_GDN_BF16_PRECISION`):
+
+1. **`fp32` (default — `ep.cuda.gated_delta_net_bf16_precision="fp32"`)**:
+   - Keeps both the recurrent state $S$ and the intermediate chunk updates ($R$, $U$, and $U_v$)
+     in `float32` and decomposes them into 3 exact `bfloat16` slices (`hi + mid + lo`) for the
+     `mma.sync.aligned.m16n8k16.row.col.f32.bf16.bf16.f32` tensor-core GEMMs.
+   - Any nonzero finite `float32` value with unbiased exponent in $[-110, 126]$
+     (`0x08800000 <= abits < 0x7f000000`) is reconstructed to all 24 IEEE-754 significand bits
+     by the three unscaled `bfloat16` slices without overflow or underflow. Columns containing
+     extreme exponents ($< 2^{-110}$ or $\ge 2^{127}$, such as `FLT_MAX`) set their bit in
+     `extreme_col_mask` and evaluate an exact `float32` dot product in the epilogue.
+2. **`fp16` (`ep.cuda.gated_delta_net_bf16_precision="fp16"`)**:
+   - Uses 1-slice `float16` (`__half`, 10 mantissa bits vs. `bfloat16`'s 7 mantissa bits) for
+     the internal chunk MMA tiles in both the fused `chunked` and split `chunked_split` engines
+     whenever the chunk inputs ($Q, K, V$), gating ($g \le 0, |\beta| \le 1$), scale
+     ($|\text{scale}| \le 16$), and recurrent state ($S$) satisfy conservative FP16 range
+     guards, checked in registers via `__syncthreads_or` during the single global-to-shared
+     load pass. Retrieval rules (`delta` and `gated_delta`) additionally require
+     $0 \le \beta \le 1$ and, without `qk_l2_norm`, $|k_i| \le 1/\sqrt{DK}$ to bound
+     $\|k\|_2 \le 1$ and prevent exponential growth of $(I+M)^{-1}$. This component bound
+     avoids an extra norm reduction; normalized keys retain the existing fast path.
+   - Evaluates `qk_l2_norm` in `float32` before rounding once to `float16`, and writes the
+     `bfloat16` output directly from the `float32` accumulator (avoiding `float16` $\to$
+     `bfloat16` double-rounding). If a chunk fails these guards, it automatically falls back
+     to the `fp32` (3-slice `bfloat16`) path (in `chunked_split`, if K1 prepared `float16`
+     tiles and K2's state/update guard triggers fallback, K2 recomputes the `bfloat16`
+     preparation data from the original inputs rather than widening already-rounded `float16`
+     tiles). FP16 arithmetic still trades rounding accuracy and dynamic range for throughput.
+3. **`bf16` (`ep.cuda.gated_delta_net_bf16_precision="bf16"`)**:
+   - Uses 1-slice native `bfloat16` for all internal chunk MMA tiles, providing maximum 1-slice
+     throughput with native `bfloat16` dynamic range and 7-bit mantissa precision.
+
+#### Standalone Operator Latency & Numerical Parity on NVIDIA H200
+
+Measured on NVIDIA H200 (`sm_90a`, CUDA 13.0) at the Qwen3.8-Flash-Next geometry
+(`batch = 1`, `num_heads_q = num_heads_k = 16`, `num_heads_v = 32`, `head_size_qk = head_size_v = 128`,
+`update_rule = "gated_delta"`, `gate_activation = "softplus"`, `beta_activation = "sigmoid"`,
+`qk_l2_norm = 1`, 36 GDN layers) against the sequential `float32` `recurrent` engine reference:
+
+| Sequence Length | Mode | 1-Op Latency (us) | 36-Layer Time (ms) | Output RMSE vs. `recurrent` | State RMSE vs. `recurrent` | Exact BF16 Output Match |
+|---:|---|---:|---:|---:|---:|---:|
+| 128 | `recurrent` (FP32 ref) | 227.5 | 8.19 | 0.00 | 0.00 | 100.00% |
+| 128 | `chunked fp32` | 150.6 | 5.42 | 1.51e-5 | 1.05e-4 | 44.12% |
+| 128 | `chunked fp16` | **103.2** | **3.72** | **5.53e-6** | **1.90e-5** | **82.22%** |
+| 128 | `chunked bf16` | **94.2** | **3.39** | 1.81e-5 | 1.53e-4 | 38.12% |
+| 512 | `recurrent` (FP32 ref) | 800.8 | 28.83 | 0.00 | 0.00 | 100.00% |
+| 512 | `chunked fp32` | 457.9 | 16.49 | 1.53e-5 | 1.03e-4 | 43.86% |
+| 512 | `chunked fp16` | **278.5** | **10.03** | **5.58e-6** | **1.86e-5** | **82.08%** |
+| 512 | `chunked bf16` | **237.6** | **8.55** | 1.83e-5 | 1.50e-4 | 37.78% |
+| 2,048 | `recurrent` (FP32 ref) | 3,927.1 | 141.37 | 0.00 | 0.00 | 100.00% |
+| 2,048 | `chunked fp32` | 1,755.9 | 63.21 | 1.51e-5 | 9.83e-5 | 43.85% |
+| 2,048 | `chunked fp16` | **1,040.7** | **37.46** | **5.52e-6** | **1.80e-5** | **82.12%** |
+| 2,048 | `chunked bf16` | **870.4** | **31.33** | 1.81e-5 | 1.43e-4 | 37.74% |
+| 8,192 | `recurrent` (FP32 ref) | 15,429.3 | 555.45 | 0.00 | 0.00 | 100.00% |
+| 8,192 | `chunked fp32` | 6,811.8 | 245.23 | 1.53e-5 | 1.05e-4 | 43.70% |
+| 8,192 | `chunked fp16` | **3,993.7** | **143.77** | **5.59e-6** | **1.93e-5** | **82.06%** |
+| 8,192 | `chunked bf16` | **3,305.4** | **118.99** | 1.84e-5 | 1.54e-4 | 37.63% |
+| 32,768 | `recurrent` (FP32 ref) | 63,930.8 | 2,301.51 | 0.00 | 0.00 | 100.00% |
+| 32,768 | `chunked fp32` | 27,121.5 | 976.37 | 1.49e-5 | 1.03e-4 | 43.72% |
+| 32,768 | `chunked fp16` | **15,849.8** | **570.59** | **5.46e-6** | **1.89e-5** | **82.10%** |
+| 32,768 | `chunked bf16` | **13,089.2** | **471.21** | 1.79e-5 | 1.50e-4 | 37.67% |
+
+On normalized LLM activations (`qk_l2_norm=1`, `beta=sigmoid(.)`), $Q$, $K$, $M$, $(I+M)^{-1}$,
+and $P$ are bounded in $[-1, 1]$. Even when $S$ and $U$ are decomposed into 3 `bfloat16` slices
+(`fp32` mode), $Q$, $K$, $M$, $(I+M)^{-1}$, and $P$ still use 7-bit-mantissa `bfloat16`, whereas
+`fp16` mode keeps all internal tiles in 10-bit-mantissa `float16` ($8\times$ smaller rounding
+error per element), achieving **2.7x lower output RMSE**, **5.5x lower state RMSE**, and
+**1.71x faster execution** than `fp32` mode.
+
+#### End-to-End `Qwen3.8-Flash-Next NVFP4` Prefill TTFT & MMLU-Pro Accuracy on H200
+
+| Metric / Prompt Length | `recurrent` (FP32 Ref) | `fp32` (3-Slice State+U) | `fp16` (FP16 Tile + Guard) | `bf16` (1-Slice BF16) |
+|---|---:|---:|---:|---:|
+| **TTFT @ 128 tokens (s)** | 0.118 | 0.112 | **0.109** | 0.110 |
+| **TTFT @ 256 tokens (s)** | 0.151 | 0.138 | **0.133** | 0.133 |
+| **TTFT @ 512 tokens (s)** | 0.203 | 0.176 | **0.166** | 0.167 |
+| **TTFT @ 1,024 tokens (s)** | 0.295 | 0.235 | **0.219** | 0.218 |
+| **TTFT @ 2,048 tokens (s)** | 0.501 | 0.329 | **0.298** | 0.296 |
+| **TTFT @ 8,192 tokens (s)** | 1.604 | 0.871 | **0.749** | 0.741 |
+| **TTFT @ 32,768 tokens (s)** | 6.539 | 3.604 | **3.111** | 3.081 |
+| **MMLU-Pro 80-Item Median TTFT (s)** | 0.1444 | 0.1353 | **0.1304** | 0.1313 |
+| **MMLU-Pro 80-Item First-Token Match vs. `recurrent`** | 80/80 (100%) | 75/80 (93.75%) | **78/80 (97.50%)** | 76/80 (95.00%) |
+| **MMLU-Pro 200-Item Accuracy** | 172/200 (86.00%) | 170/200 (85.00%) | 168/200 (84.00%) | 170/200 (85.00%) |
+| **MMLU-Pro 200-Item Answer Agreement vs. `recurrent`** | 200/200 (100%) | 194/200 (97.00%) | **195/200 (97.50%)** | **195/200 (97.50%)** |
+| **`engine_behaviours.py --prefill fast`** | 27/27 PASS | **27/27 PASS** | **27/27 PASS** | **27/27 PASS** |
+
+## 9. Session Options and Environment Variables
+
+| Option / Variable | Values | Description |
 |---|---|---|
+| `ep.cuda.gated_delta_net_bf16_precision` (`kOrtSessionOptionsCudaGatedDeltaNetBf16Precision`) | `fp32` (default), `fp16`, `bf16` | Session option controlling the intermediate precision of the `bfloat16` chunked and split-chunked prefill kernels. `fp32` preserves 24-bit FP32 state and chunk-update residuals via 3-slice BF16 decomposition with an exact FP32 fallback for extreme exponents; `fp16` uses 1-slice FP16 (10 mantissa bits) for internal chunk MMA tiles when chunk values fit within the safe FP16 dynamic range and falls back to `fp32` otherwise; `bf16` uses 1-slice native BF16 for all internal chunk MMA tiles. Overrides `ORT_GDN_BF16_PRECISION`. |
+| `ORT_GDN_BF16_PRECISION` | `fp32` (default), `fp16`, `bf16` | Environment-variable fallback for `ep.cuda.gated_delta_net_bf16_precision` when the session option is not set. |
 | `ORT_GDN_PLAN` | `chunked`, `chunked_split`, `recurrent`, `cudnn` | Pins an engine, bypassing the heuristic, in either direction: `chunked` keeps the fused engine where the heuristic would split, and `chunked_split` forces the split engine where it would not. Either chunked override reports an error when the descriptor cannot use that engine. The analog of cuDNN's `select_plan(name)`. Intended for benchmarking and bisection. `cudnn` is reserved and returns an error. |
 
 ## 10. Testing
@@ -502,12 +684,18 @@ shared-memory chunk configuration. Three cases are worth calling out:
 - **`GatedDeltaNetPlanTest.PicksNarrowChunkOnConsumerBlackwellSharedMemory`** exercises the
   plan heuristic at SM120's 101376-byte budget on the host, so the architecture-dependent
   choice is covered without SM120 hardware.
+- **`BFloat16PreservesFp32StateCancellation`, `BFloat16PreservesTinyFp32StateCancellation`,
+  `BFloat16NearFltMaxStateDoesNotOverflow`, `BFloat16PreservesDeltaUpdateCancellation`, and
+  `BFloat16PrecisionModesAndSessionOption`** cover 24-bit FP32 state and update cancellation,
+  mixed-magnitude columns, near-`FLT_MAX` finite states, and the
+  `ep.cuda.gated_delta_net_bf16_precision` / `ORT_GDN_BF16_PRECISION` modes (`fp32`, `fp16`,
+  `bf16`).
 
 ## 11. Known Limitations and Future Work
 
-- **Chunked engine coverage.** float16 input only, `head_size_qk == head_size_v == 128`, and
-  scalar decay. bfloat16 needs bf16 mma fragments; per-key-dimension decay (KDA) and other
-  head sizes fall back to the sequential engine.
+- **Chunked engine coverage.** `float16` and `bfloat16` inputs with
+  `head_size_qk == head_size_v == 128` and scalar decay; `float32` inputs, per-key-dimension
+  decay (KDA), and other head sizes fall back to the sequential engine.
 - **FLA overtakes beyond `T ~ 1024`.** The single-launch design trades long-sequence
   throughput for a low fixed cost. Recovering it needs chunk-parallelism without FLA's
   per-chunk state materialization.

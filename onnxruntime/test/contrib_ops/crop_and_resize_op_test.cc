@@ -3,6 +3,7 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
 
 #include <limits>
 
@@ -240,6 +241,48 @@ TEST(CropAndResizeTest, CropAndResize_rejects_out_of_range_batch_index) {
   test.AddOutput<float>("output", {1, 1, 2, 2}, {0.0f, 0.0f, 0.0f, 0.0f});
   test.Run(OpTester::ExpectResult::kExpectFailure,
            "is out of range [0, 1)", {kTensorrtExecutionProvider});
+}
+
+TEST(CropAndResizeTest, InvalidInputRanksRejected) {
+  {
+    OpTester test("CropAndResize", 1, onnxruntime::kMSDomain);
+    test.AddShapeToTensorData(false);  // must precede AddInput/AddOutput so runtime shapes reach the kernel
+    test.AddInput<float>("X", {4}, {1.0f, 2.0f, 3.0f, 4.0f});
+    test.AddInput<float>("rois", {1, 4}, {0.0f, 0.0f, 1.0f, 1.0f});
+    test.AddInput<int32_t>("batch_indices", {1}, {0});
+    test.AddInput<int32_t>("crop_size", {2}, {2, 2});
+    test.AddOutput<float>("output", {1, 1, 2, 2}, {0.0f, 0.0f, 0.0f, 0.0f});
+
+    std::vector<std::unique_ptr<IExecutionProvider>> eps;
+    eps.push_back(DefaultCpuExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectFailure, "Input 'X' must be a 4-D tensor", {}, nullptr, &eps);
+  }
+  {
+    OpTester test("CropAndResize", 1, onnxruntime::kMSDomain);
+    test.AddShapeToTensorData(false);  // {1, 4, 0} has 0 elements while rois_dims[0]=1, rois_dims[1]=4
+    test.AddInput<float>("X", {1, 1, 2, 2}, {1.0f, 2.0f, 3.0f, 4.0f});
+    test.AddInput<float>("rois", {1, 4, 0}, {});
+    test.AddInput<int32_t>("batch_indices", {1}, {0});
+    test.AddInput<int32_t>("crop_size", {2}, {2, 2});
+    test.AddOutput<float>("output", {1, 1, 2, 2}, {0.0f, 0.0f, 0.0f, 0.0f});
+
+    std::vector<std::unique_ptr<IExecutionProvider>> eps;
+    eps.push_back(DefaultCpuExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectFailure, "Input 'rois' must be a 2-D tensor", {}, nullptr, &eps);
+  }
+  {
+    OpTester test("CropAndResize", 1, onnxruntime::kMSDomain);
+    test.AddShapeToTensorData(false);  // {1, 0} has 0 elements while batch_indices_dims[0]=1
+    test.AddInput<float>("X", {1, 1, 2, 2}, {1.0f, 2.0f, 3.0f, 4.0f});
+    test.AddInput<float>("rois", {1, 4}, {0.0f, 0.0f, 1.0f, 1.0f});
+    test.AddInput<int32_t>("batch_indices", {1, 0}, {});
+    test.AddInput<int32_t>("crop_size", {2}, {2, 2});
+    test.AddOutput<float>("output", {1, 1, 2, 2}, {0.0f, 0.0f, 0.0f, 0.0f});
+
+    std::vector<std::unique_ptr<IExecutionProvider>> eps;
+    eps.push_back(DefaultCpuExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectFailure, "Input 'batch_indices' must be a 1-D tensor", {}, nullptr, &eps);
+  }
 }
 
 }  // namespace test

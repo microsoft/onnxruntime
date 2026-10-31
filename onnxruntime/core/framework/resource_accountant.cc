@@ -10,6 +10,7 @@
 #include "core/common/string_utils.h"
 
 #include "core/framework/config_options.h"
+#include "core/framework/kernel_dispatch_policy.h"
 #include "core/framework/max_shape_override.h"
 #include "core/framework/murmurhash3.h"
 #include "core/framework/tensorprotoutils.h"
@@ -570,7 +571,22 @@ Status CreateAccountants(
     std::optional<ResourceAccountantMap>& acc_map) {
   WorkspaceEstimatorConfig estimator_config{
       config_options.GetConfigEntry(kOrtSessionOptionsCudaFpAIntBGemm),
-      config_options.GetConfigEntry(kOrtSessionOptionsCudaFpAIntBProfileM)};
+      config_options.GetConfigEntry(kOrtSessionOptionsCudaFpAIntBProfileM),
+      config_options.GetConfigEntry(kOrtSessionOptionsCudaMatMulNBitsMChunkSize)};
+  estimator_config.kernel_dispatch_policy =
+      config_options.GetConfigEntry(kOrtSessionOptionsKernelDispatchPolicy);
+  if (estimator_config.kernel_dispatch_policy.has_value()) {
+    KernelDispatchPolicy parsed_policy = KernelDispatchPolicy::Auto;
+    if (!TryParseKernelDispatchPolicy(
+            *estimator_config.kernel_dispatch_policy, parsed_policy)) {
+      return ORT_MAKE_STATUS(
+          ONNXRUNTIME, INVALID_ARGUMENT,
+          kOrtSessionOptionsKernelDispatchPolicy,
+          " must be empty or one of 'auto', 'latency', 'memory', or 'safe' "
+          "(case-sensitive), but got: '",
+          *estimator_config.kernel_dispatch_policy, "'");
+    }
+  }
   ORT_RETURN_IF_ERROR(ParseCudaGqaWorkspaceMaxTotalSequenceLength(
       config_options, estimator_config.cuda_gqa_workspace_max_total_sequence_length));
 

@@ -3,7 +3,9 @@
 
 #include "core/framework/error_code_helper.h"
 
+#include <algorithm>
 #include <cassert>
+#include <cstdio>
 #include <memory>
 
 #include "core/session/onnxruntime_c_api.h"
@@ -31,6 +33,19 @@ inline OrtStatus* NewStatus(size_t clen) {
   return new (buf) OrtStatus;
 }
 
+OrtStatus* CreateStatusWithMessageLength(OrtErrorCode code, const char* message, size_t length) noexcept {
+  OrtStatus* status = NewStatus(length);
+  if (status == nullptr) {
+    return nullptr;
+  }
+  status->code = code;
+  if (length != 0) {
+    memcpy(status->msg, message, length);
+  }
+  status->msg[length] = '\0';
+  return status;
+}
+
 inline void DeleteStatus(OrtStatus* ort_status) {
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
@@ -48,16 +63,21 @@ _Check_return_ _Ret_notnull_ OrtStatus* ORT_API_CALL OrtApis::CreateStatus(OrtEr
                                                                            _In_z_ const char* msg) NO_EXCEPTION {
   assert(!(code == 0 && msg != nullptr));
   SafeInt<size_t> clen(nullptr == msg ? 0 : strnlen(msg, onnxruntime::kMaxStrLen));
-  OrtStatus* p = NewStatus(clen);
-  if (p == nullptr)
-    return nullptr;
-  p->code = code;
-  memcpy(p->msg, msg, clen);
-  p->msg[clen] = '\0';
-  return p;
+  return CreateStatusWithMessageLength(code, msg, clen);
 }
 
 namespace onnxruntime {
+
+OrtStatus* CreateUnknownExceptionStatus(const char* function_name) noexcept {
+  // The last-resort handler must not allocate a diagnostic string before allocating the status.
+  char message[256];
+  const int length = std::snprintf(message, sizeof(message), "Unknown exception in %s", function_name);
+  if (length < 0) {
+    return OrtApis::CreateStatus(ORT_FAIL, "Unknown Exception");
+  }
+  const size_t message_length = std::min(static_cast<size_t>(length), sizeof(message) - 1);
+  return CreateStatusWithMessageLength(ORT_FAIL, message, message_length);
+}
 
 namespace {
 

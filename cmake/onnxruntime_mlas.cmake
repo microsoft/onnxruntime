@@ -5,6 +5,10 @@ set(MLAS_ROOT ${ONNXRUNTIME_ROOT}/core/mlas)
 set(MLAS_SRC_DIR ${MLAS_ROOT}/lib)
 set(MLAS_INC_DIR ${MLAS_ROOT}/inc)
 
+include(CMakeDependentOption)
+cmake_dependent_option(onnxruntime_ENABLE_MLAS_QMOE_OFFLOAD "Build QMoE CPU offload kernels in MLAS" ON
+  "NOT onnxruntime_DISABLE_CONTRIB_OPS;NOT onnxruntime_MINIMAL_BUILD;NOT onnxruntime_EXTENDED_MINIMAL_BUILD;NOT onnxruntime_ORT_MINIMAL_BUILD" OFF)
+
 
 # mlas_private_compile_definitions contains compile definitions that are private to onnxruntime_mlas and targets which
 # use internal MLAS headers like mlasi.h.
@@ -92,6 +96,94 @@ if (NOT onnxruntime_ORT_MINIMAL_BUILD)
     ${MLAS_SRC_DIR}/q4_dq.cpp
     ${MLAS_SRC_DIR}/q4gemm.cpp
   )
+endif()
+
+if (onnxruntime_ENABLE_MLAS_QMOE_OFFLOAD AND NOT onnxruntime_DISABLE_CONTRIB_OPS AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD AND NOT onnxruntime_ORT_MINIMAL_BUILD)
+  include(CheckCXXSourceCompiles)
+  set(MLAS_QMOE_AVX512_FLAGS "")
+  set(MLAS_QMOE_AVX2_FLAGS "")
+  set(MLAS_COMPILER_SUPPORTS_QMOE_AVX2 FALSE)
+  if (MSVC AND CMAKE_SIZEOF_VOID_P EQUAL 8 AND
+      NOT (onnxruntime_target_platform STREQUAL "ARM64") AND
+      NOT (onnxruntime_target_platform STREQUAL "ARM64EC"))
+    set(MLAS_COMPILER_SUPPORTS_QMOE_AVX2 TRUE)
+    set(MLAS_QMOE_AVX2_FLAGS "/arch:AVX2")
+    set(_OLD_CMAKE_REQUIRED_FLAGS "${CMAKE_REQUIRED_FLAGS}")
+    set(CMAKE_REQUIRED_FLAGS "${_OLD_CMAKE_REQUIRED_FLAGS} /arch:AVX512")
+    check_cxx_source_compiles("
+      #include <immintrin.h>
+      int main() {
+        __m128i x = _mm_setzero_si128();
+        __m512i y = _mm512_cvtepu8_epi32(x);
+        __m512 z = _mm512_permutexvar_ps(y, _mm512_setzero_ps());
+        float f = _mm_cvtss_f32(_mm_cvtph_ps(x));
+        return static_cast<int>(_mm512_reduce_add_ps(z) + f);
+      }"
+      MLAS_COMPILER_SUPPORTS_QMOE_AVX512
+    )
+    set(CMAKE_REQUIRED_FLAGS "${_OLD_CMAKE_REQUIRED_FLAGS}")
+    unset(_OLD_CMAKE_REQUIRED_FLAGS)
+    if (MLAS_COMPILER_SUPPORTS_QMOE_AVX512)
+      set(MLAS_QMOE_AVX512_FLAGS "/arch:AVX512")
+    endif()
+  # The common MLAS target is built for every Apple slice. Use the scalar QMoE
+  # implementation for arm64 and universal targets, including on Intel hosts.
+  elseif (NOT MSVC AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64|AMD64)$" AND
+          (NOT APPLE OR NOT CMAKE_OSX_ARCHITECTURES OR CMAKE_OSX_ARCHITECTURES STREQUAL "x86_64"))
+    set(MLAS_COMPILER_SUPPORTS_QMOE_AVX2 TRUE)
+    set(MLAS_QMOE_AVX2_FLAGS "-mavx2 -mfma -mf16c")
+    set(_OLD_CMAKE_REQUIRED_FLAGS "${CMAKE_REQUIRED_FLAGS}")
+    set(CMAKE_REQUIRED_FLAGS "${_OLD_CMAKE_REQUIRED_FLAGS} -mavx512f -mavx512bw -mavx512dq -mavx512vl -mfma -mf16c")
+    check_cxx_source_compiles("
+      #include <immintrin.h>
+      int main() {
+        __m128i x = _mm_setzero_si128();
+        __m512i y = _mm512_cvtepu8_epi32(x);
+        __m512 z = _mm512_permutexvar_ps(y, _mm512_setzero_ps());
+        float f = _mm_cvtss_f32(_mm_cvtph_ps(x));
+        return static_cast<int>(_mm512_reduce_add_ps(z) + f);
+      }"
+      MLAS_COMPILER_SUPPORTS_QMOE_AVX512
+    )
+    set(CMAKE_REQUIRED_FLAGS "${_OLD_CMAKE_REQUIRED_FLAGS}")
+    unset(_OLD_CMAKE_REQUIRED_FLAGS)
+    if (MLAS_COMPILER_SUPPORTS_QMOE_AVX512)
+      set(MLAS_QMOE_AVX512_FLAGS "-mavx512f -mavx512bw -mavx512dq -mavx512vl -mfma -mf16c")
+    endif()
+  endif()
+
+  set(_MLAS_QMOE_LAYOUT_SRC "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/moe/qmoe_shared_layout.cc")
+  set(_MLAS_QMOE_AVX512_SRCS
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/moe/qmoe_shared_layout_int4_avx512.cc"
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/moe/qmoe_shared_layout_int3_avx512.cc"
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/moe/qmoe_shared_layout_fp4_avx512.cc"
+  )
+  set(_MLAS_QMOE_AVX2_SRCS
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/moe/qmoe_shared_layout_int4_avx2.cc"
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/moe/qmoe_shared_layout_int3_avx2.cc"
+  )
+  target_sources(onnxruntime_mlas PRIVATE ${_MLAS_QMOE_LAYOUT_SRC})
+  set(_MLAS_QMOE_AVX512_DEF 0)
+  set(_MLAS_QMOE_AVX2_DEF 0)
+  if (MLAS_COMPILER_SUPPORTS_QMOE_AVX2)
+    set(_MLAS_QMOE_AVX2_DEF 1)
+    target_sources(onnxruntime_mlas PRIVATE ${_MLAS_QMOE_AVX2_SRCS})
+    set_source_files_properties(${_MLAS_QMOE_AVX2_SRCS} PROPERTIES
+      COMPILE_FLAGS "${MLAS_QMOE_AVX2_FLAGS}"
+      COMPILE_DEFINITIONS "QMOE_SHARED_USE_MLAS=1;QMOE_SHARED_SEPARATE_AVX2_TU=1;QMOE_COMPILER_SUPPORTS_AVX2=1")
+  endif()
+  if (MLAS_COMPILER_SUPPORTS_QMOE_AVX512 AND MLAS_QMOE_AVX512_FLAGS)
+    set(_MLAS_QMOE_AVX512_DEF 1)
+    message(STATUS "MLAS QMoE offload: compiler supports AVX-512 (${MLAS_QMOE_AVX512_FLAGS})")
+    target_sources(onnxruntime_mlas PRIVATE ${_MLAS_QMOE_AVX512_SRCS})
+    set_source_files_properties(${_MLAS_QMOE_AVX512_SRCS} PROPERTIES
+      COMPILE_FLAGS "${MLAS_QMOE_AVX512_FLAGS}"
+      COMPILE_DEFINITIONS "QMOE_SHARED_USE_MLAS=1;QMOE_SHARED_SEPARATE_AVX512_TU=1;QMOE_COMPILER_SUPPORTS_AVX512=1")
+  else()
+    message(STATUS "MLAS QMoE offload: compiler does not support AVX-512; compiling scalar/AVX2 QMoE CPU kernels only")
+  endif()
+  set_source_files_properties(${_MLAS_QMOE_LAYOUT_SRC} PROPERTIES
+    COMPILE_DEFINITIONS "QMOE_SHARED_USE_MLAS=1;QMOE_SHARED_SEPARATE_AVX512_TU=1;QMOE_SHARED_SEPARATE_AVX2_TU=1;QMOE_COMPILER_SUPPORTS_AVX512=${_MLAS_QMOE_AVX512_DEF};QMOE_COMPILER_SUPPORTS_AVX2=${_MLAS_QMOE_AVX2_DEF}")
 endif()
 
 set(ONNXRUNTIME_MLAS_LIBS onnxruntime_mlas)

@@ -80,6 +80,8 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
  public:
   using Config = onnxruntime::llm::cutlass_extensions::CutlassGemmConfig;
 
+  std::optional<Config> getDeterministicConfig(int m) const;
+
   // Parses a comma-separated list of M buckets (e.g. "1,8,64,512") into a sorted, de-duplicated,
   // positive list (empty when the string is empty/blank). Used for the ep.cuda.fpa_intb_profile_m
   // session-config key and the ORT_FPA_INTB_PROFILE_M env var, both resolved by the kernel.
@@ -116,6 +118,13 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
 
   void setL2CacheBytes(size_t l2CacheBytes) {
     mL2CacheBytes = l2CacheBytes;
+  }
+
+  // Device that runs the profiled launches. The GEMV dispatcher keys its M = 8 tile windows on it, so the
+  // profiler times the same tile that MatMulNBits launches.
+  void setDeviceInfo(int sm, int smCount) {
+    mDeviceSm = sm;
+    mDeviceSmCount = smCount;
   }
 
   // Attaches the process-global persistent tactic cache. A nullptr keeps the
@@ -194,6 +203,8 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
   int mArch = 0;
   int mDecodeInterleave = 0;
   size_t mL2CacheBytes = 0;
+  int mDeviceSm = 0;
+  int mDeviceSmCount = 0;
   std::atomic<size_t> mProfileWeightIndex{0};
   int mPairedGemvMode = 0;
   std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> mCache;

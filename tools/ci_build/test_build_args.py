@@ -4,6 +4,7 @@
 
 import importlib
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -95,6 +96,7 @@ class BuildArgsTest(unittest.TestCase):
         cases = (
             (("--build_wasm",), "linux", "x86_64"),
             (("--minimal_build", "--disable_exceptions"), "linux", "x86_64"),
+            (("--disable_exceptions",), "linux", "x86_64"),
             (("--rv64",), "linux", "riscv64"),
             (("--visionos",), "macos", "arm64"),
             (("--tvos",), "macos", "arm64"),
@@ -105,6 +107,11 @@ class BuildArgsTest(unittest.TestCase):
             with self.subTest(arguments=arguments, platform_name=platform_name, machine=machine):
                 args = self._parse(*arguments, platform_name=platform_name, machine=machine)
                 self.assertFalse(args.use_telemetry)
+
+    def test_wasm_disable_exceptions_requires_minimal_build(self):
+        with mock.patch("sys.stderr"), self.assertRaises(SystemExit):
+            self._parse("--build_wasm", "--disable_exceptions", platform_name="linux")
+        self._parse("--build_wasm", "--disable_exceptions", "--minimal_build", platform_name="linux")
 
     def test_android_enables_telemetry_by_default(self):
         args = self._parse("--android", platform_name="linux")
@@ -119,6 +126,29 @@ class BuildArgsTest(unittest.TestCase):
             self._parse(platform_name="linux")
 
         warn.assert_not_called()
+
+
+class StalePythonCacheArgsTest(unittest.TestCase):
+    def _args_for_cached_python(self, cached_executable: str | None):
+        with tempfile.TemporaryDirectory() as build_dir:
+            if cached_executable is not None:
+                (Path(build_dir) / "CMakeCache.txt").write_text(
+                    "Python_EXECUTABLE:UNINITIALIZED=x\n"
+                    f"_Python_EXECUTABLE:INTERNAL={cached_executable}\n"
+                    "_Python_INCLUDE_DIR:INTERNAL=/old/include\n",
+                    encoding="utf-8",
+                )
+            return build.stale_python_cache_args(build_dir)
+
+    def test_new_build_tree_keeps_the_cache(self):
+        self.assertEqual(self._args_for_cached_python(None), [])
+
+    def test_same_interpreter_keeps_the_cache(self):
+        self.assertEqual(self._args_for_cached_python(sys.executable), [])
+
+    def test_other_interpreter_drops_the_find_python_cache(self):
+        other = str(Path(tempfile.gettempdir()) / "other-python" / "python3")
+        self.assertEqual(self._args_for_cached_python(other), ["-U", "_Python_*"])
 
 
 class OnnxBackendTestEnvironmentTest(unittest.TestCase):

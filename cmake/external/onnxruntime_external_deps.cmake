@@ -25,6 +25,14 @@ foreach(ONNXRUNTIME_DEP IN LISTS ONNXRUNTIME_DEPS_LIST)
       # Search a local mirror folder
       string(REGEX REPLACE "^https://" "${onnxruntime_CMAKE_DEPS_MIRROR_DIR}/" LOCAL_URL "${ONNXRUNTIME_DEP_URL}")
 
+      # CMake 3.31 rejects extensionless local archives before its content-aware extractor runs.
+      # TODO Remove this .zip suffix handling and its addition in
+      # tools/ci_build/github/windows/stage_dawn_agility_sdk.py once the minimum supported CMake accepts extensionless
+      # local archives, as CMake 4.4.2 does.
+      if(NOT EXISTS "${LOCAL_URL}" AND EXISTS "${LOCAL_URL}.zip")
+        string(APPEND LOCAL_URL ".zip")
+      endif()
+
       if(EXISTS "${LOCAL_URL}")
         cmake_path(ABSOLUTE_PATH LOCAL_URL)
         set(DEP_URL_${ONNXRUNTIME_DEP_NAME} "${LOCAL_URL}")
@@ -754,13 +762,6 @@ if (onnxruntime_USE_WEBGPU)
     if (NOT onnxruntime_ENABLE_DAWN_BACKEND_D3D12)
       message(FATAL_ERROR "DAWN_USE_AGILITY_SDK requires the Dawn D3D12 backend.")
     endif()
-    if (onnxruntime_USE_EP_API_ADAPTERS)
-      # Plugin EP packages cannot guarantee that the Agility SDK runtime DLLs are deployed
-      # next to the host executable.
-      message(FATAL_ERROR
-              "DAWN_USE_AGILITY_SDK is not supported with onnxruntime_USE_EP_API_ADAPTERS=ON (plugin EP build). "
-              "It is intended for local development builds only.")
-    endif()
   endif()
 
   # TODO: the following code is used to disable building Dawn using vcpkg temporarily
@@ -1160,6 +1161,8 @@ if(onnxruntime_USE_1DS_TELEMETRY)
     cpp_client_telemetry
     URL ${DEP_URL_cpp_client_telemetry}
     URL_HASH SHA1=${DEP_SHA1_cpp_client_telemetry}
+    PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 <
+      ${PROJECT_SOURCE_DIR}/patches/cpp_client_telemetry/factory-static-storage.patch
     EXCLUDE_FROM_ALL
   )
   block(PROPAGATE cpp_client_telemetry_SOURCE_DIR cpp_client_telemetry_BINARY_DIR)

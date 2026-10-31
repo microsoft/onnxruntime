@@ -2,11 +2,13 @@
 // Licensed under the MIT License.
 
 #include <cstdint>
+#include <initializer_list>
 #include <memory>
 #include <utility>
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 
@@ -75,6 +77,55 @@ TEST(CastOpTest, Uint8ToFloat_WebGpu) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
+namespace {
+// Disables CPU fallback so a cast the WebGPU EP doesn't claim fails instead of silently running on CPU.
+SessionOptions WebGpuOnlySessionOptions() {
+  SessionOptions options;
+  ORT_THROW_IF_ERROR(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  return options;
+}
+
+// Takes initializer lists because std::vector<bool> cannot provide contiguous data.
+template <typename From, typename To>
+void RunCastOnWebGpu(std::initializer_list<From> input, std::initializer_list<To> expected) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (webgpu_ep == nullptr) {
+    GTEST_SKIP() << "WebGPU EP is not available in this build.";
+  }
+  // 7 elements, so the final packed int8 word is partial.
+  const std::vector<int64_t> dims{static_cast<int64_t>(input.size())};
+  OpTester test("Cast", 13);
+  test.AddAttribute<int64_t>("to", utils::ToTensorProtoElementType<To>());
+  test.AddInput<From>("input", dims, input);
+  test.AddOutput<To>("output", dims, expected);
+  test.Config(WebGpuOnlySessionOptions()).ConfigEp(std::move(webgpu_ep)).RunWithConfig();
+}
+}  // namespace
+
+// int8 is stored packed (4 per u32). Reading sign-extends via unpack4xI8; writing keeps each lane's
+// low byte via the Int8x4 SetByOffset.
+TEST(CastOpTest, Int8ToOtherTypes_WebGpu) {
+  RunCastOnWebGpu<int8_t, float>({-128, -100, -1, 0, 1, 99, 127}, {-128.0f, -100.0f, -1.0f, 0.0f, 1.0f, 99.0f, 127.0f});
+  RunCastOnWebGpu<int8_t, MLFloat16>({-128, -100, -1, 0, 1, 99, 127}, {MLFloat16(-128.0f), MLFloat16(-100.0f), MLFloat16(-1.0f),
+                                                                       MLFloat16(0.0f), MLFloat16(1.0f), MLFloat16(99.0f),
+                                                                       MLFloat16(127.0f)});
+  RunCastOnWebGpu<int8_t, int32_t>({-128, -100, -1, 0, 1, 99, 127}, {-128, -100, -1, 0, 1, 99, 127});
+  RunCastOnWebGpu<int8_t, int64_t>({-128, -100, -1, 0, 1, 99, 127}, {-128, -100, -1, 0, 1, 99, 127});
+  RunCastOnWebGpu<int8_t, uint8_t>({-128, -100, -1, 0, 1, 99, 127}, {128, 156, 255, 0, 1, 99, 127});
+  RunCastOnWebGpu<int8_t, bool>({-128, -100, -1, 0, 1, 99, 127}, {true, true, true, false, true, true, true});
+  RunCastOnWebGpu<int8_t, int8_t>({-128, -100, -1, 0, 1, 99, 127}, {-128, -100, -1, 0, 1, 99, 127});
+}
+
+TEST(CastOpTest, OtherTypesToInt8_WebGpu) {
+  RunCastOnWebGpu<float, int8_t>({-128.0f, -100.75f, -1.0f, 0.0f, 1.5f, 99.0f, 127.0f}, {-128, -100, -1, 0, 1, 99, 127});
+  RunCastOnWebGpu<MLFloat16, int8_t>({MLFloat16(-128.0f), MLFloat16(-100.5f), MLFloat16(-1.0f), MLFloat16(0.0f),
+                                      MLFloat16(1.5f), MLFloat16(99.0f), MLFloat16(127.0f)},
+                                     {-128, -100, -1, 0, 1, 99, 127});
+  RunCastOnWebGpu<int32_t, int8_t>({-128, -100, -1, 0, 1, 99, 127}, {-128, -100, -1, 0, 1, 99, 127});
+  RunCastOnWebGpu<uint8_t, int8_t>({128, 156, 255, 0, 1, 99, 127}, {-128, -100, -1, 0, 1, 99, 127});
+  RunCastOnWebGpu<bool, int8_t>({true, false, true, false, true, true, false}, {1, 0, 1, 0, 1, 1, 0});
+}
+
 // uint8 -> bool Cast on the WebGPU EP. Exercises the distinct Boolx4 output-packing path (vs. the
 // direct write used for int32/float above) and the standard cast-to-bool semantics (any nonzero
 // byte -> true) -- the natural inverse of the bool->uint8 case.
@@ -93,6 +144,38 @@ TEST(CastOpTest, Uint8ToBool_WebGpu) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(std::move(webgpu_ep));
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+namespace {
+// Outputs larger than maxStorageBufferBindingSize are bound as several buffer segments and written
+// through a generated setter, which must pack byte lanes like the unsegmented path. A 1 KiB test
+// limit splits the 3001-byte input and output into 3 segments each.
+template <typename From, typename To>
+void RunSegmentedByteCastOnWebGpu() {
+  WebGpuExecutionProviderTestOptions test_options{};
+  test_options.max_storage_buffer_binding_size = 1024;
+  auto webgpu_ep = WebGpuExecutionProviderWithTestOptions(test_options);
+  if (webgpu_ep == nullptr) {
+    GTEST_SKIP() << "Artificially small storage binding limits require the native test factory.";
+  }
+  constexpr int64_t kSize = 3001;
+  std::vector<From> input(kSize);
+  std::vector<To> expected(kSize);
+  for (size_t i = 0; i < input.size(); ++i) {
+    input[i] = static_cast<From>(static_cast<uint8_t>(i * 7));
+    expected[i] = static_cast<To>(input[i]);
+  }
+  OpTester test("Cast", 13);
+  test.AddAttribute<int64_t>("to", utils::ToTensorProtoElementType<To>());
+  test.AddInput<From>("input", {kSize}, input);
+  test.AddOutput<To>("output", {kSize}, expected);
+  test.Config(WebGpuOnlySessionOptions()).ConfigEp(std::move(webgpu_ep)).RunWithConfig();
+}
+}  // namespace
+
+TEST(CastOpTest, ByteOutputsAcrossBufferSegments_WebGpu) {
+  RunSegmentedByteCastOnWebGpu<uint8_t, int8_t>();
+  RunSegmentedByteCastOnWebGpu<int8_t, uint8_t>();
 }
 
 }  // namespace test

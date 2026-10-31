@@ -71,7 +71,16 @@ enum OutputIndex : int {
   kPresentStateLengths = 5,  // [batch_size, 2], int32
   kStateUpdate = 6,          // qsa only, optional: [batch_size, state_update_capacity, head_size]
   kIndexShareStatus = 7,
-  kOutputCount = 8,
+  kStateStatus = 8,  // optional: [batch_size], int32, see StateStatusCode
+  kOutputCount = 9,
+};
+
+// Values of the optional state_status output. They follow the status convention of
+// PackedSparseAttentionIndexerMerge (1: invalid device metadata, 2: capacity overflow).
+enum StateStatusCode : int {
+  kStateStatusOk = 0,
+  kStateStatusInvalidMetadata = 1,
+  kStateStatusCapacityOverflow = 2,
 };
 
 // Every PackedSparseAttentionIndexer node declares all 6 fixed outputs; present_gate_buffer is an
