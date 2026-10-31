@@ -1779,14 +1779,15 @@ inputs, or outputs**.
 
 | Encoding | `quant_type` | `expert_weight_bits` | `block_size` | `weights_prepacked` | `swiglu_fusion` | Required Expert Input Slots |
 | :--- | :---: | :---: | :---: | :---: | :---: | :--- |
-| **NVFP4 (W4A16)** | `"nvfp4"` | `4` | `16` | `1` (offline K-packed row-major) | `1` (interleaved) | • **Slot 2 (`fc1_experts_weights`)**: `uint8`, physical `[E, 2*I, H/2]` (logical `[E, H, I]`)<br>• **Slot 3 (`fc1_scales`)**: `float8e4m3fn`, `[E, 2*I, H/16]`<br>• **Slot 5 (`fc2_experts_weights`)**: `uint8`, physical `[E, H, I/2]` (logical `[E, I, H/2]`)<br>• **Slot 6 (`fc2_scales`)**: `float8e4m3fn`, `[E, H, I/16]`<br>• **Slot 15 (`fc1_global_scale`)**: `float32`, `[E]`<br>• **Slot 16 (`fc2_global_scale`)**: `float32`, `[E]`<br>• *(Optional)* **Slots 4, 7**: `fc1_experts_bias` `[E, 2*I]`, `fc2_experts_bias` `[E, H]` (`fp16`/`bf16`) |
-| **Prepacked INT4 (W4A16)** | `"int"` | `4` | `32` | `1` (SM80 `fpA_intB` layout) | `1` (interleaved) | • **Slot 2 (`fc1_experts_weights`)**: `uint8`, `[E, H, I]` or `[E, 2*I, H/2]`<br>• **Slot 3 (`fc1_scales`)**: `fp16`/`bf16`, `[E, 2*I, H/32]`<br>• **Slot 5 (`fc2_experts_weights`)**: `uint8`, `[E, I, H/2]` or `[E, H, I/2]`<br>• **Slot 6 (`fc2_scales`)**: `fp16`/`bf16`, `[E, H, I/32]`<br>• *(Optional)* **Slots 4, 7**: `fc1_experts_bias` `[E, 2*I]`, `fc2_experts_bias` `[E, H]` (`fp16`/`bf16`) |
-| **Raw INT3 (W3A16)** | `"int"` | `3` | `32`, `64`, or `128` | `0` (raw packed 3-bit codes) | `1` (interleaved) | • **Slot 2 (`fc1_experts_weights`)**: `uint8`, `[E, 2*I, (H*3)/8]`<br>• **Slot 3 (`fc1_scales`)**: `fp16`/`bf16`, `[E, 2*I, H/block_size]`<br>• **Slot 5 (`fc2_experts_weights`)**: `uint8`, `[E, H, (I*3)/8]`<br>• **Slot 6 (`fc2_scales`)**: `fp16`/`bf16`, `[E, H, I/block_size]`<br>• *(Optional)* **Slots 4, 7**: `fc1_experts_bias` `[E, 2*I]`, `fc2_experts_bias` `[E, H]` (`fp16`/`bf16`) |
+| **NVFP4 (W4A16)** | `"nvfp4"` | `4` | `16` | `1` (offline K-packed row-major) | `0` or `1` (interleaved) | • **Slot 2 (`fc1_experts_weights`)**: `uint8`, physical `[E, 2*I, H/2]` (logical `[E, H, I]`)<br>• **Slot 3 (`fc1_scales`)**: `float8e4m3fn`, `[E, 2*I, H/16]`<br>• **Slot 5 (`fc2_experts_weights`)**: `uint8`, physical `[E, H, I/2]` (logical `[E, I, H/2]`)<br>• **Slot 6 (`fc2_scales`)**: `float8e4m3fn`, `[E, H, I/16]`<br>• **Slot 15 (`fc1_global_scale`)**: `float32`, `[E]`<br>• **Slot 16 (`fc2_global_scale`)**: `float32`, `[E]`<br>• *(Optional)* **Slots 4, 7**: `fc1_experts_bias` `[E, 2*I]`, `fc2_experts_bias` `[E, H]` (`fp16`/`bf16`) |
 
-> **Eligibility note**: When `session.moe.offload.mode="auto"`, any `MoE`/`QMoE` node outside the
-> table above keeps its initializers on GPU and executes through the standard CUDA `MoE`/`QMoE` path.
-> When `session.moe.offload.mode="required"`, unsupported nodes or shared non-offload initializer
-> consumers fail fast during session initialization with `ORT_INVALID_ARGUMENT`.
+> **Eligibility note**: Only `com.microsoft::QMoE` nodes with `quant_type="nvfp4"`, `expert_weight_bits=4`,
+> `block_size=16` (or omitted/`-1`), `weights_prepacked=1`, and interleaved SwiGLU (`swiglu_fusion` in `{0, 1}`)
+> are registered for `session.moe.offload.*` admission. When `session.moe.offload.mode="auto"`, any other
+> `MoE`/`QMoE` node (such as `quant_type="int"` INT4/INT3, `quant_type="fp4"` MXFP4, or `quant_type="fp8"`)
+> keeps its initializers on GPU and executes through the standard CUDA `MoE`/`QMoE` path. When
+> `session.moe.offload.mode="required"`, unsupported nodes or shared non-offload initializer consumers fail
+> fast during session initialization with `ORT_INVALID_ARGUMENT`.
 
 ---
 

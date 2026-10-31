@@ -436,16 +436,16 @@ class QMoESessionController {
       hooks = graph_replay_hooks_;
     }
     common::Status first_err = common::Status::OK();
+    if (stream != nullptr) {
+      cudaError_t err = cudaStreamSynchronize(stream);
+      if (err != cudaSuccess) {
+        first_err = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QMoEOffload graph replay stream sync failed: ", cudaGetErrorString(err));
+      }
+    }
     for (auto& h : hooks) {
       if (h.after_replay) {
         common::Status st = h.after_replay(stream, sync_stream);
         if (!st.IsOK() && first_err.IsOK()) first_err = st;
-      }
-    }
-    if (sync_stream && stream != nullptr) {
-      cudaError_t err = cudaStreamSynchronize(stream);
-      if (err != cudaSuccess && first_err.IsOK()) {
-        first_err = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QMoEOffload graph replay stream sync failed: ", cudaGetErrorString(err));
       }
     }
     return first_err;
@@ -538,18 +538,28 @@ class QMoESessionController {
           first_error = drain_st;
         }
       }
-      std::lock_guard<std::mutex> inv_lock(inv->mutex);
-      if (inv->failed && first_error.IsOK()) {
-        first_error = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                      "QMoEOffload invocation failed on node '", inv->node_name,
-                                      "' (layer ", inv->layer_index, "): ", inv->error_message);
-      }
     }
     if (sync_last_main) {
       cudaError_t err = cudaStreamSynchronize(last_main_stream);
       if (err != cudaSuccess && first_error.IsOK()) {
         first_error = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                                       "QMoEOffload compute stream sync failed: ", cudaGetErrorString(err));
+      }
+    }
+    for (auto& inv : invocations) {
+      if (!inv) continue;
+      if (inv->has_main_stream && inv->main_stream != last_main_stream) {
+        cudaError_t err = cudaStreamSynchronize(inv->main_stream);
+        if (err != cudaSuccess && first_error.IsOK()) {
+          first_error = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                        "QMoEOffload compute stream sync failed: ", cudaGetErrorString(err));
+        }
+      }
+      std::lock_guard<std::mutex> inv_lock(inv->mutex);
+      if (inv->failed && first_error.IsOK()) {
+        first_error = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                      "QMoEOffload invocation failed on node '", inv->node_name,
+                                      "' (layer ", inv->layer_index, "): ", inv->error_message);
       }
     }
 

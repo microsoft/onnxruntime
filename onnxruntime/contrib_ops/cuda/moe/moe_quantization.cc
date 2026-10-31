@@ -478,6 +478,11 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
 #endif
   is_fp16_ = is_fp16;
   if (has_int3_) {
+    ORT_THROW_IF_ERROR(onnxruntime::moe_offload::MoeOffloadSessionPolicy::ParseFromConfigOptions(
+        op_kernel_info.GetConfigOptions(), GetSessionModelPath(), offload_policy_));
+    ORT_ENFORCE(offload_policy_.mode != onnxruntime::moe_offload::OffloadMode::kRequired,
+                "QMoE offload mode='required' rejected node '", op_kernel_info.node().Name(),
+                "': INT3 is not supported by the QMoE offload backend (requires quant_type='nvfp4' and weights_prepacked=1).");
     ORT_ENFORCE(quant_type_ == "int" && weights_prepacked_mode == 0,
                 "INT3 CUDA QMoE requires quant_type='int' and weights_prepacked=0.");
     ORT_ENFORCE((fc1_expert_weight_bits_ >= 2 && fc1_expert_weight_bits_ <= 4) &&
@@ -1093,18 +1098,6 @@ Status QMoE::InitializeAdmittedPlan(const onnxruntime::moe_offload::MoeOffloadSe
     copy_input_to_gpu(15, packed_fc1_global_scale_);
     copy_input_to_gpu(16, packed_fc2_global_scale_);
     return Status::OK();
-  }
-
-  if (nvfp4_weights_row_major_) {
-    auto copy_scale_to_gpu = [&](int slot, IAllocatorUniquePtr<void>& dst) {
-      const Tensor* t = nullptr;
-      if (Info().TryGetConstantInput(slot, &t) && t != nullptr && t->SizeInBytes() > 0) {
-        bool dummy_packed = false;
-        PrePackCopyToGpu(*t, stream, alloc, dst, dummy_packed);
-      }
-    };
-    copy_scale_to_gpu(15, packed_fc1_global_scale_);
-    copy_scale_to_gpu(16, packed_fc2_global_scale_);
   }
 
   offload_backend_ = std::make_unique<QMoEOffload>(Info(), policy, offload_source_desc_, plan);
@@ -1757,8 +1750,10 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   static const int max_compact_experts_env =
       onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_MAX_COMPACT_EXPERTS", 0);
 #endif
+  const bool is_planned_offload =
+      (offload_backend_ != nullptr) || offload_node_registered_;
   const int default_compact_experts =
-      (offload_backend_ != nullptr && max_compact_experts_env <= 0)
+      (is_planned_offload && max_compact_experts_env <= 0)
           ? static_cast<int>(offload_policy_.prefill_wave_experts)
           : max_compact_experts_env;
   const int dynamic_compact_experts =
@@ -1766,7 +1761,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   static const bool dequant_transient_env =
       onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_DEQUANT_TRANSIENT", 0) != 0;
   const int full_active_experts =
-      (use_nvfp4_compaction && (dynamic_compact_experts > 0 || offload_backend_ != nullptr))
+      (use_nvfp4_compaction && (dynamic_compact_experts > 0 || is_planned_offload))
           ? narrow<int>(moe_params.num_experts)
           : (use_expert_compaction ? qmoe::MaxActiveExperts(row_tile_plan, narrow<int>(moe_params.num_experts), narrow<int>(k_))
                                    : narrow<int>(moe_params.num_experts));
@@ -1774,16 +1769,22 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       (offload_backend_ != nullptr && dynamic_compact_experts >= full_active_experts && full_active_experts > 1)
           ? std::max(1, full_active_experts / 2)
           : dynamic_compact_experts;
-  if (offload_backend_ != nullptr && use_nvfp4_compaction &&
-      offload_policy_.device_working_bytes_explicit && offload_policy_.device_working_bytes > 0) {
+  if (is_planned_offload && use_nvfp4_compaction && offload_policy_.device_working_bytes > 0) {
     const size_t elem_bytes = is_fp16_ ? sizeof(half) : sizeof(__nv_bfloat16);
     const size_t per_expert_dequant_bytes =
         static_cast<size_t>(3) * static_cast<size_t>(moe_params.hidden_size) *
         static_cast<size_t>(moe_params.inter_size) * elem_bytes;
     if (per_expert_dequant_bytes > 0) {
-      const int max_wave_by_working_budget = static_cast<int>(std::clamp<size_t>(
-          (offload_policy_.device_working_bytes * 3 / 4) / per_expert_dequant_bytes,
-          size_t{1}, static_cast<size_t>(full_active_experts)));
+      const size_t max_dequant_budget = (offload_policy_.device_working_bytes * 3) / 4;
+      ORT_RETURN_IF(offload_policy_.device_working_bytes < per_expert_dequant_bytes ||
+                        (offload_policy_.device_working_bytes_explicit && max_dequant_budget < per_expert_dequant_bytes),
+                    "QMoE prefill requires at least ", per_expert_dequant_bytes,
+                    " bytes of dequantized weight workspace per expert wave, exceeding configured "
+                    "session.moe.offload.device_working_bytes (",
+                    offload_policy_.device_working_bytes, " bytes).");
+      const size_t raw_max_wave = max_dequant_budget / per_expert_dequant_bytes;
+      const int max_wave_by_working_budget = static_cast<int>(
+          std::min<size_t>(std::max<size_t>(size_t{1}, raw_max_wave), static_cast<size_t>(full_active_experts)));
       if (eff_compact_experts <= 0 || eff_compact_experts > max_wave_by_working_budget) {
         eff_compact_experts = max_wave_by_working_budget;
       }
@@ -1968,6 +1969,12 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   const qmoe::ScratchLayout scratch_layout =
       qmoe::MakeScratchLayout(workspace_size, row_tile_plan, k_);
   const size_t total_scratch_bytes = scratch_layout.total_bytes;
+  if (is_planned_offload && offload_policy_.device_working_bytes > 0) {
+    ORT_RETURN_IF(total_scratch_bytes > offload_policy_.device_working_bytes,
+                  "QMoE prefill runner scratch (", total_scratch_bytes,
+                  " bytes) exceeds configured session.moe.offload.device_working_bytes (",
+                  offload_policy_.device_working_bytes, " bytes).");
+  }
 
   auto work_space = (dequant_transient_env && !use_fp4_gemv && !use_packed_int)
                         ? GetTransientScratchBuffer<void>(total_scratch_bytes)
@@ -3194,6 +3201,15 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     size_t fc1_bytes = SafeInt<size_t>(num_experts) * fc1_n * fc1_k * element_size;
     size_t fc2_bytes = SafeInt<size_t>(num_experts) * fc2_n * fc2_k * element_size;
     dequant_weight_bytes = SafeInt<size_t>(fc1_bytes) + fc2_bytes;
+    if (is_planned_offload && offload_policy_.device_working_bytes > 0) {
+      const size_t total_working_req = static_cast<size_t>(SafeInt<size_t>(total_scratch_bytes) + dequant_weight_bytes);
+      ORT_RETURN_IF(dequant_weight_bytes > offload_policy_.device_working_bytes ||
+                        total_working_req > offload_policy_.device_working_bytes,
+                    "QMoE prefill dequantized weight and runner workspace (",
+                    total_working_req,
+                    " bytes) exceeds configured session.moe.offload.device_working_bytes (",
+                    offload_policy_.device_working_bytes, " bytes).");
+    }
 
     ORT_RETURN_IF_NOT(fc1_experts_weights != nullptr && fc2_experts_weights != nullptr,
                       "QMoE FP4/NVFP4 dequant fallback requires valid raw expert-weight tensors.");
@@ -3311,6 +3327,26 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       dequant_fc2_weights = dequant_transient_env
                                 ? GetTransientScratchBuffer<void>(fc2_bytes)
                                 : GetScratchBuffer<void>(fc2_bytes, GetComputeStream(context));
+      IAllocatorUniquePtr<float> transient_fc1_global_scale;
+      IAllocatorUniquePtr<float> transient_fc2_global_scale;
+      if (!packed_fc1_global_scale_ && fc1_global_scale &&
+          fc1_global_scale->Location().device.Type() == OrtDevice::CPU) {
+        transient_fc1_global_scale = GetScratchBuffer<float>(
+            static_cast<size_t>(moe_params.num_experts), GetComputeStream(context));
+        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
+            transient_fc1_global_scale.get(), fc1_global_scale->Data<float>(),
+            static_cast<size_t>(moe_params.num_experts) * sizeof(float), cudaMemcpyHostToDevice, stream));
+        p_fc1_global_scale = transient_fc1_global_scale.get();
+      }
+      if (!packed_fc2_global_scale_ && fc2_global_scale &&
+          fc2_global_scale->Location().device.Type() == OrtDevice::CPU) {
+        transient_fc2_global_scale = GetScratchBuffer<float>(
+            static_cast<size_t>(moe_params.num_experts), GetComputeStream(context));
+        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
+            transient_fc2_global_scale.get(), fc2_global_scale->Data<float>(),
+            static_cast<size_t>(moe_params.num_experts) * sizeof(float), cudaMemcpyHostToDevice, stream));
+        p_fc2_global_scale = transient_fc2_global_scale.get();
+      }
       dequantize_fp4 = [&, fc1_n, fc1_k, fc2_n, fc2_k, num_experts,
                         p_fc1_block_scales, p_fc1_global_scale, p_fc2_block_scales, p_fc2_global_scale,
                         resident_view, fc1_bias_gpu_src, fc2_bias_gpu_src]() {

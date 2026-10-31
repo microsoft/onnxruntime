@@ -236,6 +236,7 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
     int evicted_expert = -1;
     int host_evict_slot = -1;
     int host_cand_slot = -1;
+    bool holds_store_lease = false;
   };
   mutable std::vector<PendingPromotion> pending_promotions_;
   mutable bool slot_table_dirty_ = true;

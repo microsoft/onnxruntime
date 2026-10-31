@@ -936,6 +936,13 @@ OrtStatus* ORT_API_CALL CudaEp::ReplayGraphImpl(OrtEp* this_ptr, int graph_annot
     }
   }
   if (qmoe_controller) {
+    const uint64_t cur_gen = qmoe_controller->GraphGeneration();
+    if (cur_gen != context.last_qmoe_graph_gen) {
+      context.cuda_graph.Reset();
+      context.last_qmoe_graph_gen = cur_gen;
+      return ep->factory_.GetOrtApi().CreateStatus(
+          ORT_FAIL, "QMoEOffload captured CUDA graph was invalidated by state reclamation; recapture required.");
+    }
     auto start_st = qmoe_controller->OnRunStart();
     if (!start_st.IsOK()) {
       return ep->factory_.GetOrtApi().CreateStatus(ORT_FAIL, start_st.ErrorMessage().c_str());
