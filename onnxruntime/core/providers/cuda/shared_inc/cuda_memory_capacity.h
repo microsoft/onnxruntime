@@ -11,16 +11,26 @@ struct MemoryCapacityDriverApi {
   using Device = CUdevice;
   using Context = CUcontext;
 
-  bool Init() noexcept { return cuInit(0) == CUDA_SUCCESS; }
-  bool DeviceGet(Device* device, int ordinal) noexcept { return cuDeviceGet(device, ordinal) == CUDA_SUCCESS; }
-  bool DeviceTotalMem(size_t* total, Device device) noexcept { return cuDeviceTotalMem(total, device) == CUDA_SUCCESS; }
-  bool PrimaryCtxRetain(Context* context, Device device) noexcept {
-    return cuDevicePrimaryCtxRetain(context, device) == CUDA_SUCCESS;
+  CUresult Init() noexcept { return cuInit(0); }
+  CUresult DeviceGet(Device* device, int ordinal) noexcept { return cuDeviceGet(device, ordinal); }
+  CUresult DeviceTotalMem(size_t* total, Device device) noexcept { return cuDeviceTotalMem(total, device); }
+  CUresult PrimaryCtxRetain(Context* context, Device device) noexcept {
+    return cuDevicePrimaryCtxRetain(context, device);
   }
-  bool CtxPushCurrent(Context context) noexcept { return cuCtxPushCurrent(context) == CUDA_SUCCESS; }
-  bool MemGetInfo(size_t* available, size_t* total) noexcept { return cuMemGetInfo(available, total) == CUDA_SUCCESS; }
-  bool CtxPopCurrent(Context* context) noexcept { return cuCtxPopCurrent(context) == CUDA_SUCCESS; }
-  bool PrimaryCtxRelease(Device device) noexcept { return cuDevicePrimaryCtxRelease(device) == CUDA_SUCCESS; }
+  CUresult CtxPushCurrent(Context context) noexcept { return cuCtxPushCurrent(context); }
+  CUresult MemGetInfo(size_t* available, size_t* total) noexcept { return cuMemGetInfo(available, total); }
+  CUresult CtxPopCurrent(Context* context) noexcept { return cuCtxPopCurrent(context); }
+  CUresult PrimaryCtxRelease(Device device) noexcept { return cuDevicePrimaryCtxRelease(device); }
+  const char* GetErrorName(int code) noexcept {
+    const char* name = nullptr;
+    cuGetErrorName(static_cast<CUresult>(code), &name);
+    return name;
+  }
+  const char* GetErrorString(int code) noexcept {
+    const char* description = nullptr;
+    cuGetErrorString(static_cast<CUresult>(code), &description);
+    return description;
+  }
 };
 
 }  // namespace cuda

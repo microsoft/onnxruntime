@@ -931,8 +931,10 @@ struct CudaEpFactory : OrtEpFactory {
     cuda::MemoryCapacityDriverApi driver;
     uint64_t total{};
     uint64_t available{};
-    if (const char* error = cuda::QueryDeviceMemoryCapacity(driver, device_id, total, available)) {
-      return factory.ort_api.CreateStatus(ORT_RUNTIME_EXCEPTION, error);
+    if (const auto error = cuda::QueryDeviceMemoryCapacity(driver, device_id, total, available)) {
+      char message[512];
+      return factory.ort_api.CreateStatus(ORT_RUNTIME_EXCEPTION,
+                                          cuda::FormatMemoryCapacityError(driver, error, message));
     }
 
     *total_memory_bytes = total;

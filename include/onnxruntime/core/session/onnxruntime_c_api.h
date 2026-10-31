@@ -7724,6 +7724,11 @@ struct OrtApi {
    *
    * The query may initialize provider resources. For example, CUDA may initialize the device's primary
    * context to query free memory, while preserving the calling thread's previous current CUDA context.
+  * If no other component retains that primary context (for example, a live CUDA EP session), each
+  * query may create and destroy it, incurring substantial initialization latency and transient device
+  * memory allocations on every call. Frequent polling in this state can be expensive. Under severe
+  * device memory pressure, context initialization may fail with an out-of-memory error instead of
+  * returning a near-zero available-memory estimate.
    *
    * Capacity is reported only for the selected memory type, not aggregated across memory types.
    * If the execution provider does not support this query for the selected memory type,

@@ -41,54 +41,61 @@ struct MemoryCapacityTestDriver {
   using Device = int;
   using Context = int;
 
-  bool Step() noexcept { return ++step != failure_step; }
-  bool Init() noexcept { return Step(); }
-  bool DeviceGet(Device* device, int ordinal) noexcept {
+  int Step() noexcept { return ++step == failure_step ? failure_code : 0; }
+  int Init() noexcept { return Step(); }
+  int DeviceGet(Device* device, int ordinal) noexcept {
     queried_ordinal = ordinal;
     *device = ordinal;
     return Step();
   }
-  bool DeviceTotalMem(size_t* total, Device) noexcept {
+  int DeviceTotalMem(size_t* total, Device) noexcept {
     *total = 16ULL * 1024 * 1024;
     return Step();
   }
-  bool PrimaryCtxRetain(Context* context, Device) noexcept {
+  int PrimaryCtxRetain(Context* context, Device) noexcept {
     *context = 42;
-    return retained = Step();
+    const int result = Step();
+    retained = result == 0;
+    return result;
   }
-  bool CtxPushCurrent(Context context) noexcept {
-    if (!Step()) {
-      return false;
+  int CtxPushCurrent(Context context) noexcept {
+    if (const int result = Step(); result != 0) {
+      return result;
     }
     saved_context = current_context;
     current_context = context;
-    return true;
+    return 0;
   }
-  bool MemGetInfo(size_t* available, size_t* total) noexcept {
+  int MemGetInfo(size_t* available, size_t* total) noexcept {
     queried_context = current_context;
     *available = available_bytes;
     *total = 14ULL * 1024 * 1024;
     return Step();
   }
-  bool CtxPopCurrent(Context* context) noexcept {
-    if (!Step()) {
-      return false;
+  int CtxPopCurrent(Context* context) noexcept {
+    if (const int result = Step(); result != 0) {
+      return result;
     }
     *context = current_context;
     current_context = saved_context;
-    return true;
+    return 0;
   }
-  bool PrimaryCtxRelease(Device) noexcept {
+  int PrimaryCtxRelease(Device) noexcept {
     release_called = true;
-    if (!Step()) {
-      return false;
+    if (const int result = Step(); result != 0) {
+      return result;
     }
     retained = false;
-    return true;
+    return 0;
   }
+  const char* GetErrorName(int) noexcept { return error_name; }
+  const char* GetErrorString(int) noexcept { return error_description; }
 
   int step = 0;
   int failure_step = 0;
+  int failure_code = 2;
+  const char* error_name = "CUDA_ERROR_OUT_OF_MEMORY";
+  const char* error_description = "out of memory";
   int current_context = 0;
   int saved_context = 0;
   int queried_context = 0;
@@ -105,7 +112,7 @@ TEST(OrtEpLibrary, MemoryCapacityPreservesCudaContextAndQueriesDeviceTotal) {
     driver.current_context = original_context;
     uint64_t total = 0;
     uint64_t available = 0;
-    ASSERT_EQ(cuda::QueryDeviceMemoryCapacity(driver, 3, total, available), nullptr);
+    ASSERT_FALSE(cuda::QueryDeviceMemoryCapacity(driver, 3, total, available));
     EXPECT_EQ(driver.queried_ordinal, 3);
     EXPECT_EQ(driver.queried_context, 42);
     EXPECT_EQ(driver.current_context, original_context);
@@ -115,21 +122,35 @@ TEST(OrtEpLibrary, MemoryCapacityPreservesCudaContextAndQueriesDeviceTotal) {
     EXPECT_EQ(available, driver.available_bytes);
 
     driver.available_bytes /= 2;
-    ASSERT_EQ(cuda::QueryDeviceMemoryCapacity(driver, 3, total, available), nullptr);
+    ASSERT_FALSE(cuda::QueryDeviceMemoryCapacity(driver, 3, total, available));
     EXPECT_EQ(available, driver.available_bytes);
     EXPECT_EQ(driver.current_context, original_context);
   }
 }
 
 TEST(OrtEpLibrary, MemoryCapacityDriverFailuresPreserveOutputsAndCleanUp) {
+  const char* expected_operations[] = {
+      "cuInit failed",
+      "cuDeviceGet failed",
+      "cuDeviceTotalMem failed",
+      "cuDevicePrimaryCtxRetain failed",
+      "cuCtxPushCurrent failed",
+      "cuMemGetInfo failed",
+      "cuCtxPopCurrent failed to restore the calling thread's CUDA context",
+      "cuDevicePrimaryCtxRelease failed",
+  };
   for (int failure_step = 1; failure_step <= 8; ++failure_step) {
     SCOPED_TRACE(failure_step);
     MemoryCapacityTestDriver driver;
     driver.failure_step = failure_step;
+    driver.failure_code = 100 + failure_step;
     driver.current_context = 73;
     uint64_t total = 7;
     uint64_t available = 11;
-    ASSERT_NE(cuda::QueryDeviceMemoryCapacity(driver, 3, total, available), nullptr);
+    const auto error = cuda::QueryDeviceMemoryCapacity(driver, 3, total, available);
+    ASSERT_TRUE(error);
+    EXPECT_EQ(error.code, driver.failure_code);
+    EXPECT_STREQ(error.operation, expected_operations[failure_step - 1]);
     EXPECT_EQ(total, 7u);
     EXPECT_EQ(available, 11u);
     if (failure_step != 7) {
@@ -140,6 +161,30 @@ TEST(OrtEpLibrary, MemoryCapacityDriverFailuresPreserveOutputsAndCleanUp) {
     }
     EXPECT_EQ(driver.release_called, failure_step >= 5);
   }
+}
+
+TEST(OrtEpLibrary, MemoryCapacityDriverErrorIncludesCudaCause) {
+  MemoryCapacityTestDriver driver;
+  driver.failure_step = 4;
+  uint64_t total = 7;
+  uint64_t available = 11;
+  const auto error = cuda::QueryDeviceMemoryCapacity(driver, 3, total, available);
+  ASSERT_TRUE(error);
+  char message[512];
+  EXPECT_STREQ(cuda::FormatMemoryCapacityError(driver, error, message),
+               "cuDevicePrimaryCtxRetain failed: CUDA error 2 (CUDA_ERROR_OUT_OF_MEMORY): out of memory");
+  EXPECT_EQ(total, 7u);
+  EXPECT_EQ(available, 11u);
+
+  driver.error_name = nullptr;
+  driver.error_description = nullptr;
+  EXPECT_STREQ(cuda::FormatMemoryCapacityError(driver, error, message),
+               "cuDevicePrimaryCtxRetain failed: CUDA error 2 (unknown): no description available");
+
+  char short_message[64];
+  EXPECT_EQ(cuda::FormatMemoryCapacityError(driver, error, short_message), short_message);
+  EXPECT_EQ(short_message[sizeof(short_message) - 1], '\0');
+  EXPECT_EQ(std::string(short_message).size(), sizeof(short_message) - 1);
 }
 
 TEST(OrtEpLibrary, GetTensorDataTypeUsesOrtElementTypes) {

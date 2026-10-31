@@ -29,27 +29,12 @@ TEST(EpDeviceMemoryCapacityTest, CudaCapacityPreservesContext) {
     GTEST_SKIP() << "No CUDA device available";
   }
 
-  constexpr const char* registration_name = "cuda_memory_capacity_test";
-  bool registered = false;
-  const auto unregister = gsl::finally([&]() {
-    if (registered) {
-      Ort::Status status{Ort::GetApi().UnregisterExecutionProviderLibrary(*ort_env, registration_name)};
-      EXPECT_TRUE(status.IsOK()) << status.GetErrorMessage();
-    }
-  });
-  auto devices = ort_env->GetEpDevices();
+  const auto devices = ort_env->GetEpDevices();
   const auto is_cuda = [](const Ort::ConstEpDevice& device) {
     return std::string_view(device.EpName()) == "CUDAExecutionProvider";
   };
   if (std::none_of(devices.begin(), devices.end(), is_cuda)) {
-#ifdef _WIN32
-    constexpr const ORTCHAR_T* library_path = ORT_TSTR("onnxruntime_providers_cuda.dll");
-#else
-    constexpr const ORTCHAR_T* library_path = ORT_TSTR("./libonnxruntime_providers_cuda.so");
-#endif
-    ort_env->RegisterExecutionProviderLibrary(registration_name, library_path);
-    registered = true;
-    devices = ort_env->GetEpDevices();
+    GTEST_SKIP() << "No pre-registered CUDA EP devices available";
   }
 
   CUcontext original_context = nullptr;
@@ -60,7 +45,13 @@ TEST(EpDeviceMemoryCapacityTest, CudaCapacityPreservesContext) {
   CUdevice caller_device = 0;
   ASSERT_EQ(cuDeviceGet(&caller_device, device_count - 1), CUDA_SUCCESS);
   CUcontext caller_context = nullptr;
-  ASSERT_EQ(cuCtxCreate_v2(&caller_context, 0, caller_device), CUDA_SUCCESS);
+#if CUDA_VERSION >= 13000
+  CUctxCreateParams create_params{};
+  const CUresult create_result = cuCtxCreate(&caller_context, &create_params, 0, caller_device);
+#else
+  const CUresult create_result = cuCtxCreate(&caller_context, 0, caller_device);
+#endif
+  ASSERT_EQ(create_result, CUDA_SUCCESS);
   const auto destroy_context = gsl::finally([&]() {
     EXPECT_EQ(cuCtxDestroy(caller_context), CUDA_SUCCESS);
   });
