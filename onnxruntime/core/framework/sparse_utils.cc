@@ -213,7 +213,7 @@ Status SparseCsrToDenseTensor(const DataTransferManager& data_manager, const Spa
       const auto inner_num = csr_view.Inner().Shape().Size();
       const auto outer_num = csr_view.Outer().Shape().Size();
       ORT_ENFORCE(inner_num == src.Values().Shape().Size(), "Expecting inner indices to be same as nnz. Got: ", inner_num);
-      ORT_ENFORCE(outer_num == (rows + 1), "Outer indices must be M + 1. Got: ", outer_num);
+      ORT_ENFORCE(outer_num > 0 && rows == outer_num - 1, "Outer indices must be M + 1. Got: ", outer_num);
     }
 
     CopyElementFunc copy_func;

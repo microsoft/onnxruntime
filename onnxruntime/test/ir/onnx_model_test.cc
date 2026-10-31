@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <google/protobuf/io/zero_copy_stream_impl.h>
+#include <limits>
 #include <memory>
 #include "core/platform/env.h"
 #include "core/graph/graph_viewer.h"
@@ -10,6 +11,7 @@
 #include "core/session/onnxruntime_c_api.h"
 #include "test/providers/provider_test_utils.h"  //For ASSERT_STATUS_OK
 #include "test/test_environment.h"
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "onnx/defs/function.h"
 #include "onnx/defs/parser.h"
@@ -40,6 +42,25 @@ TEST_F(ONNXModelsTest, future_opset) {
   std::shared_ptr<Model> model;
   common::Status st = Model::Load(ORT_TSTR("./testdata/add_opset_314159.onnx"), model, nullptr, *logger_);
   ASSERT_FALSE(st.IsOK());
+}
+
+TEST_F(ONNXModelsTest, InvalidOpsetVersionsRejectedBeforeNarrowing) {
+  for (const int64_t version :
+       {int64_t{0}, static_cast<int64_t>(std::numeric_limits<int>::max()) + 1}) {
+    ModelProto model_proto;
+    model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+    model_proto.mutable_graph()->set_name("invalid_opset_version");
+    auto* opset = model_proto.add_opset_import();
+    opset->set_domain(onnxruntime::kOnnxDomain);
+    opset->set_version(version);
+
+    try {
+      Model model(std::move(model_proto), nullptr, *logger_);
+      FAIL() << "Expected invalid opset version " << version << " to be rejected";
+    } catch (const OnnxRuntimeException& ex) {
+      EXPECT_THAT(ex.what(), testing::HasSubstr("Invalid opset version"));
+    }
+  }
 }
 
 class ONNXModelsTest1 : public ::testing::TestWithParam<const ORTCHAR_T*> {
