@@ -328,8 +328,15 @@ Status QuantizeLinearProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform);
 
   const char* unpack = is_signed_ ? "unpack4xI8" : "unpack4xU8";
-  // Reads the zero point at `offset` from 4-per-u32 packed storage.
+  // Reads the zero point at `offset` from 4-per-u32 (8-bit) or 8-per-u32 (4-bit) packed storage.
   const auto zero_point_at = [&](const std::string& offset) {
+    if (is_4bit_) {
+      const std::string word = zero_point->GetByOffset("(" + offset + ") / 8u");
+      const std::string shift = "(((" + offset + ") % 8u) * 4u)";
+      // Signed: move the nibble to the top bits so the arithmetic right shift sign-extends it.
+      return is_signed_ ? MakeString("f32(bitcast<i32>(", word, " << (28u - ", shift, ")) >> 28u)")
+                        : MakeString("f32((", word, " >> ", shift, ") & 0xFu)");
+    }
     return MakeString("f32(", unpack, "(", zero_point->GetByOffset("(" + offset + ") / 4u"), ")[(", offset, ") % 4u])");
   };
 
@@ -393,11 +400,13 @@ fn quantize_round(x: f32, s: f32) -> f32 {
 }
 )";
 
+  // Each invocation packs one u32 word: 4 8-bit or 8 4-bit elements.
+  const char* elements_per_word = is_4bit_ ? "8u" : "4u";
   auto& body = shader.MainFunctionBody();
   body << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
-       << "var quantized = vec4<i32>(0);\n"
-       << "for (var i = 0u; i < 4u; i++) {\n"
-       << "  let element_offset = global_idx * 4u + i;\n"
+       << (is_4bit_ ? "var quantized = 0u;\n" : "var quantized = vec4<i32>(0);\n")
+       << "for (var i = 0u; i < " << elements_per_word << "; i++) {\n"
+       << "  let element_offset = global_idx * " << elements_per_word << " + i;\n"
        << "  if (element_offset >= uniforms.input_size) {\n"
        << "    break;\n"
        << "  }\n"
@@ -430,10 +439,17 @@ fn quantize_round(x: f32, s: f32) -> f32 {
   }
 
   // Saturating in f32 before the i32 conversion also handles values far outside the integer range.
-  body << "  let zero_point_value = " << zero_point_value << ";\n"
-       << "  quantized[i] = i32(clamp(quantize_round(x_value, scale_value) + zero_point_value, "
-       << (is_signed_ ? "-128.0, 127.0" : "0.0, 255.0") << "));\n"
-       << "}\n"
+  const char* range = is_4bit_ ? (is_signed_ ? "-8.0, 7.0" : "0.0, 15.0")
+                               : (is_signed_ ? "-128.0, 127.0" : "0.0, 255.0");
+  body << "  let zero_point_value = " << zero_point_value << ";\n";
+  if (is_4bit_) {
+    // Element i goes in bits [4i, 4i + 4), so the first element of each byte is its low nibble.
+    body << "  let q = i32(clamp(quantize_round(x_value, scale_value) + zero_point_value, " << range << "));\n"
+         << "  quantized |= (bitcast<u32>(q) & 0xFu) << (i * 4u);\n";
+  } else {
+    body << "  quantized[i] = i32(clamp(quantize_round(x_value, scale_value) + zero_point_value, " << range << "));\n";
+  }
+  body << "}\n"
        << output.SetByOffset("global_idx", "quantized");
 
   return Status::OK();
@@ -456,27 +472,30 @@ Status QuantizeLinear::ComputeInternal(ComputeContext& context) const {
   }
 
   const auto y_type = y->GetElementType();
-  ORT_RETURN_IF_NOT(y_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8 || y_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8,
-                    "WebGPU QuantizeLinear only supports int8 and uint8 output, got type ", y_type);
-  const bool is_signed = y_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8;
-  const uint32_t output_size = onnxruntime::narrow<uint32_t>((x_size + 3) / 4);
+  const bool is_4bit = y_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4 || y_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4;
+  ORT_RETURN_IF_NOT(is_4bit || y_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8 || y_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8,
+                    "WebGPU QuantizeLinear only supports int8, uint8, int4 and uint4 output, got type ", y_type);
+  const bool is_signed = y_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8 || y_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4;
+  // Elements per packed u32 word of y (and y_zero_point).
+  const int pack_factor = is_4bit ? 8 : 4;
+  const uint32_t output_size = onnxruntime::narrow<uint32_t>((x_size + pack_factor - 1) / pack_factor);
 
-  QuantizeLinearProgram program{is_signed, layout.per_layer, layout.per_axis, y_zero_point != nullptr,
+  QuantizeLinearProgram program{is_signed, is_4bit, layout.per_layer, layout.per_axis, y_zero_point != nullptr,
                                 static_cast<int>(x_shape.NumDimensions())};
   program
       .AddInputs({{x, ProgramTensorMetadataDependency::TypeAndRank},
                   {y_scale, ProgramTensorMetadataDependency::TypeAndRank}});
   if (y_zero_point != nullptr) {
-    program.AddInput({y_zero_point, ProgramTensorMetadataDependency::None, ProgramInput::Flatten, 4});
+    program.AddInput({y_zero_point, ProgramTensorMetadataDependency::None, ProgramInput::Flatten, pack_factor});
   }
   program
-      .AddOutput({y, ProgramTensorMetadataDependency::None, ProgramOutput::Flatten, 4})
+      .AddOutput({y, ProgramTensorMetadataDependency::None, ProgramOutput::Flatten, pack_factor})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({{static_cast<uint32_t>(layout.axis)},
                             {static_cast<uint32_t>(layout.block_size)},
                             {output_size},
                             {onnxruntime::narrow<uint32_t>(x_size)}})
-      .CacheHint(is_signed, layout.per_layer, layout.per_axis, y_zero_point != nullptr);
+      .CacheHint(is_signed, is_4bit, layout.per_layer, layout.per_axis, y_zero_point != nullptr);
 
   return context.RunProgram(program);
 }
@@ -542,10 +561,21 @@ ONNX_OPERATOR_KERNEL_EX(
     DequantizeLinear);
 
 namespace {
-const std::vector<MLDataType>& QuantizeLinearOutputConstraints() {
+// Output types before opset 21.
+const std::vector<MLDataType>& QuantizeLinear8BitOutputConstraints() {
   static std::vector<MLDataType> types{
       DataTypeImpl::GetTensorType<int8_t>(),
       DataTypeImpl::GetTensorType<uint8_t>()};
+  return types;
+}
+
+// The QuantizeLinear schema allows int4 and uint4 output from opset 21.
+const std::vector<MLDataType>& QuantizeLinearOutputConstraints() {
+  static std::vector<MLDataType> types{
+      DataTypeImpl::GetTensorType<int8_t>(),
+      DataTypeImpl::GetTensorType<uint8_t>(),
+      DataTypeImpl::GetTensorType<Int4x2>(),
+      DataTypeImpl::GetTensorType<UInt4x2>()};
   return types;
 }
 }  // namespace
@@ -557,7 +587,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
-        .TypeConstraint("T2", QuantizeLinearOutputConstraints()),
+        .TypeConstraint("T2", QuantizeLinear8BitOutputConstraints()),
     QuantizeLinear);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
@@ -567,7 +597,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
-        .TypeConstraint("T2", QuantizeLinearOutputConstraints()),
+        .TypeConstraint("T2", QuantizeLinear8BitOutputConstraints()),
     QuantizeLinear);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
@@ -577,7 +607,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T1", WebGpuSupportedFloatTypes())
-        .TypeConstraint("T2", QuantizeLinearOutputConstraints()),
+        .TypeConstraint("T2", QuantizeLinear8BitOutputConstraints()),
     QuantizeLinear);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
