@@ -99,7 +99,9 @@ __global__ void UnpackRoPEAppend(
   const int head_idx = blockIdx.y;
   const int b = blockIdx.z;
   // The condition is uniform across the block, including every shared-memory barrier below.
-  if (first_prompt_only && past_seq_lens[b] != 0) {
+  // first_prompt_only skips entries that have a past, and entries whose valid end is at most one token: with no
+  // past that is a lone valid row, i.e. a single-token step, which reads the quantized cache like any decode step.
+  if (first_prompt_only && (past_seq_lens[b] != 0 || (valid_seq_lens != nullptr && valid_seq_lens[b] <= 1))) {
     return;
   }
   const int tid = threadIdx.x;
