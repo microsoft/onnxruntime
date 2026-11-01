@@ -1249,7 +1249,9 @@ common::Status InferenceSession::LoadOnnxModel(const PathString& model_uri) {
 
     const bool strict_shape_type_inference = session_options_.config_options.GetConfigOrDefault(
                                                  kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
-    ModelOptions model_opts{true, strict_shape_type_inference, check_load_cancellation_fn_};
+    const bool allow_released_opsets_only = session_options_.config_options.GetConfigOrDefault(
+                                                kOrtSessionOptionsConfigStrictAllowReleasedOpsetsOnly, "1") == "1";
+    ModelOptions model_opts{allow_released_opsets_only, strict_shape_type_inference, check_load_cancellation_fn_};
 
     // When set, the external initializers folder overrides the model's own directory as the
     // base for resolving external data. The model bytes are still read from model_uri.
@@ -1345,6 +1347,8 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
 
     const bool strict_shape_type_inference = session_options_.config_options.GetConfigOrDefault(
                                                  kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
+    const bool allow_released_opsets_only = session_options_.config_options.GetConfigOrDefault(
+                                                kOrtSessionOptionsConfigStrictAllowReleasedOpsetsOnly, "1") == "1";
 
     PathString external_data_model_path = GetExternalInitializersFolderModelPath(session_options_.config_options);
     if (!external_data_model_path.empty()) {
@@ -1353,7 +1357,8 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
 
     return onnxruntime::Model::Load(std::move(model_proto), model_location_, model,
                                     HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_,
-                                    ModelOptions{true, strict_shape_type_inference, check_load_cancellation_fn_});
+                                    ModelOptions{allow_released_opsets_only, strict_shape_type_inference,
+                                                 check_load_cancellation_fn_});
   };
 
   return LoadWithLoader(loader, "model_loading_array");
@@ -1409,6 +1414,8 @@ common::Status InferenceSession::LoadOnnxModel(ModelProto model_proto) {
 #endif
     const bool strict_shape_type_inference = session_options_.config_options.GetConfigOrDefault(
                                                  kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
+    const bool allow_released_opsets_only = session_options_.config_options.GetConfigOrDefault(
+                                                kOrtSessionOptionsConfigStrictAllowReleasedOpsetsOnly, "1") == "1";
 
     PathString external_data_model_path = GetExternalInitializersFolderModelPath(session_options_.config_options);
     if (!external_data_model_path.empty()) {
@@ -1418,7 +1425,8 @@ common::Status InferenceSession::LoadOnnxModel(ModelProto model_proto) {
     // This call will move model_proto to the constructed model instance
     return onnxruntime::Model::Load(std::move(model_proto), model_location_, model,
                                     HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_,
-                                    ModelOptions{true, strict_shape_type_inference, check_load_cancellation_fn_});
+                                    ModelOptions{allow_released_opsets_only, strict_shape_type_inference,
+                                                 check_load_cancellation_fn_});
   };
 
   return LoadWithLoader(loader, "model_loading_proto");
@@ -1516,12 +1524,15 @@ common::Status InferenceSession::Load(const OrtModel& model_editor_api_model) {
 
   const bool strict_shape_type_inference = session_options_.config_options.GetConfigOrDefault(
                                                kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
+  const bool allow_released_opsets_only = session_options_.config_options.GetConfigOrDefault(
+                                              kOrtSessionOptionsConfigStrictAllowReleasedOpsetsOnly, "1") == "1";
 
   // need to go from unique_ptr to shared_ptr when moving into model_
   std::unique_ptr<Model> tmp_model;
   ORT_RETURN_IF_ERROR(Model::LoadFromModelEditorApiModel(model_editor_api_model,
                                                          HasLocalSchema() ? &custom_schema_registries_ : nullptr,
-                                                         ModelOptions{true, strict_shape_type_inference,
+                                                         ModelOptions{allow_released_opsets_only,
+                                                                      strict_shape_type_inference,
                                                                       check_load_cancellation_fn_},
                                                          *session_logger_, tmp_model));
 
@@ -3013,7 +3024,7 @@ common::Status InferenceSession::Initialize() {
         return Status::OK();
       };
 
-      // Enable DQ->MatMulNBits fusion if NvTensorRTRTX EP is registered.
+      // Enable DQ->MatMulNBits fusion if the NvTensorRTRTX plugin EP is registered.
       if (execution_providers_.Get(onnxruntime::kNvTensorRTRTXExecutionProvider) != nullptr) {
         if (session_options_.config_options.GetConfigOrDefault(
                 kOrtSessionOptionsEnableDQMatMulNBitsFusion, "") == "") {
@@ -3841,6 +3852,69 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
       }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+      // Exact-once scoped cleanup for every provider whose OnRunStart succeeded (v3 Section 5.1 / F2).
+      // It must be in place before any provider starts: when a later provider throws from OnRunStart, unwinding
+      // still has to end the run on the providers that already started it.
+      bool providers_stopped = false;
+      auto stop_providers_once = [&](bool reached_end_of_run) noexcept {
+        if (providers_stopped) return;
+        providers_stopped = true;
+        const bool synchronize_execution_providers =
+            run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigDisableSynchronizeExecutionProviders, "0") == "0";
+        // A run that leaves RunImpl before the normal-path call below (early return or exception) never finished
+        // executing the graph, whatever retval says.
+        const bool run_succeeded = reached_end_of_run && retval.IsOK() && !run_options.terminate &&
+                                   (std::uncaught_exceptions() == 0);
+        const RunOptions* effective_run_options = &run_options;
+        // The failed-run marker is only consumed by the CUDA EP, which is not part of a pure minimal build.
+        RunOptions failed_run_options;
+        bool failed_run_options_initialized = false;
+        auto mark_run_failed = [&]() noexcept {
+          if (failed_run_options_initialized) {
+            return;
+          }
+          ORT_TRY {
+            failed_run_options = run_options;
+            ORT_IGNORE_RETURN_VALUE(failed_run_options.config_options.AddConfigEntry("__ort.run_outcome", "failed"));
+            effective_run_options = &failed_run_options;
+            failed_run_options_initialized = true;
+          }
+          ORT_CATCH(...) {
+            effective_run_options = &run_options;
+          }
+        };
+        if (!run_succeeded) {
+          mark_run_failed();
+        }
+        for (auto* xp : exec_providers_to_stop) {
+          ORT_TRY {
+            auto status = xp->OnRunEnd(synchronize_execution_providers, *effective_run_options);
+            ORT_CHECK_AND_SET_RETVAL(status);
+          }
+          ORT_CATCH(const std::exception& ex) {
+            ORT_HANDLE_EXCEPTION([&]() {
+              if (retval.IsOK()) {
+                retval = Status(common::ONNXRUNTIME, common::FAIL, ex.what());
+              }
+            });
+          }
+          ORT_CATCH(...) {
+            if (retval.IsOK()) {
+              retval = Status(common::ONNXRUNTIME, common::RUNTIME_EXCEPTION, "Exception in OnRunEnd()");
+            }
+          }
+          if (!retval.IsOK()) {
+            mark_run_failed();
+          }
+        }
+      };
+      struct ProvidersStopGuard {
+        decltype(stop_providers_once)& fn;
+        ~ProvidersStopGuard() { fn(false); }
+      } providers_stop_guard{stop_providers_once};
+#endif
+
       // info all execution providers InferenceSession:Run started
       // TODO: only call OnRunStart for all providers in-use
       for (auto& xp : execution_providers_) {
@@ -3895,11 +3969,15 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
       }
 
       // info all execution providers InferenceSession:Run ended
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+      stop_providers_once(true);
+#else
       for (auto* xp : exec_providers_to_stop) {
         bool synchronize_execution_providers = run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigDisableSynchronizeExecutionProviders, "0") == "0";
         auto status = xp->OnRunEnd(synchronize_execution_providers, run_options);
         ORT_CHECK_AND_SET_RETVAL(status);
       }
+#endif
 
 #if !defined(ORT_MINIMAL_BUILD)
       if (moe_run_active) {
@@ -4583,16 +4661,18 @@ common::Status InferenceSession::ValidateAndParseShrinkArenaString(const std::st
     // Shrink if it is an arena allocator.
     // Both in-tree arenas (BFCArena) and plugin EP arenas (IArenaImplWrappingOrtAllocator)
     // inherit IArena, so AsArena() returns non-null for both.
+    bool found_arena = false;
     for (const auto& [device, allocator_ptr] : session_state_->GetAllocators()) {
       if (device.Type() == device_type && device.MemType() == memory_type && device.Id() == device_id) {
         if (allocator_ptr->AsArena() != nullptr) {
           arenas_to_shrink.push_back(allocator_ptr);
+          found_arena = true;
           break;
         }
       }
     }
 
-    if (arenas_to_shrink.empty()) {
+    if (!found_arena) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Did not find an arena based allocator registered for device-id ",
                              "combination in the memory arena shrink list: ", device_id_pair);

@@ -6,6 +6,7 @@
 #include <cstddef>
 
 #include "core/common/status.h"
+#include "core/providers/webgpu/buffer_manager.h"
 #include "core/session/onnxruntime_c_api.h"
 
 namespace onnxruntime {
@@ -18,6 +19,8 @@ OrtSyncStreamImpl* CreateWebGpuSyncStream(WebGpuExecutionProvider& ep);
 CommandRecordingState& GetWebGpuStreamCommandState(const OrtSyncStream* stream);
 common::Status CopyTensorOnWebGpuStream(const OrtSyncStream* stream, const void* src_data,
                                         bool src_is_gpu, void* dst_data, bool dst_is_gpu, size_t bytes);
+void UploadTensorsOnWebGpuStream(const OrtSyncStream* stream, int device_id,
+                                 gsl::span<const BufferManager::UploadInfo> uploads);
 
 }  // namespace ep
 }  // namespace webgpu

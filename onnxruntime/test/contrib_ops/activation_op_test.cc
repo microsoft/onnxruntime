@@ -6,7 +6,9 @@
 #include "core/common/cpuid_info.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/providers/cpu/activation/activation_op_test.h"
+#include <cmath>
 #include <random>
+#include <type_traits>
 #include <test/util/include/default_providers.h>
 
 #if defined(USE_DNNL)
@@ -167,6 +169,63 @@ TEST_F(ActivationOpTest, QuickGelu) {
         {{"alpha", alpha}}, {}, false, 1, kMSDomain);
   }
 }
+
+#if defined(USE_CUDA)
+template <typename T>
+static void CheckCudaQuickGeluPrecision() {
+  if (!DefaultCudaExecutionProvider()) GTEST_SKIP() << "CUDA EP unavailable";
+  for (float alpha : {1.0f, 1.702f, -1.702f, 0.0f}) {
+    SCOPED_TRACE(alpha);
+    std::vector<T> input;
+    std::vector<T> expected;
+    // Include float exp's subnormal/underflow region while the fused product is representable.
+    for (float value : {-128.0f, -108.0f, -104.0f, -100.0f, -96.0f, -88.0f, -87.5f, -87.0f,
+                        -80.0f, -64.0f, -60.0f, -52.0f, -32.0f, -24.0f, -20.0f, -16.0f, -12.0f, -8.0f, -4.0f,
+                        -1.0f, -0.125f, 0.0f, 0.125f, 1.0f, 4.0f, 8.0f,
+                        12.0f, 16.0f, 20.0f, 24.0f, 32.0f, 52.0f, 60.0f, 64.0f, 80.0f,
+                        87.0f, 87.5f, 88.0f, 96.0f, 100.0f, 104.0f, 108.0f, 128.0f}) {
+      input.emplace_back(value);
+      const double scaled = static_cast<double>(value) * static_cast<double>(alpha);
+      const double exponent = std::exp(-std::abs(scaled));
+      const double sigmoid = scaled >= 0 ? 1.0 / (1.0 + exponent) : exponent / (1.0 + exponent);
+      const double result = static_cast<double>(value) * sigmoid;
+      if constexpr (std::is_same_v<T, double>) {
+        expected.emplace_back(result);
+      } else {
+        expected.emplace_back(static_cast<float>(result));
+      }
+    }
+    OpTester tester("QuickGelu", 1, kMSDomain);
+    tester.AddAttribute("alpha", alpha);
+    const std::vector<int64_t> dimensions{static_cast<int64_t>(input.size())};
+    tester.AddInput<T>("X", dimensions, input);
+    tester.AddOutput<T>("Y", dimensions, expected);
+    tester.SetOutputAbsErr("Y", 0.0f);
+    tester.SetOutputRelErr("Y", std::is_same_v<T, double> ? 2e-14f : 2e-6f);
+    SessionOptions options;
+    ORT_THROW_IF_ERROR(options.config_options.AddConfigEntry("session.disable_cpu_ep_fallback", "1"));
+    std::vector<std::unique_ptr<IExecutionProvider>> providers;
+    providers.push_back(DefaultCudaExecutionProvider());
+    tester.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+  }
+}
+
+TEST_F(ActivationOpTest, CudaQuickGeluFloatPrecision) {
+  CheckCudaQuickGeluPrecision<float>();
+}
+
+TEST_F(ActivationOpTest, CudaQuickGeluDoublePrecision) {
+  CheckCudaQuickGeluPrecision<double>();
+}
+
+TEST_F(ActivationOpTest, CudaQuickGeluFloat16Precision) {
+  CheckCudaQuickGeluPrecision<MLFloat16>();
+}
+
+TEST_F(ActivationOpTest, CudaQuickGeluBFloat16Precision) {
+  CheckCudaQuickGeluPrecision<BFloat16>();
+}
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

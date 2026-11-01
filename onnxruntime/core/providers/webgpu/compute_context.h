@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <utility>
 
@@ -77,6 +78,9 @@ class ComputeContextBase {
   inline bool HasFeature(wgpu::FeatureName feature) const {
     return webgpu_context_.DeviceHasFeature(feature);
   }
+  inline bool HasWGSLLanguageFeature(wgpu::WGSLLanguageFeatureName feature) const {
+    return webgpu_context_.Instance().HasWGSLLanguageFeature(feature);
+  }
   inline const wgpu::AdapterPropertiesSubgroupMatrixConfigs& SubgroupMatrixConfigs() const {
     return webgpu_context_.SubgroupMatrixConfigs();
   }
@@ -130,21 +134,27 @@ class ComputeContextBase {
   //
   // Get the logger.
   //
+  inline const auto& Logger() const {
 #if defined(ORT_USE_EP_API_ADAPTERS)
-  inline const onnxruntime::ep::adapter::Logger& Logger() const {
     return ep_.GetEpLogger();
-  }
 #else
-  inline const logging::Logger& Logger() const {
     return *ep_.GetLogger();
-  }
 #endif
+  }
 
   //
   // Run a compute shader program.
   //
   inline Status RunProgram(const ProgramBase& program) {
     return webgpu_context_.Run(*this, program);
+  }
+
+  inline Status FlushAndWaitChecked() {
+    return webgpu_context_.FlushAndWaitChecked(ep_.BufferManager(), ep_.Recording());
+  }
+
+  inline Status RunAndWaitChecked(const std::function<Status()>& enqueue) {
+    return webgpu_context_.RunAndWaitChecked(ep_.BufferManager(), ep_.Recording(), enqueue);
   }
 
  protected:
@@ -239,12 +249,8 @@ class ComputeContext final : public ComputeContextBase {
   // Fill a GPU tensor with zeros.
   //
   inline void FillZero(Tensor& dst) {
-    auto& recording = ep_.Recording();
-    ORT_THROW_IF_ERROR(webgpu_context_.EncodeDeferredDispatches(recording));
-    webgpu_context_.EndComputePass(recording);
-    auto& command_encoder = webgpu_context_.GetCommandEncoder(recording);
     WGPUBuffer buffer = reinterpret_cast<WGPUBuffer>(dst.MutableDataRaw());
-    command_encoder.ClearBuffer(buffer, 0, dst.SizeInBytes());
+    webgpu_context_.ClearBuffer(buffer, dst.SizeInBytes(), ep_.Recording());
   }
 
  private:

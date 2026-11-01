@@ -164,12 +164,27 @@ bool CanApplySubgroup(const ComputeContext& context, int64_t M, int64_t N, int64
   return false;
 }
 
+bool ShouldFoldMatMulSubgroupBatch(std::string_view architecture,
+                                   int64_t m,
+                                   bool can_fold_batch_into_m) {
+  if (!can_fold_batch_into_m) {
+    return false;
+  }
+
+  const bool is_xe_lpg_or_xe_3lpg = architecture == gpu_arch::kXeLpg ||
+                                    architecture == gpu_arch::kXe3Lpg;
+  const int64_t m_mod_32 = m % 32;
+  return !is_xe_lpg_or_xe_3lpg || (m_mod_32 > 0 && m_mod_32 <= 24);
+}
+
+int64_t MatMulSubgroupElementsPerThreadY(std::string_view architecture, uint32_t m) {
+  const bool is_xe_lpg_or_xe_3lpg = architecture == gpu_arch::kXeLpg ||
+                                    architecture == gpu_arch::kXe3Lpg;
+  return m <= 8 ? 1 : (m <= 16 ? 2 : (m <= 32 ? 4 : (is_xe_lpg_or_xe_3lpg ? 4 : 8)));
+}
+
 int64_t ElementsPerThreadY(ComputeContext& context, uint32_t M) {
-  // For Xe-LPG and Xe-3LPG, we have observed that 4 elements per thread is optimal when M is large.
-  const auto& arch = context.AdapterInfo().architecture;
-  const bool is_xe_lpg_or_xe_3lpg = arch == gpu_arch::kXeLpg ||
-                                    arch == gpu_arch::kXe3Lpg;
-  return M <= 8 ? 1 : (M <= 16 ? 2 : (M <= 32 ? 4 : (is_xe_lpg_or_xe_3lpg ? 4 : 8)));
+  return MatMulSubgroupElementsPerThreadY(context.AdapterInfo().architecture, M);
 }
 
 bool CanUseAVec4CooperativeLoad(std::string_view architecture,

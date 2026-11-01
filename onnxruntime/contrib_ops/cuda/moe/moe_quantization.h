@@ -5,12 +5,14 @@
 
 #include "core/common/common.h"
 #include "core/providers/cuda/cuda_kernel.h"
+#include "contrib_ops/cuda/cuda_session_options.h"
 #include "contrib_ops/cuda/moe/moe_base.h"
 #include "contrib_ops/cuda/moe/qmoe_row_tiling.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_kernels.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemm_profiler.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemv_fp4.h"
 
+#include <atomic>
 #include <mutex>
 #include <unordered_map>
 
@@ -25,11 +27,14 @@ constexpr const char* kQMoERowTileSize = "ORT_QMOE_ROW_TILE_SIZE";
 constexpr const char* kQMoERowTileSizeConfig = "ep.cuda.qmoe_row_tile_size";
 constexpr const char* kQMoEIntDequantMaxScratchBytes = "ORT_QMOE_INT_DEQUANT_MAX_SCRATCH_BYTES";
 constexpr const char* kQMoEIntDequantMaxScratchBytesConfig = "ep.cuda.qmoe_int_dequant_max_scratch_bytes";
+constexpr const char* kQMoEDisableInt3TensorCorePrefill = "ORT_DISABLE_INT3_TENSORCORE_PREFILL";
+constexpr const char* kQMoEDisableInt3TensorCorePrefillConfig = "ep.cuda.qmoe_disable_int3_tensorcore_prefill";
 
 class QMoE final : public CudaKernel, public MoEBase {
  public:
   explicit QMoE(const OpKernelInfo& op_kernel_info);
   Status ComputeInternal(OpKernelContext* ctx) const override;
+  Status ComputeInt3(OpKernelContext* ctx) const;
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  bool& is_packed, PrePackedWeights* prepacked_weights) override;
 
@@ -69,10 +74,19 @@ class QMoE final : public CudaKernel, public MoEBase {
   // GPU buffer in the kernel-expected ``[E, K, N / (8 / bits)]`` layout.
   void PrePackIntExpertWeights(const Tensor& tensor, cudaStream_t stream, AllocatorPtr alloc,
                                IAllocatorUniquePtr<void>& packed_buf, bool& is_packed, int64_t weight_bits);
+  void PrePackInt3Weights(const Tensor& tensor, cudaStream_t stream, AllocatorPtr alloc,
+                          IAllocatorUniquePtr<void>& packed_buf, bool& is_packed);
+  void PrePackInt3Scales(const Tensor& tensor, cudaStream_t stream, AllocatorPtr alloc,
+                         IAllocatorUniquePtr<void>& packed_buf, bool& is_packed);
   int64_t expert_weight_bits_;
   int64_t fc1_expert_weight_bits_;
   int64_t fc2_expert_weight_bits_;
   int64_t fc3_expert_weight_bits_;
+  bool has_int3_ = false;
+  bool enable_int3_tc_prepack_ = false;
+  mutable std::atomic<bool> int3_content_validated_{false};
+  // -1: not yet determined, 1: scales/zero points are constant initializers, 0: runtime inputs.
+  mutable std::atomic<int> int3_content_constant_{-1};
   bool is_fp16_;
   // When true, the int4/int8 fc1/fc2 weight initializers are already in a
   // CUTLASS fpA_intB layout — produced offline e.g. via
@@ -92,6 +106,9 @@ class QMoE final : public CudaKernel, public MoEBase {
   // layout on every GPU, so -1 and 1 are currently equivalent for the CUDA EP;
   // 1 is reserved for a possible future Hopper-specific layout (e.g. W4A8).
   bool weights_prepacked_ = true;
+  bool nvfp4_weights_row_major_ = false;
+  bool nvfp4_fc1_decode_scale_eligible_ = false;
+  bool nvfp4_fc2_decode_scale_eligible_ = false;
   // Cached source weight shapes captured at PrePack time. When the
   // PrePack hook consumed and released the original int4/int8 or MXFP4
   // weight initializers (``is_packed = true``), ``context->Input<Tensor>(2)``
@@ -101,9 +118,13 @@ class QMoE final : public CudaKernel, public MoEBase {
   // how ``MatMulNBits`` caches ``N_`` / ``K_`` in its constructor.
   TensorShape fc1_weights_shape_;
   TensorShape fc2_weights_shape_;
+  // Scale shapes cached when offline-prepacked INT2/mixed-width PrePack releases the scale initializers.
+  TensorShape fc1_scales_shape_;
+  TensorShape fc2_scales_shape_;
   bool use_fp4_dequant_fallback_ = false;
   // Dequantizes FP8 weights to FP16/BF16 scratch buffers before invoking the A16 MoE runner.
   bool use_fp8_dequant_fallback_ = false;
+  bool enable_fp8_fused_ = false;
   // WFP4AFP8 (W4A8) requires SM100+ (Blackwell) block-scaled tensor ops. On older GPUs we
   // dequantize MXFP4 weights to FP16/BF16 and run the dense A16 MoE runner.
   bool use_wfp4afp8_dequant_fallback_ = false;
@@ -113,6 +134,11 @@ class QMoE final : public CudaKernel, public MoEBase {
   bool enable_int2_prefill_ = false;
   int64_t row_tile_size_ = qmoe::kDisabledRowTileSize;
   int64_t int_dequant_max_scratch_bytes_ = int64_t{1} << 30;
+  // Routes INT3 and INT3-mixed prefill through the FP32 SIMT kernels, which evaluate SwiGLU from the FP32
+  // accumulators. The default Tensor Core prefill stores the FC1 result as FP16/BF16 before the activation.
+  bool disable_int3_tc_prefill_ = false;
+  int int3_tc_min_routes_ = 33;
+  int moe_tc_min_rows_ = 33;
 
   std::unique_ptr<onnxruntime::llm::kernels::cutlass_kernels::CutlassMoeFCRunnerInterface> m_moe_runner;
 

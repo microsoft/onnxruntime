@@ -42,6 +42,24 @@ void LaunchSoftmaxTopK(
     bool normalize_scales,
     cudaStream_t stream);
 
+// Decode-only fused routing: softmax + top-k (bit-identical to LaunchSoftmaxTopK) and the (expert, token)-sorted expert
+// maps of fusedBuildExpertMapsSortFirstToken in one single-CTA launch. Returns false (nothing launched) outside its
+// envelope: 1..8 rows, exactly 512 experts, k in {1, 2, 4, 6, 8, 10}, 8-byte aligned logits.
+bool CanUseFusedRouteMaps(int64_t num_rows, int64_t num_experts, int64_t k);
+bool LaunchFusedRouteMaps(const half* logits, float* topk_scales, int* topk_indices, int* permuted_row_to_unpermuted_row,
+                          int* unpermuted_row_to_permuted_row, int* permuted_expert, int64_t* expert_first_token_offset,
+                          int num_rows, int num_experts, int k, bool normalize_scales, bool pdl, cudaStream_t stream);
+bool LaunchFusedRouteMaps(const __nv_bfloat16* logits, float* topk_scales, int* topk_indices,
+                          int* permuted_row_to_unpermuted_row, int* unpermuted_row_to_permuted_row,
+                          int* permuted_expert, int64_t* expert_first_token_offset, int num_rows, int num_experts,
+                          int k, bool normalize_scales, bool pdl, cudaStream_t stream);
+
+bool LaunchFusedInt3RouteGroups(const half* logits, float* topk_scales, int* topk_indices, int2* route_groups,
+                                int num_rows, int num_experts, int k, bool normalize_scales, cudaStream_t stream);
+bool LaunchFusedInt3RouteGroups(const __nv_bfloat16* logits, float* topk_scales, int* topk_indices, int2* route_groups,
+                                int num_rows, int num_experts, int k, bool normalize_scales, cudaStream_t stream);
+void LaunchBuildInt3RouteGroups(const int* topk_indices, int2* route_groups, int num_pairs, cudaStream_t stream);
+
 void LaunchSparseMixerTop2(
     const float* input,
     float* output,
@@ -270,6 +288,41 @@ void LaunchQMoECompactExperts(
     int64_t num_routes,
     cudaStream_t stream);
 
+struct QMoEFp8ProjectionParams {
+  const uint8_t* weights = nullptr;
+  const uint8_t* up_weights = nullptr;
+  const void* scales = nullptr;
+  const void* up_scales = nullptr;
+  int scale_type = 0;
+  int up_scale_type = 0;
+  const int* row_to_unpermuted = nullptr;
+  const int* experts = nullptr;
+  const int64_t* expert_offsets = nullptr;
+  const int* tile_offsets = nullptr;
+  int num_experts = 0;
+  int num_rows = 0;
+  int expanded_rows = 0;
+  int n = 0;
+  int k = 0;
+  int block_size = 0;
+  int fusion = 0;
+};
+
+void LaunchQMoEFp8ExpertTiles(const int64_t* expert_offsets, int* tile_offsets,
+                              int num_experts, cudaStream_t stream);
+
+template <typename T, typename OutputT = T>
+void LaunchQMoEFp8Projection(const QMoEFp8ProjectionParams& params,
+                             const T* input, OutputT* output, cudaStream_t stream);
+
+bool QMoEFp8GemvSupportsNativeDecode();
+bool QMoEFp8GemvKernelUsesNativeDecode(const void* kernel);
+
+template <typename T, typename InputT = T>
+void LaunchQMoEFp8Activation(const InputT* input, const T* bias, T* output,
+                             const int* experts, int rows, int inter_size, int fusion,
+                             float alpha, float beta, float limit, cudaStream_t stream);
+
 void LaunchQMoEDequantizeFp8Weights(
     const uint8_t* weights,
     const float* scales,
@@ -314,7 +367,8 @@ void LaunchQMoEDequantizeNvfp4Weights(
     cudaStream_t stream,
     const int* compact_to_expert = nullptr,
     const half* bias = nullptr,
-    half* output_bias = nullptr);
+    half* output_bias = nullptr,
+    bool weights_row_major = false);
 
 void LaunchQMoEDequantizeNvfp4Weights(
     const uint8_t* packed_weights,
@@ -327,7 +381,8 @@ void LaunchQMoEDequantizeNvfp4Weights(
     cudaStream_t stream,
     const int* compact_to_expert = nullptr,
     const __nv_bfloat16* bias = nullptr,
-    __nv_bfloat16* output_bias = nullptr);
+    __nv_bfloat16* output_bias = nullptr,
+    bool weights_row_major = false);
 
 // Repack column-major FP4 packed weights to row-major layout on GPU.
 // Input shape interpretation: [experts, k, n/2] (col-major packed),
@@ -376,6 +431,61 @@ void LaunchQMoECombineNvfp4ScalesForGemv(
     int n,
     int k_blocks,
     cudaStream_t stream);
+
+struct Int3Projection {
+  const uint8_t* weights = nullptr;
+  const void* scales = nullptr;
+  const uint8_t* zeros = nullptr;
+  const void* bias = nullptr;
+  int bits = 0;
+};
+
+struct Int3MoeParams {
+  int tensor_core_min_routes = 33;  // 0 disables the tensor-core decode path.
+  const void* input = nullptr;
+  void* output = nullptr;
+  void* activation = nullptr;
+  void* fc2_partial = nullptr;
+  const int* experts = nullptr;
+  const float* routing_scales = nullptr;
+  const void* router_weights = nullptr;
+  const int2* route_groups = nullptr;
+  int num_experts = 0;
+  Int3Projection fc1{};
+  Int3Projection fc2{};
+  int rows = 0;
+  int hidden = 0;
+  int intermediate = 0;
+  int top_k = 0;
+  int block_size = 0;
+  float alpha = 1.0f;
+  float beta = 0.0f;
+  float limit = 0.0f;
+  bool is_bfloat16 = false;
+  bool tc_prepacked = false;
+};
+
+// Kernel family LaunchInt3Moe dispatches for `params`. Only the vectorized GEMV kernels read
+// Int3MoeParams::route_groups, so callers use this to skip building route groups for the other families.
+enum class Int3DecodeKernel {
+  kScalar,
+  kFast,
+  kFastVectorized,
+  kTensorCore,
+};
+
+Int3DecodeKernel SelectInt3DecodeKernel(const Int3MoeParams& params);
+
+bool CanUseInt3TcPrePack();
+void LaunchPrePackInt3Weights(const uint8_t* raw_weights, uint8_t* packed_weights,
+                              int num_experts, int n, int k, cudaStream_t stream);
+void LaunchPrePackInt3Scales(const __nv_bfloat16* raw_scales, __nv_bfloat16* packed_scales,
+                             int num_experts, int n, int k, cudaStream_t stream);
+
+cudaError_t LaunchInt3Moe(const Int3MoeParams& params, cudaStream_t stream);
+cudaError_t ValidateInt3MoeContent(const Int3Projection& projection, size_t rows,
+                                   int logical_k, int block_size, bool is_bfloat16,
+                                   int* invalid, cudaStream_t stream);
 
 }  // namespace cuda
 }  // namespace contrib

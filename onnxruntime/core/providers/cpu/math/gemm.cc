@@ -143,6 +143,24 @@ bool GemmPackBFp32(AllocatorPtr& alloc,
 }
 
 template <typename T>
+void ComputeGemmZeroK(ptrdiff_t M, ptrdiff_t N, T alpha, T beta,
+                      const T* c_data, const TensorShape* c_shape, T* y_data) {
+  auto output = gsl::make_span(y_data, SafeInt<size_t>(M) * N);
+  // Preserve the signed zero from alpha * 0 before adding the scaled bias.
+  const T zero_product = static_cast<T>(alpha * 0.0f);
+  if (beta == 0 || c_data == nullptr) {
+    const T zero_bias = static_cast<T>(beta * 0.0f);
+    std::fill(output.begin(), output.end(), static_cast<T>(zero_product + zero_bias));
+    return;
+  }
+
+  GemmBroadcastBias(M, N, beta, c_data, c_shape, y_data);
+  for (T& value : output) {
+    value = static_cast<T>(zero_product + beta * value);
+  }
+}
+
+template <typename T>
 void Gemm<T>::ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
                           ptrdiff_t M, ptrdiff_t N, ptrdiff_t K,
                           T alpha,
@@ -156,16 +174,13 @@ void Gemm<T>::ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
   if (M == 0 || N == 0)
     return;
 
-  // Broadcast the bias as needed if bias is given
-  GemmBroadcastBias(M, N, beta, c_data, c_shape, y_data);
-
   if (K == 0) {
-    if (beta == 0 || c_data == nullptr) {
-      EigenMatrixMapRowMajor<T> dest(y_data, narrow<Eigen::Index>(M), narrow<Eigen::Index>(N));
-      dest.setZero();
-    }
+    ComputeGemmZeroK(M, N, alpha, beta, c_data, c_shape, y_data);
     return;
   }
+
+  // Broadcast the bias as needed if bias is given
+  GemmBroadcastBias(M, N, beta, c_data, c_shape, y_data);
 
   math::Gemm<T>(trans_a, trans_b,
                 M, N, K,
@@ -194,12 +209,7 @@ void Gemm_MLFloat16(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
     return;
 
   if (K == 0) {
-    if (beta != onnxruntime::MLFloat16::Zero && c_data != nullptr) {
-      GemmBroadcastBias(M, N, beta, c_data, c_shape, y_data);
-    } else {
-      auto output_span = gsl::make_span(y_data, SafeInt<size_t>(M) * N);
-      std::fill(output_span.begin(), output_span.end(), onnxruntime::MLFloat16::Zero);
-    }
+    ComputeGemmZeroK(M, N, alpha, beta, c_data, c_shape, y_data);
     return;
   }
 
@@ -219,18 +229,25 @@ void Gemm_MLFloat16(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
   }
   const bool use_mlas_no_bias = beta == onnxruntime::MLFloat16::Zero;
   const bool use_mlas_bias = beta == onnxruntime::MLFloat16::One && support_mlas_bias;
-  if (has_accelerated_half_gemm && trans_a == CblasNoTrans && trans_b == CblasNoTrans &&
+  const bool half_gemm_supports_trans_b =
+      trans_b == CblasNoTrans ||
+      (trans_b == CblasTrans &&
+       MlasHalfGemmNativePackBSize(CblasNoTrans, CblasTrans,
+                                   static_cast<size_t>(N), static_cast<size_t>(K),
+                                   mlas_backend_kernel_selector_config) != 0);
+  if (has_accelerated_half_gemm && half_gemm_supports_trans_b && trans_a == CblasNoTrans &&
       alpha == onnxruntime::MLFloat16::One && (use_mlas_no_bias || use_mlas_bias)) {
     MLAS_HALF_GEMM_DATA_PARAMS data{};
     data.A = a_data;
     data.lda = K;
     data.B = b_data;
-    data.ldb = N;
+    data.ldb = trans_b == CblasNoTrans ? N : K;
     data.C = y_data;
     data.ldc = N;
     if (use_mlas_bias && c_shape != nullptr) {
       data.Bias = c_data;
     }
+    data.BIsTransposed = trans_b == CblasTrans;
     data.BackendKernelSelectorConfig = mlas_backend_kernel_selector_config;
     MlasHalfGemmBatch(M, N, K, 1, &data, thread_pool);
     return;
@@ -450,27 +467,24 @@ Status Gemm<float>::Compute(OpKernelContext* context) const {
   if (B) {
     ComputeGemm(trans_A_, trans_B_, M, N, K, alpha_, A->Data<float>(), B->Data<float>(), beta_,
                 c_data, c_shape, y_data, thread_pool, &mlas_backend_kernel_selector_config_);
+  } else if (K == 0) {
+    ComputeGemmZeroK(M, N, alpha_, beta_, c_data, c_shape, y_data);
   } else {
     GemmBroadcastBias(M, N, beta_, c_data, c_shape, y_data);
-    if (K > 0) {
-      MlasGemm(
-          trans_A_,
-          static_cast<size_t>(M),
-          static_cast<size_t>(N),
-          static_cast<size_t>(K),
-          alpha_,
-          A->Data<float>(),
-          static_cast<size_t>(trans_A_ != CblasNoTrans ? M : K),
-          packed_b_.get(),
-          c_data != nullptr ? beta_ : 0.0f,
-          y_data,
-          static_cast<size_t>(N),
-          thread_pool,
-          &mlas_backend_kernel_selector_config_);
-    } else if (beta_ == 0 || c_data == nullptr) {
-      EigenMatrixMapRowMajor<float> dest(y_data, narrow<Eigen::Index>(M), narrow<Eigen::Index>(N));
-      dest.setZero();
-    }
+    MlasGemm(
+        trans_A_,
+        static_cast<size_t>(M),
+        static_cast<size_t>(N),
+        static_cast<size_t>(K),
+        alpha_,
+        A->Data<float>(),
+        static_cast<size_t>(trans_A_ != CblasNoTrans ? M : K),
+        packed_b_.get(),
+        c_data != nullptr ? beta_ : 0.0f,
+        y_data,
+        static_cast<size_t>(N),
+        thread_pool,
+        &mlas_backend_kernel_selector_config_);
   }
 
   ComputeActivation(y_data, SafeInt<size_t>(M) * N, thread_pool);

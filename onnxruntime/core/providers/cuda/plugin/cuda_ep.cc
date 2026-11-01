@@ -1,6 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#if defined(_MSC_VER)
+#pragma warning(disable : 4996)
+#endif
+
 #include "cuda_ep.h"
 #include "cuda_ep_factory.h"
 #include "core/providers/cuda/cudnn_loader.h"
@@ -8,6 +12,7 @@
 #include "cuda_graph_plugin.h"
 #include "core/providers/cuda/plugin/cuda_kernel_adapter.h"
 #include "cuda_allocator_plugin.h"
+#include "cuda_plugin_temp_space_allocator.h"
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/framework/allocator.h"
 #include "ep/get_capability_utils.h"
@@ -24,6 +29,7 @@
 
 #include "core/graph/constants.h"
 #include "core/providers/cuda/cuda_nhwc_ops.h"
+#include "contrib_ops/cuda/quantization/matmul_nbits_tactic_cache.h"
 
 namespace onnxruntime {
 namespace cuda_plugin {
@@ -32,10 +38,6 @@ namespace {
 
 std::unique_ptr<IExecutionProvider> CreateCudaPluginProvider(std::string_view ep_name, const OrtEp* ort_ep) {
   return std::make_unique<::onnxruntime::CUDAExecutionProvider>(std::string{ep_name}, ort_ep);
-}
-
-AllocatorPtr CreateCudaPluginTempSpaceAllocator(int device_id) {
-  return std::make_shared<::onnxruntime::CUDAAllocator>(device_id, ::onnxruntime::CUDA);
 }
 
 AllocatorPtr CreateCudaPluginTempSpaceCpuAllocator() {
@@ -115,12 +117,13 @@ struct CudaEp::PerThreadContext {
   cudaStream_t graph_stream = nullptr;
   CudaGraphManager cuda_graph;
   size_t pre_capture_free_mem = 0;
+  uint64_t last_qmoe_graph_gen = 0;
 };
 
 CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& logger)
     : onnxruntime::ep::adapter::Ep{CreateCudaPluginProvider(factory.GetEpName(), static_cast<const OrtEp*>(this)),
                                    CreateCudaPluginTempSpaceCpuAllocator(),
-                                   CreateCudaPluginTempSpaceAllocator(config.device_id)},
+                                   CreateCudaPluginTempSpaceAllocator(config.device_id, config.budget_account)},
       factory_(factory),
       name_(factory.GetEpName()),
       config_(config),
@@ -151,8 +154,9 @@ CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& lo
                         : nullptr;
   CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
   IsConcurrentRunSupported = IsConcurrentRunSupportedImpl;
-  OnRunStart = config_.enable_cuda_graph ? OnRunStartImpl : nullptr;
-  OnRunEnd = config_.enable_cuda_graph ? OnRunEndImpl : nullptr;
+  OnRunStart = OnRunStartImpl;
+  OnRunEnd = OnRunEndImpl;
+  OnSessionInitializationEnd = (ort_version >= 27) ? OnSessionInitializationEndImpl : nullptr;
 
   // OrtEp::Sync is \since ORT 1.25. A runtime older than 1.25 does not know about this OrtEp field and
   // ignores it regardless of its value. We still gate it on the runtime version to keep the
@@ -216,6 +220,10 @@ CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& lo
   adapter_config.device_id = config_.device_id;
   adapter_config.do_copy_in_default_stream = config_.do_copy_in_default_stream;
   adapter_config.enable_cuda_graph = config_.enable_cuda_graph;
+  adapter_config.qmoe_controller = std::make_shared<onnxruntime::cuda::QMoESessionController>(config_.device_id);
+  if (config_.budget_account) {
+    adapter_config.qmoe_controller->SetBudgetAccount(config_.budget_account);
+  }
   onnxruntime::cuda::SetCudaKernelAdapterRuntimeConfigForProvider(
       static_cast<const void*>(EpImpl()), adapter_config);
 
@@ -223,6 +231,16 @@ CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& lo
 }
 
 CudaEp::~CudaEp() {
+  // The plugin build excludes cuda_execution_provider.cc, so persist staged fpA_intB tactics here.
+  onnxruntime::contrib::cuda::FlushMatMulNBitsTacticCaches();
+
+  if (EpImpl() != nullptr) {
+    auto runtime_cfg = onnxruntime::cuda::detail::GetCudaKernelAdapterRuntimeConfigForProvider(
+        static_cast<const void*>(EpImpl()));
+    if (runtime_cfg && runtime_cfg->qmoe_controller) {
+      runtime_cfg->qmoe_controller->Shutdown();
+    }
+  }
   std::lock_guard<std::mutex> lock(per_thread_contexts_mutex_);
   for (const auto& cache_weak : per_thread_context_caches_) {
     auto cache = cache_weak.lock();
@@ -253,6 +271,21 @@ OrtStatus* ORT_API_CALL CudaEp::GetCapabilityImpl(
 
   if (all_nodes.empty()) {
     return nullptr;
+  }
+
+  if (auto model_path = graph.GetModelPath(); !model_path.empty() && ep->EpImpl() != nullptr) {
+    std::error_code ec;
+    std::filesystem::path path(model_path);
+    std::filesystem::path abs_path = std::filesystem::absolute(path, ec);
+    std::filesystem::path resolved_path = (!ec && !abs_path.empty()) ? std::move(abs_path) : std::move(path);
+    auto runtime_cfg = onnxruntime::cuda::detail::GetCudaKernelAdapterRuntimeConfigForProvider(
+        static_cast<const void*>(ep->EpImpl()));
+    if (runtime_cfg) {
+      if (runtime_cfg->qmoe_controller) {
+        runtime_cfg->qmoe_controller->SetModelPath(resolved_path);
+      }
+      runtime_cfg->SetModelPath(std::move(resolved_path));
+    }
   }
 
   // Three-phase filtering determines which graph nodes run on this EP:
@@ -466,7 +499,10 @@ OrtStatus* ORT_API_CALL CudaEp::CreateAllocatorImpl(
     return nullptr;
   }
 
-  return ep.factory_.CreateAllocator(&ep.factory_, memory_info, nullptr, allocator);
+  Ort::KeyValuePairs allocator_options;
+  allocator_options.Add(kEpInstanceIdOptionKey,
+                        std::to_string(reinterpret_cast<uintptr_t>(static_cast<const OrtEp*>(&ep))).c_str());
+  return ep.factory_.CreateAllocator(&ep.factory_, memory_info, allocator_options, allocator);
 
   EXCEPTION_TO_STATUS_END
 }
@@ -507,10 +543,19 @@ OrtStatus* ORT_API_CALL CudaEp::IsConcurrentRunSupportedImpl(
   }
 
   auto* ep = static_cast<CudaEp*>(this_ptr);
+  bool has_offload_nodes = false;
+  if (ep->EpImpl() != nullptr) {
+    auto runtime_cfg = onnxruntime::cuda::detail::GetCudaKernelAdapterRuntimeConfigForProvider(
+        static_cast<const void*>(ep->EpImpl()));
+    if (runtime_cfg && runtime_cfg->qmoe_controller && runtime_cfg->qmoe_controller->HasOffloadNodes()) {
+      has_offload_nodes = true;
+    }
+  }
   // Concurrent runs require stream-tagged scratch allocations. The plugin kernel adapter can tag
   // scratch chunks only when the hosting ORT runtime exposes KernelContext_GetSyncStream.
   static constexpr uint32_t kOrtKernelContextGetSyncStreamMinVersion = 28;
-  *is_supported = !ep->config_.use_ep_level_unified_stream &&
+  *is_supported = !has_offload_nodes &&
+                  !ep->config_.use_ep_level_unified_stream &&
                   ::onnxruntime::ep::CurrentOrtApiVersion() >= kOrtKernelContextGetSyncStreamMinVersion;
   return nullptr;
 }
@@ -584,12 +629,92 @@ CudaGraphAnnotation_t CudaEp::GetGraphAnnotationId(const OrtRunOptions* run_opti
 }
 
 /*static*/
+OrtStatus* ORT_API_CALL CudaEp::OnSessionInitializationEndImpl(OrtEp* this_ptr) noexcept {
+  EXCEPTION_TO_STATUS_BEGIN
+  auto* ep = static_cast<CudaEp*>(this_ptr);
+  if (ep->EpImpl() != nullptr) {
+    auto runtime_cfg = onnxruntime::cuda::detail::GetCudaKernelAdapterRuntimeConfigForProvider(
+        static_cast<const void*>(ep->EpImpl()));
+    if (runtime_cfg && runtime_cfg->qmoe_controller) {
+      onnxruntime::cuda::QMoESessionController::SessionPlanReport report;
+      auto st = runtime_cfg->qmoe_controller->PlanAndAdmitSession(report);
+      if (!st.IsOK()) {
+        return ep->factory_.GetOrtApi().CreateStatus(ORT_FAIL, st.ErrorMessage().c_str());
+      }
+      const OrtApi& ort_api = ep->factory_.GetOrtApi();
+      if (!report.paging_warning.empty()) {
+        Ort::Status log_status(ort_api.Logger_LogMessage(&ep->logger_, ORT_LOGGING_LEVEL_WARNING,
+                                                         report.paging_warning.c_str(),
+                                                         ORT_FILE, __LINE__, __FUNCTION__));
+      }
+      if (!report.summary.empty()) {
+        Ort::Status log_status(ort_api.Logger_LogMessage(&ep->logger_, ORT_LOGGING_LEVEL_INFO,
+                                                         report.summary.c_str(),
+                                                         ORT_FILE, __LINE__, __FUNCTION__));
+      }
+    }
+  }
+  return nullptr;
+  EXCEPTION_TO_STATUS_END
+}
+
+namespace {
+// Ends a controller run on scope exit unless released. ORT does not call OnRunEnd for a provider whose OnRunStart
+// failed, and an error or exception inside OnRunEnd must not leave the controller run active.
+class QMoEControllerRunRollback {
+ public:
+  QMoEControllerRunRollback() = default;
+  QMoEControllerRunRollback(const QMoEControllerRunRollback&) = delete;
+  QMoEControllerRunRollback& operator=(const QMoEControllerRunRollback&) = delete;
+  ~QMoEControllerRunRollback() {
+    if (controller_) {
+      try {
+        static_cast<void>(controller_->OnRunEnd(/*sync_stream=*/false, /*run_succeeded=*/false));
+      } catch (...) {
+      }
+    }
+  }
+  void Arm(std::shared_ptr<onnxruntime::cuda::QMoESessionController> controller) { controller_ = std::move(controller); }
+  void Release() { controller_.reset(); }
+
+ private:
+  std::shared_ptr<onnxruntime::cuda::QMoESessionController> controller_;
+};
+}  // namespace
+
+/*static*/
 OrtStatus* ORT_API_CALL CudaEp::OnRunStartImpl(
     OrtEp* this_ptr, const OrtRunOptions* run_options) noexcept {
   EXCEPTION_TO_STATUS_BEGIN
 
   auto* ep = static_cast<CudaEp*>(this_ptr);
+  QMoEControllerRunRollback controller_rollback;
   if (!ep->config_.enable_cuda_graph) {
+    ep->factory_.ShrinkEligibleDeviceArenas(ep->config_.device_id, ep->config_.budget_account.get());
+  }
+  if (ep->EpImpl() != nullptr) {
+    auto runtime_cfg = onnxruntime::cuda::detail::GetCudaKernelAdapterRuntimeConfigForProvider(
+        static_cast<const void*>(ep->EpImpl()));
+    if (runtime_cfg && runtime_cfg->qmoe_controller && runtime_cfg->qmoe_controller->HasOffloadNodes()) {
+      const char* strict_env = std::getenv("ORT_QMOE_REJECT_DISABLE_SYNC");
+      if (strict_env != nullptr && std::strcmp(strict_env, "1") == 0 && run_options != nullptr) {
+        const char* no_sync =
+            ep->factory_.GetOrtApi().GetRunConfigEntry(run_options, "disable_synchronize_execution_providers");
+        if (no_sync != nullptr && std::strcmp(no_sync, "1") == 0) {
+          return ep->factory_.GetOrtApi().CreateStatus(
+              ORT_INVALID_ARGUMENT,
+              "QMoEOffload does not support disable_synchronize_execution_providers=1; required completion sync cannot be skipped.");
+        }
+      }
+      auto st = runtime_cfg->qmoe_controller->OnRunStart();
+      if (!st.IsOK()) {
+        return ep->factory_.GetOrtApi().CreateStatus(ORT_FAIL, st.ErrorMessage().c_str());
+      }
+      controller_rollback.Arm(runtime_cfg->qmoe_controller);
+    }
+  }
+  if (!ep->config_.enable_cuda_graph) {
+    controller_rollback.Release();
     return nullptr;
   }
 
@@ -598,6 +723,17 @@ OrtStatus* ORT_API_CALL CudaEp::OnRunStartImpl(
   IsThreadCapturingCudaGraph() = false;
 
   auto& context = ep->GetPerThreadContext();
+  if (ep->EpImpl() != nullptr) {
+    auto runtime_cfg = onnxruntime::cuda::detail::GetCudaKernelAdapterRuntimeConfigForProvider(
+        static_cast<const void*>(ep->EpImpl()));
+    if (runtime_cfg && runtime_cfg->qmoe_controller) {
+      const uint64_t cur_gen = runtime_cfg->qmoe_controller->GraphGeneration();
+      if (cur_gen != context.last_qmoe_graph_gen) {
+        context.cuda_graph.Reset();
+        context.last_qmoe_graph_gen = cur_gen;
+      }
+    }
+  }
   CudaGraphAnnotation_t id = ep->GetGraphAnnotationId(run_options);
   if (!context.cuda_graph.IsGraphCaptured(id) &&
       context.cuda_graph.IsGraphCaptureAllowed(id, ep->config_.min_num_runs_before_cuda_graph_capture)) {
@@ -612,10 +748,13 @@ OrtStatus* ORT_API_CALL CudaEp::OnRunStartImpl(
     if (cudaMemGetInfo(&free_mem, &total_mem) == cudaSuccess) {
       context.pre_capture_free_mem = free_mem;
     }
+    // Captured graphs embed arena addresses, so this session's arenas must not be shrunk from now on.
+    ep->factory_.MarkSessionGraphCapture(ep->config_.device_id, ep->config_.budget_account.get());
     context.cuda_graph.CaptureBegin(id);
     IsThreadCapturingCudaGraph() = true;
   }
 
+  controller_rollback.Release();
   return nullptr;
 
   EXCEPTION_TO_STATUS_END
@@ -627,7 +766,33 @@ OrtStatus* ORT_API_CALL CudaEp::OnRunEndImpl(
   EXCEPTION_TO_STATUS_BEGIN
 
   auto* ep = static_cast<CudaEp*>(this_ptr);
+  std::shared_ptr<onnxruntime::cuda::QMoESessionController> qmoe_controller;
+  if (ep->EpImpl() != nullptr) {
+    auto runtime_cfg = onnxruntime::cuda::detail::GetCudaKernelAdapterRuntimeConfigForProvider(
+        static_cast<const void*>(ep->EpImpl()));
+    if (runtime_cfg && runtime_cfg->qmoe_controller && runtime_cfg->qmoe_controller->HasOffloadNodes()) {
+      qmoe_controller = runtime_cfg->qmoe_controller;
+    }
+  }
+
+  QMoEControllerRunRollback controller_rollback;
+  controller_rollback.Arm(qmoe_controller);
+
+  // The session marks a run that did not complete (error, termination, or leaving before the graph executed).
+  bool run_failed = false;
+  if (run_options != nullptr) {
+    const char* outcome = ep->factory_.GetOrtApi().GetRunConfigEntry(run_options, "__ort.run_outcome");
+    run_failed = outcome != nullptr && std::strcmp(outcome, "ok") != 0;
+  }
+
   if (!ep->config_.enable_cuda_graph) {
+    if (qmoe_controller) {
+      controller_rollback.Release();
+      auto st = qmoe_controller->OnRunEnd(sync_stream, /*run_succeeded=*/!run_failed);
+      if (!st.IsOK()) {
+        return ep->factory_.GetOrtApi().CreateStatus(ORT_FAIL, st.ErrorMessage().c_str());
+      }
+    }
     return nullptr;
   }
 
@@ -639,7 +804,14 @@ OrtStatus* ORT_API_CALL CudaEp::OnRunEndImpl(
   CudaGraphAnnotation_t id = ep->GetGraphAnnotationId(run_options);
   bool replayed_graph = false;
   if (!context.cuda_graph.IsGraphCaptured(id)) {
-    if (context.cuda_graph.IsGraphCaptureAllowed(id, ep->config_.min_num_runs_before_cuda_graph_capture)) {
+    const bool capture_allowed =
+        context.cuda_graph.IsGraphCaptureAllowed(id, ep->config_.min_num_runs_before_cuda_graph_capture);
+    if (capture_allowed && run_failed) {
+      // What was recorded is incomplete: drop it instead of instantiating and replaying it. The warm-up count is
+      // kept so the next successful run captures again.
+      context.cuda_graph.DiscardCapture();
+      context.pre_capture_free_mem = 0;
+    } else if (capture_allowed) {
       context.cuda_graph.CaptureEnd(id);
 
       // Check if GPU memory was allocated during capture (which would make the
@@ -660,6 +832,13 @@ OrtStatus* ORT_API_CALL CudaEp::OnRunEndImpl(
         context.pre_capture_free_mem = 0;
       }
 
+      if (qmoe_controller) {
+        auto prep_st = qmoe_controller->OnBeforeGraphReplay(context.graph_stream);
+        if (!prep_st.IsOK()) {
+          return ep->factory_.GetOrtApi().CreateStatus(ORT_FAIL, prep_st.ErrorMessage().c_str());
+        }
+      }
+
       // CUDA work issued to a capturing stream doesn't actually run on the GPU,
       // so replay the captured graph to actually execute the work.
       OrtStatus* status = context.cuda_graph.Replay(id, sync_stream);
@@ -667,13 +846,34 @@ OrtStatus* ORT_API_CALL CudaEp::OnRunEndImpl(
         return status;
       }
       replayed_graph = true;
-    } else {
+      if (qmoe_controller) {
+        auto after_st = qmoe_controller->OnAfterGraphReplay(context.graph_stream, sync_stream);
+        if (!after_st.IsOK()) {
+          return ep->factory_.GetOrtApi().CreateStatus(ORT_FAIL, after_st.ErrorMessage().c_str());
+        }
+      }
+    } else if (!run_failed) {
+      // A failed warm-up run did not exercise the whole graph, so it does not count towards the runs required
+      // before capture.
       context.cuda_graph.IncrementRegularRunCount(id);
+    }
+  }
+
+  if (qmoe_controller) {
+    controller_rollback.Release();
+    auto st = qmoe_controller->OnRunEnd(sync_stream, /*run_succeeded=*/!run_failed);
+    if (!st.IsOK()) {
+      return ep->factory_.GetOrtApi().CreateStatus(ORT_FAIL, st.ErrorMessage().c_str());
     }
   }
 
   if (sync_stream && !replayed_graph) {
     PL_CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(context.graph_stream));
+  } else if (!sync_stream) {
+    cudaError_t query_err = cudaStreamQuery(context.graph_stream);
+    if (query_err != cudaSuccess && query_err != cudaErrorNotReady) {
+      PL_CUDA_RETURN_IF_ERROR(query_err);
+    }
   }
   return nullptr;
 
@@ -694,7 +894,23 @@ bool ORT_API_CALL CudaEp::IsGraphCapturedImpl(const OrtEp* this_ptr, int graph_a
   }
 
   try {
-    return ep->GetPerThreadContext().cuda_graph.IsGraphCaptured(graph_annotation_id);
+    if (const char* handoff_env = std::getenv("ORT_QMOE_PREFILL_HANDOFF_DONE");
+        handoff_env != nullptr && std::strcmp(handoff_env, "1") == 0) {
+      ep->factory_.ShrinkEligibleDeviceArenas(ep->config_.device_id, ep->config_.budget_account.get());
+    }
+    auto& context = ep->GetPerThreadContext();
+    if (ep->EpImpl() != nullptr) {
+      auto runtime_cfg = onnxruntime::cuda::detail::GetCudaKernelAdapterRuntimeConfigForProvider(
+          static_cast<const void*>(ep->EpImpl()));
+      if (runtime_cfg && runtime_cfg->qmoe_controller) {
+        const uint64_t cur_gen = runtime_cfg->qmoe_controller->GraphGeneration();
+        if (cur_gen != context.last_qmoe_graph_gen) {
+          context.cuda_graph.Reset();
+          context.last_qmoe_graph_gen = cur_gen;
+        }
+      }
+    }
+    return context.cuda_graph.IsGraphCaptured(graph_annotation_id);
   } catch (...) {
     return false;
   }
@@ -710,10 +926,47 @@ OrtStatus* ORT_API_CALL CudaEp::ReplayGraphImpl(OrtEp* this_ptr, int graph_annot
         ORT_EP_FAIL, "ReplayGraph called but CUDA graph manager is not initialized");
   }
   PL_CUDA_CALL_THROW(cudaSetDevice(ep->config_.device_id));
+  auto& context = ep->GetPerThreadContext();
+  std::shared_ptr<onnxruntime::cuda::QMoESessionController> qmoe_controller;
+  if (ep->EpImpl() != nullptr) {
+    auto runtime_cfg = onnxruntime::cuda::detail::GetCudaKernelAdapterRuntimeConfigForProvider(
+        static_cast<const void*>(ep->EpImpl()));
+    if (runtime_cfg && runtime_cfg->qmoe_controller && runtime_cfg->qmoe_controller->HasOffloadNodes()) {
+      qmoe_controller = runtime_cfg->qmoe_controller;
+    }
+  }
+  if (qmoe_controller) {
+    auto start_st = qmoe_controller->OnRunStart();
+    if (!start_st.IsOK()) {
+      return ep->factory_.GetOrtApi().CreateStatus(ORT_FAIL, start_st.ErrorMessage().c_str());
+    }
+    auto prep_st = qmoe_controller->OnBeforeGraphReplay(context.graph_stream);
+    if (!prep_st.IsOK()) {
+      static_cast<void>(qmoe_controller->OnRunEnd(/*sync_stream=*/false, /*run_succeeded=*/false));
+      return ep->factory_.GetOrtApi().CreateStatus(ORT_FAIL, prep_st.ErrorMessage().c_str());
+    }
+  }
   // Launch graph without sync. The caller (PluginExecutionProvider::ReplayGraph)
   // handles synchronization based on disable_synchronize_execution_providers.
   // This function is only called from that bridge code path.
-  return ep->GetPerThreadContext().cuda_graph.Replay(graph_annotation_id, /*sync=*/false);
+  OrtStatus* replay_st = context.cuda_graph.Replay(graph_annotation_id, /*sync=*/false);
+  if (replay_st != nullptr) {
+    if (qmoe_controller) {
+      static_cast<void>(qmoe_controller->OnRunEnd(/*sync_stream=*/false, /*run_succeeded=*/false));
+    }
+    return replay_st;
+  }
+  if (qmoe_controller) {
+    auto after_st = qmoe_controller->OnAfterGraphReplay(context.graph_stream, /*sync_stream=*/false);
+    auto end_st = qmoe_controller->OnRunEnd(/*sync_stream=*/false, /*run_succeeded=*/after_st.IsOK());
+    if (!after_st.IsOK()) {
+      return ep->factory_.GetOrtApi().CreateStatus(ORT_FAIL, after_st.ErrorMessage().c_str());
+    }
+    if (!end_st.IsOK()) {
+      return ep->factory_.GetOrtApi().CreateStatus(ORT_FAIL, end_st.ErrorMessage().c_str());
+    }
+  }
+  return nullptr;
 
   EXCEPTION_TO_STATUS_END
 }

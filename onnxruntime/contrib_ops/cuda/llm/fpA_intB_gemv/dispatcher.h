@@ -16,45 +16,13 @@
 
 #include "contrib_ops/cuda/llm/fpA_intB_gemv/fpA_intB_gemv.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemv/details.h"
+#include "contrib_ops/cuda/llm/fpA_intB_gemv/int8_tc_gemv.cuh"
 #include "core/common/common.h"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 
-#include <atomic>
+#include <cstdint>
 #include <cstdio>
 #include <type_traits>
-
-namespace onnxruntime::llm {
-namespace kernels {
-namespace fpA_intB_gemv {
-
-// SM count of the current device if it is sm_12x (consumer / workstation Blackwell), else 0.
-inline int GemvPickSmCount() {
-  int device = 0;
-  if (cudaGetDevice(&device) != cudaSuccess) {
-    return 0;
-  }
-  static constexpr int kMaxDevices = 16;
-  static std::atomic<int> cache[kMaxDevices];  // 0 = unknown, -1 = not sm_12x
-  int count = device >= 0 && device < kMaxDevices ? cache[device].load(std::memory_order_relaxed) : 0;
-  if (count == 0) {
-    int major = 0;
-    if (cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, device) != cudaSuccess ||
-        cudaDeviceGetAttribute(&count, cudaDevAttrMultiProcessorCount, device) != cudaSuccess) {
-      return 0;
-    }
-    if (major != 12) {
-      count = -1;
-    }
-    if (device >= 0 && device < kMaxDevices) {
-      cache[device].store(count, std::memory_order_relaxed);
-    }
-  }
-  return count > 0 ? count : 0;
-}
-
-}  // namespace fpA_intB_gemv
-}  // namespace kernels
-}  // namespace onnxruntime::llm
 
 namespace onnxruntime::llm {
 namespace kernels {
@@ -312,6 +280,11 @@ template <typename Details, int CtaM, int CtaN, int Threads, int GroupSize, bool
           bool EnableBias, bool ApplyAlphaInAdvance, typename TypeA = typename Details::TypeDetailsA::Type>
 __global__ void kernel(TypeA* act, TypeA* act_scale, uint8_t* weight, TypeA* scales, TypeA* zeros, TypeA* bias,
                        TypeA* out, float alpha, int m, int n, int k) {
+#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900))
+  // Lets a programmatic-dependent-launch successor (the hyper-connection down kernel) start and prefetch its constant
+  // weights while this kernel runs; it reads our output only after griddepcontrol.wait. No-op for plain launches.
+  asm volatile("griddepcontrol.launch_dependents;" ::: "memory");
+#endif
 #if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 750))
   // ArgType          ArgName          DataType           Shape                 Layout
   // input            act              fp16/bf16          [m, k]                RowMajor
@@ -522,6 +495,31 @@ void exec_kernel_paired(Params& params, cudaStream_t s) {
   }
 }
 
+// Whether the tensor-core INT8 kernel (int8_tc_gemv.cuh) can run this launch. The kernel reads 16-byte vectors of the
+// activations and the weights, handles 1..8 rows, and needs whole 16-column tiles and whole 64-wide K tiles. Its
+// epilogue has no alpha multiplier (the scalar epilogue computes alpha * acc + bias), so only alpha == 1 may use it.
+inline bool CanUseInt8TensorCore(const Params& params, int group_size) {
+  return params.tensor_core && params.alpha == 1.f && params.device_sm == 90 && params.device_sm_count > 0 &&
+         params.m >= 1 && params.m <= dense_tc::kMaxRows && params.n % dense_tc::kMmaColumns == 0 &&
+         params.k % dense_tc::kTileK == 0 && params.k % group_size == 0 &&
+         reinterpret_cast<uintptr_t>(params.act) % 16 == 0 && reinterpret_cast<uintptr_t>(params.weight) % 16 == 0;
+}
+
+template <int GroupSize>
+bool exec_kernel_tc(Params& params, cudaStream_t s) {
+  const dense_tc::LaunchConfig config = dense_tc::LaunchInt8TcGemvAuto<GroupSize>(
+      reinterpret_cast<const __nv_bfloat16*>(params.act), reinterpret_cast<const uint8_t*>(params.weight),
+      reinterpret_cast<const __nv_bfloat16*>(params.scales), reinterpret_cast<__nv_bfloat16*>(params.out), params.m,
+      params.n, params.k, params.device_sm_count, s);
+  if (config.k_warps == 0) return false;
+  if (params.debug) {
+    std::printf("[fpA_intB_debug] GEMV launch: tensor_core=1 M=%d KWarps=%d Depth=%d BlocksPerSm=%d\n", params.m,
+                config.k_warps, config.depth, config.blocks_per_sm);
+    std::fflush(stdout);
+  }
+  return true;
+}
+
 template <typename Details, int CtaM, int CtaN, int Threads, int GroupSize, bool EnableActScale, bool EnableZero,
           bool EnableBias, bool ApplyAlphaInAdvance>
 void exec_kernel(Params& params, cudaStream_t s) {
@@ -542,7 +540,7 @@ void exec_kernel(Params& params, cudaStream_t s) {
       params.alpha,
       params.m, params.n, params.k);
   if (params.debug) {
-    std::printf("[fpA_intB_debug] GEMV launch: paired_k=0 M=%d\n", params.m);
+    std::printf("[fpA_intB_debug] GEMV launch: paired_k=0 M=%d CtaN=%d\n", params.m, CtaN);
     std::fflush(stdout);
   }
 }
@@ -594,6 +592,19 @@ void dispatcher(Params& params, cudaStream_t s) {
       return;                                                                                       \
     }                                                                                               \
   } while (0);
+
+  // Tensor-core kernel for the BF16 / symmetric INT8 / SM80-interleaved layout (the Qwen3.8 dense projections), which
+  // the scalar kernel serves at about a third of the DRAM bandwidth on SM 9.0 because it converts, scales and
+  // multiplies every weight once per row.
+  if constexpr (std::is_same_v<typename Details::TypeDetailsA, BF16DetailsA> &&
+                std::is_same_v<typename Details::TypeDetailsW, Int8DetailsW> && Details::kInterleave == 2 &&
+                Details::kStepK == 16 && Details::kUseInterleavedConverter &&
+                Details::LayoutDetails::kTileSize == 64 && !EnableZero && !EnableBias && !EnableActScale &&
+                !ApplyAlphaInAdvance) {
+    if (CanUseInt8TensorCore(params, GroupSize) && exec_kernel_tc<GroupSize>(params, s)) {
+      return;
+    }
+  }
 
   if (params.decode_variant != 0) {
     if constexpr (NarrowInt4Decode && Details::kStepK == 32 && Details::kInterleave == 4 &&
@@ -648,22 +659,48 @@ void dispatcher(Params& params, cudaStream_t s) {
   DISPATCHER_FOR_M(5, 5, CtaNLargeM, 128);
   DISPATCHER_FOR_M(6, 6, CtaNLargeM, 128);
   DISPATCHER_FOR_M(7, 7, CtaNLargeM, 128);
-  // M = 8 is the DFlash2 verify batch; its projections are sensitive to wave quantization. Only the
-  // fp16 int4 SM80-interleaved kernel was measured, so other types and layouts keep CtaNLargeM.
-  if constexpr (Details::kStepK == 32 && Details::kInterleave == 4 && !EnableZero && CtaNLargeM == 4 &&
-                std::is_same_v<typename Details::TypeDetailsA, FP16DetailsA>) {
-    int const sm_count = params.wave_aware && params.m == 8 ? GemvPickSmCount() : 0;
-    int const pick = PickGemvCtaN(params.wave_aware, params.m, params.n, Details::kInterleave, CtaNLargeM,
-                                  sm_count);
-    if (pick == CtaNLargeM / 2) {
+  // M = 8 is the DFlash2 verify batch. With the default tile its small-N projections launch only
+  // grid.y = n / (CtaNLargeM * kInterleave) blocks, too few to fill the GPU, so a half-width tile
+  // (CtaN = CtaNLargeM / 2) doubles the block count. The tile only decides which block covers which
+  // columns; each output keeps the same K reduction, so results are bit-identical.
+  // Only the SM80-interleaved INT4 (StepK 32) and INT8 (StepK 16) layouts without zero points qualify. The
+  // Hopper layout (kInterleave 1) and the zero-point kernels (CtaNLargeM 2) keep the default tile.
+  // A100 and H200 (reported by the caller in params.device_sm / device_sm_count) use same-shape
+  // timing-qualified rules for FP16/BF16 and INT4/INT8 with group size 32 / 64 / 128; on H200 INT8 always keeps
+  // the default tile. Activation scales and alpha-in-advance were not timed and keep the default tile there. A
+  // bias epilogue goes to the rule: A100 keeps the default tile, and H200 narrows its INT4 window because the
+  // half-width kernel is 6 - 32% slower than the default one with a bias except where the wave gain pays for it.
+  // In particular, A100 INT4 N = 4320 fills its 108 * 5 narrow-tile block slots; N = 4336 starts a second wave,
+  // and H200 INT4 N = 5280 fills 132 * 5 slots. Other and unreported devices retain the device-independent
+  // cutoffs.
+  if constexpr (((Details::kStepK == 32 && Details::kInterleave == 4) ||
+                 (Details::kStepK == 16 && Details::kInterleave == 2)) &&
+                !EnableZero && CtaNLargeM == 4) {
+    const M8GemvDevice device = GetM8GemvDevice(params.device_sm, params.device_sm_count);
+    constexpr bool kTimedEpilogue = !EnableActScale && !ApplyAlphaInAdvance &&
+                                    (GroupSize == 32 || GroupSize == 64 || GroupSize == 128);
+    if ((device == M8GemvDevice::kUnmeasured || kTimedEpilogue) &&
+        PickM8GemvCtaN(device, params.m, params.n, params.k, GroupSize, Details::kInterleave, EnableBias,
+                       CtaNLargeM) == CtaNLargeM / 2) {
       exec_kernel<Details, 8, CtaNLargeM / 2, 128, GroupSize, EnableActScale, EnableZero, EnableBias,
                   ApplyAlphaInAdvance>(params, s);
       return;
     }
-    if (pick == CtaNLargeM * 2) {
-      exec_kernel<Details, 8, CtaNLargeM * 2, 128, GroupSize, EnableActScale, EnableZero, EnableBias,
-                  ApplyAlphaInAdvance>(params, s);
-      return;
+    if constexpr (Details::kStepK == 32 && Details::kInterleave == 4 &&
+                  std::is_same_v<typename Details::TypeDetailsA, FP16DetailsA>) {
+      // Opt-in wave-aware tile (sm_12x only). Its SM count comes from the reported device as well.
+      int const pick = PickGemvCtaN(params.wave_aware, params.m, params.n, Details::kInterleave, CtaNLargeM,
+                                    GemvPickSmCount(params.device_sm, params.device_sm_count));
+      if (pick == CtaNLargeM / 2) {
+        exec_kernel<Details, 8, CtaNLargeM / 2, 128, GroupSize, EnableActScale, EnableZero, EnableBias,
+                    ApplyAlphaInAdvance>(params, s);
+        return;
+      }
+      if (pick == CtaNLargeM * 2) {
+        exec_kernel<Details, 8, CtaNLargeM * 2, 128, GroupSize, EnableActScale, EnableZero, EnableBias,
+                    ApplyAlphaInAdvance>(params, s);
+        return;
+      }
     }
   }
   DISPATCHER_FOR_M(8, 8, CtaNLargeM, 128);

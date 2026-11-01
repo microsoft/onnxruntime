@@ -43,6 +43,13 @@ static const char* const kOrtSessionOptionsConfigMoeExpertCounterAlpha =
 static const char* const kOrtSessionOptionsConfigMoeExpertCounterBeta =
     "session.moe_expert_counter_beta";
 
+// Controls weight scaling in the shared-layout CPU QMoE INT3/INT4 kernels only.
+// "0" (default): round each dequantized weight to the activation type before multiplication.
+// "1": accumulate the block dot product in FP32, then apply its scale, without per-weight rounding.
+// Deferred scaling can improve throughput but can change results, particularly under cancellation.
+// Currently does not affect NVFP4/MXFP4, legacy CPU QMoE kernels, or CUDA kernels.
+static const char* const kOrtSessionOptionsCpuQmoeDeferredScale = "ep.cpu.qmoe_deferred_scale";
+
 // A value of "1" means allocators registered in the env will be used. "0" means the allocators created in the session
 // will be used. Use this to override the usage of env allocators on a per session level.
 static const char* const kOrtSessionOptionsConfigUseEnvAllocators = "session.use_env_allocators";
@@ -490,15 +497,50 @@ static const char* const kOrtSessionOptionsCudaFpAIntBGemvPairedK = "ep.cuda.fpa
 /// Opt in with "1" to wave-aware fp16/int4 M=8 GEMV tiles on sm_12x; "0" or unset keeps the default dispatch.
 static const char* const kOrtSessionOptionsCudaFpAIntBGemvWaveAware = "ep.cuda.fpa_intb_gemv_wave_aware";
 
-/// Reserved total KV-length envelope (accumulated past + current tokens) for CUDA
-/// GroupQueryAttention workspace estimation. Currently reader-only: the value is validated and
-/// forwarded to the Level-1 estimator but is not consumed, so it does not change workspace
-/// estimates or partitioning. Non-windowed estimation remains unavailable.
-/// A nonnegative decimal int64 is required; "0" or unset (default) means unspecified.
-/// Negative, malformed, or overflowing explicit values cause INVALID_ARGUMENT when creating
-/// resource accountants. This is not a runtime-enforced input limit or a no-OOM guarantee.
+/// Declared total KV-length envelope (accumulated past + current tokens) for CUDA
+/// GroupQueryAttention workspace estimation. A positive value enables non-windowed Level-1
+/// estimation using this bound; "0" or unset (default) leaves non-windowed estimation unavailable.
+/// The estimate also covers the allocated past cache capacity if it exceeds this envelope.
+/// Windowed estimation continues to use the cache capacity instead.
+/// A decimal integer in [0, INT32_MAX] is required. Invalid or out-of-ABI values cause
+/// INVALID_ARGUMENT during session initialization. Under capacity-aware partitioning, CUDA
+/// placement is declined when no proven GQA estimate is available; the generic workspace fallback
+/// is not used as a proof bound. This caller-declared envelope is not a runtime-enforced input limit
+/// or a no-OOM guarantee.
 static const char* const kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLength =
     "ep.cuda.gqa_workspace_max_total_sequence_length";
+
+/// CUDA DynamicSparseAttention kernel switches. Each is resolved once when the kernel is created, so a change needs a new
+/// session, and overrides the environment variable named below. The 0/1 switches accept only "0" and "1", and the
+/// thresholds a non-negative decimal integer; any other value, including an empty string, fails session initialization.
+/// "1" makes the INT8-cache BF16 prefill run FP16 tensor-core MMA on the gathered K/V tiles instead of dequantizing them
+/// to BF16 (opt-in; the tensor-core kernel has different numerics). Default "0". Overrides ORT_DSA_PREFILL_INT8_TC.
+static const char* const kOrtSessionOptionsCudaDsaPrefillInt8Tc = "ep.cuda.dsa_prefill_int8_tc";
+
+/// "0" routes the BF16 prefill through the generic kernels. Default "1". Overrides ORT_DSA_PREFILL_KERNEL.
+static const char* const kOrtSessionOptionsCudaDsaPrefillKernel = "ep.cuda.dsa_prefill_kernel";
+
+/// "1" makes the INT8-cache BF16 decode (up to 8 query rows) use the split-K tensor-core kernel instead of the
+/// CUDA-core grouped kernel (opt-in; the tensor-core kernel accumulates in a different order and does not reproduce
+/// the CUDA-core results bit for bit). Default "0". Overrides ORT_DSA_DECODE_INT8_TC.
+static const char* const kOrtSessionOptionsCudaDsaDecodeInt8Tc = "ep.cuda.dsa_decode_int8_tc";
+
+/// Requested number of 64-candidate tiles each CTA of the split-K tensor-core decode kernel consumes. "0" derives it from
+/// the problem size and the device: the smallest power of two with which all CTAs fit one wave of the CTAs that can be
+/// resident on the device. A positive value is a target: the number of splits is ceil(tiles / value), limited to 32 and
+/// to the split count of the decode workspace, so a small value on a long candidate list is raised and the last split
+/// may hold fewer tiles. Default "0". Overrides ORT_DSA_DECODE_INT8_TC_TILES_PER_SPLIT.
+static const char* const kOrtSessionOptionsCudaDsaDecodeInt8TcTilesPerSplit =
+    "ep.cuda.dsa_decode_int8_tc_tiles_per_split";
+
+/// Reader-only, hardware-neutral kernel dispatch intent shared across operators and EPs.
+/// Valid values are "auto", "latency", "memory", and "safe"; matching is case-sensitive.
+/// Unset or empty values map to "auto". Other values cause INVALID_ARGUMENT during
+/// session initialization.
+/// CUDA GroupQueryAttention Level-1 estimation is the first consumer; sizing does not use it.
+/// No value changes runtime dispatch, workspace estimates, or partitioning, and this option
+/// does not enforce a workload envelope or memory budget or provide a no-OOM guarantee.
+static const char* const kOrtSessionOptionsKernelDispatchPolicy = "session.kernel_dispatch_policy";
 
 /// Maximum number of rows of input A per CUDA MatMulNBits fpA_intB GEMM launch. Values below 8192 are
 /// rounded down to a supported tactic-profiler M bucket. Chunking requires M to exceed this limit
@@ -514,6 +556,46 @@ static const char* const kOrtSessionOptionsCudaMatMulNBitsMChunkSize = "ep.cuda.
 /// When disabled, cuBLAS is used. Overrides the ORT_CUDA_GEMM_AUTO_TUNE environment variable;
 /// ORT_ENABLE_SMALL_N_GEMV=1/0, when set, forces the small-N GEMV on/off and bypasses tuning.
 static const char* const kOrtSessionOptionsCudaEnableGemmAutoTune = "ep.cuda.enable_gemm_auto_tune";
+
+/// Controls the intermediate precision of the CUDA GatedDeltaNet chunked prefill kernels when the
+/// input/output tensor type is BFloat16:
+/// - "fp32" (default): preserve 24-bit FP32 state and chunk-update residuals using 3-slice BF16
+///   tensor-core decomposition with an exact FP32 fallback for extreme exponents.
+/// - "fp16": use 1-slice FP16 (10 mantissa bits) for internal chunk MMA tiles when chunk values fit
+///   within the safe FP16 dynamic range, falling back to the FP32-preserving BF16 path otherwise.
+/// - "bf16": use 1-slice native BF16 for all internal chunk MMA tiles.
+/// Overrides the ORT_GDN_BF16_PRECISION environment variable.
+static const char* const kOrtSessionOptionsCudaGatedDeltaNetBf16Precision =
+    "ep.cuda.gated_delta_net_bf16_precision";
+
+/// CUDA tensor-core kernel switches of MatMulNBits and QMoE. Each is resolved once when the
+/// kernel is created, so a change needs a new session, and overrides the environment variable named below. The
+/// 0/1 switches accept only "0" and "1", and the thresholds a positive decimal integer (or "0" where stated); any other
+/// value, including an empty string, fails session initialization.
+/// "1" uses the scalar GEMV instead of the SM 9.0 tensor-core INT8 GEMV of MatMulNBits. Default "0".
+/// Overrides ORT_DISABLE_FPA_INTB_GEMV_TC.
+static const char* const kOrtSessionOptionsCudaDisableFpAIntBGemvTc = "ep.cuda.disable_fpa_intb_gemv_tc";
+
+/// "1" disables the BF16 tensor-core INT4 decode GEMV of QMoE. Default "0". Overrides ORT_DISABLE_MOE_GEMV_TC.
+static const char* const kOrtSessionOptionsCudaDisableMoeGemvTc = "ep.cuda.disable_moe_gemv_tc";
+
+/// "1" disables the BF16 tensor-core INT3 decode GEMV of QMoE. Default "0". Overrides ORT_DISABLE_QMOE_INT3_TC.
+static const char* const kOrtSessionOptionsCudaDisableQmoeInt3Tc = "ep.cuda.disable_qmoe_int3_tc";
+
+/// Minimum number of routed rows from which QMoE uses the tensor-core INT4 decode GEMV. Default 33.
+/// Overrides ORT_MOE_GEMV_TC_MIN_ROWS.
+static const char* const kOrtSessionOptionsCudaMoeGemvTcMinRows = "ep.cuda.moe_gemv_tc_min_rows";
+
+/// Minimum number of routes from which QMoE uses the tensor-core INT3 decode GEMV. Default 33. Constant INT3 weights
+/// are repacked when the session is created into a layout that runs the tensor-core GEMV from the first route; setting
+/// this threshold above 1 (here or through ORT_QMOE_INT3_TC_MIN_ROUTES) keeps the weights in their raw layout, so that
+/// the threshold holds for every decode launch. Overrides ORT_QMOE_INT3_TC_MIN_ROUTES.
+static const char* const kOrtSessionOptionsCudaQmoeInt3TcMinRoutes = "ep.cuda.qmoe_int3_tc_min_routes";
+
+/// Minimum number of rows M from which the INT8 MatMulNBits (fpA_intB path, no zero points, no bias) dequantizes the
+/// weight once and runs one cuBLAS GEMM instead of the row-chunked CUTLASS mixed-input GEMM. "0" disables. Default 512
+/// on SM 9.0 and 0 (disabled) on other architectures. Overrides ORT_FPA_INTB_DEQUANT_GEMM_MIN_M.
+static const char* const kOrtSessionOptionsCudaFpAIntBDequantGemmMinM = "ep.cuda.fpa_intb_dequant_gemm_min_m";
 
 /// <summary>
 /// This is a setting that contains string annotations or annotation prefixes to be matched
@@ -694,7 +776,7 @@ static const char* const kOrtSessionOptionsQDQMatMulNBitsBlockSize = "session.qd
 
 // Enable the DQ->MatMulNBits fusion graph transformer.
 // "0": disabled (default). "1": enabled.
-// This is typically set automatically by InferenceSession when the NvTensorRTRTX EP is registered.
+// This is typically enabled automatically when the NvTensorRTRTX plugin EP is registered.
 static const char* const kOrtSessionOptionsEnableDQMatMulNBitsFusion = "session.enable_dq_matmulnbits_fusion";
 
 // THIS OPTION IS NOT A REGULAR SESSION OPTION SINCE IT CAN BE MODIFIED AT ANY TIME
@@ -927,3 +1009,41 @@ static const char* const kOrtSessionOptionsConfigUsePerSessionThreads = "session
 // "0": disable; "1": enable.
 // Equivalent to OrtApi::SetDeterministicCompute.
 static const char* const kOrtSessionOptionsConfigUseDeterministicCompute = "session.use_deterministic_compute";
+
+// Skip device-side input sanitization (block_table clamping, sequence-length monotonicity/bounds
+// clamping, and invalid-sequence output masking) in PagedAttention when the caller guarantees
+// valid block_table, cumulative_seqlens_q, and past_seqlens inputs.
+// Option values:
+// - "0": Sanitize PagedAttention inputs on device. [DEFAULT]
+// - "1": Skip PagedAttention input sanitization.
+static const char* const kOrtSessionOptionsPagedAttentionSkipInputSanitizer =
+    "session.paged_attention.skip_input_sanitizer";
+
+// ---------------------------------------------------------------------------
+// Portable MoE / QMoE Offload v4 Session Configuration Keys
+// ---------------------------------------------------------------------------
+static const char* const kOrtSessionOptionsMoeOffloadMode = "session.moe.offload.mode";
+static const char* const kOrtSessionOptionsMoeOffloadCpuExecution = "session.moe.offload.cpu_execution";
+static const char* const kOrtSessionOptionsMoeOffloadPlacement = "session.moe.offload.placement";
+static const char* const kOrtSessionOptionsMoeOffloadDeviceExpertBytes = "session.moe.offload.device_expert_bytes";
+static const char* const kOrtSessionOptionsMoeOffloadHostExpertBytes = "session.moe.offload.host_expert_bytes";
+static const char* const kOrtSessionOptionsMoeOffloadDeviceWorkingBytes = "session.moe.offload.device_working_bytes";
+static const char* const kOrtSessionOptionsMoeOffloadHostWorkingBytes = "session.moe.offload.host_working_bytes";
+static const char* const kOrtSessionOptionsMoeOffloadPinnedBytes = "session.moe.offload.pinned_bytes";
+static const char* const kOrtSessionOptionsMoeOffloadReserveDeviceBytes = "session.moe.offload.reserve_device_bytes";
+static const char* const kOrtSessionOptionsMoeOffloadBudgetGroup = "session.moe.offload.budget_group";
+// Per-session limit, in bytes, on device memory allocated through the session's CUDA allocators (BFC arena growth,
+// MoE offload buffers, ...). An allocation that would exceed the limit fails.
+// This is not the CUDA EP provider option `gpu_mem_limit`, which only caps the size of the BFC arena.
+// "0" or unset means no limit. Not supported with external CUDA allocators or CUDA memory pools.
+// Honored by both the CUDA EP and the CUDA plugin EP. Must be set before the session is created.
+static const char* const kOrtSessionOptionsMoeOffloadGpuDeviceMemLimit = "session.moe.offload.gpu_device_mem_limit";
+static const char* const kOrtSessionOptionsMoeOffloadAllowFileBacking = "session.moe.offload.allow_file_backing";
+static const char* const kOrtSessionOptionsMoeOffloadCpuThreads = "session.moe.offload.cpu_threads";
+static const char* const kOrtSessionOptionsMoeOffloadAsyncMaxTokens = "session.moe.offload.async_max_tokens";
+static const char* const kOrtSessionOptionsMoeOffloadPrefillWaveExperts = "session.moe.offload.prefill_wave_experts";
+static const char* const kOrtSessionOptionsMoeOffloadSkipZeroColdDoorbell = "session.moe.offload.skip_zero_cold_doorbell";
+static const char* const kOrtSessionOptionsMoeOffloadPopularityFile = "session.moe.offload.popularity_file";
+static const char* const kOrtSessionOptionsMoeOffloadNodeOverrides = "session.moe.offload.node_overrides";
+static const char* const kOrtSessionOptionsMoeOffloadSourceRoot = "session.moe.offload.source_root";
+static const char* const kOrtSessionOptionsMoeOffloadDerivedCacheDir = "session.moe.offload.derived_cache_dir";

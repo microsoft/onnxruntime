@@ -5,11 +5,13 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <functional>
 #include <limits>
+#include <optional>
 #include "gsl/gsl"
 #include "gtest/gtest.h"
 
@@ -31,6 +33,7 @@
 #include "core/session/plugin_ep/ep_allocator_utils.h"
 #include "test/util/include/api_asserts.h"
 #include "test/util/include/asserts.h"
+#include "test/util/include/file_util.h"
 #include "test/util/include/test_environment.h"
 
 namespace onnxruntime::test {
@@ -153,9 +156,11 @@ struct MakeTestOrtEpResult {
 // `setup` runs on the raw TestOrtEp before PluginExecutionProvider is constructed --
 // callbacks consulted at construction time (e.g., GetDefaultMemoryDevice seeding
 // default_device_) must be configured here.
+// `session_options` defaults to empty session options; pass entries to exercise the host's session config handling.
 MakeTestOrtEpResult MakeTestOrtEp(OrtEpFactory& ep_factory,
                                   std::vector<const OrtEpDevice*> ep_devices,
-                                  std::function<void(TestOrtEp&)> setup = nullptr) {
+                                  std::function<void(TestOrtEp&)> setup = nullptr,
+                                  const Ort::SessionOptions* session_options = nullptr) {
   // Default OrtHardwareDevice and OrtEpDevice used if the caller does not explicitly provide ep_devices.
   static std::unique_ptr<OrtHardwareDevice> ort_hw_device = MakeTestOrtHardwareDevice(OrtHardwareDeviceType_CPU);
   static std::unique_ptr<OrtEpDevice> ort_ep_device = MakeTestOrtEpDevice(ort_hw_device.get());
@@ -165,7 +170,9 @@ MakeTestOrtEpResult MakeTestOrtEp(OrtEpFactory& ep_factory,
   if (setup) {
     setup(*ort_ep_raw);
   }
-  auto ort_session_options = Ort::SessionOptions{};
+  const Ort::SessionOptions default_session_options{};
+  const Ort::SessionOptions& ort_session_options = session_options != nullptr ? *session_options
+                                                                              : default_session_options;
 
   if (ep_devices.empty()) {
     ep_devices.push_back(ort_ep_device.get());
@@ -1694,6 +1701,105 @@ TEST(PluginExecutionProviderTest, CreatePreferredAllocators_RejectsAllocatorWith
 }
 #endif  // !defined(ORT_NO_EXCEPTIONS)
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+namespace {
+
+// What the host handed OrtEpFactory::CreateAllocator while creating a PluginExecutionProvider's allocators.
+struct CapturedAllocatorOptions {
+  int calls{0};
+  std::optional<std::string> device_mem_limit;
+};
+
+CapturedAllocatorOptions g_captured_allocator_options;
+
+OrtStatus* ORT_API_CALL CapturingFactoryCreateAllocator(OrtEpFactory*, const OrtMemoryInfo*,
+                                                        const OrtKeyValuePairs* options,
+                                                        OrtAllocator** out) noexcept {
+  ++g_captured_allocator_options.calls;
+  if (options != nullptr) {
+    if (const char* limit = Ort::GetApi().GetKeyValue(options, "gpu_device_mem_limit")) {
+      g_captured_allocator_options.device_mem_limit = limit;
+    }
+  }
+  *out = nullptr;
+  return nullptr;
+}
+
+const char* ORT_API_CALL CudaEpName(const OrtEp*) noexcept {
+  return kCudaExecutionProvider;
+}
+
+// Creates the allocators of a PluginExecutionProvider built from `session_config` and reports what its factory saw.
+CapturedAllocatorOptions CaptureAllocatorOptions(
+    bool is_cuda_ep, const std::vector<std::pair<std::string, std::string>>& session_config) {
+  g_captured_allocator_options = {};
+
+  auto ort_device = test_plugin_ep::MakeTestOrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT);
+  auto ort_memory_info = std::make_unique<OrtMemoryInfo>("FakeGPU", OrtAllocatorType::OrtDeviceAllocator,
+                                                         ort_device, OrtMemTypeDefault);
+  auto ort_hw_device = test_plugin_ep::MakeTestOrtHardwareDevice(OrtHardwareDeviceType_GPU);
+
+  test_plugin_ep::TestOrtEpFactory ep_factory;
+  ep_factory.CreateAllocator = CapturingFactoryCreateAllocator;
+  ep_factory.ReleaseAllocator = FakeReleaseAllocator;
+  auto ort_ep_device = test_plugin_ep::MakeTestOrtEpDevice(ort_hw_device.get(), ep_factory, ort_memory_info.get(),
+                                                           /*host_accessible_memory_info*/ nullptr);
+
+  Ort::SessionOptions session_options;
+  for (const auto& [key, value] : session_config) {
+    session_options.AddConfigEntry(key.c_str(), value.c_str());
+  }
+
+  auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp(
+      ep_factory, {ort_ep_device.get()},
+      [is_cuda_ep](test_plugin_ep::TestOrtEp& test_ep) {
+        if (is_cuda_ep) {
+          test_ep.GetName = CudaEpName;
+        }
+      },
+      &session_options);
+
+  static_cast<void>(ep->CreatePreferredAllocators());
+  return g_captured_allocator_options;
+}
+
+}  // namespace
+
+// session.moe.offload.gpu_device_mem_limit is a session-level key, not an ep.cuda.* option. The host hands it to the
+// CUDA plugin EP's allocator factory so an allocator request that no pending session account owns still gets the limit.
+TEST(PluginExecutionProviderTest, CreatePreferredAllocators_ForwardsSessionDeviceMemLimitToCudaEp) {
+  const auto captured = CaptureAllocatorOptions(
+      /*is_cuda_ep*/ true, {{kOrtSessionOptionsMoeOffloadGpuDeviceMemLimit, "4096"}});
+
+  EXPECT_EQ(captured.calls, 1);
+  ASSERT_TRUE(captured.device_mem_limit.has_value());
+  EXPECT_EQ(*captured.device_mem_limit, "4096");
+}
+
+TEST(PluginExecutionProviderTest, CreatePreferredAllocators_OmitsDeviceMemLimitWhenSessionKeyIsUnset) {
+  const auto captured = CaptureAllocatorOptions(/*is_cuda_ep*/ true, {{"ep.cuda.arena.max_mem", "2097152"}});
+
+  EXPECT_EQ(captured.calls, 1);
+  EXPECT_FALSE(captured.device_mem_limit.has_value());
+}
+
+TEST(PluginExecutionProviderTest, CreatePreferredAllocators_DoesNotForwardDeviceMemLimitToOtherEps) {
+  const auto captured = CaptureAllocatorOptions(
+      /*is_cuda_ep*/ false, {{kOrtSessionOptionsMoeOffloadGpuDeviceMemLimit, "4096"}});
+
+  EXPECT_EQ(captured.calls, 1);
+  EXPECT_FALSE(captured.device_mem_limit.has_value());
+}
+
+// The limit is spelled only as the session-level key; an EP-scoped spelling is not an alias for it.
+TEST(PluginExecutionProviderTest, CreatePreferredAllocators_IgnoresEpScopedDeviceMemLimit) {
+  const auto captured = CaptureAllocatorOptions(/*is_cuda_ep*/ true, {{"ep.cuda.gpu_device_mem_limit", "4096"}});
+
+  EXPECT_EQ(captured.calls, 1);
+  EXPECT_FALSE(captured.device_mem_limit.has_value());
+}
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
 TEST(PluginExecutionProviderTest, IsGraphCaptureEnabled) {
   auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp();
 
@@ -1944,6 +2050,137 @@ static IResourceAccountant* CreateNoThresholdAccountant(std::optional<ResourceAc
   auto it = acc_map->find(kCudaExecutionProvider);
   return it != acc_map->end() ? it->second.get() : nullptr;
 }
+
+#if !defined(DISABLE_CONTRIB_OPS)
+TEST(PluginExecutionProviderTest, GetCapability_CudaGqaRequiresProvenEstimate) {
+  enum class AccountingMode {
+    None,
+    AdHoc,
+    Profile,
+  };
+  const auto run_test = [](bool fuse_nodes, AccountingMode accounting_mode, bool previously_assigned,
+                           const char* ep_name, const char* envelope) {
+    const bool use_accountant = accounting_mode != AccountingMode::None;
+    const bool use_profile = accounting_mode == AccountingMode::Profile;
+    SCOPED_TRACE(::testing::Message() << "fuse_nodes=" << fuse_nodes << ", use_accountant=" << use_accountant
+                                      << ", use_profile=" << use_profile
+                                      << ", previously_assigned=" << previously_assigned << ", ep_name=" << ep_name
+                                      << ", envelope=" << envelope);
+    auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp({}, [ep_name](test_plugin_ep::TestOrtEp& test_ep) {
+      if (std::strcmp(ep_name, kCudaExecutionProvider) == 0) {
+        test_ep.GetName = [](const OrtEp*) noexcept { return kCudaExecutionProvider; };
+      }
+    });
+    ort_ep->GetCapability = fuse_nodes ? GetCapabilityTakeAllNodesOneGroup
+                                       : [](OrtEp* this_ptr, const OrtGraph* graph,
+                                            OrtEpGraphSupportInfo* graph_support_info) noexcept -> OrtStatus* {
+      auto* test_ep = static_cast<test_plugin_ep::TestOrtEp*>(this_ptr);
+      for (const auto& node : Ort::ConstGraph{graph}.GetNodes()) {
+        if (auto* status = test_ep->ep_api->EpGraphSupportInfo_AddSingleNode(graph_support_info, node)) {
+          return status;
+        }
+      }
+      return nullptr;
+    };
+
+    const auto& logger = DefaultLoggingManager().DefaultLogger();
+    Model model("gqa_plugin_capacity", false, logger);
+    Graph& graph = model.MainGraph();
+    const auto make_arg = [&graph](const char* name, int32_t element_type,
+                                   std::initializer_list<int64_t> dimensions) {
+      ONNX_NAMESPACE::TypeProto type;
+      auto* tensor = type.mutable_tensor_type();
+      tensor->set_elem_type(element_type);
+      auto* shape = tensor->mutable_shape();
+      for (int64_t dimension : dimensions) {
+        shape->add_dim()->set_dim_value(dimension);
+      }
+      return &graph.GetOrCreateNodeArg(name, &type);
+    };
+    constexpr int32_t kFloat16 = ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
+    constexpr int32_t kInt32 = ONNX_NAMESPACE::TensorProto_DataType_INT32;
+    auto* query = make_arg("query", kFloat16, {1, 1, 64});
+    auto* key = make_arg("key", kFloat16, {1, 1, 32});
+    auto* value = make_arg("value", kFloat16, {1, 1, 32});
+    auto* past_key = make_arg("past_key", kFloat16, {1, 1, 128, 32});
+    auto* past_value = make_arg("past_value", kFloat16, {1, 1, 128, 32});
+    auto* seqlens = make_arg("seqlens_k", kInt32, {1});
+    auto* total_length = make_arg("total_sequence_length", kInt32, {});
+    auto* output = make_arg("output", kFloat16, {1, 1, 64});
+    auto* present_key = make_arg("present_key", kFloat16, {1, 1, 128, 32});
+    auto* present_value = make_arg("present_value", kFloat16, {1, 1, 128, 32});
+    auto& gqa = graph.AddNode("gqa", "GroupQueryAttention", "",
+                              {query, key, value, past_key, past_value, seqlens, total_length},
+                              {output, present_key, present_value}, nullptr, kMSDomain);
+    gqa.AddAttribute("num_heads", int64_t{2});
+    gqa.AddAttribute("kv_num_heads", int64_t{1});
+    auto* identity_output = make_arg("identity_output", kFloat16, {1, 1, 64});
+    graph.AddNode("identity", "Identity", "", {output}, {identity_output});
+    ASSERT_STATUS_OK(graph.Resolve());
+    if (previously_assigned) {
+      gqa.SetExecutionProviderType(ep_name);
+    }
+
+    PathString stats_path = ORT_TSTR("gqa_plugin_stats_XXXXXX");
+    if (use_profile) {
+      FILE* stats_file = nullptr;
+      ASSERT_NO_FATAL_FAILURE(CreateTestFile(stats_file, stats_path));
+      ASSERT_NE(stats_file, nullptr);
+      ASSERT_EQ(std::fclose(stats_file), 0);
+    }
+    ScopedFileDeleter stats_cleanup(use_profile ? stats_path : PathString{});
+    if (use_profile) {
+      std::ofstream stats{std::filesystem::path{stats_path}};
+      ASSERT_TRUE(stats);
+      stats << "#name,input_sizes,initializers_sizes,total_dynamic_sizes,total_temp_allocations\n"
+            << IResourceAccountant::MakeUniqueNodeName(gqa) << ",0,0,0,0\n";
+      stats.close();
+      ASSERT_TRUE(stats);
+    }
+
+    ConfigOptions config;
+    const std::string settings = (std::strcmp(envelope, "0") == 0 ? "," : "1024,") +
+                                 (use_profile ? ToUTF8String(stats_path) : std::string{});
+    ASSERT_STATUS_OK(config.AddConfigEntry(kOrtSessionOptionsResourceCudaPartitioningSettings, settings.c_str()));
+    ASSERT_STATUS_OK(config.AddConfigEntry(kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLength, envelope));
+    std::optional<ResourceAccountantMap> acc_map;
+    ASSERT_STATUS_OK(CreateAccountants(config, /*model_path=*/{}, acc_map));
+    auto* accountant = acc_map->at(kCudaExecutionProvider).get();
+    if (use_profile) {
+      EXPECT_EQ(std::get<size_t>(accountant->ComputeResourceCount(gqa)), 0u);
+      EXPECT_EQ(accountant->GetPendingWorkspaceEstimateSelection(gqa.Index()).source,
+                WorkspaceEstimateSource::kProfile);
+      accountant->ResetForNewPass();
+    }
+    GraphViewer graph_viewer(graph);
+    auto capabilities = ep->GetCapability(graph_viewer, test_plugin_ep::MockKernelLookup(),
+                                          GraphOptimizerRegistry(nullptr, nullptr, &logger),
+                                          use_accountant ? accountant : nullptr);
+
+    const bool decline_gqa = use_accountant && !previously_assigned &&
+                             std::strcmp(ep_name, kCudaExecutionProvider) == 0;
+    ASSERT_EQ(capabilities.size(), fuse_nodes ? (decline_gqa ? 0u : 1u) : (decline_gqa ? 1u : 2u));
+    if (decline_gqa && !fuse_nodes) {
+      ASSERT_EQ(capabilities[0]->sub_graph->nodes.size(), 1u);
+      EXPECT_EQ(graph.GetNode(capabilities[0]->sub_graph->nodes[0])->OpType(), "Identity");
+      EXPECT_TRUE(capabilities[0]->sub_graph->IsAccountingEnabled());
+    }
+    EXPECT_FALSE(accountant->IsStopIssued());
+  };
+
+  for (bool fuse_nodes : {false, true}) {
+    for (AccountingMode accounting_mode : {AccountingMode::None, AccountingMode::AdHoc, AccountingMode::Profile}) {
+      for (bool previously_assigned : {false, true}) {
+        for (const char* ep_name : {kCudaExecutionProvider, "TestOrtEp"}) {
+          for (const char* envelope : {"0", "512"}) {
+            run_test(fuse_nodes, accounting_mode, previously_assigned, ep_name, envelope);
+          }
+        }
+      }
+    }
+  }
+}
+#endif  // !defined(DISABLE_CONTRIB_OPS)
 
 // Helper: call GetCapability on a mock EP with a no-threshold accountant, returning the accountant for inspection.
 static IResourceAccountant* CallGetCapabilityWithAccountant(

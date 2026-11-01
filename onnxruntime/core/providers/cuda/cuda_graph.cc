@@ -72,6 +72,20 @@ void CUDAGraphManager::CaptureEnd(CudaGraphAnnotation_t cuda_graph_annotation_id
   cuda_graph_set_.Put(cuda_graph_annotation_id, graph_exec);
 }
 
+void CUDAGraphManager::DiscardCapture() noexcept {
+  cudaGraph_t graph = NULL;
+  // A capture invalidated by the failed run reports that here and yields no graph. The stream leaves capture mode
+  // either way.
+  const cudaError_t end_status = cudaStreamEndCapture(stream_, &graph);
+  if (graph != NULL) {
+    static_cast<void>(cudaGraphDestroy(graph));
+  }
+  if (end_status != cudaSuccess) {
+    // Clear the recorded error so it is not attributed to later CUDA calls on this thread.
+    static_cast<void>(cudaGetLastError());
+  }
+}
+
 Status CUDAGraphManager::Replay(CudaGraphAnnotation_t cuda_graph_annotation_id, bool sync_status_flag) {
   // Although this function is not thread safe, the lock is not needed here because
   // CUDA EP maintains a separate cuda graph per thread

@@ -273,6 +273,13 @@ class EinsumComputePreprocessor final {
                                    "upper-cased letters (A-Z)");
           }
 
+          if (dim_counter >= rank) {
+            return ORT_MAKE_STATUS(
+                ONNXRUNTIME, INVALID_ARGUMENT,
+                "Einsum subscripts string contains too many subscript labels when compared to the rank of the input ",
+                input_index);
+          }
+
           auto dim_value = dims[dim_counter];
 
           // Subscript label not found in global subscript label array
@@ -309,11 +316,7 @@ class EinsumComputePreprocessor final {
           ++letter_to_count_[onnxruntime::narrow<size_t>(letter_index)];
 
           current_subscript_indices.push_back(letter_to_index_[onnxruntime::narrow<size_t>(letter_index)]);
-          if (++dim_counter > rank) {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                   "Einsum subscripts string contains too many subscript labels when compared to the rank of the input ",
-                                   input_index);
-          }
+          ++dim_counter;
         }
       }
 

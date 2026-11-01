@@ -909,7 +909,9 @@ static void RunCudaQKNormInputContractTest(
     bool include_q_norm_weight = true,
     bool include_k_norm_weight = true,
     int q_norm_weight_size = 8,
-    int k_norm_weight_size = 8) {
+    int k_norm_weight_size = 8,
+    std::optional<float> q_norm_epsilon = std::nullopt,
+    std::optional<float> k_norm_epsilon = std::nullopt) {
   auto cuda_ep = DefaultCudaExecutionProvider();
   if (!cuda_ep) {
     GTEST_SKIP() << "CUDA EP not available";
@@ -929,6 +931,8 @@ static void RunCudaQKNormInputContractTest(
   if (qk_norm_epsilon.has_value()) {
     tester.AddAttribute<float>("qk_norm_epsilon", *qk_norm_epsilon);
   }
+  if (q_norm_epsilon.has_value()) tester.AddAttribute<float>("q_norm_epsilon", *q_norm_epsilon);
+  if (k_norm_epsilon.has_value()) tester.AddAttribute<float>("k_norm_epsilon", *k_norm_epsilon);
 
   tester.AddInput<MLFloat16>("query", {batch_size, sequence_length, hidden_size},
                              std::vector<MLFloat16>(batch_size * sequence_length * hidden_size, MLFloat16(0.1f)));
@@ -1012,6 +1016,19 @@ TEST(GroupQueryAttentionTest, CudaRejectsNegativeQKNormEpsilon) {
   RunCudaQKNormInputContractTest(OpTester::ExpectResult::kExpectFailure,
                                  "qk_norm_epsilon must be finite and positive",
                                  -1.0e-6f);
+}
+
+TEST(GroupQueryAttentionTest, CudaRejectsInvalidSeparateQKNormEpsilons) {
+  for (float epsilon : {0.0f, -1e-6f, std::numeric_limits<float>::infinity(),
+                        std::numeric_limits<float>::quiet_NaN()}) {
+    SCOPED_TRACE(epsilon);
+    RunCudaQKNormInputContractTest(OpTester::ExpectResult::kExpectFailure,
+                                   "q_norm_epsilon must be finite and positive",
+                                   std::nullopt, true, true, 8, 8, epsilon, std::nullopt);
+    RunCudaQKNormInputContractTest(OpTester::ExpectResult::kExpectFailure,
+                                   "k_norm_epsilon must be finite and positive",
+                                   std::nullopt, true, true, 8, 8, std::nullopt, epsilon);
+  }
 }
 
 // Regression: negative seqlens_k wraps to huge size_t, causing GEMM OOB.
@@ -1399,7 +1416,11 @@ static std::vector<float> RunGQARotaryWithOptionalQKNorm(
     int num_heads,
     int kv_num_heads,
     int head_size,
-    float qk_norm_epsilon) {
+    float qk_norm_epsilon,
+    std::optional<float> q_norm_epsilon = std::nullopt,
+    std::optional<float> k_norm_epsilon = std::nullopt,
+    OpTester::ExpectResult expect = OpTester::ExpectResult::kExpectSuccess,
+    const std::string& expected_message = "") {
   const int hidden_size = num_heads * head_size;
   const int kv_hidden_size = kv_num_heads * head_size;
   const int total_sequence_length = past_seq_len + sequence_length;
@@ -1409,6 +1430,8 @@ static std::vector<float> RunGQARotaryWithOptionalQKNorm(
   tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kv_num_heads));
   tester.AddAttribute<int64_t>("do_rotary", static_cast<int64_t>(1));
   tester.AddAttribute<float>("qk_norm_epsilon", qk_norm_epsilon);
+  if (q_norm_epsilon.has_value()) tester.AddAttribute<float>("q_norm_epsilon", *q_norm_epsilon);
+  if (k_norm_epsilon.has_value()) tester.AddAttribute<float>("k_norm_epsilon", *k_norm_epsilon);
 
   tester.AddInput<float>("query", {batch_size, sequence_length, hidden_size}, query_data);
   tester.AddInput<float>("key", {batch_size, sequence_length, kv_hidden_size}, key_data);
@@ -1488,11 +1511,82 @@ static std::vector<float> RunGQARotaryWithOptionalQKNorm(
   } else {
     execution_providers.push_back(DefaultCpuExecutionProvider());
   }
-  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  SessionOptions session_options;
+  if (use_webgpu) {
+    ORT_THROW_IF_ERROR(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  }
+  tester.Run(session_options, expect, expected_message, {}, nullptr, &execution_providers);
+  if (expect == OpTester::ExpectResult::kExpectFailure) return {};
 
   auto fetches = tester.GetFetches();
   const float* out_data = fetches[0].Get<Tensor>().Data<float>();
   return std::vector<float>(out_data, out_data + output_size);
+}
+
+TEST(GroupQueryAttentionTest, WebGpuRejectsInvalidQKNormEpsilonOverrides) {
+  if (!DefaultWebGpuExecutionProvider()) {
+    GTEST_SKIP() << "WebGPU EP not available";
+  }
+  const std::vector<float> data(16, 0.1f);
+  const std::vector<float> weight(16, 1.0f);
+  for (float epsilon : {0.0f, -1e-6f, std::numeric_limits<float>::infinity(),
+                        std::numeric_limits<float>::quiet_NaN()}) {
+    SCOPED_TRACE(epsilon);
+    RunGQARotaryWithOptionalQKNorm(
+        true, data, data, data, data, data, &weight, &weight,
+        1, 1, 1, 1, 1, 16, 1e-6f, epsilon, std::nullopt,
+        OpTester::ExpectResult::kExpectFailure, "q_norm_epsilon must be finite and positive");
+    RunGQARotaryWithOptionalQKNorm(
+        true, data, data, data, data, data, &weight, &weight,
+        1, 1, 1, 1, 1, 16, 1e-6f, std::nullopt, epsilon,
+        OpTester::ExpectResult::kExpectFailure, "k_norm_epsilon must be finite and positive");
+  }
+}
+
+TEST(GroupQueryAttentionTest, WebGpuQKNormEpsilonOverrides) {
+  if (!DefaultWebGpuExecutionProvider()) {
+    GTEST_SKIP() << "WebGPU EP not available";
+  }
+
+  constexpr int num_heads = 2;
+  constexpr int head_size = 16;
+  constexpr float shared_epsilon = 1e-9f;
+  const std::vector<float> q_weight(head_size, 1.0f);
+  const std::vector<float> k_weight(head_size, 1.0f);
+  const std::vector<float> past_key(head_size, 0.25f);
+  const std::vector<float> past_value(head_size, -0.5f);
+  for (int sequence_length : {1, 3}) {
+    SCOPED_TRACE(sequence_length);
+    std::vector<float> query(sequence_length * num_heads * head_size);
+    std::vector<float> key(sequence_length * head_size);
+    std::vector<float> value(key.size());
+    for (size_t i = 0; i < query.size(); ++i) query[i] = 1e-4f * std::sin(static_cast<float>(i + 1));
+    for (size_t i = 0; i < key.size(); ++i) {
+      key[i] = 1e-4f * std::cos(static_cast<float>(i + 1));
+      value[i] = std::sin(static_cast<float>(i + 1));
+    }
+    for (bool override_q : {false, true}) {
+      for (bool override_k : {false, true}) {
+        SCOPED_TRACE(override_q);
+        SCOPED_TRACE(override_k);
+        const std::optional<float> q_epsilon = override_q ? std::make_optional(3e-9f) : std::nullopt;
+        const std::optional<float> k_epsilon = override_k ? std::make_optional(1.9e-9f) : std::nullopt;
+        auto ref_query = query;
+        auto ref_key = key;
+        ApplyPerHeadRmsNormBSNH(ref_query, 1, sequence_length, num_heads, head_size,
+                                q_weight, q_epsilon.value_or(shared_epsilon));
+        ApplyPerHeadRmsNormBSNH(ref_key, 1, sequence_length, 1, head_size,
+                                k_weight, k_epsilon.value_or(shared_epsilon));
+        const auto expected = RunGQARotaryWithOptionalQKNorm(
+            false, ref_query, ref_key, value, past_key, past_value, nullptr, nullptr,
+            1, sequence_length, 1, num_heads, 1, head_size, shared_epsilon);
+        const auto actual = RunGQARotaryWithOptionalQKNorm(
+            true, query, key, value, past_key, past_value, &q_weight, &k_weight,
+            1, sequence_length, 1, num_heads, 1, head_size, shared_epsilon, q_epsilon, k_epsilon);
+        ExpectOutputsMatch(actual, expected, 1e-4f, "WebGpuQKNormEpsilonOverrides");
+      }
+    }
+  }
 }
 
 TEST(GroupQueryAttentionTest, WebGpuQKNormWeightRotaryDecodeFunctional) {
@@ -1879,9 +1973,9 @@ TEST(GroupQueryAttentionTest, FlashDecoding_LocalWindow_Reference_CPU) {
   constexpr int kv_block_size = 16;
   constexpr int kv_chunk_count = (total_length + kv_block_size - 1) / kv_block_size;
   constexpr int thread_count = 12;
+  // thread_count fixes the MLAS task count, not the pool's DegreeOfParallelism (which varies by machine).
   concurrency::ThreadPool thread_pool(&Env::Default(), ThreadOptions{}, nullptr, thread_count,
                                       concurrency::kSpinDurationDefault, false);
-  ASSERT_EQ(concurrency::ThreadPool::DegreeOfParallelism(&thread_pool), thread_count);
   for (int head_size : {8, 24, 256}) {
     for (int window_size : {-1, 1, 24, 40}) {
       SCOPED_TRACE(testing::Message() << "head_size=" << head_size << " window=" << window_size);

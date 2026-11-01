@@ -5,6 +5,8 @@
 
 #include <cuda.h>
 #include <cuda_runtime.h>
+#include <cuda_bf16.h>
+#include <cuda_fp16.h>
 
 #include "core/common/status.h"
 #include "contrib_ops/cuda/bert/gated_delta_net_plan.h"
@@ -22,8 +24,10 @@ struct VariantPack {
   const T* value = nullptr;                // [total_tokens, Hv, V]
   const int32_t* cu_seqlens = nullptr;     // [B+1] or null for uniform packing
   const int32_t* capture_count = nullptr;  // [B] or null when transition capture is disabled
-  const float* decay = nullptr;            // [total_tokens, Hv] or [total_tokens, Hv, K]
-  const float* beta = nullptr;             // [total_tokens, Hv]
+  const void* decay = nullptr;             // [total_tokens, Hv] or [total_tokens, Hv, K]
+  const void* beta = nullptr;              // [total_tokens, Hv]
+  bool gates_in_input_type = false;        // gate buffers contain T instead of float
+  bool packed_qkv = false;                 // short decode reads packed Q/K/V without unpacking
   const float* initial_state = nullptr;    // [B, Hv, V, K] V-major, may alias final_state
   const float* a_log = nullptr;            // [Hv]
   const float* dt_bias = nullptr;          // [Hv]
@@ -33,12 +37,20 @@ struct VariantPack {
   void* workspace = nullptr;
 };
 
+#ifdef __CUDACC__
+template <typename T>
+__device__ __forceinline__ float LoadGate(const void* data, int64_t index, bool gates_in_input_type) {
+  return gates_in_input_type ? static_cast<float>(static_cast<const T*>(data)[index])
+                             : static_cast<const float*>(data)[index];
+}
+#endif
+
 template <typename T>
 Status LaunchGatedDeltaNet(const Descriptor& desc, const Plan& plan, const VariantPack<T>& pack,
                            float scale, int max_threads_per_block,
                            size_t max_shared_memory_per_block, cudaStream_t stream);
 
-// Engine::kChunkedSplit. Defined in gated_delta_net_split_impl.cu; float16 only.
+// Engine::kChunkedSplit. Defined in gated_delta_net_split_impl.cu; float16 and bfloat16.
 template <typename T>
 Status LaunchGatedDeltaNetSplit(const Descriptor& desc, const Plan& plan,
                                 const VariantPack<T>& pack, float scale, cudaStream_t stream);

@@ -11,6 +11,7 @@
 #include <unordered_map>
 #include <cuda_runtime_api.h>
 #include "gtest/gtest.h"
+#include "core/framework/stream_handles.h"
 #include "core/graph/model.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -136,6 +137,21 @@ class GemmBiasBinding {
     }
   }
 
+  // Runs with options that make the run fail after it has started, so a CUDA graph capture is already under way.
+  void RunExpectingFailure(cudaStream_t stream, const char* graph_id, Ort::RunOptions& options,
+                           const char* expected_error) {
+    // Capture must start with no pending host-issued copies on the user stream.
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    options.AddConfigEntry("gpu_graph_id", graph_id);
+    try {
+      session_.Run(options, binding_);
+      FAIL() << "Expected the run to fail with: " << expected_error;
+    } catch (const Ort::Exception& e) {
+      EXPECT_NE(std::string(e.what()).find(expected_error), std::string::npos) << e.what();
+    }
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+  }
+
  private:
   void Upload(size_t index, gsl::span<const float> data, cudaStream_t stream) {
     ORT_ENFORCE(cudaMemcpyAsync(tensors_[index].GetTensorMutableData<float>(), data.data(),
@@ -180,13 +196,16 @@ class CudaGemmBiasSessionTest : public ::testing::Test {
 #endif
   }
 
-  Ort::Session CreateSession(cudaStream_t stream, bool enable_graph) {
+  Ort::Session CreateSession(cudaStream_t stream, bool enable_graph, int min_runs_before_capture = -1) {
     Ort::SessionOptions options;
     options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
     options.SetIntraOpNumThreads(1);
     options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_DISABLE_ALL);
     std::unordered_map<std::string, std::string> provider_options = {
         {"enable_cuda_graph", enable_graph ? "1" : "0"}};
+    if (min_runs_before_capture >= 0) {
+      provider_options["min_num_runs_before_cuda_graph_capture"] = std::to_string(min_runs_before_capture);
+    }
 #if defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP)
     provider_options["user_compute_stream"] = std::to_string(reinterpret_cast<uintptr_t>(stream));
     options.AppendExecutionProvider_V2(*ort_env, {cuda_device_}, provider_options);
@@ -281,6 +300,74 @@ TEST_F(CudaGemmBiasSessionTest, GraphReplayAfterLargerSession) {
   EXPECT_NO_THROW(grow.get());
   small_binding.RunAndVerify(capture_stream.stream, "1", 4.0f);
 }
+
+// A run that fails does not execute the model, so it must neither count as a warm-up run nor leave a capture behind.
+// Otherwise, once enough runs have failed, the next failing run starts a capture that is stored as an empty graph, and
+// every later run of the same graph id replays that graph instead of executing the model.
+TEST_F(CudaGemmBiasSessionTest, RepeatedTerminatedRunsDoNotCaptureAnEmptyGraph) {
+  constexpr int kWarmupRuns = 1;
+  ScopedGemmBiasStream stream;
+  auto session = CreateSession(stream.stream, true, kWarmupRuns);
+  auto allocator = CreateAllocator(session);
+  ASSERT_NE(allocator, nullptr);
+  GemmBiasBinding binding(session, allocator, stream.stream, 17, 19);
+
+  for (int i = 0; i <= kWarmupRuns; ++i) {
+    Ort::RunOptions terminated;
+    terminated.SetTerminate();
+    binding.RunExpectingFailure(stream.stream, "1", terminated, "terminate flag");
+  }
+
+  // This run executes the model (warm-up and capture happen inside it) and the next one replays the capture.
+  binding.RunAndVerify(stream.stream, "1", 0.0f);
+  binding.RunAndVerify(stream.stream, "1", 1.0f);
+}
+
+// min_num_runs_before_cuda_graph_capture from the provider options must reach the provider. A single Run() retries the
+// warm-up runs internally only a limited number of times, so a value beyond that limit makes the capture unreachable.
+TEST_F(CudaGemmBiasSessionTest, ConfiguredWarmupRunsReachTheProvider) {
+  ScopedGemmBiasStream stream;
+  {
+    auto session = CreateSession(stream.stream, true, 3);
+    auto allocator = CreateAllocator(session);
+    ASSERT_NE(allocator, nullptr);
+    GemmBiasBinding binding(session, allocator, stream.stream, 17, 19);
+    binding.RunAndVerify(stream.stream, "1", 0.0f);
+    binding.RunAndVerify(stream.stream, "1", 1.0f);
+  }
+
+  auto session = CreateSession(stream.stream, true, 64);
+  auto allocator = CreateAllocator(session);
+  ASSERT_NE(allocator, nullptr);
+  GemmBiasBinding binding(session, allocator, stream.stream, 17, 19);
+  Ort::RunOptions options;
+  binding.RunExpectingFailure(stream.stream, "1", options, "Graph capture did not complete");
+}
+
+#if defined(ORT_ENABLE_STREAM)
+// A stream override is rejected after the providers have started the run, which must still count as a failed run.
+TEST_F(CudaGemmBiasSessionTest, RepeatedRejectedRunsDoNotCaptureAnEmptyGraph) {
+  constexpr int kWarmupRuns = 1;
+  ScopedGemmBiasStream stream;
+  auto session = CreateSession(stream.stream, true, kWarmupRuns);
+  auto allocator = CreateAllocator(session);
+  ASSERT_NE(allocator, nullptr);
+  GemmBiasBinding binding(session, allocator, stream.stream, 17, 19);
+
+  // OrtSyncStream is the C API's opaque alias for Stream. No CUDA work is issued on this stream, and its device does
+  // not exist in the session, so the override is rejected.
+  const OrtDevice absent_device{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA, 7};
+  Stream absent_stream{nullptr, absent_device};
+  for (int i = 0; i <= kWarmupRuns; ++i) {
+    Ort::RunOptions rejected;
+    rejected.SetSyncStream(reinterpret_cast<OrtSyncStream*>(&absent_stream));
+    binding.RunExpectingFailure(stream.stream, "1", rejected, "No matching stream found");
+  }
+
+  binding.RunAndVerify(stream.stream, "1", 0.0f);
+  binding.RunAndVerify(stream.stream, "1", 1.0f);
+}
+#endif  // ORT_ENABLE_STREAM
 
 }  // namespace
 }  // namespace onnxruntime::test

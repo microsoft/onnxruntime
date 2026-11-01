@@ -18,7 +18,7 @@ namespace onnxruntime::llm {
 namespace kernels {
 namespace moe_gemv {
 
-inline constexpr int64_t kMaxProfiledExpandedRows = 8;
+inline constexpr int64_t kMaxProfiledExpandedRows = 80;
 inline constexpr int64_t kMaxProfiledExpandedRowsForSmallProblemDim = 4;
 inline constexpr int64_t kMinProfiledProblemDim = 512;
 // Lowered from 704 to 512 so block-wise decode shapes (e.g. Qwen top_k=8,
@@ -50,7 +50,7 @@ template <typename T, typename WeightType>
 void launch_moe_gemv_int_symmetric(
     const T* act, const WeightType* weight, const T* scales, const T* bias, T* out,
     const int64_t* expert_first_token_offset, const int* permuted_row_to_expert, int num_experts, int64_t expanded_num_rows,
-    int64_t n, int64_t k, int group_size, int sm, cudaStream_t stream);
+    int64_t n, int64_t k, int group_size, int sm, cudaStream_t stream, int tensor_core_min_rows = 33);
 
 // Launches the FC2 symmetric INT MoE GEMV with the MoE finalize reduction fused into the epilogue,
 // writing the reduced [num_rows, n] output directly and making a separate finalizeMoeRouting launch
@@ -86,7 +86,7 @@ void launch_moe_gemv_int_symmetric_interleaved_swiglu(
     int64_t inter_size, int64_t k, int group_size, int sm, cutlass_kernels::ActivationParams activation_params,
     const int* permuted_row_to_source_row, int64_t num_rows,
     float* splitk_partials,
-    cudaStream_t stream);
+    cudaStream_t stream, int tensor_core_min_rows = 33);
 
 // Launches the int4 per-channel MoE GEMV.
 //   act:      [expanded_num_rows, k]  permuted activations (row-major)

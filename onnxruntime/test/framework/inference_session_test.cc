@@ -354,11 +354,22 @@ enum class GraphCaptureOperation {
 // Use CPU kernels for capture runs and simulate replay without an EP-internal lock.
 class GraphCaptureTestExecutionProvider : public CPUExecutionProvider {
  public:
-  explicit GraphCaptureTestExecutionProvider(bool concurrent_run_supported)
-      : CPUExecutionProvider{CPUExecutionProviderInfo{}}, concurrent_run_supported_{concurrent_run_supported} {}
+  explicit GraphCaptureTestExecutionProvider(bool concurrent_run_supported, bool create_device_streams = false)
+      : CPUExecutionProvider{CPUExecutionProviderInfo{}},
+        concurrent_run_supported_{concurrent_run_supported},
+        create_device_streams_{create_device_streams} {}
 
   bool ConcurrentRunSupported() const override { return concurrent_run_supported_; }
   bool IsGraphCaptureEnabled() const override { return true; }
+
+  // A session only validates the stream override of a run when some provider creates device streams.
+  void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, AllocatorMap&) const override {
+    if (create_device_streams_) {
+      stream_handle_registry.RegisterCreateStreamFn(OrtDevice::CPU, [](const OrtDevice& device) {
+        return std::make_unique<Stream>(nullptr, device);
+      });
+    }
+  }
 
   bool IsGraphCaptured(int graph_annotation_id) const override {
     Notify(GraphCaptureOperation::Check);
@@ -372,6 +383,12 @@ class GraphCaptureTestExecutionProvider : public CPUExecutionProvider {
   }
 
   Status OnRunEnd(bool, const RunOptions& run_options) override {
+    // The session marks runs that did not complete successfully; this is the only signal a provider gets for them.
+    if (run_options.config_options.GetConfigOrDefault("__ort.run_outcome", "ok") == "ok") {
+      ++ok_run_end_count;
+    } else {
+      ++failed_run_end_count;
+    }
     if (run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigCudaGraphAnnotation, "0") != "-1" &&
         ++capture_run_count_ == 2) {
       captured_ = true;
@@ -395,6 +412,8 @@ class GraphCaptureTestExecutionProvider : public CPUExecutionProvider {
   std::function<void(GraphCaptureOperation)> on_operation;
   std::atomic<int> run_count{0};
   std::atomic<int> replay_count{0};
+  std::atomic<int> ok_run_end_count{0};
+  std::atomic<int> failed_run_end_count{0};
   bool fail_replay = false;
 
  private:
@@ -407,19 +426,20 @@ class GraphCaptureTestExecutionProvider : public CPUExecutionProvider {
   }
 
   const bool concurrent_run_supported_;
+  const bool create_device_streams_;
   std::atomic<bool> captured_{false};
   std::atomic<int> capture_run_count_{0};
 };
 
 class GraphCaptureSessionTest : public ::testing::Test {
  protected:
-  void CreateSession(bool concurrent_run_supported = false) {
+  void CreateSession(bool concurrent_run_supported = false, bool create_device_streams = false) {
     SessionOptions options;
     options.intra_op_param.thread_pool_size = 1;
     options.inter_op_param.thread_pool_size = 1;
     ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigForceSpinningStop, "1"));
     session_ = std::make_unique<InferenceSession>(options, GetEnvironment());
-    auto ep = std::make_unique<GraphCaptureTestExecutionProvider>(concurrent_run_supported);
+    auto ep = std::make_unique<GraphCaptureTestExecutionProvider>(concurrent_run_supported, create_device_streams);
     ep_ = ep.get();
     ASSERT_STATUS_OK(session_->RegisterExecutionProvider(std::move(ep)));
     ASSERT_STATUS_OK(session_->Load(MODEL_URI));
@@ -467,6 +487,43 @@ TEST_F(GraphCaptureSessionTest, ReplayFailureReleasesRunLock) {
   ASSERT_STATUS_OK(Execute(GraphCaptureOperation::Replay));
   EXPECT_EQ(ep_->run_count.load(), 4);
 }
+
+TEST_F(GraphCaptureSessionTest, TerminatedRunIsReportedToProvidersAsFailed) {
+  ASSERT_NO_FATAL_FAILURE(CreateSession());
+  RunOptions terminated;
+  terminated.terminate = true;
+  EXPECT_THAT(RunModelWithValues(*session_, terminated, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f}).ErrorMessage(),
+              testing::HasSubstr("terminate flag"));
+  EXPECT_EQ(ep_->run_count.load(), 1);
+  EXPECT_EQ(ep_->failed_run_end_count.load(), 1);
+  EXPECT_EQ(ep_->ok_run_end_count.load(), 0);
+
+  ASSERT_STATUS_OK(Execute(GraphCaptureOperation::Run));
+  EXPECT_EQ(ep_->failed_run_end_count.load(), 1);
+  EXPECT_EQ(ep_->ok_run_end_count.load(), 1);
+}
+
+#ifdef ORT_ENABLE_STREAM
+// The stream override is validated after the providers started the run but before any node executes, so this early
+// return must still tell the providers that the run failed. Otherwise a provider capturing the run would keep it.
+TEST_F(GraphCaptureSessionTest, RunRejectedBeforeExecutionIsReportedToProvidersAsFailed) {
+  ASSERT_NO_FATAL_FAILURE(CreateSession(/*concurrent_run_supported*/ false, /*create_device_streams*/ true));
+  // OrtSyncStream is the C API's opaque alias for Stream. The session only has a CPU stream, so none matches this one.
+  const OrtDevice absent_device(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA, 0);
+  Stream absent_stream(nullptr, absent_device);
+  RunOptions rejected;
+  rejected.sync_stream = reinterpret_cast<OrtSyncStream*>(&absent_stream);
+  EXPECT_THAT(RunModelWithValues(*session_, rejected, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f}).ErrorMessage(),
+              testing::HasSubstr("No matching stream found"));
+  EXPECT_EQ(ep_->run_count.load(), 1);
+  EXPECT_EQ(ep_->failed_run_end_count.load(), 1);
+  EXPECT_EQ(ep_->ok_run_end_count.load(), 0);
+
+  ASSERT_STATUS_OK(Execute(GraphCaptureOperation::Run));
+  EXPECT_EQ(ep_->failed_run_end_count.load(), 1);
+  EXPECT_EQ(ep_->ok_run_end_count.load(), 1);
+}
+#endif  // ORT_ENABLE_STREAM
 
 class GraphCaptureRunSerializationTest
     : public GraphCaptureSessionTest,
@@ -524,6 +581,107 @@ INSTANTIATE_TEST_SUITE_P(
         std::make_tuple(GraphCaptureOperation::Release, GraphCaptureOperation::Replay, false),
         std::make_tuple(GraphCaptureOperation::Check, GraphCaptureOperation::Release, false),
         std::make_tuple(GraphCaptureOperation::Replay, GraphCaptureOperation::Replay, true)));
+
+namespace {
+// Keeps per-run state like the QMoE controller: it refuses to start a run while its previous run was never ended.
+class RunLifecycleTestExecutionProvider : public CPUExecutionProvider {
+ public:
+  RunLifecycleTestExecutionProvider() : CPUExecutionProvider{CPUExecutionProviderInfo{}} {}
+
+  Status OnRunStart(const RunOptions&) override {
+    ORT_RETURN_IF(run_active, "The previous run of this provider was never ended.");
+    run_active = true;
+    return Status::OK();
+  }
+
+  Status OnRunEnd(bool, const RunOptions& run_options) override {
+    run_active = false;
+    if (run_options.config_options.GetConfigOrDefault("__ort.run_outcome", "ok") == "ok") {
+      ++ok_run_end_count;
+    } else {
+      ++failed_run_end_count;
+    }
+    return Status::OK();
+  }
+
+  bool run_active = false;
+  int ok_run_end_count = 0;
+  int failed_run_end_count = 0;
+
+ private:
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(RunLifecycleTestExecutionProvider);
+};
+
+// Registered after RunLifecycleTestExecutionProvider, so the session starts the run on that provider first.
+class FailingRunStartTestExecutionProvider : public IExecutionProvider {
+ public:
+  explicit FailingRunStartTestExecutionProvider(bool throw_exception)
+      : IExecutionProvider{"FailingRunStartTestExecutionProvider"}, throw_exception_{throw_exception} {}
+
+  std::shared_ptr<KernelRegistry> GetKernelRegistry() const override { return std::make_shared<KernelRegistry>(); }
+
+  Status OnRunStart(const RunOptions&) override {
+    if (fail_run_start) {
+      if (throw_exception_) {
+        ORT_THROW("OnRunStart failed for testing");
+      }
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "OnRunStart failed for testing");
+    }
+    return Status::OK();
+  }
+
+  Status OnRunEnd(bool, const RunOptions&) override {
+    ++run_end_count;
+    return Status::OK();
+  }
+
+  bool fail_run_start = true;
+  int run_end_count = 0;
+
+ private:
+  const bool throw_exception_;
+};
+}  // namespace
+
+class RunStartFailureTest : public ::testing::TestWithParam<bool> {};
+
+// A provider that started the run must be ended as failed even when a provider that starts later throws or fails.
+// Otherwise it stays in the middle of a run and rejects every later run of the session.
+TEST_P(RunStartFailureTest, ProvidersThatStartedTheRunAreEndedAsFailedAndTheSessionRunsAgain) {
+  SessionOptions options;
+  options.intra_op_param.thread_pool_size = 1;
+  options.inter_op_param.thread_pool_size = 1;
+  InferenceSession session{options, GetEnvironment()};
+  auto first = std::make_unique<RunLifecycleTestExecutionProvider>();
+  auto* first_ep = first.get();
+  auto second = std::make_unique<FailingRunStartTestExecutionProvider>(/*throw_exception*/ GetParam());
+  auto* second_ep = second.get();
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(first)));
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(second)));
+  ASSERT_STATUS_OK(session.Load(MODEL_URI));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  const std::vector<float> values{1.f, 2.f, 3.f, 4.f, 5.f, 6.f};
+  EXPECT_THAT(RunModelWithValues(session, RunOptions{}, values).ErrorMessage(),
+              testing::HasSubstr("OnRunStart failed for testing"));
+  EXPECT_FALSE(first_ep->run_active);
+  EXPECT_EQ(first_ep->failed_run_end_count, 1);
+  EXPECT_EQ(first_ep->ok_run_end_count, 0);
+  // The provider that failed to start the run never owned it.
+  EXPECT_EQ(second_ep->run_end_count, 0);
+
+  second_ep->fail_run_start = false;
+  ASSERT_STATUS_OK(RunModelWithValues(session, RunOptions{}, values));
+  EXPECT_FALSE(first_ep->run_active);
+  EXPECT_EQ(first_ep->failed_run_end_count, 1);
+  EXPECT_EQ(first_ep->ok_run_end_count, 1);
+  EXPECT_EQ(second_ep->run_end_count, 1);
+}
+
+INSTANTIATE_TEST_SUITE_P(InferenceSession, RunStartFailureTest, ::testing::Bool(),
+                         [](const ::testing::TestParamInfo<bool>& info) {
+                           return info.param ? "LaterProviderThrows" : "LaterProviderReturnsError";
+                         });
 
 class ProfileEventCapturingSink final : public logging::ISink {
  public:
@@ -1121,6 +1279,32 @@ TEST(InferenceSessionTests, LoadModelTwiceReturnsError) {
   ASSERT_EQ(status.Code(), common::StatusCode::MODEL_LOADED);
   ASSERT_THAT(status.ErrorMessage(), ::testing::HasSubstr("already contains a loaded model"));
 }
+
+#if !defined(ORT_MINIMAL_BUILD)
+// session.moe.offload.gpu_device_mem_limit is read by the CUDA EPs when they are created, but every session validates the
+// session.moe.offload.* keys when it is initialized (unknown keys are rejected), so a session without a CUDA EP must
+// still accept a well-formed value.
+TEST(InferenceSessionTests, MoeOffloadGpuDeviceMemLimitIsAcceptedWithoutCudaEp) {
+  for (const char* limit : {"0", "1073741824"}) {
+    SCOPED_TRACE(limit);
+    SessionOptions so;
+    so.session_logid = "InferenceSessionTests.MoeOffloadGpuDeviceMemLimitIsAcceptedWithoutCudaEp";
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsMoeOffloadGpuDeviceMemLimit, limit));
+    InferenceSession session_object{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
+    ASSERT_STATUS_OK(session_object.Initialize());
+  }
+}
+
+TEST(InferenceSessionTests, MoeOffloadGpuDeviceMemLimitRejectsMalformedValue) {
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.MoeOffloadGpuDeviceMemLimitRejectsMalformedValue";
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsMoeOffloadGpuDeviceMemLimit, "1 GiB"));
+  InferenceSession session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(session_object.Initialize(), kOrtSessionOptionsMoeOffloadGpuDeviceMemLimit);
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 TEST(InferenceSessionTests, FailedLoadAndInitializeRecordProfilingEvents) {
   SessionOptions so;
@@ -5245,7 +5429,7 @@ TEST(InferenceSessionTests, CompileApiExternalBufferKeepsSubgraphInitializersEmb
       if (buffer_destination && has_main_initializer) continue;
 #endif
 #if defined(__EMSCRIPTEN__)
-      // The WASM test module does not provide Module.MountedFiles for file-backed external data.
+      // File-backed subgraph tensors require a Module.MountedFiles mapping in WASM.
       if (!buffer_destination) continue;
 #endif
       {
@@ -5295,7 +5479,7 @@ TEST(InferenceSessionTests, CompileApiExternalBufferKeepsSubgraphInitializersEmb
   }
 }
 
-// The WASM test module cannot load host filesystem external data without Module.MountedFiles.
+// Subgraph and attribute external tensors in this test load from the host filesystem.
 #if !defined(DISABLE_EXTERNAL_INITIALIZERS) && !defined(__EMSCRIPTEN__)
 TEST(InferenceSessionTests, ExternalInitializerInjectionIsMainGraphOnly) {
   const std::filesystem::path model_dir = ORT_TSTR("external_buffers_attribute_model_dir");
