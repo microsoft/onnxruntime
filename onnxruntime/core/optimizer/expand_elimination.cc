@@ -56,10 +56,10 @@ bool ExpandElimination::SatisfyCondition(const Graph& graph, const Node& node, c
     auto dim = input_shape->dim(i);
     if (utils::HasDimValue(dim)) {
       auto dim_value = dim.dim_value();
-      if (dim_value != target_shapes[j] && target_shapes[j] > 1) {
+      if (dim_value != target_shapes[j] && target_shapes[j] != 1) {
         return false;
       }
-    } else if (target_shapes[j] > 1) {
+    } else if (target_shapes[j] != 1) {
       return false;
     }
 
