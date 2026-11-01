@@ -1824,7 +1824,9 @@ TEST(QMoESharedLayoutTest, Int2SwiGluRoundsProjectionsBeforeBiasAndActivation) {
   }
 }
 
-TEST(QMoESharedLayoutTest, Int2ExtremeBf16ScalesUseWiderIntermediates) {
+TEST(QMoESharedLayoutTest, Int2ExtremeBf16ScalesStayFinite) {
+  // Code -2 times a BF16 scale of 2^127 or more overflows FP32 even when the activation is tiny, so the dispatcher must
+  // route such ranges to the scalar kernel that halves the scale first.
   constexpr int64_t k = 128, columns = 16, rows = 3;
   const std::vector<uint8_t> weights(static_cast<size_t>(columns * k / 4), 0);
   std::vector<shared::Int2GemmBackend> backends{shared::Int2GemmBackend::Auto};
@@ -1867,6 +1869,67 @@ TEST(QMoESharedLayoutTest, Int2ExtremeBf16ScalesUseWiderIntermediates) {
                   const float actual = out[static_cast<size_t>(r * columns + n - begin)];
                   ASSERT_TRUE(std::isfinite(actual));
                   EXPECT_NEAR(actual, expected, std::abs(expected) * 2e-6);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+TEST(QMoESharedLayoutTest, Int2LoneExtremeBf16ScaleIsFoundAtEveryPosition) {
+  // 40 columns leave a scalar remainder after the 16-wide steps of the extreme-scale scan.
+  constexpr int64_t k = 128, columns = 40, rows = 2;
+  const std::vector<uint8_t> weights(static_cast<size_t>(columns * k / 4), 0);
+  std::vector<shared::Int2GemmBackend> backends{shared::Int2GemmBackend::Auto};
+  if (shared::CompilerHasAvx2() && shared::CpuHasAvx2FmaF16c()) {
+    backends.push_back(shared::Int2GemmBackend::Avx2);
+  }
+  std::vector<float> input(static_cast<size_t>(rows * k)), reordered(input.size());
+  for (int64_t r = 0; r < rows; ++r) {
+    std::fill_n(input.data() + r * k, k, static_cast<float>(r + 1) * 1e-30f);
+  }
+  for (int64_t block : {32, 64, 128}) {
+    const int64_t blocks = k / block;
+    for (bool block_major : {false, true}) {
+      for (bool prepacked : {false, true}) {
+        for (int64_t r = 0; r < rows; ++r) {
+          if (prepacked) {
+            shared::ReorderInt2ActivationRow(input.data() + r * k, reordered.data() + r * k, k);
+          } else {
+            shared::ReorderRawInt2ActivationRow(input.data() + r * k, reordered.data() + r * k, k);
+          }
+        }
+        // 0x7EFF is the largest scale below 2^127 and stays on the vector path; the others are extreme.
+        for (int extreme_bits : {0x7F00, 0x7F7F, 0xFF00, 0xFF7F, 0x7EFF}) {
+          for (int64_t extreme_n = 0; extreme_n < columns; ++extreme_n) {
+            for (int64_t extreme_b = 0; extreme_b < blocks; ++extreme_b) {
+              std::vector<uint16_t> scales(static_cast<size_t>(columns * blocks), shared::FloatToBFloat16(0.0625f));
+              auto scale_at = [&](int64_t n, int64_t b) -> uint16_t& {
+                return scales[static_cast<size_t>(block_major ? b * columns + n : n * blocks + b)];
+              };
+              scale_at(extreme_n, extreme_b) = static_cast<uint16_t>(extreme_bits);
+              std::vector<double> expected(static_cast<size_t>(rows * columns), 0.0);
+              for (int64_t r = 0; r < rows; ++r) {
+                for (int64_t n = 0; n < columns; ++n) {
+                  for (int64_t i = 0; i < k; ++i) {
+                    expected[static_cast<size_t>(r * columns + n)] +=
+                        -2.0 * shared::BFloat16ToFloat(scale_at(n, i / block)) * input[static_cast<size_t>(r * k + i)];
+                  }
+                }
+              }
+              for (auto backend : backends) {
+                std::vector<float> out(static_cast<size_t>(rows * columns));
+                shared::Int2GemmRange(weights.data(), scales.data(), nullptr, block, block_major, prepacked, true, true,
+                                      columns, k, reordered.data(), rows, out.data(), columns, 0, columns, false,
+                                      backend);
+                for (size_t i = 0; i < out.size(); ++i) {
+                  ASSERT_TRUE(std::isfinite(out[i]))
+                      << "block=" << block << " block_major=" << block_major << " prepacked=" << prepacked
+                      << " scale_bits=" << extreme_bits << " at n=" << extreme_n << " b=" << extreme_b;
+                  EXPECT_NEAR(out[i], expected[i], std::abs(expected[i]) * 2e-5);
                 }
               }
             }

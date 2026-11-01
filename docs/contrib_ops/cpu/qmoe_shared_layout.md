@@ -65,9 +65,11 @@ implemented across `qmoe_shared_layout.cc`,
 `qmoe_shared_layout_fp4_avx512.cc`.
 It performs no weight/scale conversion during initialization or execution; the
 caller owns activation and output workspace. INT2 applies block scales before
-activation products. Extreme BF16 scales use wider scalar intermediates to avoid
-overflow before multiplication by small activations. INT2 rounds FC1 projections to
-the boundary dtype before adding bias and evaluating SwiGLU in FP32, matching CUDA
+activation products. A BF16 scale of magnitude 2^127 or more would overflow
+that product for code -2 even when a small activation brings it back into range,
+so a vector range that contains such a scale runs on the scalar kernel, which
+halves the scale and doubles the sum exactly. INT2 rounds FC1 projections to the
+boundary dtype before adding bias and evaluating SwiGLU in FP32, matching CUDA
 decode and packed prefill. FC1 ranges must contain complete gate/up pairs (even
 bounds); invalid ranges return false without writing output.
 

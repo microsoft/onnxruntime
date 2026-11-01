@@ -72,6 +72,7 @@
 #include <intrin.h>
 #elif defined(__GNUC__)
 #include <cpuid.h>
+#include <emmintrin.h>
 #endif
 #else
 #define QMOE_SHARED_ARCH_X86_64 0
@@ -369,11 +370,15 @@ void ScalarInt2GemmRange(const uint8_t* weights, const uint16_t* scales, const u
   const int64_t raw_w_stride = k / 4;
   const float* scales_f32 = reinterpret_cast<const float*>(scales);
   const float* bias_f32 = reinterpret_cast<const float*>(bias);
-  auto read_scale = [&](int64_t n, int64_t sb) -> float {
+  // Weights are scaled by half the quantization scale and the accumulated sum is doubled at the end. Both steps are
+  // exact, and the extra binade keeps `code * scale` finite for every finite BF16 scale (a BF16 scale near FLT_MAX
+  // times code -2 would otherwise overflow before a tiny activation brings the product back into range).
+  auto read_half_scale = [&](int64_t n, int64_t sb) -> float {
     const size_t s_idx = static_cast<size_t>(scales_are_block_major ? (sb * n_total + n) : (n * scale_blocks + sb));
-    return scale_is_fp32   ? scales_f32[s_idx]
-           : scale_is_bf16 ? BoundaryBFloat16::FromBits(scales[s_idx])
-                           : HalfToFloat(scales[s_idx]);
+    const float scale = scale_is_fp32   ? scales_f32[s_idx]
+                        : scale_is_bf16 ? BoundaryBFloat16::FromBits(scales[s_idx])
+                                        : HalfToFloat(scales[s_idx]);
+    return 0.5f * scale;
   };
   for (int64_t n = n_begin; n < n_end; ++n) {
     const uint8_t* group = weights_are_prepacked
@@ -387,45 +392,45 @@ void ScalarInt2GemmRange(const uint8_t* weights, const uint16_t* scales, const u
                                               : HalfToFloat(bias[n]))
                             : 0.0f;
     for (int64_t r = 0; r < m; ++r) {
-      double acc = 0.0f;
+      float acc = 0.0f;
       for (int64_t kb64 = 0; kb64 < tiles64; ++kb64) {
         const uint8_t* bytes = weights_are_prepacked
                                    ? (group + kb64 * 128 + c * 16)
                                    : (raw_w_row + kb64 * 16);
         const float* ar = a_reordered + r * k + kb64 * kTileK;
         if (eff_block == 32) {
-          const float s0 = read_scale(n, 2 * kb64);
-          const float s1 = read_scale(n, 2 * kb64 + 1);
-          double sum0 = 0.0f;
-          double sum1 = 0.0f;
+          const float s0 = read_half_scale(n, 2 * kb64);
+          const float s1 = read_half_scale(n, 2 * kb64 + 1);
+          float sum0 = 0.0f;
+          float sum1 = 0.0f;
           for (int s = 0; s < 4; ++s) {
             const float* as = ar + s * 16;
             for (int b = 0; b < 16; ++b) {
               const float w = static_cast<float>(static_cast<int>((bytes[b] >> (2 * s)) & 0x3u) - 2);
               const bool second_half = weights_are_prepacked ? ((b & 1) != 0) : (b >= 8);
               if (second_half) {
-                sum1 += (static_cast<double>(w) * s1) * as[b];
+                sum1 += (w * s1) * as[b];
               } else {
-                sum0 += (static_cast<double>(w) * s0) * as[b];
+                sum0 += (w * s0) * as[b];
               }
             }
           }
           acc += sum0 + sum1;
         } else {
           const int64_t sb = (eff_block == 64) ? kb64 : (kb64 >> 1);
-          const float s_val = read_scale(n, sb);
-          double sum = 0.0f;
+          const float s_val = read_half_scale(n, sb);
+          float sum = 0.0f;
           for (int s = 0; s < 4; ++s) {
             const float* as = ar + s * 16;
             for (int b = 0; b < 16; ++b) {
               const float w = static_cast<float>(static_cast<int>((bytes[b] >> (2 * s)) & 0x3u) - 2);
-              sum += (static_cast<double>(w) * s_val) * as[b];
+              sum += (w * s_val) * as[b];
             }
           }
           acc += sum;
         }
       }
-      out[r * out_stride + (n - n_begin)] = static_cast<float>(acc + b_val);
+      out[r * out_stride + (n - n_begin)] = 2.0f * acc + b_val;
     }
   }
 }
@@ -2799,26 +2804,62 @@ bool Int3ExpertForward(int64_t hidden, int64_t inter, const Int3ExpertView& view
   return true;
 }
 
+#if QMOE_SHARED_ARCH_X86_64 && (QMOE_COMPILER_SUPPORTS_AVX512 || QMOE_COMPILER_SUPPORTS_AVX2)
+namespace {
+
+// True when any of `count` BF16 scales has exponent field >= 0xFE (|scale| >= 2^127, including Inf/NaN).
+// Only such scales can overflow when multiplied by the INT2 code -2.
+bool HasExtremeBf16Scale(const uint16_t* scales, int64_t count) noexcept {
+  constexpr uint16_t kMagnitudeMask = 0x7FFF;
+  constexpr uint16_t kExtremeMagnitude = 0x7F00;
+  const __m128i mask = _mm_set1_epi16(static_cast<short>(kMagnitudeMask));
+  __m128i max0 = _mm_setzero_si128();
+  __m128i max1 = _mm_setzero_si128();
+  int64_t i = 0;
+  for (; i + 16 <= count; i += 16) {
+    max0 = _mm_max_epi16(max0, _mm_and_si128(_mm_loadu_si128(reinterpret_cast<const __m128i*>(scales + i)), mask));
+    max1 = _mm_max_epi16(max1, _mm_and_si128(_mm_loadu_si128(reinterpret_cast<const __m128i*>(scales + i + 8)), mask));
+  }
+  // Masked magnitudes fit in a positive int16, so the signed compare is exact.
+  const __m128i over = _mm_cmpgt_epi16(_mm_max_epi16(max0, max1),
+                                       _mm_set1_epi16(static_cast<short>(kExtremeMagnitude - 1)));
+  if (_mm_movemask_epi8(over) != 0) return true;
+  for (; i < count; ++i) {
+    if ((scales[i] & kMagnitudeMask) >= kExtremeMagnitude) return true;
+  }
+  return false;
+}
+
+// Scans the scales read by Int2GemmRange for columns [n_begin, n_end).
+bool Int2RangeHasExtremeBf16Scale(const uint16_t* scales, bool scales_are_block_major, int64_t n_total,
+                                  int64_t blocks, int64_t n_begin, int64_t n_end) noexcept {
+  const int64_t width = n_end - n_begin;
+  if (width <= 0 || blocks <= 0) return false;
+  if (!scales_are_block_major) return HasExtremeBf16Scale(scales + n_begin * blocks, width * blocks);
+  for (int64_t b = 0; b < blocks; ++b) {
+    if (HasExtremeBf16Scale(scales + b * n_total + n_begin, width)) return true;
+  }
+  return false;
+}
+
+}  // namespace
+#endif
+
 void Int2GemmRange(const uint8_t* weights, const uint16_t* scales, const uint16_t* bias,
                    int64_t block_size, bool scales_are_block_major, bool weights_are_prepacked,
                    bool scale_is_bf16, bool bias_is_bf16,
                    int64_t n_total, int64_t k, const float* a_reordered, int64_t m,
                    float* out, int64_t out_stride, int64_t n_begin, int64_t n_end,
                    bool force_scalar, Int2GemmBackend backend) {
-  // Only BF16 scales can overflow when multiplied by the INT2 zero point (-2).
-  // Keep normal scales on the vector path and use wider scalar intermediates for extreme scales.
-  if (!force_scalar && scale_is_bf16) {
-    const int64_t blocks = block_size > 0 ? k / block_size : 1;
-    for (int64_t n = n_begin; n < n_end && !force_scalar; ++n) {
-      for (int64_t b = 0; b < blocks; ++b) {
-        const auto bits = scales[scales_are_block_major ? b * n_total + n : n * blocks + b];
-        if ((bits & 0x7FFFu) >= 0x7F00u) {
-          force_scalar = true;
-          break;
-        }
-      }
-    }
+#if QMOE_SHARED_ARCH_X86_64 && (QMOE_COMPILER_SUPPORTS_AVX512 || QMOE_COMPILER_SUPPORTS_AVX2)
+  // The vector kernels scale weights before the dot product, so code -2 times a BF16 scale >= 2^127 overflows even
+  // when the activation is tiny. The scalar kernel halves the scale first and stays finite for every finite scale.
+  if (!force_scalar && scale_is_bf16 && (block_size == 32 || block_size == 64 || block_size == 128) &&
+      (CpuHasAvx512() || CpuHasAvx2FmaF16c()) &&
+      Int2RangeHasExtremeBf16Scale(scales, scales_are_block_major, n_total, k / block_size, n_begin, n_end)) {
+    force_scalar = true;
   }
+#endif
 #if QMOE_COMPILER_SUPPORTS_AVX512
   if (!force_scalar && backend == Int2GemmBackend::Auto && CpuHasAvx512() &&
       (block_size == 32 || block_size == 64 || block_size == 128)) {
