@@ -43,6 +43,13 @@ static const char* const kOrtSessionOptionsConfigMoeExpertCounterAlpha =
 static const char* const kOrtSessionOptionsConfigMoeExpertCounterBeta =
     "session.moe_expert_counter_beta";
 
+// Controls weight scaling in the shared-layout CPU QMoE INT3/INT4 kernels only.
+// "0" (default): round each dequantized weight to the activation type before multiplication.
+// "1": accumulate the block dot product in FP32, then apply its scale, without per-weight rounding.
+// Deferred scaling can improve throughput but can change results, particularly under cancellation.
+// Currently does not affect NVFP4/MXFP4, legacy CPU QMoE kernels, or CUDA kernels.
+static const char* const kOrtSessionOptionsCpuQmoeDeferredScale = "ep.cpu.qmoe_deferred_scale";
+
 // A value of "1" means allocators registered in the env will be used. "0" means the allocators created in the session
 // will be used. Use this to override the usage of env allocators on a per session level.
 static const char* const kOrtSessionOptionsConfigUseEnvAllocators = "session.use_env_allocators";
@@ -561,6 +568,35 @@ static const char* const kOrtSessionOptionsCudaEnableGemmAutoTune = "ep.cuda.ena
 static const char* const kOrtSessionOptionsCudaGatedDeltaNetBf16Precision =
     "ep.cuda.gated_delta_net_bf16_precision";
 
+/// CUDA tensor-core kernel switches of MatMulNBits and QMoE. Each is resolved once when the
+/// kernel is created, so a change needs a new session, and overrides the environment variable named below. The
+/// 0/1 switches accept only "0" and "1", and the thresholds a positive decimal integer (or "0" where stated); any other
+/// value, including an empty string, fails session initialization.
+/// "1" uses the scalar GEMV instead of the SM 9.0 tensor-core INT8 GEMV of MatMulNBits. Default "0".
+/// Overrides ORT_DISABLE_FPA_INTB_GEMV_TC.
+static const char* const kOrtSessionOptionsCudaDisableFpAIntBGemvTc = "ep.cuda.disable_fpa_intb_gemv_tc";
+
+/// "1" disables the BF16 tensor-core INT4 decode GEMV of QMoE. Default "0". Overrides ORT_DISABLE_MOE_GEMV_TC.
+static const char* const kOrtSessionOptionsCudaDisableMoeGemvTc = "ep.cuda.disable_moe_gemv_tc";
+
+/// "1" disables the BF16 tensor-core INT3 decode GEMV of QMoE. Default "0". Overrides ORT_DISABLE_QMOE_INT3_TC.
+static const char* const kOrtSessionOptionsCudaDisableQmoeInt3Tc = "ep.cuda.disable_qmoe_int3_tc";
+
+/// Minimum number of routed rows from which QMoE uses the tensor-core INT4 decode GEMV. Default 33.
+/// Overrides ORT_MOE_GEMV_TC_MIN_ROWS.
+static const char* const kOrtSessionOptionsCudaMoeGemvTcMinRows = "ep.cuda.moe_gemv_tc_min_rows";
+
+/// Minimum number of routes from which QMoE uses the tensor-core INT3 decode GEMV. Default 33. Constant INT3 weights
+/// are repacked when the session is created into a layout that runs the tensor-core GEMV from the first route; setting
+/// this threshold above 1 (here or through ORT_QMOE_INT3_TC_MIN_ROUTES) keeps the weights in their raw layout, so that
+/// the threshold holds for every decode launch. Overrides ORT_QMOE_INT3_TC_MIN_ROUTES.
+static const char* const kOrtSessionOptionsCudaQmoeInt3TcMinRoutes = "ep.cuda.qmoe_int3_tc_min_routes";
+
+/// Minimum number of rows M from which the INT8 MatMulNBits (fpA_intB path, no zero points, no bias) dequantizes the
+/// weight once and runs one cuBLAS GEMM instead of the row-chunked CUTLASS mixed-input GEMM. "0" disables. Default 512
+/// on SM 9.0 and 0 (disabled) on other architectures. Overrides ORT_FPA_INTB_DEQUANT_GEMM_MIN_M.
+static const char* const kOrtSessionOptionsCudaFpAIntBDequantGemmMinM = "ep.cuda.fpa_intb_dequant_gemm_min_m";
+
 /// <summary>
 /// This is a setting that contains string annotations or annotation prefixes to be matched
 /// against individual nodes metadata entry 'layer_ann' to guide layer assignment during partitioning.
@@ -982,3 +1018,32 @@ static const char* const kOrtSessionOptionsConfigUseDeterministicCompute = "sess
 // - "1": Skip PagedAttention input sanitization.
 static const char* const kOrtSessionOptionsPagedAttentionSkipInputSanitizer =
     "session.paged_attention.skip_input_sanitizer";
+
+// ---------------------------------------------------------------------------
+// Portable MoE / QMoE Offload v4 Session Configuration Keys
+// ---------------------------------------------------------------------------
+static const char* const kOrtSessionOptionsMoeOffloadMode = "session.moe.offload.mode";
+static const char* const kOrtSessionOptionsMoeOffloadCpuExecution = "session.moe.offload.cpu_execution";
+static const char* const kOrtSessionOptionsMoeOffloadPlacement = "session.moe.offload.placement";
+static const char* const kOrtSessionOptionsMoeOffloadDeviceExpertBytes = "session.moe.offload.device_expert_bytes";
+static const char* const kOrtSessionOptionsMoeOffloadHostExpertBytes = "session.moe.offload.host_expert_bytes";
+static const char* const kOrtSessionOptionsMoeOffloadDeviceWorkingBytes = "session.moe.offload.device_working_bytes";
+static const char* const kOrtSessionOptionsMoeOffloadHostWorkingBytes = "session.moe.offload.host_working_bytes";
+static const char* const kOrtSessionOptionsMoeOffloadPinnedBytes = "session.moe.offload.pinned_bytes";
+static const char* const kOrtSessionOptionsMoeOffloadReserveDeviceBytes = "session.moe.offload.reserve_device_bytes";
+static const char* const kOrtSessionOptionsMoeOffloadBudgetGroup = "session.moe.offload.budget_group";
+// Per-session limit, in bytes, on device memory allocated through the session's CUDA allocators (BFC arena growth,
+// MoE offload buffers, ...). An allocation that would exceed the limit fails.
+// This is not the CUDA EP provider option `gpu_mem_limit`, which only caps the size of the BFC arena.
+// "0" or unset means no limit. Not supported with external CUDA allocators or CUDA memory pools.
+// Honored by both the CUDA EP and the CUDA plugin EP. Must be set before the session is created.
+static const char* const kOrtSessionOptionsMoeOffloadGpuDeviceMemLimit = "session.moe.offload.gpu_device_mem_limit";
+static const char* const kOrtSessionOptionsMoeOffloadAllowFileBacking = "session.moe.offload.allow_file_backing";
+static const char* const kOrtSessionOptionsMoeOffloadCpuThreads = "session.moe.offload.cpu_threads";
+static const char* const kOrtSessionOptionsMoeOffloadAsyncMaxTokens = "session.moe.offload.async_max_tokens";
+static const char* const kOrtSessionOptionsMoeOffloadPrefillWaveExperts = "session.moe.offload.prefill_wave_experts";
+static const char* const kOrtSessionOptionsMoeOffloadSkipZeroColdDoorbell = "session.moe.offload.skip_zero_cold_doorbell";
+static const char* const kOrtSessionOptionsMoeOffloadPopularityFile = "session.moe.offload.popularity_file";
+static const char* const kOrtSessionOptionsMoeOffloadNodeOverrides = "session.moe.offload.node_overrides";
+static const char* const kOrtSessionOptionsMoeOffloadSourceRoot = "session.moe.offload.source_root";
+static const char* const kOrtSessionOptionsMoeOffloadDerivedCacheDir = "session.moe.offload.derived_cache_dir";

@@ -3,6 +3,7 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/trt_op_test_utils.h"
 #include "core/framework/data_types.h"
@@ -2307,6 +2308,20 @@ TEST(Einsum, ExplicitEinsumAsBilinearFormToScalar) {
   test.AddInput<float>("z", {4}, {1.f, 2.f, 3.f, 4.f});
   test.AddOutput<float>("o", {}, {500.f});
   test.Run();
+}
+
+TEST(Einsum, SubscriptLabelsExceedInputRankRejected) {
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddShapeToTensorData(false);  // must precede AddInput/AddOutput so runtime rank reaches the kernel
+  test.AddAttribute<std::string>("equation", "ijk->i");
+  test.AddInput<float>("x", {4}, {1.0f, 2.0f, 3.0f, 4.0f});
+  test.AddOutput<float>("o", {4}, {1.0f, 2.0f, 3.0f, 4.0f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Einsum subscripts string contains too many subscript labels when compared to the rank of the input", {},
+           nullptr, &eps);
 }
 
 }  // namespace test

@@ -16,9 +16,11 @@
 
 #include "contrib_ops/cuda/llm/fpA_intB_gemv/fpA_intB_gemv.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemv/details.h"
+#include "contrib_ops/cuda/llm/fpA_intB_gemv/int8_tc_gemv.cuh"
 #include "core/common/common.h"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 
+#include <cstdint>
 #include <cstdio>
 #include <type_traits>
 
@@ -278,6 +280,11 @@ template <typename Details, int CtaM, int CtaN, int Threads, int GroupSize, bool
           bool EnableBias, bool ApplyAlphaInAdvance, typename TypeA = typename Details::TypeDetailsA::Type>
 __global__ void kernel(TypeA* act, TypeA* act_scale, uint8_t* weight, TypeA* scales, TypeA* zeros, TypeA* bias,
                        TypeA* out, float alpha, int m, int n, int k) {
+#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900))
+  // Lets a programmatic-dependent-launch successor (the hyper-connection down kernel) start and prefetch its constant
+  // weights while this kernel runs; it reads our output only after griddepcontrol.wait. No-op for plain launches.
+  asm volatile("griddepcontrol.launch_dependents;" ::: "memory");
+#endif
 #if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 750))
   // ArgType          ArgName          DataType           Shape                 Layout
   // input            act              fp16/bf16          [m, k]                RowMajor
@@ -488,6 +495,31 @@ void exec_kernel_paired(Params& params, cudaStream_t s) {
   }
 }
 
+// Whether the tensor-core INT8 kernel (int8_tc_gemv.cuh) can run this launch. The kernel reads 16-byte vectors of the
+// activations and the weights, handles 1..8 rows, and needs whole 16-column tiles and whole 64-wide K tiles. Its
+// epilogue has no alpha multiplier (the scalar epilogue computes alpha * acc + bias), so only alpha == 1 may use it.
+inline bool CanUseInt8TensorCore(const Params& params, int group_size) {
+  return params.tensor_core && params.alpha == 1.f && params.device_sm == 90 && params.device_sm_count > 0 &&
+         params.m >= 1 && params.m <= dense_tc::kMaxRows && params.n % dense_tc::kMmaColumns == 0 &&
+         params.k % dense_tc::kTileK == 0 && params.k % group_size == 0 &&
+         reinterpret_cast<uintptr_t>(params.act) % 16 == 0 && reinterpret_cast<uintptr_t>(params.weight) % 16 == 0;
+}
+
+template <int GroupSize>
+bool exec_kernel_tc(Params& params, cudaStream_t s) {
+  const dense_tc::LaunchConfig config = dense_tc::LaunchInt8TcGemvAuto<GroupSize>(
+      reinterpret_cast<const __nv_bfloat16*>(params.act), reinterpret_cast<const uint8_t*>(params.weight),
+      reinterpret_cast<const __nv_bfloat16*>(params.scales), reinterpret_cast<__nv_bfloat16*>(params.out), params.m,
+      params.n, params.k, params.device_sm_count, s);
+  if (config.k_warps == 0) return false;
+  if (params.debug) {
+    std::printf("[fpA_intB_debug] GEMV launch: tensor_core=1 M=%d KWarps=%d Depth=%d BlocksPerSm=%d\n", params.m,
+                config.k_warps, config.depth, config.blocks_per_sm);
+    std::fflush(stdout);
+  }
+  return true;
+}
+
 template <typename Details, int CtaM, int CtaN, int Threads, int GroupSize, bool EnableActScale, bool EnableZero,
           bool EnableBias, bool ApplyAlphaInAdvance>
 void exec_kernel(Params& params, cudaStream_t s) {
@@ -560,6 +592,19 @@ void dispatcher(Params& params, cudaStream_t s) {
       return;                                                                                       \
     }                                                                                               \
   } while (0);
+
+  // Tensor-core kernel for the BF16 / symmetric INT8 / SM80-interleaved layout (the Qwen3.8 dense projections), which
+  // the scalar kernel serves at about a third of the DRAM bandwidth on SM 9.0 because it converts, scales and
+  // multiplies every weight once per row.
+  if constexpr (std::is_same_v<typename Details::TypeDetailsA, BF16DetailsA> &&
+                std::is_same_v<typename Details::TypeDetailsW, Int8DetailsW> && Details::kInterleave == 2 &&
+                Details::kStepK == 16 && Details::kUseInterleavedConverter &&
+                Details::LayoutDetails::kTileSize == 64 && !EnableZero && !EnableBias && !EnableActScale &&
+                !ApplyAlphaInAdvance) {
+    if (CanUseInt8TensorCore(params, GroupSize) && exec_kernel_tc<GroupSize>(params, s)) {
+      return;
+    }
+  }
 
   if (params.decode_variant != 0) {
     if constexpr (NarrowInt4Decode && Details::kStepK == 32 && Details::kInterleave == 4 &&

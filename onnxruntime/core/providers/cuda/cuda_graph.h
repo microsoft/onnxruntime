@@ -38,6 +38,9 @@ struct CUDAGraphManager {
   void SetStream(cudaStream_t stream);
   void CaptureBegin(CudaGraphAnnotation_t cuda_graph_annotation_id);
   void CaptureEnd(CudaGraphAnnotation_t cuda_graph_annotation_id);
+  // Ends the in-progress capture and drops what was recorded, without instantiating or storing a graph.
+  // For a run that failed while being captured, where the recorded work is incomplete.
+  void DiscardCapture() noexcept;
   Status Replay(CudaGraphAnnotation_t cuda_graph_annotation_id, bool sync_status_flag = true);
 
   void Reset();

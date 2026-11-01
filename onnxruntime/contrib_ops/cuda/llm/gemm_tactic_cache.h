@@ -47,7 +47,7 @@ constexpr const char* kCacheMagic = "ort_cuda_gemm_tactic_cache";
 constexpr const char* kCacheFormatVersion = "v1";
 
 // Bump whenever profiling or tactic selection changes which tactic wins, so stale caches are rejected.
-constexpr const char* kTacticSelectionVersion = "4";
+constexpr const char* kTacticSelectionVersion = "5";
 
 constexpr const char* kTableMatMulNBits = "matmulnbits_fpa_intb";
 
@@ -150,6 +150,7 @@ struct MatMulNBitsKey {
   int packing_sm = 0;
   int paired_gemv_mode = 0;
   bool wave_aware_gemv = false;
+  bool tensor_core_gemv = false;
 
   bool operator==(const MatMulNBitsKey& o) const;
 };
