@@ -863,7 +863,8 @@ bool DataOps::node_is_supported(const NodeIndex node_idx, bool& has_external_wei
   }
 
   // Check 3a
-  if (domain == kOnnxDomain && unsupported_op_mode(node, has_external_weights_)) {
+  if ((domain == kOnnxDomain || (domain == kMSDomain && optype == "GroupQueryAttention")) &&
+      unsupported_op_mode(node, has_external_weights_)) {
     if (optype == "GatherElements") {
       return true;
     }

@@ -30,6 +30,7 @@ limitations under the License.
 
 #include <cassert>
 #include "core/providers/cuda/cuda_common.h"
+#include "core/common/safeint.h"
 #include "contrib_ops/cpu/utils/debug_macros.h"
 #include "contrib_ops/cuda/bert/add_bias_transpose.h"
 #include "contrib_ops/cuda/bert/attention_impl.h"
@@ -156,6 +157,32 @@ inline int RopeMaxPosition(const GroupQueryAttentionParameters& parameters) {
                                             : parameters.seqlen_present_kv_cache;
 }
 
+// Initialize each destination independently: key and value may alias their past buffers separately.
+template <typename T, typename U>
+Status CopyPastToPresent(cudaStream_t stream, const GroupQueryAttentionParameters& parameters,
+                         const GroupQueryAttentionData<T, U>& data) {
+  const size_t row_bytes = parameters.kv_cache_bit_width == 0
+                               ? SafeInt<size_t>(parameters.head_size) * sizeof(U)
+                               : SafeInt<size_t>(parameters.head_size) * parameters.kv_cache_bit_width / 8;
+  const size_t src_pitch = SafeInt<size_t>(parameters.seqlen_past_kv_cache) * row_bytes;
+  const size_t dst_pitch = SafeInt<size_t>(parameters.seqlen_present_kv_cache) * row_bytes;
+  const size_t height = SafeInt<size_t>(parameters.batch_size) * parameters.kv_num_heads;
+  const auto copy_cache = [&](const U* past, U* present) -> Status {
+    if (past == present) {
+      return Status::OK();
+    }
+    ORT_RETURN_IF_ERROR(CUDA_CALL(cudaMemsetAsync(present, 0, SafeInt<size_t>(dst_pitch) * height, stream)));
+    if (past != nullptr && src_pitch > 0) {
+      ORT_RETURN_IF_ERROR(CUDA_CALL(cudaMemcpy2DAsync(present, dst_pitch, past, src_pitch,
+                                                      std::min(src_pitch, dst_pitch), height,
+                                                      cudaMemcpyDeviceToDevice, stream)));
+    }
+    return Status::OK();
+  };
+  ORT_RETURN_IF_ERROR(copy_cache(data.past_key, data.present_key));
+  return copy_cache(data.past_value, data.present_value);
+}
+
 // This function orchestrates the preparation of Q, K, and V tensors for attention kernels.
 // It performs:
 // 1. Handling packed vs. unpacked QKV inputs.
@@ -190,26 +217,10 @@ Status PrepareQKV(
   U* v = reinterpret_cast<U*>(data.present_value);
   int max_cache_length = parameters.seqlen_present_kv_cache;
 
-  if (!parameters.past_present_share_buffer) {
-    size_t kv_buffer_size = (size_t)batch_size * kv_num_heads * max_cache_length * head_size * sizeof(U);
-    CUDA_CALL_THROW(cudaMemsetAsync(data.present_key, 0, kv_buffer_size, stream));
-    CUDA_CALL_THROW(cudaMemsetAsync(data.present_value, 0, kv_buffer_size, stream));
-  }
+  ORT_RETURN_IF_ERROR(CopyPastToPresent(stream, parameters, data));
 
   bool is_cache_bnsh = (parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BNSH);
   assert(is_cache_bnsh);  // Only support BNSH format for now
-
-  // Copy past KV to present KV if needed
-  if (!parameters.past_present_share_buffer && data.past_key != nullptr && parameters.seqlen_past_kv_cache > 0) {
-    size_t src_pitch = (size_t)parameters.seqlen_past_kv_cache * head_size * sizeof(U);
-    size_t dst_pitch = (size_t)max_cache_length * head_size * sizeof(U);
-    size_t width = src_pitch;
-    size_t height = (size_t)batch_size * kv_num_heads;
-    CUDA_CALL_THROW(cudaMemcpy2DAsync(data.present_key, dst_pitch, data.past_key, src_pitch, width, height,
-                                      cudaMemcpyDeviceToDevice, stream));
-    CUDA_CALL_THROW(cudaMemcpy2DAsync(data.present_value, dst_pitch, data.past_value, src_pitch, width, height,
-                                      cudaMemcpyDeviceToDevice, stream));
-  }
 
   // Shared KV path: K/V inputs are empty (kv_sequence_length == 0) and the
   // past buffer already contains the full shared KV cache.  This requires
@@ -684,7 +695,7 @@ __global__ void GetSequenceLengths(const int* total_seq_lens_minus_one,
       valid_q_len = min(sequence_length, max(0, total_len - past_len));
     }
     past_seq_lens[i] = past_len;
-    padded_seq_lens[i] = past_len + sequence_length;
+    padded_seq_lens[i] = (query_seqlens != nullptr || is_first_prompt) ? past_len + sequence_length : total_len;
 
     if (cache_past_seq_lens == nullptr) {
       if (query_seqlens != nullptr && padded_seq_lens[i] > present_kv_cache_capacity) {
@@ -1264,7 +1275,7 @@ Status DequantizeFlashAttentionFallback(
   static_assert(std::is_same<T, typename OrtToCudaType<T>::type>::value);
   static_assert(std::is_same<U, typename OrtToCudaType<U>::type>::value);
 
-  assert(!parameters.is_first_prompt);  // Only support first prompt for this function.
+  assert(!parameters.is_first_prompt);
   assert(parameters.k_quant_type != KVQuantizationType::NONE || parameters.v_quant_type != KVQuantizationType::NONE);
 
   ORT_GQA_TRACE("DequantizeFlashAttentionFallback");
@@ -1277,6 +1288,8 @@ Status DequantizeFlashAttentionFallback(
   size_t k_elements = static_cast<size_t>(parameters.batch_size) * parameters.seqlen_present_kv_cache * parameters.kv_num_heads * parameters.head_size;
   T* k_dequant = q_rot + q_elements;
   T* v_dequant = k_dequant + k_elements;
+
+  ORT_RETURN_IF_ERROR(CopyPastToPresent(stream, parameters, data));
 
   // Step 1: Update Quantized Cache
   // We can use LaunchUnpackRoPEQuantizeAppend to unpack new QKV, apply RoPE, and append to quantized cache.
@@ -1316,6 +1329,25 @@ Status DequantizeFlashAttentionFallback(
       data.k_scale, data.v_scale, parameters.batch_size, parameters.kv_num_heads,
       parameters.seqlen_present_kv_cache, parameters.head_size, parameters.kv_cache_bit_width,
       parameters.k_quant_type, parameters.v_quant_type, is_bsnh, dequant_seq_lens)));
+
+  // query_seqlens can describe a first chunk even though its host-side classification is subsequent.
+  // Match the ordinary first-prompt path by attending to float KV when the device past length is zero.
+  if (parameters.sequence_length > 1) {
+    ORT_RETURN_IF_ERROR((LaunchUnpackRoPEAppend<T, T>(
+        parameters.is_packed_qkv ? data.query : nullptr,
+        parameters.is_packed_qkv ? nullptr : data.query,
+        parameters.is_packed_qkv ? nullptr : data.key,
+        parameters.is_packed_qkv ? nullptr : data.value,
+        q_rot, k_dequant, v_dequant, nullptr, nullptr, nullptr,
+        parameters.num_heads, parameters.kv_num_heads, parameters.head_size,
+        parameters.sequence_length, parameters.batch_size,
+        RopeMaxPosition(parameters), parameters.seqlen_present_kv_cache,
+        data.past_seq_lens, data.cache_past_seq_lens,
+        data.cos_cache, data.sin_cache, parameters.rotary_dim, data.position_ids, parameters.rotary_interleaved,
+        !is_bsnh, KVQuantizationType::NONE,
+        data.q_norm_weight, data.k_norm_weight, parameters.q_norm_epsilon, parameters.k_norm_epsilon,
+        stream, device_prop.maxThreadsPerBlock, valid_cache_seq_lens, /*first_prompt_only=*/true)));
+  }
 
   // Step 3: Run Flash Attention on dequantized k/v
   // Use padded_seq_lens when causal so right-padded query chunks stay aligned at their past offset.
@@ -1599,7 +1631,10 @@ Status UnfusedGqaAttention(
   p.past_kv_length = parameters.total_sequence_length - parameters.sequence_length;
   p.scale = scale;
   p.softcap = parameters.softcap;
-  p.past_seq_lens = data.past_seq_lens;
+  // Borrowed KV can have T < S and needs the signed, length-derived causal offset T - S.
+  p.past_seq_lens = parameters.kv_sequence_length == 0 && !parameters.is_first_prompt
+                        ? nullptr
+                        : data.past_seq_lens;
   p.seqlens_k = data.total_seq_lens;
 
   if (parameters.is_windowed_kv_cache) {
