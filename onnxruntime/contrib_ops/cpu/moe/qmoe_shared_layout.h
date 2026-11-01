@@ -459,14 +459,18 @@ bool Int3ExpertForward(int64_t hidden, int64_t inter, const Int3ExpertView& view
 
 // INT2 QMoE CPU kernels (supports both SM80 prepacked and raw [N, K/4] INT2 weights, block_size in {32, 64, 128},
 // both row-major and block-major scales, and both FP16 and BF16 scales/biases/boundaries).
+enum class Int2GemmBackend { Auto,
+                             Avx2 };
+
 void Int2GemmRange(const uint8_t* weights, const uint16_t* scales, const uint16_t* bias,
                    int64_t block_size, bool scales_are_block_major, bool weights_are_prepacked,
                    bool scale_is_bf16, bool bias_is_bf16,
                    int64_t n_total, int64_t k, const float* a_reordered, int64_t m,
                    float* out, int64_t out_stride, int64_t n_begin, int64_t n_end,
-                   bool force_scalar = false);
+                   bool force_scalar = false, Int2GemmBackend backend = Int2GemmBackend::Auto);
 
-void Int2Fc1SwiGluRange(int64_t hidden, int64_t inter, const Int2ExpertView& view,
+// Bounds must contain complete gate/up pairs. Returns false without writing output for invalid ranges or row counts.
+bool Int2Fc1SwiGluRange(int64_t hidden, int64_t inter, const Int2ExpertView& view,
                         const float* x_reordered, int64_t m, const SwiGluParams& swiglu,
                         float* inter_reordered, int64_t n_begin, int64_t n_end,
                         bool force_scalar = false, bool bf16_boundaries = false,

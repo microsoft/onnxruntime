@@ -478,6 +478,11 @@ __device__ __forceinline__ void swiglu_epilogue(void* out, void* tile_acc, void*
       gate += shmem[warp * RawCols + gate_idx];
       linear += shmem[warp * RawCols + linear_idx];
     }
+    if constexpr (Details::TypeDetailsW::kElemBits == 2) {
+      // Match the INT2 grouped-prefill projection boundary before bias.
+      gate = static_cast<float>(static_cast<TypeA>(gate));
+      linear = static_cast<float>(static_cast<TypeA>(linear));
+    }
     if constexpr (EnableBias) {
       gate += static_cast<float>(reinterpret_cast<TypeA*>(bias)[gate_idx]);
       linear += static_cast<float>(reinterpret_cast<TypeA*>(bias)[linear_idx]);
@@ -488,7 +493,7 @@ __device__ __forceinline__ void swiglu_epilogue(void* out, void* tile_acc, void*
     }
     linear += activation_params.beta;
     const float sigmoid = 1.0f / (1.0f + expf(-activation_params.alpha * gate));
-    reinterpret_cast<TypeA*>(out)[pair] = static_cast<TypeA>(gate * sigmoid * linear);
+    reinterpret_cast<TypeA*>(out)[pair] = static_cast<TypeA>((gate == -CUDART_INF_F ? 0.0f : gate * sigmoid) * linear);
   }
 }
 
@@ -682,6 +687,10 @@ __global__ void moe_gemv_splitk_reduce_swiglu_kernel(
     linear += partials[base + linear_idx];
   }
 
+  if constexpr (Details::TypeDetailsW::kElemBits == 2) {
+    gate = static_cast<float>(static_cast<TypeA>(gate));
+    linear = static_cast<float>(static_cast<TypeA>(linear));
+  }
   if constexpr (EnableBias) {
     bias += static_cast<int64_t>(expert) * n;
     gate += static_cast<float>(bias[gate_idx]);
@@ -693,7 +702,7 @@ __global__ void moe_gemv_splitk_reduce_swiglu_kernel(
   }
   linear += act_beta;
   const float sigmoid = 1.0f / (1.0f + expf(-act_alpha * gate));
-  out[static_cast<int64_t>(row) * inter_size + col] = static_cast<TypeA>(gate * sigmoid * linear);
+  out[static_cast<int64_t>(row) * inter_size + col] = static_cast<TypeA>((gate == -CUDART_INF_F ? 0.0f : gate * sigmoid) * linear);
 #endif
 }
 

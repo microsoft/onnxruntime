@@ -65,8 +65,11 @@ implemented across `qmoe_shared_layout.cc`,
 `qmoe_shared_layout_fp4_avx512.cc`.
 It performs no weight/scale conversion during initialization or execution; the
 caller owns activation and output workspace. INT2 applies block scales before
-activation products and keeps FC1 projections in FP32 through SwiGLU, rounding
-only its activation output to the boundary dtype.
+activation products. Extreme BF16 scales use wider scalar intermediates to avoid
+overflow before multiplication by small activations. INT2 rounds FC1 projections to
+the boundary dtype before adding bias and evaluating SwiGLU in FP32, matching CUDA
+decode and packed prefill. FC1 ranges must contain complete gate/up pairs (even
+bounds); invalid ranges return false without writing output.
 
 Scalar, runtime-dispatched AVX2, and runtime-dispatched AVX-512 implementations
 read the same banks. Code extraction, activation permutation, scale decoding,
@@ -104,7 +107,7 @@ Low-level CPU offload callers select the same policy through
   scalar path for partial ranges, including vector tails and multiple rows.
 - `moe_test.cc` checks prepacked INT2 CPU operator execution against independently
   packed multi-expert banks and a natural-order reference, including both weight
-  shapes, FP32/FP16/BF16, optional biases, and normalized explicit routing.
+  shapes, FP32/FP16/BF16, optional biases, and explicit routing weights used as supplied, independently of normalization settings.
 - `test_qmoe_shared_direct.py` checks CPU/CUDA operator execution, dynamic banks,
   prepacking on/off, non-square aliases, mixed INT4/INT3 graphs, and 512-expert
   top-10 routing.

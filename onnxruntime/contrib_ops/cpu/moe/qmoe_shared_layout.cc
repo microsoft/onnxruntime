@@ -387,7 +387,7 @@ void ScalarInt2GemmRange(const uint8_t* weights, const uint16_t* scales, const u
                                               : HalfToFloat(bias[n]))
                             : 0.0f;
     for (int64_t r = 0; r < m; ++r) {
-      float acc = 0.0f;
+      double acc = 0.0f;
       for (int64_t kb64 = 0; kb64 < tiles64; ++kb64) {
         const uint8_t* bytes = weights_are_prepacked
                                    ? (group + kb64 * 128 + c * 16)
@@ -396,17 +396,17 @@ void ScalarInt2GemmRange(const uint8_t* weights, const uint16_t* scales, const u
         if (eff_block == 32) {
           const float s0 = read_scale(n, 2 * kb64);
           const float s1 = read_scale(n, 2 * kb64 + 1);
-          float sum0 = 0.0f;
-          float sum1 = 0.0f;
+          double sum0 = 0.0f;
+          double sum1 = 0.0f;
           for (int s = 0; s < 4; ++s) {
             const float* as = ar + s * 16;
             for (int b = 0; b < 16; ++b) {
               const float w = static_cast<float>(static_cast<int>((bytes[b] >> (2 * s)) & 0x3u) - 2);
               const bool second_half = weights_are_prepacked ? ((b & 1) != 0) : (b >= 8);
               if (second_half) {
-                sum1 += (w * s1) * as[b];
+                sum1 += (static_cast<double>(w) * s1) * as[b];
               } else {
-                sum0 += (w * s0) * as[b];
+                sum0 += (static_cast<double>(w) * s0) * as[b];
               }
             }
           }
@@ -414,18 +414,18 @@ void ScalarInt2GemmRange(const uint8_t* weights, const uint16_t* scales, const u
         } else {
           const int64_t sb = (eff_block == 64) ? kb64 : (kb64 >> 1);
           const float s_val = read_scale(n, sb);
-          float sum = 0.0f;
+          double sum = 0.0f;
           for (int s = 0; s < 4; ++s) {
             const float* as = ar + s * 16;
             for (int b = 0; b < 16; ++b) {
               const float w = static_cast<float>(static_cast<int>((bytes[b] >> (2 * s)) & 0x3u) - 2);
-              sum += (w * s_val) * as[b];
+              sum += (static_cast<double>(w) * s_val) * as[b];
             }
           }
           acc += sum;
         }
       }
-      out[r * out_stride + (n - n_begin)] = acc + b_val;
+      out[r * out_stride + (n - n_begin)] = static_cast<float>(acc + b_val);
     }
   }
 }
@@ -2803,9 +2803,24 @@ void Int2GemmRange(const uint8_t* weights, const uint16_t* scales, const uint16_
                    bool scale_is_bf16, bool bias_is_bf16,
                    int64_t n_total, int64_t k, const float* a_reordered, int64_t m,
                    float* out, int64_t out_stride, int64_t n_begin, int64_t n_end,
-                   bool force_scalar) {
+                   bool force_scalar, Int2GemmBackend backend) {
+  // Only BF16 scales can overflow when multiplied by the INT2 zero point (-2).
+  // Keep normal scales on the vector path and use wider scalar intermediates for extreme scales.
+  if (!force_scalar && scale_is_bf16) {
+    const int64_t blocks = block_size > 0 ? k / block_size : 1;
+    for (int64_t n = n_begin; n < n_end && !force_scalar; ++n) {
+      for (int64_t b = 0; b < blocks; ++b) {
+        const auto bits = scales[scales_are_block_major ? b * n_total + n : n * blocks + b];
+        if ((bits & 0x7FFFu) >= 0x7F00u) {
+          force_scalar = true;
+          break;
+        }
+      }
+    }
+  }
 #if QMOE_COMPILER_SUPPORTS_AVX512
-  if (!force_scalar && CpuHasAvx512() && (block_size == 32 || block_size == 64 || block_size == 128)) {
+  if (!force_scalar && backend == Int2GemmBackend::Auto && CpuHasAvx512() &&
+      (block_size == 32 || block_size == 64 || block_size == 128)) {
     detail::Avx512Int2GemmRange(weights, scales, bias, block_size, scales_are_block_major, weights_are_prepacked,
                                 scale_is_bf16, bias_is_bf16, n_total, k, a_reordered, m,
                                 out, out_stride, n_begin, n_end);
@@ -2821,22 +2836,25 @@ void Int2GemmRange(const uint8_t* weights, const uint16_t* scales, const uint16_
   }
 #endif
   (void)force_scalar;
+  (void)backend;
   ScalarInt2GemmRange(weights, scales, bias, block_size, scales_are_block_major, weights_are_prepacked,
                       scale_is_bf16, bias_is_bf16, n_total, k, a_reordered, m,
                       out, out_stride, n_begin, n_end);
 }
 
-void Int2Fc1SwiGluRange(int64_t hidden, int64_t inter, const Int2ExpertView& view,
+bool Int2Fc1SwiGluRange(int64_t hidden, int64_t inter, const Int2ExpertView& view,
                         const float* x_reordered, int64_t m, const SwiGluParams& swiglu,
                         float* inter_reordered, int64_t n_begin, int64_t n_end,
                         bool force_scalar, bool bf16_boundaries, bool fp16_boundaries) {
+  if (n_begin < 0 || n_end < n_begin || n_end > 2 * inter ||
+      (n_begin & 1) != 0 || (n_end & 1) != 0 || m < 0 || m > kMaxRowsPerCall) {
+    return false;
+  }
   constexpr int64_t kChunk = 128;
   float tmp[kMaxRowsPerCall * kChunk];
   const int64_t n_total = 2 * inter;
 #if QMOE_COMPILER_SUPPORTS_AVX2
   const bool use_f16c = !force_scalar && fp16_boundaries && !bf16_boundaries && CpuHasAvx2FmaF16c();
-#else
-  const bool use_f16c = false;
 #endif
   const bool has_limit = std::isfinite(swiglu.limit);
   const bool use_fast_gemm =
@@ -2845,12 +2863,12 @@ void Int2Fc1SwiGluRange(int64_t hidden, int64_t inter, const Int2ExpertView& vie
   for (int64_t nb = n_begin; nb < n_end; nb += kChunk) {
     const int64_t ne = std::min(nb + kChunk, n_end);
     if (use_fast_gemm) {
-      Int2GemmRange(view.fc1_weights, view.fc1_scales, view.fc1_bias,
+      Int2GemmRange(view.fc1_weights, view.fc1_scales, nullptr,
                     view.block_size, view.scales_are_block_major, view.weights_are_prepacked,
                     view.scale_is_bf16, view.bias_is_bf16,
                     n_total, hidden, x_reordered, m, tmp, kChunk, nb, ne, force_scalar);
     } else {
-      ScalarInt2GemmRange(view.fc1_weights, view.fc1_scales, view.fc1_bias,
+      ScalarInt2GemmRange(view.fc1_weights, view.fc1_scales, nullptr,
                           view.block_size, view.scales_are_block_major, view.weights_are_prepacked,
                           view.scale_is_bf16, view.bias_is_bf16,
                           n_total, hidden, x_reordered, m, tmp, kChunk, nb, ne,
@@ -2863,14 +2881,27 @@ void Int2Fc1SwiGluRange(int64_t hidden, int64_t inter, const Int2ExpertView& vie
         const int64_t j = n / 2;
         const int pos = view.weights_are_prepacked ? Int2ReorderedPosition(static_cast<int>(j & 63))
                                                    : RawInt2ReorderedPosition(static_cast<int>(j & 63));
-        // Keep projections in FP32 through SwiGLU, as in the fused INT2 CUDA path.
-        float gate = row_tmp[n - nb];
-        float value = row_tmp[(n - nb) + 1];
+        // Match the packed CUDA prefill boundary: round GEMM results before adding bias in FP32.
+        auto round_projection = [&](float v) {
+          return bf16_boundaries ? RoundBf16Fast(v) : fp16_boundaries ? BoundaryFloat16::Round(v)
+                                                                      : v;
+        };
+        auto read_bias = [&](int64_t c) {
+          if (!view.fc1_bias) return 0.0f;
+          return view.bias_is_fp32   ? reinterpret_cast<const float*>(view.fc1_bias)[c]
+                 : view.bias_is_bf16 ? BoundaryBFloat16::FromBits(view.fc1_bias[c])
+                                     : HalfToFloat(view.fc1_bias[c]);
+        };
+        float gate = round_projection(row_tmp[n - nb]) + read_bias(n);
+        float value = round_projection(row_tmp[(n - nb) + 1]) + read_bias(n + 1);
         if (has_limit) {
           gate = std::min(gate, swiglu.limit);
           value = std::clamp(value, -swiglu.limit, swiglu.limit);
         }
-        const float act = gate / (1.0f + std::exp(-swiglu.alpha * gate)) * (value + swiglu.beta);
+        const float silu = gate == -std::numeric_limits<float>::infinity()
+                               ? 0.0f
+                               : gate / (1.0f + std::exp(-swiglu.alpha * gate));
+        const float act = silu * (value + swiglu.beta);
 #if QMOE_COMPILER_SUPPORTS_AVX2
         const float rounded_act = bf16_boundaries   ? RoundBf16Fast(act)
                                   : use_f16c        ? detail::Avx2RoundFp16Scalar(act)
@@ -2885,6 +2916,7 @@ void Int2Fc1SwiGluRange(int64_t hidden, int64_t inter, const Int2ExpertView& vie
       }
     }
   }
+  return true;
 }
 
 void Int2Fc2Range(int64_t hidden, int64_t inter, const Int2ExpertView& view,
