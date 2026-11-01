@@ -599,6 +599,36 @@ TEST(CUDA_EP_Unittest, FusedInt3RouteGroups_DecodeKernelSelection) {
       {"intermediate 192", [](Int3MoeParams& p) { p.intermediate = 192; }, Int3DecodeKernel::kScalar},
       {"block size 12", [](Int3MoeParams& p) { p.block_size = 12; }, Int3DecodeKernel::kScalar},
       {"routes beyond the grid limit", [](Int3MoeParams& p) { p.rows = 40000; }, Int3DecodeKernel::kScalar},
+      {"grouped routes beyond the grid limit",
+       [](Int3MoeParams& p) {
+         p.rows = 40000;
+         p.num_experts = 16;
+         p.grouped_workspace = reinterpret_cast<int*>(uintptr_t{0xa0000});
+       },
+       Int3DecodeKernel::kFast},
+      {"grouped FC1 static shared memory exceeds the limit",
+       [](Int3MoeParams& p) {
+         p.rows = 40000;
+         p.hidden = 3072;
+         p.num_experts = 16;
+         p.grouped_workspace = reinterpret_cast<int*>(uintptr_t{0xa0000});
+       },
+       Int3DecodeKernel::kScalar},
+      {"grouped FC2 static shared memory exceeds the limit",
+       [](Int3MoeParams& p) {
+         p.rows = 40000;
+         p.intermediate = 1536;
+         p.num_experts = 16;
+         p.grouped_workspace = reinterpret_cast<int*>(uintptr_t{0xa0000});
+       },
+       Int3DecodeKernel::kScalar},
+      {"grouped finalization exceeds the grid limit",
+       [](Int3MoeParams& p) {
+         p.rows = 70000;
+         p.num_experts = 16;
+         p.grouped_workspace = reinterpret_cast<int*>(uintptr_t{0xa0000});
+       },
+       Int3DecodeKernel::kScalar},
       {"hidden above the shared memory limit", [](Int3MoeParams& p) { p.hidden = 12544; },
        Int3DecodeKernel::kScalar},
   };

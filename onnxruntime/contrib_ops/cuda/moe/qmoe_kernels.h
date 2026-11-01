@@ -12,6 +12,14 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
+struct QMoEOffloadTelemetry {
+  uint64_t layer_calls;
+  uint64_t zero_cold_short_circuits;
+  uint64_t cold_routes;
+  int last_route_count;
+  int last_cold_count;
+};
+
 void LaunchSoftmaxTopK(
     const float* logits,
     float* topk_scales,
@@ -98,7 +106,9 @@ cudaError_t LaunchQMoEOffloadClassify(
     int k_for_source_rows = 0, int* host_indices_out = nullptr,
     const void* input_dev = nullptr, void* host_input_out = nullptr, int input_vec4_count = 0,
     uint64_t* doorbell_seq_dev = nullptr, volatile uint64_t* doorbell_req_host = nullptr,
-    volatile int32_t* doorbell_tile_rows_host = nullptr, int tile_rows = 0);
+    volatile int32_t* doorbell_tile_rows_host = nullptr, int tile_rows = 0,
+    bool skip_zero_cold = false, volatile uint64_t* doorbell_done_host = nullptr,
+    volatile int32_t* cold_count_host = nullptr, QMoEOffloadTelemetry* telemetry = nullptr);
 
 cudaError_t LaunchQMoEOffloadMerge(
     const half* wave_output, const half* cpu_rows, const int* hit_flag, half* contributions,
@@ -689,6 +699,7 @@ struct Int3MoeParams {
   const int* source_route_ids = nullptr;
   bool input_is_gathered = false;
   int total_routes_override = 0;
+  int* grouped_workspace = nullptr;
 };
 
 // Kernel family LaunchInt3Moe dispatches for `params`. Only the vectorized GEMV kernels read
