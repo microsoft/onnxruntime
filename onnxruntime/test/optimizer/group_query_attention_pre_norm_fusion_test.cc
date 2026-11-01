@@ -69,6 +69,9 @@ struct BuildOptions {
   // If true, pre-populate the GQA node's slot 14 with a q_norm_weight initializer so the
   // optimizer treats the node as already fused and skips it.
   bool pre_fused = false;
+  // If true, wire a query_seqlens input in slot 16 (slots 14/15 stay empty). The fusion fills slots
+  // 14/15 and must keep the input in slot 16.
+  bool with_query_seqlens = false;
 };
 
 void BuildQwenQkPostNormPattern(ModelTestBuilder& builder, const BuildOptions& opts) {
@@ -185,6 +188,13 @@ void BuildQwenQkPostNormPattern(ModelTestBuilder& builder, const BuildOptions& o
     gqa_inputs.push_back(preexisting_q_norm);
   }
 
+  if (opts.with_query_seqlens) {
+    gqa_inputs.push_back(&empty_arg);  // slot 14: q_norm_weight
+    gqa_inputs.push_back(&empty_arg);  // slot 15: k_norm_weight
+    NodeArg* query_seqlens = builder.MakeInput<int32_t>(std::vector<int64_t>{kBatch},
+                                                        std::vector<int32_t>{static_cast<int32_t>(seq)});
+    gqa_inputs.push_back(query_seqlens);  // slot 16
+  }
   Node& gqa = builder.AddNode("GroupQueryAttention",
                               gqa_inputs,
                               {gqa_out, present_key, present_value},
@@ -642,6 +652,38 @@ TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionSkipsAlreadyFus
   ASSERT_STATUS_OK(TestGraphTransformer(
       build, /*opset_version=*/21, *logger_, MakeWebGpuTransformer(),
       TransformerLevel::Level2, /*steps=*/1, nullptr, check));
+}
+
+TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionPreservesQuerySeqlensInput) {
+  // The rewrite rebuilds the GQA input list. An input past slot 15 (query_seqlens at slot 16) must
+  // survive it, otherwise a right-padded chunk would silently be computed as an unpadded one.
+  BuildOptions opts;
+  opts.with_query_seqlens = true;
+  auto build = [opts](ModelTestBuilder& builder) { BuildQwenQkPostNormPattern(builder, opts); };
+
+  std::string query_seqlens_name;
+  auto pre_check = [&query_seqlens_name](Graph& graph) -> Status {
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() != "GroupQueryAttention") continue;
+      ORT_RETURN_IF_NOT(node.InputDefs().size() == 17 && node.InputDefs()[16]->Exists(),
+                        "Test setup: GQA must have a query_seqlens input in slot 16.");
+      query_seqlens_name = node.InputDefs()[16]->Name();
+    }
+    return Status::OK();
+  };
+  auto post_check = [&query_seqlens_name](Graph& graph) -> Status {
+    ORT_RETURN_IF_ERROR(CheckFusedGraph(graph));
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() != "GroupQueryAttention") continue;
+      ORT_RETURN_IF_NOT(node.InputDefs().size() == 17, "Fused GQA must keep the query_seqlens input slot.");
+      ORT_RETURN_IF_NOT(node.InputDefs()[16]->Exists() && node.InputDefs()[16]->Name() == query_seqlens_name,
+                        "Fused GQA lost or replaced the query_seqlens input.");
+    }
+    return Status::OK();
+  };
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build, /*opset_version=*/21, *logger_, MakeCudaWebGpuTransformer(),
+      TransformerLevel::Level2, /*steps=*/1, pre_check, post_check));
 }
 
 #endif  // !defined(DISABLE_CONTRIB_OPS)

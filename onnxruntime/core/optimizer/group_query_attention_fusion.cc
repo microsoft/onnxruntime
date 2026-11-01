@@ -672,24 +672,25 @@ Status GroupQueryAttentionFusion::ApplyImpl(
     std::string empty_name;
     auto& empty_node_arg = graph.GetOrCreateNodeArg(empty_name, nullptr);
 
-    std::vector<NodeArg*> gqa_input_defs{
-        &matmul_or_nbits_output,
-        &empty_node_arg,
-        &empty_node_arg,
-        past_key_values_key_arg,
-        past_key_values_value_arg,
-        seqlens_k,
-        total_seq_len,
-        cos_cache_arg,
-        sin_cache_arg};
+    auto gqa_input_defs = node.MutableInputDefs();
+    gqa_input_defs.resize(std::max<size_t>(gqa_input_defs.size(), position_ids_arg != nullptr ? 10 : 9),
+                          &empty_node_arg);
+    gqa_input_defs[0] = &matmul_or_nbits_output;
+    gqa_input_defs[1] = &empty_node_arg;
+    gqa_input_defs[2] = &empty_node_arg;
+    gqa_input_defs[3] = past_key_values_key_arg;
+    gqa_input_defs[4] = past_key_values_value_arg;
+    gqa_input_defs[5] = seqlens_k;
+    gqa_input_defs[6] = total_seq_len;
+    gqa_input_defs[7] = cos_cache_arg;
+    gqa_input_defs[8] = sin_cache_arg;
     if (position_ids_arg != nullptr) {
-      // During prefill, GQA treats position_ids[0] as a shared base and derives each token's
-      // position as base + sequence index. This fusion therefore assumes the MS-domain
-      // RotaryEmbedding inputs use contiguous positions with the same base for every batch.
-      gqa_input_defs.push_back(position_ids_arg);
+      // Prefill assumes contiguous positions with the same base for every batch.
+      gqa_input_defs[9] = position_ids_arg;
     }
 
     auto& gqa_input_args = node.MutableInputArgsCount();
+    gqa_input_args.resize(gqa_input_defs.size(), 1);
     gqa_input_args[7] = 1;
     gqa_input_args[8] = 1;
     if (position_ids_arg != nullptr) {

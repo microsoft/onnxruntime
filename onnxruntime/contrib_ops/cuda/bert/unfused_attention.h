@@ -74,6 +74,10 @@ struct UnfusedAttentionParams {
   float scale = 1.0f;
   float softcap = 0.0f;  // 0 disables
 
+  // Per-batch past K lengths (optional). When non-null, query position is
+  // past_seq_lens[b] + q instead of deriving past from seqlens_k[b] - q_sequence_length.
+  const int* past_seq_lens = nullptr;
+
   // Per-batch K lengths (optional). When non-null, positions k >= seqlens_k[b]
   // are masked out (useful for right-padded packed batches).
   const int* seqlens_k = nullptr;
