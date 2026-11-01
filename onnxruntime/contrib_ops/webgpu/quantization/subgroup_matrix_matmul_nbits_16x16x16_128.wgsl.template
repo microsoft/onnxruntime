@@ -21,6 +21,7 @@
 #param n_bits
 #param has_zero_points
 #param has_bias
+#param has_qlora_up
 #param has_weight_idx
 #param has_weight_idx_indirect
 #param sg_mat_k
@@ -59,6 +60,11 @@ var<workgroup> buf_b: array<f16, BN * SHMEM_STRIDE>;
 
 // Small staging buffer for edge-tile output (one 16x16 tile per subgroup)
 var<workgroup> coopmat_stage: array<f16, kSgMatM * kSgMatN * kSubgroupsPerWorkgroup>;
+
+#if has_qlora_up
+const kQLoRARank: u32 = 32;
+var<workgroup> lora_a: array<f16, BM * kQLoRARank>;
+#endif
 
 #if n_bits == 4
 // Dequantize one 16-element K chunk from one B row into buf_b.
@@ -145,6 +151,71 @@ fn dequant_b_to_buf(n_base: u32, k_idx: u32, n_idx: u32, k_chunk: u32) {
             buf_b[buf_base + i] = f16(0.0);
         }
     }
+}
+#endif
+
+#if has_qlora_up
+alias QLoRAElement = f16;
+const kQLoRAMatM = kSgMatM;
+const kQLoRAMatN = kSgMatN;
+const kQLoRAAddCount = 4u;
+const kQLoRABaseCapacity = BN * SHMEM_STRIDE;
+const kQLoRADeltaCapacity = BM * kQLoRARank;
+const kQLoRASubgroups = kSubgroupsPerWorkgroup;
+#include "quantization/subgroup_matrix_qlora_add.wgsl.template"
+
+// Compute a small group of adapter tiles, then reuse their input storage for the sum.
+fn qlora_up(base: QLoRAMatGroup, a_offset: u32, b_offset: u32,
+            global_base_m: u32, global_base_n: u32, local_idx: u32,
+            subgroup: u32, lane: u32, lanes: u32) -> QLoRAMatGroup {
+    for (var load_unit = local_idx; load_unit < BM * (kQLoRARank / 4u);
+         load_unit += workgroup_size_x) {
+        let tile_m = load_unit / (kQLoRARank / 4u);
+        let r4 = load_unit % (kQLoRARank / 4u);
+        let global_m = global_base_m + tile_m;
+        let offset = tile_m * kQLoRARank + r4 * 4u;
+        if (global_m < uniforms.M) {
+            let values = lora_t.getByOffset(global_m * (kQLoRARank / 4u) + r4);
+            for (var i = 0u; i < 4u; i++) {
+                lora_a[offset + i] = f16(values[i]);
+            }
+        } else {
+            for (var i = 0u; i < 4u; i++) {
+                lora_a[offset + i] = f16(0.0);
+            }
+        }
+    }
+    for (var load_unit = local_idx; load_unit < BN * (kQLoRARank / 4u);
+         load_unit += workgroup_size_x) {
+        let tile_n = load_unit / (kQLoRARank / 4u);
+        let r4 = load_unit % (kQLoRARank / 4u);
+        let global_n = global_base_n + tile_n;
+        let offset = tile_n * SHMEM_STRIDE + r4 * 4u;
+        if (global_n < uniforms.N) {
+            let values = qlora_weight(global_n, r4);
+            for (var i = 0u; i < 4u; i++) {
+                buf_b[offset + i] = f16(values[i]);
+            }
+        } else {
+            for (var i = 0u; i < 4u; i++) {
+                buf_b[offset + i] = f16(0.0);
+            }
+        }
+    }
+    workgroupBarrier();
+
+
+    var delta: QLoRAMatGroup;
+    for (var k = 0u; k < kQLoRARank; k += 16u) {
+      let a = subgroupMatrixLoad<subgroup_matrix_left<f16, 16, 16>, row_major>(
+          &lora_a, a_offset + k, kQLoRARank);
+      for (var n = 0u; n < kQLoRAAddCount; n++) {
+        let b = subgroupMatrixLoad<subgroup_matrix_right<f16, 16, 16>, col_major>(
+            &buf_b, b_offset + n * 16u * SHMEM_STRIDE + k, SHMEM_STRIDE);
+        delta[n] = subgroupMatrixMultiplyAccumulate(a, b, delta[n]);
+      }
+    }
+    return qlora_add(base, delta, &buf_b, &lora_a, subgroup, lane, lanes);
 }
 #endif
 
@@ -254,6 +325,37 @@ $MAIN {
         }
         workgroupBarrier();
     }
+
+#if has_qlora_up
+    let row0 = qlora_up(QLoRAMatGroup(c00, c01, c02, c03),
+                         (warp_r * WM + 0u) * kQLoRARank, warp_c * WN * SHMEM_STRIDE,
+                         global_base_m, global_base_n, local_idx, sg_idx, sg_tid, sg_size);
+    c00 = row0[0];
+    c01 = row0[1];
+    c02 = row0[2];
+    c03 = row0[3];
+    let row1 = qlora_up(QLoRAMatGroup(c10, c11, c12, c13),
+                         (warp_r * WM + 16u) * kQLoRARank, warp_c * WN * SHMEM_STRIDE,
+                         global_base_m, global_base_n, local_idx, sg_idx, sg_tid, sg_size);
+    c10 = row1[0];
+    c11 = row1[1];
+    c12 = row1[2];
+    c13 = row1[3];
+    let row2 = qlora_up(QLoRAMatGroup(c20, c21, c22, c23),
+                         (warp_r * WM + 32u) * kQLoRARank, warp_c * WN * SHMEM_STRIDE,
+                         global_base_m, global_base_n, local_idx, sg_idx, sg_tid, sg_size);
+    c20 = row2[0];
+    c21 = row2[1];
+    c22 = row2[2];
+    c23 = row2[3];
+    let row3 = qlora_up(QLoRAMatGroup(c30, c31, c32, c33),
+                         (warp_r * WM + 48u) * kQLoRARank, warp_c * WN * SHMEM_STRIDE,
+                         global_base_m, global_base_n, local_idx, sg_idx, sg_tid, sg_size);
+    c30 = row3[0];
+    c31 = row3[1];
+    c32 = row3[2];
+    c33 = row3[3];
+#endif
 
     // Write out results
     let dr = global_base_m + warp_r * WM;
