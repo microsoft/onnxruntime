@@ -333,8 +333,8 @@ Status PackedSparseAttentionIndexer<T, TState>::ComputeQsa(OpKernelContext* cont
                     key_state_shape.ToString());
   const int64_t state_capacity = key_state_shape[1];
   ORT_RETURN_IF_ERROR(CheckIntDimension("state_capacity", state_capacity, false));
-  ORT_RETURN_IF_NOT(state_capacity == state_capacity_,
-                    "PackedSparseAttentionIndexer: past_key_state capacity must match the state_capacity attribute");
+  ORT_RETURN_IF_NOT(state_capacity > 0,
+                    "PackedSparseAttentionIndexer: past_key_state capacity must be positive");
 
   const int64_t buffer_capacity = psai::GenericBufferCapacity(compress_ratio_);
   ORT_RETURN_IF_ERROR(CheckShape(past_kv_buffer, "past_kv_buffer", {batch_size, buffer_capacity, head_size}));
@@ -514,8 +514,8 @@ Status PackedSparseAttentionIndexer<T, TState>::ComputeCsa(OpKernelContext* cont
                     key_state_shape.ToString());
   const int64_t state_capacity = key_state_shape[1];
   ORT_RETURN_IF_ERROR(CheckIntDimension("state_capacity", state_capacity, false));
-  ORT_RETURN_IF_NOT(state_capacity == state_capacity_,
-                    "PackedSparseAttentionIndexer: past_key_state capacity must match the state_capacity attribute");
+  ORT_RETURN_IF_NOT(state_capacity > 0,
+                    "PackedSparseAttentionIndexer: past_key_state capacity must be positive");
 
   const int64_t buffer_capacity = psai::GenericBufferCapacity(compress_ratio_);
   ORT_RETURN_IF_ERROR(CheckShape(past_kv_buffer, "past_kv_buffer", {batch_size, buffer_capacity, width}));
