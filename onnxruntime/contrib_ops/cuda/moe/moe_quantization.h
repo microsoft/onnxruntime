@@ -118,6 +118,7 @@ class QMoE final : public CudaKernel, public MoEBase, public onnxruntime::moe_of
   // the SM80 kernel on Hopper). The kernel therefore consumes the SM80 fpA_intB
   // layout on every GPU, so -1 and 1 are currently equivalent for the CUDA EP;
   // 1 is reserved for a possible future Hopper-specific layout (e.g. W4A8).
+  int64_t weights_prepacked_mode_ = -1;
   bool weights_prepacked_ = true;
   bool nvfp4_weights_row_major_ = false;
   bool nvfp4_fc1_decode_scale_eligible_ = false;

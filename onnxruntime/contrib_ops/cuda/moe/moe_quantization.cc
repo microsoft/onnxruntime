@@ -481,6 +481,7 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
       op_kernel_info.GetAttrOrDefault<int64_t>("weights_prepacked", static_cast<int64_t>(-1));
   ORT_ENFORCE(weights_prepacked_mode == -1 || weights_prepacked_mode == 0 || weights_prepacked_mode == 1,
               "weights_prepacked must be -1 (default), 0, or 1, but got ", weights_prepacked_mode);
+  weights_prepacked_mode_ = weights_prepacked_mode;
   weights_prepacked_ = (weights_prepacked_mode != 0);
   if (use_int_dequant_fallback) {
     const bool prepacked_int2_or_mixed =
@@ -521,9 +522,6 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
   // The offload backend is set up at the end of the constructor, and only when the policy enables it for this node.
   const auto offload_controller = ParseOffloadPolicy(op_kernel_info);
   if (has_int3_) {
-    ORT_ENFORCE(offload_policy_.mode != onnxruntime::moe_offload::OffloadMode::kRequired,
-                "QMoE offload mode='required' rejected node '", op_kernel_info.node().Name(),
-                "': INT3 is not supported by the QMoE offload backend (requires quant_type='nvfp4' and weights_prepacked=1).");
     ORT_ENFORCE(quant_type_ == "int" && weights_prepacked_mode == 0,
                 "INT3 CUDA QMoE requires quant_type='int' and weights_prepacked=0.");
     ORT_ENFORCE((fc1_expert_weight_bits_ >= 2 && fc1_expert_weight_bits_ <= 4) &&
@@ -534,53 +532,58 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
                 "INT3 CUDA QMoE requires interleaved fused SwiGLU.");
     ORT_ENFORCE(block_size_ == 32 || block_size_ == 64 || block_size_ == 128,
                 "INT3 CUDA QMoE requires block_size 32, 64, or 128.");
+    if (offload_controller != nullptr) {
+      SetUpOffload(op_kernel_info, *offload_controller);
+    }
+    if (!offload_node_registered_) {
 #ifdef BUILD_CUDA_EP_AS_PLUGIN
-    auto has_optional_input = [&](size_t idx) {
-      return idx < static_cast<size_t>(op_kernel_info.GetInputCount()) &&
-             !op_kernel_info.GetKernelInfo().GetInputName(idx).empty();
-    };
+      auto has_optional_input = [&](size_t idx) {
+        return idx < static_cast<size_t>(op_kernel_info.GetInputCount()) &&
+               !op_kernel_info.GetKernelInfo().GetInputName(idx).empty();
+      };
 #else
-    const auto& input_defs = op_kernel_info.node().InputDefs();
-    auto has_optional_input = [&](size_t idx) {
-      return idx < input_defs.size() && input_defs[idx] != nullptr && input_defs[idx]->Exists();
-    };
+      const auto& input_defs = op_kernel_info.node().InputDefs();
+      auto has_optional_input = [&](size_t idx) {
+        return idx < input_defs.size() && input_defs[idx] != nullptr && input_defs[idx]->Exists();
+      };
 #endif
-    const Tensor* fc1_w_init = nullptr;
-    const Tensor* fc1_s_init = nullptr;
-    const Tensor* fc2_w_init = nullptr;
-    const Tensor* fc2_s_init = nullptr;
-    if (!is_fp16_ && !use_sparse_mixer_ && !disable_int3_tc_prefill_ && int3_tc_min_routes_ > 0 &&
-        (!int3_tc_min_routes_configured || int3_tc_min_routes_ == 1) &&
-        !has_optional_input(11) && !has_optional_input(12) && !has_optional_input(14) &&
-        fc1_expert_weight_bits_ == 3 && fc2_expert_weight_bits_ == 3 && fc3_expert_weight_bits_ == 3 &&
-        block_size_ == 64 && sm_ >= 80 && k_ > 0 && k_ <= 96 && CanUseInt3TcPrePack() &&
-        op_kernel_info.TryGetConstantInput(2, &fc1_w_init) &&
-        op_kernel_info.TryGetConstantInput(3, &fc1_s_init) &&
-        op_kernel_info.TryGetConstantInput(5, &fc2_w_init) &&
-        op_kernel_info.TryGetConstantInput(6, &fc2_s_init) &&
-        fc1_w_init && fc1_s_init && fc2_w_init && fc2_s_init &&
-        fc1_w_init->IsDataType<uint8_t>() && fc2_w_init->IsDataType<uint8_t>() &&
-        fc1_s_init->IsDataType<BFloat16>() && fc2_s_init->IsDataType<BFloat16>() &&
-        fc1_w_init->Shape().NumDimensions() == 3 && fc1_s_init->Shape().NumDimensions() == 3 &&
-        fc2_w_init->Shape().NumDimensions() == 3 && fc2_s_init->Shape().NumDimensions() == 3) {
-      const int64_t experts = fc1_w_init->Shape()[0];
-      const int64_t first_rows = fc1_w_init->Shape()[1];
-      const int64_t hidden = fc2_w_init->Shape()[1];
-      const int64_t inter = first_rows / 2;
-      if (experts > 0 && experts <= 512 && k_ <= experts &&
-          first_rows > 0 && (first_rows % 256) == 0 &&
-          hidden > 0 && (hidden % 512) == 0 &&
-          inter * 16 <= 48 * 1024 && hidden * 16 <= 48 * 1024 &&
-          fc1_w_init->Shape() == TensorShape({experts, first_rows, (hidden * 3) / 8}) &&
-          fc1_s_init->Shape() == TensorShape({experts, first_rows, hidden / 64}) &&
-          fc2_w_init->Shape() == TensorShape({experts, hidden, (inter * 3) / 8}) &&
-          fc2_s_init->Shape() == TensorShape({experts, hidden, inter / 64})) {
-        enable_int3_tc_prepack_ = true;
+      const Tensor* fc1_w_init = nullptr;
+      const Tensor* fc1_s_init = nullptr;
+      const Tensor* fc2_w_init = nullptr;
+      const Tensor* fc2_s_init = nullptr;
+      if (!is_fp16_ && !use_sparse_mixer_ && !disable_int3_tc_prefill_ && int3_tc_min_routes_ > 0 &&
+          (!int3_tc_min_routes_configured || int3_tc_min_routes_ == 1) &&
+          !has_optional_input(11) && !has_optional_input(12) && !has_optional_input(14) &&
+          fc1_expert_weight_bits_ == 3 && fc2_expert_weight_bits_ == 3 && fc3_expert_weight_bits_ == 3 &&
+          block_size_ == 64 && sm_ >= 80 && k_ > 0 && k_ <= 96 && CanUseInt3TcPrePack() &&
+          op_kernel_info.TryGetConstantInput(2, &fc1_w_init) &&
+          op_kernel_info.TryGetConstantInput(3, &fc1_s_init) &&
+          op_kernel_info.TryGetConstantInput(5, &fc2_w_init) &&
+          op_kernel_info.TryGetConstantInput(6, &fc2_s_init) &&
+          fc1_w_init && fc1_s_init && fc2_w_init && fc2_s_init &&
+          fc1_w_init->IsDataType<uint8_t>() && fc2_w_init->IsDataType<uint8_t>() &&
+          fc1_s_init->IsDataType<BFloat16>() && fc2_s_init->IsDataType<BFloat16>() &&
+          fc1_w_init->Shape().NumDimensions() == 3 && fc1_s_init->Shape().NumDimensions() == 3 &&
+          fc2_w_init->Shape().NumDimensions() == 3 && fc2_s_init->Shape().NumDimensions() == 3) {
+        const int64_t experts = fc1_w_init->Shape()[0];
+        const int64_t first_rows = fc1_w_init->Shape()[1];
+        const int64_t hidden = fc2_w_init->Shape()[1];
+        const int64_t inter = first_rows / 2;
+        if (experts > 0 && experts <= 512 && k_ <= experts &&
+            first_rows > 0 && (first_rows % 256) == 0 &&
+            hidden > 0 && (hidden % 512) == 0 &&
+            inter * 16 <= 48 * 1024 && hidden * 16 <= 48 * 1024 &&
+            fc1_w_init->Shape() == TensorShape({experts, first_rows, (hidden * 3) / 8}) &&
+            fc1_s_init->Shape() == TensorShape({experts, first_rows, hidden / 64}) &&
+            fc2_w_init->Shape() == TensorShape({experts, hidden, (inter * 3) / 8}) &&
+            fc2_s_init->Shape() == TensorShape({experts, hidden, inter / 64})) {
+          enable_int3_tc_prepack_ = true;
+        }
       }
     }
     return;
   }
-  enable_int2_prefill_ = quant_type_ == "int" && sm_ >= 80 &&
+  enable_int2_prefill_ = quant_type_ == "int" && !has_int3_ && sm_ >= 80 &&
                          (block_size_ == 32 || block_size_ == 64 || block_size_ == 128) &&
                          (fc1_expert_weight_bits_ == 2 || fc1_expert_weight_bits_ == 4) &&
                          (fc2_expert_weight_bits_ == 2 || fc2_expert_weight_bits_ == 4) &&
@@ -595,7 +598,7 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
       fp4_deep_gemm_num_experts_ > 0 &&
       onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_FP4_DEEPGEMM", 0) == 1;
 
-  if (quant_type_ == "fp4" || quant_type_ == "nvfp4" || quant_type_ == "fp8" || quant_type_ == "wfp4afp8") {
+  if (!has_int3_ && (quant_type_ == "fp4" || quant_type_ == "nvfp4" || quant_type_ == "fp8" || quant_type_ == "wfp4afp8")) {
     if (quant_type_ == "fp4") {
       ORT_ENFORCE(expert_weight_bits_ == 4, "FP4 quantization requires expert_weight_bits=4");
 #if defined(ENABLE_FP4) && defined(USE_FP4_QMOE)
@@ -828,7 +831,7 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
             sm_, activation_type_, normalize_routing_weights_, use_sparse_mixer_);
       }
     }
-  } else {
+  } else if (!has_int3_) {
     // Integer quantization (INT4/INT8)
     if (is_fp16) {
       if (use_int_dequant_fallback) {
@@ -1020,46 +1023,87 @@ bool QMoE::BuildOffloadDescriptors(const OpKernelInfo& op_kernel_info,
   if (input_slot_exists(15)) static_cast<void>(op_kernel_info.TryGetConstantInput(15, &fc1_g));
   if (input_slot_exists(16)) static_cast<void>(op_kernel_info.TryGetConstantInput(16, &fc2_g));
 
+  // The offload backend reads the raw K-packed row-major NVFP4 bytes, SM80-prepacked INT4 bytes, or raw INT3 bytes.
+  // MXFP4 and other weights_prepacked modes are N-packed in the standard path, so admitting them would
+  // change how the same initializer bytes are interpreted.
+  const bool int4_sm80_prepacked =
+      (quant_type_ == "int" && expert_weight_bits_ == 4 &&
+       fc1_expert_weight_bits_ == 4 && fc2_expert_weight_bits_ == 4 && fc3_expert_weight_bits_ == 4 &&
+       weights_prepacked_mode_ == 1 && block_size_ == 32);
+  const bool int3_raw =
+      (quant_type_ == "int" && expert_weight_bits_ == 3 &&
+       fc1_expert_weight_bits_ == 3 && fc2_expert_weight_bits_ == 3 && fc3_expert_weight_bits_ == 3 &&
+       weights_prepacked_mode_ == 0 && (block_size_ == 32 || block_size_ == 64 || block_size_ == 128));
+  const int64_t scale_group = int3_raw ? block_size_ : ((quant_type_ == "nvfp4") ? 16 : 32);
+  const uint64_t scale_elem_bytes = (quant_type_ == "nvfp4") ? sizeof(uint8_t) : sizeof(uint16_t);
+  const bool weight_and_scale_dtypes_ok =
+      has_const_weights && fc1_w->IsDataType<uint8_t>() && fc2_w->IsDataType<uint8_t>() &&
+      ((quant_type_ == "nvfp4")
+           ? (fc1_s->IsDataType<Float8E4M3FN>() && fc2_s->IsDataType<Float8E4M3FN>())
+           : (is_fp16_ ? (fc1_s->IsDataType<MLFloat16>() && fc2_s->IsDataType<MLFloat16>())
+                       : (fc1_s->IsDataType<BFloat16>() && fc2_s->IsDataType<BFloat16>())));
+
   // Standard QMoE also accepts FC1 [E,2*I,H/2] and FC2 [E,H,I/2] next to the legacy [E,H,I] and [E,I,H/2] weight
-  // shapes, so H and I come from whichever form is present. The block scales ([E,N,K/16] in both forms) must match
+  // shapes, so H and I come from whichever form is present. The block scales ([E,N,K/scale_group]) must match
   // the derived sizes, which keeps the budgets below and the backend's per-expert slicing consistent.
-  const auto bank_dims = has_const_weights
-                             ? onnxruntime::contrib::cuda::qmoe::ResolveNvfp4BankDims(
-                                   fc1_w->Shape(), fc2_w->Shape(), 16, fc1_s->SizeInBytes(), fc2_s->SizeInBytes())
-                             : onnxruntime::contrib::cuda::qmoe::Nvfp4BankDims{};
+  const auto bank_dims =
+      weight_and_scale_dtypes_ok
+          ? (int3_raw ? onnxruntime::contrib::cuda::qmoe::ResolveInt3BankDims(
+                            fc1_w->Shape(), fc2_w->Shape(), scale_group,
+                            fc1_s->SizeInBytes(), fc2_s->SizeInBytes(), scale_elem_bytes)
+                      : onnxruntime::contrib::cuda::qmoe::ResolveNvfp4BankDims(
+                            fc1_w->Shape(), fc2_w->Shape(), scale_group,
+                            fc1_s->SizeInBytes(), fc2_s->SizeInBytes(), scale_elem_bytes))
+          : onnxruntime::contrib::cuda::qmoe::Nvfp4BankDims{};
+  const bool scale_shapes_ok =
+      bank_dims.valid &&
+      fc1_s->Shape().NumDimensions() == 3 && fc2_s->Shape().NumDimensions() == 3 &&
+      fc1_s->Shape()[0] == fc1_w->Shape()[0] && fc2_s->Shape()[0] == fc1_w->Shape()[0] &&
+      fc1_s->Shape()[1] == 2 * bank_dims.inter && fc1_s->Shape()[2] == bank_dims.hidden / scale_group &&
+      fc2_s->Shape()[1] == bank_dims.hidden && fc2_s->Shape()[2] == bank_dims.inter / scale_group;
+  onnxruntime::contrib::qmoe_shared::Nvfp4ExpertBlockLayout host_layout{};
+  const bool layout_ok =
+      scale_shapes_ok &&
+      (int3_raw
+           ? onnxruntime::contrib::qmoe_shared::MakeInt3ExpertBlockLayout(
+                 bank_dims.hidden, bank_dims.inter, scale_group, &host_layout)
+           : ((quant_type_ == "nvfp4" || int4_sm80_prepacked)
+                  ? onnxruntime::contrib::qmoe_shared::MakeNvfp4ExpertBlockLayout(
+                        bank_dims.hidden, bank_dims.inter, &host_layout)
+                  : onnxruntime::contrib::qmoe_shared::MakeMxfp4ExpertBlockLayout(
+                        bank_dims.hidden, bank_dims.inter, &host_layout)));
 
   const bool is_interleaved_swiglu =
       (activation_type_ == onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Swiglu) &&
-      (swiglu_fusion_ == 0 || swiglu_fusion_ == 1);
+      (int3_raw ? (swiglu_fusion_ == 1) : (swiglu_fusion_ == 0 || swiglu_fusion_ == 1));
   const bool nvfp4_globals_ok = (quant_type_ != "nvfp4") || (fc1_g != nullptr && fc2_g != nullptr);
-  // The offload backend reads the raw K-packed row-major bytes. Only NVFP4 with weights_prepacked=1 defines that
-  // layout; MXFP4 and other weights_prepacked modes are N-packed in the standard path, so admitting them would
-  // change how the same initializer bytes are interpreted.
   const bool node_eligible =
-      nvfp4_weights_row_major_ &&
-      expert_weight_bits_ == 4 &&
+      (nvfp4_weights_row_major_ || int4_sm80_prepacked || int3_raw) &&
+      (expert_weight_bits_ == 4 || int3_raw) &&
       is_interleaved_swiglu &&
       !use_sparse_mixer_ &&
       !has_unsupported_slot &&
       has_const_weights &&
-      bank_dims.valid &&
+      layout_ok &&
       nvfp4_globals_ok;
 
   if (!node_eligible) {
     ORT_ENFORCE(offload_policy_.mode != onnxruntime::moe_offload::OffloadMode::kRequired,
                 "QMoE offload mode='required' rejected node '", op_kernel_info.node().Name(),
                 "': quant_type='", quant_type_, "', nvfp4_row_major_weights=", nvfp4_weights_row_major_,
-                " (requires quant_type='nvfp4' and weights_prepacked=1)",
+                " (expected 'nvfp4' with weights_prepacked=1, prepacked 'int' INT4 with weights_prepacked=1 and block_size=32, "
+                "or raw 'int' INT3 with weights_prepacked=0 and block_size in {32,64,128})",
+                ", int4_sm80_prepacked=", int4_sm80_prepacked, ", int3_raw=", int3_raw,
                 ", swiglu_fusion=", swiglu_fusion_, ", use_sparse_mixer=", use_sparse_mixer_,
                 ", unsupported_slot=", bad_slot_idx, ", has_const_cpu_weights=", has_const_weights,
-                ", valid_bank_shapes=", bank_dims.valid);
+                ", valid_bank_shapes=", layout_ok);
     return false;
   }
 
   const int32_t num_e = static_cast<int32_t>(fc1_w->Shape()[0]);
   const int32_t hid = static_cast<int32_t>(bank_dims.hidden);
   const int32_t inter = static_cast<int32_t>(bank_dims.inter);
-  const size_t blk = 16u;
+  const size_t blk = static_cast<size_t>(scale_group);
 
   offload_source_desc_.op_type = "QMoE";
   offload_source_desc_.quant_type = quant_type_;
@@ -1069,7 +1113,7 @@ bool QMoE::BuildOffloadDescriptors(const OpKernelInfo& op_kernel_info,
   offload_source_desc_.hidden_size = hid;
   offload_source_desc_.inter_size = inter;
   offload_source_desc_.block_size = static_cast<int32_t>(blk);
-  offload_source_desc_.weight_bits = 4;
+  offload_source_desc_.weight_bits = static_cast<int32_t>(expert_weight_bits_);
   offload_source_desc_.weights_prepacked = weights_prepacked_;
   offload_source_desc_.placement.device_id = controller.DeviceId();
   offload_source_desc_.shard_spec.global_num_experts = num_e;
@@ -1104,19 +1148,12 @@ bool QMoE::BuildOffloadDescriptors(const OpKernelInfo& op_kernel_info,
   record_slice(onnxruntime::moe_offload::ExpertBankKind::kFc2Bias, 7, fc2_b);
 
   const size_t raw_slot_bytes =
-      static_cast<size_t>(2) * inter * (hid / 2) +
-      static_cast<size_t>(hid) * (inter / 2) +
-      static_cast<size_t>(2) * inter * (hid / blk) +
-      static_cast<size_t>(hid) * (inter / blk) +
+      (fc1_w->SizeInBytes() + fc2_w->SizeInBytes() + fc1_s->SizeInBytes() + fc2_s->SizeInBytes()) /
+          static_cast<size_t>(num_e) +
       2 * sizeof(float);
   const size_t fc1_bias_slot_bytes =
       (fc1_b != nullptr && num_e > 0) ? (fc1_b->SizeInBytes() / static_cast<size_t>(num_e)) : 0;
   const size_t fc2_bias_fixed_bytes = (fc2_b != nullptr) ? fc2_b->SizeInBytes() : 0;
-
-  onnxruntime::contrib::qmoe_shared::Nvfp4ExpertBlockLayout host_layout{};
-  const bool layout_ok = (quant_type_ == "nvfp4")
-                             ? onnxruntime::contrib::qmoe_shared::MakeNvfp4ExpertBlockLayout(hid, inter, &host_layout)
-                             : onnxruntime::contrib::qmoe_shared::MakeMxfp4ExpertBlockLayout(hid, inter, &host_layout);
   const size_t cpu_slot_stride = layout_ok ? host_layout.stride : raw_slot_bytes;
 
   offload_capabilities_.supports_full_gpu_resident = true;

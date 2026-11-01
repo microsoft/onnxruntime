@@ -11,12 +11,13 @@ Related operator and kernel documentation:
 
 ## 1. Overview
 
-Large Mixture-of-Experts models (such as 48-layer $\times$ 512-expert NVFP4 models with
+Large Mixture-of-Experts models (such as 48-layer $\times$ 512-expert NVFP4 or INT4/INT3 models with
 45 GiB–63 GiB of routed expert weights) often exceed the VRAM of 24 GiB–32 GiB consumer and
 workstation GPUs. Rather than exporting a separate hardware-specific operator or baking GPU slot
 counts into the ONNX graph, ONNX Runtime supports **portable runtime CPU/GPU offload** on standard
-row-major NVFP4 `com.microsoft::QMoE` nodes (`quant_type="nvfp4"`, `expert_weight_bits=4`,
-`block_size=16`, `weights_prepacked=1`) controlled entirely by `session.moe.offload.*`
+`com.microsoft::QMoE` nodes (row-major NVFP4 with `weights_prepacked=1`, SM80-prepacked INT4 with
+`weights_prepacked=1` and `block_size=32`, and raw INT3 with `weights_prepacked=0` and
+`block_size` in `{32, 64, 128}`) controlled entirely by `session.moe.offload.*`
 session options.
 
 A **single canonical `com.microsoft::QMoE` model package** runs unchanged across:
@@ -219,8 +220,8 @@ is split across five deterministic stages in [session_state.cc](../../onnxruntim
 
 ```
 Stage 1: PlaceMoeOffloadInitializersOnCpu (SessionState::FinalizeSessionState, before SaveInitializedTensors)
-  └─ Overrides exec_plan location of eligible row-major NVFP4 QMoE (slots 2..7, 15, 16) initializers
-     to OrtDevice::CPU and skips memory-pattern tracing for external CPU initializers.
+  └─ Overrides exec_plan location of eligible NVFP4 / prepacked INT4 / raw INT3 QMoE (slots 2..7, 15, 16)
+     initializers to OrtDevice::CPU and skips memory-pattern tracing for external CPU initializers.
      SaveInitializedTensors() maps external files on CPU with 0 B GPU VRAM allocated for experts.
         │
 Stage 2: Kernel Construction & Zero-Copy PrePack Bypass (CreateKernel -> OpKernel::PrePack)
