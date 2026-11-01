@@ -423,7 +423,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"ReduceMax", obj});
   }
   {
-    // query_seqlens (input 16, right-padded query chunks) is implemented only by the CUDA EP.
+    // query_seqlens (input 16, right-padded query chunks) is implemented only by the CPU and CUDA EPs.
     UnsupportedOpMode obj = {{V_2025_1, V_2025_2, V_2025_3, V_2025_4, V_2026_0, V_2026_1, V_2026_2},
                              [](const Node* node, const InitializedTensorSet&) {
                                const auto& input_defs = node->InputDefs();
