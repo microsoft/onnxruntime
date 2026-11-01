@@ -3,6 +3,8 @@ package onnxruntime
 import (
 	"fmt"
 	"math"
+	"os"
+	"path/filepath"
 	"strconv"
 	"sync"
 	"testing"
@@ -130,7 +132,7 @@ func TestSessionOptionsProfiling(t *testing.T) {
 	}
 	defer opts.Close()
 
-	if err := opts.EnableProfiling("/tmp/ort_test_profile"); err != nil {
+	if err := opts.EnableProfiling(filepath.Join(t.TempDir(), "ort_test_profile")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -139,6 +141,8 @@ func TestSessionOptionsProfiling(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	defer sess.Close()
+
 	path, err := sess.EndProfiling()
 	if err != nil {
 		t.Fatal(err)
@@ -146,8 +150,10 @@ func TestSessionOptionsProfiling(t *testing.T) {
 	if path == "" {
 		t.Error("expected non-empty profiling path")
 	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("profiling file is unavailable: %v", err)
+	}
 	t.Logf("profiling output: %s", path)
-	sess.Close()
 }
 
 func TestSessionOptionsFreeDimension(t *testing.T) {
