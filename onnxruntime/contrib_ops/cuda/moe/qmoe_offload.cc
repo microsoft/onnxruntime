@@ -274,6 +274,8 @@ struct QMoEOffload::CpuWork {
   InlinedVector<InlinedVector<int>> expert_routes;
   InlinedVector<ExpertCall> calls;
   std::unique_ptr<PaddedAtomicInt[]> fc1_done = std::make_unique<PaddedAtomicInt[]>(kMaxGroupSlots);
+  std::unique_ptr<PaddedAtomicInt[]> slot_ready = std::make_unique<PaddedAtomicInt[]>(kMaxGroupSlots);
+  std::array<uint8_t*, kMaxGroupSlots> slot_load_dst{};
   std::array<const float*, kMaxGroupSlots> slot_act_in{};
   std::array<qmoe_shared::Nvfp4ExpertView, kMaxGroupSlots> slot_view{};
 
@@ -3347,7 +3349,7 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
                           ? static_cast<int>(v4_policy_.async_max_tokens)
                           : static_cast<int>(
                                 info.GetAttrOrDefault<int64_t>("async_max_tokens",
-                                                               ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_ASYNC_MAX_TOKENS", 4)));
+                                                               ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_ASYNC_MAX_TOKENS", 8)));
   stream_min_tokens_ = static_cast<int>(
       info.GetAttrOrDefault<int64_t>("stream_min_tokens",
                                      ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_STREAM_MIN_TOKENS", token_tile_size_ + 1)));
@@ -3438,7 +3440,7 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
   cpu_fp16_boundaries_ = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_CPU_FP16_BOUNDARIES", 0) == 1;
   const bool is_int_bank = int4_bank_mode_ || int3_bank_mode_;
   const int default_stream_rows =
-      ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_STREAM_ROWS", is_int_bank ? 512 : 0);
+      ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_STREAM_ROWS", is_int_bank ? 2048 : 0);
   if (v4_planned_mode_ &&
       v4_policy_.cpu_execution == onnxruntime::moe_offload::CpuExecutionMode::kDisabled &&
       resident_slots_ < num_experts_) {
@@ -3449,7 +3451,7 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
     stream_min_rows_ = 1;
     const int default_disabled_wave =
         (is_int_bank && shared_pinned_limit_ <= (size_t{128} << 20))
-            ? std::min(8, static_cast<int>(v4_policy_.prefill_wave_experts))
+            ? std::min(16, static_cast<int>(v4_policy_.prefill_wave_experts))
             : static_cast<int>(v4_policy_.prefill_wave_experts);
     stream_wave_ = std::clamp(default_disabled_wave, 1, num_experts_);
     stream_promotions_ = 0;
@@ -3476,7 +3478,7 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
         "ORT_QMOE_SHARED_STREAM_MIN_ROWS", is_int_bank ? 8 : 16);
     int default_wave = ParseEnvironmentVariableWithDefault<int>(
         "ORT_QMOE_SHARED_STREAM_WAVE",
-        (is_int_bank && shared_pinned_limit_ <= (size_t{128} << 20)) ? 8 : 32);
+        (is_int_bank && shared_pinned_limit_ <= (size_t{128} << 20)) ? 16 : 32);
     if (v4_planned_mode_ && std::getenv("ORT_QMOE_SHARED_STREAM_WAVE") == nullptr &&
         v4_policy_.prefill_wave_experts > 0) {
       default_wave = std::min(default_wave, static_cast<int>(v4_policy_.prefill_wave_experts));
@@ -3517,7 +3519,54 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
         sizeof(float)};
   }
 
+  for (const Tensor* t : {nvfp4_fc1_w_, nvfp4_fc2_w_, nvfp4_fc1_s_, nvfp4_fc2_s_,
+                          nvfp4_fc1_b_, nvfp4_fc2_b_, nvfp4_fc1_g_, nvfp4_fc2_g_, expert_blocks_}) {
+    if (t != nullptr && t->Location().device.Type() == OrtDevice::CPU && t->SizeInBytes() > 0) {
+      static_cast<void>(onnxruntime::moe_offload::PromoteFileMappingToSharedReadOnly(
+          t->DataRaw(), t->SizeInBytes()));
+    }
+  }
+
   if (host_cache_bytes_ > 0) InitializeBoundedHostCache();
+
+  if (int4_bank_mode_ && ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_INT4_PREFILL_GEMM", 1) == 1) {
+    if (is_bf16_) {
+      runner_ = std::make_unique<ck::CutlassMoeFCRunner<__nv_bfloat16, cutlass::uint4b_t, __nv_bfloat16>>(
+          sm_, activation_type_, false, false);
+    } else {
+      runner_ = std::make_unique<ck::CutlassMoeFCRunner<half, cutlass::uint4b_t, half>>(
+          sm_, activation_type_, false, false);
+    }
+    const auto tactics = runner_->getTactics();
+    if (!tactics.empty()) {
+      using onnxruntime::llm::cutlass_extensions::CutlassGemmConfig;
+      using onnxruntime::llm::cutlass_extensions::CutlassTileConfig;
+      auto find_ampere = [&](CutlassTileConfig tile) -> std::optional<CutlassGemmConfig> {
+        std::optional<CutlassGemmConfig> best;
+        for (const auto& t : tactics) {
+#if defined(ORT_QUICK_BUILD)
+          if (t.stages != 4) continue;
+#endif
+          if (!t.is_tma_warp_specialized && t.sm_version < 90 && t.tile_config_sm80 == tile &&
+              (!best.has_value() || t.stages >= best->stages)) {
+            best = t;
+          }
+        }
+        return best;
+      };
+      std::optional<CutlassGemmConfig> chosen =
+          find_ampere(CutlassTileConfig::CtaShape64x128x64_WarpShape64x32x64);
+      if (!chosen) {
+        chosen = find_ampere(CutlassTileConfig::CtaShape32x128x64_WarpShape32x32x64);
+      }
+      if (!chosen) {
+        chosen = tactics[0];
+      }
+      runner_->setTactic(chosen, chosen);
+    } else {
+      runner_.reset();
+    }
+  }
 
 #if defined(__linux__)
   const int default_pin_experts = (host_cache_bytes_ == 0 && resident_slots_ < num_experts_) ? 1 : 0;
@@ -6462,7 +6511,7 @@ int QMoEOffload::RunColdExperts(CpuWork& work, int group_count, const ActT* host
   const bool use_ssd = !host_complement_mode_ && file_expert_store_.IsInitialized();
   const int fc1_tasks = (2 * inter_size_ + fc1_cols_ - 1) / fc1_cols_;
   const int fc2_tasks = (hidden_size_ + fc2_cols_ - 1) / fc2_cols_;
-  const bool timed = cpu_timing_ && tile_rows <= 4;
+  const bool timed = cpu_timing_ && tile_rows <= async_max_tokens_;
   auto now = [] { return std::chrono::steady_clock::now(); };
   auto ns = [](std::chrono::steady_clock::time_point a, std::chrono::steady_clock::time_point b) {
     return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(b - a).count());
@@ -6528,27 +6577,111 @@ int QMoEOffload::RunColdExperts(CpuWork& work, int group_count, const ActT* host
     const ExpertCall* group = calls.data() + first_call;
     const int group_size = static_cast<int>(std::min(group_calls, calls.size() - first_call));
     InlinedVector<int32_t> group_expert_ids;
+    InlinedVector<uint8_t> lease_held;
+    InlinedVector<int> miss_load_slots;
+    struct GroupLeaseGuard {
+      const QMoEOffload* self;
+      InlinedVector<int32_t>* expert_ids;
+      InlinedVector<uint8_t>* held;
+      InlinedVector<int>* miss_slots;
+      ~GroupLeaseGuard() noexcept {
+        if (miss_slots && expert_ids && held) {
+          for (int m_slot : *miss_slots) {
+            if (m_slot >= 0 && static_cast<size_t>(m_slot) < expert_ids->size()) {
+              static_cast<void>(self->file_expert_store_.FinishLoadExpert((*expert_ids)[m_slot], false, nullptr));
+              (*held)[m_slot] = 0;
+            }
+          }
+          miss_slots->clear();
+        }
+        if (held && expert_ids) {
+          for (size_t s = 0; s < held->size(); ++s) {
+            if ((*held)[s]) {
+              self->file_expert_store_.ReleaseLease((*expert_ids)[s]);
+              (*held)[s] = 0;
+            }
+          }
+        }
+      }
+    } group_lease_guard{this, &group_expert_ids, &lease_held, &miss_load_slots};
+    const bool in_warmup = IsInQMoEWarmup(session_controller_.get());
+    const bool allow_fused_miss_load =
+        use_ssd && !in_warmup && per_expert_ready && static_cast<size_t>(group_size) <= CpuWork::kMaxGroupSlots &&
+        static_cast<size_t>(group_size) <= file_expert_store_.CacheSlots();
     if (use_ssd) {
       group_expert_ids.resize(group_size);
+      lease_held.assign(static_cast<size_t>(group_size), 0);
       for (int slot = 0; slot < group_size; ++slot) {
         group_expert_ids[slot] = static_cast<int32_t>(group[slot].expert);
       }
-      if (!file_expert_store_.TryAcquireGroupCached(
-              group_expert_ids.data(), static_cast<size_t>(group_size), group_ssd_leases.data())) {
+      if (in_warmup && file_expert_store_.CacheBase() != nullptr) {
+        uint8_t* dummy_base = file_expert_store_.CacheBase();
+        for (int slot = 0; slot < group_size; ++slot) {
+          if (file_expert_store_.TryAcquireCached(group_expert_ids[slot], &group_ssd_leases[slot])) {
+            lease_held[slot] = 1;
+          } else {
+            group_ssd_leases[slot].data = dummy_base;
+            group_ssd_leases[slot].length = nvfp4_layout_.stride;
+            group_ssd_leases[slot].alignment = 256;
+          }
+        }
+      } else if (file_expert_store_.TryAcquireGroupCached(
+                     group_expert_ids.data(), static_cast<size_t>(group_size), group_ssd_leases.data())) {
+        std::fill(lease_held.begin(), lease_held.end(), uint8_t{1});
+      } else {
         if (host_cache_bytes_ > 0) host_slot_table_dirty_ = true;
-        if (group_size > 1 && static_cast<size_t>(group_size) <= file_expert_store_.CacheSlots()) {
+        if (allow_fused_miss_load) {
+          InlinedVector<int> sync_miss_slots;
+          for (int slot = 0; slot < group_size; ++slot) {
+            int dup_leader = -1;
+            for (int prev = 0; prev < slot; ++prev) {
+              if (group_expert_ids[prev] == group_expert_ids[slot]) {
+                dup_leader = prev;
+                break;
+              }
+            }
+            if (dup_leader >= 0) {
+              group_ssd_leases[slot] = group_ssd_leases[dup_leader];
+              continue;
+            }
+            if (file_expert_store_.TryAcquireCached(group_expert_ids[slot], &group_ssd_leases[slot])) {
+              lease_held[slot] = 1;
+            } else {
+              const int st = file_expert_store_.BeginLoadExpert(
+                  group_expert_ids[slot], &work.slot_load_dst[slot], &group_ssd_leases[slot]);
+              if (st == 0) {
+                lease_held[slot] = 1;
+              } else if (st == 1) {
+                lease_held[slot] = 1;
+                miss_load_slots.push_back(slot);
+              } else {
+                sync_miss_slots.push_back(slot);
+              }
+            }
+          }
+          for (int s : sync_miss_slots) {
+            if (!file_expert_store_.AcquireReady(group_expert_ids[s], &group_ssd_leases[s])) {
+              ORT_THROW("QMoEOffload FileExpertStore AcquireReady failed for expert ", group_expert_ids[s]);
+            }
+            lease_held[s] = 1;
+            for (int dup = s + 1; dup < group_size; ++dup) {
+              if (group_expert_ids[dup] == group_expert_ids[s]) {
+                group_ssd_leases[dup] = group_ssd_leases[s];
+              }
+            }
+          }
+        } else if (group_size > 1 && static_cast<size_t>(group_size) <= file_expert_store_.CacheSlots()) {
           InlinedVector<int> miss_slots;
-          InlinedVector<uint8_t> acquired(static_cast<size_t>(group_size), 0);
           for (int slot = 0; slot < group_size; ++slot) {
             if (file_expert_store_.TryAcquireCached(group_expert_ids[slot], &group_ssd_leases[slot])) {
-              acquired[slot] = 1;
+              lease_held[slot] = 1;
             } else {
               miss_slots.push_back(slot);
             }
           }
           auto acquire_task = [&](ptrdiff_t idx) noexcept {
             const int s = miss_slots[static_cast<size_t>(idx)];
-            acquired[s] = file_expert_store_.AcquireReady(group_expert_ids[s], &group_ssd_leases[s]);
+            lease_held[s] = file_expert_store_.AcquireReady(group_expert_ids[s], &group_ssd_leases[s]) ? 1 : 0;
           };
           if (miss_slots.size() > 1) {
             run_parallel(static_cast<ptrdiff_t>(miss_slots.size()), acquire_task);
@@ -6556,12 +6689,8 @@ int QMoEOffload::RunColdExperts(CpuWork& work, int group_count, const ActT* host
             acquire_task(0);
           }
           for (int slot = 0; slot < group_size; ++slot) {
-            if (!acquired[slot]) {
-              // Worker jobs must not throw: SpinPool has no exception boundary. Join first,
-              // release only successful acquisitions, then report failure on the caller.
-              for (int s = 0; s < group_size; ++s) {
-                if (acquired[s]) file_expert_store_.ReleaseLease(group_expert_ids[s]);
-              }
+            if (!lease_held[slot]) {
+              // Worker jobs must not throw. The guard releases acquisitions after the workers join.
               ORT_THROW("QMoEOffload FileExpertStore AcquireReady failed for expert ", group_expert_ids[slot]);
             }
           }
@@ -6569,6 +6698,7 @@ int QMoEOffload::RunColdExperts(CpuWork& work, int group_count, const ActT* host
           ORT_ENFORCE(file_expert_store_.AcquireGroupReady(
                           group_expert_ids.data(), static_cast<size_t>(group_size), group_ssd_leases.data()),
                       "QMoEOffload FileExpertStore AcquireGroupReady failed.");
+          std::fill(lease_held.begin(), lease_held.end(), uint8_t{1});
         }
       }
       const size_t next_first = first_call + static_cast<size_t>(group_size);
@@ -6582,6 +6712,7 @@ int QMoEOffload::RunColdExperts(CpuWork& work, int group_count, const ActT* host
         file_expert_store_.Prefetch(next_ids.data(), next_ids.size(), ++ssd_prefetch_gen_);
       }
     }
+    constexpr int kReadyDoneVal = qmoe_shared::FileExpertStore::kLoadChunksPerExpert + 1;
     for (int slot = 0; slot < group_size; ++slot) {
       const auto& assignments = expert_routes[group[slot].expert];
       const int cnt = group[slot].count;
@@ -6610,11 +6741,19 @@ int QMoEOffload::RunColdExperts(CpuWork& work, int group_count, const ActT* host
       }
       if (static_cast<size_t>(slot) < CpuWork::kMaxGroupSlots) {
         work.fc1_done[slot].value.store(0, std::memory_order_relaxed);
+        work.slot_ready[slot].value.store(kReadyDoneVal, std::memory_order_relaxed);
         work.slot_act_in[slot] = contiguous_tokens
                                      ? (work.token_rows.data() + static_cast<size_t>(t0) * hidden_size_)
                                      : (work.reordered.data() + slot * call_rows * hidden_size_);
-        if (nvfp4_mode_) {
+        if (nvfp4_mode_ && (!use_ssd || group_ssd_leases[slot].data != nullptr)) {
           work.slot_view[slot] = make_nvfp4_view(group[slot].expert, use_ssd ? group_ssd_leases[slot].data : nullptr);
+        }
+      }
+    }
+    for (int m_slot : miss_load_slots) {
+      for (int s = m_slot; s < group_size; ++s) {
+        if (group_expert_ids[s] == group_expert_ids[m_slot]) {
+          work.slot_ready[s].value.store(0, std::memory_order_relaxed);
         }
       }
     }
@@ -6759,16 +6898,58 @@ int QMoEOffload::RunColdExperts(CpuWork& work, int group_count, const ActT* host
       }
     };
     std::chrono::steady_clock::time_point t_fc2{};
+    const ptrdiff_t total_load =
+        static_cast<ptrdiff_t>(miss_load_slots.size()) * qmoe_shared::FileExpertStore::kLoadChunksPerExpert;
     const ptrdiff_t total_fc1 = static_cast<ptrdiff_t>(group_size) * fc1_tasks;
     const ptrdiff_t total_fc2 = static_cast<ptrdiff_t>(group_size) * fc2_tasks;
+    std::atomic<bool> load_failed{false};
     if (per_expert_ready && static_cast<size_t>(group_size) <= CpuWork::kMaxGroupSlots) {
       auto fused_task = [&](ptrdiff_t task) {
-        if (task < total_fc1) {
-          const int slot = static_cast<int>(task) / fc1_tasks;
-          fc1_task(task);
+        if (task < total_load) {
+          const int m_idx = static_cast<int>(task) / qmoe_shared::FileExpertStore::kLoadChunksPerExpert;
+          const int chunk_idx = static_cast<int>(task) % qmoe_shared::FileExpertStore::kLoadChunksPerExpert;
+          const int slot = miss_load_slots[static_cast<size_t>(m_idx)];
+          const int32_t exp_id = group_expert_ids[slot];
+          if (!file_expert_store_.LoadExpertChunk(exp_id, work.slot_load_dst[slot], chunk_idx)) {
+            load_failed.store(true, std::memory_order_relaxed);
+          }
+          if (work.slot_ready[slot].value.fetch_add(1, std::memory_order_acq_rel) + 1 ==
+              qmoe_shared::FileExpertStore::kLoadChunksPerExpert) {
+            const bool ok = !load_failed.load(std::memory_order_relaxed) &&
+                            file_expert_store_.FinishLoadExpert(exp_id, true, &group_ssd_leases[slot]);
+            if (!ok) {
+              static_cast<void>(file_expert_store_.FinishLoadExpert(exp_id, false, nullptr));
+              lease_held[slot] = 0;
+              load_failed.store(true, std::memory_order_relaxed);
+            }
+            for (int s = slot; s < group_size; ++s) {
+              if (group_expert_ids[s] == exp_id) {
+                if (s != slot) {
+                  group_ssd_leases[s] = group_ssd_leases[slot];
+                }
+                if (ok && nvfp4_mode_) {
+                  work.slot_view[s] = make_nvfp4_view(group[s].expert, group_ssd_leases[slot].data);
+                }
+                work.slot_ready[s].value.store(kReadyDoneVal, std::memory_order_release);
+              }
+            }
+          }
+        } else if (task < total_load + total_fc1) {
+          const ptrdiff_t fc1_idx = task - total_load;
+          const int slot = static_cast<int>(fc1_idx) / fc1_tasks;
+          while (work.slot_ready[slot].value.load(std::memory_order_acquire) < kReadyDoneVal) {
+#if defined(_MSC_VER) && (defined(_M_AMD64) || defined(_M_IX86))
+            _mm_pause();
+#elif defined(__x86_64__) || defined(__i386__)
+            __builtin_ia32_pause();
+#endif
+          }
+          if (!load_failed.load(std::memory_order_relaxed)) {
+            fc1_task(fc1_idx);
+          }
           work.fc1_done[slot].value.fetch_add(1, std::memory_order_release);
         } else {
-          const ptrdiff_t fc2_idx = task - total_fc1;
+          const ptrdiff_t fc2_idx = task - total_load - total_fc1;
           const int slot = static_cast<int>(fc2_idx) / fc2_tasks;
           while (work.fc1_done[slot].value.load(std::memory_order_acquire) < fc1_tasks) {
 #if defined(_MSC_VER) && (defined(_M_AMD64) || defined(_M_IX86))
@@ -6777,10 +6958,12 @@ int QMoEOffload::RunColdExperts(CpuWork& work, int group_count, const ActT* host
             __builtin_ia32_pause();
 #endif
           }
-          fc2_task(fc2_idx);
+          if (!load_failed.load(std::memory_order_relaxed)) {
+            fc2_task(fc2_idx);
+          }
         }
       };
-      run_parallel(total_fc1 + total_fc2, fused_task);
+      run_parallel(total_load + total_fc1 + total_fc2, fused_task);
       t_fc2 = timed ? now() : std::chrono::steady_clock::time_point{};
     } else {
       run_parallel(total_fc1, fc1_task);
@@ -6788,7 +6971,15 @@ int QMoEOffload::RunColdExperts(CpuWork& work, int group_count, const ActT* host
       run_parallel(total_fc2, fc2_task);
     }
     if (use_ssd) {
-      file_expert_store_.ReleaseGroupLeases(group_expert_ids.data(), static_cast<size_t>(group_size));
+      for (int slot = 0; slot < group_size; ++slot) {
+        if (lease_held[slot]) {
+          file_expert_store_.ReleaseLease(group_expert_ids[slot]);
+          lease_held[slot] = 0;
+        }
+      }
+      miss_load_slots.clear();
+      ORT_ENFORCE(!load_failed.load(std::memory_order_relaxed),
+                  "QMoEOffload FileExpertStore parallel chunk load failed.");
     }
     const auto t_write = timed ? now() : std::chrono::steady_clock::time_point{};
     if (compact) {
@@ -6956,7 +7147,8 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
   const auto& eff_bank_offsets = borrowed_cache ? borrowed_cache->bank_offsets : resident_bank_offsets_;
   const InlinedVector<int>& eff_expert_slot = borrowed_cache ? *borrowed_cache->expert_slot_ptr : expert_slot_;
   const bool streaming = stream_rows_ > 0 && rows >= stream_min_tokens_;
-  const int tile_limit = streaming ? static_cast<int>(std::min<int64_t>(stream_rows_, rows)) : max_sync_tile_tokens_;
+  const int tile_limit = static_cast<int>(std::min<int64_t>(
+      streaming ? stream_rows_ : max_sync_tile_tokens_, rows));
   const int route_cap = SafeInt<int>(tile_limit) * static_cast<int>(k_);
   std::unique_lock<std::mutex> resident_lock;
   if (resident) resident_lock = std::unique_lock<std::mutex>(borrowed_cache && borrowed_cache->owner ? borrowed_cache->owner->mutex_ : mutex_);
@@ -7021,11 +7213,15 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
   size_t gpu_bytes = 0;
   const int route_slots = std::max(route_cap, kGroupedMoeMinRows);
   const size_t route_bytes = SafeInt<size_t>(route_slots) * sizeof(int);
+  const bool int4_runner_eligible = int4_bank_mode_ && runner_ != nullptr && route_cap >= 256 &&
+                                    ((resident && route_cap / 8 >= eff_physical_slots) ||
+                                     (streaming && route_cap / 8 >= stream_wave_));
+  int wave_route_slots = (nvfp4_mode_ && route_slots > 4096) ? 4096 : route_slots;
   const int cpu_row_cap = streaming ? std::min(route_cap, (stream_min_rows_ - 1) * num_experts_) : route_cap;
   const size_t contribution_bytes = SafeInt<size_t>(route_cap) * hidden_size_ * elem_size;
   const size_t cpu_row_bytes = SafeInt<size_t>(std::max(cpu_row_cap, 1)) * hidden_size_ * elem_size;
-  const size_t resident_row_bytes = SafeInt<size_t>(route_slots) * hidden_size_ * elem_size;
-  const size_t nvfp4_inter_bytes = nvfp4_mode_ ? static_cast<size_t>(SafeInt<size_t>(route_slots) * inter_size_ * elem_size) : size_t{0};
+  const size_t resident_row_bytes = SafeInt<size_t>(wave_route_slots) * hidden_size_ * elem_size;
+  const size_t nvfp4_inter_bytes = nvfp4_mode_ ? static_cast<size_t>(SafeInt<size_t>(wave_route_slots) * inter_size_ * elem_size) : size_t{0};
   const int stream_waves_max = streaming ? ((num_experts_ + stream_wave_ - 1) / stream_wave_) : 0;
   const size_t stream_meta_bytes = streaming
                                        ? static_cast<size_t>(SafeInt<size_t>(route_slots + stream_waves_max * kGroupedMoeMinRows) * sizeof(int))
@@ -7041,14 +7237,47 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
   const size_t hit_ids_offset = resident ? AddSlab(route_bytes, gpu_bytes) : 0;
   const size_t hit_compact_offset = resident ? AddSlab(route_bytes, gpu_bytes) : 0;
   const size_t cpu_ids_offset = (resident || streaming) ? AddSlab(route_bytes, gpu_bytes) : 0;
-  const size_t permutation_offset = resident ? AddSlab(route_bytes, gpu_bytes) : 0;
+  const size_t permutation_offset =
+      ((resident || streaming) && (!nvfp4_mode_ || int4_runner_eligible))
+          ? AddSlab(SafeInt<size_t>(wave_route_slots) * sizeof(int), gpu_bytes)
+          : 0;
   const size_t gathered_offset = (resident || streaming) ? AddSlab(resident_row_bytes, gpu_bytes) : 0;
   const size_t wave_output_offset = (resident || streaming) ? AddSlab(resident_row_bytes, gpu_bytes) : 0;
   const size_t nvfp4_inter_offset = (nvfp4_mode_ && (resident || streaming)) ? AddSlab(nvfp4_inter_bytes, gpu_bytes) : 0;
   const size_t cpu_rows_offset = (resident || streaming) ? AddSlab(streaming ? cpu_row_bytes : contribution_bytes, gpu_bytes) : 0;
-  const size_t workspace_offset = (!nvfp4_mode_ && resident) ? AddSlab(streaming ? stream_workspace_bytes_ : resident_workspace_bytes_, gpu_bytes) : 0;
   const size_t stream_ids_offset = streaming ? AddSlab(stream_meta_bytes, gpu_bytes) : 0;
   const size_t stream_compact_offset = streaming ? AddSlab(stream_meta_bytes, gpu_bytes) : 0;
+
+  const size_t effective_gpu_limit =
+      streaming ? (v4_planned_mode_ ? shared_gpu_limit_ : std::max(shared_gpu_limit_, stream_gpu_limit_))
+                : shared_gpu_limit_;
+  const size_t landing_bytes = streaming && v4_planned_mode_ ? stream_landing_bytes_ : 0;
+  size_t workspace_bytes = 0;
+  bool use_int4_runner = false;
+  if (int4_runner_eligible && (resident || streaming)) {
+    const ck::MOEParallelismConfig parallelism;
+    for (int capacity = wave_route_slots; capacity >= 256; capacity /= 2) {
+      const int resident_experts = resident && capacity / 8 >= eff_physical_slots ? eff_physical_slots : 0;
+      const int stream_experts = streaming && capacity / 8 >= stream_wave_ ? stream_wave_ : 0;
+      if (resident_experts == 0 && stream_experts == 0) break;
+      const int workspace_experts = std::max({resident ? eff_physical_slots : 0, streaming ? stream_wave_ : 0, 1});
+      const size_t candidate_bytes = runner_->getWorkspaceSize(
+          capacity, hidden_size_, inter_size_, workspace_experts, 1,
+          activation_type_, parallelism, true, swiglu_fusion_);
+      // Leave the GEMV buffers intact so an ineligible or over-budget wave can use the fallback.
+      size_t required_bytes = gpu_bytes;
+      AddSlab(candidate_bytes, required_bytes);
+      if (landing_bytes <= effective_gpu_limit && required_bytes <= effective_gpu_limit - landing_bytes) {
+        wave_route_slots = capacity;
+        workspace_bytes = candidate_bytes;
+        use_int4_runner = true;
+        break;
+      }
+    }
+  } else if (!nvfp4_mode_ && (resident || streaming)) {
+    workspace_bytes = streaming ? stream_workspace_bytes_ : resident_workspace_bytes_;
+  }
+  const size_t workspace_offset = workspace_bytes > 0 ? AddSlab(workspace_bytes, gpu_bytes) : 0;
 
   size_t host_bytes = 0;
   const size_t host_index_offset = AddSlab(route_bytes, host_bytes);
@@ -7067,14 +7296,10 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
   const size_t wave_stage_offset =
       (streaming && int4_bank_mode_) ? AddSlab(wave_scale_bank_bytes * 2, host_bytes) : 0;
 
-  const size_t total_working_gpu_bytes = streaming ? (gpu_bytes + stream_landing_bytes_) : gpu_bytes;
-  const size_t effective_gpu_limit =
-      streaming ? (v4_planned_mode_ ? shared_gpu_limit_ : std::max(shared_gpu_limit_, stream_gpu_limit_))
-                : shared_gpu_limit_;
   const size_t effective_pinned_limit =
       streaming ? (v4_planned_mode_ ? shared_pinned_limit_ : std::max(shared_pinned_limit_, stream_pinned_limit_))
                 : shared_pinned_limit_;
-  ORT_RETURN_IF((v4_planned_mode_ ? total_working_gpu_bytes : gpu_bytes) > effective_gpu_limit ||
+  ORT_RETURN_IF(SafeInt<size_t>(gpu_bytes) + landing_bytes > effective_gpu_limit ||
                     host_bytes > effective_pinned_limit,
                 "QMoEOffload shared scratch exceeds configured GPU or pinned limits.");
 
@@ -7194,6 +7419,24 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
       return Status::OK();
     }
     if (int4_bank_mode_) {
+      if (use_int4_runner && num_r >= 256 && num_r >= num_exp * 8 && num_r <= wave_route_slots) {
+        const auto int4_quant = is_bf16_
+                                    ? ck::QuantParams::GroupWise(32, reinterpret_cast<const __nv_bfloat16*>(fc1_s),
+                                                                 reinterpret_cast<const __nv_bfloat16*>(fc2_s))
+                                    : ck::QuantParams::GroupWise(32, reinterpret_cast<const half*>(fc1_s),
+                                                                 reinterpret_cast<const half*>(fc2_s));
+        if (resident_log_) {
+          std::fprintf(stderr, "QMoEOffload INT4 CUTLASS layer=%lld routes=%d capacity=%d workspace_bytes=%zu\n",
+                       static_cast<long long>(layer_index_), num_r, wave_route_slots, workspace_bytes);
+        }
+        runner_->runMoe(act_in, nullptr, expert_map, unit_scales,
+                        fc1_w, fc1_bias_dev, activation_type_,
+                        fc2_w, nullptr, int4_quant, num_r, hidden_size_, inter_size_,
+                        num_exp, 1, workspace, out_buf, permutation, parallelism,
+                        runner_activation, {}, stream);
+        CUDA_RETURN_IF_ERROR(cudaGetLastError());
+        return Status::OK();
+      }
       if (is_bf16_) {
         gemv::launch_moe_gemv_int_symmetric_interleaved_swiglu<__nv_bfloat16, cutlass::uint4b_t>(
             static_cast<const __nv_bfloat16*>(act_in),
@@ -7350,54 +7593,89 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
         return left.slot != right.slot ? left.slot < right.slot : left.route < right.route;
       });
       const int hit_count = static_cast<int>(hits.size());
-      const int compute_rows = nvfp4_mode_ ? hit_count : std::max(hit_count, kGroupedMoeMinRows);
-      for (int row = 0; row < compute_rows; ++row) {
-        const auto& hit = hits[row < hit_count ? row : 0];
-        host_hit_ids[row] = hit.route;
-        host_hit_compact[row] = hit.slot;
+      for (int row = 0; row < hit_count; ++row) {
+        host_hit_ids[row] = hits[row].route;
+        host_hit_compact[row] = hits[row].slot;
       }
-      const size_t metadata_bytes = SafeInt<size_t>(compute_rows) * sizeof(int);
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(hit_ids, host_hit_ids, metadata_bytes, cudaMemcpyHostToDevice, stream));
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(hit_compact, host_hit_compact, metadata_bytes, cudaMemcpyHostToDevice, stream));
-      if (is_bf16_) {
-        CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadGather(
-            reinterpret_cast<const __nv_bfloat16*>(input->DataRaw()) + activation_start,
-            hit_ids, reinterpret_cast<__nv_bfloat16*>(gathered), compute_rows, hidden_size_, static_cast<int>(k_), stream));
-      } else {
-        CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadGather(
-            reinterpret_cast<const half*>(input->DataRaw()) + activation_start,
-            hit_ids, reinterpret_cast<half*>(gathered), compute_rows, hidden_size_, static_cast<int>(k_), stream));
-      }
-      if (nvfp4_mode_) {
-        ORT_RETURN_IF_ERROR(launch_nvfp4_gemv_pair(
-            gathered, slab, eff_bank_offsets,
-            resident_fc1_bias_slab_ ? resident_fc1_bias_slab_.get() : nullptr,
-            hit_compact, eff_physical_slots, compute_rows, wave_output));
-      } else {
-        runner_->runMoe(reinterpret_cast<half*>(gathered), nullptr, hit_compact, unit_scales,
-                        slab + eff_bank_offsets[0], reinterpret_cast<const void*>(slab + eff_bank_offsets[4]), activation_type_,
-                        slab + eff_bank_offsets[1], nullptr, quantization, compute_rows, hidden_size_, inter_size_,
-                        eff_physical_slots, 1, workspace, reinterpret_cast<half*>(wave_output), permutation, parallelism, runner_activation, {}, stream);
-        CUDA_RETURN_IF_ERROR(cudaGetLastError());
-      }
-      if (is_bf16_) {
-        CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadScatter(
-            reinterpret_cast<const __nv_bfloat16*>(wave_output), hit_ids,
-            reinterpret_cast<__nv_bfloat16*>(contributions), hit_count, hidden_size_, tile_rows, static_cast<int>(k_), stream));
-      } else {
-        CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadScatter(
-            reinterpret_cast<const half*>(wave_output), hit_ids,
-            reinterpret_cast<half*>(contributions), hit_count, hidden_size_, tile_rows, static_cast<int>(k_), stream));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(hit_ids, host_hit_ids, SafeInt<size_t>(hit_count) * sizeof(int), cudaMemcpyHostToDevice, stream));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(hit_compact, host_hit_compact, SafeInt<size_t>(hit_count) * sizeof(int), cudaMemcpyHostToDevice, stream));
+      for (int h_off = 0; h_off < hit_count; h_off += wave_route_slots) {
+        const int chunk_hits = std::min(wave_route_slots, hit_count - h_off);
+        const int compute_rows = nvfp4_mode_ ? chunk_hits : std::max(chunk_hits, kGroupedMoeMinRows);
+        if (compute_rows > chunk_hits) {
+          for (int row = chunk_hits; row < compute_rows; ++row) {
+            host_hit_ids[h_off + row] = host_hit_ids[h_off];
+            host_hit_compact[h_off + row] = host_hit_compact[h_off];
+          }
+          const size_t metadata_bytes = SafeInt<size_t>(compute_rows) * sizeof(int);
+          CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(hit_ids + h_off, host_hit_ids + h_off, metadata_bytes, cudaMemcpyHostToDevice, stream));
+          CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(hit_compact + h_off, host_hit_compact + h_off, metadata_bytes, cudaMemcpyHostToDevice, stream));
+        }
+        if (is_bf16_) {
+          CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadGather(
+              reinterpret_cast<const __nv_bfloat16*>(input->DataRaw()) + activation_start,
+              hit_ids + h_off, reinterpret_cast<__nv_bfloat16*>(gathered), compute_rows, hidden_size_, static_cast<int>(k_), stream));
+        } else {
+          CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadGather(
+              reinterpret_cast<const half*>(input->DataRaw()) + activation_start,
+              hit_ids + h_off, reinterpret_cast<half*>(gathered), compute_rows, hidden_size_, static_cast<int>(k_), stream));
+        }
+        if (nvfp4_mode_) {
+          ORT_RETURN_IF_ERROR(launch_nvfp4_gemv_pair(
+              gathered, slab, eff_bank_offsets,
+              resident_fc1_bias_slab_ ? resident_fc1_bias_slab_.get() : nullptr,
+              hit_compact + h_off, eff_physical_slots, compute_rows, wave_output));
+        } else {
+          runner_->runMoe(reinterpret_cast<half*>(gathered), nullptr, hit_compact + h_off, unit_scales,
+                          slab + eff_bank_offsets[0], reinterpret_cast<const void*>(slab + eff_bank_offsets[4]), activation_type_,
+                          slab + eff_bank_offsets[1], nullptr, quantization, compute_rows, hidden_size_, inter_size_,
+                          eff_physical_slots, 1, workspace, reinterpret_cast<half*>(wave_output), permutation, parallelism, runner_activation, {}, stream);
+          CUDA_RETURN_IF_ERROR(cudaGetLastError());
+        }
+        if (is_bf16_) {
+          CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadScatter(
+              reinterpret_cast<const __nv_bfloat16*>(wave_output), hit_ids + h_off,
+              reinterpret_cast<__nv_bfloat16*>(contributions), chunk_hits, hidden_size_, tile_rows, static_cast<int>(k_), stream));
+        } else {
+          CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadScatter(
+              reinterpret_cast<const half*>(wave_output), hit_ids + h_off,
+              reinterpret_cast<half*>(contributions), chunk_hits, hidden_size_, tile_rows, static_cast<int>(k_), stream));
+        }
       }
     }
 
+    auto parallel_runner = [&](ptrdiff_t count, auto& function) {
+      if (unified_cpu_service_ && cpu_threads_ > 0) {
+        SharedSpinPool(cpu_threads_).ParallelFor(count, function, pool_task_batch_);
+      } else {
+        OffloadParallelFor(context, count, function);
+      }
+    };
     const char* skip_experts = nullptr;
+    int cpu_rows_written = 0;
+    bool cpu_tail_executed = false;
+    auto run_cpu_tail_experts = [&]() {
+      if (cpu_tail_executed) return;
+      cpu_tail_executed = true;
+      cpu_rows_written = is_bf16_
+                             ? RunColdExperts(cpu_work, group_calls, reinterpret_cast<const BFloat16*>(host_input),
+                                              tile_rows, reinterpret_cast<BFloat16*>(host_result), host_cpu_ids,
+                                              resident || streaming, parallel_runner, skip_experts)
+                             : RunColdExperts(cpu_work, group_calls, reinterpret_cast<const MLFloat16*>(host_input),
+                                              tile_rows, reinterpret_cast<MLFloat16*>(host_result), host_cpu_ids,
+                                              resident || streaming, parallel_runner, skip_experts);
+    };
+
     uint64_t tile_stream_routes = 0;
     if (streaming) {
       stream_skip.assign(num_experts_, 0);
       stream_list.clear();
+      const int eff_stream_min_rows =
+          (tile_rows < 512 && stream_min_rows_ > 2)
+              ? std::max(2, (stream_min_rows_ * tile_rows + 511) / 512)
+              : stream_min_rows_;
       for (int expert = 0; expert < num_experts_; ++expert) {
-        if (static_cast<int>(expert_routes[expert].size()) >= stream_min_rows_) {
+        if (static_cast<int>(expert_routes[expert].size()) >= eff_stream_min_rows) {
           stream_list.push_back(expert);
           stream_skip[expert] = 1;
         }
@@ -7436,6 +7714,7 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
               pinned_base + wave_stage_offset + static_cast<size_t>(bank_idx) * (s1_span + s2_span);
           uint8_t* wave_s2_pinned = wave_s1_pinned + s1_span;
           if (host_cache_bytes_ > 0 && file_expert_store_.IsInitialized()) {
+            host_slot_table_dirty_ = true;
             const std::array<size_t, 4> sources{nvfp4_layout_.fc1_weights, nvfp4_layout_.fc2_weights,
                                                 nvfp4_layout_.fc1_scales, nvfp4_layout_.fc2_scales};
             for (int r = 0; r < count; ++r) {
@@ -7625,59 +7904,74 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
             ++wave_routes;
           }
         }
-        const int compute_rows = nvfp4_mode_ ? static_cast<int>(wave_routes)
-                                             : std::max(static_cast<int>(wave_routes), kGroupedMoeMinRows);
-        for (int row = static_cast<int>(wave_routes); row < compute_rows; ++row) {
-          host_stream_ids[meta_offset + row] = host_stream_ids[meta_offset];
-          host_stream_compact[meta_offset + row] = host_stream_compact[meta_offset];
-        }
-        const size_t metadata_bytes = SafeInt<size_t>(compute_rows) * sizeof(int);
+        const int wave_route_cnt = static_cast<int>(wave_routes);
+        const size_t metadata_bytes = SafeInt<size_t>(wave_route_cnt) * sizeof(int);
         CUDA_RETURN_IF_ERROR(cudaStreamWaitEvent(stream, shared.copy_done[wave], 0));
         CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(stream_ids + meta_offset, host_stream_ids + meta_offset, metadata_bytes,
                                              cudaMemcpyHostToDevice, stream));
         CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(stream_compact + meta_offset, host_stream_compact + meta_offset, metadata_bytes,
                                              cudaMemcpyHostToDevice, stream));
-        if (is_bf16_) {
-          CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadGather(
-              reinterpret_cast<const __nv_bfloat16*>(input->DataRaw()) + activation_start,
-              stream_ids + meta_offset, reinterpret_cast<__nv_bfloat16*>(gathered), compute_rows, hidden_size_,
-              static_cast<int>(k_), stream));
-        } else {
-          CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadGather(
-              reinterpret_cast<const half*>(input->DataRaw()) + activation_start,
-              stream_ids + meta_offset, reinterpret_cast<half*>(gathered), compute_rows, hidden_size_,
-              static_cast<int>(k_), stream));
-        }
         uint8_t* landing = shared.landing;
-        if (nvfp4_mode_) {
-          ORT_RETURN_IF_ERROR(launch_nvfp4_gemv_pair(
-              gathered, landing, offsets,
-              stream_fc1_bias_slab_[bank_idx] ? stream_fc1_bias_slab_[bank_idx].get() : nullptr,
-              stream_compact + meta_offset, count, compute_rows, wave_output));
-        } else {
-          const auto wave_quantization = ck::QuantParams::GroupWise(32, landing + offsets[2], landing + offsets[3]);
-          runner_->runMoe(reinterpret_cast<half*>(gathered), nullptr, stream_compact + meta_offset, unit_scales,
-                          landing + offsets[0], reinterpret_cast<const void*>(landing + offsets[4]), activation_type_,
-                          landing + offsets[1], nullptr, wave_quantization, compute_rows, hidden_size_, inter_size_,
-                          count, 1, workspace, reinterpret_cast<half*>(wave_output), permutation, parallelism, runner_activation, {}, stream);
-          CUDA_RETURN_IF_ERROR(cudaGetLastError());
-        }
-        if (is_bf16_) {
-          CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadScatter(
-              reinterpret_cast<const __nv_bfloat16*>(wave_output), stream_ids + meta_offset,
-              reinterpret_cast<__nv_bfloat16*>(contributions), static_cast<int>(wave_routes), hidden_size_,
-              tile_rows, static_cast<int>(k_), stream));
-        } else {
-          CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadScatter(
-              reinterpret_cast<const half*>(wave_output), stream_ids + meta_offset,
-              reinterpret_cast<half*>(contributions), static_cast<int>(wave_routes), hidden_size_,
-              tile_rows, static_cast<int>(k_), stream));
+        for (int w_off = 0; w_off < wave_route_cnt; w_off += wave_route_slots) {
+          const int chunk_w_routes = std::min(wave_route_slots, wave_route_cnt - w_off);
+          const int compute_rows = nvfp4_mode_ ? chunk_w_routes : std::max(chunk_w_routes, kGroupedMoeMinRows);
+          if (compute_rows > chunk_w_routes) {
+            for (int row = chunk_w_routes; row < compute_rows; ++row) {
+              host_stream_ids[meta_offset + w_off + row] = host_stream_ids[meta_offset + w_off];
+              host_stream_compact[meta_offset + w_off + row] = host_stream_compact[meta_offset + w_off];
+            }
+            const size_t pad_meta_bytes = SafeInt<size_t>(compute_rows) * sizeof(int);
+            CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(stream_ids + meta_offset + w_off, host_stream_ids + meta_offset + w_off,
+                                                 pad_meta_bytes, cudaMemcpyHostToDevice, stream));
+            CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(stream_compact + meta_offset + w_off, host_stream_compact + meta_offset + w_off,
+                                                 pad_meta_bytes, cudaMemcpyHostToDevice, stream));
+          }
+          if (is_bf16_) {
+            CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadGather(
+                reinterpret_cast<const __nv_bfloat16*>(input->DataRaw()) + activation_start,
+                stream_ids + meta_offset + w_off, reinterpret_cast<__nv_bfloat16*>(gathered), compute_rows, hidden_size_,
+                static_cast<int>(k_), stream));
+          } else {
+            CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadGather(
+                reinterpret_cast<const half*>(input->DataRaw()) + activation_start,
+                stream_ids + meta_offset + w_off, reinterpret_cast<half*>(gathered), compute_rows, hidden_size_,
+                static_cast<int>(k_), stream));
+          }
+          if (nvfp4_mode_) {
+            ORT_RETURN_IF_ERROR(launch_nvfp4_gemv_pair(
+                gathered, landing, offsets,
+                stream_fc1_bias_slab_[bank_idx] ? stream_fc1_bias_slab_[bank_idx].get() : nullptr,
+                stream_compact + meta_offset + w_off, count, compute_rows, wave_output));
+          } else {
+            const auto wave_quantization = ck::QuantParams::GroupWise(32, landing + offsets[2], landing + offsets[3]);
+            runner_->runMoe(reinterpret_cast<half*>(gathered), nullptr, stream_compact + meta_offset + w_off, unit_scales,
+                            landing + offsets[0], reinterpret_cast<const void*>(landing + offsets[4]), activation_type_,
+                            landing + offsets[1], nullptr, wave_quantization, compute_rows, hidden_size_, inter_size_,
+                            count, 1, workspace, reinterpret_cast<half*>(wave_output), permutation, parallelism, runner_activation, {}, stream);
+            CUDA_RETURN_IF_ERROR(cudaGetLastError());
+          }
+          if (is_bf16_) {
+            CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadScatter(
+                reinterpret_cast<const __nv_bfloat16*>(wave_output), stream_ids + meta_offset + w_off,
+                reinterpret_cast<__nv_bfloat16*>(contributions), chunk_w_routes, hidden_size_,
+                tile_rows, static_cast<int>(k_), stream));
+          } else {
+            CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadScatter(
+                reinterpret_cast<const half*>(wave_output), stream_ids + meta_offset + w_off,
+                reinterpret_cast<half*>(contributions), chunk_w_routes, hidden_size_,
+                tile_rows, static_cast<int>(k_), stream));
+          }
         }
         CUDA_RETURN_IF_ERROR(cudaEventRecord(shared.gemm_done[wave], stream));
         CUDA_RETURN_IF_ERROR(cudaEventRecord(shared.last_gemm_done[bank_idx], stream));
         shared.bank_has_gemm[bank_idx] = true;
-        meta_offset += compute_rows;
+        meta_offset += std::max(wave_route_cnt, nvfp4_mode_ ? wave_route_cnt : kGroupedMoeMinRows);
         tile_stream_routes += wave_routes;
+        if (!cpu_tail_executed && (wave == 1 || waves == 1)) {
+          static_cast<void>(cudaStreamQuery(shared.copy_stream));
+          static_cast<void>(cudaStreamQuery(stream));
+          run_cpu_tail_experts();
+        }
       }
       ++stream_tiles_;
       stream_experts_ += stream_count;
@@ -7686,20 +7980,7 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
       stream_cpu_routes_ += static_cast<uint64_t>(routes) - hits.size() - tile_stream_routes;
     }
 
-    auto parallel_runner = [&](ptrdiff_t count, auto& function) {
-      if (unified_cpu_service_ && cpu_threads_ > 0) {
-        SharedSpinPool(cpu_threads_).ParallelFor(count, function, pool_task_batch_);
-      } else {
-        OffloadParallelFor(context, count, function);
-      }
-    };
-    const int cpu_rows_written = is_bf16_
-                                     ? RunColdExperts(cpu_work, group_calls, reinterpret_cast<const BFloat16*>(host_input),
-                                                      tile_rows, reinterpret_cast<BFloat16*>(host_result), host_cpu_ids,
-                                                      resident || streaming, parallel_runner, skip_experts)
-                                     : RunColdExperts(cpu_work, group_calls, reinterpret_cast<const MLFloat16*>(host_input),
-                                                      tile_rows, reinterpret_cast<MLFloat16*>(host_result), host_cpu_ids,
-                                                      resident || streaming, parallel_runner, skip_experts);
+    run_cpu_tail_experts();
     if (resident || streaming) {
       if (cpu_rows_written > 0) {
         CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cpu_ids, host_cpu_ids, SafeInt<size_t>(cpu_rows_written) * sizeof(int), cudaMemcpyHostToDevice, stream));
@@ -7815,7 +8096,7 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
 }
 
 void QMoEOffload::RunAsyncCpu(AsyncTile& tile) const {
-  const bool timed = cpu_timing_ && tile.tile_rows <= 4;
+  const bool timed = cpu_timing_ && tile.tile_rows <= async_max_tokens_;
   const auto start = timed ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
   if (timed) {
     const int64_t now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(start.time_since_epoch()).count();
@@ -8145,7 +8426,7 @@ Status QMoEOffload::ComputeSharedAsync(OpKernelContext* context, const Tensor* i
                                     !has_diag_outputs && !trace_call && (phase == nullptr);
   const bool use_persistent_decode =
       !static_full_resident &&
-      ((tile_rows <= 4 && !has_diag_outputs && !trace_call && (phase == nullptr) &&
+      ((tile_rows <= async_max_tokens_ && !has_diag_outputs && !trace_call && (phase == nullptr) &&
         (!bias || fc2_bias_gpu_ != nullptr || bias->Location().device.Type() == OrtDevice::GPU)) ||
        is_capturing);
 
@@ -8153,7 +8434,7 @@ Status QMoEOffload::ComputeSharedAsync(OpKernelContext* context, const Tensor* i
   const int routes = SafeInt<int>(tile_rows) * k_;
   // The persistent decode state is shared by every captured graph, so its layout must not depend on the shape being
   // captured; size it for the largest row count that can use it.
-  const int persistent_cap_rows = std::max(4, async_max_tokens_);
+  const int persistent_cap_rows = std::max(8, async_max_tokens_);
   const int cap_rows = use_persistent_decode ? std::max(tile_rows, persistent_cap_rows) : tile_rows;
   const int cap_routes = SafeInt<int>(cap_rows) * k_;
   const int route_slots = nvfp4_mode_ ? cap_routes : std::max(max_routes_, kGroupedMoeMinRows);
