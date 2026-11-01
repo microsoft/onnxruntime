@@ -275,6 +275,15 @@ the all-INT4 package and 5% and 2.3% shorter for the two INT3-mixed packages.
 top-4 routing against a host reference that rounds every dequantized weight to
 BF16 and accumulates in FP32.
 
+For BF16 `INT2` (`cutlass::uint2b_t`, `block_size` in `{32, 64, 128}`) when
+`expanded_num_rows >= 33` (configurable via `ep.cuda.moe_gemv_tc_min_rows` or
+`ORT_MOE_GEMV_TC_MIN_ROWS`, disabled via `ep.cuda.disable_moe_gemv_tc=1` or
+`ORT_DISABLE_MOE_GEMV_TC=1`), `launch_moe_gemv_int_symmetric` and
+`launch_moe_gemv_int_symmetric_interleaved_swiglu` dispatch to the SM80+
+Tensor-Core kernel `MoeGemvTcInt2Kernel` (`mma.sync.m16n8k16`, grouping up to
+8 routes sharing an expert per warp tile and extracting three 2-bit fields per
+shift inside BF16's 7-bit mantissa).
+
 ### 4.1 Per-mode dispatch matrix
 
 | Mode | SM75-89 (Ampere/Ada) | SM90 (Hopper) | SM100 (Blackwell) | SM120 (RTX 5090) |
