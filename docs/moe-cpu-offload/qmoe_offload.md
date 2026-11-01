@@ -16,9 +16,16 @@ Large Mixture-of-Experts models (such as 48-layer $\times$ 512-expert NVFP4 or I
 workstation GPUs. Rather than exporting a separate hardware-specific operator or baking GPU slot
 counts into the ONNX graph, ONNX Runtime supports **portable runtime CPU/GPU offload** on standard
 `com.microsoft::QMoE` nodes (row-major NVFP4 with `weights_prepacked=1`, SM80-prepacked INT4 with
-`weights_prepacked=1` and `block_size=32`, and raw INT3 with `weights_prepacked=0` and
+`weights_prepacked=1` and `block_size=32`, SM80-prepacked INT2 with `weights_prepacked=1` and
+`block_size` in `{32, 64, 128}`, and raw INT3 with `weights_prepacked=0` and
 `block_size` in `{32, 64, 128}`) controlled entirely by `session.moe.offload.*`
 session options.
+
+`ORT_QMOE_SHARED_POOL_SPIN_US` sets the decode idle-spin window for both shared CPU workers and
+the doorbell service (default: `15000` microseconds). Set it to `0` to disable idle spinning;
+prefill and auxiliary phases always use zero idle spin. Streaming stages unregistered integer
+weight banks in pinned memory whenever the accounted budget fits one or two staging banks,
+including when `session.moe.offload.pinned_bytes` is explicitly set to a small limit.
 
 A **single canonical `com.microsoft::QMoE` model package** runs unchanged across:
 

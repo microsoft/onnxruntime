@@ -1068,8 +1068,8 @@ bool QMoE::BuildOffloadDescriptors(const OpKernelInfo& op_kernel_info,
                             fc1_s->SizeInBytes(), fc2_s->SizeInBytes(), scale_elem_bytes)
                       : onnxruntime::contrib::cuda::qmoe::ResolveNvfp4BankDims(
                             fc1_w->Shape(), fc2_w->Shape(), scale_group,
-                            fc1_s->SizeInBytes(), fc2_s->SizeInBytes(), scale_elem_bytes, min_k_tile,
-                            int2_sm80_prepacked ? 4 : 2))
+                            fc1_s->SizeInBytes(), fc2_s->SizeInBytes(), scale_elem_bytes,
+                            int2_sm80_prepacked ? 4 : 2, min_k_tile))
           : onnxruntime::contrib::cuda::qmoe::Nvfp4BankDims{};
   const bool scale_shapes_ok =
       bank_dims.valid &&

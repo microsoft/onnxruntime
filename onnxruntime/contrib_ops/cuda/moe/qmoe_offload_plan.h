@@ -24,11 +24,11 @@ struct Nvfp4BankDims {
 template <typename Shape>
 inline Nvfp4BankDims ResolveNvfp4BankDims(const Shape& fc1_weights, const Shape& fc2_weights, int64_t scale_group,
                                           uint64_t fc1_scale_bytes, uint64_t fc2_scale_bytes,
-                                          uint64_t scale_elem_bytes = 1, int64_t min_k_tile = 1,
-                                          int64_t pack_factor = 2) {
+                                          uint64_t scale_elem_bytes = 1, int64_t pack_factor = 2,
+                                          int64_t min_k_tile = 1) {
   Nvfp4BankDims dims;
   if (fc1_weights.NumDimensions() != 3 || fc2_weights.NumDimensions() != 3 || scale_group <= 0 ||
-      scale_elem_bytes == 0 || min_k_tile <= 0 || (pack_factor != 2 && pack_factor != 4)) {
+      scale_elem_bytes == 0 || (pack_factor != 2 && pack_factor != 4) || min_k_tile <= 0) {
     return dims;
   }
   const int64_t experts = fc1_weights[0];

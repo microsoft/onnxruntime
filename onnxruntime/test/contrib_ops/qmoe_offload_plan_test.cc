@@ -190,7 +190,7 @@ TEST(QMoEOffloadPlanTest, RejectsZeroOrNegativeExpertCountsAndSupportsInt4AndInt
 
   const auto int4_std = qmoe::ResolveNvfp4BankDims(
       TensorShape({8, 256, 128}), TensorShape({8, 256, 64}), /*scale_group=*/32, int4_fc1_s, int4_fc2_s, 2,
-      /*min_k_tile=*/64);
+      /*pack_factor=*/2, /*min_k_tile=*/64);
   ASSERT_TRUE(int4_std.valid);
   EXPECT_EQ(int4_std.hidden, 256);
   EXPECT_EQ(int4_std.inter, 128);
@@ -200,13 +200,13 @@ TEST(QMoEOffloadPlanTest, RejectsZeroOrNegativeExpertCountsAndSupportsInt4AndInt
   const uint64_t int4_h96_fc2_s = 8ull * 96 * (128 / 32) * 2;
   EXPECT_FALSE(qmoe::ResolveNvfp4BankDims(
                    TensorShape({8, 96, 128}), TensorShape({8, 128, 48}), /*scale_group=*/32,
-                   int4_h96_fc1_s, int4_h96_fc2_s, /*scale_elem_bytes=*/2, /*min_k_tile=*/64)
+                   int4_h96_fc1_s, int4_h96_fc2_s, /*scale_elem_bytes=*/2, /*pack_factor=*/2, /*min_k_tile=*/64)
                    .valid);
   const uint64_t int4_i96_fc1_s = 8ull * 192 * (128 / 32) * 2;
   const uint64_t int4_i96_fc2_s = 8ull * 128 * (96 / 32) * 2;
   EXPECT_FALSE(qmoe::ResolveNvfp4BankDims(
                    TensorShape({8, 128, 96}), TensorShape({8, 96, 64}), /*scale_group=*/32,
-                   int4_i96_fc1_s, int4_i96_fc2_s, /*scale_elem_bytes=*/2, /*min_k_tile=*/64)
+                   int4_i96_fc1_s, int4_i96_fc2_s, /*scale_elem_bytes=*/2, /*pack_factor=*/2, /*min_k_tile=*/64)
                    .valid);
 
   // Valid raw INT3 (block_size in {32, 64, 128}): FC1 [E, 2*I, (H*3)/8], FC2 [E, H, (I*3)/8].
@@ -219,6 +219,29 @@ TEST(QMoEOffloadPlanTest, RejectsZeroOrNegativeExpertCountsAndSupportsInt4AndInt
     EXPECT_EQ(int3_dims.hidden, 256);
     EXPECT_EQ(int3_dims.inter, 128);
   }
+}
+
+TEST(QMoEOffloadPlanTest, Int2CanonicalAndLegacyBanksMatchScaleGeometry) {
+  for (int64_t block : {32, 64, 128}) {
+    const uint64_t fc1_scales = 8ull * 256 * (256 / block) * 2;
+    const uint64_t fc2_scales = 8ull * 256 * (128 / block) * 2;
+    for (const auto& fc2 : {TensorShape({8, 128, 64}), TensorShape({8, 256, 32})}) {
+      const auto dims = qmoe::ResolveNvfp4BankDims(
+          TensorShape({8, 256, 64}), fc2, block, fc1_scales, fc2_scales, 2, /*pack_factor=*/4);
+      ASSERT_TRUE(dims.valid);
+      EXPECT_EQ(dims.hidden, 256);
+      EXPECT_EQ(dims.inter, 128);
+      EXPECT_FALSE(qmoe::ResolveNvfp4BankDims(
+                       TensorShape({8, 256, 64}), fc2, block, fc1_scales - 1, fc2_scales, 2, 4)
+                       .valid);
+    }
+  }
+  EXPECT_FALSE(qmoe::ResolveNvfp4BankDims(
+                   TensorShape({0, 256, 64}), TensorShape({0, 256, 32}), 64, 0, 0, 2, 4)
+                   .valid);
+  EXPECT_FALSE(qmoe::ResolveNvfp4BankDims(
+                   TensorShape({8, 256, 64}), TensorShape({8, 256, 32}), 64, 8192, 4096, 2, 3)
+                   .valid);
 }
 
 namespace {
