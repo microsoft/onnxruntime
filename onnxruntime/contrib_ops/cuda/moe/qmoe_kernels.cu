@@ -4,6 +4,7 @@
 
 #include "contrib_ops/cuda/moe/qmoe_kernels.h"
 #include "contrib_ops/cuda/moe/qmoe_fused_route.cuh"
+#include "contrib_ops/cuda/moe/qmoe_int3_tc.cuh"
 
 #include <cuda_bf16.h>
 #include <cuda_fp8.h>
@@ -3196,6 +3197,58 @@ __device__ __forceinline__ float Dot8DequantizedWeights(const float4& a0, const 
          a1.x * w(q[4]) + a1.y * w(q[5]) + a1.z * w(q[6]) + a1.w * w(q[7]);
 }
 
+// Dot product with the same FMA association the compiler produces for the expression in Dot8DequantizedWeights.
+__device__ __forceinline__ float Dot8Weights(const float4& a0, const float4& a1, const float (&w)[8]) {
+  float t = __fmul_rn(a0.y, w[1]);
+  t = __fmaf_rn(a0.x, w[0], t);
+  t = __fmaf_rn(a0.z, w[2], t);
+  t = __fmaf_rn(a0.w, w[3], t);
+  t = __fmaf_rn(a1.x, w[4], t);
+  t = __fmaf_rn(a1.y, w[5], t);
+  t = __fmaf_rn(a1.z, w[6], t);
+  return __fmaf_rn(a1.w, w[7], t);
+}
+
+// bf16(code * scale) for 3-bit codes via packed bf16x2 math. Codes j and j + 4 share one 32-bit register: after
+// aligning, code j sits in the top three mantissa bits of the low half (0x4100 | code << 4 == 8 + code) and code j + 4
+// in the low three mantissa bits of the high half (0x4300 | code == 128 + code). Subtracting {12, 132} gives the exact
+// centered code, and a single bf16 multiply rounds once, exactly like rounding the exact fp32 product.
+__device__ __forceinline__ void DequantizeInt3x8Bf16(uint32_t w, __nv_bfloat16 scale, float (&out)[8]) {
+  static constexpr uint32_t kLut = (0xf0 & 0xcc) | 0xaa;
+  static constexpr uint32_t kCenterBits = 0x43044140u;
+  const __nv_bfloat162 scale2 = __halves2bfloat162(scale, scale);
+  const __nv_bfloat162 center2 = *reinterpret_cast<const __nv_bfloat162*>(&kCenterBits);
+  const auto convert_pair = [&](uint32_t shifted, int lo_index) {
+    uint32_t magic;
+    asm("lop3.b32 %0, %1, %2, %3, %4;" : "=r"(magic) : "r"(shifted), "n"(0x00070070u), "n"(0x43004100u), "n"(kLut));
+    const __nv_bfloat162 centered = __hsub2(*reinterpret_cast<const __nv_bfloat162*>(&magic), center2);
+    const __nv_bfloat162 product = __hmul2(centered, scale2);
+    const uint32_t bits = *reinterpret_cast<const uint32_t*>(&product);
+    out[lo_index] = __uint_as_float(bits << 16);
+    out[lo_index + 4] = __uint_as_float(bits & 0xffff0000u);
+  };
+  convert_pair(w << 4, 0);
+  convert_pair(w << 1, 1);
+  convert_pair(w >> 2, 2);
+  convert_pair(w >> 5, 3);
+}
+
+// Dequantizes 8 packed codes to weights rounded to T (matching Int3WeightElem in the scalar kernels).
+template <typename T, int Bits>
+__device__ __forceinline__ void DequantizeWeights8(uint32_t w_aligned, T raw_scale, float (&out)[8]) {
+  if constexpr (std::is_same_v<T, __nv_bfloat16> && Bits == 3) {
+    DequantizeInt3x8Bf16(w_aligned, raw_scale, out);
+  } else {
+    float q[8];
+    Unpack8CenteredCodesFromWord<Bits>(w_aligned, q);
+    const float scale = static_cast<float>(raw_scale);
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      out[j] = static_cast<float>(static_cast<T>(q[j] * scale));
+    }
+  }
+}
+
 template <typename T>
 __device__ __forceinline__ void UnpackVec8ToFloat(const T* __restrict__ smem_ptr, float4& a0, float4& a1) {
   const uint4 raw = *reinterpret_cast<const uint4*>(smem_ptr);
@@ -3385,9 +3438,9 @@ __global__ void __launch_bounds__(128, 7) FusedFc1FastVecKernel(Int3MoeParams pa
 #pragma unroll
       for (int r = 0; r < kRowsPerWarp; ++r) {
         const uint32_t w_aligned = AlignPackedCodeWord<Bits>(w0[r], bit_shift);
-        float q[8];
-        Unpack8CenteredCodesFromWord<Bits>(w_aligned, q);
-        acc0[r] += Dot8DequantizedWeights<T>(a0, a1, q, static_cast<float>(raw_s[r]));
+        float wq[8];
+        DequantizeWeights8<T, Bits>(w_aligned, raw_s[r], wq);
+        acc0[r] += Dot8Weights(a0, a1, wq);
       }
     }
   } else {
@@ -3411,11 +3464,10 @@ __global__ void __launch_bounds__(128, 7) FusedFc1FastVecKernel(Int3MoeParams pa
 #pragma unroll
       for (int r = 0; r < kRowsPerWarp; ++r) {
         const uint32_t w_aligned = AlignPackedCodeWord<Bits>(w0[r], bit_shift);
-        float q[8];
-        Unpack8CenteredCodesFromWord<Bits>(w_aligned, q);
-        const float sc = static_cast<float>(raw_s[r]);
-        acc0[r] += Dot8DequantizedWeights<T>(a0_0, a1_0, q, sc);
-        acc1[r] += Dot8DequantizedWeights<T>(a0_1, a1_1, q, sc);
+        float wq[8];
+        DequantizeWeights8<T, Bits>(w_aligned, raw_s[r], wq);
+        acc0[r] += Dot8Weights(a0_0, a1_0, wq);
+        acc1[r] += Dot8Weights(a0_1, a1_1, wq);
       }
     }
 #pragma unroll
@@ -3528,9 +3580,9 @@ __global__ void __launch_bounds__(128, 6) Fc2RouteFastVecKernel(Int3MoeParams pa
 #pragma unroll
       for (int r = 0; r < kColsPerHalfWarp; ++r) {
         const uint32_t w_aligned = AlignPackedCodeWord<Bits>(w0[r], bit_shift);
-        float q[8];
-        Unpack8CenteredCodesFromWord<Bits>(w_aligned, q);
-        v0[r] += Dot8DequantizedWeights<T>(a0, a1, q, static_cast<float>(raw_s[r]));
+        float wq[8];
+        DequantizeWeights8<T, Bits>(w_aligned, raw_s[r], wq);
+        v0[r] += Dot8Weights(a0, a1, wq);
       }
     }
   } else {
@@ -3554,11 +3606,10 @@ __global__ void __launch_bounds__(128, 6) Fc2RouteFastVecKernel(Int3MoeParams pa
 #pragma unroll
       for (int r = 0; r < kColsPerHalfWarp; ++r) {
         const uint32_t w_aligned = AlignPackedCodeWord<Bits>(w0[r], bit_shift);
-        float q[8];
-        Unpack8CenteredCodesFromWord<Bits>(w_aligned, q);
-        const float sc = static_cast<float>(raw_s[r]);
-        v0[r] += Dot8DequantizedWeights<T>(a0_0, a1_0, q, sc);
-        v1[r] += Dot8DequantizedWeights<T>(a0_1, a1_1, q, sc);
+        float wq[8];
+        DequantizeWeights8<T, Bits>(w_aligned, raw_s[r], wq);
+        v0[r] += Dot8Weights(a0_0, a1_0, wq);
+        v1[r] += Dot8Weights(a0_1, a1_1, wq);
       }
     }
 #pragma unroll
@@ -3823,7 +3874,17 @@ cudaError_t LaunchInt3Typed(const Int3MoeParams& params, cudaStream_t stream) {
   const Int3DecodeKernel kernel = SelectInt3DecodeKernel(params);
 
   if (kernel != Int3DecodeKernel::kScalar) {
-    if (kernel == Int3DecodeKernel::kFastVectorized) {
+    if (kernel == Int3DecodeKernel::kTensorCore || kernel == Int3DecodeKernel::kFastVectorized) {
+      if constexpr (std::is_same_v<T, __nv_bfloat16>) {
+        cudaError_t tc_status = cudaSuccess;
+        if (int3_tc::TryLaunchBf16(params, stream, tc_status)) {
+          if (tc_status != cudaSuccess) return tc_status;
+          const dim3 tc_fin_grid(static_cast<unsigned>((params.hidden / 8 + 127) / 128),
+                                 static_cast<unsigned>(params.rows));
+          FinalizeRoutesVec8Kernel<T><<<tc_fin_grid, 128, 0, stream>>>(params);
+          return cudaGetLastError();
+        }
+      }
       const size_t route_slots = params.route_groups != nullptr ? 2 : 1;
       const size_t fc1_vec_smem = route_slots * static_cast<size_t>(params.hidden) * sizeof(T);
       const size_t fc2_vec_smem = route_slots * static_cast<size_t>(params.intermediate) * sizeof(T);
@@ -3959,7 +4020,41 @@ Int3DecodeKernel SelectInt3DecodeKernel(const Int3MoeParams& params) {
       (reinterpret_cast<uintptr_t>(params.activation) & 15u) == 0 &&
       (reinterpret_cast<uintptr_t>(params.fc2_partial) & 15u) == 0 &&
       (reinterpret_cast<uintptr_t>(params.output) & 15u) == 0;
-  return can_use_vec_fast ? Int3DecodeKernel::kFastVectorized : Int3DecodeKernel::kFast;
+  if (!can_use_vec_fast) return Int3DecodeKernel::kFast;
+  if (params.is_bfloat16 && int3_tc::CanLaunchBf16(params)) {
+    return Int3DecodeKernel::kTensorCore;
+  }
+  return Int3DecodeKernel::kFastVectorized;
+}
+
+bool CanUseInt3TcPrePack() {
+  if (onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_VALIDATE_INT3_CONTENT", 0) != 0 ||
+      !int3_tc::DeviceSupportsBf16Mma()) {
+    return false;
+  }
+  cudaFuncAttributes fc1_attributes{}, fc2_attributes{};
+  if (cudaFuncGetAttributes(&fc1_attributes, int3_tc::Int3TcCoalescedKernel<true, 4, 2, 4, 0, 3>) != cudaSuccess ||
+      cudaFuncGetAttributes(&fc2_attributes, int3_tc::Int3TcCoalescedKernel<false, 4, 1, 8, 0, 3>) != cudaSuccess ||
+      fc1_attributes.ptxVersion < 80 || fc2_attributes.ptxVersion < 80) {
+    return false;
+  }
+  return true;
+}
+
+void LaunchPrePackInt3Weights(const uint8_t* raw_weights, uint8_t* packed_weights,
+                              int num_experts, int n, int k, cudaStream_t stream) {
+  const int total_mblocks = num_experts * (n >> 4);
+  const int pack_grid = (total_mblocks + 7) / 8;
+  int3_tc::PrePackInt3WeightsKernel<<<pack_grid, 256, 0, stream>>>(raw_weights, packed_weights, num_experts, n, k);
+  CUDA_CALL_THROW(cudaGetLastError());
+}
+
+void LaunchPrePackInt3Scales(const __nv_bfloat16* raw_scales, __nv_bfloat16* packed_scales,
+                             int num_experts, int n, int k, cudaStream_t stream) {
+  const int total_mblocks = num_experts * (n >> 4);
+  const int pack_grid = (total_mblocks + 7) / 8;
+  int3_tc::PrePackInt3ScalesKernel<<<pack_grid, 256, 0, stream>>>(raw_scales, packed_scales, num_experts, n, k);
+  CUDA_CALL_THROW(cudaGetLastError());
 }
 
 cudaError_t LaunchInt3Moe(const Int3MoeParams& params, cudaStream_t stream) {

@@ -664,6 +664,7 @@ struct Int3Projection {
 };
 
 struct Int3MoeParams {
+  int tensor_core_min_routes = 33;  // 0 disables the tensor-core decode path.
   const void* input = nullptr;
   void* output = nullptr;
   void* activation = nullptr;
@@ -684,6 +685,7 @@ struct Int3MoeParams {
   float beta = 0.0f;
   float limit = 0.0f;
   bool is_bfloat16 = false;
+  bool tc_prepacked = false;
 };
 
 // Kernel family LaunchInt3Moe dispatches for `params`. Only the vectorized GEMV kernels read
@@ -692,9 +694,16 @@ enum class Int3DecodeKernel {
   kScalar,
   kFast,
   kFastVectorized,
+  kTensorCore,
 };
 
 Int3DecodeKernel SelectInt3DecodeKernel(const Int3MoeParams& params);
+
+bool CanUseInt3TcPrePack();
+void LaunchPrePackInt3Weights(const uint8_t* raw_weights, uint8_t* packed_weights,
+                              int num_experts, int n, int k, cudaStream_t stream);
+void LaunchPrePackInt3Scales(const __nv_bfloat16* raw_scales, __nv_bfloat16* packed_scales,
+                             int num_experts, int n, int k, cudaStream_t stream);
 
 cudaError_t LaunchInt3Moe(const Int3MoeParams& params, cudaStream_t stream);
 cudaError_t ValidateInt3MoeContent(const Int3Projection& projection, size_t rows,

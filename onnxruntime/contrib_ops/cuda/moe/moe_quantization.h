@@ -6,6 +6,7 @@
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/common/common.h"
 #include "core/framework/moe_offload_plan.h"
+#include "contrib_ops/cuda/cuda_session_options.h"
 #include "contrib_ops/cuda/moe/moe_base.h"
 #include "contrib_ops/cuda/moe/qmoe_offload.h"
 #include "contrib_ops/cuda/moe/qmoe_row_tiling.h"
@@ -86,11 +87,16 @@ class QMoE final : public CudaKernel, public MoEBase, public onnxruntime::moe_of
   // GPU buffer in the kernel-expected ``[E, K, N / (8 / bits)]`` layout.
   void PrePackIntExpertWeights(const Tensor& tensor, cudaStream_t stream, AllocatorPtr alloc,
                                IAllocatorUniquePtr<void>& packed_buf, bool& is_packed, int64_t weight_bits);
+  void PrePackInt3Weights(const Tensor& tensor, cudaStream_t stream, AllocatorPtr alloc,
+                          IAllocatorUniquePtr<void>& packed_buf, bool& is_packed);
+  void PrePackInt3Scales(const Tensor& tensor, cudaStream_t stream, AllocatorPtr alloc,
+                         IAllocatorUniquePtr<void>& packed_buf, bool& is_packed);
   int64_t expert_weight_bits_;
   int64_t fc1_expert_weight_bits_;
   int64_t fc2_expert_weight_bits_;
   int64_t fc3_expert_weight_bits_;
   bool has_int3_ = false;
+  bool enable_int3_tc_prepack_ = false;
   mutable std::atomic<bool> int3_content_validated_{false};
   // -1: not yet determined, 1: scales/zero points are constant initializers, 0: runtime inputs.
   mutable std::atomic<int> int3_content_constant_{-1};
@@ -148,6 +154,8 @@ class QMoE final : public CudaKernel, public MoEBase, public onnxruntime::moe_of
   // Routes INT3 and INT3-mixed prefill through the FP32 SIMT kernels, which evaluate SwiGLU from the FP32
   // accumulators. The default Tensor Core prefill stores the FC1 result as FP16/BF16 before the activation.
   bool disable_int3_tc_prefill_ = false;
+  int int3_tc_min_routes_ = 33;
+  int moe_tc_min_rows_ = 33;
 
   std::unique_ptr<onnxruntime::llm::kernels::cutlass_kernels::CutlassMoeFCRunnerInterface> m_moe_runner;
 

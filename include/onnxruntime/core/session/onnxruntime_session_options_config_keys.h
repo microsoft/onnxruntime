@@ -545,6 +545,35 @@ static const char* const kOrtSessionOptionsCudaEnableGemmAutoTune = "ep.cuda.ena
 static const char* const kOrtSessionOptionsCudaGatedDeltaNetBf16Precision =
     "ep.cuda.gated_delta_net_bf16_precision";
 
+/// CUDA tensor-core kernel switches of MatMulNBits and QMoE. Each is resolved once when the
+/// kernel is created, so a change needs a new session, and overrides the environment variable named below. The
+/// 0/1 switches accept only "0" and "1", and the thresholds a positive decimal integer (or "0" where stated); any other
+/// value, including an empty string, fails session initialization.
+/// "1" uses the scalar GEMV instead of the SM 9.0 tensor-core INT8 GEMV of MatMulNBits. Default "0".
+/// Overrides ORT_DISABLE_FPA_INTB_GEMV_TC.
+static const char* const kOrtSessionOptionsCudaDisableFpAIntBGemvTc = "ep.cuda.disable_fpa_intb_gemv_tc";
+
+/// "1" disables the BF16 tensor-core INT4 decode GEMV of QMoE. Default "0". Overrides ORT_DISABLE_MOE_GEMV_TC.
+static const char* const kOrtSessionOptionsCudaDisableMoeGemvTc = "ep.cuda.disable_moe_gemv_tc";
+
+/// "1" disables the BF16 tensor-core INT3 decode GEMV of QMoE. Default "0". Overrides ORT_DISABLE_QMOE_INT3_TC.
+static const char* const kOrtSessionOptionsCudaDisableQmoeInt3Tc = "ep.cuda.disable_qmoe_int3_tc";
+
+/// Minimum number of routed rows from which QMoE uses the tensor-core INT4 decode GEMV. Default 33.
+/// Overrides ORT_MOE_GEMV_TC_MIN_ROWS.
+static const char* const kOrtSessionOptionsCudaMoeGemvTcMinRows = "ep.cuda.moe_gemv_tc_min_rows";
+
+/// Minimum number of routes from which QMoE uses the tensor-core INT3 decode GEMV. Default 33. Constant INT3 weights
+/// are repacked when the session is created into a layout that runs the tensor-core GEMV from the first route; setting
+/// this threshold above 1 (here or through ORT_QMOE_INT3_TC_MIN_ROUTES) keeps the weights in their raw layout, so that
+/// the threshold holds for every decode launch. Overrides ORT_QMOE_INT3_TC_MIN_ROUTES.
+static const char* const kOrtSessionOptionsCudaQmoeInt3TcMinRoutes = "ep.cuda.qmoe_int3_tc_min_routes";
+
+/// Minimum number of rows M from which the INT8 MatMulNBits (fpA_intB path, no zero points, no bias) dequantizes the
+/// weight once and runs one cuBLAS GEMM instead of the row-chunked CUTLASS mixed-input GEMM. "0" disables. Default 512
+/// on SM 9.0 and 0 (disabled) on other architectures. Overrides ORT_FPA_INTB_DEQUANT_GEMM_MIN_M.
+static const char* const kOrtSessionOptionsCudaFpAIntBDequantGemmMinM = "ep.cuda.fpa_intb_dequant_gemm_min_m";
+
 /// <summary>
 /// This is a setting that contains string annotations or annotation prefixes to be matched
 /// against individual nodes metadata entry 'layer_ann' to guide layer assignment during partitioning.

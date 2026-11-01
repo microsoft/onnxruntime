@@ -86,9 +86,9 @@ Status LstmStateCopyProgram::GenerateShaderCode(ShaderHelper& shader) const {
            << "    return;\n"
            << "  }\n";
     }
-    body << "  dst[state_idx] = src[flat_idx];\n";
+    body << "  dst[state_idx] = dst_element_t(src[flat_idx]);\n";
   } else {
-    body << "  dst[flat_idx] = src[state_idx];\n";
+    body << "  dst[flat_idx] = dst_element_t(src[state_idx]);\n";
   }
   return Status::OK();
 }
@@ -356,7 +356,8 @@ Status Lstm::ComputeInternal(ComputeContext& context) const {
   }
 
   TensorShape state_shape({batch_size, hidden_size_});
-  auto dtype = X->DataType();
+  // The recurrent state stays in f32 so float16 models don't round it at every timestep.
+  const auto state_dtype = DataTypeImpl::GetType<float>();
   uint32_t total_threads = static_cast<uint32_t>(batch_size) * H;
   uint32_t wg_size = std::min(total_threads, 256u);
   if (wg_size == 0) wg_size = 1;
@@ -380,7 +381,7 @@ Status Lstm::ComputeInternal(ComputeContext& context) const {
     prog.CacheHint("from", std::to_string(layout_));
     prog.SetWorkgroupSize(wg_size).SetDispatchGroupSize(num_groups);
     prog.AddInputs({{src, ProgramTensorMetadataDependency::Type}});
-    prog.AddOutputs({{dst, ProgramTensorMetadataDependency::None}});
+    prog.AddOutputs({{dst, ProgramTensorMetadataDependency::Type}});
     prog.AddUniformVariables({
         {static_cast<uint32_t>(batch_size)},
         {H},
@@ -396,7 +397,7 @@ Status Lstm::ComputeInternal(ComputeContext& context) const {
     prog.SetWorkgroupSize(wg_size).SetDispatchGroupSize(num_groups);
     prog.AddInputs({{src, ProgramTensorMetadataDependency::Type}});
     if (has_seq_lens) prog.AddInputs({{sequence_lens, ProgramTensorMetadataDependency::Type}});
-    prog.AddOutputs({{dst, ProgramTensorMetadataDependency::None}});
+    prog.AddOutputs({{dst, ProgramTensorMetadataDependency::Type}});
     prog.AddUniformVariables({
         {static_cast<uint32_t>(batch_size)},
         {H},
@@ -420,10 +421,10 @@ Status Lstm::ComputeInternal(ComputeContext& context) const {
     bool is_reverse = (direction_ == "reverse") || (direction_ == "bidirectional" && dir == 1);
 
     // Ping-pong state buffers [batch, H]
-    Tensor H_a = context.CreateGPUTensor(dtype, state_shape);
-    Tensor C_a = context.CreateGPUTensor(dtype, state_shape);
-    Tensor H_b = context.CreateGPUTensor(dtype, state_shape);
-    Tensor C_b = context.CreateGPUTensor(dtype, state_shape);
+    Tensor H_a = context.CreateGPUTensor(state_dtype, state_shape);
+    Tensor C_a = context.CreateGPUTensor(state_dtype, state_shape);
+    Tensor H_b = context.CreateGPUTensor(state_dtype, state_shape);
+    Tensor C_b = context.CreateGPUTensor(state_dtype, state_shape);
 
     // Initialize H_a / C_a with zeros or initial state
     if (initial_h != nullptr) {
@@ -502,7 +503,7 @@ Status Lstm::ComputeInternal(ComputeContext& context) const {
         y_prog.SetWorkgroupSize(wg_size).SetDispatchGroupSize(num_groups);
         y_prog.AddInputs({{h_write, ProgramTensorMetadataDependency::Type}});
         if (has_seq_lens) y_prog.AddInputs({{sequence_lens, ProgramTensorMetadataDependency::Type}});
-        y_prog.AddOutputs({{Y, ProgramTensorMetadataDependency::None}});
+        y_prog.AddOutputs({{Y, ProgramTensorMetadataDependency::Type}});
         y_prog.AddUniformVariables({
             {static_cast<uint32_t>(batch_size)},
             {H},
@@ -540,7 +541,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     7, 13,
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
+        .TypeConstraint("T", WebGpuSupportedFloatTypes())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<int32_t>()),
     Lstm);
 
@@ -550,7 +551,7 @@ ONNX_OPERATOR_KERNEL_EX(
     14,
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
+        .TypeConstraint("T", WebGpuSupportedFloatTypes())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<int32_t>()),
     Lstm);
 
