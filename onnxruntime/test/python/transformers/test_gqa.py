@@ -255,13 +255,21 @@ class TestBorrowedKVCache(unittest.TestCase):
 
 
 class TestQuerySeqlensQuantizedCache(unittest.TestCase):
-    @parameterized.expand([(past, padded, packed) for past in (0, 3) for padded in (2, 8) for packed in (False, True)])
-    def test_first_chunk_and_separate_present(self, past, padded, packed):
+    def run_chunk(
+        self, past, padded, valid, packed, shares=((False, False), (False, True), (True, False), (True, True))
+    ):
+        """Runs one INT8 PER_TENSOR chunk on a 16-row cache, once for each way of sharing past and present.
+
+        valid is the query_seqlens value. None omits the input and makes the chunk unpadded. Unit scales and
+        V = 0.4 tell the two attention inputs apart: reading the quantized cache gives 0 for the new rows and
+        reading the float K/V gives 0.4. Returns (share_key, share_value, kernels, feeds, output, present)
+        for every entry of shares.
+        """
         if "CUDAExecutionProvider" not in get_available_providers() or not has_quantized_kv_cache():
             self.skipTest("CUDA quantized KV cache is unavailable")
-        if not torch.cuda.is_available() or torch.cuda.get_device_capability()[0] < 8:
-            self.skipTest("Quantized FlashAttention requires SM80 or later")
-        valid, capacity, head_size = 2, 16, 128
+        if not has_sdpa_kernel("FLASH_ATTENTION"):
+            self.skipTest("Quantized FlashAttention is not built into this CUDA execution provider")
+        capacity, head_size = 16, 128
         cache_shape = [1, 1, capacity, head_size]
         query = numpy.zeros((1, padded, 2 * head_size), dtype=numpy.float16)
         key = numpy.zeros((1, padded, head_size), dtype=numpy.float16)
@@ -272,12 +280,13 @@ class TestQuerySeqlensQuantizedCache(unittest.TestCase):
         feeds.update(
             past_key=numpy.zeros(cache_shape, dtype=numpy.int8),
             past_value=numpy.zeros(cache_shape, dtype=numpy.int8),
-            seqlens_k=numpy.asarray([past + valid - 1], dtype=numpy.int32),
+            seqlens_k=numpy.asarray([past + (padded if valid is None else valid) - 1], dtype=numpy.int32),
             total_sequence_length=numpy.asarray([capacity], dtype=numpy.int32),
             k_scale=numpy.ones(1, dtype=numpy.float32),
             v_scale=numpy.ones(1, dtype=numpy.float32),
-            query_seqlens=numpy.asarray([valid], dtype=numpy.int32),
         )
+        if valid is not None:
+            feeds["query_seqlens"] = numpy.asarray([valid], dtype=numpy.int32)
         for token in range(past):
             feeds["past_value"][:, :, token] = 2 * token + 1
         names = [
@@ -297,7 +306,7 @@ class TestQuerySeqlensQuantizedCache(unittest.TestCase):
             "v_scale",
             "",
             "",
-            "query_seqlens",
+            "query_seqlens" if valid is not None else "",
         ]
         inputs = [
             helper.make_tensor_value_info(name, helper.np_dtype_to_tensor_dtype(array.dtype), array.shape)
@@ -327,6 +336,7 @@ class TestQuerySeqlensQuantizedCache(unittest.TestCase):
         )
         options = SessionOptions()
         options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+        results = []
         with (
             scoped_env_var("ORT_ENABLE_CUDNN_FLASH_ATTENTION", "0"),
             scoped_env_var("ORT_ENABLE_XQA", "0"),
@@ -334,45 +344,64 @@ class TestQuerySeqlensQuantizedCache(unittest.TestCase):
             scoped_env_var("ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO", "1"),
         ):
             session = InferenceSession(model.SerializeToString(), options, providers=["CUDAExecutionProvider"])
-            for share_key, share_value in ((False, False), (False, True), (True, False), (True, True)):
-                with self.subTest(share_key=share_key, share_value=share_value):
-                    binding = session.io_binding()
-                    values = {
-                        name: OrtValue.ortvalue_from_numpy(
-                            array, "cuda" if name != "total_sequence_length" else "cpu", 0
-                        )
-                        for name, array in feeds.items()
-                    }
-                    for name, ort_value in values.items():
-                        binding.bind_ortvalue_input(name, ort_value)
-                    present = []
-                    for name, share in (("key", share_key), ("value", share_value)):
-                        dest = (
-                            values[f"past_{name}"]
-                            if share
-                            else OrtValue.ortvalue_from_numpy(numpy.full(cache_shape, -37, dtype=numpy.int8), "cuda", 0)
-                        )
-                        present.append(dest)
-                        binding.bind_ortvalue_output(f"present_{name}", dest)
-                    binding.bind_output("output", "cuda")
-                    kernels = get_sdpa_kernel_from_debug_info(
-                        lambda binding=binding: session.run_with_iobinding(binding), all_kernels=True
+            for share_key, share_value in shares:
+                binding = session.io_binding()
+                values = {
+                    name: OrtValue.ortvalue_from_numpy(array, "cuda" if name != "total_sequence_length" else "cpu", 0)
+                    for name, array in feeds.items()
+                }
+                for name, ort_value in values.items():
+                    binding.bind_ortvalue_input(name, ort_value)
+                present = []
+                for name, share in (("key", share_key), ("value", share_value)):
+                    dest = (
+                        values[f"past_{name}"]
+                        if share
+                        else OrtValue.ortvalue_from_numpy(numpy.full(cache_shape, -37, dtype=numpy.int8), "cuda", 0)
                     )
-                    self.assertEqual(set(kernels), {"FLASH_ATTENTION"})
-                    actual = binding.copy_outputs_to_cpu()[-1]
-                    if past == 0:
-                        numpy.testing.assert_allclose(actual[:, :valid], numpy.float16(0.4), rtol=1e-3, atol=1e-3)
-                    else:
-                        for row in range(valid):
-                            numpy.testing.assert_allclose(
-                                actual[:, row], past * past / (past + row + 1), rtol=1e-3, atol=1e-3
-                            )
-                    for name, dest in zip(("key", "value"), present, strict=True):
-                        expected = feeds[f"past_{name}"].copy()
-                        expected[:, :, past : past + valid] = 0
-                        numpy.testing.assert_array_equal(
-                            dest.numpy()[:, :, : past + valid], expected[:, :, : past + valid]
+                    present.append(dest)
+                    binding.bind_ortvalue_output(f"present_{name}", dest)
+                binding.bind_output("output", "cuda")
+                kernels = get_sdpa_kernel_from_debug_info(
+                    lambda binding=binding: session.run_with_iobinding(binding), all_kernels=True
+                )
+                output = binding.copy_outputs_to_cpu()[-1]
+                results.append((share_key, share_value, kernels, feeds, output, present))
+        return results
+
+    @parameterized.expand([(past, padded, packed) for past in (0, 3) for padded in (2, 8) for packed in (False, True)])
+    def test_first_chunk_and_separate_present(self, past, padded, packed):
+        valid = 2
+        for share_key, share_value, kernels, feeds, actual, present in self.run_chunk(past, padded, valid, packed):
+            with self.subTest(share_key=share_key, share_value=share_value):
+                self.assertEqual(set(kernels), {"FLASH_ATTENTION"})
+                if past == 0:
+                    numpy.testing.assert_allclose(actual[:, :valid], numpy.float16(0.4), rtol=1e-3, atol=1e-3)
+                else:
+                    for row in range(valid):
+                        numpy.testing.assert_allclose(
+                            actual[:, row], past * past / (past + row + 1), rtol=1e-3, atol=1e-3
                         )
+                for name, dest in zip(("key", "value"), present, strict=True):
+                    expected = feeds[f"past_{name}"].copy()
+                    expected[:, :, past : past + valid] = 0
+                    numpy.testing.assert_array_equal(dest.numpy()[:, :, : past + valid], expected[:, :, : past + valid])
+
+    @parameterized.expand([(padded, packed) for padded in (2, 8) for packed in (False, True)])
+    def test_single_valid_row_matches_single_token_step(self, padded, packed):
+        # A chunk with one valid row is a single-token step: it reads the quantized cache exactly like the
+        # sequence_length == 1 call does, and must not take the float K/V of an ordinary first prompt.
+        ((_, _, _, _, single, _),) = self.run_chunk(0, 1, None, packed, shares=((False, False),))
+        ((_, _, _, _, actual, _),) = self.run_chunk(0, padded, 1, packed, shares=((False, False),))
+        numpy.testing.assert_allclose(single, 0, atol=1e-3)
+        numpy.testing.assert_array_equal(actual[:, :1], single)
+
+    @parameterized.expand([(padded, packed) for padded in (2, 8) for packed in (False, True)])
+    def test_omitted_query_seqlens_keeps_quantized_read(self, padded, packed):
+        # Without query_seqlens, a first chunk whose total_sequence_length is the cache capacity is a
+        # subsequent chunk: it attends to the quantized cache, which the new input must not change.
+        ((_, _, _, _, actual, _),) = self.run_chunk(0, padded, None, packed, shares=((False, False),))
+        numpy.testing.assert_allclose(actual, 0, atol=1e-3)
 
 
 class TestOpenVINOQuerySeqlensCapability(unittest.TestCase):

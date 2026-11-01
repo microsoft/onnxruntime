@@ -397,6 +397,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   // not read on the device.
   const int* query_seqlens_data =
       (query_seqlens != nullptr && parameters.sequence_length > 1) ? query_seqlens->Data<int>() : nullptr;
+  data.has_query_seqlens = query_seqlens_data != nullptr;
 
   // The CUDA kernel evicts the minimum number of positions on every step, so the cache it produces
   // is always full at min(T, C). That equals the resident range the operator specifies only when

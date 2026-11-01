@@ -1330,9 +1330,11 @@ Status DequantizeFlashAttentionFallback(
       parameters.seqlen_present_kv_cache, parameters.head_size, parameters.kv_cache_bit_width,
       parameters.k_quant_type, parameters.v_quant_type, is_bsnh, dequant_seq_lens)));
 
-  // query_seqlens can describe a first chunk even though its host-side classification is subsequent.
-  // Match the ordinary first-prompt path by attending to float KV when the device past length is zero.
-  if (parameters.sequence_length > 1) {
+  // With query_seqlens the host cannot tell a first chunk from a later one, so the chunk was classified as
+  // subsequent and its new KV was just quantized. An ordinary first prompt attends to the float KV instead:
+  // match it for entries that have no past and more than one valid row. A single valid row behaves like a
+  // single-token step, which reads the quantized cache. Without the input the legacy classification applies.
+  if (data.has_query_seqlens) {
     ORT_RETURN_IF_ERROR((LaunchUnpackRoPEAppend<T, T>(
         parameters.is_packed_qkv ? data.query : nullptr,
         parameters.is_packed_qkv ? nullptr : data.query,

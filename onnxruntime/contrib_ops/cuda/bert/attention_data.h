@@ -179,6 +179,11 @@ struct GroupQueryAttentionData {
   U* present_key = nullptr;
   U* present_value = nullptr;
 
+  // The query_seqlens input was given for a multi-token call (it is ignored for a single query token).
+  // Only then is whether a chunk is the first one known on the device alone, see
+  // DequantizeFlashAttentionFallback.
+  bool has_query_seqlens = false;
+
   // Kernel Flags
   bool use_flash_attention = false;
   bool use_memory_efficient_attention = false;
