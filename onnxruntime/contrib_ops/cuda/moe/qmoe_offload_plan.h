@@ -34,6 +34,14 @@ inline Nvfp4BankDims ResolveNvfp4BankDims(const Shape& fc1_weights, const Shape&
     return dims;
   }
 
+  constexpr int64_t kMaxDim = std::numeric_limits<int32_t>::max();
+  // The raw dimensions of a valid layout are H/2, H, I/2 or 2*I with H and I at most kMaxDim, so anything above
+  // 2 * kMaxDim is rejected before the products below, which then stay far below INT64_MAX.
+  constexpr int64_t kMaxRawDim = 2 * kMaxDim;
+  if (fc1_dim1 > kMaxRawDim || fc1_dim2 > kMaxRawDim || fc2_dim1 > kMaxRawDim || fc2_dim2 > kMaxRawDim) {
+    return dims;
+  }
+
   int64_t hidden = 0;
   int64_t inter = 0;
   if (fc1_dim1 == fc2_dim2 * 2 && fc1_dim2 == fc2_dim1) {
@@ -46,7 +54,6 @@ inline Nvfp4BankDims ResolveNvfp4BankDims(const Shape& fc1_weights, const Shape&
     return dims;
   }
 
-  constexpr int64_t kMaxDim = std::numeric_limits<int32_t>::max();
   if (hidden > kMaxDim || inter > kMaxDim || experts > kMaxDim || hidden % scale_group != 0 ||
       inter % scale_group != 0) {
     return dims;

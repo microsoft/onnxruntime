@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <cstdint>
+#include <limits>
 
 #include "contrib_ops/cuda/moe/qmoe_offload_plan.h"
 #include "core/framework/tensor_shape.h"
@@ -87,6 +88,85 @@ TEST(QMoEOffloadPlanTest, RejectsSizesThatAreNotWholeScaleGroups) {
                    .valid);
   EXPECT_FALSE(qmoe::ResolveNvfp4BankDims(fc1, fc2, /*scale_group=*/0, Fc1ScaleBytes(4, 256, 64),
                                           Fc2ScaleBytes(4, 256, 64))
+                   .valid);
+}
+
+// The raw dimensions are multiplied (fc2_dim2 * 2, fc2_dim2 * 4, fc1_dim2 * 2) to detect the layout, so extreme values
+// must be rejected before any product is formed. Under UBSan the first case below reported signed overflow.
+TEST(QMoEOffloadPlanTest, RejectsExtremeDimensionsWithoutOverflowingTheLayoutChecks) {
+  constexpr int64_t kInt64Max = std::numeric_limits<int64_t>::max();
+  const auto fc1_scale_bytes = Fc1ScaleBytes(1, 128, 64);
+  const auto fc2_scale_bytes = Fc2ScaleBytes(1, 128, 64);
+
+  // FC2.dim2 large enough that fc2_dim2 * 2 (and * 4) overflows int64.
+  const TensorShape fc1({1, 128, 128});
+  for (const int64_t huge : {kInt64Max, kInt64Max / 2 + 1, kInt64Max / 4 + 1}) {
+    EXPECT_FALSE(qmoe::ResolveNvfp4BankDims(fc1, TensorShape({1, 256, huge}), kScaleGroup, fc1_scale_bytes,
+                                            fc2_scale_bytes)
+                     .valid)
+        << "fc2_dim2=" << huge;
+  }
+
+  // FC1.dim2 large enough that fc1_dim2 * 2 overflows once FC1.dim1 == 4 * FC2.dim2 selects the standard layout.
+  const TensorShape fc2({1, 256, 32});
+  for (const int64_t huge : {kInt64Max, kInt64Max / 2 + 1}) {
+    EXPECT_FALSE(qmoe::ResolveNvfp4BankDims(TensorShape({1, 128, huge}), fc2, kScaleGroup, fc1_scale_bytes,
+                                            fc2_scale_bytes)
+                     .valid)
+        << "fc1_dim2=" << huge;
+  }
+
+  // 4 * (2^62 + 8) wraps to 32 in 64-bit arithmetic, so without the early limit this impossible FC2 shape is read as
+  // the standard layout with H=128 and I=16 and accepted even when no overflow checker is active.
+  constexpr int64_t kWrapsToStandardLayout = (int64_t{1} << 62) + 8;
+  EXPECT_FALSE(qmoe::ResolveNvfp4BankDims(TensorShape({1, 32, 64}), TensorShape({1, 128, kWrapsToStandardLayout}),
+                                          kScaleGroup, Fc1ScaleBytes(1, 128, 16), Fc2ScaleBytes(1, 128, 16))
+                   .valid);
+
+  // Dimensions that are not multiplied are rejected too, as are expert counts beyond int32.
+  EXPECT_FALSE(qmoe::ResolveNvfp4BankDims(TensorShape({1, kInt64Max, 128}), fc2, kScaleGroup, fc1_scale_bytes,
+                                          fc2_scale_bytes)
+                   .valid);
+  EXPECT_FALSE(qmoe::ResolveNvfp4BankDims(fc1, TensorShape({1, kInt64Max, 32}), kScaleGroup, fc1_scale_bytes,
+                                          fc2_scale_bytes)
+                   .valid);
+  EXPECT_FALSE(qmoe::ResolveNvfp4BankDims(TensorShape({kInt64Max, 128, 128}), TensorShape({kInt64Max, 256, 32}),
+                                          kScaleGroup, fc1_scale_bytes, fc2_scale_bytes)
+                   .valid);
+}
+
+// The early dimension limit must not reject a layout that the later int32 checks accept, and must stay in step with them.
+TEST(QMoEOffloadPlanTest, LargestInt32HiddenAndIntermediateSizesStillResolve) {
+  constexpr int64_t kLargest = (int64_t{1} << 31) - kScaleGroup;  // largest multiple of 16 not above INT32_MAX
+  const auto fc1_scale_bytes = Fc1ScaleBytes(1, kLargest, kLargest);
+  const auto fc2_scale_bytes = Fc2ScaleBytes(1, kLargest, kLargest);
+
+  // Standard layout: FC1 [1, 2*I, H/2], FC2 [1, H, I/2].
+  auto dims = qmoe::ResolveNvfp4BankDims(TensorShape({1, 2 * kLargest, kLargest / 2}),
+                                         TensorShape({1, kLargest, kLargest / 2}), kScaleGroup, fc1_scale_bytes,
+                                         fc2_scale_bytes);
+  ASSERT_TRUE(dims.valid);
+  EXPECT_EQ(dims.hidden, kLargest);
+  EXPECT_EQ(dims.inter, kLargest);
+
+  // Legacy layout: FC1 [1, H, I], FC2 [1, I, H/2].
+  dims = qmoe::ResolveNvfp4BankDims(TensorShape({1, kLargest, kLargest}), TensorShape({1, kLargest, kLargest / 2}),
+                                    kScaleGroup, fc1_scale_bytes, fc2_scale_bytes);
+  ASSERT_TRUE(dims.valid);
+  EXPECT_EQ(dims.hidden, kLargest);
+  EXPECT_EQ(dims.inter, kLargest);
+
+  // One scale group above INT32_MAX is rejected in both layouts.
+  constexpr int64_t kTooLarge = kLargest + kScaleGroup;
+  const auto big_fc1_scale_bytes = Fc1ScaleBytes(1, kTooLarge, kTooLarge);
+  const auto big_fc2_scale_bytes = Fc2ScaleBytes(1, kTooLarge, kTooLarge);
+  EXPECT_FALSE(qmoe::ResolveNvfp4BankDims(TensorShape({1, 2 * kTooLarge, kTooLarge / 2}),
+                                          TensorShape({1, kTooLarge, kTooLarge / 2}), kScaleGroup,
+                                          big_fc1_scale_bytes, big_fc2_scale_bytes)
+                   .valid);
+  EXPECT_FALSE(qmoe::ResolveNvfp4BankDims(TensorShape({1, kTooLarge, kTooLarge}),
+                                          TensorShape({1, kTooLarge, kTooLarge / 2}), kScaleGroup,
+                                          big_fc1_scale_bytes, big_fc2_scale_bytes)
                    .valid);
 }
 
