@@ -3,6 +3,7 @@
 
 #include <chrono>
 #include <random>
+#include <type_traits>
 #include "core/framework/tensor.h"
 #include "core/providers/cpu/nn/layer_norm_helper.h"
 #include "core/session/inference_session.h"
@@ -123,6 +124,50 @@ TEST(LayerNormTest, LayerNorm_BFloat16Input) {
            {kTensorrtExecutionProvider, kDnnlExecutionProvider, kOpenVINOExecutionProvider,
             kNnapiExecutionProvider, kQnnExecutionProvider, kCoreMLExecutionProvider});
 }
+
+#ifdef USE_CUDA
+template <typename T, typename V>
+void TestMixedBFloat16Norm(const char* op) {
+  OpTester test(op, 14);
+  test.AddAttribute<int64_t>("axis", -1);
+  test.AddAttribute<float>("epsilon", 0.0f);
+  const std::vector<int64_t> dims{2, 4};
+  const std::vector<float> input{-1.0f, 1.0f, -1.0f, 1.0f, -1.0f, 1.0f, -1.0f, 1.0f};
+  const std::vector<float> scale{0.125f, -0.75f, 1.5f, 2.0f};
+  const std::vector<float> expected{-0.125f, -0.75f, -1.5f, 2.0f, -0.125f, -0.75f, -1.5f, 2.0f};
+  if constexpr (std::is_same_v<T, BFloat16>) {
+    test.AddInput<T>("X", dims, FloatsToBFloat16s(input));
+  } else {
+    test.AddInput<T>("X", dims, input);
+  }
+  if constexpr (std::is_same_v<V, BFloat16>) {
+    test.AddInput<V>("scale", {4}, FloatsToBFloat16s(scale));
+    test.AddOutput<V>("Y", dims, FloatsToBFloat16s(expected));
+  } else {
+    test.AddInput<V>("scale", {4}, scale);
+    test.AddOutput<V>("Y", dims, expected);
+  }
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+
+TEST(LayerNormTest, MixedBFloat16InputFloatOutput) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device with compute capability 8.0 or newer is required.";
+  }
+  TestMixedBFloat16Norm<BFloat16, float>("LayerNormalization");
+  TestMixedBFloat16Norm<BFloat16, float>("SimplifiedLayerNormalization");
+}
+
+TEST(LayerNormTest, MixedFloatInputBFloat16Output) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device with compute capability 8.0 or newer is required.";
+  }
+  TestMixedBFloat16Norm<float, BFloat16>("LayerNormalization");
+  TestMixedBFloat16Norm<float, BFloat16>("SimplifiedLayerNormalization");
+}
+#endif
 
 TEST(LayerNormTest, LayerNorm_Scale) {
   OpTester test("LayerNormalization");

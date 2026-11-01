@@ -27,6 +27,7 @@
 #include "core/optimizer/bias_dropout_fusion.h"
 #include "core/optimizer/bias_gelu_fusion.h"
 #include "core/optimizer/bias_softmax_fusion.h"
+#include "core/optimizer/bfloat16_norm_cast_fusion.h"
 #include "core/optimizer/cast_elimination.h"
 #include "core/optimizer/cast_chain_elimination.h"
 #include "core/optimizer/common_subexpression_elimination.h"
@@ -221,6 +222,14 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsDisableQuantQDQ, "0") == "1";
   const bool enable_cast_chain_elimination =
       session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableCastChainElimination, "0") == "1";
+  const auto bf16_norm_cast_option =
+      session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableBFloat16NormCastFusion, "0");
+  ORT_ENFORCE(bf16_norm_cast_option == "0" || bf16_norm_cast_option == "1",
+              kOrtSessionOptionsEnableBFloat16NormCastFusion, " must be '0' or '1'.");
+  const bool enable_bf16_norm_cast_fusion = bf16_norm_cast_option == "1";
+#ifdef DISABLE_CONTRIB_OPS
+  ORT_ENFORCE(!enable_bf16_norm_cast_fusion, "BFloat16NormCastFusion requires contrib ops.");
+#endif
 #ifndef DISABLE_CONTRIB_OPS
   const InlinedHashSet<std::string_view> cpu_ep = {onnxruntime::kCpuExecutionProvider};
   const InlinedHashSet<std::string_view> cpu_acl_eps = {onnxruntime::kCpuExecutionProvider,
@@ -464,9 +473,16 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 #endif
 
       transformers.emplace_back(std::make_unique<MatMulNBitsFusion>(cpu_cuda_eps));
-      transformers.emplace_back(std::make_unique<GroupQueryAttentionPreNormFusion>(
-          InlinedHashSet<std::string_view>{onnxruntime::kCudaExecutionProvider,
-                                           onnxruntime::kWebGpuExecutionProvider}));
+      if (enable_bf16_norm_cast_fusion) {
+        transformers.emplace_back(std::make_unique<BFloat16NormCastFusion>());
+        // The new BF16 Q/K graph must not enable attention normalization with different arithmetic.
+        transformers.emplace_back(std::make_unique<GroupQueryAttentionPreNormFusion>(
+            InlinedHashSet<std::string_view>{onnxruntime::kWebGpuExecutionProvider}));
+      } else {
+        transformers.emplace_back(std::make_unique<GroupQueryAttentionPreNormFusion>(
+            InlinedHashSet<std::string_view>{onnxruntime::kCudaExecutionProvider,
+                                             onnxruntime::kWebGpuExecutionProvider}));
+      }
       bool has_matmul_nbits_mlp_kernel = false;
       bool has_matmul_nbits_qkv_kernel = false;
       if (execution_providers != nullptr) {

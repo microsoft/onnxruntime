@@ -426,6 +426,10 @@ LAYERNORM_LINEAR_IMPL(float, float, half, false)
 LAYERNORM_LINEAR_IMPL(half, float, float, false)
 LAYERNORM_LINEAR_IMPL(BFloat16, float, BFloat16, true)
 LAYERNORM_LINEAR_IMPL(BFloat16, float, BFloat16, false)
+LAYERNORM_LINEAR_IMPL(float, float, BFloat16, true)
+LAYERNORM_LINEAR_IMPL(BFloat16, float, float, true)
+LAYERNORM_LINEAR_IMPL(float, float, BFloat16, false)
+LAYERNORM_LINEAR_IMPL(BFloat16, float, float, false)
 
 #define RMSNORM_LINEAR_IMPL(T, U, V)                                                                                \
   template void HostApplyLayerNorm<T, U, V, true, true>(const cudaDeviceProp& prop, cudaStream_t stream, V* output, \
