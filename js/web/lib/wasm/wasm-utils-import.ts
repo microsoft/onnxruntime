@@ -74,7 +74,11 @@ const getScriptSrc = (): string | undefined => {
       //
       // And it still works in Webpack.
       const URL2 = URL;
-      return new URL(new URL2(BUILD_DEFS.BUNDLE_FILENAME, BUILD_DEFS.ESM_IMPORT_META_URL).href, origin).href;
+      // Opaque ('null') origins, such as local files in some browsers, cannot be used as a URL base.
+      return new URL(
+        new URL2(BUILD_DEFS.BUNDLE_FILENAME, BUILD_DEFS.ESM_IMPORT_META_URL).href,
+        origin === 'null' ? undefined : origin,
+      ).href;
     }
 
     return BUILD_DEFS.ESM_IMPORT_META_URL;
