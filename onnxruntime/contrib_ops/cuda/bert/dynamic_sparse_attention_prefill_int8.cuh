@@ -97,6 +97,12 @@ constexpr size_t kInt8SharedBytes = 4 * static_cast<size_t>(kInt8TileBytes) + kI
                                     kMaxGroup * 4 * sizeof(float) + kInt8PBytes;
 // The split-K (decode) variant adds the tile of fp16 probability residuals.
 constexpr size_t kInt8SplitKSharedBytes = kInt8SharedBytes + kInt8PBytes;
+// Two-buffer variant (sK8[1] + sV8[1]) for GPUs with 100 KB shared memory per SM (SM 8.6 / 8.9 / 12.0 / 12.1) so two
+// CTAs can reside per SM concurrently while overlapping V[tile] copy with Q*K^T and K[tile+1] copy with P*V.
+constexpr size_t kInt8TwoBufferSharedBytes = 2 * static_cast<size_t>(kInt8TileBytes) +
+                                             kIdxStages * kTile * sizeof(int32_t) + kMaxGroup * 4 * sizeof(float) +
+                                             kInt8PBytes;
+constexpr size_t kInt8SplitKTwoBufferSharedBytes = kInt8TwoBufferSharedBytes + kInt8PBytes;
 
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
 __device__ __forceinline__ void CpAsync16Zfill(uint32_t smem_dst, const void* gmem_src, bool valid) {
@@ -255,7 +261,7 @@ __device__ __noinline__ void AttendRowFp32(const __nv_bfloat16* __restrict__ que
 // key_scale, value_scale: float [kv_heads, 256]. The normalized result goes to output; with kSplitK the partials
 // go to partial_max / partial_sum [rows * num_heads * split_count] and partial_output [.., 256] instead, indexed
 // (row * num_heads + head) * split_count + split (output is unused; partial_output must be 16-byte aligned).
-template <bool kSplitK>
+template <bool kSplitK, bool kTwoBufferSmem = false>
 __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionInt8TcKernel(
     const __nv_bfloat16* __restrict__ query,
     const int8_t* __restrict__ key,
@@ -278,9 +284,10 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionInt8TcKerne
     const float* __restrict__ value_scale) {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
   extern __shared__ __align__(16) unsigned char smem_raw[];
+  constexpr int kKVStages = kTwoBufferSmem ? 1 : 2;
   unsigned char* sK8 = smem_raw;
-  unsigned char* sV8 = smem_raw + 2 * kInt8TileBytes;
-  int32_t* sIdx = reinterpret_cast<int32_t*>(smem_raw + 4 * kInt8TileBytes);
+  unsigned char* sV8 = smem_raw + kKVStages * kInt8TileBytes;
+  int32_t* sIdx = reinterpret_cast<int32_t*>(smem_raw + 2 * kKVStages * kInt8TileBytes);
   float* sM = reinterpret_cast<float*>(sIdx + kIdxStages * kTile);
   __half* sP = reinterpret_cast<__half*>(sM + kMaxGroup * 4);
   __half* sQ = reinterpret_cast<__half*>(smem_raw);
@@ -443,7 +450,29 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionInt8TcKerne
   const int load_chunk = tid & 15;
 
   // 16 B per lane: 16 lanes per candidate row, 8 rows per pass, 8 passes per tile (K and V).
-  auto issue_tile = [&](int tile, int stage, int idx_buf) {
+  auto issue_k_tile = [&](int stage, int idx_buf) {
+#pragma unroll
+    for (int i = 0; i < kTile / 8; ++i) {
+      const int cand = i * 8 + (tid >> 4);
+      const int index = sIdx[idx_buf * kTile + cand];
+      const bool valid = index >= 0;
+      const int64_t source = static_cast<int64_t>(valid ? index : 0) * kHeadDim + load_chunk * 16;
+      const uint32_t offset = static_cast<uint32_t>(stage * kInt8TileBytes + cand * kInt8RowStride + load_chunk * 16);
+      CpAsync16Zfill(k_smem_base + offset, key_base + source, valid);
+    }
+  };
+  auto issue_v_tile = [&](int stage, int idx_buf) {
+#pragma unroll
+    for (int i = 0; i < kTile / 8; ++i) {
+      const int cand = i * 8 + (tid >> 4);
+      const int index = sIdx[idx_buf * kTile + cand];
+      const bool valid = index >= 0;
+      const int64_t source = static_cast<int64_t>(valid ? index : 0) * kHeadDim + load_chunk * 16;
+      const uint32_t offset = static_cast<uint32_t>(stage * kInt8TileBytes + cand * kInt8RowStride + load_chunk * 16);
+      CpAsync16Zfill(v_smem_base + offset, value_base + source, valid);
+    }
+  };
+  auto issue_tile = [&](int stage, int idx_buf) {
 #pragma unroll
     for (int i = 0; i < kTile / 8; ++i) {
       const int cand = i * 8 + (tid >> 4);
@@ -457,7 +486,11 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionInt8TcKerne
   };
 
   if (tiles > 0) {
-    issue_tile(0, 0, 0);
+    if constexpr (kTwoBufferSmem) {
+      issue_k_tile(0, 0);
+    } else {
+      issue_tile(0, 0);
+    }
   }
   CpAsyncCommit();
 
@@ -488,14 +521,19 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionInt8TcKerne
   int idx_next = 1 % kIdxStages;   // (tile + 1) % 3
   int idx_next2 = 2 % kIdxStages;  // (tile + 2) % 3
   for (int tile = 0; tile < tiles; ++tile) {
-    CpAsyncWait<0>();  // K / V of this tile have landed (this thread's copies)
+    CpAsyncWait<0>();  // K (and V in 4-buffer mode) of this tile have landed
     __syncthreads();   // (1) everyone's copies are visible; the previous tile's smem consumers are done
 
-    const int stage = tile & 1;
-    if (tile + 1 < tiles) {
-      issue_tile(tile + 1, stage ^ 1, idx_next);
+    const int stage = kTwoBufferSmem ? 0 : (tile & 1);
+    if constexpr (kTwoBufferSmem) {
+      issue_v_tile(0, idx_cur);
+      CpAsyncCommit();
+    } else {
+      if (tile + 1 < tiles) {
+        issue_tile(stage ^ 1, idx_next);
+      }
+      CpAsyncCommit();
     }
-    CpAsyncCommit();
     // Raw indices of tile + 2: loaded now, resolved and stored at the end of the iteration (hides the load latency).
     int raw_next2 = -1;
     const bool stage_next2 = (tile + 2 < tiles) && tid < kTile;
@@ -623,7 +661,16 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionInt8TcKerne
             __floats2half2_rn(x12 - f11.x, x13 - f11.y);
       }
     }
-    __syncthreads();  // (3) the probability tile (and its residual) is visible
+    if constexpr (kTwoBufferSmem) {
+      CpAsyncWait<0>();  // V of this tile has landed in sV8[0]
+    }
+    __syncthreads();  // (3) the probability tile (and its residual, plus V in 2-buffer mode) is visible
+    if constexpr (kTwoBufferSmem) {
+      if (tile + 1 < tiles) {
+        issue_k_tile(0, idx_next);
+      }
+      CpAsyncCommit();
+    }
 
     // The maximum rarely changes after the first tiles: skip the accumulator rescale when the whole warp is unchanged.
     if (__any_sync(0xffffffffu, alpha0 != 1.0f || alpha1 != 1.0f)) {
