@@ -2899,7 +2899,7 @@ bool Int2Fc1SwiGluRange(int64_t hidden, int64_t inter, const Int2ExpertView& vie
           gate = std::min(gate, swiglu.limit);
           value = std::clamp(value, -swiglu.limit, swiglu.limit);
         }
-        const float silu = gate == -std::numeric_limits<float>::infinity()
+        const float silu = swiglu.alpha > 0.0f && gate == -std::numeric_limits<float>::infinity()
                                ? 0.0f
                                : gate / (1.0f + std::exp(-swiglu.alpha * gate));
         const float act = silu * (value + swiglu.beta);

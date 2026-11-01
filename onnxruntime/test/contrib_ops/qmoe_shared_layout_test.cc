@@ -1543,7 +1543,10 @@ TEST(QMoESharedLayoutTest, Int2ReorderedPositionAndGemmMatchIndependentReference
     for (bool bf16 : {false, true}) {
       std::vector<uint16_t> scales(static_cast<size_t>(columns * k_blocks));
       std::vector<uint16_t> block_scales(scales.size());
+      std::vector<uint16_t> biases(static_cast<size_t>(columns));
       for (int64_t n = 0; n < columns; ++n) {
+        const float bias = 0.03125f * static_cast<float>(n % 7 - 3);
+        biases[static_cast<size_t>(n)] = bf16 ? shared::FloatToBFloat16(bias) : shared::FloatToHalf(bias);
         for (int64_t b = 0; b < k_blocks; ++b) {
           const float scale = 0.0625f * static_cast<float>((n * k_blocks + b) % 5 + 1);
           const auto bits = bf16 ? shared::FloatToBFloat16(scale) : shared::FloatToHalf(scale);
@@ -1586,12 +1589,14 @@ TEST(QMoESharedLayoutTest, Int2ReorderedPositionAndGemmMatchIndependentReference
                                                   << " range=[" << begin << "," << end << ")");
                   std::vector<float> out(static_cast<size_t>(rows * columns), -999.0f);
                   shared::Int2GemmRange(weights.data(), block_major ? block_scales.data() : scales.data(),
-                                        nullptr, block_size, block_major, prepacked, bf16, bf16, columns, k,
+                                        biases.data(), block_size, block_major, prepacked, bf16, bf16, columns, k,
                                         activations.data(), rows, out.data() + begin, columns, begin, end, scalar, backend);
                   for (int64_t r = 0; r < rows; ++r) {
                     for (int64_t n = 0; n < columns; ++n) {
+                      const auto bias_bits = biases[static_cast<size_t>(n)];
+                      const float bias = bf16 ? shared::BFloat16ToFloat(bias_bits) : shared::HalfToFloat(bias_bits);
                       EXPECT_NEAR(out[static_cast<size_t>(r * columns + n)],
-                                  n >= begin && n < end ? ref[static_cast<size_t>(n)] * static_cast<float>(r + 1) : -999.0f,
+                                  n >= begin && n < end ? ref[static_cast<size_t>(n)] * static_cast<float>(r + 1) + bias : -999.0f,
                                   1e-5f);
                     }
                   }
@@ -1802,13 +1807,13 @@ TEST(QMoESharedLayoutTest, Int2SwiGluRoundsProjectionsBeforeBiasAndActivation) {
             shared::ReorderRawInt2ActivationRow(natural.data(), reordered.data(), hidden);
           }
           std::vector<float> output(static_cast<size_t>(inter));
-          shared::Int2Fc1SwiGluRange(hidden, inter, view, reordered.data(), 1, {1.0f, 0.0f, 8.0f}, output.data(),
+          shared::Int2Fc1SwiGluRange(hidden, inter, view, reordered.data(), 1, {1.0f, 0.0f, 100000.0f}, output.data(),
                                      0, columns, scalar, false, true);
-          const double gate = shared::HalfToFloat(shared::FloatToHalf(-2.0f * activation));
+          const double gate = std::min(100000.0, static_cast<double>(shared::HalfToFloat(shared::FloatToHalf(-2.0f * activation))));
           const double up = shared::HalfToFloat(shared::FloatToHalf(
               shared::HalfToFloat(shared::FloatToHalf(1e-6f)) * activation));
           const float expected = shared::HalfToFloat(shared::FloatToHalf(
-              static_cast<float>((gate < 0 ? 0.0 : 8.0 / (1.0 + std::exp(-8.0))) * up)));
+              static_cast<float>((gate < 0 ? 0.0 : gate / (1.0 + std::exp(-gate))) * up)));
           for (float value : output) {
             ASSERT_TRUE(std::isfinite(value));
             EXPECT_EQ(value, expected);

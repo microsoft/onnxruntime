@@ -15,6 +15,8 @@
  */
 #pragma once
 
+#include <math_constants.h>
+
 #include "core/common/common.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemm_kernels.h"
 #include "contrib_ops/cuda/llm/moe_gemm/common.h"
@@ -105,7 +107,7 @@ __global__ void doGatedActivationKernel(ActivationOutputType* output, const Gemm
           l = fminf(fmaxf(l, -activation_params.limit), activation_params.limit);
         }
         l += activation_params.beta;
-        gate_act[i] = (g == -CUDART_INF_F ? 0.0f : g * sigmoid) * l;
+        gate_act[i] = (activation_params.alpha > 0.0f && g == -CUDART_INF_F ? 0.0f : g * sigmoid) * l;
       }
     } else {
       gate_act = fn(gate_part) * linear_part;
@@ -281,7 +283,7 @@ __global__ void doActivationKernel(T* output, const GemmOutputType* gemm_result,
             l = fminf(fmaxf(l, -activation_params.limit), activation_params.limit);
           }
           l += activation_params.beta;
-          gate_act[i] = (g == -CUDART_INF_F ? 0.0f : g * sigmoid) * l;
+          gate_act[i] = (activation_params.alpha > 0.0f && g == -CUDART_INF_F ? 0.0f : g * sigmoid) * l;
         }
       } else {
         gate_act = fn(gate_part);
