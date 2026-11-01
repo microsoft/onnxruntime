@@ -203,7 +203,7 @@ bool NormalizationOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilder
   // Type of Mean and InvStdDev. This also specifies stage one’s computation precision.
   //  if stash_type is 1, this operator casts all input variables to 32-bit float,
   // perform the computation, and finally cast Normalized back to the original type of X
-  // coreml didn't have a similiar attribute to stash_type, for now, we support the default value
+  // coreml didn't have a similar attribute to stash_type, for now, we support the default value
   if (node.OpType() != "InstanceNormalization") {
     NodeAttrHelper helper(node);
     const auto stash_type = helper.Get("stash_type", 1);

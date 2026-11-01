@@ -69,7 +69,7 @@ struct KernelRegistry {
       // - `OrtEpApi::CreateLoopKernel`
       // - `OrtEpApi::CreateScanKernel`
       //
-      // If the kernel being created is one of the control flow kernels, `CreateControlFlowKernelImpl` should be overriden
+      // If the kernel being created is one of the control flow kernels, `CreateControlFlowKernelImpl` should be overridden
       // to write the value of `out` to the created `OrtKernelImpl`, and the returned status should be OK.
       status = kernel->CreateControlFlowKernelImpl(info, out);
       if (!status.IsOK()) {
