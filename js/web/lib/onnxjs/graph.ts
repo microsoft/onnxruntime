@@ -38,7 +38,7 @@ export declare namespace Graph {
     // indices to the Values where the inputs come from.
     readonly inputs: readonly number[];
 
-    // indices to the Values where the outpus go to.
+    // indices to the Values where the outputs go to.
     readonly outputs: readonly number[];
 
     // the attributes that used by the operator

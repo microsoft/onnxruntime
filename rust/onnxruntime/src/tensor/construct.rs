@@ -6,7 +6,7 @@ use std::fmt::Debug;
 
 /// The Input type for Rust onnxruntime Session::run
 pub trait ConstructTensor: Debug {
-    /// Constuct an OrtTensor Input using the `MemoryInfo` and a raw pointer to the `OrtAllocator`.
+    /// Construct an OrtTensor Input using the `MemoryInfo` and a raw pointer to the `OrtAllocator`.
     fn construct<'a>(
         &'a mut self,
         memory_info: &MemoryInfo,
