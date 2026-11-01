@@ -158,6 +158,15 @@ class PyModelCompiler {
   void SetEpContextDataWriteFunc(PyEpContextDataWriteFunc write_func);
   void ClearEpContextDataWriteFunc();
 
+  /// <summary>
+  /// Sets the directory and model name that EPs use to place their EPContext binary files.
+  /// </summary>
+  /// <param name="output_directory">Directory for EP binary files. Must not be empty.</param>
+  /// <param name="model_name">Model name used by the EP. Must not be empty.</param>
+  /// <returns>A Status indicating error or success.</returns>
+  onnxruntime::Status SetEpContextBinaryInformation(const std::string& output_directory,
+                                                    const std::string& model_name);
+
  private:
   onnxruntime::Status BeginCompilation();
   void EndCompilation() noexcept;

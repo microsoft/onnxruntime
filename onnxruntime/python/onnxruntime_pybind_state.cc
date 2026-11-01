@@ -3529,8 +3529,19 @@ including arg name, arg type (contains both type and shape).)pbdoc")
             model_compiler->ClearEpContextDataWriteFunc();
           },
           R"pbdoc(Clear the external EPContext data write callback.)pbdoc")
+      .def(
+          "set_ep_context_binary_information",
+          [](PyModelCompiler* model_compiler, const std::string& output_directory, const std::string& model_name) {
+            OrtPybindThrowIfError(model_compiler->SetEpContextBinaryInformation(output_directory, model_name));
+          },
+          py::arg("output_directory"), py::arg("model_name"),
+          R"pbdoc(Set the directory and model name EPs use to place their EPContext binary files.)pbdoc")
 #endif  // !defined(ORT_MINIMAL_BUILD)
       ;
+
+#if !defined(ORT_MINIMAL_BUILD)
+  addModelPackageMethods(m);
+#endif
 }
 
 bool InitArray() {

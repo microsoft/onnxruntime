@@ -305,6 +305,14 @@ struct PyInferenceSession {
   }
 #endif
 
+  // Adopts an already initialized session returned by a stable C API.
+  PyInferenceSession(std::unique_ptr<InferenceSession> sess, const PySessionOptionsSnapshot& snapshot)
+      : py_ep_selection_registration_(snapshot.py_ep_selection_registration),
+        py_ep_context_data_read_registration_(snapshot.py_ep_context_data_read_registration),
+        session_options_(snapshot.options),
+        sess_(std::move(sess)) {
+  }
+
   // Returns true if the session options have provider information from either
   // setting explicit providers, setting a provider that supports a OrtEpDevice(s), or
   // setting a selection policy (e.g., prefer gpu).
@@ -506,6 +514,10 @@ void addIoBindingMethods(pybind11::module& m);
 void addSparseTensorMethods(pybind11::module& m);
 
 void addAdapterFormatMethods(pybind11::module& m);
+
+#if !defined(ORT_MINIMAL_BUILD)
+void addModelPackageMethods(pybind11::module& m);
+#endif
 
 void addGlobalSchemaFunctions(pybind11::module& m);
 
