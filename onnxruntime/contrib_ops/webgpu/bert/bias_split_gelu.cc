@@ -27,7 +27,7 @@ Status BiasSplitGeluProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const ShaderVariableHelper& bias = shader.AddInput("bias", ShaderUsage::UseUniform);
   const ShaderVariableHelper& output = shader.AddOutput("output", ShaderUsage::UseUniform);
 
-  shader.AdditionalImplementation() << ErfImpl;
+  shader.AdditionalImplementation() << ErfImpl(x.NumComponents());
 
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
                             << "const M_SQRT2: f32 = sqrt(2.0);\n"
