@@ -693,7 +693,7 @@ static bool IsNodeSupported(const std::set<std::string>& op_set,
     return false;
   }
 
-  // GroupQueryAttention's query_seqlens (input 16, right-padded query chunks) is implemented only by the CUDA EP.
+  // GroupQueryAttention's query_seqlens (input 16, right-padded query chunks) is implemented only by the CPU and CUDA EPs.
   if (optype == "GroupQueryAttention" && node->InputDefs().size() > 16 && node->InputDefs()[16]->Exists()) {
     return false;
   }
