@@ -65,6 +65,7 @@ struct Params {
   int n;  // real output columns (2 * inter_size for the interleaved SwiGLU kernel)
   int k;
   int num_rows;
+  int expanded_num_rows;
 };
 
 #if defined(__CUDACC__)
@@ -201,6 +202,9 @@ __global__ void __launch_bounds__(kThreads, MinCtasPerSm(kM)) MoeGemvTcInt4Kerne
   int row0 = cid;
   int expert = -1;
   int routes = 0;
+  // Without expert_first_token_offset the route-to-expert map is unsorted; the routes of one chunk are then listed in
+  // `members`, one byte per route.
+  uint64_t members = 0;
   if constexpr (kCompact80) {
     const int e0 = p.permuted_row_to_expert[lane];
     const int e1 = p.permuted_row_to_expert[32 + lane];
@@ -248,17 +252,51 @@ __global__ void __launch_bounds__(kThreads, MinCtasPerSm(kM)) MoeGemvTcInt4Kerne
     const int64_t last = p.expert_first_token_offset[expert + 1];
     routes = (last - row0) < kMaxRoutes ? static_cast<int>(last - row0) : kMaxRoutes;
   } else {
-    expert = p.permuted_row_to_expert[row0];
+    expert = __ldg(&p.permuted_row_to_expert[row0]);
     if (expert < 0 || expert >= p.num_experts) {
       return;
     }
-    const int64_t first = p.expert_first_token_offset[expert];
-    const int64_t last = p.expert_first_token_offset[expert + 1];
-    // Rows of one expert are contiguous; every kMaxRoutes-th row of a run leads a chunk.
-    if (((row0 - first) & (kMaxRoutes - 1)) != 0) {
-      return;
+    if (p.expert_first_token_offset != nullptr) {
+      const int64_t first = p.expert_first_token_offset[expert];
+      const int64_t last = p.expert_first_token_offset[expert + 1];
+      // Rows of one expert are contiguous; every kMaxRoutes-th row of a run leads a chunk.
+      if (((row0 - first) & (kMaxRoutes - 1)) != 0) {
+        return;
+      }
+      routes = (last - row0) < kMaxRoutes ? static_cast<int>(last - row0) : kMaxRoutes;
+    } else {
+      const int total = p.expanded_num_rows;
+      int ev[8];
+#pragma unroll
+      for (int i = 0; i < 8; ++i) {
+        const int idx = i * 32 + lane;
+        ev[i] = idx < total ? __ldg(p.permuted_row_to_expert + idx) : -1;
+      }
+      const int c0 = row0 >> 5;
+      const int b0 = row0 & 31;
+      uint32_t match[8];
+      int rank = 0;
+#pragma unroll
+      for (int i = 0; i < 8; ++i) {
+        match[i] = __ballot_sync(0xffffffffu, ev[i] == expert);
+        const uint32_t below = i < c0 ? 0xffffffffu : (i == c0 ? ((1u << b0) - 1u) : 0u);
+        rank += __popc(match[i] & below);
+      }
+      // Every kMaxRoutes-th route of an expert leads a chunk of up to kMaxRoutes routes.
+      if ((rank & (kMaxRoutes - 1)) != 0) {
+        return;
+      }
+#pragma unroll
+      for (int i = 0; i < 8; ++i) {
+        uint32_t bits = match[i] & (i < c0 ? 0u : (i == c0 ? (0xffffffffu << b0) : 0xffffffffu));
+        while (bits != 0u && routes < kMaxRoutes) {
+          const int pos = (i << 5) + (__ffs(bits) - 1);
+          bits &= bits - 1u;
+          members |= static_cast<uint64_t>(pos) << (8 * routes);
+          ++routes;
+        }
+      }
     }
-    routes = (last - row0) < kMaxRoutes ? static_cast<int>(last - row0) : kMaxRoutes;
   }
 
   // An interleaved weight row holds 4 real columns (k * 4 bits each = 2k bytes); inside a 64-wide K
@@ -272,10 +310,13 @@ __global__ void __launch_bounds__(kThreads, MinCtasPerSm(kM)) MoeGemvTcInt4Kerne
   // Lanes without a route (g >= routes) read the activations of the last route (same sectors, so no extra memory
   // traffic); their MMA columns are never stored.
   const int g_act = min(g, max(routes - 1, 0));
-  int src_row = row0 + g_act;
+  const int route_g = (p.expert_first_token_offset != nullptr)
+                          ? (row0 + g_act)
+                          : static_cast<int>((members >> (8 * g_act)) & 0xffu);
+  int src_row = route_g;
   if constexpr (kSwiglu) {
     if (p.permuted_row_to_source_row != nullptr) {
-      src_row = p.permuted_row_to_source_row[row0 + g_act] % p.num_rows;
+      src_row = p.permuted_row_to_source_row[route_g] % p.num_rows;
     }
   }
   const __nv_bfloat16* aptr =
@@ -396,6 +437,9 @@ __global__ void __launch_bounds__(kThreads, MinCtasPerSm(kM)) MoeGemvTcInt4Kerne
       if (route >= routes) {
         continue;
       }
+      const int out_row = (p.expert_first_token_offset != nullptr)
+                              ? (row0 + route)
+                              : static_cast<int>((members >> (8 * route)) & 0xffu);
       float even = h == 0 ? d.x : d.y;
       float odd = h == 0 ? d.z : d.w;
       if (bias != nullptr) {
@@ -411,10 +455,10 @@ __global__ void __launch_bounds__(kThreads, MinCtasPerSm(kM)) MoeGemvTcInt4Kerne
         }
         linear += beta;
         const float sigmoid = 1.0f / (1.0f + expf(-alpha * gate));
-        p.out[static_cast<int64_t>(row0 + route) * (n / 2) + col / 2] =
+        p.out[static_cast<int64_t>(out_row) * (n / 2) + col / 2] =
             __float2bfloat16_rn(gate * sigmoid * linear);
       } else {
-        *reinterpret_cast<__nv_bfloat162*>(p.out + static_cast<int64_t>(row0 + route) * n + col) =
+        *reinterpret_cast<__nv_bfloat162*>(p.out + static_cast<int64_t>(out_row) * n + col) =
             __floats2bfloat162_rn(even, odd);
       }
     }
@@ -462,12 +506,18 @@ inline bool DeviceSupportsBf16Mma() {
   return major >= 8;
 }
 
+// Compact leader scheduling finds the expert runs of the sorted routes, so it needs expert_first_token_offset.
+inline bool UsesCompact80(const Params& p, int64_t expanded_num_rows) {
+  return p.expert_first_token_offset != nullptr && expanded_num_rows == 80 &&
+         (p.num_rows == 0 || p.num_rows <= kMaxRoutes);
+}
+
 template <bool kSwiglu, int kWarpsK, int kM>
 inline void Launch(const Params& p, int64_t expanded_num_rows, cudaStream_t stream) {
   constexpr int kTileN = (kWarps / kWarpsK) * kM * kMmaM;
   const unsigned n_tiles = static_cast<unsigned>(p.n / kTileN);
   if constexpr (!kSwiglu && kM == 2) {
-    if (expanded_num_rows == 80 && (p.num_rows == 0 || p.num_rows <= kMaxRoutes)) {
+    if (UsesCompact80(p, expanded_num_rows)) {
       const dim3 grid(n_tiles, static_cast<unsigned>(expanded_num_rows));
       MoeGemvTcInt4Kernel<kSwiglu, kWarpsK, kM, true><<<grid, kThreads, 0, stream>>>(p);
       return;
@@ -486,7 +536,8 @@ inline bool TryLaunchInt4Bf16(bool swiglu, const __nv_bfloat16* act, const uint8
                               const float* swiglu_alpha, const float* swiglu_beta, const float* swiglu_limit,
                               float alpha, float beta, float limit, const int* permuted_row_to_source_row,
                               int64_t num_rows, cudaStream_t stream, int tensor_core_min_rows) {
-  if (group_size != 32 || permuted_row_to_expert == nullptr || expert_first_token_offset == nullptr ||
+  if (group_size != 32 || permuted_row_to_expert == nullptr ||
+      (expert_first_token_offset == nullptr && expanded_num_rows > 256) ||
       expanded_num_rows < tensor_core_min_rows || tensor_core_min_rows == 0 || !DeviceSupportsBf16Mma()) {
     return false;
   }
@@ -522,13 +573,14 @@ inline bool TryLaunchInt4Bf16(bool swiglu, const __nv_bfloat16* act, const uint8
   p.n = static_cast<int>(n);
   p.k = static_cast<int>(k);
   p.num_rows = static_cast<int>(num_rows);
+  p.expanded_num_rows = static_cast<int>(expanded_num_rows);
 
   // FC1: the four warps split K (n = 1280 columns, five steps each). FC2: when compact leader scheduling is active
   // (expanded_num_rows == 80), each warp owns two 16-column m-blocks (n_tiles = 20, 80 registers, 6 CTAs/SM = 792
   // CTAs/wave) so all active CTAs fit in Wave 1; otherwise each warp owns one 16-column m-block.
   if (swiglu) {
     Launch<true, 4, 4>(p, expanded_num_rows, stream);
-  } else if (expanded_num_rows == 80 && (p.num_rows == 0 || p.num_rows <= kMaxRoutes)) {
+  } else if (UsesCompact80(p, expanded_num_rows)) {
     Launch<false, 1, 2>(p, expanded_num_rows, stream);
   } else {
     Launch<false, 1, 1>(p, expanded_num_rows, stream);
