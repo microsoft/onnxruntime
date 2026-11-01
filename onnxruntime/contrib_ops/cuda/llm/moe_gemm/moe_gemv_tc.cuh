@@ -856,6 +856,7 @@ inline bool TryLaunchInt4Bf16(bool swiglu, const __nv_bfloat16* act, const uint8
                               float alpha, float beta, float limit, const int* permuted_row_to_source_row,
                               int64_t num_rows, cudaStream_t stream, int tensor_core_min_rows) {
   if (group_size != 32 || permuted_row_to_expert == nullptr ||
+      (expert_first_token_offset == nullptr && expanded_num_rows > kMaxRoutes) ||
       expanded_num_rows < tensor_core_min_rows || tensor_core_min_rows == 0 || !DeviceSupportsBf16Mma()) {
     return false;
   }
@@ -914,6 +915,7 @@ inline bool TryLaunchInt2Bf16(bool swiglu, const __nv_bfloat16* act, const uint8
                               float alpha, float beta, float limit, const int* permuted_row_to_source_row,
                               int64_t num_rows, cudaStream_t stream, int tensor_core_min_rows) {
   if ((group_size != 32 && group_size != 64 && group_size != 128) || permuted_row_to_expert == nullptr ||
+      (expert_first_token_offset == nullptr && expanded_num_rows > kMaxRoutes) ||
       expanded_num_rows < tensor_core_min_rows || tensor_core_min_rows == 0 || !DeviceSupportsBf16Mma()) {
     return false;
   }

@@ -1863,5 +1863,32 @@ TEST(QMoESharedLayoutTest, Int2GuardPageAndReadOnlyBanks) {
 #endif
 }
 
+TEST(QMoESharedLayoutTest, Int2Fp16SwiGluKeepsProjectionsInFloat32) {
+  constexpr int64_t hidden = 128, inter = 128;
+  std::vector<uint8_t> weights(static_cast<size_t>(2 * inter * hidden / 4), 0xaa);
+  weights[0] = 0xa9;   // gate: -1 at K=0.
+  weights[16] = 0xab;  // up: +1 at K=0.
+  std::vector<uint16_t> scales(static_cast<size_t>(2 * inter * hidden / 64), shared::FloatToHalf(1.0f));
+  scales[2] = shared::FloatToHalf(8192.0f);
+  scales[3] = scales[2];
+  shared::Int2ExpertView view{};
+  view.fc1_weights = weights.data();
+  view.fc1_scales = scales.data();
+  view.block_size = 64;
+  view.scale_is_bf16 = false;
+  view.weights_are_prepacked = true;
+  std::array<float, hidden> x{};
+  x[0] = 16.0f;
+  const shared::SwiGluParams swiglu{1.0f, 0.0f, std::numeric_limits<float>::infinity()};
+  const float expected = shared::HalfToFloat(shared::FloatToHalf(-16.0f / (1.0f + std::exp(16.0f)) * 131072.0f));
+  for (bool scalar : {false, true}) {
+    std::array<float, inter> actual{};
+    shared::Int2Fc1SwiGluRange(hidden, inter, view, x.data(), 1, swiglu, actual.data(),
+                               0, 2 * inter, scalar, /*bf16_boundaries=*/false, /*fp16_boundaries=*/true);
+    EXPECT_TRUE(std::isfinite(actual[0]));
+    EXPECT_EQ(actual[0], expected);
+  }
+}
+
 }  // namespace
 }  // namespace onnxruntime::test

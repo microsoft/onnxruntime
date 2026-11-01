@@ -149,6 +149,12 @@ qmoe::SpinPoolRegistry& SharedSpinPools() {
   return registry;
 }
 
+int SharedPoolDecodeSpinUs() {
+  static const int spin_us =
+      std::max(0, ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_POOL_SPIN_US", 15000));
+  return spin_us;
+}
+
 qmoe::SpinPool& SharedSpinPool(int threads) {
   const int eff_threads = std::clamp(threads, 1, 256);
   qmoe::SpinPool* fast = g_shared_spin_pool_ptr.load(std::memory_order_acquire);
@@ -156,7 +162,7 @@ qmoe::SpinPool& SharedSpinPool(int threads) {
     return *fast;
   }
   qmoe::SpinPool& pool = SharedSpinPools().GetOrCreate(eff_threads, [](int pool_threads) {
-    const int default_spin_us = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_POOL_SPIN_US", 15000);
+    const int default_spin_us = SharedPoolDecodeSpinUs();
     qmoe::CpuBudgetGroup::Default().ConfigureDecodeSpinUs(default_spin_us);
     return std::make_unique<qmoe::SpinPool>(pool_threads, default_spin_us);
   });
@@ -2256,6 +2262,7 @@ class QMoEOffload::DoorbellService {
 
   void Loop() {
     qmoe::NameCurrentThread("qmoe-doorbell");
+    const int decode_spin_us = SharedPoolDecodeSpinUs();
 #if defined(_WIN32)
     {
       const int default_pool_threads =
@@ -2350,7 +2357,7 @@ class QMoEOffload::DoorbellService {
         const int spin_us =
             (qmoe::CpuBudgetGroup::Default().CurrentPhase() == qmoe::CpuBudgetGroup::Phase::kPrefillOrAux)
                 ? 0
-                : 15000;
+                : decode_spin_us;
         if (std::chrono::steady_clock::now() - idle_since > std::chrono::microseconds(spin_us)) {
           std::unique_lock<std::mutex> cv_lock(cv_mutex_);
           sleeping_.store(true, std::memory_order_seq_cst);
@@ -7399,7 +7406,7 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
   const size_t effective_pinned_limit =
       streaming && !v4_planned_mode_ ? std::max(shared_pinned_limit_, stream_pinned_limit_) : shared_pinned_limit_;
   const bool int_bank_uses_cache =
-      (int4_bank_mode_ || int3_bank_mode_) && host_cache_bytes_ > 0 && file_expert_store_.IsInitialized();
+      (int4_bank_mode_ || int3_bank_mode_ || int2_bank_mode_) && host_cache_bytes_ > 0 && file_expert_store_.IsInitialized();
   size_t pinned_avail = effective_pinned_limit;
   if (streaming && session_controller_ && session_controller_->PinnedBudget()) {
     const auto stats = session_controller_->PinnedBudget()->GetStats();
@@ -7594,6 +7601,10 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
     }
   }
 
+  if (streaming && resident_log_) {
+    std::fprintf(stderr, "QMoEOffload staging layer=%lld weight_banks=%d pinned_bytes=%zu\n",
+                 static_cast<long long>(layer_index_), stage_weight_banks, host_bytes);
+  }
   auto scratch = GetScratchBuffer<uint8_t>(gpu_bytes, GetComputeStream(context));
   auto completed = std::make_shared<bool>(false);
   IAllocatorUniquePtr<uint8_t> pinned;
@@ -7774,7 +7785,7 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
       }
       return Status::OK();
     }
-    if (xpose_scales) {
+    if (int4_bank_mode_) {
       if (use_int4_runner && num_r >= 64 && num_r >= num_exp * 4 && num_r <= wave_route_slots) {
         const auto int4_quant = is_bf16_
                                     ? ck::QuantParams::GroupWise(32, reinterpret_cast<const __nv_bfloat16*>(fc1_s),
@@ -8155,7 +8166,7 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
                                   "QMoEOffload FileExpertStore AcquireReady failed during GPU streaming.");
                 lease_guard.SetDeviceReadBarrier(&SynchronizeStreamBarrier, shared.copy_stream);
                 lease_guard.MarkDeviceReadsQueued();
-                if (int4_bank_mode_) {
+                if (xpose_scales) {
                   CopyOrTransposeScaleBankToHost(
                       2, lease.data + sources[2],
                       wave_s1_pinned + static_cast<size_t>(SafeInt<size_t>(r) * resident_bank_bytes_[2]));
