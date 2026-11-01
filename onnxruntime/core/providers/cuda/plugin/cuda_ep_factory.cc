@@ -7,6 +7,7 @@
 #include "cuda_ep_account_binding.h"
 #include "cuda_plugin_kernels.h"
 #include "contrib_ops/cuda/quantization/matmul_nbits_tactic_cache.h"
+#include "contrib_ops/cuda/moe/qmoe_background_services.h"
 #include "core/common/string_utils.h"
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/session/onnxruntime_c_api.h"
@@ -64,6 +65,10 @@ CudaEpFactory::~CudaEpFactory() {
   // Save any tactic caches of sessions still alive when the factory is released, before worker
   // threads are stopped or the plugin DLL is unloaded.
   onnxruntime::contrib::cuda::FlushMatMulNBitsTacticCaches();
+
+  // Join the QMoE doorbell and CPU pool threads here, where the loader lock is not held, instead of leaving them to
+  // static destructors that run inside FreeLibrary. No-op while a QMoE backend of this library is still alive.
+  onnxruntime::contrib::cuda::ShutdownQMoEBackgroundServices();
 
   for (auto& [key, entry] : device_cache_) {
     static_cast<void>(key);
@@ -1298,7 +1303,8 @@ void CudaEpFactory::AbandonDeviceArena(int device_id) noexcept {
   }
 }
 
-void CudaEpFactory::ShrinkEligibleDeviceArenas(int device_id, const SessionBudgetAccount* owner) noexcept {
+void CudaEpFactory::ShrinkEligibleDeviceArenas(int device_id, const SessionBudgetAccount* owner,
+                                               const void* qmoe_session_scope) noexcept {
   ORT_TRY {
     DeviceCacheEntry* entry = FindDeviceCacheEntryByOrdinal(device_id);
     if (!entry || owner == nullptr) return;
@@ -1317,7 +1323,7 @@ void CudaEpFactory::ShrinkEligibleDeviceArenas(int device_id, const SessionBudge
       }
     }
     if (shrunk) {
-      ::onnxruntime::cuda::NotifyQMoEDeviceArenasShrunk(device_id);
+      ::onnxruntime::cuda::NotifyQMoEDeviceArenasShrunk(device_id, qmoe_session_scope);
     }
   }
   ORT_CATCH(...) {

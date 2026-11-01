@@ -7,6 +7,7 @@
 // crossing the C ABI with core-internal types.
 #pragma once
 
+#include <algorithm>
 #include <atomic>
 #include <condition_variable>
 #include <cstddef>
@@ -69,10 +70,13 @@
 #include "core/framework/moe_offload_plan.h"
 #include "core/providers/cuda/bounded_pinned_pool.h"
 #include "core/providers/cuda/cuda_device_memory_budget.h"
+#include "core/providers/cuda/qmoe_run_controls.h"
 
 namespace onnxruntime::cuda {
 
-using QMoEDeviceArenasShrunkHook = void (*)(int device_id) noexcept;
+// `session_scope` identifies the session whose arenas were shrunk (the address of its QMoESessionController), or is
+// null when the session has no offload nodes.
+using QMoEDeviceArenasShrunkHook = void (*)(int device_id, const void* session_scope) noexcept;
 
 inline std::atomic<QMoEDeviceArenasShrunkHook>& GetQMoEDeviceArenasShrunkHook() noexcept {
   static std::atomic<QMoEDeviceArenasShrunkHook> hook{nullptr};
@@ -83,9 +87,9 @@ inline void SetQMoEDeviceArenasShrunkHook(QMoEDeviceArenasShrunkHook fn) noexcep
   GetQMoEDeviceArenasShrunkHook().store(fn, std::memory_order_release);
 }
 
-inline void NotifyQMoEDeviceArenasShrunk(int device_id) noexcept {
+inline void NotifyQMoEDeviceArenasShrunk(int device_id, const void* session_scope) noexcept {
   if (auto fn = GetQMoEDeviceArenasShrunkHook().load(std::memory_order_acquire)) {
-    fn(device_id);
+    fn(device_id, session_scope);
   }
 }
 
@@ -436,24 +440,24 @@ class QMoESessionController {
       hooks = graph_replay_hooks_;
     }
     common::Status first_err = common::Status::OK();
+    if (stream != nullptr) {
+      cudaError_t err = cudaStreamSynchronize(stream);
+      if (err != cudaSuccess) {
+        first_err = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QMoEOffload graph replay stream sync failed: ", cudaGetErrorString(err));
+      }
+    }
     for (auto& h : hooks) {
       if (h.after_replay) {
         common::Status st = h.after_replay(stream, sync_stream);
         if (!st.IsOK() && first_err.IsOK()) first_err = st;
       }
     }
-    if (sync_stream && stream != nullptr) {
-      cudaError_t err = cudaStreamSynchronize(stream);
-      if (err != cudaSuccess && first_err.IsOK()) {
-        first_err = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QMoEOffload graph replay stream sync failed: ", cudaGetErrorString(err));
-      }
-    }
     return first_err;
   }
 
-  bool HasOffloadNodes() const {
-    std::lock_guard<std::mutex> lock(mutex_);
-    return registered_nodes_ > 0;
+  // Called on every Run by the EP hooks, so it must stay cheap for sessions without offload nodes.
+  bool HasOffloadNodes() const noexcept {
+    return registered_nodes_.load(std::memory_order_acquire) > 0;
   }
 
   bool IsShuttingDown() const noexcept {
@@ -478,8 +482,28 @@ class QMoESessionController {
     return common::Status::OK();
   }
 
+  // Applies the QMoE controls carried by the Run()'s config entries (see qmoe_run_controls.h). Call it right after a
+  // successful OnRunStart(); lookup(key, value) reports whether the Run supplied `key`. A malformed entry fails the
+  // Run, and the caller ends the controller run as it does for any other OnRunStart failure.
+  template <typename LookupFn>
+  common::Status ApplyRunControls(LookupFn&& lookup) {
+    std::string error;
+    if (!run_controls_.Apply(std::forward<LookupFn>(lookup), error)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, error);
+    }
+    return common::Status::OK();
+  }
+
+  QMoERunControls& RunControls() noexcept { return run_controls_; }
+
+  // A record stands for one logical execution of a node. A run that captures a CUDA graph registers it while
+  // capturing and again when the captured graph is replayed right away, with no OnRunStart in between. Keeping both
+  // entries would drain, and commit the observation of, that one execution twice.
   void RegisterInvocation(std::shared_ptr<QMoEInvocationRecord> inv) {
     std::lock_guard<std::mutex> lock(mutex_);
+    if (std::find(active_invocations_.begin(), active_invocations_.end(), inv) != active_invocations_.end()) {
+      return;
+    }
     inv->run_id = current_run_id_;
     inv->invocation_id = ++next_invocation_id_;
     active_invocations_.push_back(std::move(inv));
@@ -499,8 +523,11 @@ class QMoESessionController {
     }
 
     // Hold run_in_flight_ until all device/CPU completion draining and observation commits finish (F19).
-    auto release_in_flight = [this](bool* active) noexcept {
+    // The run's controls end with it, on every exit path; a hand-off request only counts for a completed run.
+    bool run_completed = false;
+    auto release_in_flight = [this, &run_completed](bool* active) noexcept {
       if (*active) {
+        run_controls_.EndRun(run_completed);
         std::lock_guard<std::mutex> lock(mutex_);
         run_in_flight_ = false;
       }
@@ -538,12 +565,6 @@ class QMoESessionController {
           first_error = drain_st;
         }
       }
-      std::lock_guard<std::mutex> inv_lock(inv->mutex);
-      if (inv->failed && first_error.IsOK()) {
-        first_error = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                      "QMoEOffload invocation failed on node '", inv->node_name,
-                                      "' (layer ", inv->layer_index, "): ", inv->error_message);
-      }
     }
     if (sync_last_main) {
       cudaError_t err = cudaStreamSynchronize(last_main_stream);
@@ -552,16 +573,41 @@ class QMoESessionController {
                                       "QMoEOffload compute stream sync failed: ", cudaGetErrorString(err));
       }
     }
+    for (auto& inv : invocations) {
+      if (!inv) continue;
+      if (inv->has_main_stream && inv->main_stream != last_main_stream) {
+        cudaError_t err = cudaStreamSynchronize(inv->main_stream);
+        if (err != cudaSuccess && first_error.IsOK()) {
+          first_error = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                        "QMoEOffload compute stream sync failed: ", cudaGetErrorString(err));
+        }
+      }
+      std::lock_guard<std::mutex> inv_lock(inv->mutex);
+      if (inv->failed && first_error.IsOK()) {
+        first_error = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                      "QMoEOffload invocation failed on node '", inv->node_name,
+                                      "' (layer ", inv->layer_index, "): ", inv->error_message);
+      }
+    }
 
     // Whole-run observation atomicity (v3 Section 5.1 & 7.1):
     // Commit staged observations only when the overall run and all invocations succeeded.
-    if (run_succeeded && first_error.IsOK()) {
-      for (auto& inv : invocations) {
-        if (inv && inv->commit_observation) {
-          inv->commit_observation();
-        }
+    // A staged observation is taken out of its record either way, so it is applied at most once and a discarded
+    // one cannot leak into a later run that reuses the record.
+    const bool commit_observations = run_succeeded && first_error.IsOK();
+    for (auto& inv : invocations) {
+      if (!inv) continue;
+      std::function<void()> commit;
+      {
+        std::lock_guard<std::mutex> inv_lock(inv->mutex);
+        commit = std::move(inv->commit_observation);
+        inv->commit_observation = nullptr;
+      }
+      if (commit_observations && commit) {
+        commit();
       }
     }
+    run_completed = commit_observations;
     return first_error;
   }
 
@@ -1569,8 +1615,10 @@ class QMoESessionController {
   int device_id_ = 0;
   std::atomic<bool> shutting_down_{false};
   std::atomic<uint64_t> graph_generation_{0};
+  QMoERunControls run_controls_;
   mutable std::mutex mutex_;
-  size_t registered_nodes_ = 0;
+  // Written under mutex_; read without it by HasOffloadNodes().
+  std::atomic<size_t> registered_nodes_{0};
   bool run_in_flight_ = false;
   uint64_t current_run_id_ = 0;
   uint64_t next_invocation_id_ = 0;
