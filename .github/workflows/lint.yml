@@ -34,6 +34,9 @@ jobs:
 
   optional-lint:
     name: Optional Lint
+    # Outside a PR there is no diff to filter, so reviewdog reports every pre-existing finding in the repo,
+    # exceeds GitHub's annotation limit, and fails the job.
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -43,10 +46,18 @@ jobs:
         uses: reviewdog/action-misspell@ba7ac4030fa6812f8c8b2d4e516af8bc99553c32 # v1.28.0
         with:
           github_token: ${{ secrets.github_token }}
-          locale: "US"
+          # No locale: accept both US and UK spellings (e.g. "behaviour", "cancelled", the CANCELLED status code).
+          # Case-insensitive false positives: NTO = NodesToOptimize alias, Spectre = the CPU vulnerability,
+          # interm = s390x MLAS variable.
+          ignore: nto,spectre,interm
+          exclude: |
+            ./.git/*
+            */package-lock.json
+            ./csharp/ApiDocs/_exported_templates/*
           reporter: github-pr-check
           level: info
-          filter_mode: diff_context
+          filter_mode: added
+          fail_level: any
       - name: shellcheck # Static check shell scripts
         uses: reviewdog/action-shellcheck@d0b8d5fd7fad6afdb6e1b6ce1778892be4d1f427 # v1.34.1
         with:
