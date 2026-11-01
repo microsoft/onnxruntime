@@ -3312,21 +3312,23 @@ cudaError_t LaunchInt3Typed(const Int3MoeParams& params, cudaStream_t stream) {
 
   const size_t fc1_count = total_routes * params.intermediate;
   const size_t fc2_count = static_cast<size_t>(params.rows) * params.hidden;
+  const unsigned int fc1_blocks = static_cast<unsigned int>((fc1_count + 3) / 4);
+  const unsigned int fc2_blocks = static_cast<unsigned int>((fc2_count + 3) / 4);
   if (params.fc1.bits == 2) {
-    FusedFc1ScalarKernel<T, 2><<<(fc1_count + 3) / 4, 128, 0, stream>>>(params);
+    FusedFc1ScalarKernel<T, 2><<<fc1_blocks, 128, 0, stream>>>(params);
   } else if (params.fc1.bits == 3) {
-    FusedFc1ScalarKernel<T, 3><<<(fc1_count + 3) / 4, 128, 0, stream>>>(params);
+    FusedFc1ScalarKernel<T, 3><<<fc1_blocks, 128, 0, stream>>>(params);
   } else {
-    FusedFc1ScalarKernel<T, 4><<<(fc1_count + 3) / 4, 128, 0, stream>>>(params);
+    FusedFc1ScalarKernel<T, 4><<<fc1_blocks, 128, 0, stream>>>(params);
   }
   auto status = cudaGetLastError();
   if (status != cudaSuccess) return status;
   if (params.fc2.bits == 2) {
-    Fc2AndFinalizeScalarKernel<T, 2><<<(fc2_count + 3) / 4, 128, 0, stream>>>(params);
+    Fc2AndFinalizeScalarKernel<T, 2><<<fc2_blocks, 128, 0, stream>>>(params);
   } else if (params.fc2.bits == 3) {
-    Fc2AndFinalizeScalarKernel<T, 3><<<(fc2_count + 3) / 4, 128, 0, stream>>>(params);
+    Fc2AndFinalizeScalarKernel<T, 3><<<fc2_blocks, 128, 0, stream>>>(params);
   } else {
-    Fc2AndFinalizeScalarKernel<T, 4><<<(fc2_count + 3) / 4, 128, 0, stream>>>(params);
+    Fc2AndFinalizeScalarKernel<T, 4><<<fc2_blocks, 128, 0, stream>>>(params);
   }
   return cudaGetLastError();
 }
