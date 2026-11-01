@@ -5337,6 +5337,231 @@ class TestGQAWindowedKvCacheCpu(TestGQAWindowedKvCache):
                 step_lengths=[self.window_size + self.slack, 1, 1],
             )
 
+    def test_right_padded_chunked_prefill(self):
+        steps = [(1, 32), 32, (1, 32), (7, 32), 1, 1]
+        for disable_flash in ("0", "1"):
+            for capacity in (self.window_size, self.window_size + 8):
+                with scoped_env_var("ORT_GQA_DISABLE_FLASH_ATTENTION", disable_flash):
+                    self._check_parity(
+                        self._base_config(batch_size=1, rotary=True),
+                        step_lengths=steps,
+                        buffer_sequence_length=capacity,
+                    )
+
+    def test_right_padded_chunked_prefill_past_capacity(self):
+        # 137 valid tokens fill the cache (capacity 128 or 136), so the later padded steps start from a
+        # nearly full cache: appending all S padded rows in place would run past the capacity.
+        steps = [(1, 32), 32, (1, 32), (7, 32), 32, 32, 32, (1, 32), (3, 64), 1, (40, 64), (1, 64), 64, 1, 1]
+        for disable_flash in ("0", "1"):
+            for capacity in (self.window_size, self.window_size + 8):
+                with scoped_env_var("ORT_GQA_DISABLE_FLASH_ATTENTION", disable_flash):
+                    self._check_parity(
+                        self._base_config(batch_size=1, rotary=True),
+                        step_lengths=steps,
+                        buffer_sequence_length=capacity,
+                    )
+
+    def test_right_padded_chunked_prefill_int8(self):
+        steps = [64, (1, 64), (5, 64), 1, 1]
+        self._check_right_padded_int8(steps)
+
+    def test_right_padded_chunked_prefill_int8_past_capacity(self):
+        steps = [64, (1, 64), (5, 64), 64, (1, 64), (40, 64), (1, 64), 64, 1, 1]
+        self._check_right_padded_int8(steps)
+
+    def test_unpadded_chunked_prefill_capacity_bound(self):
+        # Without query_seqlens, total_sequence_length is not a hint about the past length even when it is
+        # the cache capacity: at the second step capacity - query_length = 384 is not the true past (300).
+        for disable_flash in ("0", "1"):
+            with scoped_env_var("ORT_GQA_DISABLE_FLASH_ATTENTION", disable_flash):
+                self._check_parity(
+                    self._base_config(batch_size=1, rotary=True),
+                    [300, 128, 1],
+                    full_cache_length_bound=512,
+                )
+
+    def test_right_padded_chunked_prefill_capacity_bound(self):
+        # Prompt of 300 in chunks of 128 on a 512-row cache. total_sequence_length is the cache capacity at
+        # every step, which is only an upper bound of seqlens_k + 1 when query_seqlens is given. The last
+        # chunk has 44 valid rows, then decode.
+        for disable_flash in ("0", "1"):
+            for capacity in (self.window_size, self.window_size + 8):
+                with scoped_env_var("ORT_GQA_DISABLE_FLASH_ATTENTION", disable_flash):
+                    self._check_parity(
+                        self._base_config(batch_size=1, rotary=True),
+                        [128, 128, (44, 128), 1],
+                        buffer_sequence_length=capacity,
+                        full_cache_length_bound=512,
+                    )
+
+    def test_right_padded_chunked_prefill_features(self):
+        # Eviction starts at the 5th chunk, so the padded steps also cross the windowed layout changes.
+        steps = [(20, 32), 32, 32, 32, 32, (7, 32), 1, 1]
+        # Without query_seqlens a first prompt reads only position_ids[0] and uses consecutive positions,
+        # whereas a chunk that has query_seqlens honours every entry, also for the first chunk. A single
+        # token comes first so that the unpadded reference reads the same positions.
+        position_ids_steps = [1, (19, 32), *steps[1:]]
+        features = (
+            ("head_sink", {"has_head_sink": True}, steps),
+            ("position_ids", {"has_position_ids": True}, position_ids_steps),
+            ("softcap", {"softcap": 20.0}, steps),
+            # The bias covers the padded total length, and its rows are those of the valid and padded queries.
+            ("attention_bias", {"has_attention_bias": True, "attention_bias_per_head": True}, steps),
+        )
+        for disable_flash in ("0", "1"):
+            for capacity in (self.window_size, self.window_size + 8):
+                for feature, overrides, feature_steps in features:
+                    with (
+                        self.subTest(feature=feature, disable_flash=disable_flash, capacity=capacity),
+                        scoped_env_var("ORT_GQA_DISABLE_FLASH_ATTENTION", disable_flash),
+                    ):
+                        self._check_parity(
+                            self._base_config(batch_size=1, rotary=True, **overrides),
+                            step_lengths=feature_steps,
+                            buffer_sequence_length=capacity,
+                        )
+
+    def test_query_seqlens_ignored_for_single_token_decode(self):
+        # A decode step (S == 1) with ragged seqlens_k ignores query_seqlens, so a model can feed the input
+        # at every step.
+        parity_check_gqa_past(
+            config=self._base_config(
+                batch_size=2,
+                past_kv_sequence_length=300,
+                buffer_sequence_length=512,
+                rope_cache_length=512,
+                has_query_seqlens=True,
+                rotary=True,
+            ),
+            ep="CPUExecutionProvider",
+            device="cpu",
+            torch_type=torch.float32,
+            ort_type=TensorProto.FLOAT,
+            causal=True,
+            rtol=1e-3,
+            atol=1e-3,
+        )
+
+    def _check_right_padded_int8(self, steps):
+        for disable_flash in ("0", "1"):
+            for capacity in (self.window_size, self.window_size + 8):
+                with scoped_env_var("ORT_GQA_DISABLE_FLASH_ATTENTION", disable_flash):
+                    self._check_parity(
+                        self._base_config(
+                            batch_size=1,
+                            rotary=True,
+                            kv_cache_type="int8",
+                            k_quant_type="PER_CHANNEL",
+                            v_quant_type="PER_CHANNEL",
+                            kv_cache_bit_width=8,
+                        ),
+                        step_lengths=steps,
+                        buffer_sequence_length=capacity,
+                        rtol=5e-2,
+                        atol=1e-1,
+                    )
+
+
+class TestQuerySeqlensQkOutputCpu(unittest.TestCase):
+    """qk_output holds zeros, not scratch memory, in the columns past a batch entry's own total length."""
+
+    num_heads = 2
+    kv_num_heads = 1
+    head_size = 64
+    padded = 8
+    capacity = 16
+
+    def make_session(self, dtype, quantized, qk_output):
+        ort_type = helper.np_dtype_to_tensor_dtype(numpy.dtype(dtype))
+        cache_type = TensorProto.INT8 if quantized else ort_type
+        q_hidden = self.num_heads * self.head_size
+        kv_hidden = self.kv_num_heads * self.head_size
+        cache_shape = [1, self.kv_num_heads, self.capacity, self.head_size]
+        inputs = [
+            helper.make_tensor_value_info("query", ort_type, [1, self.padded, q_hidden]),
+            helper.make_tensor_value_info("key", ort_type, [1, self.padded, kv_hidden]),
+            helper.make_tensor_value_info("value", ort_type, [1, self.padded, kv_hidden]),
+            helper.make_tensor_value_info("past_key", cache_type, cache_shape),
+            helper.make_tensor_value_info("past_value", cache_type, cache_shape),
+            helper.make_tensor_value_info("seqlens_k", TensorProto.INT32, [1]),
+            helper.make_tensor_value_info("total_sequence_length", TensorProto.INT32, [1]),
+            helper.make_tensor_value_info("query_seqlens", TensorProto.INT32, [1]),
+        ]
+        names = ["query", "key", "value", "past_key", "past_value", "seqlens_k", "total_sequence_length"]
+        names += ["", "", "", "", ""]  # cos_cache, sin_cache, position_ids, attention_bias, head_sink
+        attributes = {"num_heads": self.num_heads, "kv_num_heads": self.kv_num_heads, "causal": 1}
+        if quantized:
+            inputs += [helper.make_tensor_value_info(name, TensorProto.FLOAT, [1]) for name in ("k_scale", "v_scale")]
+            names += ["k_scale", "v_scale"]
+            attributes.update(k_quant_type="PER_TENSOR", v_quant_type="PER_TENSOR", kv_cache_bit_width=8)
+        else:
+            names += ["", ""]
+        names += ["", "", "query_seqlens"]  # q_norm_weight, k_norm_weight
+
+        outputs = [
+            helper.make_tensor_value_info("output", ort_type, [1, self.padded, q_hidden]),
+            helper.make_tensor_value_info("present_key", cache_type, cache_shape),
+            helper.make_tensor_value_info("present_value", cache_type, cache_shape),
+            helper.make_tensor_value_info("output_qk", ort_type, [1, self.num_heads, self.padded, self.capacity]),
+        ]
+        node = helper.make_node(
+            "GroupQueryAttention",
+            names,
+            [out.name for out in outputs],
+            domain="com.microsoft",
+            qk_output=qk_output,
+            **attributes,
+        )
+        model = helper.make_model(
+            helper.make_graph([node], "query-seqlens-qk-output", inputs, outputs),
+            opset_imports=[helper.make_opsetid("com.microsoft", 1)],
+            ir_version=10,
+        )
+        return InferenceSession(model.SerializeToString(), SessionOptions(), providers=["CPUExecutionProvider"])
+
+    @parameterized.expand(
+        [
+            (dtype, quantized, qk_output)
+            for dtype in (numpy.float32, numpy.float16)
+            for quantized in (False, True)
+            for qk_output in (1, 2)
+        ]
+    )
+    def test_unattended_columns_are_zero(self, dtype, quantized, qk_output):
+        session = self.make_session(dtype, quantized, qk_output)
+        rng = numpy.random.default_rng(0)
+        cache_shape = (1, self.kv_num_heads, self.capacity, self.head_size)
+        feeds = {
+            "query": rng.standard_normal((1, self.padded, self.num_heads * self.head_size)).astype(dtype),
+            "key": rng.standard_normal((1, self.padded, self.kv_num_heads * self.head_size)).astype(dtype),
+            "value": rng.standard_normal((1, self.padded, self.kv_num_heads * self.head_size)).astype(dtype),
+            "total_sequence_length": numpy.asarray([self.capacity], dtype=numpy.int32),
+        }
+        if quantized:
+            feeds["past_key"] = rng.integers(-8, 8, cache_shape).astype(numpy.int8)
+            feeds["past_value"] = rng.integers(-8, 8, cache_shape).astype(numpy.int8)
+            feeds["k_scale"] = numpy.asarray([0.05], dtype=numpy.float32)
+            feeds["v_scale"] = numpy.asarray([0.05], dtype=numpy.float32)
+        else:
+            feeds["past_key"] = rng.standard_normal(cache_shape).astype(dtype)
+            feeds["past_value"] = rng.standard_normal(cache_shape).astype(dtype)
+
+        def run(total, valid):
+            feeds["seqlens_k"] = numpy.asarray([total - 1], dtype=numpy.int32)
+            feeds["query_seqlens"] = numpy.asarray([valid], dtype=numpy.int32)
+            return session.run(None, feeds)[3]
+
+        # (T, Q): a lone valid row, a padded chunk that has a past, and a full chunk whose total stays below X.
+        for total, valid in ((1, 1), (5, 3), (9, 8)):
+            # A call with T == X scores every column, so the scratch the arena hands to the next call is dirty.
+            run(self.capacity, self.padded)
+            qk = run(total, valid).astype(numpy.float32)
+            with self.subTest(total=total, valid=valid):
+                numpy.testing.assert_array_equal(qk[..., total:], 0)
+                self.assertTrue(numpy.isfinite(qk[..., :total]).all())
+                if qk_output == 2:
+                    numpy.testing.assert_allclose(qk[..., :total].sum(-1), 1.0, rtol=2e-2)
+
 
 if __name__ == "__main__":
     unittest.main()

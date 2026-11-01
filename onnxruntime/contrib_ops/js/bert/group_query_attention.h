@@ -24,7 +24,7 @@ class GroupQueryAttention : public JsKernel, GQAAttentionBase {
     ORT_ENFORCE(info.GetAttrOrDefault<int64_t>("sliding_window_cache", 0) == 0,
                 "GroupQueryAttention (JS): sliding_window_cache=1 is not implemented.");
 
-    // query_seqlens (input 16, right-padded query chunks) is implemented only by the CUDA kernel.
+    // query_seqlens (input 16, right-padded query chunks) is implemented only by the CPU and CUDA kernels.
     ORT_ENFORCE(!(info.GetInputCount() > 16 && info.node().InputDefs()[16]->Exists()),
                 "GroupQueryAttention (JS): query_seqlens (input 16) is not implemented.");
     JSEP_INIT_KERNEL_ATTRIBUTE(GroupQueryAttention, ({
