@@ -283,7 +283,7 @@ static void RunGQACausalMaskTest(
     OpTester::ExpectResult expect = OpTester::ExpectResult::kExpectSuccess,
     const std::string& expected_message = "",
     std::optional<int64_t> local_window_size = std::nullopt,
-    std::optional<int64_t> right_padded_query = std::nullopt) {
+    std::optional<int32_t> query_seqlens = std::nullopt) {
   constexpr int batch_size = 1;
   constexpr int sequence_length = 2;
   constexpr int num_heads = 1;
@@ -314,9 +314,6 @@ static void RunGQACausalMaskTest(
   if (local_window_size.has_value()) {
     tester.AddAttribute<int64_t>("local_window_size", *local_window_size);
   }
-  if (right_padded_query.has_value()) {
-    tester.AddAttribute<int64_t>("right_padded_query", *right_padded_query);
-  }
 
   std::vector<float> query(sequence_length * hidden_size, 0.0f);
   std::vector<float> key(sequence_length * hidden_size, 0.0f);
@@ -337,6 +334,13 @@ static void RunGQACausalMaskTest(
   tester.AddOptionalInputEdge<int64_t>();  // position_ids
   tester.AddOptionalInputEdge<T>();        // attention_bias
   tester.AddOptionalInputEdge<T>();        // head_sink
+  if (query_seqlens.has_value()) {
+    tester.AddOptionalInputEdge<T>();  // k_scale
+    tester.AddOptionalInputEdge<T>();  // v_scale
+    tester.AddOptionalInputEdge<T>();  // q_norm_weight
+    tester.AddOptionalInputEdge<T>();  // k_norm_weight
+    tester.AddInput<int32_t>("query_seqlens", {batch_size}, {*query_seqlens});
+  }
 
   tester.AddOutput<T>("output", {batch_size, sequence_length, hidden_size}, convert(expected_output));
   tester.AddOutput<T>("present_key", {batch_size, kv_num_heads, sequence_length, head_size},
@@ -793,27 +797,229 @@ TEST(GroupQueryAttentionTest, InvalidCausalValue_CUDA) {
       OpTester::ExpectResult::kExpectFailure, "causal must be 0 or 1.");
 }
 
-TEST(GroupQueryAttentionTest, RightPaddedQueryRejected_CPU) {
+TEST(GroupQueryAttentionTest, QuerySeqlensRejected_CPU) {
   RunGQACausalMaskTest<float>(
       GqaTargetEp::kCpu, 1, std::vector<float>(16, 0.0f),
       OpTester::ExpectResult::kExpectFailure,
-      "right_padded_query is only supported by the CUDA execution provider.", std::nullopt, 1);
+      "GroupQueryAttention (CPU): query_seqlens input is not supported.", std::nullopt, 2);
 }
 
-TEST(GroupQueryAttentionTest, InvalidRightPaddedQueryValue_CUDA) {
-  for (int64_t value : {-1, 2}) {
-    RunGQACausalMaskTest<MLFloat16>(
-        GqaTargetEp::kCuda, 1, std::vector<float>(16, 0.0f),
-        OpTester::ExpectResult::kExpectFailure,
-        "right_padded_query must be 0 or 1.", std::nullopt, value);
-  }
-}
-
-TEST(GroupQueryAttentionTest, RightPaddedQueryBidirectionalRejected_CUDA) {
+TEST(GroupQueryAttentionTest, QuerySeqlensBidirectionalRejected_CUDA) {
   RunGQACausalMaskTest<MLFloat16>(
       GqaTargetEp::kCuda, 0, std::vector<float>(16, 0.0f),
       OpTester::ExpectResult::kExpectFailure,
-      "right_padded_query=1 requires causal=1.", std::nullopt, 1);
+      "GroupQueryAttention (CUDA): query_seqlens requires causal=1.", std::nullopt, 2);
+}
+
+// A query chunk without a KV cache has no past tokens, so right-padded chunks are not expressible.
+TEST(GroupQueryAttentionTest, QuerySeqlensWithoutPastRejected_CUDA) {
+  RunGQACausalMaskTest<MLFloat16>(
+      GqaTargetEp::kCuda, 1, std::vector<float>(16, 0.0f),
+      OpTester::ExpectResult::kExpectFailure,
+      "query_seqlens requires past_key and past_value to be present.", std::nullopt, 2);
+}
+
+struct GqaQuerySeqlensCase {
+  int batch_size = 1;
+  int sequence_length = 8;             // S: length of the (padded) query chunk
+  int cache_capacity = 32;             // C: length of the past/present KV buffers
+  int total_sequence_length = 32;      // X: input 6, only an upper bound when query_seqlens is given
+  std::vector<int32_t> seqlens_k;      // T - 1 per batch entry
+  std::vector<int32_t> query_seqlens;  // Q per batch entry
+  std::optional<std::vector<int64_t>> query_seqlens_shape;
+  std::optional<int> kv_sequence_length;  // length of the new key/value when it differs from S
+};
+
+// Appends one right-padded query chunk to a past/present KV cache through query_seqlens (input 16) and
+// compares the result with closed-form values. The query is zero, so attention is uniform over the causal
+// window. Cache row k holds k + 1 below the past length P and -100 above it, the valid new rows hold
+// P + r + 1, and the padding rows hold 1000. A valid query row s therefore outputs (P + s + 2) / 2 only if
+// the chunk was appended at P, masked against P + s, and never read a stale or a padding row.
+template <typename T>
+static void RunGQAQuerySeqlensTest(GqaTargetEp target_ep,
+                                   const GqaQuerySeqlensCase& test_case,
+                                   OpTester::ExpectResult expect = OpTester::ExpectResult::kExpectSuccess,
+                                   const std::string& expected_message = "") {
+  constexpr int num_heads = 2;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 8;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+  const int batch_size = test_case.batch_size;
+  const int sequence_length = test_case.sequence_length;
+  const int kv_sequence_length = test_case.kv_sequence_length.value_or(sequence_length);
+  const int capacity = test_case.cache_capacity;
+
+  auto execution_provider = MakeExecutionProviderForGqaTest(target_ep);
+  if (!execution_provider) {
+    GTEST_SKIP() << "Requested execution provider is not available";
+  }
+
+  std::vector<int> past_length(batch_size, 0);
+  std::vector<int> valid_length(batch_size, 0);
+  if (expect == OpTester::ExpectResult::kExpectSuccess) {
+    for (int b = 0; b < batch_size; ++b) {
+      valid_length[b] = test_case.query_seqlens[b];
+      past_length[b] = test_case.seqlens_k[b] + 1 - valid_length[b];
+    }
+  }
+
+  std::vector<T> query(static_cast<size_t>(batch_size) * sequence_length * hidden_size, T(0.0f));
+  std::vector<T> key(static_cast<size_t>(batch_size) * kv_sequence_length * kv_hidden_size);
+  std::vector<T> value(key.size());
+  std::vector<T> past_key(static_cast<size_t>(batch_size) * capacity * head_size);
+  std::vector<T> past_value(past_key.size());
+  for (int b = 0; b < batch_size; ++b) {
+    for (int r = 0; r < kv_sequence_length; ++r) {
+      const T row_value(r < valid_length[b] ? static_cast<float>(past_length[b] + r + 1) : 1000.0f);
+      const auto offset = (static_cast<size_t>(b) * kv_sequence_length + r) * kv_hidden_size;
+      std::fill_n(key.begin() + offset, kv_hidden_size, row_value);
+      std::fill_n(value.begin() + offset, kv_hidden_size, row_value);
+    }
+    for (int k = 0; k < capacity; ++k) {
+      const T row_value(k < past_length[b] ? static_cast<float>(k + 1) : -100.0f);
+      const auto offset = (static_cast<size_t>(b) * capacity + k) * head_size;
+      std::fill_n(past_key.begin() + offset, head_size, row_value);
+      std::fill_n(past_value.begin() + offset, head_size, row_value);
+    }
+  }
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", num_heads);
+  tester.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+  tester.AddInput<T>("query", {batch_size, sequence_length, hidden_size}, query);
+  tester.AddInput<T>("key", {batch_size, kv_sequence_length, kv_hidden_size}, key);
+  tester.AddInput<T>("value", {batch_size, kv_sequence_length, kv_hidden_size}, value);
+  tester.AddInput<T>("past_key", {batch_size, kv_num_heads, capacity, head_size}, past_key);
+  tester.AddInput<T>("past_value", {batch_size, kv_num_heads, capacity, head_size}, past_value);
+  tester.AddInput<int32_t>("seqlens_k", {batch_size}, test_case.seqlens_k);
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {test_case.total_sequence_length});
+  tester.AddOptionalInputEdge<T>();        // cos_cache
+  tester.AddOptionalInputEdge<T>();        // sin_cache
+  tester.AddOptionalInputEdge<int64_t>();  // position_ids
+  tester.AddOptionalInputEdge<T>();        // attention_bias
+  tester.AddOptionalInputEdge<T>();        // head_sink
+  tester.AddOptionalInputEdge<float>();    // k_scale
+  tester.AddOptionalInputEdge<float>();    // v_scale
+  tester.AddOptionalInputEdge<T>();        // q_norm_weight
+  tester.AddOptionalInputEdge<T>();        // k_norm_weight
+  tester.AddInput<int32_t>("query_seqlens", test_case.query_seqlens_shape.value_or(std::vector<int64_t>{batch_size}),
+                           test_case.query_seqlens);
+
+  tester.AddOutput<T>("output", {batch_size, sequence_length, hidden_size},
+                      std::vector<T>(static_cast<size_t>(batch_size) * sequence_length * hidden_size, T(0.0f)));
+  tester.AddOutput<T>("present_key", {batch_size, kv_num_heads, capacity, head_size},
+                      std::vector<T>(past_key.size(), T(0.0f)));
+  tester.AddOutput<T>("present_value", {batch_size, kv_num_heads, capacity, head_size},
+                      std::vector<T>(past_value.size(), T(0.0f)));
+
+  tester.SetCustomOutputVerifier([=](const std::vector<OrtValue>& fetches, const std::string& /*provider_type*/) {
+    ASSERT_EQ(fetches.size(), size_t{3});
+    const T* output = fetches[0].Get<Tensor>().Data<T>();
+    const T* present_key = fetches[1].Get<Tensor>().Data<T>();
+    const T* present_value = fetches[2].Get<Tensor>().Data<T>();
+    ASSERT_EQ(fetches[1].Get<Tensor>().Shape().Size(), static_cast<int64_t>(batch_size) * capacity * head_size);
+    for (int b = 0; b < batch_size; ++b) {
+      for (int s = 0; s < valid_length[b]; ++s) {
+        const float expected = static_cast<float>(past_length[b] + s + 2) / 2.0f;
+        for (int d = 0; d < hidden_size; ++d) {
+          const float actual = static_cast<float>(output[(static_cast<size_t>(b) * sequence_length + s) * hidden_size + d]);
+          EXPECT_NEAR(actual, expected, 0.1f) << "batch=" << b << " row=" << s << " channel=" << d
+                                              << " past=" << past_length[b] << " valid=" << valid_length[b];
+        }
+      }
+      // Rows [0, P + Q) of the cache are the past followed by the valid new rows; later rows are unspecified.
+      for (int k = 0; k < past_length[b] + valid_length[b]; ++k) {
+        for (int d = 0; d < head_size; ++d) {
+          const auto index = (static_cast<size_t>(b) * capacity + k) * head_size + d;
+          EXPECT_EQ(static_cast<float>(present_key[index]), static_cast<float>(k + 1))
+              << "present_key batch=" << b << " row=" << k;
+          EXPECT_EQ(static_cast<float>(present_value[index]), static_cast<float>(k + 1))
+              << "present_value batch=" << b << " row=" << k;
+        }
+      }
+    }
+  });
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(execution_provider));
+  tester.Run(expect, expected_message, {}, nullptr, &execution_providers);
+}
+
+template <typename T>
+static void RunGQAQuerySeqlensGoldenTest(GqaTargetEp target_ep) {
+  // Chunks of 8 rows on a 32-row cache. (seqlens_k, query_seqlens) -> (past, valid) = (T - Q, Q) with T = seqlens_k + 1.
+  struct Step {
+    int32_t seqlens_k;
+    int32_t query_seqlens;
+  };
+  const std::vector<Step> steps = {
+      {7, 8},   // (0, 8): first chunk, full
+      {15, 8},  // (8, 8): later chunk, full
+      {18, 3},  // (16, 3): last chunk of a prompt, right-padded
+      {4, 5},   // (0, 5): short first chunk, right-padded
+      {23, 1},  // (23, 1): a single valid row in a padded chunk
+  };
+  for (const auto& step : steps) {
+    // total_sequence_length is an upper bound: the tightest value that passes the existing input checks
+    // (at least the chunk length) and the cache capacity must give the same result.
+    for (int32_t total_sequence_length : {std::max(step.seqlens_k + 1, 8), 32}) {
+      SCOPED_TRACE(MakeString("seqlens_k=", step.seqlens_k, " query_seqlens=", step.query_seqlens,
+                              " total_sequence_length=", total_sequence_length));
+      GqaQuerySeqlensCase test_case;
+      test_case.total_sequence_length = total_sequence_length;
+      test_case.seqlens_k = {step.seqlens_k};
+      test_case.query_seqlens = {step.query_seqlens};
+      RunGQAQuerySeqlensTest<T>(target_ep, test_case);
+    }
+  }
+
+  // Single-token decode ignores query_seqlens; each entry's past length comes from seqlens_k alone.
+  GqaQuerySeqlensCase decode;
+  decode.batch_size = 2;
+  decode.sequence_length = 1;
+  decode.seqlens_k = {19, 7};
+  decode.query_seqlens = {1, 1};
+  RunGQAQuerySeqlensTest<T>(target_ep, decode);
+}
+
+TEST(GroupQueryAttentionTest, QuerySeqlensRightPaddedChunk_CUDA) {
+  if (!DefaultCudaExecutionProvider()) {
+    GTEST_SKIP() << "CUDA EP not available";
+  }
+  // Fused kernels (flash, memory-efficient) and the unfused fallback have separate masking code.
+  for (const auto& [disable_flash, disable_memory_efficient] :
+       std::vector<std::pair<const char*, const char*>>{{"0", "0"}, {"1", "0"}, {"1", "1"}}) {
+    SCOPED_TRACE(MakeString("ORT_DISABLE_FLASH_ATTENTION=", disable_flash,
+                            " ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION=", disable_memory_efficient));
+    ScopedEnvironmentVariables scoped_env_vars{{
+        {"ORT_DISABLE_FLASH_ATTENTION", disable_flash},
+        {"ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION", disable_memory_efficient},
+        {"ORT_ENABLE_CUDNN_FLASH_ATTENTION", "0"},
+    }};
+    RunGQAQuerySeqlensGoldenTest<MLFloat16>(GqaTargetEp::kCuda);
+    RunGQAQuerySeqlensGoldenTest<BFloat16>(GqaTargetEp::kCuda);
+  }
+}
+
+TEST(GroupQueryAttentionTest, QuerySeqlensBatchedChunkRejected_CUDA) {
+  GqaQuerySeqlensCase test_case;
+  test_case.batch_size = 2;
+  test_case.seqlens_k = {7, 7};
+  test_case.query_seqlens = {8, 8};
+  RunGQAQuerySeqlensTest<MLFloat16>(
+      GqaTargetEp::kCuda, test_case, OpTester::ExpectResult::kExpectFailure,
+      "batch_size must be 1 when query_seqlens is given and sequence_length > 1.");
+}
+
+TEST(GroupQueryAttentionTest, QuerySeqlensWrongShapeRejected_CUDA) {
+  GqaQuerySeqlensCase test_case;
+  test_case.seqlens_k = {7};
+  test_case.query_seqlens = {8, 8};
+  test_case.query_seqlens_shape = std::vector<int64_t>{2};
+  RunGQAQuerySeqlensTest<MLFloat16>(
+      GqaTargetEp::kCuda, test_case, OpTester::ExpectResult::kExpectFailure,
+      "query_seqlens must be a 1D tensor of shape (batch_size=1)");
 }
 
 #ifdef USE_WEBGPU
@@ -4215,7 +4421,7 @@ static void RunGQACudaCacheAliasingTest(
     bool shared_cache_only = false,
     bool enable_flash_fast_decode = false,
     bool packed_qkv = false,
-    bool right_padded_query = false) {
+    std::optional<int32_t> query_seqlens = std::nullopt) {
   ScopedEnvironmentVariables scoped_env_vars{{
       {"ORT_DISABLE_FLASH_ATTENTION", use_flash ? "0" : "1"},
       {"ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION", "1"},
@@ -4261,6 +4467,12 @@ static void RunGQACudaCacheAliasingTest(
   }
   inputs.push_back(&graph.GetOrCreateNodeArg("seqlens_k", &int32_type));
   inputs.push_back(&graph.GetOrCreateNodeArg("total_sequence_length", &int32_type));
+  if (query_seqlens.has_value()) {
+    for (int index = 7; index < 16; ++index) {
+      inputs.push_back(&graph.GetOrCreateNodeArg("", nullptr));
+    }
+    inputs.push_back(&graph.GetOrCreateNodeArg("query_seqlens", &int32_type));
+  }
   std::vector<NodeArg*> outputs;
   for (const char* name : {"output", "present_key", "present_value"}) {
     outputs.push_back(&graph.GetOrCreateNodeArg(name, &fp16_type));
@@ -4268,9 +4480,6 @@ static void RunGQACudaCacheAliasingTest(
   auto& node = graph.AddNode("gqa", "GroupQueryAttention", "", inputs, outputs, nullptr, kMSDomain);
   node.AddAttribute("num_heads", static_cast<int64_t>(num_heads));
   node.AddAttribute("kv_num_heads", static_cast<int64_t>(kv_num_heads));
-  if (right_padded_query) {
-    node.AddAttribute("right_padded_query", int64_t{1});
-  }
   if (sliding_window_cache) {
     node.AddAttribute("sliding_window_cache", int64_t{1});
     node.AddAttribute("local_window_size", int64_t{cache_capacity});
@@ -4342,6 +4551,10 @@ static void RunGQACudaCacheAliasingTest(
   const int32_t seqlens_k_value = decode_seqlens_k.value_or(total_length - 1);
   auto seqlens_value =
       make_gpu_value(std::vector<int32_t>(batch_size, seqlens_k_value), {batch_size});
+  OrtValue query_seqlens_value;
+  if (query_seqlens.has_value()) {
+    query_seqlens_value = make_gpu_value(std::vector<int32_t>(batch_size, *query_seqlens), {batch_size});
+  }
   std::vector<int32_t> total_length_data{total_length};
   OrtValue total_length_value;
   Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), TensorShape{1}, total_length_data.data(),
@@ -4376,6 +4589,9 @@ static void RunGQACudaCacheAliasingTest(
       ASSERT_STATUS_OK(binding->BindInput("past_value", past_value_value));
       ASSERT_STATUS_OK(binding->BindInput("seqlens_k", seqlens_value));
       ASSERT_STATUS_OK(binding->BindInput("total_sequence_length", total_length_value));
+      if (query_seqlens.has_value()) {
+        ASSERT_STATUS_OK(binding->BindInput("query_seqlens", query_seqlens_value));
+      }
       ASSERT_STATUS_OK(binding->BindOutput("output", output_value));
       ASSERT_STATUS_OK(binding->BindOutput("present_key", present_key_value));
       ASSERT_STATUS_OK(binding->BindOutput("present_value", present_value_value));
@@ -4421,10 +4637,11 @@ static void RunGQACudaCacheAliasingTest(
       ASSERT_EQ(actual.size(), 3u);
       for (int batch = 0; batch < batch_size; ++batch) {
         for (int head = 0; head < kv_num_heads; ++head) {
-          const int valid_q_len = valid_windowed_cache
-                                      ? std::clamp(seqlens_k_value + 1 - (total_length - sequence_length),
-                                                   0, sequence_length)
-                                      : sequence_length;
+          const int valid_q_len = !valid_windowed_cache ? sequence_length
+                                  : query_seqlens.has_value()
+                                      ? *query_seqlens
+                                      : std::clamp(seqlens_k_value + 1 - (total_length - sequence_length),
+                                                   0, sequence_length);
           const int expected_cache_length =
               decode_seqlens_k.has_value() ? cache_capacity : (valid_windowed_cache ? cache_capacity : total_length);
           const int append_offset = decode_seqlens_k.has_value() && !valid_windowed_cache
@@ -4580,17 +4797,22 @@ TEST(GroupQueryAttentionTest, CudaWindowedStagingFlashUsesEffectiveKvLength) {
 
 TEST(GroupQueryAttentionTest, CudaWindowedRightPaddedChunkPrefill) {
   constexpr int sequence_length = 3;
-  // total_length is 257 (past_length = 254, padded chunk = 3). Passing seqlens_k = 254 means
-  // total_valid_tokens = 255 (1 valid query token and 2 right-padding tokens in the chunk).
+  // The cache holds 254 tokens before the chunk. seqlens_k = 254 means 255 tokens afterwards, so the chunk
+  // has query_seqlens = 1 valid row and 2 right-padding rows. total_sequence_length (257) is only an
+  // upper bound here.
   constexpr int32_t right_padded_seqlens_k = 254;
-  RunGQACudaCacheAliasingTest(false, true, sequence_length, nullptr, right_padded_seqlens_k,
-                              false, false, false, true);
+  constexpr int32_t valid_query_length = 1;
+  for (bool packed_qkv : {false, true}) {
+    SCOPED_TRACE(MakeString("packed_qkv=", packed_qkv));
+    RunGQACudaCacheAliasingTest(false, true, sequence_length, nullptr, right_padded_seqlens_k,
+                                false, false, packed_qkv, valid_query_length);
 #if USE_FLASH_ATTENTION
-  if (HasCudaEnvironment(800)) {
-    RunGQACudaCacheAliasingTest(true, true, sequence_length, nullptr, right_padded_seqlens_k,
-                                false, false, false, true);
-  }
+    if (HasCudaEnvironment(800)) {
+      RunGQACudaCacheAliasingTest(true, true, sequence_length, nullptr, right_padded_seqlens_k,
+                                  false, false, packed_qkv, valid_query_length);
+    }
 #endif
+  }
 }
 
 template <typename CacheT>

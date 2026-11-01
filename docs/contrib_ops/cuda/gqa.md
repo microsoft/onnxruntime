@@ -61,7 +61,6 @@ Selected attributes:
 | `softcap` | Optional logit soft-capping value. `0` disables it. |
 | `local_window_size` | Left window size for causal local attention. `-1` means global attention and is required when `causal=0`. |
 | `sliding_window_cache` | Set to `1` when using a windowed (sliding-window) KV cache instead of full-length. When enabled, the operator keeps the most recent positions contiguously at cache rows `[0, L)` and evicts internally. Requires `local_window_size > 0`; the CUDA kernel additionally requires the cache capacity to equal `local_window_size`. Defaults to `0` (full-length cache). See [the CPU notes](../cpu/gqa.md#windowed-sliding-window-kv-cache) for the normative layout, eviction and rollback contract. |
-| `right_padded_query` | CUDA-only opt-in for causal right-padded chunks. Must be `0` (default) or `1`; see below for the required length inputs. |
 | `do_rotary` / `rotary_interleaved` | Enable RoPE and select interleaved vs. half-rotary layout. |
 | `smooth_softmax` | Add a smooth factor to the softmax denominator. |
 | `qk_norm_epsilon` | Epsilon for the fused per-head Q/K RMSNorm (QK-Norm) prologue. Defaults to `1e-6`. |
@@ -76,29 +75,52 @@ Selected inputs (see the schema for the full list and shapes):
 | 1, 2 | `key`, `value` | Optional when QKV is packed into `query`. |
 | 3, 4 | `past_key`, `past_value` | BNSH cache. Shares the buffer with `present_*` when in-place. |
 | 5 | `seqlens_k` | `total_sequence_lengths - 1` per batch entry. |
-| 6 | `total_sequence_length` | Scalar used to distinguish prompt vs. decode. |
+| 6 | `total_sequence_length` | Scalar used to distinguish prompt vs. decode. With `query_seqlens` it is only an upper bound of `seqlens_k + 1`. |
 | 7, 8 | `cos_cache`, `sin_cache` | RoPE caches. |
 | 11 | `head_sink` | `(num_heads,)` per-head attention sink (see §5). |
 | 12, 13 | `k_scale`, `v_scale` | FP32 dequant scales for the quantized KV cache. |
 | 14, 15 | `q_norm_weight`, `k_norm_weight` | `(head_size,)` per-head Q/K RMSNorm weights (QK-Norm, see §3). Both must be present together. |
+| 16 | `query_seqlens` | `(batch,)` int32 count of valid rows in a right-padded query chunk (see below). Optional. |
 
 Outputs are `output`, `present_key`, `present_value`, and optional `output_qk`.
 
 ### Right-padded prefill chunks
 
-For a chunk with `P` valid past tokens, `S` padded query rows, and `Q` valid query rows,
-set `right_padded_query=1`, `total_sequence_length=P+S`, and `seqlens_k=P+Q-1`.
-Do not pass the allocated cache capacity as `total_sequence_length` in this mode.
-This opt-in supports both first and subsequent chunks, full-length and windowed caches,
-and requires `causal=1` and new K/V inputs. Only valid tokens advance the resident cache;
-causal masks and implicit RoPE positions use the true past offset. Padding output rows
-are unspecified and must be ignored.
-Padded chunks use FlashAttention, MemoryEfficientAttention, or the unfused backend;
-the cuDNN SDPA path is disabled for this mode because it assumes unpadded subsequent queries.
+`query_seqlens` lets a caller run every chunk of a prompt with one fixed query shape `S`. For batch
+entry `b`, let `T = seqlens_k[b] + 1` be the number of tokens in the cache after the step,
+`Q = query_seqlens[b]` the number of valid rows in the chunk (rows `[Q, S)` are right padding), and
+`P = T - Q` the number of tokens that were cached before it.
 
-Leave the attribute at `0` for existing unpadded callers, including those that supply
-cache capacity rather than the running total. These callers continue deriving the
-past offset from `seqlens_k + 1 - sequence_length`.
+| Chunk (prompt of 300, `S=128`, capacity 512) | `S` | `P` | `Q` | `seqlens_k` | `query_seqlens` | `total_sequence_length` |
+|---|---|---|---|---|---|---|
+| 0 | 128 | 0 | 128 | 127 | 128 | 512 |
+| 1 | 128 | 128 | 128 | 255 | 128 | 512 |
+| 2 (last, padded) | 128 | 256 | 44 | 299 | 44 | 512 |
+| decode | 1 | 300 | 1 | 300 | omitted | 512 |
+
+- Only the `Q` valid rows are appended to the cache, at positions `[P, T)`. Query row `s` is at
+  absolute position `P + s`, which is the position that causal masking, `local_window_size`, and
+  implicit RoPE use. Output rows `[Q, S)` are unspecified and must be ignored, and so are the
+  contents of cache rows at or beyond `T`.
+- `total_sequence_length` is only an upper bound of `T` (the cache capacity is fine); it no longer
+  has to equal `P + S`, and it is not used to tell a first chunk from a later one. The existing rule
+  that a full-length cache needs `total_sequence_length >= sequence_length` still applies.
+- Tested with full-length and windowed caches, int8 quantized KV, packed QKV, rotary, `position_ids`,
+  softcap, `local_window_size`, `head_sink`, and `attention_bias` (full-length cache only; its last
+  dimension must equal `total_sequence_length`). The restrictions of those features without
+  `query_seqlens` still apply. The input requires `causal=1`, new K/V with
+  `kv_sequence_length == sequence_length`, `past_key`/`past_value`, and for `S > 1` a batch size of 1.
+- A full-length cache needs room for the padded chunk, `P + S <= C`, where `C` is the sequence
+  dimension of `present_key` (the cache capacity).
+- Values are read on the device, so the CUDA kernel validates only the shape and structure on the
+  host. It clamps `Q` into `[1, min(S, T)]` and keeps every offset inside the cache; a value outside
+  that range gives an unspecified (but memory-safe) result. The CPU implementation reports
+  `INVALID_ARGUMENT` instead.
+- For `S == 1` the input is ignored (`Q` is 1), so XQA and flash decode stay enabled. For `S > 1` the
+  chunk runs on FlashAttention, MemoryEfficientAttention, or the unfused backend; the cuDNN SDPA
+  path is disabled because it assumes unpadded subsequent queries.
+- Without `query_seqlens`, `Q = min(S, T)` and the behavior is unchanged: callers that pass the cache
+  capacity as `total_sequence_length` keep deriving the past offset from `seqlens_k + 1 - sequence_length`.
 
 ## 3. Input Formats
 
