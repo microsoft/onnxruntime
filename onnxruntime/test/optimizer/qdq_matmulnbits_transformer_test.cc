@@ -500,14 +500,18 @@ TEST(QDQTransformerTests, DQMatMulNotConvertedToMatMulNBits_OuterScopeWeight) {
 
   auto build_test_case = [&](ModelTestBuilder& builder) {
     auto* cond_arg = builder.MakeInput<bool>({1}, {true});
-    auto* x_arg = builder.MakeInput<float>({1, K}, -1.0f, 1.0f);
+    // The branches read x through a main-graph node output so the checker sees it in the outer scope.
+    auto* x_arg = builder.MakeIntermediate();
+    builder.AddNode("Identity", {builder.MakeInput<float>({1, K}, -1.0f, 1.0f)}, {x_arg});
     auto* weight_arg = builder.MakeInitializer<uint8_t>({K, N}, uint8_t{0}, uint8_t{255});
     auto* scale_arg = builder.MakeScalarInitializer<float>(0.02f);
     auto* zp_arg = builder.MakeScalarInitializer<uint8_t>(uint8_t{128});
 
     auto make_branch = [&](const std::string& prefix) {
       // Build the branch at the parent's opset so its DequantizeLinear schema matches.
-      Model model{"if branch", true, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), builder.DomainToVersionMap(), {}, DefaultLoggingManager().DefaultLogger()};
+      const auto& opsets = builder.DomainToVersionMap();
+      Model model("if branch", true, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), opsets,
+                  {}, DefaultLoggingManager().DefaultLogger());
       auto& graph = model.MainGraph();
 
       ONNX_NAMESPACE::TypeProto float_type;
