@@ -32,6 +32,11 @@ Status TransposeReplacement::Apply(Graph& graph,
       LOG_DEBUG_INFO(logger, "Exit TransposeReplacement optimization for not supporting symbolic shape.");
       return Status::OK();
     }
+    // Reshape treats 0 as copying the input dimension by default.
+    if (input_shape->dim(static_cast<int>(perm[i])).dim_value() == 0) {
+      LOG_DEBUG_INFO(logger, "Exit TransposeReplacement optimization for not supporting zero-sized dimension.");
+      return Status::OK();
+    }
     new_shape.push_back(input_shape->dim(static_cast<int>(perm[i])).dim_value());
     if (input_shape->dim(static_cast<int>(perm[i])).dim_value() == 1)
       continue;
