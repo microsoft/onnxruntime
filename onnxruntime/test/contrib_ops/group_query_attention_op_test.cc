@@ -1122,16 +1122,18 @@ TEST(GroupQueryAttentionTest, QuerySeqlensRightPaddedChunk_CPU) {
   }
 }
 
-// The goldens above use zero queries and constant values, which cannot see rotary positions. Here the rotary
-// cache differs per position, so a padded chunk only matches the unpadded chunk of its valid rows if the
-// valid rows are rotated at [P, P + Q) rather than at the positions the padded length would imply.
-TEST(GroupQueryAttentionTest, QuerySeqlensRotaryRightPaddedChunkMatchesUnpadded_CPU) {
+// The goldens above use zero queries and constant values, which cannot see rotary positions or how a packed
+// QKV row is split. Here the inputs depend on the position and the rotary cache differs per position, so a padded
+// chunk only matches the unpadded chunk of its valid rows if the valid rows are rotated at [P, P + Q) rather than
+// at the positions the padded length would imply, and if the padding rows stay out of the cache and the scores.
+static void RunQuerySeqlensChunkMatchesUnpaddedTest(bool packed_qkv, bool do_rotary) {
   constexpr int num_heads = 2;
   constexpr int kv_num_heads = 1;
   constexpr int head_size = 16;
   constexpr int half_rotary = head_size / 2;
   constexpr int hidden_size = num_heads * head_size;
   constexpr int kv_hidden_size = kv_num_heads * head_size;
+  constexpr int packed_width = hidden_size + 2 * kv_hidden_size;
   constexpr int capacity = 32;
   constexpr int past_length = 5;
   constexpr int padded_length = 4;
@@ -1156,6 +1158,14 @@ TEST(GroupQueryAttentionTest, QuerySeqlensRotaryRightPaddedChunkMatchesUnpadded_
   const std::vector<float> query = pattern(padded_length * hidden_size, 0.1f);
   const std::vector<float> key = pattern(padded_length * kv_hidden_size, 0.7f);
   const std::vector<float> value = pattern(padded_length * kv_hidden_size, 1.3f);
+  // Row r of a packed QKV input is [q_r | k_r | v_r].
+  std::vector<float> packed(static_cast<size_t>(padded_length) * packed_width);
+  for (int r = 0; r < padded_length; ++r) {
+    auto row = packed.begin() + static_cast<size_t>(r) * packed_width;
+    row = std::copy_n(query.begin() + r * hidden_size, hidden_size, row);
+    row = std::copy_n(key.begin() + r * kv_hidden_size, kv_hidden_size, row);
+    std::copy_n(value.begin() + r * kv_hidden_size, kv_hidden_size, row);
+  }
   // Rows [0, P) of the cache are past tokens; the rows after them are stale and must never be read.
   std::vector<float> past_key = pattern(capacity * head_size, 2.1f);
   std::vector<float> past_value = pattern(capacity * head_size, 2.9f);
@@ -1181,16 +1191,27 @@ TEST(GroupQueryAttentionTest, QuerySeqlensRotaryRightPaddedChunkMatchesUnpadded_
     OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
     tester.AddAttribute<int64_t>("num_heads", num_heads);
     tester.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
-    tester.AddAttribute<int64_t>("do_rotary", 1);
-    tester.AddInput<float>("query", {1, rows, hidden_size}, chunk_rows(query, hidden_size));
-    tester.AddInput<float>("key", {1, rows, kv_hidden_size}, chunk_rows(key, kv_hidden_size));
-    tester.AddInput<float>("value", {1, rows, kv_hidden_size}, chunk_rows(value, kv_hidden_size));
+    tester.AddAttribute<int64_t>("do_rotary", do_rotary ? 1 : 0);
+    if (packed_qkv) {
+      tester.AddInput<float>("query", {1, rows, packed_width}, chunk_rows(packed, packed_width));
+      tester.AddOptionalInputEdge<float>();  // key
+      tester.AddOptionalInputEdge<float>();  // value
+    } else {
+      tester.AddInput<float>("query", {1, rows, hidden_size}, chunk_rows(query, hidden_size));
+      tester.AddInput<float>("key", {1, rows, kv_hidden_size}, chunk_rows(key, kv_hidden_size));
+      tester.AddInput<float>("value", {1, rows, kv_hidden_size}, chunk_rows(value, kv_hidden_size));
+    }
     tester.AddInput<float>("past_key", {1, kv_num_heads, capacity, head_size}, past_key);
     tester.AddInput<float>("past_value", {1, kv_num_heads, capacity, head_size}, past_value);
     tester.AddInput<int32_t>("seqlens_k", {1}, {past_length + valid - 1});
     tester.AddInput<int32_t>("total_sequence_length", {1}, {padded ? capacity : past_length + valid});
-    tester.AddInput<float>("cos_cache", {capacity, half_rotary}, cos_cache);
-    tester.AddInput<float>("sin_cache", {capacity, half_rotary}, sin_cache);
+    if (do_rotary) {
+      tester.AddInput<float>("cos_cache", {capacity, half_rotary}, cos_cache);
+      tester.AddInput<float>("sin_cache", {capacity, half_rotary}, sin_cache);
+    } else if (padded) {
+      tester.AddOptionalInputEdge<float>();  // cos_cache
+      tester.AddOptionalInputEdge<float>();  // sin_cache
+    }
     if (padded) {
       tester.AddOptionalInputEdge<int64_t>();  // position_ids
       tester.AddOptionalInputEdge<float>();    // attention_bias
@@ -1242,13 +1263,27 @@ TEST(GroupQueryAttentionTest, QuerySeqlensRotaryRightPaddedChunkMatchesUnpadded_
         EXPECT_NEAR(padded.present_value[i], unpadded.present_value[i], 1e-5f) << "present_value element " << i;
       }
 
-      // Guard against a vacuous comparison: the appended key rows must actually have been rotated.
+      // Guard against a vacuous comparison: the appended key rows must have been rotated, or copied as they are
+      // without rotary.
       float max_rotation_change = 0.0f;
       for (int i = 0; i < head_size; ++i) {
         max_rotation_change = std::max(max_rotation_change,
                                        std::abs(padded.present_key[past_length * head_size + i] - key[i]));
       }
-      EXPECT_GT(max_rotation_change, 1e-2f);
+      if (do_rotary) {
+        EXPECT_GT(max_rotation_change, 1e-2f);
+      } else {
+        EXPECT_LT(max_rotation_change, 1e-6f);
+      }
+    }
+  }
+}
+
+TEST(GroupQueryAttentionTest, QuerySeqlensRightPaddedChunkMatchesUnpadded_CPU) {
+  for (bool packed_qkv : {false, true}) {
+    for (bool do_rotary : {false, true}) {
+      SCOPED_TRACE(MakeString("packed_qkv=", packed_qkv, " do_rotary=", do_rotary));
+      RunQuerySeqlensChunkMatchesUnpaddedTest(packed_qkv, do_rotary);
     }
   }
 }
@@ -1408,6 +1443,17 @@ TEST(GroupQueryAttentionTest, InvalidCausalValue_WebGPU) {
   RunGQACausalMaskTest<float>(
       GqaTargetEp::kWebGpu, 2, std::vector<float>(16, 0.0f),
       OpTester::ExpectResult::kExpectFailure, "causal must be 0 or 1.");
+}
+
+// The kernel has no right-padded query support, so it must reject query_seqlens (input 16) instead of reading
+// the padded rows as real tokens. The other WebGPU tests here cover the same op with the input absent.
+TEST(GroupQueryAttentionTest, QuerySeqlensNotImplemented_WebGPU) {
+  GqaQuerySeqlensCase test_case;
+  test_case.seqlens_k = {15};
+  test_case.query_seqlens = {8};
+  RunGQAQuerySeqlensTest<float>(
+      GqaTargetEp::kWebGpu, test_case, OpTester::ExpectResult::kExpectFailure,
+      "GroupQueryAttention (WebGPU): query_seqlens input is not supported.");
 }
 #endif
 
