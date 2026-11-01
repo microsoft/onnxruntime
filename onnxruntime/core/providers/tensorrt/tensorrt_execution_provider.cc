@@ -1950,6 +1950,23 @@ std::unique_ptr<IDataTransfer> TensorrtExecutionProvider::GetDataTransfer() cons
   return onnxruntime::CreateGPUDataTransfer();
 }
 
+Status TensorrtExecutionProvider::Sync() const {
+  int current_device;
+  CUDA_RETURN_IF_ERROR(cudaGetDevice(&current_device));
+  if (current_device != device_id_) {
+    CUDA_RETURN_IF_ERROR(cudaSetDevice(device_id_));
+  }
+
+  // Bound inputs may be populated on streams other than the EP's compute stream.
+  const auto sync_status = CUDA_CALL(cudaDeviceSynchronize());
+  if (current_device != device_id_) {
+    const auto restore_status = CUDA_CALL(cudaSetDevice(current_device));
+    ORT_RETURN_IF_ERROR(sync_status);
+    return restore_status;
+  }
+  return sync_status;
+}
+
 Status TensorrtExecutionProvider::OnRunStart(const onnxruntime::RunOptions& /*run_options*/) {
   return Status::OK();
 }
