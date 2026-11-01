@@ -9,6 +9,7 @@
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 # -------------------------------------------------------------------------
+import functools
 import gc
 import math
 import os
@@ -147,65 +148,18 @@ class TestBorrowedKVCache(unittest.TestCase):
             self.skipTest("CUDAExecutionProvider unavailable")
         if not torch.cuda.is_available() or torch.cuda.get_device_capability()[0] < 8:
             self.skipTest("Forced Flash/MEA regression requires SM80 or later")
-        head_size = 128
-        shapes = {
-            "query": [1, query_length, 2 * head_size],
-            "key": [1, 0, head_size],
-            "value": [1, 0, head_size],
-            "past_key": [1, 1, capacity, head_size],
-            "past_value": [1, 1, capacity, head_size],
-        }
-        feeds = {name: numpy.zeros(shape, dtype=numpy.float16) for name, shape in shapes.items()}
-        feeds["past_value"][:] = 50  # Poison cache capacity beyond the true key length.
-        for token in range(valid_length):
-            feeds["past_value"][:, :, token] = token + 1
-        feeds["seqlens_k"] = numpy.asarray([valid_length - 1], dtype=numpy.int32)
-        feeds["total_sequence_length"] = numpy.asarray([valid_length], dtype=numpy.int32)
-        inputs = [helper.make_tensor_value_info(name, TensorProto.FLOAT16, shape) for name, shape in shapes.items()]
-        inputs += [
-            helper.make_tensor_value_info(name, TensorProto.INT32, [1])
-            for name in ("seqlens_k", "total_sequence_length")
-        ]
-        output = helper.make_tensor_value_info("output", TensorProto.FLOAT16, shapes["query"])
-        node = helper.make_node(
-            "GroupQueryAttention",
-            list(feeds),
-            ["output"],
-            domain="com.microsoft",
-            num_heads=2,
-            kv_num_heads=1,
-            causal=1,
-            local_window_size=window,
-        )
-        model = helper.make_model(
-            helper.make_graph([node], "borrowed-negative-offset", inputs, [output]),
-            opset_imports=[helper.make_opsetid("com.microsoft", 1)],
-            ir_version=10,
-        )
-        options = SessionOptions()
-        options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
-        with (
-            scoped_env_var("ORT_DISABLE_FLASH_ATTENTION", "0" if kernel == "FLASH_ATTENTION" else "1"),
-            scoped_env_var("ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION", "1" if kernel == "MATH" else "0"),
-            scoped_env_var("ORT_ENABLE_CUDNN_FLASH_ATTENTION", "0"),
-            scoped_env_var("ORT_ENABLE_XQA", "0"),
-            scoped_env_var("ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO", "1"),
-        ):
-            session = InferenceSession(model.SerializeToString(), options, providers=["CUDAExecutionProvider"])
-            results = []
-            kernels = get_sdpa_kernel_from_debug_info(
-                lambda: results.append(session.run(None, feeds)[0]),
-                all_kernels=True,
-            )
+        if not has_sdpa_kernel(kernel):
+            self.skipTest(f"{kernel} is not built into this CUDA execution provider")
+        kernels, actual = run_query_longer_than_borrowed_kv(kernel, query_length, valid_length, capacity, window)
         self.assertEqual(set(kernels), {kernel})
-        expected = numpy.zeros(shapes["query"], dtype=numpy.float16)
+        expected = numpy.zeros(actual.shape, dtype=numpy.float16)
         for row in range(query_length - valid_length, query_length):
             end = valid_length - query_length + row + 1
             start = max(0, end - window) if window > 0 else 0
             expected[:, row] = numpy.arange(start + 1, end + 1).mean()
         # MEA's legacy fully masked prefix is unspecified; compare every row that has causal keys.
         first_row = query_length - valid_length if kernel == "EFFICIENT_ATTENTION" else 0
-        numpy.testing.assert_allclose(results[0][:, first_row:], expected[:, first_row:], rtol=2e-3, atol=2e-3)
+        numpy.testing.assert_allclose(actual[:, first_row:], expected[:, first_row:], rtol=2e-3, atol=2e-3)
 
     def check_borrowed_cache(
         self, provider, device, dtype, tensor_type, head_size, query_length, with_past, local_window_size=16
@@ -511,6 +465,82 @@ def get_sdpa_kernel_from_debug_info(run_func, all_kernels=False):
         print("Failed to get sdpa kernel from debug info:", captured_text)
 
     return None
+
+
+def run_query_longer_than_borrowed_kv(kernel, query_length, valid_length, capacity, window):
+    """Runs one borrowed-KV CUDA GQA call whose query is longer than the valid cache, forcing `kernel`.
+
+    The cache holds valid_length tokens followed by poisoned rows that no kernel may read. Returns the
+    SDPA kernels reported by the debug info and the output.
+    """
+    head_size = 128
+    shapes = {
+        "query": [1, query_length, 2 * head_size],
+        "key": [1, 0, head_size],
+        "value": [1, 0, head_size],
+        "past_key": [1, 1, capacity, head_size],
+        "past_value": [1, 1, capacity, head_size],
+    }
+    feeds = {name: numpy.zeros(shape, dtype=numpy.float16) for name, shape in shapes.items()}
+    feeds["past_value"][:] = 50  # Poison cache capacity beyond the true key length.
+    for token in range(valid_length):
+        feeds["past_value"][:, :, token] = token + 1
+    feeds["seqlens_k"] = numpy.asarray([valid_length - 1], dtype=numpy.int32)
+    feeds["total_sequence_length"] = numpy.asarray([valid_length], dtype=numpy.int32)
+    inputs = [helper.make_tensor_value_info(name, TensorProto.FLOAT16, shape) for name, shape in shapes.items()]
+    inputs += [
+        helper.make_tensor_value_info(name, TensorProto.INT32, [1]) for name in ("seqlens_k", "total_sequence_length")
+    ]
+    output = helper.make_tensor_value_info("output", TensorProto.FLOAT16, shapes["query"])
+    node = helper.make_node(
+        "GroupQueryAttention",
+        list(feeds),
+        ["output"],
+        domain="com.microsoft",
+        num_heads=2,
+        kv_num_heads=1,
+        causal=1,
+        local_window_size=window,
+    )
+    model = helper.make_model(
+        helper.make_graph([node], "borrowed-negative-offset", inputs, [output]),
+        opset_imports=[helper.make_opsetid("com.microsoft", 1)],
+        ir_version=10,
+    )
+    options = SessionOptions()
+    options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+    with (
+        scoped_env_var("ORT_DISABLE_FLASH_ATTENTION", "0" if kernel == "FLASH_ATTENTION" else "1"),
+        scoped_env_var("ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION", "1" if kernel == "MATH" else "0"),
+        scoped_env_var("ORT_ENABLE_CUDNN_FLASH_ATTENTION", "0"),
+        scoped_env_var("ORT_ENABLE_XQA", "0"),
+        scoped_env_var("ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO", "1"),
+    ):
+        session = InferenceSession(model.SerializeToString(), options, providers=["CUDAExecutionProvider"])
+        results = []
+        kernels = get_sdpa_kernel_from_debug_info(
+            lambda: results.append(session.run(None, feeds)[0]),
+            all_kernels=True,
+        )
+    return kernels, results[0]
+
+
+@functools.cache
+def has_sdpa_kernel(kernel):
+    """Whether CUDA GroupQueryAttention dispatches to `kernel` when it is the only fused kernel enabled.
+
+    Flash attention and memory efficient attention are optional build features that are independent of the GPU,
+    and a build without one falls back to the next kernel. Tests that assert an exact dispatch therefore have to
+    check the build, which is done by forcing the kernel once on a small supported call.
+    """
+    if "CUDAExecutionProvider" not in get_available_providers():
+        return False
+    if kernel == "MATH":
+        return True
+    if not torch.cuda.is_available() or torch.cuda.get_device_capability()[0] < 8:
+        return False
+    kernels, _ = run_query_longer_than_borrowed_kv(kernel, 8, 3, 9, -1)
+    return set(kernels) == {kernel}
 
 
 @dataclass
@@ -4956,6 +4986,8 @@ class TestGQAWindowedKvCache(unittest.TestCase):
             ("EFFICIENT_ATTENTION", "1", "0"),
             ("MATH", "1", "1"),
         ):
+            if not has_sdpa_kernel(expected_kernel):
+                continue  # Flash and memory efficient attention are optional build features.
             with (
                 scoped_env_var("ORT_DISABLE_FLASH_ATTENTION", disable_flash),
                 scoped_env_var("ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION", disable_mea),
