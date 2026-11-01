@@ -374,6 +374,94 @@ TEST(SkipLayerNormTest, SkipLayerNormPrePack) {
             kNnapiExecutionProvider, kQnnExecutionProvider});
 }
 
+#ifndef ENABLE_TRAINING
+// Prepacking is disabled in full training build so no need to test the feature in a training build.
+// All weight inputs (skip, gamma, beta and bias) are shared initializers, so the second session takes every one
+// of them from the shared container through UseSharedPrePackedBuffers().
+static void RunSkipLayerNormSharedPrepackedWeightsTest(bool simplified) {
+  OpTester test(simplified ? "SkipSimplifiedLayerNormalization" : "SkipLayerNormalization", 1,
+                onnxruntime::kMSDomain);
+  test.AddAttribute<float>("epsilon", 1e-05f);
+
+  std::vector<int64_t> input_skip_output_dims = {1, 2, 2};
+  std::vector<int64_t> gamma_beta_bias_dims = {2};
+  // The weights differ so that each is cached as its own pre-packed weight
+  std::vector<MLFloat16> skip = ToFloat16({0.5f, 1.5f, -1.f, 2.f});
+  std::vector<MLFloat16> gamma = ToFloat16({2.f, 0.5f});
+  std::vector<MLFloat16> beta = ToFloat16({0.1f, -0.1f});
+  std::vector<MLFloat16> bias = ToFloat16({0.25f, -0.25f});
+  test.AddInput<MLFloat16>("input", input_skip_output_dims, ToFloat16({1.f, 2.f, 3.f, 5.f}));
+  // The weights are initializers, so the CPU kernel pre-packs them (converts them to float).
+  test.AddInput<MLFloat16>("skip", input_skip_output_dims, skip, true);
+  test.AddInput<MLFloat16>("gamma", gamma_beta_bias_dims, gamma, true);
+  if (!simplified) {
+    test.AddInput<MLFloat16>("beta", gamma_beta_bias_dims, beta, true);
+  }
+  test.AddInput<MLFloat16>("bias", gamma_beta_bias_dims, bias, true);
+  test.AddOutput<MLFloat16>("output", input_skip_output_dims,
+                            simplified ? ToFloat16({1.341f, 0.6226f, 0.8945f, 0.671f})
+                                       : ToFloat16({-1.9f, 0.4f, -1.9f, 0.4f}));
+  // The second and third outputs are reserved for something else
+  test.AddOptionalOutputEdge<MLFloat16>();
+  test.AddOptionalOutputEdge<MLFloat16>();
+  // input + skip + bias, so that a wrong skip or bias buffer changes the result
+  test.AddOutput<MLFloat16>("skip_input_bias_add_output", input_skip_output_dims,
+                            ToFloat16({1.75f, 3.25f, 2.25f, 6.75f}));
+
+  SessionOptions so;
+  // Set up the weights as shared initializers to be shared between sessions
+  auto add_shared_initializer = [&so](const char* name, const std::vector<int64_t>& dims,
+                                      std::vector<MLFloat16>& data, OrtValue& value) {
+    Tensor::InitOrtValue(DataTypeImpl::GetType<MLFloat16>(), TensorShape(dims), data.data(),
+                         OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), value);
+    return so.AddInitializer(name, &value);
+  };
+  OrtValue skip_value, gamma_value, beta_value, bias_value;
+  ASSERT_EQ(add_shared_initializer("skip", input_skip_output_dims, skip, skip_value), Status::OK());
+  ASSERT_EQ(add_shared_initializer("gamma", gamma_beta_bias_dims, gamma, gamma_value), Status::OK());
+  if (!simplified) {
+    ASSERT_EQ(add_shared_initializer("beta", gamma_beta_bias_dims, beta, beta_value), Status::OK());
+  }
+  ASSERT_EQ(add_shared_initializer("bias", gamma_beta_bias_dims, bias, bias_value), Status::OK());
+  const size_t number_of_weights = simplified ? 3 : 4;
+
+  test.EnableSharingOfPrePackedWeightsAcrossSessions();
+
+  auto cpu_ep = []() -> std::vector<std::unique_ptr<IExecutionProvider>> {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    return execution_providers;
+  };
+
+  size_t number_of_pre_packed_weights_counter_session_1 = 0;
+  size_t number_of_shared_pre_packed_weights_counter = 0;
+
+  // Session 1 pre-packs the weights and caches them in the shared container
+  test.Config(so)
+      .ConfigEps(cpu_ep())
+      .RunWithConfig(&number_of_pre_packed_weights_counter_session_1, &number_of_shared_pre_packed_weights_counter);
+  ASSERT_EQ(number_of_pre_packed_weights_counter_session_1, number_of_weights);
+  ASSERT_EQ(number_of_shared_pre_packed_weights_counter, static_cast<size_t>(0));
+  ASSERT_EQ(test.GetNumPrePackedWeightsShared(), number_of_weights);
+
+  // Session 2 uses the cached pre-packed weights
+  size_t number_of_pre_packed_weights_counter_session_2 = 0;
+  test.Config(so)
+      .ConfigEps(cpu_ep())
+      .RunWithConfig(&number_of_pre_packed_weights_counter_session_2, &number_of_shared_pre_packed_weights_counter);
+  ASSERT_EQ(number_of_pre_packed_weights_counter_session_2, number_of_weights);
+  ASSERT_EQ(number_of_shared_pre_packed_weights_counter, number_of_weights);
+}
+
+TEST(SkipLayerNormTest, SkipLayerNormSharedPrepackedWeights) {
+  RunSkipLayerNormSharedPrepackedWeightsTest(/*simplified*/ false);
+}
+
+TEST(SkipLayerNormTest, SkipSimplifiedLayerNormSharedPrepackedWeights) {
+  RunSkipLayerNormSharedPrepackedWeightsTest(/*simplified*/ true);
+}
+#endif
+
 TEST(SkipLayerNormTest, SkipLayerNormPrePackRejectsShortGamma) {
   auto cpu = DefaultCpuExecutionProvider();
   ASSERT_NE(cpu, nullptr);
