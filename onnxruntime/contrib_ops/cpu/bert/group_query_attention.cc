@@ -200,8 +200,6 @@ REGISTER_KERNEL_TYPED(MLFloat16)
 template <typename T>
 GroupQueryAttention<T>::GroupQueryAttention(const OpKernelInfo& info)
     : OpKernel(info), GQAAttentionBase(info, true) {
-  ORT_ENFORCE(info.GetAttrOrDefault<int64_t>("right_padded_query", 0) == 0,
-              "right_padded_query is only supported by the CUDA execution provider.");
   sliding_window_cache_ = info.GetAttrOrDefault<int64_t>("sliding_window_cache", 0) == 1;
   ORT_ENFORCE(!sliding_window_cache_ || local_window_size_ > 0,
               "GroupQueryAttention (CPU): sliding_window_cache=1 requires local_window_size > 0.");
@@ -253,6 +251,14 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
         ONNXRUNTIME, INVALID_ARGUMENT,
         "GroupQueryAttention (CPU): q_norm_weight / k_norm_weight inputs are not supported. "
         "The per-head Q/K RMS normalization prologue is implemented only on the CUDA and WebGPU EPs.");
+  }
+
+  // query_seqlens (input 16) describes a right-padded query chunk. Without kernel support the padded
+  // rows would be treated as real tokens, so reject the node instead of silently computing a wrong result.
+  if (context->InputCount() > 16 && context->Input<Tensor>(16) != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "GroupQueryAttention (CPU): query_seqlens input is not supported. "
+                           "Right-padded query chunks are implemented only by the CUDA EP.");
   }
 
   GroupQueryAttentionParameters parameters = {};

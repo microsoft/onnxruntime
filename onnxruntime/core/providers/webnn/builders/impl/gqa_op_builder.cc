@@ -585,6 +585,11 @@ bool GroupQueryAttentionOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_vi
     return false;
   }
 
+  if (TensorExists(input_defs, 16)) {
+    LOGS(logger, VERBOSE) << op_type << " does not support the query_seqlens input.";
+    return false;
+  }
+
   const int64_t do_rotary = helper.Get("do_rotary", static_cast<int64_t>(0));
 
   // When do_rotary is true, cos_cache and sin_cache must be provided

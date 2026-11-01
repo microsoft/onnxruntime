@@ -302,7 +302,9 @@ class GQAConfig:
     # Slack above local_window_size is worth allocating anyway: it lets the append point drift, so
     # the CPU kernel compacts once every C - W + 1 steps instead of on every step.
     sliding_window_cache: int = 0
-    right_padded_query: bool = False
+    # Adds the optional query_seqlens input (input 16), the number of valid rows in a right-padded
+    # query chunk. The step runners bind it; its value is not part of the config.
+    has_query_seqlens: bool = False
     # Length of the cos/sin caches. 0 means "same as buffer_sequence_length". A windowed KV cache is
     # shorter than the sequence, so RoPE positions must be driven by a separately sized rotary cache.
     rope_cache_length: int = 0
@@ -518,6 +520,7 @@ def create_gqa_node_and_io(
         else ("v_scale" if config.v_quant_type != "NONE" else ""),
         "q_norm_weight" if config.has_qk_norm else "",
         "k_norm_weight" if config.has_qk_norm else "",
+        "query_seqlens" if config.has_query_seqlens else "",
     ]
 
     # Remove trailing empty strings
@@ -552,7 +555,6 @@ def create_gqa_node_and_io(
         causal=1 if config.causal else 0,
         smooth_softmax=1 if config.use_smooth_softmax else 0,
         qk_output=output_qk,
-        **({"right_padded_query": 1} if config.right_padded_query else {}),
         **quantization_attributes,
         **qk_norm_attributes,
         **windowed_cache_attributes,
@@ -640,6 +642,9 @@ def create_gqa_node_and_io(
     if config.has_qk_norm:
         graph_input.append(helper.make_tensor_value_info("q_norm_weight", ort_type, [config.head_size]))
         graph_input.append(helper.make_tensor_value_info("k_norm_weight", ort_type, [config.head_size]))
+
+    if config.has_query_seqlens:
+        graph_input.append(helper.make_tensor_value_info("query_seqlens", TensorProto.INT32, [config.batch_size]))
 
     # --- Graph Outputs ---
     output_k_shape = [config.batch_size, config.kv_num_heads, present_kv_seqlen, config.head_size]
@@ -988,6 +993,11 @@ def gqa_past_func(
     if config.has_qk_norm and q_norm_weight is not None and k_norm_weight is not None:
         bind_tensor(io_binding, "q_norm_weight", q_norm_weight, device, ort_type)
         bind_tensor(io_binding, "k_norm_weight", k_norm_weight, device, ort_type)
+
+    if config.has_query_seqlens:
+        # Every query row is valid here; decode steps (q_sequence_length == 1) ignore the input.
+        query_seqlens = torch.full((config.batch_size,), config.q_sequence_length, dtype=torch.int32, device=device)
+        bind_tensor(io_binding, "query_seqlens", query_seqlens, device, TensorProto.INT32)
 
     # 6. Quantization
     if k_scale is not None:
@@ -4423,7 +4433,7 @@ def _windowed_run_steps(
         config.past_kv_sequence_length = past_length
         config.buffer_sequence_length = buffer_sequence_length
         config.sliding_window_cache = sliding_window_cache
-        config.right_padded_query = any(isinstance(item, tuple) for item in step_lengths)
+        config.has_query_seqlens = any(isinstance(item, tuple) for item in step_lengths)
 
         if step_length not in sessions:
             sessions[step_length] = _windowed_make_session(config, ort_type, providers=providers)
@@ -4454,8 +4464,12 @@ def _windowed_run_steps(
         padded_total_length = past_length + step_length
         seqlens_k = torch.full((batch_size,), total_length - 1, dtype=torch.int32, device=device)
         bind_tensor(io_binding, "seqlens_k", seqlens_k, device, TensorProto.INT32)
+        if config.has_query_seqlens:
+            query_seqlens = torch.full((batch_size,), valid_length, dtype=torch.int32, device=device)
+            bind_tensor(io_binding, "query_seqlens", query_seqlens, device, TensorProto.INT32)
         cpu_device = torch.device("cpu")
         # Keep a reference: io_binding only records the data pointer, so a temporary would be freed.
+        # total_sequence_length is only an upper bound on seqlens_k + 1 when query_seqlens is given.
         length_bound = buffer_sequence_length if use_capacity_bound else padded_total_length
         total_sequence_length = torch.tensor([length_bound], dtype=torch.int32, device=cpu_device)
         bind_tensor(
@@ -4581,11 +4595,13 @@ class TestGQAWindowedKvCache(unittest.TestCase):
 
         attention_bias_all = None
         if base_config.has_attention_bias:
+            # Padded steps read bias rows up to the padded total, which exceeds the valid total.
+            bias_length = sum(step[1] if isinstance(step, tuple) else step for step in step_lengths)
             bias_shape = (
                 1 if base_config.attention_bias_broadcast_dim_0 else base_config.batch_size,
                 base_config.num_heads if base_config.attention_bias_per_head else 1,
-                total_length,
-                total_length,
+                bias_length,
+                bias_length,
             )
             attention_bias_all = torch.randn(bias_shape, dtype=torch_type, device=device) * 0.5
 
@@ -4755,10 +4771,58 @@ class TestGQAWindowedKvCache(unittest.TestCase):
                     full_cache_length_bound=512,
                 )
 
-    def test_right_padded_mode_ragged_single_token_decode(self):
+    def test_right_padded_chunked_prefill_capacity_bound(self):
         if self.device != "cuda":
-            self.skipTest("CUDA right-padded mode regression")
+            self.skipTest("CUDA right-padded capacity-valued length regression")
+        # Prompt of 300 in chunks of 128 on a 512-row cache. total_sequence_length is the cache
+        # capacity at every step, which is only an upper bound of seqlens_k + 1 when query_seqlens is
+        # given. The last chunk has 44 valid rows, then decode.
+        for disable_flash, disable_mea in (("0", "0"), ("1", "0"), ("1", "1")):
+            with (
+                scoped_env_var("ORT_DISABLE_FLASH_ATTENTION", disable_flash),
+                scoped_env_var("ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION", disable_mea),
+                scoped_env_var("ORT_ENABLE_CUDNN_FLASH_ATTENTION", "0"),
+                scoped_env_var("ORT_ENABLE_XQA", "0"),
+                scoped_env_var("ORT_DISABLE_FLASH_DECODE", "1"),
+            ):
+                self._check_parity(
+                    self._base_config(batch_size=1, rotary=True),
+                    [128, 128, (44, 128), 1],
+                    full_cache_length_bound=512,
+                )
+
+    def test_right_padded_chunked_prefill_features(self):
+        if self.device != "cuda":
+            self.skipTest("CUDA right-padded chunked prefill feature test")
+        steps = [(100, 128), 128, (7, 128), 1, 1]
+        with (
+            scoped_env_var("ORT_ENABLE_CUDNN_FLASH_ATTENTION", "0"),
+            scoped_env_var("ORT_ENABLE_XQA", "0"),
+            scoped_env_var("ORT_DISABLE_FLASH_DECODE", "1"),
+        ):
+            for feature, overrides in (
+                ("head_sink", {"has_head_sink": True}),
+                ("position_ids", {"has_position_ids": True}),
+                ("softcap", {"softcap": 20.0}),
+            ):
+                with self.subTest(feature=feature):
+                    self._check_parity(self._base_config(batch_size=1, rotary=True, **overrides), steps)
+
+            # attention_bias runs on the unfused path and is not available with a windowed cache. Its
+            # last dimension must equal total_sequence_length, so the padded total length is used.
+            with self.subTest(feature="attention_bias"):
+                self._check_parity(
+                    self._base_config(batch_size=1, rotary=True, has_attention_bias=True, attention_bias_per_head=True),
+                    steps,
+                    full_cache_only=True,
+                )
+
+    def test_query_seqlens_ignored_for_single_token_decode(self):
+        if self.device != "cuda":
+            self.skipTest("CUDA query_seqlens decode regression")
         self._require_ep()
+        # A decode step (S == 1) with ragged seqlens_k ignores query_seqlens, so XQA and flash decode
+        # keep working when the model feeds the input at every step.
         with (
             scoped_env_var("ORT_ENABLE_XQA", "0"),
             scoped_env_var("ORT_DISABLE_FLASH_DECODE", "1"),
@@ -4769,7 +4833,7 @@ class TestGQAWindowedKvCache(unittest.TestCase):
                     past_kv_sequence_length=300,
                     buffer_sequence_length=512,
                     rope_cache_length=512,
-                    right_padded_query=True,
+                    has_query_seqlens=True,
                     rotary=True,
                 ),
                 ep="CUDAExecutionProvider",

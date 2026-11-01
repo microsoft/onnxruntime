@@ -3327,16 +3327,17 @@ This version of the operator has been available since version 1 of the 'com.micr
   **Cache Format:**
   The past and present KV cache tensors are expected in a BNSH format: `(batch_size, num_heads, cache_sequence_length, head_size)`, where `cache_sequence_length` is the length of the cached key/value sequences, or the maximum sequence length when past and present buffer sharing is used.
   
-  **Right-padded query chunks (`right_padded_query` attribute, CUDA only):**
-  Set `right_padded_query=1` for causal attention when a query chunk may contain right-padding.
-  Let `S` be the padded query length and `P` the number of valid past tokens. Supply
-  `total_sequence_length=P+S` (not the cache capacity) and `seqlens_k[b]=P+valid_query_length[b]-1`.
-  The kernel appends only valid K/V rows and aligns causal attention and RoPE at `P`.
-  Padding output rows are unspecified. This supports both full-length and windowed caches.
-  The default is 0, preserving callers that supply the allocated capacity as `total_sequence_length`.
+  **Right-padded query chunks (`query_seqlens` input):**
+  The optional `query_seqlens` input supports chunked prefill with a fixed query shape. Let `S` be `sequence_length`, the padded chunk length. For batch entry `b`, let `T = seqlens_k[b] + 1` be the number of tokens in the KV cache after this step, `Q = query_seqlens[b]` the number of valid (non-padded) tokens in the chunk, and `P = T - Q` the number of tokens that were cached before it. Rows `[0, Q)` of `query`, `key` and `value` are valid tokens and rows `[Q, S)` are right padding.
+  
+  Only the valid rows are appended to the cache, at positions `[P, T)`. Query row `s` is at absolute position `P + s`: causal attention, `local_window_size` and rotary embedding (when `position_ids` is not given) use that position. Output rows `[Q, S)` are unspecified, and so are cache rows at or beyond `T`. For every valid row the result equals that of the same call with an unpadded chunk of `Q` tokens, so a caller can run every chunk of a prompt with one fixed `S`.
+  
+  The scalar `total_sequence_length` is only an upper bound of `T` in this case (for example the cache capacity). It is not used to tell a first prompt from a later chunk and it does not determine `P`.
+  
+  Requirements: `causal=1`; new key/value with `kv_sequence_length == sequence_length`; `past_key` and `past_value` present; `1 <= Q <= min(S, T)` and `T <= total_sequence_length` for every batch entry (the existing rule that `total_sequence_length >= sequence_length` for a cache that is not windowed still applies); `sequence_length > 1` requires `batch_size == 1`; and `Q == 1` when `sequence_length == 1`. A cache that is not windowed must have room for the whole padded chunk, `P + S <= C`, where `C` is the sequence dimension of `present_key`. A windowed cache has no such requirement because it is staged internally. An execution provider that can read the values reports a violation with `INVALID_ARGUMENT`; the CUDA execution provider reads them on the device, clamps `Q` into `[1, min(S, T)]` and leaves the result unspecified. When `query_seqlens` is omitted, `Q = min(S, T)` and the behavior is unchanged.
   
   **Windowed KV Cache (`sliding_window_cache` attribute):**
-  When `sliding_window_cache` is 1, the past/present buffers are window-sized instead of full-length and the operator evicts internally. Let `C` be the cache capacity (dimension 2 of `past_key`, which is also the sequence dimension of `present_key`), `W` be `local_window_size`, and `T` be the absolute number of tokens processed so far by this batch entry, i.e. `seqlens_k[b] + 1`. Unless `right_padded_query=1`, the scalar `total_sequence_length` input is the batch maximum of `T`; the layout below is per batch entry, so a ragged batch gets a different resident range per entry. `C` must be at least `W`.
+  When `sliding_window_cache` is 1, the past/present buffers are window-sized instead of full-length and the operator evicts internally. Let `C` be the cache capacity (dimension 2 of `past_key`, which is also the sequence dimension of `present_key`), `W` be `local_window_size`, and `T` be the absolute number of tokens processed so far by this batch entry, i.e. `seqlens_k[b] + 1`. The scalar `total_sequence_length` input is only the batch maximum of `T` (or only an upper bound of `T` when `query_seqlens` is given); the layout below is per batch entry, so a ragged batch gets a different resident range per entry. `C` must be at least `W`.
   
   After a step, rows `[0, L)` of `present_key` and `present_value` hold the `L` most recent positions in increasing position order, so row `i` holds absolute position `T - L + i`. The retained positions are always physically contiguous and start at row 0; the layout never wraps around, so a ring-buffer layout cannot be exposed through these outputs. Rows `[L, C)` are unspecified. The resident count `L` is a function of `T` alone:
   
@@ -3348,7 +3349,7 @@ This version of the operator has been available since version 1 of the 'com.micr
   
   Hence `min(T, W) <= L(T) <= min(T, C)`: the whole window stays resident, and eviction reclaims `G` positions at once rather than one position per step, so consumers must not assume that the cache is kept full at `min(T, C)`.
   
-    Because `L` depends only on `T`, the resulting layout is independent of how the tokens were split into steps: a multi-token step of `S` tokens (speculative decoding, chunked prefill) leaves exactly the layout that the same tokens would produce one at a time. Any `S >= 1` is accepted, including `S > C`; a step that would evict positions it still has to read is staged internally, so the capacity does not have to cover the step. When past context is present, the existing operator restriction still applies: `sequence_length > 1` requires `batch_size == 1`.
+    Because `L` depends only on `T`, the resulting layout is independent of how the tokens were split into steps: a multi-token step of `S` tokens (speculative decoding, chunked prefill) leaves exactly the layout that the same tokens would produce one at a time. A right-padded chunk (`query_seqlens`) leaves the layout of its `Q` valid tokens only, because padding rows never enter the cache. Any `S >= 1` is accepted, including `S > C`; a step that would evict positions it still has to read is staged internally, so the capacity does not have to cover the step. When past context is present, the existing operator restriction still applies: `sequence_length > 1` requires `batch_size == 1`.
   
     An execution provider may accept only part of the `C >= W` range. A configuration with `C < W` (equivalently, `W > C`) is invalid and is rejected with `INVALID_ARGUMENT`. The CUDA implementation requires `C == W`, so there `G` is 1 and `L(T)` is `min(T, C)`; a larger capacity is rejected. The CPU implementation accepts any `C >= W`, and slack above the window amortizes compaction over `G` steps.
   
@@ -3396,8 +3397,6 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Epsilon used by the per-head RMS norm applied to Q and K when q_norm_weight and k_norm_weight inputs are provided. Default value is 1e-6.</dd>
 <dt><tt>qk_output</tt> : int</dt>
 <dd>Output values of QK matrix multiplication before (1) or after (2) softmax normalization. Default value is 0 (don't output).</dd>
-<dt><tt>right_padded_query</tt> : int</dt>
-<dd>CUDA only. Set to 1 for causal right-padded query chunks. total_sequence_length must be the valid past length plus the padded query length, not the cache capacity; seqlens_k contains valid past plus valid query length minus one. Requires new K/V. Padding output rows are unspecified. Must be 0 or 1. Default is 0, preserving capacity-valued callers.</dd>
 <dt><tt>rotary_interleaved</tt> : int</dt>
 <dd>Rotate using interleaved pattern. Default value is 0 (False).</dd>
 <dt><tt>scale</tt> : float</dt>
@@ -3412,7 +3411,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Quantization type for V cache. One of 'NONE', 'PER_TENSOR', 'PER_CHANNEL'.</dd>
 </dl>
 
-#### Inputs (7 - 16)
+#### Inputs (7 - 17)
 
 <dl>
 <dt><tt>query</tt> : T</dt>
@@ -3428,7 +3427,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>seqlens_k</tt> : M</dt>
 <dd>1D Tensor of shape (batch_size). Equivalent to (total_sequence_lengths - 1).</dd>
 <dt><tt>total_sequence_length</tt> : M</dt>
-<dd>Scalar tensor equivalent to the maximum total sequence length (past + new) of the batch. Used for checking inputs and determining prompt vs token generation case.</dd>
+<dd>Scalar tensor equivalent to the maximum total sequence length (past + new) of the batch. Used for checking inputs and determining prompt vs token generation case. When query_seqlens is provided this is only an upper bound of seqlens_k + 1 (for example the KV cache capacity): it is not used to determine the prompt case or the past length.</dd>
 <dt><tt>cos_cache</tt> (optional) : T</dt>
 <dd>2D tensor with shape (max_sequence_length, head_size / 2).</dd>
 <dt><tt>sin_cache</tt> (optional) : T</dt>
@@ -3447,6 +3446,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Optional 1D tensor of shape (head_size). When provided together with k_norm_weight, the kernel applies a per-head RMS normalization to Q (and K) before any rotary embedding. Used by Qwen3-style models that wrap their Q/K projections in a Reshape -> SimplifiedLayerNormalization -> Reshape stack; downstream graph fusion folds that pattern into this input. Currently honored by the CUDA and native WebGPU execution providers; JSEP WebGPU/JS and other EPs must reject the node when this input is set.</dd>
 <dt><tt>k_norm_weight</tt> (optional) : T</dt>
 <dd>Optional 1D tensor of shape (head_size). See q_norm_weight. Must be provided together with q_norm_weight.</dd>
+<dt><tt>query_seqlens</tt> (optional) : M</dt>
+<dd>Optional 1D tensor of shape (batch_size) with the number of valid, non-padded tokens in the query/key/value chunk of each batch entry. The chunk is right-padded: rows [0, query_seqlens[b]) are valid and rows [query_seqlens[b], sequence_length) are padding. Unlike seqlens_k this is a count, not a count minus one. After the step the cache holds seqlens_k[b] + 1 tokens, so entry b had seqlens_k[b] + 1 - query_seqlens[b] tokens before it. Requires 1 <= query_seqlens[b] <= min(sequence_length, seqlens_k[b] + 1). When omitted, query_seqlens[b] = min(sequence_length, seqlens_k[b] + 1), which is the behavior without this input. See the Right-padded query chunks section of the operator description for the full contract. Currently honored by the CUDA execution provider; other EPs must reject the node when this input is set.</dd>
 </dl>
 
 #### Outputs (1 - 4)

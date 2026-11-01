@@ -693,6 +693,11 @@ static bool IsNodeSupported(const std::set<std::string>& op_set,
     return false;
   }
 
+  // GroupQueryAttention's query_seqlens (input 16, right-padded query chunks) is implemented only by the CUDA EP.
+  if (optype == "GroupQueryAttention" && node->InputDefs().size() > 16 && node->InputDefs()[16]->Exists()) {
+    return false;
+  }
+
   // check that some modes might not be supported in migraphx for some operators
   if (domain == kOnnxDomain && IsUnsupportedOpMode(graph_viewer, node)) {
     // not supported, then check the constant folding capability of migraphx

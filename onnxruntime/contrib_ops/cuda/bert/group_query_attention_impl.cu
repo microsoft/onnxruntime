@@ -628,15 +628,15 @@ Status LaunchUnpackQKV(const T* packed_qkv, T* unpacked_q, T* unpacked_k, T* unp
 //   total_seq_lens_minus_one - Input from ONNX graph: total_len - 1 per batch [B]
 //   sequence_length          - Current Q sequence length (new tokens)
 //   is_first_prompt          - True if this is the first prompt (no past)
+//   query_seqlens            - Optional [B] count of valid rows of a right-padded query chunk. When
+//                              set it defines the past length, and is_first_prompt is ignored.
 //
 // OUTPUTS:
 //   past_seq_lens   - Offset where new KV should be appended [B]
 //                     First prompt: 0
-//                     Otherwise: total_len - sequence_length
+//                     Otherwise: total_len - valid query length
 //   total_seq_lens  - Total valid tokens including new ones [B]
-//   padded_seq_lens - Padded length for masking (first prompt only) [B]
-//                     First prompt: sequence_length
-//                     Otherwise: not set (undefined)
+//   padded_seq_lens - Key length used for masking: past_len + sequence_length [B]
 //
 // THREAD MAPPING:
 //   One thread per batch element.
@@ -657,7 +657,8 @@ __global__ void GetSequenceLengths(const int* total_seq_lens_minus_one,
                                    const int max_total_sequence_length,
                                    const int kv_cache_capacity,
                                    const int kv_cache_real_capacity,
-                                   const bool right_padded_query) {
+                                   const int present_kv_cache_capacity,
+                                   const int* query_seqlens) {
   int i = threadIdx.x + blockIdx.x * blockDim.x;
   if (i < batch_size) {
     // seqlens_k is untrusted device input; clamp it before deriving lengths and offsets.
@@ -666,21 +667,30 @@ __global__ void GetSequenceLengths(const int* total_seq_lens_minus_one,
     const int total_len = bounded_seqlens_k + 1;
     total_seq_lens[i] = total_len;
     int past_len = 0;
-    if (!is_first_prompt) {
-      // Opt-in callers supply past + padded query length. Otherwise the scalar may be
-      // the allocated capacity, so only seqlens_k determines the append offset.
-      if (right_padded_query && sequence_length > 1) {
-        past_len = max_total_sequence_length - sequence_length;
-      } else {
+    int valid_q_len = 0;
+    if (query_seqlens != nullptr) {
+      // The valid query length is untrusted device input as well. Clamping it to [1, min(S, T)] keeps
+      // every derived offset in range; the result for a value outside that range is unspecified.
+      const int requested = query_seqlens[i];
+      valid_q_len = min(max(requested, 1), min(sequence_length, total_len));
+      past_len = total_len - valid_q_len;
+    } else {
+      if (!is_first_prompt) {
+        // The scalar total_sequence_length may be the allocated capacity, so only seqlens_k
+        // determines the append offset.
         past_len = total_len - sequence_length;
         past_len = past_len > 0 ? past_len : 0;
       }
+      valid_q_len = min(sequence_length, max(0, total_len - past_len));
     }
-    const int valid_q_len = min(sequence_length, max(0, total_len - past_len));
     past_seq_lens[i] = past_len;
     padded_seq_lens[i] = past_len + sequence_length;
 
     if (cache_past_seq_lens == nullptr) {
+      if (query_seqlens != nullptr && padded_seq_lens[i] > present_kv_cache_capacity) {
+        // Out of contract (P + S > C); keep the key length inside the cache allocation.
+        padded_seq_lens[i] = present_kv_cache_capacity;
+      }
       return;
     }
 
@@ -724,7 +734,8 @@ Status LaunchGetSequenceLengths(
     const int max_total_sequence_length,
     const int kv_cache_capacity,
     const int kv_cache_real_capacity,
-    const bool right_padded_query,
+    const int present_kv_cache_capacity,
+    const int* query_seqlens,
     cudaStream_t stream,
     const int max_threads_per_block) {
   int blocks = (batch_size + max_threads_per_block - 1) / max_threads_per_block;
@@ -732,7 +743,7 @@ Status LaunchGetSequenceLengths(
       total_seq_lens_minus_one, past_seq_lens, total_seq_lens, padded_seq_lens,
       cache_past_seq_lens, cache_total_seq_lens, evict_counts,
       batch_size, sequence_length, is_first_prompt, max_total_sequence_length,
-      kv_cache_capacity, kv_cache_real_capacity, right_padded_query);
+      kv_cache_capacity, kv_cache_real_capacity, present_kv_cache_capacity, query_seqlens);
   return CUDA_CALL(cudaGetLastError());
 }
 

@@ -120,11 +120,6 @@ GroupQueryAttention<T, U>::GroupQueryAttention(const OpKernelInfo& info)
   sliding_window_cache_ = info.GetAttrOrDefault<int64_t>("sliding_window_cache", 0) == 1;
   ORT_ENFORCE(!sliding_window_cache_ || local_window_size_ > 0,
               "GroupQueryAttention (CUDA): sliding_window_cache=1 requires local_window_size > 0.");
-  const int64_t right_padded_query = info.GetAttrOrDefault<int64_t>("right_padded_query", 0);
-  ORT_ENFORCE(right_padded_query == 0 || right_padded_query == 1, "right_padded_query must be 0 or 1.");
-  right_padded_query_ = right_padded_query == 1;
-  ORT_ENFORCE(!right_padded_query_ || is_unidirectional_,
-              "right_padded_query=1 requires causal=1.");
   do_rotary_ = info.GetAttrOrDefault<int64_t>("do_rotary", 0) == 1;
   rotary_interleaved_ = info.GetAttrOrDefault<int64_t>("rotary_interleaved", 0) == 1;
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
@@ -315,6 +310,15 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
         "GroupQueryAttention (CUDA): q_norm_weight and k_norm_weight must be provided together.");
   }
 
+  // query_seqlens (input 16) is the number of valid rows in each right-padded query chunk. Its values
+  // stay on the device and are clamped there, so only its shape and the structural requirements are
+  // checked on the host (in CheckInputs).
+  const Tensor* query_seqlens = (context->InputCount() > 16) ? context->Input<Tensor>(16) : nullptr;
+  if (query_seqlens != nullptr && !is_unidirectional_) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "GroupQueryAttention (CUDA): query_seqlens requires causal=1.");
+  }
+
   if (k_quant_type_ != KVQuantizationType::NONE) {
     if (k_scale == nullptr) {
       return ORT_MAKE_STATUS(
@@ -385,12 +389,14 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
                                                                 device_prop.maxThreadsPerBlock,
                                                                 /*kv_cache_extra_bits=*/0,
                                                                 sliding_window_cache_,
-                                                                local_window_size_));
+                                                                local_window_size_,
+                                                                query_seqlens));
 
-  ORT_RETURN_IF(right_padded_query_ &&
-                    (parameters.kv_sequence_length == 0 ||
-                     parameters.total_sequence_length < parameters.sequence_length),
-                "right_padded_query=1 requires new K/V and total_sequence_length >= sequence_length.");
+  // For a single query token the padded chunk is the token itself: the length is 1 by contract and
+  // the legacy decode paths (XQA, flash decode) already derive it from seqlens_k, so the input is
+  // not read on the device.
+  const int* query_seqlens_data =
+      (query_seqlens != nullptr && parameters.sequence_length > 1) ? query_seqlens->Data<int>() : nullptr;
 
   // The CUDA kernel evicts the minimum number of positions on every step, so the cache it produces
   // is always full at min(T, C). That equals the resident range the operator specifies only when
@@ -789,8 +795,8 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   // and no sliding window. Rotary and packed QKV are handled by PrepareQKV before the kernel runs;
   // cuDNN handles grouped-query attention natively. Keep this path bias-free because an arbitrary
   // attention bias cannot be composed with cuDNN's fused bottom-right causal mask.
-  // cuDNN only receives valid Q lengths for the first prompt, not padded subsequent chunks.
-  bool use_cudnn_sdpa = !data.use_xqa && !right_padded_query_ &&
+  // cuDNN only receives valid Q lengths for the first prompt, not for right-padded chunks (query_seqlens).
+  bool use_cudnn_sdpa = !data.use_xqa && query_seqlens_data == nullptr &&
                         IsGQACudnnSdpaCoreEligibleSeqFree<T, U>(
                             has_attention_bias,
                             is_inputs_quantized,
@@ -915,7 +921,8 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
                                                  parameters.total_sequence_length,
                                                  parameters.kv_cache_capacity,
                                                  parameters.kv_cache_real_capacity,
-                                                 right_padded_query_,
+                                                 original_present_kv_cache_capacity,
+                                                 query_seqlens_data,
                                                  cuda_stream,
                                                  device_prop.maxThreadsPerBlock));
     DUMP_TENSOR_INIT();
