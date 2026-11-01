@@ -3,6 +3,7 @@
 
 #include "core/framework/tensor.h"
 #include "core/framework/allocator_utils.h"
+#include "core/framework/ort_value_tensor_slicer.h"
 #include "test/unittest_util/framework_test_utils.h"
 
 #include "gmock/gmock.h"
@@ -142,6 +143,43 @@ TEST(TensorTest, EmptyTensorTest) {
                                            ? OrtAllocatorType::OrtArenaAllocator
                                            : OrtAllocatorType::OrtDeviceAllocator;
   EXPECT_EQ(location.alloc_type, expected_allocator_type);
+}
+
+// Positive control: valid slicer parameters create the expected tensor views.
+TEST(TensorTest, OrtValueTensorSlicerValidParameters) {
+  auto allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+  OrtValue value;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape({2, 3}),
+                       allocator, value);
+
+  EXPECT_NO_THROW({
+    auto slicer = OrtValueTensorSlicer<OrtValue>::Create(
+        value, /*slice_dimension=*/1, /*dim0_offset=*/1);
+    EXPECT_NE(slicer.begin(), slicer.end());
+  });
+}
+
+TEST(TensorTest, OrtValueTensorSlicerRejectsInvalidParameters) {
+  auto allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+  OrtValue value;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape({2, 3}),
+                       allocator, value);
+
+  EXPECT_THROW(OrtValueTensorSlicer<OrtValue>::Create(
+                   value, /*slice_dimension=*/-1, /*dim0_offset=*/0),
+               OnnxRuntimeException);
+  EXPECT_THROW(OrtValueTensorSlicer<OrtValue>::Create(
+                   value, /*slice_dimension=*/2, /*dim0_offset=*/0),
+               OnnxRuntimeException);
+  EXPECT_THROW(OrtValueTensorSlicer<OrtValue>::Create(
+                   value, /*slice_dimension=*/1, /*dim0_offset=*/-1),
+               OnnxRuntimeException);
+  EXPECT_THROW(OrtValueTensorSlicer<OrtValue>::Create(
+                   value, /*slice_dimension=*/1, /*dim0_offset=*/2),
+               OnnxRuntimeException);
+  EXPECT_THROW(OrtValueTensorSlicer<OrtValue>::Create(
+                   value, /*slice_dimension=*/0, /*dim0_offset=*/1),
+               OnnxRuntimeException);
 }
 
 TEST(TensorTest, StringTensorTest) {
