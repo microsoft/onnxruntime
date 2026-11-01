@@ -279,8 +279,17 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(W->Shape(), kernel_shape));
   const size_t kernel_rank = kernel_shape.size();
 
+  // Channels-last supports 2-D kernels, which may take the NHWC fast path, and
+  // 1-D kernels (Conv1d), which always take the layout-conversion fallback
+  // below. An NWC tensor [N, W, C] is laid out exactly as NHWC [N, 1, W, C],
+  // so that fallback handles 1-D with a unit height and no new code path.
+  //
+  // The NHWC transformer can hand this kernel a 1-D convolution; rejecting it
+  // here failed session creation for every Conv1d model on Arm64 (for example
+  // the two kernel_shape=[3] convolutions of the Whisper encoder).
   if (channels_last_) {
-    ORT_RETURN_IF_NOT(kernel_rank == 2, "Conv with channels_last layout currently supports 2D kernels.");
+    ORT_RETURN_IF_NOT(kernel_rank == 1 || kernel_rank == 2,
+                      "Conv with channels_last layout currently supports 1D and 2D kernels.");
   }
 
   ConvPadVector pads(conv_attrs_.pads);
@@ -297,13 +306,17 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
   }
 
   TensorShapeVector Y_dims({N, M});
-  TensorShape input_shape = channels_last_ ? X->Shape().Slice(1, 3) : X->Shape().Slice(2);
+  TensorShape input_shape = channels_last_ ? X->Shape().Slice(1, 1 + kernel_rank) : X->Shape().Slice(2);
   ORT_RETURN_IF_ERROR(conv_attrs_.InferPadsAndOutputShape(input_shape, kernel_shape, strides, dilations, pads, Y_dims));
   if (channels_last_) {
-    Y_dims = {Y_dims[0], Y_dims[2], Y_dims[3], Y_dims[1]};
+    // [N, M, spatial...] -> [N, spatial..., M]
+    TensorShapeVector channels_last_dims{Y_dims[0]};
+    channels_last_dims.insert(channels_last_dims.end(), Y_dims.begin() + 2, Y_dims.end());
+    channels_last_dims.push_back(Y_dims[1]);
+    Y_dims = std::move(channels_last_dims);
   }
   Tensor* Y = context->Output(0, TensorShape(Y_dims));
-  TensorShape output_shape = channels_last_ ? TensorShape(Y_dims).Slice(1, 3) : Y->Shape().Slice(2);
+  TensorShape output_shape = channels_last_ ? TensorShape(Y_dims).Slice(1, 1 + kernel_rank) : Y->Shape().Slice(2);
 
   if (Y->Shape().Size() == 0) {
     return Status::OK();
@@ -351,7 +364,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
   std::array<size_t, 2> dilations_size_t{};
   std::array<size_t, 4> pads_size_t{};
   std::array<size_t, 2> strides_size_t{};
-  if (wants_channels_last) {
+  if (wants_channels_last && kernel_rank == 2) {
     ORT_RETURN_IF_NOT(input_shape.NumDimensions() == 2, "Nhwc Conv fast-path expects 2D input shape.");
     for (size_t i = 0; i < 2; ++i) {
       input_shape_size_t[i] = narrow<size_t>(input_shape[i]);
@@ -366,7 +379,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
   const size_t input_channels_per_group = narrow<size_t>(C / conv_attrs_.group);
   const size_t filter_count_per_group = narrow<size_t>(M / conv_attrs_.group);
   const bool nhwc_fastpath =
-      wants_channels_last && !sum_present &&
+      wants_channels_last && kernel_rank == 2 && !sum_present &&
       (MlasConvSupportsDenseChannelsLast2DFloatKernel(
            kernel_rank,
            narrow<size_t>(N),
@@ -467,7 +480,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
     if (wants_channels_last && !nhwc_fastpath) {
       const SafeInt<size_t> output_compute_size =
           SafeInt<size_t>(Y->Shape()[0]) * SafeInt<size_t>(M) *
-          SafeInt<size_t>(output_shape[0]) * SafeInt<size_t>(output_shape[1]);
+          SafeInt<size_t>(output_shape.Size());
       float* temp_output = static_cast<float*>(alloc->Alloc(sizeof(float) * output_compute_size));
       output_temp = BufferUniquePtr(temp_output, BufferDeleter(alloc));
       output_compute = temp_output;
@@ -476,12 +489,13 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
     const float* input_compute = Xdata.data();
     BufferUniquePtr input_temp;
     if (wants_channels_last && !nhwc_fastpath) {
-      ORT_RETURN_IF_NOT(X->Shape().NumDimensions() == 4, "Nhwc fallback expects 4D input.");
+      ORT_RETURN_IF_NOT(X->Shape().NumDimensions() == 2 + kernel_rank,
+                        "Nhwc fallback expects an [N, spatial..., C] input.");
       const auto& x_dims = X->Shape().GetDims();
       const int64_t input_n = x_dims[0];
-      const int64_t input_h = x_dims[1];
-      const int64_t input_w = x_dims[2];
-      const int64_t input_c = x_dims[3];
+      const int64_t input_h = kernel_rank == 2 ? x_dims[1] : 1;
+      const int64_t input_w = kernel_rank == 2 ? x_dims[2] : x_dims[1];
+      const int64_t input_c = x_dims.back();
       const SafeInt<size_t> input_elements = SafeInt<size_t>(X->Shape().Size());
       float* temp_input = static_cast<float*>(alloc->Alloc(sizeof(float) * input_elements));
       input_temp = BufferUniquePtr(temp_input, BufferDeleter(alloc));
@@ -500,14 +514,19 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
 
     if (wants_channels_last && !nhwc_fastpath) {
       const auto& y_dims = Y->Shape().GetDims();
-      ORT_RETURN_IF_NOT(y_dims.size() == 4, "Nhwc fallback expects 4D output.");
+      ORT_RETURN_IF_NOT(y_dims.size() == 2 + kernel_rank,
+                        "Nhwc fallback expects an [N, spatial..., M] output.");
+      const int64_t output_n = y_dims[0];
+      const int64_t output_h = kernel_rank == 2 ? y_dims[1] : 1;
+      const int64_t output_w = kernel_rank == 2 ? y_dims[2] : y_dims[1];
+      const int64_t output_c = y_dims.back();
       if (manual_sum) {
         const SafeInt<size_t> output_elements = SafeInt<size_t>(Y->Shape().Size());
         float* sum_nchw = static_cast<float*>(alloc->Alloc(sizeof(float) * output_elements));
         BufferUniquePtr sum_nchw_buffer(sum_nchw, BufferDeleter(alloc));
         ConvertNHWCToNCHW(sum_manual_data,
                           sum_nchw,
-                          y_dims[0], y_dims[3], y_dims[1], y_dims[2], thread_pool);
+                          output_n, output_c, output_h, output_w, thread_pool);
 
         auto output_span = gsl::make_span(output_compute, static_cast<size_t>(output_elements));
         auto sum_span = gsl::make_span(sum_nchw, static_cast<size_t>(output_elements));
@@ -515,7 +534,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
           output_span[i] += sum_span[i];
         }
 
-        const auto activation_rows = narrow<size_t>(SafeInt<int64_t>(y_dims[0]) * y_dims[3]);
+        const auto activation_rows = narrow<size_t>(SafeInt<int64_t>(output_n) * output_c);
         const auto activation_cols = narrow<size_t>(output_shape.Size());
         MlasActivation(&activation_, output_compute, nullptr, activation_rows,
                        activation_cols, activation_cols);
@@ -523,7 +542,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
 
       ConvertNCHWToNHWC(output_compute,
                         Ydata.data(),
-                        y_dims[0], y_dims[3], y_dims[1], y_dims[2], thread_pool);
+                        output_n, output_c, output_h, output_w, thread_pool);
     }
   } else {
     const int64_t input_image_size = input_shape.Size();
