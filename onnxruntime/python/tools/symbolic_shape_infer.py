@@ -1750,6 +1750,8 @@ class SymbolicShapeInference:
                     )
                 )
         else:
+            axes = get_attribute(node, "axes")
+            resize_shape = [input_sympy_shape[axis] for axis in axes] if axes is not None else input_sympy_shape
             roi = self._try_get_value(node, 1)
             scales = self._try_get_value(node, 2)
             sizes = self._try_get_value(node, 3)
@@ -1768,11 +1770,19 @@ class SymbolicShapeInference:
                 scales = list(scales)
                 new_sympy_shape = [
                     sympy.simplify(sympy.floor(d * (end - start) * scale))
-                    for d, start, end, scale in zip(input_sympy_shape, roi_start, roi_end, scales, strict=False)
+                    for d, start, end, scale in zip(resize_shape, roi_start, roi_end, scales, strict=False)
                 ]
                 self._update_computed_dims(new_sympy_shape)
             else:
                 new_sympy_shape = self._new_symbolic_shape(self._get_shape_rank(node, 0), node)
+                if axes is not None:
+                    new_sympy_shape = [new_sympy_shape[axis] for axis in axes]
+
+            if axes is not None:
+                output_shape = input_sympy_shape.copy()
+                for axis, dim in zip(axes, new_sympy_shape, strict=False):
+                    output_shape[axis] = dim
+                new_sympy_shape = output_shape
 
             vi.CopyFrom(
                 helper.make_tensor_value_info(

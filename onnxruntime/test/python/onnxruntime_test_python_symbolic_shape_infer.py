@@ -1183,6 +1183,61 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
     def test_einsum_transpose(self):
         self._test_einsum_one_input_impl(["a", "b"], ["b", "a"], "ij -> ji")
 
+    def test_resize_preserves_unselected_dimensions(self):
+        for axes in ([2, 3], [-2, -1], [3, 2]):
+            for parameter in ("sizes", "scales", "roi"):
+                for leading_shape in ([1, 3], ["batch", "channels"]):
+                    with self.subTest(axes=axes, parameter=parameter, leading_shape=leading_shape):
+                        values = [([1, 1, 8, 18] if parameter == "sizes" else [1, 1, 2, 3])[axis] for axis in axes]
+                        name = "sizes" if parameter == "sizes" else "scales"
+                        dtype = numpy.int64 if parameter == "sizes" else numpy.float32
+                        initializers = [numpy_helper.from_array(numpy.array(values, dtype=dtype), name)]
+                        node_inputs = ["input", "", "", "sizes"] if name == "sizes" else ["input", "", "scales"]
+                        attributes = {"axes": axes, "mode": "nearest"}
+                        if parameter == "roi":
+                            node_inputs[1] = "roi"
+                            initializers.append(
+                                numpy_helper.from_array(numpy.array([0, 0, 1, 1], dtype=numpy.float32), "roi")
+                            )
+                            attributes["coordinate_transformation_mode"] = "tf_crop_and_resize"
+                        graph = helper.make_graph(
+                            [helper.make_node("Resize", node_inputs, ["output"], **attributes)],
+                            "resize_axes",
+                            [helper.make_tensor_value_info("input", TensorProto.FLOAT, [*leading_shape, 4, 6])],
+                            [helper.make_tensor_value_info("output", TensorProto.FLOAT, [None] * 4)],
+                            initializers,
+                        )
+                        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 18)])
+                        onnx.checker.check_model(model, full_check=True)
+                        inferred = SymbolicShapeInference.infer_shapes(model)
+                        output_shape = inferred.graph.output[0].type.tensor_type.shape.dim
+                        self.assertEqual(
+                            [dim.dim_param or dim.dim_value for dim in output_shape], [*leading_shape, 8, 18]
+                        )
+
+    def test_resize_preserves_unselected_dimensions_when_parameters_are_dynamic(self):
+        for axes in ([2, 3], [-2, -1], [3, 2]):
+            for parameter, elem_type in (("sizes", TensorProto.INT64), ("scales", TensorProto.FLOAT)):
+                with self.subTest(axes=axes, parameter=parameter):
+                    node_inputs = ["input", "", "", "sizes"] if parameter == "sizes" else ["input", "", "scales"]
+                    graph = helper.make_graph(
+                        [helper.make_node("Resize", node_inputs, ["output"], axes=axes)],
+                        "resize_dynamic_axes",
+                        [
+                            helper.make_tensor_value_info("input", TensorProto.FLOAT, ["batch", 3, 4, 6]),
+                            helper.make_tensor_value_info(parameter, elem_type, [2]),
+                        ],
+                        [helper.make_tensor_value_info("output", TensorProto.FLOAT, [None] * 4)],
+                    )
+                    model = SymbolicShapeInference.infer_shapes(
+                        helper.make_model(graph, opset_imports=[helper.make_opsetid("", 18)])
+                    )
+                    output_shape = model.graph.output[0].type.tensor_type.shape.dim
+                    self.assertEqual(len(output_shape), 4)
+                    self.assertEqual(output_shape[0].dim_param, "batch")
+                    self.assertEqual(output_shape[1].dim_value, 3)
+                    self.assertTrue(all(dim.dim_param for dim in output_shape[2:]))
+
     def test_mul_precision(self):
         graph_input = onnx.helper.make_tensor_value_info("input", TensorProto.FLOAT, [1024])
         graph_output = onnx.helper.make_tensor_value_info("output", TensorProto.FLOAT, None)
