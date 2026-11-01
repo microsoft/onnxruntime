@@ -206,6 +206,29 @@ TEST(QMoEOffloadPlanTest, RejectsZeroOrNegativeExpertCountsAndSupportsInt4AndInt
   }
 }
 
+TEST(QMoEOffloadPlanTest, Int2CanonicalAndLegacyBanksMatchScaleGeometry) {
+  for (int64_t block : {32, 64, 128}) {
+    const uint64_t fc1_scales = 8ull * 256 * (256 / block) * 2;
+    const uint64_t fc2_scales = 8ull * 256 * (128 / block) * 2;
+    for (const auto& fc2 : {TensorShape({8, 128, 64}), TensorShape({8, 256, 32})}) {
+      const auto dims = qmoe::ResolveNvfp4BankDims(
+          TensorShape({8, 256, 64}), fc2, block, fc1_scales, fc2_scales, 2, /*pack_factor=*/4);
+      ASSERT_TRUE(dims.valid);
+      EXPECT_EQ(dims.hidden, 256);
+      EXPECT_EQ(dims.inter, 128);
+      EXPECT_FALSE(qmoe::ResolveNvfp4BankDims(
+                       TensorShape({8, 256, 64}), fc2, block, fc1_scales - 1, fc2_scales, 2, 4)
+                       .valid);
+    }
+  }
+  EXPECT_FALSE(qmoe::ResolveNvfp4BankDims(
+                   TensorShape({0, 256, 64}), TensorShape({0, 256, 32}), 64, 0, 0, 2, 4)
+                   .valid);
+  EXPECT_FALSE(qmoe::ResolveNvfp4BankDims(
+                   TensorShape({8, 256, 64}), TensorShape({8, 256, 32}), 64, 8192, 4096, 2, 3)
+                   .valid);
+}
+
 namespace {
 
 qmoe::CrossLayerSite Site(const void* session, int64_t layer, bool doorbell_pending = false) {

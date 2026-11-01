@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-"""Direct CPU/CUDA execution of identical SM80 INT4 and row-local INT3 banks."""
+"""Direct CPU/CUDA execution of identical SM80 INT4/INT2 and row-local INT3 banks."""
 
 import hashlib
 import json
@@ -124,6 +124,26 @@ def _unpack_sm80(packed, n, k):
     return permuted[..., np.argsort(_ROW_PERMUTATION)].reshape(experts, n, k).astype(np.int16) - 8
 
 
+def _pack_int2_sm80(codes):
+    experts, n, k = codes.shape
+    permutation = np.array([32 * (b & 1) + 8 * s + (b >> 1) for b in range(16) for s in range(4)])
+    unsigned = (codes.astype(np.int16) + 2).astype(np.uint8)
+    groups = unsigned.reshape(experts, n, k // 64, 64)[..., permutation].reshape(experts, n, k // 64, 16, 4)
+    packed = np.bitwise_or.reduce(groups << np.arange(0, 8, 2, dtype=np.uint8), axis=-1)
+    return packed.reshape(experts, n // 8, 8, k // 64, 16).transpose(0, 1, 3, 2, 4).copy().reshape(experts, k, n // 4)
+
+
+def _unpack_int2_sm80(packed, n, k):
+    experts = packed.shape[0]
+    rows = packed.reshape(experts, n // 8, k // 64, 8, 16).transpose(0, 1, 3, 2, 4)
+    groups = (rows[..., None] >> np.arange(0, 8, 2, dtype=np.uint8)) & 3
+    permutation = np.array([32 * (b & 1) + 8 * s + (b >> 1) for b in range(16) for s in range(4)])
+    return (
+        groups.reshape(experts, n, k // 64, 64)[..., np.argsort(permutation)].reshape(experts, n, k).astype(np.int16)
+        - 2
+    )
+
+
 def _pack_int3(codes):
     unsigned = (codes.astype(np.int16) + 4).astype(np.uint64).reshape(*codes.shape[:-1], -1, 8)
     words = np.bitwise_or.reduce(unsigned << np.arange(0, 24, 3, dtype=np.uint64), axis=-1)
@@ -142,9 +162,9 @@ def _unpack_int3(packed, k):
     ) - 4
 
 
-def _fixture(bits, dtype, hidden=128, inter=64, experts=4):
+def _fixture(bits, dtype, hidden=128, inter=64, experts=4, block=None, with_bias=False):
     rng = np.random.default_rng(452 + bits)
-    block = 32 if bits == 4 else 64
+    block = block if block is not None else (32 if bits == 4 else 64)
     codes = [
         rng.integers(-(1 << (bits - 1)), 1 << (bits - 1), size=(experts, n, k), dtype=np.int16)
         for n, k in [(2 * inter, hidden), (hidden, inter)]
@@ -153,8 +173,18 @@ def _fixture(bits, dtype, hidden=128, inter=64, experts=4):
         _round(rng.uniform(0.01, 0.04, size=(experts, n, k // block)), dtype)
         for n, k in [(2 * inter, hidden), (hidden, inter)]
     ]
-    packed = [_pack_sm80(c) if bits == 4 else _pack_int3(c) for c in codes]
-    return {"bits": bits, "block": block, "codes": codes, "scales": scales, "packed": packed, "dtype": dtype}
+    pack = _pack_sm80 if bits == 4 else (_pack_int2_sm80 if bits == 2 else _pack_int3)
+    packed = [pack(c) for c in codes]
+    biases = [_round(rng.uniform(-0.05, 0.05, (experts, n)), dtype) if with_bias else None for n in (2 * inter, hidden)]
+    return {
+        "bits": bits,
+        "block": block,
+        "codes": codes,
+        "scales": scales,
+        "packed": packed,
+        "dtype": dtype,
+        "biases": biases,
+    }
 
 
 def _reference(fixture, x, router, top_k=2, normalize=True):
@@ -173,10 +203,15 @@ def _reference(fixture, x, router, top_k=2, normalize=True):
         for expert in selected:
             assert expert < experts
             fc1 = x[row].astype(np.float64) @ projections[0][expert].T
+            if fixture["biases"][0] is not None:
+                fc1 += fixture["biases"][0][expert]
             gate, up = fc1[0::2], fc1[1::2]
             intermediate = _round(gate / (1 + np.exp(-gate)) * up, dtype)
             assert intermediate.size == inter
-            fc2 = _round(intermediate.astype(np.float64) @ projections[1][expert].T, dtype)
+            fc2 = intermediate.astype(np.float64) @ projections[1][expert].T
+            if fixture["biases"][1] is not None:
+                fc2 += fixture["biases"][1][expert]
+            fc2 = _round(fc2, dtype)
             result[row] += fc2 * (probabilities[expert] / denominator)
     assert result.shape[1] == hidden
     return _round(result, dtype)
@@ -197,12 +232,13 @@ def _model(fixture, dynamic=False, canonical_shape=False, normalize=True, mixed_
 
     def add_qmoe(current, name, source):
         bank_names = []
+        bias_names = []
         for index, (source_weights, scales) in enumerate(zip(current["packed"], current["scales"], strict=True)):
             w_name, s_name = f"{name}_w{index}", f"{name}_s{index}"
             packed = source_weights
-            if current["bits"] == 4 and canonical_shape:
+            if current["bits"] in (2, 4) and canonical_shape:
                 n, k = current["codes"][index].shape[-2:]
-                packed = packed.reshape(experts, n, k // 2)
+                packed = packed.reshape(experts, n, k * current["bits"] // 8)
             if dynamic:
                 inputs.extend(
                     [
@@ -215,10 +251,24 @@ def _model(fixture, dynamic=False, canonical_shape=False, normalize=True, mixed_
             else:
                 initializers.extend([numpy_helper.from_array(packed, w_name), _tensor(s_name, scales, dtype)])
             bank_names.extend([w_name, s_name])
+            bias = current["biases"][index]
+            bias_name = f"{name}_b{index}" if bias is not None else ""
+            if bias is not None:
+                initializers.append(_tensor(bias_name, bias, dtype))
+            bias_names.append(bias_name)
         nodes.append(
             helper.make_node(
                 "QMoE",
-                [source, "typed_router", bank_names[0], bank_names[1], "", bank_names[2], bank_names[3]],
+                [
+                    source,
+                    "typed_router",
+                    bank_names[0],
+                    bank_names[1],
+                    bias_names[0],
+                    bank_names[2],
+                    bank_names[3],
+                    bias_names[1],
+                ],
                 [name],
                 domain="com.microsoft",
                 name=name,
@@ -227,7 +277,7 @@ def _model(fixture, dynamic=False, canonical_shape=False, normalize=True, mixed_
                 swiglu_fusion=1,
                 normalize_routing_weights=int(normalize),
                 expert_weight_bits=current["bits"],
-                weights_prepacked=int(current["bits"] == 4),
+                weights_prepacked=int(current["bits"] in (2, 4)),
                 block_size=current["block"],
             )
         )
@@ -261,7 +311,17 @@ class TestQMoESharedDirect(unittest.TestCase):
             self.assertIn("CUDAExecutionProvider", providers)
         return providers
 
-    def _run(self, fixture, rows, dynamic=False, canonical_shape=False, normalize=True, mixed_next=None, top_k=2):
+    def _run(
+        self,
+        fixture,
+        rows,
+        dynamic=False,
+        canonical_shape=False,
+        normalize=True,
+        mixed_next=None,
+        top_k=2,
+        providers=None,
+    ):
         model, feeds = _model(fixture, dynamic, canonical_shape, normalize, mixed_next, top_k)
         hidden, experts = fixture["codes"][0].shape[-1], fixture["codes"][0].shape[0]
         rng = np.random.default_rng(938 + rows)
@@ -273,7 +333,7 @@ class TestQMoESharedDirect(unittest.TestCase):
         if mixed_next is not None:
             expected = _reference(mixed_next, expected, feeds["router"], top_k=top_k, normalize=normalize)
         before = [hashlib.sha256(value.tobytes()).digest() for value in feeds.values()]
-        for provider in self._providers():
+        for provider in self._providers() if providers is None else providers:
             if provider == "CUDAExecutionProvider" and fixture["dtype"] == TensorProto.FLOAT:
                 continue
             for disable_prepacking in [False, True]:
@@ -307,11 +367,15 @@ class TestQMoESharedDirect(unittest.TestCase):
         self.assertEqual(before, [hashlib.sha256(value.tobytes()).digest() for value in feeds.values()])
 
     def test_offline_layout_fixtures_roundtrip(self):
-        for bits in [3, 4]:
+        for bits in [2, 3, 4]:
             fixture = _fixture(bits, TensorProto.FLOAT16)
             for codes, packed in zip(fixture["codes"], fixture["packed"], strict=True):
                 decoded = (
-                    _unpack_sm80(packed, *codes.shape[-2:]) if bits == 4 else _unpack_int3(packed, codes.shape[-1])
+                    _unpack_sm80(packed, *codes.shape[-2:])
+                    if bits == 4
+                    else _unpack_int2_sm80(packed, *codes.shape[-2:])
+                    if bits == 2
+                    else _unpack_int3(packed, codes.shape[-1])
                 )
                 np.testing.assert_array_equal(codes, decoded)
 
@@ -331,6 +395,20 @@ class TestQMoESharedDirect(unittest.TestCase):
 
     def test_float32_cpu_prepacked_int4(self):
         self._run(_fixture(4, TensorProto.FLOAT), 9, dynamic=True)
+
+    def test_cpu_prepacked_int2_shapes_blocks_dtypes_and_bias(self):
+        for block in (32, 64, 128):
+            for dtype in (TensorProto.FLOAT16, TensorProto.BFLOAT16, TensorProto.FLOAT):
+                for canonical_shape in (False, True):
+                    for with_bias in (False, True):
+                        with self.subTest(
+                            block=block, dtype=dtype, canonical_shape=canonical_shape, with_bias=with_bias
+                        ):
+                            fixture = _fixture(2, dtype, hidden=256, inter=128, block=block, with_bias=with_bias)
+                            for rows in (1, 9):
+                                self._run(
+                                    fixture, rows, canonical_shape=canonical_shape, providers=["CPUExecutionProvider"]
+                                )
 
     def test_mixed_int4_int3_graph(self):
         first, second = _fixture(4, TensorProto.BFLOAT16), _fixture(3, TensorProto.BFLOAT16)
@@ -413,6 +491,7 @@ class TestQMoESharedDirect(unittest.TestCase):
                 "packed": [banks[0], banks[2]],
                 "scales": [banks[1], banks[3]],
                 "codes": [decode(banks[0], 2 * inter, hidden), decode(banks[2], hidden, inter)],
+                "biases": [None, None],
             }
             self._run(fixture, 4)
         self.assertEqual(found, {3, 4})

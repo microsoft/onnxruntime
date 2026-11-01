@@ -13,19 +13,20 @@ struct Nvfp4BankDims {
   int64_t inter = 0;
 };
 
-// Row-major FP4 expert banks use the same bytes per expert in two accepted weight shapes:
-//   standard: FC1 [E, 2*I, H/2], FC2 [E, H, I/2]
-//   legacy:   FC1 [E, H, I],     FC2 [E, I, H/2]
-// The forms cannot be confused: FC1.dim1 / FC2.dim2 is 4 for standard and 2 for legacy. The block-scale banks must
+// FP4/INT4 (pack_factor=2) and INT2 (pack_factor=4) banks accept two weight shapes:
+//   standard: FC1 [E, 2*I, H/pack_factor], FC2 [E, H, I/pack_factor]
+//   legacy:   FC1 [E, H, 2*I/pack_factor], FC2 [E, I, H/pack_factor]
+// The forms cannot be confused: FC1.dim1 / FC2.dim2 is 2*pack_factor for standard and pack_factor for legacy.
+// The block-scale banks must
 // hold exactly [E, 2*I, H/scale_group] and [E, H, I/scale_group] bytes, which is what per-expert slicing assumes.
 // Shape is any type with NumDimensions() and operator[] (for example TensorShape).
 template <typename Shape>
 inline Nvfp4BankDims ResolveNvfp4BankDims(const Shape& fc1_weights, const Shape& fc2_weights, int64_t scale_group,
                                           uint64_t fc1_scale_bytes, uint64_t fc2_scale_bytes,
-                                          uint64_t scale_elem_bytes = 1) {
+                                          uint64_t scale_elem_bytes = 1, int64_t pack_factor = 2) {
   Nvfp4BankDims dims;
   if (fc1_weights.NumDimensions() != 3 || fc2_weights.NumDimensions() != 3 || scale_group <= 0 ||
-      scale_elem_bytes == 0) {
+      scale_elem_bytes == 0 || (pack_factor != 2 && pack_factor != 4)) {
     return dims;
   }
   const int64_t experts = fc1_weights[0];
@@ -48,10 +49,10 @@ inline Nvfp4BankDims ResolveNvfp4BankDims(const Shape& fc1_weights, const Shape&
 
   int64_t hidden = 0;
   int64_t inter = 0;
-  if (fc1_dim1 == fc2_dim2 * 2 && fc1_dim2 == fc2_dim1) {
+  if (fc1_dim1 == fc2_dim2 * pack_factor && fc1_dim2 * pack_factor == 2 * fc2_dim1) {
     hidden = fc1_dim1;
     inter = fc2_dim1;
-  } else if (fc1_dim1 == fc2_dim2 * 4 && fc1_dim2 * 2 == fc2_dim1) {
+  } else if (fc1_dim1 == fc2_dim2 * 2 * pack_factor && fc1_dim2 * pack_factor == fc2_dim1) {
     hidden = fc2_dim1;
     inter = fc1_dim1 / 2;
   } else {

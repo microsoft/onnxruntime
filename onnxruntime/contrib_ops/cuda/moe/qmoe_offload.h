@@ -172,7 +172,9 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
   bool mxfp4_mode_ = false;
   bool int4_bank_mode_ = false;
   bool int3_bank_mode_ = false;
+  bool int2_bank_mode_ = false;
   int int3_block_size_ = 32;
+  int int2_block_size_ = 64;
   int moe_tc_min_rows_ = 33;
   int int3_tc_min_routes_ = 33;
   bool disable_int3_tc_prefill_ = false;

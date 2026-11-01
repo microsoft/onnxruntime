@@ -2504,10 +2504,6 @@ TEST(MoETest, QMoETest_Int2CudaCachedScalesDecodeThenPrefill) {
   const auto profile_prefix = std::filesystem::temp_directory_path() / "qmoe_int2_cached_scales";
 #endif
   SessionOptions session_options;
-#if defined(ENABLE_CUDA_PROFILING)
-  session_options.enable_profiling = true;
-  session_options.profile_file_prefix = profile_prefix.native();
-#endif
   ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
   InferenceSessionWrapper session(session_options, GetEnvironment());
   ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
@@ -2515,9 +2511,6 @@ TEST(MoETest, QMoETest_Int2CudaCachedScalesDecodeThenPrefill) {
   ASSERT_STATUS_OK(session.Initialize());
 
 #if defined(ENABLE_CUDA_PROFILING)
-  const std::string setup_profile_path = session.EndProfiling();
-  std::error_code setup_profile_error;
-  std::filesystem::remove(setup_profile_path, setup_profile_error);
   session.StartProfiling(profile_prefix.string());
 #endif
 
@@ -3720,14 +3713,29 @@ TEST(MoETest, QMoETensorCoreSessionOptions) {
                                            {"ORT_DISABLE_MOE_GEMV_TC", "invalid"}}};
   // Quick builds omit the native BF16 INT4 MoE runner, so QMoE cannot be constructed for INT4 there.
 #if defined(ORT_QUICK_BUILD)
-  const std::vector<int> bit_widths{3};
+  const std::vector<int> bit_widths{2, 3};
 #else
-  const std::vector<int> bit_widths{3, 4};
+  const std::vector<int> bit_widths{2, 3, 4};
 #endif
   // QMoE resolves both controls at construction, so each session explicitly overrides both.
   for (int bits : bit_widths) {
     for (const char* disable : {"0", "1"}) {
-      RunQMoEBf16TensorCoreGemvParityCase(bits, bits == 3 ? 64 : 32, 512, 512, disable);
+      RunQMoEBf16TensorCoreGemvParityCase(bits, bits == 4 ? 32 : 64, 512, 512, disable);
+    }
+  }
+}
+
+TEST(MoETest, QMoETest_Bf16Int2TensorCoreGemvParity) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device with compute capability 8.0 or newer is required.";
+  }
+  for (int64_t block_size : {32, 64, 128}) {
+    for (const auto& shape : {std::pair<int64_t, int64_t>{512, 384},
+                              std::pair<int64_t, int64_t>{512, 512},
+                              std::pair<int64_t, int64_t>{512, 640},
+                              std::pair<int64_t, int64_t>{512, 768},
+                              std::pair<int64_t, int64_t>{1024, 640}}) {
+      RunQMoEBf16TensorCoreGemvParityCase(/*bits=*/2, block_size, shape.first, shape.second);
     }
   }
 }
@@ -3777,12 +3785,12 @@ TEST(MoETest, QMoETest_Bf16TensorCoreGemvExtremeScales) {
   }
   // Quick builds omit the native BF16 INT4 MoE runner, so QMoE cannot be constructed for INT4 there.
 #if defined(ORT_QUICK_BUILD)
-  const std::vector<int> bit_widths{3};
+  const std::vector<int> bit_widths{2, 3};
 #else
-  const std::vector<int> bit_widths{3, 4};
+  const std::vector<int> bit_widths{2, 3, 4};
 #endif
   for (int bits : bit_widths) {
-    const int64_t block_size = bits == 3 ? 64 : 32;
+    const int64_t block_size = bits == 4 ? 32 : 64;
     RunQMoEBf16TensorCoreGemvParityCase(bits, block_size, 512, 512, nullptr, /*fc1_scale_exp=*/40,
                                         /*fc2_scale_exp=*/-40);
     RunQMoEBf16TensorCoreGemvParityCase(bits, block_size, 512, 512, nullptr, /*fc1_scale_exp=*/-40,
