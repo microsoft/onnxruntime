@@ -393,8 +393,12 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   Tensor* present_v = context->Output(2, present_v_shape);
   ORT_RETURN_IF((present_k == nullptr) != (present_v == nullptr),
                 "present_key and present_value must both be provided or both omitted");
-  ORT_RETURN_IF(right_padded_query && present_k == nullptr,
-                "query_seqlens requires the present_key and present_value outputs.");
+  // The check covers a single-token step too: query_seqlens is ignored there, but the contract of the input
+  // does not depend on the chunk length.
+  if (query_seqlens != nullptr && present_k == nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "GroupQueryAttention (CPU): query_seqlens requires the present_key and present_value outputs.");
+  }
 
   std::vector<int64_t> output_qk_shape{static_cast<int64_t>(batch_size), static_cast<int64_t>(num_heads_), static_cast<int64_t>(parameters.sequence_length), static_cast<int64_t>(parameters.total_sequence_length)};
   Tensor* output_qk = context->Output(3, output_qk_shape);

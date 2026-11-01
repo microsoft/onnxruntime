@@ -315,14 +315,17 @@ The CPU kernel reads `query_seqlens` on the host and rejects every violation wit
 `INVALID_ARGUMENT` instead of clamping it (the CUDA kernel clamps, because its values live on the
 device). Besides the shape, the kernel requires:
 
-- `causal=1`, `past_key` / `past_value` present, and the `present_key` / `present_value` outputs;
+- `causal=1`, `past_key` / `past_value` present, and the `present_key` / `present_value` outputs (also
+  for `S == 1`, where the input is otherwise ignored);
 - new key/value with `kv_sequence_length == sequence_length`;
 - `batch_size == 1` when `S > 1`, which is the existing restriction on multi-token steps with past
   context;
 - `1 <= Q <= min(S, T)` and `T <= total_sequence_length` for every batch entry (so `Q == 1` when
   `S == 1`);
-- for a cache that is not windowed, room for the whole padded chunk: `P + S <= C`, where `C` is the
-  sequence dimension of `present_key`.
+- for a cache that is not windowed, the `P` cached tokens in `past_key` / `past_value` (`P` is at most
+  their sequence dimension, so a cache that grows between steps may bind shorter past buffers than
+  present buffers) and room for the whole padded chunk: `P + S <= C`, where `C` is the sequence
+  dimension of `present_key`.
 
 A single-token step (`S == 1`) is an ordinary decode: the input is validated and then ignored.
 

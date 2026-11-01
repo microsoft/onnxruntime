@@ -1324,6 +1324,32 @@ TEST(GroupQueryAttentionTest, QuerySeqlensWithoutPresentOutputsRejected_CPU) {
       "query_seqlens requires the present_key and present_value outputs.");
 }
 
+// A single-token step ignores query_seqlens, but the requirement on the outputs does not depend on the chunk length.
+TEST(GroupQueryAttentionTest, QuerySeqlensSingleTokenWithoutPresentOutputsRejected_CPU) {
+  GqaQuerySeqlensCase test_case;
+  test_case.sequence_length = 1;
+  test_case.seqlens_k = {7};
+  test_case.query_seqlens = {1};
+  test_case.omit_present_outputs = true;
+  RunGQAQuerySeqlensTest<float>(
+      GqaTargetEp::kCpu, test_case, OpTester::ExpectResult::kExpectFailure,
+      "query_seqlens requires the present_key and present_value outputs.");
+}
+
+// The T - Q cached tokens of a chunk are read from past_key/past_value, which are shorter than the present
+// buffers while the cache grows.
+TEST(GroupQueryAttentionTest, QuerySeqlensPastLongerThanPastBuffersRejected_CPU) {
+  GqaQuerySeqlensCase test_case;
+  test_case.past_buffer_length = 4;
+  test_case.cache_capacity = 16;
+  test_case.total_sequence_length = 16;
+  test_case.seqlens_k = {9};      // T = 10
+  test_case.query_seqlens = {3};  // P = 7 cached tokens, but the past buffers hold 4 rows
+  RunGQAQuerySeqlensTest<float>(
+      GqaTargetEp::kCpu, test_case, OpTester::ExpectResult::kExpectFailure,
+      "past_key and past_value hold only 4 rows.");
+}
+
 #ifdef USE_WEBGPU
 TEST(GroupQueryAttentionTest, LocalWindowMultiToken_WebGPU) {
   std::vector<float> expected(16, 1.0f);
