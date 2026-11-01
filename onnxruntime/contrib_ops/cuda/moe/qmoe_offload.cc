@@ -6939,6 +6939,9 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
   };
   std::vector<StagedSyncRouteObs> staged_sync_routes;
   const bool stage_obs_until_run_end = (session_controller_ != nullptr);
+  // A warm-up run (ep.cuda.qmoe_in_warmup) must not feed scores, route statistics or promotions, like the async path.
+  // The flag is sampled once so that every tile of this invocation agrees.
+  const bool in_warmup = IsInQMoEWarmup(session_controller_.get());
 
   for (int64_t start = 0; start < rows;) {
     const int tile_rows = static_cast<int>(std::min<int64_t>(tile_limit, rows - start));
@@ -6993,7 +6996,7 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
         } else {
           expert_routes[expert].push_back(route);
         }
-        if (resident_slots_ > 0) {
+        if (resident_slots_ > 0 && !in_warmup) {
           if (stage_obs_until_run_end) {
             staged_sync_routes.push_back({token_phase, expert, resident_slot >= 0});
           } else {
@@ -7311,18 +7314,22 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
     CUDA_RETURN_IF_ERROR(drain.Synchronize());
 
     if (resident_slots_ > 0) {
-      last_cold_routes_ = expert_routes;
-      sync_routes_pending_ = true;
-      if (!resident_phase_scores_ && !continuous_decay_) {
-        routes_since_decay_ += routes;
-        if (routes_since_decay_ >= resident_decay_routes_) {
-          for (auto& score : expert_score_) score *= 0.5f;
-          routes_since_decay_ = 0;
+      // A warm-up run only skips the scoring and the selection of new promotions; a slot table that is already dirty
+      // is still uploaded and the drain still completes.
+      if (!in_warmup) {
+        last_cold_routes_ = expert_routes;
+        sync_routes_pending_ = true;
+        if (!resident_phase_scores_ && !continuous_decay_) {
+          routes_since_decay_ += routes;
+          if (routes_since_decay_ >= resident_decay_routes_) {
+            for (auto& score : expert_score_) score *= 0.5f;
+            routes_since_decay_ = 0;
+          }
         }
+        ORT_RETURN_IF_ERROR(PromoteResident(stream, expert_routes, streaming ? stream_promotions_ : 0,
+                                            streaming ? stream_list.data() : nullptr,
+                                            streaming ? static_cast<int>(stream_list.size()) : 0));
       }
-      ORT_RETURN_IF_ERROR(PromoteResident(stream, expert_routes, streaming ? stream_promotions_ : 0,
-                                          streaming ? stream_list.data() : nullptr,
-                                          streaming ? static_cast<int>(stream_list.size()) : 0));
       if (slot_table_dirty_) {
         int* dst_table = CurrentSlotTableDev();
         if (owned_layer_cache_) {
@@ -7346,14 +7353,16 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
     inv_rec->node_name = Info().node().Name();
     inv_rec->main_stream = stream;
     inv_rec->has_main_stream = true;
-    inv_rec->commit_observation = [this, staged = std::move(staged_sync_routes), obs_phase_rows, obs_phase_expert_rows]() {
-      for (const auto& r : staged) {
-        RecordResidentRoute(r.phase, r.expert, r.hit);
-      }
-      CommitInvocationObservation(obs_phase_rows, obs_phase_expert_rows);
-    };
+    if (!in_warmup) {
+      inv_rec->commit_observation = [this, staged = std::move(staged_sync_routes), obs_phase_rows, obs_phase_expert_rows]() {
+        for (const auto& r : staged) {
+          RecordResidentRoute(r.phase, r.expert, r.hit);
+        }
+        CommitInvocationObservation(obs_phase_rows, obs_phase_expert_rows);
+      };
+    }
     session_controller_->RegisterInvocation(std::move(inv_rec));
-  } else {
+  } else if (!in_warmup) {
     CommitInvocationObservation(obs_phase_rows, obs_phase_expert_rows);
   }
   if (!final_device_done_) {
@@ -7948,7 +7957,7 @@ Status QMoEOffload::ComputeSharedAsync(OpKernelContext* context, const Tensor* i
       CUDA_RETURN_IF_ERROR(cudaGetLastError());
       ORT_RETURN_IF_ERROR(record_slot_and_final_events());
       if (session_controller_) {
-        if (!is_capturing) {
+        if (!is_capturing && !IsInQMoEWarmup(session_controller_.get())) {
           const uint64_t r_cnt = static_cast<uint64_t>(routes);
           invocation_rec->commit_observation = [this, r_cnt]() {
             resident_hit_routes_ += r_cnt;

@@ -5,6 +5,7 @@
 
 import contextlib
 import ctypes
+import faulthandler
 import gc
 import os
 import re
@@ -187,6 +188,42 @@ def _resident_route_stats(log_text: str) -> dict[int, tuple[int, int]]:
 
 def _resident_routes_per_layer(log_text: str) -> dict[int, int]:
     return {layer: routes for layer, (_, _, routes) in _resident_log_rows(log_text).items()}
+
+
+_RESIDENT_PROMOTIONS_RE = re.compile(r"resident layer=(\d+) slots=\d+ hit_routes=\d+ routes=\d+ promotions=(\d+)")
+_CPU_PATH_LOG_RE = re.compile(r"cpu layer=(\d+) calls=(\d+) routes=(\d+) cold_routes=(\d+)")
+
+
+def _resident_promotions_per_layer(log_text: str) -> dict[int, int]:
+    """Parses how many experts each layer promoted into its resident set (same log as _resident_log_rows)."""
+    return {int(m.group(1)): int(m.group(2)) for m in _RESIDENT_PROMOTIONS_RE.finditer(log_text)}
+
+
+def _cpu_path_route_rows(log_text: str) -> dict[int, tuple[int, int, int]]:
+    """Parses the per-layer (calls, routes, cold_routes) totals of the CPU expert path.
+
+    cold_routes counts the routes whose expert was not resident when the CPU path classified them, so it observes the
+    placement at the moment each route executed. The backend prints the totals when it is destroyed, but only if
+    ORT_QMOE_SHARED_CPU_TIMING=1 was set before the session was created, and it counts only runs of at most 4 rows.
+    """
+    rows = {
+        int(m.group(1)): (int(m.group(2)), int(m.group(3)), int(m.group(4)))
+        for m in _CPU_PATH_LOG_RE.finditer(log_text)
+    }
+    if not rows:
+        raise AssertionError(
+            "No 'QMoEOffload cpu layer=...' lines were captured from native stderr; the backend prints them when it "
+            f"is destroyed. Captured output:\n{log_text[-2000:]}"
+        )
+    return rows
+
+
+_STREAM_TILES_RE = re.compile(r"stream layer=(\d+) tiles=(\d+)")
+
+
+def _stream_tiles_per_layer(log_text: str) -> dict[int, int]:
+    """Parses how many tiles each layer streamed through the synchronous GPU path (same log as _resident_log_rows)."""
+    return {int(m.group(1)): int(m.group(2)) for m in _STREAM_TILES_RE.finditer(log_text)}
 
 
 def _run_qmoe_bf16(sess, x_f32: np.ndarray, r_f32: np.ndarray, run_options=None) -> np.ndarray:
@@ -1958,12 +1995,25 @@ int main() {
             rng = np.random.default_rng(1103)
             steps_per_cold_set = 6
             total_rows = 0
+            # The 12-slot budget plans 4 resident experts (plus 2 spare slots) per layer: the head of each layer's
+            # ranking in the profile written by _build_canonical_nvfp4_qmoe_model, i.e. {0, 3, 6, 9} in layer 0 and
+            # {1, 4, 7, 10} in layer 1. Both cold sets below avoid the resident experts of both layers.
+            cold_sets = ([12, 13, 14, 15], [2, 5, 8, 11])
             # Every row is dominated by one cold expert (softmax weight ~0.996) and the dominant expert rotates through
             # the whole cold set. Losing any single dominant contribution then moves the output far outside the parity
-            # tolerance, which dropped_route proves below for every layer and row, so a passing comparison on the real
-            # run means that every cold route was computed and merged.
+            # tolerance, which dropped_route proves below for every layer and row. That only shows the dominant route
+            # was merged, so the placement is pinned and observed as well: promotions are disabled, which keeps the
+            # cold experts cold for the whole test, and ORT_QMOE_SHARED_CPU_TIMING makes the CPU path count, per
+            # layer, how many of the routes it executed were non-resident when they ran.
             with (
-                mock.patch.dict(os.environ, {"ORT_QMOE_SHARED_RESIDENT_LOG": "1"}),
+                mock.patch.dict(
+                    os.environ,
+                    {
+                        "ORT_QMOE_SHARED_RESIDENT_LOG": "1",
+                        "ORT_QMOE_SHARED_CPU_TIMING": "1",
+                        "ORT_QMOE_SHARED_RESIDENT_PROMOTIONS": "0",
+                    },
+                ),
                 _capture_native_stderr() as captured,
             ):
                 sess = self._make_session(
@@ -1976,7 +2026,7 @@ int main() {
                         "session.moe.offload.allow_file_backing": "1",
                     },
                 )
-                for phase, cold_set in enumerate(([12, 13, 14, 15], [8, 9, 10, 11])):
+                for phase, cold_set in enumerate(cold_sets):
                     for step in range(steps_per_cold_set):
                         rows = 1 + step % 2
                         total_rows += rows
@@ -2000,10 +2050,21 @@ int main() {
                 del sess
                 gc.collect()
 
-            # The workload must really have been served from the cold path, not from the resident set.
-            for layer, (hit_routes, routes) in _resident_route_stats(captured[0]).items():
+            # Both layers must report, and in each of them every executed route, including each amplified dominant
+            # one, must have run on a non-resident expert. The placement did not change either: the planned residents
+            # were still the only ones and nothing was promoted.
+            cpu_rows = _cpu_path_route_rows(captured[0])
+            self.assertEqual(sorted(cpu_rows), [0, 1], "both layers must run their cold routes on the CPU path")
+            for layer, (_calls, routes, cold_routes) in cpu_rows.items():
                 self.assertEqual(routes, total_rows * 4, f"layer {layer} observes every executed row once")
-                self.assertGreater(routes - hit_routes, routes // 2, f"layer {layer} mostly routes to cold experts")
+                self.assertEqual(
+                    cold_routes,
+                    routes,
+                    f"layer {layer}: every route must have run on a non-resident expert, but only {cold_routes} of "
+                    f"{routes} did, so a cold set overlaps the planned resident experts",
+                )
+            self.assertEqual(_resident_slots_per_layer(captured[0]), {0: 4, 1: 4})
+            self.assertEqual(_resident_promotions_per_layer(captured[0]), {0: 0, 1: 0})
 
     def test_v4_cuda_graph_capture_and_immediate_replay_observe_each_execution_once(self):
         cudart = _load_cudart()
@@ -2222,6 +2283,83 @@ int main() {
                 "only the 3 plain runs and the final run may be observed",
             )
 
+    def test_v4_synchronous_streaming_path_ignores_warmup_runs(self):
+        rows, top_k = 2, 4
+        cold_set = [12, 13, 14, 15]
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model_path = _build_canonical_nvfp4_qmoe_model(
+                tmpdir,
+                num_layers=2,
+                num_experts=16,
+                hidden_size=128,
+                inter_size=64,
+                top_k=top_k,
+                seed=1701,
+            )
+            slot_bytes = 13832
+            fixed_table_bytes = 2 * 16 * 4
+            # The 12-slot budget keeps 4 resident experts per layer ({0, 3, 6, 9} and {1, 4, 7, 10}, the head of each
+            # layer's profile), none of them in cold_set. With the CPU path disabled, the synchronous GPU streaming
+            # path serves every cold expert and the async CPU path is never involved.
+            offload_config = {
+                "session.moe.offload.mode": "required",
+                "session.moe.offload.placement": "adaptive",
+                "session.moe.offload.cpu_execution": "disabled",
+                "session.moe.offload.device_expert_bytes": str(2 * fixed_table_bytes + 12 * slot_bytes),
+                "session.moe.offload.popularity_file": "expert-profile.bin",
+            }
+            warmup = ort.RunOptions()
+            warmup.add_run_config_entry("ep.cuda.qmoe_in_warmup", "1")
+
+            def run_session(warmup_runs: int, plain_runs: int) -> str:
+                rng = np.random.default_rng(1702)
+                with (
+                    mock.patch.dict(os.environ, {"ORT_QMOE_SHARED_RESIDENT_LOG": "1"}),
+                    _capture_native_stderr() as captured,
+                ):
+                    sess = self._make_session(model_path, offload_config)
+                    for step, run_options in enumerate([warmup] * warmup_runs + [None] * plain_runs):
+                        x = rng.standard_normal((rows, 128), dtype=np.float32) * 0.5
+                        r = np.full((rows, 16), -10.0, dtype=np.float32)
+                        for row in range(rows):
+                            r[row, cold_set] = np.roll([8.0, 2.0, 1.0, 0.0], step + row)
+                        # Ignoring a warmup run must not change what it computes.
+                        self._assert_parity(
+                            _numpy_nvfp4_qmoe_reference(model_path, x, r),
+                            _run_qmoe_bf16(sess, x, r, run_options),
+                            f"sync_stream(warmup_runs={warmup_runs},plain_runs={plain_runs},step={step})",
+                        )
+                    del sess
+                    gc.collect()
+                return captured[0]
+
+            def assert_streamed(log_text: str, label: str):
+                tiles = _stream_tiles_per_layer(log_text)
+                self.assertEqual(sorted(tiles), [0, 1], label)
+                for layer, count in tiles.items():
+                    self.assertGreater(count, 0, f"{label}: layer {layer} must run the synchronous streaming path")
+
+            # Control: plain runs are observed and, since every route is cold, they drive promotions. Without this
+            # the checks below could pass just because nothing ever adapts in this configuration.
+            control = run_session(warmup_runs=0, plain_runs=6)
+            assert_streamed(control, "control")
+            self.assertEqual(_resident_slots_per_layer(control), {0: 4, 1: 4})
+            self.assertEqual(_resident_routes_per_layer(control), dict.fromkeys(range(2), 6 * rows * top_k))
+            for layer, promotions in _resident_promotions_per_layer(control).items():
+                self.assertGreater(promotions, 0, f"layer {layer}: plain cold routes must drive promotions")
+
+            # Warmup runs execute the same streaming path but feed no route counters, scores or promotions.
+            warmup_only = run_session(warmup_runs=6, plain_runs=0)
+            assert_streamed(warmup_only, "warmup_only")
+            self.assertEqual(_resident_log_rows(warmup_only), {0: (4, 0, 0), 1: (4, 0, 0)})
+            self.assertEqual(_resident_promotions_per_layer(warmup_only), {0: 0, 1: 0})
+
+            # The placement a real run starts from is the planned one: all of its routes still miss the resident set.
+            after_warmup = run_session(warmup_runs=6, plain_runs=1)
+            assert_streamed(after_warmup, "after_warmup")
+            self.assertEqual(_resident_log_rows(after_warmup), dict.fromkeys(range(2), (4, 0, rows * top_k)))
+            self.assertEqual(_resident_promotions_per_layer(after_warmup), {0: 0, 1: 0})
+
     @unittest.skipUnless(sys.platform.startswith("linux"), "QMoE background threads are enumerated through /proc")
     def test_v4_background_threads_are_joined_when_the_cuda_ep_library_is_unregistered(self):
         if self._get_plugin_cuda_device() is None:
@@ -2295,4 +2433,7 @@ def _background_thread_lifecycle_child(model_path: str) -> int:
 if __name__ == "__main__":
     if len(sys.argv) == 3 and sys.argv[1] == "--background-thread-child":
         sys.exit(_background_thread_lifecycle_child(sys.argv[2]))
+    # A native crash leaves no Python traceback. This prints every thread's Python stack, which names the test and
+    # the call that was running.
+    faulthandler.enable()
     unittest.main()
