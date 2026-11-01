@@ -2066,17 +2066,6 @@ Status TensorProtoToTensor(const Env& env, const std::filesystem::path& model_pa
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "tensor can't contain negative dims");
   }
 
-  if (HasExternalData(tensor_proto)) {
-    OrtValue ort_value;
-    ORT_RETURN_IF_ERROR(GetExtDataFromTensorProto(env, model_path, tensor_proto, ort_value));
-    const auto& ext_tensor = ort_value.Get<Tensor>();
-    MakeCpuTensorCopy(ext_tensor, tensor);
-    // MakeCpuTensorCopy memcpy's external bytes verbatim. Bool external initializers may carry
-    // bytes outside the canonical {0, 1} set, so normalize them here as well (see NormalizeBoolBytes).
-    NormalizeBoolTensorIfNeeded(tensor);
-    return Status::OK();
-  }
-
   if (tensor_shape != tensor.Shape()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "TensorProtoToTensor() tensor shape mismatch!");
   }
@@ -2086,6 +2075,22 @@ Status TensorProtoToTensor(const Env& env, const std::filesystem::path& model_pa
   if (source_type->Size() > tensor.DataType()->Size()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "TensorProto type ", DataTypeImpl::ToString(source_type),
                            " can not be written into Tensor type ", DataTypeImpl::ToString(tensor.DataType()));
+  }
+
+  size_t source_bytes;
+  ORT_RETURN_IF_ERROR(Tensor::CalculateTensorStorageSize(source_type, tensor_shape, 0, source_bytes));
+  ORT_RETURN_IF(source_bytes > tensor.SizeInBytes(),
+                "TensorProto data exceeds destination tensor capacity");
+
+  if (HasExternalData(tensor_proto)) {
+    OrtValue ort_value;
+    ORT_RETURN_IF_ERROR(GetExtDataFromTensorProto(env, model_path, tensor_proto, ort_value));
+    const auto& ext_tensor = ort_value.Get<Tensor>();
+    MakeCpuTensorCopy(ext_tensor, tensor);
+    // MakeCpuTensorCopy memcpy's external bytes verbatim. Bool external initializers may carry
+    // bytes outside the canonical {0, 1} set, so normalize them here as well (see NormalizeBoolBytes).
+    NormalizeBoolTensorIfNeeded(tensor);
+    return Status::OK();
   }
 
   //  Below we handle the case where TensorProto contains data in itself
@@ -2946,6 +2951,9 @@ common::Status DenseTensorToSparseTensorProto(const ONNX_NAMESPACE::TensorProto&
   }
 
   const auto data_type = dense_proto.data_type();
+  if (!HasExternalData(dense_proto)) {
+    ORT_RETURN_IF_ERROR(ValidateEmbeddedTensorProtoDataSizeAndShape(dense_proto));
+  }
   SparseTensorProto sparse_proto;
   auto& values = *sparse_proto.mutable_values();
   values.set_name(dense_proto.name());
@@ -2959,10 +2967,14 @@ common::Status DenseTensorToSparseTensorProto(const ONNX_NAMESPACE::TensorProto&
   }
 
   auto ml_data = DataTypeImpl::TensorTypeFromONNXEnum(data_type)->GetElementType();
+  ORT_RETURN_IF(ml_data->AsPrimitiveDataType()->HasSubElems(),
+                "Dense-to-sparse conversion does not support sub-byte tensor data types");
   size_t element_size = ml_data->Size();
 
   std::vector<uint8_t> dense_raw_data;
   ORT_RETURN_IF_ERROR(UnpackInitializerData(dense_proto, model_path, dense_raw_data));
+  ORT_RETURN_IF_NOT(dense_raw_data.size() == n_dense_elements * element_size,
+                    "Dense tensor data size does not match its shape");
 
   size_t nnz = 0;
   void* dense_data = dense_raw_data.data();
