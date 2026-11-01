@@ -4,6 +4,7 @@
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemv.h"
 
 #include <cuda_fp16.h>
+#include <math_constants.h>
 #include <type_traits>
 
 #include "core/common/common.h"
@@ -494,7 +495,7 @@ __device__ __forceinline__ void swiglu_epilogue(void* out, void* tile_acc, void*
     }
     linear += activation_params.beta;
     const float sigmoid = 1.0f / (1.0f + expf(-activation_params.alpha * gate));
-    reinterpret_cast<TypeA*>(out)[pair] = static_cast<TypeA>((gate == -CUDART_INF_F ? 0.0f : gate * sigmoid) * linear);
+    reinterpret_cast<TypeA*>(out)[pair] = static_cast<TypeA>((activation_params.alpha > 0.0f && gate == -CUDART_INF_F ? 0.0f : gate * sigmoid) * linear);
   }
 }
 
@@ -703,7 +704,7 @@ __global__ void moe_gemv_splitk_reduce_swiglu_kernel(
   }
   linear += act_beta;
   const float sigmoid = 1.0f / (1.0f + expf(-act_alpha * gate));
-  out[static_cast<int64_t>(row) * inter_size + col] = static_cast<TypeA>((gate == -CUDART_INF_F ? 0.0f : gate * sigmoid) * linear);
+  out[static_cast<int64_t>(row) * inter_size + col] = static_cast<TypeA>((act_alpha > 0.0f && gate == -CUDART_INF_F ? 0.0f : gate * sigmoid) * linear);
 #endif
 }
 
