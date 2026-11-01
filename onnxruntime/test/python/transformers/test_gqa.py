@@ -404,16 +404,20 @@ class TestQuerySeqlensQuantizedCache(unittest.TestCase):
         numpy.testing.assert_allclose(actual, 0, atol=1e-3)
 
 
+def has_openvino_gpu():
+    try:
+        import openvino  # noqa: PLC0415
+    except ImportError:
+        return False
+    return any(device.startswith("GPU") for device in openvino.Core().available_devices)
+
+
 class TestOpenVINOQuerySeqlensCapability(unittest.TestCase):
     def test_query_seqlens_declined_during_partitioning(self):
         if "OpenVINOExecutionProvider" not in get_available_providers():
             self.skipTest("OpenVINOExecutionProvider unavailable")
-        try:
-            import openvino  # noqa: PLC0415
-        except ImportError:
-            self.skipTest("OpenVINO Python runtime unavailable for GPU discovery")
-        if not any(device.startswith("GPU") for device in openvino.Core().available_devices):
-            self.skipTest("OpenVINO GPU unavailable")
+        if not has_openvino_gpu():
+            self.skipTest("OpenVINO Python runtime or GPU device unavailable")
         config = GQAConfig(
             batch_size=1,
             q_sequence_length=2,
