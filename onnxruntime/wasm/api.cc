@@ -377,7 +377,8 @@ int OrtFree(void* ptr) {
   return ORT_OK;
 }
 
-OrtValue* OrtCreateTensor(int data_type, void* data, size_t data_length, size_t* dims, size_t dims_length, int data_location) {
+OrtValue* OrtCreateTensor(int data_type, void* data, size_t data_length, size_t* dims, size_t dims_length,
+                          int data_location, int device_id) {
   if (data_location != DATA_LOCATION_CPU &&
       data_location != DATA_LOCATION_CPU_PINNED &&
       data_location != DATA_LOCATION_GPU_BUFFER &&
@@ -412,7 +413,8 @@ OrtValue* OrtCreateTensor(int data_type, void* data, size_t data_length, size_t*
     OrtMemoryInfo* memory_info = nullptr;
     switch (data_location) {
       case DATA_LOCATION_GPU_BUFFER:
-        RETURN_NULLPTR_IF_ERROR(CreateMemoryInfo, "WebGPU_Buf", OrtDeviceAllocator, 0, OrtMemTypeDefault, &memory_info);
+        RETURN_NULLPTR_IF_ERROR(CreateMemoryInfo, "WebGPU_Buf", OrtDeviceAllocator, device_id, OrtMemTypeDefault,
+                                &memory_info);
         break;
       case DATA_LOCATION_ML_TENSOR:
         RETURN_NULLPTR_IF_ERROR(CreateMemoryInfo, "WebNN_Ten", OrtDeviceAllocator, 0, OrtMemTypeDefault, &memory_info);
@@ -580,7 +582,8 @@ int EMSCRIPTEN_KEEPALIVE OrtBindInput(OrtIoBinding* io_binding,
 int EMSCRIPTEN_KEEPALIVE OrtBindOutput(OrtIoBinding* io_binding,
                                        const char* name,
                                        OrtValue* output,
-                                       int output_location) {
+                                       int output_location,
+                                       int device_id) {
   if (output) {
     return CHECK_STATUS(BindOutput, io_binding, name, output);
   } else {
@@ -600,7 +603,8 @@ int EMSCRIPTEN_KEEPALIVE OrtBindOutput(OrtIoBinding* io_binding,
     } else if (output_location == DATA_LOCATION_ML_TENSOR) {
       RETURN_ERROR_CODE_IF_ERROR(CreateMemoryInfo, "WebNN_Ten", OrtDeviceAllocator, 0, OrtMemTypeDefault, &memory_info);
     } else {
-      RETURN_ERROR_CODE_IF_ERROR(CreateMemoryInfo, "WebGPU_Buf", OrtDeviceAllocator, 0, OrtMemTypeDefault, &memory_info);
+      RETURN_ERROR_CODE_IF_ERROR(CreateMemoryInfo, "WebGPU_Buf", OrtDeviceAllocator, device_id, OrtMemTypeDefault,
+                                 &memory_info);
     }
     REGISTER_AUTO_RELEASE_HANDLE(MemoryInfo, memory_info);
     return CHECK_STATUS(BindOutputToDevice, io_binding, name, memory_info);

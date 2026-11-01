@@ -89,6 +89,11 @@ Module["webgpuInit"] = (setDefaultDevice) => {
     }
   };
 
+  /**
+   * a map from session handle to [deviceId, deviceHandle] of the WebGPU device used by the session.
+   *
+   * @type {Map<number, [number, number]>}
+   */
   const webgpuActiveSessions = new Map();
   Module["webgpuOnCreateSession"] = (sessionHandle) => {
     if (webgpuCurrentDeviceId === undefined) {
@@ -103,7 +108,7 @@ Module["webgpuInit"] = (setDefaultDevice) => {
     if (sessionHandle) {
       // when session created successfully
       const deviceHandle = _OrtGetWebGpuDevice(deviceId);
-      webgpuActiveSessions.set(sessionHandle, deviceHandle);
+      webgpuActiveSessions.set(sessionHandle, [deviceId, deviceHandle]);
 
       if (deviceId === 0) {
         const device = webgpuCurrentDevice ?? WebGPU.getJsObject(deviceHandle);
@@ -115,6 +120,17 @@ Module["webgpuInit"] = (setDefaultDevice) => {
 
   Module["webgpuOnReleaseSession"] = (sessionHandle) => {
     webgpuActiveSessions.delete(sessionHandle);
+  };
+
+  /**
+   * Get the WebGPU device ID used by the session. Returns 0 (the default device) if the session does not use WebGPU.
+   *
+   * @param {number} sessionHandle the session handle.
+   * @returns {number} the device ID.
+   */
+  Module["webgpuGetDeviceId"] = (sessionHandle) => {
+    const sessionInfo = webgpuActiveSessions.get(sessionHandle);
+    return sessionInfo === undefined ? 0 : sessionInfo[0];
   };
 
   const gpuBufferMetadataSymbol = Symbol("gpuBufferMetadata");
@@ -134,14 +150,14 @@ Module["webgpuInit"] = (setDefaultDevice) => {
         return metadata[0];
       }
 
-      const deviceHandle = webgpuActiveSessions.get(sessionHandle);
-      if (deviceHandle === undefined) {
+      const sessionInfo = webgpuActiveSessions.get(sessionHandle);
+      if (sessionInfo === undefined) {
         throw new Error(
           "Invalid session handle passed to webgpuRegisterBuffer"
         );
       }
 
-      const bufferHandle = WebGPU.importJsBuffer(buffer, deviceHandle);
+      const bufferHandle = WebGPU.importJsBuffer(buffer, sessionInfo[1]);
       buffer[gpuBufferMetadataSymbol] = [bufferHandle, 1];
       return bufferHandle;
     }
@@ -166,13 +182,13 @@ Module["webgpuInit"] = (setDefaultDevice) => {
   };
 
   Module["webgpuCreateDownloader"] = (gpuBuffer, bufferSize, sessionHandle) => {
-    const deviceHandle = webgpuActiveSessions.get(sessionHandle);
-    if (deviceHandle === undefined) {
+    const sessionInfo = webgpuActiveSessions.get(sessionHandle);
+    if (sessionInfo === undefined) {
       throw new Error("Invalid session handle passed to webgpuRegisterBuffer");
     }
 
     const buffer = gpuBuffer;
-    const device = WebGPU.getJsObject(deviceHandle);
+    const device = WebGPU.getJsObject(sessionInfo[1]);
     const originalSize = bufferSize;
     const size = Math.ceil(Number(originalSize) / 16) * 16;
 
