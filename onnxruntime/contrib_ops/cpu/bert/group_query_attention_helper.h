@@ -224,6 +224,7 @@ Status CheckQuerySeqlens(const T* query_seqlens,
                          int kv_sequence_length,
                          bool has_past,
                          bool sliding_window_cache,
+                         int past_sequence_length,
                          int cache_capacity,
                          bool is_total_seqlen_on_cpu,
                          int total_sequence_length) {
@@ -279,6 +280,12 @@ Status CheckQuerySeqlens(const T* query_seqlens,
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "seqlens_k[", b, "] + 1 = ", total, " exceeds total_sequence_length (",
                              total_sequence_length, ") when query_seqlens is given.");
+    }
+    // The cached tokens come from past_key/past_value; a windowed cache keeps only its most recent ones.
+    if (!sliding_window_cache && total - valid > past_sequence_length) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "query_seqlens[", b, "] = ", valid, " leaves ", total - valid,
+                             " cached tokens, but past_key and past_value hold only ", past_sequence_length, " rows.");
     }
     if (!sliding_window_cache && total - valid + sequence_length > cache_capacity) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -423,7 +430,9 @@ Status CheckInputs(const T* query,
                              "total_sequence_length must be at least kv_sequence_length for a non-sliding cache. Got ",
                              total_sequence_length, " and ", kv_sequence_length, ".");
     }
-    if (total_sequence_length > past_sequence_length &&
+    // With query_seqlens, total_sequence_length is only an upper bound, so a growing cache is not tied to
+    // past_sequence_length + kv_sequence_length; CheckQuerySeqlens checks every entry against the real bounds.
+    if (query_seqlens == nullptr && total_sequence_length > past_sequence_length &&
         total_sequence_length - kv_sequence_length != past_sequence_length) {
       return ORT_MAKE_STATUS(
           ONNXRUNTIME, INVALID_ARGUMENT,
@@ -511,7 +520,8 @@ Status CheckInputs(const T* query,
   if (query_seqlens != nullptr) {
     ORT_RETURN_IF_ERROR(CheckQuerySeqlens(query_seqlens, seqlens_k, batch_size, sequence_length, kv_sequence_length,
                                           past_key != nullptr && past_value != nullptr, sliding_window_cache,
-                                          present_sequence_length, is_total_seqlen_on_cpu, total_sequence_length));
+                                          past_sequence_length, present_sequence_length, is_total_seqlen_on_cpu,
+                                          total_sequence_length));
   }
 
   if (query_seqlens != nullptr && sequence_length > 1) {

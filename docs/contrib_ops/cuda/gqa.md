@@ -111,7 +111,9 @@ entry `b`, let `T = seqlens_k[b] + 1` be the number of tokens in the cache after
   `query_seqlens` still apply. The input requires `causal=1`, new K/V with
   `kv_sequence_length == sequence_length`, `past_key`/`past_value`, and for `S > 1` a batch size of 1.
 - A full-length cache needs room for the padded chunk, `P + S <= C`, where `C` is the sequence
-  dimension of `present_key` (the cache capacity).
+  dimension of `present_key` (the cache capacity). The `P` cached tokens must come from `past_key`
+  (`P` is at most its sequence dimension), so a cache that grows between steps may bind a shorter
+  `past_key` than `present_key`.
 - Values are read on the device, so the CUDA kernel validates only the shape and structure on the
   host. It clamps `Q` into `[1, min(S, T)]` and keeps every offset inside the cache; a value outside
   that range gives an unspecified (but memory-safe) result. The CPU implementation reports

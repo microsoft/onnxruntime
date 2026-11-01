@@ -821,11 +821,12 @@ TEST(GroupQueryAttentionTest, QuerySeqlensWithoutPastRejected_CUDA) {
 
 struct GqaQuerySeqlensCase {
   int batch_size = 1;
-  int sequence_length = 8;             // S: length of the (padded) query chunk
-  int cache_capacity = 32;             // C: length of the past/present KV buffers
-  int total_sequence_length = 32;      // X: input 6, only an upper bound when query_seqlens is given
-  std::vector<int32_t> seqlens_k;      // T - 1 per batch entry
-  std::vector<int32_t> query_seqlens;  // Q per batch entry
+  int sequence_length = 8;                // S: length of the (padded) query chunk
+  int cache_capacity = 32;                // C: length of the present KV buffers
+  std::optional<int> past_buffer_length;  // length of the past KV buffers when the cache grows to C (default C)
+  int total_sequence_length = 32;         // X: input 6, only an upper bound when query_seqlens is given
+  std::vector<int32_t> seqlens_k;         // T - 1 per batch entry
+  std::vector<int32_t> query_seqlens;     // Q per batch entry
   std::optional<std::vector<int64_t>> query_seqlens_shape;
   std::optional<int> kv_sequence_length;  // length of the new key/value when it differs from S
 };
@@ -849,6 +850,7 @@ static void RunGQAQuerySeqlensTest(GqaTargetEp target_ep,
   const int sequence_length = test_case.sequence_length;
   const int kv_sequence_length = test_case.kv_sequence_length.value_or(sequence_length);
   const int capacity = test_case.cache_capacity;
+  const int past_rows = test_case.past_buffer_length.value_or(capacity);
 
   auto execution_provider = MakeExecutionProviderForGqaTest(target_ep);
   if (!execution_provider) {
@@ -867,7 +869,7 @@ static void RunGQAQuerySeqlensTest(GqaTargetEp target_ep,
   std::vector<T> query(static_cast<size_t>(batch_size) * sequence_length * hidden_size, T(0.0f));
   std::vector<T> key(static_cast<size_t>(batch_size) * kv_sequence_length * kv_hidden_size);
   std::vector<T> value(key.size());
-  std::vector<T> past_key(static_cast<size_t>(batch_size) * capacity * head_size);
+  std::vector<T> past_key(static_cast<size_t>(batch_size) * past_rows * head_size);
   std::vector<T> past_value(past_key.size());
   for (int b = 0; b < batch_size; ++b) {
     for (int r = 0; r < kv_sequence_length; ++r) {
@@ -876,9 +878,9 @@ static void RunGQAQuerySeqlensTest(GqaTargetEp target_ep,
       std::fill_n(key.begin() + offset, kv_hidden_size, row_value);
       std::fill_n(value.begin() + offset, kv_hidden_size, row_value);
     }
-    for (int k = 0; k < capacity; ++k) {
+    for (int k = 0; k < past_rows; ++k) {
       const T row_value(k < past_length[b] ? static_cast<float>(k + 1) : -100.0f);
-      const auto offset = (static_cast<size_t>(b) * capacity + k) * head_size;
+      const auto offset = (static_cast<size_t>(b) * past_rows + k) * head_size;
       std::fill_n(past_key.begin() + offset, head_size, row_value);
       std::fill_n(past_value.begin() + offset, head_size, row_value);
     }
@@ -890,8 +892,8 @@ static void RunGQAQuerySeqlensTest(GqaTargetEp target_ep,
   tester.AddInput<T>("query", {batch_size, sequence_length, hidden_size}, query);
   tester.AddInput<T>("key", {batch_size, kv_sequence_length, kv_hidden_size}, key);
   tester.AddInput<T>("value", {batch_size, kv_sequence_length, kv_hidden_size}, value);
-  tester.AddInput<T>("past_key", {batch_size, kv_num_heads, capacity, head_size}, past_key);
-  tester.AddInput<T>("past_value", {batch_size, kv_num_heads, capacity, head_size}, past_value);
+  tester.AddInput<T>("past_key", {batch_size, kv_num_heads, past_rows, head_size}, past_key);
+  tester.AddInput<T>("past_value", {batch_size, kv_num_heads, past_rows, head_size}, past_value);
   tester.AddInput<int32_t>("seqlens_k", {batch_size}, test_case.seqlens_k);
   tester.AddInput<int32_t>("total_sequence_length", {1}, {test_case.total_sequence_length});
   tester.AddOptionalInputEdge<T>();        // cos_cache
@@ -909,9 +911,9 @@ static void RunGQAQuerySeqlensTest(GqaTargetEp target_ep,
   tester.AddOutput<T>("output", {batch_size, sequence_length, hidden_size},
                       std::vector<T>(static_cast<size_t>(batch_size) * sequence_length * hidden_size, T(0.0f)));
   tester.AddOutput<T>("present_key", {batch_size, kv_num_heads, capacity, head_size},
-                      std::vector<T>(past_key.size(), T(0.0f)));
+                      std::vector<T>(static_cast<size_t>(batch_size) * capacity * head_size, T(0.0f)));
   tester.AddOutput<T>("present_value", {batch_size, kv_num_heads, capacity, head_size},
-                      std::vector<T>(past_value.size(), T(0.0f)));
+                      std::vector<T>(static_cast<size_t>(batch_size) * capacity * head_size, T(0.0f)));
 
   tester.SetCustomOutputVerifier([=](const std::vector<OrtValue>& fetches, const std::string& /*provider_type*/) {
     ASSERT_EQ(fetches.size(), size_t{3});
@@ -981,6 +983,28 @@ static void RunGQAQuerySeqlensGoldenTest(GqaTargetEp target_ep) {
   decode.seqlens_k = {19, 7};
   decode.query_seqlens = {1, 1};
   RunGQAQuerySeqlensTest<T>(target_ep, decode);
+
+  // A cache that grows between steps: past_key/past_value hold only the `past_rows` cached tokens, while the
+  // present buffers have total_sequence_length rows. total_sequence_length is just an upper bound, so it need not
+  // equal past_rows + sequence_length (8).
+  struct GrowingCache {
+    int past_rows;
+    int32_t seqlens_k;
+    int32_t query_seqlens;
+    int32_t total_sequence_length;
+  };
+  for (const auto& grow : std::vector<GrowingCache>{{4, 4, 1, 12}, {4, 4, 1, 16}, {4, 6, 3, 16}, {10, 12, 3, 32}}) {
+    SCOPED_TRACE(MakeString("growing cache: past_rows=", grow.past_rows, " seqlens_k=", grow.seqlens_k,
+                            " query_seqlens=", grow.query_seqlens,
+                            " total_sequence_length=", grow.total_sequence_length));
+    GqaQuerySeqlensCase growing;
+    growing.past_buffer_length = grow.past_rows;
+    growing.cache_capacity = grow.total_sequence_length;
+    growing.total_sequence_length = grow.total_sequence_length;
+    growing.seqlens_k = {grow.seqlens_k};
+    growing.query_seqlens = {grow.query_seqlens};
+    RunGQAQuerySeqlensTest<T>(target_ep, growing);
+  }
 }
 
 TEST(GroupQueryAttentionTest, QuerySeqlensRightPaddedChunk_CUDA) {
