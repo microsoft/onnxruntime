@@ -5337,6 +5337,130 @@ class TestGQAWindowedKvCacheCpu(TestGQAWindowedKvCache):
                 step_lengths=[self.window_size + self.slack, 1, 1],
             )
 
+    def test_right_padded_chunked_prefill(self):
+        steps = [(1, 32), 32, (1, 32), (7, 32), 1, 1]
+        for disable_flash in ("0", "1"):
+            for capacity in (self.window_size, self.window_size + 8):
+                with scoped_env_var("ORT_GQA_DISABLE_FLASH_ATTENTION", disable_flash):
+                    self._check_parity(
+                        self._base_config(batch_size=1, rotary=True),
+                        step_lengths=steps,
+                        buffer_sequence_length=capacity,
+                    )
+
+    def test_right_padded_chunked_prefill_past_capacity(self):
+        # 137 valid tokens fill the cache (capacity 128 or 136), so the later padded steps start from a
+        # nearly full cache: appending all S padded rows in place would run past the capacity.
+        steps = [(1, 32), 32, (1, 32), (7, 32), 32, 32, 32, (1, 32), (3, 64), 1, (40, 64), (1, 64), 64, 1, 1]
+        for disable_flash in ("0", "1"):
+            for capacity in (self.window_size, self.window_size + 8):
+                with scoped_env_var("ORT_GQA_DISABLE_FLASH_ATTENTION", disable_flash):
+                    self._check_parity(
+                        self._base_config(batch_size=1, rotary=True),
+                        step_lengths=steps,
+                        buffer_sequence_length=capacity,
+                    )
+
+    def test_right_padded_chunked_prefill_int8(self):
+        steps = [64, (1, 64), (5, 64), 1, 1]
+        self._check_right_padded_int8(steps)
+
+    def test_right_padded_chunked_prefill_int8_past_capacity(self):
+        steps = [64, (1, 64), (5, 64), 64, (1, 64), (40, 64), (1, 64), 64, 1, 1]
+        self._check_right_padded_int8(steps)
+
+    def test_unpadded_chunked_prefill_capacity_bound(self):
+        # Without query_seqlens, total_sequence_length is not a hint about the past length even when it is
+        # the cache capacity: at the second step capacity - query_length = 384 is not the true past (300).
+        for disable_flash in ("0", "1"):
+            with scoped_env_var("ORT_GQA_DISABLE_FLASH_ATTENTION", disable_flash):
+                self._check_parity(
+                    self._base_config(batch_size=1, rotary=True),
+                    [300, 128, 1],
+                    full_cache_length_bound=512,
+                )
+
+    def test_right_padded_chunked_prefill_capacity_bound(self):
+        # Prompt of 300 in chunks of 128 on a 512-row cache. total_sequence_length is the cache capacity at
+        # every step, which is only an upper bound of seqlens_k + 1 when query_seqlens is given. The last
+        # chunk has 44 valid rows, then decode.
+        for disable_flash in ("0", "1"):
+            for capacity in (self.window_size, self.window_size + 8):
+                with scoped_env_var("ORT_GQA_DISABLE_FLASH_ATTENTION", disable_flash):
+                    self._check_parity(
+                        self._base_config(batch_size=1, rotary=True),
+                        [128, 128, (44, 128), 1],
+                        buffer_sequence_length=capacity,
+                        full_cache_length_bound=512,
+                    )
+
+    def test_right_padded_chunked_prefill_features(self):
+        # Eviction starts at the 5th chunk, so the padded steps also cross the windowed layout changes.
+        steps = [(20, 32), 32, 32, 32, 32, (7, 32), 1, 1]
+        # Without query_seqlens a first prompt reads only position_ids[0] and uses consecutive positions,
+        # whereas a chunk that has query_seqlens honours every entry, also for the first chunk. A single
+        # token comes first so that the unpadded reference reads the same positions.
+        position_ids_steps = [1, (19, 32), *steps[1:]]
+        features = (
+            ("head_sink", {"has_head_sink": True}, steps),
+            ("position_ids", {"has_position_ids": True}, position_ids_steps),
+            ("softcap", {"softcap": 20.0}, steps),
+            # The bias covers the padded total length, and its rows are those of the valid and padded queries.
+            ("attention_bias", {"has_attention_bias": True, "attention_bias_per_head": True}, steps),
+        )
+        for disable_flash in ("0", "1"):
+            for capacity in (self.window_size, self.window_size + 8):
+                for feature, overrides, feature_steps in features:
+                    with (
+                        self.subTest(feature=feature, disable_flash=disable_flash, capacity=capacity),
+                        scoped_env_var("ORT_GQA_DISABLE_FLASH_ATTENTION", disable_flash),
+                    ):
+                        self._check_parity(
+                            self._base_config(batch_size=1, rotary=True, **overrides),
+                            step_lengths=feature_steps,
+                            buffer_sequence_length=capacity,
+                        )
+
+    def test_query_seqlens_ignored_for_single_token_decode(self):
+        # A decode step (S == 1) with ragged seqlens_k ignores query_seqlens, so a model can feed the input
+        # at every step.
+        parity_check_gqa_past(
+            config=self._base_config(
+                batch_size=2,
+                past_kv_sequence_length=300,
+                buffer_sequence_length=512,
+                rope_cache_length=512,
+                has_query_seqlens=True,
+                rotary=True,
+            ),
+            ep="CPUExecutionProvider",
+            device="cpu",
+            torch_type=torch.float32,
+            ort_type=TensorProto.FLOAT,
+            causal=True,
+            rtol=1e-3,
+            atol=1e-3,
+        )
+
+    def _check_right_padded_int8(self, steps):
+        for disable_flash in ("0", "1"):
+            for capacity in (self.window_size, self.window_size + 8):
+                with scoped_env_var("ORT_GQA_DISABLE_FLASH_ATTENTION", disable_flash):
+                    self._check_parity(
+                        self._base_config(
+                            batch_size=1,
+                            rotary=True,
+                            kv_cache_type="int8",
+                            k_quant_type="PER_CHANNEL",
+                            v_quant_type="PER_CHANNEL",
+                            kv_cache_bit_width=8,
+                        ),
+                        step_lengths=steps,
+                        buffer_sequence_length=capacity,
+                        rtol=5e-2,
+                        atol=1e-1,
+                    )
+
 
 if __name__ == "__main__":
     unittest.main()

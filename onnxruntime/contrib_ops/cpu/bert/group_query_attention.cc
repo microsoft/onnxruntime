@@ -73,34 +73,42 @@ int WindowedCacheEnd(int64_t past_sequence_length, int64_t capacity, int64_t gap
   return static_cast<int>(past_sequence_length - reclaimed);
 }
 
-// Fills `steps` and the cache-relative seqlens_k, and decides whether the step needs a staging
-// cache. `seqlens_k[b]` is the absolute total length minus one, i.e. T - 1 = P + S - 1.
+// Fills `steps` and the cache-relative seqlens_k/past_seqlens, and decides whether the step needs a
+// staging cache. `seqlens_k[b]` is the absolute total length minus one, i.e. T - 1 = P + Q - 1, where
+// Q is the number of valid query rows: `query_seqlens[b]` for a right-padded chunk, else the whole
+// chunk. Only the Q valid rows are appended to the cache.
 void PlanWindowedKvCache(const int32_t* seqlens_k,
+                         const int32_t* query_seqlens,
                          int batch_size,
                          int sequence_length,
                          int capacity,
                          int local_window_size,
                          std::vector<WindowedStep>& steps,
                          std::vector<int32_t>& cache_seqlens_k,
+                         std::vector<int32_t>& cache_past_seqlens,
                          bool& use_staging,
                          int& staged_capacity) {
   steps.assign(batch_size, WindowedStep{});
   cache_seqlens_k.resize(batch_size);
+  cache_past_seqlens.resize(batch_size);
 
   // CheckInputs validates capacity >= local_window_size, so this is at least 1.
   const int gap = capacity - local_window_size + 1;
 
-  int max_resident = 0;
+  int max_resident_plus_new = 0;
   use_staging = false;
+  std::vector<int> valid_q_lens(batch_size);
   for (int b = 0; b < batch_size; ++b) {
+    const int valid_q_len = query_seqlens != nullptr ? query_seqlens[b] : sequence_length;
+    valid_q_lens[b] = valid_q_len;
     // Computed in int64_t for the same reason as in WindowedCacheEnd: seqlens_k is caller-supplied
     // and `seqlens_k[b] + 1` would overflow at INT32_MAX. Clamping at zero keeps a bogus (too
     // small) seqlens_k from turning into a negative row count downstream.
     const int64_t past_sequence_length =
-        std::max<int64_t>(static_cast<int64_t>(seqlens_k[b]) + 1 - sequence_length, 0);  // P
+        std::max<int64_t>(static_cast<int64_t>(seqlens_k[b]) + 1 - valid_q_len, 0);  // P
     const int end_before = WindowedCacheEnd(past_sequence_length, capacity, gap);
-    const int end_after = WindowedCacheEnd(past_sequence_length + sequence_length, capacity, gap);
-    const int kept = end_after - sequence_length;  // resident rows that survive this step
+    const int end_after = WindowedCacheEnd(past_sequence_length + valid_q_len, capacity, gap);
+    const int kept = end_after - valid_q_len;  // resident rows that survive this step
 
     // The first new row of the step is read by a query that also reaches local_window_size - 1
     // rows further back, so compacting down to `kept` rows in place is only valid while that much
@@ -110,23 +118,25 @@ void PlanWindowedKvCache(const int32_t* seqlens_k,
 
     steps[b].seed_rows = end_before;
     steps[b].seed_offset = end_before - kept;  // rows dropped off the front, 0 on a drifting step
-    max_resident = std::max(max_resident, end_before);
+    max_resident_plus_new = std::max(max_resident_plus_new, end_before + valid_q_len);
   }
 
-  staged_capacity = use_staging ? max_resident + sequence_length : capacity;
+  staged_capacity = use_staging ? max_resident_plus_new : capacity;
 
   for (int b = 0; b < batch_size; ++b) {
     WindowedStep& step = steps[b];
+    const int valid_q_len = valid_q_lens[b];
     if (use_staging) {
       // Seed the staging cache with everything resident, then write back only the tail that the
       // post-step layout keeps.
       step.write_offset = step.seed_offset;
-      step.write_rows = step.seed_rows + sequence_length - step.seed_offset;
+      step.write_rows = step.seed_rows + valid_q_len - step.seed_offset;
       step.seed_offset = 0;
     } else {
       step.seed_rows -= step.seed_offset;  // becomes `kept`; 0 shift on a drifting step
     }
-    cache_seqlens_k[b] = static_cast<int32_t>(step.seed_rows + sequence_length - 1);
+    cache_past_seqlens[b] = static_cast<int32_t>(step.seed_rows);
+    cache_seqlens_k[b] = static_cast<int32_t>(step.seed_rows + valid_q_len - 1);
   }
 }
 
@@ -253,12 +263,12 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
         "The per-head Q/K RMS normalization prologue is implemented only on the CUDA and WebGPU EPs.");
   }
 
-  // query_seqlens (input 16) describes a right-padded query chunk. Without kernel support the padded
-  // rows would be treated as real tokens, so reject the node instead of silently computing a wrong result.
-  if (context->InputCount() > 16 && context->Input<Tensor>(16) != nullptr) {
+  // query_seqlens (input 16) marks the valid rows of a right-padded query chunk. It is redundant for a
+  // single-token step (CheckInputs still validates it), which is handled as an ordinary decode.
+  const Tensor* query_seqlens = context->InputCount() > 16 ? context->Input<Tensor>(16) : nullptr;
+  if (query_seqlens != nullptr && !is_unidirectional_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "GroupQueryAttention (CPU): query_seqlens input is not supported. "
-                           "Right-padded query chunks are implemented only by the CUDA EP.");
+                           "GroupQueryAttention (CPU): query_seqlens requires causal=1.");
   }
 
   GroupQueryAttentionParameters parameters = {};
@@ -280,7 +290,8 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
                                                                 /*max_threads_per_block=*/0,
                                                                 /*kv_cache_extra_bits=*/0,
                                                                 sliding_window_cache_,
-                                                                local_window_size_));
+                                                                local_window_size_,
+                                                                query_seqlens));
 
   ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckCustomAttentionInputs(position_ids,
                                                                                attention_bias,
@@ -313,6 +324,11 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
                   " elements, got ", v_scale->Shape().Size());
   }
 
+  // A right-padded query chunk holds query_seqlens[b] valid rows for batch entry b; without the input
+  // every row of the chunk is valid.
+  const bool right_padded_query = query_seqlens != nullptr && sequence_length > 1;
+  const int32_t* query_seqlens_data = right_padded_query ? query_seqlens->Data<int32_t>() : nullptr;
+
   // Validate seqlens_k values before they are used as GEMM dimensions to prevent OOB access.
   {
     const int32_t* seqlens_k_data = seqlens_k->Data<int32_t>();
@@ -332,14 +348,15 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
                                "seqlens_k[", b, "] = ", seqlens_k_data[b],
                                " exceeds the attention_bias sequence dimension ", attention_bias->Shape()[3], ".");
       }
-      if ((windowed || !parameters.is_first_prompt) &&
+      // With query_seqlens, CheckInputs has already bounded the valid rows by min(sequence_length, total).
+      if (!right_padded_query && (windowed || !parameters.is_first_prompt) &&
           static_cast<int64_t>(seqlens_k_data[b]) + 1 < sequence_length) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "seqlens_k[", b, "] = ", seqlens_k_data[b],
                                " is too small for sequence_length ", sequence_length);
       }
       // Bound the number of past KV rows copied out of the past key/value buffers during
-      // token generation (decode). ConcatStateChunkGQA copies (seqlens_k + 1 - sequence_length)
+      // token generation (decode). ConcatStateChunkGQA copies (seqlens_k + 1 - valid query rows)
       // rows from the past buffer (sized past_kv_seqlen). The present-buffer check above does
       // not bound this past-side read, because the present buffer can be larger than the past
       // buffer when total_sequence_length exceeds the past sequence length. A large seqlens_k
@@ -349,7 +366,8 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
       // seqlen_past_kv_cache enforcement in the apply-attention paths, so it needs no check here.
       if (!windowed && past_key != nullptr && past_value != nullptr && parameters.kv_sequence_length != 0 &&
           !parameters.is_first_prompt) {
-        const int64_t past_rows = static_cast<int64_t>(seqlens_k_data[b]) + 1 - sequence_length;
+        const int64_t valid_q_rows = right_padded_query ? query_seqlens_data[b] : sequence_length;
+        const int64_t past_rows = static_cast<int64_t>(seqlens_k_data[b]) + 1 - valid_q_rows;
         if (past_rows > past_kv_seqlen) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                  "seqlens_k[", b, "] = ", seqlens_k_data[b], " requires ", past_rows,
@@ -375,6 +393,8 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   Tensor* present_v = context->Output(2, present_v_shape);
   ORT_RETURN_IF((present_k == nullptr) != (present_v == nullptr),
                 "present_key and present_value must both be provided or both omitted");
+  ORT_RETURN_IF(right_padded_query && present_k == nullptr,
+                "query_seqlens requires the present_key and present_value outputs.");
 
   std::vector<int64_t> output_qk_shape{static_cast<int64_t>(batch_size), static_cast<int64_t>(num_heads_), static_cast<int64_t>(parameters.sequence_length), static_cast<int64_t>(parameters.total_sequence_length)};
   Tensor* output_qk = context->Output(3, output_qk_shape);
@@ -449,12 +469,14 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
       // Note: As of now, continuous decoding supports only batch size 1 and token generation supports only sequence length 1.
       for (int b = 0; b < batch_size; b++) {
         const int total_seqlen = seqlens_k->Data<int32_t>()[b] + 1;
-        const int past_seqlen = total_seqlen - sequence_length;
+        const int valid_q_rows = right_padded_query ? query_seqlens_data[b] : sequence_length;
+        const int past_seqlen = total_seqlen - valid_q_rows;
         for (int s = 0; s < sequence_length; s++) {
           if (past_seqlen + s < total_seqlen) {
             default_pos_ids[b * sequence_length + s] = static_cast<int64_t>(past_seqlen) + s;
           } else {
-            default_pos_ids[b * sequence_length + s] = static_cast<int64_t>(1);
+            // Padded rows of a right-padded chunk only need a position inside the rotary cache.
+            default_pos_ids[b * sequence_length + s] = static_cast<int64_t>(0);
           }
         }
       }
@@ -515,18 +537,23 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   // ---- Windowed KV cache: switch to cache-relative coordinates ----
   // RoPE above is the last consumer of absolute positions, so everything from here on can run
   // against a cache that holds only the most recent min(T, C) entries. The attention paths derive
-  // the causal offset and the mask from seqlens_k alone, so redirecting them at a cache-relative
-  // seqlens_k (and, when the step would evict entries it still needs, at a staging cache) reuses
-  // them unchanged.
+  // the causal offset and the mask from seqlens_k and the per-batch past length alone, so
+  // redirecting them at cache-relative lengths (and, when the step would evict entries it still
+  // needs, at a staging cache) reuses them unchanged.
   const Tensor* attention_past_key = past_key;
   const Tensor* attention_past_value = past_value;
   Tensor* attention_present_key = present_k;
   Tensor* attention_present_value = present_v;
   const Tensor* attention_seqlens_k = seqlens_k;
+  // Past length of every batch entry, for steps where it is not total - sequence_length: a windowed
+  // cache and a right-padded query chunk (past = total - query_seqlens). Null otherwise.
+  const int32_t* attention_past_seqlens = nullptr;
   const int32_t* attention_bias_offsets = nullptr;
 
+  std::vector<int32_t> query_past_seqlens;
   std::vector<WindowedStep> windowed_steps;
   std::vector<int32_t> windowed_cache_seqlens;
+  std::vector<int32_t> windowed_cache_past_seqlens;
   std::vector<int32_t> windowed_attention_bias_offsets;
   std::optional<Tensor> windowed_seqlens_tensor;
   std::optional<Tensor> staged_key_tensor;
@@ -540,13 +567,23 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
 
   ThreadPool* windowed_thread_pool = context->GetOperatorThreadPool();
 
+  if (right_padded_query && !parameters.is_windowed_kv_cache) {
+    query_past_seqlens.resize(batch_size);
+    for (int b = 0; b < batch_size; ++b) {
+      query_past_seqlens[b] = seqlens_k->Data<int32_t>()[b] + 1 - query_seqlens_data[b];
+    }
+    attention_past_seqlens = query_past_seqlens.data();
+  }
+
   if (parameters.is_windowed_kv_cache) {
     ORT_RETURN_IF(present_k == nullptr || present_v == nullptr,
                   "sliding_window_cache=1 requires the present_key and present_value outputs.");
     windowed_capacity = parameters.kv_cache_capacity;
-    PlanWindowedKvCache(seqlens_k->Data<int32_t>(), batch_size, sequence_length, windowed_capacity,
-                        local_window_size_, windowed_steps, windowed_cache_seqlens, windowed_use_staging,
-                        windowed_staged_capacity);
+    PlanWindowedKvCache(seqlens_k->Data<int32_t>(), query_seqlens_data, batch_size, sequence_length,
+                        windowed_capacity, local_window_size_, windowed_steps,
+                        windowed_cache_seqlens, windowed_cache_past_seqlens,
+                        windowed_use_staging, windowed_staged_capacity);
+    attention_past_seqlens = windowed_cache_past_seqlens.data();
     if (attention_bias != nullptr) {
       windowed_attention_bias_offsets.resize(batch_size);
       for (int b = 0; b < batch_size; ++b) {
@@ -616,8 +653,8 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
     attention_seqlens_k = &windowed_seqlens_tensor.value();
 
     // Cache-relative lengths always have a non-empty past (possibly of length zero), so the
-    // first-prompt shortcut must be off: past_seqlen = total_seqlen - sequence_length already
-    // yields 0 when nothing is resident.
+    // first-prompt shortcut must be off: attention_past_seqlens already yields 0 when nothing is
+    // resident.
     parameters.is_first_prompt = false;
     parameters.is_subsequent_prompt = false;
     parameters.seqlen_past_kv_cache = windowed_staged_capacity;
@@ -652,7 +689,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
             attention_past_key, attention_past_value,
             output, attention_present_key, attention_present_value, attention_seqlens_k,
             k_scale->Data<float>(), v_scale->Data<float>(),
-            mlas_quant_type, parameters, allocator, context);
+            mlas_quant_type, parameters, allocator, context, attention_past_seqlens);
       }
 
       return ApplyAttentionQuantized(
@@ -660,7 +697,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
           attention_bias, attention_bias_offsets, attention_past_key, attention_past_value,
           output, attention_present_key, attention_present_value, output_qk, attention_seqlens_k,
           k_scale->Data<float>(), v_scale->Data<float>(),
-          mlas_quant_type, parameters, allocator, context);
+          mlas_quant_type, parameters, allocator, context, attention_past_seqlens);
     }
 
     // Compute the attention score and apply the score to V
@@ -691,7 +728,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
         return ApplyAttentionFlash(q_rotary, k_data, v_data,
                                    attention_bias, attention_bias_offsets, attention_past_key, attention_past_value,
                                    output, attention_present_key, attention_present_value, attention_seqlens_k,
-                                   parameters, allocator, context);
+                                   parameters, allocator, context, attention_past_seqlens);
       }
     }
 
@@ -699,7 +736,8 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
                           head_sink_data, attention_bias, attention_bias_offsets,
                           attention_past_key, attention_past_value, output,
                           attention_present_key, attention_present_value,
-                          output_qk, attention_seqlens_k, parameters, allocator, context);
+                          output_qk, attention_seqlens_k, parameters, allocator, context,
+                          attention_past_seqlens);
   };
 
   ORT_RETURN_IF_ERROR(run_attention());
