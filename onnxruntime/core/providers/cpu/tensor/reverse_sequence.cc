@@ -66,6 +66,9 @@ Status ReverseSequenceOp::Compute(OpKernelContext* context) const {
   const auto& X = *context->Input<Tensor>(0);
   const auto data_type = X.DataType();
   const auto& dims = X.Shape();
+  if (dims.NumDimensions() < 2) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "ReverseSequence: input must have rank >= 2. Got: ", dims);
+  }
 
   const auto batch_size = time_major_ ? dims[1] : dims[0];
   const auto max_seq_len = time_major_ ? dims[0] : dims[1];
