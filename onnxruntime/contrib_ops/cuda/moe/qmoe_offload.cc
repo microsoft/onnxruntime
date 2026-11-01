@@ -2101,6 +2101,24 @@ class QMoEOffload::DoorbellService {
     service_done_cv_.wait(lock, [this, node] { return servicing_node_ != node; });
   }
 
+  // Hides the node's doorbell from the worker before the pinned buffer that holds it is released. The worker polls
+  // and claims a doorbell under mutex_, so clearing the pointers and the claimed sequence here, after any service in
+  // progress has finished, leaves no window in which it can read the buffer or service the node through it. Resetting
+  // the claimed sequence alone is not enough: the host request counter keeps its old value until the buffer is gone,
+  // so a poll in between would see a request that was never made.
+  void DetachNode(const QMoEOffload* node) noexcept {
+    if (!node) return;
+    std::unique_lock<std::mutex> lock(mutex_);
+    CancelPendingPromo(node);
+    service_done_cv_.wait(lock, [this, node] { return servicing_node_ != node; });
+    if (node->decode_state_) {
+      node->decode_state_->doorbell_req_host = nullptr;
+      node->decode_state_->doorbell_done_host = nullptr;
+      node->decode_state_->doorbell_tile_rows_host = nullptr;
+      node->decode_state_->last_serviced_seq = 0;
+    }
+  }
+
   void NotifyPending(size_t count = 1) noexcept {
     pending_.fetch_add(count, std::memory_order_release);
     if (sleeping_.load(std::memory_order_acquire)) {
@@ -2390,7 +2408,7 @@ void QMoEOffload::ReleasePersistentDecodePinned() const noexcept {
   if (decode_state_->doorbell_seq_dev) {
     static_cast<void>(cudaMemset(decode_state_->doorbell_seq_dev, 0, sizeof(uint64_t)));
   }
-  decode_state_->last_serviced_seq = 0;
+  DoorbellService::Instance().DetachNode(this);
   decode_state_->launched_seq = 0;
   decode_state_->last_promoted_seq = 0;
   decode_state_->ReleasePinned(true);
@@ -4320,6 +4338,9 @@ Status QMoEOffload::EnsurePersistentDecodeState(OpKernelContext* context, size_t
                   " bytes) exceeds configured pinned_bytes limit (", shared_pinned_limit_, " bytes).");
     if (decode_state_->pinned && session_controller_) {
       session_controller_->BumpGraphGeneration();
+    }
+    if (decode_state_->pinned) {
+      DoorbellService::Instance().DetachNode(this);
     }
     decode_state_->ReleasePinned(true);
     auto sess_pinned = session_controller_ ? session_controller_->PinnedBudget() : nullptr;

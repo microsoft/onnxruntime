@@ -1945,6 +1945,121 @@ int main() {
                 else:
                     os.environ["ORT_QMOE_PREFILL_PROACTIVE_LEND"] = old_proactive
 
+    def test_v4_prefill_reclaim_right_after_decode_does_not_race_the_doorbell_worker(self):
+        # The doorbell worker keeps polling for a couple of milliseconds after the last decode doorbell. A prefill
+        # that reclaims the decode pinned buffer inside that window must not let the worker pick up the buffer's stale
+        # request counter as a new doorbell. All inputs are prepared up front so the prefill run starts right after
+        # the decode run, which is what puts the reclaim inside the window.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model_path = _build_canonical_nvfp4_qmoe_model(
+                tmpdir,
+                num_layers=1,
+                num_experts=16,
+                hidden_size=128,
+                inter_size=64,
+                top_k=4,
+                seed=1301,
+            )
+            slot_bytes = 13832
+            fixed_table_bytes = 2 * 16 * 4
+            budget_1l = fixed_table_bytes + 8 * slot_bytes
+            per_layer_decode_pinned = 262912
+
+            cg_model_path = _wrap_qmoe_model_with_cast_io(
+                model_path, os.path.join(tmpdir, "model_cg_reclaim_race.onnx"), 128, 16
+            )
+
+            cudart = _load_cudart()
+            if cudart is None:
+                self.skipTest("CUDA runtime library is required to update captured GPU inputs in place")
+
+            dev_id = self._device_id(self._selected_plugin_device(prefer_plugin=True))
+
+            old_proactive = os.environ.get("ORT_QMOE_PREFILL_PROACTIVE_LEND")
+            os.environ["ORT_QMOE_PREFILL_PROACTIVE_LEND"] = "0"
+            try:
+                sess_graph = self._make_session(
+                    cg_model_path,
+                    {
+                        "session.moe.offload.mode": "required",
+                        "session.moe.offload.placement": "adaptive",
+                        "session.moe.offload.device_expert_bytes": str(budget_1l),
+                        # Fits persistent decode pinned (262,912 B) or prefill staging (222,720 B), not both, so every
+                        # prefill reclaims the decode pinned buffer.
+                        "session.moe.offload.pinned_bytes": str(per_layer_decode_pinned),
+                    },
+                    cuda_options={
+                        "enable_cuda_graph": "1",
+                        "min_num_runs_before_cuda_graph_capture": "2",
+                    },
+                    prefer_plugin=True,
+                )
+
+                def device_buffer(nbytes: int) -> ctypes.c_void_p:
+                    ptr = ctypes.c_void_p()
+                    self.assertEqual(cudart.cudaMalloc(ctypes.byref(ptr), ctypes.c_size_t(nbytes)), 0)
+                    return ptr
+
+                def upload(ptr: ctypes.c_void_p, arr: np.ndarray):
+                    arr = np.ascontiguousarray(arr, dtype=np.float32)
+                    self.assertEqual(
+                        cudart.cudaMemcpy(ptr, arr.ctypes.data_as(ctypes.c_void_p), arr.nbytes, 1),
+                        0,
+                    )
+
+                def make_binding(x_ptr: ctypes.c_void_p, r_ptr: ctypes.c_void_p, x: np.ndarray, r: np.ndarray):
+                    binding = sess_graph.io_binding()
+                    binding.bind_input("X_f32", "cuda", dev_id, np.float32, list(x.shape), x_ptr.value)
+                    binding.bind_input("R_f32", "cuda", dev_id, np.float32, list(r.shape), r_ptr.value)
+                    binding.bind_output("Y_f32", "cuda", dev_id)
+                    return binding
+
+                rng = np.random.default_rng(1302)
+                x_dec = _round_to_act_dtype(rng.standard_normal((2, 128), dtype=np.float32) * 0.5)
+                r_dec = _round_to_act_dtype(rng.standard_normal((2, 16), dtype=np.float32) * 2.0)
+                x_pref = _round_to_act_dtype(rng.standard_normal((16, 128), dtype=np.float32) * 0.5)
+                r_pref = _round_to_act_dtype(rng.standard_normal((16, 16), dtype=np.float32) * 2.0)
+                y_dec_np = _numpy_nvfp4_qmoe_reference(model_path, x_dec, r_dec)
+                y_pref_np = _numpy_nvfp4_qmoe_reference(model_path, x_pref, r_pref)
+
+                x_ptr = device_buffer(x_dec.nbytes)
+                r_ptr = device_buffer(r_dec.nbytes)
+                xp_ptr = device_buffer(x_pref.nbytes)
+                rp_ptr = device_buffer(r_pref.nbytes)
+                try:
+                    upload(x_ptr, x_dec)
+                    upload(r_ptr, r_dec)
+                    upload(xp_ptr, x_pref)
+                    upload(rp_ptr, r_pref)
+
+                    ro_skip = ort.RunOptions()
+                    ro_skip.add_run_config_entry("gpu_graph_id", "-1")
+                    pref_binding = make_binding(xp_ptr, rp_ptr, x_pref, r_pref)
+
+                    for cycle in range(4):
+                        dec_binding = make_binding(x_ptr, r_ptr, x_dec, r_dec)
+                        for _ in range(5):
+                            sess_graph.run_with_iobinding(dec_binding)
+                        # No Python work between the last decode and the reclaiming prefill.
+                        sess_graph.run_with_iobinding(pref_binding, ro_skip)
+                        y_pref_got = pref_binding.copy_outputs_to_cpu()[0]
+                        self._assert_parity(y_pref_np, y_pref_got, f"prefill_reclaim(cycle={cycle})")
+
+                    # Decode must recreate its state, recapture and replay after the last reclaim.
+                    post_binding = make_binding(x_ptr, r_ptr, x_dec, r_dec)
+                    for step in range(5):
+                        sess_graph.run_with_iobinding(post_binding)
+                        y_got = post_binding.copy_outputs_to_cpu()[0]
+                        self._assert_parity(y_dec_np, y_got, f"post_reclaim_decode(step={step})")
+                finally:
+                    for ptr in (x_ptr, r_ptr, xp_ptr, rp_ptr):
+                        cudart.cudaFree(ptr)
+            finally:
+                if old_proactive is None:
+                    os.environ.pop("ORT_QMOE_PREFILL_PROACTIVE_LEND", None)
+                else:
+                    os.environ["ORT_QMOE_PREFILL_PROACTIVE_LEND"] = old_proactive
+
     def test_v4_device_working_bytes_enforced_across_planned_prefill_paths(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             model_path = _build_canonical_nvfp4_qmoe_model(
@@ -2434,6 +2549,7 @@ if __name__ == "__main__":
     if len(sys.argv) == 3 and sys.argv[1] == "--background-thread-child":
         sys.exit(_background_thread_lifecycle_child(sys.argv[2]))
     # A native crash leaves no Python traceback. This prints every thread's Python stack, which names the test and
-    # the call that was running.
-    faulthandler.enable()
-    unittest.main()
+    # the call that was running. It writes to a duplicate of the original stderr, because the tests that capture
+    # fd 2 would otherwise swallow the traceback.
+    faulthandler.enable(file=os.dup(2))
+    unittest.main(verbosity=2)
