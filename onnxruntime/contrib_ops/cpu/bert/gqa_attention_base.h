@@ -536,7 +536,7 @@ class GQAAttentionBase {
             }
 
             if (qk_output_ == static_cast<int>(QKOutputType::BEFORE_SOFTMAX)) {
-              WriteOutputQKHeadChunk<T, float>(output_qk_thread, sm, total_sequence_length);
+              WriteOutputQKHeadChunk<T, float>(output_qk_thread, sm, total_seqlen, total_sequence_length);
             }
 
             if (use_smooth_softmax_ || head_sink != nullptr) {
@@ -547,7 +547,7 @@ class GQAAttentionBase {
             }
 
             if (qk_output_ == static_cast<int>(QKOutputType::AFTER_SOFTMAX)) {
-              WriteOutputQKHeadChunk<T, float>(output_qk_thread, sm, total_sequence_length);
+              WriteOutputQKHeadChunk<T, float>(output_qk_thread, sm, total_seqlen, total_sequence_length);
             }
 
             sm += seqlen_present_kv_cache;
@@ -1624,7 +1624,7 @@ class GQAAttentionBase {
           }
 
           if (qk_output_ == static_cast<int>(QKOutputType::BEFORE_SOFTMAX)) {
-            WriteOutputQKHeadChunk(output_qk_thread, output_softmax, total_sequence_length);
+            WriteOutputQKHeadChunk(output_qk_thread, output_softmax, total_seqlen, total_sequence_length);
           }
 
           if (use_smooth_softmax_ || head_sink != nullptr) {
@@ -1635,7 +1635,7 @@ class GQAAttentionBase {
           }
 
           if (qk_output_ == static_cast<int>(QKOutputType::AFTER_SOFTMAX)) {
-            WriteOutputQKHeadChunk(output_qk_thread, output_softmax, total_sequence_length);
+            WriteOutputQKHeadChunk(output_qk_thread, output_softmax, total_seqlen, total_sequence_length);
           }
 
           output_softmax += present_buffer_sequence_length;
@@ -1784,18 +1784,24 @@ class GQAAttentionBase {
     }
   }
 
+  // Copies the filled columns of one score row into the QK output and zeroes the rest. A batch entry whose
+  // total length is below total_sequence_length (a ragged batch, or query_seqlens with an upper-bound
+  // total_sequence_length) never writes the tail of its scratch row, so the tail must not be copied.
   template <typename T, typename U>
-  void WriteOutputQKHeadChunk(T* output_qk, const U* attention_probs, size_t total_sequence_length) const {
+  void WriteOutputQKHeadChunk(T* output_qk, const U* attention_probs, size_t valid_columns,
+                              size_t total_sequence_length) const {
     if (output_qk == nullptr) {
       return;
     }
 
+    const size_t copied_columns = std::min(valid_columns, total_sequence_length);
     if constexpr (std::is_same_v<U, T>) {
-      std::memcpy(output_qk, attention_probs, SafeInt<size_t>(total_sequence_length) * sizeof(T));
+      std::memcpy(output_qk, attention_probs, SafeInt<size_t>(copied_columns) * sizeof(T));
     } else {
       static_assert(std::is_same_v<U, float> && std::is_same_v<T, MLFloat16>);
-      MlasConvertFloatToHalfBuffer(static_cast<const float*>(attention_probs), output_qk, total_sequence_length);
+      MlasConvertFloatToHalfBuffer(static_cast<const float*>(attention_probs), output_qk, copied_columns);
     }
+    std::fill_n(output_qk + copied_columns, total_sequence_length - copied_columns, T(0.0f));
   }
 };
 
