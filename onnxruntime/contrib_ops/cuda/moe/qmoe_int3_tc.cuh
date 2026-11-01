@@ -959,13 +959,13 @@ inline cudaError_t LaunchFc2(const Params& fc2, int intermediate, int total_rout
   const dim3 grid(static_cast<unsigned>(total_routes), static_cast<unsigned>(fc2.n / kFc2TileN));
   if (tc_prepacked) {
     if (total_routes <= 32) {
-      Int3TcCoalescedKernel<false, 4, 1, 5, 0, 3>
+      Int3TcCoalescedKernel<false, 4, 1, 5, 1, 3>
           <<<grid, 4 * 32, static_cast<size_t>(intermediate) * 16, stream>>>(fc2);
     } else if (total_routes <= 96) {
-      Int3TcCoalescedKernel<false, 4, 1, 8, 0, 3>
+      Int3TcCoalescedKernel<false, 4, 1, 6, 1, 3>
           <<<grid, 4 * 32, static_cast<size_t>(intermediate) * 16, stream>>>(fc2);
     } else {
-      Int3TcCoalescedKernel<false, 4, 1, 8, 0, 8>
+      Int3TcCoalescedKernel<false, 4, 1, 6, 1, 8>
           <<<grid, 4 * 32, static_cast<size_t>(intermediate) * 16, stream>>>(fc2);
     }
   } else {
