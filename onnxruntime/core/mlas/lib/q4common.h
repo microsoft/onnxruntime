@@ -95,7 +95,7 @@ struct MLAS_Q4TYPE_BLK0 {
  * into int4. The resulting blob takes 16 + 5 = 21 bytes.
  * 
  * So far this is the only type that includes a zero-point value.
- * Maybe we should consider store the quantization parameters seperatedly.
+ * Maybe we should consider store the quantization parameters separately.
  */
 struct MLAS_Q4TYPE_BLK1 {
     static constexpr size_t BlkLen = MLAS_QUANT4_BLK_UNIT;
