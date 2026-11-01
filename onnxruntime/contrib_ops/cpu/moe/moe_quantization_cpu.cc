@@ -961,12 +961,13 @@ QMoECPU<T>::QMoECPU(const OpKernelInfo& op_kernel_info)
   const bool is_shared_fp4 = ((quant_type_ == "nvfp4" || quant_type_ == "fp4") && prepacked == 1);
   if (quant_type_ == "nvfp4" && block_size_ == 0) block_size_ = 16;
   if (quant_type_ == "fp4" && block_size_ == 0) block_size_ = 32;
-  use_shared_layout_ = (quant_type_ == "int" && expert_weight_bits_ == 4 && prepacked == 1) ||
-                       expert_weight_bits_ == 3 || is_shared_fp4;
+  use_shared_layout_ =
+      (quant_type_ == "int" && (expert_weight_bits_ == 4 || expert_weight_bits_ == 2) && prepacked == 1) ||
+      expert_weight_bits_ == 3 || is_shared_fp4;
   if (use_shared_layout_) {
     ORT_ENFORCE(quant_type_ == "int" || is_shared_fp4,
                 "Shared CPU QMoE requires integer, NVFP4, or MXFP4 quantization.");
-    ORT_ENFORCE(expert_weight_bits_ == 4 || prepacked == 0,
+    ORT_ENFORCE(expert_weight_bits_ == 4 || expert_weight_bits_ == 2 || prepacked == 0,
                 "Shared CPU INT3 QMoE requires weights_prepacked=0.");
     if (quant_type_ == "nvfp4") {
       ORT_ENFORCE(block_size_ == 16 && expert_weight_bits_ == 4,

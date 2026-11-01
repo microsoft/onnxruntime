@@ -308,6 +308,25 @@ struct Nvfp4ExpertBlockLayout {
 bool MakeNvfp4ExpertBlockLayout(int64_t hidden, int64_t inter, Nvfp4ExpertBlockLayout* layout);
 bool MakeMxfp4ExpertBlockLayout(int64_t hidden, int64_t inter, Nvfp4ExpertBlockLayout* layout);
 bool MakeInt3ExpertBlockLayout(int64_t hidden, int64_t inter, int64_t block_size, Nvfp4ExpertBlockLayout* layout);
+bool MakeInt2ExpertBlockLayout(int64_t hidden, int64_t inter, int64_t block_size, Nvfp4ExpertBlockLayout* layout);
+
+// Zero-copy view of one INT2 expert (SM80 prepacked weights_prepacked == 1 or raw weights_prepacked == 0,
+// block_size in {32, 64, 128}).
+struct Int2ExpertView {
+  const uint8_t* fc1_weights = nullptr;  // [2*inter, hidden/4] (SM80 prepacked [K, N/4] or raw row-major [N, K/4])
+  const uint16_t* fc1_scales = nullptr;  // [2*inter, hidden/block_size] row-major or [hidden/block_size, 2*inter] block-major
+  const uint16_t* fc1_bias = nullptr;    // optional [2*inter] in FP16, BF16, or FP32
+  const uint8_t* fc2_weights = nullptr;  // [hidden, inter/4] (SM80 prepacked [K, N/4] or raw row-major [N, K/4])
+  const uint16_t* fc2_scales = nullptr;  // [hidden, inter/block_size] row-major or [inter/block_size, hidden] block-major
+  const uint16_t* fc2_bias = nullptr;    // optional [hidden] in FP16, BF16, or FP32
+  int64_t block_size = 64;               // 32, 64, or 128
+  bool scales_are_block_major = false;   // false = canonical QMoE [N, K/block_size]; true = [K/block_size, N]
+  bool weights_are_prepacked = true;     // true = SM80 ColumnMajorTileInterleave<64,8>; false = raw ONNX [N, K/4]
+  bool scale_is_bf16 = true;
+  bool bias_is_bf16 = true;
+  bool scale_is_fp32 = false;
+  bool bias_is_fp32 = false;
+};
 
 // Zero-copy view of one raw INT3 expert (weights_prepacked == 0, block_size in {32, 64, 128}).
 struct Int3ExpertView {
@@ -382,6 +401,22 @@ inline int RawInt4ReorderedPosition(int k_offset_in_block) {
 
 // Reorders one activation row (length k, multiple of 32) into the raw ONNX INT4 [even16 | odd16] decode order.
 void ReorderRawInt4ActivationRow(const float* src, float* dst, int64_t k);
+
+// Natural-order index (0..63) -> index in the SM80 prepacked INT2 64-element tile decode order.
+inline int Int2ReorderedPosition(int k_offset_in_64) {
+  return ((k_offset_in_64 & 31) << 1) | ((k_offset_in_64 >> 5) & 1);
+}
+
+// Natural-order index (0..63) -> index in the raw ONNX INT2 64-element tile decode order.
+inline int RawInt2ReorderedPosition(int k_offset_in_64) {
+  return ((k_offset_in_64 & 3) << 4) | ((k_offset_in_64 >> 2) & 15);
+}
+
+// Reorders one activation row (length k, multiple of 64) into the SM80 prepacked INT2 decode order.
+void ReorderInt2ActivationRow(const float* src, float* dst, int64_t k);
+
+// Reorders one activation row (length k, multiple of 64) into the raw ONNX INT2 decode order.
+void ReorderRawInt2ActivationRow(const float* src, float* dst, int64_t k);
 
 // Converts between raw ONNX row-major INT4 [n_total, k_total/2] and SM80 ColumnMajorTileInterleave<64,4> INT4.
 void PackSm80Int4Weights(const uint8_t* raw_weights, uint8_t* sm80_weights, int64_t n_total, int64_t k_total);
@@ -484,6 +519,35 @@ void Int3Fc2Range(int64_t hidden, int64_t inter, const Int3ExpertView& view,
                   bool apply_bias = false);
 
 bool Int3ExpertForward(int64_t hidden, int64_t inter, const Int3ExpertView& view,
+                       const float* x, int64_t m, const SwiGluParams& swiglu, float* out,
+                       bool force_scalar = false, bool apply_fc2_bias = false,
+                       bool bf16_boundaries = false, bool fp16_boundaries = false);
+
+// INT2 QMoE CPU kernels (supports both SM80 prepacked and raw [N, K/4] INT2 weights, block_size in {32, 64, 128},
+// both row-major and block-major scales, and both FP16 and BF16 scales/biases/boundaries).
+enum class Int2GemmBackend { Auto,
+                             Avx2 };
+
+void Int2GemmRange(const uint8_t* weights, const uint16_t* scales, const uint16_t* bias,
+                   int64_t block_size, bool scales_are_block_major, bool weights_are_prepacked,
+                   bool scale_is_bf16, bool bias_is_bf16,
+                   int64_t n_total, int64_t k, const float* a_reordered, int64_t m,
+                   float* out, int64_t out_stride, int64_t n_begin, int64_t n_end,
+                   bool force_scalar = false, Int2GemmBackend backend = Int2GemmBackend::Auto);
+
+// Bounds must contain complete gate/up pairs. Returns false without writing output for invalid ranges or row counts.
+bool Int2Fc1SwiGluRange(int64_t hidden, int64_t inter, const Int2ExpertView& view,
+                        const float* x_reordered, int64_t m, const SwiGluParams& swiglu,
+                        float* inter_reordered, int64_t n_begin, int64_t n_end,
+                        bool force_scalar = false, bool bf16_boundaries = false,
+                        bool fp16_boundaries = false);
+
+void Int2Fc2Range(int64_t hidden, int64_t inter, const Int2ExpertView& view,
+                  const float* inter_reordered, int64_t m, float* out,
+                  int64_t n_begin, int64_t n_end, bool force_scalar = false,
+                  bool apply_bias = false);
+
+bool Int2ExpertForward(int64_t hidden, int64_t inter, const Int2ExpertView& view,
                        const float* x, int64_t m, const SwiGluParams& swiglu, float* out,
                        bool force_scalar = false, bool apply_fc2_bias = false,
                        bool bf16_boundaries = false, bool fp16_boundaries = false);

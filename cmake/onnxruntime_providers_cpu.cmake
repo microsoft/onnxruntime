@@ -17,7 +17,9 @@ file(GLOB_RECURSE onnxruntime_cpu_contrib_ops_srcs CONFIGURE_DEPENDS
 list(REMOVE_ITEM onnxruntime_cpu_contrib_ops_srcs
   "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/moe/qmoe_shared_layout_int4_avx512.cc"
   "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/moe/qmoe_shared_layout_int4_avx2.cc"
+  "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/moe/qmoe_shared_layout_int2_avx512.cc"
   "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/moe/qmoe_shared_layout_int3_avx512.cc"
+  "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/moe/qmoe_shared_layout_int2_avx2.cc"
   "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/moe/qmoe_shared_layout_int3_avx2.cc"
   "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/moe/qmoe_shared_layout_fp4_avx512.cc"
 )

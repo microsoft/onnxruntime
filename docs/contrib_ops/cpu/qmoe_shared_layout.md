@@ -1,4 +1,4 @@
-# Direct shared INT4 and INT3 QMoE layouts
+# Direct shared INT4, INT3, and INT2 QMoE layouts
 
 CPU and CUDA QMoE can consume the same immutable weight and scale banks for the
 integer profiles below. CPU QMoE calls reusable projection kernels that can also
@@ -6,16 +6,16 @@ serve a later offload worker. This change supplies the layout and kernel
 foundation; session placement, file-cache policy, and asynchronous offload are
 separate work.
 
-| Property | SM80 INT4 | Row-local INT3 |
-| --- | --- | --- |
-| `quant_type` | `int` | `int` |
-| `expert_weight_bits` | 4 | 3 |
-| `weights_prepacked` | Explicit `1` | Explicit `0` |
-| Shared CPU/CUDA block sizes | 32 | 32, 64, 128 |
-| Weight code interpretation | Unsigned nibble minus 8 | Unsigned three-bit code minus 4 |
-| Physical weight ordering | SM80 `fpA_intB`, `ColumnMajorTileInterleave<64,4>` | LSB-first bit stream, independently packed for every output row |
-| Serialized scale ordering | `[E,N,K/block_size]` | `[E,N,K/block_size]` |
-| Activation/output dtype | FP16 or BF16; CPU also supports FP32 | FP16 or BF16 |
+| Property | SM80 INT4 | Row-local INT3 | SM80 INT2 |
+| --- | --- | --- | --- |
+| `quant_type` | `int` | `int` | `int` |
+| `expert_weight_bits` | 4 | 3 | 2 |
+| `weights_prepacked` | Explicit `1` | Explicit `0` | Explicit `1` |
+| Shared CPU/CUDA block sizes | 32 | 32, 64, 128 | 32, 64, 128 |
+| Weight code interpretation | Unsigned nibble minus 8 | Unsigned three-bit code minus 4 | Unsigned two-bit code minus 2 |
+| Physical weight ordering | SM80 `fpA_intB`, `ColumnMajorTileInterleave<64,4>` | LSB-first bit stream, independently packed for every output row | SM80 `fpA_intB`, `ColumnMajorTileInterleave<64,8>` |
+| Serialized scale ordering | `[E,N,K/block_size]` | `[E,N,K/block_size]` | `[E,N,K/block_size]` |
+| Activation/output dtype | FP16 or BF16; CPU also supports FP32 | FP16 or BF16 | FP16 or BF16; CPU also supports FP32 |
 
 These operator profiles use uniform FC1/FC2 widths, `activation_type="swiglu"`,
 `swiglu_fusion=1`, and no sparse mixer. Separate FC3, explicit zero points, global
@@ -37,30 +37,41 @@ Eight codes occupy three bytes. The supported block sizes ensure byte-aligned
 rows and complete quantization groups. Scales remain in source row order; GPU
 slots do not require a scale transpose.
 
-For the candidate with `E=512,H=2560,I=640`, the source banks are:
+For the candidates with `E=512,H=2560,I=640`, the source banks are:
 
-| Bank | INT4 block32 shape | INT3 block64 shape |
-| --- | --- | --- |
-| FC1 weights | `[512,2560,640]`, SM80 payload | `[512,1280,960]` |
-| FC1 scales | BF16 `[512,1280,80]` | BF16 `[512,1280,40]` |
-| FC2 weights | `[512,640,1280]`, SM80 payload | `[512,2560,240]` |
-| FC2 scales | BF16 `[512,2560,20]` | BF16 `[512,2560,10]` |
-| Bytes per expert | 2,764,800 | 1,996,800 |
+| Bank | INT4 block32 shape | INT3 block64 shape | INT2 block64 shape |
+| --- | --- | --- | --- |
+| FC1 weights | `[512,2560,640]`, SM80 payload | `[512,1280,960]` | `[512,2560,320]`, SM80 payload |
+| FC1 scales | BF16 `[512,1280,80]` | BF16 `[512,1280,40]` | BF16 `[512,1280,40]` |
+| FC2 weights | `[512,640,1280]`, SM80 payload | `[512,2560,240]` | `[512,640,640]`, SM80 payload |
+| FC2 scales | BF16 `[512,2560,20]` | BF16 `[512,2560,10]` | BF16 `[512,2560,10]` |
+| Bytes per expert | 2,764,800 | 1,996,800 | 1,382,400 |
 
 The inspected `qmoe_top16_44_33_b64` candidate contains 16 INT4 and 32 INT3
-layers. All use top-10 routing. No model or external-data rewrite is required.
+layers, and the `qmoe_2b375_x02_y14_z32_dp23_b64` candidate contains 2 INT4,
+14 INT3, and 32 INT2 layers. All use top-10 routing. No model or external-data
+rewrite is required.
 
 ## CPU shared-layout kernel interface
 
 `qmoe_shared_layout.h` describes immutable expert views (`Int4ExpertView`,
-`Int3ExpertView`, `Nvfp4ExpertView`) and range kernels (`Int4Fc1SwiGluRange`,
-`Int4Fc2Range`, `Int3Fc1SwiGluRange`, `Int3Fc2Range`, `Nvfp4Fc1SwiGluRange`,
-`Nvfp4Fc2Range`) implemented across `qmoe_shared_layout.cc`,
+`Int3ExpertView`, `Int2ExpertView`, `Nvfp4ExpertView`) and range kernels
+(`Int4Fc1SwiGluRange`, `Int4Fc2Range`, `Int3Fc1SwiGluRange`, `Int3Fc2Range`,
+`Int2Fc1SwiGluRange`, `Int2Fc2Range`, `Nvfp4Fc1SwiGluRange`, `Nvfp4Fc2Range`)
+implemented across `qmoe_shared_layout.cc`,
 `qmoe_shared_layout_int4_avx512.cc`, `qmoe_shared_layout_int4_avx2.cc`,
+`qmoe_shared_layout_int2_avx512.cc`, `qmoe_shared_layout_int2_avx2.cc`,
 `qmoe_shared_layout_int3_avx512.cc`, `qmoe_shared_layout_int3_avx2.cc`, and
 `qmoe_shared_layout_fp4_avx512.cc`.
 It performs no weight/scale conversion during initialization or execution; the
-caller owns activation and output workspace.
+caller owns activation and output workspace. INT2 applies block scales before
+activation products. A BF16 scale of magnitude 2^127 or more would overflow
+that product for code -2 even when a small activation brings it back into range,
+so a vector range that contains such a scale runs on the scalar kernel, which
+halves the scale and doubles the sum exactly. INT2 rounds FC1 projections to the
+boundary dtype before adding bias and evaluating SwiGLU in FP32, matching CUDA
+decode and packed prefill. FC1 ranges must contain complete gate/up pairs (even
+bounds); invalid ranges return false without writing output.
 
 Scalar, runtime-dispatched AVX2, and runtime-dispatched AVX-512 implementations
 read the same banks. Code extraction, activation permutation, scale decoding,
@@ -96,6 +107,9 @@ Low-level CPU offload callers select the same policy through
   and AVX-512 results, candidate dimensions, byte extents/strides, and read-only
   guarded buffers. INT4 FP16 boundary tests compare F16C rounding against the
   scalar path for partial ranges, including vector tails and multiple rows.
+- `moe_test.cc` checks prepacked INT2 CPU operator execution against independently
+  packed multi-expert banks and a natural-order reference, including both weight
+  shapes, FP32/FP16/BF16, optional biases, and explicit routing weights used as supplied, independently of normalization settings.
 - `test_qmoe_shared_direct.py` checks CPU/CUDA operator execution, dynamic banks,
   prepacking on/off, non-square aliases, mixed INT4/INT3 graphs, and 512-expert
   top-10 routing.
