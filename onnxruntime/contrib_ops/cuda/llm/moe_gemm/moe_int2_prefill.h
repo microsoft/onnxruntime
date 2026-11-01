@@ -30,6 +30,7 @@ struct Int2MoePrefillParams {
   int fc1_weight_bits = 0;
   int fc2_weight_bits = 0;
   bool weights_are_raw = false;
+  bool weights_are_prepacked_int3 = false;
   int num_experts = 0;
   int top_k = 0;
   int sm = 0;

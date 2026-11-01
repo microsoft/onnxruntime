@@ -604,6 +604,11 @@ M chunking applies only to the fpA_intB path. The dequantize + cuBLAS fallback
 by `N` chunking (`ORT_MATMULNBITS_CHUNK_SIZE`). The fused GEMV (§4) handles
 `M <= 16` and needs no workspace.
 
+Eligible symmetric INT8 nodes with `M` at or above the large-M threshold (§6.6)
+do not use row chunks at all: one cuBLAS GEMM over a dequantized `[N, K]` copy of
+the weights replaces the chunked CUTLASS launches, and that copy, not the CUTLASS
+workspace, is the node's workspace for those rows.
+
 Prepacked weights are intentionally strict:
 
 - If ORT was built without `onnxruntime_USE_FPA_INTB_GEMM=ON`, any nonzero
@@ -639,7 +644,8 @@ the rest of the session. Lazy profiling is skipped
 while a CUDA graph is being captured (profiling kernels/events/allocations are
 illegal during capture), so run a
 warmup inference **before** capture to tune any `M` buckets your captured graph
-needs. Set `ORT_FPA_INTB_PROFILE_M` (comma-separated) to override the bucket set;
+needs (a graph-enabled session does this itself for INT8 layers that take the
+large-`M` dequantization route, §6.6). Set `ORT_FPA_INTB_PROFILE_M` (comma-separated) to override the bucket set;
 its maximum also sets the initial
 profile range.
 
@@ -840,6 +846,183 @@ The A100 and H200 rules need both values, because an A30 is also SM 8.0 but has
   narrow versus default tile at the window edges on a new device or after
   changing the kernel's register or shared-memory footprint.
 
+### 6.5 Tensor-core INT8 GEMV (SM 9.0)
+
+The scalar GEMV converts, scales and multiplies every weight once per
+activation row. On the Qwen3.8 INT8 decode projections that costs about 11
+thread instructions per weight and reaches only 28-37% of the H200 DRAM
+bandwidth. For BF16 activations and symmetric INT8 weights,
+[int8_tc_gemv.cuh](../../../onnxruntime/contrib_ops/cuda/llm/fpA_intB_gemv/int8_tc_gemv.cuh)
+makes the weights the A operand of `mma.sync.m16n8k16` (BF16 inputs, FP32
+accumulation) and the 1-8 activation rows the B operand, so all activation rows share each dequantized weight.
+
+- **Gate** (`CanUseInt8TensorCore` in
+  [dispatcher.h](../../../onnxruntime/contrib_ops/cuda/llm/fpA_intB_gemv/dispatcher.h)):
+  `Params::tensor_core`, BF16 activations, symmetric INT8 weights in the SM80
+  interleaved layout (no zero points, bias, activation scale or
+  alpha-in-advance, and `alpha == 1` because the kernel does not apply it),
+  device SM 9.0, `1 <= M <= 8`, `N % 16 == 0`,
+  `K % 64 == 0`, `K % block_size == 0` and 16-byte-aligned activation and
+  weight pointers, and a loaded kernel compiled for SM80+ (checked via
+  `cudaFuncGetAttributes`, including PTX JIT loads). Every other launch keeps the scalar kernel and its tile rule
+  (§6.4).
+- **Layout.** The runtime's SM80 interleaved weights are consumed as they are.
+  The K permutation of that layout is absorbed by choosing which activation
+  words feed each `mma`.
+- **Numerics.** The stored byte `q = value + 128`, placed in a BF16 lane, is
+  exactly `q * 2^-133`. One `fma.rn.bf16x2` with `2^126` and `-1` turns a pair
+  of them into `(q - 128) / 128` (exact), a `mul.rn.bf16x2` by `128` produces
+  the exact BF16 integer `q - 128`, and a second `mul.rn.bf16x2` multiplies by
+  the group scale, so a weight is `bf16_rn((q - 128) * scale)` with no
+  post-accumulation unscaling. The weights therefore equal the scalar kernel's
+  `bf16_rn((q - 128) * scale)` across the entire finite BF16 scale range
+  (including subnormal scales below `2^-119` down to `2^-133`). No
+  scale-dependent pre-scaling is involved, so large scales cannot overflow and
+  tiny scales are not rounded prematurely or flushed to zero. Products
+  accumulate in FP32 and the warps' partial sums are reduced through shared
+  memory in a fixed order, so a row's result does not depend on `M`.
+- **Launch configuration.** `LaunchInt8TcGemvAuto` picks the K split (4 or 8
+  warps), the prefetch depth and the blocks per SM from the block count
+  `N / 16` relative to the SM count, so that the grid fits in one wave.
+- **Early dependent-launch trigger.** The tensor-core kernel and the scalar GEMV
+  kernel (`kernel` in `dispatcher.h`) issue `griddepcontrol.launch_dependents`
+  first thing on SM 9.0+. A successor launched with programmatic dependent
+  launch (the hyper-connection down kernel of Qwen3.8-Flash-Next) can then
+  start and prefetch its constant weights while the GEMV runs; it reads the
+  output only after `griddepcontrol.wait`. Plain launches and older
+  architectures are unaffected. The effect was measured together with the same
+  trigger in the gate-mul kernel of `GatedAdd`: 1.4-1.7% per `S = 8` decode
+  cycle, generated tokens identical in 45 of 45 runs.
+- **Switch.** `ORT_DISABLE_FPA_INTB_GEMV_TC=1` restores the scalar kernel
+  (§8). Session option `ep.cuda.disable_fpa_intb_gemv_tc` takes precedence.
+  Both accept `0` or `1` and are resolved once during kernel construction.
+  The resolved flag is passed to the tactic profiler (§6.3) and dispatch.
+  In-memory and persistent tactic-cache keys include the flag, and the
+  selection-version bump invalidates measurements from the previous kernel.
+- **Measured (H200, `M = 8`, `block_size = 32`, cold weights).** With the final
+  range-free dequantization above, standalone kernel latency against the scalar
+  `fpA_intB_gemv` kernel is `24.9 → 14.3 µs` for `in_proj` (`N = 16480`,
+  `K = 2560`), `12.7 → 10.6 µs` for `out_proj` (`N = 2560`, `K = 6144`), and
+  `~20.0 → 12.6 µs` for `N = 13952`, `K = 2560` (earlier versions that folded
+  `2^67` into the scale or kept a `1/128` weight factor took `13.0 / 9.7 / 11.8 µs`
+  and `13.5 / 10.0 / 12.1 µs`). On the final revision of #33689 (merged with
+  `main` `0a12bc0480`, #33714 `ebde3f13e5`, #33707 `204d6593c0`, and
+  #33650 / #32126 `78d59a59c7`; GenAI #2808 `5d561a2f5`; `B = 1`, DFlash2
+  `S = 8`, mean of 2 rotated GPU rounds x median of 5 runs), toggling
+  `ORT_DISABLE_FPA_INTB_GEMV_TC` from `1` to `0` shortens the decode cycle at
+  2K / 8K / 32K context by `-4.5% / -4.7% / -4.3%` (`11.37 → 10.85`,
+  `11.54 → 10.99`, `11.74 → 11.24 ms`) on `all_int4`, `-5.3% / -4.1% / -5.2%`
+  (`11.29 → 10.70`, `11.38 → 10.91`, `11.78 → 11.16 ms`) on `top16`, and
+  `-5.1% / -5.3% / -4.9%` (`11.29 → 10.71`, `11.47 → 10.87`,
+  `11.81 → 11.23 ms`) on `top08`. Across the full #33689 diff (baseline provider
+  built from the same companion PRs without #33689 vs the final #33689 provider,
+  with all other PRs and package options held constant), the decode cycle at
+  2K / 8K / 32K drops from `13.82 / 13.96 / 14.02 ms` to
+  `10.85 / 10.99 / 11.24 ms` (`-21.4% / -21.3% / -19.9%`) on `all_int4`,
+  `14.29 / 14.66 / 14.59 ms` to `10.70 / 10.91 / 11.16 ms`
+  (`-25.1% / -25.6% / -23.5%`) on `top16`, and `14.42 / 14.51 / 14.92 ms` to
+  `10.71 / 10.87 / 11.23 ms` (`-25.7% / -25.1% / -24.7%`) on `top08`.
+
+### 6.6 Large-M INT8: dequantize once + cuBLAS (SM 9.0 default)
+
+The CUTLASS mixed-input GEMM converts every weight again for each row chunk
+(§6.2) and reaches about 300 TFLOPS on H200, where a BF16 cuBLAS GEMM on the same
+shapes reaches about 730 TFLOPS. For large `M` the dense INT8 layers therefore
+expand the weights once per call into a row-major `[N, K]` scratch matrix
+(`DequantizeInt8InterleavedKernel` in
+[int8_dequant.cuh](../../../onnxruntime/contrib_ops/cuda/llm/fpA_intB_gemv/int8_dequant.cuh))
+and run one cuBLAS GEMM instead of the CUTLASS launches.
+
+- **Gate** (`ComputeFpAIntBDequantGemmMinM` in
+  [matmul_nbits.h](../../../onnxruntime/contrib_ops/cuda/quantization/matmul_nbits.h),
+  decided per node during kernel construction): FP16 or BF16 activations,
+  symmetric INT8 weights (no zero points, no bias) in the SM80 interleaved layout
+  (weights prepacked for SM 9.0 keep CUTLASS), `N % 16 == 0`, `K % 64 == 0`, a
+  power-of-two `block_size >= 16` that divides `K`, and
+  `N * K * sizeof(T) <= 256 MiB`. A 1.3 GiB LM head therefore keeps CUTLASS.
+  At run time the route is also skipped under CUDA graph capture (the scratch
+  would be allocated during capture) and with deterministic compute, which keep
+  the CUTLASS path. Because the captured launch uses the CUTLASS tactic of its
+  `M` bucket and cannot profile during capture, a session with CUDA graphs
+  enabled (`enable_cuda_graph` for the CUDA EP, the equivalent runtime
+  configuration for the plugin EP) tunes that bucket, and the remainder bucket
+  of a row-chunked `M`, in the warmup run that takes this route, before the
+  scratch is allocated. Without it the warmup would never profile the CUTLASS
+  path and the capture would fail with "No valid fpA_intB MatMulNBits tactic".
+  Decode (`M <= 16`) is untouched at the default threshold;
+  a configured threshold below 17 would also move GEMV-sized `M` onto this route
+  and is not recommended.
+- **Threshold.** `M >= ep.cuda.fpa_intb_dequant_gemm_min_m` (else
+  `ORT_FPA_INTB_DEQUANT_GEMM_MIN_M`). The default is 512 on SM 9.0, where it was
+  tuned, and 0 elsewhere; `0` disables the route. Like the other `ep.cuda.*`
+  knobs it is resolved once during kernel construction, an explicit session
+  option beats the environment variable, and anything but an integer in
+  `[0, INT_MAX]` (negative, empty, text) fails session initialization. On H200
+  the sweep over 128 / 256 / 512 was 3-5% slower, 0-3% slower and 2.5-3.5%
+  faster than CUTLASS for 128-512-token prompts: the extra pass reads 1 B and
+  writes 2 B per weight, so the route only pays once the GEMM is large.
+- **Numerics.** A weight is `(q - 128) * scale` in fp32 with one rounding to the
+  activation type, the same value the GEMV kernels and the CUTLASS converter use
+  (probing all `93.6M` weights of the Qwen3.8-Flash-Next `16480 x 2560`,
+  `2560 x 6144`, and `13952 x 2560` nodes with `M = 512` identity slices gives `0`
+  mismatches between `dequant+cuBLAS` and CUTLASS). Against an FP64 reference of
+  those exact BF16 weights at `M = 512, 1024, 2048, 4096, 8192`, `dequant+cuBLAS`
+  has `1.11e-4 .. 1.87e-4` relative RMS error across all shapes: its output is
+  bitwise identical (`0.0` difference) to CUTLASS whenever CUTLASS selects
+  `split_k = 1` (`16480 x 2560` and `13952 x 2560` at all `M`, and `2560 x 6144`
+  at `M = 4096, 8192`), and is closer to the FP64 reference than CUTLASS on
+  `2560 x 6144` at `M = 512, 1024, 2048` (`1.83e-4` vs `2.15e-3 .. 2.98e-3`
+  relative RMS, cosine similarity `>= 0.9999956`), where CUTLASS reduces split-K
+  partial sums in BF16. In full-model long-prompt verification on the final
+  #33689 stack (`ep.cuda.fpa_intb_dequant_gemm_min_m = 512` vs `0`, with all
+  other settings held constant; `ORT_FPA_INTB_DEBUG=1` confirms `97`
+  `dequant+cuBLAS` launches per prefill chunk at `M = 512, 1024, 2048, 4096, 8192`,
+  `388` launches across four 8192-token chunks at `32768`, and `0` launches when
+  `min_m = 0` or `M = 256`):
+  - Across 55 natural-text prompts per package (`10` each at `512, 1024, 2048,
+    4096, 8192` tokens and `5` at `32768` tokens = `165` pairs across `all_int4`,
+    `top16`, `top08`), the first generated token agrees in `158 / 165` (`95.8%`)
+    runs (`53/55`, `53/55`, `52/55`; `100%` at `4096` and `32768`).
+  - Across the 27 natural MMLU-Pro prompts with `>= 512` tokens (`512..1150`
+    tokens) on all three packages (`81` evaluations), `min_m = 512` scores
+    `54 / 81` (`66.7%`, `17 / 17 / 20`) vs `51 / 81` (`63.0%`, `17 / 16 / 18`)
+    for `min_m = 0`, with `80 / 81` (`98.8%`) first-token agreement.
+  - Across 30 MMLU-Pro prompts per package padded with natural-text history to
+    exact lengths `1024, 2048, 4096` (`10` per length = `90` evaluations),
+    `min_m = 512` scores `57 / 90` (`63.3%`, `21 / 18 / 18`) vs `56 / 90`
+    (`62.2%`, `19 / 19 / 18`) for `min_m = 0`, with `81 / 90` (`90.0%`) answer
+    agreement and `84 / 90` (`93.3%`) first-token agreement.
+- **Memory.** The scratch is `N * K * sizeof(T)` bytes (84 MB for the largest
+  Qwen3.8-Flash-Next layer, `in_proj`), taken from the arena for one call.
+  Both estimates charge it: the Level-1 workspace becomes
+  `max(CUTLASS workspace, N * K * sizeof(T))` for every admitted `M` at or above
+  the threshold (the session option is passed to the estimator through
+  `WorkspaceEstimatorConfig`; an invalid value leaves the node without a
+  workspace estimate, like an invalid chunk size), and Level 2
+  (`DeclareWorkspaceRequirements`) declares the same maximum. The route profiles
+  only in a graph-enabled session and then before the scratch exists, so the
+  lazy-profile peak keeps the CUTLASS figure. The Level-2
+  figure is exact when the route runs and an upper bound when graph capture or
+  deterministic compute keep CUTLASS. The last-compute workspace probe used by
+  the tests reports the scratch size when the route ran.
+- **Measured (H200, BF16, group 32).** `in_proj` (`N = 16480`, `K = 2560`):
+  dequantization 50 us, dequantization + GEMM 110 us at `M = 512` and 944 us at
+  `M = 8192` against CUTLASS 128 / 2050 us. `out_proj` (`N = 2560`, `K = 6144`):
+  22 us, 47 us and 350 us against CUTLASS 723 us at `M = 8192`. On the final
+  #33689 stack (`main` `0a12bc0480` + #33714 `ebde3f13e5` + #33707 `204d6593c0` +
+  #33650 / #32126 `78d59a59c7` + #33689 final head, GenAI #2808 `5d561a2f5`,
+  package config `prefill.chunk = 8192` and `qmoe_row_tile_size = 8192`, 2 rotated
+  GPU rounds x median of 5 runs), enabling the route (`min_m = 512` vs `0`)
+  reduces TTFT at `512 / 1024 / 2048 / 8192 / 32768` tokens by
+  `-2.6% / -3.5% / -6.8% / -11.0% / -11.2%` (`650.5 → 579.2 ms` at 8192,
+  `2752.6 → 2444.2 ms` at 32768) on `all_int4`,
+  `-3.8% / -5.4% / -7.4% / -11.8% / -11.2%` (`672.1 → 593.1 ms` at 8192,
+  `2839.7 → 2522.0 ms` at 32768) on `top16`, and
+  `-0.6% / -3.7% / -6.5% / -11.2% / -10.8%` (`674.5 → 599.2 ms` at 8192,
+  `2850.7 → 2544.0 ms` at 32768) on `top08` (and `-10.7% / -11.2% / -10.9%` at
+  8192, `-11.5% / -11.2% / -10.7%` at 32768 against the baseline provider built
+  without #33689); prompts under 512 tokens are unchanged.
+
 ---
 
 ## 7. Bias Handling
@@ -871,10 +1054,13 @@ present. `ComputeInternal` then:
 | `ORT_MATMULNBITS_FORCE_CHUNKED` | int, `0` | Force the chunked dequant+GEMM fallback (§5) regardless of the size heuristic, and bypass the fpA_intB M-chunking size condition (§6.2). |
 | `ORT_MATMULNBITS_CHUNK_SIZE` | int64, `32768` | Target rows per chunk in the chunked fallback. Values `< 1` reset to the default. |
 | `ORT_MATMULNBITS_M_CHUNK_SIZE` | int, `0` | Max rows of `A` per fpA_intB launch (§6.2). `0` disables M chunking. Overridden by the `ep.cuda.matmul_nbits_m_chunk_size` session config entry. Also applies to the CUDA plugin EP. |
+| `ORT_FPA_INTB_DEQUANT_GEMM_MIN_M` | int in `[0, INT_MAX]`, `512` on SM 9.0 and `0` elsewhere | Minimum `M` for the dequantize-once + cuBLAS route of eligible symmetric INT8 nodes (§6.6). `0` disables it. Session option `ep.cuda.fpa_intb_dequant_gemm_min_m` takes precedence. Read once during kernel construction; an invalid value fails session initialization. |
+| `ORT_DISABLE_FPA_INTB_GEMV_TC` | `1` disables, unset | Use the scalar fpA_intB GEMV kernel instead of the SM 9.0 tensor-core INT8 GEMV (§6.5). Accepts `0` or `1` (default `0`); session option `ep.cuda.disable_fpa_intb_gemv_tc` takes precedence. Read once during kernel construction. |
 
 > Environment variables are read with ORT's cross-platform
 > `ParseEnvironmentVariableWithDefault` helper (safe on Windows), not
-> `std::getenv`.
+> `std::getenv`. Tensor-core dispatch configuration is resolved during kernel
+> construction and is never re-read during inference.
 
 ---
 
@@ -959,6 +1145,14 @@ present. `ComputeInternal` then:
   `FpAIntBGemvTest.*DeviceRequiresMatchingSmAndSmCount` tests evaluate
   `PickM8GemvCtaN` and the device predicates for every device class and are
   independent of the GPU model.
+- fpA_intB tensor-core INT8 GEMV (§6.5), in
+  [onnxruntime/test/contrib_ops/cuda_kernels/fpA_intB_gemv_int8_tensor_core_test.cc](../../../onnxruntime/test/contrib_ops/cuda_kernels/fpA_intB_gemv_int8_tensor_core_test.cc)
+  (`Int8TensorCoreGemvTest.*`, run through `CUDA_EP_Unittest.All`): one-hot
+  activations isolate the dequantization and must match the scalar kernel
+  bitwise, random activations are compared with a reference, a row's result must
+  not depend on the row count, the launch configuration must follow the grid
+  size, and launches outside the gate must use the scalar kernel. The tests skip
+  on devices other than SM 9.0.
 - GEMV profiling baselines and methodology are recorded in
   [qmoe_gemv_experiments.md](qmoe_gemv_experiments.md) and, for small-`M`
   MatMulNBits GEMV, in

@@ -2036,6 +2036,15 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 log.info("Testing Symlink ONNX Model and External Data")
                 run_subprocess([sys.executable, "onnxruntime_test_python_symlink_data.py"], cwd=cwd, dll_path=dll_path)
 
+                if args.use_cuda and not args.disable_contrib_ops:
+                    log.info("Testing Portable QMoE Offload v4")
+                    run_subprocess(
+                        [sys.executable, "test_qmoe_offload_v4.py"],
+                        cwd=cwd,
+                        dll_path=dll_path,
+                        python_path=python_path,
+                    )
+
                 # Disable python onnx tests for TensorRT and CANN EP, because many tests are
                 # not supported yet.
                 if args.use_tensorrt or args.use_cann:

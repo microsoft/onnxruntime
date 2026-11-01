@@ -3,15 +3,19 @@
 
 #pragma once
 
-#include "core/common/common.h"
 #include "core/providers/cuda/cuda_kernel.h"
+#include "core/common/common.h"
+#include "core/framework/moe_offload_plan.h"
+#include "contrib_ops/cuda/cuda_session_options.h"
 #include "contrib_ops/cuda/moe/moe_base.h"
+#include "contrib_ops/cuda/moe/qmoe_offload.h"
 #include "contrib_ops/cuda/moe/qmoe_row_tiling.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_kernels.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemm_profiler.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemv_fp4.h"
 
 #include <atomic>
+#include <memory>
 #include <mutex>
 #include <unordered_map>
 
@@ -29,13 +33,23 @@ constexpr const char* kQMoEIntDequantMaxScratchBytesConfig = "ep.cuda.qmoe_int_d
 constexpr const char* kQMoEDisableInt3TensorCorePrefill = "ORT_DISABLE_INT3_TENSORCORE_PREFILL";
 constexpr const char* kQMoEDisableInt3TensorCorePrefillConfig = "ep.cuda.qmoe_disable_int3_tensorcore_prefill";
 
-class QMoE final : public CudaKernel, public MoEBase {
+class QMoE final : public CudaKernel, public MoEBase, public onnxruntime::moe_offload::IMoeOffloadNode {
  public:
   explicit QMoE(const OpKernelInfo& op_kernel_info);
+  ~QMoE() override;
   Status ComputeInternal(OpKernelContext* ctx) const override;
   Status ComputeInt3(OpKernelContext* ctx) const;
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  bool& is_packed, PrePackedWeights* prepacked_weights) override;
+
+  const onnxruntime::moe_offload::MoeExpertSourceDescriptor& GetSourceDescriptor() const noexcept override {
+    return offload_source_desc_;
+  }
+  const onnxruntime::moe_offload::MoeBackendCapabilities& GetBackendCapabilities() const noexcept override {
+    return offload_capabilities_;
+  }
+  Status InitializeAdmittedPlan(const onnxruntime::moe_offload::MoeOffloadSessionPolicy& policy,
+                                const onnxruntime::moe_offload::MoeNodeExecutionPlan& plan) override;
 
  private:
   // PrePack helpers - each handles one category of input tensor.
@@ -73,11 +87,16 @@ class QMoE final : public CudaKernel, public MoEBase {
   // GPU buffer in the kernel-expected ``[E, K, N / (8 / bits)]`` layout.
   void PrePackIntExpertWeights(const Tensor& tensor, cudaStream_t stream, AllocatorPtr alloc,
                                IAllocatorUniquePtr<void>& packed_buf, bool& is_packed, int64_t weight_bits);
+  void PrePackInt3Weights(const Tensor& tensor, cudaStream_t stream, AllocatorPtr alloc,
+                          IAllocatorUniquePtr<void>& packed_buf, bool& is_packed);
+  void PrePackInt3Scales(const Tensor& tensor, cudaStream_t stream, AllocatorPtr alloc,
+                         IAllocatorUniquePtr<void>& packed_buf, bool& is_packed);
   int64_t expert_weight_bits_;
   int64_t fc1_expert_weight_bits_;
   int64_t fc2_expert_weight_bits_;
   int64_t fc3_expert_weight_bits_;
   bool has_int3_ = false;
+  bool enable_int3_tc_prepack_ = false;
   mutable std::atomic<bool> int3_content_validated_{false};
   // -1: not yet determined, 1: scales/zero points are constant initializers, 0: runtime inputs.
   mutable std::atomic<int> int3_content_constant_{-1};
@@ -128,9 +147,15 @@ class QMoE final : public CudaKernel, public MoEBase {
   bool enable_int2_prefill_ = false;
   int64_t row_tile_size_ = qmoe::kDisabledRowTileSize;
   int64_t int_dequant_max_scratch_bytes_ = int64_t{1} << 30;
+  // Static prefill options resolved once in the constructor so they cannot change between runs of a session.
+  // The automatic expert-compaction cap is derived from the offload policy only for planned offload nodes.
+  int max_compact_experts_option_ = 0;
+  bool dequant_transient_option_ = false;
   // Routes INT3 and INT3-mixed prefill through the FP32 SIMT kernels, which evaluate SwiGLU from the FP32
   // accumulators. The default Tensor Core prefill stores the FC1 result as FP16/BF16 before the activation.
   bool disable_int3_tc_prefill_ = false;
+  int int3_tc_min_routes_ = 33;
+  int moe_tc_min_rows_ = 33;
 
   std::unique_ptr<onnxruntime::llm::kernels::cutlass_kernels::CutlassMoeFCRunnerInterface> m_moe_runner;
 
@@ -324,6 +349,44 @@ class QMoE final : public CudaKernel, public MoEBase {
 
   mutable std::mutex fp4_gemv_tune_cache_mutex_;
   mutable std::unordered_map<Fp4GemvTuneKey, Fp4GemvTuneResult, Fp4GemvTuneKeyHash> fp4_gemv_tune_cache_;
+
+  // v4 MoE Offload. Offload is opt-in: the helpers below run only for a node whose session policy enables offload
+  // (offload_node_registered_ is true after SetUpOffload), so a non-offload node never touches the offload state.
+  // Parses the session offload policy into offload_policy_. Returns the session controller when offload is enabled
+  // for this node, else nullptr.
+  std::shared_ptr<onnxruntime::cuda::QMoESessionController> ParseOffloadPolicy(const OpKernelInfo& info);
+  // Builds the offload descriptors of an eligible node and registers it with the controller.
+  void SetUpOffload(const OpKernelInfo& info, onnxruntime::cuda::QMoESessionController& controller);
+  // Returns false when the node cannot use the offload backend (mode='required' throws instead).
+  bool BuildOffloadDescriptors(const OpKernelInfo& info, const onnxruntime::cuda::QMoESessionController& controller);
+  void ParseOffloadLayerIndex(const OpKernelInfo& info);
+  void RegisterDenseLayerHostWeights(const OpKernelInfo& info);
+  // Runs decode-sized inputs on the offload backend and sets handled. For larger inputs it syncs the backend's slot
+  // tables and sets handled to false so the caller continues on the standard prefill path.
+  Status TryComputeWithOffloadBackend(OpKernelContext* context, bool& handled) const;
+  // Sizes the prefill expert wave of a planned offload node so one wave's dequantized weights fit the offload
+  // working budget.
+  Status LimitOffloadPrefillWave(const MoEParameters& moe_params, bool use_nvfp4_compaction, int full_active_experts,
+                                 int& eff_compact_experts) const;
+  // Charges the aux buffers on top of the runner scratch against the offload working budget.
+  Status CheckOffloadPrefillLiveBytes(const qmoe::PrefillAuxLayout& aux_layout, const qmoe::RowTilePlan& row_tile_plan,
+                                      size_t total_scratch_bytes, size_t& planned_live_bytes) const;
+  // Charges the dequantized weights on top of the live bytes against the offload working budget.
+  Status CheckOffloadPrefillWorkingSet(size_t planned_live_bytes, size_t dequant_weight_bytes) const;
+
+  // v4 MoE Offload state
+  int32_t offload_layer_index_{-1};
+  int offload_registered_dev_id_{-1};
+  const uint8_t* offload_registered_fc1_w_{nullptr};
+  bool offload_node_registered_{false};
+  bool offload_prepack_bypass_{false};
+  IAllocatorUniquePtr<void> offload_gpu_fc1_bias_;
+  IAllocatorUniquePtr<void> offload_gpu_fc2_bias_;
+  onnxruntime::moe_offload::MoeOffloadSessionPolicy offload_policy_{};
+  onnxruntime::moe_offload::MoeExpertSourceDescriptor offload_source_desc_{};
+  onnxruntime::moe_offload::MoeBackendCapabilities offload_capabilities_{};
+  onnxruntime::moe_offload::MoeNodeExecutionPlan offload_plan_{};
+  std::unique_ptr<QMoEOffload> offload_backend_;
 };
 
 }  // namespace cuda

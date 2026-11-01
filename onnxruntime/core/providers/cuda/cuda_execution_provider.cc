@@ -600,6 +600,13 @@ Status CUDAExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_opti
     }
     ORT_RETURN_IF_ERROR(qmoe_controller_->OnRunStart());
     controller_rollback.Arm(qmoe_controller_.get());
+    ORT_RETURN_IF_ERROR(qmoe_controller_->ApplyRunControls(
+        [&run_options](const char* key, std::string& value) {
+          auto entry = run_options.GetConfigOptions().GetConfigEntry(key);
+          if (!entry.has_value()) return false;
+          value = std::move(*entry);
+          return true;
+        }));
     if (IsGraphCaptureEnabled()) {
       const uint64_t cur_gen = qmoe_controller_->GraphGeneration();
       if (cur_gen != GetPerThreadContext().LastQMoEGraphGen()) {
@@ -703,6 +710,12 @@ bool CUDAExecutionProvider::IsGraphCaptured(int graph_annotation_id) const {
 
 Status CUDAExecutionProvider::ReplayGraph(int graph_annotation_id, bool sync) {
   if (qmoe_controller_ && qmoe_controller_->HasOffloadNodes()) {
+    const uint64_t cur_gen = qmoe_controller_->GraphGeneration();
+    if (cur_gen != GetPerThreadContext().LastQMoEGraphGen()) {
+      GetPerThreadContext().ResetForQMoEGraphGen(cur_gen);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "QMoEOffload captured CUDA graph was invalidated by state reclamation; recapture required.");
+    }
     ORT_RETURN_IF_ERROR(qmoe_controller_->OnRunStart());
     auto prep_st = qmoe_controller_->OnBeforeGraphReplay(static_cast<cudaStream_t>(stream_));
     if (!prep_st.IsOK()) {
@@ -3873,6 +3886,7 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
         const auto& fpa_intb_gemm = estimator_config.cuda_fpa_intb_gemm;
         const auto& profile_m = estimator_config.cuda_fpa_intb_profile_m;
         const auto& m_chunk_size = estimator_config.cuda_matmul_nbits_m_chunk_size;
+        const auto& dequant_gemm_min_m = estimator_config.cuda_fpa_intb_dequant_gemm_min_m;
         const auto& inferred_shapes = resource_accountant->GetMaxShapeInferenceResult();
         const auto& input_defs = node->InputDefs();
         const TensorShape* input_a_shape =
@@ -3889,6 +3903,9 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
             /*input_shape_is_upper_bound=*/input_a_shape != nullptr,
             m_chunk_size.has_value()
                 ? std::optional<std::string_view>{*m_chunk_size}
+                : std::nullopt,
+            dequant_gemm_min_m.has_value()
+                ? std::optional<std::string_view>{*dequant_gemm_min_m}
                 : std::nullopt};
         level1_memory_estimate =
             input_a_shape != nullptr

@@ -208,6 +208,72 @@ size_t ComputePointerAlignment(const void* ptr) noexcept;
 bool MakeExpertBlockLease(const void* ptr, size_t length, size_t min_required_alignment,
                           ExpertBlockLease* lease) noexcept;
 
+// Owns one pin of a FileExpertStore cache entry and drops it on every exit path, including early returns and
+// exceptions. A pinned entry cannot be evicted, so a leaked pin permanently removes a slot from a bounded cache.
+//
+// Device copies that read straight from the leased block must complete before the pin is dropped, otherwise the slot
+// could be refilled under an in-flight read. Register the completion barrier with SetDeviceReadBarrier and call
+// MarkDeviceReadsQueued before issuing the first such copy. If the barrier cannot confirm completion the pin is kept
+// (quarantined) instead of being released.
+class ScopedExpertLease {
+ public:
+  using DeviceReadBarrier = bool (*)(void* context) noexcept;
+
+  ScopedExpertLease() noexcept = default;
+  ScopedExpertLease(const ScopedExpertLease&) = delete;
+  ScopedExpertLease& operator=(const ScopedExpertLease&) = delete;
+  ~ScopedExpertLease() noexcept { static_cast<void>(Release()); }
+
+  bool AcquireReady(FileExpertStore& store, int32_t expert_id, ExpertBlockLease* out_lease) noexcept {
+    if (store_ != nullptr || !store.AcquireReady(expert_id, out_lease)) return false;
+    Adopt(store, expert_id);
+    return true;
+  }
+
+  bool TryAcquireCached(FileExpertStore& store, int32_t expert_id, ExpertBlockLease* out_lease) noexcept {
+    if (store_ != nullptr || !store.TryAcquireCached(expert_id, out_lease)) return false;
+    Adopt(store, expert_id);
+    return true;
+  }
+
+  void SetDeviceReadBarrier(DeviceReadBarrier barrier, void* context) noexcept {
+    barrier_ = barrier;
+    barrier_context_ = context;
+  }
+
+  void MarkDeviceReadsQueued() noexcept { device_reads_queued_ = true; }
+
+  // For callers that already synchronized the stream themselves and handled its error.
+  void MarkDeviceReadsComplete() noexcept { device_reads_queued_ = false; }
+  bool held() const noexcept { return store_ != nullptr; }
+
+  // Drops the pin once queued device reads are confirmed complete. Returns false, keeping the pin, when completion
+  // cannot be confirmed. Safe to call again.
+  bool Release() noexcept {
+    if (store_ == nullptr) return true;
+    if (device_reads_queued_) {
+      if (barrier_ == nullptr || !barrier_(barrier_context_)) return false;
+      device_reads_queued_ = false;
+    }
+    store_->ReleaseLease(expert_id_);
+    store_ = nullptr;
+    return true;
+  }
+
+ private:
+  void Adopt(FileExpertStore& store, int32_t expert_id) noexcept {
+    store_ = &store;
+    expert_id_ = expert_id;
+    device_reads_queued_ = false;
+  }
+
+  FileExpertStore* store_ = nullptr;
+  int32_t expert_id_ = -1;
+  bool device_reads_queued_ = false;
+  DeviceReadBarrier barrier_ = nullptr;
+  void* barrier_context_ = nullptr;
+};
+
 // Byte offsets of the six banks inside one SharedExpertBlockV1 expert block.
 // FC1 is the fused interleaved gate/up projection [2I,H]; FC2 is [H,I].
 // Scales are FP16 block-major [K/32,N]; biases are FP16 [N].

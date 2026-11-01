@@ -1376,7 +1376,7 @@ bool FileExpertStore::InitializeStorage(const char* file_path, uint64_t file_off
         std::array<unsigned long, kMaxNodes / (8 * sizeof(unsigned long))> nodes{};
         const size_t page = static_cast<size_t>(sysconf(_SC_PAGESIZE));
         const uintptr_t first = (aligned_addr + page - 1) / page * page;
-        const uintptr_t end = (aligned_addr + cache_bytes) / page * page;
+        const uintptr_t end = (aligned_addr + padded_cache_bytes) / page * page;
         if (end > first && syscall(SYS_get_mempolicy, nullptr, nodes.data(), kMaxNodes, nullptr,
                                    MPOL_F_MEMS_ALLOWED) == 0) {
           // Anonymous cache pages obey VMA policy, unlike the MAP_SHARED source files.
@@ -1386,6 +1386,7 @@ bool FileExpertStore::InitializeStorage(const char* file_path, uint64_t file_off
       }
     }
 #endif
+    std::memset(impl->aligned_base, 0, padded_cache_bytes);
     impl->expert_to_slot.assign(static_cast<size_t>(num_experts), -1);
     impl->slot_expert.assign(eff_slots, -1);
     impl->slot_state.assign(eff_slots, Impl::kEmpty);
