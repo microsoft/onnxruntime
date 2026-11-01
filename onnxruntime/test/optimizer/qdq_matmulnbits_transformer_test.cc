@@ -506,7 +506,8 @@ TEST(QDQTransformerTests, DQMatMulNotConvertedToMatMulNBits_OuterScopeWeight) {
     auto* zp_arg = builder.MakeScalarInitializer<uint8_t>(uint8_t{128});
 
     auto make_branch = [&](const std::string& prefix) {
-      Model model{"if branch", true, DefaultLoggingManager().DefaultLogger()};
+      // Build the branch at the parent's opset so its DequantizeLinear schema matches.
+      Model model{"if branch", true, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), builder.DomainToVersionMap(), {}, DefaultLoggingManager().DefaultLogger()};
       auto& graph = model.MainGraph();
 
       ONNX_NAMESPACE::TypeProto float_type;
