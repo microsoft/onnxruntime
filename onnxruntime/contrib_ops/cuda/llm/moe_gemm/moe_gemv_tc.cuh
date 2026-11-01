@@ -599,6 +599,7 @@ __device__ __forceinline__ void ComputeWordInt2(float (&acc)[kM][4], int mb, con
   MmaBf16(acc[mb], e6, o6, e7, o7, Comp<J>(b_hi[2]), Comp<J>(b_hi[3]));
 }
 
+template <int kRouteChunks = 8>
 __device__ __forceinline__ bool DiscoverExpertRouteChunk(const Params& p, int row0, int expert, int lane,
                                                          int& routes, uint64_t& members, bool& contiguous_routes) {
   members = 0;
@@ -614,19 +615,19 @@ __device__ __forceinline__ bool DiscoverExpertRouteChunk(const Params& p, int ro
     return routes > 0;
   }
   const int total = p.expanded_num_rows;
-  if (total <= 256) {
-    int ev[8];
+  if (total <= kRouteChunks * 32) {
+    int ev[kRouteChunks];
 #pragma unroll
-    for (int i = 0; i < 8; ++i) {
+    for (int i = 0; i < kRouteChunks; ++i) {
       const int idx = i * 32 + lane;
       ev[i] = idx < total ? __ldg(p.permuted_row_to_expert + idx) : -1;
     }
     const int c0 = row0 >> 5;
     const int b0 = row0 & 31;
-    uint32_t match[8];
+    uint32_t match[kRouteChunks];
     int rank = 0;
 #pragma unroll
-    for (int i = 0; i < 8; ++i) {
+    for (int i = 0; i < kRouteChunks; ++i) {
       match[i] = __ballot_sync(0xffffffffu, ev[i] == expert);
       const uint32_t below = i < c0 ? 0xffffffffu : (i == c0 ? ((1u << b0) - 1u) : 0u);
       rank += __popc(match[i] & below);
@@ -635,7 +636,7 @@ __device__ __forceinline__ bool DiscoverExpertRouteChunk(const Params& p, int ro
       return false;
     }
 #pragma unroll
-    for (int i = 0; i < 8; ++i) {
+    for (int i = 0; i < kRouteChunks; ++i) {
       uint32_t bits = match[i] & (i < c0 ? 0u : (i == c0 ? (0xffffffffu << b0) : 0xffffffffu));
       while (bits != 0u && routes < kMaxRoutes) {
         const int pos = (i << 5) + (__ffs(bits) - 1);
@@ -675,7 +676,7 @@ constexpr int Int2MinCtasPerSm(int kM) {
   return kM == 1 ? 6 : 4;
 }
 
-template <bool kSwiglu, int kWarpsK, int kM, int kGroupSize>
+template <bool kSwiglu, int kWarpsK, int kM, int kGroupSize, int kRouteChunks = 8>
 __global__ void __launch_bounds__(kThreads, Int2MinCtasPerSm(kM)) MoeGemvTcInt2Kernel(const Params p) {
 #if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800)
   static_assert(kWarps % kWarpsK == 0, "warps must split evenly over K");
@@ -693,7 +694,7 @@ __global__ void __launch_bounds__(kThreads, Int2MinCtasPerSm(kM)) MoeGemvTcInt2K
   uint64_t members = 0;
   int routes = 0;
   bool contiguous_routes = false;
-  if (!DiscoverExpertRouteChunk(p, row0, expert, lane, routes, members, contiguous_routes)) {
+  if (!DiscoverExpertRouteChunk<kRouteChunks>(p, row0, expert, lane, routes, members, contiguous_routes)) {
     return;
   }
 
@@ -901,7 +902,11 @@ template <bool kSwiglu, int kWarpsK, int kM, int kGroupSize>
 inline void LaunchInt2(const Params& p, int64_t expanded_num_rows, cudaStream_t stream) {
   constexpr int kTileN = (kWarps / kWarpsK) * kM * kMmaM;
   const dim3 grid(static_cast<unsigned>(expanded_num_rows), static_cast<unsigned>(p.n / kTileN));
-  MoeGemvTcInt2Kernel<kSwiglu, kWarpsK, kM, kGroupSize><<<grid, kThreads, 0, stream>>>(p);
+  if (expanded_num_rows <= 96) {
+    MoeGemvTcInt2Kernel<kSwiglu, kWarpsK, kM, kGroupSize, 3><<<grid, kThreads, 0, stream>>>(p);
+  } else {
+    MoeGemvTcInt2Kernel<kSwiglu, kWarpsK, kM, kGroupSize, 8><<<grid, kThreads, 0, stream>>>(p);
+  }
 }
 
 inline bool TryLaunchInt2Bf16(bool swiglu, const __nv_bfloat16* act, const uint8_t* weight,
@@ -964,7 +969,11 @@ inline bool TryLaunchInt2Bf16(bool swiglu, const __nv_bfloat16* act, const uint8
         LaunchInt2<true, 1, 1, kG>(p, expanded_num_rows, stream);
       }
     } else {
-      LaunchInt2<false, 1, 1, kG>(p, expanded_num_rows, stream);
+      if (n % 128 == 0) {
+        LaunchInt2<false, 1, 2, kG>(p, expanded_num_rows, stream);
+      } else {
+        LaunchInt2<false, 1, 1, kG>(p, expanded_num_rows, stream);
+      }
     }
   };
   if (group_size == 64) {
