@@ -5462,5 +5462,106 @@ class TestGQAWindowedKvCacheCpu(TestGQAWindowedKvCache):
                     )
 
 
+class TestQuerySeqlensQkOutputCpu(unittest.TestCase):
+    """qk_output holds zeros, not scratch memory, in the columns past a batch entry's own total length."""
+
+    num_heads = 2
+    kv_num_heads = 1
+    head_size = 64
+    padded = 8
+    capacity = 16
+
+    def make_session(self, dtype, quantized, qk_output):
+        ort_type = helper.np_dtype_to_tensor_dtype(numpy.dtype(dtype))
+        cache_type = TensorProto.INT8 if quantized else ort_type
+        q_hidden = self.num_heads * self.head_size
+        kv_hidden = self.kv_num_heads * self.head_size
+        cache_shape = [1, self.kv_num_heads, self.capacity, self.head_size]
+        inputs = [
+            helper.make_tensor_value_info("query", ort_type, [1, self.padded, q_hidden]),
+            helper.make_tensor_value_info("key", ort_type, [1, self.padded, kv_hidden]),
+            helper.make_tensor_value_info("value", ort_type, [1, self.padded, kv_hidden]),
+            helper.make_tensor_value_info("past_key", cache_type, cache_shape),
+            helper.make_tensor_value_info("past_value", cache_type, cache_shape),
+            helper.make_tensor_value_info("seqlens_k", TensorProto.INT32, [1]),
+            helper.make_tensor_value_info("total_sequence_length", TensorProto.INT32, [1]),
+            helper.make_tensor_value_info("query_seqlens", TensorProto.INT32, [1]),
+        ]
+        names = ["query", "key", "value", "past_key", "past_value", "seqlens_k", "total_sequence_length"]
+        names += ["", "", "", "", ""]  # cos_cache, sin_cache, position_ids, attention_bias, head_sink
+        attributes = {"num_heads": self.num_heads, "kv_num_heads": self.kv_num_heads, "causal": 1}
+        if quantized:
+            inputs += [helper.make_tensor_value_info(name, TensorProto.FLOAT, [1]) for name in ("k_scale", "v_scale")]
+            names += ["k_scale", "v_scale"]
+            attributes.update(k_quant_type="PER_TENSOR", v_quant_type="PER_TENSOR", kv_cache_bit_width=8)
+        else:
+            names += ["", ""]
+        names += ["", "", "query_seqlens"]  # q_norm_weight, k_norm_weight
+
+        outputs = [
+            helper.make_tensor_value_info("output", ort_type, [1, self.padded, q_hidden]),
+            helper.make_tensor_value_info("present_key", cache_type, cache_shape),
+            helper.make_tensor_value_info("present_value", cache_type, cache_shape),
+            helper.make_tensor_value_info("output_qk", ort_type, [1, self.num_heads, self.padded, self.capacity]),
+        ]
+        node = helper.make_node(
+            "GroupQueryAttention",
+            names,
+            [out.name for out in outputs],
+            domain="com.microsoft",
+            qk_output=qk_output,
+            **attributes,
+        )
+        model = helper.make_model(
+            helper.make_graph([node], "query-seqlens-qk-output", inputs, outputs),
+            opset_imports=[helper.make_opsetid("com.microsoft", 1)],
+            ir_version=10,
+        )
+        return InferenceSession(model.SerializeToString(), SessionOptions(), providers=["CPUExecutionProvider"])
+
+    @parameterized.expand(
+        [
+            (dtype, quantized, qk_output)
+            for dtype in (numpy.float32, numpy.float16)
+            for quantized in (False, True)
+            for qk_output in (1, 2)
+        ]
+    )
+    def test_unattended_columns_are_zero(self, dtype, quantized, qk_output):
+        session = self.make_session(dtype, quantized, qk_output)
+        rng = numpy.random.default_rng(0)
+        cache_shape = (1, self.kv_num_heads, self.capacity, self.head_size)
+        feeds = {
+            "query": rng.standard_normal((1, self.padded, self.num_heads * self.head_size)).astype(dtype),
+            "key": rng.standard_normal((1, self.padded, self.kv_num_heads * self.head_size)).astype(dtype),
+            "value": rng.standard_normal((1, self.padded, self.kv_num_heads * self.head_size)).astype(dtype),
+            "total_sequence_length": numpy.asarray([self.capacity], dtype=numpy.int32),
+        }
+        if quantized:
+            feeds["past_key"] = rng.integers(-8, 8, cache_shape).astype(numpy.int8)
+            feeds["past_value"] = rng.integers(-8, 8, cache_shape).astype(numpy.int8)
+            feeds["k_scale"] = numpy.asarray([0.05], dtype=numpy.float32)
+            feeds["v_scale"] = numpy.asarray([0.05], dtype=numpy.float32)
+        else:
+            feeds["past_key"] = rng.standard_normal(cache_shape).astype(dtype)
+            feeds["past_value"] = rng.standard_normal(cache_shape).astype(dtype)
+
+        def run(total, valid):
+            feeds["seqlens_k"] = numpy.asarray([total - 1], dtype=numpy.int32)
+            feeds["query_seqlens"] = numpy.asarray([valid], dtype=numpy.int32)
+            return session.run(None, feeds)[3]
+
+        # (T, Q): a lone valid row, a padded chunk that has a past, and a full chunk whose total stays below X.
+        for total, valid in ((1, 1), (5, 3), (9, 8)):
+            # A call with T == X scores every column, so the scratch the arena hands to the next call is dirty.
+            run(self.capacity, self.padded)
+            qk = run(total, valid).astype(numpy.float32)
+            with self.subTest(total=total, valid=valid):
+                numpy.testing.assert_array_equal(qk[..., total:], 0)
+                self.assertTrue(numpy.isfinite(qk[..., :total]).all())
+                if qk_output == 2:
+                    numpy.testing.assert_allclose(qk[..., :total].sum(-1), 1.0, rtol=2e-2)
+
+
 if __name__ == "__main__":
     unittest.main()

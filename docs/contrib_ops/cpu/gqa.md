@@ -337,6 +337,8 @@ The kernel passes the per-entry past length `P` to the attention code in place o
 - The causal and local-window masks and the flash block ranges use `P` as the offset of the first
   query row. Output rows `[Q, S)` are unspecified.
 - The default RoPE position of query row `s` is `P + s`; padding rows use position 0.
+- `output_qk`, when requested, keeps the shape `(batch_size, num_heads, S, total_sequence_length)`.
+  For batch entry `b` the columns `[T, total_sequence_length)` are zero.
 - Windowed planning (`PlanWindowedKvCache`) evaluates `end_before = L(P)` and `end_after = L(P + Q)`,
   so a padded chunk evicts exactly what the same `Q` tokens would evict unpadded, the staging cache
   (when the step needs one) holds `L(P) + Q` rows, and the resulting layout is identical to the
