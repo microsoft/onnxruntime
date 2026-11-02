@@ -1,0 +1,37 @@
+name: Setup build environment
+description: Set up Python, Node.js, or both using the shared CI action pins.
+
+inputs:
+  python-version:
+    description: Python version to install. Leave empty to skip Python setup.
+    required: false
+    default: ''
+  architecture:
+    description: Python architecture. Leave empty to use setup-python's runner architecture default.
+    required: false
+    default: ''
+  node-version:
+    description: Node.js version to install. Leave empty to skip Node.js setup.
+    required: false
+    default: ''
+  registry-url:
+    description: Optional Node.js registry URL, forwarded to setup-node.
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      if: inputs.python-version != ''
+      uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+      with:
+        python-version: ${{ inputs.python-version }}
+        architecture: ${{ inputs.architecture }}
+
+    - name: Set up Node.js
+      if: inputs.node-version != ''
+      uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: ${{ inputs.node-version }}
+        registry-url: ${{ inputs.registry-url }}

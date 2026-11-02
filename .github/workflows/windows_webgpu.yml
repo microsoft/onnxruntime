@@ -44,7 +44,7 @@ jobs:
           submodules: none
 
       - name: Setup Python 3.12
-        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        uses: ./.github/actions/setup-environment
         with:
           python-version: "3.12"
           architecture: x64
@@ -67,7 +67,7 @@ jobs:
         working-directory: ${{ github.workspace }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        uses: ./.github/actions/setup-environment
         with:
           node-version: "24.x"
 
@@ -183,7 +183,7 @@ jobs:
           submodules: none
 
       - name: Setup Python 3.12
-        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        uses: ./.github/actions/setup-environment
         with:
           python-version: "3.12"
           architecture: x64
@@ -199,7 +199,7 @@ jobs:
         working-directory: ${{ github.workspace }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        uses: ./.github/actions/setup-environment
         with:
           node-version: "24.x"
 
@@ -297,7 +297,7 @@ jobs:
           submodules: none
 
       - name: Setup Python 3.12
-        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        uses: ./.github/actions/setup-environment
         with:
           python-version: "3.12"
           architecture: x64
@@ -385,7 +385,7 @@ jobs:
           submodules: none
 
       - name: Setup Python 3.12
-        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        uses: ./.github/actions/setup-environment
         with:
           python-version: "3.12"
           architecture: x64
@@ -449,7 +449,7 @@ jobs:
           submodules: none
 
       - name: Setup Python 3.12
-        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        uses: ./.github/actions/setup-environment
         with:
           python-version: "3.12"
           architecture: x64
@@ -465,7 +465,7 @@ jobs:
         working-directory: ${{ github.workspace }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        uses: ./.github/actions/setup-environment
         with:
           node-version: "20.x"
 
@@ -507,7 +507,7 @@ jobs:
           submodules: none
 
       - name: Setup Python 3.12
-        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        uses: ./.github/actions/setup-environment
         with:
           python-version: "3.12"
           architecture: x64
@@ -587,7 +587,7 @@ jobs:
           submodules: none
 
       - name: Setup Python 3.12
-        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        uses: ./.github/actions/setup-environment
         with:
           python-version: "3.12"
           architecture: x64
@@ -708,7 +708,7 @@ jobs:
           submodules: none
 
       - name: Setup Python 3.12
-        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        uses: ./.github/actions/setup-environment
         with:
           python-version: "3.12"
           architecture: x64
@@ -724,7 +724,7 @@ jobs:
         working-directory: ${{ github.workspace }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        uses: ./.github/actions/setup-environment
         with:
           node-version: "24.x"
 
