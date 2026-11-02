@@ -8140,9 +8140,16 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
       p.grouped_workspace =
           (!disable_int3_tc_prefill_ && num_r >= 32 && num_exp > 0 && num_exp <= 512) ? int3_grouped_ws : nullptr;
       if (resident_log_) {
-        std::fprintf(stderr, "QMoEOffload INT3 prefill layer=%lld source=%s routes=%d grouped=%d\n",
+        const Int3DecodeKernel selected = SelectInt3DecodeKernel(p);
+        const bool grouped_tc = selected == Int3DecodeKernel::kGrouped && is_bf16_ &&
+                                int3_block_size_ == 64 && int3_tc_min_routes_ > 0 && sm_ >= 80 &&
+                                hidden_size_ % 512 == 0 && inter_size_ % 128 == 0 &&
+                                static_cast<int64_t>(hidden_size_) * 16 <= 48 * 1024 &&
+                                static_cast<int64_t>(inter_size_) * 16 <= 48 * 1024;
+        const bool tc = (selected == Int3DecodeKernel::kTensorCore) || grouped_tc;
+        std::fprintf(stderr, "QMoEOffload INT3 prefill layer=%lld source=%s routes=%d grouped=%d tc=%d\n",
                      static_cast<long long>(layer_index_), streamed ? "streamed" : "resident", num_r,
-                     SelectInt3DecodeKernel(p) == Int3DecodeKernel::kGrouped ? 1 : 0);
+                     selected == Int3DecodeKernel::kGrouped ? 1 : 0, tc ? 1 : 0);
       }
       CUDA_RETURN_IF_ERROR(LaunchInt3Moe(p, stream));
       return Status::OK();
@@ -8167,6 +8174,11 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
         return Status::OK();
       }
       if (is_bf16_) {
+        if (resident_log_ && moe_tc_min_rows_ > 0 && num_r >= moe_tc_min_rows_ && num_r <= 256 &&
+            sm_ >= 80 && hidden_size_ % 512 == 0 && inter_size_ % 128 == 0) {
+          std::fprintf(stderr, "QMoEOffload INT4 TC prefill layer=%lld source=%s routes=%d\n",
+                       static_cast<long long>(layer_index_), streamed ? "streamed" : "resident", num_r);
+        }
         gemv::launch_moe_gemv_int_symmetric_interleaved_swiglu<__nv_bfloat16, cutlass::uint4b_t>(
             static_cast<const __nv_bfloat16*>(act_in),
             reinterpret_cast<const cutlass::uint4b_t*>(fc1_w),
@@ -9605,11 +9617,21 @@ Status QMoEOffload::ComputeSharedAsync(OpKernelContext* context, const Tensor* i
         p.fc2_bias_expert_indices = indices;
         p.input_is_gathered = false;
         p.total_routes_override = routes;
+        if (resident_log_) {
+          std::fprintf(stderr, "QMoEOffload INT3 decode layer=%lld routes=%d tc=%d\n",
+                       static_cast<long long>(layer_index_), routes,
+                       SelectInt3DecodeKernel(p) == Int3DecodeKernel::kTensorCore ? 1 : 0);
+        }
         CUDA_RETURN_IF_ERROR(LaunchInt3Moe(p, stream));
         return Status::OK();
       }
       if (int4_bank_mode_) {
         if (is_bf16_) {
+          if (resident_log_ && moe_tc_min_rows_ > 0 && routes >= moe_tc_min_rows_ && routes <= 256 &&
+              sm_ >= 80 && hidden_size_ % 512 == 0 && inter_size_ % 128 == 0) {
+            std::fprintf(stderr, "QMoEOffload INT4 TC decode layer=%lld routes=%d\n",
+                         static_cast<long long>(layer_index_), routes);
+          }
           gemv::launch_moe_gemv_int_symmetric_interleaved_swiglu<__nv_bfloat16, cutlass::uint4b_t>(
               reinterpret_cast<const __nv_bfloat16*>(input->DataRaw()),
               reinterpret_cast<const cutlass::uint4b_t*>(fc1_w),

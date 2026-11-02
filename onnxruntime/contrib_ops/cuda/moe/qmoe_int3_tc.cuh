@@ -30,6 +30,7 @@
 #include <cuda_runtime.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 
 #include "contrib_ops/cuda/moe/qmoe_kernels.h"
@@ -47,14 +48,16 @@ constexpr int kKPartitions = 5;       // super-steps are summed in this many par
 constexpr int kMaxSharedBytes = 48 * 1024;
 
 struct Params {
-  const void* input;            // FC1: [rows][k] (row = route / top_k); FC2: [routes][k]
-  void* out;                    // FC1: [routes][n / 2]; FC2: [routes][n]
-  const uint8_t* weights;       // [experts][n][k * 3 / 8]
-  const __nv_bfloat16* scales;  // [experts * n][k / 64]
-  const __nv_bfloat16* bias;    // [experts][n] or nullptr
-  const int* experts;           // [total_routes]
-  const int* source_route_ids;  // optional [total_routes] source row map for FC1
-  const int* sorted_routes;     // optional [total_routes] grouped route ids
+  const void* input;               // FC1: [rows][k] (row = route / top_k); FC2: [routes][k]
+  void* out;                       // FC1: [routes][n / 2]; FC2: [routes][n]
+  const uint8_t* weights;          // [experts][n][k * 3 / 8]
+  const __nv_bfloat16* scales;     // [experts * n][k / 64]
+  const __nv_bfloat16* bias;       // [experts][n] or nullptr
+  const int* experts;              // [total_routes]
+  const int* source_route_ids;     // optional [total_routes] source row map for FC1
+  const int* bias_route_ids;       // optional [total_routes] original route map for FC2 bias
+  const int* bias_expert_indices;  // optional [total_orig_routes] original expert indices for FC2 bias
+  const int* sorted_routes;        // optional [total_routes] grouped route ids
   const Int3ExpertTileDesc* tile_descs;
   const int* num_tiles_ptr;
   bool input_is_gathered;
@@ -738,10 +741,17 @@ __global__ void __launch_bounds__(kWarps * 32, kMinCtas) Int3TcKernel(const Para
   __syncthreads();
 
   const uint8_t* b_lane = smem + 2048 * t + ((g + 2 * t) & 7) * 16;
-  const __nv_bfloat16* bias = p.bias != nullptr ? p.bias + static_cast<int64_t>(expert) * n : nullptr;
-
-  // d = {(even row, route 2t'), (even row, route 2t' + 1), (odd row, route 2t'), (odd row, route 2t' + 1)}; mb is the
-  // m-block index inside the CTA tile.
+  int bias_expert = expert;
+  if constexpr (!kSwiglu) {
+    if (p.bias != nullptr && p.bias_expert_indices != nullptr && count > 0) {
+      const int route0 = (p.tile_descs != nullptr)
+                             ? grouped_routes[0]
+                             : static_cast<int>(members & 0xffu);
+      const int orig_route0 = p.bias_route_ids != nullptr ? __ldg(&p.bias_route_ids[route0]) : route0;
+      bias_expert = __ldg(&p.bias_expert_indices[orig_route0]);
+    }
+  }
+  const __nv_bfloat16* bias = p.bias != nullptr ? p.bias + static_cast<int64_t>(bias_expert) * n : nullptr;
   auto finalize = [&](const float4 d, int mb, int l) {
     const int g2 = l >> 2;
     const int t2 = l & 3;
@@ -963,23 +973,39 @@ static_assert((2 * 128) % kFc1TileN == 0 && kStepK % kFc2TileN == 0, "the tiles 
 // carveout: on H200 it already gives the same CTAs/SM (4 for FC1, 5 for FC2), and forcing the maximum only shrinks the
 // L1 that the weight streams rely on (10-20% slower decode and grouped prefill).
 inline void EnsureInt3TcCarveout() {
-  static const bool carveout_set = []() {
-    int device = 0;
-    int cc_major = 0;
-    if (cudaGetDevice(&device) == cudaSuccess &&
-        cudaDeviceGetAttribute(&cc_major, cudaDevAttrComputeCapabilityMajor, device) == cudaSuccess &&
-        cc_major == 12) {
-      (void)cudaFuncSetAttribute(Int3TcKernel<true, kFc1Warps, kFc1M, kFc1MinCtas>,
-                                 cudaFuncAttributePreferredSharedMemoryCarveout,
-                                 cudaSharedmemCarveoutMaxShared);
-      (void)cudaFuncSetAttribute(Int3TcKernel<false, kFc2Warps, kFc2M, kFc2MinCtas>,
-                                 cudaFuncAttributePreferredSharedMemoryCarveout,
-                                 cudaSharedmemCarveoutMaxShared);
-    }
+  static constexpr int kMaxTrackedDevices = 64;
+  static std::atomic<uint8_t> configured[kMaxTrackedDevices]{};
+  int device = 0;
+  if (cudaGetDevice(&device) != cudaSuccess || device < 0) {
     (void)cudaGetLastError();
-    return true;
-  }();
-  (void)carveout_set;
+    return;
+  }
+  if (device < kMaxTrackedDevices && configured[device].load(std::memory_order_acquire) != 0) {
+    return;
+  }
+  int cc_major = 0;
+  if (cudaDeviceGetAttribute(&cc_major, cudaDevAttrComputeCapabilityMajor, device) != cudaSuccess) {
+    (void)cudaGetLastError();
+    return;
+  }
+  bool ok = true;
+  if (cc_major == 12) {
+    const cudaError_t fc1_err = cudaFuncSetAttribute(
+        Int3TcKernel<true, kFc1Warps, kFc1M, kFc1MinCtas>,
+        cudaFuncAttributePreferredSharedMemoryCarveout,
+        cudaSharedmemCarveoutMaxShared);
+    const cudaError_t fc2_err = cudaFuncSetAttribute(
+        Int3TcKernel<false, kFc2Warps, kFc2M, kFc2MinCtas>,
+        cudaFuncAttributePreferredSharedMemoryCarveout,
+        cudaSharedmemCarveoutMaxShared);
+    ok = (fc1_err == cudaSuccess && fc2_err == cudaSuccess);
+    if (!ok) {
+      (void)cudaGetLastError();
+    }
+  }
+  if (ok && device < kMaxTrackedDevices) {
+    configured[device].store(1, std::memory_order_release);
+  }
 }
 
 // `grid_x` is the number of route (or, for grouped launches, expert tile) CTAs. The prepacked kernels run one CTA
@@ -1110,6 +1136,8 @@ inline bool TryLaunchBf16(const Int3MoeParams& params, cudaStream_t stream, cuda
   fc2.weights = params.fc2.weights;
   fc2.scales = static_cast<const __nv_bfloat16*>(params.fc2.scales);
   fc2.bias = static_cast<const __nv_bfloat16*>(params.fc2.bias);
+  fc2.bias_route_ids = params.fc2_bias_route_ids;
+  fc2.bias_expert_indices = params.fc2_bias_expert_indices;
   fc2.experts = params.experts;
   fc2.total_routes = static_cast<int>(total_routes);
   fc2.num_experts = params.num_experts;
@@ -1180,6 +1208,8 @@ inline bool TryLaunchBf16Grouped(const Int3MoeParams& params, const int* sorted_
   fc2.weights = params.fc2.weights;
   fc2.scales = static_cast<const __nv_bfloat16*>(params.fc2.scales);
   fc2.bias = static_cast<const __nv_bfloat16*>(params.fc2.bias);
+  fc2.bias_route_ids = params.fc2_bias_route_ids;
+  fc2.bias_expert_indices = params.fc2_bias_expert_indices;
   fc2.experts = params.experts;
   fc2.sorted_routes = sorted_routes;
   fc2.tile_descs = tile_descs;

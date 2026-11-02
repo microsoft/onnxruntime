@@ -690,6 +690,20 @@ TEST(CUDA_EP_Unittest, FusedInt3RouteGroups_DecodeKernelSelection) {
          p.grouped_workspace = reinterpret_cast<int*>(uintptr_t{0xa0000});
        },
        Int3DecodeKernel::kScalar},
+      {"offload gathered input with null output",
+       [](Int3MoeParams& p) {
+         p.output = nullptr;
+         p.input_is_gathered = true;
+         p.total_routes_override = 16;
+       },
+       Int3DecodeKernel::kFastVectorized},
+      {"offload source route ids and total routes override",
+       [](Int3MoeParams& p) {
+         p.output = nullptr;
+         p.source_route_ids = reinterpret_cast<const int*>(uintptr_t{0xb0000});
+         p.total_routes_override = 16;
+       },
+       Int3DecodeKernel::kFastVectorized},
       {"hidden above the shared memory limit", [](Int3MoeParams& p) { p.hidden = 12544; },
        Int3DecodeKernel::kScalar},
   };
@@ -776,7 +790,7 @@ TEST(CUDA_EP_Unittest, Int3GroupedPrefill_AlignedAndUnalignedFp16Parity) {
   params.limit = 10.0f;
   params.input_is_gathered = true;
   params.total_routes_override = rows;
-  ASSERT_EQ(SelectInt3DecodeKernel(params), Int3DecodeKernel::kFast);
+  ASSERT_EQ(SelectInt3DecodeKernel(params), Int3DecodeKernel::kFastVectorized);
   CUDA_CALL_THROW(LaunchInt3Moe(params, nullptr));
   CUDA_CALL_THROW(cudaStreamSynchronize(nullptr));
   std::vector<half> expected(static_cast<size_t>(rows) * hidden);
