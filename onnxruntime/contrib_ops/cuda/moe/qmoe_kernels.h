@@ -688,6 +688,13 @@ struct Int3MoeParams {
   float limit = 0.0f;
   bool is_bfloat16 = false;
   bool tc_prepacked = false;
+  const int* source_route_ids = nullptr;
+  // Maps a row to its original route index (token * top_k + slot) for the fc2_bias_expert_indices lookup. Null means
+  // the row index already is the original route index. Never pass token indices here.
+  const int* fc2_bias_route_ids = nullptr;
+  const int* fc2_bias_expert_indices = nullptr;
+  bool input_is_gathered = false;
+  int total_routes_override = 0;
 };
 
 // Kernel family LaunchInt3Moe dispatches for `params`. Only the vectorized GEMV kernels read

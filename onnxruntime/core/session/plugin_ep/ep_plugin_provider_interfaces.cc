@@ -32,6 +32,7 @@
 #include "core/session/plugin_ep/ep_event_profiling.h"
 #include "core/session/ort_apis.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/platform/env.h"
 #include "core/providers/partitioning_utils.h"
 
 namespace onnxruntime {
@@ -891,6 +892,34 @@ bool PluginExecutionProvider::ConcurrentRunSupported() const {
 
   return is_supported;
 }
+
+#if !defined(ORT_MINIMAL_BUILD)
+bool PluginExecutionProvider::SupportsMoeOffload() const {
+  if (Type() == kCudaExecutionProvider) {
+    const std::string test_sm = Env::Default().GetEnvironmentVar("ORT_QMOE_TEST_DEVICE_SM");
+    if (!test_sm.empty()) {
+      char* end = nullptr;
+      const long parsed_sm = std::strtol(test_sm.c_str(), &end, 10);
+      if (end != test_sm.c_str() && *end == '\0') {
+        return parsed_sm >= 80;
+      }
+    }
+    for (const OrtEpDevice* ep_device : ep_devices_) {
+      if (ep_device == nullptr) continue;
+      const auto& entries = ep_device->ep_metadata.Entries();
+      auto it = entries.find("cuda_compute_capability");
+      if (it != entries.end() && !it->second.empty()) {
+        char* end = nullptr;
+        const long major = std::strtol(it->second.c_str(), &end, 10);
+        if (end != it->second.c_str() && major < 8) {
+          return false;
+        }
+      }
+    }
+  }
+  return true;
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 Status PluginExecutionProvider::OnRunStart(const RunOptions& run_options) {
   if (ort_ep_->OnRunStart == nullptr) {
