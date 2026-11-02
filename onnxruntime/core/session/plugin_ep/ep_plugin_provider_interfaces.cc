@@ -892,6 +892,31 @@ bool PluginExecutionProvider::ConcurrentRunSupported() const {
   return is_supported;
 }
 
+bool PluginExecutionProvider::SupportsMoeOffload() const {
+  if (Type() == kCudaExecutionProvider) {
+    if (const char* test_sm = std::getenv("ORT_QMOE_TEST_DEVICE_SM"); test_sm != nullptr && *test_sm != '\0') {
+      char* end = nullptr;
+      const long parsed_sm = std::strtol(test_sm, &end, 10);
+      if (end != test_sm && *end == '\0') {
+        return parsed_sm >= 80;
+      }
+    }
+    for (const OrtEpDevice* ep_device : ep_devices_) {
+      if (ep_device == nullptr) continue;
+      const auto& entries = ep_device->ep_metadata.Entries();
+      auto it = entries.find("cuda_compute_capability");
+      if (it != entries.end() && !it->second.empty()) {
+        char* end = nullptr;
+        const long major = std::strtol(it->second.c_str(), &end, 10);
+        if (end != it->second.c_str() && major < 8) {
+          return false;
+        }
+      }
+    }
+  }
+  return true;
+}
+
 Status PluginExecutionProvider::OnRunStart(const RunOptions& run_options) {
   if (ort_ep_->OnRunStart == nullptr) {
     return Base::OnRunStart(run_options);

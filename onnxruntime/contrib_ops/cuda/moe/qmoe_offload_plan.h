@@ -22,10 +22,10 @@ struct Nvfp4BankDims {
 template <typename Shape>
 inline Nvfp4BankDims ResolveNvfp4BankDims(const Shape& fc1_weights, const Shape& fc2_weights, int64_t scale_group,
                                           uint64_t fc1_scale_bytes, uint64_t fc2_scale_bytes,
-                                          uint64_t scale_elem_bytes = 1) {
+                                          uint64_t scale_elem_bytes = 1, int64_t min_k_tile = 1) {
   Nvfp4BankDims dims;
   if (fc1_weights.NumDimensions() != 3 || fc2_weights.NumDimensions() != 3 || scale_group <= 0 ||
-      scale_elem_bytes == 0) {
+      scale_elem_bytes == 0 || min_k_tile <= 0) {
     return dims;
   }
   const int64_t experts = fc1_weights[0];
@@ -59,7 +59,7 @@ inline Nvfp4BankDims ResolveNvfp4BankDims(const Shape& fc1_weights, const Shape&
   }
 
   if (hidden > kMaxDim || inter > kMaxDim || experts > kMaxDim || hidden % scale_group != 0 ||
-      inter % scale_group != 0) {
+      inter % scale_group != 0 || hidden % min_k_tile != 0 || inter % min_k_tile != 0) {
     return dims;
   }
   const uint64_t fc1_scale_per_expert =

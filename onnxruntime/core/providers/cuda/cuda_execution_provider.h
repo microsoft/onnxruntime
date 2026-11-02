@@ -123,6 +123,17 @@ class CUDAExecutionProvider : public IExecutionProvider {
     return !(qmoe_controller_ && qmoe_controller_->HasOffloadNodes());
   }
 
+  bool SupportsMoeOffload() const override {
+    if (const char* test_sm = std::getenv("ORT_QMOE_TEST_DEVICE_SM"); test_sm != nullptr && *test_sm != '\0') {
+      char* end = nullptr;
+      const long parsed_sm = std::strtol(test_sm, &end, 10);
+      if (end != test_sm && *end == '\0') {
+        return parsed_sm >= 80;
+      }
+    }
+    return device_prop_.major >= 8;
+  }
+
   bool IsGraphCaptureEnabled() const override;
   bool IsGraphCaptured(CudaGraphAnnotation_t graph_annotation_id) const override;
   Status ReplayGraph(CudaGraphAnnotation_t graph_annotation_id, bool sync = true) override;

@@ -430,6 +430,10 @@ class IExecutionProvider {
    */
   virtual bool ConcurrentRunSupported() const { return true; }
 
+  /** Does the EP device meet the hardware capability requirements for MoE CPU/GPU offload.
+   */
+  virtual bool SupportsMoeOffload() const { return true; }
+
   /**
    * Return the tuning context which holds all TunableOp state.
    */

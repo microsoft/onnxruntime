@@ -1835,6 +1835,116 @@ bool ValidateNodeForMoeOffload(const Node& node,
       return false;
     }
   }
+
+  int32_t act_elem_type = ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
+  if (!input_defs.empty() && input_defs[0] != nullptr && input_defs[0]->TypeAsProto() != nullptr &&
+      input_defs[0]->TypeAsProto()->has_tensor_type()) {
+    act_elem_type = input_defs[0]->TypeAsProto()->tensor_type().elem_type();
+  }
+  if (act_elem_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 &&
+      act_elem_type != ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16) {
+    out_reason = "unsupported activation dtype for QMoE offload (expected FLOAT16 or BFLOAT16)";
+    return false;
+  }
+
+  const auto* fc1_w_tp = initialized_tensors.at(input_defs[2]->Name());
+  const auto* fc1_s_tp = initialized_tensors.at(input_defs[3]->Name());
+  const auto* fc2_w_tp = initialized_tensors.at(input_defs[5]->Name());
+  const auto* fc2_s_tp = initialized_tensors.at(input_defs[6]->Name());
+  if (fc1_w_tp->data_type() != ONNX_NAMESPACE::TensorProto_DataType_UINT8 ||
+      fc2_w_tp->data_type() != ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
+    out_reason = "expert weight banks must be UINT8";
+    return false;
+  }
+  const int32_t expected_scale_dtype =
+      (quant_type == "nvfp4")
+          ? static_cast<int32_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN)
+          : act_elem_type;
+  if (fc1_s_tp->data_type() != expected_scale_dtype || fc2_s_tp->data_type() != expected_scale_dtype) {
+    out_reason = "expert scale bank dtype does not match expected offload scale type";
+    return false;
+  }
+
+  constexpr int64_t kMaxDim = std::numeric_limits<int32_t>::max();
+  constexpr int64_t kMaxRawDim = 2 * kMaxDim;
+  const int64_t experts = fc1_w_tp->dims(0);
+  const int64_t fc1_d1 = fc1_w_tp->dims(1);
+  const int64_t fc1_d2 = fc1_w_tp->dims(2);
+  const int64_t fc2_d1 = fc2_w_tp->dims(1);
+  const int64_t fc2_d2 = fc2_w_tp->dims(2);
+  if (experts <= 0 || experts > kMaxDim || top_k > experts ||
+      fc2_w_tp->dims(0) != experts || fc1_s_tp->dims(0) != experts || fc2_s_tp->dims(0) != experts ||
+      fc1_d1 > kMaxRawDim || fc1_d2 > kMaxRawDim || fc2_d1 > kMaxRawDim || fc2_d2 > kMaxRawDim) {
+    out_reason = "invalid expert count or weight dimensions for QMoE offload";
+    return false;
+  }
+
+  int64_t hidden = 0;
+  int64_t inter = 0;
+  int64_t scale_group = 16;
+  if (is_int3_node) {
+    if ((fc1_d1 % 2) != 0) {
+      out_reason = "INT3 fc1_experts_weights dim 1 must be even";
+      return false;
+    }
+    hidden = fc2_d1;
+    inter = fc1_d1 / 2;
+    scale_group = blk;
+    if (hidden <= 0 || inter <= 0 || hidden > kMaxDim || inter > kMaxDim / 2 ||
+        hidden % 32 != 0 || inter % 32 != 0 || hidden % scale_group != 0 || inter % scale_group != 0 ||
+        fc1_d2 != (hidden * 3) / 8 || fc2_d2 != (inter * 3) / 8) {
+      out_reason = "invalid INT3 expert weight dimensions for QMoE offload";
+      return false;
+    }
+  } else {
+    if (fc1_d1 == fc2_d2 * 2 && fc1_d2 == fc2_d1) {
+      hidden = fc1_d1;
+      inter = fc2_d1;
+    } else if (fc1_d1 == fc2_d2 * 4 && fc1_d2 * 2 == fc2_d1) {
+      hidden = fc2_d1;
+      inter = fc1_d1 / 2;
+    } else {
+      out_reason = "expert weight shapes do not match a supported QMoE offload layout";
+      return false;
+    }
+    scale_group = (quant_type == "nvfp4") ? 16 : 32;
+    const int64_t required_tile = (quant_type == "int") ? 64 : 32;
+    if (hidden <= 0 || inter <= 0 || hidden > kMaxDim || inter > kMaxDim / 2 ||
+        hidden % scale_group != 0 || inter % scale_group != 0 ||
+        hidden % required_tile != 0 || inter % required_tile != 0) {
+      out_reason = "expert hidden_size and inter_size must be positive and divisible by " +
+                   std::to_string(required_tile);
+      return false;
+    }
+  }
+  if (fc1_s_tp->dims(1) != 2 * inter || fc1_s_tp->dims(2) != hidden / scale_group ||
+      fc2_s_tp->dims(1) != hidden || fc2_s_tp->dims(2) != inter / scale_group) {
+    out_reason = "expert scale dimensions do not match [E, 2*I, H/block_size] and [E, H, I/block_size]";
+    return false;
+  }
+
+  for (size_t b_slot : {size_t{4}, size_t{7}}) {
+    if (!input_exists(b_slot)) continue;
+    const std::string& name = input_defs[b_slot]->Name();
+    auto it = initialized_tensors.find(name);
+    if (it == initialized_tensors.end() || it->second == nullptr) {
+      out_reason = "optional expert slot " + std::to_string(b_slot) + " ('" + name + "') must be a constant initializer";
+      return false;
+    }
+    if (graph_output_names.find(name) != graph_output_names.end()) {
+      out_reason = "expert initializer '" + name + "' is also a graph output";
+      return false;
+    }
+    const auto* b_tp = it->second;
+    const int64_t expected_cols = (b_slot == 4) ? (2 * inter) : hidden;
+    if (b_tp->data_type() != act_elem_type || b_tp->dims_size() != 2 ||
+        b_tp->dims(0) != experts || b_tp->dims(1) != expected_cols) {
+      out_reason = "optional bias slot " + std::to_string(b_slot) + " ('" + name +
+                   "') must match activation dtype and shape [E, " + std::to_string(expected_cols) + "]";
+      return false;
+    }
+  }
+
   if (quant_type == "nvfp4") {
     for (size_t g_slot : {size_t{15}, size_t{16}}) {
       if (!input_exists(g_slot)) {
@@ -1842,7 +1952,8 @@ bool ValidateNodeForMoeOffload(const Node& node,
         return false;
       }
       const std::string& name = input_defs[g_slot]->Name();
-      if (initialized_tensors.find(name) == initialized_tensors.end()) {
+      auto it = initialized_tensors.find(name);
+      if (it == initialized_tensors.end() || it->second == nullptr) {
         out_reason = "NVFP4 global scale slot " + std::to_string(g_slot) + " ('" + name + "') must be a constant initializer";
         return false;
       }
@@ -1850,18 +1961,33 @@ bool ValidateNodeForMoeOffload(const Node& node,
         out_reason = "expert initializer '" + name + "' is also a graph output";
         return false;
       }
-    }
-  }
-  for (size_t opt_slot : {size_t{4}, size_t{7}, size_t{15}, size_t{16}}) {
-    if (input_exists(opt_slot)) {
-      const std::string& name = input_defs[opt_slot]->Name();
-      if (initialized_tensors.find(name) == initialized_tensors.end()) {
-        out_reason = "optional expert slot " + std::to_string(opt_slot) + " ('" + name + "') must be a constant initializer";
+      const auto* g_tp = it->second;
+      int64_t elem_count = 1;
+      for (int d = 0; d < g_tp->dims_size(); ++d) {
+        if (g_tp->dims(d) <= 0 || g_tp->dims(d) > kMaxDim || elem_count > kMaxDim / g_tp->dims(d)) {
+          elem_count = -1;
+          break;
+        }
+        elem_count *= g_tp->dims(d);
+      }
+      if (g_tp->data_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT || elem_count < experts) {
+        out_reason = "NVFP4 global scale slot " + std::to_string(g_slot) + " ('" + name +
+                     "') must be FLOAT with at least E elements";
         return false;
       }
-      if (graph_output_names.find(name) != graph_output_names.end()) {
-        out_reason = "expert initializer '" + name + "' is also a graph output";
-        return false;
+    }
+  } else {
+    for (size_t g_slot : {size_t{15}, size_t{16}}) {
+      if (input_exists(g_slot)) {
+        const std::string& name = input_defs[g_slot]->Name();
+        if (initialized_tensors.find(name) == initialized_tensors.end()) {
+          out_reason = "optional expert slot " + std::to_string(g_slot) + " ('" + name + "') must be a constant initializer";
+          return false;
+        }
+        if (graph_output_names.find(name) != graph_output_names.end()) {
+          out_reason = "expert initializer '" + name + "' is also a graph output";
+          return false;
+        }
       }
     }
   }
@@ -1869,6 +1995,7 @@ bool ValidateNodeForMoeOffload(const Node& node,
 }
 
 Status PlaceMoeOffloadInitializersOnCpu(const GraphViewer& graph_viewer,
+                                        const ExecutionProviders& execution_providers,
                                         const moe_offload::MoeOffloadSessionPolicy& policy,
                                         const OrtValueNameIdxMap& ort_value_name_idx_map,
                                         const OrtMemoryInfo& cpu_mem_info,
@@ -1906,7 +2033,13 @@ Status PlaceMoeOffloadInitializersOnCpu(const GraphViewer& graph_viewer,
     bool node_eligible = false;
     if (is_cuda_moe_node) {
       std::string reason;
-      node_eligible = ValidateNodeForMoeOffload(node, initialized_tensors, graph_output_names, reason);
+      const IExecutionProvider* ep = execution_providers.Get(node.GetExecutionProviderType());
+      if (ep != nullptr && !ep->SupportsMoeOffload()) {
+        node_eligible = false;
+        reason = "CUDA execution provider requires SM80 or later for QMoE offload";
+      } else {
+        node_eligible = ValidateNodeForMoeOffload(node, initialized_tensors, graph_output_names, reason);
+      }
       if (!node_eligible && policy.mode == moe_offload::OffloadMode::kRequired) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "MoE offload mode='required' rejected node '", node.Name(),
@@ -2291,7 +2424,8 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
     auto cpu_alloc = GetAllocator(OrtDevice());
     ORT_ENFORCE(cpu_alloc != nullptr, "Default CPU allocator is required for MoE offload initializer placement.");
     ORT_RETURN_IF_ERROR(PlaceMoeOffloadInitializersOnCpu(
-        *graph_viewer_, moe_offload_policy, ort_value_name_idx_map_, cpu_alloc->Info(), *p_seq_exec_plan_, logger_));
+        *graph_viewer_, execution_providers_, moe_offload_policy, ort_value_name_idx_map_, cpu_alloc->Info(),
+        *p_seq_exec_plan_, logger_));
   }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 

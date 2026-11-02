@@ -1241,7 +1241,10 @@ class TestQMoEOffloadV4(unittest.TestCase):
                     s_ok = self._make_session(int_path, {"session.moe.offload.mode": "required"})
                     del s_ok
                 else:
-                    with self.assertRaisesRegex(Exception, "quant_type='int' offload requires|rejected node"):
+                    with self.assertRaisesRegex(
+                        Exception,
+                        "quant_type='int' offload requires|rejected node|QMoE INT3 requires integer quantization and explicit weights_prepacked=0",
+                    ):
                         self._make_session(int_path, {"session.moe.offload.mode": "required"})
 
     def test_v4_embedded_heap_weights_bounded_cache_eviction_safety(self):
@@ -2794,7 +2797,7 @@ int main() {
             int4_slot_bytes = 55304
             int4_host_stride = 55808
             fixed_bytes = 2 * 8 * 4  # 64 B per layer
-            budget_int4_adaptive = 2 * fixed_bytes + 8 * int4_slot_bytes  # 4 slots/layer (2 resident + 2 spare)
+            budget_int4_adaptive = 2 * fixed_bytes + 12 * int4_slot_bytes  # 6 slots/layer (4 resident + 2 spare)
 
             sess_int4_ref = self._make_session(m_int4, {"session.moe.offload.mode": "disabled"})
             sess_int4_static = self._make_session(
@@ -2814,6 +2817,7 @@ int main() {
                     "session.moe.offload.device_expert_bytes": str(budget_int4_adaptive),
                     "session.moe.offload.host_expert_bytes": str(2 * 2 * int4_host_stride),
                     "session.moe.offload.popularity_file": "expert-profile.bin",
+                    "session.moe.offload.prefill_wave_experts": "1",
                 },
             )
             sess_int4_stream = self._make_session(
@@ -2839,7 +2843,110 @@ int main() {
                 ):
                     y_cand = self._run_bf16(s, x, r)
                     self._assert_int_offload_parity(y_ref, y_cand, f"{name}(T={num_rows})")
+
+            # CPU-enabled hybrid streaming prefill beyond the 257-token threshold (T=264) with bounded host cache,
+            # multiple 1-expert waves, streamed cold experts (>= 8 routes), and rare CPU cold experts (< 8 routes).
+            x_long = rng.standard_normal((264, 256), dtype=np.float32) * 0.5
+            r_long = np.full((264, 8), -20.0, dtype=np.float32)
+            for row in range(264):
+                r_long[row, 0] = 6.0  # hot/resident expert
+                if row < 4:
+                    r_long[row, 6] = 5.0  # rare cold expert 6 (4 routes < 8 -> CPU evaluated)
+                elif row < 7:
+                    r_long[row, 7] = 5.0  # rare cold expert 7 (3 routes < 8 -> CPU evaluated)
+                else:
+                    # cold experts 2, 4, 5 each get ~85 routes (>= 8 -> streamed across 3 waves of wave_size=1)
+                    stream_exp = (2, 4, 5)[row % 3]
+                    r_long[row, stream_exp] = 5.0
+            y_ref_long = self._run_bf16(sess_int4_ref, x_long, r_long)
+            y_adapt_long = self._run_bf16(sess_int4_adaptive, x_long, r_long)
+            self._assert_int_offload_parity(y_ref_long, y_adapt_long, "int4_hybrid_stream_bounded_host(T=264)")
             del sess_int4_stream, sess_int4_adaptive, sess_int4_static, sess_int4_ref
+
+            # Explicit ORT_QMOE_STREAM_MIN_TOKENS override must be preserved on integer banks, and a 2-token doorbell
+            # decode followed by repeated 8-token callback runs must still advance promotions.
+            with (
+                mock.patch.dict(
+                    os.environ,
+                    {
+                        "ORT_QMOE_STREAM_MIN_TOKENS": "12",
+                        "ORT_QMOE_SHARED_RESIDENT_LOG": "1",
+                    },
+                ),
+                _capture_native_stderr() as int4_log_cap,
+            ):
+                sess_int4_promo = self._make_session(
+                    m_int4,
+                    {
+                        "session.moe.offload.mode": "required",
+                        "session.moe.offload.placement": "adaptive",
+                        "session.moe.offload.device_expert_bytes": str(budget_int4_adaptive),
+                        "session.moe.offload.popularity_file": "expert-profile.bin",
+                    },
+                )
+                sess_int4_ref2 = self._make_session(m_int4, {"session.moe.offload.mode": "disabled"})
+                # 16-token run >= explicit ORT_QMOE_STREAM_MIN_TOKENS=12 must execute hybrid streaming
+                x_s16 = rng.standard_normal((16, 256), dtype=np.float32) * 0.5
+                r_s16 = np.full((16, 8), -20.0, dtype=np.float32)
+                r_s16[:, 5] = 6.0
+                r_s16[:, 7] = 5.0
+                self._assert_int_offload_parity(
+                    self._run_bf16(sess_int4_ref2, x_s16, r_s16),
+                    self._run_bf16(sess_int4_promo, x_s16, r_s16),
+                    "int4_explicit_stream_min_tokens(T=16)",
+                )
+                del sess_int4_promo
+                gc.collect()
+            self.assertEqual(sorted(_stream_tiles_per_layer(int4_log_cap[0])), [0, 1])
+            for layer_id, tile_cnt in _stream_tiles_per_layer(int4_log_cap[0]).items():
+                self.assertGreater(
+                    tile_cnt, 0, f"layer {layer_id} must stream at T=16 when ORT_QMOE_STREAM_MIN_TOKENS=12"
+                )
+
+            with (
+                mock.patch.dict(os.environ, {"ORT_QMOE_SHARED_RESIDENT_LOG": "1"}),
+                _capture_native_stderr() as seq_promo_cap,
+            ):
+                sess_seq_promo = self._make_session(
+                    m_int4,
+                    {
+                        "session.moe.offload.mode": "required",
+                        "session.moe.offload.placement": "adaptive",
+                        "session.moe.offload.device_expert_bytes": str(budget_int4_adaptive),
+                        "session.moe.offload.popularity_file": "expert-profile.bin",
+                    },
+                )
+                # 2-token doorbell run creates persistent decode_state_ (routing only to resident experts 0 and 1
+                # for layer 0 and 1 and 4 for layer 1 so no cold promotion is queued yet).
+                x_d2 = rng.standard_normal((2, 256), dtype=np.float32) * 0.5
+                r_d2 = np.full((2, 8), -20.0, dtype=np.float32)
+                r_d2[:, 0] = 6.0
+                r_d2[:, 1] = 5.0
+                self._assert_int_offload_parity(
+                    self._run_bf16(sess_int4_ref2, x_d2, r_d2),
+                    self._run_bf16(sess_seq_promo, x_d2, r_d2),
+                    "int4_doorbell_init(T=2)",
+                )
+                # Repeated 8-token uncaptured decode runs take the callback path and route to cold experts 5 and 7;
+                # they must advance the promotion sequence guard and promote the hot cold experts.
+                for step_idx in range(5):
+                    x_d8 = rng.standard_normal((8, 256), dtype=np.float32) * 0.5
+                    r_d8 = np.full((8, 8), -20.0, dtype=np.float32)
+                    r_d8[:, 5] = 6.0
+                    r_d8[:, 2 if step_idx % 2 == 0 else 6] = 5.0
+                    self._assert_int_offload_parity(
+                        self._run_bf16(sess_int4_ref2, x_d8, r_d8),
+                        self._run_bf16(sess_seq_promo, x_d8, r_d8),
+                        f"int4_callback_after_doorbell(T=8,step={step_idx})",
+                    )
+                del sess_seq_promo, sess_int4_ref2
+                gc.collect()
+            for layer_id, promo_cnt in _resident_promotions_per_layer(seq_promo_cap[0]).items():
+                self.assertGreater(
+                    promo_cnt,
+                    0,
+                    f"layer {layer_id}: repeated 8-token callback runs after 2-token doorbell run must promote hot cold experts",
+                )
 
             # 2. Raw INT3 (bits=3, weights_prepacked=0) with block_size=32 and block_size=64 in a mixed 2-layer model,
             # plus a mixed INT4 (layer 0, b32) + INT3 (layer 1, b64) model and an FP16 block_size=128 INT3 model.
@@ -2886,6 +2993,7 @@ int main() {
                     "session.moe.offload.device_expert_bytes": str(budget_int3),
                     "session.moe.offload.host_expert_bytes": str(2 * (int3_b32_host + int3_b64_host)),
                     "session.moe.offload.popularity_file": "expert-profile.bin",
+                    "session.moe.offload.prefill_wave_experts": "1",
                 },
             )
             sess_int3_stream = self._make_session(
@@ -2908,6 +3016,9 @@ int main() {
                 ):
                     y_cand = self._run_bf16(s, x, r)
                     self._assert_int_offload_parity(y_ref, y_cand, f"{name}(T={num_rows})")
+            y_int3_ref_long = self._run_bf16(sess_int3_ref, x_long, r_long)
+            y_int3_off_long = self._run_bf16(sess_int3_off, x_long, r_long)
+            self._assert_int_offload_parity(y_int3_ref_long, y_int3_off_long, "int3_hybrid_stream_bounded_host(T=264)")
             del sess_int3_stream, sess_int3_off, sess_int3_ref
 
             # Mixed INT4 + INT3 with FC1/FC2 bias
@@ -3050,6 +3161,22 @@ int main() {
                     np.testing.assert_array_equal(y_u_base, y_u_auto)
                 del s_unsup_auto, s_unsup_base
 
+            dir_int3_pre = os.path.join(tmpdir, "int3_prepacked_1")
+            os.makedirs(dir_int3_pre, exist_ok=True)
+            m_int3_pre = self._build_int_qmoe_model(
+                dir_int3_pre,
+                layer_specs=[(3, 32, 1)],
+                num_experts=8,
+                hidden_size=256,
+                inter_size=128,
+                top_k=2,
+            )
+            with self.assertRaisesRegex(
+                Exception,
+                "quant_type='int' offload requires|rejected node|QMoE INT3 requires integer quantization and explicit weights_prepacked=0",
+            ):
+                self._make_session(m_int3_pre, {"session.moe.offload.mode": "required"})
+
             # 5. Empty expert banks (E=0) must be rejected cleanly in mode='required' without division by zero.
             dir_e0 = os.path.join(tmpdir, "int4_e0")
             os.makedirs(dir_e0, exist_ok=True)
@@ -3063,6 +3190,100 @@ int main() {
             )
             with self.assertRaisesRegex(Exception, "positive dimensions|rejected node|ShapeInferenceError|invalid"):
                 self._make_session(m_e0, {"session.moe.offload.mode": "required"})
+
+            # 6. Prepacked INT4 with partial 64-element reduction tiles (H=96, I=128) must be rejected.
+            dir_h96 = os.path.join(tmpdir, "int4_h96")
+            os.makedirs(dir_h96, exist_ok=True)
+            m_h96 = self._build_int_qmoe_model(
+                dir_h96,
+                layer_specs=[(4, 32, 1)],
+                num_experts=8,
+                hidden_size=96,
+                inter_size=128,
+                top_k=2,
+            )
+            with self.assertRaisesRegex(Exception, "divisible by 64|rejected node|invalid"):
+                self._make_session(m_h96, {"session.moe.offload.mode": "required"})
+
+            # 7. Malformed optional biases (e.g. FC1 bias [8, 1] or FC2 bias [8, 1]) must be rejected before upload.
+            for bad_bias_suffix in ("fc1_bias", "fc2_bias"):
+                dir_bad_b = os.path.join(tmpdir, f"int4_bad_{bad_bias_suffix}")
+                os.makedirs(dir_bad_b, exist_ok=True)
+                m_bad_b_path = self._build_int_qmoe_model(
+                    dir_bad_b,
+                    layer_specs=[(4, 32, 1)],
+                    num_experts=8,
+                    hidden_size=256,
+                    inter_size=128,
+                    top_k=2,
+                    with_bias=True,
+                )
+                m_bad_b_proto = onnx.load_model(m_bad_b_path, load_external_data=False)
+                for init in m_bad_b_proto.graph.initializer:
+                    if init.name.endswith(bad_bias_suffix):
+                        init.ClearField("external_data")
+                        init.data_location = TensorProto.DEFAULT
+                        del init.dims[:]
+                        init.dims.extend([8, 1])
+                        init.raw_data = np.zeros((8, 1), dtype=np.uint16).tobytes()
+                onnx.save_model(m_bad_b_proto, m_bad_b_path)
+                with self.assertRaisesRegex(Exception, "optional bias slot|fc1_bias|fc2_bias|rejected node"):
+                    self._make_session(m_bad_b_path, {"session.moe.offload.mode": "required"})
+
+            # 8. Unused 1-element global-scale inputs (slots 15 and 16) on INT4 must be ignored and replaced by E unit
+            # scales rather than read out of bounds during host-cache construction or expert upload.
+            dir_unused_g = os.path.join(tmpdir, "int4_unused_global_scale")
+            os.makedirs(dir_unused_g, exist_ok=True)
+            m_unused_g_path = self._build_int_qmoe_model(
+                dir_unused_g,
+                layer_specs=[(4, 32, 1)],
+                num_experts=8,
+                hidden_size=256,
+                inter_size=128,
+                top_k=2,
+            )
+            m_unused_g_proto = onnx.load_model(m_unused_g_path, load_external_data=False)
+            while len(m_unused_g_proto.graph.node[0].input) < 15:
+                m_unused_g_proto.graph.node[0].input.append("")
+            m_unused_g_proto.graph.node[0].input.extend(["unused_fc1_g", "unused_fc2_g"])
+            for g_name in ("unused_fc1_g", "unused_fc2_g"):
+                m_unused_g_proto.graph.initializer.append(helper.make_tensor(g_name, TensorProto.FLOAT, [1], [123.0]))
+            onnx.save_model(m_unused_g_proto, m_unused_g_path)
+            s_unused_g_ref = self._make_session(m_unused_g_path, {"session.moe.offload.mode": "disabled"})
+            s_unused_g_off = self._make_session(
+                m_unused_g_path,
+                {
+                    "session.moe.offload.mode": "required",
+                    "session.moe.offload.placement": "adaptive",
+                    "session.moe.offload.device_expert_bytes": str(fixed_bytes + 4 * int4_slot_bytes),
+                    "session.moe.offload.host_expert_bytes": str(2 * int4_host_stride),
+                    "session.moe.offload.popularity_file": "expert-profile.bin",
+                },
+            )
+            x_ug = rng.standard_normal((4, 256), dtype=np.float32) * 0.5
+            r_ug = rng.standard_normal((4, 8), dtype=np.float32)
+            self._assert_int_offload_parity(
+                self._run_bf16(s_unused_g_ref, x_ug, r_ug),
+                self._run_bf16(s_unused_g_off, x_ug, r_ug),
+                "int4_unused_1elem_global_scale",
+            )
+            del s_unused_g_off, s_unused_g_ref
+
+            # 9. On pre-SM80 devices (simulated via ORT_QMOE_TEST_DEVICE_SM=75), mode='auto' must skip offload admission
+            # before relocating expert initializers and execute on the standard GPU QMoE path, while mode='required'
+            # rejects with a clear SM80 diagnostic.
+            with mock.patch.dict(os.environ, {"ORT_QMOE_TEST_DEVICE_SM": "75"}):
+                with self.assertRaisesRegex(Exception, "SM80|sm=75|rejected node"):
+                    self._make_session(m_int3_fp16_b128, {"session.moe.offload.mode": "required"})
+                s_sm75_ref = self._make_session(m_int3_fp16_b128, {"session.moe.offload.mode": "disabled"})
+                s_sm75_auto = self._make_session(m_int3_fp16_b128, {"session.moe.offload.mode": "auto"})
+                x_75 = rng.standard_normal((4, 256), dtype=np.float32) * 0.5
+                r_75 = rng.standard_normal((4, 8), dtype=np.float32)
+                np.testing.assert_array_equal(
+                    self._run_fp16(s_sm75_ref, x_75, r_75),
+                    self._run_fp16(s_sm75_auto, x_75, r_75),
+                )
+                del s_sm75_auto, s_sm75_ref
 
 
 def _background_thread_lifecycle_child(model_path: str) -> int:

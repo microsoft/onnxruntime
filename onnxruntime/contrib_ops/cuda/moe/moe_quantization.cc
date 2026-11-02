@@ -947,6 +947,9 @@ void QMoE::ParseOffloadLayerIndex(const OpKernelInfo& op_kernel_info) {
 }
 
 void QMoE::RegisterDenseLayerHostWeights(const OpKernelInfo& op_kernel_info) {
+  if (!nvfp4_weights_row_major_) {
+    return;
+  }
   const Tensor* fc1_w = nullptr;
   const Tensor* fc1_s = nullptr;
   const Tensor* fc2_w = nullptr;
@@ -1020,8 +1023,10 @@ bool QMoE::BuildOffloadDescriptors(const OpKernelInfo& op_kernel_info,
       fc2_s->Location().device.Type() == OrtDevice::CPU;
   if (input_slot_exists(4)) static_cast<void>(op_kernel_info.TryGetConstantInput(4, &fc1_b));
   if (input_slot_exists(7)) static_cast<void>(op_kernel_info.TryGetConstantInput(7, &fc2_b));
-  if (input_slot_exists(15)) static_cast<void>(op_kernel_info.TryGetConstantInput(15, &fc1_g));
-  if (input_slot_exists(16)) static_cast<void>(op_kernel_info.TryGetConstantInput(16, &fc2_g));
+  if (quant_type_ == "nvfp4") {
+    if (input_slot_exists(15)) static_cast<void>(op_kernel_info.TryGetConstantInput(15, &fc1_g));
+    if (input_slot_exists(16)) static_cast<void>(op_kernel_info.TryGetConstantInput(16, &fc2_g));
+  }
 
   // The offload backend reads the raw K-packed row-major NVFP4 bytes, SM80-prepacked INT4 bytes, or raw INT3 bytes.
   // MXFP4 and other weights_prepacked modes are N-packed in the standard path, so admitting them would
@@ -1035,6 +1040,7 @@ bool QMoE::BuildOffloadDescriptors(const OpKernelInfo& op_kernel_info,
        fc1_expert_weight_bits_ == 3 && fc2_expert_weight_bits_ == 3 && fc3_expert_weight_bits_ == 3 &&
        weights_prepacked_mode_ == 0 && (block_size_ == 32 || block_size_ == 64 || block_size_ == 128));
   const int64_t scale_group = int3_raw ? block_size_ : ((quant_type_ == "nvfp4") ? 16 : 32);
+  const int64_t min_k_tile = int4_sm80_prepacked ? 64 : 32;
   const uint64_t scale_elem_bytes = (quant_type_ == "nvfp4") ? sizeof(uint8_t) : sizeof(uint16_t);
   const bool weight_and_scale_dtypes_ok =
       has_const_weights && fc1_w->IsDataType<uint8_t>() && fc2_w->IsDataType<uint8_t>() &&
@@ -1053,7 +1059,7 @@ bool QMoE::BuildOffloadDescriptors(const OpKernelInfo& op_kernel_info,
                             fc1_s->SizeInBytes(), fc2_s->SizeInBytes(), scale_elem_bytes)
                       : onnxruntime::contrib::cuda::qmoe::ResolveNvfp4BankDims(
                             fc1_w->Shape(), fc2_w->Shape(), scale_group,
-                            fc1_s->SizeInBytes(), fc2_s->SizeInBytes(), scale_elem_bytes))
+                            fc1_s->SizeInBytes(), fc2_s->SizeInBytes(), scale_elem_bytes, min_k_tile))
           : onnxruntime::contrib::cuda::qmoe::Nvfp4BankDims{};
   const bool scale_shapes_ok =
       bank_dims.valid &&
@@ -1064,6 +1070,7 @@ bool QMoE::BuildOffloadDescriptors(const OpKernelInfo& op_kernel_info,
   onnxruntime::contrib::qmoe_shared::Nvfp4ExpertBlockLayout host_layout{};
   const bool layout_ok =
       scale_shapes_ok &&
+      (!int4_sm80_prepacked || (bank_dims.hidden % 64 == 0 && bank_dims.inter % 64 == 0)) &&
       (int3_raw
            ? onnxruntime::contrib::qmoe_shared::MakeInt3ExpertBlockLayout(
                  bank_dims.hidden, bank_dims.inter, scale_group, &host_layout)
@@ -1076,8 +1083,35 @@ bool QMoE::BuildOffloadDescriptors(const OpKernelInfo& op_kernel_info,
   const bool is_interleaved_swiglu =
       (activation_type_ == onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Swiglu) &&
       (int3_raw ? (swiglu_fusion_ == 1) : (swiglu_fusion_ == 0 || swiglu_fusion_ == 1));
-  const bool nvfp4_globals_ok = (quant_type_ != "nvfp4") || (fc1_g != nullptr && fc2_g != nullptr);
+  const bool fc1_bias_ok =
+      !input_slot_exists(4) ||
+      (fc1_b != nullptr && fc1_b->Location().device.Type() == OrtDevice::CPU &&
+       (is_fp16_ ? fc1_b->IsDataType<MLFloat16>() : fc1_b->IsDataType<BFloat16>()) &&
+       bank_dims.valid && fc1_b->Shape().NumDimensions() == 2 &&
+       fc1_b->Shape()[0] == fc1_w->Shape()[0] && fc1_b->Shape()[1] == 2 * bank_dims.inter);
+  const bool fc2_bias_ok =
+      !input_slot_exists(7) ||
+      (fc2_b != nullptr && fc2_b->Location().device.Type() == OrtDevice::CPU &&
+       (is_fp16_ ? fc2_b->IsDataType<MLFloat16>() : fc2_b->IsDataType<BFloat16>()) &&
+       bank_dims.valid && fc2_b->Shape().NumDimensions() == 2 &&
+       fc2_b->Shape()[0] == fc1_w->Shape()[0] && fc2_b->Shape()[1] == bank_dims.hidden);
+  const bool biases_ok = fc1_bias_ok && fc2_bias_ok;
+  const bool nvfp4_globals_ok =
+      (quant_type_ != "nvfp4") ||
+      (fc1_g != nullptr && fc2_g != nullptr &&
+       fc1_g->Location().device.Type() == OrtDevice::CPU &&
+       fc2_g->Location().device.Type() == OrtDevice::CPU &&
+       fc1_g->IsDataType<float>() && fc2_g->IsDataType<float>() &&
+       bank_dims.valid &&
+       fc1_g->Shape().Size() >= fc1_w->Shape()[0] &&
+       fc2_g->Shape().Size() >= fc1_w->Shape()[0]);
+  const int effective_offload_sm =
+      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_TEST_DEVICE_SM", sm_);
+  const bool sm_ok = effective_offload_sm >= 80;
+  const bool topk_ok = bank_dims.valid && k_ > 0 && k_ <= fc1_w->Shape()[0];
   const bool node_eligible =
+      sm_ok &&
+      topk_ok &&
       (nvfp4_weights_row_major_ || int4_sm80_prepacked || int3_raw) &&
       (expert_weight_bits_ == 4 || int3_raw) &&
       is_interleaved_swiglu &&
@@ -1085,18 +1119,21 @@ bool QMoE::BuildOffloadDescriptors(const OpKernelInfo& op_kernel_info,
       !has_unsupported_slot &&
       has_const_weights &&
       layout_ok &&
+      biases_ok &&
       nvfp4_globals_ok;
 
   if (!node_eligible) {
     ORT_ENFORCE(offload_policy_.mode != onnxruntime::moe_offload::OffloadMode::kRequired,
                 "QMoE offload mode='required' rejected node '", op_kernel_info.node().Name(),
-                "': quant_type='", quant_type_, "', nvfp4_row_major_weights=", nvfp4_weights_row_major_,
+                "': sm=", effective_offload_sm, " (requires >= 80), quant_type='", quant_type_,
+                "', nvfp4_row_major_weights=", nvfp4_weights_row_major_,
                 " (expected 'nvfp4' with weights_prepacked=1, prepacked 'int' INT4 with weights_prepacked=1 and block_size=32, "
                 "or raw 'int' INT3 with weights_prepacked=0 and block_size in {32,64,128})",
                 ", int4_sm80_prepacked=", int4_sm80_prepacked, ", int3_raw=", int3_raw,
                 ", swiglu_fusion=", swiglu_fusion_, ", use_sparse_mixer=", use_sparse_mixer_,
                 ", unsupported_slot=", bad_slot_idx, ", has_const_cpu_weights=", has_const_weights,
-                ", valid_bank_shapes=", layout_ok);
+                ", valid_bank_shapes=", layout_ok, ", valid_biases=", biases_ok,
+                ", valid_global_scales=", nvfp4_globals_ok);
     return false;
   }
 

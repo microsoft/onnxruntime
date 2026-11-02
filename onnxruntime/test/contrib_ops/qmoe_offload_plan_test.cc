@@ -189,10 +189,25 @@ TEST(QMoEOffloadPlanTest, RejectsZeroOrNegativeExpertCountsAndSupportsInt4AndInt
   EXPECT_EQ(int4_legacy.inter, 128);
 
   const auto int4_std = qmoe::ResolveNvfp4BankDims(
-      TensorShape({8, 256, 128}), TensorShape({8, 256, 64}), /*scale_group=*/32, int4_fc1_s, int4_fc2_s, 2);
+      TensorShape({8, 256, 128}), TensorShape({8, 256, 64}), /*scale_group=*/32, int4_fc1_s, int4_fc2_s, 2,
+      /*min_k_tile=*/64);
   ASSERT_TRUE(int4_std.valid);
   EXPECT_EQ(int4_std.hidden, 256);
   EXPECT_EQ(int4_std.inter, 128);
+
+  // Prepacked INT4 requires H and I divisible by 64 (full 64-element reduction tiles).
+  const uint64_t int4_h96_fc1_s = 8ull * 256 * (96 / 32) * 2;
+  const uint64_t int4_h96_fc2_s = 8ull * 96 * (128 / 32) * 2;
+  EXPECT_FALSE(qmoe::ResolveNvfp4BankDims(
+                   TensorShape({8, 96, 128}), TensorShape({8, 128, 48}), /*scale_group=*/32,
+                   int4_h96_fc1_s, int4_h96_fc2_s, /*scale_elem_bytes=*/2, /*min_k_tile=*/64)
+                   .valid);
+  const uint64_t int4_i96_fc1_s = 8ull * 192 * (128 / 32) * 2;
+  const uint64_t int4_i96_fc2_s = 8ull * 128 * (96 / 32) * 2;
+  EXPECT_FALSE(qmoe::ResolveNvfp4BankDims(
+                   TensorShape({8, 128, 96}), TensorShape({8, 96, 64}), /*scale_group=*/32,
+                   int4_i96_fc1_s, int4_i96_fc2_s, /*scale_elem_bytes=*/2, /*min_k_tile=*/64)
+                   .valid);
 
   // Valid raw INT3 (block_size in {32, 64, 128}): FC1 [E, 2*I, (H*3)/8], FC2 [E, H, (I*3)/8].
   for (int64_t blk : {32, 64, 128}) {
