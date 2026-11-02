@@ -3106,10 +3106,10 @@ additional requirements before drafting. This appendix refines API-1/API-2,
 API-5/API-6 and M13's Python/native/package parity.
 **Specification approved:** 2026-11-02, for detailed execution-plan preparation.
 The detailed M13 execution plan was separately approved on 2026-11-02.
-**Stack:** One intended M13 PR on M12
+**Stack:** M13 [#27](https://github.com/onnxruntime/ort-state/pull/27), OPEN/ready on M12
 `09d169b3de6001f9ac5a2a5e52747bf1cadfa003` /
 [#26](https://github.com/onnxruntime/ort-state/pull/26).
-**Implementation qualification:** Completed 2026-11-02; publication is pending.
+**Implementation qualification/publication:** Completed 2026-11-02.
 New native binding/glue coverage is660/660 mapped lines, new Python binding/
 helper coverage769/769 statements, and executable examples63/63 statements.
 CPU/plugin/legacy, installed-wheel, explicit transfer and sanitizer results,

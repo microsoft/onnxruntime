@@ -3692,13 +3692,14 @@ unmeasured client binaries were cleaned. No merge or M13 work.
 
 ### M13 - Python bindings
 
-**Status:** Implementation, CPU/plugin/legacy qualification, installed wheels,
-coverage, sanitizers and transfer evidence verified; publication is pending.
+**Status:** Completed. Implementation, CPU/plugin/legacy qualification, installed
+wheels, coverage, sanitizers and transfer evidence verified.
+**PR:** [#27](https://github.com/onnxruntime/ort-state/pull/27), OPEN and ready for review.
 **Specification:** [Approved Appendix M](SPEC.md#appendix-m-m13-python-stateful-bindings-approved).
 **Branch/base:** `state/m13-python-api` on verified M12
 `09d169b3de6001f9ac5a2a5e52747bf1cadfa003` /
 [#26](https://github.com/onnxruntime/ort-state/pull/26).
-**Delivery:** One intended independently documented/tested stacked PR; no merge.
+**Delivery:** One independently documented/tested stacked PR on M12#26; no merge.
 **Outcome:** Typed `onnxruntime.stateful` Python construction/execution/package
 parity with the existing native engine, including retained immutable values,
 explicit device copies, GIL-safe cancellation and safe owner teardown.
@@ -3712,7 +3713,7 @@ Real-model demonstrations remain M14/M15; package authoring/export is deferred.
 - [x] Draft/review Appendix M and obtain specification approval (2026-11-02).
 - [x] Prepare this detailed plan from the approved specification.
 - [x] Review the detailed plan and obtain separate implementation approval.
-- [ ] Implement, qualify and publish only after that approval.
+- [x] Implement, qualify and publish only after that approval.
 
 At approval, inspection verified the clean M12 branch/remote PR head above.
 Existing CPU/plugin/legacy caches had Python disabled; all three were
@@ -3872,7 +3873,7 @@ used by the verified parent; omitting it caused unnecessary M12 rebuild failures
   scoped type/style/whitespace and installed examples must pass. Missing tools/
   instrumentation blocks a gate; no line exclusions/rounding/new kernel claims.
 
-- [ ] **P9 - Document and publish.** Document the exact typed API, copied versus
+- [x] **P9 - Document and publish.** Document the exact typed API, copied versus
   borrowed storage, readonly value/conversion/device behavior, captured Session
   identity, package options/callback ownership, close/context managers, GIL/
   busy/Cancel/Reset rules and errors. Add executable tiny-model examples for
@@ -4027,10 +4028,10 @@ paths must be rerun. No new CUDA source is planned.
 - [x] Existing relevant Python/native/package regressions, type/style and
   documented examples pass with exact commands/results recorded; the unchanged
   stateless plugin negative-device baseline failure is separately reproduced below.
-- [ ] One correct-base stacked PR is OPEN/ready for review and synchronized.
+- [x] One correct-base stacked PR is OPEN/ready for review and synchronized.
 
-The detailed plan was separately approved before implementation. Publication is
-the remaining gate; no M14 work or automatic merge is authorized. The following
+The detailed plan was separately approved before implementation. All gates are
+complete; no M14 work or automatic merge is authorized. The following
 dated checkpoints preserve intermediate results; final qualification below
 supersedes their historical pending-work statements.
 
@@ -4173,8 +4174,12 @@ session evidence directory.
 
 #### Final qualification (2026-11-02)
 
-All implementation/qualification gates P0-P8 are complete. Only publication P9
-remains. User-facing contracts and runnable examples are in
+All implementation/qualification/publication gates P0-P9 are complete. PR
+[#27](https://github.com/onnxruntime/ort-state/pull/27) is OPEN/ready with base
+`state/m12-ddim-policy` (#26). Implementation commit
+`dc054a42b20fade26e6a65f5a4b587fefdb6b278` contains the qualified code; the
+publication bookkeeping commit changes tracking only.
+User-facing contracts and runnable examples are in
 [Stateful Python execution](docs/Stateful_Python.md) and
 [stateful_execution.py](samples/python/stateful_execution.py).
 

@@ -1620,3 +1620,9 @@ Compressed project memory. This is not the execution plan.
   Needproofhashmanifest, ONEcommit/push/readyPRstate/m13-python-api base
   state/m12-ddim-policy (#26 stillOPEN/ready09d169b3de verified), thenrecordPR
   bookkeepingwithoutamend, verifysynchead/base. NoM14/merge.
+- M13PUBLISHED: PR27 https://github.com/onnxruntime/ort-state/pull/27 OPEN/READY,
+  headstate/m13-python-api, basestate/m12-ddim-policy (#26), implementation
+  commitdc054a42b20fade26e6a65f5a4b587fefdb6b278. AllP0-P9gateschecked.
+  PublicationbookkeepingchangesONLYSPEC/TASKS/SCRATCH, notqualifiedruntime.
+  Finalproofhashmanifest/reports retainedsessionfiles/m13-final-*;
+  finalremotehead/base/cleanworktreeverificationfollowspush. NoM14/merge.
