@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <cmath>
 #include <limits>
 #include <mutex>
 #include <set>
@@ -108,8 +109,15 @@ class TreeEnsembleCommon : public TreeEnsembleCommonAttributes {
   template <typename AGG>
   void ComputeAgg(concurrency::ThreadPool* ttp, const Tensor* X, Tensor* Y, Tensor* label, const AGG& agg) const;
 
+  static size_t ValidateCategorySetId(const ThresholdType& set_id, size_t category_set_count) {
+    ORT_ENFORCE(std::isfinite(set_id) && set_id >= 0 && std::floor(set_id) == set_id &&
+                    set_id < static_cast<ThresholdType>(category_set_count),
+                "Tree category set id ", set_id, " must be an integer in [0, ", category_set_count, ").");
+    return static_cast<size_t>(set_id);
+  }
+
   inline const TreeCategorySet<int32_t, InputType>& GetCategorySet(const ThresholdType& set_id) const {
-    return category_sets_[static_cast<size_t>(set_id)];
+    return category_sets_[ValidateCategorySetId(set_id, category_sets_.size())];
   }
 
  private:
@@ -207,6 +215,12 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
   int fpos = -1;
   for (i = 0, limit = attributes.nodes_modes.size(); i < limit; ++i) {
     cmodes.push_back(attributes.nodes_modes[i]);
+    if (cmodes[i] == NODE_MODE_ONNX::BRANCH_MEMBER_BIGSET) {
+      const ThresholdType set_id = attributes.nodes_values_as_tensor.empty()
+                                       ? static_cast<ThresholdType>(attributes.nodes_values[i])
+                                       : attributes.nodes_values_as_tensor[i];
+      ValidateCategorySetId(set_id, attributes.bigsets.size());
+    }
     if (cmodes[i] == NODE_MODE_ONNX::LEAF) continue;
     // The struture may be compressed if it contains only BRANCH_EQ
     // and if ai.onnx.ml == 3, it changes the branch mode into BRANCH_MEMBER.
