@@ -4575,6 +4575,8 @@ TEST_F(GraphTransformationTests, NhwcConvActivationFusionPreservesOutput) {
   auto* output = builder.MakeOutput();
   auto& conv = builder.AddNode("Conv", {input, weight}, {conv_out}, kMSInternalNHWCDomain);
   conv.AddAttribute("activation", "Relu");
+  // Explicit zero pads avoid CoreML's missing MIL pad input for implicit padding.
+  conv.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
   builder.AddNode("Tanh", {conv_out}, {output});
   builder.SetGraphOutputs();
   ASSERT_STATUS_OK(graph.Resolve());
