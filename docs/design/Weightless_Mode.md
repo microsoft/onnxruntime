@@ -349,9 +349,10 @@ Values are listed in this order, e.g., `"source_model;external_weights;ep_contex
 if the model has none of these dependencies.
 ORT resolves the value from the session and compile options and from how each EP obtains its initializer data
 (`drop_constant_initializers`), including the initializers defined inside the subgraphs of compiled control flow
-nodes (e.g., `If` or `Loop`), and for all EPs, including EPs built for a version without `GetWeightlessSupport()`;
-it does not validate the dependencies: missing data is reported when a session is created from the model. Future
-versions may add values, so readers should ignore values they don't recognize.
+nodes (e.g., `If` or `Loop`), whether they are consumed by a node of the subgraph or returned as a subgraph output,
+and for all EPs, including EPs built for a version without `GetWeightlessSupport()`; it does not validate the
+dependencies: missing data is reported when a session is created from the model. Future versions may add values, so
+readers should ignore values they don't recognize.
 
 **Model packages.** A variant sets its session options in `executor_info["ort"].session_options` (see
 `onnxruntime/core/session/model_package/README.md`). `"ep.context_source_model_path"`,

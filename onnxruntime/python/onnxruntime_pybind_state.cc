@@ -1660,8 +1660,18 @@ static Status InitializeSessionEpsFromSessionOptions(PyInferenceSession& py_sess
     ORT_RETURN_IF_ERROR(context.SelectEpsForSession(GetEnv(), ort_session_options, sess));
   } else {
     for (const auto& provider_factory : ort_session_options.provider_factories) {
-      std::unique_ptr<IExecutionProvider> ep = provider_factory->CreateProvider(ort_session_options,
-                                                                                *(sess_logger->ToExternal()));
+      // CreateProvider() reports errors as exceptions. Convert them back to a Status so that Python raises the
+      // exception type that matches the error (e.g., InvalidArgument or EPFail) instead of a generic RuntimeError,
+      // which would also make the session fall back to other EPs.
+      std::unique_ptr<IExecutionProvider> ep;
+      Status create_provider_status;
+      ORT_TRY {
+        ep = provider_factory->CreateProvider(ort_session_options, *(sess_logger->ToExternal()));
+      }
+      ORT_CATCH(const OnnxRuntimeException& ex) {
+        ORT_HANDLE_EXCEPTION([&]() { create_provider_status = Status(ex.Category(), ex.Code(), ex.what()); });
+      }
+      ORT_RETURN_IF_ERROR(create_provider_status);
       if (ep) {
         ORT_RETURN_IF_ERROR(sess.RegisterExecutionProvider(std::move(ep)));
       }
