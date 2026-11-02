@@ -96,9 +96,24 @@ void CudaGraphManager::CaptureEnd(CudaGraphAnnotation_t id) {
 
   try {
     cuda_graph_set_.Put(id, graph_exec);
+    has_captured_any_ = true;
   } catch (...) {
     cudaGraphExecDestroy(graph_exec);
     throw;
+  }
+}
+
+void CudaGraphManager::DiscardCapture() noexcept {
+  cudaGraph_t graph = nullptr;
+  // A capture invalidated by the failed run reports that here and yields no graph. The stream leaves capture mode
+  // either way.
+  const cudaError_t end_err = cudaStreamEndCapture(stream_, &graph);
+  if (graph != nullptr) {
+    static_cast<void>(cudaGraphDestroy(graph));
+  }
+  if (end_err != cudaSuccess) {
+    // Clear the recorded error so it is not attributed to later CUDA calls on this thread.
+    static_cast<void>(cudaGetLastError());
   }
 }
 
@@ -131,6 +146,16 @@ OrtStatus* CudaGraphManager::Replay(CudaGraphAnnotation_t id, bool sync) {
            ": " + cudaGetErrorString(err))
               .c_str());
     }
+  } else {
+    // Flush WDDM command queue so cudaGraphLaunch is submitted to the GPU hardware immediately.
+    err = cudaStreamQuery(stream_);
+    if (err != cudaSuccess && err != cudaErrorNotReady) {
+      return Ort::GetApi().CreateStatus(
+          ORT_EP_FAIL,
+          (std::string("CUDA graph stream query error: ") + cudaGetErrorName(err) +
+           ": " + cudaGetErrorString(err))
+              .c_str());
+    }
   }
 
   return nullptr;
@@ -145,6 +170,9 @@ bool CudaGraphManager::IsGraphCaptured(CudaGraphAnnotation_t id) const {
 }
 
 void CudaGraphManager::Reset() {
+  if (has_captured_any_) {
+    recapture_immediately_ = true;
+  }
   cuda_graph_set_.Clear();
   run_count_.clear();
 }
@@ -152,6 +180,9 @@ void CudaGraphManager::Reset() {
 bool CudaGraphManager::IsGraphCaptureAllowed(CudaGraphAnnotation_t id, int min_runs) const {
   if (!IsGraphCaptureAllowedOnRun(id)) {
     return false;
+  }
+  if (recapture_immediately_) {
+    return true;
   }
   auto it = run_count_.find(id);
   if (it == run_count_.end()) {
