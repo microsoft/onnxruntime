@@ -430,6 +430,13 @@ class IExecutionProvider {
    */
   virtual bool ConcurrentRunSupported() const { return true; }
 
+#if !defined(ORT_MINIMAL_BUILD)
+  /** Does the EP device meet the hardware capability requirements for MoE CPU/GPU offload.
+      MoE offload is not available in minimal builds, so this is excluded to avoid growing the vtable.
+   */
+  virtual bool SupportsMoeOffload() const { return true; }
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
   /**
    * Return the tuning context which holds all TunableOp state.
    */

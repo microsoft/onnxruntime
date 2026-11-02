@@ -551,6 +551,14 @@ Status CUDAExecutionProvider::Sync() const {
   return Status::OK();
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
+bool CUDAExecutionProvider::SupportsMoeOffload() const {
+  const int effective_sm = onnxruntime::ParseEnvironmentVariableWithDefault<int>(
+      "ORT_QMOE_TEST_DEVICE_SM", device_prop_.major * 10 + device_prop_.minor);
+  return effective_sm >= 80;
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
 Status CUDAExecutionProvider::OnSessionInitializationEnd() {
   if (qmoe_controller_) {
     onnxruntime::cuda::QMoESessionController::SessionPlanReport report;
