@@ -125,9 +125,15 @@ GroupQueryAttention<T, U>::GroupQueryAttention(const OpKernelInfo& info)
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
   softcap_ = info.GetAttrOrDefault<float>("softcap", 0.0f);
   use_smooth_softmax_ = info.GetAttrOrDefault<int64_t>("smooth_softmax", 0) == 1;
-  qk_norm_epsilon_ = info.GetAttrOrDefault<float>("qk_norm_epsilon", 1e-6f);
-  ORT_ENFORCE(std::isfinite(qk_norm_epsilon_) && qk_norm_epsilon_ > 0.0f,
+  const float qk_norm_epsilon = info.GetAttrOrDefault<float>("qk_norm_epsilon", 1e-6f);
+  ORT_ENFORCE(std::isfinite(qk_norm_epsilon) && qk_norm_epsilon > 0.0f,
               "GroupQueryAttention (CUDA): qk_norm_epsilon must be finite and positive.");
+  q_norm_epsilon_ = info.GetAttrOrDefault<float>("q_norm_epsilon", qk_norm_epsilon);
+  k_norm_epsilon_ = info.GetAttrOrDefault<float>("k_norm_epsilon", qk_norm_epsilon);
+  ORT_ENFORCE(std::isfinite(q_norm_epsilon_) && q_norm_epsilon_ > 0.0f,
+              "GroupQueryAttention (CUDA): q_norm_epsilon must be finite and positive.");
+  ORT_ENFORCE(std::isfinite(k_norm_epsilon_) && k_norm_epsilon_ > 0.0f,
+              "GroupQueryAttention (CUDA): k_norm_epsilon must be finite and positive.");
 
   k_quant_type_ = StringToKVQuantizationType(info.GetAttrOrDefault<std::string>("k_quant_type", "NONE"));
   v_quant_type_ = StringToKVQuantizationType(info.GetAttrOrDefault<std::string>("v_quant_type", "NONE"));
@@ -423,7 +429,8 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     }
     parameters.use_qk_norm = true;
   }
-  parameters.qk_norm_epsilon = qk_norm_epsilon_;
+  parameters.q_norm_epsilon = q_norm_epsilon_;
+  parameters.k_norm_epsilon = k_norm_epsilon_;
 
   parameters.local_window_size = local_window_size_;
   parameters.is_unidirectional = is_unidirectional_;
@@ -813,7 +820,12 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   // LaunchGetSequenceLengths to derive P = T - sequence_length.
   // It is also disabled for a windowed KV cache: the kernel derives both the absolute RoPE position
   // and the cache append offset from a single seqlens_k value, which those two no longer share.
-  data.use_flash_attention_fast_decode = use_flash_attention && !disable_flash_decode_ && !parameters.is_first_prompt && parameters.sequence_length == 1 && parameters.kv_sequence_length > 0 && parameters.past_present_share_buffer && !is_inputs_quantized && !parameters.use_qk_norm && !parameters.is_windowed_kv_cache;
+  // Explicit RoPE positions may differ from cache offsets and require position-aware PrepareQKV.
+  data.use_flash_attention_fast_decode = use_flash_attention && !disable_flash_decode_ && !parameters.is_first_prompt &&
+                                         parameters.sequence_length == 1 && parameters.kv_sequence_length > 0 &&
+                                         parameters.past_present_share_buffer && !is_inputs_quantized &&
+                                         !parameters.use_qk_norm && !parameters.is_windowed_kv_cache &&
+                                         (!parameters.do_rotary || data.position_ids == nullptr);
 
   if (use_flash_attention) {
     // Flash-specific buffer sizes (softmax LSE and the optional split accumulators) come from the
@@ -1031,7 +1043,6 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   if (parameters.use_qk_norm) {
     data.q_norm_weight = reinterpret_cast<const CudaT*>(q_norm_weight->Data<T>());
     data.k_norm_weight = reinterpret_cast<const CudaT*>(k_norm_weight->Data<T>());
-    data.qk_norm_epsilon = qk_norm_epsilon_;
   }
 
 #if DUMP_TENSOR_LEVEL > 0

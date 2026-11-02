@@ -2,8 +2,11 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
+#include <bit>
+#include <sstream>
 #include <fstream>
 #include <memory>
+#include <locale>
 
 #include "core/common/common.h"
 #include "core/common/safeint.h"
@@ -59,6 +62,27 @@ Status NormalizeDispatchGroupSize(uint32_t& x, uint32_t& y, uint32_t& z, uint32_
   return Status::OK();
 }
 
+Status ShaderCacheValidator::Validate(const std::string& key, std::string_view name, std::string description) {
+  std::lock_guard lock{mutex_};
+  auto existing = descriptions_.find(key);
+  if (existing == descriptions_.end()) {
+    descriptions_.emplace(key, std::make_pair(std::string{name}, std::move(description)));
+    return Status::OK();
+  }
+  const auto& [previous_name, previous] = existing->second;
+  if (previous == description) {
+    return Status::OK();
+  }
+  const auto difference = std::mismatch(previous.begin(), previous.end(), description.begin(), description.end());
+  const auto line = 1 + std::count(previous.begin(), difference.first, '\n');
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                         "WebGPU shader cache collision for key \"", key,
+                         "\" between programs \"", previous_name, "\" and \"", name,
+                         "\". First differing description line: ", line,
+                         "\n--- previous shader description ---\n", previous,
+                         "\n--- current shader description ---\n", description);
+}
+
 }  // namespace detail
 
 ProgramArtifact::ProgramArtifact(std::string program_name,
@@ -72,6 +96,9 @@ ProgramArtifact::ProgramArtifact(std::string program_name,
 
 ProgramManager::ProgramManager(WebGpuContext& webgpu_context)
     : webgpu_context_{webgpu_context} {
+  if (onnxruntime::detail::GetEnvironmentVar("ORT_WEBGPU_EP_VALIDATE_SHADER_CACHE") == "1") {
+    shader_cache_validator_ = std::make_unique<detail::ShaderCacheValidator>();
+  }
   if (std::string dump_file_path = onnxruntime::detail::GetEnvironmentVar("ORT_WEBGPU_EP_SHADER_DUMP_FILE");
       !dump_file_path.empty()) {
     shader_dump_fn_ = detail::CreateShaderDumpFunction(std::move(dump_file_path));
@@ -115,11 +142,10 @@ Status ProgramManager::CalculateSegmentsForInputsAndOutputs(const ProgramBase& p
   return Status::OK();
 }
 
-wgpu::PipelineLayout ProgramManager::CreatePipelineLayout(const ProgramBase& program,
-                                                          std::span<const uint32_t> inputs_segments,
-                                                          std::span<const uint32_t> outputs_segments,
-                                                          std::span<const int> shape_uniform_ranks,
-                                                          wgpu::BindGroupLayout& bind_group_layout) const {
+namespace {
+std::vector<wgpu::BindGroupLayoutEntry> CreateBindGroupLayoutEntries(
+    const ProgramBase& program, std::span<const uint32_t> inputs_segments,
+    std::span<const uint32_t> outputs_segments, std::span<const int> shape_uniform_ranks) {
   size_t storage_binding_count = 0;
   for (uint32_t segments : inputs_segments) {
     storage_binding_count += segments;
@@ -161,6 +187,42 @@ wgpu::PipelineLayout ProgramManager::CreatePipelineLayout(const ProgramBase& pro
     bind_group_layout_entries.push_back(entry);
   }
 
+  return bind_group_layout_entries;
+}
+
+double PipelineConstantValue(const ProgramOverridableConstantValue& constant_override) {
+  double value = 0;
+  switch (constant_override.type) {
+    case ProgramConstantDataType::Bool:
+      value = constant_override.boolean ? 1 : 0;
+      break;
+    case ProgramConstantDataType::Float16:
+      // convert f16(MLFloat16) -> f32(float) -> f64(double)
+      // because the value of a constant must be a double in WebGPU API, it is expensive to use f16 overridable constants.
+      value = constant_override.f16.ToFloat();
+      break;
+    case ProgramConstantDataType::Float32:
+      value = constant_override.f32;
+      break;
+    case ProgramConstantDataType::Int32:
+      value = constant_override.i32;
+      break;
+    case ProgramConstantDataType::Uint32:
+      value = constant_override.u32;
+      break;
+  }
+
+  return value;
+}
+}  // namespace
+
+wgpu::PipelineLayout ProgramManager::CreatePipelineLayout(const ProgramBase& program,
+                                                          std::span<const uint32_t> inputs_segments,
+                                                          std::span<const uint32_t> outputs_segments,
+                                                          std::span<const int> shape_uniform_ranks,
+                                                          wgpu::BindGroupLayout& bind_group_layout) const {
+  auto bind_group_layout_entries = CreateBindGroupLayoutEntries(program, inputs_segments, outputs_segments, shape_uniform_ranks);
+  const auto binding = bind_group_layout_entries.size();
   ORT_ENFORCE(binding <= webgpu_context_.DeviceLimits().maxBindingsPerBindGroup,
               "Number of bind group entries (", binding,
               ") exceeds device limit (", webgpu_context_.DeviceLimits().maxBindingsPerBindGroup, ").");
@@ -177,19 +239,11 @@ wgpu::PipelineLayout ProgramManager::CreatePipelineLayout(const ProgramBase& pro
   return webgpu_context_.Device().CreatePipelineLayout(&pipeline_layout_descriptor);
 }
 
-Status ProgramManager::Build(const ProgramBase& program,
-                             const ProgramMetadata& program_metadata,
-                             const std::span<uint32_t> inputs_segments,
-                             const std::span<uint32_t> outputs_segments,
-                             const std::string& program_key,
-                             uint32_t normalized_dispatch_x,
-                             uint32_t normalized_dispatch_y,
-                             uint32_t normalized_dispatch_z,
-                             wgpu::BindGroupLayout& bind_group_layout,
-                             std::vector<int>& shape_uniform_ranks,
-                             wgpu::Future& future,
-                             const std::shared_ptr<PipelineCallbackContext>& callback_context) const {
-  auto& device = webgpu_context_.Device();
+Status ProgramManager::GenerateShaderSource(
+    const ProgramBase& program, const ProgramMetadata& program_metadata,
+    std::span<uint32_t> inputs_segments, std::span<uint32_t> outputs_segments,
+    uint32_t normalized_dispatch_x, uint32_t normalized_dispatch_y, uint32_t normalized_dispatch_z,
+    std::string& code, std::vector<int>& shape_uniform_ranks) const {
   ShaderHelper shader_helper{program,
                              program_metadata,
                              webgpu_context_,
@@ -212,21 +266,103 @@ Status ProgramManager::Build(const ProgramBase& program,
   ORT_RETURN_IF_ERROR(shader_helper.ValidateIndices());
 
   // code is a large std::string that contains the final shader code
-  std::string code;
   ORT_RETURN_IF_ERROR(shader_helper.GenerateSourceCode(code, shape_uniform_ranks));
+  return Status::OK();
+}
+
+Status ProgramManager::RecordShaderDescription(
+    const ProgramBase& program, const ProgramMetadata& metadata, std::span<const uint32_t> inputs_segments,
+    std::span<const uint32_t> outputs_segments, const std::string& key,
+    std::string_view code, std::span<const int> shape_uniform_ranks) const {
+  std::ostringstream description;
+  description.imbue(std::locale::classic());
+  description << "entry point: main\nbindings:\n";
+  for (const auto& entry : CreateBindGroupLayoutEntries(program, inputs_segments, outputs_segments, shape_uniform_ranks)) {
+    description << entry.binding << ':' << static_cast<uint32_t>(entry.visibility) << ':'
+                << static_cast<uint32_t>(entry.buffer.type) << ':' << entry.buffer.hasDynamicOffset
+                << ':' << entry.buffer.minBindingSize << '\n';
+  }
+  description << "pipeline overrides (exact double bits):\n";
+  for (size_t i = 0; i < program.OverridableConstants().size(); ++i) {
+    const auto& value = program.OverridableConstants()[i];
+    if (value.has_value) {
+      description << metadata.overridable_constants[i].name << ':'
+                  << std::bit_cast<uint64_t>(PipelineConstantValue(value)) << '\n';
+    }
+  }
+  // These determine host packing; the concrete shapes, offsets and payload bytes do not.
+  description << "shape uniform ranks:";
+  for (int rank : shape_uniform_ranks) {
+    description << ' ' << rank;
+  }
+  description << "\ninput view offset slots:";
+  for (const auto& input : program.Inputs()) {
+    description << ' ' << input.is_buffer_view;
+  }
+  description << "\noutput view offset slots:";
+  for (const auto& output : program.Outputs()) {
+    description << ' ' << output.is_buffer_view;
+  }
+  description << "\nuniform payload layout (type:length):\n";
+  for (const auto& uniform : program.UniformVariables()) {
+    if (uniform.length > 0) {
+      description << static_cast<int>(uniform.data_type) << ':' << uniform.length << '\n';
+    }
+  }
+  description << "WGSL:\n"
+              << code;
+  return shader_cache_validator_->Validate(key, program.Name(), description.str());
+}
+
+Status ProgramManager::ValidateShaderCache(
+    const ProgramBase& program, std::span<uint32_t> inputs_segments,
+    std::span<uint32_t> outputs_segments, const std::string& key,
+    uint32_t x, uint32_t y, uint32_t z) const {
+  if (!shader_cache_validator_) {
+    return Status::OK();
+  }
+  std::string code;
+  std::vector<int> ranks;
+  ORT_RETURN_IF_ERROR(GenerateShaderSource(program, program.Metadata(), inputs_segments, outputs_segments,
+                                           x, y, z, code, ranks));
+  return RecordShaderDescription(program, program.Metadata(), inputs_segments, outputs_segments, key, code, ranks);
+}
+
+Status ProgramManager::Build(const ProgramBase& program,
+                             const ProgramMetadata& program_metadata,
+                             const std::span<uint32_t> inputs_segments,
+                             const std::span<uint32_t> outputs_segments,
+                             const std::string& program_key,
+                             uint32_t normalized_dispatch_x,
+                             uint32_t normalized_dispatch_y,
+                             uint32_t normalized_dispatch_z,
+                             wgpu::BindGroupLayout& bind_group_layout,
+                             std::vector<int>& shape_uniform_ranks,
+                             wgpu::Future& future,
+                             const std::shared_ptr<PipelineCallbackContext>& callback_context) const {
+  auto& device = webgpu_context_.Device();
+  std::string code;
+  ORT_RETURN_IF_ERROR(GenerateShaderSource(program, program_metadata, inputs_segments, outputs_segments,
+                                           normalized_dispatch_x, normalized_dispatch_y, normalized_dispatch_z,
+                                           code, shape_uniform_ranks));
+  if (shader_cache_validator_) {
+    ORT_RETURN_IF_ERROR(RecordShaderDescription(program, program_metadata, inputs_segments, outputs_segments, program_key, code, shape_uniform_ranks));
+  }
   auto pipeline_layout = CreatePipelineLayout(program, inputs_segments, outputs_segments,
                                               shape_uniform_ranks, bind_group_layout);
 
   // Dump shader code, if requested. It is dumped to `shader_dump_fn_` if set or VERBOSE logging otherwise.
   {
-    const auto shader_content = [&program, &program_key, &code]() {
-      return MakeString("\n=== WebGPU Shader code [", program.Name(),
-                        ", Key=\"", program_key, "\"",
-                        "] Start ===\n\n",
-                        code,
-                        "\n=== WebGPU Shader code [", program.Name(),
-                        ", Key=\"", program_key, "\"",
-                        "] End ===\n");
+    const auto shader_content = [this, &program, &program_key, &code]() {
+      // Generated WGSL source depends on these device settings as well as the program key.
+      const auto configuration = MakeStringWithClassicLocale(
+          "subgroups=", webgpu_context_.DeviceHasFeature(wgpu::FeatureName::Subgroups),
+          ";subgroup_matrix=", webgpu_context_.DeviceHasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix),
+          ";max_storage_buffer_binding_size=", webgpu_context_.DeviceLimits().maxStorageBufferBindingSize);
+      const auto header = MakeString("=== WebGPU Shader code [", program.Name(),
+                                     ", Configuration=\"", configuration,
+                                     "\", Key=\"", program_key, "\"]");
+      return MakeString("\n", header, " Start ===\n\n", code, "\n", header, " End ===\n");
     };
 
     if (shader_dump_fn_) {
@@ -276,26 +412,7 @@ Status ProgramManager::Build(const ProgramBase& program,
     const auto& constant_def = program_metadata.overridable_constants[i];
 
     if (constant_override.has_value) {
-      double value = 0;
-      switch (constant_override.type) {
-        case ProgramConstantDataType::Bool:
-          value = constant_override.boolean ? 1 : 0;
-          break;
-        case ProgramConstantDataType::Float16:
-          // convert f16(MLFloat16) -> f32(float) -> f64(double)
-          // because the value of a constant must be a double in WebGPU API, it is expensive to use f16 overridable constants.
-          value = constant_override.f16.ToFloat();
-          break;
-        case ProgramConstantDataType::Float32:
-          value = constant_override.f32;
-          break;
-        case ProgramConstantDataType::Int32:
-          value = constant_override.i32;
-          break;
-        case ProgramConstantDataType::Uint32:
-          value = constant_override.u32;
-          break;
-      }
+      const double value = PipelineConstantValue(constant_override);
 
       const auto& name_string = constant_names.emplace_back(constant_def.name);
       wgpu::ConstantEntry entry{};

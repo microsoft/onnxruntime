@@ -93,6 +93,9 @@ constexpr const char* kPreferredLayout_NHWC = "NHWC";
 constexpr const char* kEnableGraphCapture_ON = "1";
 constexpr const char* kEnableGraphCapture_OFF = "0";
 
+// Selects weight loading per session. ORT-owned D3D12 contexts retain the
+// native device and supported import features even when initially set to off,
+// so later sessions can enable acceleration without replacing the device.
 constexpr const char* kWeightLoadAcceleration_Off = "off";
 constexpr const char* kWeightLoadAcceleration_Preferred = "preferred";
 constexpr const char* kWeightLoadAcceleration_Required = "required";

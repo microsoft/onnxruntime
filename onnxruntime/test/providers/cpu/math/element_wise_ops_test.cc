@@ -12,6 +12,7 @@
 #include "test/common/trt_op_test_utils.h"
 #include "test/common/random_generator.h"
 #include "core/util/math.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include <algorithm>
 #include <limits>
 #include <math.h>
@@ -19,7 +20,6 @@
 
 #ifdef USE_DML
 #include "core/providers/dml/dml_session_options_config_keys.h"
-#include "core/session/onnxruntime_session_options_config_keys.h"
 #endif
 
 namespace onnxruntime {
@@ -5320,6 +5320,79 @@ TEST(MathOpTest, BitwiseXor_multidirectional_broadcastBA) {
   test.AddOutput<int32_t>("C", {4, 2}, {5, 13, 4, 12, 3, 11, 2, 10});
   test.Run();
 }
+
+#ifdef USE_CUDA
+template <typename T>
+class CudaBitwiseXorTest : public ::testing::Test {};
+
+using BitwiseXorIntegerTypes = ::testing::Types<int8_t, uint8_t, int16_t, uint16_t,
+                                                int32_t, uint32_t, int64_t, uint64_t>;
+TYPED_TEST_SUITE(CudaBitwiseXorTest, BitwiseXorIntegerTypes);
+
+template <typename T>
+void RunCudaBitwiseXor(const std::vector<int64_t>& lhs_shape, const std::vector<T>& lhs,
+                       const std::vector<int64_t>& rhs_shape, const std::vector<T>& rhs,
+                       const std::vector<int64_t>& output_shape, const std::vector<T>& expected) {
+  for (int opset : {18, 24}) {
+    auto cuda_ep = DefaultCudaExecutionProvider();
+    if (!cuda_ep) {
+      GTEST_SKIP() << "CUDA EP is unavailable";
+    }
+    OpTester test("BitwiseXor", opset);
+    test.AddInput<T>("A", lhs_shape, lhs);
+    test.AddInput<T>("B", rhs_shape, rhs);
+    test.AddOutput<T>("C", output_shape, expected);
+    SessionOptions options;
+    // A correct CPU fallback must not hide a missing CUDA registration.
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    test.Config(options).ConfigEp(std::move(cuda_ep)).RunWithConfig();
+  }
+}
+
+TYPED_TEST(CudaBitwiseXorTest, IntegerBoundaries) {
+  using T = TypeParam;
+  const T low = std::numeric_limits<T>::min();
+  const T high = std::numeric_limits<T>::max();
+  const T all_bits = static_cast<T>(~T{0});
+  RunCudaBitwiseXor<T>({7}, {low, high, all_bits, low, high, T{0}, T{1}},
+                       {7}, {high, high, T{0}, low, T{0}, all_bits, all_bits},
+                       {7}, {all_bits, T{0}, all_bits, T{0}, high, all_bits, static_cast<T>(all_bits ^ T{1})});
+}
+
+TYPED_TEST(CudaBitwiseXorTest, ScalarBroadcastAndTail) {
+  using T = TypeParam;
+  std::vector<T> input(259);
+  std::vector<T> expected(259);
+  const T mask = std::numeric_limits<T>::max();
+  for (size_t i = 0; i < input.size(); ++i) {
+    input[i] = static_cast<T>(i % 127);
+    expected[i] = static_cast<T>(input[i] ^ mask);
+  }
+  RunCudaBitwiseXor<T>({}, {mask}, {259}, input, {259}, expected);
+  RunCudaBitwiseXor<T>({259}, input, {}, {mask}, {259}, expected);
+  RunCudaBitwiseXor<T>({}, {T{7}}, {}, {T{3}}, {}, {T{4}});
+}
+
+TYPED_TEST(CudaBitwiseXorTest, MultidirectionalBroadcast) {
+  using T = TypeParam;
+  RunCudaBitwiseXor<T>({2, 1, 2}, {10, 11, 12, 13}, {1, 3, 1}, {15, 7, 3},
+                       {2, 3, 2}, {5, 4, 13, 12, 9, 8, 3, 2, 11, 10, 15, 14});
+  RunCudaBitwiseXor<T>({1, 3, 1}, {15, 7, 3}, {2, 1, 2}, {10, 11, 12, 13},
+                       {2, 3, 2}, {5, 4, 13, 12, 9, 8, 3, 2, 11, 10, 15, 14});
+}
+
+TYPED_TEST(CudaBitwiseXorTest, EmptyBroadcast) {
+  using T = TypeParam;
+  RunCudaBitwiseXor<T>({0, 3}, {}, {1, 3}, {1, 2, 3}, {0, 3}, {});
+  RunCudaBitwiseXor<T>({}, {T{1}}, {2, 0, 3}, {}, {2, 0, 3}, {});
+}
+
+TEST(MathOpTest, BitwiseXor_CUDA_Int64RngState) {
+  const std::vector<int64_t> state{0, 1, 2047, 2048, 2049, 1073741824, 2147483647};
+  RunCudaBitwiseXor<int64_t>({7}, state, {7}, {0, 0, 0, 1, 1, 524288, 1048575},
+                             {7}, {0, 1, 2047, 2049, 2048, 1074266112, 2146435072});
+}
+#endif
 
 TEST(MathOpTest, BitwiseNot) {
   OpTester test("BitwiseNot", 18);
