@@ -170,9 +170,7 @@ bool CudaGraphManager::IsGraphCaptured(CudaGraphAnnotation_t id) const {
 }
 
 void CudaGraphManager::Reset() {
-  if (has_captured_any_) {
-    recapture_immediately_ = true;
-  }
+  recapture_immediately_ = false;
   cuda_graph_set_.Clear();
   run_count_.clear();
 }
@@ -181,12 +179,12 @@ bool CudaGraphManager::IsGraphCaptureAllowed(CudaGraphAnnotation_t id, int min_r
   if (!IsGraphCaptureAllowedOnRun(id)) {
     return false;
   }
-  if (recapture_immediately_) {
-    return true;
-  }
   auto it = run_count_.find(id);
   if (it == run_count_.end()) {
     return false;
+  }
+  if (has_captured_any_) {
+    return it->second >= std::max(1, min_runs);
   }
   return it->second >= min_runs;
 }

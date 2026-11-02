@@ -11,6 +11,7 @@
 #include <filesystem>
 #include <fstream>
 #include <limits>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -1473,6 +1474,171 @@ TEST(QMoESharedLayoutTest, IntegerDeferredScaleModesPreservePartialRanges) {
       }
     }
   }
+}
+
+// A leaked pin removes a slot from a bounded cache for good, so one failed copy would starve every later expert.
+class ScopedExpertLeaseTest : public ::testing::Test {
+ protected:
+  static constexpr size_t kStride = shared::kBankAlignment;
+  static constexpr int64_t kNumExperts = 3;
+
+  void SetUp() override {
+    path_ = std::filesystem::temp_directory_path() / "ort_qmoe_scoped_lease.bin";
+    std::vector<uint8_t> data(static_cast<size_t>(kNumExperts) * kStride);
+    for (int64_t e = 0; e < kNumExperts; ++e) {
+      std::fill_n(data.data() + static_cast<size_t>(e) * kStride, kStride, static_cast<uint8_t>(e + 1));
+    }
+    std::ofstream out(path_, std::ios::binary | std::ios::trunc);
+    ASSERT_TRUE(out.is_open());
+    out.write(reinterpret_cast<const char*>(data.data()), static_cast<std::streamsize>(data.size()));
+    out.close();
+    ASSERT_TRUE(store_.Initialize(path_.string().c_str(), 0, kNumExperts, kStride, /*cache_slots=*/1));
+  }
+
+  void TearDown() override {
+    store_.Shutdown();
+    std::error_code ec;
+    std::filesystem::remove(path_, ec);
+  }
+
+  // True when the one-slot cache can still serve `expert_id`; the temporary pin is dropped again.
+  bool CanServe(int32_t expert_id) {
+    shared::ExpertBlockLease lease{};
+    if (!store_.AcquireReady(expert_id, &lease)) return false;
+    store_.ReleaseLease(expert_id);
+    return true;
+  }
+
+  std::filesystem::path path_;
+  shared::FileExpertStore store_;
+};
+
+TEST_F(ScopedExpertLeaseTest, UnguardedPinStarvesOneSlotCache) {
+  shared::ExpertBlockLease lease{};
+  ASSERT_TRUE(store_.AcquireReady(0, &lease));
+  EXPECT_FALSE(CanServe(1));
+  store_.ReleaseLease(0);
+  EXPECT_TRUE(CanServe(1));
+}
+
+TEST_F(ScopedExpertLeaseTest, ReleasesPinOnEarlyReturn) {
+  const auto failed_copy = [&]() {
+    shared::ExpertBlockLease lease{};
+    shared::ScopedExpertLease guard;
+    ASSERT_TRUE(guard.AcquireReady(store_, 0, &lease));
+    EXPECT_EQ(lease.data[0], 1);
+    EXPECT_FALSE(CanServe(1));
+    // Returning here mimics a CUDA error return that skips every explicit release.
+  };
+  failed_copy();
+  EXPECT_TRUE(CanServe(1));
+  EXPECT_TRUE(CanServe(2));
+}
+
+// Throwing is not available in builds compiled without exceptions; ReleasesPinOnEarlyReturn covers the scope guard there.
+#ifndef ORT_NO_EXCEPTIONS
+TEST_F(ScopedExpertLeaseTest, ReleasesPinWhenAnExceptionUnwinds) {
+  try {
+    shared::ExpertBlockLease lease{};
+    shared::ScopedExpertLease guard;
+    ASSERT_TRUE(guard.AcquireReady(store_, 0, &lease));
+    throw std::runtime_error("injected copy failure");
+  } catch (const std::runtime_error&) {
+  }
+  EXPECT_TRUE(CanServe(1));
+}
+#endif  // !ORT_NO_EXCEPTIONS
+
+TEST_F(ScopedExpertLeaseTest, TryAcquireCachedPinIsAlsoGuarded) {
+  ASSERT_TRUE(CanServe(0));  // make expert 0 resident
+  {
+    shared::ExpertBlockLease lease{};
+    shared::ScopedExpertLease guard;
+    ASSERT_TRUE(guard.TryAcquireCached(store_, 0, &lease));
+    EXPECT_FALSE(CanServe(1));
+  }
+  EXPECT_TRUE(CanServe(1));
+}
+
+struct BarrierProbe {
+  bool succeed = true;
+  int calls = 0;
+  bool pin_held_when_called = false;
+  shared::FileExpertStore* store = nullptr;
+};
+
+bool ProbeBarrier(void* context) noexcept {
+  auto* probe = static_cast<BarrierProbe*>(context);
+  ++probe->calls;
+  // The slot must still be pinned while queued device reads are being completed.
+  shared::ExpertBlockLease other{};
+  probe->pin_held_when_called = !probe->store->AcquireReady(1, &other);
+  if (!probe->pin_held_when_called) probe->store->ReleaseLease(1);
+  return probe->succeed;
+}
+
+TEST_F(ScopedExpertLeaseTest, FinishesQueuedDeviceReadsBeforeDroppingPin) {
+  BarrierProbe probe;
+  probe.store = &store_;
+  {
+    shared::ExpertBlockLease lease{};
+    shared::ScopedExpertLease guard;
+    ASSERT_TRUE(guard.AcquireReady(store_, 0, &lease));
+    guard.SetDeviceReadBarrier(&ProbeBarrier, &probe);
+    guard.MarkDeviceReadsQueued();
+  }
+  EXPECT_EQ(probe.calls, 1);
+  EXPECT_TRUE(probe.pin_held_when_called);
+  EXPECT_TRUE(CanServe(1));
+}
+
+TEST_F(ScopedExpertLeaseTest, SkipsBarrierWhenNoDeviceReadWasQueued) {
+  BarrierProbe probe;
+  probe.store = &store_;
+  {
+    shared::ExpertBlockLease lease{};
+    shared::ScopedExpertLease guard;
+    ASSERT_TRUE(guard.AcquireReady(store_, 0, &lease));
+    guard.SetDeviceReadBarrier(&ProbeBarrier, &probe);
+  }
+  EXPECT_EQ(probe.calls, 0);
+  EXPECT_TRUE(CanServe(1));
+}
+
+TEST_F(ScopedExpertLeaseTest, QuarantinesPinWhenQueuedReadsCannotBeConfirmed) {
+  BarrierProbe probe;
+  probe.store = &store_;
+  probe.succeed = false;
+  shared::ExpertBlockLease lease{};
+  shared::ScopedExpertLease guard;
+  ASSERT_TRUE(guard.AcquireReady(store_, 0, &lease));
+  guard.SetDeviceReadBarrier(&ProbeBarrier, &probe);
+  guard.MarkDeviceReadsQueued();
+
+  EXPECT_FALSE(guard.Release());
+  EXPECT_TRUE(guard.held());
+  EXPECT_FALSE(CanServe(1));  // the slot is never recycled under a read that may still be running
+
+  probe.succeed = true;
+  EXPECT_TRUE(guard.Release());
+  EXPECT_FALSE(guard.held());
+  EXPECT_TRUE(CanServe(1));
+}
+
+TEST_F(ScopedExpertLeaseTest, ExplicitCompletionReleasesWithoutRunningBarrier) {
+  BarrierProbe probe;
+  probe.store = &store_;
+  shared::ExpertBlockLease lease{};
+  shared::ScopedExpertLease guard;
+  ASSERT_TRUE(guard.AcquireReady(store_, 0, &lease));
+  guard.SetDeviceReadBarrier(&ProbeBarrier, &probe);
+  guard.MarkDeviceReadsQueued();
+  guard.MarkDeviceReadsComplete();
+
+  EXPECT_TRUE(guard.Release());
+  EXPECT_EQ(probe.calls, 0);
+  EXPECT_TRUE(guard.Release());  // idempotent
+  EXPECT_TRUE(CanServe(1));
 }
 
 }  // namespace

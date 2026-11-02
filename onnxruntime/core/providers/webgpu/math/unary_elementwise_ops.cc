@@ -115,11 +115,12 @@ WEBGPU_ELEMENTWISE_IMPL(Sign, "sign(a)")
 WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Sign, 9, 12, SignedNumberTypes())
 WEBGPU_ELEMENTWISE_KERNEL(Sign, 13, SignedNumberTypes())
 
-WEBGPU_ELEMENTWISE_IMPL(Exp, "exp(a)")
+// Evaluated in f32: float16 exp() is up to 2 ULP off, which WebNN conformance rejects.
+WEBGPU_ELEMENTWISE_IMPL(Exp, "x_value_t(exp(vec4<f32>(a)))", "", ShaderUsage::UseValueTypeAlias)
 WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Exp, 6, 12, WebGpuSupportedFloatTypes())
 WEBGPU_ELEMENTWISE_KERNEL(Exp, 13, WebGpuSupportedFloatTypes())
 
-WEBGPU_ELEMENTWISE_IMPL(Erf, "erf_v(a)", ErfImpl, ShaderUsage::UseValueTypeAlias)
+WEBGPU_ELEMENTWISE_IMPL(Erf, "erf_v(a)", ErfImpl(), ShaderUsage::UseValueTypeAlias)
 WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Erf, 9, 12, WebGpuSupportedFloatTypes())
 WEBGPU_ELEMENTWISE_KERNEL(Erf, 13, WebGpuSupportedFloatTypes())
 
@@ -160,7 +161,49 @@ WEBGPU_ELEMENTWISE_KERNEL(Sin, 7, WebGpuSupportedFloatTypes())
 WEBGPU_ELEMENTWISE_IMPL(Cos, "cos(a)")
 WEBGPU_ELEMENTWISE_KERNEL(Cos, 7, WebGpuSupportedFloatTypes())
 
-WEBGPU_ELEMENTWISE_IMPL(Tan, "tan(a)")
+// The built-in tan() reduces its argument imprecisely on some GPUs: tan(45.5952) is off by 2.4e-3,
+// well over WebNN's 1/1024 tolerance, because |tan'| = 1 + tan^2 amplifies a 1 ULP angle error. So
+// reduce exactly by pi/2, split in four parts, and evaluate a minimax polynomial on [-pi/4, pi/4]
+// in f32. k * part is exact for the three leading parts while |k| < 2^13 (|x| < ~12867); beyond
+// that it is not, and the built-in tan() is used instead.
+// Only the last product rounds, and it is below 2.1e-8, so r stays accurate next to the poles,
+// where r is tiny and the result is -1 / tan(r).
+// GPU compilers may reassociate f32 math (WGSL has no `precise`), folding the parts back into one
+// f32 constant; OR-ing each partial difference with a zero the compiler can't prove (vec_size is
+// always below 2^31) keeps the steps apart.
+constexpr const char TanImpl[] = R"(
+const TWO_OVER_PI = 0.63661977236758134;
+// pi/2 ~= PIO2_A + PIO2_B + PIO2_C + PIO2_D: 8-, 11- and 11-bit leading parts and an f32 tail.
+const PIO2_A = 1.5703125;
+const PIO2_B = 4.837512969970703125e-4;
+const PIO2_C = 7.54953362047672271728515625e-8;
+const PIO2_D = 2.56334406825708960298e-12;
+// tan(r) ~= r + r^3 * P(r^2) on [-pi/4, pi/4], P(z) = TAN_P0 + TAN_P1 * z + ... + TAN_P5 * z^5.
+const TAN_P0 = 3.33331568548e-1;
+const TAN_P1 = 1.33387994085e-1;
+const TAN_P2 = 5.34112807005e-2;
+const TAN_P3 = 2.44301354525e-2;
+const TAN_P4 = 3.11992232697e-3;
+const TAN_P5 = 9.38540185543e-3;
+
+fn tan_v(a: x_value_t) -> x_value_t {
+  let x = vec4<f32>(a);
+  let opaque_zero = vec4<u32>(uniforms.vec_size >> 31u);
+  let k = round(x * TWO_OVER_PI);
+  var r = bitcast<vec4<f32>>(bitcast<vec4<u32>>(x - k * PIO2_A) | opaque_zero);
+  r = bitcast<vec4<f32>>(bitcast<vec4<u32>>(r - k * PIO2_B) | opaque_zero);
+  r = bitcast<vec4<f32>>(bitcast<vec4<u32>>(r - k * PIO2_C) | opaque_zero);
+  r = r - k * PIO2_D;
+  let z = r * r;
+  let p = (((((TAN_P5 * z + TAN_P4) * z + TAN_P3) * z + TAN_P2) * z + TAN_P1) * z + TAN_P0) * z;
+  let t = p * r + r;
+  // tan(r + k * pi/2) is tan(r) for even k and -1 / tan(r) for odd k.
+  let odd = (vec4<i32>(k) & vec4<i32>(1)) != vec4<i32>(0);
+  return x_value_t(select(tan(x), select(t, -1.0 / t, odd), abs(k) < vec4<f32>(8192.0)));
+}
+)";
+
+WEBGPU_ELEMENTWISE_IMPL(Tan, "tan_v(a)", TanImpl, ShaderUsage::UseValueTypeAlias)
 WEBGPU_ELEMENTWISE_KERNEL(Tan, 7, WebGpuSupportedFloatTypes())
 
 WEBGPU_ELEMENTWISE_IMPL(Asin, "asin(a)")
@@ -540,7 +583,7 @@ Gelu::Gelu(const OpKernelInfo& info)
     : UnaryElementwise{info,
                        "Gelu",
                        info.GetAttrOrDefault<std::string>("approximate", "none") == "tanh" ? FastGeluExpr : GeluExpr,
-                       info.GetAttrOrDefault<std::string>("approximate", "none") == "tanh" ? TanhImpl : ErfImpl,
+                       info.GetAttrOrDefault<std::string>("approximate", "none") == "tanh" ? std::string{TanhImpl} : ErfImpl(),
                        ShaderUsage::UseValueTypeAlias} {
   cache_hint = info.GetAttrOrDefault<std::string>("approximate", "none");
 }

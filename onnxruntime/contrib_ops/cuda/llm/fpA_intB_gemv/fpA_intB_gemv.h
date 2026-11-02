@@ -17,6 +17,7 @@
 #pragma once
 #include <cuda_runtime.h>
 #include <cstdint>
+#include <cstdlib>
 #include <utility>
 
 #include <initializer_list>
@@ -225,6 +226,9 @@ struct Params {
   bool paired_k = false;
   bool wave_aware = false;
   bool debug = false;
+  // Allows the tensor-core INT8 kernel for BF16 activations with symmetric group-wise INT8 weights, M = 1..8, on
+  // SM 9.0 (device_sm and device_sm_count must be reported). Other launches ignore it.
+  bool tensor_core = false;
   int decode_variant = 0;
   // Device that runs the launch, reported by the caller (0 = unknown, which selects the device-independent
   // cutoffs and no wave-aware tile). The raw device values, not the packing arch passed to kernel_launcher. The
@@ -256,6 +260,14 @@ struct Params {
 void kernel_launcher(int kernel_arch, Params& params, cudaStream_t s);
 
 bool is_supported(int device_arch, int kernel_arch, KernelType kernel_type);
+
+// Dequantizes symmetric INT8 weights in the SM80-interleaved layout that kernel_launcher reads for packing arch 80
+// into a row-major [n, k] matrix of the activation type of `type` (an FP16/BF16 Int8Groupwise kernel type).
+// `scales` is [k / group_size, n] and the weights are value + 128. Returns false without launching when the shape or
+// the pointers are unsupported: n % 16, k % 64, a group size that is not a power of two >= 16 dividing k, an
+// unaligned weight/scale/output pointer, or n * k / 32 >= 2^31.
+bool dequantize_int8_interleaved(KernelType type, const void* weight, const void* scales, void* out, int n, int k,
+                                 int group_size, cudaStream_t stream);
 
 }  // namespace fpA_intB_gemv
 }  // namespace kernels

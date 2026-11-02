@@ -24,6 +24,7 @@
 #include "core/providers/cuda/shared_inc/cuda_memory_capacity.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "contrib_ops/cuda/moe/qmoe_background_services.h"
 
 #ifdef ENABLE_NVTX_PROFILE
 #include "nvtx_profile.h"
@@ -328,6 +329,8 @@ struct CUDA_Provider : Provider {
   }
 
   void Shutdown() override {
+    // Join the QMoE background threads while the library is still loaded and the loader lock is not held.
+    onnxruntime::contrib::cuda::ShutdownQMoEBackgroundServices();
     DeleteRegistry();
   }
 
