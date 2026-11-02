@@ -1041,28 +1041,107 @@ need not implement all plugin extensions. Concrete callback signatures, descript
 and negotiation belong in a focused follow-up API proposal; this section specifies required semantics,
 not finalized public APIs.
 
-### Implementation Slices and Validation
+### Implementation Workstreams and Validation
 
-Build on the companion proposal's fixed-placement lifetime report and enforceable backing plan before
-adding automatic offloading:
+Use the following stable IDs as small PR targets, with detailed semantics defined in the sections above.
+Record scope, dependencies, and completion criteria here; add issue/PR links as work is created and keep
+live status, ownership, and priority in GitHub Issues/Projects rather than duplicating them in this document.
 
-1. Discover/validate regions, executable candidates, and optimization recipes; report their complete
-   transfer frontiers without changing placement.
-2. Evaluate explicit CPU/GPU cuts under fixed enforceable contracts with provisional plans and host
-   support/memory checks, including selected-recipe application and verification before final commitment.
-3. Add bounded automatic boundary selection, then small contract-menu alternatives and peak-targeted
-   bundles, with immutable bindings and final-assignment verification.
+Whole-session lifetime/backing evaluation and enforceable admission from the companion proposal are
+prerequisites for budget-guaranteed automatic placement, not for starting capability design, region
+discovery, fusion descriptions, or the prototype. Develop components against explicit graph/candidate
+fixtures before connecting every EP. Missing metadata remains unresolved, not zero; fixture results and
+diagnostic reports do not themselves establish a budget guarantee for a real model.
 
-Test incomplete or overlapping groups, block 1 versus block 10 matching, numeric block order, residual
-edges crossing several blocks, shared GPU weights after CPU offload, unsupported CPU dtypes/opsets,
-and boundaries crossing indivisible capabilities. Planner tests should cover initialization-dominated
-peaks, scratch reuse/tied peaks, transfer-induced non-monotonic memory, transformed/fused bindings,
-fusion-only support, optional fusion lost across a cut, stale recipe/graph revisions, mismatched optimizer
-results, rejected-candidate isolation, unexpected EP fallback, and search-limit exhaustion. Plugin
-extensions need coverage for older/missing callbacks, selected-contract propagation, recipe/contract-state cleanup,
-and explicit unsupported-planning diagnostics. Distinguish recipe-description queries from mutating
-application callbacks, and check agreement between logical candidate plans and concretely transformed
-graphs. Cover L1 adapter completeness, unknown versus proven-zero requirements, resolved-policy identity,
-phase/route fallback closure, policy pins, and rejection of unresolved route bounds. Validate modeled
-physical backing against measured device peaks for representative admitted workloads; measurements
-calibrate/validate the model rather than prove coverage of unobserved shapes or routes.
+#### Workstream Roadmap
+
+S0 agrees on the minimum common model: a planning-mode `GetCapability(..., query_context)` request,
+optional `ComputeCapability::planning` reply, and retained selected binding. Include workload/configuration
+provenance, normalized constraints, candidate/recipe/contract identity, allocation requirements, bound
+status, and state validity/ownership/release rules. Keep the same discovery interface and preserve the
+legacy path; finalized plugin ABI layouts and implementation of every optional feature are not prerequisites.
+
+| ID | Workstream | Deliverable | Depends on | Done when | Issue/PR |
+|:---|:-----------|:------------|:-----------|:----------|:---------|
+| **S0** | Shared protocol | Internal query, planning reply, and selected-binding model. | None | The GQA example and an illustrative fused candidate have unambiguous requirements, selection identity, state lifetime, and failure semantics. | - |
+| **C1** | Capability discovery | Normalize requests and wire planning-safe CPU/CUDA discovery before selected-placement filtering. | S0 | Planning returns support offers without additive acceptance, resource commitment, or device materialization; legacy discovery remains unchanged. | - |
+| **C2** | L1 integration | Adapt existing implementation sizing into lifetime-aware allocation requirements for all four L1 categories. | S0 | Requirements retain implementation/query provenance; unknowns and proven zeros differ, and graph-inclusive totals are not charged as workspace. | - |
+| **C3** | GQA contract/binding | Expose one configured contract and carry its retained resolved state into initialization, L2 verification, and runtime. | C1, C2 | A manually selected contract uses the same permissions and requirements throughout; no global selector or policy menu is required. | - |
+| **R1** | Region discovery | Validated membership, stable identity, dependency order, and treatment of ungrouped nodes, starting with annotations or explicit membership. | None | Invalid overlaps, grouping-induced cycles, and ambiguous order are diagnosed without assigning devices. | - |
+| **R2** | Assignment boundaries | Generate CPU-prefix/GPU-suffix cuts on demand from an ordered region chain, with supplied pins and no-cut constraints. | R1, S0 | At most `L + 1` trial assignments are generated; the generator neither enumerates all node assignments nor decides memory feasibility. | - |
+| **R3** | Transfer frontiers | Describe every cross-device value dependency and required copy/conversion/storage obligation for a trial assignment. | R2 | Residual edges, shared consumers, graph I/O, and external KV locations are covered, without confusing region boundaries with device boundaries. | - |
+| **M1** | Provisional planning | Reuse execution/allocation planning machinery for tentative assignments and implementation descriptions. | S0 | Fixture plans expose allocation/reuse/release and completion dependencies without final commitment or device materialization. | - |
+| **M2** | Physical backing | Fixed-placement initialization/Run backing report combining graph, implementation, and external-state requirements. | M1 | Physical roots, aliases, retained pools, alignment, overhead, and unresolved terms are reported using the modeled allocation strategy. | - |
+| **P1** | End-to-end prototype | Real-model manual-cut generation harness with externally owned, per-layer KV and a documented llama.cpp comparison. | Existing explicit placement; no new planner required | A supported dense model runs correct prefill/decode with mixed placement and colocated KV; memory, transfers, and performance are recorded. | - |
+| **F1** | Fusion description | Describe one fusion's prepared recipe, graph/storage effects, own requirements, and bounded standalone/optimized views and compatibility. | S0 | Discovery describes the resulting implementation without invoking its mutating callback or substituting source-node estimate sums. | - |
+| **I1** | Explicit-cut evaluation | Assemble a complete CPU/CUDA candidate cover with fixed contracts, transfers, external KV, and host-memory/support checks. | C3, R3, M2 | An explicit cut has a whole-plan report; unsupported CPU choices, incompatible or incomplete covers, and unresolved requirements are identified. | - |
+| **I2** | Admission/commitment | Pre-allocation feasibility gate, immutable bindings, final-assignment verification, and materialization that honors the accepted backing plan. | I1 | A verified explicit cut initializes and runs within its accepted assumptions, or fails before incompatible allocation/use. | - |
+| **I3** | Automatic boundaries | Bounded deterministic cut selection with requirement caching, peak diagnostics, and search-limit reporting. | I2 | Selection returns a verified feasible plan or reports none found within the available candidates/limits, without assuming monotonic memory or optimal latency. | - |
+| **I4** | Contract alternatives | Extend GQA to a permitted menu and evaluate peak-targeted changes and bounded bundles across tied peaks. | I2 | Alternative contracts are evaluated rather than summed; pins and retained bindings are preserved. Fixed-placement selection can precede integration with I3. | - |
+| **F2** | Fusion application | Apply only selected recipes on an isolated candidate graph with tentative ownership, then reconcile and verify before commitment. | F1, I2 | The concrete graph agrees with the description, changed requirements are re-evaluated, and rejected rewrites do not contaminate other trials. | - |
+
+C2 can expand one kernel/EP adapter at a time. C3 starts with the configured policy, not an automatic menu;
+I4 adds alternatives without changing the evaluator. Similarly, F1 describes fusion early while F2 adds
+application to an already working commitment path. Until F2 is available, disable undescribed optional
+placement-sensitive rewrites in this mode and treat already-fused input nodes as atomic.
+
+#### Dependencies and Milestones
+
+The arrows describe implementation prerequisites, not runtime permission to optimize after commitment:
+
+```text
+S0 -> C1, C2, M1, F1
+C1 + C2 -> C3
+R1 + S0 -> R2 -> R3
+M1 -> M2
+C3 + R3 + M2 -> I1 -> I2
+I2 -> I3, I4
+F1 + I2 -> F2
+P1: independent experiment using existing explicit placement
+```
+
+After S0, capability discovery, L1 conversion, provisional memory planning, and fusion description can
+advance independently; R1 and P1 can start before S0. Graph/candidate fixtures unblock component work,
+but live integration still needs the corresponding support and requirements.
+
+The first planning milestone is C3's real GQA reply/binding. I1 then joins the workstreams into an
+explicit-cut report, and I2 establishes the first budget-admitted placement under the initial scope:
+fixed enforceable contracts, no new optional rewrites, and verified backing before materialization.
+I3 adds automatic cut selection; I4 and F2 can independently add contract alternatives and selected
+fusion. Once F2 is enabled, recipe application and reconciliation occur inside I2's pre-commit path,
+not after final placement or budget acceptance.
+
+P1 does not decide long-term KV ownership. Use one mixed-EP session for a dense decoder with verified
+CPU/CUDA operator, dtype, and layout support, batch 1, one live generation, bounded context, and no beam
+search or capture. The harness declares per-layer KV names, type/layout, capacity, location, sharing,
+and lifetime, retaining CPU-layer KV on CPU and GPU-layer KV on GPU across prefill/decode. Those
+requirements must be available before I1 evaluation and I2 admission, even if buffers are allocated later.
+Initialized-session memory-info queries verify actual locations; they are not pre-allocation planning.
+Replacing the harness with GenAI or an ORT cache manager changes allocation/binding ownership, not the
+planning model, provided it honors the same declared state, locations, and lifetimes. Changes to those
+facts require re-evaluation.
+
+Versioned plugin planning/application support remains a focused follow-up under
+[the plugin ABI semantics above](#preserve-the-same-planning-semantics-across-the-plugin-ep-abi), not a
+blocker for these internal CPU/CUDA workstreams. Broader execution modes and candidate families retain
+the exclusions and explicit unsupported-mode behavior stated in the initial scope.
+
+#### Validation by Workstream
+
+Each implementation item carries its focused validation; do not defer correctness to a final testing PR.
+
+| Workstream IDs | Required coverage |
+|:---------------|:------------------|
+| **S0, C1, C2, C3** | Legacy behavior; normalized constraints and policy pins; L1 adapter completeness; unknown versus proven-zero requirements; resolved-policy identity; phase/route fallback closure; rejection of unresolved route bounds; stale graph/query/configuration bindings; release of discarded state and cleanup on initialization failure. |
+| **R1, R2, R3, I1** | Incomplete/overlapping groups, grouping-induced cycles, block 1 versus block 10 matching, numeric dependency order, ungrouped nodes, residual edges crossing several blocks, shared GPU weights after CPU offload, unsupported CPU dtypes/opsets/layouts, and cuts through indivisible capabilities. Cover every required transfer/conversion, not just adjacent block outputs. |
+| **M1, M2, I1** | Initialization-dominated peaks; source/prepack/scratch coexistence; KV and shared-weight alias deduplication; separate past/present coexistence; asynchronous completion and justified scratch reuse; alignment, allocator retention, and host/device backing. Identical geometry must not merge unrelated allocation identities. |
+| **I1, I2, C3** | Complete final assignments and inserted copy/cast nodes matching the evaluated plan; unexpected EP fallback; pre-allocation admission; larger L2 requirements; empty/missing declarations with nonzero obligations; rejected-candidate state cleanup; explicit failure rather than warn-only continuation or untracked allocation growth. |
+| **F1, F2, I2** | Fusion-only support, overlapping or layout-incompatible views, optional fusion lost across a cut, transformed/fused bindings, replacement requirements larger than source sums, stale recipes, mismatched optimizer results, and rejected-candidate isolation. Distinguish descriptive queries from mutating callbacks; check logical/concrete graph agreement and explicit retirement/transfer/invalidation of bindings. |
+| **I3, I4** | Scratch-pool tied peaks requiring contract bundles, transfer-induced non-monotonic memory, policy/placement pins, query-valid requirement caching, deterministic tie-breaks, and search-limit exhaustion. Do not shrink the workload envelope or claim global infeasibility/optimality from bounded search. |
+| **P1** | Prefill/decode correctness against an ORT reference; initialization and generation device peaks, host memory, transfer volume, and prefill/decode performance. Compare llama.cpp with matched hardware, checkpoint, workload, capacity, and precision where possible; disclose quantization/export differences. Check that colocated KV avoids unnecessary per-step cache round trips. |
+| **Plugin follow-up** | Older/missing callbacks, version negotiation, selected-contract propagation through application/compilation, recipe/contract-state cleanup, and explicit unsupported-planning diagnostics. |
+
+Validate modeled physical backing against measured device peaks for representative admitted workloads.
+Measurements calibrate and check the model; they do not prove coverage of unobserved shapes/routes or
+replace unresolved analytical bounds. Publish assumptions and uncovered terms rather than an
+unconditional device-wide no-OOM guarantee.
