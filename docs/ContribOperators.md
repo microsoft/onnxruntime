@@ -2667,13 +2667,14 @@ This version of the operator has been available since version 1 of the 'com.micr
   transitions to replay; kept_count must NOT be substituted for capacity when deriving the
   decay/key/delta section offsets.
   
-  State rows have layout [Hv, Dv, Dk]. The capsule contains decay [capacity, Hv],
-  key [capacity, Hk, Dk], and delta [capacity, Hv, Dv] starting at their respective offsets.
+  State rows have layout [Hv, Dv, Dk]. The capsule contains decay [capacity, Hv] (or
+  [capacity, Hv, Dk] when key_offset - decay_offset == capacity * Hv * Dk), key [capacity, Hk, Dk],
+  and delta [capacity, Hv, Dv] starting at their respective offsets.
   For every state element (h,v,i):
     hk = floor(h * Hk / Hv)
     s = source[h,v,i]
     for t = 0 .. kept_count-1:
-      s *= decay[t,h]
+      s *= decay[t,h] (or decay[t,h,i] for per-key-dimension decay)
       s += key[t,hk,i] * delta[t,h,v]
     destination[h,v,i] = s
   Unused capsule tail entries are not read. All other destination elements are preserved.
@@ -6584,8 +6585,11 @@ This version of the operator has been available since version 1 of the 'com.micr
         Partial edge blocks are allowed. No zero points or activation scales are accepted.
         Without a positive block_size, FP8 uses the legacy per-expert fc*_global_scale inputs instead.
         Block-scaled FP8 does not use global scales. Activations retain the input type (weight-only quantization).
-        On CUDA SM80-or-newer GPUs, SiLU/SwiGLU block-scaled FP8 uses fused weight-only GEMV/GEMM by default.
-        These kernels decode and scale FP8 tiles on chip without materializing full FP16/BF16 weight buffers.
+        On CUDA SM80-or-newer GPUs, SiLU/SwiGLU block-scaled FP8 uses fused weight-only GEMV/GEMM for decode-sized
+        batches of at most 8 rows by default. These kernels decode and scale FP8 tiles on chip without materializing
+        full FP16/BF16 weight buffers. Larger batches dequantize the selected experts and use the CUTLASS grouped GEMM.
+        Set ORT_QMOE_FP8_FUSED_MAX_ROWS before session creation to change the row cutoff, or set ORT_ENABLE_FP8_FUSED=1
+        to keep the scratch-free fused kernels for every supported row count.
         Set ORT_ENABLE_FP8_FUSED=0 before session creation to select the compact dense-dequant fallback.
         Other activation types and unsupported routing sizes retain the fallback.
         The WebGPU block-FP8 kernel supports block_size=128 with float32 scales and rejects projections

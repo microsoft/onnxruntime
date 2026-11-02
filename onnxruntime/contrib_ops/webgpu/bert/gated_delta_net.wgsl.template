@@ -115,7 +115,7 @@ $MAIN {
       }
       workgroupBarrier();
     }
-#if decay_per_key_dim
+#if kda_gate
     key_value *= inverseSqrt(key_norm[0] + 1e-6);
     query_value *= inverseSqrt(query_norm[0] + 1e-6);
 #else

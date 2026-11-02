@@ -108,7 +108,8 @@ GatedDeltaNet<T>::GatedDeltaNet(const OpKernelInfo& info) : OpKernel(info) {
   }
 
   gate_lower_bound_ = info.GetAttrOrDefault<float>("gate_lower_bound", -5.0f);
-  ORT_ENFORCE(std::isfinite(gate_lower_bound_), "gate_lower_bound must be finite");
+  ORT_ENFORCE(std::isfinite(gate_lower_bound_) && gate_lower_bound_ < 0.0f,
+              "gate_lower_bound must be finite and negative");
 
   const std::string beta = info.GetAttrOrDefault<std::string>("beta_activation", "none");
   if (beta == "none") {
@@ -238,6 +239,12 @@ Status GatedDeltaNet<T>::Compute(OpKernelContext* context) const {
                     "num_heads_v (", num_heads_v, ") must be a positive multiple of num_heads_q (",
                     num_heads_q, ")");
 
+  if (initial_state != nullptr) {
+    ORT_RETURN_IF_NOT(initial_state->Shape().NumDimensions() == 4,
+                      "initial_state must be rank 4 [batch, num_heads_v, head_size_v, "
+                      "head_size_qk]");
+  }
+
   int64_t batch_dim = 1;
   if (cu_seqlens != nullptr) {
     ORT_RETURN_IF_NOT(token_dims == 1,
@@ -350,7 +357,7 @@ Status GatedDeltaNet<T>::Compute(OpKernelContext* context) const {
   }
 
   const float scale = scale_ != 0.0f ? scale_ : 1.0f / std::sqrt(static_cast<float>(head_size_qk));
-  const float l2_eps = decay_per_key_dim ? 1e-6f : 1e-12f;
+  const float l2_eps = (gate_activation_ == GateActivation::kSigmoid) ? 1e-6f : 1e-12f;
 
   const T* q_base = query->Data<T>();
   const T* k_base = is_packed_qkv ? (q_base + static_cast<int64_t>(num_heads_q) * head_size_qk)
@@ -367,6 +374,14 @@ Status GatedDeltaNet<T>::Compute(OpKernelContext* context) const {
   const int64_t v_out_stride = static_cast<int64_t>(num_heads_v) * head_size_v;
 
   const int32_t* cu_seqlens_data = cu_seqlens != nullptr ? cu_seqlens->Data<int32_t>() : nullptr;
+  if (cu_seqlens_data != nullptr) {
+    ORT_RETURN_IF_NOT(cu_seqlens_data[0] == 0 && cu_seqlens_data[batch] == total_tokens,
+                      "cu_seqlens must start at 0 and end at total_tokens");
+    for (int b = 0; b < batch; ++b) {
+      ORT_RETURN_IF_NOT(cu_seqlens_data[b] <= cu_seqlens_data[b + 1],
+                        "cu_seqlens must be non-decreasing");
+    }
+  }
   const int32_t* capture_count_data =
       capture_active && capture_count != nullptr ? capture_count->Data<int32_t>() : nullptr;
   const float* init_state_data = initial_state != nullptr ? initial_state->Data<float>() : nullptr;

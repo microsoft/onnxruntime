@@ -5508,13 +5508,14 @@ capacity is the original capsule capture/layout capacity. kept_count only select
 transitions to replay; kept_count must NOT be substituted for capacity when deriving the
 decay/key/delta section offsets.
 
-State rows have layout [Hv, Dv, Dk]. The capsule contains decay [capacity, Hv],
-key [capacity, Hk, Dk], and delta [capacity, Hv, Dv] starting at their respective offsets.
+State rows have layout [Hv, Dv, Dk]. The capsule contains decay [capacity, Hv] (or
+[capacity, Hv, Dk] when key_offset - decay_offset == capacity * Hv * Dk), key [capacity, Hk, Dk],
+and delta [capacity, Hv, Dv] starting at their respective offsets.
 For every state element (h,v,i):
   hk = floor(h * Hk / Hv)
   s = source[h,v,i]
   for t = 0 .. kept_count-1:
-    s *= decay[t,h]
+    s *= decay[t,h] (or decay[t,h,i] for per-key-dimension decay)
     s += key[t,hk,i] * delta[t,h,v]
   destination[h,v,i] = s
 Unused capsule tail entries are not read. All other destination elements are preserved.
@@ -5942,8 +5943,15 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                   num_heads_v > max_dimension / head_size_qk) {
                 fail_shape_inference("GatedDeltaNet: state_update width overflows int64");
               }
+              const std::string update_rule =
+                  getAttribute(ctx, "update_rule", std::string("gated_delta"));
+              const bool rule_uses_decay =
+                  update_rule == "gated" || update_rule == "gated_delta";
+              const bool has_decay_input =
+                  rule_uses_decay && ctx.getNumInputs() > 4 && ctx.getInputType(4) != nullptr;
+              const bool decay_rank_known = !has_decay_input || hasInputShape(ctx, 4);
               const bool decay_per_key_dim =
-                  ctx.getNumInputs() > 4 && hasInputShape(ctx, 4) &&
+                  has_decay_input && hasInputShape(ctx, 4) &&
                   getInputShape(ctx, 4).dim_size() == token_dims + 2;
               const int64_t decay_width = decay_per_key_dim ? num_heads_v * head_size_qk : num_heads_v;
               const int64_t key_width = num_heads_k * head_size_qk;
@@ -5960,7 +5968,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                   per_token_width > max_dimension / state_update_capacity) {
                 fail_shape_inference("GatedDeltaNet: state_update width overflows int64");
               }
-              width->set_dim_value(state_update_capacity * per_token_width);
+              if (state_update_capacity == 0 || decay_rank_known) {
+                width->set_dim_value(state_update_capacity * per_token_width);
+              }
             }
             updateOutputShape(ctx, 2, capsule_shape);
           }

@@ -170,7 +170,8 @@ __device__ __forceinline__ void RunPrepareStep(
         sq += __shfl_xor_sync(0xffffffff, sq, off);
         sk += __shfl_xor_sync(0xffffffff, sk, off);
       }
-      const float rq = rsqrtf(sq + 1e-12f), rk = rsqrtf(sk + 1e-12f);
+      const float l2_eps = (p.gate_activation == GateActivation::kSigmoidDecay) ? 1e-6f : 1e-12f;
+      const float rq = rsqrtf(sq + l2_eps), rk = rsqrtf(sk + l2_eps);
       for (int d = lane; d < DK; d += 32) {
         const float qv = ElemToFloat(q_in[t * L::kKh + d]);
         const float kv = ElemToFloat(k_in[t * L::kKh + d]);
@@ -502,7 +503,9 @@ __device__ __noinline__ void RunScanStepExactBf16Fallback(
             sq += __shfl_xor_sync(0xffffffff, sq, off);
             sk += __shfl_xor_sync(0xffffffff, sk, off);
           }
-          const float rq = rsqrtf(sq + 1e-12f), rk = rsqrtf(sk + 1e-12f);
+          const float l2_eps =
+              (p.gate_activation == GateActivation::kSigmoidDecay) ? 1e-6f : 1e-12f;
+          const float rq = rsqrtf(sq + l2_eps), rk = rsqrtf(sk + l2_eps);
           for (int d = lane; d < DK; d += 32) {
             const float qv = ElemToFloat(q_h[t * L::kKh + d]);
             const float kv = ElemToFloat(k_h[t * L::kKh + d]);
@@ -1036,7 +1039,8 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetKdaPrepareKernel
         sq += __shfl_xor_sync(0xffffffff, sq, off);
         sk += __shfl_xor_sync(0xffffffff, sk, off);
       }
-      const float rq = rsqrtf(sq + 1e-6f), rk = rsqrtf(sk + 1e-6f);
+      const float l2_eps = (p.gate_activation == GateActivation::kSigmoidDecay) ? 1e-6f : 1e-12f;
+      const float rq = rsqrtf(sq + l2_eps), rk = rsqrtf(sk + l2_eps);
       for (int d = lane; d < DK; d += 32) {
         const float qv = ElemToFloat(s.q_h[t * L::kKh + d]);
         const float kv = ElemToFloat(s.k_h[t * L::kKh + d]);
@@ -1211,9 +1215,9 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetKdaScanKernel(
     }
     __syncthreads();
 
-    if constexpr (std::is_same_v<T, __nv_bfloat16> && kBf16Prec == Bf16Precision::kFp32) {
-      SmemGemmFp32State<2 * BT, DVB, DK, false>(s.t_f, L::kF2, s.wq_h, L::kKh, s.s_f, L::kSf,
-                                                s.s_h, L::kSh, warp_id, lane, tid);
+    if constexpr (!(std::is_same_v<T, __nv_bfloat16> && kBf16Prec == Bf16Precision::kBf16)) {
+      SmemGemmFp32State<2 * BT, DVB, DK, false, kChunkedWarps, T>(
+          s.t_f, L::kF2, s.wq_h, L::kKh, s.s_f, L::kSf, s.s_h, L::kSh, warp_id, lane, tid);
       __syncthreads();
       float* u_f = reinterpret_cast<float*>(s.s_h);
       for (int idx = tid; idx < BT * DVB; idx += kChunkedThreads) {
@@ -1225,8 +1229,8 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetKdaScanKernel(
       }
       __syncthreads();
 
-      SmemGemmFp32State<BT, DVB, BT, false>(s.t_f, L::kF2, s.p_h, L::kMh, u_f, L::kSf, s.u_h,
-                                            L::kBh, warp_id, lane, tid);
+      SmemGemmFp32State<BT, DVB, BT, false, kChunkedWarps, T>(
+          s.t_f, L::kF2, s.p_h, L::kMh, u_f, L::kSf, s.u_h, L::kBh, warp_id, lane, tid);
       __syncthreads();
       for (int idx = tid; idx < BT * DVB; idx += kChunkedThreads) {
         const int t = idx / DVB, c = idx % DVB;
@@ -1376,7 +1380,7 @@ Status LaunchGatedDeltaNetKdaSplit(const Descriptor& desc, const Plan& plan,
     const bool first = base == 0;
     const bool last = base + n >= total_chunks;
     if constexpr (std::is_same_v<T, __nv_bfloat16>) {
-      if (desc.bf16_precision != Bf16Precision::kFp32) {
+      if (desc.bf16_precision == Bf16Precision::kBf16) {
         ORT_RETURN_IF_ERROR(launch_pass.template operator()<Bf16Precision::kBf16>(base, n, first, last));
         continue;
       }

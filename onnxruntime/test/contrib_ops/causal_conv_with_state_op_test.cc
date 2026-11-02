@@ -2849,13 +2849,30 @@ TEST(ContribOpVarlenCausalConvWithStateTest, CpuAliasedStateTwoCallContinuation)
       1, 1, {1.0f}, {}, 0, /*force_cpu=*/true);
 }
 
-TEST(ContribOpVarlenCausalConvWithStateTest, CpuMalformedOffsetsAreContained) {
-  RunMalformedCuSeqlens({0, -1, 3}, 3, DefaultCpuExecutionProvider());
-  RunMalformedCuSeqlens({0, 2, 1, 3}, 3, DefaultCpuExecutionProvider());
-  RunMalformedCuSeqlens({0, 1, 4}, 3, DefaultCpuExecutionProvider());
-  RunMalformedCuSeqlens({1, 2, 3}, 3, DefaultCpuExecutionProvider());
-  RunMalformedCuSeqlens({0, 1, 2}, 3, DefaultCpuExecutionProvider());
-  RunMalformedCuSeqlens({0, 2, 1, 4}, 4, DefaultCpuExecutionProvider());
+TEST(ContribOpVarlenCausalConvWithStateTest, CpuRejectsMalformedOffsets) {
+  auto run_bad_offsets = [](const std::vector<int32_t>& cu_seqlens, int total_tokens) {
+    const int batch_size = static_cast<int>(cu_seqlens.size()) - 1;
+    OpTester tester("VarlenCausalConvWithState", 1, kMSDomain);
+    tester.AddInput<float>("input", {total_tokens, 1}, std::vector<float>(total_tokens, 1.0f));
+    tester.AddInput<float>("weight", {1, 1, 2}, {1.0f, 1.0f});
+    tester.AddInput<int32_t>("cumulative_sequence_length", {batch_size + 1}, cu_seqlens);
+    tester.AddOptionalInputEdge<float>();
+    tester.AddInput<float>("initial_state", {batch_size, 1, 1},
+                           std::vector<float>(batch_size, 7.0f));
+    tester.AddOutput<float>("output", {total_tokens, 1}, std::vector<float>(total_tokens));
+    tester.AddOutput<float>("final_state", {batch_size, 1, 1},
+                            std::vector<float>(batch_size));
+    tester.AddOptionalOutputEdge<float>();
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    tester.Run(OpTester::ExpectResult::kExpectFailure, "", {}, nullptr, &execution_providers);
+  };
+  run_bad_offsets({0, -1, 3}, 3);
+  run_bad_offsets({0, 2, 1, 3}, 3);
+  run_bad_offsets({0, 1, 4}, 3);
+  run_bad_offsets({1, 2, 3}, 3);
+  run_bad_offsets({0, 1, 2}, 3);
+  run_bad_offsets({0, 2, 1, 4}, 4);
 }
 
 #ifdef USE_WEBGPU

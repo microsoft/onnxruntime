@@ -70,7 +70,8 @@ GatedDeltaNet<T>::GatedDeltaNet(const OpKernelInfo& info) : CudaKernel(info) {
     ORT_THROW("gate_activation must be one of: none, softplus (alias: qwen), sigmoid (alias: kda)");
   }
   gate_lower_bound_ = info.GetAttrOrDefault<float>("gate_lower_bound", -5.0f);
-  ORT_ENFORCE(std::isfinite(gate_lower_bound_), "gate_lower_bound must be finite");
+  ORT_ENFORCE(std::isfinite(gate_lower_bound_) && gate_lower_bound_ < 0.0f,
+              "gate_lower_bound must be finite and negative");
 
   const std::string beta = info.GetAttrOrDefault<std::string>("beta_activation", "none");
   if (beta == "none") {

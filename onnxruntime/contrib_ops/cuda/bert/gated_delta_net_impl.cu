@@ -282,7 +282,8 @@ __device__ __forceinline__ void RunChunkedStep(
         sq += __shfl_xor_sync(0xffffffff, sq, off);
         sk += __shfl_xor_sync(0xffffffff, sk, off);
       }
-      const float rq = rsqrtf(sq + 1e-12f), rk = rsqrtf(sk + 1e-12f);
+      const float l2_eps = (p.gate_activation == GateActivation::kSigmoidDecay) ? 1e-6f : 1e-12f;
+      const float rq = rsqrtf(sq + l2_eps), rk = rsqrtf(sk + l2_eps);
 #pragma unroll
       for (int i = 0; i < DK / 32; ++i) {
         const int d = lane + i * 32;
@@ -730,7 +731,7 @@ __global__ __launch_bounds__(32 * kWarps) void GatedDeltaNetDecodeWarpKernel(
         nq += qv[i] * qv[i];
         nk += kv[i] * kv[i];
       }
-      const float l2_eps = decay_per_key_dim ? 1e-6f : 1e-12f;
+      const float l2_eps = (p.gate_activation == GateActivation::kSigmoidDecay) ? 1e-6f : 1e-12f;
       const float rq = rsqrtf(WarpReduceK<DK>(nq) + l2_eps);
       const float rk = rsqrtf(WarpReduceK<DK>(nk) + l2_eps);
 #pragma unroll
@@ -898,7 +899,7 @@ __global__ __launch_bounds__(kThreads) void GatedDeltaNetRecurrentKernel(Variant
           sq += qbuf[i] * qbuf[i];
           sk += kbuf[i] * kbuf[i];
         }
-        const float l2_eps = decay_per_key_dim ? 1e-6f : 1e-12f;
+        const float l2_eps = (p.gate_activation == GateActivation::kSigmoidDecay) ? 1e-6f : 1e-12f;
         rbuf[0] = rsqrtf(sq + l2_eps);
         rbuf[1] = rsqrtf(sk + l2_eps);
       }

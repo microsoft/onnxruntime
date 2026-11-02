@@ -176,13 +176,10 @@ inline size_t SplitTileBytes(int bt, int dk, int dv) {
 
 // KDA (per-key-dimension decay, BT=16) split engine shared-memory and workspace sizes.
 inline size_t KdaSplitPrepareSmemBytes(int bt, int dk, int dv) {
+  (void)dv;
   const int ld_kh = dk + 8;
-  const int ld_vh = dv + 8;
-  const int ld_mh = bt + 8;
-  const int ld_f1 = (dv > bt ? dv : bt) + 4;
-  const size_t f = sizeof(float) * static_cast<size_t>(2 * bt * ld_f1 + bt);
-  const size_t h =
-      sizeof(uint16_t) * static_cast<size_t>(3 * bt * ld_kh + bt * ld_vh + 2 * bt * ld_mh);
+  const size_t f = sizeof(float) * static_cast<size_t>(bt * ld_kh + 2 * bt * bt + bt);
+  const size_t h = sizeof(uint16_t) * static_cast<size_t>(2 * bt * ld_kh);
   return f + h;
 }
 

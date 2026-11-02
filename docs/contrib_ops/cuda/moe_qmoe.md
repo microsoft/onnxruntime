@@ -1455,8 +1455,15 @@ Positive `block_size=B` selects square-block FP8, including the official
 - Inputs 15/16 and all zero points must be omitted. Nonpositive `block_size`
   retains the legacy per-expert global-scale contract and native dispatch.
 - On SM80-or-newer GPUs, SiLU/SwiGLU block FP8 uses fused weight-only GEMV/GEMM
-  by default for supported routing sizes. These kernels decode FP8 tiles and
-  apply square-block scales on chip, without full FP16/BF16 weight buffers.
+  for decode-sized batches of at most 8 rows by default. These kernels decode FP8
+  tiles and apply square-block scales on chip, without full FP16/BF16 weight
+  buffers. Larger batches dequantize the selected experts into scratch and use
+  the CUTLASS grouped GEMM, which is faster for prefill but needs the dense
+  weight scratch described below. Set `ORT_QMOE_FP8_FUSED_MAX_ROWS` before
+  session creation to change the row cutoff, or `ORT_ENABLE_FP8_FUSED=1` to keep
+  the scratch-free fused kernels for every supported row count (the fused GEMV
+  launches `rows * top_k` blocks along grid Y, so it is limited to
+  `rows <= 65535 / top_k`).
   SiLU without FC3 retains FC1 accumulators in FP32 through bias and activation,
   then narrows to the activation dtype, matching the dense epilogue. Gated
   projections retain their existing FP16/BF16 intermediate rounding.

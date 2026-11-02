@@ -349,6 +349,9 @@ __device__ __forceinline__ void SmemGemm(CT* C, int ldc, const T* A, int lda,
 // tensor-core m16n8k16 path. Columns containing tiny (< 2^-110), near-FLT_MAX (>= 2^127), or
 // non-finite values set their bit in `extreme_col_mask`, stage zero into `s_h` so MMA never sees
 // Inf, and evaluate their exact FP32 dot product in the epilogue.
+// For fp16, a staged element with |x| > 65504 (or non-finite) would saturate to Inf, so the block
+// votes on it with the barrier that already follows staging and, if any thread saw one, replaces the
+// whole product with the exact FP32 dot product in the epilogue.
 template <int M, int N, int K, bool Accumulate, int kWarps = kChunkedWarps, typename T = __half,
           bool TA = false>
 __device__ __forceinline__ void SmemGemmFp32State(float* C, int ldc, const T* A, int lda,
@@ -381,6 +384,9 @@ __device__ __forceinline__ void SmemGemmFp32State(float* C, int ldc, const T* A,
     acc[i][0] = acc[i][1] = acc[i][2] = acc[i][3] = 0.0f;
   }
 
+  bool fp16_overflow = false;
+  bool any_fp16_overflow = false;
+
   auto slice_elem = [&](float sf, int c, int slice) -> T {
     if constexpr (kIsBf16) {
       const int abits = __float_as_int(fabsf(sf));
@@ -407,6 +413,7 @@ __device__ __forceinline__ void SmemGemmFp32State(float* C, int ldc, const T* A,
     } else {
       (void)c;
       (void)slice;
+      fp16_overflow = fp16_overflow || __float_as_int(fabsf(sf)) > 0x477fe000;
       return FloatToElem<T>(sf);
     }
   };
@@ -428,7 +435,11 @@ __device__ __forceinline__ void SmemGemmFp32State(float* C, int ldc, const T* A,
         s_h[r * lds_h + c] = slice_elem(S[r * lds_f + c], c, slice);
       }
     }
-    __syncthreads();
+    if constexpr (kIsBf16) {
+      __syncthreads();
+    } else {
+      any_fp16_overflow = __syncthreads_or(fp16_overflow ? 1 : 0) != 0;
+    }
 
     if (m_group < kMTiles) {
       for (int k0 = 0; k0 < K; k0 += 16) {
@@ -456,11 +467,12 @@ __device__ __forceinline__ void SmemGemmFp32State(float* C, int ldc, const T* A,
     if constexpr (kIsBf16) {
       return ((extreme_col_mask[c >> 5] >> (c & 31)) & 1u) != 0u;
     } else {
-      return false;
+      (void)c;
+      return any_fp16_overflow;
     }
   };
 
-  bool any_extreme = false;
+  bool any_extreme = any_fp16_overflow;
   if constexpr (kIsBf16) {
 #pragma unroll
     for (int w = 0; w < kMaskWords; ++w) {
@@ -507,18 +519,16 @@ __device__ __forceinline__ void SmemGemmFp32State(float* C, int ldc, const T* A,
     }
   }
 
-  if constexpr (kIsBf16) {
-    if (any_extreme) {
-      for (int idx = tid; idx < M * N; idx += kChunkedThreads) {
-        const int m = idx / N, c = idx % N;
-        if (is_extreme_col(c)) {
-          float sum = 0.0f;
-          for (int k = 0; k < K; ++k) {
-            const float a_val = ElemToFloat(TA ? A[k * lda + m] : A[m * lda + k]);
-            sum += a_val * S[k * lds_f + c];
-          }
-          StoreC(C + m * ldc + c, (Accumulate ? LoadC(C + m * ldc + c) : 0.0f) + sum);
+  if (any_extreme) {
+    for (int idx = tid; idx < M * N; idx += kChunkedThreads) {
+      const int m = idx / N, c = idx % N;
+      if (is_extreme_col(c)) {
+        float sum = 0.0f;
+        for (int k = 0; k < K; ++k) {
+          const float a_val = ElemToFloat(TA ? A[k * lda + m] : A[m * lda + k]);
+          sum += a_val * S[k * lds_f + c];
         }
+        StoreC(C + m * ldc + c, (Accumulate ? LoadC(C + m * ldc + c) : 0.0f) + sum);
       }
     }
   }

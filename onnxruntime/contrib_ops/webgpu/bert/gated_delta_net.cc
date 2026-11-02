@@ -55,7 +55,8 @@ GatedDeltaNet::GatedDeltaNet(const OpKernelInfo& info) : WebGpuKernel(info) {
   qwen_gate_ = gate_activation == "softplus" || gate_activation == "qwen";
   kda_gate_ = gate_activation == "sigmoid" || gate_activation == "kda";
   gate_lower_bound_ = info.GetAttrOrDefault<float>("gate_lower_bound", -5.0f);
-  ORT_ENFORCE(std::isfinite(gate_lower_bound_), "gate_lower_bound must be finite");
+  ORT_ENFORCE(std::isfinite(gate_lower_bound_) && gate_lower_bound_ < 0.0f,
+              "gate_lower_bound must be finite and negative");
   const auto beta_activation = info.GetAttrOrDefault<std::string>("beta_activation", "none");
   ORT_ENFORCE(beta_activation == "none" || beta_activation == "sigmoid",
               "beta_activation must be one of: none, sigmoid");

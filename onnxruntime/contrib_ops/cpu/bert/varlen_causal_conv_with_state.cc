@@ -114,6 +114,12 @@ Status VarlenCausalConvWithState<T>::Compute(OpKernelContext* context) const {
   const T* bias_data = bias_tensor != nullptr ? bias_tensor->Data<T>() : nullptr;
   const T* init_state_data = initial_state_tensor->Data<T>();
   const int32_t* cu_seqlens = cu_seqlens_tensor->Data<int32_t>();
+  ORT_RETURN_IF_NOT(cu_seqlens[0] == 0 && cu_seqlens[batch_size] == total_tokens,
+                    "cumulative_sequence_length must start at 0 and end at total_tokens");
+  for (int64_t b = 0; b < batch_size; ++b) {
+    ORT_RETURN_IF_NOT(cu_seqlens[b] <= cu_seqlens[b + 1],
+                      "cumulative_sequence_length must be non-decreasing");
+  }
   const int32_t* capture_counts =
       capture_count_tensor != nullptr ? capture_count_tensor->Data<int32_t>() : nullptr;
   T* output_data = output_tensor->MutableData<T>();
