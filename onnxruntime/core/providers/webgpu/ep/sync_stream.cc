@@ -87,6 +87,13 @@ common::Status CopyTensorOnWebGpuStream(const OrtSyncStream* stream, const void*
   return transfer.CopyTensor(src_data, src_is_gpu, dst_data, dst_is_gpu, bytes);
 }
 
+void UploadTensorsOnWebGpuStream(const OrtSyncStream* stream, int device_id,
+                                 gsl::span<const BufferManager::UploadInfo> uploads) {
+  auto& ep = WebGpuSyncStream::From(stream).ep_;
+  ORT_ENFORCE(ep.GetDeviceId() == device_id, "WebGPU upload destination does not match the stream device.");
+  ep.BufferManager().UploadBatch(ep.Recording(), uploads);
+}
+
 }  // namespace ep
 }  // namespace webgpu
 }  // namespace onnxruntime

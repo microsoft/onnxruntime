@@ -158,7 +158,6 @@ std::unordered_map<ReduceOpType, std::string> reduce_op_code_map = {
     {ReduceOpType::Sum, "bestValue + candidate"},
     {ReduceOpType::Prod, "bestValue * candidate"},
     {ReduceOpType::SumSquare, "bestValue + candidate * candidate"},
-    {ReduceOpType::LogSumExp, "bestValue + output_value_t(exp(f32(candidate)))"},
     {ReduceOpType::L1, "bestValue + abs(candidate)"},
     {ReduceOpType::L2, "bestValue + candidate * candidate"},
     {ReduceOpType::LogSum, "bestValue + candidate"},
@@ -171,7 +170,6 @@ std::unordered_map<ReduceOpType, std::string> reduce_op_shared_code_map = {
     {ReduceOpType::Sum, "bestValue + candidate"},
     {ReduceOpType::Prod, "bestValue * candidate"},
     {ReduceOpType::SumSquare, "bestValue + candidate"},
-    {ReduceOpType::LogSumExp, "bestValue + candidate"},
     {ReduceOpType::L1, "bestValue + candidate"},
     {ReduceOpType::L2, "bestValue + candidate"},
     {ReduceOpType::LogSum, "bestValue + candidate"},
@@ -184,7 +182,6 @@ std::unordered_map<ReduceOpType, std::string> reduce_op_init_values_map = {
     {ReduceOpType::Sum, "0"},
     {ReduceOpType::Prod, "1"},
     {ReduceOpType::SumSquare, "0"},
-    {ReduceOpType::LogSumExp, "0"},
     {ReduceOpType::L1, "0"},
     {ReduceOpType::L2, "0"},
     {ReduceOpType::LogSum, "0"},
@@ -193,15 +190,34 @@ std::unordered_map<ReduceOpType, std::string> reduce_op_init_values_map = {
 std::unordered_map<ReduceOpType, std::string> reduce_op_output_values_map = {
     {ReduceOpType::Max, "bestValue"},
     {ReduceOpType::Min, "bestValue"},
-    {ReduceOpType::Mean, "bestValue"},
+    {ReduceOpType::Mean, "bestValue / acc_t(uniforms.reduceSize)"},
     {ReduceOpType::Sum, "bestValue"},
     {ReduceOpType::Prod, "bestValue"},
     {ReduceOpType::SumSquare, "bestValue"},
-    {ReduceOpType::LogSumExp, "log(f32(bestValue))"},
     {ReduceOpType::L1, "bestValue"},
     {ReduceOpType::L2, "sqrt(f32(bestValue))"},
     {ReduceOpType::LogSum, "log(f32(bestValue))"},
 };
+
+// LogSumExp is computed as max + log(sum(exp(x - max))) so exp() cannot overflow. As in the CPU
+// kernel, an infinite max is returned as-is and -inf elements are skipped (exp(-inf) is 0), which
+// avoids inf - inf = NaN. Inf literals are invalid in WGSL const-expressions, so the empty-input
+// result (-inf) comes from a runtime log(0).
+constexpr const char kLogSumExpNaiveHeader[] =
+    "var lse_max = f32(0);\n"
+    "var lse_sum = f32(0);\n"
+    "var lse_any = false;\n";
+constexpr const char kLogSumExpNaiveBody[] =
+    "let lse_x = f32(current_element);\n"
+    "if (!lse_any || lse_x > lse_max) {\n"
+    "  if (lse_any && lse_sum != 0.0) { lse_sum *= exp(lse_max - lse_x); }\n"
+    "  lse_max = lse_x;\n"
+    "  lse_any = true;\n"
+    "}\n"
+    "if (bitcast<u32>(lse_x) != 0xff800000u) { lse_sum += exp(lse_x - lse_max); }\n";
+constexpr const char kLogSumExpNaiveFooter[] =
+    "let lse_max_is_inf = (bitcast<u32>(lse_max) & 0x7fffffffu) == 0x7f800000u;\n"
+    "let output_value = output_value_t(select(lse_max + log(lse_sum), lse_max, lse_max_is_inf));\n";
 
 std::unordered_map<ReduceOpType, ReduceOpSpecificCode> reduce_op_naive_code_map = {
     {ReduceOpType::Max, {"var max_element = first_element;", "max_element = max(max_element, current_element);", "let output_value = output_value_t(max_element);"}},
@@ -209,10 +225,10 @@ std::unordered_map<ReduceOpType, ReduceOpSpecificCode> reduce_op_naive_code_map 
     {ReduceOpType::Mean, {"var sum = f32(0);", "sum += f32(current_element);", "let output_value = output_value_t(sum / f32(uniforms.reduce_size));"}},
     {ReduceOpType::Sum, {"var sum = f32(0);", "sum += f32(current_element);", "let output_value = output_value_t(sum);"}},
     {ReduceOpType::Prod, {"var prod = f32(1);", "prod *= f32(current_element);", "let output_value = output_value_t(prod);"}},
-    {ReduceOpType::SumSquare, {"var sum_square = f32(0);", "sum_square += f32(current_element * current_element);", "let output_value = output_value_t(sum_square);"}},
-    {ReduceOpType::LogSumExp, {"var log_sum_exp = f32(0);", "log_sum_exp += exp(f32(current_element));", "let output_value = output_value_t(log(log_sum_exp));"}},
+    {ReduceOpType::SumSquare, {"var sum_square = f32(0);", "sum_square += f32(current_element) * f32(current_element);", "let output_value = output_value_t(sum_square);"}},
+    {ReduceOpType::LogSumExp, {kLogSumExpNaiveHeader, kLogSumExpNaiveBody, kLogSumExpNaiveFooter}},
     {ReduceOpType::L1, {"var l1 = f32(0);", "l1 += abs(f32(current_element));", "let output_value = output_value_t(l1);"}},
-    {ReduceOpType::L2, {"var l2 = f32(0);", "l2 += f32(current_element * current_element);", "let output_value = output_value_t(sqrt(l2));"}},
+    {ReduceOpType::L2, {"var l2 = f32(0);", "l2 += f32(current_element) * f32(current_element);", "let output_value = output_value_t(sqrt(l2));"}},
     {ReduceOpType::LogSum, {"var sum = f32(0);", "sum += f32(current_element);", "let output_value = output_value_t(log(sum));"}},
     {ReduceOpType::ArgMax, {"var best_element = first_element; var best_index = u32(0);", "if (current_element > best_element) { best_element = current_element; best_index = last_index; };", "let output_value = output_value_t(best_index);"}},
     {ReduceOpType::ArgMin, {"var best_element = first_element;; var best_index = u32(0);", "if (current_element < best_element) { best_element = current_element; best_index = last_index; };", "let output_value = output_value_t(best_index);"}},
@@ -282,34 +298,76 @@ Status ReduceNaiveProgram::GenerateShaderCode(ShaderHelper& shader) const {
 Status ReduceSharedProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& input = shader.AddInput("_A", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+  const bool is_log_sum_exp = reduce_op_type_ == ReduceOpType::LogSumExp;
+  // f16 is accumulated in f32 so sums, sums of squares and products don't overflow f16's range.
+  const bool accumulate_in_f32 = is_log_sum_exp || Outputs()[0].var_type == ProgramVariableDataType::Float16;
   shader.AdditionalImplementation()
-      << "var<workgroup> aBestValues : array<output_value_t, " << workgroup_size_ << ">;\n\n"
+      << "alias acc_t = " << (accumulate_in_f32 ? "f32" : "output_value_t") << ";\n"
+      << "var<workgroup> aBestValues : array<acc_t, " << workgroup_size_ << ">;\n\n"
       << "fn DIV_CEIL(a : u32, b : u32) -> u32 {\n"
       << "  return ((a - 1u) / b + 1u);\n"
       << "}\n";
+
+  // Tree-reduces each invocation's bestValue across the workgroup. Afterwards aBestValues[0] holds
+  // the result and is visible to every invocation.
+  const auto reduce_across_workgroup = [&](std::string_view combine) {
+    shader.MainFunctionBody() << "aBestValues[local_idx] = bestValue;\n"
+                              << "workgroupBarrier();\n"
+                              << "{\n"
+                              << "  var reduceSize = min(length, " << workgroup_size_ << ");\n"
+                              << "  for (var currentSize = reduceSize / 2; reduceSize > 1; currentSize = reduceSize / 2) {\n"
+                              << "    let interval = DIV_CEIL(reduceSize, 2u);\n"
+                              << "    if (local_idx < currentSize) {\n"
+                              << "      let candidate = aBestValues[local_idx + interval];\n"
+                              << "      bestValue = " << combine << ";\n"
+                              << "      aBestValues[local_idx] = bestValue;\n"
+                              << "    }\n"
+                              << "    reduceSize = interval;\n"
+                              << "    workgroupBarrier();\n"
+                              << "  }\n"
+                              << "}\n";
+  };
+
   shader.MainFunctionBody() << "let outputIndex = global_idx / " << workgroup_size_ << ";\n"
                             << "let offset = outputIndex * uniforms.reduceSize;\n"
-                            << "var bestValue = output_value_t(" << reduce_op_init_values_map[reduce_op_type_] << ");\n"
-                            << "let length = uniforms.reduceSize;\n"
+                            << "let length = uniforms.reduceSize;\n";
+
+  if (is_log_sum_exp) {
+    // max + log(sum(exp(x - max))) so exp() cannot overflow. Matches the CPU kernel: an infinite max
+    // is returned as-is, and -inf elements are skipped to avoid inf - inf = NaN.
+    constexpr std::string_view kMaxCombine = "select(bestValue, candidate, candidate > bestValue)";
+    shader.MainFunctionBody() << "var bestValue = acc_t(" << input.GetByOffset("offset") << ");\n"
+                              << "for (var k = local_idx; k < length; k += " << workgroup_size_ << ") {\n"
+                              << "  let candidate = acc_t(" << input.GetByOffset("offset + k") << ");\n"
+                              << "  bestValue = " << kMaxCombine << ";\n"
+                              << "}\n";
+    reduce_across_workgroup(kMaxCombine);
+    shader.MainFunctionBody() << "let rowMax = aBestValues[0];\n"
+                              << "workgroupBarrier();\n"
+                              << "bestValue = acc_t(0);\n"
+                              << "for (var k = local_idx; k < length; k += " << workgroup_size_ << ") {\n"
+                              << "  let x = acc_t(" << input.GetByOffset("offset + k") << ");\n"
+                              << "  if (bitcast<u32>(x) != 0xff800000u) {\n"
+                              << "    bestValue += exp(x - rowMax);\n"
+                              << "  }\n"
+                              << "}\n";
+    reduce_across_workgroup("bestValue + candidate");
+    shader.MainFunctionBody() << "if (local_idx == 0) {\n"
+                              << "  let rowMaxIsInf = (bitcast<u32>(rowMax) & 0x7fffffffu) == 0x7f800000u;\n"
+                              << "  let outputValue = output_value_t(select(rowMax + log(bestValue), rowMax, rowMaxIsInf));\n"
+                              << "  " << output.SetByOffset("outputIndex", "outputValue") << ";\n"
+                              << "}\n";
+    return Status::OK();
+  }
+
+  shader.MainFunctionBody() << "var bestValue = acc_t(" << reduce_op_init_values_map[reduce_op_type_] << ");\n"
                             << "for (var k = local_idx; k < length; k += " << workgroup_size_ << ") {\n"
-                            << "  let candidate = output_value_t(" << input.GetByOffset("offset + k") << ");\n"
+                            << "  let candidate = acc_t(" << input.GetByOffset("offset + k") << ");\n"
                             << "  bestValue = " << reduce_op_code_map[reduce_op_type_] << ";\n"
-                            << "}\n"
-                            << "aBestValues[local_idx] = bestValue;\n"
-                            << "workgroupBarrier();\n"
-                            << "var reduceSize = min(length, " << workgroup_size_ << ");\n"
-                            << "for (var currentSize = reduceSize / 2; reduceSize > 1; currentSize = reduceSize / 2) {\n"
-                            << "  let interval = DIV_CEIL(reduceSize, 2u);\n"
-                            << "  if (local_idx < currentSize) {\n"
-                            << "    let candidate = aBestValues[local_idx + interval];\n"
-                            << "    bestValue = " << reduce_op_shared_code_map[reduce_op_type_] << ";\n"
-                            << "    aBestValues[local_idx] = bestValue;\n"
-                            << "  }\n"
-                            << "  reduceSize = interval;\n"
-                            << "  workgroupBarrier();\n"
-                            << "}\n"
-                            << "if (local_idx == 0) {\n"
-                            << "  let outputValue = output_value_t(" << (reduce_op_type_ == ReduceOpType::Mean ? "(bestValue / output_element_t(uniforms.reduceSize))" : reduce_op_output_values_map[reduce_op_type_]) << ");\n"
+                            << "}\n";
+  reduce_across_workgroup(reduce_op_shared_code_map[reduce_op_type_]);
+  shader.MainFunctionBody() << "if (local_idx == 0) {\n"
+                            << "  let outputValue = output_value_t(" << reduce_op_output_values_map[reduce_op_type_] << ");\n"
                             << "  " << output.SetByOffset("outputIndex", "outputValue") << ";\n"
                             << "}\n";
   return Status::OK();

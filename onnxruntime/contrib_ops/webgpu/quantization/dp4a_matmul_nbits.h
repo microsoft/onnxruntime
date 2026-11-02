@@ -4,6 +4,7 @@
 #pragma once
 
 #include <limits>
+#include <optional>
 
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
@@ -13,6 +14,12 @@ namespace contrib {
 namespace webgpu {
 
 using namespace onnxruntime::webgpu;
+
+// Invocation-local workspace, reusable only by projections of the same input tensor.
+struct DP4AQuantizedInput {
+  std::optional<Tensor> values;
+  std::optional<Tensor> scales;
+};
 
 class DP4AMatMulQuantizeProgram final : public Program<DP4AMatMulQuantizeProgram> {
  public:
@@ -59,23 +66,23 @@ class DP4AMatMulNBitsProgram final : public Program<DP4AMatMulNBitsProgram> {
   bool acc_f32_;
 };
 
-class DP4AMatMulNBitsSmallMProgram final : public Program<DP4AMatMulNBitsSmallMProgram> {
+class DP4AMatMulNBitsKParallelProgram final : public Program<DP4AMatMulNBitsKParallelProgram> {
  public:
-  DP4AMatMulNBitsSmallMProgram(uint32_t tile_size_k_vec, uint32_t tile_size, uint32_t nbits,
-                               bool has_zero_points, bool has_bias,
-                               bool has_weight_idx, bool has_weight_idx_indirect, bool single_scale_weights,
-                               bool broadcast_a_row = false,
-                               bool acc_f32 = false) : Program{"DP4AMatMulNBitsSmallMProgram"},
-                                                       tile_size_k_vec_(tile_size_k_vec),
-                                                       tile_size_(tile_size),
-                                                       nbits_(nbits),
-                                                       has_bias_(has_bias),
-                                                       has_zero_points_(has_zero_points),
-                                                       has_weight_idx_(has_weight_idx),
-                                                       has_weight_idx_indirect_(has_weight_idx_indirect),
-                                                       single_scale_weights_(single_scale_weights),
-                                                       broadcast_a_row_(broadcast_a_row),
-                                                       acc_f32_(acc_f32) {}
+  DP4AMatMulNBitsKParallelProgram(uint32_t tile_size_k_vec, uint32_t tile_size, uint32_t nbits,
+                                  bool has_zero_points, bool has_bias,
+                                  bool has_weight_idx, bool has_weight_idx_indirect, bool single_scale_weights,
+                                  bool broadcast_a_row = false,
+                                  bool acc_f32 = false) : Program{"DP4AMatMulNBitsKParallelProgram"},
+                                                          tile_size_k_vec_(tile_size_k_vec),
+                                                          tile_size_(tile_size),
+                                                          nbits_(nbits),
+                                                          has_bias_(has_bias),
+                                                          has_zero_points_(has_zero_points),
+                                                          has_weight_idx_(has_weight_idx),
+                                                          has_weight_idx_indirect_(has_weight_idx_indirect),
+                                                          single_scale_weights_(single_scale_weights),
+                                                          broadcast_a_row_(broadcast_a_row),
+                                                          acc_f32_(acc_f32) {}
   Status GenerateShaderCode(ShaderHelper& sh) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"batch_count", ProgramUniformVariableDataType::Uint32},
@@ -117,22 +124,18 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
                                   onnxruntime::webgpu::ComputeContext& context,
                                   Tensor* y,
                                   const uint32_t weight_index,
-                                  const Tensor* weight_index_indirect = nullptr);
+                                  const Tensor* weight_index_indirect = nullptr,
+                                  DP4AQuantizedInput* quantized_input = nullptr);
 
 // The optional M / has_weight_idx_indirect / y arguments fold the original
 // dispatch-precondition (DP4A is preferred when M is large enough, or
 // unconditionally on FP32 outputs and Qualcomm GPUs) into the feasibility check
 // so callers don't need a separate wrapper. Defaults make the precondition
 // trivially satisfied for callers that only want the feasibility check.
-bool CanApplyDP4AMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& context,
-                                   uint64_t accuracy_level,
-                                   uint32_t block_size,
-                                   uint32_t N,
-                                   uint32_t K,
-                                   uint32_t components_k,
+bool CanApplyDP4AMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& context, uint64_t accuracy_level,
+                                   uint32_t block_size, uint32_t N, uint32_t K, uint32_t components_k,
                                    uint32_t M = std::numeric_limits<uint32_t>::max(),
-                                   bool has_weight_idx_indirect = false,
-                                   const Tensor* y = nullptr);
+                                   bool has_weight_idx_indirect = false, const Tensor* y = nullptr);
 
 }  // namespace webgpu
 }  // namespace contrib
