@@ -32,6 +32,7 @@
 #include "core/session/plugin_ep/ep_event_profiling.h"
 #include "core/session/ort_apis.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/platform/env.h"
 #include "core/providers/partitioning_utils.h"
 
 namespace onnxruntime {
@@ -894,10 +895,11 @@ bool PluginExecutionProvider::ConcurrentRunSupported() const {
 
 bool PluginExecutionProvider::SupportsMoeOffload() const {
   if (Type() == kCudaExecutionProvider) {
-    if (const char* test_sm = std::getenv("ORT_QMOE_TEST_DEVICE_SM"); test_sm != nullptr && *test_sm != '\0') {
+    const std::string test_sm = Env::Default().GetEnvironmentVar("ORT_QMOE_TEST_DEVICE_SM");
+    if (!test_sm.empty()) {
       char* end = nullptr;
-      const long parsed_sm = std::strtol(test_sm, &end, 10);
-      if (end != test_sm && *end == '\0') {
+      const long parsed_sm = std::strtol(test_sm.c_str(), &end, 10);
+      if (end != test_sm.c_str() && *end == '\0') {
         return parsed_sm >= 80;
       }
     }

@@ -2456,23 +2456,14 @@ void Int4Fc1SwiGluRange(int64_t hidden, int64_t inter, const Int4ExpertView& vie
                           view.weight_type, view.deferred_scale);
     }
     for (int64_t r = 0; r < m; ++r) {
-      float* row_tmp = tmp + r * kChunk;
+      const float* row_tmp = tmp + r * kChunk;
       float* row_out = inter_reordered + r * inter;
-#if QMOE_COMPILER_SUPPORTS_AVX2
-      if (use_f16c) {
-        detail::Avx2RoundFp16InPlace(row_tmp, ne - nb);
-      }
-#endif
       for (int64_t n = nb; n < ne; n += 2) {
         const int64_t j = n / 2;
         const int pos = view.weights_are_prepacked ? ReorderedPosition(static_cast<int>(j & 31))
                                                    : RawInt4ReorderedPosition(static_cast<int>(j & 31));
-        const float gate_projection = row_tmp[n - nb];
-        const float up_projection = row_tmp[(n - nb) + 1];
-        float gate = (fp16_boundaries && !bf16_boundaries && !use_f16c) ? BoundaryFloat16::Round(gate_projection)
-                                                                        : gate_projection;
-        float value = (fp16_boundaries && !bf16_boundaries && !use_f16c) ? BoundaryFloat16::Round(up_projection)
-                                                                         : up_projection;
+        float gate = row_tmp[n - nb];
+        float value = row_tmp[(n - nb) + 1];
         if (has_limit) {
           gate = std::min(gate, swiglu.limit);
           value = std::clamp(value, -swiglu.limit, swiglu.limit);

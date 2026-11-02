@@ -3351,7 +3351,14 @@ __global__ void Fc2RouteScalarKernel(Int3MoeParams params) {
   }
   value = WarpReduceSum(value);
   if (lane == 0) {
-    if (params.fc2.bias) value += static_cast<float>(static_cast<const T*>(params.fc2.bias)[weight_row]);
+    if (params.fc2.bias) {
+      const size_t orig_route =
+          params.fc2_bias_route_ids ? static_cast<size_t>(params.fc2_bias_route_ids[route]) : route;
+      const int bias_expert =
+          params.fc2_bias_expert_indices ? params.fc2_bias_expert_indices[orig_route] : expert;
+      const size_t bias_row = static_cast<size_t>(bias_expert) * params.hidden + column;
+      value += static_cast<float>(static_cast<const T*>(params.fc2.bias)[bias_row]);
+    }
     static_cast<T*>(params.fc2_partial)[route * params.hidden + column] = static_cast<T>(value);
   }
 }
@@ -3657,7 +3664,12 @@ __global__ void __launch_bounds__(128, 6) Fc2RouteFastVecKernel(Int3MoeParams pa
     }
     if (sub_lane == 0) {
       if (params.fc2.bias) {
-        const T* b_ptr = static_cast<const T*>(params.fc2.bias) + w_row0;
+        const size_t orig_route1 =
+            params.fc2_bias_route_ids ? static_cast<size_t>(__ldg(&params.fc2_bias_route_ids[route1]))
+                                      : static_cast<size_t>(route1);
+        const int bias_exp1 =
+            params.fc2_bias_expert_indices ? __ldg(&params.fc2_bias_expert_indices[orig_route1]) : exp_id;
+        const T* b_ptr = static_cast<const T*>(params.fc2.bias) + static_cast<size_t>(bias_exp1) * params.hidden + col0;
 #pragma unroll
         for (int r = 0; r < kColsPerHalfWarp; ++r) {
           v1[r] += static_cast<float>(b_ptr[r]);
@@ -3680,7 +3692,12 @@ __global__ void __launch_bounds__(128, 6) Fc2RouteFastVecKernel(Int3MoeParams pa
   }
   if (sub_lane == 0) {
     if (params.fc2.bias) {
-      const T* b_ptr = static_cast<const T*>(params.fc2.bias) + w_row0;
+      const size_t orig_route0 =
+          params.fc2_bias_route_ids ? static_cast<size_t>(__ldg(&params.fc2_bias_route_ids[route0]))
+                                    : static_cast<size_t>(route0);
+      const int bias_exp0 =
+          params.fc2_bias_expert_indices ? __ldg(&params.fc2_bias_expert_indices[orig_route0]) : exp_id;
+      const T* b_ptr = static_cast<const T*>(params.fc2.bias) + static_cast<size_t>(bias_exp0) * params.hidden + col0;
 #pragma unroll
       for (int r = 0; r < kColsPerHalfWarp; ++r) {
         v0[r] += static_cast<float>(b_ptr[r]);
@@ -3854,7 +3871,11 @@ __global__ void __launch_bounds__(256) Fc2RouteFastKernel(Int3MoeParams params) 
   }
   if (sub_lane == 0) {
     if (params.fc2.bias) {
-      const T* b_ptr = static_cast<const T*>(params.fc2.bias) + w_row0;
+      const size_t orig_route =
+          params.fc2_bias_route_ids ? static_cast<size_t>(__ldg(&params.fc2_bias_route_ids[route])) : route;
+      const int bias_exp_id =
+          params.fc2_bias_expert_indices ? __ldg(&params.fc2_bias_expert_indices[orig_route]) : exp_id;
+      const T* b_ptr = static_cast<const T*>(params.fc2.bias) + static_cast<size_t>(bias_exp_id) * params.hidden + col0;
       v0 += static_cast<float>(b_ptr[0]);
       if (has_col1) v1 += static_cast<float>(b_ptr[1]);
     }

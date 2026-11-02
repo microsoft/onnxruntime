@@ -687,6 +687,8 @@ struct Int3MoeParams {
   bool is_bfloat16 = false;
   bool tc_prepacked = false;
   const int* source_route_ids = nullptr;
+  const int* fc2_bias_route_ids = nullptr;
+  const int* fc2_bias_expert_indices = nullptr;
   bool input_is_gathered = false;
   int total_routes_override = 0;
 };

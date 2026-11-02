@@ -637,6 +637,10 @@ class QMoESessionController {
   std::shared_ptr<QMoESessionLandingRing> LandingRing() const { return landing_ring_; }
   const std::shared_ptr<CudaDeviceMemoryBudget>& PinnedBudget() const noexcept { return pinned_budget_; }
   int DeviceId() const noexcept { return device_id_; }
+  uint64_t CurrentRunId() const noexcept {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return current_run_id_;
+  }
 
   std::shared_ptr<BoundedPinnedPool> GetOrCreatePinnedPool(size_t limit) {
     std::lock_guard<std::mutex> lock(pinned_pool_mutex_);

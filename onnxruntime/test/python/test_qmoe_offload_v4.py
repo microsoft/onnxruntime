@@ -2941,7 +2941,9 @@ int main() {
                     )
                 del sess_seq_promo, sess_int4_ref2
                 gc.collect()
-            for layer_id, promo_cnt in _resident_promotions_per_layer(seq_promo_cap[0]).items():
+            promo_by_layer = _resident_promotions_per_layer(seq_promo_cap[0])
+            self.assertEqual(sorted(promo_by_layer), [0, 1])
+            for layer_id, promo_cnt in promo_by_layer.items():
                 self.assertGreater(
                     promo_cnt,
                     0,
@@ -3284,6 +3286,298 @@ int main() {
                     self._run_fp16(s_sm75_auto, x_75, r_75),
                 )
                 del s_sm75_auto, s_sm75_ref
+
+            # 10. Prepacked FP16 INT4 parity (resident hits, CPU cold routes, CPU-disabled streaming, and tight
+            # working/pinned budget wave auto-sizing) + CUDA Graph capture/replay across INT4 and INT3.
+            dir_int4_fp16 = os.path.join(tmpdir, "int4_fp16_b32")
+            os.makedirs(dir_int4_fp16, exist_ok=True)
+            m_int4_fp16 = self._build_int_qmoe_model(
+                dir_int4_fp16,
+                layer_specs=[(4, 32, 1), (4, 32, 1)],
+                num_experts=8,
+                hidden_size=512,
+                inter_size=512,
+                top_k=2,
+                seed=2031,
+                with_bias=True,
+                use_fp16=True,
+                scale_range=(0.015, 0.045),
+            )
+            int4_fp16_slot = 442376 + 2048
+            fp16_bias_fixed = fixed_bytes + 2 * (8 * 512 * 2) + 8 * 2048
+            s_int4_fp16_ref = self._make_session(m_int4_fp16, {"session.moe.offload.mode": "disabled"})
+            s_int4_fp16_hybrid = self._make_session(
+                m_int4_fp16,
+                {
+                    "session.moe.offload.mode": "required",
+                    "session.moe.offload.placement": "adaptive",
+                    "session.moe.offload.device_expert_bytes": str(2 * fp16_bias_fixed + 12 * int4_fp16_slot),
+                    "session.moe.offload.popularity_file": "expert-profile.bin",
+                    # Tight working/pinned budgets (4 MiB / 1 MiB) force wave auto-sizing below the default 8-expert
+                    # wave (which would need > 7 MiB of GPU landing buffers alone).
+                    "session.moe.offload.device_working_bytes": str(4 * 1024 * 1024),
+                    "session.moe.offload.pinned_bytes": str(1 * 1024 * 1024),
+                },
+            )
+            s_int4_fp16_stream = self._make_session(
+                m_int4_fp16,
+                {
+                    "session.moe.offload.mode": "required",
+                    "session.moe.offload.placement": "static",
+                    "session.moe.offload.cpu_execution": "disabled",
+                    "session.moe.offload.device_expert_bytes": str(2 * fp16_bias_fixed + 6 * int4_fp16_slot),
+                    "session.moe.offload.device_working_bytes": str(4 * 1024 * 1024),
+                    "session.moe.offload.pinned_bytes": str(1 * 1024 * 1024),
+                },
+            )
+            for num_rows in (1, 4, 16):
+                x_f16 = rng.standard_normal((num_rows, 512), dtype=np.float32) * 0.5
+                r_f16 = rng.standard_normal((num_rows, 8), dtype=np.float32)
+                y_f16_ref = self._run_fp16(s_int4_fp16_ref, x_f16, r_f16)
+                self._assert_int_offload_parity(
+                    y_f16_ref,
+                    self._run_fp16(s_int4_fp16_hybrid, x_f16, r_f16),
+                    f"int4_fp16_hybrid(T={num_rows})",
+                )
+                self._assert_int_offload_parity(
+                    y_f16_ref,
+                    self._run_fp16(s_int4_fp16_stream, x_f16, r_f16),
+                    f"int4_fp16_stream(T={num_rows})",
+                )
+            del s_int4_fp16_stream, s_int4_fp16_hybrid
+
+            # CUDA Graph capture and replay for prepacked INT4 and raw INT3, updating captured GPU buffers in place
+            # and switching routes between resident hits and cold misses across replays.
+            cudart = _load_cudart()
+            if cudart is not None:
+                m_int4_cg = _wrap_qmoe_model_with_cast_io(m_int4, os.path.join(dir_int4, "model_cg.onnx"), 256, 8)
+                m_int3_cg = _wrap_qmoe_model_with_cast_io(m_int3, os.path.join(dir_int3_mix, "model_cg.onnx"), 256, 8)
+                s_int4_cg_ref = self._make_session(m_int4, {"session.moe.offload.mode": "disabled"})
+                s_int4_graph = self._make_session(
+                    m_int4_cg,
+                    {
+                        "session.moe.offload.mode": "required",
+                        "session.moe.offload.placement": "adaptive",
+                        "session.moe.offload.device_expert_bytes": str(budget_int4_adaptive),
+                        "session.moe.offload.popularity_file": "expert-profile.bin",
+                    },
+                    cuda_options={"enable_cuda_graph": "1"},
+                )
+                s_int3_cg_ref = self._make_session(m_int3, {"session.moe.offload.mode": "disabled"})
+                s_int3_graph = self._make_session(
+                    m_int3_cg,
+                    {
+                        "session.moe.offload.mode": "required",
+                        "session.moe.offload.placement": "adaptive",
+                        "session.moe.offload.device_expert_bytes": str(
+                            2 * fixed_bytes + 6 * int3_b32_slot + 6 * int3_b64_slot
+                        ),
+                        "session.moe.offload.popularity_file": "expert-profile.bin",
+                    },
+                    cuda_options={"enable_cuda_graph": "1"},
+                )
+                dev_id = self._device_id(self._selected_plugin_device())
+                x_ptr = ctypes.c_void_p()
+                r_ptr = ctypes.c_void_p()
+                self.assertEqual(cudart.cudaMalloc(ctypes.byref(x_ptr), ctypes.c_size_t(2 * 256 * 4)), 0)
+                self.assertEqual(cudart.cudaMalloc(ctypes.byref(r_ptr), ctypes.c_size_t(2 * 8 * 4)), 0)
+                try:
+                    b_int4 = s_int4_graph.io_binding()
+                    b_int4.bind_input("X_f32", "cuda", dev_id, np.float32, [2, 256], x_ptr.value)
+                    b_int4.bind_input("R_f32", "cuda", dev_id, np.float32, [2, 8], r_ptr.value)
+                    b_int4.bind_output("Y_f32", "cuda", dev_id)
+
+                    b_int3 = s_int3_graph.io_binding()
+                    b_int3.bind_input("X_f32", "cuda", dev_id, np.float32, [2, 256], x_ptr.value)
+                    b_int3.bind_input("R_f32", "cuda", dev_id, np.float32, [2, 8], r_ptr.value)
+                    b_int3.bind_output("Y_f32", "cuda", dev_id)
+
+                    route_patterns = (
+                        (0, 3),  # resident hits on layer 0
+                        (5, 7),  # cold misses on layer 0
+                        (0, 7),  # mixed resident hit + cold miss
+                        (2, 5),  # cold misses
+                    )
+                    for replay_idx, (e_a, e_b) in enumerate(route_patterns):
+                        x_g = _bfloat16_u16_to_float32(
+                            _float32_to_bfloat16_u16(rng.standard_normal((2, 256), dtype=np.float32) * 0.5)
+                        )
+                        r_g = np.full((2, 8), -20.0, dtype=np.float32)
+                        r_g[:, e_a] = 6.0
+                        r_g[:, e_b] = 5.0
+                        r_g = _bfloat16_u16_to_float32(_float32_to_bfloat16_u16(r_g))
+                        x_contig = np.ascontiguousarray(x_g, dtype=np.float32)
+                        r_contig = np.ascontiguousarray(r_g, dtype=np.float32)
+                        self.assertEqual(
+                            cudart.cudaMemcpy(x_ptr, x_contig.ctypes.data_as(ctypes.c_void_p), x_contig.nbytes, 1),
+                            0,
+                        )
+                        self.assertEqual(
+                            cudart.cudaMemcpy(r_ptr, r_contig.ctypes.data_as(ctypes.c_void_p), r_contig.nbytes, 1),
+                            0,
+                        )
+                        s_int4_graph.run_with_iobinding(b_int4)
+                        y_int4_cg = b_int4.copy_outputs_to_cpu()[0]
+                        self._assert_int_offload_parity(
+                            self._run_bf16(s_int4_cg_ref, x_g, r_g),
+                            y_int4_cg,
+                            f"int4_cuda_graph_replay(step={replay_idx})",
+                        )
+                        s_int3_graph.run_with_iobinding(b_int3)
+                        y_int3_cg = b_int3.copy_outputs_to_cpu()[0]
+                        self._assert_int_offload_parity(
+                            self._run_bf16(s_int3_cg_ref, x_g, r_g),
+                            y_int3_cg,
+                            f"int3_cuda_graph_replay(step={replay_idx})",
+                        )
+                finally:
+                    cudart.cudaFree(x_ptr)
+                    cudart.cudaFree(r_ptr)
+                del s_int3_graph, s_int3_cg_ref, s_int4_graph, s_int4_cg_ref
+            del s_int4_fp16_ref
+
+            # 11. FP16 INT3 FC2 bias cancellation regression: dot product 4095.0 + fc2_bias -4096.0 must equal -1.0
+            # (not 0.0 from premature FP16 rounding before adding bias) on both resident GPU and cold CPU routes.
+            dir_int3_cancel = os.path.join(tmpdir, "int3_fp16_bias_cancel")
+            os.makedirs(dir_int3_cancel, exist_ok=True)
+            m_cancel_path = self._build_int_qmoe_model(
+                dir_int3_cancel,
+                layer_specs=[(3, 32, 0)],
+                num_experts=2,
+                hidden_size=128,
+                inter_size=128,
+                top_k=1,
+                with_bias=True,
+                use_fp16=True,
+            )
+            m_cancel = onnx.load_model(m_cancel_path, load_external_data=False)
+            # Packed 3-bit code 4 (0b100 -> centered 0) in every weight byte: (0x92, 0x24, 0x49) repeating
+            zero_int3_row = np.tile(np.array([0x92, 0x24, 0x49], dtype=np.uint8), 16)
+            fc1_w_c = np.tile(zero_int3_row, (2, 256, 1))
+            # Set FC2 weight codes to 5 (+1 centered) for the first 63 features and 0 (-4 centered) for remaining:
+            # Simpler: set FC1 weights to 0 (code 4) and use fc1_bias to produce exact intermediate activation!
+            # For j=0..63: gate_bias=+100 (so silu(gate) = 100), up_bias = 65.0 - 1.0 = 64.0 -> inter[0..62] = 65.0
+            # Wait: even simpler! With gate_bias=0 for j>=1 (up_bias=-1 so inter[1..127]=0), and for j=0:
+            # wait: in INT3 FC2, each weight code is in {-4..3}. If inter[0..127] = 1.0 for features 0..62 (63 features)
+            # and inter[63] = 0.75, and FC2 weight code = +1 (code 5) with scale = 64.0:
+            # 63 * 64.0 + 0.75 * 64.0 = 4032.0 + 48.0 = 4080.0 (or with scale=1.0: 63 * 64.0 + 63.0 = 4095.0!).
+            # Specifically: inter[0] = 4032.0, inter[1] = 63.0, inter[2..127] = 0.0, FC2 weight = +1 (code 5) on
+            # features 0 and 1, FC2 scale = 1.0 -> exact dot product = 4032.0 + 63.0 = 4095.0!
+            fc2_w_c = np.tile(zero_int3_row, (2, 128, 1))
+            # For features 0 and 1 in 3-bit packing: code0=5 (101), code1=5 (101), code2=4 (100) -> byte0 = 5 | (5<<3) | ((4&3)<<6) = 5 + 40 + 0 = 45 (0x2D)
+            fc2_w_c[:, :, 0] = 0x2D
+            fc1_s_c = np.ones((2, 256, 4), dtype=np.float16).view(np.uint16)
+            fc2_s_c = np.ones((2, 128, 4), dtype=np.float16).view(np.uint16)
+            fc1_b_c = np.zeros((2, 256), dtype=np.float16)
+            # Set up_bias = -1.0 everywhere so inter[j] = 0 by default (since beta=1.0 in QMoE SwiGLU? Wait: default beta=0 in QMoE!).
+            # In QMoE node, activation_alpha and activation_beta default to 1.0 and 0.0!
+            # When gate_bias = 32.0 (silu(32.0) == 32.0 in float32) and up_bias = 4032.0 / 32.0 = 126.0 for j=0,
+            # and gate_bias = 32.0, up_bias = 63.0 / 32.0 = 1.96875 for j=1:
+            # Then inter[0] = 32.0 * 126.0 = 4032.0, inter[1] = 32.0 * 1.96875 = 63.0, and inter[2..127] = 0.0!
+            fc1_b_c[:, 0] = np.float16(32.0)
+            fc1_b_c[:, 1] = np.float16(126.0)
+            fc1_b_c[:, 2] = np.float16(32.0)
+            fc1_b_c[:, 3] = np.float16(1.96875)
+            fc2_b_c = np.full((2, 128), -4096.0, dtype=np.float16)
+            for init in m_cancel.graph.initializer:
+                init.ClearField("external_data")
+                init.data_location = TensorProto.DEFAULT
+                if init.name.endswith("fc1_experts_weights"):
+                    init.raw_data = fc1_w_c.tobytes()
+                elif init.name.endswith("fc2_experts_weights"):
+                    init.raw_data = fc2_w_c.tobytes()
+                elif init.name.endswith("fc1_scales"):
+                    init.raw_data = fc1_s_c.tobytes()
+                elif init.name.endswith("fc2_scales"):
+                    init.raw_data = fc2_s_c.tobytes()
+                elif init.name.endswith("fc1_bias"):
+                    init.raw_data = fc1_b_c.view(np.uint16).tobytes()
+                elif init.name.endswith("fc2_bias"):
+                    init.raw_data = fc2_b_c.view(np.uint16).tobytes()
+            onnx.save_model(m_cancel, m_cancel_path)
+            cancel_slot = 2 * 128 * 48 + 128 * 48 + 2 * 128 * 4 * 2 + 128 * 4 * 2 + 8 + 2 * 128 * 2
+            cancel_fixed = 2 * 2 * 4 + 2 * (2 * 128 * 2) + 2 * (2 * 128 * 2)
+            s_cancel_ref = self._make_session(m_cancel_path, {"session.moe.offload.mode": "disabled"})
+            s_cancel_off = self._make_session(
+                m_cancel_path,
+                {
+                    "session.moe.offload.mode": "required",
+                    "session.moe.offload.placement": "static",
+                    "session.moe.offload.device_expert_bytes": str(cancel_fixed + 1 * cancel_slot),
+                },
+            )
+            x_zero = np.zeros((2, 128), dtype=np.float32)
+            # Row 0 routes to resident expert 0; row 1 routes to cold CPU expert 1
+            r_cancel = np.array([[10.0, -10.0], [-10.0, 10.0]], dtype=np.float32)
+            y_cancel_ref = self._run_fp16(s_cancel_ref, x_zero, r_cancel)
+            y_cancel_off = self._run_fp16(s_cancel_off, x_zero, r_cancel)
+            np.testing.assert_allclose(y_cancel_ref, -1.0, rtol=0, atol=0)
+            np.testing.assert_allclose(y_cancel_off, -1.0, rtol=0, atol=0)
+            del s_cancel_off, s_cancel_ref
+
+            # 12. FP16 INT4 cold-route SwiGLU projection overflow regression: gate_bias=65504 + gate_proj=32 = 65536
+            # multiplied by up=2^-16 must evaluate to finite 1.0 on both GPU resident and CPU cold routes (without
+            # rounding the intermediate gate projection to FP16 +inf before SwiGLU).
+            dir_int4_ovf = os.path.join(tmpdir, "int4_fp16_swiglu_ovf")
+            os.makedirs(dir_int4_ovf, exist_ok=True)
+            m_ovf_path = self._build_int_qmoe_model(
+                dir_int4_ovf,
+                layer_specs=[(4, 32, 1)],
+                num_experts=2,
+                hidden_size=512,
+                inter_size=512,
+                top_k=1,
+                with_bias=True,
+                use_fp16=True,
+            )
+            m_ovf = onnx.load_model(m_ovf_path, load_external_data=False)
+            fc1_w_ovf = np.full((2, 512, 512), 0x99, dtype=np.uint8)
+            fc2_w_ovf = np.full((2, 512, 256), 0x99, dtype=np.uint8)
+            fc1_s_ovf = np.zeros((2, 1024, 16), dtype=np.float16)
+            fc1_s_ovf[:, 0::2, :] = np.float16(1.0)
+            fc2_s_ovf = np.full((2, 512, 16), 1.0 / 512.0, dtype=np.float16)
+            fc1_b_ovf = np.zeros((2, 1024), dtype=np.float16)
+            fc1_b_ovf[:, 0::2] = np.float16(65504.0)
+            fc1_b_ovf[:, 1::2] = np.float16(np.ldexp(1.0, -16))
+            fc2_b_ovf = np.zeros((2, 512), dtype=np.float16)
+            for init in m_ovf.graph.initializer:
+                init.ClearField("external_data")
+                init.data_location = TensorProto.DEFAULT
+                if init.name.endswith("fc1_experts_weights"):
+                    init.raw_data = fc1_w_ovf.tobytes()
+                elif init.name.endswith("fc2_experts_weights"):
+                    init.raw_data = fc2_w_ovf.tobytes()
+                elif init.name.endswith("fc1_scales"):
+                    init.raw_data = fc1_s_ovf.view(np.uint16).tobytes()
+                elif init.name.endswith("fc2_scales"):
+                    init.raw_data = fc2_s_ovf.view(np.uint16).tobytes()
+                elif init.name.endswith("fc1_bias"):
+                    init.raw_data = fc1_b_ovf.view(np.uint16).tobytes()
+                elif init.name.endswith("fc2_bias"):
+                    init.raw_data = fc2_b_ovf.view(np.uint16).tobytes()
+            onnx.save_model(m_ovf, m_ovf_path)
+            ovf_fixed = 2 * 2 * 4 + 2 * (2 * 512 * 2) + 2 * 2048
+            s_ovf_ref = self._make_session(m_ovf_path, {"session.moe.offload.mode": "disabled"})
+            s_ovf_off = self._make_session(
+                m_ovf_path,
+                {
+                    "session.moe.offload.mode": "required",
+                    "session.moe.offload.placement": "static",
+                    "session.moe.offload.device_expert_bytes": str(ovf_fixed + 1 * int4_fp16_slot),
+                },
+            )
+            x_ovf = np.zeros((2, 512), dtype=np.float32)
+            x_ovf[:, :32] = 1.0
+            r_ovf = np.array([[10.0, -10.0], [-10.0, 10.0]], dtype=np.float32)
+            y_ovf_ref = self._run_fp16(s_ovf_ref, x_ovf, r_ovf)
+            y_ovf_off = self._run_fp16(s_ovf_off, x_ovf, r_ovf)
+            self.assertTrue(np.all(np.isfinite(y_ovf_ref)))
+            self.assertTrue(np.all(np.isfinite(y_ovf_off)))
+            np.testing.assert_allclose(y_ovf_ref, 1.0, rtol=0, atol=0)
+            np.testing.assert_allclose(y_ovf_off, 1.0, rtol=0, atol=0)
+            s_ovf_off = None
+            s_ovf_ref = None
+            gc.collect()
 
 
 def _background_thread_lifecycle_child(model_path: str) -> int:

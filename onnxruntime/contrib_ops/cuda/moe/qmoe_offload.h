@@ -165,13 +165,16 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
   void CopyOrTransposeScaleBankToHost(size_t bank, const uint8_t* src, uint8_t* dst) const noexcept;
   uint8_t* AcquireStagedScaleBuffer(size_t bytes) const;
   void RecordStagedScaleCompletion(cudaStream_t stream) const noexcept;
+  void TrimStagedScaleBuffers(size_t max_retained = 2) const noexcept;
   struct StagedScaleBuffer {
     cudaEvent_t done_event = nullptr;
     bool in_flight = false;
     bool pending_event = false;
+    uint64_t use_seq = 0;
     std::vector<uint8_t> data;
   };
   mutable std::mutex staged_scales_mutex_;
+  mutable uint64_t staged_scales_seq_ = 0;
   mutable std::vector<std::unique_ptr<StagedScaleBuffer>> staged_scale_buffers_;
   mutable uint64_t async_launched_seq_ = 0;
   mutable uint64_t last_promoted_async_seq_ = 0;
