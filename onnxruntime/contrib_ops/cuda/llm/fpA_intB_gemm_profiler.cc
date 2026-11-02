@@ -147,6 +147,7 @@ void WeightOnlyGroupwiseQuantGemmPluginProfiler::runTactic(
     params.decode_variant = tactic.cudaKernelVariant >= 2 ? tactic.cudaKernelVariant : 0;
     params.paired_k = tactic.cudaKernelVariant == 1;
     params.wave_aware = mWaveAwareGemv;
+    params.tensor_core = mTensorCoreGemv;
     params.device_sm = mDeviceSm;
     params.device_sm_count = mDeviceSmCount;
     onnxruntime::llm::kernels::fpA_intB_gemv::kernel_launcher(mArch, params, stream);
@@ -353,6 +354,7 @@ onnxruntime::llm::gemm_cache::MatMulNBitsKey WeightOnlyGroupwiseQuantGemmPluginP
   key.packing_sm = mArch;
   key.paired_gemv_mode = gemmId.tag;
   key.wave_aware_gemv = gemmId.wave_aware;
+  key.tensor_core_gemv = gemmId.tensor_core;
   return key;
 }
 

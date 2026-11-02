@@ -11,6 +11,7 @@
 #include <filesystem>
 #include <fstream>
 #include <limits>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -23,6 +24,7 @@
 
 #include "gtest/gtest.h"
 #include "contrib_ops/cpu/moe/qmoe_shared_layout.h"
+#include "core/framework/moe_offload_plan.h"
 
 namespace onnxruntime::test {
 namespace {
@@ -927,6 +929,194 @@ TEST(QMoESharedLayoutTest, ModifiedPrivateReadOnlyMappingExcludedFromReloadAndEv
   close(fd);
   std::filesystem::remove(tmp_path);
 }
+
+TEST(QMoESharedLayoutTest, PrivateReadOnlyMappingIsReloadableOnlyWhileEveryPageMatchesFile) {
+  const long page_raw = sysconf(_SC_PAGESIZE);
+  const size_t page_size = (page_raw > 0) ? static_cast<size_t>(page_raw) : 4096u;
+  const size_t total_bytes = page_size * 3;
+  constexpr uint8_t kFileByte = 0x11;
+  constexpr uint8_t kPrivateByte = 0x22;
+  // Without pagemap access, private mappings cannot be verified and are conservatively rejected.
+  const bool pagemap_readable = access("/proc/self/pagemap", R_OK) == 0;
+
+  const auto tmp_path = std::filesystem::temp_directory_path() /
+                        ("ort_qmoe_reloadable_mapping_test_" + std::to_string(getpid()) + ".bin");
+  {
+    std::vector<uint8_t> file_bytes(total_bytes, kFileByte);
+    std::ofstream out(tmp_path, std::ios::binary | std::ios::trunc);
+    ASSERT_TRUE(out.is_open());
+    out.write(reinterpret_cast<const char*>(file_bytes.data()), static_cast<std::streamsize>(file_bytes.size()));
+  }
+  const int fd = open(tmp_path.c_str(), O_RDONLY | O_CLOEXEC);
+  ASSERT_GE(fd, 0);
+
+  // Same discard the controller applies to uploaded experts, but only for mappings proven reloadable.
+  const auto discard_if_reloadable = [](void* data, size_t bytes) {
+    if (moe_offload::IsReloadableFileMapping(data, bytes)) {
+      EXPECT_EQ(madvise(data, bytes, MADV_DONTNEED), 0);
+    }
+  };
+
+  // Privately modify one byte of the middle page, then freeze the mapping to PROT_READ (r--p).
+  void* modified_map = mmap(nullptr, total_bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
+  ASSERT_NE(modified_map, MAP_FAILED);
+  auto* modified = static_cast<uint8_t*>(modified_map);
+  const size_t modified_offset = page_size + 7;
+  modified[modified_offset] = kPrivateByte;
+  ASSERT_EQ(mprotect(modified_map, total_bytes, PROT_READ), 0);
+
+  EXPECT_FALSE(moe_offload::IsReloadableFileMapping(modified_map, total_bytes));
+  EXPECT_FALSE(moe_offload::IsReloadableFileMapping(modified + page_size, page_size));
+  discard_if_reloadable(modified_map, total_bytes);
+  EXPECT_EQ(modified[modified_offset], kPrivateByte);
+  EXPECT_EQ(modified[0], kFileByte);
+
+  // Only the pages that were never modified are still reloadable from the file.
+  if (pagemap_readable) {
+    EXPECT_TRUE(moe_offload::IsReloadableFileMapping(modified_map, page_size));
+    EXPECT_TRUE(moe_offload::IsReloadableFileMapping(modified + 2 * page_size, page_size));
+  }
+
+  // A private mapping that was only read stays identical to the file, so it is reloadable and survives a discard.
+  void* clean_map = mmap(nullptr, total_bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
+  ASSERT_NE(clean_map, MAP_FAILED);
+  auto* clean = static_cast<const uint8_t*>(clean_map);
+  uint8_t checksum = 0;
+  for (size_t offset = 0; offset < total_bytes; offset += page_size) {
+    checksum ^= clean[offset];
+  }
+  EXPECT_EQ(checksum, kFileByte);
+  ASSERT_EQ(mprotect(clean_map, total_bytes, PROT_READ), 0);
+  if (pagemap_readable) {
+    EXPECT_TRUE(moe_offload::IsReloadableFileMapping(clean_map, total_bytes));
+  }
+  discard_if_reloadable(clean_map, total_bytes);
+  EXPECT_EQ(clean[modified_offset], kFileByte);
+
+  // A mapping that was never writable cannot hold private modifications.
+  void* read_only_map = mmap(nullptr, total_bytes, PROT_READ, MAP_PRIVATE, fd, 0);
+  ASSERT_NE(read_only_map, MAP_FAILED);
+  if (pagemap_readable) {
+    EXPECT_TRUE(moe_offload::IsReloadableFileMapping(read_only_map, total_bytes));
+  }
+
+  // A writable mapping is never reloadable, whatever its contents.
+  void* writable_map = mmap(nullptr, total_bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
+  ASSERT_NE(writable_map, MAP_FAILED);
+  EXPECT_FALSE(moe_offload::IsReloadableFileMapping(writable_map, total_bytes));
+
+  // A shared read-only mapping always reflects the file.
+  void* shared_map = mmap(nullptr, total_bytes, PROT_READ, MAP_SHARED, fd, 0);
+  ASSERT_NE(shared_map, MAP_FAILED);
+  EXPECT_TRUE(moe_offload::IsReloadableFileMapping(shared_map, total_bytes));
+
+  munmap(shared_map, total_bytes);
+  munmap(writable_map, total_bytes);
+  munmap(read_only_map, total_bytes);
+  munmap(clean_map, total_bytes);
+  munmap(modified_map, total_bytes);
+  close(fd);
+  std::filesystem::remove(tmp_path);
+}
+
+TEST(QMoESharedLayoutTest, PromoteCleanPrivateMappingAndParallelChunkedLoadPreservesBankBytes) {
+  const long page_raw = sysconf(_SC_PAGESIZE);
+  const size_t page_size = (page_raw > 0) ? static_cast<size_t>(page_raw) : 4096u;
+  constexpr int64_t num_experts = 3;
+  constexpr int32_t s_rows = 20;
+  constexpr int32_t s_cols = 18;
+  const size_t w0_bytes = page_size * 2;
+  const size_t w1_bytes = page_size;
+  const size_t s_bytes = static_cast<size_t>(s_rows) * static_cast<size_t>(s_cols) * sizeof(uint16_t);
+  const size_t stride = ((w0_bytes + w1_bytes + s_bytes + shared::kBankAlignment - 1) /
+                         shared::kBankAlignment) *
+                        shared::kBankAlignment;
+
+  const auto tmp_path = std::filesystem::temp_directory_path() / "ort_qmoe_promote_chunk_load_test.bin";
+  const size_t file_bytes = static_cast<size_t>(num_experts) * w0_bytes;
+  {
+    std::vector<uint8_t> raw(file_bytes);
+    for (size_t i = 0; i < raw.size(); ++i) raw[i] = static_cast<uint8_t>((i * 37 + 11) & 0xFF);
+    std::ofstream out(tmp_path, std::ios::binary | std::ios::trunc);
+    ASSERT_TRUE(out.is_open());
+    out.write(reinterpret_cast<const char*>(raw.data()), static_cast<std::streamsize>(raw.size()));
+  }
+
+  const int fd = open(tmp_path.c_str(), O_RDONLY | O_CLOEXEC);
+  ASSERT_GE(fd, 0);
+
+  // Dirty rw-p mapping must not be promoted to shared read-only (both first-page and non-first-page COW).
+  void* dirty_map = mmap(nullptr, file_bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
+  ASSERT_NE(dirty_map, MAP_FAILED);
+  static_cast<uint8_t*>(dirty_map)[0] ^= 0xFF;
+  EXPECT_FALSE(moe_offload::PromoteFileMappingToSharedReadOnly(dirty_map, file_bytes));
+  EXPECT_FALSE(shared::IsFileBackedReadOnlyMapping(dirty_map, file_bytes));
+
+  void* dirty_nonfirst_map = mmap(nullptr, file_bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
+  ASSERT_NE(dirty_nonfirst_map, MAP_FAILED);
+  static_cast<uint8_t*>(dirty_nonfirst_map)[page_size * 2] ^= 0xFF;
+  EXPECT_FALSE(moe_offload::PromoteFileMappingToSharedReadOnly(dirty_nonfirst_map, file_bytes));
+  EXPECT_FALSE(shared::IsFileBackedReadOnlyMapping(dirty_nonfirst_map, file_bytes));
+  EXPECT_EQ(munmap(dirty_nonfirst_map, file_bytes), 0);
+
+  // Clean rw-p mapping (matching PosixRandomAccessFile::Map) promotes to r--s in-place.
+  void* clean_map = mmap(nullptr, file_bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
+  ASSERT_NE(clean_map, file_bytes ? MAP_FAILED : nullptr);
+  EXPECT_FALSE(shared::IsFileBackedReadOnlyMapping(clean_map, file_bytes));
+  EXPECT_TRUE(moe_offload::PromoteFileMappingToSharedReadOnly(clean_map, file_bytes));
+  EXPECT_TRUE(shared::IsFileBackedReadOnlyMapping(clean_map, file_bytes));
+  EXPECT_TRUE(moe_offload::IsReloadableFileMapping(clean_map, file_bytes));
+
+  std::vector<uint8_t> w1_backing(static_cast<size_t>(num_experts) * w1_bytes);
+  for (size_t i = 0; i < w1_backing.size(); ++i) w1_backing[i] = static_cast<uint8_t>((i * 53 + 3) & 0xFF);
+
+  std::vector<uint16_t> s_backing(static_cast<size_t>(num_experts) * s_rows * s_cols);
+  for (size_t i = 0; i < s_backing.size(); ++i) s_backing[i] = static_cast<uint16_t>(i + 1);
+
+  const shared::FileExpertStore::MappedBank banks[]{
+      {clean_map, w0_bytes, 0, nullptr, 0},
+      {w1_backing.data(), w1_bytes, w0_bytes, nullptr, 0},
+      {s_backing.data(), s_bytes, w0_bytes + w1_bytes, nullptr, 0}};
+
+  shared::FileExpertStore store;
+  ASSERT_TRUE(store.InitializeMapped(banks, std::size(banks), num_experts, stride, /*cache_slots=*/2));
+  EXPECT_TRUE(store.IsBankFileBacked(0));
+
+  uint8_t* slot_dst = nullptr;
+  shared::ExpertBlockLease lease{};
+  ASSERT_EQ(store.BeginLoadExpert(1, &slot_dst, &lease), 1);
+  ASSERT_NE(slot_dst, nullptr);
+  for (int chunk = 0; chunk < shared::FileExpertStore::kLoadChunksPerExpert; ++chunk) {
+    EXPECT_TRUE(store.LoadExpertChunk(1, slot_dst, chunk));
+  }
+  ASSERT_TRUE(store.FinishLoadExpert(1, true, &lease));
+  ASSERT_NE(lease.data, nullptr);
+
+  // Verify chunked w0 + w1 + scales preserve exact source bytes without transposition.
+  EXPECT_EQ(std::memcmp(lease.data + w0_bytes, w1_backing.data() + w1_bytes, w1_bytes), 0);
+  EXPECT_EQ(std::memcmp(lease.data + w0_bytes + w1_bytes,
+                        s_backing.data() + static_cast<size_t>(1) * s_rows * s_cols, s_bytes),
+            0);
+
+  // Calling BeginLoadExpert on an already-ready expert returns 0 and pins a second lease.
+  uint8_t* slot_dst2 = nullptr;
+  shared::ExpertBlockLease lease2{};
+  EXPECT_EQ(store.BeginLoadExpert(1, &slot_dst2, &lease2), 0);
+  EXPECT_EQ(lease2.data, lease.data);
+  store.ReleaseLease(1);
+  store.ReleaseLease(1);
+
+  // Aborting a chunk load with ok=false rolls back the slot cleanly.
+  ASSERT_EQ(store.BeginLoadExpert(2, &slot_dst, &lease), 1);
+  EXPECT_FALSE(store.FinishLoadExpert(2, false, &lease));
+  EXPECT_FALSE(store.TryAcquireCached(2, &lease));
+
+  store.Shutdown();
+  munmap(clean_map, file_bytes);
+  munmap(dirty_map, file_bytes);
+  close(fd);
+  std::filesystem::remove(tmp_path);
+}
 #endif
 
 TEST(QMoESharedLayoutTest, CanonicalInt4ExpertViewMatchesReferenceAcrossPrepackedRawFp16AndBf16) {
@@ -1284,6 +1474,171 @@ TEST(QMoESharedLayoutTest, IntegerDeferredScaleModesPreservePartialRanges) {
       }
     }
   }
+}
+
+// A leaked pin removes a slot from a bounded cache for good, so one failed copy would starve every later expert.
+class ScopedExpertLeaseTest : public ::testing::Test {
+ protected:
+  static constexpr size_t kStride = shared::kBankAlignment;
+  static constexpr int64_t kNumExperts = 3;
+
+  void SetUp() override {
+    path_ = std::filesystem::temp_directory_path() / "ort_qmoe_scoped_lease.bin";
+    std::vector<uint8_t> data(static_cast<size_t>(kNumExperts) * kStride);
+    for (int64_t e = 0; e < kNumExperts; ++e) {
+      std::fill_n(data.data() + static_cast<size_t>(e) * kStride, kStride, static_cast<uint8_t>(e + 1));
+    }
+    std::ofstream out(path_, std::ios::binary | std::ios::trunc);
+    ASSERT_TRUE(out.is_open());
+    out.write(reinterpret_cast<const char*>(data.data()), static_cast<std::streamsize>(data.size()));
+    out.close();
+    ASSERT_TRUE(store_.Initialize(path_.string().c_str(), 0, kNumExperts, kStride, /*cache_slots=*/1));
+  }
+
+  void TearDown() override {
+    store_.Shutdown();
+    std::error_code ec;
+    std::filesystem::remove(path_, ec);
+  }
+
+  // True when the one-slot cache can still serve `expert_id`; the temporary pin is dropped again.
+  bool CanServe(int32_t expert_id) {
+    shared::ExpertBlockLease lease{};
+    if (!store_.AcquireReady(expert_id, &lease)) return false;
+    store_.ReleaseLease(expert_id);
+    return true;
+  }
+
+  std::filesystem::path path_;
+  shared::FileExpertStore store_;
+};
+
+TEST_F(ScopedExpertLeaseTest, UnguardedPinStarvesOneSlotCache) {
+  shared::ExpertBlockLease lease{};
+  ASSERT_TRUE(store_.AcquireReady(0, &lease));
+  EXPECT_FALSE(CanServe(1));
+  store_.ReleaseLease(0);
+  EXPECT_TRUE(CanServe(1));
+}
+
+TEST_F(ScopedExpertLeaseTest, ReleasesPinOnEarlyReturn) {
+  const auto failed_copy = [&]() {
+    shared::ExpertBlockLease lease{};
+    shared::ScopedExpertLease guard;
+    ASSERT_TRUE(guard.AcquireReady(store_, 0, &lease));
+    EXPECT_EQ(lease.data[0], 1);
+    EXPECT_FALSE(CanServe(1));
+    // Returning here mimics a CUDA error return that skips every explicit release.
+  };
+  failed_copy();
+  EXPECT_TRUE(CanServe(1));
+  EXPECT_TRUE(CanServe(2));
+}
+
+// Throwing is not available in builds compiled without exceptions; ReleasesPinOnEarlyReturn covers the scope guard there.
+#ifndef ORT_NO_EXCEPTIONS
+TEST_F(ScopedExpertLeaseTest, ReleasesPinWhenAnExceptionUnwinds) {
+  try {
+    shared::ExpertBlockLease lease{};
+    shared::ScopedExpertLease guard;
+    ASSERT_TRUE(guard.AcquireReady(store_, 0, &lease));
+    throw std::runtime_error("injected copy failure");
+  } catch (const std::runtime_error&) {
+  }
+  EXPECT_TRUE(CanServe(1));
+}
+#endif  // !ORT_NO_EXCEPTIONS
+
+TEST_F(ScopedExpertLeaseTest, TryAcquireCachedPinIsAlsoGuarded) {
+  ASSERT_TRUE(CanServe(0));  // make expert 0 resident
+  {
+    shared::ExpertBlockLease lease{};
+    shared::ScopedExpertLease guard;
+    ASSERT_TRUE(guard.TryAcquireCached(store_, 0, &lease));
+    EXPECT_FALSE(CanServe(1));
+  }
+  EXPECT_TRUE(CanServe(1));
+}
+
+struct BarrierProbe {
+  bool succeed = true;
+  int calls = 0;
+  bool pin_held_when_called = false;
+  shared::FileExpertStore* store = nullptr;
+};
+
+bool ProbeBarrier(void* context) noexcept {
+  auto* probe = static_cast<BarrierProbe*>(context);
+  ++probe->calls;
+  // The slot must still be pinned while queued device reads are being completed.
+  shared::ExpertBlockLease other{};
+  probe->pin_held_when_called = !probe->store->AcquireReady(1, &other);
+  if (!probe->pin_held_when_called) probe->store->ReleaseLease(1);
+  return probe->succeed;
+}
+
+TEST_F(ScopedExpertLeaseTest, FinishesQueuedDeviceReadsBeforeDroppingPin) {
+  BarrierProbe probe;
+  probe.store = &store_;
+  {
+    shared::ExpertBlockLease lease{};
+    shared::ScopedExpertLease guard;
+    ASSERT_TRUE(guard.AcquireReady(store_, 0, &lease));
+    guard.SetDeviceReadBarrier(&ProbeBarrier, &probe);
+    guard.MarkDeviceReadsQueued();
+  }
+  EXPECT_EQ(probe.calls, 1);
+  EXPECT_TRUE(probe.pin_held_when_called);
+  EXPECT_TRUE(CanServe(1));
+}
+
+TEST_F(ScopedExpertLeaseTest, SkipsBarrierWhenNoDeviceReadWasQueued) {
+  BarrierProbe probe;
+  probe.store = &store_;
+  {
+    shared::ExpertBlockLease lease{};
+    shared::ScopedExpertLease guard;
+    ASSERT_TRUE(guard.AcquireReady(store_, 0, &lease));
+    guard.SetDeviceReadBarrier(&ProbeBarrier, &probe);
+  }
+  EXPECT_EQ(probe.calls, 0);
+  EXPECT_TRUE(CanServe(1));
+}
+
+TEST_F(ScopedExpertLeaseTest, QuarantinesPinWhenQueuedReadsCannotBeConfirmed) {
+  BarrierProbe probe;
+  probe.store = &store_;
+  probe.succeed = false;
+  shared::ExpertBlockLease lease{};
+  shared::ScopedExpertLease guard;
+  ASSERT_TRUE(guard.AcquireReady(store_, 0, &lease));
+  guard.SetDeviceReadBarrier(&ProbeBarrier, &probe);
+  guard.MarkDeviceReadsQueued();
+
+  EXPECT_FALSE(guard.Release());
+  EXPECT_TRUE(guard.held());
+  EXPECT_FALSE(CanServe(1));  // the slot is never recycled under a read that may still be running
+
+  probe.succeed = true;
+  EXPECT_TRUE(guard.Release());
+  EXPECT_FALSE(guard.held());
+  EXPECT_TRUE(CanServe(1));
+}
+
+TEST_F(ScopedExpertLeaseTest, ExplicitCompletionReleasesWithoutRunningBarrier) {
+  BarrierProbe probe;
+  probe.store = &store_;
+  shared::ExpertBlockLease lease{};
+  shared::ScopedExpertLease guard;
+  ASSERT_TRUE(guard.AcquireReady(store_, 0, &lease));
+  guard.SetDeviceReadBarrier(&ProbeBarrier, &probe);
+  guard.MarkDeviceReadsQueued();
+  guard.MarkDeviceReadsComplete();
+
+  EXPECT_TRUE(guard.Release());
+  EXPECT_EQ(probe.calls, 0);
+  EXPECT_TRUE(guard.Release());  // idempotent
+  EXPECT_TRUE(CanServe(1));
 }
 
 }  // namespace

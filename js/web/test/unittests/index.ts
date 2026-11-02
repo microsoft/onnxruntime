@@ -5,6 +5,7 @@
 
 if (typeof window !== 'undefined') {
   require('./backends/webgpu/test-upload');
+  require('./backends/webgpu/test-view-op-registrations');
   require('./backends/webgl/test-glsl-function-inliner');
   require('./backends/webgl/test-conv-new');
   require('./backends/webgl/test-pack-unpack');

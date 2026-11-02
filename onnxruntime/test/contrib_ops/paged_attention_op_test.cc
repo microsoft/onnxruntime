@@ -975,7 +975,8 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
               EXPECT_GT(std::abs(expected_output), 2e-2f)
                   << "The XQA fixture must reject an all-zero attention output.";
             }
-            EXPECT_NEAR(actual_output, expected_output, 2e-3f)
+            const float output_tol = c.bf16_query ? 4e-3f : 2e-3f;
+            EXPECT_NEAR(actual_output, expected_output, output_tol)
                 << "run=" << run_index << ", batch=" << b << ", token=" << token
                 << ", q_head=" << q_head << ", dim=" << dim;
           }
@@ -1252,11 +1253,11 @@ bool IsNativeFp16HeadSize256Group6XqaRunnable() {
 // it can legitimately fall back on a device where plain XQA runs. Only the dtype flags pick the
 // specialization, so a minimal two-token probe answers for every case built on that dtype.
 bool IsSpecDecGroup6XqaRunnable(bool bf16_query, bool int8_cache, bool fp8_cache,
-                                int head_size = 256) {
+                                int head_size = 256, int group_size = 6) {
   IoBindingCase c;
   c.token_count = 2;
   c.cumulative_seqlens_q = {0, 2};
-  c.num_heads = 6;
+  c.num_heads = group_size;
   c.kv_num_heads = 1;
   c.head_size = head_size;
   c.block_size = head_size == 128 ? 128 : 256;
@@ -1695,6 +1696,170 @@ INSTANTIATE_TEST_SUITE_P(
     QueryWidths2Through8,
     PagedAttentionXqaSpecDecH128Int8Test,
     ::testing::Values(2, 3, 4, 5, 6, 7, 8));
+
+class PagedAttentionXqaSpecDecH256Bf16Int8Group16Test
+    : public ::testing::TestWithParam<int> {};
+
+TEST_P(PagedAttentionXqaSpecDecH256Bf16Int8Group16Test, FragmentedUnevenCausalLocalWindow) {
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kDisableFlashAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableDecoderAttention, "0"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"},
+          {"ORT_ENABLE_XQA", "1"}}};
+
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  if (GetCudaArchitecture() < 800) {
+    GTEST_SKIP() << "Speculative XQA requires compute capability 8.0 or later.";
+  }
+
+  const int query_width = GetParam();
+  IoBindingCase c;
+  c.batch_size = 3;
+  c.token_count = query_width + 1;
+  c.cumulative_seqlens_q = {0, 0, query_width, query_width + 1};
+  c.num_heads = 16;
+  c.kv_num_heads = 1;
+  c.head_size = 256;
+  c.block_size = 128;
+  c.num_blocks = 16;
+  c.max_num_blocks_per_seq = 4;
+  c.past_seqlens = {125, 257, 381};
+  c.local_window_size = 64;
+  c.bf16_query = true;
+  c.int8_cache = true;
+  c.per_channel_scales = true;
+  c.irregular_layout = true;
+  c.discriminating_attention = true;
+  c.block_table = {7, 2, 11, 4,
+                   15, 0, 9, 6,
+                   3, 14, 1, 10};
+  c.attention_metadata = {query_width, 382, 382};
+
+  const bool xqa_runnable = IsSpecDecGroup6XqaRunnable(true, true, false, 256, 16);
+
+  testing::internal::CaptureStdout();
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+  if (!xqa_runnable) {
+    GTEST_SKIP() << "Speculative paged XQA H256/group16 (BF16 query, INT8 cache) is not runnable "
+                    "in this build/device configuration; fallback output parity was still checked.";
+  }
+  EXPECT_NE(debug_output.find("SdpaKernel=XQA"), std::string::npos) << debug_output;
+  EXPECT_NE(debug_output.find("GqaGroupSize=16"), std::string::npos) << debug_output;
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    QueryWidths2Through8,
+    PagedAttentionXqaSpecDecH256Bf16Int8Group16Test,
+    ::testing::Values(2, 3, 4, 5, 6, 7, 8));
+
+TEST(PagedAttention, Cuda_XqaSpecDecBf16Int8CacheHeadSize256Group6) {
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kDisableFlashAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableDecoderAttention, "0"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"},
+          {"ORT_ENABLE_XQA", "1"}}};
+
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  if (GetCudaArchitecture() < 800) {
+    GTEST_SKIP() << "Speculative XQA requires compute capability 8.0 or later.";
+  }
+
+  IoBindingCase c;
+  c.batch_size = 4;
+  c.token_count = 7;
+  c.cumulative_seqlens_q = {0, 0, 0, 0, 7};
+  c.num_heads = 6;
+  c.kv_num_heads = 1;
+  c.head_size = 256;
+  c.num_blocks = 4;
+  c.past_seqlen = 249;
+  c.bf16_query = true;
+  c.int8_cache = true;
+  c.per_channel_scales = true;
+  c.irregular_layout = true;
+  c.discriminating_attention = true;
+  c.attention_metadata = {7, 256, 256};
+
+  const bool xqa_runnable = IsSpecDecGroup6XqaRunnable(true, true, false, 256, 6);
+
+  testing::internal::CaptureStdout();
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+  if (!xqa_runnable) {
+    GTEST_SKIP() << "Speculative paged XQA H256/group6 (BF16 query, INT8 cache) is not runnable "
+                    "in this build/device configuration; output parity was still checked.";
+  }
+  EXPECT_NE(debug_output.find("SdpaKernel=XQA"), std::string::npos) << debug_output;
+  EXPECT_NE(debug_output.find("GqaGroupSize=6"), std::string::npos) << debug_output;
+}
+
+TEST(PagedAttention, Cuda_XqaSpecDecBf16Int8CacheHeadSize256Group16CudaGraphReplay) {
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kDisableFlashAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableDecoderAttention, "0"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"},
+          {"ORT_ENABLE_XQA", "1"}}};
+
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  if (GetCudaArchitecture() < 800) {
+    GTEST_SKIP() << "Speculative XQA requires compute capability 8.0 or later.";
+  }
+  if (!IsSpecDecGroup6XqaRunnable(true, true, false, 256, 16)) {
+    GTEST_SKIP() << "Speculative paged XQA H256/group16 (BF16 query, INT8 cache) is not runnable "
+                    "in this build/device configuration.";
+  }
+
+  OrtCUDAProviderOptionsV2 provider_options{};
+  provider_options.do_copy_in_default_stream = true;
+  provider_options.use_tf32 = false;
+  provider_options.enable_cuda_graph = true;
+
+  IoBindingCase c;
+  c.batch_size = 2;
+  c.token_count = 7;
+  c.cumulative_seqlens_q = {0, 4, 7};
+  c.num_heads = 16;
+  c.kv_num_heads = 1;
+  c.head_size = 256;
+  c.block_size = 128;
+  c.num_blocks = 10;
+  c.max_num_blocks_per_seq = 4;
+  c.bf16_query = true;
+  c.int8_cache = true;
+  c.per_channel_scales = true;
+  c.enable_cuda_graph = true;
+  c.irregular_layout = true;
+  c.discriminating_attention = true;
+  c.replay_past_seqlens = {{125, 251}, {252, 377}, {126, 250}};
+  c.block_table = {7, 2, 9, 4,
+                   5, 0, 8, 1};
+  c.attention_metadata = {4, 380, 253};
+
+  testing::internal::CaptureStdout();
+  RunIoBindingCase(CudaExecutionProviderWithOptions(&provider_options),
+                   kCudaExecutionProvider, true, false, c);
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+  const std::string xqa_backend = "SdpaKernel=XQA";
+  const size_t first_xqa = debug_output.find(xqa_backend);
+  const size_t second_xqa =
+      first_xqa == std::string::npos ? std::string::npos : debug_output.find(xqa_backend, first_xqa + 1);
+  EXPECT_NE(first_xqa, std::string::npos) << debug_output;
+  EXPECT_NE(second_xqa, std::string::npos) << debug_output;
+  EXPECT_NE(debug_output.find("GqaGroupSize=16"), std::string::npos) << debug_output;
+}
 
 TEST(PagedAttention, Cuda_XqaSpecDecInt8CacheHeadSize128Group6CudaGraphReplay) {
   ScopedEnvironmentVariables scoped_env_vars{

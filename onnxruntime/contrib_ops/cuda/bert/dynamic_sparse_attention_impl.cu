@@ -15,6 +15,7 @@
 #include <type_traits>
 
 #include "contrib_ops/cuda/bert/dynamic_sparse_attention_prefill.cuh"
+#include "contrib_ops/cuda/bert/dynamic_sparse_attention_prefill_int8.cuh"
 #include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_common.h"
 
@@ -1806,6 +1807,31 @@ int GetGroupedDecodeSplitCount(const DynamicSparseAttentionParameters& parameter
   return static_cast<int>(std::min({candidate_splits, occupancy_splits, max_splits}));
 }
 
+// Split count of the tensor-core INT8 decode kernel: one CTA per (row, KV head, split), each consuming at least one
+// 64-candidate tile. The automatic choice is the smallest power-of-two number of tiles per split with which all CTAs
+// fit one wave of the device, resident_ctas being the SM count times the CTAs per SM that the kernel's shared-memory
+// and register footprint allow (396 on an H200). A partly filled second wave costs more than longer splits do (H200
+// with the occupancy limited to one CTA per SM, 8 rows, 32 tiles: 16 splits take 18.7 us, 8 splits 14.7 us), and a
+// power of two spreads the tiles evenly (H200, 16 rows, 32 tiles: 11 splits of up to 3 tiles take 20.5 us, 8 splits
+// 18.5 us). The kernel is not flat in the tiles per split (H200, 8 rows, 32 tiles: 1 -> 20.4 us, 2 -> 15.0, 4 -> 14.5,
+// 8 -> 19.5, 16 -> 30.9). The count never exceeds the split count the workspace was sized for. A positive
+// tiles_per_split_override replaces the automatic choice.
+int GetInt8TcDecodeSplitCount(const DynamicSparseAttentionParameters& parameters, int workspace_splits,
+                              int tiles_per_split_override, int resident_ctas) {
+  const int64_t tiles = (static_cast<int64_t>(parameters.max_selected) + dsa_prefill::kTile - 1) / dsa_prefill::kTile;
+  const int64_t row_kv_heads =
+      static_cast<int64_t>(parameters.batch_size) * parameters.sequence_length * parameters.kv_num_heads;
+  int64_t tiles_per_split = tiles_per_split_override;
+  if (tiles_per_split <= 0) {
+    tiles_per_split = 1;
+    while (tiles_per_split * std::max(resident_ctas, 1) < tiles * row_kv_heads) {
+      tiles_per_split *= 2;
+    }
+  }
+  const int64_t splits = (tiles + tiles_per_split - 1) / tiles_per_split;
+  return static_cast<int>(std::max<int64_t>(1, std::min<int64_t>({splits, workspace_splits, 32})));
+}
+
 size_t GetValidationHashEntries(const DynamicSparseAttentionParameters& parameters) {
   if (parameters.max_selected == 0) {
     return 0;
@@ -2073,9 +2099,10 @@ Status LaunchDynamicSparseAttention(
       grouped_decode_threads_supported &&
       UseGroupedDecodeAttention(parameters, sizeof(T), max_shared_memory_per_block, data.quantized_cache);
   bool use_prefill_kernel = false;
+  bool use_int8_tc_prefill = false;
   if constexpr (std::is_same_v<T, __nv_bfloat16>) {
     if (!use_grouped_decode) {
-      const bool enabled = ParseEnvironmentVariableWithDefault<int>("ORT_DSA_PREFILL_KERNEL", 1) != 0;
+      const bool enabled = data.prefill_kernel;
       // max_shared_memory_per_block is the default 48 KB limit; the kernel opts in to more and requires SM80+.
       int device = 0;
       int cc_major = 0;
@@ -2101,10 +2128,84 @@ Status LaunchDynamicSparseAttention(
           parameters.num_heads % parameters.kv_num_heads == 0 &&
           parameters.num_heads / parameters.kv_num_heads <= dsa_prefill::kMaxGroup &&
           static_cast<size_t>(optin_shared) >= dsa_prefill::kSharedBytes;
+      if (use_prefill_kernel) {
+        cudaFuncAttributes attributes{};
+        const auto kernel = data.quantized_cache ? dsa_prefill::DynamicSparseAttentionPrefillKernel<true>
+                                                 : dsa_prefill::DynamicSparseAttentionPrefillKernel<false>;
+        CUDA_RETURN_IF_ERROR(cudaFuncGetAttributes(&attributes, kernel));
+        use_prefill_kernel = attributes.ptxVersion >= 80;
+      }
+      // The tensor-core INT8 variant converts the cached rows in registers; it needs 16-byte cache rows and 8-byte
+      // output vectors, and a softmax scale of at most kInt8TcMaxScale so that it does not amplify its fp16 rounding
+      // of Q * key_scale (the BF16-dequantizing kernel above is the fallback). The op validates the scale as finite and
+      // non-negative.
+      use_int8_tc_prefill =
+          use_prefill_kernel && data.quantized_cache &&
+          data.prefill_int8_tc && parameters.scale <= dsa_prefill::kInt8TcMaxScale &&
+          IsAligned(data.present_key, 16) && IsAligned(data.present_value, 16) && IsAligned(data.output, 8) &&
+          static_cast<size_t>(optin_shared) >= dsa_prefill::kInt8SharedBytes;
+      if (use_int8_tc_prefill) {
+        cudaFuncAttributes attributes{};
+        CUDA_RETURN_IF_ERROR(cudaFuncGetAttributes(&attributes, dsa_prefill::DynamicSparseAttentionInt8TcKernel<false>));
+        use_int8_tc_prefill = attributes.ptxVersion >= 80;
+      }
+    }
+  }
+  // Decode (sequence_length <= 8) over the INT8 cache: the same tensor-core pipeline split over the candidate tiles of
+  // each (row, KV head); the partials go through the grouped decode merge kernel.
+  bool use_int8_tc_decode = false;
+  int int8_tc_decode_resident_ctas = 0;
+  if constexpr (std::is_same_v<T, __nv_bfloat16>) {
+    if (use_grouped_decode && data.quantized_cache && data.decode_int8_tc) {
+      int device = 0;
+      int cc_major = 0;
+      int optin_shared = 0;
+      CUDA_RETURN_IF_ERROR(cudaGetDevice(&device));
+      CUDA_RETURN_IF_ERROR(cudaDeviceGetAttribute(&cc_major, cudaDevAttrComputeCapabilityMajor, device));
+      CUDA_RETURN_IF_ERROR(cudaDeviceGetAttribute(&optin_shared, cudaDevAttrMaxSharedMemoryPerBlockOptin, device));
+      constexpr int kMaxGridDimY = 65535;
+      // The kernel loads 16-byte query / scale vectors, gathers 16-byte cache chunks and stores 16-byte partials;
+      // buffers bound through IOBinding can start at any element offset, so misaligned ones use the generic kernel.
+      // Like the prefill variant it needs a softmax scale of at most kInt8TcMaxScale, which keeps the fp16 rounding of
+      // Q * key_scale from being amplified.
+      use_int8_tc_decode =
+          cc_major >= 8 && parameters.scale <= dsa_prefill::kInt8TcMaxScale &&
+          parameters.head_size == dsa_prefill::kHeadDim && !local_plus_selected &&
+          parameters.selected_kv_source == DynamicSparseAttentionKvSource::kMain &&
+          !parameters.use_smooth_softmax && parameters.max_selected > 0 && parameters.kv_num_heads <= kMaxGridDimY &&
+          parameters.num_heads / parameters.kv_num_heads <= dsa_prefill::kMaxGroup &&
+          IsAligned(data.prepared_query, 16) && IsAligned(data.present_key, 16) && IsAligned(data.present_value, 16) &&
+          IsAligned(data.key_scale, 16) && IsAligned(data.value_scale, 16) &&
+          IsAligned(data.attention_workspace, 16) &&
+          static_cast<size_t>(optin_shared) >= dsa_prefill::kInt8SplitKSharedBytes;
+      if (use_int8_tc_decode) {
+        // A build whose PTX is older than compute_80 holds an empty stub for the kernel.
+        cudaFuncAttributes attributes{};
+        CUDA_RETURN_IF_ERROR(cudaFuncGetAttributes(&attributes, dsa_prefill::DynamicSparseAttentionInt8TcKernel<true>));
+        use_int8_tc_decode = attributes.ptxVersion >= 80;
+      }
+      if (use_int8_tc_decode) {
+        // The split count targets one wave of resident CTAs: the occupancy query needs the shared-memory opt-in.
+        CUDA_RETURN_IF_ERROR(cudaFuncSetAttribute(
+            dsa_prefill::DynamicSparseAttentionInt8TcKernel<true>, cudaFuncAttributeMaxDynamicSharedMemorySize,
+            static_cast<int>(dsa_prefill::kInt8SplitKSharedBytes)));
+        int multiprocessors = 0;
+        int blocks_per_multiprocessor = 0;
+        CUDA_RETURN_IF_ERROR(cudaDeviceGetAttribute(&multiprocessors, cudaDevAttrMultiProcessorCount, device));
+        CUDA_RETURN_IF_ERROR(cudaOccupancyMaxActiveBlocksPerMultiprocessor(
+            &blocks_per_multiprocessor, dsa_prefill::DynamicSparseAttentionInt8TcKernel<true>, dsa_prefill::kThreads,
+            dsa_prefill::kInt8SplitKSharedBytes));
+        int8_tc_decode_resident_ctas = multiprocessors * blocks_per_multiprocessor;
+      }
     }
   }
   if (use_grouped_decode) {
-    const int split_count = GetGroupedDecodeSplitCount(parameters, data.quantized_cache);
+    const int workspace_splits = GetGroupedDecodeSplitCount(parameters, data.quantized_cache);
+    const int split_count =
+        use_int8_tc_decode
+            ? GetInt8TcDecodeSplitCount(parameters, workspace_splits, data.decode_int8_tc_tiles_per_split,
+                                        int8_tc_decode_resident_ctas)
+            : workspace_splits;
     const int64_t partial_blocks = query_blocks * split_count;
     const int64_t grouped_blocks =
         static_cast<int64_t>(parameters.batch_size) * parameters.sequence_length * parameters.kv_num_heads *
@@ -2116,9 +2217,27 @@ Status LaunchDynamicSparseAttention(
     float* partial_max = data.attention_workspace;
     float* partial_sum = partial_max + partial_blocks;
     float* partial_output = partial_sum + partial_blocks;
+    if (use_int8_tc_decode) {
+      // The partial vectors come first so that they stay 16-byte aligned whatever the number of partial blocks.
+      partial_output = data.attention_workspace;
+      partial_max = partial_output + partial_blocks * parameters.head_size;
+      partial_sum = partial_max + partial_blocks;
+    }
     const size_t grouped_shared_bytes =
         GetGroupedAttentionSharedBytes(parameters, data.quantized_cache ? sizeof(float) : sizeof(T));
-    if (data.quantized_cache) {
+    if (use_int8_tc_decode) {
+      if constexpr (std::is_same_v<T, __nv_bfloat16>) {
+        const dim3 grid(static_cast<unsigned>(parameters.batch_size * parameters.sequence_length),
+                        static_cast<unsigned>(parameters.kv_num_heads), static_cast<unsigned>(split_count));
+        dsa_prefill::DynamicSparseAttentionInt8TcKernel<true>
+            <<<grid, dsa_prefill::kThreads, dsa_prefill::kInt8SplitKSharedBytes, stream>>>(
+                data.prepared_query, reinterpret_cast<const int8_t*>(data.present_key),
+                reinterpret_cast<const int8_t*>(data.present_value), data.selected_indices, data.selected_counts,
+                data.seqlens_k, nullptr, partial_max, partial_sum, partial_output, split_count,
+                parameters.sequence_length, parameters.num_heads, parameters.kv_num_heads, parameters.cache_capacity,
+                parameters.max_selected, parameters.scale, data.key_scale, data.value_scale);
+      }
+    } else if (data.quantized_cache) {
       static const int vectorized_staging =
           ParseEnvironmentVariableWithDefault<int>("ORT_DSA_INT8_VECTOR_STAGING", 1);
       ORT_ENFORCE(vectorized_staging == 0 || vectorized_staging == 1,
@@ -2249,7 +2368,18 @@ Status LaunchDynamicSparseAttention(
     if constexpr (std::is_same_v<T, __nv_bfloat16>) {
       const dim3 grid(static_cast<unsigned>(parameters.batch_size * parameters.sequence_length),
                       static_cast<unsigned>(parameters.kv_num_heads));
-      if (data.quantized_cache) {
+      if (use_int8_tc_prefill) {
+        CUDA_RETURN_IF_ERROR(cudaFuncSetAttribute(
+            dsa_prefill::DynamicSparseAttentionInt8TcKernel<false>, cudaFuncAttributeMaxDynamicSharedMemorySize,
+            static_cast<int>(dsa_prefill::kInt8SharedBytes)));
+        dsa_prefill::DynamicSparseAttentionInt8TcKernel<false>
+            <<<grid, dsa_prefill::kThreads, dsa_prefill::kInt8SharedBytes, stream>>>(
+                data.prepared_query, reinterpret_cast<const int8_t*>(data.present_key),
+                reinterpret_cast<const int8_t*>(data.present_value), data.selected_indices, data.selected_counts,
+                data.seqlens_k, data.output, nullptr, nullptr, nullptr, 1, parameters.sequence_length,
+                parameters.num_heads, parameters.kv_num_heads, parameters.cache_capacity, parameters.max_selected,
+                parameters.scale, data.key_scale, data.value_scale);
+      } else if (data.quantized_cache) {
         CUDA_RETURN_IF_ERROR(cudaFuncSetAttribute(
             dsa_prefill::DynamicSparseAttentionPrefillKernel<true>, cudaFuncAttributeMaxDynamicSharedMemorySize,
             static_cast<int>(dsa_prefill::kSharedBytes)));
