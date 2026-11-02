@@ -869,22 +869,26 @@ bool CanUseFusedRouteMaps(int64_t num_rows, int64_t num_experts, int64_t k) {
   return num_rows >= 1 && num_rows <= kFusedRouteMaxRows && num_experts == kFusedRouteExperts && supported_k;
 }
 
-template <typename T>
-bool LaunchFusedRouteMapsT(const T* logits, float* topk_scales, int* topk_indices,
-                           int* permuted_row_to_unpermuted_row, int* unpermuted_row_to_permuted_row,
-                           int* permuted_expert, int64_t* expert_first_token_offset, int num_rows,
-                           int num_experts, int k, bool normalize_scales, bool pdl, cudaStream_t stream) {
-  if (!CanUseFusedRouteMaps(num_rows, num_experts, k) || reinterpret_cast<uintptr_t>(logits) % 8 != 0) {
-    return false;
-  }
-  const auto kernel = k == 10 ? FusedSoftmaxTopKMapsKernel<T, 10> : FusedSoftmaxTopKMapsKernel<T, 0>;
+// The 256-expert envelope is only used by LaunchFusedRouteMaps (NVFP4 GEMV decode). It is intentionally not part of
+// CanUseFusedRouteMaps, which the generic runner also uses to decide whether routing can be folded into its prologue.
+static bool CanUseFusedRouteMaps256(int64_t num_rows, int64_t num_experts, int64_t k) {
+  const bool supported_k = k == 1 || k == 2 || k == 4 || k == 6 || k == 8;
+  return num_experts == kFusedRoute256Experts && num_rows >= 1 && num_rows <= kFusedRoute256MaxRows && supported_k &&
+         k <= kFusedRoute256MaxK && num_rows * k <= 64;
+}
+
+template <typename KernelPtr, typename T>
+bool LaunchFusedRouteKernel(KernelPtr kernel, int threads, const T* logits, float* topk_scales, int* topk_indices,
+                            int* permuted_row_to_unpermuted_row, int* unpermuted_row_to_permuted_row,
+                            int* permuted_expert, int64_t* expert_first_token_offset, int num_rows, int k,
+                            bool normalize_scales, bool pdl, cudaStream_t stream) {
   if (!IsFusedRouteKernelSm90Available(kernel)) {
     return false;
   }
   if (pdl) {
     cudaLaunchConfig_t config{};
     config.gridDim = dim3(1);
-    config.blockDim = dim3(kFusedRouteThreads);
+    config.blockDim = dim3(threads);
     config.dynamicSmemBytes = 0;
     config.stream = stream;
     cudaLaunchAttribute attribute[1]{};
@@ -903,11 +907,46 @@ bool LaunchFusedRouteMapsT(const T* logits, float* topk_scales, int* topk_indice
     }
     (void)cudaGetLastError();
   }
-  kernel<<<1, kFusedRouteThreads, 0, stream>>>(
+  kernel<<<1, threads, 0, stream>>>(
       logits, topk_scales, topk_indices, permuted_row_to_unpermuted_row,
       unpermuted_row_to_permuted_row, permuted_expert, expert_first_token_offset, num_rows, k, normalize_scales);
   CUDA_CALL_THROW(cudaGetLastError());
   return true;
+}
+
+template <typename T>
+bool LaunchFusedRouteMapsT(const T* logits, float* topk_scales, int* topk_indices,
+                           int* permuted_row_to_unpermuted_row, int* unpermuted_row_to_permuted_row,
+                           int* permuted_expert, int64_t* expert_first_token_offset, int num_rows,
+                           int num_experts, int k, bool normalize_scales, bool pdl, cudaStream_t stream) {
+  if (reinterpret_cast<uintptr_t>(logits) % 8 != 0) {
+    return false;
+  }
+  if (CanUseFusedRouteMaps256(num_rows, num_experts, k)) {
+    if (k == 8) {
+      return LaunchFusedRouteKernel(FusedSoftmaxTopKMaps256Kernel<T, 8>, kFusedRoute256Threads, logits, topk_scales,
+                                    topk_indices, permuted_row_to_unpermuted_row, unpermuted_row_to_permuted_row,
+                                    permuted_expert, expert_first_token_offset, num_rows, k, normalize_scales, pdl,
+                                    stream);
+    }
+    return LaunchFusedRouteKernel(FusedSoftmaxTopKMaps256Kernel<T, 0>, kFusedRoute256Threads, logits, topk_scales,
+                                  topk_indices, permuted_row_to_unpermuted_row, unpermuted_row_to_permuted_row,
+                                  permuted_expert, expert_first_token_offset, num_rows, k, normalize_scales, pdl,
+                                  stream);
+  }
+  if (!CanUseFusedRouteMaps(num_rows, num_experts, k)) {
+    return false;
+  }
+  if (k == 10) {
+    return LaunchFusedRouteKernel(FusedSoftmaxTopKMapsKernel<T, 10>, kFusedRouteThreads, logits, topk_scales,
+                                  topk_indices, permuted_row_to_unpermuted_row, unpermuted_row_to_permuted_row,
+                                  permuted_expert, expert_first_token_offset, num_rows, k, normalize_scales, pdl,
+                                  stream);
+  }
+  return LaunchFusedRouteKernel(FusedSoftmaxTopKMapsKernel<T, 0>, kFusedRouteThreads, logits, topk_scales,
+                                topk_indices, permuted_row_to_unpermuted_row, unpermuted_row_to_permuted_row,
+                                permuted_expert, expert_first_token_offset, num_rows, k, normalize_scales, pdl,
+                                stream);
 }
 
 bool LaunchFusedRouteMaps(const half* logits, float* topk_scales, int* topk_indices, int* r2u, int* u2r, int* expert,
@@ -3292,15 +3331,23 @@ __device__ __forceinline__ float Int3WeightElem(
 
 template <typename T, int Bits>
 __global__ void FusedFc1ScalarKernel(Int3MoeParams params) {
+  const size_t total_routes = (params.total_routes_override > 0)
+                                  ? static_cast<size_t>(params.total_routes_override)
+                                  : (static_cast<size_t>(params.rows) * params.top_k);
   const size_t item = static_cast<size_t>(blockIdx.x) * 4 + threadIdx.x / 32;
-  const size_t count = static_cast<size_t>(params.rows) * params.top_k * params.intermediate;
+  const size_t count = total_routes * params.intermediate;
   if (item >= count) return;
   const int lane = threadIdx.x % 32;
   const size_t route = item / params.intermediate;
   const int column = item % params.intermediate;
   const int expert = params.experts[route];
+  if (expert < 0) return;
   const size_t weight_row = static_cast<size_t>(expert) * (2 * params.intermediate) + 2 * column;
-  const auto* input = static_cast<const T*>(params.input) + (route / params.top_k) * params.hidden;
+  const int token = params.input_is_gathered
+                        ? static_cast<int>(route)
+                        : (params.source_route_ids ? params.source_route_ids[route]
+                                                   : static_cast<int>(route / params.top_k));
+  const auto* input = static_cast<const T*>(params.input) + static_cast<size_t>(token) * params.hidden;
   float gate = 0.0f;
   float up = 0.0f;
   for (int feature = lane; feature < params.hidden; feature += 32) {
@@ -3323,6 +3370,39 @@ __global__ void FusedFc1ScalarKernel(Int3MoeParams params) {
 }
 
 template <typename T, int Bits>
+__global__ void Fc2RouteScalarKernel(Int3MoeParams params) {
+  const size_t total_routes = (params.total_routes_override > 0)
+                                  ? static_cast<size_t>(params.total_routes_override)
+                                  : (static_cast<size_t>(params.rows) * params.top_k);
+  const size_t item = static_cast<size_t>(blockIdx.x) * 4 + threadIdx.x / 32;
+  if (item >= total_routes * params.hidden) return;
+  const int lane = threadIdx.x % 32;
+  const size_t route = item / params.hidden;
+  const int column = item % params.hidden;
+  const int expert = params.experts[route];
+  if (expert < 0) return;
+  const size_t weight_row = static_cast<size_t>(expert) * params.hidden + column;
+  const auto* input = static_cast<const T*>(params.activation) + route * params.intermediate;
+  float value = 0.0f;
+  for (int feature = lane; feature < params.intermediate; feature += 32) {
+    value += static_cast<float>(input[feature]) *
+             Int3WeightElem<T, Bits>(params.fc2, weight_row, params.intermediate, params.block_size, feature);
+  }
+  value = WarpReduceSum(value);
+  if (lane == 0) {
+    if (params.fc2.bias) {
+      const size_t orig_route =
+          params.fc2_bias_route_ids ? static_cast<size_t>(params.fc2_bias_route_ids[route]) : route;
+      const int bias_expert =
+          params.fc2_bias_expert_indices ? params.fc2_bias_expert_indices[orig_route] : expert;
+      const size_t bias_row = static_cast<size_t>(bias_expert) * params.hidden + column;
+      value += static_cast<float>(static_cast<const T*>(params.fc2.bias)[bias_row]);
+    }
+    static_cast<T*>(params.fc2_partial)[route * params.hidden + column] = static_cast<T>(value);
+  }
+}
+
+template <typename T, int Bits>
 __global__ void Fc2AndFinalizeScalarKernel(Int3MoeParams params) {
   const size_t item = static_cast<size_t>(blockIdx.x) * 4 + threadIdx.x / 32;
   if (item >= static_cast<size_t>(params.rows) * params.hidden) return;
@@ -3332,7 +3412,9 @@ __global__ void Fc2AndFinalizeScalarKernel(Int3MoeParams params) {
   float output = 0.0f;
   for (int selected = 0; selected < params.top_k; ++selected) {
     const size_t route = token * params.top_k + selected;
-    const size_t weight_row = static_cast<size_t>(params.experts[route]) * params.hidden + column;
+    const int expert = params.experts[route];
+    if (expert < 0) continue;
+    const size_t weight_row = static_cast<size_t>(expert) * params.hidden + column;
     const auto* input = static_cast<const T*>(params.activation) + route * params.intermediate;
     float value = 0.0f;
     for (int feature = lane; feature < params.intermediate; feature += 32) {
@@ -3344,7 +3426,7 @@ __global__ void Fc2AndFinalizeScalarKernel(Int3MoeParams params) {
       if (params.fc2.bias) value += static_cast<float>(static_cast<const T*>(params.fc2.bias)[weight_row]);
       value = static_cast<float>(static_cast<T>(value));
       const float scale = params.router_weights
-                              ? static_cast<float>(static_cast<const T*>(params.router_weights)[token * params.num_experts + params.experts[route]])
+                              ? static_cast<float>(static_cast<const T*>(params.router_weights)[token * params.num_experts + expert])
                               : params.routing_scales[route];
       output += value * scale;
     }
@@ -3621,7 +3703,12 @@ __global__ void __launch_bounds__(128, 6) Fc2RouteFastVecKernel(Int3MoeParams pa
     }
     if (sub_lane == 0) {
       if (params.fc2.bias) {
-        const T* b_ptr = static_cast<const T*>(params.fc2.bias) + w_row0;
+        const size_t orig_route1 =
+            params.fc2_bias_route_ids ? static_cast<size_t>(__ldg(&params.fc2_bias_route_ids[route1]))
+                                      : static_cast<size_t>(route1);
+        const int bias_exp1 =
+            params.fc2_bias_expert_indices ? __ldg(&params.fc2_bias_expert_indices[orig_route1]) : exp_id;
+        const T* b_ptr = static_cast<const T*>(params.fc2.bias) + static_cast<size_t>(bias_exp1) * params.hidden + col0;
 #pragma unroll
         for (int r = 0; r < kColsPerHalfWarp; ++r) {
           v1[r] += static_cast<float>(b_ptr[r]);
@@ -3644,7 +3731,12 @@ __global__ void __launch_bounds__(128, 6) Fc2RouteFastVecKernel(Int3MoeParams pa
   }
   if (sub_lane == 0) {
     if (params.fc2.bias) {
-      const T* b_ptr = static_cast<const T*>(params.fc2.bias) + w_row0;
+      const size_t orig_route0 =
+          params.fc2_bias_route_ids ? static_cast<size_t>(__ldg(&params.fc2_bias_route_ids[route0]))
+                                    : static_cast<size_t>(route0);
+      const int bias_exp0 =
+          params.fc2_bias_expert_indices ? __ldg(&params.fc2_bias_expert_indices[orig_route0]) : exp_id;
+      const T* b_ptr = static_cast<const T*>(params.fc2.bias) + static_cast<size_t>(bias_exp0) * params.hidden + col0;
 #pragma unroll
       for (int r = 0; r < kColsPerHalfWarp; ++r) {
         v0[r] += static_cast<float>(b_ptr[r]);
@@ -3690,10 +3782,15 @@ template <typename T, int Bits>
 __global__ void __launch_bounds__(256) FusedFc1FastKernel(Int3MoeParams params) {
   extern __shared__ float s_input[];
   const size_t route = blockIdx.y;
+  const int expert = __ldg(&params.experts[route]);
+  if (expert < 0) return;
   const int warp_id = threadIdx.x >> 5;
   const int lane = threadIdx.x & 31;
   const int col0 = static_cast<int>(blockIdx.x) * 16 + warp_id * 2;
-  const size_t token = route / params.top_k;
+  const size_t token = params.input_is_gathered
+                           ? route
+                           : (params.source_route_ids ? static_cast<size_t>(__ldg(&params.source_route_ids[route]))
+                                                      : (route / params.top_k));
   const T* in_row = static_cast<const T*>(params.input) + token * params.hidden;
   for (int i = threadIdx.x; i < params.hidden; i += 256) {
     s_input[i] = static_cast<float>(__ldg(&in_row[i]));
@@ -3701,8 +3798,6 @@ __global__ void __launch_bounds__(256) FusedFc1FastKernel(Int3MoeParams params) 
   __syncthreads();
   if (col0 >= params.intermediate) return;
   const bool has_col1 = (col0 + 1) < params.intermediate;
-
-  const int expert = __ldg(&params.experts[route]);
   const size_t row0 = static_cast<size_t>(expert) * (2 * params.intermediate) + 2 * col0;
   const size_t row_bytes = (static_cast<size_t>(params.hidden) * Bits) / 8;
   const size_t blocks = static_cast<size_t>(params.hidden) / params.block_size;
@@ -3767,6 +3862,8 @@ template <typename T, int Bits>
 __global__ void __launch_bounds__(256) Fc2RouteFastKernel(Int3MoeParams params) {
   extern __shared__ float s_act[];
   const size_t route = blockIdx.y;
+  const int exp_id = __ldg(&params.experts[route]);
+  if (exp_id < 0) return;
   const int warp_id = threadIdx.x >> 5;
   const int lane = threadIdx.x & 31;
   const int half_id = lane >> 4;
@@ -3781,8 +3878,6 @@ __global__ void __launch_bounds__(256) Fc2RouteFastKernel(Int3MoeParams params) 
   __syncthreads();
   if (col0 >= params.hidden) return;
   const bool has_col1 = (col0 + 1) < params.hidden;
-
-  const int exp_id = __ldg(&params.experts[route]);
   const size_t w_row0 = static_cast<size_t>(exp_id) * params.hidden + col0;
   const size_t row_bytes = (static_cast<size_t>(params.intermediate) * Bits) / 8;
   const size_t blocks = static_cast<size_t>(params.intermediate) / params.block_size;
@@ -3815,7 +3910,11 @@ __global__ void __launch_bounds__(256) Fc2RouteFastKernel(Int3MoeParams params) 
   }
   if (sub_lane == 0) {
     if (params.fc2.bias) {
-      const T* b_ptr = static_cast<const T*>(params.fc2.bias) + w_row0;
+      const size_t orig_route =
+          params.fc2_bias_route_ids ? static_cast<size_t>(__ldg(&params.fc2_bias_route_ids[route])) : route;
+      const int bias_exp_id =
+          params.fc2_bias_expert_indices ? __ldg(&params.fc2_bias_expert_indices[orig_route]) : exp_id;
+      const T* b_ptr = static_cast<const T*>(params.fc2.bias) + static_cast<size_t>(bias_exp_id) * params.hidden + col0;
       v0 += static_cast<float>(b_ptr[0]);
       if (has_col1) v1 += static_cast<float>(b_ptr[1]);
     }
@@ -3868,7 +3967,9 @@ __global__ void CheckInt3ContentKernel(Int3Projection projection, size_t rows, i
 
 template <typename T>
 cudaError_t LaunchInt3Typed(const Int3MoeParams& params, cudaStream_t stream) {
-  const size_t total_routes = static_cast<size_t>(params.rows) * params.top_k;
+  const size_t total_routes = (params.total_routes_override > 0)
+                                  ? static_cast<size_t>(params.total_routes_override)
+                                  : (static_cast<size_t>(params.rows) * params.top_k);
   const size_t fc1_smem = static_cast<size_t>(params.hidden) * sizeof(float);
   const size_t fc2_smem = static_cast<size_t>(params.intermediate) * sizeof(float);
   const Int3DecodeKernel kernel = SelectInt3DecodeKernel(params);
@@ -3970,28 +4071,45 @@ cudaError_t LaunchInt3Typed(const Int3MoeParams& params, cudaStream_t stream) {
     status = cudaGetLastError();
     if (status != cudaSuccess) return status;
 
-    const dim3 fin_grid(static_cast<unsigned>((params.hidden + 255) / 256), static_cast<unsigned>(params.rows));
-    FinalizeRoutesFastKernel<T><<<fin_grid, 256, 0, stream>>>(ungrouped_params);
-    return cudaGetLastError();
+    if (params.output != nullptr) {
+      const dim3 fin_grid(static_cast<unsigned>((params.hidden + 255) / 256), static_cast<unsigned>(params.rows));
+      FinalizeRoutesFastKernel<T><<<fin_grid, 256, 0, stream>>>(ungrouped_params);
+      return cudaGetLastError();
+    }
+    return cudaSuccess;
   }
 
   const size_t fc1_count = total_routes * params.intermediate;
   const size_t fc2_count = static_cast<size_t>(params.rows) * params.hidden;
+  const unsigned int fc1_blocks = static_cast<unsigned int>((fc1_count + 3) / 4);
+  const unsigned int fc2_blocks = static_cast<unsigned int>((fc2_count + 3) / 4);
   if (params.fc1.bits == 2) {
-    FusedFc1ScalarKernel<T, 2><<<(fc1_count + 3) / 4, 128, 0, stream>>>(params);
+    FusedFc1ScalarKernel<T, 2><<<fc1_blocks, 128, 0, stream>>>(params);
   } else if (params.fc1.bits == 3) {
-    FusedFc1ScalarKernel<T, 3><<<(fc1_count + 3) / 4, 128, 0, stream>>>(params);
+    FusedFc1ScalarKernel<T, 3><<<fc1_blocks, 128, 0, stream>>>(params);
   } else {
-    FusedFc1ScalarKernel<T, 4><<<(fc1_count + 3) / 4, 128, 0, stream>>>(params);
+    FusedFc1ScalarKernel<T, 4><<<fc1_blocks, 128, 0, stream>>>(params);
   }
   auto status = cudaGetLastError();
   if (status != cudaSuccess) return status;
+  if (params.output == nullptr && params.fc2_partial != nullptr) {
+    const size_t fc2_route_count = total_routes * params.hidden;
+    const unsigned int fc2_route_blocks = static_cast<unsigned int>((fc2_route_count + 3) / 4);
+    if (params.fc2.bits == 2) {
+      Fc2RouteScalarKernel<T, 2><<<fc2_route_blocks, 128, 0, stream>>>(params);
+    } else if (params.fc2.bits == 3) {
+      Fc2RouteScalarKernel<T, 3><<<fc2_route_blocks, 128, 0, stream>>>(params);
+    } else {
+      Fc2RouteScalarKernel<T, 4><<<fc2_route_blocks, 128, 0, stream>>>(params);
+    }
+    return cudaGetLastError();
+  }
   if (params.fc2.bits == 2) {
-    Fc2AndFinalizeScalarKernel<T, 2><<<(fc2_count + 3) / 4, 128, 0, stream>>>(params);
+    Fc2AndFinalizeScalarKernel<T, 2><<<fc2_blocks, 128, 0, stream>>>(params);
   } else if (params.fc2.bits == 3) {
-    Fc2AndFinalizeScalarKernel<T, 3><<<(fc2_count + 3) / 4, 128, 0, stream>>>(params);
+    Fc2AndFinalizeScalarKernel<T, 3><<<fc2_blocks, 128, 0, stream>>>(params);
   } else {
-    Fc2AndFinalizeScalarKernel<T, 4><<<(fc2_count + 3) / 4, 128, 0, stream>>>(params);
+    Fc2AndFinalizeScalarKernel<T, 4><<<fc2_blocks, 128, 0, stream>>>(params);
   }
   return cudaGetLastError();
 }
@@ -3999,7 +4117,9 @@ cudaError_t LaunchInt3Typed(const Int3MoeParams& params, cudaStream_t stream) {
 }  // namespace
 
 Int3DecodeKernel SelectInt3DecodeKernel(const Int3MoeParams& params) {
-  const size_t total_routes = static_cast<size_t>(params.rows) * params.top_k;
+  const size_t total_routes = (params.total_routes_override > 0)
+                                  ? static_cast<size_t>(params.total_routes_override)
+                                  : (static_cast<size_t>(params.rows) * params.top_k);
   const size_t fc1_smem = static_cast<size_t>(params.hidden) * sizeof(float);
   const size_t fc2_smem = static_cast<size_t>(params.intermediate) * sizeof(float);
   const bool can_use_fast =
@@ -4012,6 +4132,11 @@ Int3DecodeKernel SelectInt3DecodeKernel(const Int3MoeParams& params) {
       total_routes <= 65535 && params.rows <= 65535 &&
       fc1_smem <= 48 * 1024 && fc2_smem <= 48 * 1024;
   if (!can_use_fast) return Int3DecodeKernel::kScalar;
+
+  if (params.output == nullptr || params.input_is_gathered || params.source_route_ids != nullptr ||
+      params.total_routes_override > 0) {
+    return Int3DecodeKernel::kFast;
+  }
 
   const bool can_use_vec_fast =
       params.intermediate % 16 == 0 && params.hidden % 32 == 0 &&

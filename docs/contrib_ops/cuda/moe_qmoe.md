@@ -62,7 +62,7 @@ The execution pipeline is:
 
 ```
 input tokens → router (top-k softmax) → permute by expert
-  → GEMM1 (per-expert) → activation (SiLU/GeLU/ReLU/SwiGLU)
+  → GEMM1 (per-expert) → activation (SiLU/GeLU/ReLU/SwiGLU/GEGLU)
   → GEMM2 (per-expert) → un-permute → weighted sum
 ```
 
@@ -75,7 +75,7 @@ input tokens → router (top-k softmax) → permute by expert
 | Attribute | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `k` | int | 1 | Top-K experts selected per token. |
-| `activation_type` | string | `"relu"` | One of `"relu"`, `"gelu"`, `"silu"`, `"swiglu"`, `"identity"`. These are the only values accepted end-to-end (attribute parsing); other kernel-internal types are not reachable from ONNX. |
+| `activation_type` | string | `"relu"` | One of `"relu"`, `"relu2"`, `"gelu"`, `"silu"`, `"swiglu"`, `"geglu"`, `"identity"`. CUDA GEGLU computes `GELU(gate, approximate="tanh") * up`, requires fused FC1 and `swiglu_fusion=1` or `2`; QMoE additionally requires `quant_type="int"`. |
 | `normalize_routing_weights` | int | 0 | Re-normalize the top-k weights to sum to 1. |
 | `use_sparse_mixer` | int | 0 | Enable sparse-mixer routing variant. |
 | `swiglu_fusion` | int | 0 | 0=no fusion, 1=interleaved (Gate/Value), 2=block (Gate;Value). See [§8](#8-swiglu-fusion). |
@@ -126,12 +126,13 @@ to the selected `quant_type` are simply omitted (most are `Optional`).
 | 20 | `fc2_act_block_scale` | T2 (Opt, float8e8m0) | `(E, M_pad, inter/32)` | wfp4afp8 (Variant B) |
 
 `E = num_experts`. `pack = 8 / expert_weight_bits` for INT/MXFP4 weights; `pack = 1`
-for FP8 weights. `fusion = 2` for `swiglu_fusion=1`, otherwise `1`.
+for FP8 weights. `fusion = 2` for fused SwiGLU or GEGLU with
+`swiglu_fusion=1` or `2`, otherwise `1`.
 
 > **CUDA EP restriction for `quant_type="int"`:** `fc1_scales` and `fc2_scales`
 > must use the same FP16 or BF16 type as the activation input. Although the
 > operator schema also permits float scales, the CUDA INT kernel does not
-> currently cast float scales internally. `fusion = 2` for `swiglu_fusion=1`, otherwise `1`.
+> currently cast float scales internally.
 
 For packed input, tokens from variable-length sequences may be concatenated
 without padding. MoE routing is token-local, so no sequence-offset input is
@@ -689,6 +690,26 @@ easy to feed Mixtral-style models without offline fusion.
 
 ---
 
+### GEGLU
+
+CUDA `MoE` and integer `QMoE` also accept `activation_type="geglu"`.
+They evaluate `GELU(gate, approximate="tanh") * up`, not a scaled-SwiGLU
+approximation or erf-based GELU. The fused FC1 output has `2 * inter_size`
+columns: fusion mode 1 stores `[gate0, up0, gate1, up1, ...]`, and mode 2
+stores `[gate | up]`. GEGLU requires one of these explicit fusion modes and
+does not support separate FC3 weights. `activation_alpha`, `activation_beta`,
+and `swiglu_limit` apply to SwiGLU only.
+
+GEGLU uses the generic gated activation path; specialized kernels that
+hardcode SwiGLU remain excluded. Integer INT4/INT8 still use weight-only
+CUTLASS runners. GEGLU is rejected for FP4, NVFP4, FP8, and WFP4AFP8 rather
+than silently selecting a different activation. CPU and other execution
+providers do not gain GEGLU support from this CUDA implementation.
+
+The activation and product are computed in float before conversion to the
+activation output type. This is not a promise of bitwise parity with eager
+PyTorch code that materializes GELU in FP16/BF16 before multiplication.
+
 ## 9. FP4 (MXFP4) Details
 
 The QMoE operator supports **MXFP4** quantized weights with FP16/BF16 activations
@@ -895,8 +916,8 @@ debug switches.
 | `ORT_ENABLE_FP4_GEMV` | on | Fused MXFP4 GEMV decode kernel. Set to `0` to force the dequant-to-dense fallback (debugging/bisecting). Active in the SM80+ fallback regime, and as the decode arm when native CUTLASS prefill is enabled. |
 | `ORT_FP4_GEMV_AUTOTUNE` | `0` | Opt-in per-shape autotune of the GEMV CtaN/Threads tiling. Enabling it synchronizes the first uncached inference for each shape. |
 | `ORT_FP4_GEMV_AUTOTUNE_LOG` | `0` | Set to `1` to log the chosen GEMV configs per shape. |
-| `ORT_FP4_GEMV_DECODE_KERNEL` | `1` | NVFP4 offline K-packed (`weights_prepacked=1`) decode GEMV mode: `1` (default) enables `MoeGemvFp4DecodeKernel` in the measured SM90 decode envelope (`expanded_num_rows <= 20`, `N, K <= 2560`, and per-projection `|global_scale| * 448 < 3.98`); `0` forces `MoeGemvFp4RawKPackedKernel`; `2` opts into the full kernel envelope (`SM90+`, `expanded_num_rows <= 80`, `K <= 8192`, including the generic scale decoder). Outputs are bit-identical across all modes. Read once per process. See [§9b.2](#9b2-fused-gemv-decode-group-16). |
-| `ORT_FP4_GEMV_FUSED_ROUTE` | `1` | Single-CTA fused softmax + top-k + expert-map decode routing kernel for offline K-packed NVFP4 on SM90+ (`num_rows <= 4`, `num_experts == 512`, `k in {1, 2, 4, 6, 8, 10}`). Bit-identical to `LaunchSoftmaxTopK` + `fusedBuildExpertMapsSortFirstToken`; set to `0` to disable. |
+| `ORT_FP4_GEMV_DECODE_KERNEL` | `1` | NVFP4 offline K-packed (`weights_prepacked=1`) decode GEMV mode: `1` (default) enables `MoeGemvFp4DecodeKernel` in the measured SM90 decode envelope (`expanded_num_rows <= 64`, `N, K <= 3072`, and per-projection `|global_scale| * 448 < 3.98`); `0` forces `MoeGemvFp4RawKPackedKernel`; `2` opts into the full kernel envelope (`SM90+`, `expanded_num_rows <= 80`, `K <= 8192`, including the generic scale decoder). Outputs are bit-identical across all modes. Read once per process. See [§9b.2](#9b2-fused-gemv-decode-group-16). |
+| `ORT_FP4_GEMV_FUSED_ROUTE` | `1` | Single-CTA fused softmax + top-k + expert-map decode routing kernel for offline K-packed NVFP4 on SM90+ (`num_rows <= 8, num_experts == 512, k in {1, 2, 4, 6, 8, 10}` or `num_rows <= 8, num_experts == 256, k in {1, 2, 4, 6, 8}`). Bit-identical to `LaunchSoftmaxTopK` + `fusedBuildExpertMapsSortFirstToken`; set to `0` to disable. |
 | `ORT_FP4_GEMV_PDL` | `1` | Programmatic dependent launch (`cudaLaunchAttributeProgrammaticStreamSerialization`) overlapping FC1 -> FC2 -> finalize on the offline K-packed NVFP4 decode path on SM90+. Set to `0` to disable. |
 | `ORT_FP4_GEMV_FC1_PDL` | `0` | Opt-in programmatic dependent launch of FC1 behind the fused routing kernel. Off by default. |
 | `ORT_FP4_GEMV_INTERLEAVED` | `0` | **Experimental, opt-in.** Routes the MXFP4 decode GEMV through the `ColumnMajorInterleaved` weight layout (`kInterleave=4`, `kStepK=32`) with dtype-conditional accumulation. fp16 gets faster decode; bf16 stays accuracy-safe. Default off keeps the shipping `ColumnMajor` path byte-for-byte unchanged. See [§9.10](#910-interleaved-gemv-layout--dtype-conditional-accumulation). |
@@ -1183,7 +1204,7 @@ By default (`ORT_FP4_GEMV_DECODE_KERNEL=1`), dispatch is restricted to the H200-
 - `SM90` (`sm == 90`) with a selected CUDA image compiled for `SM90` or newer (`attributes.ptxVersion >= 90`;
   forward-compatible builds using pre-SM90 PTX such as `CMAKE_CUDA_ARCHITECTURES=80` fall back to
   `MoeGemvFp4RawKPackedKernel`),
-- FP16 or BF16, at most 20 expanded rows, `K % 32 == 0`, `K <= 2560`, even `N <= 2560`, and 16/2/16-byte aligned
+- FP16 or BF16, at most 64 expanded rows, `K % 32 == 0`, `K <= 3072`, even `N <= 3072`, and 16/2/16-byte aligned
   weight/scale/activation pointers,
 - Per-projection table-free scale eligibility (`|global_scale| * 448 < 3.98` for every expert in the projection),
   recorded independently for FC1 and FC2 during `PrePack`. Projections whose scales exceed this bound stay on
@@ -1778,17 +1799,29 @@ CPU kernels and byte-preserving `FileExpertStore`).
 Exporters emit standard `com.microsoft::QMoE` nodes with **no offload-specific operator attributes,
 inputs, or outputs**.
 
-| Encoding | `quant_type` | `expert_weight_bits` | `block_size` | `weights_prepacked` | `swiglu_fusion` | Required Expert Input Slots |
+| Encoding | `quant_type` | `expert_weight_bits` (`fc1`/`fc2`/`fc3`) | `block_size` | `weights_prepacked` | `swiglu_fusion` | Required & Optional Expert Input Slots |
 | :--- | :---: | :---: | :---: | :---: | :---: | :--- |
-| **NVFP4 (W4A16)** | `"nvfp4"` | `4` | `16` | `1` (offline K-packed row-major) | `0` or `1` (interleaved) | • **Slot 2 (`fc1_experts_weights`)**: `uint8`, physical `[E, 2*I, H/2]` (logical `[E, H, I]`)<br>• **Slot 3 (`fc1_scales`)**: `float8e4m3fn`, `[E, 2*I, H/16]`<br>• **Slot 5 (`fc2_experts_weights`)**: `uint8`, physical `[E, H, I/2]` (logical `[E, I, H/2]`)<br>• **Slot 6 (`fc2_scales`)**: `float8e4m3fn`, `[E, H, I/16]`<br>• **Slot 15 (`fc1_global_scale`)**: `float32`, `[E]`<br>• **Slot 16 (`fc2_global_scale`)**: `float32`, `[E]`<br>• *(Optional)* **Slots 4, 7**: `fc1_experts_bias` `[E, 2*I]`, `fc2_experts_bias` `[E, H]` (`fp16`/`bf16`) |
+| **NVFP4 (W4A16)** | `"nvfp4"` | `4` (`4`/`4`/`4`) | `16` (or omitted/`-1`) | `1` (offline K-packed row-major) | `0` or `1` (interleaved) | • **Slot 2 (`fc1_experts_weights`)**: `uint8`, physical `[E, 2*I, H/2]` or legacy `[E, H, I]`<br>• **Slot 3 (`fc1_scales`)**: `float8e4m3fn`, `[E, 2*I, H/16]`<br>• **Slot 5 (`fc2_experts_weights`)**: `uint8`, physical `[E, H, I/2]` or legacy `[E, I, H/2]`<br>• **Slot 6 (`fc2_scales`)**: `float8e4m3fn`, `[E, H, I/16]`<br>• **Slot 15 (`fc1_global_scale`)**: `float32`, `[E]`<br>• **Slot 16 (`fc2_global_scale`)**: `float32`, `[E]`<br>• *(Optional)* **Slots 4, 7**: `fc1_experts_bias` `[E, 2*I]`, `fc2_experts_bias` `[E, H]` (`fp16`/`bf16`) |
+| **Prepacked INT4 (W4A16)** | `"int"` | `4` (`4`/`4`/`4`) | `32` (explicit) | `1` (explicit SM80 `fpA_intB` layout) | `0` or `1` (interleaved) | • **Slot 2 (`fc1_experts_weights`)**: `uint8`, `[E, H, I]` or `[E, 2*I, H/2]`<br>• **Slot 3 (`fc1_scales`)**: `fp16`/`bf16` (matching activation), `[E, 2*I, H/32]`<br>• **Slot 5 (`fc2_experts_weights`)**: `uint8`, `[E, I, H/2]` or `[E, H, I/2]`<br>• **Slot 6 (`fc2_scales`)**: `fp16`/`bf16` (matching activation), `[E, H, I/32]`<br>• *(Optional)* **Slots 4, 7**: `fc1_experts_bias` `[E, 2*I]`, `fc2_experts_bias` `[E, H]` (`fp16`/`bf16`) |
+| **Raw INT3 (W3A16)** | `"int"` | `3` (`3`/`3`/`3`) | `32`, `64`, or `128` (explicit) | `0` (explicit raw packed 3-bit codes) | `1` (interleaved) | • **Slot 2 (`fc1_experts_weights`)**: `uint8`, `[E, 2*I, (H*3)/8]`<br>• **Slot 3 (`fc1_scales`)**: `fp16`/`bf16` (matching activation), `[E, 2*I, H/block_size]`<br>• **Slot 5 (`fc2_experts_weights`)**: `uint8`, `[E, H, (I*3)/8]`<br>• **Slot 6 (`fc2_scales`)**: `fp16`/`bf16` (matching activation), `[E, H, I/block_size]`<br>• *(Optional)* **Slots 4, 7**: `fc1_experts_bias` `[E, 2*I]`, `fc2_experts_bias` `[E, H]` (`fp16`/`bf16`) |
 
-> **Eligibility note**: Only `com.microsoft::QMoE` nodes with `quant_type="nvfp4"`, `expert_weight_bits=4`,
-> `block_size=16` (or omitted/`-1`), `weights_prepacked=1`, and interleaved SwiGLU (`swiglu_fusion` in `{0, 1}`)
-> are registered for `session.moe.offload.*` admission. When `session.moe.offload.mode="auto"`, any other
-> `MoE`/`QMoE` node (such as `quant_type="int"` INT4/INT3, `quant_type="fp4"` MXFP4, or `quant_type="fp8"`)
-> keeps its initializers on GPU and executes through the standard CUDA `MoE`/`QMoE` path. When
-> `session.moe.offload.mode="required"`, unsupported nodes or shared non-offload initializer consumers fail
-> fast during session initialization with `ORT_INVALID_ARGUMENT`.
+#### Offload Eligibility Matrix vs. Standard CUDA `QMoE`
+
+Ordinary CUDA `QMoE` supports a wider set of attributes and optional inputs than the `session.moe.offload.*` backend:
+
+- **Uniform projection bitwidths**: `fc1_expert_weight_bits`, `fc2_expert_weight_bits`, and `fc3_expert_weight_bits` (when specified) must all equal `expert_weight_bits` (`4` for NVFP4/INT4, `3` for INT3). Mixed-bitwidth projections within a single node stay on the standard CUDA `QMoE` path.
+- **Explicit `weights_prepacked` & `block_size` declaration**:
+  - Prepacked INT4 offload requires explicit `weights_prepacked=1` and `block_size=32` with row-major `[E, 2*I, H/32]` and `[E, H, I/32]` scales (which `CopyOrTransposeScaleBankToHost` transposes into GPU `[E, K/32, N]` slabs upon upload while keeping CPU `FileExpertStore` byte-preserving). Nodes with `weights_prepacked=0` (raw INT4) or omitted/`-1` `weights_prepacked` are not admitted to offload.
+  - Raw INT3 offload requires explicit `weights_prepacked=0`, `swiglu_fusion=1`, and `block_size` in `{32, 64, 128}`.
+- **Device capability & dimension alignment**: Offload admission requires an **SM80+** CUDA device (`E > 0`, `0 < k <= E`). Prepacked INT4 requires `H % 64 == 0` and `I % 64 == 0` (complete 64-element reduction tiles); NVFP4 and INT3 require `H % 32 == 0`, `I % 32 == 0`, `H % block_size == 0`, and `I % block_size == 0`.
+- **Symmetric quantization, optional biases & global scales**: Asymmetric zero-point inputs (`slots 11..13`), separate `fc3` weights/scales/bias (`slots 8..10`), separate `router_weights` (`slot 14`), activation scales (`slots 17..20`), `use_sparse_mixer=1`, and `swiglu_fusion=2` are rejected by offload admission. When optional `fc1_experts_bias` (`slot 4`) or `fc2_experts_bias` (`slot 7`) are present, they must match the activation dtype and have shapes `[E, 2*I]` and `[E, H]`. Unused `fc1_global_scale` / `fc2_global_scale` inputs (`slots 15, 16`) on integer nodes are ignored and replaced by synthesized unit (`1.0f`) scales.
+- **Integer vs. NVFP4 tile & streaming defaults**: For integer (`int4_bank_mode_` / `int3_bank_mode_`) offload nodes, `max_sync_tile_tokens` defaults to `256`, `stream_min_tokens` defaults to `max_sync_tile_tokens + 1` (`257`, unless explicitly overridden by `stream_min_tokens` or `ORT_QMOE_STREAM_MIN_TOKENS`), `stream_rows` defaults to `512` (when `resident_slots < E`), `stream_min_rows` defaults to `8`, `stream_wave` defaults to `min(8, prefill_wave_experts)` under `pinned_bytes <= 128 MiB`, and CPU grouping defaults to `group_calls=64`, `fc1_cols=128`, `fc2_cols=256` (while NVFP4 retains `group_calls=32`, `fc1_cols=64`, `fc2_cols=128`).
+
+> **Eligibility note**: When `session.moe.offload.mode="auto"`, any `MoE`/`QMoE` node outside the
+> table above (such as `quant_type="fp4"` MXFP4, raw INT4 `weights_prepacked=0`, omitted/`-1` `weights_prepacked` INT4,
+> `quant_type="fp8"`, `swiglu_fusion=2`, or zero-point inputs) keeps its initializers on GPU and executes through
+> the standard CUDA `MoE`/`QMoE` path. When `session.moe.offload.mode="required"`, unsupported nodes or shared
+> non-offload initializer consumers fail fast during session initialization with `ORT_INVALID_ARGUMENT`.
 
 ---
 

@@ -123,6 +123,10 @@ class CUDAExecutionProvider : public IExecutionProvider {
     return !(qmoe_controller_ && qmoe_controller_->HasOffloadNodes());
   }
 
+#if !defined(ORT_MINIMAL_BUILD)
+  bool SupportsMoeOffload() const override;
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
   bool IsGraphCaptureEnabled() const override;
   bool IsGraphCaptured(CudaGraphAnnotation_t graph_annotation_id) const override;
   Status ReplayGraph(CudaGraphAnnotation_t graph_annotation_id, bool sync = true) override;
