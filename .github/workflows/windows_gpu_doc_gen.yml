@@ -209,7 +209,7 @@ jobs:
           }
         shell: pwsh
 
-      - name: Stage WebGPU plugin for documentation
+      - name: Stage WebGPU plugin EP for documentation
         run: |
           $webgpuBin = "${{ runner.temp }}\build-webgpu\RelWithDebInfo\RelWithDebInfo"
           $runtimeBin = "${{ runner.temp }}\build\RelWithDebInfo\RelWithDebInfo"
