@@ -104,6 +104,7 @@ TEST(BeamSearchParametersTest, RejectsNegativeWhisperBeginningTimestampTokenId) 
   parameters.model_type = contrib::transformers::IGenerationParameters::kModelTypeWhisper;
   parameters.logits_processor = contrib::transformers::IGenerationParameters::kLogitsProcessorTypeWhisper;
   parameters.beginning_timestamp_token_id = -1;
+  parameters.eos_token_id = 127;
 
   EXPECT_THROW(parameters.ValidateWhisperTimestampTokenId(), OnnxRuntimeException);
 }
@@ -114,6 +115,7 @@ TEST(BeamSearchParametersTest, RejectsZeroWhisperBeginningTimestampTokenId) {
   parameters.model_type = contrib::transformers::IGenerationParameters::kModelTypeWhisper;
   parameters.logits_processor = contrib::transformers::IGenerationParameters::kLogitsProcessorTypeWhisper;
   parameters.beginning_timestamp_token_id = 0;
+  parameters.eos_token_id = 127;
 
   EXPECT_THROW(parameters.ValidateWhisperTimestampTokenId(), OnnxRuntimeException);
 }
@@ -124,6 +126,7 @@ TEST(BeamSearchParametersTest, RejectsWhisperBeginningTimestampTokenIdEqualToVoc
   parameters.model_type = contrib::transformers::IGenerationParameters::kModelTypeWhisper;
   parameters.logits_processor = contrib::transformers::IGenerationParameters::kLogitsProcessorTypeWhisper;
   parameters.beginning_timestamp_token_id = 128;
+  parameters.eos_token_id = 127;
 
   EXPECT_THROW(parameters.ValidateWhisperTimestampTokenId(), OnnxRuntimeException);
 }
@@ -134,6 +137,7 @@ TEST(BeamSearchParametersTest, AcceptsValidWhisperBeginningTimestampTokenId) {
   parameters.model_type = contrib::transformers::IGenerationParameters::kModelTypeWhisper;
   parameters.logits_processor = contrib::transformers::IGenerationParameters::kLogitsProcessorTypeWhisper;
   parameters.beginning_timestamp_token_id = 1;
+  parameters.eos_token_id = 127;
 
   EXPECT_NO_THROW(parameters.ValidateWhisperTimestampTokenId());
 }
@@ -158,8 +162,8 @@ TEST(TimestampLogitsProcessorTest, RejectsInvalidBoundsBeforeMutatingScores) {
   TestSequences valid_sequence({5, 2, 5});
   for (int invalid_eos : {vocab_size, vocab_size + 1, std::numeric_limits<int>::max()}) {
     std::vector<float> scores(vocab_size, 1.0f);
-    contrib::transformers::NextTokenScores<float> next_token_scores{
-        gsl::make_span(scores), 1, vocab_size};
+    auto scores_span = gsl::make_span(scores);
+    contrib::transformers::NextTokenScores<float> next_token_scores{scores_span, 1, vocab_size};
     auto processor = MakeTimestampProcessor(invalid_eos);
 
     EXPECT_THROW(processor.Process(&valid_sequence, next_token_scores), OnnxRuntimeException);
@@ -168,8 +172,8 @@ TEST(TimestampLogitsProcessorTest, RejectsInvalidBoundsBeforeMutatingScores) {
 
   for (int invalid_timestamp : {vocab_size, vocab_size + 1, std::numeric_limits<int>::max()}) {
     std::vector<float> scores(vocab_size, 1.0f);
-    contrib::transformers::NextTokenScores<float> next_token_scores{
-        gsl::make_span(scores), 1, vocab_size};
+    auto scores_span = gsl::make_span(scores);
+    contrib::transformers::NextTokenScores<float> next_token_scores{scores_span, 1, vocab_size};
     auto processor = MakeTimestampProcessor(vocab_size - 1);
     TestSequences sequence({5, 2, invalid_timestamp});
 
@@ -181,8 +185,8 @@ TEST(TimestampLogitsProcessorTest, RejectsInvalidBoundsBeforeMutatingScores) {
 TEST(TimestampLogitsProcessorTest, AcceptsVocabularyBoundaryTokens) {
   constexpr int vocab_size = 8;
   std::vector<float> scores(vocab_size, 1.0f);
-  contrib::transformers::NextTokenScores<float> next_token_scores{
-      gsl::make_span(scores), 1, vocab_size};
+  auto scores_span = gsl::make_span(scores);
+  contrib::transformers::NextTokenScores<float> next_token_scores{scores_span, 1, vocab_size};
   auto processor = MakeTimestampProcessor(vocab_size - 1);
   TestSequences sequence({5, 2, vocab_size - 1});
 
