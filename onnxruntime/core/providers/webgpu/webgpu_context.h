@@ -3,7 +3,6 @@
 
 #pragma once
 
-#include <array>
 #include <atomic>
 #include <functional>
 #include <memory>
@@ -194,7 +193,6 @@ struct WebGpuContextConfig {
 #endif
   };
   bool enable_robustness_explicitly_set{false};
-  WebGpuFeatureRequests feature_requests{};
   bool preserve_device{false};
   WeightLoadAccelerationMode weight_load_acceleration_mode{
       WeightLoadAccelerationMode::Off};
@@ -510,10 +508,6 @@ class WebGpuContext final {
   webgpu::ValidationMode validation_mode_;
   bool validation_mode_explicitly_set_;
   bool enable_robustness_ = false;
-  WebGpuFeatureRequests feature_requests_{};
-  bool IsFeatureEnabled(WebGpuFeature feature) const;
-  // Whether ORT feature options permit requesting and using this device feature.
-  bool IsDeviceFeatureAllowed(wgpu::FeatureName feature) const;
   std::optional<uint32_t> adapter_index_;
   int adapter_power_preference_ = static_cast<int>(WGPUPowerPreference_HighPerformance);
   int adapter_backend_type_ = 0;

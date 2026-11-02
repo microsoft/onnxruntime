@@ -1505,37 +1505,43 @@ TEST(WebGpuContextTest, EnableFeaturesRespectsHardwareCapabilities) {
     ConfigOptions options;
     ASSERT_STATUS_OK(options.AddConfigEntry(kEnableFeatures, "subgroupMatrix"));
     ASSERT_STATUS_OK(options.AddConfigEntry(kDisableFeatures, ""));
+    auto default_ep = WebGpuProviderFactoryCreator::Create(ConfigOptions{})->CreateProvider();
     auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
     auto& context = webgpu::WebGpuContextFactory::GetContext(0);
     const auto feature = wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix;
+    EXPECT_EQ(static_cast<WebGpuExecutionProvider&>(*ep).DeviceHasFeature(feature),
+              context.Device().HasFeature(feature));
     EXPECT_EQ(context.DeviceHasFeature(feature), context.Device().HasFeature(feature));
-    auto matching_ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
     ConfigOptions conflicting_options;
     ASSERT_STATUS_OK(conflicting_options.AddConfigEntry(kDisableFeatures, "subgroupMatrix"));
-    EXPECT_NO_THROW(WebGpuProviderFactoryCreator::Create(conflicting_options)->CreateProvider());
-    EXPECT_EQ(context.DeviceHasFeature(feature), context.Device().HasFeature(feature));
+    auto disabled_ep = WebGpuProviderFactoryCreator::Create(conflicting_options)->CreateProvider();
+    EXPECT_FALSE(static_cast<WebGpuExecutionProvider&>(*disabled_ep).DeviceHasFeature(feature));
+    EXPECT_EQ(static_cast<WebGpuExecutionProvider&>(*default_ep).DeviceHasFeature(feature),
+              context.Device().HasFeature(feature));
   });
 }
 
-TEST(WebGpuContextTest, DisableFeaturesControlsDeviceFeature) {
+TEST(WebGpuContextTest, DisableFeaturesDoesNotRestrictLaterSessions) {
   RunWithFreshDefaultContext([]() {
     ConfigOptions options;
     ASSERT_STATUS_OK(options.AddConfigEntry(kDisableFeatures, "subgroupMatrix"));
     auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
     auto& context = webgpu::WebGpuContextFactory::GetContext(0);
     const auto feature = wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix;
-    EXPECT_FALSE(context.Device().HasFeature(feature));
-    EXPECT_FALSE(context.DeviceHasFeature(feature));
-#if !defined(__wasm__)
-    EXPECT_EQ(context.SubgroupMatrixConfigs().configCount, 0u);
-#endif
+    const auto device = context.Device().Get();
+    EXPECT_FALSE(static_cast<WebGpuExecutionProvider&>(*ep).DeviceHasFeature(feature));
+    EXPECT_EQ(context.DeviceHasFeature(feature), context.Device().HasFeature(feature));
     auto matching_ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
-    // Omitted values inherit the context; conflicting explicit requests are ignored with a warning.
     auto omitted_ep = WebGpuProviderFactoryCreator::Create(ConfigOptions{})->CreateProvider();
+    EXPECT_EQ(static_cast<WebGpuExecutionProvider&>(*omitted_ep).DeviceHasFeature(feature),
+              context.Device().HasFeature(feature));
     ConfigOptions conflicting_options;
     ASSERT_STATUS_OK(conflicting_options.AddConfigEntry(kEnableFeatures, "subgroupMatrix"));
-    EXPECT_NO_THROW(WebGpuProviderFactoryCreator::Create(conflicting_options)->CreateProvider());
-    EXPECT_FALSE(context.DeviceHasFeature(feature));
+    auto enabled_ep = WebGpuProviderFactoryCreator::Create(conflicting_options)->CreateProvider();
+    EXPECT_EQ(static_cast<WebGpuExecutionProvider&>(*enabled_ep).DeviceHasFeature(feature),
+              context.Device().HasFeature(feature));
+    EXPECT_FALSE(static_cast<WebGpuExecutionProvider&>(*ep).DeviceHasFeature(feature));
+    EXPECT_EQ(context.Device().Get(), device);
   });
 }
 
@@ -1565,10 +1571,8 @@ TEST(WebGpuContextTest, DisableFeaturesMasksExternalDeviceFeature) {
     auto external_ep = WebGpuProviderFactoryCreator::Create(external_options)->CreateProvider();
     auto& external_context = webgpu::WebGpuContextFactory::GetContext(1);
     EXPECT_TRUE(external_context.Device().HasFeature(feature));
-    EXPECT_FALSE(external_context.DeviceHasFeature(feature));
-#if !defined(__wasm__)
-    EXPECT_EQ(external_context.SubgroupMatrixConfigs().configCount, 0u);
-#endif
+    EXPECT_TRUE(external_context.DeviceHasFeature(feature));
+    EXPECT_FALSE(static_cast<WebGpuExecutionProvider&>(*external_ep).DeviceHasFeature(feature));
     EXPECT_TRUE(context.DeviceHasFeature(feature));
   });
 }
