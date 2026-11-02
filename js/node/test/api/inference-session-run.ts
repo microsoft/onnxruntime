@@ -90,6 +90,24 @@ describe('API Tests - InferenceSession.run()', async () => {
     await consumer.release();
   });
 
+  it('retains aliased GPU allocations after explicitly disposing the source', async function () {
+    const producer = await createWebGpuSession(this);
+    const consumer = await createWebGpuSession(this);
+    const input = new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]);
+    const source = (await producer.run({ input })).output;
+    const aliased = (await consumer.run({ input: source })).output;
+    // eslint-disable-next-line no-underscore-dangle
+    assert.strictEqual(binding.__testGpuBuffersAlias(aliased, source), true);
+
+    await producer.release();
+    source.dispose();
+
+    const consumed = (await consumer.run({ input: aliased })).output;
+    consumed.dispose();
+    aliased.dispose();
+    await consumer.release();
+  });
+
   it('finalizes abandoned GPU outputs', async function () {
     if (typeof global.gc !== 'function') {
       this.skip();
