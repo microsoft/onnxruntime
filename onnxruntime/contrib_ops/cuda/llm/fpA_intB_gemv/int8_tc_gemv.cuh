@@ -278,21 +278,19 @@ struct LaunchConfig {
 // Picks the launch configuration from the grid size (n / 16 blocks). The kernel is DRAM-latency bound at decode batch
 // sizes: a second, partly filled wave costs a full block latency, and too few warps per SM leave the memory system
 // idle. So the configuration with the fewest blocks per SM that still holds the whole grid in one wave is used (more
-// warps and deeper loads per SM the smaller the grid). Grids beyond one wave of the widest configuration take
-// whichever of the two narrow configurations needs fewer waves (the 7-block one on a tie). MinBlocks is the
-// occupancy that ptxas reaches for each configuration without spills (checked with -Xptxas -v: 112, 72, 66 and 64
-// registers).
-// H200 (132 SMs), K = 2560 .. 6144, M = 8: N <= 4224 uses 8 warps with depth 4, N <= 6336 8 warps with depth 2,
-// N <= 14784 4 warps with 7 blocks and N <= 16896 4 warps with 8 blocks. Within each window the pick is within about
-// 5% of the best of the four configurations; the legacy scalar kernel is 1.3 - 2.0x slower.
+// warps and deeper loads per SM the smaller the grid):
+//   blocks <= 2 * SMs: 8 warps, depth 4, 2 blocks/SM;  <= 3 * SMs: 8 warps, depth 2, 3 blocks/SM;
+//   <= 4 * SMs: 8 warps, depth 2, 4 blocks/SM.
+// Beyond that, a 4-warp kernel covering two column tiles per block (5 blocks/SM) is used when N is a multiple of 32 and
+// the halved grid fits in one wave of 5 blocks/SM, or the grid is at least 32 waves long. Remaining grids use the
+// single-column-tile 4-warp kernel: 7 blocks/SM while the grid fits in one wave, otherwise 8 blocks/SM. MinBlocks is
+// the occupancy that ptxas reaches for each configuration without spills (checked with -Xptxas -v).
+// H200 (132 SMs), K = 2560 .. 6144, M = 8: the picks stay within about 5% of the best of the candidate
+// configurations; the legacy scalar kernel is 1.3 - 2.0x slower.
 template <int GroupSize>
 inline LaunchConfig LaunchInt8TcGemvAuto(const __nv_bfloat16* act, const uint8_t* weight, const __nv_bfloat16* scales,
                                          __nv_bfloat16* out, int m, int n, int k, int sm_count, cudaStream_t stream) {
   const int64_t blocks = n / kMmaColumns;
-  auto waves = [&](int blocks_per_sm) {
-    const int64_t slots = static_cast<int64_t>(sm_count) * blocks_per_sm;
-    return (blocks + slots - 1) / slots;
-  };
   if (blocks <= 2 * sm_count) {
     if (!LaunchInt8TcGemv<8, 1, GroupSize, 4, 2>(act, weight, scales, out, m, n, k, stream)) return {0, 0, 0};
     return {8, 4, 2};
@@ -309,7 +307,7 @@ inline LaunchConfig LaunchInt8TcGemvAuto(const __nv_bfloat16* act, const uint8_t
     if (!LaunchInt8TcGemv<4, 2, GroupSize, 2, 5>(act, weight, scales, out, m, n, k, stream)) return {0, 0, 0};
     return {4, 2, 5};
   }
-  if (blocks <= 7 * sm_count || waves(7) < waves(8)) {
+  if (blocks <= 7 * sm_count) {
     if (!LaunchInt8TcGemv<4, 1, GroupSize, 2, 7>(act, weight, scales, out, m, n, k, stream)) return {0, 0, 0};
     return {4, 2, 7};
   }
