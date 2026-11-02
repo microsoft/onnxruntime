@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       pool_name:
-        description: 'The 1ES scale-set name (e.g., ort-github-linux-16-amd-wcus-ss)'
+        description: 'The runner scale-set name or 1ES pool name (e.g., onnxruntime-github-Ubuntu2204-AMD-CPU)'
         required: true
         type: string
       build_config:
@@ -74,7 +74,13 @@ on:
 
 jobs:
   build_test_pipeline:
-    runs-on: ["${{ inputs.pool_name }}"]
+    # Keep other callers (including ARM64) on their existing runner and image.
+    runs-on: >-
+      ${{ inputs.pool_name == 'onnxruntime-github-Ubuntu2204-AMD-CPU' &&
+        fromJSON(format(
+          '["self-hosted","1ES.Pool={0}","1ES.ImageOverride=onnxruntime-ubuntu2404-nvme-x64","JobId={1}-{2}-{3}-{4}"]',
+          inputs.pool_name, inputs.job_identifier, github.run_id, github.run_number, github.run_attempt
+        )) || fromJSON(format('["{0}"]', inputs.pool_name)) }}
     timeout-minutes: 120
     permissions:
       contents: read

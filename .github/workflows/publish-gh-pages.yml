@@ -8,7 +8,11 @@ on:
 
 jobs:
   placeholder:
-    runs-on: [ort-github-linux-16-amd-wcus-ss]
+    runs-on:
+      - self-hosted
+      - "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"
+      - "1ES.ImageOverride=onnxruntime-ubuntu2404-nvme-x64"
+      - "JobId=publish-gh-pages-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
     timeout-minutes: 120
     steps:
       - name: Placeholder step to have workflow included in the GitHub web UI

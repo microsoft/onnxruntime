@@ -24,7 +24,11 @@ permissions:
 
 jobs:
   AndroidBinarySizeCheckJob_MinimalBaseline:
-    runs-on: [ort-github-linux-16-amd-wcus-ss]
+    runs-on:
+      - self-hosted
+      - "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"
+      - "1ES.ImageOverride=onnxruntime-ubuntu2404-nvme-x64"
+      - "JobId=AndroidBinarySizeCheckJob_MinimalBaseline-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
     timeout-minutes: 120
     env:
       CCACHE_DIR: ~/.cache/ccache # explicitly set to prevent any fallback to `~/.ccache`
@@ -115,7 +119,11 @@ jobs:
       shell: bash
 
   android_nnapi_ep:
-    runs-on: [ort-github-linux-16-amd-wcus-ss]
+    runs-on:
+      - self-hosted
+      - "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"
+      - "1ES.ImageOverride=onnxruntime-ubuntu2404-nvme-x64"
+      - "JobId=android_nnapi_ep-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
     timeout-minutes: 120
     env:
       CCACHE_DIR: ~/.cache/ccache # explicitly set to prevent any fallback to `~/.ccache`
@@ -226,7 +234,11 @@ jobs:
 
   android_cpu_ep:
     name: Android CI Pipeline
-    runs-on: [ort-github-linux-16-amd-wcus-ss]
+    runs-on:
+      - self-hosted
+      - "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"
+      - "1ES.ImageOverride=onnxruntime-ubuntu2404-nvme-x64"
+      - "JobId=android_cpu_ep-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
     timeout-minutes: 120
     env:
       CCACHE_DIR: ~/.cache/ccache # explicitly set to prevent any fallback to `~/.ccache`
