@@ -113,6 +113,17 @@ ModelPackageStatus* CopyTreeNoFollow(const fs::path& src, const fs::path& dst) {
   // with the directory hash semantics) so the on-disk bytes match the URI we
   // already computed.
   std::error_code ec;
+  fs::file_status source_status = fs::symlink_status(src, ec);
+  if (ec) return MakeStatus(MODEL_PACKAGE_ERR_IO,
+                            "stat '" + src.u8string() + "': " + ec.message());
+  if (fs::is_symlink(source_status)) {
+    return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
+                      "shared asset source cannot be a symlink: '" + src.u8string() + "'.");
+  }
+  if (!fs::is_directory(source_status)) {
+    return MakeStatus(MODEL_PACKAGE_ERR_NOT_FOUND,
+                      "shared asset source is not a directory: '" + src.u8string() + "'.");
+  }
   fs::create_directories(dst, ec);
   if (ec) return MakeStatus(MODEL_PACKAGE_ERR_IO,
                             "mkdir '" + dst.u8string() + "': " + ec.message());
@@ -228,13 +239,29 @@ ModelPackageStatus* CheckDenseConstraints(ModelPackage* pkg) {
 ModelPackageStatus* CommitSharedAssetsCopyIn(ModelPackage* pkg, const fs::path& root) {
   if (pkg->pending_shared_asset_copies.empty()) return nullptr;
   fs::path assets_root = root / "shared_assets";
+  if (pkg->layout == "portable") {
+    if (auto* s = mp::ValidatePortablePath(root, assets_root, /*must_exist=*/false)) return s;
+  }
   std::error_code ec;
   fs::create_directories(assets_root, ec);
+  if (ec) return MakeStatus(MODEL_PACKAGE_ERR_IO,
+                            "mkdir '" + assets_root.u8string() + "': " + ec.message());
+  if (pkg->layout == "portable") {
+    if (auto* s = mp::ValidatePortablePath(root, assets_root, /*must_exist=*/true)) return s;
+  }
   for (const auto& [uri, src] : pkg->pending_shared_asset_copies) {
     std::string dir_name = mp::DefaultSharedAssetDirName(uri);
     fs::path final_dir = assets_root / dir_name;
-    if (fs::exists(final_dir, ec)) continue;  // already materialized — trust it.
+    if (fs::exists(final_dir, ec)) {
+      if (pkg->layout == "portable") {
+        if (auto* s = mp::ValidatePortablePath(root, final_dir, /*must_exist=*/true)) return s;
+      }
+      continue;
+    }
     fs::path stage_dir = assets_root / (dir_name + ".tmp." + RandomSuffix());
+    if (pkg->layout == "portable") {
+      if (auto* s = mp::ValidatePortablePath(root, stage_dir, /*must_exist=*/false)) return s;
+    }
     if (auto* s = CopyTreeNoFollow(src, stage_dir)) {
       fs::remove_all(stage_dir, ec);
       return s;
@@ -387,6 +414,12 @@ ModelPackageStatus* CommitToDestRoot(ModelPackage* pkg,
     if (pit != pkg->pending_shared_asset_copies.end()) {
       to_copy.emplace_back(rec->uri, pit->second);
     } else {
+      if (pkg->layout == "portable") {
+        if (auto* s = mp::ValidatePortablePath(pkg->package_root, rec->resolved_path,
+                                               /*must_exist=*/true)) {
+          return s;
+        }
+      }
       to_copy.emplace_back(rec->uri, rec->resolved_path);
     }
   }
@@ -399,7 +432,11 @@ ModelPackageStatus* CommitToDestRoot(ModelPackage* pkg,
   }
   // Only materialize shared_assets/ when something will actually land in it.
   if (!to_copy.empty()) {
+    if (auto* s = mp::ValidatePortablePath(dest_root, assets_root, /*must_exist=*/false)) return s;
     fs::create_directories(assets_root, ec);
+    if (ec) return MakeStatus(MODEL_PACKAGE_ERR_IO,
+                              "mkdir '" + assets_root.u8string() + "': " + ec.message());
+    if (auto* s = mp::ValidatePortablePath(dest_root, assets_root, /*must_exist=*/true)) return s;
   }
 
   for (const auto& [uri, src] : to_copy) {
@@ -411,6 +448,7 @@ ModelPackageStatus* CommitToDestRoot(ModelPackage* pkg,
     std::string dir_name = mp::DefaultSharedAssetDirName(uri);
     fs::path final_dir = assets_root / dir_name;
     fs::path stage_dir = assets_root / (dir_name + ".tmp." + RandomSuffix());
+    if (auto* s = mp::ValidatePortablePath(dest_root, stage_dir, /*must_exist=*/false)) return s;
     if (auto* s = CopyTreeNoFollow(src, stage_dir)) {
       fs::remove_all(stage_dir, ec);
       return s;
@@ -638,6 +676,9 @@ ModelPackageStatus* ModelPackage_Prune(ModelPackage* pkg) MODEL_PACKAGE_TRY {
   // protocol and aren't user data.
   std::error_code ec;
   fs::path assets_root = pkg->package_root / "shared_assets";
+  if (pkg->layout == "portable") {
+    if (auto* s = mp::ValidatePortablePath(pkg->package_root, assets_root, /*must_exist=*/false)) return s;
+  }
   if (fs::is_directory(assets_root, ec)) {
     std::error_code open_ec, iter_ec;
     for (fs::directory_iterator it(assets_root, open_ec), end; !iter_ec && it != end; it.increment(iter_ec)) {
@@ -649,6 +690,9 @@ ModelPackageStatus* ModelPackage_Prune(ModelPackage* pkg) MODEL_PACKAGE_TRY {
       if (!fs::is_directory(st)) continue;
       if (!IsTmpName(entry.path())) continue;
       if (!IsOldEnough(entry.path())) continue;
+      if (pkg->layout == "portable") {
+        if (auto* s = mp::ValidatePortablePath(pkg->package_root, entry.path(), /*must_exist=*/true)) return s;
+      }
       fs::remove_all(entry.path(), ec);
     }
     if (iter_ec) return MakeStatus(MODEL_PACKAGE_ERR_IO, "iterate '" + assets_root.u8string() + "': " + iter_ec.message());

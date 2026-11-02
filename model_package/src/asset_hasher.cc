@@ -39,6 +39,17 @@ ModelPackageStatus* ComputeDirectoryAssetUri(const fs::path& source_dir,
     return MakeStatus(MODEL_PACKAGE_ERR_NOT_FOUND,
                       "ComputeDirectoryAssetUri: '" + source_dir.u8string() + "' is not a directory.");
   }
+  const fs::file_status source_status = fs::symlink_status(source_dir, ec);
+  if (ec) {
+    return MakeStatus(MODEL_PACKAGE_ERR_IO,
+                      "ComputeDirectoryAssetUri: cannot inspect '" + source_dir.u8string() +
+                          "': " + ec.message());
+  }
+  if (fs::is_symlink(source_status)) {
+    return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
+                      "ComputeDirectoryAssetUri: source directory cannot be a symlink: '" +
+                          source_dir.u8string() + "'.");
+  }
 
   // Collect (relative_posix_path, absolute_path) pairs.
   std::vector<std::pair<std::string, fs::path>> entries;

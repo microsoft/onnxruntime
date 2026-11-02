@@ -8,6 +8,7 @@
 
 #include <cstddef>
 #include <cstring>
+#include <filesystem>
 #include <new>
 #include <string>
 
@@ -22,6 +23,8 @@ using mp::MakeStatus;
 
 namespace {
 
+namespace fs = std::filesystem;
+
 ModelPackageStatus* NullArg(const char* name) {
   return MakeStatus(MODEL_PACKAGE_ERR_INVALID_ARG,
                     std::string("model_package: '") + name + "' must not be null.");
@@ -31,6 +34,19 @@ const char* OptStr(const std::optional<std::string>& s) {
   return s.has_value() ? s->c_str() : nullptr;
 }
 
+bool IsAncestorOrEqual(const fs::path& ancestor, const fs::path& candidate) {
+  const fs::path normalized_ancestor = ancestor.lexically_normal();
+  const fs::path normalized_candidate = candidate.lexically_normal();
+  auto ancestor_it = normalized_ancestor.begin();
+  auto candidate_it = normalized_candidate.begin();
+  const auto ancestor_end = normalized_ancestor.end();
+  const auto candidate_end = normalized_candidate.end();
+  for (; ancestor_it != ancestor_end; ++ancestor_it, ++candidate_it) {
+    if (candidate_it == candidate_end || *ancestor_it != *candidate_it) return false;
+  }
+  return true;
+}
+
 }  // namespace
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -38,6 +54,73 @@ const char* OptStr(const std::optional<std::string>& s) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 namespace model_package {
+
+ModelPackageStatus* ValidatePortablePath(const fs::path& package_root,
+                                         const fs::path& path,
+                                         bool must_exist) {
+  if (package_root.empty()) {
+    return MakeStatus(MODEL_PACKAGE_ERR_PATH_CONFINEMENT,
+                      "Portable path validation requires a package root.");
+  }
+
+  const fs::path normalized_root = package_root.lexically_normal();
+  const fs::path normalized_path = path.lexically_normal();
+  if (!IsAncestorOrEqual(normalized_root, normalized_path) ||
+      normalized_root == normalized_path) {
+    return MakeStatus(MODEL_PACKAGE_ERR_PATH_CONFINEMENT,
+                      "Portable path '" + normalized_path.u8string() +
+                          "' escapes package_root '" + normalized_root.u8string() + "'.");
+  }
+
+  const fs::path relative = normalized_path.lexically_relative(normalized_root);
+  fs::path current = normalized_root;
+  bool exists = true;
+  for (const auto& component : relative) {
+    current /= component;
+    std::error_code ec;
+    const fs::file_status status = fs::symlink_status(current, ec);
+    if (ec && status.type() != fs::file_type::not_found) {
+      return MakeStatus(MODEL_PACKAGE_ERR_IO,
+                        "Cannot inspect portable path '" + current.u8string() +
+                            "': " + ec.message());
+    }
+    if (fs::is_symlink(status)) {
+      return MakeStatus(MODEL_PACKAGE_ERR_PATH_CONFINEMENT,
+                        "Portable path contains a link: '" + current.u8string() + "'.");
+    }
+    if (!fs::exists(status)) {
+      exists = false;
+      break;
+    }
+  }
+
+  if (must_exist && !exists) {
+    return MakeStatus(MODEL_PACKAGE_ERR_NOT_FOUND,
+                      "Portable path does not exist: '" + normalized_path.u8string() + "'.");
+  }
+
+  std::error_code ec;
+  const fs::path canonical_root = fs::weakly_canonical(normalized_root, ec);
+  if (ec) {
+    return MakeStatus(MODEL_PACKAGE_ERR_IO,
+                      "Cannot resolve package_root '" + normalized_root.u8string() +
+                          "': " + ec.message());
+  }
+  const fs::path canonical_path = fs::weakly_canonical(normalized_path, ec);
+  if (ec) {
+    return MakeStatus(MODEL_PACKAGE_ERR_IO,
+                      "Cannot resolve portable path '" + normalized_path.u8string() +
+                          "': " + ec.message());
+  }
+  if (!IsAncestorOrEqual(canonical_root, canonical_path) ||
+      canonical_root == canonical_path) {
+    return MakeStatus(MODEL_PACKAGE_ERR_PATH_CONFINEMENT,
+                      "Portable path '" + normalized_path.u8string() +
+                          "' resolves outside package_root.");
+  }
+
+  return nullptr;
+}
 
 void DropViewCache(ModelPackage* pkg) {
   if (!pkg) return;

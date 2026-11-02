@@ -483,6 +483,9 @@ ModelPackageStatus* ModelPackage_RemoveSharedAsset(ModelPackage* pkg, const char
     if (!dir_name.empty()) {
       std::filesystem::path on_disk = pkg->package_root / "shared_assets" / dir_name;
       if (mp::IsInsidePackageRoot(pkg, on_disk)) {
+        if (pkg->layout == "portable") {
+          if (auto* s = mp::ValidatePortablePath(pkg->package_root, on_disk, /*must_exist=*/false)) return s;
+        }
         std::error_code ec;
         std::filesystem::remove_all(on_disk, ec);
       }

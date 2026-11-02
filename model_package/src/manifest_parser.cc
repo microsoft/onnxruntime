@@ -385,15 +385,21 @@ ModelPackageStatus* LoadSharedAssets(ModelPackage* pkg, const PathResolverOption
   // Tier 2: discover sha256-<hex> dirs under <package_root>/shared_assets/.
   fs::path assets_root = pkg->package_root / "shared_assets";
   std::error_code ec;
+  if (pkg->layout == "portable" && !pkg->package_root.empty()) {
+    if (auto* s = ValidatePortablePath(pkg->package_root, assets_root, /*must_exist=*/false)) return s;
+  }
   if (!pkg->package_root.empty() && fs::is_directory(assets_root, ec)) {
     std::vector<std::string> discovered;
     std::error_code iter_ec;
     for (fs::directory_iterator it(assets_root, iter_ec), end; !iter_ec && it != end; it.increment(iter_ec)) {
       const auto& entry = *it;
-      if (!entry.is_directory(ec)) continue;
       std::string name = entry.path().filename().u8string();
       std::string uri = SharedAssetUriFromDirName(name);
       if (uri.empty()) continue;  // not a sha256-<hex> dir; ignore (.tmp staging, etc.)
+      if (pkg->layout == "portable") {
+        if (auto* s = ValidatePortablePath(pkg->package_root, entry.path(), /*must_exist=*/true)) return s;
+      }
+      if (!entry.is_directory(ec)) continue;
       if (!seen.insert(uri).second) continue;
       discovered.push_back(std::move(uri));
     }
@@ -413,20 +419,24 @@ ModelPackageStatus* LoadSharedAssets(ModelPackage* pkg, const PathResolverOption
     rec->uri = uri;
     rec->uri_cache = uri;
     auto override_it = override_paths.find(uri);
+    auto pending_it = pkg->pending_shared_asset_copies.find(uri);
     fs::path resolved;
     if (override_it != override_paths.end()) {
       if (auto* s = ResolvePath(pkg->package_root, pkg->package_root, override_it->second,
                                 opts, /*must_exist=*/false, &resolved)) {
         return s;
       }
-    } else if (auto pending_it = pkg->pending_shared_asset_copies.find(uri);
-               pending_it != pkg->pending_shared_asset_copies.end() &&
+    } else if (pending_it != pkg->pending_shared_asset_copies.end() &&
                override_paths.find(uri) == override_paths.end()) {
       // Pending copy_in with no override: surface the staged source until commit.
       resolved = pending_it->second;
     } else {
       // Default convention: <package_root>/shared_assets/sha256-<hex>/
       resolved = assets_root / DefaultSharedAssetDirName(uri);
+    }
+    if (pkg->layout == "portable" &&
+        pending_it == pkg->pending_shared_asset_copies.end()) {
+      if (auto* s = ValidatePortablePath(pkg->package_root, resolved, /*must_exist=*/false)) return s;
     }
     rec->resolved_path = resolved;
     rec->resolved_path_cache = resolved.u8string();

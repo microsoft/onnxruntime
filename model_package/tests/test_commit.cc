@@ -415,6 +415,101 @@ bool test_prune_reports_unstatable_shared_assets_entry() {
   return true;
 }
 
+bool test_open_rejects_linked_shared_asset_paths() {
+  Sandbox s;
+  PkgHandle p = MakeAuthoredPkgAt(s.path("pkg"));
+  CHECK_OK(ModelPackage_Commit(p.get(), s.path("pkg").u8string().c_str(),
+                               MODEL_PACKAGE_WRITE_PRESERVE));
+
+  fs::create_directories(s.path("outside"));
+  std::error_code ec;
+  fs::create_directory_symlink(s.path("outside"), s.path("pkg") / "shared_assets", ec);
+  if (ec) {
+    std::printf("[SKIP] %s (symlink unsupported)\n", g_current);
+    return true;
+  }
+
+  ModelPackage* opened = nullptr;
+  CHECK_ERR(ModelPackage_Open(s.path("pkg").u8string().c_str(), nullptr, &opened),
+            MODEL_PACKAGE_ERR_PATH_CONFINEMENT);
+  CHECK(opened == nullptr);
+
+  fs::remove(s.path("pkg") / "shared_assets", ec);
+  fs::create_directories(s.path("pkg") / "shared_assets");
+  const fs::path linked_asset = s.path("pkg") / "shared_assets" /
+                                ("sha256-" + std::string(64, 'a'));
+  fs::create_directory_symlink(s.path("outside"), linked_asset, ec);
+  CHECK(!ec);
+
+  CHECK_ERR(ModelPackage_Open(s.path("pkg").u8string().c_str(), nullptr, &opened),
+            MODEL_PACKAGE_ERR_PATH_CONFINEMENT);
+  CHECK(opened == nullptr);
+  return true;
+}
+
+bool test_shared_asset_mutations_reject_replaced_parent() {
+  Sandbox s;
+  s.Write("source/model.onnx", "asset");
+  PkgHandle p = MakeAuthoredPkgAt(s.path("pkg"));
+  const char* uri = nullptr;
+  CHECK_OK(ModelPackage_AddSharedAsset(p.get(), s.path("source").u8string().c_str(),
+                                       nullptr, true, &uri));
+  const std::string asset_uri(uri);
+  CHECK_OK(ModelPackage_Commit(p.get(), s.path("pkg").u8string().c_str(),
+                               MODEL_PACKAGE_WRITE_PRESERVE));
+
+  std::error_code ec;
+  fs::remove_all(s.path("pkg") / "shared_assets", ec);
+  s.Write("outside/marker.txt", "keep");
+  fs::create_directory_symlink(s.path("outside"), s.path("pkg") / "shared_assets", ec);
+  if (ec) {
+    std::printf("[SKIP] %s (symlink unsupported)\n", g_current);
+    return true;
+  }
+
+  CHECK_ERR(ModelPackage_RemoveSharedAsset(p.get(), asset_uri.c_str()),
+            MODEL_PACKAGE_ERR_PATH_CONFINEMENT);
+  CHECK(fs::is_regular_file(s.path("outside/marker.txt")));
+  CHECK_ERR(ModelPackage_Prune(p.get()), MODEL_PACKAGE_ERR_PATH_CONFINEMENT);
+  CHECK(fs::is_regular_file(s.path("outside/marker.txt")));
+
+  const char* second_uri = nullptr;
+  CHECK_ERR(ModelPackage_AddSharedAsset(p.get(), s.path("source").u8string().c_str(),
+                                        nullptr, true, &second_uri),
+            MODEL_PACKAGE_ERR_PATH_CONFINEMENT);
+  CHECK(fs::is_regular_file(s.path("outside/marker.txt")));
+  return true;
+}
+
+bool test_dest_commit_rejects_replaced_asset_link() {
+  Sandbox s;
+  s.Write("source/model.onnx", "asset");
+  PkgHandle p = MakeAuthoredPkgAt(s.path("pkg"));
+  const char* uri = nullptr;
+  CHECK_OK(ModelPackage_AddSharedAsset(p.get(), s.path("source").u8string().c_str(),
+                                       nullptr, true, &uri));
+  const std::string asset_dir_name = "sha256-" + std::string(uri).substr(7);
+  CHECK_OK(ModelPackage_Commit(p.get(), s.path("pkg").u8string().c_str(),
+                               MODEL_PACKAGE_WRITE_PRESERVE));
+
+  fs::path asset_dir = s.path("pkg") / "shared_assets" / asset_dir_name;
+  std::error_code ec;
+  fs::remove_all(asset_dir, ec);
+  s.Write("outside/marker.txt", "keep");
+  fs::create_directory_symlink(s.path("outside"), asset_dir, ec);
+  if (ec) {
+    std::printf("[SKIP] %s (symlink unsupported)\n", g_current);
+    return true;
+  }
+
+  CHECK_ERR(ModelPackage_Commit(p.get(), s.path("saved").u8string().c_str(),
+                                MODEL_PACKAGE_WRITE_PRESERVE),
+            MODEL_PACKAGE_ERR_PATH_CONFINEMENT);
+  CHECK(fs::is_regular_file(s.path("outside/marker.txt")));
+  CHECK(!fs::exists(s.path("saved") / "shared_assets" / asset_dir_name / "marker.txt"));
+  return true;
+}
+
 bool test_commit_accepts_unreferenced_shared_asset() {
   // Shared assets no longer require an in-manifest reference: AddSharedAsset
   // signals the user's intent to ship the asset, period. Commit materializes
@@ -513,6 +608,9 @@ const Test kTests[] = {
     {"prune_reclaims_tracked_orphan_variant_dirs", test_prune_reclaims_tracked_orphan_variant_dirs},
     {"prune_removes_stale_staging_dirs", test_prune_removes_stale_staging_dirs},
     {"prune_reports_unstatable_shared_assets_entry", test_prune_reports_unstatable_shared_assets_entry},
+    {"open_rejects_linked_shared_asset_paths", test_open_rejects_linked_shared_asset_paths},
+    {"shared_asset_mutations_reject_replaced_parent", test_shared_asset_mutations_reject_replaced_parent},
+    {"dest_commit_rejects_replaced_asset_link", test_dest_commit_rejects_replaced_asset_link},
     {"commit_accepts_unreferenced_shared_asset", test_commit_accepts_unreferenced_shared_asset},
     {"commit_leaves_no_temp_files", test_commit_leaves_no_temp_files},
     {"commit_unicode_paths_and_assets", test_commit_unicode_paths_and_assets},

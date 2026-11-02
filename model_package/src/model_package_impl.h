@@ -148,6 +148,12 @@ const InfoViewCache& BuildOrGetViewCache(const ModelPackage* pkg);
 /// Returns true iff `p` is `package_root` or lives under it (lexically).
 bool IsInsidePackageRoot(const ModelPackage* pkg, const std::filesystem::path& p);
 
+/// Validate that an existing or prospective portable-package path stays under
+/// package_root and that no existing path component below the root is a link.
+ModelPackageStatus* ValidatePortablePath(const std::filesystem::path& package_root,
+                                         const std::filesystem::path& path,
+                                         bool must_exist);
+
 /// Push the variant's resolved_directory onto the Prune candidates if it's
 /// inside package_root. No-op if unresolved.
 void RecordOrphanVariantDir(ModelPackage* pkg, const VariantRecord& v);
