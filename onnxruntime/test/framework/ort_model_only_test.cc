@@ -473,6 +473,7 @@ TEST(OrtModelTest, RejectsMissingKernelTypeStrResolverEntryOnInitialize) {
 
   const Status status = session_object.Initialize();
   ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.Code(), common::NOT_IMPLEMENTED);
   EXPECT_THAT(status.ErrorMessage(),
               testing::HasSubstr("Could not find an implementation for ReduceSum(11) node with name 'reduce_sum_0'"));
 }
