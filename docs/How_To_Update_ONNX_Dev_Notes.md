@@ -68,7 +68,9 @@ python tools/python/gen_opkernel_doc.py --output_path docs/OperatorKernels.md
 ```
 
 The canonical Windows GPU Doc Gen CI workflow documents CPU, CUDA, DirectML, and the native WebGPU plugin.
-It builds the runtime and WebGPU DLL from the same checkout, but in separate build directories:
+It has three phases: runtime build, WebGPU EP build, and documentation generation.
+
+For local regeneration, use separate build directories:
 
 - Build the runtime in `build` with `--use_cuda --use_dml --build_wheel --use_full_protobuf`, without WebGPU.
 - Build the WebGPU plugin in `build-webgpu` with `--use_webgpu shared_lib --use_full_protobuf`
@@ -99,7 +101,7 @@ python tools\ci_build\build.py `
 
 The final command only generates and validates documentation; it does not reconfigure either build tree.
 Use `--gen_doc` without `validate` to regenerate without rejecting differences from the checked-in files.
-To query the plugin directly, including on a Windows VM without a physical GPU:
+To query the plugin directly, use a GPU machine when the installed runtime includes the CUDA EP:
 
 ```powershell
 $env:ORT_WEBGPU_EP_ALLOW_SOFTWARE_ADAPTER = '1'
