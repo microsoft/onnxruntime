@@ -89,6 +89,17 @@ test('matches unprofiled workload and excludes warmup from baseline means', () =
   assert.throws(() => buildReport(trace, capture, { ...baseline, backend: 'Vulkan' }), /backend/);
   assert.throws(() => buildReport(trace, capture, { ...baseline, trace: 'profile.json' }), /no-profile/);
   assert.throws(() => buildReport(trace, {}, baseline), /model_sha256/);
+  for (const [key, value] of Object.entries({
+    prompt_sha256: 'changed',
+    static_kv: true,
+    graph_capture: true,
+    max_pending_dispatches: 64,
+    intra_op_threads: 1,
+    disabled_optimizers: ['MatMulNBitsMlpFusion'],
+  })) {
+    assert.throws(() => buildReport(trace, { ...capture, [key]: value }, baseline), new RegExp(key));
+    assert.equal(buildReport(trace, { ...capture, [key]: value }, { ...baseline, [key]: value }).baseline.prefill, 15);
+  }
 });
 
 test('standalone payload round trips safely and summary omits bulky event data', async () => {

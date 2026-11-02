@@ -149,7 +149,7 @@
         ctx.stroke();
         ctx.fillStyle = '#7a8c9a';
         ctx.font = '10px "Segoe UI", sans-serif';
-        const text = `${(tick / 1000).toFixed(Math.max(0, 2 - Math.floor(Math.log10(step))))} ms`;
+        const text = `${(tick / 1000).toFixed(Math.max(0, 3 - Math.floor(Math.log10(step))))} ms`;
         ctx.fillText(text, position + 3, 25);
       }
       for (const id of active.indices) {

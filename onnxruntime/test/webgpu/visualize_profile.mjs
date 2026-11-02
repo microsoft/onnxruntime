@@ -152,6 +152,21 @@ export function buildReport(trace, metadata = {}, baseline = {}) {
         throw new Error(`Baseline capture is missing or differs in ${key}.`);
       }
     }
+    for (const key of [
+      'prompt_sha256',
+      'static_kv',
+      'graph_capture',
+      'max_pending_dispatches',
+      'intra_op_threads',
+      'disabled_optimizers',
+    ]) {
+      if (
+        (metadata[key] !== undefined || baseline[key] !== undefined) &&
+        JSON.stringify(metadata[key]) !== JSON.stringify(baseline[key])
+      ) {
+        throw new Error(`Baseline capture differs in ${key}.`);
+      }
+    }
   }
   if (baseline.runs !== undefined && !Array.isArray(baseline.runs)) throw new Error('Baseline runs must be an array.');
   const baselineRuns = (baseline.runs ?? []).filter(
@@ -185,6 +200,11 @@ export function buildReport(trace, metadata = {}, baseline = {}) {
       warmup: metadata.warmup,
       repeat: metadata.repeat,
       decodeSteps: metadata.decode_steps,
+      staticKv: metadata.static_kv,
+      graphCapture: metadata.graph_capture,
+      maxPendingDispatches: metadata.max_pending_dispatches,
+      intraOpThreads: metadata.intra_op_threads,
+      disabledOptimizers: metadata.disabled_optimizers,
     },
   };
 }
