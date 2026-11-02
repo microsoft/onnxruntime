@@ -20,11 +20,6 @@ on:
         required: false
         type: string
         default: "3.14"
-      write_compiler_cache:
-        description: "Opt in to compiler-cache writes during manual feature-branch validation."
-        required: false
-        type: boolean
-        default: false
       matrix_include:
         required: false
         type: string
@@ -85,11 +80,7 @@ jobs:
       SCCACHE_BASEDIRS: ${{ github.workspace }}
       # Bound transfer/storage costs across the matrix.
       SCCACHE_CACHE_SIZE: 10G
-      # After validation, replace the opt-in/event/ref guard with github.ref == 'refs/heads/main'.
-      SCCACHE_LOCAL_RW_MODE: >-
-        ${{ github.event_name == 'workflow_dispatch' && inputs.write_compiler_cache &&
-            github.ref == 'refs/heads/eserscor-dev/erscor/2026/10/30-mac-compiler-cachi' &&
-            'READ_WRITE' || 'READ_ONLY' }}
+      SCCACHE_LOCAL_RW_MODE: ${{ github.ref == 'refs/heads/main' && 'READ_WRITE' || 'READ_ONLY' }}
 
     steps:
       - name: Checkout code
@@ -215,7 +206,7 @@ jobs:
         run: sccache --stop-server
 
       # Stop the server before snapshotting; save before tests to preserve successful compiles on test timeout.
-      - name: Save compiler cache (validation only)
+      - name: Save compiler cache (main only)
         if: >-
           ${{ success() && env.SCCACHE_LOCAL_RW_MODE == 'READ_WRITE' &&
               steps.restore-compiler-cache.outputs.cache-hit != 'true' }}

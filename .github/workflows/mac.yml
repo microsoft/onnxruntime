@@ -12,12 +12,6 @@ on:
       - rel-*
       - plugin-ep-webgpu/rel-*
   workflow_dispatch:
-    inputs:
-      write_compiler_cache:
-        description: "Write compiler caches during feature-branch validation (otherwise read-only)."
-        required: false
-        type: boolean
-        default: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
@@ -30,7 +24,6 @@ jobs:
   cpu:
     uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
     with:
-      write_compiler_cache: ${{ github.event_name == 'workflow_dispatch' && inputs.write_compiler_cache }}
       # Only build arm64 for CPU
       # Also run a Release build on Xcode 16 for legacy-toolchain coverage.
       matrix_include: >-
@@ -44,7 +37,6 @@ jobs:
   coreml:
     uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
     with:
-      write_compiler_cache: ${{ github.event_name == 'workflow_dispatch' && inputs.write_compiler_cache }}
       use_coreml: true
       matrix_include: >-
         [
@@ -57,7 +49,6 @@ jobs:
   xnnpack:
     uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
     with:
-      write_compiler_cache: ${{ github.event_name == 'workflow_dispatch' && inputs.write_compiler_cache }}
       use_xnnpack: true
       # only build arm64/Debug for XNNPack
       matrix_include: >-
@@ -69,7 +60,6 @@ jobs:
   webgpu:
     uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
     with:
-      write_compiler_cache: ${{ github.event_name == 'workflow_dispatch' && inputs.write_compiler_cache }}
       use_webgpu: true
       matrix_include: >-
         [
