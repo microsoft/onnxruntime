@@ -522,7 +522,8 @@ __device__ __noinline__ void RunScanStepExactBf16Fallback(
       float g = 0.0f, be = 0.0f;
       if (tid < len) {
         g = needs_decay ? EffectiveDecay(LoadGate<T>(pack.decay, gi, pack.gates_in_input_type),
-                                         pack.a_log, pack.dt_bias, hv, p.gate_activation)
+                                         pack.a_log, pack.dt_bias, hv, p.gate_activation,
+                                         p.gate_lower_bound)
                         : 0.0f;
         be = pack.beta != nullptr
                  ? EffectiveBeta(LoadGate<T>(pack.beta, gi, pack.gates_in_input_type),
@@ -969,19 +970,35 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetKdaPrepareKernel
       p.update_rule == UpdateRule::kDelta || p.update_rule == UpdateRule::kGatedDelta;
   const bool dt_bias_per_key_dim = p.dt_bias_per_key_dim_flag != 0;
 
+  auto load_decay = [&](int t_idx, int d_idx) -> float {
+    if (t_idx >= len || !needs_decay) return 0.0f;
+    const int64_t tok = tok_base + chunk0 + t_idx;
+    const float raw =
+        LoadGate<T>(pack.decay, (tok * p.num_heads_v + hv) * DK + d_idx, pack.gates_in_input_type);
+    return EffectiveDecay(raw, pack.a_log, pack.dt_bias, hv, d_idx, DK, dt_bias_per_key_dim,
+                          p.gate_lower_bound, p.gate_activation);
+  };
+  auto relative_decay = [&](int from_t, int to_t, int d_idx) -> float {
+    if (from_t >= to_t) return 1.0f;
+    const float gc_from = s.gc[from_t * L::kKh + d_idx];
+    const float gc_to = s.gc[to_t * L::kKh + d_idx];
+    if (isfinite(gc_from) && isfinite(gc_to)) {
+      return __expf(gc_to - gc_from);
+    }
+    // Recompute the interval sum after a saturated prefix to avoid -inf - (-inf).
+    float sum = 0.0f;
+    for (int u = from_t + 1; u <= to_t; ++u) {
+      sum += load_decay(u, d_idx);
+    }
+    return __expf(sum);
+  };
+
   for (int idx = tid; idx < BT * DK; idx += kChunkedThreads) {
     const int t = idx / DK, d = idx % DK;
     const int64_t tok = tok_base + chunk0 + t;
     s.k_h[t * L::kKh + d] = (t < len) ? pack.key[tok * k_stride + hk * DK + d] : FloatToElem<T>(0.f);
     s.q_h[t * L::kKh + d] = (t < len) ? pack.query[tok * q_stride + hq * DK + d] : FloatToElem<T>(0.f);
-    float g = 0.0f;
-    if (t < len && needs_decay) {
-      const float raw =
-          LoadGate<T>(pack.decay, (tok * p.num_heads_v + hv) * DK + d, pack.gates_in_input_type);
-      g = EffectiveDecay(raw, pack.a_log, pack.dt_bias, hv, d, DK, dt_bias_per_key_dim,
-                         p.gate_lower_bound, p.gate_activation);
-    }
-    s.gc[t * L::kKh + d] = g;
+    s.gc[t * L::kKh + d] = load_decay(t, d);
   }
   if (tid < BT) {
     const int64_t tok = tok_base + chunk0 + tid;
@@ -1050,7 +1067,7 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetKdaPrepareKernel
 #pragma unroll
       for (int i = 0; i < (DK / 8); ++i) {
         const int d = sub_lane + i * 8;
-        const float e = __expf(s.gc[t * L::kKh + d] - s.gc[sc * L::kKh + d]);
+        const float e = relative_decay(sc, t, d);
         const float ks = ElemToFloat(s.k_h[sc * L::kKh + d]) * e;
         acc_k += ElemToFloat(s.k_h[t * L::kKh + d]) * ks;
         acc_q += ElemToFloat(s.q_h[t * L::kKh + d]) * ks;
@@ -1127,11 +1144,10 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetKdaPrepareKernel
   for (int idx = tid; idx < BT * DK; idx += kChunkedThreads) {
     const int t = idx / DK, d = idx % DK;
     const float gc_td = s.gc[t * L::kKh + d];
-    const float g_total_d = s.gc[(BT - 1) * L::kKh + d];
     qg_out[idx] =
         FloatToElem<T>((t < len) ? ElemToFloat(s.q_h[t * L::kKh + d]) * __expf(gc_td) : 0.0f);
     kd_out[idx] = FloatToElem<T>(
-        (t < len) ? ElemToFloat(s.k_h[t * L::kKh + d]) * __expf(g_total_d - gc_td) : 0.0f);
+        (t < len) ? ElemToFloat(s.k_h[t * L::kKh + d]) * relative_decay(t, len - 1, d) : 0.0f);
   }
 }
 
@@ -1388,6 +1404,7 @@ Status LaunchGatedDeltaNetSplit(const Descriptor& desc, const Plan& plan,
   p.num_heads_k = desc.num_heads_k;
   p.num_heads_v = desc.num_heads_v;
   p.scale = scale;
+  p.gate_lower_bound = desc.gate_lower_bound;
   p.gate_activation = desc.gate_activation;
   p.beta_activation = desc.beta_activation;
   p.update_rule = desc.update_rule;

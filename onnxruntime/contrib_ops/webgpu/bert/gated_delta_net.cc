@@ -259,13 +259,16 @@ Status GatedDeltaNetParamsProgram::GenerateShaderCode(ShaderHelper& shader) cons
   if (has_beta_) beta = &shader.AddInput("beta", ShaderUsage::UseUniform);
   const ShaderVariableHelper* a_log = &parameters;
   const ShaderVariableHelper* dt_bias = &parameters;
-  if (qwen_gate_) {
+  if (qwen_gate_ || kda_gate_) {
     a_log = &shader.AddInput("a_log", ShaderUsage::UseUniform);
     dt_bias = &shader.AddInput("dt_bias", ShaderUsage::UseUniform);
   }
   return WGSL_TEMPLATE_APPLY(shader, "bert/gated_delta_net_params.wgsl.template",
+                             WGSL_TEMPLATE_PARAMETER(decay_per_key_dim, decay_per_key_dim_),
+                             WGSL_TEMPLATE_PARAMETER(dt_bias_per_key_dim, dt_bias_per_key_dim_),
                              WGSL_TEMPLATE_PARAMETER(has_beta, has_beta_),
                              WGSL_TEMPLATE_PARAMETER(has_decay, has_decay_),
+                             WGSL_TEMPLATE_PARAMETER(kda_gate, kda_gate_),
                              WGSL_TEMPLATE_PARAMETER(qwen_gate, qwen_gate_),
                              WGSL_TEMPLATE_PARAMETER(sigmoid_beta, sigmoid_beta_),
                              WGSL_TEMPLATE_VARIABLE(a_log, *a_log),
@@ -546,18 +549,21 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
   const uint32_t largest_qkv_binding_count = input_is_packed_qkv
                                                  ? binding_count(query)
                                                  : std::max({binding_count(query), binding_count(key), binding_count(value)});
-  const bool needs_dynamic_params = !decay_per_key_dim && !kda_gate_ && (qwen_gate_ || (needs_decay && needs_beta));
+  const bool needs_dynamic_params = qwen_gate_ || kda_gate_ || (needs_decay && needs_beta);
   uint32_t dynamic_param_binding_count = 0;
   if (needs_decay) dynamic_param_binding_count += binding_count(decay);
   if (needs_beta) dynamic_param_binding_count += binding_count(beta);
   if (qwen_gate_ || kda_gate_) dynamic_param_binding_count += binding_count(a_log) + binding_count(dt_bias);
-  const uint64_t packed_params_size_in_bytes =
-      static_cast<uint64_t>(total_tokens) * hv * 2 * sizeof(float);
+  const uint64_t packed_params_width = decay_per_key_dim ? static_cast<uint64_t>(dk) + 1 : 2;
+  const uint64_t packed_params_element_count =
+      static_cast<uint64_t>(total_tokens) * hv * packed_params_width;
+  const uint64_t packed_params_size_in_bytes = packed_params_element_count * sizeof(float);
   const uint32_t packed_params_binding_count =
       onnxruntime::narrow<uint32_t>((packed_params_size_in_bytes + context.DeviceLimits().maxStorageBufferBindingSize - 1) /
                                     context.DeviceLimits().maxStorageBufferBindingSize);
   const bool can_pack_params =
       needs_dynamic_params &&
+      packed_params_element_count <= kMaxUint32 &&
       dynamic_param_binding_count + packed_params_binding_count <= max_storage_buffers;
   const bool can_copy_qkv =
       qkv_element_count <= kMaxUint32 &&
@@ -622,19 +628,26 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
   std::optional<Tensor> packed_params;
   if (use_packed_params) {
     packed_params.emplace(
-        context.CreateGPUTensor(DataTypeImpl::GetType<float>(), TensorShape{total_tokens, hv, 2}));
-    GatedDeltaNetParamsProgram params_program{needs_decay, needs_beta, qwen_gate_, sigmoid_beta_};
-    if (decay != nullptr) params_program.AddInput({decay, ProgramTensorMetadataDependency::None});
-    if (beta != nullptr) params_program.AddInput({beta, ProgramTensorMetadataDependency::None});
-    if (qwen_gate_) params_program.AddInputs({{a_log, ProgramTensorMetadataDependency::None},
-                                              {dt_bias, ProgramTensorMetadataDependency::None}});
+        context.CreateGPUTensor(DataTypeImpl::GetType<float>(),
+                                TensorShape{total_tokens, hv, onnxruntime::narrow<int64_t>(packed_params_width)}));
+    GatedDeltaNetParamsProgram params_program{needs_decay, needs_beta, qwen_gate_, kda_gate_,
+                                              decay_per_key_dim, dt_bias_per_key_dim, sigmoid_beta_};
+    if (decay != nullptr) params_program.AddInput({decay, ProgramTensorMetadataDependency::Type});
+    if (beta != nullptr) params_program.AddInput({beta, ProgramTensorMetadataDependency::Type});
+    if (qwen_gate_ || kda_gate_) {
+      params_program.AddInputs({{a_log, ProgramTensorMetadataDependency::None},
+                                {dt_bias, ProgramTensorMetadataDependency::None}});
+    }
     params_program.AddOutput({&*packed_params, ProgramTensorMetadataDependency::None})
         .SetDispatchGroupSize(onnxruntime::narrow<uint32_t>(
             (static_cast<uint64_t>(total_tokens) * static_cast<uint64_t>(hv) + 63u) / 64u))
         .SetWorkgroupSize(64)
-        .CacheHint(needs_decay, needs_beta, qwen_gate_, sigmoid_beta_)
+        .CacheHint(needs_decay, needs_beta, qwen_gate_, kda_gate_, decay_per_key_dim,
+                   dt_bias_per_key_dim, sigmoid_beta_)
         .AddUniformVariables({{onnxruntime::narrow<uint32_t>(total_tokens)},
-                              {onnxruntime::narrow<uint32_t>(hv)}});
+                              {onnxruntime::narrow<uint32_t>(hv)},
+                              {onnxruntime::narrow<uint32_t>(dk)},
+                              {gate_lower_bound_}});
     ORT_RETURN_IF_ERROR(context.RunProgram(params_program));
   }
 
@@ -679,16 +692,19 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
                                               TensorShape{onnxruntime::narrow<int64_t>(delta_prepared_elements)});
     if (!use_packed_params) {
       packed_params.emplace(context.CreateGPUTensor(DataTypeImpl::GetType<float>(), TensorShape{total_tokens, hv, 2}));
-      GatedDeltaNetParamsProgram params_program{true, true, true, true};
-      params_program.AddInputs({{decay, ProgramTensorMetadataDependency::None},
-                                {beta, ProgramTensorMetadataDependency::None},
+      GatedDeltaNetParamsProgram params_program{true, true, true, false, false, false, true};
+      params_program.AddInputs({{decay, ProgramTensorMetadataDependency::Type},
+                                {beta, ProgramTensorMetadataDependency::Type},
                                 {a_log, ProgramTensorMetadataDependency::None},
                                 {dt_bias, ProgramTensorMetadataDependency::None}})
           .AddOutput({&*packed_params, ProgramTensorMetadataDependency::None})
           .SetWorkgroupSize(64)
           .SetDispatchGroupSize(onnxruntime::narrow<uint32_t>((static_cast<uint64_t>(total_tokens) * hv + 63) / 64))
-          .CacheHint(true, true, true, true)
-          .AddUniformVariables({{onnxruntime::narrow<uint32_t>(total_tokens)}, {onnxruntime::narrow<uint32_t>(hv)}});
+          .CacheHint(true, true, true, false, false, false, true)
+          .AddUniformVariables({{onnxruntime::narrow<uint32_t>(total_tokens)},
+                                {onnxruntime::narrow<uint32_t>(hv)},
+                                {onnxruntime::narrow<uint32_t>(dk)},
+                                {gate_lower_bound_}});
       ORT_RETURN_IF_ERROR(context.RunProgram(params_program));
     }
     GatedDeltaNetNormalizeProgram normalize_program;

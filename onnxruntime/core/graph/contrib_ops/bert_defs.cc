@@ -5611,8 +5611,8 @@ are preserved. One descriptor is supported per invocation; graph capture is not 
 
 constexpr const char* GatedDeltaNet_ver1_doc = R"DOC(
 Packed (token-major) gated delta network / linear attention with an explicit recurrent state.
-Implemented by CUDA and native WebGPU execution providers. WebGPU supports float and float16
-with scalar decay, `head_size_qk <= 256`, and compact state updates.
+Implemented by CPU, CUDA, and native WebGPU execution providers. WebGPU supports float and float16
+with `head_size_qk <= 256` and compact state updates.
 
 Layout. Query, key and value are token-major, so head counts are derived from the shapes
 rather than from attributes:
@@ -5649,13 +5649,14 @@ implementation reads the whole incoming state before writing any of it.
 Compact state updates. When `state_update_capacity` C is greater than zero, `capture_count`
 is required with shape `[batch_size]`. For request b, the first `capture_count[b]` local token
 transitions (clamped on device to `[0, min(C, sequence_length)]`) are emitted in one `state_update`
-float tensor `[batch_size, C * (num_heads_v + num_heads_k * head_size_qk + num_heads_v * head_size_v)]`.
-Each row is struct-of-arrays: all decay values, then all keys, then all deltas. Entries at positions
-greater than or equal to `min(capture_count[b], C, sequence_length)` are unspecified; consumers must
-read only the captured prefix. The key retains its shared `num_heads_k` representation. For scalar
-decay the decoded factors replay one transition as `S *= decay; S += outer(key, delta)`.
-Per-key-dimension decay is not supported when compact updates are enabled. `capture_count` is
-forbidden when C is zero.
+float tensor `[batch_size, C * (decay_width + num_heads_k * head_size_qk + num_heads_v * head_size_v)]`,
+where `decay_width` is `num_heads_v` for scalar decay and `num_heads_v * head_size_qk` for
+per-key-dimension decay. Each row is struct-of-arrays: all decay values, then all keys, then all
+deltas. Entries at positions greater than or equal to `min(capture_count[b], C, sequence_length)`
+are unspecified; consumers must read only the captured prefix. The key retains its shared
+`num_heads_k` representation. For scalar decay the decoded factors replay one transition as
+`S *= decay; S += outer(key, delta)`, and for per-key-dimension decay as
+`S = diag(decay) * S + outer(key, delta)`. `capture_count` is forbidden when C is zero.
 
 The optional CPU input `state_update_active` has shape `[1]`. When zero, transition capture is
 disabled, `capture_count` is ignored, `state_update` is zero-filled, and the planner may use an
@@ -5775,8 +5776,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "TS", OpSchema::Optional)
         .Output(2, "state_update",
                 "Struct-of-arrays compact transition factors, shape "
-                "(batch_size, state_update_capacity * (num_heads_v + num_heads_k * "
-                "head_size_qk + num_heads_v * head_size_v)).",
+                "(batch_size, state_update_capacity * (decay_width + num_heads_k * "
+                "head_size_qk + num_heads_v * head_size_v)), where decay_width is "
+                "num_heads_v for scalar decay and num_heads_v * head_size_qk for "
+                "per-key-dimension decay.",
                 "TS", OpSchema::Optional)
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                         "Constrain query/key/value/output types.")

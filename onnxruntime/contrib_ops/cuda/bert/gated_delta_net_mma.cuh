@@ -69,7 +69,7 @@ __device__ __forceinline__ float EffectiveDecay(float raw, const float* a_log, c
 
 __device__ __forceinline__ float EffectiveDecay(float raw, const float* a_log, const float* dt_bias,
                                                 int h, GateActivation act,
-                                                float gate_lower_bound = -5.0f) {
+                                                float gate_lower_bound) {
   return EffectiveDecay(raw, a_log, dt_bias, h, 0, 1, false, gate_lower_bound, act);
 }
 

@@ -1324,26 +1324,29 @@ __global__ void PagedDecodeSplitKV(const T* __restrict__ query,
       if (head_size <= 2 * kPagedDecodeThreads) {
         const int c0 = tid;
         const int c1 = tid + kPagedDecodeThreads;
+        const bool has_c0 = c0 < head_size;
         const bool has_c1 = c1 < head_size;
-        float acc0 = c0 < head_size ? acc_sh[c0] * alpha : 0.0f;
+        float acc0 = has_c0 ? acc_sh[c0] * alpha : 0.0f;
         float acc1 = has_c1 ? acc_sh[c1] * alpha : 0.0f;
-        for (int t = 0; t < tile_len; ++t) {
-          const int block_id = block_id_sh[t];
-          if (block_id < 0) {
-            continue;
+        if (has_c0) {
+          for (int t = 0; t < tile_len; ++t) {
+            const int block_id = block_id_sh[t];
+            if (block_id < 0) {
+              continue;
+            }
+            const int pos = tile_begin + t;
+            const int64_t value_offset =
+                (static_cast<int64_t>(block_id) * block_size + pos % block_size) * token_stride_in_page +
+                head_offset_in_page;
+            const float prob = logits_sh[t];
+            acc0 += prob * ReadPagedCache(value_cache, value_offset + c0);
+            if (has_c1) {
+              acc1 += prob * ReadPagedCache(value_cache, value_offset + c1);
+            }
           }
-          const int pos = tile_begin + t;
-          const int64_t value_offset =
-              (static_cast<int64_t>(block_id) * block_size + pos % block_size) * token_stride_in_page +
-              head_offset_in_page;
-          const float prob = logits_sh[t];
-          acc0 += prob * ReadPagedCache(value_cache, value_offset + c0);
-          if (has_c1) {
-            acc1 += prob * ReadPagedCache(value_cache, value_offset + c1);
-          }
+          acc_sh[c0] = acc0;
+          if (has_c1) acc_sh[c1] = acc1;
         }
-        if (c0 < head_size) acc_sh[c0] = acc0;
-        if (has_c1) acc_sh[c1] = acc1;
       } else {
         for (int c = tid; c < head_size; c += kPagedDecodeThreads) {
           float acc = acc_sh[c] * alpha;

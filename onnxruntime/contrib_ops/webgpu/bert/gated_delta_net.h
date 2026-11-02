@@ -194,23 +194,32 @@ class GatedDeltaNetPrefillOutputProgram final : public Program<GatedDeltaNetPref
 
 class GatedDeltaNetParamsProgram final : public Program<GatedDeltaNetParamsProgram> {
  public:
-  GatedDeltaNetParamsProgram(bool has_decay, bool has_beta, bool qwen_gate, bool sigmoid_beta)
+  GatedDeltaNetParamsProgram(bool has_decay, bool has_beta, bool qwen_gate, bool kda_gate,
+                             bool decay_per_key_dim, bool dt_bias_per_key_dim, bool sigmoid_beta)
       : Program{"GatedDeltaNetParams"},
         has_decay_(has_decay),
         has_beta_(has_beta),
         qwen_gate_(qwen_gate),
+        kda_gate_(kda_gate),
+        decay_per_key_dim_(decay_per_key_dim),
+        dt_bias_per_key_dim_(dt_bias_per_key_dim),
         sigmoid_beta_(sigmoid_beta) {}
 
   Status GenerateShaderCode(ShaderHelper& shader) const override;
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"total_tokens", ProgramUniformVariableDataType::Uint32},
-      {"num_heads_v", ProgramUniformVariableDataType::Uint32});
+      {"num_heads_v", ProgramUniformVariableDataType::Uint32},
+      {"head_size_qk", ProgramUniformVariableDataType::Uint32},
+      {"gate_lower_bound", ProgramUniformVariableDataType::Float32});
 
  private:
   bool has_decay_;
   bool has_beta_;
   bool qwen_gate_;
+  bool kda_gate_;
+  bool decay_per_key_dim_;
+  bool dt_bias_per_key_dim_;
   bool sigmoid_beta_;
 };
 

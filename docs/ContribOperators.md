@@ -2486,8 +2486,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.GatedDeltaNet"></a><a name="com.microsoft.gateddeltanet">**com.microsoft.GatedDeltaNet**</a>
 
   Packed (token-major) gated delta network / linear attention with an explicit recurrent state.
-  Implemented by CUDA and native WebGPU execution providers. WebGPU supports float and float16
-  with scalar decay, `head_size_qk <= 256`, and compact state updates.
+  Implemented by CPU, CUDA, and native WebGPU execution providers. WebGPU supports float and float16
+  with `head_size_qk <= 256` and compact state updates.
   
   Layout. Query, key and value are token-major, so head counts are derived from the shapes
   rather than from attributes:
@@ -2524,13 +2524,14 @@ This version of the operator has been available since version 1 of the 'com.micr
   Compact state updates. When `state_update_capacity` C is greater than zero, `capture_count`
   is required with shape `[batch_size]`. For request b, the first `capture_count[b]` local token
   transitions (clamped on device to `[0, min(C, sequence_length)]`) are emitted in one `state_update`
-  float tensor `[batch_size, C * (num_heads_v + num_heads_k * head_size_qk + num_heads_v * head_size_v)]`.
-  Each row is struct-of-arrays: all decay values, then all keys, then all deltas. Entries at positions
-  greater than or equal to `min(capture_count[b], C, sequence_length)` are unspecified; consumers must
-  read only the captured prefix. The key retains its shared `num_heads_k` representation. For scalar
-  decay the decoded factors replay one transition as `S *= decay; S += outer(key, delta)`.
-  Per-key-dimension decay is not supported when compact updates are enabled. `capture_count` is
-  forbidden when C is zero.
+  float tensor `[batch_size, C * (decay_width + num_heads_k * head_size_qk + num_heads_v * head_size_v)]`,
+  where `decay_width` is `num_heads_v` for scalar decay and `num_heads_v * head_size_qk` for
+  per-key-dimension decay. Each row is struct-of-arrays: all decay values, then all keys, then all
+  deltas. Entries at positions greater than or equal to `min(capture_count[b], C, sequence_length)`
+  are unspecified; consumers must read only the captured prefix. The key retains its shared
+  `num_heads_k` representation. For scalar decay the decoded factors replay one transition as
+  `S *= decay; S += outer(key, delta)`, and for per-key-dimension decay as
+  `S = diag(decay) * S + outer(key, delta)`. `capture_count` is forbidden when C is zero.
   
   The optional CPU input `state_update_active` has shape `[1]`. When zero, transition capture is
   disabled, `capture_count` is ignored, `state_update` is zero-filled, and the planner may use an
@@ -2555,12 +2556,17 @@ This version of the operator has been available since version 1 of the 'com.micr
   
     g = -exp(a_log) * Softplus(decay + dt_bias)
   
+  `gate_activation='sigmoid'` (alias `'kda'`) computes the bounded Kimi Delta Attention decay in
+  float32:
+  
+    g = gate_lower_bound * Sigmoid(exp(a_log) * (decay + dt_bias))
+  
   `beta_activation='sigmoid'` applies a sigmoid to `beta`, and `qk_l2_norm=1` L2-normalizes each
   query and key head vector. Folding these in avoids materializing the intermediates and keeps
   the gate arithmetic in float32 independent of the input type.
-  Decay and beta may be float or the query element type (both use the same type). CUDA widens
-  FP16/BF16 gate inputs to float before any gate arithmetic, avoiding standalone lossless casts.
-  State, a_log, and dt_bias remain float. WebGPU currently accepts float decay and beta only.
+  Decay and beta may be float or the query element type (both use the same type). CUDA, CPU, and
+  WebGPU widen FP16/BF16 gate inputs to float before any gate arithmetic, avoiding standalone
+  lossless casts. State, a_log, and dt_bias remain float.
   
 
 #### Version
@@ -2575,7 +2581,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>chunk_size</tt> : int</dt>
 <dd>Tuning hint for the chunk-parallel prefill algorithm. On CUDA, 32 pins the narrow chunk and any other value lets the implementation select the widest chunk the device can hold. On WebGPU, 16 opts into the chunkwise prefill route on supported Apple silicon; default 64 retains recurrent execution. Default 64.</dd>
 <dt><tt>gate_activation</tt> : string</dt>
-<dd>'none' (default) treats `decay` as the effective log-space decay. 'softplus' computes -exp(a_log) * Softplus(decay + dt_bias) in float32. 'qwen' is accepted as a legacy alias of 'softplus' with identical behavior.</dd>
+<dd>'none' (default) treats `decay` as the effective log-space decay. 'softplus' computes -exp(a_log) * Softplus(decay + dt_bias) in float32 ('qwen' is accepted as a legacy alias). 'sigmoid' (or 'kda') computes gate_lower_bound * Sigmoid(exp(a_log) * (decay + dt_bias)) in float32.</dd>
+<dt><tt>gate_lower_bound</tt> : float</dt>
+<dd>Negative lower bound applied when gate_activation is 'sigmoid' or 'kda'. Default -5.0.</dd>
 <dt><tt>qk_l2_norm</tt> : int</dt>
 <dd>When 1, L2-normalize each query and key head vector before the recurrence. Default 0.</dd>
 <dt><tt>scale</tt> : float</dt>
@@ -2604,9 +2612,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>initial_state</tt> (optional) : TS</dt>
 <dd>Recurrent state, shape (batch_size, num_heads_v, head_size_v, head_size_qk), V-major. Required for packed QKV. May alias final_state.</dd>
 <dt><tt>a_log</tt> (optional) : TS</dt>
-<dd>Per-head A_log, shape (num_heads_v). Requires gate_activation=softplus.</dd>
+<dd>Per-head A_log, shape (num_heads_v). Used when gate_activation is 'softplus' or 'sigmoid'/'kda'.</dd>
 <dt><tt>dt_bias</tt> (optional) : TS</dt>
-<dd>Per-head gate bias, shape (num_heads_v). Requires gate_activation=softplus.</dd>
+<dd>Gate bias, shape (num_heads_v) or (num_heads_v, head_size_qk) / (num_heads_v * head_size_qk). Used when gate_activation is 'softplus' or 'sigmoid'/'kda'.</dd>
 <dt><tt>capture_count</tt> (optional) : TI</dt>
 <dd>Number of leading local token transitions to capture for each request, shape (batch_size). Clamped on device to [0, min(state_update_capacity, sequence_length)]. Required exactly when state_update_capacity is positive.</dd>
 <dt><tt>state_update_active</tt> (optional) : TI</dt>
@@ -2621,7 +2629,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>final_state</tt> (optional) : TS</dt>
 <dd>State after the last token of each request, shape (batch_size, num_heads_v, head_size_v, head_size_qk)</dd>
 <dt><tt>state_update</tt> (optional) : TS</dt>
-<dd>Struct-of-arrays compact transition factors, shape (batch_size, state_update_capacity * (num_heads_v + num_heads_k * head_size_qk + num_heads_v * head_size_v)).</dd>
+<dd>Struct-of-arrays compact transition factors, shape (batch_size, state_update_capacity * (decay_width + num_heads_k * head_size_qk + num_heads_v * head_size_v)), where decay_width is num_heads_v for scalar decay and num_heads_v * head_size_qk for per-key-dimension decay.</dd>
 </dl>
 
 #### Type Constraints

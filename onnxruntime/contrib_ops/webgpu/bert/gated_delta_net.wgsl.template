@@ -127,6 +127,9 @@ $MAIN {
 #if decay_per_key_dim
     var my_gate_scale = 1.0;
     if (key_index < uniforms.head_size_qk) {
+#if use_packed_params
+      var gate = f32(parameters.getByOffset((token * uniforms.num_heads_v + value_head) * (uniforms.head_size_qk + 1u) + key_index));
+#else
       var gate = f32(decay.getByOffset((token * uniforms.num_heads_v + value_head) * uniforms.head_size_qk + key_index));
 #if qwen_gate
 #if dt_bias_per_key_dim
@@ -142,6 +145,7 @@ $MAIN {
       let dt = f32(dt_bias.getByOffset(value_head));
 #endif
       gate = uniforms.gate_lower_bound * gdn_sigmoid(exp(f32(a_log.getByOffset(value_head))) * (gate + dt));
+#endif
 #endif
       my_gate_scale = exp(gate);
     }
@@ -190,7 +194,11 @@ $MAIN {
       var beta_value = 1.0;
 #if update_rule == 2 || update_rule == 3
 #if use_packed_params
+#if decay_per_key_dim
+      beta_value = f32(parameters.getByOffset((token * uniforms.num_heads_v + value_head) * (uniforms.head_size_qk + 1u) + uniforms.head_size_qk));
+#else
       beta_value = parameters.getByOffset((token * uniforms.num_heads_v + value_head) * 2u + 1u);
+#endif
 #else
       beta_value = f32(beta.getByOffset(token * uniforms.num_heads_v + value_head));
 #if sigmoid_beta
