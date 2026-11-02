@@ -67,17 +67,37 @@ If you want to do the command lines:
 python tools/python/gen_opkernel_doc.py --output_path docs/OperatorKernels.md
 ```
 
-The canonical Windows GPU Doc Gen CI build includes CPU, CUDA, DirectML, and the native WebGPU plugin.
-It builds the runtime and WebGPU DLL from the same checkout; a released WebGPU package is not a substitute
-for documenting the current source registrations. For local regeneration, build with
-`--use_cuda --use_dml --use_webgpu shared_lib --build_wheel --use_full_protobuf`, then use the matching
-built Python runtime. Full Protobuf preserves the schema-documentation configuration normally selected
-by `--gen_doc` during a build:
+The canonical Windows GPU Doc Gen CI workflow documents CPU, CUDA, DirectML, and the native WebGPU plugin.
+It builds the runtime and WebGPU DLL from the same checkout, but in separate build directories:
+
+- Build the runtime in `build` with `--use_cuda --use_dml --build_wheel --use_full_protobuf`, without WebGPU.
+- Build the WebGPU plugin in `build-webgpu` with `--use_webgpu shared_lib --use_full_protobuf`
+  and `--target onnxruntime_providers_webgpu`, without CUDA or DirectML. A second runtime wheel is not needed.
+
+Building the WebGPU plugin EP alongside the CUDA EP in the same CMake build tree is not supported.
+Build both the runtime and WebGPU plugin from the same checkout so the generated documentation reflects
+that checkout's kernel registrations.
+Full Protobuf preserves the schema-documentation configuration normally selected by `--gen_doc` during a build.
+
+For local regeneration with the Visual Studio generator, install the runtime wheel from the first build
+into the active Python environment, then stage the plugin and its runtime dependency for documentation:
 
 ```powershell
-python tools\ci_build\build.py --build_dir build --config RelWithDebInfo --gen_doc validate --use_webgpu shared_lib
+$webgpuBin = ".\build-webgpu\RelWithDebInfo\RelWithDebInfo"
+$runtimeBin = ".\build\RelWithDebInfo\RelWithDebInfo"
+Copy-Item `
+  -LiteralPath "$webgpuBin\onnxruntime_providers_webgpu.dll", "$webgpuBin\dxcompiler.dll" `
+  -Destination $runtimeBin `
+  -ErrorAction Stop
+$env:ORT_WEBGPU_EP_ALLOW_SOFTWARE_ADAPTER = '1'
+python tools\ci_build\build.py `
+  --build_dir build `
+  --config RelWithDebInfo `
+  --gen_doc validate `
+  --use_webgpu shared_lib
 ```
 
+The final command only generates and validates documentation; it does not reconfigure either build tree.
 Use `--gen_doc` without `validate` to regenerate without rejecting differences from the checked-in files.
 To query the plugin directly, including on a Windows VM without a physical GPU:
 

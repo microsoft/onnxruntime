@@ -158,14 +158,65 @@ jobs:
           $buildDir = Join-Path ${{ runner.temp }} "build"
           echo "OnnxRuntimeBuildDirectory=$buildDir" >> $env:GITHUB_ENV
 
-      - name: Build
+      - name: Build CPU, CUDA, and DirectML runtime
         working-directory: ${{ runner.temp }}
         run: |
-          python.exe ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --build_dir build --skip_submodule_sync --build_csharp --parallel --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --update --build --skip_tests --build_wheel --use_full_protobuf --use_dml --use_cuda --use_webgpu shared_lib --cuda_home="$env:RUNNER_TEMP\v12.8" --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py `
+            --config RelWithDebInfo `
+            --build_dir build `
+            --skip_submodule_sync `
+            --build_csharp `
+            --parallel `
+            --use_binskim_compliant_compile_flags `
+            --cmake_generator "Visual Studio 17 2022" `
+            --build_shared_lib `
+            --update `
+            --build `
+            --skip_tests `
+            --build_wheel `
+            --use_full_protobuf `
+            --use_dml `
+            --use_cuda `
+            --cuda_home="$env:RUNNER_TEMP\v12.8" `
+            --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 `
+            --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
           Remove-Item "${{ runner.temp }}\build\RelWithDebInfo" -Include "*.obj" -Recurse
+        shell: pwsh
+
+      - name: Build WebGPU plugin EP
+        working-directory: ${{ runner.temp }}
+        run: |
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py `
+            --config RelWithDebInfo `
+            --build_dir build-webgpu `
+            --skip_submodule_sync `
+            --parallel `
+            --use_binskim_compliant_compile_flags `
+            --cmake_generator "Visual Studio 17 2022" `
+            --build_shared_lib `
+            --update `
+            --build `
+            --skip_tests `
+            --use_full_protobuf `
+            --use_webgpu shared_lib `
+            --target onnxruntime_providers_webgpu `
+            --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
+          if ($lastExitCode -ne 0) {
+            exit $lastExitCode
+          }
+        shell: pwsh
+
+      - name: Stage WebGPU plugin for documentation
+        run: |
+          $webgpuBin = "${{ runner.temp }}\build-webgpu\RelWithDebInfo\RelWithDebInfo"
+          $runtimeBin = "${{ runner.temp }}\build\RelWithDebInfo\RelWithDebInfo"
+          Copy-Item `
+            -LiteralPath "$webgpuBin\onnxruntime_providers_webgpu.dll", "$webgpuBin\dxcompiler.dll" `
+            -Destination $runtimeBin `
+            -ErrorAction Stop
         shell: pwsh
 
       - name: Validate C# native delegates
@@ -184,7 +235,11 @@ jobs:
           ORT_WEBGPU_EP_ALLOW_SOFTWARE_ADAPTER: '1'
         working-directory: ${{ runner.temp }}\build
         run: |
-          python.exe ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --build_dir ${{ runner.temp }}\build --gen_doc validate --use_webgpu shared_lib
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py `
+            --config RelWithDebInfo `
+            --build_dir ${{ runner.temp }}\build `
+            --gen_doc validate `
+            --use_webgpu shared_lib
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
