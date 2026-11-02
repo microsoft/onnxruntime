@@ -1201,18 +1201,12 @@ void WebGpuContext::WriteTimestamp(CommandRecordingState& recording, uint32_t qu
   compute_pass_encoder.WriteTimestamp(query_set_, query_index);
 }
 
-std::optional<TimePoint> WebGpuContext::StartCpuProfileEvent() const {
-  return is_profiling_ ? std::make_optional(std::chrono::high_resolution_clock::now()) : std::nullopt;
-}
-
-void WebGpuContext::RecordCpuProfileEvent(const char* name, const std::optional<TimePoint>& start) {
-  if (start) {
-    const auto end = std::chrono::high_resolution_clock::now();
-    cpu_events_.emplace_back(profiling::API_EVENT, logging::GetProcessId(), logging::GetThreadId(), name,
-                             TimeDiffMicroSeconds(profiling_start_time_, *start),
-                             TimeDiffMicroSeconds(*start, end),
-                             InlinedHashMap<std::string, std::string>{{"execution_side", "cpu"}});
-  }
+void WebGpuContext::RecordCpuProfileEventImpl(const char* name, TimePoint start) {
+  const auto end = std::chrono::high_resolution_clock::now();
+  cpu_events_.emplace_back(profiling::API_EVENT, logging::GetProcessId(), logging::GetThreadId(), name,
+                           TimeDiffMicroSeconds(profiling_start_time_, start),
+                           TimeDiffMicroSeconds(start, end),
+                           InlinedHashMap<std::string, std::string>{{"execution_side", "cpu"}});
 }
 
 void WebGpuContext::StartProfiling() {

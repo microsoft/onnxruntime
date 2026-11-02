@@ -41,15 +41,17 @@ Clock calibration, CPU event clocks/storage, timestamp writes and query resolve/
 while profiling is active. Timestamp feature negotiation at device creation remains unchanged, so a
 session can enable run-level profiling later. Profiling adds measurement and synchronization overhead;
 profiled wall times should not be treated as normal inference throughput.
+CPU timing gates are inline: disabled execution skips clock reads and event-recording calls and
+allocates no event data.
 
 ## Capture and visualize a decoder
 
 The WebGPU test tooling includes a direct ORT decoder runner and a self-contained HTML trace viewer:
 
 ```powershell
-python -m pip install numpy tokenizers plotly
+python -m pip install numpy tokenizers
 python onnxruntime/test/webgpu/profile_decoder.py <model-directory> --output-dir build/profile --decode-steps 16
-python onnxruntime/test/webgpu/visualize_profile.py <trace-json> --metadata build/profile/capture.json --output build/profile/timeline.html
+node onnxruntime/test/webgpu/visualize_profile.mjs <trace-json> --metadata build/profile/capture.json --output build/profile/timeline.html
 ```
 
 Use a native WebGPU ORT Python build containing this change. An external Dawn API-only Python build
@@ -61,14 +63,30 @@ decode steps even after EOS; it does not apply chat templates or LoRA adapters, 
 GenAI application's generation loop. Use `--prompt-file`, `--warmup`, `--repeat` and `--decode-steps`
 to specify the workload. `--no-profile` records ordinary wall times without enabling profiling.
 
-Open `timeline.html` locally. CPU major steps and GPU kernels share one horizontal time axis;
-select a run to zoom into prefill or decode, then hover for program names and abbreviated shapes.
-Full event arguments, including cache keys, remain in the original JSON trace.
+Reporting requires Node.js 20+ and no npm packages. Capture continues to use the native Python binding;
+the Node report runs after capture and adds no inference overhead. Open `timeline.html` locally in a
+recent Edge, Chrome or Firefox with gzip `DecompressionStream` support. The report embeds its data,
+styles and scripts and needs no server or network access.
+
+CPU major steps and GPU kernels share one horizontal time axis. Filter prefill/decode and warmup runs,
+click a run or use the arrow keys to navigate, and drag to zoom or Shift-drag to pan. Search operator
+names, shapes and cache keys, then press Enter to inspect matching events. Click a GPU program to
+highlight its dispatches. The event inspector shows session and run-relative times; export the visible
+timeline as PNG or download the summary. Selected event arguments are embedded; the original JSON
+retains all trace fields.
+
 The run overview shows the interval union of GPU compute and time outside those kernels. Gaps can
 include CPU preparation, transfers and scheduling; transfers do not have GPU compute timestamps.
 The report preserves the recorded timestamps and prominently labels approximate alignment.
 It also exports a `.summary.json` with raw run timings and GPU program totals. The visualizer can
-accept any WebGPU ORT trace; omit `--metadata` when using another capture tool.
+accept traces containing the WebGPU `clock_alignment` events; omit `--metadata` when using another capture tool.
+
+To show an unprofiled baseline, make a second capture with the same workload and `--no-profile`, then
+pass its `capture.json` with `--baseline`. The generator checks matching model hash, ORT version,
+backend, prompt length, decode steps and workload description, and excludes warmup from stage means.
+Use the same prompt and machine conditions; those are not verified by the metadata comparison.
+
+Run the report regression tests with `node --test onnxruntime/test/webgpu/test_visualize_profile.mjs`.
 
 ## Test an external Dawn host
 

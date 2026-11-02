@@ -425,8 +425,16 @@ class WebGpuContext final {
     AtPasses
   };
 
-  std::optional<TimePoint> StartCpuProfileEvent() const;
-  void RecordCpuProfileEvent(const char* name, const std::optional<TimePoint>& start);
+  // Keep the disabled path inline: no clock read or call into event recording.
+  std::optional<TimePoint> StartCpuProfileEvent() const {
+    return is_profiling_ ? std::make_optional(std::chrono::high_resolution_clock::now()) : std::nullopt;
+  }
+  void RecordCpuProfileEvent(const char* name, const std::optional<TimePoint>& start) {
+    if (start) {
+      RecordCpuProfileEventImpl(name, *start);
+    }
+  }
+  void RecordCpuProfileEventImpl(const char* name, TimePoint start);
 
   static uint64_t ResolveMaxStorageBufferBindingSize(
       uint64_t max_storage_buffer_binding_size,
