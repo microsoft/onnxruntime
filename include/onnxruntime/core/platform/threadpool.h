@@ -264,7 +264,7 @@ class ThreadPool {
   static void Schedule(ThreadPool* tp,
                        std::function<void()> fn) {
     if (tp) {
-      tp->Schedule(fn);
+      tp->Schedule(std::move(fn));
     } else {
       fn();
     }

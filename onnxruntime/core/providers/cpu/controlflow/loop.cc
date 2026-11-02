@@ -553,7 +553,7 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
     }
 
     status = utils::ExecuteSubgraph(session_state_, ffm, feeds, fetches, {},
-                                    ExecutionMode::ORT_SEQUENTIAL, context_.GetTerminateFlag(), context_.Logger(),
+                                    ExecutionMode::ORT_SEQUENTIAL, context_.GetCancellationToken(), context_.Logger(),
                                     context_.GetComputeStream(),
                                     // because the fetch[0] is the loop condition which we need to access on CPU,
                                     // have to perofrm a stream sync to make sure the data arrived.

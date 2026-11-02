@@ -561,9 +561,9 @@ TEST(Loop, InfiniteLoopTermination) {
   session_run_options.run_tag = "Loop.InfiniteLoopTermination";
 
   auto terminator = [&session_run_options]() {
-    std::this_thread::sleep_for(std::chrono::seconds(3));
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
     LOGS_DEFAULT(WARNING) << "Setting terminate flag in run options.";
-    session_run_options.terminate = true;
+    session_run_options.RequestTerminate();
     return;
   };
 
