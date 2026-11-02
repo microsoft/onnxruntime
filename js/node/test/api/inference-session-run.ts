@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+/* eslint-disable no-invalid-this -- Mocha supplies its context through function callbacks. */
+
 import assert from 'assert';
 import { InferenceSession, Tensor } from 'onnxruntime-common';
 import * as path from 'path';
@@ -75,6 +77,7 @@ describe('API Tests - InferenceSession.run()', async () => {
     const input = new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]);
     let source: Tensor | undefined = (await producer.run({ input })).output;
     const aliased = (await consumer.run({ input: source })).output;
+    // eslint-disable-next-line no-underscore-dangle
     assert.strictEqual(binding.__testGpuBuffersAlias(aliased, source), true);
 
     await producer.release();

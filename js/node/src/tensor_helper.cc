@@ -268,6 +268,23 @@ struct GpuTensorLease {
 };
 }  // namespace
 
+Napi::Value TestGpuBuffersAlias(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+  ORT_NAPI_THROW_TYPEERROR_IF(info.Length() != 2 || !info[0].IsObject() || !info[1].IsObject(),
+                              env, "Expected two tensor objects.");
+
+  auto get_buffer = [&](const Napi::Value& tensor) {
+    const auto gpu_buffer = tensor.As<Napi::Object>().Get("gpuBuffer");
+    ORT_NAPI_THROW_TYPEERROR_IF(!gpu_buffer.IsExternal(), env, "Tensor must contain a GPU buffer.");
+    Ort::Value value{gpu_buffer.As<Napi::External<OrtValue>>().Data()};
+    void* buffer = value.GetTensorMutableRawData();
+    value.release();
+    return buffer;
+  };
+
+  return Napi::Boolean::New(env, get_buffer(info[0]) == get_buffer(info[1]));
+}
+
 Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value&& value,
                                 std::shared_ptr<Ort::Session> session,
                                 std::shared_ptr<void> allocation_owner) {
@@ -322,23 +339,6 @@ Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value&& value,
             Napi::String::New(env, &tempBuffer[0] + tempOffsets[i],
                               i == size - 1 ? tempBufferLength - tempOffsets[i] : tempOffsets[i + 1] - tempOffsets[i]);
       }
-    }
-
-    Napi::Value TestGpuBuffersAlias(const Napi::CallbackInfo& info) {
-      Napi::Env env = info.Env();
-      ORT_NAPI_THROW_TYPEERROR_IF(info.Length() != 2 || !info[0].IsObject() || !info[1].IsObject(),
-                                  env, "Expected two tensor objects.");
-
-      auto get_buffer = [&](const Napi::Value& tensor) {
-        const auto gpu_buffer = tensor.As<Napi::Object>().Get("gpuBuffer");
-        ORT_NAPI_THROW_TYPEERROR_IF(!gpu_buffer.IsExternal(), env, "Tensor must contain a GPU buffer.");
-        Ort::Value value{gpu_buffer.As<Napi::External<OrtValue>>().Data()};
-        void* buffer = value.GetTensorMutableRawData();
-        value.release();
-        return buffer;
-      };
-
-      return Napi::Boolean::New(env, get_buffer(info[0]) == get_buffer(info[1]));
     }
 
     // new Tensor("string", stringArray /* string[] */, dims /* number[] */)
