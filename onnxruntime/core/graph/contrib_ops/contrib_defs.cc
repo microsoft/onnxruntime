@@ -3855,6 +3855,55 @@ This op functions in much the same was as Dropout-11 and Dropout-13 do, except t
         }
       });
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(MatMulTernary)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(
+          "Matmul with T8 v1 ternary weights: five trits per byte, stored as uint32 bitplanes. "
+          "Trit 0 is zero, 1 is +scale, 2 is -scale. Rows are padded to a multiple of five. "
+          "No bias or zero point is stored. Activations and output are float32; scales are float16.")
+      .Attr("K", "Positive input width, divisible by 128.", AttributeProto::INT)
+      .Attr("N", "Positive output width, excluding padded rows.", AttributeProto::INT)
+      .Attr("format_version", "T8 format version; only 1 is supported.", AttributeProto::INT, int64_t{1})
+      .Attr("layout", "T8 tensor layout.", AttributeProto::STRING, std::string("unit5x128-planes-v1"))
+      .Input(0, "A", "Activations of shape [..., K], rank at least one.", "T")
+      .Input(1, "B", "Bitplanes [ceil(N/5), 8, K/32]; bit l holds lane l of a plane-set.", "TPlanes")
+      .Input(2, "scales", "Per-group scales [ceil(N/5), K/128, 5], padded rows have scale zero.", "TScale")
+      .Output(0, "Y", "Output of shape [..., N].", "T")
+      .TypeConstraint("T", {"tensor(float)"}, "Float32 activations and output.")
+      .TypeConstraint("TPlanes", {"tensor(uint32)"}, "Little-endian uint32 bitplanes.")
+      .TypeConstraint("TScale", {"tensor(float16)"}, "Float16 scales.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        const int64_t k = getAttribute(ctx, "K", -1), n = getAttribute(ctx, "N", -1);
+        if (k <= 0 || k % 128 != 0 || n <= 0) {
+          fail_shape_inference("MatMulTernary requires K > 0 divisible by 128 and N > 0");
+        }
+        const int64_t units = n / 5 + (n % 5 != 0);
+        const int64_t expected[2][3] = {{units, 8, k / 32}, {units, k / 128, 5}};
+        for (size_t input = 1; input <= 2; ++input) {
+          if (!hasInputShape(ctx, input)) continue;
+          const auto& shape = getInputShape(ctx, input);
+          if (shape.dim_size() != 3) fail_shape_inference("MatMulTernary B and scales must have rank 3");
+          for (int d = 0; d < 3; ++d) {
+            if (shape.dim(d).has_dim_value() && shape.dim(d).dim_value() != expected[input - 1][d]) {
+              fail_shape_inference("MatMulTernary invalid packed tensor dimension");
+            }
+          }
+        }
+        if (hasInputShape(ctx, 0)) {
+          auto shape = getInputShape(ctx, 0);
+          const int rank = shape.dim_size();
+          if (rank < 1) fail_shape_inference("MatMulTernary A must have rank >= 1");
+          if (shape.dim(rank - 1).has_dim_value() && shape.dim(rank - 1).dim_value() != k) {
+            fail_shape_inference("MatMulTernary A last dimension must equal K");
+          }
+          shape.mutable_dim(rank - 1)->clear_dim_param();
+          shape.mutable_dim(rank - 1)->set_dim_value(n);
+          updateOutputShape(ctx, 0, shape);
+        }
+      });
+
   static const char* MatMulNBits_ver1_doc = R"DOC(
 MatMulNBits performs a matrix multiplication where the right-hand-side matrix (weights) is quantized to N bits.
 
