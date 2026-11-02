@@ -1683,11 +1683,31 @@ block()
 
   if (onnxruntime_USE_CUDA AND NOT onnxruntime_DISABLE_CONTRIB_OPS)
     ort_configure_cuda_cccl(${onnxruntime_provider_test_target})
+    if (MSVC)
+      # Abseil headers need the same nvcc host-compiler settings as the provider.
+      target_compile_options(${onnxruntime_provider_test_target} PRIVATE
+        "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /permissive>"
+        "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:__cplusplus>"
+        "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:preprocessor>")
+    endif()
     if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.8)
       # Match the provider workaround for overflow diagnostics in CUDA math headers.
       target_compile_options(${onnxruntime_provider_test_target} PRIVATE
         "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=221>")
     endif()
+
+    set(matmul4bits_m1_filter
+      "MatMulNBits.Fp16_Int4_DirectScaleExperiment:MatMulNBits.Cuda_DirectScaleExperimentFallbacks")
+    foreach(mode 1 2)
+      add_test(NAME onnxruntime_matmul4bits_m1_experiment_${mode}
+        COMMAND $<TARGET_FILE:${onnxruntime_provider_test_target}>
+          "--gtest_filter=${matmul4bits_m1_filter}"
+        WORKING_DIRECTORY $<TARGET_FILE_DIR:${onnxruntime_provider_test_target}>)
+      set_tests_properties(onnxruntime_matmul4bits_m1_experiment_${mode} PROPERTIES
+        ENVIRONMENT "ORT_MATMUL4BITS_M1_EXPERIMENT=${mode}"
+        FAIL_REGULAR_EXPRESSION "0 tests from 0 test suites"
+        RUN_SERIAL TRUE)
+    endforeach()
   endif()
 
   # Match the non-plugin WebGPU test-source selection above.

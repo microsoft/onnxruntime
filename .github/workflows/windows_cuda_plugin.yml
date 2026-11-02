@@ -209,6 +209,14 @@ jobs:
             exit $lastExitCode
           }
 
+          foreach ($mode in 1, 2) {
+            $env:ORT_MATMUL4BITS_M1_EXPERIMENT = $mode
+            .\onnxruntime_provider_test.exe --gtest_filter=MatMulNBits.Fp16_Int4_DirectScaleExperiment:MatMulNBits.Cuda_DirectScaleExperimentFallbacks
+            if ($lastExitCode -ne 0) {
+              exit $lastExitCode
+            }
+          }
+
       - name: Run CUDA Plugin EP Python Tests
         working-directory: ${{ github.workspace }}\onnxruntime\test\python\transformers
         shell: pwsh
