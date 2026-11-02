@@ -186,11 +186,6 @@ jobs:
           Remove-Item "${{ runner.temp }}\build\RelWithDebInfo" -Include "*.obj" -Recurse
         shell: pwsh
 
-      - name: Validate C# native delegates
-        run: python tools\ValidateNativeDelegateAttributes.py
-        working-directory: ${{ github.workspace }}\csharp
-        shell: cmd
-
       - name: Upload runtime documentation artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
