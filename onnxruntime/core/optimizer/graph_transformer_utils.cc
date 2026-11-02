@@ -239,6 +239,12 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
   const InlinedHashSet<std::string_view> dml_ep = {onnxruntime::kDmlExecutionProvider};
   AllocatorPtr cpu_allocator = CPUAllocator::DefaultInstance();
 
+  InlinedHashSet<std::string> excluded_initializers;
+  excluded_initializers.reserve(session_options.initializers_to_share_map.size());
+  for (const auto& p : session_options.initializers_to_share_map) {
+    excluded_initializers.insert(p.first);
+  }
+
   switch (level) {
     case TransformerLevel::Default: {
       if (!session_options.free_dimension_overrides.empty()) {
@@ -265,11 +271,6 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       // Put ConstantSharing before CommonSubexpressionElimination by intention as it can create more opportunities for
       // CSE. For example, if A and B nodes consume different initializers with same value, by default,
       // CSE will not merge them.
-      InlinedHashSet<std::string> excluded_initializers;
-      excluded_initializers.reserve(session_options.initializers_to_share_map.size());
-      for (const auto& p : session_options.initializers_to_share_map) {
-        excluded_initializers.insert(p.first);
-      }
       transformers.emplace_back(std::make_unique<ConstantSharing>(no_limit_empty_ep_list, excluded_initializers));
       transformers.emplace_back(std::make_unique<CommonSubexpressionElimination>());
 
@@ -474,7 +475,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
       transformers.emplace_back(std::make_unique<MatMulNBitsFusion>(cpu_cuda_eps));
       if (enable_bf16_norm_cast_fusion) {
-        transformers.emplace_back(std::make_unique<BFloat16NormCastFusion>());
+        transformers.emplace_back(std::make_unique<BFloat16NormCastFusion>(excluded_initializers));
         // The new BF16 Q/K graph must not enable attention normalization with different arithmetic.
         transformers.emplace_back(std::make_unique<GroupQueryAttentionPreNormFusion>(
             InlinedHashSet<std::string_view>{onnxruntime::kWebGpuExecutionProvider}));

@@ -11,10 +11,14 @@ namespace onnxruntime {
 // Removes casts around CUDA SimplifiedLayerNormalization without changing FP32 arithmetic.
 class BFloat16NormCastFusion : public GraphTransformer {
  public:
-  BFloat16NormCastFusion() noexcept
-      : GraphTransformer("BFloat16NormCastFusion", {kCudaExecutionProvider}) {}
+  BFloat16NormCastFusion(const InlinedHashSet<std::string>& excluded_initializers = {}) noexcept
+      : GraphTransformer("BFloat16NormCastFusion", {kCudaExecutionProvider}),
+        excluded_initializers_(excluded_initializers) {}
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
+
+ private:
+  const InlinedHashSet<std::string> excluded_initializers_;
 };
 
 }  // namespace onnxruntime

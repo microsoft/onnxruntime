@@ -111,6 +111,10 @@ Status BFloat16NormCastFusion::ApplyImpl(Graph& graph, bool& modified, int graph
         !IsCast(*trailing, ONNX_NAMESPACE::TensorProto::FLOAT, ONNX_NAMESPACE::TensorProto::BFLOAT16)) {
       continue;
     }
+    // Session-supplied initializers may differ from the model tensor, including device-resident data.
+    if (excluded_initializers_.count(node->InputDefs()[1]->Name()) != 0) {
+      continue;
+    }
     auto* scale = LosslessBFloat16Scale(graph, *node->InputDefs()[1]);
     if (scale == nullptr) {
       continue;

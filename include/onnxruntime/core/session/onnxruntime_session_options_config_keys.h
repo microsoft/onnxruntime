@@ -117,6 +117,7 @@ static const char* const kOrtSessionOptionsEnableCastChainElimination = "optimiz
 // Enable CUDA BF16 Cast fusion around SimplifiedLayerNormalization at optimization level 2 or higher.
 // "0": disable (default); "1": enable. FP32 normalization arithmetic is retained. Output Cast fusion
 // requires a constant, finite FP32 scale that is exactly BF16-representable; shared scales are copied.
+// Scales supplied through AddInitializer are not converted, and their output Cast is retained.
 // Only norms without auxiliary outputs are fused. Enabling this option also disables CUDA
 // GroupQueryAttentionPreNormFusion, whose arithmetic differs, while leaving its WebGPU path unchanged.
 static const char* const kOrtSessionOptionsEnableBFloat16NormCastFusion = "optimization.enable_bf16_norm_cast_fusion";

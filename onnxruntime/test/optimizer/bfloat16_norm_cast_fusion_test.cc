@@ -5,6 +5,7 @@
 #include <cstring>
 #include <limits>
 
+#include "core/framework/data_transfer.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/bfloat16_norm_cast_fusion.h"
 #include "core/optimizer/graph_transformer_utils.h"
@@ -258,6 +259,38 @@ TEST_F(GraphTransformationTests, BFloat16NormCastFusionPreservesSharedScaleBits)
       }));
 }
 
+TEST_F(GraphTransformationTests, BFloat16NormCastFusionExcludesSessionScale) {
+  for (const bool leading : {false, true}) {
+    Model model("ExcludedNormScale", false, ModelMetaData(), PathString(),
+                IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 14}}, {}, *logger_);
+    ModelTestBuilder builder(model.MainGraph());
+    NormCastOptions options;
+    options.leading = leading;
+    BuildNormCast(builder, options);
+    builder.SetGraphOutputs();
+    ASSERT_STATUS_OK(model.MainGraph().Resolve());
+    std::string scale_name;
+    for (const auto& node : model.MainGraph().Nodes()) {
+      if (node.OpType() == "SimplifiedLayerNormalization") {
+        scale_name = node.InputDefs()[1]->Name();
+      }
+    }
+    ASSERT_FALSE(scale_name.empty());
+    BFloat16NormCastFusion transformer({scale_name});
+    bool modified = false;
+    ASSERT_STATUS_OK(transformer.Apply(model.MainGraph(), modified, *logger_));
+    EXPECT_EQ(modified, leading);
+    ASSERT_STATUS_OK(model.MainGraph().Resolve());
+    ASSERT_STATUS_OK(CheckCastCount(model.MainGraph(), 1));
+    for (const auto& node : model.MainGraph().Nodes()) {
+      if (node.OpType() == "SimplifiedLayerNormalization") {
+        EXPECT_EQ(node.InputDefs()[1]->Name(), scale_name);
+        EXPECT_EQ(node.InputDefs()[1]->TypeAsProto()->tensor_type().elem_type(), ONNX_NAMESPACE::TensorProto::FLOAT);
+      }
+    }
+  }
+}
+
 TEST_F(GraphTransformationTests, BFloat16NormCastFusionOptInRegistration) {
   auto cpu = DefaultCpuExecutionProvider();
   ASSERT_NE(cpu, nullptr);
@@ -318,8 +351,15 @@ TEST_F(GraphTransformationTests, BFloat16NormCastFusionCudaNumericalParity) {
       options.leading = leading;
       options.trailing = trailing;
       options.scale = {0.125f, -0.75f, 0.0f, -0.0f};
-      for (const bool nan_input : {false, true}) {
-        SCOPED_TRACE(testing::Message() << "leading=" << leading << " trailing=" << trailing << " nan_input=" << nan_input);
+      struct Case {
+        bool nan_input;
+        bool shared_initializer;
+      };
+      for (const auto& test_case : {Case{false, false}, {true, false}, {false, true}, {true, true}}) {
+        const bool nan_input = test_case.nan_input;
+        const bool shared_initializer = test_case.shared_initializer;
+        SCOPED_TRACE(testing::Message() << "leading=" << leading << " trailing=" << trailing
+                                        << " nan_input=" << nan_input << " shared_initializer=" << shared_initializer);
         options.input_values = {-1, 1, -1, 1, 1, -1, -1, -1};
         if (nan_input) {
           options.input_values[0] = std::numeric_limits<float>::quiet_NaN();
@@ -330,6 +370,13 @@ TEST_F(GraphTransformationTests, BFloat16NormCastFusionCudaNumericalParity) {
         BuildNormCast(builder, options);
         builder.SetGraphOutputs();
         ASSERT_STATUS_OK(model.MainGraph().Resolve());
+        std::string scale_name;
+        for (const auto& node : model.MainGraph().Nodes()) {
+          if (node.OpType() == "SimplifiedLayerNormalization") {
+            scale_name = node.InputDefs()[1]->Name();
+          }
+        }
+        ASSERT_FALSE(scale_name.empty());
         std::string model_data;
         ASSERT_TRUE(model.ToProto().SerializeToString(&model_data));
 
@@ -338,11 +385,39 @@ TEST_F(GraphTransformationTests, BFloat16NormCastFusionCudaNumericalParity) {
           session_options.graph_optimization_level = TransformerLevel::Level2;
           ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
               kOrtSessionOptionsEnableBFloat16NormCastFusion, fused ? "1" : "0"));
+          auto cuda_ep = DefaultCudaExecutionProvider();
+          IAllocatorUniquePtr<float> scale_buffer;
+          OrtValue shared_scale;
+          if (shared_initializer) {
+            AllocatorPtr gpu_allocator;
+            for (const auto& allocator : cuda_ep->CreatePreferredAllocators()) {
+              if (allocator->Info().device.Type() == OrtDevice::GPU &&
+                  allocator->Info().mem_type == OrtMemTypeDefault) {
+                gpu_allocator = allocator;
+                break;
+              }
+            }
+            ASSERT_NE(gpu_allocator, nullptr);
+            auto values = options.scale;
+            for (auto& value : values) {
+              value *= 2.0f;
+            }
+            const TensorShape shape({static_cast<int64_t>(values.size())});
+            const auto type = DataTypeImpl::GetType<float>();
+            scale_buffer = IAllocator::MakeUniquePtr<float>(gpu_allocator, values.size());
+            Tensor::InitOrtValue(type, shape, scale_buffer.get(), gpu_allocator->Info(), shared_scale);
+            Tensor host_scale(type, shape, values.data(), OrtMemoryInfo());
+            const auto transfer = cuda_ep->GetDataTransfer();
+            ASSERT_NE(transfer, nullptr);
+            ASSERT_STATUS_OK(transfer->CopyTensor(host_scale, *shared_scale.GetMutable<Tensor>()));
+            ASSERT_STATUS_OK(session_options.AddInitializer(scale_name.c_str(), &shared_scale));
+          }
           InferenceSessionWrapper session{session_options, GetEnvironment()};
-          ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
+          ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(cuda_ep)));
           ASSERT_STATUS_OK(session.Load(model_data.data(), static_cast<int>(model_data.size())));
           ASSERT_STATUS_OK(session.Initialize());
-          ASSERT_STATUS_OK(CheckCastCount(session.GetGraph(), fused ? 0 : static_cast<int>(leading) + static_cast<int>(trailing)));
+          EXPECT_STATUS_OK(CheckCastCount(session.GetGraph(), fused ? static_cast<int>(shared_initializer && trailing)
+                                                                    : static_cast<int>(leading) + static_cast<int>(trailing)));
           ASSERT_STATUS_OK(session.Run(RunOptions(), builder.feeds_, builder.output_names_, &fetches));
         };
         std::vector<OrtValue> reference;
@@ -362,6 +437,11 @@ TEST_F(GraphTransformationTests, BFloat16NormCastFusionCudaNumericalParity) {
           const auto reference_values = reference_tensor.DataAsSpan<T>();
           const auto actual_values = actual_tensor.DataAsSpan<T>();
           ASSERT_EQ(reference_values.size(), actual_values.size());
+          if (shared_initializer) {
+            // This finite row must use the supplied scale, not the model's original 0.125 scale.
+            EXPECT_GT(static_cast<float>(reference_values[4]), 0.24f);
+            EXPECT_LT(static_cast<float>(reference_values[4]), 0.26f);
+          }
           for (size_t i = 0; i < reference_values.size(); ++i) {
             EXPECT_TRUE(SameNonNaNBits(reference_values[i], actual_values[i])) << "element " << i;
             const float value = static_cast<float>(reference_values[i]);
