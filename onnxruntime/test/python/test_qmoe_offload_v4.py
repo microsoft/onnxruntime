@@ -3411,6 +3411,8 @@ int main() {
         rng = np.random.default_rng(33787)
         for bits, block, slot_bytes in ((4, 32, 110600), (2, 64, 55304)):
             with self.subTest(bits=bits), tempfile.TemporaryDirectory() as directory:
+                if bits == 4:
+                    self._skip_unless_int4_bf16_runner()
                 model = self._build_int_qmoe_model(directory, [(bits, block, 1)], hidden_size=512)
                 reference = self._make_session(model, {"session.moe.offload.mode": "disabled"})
                 resident = self._make_session(
@@ -3436,6 +3438,8 @@ int main() {
                 tempfile.TemporaryDirectory() as directory,
                 mock.patch.dict(os.environ, {"ORT_QMOE_SHARED_RESIDENT_LOG": "1"}),
             ):
+                if bits == 4:
+                    self._skip_unless_int4_bf16_runner()
                 model = self._build_int_qmoe_model(directory, [(bits, block, prepacked)], hidden_size=512)
                 x = np.random.default_rng(bits).standard_normal((16, 512), dtype=np.float32) * 0.5
                 router = np.tile(np.linspace(-4.0, 4.0, 8, dtype=np.float32), (16, 1))
