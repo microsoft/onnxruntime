@@ -6,6 +6,7 @@
 import contextlib
 import ctypes
 import faulthandler
+import filecmp
 import gc
 import os
 import re
@@ -605,16 +606,39 @@ class TestQMoEOffloadV4(unittest.TestCase):
     _nvfp4_skip_reason = ""
     _int4_bf16_runner_supported = True
 
+    @staticmethod
+    def _cuda_plugin_library_is_registered(plugin_path: str) -> bool:
+        """Whether the registered CUDA plugin EP library is plugin_path or a byte-identical copy of it.
+
+        The wheel registers its bundled copy at import. Loading the same library a second time makes the CUDA runtime
+        see every kernel twice ("Duplicate entry kernels"), after which kernel launches fail with "invalid argument" or
+        hang, so a registered copy must be reused instead of being replaced.
+        """
+        with contextlib.suppress(Exception):
+            for device in ort.get_ep_devices():
+                registered_path = device.ep_metadata.get("library_path")
+                if device.ep_name != "CUDAExecutionProvider" or not registered_path:
+                    continue
+                with contextlib.suppress(OSError):
+                    if os.path.samefile(registered_path, plugin_path) or filecmp.cmp(
+                        registered_path, plugin_path, shallow=False
+                    ):
+                        return True
+        return False
+
     @classmethod
     def setUpClass(cls):
         for env_key in ("ORT_CUDA_PLUGIN_PATH", "QWEN_PROVIDER"):
             plugin_path = os.environ.get(env_key)
             if plugin_path and os.path.exists(plugin_path):
-                with contextlib.suppress(Exception):
-                    ort.unregister_execution_provider_library("CUDAExecutionProvider")
-                with contextlib.suppress(Exception):
-                    ort.register_execution_provider_library("CUDAExecutionProvider", plugin_path)
+                if cls._cuda_plugin_library_is_registered(plugin_path):
                     cls._use_plugin_ep = True
+                else:
+                    with contextlib.suppress(Exception):
+                        ort.unregister_execution_provider_library("CUDAExecutionProvider")
+                    with contextlib.suppress(Exception):
+                        ort.register_execution_provider_library("CUDAExecutionProvider", plugin_path)
+                        cls._use_plugin_ep = True
                 break
         if not cls._use_plugin_ep and "CUDAExecutionProvider" not in ort.get_available_providers():
             transformers_dir = Path(__file__).resolve().parent / "transformers"
