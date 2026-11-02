@@ -96,6 +96,7 @@ struct MemoryCapacityTestDriver {
   }
   int PrimaryCtxRelease(Device) noexcept {
     release_called = true;
+    context_at_release = current_context;
     if (const int result = Step(); result != 0) {
       return result;
     }
@@ -112,6 +113,7 @@ struct MemoryCapacityTestDriver {
   const char* error_description = "out of memory";
   int current_context = 0;
   int saved_context = 0;
+  int context_at_release = -1;
   int queried_context = 0;
   int queried_ordinal = -1;
   size_t available_bytes = 12ULL * 1024 * 1024;
@@ -134,6 +136,7 @@ TEST(OrtEpLibrary, MemoryCapacityPreservesCudaContextAndQueriesDeviceTotal) {
     EXPECT_EQ(driver.current_context, original_context);
     EXPECT_FALSE(driver.retained);
     EXPECT_TRUE(driver.release_called);
+    EXPECT_EQ(driver.context_at_release, original_context);
     EXPECT_EQ(total, 16ULL * 1024 * 1024);
     EXPECT_EQ(available, driver.available_bytes);
 
@@ -175,6 +178,9 @@ TEST(OrtEpLibrary, MemoryCapacityDriverFailuresPreserveOutputsAndCleanUp) {
       EXPECT_FALSE(driver.retained);
     }
     EXPECT_EQ(driver.release_called, failure_step >= 6);
+    if (driver.release_called) {
+      EXPECT_EQ(driver.context_at_release, 73);
+    }
   }
 }
 
@@ -193,6 +199,9 @@ TEST(OrtEpLibrary, MemoryCapacityRepeatedPopFailureRestoresCallerBeforeRelease) 
       EXPECT_EQ(driver.current_context, fail_context_set ? 42 : original_context);
       EXPECT_EQ(driver.retained, fail_context_set);
       EXPECT_EQ(driver.release_called, !fail_context_set);
+      if (driver.release_called) {
+        EXPECT_EQ(driver.context_at_release, original_context);
+      }
       EXPECT_EQ(total, 7u);
       EXPECT_EQ(available, 11u);
     }
