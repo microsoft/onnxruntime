@@ -444,7 +444,7 @@ TEST(OrtModelTest, RejectsInputArgCountTotalOverflow) {
 }
 
 TEST(OrtModelTest, RejectsMissingKernelTypeStrResolverEntryOnInitialize) {
-  // Build an ORT format v5+ model with a ReduceSum:11 node, but omit the
+  // Build an ORT format v5+ model with a ReduceSum:13 node, but omit the
   // KernelTypeStrResolver table so ResolveKernelTypeStr fails during
   // InferenceSession::Initialize() -> MatchKernelDefTypes(). Verify that
   // Initialize() returns a failing Status rather than throwing/aborting.
@@ -457,7 +457,7 @@ TEST(OrtModelTest, RejectsMissingKernelTypeStrResolverEntryOnInitialize) {
     std::vector<flatbuffers::Offset<flatbuffers::String>> implicit_inputs;
     std::vector<int32_t> input_arg_counts{1};
     std::vector<flatbuffers::Offset<fbs::Node>> nodes{
-        fbs::CreateNodeDirect(builder, "reduce_sum_0", "", "", 11, 0, "ReduceSum",
+        fbs::CreateNodeDirect(builder, "reduce_sum_0", "", "", 13, 0, "ReduceSum",
                               fbs::NodeType::Primitive, nullptr,
                               &inputs, &outputs, nullptr,
                               &input_arg_counts, &implicit_inputs)};
@@ -475,7 +475,7 @@ TEST(OrtModelTest, RejectsMissingKernelTypeStrResolverEntryOnInitialize) {
   ASSERT_FALSE(status.IsOK());
   EXPECT_EQ(status.Code(), common::NOT_IMPLEMENTED);
   EXPECT_THAT(status.ErrorMessage(),
-              testing::HasSubstr("Could not find an implementation for ReduceSum(11) node with name 'reduce_sum_0'"));
+              testing::HasSubstr("Could not find an implementation for ReduceSum(13) node with name 'reduce_sum_0'"));
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
