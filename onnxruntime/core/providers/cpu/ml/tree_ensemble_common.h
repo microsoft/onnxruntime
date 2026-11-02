@@ -7,6 +7,7 @@
 #include <limits>
 #include <mutex>
 #include <set>
+#include <type_traits>
 #include "core/platform/threadpool.h"
 #include "tree_ensemble_helper.h"
 #include "tree_ensemble_attribute.h"
@@ -33,6 +34,23 @@ class TreeCategorySet {
  private:
   std::unordered_set<TCat> set_;
 };
+
+template <typename ThresholdType>
+size_t ValidateCategorySetId(const ThresholdType& set_id, size_t category_set_count) {
+  static_assert(std::is_floating_point_v<ThresholdType>);
+  ORT_ENFORCE(std::isfinite(set_id) && set_id >= 0 && std::floor(set_id) == set_id,
+              "Tree category set id ", set_id, " must be a finite, non-negative integer.");
+
+  constexpr int size_t_digits = std::numeric_limits<size_t>::digits;
+  const ThresholdType size_t_limit = std::ldexp(ThresholdType{1}, size_t_digits);
+  ORT_ENFORCE(set_id < size_t_limit,
+              "Tree category set id ", set_id, " cannot be represented as size_t.");
+
+  const size_t category_set_id = static_cast<size_t>(set_id);
+  ORT_ENFORCE(category_set_id < category_set_count,
+              "Tree category set id ", category_set_id, " must be in [0, ", category_set_count, ").");
+  return category_set_id;
+}
 
 /**
  * These attributes are the kernel attributes. They are different from the onnx operator attributes
@@ -109,15 +127,8 @@ class TreeEnsembleCommon : public TreeEnsembleCommonAttributes {
   template <typename AGG>
   void ComputeAgg(concurrency::ThreadPool* ttp, const Tensor* X, Tensor* Y, Tensor* label, const AGG& agg) const;
 
-  static size_t ValidateCategorySetId(const ThresholdType& set_id, size_t category_set_count) {
-    ORT_ENFORCE(std::isfinite(set_id) && set_id >= 0 && std::floor(set_id) == set_id &&
-                    set_id < static_cast<ThresholdType>(category_set_count),
-                "Tree category set id ", set_id, " must be an integer in [0, ", category_set_count, ").");
-    return static_cast<size_t>(set_id);
-  }
-
   inline const TreeCategorySet<int32_t, InputType>& GetCategorySet(const ThresholdType& set_id) const {
-    return category_sets_[ValidateCategorySetId(set_id, category_sets_.size())];
+    return category_sets_[static_cast<size_t>(set_id)];
   }
 
  private:
