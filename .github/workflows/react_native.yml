@@ -132,7 +132,7 @@ jobs:
         working-directory: ${{ github.workspace }}/js/react_native/e2e/android
 
       - name: Build React Native Detox Android e2e Tests
-        run: ./node_modules/.bin/detox build --configuration android.emu.release
+        run: npm run detox -- build --configuration android.emu.release
         working-directory: ${{ github.workspace }}/js/react_native/e2e
 
       - name: Setup Android Emulator
@@ -143,7 +143,7 @@ jobs:
       - name: Run React Native Detox Android e2e Tests
         run: |
           JEST_JUNIT_OUTPUT_FILE=${{ github.workspace }}/js/react_native/e2e/android-test-results.xml \
-            ./node_modules/.bin/detox test --record-logs all \
+            npm run detox -- test --record-logs all \
                          --configuration android.emu.release \
                          --loglevel trace \
                          --take-screenshots failing
@@ -280,7 +280,7 @@ jobs:
         working-directory: ${{ github.workspace }}/js/react_native/e2e/ios
 
       - name: Build Detox iOS e2e Tests
-        run: ./node_modules/.bin/detox build --configuration ios.sim.release
+        run: npm run detox -- build --configuration ios.sim.release
         working-directory: ${{ github.workspace }}/js/react_native/e2e
 
       - name: Reset iOS Simulators before Detox
@@ -294,7 +294,7 @@ jobs:
       - name: Run Detox iOS e2e Tests
         run: |
           JEST_JUNIT_OUTPUT_FILE=${{ github.workspace }}/js/react_native/e2e/ios-test-results.xml \
-            ./node_modules/.bin/detox test --record-logs all \
+            npm run detox -- test --record-logs all \
                          --configuration ios.sim.release \
                          --loglevel verbose \
                          --take-screenshots failing \
