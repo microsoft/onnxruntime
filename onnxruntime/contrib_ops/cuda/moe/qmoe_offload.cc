@@ -145,6 +145,88 @@ size_t AddSlab(size_t bytes, size_t& total) {
   return offset;
 }
 
+struct StreamScratchShape {
+  int hidden_size;
+  int inter_size;
+  int num_experts;
+  int top_k;
+  int min_rows;
+  bool has_bias;
+  bool stage_scales;
+  std::array<size_t, 6> bank_bytes;
+};
+
+struct StreamTileWave {
+  int tile;
+  int wave;
+};
+
+// Mirrors the streaming layout that ComputeShared plans for a call filling a whole tile: GPU scratch, pinned
+// scratch and the double-buffered landing slabs. The optional CUTLASS workspace is excluded because the runner
+// shrinks its capacity or falls back to GEMV when it does not fit. Keep this in sync with ComputeShared.
+bool StreamScratchFits(const StreamScratchShape& shape, StreamTileWave tile_wave, size_t gpu_limit, size_t pinned_limit) {
+  constexpr size_t kElemSize = sizeof(uint16_t);
+  const int route_cap = SafeInt<int>(tile_wave.tile) * shape.top_k;
+  const int route_slots = std::max(route_cap, kGroupedMoeMinRows);
+  const int wave_route_slots = std::min(route_slots, 4096);
+  const int cpu_row_cap = std::min(route_cap, (shape.min_rows - 1) * shape.num_experts);
+  const int wave_groups = (shape.num_experts + tile_wave.wave - 1) / tile_wave.wave;
+  const size_t route_bytes = SafeInt<size_t>(route_slots) * sizeof(int);
+  const size_t contribution_bytes = SafeInt<size_t>(route_cap) * shape.hidden_size * kElemSize;
+  const size_t cpu_row_bytes = SafeInt<size_t>(std::max(cpu_row_cap, 1)) * shape.hidden_size * kElemSize;
+  const size_t wave_row_bytes = SafeInt<size_t>(wave_route_slots) * shape.hidden_size * kElemSize;
+  const size_t inter_bytes = SafeInt<size_t>(wave_route_slots) * shape.inter_size * kElemSize;
+  const size_t meta_bytes = SafeInt<size_t>(route_slots + wave_groups * kGroupedMoeMinRows) * sizeof(int);
+
+  size_t gpu_bytes = 0;
+  for (int slab = 0; slab < 4; ++slab) AddSlab(route_bytes, gpu_bytes);  // scales, indices, unit scales, identity
+  AddSlab(contribution_bytes, gpu_bytes);
+  if (shape.has_bias) AddSlab(contribution_bytes, gpu_bytes);
+  for (int slab = 0; slab < 3; ++slab) AddSlab(route_bytes, gpu_bytes);  // hit ids, hit compact, cpu ids
+  AddSlab(SafeInt<size_t>(wave_route_slots) * sizeof(int), gpu_bytes);   // permutation
+  AddSlab(wave_row_bytes, gpu_bytes);                                    // gathered
+  AddSlab(wave_row_bytes, gpu_bytes);                                    // wave output
+  AddSlab(inter_bytes, gpu_bytes);
+  AddSlab(cpu_row_bytes, gpu_bytes);
+  AddSlab(meta_bytes, gpu_bytes);  // stream ids
+  AddSlab(meta_bytes, gpu_bytes);  // stream compact
+
+  size_t pinned_bytes = 0;
+  AddSlab(route_bytes, pinned_bytes);                                                      // indices
+  AddSlab(tile_wave.tile, pinned_bytes);                                                   // phases
+  AddSlab(SafeInt<size_t>(tile_wave.tile) * shape.hidden_size * kElemSize, pinned_bytes);  // input rows
+  AddSlab(cpu_row_bytes, pinned_bytes);                                                    // cpu results
+  for (int slab = 0; slab < 3; ++slab) AddSlab(route_bytes, pinned_bytes);                 // hit ids, hit compact, cpu ids
+  AddSlab(meta_bytes, pinned_bytes);                                                       // stream ids
+  AddSlab(meta_bytes, pinned_bytes);                                                       // stream compact
+  if (shape.stage_scales) {
+    AddSlab(SafeInt<size_t>(2) * tile_wave.wave * (shape.bank_bytes[2] + shape.bank_bytes[3]), pinned_bytes);
+  }
+
+  size_t landing_bytes = 0;
+  for (int buffer = 0; buffer < 2; ++buffer) {
+    for (const size_t bank_bytes : shape.bank_bytes) {
+      AddSlab(SafeInt<size_t>(bank_bytes) * tile_wave.wave, landing_bytes);
+    }
+  }
+  return pinned_bytes <= pinned_limit && SafeInt<size_t>(gpu_bytes) + landing_bytes <= gpu_limit;
+}
+
+// Picks the largest tile, then the largest wave, that fits, halving from the requested values down to the
+// floors. A smaller tile saves more transfer passes than a larger wave saves launches, so it is kept first.
+// When nothing fits it returns the floors and lets ComputeShared report the limit error.
+StreamTileWave FitStreamTileAndWave(const StreamScratchShape& shape, StreamTileWave requested, StreamTileWave floors,
+                                    size_t gpu_limit, size_t pinned_limit) {
+  for (int tile = requested.tile;; tile = std::max(tile / 2, floors.tile)) {
+    for (int wave = requested.wave;; wave = std::max(wave / 2, floors.wave)) {
+      if (StreamScratchFits(shape, {tile, wave}, gpu_limit, pinned_limit)) return {tile, wave};
+      if (wave == floors.wave) break;
+    }
+    if (tile == floors.tile) break;
+  }
+  return floors;
+}
+
 qmoe::SpinPoolRegistry& SharedSpinPools() {
   static qmoe::SpinPoolRegistry registry;
   return registry;
@@ -3284,6 +3366,10 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
                   (int3_bank_mode_ ? (swiglu_fusion_ == 1) : (swiglu_fusion_ == 0 || swiglu_fusion_ == 1)) &&
                   !use_sparse_mixer_,
               "QMoEOffload FP4/INT4/INT3 mode requires interleaved SwiGLU activation and use_sparse_mixer=0.");
+  // QMoE has no separate FC3 and the offload banks are always interleaved, so an omitted/zero swiglu_fusion means
+  // interleaved (as in the non-offload QMoE path). CUTLASS reads 0 as separate gate/value halves, so normalize it
+  // before the value reaches workspace planning or the runner activation parameters.
+  swiglu_fusion_ = 1;
 
   for (int index : {8, 9, 10, 11, 12, 13, 14, 17, 18, 19, 20}) {
     ORT_ENFORCE(!InputExists(info, index), "QMoEOffload FP4/INT4 unsupported input slot ", index, " is present.");
@@ -3579,6 +3665,9 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
   continuous_decay_ = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_CONTINUOUS_DECAY", 1) == 1;
   bg_promo_stream_ = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_BG_PROMO_STREAM", 1) == 1;
   cpu_fp16_boundaries_ = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_CPU_FP16_BOUNDARIES", 0) == 1;
+  // Integer-bank tile and wave defaults shrink to fit the working budgets below; explicit settings are honored.
+  bool shrink_stream_tile = false;
+  bool shrink_stream_wave = false;
   const int default_stream_rows =
       ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_STREAM_ROWS", is_int_bank ? 2048 : 0);
   const bool cpu_disabled_streaming =
@@ -3596,6 +3685,7 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
             ? std::min(16, static_cast<int>(v4_policy_.prefill_wave_experts))
             : static_cast<int>(v4_policy_.prefill_wave_experts);
     stream_wave_ = std::clamp(default_disabled_wave, 1, num_experts_);
+    shrink_stream_wave = is_int_bank;
     stream_promotions_ = 0;
     stream_gpu_limit_ = shared_gpu_limit_;
     stream_pinned_limit_ = shared_pinned_limit_;
@@ -3624,6 +3714,11 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
         static_cast<int>(info.GetAttrOrDefault<int64_t>("stream_min_rows", default_min_rows)), 1, 8192);
     stream_wave_ = std::clamp(
         static_cast<int>(info.GetAttrOrDefault<int64_t>("stream_wave", default_wave)), 1, num_experts_);
+    int64_t explicit_attr = 0;
+    shrink_stream_tile = is_int_bank && std::getenv("ORT_QMOE_SHARED_STREAM_ROWS") == nullptr &&
+                         !info.GetAttr<int64_t>("stream_rows", &explicit_attr).IsOK();
+    shrink_stream_wave = is_int_bank && std::getenv("ORT_QMOE_SHARED_STREAM_WAVE") == nullptr &&
+                         !info.GetAttr<int64_t>("stream_wave", &explicit_attr).IsOK();
     stream_promotions_ = deterministic_replay_ ? 0 : std::clamp(ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_STREAM_PROMOTIONS", 0), 0, 64);
     stream_gpu_limit_ = (v4_planned_mode_ || is_int_bank)
                             ? shared_gpu_limit_
@@ -3701,30 +3796,13 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
       out_gpu_bytes = g_bytes + landing_bytes;
       out_host_bytes = h_bytes;
     };
-    const size_t gpu_cap = v4_planned_mode_ ? shared_gpu_limit_ : std::max(shared_gpu_limit_, stream_gpu_limit_);
-    const size_t pin_cap = v4_planned_mode_ ? shared_pinned_limit_ : std::max(shared_pinned_limit_, stream_pinned_limit_);
     size_t est_gpu = 0, est_host = 0;
-    estimate_working_bytes(stream_rows_, stream_wave_, /*is_streaming=*/true, est_gpu, est_host);
-    while (stream_wave_ > 1 && (est_gpu > gpu_cap || est_host > pin_cap)) {
-      --stream_wave_;
-      estimate_working_bytes(stream_rows_, stream_wave_, /*is_streaming=*/true, est_gpu, est_host);
-    }
-    while (stream_rows_ > 1 && (est_gpu > gpu_cap || est_host > pin_cap)) {
-      stream_rows_ = std::max(1, stream_rows_ / 2);
-      estimate_working_bytes(stream_rows_, stream_wave_, /*is_streaming=*/true, est_gpu, est_host);
-    }
-    if (!cpu_disabled_streaming && (est_gpu > gpu_cap || est_host > pin_cap)) {
-      stream_rows_ = 0;
-    }
     estimate_working_bytes(max_sync_tile_tokens_, 1, /*is_streaming=*/false, est_gpu, est_host);
     while (max_sync_tile_tokens_ > 1 && (est_gpu > shared_gpu_limit_ || est_host > shared_pinned_limit_)) {
       max_sync_tile_tokens_ = std::max(1, max_sync_tile_tokens_ / 2);
       estimate_working_bytes(max_sync_tile_tokens_, 1, /*is_streaming=*/false, est_gpu, est_host);
     }
     max_routes_ = SafeInt<int>(std::max(max_sync_tile_tokens_, async_max_tokens_)) * k_;
-    prefill_chunk_tokens_ = static_cast<int>(
-        info.GetAttrOrDefault<int64_t>("prefill_chunk_tokens",
-                                       ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_PREFILL_CHUNK_TOKENS", stream_rows_)));
   }
   if (async_) {
     async_aux_ = resident_slots_ > 0 && ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_AUX_STREAM", 1) == 1;
@@ -4134,6 +4212,27 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
           static_cast<const uint8_t*>(nvfp4_fc2_s_->DataRaw()),
           fc2_g_base);
     }
+  }
+
+  if (stream_rows_ > 0 && (shrink_stream_tile || shrink_stream_wave)) {
+    const StreamScratchShape shape{hidden_size_, inter_size_, num_experts_, static_cast<int>(k_), stream_min_rows_,
+                                   nvfp4_fc2_b_ != nullptr, int4_bank_mode_, resident_bank_bytes_};
+    const StreamTileWave requested{stream_rows_, stream_wave_};
+    // Streaming serves calls above the synchronous tile, so stream_min_tokens_ is the smallest useful tile.
+    const StreamTileWave floors{shrink_stream_tile ? std::min(stream_rows_, stream_min_tokens_) : stream_rows_,
+                                shrink_stream_wave ? 1 : stream_wave_};
+    const StreamTileWave fitted =
+        FitStreamTileAndWave(shape, requested, floors, shared_gpu_limit_, shared_pinned_limit_);
+    if ((fitted.tile != requested.tile || fitted.wave != requested.wave) &&
+        ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_RESIDENT_LOG", 0) == 1) {
+      std::fprintf(stderr, "QMoEOffload stream budget layer=%lld tile=%d->%d wave=%d->%d\n",
+                   static_cast<long long>(layer_index_), requested.tile, fitted.tile, requested.wave, fitted.wave);
+    }
+    stream_rows_ = fitted.tile;
+    stream_wave_ = fitted.wave;
+    prefill_chunk_tokens_ = static_cast<int>(
+        info.GetAttrOrDefault<int64_t>("prefill_chunk_tokens",
+                                       ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_PREFILL_CHUNK_TOKENS", stream_rows_)));
   }
 
   if (stream_rows_ > 0) {
@@ -6972,9 +7071,8 @@ int QMoEOffload::RunColdExperts(CpuWork& work, int group_count, const ActT* host
         }
       }
     } group_lease_guard{this, &group_expert_ids, &lease_held, &miss_load_slots};
-    const bool in_warmup = IsInQMoEWarmup(session_controller_.get());
     const bool allow_fused_miss_load =
-        use_ssd && !in_warmup && per_expert_ready && static_cast<size_t>(group_size) <= CpuWork::kMaxGroupSlots &&
+        use_ssd && per_expert_ready && static_cast<size_t>(group_size) <= CpuWork::kMaxGroupSlots &&
         static_cast<size_t>(group_size) <= file_expert_store_.CacheSlots();
     if (use_ssd) {
       group_expert_ids.resize(group_size);
@@ -6982,19 +7080,8 @@ int QMoEOffload::RunColdExperts(CpuWork& work, int group_count, const ActT* host
       for (int slot = 0; slot < group_size; ++slot) {
         group_expert_ids[slot] = static_cast<int32_t>(group[slot].expert);
       }
-      if (in_warmup && file_expert_store_.CacheBase() != nullptr) {
-        uint8_t* dummy_base = file_expert_store_.CacheBase();
-        for (int slot = 0; slot < group_size; ++slot) {
-          if (file_expert_store_.TryAcquireCached(group_expert_ids[slot], &group_ssd_leases[slot])) {
-            lease_held[slot] = 1;
-          } else {
-            group_ssd_leases[slot].data = dummy_base;
-            group_ssd_leases[slot].length = nvfp4_layout_.stride;
-            group_ssd_leases[slot].alignment = 256;
-          }
-        }
-      } else if (file_expert_store_.TryAcquireGroupCached(
-                     group_expert_ids.data(), static_cast<size_t>(group_size), group_ssd_leases.data())) {
+      if (file_expert_store_.TryAcquireGroupCached(
+              group_expert_ids.data(), static_cast<size_t>(group_size), group_ssd_leases.data())) {
         std::fill(lease_held.begin(), lease_held.end(), uint8_t{1});
       } else {
         if (host_cache_bytes_ > 0) host_slot_table_dirty_ = true;
@@ -7630,9 +7717,10 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
       const int stream_experts = streaming && capacity / 8 >= stream_wave_ ? stream_wave_ : 0;
       if (resident_experts == 0 && stream_experts == 0) break;
       const int workspace_experts = std::max({resident ? eff_physical_slots : 0, streaming ? stream_wave_ : 0, 1});
+      // The INT4 invocation passes weight scales only, so runMoe resolves use_awq=false; plan the same.
       const size_t candidate_bytes = runner_->getWorkspaceSize(
           capacity, hidden_size_, inter_size_, workspace_experts, 1,
-          activation_type_, parallelism, true, swiglu_fusion_);
+          activation_type_, parallelism, /*use_awq=*/false, swiglu_fusion_);
       // Leave the GEMV buffers intact so an ineligible or over-budget wave can use the fallback.
       size_t required_bytes = gpu_bytes;
       AddSlab(candidate_bytes, required_bytes);

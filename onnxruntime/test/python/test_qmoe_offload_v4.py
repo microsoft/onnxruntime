@@ -2596,8 +2596,12 @@ int main() {
         with_bias: bool = False,
         use_fp16: bool = False,
         scale_range: tuple[float, float] = (0.04, 0.12),
+        swiglu_fusion: int | None = 1,
     ) -> str:
-        """Build a multi-layer INT4/INT3 QMoE model where each layer spec is (weight_bits, block_size, prepacked)."""
+        """Build a multi-layer INT4/INT3 QMoE model where each layer spec is (weight_bits, block_size, prepacked).
+
+        swiglu_fusion=None omits the attribute so the operator default (0) applies.
+        """
         rng = np.random.default_rng(seed)
         ext_filename = "int_weights.data"
         ext_path = os.path.join(model_dir, ext_filename)
@@ -2721,9 +2725,10 @@ int main() {
                     "k": min(top_k, max(1, num_experts)),
                     "expert_weight_bits": bits,
                     "block_size": blk_size,
-                    "swiglu_fusion": 1,
                     "quant_type": "int",
                 }
+                if swiglu_fusion is not None:
+                    node_kwargs["swiglu_fusion"] = swiglu_fusion
                 if prepacked is not None:
                     node_kwargs["weights_prepacked"] = prepacked
                 node = helper.make_node(
@@ -2999,6 +3004,162 @@ int main() {
         self.assertEqual(2 * cold_routes, total_routes, captured[0])
         misses = re.findall(r"ssd_misses=(\d+)", captured[0])
         self.assertTrue(misses and any(int(count) > 0 for count in misses), captured[0])
+
+    def test_v4_int4_omitted_or_zero_swiglu_fusion_is_interleaved_in_cutlass_prefill(self):
+        self._skip_unless_int4_bf16_runner()
+        rows = 512
+        with (
+            tempfile.TemporaryDirectory() as tmpdir,
+            mock.patch.dict(
+                os.environ,
+                {
+                    "ORT_QMOE_SHARED_RESIDENT_LOG": "1",
+                    "ORT_QMOE_INT4_PREFILL_GEMM": "1",
+                    "ORT_QMOE_MAX_SYNC_TILE_TOKENS": "512",
+                },
+            ),
+        ):
+            # The offload banks are always interleaved, so an omitted or zero swiglu_fusion has to behave like 1.
+            ref_dir = os.path.join(tmpdir, "interleaved")
+            os.makedirs(ref_dir)
+            ref = self._make_session(
+                self._build_int_qmoe_model(ref_dir, [(4, 32, 1)], swiglu_fusion=1),
+                {"session.moe.offload.mode": "disabled"},
+            )
+            rng = np.random.default_rng(33626)
+            x = rng.standard_normal((rows, 256), dtype=np.float32) * 0.5
+            router = np.full((rows, 8), -10.0, dtype=np.float32)
+            router[:, 4:6] = 10.0  # Both experts are cold, so they stream through the CUTLASS INT4 runner.
+            expected = self._run_bf16(ref, x, router)
+            for swiglu_fusion in (None, 0):
+                with self.subTest(swiglu_fusion=swiglu_fusion):
+                    model_dir = os.path.join(tmpdir, f"swiglu_fusion_{swiglu_fusion}")
+                    os.makedirs(model_dir)
+                    model = self._build_int_qmoe_model(model_dir, [(4, 32, 1)], swiglu_fusion=swiglu_fusion)
+                    with _capture_native_stderr() as captured:
+                        sess = self._make_session(
+                            model,
+                            {
+                                "session.moe.offload.mode": "required",
+                                "session.moe.offload.placement": "static",
+                                "session.moe.offload.popularity_file": "expert-profile.bin",
+                                "session.moe.offload.cpu_execution": "disabled",
+                                "session.moe.offload.device_expert_bytes": str(64 + 3 * 55304),
+                                "session.moe.offload.host_expert_bytes": str(2 * 55808),
+                                "session.moe.offload.prefill_wave_experts": "2",
+                            },
+                        )
+                        actual = self._run_bf16(sess, x, router)
+                        del sess
+                        gc.collect()
+                    self._assert_int_offload_parity(expected, actual, f"interleaved({swiglu_fusion=})")
+                    # Parity alone would pass if the runner were skipped, so require the CUTLASS dispatch itself.
+                    dispatched = re.findall(r"INT4 CUTLASS layer=0 routes=(\d+) capacity=(\d+)", captured[0])
+                    self.assertTrue(dispatched, captured[0])
+                    self.assertEqual(sum(int(routes) for routes, _ in dispatched), 2 * rows, captured[0])
+            del ref
+            gc.collect()
+
+    def test_v4_int4_bounded_host_cache_warmup_runs_compute_cold_misses(self):
+        self._skip_unless_int4_bf16_runner()
+        warmup = ort.RunOptions()
+        warmup.add_run_config_entry("ep.cuda.qmoe_in_warmup", "1")
+        with (
+            tempfile.TemporaryDirectory() as tmpdir,
+            mock.patch.dict(os.environ, {"ORT_QMOE_SHARED_RESIDENT_LOG": "1"}),
+        ):
+            model = self._build_int_qmoe_model(tmpdir, [(4, 32, 1)])
+            ref = self._make_session(model, {"session.moe.offload.mode": "disabled"})
+            rng = np.random.default_rng(33627)
+            # 4 rows take the asynchronous decode path and 16 rows the synchronous CPU path; both evaluate cold experts
+            # through leases on the bounded host cache.
+            for rows in (4, 16):
+                with self.subTest(rows=rows):
+                    with _capture_native_stderr() as captured:
+                        sess = self._make_session(
+                            model,
+                            {
+                                "session.moe.offload.mode": "required",
+                                "session.moe.offload.placement": "static",
+                                "session.moe.offload.popularity_file": "expert-profile.bin",
+                                "session.moe.offload.cpu_execution": "enabled",
+                                # Experts 0 and 3 stay resident and two host cache slots are fewer than the cold set.
+                                "session.moe.offload.device_expert_bytes": str(64 + 2 * 55304),
+                                "session.moe.offload.host_expert_bytes": str(2 * 55808),
+                            },
+                        )
+                        for step, run_options in enumerate([warmup, warmup, None, warmup, None]):
+                            x = rng.standard_normal((rows, 256), dtype=np.float32) * 0.5
+                            router = np.full((rows, 8), -10.0, dtype=np.float32)
+                            router[:, 0] = 10.0
+                            router[:, 4 + step % 4] = 10.0  # Rotates through experts 4..7, so most runs miss the cache.
+                            self._assert_int_offload_parity(
+                                self._run_bf16(ref, x, router),
+                                _run_qmoe_bf16(sess, x, router, run_options),
+                                f"warmup_cold_miss({rows=},{step=},warmup={run_options is not None})",
+                            )
+                        del sess
+                        gc.collect()
+                    misses = re.findall(r"ssd_misses=(\d+)", captured[0])
+                    self.assertTrue(misses and any(int(count) > 0 for count in misses), captured[0])
+            del ref
+            gc.collect()
+
+    def test_v4_int4_default_stream_tile_and_wave_fit_the_working_budget(self):
+        self._skip_unless_int4_bf16_runner()
+        rows = 2048
+        offload_config = {
+            "session.moe.offload.mode": "required",
+            "session.moe.offload.placement": "static",
+            "session.moe.offload.popularity_file": "expert-profile.bin",
+            "session.moe.offload.cpu_execution": "enabled",
+            "session.moe.offload.device_expert_bytes": str(64 + 2 * 55304),
+            "session.moe.offload.host_expert_bytes": str(2 * 55808),
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model = self._build_int_qmoe_model(tmpdir, [(4, 32, 1)])
+            ref = self._make_session(model, {"session.moe.offload.mode": "disabled"})
+            rng = np.random.default_rng(33628)
+            x = rng.standard_normal((rows, 256), dtype=np.float32) * 0.5
+            router = np.full((rows, 8), -10.0, dtype=np.float32)
+            router[:, 4:6] = 10.0  # Both experts are cold and receive every row, so the whole call streams.
+            expected = self._run_bf16(ref, x, router)
+
+            def run_offload(working_bytes: int, extra_env: dict[str, str] | None = None) -> tuple[np.ndarray, str]:
+                env = {"ORT_QMOE_SHARED_RESIDENT_LOG": "1", **(extra_env or {})}
+                with mock.patch.dict(os.environ, env), _capture_native_stderr() as captured:
+                    sess = self._make_session(
+                        model,
+                        {**offload_config, "session.moe.offload.device_working_bytes": str(working_bytes)},
+                    )
+                    try:
+                        actual = self._run_bf16(sess, x, router)
+                    finally:
+                        del sess
+                        gc.collect()
+                return actual, captured[0]
+
+            with self.subTest(case="default tile fits"):
+                # The default 2,048-row tile and 8-expert wave need about 8 MiB, so a larger budget keeps them.
+                actual, log_text = run_offload(16 << 20)
+                self._assert_int_offload_parity(expected, actual, "stream_budget(fits)")
+                self.assertNotIn("stream budget", log_text)
+                self.assertEqual(_stream_tiles_per_layer(log_text), {0: 1}, log_text)
+
+            with self.subTest(case="default tile shrinks"):
+                # 3 MiB holds neither a 2,048-row nor a 1,024-row tile, but holds a 512-row tile with the 8-expert wave.
+                actual, log_text = run_offload(3 << 20)
+                self._assert_int_offload_parity(expected, actual, "stream_budget(shrunk)")
+                self.assertRegex(log_text, r"stream budget layer=0 tile=2048->512 wave=8->8\b")
+                self.assertEqual(_stream_tiles_per_layer(log_text), {0: rows // 512}, log_text)
+
+            with (
+                self.subTest(case="explicit tile is honored"),
+                self.assertRaisesRegex(Exception, "exceeds configured GPU or pinned limits"),
+            ):
+                run_offload(3 << 20, {"ORT_QMOE_SHARED_STREAM_ROWS": "2048"})
+            del ref
+            gc.collect()
 
     @staticmethod
     def _hybrid_stream_inputs(rng: np.random.Generator) -> tuple[np.ndarray, np.ndarray]:
