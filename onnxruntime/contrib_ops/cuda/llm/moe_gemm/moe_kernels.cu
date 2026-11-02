@@ -122,9 +122,10 @@ inline bool MoeFusedRoutingDisabledByEnv() {
 }
 
 template <typename T, typename WeightType, typename ScaleBiasType>
-constexpr bool MoeGemvSplitK2SwiGLUSupported() {
+constexpr bool MoeGemvSplitK2SwiGLUSupported(ActivationType activation_type, int swiglu_fusion) {
   return std::is_same_v<T, half> && std::is_same_v<WeightType, cutlass::uint4b_t> &&
-         std::is_same_v<ScaleBiasType, T>;
+         std::is_same_v<ScaleBiasType, T> && swiglu_fusion == 1 &&
+         (activation_type == ActivationType::Swiglu || activation_type == ActivationType::SwigluBias);
 }
 
 inline bool MoeGemvRejectedByProfiledInterSize(int64_t expanded_num_rows, int64_t inter_size) {
@@ -2332,8 +2333,9 @@ CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Enable>:
   const size_t fc1_result_dedicated_size = (glu_inter_elems > 0) ? fc1_result_size : 0;
 
   static constexpr int kMoeGemvSplitK = 2;
-  const size_t moe_gemv_splitk_partials_size = is_gated_activation && !MoeGemvSplitK2SwiGLUDisabledByEnv() &&
-                                                       MoeGemvSplitK2SwiGLUSupported<T, WeightType, ScaleBiasType>()
+  const size_t moe_gemv_splitk_partials_size = !MoeGemvSplitK2SwiGLUDisabledByEnv() &&
+                                                       MoeGemvSplitK2SwiGLUSupported<T, WeightType, ScaleBiasType>(
+                                                           activation_type, swiglu_fusion)
                                                    ? kMoeGemvSplitK * glu_inter_elems * sizeof(float)
                                                    : 0;
 
@@ -2651,7 +2653,8 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
           alpha_scale_ptr_array, num_experts_per_node, quant_params.groupwise.fc1.alpha, stream);
     }
     const bool use_splitk_swiglu_gemv = !MoeGemvSplitK2SwiGLUDisabledByEnv() &&
-                                        MoeGemvSplitK2SwiGLUSupported<T, WeightType, ScaleBiasType>();
+                                        MoeGemvSplitK2SwiGLUSupported<T, WeightType, ScaleBiasType>(
+                                            fc1_activation_type, activation_params.swiglu_fusion);
     ORT_ENFORCE(!use_splitk_swiglu_gemv || moe_gemv_splitk_partials != nullptr,
                 "Split-K2 SwiGLU GEMV requires split-K GEMV workspace");
     const bool fc1_did_fused_gemv = tryLaunchMoeGemvIntSymmetricInterleavedSwiGLU<T, WeightType, ScaleBiasType>(
