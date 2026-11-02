@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cmath>
 #include <cstring>
 #include <limits>
 
@@ -39,6 +40,7 @@ struct NormCastOptions {
   bool produced_input = false;
   bool shared_trailing = false;
   std::vector<float> scale{0.125f, -0.75f, 1.5f, -0.0f};
+  std::vector<float> input_values;
 };
 
 void BuildNormCast(ModelTestBuilder& builder, const NormCastOptions& options) {
@@ -47,6 +49,10 @@ void BuildNormCast(ModelTestBuilder& builder, const NormCastOptions& options) {
   std::vector<float> values(2 * options.scale.size());
   for (size_t i = 0; i < values.size(); ++i) {
     values[i] = i % 2 == 0 ? -1.0f : 1.0f;
+  }
+  if (!options.input_values.empty()) {
+    ORT_ENFORCE(options.input_values.size() == values.size());
+    values = options.input_values;
   }
   NodeArg* input = options.leading
                        ? (options.fp16_input
@@ -127,7 +133,30 @@ Status CheckCastCount(const Graph& graph, int expected) {
   return Status::OK();
 }
 
+template <typename T>
+bool SameNonNaNBits(const T& reference, const T& actual) {
+  const bool reference_nan = std::isnan(static_cast<float>(reference));
+  const bool actual_nan = std::isnan(static_cast<float>(actual));
+  return reference_nan || actual_nan
+             ? reference_nan == actual_nan
+             : std::memcmp(&reference, &actual, sizeof(T)) == 0;
+}
+
 }  // namespace
+
+TEST_F(GraphTransformationTests, BFloat16NormCastFusionBitwiseComparison) {
+  const float nan = std::numeric_limits<float>::quiet_NaN();
+  EXPECT_FALSE(SameNonNaNBits(0.0f, -0.0f));
+  EXPECT_FALSE(SameNonNaNBits(BFloat16(0.0f), BFloat16(-0.0f)));
+  EXPECT_TRUE(SameNonNaNBits(-0.0f, -0.0f));
+  EXPECT_TRUE(SameNonNaNBits(BFloat16(-0.0f), BFloat16(-0.0f)));
+  EXPECT_TRUE(SameNonNaNBits(nan, -nan));
+  EXPECT_TRUE(SameNonNaNBits(BFloat16(nan), BFloat16(-nan)));
+  EXPECT_FALSE(SameNonNaNBits(nan, 1.0f));
+  EXPECT_FALSE(SameNonNaNBits(1.0f, nan));
+  EXPECT_FALSE(SameNonNaNBits(BFloat16(nan), BFloat16(1.0f)));
+  EXPECT_FALSE(SameNonNaNBits(BFloat16(1.0f), BFloat16(nan)));
+}
 
 TEST_F(GraphTransformationTests, BFloat16NormCastFusionGraphSafety) {
   struct Case {
@@ -288,14 +317,70 @@ TEST_F(GraphTransformationTests, BFloat16NormCastFusionCudaNumericalParity) {
       NormCastOptions options;
       options.leading = leading;
       options.trailing = trailing;
-      TransformerTester(
-          [&](ModelTestBuilder& builder) { BuildNormCast(builder, options); },
-          [](InferenceSessionWrapper& session) { ASSERT_STATUS_OK(CheckCastCount(session.GetGraph(), 0)); },
-          TransformerLevel::Level1, TransformerLevel::Level2, 14, 0.0, 0.0, nullptr,
-          [](SessionOptions& session_options) {
-            ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsEnableBFloat16NormCastFusion, "1"));
-          },
-          {}, DefaultCudaExecutionProvider());
+      options.scale = {0.125f, -0.75f, 0.0f, -0.0f};
+      for (const bool nan_input : {false, true}) {
+        SCOPED_TRACE(testing::Message() << "leading=" << leading << " trailing=" << trailing << " nan_input=" << nan_input);
+        options.input_values = {-1, 1, -1, 1, 1, -1, -1, -1};
+        if (nan_input) {
+          options.input_values[0] = std::numeric_limits<float>::quiet_NaN();
+        }
+        Model model("NormCastBitwiseParity", false, ModelMetaData(), PathString(),
+                    IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 14}}, {}, *logger_);
+        ModelTestBuilder builder(model.MainGraph());
+        BuildNormCast(builder, options);
+        builder.SetGraphOutputs();
+        ASSERT_STATUS_OK(model.MainGraph().Resolve());
+        std::string model_data;
+        ASSERT_TRUE(model.ToProto().SerializeToString(&model_data));
+
+        auto run = [&](bool fused, std::vector<OrtValue>& fetches) {
+          SessionOptions session_options;
+          session_options.graph_optimization_level = TransformerLevel::Level2;
+          ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+              kOrtSessionOptionsEnableBFloat16NormCastFusion, fused ? "1" : "0"));
+          InferenceSessionWrapper session{session_options, GetEnvironment()};
+          ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
+          ASSERT_STATUS_OK(session.Load(model_data.data(), static_cast<int>(model_data.size())));
+          ASSERT_STATUS_OK(session.Initialize());
+          ASSERT_STATUS_OK(CheckCastCount(session.GetGraph(), fused ? 0 : static_cast<int>(leading) + static_cast<int>(trailing)));
+          ASSERT_STATUS_OK(session.Run(RunOptions(), builder.feeds_, builder.output_names_, &fetches));
+        };
+        std::vector<OrtValue> reference;
+        std::vector<OrtValue> actual;
+        ASSERT_NO_FATAL_FAILURE(run(false, reference));
+        ASSERT_NO_FATAL_FAILURE(run(true, actual));
+        ASSERT_EQ(reference.size(), 1u);
+        ASSERT_EQ(actual.size(), 1u);
+        const auto& reference_tensor = reference[0].Get<Tensor>();
+        const auto& actual_tensor = actual[0].Get<Tensor>();
+        ASSERT_EQ(reference_tensor.Shape(), actual_tensor.Shape());
+        ASSERT_EQ(reference_tensor.GetElementType(), actual_tensor.GetElementType());
+        size_t nan_count = 0;
+        size_t positive_zeros = 0;
+        size_t negative_zeros = 0;
+        auto compare = [&]<typename T>() {
+          const auto reference_values = reference_tensor.DataAsSpan<T>();
+          const auto actual_values = actual_tensor.DataAsSpan<T>();
+          ASSERT_EQ(reference_values.size(), actual_values.size());
+          for (size_t i = 0; i < reference_values.size(); ++i) {
+            EXPECT_TRUE(SameNonNaNBits(reference_values[i], actual_values[i])) << "element " << i;
+            const float value = static_cast<float>(reference_values[i]);
+            nan_count += std::isnan(value);
+            positive_zeros += value == 0.0f && !std::signbit(value);
+            negative_zeros += value == 0.0f && std::signbit(value);
+          }
+        };
+        if (trailing) {
+          ASSERT_TRUE(reference_tensor.IsDataType<BFloat16>());
+          ASSERT_NO_FATAL_FAILURE(compare.template operator()<BFloat16>());
+        } else {
+          ASSERT_TRUE(reference_tensor.IsDataType<float>());
+          ASSERT_NO_FATAL_FAILURE(compare.template operator()<float>());
+        }
+        EXPECT_EQ(nan_count, nan_input ? 4u : 0u);
+        EXPECT_GT(positive_zeros, 0u);
+        EXPECT_GT(negative_zeros, 0u);
+      }
     }
   }
 }
