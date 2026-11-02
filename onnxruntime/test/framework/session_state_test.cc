@@ -1699,21 +1699,15 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, RejectsIncompatiblePrepa
     ASSERT_STATUS_OK(
         load_options.config_options.AddConfigEntry(kOrtSessionOptionsConfigDisablePrepacking, "0"));
 
-    OrtMemoryInfo mem_info(CPU, OrtDeviceAllocator);
-    std::vector<float> initializer_data(1, 1.0f);
-    OrtValue initializer;
     PrepackedWeightsContainer shared_container;
-    PrepackedWeightsContainer* shared_container_ptr = nullptr;
-    if (use_shared_container) {
-      Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape({1}),
-                           initializer_data.data(), mem_info, initializer);
-      ASSERT_STATUS_OK(load_options.AddInitializer("node_0_input_1", &initializer));
-      shared_container_ptr = &shared_container;
-    }
+    PrepackedWeightsContainer* shared_container_ptr = use_shared_container ? &shared_container : nullptr;
 
     std::shared_ptr<Model> model;
     ASSERT_STATUS_OK(Model::Load(model_path, model, nullptr,
                                  DefaultLoggingManager().DefaultLogger()));
+    if (use_shared_container) {
+      model->MainGraph().SetSharedPrepackInitializerId("node_0_input_1", "prepacked_mismatch_test");
+    }
     PlaceAllNodesToCPUEP(model->MainGraph());
     SessionState session_state(model->MainGraph(),
                                execution_providers,
