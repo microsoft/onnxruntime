@@ -3154,6 +3154,11 @@ QMoEOffload::~QMoEOffload() {
                    static_cast<unsigned long long>(phase_total_routes_[phase]));
     }
   }
+  if (resident_log_) {
+    std::fprintf(stderr, "QMoEOffload async layer=%lld doorbell_runs=%llu callback_runs=%llu\n",
+                 static_cast<long long>(layer_index_), static_cast<unsigned long long>(doorbell_runs_),
+                 static_cast<unsigned long long>(callback_runs_));
+  }
   if (stream_rows_ > 0 && resident_log_) {
     std::fprintf(stderr,
                  "QMoEOffload stream layer=%lld tiles=%llu experts=%llu routes=%llu cpu_routes=%llu waves=%llu reused_promotions=%llu\n",
@@ -3666,6 +3671,7 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
   bg_promo_stream_ = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_BG_PROMO_STREAM", 1) == 1;
   cpu_fp16_boundaries_ = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_CPU_FP16_BOUNDARIES", 0) == 1;
   // Integer-bank tile and wave defaults shrink to fit the working budgets below; explicit settings are honored.
+  // Planned non-integer banks (NVFP4/MXFP4) always shrink, as before, and disable streaming if nothing fits.
   bool shrink_stream_tile = false;
   bool shrink_stream_wave = false;
   const int default_stream_rows =
@@ -3685,7 +3691,8 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
             ? std::min(16, static_cast<int>(v4_policy_.prefill_wave_experts))
             : static_cast<int>(v4_policy_.prefill_wave_experts);
     stream_wave_ = std::clamp(default_disabled_wave, 1, num_experts_);
-    shrink_stream_wave = is_int_bank;
+    shrink_stream_tile = !is_int_bank;
+    shrink_stream_wave = true;
     stream_promotions_ = 0;
     stream_gpu_limit_ = shared_gpu_limit_;
     stream_pinned_limit_ = shared_pinned_limit_;
@@ -3715,10 +3722,12 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
     stream_wave_ = std::clamp(
         static_cast<int>(info.GetAttrOrDefault<int64_t>("stream_wave", default_wave)), 1, num_experts_);
     int64_t explicit_attr = 0;
-    shrink_stream_tile = is_int_bank && std::getenv("ORT_QMOE_SHARED_STREAM_ROWS") == nullptr &&
-                         !info.GetAttr<int64_t>("stream_rows", &explicit_attr).IsOK();
-    shrink_stream_wave = is_int_bank && std::getenv("ORT_QMOE_SHARED_STREAM_WAVE") == nullptr &&
-                         !info.GetAttr<int64_t>("stream_wave", &explicit_attr).IsOK();
+    shrink_stream_tile = is_int_bank ? (std::getenv("ORT_QMOE_SHARED_STREAM_ROWS") == nullptr &&
+                                        !info.GetAttr<int64_t>("stream_rows", &explicit_attr).IsOK())
+                                     : v4_planned_mode_;
+    shrink_stream_wave = is_int_bank ? (std::getenv("ORT_QMOE_SHARED_STREAM_WAVE") == nullptr &&
+                                        !info.GetAttr<int64_t>("stream_wave", &explicit_attr).IsOK())
+                                     : v4_planned_mode_;
     stream_promotions_ = deterministic_replay_ ? 0 : std::clamp(ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_STREAM_PROMOTIONS", 0), 0, 64);
     stream_gpu_limit_ = (v4_planned_mode_ || is_int_bank)
                             ? shared_gpu_limit_
@@ -4219,10 +4228,12 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
                                    nvfp4_fc2_b_ != nullptr, int4_bank_mode_, resident_bank_bytes_};
     const StreamTileWave requested{stream_rows_, stream_wave_};
     // Streaming serves calls above the synchronous tile, so stream_min_tokens_ is the smallest useful tile.
-    const StreamTileWave floors{shrink_stream_tile ? std::min(stream_rows_, stream_min_tokens_) : stream_rows_,
+    const int tile_floor = is_int_bank ? std::min(stream_rows_, stream_min_tokens_) : 1;
+    const StreamTileWave floors{shrink_stream_tile ? tile_floor : stream_rows_,
                                 shrink_stream_wave ? 1 : stream_wave_};
     const StreamTileWave fitted =
         FitStreamTileAndWave(shape, requested, floors, shared_gpu_limit_, shared_pinned_limit_);
+    const bool fitted_fits = StreamScratchFits(shape, fitted, shared_gpu_limit_, shared_pinned_limit_);
     if ((fitted.tile != requested.tile || fitted.wave != requested.wave) &&
         ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_RESIDENT_LOG", 0) == 1) {
       std::fprintf(stderr, "QMoEOffload stream budget layer=%lld tile=%d->%d wave=%d->%d\n",
@@ -4230,6 +4241,9 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
     }
     stream_rows_ = fitted.tile;
     stream_wave_ = fitted.wave;
+    if (!is_int_bank && !cpu_disabled_streaming && !fitted_fits) {
+      stream_rows_ = 0;
+    }
     prefill_chunk_tokens_ = static_cast<int>(
         info.GetAttrOrDefault<int64_t>("prefill_chunk_tokens",
                                        ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_PREFILL_CHUNK_TOKENS", stream_rows_)));
@@ -7077,6 +7091,9 @@ int QMoEOffload::RunColdExperts(CpuWork& work, int group_count, const ActT* host
     if (use_ssd) {
       group_expert_ids.resize(group_size);
       lease_held.assign(static_cast<size_t>(group_size), 0);
+      // Leases from the previous group were released; a pending load must not expose them to duplicate copies or
+      // to view setup while background prefetch may be filling that cache slot for another expert.
+      std::fill(group_ssd_leases.begin(), group_ssd_leases.begin() + group_size, qmoe_shared::ExpertBlockLease{});
       for (int slot = 0; slot < group_size; ++slot) {
         group_expert_ids[slot] = static_cast<int32_t>(group[slot].expert);
       }
@@ -7168,6 +7185,14 @@ int QMoEOffload::RunColdExperts(CpuWork& work, int group_count, const ActT* host
       }
     }
     constexpr int kReadyDoneVal = qmoe_shared::FileExpertStore::kLoadChunksPerExpert + 1;
+    // A pending load owns its cache slot only through slot_load_dst; any lease still visible here would let view
+    // setup read a slot that background prefetch may be refilling for another expert.
+    for (int m_slot : miss_load_slots) {
+      for (int s = m_slot; s < group_size; ++s) {
+        ORT_ENFORCE(group_expert_ids[s] != group_expert_ids[m_slot] || group_ssd_leases[s].data == nullptr,
+                    "QMoEOffload pending expert load exposes a stale cache lease for expert ", group_expert_ids[m_slot]);
+      }
+    }
     for (int slot = 0; slot < group_size; ++slot) {
       const auto& assignments = expert_routes[group[slot].expert];
       const int cnt = group[slot].count;
@@ -9281,6 +9306,7 @@ Status QMoEOffload::ComputeSharedAsync(OpKernelContext* context, const Tensor* i
       if (!is_capturing) {
         ++decode_state_->launched_seq;
         ++async_launched_seq_;
+        ++doorbell_runs_;
         DoorbellService::Instance().NotifyPending(1);
       }
       const int input_vec4_count =
@@ -9480,6 +9506,7 @@ Status QMoEOffload::ComputeSharedAsync(OpKernelContext* context, const Tensor* i
     }
     if (!is_capturing) {
       ++async_launched_seq_;
+      ++callback_runs_;
       async_in_flight_.store(true, std::memory_order_release);
     }
 

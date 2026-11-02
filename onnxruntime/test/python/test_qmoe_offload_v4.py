@@ -237,6 +237,12 @@ def _cpu_path_route_rows(log_text: str) -> dict[int, tuple[int, int, int]]:
 
 
 _STREAM_TILES_RE = re.compile(r"stream layer=(\d+) tiles=(\d+)")
+_ASYNC_SERVICE_RE = re.compile(r"async layer=(\d+) doorbell_runs=(\d+) callback_runs=(\d+)")
+
+
+def _async_service_runs_per_layer(log_text: str) -> dict[int, tuple[int, int]]:
+    """Parses how many uncaptured runs each layer served through the doorbell and the callback (same log as above)."""
+    return {int(m.group(1)): (int(m.group(2)), int(m.group(3))) for m in _ASYNC_SERVICE_RE.finditer(log_text)}
 
 
 def _stream_tiles_per_layer(log_text: str) -> dict[int, int]:
@@ -2535,14 +2541,14 @@ int main() {
                 for layer, count in tiles.items():
                     self.assertGreater(count, 0, f"{label}: layer {layer} must run the synchronous streaming path")
 
-            # Control: plain runs must record routes. CPU-disabled streaming keeps placement fixed, so promotions
-            # remain zero even though all of these ordinary cold routes are observed.
+            # Control: plain runs are observed and, since every route is cold, they drive promotions. Without this
+            # the checks below could pass just because nothing ever adapts in this configuration.
             control = run_session(warmup_runs=0, plain_runs=6)
             assert_streamed(control, "control")
             self.assertEqual(_resident_slots_per_layer(control), {0: 4, 1: 4})
             self.assertEqual(_resident_routes_per_layer(control), dict.fromkeys(range(2), 6 * rows * top_k))
             for layer, promotions in _resident_promotions_per_layer(control).items():
-                self.assertEqual(promotions, 0, f"layer {layer}: CPU-disabled streaming keeps placement fixed")
+                self.assertGreater(promotions, 0, f"layer {layer}: plain cold routes must drive promotions")
 
             # Warmup runs execute the same streaming path but feed no route counters, scores or promotions.
             warmup_only = run_session(warmup_runs=6, plain_runs=0)
@@ -2555,6 +2561,53 @@ int main() {
             assert_streamed(after_warmup, "after_warmup")
             self.assertEqual(_resident_log_rows(after_warmup), dict.fromkeys(range(2), (4, 0, rows * top_k)))
             self.assertEqual(_resident_promotions_per_layer(after_warmup), {0: 0, 1: 0})
+
+    def test_v4_nvfp4_cpu_disabled_streaming_wave_shrinks_to_fit_the_working_budget(self):
+        rows, top_k, num_experts = 2, 2, 8
+        slot_bytes = 13832
+        fixed_table_bytes = 2 * num_experts * 4
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model_path = _build_canonical_nvfp4_qmoe_model(
+                tmpdir,
+                num_layers=1,
+                num_experts=num_experts,
+                hidden_size=128,
+                inter_size=64,
+                top_k=top_k,
+                seed=33622,
+            )
+            # Four experts are resident and the CPU path is disabled, so cold routes stream. The double-buffered landing
+            # slabs of the default 8-expert wave alone need 2 * 8 * slot_bytes = 216 KiB, above the 200 KiB working budget; a 4-expert wave fits.
+            offload_config = {
+                "session.moe.offload.mode": "required",
+                "session.moe.offload.placement": "static",
+                "session.moe.offload.cpu_execution": "disabled",
+                "session.moe.offload.device_expert_bytes": str(fixed_table_bytes + 4 * slot_bytes),
+                "session.moe.offload.device_working_bytes": str(200 << 10),
+                "session.moe.offload.popularity_file": "expert-profile.bin",
+            }
+            self.assertGreater(2 * num_experts * slot_bytes, 200 << 10)
+            rng = np.random.default_rng(33623)
+            with (
+                mock.patch.dict(os.environ, {"ORT_QMOE_SHARED_RESIDENT_LOG": "1"}),
+                _capture_native_stderr() as captured,
+            ):
+                sess = self._make_session(model_path, offload_config)
+                try:
+                    for step in range(4):
+                        x = rng.standard_normal((rows, 128), dtype=np.float32) * 0.5
+                        r = rng.standard_normal((rows, num_experts), dtype=np.float32)
+                        self._assert_parity(
+                            _numpy_nvfp4_qmoe_reference(model_path, x, r),
+                            _run_qmoe_bf16(sess, x, r),
+                            f"nvfp4_cpu_disabled_wave_fit(step={step})",
+                        )
+                finally:
+                    del sess
+                    gc.collect()
+            log_text = captured[0]
+            self.assertRegex(log_text, r"stream budget layer=0 tile=\d+->\d+ wave=8->[1-7]\b")
+            self.assertGreater(_stream_tiles_per_layer(log_text).get(0, 0), 0, log_text)
 
     @unittest.skipUnless(sys.platform.startswith("linux"), "QMoE background threads are enumerated through /proc")
     def test_v4_background_threads_are_joined_when_the_cuda_ep_library_is_unregistered(self):
@@ -3314,7 +3367,8 @@ int main() {
             del sess_int4_stream, sess_int4_adaptive, sess_int4_static, sess_int4_ref
 
             # Explicit ORT_QMOE_STREAM_MIN_TOKENS override must be preserved on integer banks, and a 2-token doorbell
-            # decode followed by repeated 8-token callback runs must still advance promotions.
+            # decode followed by repeated 8-token doorbell runs must still advance promotions. The callback branch
+            # after a doorbell run is covered by test_v4_int4_callback_service_runs_after_a_doorbell_run.
             with (
                 mock.patch.dict(
                     os.environ,
@@ -3377,8 +3431,8 @@ int main() {
                     self._run_bf16(sess_seq_promo, x_d2, r_d2),
                     "int4_doorbell_init(T=2)",
                 )
-                # Repeated 8-token uncaptured decode runs take the callback path and route to cold experts 5 and 7;
-                # they must advance the promotion sequence guard and promote the hot cold experts.
+                # Repeated 8-token uncaptured decode runs take the doorbell path (16 routes) and route to cold experts
+                # 5 and 7; they must advance the promotion sequence guard and promote the hot cold experts.
                 for step_idx in range(5):
                     x_d8 = rng.standard_normal((8, 256), dtype=np.float32) * 0.5
                     r_d8 = np.full((8, 8), -20.0, dtype=np.float32)
@@ -3387,7 +3441,7 @@ int main() {
                     self._assert_int_offload_parity(
                         self._run_bf16(sess_int4_ref2, x_d8, r_d8),
                         self._run_bf16(sess_seq_promo, x_d8, r_d8),
-                        f"int4_callback_after_doorbell(T=8,step={step_idx})",
+                        f"int4_doorbell_after_doorbell(T=8,step={step_idx})",
                     )
                 del sess_seq_promo, sess_int4_ref2
                 gc.collect()
@@ -3397,8 +3451,13 @@ int main() {
                 self.assertGreater(
                     promo_cnt,
                     0,
-                    f"layer {layer_id}: repeated 8-token callback runs after 2-token doorbell run must promote hot cold experts",
+                    f"layer {layer_id}: repeated 8-token doorbell runs after 2-token doorbell run must promote hot cold experts",
                 )
+            self.assertEqual(
+                _async_service_runs_per_layer(seq_promo_cap[0]),
+                {0: (6, 0), 1: (6, 0)},
+                "the 2-token and 8-token runs must all be served by the doorbell",
+            )
 
             # 2. Mixed INT4 (layer 0, b32) + INT3 (layer 1, b64) with FC1/FC2 bias
             dir_int4_int3 = os.path.join(tmpdir, "int4_b32_int3_b64")
@@ -3482,6 +3541,114 @@ int main() {
             if cudart is not None:
                 m_int4_cg = _wrap_qmoe_model_with_cast_io(m_int4, os.path.join(dir_int4, "model_cg.onnx"), 256, 8)
                 self._assert_cuda_graph_replay_parity(cudart, rng, "int4", m_int4, m_int4_cg, budget_int4_adaptive)
+
+    def test_v4_int4_callback_service_runs_after_a_doorbell_run(self):
+        self._skip_unless_int4_bf16_runner()
+        int4_slot_bytes = 55304  # H=256, I=128, INT4 b32
+        fixed_bytes = 2 * 8 * 4
+        callback_runs = 3
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model = self._build_int_qmoe_model(
+                tmpdir, layer_specs=[(4, 32, 1), (4, 32, 1)], num_experts=8, hidden_size=256, inter_size=128, top_k=2
+            )
+            ref = self._make_session(model, {"session.moe.offload.mode": "disabled"})
+            rng = np.random.default_rng(33624)
+            with (
+                mock.patch.dict(os.environ, {"ORT_QMOE_SHARED_RESIDENT_LOG": "1"}),
+                _capture_native_stderr() as captured,
+            ):
+                sess = self._make_session(
+                    model,
+                    {
+                        "session.moe.offload.mode": "required",
+                        "session.moe.offload.placement": "adaptive",
+                        "session.moe.offload.device_expert_bytes": str(2 * fixed_bytes + 12 * int4_slot_bytes),
+                        "session.moe.offload.popularity_file": "expert-profile.bin",
+                        # 129 tokens * top_k 2 = 258 routes exceed the 256-row doorbell limit but stay in the decode path.
+                        "session.moe.offload.async_max_tokens": "129",
+                    },
+                )
+                try:
+                    # A resident-only two-token run is served by the doorbell and creates the persistent decode state.
+                    x_d2 = rng.standard_normal((2, 256), dtype=np.float32) * 0.5
+                    r_d2 = np.full((2, 8), -20.0, dtype=np.float32)
+                    r_d2[:, 0] = 6.0
+                    r_d2[:, 1] = 5.0
+                    self._assert_int_offload_parity(
+                        self._run_bf16(ref, x_d2, r_d2), self._run_bf16(sess, x_d2, r_d2), "int4_doorbell_init(T=2)"
+                    )
+                    for step_idx in range(callback_runs):
+                        x_cb = rng.standard_normal((129, 256), dtype=np.float32) * 0.5
+                        r_cb = np.full((129, 8), -20.0, dtype=np.float32)
+                        r_cb[:, 5] = 6.0
+                        r_cb[:, 2 if step_idx % 2 == 0 else 6] = 5.0
+                        self._assert_int_offload_parity(
+                            self._run_bf16(ref, x_cb, r_cb),
+                            self._run_bf16(sess, x_cb, r_cb),
+                            f"int4_callback_after_doorbell(T=129,step={step_idx})",
+                        )
+                finally:
+                    del sess, ref
+                    gc.collect()
+            log_text = captured[0]
+            self.assertEqual(
+                _async_service_runs_per_layer(log_text),
+                dict.fromkeys(range(2), (1, callback_runs)),
+                "the 2-token run must use the doorbell and every 129-token run the callback",
+            )
+            promotions = _resident_promotions_per_layer(log_text)
+            self.assertEqual(sorted(promotions), [0, 1])
+            for layer_id, promo_cnt in promotions.items():
+                self.assertGreater(promo_cnt, 0, f"layer {layer_id}: callback runs after a doorbell run must promote")
+
+    def test_v4_int4_bounded_cache_pending_loads_do_not_expose_a_previous_group_lease(self):
+        self._skip_unless_int4_bf16_runner()
+        int4_slot_bytes = 55304  # H=256, I=128, INT4 b32
+        int4_host_stride = 55808
+        fixed_bytes = 2 * 8 * 4
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model = self._build_int_qmoe_model(
+                tmpdir, layer_specs=[(4, 32, 1), (4, 32, 1)], num_experts=8, hidden_size=256, inter_size=128, top_k=2
+            )
+            ref = self._make_session(model, {"session.moe.offload.mode": "disabled"})
+            rng = np.random.default_rng(33625)
+            # Twelve tokens all route to expert 3 (two 8-row calls) and cycle through the other experts, so the CPU
+            # path sees calls [0, 1, 2, 3, 3, 4, 5, ...]. A 3-slot cache and 3-call groups make each group acquire its
+            # experts while the previous group's leases were released and prefetch refills those slots.
+            x = rng.standard_normal((12, 256), dtype=np.float32) * 0.5
+            r = np.full((12, 8), -20.0, dtype=np.float32)
+            r[:, 3] = 6.0
+            for row in range(12):
+                r[row, (0, 1, 2, 4, 5)[row % 5]] = 5.0
+            env = {"ORT_QMOE_SHARED_RESIDENT_LOG": "1", "ORT_QMOE_SHARED_GROUPED_CALLS": "3"}
+            with mock.patch.dict(os.environ, env), _capture_native_stderr() as captured:
+                sess = self._make_session(
+                    model,
+                    {
+                        "session.moe.offload.mode": "required",
+                        "session.moe.offload.placement": "adaptive",
+                        "session.moe.offload.device_expert_bytes": str(2 * fixed_bytes + 4 * int4_slot_bytes),
+                        "session.moe.offload.host_expert_bytes": str(2 * 3 * int4_host_stride),
+                        "session.moe.offload.popularity_file": "expert-profile.bin",
+                        "session.moe.offload.async_max_tokens": "12",
+                    },
+                )
+                try:
+                    # The run throws if a pending load still exposes a lease from the previous group.
+                    for step_idx in range(3):
+                        self._assert_int_offload_parity(
+                            self._run_bf16(ref, x, r),
+                            self._run_bf16(sess, x, r),
+                            f"int4_bounded_cache_groups(T=12,step={step_idx})",
+                        )
+                finally:
+                    del sess, ref
+                    gc.collect()
+            log_text = captured[0]
+            ssd_misses = [int(m) for m in re.findall(r"ssd_misses=(\d+)", log_text)]
+            self.assertTrue(
+                any(ssd_misses), f"the bounded host cache must serve cold experts through loads: {log_text}"
+            )
 
     def test_v4_int4_and_int3_offload_modes_and_numerical_parity(self):
         # The BF16 INT4 sessions that quick builds (ORT_QUICK_BUILD) cannot create live in the prepacked INT4 test.

@@ -360,6 +360,9 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
   mutable uint64_t stream_waves_ = 0;
   mutable uint64_t stream_cpu_routes_ = 0;
   mutable uint64_t stream_reused_promotions_ = 0;
+  // Async service path taken by uncaptured runs: device doorbell versus host callback.
+  mutable uint64_t doorbell_runs_ = 0;
+  mutable uint64_t callback_runs_ = 0;
 
   bool cpu_timing_ = false;
   bool cpu_fp16_boundaries_ = false;
