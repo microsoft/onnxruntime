@@ -49,8 +49,8 @@ jobs:
           # No locale, so both US and UK spellings are accepted for now. With locale US, over 40% of findings on main
           # were UK spellings (e.g. "behaviour", "cancelled") rather than typos, and some can't be changed: the public
           # CANCELLED status code and GitHub's "cancelled" API value. Real misspellings are still flagged either way.
-          # Case-insensitive false positives: NTO = NodesToOptimize alias, interm = s390x MLAS variable.
-          ignore: nto,interm
+          # Case-insensitive false positive: NTO = NodesToOptimize alias used in optimizer code.
+          ignore: nto
           exclude: |
             ./.git/*
             */package-lock.json
