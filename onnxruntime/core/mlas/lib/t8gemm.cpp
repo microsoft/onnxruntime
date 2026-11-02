@@ -3,6 +3,9 @@
 
 #include "core/mlas/inc/mlas_t8.h"
 #include "mlasi.h"
+#include "t8gemm_kernel.h"
+
+#include <cstring>
 
 #if defined(MLAS_TARGET_ARM64)
 #include <arm_neon.h>
@@ -165,6 +168,55 @@ ComputeUnit(size_t N, size_t K, size_t unit, const float* A, const uint32_t* Pla
     }
 }
 #else
+struct T8OpsScalar {
+    using V = uint32_t;
+
+    static MLAS_FORCEINLINE V Nt(V a, V b, V c) { return (a ^ b) & (b ^ c); }
+    static MLAS_FORCEINLINE V Pt(V a, V b, V c, V nt) { return (a ^ b ^ c) & ~nt; }
+    static MLAS_FORCEINLINE V Bq(V a, V b, V c) { return (a ^ b) & (a | c); }
+    static MLAS_FORCEINLINE V Neg(V a, V b, V c) { return b ^ ((a ^ b) & c); }
+    static MLAS_FORCEINLINE V Pos(V a, V b, V c) { return (a ^ c) & ~b; }
+    static MLAS_FORCEINLINE V Zero(V a, V b, V c) { return ~(a | (b ^ c)); }
+    static MLAS_FORCEINLINE V Carry(V a, V b, V c) { return a | (b & c); }
+    static MLAS_FORCEINLINE V And(V a, V b) { return a & b; }
+    static MLAS_FORCEINLINE V NotOr(V a, V b) { return ~(a | b); }
+};
+
+// Decodes the four words of one group, whose eight planes are Stride words
+// apart, into nonzero masks Nz[j * 8 + w] and negative masks Nz[j * 8 + 4 + w]
+// (the MlasT8Pack masks layout).
+void
+DecodeGroup(const uint32_t* Planes, size_t Stride, uint32_t* Nz)
+{
+    for (size_t w = 0; w < 4; ++w) {
+        uint32_t z[5], p[5];
+        T8Decode<T8OpsScalar>(Planes[w], Planes[Stride + w], Planes[2 * Stride + w], Planes[3 * Stride + w], Planes[4 * Stride + w], Planes[5 * Stride + w], Planes[6 * Stride + w], Planes[7 * Stride + w], z, p);
+        for (size_t j = 0; j < 5; ++j) {
+            Nz[j * 8 + w] = ~z[j];
+            Nz[j * 8 + 4 + w] = ~(z[j] | p[j]);
+        }
+    }
+}
+
+// Adds the signed inputs of one 128-input group selected by the masks
+// (masks layout) into Sum, one input at a time in input order.
+void
+AccumulateGroup(const float* A, const uint32_t* Masks, float* Sum)
+{
+    for (size_t i = 0; i < 128; ++i) {
+        uint32_t x;
+        std::memcpy(&x, A + i, sizeof(x));
+        for (size_t j = 0; j < 5; ++j) {
+            const uint32_t nonzero = (Masks[j * 8 + i / 32] >> (i % 32)) & 1u;
+            const uint32_t negative = (Masks[j * 8 + 4 + i / 32] >> (i % 32)) & 1u;
+            const uint32_t bits = (x ^ (negative << 31)) & (0u - nonzero);
+            float value;
+            std::memcpy(&value, &bits, sizeof(value));
+            Sum[j] += value;
+        }
+    }
+}
+
 void
 ComputeUnit(size_t N, size_t K, size_t unit, const float* A, const uint32_t* Planes, const MLAS_FP16* Scales, float* C)
 {
@@ -172,19 +224,10 @@ ComputeUnit(size_t N, size_t K, size_t unit, const float* A, const uint32_t* Pla
     const uint32_t* planes = Planes + unit * 8 * sets;
     float total[5]{};
     for (size_t g = 0; g < K / 128; ++g) {
+        uint32_t masks[40];
+        DecodeGroup(planes + g * 4, sets, masks);
         float sum[5]{};
-        for (size_t i = 0; i < 128; ++i) {
-            const size_t input = g * 128 + i;
-            uint32_t byte = 0;
-            for (size_t b = 0; b < 8; ++b) {
-                byte |= ((planes[b * sets + input / 32] >> (input % 32)) & 1u) << b;
-            }
-            for (size_t j = 0; j < 5; ++j, byte /= 3) {
-                const uint32_t trit = byte % 3;
-                if (trit == 1) sum[j] += A[input];
-                if (trit == 2) sum[j] -= A[input];
-            }
-        }
+        AccumulateGroup(A + g * 128, masks, sum);
         for (size_t j = 0; j < 5; ++j) {
             total[j] += sum[j] * Scales[(unit * (K / 128) + g) * 5 + j].ToFloat();
         }
@@ -253,34 +296,43 @@ ComputePackedUnit(size_t M, size_t N, size_t K, size_t unit, const float* A, con
         }
     }
 #else
-    for (size_t r = 0; r < std::min(RowTile, M); ++r) {
-        float total[5]{};
-        for (size_t g = 0; g < groups; ++g) {
-            float sum[5]{};
-            const uint32_t* block = packed + g * words;
-            for (size_t i = 0; i < 128; ++i) {
-                uint32_t byte = 0;
-                if (Layout == MLAS_T8_PACKED_LAYOUT::Tiled) {
-                    for (size_t b = 0; b < 8; ++b) byte |= ((block[b * 4 + i / 32] >> (i % 32)) & 1u) << b;
-                }
-                for (size_t j = 0; j < 5; ++j, byte /= 3) {
-                    bool nonzero, negative;
-                    if (Layout == MLAS_T8_PACKED_LAYOUT::Tiled) {
-                        nonzero = byte % 3 != 0;
-                        negative = byte % 3 == 2;
-                    } else {
-                        nonzero = ((block[j * 8 + i / 32] >> (i % 32)) & 1u) != 0;
-                        negative = ((block[j * 8 + 4 + i / 32] >> (i % 32)) & 1u) != 0;
-                    }
-                    if (nonzero) sum[j] += negative ? -A[r * K + g * 128 + i] : A[r * K + g * 128 + i];
-                }
-            }
-            for (size_t j = 0; j < 5; ++j) total[j] += sum[j] * scales[g * 5 + j].ToFloat();
+    const size_t rows = std::min(RowTile, M);
+    float total[RowTile][5]{};
+    for (size_t g = 0; g < groups; ++g) {
+        const uint32_t* block = packed + g * words;
+        uint32_t decoded[40];
+        if (Layout == MLAS_T8_PACKED_LAYOUT::Tiled) {
+            DecodeGroup(block, 4, decoded);
+            block = decoded;
         }
-        for (size_t j = 0; j < std::min(size_t{5}, N - unit * 5); ++j) C[r * N + unit * 5 + j] = total[j];
+        for (size_t r = 0; r < rows; ++r) {
+            float sum[5]{};
+            AccumulateGroup(A + r * K + g * 128, block, sum);
+            for (size_t j = 0; j < 5; ++j) total[r][j] += sum[j] * scales[g * 5 + j].ToFloat();
+        }
+    }
+    for (size_t r = 0; r < rows; ++r) {
+        for (size_t j = 0; j < std::min(size_t{5}, N - unit * 5); ++j) C[r * N + unit * 5 + j] = total[r][j];
     }
 #endif
 }
+
+#if !defined(MLAS_TARGET_ARM64)
+// Runs the platform T8 kernel over row tiles of RowTile rows and tiles of 16 units.
+void
+T8GemmWithKernel(size_t M, size_t N, size_t K, const float* A, const uint32_t* B, const MLAS_FP16* Scales, float* C, MLAS_THREADPOOL* ThreadPool, MLAS_T8_WEIGHT_LAYOUT Layout, size_t RowTile)
+{
+    MLAS_T8_GEMM_KERNEL* kernel = GetMlasPlatform().T8GemmKernel;
+    const size_t units = N / 5 + (N % 5 != 0);
+    const size_t tiles = units / 16 + (units % 16 != 0);
+    const size_t row_tiles = M / RowTile + (M % RowTile != 0);
+    MlasTrySimpleParallel(ThreadPool, static_cast<ptrdiff_t>(row_tiles * tiles), [&](ptrdiff_t task) {
+        const size_t m = (static_cast<size_t>(task) / tiles) * RowTile;
+        const size_t begin = (static_cast<size_t>(task) % tiles) * 16;
+        kernel(std::min(RowTile, M - m), N, K, begin, std::min(begin + 16, units), A + m * K, B, Scales, C + m * N, Layout);
+    });
+}
+#endif
 
 }  // namespace
 
@@ -308,6 +360,10 @@ MlasT8Gemm(size_t M, size_t N, size_t K, const float* A, const uint32_t* Planes,
     A = Workspace;
 #else
     MLAS_UNREFERENCED_PARAMETER(Workspace);
+    if (GetMlasPlatform().T8GemmKernel != nullptr) {
+        T8GemmWithKernel(M, N, K, A, Planes, Scales, C, ThreadPool, MLAS_T8_WEIGHT_LAYOUT::Planes, 1);
+        return;
+    }
 #endif
     const size_t units = N / 5 + (N % 5 != 0);
     const size_t tiles = units / 16 + (units % 16 != 0);
@@ -340,15 +396,7 @@ MlasT8Pack(size_t N, size_t K, const uint32_t* Planes, uint32_t* Packed, MLAS_T8
                     vst1q_u32(dst + j * 8 + 4, vmvnq_u32(vorrq_u32(z[j], p[j])));
                 }
 #else
-                std::fill_n(dst, 40, 0u);
-                for (size_t i = 0; i < 128; ++i) {
-                    uint32_t byte = 0;
-                    for (size_t b = 0; b < 8; ++b) byte |= ((src[b * sets + i / 32] >> (i % 32)) & 1u) << b;
-                    for (size_t j = 0; j < 5; ++j, byte /= 3) {
-                        if (byte % 3 != 0) dst[j * 8 + i / 32] |= 1u << (i % 32);
-                        if (byte % 3 == 2) dst[j * 8 + 4 + i / 32] |= 1u << (i % 32);
-                    }
-                }
+                DecodeGroup(src, sets, dst);
 #endif
             }
         }
@@ -364,6 +412,11 @@ MlasT8GemmPacked(size_t M, size_t N, size_t K, const float* A, const uint32_t* P
     A = Workspace;
 #else
     MLAS_UNREFERENCED_PARAMETER(Workspace);
+    if (GetMlasPlatform().T8GemmKernel != nullptr) {
+        const auto layout = Layout == MLAS_T8_PACKED_LAYOUT::Masks ? MLAS_T8_WEIGHT_LAYOUT::Masks : MLAS_T8_WEIGHT_LAYOUT::Tiled;
+        T8GemmWithKernel(M, N, K, A, Packed, Scales, C, ThreadPool, layout, RowTile);
+        return;
+    }
 #endif
     const size_t units = N / 5 + (N % 5 != 0);
     const size_t tiles = units / 16 + (units % 16 != 0);

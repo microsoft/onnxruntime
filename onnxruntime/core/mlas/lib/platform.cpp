@@ -582,6 +582,7 @@ Return Value:
                 // TODO(vraspar): check if this really goes here or if there are other platform reqs that we need to fulfill
                 this->LutGenKernel = &MlasLutGenKernelAvx2;
                 this->LayerNormF32Kernel = &MlasLayerNormKernelAvx2;
+                this->T8GemmKernel = MlasT8GemmKernelAvx2;
                 if ((Cpuid1[2] & (1u << 29)) != 0) {
                     this->LayerNormF16Kernel = &MlasLayerNormKernelF16Avx2;
                 }
@@ -637,6 +638,7 @@ Return Value:
                     this->ComputeSumExpF32Kernel = MlasComputeSumExpF32KernelAvx512F;
                     this->ReduceMaximumF32Kernel = MlasReduceMaximumF32KernelAvx512F;
                     this->LinearAttentionDispatch = &MlasLinearAttentionDispatchAvx512F;
+                    this->T8GemmKernel = MlasT8GemmKernelAvx512F;
                     this->QuantizeLinearS8Kernel = MlasQuantizeLinearS8KernelAvx512F;
                     this->QuantizeLinearU8Kernel = MlasQuantizeLinearU8KernelAvx512F;
                     this->NchwcBlockSize = 16;
