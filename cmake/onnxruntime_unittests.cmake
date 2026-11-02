@@ -1355,6 +1355,11 @@ AddTest(
 target_include_directories(onnxruntime_test_all PRIVATE ${ONNXRUNTIME_ROOT}/core/flatbuffers/schema) # ort.fbs.h
 
 if(NOT onnxruntime_MINIMAL_BUILD AND NOT CMAKE_CROSSCOMPILING)
+  onnxruntime_add_shared_library(stateful_test_barrier
+    "${TEST_SRC_DIR}/shared_lib/stateful_test_barrier.cc")
+  target_include_directories(stateful_test_barrier PRIVATE
+    "${REPO_ROOT}/include/onnxruntime/core/session")
+  target_link_libraries(stateful_test_barrier PRIVATE ${GSL_TARGET} Threads::Threads)
   AddTest(TARGET onnxruntime_session_loop_test
     SOURCES "${TEST_SRC_DIR}/framework/ddim_test.cc"
             "${TEST_SRC_DIR}/framework/session_loop_test.cc"

@@ -479,6 +479,8 @@ endif()
 
 configure_file(${ONNXRUNTIME_ROOT}/python/_pybind_state.py.in
                ${CMAKE_BINARY_DIR}/onnxruntime/capi/_pybind_state.py)
+configure_file(${ONNXRUNTIME_ROOT}/stateful.py
+               ${CMAKE_BINARY_DIR}/onnxruntime/stateful.py COPYONLY)
 
 if (onnxruntime_ENABLE_TRAINING)
   file(GLOB onnxruntime_python_root_srcs CONFIGURE_DEPENDS
@@ -735,6 +737,7 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/models/conformer
   COMMAND ${CMAKE_COMMAND} -E copy
       ${ONNXRUNTIME_ROOT}/__init__.py
+      ${ONNXRUNTIME_ROOT}/stateful.py
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/
   COMMAND ${CMAKE_COMMAND} -E copy
       ${REPO_ROOT}/requirements.txt

@@ -358,12 +358,22 @@ struct PyInferenceSession {
 
   virtual ~PyInferenceSession() = default;
 
+  PyInferenceSession(std::unique_ptr<InferenceSession> session, PySessionOptionsSnapshot options,
+                     std::shared_ptr<const void> retained_resources)
+      : retained_resources_(std::move(retained_resources)),
+        py_ep_selection_registration_(std::move(options.py_ep_selection_registration)),
+        py_ep_context_data_read_registration_(std::move(options.py_ep_context_data_read_registration)),
+        session_options_(options.options),
+        sess_(std::move(session)) {}
+
  protected:
   PyInferenceSession(std::unique_ptr<InferenceSession> sess)
       : sess_(std::move(sess)) {
   }
 
  private:
+  // Captured package/callback resources outlive the adopted native Session.
+  std::shared_ptr<const void> retained_resources_;
   std::shared_ptr<PyEpSelectionRegistration> py_ep_selection_registration_;
   std::shared_ptr<PyEpContextDataReadRegistration> py_ep_context_data_read_registration_;
   OrtSessionOptions session_options_;

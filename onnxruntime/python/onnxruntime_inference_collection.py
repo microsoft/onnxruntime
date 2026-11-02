@@ -788,6 +788,21 @@ class InferenceSession(Session):
         # initialize the C++ InferenceSession
         sess.initialize_session(providers, provider_options, disabled_optimizers)
 
+        self._initialize_session_metadata(sess)
+
+    @classmethod
+    def _from_native_session(cls, session: C.InferenceSession, model_path: str) -> InferenceSession:
+        instance = cls.__new__(cls)
+        Session.__init__(instance, enable_fallback=False)
+        instance._model_path = model_path
+        instance._model_bytes = None
+        instance._read_config_from_model = False
+        instance._fallback_providers = ["CPUExecutionProvider"]
+        instance._initialize_session_metadata(session)
+        instance._sess_options_initial = instance._sess_options
+        return instance
+
+    def _initialize_session_metadata(self, sess: C.InferenceSession) -> None:
         self._sess = sess
         self._sess_options = self._sess.session_options
         self._inputs_meta = self._sess.inputs_meta

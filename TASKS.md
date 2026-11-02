@@ -1,6 +1,7 @@
 # Stateful Session Execution: Execution Plan
 
-**Status:** Approved; M01-M12 complete and published for review; M13-M24 pending.
+**Status:** Approved; M01-M12 complete and published for review; M13 in progress;
+M14-M24 pending.
 M05: [PR #15](https://github.com/onnxruntime/ort-state/pull/15).
 M05's requested generation-folder layout follow-up is complete in the same PR.
 **Source:** [Approved specification](SPEC.md), approved 2026-10-15.
@@ -13,6 +14,9 @@ resumed on 2026-10-21 after a compatible toolchain was supplied.
 **M12 refinement:** SPEC Appendix L was separately approved on 2026-10-30.
 The detailed M12 execution plan was separately approved on 2026-10-30;
 CPU/CUDA qualification and publication completed on 2026-10-31.
+**M13 refinement:** SPEC Appendix M was separately approved on 2026-11-02.
+The detailed M13 plan was separately approved on 2026-11-02; implementation is
+authorized and starting.
 
 ## 1. Approval and tracking
 
@@ -25,7 +29,7 @@ CPU/CUDA qualification and publication completed on 2026-10-31.
 - [x] Review this plan with the user and obtain approval before implementation.
 - [ ] Complete the milestone stack and its validation gates.
 
-M01-M12 are complete and M13-M24 are pending. Check tasks when their
+M01-M12 are complete, M13 is in progress and M14-M24 are pending. Check tasks when their
 outcome is verified, not when code has merely been written. Record blockers, exact validation commands,
 results, evidence locations, and PR links in the affected milestone as work
 proceeds. Update this checklist and `SCRATCHPAD.md` at each meaningful checkpoint.
@@ -105,7 +109,7 @@ their functional milestone still requires the CPU/CUDA evidence below.
 
 Stack order is the row order. The dependency column records actual semantic
 prerequisites; the previous branch is also the mechanical Git base.
-M01-M12 are **complete**; M13-M24 are **pending**.
+M01-M12 are **complete**; M13 is **in progress**; M14-M24 are **pending**.
 
 | Done | ID | Intended PR / branch suffix | Semantic prerequisites |
 | --- | --- | --- | --- |
@@ -3688,21 +3692,585 @@ unmeasured client binaries were cleaned. No merge or M13 work.
 
 ### M13 - Python bindings
 
-**Outcome:** Python construction and package execution with full core parity.
+**Status:** Implementation, CPU/plugin/legacy qualification, installed wheels,
+coverage, sanitizers and transfer evidence verified; publication is pending.
+**Specification:** [Approved Appendix M](SPEC.md#appendix-m-m13-python-stateful-bindings-approved).
+**Branch/base:** `state/m13-python-api` on verified M12
+`09d169b3de6001f9ac5a2a5e52747bf1cadfa003` /
+[#26](https://github.com/onnxruntime/ort-state/pull/26).
+**Delivery:** One intended independently documented/tested stacked PR; no merge.
+**Outcome:** Typed `onnxruntime.stateful` Python construction/execution/package
+parity with the existing native engine, including retained immutable values,
+explicit device copies, GIL-safe cancellation and safe owner teardown.
+Real-model demonstrations remain M14/M15; package authoring/export is deferred.
 
-- [ ] Bind contexts, loops/chains, bindings/conditions, stateful policies,
-  sampler/cache selection, output access, reset, and cancellation.
-- [ ] Follow existing Python/pybind ownership, errors, GIL, and array/OrtValue
-  conventions without reimplementing orchestration in Python.
-- [ ] Document programmatic/package examples and tokenizer adapter boundaries.
+#### Approval and current prerequisites
 
-**CPU test plan:** Unit tests for each new wrapper and malformed-input/error path;
-construct/step/run/reset/release, caller output accumulation, package parity,
-lifetime/GC, and tiny LLM/diffusion fixtures using CPU EP.
-**CUDA test plan:** Equivalent fixtures with explicit CUDA/native cache/sampler
-dispatch; verify device values and lifetime across Python/native boundaries.
-**Completion gate:** Tests use the built library, not a stale installed wheel;
-100% new Python/native binding lines and shared rules pass.
+- [x] Interview the user about namespace/configuration, tensor/owner contracts,
+  package scope, GIL/cancellation and execution conveniences.
+- [x] Explicitly confirm no additional requirements before specification drafting.
+- [x] Draft/review Appendix M and obtain specification approval (2026-11-02).
+- [x] Prepare this detailed plan from the approved specification.
+- [x] Review the detailed plan and obtain separate implementation approval.
+- [ ] Implement, qualify and publish only after that approval.
+
+At approval, inspection verified the clean M12 branch/remote PR head above.
+Existing CPU/plugin/legacy caches had Python disabled; all three were
+subsequently enabled and their actual extension/source identities verified.
+Qualification used the existing `.venv`, CUDA13.0.48/matching cuDNN and A100 GPUs.
+
+Disk is constrained. Matching M12 measured artifacts were preserved and their
+hashes verified before changing caches. Valid incremental CPU/plugin/legacy
+trees and cached dependencies were reused; M13 profiles were moved to session
+storage with symlinks preserving their original build paths.
+Do not delete M11/M12 proof, alter old13.1 trees or change global driver state.
+Preserve the exact noncached `--compile-no-warning-as-error` configure option
+used by the verified parent; omitting it caused unnecessary M12 rebuild failures.
+
+#### Tasks, dependencies, outcomes and tests
+
+| Task | Actual prerequisites | Intended outcome |
+| --- | --- | --- |
+| P0 | Plan approval | M13 branch, preserved M12 evidence, Python-enabled baseline builds and verified import paths. |
+| P1 | P0 | Typed immutable configuration/enums and packaged public namespace. |
+| P2 | P1 | Native resource ownership, operation guards and immutable value/copy interop. |
+| P3 | P2 | Python loop/chain/execution/result/diagnostic parity, including bootstrap and DDIM. |
+| P4 | P2 | Standalone cache/sampler/capability selection and retained-view parity. |
+| P5 | P3 | Read-only package inspection/selection/ordinary Sessions and owned chain construction. |
+| P6 | P3, P4, P5 | CPU, GIL/cancel/GC/lifetime, negative-path and package/wheel qualification. |
+| P7 | P0, P6 | Real CUDA cache/greedy/DDIM parity, explicit copies, stream/transfer/lifetime evidence. |
+| P8 | P6, P7 | 100% new Python/native binding lines, compatible cumulative evidence and regressions. |
+| P9 | P8 | Current API/examples/evidence and one ready stacked PR on M12. |
+
+- [x] **P0 - Establish the Python-enabled baseline.** Create the branch only
+  after approval and verify M12's exact head/proof hashes. Enable pybind in the
+  existing CPU/plugin/legacy configurations with the isolated interpreter and
+  matching NumPy headers. Retain all parent provider/coverage/dispatch flags and
+  configure warning policy. Build the Python extension plus focused native/public
+  targets, stage required testdata and record extension/library identities.
+  **Tests:** Import the built package outside repository-root shadowing; verify
+  `onnxruntime.__file__`, wrapper/extension paths, build info, device enumeration
+  and real CPU/CUDA Sessions. Establish selected existing Session/OrtValue/
+  provider-copy Python baselines, plus native85/153 CPU,157/216 plugin and
+ 145/76 selected legacy expected parent counts. Record actual counts/skips,
+  not these expectations as results. Restore a missing dependency only after
+  the chosen command actually fails for it.
+
+- [x] **P1 - Add typed configuration and namespace staging.** Provide frozen
+  typed records/enums from Appendix M, normalizing nested lists/maps to owned
+  immutable values. Keep Python orchestration thin: validate argument kinds/
+  storage/ownership and marshal to native options; do not duplicate native
+  scheduler, exit, cache or sampling logic. Stage `onnxruntime.stateful` in the
+  ordinary package with explicit public exports, annotations and docstrings.
+  **Tests:** Constructor/type/enum/count/name errors, duplicate/conflicting
+  bindings, deep immutability and definition configuration capture. Verify
+  namespace import and availability errors on unsupported builds without
+  breaking ordinary package import. Reject reflection/unknown kwargs, unsupported
+  array protocols and silent dtype/shape/contiguity conversions.
+
+- [x] **P2 - Implement the ownership/value bridge.** Use the existing native
+  stateful/package APIs and exception translator through focused pybind code.
+  Capture exact low-level PyInferenceSession owners, NumPy/public OrtValue
+  storage and SessionOptions callback snapshots. Add per-resource nonblocking
+  busy/closed guards, deterministic close and GIL-safe native ownership scopes.
+  Implement read-only stateful result/cache values, CPU-only copying `numpy()`,
+  same-device copying `to_ortvalue()` and explicit `copy_to_cpu()`, reusing ORT
+  allocators/transfers with retained Session/provider resources.
+  **Tests:** Temporary arrays/OrtValues/stateful feeds survive GC; existing
+  definitions survive high-level `set_providers()` replacement. Parent close
+  cannot invalidate children, multiple value handles are independent, and
+  writable copying conversions cannot mutate native snapshots/cache state.
+  CPU/GPU metadata access is copy-free; GPU `numpy()` rejects without readback.
+  Cover scalar/empty/FP16/bool and supported native element types, unsupported
+  dtypes/copies/devices, endian/stride errors and allocation/transfer failures
+  with checked sizes. Native owners never dereference Python references or
+  destroy callback state without the GIL.
+
+- [x] **P3 - Bind loop/chain/execution parity.** Expose definition construction,
+  explicit input/batch/sequence/state collection conversion, Step/Run/Reset/
+  Cancel, immutable result metadata/groups, state snapshots and dispatch/
+  staging/failure diagnostics. Preserve native bootstrap and DDIM contracts.
+  Acquire ownership before releasing the GIL and invalidate after a possible
+  advancement if result delivery fails; never retry implicitly.
+  **Tests:** Generic feedback, ordinary Session+loop chains, differently named
+  bindings, every supported source/exit/output family, simultaneous exits and
+  finite exhaustion. Cover old generation, new sampler-free prefill budgets0/1/N,
+  first EOS and sample-only accounting. DDIM covers both guidance modes, native
+  reference tolerances, seed/supplied latents, arbitrary batch, four timestep
+  encodings and one/two-call counts. Test bad state, failed Run/Reset, closed/
+  busy access and post-advancement wrapping failure without losing prior results.
+
+- [x] **P4 - Bind standalone cache/sampler parity.** Expose copied cache layouts/
+  provider selection and safe allocator-owning managers, Share/Copy/Append/
+  Reserve/Reset, logical views/length/capacity/stats, reset-invalid checks,
+  greedy sampling and capability/dispatch diagnostics. Reuse existing callback
+  dispatch; do not enable Python-authored C EP callbacks.
+  **Tests:** Immutable views after update/reset/manager close, retained borrowed
+  source owners for Share, copies versus shared storage, boundary shapes/
+  capacities, failed Reserve/Update/Reset and no silent CPU fallback. Greedy
+  tests cover FP32/FP16, row selection, ties, NaN and explicit unsupported modes.
+  Provider Require/Prefer selection and cache/sampler independence must match
+  native routes with safe Session/library retention.
+
+- [x] **P5 - Add read-only package construction.** Reuse native ModelPackage
+  context/selection/factories and typed Python option snapshots for default/
+  per-step SessionOptions. Copy inspection metadata and expose explicit named
+  chain selection. Adopt an already initialized package-created ordinary Session
+  into the public InferenceSession wrapper without loading a second model or
+  losing callback/option metadata. Share a small existing metadata-initialization
+  helper if necessary; keep ordinary Session construction/fallback unchanged.
+  **Tests:** Component/variant inspection/selection, ordinary Session creation,
+  programmatic/package loop/chain parity, bootstrap/DDIM, per-step complete
+  replacements, invalid names/paths/policies/variants and construction rollback.
+  Package/options/selected component/chain close and GC leave captured Sessions/
+  callbacks/results valid. Source-independent parent exports and installed/
+  portable packages still execute; no new authoring/export behavior is added.
+
+- [x] **P6 - Qualify CPU ownership, concurrency and packaging.** Complete all
+  public Python CPU/config/error/GC/copy/lifecycle matrices. Use `unittest`
+  tests under pytest with tiny generated ONNX fixtures. Prove native-entry/
+  release/cancel ordering using a bounded existing test custom-op/EP handshake;
+  add a test-only primitive only if existing prior art cannot express it.
+  Do not add a production callback/test hook or rely on sleep-only races.
+  **Tests:** GIL-free Run/Step permits a second thread to act; overlapping Step/
+  Run/Reset/state/close rejects; Cancel remains safe; independent executions
+  run concurrently. Verify exception propagation from existing option callbacks
+  and wrapping failures without deadlock/dangling references. Build and install
+  the local CPU wheel into an isolated target with `--no-deps`; exercise public
+  imports/examples there and assert its actual extension identity. Verify
+  annotations with scoped existing pyright settings and relevant Session/
+  OrtValue/provider-copy regressions; no unrelated baseline fixes.
+
+- [x] **P7 - Qualify real CUDA and explicit copy behavior.** Use the same tiny
+  native-equivalent LLM/DDIM fixtures against plugin CUDA, verifying actual
+  model placement and native cache/greedy dispatch, not a CPU-enabled fallback.
+  Verify nondefault stream, requested ordinal, retained GPU values after
+  Session/library teardown, same-device clones and explicit CPU copies.
+  Preserve legacy's unsupported native cache/sampler boundary; qualify legacy
+  DDIM/model execution and explicit copy paths where supported.
+  **Tests:** Programmatic/package/NumPy/OrtValue input parity; generation budgets/
+  EOS/policies, DDIM both conventions and native tolerances. Dedicated traces
+  separate normal result access from explicit conversion: normal GPU logits/
+  caches remain resident with compact greedy token/status readback; clone is
+  same-device; `copy_to_cpu()` is the only requested full readback. DDIM retains
+  the parent's intentional CPU policy/full predictions. Run applicable focused
+  memcheck/leak/race/sync checks against the actual Python extension. Install/
+  smoke the local CUDA-plugin wheel and report only verified configurations.
+
+- [x] **P8 - Close Python/native coverage and regressions.** Measure every new
+  executable production Python line with coverage.py, and native binding/glue/
+  conversion/ownership lines using instrumented pybind/runtime/provider objects.
+  Include any shared helper edits and both Python/native error paths. Map staged/
+  installed wrapper sources to the exact source SHA and native profiles to
+  their actual extension; never omit the pybind `.so` from native coverage.
+  **Tests:** Reach100% independently for new Python and native binding code,
+  then report safe cumulative stack mappings. Keep CPU/plugin/legacy/
+  standalone/minimal evidence separate unless mappings are compatible. Inspect
+  nonzero profile-hash mismatches and dormant zero maps explicitly. Final
+  focused Python suites, complete selected existing Python regressions, CPU/
+  plugin native+public and selected legacy suites, standalone package tests,
+  scoped type/style/whitespace and installed examples must pass. Missing tools/
+  instrumentation blocks a gate; no line exclusions/rounding/new kernel claims.
+
+- [ ] **P9 - Document and publish.** Document the exact typed API, copied versus
+  borrowed storage, readonly value/conversion/device behavior, captured Session
+  identity, package options/callback ownership, close/context managers, GIL/
+  busy/Cancel/Reset rules and errors. Add executable tiny-model examples for
+  generic orchestration, bootstrap and DDIM without tokenizer dependencies.
+  **Tests:** Run documented examples on CPU and meaningful CUDA configurations,
+  validate public signatures/imports from installed local wheels, and record
+  exact test selectors/counts/skips, coverage and trace/hash evidence. Update
+  SPEC/TASKS/SCRATCHPAD, inspect/preserve the PR template and verify one ready
+  synchronized PR on M12. No merge or M14 execution.
+
+#### Source scope and known integration constraints
+
+Prefer one public module, one focused pybind implementation with small ownership
+helpers only as needed, and targeted tests/fixtures/docs. Expected integration
+surfaces are Python module registration, PyInferenceSession adoption/keepalive,
+the existing high-level Session metadata initialization, CMake package staging
+and local wheel packaging. A root `onnxruntime/stateful.py` can be staged like
+the existing root initializer; avoid duplicate publicly importable type copies
+in both root and `capi`. Verify actual setup.py behavior before adding packaging
+changes merely for completeness.
+
+This full-parity milestone may exceed the preferred ten-file target; focused
+binding/tests/build/docs changes are necessary, not a reason to omit native
+features. Request a reviewed amendment before a PR split or scope change.
+
+Concrete coupled constraints discovered during plan preparation:
+
+1. PyInferenceSession owns a unique native Session; high-level `set_providers`
+   replaces its `_sess`. A high-level keepalive alone is insufficient.
+2. PySessionOptions snapshots own EP-selection/context-data registrations. Raw
+   native SessionOptions pointers cannot outlive those Python registrations.
+3. Ordinary OrtValue exposes mutation/raw pointers/DLPack. A separate read-only
+   bridge is required; returning its underlying mutable OrtValue is not safe.
+4. Existing `copy_tensors` uses the Python Env transfer path. Verify selected
+   device allocator/transfer ownership after library unregistration rather than
+   assuming Env registration or source Session still exists.
+5. Existing package factories return initialized native Sessions. Python
+   adoption must not reload the model or discard metadata/custom-op ownership.
+6. GIL release does not serialize mutable resources or make Python destructor/
+   callback reference cleanup safe. Operation guards and destruction ordering
+   must be native-safe, including builds that advertise free-threaded support.
+   Do not claim a free-threaded interpreter was tested if none is available.
+7. Unsupported builds may not provide stateful API tables; import/config-value
+   construction must remain usable while resource creation reports unsupported.
+
+#### Reproducible configuration and qualification commands
+
+These configurations and qualification commands were executed; final counts
+and known baseline limitations are recorded below. Enabling Python requires
+regenerating valid caches with the parent warning policy:
+
+```bash
+source .venv/bin/activate
+ROOT="$(git rev-parse --show-toplevel)"
+PYTHON="$ROOT/.venv/bin/python"
+CPU_BUILD="$ROOT/build/state-cpu/RelWithDebInfo"
+GPU_BUILD="$ROOT/build/state-cuda-plugin-m11-13.0/RelWithDebInfo"
+LEGACY_BUILD="$ROOT/build/state-cuda-legacy-m11-13.0/RelWithDebInfo"
+
+cmake --compile-no-warning-as-error -S "$ROOT/cmake" -B "$CPU_BUILD" \
+  -Donnxruntime_ENABLE_PYTHON=ON -DPython_EXECUTABLE="$PYTHON"
+cmake --build "$CPU_BUILD" --parallel 8 \
+  --target onnxruntime_pybind11_state onnxruntime_session_loop_test onnxruntime_autoep_test
+# Repeat for GPU_BUILD and LEGACY_BUILD with their unchanged provider flags.
+```
+
+Run Python from the matching output directory, **not the repository root**.
+All test modules below are implemented:
+
+```bash
+cd "$CPU_BUILD"
+mkdir -p coverage/m13/python coverage/m13/native
+export LLVM_PROFILE_FILE="$PWD/coverage/m13/native/%m-%p.profraw"
+export COVERAGE_FILE="$PWD/coverage/m13/python/.coverage"
+"$PYTHON" -c 'import onnxruntime as ort; from onnxruntime.capi import onnxruntime_pybind11_state as c; print(ort.__file__, c.__file__, ort.get_build_info())'
+"$PYTHON" -m coverage run \
+  --include="$PWD/onnxruntime/stateful.py,$PWD/onnxruntime/capi/onnxruntime_inference_collection.py" \
+  -m pytest -q "$ROOT/onnxruntime/test/python/onnxruntime_test_python_stateful.py" \
+  "$ROOT/onnxruntime/test/python/onnxruntime_test_python_stateful_package.py" \
+  "$ROOT/onnxruntime/test/python/onnxruntime_test_python_stateful_threads.py"
+"$PYTHON" -m coverage report -m
+./onnxruntime_session_loop_test
+./onnxruntime_autoep_test
+```
+
+Collect explicit changed-line evidence too; do not substitute a module percentage
+for native/glue coverage. Use coverage source identities for copied/staged files.
+If source normalization is needed, retain exact original paths and SHA evidence.
+
+```bash
+cd "$GPU_BUILD"
+export LD_LIBRARY_PATH="$PWD:/home/tianlei/cudnn_9.23_cuda13/lib:/home/tianlei/cuda13.0/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export LLVM_PROFILE_FILE="$PWD/coverage/m13/native/%m-%p.profraw"
+"$PYTHON" -m pytest -q \
+  "$ROOT/onnxruntime/test/python/onnxruntime_test_python_stateful.py" \
+  "$ROOT/onnxruntime/test/python/onnxruntime_test_python_stateful_package.py" \
+  "$ROOT/onnxruntime/test/python/onnxruntime_test_python_stateful_threads.py" \
+  "$ROOT/onnxruntime/test/python/onnxruntime_test_python_stateful_cuda.py"
+for worker in lifetime pipeline; do
+  /usr/local/cuda/bin/compute-sanitizer --tool memcheck --leak-check full \
+    --show-backtrace no --error-exitcode 99 "$PYTHON" \
+    "$ROOT/onnxruntime/test/python/onnxruntime_test_python_stateful_cuda.py" "--$worker-worker"
+done
+./onnxruntime_session_loop_test
+./onnxruntime_autoep_test
+```
+
+Run race/sync and transfer profilers on verified dedicated Python selectors
+without unrelated diagnostics or caller readbacks. Establish explicit expected
+sizes from fixture dimensions, not a proxy payload counter. Record any
+interpreter baseline sanitizer behavior separately; do not suppress new errors
+or omit new lifecycle tests to obtain a clean report.
+
+Legacy runs use the same focused Python modules with explicit unavailable/
+unsupported feature tests, then native unfiltered and the parent public selector:
+
+```bash
+./onnxruntime_autoep_test \
+  --gtest_filter='AutoEpSelection.CudaEP:*Stateful*:*Ddim*:ModelPackageApiTest.*:*ModelPackageChain*'
+```
+
+Use the existing build.py/setup.py local-wheel mechanism after verifying staging;
+install each local wheel into a separate isolated smoke target with `--no-deps`.
+Verify imports from those targets outside repository/build shadowing and run
+the tiny public examples. Do not fetch a published ORT wheel as evidence for
+the new code. Package build/installation is required to validate the new public
+namespace, not a separate release/distribution.
+
+For native coverage, merge only matching profiles per configuration and include
+the actual `onnxruntime_pybind11_state` extension alongside runtime/test/provider
+objects. Save per-file Python/native counts, loaded module and source hashes,
+profile diagnostics and explicit transfer proof. Existing native cumulative
+maps may be reused only when source/object identity is verified; changed earlier
+paths must be rerun. No new CUDA source is planned.
+
+#### Completion gates
+
+- [x] Specification and detailed execution plan are separately approved.
+- [x] Typed namespace/configuration and CPU native/public Python parity pass.
+- [x] Read-only results/copies, captured Sessions, input/callback/GC ownership
+  and explicit close/context-manager contracts pass.
+- [x] Deterministic GIL/cancel/busy/independent-execution tests pass without
+  Python callback/destructor deadlock.
+- [x] Read-only package inspection/component/chain loading and both native
+  generation/bootstrap/DDIM policies pass from Python.
+- [x] Real CUDA/model/cache/sampler dispatch, same-device/explicit CPU copies,
+  stream/transfer/lifetime and applicable legacy/sanitizer checks pass.
+- [x] Installed local CPU/plugin package imports/examples use verified new
+  extensions, not stale wheels or source shadowing.
+- [x] Every new executable Python and native binding/glue line reaches
+  measured100%; safe cumulative mappings and modified earlier tests are current.
+- [x] Existing relevant Python/native/package regressions, type/style and
+  documented examples pass with exact commands/results recorded; the unchanged
+  stateless plugin negative-device baseline failure is separately reproduced below.
+- [ ] One correct-base stacked PR is OPEN/ready for review and synchronized.
+
+The detailed plan was separately approved before implementation. Publication is
+the remaining gate; no M14 work or automatic merge is authorized. The following
+dated checkpoints preserve intermediate results; final qualification below
+supersedes their historical pending-work statements.
+
+**Implementation authorization/checkpoint (2026-11-02):** The user separately
+approved this detailed plan. Branch `state/m13-python-api` was created on the
+verified M12 head. All preserved M12 measured-artifact hashes passed verification
+before enabling Python. CPU pybind import resolves to the actual build package/
+extension, and native85/85/public153/153 parent baselines pass. Six focused
+existing Python provider/SessionOptions/Session-scoped OrtValue tests also pass.
+Plugin and legacy Python-enabled baseline builds remain active; no new CUDA
+Python result is claimed.
+
+The first typed configuration/enums/public-namespace slice is staged into the
+actual CPU package. Four configuration tests plus28 subtests pass, with
+**297/297 executable Python statements** covered, source/staged SHA identity
+verified, scoped pyright zero errors/warnings and pinned lint clean. Native
+resource/execution/package bindings and full M13 coverage/qualification are not
+implemented/complete yet. Configuration records can describe definitions; this
+checkpoint is not a claim that the Python runtime surface is complete.
+
+`onnxruntime.stateful` staging follows the existing root initializer's copy path;
+configure-time copy also tracks Python-only edits, avoiding stale staged source.
+Native memory device identifiers are verified against the existing Python enum,
+including FPGA2 and NPU3. No new provider capability is implied.
+
+The first selected Python test/coverage/type commands genuinely failed for
+missing pytest, coverage and pyright. Those tools were restored only inside the
+existing isolated environment. No GPU tools, model assets or global settings
+were installed/changed. Baseline direct-CMake imports report the existing missing
+`build_and_package_info` warning; package/wheel metadata remains P6 validation.
+
+Coverage's dotted `--source=onnxruntime.stateful` probe pre-imported the package
+and caused NumPy's extension to reject repeat initialization during collection.
+The same actual built tests pass normally and under a source-file
+`--include=<build>/onnxruntime/stateful.py` filter, with exact source SHA and
+coverage JSON retained. This changes discovery only, not the measured statement
+denominator or exclusions. Future commands must avoid the side-effecting dotted
+probe and still account for every new production wrapper file.
+
+**Binding implementation checkpoint (2026-11-02):**
+
+- Python-enabled parent regressions pass: CPU85 native/153 public, plugin157
+  native/216 public, legacy145 native/76 selected public. Actual extension/build
+  identities are recorded; legacy public remains deliberately selected.
+- Implemented thin native/Python loop/chain/execution/result/diagnostic bindings,
+  immutable value handles, explicit same-device/CPU copies, retained inputs and
+  captured low-level Session identity. CPU tests cover generic/state/ordinary
+  components, sample-only bootstrap budgets0/1/N/first EOS, DDIM both guidance
+  modes/all four timestep encodings, result-delivery failure/Reset and GC.
+- Explicit dependency leases destroy native children before parent Sessions/
+  allocators/input owners, including transitive value copies and cancellation.
+  Cleanup does not rely on tuple/dict attribute destruction order. Public close
+  releases one handle; retained children remain independent.
+- Standalone cache/view/greedy/capability bindings now pass CPU tests. Share
+  requires allocator-owned values; borrowed NumPy storage is rejected by the
+  native policy, never silently copied. Copy/Append/reserve/reset preserve old
+  views. Input owners are conservatively retained until manager close, including
+  reused Reset storage. CPU suite: **17 tests plus64 subtests pass**; legacy
+  extension runs the same suite successfully.
+- Real plugin GPU value test passes for FP32 and FP16, with actual model
+  assignment/native greedy dispatch, rejected implicit GPU numpy(), same-device
+  writable clones and explicit CPU copies after parent/library release. This
+  lifetime test runs in a bounded isolated subprocess and propagates child
+  failures; coverage collects the actual worker. Full cache/sampler/package GPU
+  qualification, GIL/cancellation concurrency, traces and sanitizers remain P6/P7.
+- Current Python CPU slice has **688/689 statements** covered; the remaining
+  statement is the GPU numpy() rejection and is covered in the isolated GPU case.
+  Do not combine old source versions blindly or call this full M13 coverage.
+  Fresh native binding coverage and remaining feature implementation are still
+  required. P4 plugin rebuild/combined tests are active; package loading is not
+  implemented and no M13 PR exists.
+
+Two baseline/setup limitations are recorded without unrelated source changes:
+
+1. The selected existing plugin Python provider-options test expects a
+   RuntimeError for negative device ID, but the unchanged stateless plugin
+   selection code chooses a device instead. That selection produced5 passes/
+   1 failure, not a clean6-test result. New stateful provider validation must
+   remain explicit; do not fix or hide the unrelated stateless behavior here.
+2. The first GPU lifetime fixture unnecessarily unregistered/re-registered the
+   CUDA factory before any Session. It failed Gather; a bounded ordinary-Session
+   diagnostic also stalled after that setup cycle. Normal bundled-factory
+   ordinary Run, IOBinding and CPU/GPU-sampled loops all pass. The isolated test
+   now uses a fresh normal factory and unregisters only after producing values,
+   still proving the required post-unregistration lifetime. The diagnostic
+   process was specifically stopped; no global device/driver setting changed.
+
+An in-flight plugin build initially used the old source list and omitted the
+new bridge implementation, causing an undefined registration symbol on import.
+Explicit source-list regeneration fixed it. Later Python-only edits also
+required source refresh before tests; exact source/staged hashes are checked.
+Only M13-generated profiles were moved to session storage to relieve root disk
+pressure; symlinks preserve recorded build paths. M11/M12 evidence is untouched.
+
+**Latest checkpoint:** P2-P5 implementations now include read-only package
+inspection, component/variant selection, adoption of initialized ordinary
+Sessions, and named owned-chain loading. The adopting wrapper preserves callback
+snapshots and reloads the actual selected file on explicit `set_providers()`.
+SessionOptions snapshots use supported copy construction, not unimplemented
+copy assignment. Final coverage/qualification gates remain open.
+
+- Current CPU Python suites: **24 tests/77 subtests pass**, including deterministic
+  native-barrier GIL release, concurrent cancellation, busy-operation rejection,
+  and independent executions on one Session.
+- Legacy core/package suites: **22 tests/72 subtests pass**. The isolated installed
+  CPU wheel passes the same22 tests/72 subtests outside source/build shadowing.
+- Both actual CUDA worker tests pass: FP32/FP16, all four independent CPU/GPU
+  cache/sampler policy combinations and budgets0/1/3 (24 package configurations),
+  standalone device cache/sampling, both DDIM guidance modes, nondefault stream,
+  and retained values after Session/library release. The GPU wheel is built;
+  isolated installation/smoke remains open.
+- Current Python CPU coverage is **755/756 statements**; the GPU-only `numpy()`
+  rejection runs in the CUDA worker. Source-identical union and native changed-line
+  closure are still required; this is not a100% M13 coverage claim.
+- Compute Sanitizer2025.3.0 with default host backtraces retained ordinary Python
+  `InferenceSession.__init__` frames, preventing Session destruction. A plain
+  Python CUDA baseline without any stateful imports reproduced19,180,048bytes/
+  14allocations; weak-reference diagnostics confirmed the retention. The same
+  baseline releases both Sessions normally without instrumentation.
+- `--show-backtrace no` removes that diagnostic-induced retention without
+  disabling memory, leak, API-error, or application-exit checks. Full memcheck
+  of **each actual worker** now passes: **zero errors and zero leaked bytes**.
+  Original failing reports and ordinary baseline diagnostics remain preserved.
+  Race/sync, dedicated transfer traces, final regressions and coverage remain open.
+
+The successful memcheck commands, from the plugin output directory with the
+documented matching loader/PYTHONPATH, were:
+
+```bash
+/usr/local/cuda/bin/compute-sanitizer --tool memcheck --leak-check full \
+  --show-backtrace no --error-exitcode 99 "$ROOT/.venv/bin/python" \
+  "$ROOT/onnxruntime/test/python/onnxruntime_test_python_stateful_cuda.py" --lifetime-worker
+/usr/local/cuda/bin/compute-sanitizer --tool memcheck --leak-check full \
+  --show-backtrace no --error-exitcode 99 "$ROOT/.venv/bin/python" \
+  "$ROOT/onnxruntime/test/python/onnxruntime_test_python_stateful_cuda.py" --pipeline-worker
+```
+
+Both exited0. Evidence: `m13-gpu-{lifetime,pipeline}-memcheck-final.log` in the
+session evidence directory.
+
+#### Final qualification (2026-11-02)
+
+All implementation/qualification gates P0-P8 are complete. Only publication P9
+remains. User-facing contracts and runnable examples are in
+[Stateful Python execution](docs/Stateful_Python.md) and
+[stateful_execution.py](samples/python/stateful_execution.py).
+
+| Surface | Verified result |
+| --- | --- |
+| CPU native/public | 85/85 and153/153, unfiltered |
+| CUDA-plugin native/public | 157/157 and216/216, unfiltered |
+| Legacy CUDA native/public | 145/145 and76/76 with the explicitly documented parent selector |
+| CPU and legacy new Python suites | Each27 tests/84 subtests, no skips |
+| Installed local CPU wheel | 27 tests/84 subtests, verified isolated package/extension |
+| Installed local GPU wheel | 29 tests/84 subtests including both actual CUDA workers, no skips |
+| Existing CPU Python Session/OrtValue | 8 passed/87 deselected |
+| Existing CPU callback regressions | 2 passed/14 deselected, including actual EPContext data callbacks |
+| Existing plugin Session/OrtValue | 7 passed/88 deselected; known failure separately rerun |
+| Standalone shared/static package | Each5/5 CTests |
+| Examples | Feedback, bootstrap, both DDIM modes pass on installed CPU/plugin wheels and legacy CUDA |
+| Scoped type/style/whitespace | pyright0 errors/warnings; lintrunner and `git diff --check` pass |
+
+Final measured new production coverage:
+
+- Native binding/glue **660/660 executable mapped lines**, including bridge
+  **652/652**, registration1/1, adopting constructor5/5 and internal accessors2/2.
+  The actual minimal-build registration source was independently compiled and
+  executed, reporting `available=False`; it is not a mocked native-coverage claim.
+- Public Python module **756/756 statements** and changed existing Session
+  helper **13/13**, totaling **769/769 new binding/helper statements**.
+- Executable example **63/63 statements** across its CPU/CUDA runs.
+- Safe cumulative native stack mapping **5412/5412**, including the actual Python
+  extension, current CPU/plugin tests/runtime and unchanged, identity-verified
+  standalone/minimal parent maps. No new CUDA source or device coverage claim.
+- Every one of882 audited profile diagnostic entries has hash0 (dormant maps);
+  **zero nonzero source/profile hash mismatches**. Reports retain the warnings.
+  Old untouched `TYPE_CHECKING` lines20-22 in the existing Python module are not
+  new executable code; no new line was excluded.
+
+Coverage and source-safe normalization scripts/reports are preserved under
+`$EVIDENCE=/home/devpatel/.copilot/session-state/819a29ec-8ea8-4b2f-9938-e40236ffd239/files`:
+
+```bash
+# Passed660/660 native and769/769 Python:
+"$PYTHON" "$EVIDENCE/measure_m13_coverage.py"
+# Passed5412/5412 cumulative native and769/769 Python:
+"$PYTHON" "$EVIDENCE/measure_m13_coverage.py" --cumulative
+# Passed exact CUPTI byte/count assertions for every captured transfer:
+"$PYTHON" "$EVIDENCE/m13_verify_transfers.py"
+```
+
+Final GPU worker also rejects CPU logits and mismatched ordinal1 GPU logits
+under required ordinal0 sampling, with zero CPU/provider invocations for those
+precondition failures. Both FP32/FP16 paths run on the available A100s.
+All three sanitizer tools pass both actual worker processes:
+memcheck/full-leak **0 errors/0 bytes**, racecheck **0 hazards/errors/warnings**,
+synccheck **0 errors**. `--show-backtrace no` is the documented workaround for
+diagnostic-induced Python frame retention; memory/leak/API/exit checks remain on.
+
+Five dedicated `nsys profile --trace=cuda --sample=none --cpuctxsw=none
+--capture-range=cudaProfilerApi --capture-range-end=stop` ranges were exported
+with `nsys export --type=sqlite` and asserted against CUPTI records:
+
+| Captured operation | Exact transfer result |
+| --- | --- |
+| Native greedy Run plus ordinary metadata/result access | 16B HtoD input and16B DtoH compact result; no32,768B logits readback |
+| `to_ortvalue()` | One32,768B DtoD; zero DtoH |
+| `copy_to_cpu()` | One32,768B DtoH |
+| DDIM batched, S3/N2C2H3W5 | Three480B prediction DtoH =1440B |
+| DDIM sequential, same fixture | Six240B prediction DtoH =1440B |
+
+Intentional DDIM input transfers are also asserted: batched3each of4B timestep,
+16B conditioning and480B latents; sequential6each of4B,8B and240B respectively.
+Warmup/setup and explicit caller readbacks are outside unrelated capture ranges.
+
+Final directly related existing-Python commands (matching output directory,
+loaded build and documented loader) were:
+
+```bash
+# CPU: passed8; plugin: passed7 when the explicitly known test is separated:
+"$PYTHON" -m pytest -q -rs \
+  "$ROOT/onnxruntime/test/python/onnxruntime_test_python.py" \
+  -k 'test_get_providers or test_set_providers or test_session_scoped_cpu_ortvalue or test_run_session_owned_output_is_zero_copy or test_device_ortvalue_provenance_rules or test_get_graph_provider_assignment_info'
+# Plugin passing selector adds: and not test_set_providers_with_options
+# CPU: passed2, including actual native read/write callback execution:
+"$PYTHON" -m pytest -q -rs \
+  "$ROOT/onnxruntime/test/python/onnxruntime_test_python_compile_api.py" \
+  -k 'test_callback_finalizers_can_reenter_configuration or test_external_ep_context_data_callbacks'
+# Plugin: FAILED1 exactly as the pre-change baseline; not a new-test failure:
+"$PYTHON" -m pytest -q \
+  "$ROOT/onnxruntime/test/python/onnxruntime_test_python.py" \
+  -k test_set_providers_with_options
+```
+
+The known stateless test still expects RuntimeError for a negative CUDA device
+option while unchanged plugin selection ignores it. No unrelated provider
+selection fix or hidden test suppression was made. Direct-CMake legacy imports
+still report missing wheel metadata; installed wheels have correct metadata.
+Free-threaded Python, other GPU architectures and real-model M14/M15 demos were
+not claimed. Package Python authoring/export remains deferred.
 
 ### M14 - Phi-3 local package and text-to-text demo
 

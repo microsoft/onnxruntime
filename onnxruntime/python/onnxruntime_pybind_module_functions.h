@@ -12,6 +12,7 @@ using ExecutionProviderRegistrationFn = std::function<void(InferenceSession*,
 void addGlobalMethods(pybind11::module& m);
 void addObjectMethods(pybind11::module& m, ExecutionProviderRegistrationFn ep_registration_fn);
 void addOrtValueMethods(pybind11::module& m);
+void addStatefulMethods(pybind11::module& m);
 void addSparseTensorMethods(pybind11::module& m);
 void addIoBindingMethods(pybind11::module& m);
 void addAdapterFormatMethods(pybind11::module& m);

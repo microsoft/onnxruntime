@@ -18,7 +18,11 @@ Appendix L was approved by the user for detailed plan preparation.
 The detailed M12 plan was separately approved on 2026-10-30 and implementation
 and CPU/CUDA qualification are verified on 2026-10-31. M12 is published for review
 in [#26](https://github.com/onnxruntime/ort-state/pull/26), stacked on M11.
-M13 and later implementation milestones are not started.
+M14 and later implementation milestones are not started.
+**M13 refinement:** The requirements interview completed on 2026-11-02.
+Appendix M was approved for detailed plan preparation. The requested stack
+parent is verified M12. The detailed plan was separately approved on 2026-11-02;
+implementation is starting.
 
 ## 1. Purpose
 
@@ -3094,3 +3098,274 @@ executions; step count and guidance configuration do not.
 - Review and approve this appendix first. Only then prepare and separately
   review the detailed M12 TASKS plan; do not infer either approval from the
   instruction to start M12.
+
+## Appendix M. M13 Python stateful bindings (approved)
+
+**Interview completed:** 2026-11-02. The user explicitly confirmed there were no
+additional requirements before drafting. This appendix refines API-1/API-2,
+API-5/API-6 and M13's Python/native/package parity.
+**Specification approved:** 2026-11-02, for detailed execution-plan preparation.
+The detailed M13 execution plan was separately approved on 2026-11-02.
+**Stack:** One intended M13 PR on M12
+`09d169b3de6001f9ac5a2a5e52747bf1cadfa003` /
+[#26](https://github.com/onnxruntime/ort-state/pull/26).
+**Implementation qualification:** Completed 2026-11-02; publication is pending.
+New native binding/glue coverage is660/660 mapped lines, new Python binding/
+helper coverage769/769 statements, and executable examples63/63 statements.
+CPU/plugin/legacy, installed-wheel, explicit transfer and sanitizer results,
+including the separately reproduced pre-existing stateless plugin test failure,
+are recorded in [M13 qualification](TASKS.md#final-qualification-2026-11-02).
+
+### M.1 Confirmed scope and Python surface
+
+- Publish the new API under **`onnxruntime.stateful`**, with typed configuration
+  objects/enums and conventional snake_case methods. Do not populate the root
+  namespace with every stateful type or change ordinary InferenceSession APIs.
+- Expose programmatic loops/chains, executions, sources/bindings/exits, native
+  generation/bootstrap, DDIM, standalone cache management/greedy sampling,
+  provider selection/capabilities/diagnostics and retained results/state.
+- Expose read-only Model Package loading/inspection, variant selection and
+  executable named-chain construction. Package authoring/export wrappers are
+  deferred; JSON metadata may be authored separately by applications.
+- Accept NumPy arrays and existing public OrtValue inputs, retaining owners
+  without additional implicit copies. Return **read-only stateful value
+  wrappers backed by OrtValue**, not mutable aliases to native result storage.
+- Resource owners support automatic cleanup, explicit idempotent `close()` and
+  context managers. Independent children retain required resources even after
+  a parent handle is closed or collected.
+- Release the GIL during blocking native operations. Permit cancellation from
+  another Python thread, with explicit rejection of overlapping operations on
+  one mutable resource. No async API, Step-result iterator, Python scheduler,
+  callback predicate or new provider-callback implementation API is introduced.
+- Preserve native execution policies and limits, including M11 sample-only
+  bootstrap and M12 one/two-invocation DDIM updates. Do not infer completion
+  from `executed=False` or implement another scheduler in Python.
+- Real Phi-3 and Stable Diffusion package/text/image demonstrations remain
+  M14/M15; M13 examples/tests use small locally generated models.
+
+### M.2 Typed configuration and construction
+
+Provide public typed records covering these roles; names below define the
+intended vocabulary, not a requirement to mirror C resource allocation:
+
+| Record/type family | Required configuration |
+| --- | --- |
+| `LoopConfig`, `ExitCondition`, `FeedbackBinding` | Explicit selected outputs, finite inputs, feedback, exits, optional model-token/nonempty-input contracts and native policies. |
+| `ValueSource`, `InputBinding`, `StateBinding`, `ChainOutput` | Explicit external input/sequence, earlier component output and retained-state sources; named final outputs/token history. |
+| `ChainComponent`, `ChainConfig` | Ordered named Session/SessionLoop components, bindings, optional state/cache/provider/bootstrap configuration. |
+| `GenerationConfig`, `GenerationBootstrap` | Existing prefill/decode ports, optional mask/position/row and explicit initial logits/original prompt. |
+| `DdimConfig` | Exact approved M12 profile, dimensions, steps, guidance, ports, timestep encoding and logical feeds/output. |
+| `CacheSpec`, `CacheBinding`, `SamplerConfig` | Native layout/update semantics and supported greedy algorithm/row selection. |
+| `ProviderSelection` and native enums | CPU/prefer/require policies, explicit provider/device identity, independent cache/sampler selection. |
+
+- Configuration records use explicit fields and type annotations. Normalize
+  nested collections into owned immutable records/tuples/read-only mappings;
+  changing a caller's input list/dict later cannot mutate a definition.
+  Configurations are ordinary values, not resources requiring `close()`.
+- Constructors capture a validated configuration, using existing native
+  validation/status paths. Reconfiguration means creating a new record/
+  definition, not mutating a published execution definition.
+- A `SessionLoop` captures the initialized native Session behind the supplied
+  public `onnxruntime.InferenceSession`. A `SessionChain` captures its supplied
+  component definitions and exact initialized Sessions.
+- Pin the **actual low-level Python Session object**, not only the replaceable
+  high-level wrapper. If the caller later calls ordinary `set_providers()` or
+  releases that wrapper, existing stateful definitions still use the originally
+  captured initialized Session; only newly constructed definitions see a
+  replacement. Do not alter or silently reconstruct a captured Session.
+- Preserve existing environment, allocator, custom-op and SessionOptions
+  callback-registration lifetimes. Package options capture existing Python
+  SessionOptions snapshots/registrations, not naked native callback pointers.
+- Source/output names and component identity remain explicit. Unknown fields/
+  enums, embedded NUL names, duplicate/conflicting producers and invalid counts
+  raise errors. Do not configure native extension properties via arbitrary
+  reflected kwargs or `setattr`.
+- Standalone cache/sampler objects use safe ORT/default or retained Session
+  allocator ownership; do not ask Python callers to pass raw allocator or
+  callback addresses. Expose existing provider capability queries/selection,
+  not Python-authored C execution-provider callbacks.
+- No production dependency on ONNX, PyTorch, Diffusers, tokenizer libraries or
+  the standalone Python Model Package ecosystem is added.
+
+### M.3 Execution inputs and retained ownership
+
+- `SessionLoop.create_execution(inputs=..., batches=...)` and
+  `SessionChain.create_execution(inputs=..., sequences=..., initial_state=...)`
+  use explicit named collections corresponding to the existing native input
+  kinds. Do not silently reinterpret finite batches as invariant inputs.
+- Values are public OrtValue, NumPy ndarray, or a read-only stateful value from
+  this API. Accept the latter as a **read-only feed** without a copying mutable
+  conversion; keep its owner alive transitively.
+- NumPy inputs must have supported dense numeric/bool dtype, native byte order
+  and contiguous storage. Reject noncontiguous arrays, object/string arrays and
+  unsupported types rather than silently making contiguous copies, casting,
+  flattening, accepting arbitrary array protocols or inferring token/seed dtype.
+  An explicit zero-dimensional uint64 ndarray represents a DDIM seed.
+- Preserve native type/shape/device checks. Generic host-only bindings remain
+  host-only; do not read back a GPU value simply to make validation succeed.
+  Existing CUDA cache/logit routes may consume compatible device OrtValues.
+- Keep the original NumPy arrays, public OrtValues, low-level Session owners and
+  relevant retained stateful values alive for as long as execution/results need
+  their storage. Temporary Python handles/GC must not cause dangling buffers.
+- Callers must not mutate borrowed arrays/OrtValue buffers while an execution
+  may use them, including future Steps and Reset replay. This lifetime contract
+  is explicit; holding a Python reference does not prevent external writes.
+- Do not add binding-level input copies. Native algorithm-required copies,
+  including DDIM's private initial-latent copy, retain their existing behavior
+  and diagnostics. Reset uses the originally captured feeds, not a new dict.
+
+### M.4 Results, immutability and explicit copying
+
+- `StepResult` provides immutable copied progress metadata and named output
+  collections corresponding to selected outputs, component outputs and retained
+  state. Collections do not expose mutable native metadata or writable storage.
+- Progress includes native result kind, executed/completed, actual invocations,
+  iterations, generated-token count, completed-component count/name, exit
+  reasons and an optional generated token. Sample-only decode Steps may advance
+  token history with `executed=False`; sequential DDIM counts two calls/update.
+- `StatefulValue` supports safe shape/dtype/device metadata access. It retains
+  its result/cache-view/storage/allocator/provider dependencies independently
+  of Python parent handle release.
+- `StatefulValue.numpy()` returns an **independent CPU copy** for CPU values,
+  never a mutable view of retained native storage. Calling it on a device value
+  fails with an explicit instruction to request a CPU copy first.
+- `StatefulValue.to_ortvalue()` returns a separate owned mutable OrtValue copy
+  on the **same device**. `StatefulValue.copy_to_cpu()` explicitly returns a
+  separate owned CPU OrtValue; callers may then use the existing `.numpy()`.
+  CPU/CUDA copying must respect supported ORT allocator/transfer paths and
+  retained provider/session lifetimes. Unsupported copy paths report errors.
+- Do not expose a borrowed mutable OrtValue, NumPy view, writable buffer,
+  DLPack capsule or raw device pointer from the read-only wrapper. No implicit
+  `__array__`/device conversion or silent CPU transfer.
+- Mutating any returned copying conversion must not affect earlier/later
+  results, cache state, Reset replay or downstream read-only feeds. Output access
+  and metadata inspection alone perform no tensor copies or device transfer.
+- Cache views include immutable logical value plus copied length/capacity.
+  Expose existing cache stats, dispatch/capability/failure data and CPU staging
+  payload counters with their native meanings, not as measured DMA counters.
+
+### M.5 Lifecycle, GIL and concurrency
+
+- Resource owners include loop/chain definitions, executions, package contexts,
+  standalone caches/samplers, results and retained-value/view handles.
+  Each supports idempotent close and context-manager exit. Closing a handle
+  releases that handle's reference only; already returned children remain valid.
+- Calls on a closed resource fail clearly rather than returning empty outputs.
+  Previously copied immutable metadata remains ordinary Python data.
+- Acquire operation/resource ownership and Python keepalive references while
+  holding the GIL. Release the GIL for model/session/package initialization,
+  Step/Run, blocking Reset/cache/sampler/copy operations and safe native teardown;
+  reacquire it before Python object access, callback handling or refcount cleanup.
+  Follow existing ORT Python callback/GIL conventions for SessionOptions; do not
+  invent a new Python callback protocol.
+- Native work never accesses Python containers/objects without the GIL.
+  Do not destroy Python callback/owner references from an unguarded native
+  destructor while the GIL is released.
+- Use a per-resource operation guard: reject concurrent Step/Run/Reset, mutable
+  cache/sampler changes, execution-state/diagnostic access or explicit close on
+  a resource in use. Do not rely on the GIL for native mutual exclusion or block
+  another thread while holding the GIL needed by a callback.
+- `cancel()` is the permitted concurrent operation on an execution. It requests
+  native boundary cancellation, not GPU preemption. Resource ownership remains
+  stable during Cancel; close cannot invalidate a running native operation.
+- Separate executions may run concurrently, including definitions sharing the
+  same initialized Session where supported by existing Session behavior.
+  Frozen results/values may be inspected independently of mutable executions;
+  copying/closing a particular handle must still have safe ownership.
+- Preserve native failure/reset invalidation. Convert/validate inputs before
+  advancement; acquire native result ownership before execution. If a
+  post-advancement Python wrapping failure prevents delivery, propagate the
+  error and require Reset rather than silently retrying or losing progress.
+- Do not change global GIL/provider/driver settings or introduce a background
+  worker, async iterator, callback scheduler or implicit retry/fallback.
+
+### M.6 Read-only Model Package loading
+
+- Provide `ModelPackage` in the same namespace, accepting a filesystem path
+  using existing Python path conventions. Reuse the native package context,
+  variant selection, confinement and initialization paths.
+- Return owned inspection metadata: schema/component/variant/provider identity,
+  selected variant names/paths and existing resolvable metadata. No borrowed
+  char pointers or mutable views into the live package context.
+- Select executable chains by **explicit name**. Support shared default
+  SessionOptions and optional per-step complete SessionOptions replacements,
+  preserving native precedence, retained Python registrations and exact step IDs.
+  Empty/default options use existing CPU defaults, not automatic GPU selection.
+- Support read-only component selection and ordinary Session creation using the
+  same native variant-selection mechanism. Return an ordinary public
+  InferenceSession without reloading/reinitializing a second copy of the model.
+- Owned package chains retain their initialized Sessions. Closing the package,
+  options or chain handles does not invalidate existing executions or retained
+  results/values. Package component selections retain needed package metadata.
+- Manifest policies remain authoritative, including DDIM steps/guidance and
+  generation exits. Per-execution data are explicit feeds, not a private
+  override dictionary. Unknown/invalid selected ORT policies fail.
+- Do not introduce chain mutation, package commit/export/prune, default-chain
+  selection, Python execution of manifest scripts or another path resolver.
+  Standalone Model Package remains independent of ORT/Python.
+
+### M.7 Errors, typing, packaging and documentation
+
+- Reuse repository-standard native Python exception translation, preserving
+  status codes/messages and available component/operation context. Wrong Python
+  argument types, closed/busy handles and unsupported conversion/build paths
+  raise clear exceptions; no print-and-retry, broad catch or empty success value.
+- Do not automatically retry a failed stateful run through ordinary Session
+  fallback or silently rebuild its providers. Existing stateless behavior is
+  unchanged.
+- Expose type annotations/docstrings for every new public symbol, with explicit
+  ownership/no-mutation/device-copy/cancellation/Reset contracts. Follow existing
+  Python/C++ naming/style and export/packaging conventions.
+- The new namespace is part of the ordinary built ORT Python package; no
+  separate distribution or runtime-generated import path is required.
+  Unsupported minimal/reduced builds report feature unavailability explicitly
+  without breaking ordinary package import or claiming feature parity.
+- Tests must import the actual new Python extension and wrapper sources, not a
+  stale installed wheel or source tree missing its compiled `capi` library.
+  Verify loaded paths/build identity and CPU/plugin/legacy availability.
+- Document executable tiny-model examples for generic loop/chain, sampling-free
+  LLM bootstrap and DDIM package execution. Examples use explicit policy/ports/
+  exits, copying conversions and cleanup; they do not supply a tokenizer.
+  Explain application-provided tokenizer/detokenizer boundaries for M14/M15.
+
+### M.8 Acceptance and approval gates
+
+- Verify native/programmatic/package Python parity for generic loop/chain,
+  all supported binding/exit families, standalone cache/sampler operations,
+  provider policies, generation/bootstrap/DDIM, result/state/diagnostic access,
+  failed/reset-invalid contexts, close and GC.
+- Test zero/one/multiple generation budgets, first EOS and sample-only Step;
+  compare complete token history/counts without duplicate emission.
+  Verify DDIM both guidance modes, supplied/seeded initialization, batch>1,
+  explicit timestep encoding and actual one/two-call counts against M12
+  reference values/tolerances, not a rewritten Python scheduler.
+- Exercise temporary input owners, captured Session replacement, parent close/
+  GC, retained outputs/cache views, Python option/callback lifetimes and no
+  writable-result alias. Negative tests include wrong dtypes/shapes/devices,
+  noncontiguous/unsupported arrays, bad policy/reference/name/configuration and
+  errors before/after possible advancement.
+- Prove GIL release with a second Python thread, deterministic cancellation at
+  native boundaries, rejection of overlapping mutable operations and independent
+  concurrent executions. Avoid sleep-only races as proof.
+- Run CPU tests for every outcome and meaningful CUDA tests with real provider
+  selection/native cache/sampler dispatch. Device values stay resident during
+  normal access; trace dedicated cases separately from explicit caller copies.
+  DDIM retains M12's intentional CPU scheduler/full-prediction readback.
+- Preserve CUDA-plugin-only native cache/greedy capability boundaries and
+  applicable legacy CUDA DDIM/unsupported-capability behavior. A CPU-fallback
+  value comparison or CUDA-enabled extension alone is not device proof.
+- Measure **100% new executable production Python and native binding/glue
+  lines**, with Python coverage plus matching instrumented native artifacts.
+  Count runtime wrapper/config/error/copy/lifetime code, not tests alone; report
+  covered/total counts and any uncovered locations without exclusions/rounding.
+  Re-exercise modified earlier paths and report cumulative coverage with safe
+  source mappings. No new CUDA kernel is planned.
+- Validate installed/built package import and public examples, relevant existing
+  Python/native/package regressions, applicable sanitizers, style and type checks.
+  Record exact commands/results, nonzero tests/skips, loaded extension identity,
+  provider/device placement and separate transfer evidence.
+- Maintain TASKS/SCRATCHPAD throughout. Deliver one intended independently
+  documented/tested M13 PR on verified M12; no automatic merge or M14 work.
+- Review and approve this appendix first; then prepare and separately review
+  the detailed M13 execution plan. The request to move to M13 is not a waiver
+  of either approval gate.

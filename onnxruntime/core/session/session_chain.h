@@ -91,6 +91,7 @@ class SessionChain : public std::enable_shared_from_this<SessionChain> {
                             std::shared_ptr<const SessionChain>& out);
   ~SessionChain();
   Status CreateExecution(SessionChainInputs inputs, std::unique_ptr<SessionChainExecution>& out) const;
+  gsl::span<InferenceSession* const> Sessions() const { return {sessions_.data(), sessions_.size()}; }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionChain);
 
  private:

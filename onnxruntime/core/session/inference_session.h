@@ -659,6 +659,7 @@ class InferenceSession {
 #endif
 
   const Model& GetModel() const;
+  const PathString& ModelLocation() const noexcept { return model_location_; }
   const Environment& GetEnvironment() const;
 
   void SetWeightDataType(const std::string& type) {
