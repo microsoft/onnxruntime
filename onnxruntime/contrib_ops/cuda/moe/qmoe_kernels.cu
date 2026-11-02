@@ -869,22 +869,26 @@ bool CanUseFusedRouteMaps(int64_t num_rows, int64_t num_experts, int64_t k) {
   return num_rows >= 1 && num_rows <= kFusedRouteMaxRows && num_experts == kFusedRouteExperts && supported_k;
 }
 
-template <typename T>
-bool LaunchFusedRouteMapsT(const T* logits, float* topk_scales, int* topk_indices,
-                           int* permuted_row_to_unpermuted_row, int* unpermuted_row_to_permuted_row,
-                           int* permuted_expert, int64_t* expert_first_token_offset, int num_rows,
-                           int num_experts, int k, bool normalize_scales, bool pdl, cudaStream_t stream) {
-  if (!CanUseFusedRouteMaps(num_rows, num_experts, k) || reinterpret_cast<uintptr_t>(logits) % 8 != 0) {
-    return false;
-  }
-  const auto kernel = k == 10 ? FusedSoftmaxTopKMapsKernel<T, 10> : FusedSoftmaxTopKMapsKernel<T, 0>;
+// The 256-expert envelope is only used by LaunchFusedRouteMaps (NVFP4 GEMV decode). It is intentionally not part of
+// CanUseFusedRouteMaps, which the generic runner also uses to decide whether routing can be folded into its prologue.
+static bool CanUseFusedRouteMaps256(int64_t num_rows, int64_t num_experts, int64_t k) {
+  const bool supported_k = k == 1 || k == 2 || k == 4 || k == 6 || k == 8;
+  return num_experts == kFusedRoute256Experts && num_rows >= 1 && num_rows <= kFusedRoute256MaxRows && supported_k &&
+         k <= kFusedRoute256MaxK && num_rows * k <= 64;
+}
+
+template <typename KernelPtr, typename T>
+bool LaunchFusedRouteKernel(KernelPtr kernel, int threads, const T* logits, float* topk_scales, int* topk_indices,
+                            int* permuted_row_to_unpermuted_row, int* unpermuted_row_to_permuted_row,
+                            int* permuted_expert, int64_t* expert_first_token_offset, int num_rows, int k,
+                            bool normalize_scales, bool pdl, cudaStream_t stream) {
   if (!IsFusedRouteKernelSm90Available(kernel)) {
     return false;
   }
   if (pdl) {
     cudaLaunchConfig_t config{};
     config.gridDim = dim3(1);
-    config.blockDim = dim3(kFusedRouteThreads);
+    config.blockDim = dim3(threads);
     config.dynamicSmemBytes = 0;
     config.stream = stream;
     cudaLaunchAttribute attribute[1]{};
@@ -903,11 +907,46 @@ bool LaunchFusedRouteMapsT(const T* logits, float* topk_scales, int* topk_indice
     }
     (void)cudaGetLastError();
   }
-  kernel<<<1, kFusedRouteThreads, 0, stream>>>(
+  kernel<<<1, threads, 0, stream>>>(
       logits, topk_scales, topk_indices, permuted_row_to_unpermuted_row,
       unpermuted_row_to_permuted_row, permuted_expert, expert_first_token_offset, num_rows, k, normalize_scales);
   CUDA_CALL_THROW(cudaGetLastError());
   return true;
+}
+
+template <typename T>
+bool LaunchFusedRouteMapsT(const T* logits, float* topk_scales, int* topk_indices,
+                           int* permuted_row_to_unpermuted_row, int* unpermuted_row_to_permuted_row,
+                           int* permuted_expert, int64_t* expert_first_token_offset, int num_rows,
+                           int num_experts, int k, bool normalize_scales, bool pdl, cudaStream_t stream) {
+  if (reinterpret_cast<uintptr_t>(logits) % 8 != 0) {
+    return false;
+  }
+  if (CanUseFusedRouteMaps256(num_rows, num_experts, k)) {
+    if (k == 8) {
+      return LaunchFusedRouteKernel(FusedSoftmaxTopKMaps256Kernel<T, 8>, kFusedRoute256Threads, logits, topk_scales,
+                                    topk_indices, permuted_row_to_unpermuted_row, unpermuted_row_to_permuted_row,
+                                    permuted_expert, expert_first_token_offset, num_rows, k, normalize_scales, pdl,
+                                    stream);
+    }
+    return LaunchFusedRouteKernel(FusedSoftmaxTopKMaps256Kernel<T, 0>, kFusedRoute256Threads, logits, topk_scales,
+                                  topk_indices, permuted_row_to_unpermuted_row, unpermuted_row_to_permuted_row,
+                                  permuted_expert, expert_first_token_offset, num_rows, k, normalize_scales, pdl,
+                                  stream);
+  }
+  if (!CanUseFusedRouteMaps(num_rows, num_experts, k)) {
+    return false;
+  }
+  if (k == 10) {
+    return LaunchFusedRouteKernel(FusedSoftmaxTopKMapsKernel<T, 10>, kFusedRouteThreads, logits, topk_scales,
+                                  topk_indices, permuted_row_to_unpermuted_row, unpermuted_row_to_permuted_row,
+                                  permuted_expert, expert_first_token_offset, num_rows, k, normalize_scales, pdl,
+                                  stream);
+  }
+  return LaunchFusedRouteKernel(FusedSoftmaxTopKMapsKernel<T, 0>, kFusedRouteThreads, logits, topk_scales,
+                                topk_indices, permuted_row_to_unpermuted_row, unpermuted_row_to_permuted_row,
+                                permuted_expert, expert_first_token_offset, num_rows, k, normalize_scales, pdl,
+                                stream);
 }
 
 bool LaunchFusedRouteMaps(const half* logits, float* topk_scales, int* topk_indices, int* r2u, int* u2r, int* expert,

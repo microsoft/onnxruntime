@@ -44,7 +44,9 @@ void LaunchSoftmaxTopK(
 
 // Decode-only fused routing: softmax + top-k (bit-identical to LaunchSoftmaxTopK) and the (expert, token)-sorted expert
 // maps of fusedBuildExpertMapsSortFirstToken in one single-CTA launch. Returns false (nothing launched) outside its
-// envelope: 1..8 rows, exactly 512 experts, k in {1, 2, 4, 6, 8, 10}, 8-byte aligned logits.
+// envelope: (1..8 rows, 512 experts, k in {1, 2, 4, 6, 8, 10}) or (1..8 rows, 256 experts, k in {1, 2, 4, 6, 8}),
+// 8-byte aligned logits. CanUseFusedRouteMaps checks only the shape part of the 512-expert envelope, which is the one
+// shared with the generic runner; the 256-expert kernel is used by the NVFP4 GEMV decode path alone.
 bool CanUseFusedRouteMaps(int64_t num_rows, int64_t num_experts, int64_t k);
 bool LaunchFusedRouteMaps(const half* logits, float* topk_scales, int* topk_indices, int* permuted_row_to_unpermuted_row,
                           int* unpermuted_row_to_permuted_row, int* permuted_expert, int64_t* expert_first_token_offset,
