@@ -39,9 +39,9 @@ function GetFile {
 cd /tmp/src
 
 echo "Installing Node.js"
-NODE_VERSION=22.23.4
+NODE_VERSION=24.22.2
 NODE_ARCHIVE="/tmp/src/node-v${NODE_VERSION}-linux-x64.tar.gz"
 GetFile "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.gz" "$NODE_ARCHIVE"
-echo "b8492284c76a54baf58d61668dd0e41ee0fc98adabf9503d30f05d08f55b4406  $NODE_ARCHIVE" | sha256sum -c --strict -
+echo "361718c444e49af2ca5a110c83ba6a8901143f23ab285ebbef0341f391f482a9  $NODE_ARCHIVE" | sha256sum -c --strict -
 tar --strip 1 -xf "$NODE_ARCHIVE" -C /usr
 npm install --global --prefix /usr npm@11.21.1 --no-audit --no-fund

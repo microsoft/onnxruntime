@@ -11,9 +11,10 @@ continue to reuse cached layers. For an authorized security refresh, include
 base digest has not changed. The `DockerBuildArgs` pipeline-template parameter
 forwards this option to the helper.
 
-Update the producer and consumer Node/npm versions together: `install_os_deps.sh`
-and `manylinux/install_shared_deps.sh` install their own copies and can otherwise
-undo a producer update. Node archives are verified before extraction. npm is
+Keep producer and consumer Node/npm versions aligned when rolling out new bases:
+`install_os_deps.sh` and `manylinux/install_shared_deps.sh` install Node 24.22.2
+and npm 11.21.1 themselves. The producer draft still pins Node 22.23.4 and needs
+alignment before the coordinated rollout. Node archives are verified before extraction. npm is
 updated as a complete distribution, not by replacing individual nested packages.
 
 Publish and scan new upstream images before changing `BASEIMAGE` defaults or

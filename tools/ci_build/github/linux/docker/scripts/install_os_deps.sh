@@ -68,10 +68,10 @@ if [[ $SYS_LONG_BIT = "64" && "$GLIBC_VERSION" -gt "9" ]]; then
   GetFile https://github.com/Kitware/CMake/releases/download/v3.31.5/cmake-3.31.5-Linux-x86_64.tar.gz /tmp/src/cmake-3.31.5-Linux-x86_64.tar.gz
   tar -zxf /tmp/src/cmake-3.31.5-Linux-x86_64.tar.gz --strip=1 -C /usr
   echo "Installing Node.js"
-  NODE_VERSION=22.23.4
+  NODE_VERSION=24.22.2
   NODE_ARCHIVE="/tmp/src/node-v${NODE_VERSION}-linux-x64.tar.xz"
   GetFile "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz" "$NODE_ARCHIVE"
-  echo "1805bcd35e6815559bd2eb97db438d3fdb0eb3a5e6a977b7c1badca76337e9ce  $NODE_ARCHIVE" | sha256sum -c --strict -
+  echo "48cc0e21e048790e54c0cf5749c2725005313d652651c40b7a21feb9697aaf75  $NODE_ARCHIVE" | sha256sum -c --strict -
   tar -xf "$NODE_ARCHIVE" --strip=1 -C /usr
   npm install --global --prefix /usr npm@11.21.1 --no-audit --no-fund
 else
