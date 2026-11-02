@@ -300,9 +300,9 @@ TEST(QMoESharedLayoutTest, Avx2PartialInt4RangesPreserveOtherColumns) {
 
   constexpr int64_t k = 64;
   constexpr float sentinel = 12345.0f;
-  // Direct Int4GemmRange checks (prepacked N=20 and raw N=17) with scalar head + 8-col AVX2 interior + scalar tail.
+  // Cover multiple AVX2 column groups and scalar tails in both storage layouts, including a 25-column span.
   for (bool prepacked : {true, false}) {
-    const int64_t n_total = prepacked ? 20 : 17;
+    const int64_t n_total = prepacked ? 28 : 25;
     std::vector<uint8_t> raw_w(static_cast<size_t>(n_total * k / 2));
     for (size_t i = 0; i < raw_w.size(); ++i) raw_w[i] = static_cast<uint8_t>((i * 71 + 13) & 0xFF);
     std::vector<uint8_t> sm80_w(raw_w.size());
@@ -321,8 +321,8 @@ TEST(QMoESharedLayoutTest, Avx2PartialInt4RangesPreserveOtherColumns) {
         for (size_t i = 0; i < scales.size(); ++i) scales[i] = encode((static_cast<int>(i % 7) + 1) / 64.0f);
         for (size_t i = 0; i < bias.size(); ++i) bias[i] = encode((static_cast<int>(i % 11) - 5) / 32.0f);
 
-        const std::array<std::pair<int64_t, int64_t>, 5> gemm_ranges{
-            {{1, 13}, {0, 11}, {2, 15}, {2, 14}, {4, 16}}};
+        const std::array<std::pair<int64_t, int64_t>, 6> gemm_ranges{
+            {{0, 5}, {1, 13}, {0, 19}, {3, 22}, {2, 25}, {0, 25}}};
         for (int64_t rows = 1; rows <= shared::kMaxRowsPerCall; ++rows) {
           std::vector<float> a_reordered(static_cast<size_t>(rows * k));
           for (size_t i = 0; i < a_reordered.size(); ++i) {
@@ -1329,7 +1329,7 @@ TEST(QMoESharedLayoutTest, CanonicalInt4ExpertViewMatchesReferenceAcrossPrepacke
               EXPECT_NEAR(out_scalar[i], ref_blk_out[i], 2e-3f) << "prepacked=" << prepacked << " i=" << i;
             }
           }
-          if (shared::CpuHasAvx2FmaF16c()) {
+          if (shared::CpuHasAvx512() && shared::CpuHasAvx2FmaF16c()) {
             shared::ScopedDisableAvx512ForTesting disable_avx512;
             ASSERT_FALSE(shared::CpuHasAvx512());
             ASSERT_TRUE(shared::CpuHasAvx2FmaF16c());

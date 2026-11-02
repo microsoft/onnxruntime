@@ -1871,8 +1871,10 @@ full-model CUDA Graph:
      Cold INT4 experts (`block_size = 32`, both SM80 prepacked `ColumnMajorTileInterleave<64,4>` and raw
      row-major `[N, K/2]`, with FP16 or BF16 scales/biases and row conversions) execute via `Avx512Int4GemmRange`
      on AVX-512 hosts or `Avx2Int4GemmRange` (`Int4Group8Avx2` / `Int4Group4Avx2`) on AVX2+FMA+F16C hosts
-     (e.g., AMD EPYC Zen 2); setting `ORT_QMOE_CPU_DISABLE_AVX512=1` at process start forces AVX-512 hosts
-     onto the AVX2+FMA+F16C path for testing. Multi-row contiguous activation reuse (`RT = 1..4` tokens
+     (e.g., AMD EPYC Zen 2). Setting `ORT_QMOE_CPU_DISABLE_AVX512=1` at process start makes `INT4`/`INT3`
+     cold-expert kernels and `FP16`/`BF16` row conversions fall back to `AVX2+FMA+F16C` (when available),
+     whereas `NVFP4`/`MXFP4` cold-expert kernels fall back to scalar.
+     Multi-row contiguous activation reuse (`RT = 1..4` tokens
      routed to the same cold expert share a single DDR weight read) and a single fused
      `ParallelFor(total_fc1 + total_fc2)` coordinated by per-expert atomic readiness counters (`fc1_done[slot]`)
      allow each expert's FC2 tasks to start immediately after its own FC1 tasks finish. Results are written

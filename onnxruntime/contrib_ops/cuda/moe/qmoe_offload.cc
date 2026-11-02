@@ -2337,13 +2337,15 @@ class QMoEOffload::DoorbellService {
 
   // The caller holds mutex_ and has waited for this node's worker service to finish.
   void RetireCompletedZeroCold(const QMoEOffload* node) noexcept {
-    if (!node->v4_policy_.skip_zero_cold_doorbell || !node->decode_state_ ||
+    if (!node->decode_state_ ||
         !node->decode_state_->doorbell_req_host || !node->decode_state_->doorbell_done_host) {
       return;
     }
-    qmoe::RetireCompletedZeroColdRequests(
-        *node->decode_state_->doorbell_req_host, *node->decode_state_->doorbell_done_host,
-        node->decode_state_->last_serviced_seq, pending_);
+    if (qmoe::RetireCompletedZeroColdRequests(
+            *node->decode_state_->doorbell_req_host, *node->decode_state_->doorbell_done_host,
+            node->decode_state_->last_serviced_seq, pending_) > 0) {
+      if (node->decode_state_->invocation_rec) node->decode_state_->invocation_rec->MarkCpuDone();
+    }
   }
 
   ~DoorbellService() {
@@ -2434,8 +2436,9 @@ class QMoEOffload::DoorbellService {
             std::atomic_thread_fence(std::memory_order_acquire);
             const size_t notifications = static_cast<size_t>(req - node->decode_state_->last_serviced_seq);
             node->decode_state_->last_serviced_seq = req;
-            if (node->v4_policy_.skip_zero_cold_doorbell &&
+            if (node->decode_state_->doorbell_done_host &&
                 *node->decode_state_->doorbell_done_host >= req) {
+              if (node->decode_state_->invocation_rec) node->decode_state_->invocation_rec->MarkCpuDone();
               RetirePending(notifications);
               continue;
             }
@@ -5096,6 +5099,11 @@ Status QMoEOffload::EnsurePersistentDecodeState(OpKernelContext* context, size_t
 
 void QMoEOffload::ServiceDoorbell() const {
   if (!decode_state_ || !decode_state_->tile) return;
+  if (decode_state_->doorbell_done_host &&
+      *decode_state_->doorbell_done_host >= decode_state_->last_serviced_seq) {
+    if (decode_state_->invocation_rec) decode_state_->invocation_rec->MarkCpuDone();
+    return;
+  }
   ++decode_state_->cpu_doorbell_wakeups;
   const int t_rows = std::max(1, static_cast<int>(*decode_state_->doorbell_tile_rows_host));
   decode_state_->tile->tile_rows = t_rows;

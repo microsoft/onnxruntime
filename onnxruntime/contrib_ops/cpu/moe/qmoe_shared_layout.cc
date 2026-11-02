@@ -536,11 +536,11 @@ bool CompilerHasAvx512() noexcept {
 }
 
 bool CpuHasAvx512() {
-  if (g_disable_avx512_for_testing.load(std::memory_order_relaxed)) {
-    return false;
-  }
 #if QMOE_COMPILER_SUPPORTS_AVX512 && QMOE_SHARED_ARCH_X86_64
   static const bool has = []() {
+    // Setting ORT_QMOE_CPU_DISABLE_AVX512=1 disables AVX-512 dispatch so INT4/INT3 cold-expert
+    // GEMMs and FP16/BF16 row conversions fall back to AVX2+FMA+F16C (when available), while
+    // NVFP4/MXFP4 cold-expert GEMMs fall back to scalar.
     const char* env = std::getenv("ORT_QMOE_CPU_DISABLE_AVX512");
     if (env != nullptr && env[0] == '1' && env[1] == '\0') {
       return false;
@@ -551,7 +551,7 @@ bool CpuHasAvx512() {
     return DetectRuntimeAvx512CpuSupport();
 #endif
   }();
-  return has;
+  return has && !g_disable_avx512_for_testing.load(std::memory_order_relaxed);
 #else
   return false;
 #endif

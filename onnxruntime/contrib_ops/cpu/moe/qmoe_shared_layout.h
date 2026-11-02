@@ -538,6 +538,8 @@ bool Nvfp4ExpertForward(int64_t hidden, int64_t inter, const Nvfp4ExpertView& vi
 
 bool CompilerHasAvx512() noexcept;
 bool CpuHasAvx512();
+// Test-only toggle exposed alongside SetFp4Group8MaskForTesting so onnxruntime_test_all and the
+// ctypes-loaded test_qmoe_shared_layout.py suite can control AVX-512 in-process.
 void SetDisableAvx512ForTesting(bool disable) noexcept;
 bool IsAvx512DisabledForTesting() noexcept;
 
@@ -576,6 +578,7 @@ int qmoe_shared_expert_contribution_fp16(const uint8_t* block, int64_t hidden, i
 int64_t qmoe_shared_block_bytes(int64_t hidden, int64_t inter);
 int qmoe_shared_cpu_has_avx512(void);
 int qmoe_shared_cpu_has_avx2(void);
+// C entry point for the test-only AVX-512 toggle shared by the C++ and ctypes-loaded Python suites.
 void qmoe_shared_set_disable_avx512_for_testing(int disable);
 int qmoe_shared_accepts_prepack_contract(int64_t weights_prepacked, int64_t block_size);
 int qmoe_shared_weight_code_at(const uint8_t* weights, int64_t n_total, int64_t k_total, int64_t n,
