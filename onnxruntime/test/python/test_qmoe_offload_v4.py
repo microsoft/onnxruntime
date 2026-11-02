@@ -6,7 +6,6 @@
 import contextlib
 import ctypes
 import faulthandler
-import filecmp
 import gc
 import os
 import re
@@ -607,23 +606,19 @@ class TestQMoEOffloadV4(unittest.TestCase):
     _int4_bf16_runner_supported = True
 
     @staticmethod
-    def _cuda_plugin_library_is_registered(plugin_path: str) -> bool:
-        """Whether the registered CUDA plugin EP library is plugin_path or a byte-identical copy of it.
+    def _cuda_plugin_ep_is_registered() -> bool:
+        """Whether a CUDA plugin EP library is already registered, which is the wheel's bundled copy after import.
 
-        The wheel registers its bundled copy at import. Loading the same library a second time makes the CUDA runtime
-        see every kernel twice ("Duplicate entry kernels"), after which kernel launches fail with "invalid argument" or
-        hang, so a registered copy must be reused instead of being replaced.
+        Never replace it with ORT_CUDA_PLUGIN_PATH. The bundled library stays mapped, so a second copy makes the CUDA
+        runtime see every kernel twice ("Duplicate entry kernels"), after which kernel launches fail with "invalid
+        argument" or hang. The bundled copy cannot be matched by content: a wheel is repaired after the build, so it
+        differs from the library in the build directory even though both come from the same build.
         """
         with contextlib.suppress(Exception):
-            for device in ort.get_ep_devices():
-                registered_path = device.ep_metadata.get("library_path")
-                if device.ep_name != "CUDAExecutionProvider" or not registered_path:
-                    continue
-                with contextlib.suppress(OSError):
-                    if os.path.samefile(registered_path, plugin_path) or filecmp.cmp(
-                        registered_path, plugin_path, shallow=False
-                    ):
-                        return True
+            return any(
+                device.ep_name == "CUDAExecutionProvider" and device.ep_metadata.get("library_path")
+                for device in ort.get_ep_devices()
+            )
         return False
 
     @classmethod
@@ -631,11 +626,9 @@ class TestQMoEOffloadV4(unittest.TestCase):
         for env_key in ("ORT_CUDA_PLUGIN_PATH", "QWEN_PROVIDER"):
             plugin_path = os.environ.get(env_key)
             if plugin_path and os.path.exists(plugin_path):
-                if cls._cuda_plugin_library_is_registered(plugin_path):
+                if cls._cuda_plugin_ep_is_registered():
                     cls._use_plugin_ep = True
                 else:
-                    with contextlib.suppress(Exception):
-                        ort.unregister_execution_provider_library("CUDAExecutionProvider")
                     with contextlib.suppress(Exception):
                         ort.register_execution_provider_library("CUDAExecutionProvider", plugin_path)
                         cls._use_plugin_ep = True
