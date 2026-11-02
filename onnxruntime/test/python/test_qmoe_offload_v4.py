@@ -3519,6 +3519,148 @@ int main() {
             self.assertEqual(telemetry[0]["cold_routes"], 1)
             self.assertEqual(telemetry[0]["cpu_doorbell_wakeups"], 1)
 
+    def test_v4_int2_bf16_tensorcore_scale_overflow_bounce_alignment_and_fc3_bits(self):
+        with tempfile.TemporaryDirectory() as directory:
+            # 1. BF16 INT2 Tensor-Core scale=2^127, activation=2^-126, gate=-2 (code 0), up=+1 (code 3) parity across
+            # standard QMoE (TC enabled vs disabled) and offload decode (40 routes in [33, 256] with null expert offsets).
+            tc_dir = os.path.join(directory, "int2_bf16_tc_scale_ovf")
+            os.makedirs(tc_dir)
+            model_path = self._build_int_qmoe_model(
+                tc_dir, [(2, 64, 1)], num_experts=8, hidden_size=512, inter_size=512, top_k=8, use_fp16=False
+            )
+            model = onnx.load(model_path, load_external_data=False)
+            banks = {value.name: value for value in model.graph.initializer}
+            # Code 2 (0b10 -> centered 0) is 0xAA. For column 0 (gate) set K=0 code to 0 (-2 centered -> 0xA8);
+            # for column 1 (up) set K=0 code to 3 (+1 centered -> 0xAB).
+            fc1_weights = np.full((8, 512 * 512 // 2), 0xAA, dtype=np.uint8)
+            fc1_weights[:, 0] = 0xA8
+            fc1_weights[:, 16] = 0xAB
+            fc1_scales_f32 = np.ones((8, 1024, 8), dtype=np.float32)
+            fc1_scales_f32[:, 0, 0] = np.ldexp(1.0, 127)
+            fc1_scales_f32[:, 1, 0] = np.ldexp(1.0, 127)
+            fc1_scales = _float32_to_bfloat16_u16(fc1_scales_f32)
+            fc2_weights = np.full((8, 512 * 512 // 4), 0xAA, dtype=np.uint8)
+            for n in range(512):
+                fc2_weights[:, (n // 8) * 1024 + (n % 8) * 16] = 0xAB
+            fc2_scales = _float32_to_bfloat16_u16(np.ones((8, 512, 8), dtype=np.float32))
+            for slot, values in ((2, fc1_weights), (3, fc1_scales), (5, fc2_weights), (6, fc2_scales)):
+                bank = banks[model.graph.node[0].input[slot]]
+                external = {entry.key: entry.value for entry in bank.external_data}
+                self.assertEqual(values.nbytes, int(external["length"]))
+                with (Path(tc_dir) / external["location"]).open("r+b") as stream:
+                    stream.seek(int(external["offset"]))
+                    stream.write(values.tobytes())
+
+            # 5 tokens x top_k=8 = 40 routes (>= 33 default TC threshold, <= 256 unsorted offload route limit).
+            x = np.zeros((5, 512), dtype=np.float32)
+            x[:, 0] = np.ldexp(1.0, -126)
+            router = np.tile(np.linspace(4.0, -4.0, 8, dtype=np.float32), (5, 1))
+            slot_h512_i512 = 2 * 512 * 128 + 512 * 128 + 2 * 512 * 8 * 2 + 512 * 8 * 2 + 8
+            ref_simt = self._make_session(
+                model_path, {"session.moe.offload.mode": "disabled", "ep.cuda.disable_moe_gemv_tc": "1"}
+            )
+            sess_tc = self._make_session(
+                model_path, {"session.moe.offload.mode": "disabled", "ep.cuda.disable_moe_gemv_tc": "0"}
+            )
+            sess_off_all_res = self._make_session(
+                model_path,
+                {
+                    "session.moe.offload.mode": "required",
+                    "session.moe.offload.placement": "static",
+                    "session.moe.offload.device_expert_bytes": str(64 + 8 * slot_h512_i512),
+                    "ep.cuda.disable_moe_gemv_tc": "0",
+                },
+            )
+            sess_off_hybrid = self._make_session(
+                model_path,
+                {
+                    "session.moe.offload.mode": "required",
+                    "session.moe.offload.placement": "static",
+                    "session.moe.offload.popularity_file": "expert-profile.bin",
+                    "session.moe.offload.device_expert_bytes": str(64 + 4 * slot_h512_i512),
+                    "ep.cuda.disable_moe_gemv_tc": "0",
+                },
+            )
+            y_simt = self._run_bf16(ref_simt, x, router)
+            y_tc = self._run_bf16(sess_tc, x, router)
+            y_off_res = self._run_bf16(sess_off_all_res, x, router)
+            y_off_hyb = self._run_bf16(sess_off_hybrid, x, router)
+            self.assertTrue(np.all(np.isfinite(y_simt)))
+            np.testing.assert_allclose(y_tc, y_simt, rtol=0, atol=0)
+            np.testing.assert_allclose(y_off_res, y_simt, rtol=0, atol=0)
+            np.testing.assert_allclose(y_off_hyb, y_simt, rtol=0, atol=0)
+            del sess_off_hybrid, sess_off_all_res, sess_tc, ref_simt
+
+            # 2. INT2 H=64, I=448, block_size=64 background promotion bounce buffer alignment with unregistered banks,
+            # explicit pinned_bytes, and ORT_QMOE_STEP_PROMOTION_BUDGET=1.
+            promo_dir = os.path.join(directory, "int2_h64_i448_promo")
+            os.makedirs(promo_dir)
+            promo_model = self._build_int_qmoe_model(
+                promo_dir, [(2, 64, 1)], num_experts=8, hidden_size=64, inter_size=448, top_k=2
+            )
+            # H=64, I=448, INT2 b64: w1=14336, w2=7168, s1=1792, s2=896, g1=4, g2=4 -> raw=24,200 B;
+            # 256-aligned bank sum = 14336 + 7168 + 1792 + 1024 + 256 + 256 = 24,832 B (> 24,576 B).
+            slot_h64_i448 = 24200
+            with (
+                mock.patch.dict(
+                    os.environ,
+                    {
+                        "ORT_QMOE_SHARED_PIN_EXPERTS": "0",
+                        "ORT_QMOE_STEP_PROMOTION_BUDGET": "1",
+                        "ORT_QMOE_SHARED_RESIDENT_LOG": "1",
+                    },
+                ),
+                _capture_native_stderr() as promo_log,
+            ):
+                ref_p = self._make_session(promo_model, {"session.moe.offload.mode": "disabled"})
+                sess_p = self._make_session(
+                    promo_model,
+                    {
+                        "session.moe.offload.mode": "required",
+                        "session.moe.offload.placement": "adaptive",
+                        "session.moe.offload.popularity_file": "expert-profile.bin",
+                        "session.moe.offload.device_expert_bytes": str(64 + 4 * slot_h64_i448),
+                        "session.moe.offload.pinned_bytes": str(2 << 20),
+                    },
+                )
+                rng = np.random.default_rng(33789)
+                for step in range(6):
+                    x_p = rng.standard_normal((4, 64), dtype=np.float32) * 0.5
+                    r_p = np.full((4, 8), -20.0, dtype=np.float32)
+                    r_p[:, 5] = 6.0
+                    r_p[:, 7] = 5.0
+                    self._assert_int_offload_parity(
+                        self._run_bf16(ref_p, x_p, r_p),
+                        self._run_bf16(sess_p, x_p, r_p),
+                        f"int2_h64_i448_promo(step={step})",
+                    )
+                del sess_p, ref_p
+                gc.collect()
+            self.assertGreater(_resident_promotions_per_layer(promo_log[0]).get(0, 0), 0, promo_log[0])
+
+            # 3. INT2 node with swiglu_fusion=0 and fc3_expert_weight_bits=4 must be rejected in mode='required'
+            # and skipped by session placement in mode='auto'.
+            fc3_dir = os.path.join(directory, "int2_fc3_mismatch")
+            os.makedirs(fc3_dir)
+            fc3_model_path = self._build_int_qmoe_model(
+                fc3_dir, [(2, 64, 1)], num_experts=8, hidden_size=128, inter_size=128, top_k=2, swiglu_fusion=0
+            )
+            fc3_proto = onnx.load_model(fc3_model_path, load_external_data=False)
+            fc3_proto.graph.node[0].attribute.append(helper.make_attribute("fc3_expert_weight_bits", 4))
+            onnx.save_model(fc3_proto, fc3_model_path)
+            with self.assertRaisesRegex(Exception, "quant_type='int' offload requires|rejected node"):
+                self._make_session(fc3_model_path, {"session.moe.offload.mode": "required"})
+            s_fc3_ref = self._make_session(fc3_model_path, {"session.moe.offload.mode": "disabled"})
+            s_fc3_auto = self._make_session(fc3_model_path, {"session.moe.offload.mode": "auto"})
+            x_fc3 = np.random.default_rng(33790).standard_normal((4, 128), dtype=np.float32) * 0.5
+            r_fc3 = np.random.default_rng(33791).standard_normal((4, 8), dtype=np.float32)
+            np.testing.assert_array_equal(
+                self._run_bf16(s_fc3_ref, x_fc3, r_fc3),
+                self._run_bf16(s_fc3_auto, x_fc3, r_fc3),
+            )
+            del s_fc3_auto, s_fc3_ref
+            gc.collect()
+
     def test_v4_int4_eight_token_hybrid_cuda_graph_replay(self):
         self._skip_unless_int4_bf16_runner()
         cudart = _load_cudart()
@@ -4633,7 +4775,7 @@ with tempfile.TemporaryDirectory() as directory:
                 y_ref = self._run_bf16(sess_int2_ref, x, r)
                 for name, s in (("int2_adaptive", sess_int2_off), ("int2_gpu_stream", sess_int2_stream)):
                     y_cand = self._run_bf16(s, x, r)
-                    self._assert_int_offload_parity(y_ref, y_cand, f"{name}(T={num_rows})")
+                    self._assert_int_offload_parity(y_ref, y_cand, f"{name}(T={num_rows})", min_ref_peak=0.01)
             del sess_int2_stream, sess_int2_off, sess_int2_ref
 
             m_tri_mix = self._build_int_qmoe_model(

@@ -6545,7 +6545,9 @@ Status QMoEOffload::PromoteResident(cudaStream_t stream, const InlinedVector<Inl
     return s;
   };
   size_t single_expert_bytes = 0;
-  for (size_t b : resident_bank_bytes_) single_expert_bytes += b;
+  for (size_t b : resident_bank_bytes_) {
+    single_expert_bytes += (b + 255u) & ~size_t{255u};
+  }
 
   if (use_bg_promo) {
     for (int promoted = 0; promoted < std::min(promotion_limit, spare_slots_); ++promoted) {

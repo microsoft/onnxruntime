@@ -596,13 +596,15 @@ inline bool TryLaunchInt4Bf16(bool swiglu, const __nv_bfloat16* act, const uint8
 // matched with the 64 BF16 activations `b_lo[0..3]` and `b_hi[0..3]` of route `g`.
 
 // MaskIdx in {0, 1, 2} selects 2-bit fields at bits {0..1, 2..3, 4..5} in both 16-bit halves of `x`,
-// all of which fit inside BF16's 7-bit mantissa (0x007F007F).
+// all of which fit inside BF16's 7-bit mantissa (0x007F007F). Each centered code in {-2, -1, 0, +1} is scaled by
+// 0.5 into {-1.0, -0.5, 0.0, +0.5} before multiplying by `scale2` so that even `scale = 2^127` with code -2 stays
+// finite in BF16; `finalize` restores the factor of 2 in FP32.
 template <int MaskIdx>
 __device__ __forceinline__ uint32_t DequantPairInt2Masked(uint32_t x, uint32_t scale2) {
   static_assert(MaskIdx >= 0 && MaskIdx < 3);
   constexpr uint32_t kMask = (MaskIdx == 0) ? 0x00030003u : ((MaskIdx == 1) ? 0x000C000Cu : 0x00300030u);
-  constexpr uint32_t kMul = (MaskIdx == 0) ? 0x3F803F80u : ((MaskIdx == 1) ? 0x3E803E80u : 0x3D803D80u);
-  constexpr uint32_t kAdd = (MaskIdx == 0) ? 0xC302C302u : ((MaskIdx == 1) ? 0xC208C208u : 0xC120C120u);
+  constexpr uint32_t kMul = (MaskIdx == 0) ? 0x3F003F00u : ((MaskIdx == 1) ? 0x3E003E00u : 0x3D003D00u);
+  constexpr uint32_t kAdd = (MaskIdx == 0) ? 0xC282C282u : ((MaskIdx == 1) ? 0xC188C188u : 0xC0A0C0A0u);
   uint32_t v;
   asm("lop3.b32 %0, %1, %2, %3, %4;\n"
       : "=r"(v)
@@ -894,8 +896,8 @@ __global__ void __launch_bounds__(kThreads, Int2MinCtasPerSm(kM)) MoeGemvTcInt2K
       const int out_row = contiguous_routes
                               ? (row0 + route)
                               : static_cast<int>((members >> (8 * route)) & 0xffu);
-      float even = h == 0 ? d.x : d.y;
-      float odd = h == 0 ? d.z : d.w;
+      float even = (h == 0 ? d.x : d.y) * 2.0f;
+      float odd = (h == 0 ? d.z : d.w) * 2.0f;
       if (bias != nullptr) {
         even += __bfloat162float(bias[col]);
         odd += __bfloat162float(bias[col + 1]);
