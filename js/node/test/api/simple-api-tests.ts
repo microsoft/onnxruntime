@@ -120,7 +120,7 @@ describe('API Tests - simple API tests', () => {
     }
   });
 
-  it('recognizes the WebGPU feature list options', async function () {
+  it('recognizes the WebGPU feature list options', async function (this: Mocha.Context) {
     if (!binding.listSupportedBackends().some((backend) => backend.name === 'webgpu' && backend.bundled)) {
       this.skip();
     }
@@ -140,7 +140,7 @@ describe('API Tests - simple API tests', () => {
     }
   });
 
-  it('rejects malformed WebGPU feature arrays', async function () {
+  it('rejects malformed WebGPU feature arrays', async function (this: Mocha.Context) {
     if (!binding.listSupportedBackends().some((backend) => backend.name === 'webgpu' && backend.bundled)) {
       this.skip();
     }
