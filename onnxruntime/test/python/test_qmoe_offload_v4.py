@@ -2824,8 +2824,22 @@ int main() {
                 r_long[row, stream_exp] = 5.0
         return x_long, r_long
 
-    def _assert_cuda_graph_replay_parity(self, cudart, rng: np.random.Generator, label: str, sess_ref, sess_graph):
-        """Replays a CUDA graph session in place, switching between resident hits and cold misses, against sess_ref."""
+    def _assert_cuda_graph_replay_parity(
+        self, cudart, rng: np.random.Generator, label: str, ref_model, graph_model, device_expert_bytes: int
+    ):
+        """Replays a CUDA graph offload session in place, switching between resident hits and cold misses, against a
+        non-offload reference. Both sessions are locals, so they are released before the caller removes its temp dir."""
+        sess_ref = self._make_session(ref_model, {"session.moe.offload.mode": "disabled"})
+        sess_graph = self._make_session(
+            graph_model,
+            {
+                "session.moe.offload.mode": "required",
+                "session.moe.offload.placement": "adaptive",
+                "session.moe.offload.device_expert_bytes": str(device_expert_bytes),
+                "session.moe.offload.popularity_file": "expert-profile.bin",
+            },
+            cuda_options={"enable_cuda_graph": "1"},
+        )
         dev_id = self._device_id(self._selected_plugin_device())
         x_ptr = ctypes.c_void_p()
         r_ptr = ctypes.c_void_p()
@@ -3113,19 +3127,7 @@ int main() {
             cudart = _load_cudart()
             if cudart is not None:
                 m_int4_cg = _wrap_qmoe_model_with_cast_io(m_int4, os.path.join(dir_int4, "model_cg.onnx"), 256, 8)
-                s_int4_cg_ref = self._make_session(m_int4, {"session.moe.offload.mode": "disabled"})
-                s_int4_graph = self._make_session(
-                    m_int4_cg,
-                    {
-                        "session.moe.offload.mode": "required",
-                        "session.moe.offload.placement": "adaptive",
-                        "session.moe.offload.device_expert_bytes": str(budget_int4_adaptive),
-                        "session.moe.offload.popularity_file": "expert-profile.bin",
-                    },
-                    cuda_options={"enable_cuda_graph": "1"},
-                )
-                self._assert_cuda_graph_replay_parity(cudart, rng, "int4", s_int4_cg_ref, s_int4_graph)
-                del s_int4_graph, s_int4_cg_ref
+                self._assert_cuda_graph_replay_parity(cudart, rng, "int4", m_int4, m_int4_cg, budget_int4_adaptive)
 
     def test_v4_int4_and_int3_offload_modes_and_numerical_parity(self):
         # The BF16 INT4 sessions that quick builds (ORT_QUICK_BUILD) cannot create live in the prepacked INT4 test.
@@ -3465,21 +3467,9 @@ int main() {
             cudart = _load_cudart()
             if cudart is not None:
                 m_int3_cg = _wrap_qmoe_model_with_cast_io(m_int3, os.path.join(dir_int3_mix, "model_cg.onnx"), 256, 8)
-                s_int3_cg_ref = self._make_session(m_int3, {"session.moe.offload.mode": "disabled"})
-                s_int3_graph = self._make_session(
-                    m_int3_cg,
-                    {
-                        "session.moe.offload.mode": "required",
-                        "session.moe.offload.placement": "adaptive",
-                        "session.moe.offload.device_expert_bytes": str(
-                            2 * fixed_bytes + 6 * int3_b32_slot + 6 * int3_b64_slot
-                        ),
-                        "session.moe.offload.popularity_file": "expert-profile.bin",
-                    },
-                    cuda_options={"enable_cuda_graph": "1"},
+                self._assert_cuda_graph_replay_parity(
+                    cudart, rng, "int3", m_int3, m_int3_cg, 2 * fixed_bytes + 6 * int3_b32_slot + 6 * int3_b64_slot
                 )
-                self._assert_cuda_graph_replay_parity(cudart, rng, "int3", s_int3_cg_ref, s_int3_graph)
-                del s_int3_graph, s_int3_cg_ref
             del s_int4_fp16_ref
 
             # 10. FP16 INT3 FC2 bias cancellation regression: dot product 4095.0 + fc2_bias -4096.0 must equal -1.0
