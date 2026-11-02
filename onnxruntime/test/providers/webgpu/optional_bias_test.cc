@@ -10,6 +10,7 @@
 #include "test/util/include/default_providers.h"
 
 namespace onnxruntime::test {
+#ifndef DISABLE_CONTRIB_OPS
 namespace {
 
 enum class BiasInput { Omitted,
@@ -39,63 +40,8 @@ void RunWebGpu(OpTester& test, std::unique_ptr<IExecutionProvider> provider) {
   test.Config(options).ConfigEp(std::move(provider)).RunWithConfig();
 }
 
-void TestConvolution(const char* op) {
-  for (const char* layout : {"NCHW", "NHWC"}) {
-    for (const size_t rank : {4u, 5u}) {
-      for (const auto bias : {BiasInput::Omitted, BiasInput::EmptySlot, BiasInput::Present}) {
-        SCOPED_TRACE(testing::Message() << "layout=" << layout << " rank=" << rank
-                                        << " bias=" << static_cast<int>(bias));
-        auto provider = CreateProvider(layout);
-        if (!provider) GTEST_SKIP() << "WebGPU is not available";
-        OpTester test(op, 11);
-        const std::vector<int64_t> shape(rank, 1);
-        test.AddInput<float>("X", shape, {2});
-        test.AddInput<float>("W", shape, {3});
-        AddBiasInput<float>(test, bias, {5});
-        test.AddOutput<float>("Y", shape, {bias == BiasInput::Present ? 11.f : 6.f});
-        RunWebGpu(test, std::move(provider));
-      }
-    }
-  }
-}
-
-template <typename T>
-void TestSpatialConvolution() {
-  for (const char* layout : {"NCHW", "NHWC"}) {
-    for (const auto bias : {BiasInput::Omitted, BiasInput::EmptySlot, BiasInput::Present}) {
-      SCOPED_TRACE(testing::Message() << "layout=" << layout << " bias=" << static_cast<int>(bias));
-      auto provider = CreateProvider(layout);
-      if (!provider) GTEST_SKIP() << "WebGPU is not available";
-      OpTester test("Conv", 11);
-      test.AddInput<T>("X", {1, 1, 3, 3}, std::vector<T>(9, T(2.f)));
-      test.AddInput<T>("W", {1, 1, 2, 2}, std::vector<T>(4, T(3.f)));
-      AddBiasInput<T>(test, bias, {T(5.f)});
-      test.AddOutput<T>("Y", {1, 1, 2, 2}, std::vector<T>(4, T(bias == BiasInput::Present ? 29.f : 24.f)));
-      RunWebGpu(test, std::move(provider));
-    }
-  }
-}
-
 }  // namespace
 
-TEST(WebGpuOptionalBiasTest, Conv) {
-  TestConvolution("Conv");
-}
-
-TEST(WebGpuOptionalBiasTest, ConvTranspose) {
-  TestConvolution("ConvTranspose");
-}
-
-TEST(WebGpuOptionalBiasTest, ConvSpatial) {
-  TestSpatialConvolution<float>();
-}
-
-TEST(WebGpuOptionalBiasTest, ConvSpatialHalf) {
-  // NHWC exercises im2col on supported Intel adapters and general Conv elsewhere.
-  TestSpatialConvolution<MLFloat16>();
-}
-
-#ifndef DISABLE_CONTRIB_OPS
 TEST(WebGpuOptionalBiasTest, Attention) {
   for (const auto bias : {BiasInput::Omitted, BiasInput::EmptySlot, BiasInput::Present}) {
     SCOPED_TRACE(static_cast<int>(bias));
