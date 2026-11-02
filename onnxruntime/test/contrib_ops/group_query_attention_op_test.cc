@@ -1022,9 +1022,11 @@ TEST(GroupQueryAttentionTest, QuerySeqlensRightPaddedChunk_CUDA) {
         {"ORT_ENABLE_CUDNN_FLASH_ATTENTION", "0"},
     }};
     RunGQAQuerySeqlensGoldenTest<MLFloat16>(GqaTargetEp::kCuda);
+#ifdef USE_CUDA
     if (HasCudaEnvironment(800)) {
       RunGQAQuerySeqlensGoldenTest<BFloat16>(GqaTargetEp::kCuda);
     }
+#endif
   }
 }
 
