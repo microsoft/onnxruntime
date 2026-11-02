@@ -6,6 +6,7 @@
 #include "core/providers/webgpu/webgpu_execution_provider.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
+#include "core/providers/webgpu/webgpu_utils.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -130,16 +131,19 @@ Status Gather::ComputeInternal(ComputeContext& context) const {
   }
 
   const auto& input_shape = p.input_tensor->Shape();
-  if (p.axis == 0 && p.input_tensor->IsDataType<float>() && input_shape.SizeFromDimension(1) % 4 == 0 &&
-      input_shape.Size() > 0) {
-    // Flatten row/vector pairs so narrow rows can share a workgroup. Row alignment
-    // ensures each vec4 access stays within a single gathered row.
-    const uint32_t output_size = data_size / 4;
-    const uint32_t row_size = onnxruntime::narrow<uint32_t>(input_shape.SizeFromDimension(1) / 4);
+  const bool supports_row_copy = p.input_tensor->IsDataType<float>() || p.input_tensor->IsDataType<MLFloat16>() ||
+                                 p.input_tensor->IsDataType<int32_t>() || p.input_tensor->IsDataType<uint32_t>();
+  if (p.axis == 0 && supports_row_copy && input_shape.Size() > 0) {
+    // Choose a vector width that divides each row, so copies never cross row
+    // boundaries. Flatten row/vector pairs so narrow rows share workgroups.
+    const int64_t row_width = input_shape.SizeFromDimension(1);
+    const int components = GetMaxComponents(row_width);
+    const uint32_t output_size = data_size / components;
+    const uint32_t row_size = onnxruntime::narrow<uint32_t>(row_width / components);
     GatherRowsProgram program;
-    program.AddInputs({{p.input_tensor, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, 4},
+    program.AddInputs({{p.input_tensor, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, components},
                        {p.indices_tensor, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten}})
-        .AddOutput({p.output_tensor, ProgramTensorMetadataDependency::Type, ProgramOutput::Flatten, 4})
+        .AddOutput({p.output_tensor, ProgramTensorMetadataDependency::Type, ProgramOutput::Flatten, components})
         .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
         .AddUniformVariables({{output_size}, {row_size}, {onnxruntime::narrow<uint32_t>(input_shape[0])}});
     return context.RunProgram(program);

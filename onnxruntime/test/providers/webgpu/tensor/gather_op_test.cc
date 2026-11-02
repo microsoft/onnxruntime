@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -19,7 +20,7 @@ namespace onnxruntime {
 namespace test {
 
 #ifdef USE_WEBGPU
-template <typename IndexType>
+template <typename DataType, typename IndexType>
 static void TestGatherRows(int64_t width, int64_t axis, const TensorShapeVector& indices_shape) {
   ConfigOptions provider_options{};
   ASSERT_STATUS_OK(provider_options.AddConfigEntry(webgpu::options::kValidationMode, "full"));
@@ -29,16 +30,24 @@ static void TestGatherRows(int64_t width, int64_t axis, const TensorShapeVector&
   }
 
   constexpr int64_t rows = 5;
-  InlinedVector<float> data;
+  InlinedVector<DataType> data;
   data.reserve(rows * width);
   for (int64_t i = 0; i < rows * width; ++i) {
-    data.push_back(static_cast<float>(i) / 8.0f);
+    if constexpr (std::is_same_v<DataType, int32_t>) {
+      // Exercise values that would lose precision if copied through float32.
+      const int32_t value = static_cast<int32_t>(16777217 + i);
+      data.push_back(i % 2 ? -value : value);
+    } else if constexpr (std::is_same_v<DataType, uint32_t>) {
+      data.push_back(0xFFFFFFFFu - static_cast<uint32_t>(i));
+    } else {
+      data.push_back(DataType(static_cast<float>(i) / 8.0f));
+    }
   }
   InlinedVector<IndexType> indices{-5, 4, -1, 1, 0, 1, -2};
   if (indices_shape.empty()) {
     indices = {-1};
   }
-  InlinedVector<float> expected;
+  InlinedVector<DataType> expected;
   expected.reserve(indices.size() * width);
   for (auto index : indices) {
     const int64_t row = index < 0 ? static_cast<int64_t>(index) + rows : static_cast<int64_t>(index);
@@ -49,22 +58,28 @@ static void TestGatherRows(int64_t width, int64_t axis, const TensorShapeVector&
 
   OpTester test("Gather", 13);
   test.AddAttribute<int64_t>("axis", axis);
-  test.AddInput<float>("data", {rows, 1, width}, data.data(), data.size());
+  test.AddInput<DataType>("data", {rows, 1, width}, data.data(), data.size());
   test.AddInput<IndexType>("indices", indices_shape, indices.data(), indices.size());
-  test.AddOutput<float>("output", output_shape, expected.data(), expected.size());
+  test.AddOutput<DataType>("output", output_shape, expected.data(), expected.size());
   SessionOptions options;
   ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
   test.Config(options).ConfigEp(std::move(provider)).RunWithConfig();
 }
 
 TEST(GatherOpTest, Gather_rows_webgpu) {
-  for (int64_t width : {1, 3, 4, 5, 127, 128, 129, 255, 256, 257, 1024}) {
+  for (int64_t width : {1, 2, 3, 4, 5, 6, 127, 128, 129, 255, 256, 257, 1024}) {
     for (int64_t axis : {0, -3}) {
       for (const TensorShapeVector& indices_shape : {TensorShapeVector{}, TensorShapeVector{7}, TensorShapeVector{1, 7}}) {
         SCOPED_TRACE(testing::Message() << "width=" << width << " axis=" << axis
                                         << " indices_rank=" << indices_shape.size());
-        TestGatherRows<int32_t>(width, axis, indices_shape);
-        TestGatherRows<int64_t>(width, axis, indices_shape);
+        TestGatherRows<float, int32_t>(width, axis, indices_shape);
+        TestGatherRows<float, int64_t>(width, axis, indices_shape);
+        TestGatherRows<MLFloat16, int32_t>(width, axis, indices_shape);
+        TestGatherRows<MLFloat16, int64_t>(width, axis, indices_shape);
+        TestGatherRows<int32_t, int32_t>(width, axis, indices_shape);
+        TestGatherRows<int32_t, int64_t>(width, axis, indices_shape);
+        TestGatherRows<uint32_t, int32_t>(width, axis, indices_shape);
+        TestGatherRows<uint32_t, int64_t>(width, axis, indices_shape);
       }
     }
   }
