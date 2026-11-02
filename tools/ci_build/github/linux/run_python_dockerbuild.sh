@@ -1,8 +1,9 @@
 #!/bin/bash
 set -e -x
 BUILD_CONFIG="Release"
+MULTI_PYTHON_WHEEL="false"
 
-while getopts "i:d:x:c:p:a:" parameter_Option
+while getopts "i:d:x:c:p:a:m" parameter_Option
 do case "${parameter_Option}"
 in
 i) DOCKER_IMAGE=${OPTARG};;
@@ -11,7 +12,8 @@ x) BUILD_EXTR_PAR=${OPTARG};;
 c) BUILD_CONFIG=${OPTARG};;
 p) PYTHON_EXES=${OPTARG};;
 a) CUDA_ARCHS=${OPTARG};;
-*) echo "Usage: $0 -i <docker_image> -d <GPU|CPU> [-x <extra_build_arg>] [-c <build_config>] [-p <python_exe_path>] [-a <cuda_archs>]"
+m) MULTI_PYTHON_WHEEL="true";;
+*) echo "Usage: $0 -i <docker_image> -d <GPU|CPU> [-x <extra_build_arg>] [-c <build_config>] [-p <python_exe_path>] [-a <cuda_archs>] [-m]"
    exit 1;;
 esac
 done
@@ -26,6 +28,11 @@ fi
 
 if [ "${CUDA_ARCHS:-}" != "" ] ; then
     DOCKER_SCRIPT_OPTIONS+=("-a" "${CUDA_ARCHS}")
+fi
+
+if [ "${MULTI_PYTHON_WHEEL}" == "true" ] ; then
+    # Build the native libraries once and produce a single wheel that works with every Python version.
+    DOCKER_SCRIPT_OPTIONS+=("-m")
 fi
 
 if [ "${BUILD_EXTR_PAR}" != "" ] ; then

@@ -4,12 +4,14 @@
 #include <string>
 #include <string_view>
 
+#include "contrib_ops/cpu/quantization/matmul_nbits_helper.h"
 #include "contrib_ops/webgpu/quantization/matmul_nbits.h"
 #include "contrib_ops/webgpu/quantization/matmul_nbits_common.h"
 #include "contrib_ops/webgpu/quantization/subgroup_matrix_matmul_nbits.h"
 #include "contrib_ops/webgpu/quantization/dp4a_matmul_nbits.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
 #include "core/providers/cpu/math/matmul_helper.h"
+#include "core/providers/webgpu/math/matmul.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/webgpu_utils.h"
@@ -66,7 +68,7 @@ Status MatMulNBitsWideTileProgram::GenerateShaderCode(ShaderHelper& shader) cons
                              WGSL_TEMPLATE_VARIABLE(scales, scales));
 }
 
-// Apply similar idea with DP4AMatMulNBitsSmallMProgram algorithm.
+// Uses the same K-parallel reduction strategy as DP4AMatMulNBitsKParallelProgram.
 Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& a = shader.AddInput("input_a", ShaderUsage::UseValueTypeAlias);
   const auto& b = shader.AddInput("input_b");
@@ -229,11 +231,16 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   const Tensor* g_idx = context.Input(4);
   const Tensor* bias = context.Input(5);
 
-  ORT_ENFORCE(g_idx == nullptr, "group_idx as input is not supported yet.");
-
-  const bool has_zero_points = zero_points != nullptr;
-  if (has_zero_points) {
-    ORT_ENFORCE(zero_points->DataType() == DataTypeImpl::GetType<uint8_t>(), "Currently, only uint8 is supported for zero points, but got ", zero_points->DataType());
+  const bool empty_weights = b->Shape().Size() == 0;
+  if (empty_weights) {
+    ORT_RETURN_IF_ERROR(matmul_nbits_helper::CheckEmptyInputs(*b, bias, N_, K_, block_size_, bits_,
+                                                              Info().GetAttrOrDefault<int64_t>("weight_prepacked", 0)));
+  } else {
+    ORT_ENFORCE(g_idx == nullptr, "group_idx as input is not supported yet.");
+    if (zero_points != nullptr) {
+      ORT_ENFORCE(zero_points->DataType() == DataTypeImpl::GetType<uint8_t>(),
+                  "Currently, only uint8 is supported for zero points, but got ", zero_points->DataType());
+    }
   }
 
   MatMulComputeHelper helper;
@@ -293,10 +300,21 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
                         Tensor* y,
                         const uint32_t weight_index,
                         const Tensor* weight_index_indirect,
-                        uint32_t override_M) {
+                        uint32_t override_M, DP4AQuantizedInput* quantized_input) {
   TensorShape b_shape({N_op, K_op});
   MatMulComputeHelper helper;
   ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape, false, true));
+
+  if (b->Shape().Size() == 0) {
+    ORT_RETURN_IF_ERROR(matmul_nbits_helper::CheckEmptyInputs(*b, bias, N_op, K_op, block_size_op, nbits, 0));
+    if (y->Shape().Size() == 0) return Status::OK();
+    // Shared by standalone MatMulNBits and fused QKV/MLP fallbacks. Record a
+    // fill dispatch so capture replay overwrites the output without reading A
+    // or unused quantization parameters. The fill uses [batch, row, column].
+    auto program = CreateMatMulFillBiasOrZeroBeforeSplitKProgram(
+        bias, y, false, 1.0f, 1, TensorShape({1, y->Shape().Size() / N_op, N_op}));
+    return context.RunProgram(program);
+  }
 
   const bool has_bias = bias != nullptr;
   const bool has_weight_idx_indirect = weight_index_indirect != nullptr;
@@ -353,7 +371,7 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
   // DP4A Q2 path now supports custom zero points via a 1024-entry LUT (4 zero-point sections × 256 byte values).
   if (CanApplyDP4AMatrixMatMulNBits(context, accuracy_level, block_size, N, K, components_a,
                                     M, has_weight_idx_indirect, y)) {
-    return ApplyDP4AMatrixMatMulNBits(a, b, scales, zero_points, bias, batch_count, M, dispatch_M, N, K, block_size, zero_blocks_per_col, kMinMForTileOptimization, static_cast<uint32_t>(nbits), context, y, weight_index, weight_index_indirect);
+    return ApplyDP4AMatrixMatMulNBits(a, b, scales, zero_points, bias, batch_count, M, dispatch_M, N, K, block_size, zero_blocks_per_col, kMinMForTileOptimization, static_cast<uint32_t>(nbits), context, y, weight_index, weight_index_indirect, quantized_input);
   }
 
   // This program is optimized for FP32/FP16 Block32 prefill.

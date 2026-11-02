@@ -25,9 +25,21 @@
 #include <queue>
 #include <algorithm>
 #include <cmath>
+#include <type_traits>
 #include <core/common/safeint.h>
 
 namespace onnxruntime {
+
+// NaN is ordered above every other value, as in the CUDA kernel, so that the comparators below are a strict
+// weak ordering. Without this, a NaN compares as equal to everything and the selected elements are arbitrary.
+template <typename T>
+inline bool IsNaNValue(const T& value) {
+  if constexpr (std::is_floating_point_v<T>) {
+    return std::isnan(value);
+  } else {
+    return false;
+  }
+}
 
 template <typename T>
 struct GreaterValueCmp {
@@ -36,13 +48,29 @@ struct GreaterValueCmp {
   }
 
   bool operator()(const int64_t lhs_idx, const int64_t rhs_idx) const {
-    return (data_[lhs_idx] > data_[rhs_idx] ||
-            // when values are equal, we want lhs to get higher "priority"
-            // if its corresponding index comes first (i.e.) is lower
-            (data_[lhs_idx] == data_[rhs_idx] && lhs_idx < rhs_idx));
+    const T& lhs = data_[lhs_idx];
+    const T& rhs = data_[rhs_idx];
+    if (lhs > rhs) {
+      return true;
+    }
+    if (lhs < rhs) {
+      return false;
+    }
+    const bool lhs_nan = IsNaNValue(lhs);
+    if (lhs_nan != IsNaNValue(rhs)) {
+      return lhs_nan;
+    }
+    // when values are equal, we want lhs to get higher "priority"
+    // if its corresponding index comes first (i.e.) is lower
+    return lhs_idx < rhs_idx;
   }
 
   bool CompareValueOnly(const T& lhs, const T& rhs) const {
+    return !(lhs <= rhs) && !IsNaNValue(rhs);
+  }
+
+  // Only valid when neither value is NaN.
+  static bool CompareNonNaNValues(const T& lhs, const T& rhs) {
     return lhs > rhs;
   }
 
@@ -58,13 +86,29 @@ struct LesserValueCmp {
   }
 
   bool operator()(const int64_t lhs_idx, const int64_t rhs_idx) const {
-    return (data_[lhs_idx] < data_[rhs_idx] ||
-            // when values are equal, we want lhs to get higher "priority"
-            // if its corresponding index comes first (i.e.) is lower
-            (data_[lhs_idx] == data_[rhs_idx] && lhs_idx < rhs_idx));
+    const T& lhs = data_[lhs_idx];
+    const T& rhs = data_[rhs_idx];
+    if (lhs < rhs) {
+      return true;
+    }
+    if (lhs > rhs) {
+      return false;
+    }
+    const bool rhs_nan = IsNaNValue(rhs);
+    if (IsNaNValue(lhs) != rhs_nan) {
+      return rhs_nan;
+    }
+    // when values are equal, we want lhs to get higher "priority"
+    // if its corresponding index comes first (i.e.) is lower
+    return lhs_idx < rhs_idx;
   }
 
   bool CompareValueOnly(const T& lhs, const T& rhs) const {
+    return !(lhs >= rhs) && !IsNaNValue(lhs);
+  }
+
+  // Only valid when neither value is NaN.
+  static bool CompareNonNaNValues(const T& lhs, const T& rhs) {
     return lhs < rhs;
   }
 
@@ -197,12 +241,29 @@ static void FindTopKElements(const Tensor* input, const TensorShape& input_shape
               const auto* cur_value = input_data + cur_idx;  // using pointer to data is faster than input_data[cur_idx]
               auto best = *cur_value;                        // save best value so we only have one load in the CompareValueOnly call
               int64_t top_idx = cur_idx;
+              bool has_nan = IsNaNValue(best);
 
+              // the plain comparison keeps this loop fast. it is wrong when a NaN is present, so such a
+              // row is scanned again below with the NaN aware comparison.
               for (int64_t l = 1; l < num_blocks; ++l) {
                 cur_value += block_slice;
-                if (comparer.CompareValueOnly(*cur_value, best)) {
+                has_nan |= IsNaNValue(*cur_value);
+                if (Comparator::CompareNonNaNValues(*cur_value, best)) {
                   best = *cur_value;
                   top_idx = cur_value - input_data;
+                }
+              }
+
+              if (has_nan) {
+                cur_value = input_data + cur_idx;
+                best = *cur_value;
+                top_idx = cur_idx;
+                for (int64_t l = 1; l < num_blocks; ++l) {
+                  cur_value += block_slice;
+                  if (comparer.CompareValueOnly(*cur_value, best)) {
+                    best = *cur_value;
+                    top_idx = cur_value - input_data;
+                  }
                 }
               }
 

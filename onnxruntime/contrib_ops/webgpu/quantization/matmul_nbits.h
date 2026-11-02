@@ -12,6 +12,8 @@ namespace webgpu {
 
 using namespace onnxruntime::webgpu;
 
+struct DP4AQuantizedInput;
+
 class MatMulNBitsWideTileProgram final : public Program<MatMulNBitsWideTileProgram> {
  public:
   MatMulNBitsWideTileProgram(bool has_zero_points, bool has_bias, bool has_weight_idx, bool has_weight_idx_indirect, uint32_t tile_m, uint32_t tile_n, uint32_t nbits, uint32_t subgroup_min_size, bool acc_f32)
@@ -107,7 +109,8 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
                         int64_t K_op, int64_t N_op, int64_t block_size_op, int64_t accuracy_level, int64_t bits_op,
                         onnxruntime::webgpu::ComputeContext& context, Tensor* y, const uint32_t weight_index = 0,
                         const Tensor* weight_index_indirect = nullptr,
-                        uint32_t override_M = 0);
+                        uint32_t override_M = 0,
+                        DP4AQuantizedInput* quantized_input = nullptr);
 
 }  // namespace webgpu
 }  // namespace contrib

@@ -14,21 +14,23 @@
 namespace onnxruntime::test {
 namespace {
 
-std::vector<std::unique_ptr<IExecutionProvider>> AvailableProviders() {
+std::vector<std::unique_ptr<IExecutionProvider>> AvailableProviders(bool include_webgpu = true) {
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
   providers.push_back(DefaultCpuExecutionProvider());
   if (auto cuda = DefaultCudaExecutionProvider()) {
     providers.push_back(std::move(cuda));
   }
-  if (auto webgpu = DefaultWebGpuExecutionProvider()) {
-    providers.push_back(std::move(webgpu));
+  if (include_webgpu) {
+    if (auto webgpu = DefaultWebGpuExecutionProvider()) {
+      providers.push_back(std::move(webgpu));
+    }
   }
   return providers;
 }
 
 template <typename AddInputs>
-void RunOnAvailableProviders(const char* op_name, AddInputs add_inputs) {
-  for (auto& provider : AvailableProviders()) {
+void RunOnAvailableProviders(const char* op_name, AddInputs add_inputs, bool include_webgpu = true) {
+  for (auto& provider : AvailableProviders(include_webgpu)) {
     SCOPED_TRACE(provider->Type());
     OpTester tester(op_name, 1, kMSDomain);
     add_inputs(tester);
@@ -43,8 +45,21 @@ template <typename T>
 float RoundToType(float value) {
   if constexpr (std::is_same_v<T, MLFloat16>) {
     return MLFloat16(value).ToFloat();
+  } else if constexpr (std::is_same_v<T, BFloat16>) {
+    return BFloat16(value).ToFloat();
   } else {
     return value;
+  }
+}
+
+template <typename T>
+std::vector<T> ConvertVector(const std::vector<float>& values) {
+  if constexpr (std::is_same_v<T, MLFloat16>) {
+    return ToFloat16(values);
+  } else if constexpr (std::is_same_v<T, BFloat16>) {
+    return ToBFloat16(values);
+  } else {
+    return values;
   }
 }
 
@@ -203,6 +218,74 @@ TEST(HyperConnectionOpsTest, PreMixMixedInputTypes) {
   });
 }
 
+template <typename StreamT, typename MixT>
+void RunPreMixVecCase(bool feature_gates, bool flattened, float reduction_scale) {
+  constexpr int64_t rows = 3;
+  constexpr int64_t branches = 3;
+  constexpr int64_t hidden = 16;  // Divisible by 8 -> exercises PreMixVecKernel (2 vecs/row).
+  constexpr bool kIncludeWebGpu = !std::is_same_v<StreamT, BFloat16> && !std::is_same_v<MixT, BFloat16>;
+
+  std::vector<float> streams(rows * branches * hidden);
+  for (size_t i = 0; i < streams.size(); ++i) {
+    const float raw = 0.125f * static_cast<float>((static_cast<int>(i * 7 + 3) % 17) - 8);
+    streams[i] = RoundToType<StreamT>(raw);
+  }
+
+  const size_t mix_size = feature_gates ? (rows * branches * hidden) : (rows * branches);
+  std::vector<float> pre_mix(mix_size);
+  for (size_t i = 0; i < pre_mix.size(); ++i) {
+    const float raw = 0.25f * static_cast<float>((static_cast<int>(i * 5 + 1) % 11) - 5);
+    pre_mix[i] = RoundToType<MixT>(raw);
+  }
+
+  std::vector<float> expected(rows * hidden, 0.0f);
+  for (int64_t r = 0; r < rows; ++r) {
+    for (int64_t h = 0; h < hidden; ++h) {
+      float sum = 0.0f;
+      for (int64_t c = 0; c < branches; ++c) {
+        const size_t x_idx = static_cast<size_t>((r * branches + c) * hidden + h);
+        const size_t g_idx = feature_gates ? x_idx : static_cast<size_t>(r * branches + c);
+        sum += streams[x_idx] * pre_mix[g_idx];
+      }
+      expected[static_cast<size_t>(r * hidden + h)] = RoundToType<StreamT>(sum * reduction_scale);
+    }
+  }
+
+  RunOnAvailableProviders(
+      "HyperConnectionPreMix",
+      [&](OpTester& tester) {
+        if (flattened) {
+          tester.AddAttribute<int64_t>("num_branches", branches);
+        }
+        if (reduction_scale != 1.0f) {
+          tester.AddAttribute<float>("reduction_scale", reduction_scale);
+        }
+        const std::vector<int64_t> stream_shape =
+            flattened ? std::vector<int64_t>{rows, branches * hidden}
+                      : std::vector<int64_t>{rows, branches, hidden};
+        std::vector<int64_t> mix_shape;
+        if (feature_gates) {
+          mix_shape = flattened ? std::vector<int64_t>{rows, branches * hidden}
+                                : std::vector<int64_t>{rows, branches, hidden};
+        } else {
+          mix_shape = {rows, branches};
+        }
+        tester.AddInput<StreamT>("streams", stream_shape, ConvertVector<StreamT>(streams));
+        tester.AddInput<MixT>("pre_mix", mix_shape, ConvertVector<MixT>(pre_mix));
+        tester.AddOutput<StreamT>("output", {rows, hidden}, ConvertVector<StreamT>(expected));
+      },
+      kIncludeWebGpu);
+}
+
+TEST(HyperConnectionOpsTest, PreMixVectorizedFloat16AndBFloat16) {
+  RunPreMixVecCase<MLFloat16, MLFloat16>(/*feature_gates=*/false, /*flattened=*/false, /*reduction_scale=*/0.375f);
+  RunPreMixVecCase<MLFloat16, float>(/*feature_gates=*/true, /*flattened=*/false, /*reduction_scale=*/0.25f);
+  RunPreMixVecCase<MLFloat16, BFloat16>(/*feature_gates=*/true, /*flattened=*/true, /*reduction_scale=*/0.5f);
+  RunPreMixVecCase<BFloat16, BFloat16>(/*feature_gates=*/false, /*flattened=*/false, /*reduction_scale=*/0.375f);
+  RunPreMixVecCase<BFloat16, float>(/*feature_gates=*/true, /*flattened=*/false, /*reduction_scale=*/0.25f);
+  RunPreMixVecCase<BFloat16, MLFloat16>(/*feature_gates=*/true, /*flattened=*/true, /*reduction_scale=*/1.0f);
+}
+
 TEST(HyperConnectionOpsTest, PostMixIdentityAndBranchGates) {
   RunOnAvailableProviders("HyperConnectionPostMix", [&](OpTester& tester) {
     tester.AddInput<float>("streams", {1, 2, 2},
@@ -239,6 +322,93 @@ TEST(HyperConnectionOpsTest, PostMixFlattenedBranchGate) {
     tester.AddOptionalInputEdge<float>();
     tester.AddOutput<float>("output", {1, 4}, {6.0f, 12.0f, 8.0f, 14.0f});
   });
+}
+
+template <typename StreamT, typename MixT>
+void RunPostMixVecCase(int64_t branches, bool feature_gates, bool with_stream_mix, bool flattened) {
+  constexpr int64_t rows = 3;
+  constexpr int64_t hidden = 16;  // Divisible by 8 -> exercises PostMixVecKernel (2 vecs/row).
+  constexpr bool kIncludeWebGpu = !std::is_same_v<StreamT, BFloat16> && !std::is_same_v<MixT, BFloat16>;
+
+  std::vector<float> streams(rows * branches * hidden);
+  for (size_t i = 0; i < streams.size(); ++i) {
+    const float raw = 0.125f * static_cast<float>((static_cast<int>(i * 11 + 5) % 19) - 9);
+    streams[i] = RoundToType<StreamT>(raw);
+  }
+
+  std::vector<float> block_output(rows * hidden);
+  for (size_t i = 0; i < block_output.size(); ++i) {
+    const float raw = 0.25f * static_cast<float>((static_cast<int>(i * 3 + 2) % 13) - 6);
+    block_output[i] = RoundToType<StreamT>(raw);
+  }
+
+  const size_t post_mix_size = feature_gates ? (rows * branches * hidden) : (rows * branches);
+  std::vector<float> post_mix(post_mix_size);
+  for (size_t i = 0; i < post_mix.size(); ++i) {
+    const float raw = 0.125f * static_cast<float>((static_cast<int>(i * 7 + 1) % 15) - 7);
+    post_mix[i] = RoundToType<MixT>(raw);
+  }
+
+  std::vector<float> stream_mix(rows * branches * branches);
+  for (size_t i = 0; i < stream_mix.size(); ++i) {
+    // Asymmetric per-(row, src, dst) weights to verify source reuse and output-branch indexing.
+    const float raw = 0.25f * static_cast<float>((static_cast<int>(i * 9 + 4) % 11) - 5);
+    stream_mix[i] = RoundToType<MixT>(raw);
+  }
+
+  std::vector<float> expected(rows * branches * hidden, 0.0f);
+  for (int64_t r = 0; r < rows; ++r) {
+    for (int64_t c = 0; c < branches; ++c) {
+      for (int64_t h = 0; h < hidden; ++h) {
+        const size_t out_idx = static_cast<size_t>((r * branches + c) * hidden + h);
+        float value = with_stream_mix ? 0.0f : streams[out_idx];
+        if (with_stream_mix) {
+          for (int64_t src = 0; src < branches; ++src) {
+            const size_t mix_idx = static_cast<size_t>((r * branches + src) * branches + c);
+            const size_t src_idx = static_cast<size_t>((r * branches + src) * hidden + h);
+            value += stream_mix[mix_idx] * streams[src_idx];
+          }
+        }
+        const size_t g_idx = feature_gates ? out_idx : static_cast<size_t>(r * branches + c);
+        value += post_mix[g_idx] * block_output[static_cast<size_t>(r * hidden + h)];
+        expected[out_idx] = RoundToType<StreamT>(value);
+      }
+    }
+  }
+
+  RunOnAvailableProviders(
+      "HyperConnectionPostMix",
+      [&](OpTester& tester) {
+        if (flattened) {
+          tester.AddAttribute<int64_t>("num_branches", branches);
+        }
+        const std::vector<int64_t> stream_shape =
+            flattened ? std::vector<int64_t>{rows, branches * hidden}
+                      : std::vector<int64_t>{rows, branches, hidden};
+        const std::vector<int64_t> post_mix_shape =
+            feature_gates ? std::vector<int64_t>{rows, branches, hidden}
+                          : (flattened ? std::vector<int64_t>{rows, branches}
+                                       : std::vector<int64_t>{rows, branches, 1});
+        tester.AddInput<StreamT>("streams", stream_shape, ConvertVector<StreamT>(streams));
+        tester.AddInput<StreamT>("block_output", {rows, hidden}, ConvertVector<StreamT>(block_output));
+        tester.AddInput<MixT>("post_mix", post_mix_shape, ConvertVector<MixT>(post_mix));
+        if (with_stream_mix) {
+          tester.AddInput<MixT>("stream_mix", {rows, branches, branches}, ConvertVector<MixT>(stream_mix));
+        } else {
+          tester.AddOptionalInputEdge<MixT>();
+        }
+        tester.AddOutput<StreamT>("output", stream_shape, ConvertVector<StreamT>(expected));
+      },
+      kIncludeWebGpu);
+}
+
+TEST(HyperConnectionOpsTest, PostMixVectorizedFloat16AndBFloat16) {
+  RunPostMixVecCase<MLFloat16, MLFloat16>(/*branches=*/3, /*feature_gates=*/false, /*with_stream_mix=*/false, /*flattened=*/false);
+  RunPostMixVecCase<MLFloat16, float>(/*branches=*/4, /*feature_gates=*/true, /*with_stream_mix=*/true, /*flattened=*/false);
+  RunPostMixVecCase<MLFloat16, BFloat16>(/*branches=*/3, /*feature_gates=*/false, /*with_stream_mix=*/true, /*flattened=*/true);
+  RunPostMixVecCase<BFloat16, BFloat16>(/*branches=*/3, /*feature_gates=*/false, /*with_stream_mix=*/false, /*flattened=*/false);
+  RunPostMixVecCase<BFloat16, float>(/*branches=*/4, /*feature_gates=*/true, /*with_stream_mix=*/true, /*flattened=*/false);
+  RunPostMixVecCase<BFloat16, MLFloat16>(/*branches=*/3, /*feature_gates=*/true, /*with_stream_mix=*/false, /*flattened=*/true);
 }
 
 }  // namespace

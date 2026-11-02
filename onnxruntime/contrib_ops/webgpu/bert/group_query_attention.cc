@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cmath>
+
 #include "contrib_ops/cpu/bert/group_query_attention_helper.h"
 #include "contrib_ops/webgpu/bert/attention_common.h"
 #include "contrib_ops/webgpu/bert/group_query_attention.h"
@@ -136,7 +138,8 @@ Status RunFusedQKRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context,
                                  Tensor* key_out,
                                  const Tensor* q_norm_weight = nullptr,
                                  const Tensor* k_norm_weight = nullptr,
-                                 float qk_norm_epsilon = 0.0f) {
+                                 float q_norm_epsilon = 0.0f,
+                                 float k_norm_epsilon = 0.0f) {
   const auto half_rotary_embedding_dim = gsl::narrow_cast<uint32_t>(cos_cache->Shape()[1]);
   const auto head_size = params.head_size_;
 
@@ -210,7 +213,8 @@ Status RunFusedQKRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context,
           {gsl::make_span(k_input_output_strides)},
           {q_domain_size},
           {static_cast<uint32_t>(head_size)},
-          {qk_norm_epsilon},
+          {q_norm_epsilon},
+          {k_norm_epsilon},
       });
 
   if (has_qk_norm) {
@@ -312,6 +316,10 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
                            "GroupQueryAttention: q_norm_weight / k_norm_weight are not supported when QKV is packed.");
   }
   if (has_qk_norm) {
+    ORT_RETURN_IF_NOT(std::isfinite(q_norm_epsilon_) && q_norm_epsilon_ > 0.0f,
+                      "GroupQueryAttention: q_norm_epsilon must be finite and positive.");
+    ORT_RETURN_IF_NOT(std::isfinite(k_norm_epsilon_) && k_norm_epsilon_ > 0.0f,
+                      "GroupQueryAttention: k_norm_epsilon must be finite and positive.");
     // The fused rotary shader multiplies q/k elements by q/k_norm_weight values without
     // inserting casts between storage element types. Enforce dtype parity so hand-authored
     // models fail with a clear INVALID_ARGUMENT instead of a shader compile error.
@@ -484,11 +492,11 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
             static_cast<uint32_t>(parameters.sequence_length_) *
             static_cast<uint32_t>(parameters.kv_num_heads_);
         ORT_RETURN_IF_ERROR(onnxruntime::webgpu::RunLayerNormProgram(
-            context, query, q_norm_weight, /*bias=*/nullptr, qk_norm_epsilon_,
+            context, query, q_norm_weight, /*bias=*/nullptr, q_norm_epsilon_,
             q_norm_count, static_cast<int64_t>(parameters.head_size_),
             /*simplified=*/true, &qNorm, /*mean=*/nullptr, /*inv_std_dev=*/nullptr));
         ORT_RETURN_IF_ERROR(onnxruntime::webgpu::RunLayerNormProgram(
-            context, key, k_norm_weight, /*bias=*/nullptr, qk_norm_epsilon_,
+            context, key, k_norm_weight, /*bias=*/nullptr, k_norm_epsilon_,
             k_norm_count, static_cast<int64_t>(parameters.head_size_),
             /*simplified=*/true, &kNorm, /*mean=*/nullptr, /*inv_std_dev=*/nullptr));
         q_for_rotary = &qNorm;
@@ -506,7 +514,7 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
                                                     cos_cache, sin_cache,
                                                     &qRotary, &kRotary,
                                                     q_norm_for_fused, k_norm_for_fused,
-                                                    qk_norm_epsilon_));
+                                                    q_norm_epsilon_, k_norm_epsilon_));
       query = &qRotary;
       key = &kRotary;
     } else if (has_qk_norm) {
