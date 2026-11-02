@@ -176,14 +176,14 @@ jobs:
 
   react_native_ci_ios_build:
     name: React Native CI iOS Build
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 120
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Use Xcode 15.3.0
-        run: sudo xcode-select --switch /Applications/Xcode_15.3.0.app/Contents/Developer
+      - name: Use Xcode 16.4
+        run: sudo xcode-select --switch /Applications/Xcode_16.4.app/Contents/Developer
 
       - name: Use Python 3.12
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
@@ -223,7 +223,7 @@ jobs:
   react_native_ci_ios_e2e_tests:
     name: React Native CI iOS E2E Tests
     needs: react_native_ci_ios_build
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 90
     steps:
       - name: Checkout repository
@@ -235,8 +235,8 @@ jobs:
           name: ios_pod
           path: ${{ runner.temp }}/ios_pod
 
-      - name: Use Xcode 15.3.0
-        run: sudo xcode-select --switch /Applications/Xcode_15.3.0.app/Contents/Developer
+      - name: Use Xcode 16.4
+        run: sudo xcode-select --switch /Applications/Xcode_16.4.app/Contents/Developer
 
       - name: Use Node.js 24.x
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -282,7 +282,7 @@ jobs:
         working-directory: ${{ github.workspace }}/js/react_native/e2e/ios
 
       - name: Build Detox iOS e2e Tests
-        run: detox build --configuration ios.sim.release
+        run: detox build --configuration ios.sim_18_6.release
         working-directory: ${{ github.workspace }}/js/react_native/e2e
 
       - name: Reset iOS Simulators before Detox
@@ -297,7 +297,7 @@ jobs:
         run: |
           JEST_JUNIT_OUTPUT_FILE=${{ github.workspace }}/js/react_native/e2e/ios-test-results.xml \
             detox test --record-logs all \
-                         --configuration ios.sim.release \
+                         --configuration ios.sim_18_6.release \
                          --loglevel verbose \
                          --take-screenshots failing \
                          --cleanup
