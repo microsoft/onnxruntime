@@ -695,13 +695,14 @@ __global__ void GetSequenceLengths(const int* total_seq_lens_minus_one,
       valid_q_len = min(sequence_length, max(0, total_len - past_len));
     }
     past_seq_lens[i] = past_len;
-    padded_seq_lens[i] = (query_seqlens != nullptr || is_first_prompt) ? past_len + sequence_length : total_len;
-
     if (cache_past_seq_lens == nullptr) {
-      if (query_seqlens != nullptr && padded_seq_lens[i] > present_kv_cache_capacity) {
-        // Out of contract (P + S > C); keep the key length inside the cache allocation.
-        padded_seq_lens[i] = present_kv_cache_capacity;
-      }
+      const int64_t padded_len = (query_seqlens != nullptr || is_first_prompt)
+                                     ? static_cast<int64_t>(past_len) + sequence_length
+                                     : total_len;
+      // Out of contract (P + S > C); clamp before narrowing to keep the key length inside the allocation.
+      padded_seq_lens[i] = query_seqlens != nullptr && padded_len > present_kv_cache_capacity
+                               ? present_kv_cache_capacity
+                               : static_cast<int>(padded_len);
       return;
     }
 
@@ -1332,8 +1333,8 @@ Status DequantizeFlashAttentionFallback(
 
   // With query_seqlens the host cannot tell a first chunk from a later one, so the chunk was classified as
   // subsequent and its new KV was just quantized. An ordinary first prompt attends to the float KV instead:
-  // match it for entries that have no past and more than one valid row. A single valid row behaves like a
-  // single-token step, which reads the quantized cache. Without the input the legacy classification applies.
+  // match it for entries that have no past and more than one valid row. A singleton matches the legacy
+  // single-token call: float KV for total_sequence_length == 1, quantized KV for a larger bound.
   if (data.has_query_seqlens) {
     ORT_RETURN_IF_ERROR((LaunchUnpackRoPEAppend<T, T>(
         parameters.is_packed_qkv ? data.query : nullptr,
@@ -1348,7 +1349,8 @@ Status DequantizeFlashAttentionFallback(
         data.cos_cache, data.sin_cache, parameters.rotary_dim, data.position_ids, parameters.rotary_interleaved,
         !is_bsnh, KVQuantizationType::NONE,
         data.q_norm_weight, data.k_norm_weight, parameters.q_norm_epsilon, parameters.k_norm_epsilon,
-        stream, device_prop.maxThreadsPerBlock, valid_cache_seq_lens, /*first_prompt_only=*/true)));
+        stream, device_prop.maxThreadsPerBlock, valid_cache_seq_lens,
+        /*min_first_prompt_length=*/parameters.total_sequence_length == 1 ? 1 : 2)));
   }
 
   // Step 3: Run Flash Attention on dequantized k/v

@@ -123,6 +123,12 @@ entry `b`, let `T = seqlens_k[b] + 1` be the number of tokens in the cache after
   path is disabled because it assumes unpadded subsequent queries.
 - Without `query_seqlens`, `Q = min(S, T)` and the behavior is unchanged: callers that pass the cache
   capacity as `total_sequence_length` keep deriving the past offset from `seqlens_k + 1 - sequence_length`.
+- The unpadded reference retains `query_seqlens` and the same `total_sequence_length` bound. For a
+  quantized first chunk (`P == 0, Q > 1`), attention uses the original float new K/V; omitting input 16
+  while keeping a capacity-valued bound can select legacy quantized-cache reads instead. A singleton
+  (`P == 0, Q == 1`) matches the legacy single-token call: it uses float new K/V only for a tight
+  `total_sequence_length == 1`, otherwise it reads the quantized cache. A windowed cache permits the
+  tight bound even when the padded shape has `S > 1`.
 
 ## 3. Input Formats
 

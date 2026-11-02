@@ -256,14 +256,23 @@ class TestBorrowedKVCache(unittest.TestCase):
 
 class TestQuerySeqlensQuantizedCache(unittest.TestCase):
     def run_chunk(
-        self, past, padded, valid, packed, shares=((False, False), (False, True), (True, False), (True, True))
+        self,
+        past,
+        padded,
+        valid,
+        packed,
+        shares=((False, False), (False, True), (True, False), (True, True)),
+        windowed=False,
+        total_sequence_length=16,
+        absolute_past=None,
     ):
         """Runs one INT8 PER_TENSOR chunk on a 16-row cache, once for each way of sharing past and present.
 
-        valid is the query_seqlens value. None omits the input and makes the chunk unpadded. Unit scales and
+        valid is the query_seqlens value. None omits the input. Unit scales and
         V = 0.4 tell the two attention inputs apart: reading the quantized cache gives 0 for the new rows and
         reading the float K/V gives 0.4. Returns (share_key, share_value, kernels, feeds, output, present)
-        for every entry of shares.
+        for every entry of shares. past counts resident rows; absolute_past can override the absolute
+        past length for a windowed cache.
         """
         if "CUDAExecutionProvider" not in get_available_providers() or not has_quantized_kv_cache():
             self.skipTest("CUDA quantized KV cache is unavailable")
@@ -280,8 +289,11 @@ class TestQuerySeqlensQuantizedCache(unittest.TestCase):
         feeds.update(
             past_key=numpy.zeros(cache_shape, dtype=numpy.int8),
             past_value=numpy.zeros(cache_shape, dtype=numpy.int8),
-            seqlens_k=numpy.asarray([past + (padded if valid is None else valid) - 1], dtype=numpy.int32),
-            total_sequence_length=numpy.asarray([capacity], dtype=numpy.int32),
+            seqlens_k=numpy.asarray(
+                [(past if absolute_past is None else absolute_past) + (padded if valid is None else valid) - 1],
+                dtype=numpy.int32,
+            ),
+            total_sequence_length=numpy.asarray([total_sequence_length], dtype=numpy.int32),
             k_scale=numpy.ones(1, dtype=numpy.float32),
             v_scale=numpy.ones(1, dtype=numpy.float32),
         )
@@ -328,6 +340,8 @@ class TestQuerySeqlensQuantizedCache(unittest.TestCase):
             k_quant_type="PER_TENSOR",
             v_quant_type="PER_TENSOR",
             kv_cache_bit_width=8,
+            sliding_window_cache=int(windowed),
+            local_window_size=capacity if windowed else -1,
         )
         model = helper.make_model(
             helper.make_graph([node], "quantized-query-seqlens", inputs, outputs),
@@ -387,14 +401,63 @@ class TestQuerySeqlensQuantizedCache(unittest.TestCase):
                     expected[:, :, past : past + valid] = 0
                     numpy.testing.assert_array_equal(dest.numpy()[:, :, : past + valid], expected[:, :, : past + valid])
 
-    @parameterized.expand([(padded, packed) for padded in (2, 8) for packed in (False, True)])
-    def test_single_valid_row_matches_single_token_step(self, padded, packed):
-        # A chunk with one valid row is a single-token step: it reads the quantized cache exactly like the
-        # sequence_length == 1 call does, and must not take the float K/V of an ordinary first prompt.
-        ((_, _, _, _, single, _),) = self.run_chunk(0, 1, None, packed, shares=((False, False),))
-        ((_, _, _, _, actual, _),) = self.run_chunk(0, padded, 1, packed, shares=((False, False),))
-        numpy.testing.assert_allclose(single, 0, atol=1e-3)
-        numpy.testing.assert_array_equal(actual[:, :1], single)
+    @parameterized.expand(
+        [
+            (padded, packed, windowed, bound)
+            for padded in (2, 8)
+            for packed in (False, True)
+            for windowed, bound in ((False, 16), (True, 16), (True, 1))
+        ]
+    )
+    def test_single_valid_row_matches_single_token_step(self, padded, packed, windowed, bound):
+        # Match both legacy singleton classifications: a tight bound is a first prompt, a capacity
+        # bound is quantized decode. Windowed caches permit the tight bound even when S > T.
+        ((_, _, single_kernels, _, single, _),) = self.run_chunk(
+            0,
+            1,
+            None,
+            packed,
+            shares=((True, True),) if windowed else ((False, False),),
+            windowed=windowed,
+            total_sequence_length=bound,
+        )
+        self.assertEqual(set(single_kernels), {"FLASH_ATTENTION"})
+        numpy.testing.assert_allclose(single, numpy.float16(0.4) if bound == 1 else 0, atol=1e-3)
+        for share_key, share_value, kernels, _, actual, present in self.run_chunk(
+            0,
+            padded,
+            1,
+            packed,
+            shares=((True, True),) if windowed else ((False, False), (False, True), (True, False), (True, True)),
+            windowed=windowed,
+            total_sequence_length=bound,
+        ):
+            with self.subTest(share_key=share_key, share_value=share_value):
+                self.assertEqual(set(kernels), {"FLASH_ATTENTION"})
+                numpy.testing.assert_array_equal(actual[:, :1], single)
+                for dest in present:
+                    numpy.testing.assert_array_equal(dest.numpy()[:, :, :1], 0)
+
+    def test_windowed_int_max_absolute_length(self):
+        # Absolute P + S exceeds INT_MAX, but all cache-relative geometry fits in the 16-row window.
+        maximum_length = numpy.iinfo(numpy.int32).max
+        ((_, _, kernels, feeds, actual, present),) = self.run_chunk(
+            16,
+            8,
+            1,
+            False,
+            shares=((True, True),),
+            windowed=True,
+            total_sequence_length=maximum_length,
+            absolute_past=maximum_length - 1,
+        )
+        self.assertEqual(set(kernels), {"FLASH_ATTENTION"})
+        expected_value = feeds["past_value"][0, 0, 1:, 0].astype(numpy.float32).sum() / 16
+        numpy.testing.assert_allclose(actual[:, :1], expected_value, rtol=1e-3, atol=1e-3)
+        for name, dest in zip(("key", "value"), present, strict=True):
+            expected = numpy.zeros_like(feeds[f"past_{name}"])
+            expected[:, :, :-1] = feeds[f"past_{name}"][:, :, 1:]
+            numpy.testing.assert_array_equal(dest.numpy(), expected)
 
     @parameterized.expand([(padded, packed) for padded in (2, 8) for packed in (False, True)])
     def test_omitted_query_seqlens_keeps_quantized_read(self, padded, packed):
@@ -572,7 +635,7 @@ def has_sdpa_kernel(kernel):
         return True
     if not torch.cuda.is_available() or torch.cuda.get_device_capability()[0] < 8:
         return False
-    kernels, _ = run_query_longer_than_borrowed_kv(kernel, 8, 3, 9, -1)
+    kernels, _ = run_query_longer_than_borrowed_kv(kernel, 8, 8, 9, -1)
     return set(kernels) == {kernel}
 
 
