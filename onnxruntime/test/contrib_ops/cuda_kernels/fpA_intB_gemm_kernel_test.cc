@@ -19,9 +19,11 @@
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <ctime>
 #include <functional>
 #include <iomanip>
@@ -45,10 +47,10 @@ constexpr int kMinSupportedSm = 75;
 
 std::vector<int> get_m_list() {
 #if USE_COMPACT_FPA_INTB_GEMM
-  return {1, 15, 16, 32, 128, 512};
+  return {1, 8, 15, 16, 32, 128, 512};
 #else
   if (kPipelineMode) {
-    return {1, 14};
+    return {1, 8, 14};
   } else {
     return {1, 4, 8, 14, 256, 512, 1024, 2048};
   }
@@ -417,6 +419,136 @@ class KernelTestFixture : public ::testing::Test {
     d_bias_->from_cpu(h_bias_.data());
   }
 
+  // Reports the device that runs the test to the GEMV dispatcher, as MatMulNBits and the tactic profiler do.
+  void ReportDevice(wo::Params& params) const {
+    params.device_sm = device_prop_.major * 10 + device_prop_.minor;
+    params.device_sm_count = device_prop_.multiProcessorCount;
+  }
+
+  // Fills what the dispatcher reads from Params: the reported device and the opt-in wave-aware mode.
+  using ParamsHook = std::function<void(wo::Params&)>;
+
+  // Launches the zero-point-free GEMV once with debug logging and returns the CtaN column tile it reports.
+  int LaunchCtaN(const ParamsHook& configure) {
+    static_assert(QuantOp == cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY);
+    wo::Params params(d_act_->data(), nullptr, d_weight_->data(), d_scales_->data(), nullptr, nullptr,
+                      d_out_->data(), 1.f, m_, n_, k_, block_size_, KT);
+    params.debug = true;
+    configure(params);
+    const int kernel_arch = GetKernelArch(onnxruntime::llm::common::getSMVersion());
+    testing::internal::CaptureStdout();
+    try {
+      wo::kernel_launcher(kernel_arch, params, s_);
+      cudaStreamSynchronize(s_);
+    } catch (...) {
+      // End the capture so that later tests can capture stdout as well.
+      testing::internal::GetCapturedStdout();
+      throw;
+    }
+    const std::string log = testing::internal::GetCapturedStdout();
+    const size_t pos = log.find("CtaN=");
+    return pos == std::string::npos ? 0 : std::atoi(log.c_str() + pos + 5);
+  }
+
+  // Launches with this device reported. Without a reported device the dispatcher must use its device-independent
+  // cutoffs.
+  int GemvLaunchCtaN(bool report_device = true) {
+    return LaunchCtaN([&](wo::Params& params) {
+      if (report_device) {
+        ReportDevice(params);
+      }
+    });
+  }
+
+  // Checks that one M = 8 launch is bitwise identical to two M = 4 launches over the same weights. The tile
+  // shape only decides which block computes which output, not the K reduction order of that output. `configure`
+  // defaults to reporting this device.
+  bool M8MatchesTwoM4Launches(const ParamsHook& configure = nullptr) {
+    static_assert(QuantOp == cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY);
+    using AType = typename cutlassTypeMapper<KT>::AType;
+    ORT_ENFORCE(m_ == 8);
+    const int kernel_arch = GetKernelArch(onnxruntime::llm::common::getSMVersion());
+    auto launch = [&](int rows, int first_row) {
+      wo::Params params(d_act_->data<AType>() + static_cast<size_t>(first_row) * k_, nullptr, d_weight_->data(),
+                        d_scales_->data(), nullptr, nullptr,
+                        d_out_->data<AType>() + static_cast<size_t>(first_row) * n_, 1.f, rows, n_, k_,
+                        block_size_, KT);
+      if (configure) {
+        configure(params);
+      } else {
+        ReportDevice(params);
+      }
+      wo::kernel_launcher(kernel_arch, params, s_);
+    };
+    // Start from a NaN pattern so that an output that is never written cannot match by accident.
+    auto run = [&](const auto& launches, std::vector<AType>& host_out) {
+      CUDA_CALL_THROW(cudaMemsetAsync(d_out_->data(), 0xFF, d_out_->_bytes, s_));
+      launches();
+      CUDA_CALL_THROW(cudaStreamSynchronize(s_));
+      d_out_->to_cpu(host_out.data());
+    };
+    auto one_m8_launch = [&]() { launch(8, 0); };
+    auto two_m4_launches = [&]() {
+      launch(4, 0);
+      launch(4, 4);
+    };
+    run(one_m8_launch, h_out1_);
+    run(two_m4_launches, h_out2_);
+    const bool finite = std::all_of(h_out1_.begin(), h_out1_.end(),
+                                    [](AType v) { return std::isfinite(static_cast<float>(v)); });
+    return finite && std::memcmp(h_out1_.data(), h_out2_.data(), h_out1_.size() * sizeof(AType)) == 0;
+  }
+
+  // The device the A100 M = 8 windows are qualified on: A100 (SM 8.0, 108 SMs). A30 is also SM 8.0 but has 56 SMs.
+  bool UsesA100M8Tiles() const {
+    return device_prop_.major == 8 && device_prop_.minor == 0 && device_prop_.multiProcessorCount == 108;
+  }
+
+  // The device the H200 M = 8 rule is qualified on: SM 9.0 with 132 SMs. H100 PCIe (114 SMs) and H20 (78 SMs)
+  // are also SM 9.0 and keep the device-independent cutoffs.
+  bool UsesH200M8Tiles() const {
+    return device_prop_.major == 9 && device_prop_.minor == 0 && device_prop_.multiProcessorCount == 132;
+  }
+
+  // Picks the {M, N, expected CtaN} table of the device that runs the test: A100, H200, or any other device.
+  const std::vector<std::tuple<int, int, int>>& M8TileCasesForDevice(
+      const std::vector<std::tuple<int, int, int>>& a100_cases,
+      const std::vector<std::tuple<int, int, int>>& h200_cases,
+      const std::vector<std::tuple<int, int, int>>& other_cases) const {
+    return UsesA100M8Tiles() ? a100_cases : (UsesH200M8Tiles() ? h200_cases : other_cases);
+  }
+
+  // Tile-only check that a caller that does not report its device gets the device-independent cutoffs, also on an A100.
+  void CheckUnreportedDeviceTiles(const std::vector<std::tuple<int, int, int>>& cases,
+                                  const std::vector<int>& k_values = {1024, 4096}) {
+    for (const int k : k_values) {
+      for (const auto& [m, n, expected_cta_n] : cases) {
+        SCOPED_TRACE(testing::Message() << "unreported device M=" << m << " N=" << n << " K=" << k);
+        InitBuffers(m, n, k, kIsInt2 ? 64 : 32);
+        EXPECT_EQ(GemvLaunchCtaN(false), expected_cta_n);
+      }
+    }
+  }
+
+  // For each K and {M, N, expected CtaN} case, checks the column tile the dispatcher launches, the result against
+  // the CUTLASS reference, and (for M = 8) that it equals two M = 4 launches bit for bit. The fixture is scale-only,
+  // so the weights always use the SM80-interleaved layout (also on Hopper), the only layout with a narrow tile.
+  void CheckGemvTiles(const std::vector<std::tuple<int, int, int>>& cases,
+                      const std::vector<int>& k_values = {1024, 4096}) {
+    static_assert(GetKernelArch(90) == 80, "The narrow M = 8 tile exists only in the SM80-interleaved layout");
+    for (const int k : k_values) {
+      for (const auto& [m, n, expected_cta_n] : cases) {
+        SCOPED_TRACE(testing::Message() << "M=" << m << " N=" << n << " K=" << k);
+        InitBuffers(m, n, k, kIsInt2 ? 64 : 32);
+        EXPECT_EQ(GemvLaunchCtaN(), expected_cta_n);
+        EXPECT_TRUE(BenchmarkAndVerifyKernel());
+        if (m == 8) {
+          EXPECT_TRUE(M8MatchesTwoM4Launches());
+        }
+      }
+    }
+  }
+
   bool BenchmarkAndVerifyKernel(bool use_zero_points = QuantOp == cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS,
                                 int decode_variant = 0) {
     std::cout << "m=" << m_ << ", n=" << n_ << ", k=" << k_ << ", block_size=" << block_size_ << std::endl;
@@ -438,6 +570,7 @@ class KernelTestFixture : public ::testing::Test {
     wo::Params params(d_act_->data(), p_act_scale, d_weight_->data(), d_scales_->data(), p_zeros, p_bias,
                       d_out_->data(), 1.f, m_, n_, k_, block_size_, KT);
     params.decode_variant = decode_variant;
+    ReportDevice(params);
 
     //------------------------
     // Run FpA_IntB_Gemv CUDA kernel
@@ -641,6 +774,10 @@ using Fp16Int4SymmetricGroupwiseTest = KernelTestFixture<wo::KernelType::FP16Int
                                                          cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY>;
 using Bf16Int4SymmetricGroupwiseTest = KernelTestFixture<wo::KernelType::BF16Int4Groupwise, false, false, true,
                                                          cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY>;
+using Fp16Int8SymmetricGroupwiseTest = KernelTestFixture<wo::KernelType::FP16Int8Groupwise, false, false, true,
+                                                         cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY>;
+using Bf16Int8SymmetricGroupwiseTest = KernelTestFixture<wo::KernelType::BF16Int8Groupwise, false, false, true,
+                                                         cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY>;
 
 TEST(FpAIntBGemvTest, SupportUsesDeviceAndKernelArchitectures) {
   EXPECT_FALSE(wo::is_supported(74, 80, wo::KernelType::FP16Int4Groupwise));
@@ -840,6 +977,220 @@ TEST(Int4DecodeTileTest, ProfilerEligibilityAndFallback) {
   }
 }
 
+TEST(FpAIntBGemvTest, A100M8DispatchUsesMeasuredWindows) {
+  for (int group_size : {32, 64, 128}) {
+    for (int k : {1024, 2048, 3072, 4096, 8192}) {
+      for (const auto& [n, expected] : std::vector<std::pair<int, int>>{
+               {1024, 4}, {1712, 4}, {1728, 4}, {1744, k <= 3072 ? 2 : 4}, {2560, k <= 3072 ? 2 : 4}, {2576, 4}, {2880, 4}, {3456, 4}, {3472, 2}, {4096, 2}, {4320, 2}, {4336, 4}, {4352, 4}, {5120, 4}, {5136, 4}}) {
+        SCOPED_TRACE(testing::Message() << "INT4 N=" << n << " K=" << k << " group size " << group_size);
+        EXPECT_EQ(wo::PickM8GemvCtaN(wo::M8GemvDevice::kA100, 8, n, k, group_size, 4, false, 4), expected);
+      }
+      for (const auto& [n, expected] : std::vector<std::pair<int, int>>{
+               {640, 4}, {864, 4}, {872, 2}, {1024, 2}, {1280, 2}, {1288, 2}, {1296, 2}, {1304, 2}, {1312, 4}, {1536, 4}, {2560, 4}}) {
+        SCOPED_TRACE(testing::Message() << "INT8 N=" << n << " K=" << k << " group size " << group_size);
+        EXPECT_EQ(wo::PickM8GemvCtaN(wo::M8GemvDevice::kA100, 8, n, k, group_size, 2, false, 4), expected);
+      }
+    }
+  }
+}
+
+// The A100 windows were timed without a bias, which keeps the default tile there.
+TEST(FpAIntBGemvTest, A100M8DispatchKeepsDefaultTileWithBias) {
+  for (int k : {1024, 3072, 4096}) {
+    for (int n : {2560, 3472, 4096, 4320}) {
+      SCOPED_TRACE(testing::Message() << "INT4 N=" << n << " K=" << k);
+      EXPECT_EQ(wo::PickM8GemvCtaN(wo::M8GemvDevice::kA100, 8, n, k, 32, 4, true, 4), 4);
+    }
+    for (int n : {872, 1024, 1280, 1304}) {
+      SCOPED_TRACE(testing::Message() << "INT8 N=" << n << " K=" << k);
+      EXPECT_EQ(wo::PickM8GemvCtaN(wo::M8GemvDevice::kA100, 8, n, k, 32, 2, true, 4), 4);
+    }
+  }
+}
+
+// H200 INT4: the narrow tile fills one wave of 132 SMs * 5 blocks * 8 columns = 5280 columns and fades with the
+// bytes of weights plus scales. INT8 never takes the narrow tile.
+TEST(FpAIntBGemvTest, H200M8DispatchUsesMeasuredRule) {
+  constexpr auto kH200 = wo::M8GemvDevice::kH200;
+  const std::vector<std::tuple<int, int, int>> int4_cases{
+      // {N, K, expected CtaN} at group size 32 (0.5625 bytes per weight) without a bias.
+      // N <= 4224 takes the narrow tile while weights plus scales stay within 28 MB.
+      {8, 1024, 2},
+      {1024, 1024, 2},
+      {1024, 31744, 2},
+      {2048, 16384, 2},
+      {3072, 16192, 2},
+      {3072, 16224, 4},
+      {4096, 12128, 2},
+      {4096, 12160, 4},
+      {4224, 11776, 2},
+      {4224, 11808, 4},
+      // 4224 < N <= 5280 takes it while they stay within 42 MB: q / o projection 5120 x 5120 does, the 5120 x 17408
+      // down projection does not.
+      {4232, 1024, 2},
+      {4232, 17632, 2},
+      {4232, 17664, 4},
+      {5120, 5120, 2},
+      {5120, 13824, 2},
+      {5120, 14560, 2},
+      {5120, 14592, 4},
+      {5120, 17408, 4},
+      {5280, 1024, 2},
+      {5280, 14112, 2},
+      {5280, 14144, 4},
+      // A second wave of narrow blocks starts above N = 5280.
+      {5288, 1024, 4},
+      {5296, 1024, 4},
+      {5312, 1024, 4},
+      {6144, 1024, 4},
+      {17408, 5120, 4},
+      // N * K beyond the 32-bit range must not wrap around into the narrow window.
+      {4096, 1 << 20, 4},
+  };
+  for (const auto& [n, k, expected] : int4_cases) {
+    SCOPED_TRACE(testing::Message() << "INT4 N=" << n << " K=" << k);
+    EXPECT_EQ(wo::PickM8GemvCtaN(kH200, 8, n, k, 32, 4, false, 4), expected);
+  }
+  for (int k : {1024, 3072, 4096, 8192, 17408}) {
+    for (int n : {4, 640, 1024, 1280, 1288, 2560, 3584, 5120}) {
+      for (bool has_bias : {false, true}) {
+        SCOPED_TRACE(testing::Message() << "INT8 N=" << n << " K=" << k << " bias " << has_bias);
+        EXPECT_EQ(wo::PickM8GemvCtaN(kH200, 8, n, k, 32, 2, has_bias, 4), 4);
+      }
+    }
+  }
+}
+
+// The caps are in bytes of INT4 weights plus 16-bit scales, so the K at which they bind grows with the group size
+// (N = 5120 with a scale-only epilogue: K = 14560 / 15424 / 15872 for group sizes 32 / 64 / 128).
+TEST(FpAIntBGemvTest, H200M8DispatchCapsFollowWeightAndScaleBytes) {
+  constexpr auto kH200 = wo::M8GemvDevice::kH200;
+  constexpr int64_t kTieMaxBytes = 28'000'000;
+  constexpr int64_t kOneWaveMaxBytes = 42'000'000;
+  constexpr int64_t kBiasOneWaveMaxBytes = 34'000'000;
+  // The largest K that is a multiple of the group size and keeps the weights plus scales within max_bytes.
+  auto max_k = [](int n, int group_size, int64_t max_bytes) {
+    int k = group_size;
+    while (wo::Int4WeightAndScaleBytes(n, k + group_size, group_size) <= max_bytes) {
+      k += group_size;
+    }
+    return k;
+  };
+  for (int group_size : {32, 64, 128}) {
+    for (const auto& [n, has_bias, max_bytes] : std::vector<std::tuple<int, bool, int64_t>>{
+             {1024, false, kTieMaxBytes},
+             {3072, false, kTieMaxBytes},
+             {4096, false, kTieMaxBytes},
+             {4224, false, kTieMaxBytes},
+             {4232, false, kOneWaveMaxBytes},
+             {4608, false, kOneWaveMaxBytes},
+             {5120, false, kOneWaveMaxBytes},
+             {5280, false, kOneWaveMaxBytes},
+             {4232, true, kBiasOneWaveMaxBytes},
+             {4608, true, kBiasOneWaveMaxBytes},
+             {5120, true, kBiasOneWaveMaxBytes},
+             {5280, true, kBiasOneWaveMaxBytes}}) {
+      const int k = max_k(n, group_size, max_bytes);
+      SCOPED_TRACE(testing::Message() << "N=" << n << " K=" << k << " group size " << group_size << " bias " << has_bias);
+      EXPECT_EQ(wo::PickM8GemvCtaN(kH200, 8, n, k, group_size, 4, has_bias, 4), 2);
+      EXPECT_EQ(wo::PickM8GemvCtaN(kH200, 8, n, k + group_size, group_size, 4, has_bias, 4), 4);
+    }
+  }
+}
+
+// With a bias the half-width INT4 kernel is 6 - 32% slower than the default one, except for the wave gain of
+// 4224 < N <= 5280, which the caps keep below the point where the K-dependent penalty overtakes it.
+TEST(FpAIntBGemvTest, H200M8DispatchWithBiasUsesWaveWindowOnly) {
+  constexpr auto kH200 = wo::M8GemvDevice::kH200;
+  const std::vector<std::tuple<int, int, int>> int4_cases{
+      // {N, K, expected CtaN} at group size 32 with a bias.
+      {8, 1024, 4},
+      {1024, 1024, 4},
+      {2048, 4096, 4},
+      {4096, 4096, 4},
+      {4224, 1024, 4},
+      {4224, 5120, 4},
+      {4232, 1024, 2},
+      {4232, 14272, 2},
+      {4232, 14304, 4},
+      {5120, 5120, 2},
+      {5120, 11776, 2},
+      {5120, 11808, 4},
+      {5120, 12288, 4},
+      {5120, 17408, 4},
+      {5280, 5120, 2},
+      {5280, 11424, 2},
+      {5280, 11456, 4},
+      {5288, 1024, 4},
+      {6144, 1024, 4},
+  };
+  for (const auto& [n, k, expected] : int4_cases) {
+    SCOPED_TRACE(testing::Message() << "INT4 N=" << n << " K=" << k);
+    EXPECT_EQ(wo::PickM8GemvCtaN(kH200, 8, n, k, 32, 4, true, 4), expected);
+  }
+}
+
+TEST(FpAIntBGemvTest, M8DispatchKeepsDefaultTileOutsideMeasuredShapes) {
+  for (const auto device : {wo::M8GemvDevice::kUnmeasured, wo::M8GemvDevice::kA100, wo::M8GemvDevice::kH200}) {
+    for (bool has_bias : {false, true}) {
+      for (int m : {7, 9}) {
+        EXPECT_EQ(wo::PickM8GemvCtaN(device, m, 4096, 4096, 32, 4, has_bias, 4), 4);
+        EXPECT_EQ(wo::PickM8GemvCtaN(device, m, 1280, 4096, 32, 2, has_bias, 4), 4);
+      }
+      EXPECT_EQ(wo::PickM8GemvCtaN(device, 8, 4097, 4096, 32, 4, has_bias, 4), 4);
+      EXPECT_EQ(wo::PickM8GemvCtaN(device, 8, 1281, 4096, 32, 2, has_bias, 4), 4);
+      EXPECT_EQ(wo::PickM8GemvCtaN(device, 8, 1280, 4096, 32, 1, has_bias, 4), 4);
+      EXPECT_EQ(wo::PickM8GemvCtaN(device, 8, 1280, 4096, 32, 2, has_bias, 2), 2);
+    }
+  }
+}
+
+TEST(FpAIntBGemvTest, A100DeviceRequiresMatchingSmAndSmCount) {
+  EXPECT_TRUE(wo::IsA100Device(80, 108));
+  EXPECT_FALSE(wo::IsA100Device(80, 56));  // A30: same SM 8.0, fewer SMs
+  EXPECT_FALSE(wo::IsA100Device(86, 108));
+  EXPECT_FALSE(wo::IsA100Device(90, 132));
+  EXPECT_FALSE(wo::IsA100Device(0, 0));  // a caller that does not report its device
+  EXPECT_FALSE(wo::IsA100Device(80, 0));
+  EXPECT_FALSE(wo::IsA100Device(0, 108));
+}
+
+TEST(FpAIntBGemvTest, H200DeviceRequiresMatchingSmAndSmCount) {
+  EXPECT_TRUE(wo::IsH200Device(90, 132));
+  EXPECT_FALSE(wo::IsH200Device(90, 114));  // H100 PCIe: same SM 9.0, fewer SMs
+  EXPECT_FALSE(wo::IsH200Device(90, 78));   // H20
+  EXPECT_FALSE(wo::IsH200Device(80, 132));
+  EXPECT_FALSE(wo::IsH200Device(100, 132));
+  EXPECT_FALSE(wo::IsH200Device(80, 108));
+  EXPECT_FALSE(wo::IsH200Device(0, 0));  // a caller that does not report its device
+  EXPECT_FALSE(wo::IsH200Device(90, 0));
+  EXPECT_FALSE(wo::IsH200Device(0, 132));
+
+  EXPECT_EQ(wo::GetM8GemvDevice(80, 108), wo::M8GemvDevice::kA100);
+  EXPECT_EQ(wo::GetM8GemvDevice(90, 132), wo::M8GemvDevice::kH200);
+  EXPECT_EQ(wo::GetM8GemvDevice(80, 56), wo::M8GemvDevice::kUnmeasured);
+  EXPECT_EQ(wo::GetM8GemvDevice(90, 114), wo::M8GemvDevice::kUnmeasured);
+  EXPECT_EQ(wo::GetM8GemvDevice(0, 0), wo::M8GemvDevice::kUnmeasured);
+}
+
+TEST(FpAIntBGemvTest, OtherDevicesKeepM8DispatchCutoffs) {
+  for (int k : {1024, 4096, 8192}) {
+    for (int group_size : {32, 64, 128}) {
+      for (bool has_bias : {false, true}) {
+        SCOPED_TRACE(testing::Message() << "K=" << k << " group size " << group_size << " bias " << has_bias);
+        for (const auto& [n, expected] : std::vector<std::pair<int, int>>{
+                 {2880, 2}, {5120, 2}, {5128, 2}, {5136, 4}, {6144, 4}}) {
+          EXPECT_EQ(wo::PickM8GemvCtaN(wo::M8GemvDevice::kUnmeasured, 8, n, k, group_size, 4, has_bias, 4), expected);
+        }
+        for (const auto& [n, expected] : std::vector<std::pair<int, int>>{
+                 {640, 2}, {1280, 2}, {1284, 2}, {1288, 4}, {1536, 4}, {2560, 4}}) {
+          EXPECT_EQ(wo::PickM8GemvCtaN(wo::M8GemvDevice::kUnmeasured, 8, n, k, group_size, 2, has_bias, 4), expected);
+        }
+      }
+    }
+  }
+}
+
 // Preserve upstream wave-aware tile selection and its M=8-only scope.
 TEST(FpAIntBGemvTest, WaveAwareDispatchUsesSyntheticSmCount) {
   constexpr int kRtx5090SmCount = 170;
@@ -853,6 +1204,18 @@ TEST(FpAIntBGemvTest, WaveAwareDispatchUsesSyntheticSmCount) {
     EXPECT_EQ(wo::PickGemvCtaN(true, 9, n, kInterleave, kDefaultCtaN, kRtx5090SmCount), kDefaultCtaN);
   }
   EXPECT_EQ(wo::PickGemvCtaN(true, 8, 512, kInterleave, kDefaultCtaN, 0), kDefaultCtaN);
+}
+
+// The wave-aware SM count is the one the caller reports, and only an sm_12x device has one.
+TEST(FpAIntBGemvTest, WaveAwareSmCountComesFromReportedDevice) {
+  EXPECT_EQ(wo::GemvPickSmCount(120, 170), 170);  // RTX 5090
+  EXPECT_EQ(wo::GemvPickSmCount(121, 48), 48);
+  EXPECT_EQ(wo::GemvPickSmCount(80, 108), 0);   // A100
+  EXPECT_EQ(wo::GemvPickSmCount(90, 132), 0);   // H100
+  EXPECT_EQ(wo::GemvPickSmCount(100, 148), 0);  // sm_100 is not sm_12x
+  EXPECT_EQ(wo::GemvPickSmCount(0, 0), 0);      // a caller that does not report its device
+  EXPECT_EQ(wo::GemvPickSmCount(120, 0), 0);
+  EXPECT_EQ(wo::GemvPickSmCount(0, 170), 0);
 }
 
 // Keep upstream wave-aware and default tactic caches distinct after extending the key.
@@ -1058,6 +1421,125 @@ TEST_F(Fp16Int4GroupwiseTest, Int4GroupwiseHopperRouting) {
 #else
   EXPECT_EQ(GetKernelArch(90), 90);
 #endif
+}
+
+namespace {
+// {M, N, expected CtaN} cases for the scale-only SM80-interleaved layout. Devices without a measured rule
+// retain the default-grid cutoffs of 320 blocks for INT4 and 160 for INT8. A100 cases cover
+// its measured windows and K-dependent lower INT4 window. H200 cases cover the 5280-column single-wave edge
+// and the weight-plus-scale byte caps of INT4 (INT8 always keeps CtaN 4). Neighbouring M = 7 / 9 keep CtaN 4.
+const std::vector<std::tuple<int, int, int>> kInt4M8TileCases{
+    {8, 2880, 2}, {8, 5120, 2}, {7, 5120, 4}, {9, 5120, 4}, {8, 5136, 4}, {8, 6144, 4}};
+const std::vector<std::tuple<int, int, int>> kInt8M8TileCases{
+    {8, 640, 2}, {8, 1280, 2}, {7, 1280, 4}, {9, 1280, 4}, {8, 1288, 4}, {8, 1536, 4}, {8, 2560, 4}};
+const std::vector<std::tuple<int, int, int>> kInt4A100M8TileCases{
+    {8, 2880, 4}, {8, 3456, 4}, {8, 3472, 2}, {8, 4320, 2}, {8, 4336, 4}, {8, 5120, 4}, {7, 4320, 4}, {9, 4320, 4}, {8, 5136, 4}, {8, 6144, 4}};
+const std::vector<std::tuple<int, int, int>> kInt8A100M8TileCases{
+    {8, 640, 4}, {8, 864, 4}, {8, 872, 2}, {8, 1280, 2}, {8, 1288, 2}, {8, 1304, 2}, {8, 1312, 4}, {7, 1280, 4}, {9, 1280, 4}, {8, 1536, 4}, {8, 2560, 4}};
+const std::vector<std::tuple<int, int, int>> kInt4A100M8SmallKTileCases{
+    {8, 1728, 4}, {8, 1744, 2}, {8, 2560, 2}, {8, 2576, 4}};
+const std::vector<std::tuple<int, int, int>> kInt4A100M8LargeKTileCases{
+    {8, 1744, 4}, {8, 2560, 4}};
+// The INT4 cases use multiples of 16 columns: the default tile and the two M = 4 launches of the bit-identity check
+// both need N % (4 * kInterleave) == 0.
+const std::vector<std::tuple<int, int, int>> kInt4H200M8TileCases{
+    {8, 2880, 2}, {8, 4224, 2}, {8, 4240, 2}, {8, 5120, 2}, {8, 5280, 2}, {7, 5280, 4}, {9, 5280, 4}, {8, 5296, 4}, {8, 5312, 4}, {8, 6144, 4}};
+const std::vector<std::tuple<int, int, int>> kInt8H200M8TileCases{
+    {8, 640, 4}, {8, 1280, 4}, {7, 1280, 4}, {9, 1280, 4}, {8, 1288, 4}, {8, 2560, 4}};
+// K = 14336 streams 0.5625 bytes per weight at group size 32: N = 3072 (24.8 MB) is within the 28 MB cap of
+// N <= 4224 and N = 4096 (33.0 MB) past it; N = 5120 (41.3 MB) is within the 42 MB cap above it and N = 5280
+// (42.6 MB) past it.
+const std::vector<std::tuple<int, int, int>> kInt4H200M8MidKTileCases{
+    {8, 2048, 2}, {8, 3072, 2}, {8, 4096, 4}, {8, 5120, 2}, {8, 5280, 4}, {8, 5296, 4}};
+// K = 16384: N = 3072 (28.3 MB), 4224 (38.9 MB) and 5120 (47.2 MB) are past their caps.
+const std::vector<std::tuple<int, int, int>> kInt4H200M8LargeKTileCases{
+    {8, 2048, 2}, {8, 3072, 4}, {8, 4224, 4}, {8, 5120, 4}};
+}  // namespace
+
+// Check the FP16 INT4 narrow tile, its grid cutoff and the M = 7 / 9 fallback against the CUTLASS reference.
+TEST_F(Fp16Int4SymmetricGroupwiseTest, Int4Group32SymmetricM8NarrowTile) {
+  if (onnxruntime::llm::common::getSMVersion() < kMinSupportedSm) {
+    GTEST_SKIP() << "FP16 INT4 GEMV requires SM " << kMinSupportedSm << " or later";
+  }
+  CheckGemvTiles(M8TileCasesForDevice(kInt4A100M8TileCases, kInt4H200M8TileCases, kInt4M8TileCases));
+  if (UsesA100M8Tiles()) {
+    CheckGemvTiles(kInt4A100M8SmallKTileCases, {1024, 2048, 3072});
+    CheckGemvTiles(kInt4A100M8LargeKTileCases, {4096, 8192});
+  }
+  if (UsesH200M8Tiles()) {
+    CheckGemvTiles(kInt4H200M8MidKTileCases, {14336});
+    CheckGemvTiles(kInt4H200M8LargeKTileCases, {16384});
+  }
+  CheckUnreportedDeviceTiles(kInt4M8TileCases);
+}
+
+// Check the BF16 INT4 narrow tile, its grid cutoff and the M = 7 / 9 fallback against the CUTLASS reference.
+TEST_F(Bf16Int4SymmetricGroupwiseTest, Int4Group32SymmetricM8NarrowTile) {
+  if (onnxruntime::llm::common::getSMVersion() < 80) {
+    GTEST_SKIP() << "BF16 INT4 GEMV requires SM 80 or later";
+  }
+  CheckGemvTiles(M8TileCasesForDevice(kInt4A100M8TileCases, kInt4H200M8TileCases, kInt4M8TileCases));
+  if (UsesA100M8Tiles()) {
+    CheckGemvTiles(kInt4A100M8SmallKTileCases, {1024, 2048, 3072});
+    CheckGemvTiles(kInt4A100M8LargeKTileCases, {4096, 8192});
+  }
+  if (UsesH200M8Tiles()) {
+    CheckGemvTiles(kInt4H200M8MidKTileCases, {14336});
+    CheckGemvTiles(kInt4H200M8LargeKTileCases, {16384});
+  }
+  CheckUnreportedDeviceTiles(kInt4M8TileCases);
+}
+
+// Check the FP16 INT8 narrow tile (N = 1280 is 160 default blocks), the first aligned N above the cutoff and the
+// M = 7 / 9 fallback against the CUTLASS reference.
+TEST_F(Fp16Int8SymmetricGroupwiseTest, Int8Group32SymmetricM8NarrowTile) {
+  if (onnxruntime::llm::common::getSMVersion() < kMinSupportedSm) {
+    GTEST_SKIP() << "FP16 INT8 GEMV requires SM " << kMinSupportedSm << " or later";
+  }
+  CheckGemvTiles(M8TileCasesForDevice(kInt8A100M8TileCases, kInt8H200M8TileCases, kInt8M8TileCases));
+  CheckUnreportedDeviceTiles(kInt8M8TileCases);
+}
+
+// Check the BF16 INT8 narrow tile (N = 1280 is 160 default blocks), the first aligned N above the cutoff and the
+// M = 7 / 9 fallback against the CUTLASS reference.
+TEST_F(Bf16Int8SymmetricGroupwiseTest, Int8Group32SymmetricM8NarrowTile) {
+  if (onnxruntime::llm::common::getSMVersion() < 80) {
+    GTEST_SKIP() << "BF16 INT8 GEMV requires SM 80 or later";
+  }
+  CheckGemvTiles(M8TileCasesForDevice(kInt8A100M8TileCases, kInt8H200M8TileCases, kInt8M8TileCases));
+  CheckUnreportedDeviceTiles(kInt8M8TileCases);
+}
+
+// The opt-in wave-aware tile follows the device the caller reports in Params, so the RTX 5090 policy (sm_12x, 170 SMs)
+// is checked on any GPU: the kernels run on this device and only the reported device differs. N = 10240 is 640
+// default blocks on that device's 510 slots, so wave-aware picks the narrow tile where the grid.y cutoff alone
+// keeps the default tile.
+TEST_F(Fp16Int4SymmetricGroupwiseTest, Int4Group32WaveAwareTileFollowsReportedDevice) {
+  if (onnxruntime::llm::common::getSMVersion() < kMinSupportedSm) {
+    GTEST_SKIP() << "FP16 INT4 GEMV requires SM " << kMinSupportedSm << " or later";
+  }
+  constexpr int kRtx5090Sm = 120;
+  constexpr int kRtx5090SmCount = 170;
+  auto report = [](int sm, int sm_count, bool wave_aware) {
+    return [=](wo::Params& params) {
+      params.device_sm = sm;
+      params.device_sm_count = sm_count;
+      params.wave_aware = wave_aware;
+    };
+  };
+  for (const auto& [m, n, expected_cta_n] : std::vector<std::tuple<int, int, int>>{
+           {8, 5120, 2}, {8, 6144, 4}, {8, 10240, 2}, {7, 10240, 4}, {9, 10240, 4}}) {
+    SCOPED_TRACE(testing::Message() << "M=" << m << " N=" << n);
+    InitBuffers(m, n, 4096, 32);
+    EXPECT_EQ(LaunchCtaN(report(kRtx5090Sm, kRtx5090SmCount, true)), expected_cta_n);
+  }
+
+  InitBuffers(8, 10240, 4096, 32);
+  EXPECT_EQ(LaunchCtaN(report(kRtx5090Sm, kRtx5090SmCount, false)), 4);  // opt-in off
+  EXPECT_EQ(LaunchCtaN(report(0, 0, true)), 4);                          // device not reported
+  EXPECT_EQ(LaunchCtaN(report(kRtx5090Sm, 0, true)), 4);                 // SM count not reported
+  EXPECT_EQ(LaunchCtaN(report(80, 108, true)), 4);                       // A100 is not sm_12x
+  EXPECT_TRUE(M8MatchesTwoM4Launches(report(kRtx5090Sm, kRtx5090SmCount, true)));
 }
 
 // Check default dispatch and every legal geometry around the two-column grid.y limit.

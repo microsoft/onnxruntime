@@ -18,6 +18,7 @@
 #pragma push_macro("ORT_EP_API_ADAPTER_HEADER_INCLUDED")
 #undef ORT_EP_API_ADAPTER_HEADER_INCLUDED
 #define ORT_EP_API_ADAPTER_HEADER_INCLUDED
+#include "ep/adapter/allocator.h"
 #include "ep/adapter/kernel_def_builder.h"
 #include "ep/adapter/tensor_helper.h"
 #pragma pop_macro("ORT_EP_API_ADAPTER_HEADER_INCLUDED")
@@ -83,6 +84,74 @@ TEST(OrtEpLibrary, GetTensorDataTypeUsesOrtElementTypes) {
   EXPECT_EQ(status.GetErrorCode(), ORT_NOT_IMPLEMENTED);
   EXPECT_EQ(data_type, nullptr);
 #endif
+}
+
+namespace {
+struct MemoryInfoOnlyOrtAllocator : OrtAllocator {
+  explicit MemoryInfoOnlyOrtAllocator(const OrtMemoryInfo* memory_info) : OrtAllocator{}, memory_info_{memory_info} {
+    version = ORT_API_VERSION;
+    Alloc = AllocImpl;
+    Free = FreeImpl;
+    Info = InfoImpl;
+  }
+
+  static void* ORT_API_CALL AllocImpl(OrtAllocator* /*this_ptr*/, size_t /*size*/) noexcept { return nullptr; }
+  static void ORT_API_CALL FreeImpl(OrtAllocator* /*this_ptr*/, void* /*p*/) noexcept {}
+  static const OrtMemoryInfo* ORT_API_CALL InfoImpl(const OrtAllocator* this_ptr) noexcept {
+    return static_cast<const MemoryInfoOnlyOrtAllocator*>(this_ptr)->memory_info_;
+  }
+
+  const OrtMemoryInfo* memory_info_;
+};
+}  // namespace
+
+// The allocator adapter must rebuild OrtMemoryInfo through the C API instead of copying the opaque struct, whose
+// layout can differ between ORT and a plugin EP built with different STL settings.
+TEST(OrtEpLibrary, AllocatorAdapterRebuildsMemoryInfoFromApi) {
+  // The C API does not expose alignment, so a non-zero alignment distinguishes a rebuild from a struct copy.
+  const Ort::MemoryInfo api_memory_info{"AdapterTestAllocator", OrtMemoryInfoDeviceType_GPU, 0x1234, 3,
+                                        OrtDeviceMemoryType_HOST_ACCESSIBLE, 64, OrtReadOnlyAllocator};
+  MemoryInfoOnlyOrtAllocator ort_allocator{api_memory_info};
+
+  ep::adapter::IAllocatorWrappingOrtAllocator allocator{&ort_allocator};
+  const OrtMemoryInfo& info = allocator.Info();
+  EXPECT_EQ(info.name, "AdapterTestAllocator");
+  EXPECT_EQ(info.alloc_type, OrtReadOnlyAllocator);
+  EXPECT_EQ(info.mem_type, OrtMemTypeCPU);
+  EXPECT_EQ(info.device.Type(), OrtDevice::GPU);
+  EXPECT_EQ(info.device.MemType(), OrtDevice::MemType::HOST_ACCESSIBLE);
+  EXPECT_EQ(info.device.Vendor(), 0x1234u);
+  EXPECT_EQ(info.device.Id(), 3);
+  EXPECT_EQ(info.device.GetAlignment(), 0u);
+  const auto& source_info = *static_cast<const OrtMemoryInfo*>(api_memory_info);
+  EXPECT_TRUE(info.device.EqualIgnoringAlignment(source_info.device));
+  EXPECT_EQ(info.name, source_info.name);
+  EXPECT_EQ(info.mem_type, source_info.mem_type);
+  EXPECT_EQ(info.alloc_type, source_info.alloc_type);
+}
+
+// An EP-local OrtMemoryInfo returned to ORT (e.g. from OrtAllocator::Info) must be recreated through the C API.
+TEST(OrtEpLibrary, AdapterCreatesApiMemoryInfoFromEpLocalInfo) {
+  const OrtMemoryInfo ep_infos[] = {
+      {"AdapterDeviceAllocator", OrtDeviceAllocator,
+       OrtDevice{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0x10DE, 2, 256}, OrtMemTypeDefault},
+      {"AdapterHostAllocator", OrtReadOnlyAllocator,
+       OrtDevice{OrtDevice::NPU, OrtDevice::MemType::HOST_ACCESSIBLE, 0x1234, 1, 64}, OrtMemTypeCPU},
+  };
+  for (const auto& ep_info : ep_infos) {
+    SCOPED_TRACE(ep_info.ToString());
+    Ort::MemoryInfo api_info = ep::adapter::CreateApiMemoryInfo(ep_info);
+    ASSERT_NE(static_cast<const OrtMemoryInfo*>(api_info), nullptr);
+    EXPECT_NE(static_cast<const OrtMemoryInfo*>(api_info), &ep_info);
+    EXPECT_EQ(api_info.GetAllocatorName(), ep_info.name);
+    EXPECT_EQ(api_info.GetAllocatorType(), ep_info.alloc_type);
+    EXPECT_EQ(api_info.GetMemoryType(), ep_info.mem_type);
+    EXPECT_EQ(api_info.GetDeviceType(), static_cast<OrtMemoryInfoDeviceType>(ep_info.device.Type()));
+    EXPECT_EQ(api_info.GetDeviceMemoryType(), static_cast<OrtDeviceMemoryType>(ep_info.device.MemType()));
+    EXPECT_EQ(api_info.GetVendorId(), ep_info.device.Vendor());
+    EXPECT_EQ(api_info.GetDeviceId(), ep_info.device.Id());
+    EXPECT_TRUE(*static_cast<const OrtMemoryInfo*>(api_info) == ep_info);
+  }
 }
 
 TEST(OrtEpLibrary, RegisterMissingPluginLibrary) {

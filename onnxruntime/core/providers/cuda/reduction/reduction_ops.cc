@@ -527,9 +527,10 @@ Status ReduceComputeCore(const AllocatorPtr& gpu_allocator, const CudaKernel* ke
   cudnnDataType_t cudnn_type_X = CUDNN_DATA_FLOAT;
 
   // Reducesum with BFP16 is not supported by cudnn, so convert input to fp32 then call cudnn
-  if ((ReduceTensorIndices == CUDNN_REDUCE_TENSOR_FLATTENED_INDICES && std::is_same<T, MLFloat16>::value) ||
+  if ((ReduceTensorIndices == CUDNN_REDUCE_TENSOR_FLATTENED_INDICES &&
+       (std::is_same<T, MLFloat16>::value || std::is_same<T, BFloat16>::value)) ||
       (ReduceTensorIndices == CUDNN_REDUCE_TENSOR_NO_INDICES && std::is_same<T, BFloat16>::value)) {
-    // ArgMax/ArgMin with FP16 are not supported by cudnn, so convert input to fp32 then call cudnn
+    // ArgMax/ArgMin with FP16/BF16 are not supported by cudnn, so convert input to fp32 then call cudnn
     temp_X = AllocateScratchBuffer<float>(gpu_allocator, kernel, input_count, compute_stream);
     Impl_Cast<CudaT, float>(stream, reinterpret_cast<const CudaT*>(input.Data<T>()), temp_X.get(), input_shape.Size());
   } else {
@@ -1031,10 +1032,12 @@ template std::unique_ptr<Tensor> ReduceCompute<MLFloat16, CUDNN_REDUCE_TENSOR_NO
 REGISTER_KERNEL_ARGMIN_OR_ARGMAX(ArgMax, MLFloat16)
 REGISTER_KERNEL_ARGMIN_OR_ARGMAX(ArgMax, float)
 REGISTER_KERNEL_ARGMIN_OR_ARGMAX(ArgMax, double)
+REGISTER_KERNEL_VERSIONED_SINCE_TYPED(ArgMax, BFloat16, 13)
 
 REGISTER_KERNEL_ARGMIN_OR_ARGMAX(ArgMin, MLFloat16)
 REGISTER_KERNEL_ARGMIN_OR_ARGMAX(ArgMin, float)
 REGISTER_KERNEL_ARGMIN_OR_ARGMAX(ArgMin, double)
+REGISTER_KERNEL_VERSIONED_SINCE_TYPED(ArgMin, BFloat16, 13)
 
 REGISTER_KERNEL_VERSIONED_RANGE_TYPED(ReduceMax, MLFloat16, 1, 17)
 REGISTER_KERNEL_VERSIONED_RANGE_TYPED(ReduceMax, float, 1, 17)

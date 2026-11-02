@@ -25,6 +25,12 @@ class CausalConvWithState final : public onnxruntime::cuda::CudaKernel {
   std::string activation_;
   // Leading (axis-0) extent of past_state / present_state; 0 means no window axis (single state).
   int state_window_;
+  int input_channels_;
+  int input_channel_offset_;
+  int state_length_;
+  int state_channels_last_;
+  int state_update_capacity_;
+  bool has_state_update_output_;
 };
 
 }  // namespace cuda

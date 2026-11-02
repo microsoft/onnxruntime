@@ -405,7 +405,8 @@ bool MatMulNBitsKey::operator==(const MatMulNBitsKey& o) const {
          bits == o.bits && block_size == o.block_size &&
          has_zero_points == o.has_zero_points && zero_point_dtype == o.zero_point_dtype &&
          gemv_enabled == o.gemv_enabled && has_bias == o.has_bias && packing_sm == o.packing_sm &&
-         paired_gemv_mode == o.paired_gemv_mode && wave_aware_gemv == o.wave_aware_gemv;
+         paired_gemv_mode == o.paired_gemv_mode && wave_aware_gemv == o.wave_aware_gemv &&
+         tensor_core_gemv == o.tensor_core_gemv;
 }
 
 std::size_t MatMulNBitsKeyHash::operator()(const MatMulNBitsKey& k) const {
@@ -425,6 +426,7 @@ std::size_t MatMulNBitsKeyHash::operator()(const MatMulNBitsKey& k) const {
   mix(std::hash<int>{}(k.packing_sm));
   mix(std::hash<int>{}(k.paired_gemv_mode));
   mix(std::hash<bool>{}(k.wave_aware_gemv));
+  mix(std::hash<bool>{}(k.tensor_core_gemv));
   return h;
 }
 
@@ -435,7 +437,7 @@ const std::vector<std::string>& MatMulNBitsColumnNames() {
   static const std::vector<std::string> names = {
       "n_16b", "k", "activation_dtype", "weight_type", "bits",
       "block_size", "has_zero_points", "zero_point_dtype", "gemv_enabled", "has_bias", "packing_sm",
-      "paired_gemv_mode", "wave_aware_gemv",
+      "paired_gemv_mode", "wave_aware_gemv", "tensor_core_gemv",
       "m_bucket", "valid_config", "sm_version", "tile80", "tile90", "tile100", "tile120",
       "split_k_style", "split_k", "stages", "cluster", "mainloop", "epilogue", "tma",
       "enable_cuda_kernel", "cuda_kernel_variant"};
@@ -651,6 +653,9 @@ onnxruntime::common::Status MatMulNBitsTacticCache::Load(std::istream& in) {
       continue;
     }
     key.wave_aware_gemv = wave_aware != 0;
+    int tensor_core = 0;
+    if (!ParseInt(field("tensor_core_gemv"), tensor_core) || (tensor_core != 0 && tensor_core != 1)) continue;
+    key.tensor_core_gemv = tensor_core != 0;
 
     int m_bucket = 0;
     if (!ParseInt(field("m_bucket"), m_bucket)) {
@@ -775,6 +780,7 @@ onnxruntime::common::Status MatMulNBitsTacticCache::WriteAllLocked(
         row.emplace_back(std::to_string(key.packing_sm));
         row.emplace_back(std::to_string(key.paired_gemv_mode));
         row.emplace_back(key.wave_aware_gemv ? "1" : "0");
+        row.emplace_back(key.tensor_core_gemv ? "1" : "0");
         row.emplace_back(std::to_string(m_bucket));
         AppendConfigColumns(row, cfg);
         out << JoinTabs(row) << '\n';

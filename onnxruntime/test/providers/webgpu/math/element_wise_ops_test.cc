@@ -17,6 +17,7 @@
 
 #ifdef USE_WEBGPU
 #include "core/providers/webgpu/math/binary_elementwise_broadcast_utils.h"
+#include "core/providers/webgpu/webgpu_provider_options.h"
 #endif
 
 namespace onnxruntime {
@@ -209,6 +210,170 @@ TEST(MathOpTest, Pow_BroadcastBase_Float16_WebGpu) {
   TestPowBroadcast<MLFloat16, MLFloat16>({2, 1}, MakeMLFloat16({-2.0f, 3.0f}),
                                          {2, 4}, MakeMLFloat16({0.0f, 1.0f, 2.0f, 3.0f, 0.0f, 1.0f, 2.0f, 3.0f}),
                                          {2, 4}, MakeMLFloat16({1.0f, -2.0f, 4.0f, -8.0f, 1.0f, 3.0f, 9.0f, 27.0f}));
+}
+
+namespace {
+// Pow with an int64 exponent, on a WebGPU EP with int64 enabled (as WebNN configures it). WebNN lowers
+// reduceSumSquare over no axes (including any 0-D input) to Pow(x, int64 2).
+template <typename Base>
+void TestPowInt64Exponent(const std::vector<int64_t>& base_shape, const std::vector<Base>& base,
+                          const std::vector<int64_t>& exponent_shape, const std::vector<int64_t>& exponent,
+                          const std::vector<int64_t>& output_shape, const std::vector<Base>& expected) {
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto webgpu_ep = WebGpuExecutionProviderWithOptions(config_options);
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU execution provider is not enabled in this build.";
+  }
+  SessionOptions options;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+
+  OpTester test("Pow", 15);
+  test.AddInput<Base>("X", base_shape, base);
+  test.AddInput<int64_t>("Y", exponent_shape, exponent, /*is_initializer=*/true);
+  test.AddOutput<Base>("Z", output_shape, expected);
+  test.Config(options).ConfigEp(std::move(webgpu_ep)).RunWithConfig();
+}
+}  // namespace
+
+TEST(MathOpTest, Pow_Int64Exponent_WebGpu) {
+  TestPowInt64Exponent<float>({}, {-3.5f}, {}, {2}, {}, {12.25f});
+  TestPowInt64Exponent<float>({2, 3}, {-3.0f, -1.5f, 0.0f, 0.5f, 2.0f, 4.0f}, {}, {2}, {2, 3},
+                              {9.0f, 2.25f, 0.0f, 0.25f, 4.0f, 16.0f});
+  TestPowInt64Exponent<float>({2, 4}, {-2.0f, -1.0f, 0.0f, 2.0f, -3.0f, -2.0f, 1.0f, 3.0f}, {2, 1}, {3, 2}, {2, 4},
+                              {-8.0f, -1.0f, 0.0f, 8.0f, 9.0f, 4.0f, 1.0f, 9.0f});
+  TestPowInt64Exponent<MLFloat16>({5}, MakeMLFloat16({-3.0f, -1.5f, 0.0f, 0.5f, 2.0f}), {}, {2}, {5},
+                                  MakeMLFloat16({9.0f, 2.25f, 0.0f, 0.25f, 4.0f}));
+}
+
+namespace {
+// 2^24 + 1 is the smallest odd integer f32 cannot represent: it rounds to the even 2^24, so a parity
+// taken after the f32 conversion gives Pow(-1, 2^24 + 1) = 1 instead of -1.
+constexpr int32_t kOddAboveF32Precision = (1 << 24) + 1;
+constexpr int32_t kEvenAboveF32Precision = 1 << 24;
+}  // namespace
+
+// int32 exponents take the vec4 shader paths (scalar-exponent broadcast and element-wise).
+TEST(MathOpTest, Pow_Int32ExponentParity_WebGpu) {
+  for (int32_t exponent : {kOddAboveF32Precision, -kOddAboveF32Precision}) {
+    SCOPED_TRACE(exponent);
+    TestPowBroadcast<float, int32_t>({2, 3}, std::vector<float>(6, -1.0f), {}, {exponent}, {2, 3},
+                                     std::vector<float>(6, -1.0f));
+  }
+  TestPowBroadcast<float, int32_t>(
+      {2, 3}, std::vector<float>(6, -1.0f), {2, 3},
+      {kOddAboveF32Precision, -kOddAboveF32Precision, kEvenAboveF32Precision, -kEvenAboveF32Precision, 1, 2},
+      {2, 3}, {-1.0f, -1.0f, 1.0f, 1.0f, -1.0f, 1.0f});
+}
+
+// int64 exponents take the per-element (component 1) shader paths.
+TEST(MathOpTest, Pow_Int64ExponentParity_WebGpu) {
+  for (int32_t exponent : {kOddAboveF32Precision, -kOddAboveF32Precision}) {
+    SCOPED_TRACE(exponent);
+    TestPowInt64Exponent<float>({2, 3}, std::vector<float>(6, -1.0f), {}, {exponent}, {2, 3},
+                                std::vector<float>(6, -1.0f));
+  }
+  TestPowInt64Exponent<float>(
+      {2, 3}, std::vector<float>(6, -1.0f), {2, 3},
+      {kOddAboveF32Precision, -kOddAboveF32Precision, kEvenAboveF32Precision, -kEvenAboveF32Precision, 1, 2},
+      {2, 3}, {-1.0f, -1.0f, 1.0f, 1.0f, -1.0f, 1.0f});
+}
+
+namespace {
+// Runs a bool binary op (And/Or/Xor) on WebGPU only, with CPU fallback disabled so a missing
+// kernel fails the test. Expected values are computed on the host with NumPy-style broadcasting.
+void RunLogicalBinaryWebGpu(const char* op_type, bool (*fn)(bool, bool),
+                            const std::vector<int64_t>& a_shape, const std::vector<int64_t>& b_shape) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU execution provider is not enabled in this build.";
+  }
+
+  const size_t rank = std::max(a_shape.size(), b_shape.size());
+  const auto padded = [rank](const std::vector<int64_t>& shape) {
+    std::vector<int64_t> result(rank - shape.size(), 1);
+    result.insert(result.end(), shape.begin(), shape.end());
+    return result;
+  };
+  const std::vector<int64_t> a_dims = padded(a_shape);
+  const std::vector<int64_t> b_dims = padded(b_shape);
+  std::vector<int64_t> out_shape(rank);
+  for (size_t i = 0; i < rank; ++i) {
+    out_shape[i] = std::max(a_dims[i], b_dims[i]);
+  }
+
+  const auto size_of = [](const std::vector<int64_t>& shape) {
+    int64_t size = 1;
+    for (auto d : shape) size *= d;
+    return static_cast<size_t>(size);
+  };
+  const size_t a_size = size_of(a_shape);
+  const size_t b_size = size_of(b_shape);
+  const size_t out_size = size_of(out_shape);
+
+  auto a_values = std::make_unique<bool[]>(a_size);
+  auto b_values = std::make_unique<bool[]>(b_size);
+  auto expected = std::make_unique<bool[]>(out_size);
+  for (size_t i = 0; i < a_size; ++i) a_values[i] = (i % 2) == 1;
+  for (size_t i = 0; i < b_size; ++i) b_values[i] = (i % 3) != 0;
+
+  for (size_t out_idx = 0; out_idx < out_size; ++out_idx) {
+    size_t remaining = out_idx;
+    size_t a_offset = 0, b_offset = 0, a_stride = 1, b_stride = 1;
+    for (size_t d = rank; d-- > 0;) {
+      const size_t coord = remaining % static_cast<size_t>(out_shape[d]);
+      remaining /= static_cast<size_t>(out_shape[d]);
+      if (a_dims[d] != 1) a_offset += coord * a_stride;
+      if (b_dims[d] != 1) b_offset += coord * b_stride;
+      a_stride *= static_cast<size_t>(a_dims[d]);
+      b_stride *= static_cast<size_t>(b_dims[d]);
+    }
+    expected[out_idx] = fn(a_values[a_offset], b_values[b_offset]);
+  }
+
+  OpTester test(op_type, 7);
+  test.AddInput<bool>("A", a_shape, a_values.get(), a_size);
+  test.AddInput<bool>("B", b_shape, b_values.get(), b_size);
+  test.AddOutput<bool>("C", out_shape, expected.get(), out_size);
+  SessionOptions options;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  test.Config(options).ConfigEp(std::move(webgpu_ep)).RunWithConfig();
+}
+
+// Shape pairs covering every BinaryElementwiseProgram mode for Boolx4 operands: scalar operands,
+// same-shape element-wise with a partial trailing vec4, non-vectorized broadcast (including the
+// 4-D to 5-D broadcast WebNN conformance tests use), and both vectorized broadcast sub-paths.
+const std::vector<std::pair<std::vector<int64_t>, std::vector<int64_t>>> kLogicalBinaryShapes = {
+    {{}, {}},
+    {{}, {2, 2, 2, 3}},
+    {{2, 3}, {}},
+    {{1, 2, 3, 1, 3}, {1, 2, 3, 1, 3}},
+    {{2, 1, 3, 1}, {1, 2, 2, 3, 5}},
+    {{1, 2, 2, 3, 5}, {2, 1, 3, 1}},
+    {{2, 3, 1}, {1, 1, 4}},
+    {{3, 4}, {2, 3, 4}},
+};
+}  // namespace
+
+TEST(MathOpTest, And_Broadcast_WebGpu) {
+  for (const auto& [a_shape, b_shape] : kLogicalBinaryShapes) {
+    SCOPED_TRACE(::testing::Message() << "A rank " << a_shape.size() << ", B rank " << b_shape.size());
+    RunLogicalBinaryWebGpu("And", [](bool a, bool b) { return a && b; }, a_shape, b_shape);
+  }
+}
+
+TEST(MathOpTest, Or_Broadcast_WebGpu) {
+  for (const auto& [a_shape, b_shape] : kLogicalBinaryShapes) {
+    SCOPED_TRACE(::testing::Message() << "A rank " << a_shape.size() << ", B rank " << b_shape.size());
+    RunLogicalBinaryWebGpu("Or", [](bool a, bool b) { return a || b; }, a_shape, b_shape);
+  }
+}
+
+TEST(MathOpTest, Xor_Broadcast_WebGpu) {
+  for (const auto& [a_shape, b_shape] : kLogicalBinaryShapes) {
+    SCOPED_TRACE(::testing::Message() << "A rank " << a_shape.size() << ", B rank " << b_shape.size());
+    RunLogicalBinaryWebGpu("Xor", [](bool a, bool b) { return a != b; }, a_shape, b_shape);
+  }
 }
 
 // WebGPU EP currently handles a special case for supporting Pow op:
