@@ -1,21 +1,32 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#define ORT_API_MANUAL_INIT
-#include "onnxruntime_cxx_api.h"
-#undef ORT_API_MANUAL_INIT
-
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <memory>
 
+#include "ep/api.h"
+
 #include "core/platform/env_var.h"
 #include "core/providers/webgpu/ep/factory.h"
+#include "core/providers/webgpu/ep/runtime_compatibility.h"
 #include "core/session/onnxruntime_env_config_keys.h"
 
-// To make symbols visible on macOS/iOS
-#ifdef __APPLE__
+// When this EP is statically linked into the host binary instead of being built as a separate shared library, the
+// entry points below are given a `WebGpu_` prefix.
+//
+// The shared library build must leave the entry points unprefixed, because they are resolved by exact name.
+#if defined(ORT_PLUGIN_EP_STATICALLY_LINKED)
+#define ORT_PLUGIN_EP_ENTRY_POINT_CONCAT_IMPL(prefix, name) prefix##name
+#define ORT_PLUGIN_EP_ENTRY_POINT_CONCAT(prefix, name) ORT_PLUGIN_EP_ENTRY_POINT_CONCAT_IMPL(prefix, name)
+#define ORT_PLUGIN_EP_ENTRY_POINT(name) ORT_PLUGIN_EP_ENTRY_POINT_CONCAT(WebGpu_, name)
+#else
+#define ORT_PLUGIN_EP_ENTRY_POINT(name) name
+#endif
+
+// To make symbols visible on macOS/iOS. Only needed when this EP is built as a separate shared library.
+#if defined(__APPLE__) && !defined(ORT_PLUGIN_EP_STATICALLY_LINKED)
 #define EXPORT_SYMBOL __attribute__((visibility("default")))
 #else
 #define EXPORT_SYMBOL
@@ -28,11 +39,13 @@ void CleanupKernelRegistries();
 }  // namespace webgpu
 }  // namespace onnxruntime
 
+#if !defined(ORT_PLUGIN_EP_STATICALLY_LINKED)
 namespace google {
 namespace protobuf {
 void ShutdownProtobufLibrary();
 }  // namespace protobuf
 }  // namespace google
+#endif
 
 namespace {
 // Set to "1" to allow WebGPU to be advertised against a CPU hardware device when no GPU hardware device is available.
@@ -43,9 +56,10 @@ extern "C" {
 //
 // Public symbols
 //
-EXPORT_SYMBOL OrtStatus* CreateEpFactories(const char* /*registration_name*/, const OrtApiBase* ort_api_base,
-                                           const OrtLogger* default_logger,
-                                           OrtEpFactory** factories, size_t max_factories, size_t* num_factories) noexcept {
+EXPORT_SYMBOL OrtStatus* ORT_PLUGIN_EP_ENTRY_POINT(CreateEpFactories)(
+    const char* /*registration_name*/, const OrtApiBase* ort_api_base,
+    const OrtLogger* default_logger,
+    OrtEpFactory** factories, size_t max_factories, size_t* num_factories) noexcept {
   {
     // Note: We can't use the EXCEPTION_TO_RETURNED_STATUS_BEGIN/EXCEPTION_TO_RETURNED_STATUS_END macros around the
     // call to `onnxruntime::ep::ApiInit()` because they depend on the API to create `OrtStatus`. We need to create an
@@ -99,6 +113,11 @@ EXPORT_SYMBOL OrtStatus* CreateEpFactories(const char* /*registration_name*/, co
   // Initialize the global default logger
   ::onnxruntime::ep::adapter::LoggingManager::CreateDefaultLogger(default_logger);
 
+  if (onnxruntime::webgpu::ep::UseSerializedExecutionMode()) {
+    LOGS_DEFAULT(INFO) << "WebGPU EP uses serialized compatibility mode. Serialize all WebGPU operations on the same device. "
+                          "Upgrade to the latest ONNX Runtime for concurrent Session execution.";
+  }
+
   if (factory_config.allow_software_adapter) {
     LOGS_DEFAULT(WARNING) << kAllowSoftwareAdapterEnvironmentVariable
                           << "=1: WebGPU EP may use a CPU hardware device to make the WebGPU EP selectable as an ORT "
@@ -117,7 +136,7 @@ EXPORT_SYMBOL OrtStatus* CreateEpFactories(const char* /*registration_name*/, co
   EXCEPTION_TO_RETURNED_STATUS_END
 }
 
-EXPORT_SYMBOL OrtStatus* ReleaseEpFactory(OrtEpFactory* factory) noexcept {
+EXPORT_SYMBOL OrtStatus* ORT_PLUGIN_EP_ENTRY_POINT(ReleaseEpFactory)(OrtEpFactory* factory) noexcept {
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
   // STEP.1 - Release the factory
   delete static_cast<onnxruntime::webgpu::ep::Factory*>(factory);
@@ -131,8 +150,12 @@ EXPORT_SYMBOL OrtStatus* ReleaseEpFactory(OrtEpFactory* factory) noexcept {
   // STEP.4 - Destroy the global default logger wrapper
   ::onnxruntime::ep::adapter::LoggingManager::DestroyDefaultLogger();
 
-  // STEP.5 - Shutdown protobuf library
+#if !defined(ORT_PLUGIN_EP_STATICALLY_LINKED)
+  // STEP.5 - Shutdown protobuf library.
+  // Only do this when this EP owns the process-global state, i.e. when it is built as a separate library.
+  // When statically linked into the host binary, protobuf is shared with the host, which owns its lifetime.
   google::protobuf::ShutdownProtobufLibrary();
+#endif
 
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END

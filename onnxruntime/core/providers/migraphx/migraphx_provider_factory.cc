@@ -204,7 +204,11 @@ struct MigraphXEpFactory : OrtEpFactory {
                     const char* ep_name,
                     OrtHardwareDeviceType hw_type,
                     const OrtLogger& default_logger_in)
-      : ort_api{ort_api_in}, default_logger{default_logger_in}, ep_name{ep_name}, ort_hw_device_type{hw_type} {
+      : OrtEpFactory{},
+        ort_api{ort_api_in},
+        default_logger{default_logger_in},
+        ep_name{ep_name},
+        ort_hw_device_type{hw_type} {
     ort_version_supported = ORT_API_VERSION;  // set to the ORT version we were compiled with
     GetName = GetNameImpl;
     GetVendor = GetVendorImpl;

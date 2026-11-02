@@ -367,6 +367,49 @@ TEST(SignalOpsTest, STFTDoubleComplexInputBatched) {
   TestSTFTComplexInputBatched<double>();
 }
 
+template <typename T>
+static void TestSTFTComplexInputWithWindow(bool use_radix2) {
+  OpTester test("STFT", kMinOpsetVersion);
+  test.AddAttribute<int64_t>("onesided", static_cast<int64_t>(false));
+
+  const int64_t frame_length = use_radix2 ? 4 : 3;
+  vector<T> signal(static_cast<size_t>(frame_length) * 2, static_cast<T>(1));
+  test.AddInput<T>("signal", {1, frame_length, 2}, signal);
+  test.AddInput<int64_t>("frame_step", {}, {frame_length});
+
+  vector<T> window(static_cast<size_t>(frame_length));
+  for (int64_t i = 0; i < frame_length; ++i) {
+    window[static_cast<size_t>(i)] = static_cast<T>(i + 1);
+  }
+  test.AddInput<T>("window", {frame_length}, window);
+  test.AddInput<int64_t>("frame_length", {}, {frame_length});
+
+  const vector<T> expected_output = use_radix2
+                                        ? vector<T>{10, 10, -4, 0, -2, -2, 0, -4}
+                                        : vector<T>{6, 6, static_cast<T>(-2.3660254), static_cast<T>(-0.6339746),
+                                                    static_cast<T>(-0.6339746), static_cast<T>(-2.3660254)};
+  test.AddOutput<T>("output", {1, 1, frame_length, 2}, expected_output);
+  test.SetOutputAbsErr("output", 0.0001f);
+  test.ConfigExcludeEps({kDmlExecutionProvider});
+  test.RunWithConfig();
+}
+
+TEST(SignalOpsTest, STFTFloatComplexInputWithWindowRadix2) {
+  TestSTFTComplexInputWithWindow<float>(true);
+}
+
+TEST(SignalOpsTest, STFTDoubleComplexInputWithWindowRadix2) {
+  TestSTFTComplexInputWithWindow<double>(true);
+}
+
+TEST(SignalOpsTest, STFTFloatComplexInputWithWindowBluestein) {
+  TestSTFTComplexInputWithWindow<float>(false);
+}
+
+TEST(SignalOpsTest, STFTDoubleComplexInputWithWindowBluestein) {
+  TestSTFTComplexInputWithWindow<double>(false);
+}
+
 TEST(SignalOpsTest, HannWindowFloat) {
   OpTester test("HannWindow", kMinOpsetVersion);
 

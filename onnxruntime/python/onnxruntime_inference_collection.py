@@ -700,58 +700,22 @@ class InferenceSession(Session):
     def _create_inference_session(self, providers, provider_options, disabled_optimizers=None):
         available_providers = C.get_available_providers()
 
-        # Validate that TensorrtExecutionProvider and NvTensorRTRTXExecutionProvider are not both specified
-        if providers:
-            has_tensorrt = any(
-                provider == "TensorrtExecutionProvider"
-                or (isinstance(provider, tuple) and provider[0] == "TensorrtExecutionProvider")
-                for provider in providers
+        provider_names = [provider[0] if isinstance(provider, tuple) else provider for provider in providers or []]
+        has_tensorrt = "TensorrtExecutionProvider" in provider_names
+        # NvTensorRTRTXExecutionProvider is only available as a plugin EP registered by the application.
+        has_tensorrt_rtx = "NvTensorRTRTXExecutionProvider" in provider_names
+        if has_tensorrt and has_tensorrt_rtx:
+            raise ValueError(
+                "Cannot enable both 'TensorrtExecutionProvider' and 'NvTensorRTRTXExecutionProvider' "
+                "in the same session."
             )
-            has_tensorrt_rtx = any(
-                provider == "NvTensorRTRTXExecutionProvider"
-                or (isinstance(provider, tuple) and provider[0] == "NvTensorRTRTXExecutionProvider")
-                for provider in providers
-            )
-            if has_tensorrt and has_tensorrt_rtx:
-                raise ValueError(
-                    "Cannot enable both 'TensorrtExecutionProvider' and 'NvTensorRTRTXExecutionProvider' "
-                    "in the same session."
-                )
-        # Tensorrt and TensorRT RTX can fall back to CUDA if it's explicitly assigned. All others fall back to CPU.
-        if "NvTensorRTRTXExecutionProvider" in available_providers:
-            if (
-                providers
-                and any(
-                    provider == "CUDAExecutionProvider"
-                    or (isinstance(provider, tuple) and provider[0] == "CUDAExecutionProvider")
-                    for provider in providers
-                )
-                and any(
-                    provider == "NvTensorRTRTXExecutionProvider"
-                    or (isinstance(provider, tuple) and provider[0] == "NvTensorRTRTXExecutionProvider")
-                    for provider in providers
-                )
-            ):
-                self._fallback_providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
-            else:
-                self._fallback_providers = ["CPUExecutionProvider"]
-        elif "TensorrtExecutionProvider" in available_providers:
-            if (
-                providers
-                and any(
-                    provider == "CUDAExecutionProvider"
-                    or (isinstance(provider, tuple) and provider[0] == "CUDAExecutionProvider")
-                    for provider in providers
-                )
-                and any(
-                    provider == "TensorrtExecutionProvider"
-                    or (isinstance(provider, tuple) and provider[0] == "TensorrtExecutionProvider")
-                    for provider in providers
-                )
-            ):
-                self._fallback_providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
-            else:
-                self._fallback_providers = ["CPUExecutionProvider"]
+
+        # TensorRT and TensorRT RTX can fall back to CUDA if it's explicitly assigned. All others fall back to CPU.
+        if "CUDAExecutionProvider" in provider_names and any(
+            name in provider_names and name in available_providers
+            for name in ("TensorrtExecutionProvider", "NvTensorRTRTXExecutionProvider")
+        ):
+            self._fallback_providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
         else:
             self._fallback_providers = ["CPUExecutionProvider"]
 
@@ -847,15 +811,6 @@ class InferenceSession(Session):
                 and providers[i][0] == "TensorrtExecutionProvider"
             ):
                 C.register_tensorrt_plugins_as_custom_ops(session_options, providers[i][1])
-
-            if providers[i] in available_providers and providers[i] == "NvTensorRTRTXExecutionProvider":
-                C.register_nv_tensorrt_rtx_plugins_as_custom_ops(session_options, provider_options[i])
-            elif (
-                isinstance(providers[i], tuple)
-                and providers[i][0] in available_providers
-                and providers[i][0] == "NvTensorrtRTXExecutionProvider"
-            ):
-                C.register_nv_tensorrt_rtx_plugins_as_custom_ops(session_options, providers[i][1])
 
 
 def make_get_initializer_location_func_wrapper(
@@ -1029,6 +984,21 @@ class ModelCompiler:
                 raise TypeError(f"Output model's filepath is of unexpected type '{type(output_model_path)}'")
             output_model_path = os.fspath(output_model_path)
         self._model_compiler.compile_to_file(output_model_path)
+
+    def set_ep_context_data_write_func(self, write_func: Callable[[str, C.OrtEpContextData], None]) -> None:
+        """
+        Registers a callback that receives external EPContext data during compilation.
+
+        The ``OrtEpContextData`` view is valid only during the callback. Read large payloads in chunks with
+        ``data.read(offset, length)``. ORT may invoke the callback concurrently, so synchronize shared state.
+
+        :param write_func: Callback receiving the logical data name and a bounded data view.
+        """
+        self._model_compiler.set_ep_context_data_write_func(write_func)
+
+    def clear_ep_context_data_write_func(self) -> None:
+        """Clears a previously registered external EPContext data write callback."""
+        self._model_compiler.clear_ep_context_data_write_func()
 
     def compile_to_bytes(self) -> bytes:
         """
@@ -1555,6 +1525,7 @@ class OrtValue:
         :param data: A tensor object supporting the DLPack protocol, or a raw
             DLPack PyCapsule.
         :return: An OrtValue wrapping the tensor data.
+        :raises TypeError: If the object does not provide a valid DLPack capsule.
         """
         # Detect boolean dtype from the source object before consuming it,
         # because DLPack encodes bool as uint8 and the capsule alone cannot

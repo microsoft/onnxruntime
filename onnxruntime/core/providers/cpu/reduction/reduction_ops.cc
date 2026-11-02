@@ -898,6 +898,10 @@ bool check_and_reduce_empty_set_input(OpKernelContext* ctx, const gsl::span<cons
 
   gsl::span<const int64_t> shape_dims = input_shape.GetDims();
   const int64_t input_shape_size = narrow<int64_t>(shape_dims.size());
+  for (auto& axis : input_axes) {
+    axis = HandleNegativeAxis(axis, input_shape_size);
+  }
+
   TensorShapeVector output_shape_vector;
   for (int64_t i = 0; i < input_shape_size; ++i) {
     if (input_axes.empty() || std::find(input_axes.begin(), input_axes.end(), i) != input_axes.end()) {

@@ -10,6 +10,7 @@
 #include "core/optimizer/utils.h"
 #include "core/optimizer/attention_fusion_helper.h"
 #include <cmath>
+#include <limits>
 #include <optional>
 
 namespace onnxruntime {
@@ -143,14 +144,8 @@ static bool TryGetMobileClipQkvReshapeInfo(const Graph& graph, const Node& qkv_r
   num_heads = reshape_dims[3];
   head_size = reshape_dims[4];
 
-  ORT_TRY {
-    hidden_size = SafeInt<int64_t>(num_heads) * head_size;
-  }
-  ORT_CATCH(const OnnxRuntimeException&) {
-    return false;
-  }
-
-  return hidden_size > 0;
+  return SafeMultiply(num_heads, head_size, hidden_size) && hidden_size > 0 &&
+         hidden_size <= std::numeric_limits<int64_t>::max() / 3;
 }
 
 static std::optional<ONNX_NAMESPACE::TypeProto> TryCreateMobileClipMhaOutputType(const NodeArg& qkv_output,
@@ -944,6 +939,12 @@ static bool FuseSubGraphQKImpl(Node& layer_norm,
     return false;
   }
 
+  if (!optimizer_utils::CheckOutputEdges(graph, q_matmul, 1) || graph.NodeProducesGraphOutput(q_matmul) ||
+      !optimizer_utils::CheckOutputEdges(graph, q_add, 1) || graph.NodeProducesGraphOutput(q_add)) {
+    DEBUG_LOG("q projection has an external use");
+    return false;
+  }
+
   if (!AttentionFusionHelper::CheckNodesInPathQ(graph, pivot_nodes[1].get(),
                                                 q_reshape, q_transpose, num_heads, head_size, logger)) {
     DEBUG_LOG("CheckNodesInPathQ returns false");
@@ -977,6 +978,13 @@ static bool FuseSubGraphQKImpl(Node& layer_norm,
     DEBUG_LOG("k root is not layer norm");
     return false;
   }
+
+  if (!optimizer_utils::CheckOutputEdges(graph, k_matmul, 1) || graph.NodeProducesGraphOutput(k_matmul) ||
+      !optimizer_utils::CheckOutputEdges(graph, k_add, 1) || graph.NodeProducesGraphOutput(k_add)) {
+    DEBUG_LOG("k projection has an external use");
+    return false;
+  }
+
   if (!AttentionFusionHelper::CheckNodesInPathK(graph, k_reshape, k_transpose, num_heads,
                                                 head_size, /*transpose_optimized_pattern*/ false, logger)) {
     DEBUG_LOG("CheckNodesInPathK returns false");

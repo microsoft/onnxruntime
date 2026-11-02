@@ -51,6 +51,14 @@ ONNX Runtime React Native version 1.13 supports both ONNX and ORT format models,
 Previous ONNX Runtime React Native packages use the ONNX Runtime Mobile package, and support operators and types used in popular mobile models.
 See [here](https://onnxruntime.ai/docs/reference/operators/MobileOps.html) for the list of supported operators and types.
 
+### Development checks
+
+From `js/react_native`, run `npm run test:cpp` for the native option-policy tests and
+`npm --prefix e2e run test:unit` for the E2E component unit tests after installing the E2E dependencies.
+`npm run bootstrap-no-pods` runs both checks before the Android and iOS Detox tests in CI.
+The device checks exercise in-flight aborts, pre-dispatch aborts, and isolated Env-listener teardown.
+The `__testEpContextDataReadCallback` native hook and its `__testWorker` handles are internal test APIs.
+
 ### License
 
 License information can be found [here](https://github.com/microsoft/onnxruntime/blob/main/README.md#license).

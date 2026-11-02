@@ -351,7 +351,7 @@ class ORTGenerator:
         return texts
 
     def generate(self, prompt, max_length, cuda_graph_annotation):
-        encodings_dict = self.tokenizer.batch_encode_plus(prompt, padding=True)
+        encodings_dict = self.tokenizer(prompt, padding=True)
 
         return self.generate_impl(encodings_dict, max_length, cuda_graph_annotation)
 

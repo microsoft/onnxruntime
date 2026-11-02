@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cuda/bert/restore_padding.h"
 #include "contrib_ops/cuda/bert/bert_padding.h"
@@ -61,6 +62,11 @@ Status RestorePadding<T>::ComputeInternal(OpKernelContext* context) const {
   output_shape[1] = sequence_length;
   output_shape[2] = hidden_size;
   Tensor* output = context->Output(0, output_shape);
+
+  const int token_offset_count = SafeInt<int>(batch_size) * sequence_length;
+  auto validation_flag = GetScratchBuffer<int>(1, GetComputeStream(context));
+  ORT_RETURN_IF_ERROR(ValidateTokenOffset(
+      token_offset->Data<int>(), token_offset_count, validation_flag.get(), Stream(context)));
 
   typedef typename ToCudaType<T>::MappedType CudaT;
   LaunchRestorePadding<CudaT>(

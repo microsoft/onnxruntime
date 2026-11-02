@@ -2,8 +2,12 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
+#include <array>
+#include <cmath>
+#include <type_traits>
 #include "core/mlas/inc/mlas.h"
 #include "core/framework/run_options.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/common/dnnl_op_test_utils.h"
@@ -33,11 +37,13 @@ auto initialize_matrix = [](int64_t rows, int64_t cols) {
 };
 
 enum class BiasType {
-  noBias,      // No bias input
-  MBias,       // C shape is {M,1}
-  ScalarBias,  // C shape is {1,1}
-  MNBias,      // C shape is {M,N}
-  NBias        // C shape is {N}
+  noBias,          // No bias input
+  MBias,           // C shape is {M,1}
+  ScalarBias,      // C shape is {1,1}
+  MNBias,          // C shape is {M,N}
+  NBias,           // C shape is {N}
+  NBias2D,         // C shape is {1,N}
+  Rank0ScalarBias  // C shape is {}
 };
 // Helper function to initialize bias data for Gemm tests
 auto initialize_bias = [](BiasType bias_type, int64_t M, int64_t N) {
@@ -57,6 +63,10 @@ auto initialize_bias = [](BiasType bias_type, int64_t M, int64_t N) {
       shape = {1, 1};
       data.push_back(1.0f);
       break;
+    case BiasType::Rank0ScalarBias:
+      shape = {};
+      data.push_back(1.0f);
+      break;
     case BiasType::MNBias:
       shape = {M, N};
       for (int64_t i = 0; i < M * N; ++i) {
@@ -64,7 +74,8 @@ auto initialize_bias = [](BiasType bias_type, int64_t M, int64_t N) {
       }
       break;
     case BiasType::NBias:
-      shape = {N};
+    case BiasType::NBias2D:
+      shape = bias_type == BiasType::NBias ? std::vector<int64_t>{N} : std::vector<int64_t>{1, N};
       for (int64_t i = 0; i < N; ++i) {
         data.push_back(static_cast<float>((i % 7) + 1));
       }
@@ -83,10 +94,12 @@ auto get_bias_value = [](const std::vector<float>& bias_data, BiasType bias_type
     case BiasType::MBias:
       return bias_data[i];
     case BiasType::ScalarBias:
+    case BiasType::Rank0ScalarBias:
       return bias_data[0];
     case BiasType::MNBias:
       return bias_data[i * N + j];
     case BiasType::NBias:
+    case BiasType::NBias2D:
       return bias_data[j];
     default:
       return 0.0f;
@@ -94,6 +107,161 @@ auto get_bias_value = [](const std::vector<float>& bias_data, BiasType bias_type
 };
 
 }  // namespace
+
+template <typename T>
+class CudaGemmBiasBroadcastTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    constexpr int min_arch = std::is_same_v<T, BFloat16> ? 800 : (std::is_same_v<T, MLFloat16> ? 530 : 0);
+    if (!HasCudaEnvironment(min_arch)) {
+      GTEST_SKIP() << "CUDA device does not support the requested Gemm type.";
+    }
+  }
+};
+
+using CudaGemmBiasTypes = ::testing::Types<float, double, MLFloat16, BFloat16>;
+TYPED_TEST_SUITE(CudaGemmBiasBroadcastTest, CudaGemmBiasTypes);
+
+template <typename T>
+static void RunCudaGemmBiasBroadcast(int64_t m, int64_t n, int64_t k, BiasType bias_type,
+                                     bool trans_a, bool trans_b, float alpha, float beta) {
+  SCOPED_TRACE(::testing::Message() << "M=" << m << " N=" << n << " K=" << k << " bias=" << static_cast<int>(bias_type)
+                                    << " transA=" << trans_a << " transB=" << trans_b
+                                    << " alpha=" << alpha << " beta=" << beta);
+  const TensorShapeVector a_shape = trans_a ? TensorShapeVector{k, m} : TensorShapeVector{m, k};
+  const TensorShapeVector b_shape = trans_b ? TensorShapeVector{n, k} : TensorShapeVector{k, n};
+  auto [bias_data, c_shape] = initialize_bias(bias_type, m, n);
+  for (float& value : bias_data) value -= 2.5f;
+  InlinedVector<T> a, b, c, expected;
+  a.reserve(m * k);
+  b.reserve(k * n);
+  c.reserve(bias_data.size());
+  expected.reserve(m * n);
+  for (int64_t i = 0; i < m * k; ++i) a.emplace_back(static_cast<float>(i % 7 - 3));
+  for (int64_t i = 0; i < k * n; ++i) b.emplace_back(static_cast<float>(i % 5 - 2));
+  for (float value : bias_data) c.emplace_back(value);
+  for (int64_t row = 0; row < m; ++row) {
+    for (int64_t col = 0; col < n; ++col) {
+      float sum = 0;
+      for (int64_t inner = 0; inner < k; ++inner) {
+        sum += static_cast<float>(a[trans_a ? inner * m + row : row * k + inner]) *
+               static_cast<float>(b[trans_b ? col * k + inner : inner * n + col]);
+      }
+      expected.emplace_back(alpha * sum + beta * get_bias_value(bias_data, bias_type, row, col, n));
+    }
+  }
+
+  OpTester test("Gemm", 13);
+  test.AddAttribute<int64_t>("transA", trans_a);
+  test.AddAttribute<int64_t>("transB", trans_b);
+  test.AddAttribute("alpha", alpha);
+  test.AddAttribute("beta", beta);
+  test.AddInput<T>("A", a_shape, a.data(), a.size());
+  test.AddInput<T>("B", b_shape, b.data(), b.size());
+  test.AddInput<T>("C", c_shape, c.data(), c.size());
+  test.AddOutput<T>("Y", {m, n}, expected.data(), expected.size());
+  SessionOptions options;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  test.Config(options).ConfigEp(DefaultCudaExecutionProvider()).RunWithConfig();
+}
+
+TYPED_TEST(CudaGemmBiasBroadcastTest, AlphaBetaAndTransposes) {
+  for (BiasType bias_type : {BiasType::NBias, BiasType::NBias2D, BiasType::MBias}) {
+    for (bool trans_a : {false, true}) {
+      for (bool trans_b : {false, true}) {
+        for (const auto& coefficients : {std::array<float, 2>{0.5f, -2.0f}, {0.0f, 0.5f}, {-1.0f, 0.0f}}) {
+          RunCudaGemmBiasBroadcast<TypeParam>(3, 5, 4, bias_type, trans_a, trans_b,
+                                              coefficients[0], coefficients[1]);
+        }
+      }
+    }
+  }
+}
+
+TYPED_TEST(CudaGemmBiasBroadcastTest, ZeroKAndEmptyOutput) {
+  for (BiasType bias_type : {BiasType::NBias, BiasType::NBias2D, BiasType::MBias,
+                             BiasType::ScalarBias, BiasType::MNBias}) {
+    for (float beta : {-2.0f, 0.0f, 0.5f, 1.0f}) {
+      RunCudaGemmBiasBroadcast<TypeParam>(3, 5, 0, bias_type, false, false, 0.5f, beta);
+    }
+    RunCudaGemmBiasBroadcast<TypeParam>(0, 5, 4, bias_type, false, false, 0.5f, -2.0f);
+    RunCudaGemmBiasBroadcast<TypeParam>(3, 0, 4, bias_type, false, false, 0.5f, -2.0f);
+  }
+}
+
+TYPED_TEST(CudaGemmBiasBroadcastTest, Rank0ScalarBias) {
+  for (int64_t k : {4, 0}) {
+    for (float beta : {-2.0f, 0.5f, 1.0f}) {
+      RunCudaGemmBiasBroadcast<TypeParam>(3, 5, k, BiasType::Rank0ScalarBias,
+                                          false, false, 0.5f, beta);
+    }
+  }
+}
+
+TEST(GemmOpTest, ZeroKRespectsSignedZero) {
+  for (float alpha : {-1.0f, 1.0f}) {
+    for (bool initializer : {false, true}) {
+      SCOPED_TRACE(::testing::Message() << "alpha=" << alpha << " initializer=" << initializer);
+      OpTester test("Gemm", 13);
+      test.AddAttribute("alpha", alpha);
+      test.AddInput<float>("A", {1, 0}, std::vector<float>{});
+      test.AddInput<float>("B", {0, 4}, std::vector<float>{}, initializer);
+      test.AddInput<float>("C", {4}, {-0.0f, 0.0f, -0.0f, 0.0f});
+      test.AddOutput<float>("Y", {1, 4}, {0.0f, 0.0f, 0.0f, 0.0f});
+      test.SetCustomOutputVerifier([alpha](const std::vector<OrtValue>& fetches, const std::string&) {
+        const float* values = fetches[0].Get<Tensor>().Data<float>();
+        for (size_t i = 0; i < 4; ++i) {
+          EXPECT_EQ(values[i], 0.0f);
+          EXPECT_EQ(std::signbit(values[i]), alpha < 0 && i % 2 == 0);
+        }
+      });
+      test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+    }
+  }
+}
+
+TEST(GemmOpTest, ZeroKWithoutBiasUsesImplicitZero) {
+  for (bool initializer : {false, true}) {
+    SCOPED_TRACE(initializer);
+    OpTester test("Gemm", 13);
+    test.AddAttribute("alpha", -1.0f);
+    test.AddInput<float>("A", {1, 0}, std::vector<float>{});
+    test.AddInput<float>("B", {0, 2}, std::vector<float>{}, initializer);
+    test.AddOutput<float>("Y", {1, 2}, {0.0f, 0.0f});
+    test.SetCustomOutputVerifier([](const std::vector<OrtValue>& fetches, const std::string&) {
+      for (float value : fetches[0].Get<Tensor>().DataAsSpan<float>()) {
+        EXPECT_EQ(value, 0.0f);
+        EXPECT_FALSE(std::signbit(value));
+      }
+    });
+    test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+  }
+}
+
+TEST(GemmOpTest, ZeroKScalesBias) {
+  for (bool initializer : {false, true}) {
+    SCOPED_TRACE(initializer);
+    OpTester test("Gemm", 13);
+    test.AddAttribute("beta", 2.0f);
+    test.AddInput<float>("A", {1, 0}, std::vector<float>{});
+    test.AddInput<float>("B", {0, 4}, std::vector<float>{}, initializer);
+    test.AddInput<float>("C", {4}, {1.5f, -2.0f, 0.0f, -0.0f});
+    test.AddOutput<float>("Y", {1, 4}, {3.0f, -4.0f, 0.0f, 0.0f});
+    test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+  }
+}
+
+TEST(GemmOpTest, ZeroKScalesBiasFloat16) {
+  OpTester test("Gemm", 13);
+  test.AddAttribute("beta", 2.0f);
+  test.AddInput<MLFloat16>("A", {1, 0}, {});
+  test.AddInput<MLFloat16>("B", {0, 2}, {});
+  test.AddInput<MLFloat16>("C", {2}, {MLFloat16(1.5f), MLFloat16(-2.0f)});
+  test.AddOutput<MLFloat16>("Y", {1, 2}, {MLFloat16(3.0f), MLFloat16(-4.0f)});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.ConfigEps(std::move(execution_providers)).RunWithConfig();
+}
 
 // Only CUDA, CoreML and XNNPack kernels have float 16 support
 TEST(GemmOpTest, GemmNoTrans_f16) {
@@ -241,7 +409,6 @@ TEST(GemmOpTest, GemmNoTrans_f16) {
   }
 }
 
-// Only CUDA and CoreML kernels have float 16 support
 TEST(GemmOpTest, GemmTransB_f16) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
@@ -263,6 +430,26 @@ TEST(GemmOpTest, GemmTransB_f16) {
   std::vector<MLFloat16> f_B(12);
   ConvertFloatToMLFloat16(A.data(), f_A.data(), 8);
   ConvertFloatToMLFloat16(B.data(), f_B.data(), 12);
+  {
+    // Missing C makes beta zero, which is eligible for the MLAS path.
+    std::vector<MLFloat16> f_Y(6);
+    std::vector<float> Y{7.1f, -6.2f, -19.0f, -7.1f, 6.2f, 19.0f};
+    ConvertFloatToMLFloat16(Y.data(), f_Y.data(), 6);
+
+    OpTester test("Gemm", 13);
+
+    test.AddAttribute("transA", (int64_t)0);
+    test.AddAttribute("transB", (int64_t)1);
+    test.AddAttribute("alpha", 1.0f);
+    test.AddAttribute("beta", 0.0f);
+    test.AddInput<MLFloat16>("A", {2, 4}, f_A);
+    test.AddInput<MLFloat16>("B", {3, 4}, f_B, true);
+    test.AddOutput<MLFloat16>("Y", {2, 3}, f_Y);
+    test.SetOutputTolerance(0.005f);
+    test.ConfigExcludeEps({kTensorrtExecutionProvider})  // TensorRT: fp16 is not supported
+        .Config(run_with_tunable_op)
+        .RunWithConfig();
+  }
   {
     // bias is a scalar and  transB is True
     std::vector<MLFloat16> f_Y(6);

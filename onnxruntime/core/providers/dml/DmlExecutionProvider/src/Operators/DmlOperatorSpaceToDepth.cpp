@@ -30,6 +30,12 @@ public:
     }
 };
 
+void CALLBACK QuerySpaceToDepth(IMLOperatorSupportQueryContextPrivate* context, bool* isSupported)
+{
+    MLOperatorAttributes attributes(context);
+    *isSupported = attributes.GetOptionalAttribute<std::string>(AttrName::Mode, "DCR") == "DCR";
+}
+
 DML_OP_DEFINE_CREATION_FUNCTION(SpaceToDepth, DmlOperatorSpaceToDepth);
 
 } // namespace Dml

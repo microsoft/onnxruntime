@@ -5,7 +5,7 @@ import unittest
 
 import numpy as np
 from helper import get_name
-from onnx import TensorProto, helper
+from onnx import TensorProto, helper, numpy_helper
 
 import onnxruntime as onnxrt
 
@@ -223,6 +223,54 @@ class TestInferenceSessionWithCudaGraph(unittest.TestCase):
                 cuda_graph_helper.get_output("output_long"),
                 np.concatenate([inputs[name] for name in long_names], axis=0),
             )
+
+    def test_matmul_gemm_auto_tune_cuda_graph_replay(self):
+        if "CUDAExecutionProvider" not in onnxrt.get_available_providers():
+            self.skipTest("CUDAExecutionProvider is not available")
+
+        # Small-M fp16 projections are tuned during the warmup runs and must replay correctly.
+        rng = np.random.default_rng(0)
+        weights = {
+            "w_narrow": (rng.standard_normal((512, 48)) * 0.05).astype(np.float16),
+            "w_wide": (rng.standard_normal((256, 1024)) * 0.05).astype(np.float16),
+        }
+        shapes = {"x_narrow": [8, 512], "x_wide": [3, 256], "y_narrow": [8, 48], "y_wide": [3, 1024]}
+        graph = helper.make_graph(
+            [
+                helper.make_node("MatMul", ["x_narrow", "w_narrow"], ["y_narrow"]),
+                helper.make_node("MatMul", ["x_wide", "w_wide"], ["y_wide"]),
+            ],
+            "matmul_gemm_auto_tune_cuda_graph",
+            [
+                helper.make_tensor_value_info("x_narrow", TensorProto.FLOAT16, shapes["x_narrow"]),
+                helper.make_tensor_value_info("x_wide", TensorProto.FLOAT16, shapes["x_wide"]),
+            ],
+            [
+                helper.make_tensor_value_info("y_narrow", TensorProto.FLOAT16, shapes["y_narrow"]),
+                helper.make_tensor_value_info("y_wide", TensorProto.FLOAT16, shapes["y_wide"]),
+            ],
+            [numpy_helper.from_array(value, name) for name, value in weights.items()],
+        )
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
+        model.ir_version = 7
+
+        session_options = onnxrt.SessionOptions()
+        session_options.add_session_config_entry("ep.cuda.enable_gemm_auto_tune", "1")
+        providers = [("CUDAExecutionProvider", {"enable_cuda_graph": True})]
+        session = onnxrt.InferenceSession(model.SerializeToString(), session_options, providers=providers)
+        cuda_graph_helper = CudaGraphHelper(session, shapes)
+        for _ in range(4):  # Warmups (tuning), capture, then replays that must read the updated inputs.
+            inputs = {name: rng.standard_normal(shapes[name]).astype(np.float16) for name in ("x_narrow", "x_wide")}
+            cuda_graph_helper.update_inputs(inputs)
+            cuda_graph_helper.io_binding.synchronize_inputs()
+            session.run_with_iobinding(cuda_graph_helper.io_binding)
+            cuda_graph_helper.io_binding.synchronize_outputs()
+
+            for suffix in ("narrow", "wide"):
+                expected = inputs[f"x_{suffix}"].astype(np.float32) @ weights[f"w_{suffix}"].astype(np.float32)
+                np.testing.assert_allclose(
+                    cuda_graph_helper.get_output(f"y_{suffix}").astype(np.float32), expected, rtol=1e-2, atol=1e-2
+                )
 
     def test_ort_value_update_in_place(self):
         x0 = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)

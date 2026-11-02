@@ -7,6 +7,7 @@
 #include <latch>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include "gtest/gtest.h"
 #include "core/framework/op_kernel.h"
@@ -18,16 +19,10 @@
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
 
-#if !defined(BUILD_DAWN_SHARED_LIBRARY)
-#include "dawn/dawn_proc.h"
-#endif
-#include "dawn/native/DawnNative.h"
-
 namespace onnxruntime {
 namespace test {
 namespace {
 
-#if !defined(BUILD_DAWN_SHARED_LIBRARY)
 class UnusedKernel final : public OpKernel {
  public:
   explicit UnusedKernel(const OpKernelInfo& info) : OpKernel(info) {}
@@ -39,41 +34,14 @@ class UnusedKernelContext final : public OpKernelContext {
   UnusedKernelContext() : OpKernelContext(nullptr, DefaultLoggingManager().DefaultLogger(), nullptr) {}
 };
 
-thread_local webgpu::CommandRecordingState* observed_recording = nullptr;
-thread_local bool* observed_exclusion = nullptr;
-thread_local size_t* observed_clears = nullptr;
-
-void ObserveClearBuffer(WGPUCommandEncoder encoder, WGPUBuffer buffer, uint64_t offset, uint64_t size) {
-  if (observed_recording != nullptr) {
-    // Probe from another thread while the real FillZero is inside ClearBuffer. Joining the
-    // nonblocking probe makes this independent of sleeps or which thread is scheduled first.
-    auto* recording = observed_recording;
-    bool acquired = false;
-    std::thread contender([&] {
-      acquired = recording->mutex.try_lock();
-      if (acquired) {
-        recording->mutex.unlock();
-      }
-    });
-    contender.join();
-    *observed_exclusion = !acquired;
-    ++*observed_clears;
-  }
-  dawn::native::GetProcs().commandEncoderClearBuffer(encoder, buffer, offset, size);
-}
-#endif
-
-TEST(WebGpuContextTest, FillZeroExcludesConcurrentSessionAllocator) {
-#if defined(BUILD_DAWN_SHARED_LIBRARY)
-  GTEST_SKIP() << "Shared Dawn calls bypass the replaceable proc table required by this mutex probe.";
-#else
+TEST(WebGpuContextTest, FillZeroClearsSessionBuffer) {
   ConfigOptions options;
   auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
   auto& webgpu_ep = static_cast<WebGpuExecutionProvider&>(*ep);
   auto& context = webgpu::WebGpuContextFactory::GetContext(0);
   auto& recording = webgpu_ep.Recording();
 
-  Model model("fill_zero_lock", false, DefaultLoggingManager().DefaultLogger());
+  Model model("fill_zero", false, DefaultLoggingManager().DefaultLogger());
   auto& node = model.MainGraph().AddNode("unused", "Identity", "", {}, {});
   auto kernel_def = KernelDefBuilder().SetName("Identity").Provider(kWebGpuExecutionProvider).SinceVersion(1).Build();
   const std::unordered_map<int, OrtValue> initializers;
@@ -90,30 +58,39 @@ TEST(WebGpuContextTest, FillZeroExcludesConcurrentSessionAllocator) {
   desc.usage = wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst;
   auto buffer = context.Device().CreateBuffer(&desc);
   Tensor tensor(DataTypeImpl::GetType<uint32_t>(), TensorShape{16}, buffer.Get(),
-                OrtMemoryInfo(WEBGPU_BUFFER, OrtDeviceAllocator, webgpu::WebGpuDevice, OrtMemTypeDefault));
+                OrtMemoryInfo(WEBGPU_BUFFER, OrtDeviceAllocator, webgpu::WebGpuDevice(0), OrtMemTypeDefault));
 
-  auto procs = dawn::native::GetProcs();
-  procs.commandEncoderClearBuffer = ObserveClearBuffer;
-  bool excluded = false;
-  size_t clears = 0;
-  observed_recording = &recording;
-  observed_exclusion = &excluded;
-  observed_clears = &clears;
-  struct RestoreProcs {
-    ~RestoreProcs() {
-      observed_recording = nullptr;
-      observed_exclusion = nullptr;
-      observed_clears = nullptr;
-      dawnProcSetProcs(&dawn::native::GetProcs());
-    }
-  } restore;
-  dawnProcSetProcs(&procs);
+  std::array<uint32_t, 16> data;
+  data.fill(42);
+  webgpu_ep.BufferManager().Upload(recording, data.data(), buffer.Get(), sizeof(data));
   compute_context.FillZero(tensor);
+  webgpu_ep.BufferManager().Download(recording, buffer.Get(), data.data(), sizeof(data));
+  for (auto value : data) {
+    EXPECT_EQ(value, 0u);
+  }
 
-  EXPECT_EQ(clears, 1u);
-  EXPECT_TRUE(excluded) << "FillZero encoded a clear without holding the Session recording mutex";
+  std::vector<webgpu::CapturedCommand> commands;
+  context.CaptureBegin(&commands, webgpu_ep.BufferManager(), recording);
+  compute_context.FillZero(tensor);
   ASSERT_STATUS_OK(context.Flush(webgpu_ep.BufferManager(), recording));
-#endif
+  context.CaptureEnd(recording);
+  ASSERT_EQ(commands.size(), 1u);
+
+  // The captured clear must retain the buffer even without a dispatch or copy.
+  WGPUBuffer captured_buffer = buffer.Get();
+  buffer = nullptr;
+  for (uint32_t run = 1; run <= 3; ++run) {
+    data.fill(run);
+    webgpu_ep.BufferManager().Upload(recording, data.data(), captured_buffer, sizeof(data));
+    context.Replay(commands, webgpu_ep.BufferManager(), recording);
+    webgpu_ep.BufferManager().Download(recording, captured_buffer, data.data(), sizeof(data));
+    for (auto value : data) {
+      EXPECT_EQ(value, 0u);
+    }
+    EXPECT_EQ(recording.num_pending_dispatches, 0u);
+  }
+  context.ReleaseGraphResources(commands);
+  EXPECT_TRUE(commands.empty());
 }
 
 TEST(WebGpuContextTest, SharedDeviceErrorScopesRemainThreadLocal) {

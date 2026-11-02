@@ -11,6 +11,7 @@
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "contrib_ops/cpu/bert/attention_helper.h"
 #include "contrib_ops/cpu/bert/attention_parameters.h"
+#include "contrib_ops/cpu/bert/group_query_attention_helper.h"
 #include "core/common/common.h"
 #include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
@@ -776,7 +777,8 @@ class GQAAttentionBase {
     // ---- Phase 2: Flash Attention with quantized KV cache ----
     // Compute L2-aware block sizes (same formula as MHA flash attention)
     const auto& env = Env::Default();
-    int l2_cache_size = env.GetL2CacheSize();
+    const auto block_sizes =
+        group_query_attention_helper::GetFlashAttentionBlockSizes(env.GetL2CacheSize(), head_size);
 
     // For quantized KV: effective bytes per KV element for cache considerations
     // We dequantize V blocks to FP32, so working set per KV row = head_size * sizeof(float)
@@ -790,9 +792,8 @@ class GQAAttentionBase {
     //   Temp output: [Br, head_size] floats
     //   Total ~ (2*Br + Bc) * head_size + Br * Bc
     //   Approximation: use same formula as FP32 flash attention
-    int kv_block_size = l2_cache_size / (static_cast<int>(sizeof(float)) * 4 * (head_size + head_size));
-    kv_block_size = std::max(kv_block_size, 1);
-    int q_block_size = std::min(kv_block_size, 2 * head_size);
+    int kv_block_size = block_sizes.kv_block_size;
+    int q_block_size = block_sizes.q_block_size;
 
     // The flash kernel uses a single (past_seqlen, total_seqlen) pair for all batch items.
     // When batch items have different seqlens_k (ragged), we must fall back to per-batch
@@ -1044,13 +1045,22 @@ class GQAAttentionBase {
                   seqlen_past_kv_cache, ") in shared KV mode");
     }
 
-    ORT_RETURN_IF(present_key == nullptr || present_value == nullptr,
+    // With no new KV tokens and both present outputs omitted, attend directly to the input caches.
+    // Their capacity still determines row strides; per-batch sequence lengths determine valid tokens.
+    const bool read_only_cache = kv_sequence_length == 0 && past_key != nullptr && past_value != nullptr &&
+                                 present_key == nullptr && present_value == nullptr;
+    ORT_RETURN_IF(!read_only_cache && (present_key == nullptr || present_value == nullptr),
                   "present_key and present_value must be provided for flash attention");
 
     const float* past_key_data = past_key != nullptr ? past_key->Data<float>() : nullptr;
-    float* present_key_data = present_key->MutableData<float>();
+    float* present_key_data = present_key != nullptr ? present_key->MutableData<float>() : nullptr;
     const float* past_value_data = past_value != nullptr ? past_value->Data<float>() : nullptr;
-    float* present_value_data = present_value->MutableData<float>();
+    float* present_value_data = present_value != nullptr ? present_value->MutableData<float>() : nullptr;
+    const float* key_cache_data = read_only_cache ? past_key_data : present_key_data;
+    const float* value_cache_data = read_only_cache ? past_value_data : present_value_data;
+    if (read_only_cache) {
+      seqlen_present_kv_cache = seqlen_past_kv_cache;
+    }
 
     const bool past_key_shared = past_key_data == present_key_data;
     const bool past_value_shared = past_value_data == present_value_data;
@@ -1087,13 +1097,13 @@ class GQAAttentionBase {
       memset(present_key_data, 0,
              SafeInt<size_t>(batch_size) * kv_num_heads_ * present_buff_chunk_length * sizeof(float));
     }
-    if (!past_value_shared) {
+    if (present_value_data && !past_value_shared) {
       memset(present_value_data, 0,
              SafeInt<size_t>(batch_size) * kv_num_heads_ * present_buff_chunk_length * sizeof(float));
     }
 
     // Concat K and V caches (parallelize over batch * kv_num_heads)
-    {
+    if (!read_only_cache) {
       const size_t concat_loop_len = batch_size * kv_num_heads_;
       TensorOpCost concat_cost;
       concat_cost.compute_cycles = static_cast<double>(kv_sequence_length * head_size);
@@ -1150,11 +1160,10 @@ class GQAAttentionBase {
     // ---- Phase 2: Flash Attention with FP32 KV cache ----
     // Compute L2-aware block sizes (same formula as MHA flash attention).
     const auto& env = Env::Default();
-    int l2_cache_size = env.GetL2CacheSize();
-
-    int kv_block_size = l2_cache_size / (static_cast<int>(sizeof(float)) * 4 * (head_size + head_size));
-    kv_block_size = std::max(kv_block_size, 1);
-    int q_block_size = std::min(kv_block_size, 2 * head_size);
+    const auto block_sizes =
+        group_query_attention_helper::GetFlashAttentionBlockSizes(env.GetL2CacheSize(), head_size);
+    int kv_block_size = block_sizes.kv_block_size;
+    int q_block_size = block_sizes.q_block_size;
 
     // The flash kernel uses a single (past_seqlen, total_seqlen) pair for all batch items.
     // When batch items have different seqlens_k (ragged), fall back to per-batch invocation
@@ -1261,8 +1270,8 @@ class GQAAttentionBase {
       args.q_batch_stride = packed_qkv
                                 ? static_cast<size_t>(packed_batch_stride)
                                 : static_cast<size_t>(SafeInt<size_t>(num_heads_) * sequence_length * head_size);
-      args.k_cache = present_key_data;
-      args.v_cache = present_value_data;
+      args.k_cache = key_cache_data;
+      args.v_cache = value_cache_data;
       args.output = output->MutableData<float>();
       args.attention_bias = attention_bias_data == nullptr
                                 ? nullptr
@@ -1305,9 +1314,9 @@ class GQAAttentionBase {
                                                    : static_cast<ptrdiff_t>(SafeInt<ptrdiff_t>(num_heads_) * sequence_length * head_size);
         args.query = Q + static_cast<size_t>(b) * static_cast<size_t>(q_batch_stride_elems);
         args.q_batch_stride = SafeInt<size_t>(num_heads_) * sequence_length * head_size;
-        args.k_cache = present_key_data +
+        args.k_cache = key_cache_data +
                        static_cast<size_t>(b) * kv_num_heads_ * present_buff_chunk_length;
-        args.v_cache = present_value_data +
+        args.v_cache = value_cache_data +
                        static_cast<size_t>(b) * kv_num_heads_ * present_buff_chunk_length;
         args.output = output->MutableData<float>() +
                       static_cast<size_t>(b) * sequence_length * hidden_size;
@@ -1457,7 +1466,9 @@ class GQAAttentionBase {
         }
 
         const T* k;
-        if (packed_qkv) {
+        if (kv_sequence_length == 0 && present_key == nullptr) {
+          k = past_key + (i / kv_num_heads_factor) * past_buff_chunk_length;
+        } else if (packed_qkv) {
           k = K + packed_batch_stride * batch_index + kv_input_chunk_length * (head_index / kv_num_heads_factor);
         } else {
           k = K + kv_input_chunk_length * (i / kv_num_heads_factor);
@@ -1682,7 +1693,9 @@ class GQAAttentionBase {
         const size_t past_chunk_length = SafeInt<size_t>(past_seqlen) * head_size;
 
         const T* v;
-        if (packed_qkv) {
+        if (kv_sequence_length == 0 && present_value == nullptr) {
+          v = past_value + (i / kv_num_heads_factor) * past_buff_chunk_length;
+        } else if (packed_qkv) {
           v = V + packed_batch_stride * batch_index + kv_input_chunk_length * (head_index / kv_num_heads_factor);
         } else {
           v = V + kv_input_chunk_length * (i / kv_num_heads_factor);

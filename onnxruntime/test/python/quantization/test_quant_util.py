@@ -84,6 +84,31 @@ class TestQuantUtil(unittest.TestCase):
             [0, 0.0002 / 65535],
         )
 
+    def test_compute_scale_zp_large_finite_range(self):
+        for dtype, magnitude in ((numpy.float16, 40000), (numpy.float32, 3e38)):
+            for qtype in (numpy.int8, numpy.uint8, numpy.int16, numpy.uint16):
+                for symmetric in (False, True):
+                    with self.subTest(dtype=dtype, qtype=qtype, symmetric=symmetric):
+                        rmin = numpy.array(-0.75 * magnitude, dtype=dtype)
+                        rmax = numpy.array(magnitude, dtype=dtype)
+                        qmin = numpy.array(numpy.iinfo(qtype).min, dtype=qtype)
+                        qmax = numpy.array(numpy.iinfo(qtype).max, dtype=qtype)
+                        zero_point, scale = compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=symmetric)
+
+                        # Use Python floats so the reference range does not overflow the input dtype.
+                        real_min = -float(rmax) if symmetric else float(rmin)
+                        expected_scale = (float(rmax) - real_min) / (int(qmax) - int(qmin))
+                        expected_zero = (
+                            round((int(qmax) + int(qmin)) / 2)
+                            if symmetric
+                            else round(int(qmin) - real_min / expected_scale)
+                        )
+                        self.assertTrue(numpy.isfinite(scale))
+                        self.assertEqual(scale.dtype, dtype)
+                        self.assertEqual(zero_point.dtype, qtype)
+                        numpy.testing.assert_array_equal(scale, numpy.array(expected_scale, dtype=dtype))
+                        self.assertEqual(int(zero_point), expected_zero)
+
     def test_compute_scale_zp_float8(self):
         # The FLOAT8E4M3FN reference distribution must be the 254 finite float8
         # values (std ~= 100.0577), not the integers 0..255 (std ~= 73.9). With

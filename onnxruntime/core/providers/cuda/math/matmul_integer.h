@@ -13,14 +13,8 @@ class MatMulInteger final : public CudaKernel {
 
  public:
   MatMulInteger(const OpKernelInfo& info) : CudaKernel(info) {
-    has_a_zero_point_ = false;
-    has_b_zero_point_ = false;
-    if (info.GetInputCount() > 2) {
-      has_a_zero_point_ = true;
-    }
-    if (info.GetInputCount() > 3) {
-      has_b_zero_point_ = true;
-    }
+    has_a_zero_point_ = InputExists(info, 2);
+    has_b_zero_point_ = InputExists(info, 3);
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;

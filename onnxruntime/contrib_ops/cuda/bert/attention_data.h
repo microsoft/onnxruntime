@@ -7,6 +7,7 @@
 #include <iostream>
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "contrib_ops/cpu/bert/attention_parameters.h"
+#include "core/framework/allocator.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -127,7 +128,6 @@ struct GroupQueryAttentionData {
   // Both are non-null together (validated in the op) and trigger the fused normalization before RoPE.
   const T* q_norm_weight = nullptr;
   const T* k_norm_weight = nullptr;
-  float qk_norm_epsilon = 1e-6f;
 
   const float* k_scale = nullptr;
   const float* v_scale = nullptr;
@@ -231,7 +231,9 @@ struct PagedAttentionData {
   const float* v_scale = nullptr;
   const int* cumulative_seqlens_q = nullptr;
   const int* past_seqlens = nullptr;
+  const int* sequence_validity = nullptr;
   const int* block_table = nullptr;
+  const int* cudnn_block_table = nullptr;
   // Optional explicit write slots, one per query token, into the cache viewed as
   // [num_blocks * block_size, kv_num_heads, head_size]. A value of -1 suppresses the K/V store
   // for that token (prefix cache hit / rejected speculative token). nullptr keeps the legacy
@@ -320,10 +322,12 @@ struct PagedAttentionData {
   bool use_cudnn_paged = false;
 
   // cuDNN paged SDPA path: temp-space allocator, cuDNN handle (stored as void* to avoid pulling the
-  // cuDNN headers into this file; cast to cudnnHandle_t in the .cu runner) and per-batch KV length
-  // scratch (int32, [batch_size]) filled from past_seqlens on device before dispatch.
+  // cuDNN headers into this file; cast to cudnnHandle_t in the .cu runner), resolved attention
+  // scale, and per-batch KV length scratch (int32, [batch_size]) filled on device before dispatch.
   AllocatorPtr cudnn_allocator = nullptr;
   void* cudnn_handle = nullptr;
+  float cudnn_scale = 0.0f;
+  bool cudnn_debug_info = false;
   int* cudnn_seqlens_kv = nullptr;
 
   // block_table with out-of-range entries clamped to 0, for cuDNN paged and FlashAttention.

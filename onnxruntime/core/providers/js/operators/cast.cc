@@ -58,10 +58,19 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
         .TypeConstraint("T1", CastOpTypeConstraints())
         .TypeConstraint("T2", CastOpTypeConstraints()),
     Cast);
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Cast,
+    kOnnxDomain,
+    21, 27,
+    kJsExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T1", CastOpTypeConstraints())
+        .TypeConstraint("T2", CastOpTypeConstraints()),
+    Cast);
 ONNX_OPERATOR_KERNEL_EX(
     Cast,
     kOnnxDomain,
-    21,
+    28,
     kJsExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T1", CastOpTypeConstraints())

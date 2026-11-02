@@ -32,7 +32,7 @@ jobs:
     outputs:
       run_documentation_build: ${{ steps.changes.outputs.run_documentation_build }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           submodules: 'none'
@@ -79,19 +79,15 @@ jobs:
       ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
       AZCOPY_AUTO_LOGIN_TYPE: MSI
       AZCOPY_MSI_CLIENT_ID: d712a4c7-a0cf-4e87-af75-31510eba0a8e
-    runs-on: [
-        "self-hosted",
-        "1ES.Pool=onnxruntime-github-Win2022-GPU-A10",
-        "JobId=windows-gpu-doc-gen-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
-        ]
+    runs-on: [ort-github-win-6-a10-scus-ss]
     timeout-minutes: 300
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           submodules: 'none'
 
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.12'
           architecture: x64
@@ -105,6 +101,10 @@ jobs:
         run: python -m pip install -r .\tools\ci_build\github\windows\python\requirements.txt
         working-directory: ${{ github.workspace }}
         shell: cmd
+
+      - name: Test documentation tooling
+        run: python -m unittest discover -s tools\ci_build -p test_generate_documentation.py -v
+        shell: pwsh
 
       - name: Download CUDA SDK v12.8
         working-directory: ${{ runner.temp }}
@@ -121,11 +121,11 @@ jobs:
           Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v12.8\bin"
           Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v12.8\extras\CUPTI\lib64"
 
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '20.x'
+          node-version: '24.x'
 
-      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: 'temurin'
           java-version: '17'
@@ -141,11 +141,7 @@ jobs:
         working-directory: ${{ github.workspace }}
         shell: cmd
 
-      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
-        env:
-          PROCESSOR_ARCHITECTURE: x64
-        with:
-          dotnet-version: '8.x'
+      - uses: ./.github/actions/setup-dotnet
 
       - name: Use Nuget 6.x
         uses: nuget/setup-nuget@d105a947828025cd7a980103c35ba2bfae586d0f # v2.0.2
@@ -165,7 +161,7 @@ jobs:
       - name: Build
         working-directory: ${{ runner.temp }}
         run: |
-          python.exe ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --build_dir build --skip_submodule_sync --build_csharp --parallel --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --update --build --gen_doc validate --skip_tests --build_wheel --use_dml --use_cuda --cuda_home="$env:RUNNER_TEMP\v12.8" --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --build_dir build --skip_submodule_sync --build_csharp --parallel --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --update --build --skip_tests --build_wheel --use_full_protobuf --use_dml --use_cuda --use_webgpu shared_lib --cuda_home="$env:RUNNER_TEMP\v12.8" --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
@@ -183,22 +179,24 @@ jobs:
           whl-directory: ${{ runner.temp }}\build\RelWithDebInfo\RelWithDebInfo\dist
 
       - name: Generate and validate documentation
+        id: generate_docs
+        env:
+          ORT_WEBGPU_EP_ALLOW_SOFTWARE_ADAPTER: '1'
         working-directory: ${{ runner.temp }}\build
         run: |
-          python.exe ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --build_dir ${{ runner.temp }}\build --gen_doc validate
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --build_dir ${{ runner.temp }}\build --gen_doc validate --use_webgpu shared_lib
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
         shell: pwsh
 
-      - name: Upload updated documentation
-        if: failure()
+      - name: Upload generated documentation
+        if: always() && steps.generate_docs.outputs.documentation_generated == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: updated-docs
-          path: |
-            ${{ github.workspace }}/docs/OperatorKernels.md
-            ${{ github.workspace }}/docs/ContribOperators.md
+          path: ${{ runner.temp }}/build/RelWithDebInfo/RelWithDebInfo/generated-docs/
+          if-no-files-found: error
 
   kernel_documentation:
     name: Windows GPU Kernel Documentation Validation

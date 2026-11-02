@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #include "core/graph/constants.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "default_providers.h"
 #include "gtest/gtest.h"
 #include "test/common/random_generator.h"
@@ -170,6 +171,25 @@ void TestMobileClipDepthwiseMultiplier2(int64_t channels, int64_t input_hw) {
 }  // namespace
 
 // Conv
+TEST(ConvTest, MissingBiasCUDA) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA execution provider is not available.";
+  }
+
+  OpTester test("Conv", 11);
+  test.AddInput<float>("X", {1, 1, 2, 2}, {1.f, 2.f, 3.f, 4.f});
+  test.AddInput<float>("W", {1, 1, 1, 1}, {2.f});
+  test.AddOptionalInputEdge<float>();
+  test.AddOutput<float>("Y", {1, 1, 2, 2}, {2.f, 4.f, 6.f, 8.f});
+
+  SessionOptions options;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(std::move(cuda_ep));
+  test.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+
 TEST(ConvTest, Conv1D_1) {
   ConvOpAndTestAttributes attrs = {
       "",                          // auto_pad
@@ -1799,6 +1819,31 @@ TEST(ConvTest, Conv2D_InvalidBiasRank) {
       .Config(OpTester::ExpectResult::kExpectFailure,
               "bias must be a 1D tensor of size output_channels")
       .RunWithConfig();
+}
+
+TEST(ConvTest, Rank1InputAndWeightRejected) {
+  OpTester test("Conv", 11);
+  test.AddShapeToTensorData(false);  // must precede AddInput/AddOutput so runtime rank reaches the kernel
+  test.AddAttribute<int64_t>("group", 3);
+  test.AddInput<float>("X", {3}, {1.0f, 2.0f, 3.0f});
+  test.AddInput<float>("W", {3}, {1.0f, 1.0f, 1.0f});
+  test.AddOutput<float>("Y", {3}, {0.0f, 0.0f, 0.0f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "X num_dims must be >= 3", {}, nullptr, &eps);
+}
+
+TEST(ConvTest, Rank2InputAndWeightRejected) {
+  OpTester test("Conv", 11);
+  test.AddShapeToTensorData(false);  // must precede AddInput/AddOutput so runtime rank reaches the kernel
+  test.AddInput<float>("X", {1, 1}, {1.0f});
+  test.AddInput<float>("W", {1, 1}, {1.0f});
+  test.AddOutput<float>("Y", {1, 1}, {0.0f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "X num_dims must be >= 3", {}, nullptr, &eps);
 }
 
 }  // namespace test

@@ -727,6 +727,10 @@ bool DataOps::dimension_unsupported(const Node* node) {
 bool DataOps::node_is_supported(const NodeIndex node_idx, bool& has_external_weights_) {
   const auto& node = graph_viewer_.GetNode(node_idx);
   const auto& optype = node->OpType();
+  // These opset-28 semantics require CPU kernels or ONNX function expansion.
+  if ((optype == "Mod" || optype == "BitShift" || optype == "SpaceToDepth") && node->SinceVersion() >= 28) {
+    return false;
+  }
 
 #ifndef NDEBUG
   if (openvino_ep::backend_utils::IsDebugEnabled()) {

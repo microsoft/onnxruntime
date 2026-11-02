@@ -224,7 +224,7 @@ Status PrepareQKV(
     const T* q_rope_input = data.query;
     if (parameters.use_qk_norm) {
       ORT_RETURN_IF_ERROR((LaunchPerHeadRMSNorm<T>(
-          stream, q_out, data.query, data.q_norm_weight, parameters.qk_norm_epsilon,
+          stream, q_out, data.query, data.q_norm_weight, parameters.q_norm_epsilon,
           batch_size, sequence_length, num_heads, head_size, max_threads_per_block)));
       // RoPE (if any) runs in-place on the normalized Q; the rotary kernel handles in-place safely.
       q_rope_input = q_out;
@@ -268,7 +268,7 @@ Status PrepareQKV(
         reinterpret_cast<const T*>(data.cos_cache), reinterpret_cast<const T*>(data.sin_cache),
         parameters.rotary_dim, data.position_ids, parameters.rotary_interleaved,
         is_cache_bnsh, parameters.k_quant_type,
-        data.q_norm_weight, data.k_norm_weight, parameters.qk_norm_epsilon,
+        data.q_norm_weight, data.k_norm_weight, parameters.q_norm_epsilon, parameters.k_norm_epsilon,
         stream, max_threads_per_block)));
   }
 
@@ -996,7 +996,7 @@ Status ExtremeDecoding(
   if (q_rot_ptr == nullptr) {
     q_input_for_xqa = reinterpret_cast<const T*>(data.query);
   }
-  // GQABufferRequirements reserves qkv_buffer whenever the K scale has to be folded into Q, so the
+  // QKV preparation reserves qkv_buffer whenever the K scale has to be folded into Q, so the
   // preprocess kernel always has somewhere to write the scaled Q (rotated or not).
   ORT_ENFORCE(!fold_k_scale_into_q || q_rot_ptr != nullptr,
               "Per-channel XQA requires a scratch buffer for the scaled Q.");
@@ -1028,7 +1028,7 @@ Status ExtremeDecoding(
       parameters.rotary_interleaved,
       !past_bsnh,  // is_cache_bnsh
       parameters.k_quant_type,
-      data.q_norm_weight, data.k_norm_weight, parameters.qk_norm_epsilon,
+      data.q_norm_weight, data.k_norm_weight, parameters.q_norm_epsilon, parameters.k_norm_epsilon,
       stream,
       device_prop.maxThreadsPerBlock)));
 
@@ -1271,7 +1271,7 @@ Status DequantizeFlashAttentionFallback(
       parameters.rotary_dim, data.position_ids, parameters.rotary_interleaved,
       (parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BNSH),
       parameters.k_quant_type,
-      data.q_norm_weight, data.k_norm_weight, parameters.qk_norm_epsilon,
+      data.q_norm_weight, data.k_norm_weight, parameters.q_norm_epsilon, parameters.k_norm_epsilon,
       stream, device_prop.maxThreadsPerBlock)));
 
   // Step 2: Dequantize Entire Cache
@@ -1360,7 +1360,7 @@ Status FlashAttentionAndQuantizeKV(
       parameters.rotary_dim, data.position_ids, parameters.rotary_interleaved,
       false,  // BSNH for scratch
       KVQuantizationType::NONE,
-      data.q_norm_weight, data.k_norm_weight, parameters.qk_norm_epsilon,
+      data.q_norm_weight, data.k_norm_weight, parameters.q_norm_epsilon, parameters.k_norm_epsilon,
       stream, max_threads_per_block)));
 
   // 2. Run Float Flash Attention
@@ -1572,7 +1572,7 @@ Status UnfusedGqaAttention(
   p.broadcast_attn_bias_dim_0 = parameters.broadcast_attn_bias_dim_0;
   p.broadcast_attn_bias_dim_1 = parameters.broadcast_attn_bias_dim_1;
   p.is_causal = parameters.is_unidirectional;
-  p.local_window_size = parameters.local_window_size;  // -1 disables
+  p.local_window_size = parameters.local_window_size > 0 ? parameters.local_window_size - 1 : -1;
   p.past_kv_length = parameters.total_sequence_length - parameters.sequence_length;
   p.scale = scale;
   p.softcap = parameters.softcap;

@@ -8,6 +8,13 @@
 namespace onnxruntime {
 namespace webgpu {
 
+// Compute `logical_workgroup_id` and `logical_global_id` because the dispatch workgroup size in
+// `ProgramBase.SetDispatchGroupSize()` may be normalized in
+// `ProgramManager::NormalizeDispatchGroupSize()`. In the shader we should always use
+// `logical_workgroup_id` and `logical_global_id` instead of `workgroup_id` and `global_id`.
+// Reject normalization-added workgroups before accesses or workgroup barriers.
+void InitializeLogicalWorkgroupIDAndGlobalID(ShaderHelper& shader);
+
 void MatMulReadFnSource(ShaderHelper& shader,
                         const ShaderVariableHelper& a,
                         const ShaderVariableHelper& b,
@@ -48,7 +55,8 @@ Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
                                   int output_components = 4,
                                   uint32_t tile_inner = 32,
                                   bool split_k = false,
-                                  uint32_t split_dim_inner = 32);
+                                  uint32_t split_dim_inner = 32,
+                                  bool use_f32_accumulation = false);
 
 Status MakeMatMulPackedSource(ShaderHelper& shader,
                               const InlinedVector<int64_t>& elements_per_thread,
@@ -62,7 +70,8 @@ Status MakeMatMulPackedSource(ShaderHelper& shader,
                               bool need_handle_matmul = true,
                               uint32_t tile_inner = 32,
                               bool split_k = false,
-                              uint32_t split_dim_inner = 32);
+                              uint32_t split_dim_inner = 32,
+                              bool use_f32_accumulation = false);
 
 }  // namespace webgpu
 }  // namespace onnxruntime

@@ -19,6 +19,7 @@
 #include "test/util/include/inference_session_wrapper.h"
 
 #include <filesystem>
+#include <limits>
 #include "flatbuffers/idl.h"
 #include "flatbuffers/util.h"
 
@@ -85,6 +86,40 @@ Status LoadOrtBuffer(const std::vector<uint8_t>& buffer, bool use_buffer_for_ini
 
   InferenceSessionWrapper session_object{so, GetEnvironment()};
   return session_object.Load(buffer.data(), static_cast<int>(buffer.size()));
+}
+
+std::vector<uint8_t> BuildOrtModelWithEdge(int32_t src_arg_index, int32_t dst_arg_index,
+                                           bool input_edge = true, bool mismatched_args = false) {
+  return BuildOrtModelBuffer([&](flatbuffers::FlatBufferBuilder& builder) {
+    std::vector<flatbuffers::Offset<fbs::ValueInfo>> node_args{
+        fbs::CreateValueInfoDirect(builder, "input", "", CreateFloatTensorTypeInfo(builder, 1)),
+        fbs::CreateValueInfoDirect(builder, "x", "", CreateFloatTensorTypeInfo(builder, 1)),
+        fbs::CreateValueInfoDirect(builder, "y", "", CreateFloatTensorTypeInfo(builder, 1)),
+        fbs::CreateValueInfoDirect(builder, "other", "", CreateFloatTensorTypeInfo(builder, 1))};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> empty_args;
+    std::vector<flatbuffers::Offset<flatbuffers::String>> source_inputs{builder.CreateSharedString("input")};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> source_outputs{builder.CreateSharedString("x")};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> destination_inputs{
+        builder.CreateSharedString(mismatched_args ? "other" : "x")};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> destination_outputs{builder.CreateSharedString("y")};
+    std::vector<int32_t> arg_counts{1};
+    std::vector<flatbuffers::Offset<fbs::Node>> nodes{
+        fbs::CreateNodeDirect(builder, "source", "", "", 1, 0, "Identity",
+                              fbs::NodeType::Primitive, nullptr, &source_inputs, &source_outputs,
+                              nullptr, &arg_counts, &empty_args),
+        fbs::CreateNodeDirect(builder, "destination", "", "", 1, 1, "Identity",
+                              fbs::NodeType::Primitive, nullptr, &destination_inputs, &destination_outputs,
+                              nullptr, &arg_counts, &empty_args)};
+    std::vector<fbs::EdgeEnd> input_edges{fbs::EdgeEnd(0, src_arg_index, dst_arg_index)};
+    std::vector<fbs::EdgeEnd> output_edges{fbs::EdgeEnd(1, src_arg_index, dst_arg_index)};
+    std::vector<flatbuffers::Offset<fbs::NodeEdge>> node_edges{
+        input_edge ? fbs::CreateNodeEdgeDirect(builder, 1, &input_edges)
+                   : fbs::CreateNodeEdgeDirect(builder, 0, nullptr, &output_edges)};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> graph_inputs{builder.CreateSharedString("input")};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> graph_outputs{builder.CreateSharedString("y")};
+    return fbs::CreateGraphDirect(
+        builder, nullptr, &node_args, &nodes, 2, &node_edges, &graph_inputs, &graph_outputs);
+  });
 }
 
 }  // namespace
@@ -221,6 +256,24 @@ TEST(OrtModelTest, RejectsInitializerRawDataSizeMismatch) {
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("raw data size mismatch"));
 }
 
+TEST(OrtModelTest, RejectsInvalidSerializedEdges) {
+  for (const bool input_edge : {false, true}) {
+    for (const auto& [src_arg_index, dst_arg_index, error] : {
+             std::tuple{1, 0, "out-of-range src_arg_index"},
+             std::tuple{0, 1, "out-of-range dst_arg_index"},
+             std::tuple{INT_MAX, INT_MAX, "control edges are not supported"}}) {
+      const auto status = LoadOrtBuffer(
+          BuildOrtModelWithEdge(src_arg_index, dst_arg_index, input_edge));
+      ASSERT_FALSE(status.IsOK());
+      EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr(error));
+    }
+
+    const auto status = LoadOrtBuffer(BuildOrtModelWithEdge(0, 0, input_edge, true));
+    ASSERT_FALSE(status.IsOK());
+    EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("mismatched NodeArgs"));
+  }
+}
+
 TEST(OrtModelTest, RejectsDanglingNodeEdge) {
   const auto buffer = BuildOrtModelBuffer([](flatbuffers::FlatBufferBuilder& builder) {
     std::vector<flatbuffers::Offset<fbs::NodeEdge>> node_edges{
@@ -315,6 +368,115 @@ TEST(OrtModelTest, RejectsGraphInputWithUnknownNodeArg) {
   EXPECT_THAT(status.ErrorMessage(),
               testing::HasSubstr("Graph references unknown NodeArg 'nonexistent'"));
 }
+
+TEST(OrtModelTest, RejectsNegativeInputArgCount) {
+  const auto buffer = BuildOrtModelBuffer([](flatbuffers::FlatBufferBuilder& builder) {
+    std::vector<flatbuffers::Offset<fbs::ValueInfo>> node_args{
+        fbs::CreateValueInfoDirect(builder, "x", "", CreateFloatTensorTypeInfo(builder, 1)),
+        fbs::CreateValueInfoDirect(builder, "y", "", CreateFloatTensorTypeInfo(builder, 1))};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> inputs{builder.CreateSharedString("x")};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> outputs{builder.CreateSharedString("y")};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> implicit_inputs;
+    std::vector<int32_t> input_arg_counts{-1};
+    std::vector<flatbuffers::Offset<fbs::Node>> nodes{
+        fbs::CreateNodeDirect(builder, "n0", "", "", 13, 0, "Identity",
+                              fbs::NodeType::Primitive, nullptr,
+                              &inputs, &outputs, nullptr,
+                              &input_arg_counts, &implicit_inputs)};
+
+    return fbs::CreateGraphDirect(builder, nullptr, &node_args, &nodes, 1, nullptr, &inputs, &outputs);
+  });
+
+  const auto status = LoadOrtBuffer(buffer);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("input_arg_counts contains a negative value"));
+}
+
+TEST(OrtModelTest, RejectsMismatchedInputArgCountTotal) {
+  const auto buffer = BuildOrtModelBuffer([](flatbuffers::FlatBufferBuilder& builder) {
+    std::vector<flatbuffers::Offset<fbs::ValueInfo>> node_args{
+        fbs::CreateValueInfoDirect(builder, "x", "", CreateFloatTensorTypeInfo(builder, 1)),
+        fbs::CreateValueInfoDirect(builder, "y", "", CreateFloatTensorTypeInfo(builder, 1))};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> inputs{builder.CreateSharedString("x")};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> outputs{builder.CreateSharedString("y")};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> implicit_inputs;
+    std::vector<int32_t> input_arg_counts{2};
+    std::vector<flatbuffers::Offset<fbs::Node>> nodes{
+        fbs::CreateNodeDirect(builder, "n0", "", "", 13, 0, "Identity",
+                              fbs::NodeType::Primitive, nullptr,
+                              &inputs, &outputs, nullptr,
+                              &input_arg_counts, &implicit_inputs)};
+
+    return fbs::CreateGraphDirect(builder, nullptr, &node_args, &nodes, 1, nullptr, &inputs, &outputs);
+  });
+
+  const auto status = LoadOrtBuffer(buffer);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("input_arg_counts total (2) does not match"));
+}
+
+TEST(OrtModelTest, RejectsInputArgCountTotalOverflow) {
+  const auto buffer = BuildOrtModelBuffer([](flatbuffers::FlatBufferBuilder& builder) {
+    std::vector<flatbuffers::Offset<fbs::ValueInfo>> node_args{
+        fbs::CreateValueInfoDirect(builder, "x", "", CreateFloatTensorTypeInfo(builder, 1)),
+        fbs::CreateValueInfoDirect(builder, "y", "", CreateFloatTensorTypeInfo(builder, 1))};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> inputs{builder.CreateSharedString("x")};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> outputs{builder.CreateSharedString("y")};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> implicit_inputs;
+    std::vector<int32_t> input_arg_counts{
+        std::numeric_limits<int32_t>::max(), std::numeric_limits<int32_t>::max(), 3};
+    std::vector<flatbuffers::Offset<fbs::Node>> nodes{
+        fbs::CreateNodeDirect(builder, "n0", "", "", 13, 0, "Identity",
+                              fbs::NodeType::Primitive, nullptr,
+                              &inputs, &outputs, nullptr,
+                              &input_arg_counts, &implicit_inputs)};
+
+    return fbs::CreateGraphDirect(builder, nullptr, &node_args, &nodes, 1, nullptr, &inputs, &outputs);
+  });
+
+  const auto status = LoadOrtBuffer(buffer);
+  ASSERT_FALSE(status.IsOK());
+  if constexpr (sizeof(size_t) == sizeof(uint32_t)) {
+    EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("input_arg_counts total overflows size_t"));
+  } else {
+    EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("does not match number of explicit inputs"));
+  }
+}
+
+#if !defined(ORT_MINIMAL_BUILD)
+TEST(OrtModelTest, NormalizesValidVariadicInputArgCounts) {
+  const auto buffer = BuildOrtModelBuffer([](flatbuffers::FlatBufferBuilder& builder) {
+    std::vector<flatbuffers::Offset<fbs::ValueInfo>> node_args{
+        fbs::CreateValueInfoDirect(builder, "x", "", CreateFloatTensorTypeInfo(builder, 1)),
+        fbs::CreateValueInfoDirect(builder, "y", "", CreateFloatTensorTypeInfo(builder, 1)),
+        fbs::CreateValueInfoDirect(builder, "z", "", CreateFloatTensorTypeInfo(builder, 1))};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> inputs{
+        builder.CreateSharedString("x"), builder.CreateSharedString("y")};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> outputs{builder.CreateSharedString("z")};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> implicit_inputs;
+    std::vector<int32_t> input_arg_counts{1, 1};
+    std::vector<flatbuffers::Offset<fbs::Node>> nodes{
+        fbs::CreateNodeDirect(builder, "n0", "", "", 13, 0, "Sum",
+                              fbs::NodeType::Primitive, nullptr,
+                              &inputs, &outputs, nullptr,
+                              &input_arg_counts, &implicit_inputs)};
+
+    return fbs::CreateGraphDirect(builder, nullptr, &node_args, &nodes, 1, nullptr, &inputs, &outputs);
+  });
+
+  SessionOptions so;
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigLoadModelFormat, "ORT"));
+
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(buffer.data(), static_cast<int>(buffer.size())));
+
+  const auto& graph = session_object.GetGraph();
+  const auto* node = graph.GetNode(0);
+  ASSERT_NE(node, nullptr);
+
+  EXPECT_THAT(node->InputArgCount(), testing::ElementsAre(2));
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD)
 // Keep the CompareTypeProtos in case we need debug the difference

@@ -4,11 +4,11 @@ flatbuffers
 jinja2
 markupsafe
 numpy
-onnx
+onnx>=1.21.0
 onnxmltools
 packaging
 pandas
-parameterized>=0.8.1
+parameterized>=0.9.0
 protobuf>=4.25.8
 pydocstyle[toml]
 pytest

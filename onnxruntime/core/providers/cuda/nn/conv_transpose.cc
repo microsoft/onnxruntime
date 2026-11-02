@@ -115,6 +115,11 @@ Status ConvTranspose<T, Layout>::CreateCudnnFeExecutionPlan(const onnxruntime::T
   s_.act_fused = fuse_act;
   s_.variant_pack.clear();  // clear variant pack, as stored pointers to tensors change
   s_.cudnn_fe_graph = std::make_unique<cudnn_frontend::graph::Graph>();
+  // Provide the SM version from the cached device properties. Otherwise check_support() queries it with
+  // cudaGetDeviceProperties() (cudnn_frontend 1.24 - 1.31), which costs ~1 ms on some systems and runs on
+  // every plan rebuild, i.e. for each ConvTranspose node whenever its input shape changes.
+  const cudaDeviceProp& device_prop = GetDeviceProp();
+  s_.cudnn_fe_graph->set_sm_version(device_prop.major * 10 + device_prop.minor);
   cudnn_frontend::DataType_t data_type = CudnnFeTensor::GetDataType<CudaT>();
   s_.cudnn_fe_graph->set_io_data_type(data_type).set_intermediate_data_type(data_type);
   if (data_type == cudnn_frontend::DataType_t::HALF) {
@@ -229,10 +234,8 @@ Status ConvTranspose<T, Layout>::CreateCudnnFeExecutionPlan(const onnxruntime::T
 template <typename T, bool Layout>
 Status ConvTranspose<T, Layout>::UpdateState(OpKernelContext* context, bool dynamic_padding) const {
   constexpr bool channels_last = Layout == LAYOUT_NHWC;
-  size_t num_inputs = static_cast<size_t>(Info().GetInputCount());
   // Standard ONNX ConvTranspose has inputs X, W, optional B.
   // ConvTransposeWithDynamicPads inserts Pads at input 2, so bias becomes input 3.
-  bool has_bias = dynamic_padding ? num_inputs == 4 : num_inputs == 3;
 
   // set X
   const Tensor* X = context->Input<Tensor>(0);
@@ -261,13 +264,9 @@ Status ConvTranspose<T, Layout>::UpdateState(OpKernelContext* context, bool dyna
 
   // set B
   // Always in NCHW format
-  const Tensor* B = nullptr;
-  if (has_bias) {
-    B = context->Input<Tensor>(dynamic_padding ? 3 : 2);
-    s_.b_data = reinterpret_cast<const CudaT*>(B->Data<T>());
-  } else {
-    s_.b_data = nullptr;
-  }
+  const int bias_index = dynamic_padding ? 3 : 2;
+  const Tensor* B = context->InputCount() > bias_index ? context->Input<Tensor>(bias_index) : nullptr;
+  s_.b_data = B ? reinterpret_cast<const CudaT*>(B->Data<T>()) : nullptr;
 
   const Tensor* Pads = dynamic_padding ? context->Input<Tensor>(2) : nullptr;
 

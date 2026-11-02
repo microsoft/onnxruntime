@@ -6,6 +6,7 @@
 #include <gsl/gsl>
 
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
 
 namespace onnxruntime {
 namespace test {
@@ -24,8 +25,8 @@ std::vector<TDest> CastVector(const std::vector<TSrc>& source) {
 }
 
 template <typename TNumeric>
-void WhereBasicNumericTest() {
-  OpTester test{kOpName, kOpVersion};
+void WhereBasicNumericTest(int op_version = kOpVersion, bool require_cpu = false) {
+  OpTester test{kOpName, op_version};
 
   const std::vector<int64_t> dims{2, 2};
 
@@ -39,7 +40,13 @@ void WhereBasicNumericTest() {
   test.AddOutput<TNumeric>("output", dims,
                            CastVector<TNumeric, int>({5, 2, 3, 8}));
 
-  test.Run();
+  if (require_cpu) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  } else {
+    test.Run();
+  }
 }
 
 template <typename T>
@@ -99,6 +106,14 @@ void WhereBroadcastTest(const T& x_value, const T& y_value) {
 TEST(WhereOpTest, BasicNumeric) {
   WhereBasicNumericTest<float>();
   WhereBasicNumericTest<double>();
+}
+
+TEST(WhereOpTest, AdditionalNumericTypes) {
+  for (int op_version : {9, 16}) {
+    SCOPED_TRACE(op_version);
+    WhereBasicNumericTest<int8_t>(op_version, true);
+    WhereBasicNumericTest<uint32_t>(op_version, true);
+  }
 }
 
 TEST(WhereOpTest, BasicString) {

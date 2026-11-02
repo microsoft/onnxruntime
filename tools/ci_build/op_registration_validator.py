@@ -33,6 +33,11 @@ deprecated_ops = {
     "kOnnxDomain:ThresholdedRelu": 10,
 }
 
+# Native kernels stop before these versions; newer schemas execute via function expansion.
+function_only_ops = {
+    "kOnnxDomain:SpaceToDepth": 28,
+}
+
 
 @dataclasses.dataclass
 class RegistrationInfo:
@@ -160,7 +165,7 @@ class RegistrationValidator(op_registration_utils.RegistrationProcessor):
         """
         Validates the last registration in sorted order for a single domain and op and returns whether it is valid.
         """
-        # make sure we have an unversioned last entry for each operator unless it's deprecated
+        # Require an unversioned last entry unless a known native-kernel boundary applies.
 
         # TODO If the operator is deprecated, validation is more lax. I.e., it doesn't require a versioned registration.
         # This could be tightened up but we would need to handle the deprecated contrib ops registered in the ONNX
@@ -172,6 +177,10 @@ class RegistrationValidator(op_registration_utils.RegistrationProcessor):
         allow_missing_unversioned_registration = (
             deprecation_version is not None and last_r.end_version == deprecation_version - 1
         )
+
+        function_version = function_only_ops.get(domain_and_op_str)
+        if function_version is not None and last_r.end_version == function_version - 1:
+            allow_missing_unversioned_registration = True
 
         # special handling for ArgMin/ArgMax, which CUDA EP doesn't yet support for opset 12+
         # TODO remove once CUDA EP supports ArgMin/ArgMax for opset 12+

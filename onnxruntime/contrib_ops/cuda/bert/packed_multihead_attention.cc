@@ -223,6 +223,16 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
   ORT_RETURN_IF_ERROR(PackedAttentionWorkspaceStatusToStatus(workspace_result.status));
   const PackedAttentionWorkspaceRecipe& workspace_recipe = workspace_result.recipe;
 
+  if (problem.backend == PackedAttentionBackend::Unfused) {
+    auto validation_flag = this->template GetScratchBuffer<int32_t>(
+        1, this->GetComputeStream(context));
+    ORT_RETURN_IF_ERROR(ValidatePackedMultiHeadAttentionTokenOffset(
+        token_offset->Data<int32_t>(),
+        parameters.batch_size * parameters.sequence_length,
+        validation_flag.get(),
+        this->Stream(context)));
+  }
+
   auto work_space = this->template GetScratchBuffer<void>(
       workspace_recipe.attention_workspace_bytes, this->GetComputeStream(context));
 

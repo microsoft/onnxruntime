@@ -5,8 +5,12 @@
 # license information.
 # --------------------------------------------------------------------------
 
+import copy
+import itertools
+import tempfile
 import unittest
 import warnings
+from pathlib import Path
 
 import numpy as np
 import onnx
@@ -24,6 +28,7 @@ from op_test_utils import (
 
 from onnxruntime import InferenceSession
 from onnxruntime.quantization import CalibrationMethod, QuantFormat, QuantType, quantize_dynamic, quantize_static
+from onnxruntime.quantization.onnx_model import ONNXModel
 
 
 class TestOpGemm(unittest.TestCase):
@@ -793,6 +798,171 @@ class TestOpGemm(unittest.TestCase):
         expected = sess.run(None, feeds)[0]
         got = ref.run(None, feeds)[0]
         assert_allclose(expected, got)
+
+    def test_dynamic_quantization_preserves_transposed_weight(self):
+        for shape, value_info, shared, per_channel, bias_name in itertools.product(
+            [(3, 8), (3, 3)],
+            [False, True],
+            [False, True],
+            [False, True],
+            ["W_Transposed", "W_Transposed_quantized", "W_Transposed_scale", "W_Transposed_zero_point"],
+        ):
+            with self.subTest(
+                shape=shape, value_info=value_info, shared=shared, per_channel=per_channel, bias_name=bias_name
+            ):
+                rows, cols = shape
+                weight = np.arange(rows * cols, dtype=np.float32).reshape(shape) - 4
+                bias = np.ones(rows, dtype=np.float32)
+                inputs = [helper.make_tensor_value_info("X", TensorProto.FLOAT, [1, cols])]
+                outputs = [helper.make_tensor_value_info("W_Transposed_1", TensorProto.FLOAT, [1, rows])]
+                nodes = [helper.make_node("Gemm", ["X", "W", bias_name], ["W_Transposed_1"], transB=1)]
+                feeds = {"X": np.arange(cols, dtype=np.float32).reshape(1, cols) / cols}
+                if shared:
+                    inputs.append(helper.make_tensor_value_info("Z", TensorProto.FLOAT, [1, rows]))
+                    outputs.extend(
+                        [
+                            helper.make_tensor_value_info("Y2", TensorProto.FLOAT, [1, rows]),
+                            helper.make_tensor_value_info("Y3", TensorProto.FLOAT, [1, cols]),
+                            helper.make_tensor_value_info("W_original", TensorProto.FLOAT, shape),
+                        ]
+                    )
+                    nodes.extend(
+                        [
+                            helper.make_node("Gemm", ["X", "W"], ["Y2"], transB=1),
+                            helper.make_node("Gemm", ["Z", "W"], ["Y3"]),
+                            helper.make_node("Identity", ["W"], ["W_original"]),
+                        ]
+                    )
+                    feeds["Z"] = np.arange(rows, dtype=np.float32).reshape(1, rows) / rows
+                graph = helper.make_graph(
+                    nodes,
+                    "shared_gemm_weight",
+                    inputs,
+                    outputs,
+                    initializer=[
+                        onnx.numpy_helper.from_array(weight, "W"),
+                        onnx.numpy_helper.from_array(bias, bias_name),
+                    ],
+                    value_info=[helper.make_tensor_value_info("W", TensorProto.FLOAT, shape)] if value_info else [],
+                )
+                model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 20)], ir_version=9)
+                onnx.checker.check_model(model, full_check=True)
+                expected = InferenceSession(model.SerializeToString(), providers=["CPUExecutionProvider"]).run(
+                    None, feeds
+                )
+                with tempfile.TemporaryDirectory() as directory:
+                    output_path = Path(directory) / "quantized.onnx"
+                    quantize_dynamic(model, output_path, per_channel=per_channel, weight_type=QuantType.QUInt8)
+                    quantized = onnx.load(output_path)
+                    onnx.checker.check_model(quantized, full_check=True)
+                    self.assertEqual(
+                        sum(n.op_type == "MatMulInteger" for n in quantized.graph.node), 3 if shared else 1
+                    )
+                    if not shared:
+                        self.assertNotIn("W", {init.name for init in quantized.graph.initializer})
+                    actual = InferenceSession(str(output_path), providers=["CPUExecutionProvider"]).run(None, feeds)
+                for expected_output, actual_output in zip(expected, actual, strict=True):
+                    assert_allclose(actual_output, expected_output, rtol=0.03, atol=0.15)
+
+    def test_dynamic_gemm_preserves_quantization_overrides(self):
+        weight = np.arange(24, dtype=np.float32).reshape(3, 8)
+        override_cases = [
+            [{"reduce_range": True}],
+            [{"scale": np.float32(0.5), "zero_point": np.uint8(3)}],
+        ] + [
+            [
+                {"axis": axis, "scale": np.float32(scale), "zero_point": np.uint8(zp)}
+                for scale, zp in [(0.25, 1), (0.5, 2), (1.0, 3)]
+            ]
+            for axis in (0, -2)
+        ]
+        for overrides in override_cases:
+            with self.subTest(overrides=overrides):
+                per_channel = "axis" in overrides[0]
+                nodes = [helper.make_node("Gemm", ["X", "W"], ["Y"], transB=1)]
+                outputs = [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1, 3])]
+                if not per_channel:
+                    nodes.append(helper.make_node("MatMul", ["Z", "W"], ["Z_out"]))
+                    outputs.append(helper.make_tensor_value_info("Z_out", TensorProto.FLOAT, [1, 8]))
+                model = helper.make_model(
+                    helper.make_graph(
+                        nodes,
+                        "gemm_overrides",
+                        [
+                            helper.make_tensor_value_info("X", TensorProto.FLOAT, [1, 8]),
+                            helper.make_tensor_value_info("Z", TensorProto.FLOAT, [1, 3]),
+                        ],
+                        outputs,
+                        initializer=[onnx.numpy_helper.from_array(weight, "W")],
+                    ),
+                    opset_imports=[helper.make_opsetid("", 20)],
+                    ir_version=9,
+                )
+                options = {"TensorQuantOverrides": {"W": overrides}}
+                original_options = copy.deepcopy(options)
+                with tempfile.TemporaryDirectory() as directory:
+                    output_path = Path(directory) / "quantized.onnx"
+                    quantize_dynamic(
+                        model, output_path, per_channel=per_channel, weight_type=QuantType.QUInt8, extra_options=options
+                    )
+                    quantized = onnx.load(output_path)
+                onnx.checker.check_model(quantized, full_check=True)
+                initializers = {init.name: onnx.numpy_helper.to_array(init) for init in quantized.graph.initializer}
+                for name in ["W_Transposed"] if per_channel else ["W", "W_Transposed"]:
+                    if "reduce_range" in overrides[0]:
+                        self.assertEqual(initializers[name + "_quantized"].max(), 127)
+                        assert_allclose(initializers[name + "_scale"], np.float32(23 / 127))
+                    else:
+                        scales = [override["scale"] for override in overrides]
+                        zero_points = [override["zero_point"] for override in overrides]
+                        np.testing.assert_array_equal(
+                            initializers[name + "_scale"], scales if per_channel else scales[0]
+                        )
+                        np.testing.assert_array_equal(
+                            initializers[name + "_zero_point"], zero_points if per_channel else zero_points[0]
+                        )
+                self.assertEqual(options["TensorQuantOverrides"], original_options["TensorQuantOverrides"])
+
+    def test_replace_gemm_preserves_outer_scope_weight(self):
+        weight = np.arange(24, dtype=np.float32).reshape(3, 8)
+        branches = {}
+        for branch in ("then_branch", "else_branch"):
+            branches[branch] = helper.make_graph(
+                [helper.make_node("Gemm", ["X", "W"], ["Y"], transB=1)],
+                branch,
+                [],
+                [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1, 3])],
+                value_info=[helper.make_tensor_value_info("W", TensorProto.FLOAT, [3, 8])],
+            )
+        model = helper.make_model(
+            helper.make_graph(
+                [
+                    helper.make_node("If", ["cond"], ["Y"], **branches),
+                    helper.make_node("Identity", ["W"], ["original_weight"]),
+                ],
+                "outer_scope_weight",
+                [
+                    helper.make_tensor_value_info("X", TensorProto.FLOAT, [1, 8]),
+                    helper.make_tensor_value_info("cond", TensorProto.BOOL, []),
+                ],
+                [
+                    helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1, 3]),
+                    helper.make_tensor_value_info("original_weight", TensorProto.FLOAT, [3, 8]),
+                ],
+                initializer=[onnx.numpy_helper.from_array(weight, "W")],
+            ),
+            opset_imports=[helper.make_opsetid("", 20)],
+            ir_version=9,
+        )
+        onnx.checker.check_model(model, full_check=True)
+        original = InferenceSession(model.SerializeToString(), providers=["CPUExecutionProvider"])
+        ONNXModel(model).replace_gemm_with_matmul()
+        onnx.checker.check_model(model, full_check=True)
+        converted = InferenceSession(model.SerializeToString(), providers=["CPUExecutionProvider"])
+        for condition in (True, False):
+            feeds = {"X": np.ones((1, 8), dtype=np.float32), "cond": np.array(condition)}
+            for expected, actual in zip(original.run(None, feeds), converted.run(None, feeds), strict=True):
+                np.testing.assert_array_equal(actual, expected)
 
     def test_dynamic_quantization(self):
         # dummy_model.onnx from Olive

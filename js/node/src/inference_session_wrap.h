@@ -7,6 +7,13 @@
 
 #include <memory>
 #include <napi.h>
+#include <string>
+#include <vector>
+
+#include "ep_context_data_read_helper.h"
+
+// LoadModelWorker performs the native session construction off the JavaScript thread.
+class LoadModelWorker;
 
 // class InferenceSessionWrap is a N-API object wrapper for native InferenceSession.
 class InferenceSessionWrap : public Napi::ObjectWrap<InferenceSessionWrap> {
@@ -17,6 +24,8 @@ class InferenceSessionWrap : public Napi::ObjectWrap<InferenceSessionWrap> {
   ~InferenceSessionWrap();
 
  private:
+  friend class ::LoadModelWorker;
+
   /**
    * [sync] initialize ONNX Runtime once.
    *
@@ -35,12 +44,20 @@ class InferenceSessionWrap : public Napi::ObjectWrap<InferenceSessionWrap> {
   static Napi::Value ListSupportedBackends(const Napi::CallbackInfo& info);
 
   /**
-   * [sync] create the session.
-   * @param arg0 either a string (file path) or a Uint8Array
-   * @returns nothing
-   * @throw error if status code != 0
+   * Create the session and return a Promise.
+   *
+   * Sessions with `sessionOptions.epContextDataRead` are constructed on a worker thread so that the
+   * JavaScript event loop stays available for the callback. Other sessions retain the synchronous,
+   * zero-copy native construction path and return an already-settled Promise.
+   *
+   * @param arg0 either a string (file path) or an ArrayBuffer
+   * @returns a Promise that resolves when the session is created
+   * @throw error if the arguments are invalid or the session options cannot be parsed
    */
   Napi::Value LoadModel(const Napi::CallbackInfo& info);
+
+  Napi::Value LoadModelSynchronously(const Napi::CallbackInfo& info, bool isModelPath,
+                                     const Napi::Object& options, Ort::SessionOptions&& sessionOptions);
 
   // following functions have to be called after model is loaded.
 
@@ -77,10 +94,27 @@ class InferenceSessionWrap : public Napi::ObjectWrap<InferenceSessionWrap> {
    */
   Napi::Value EndProfiling(const Napi::CallbackInfo& info);
 
+  // Take over the objects created by LoadModelWorker. Runs on the JavaScript thread.
+  // @throw Napi::Error if the preferred output locations are invalid.
+  void AdoptLoadedSession(std::unique_ptr<Ort::Session> session, std::vector<std::string> inputNames,
+                          std::vector<Ort::TypeInfo> inputTypes, std::vector<std::string> outputNames,
+                          std::vector<Ort::TypeInfo> outputTypes, const Napi::Object options);
+
+  // Reset the session state after a failed load. Runs on the JavaScript thread.
+  void ResetAfterFailedLoad() noexcept;
+
+  // Give up the EPContext data read callback state. Must run after the native session was released.
+  void ReleaseEpContextDataReadState() noexcept;
+
   // private members
+
+  // The EPContext data read callback state is declared first so that it is destroyed last: the native
+  // session must always be released before the state that it can call into.
+  std::shared_ptr<EpContextDataReadState> epContextDataReadState_;
 
   // session objects
   bool initialized_;
+  bool loading_;
   bool disposed_;
   std::unique_ptr<Ort::Session> session_;
 
