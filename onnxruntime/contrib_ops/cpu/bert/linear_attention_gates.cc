@@ -28,6 +28,7 @@ using namespace onnxruntime::contrib::linear_attention_gates_helper;
 
 REGISTER_KERNEL_TYPED(LinearAttentionGate, float)
 REGISTER_KERNEL_TYPED(LinearAttentionGate, MLFloat16)
+REGISTER_KERNEL_TYPED(LinearAttentionGate, BFloat16)
 
 #undef REGISTER_KERNEL_TYPED
 
@@ -44,6 +45,7 @@ REGISTER_KERNEL_TYPED(LinearAttentionGate, MLFloat16)
 
 REGISTER_KERNEL_TYPED(GatedRMSNorm, float)
 REGISTER_KERNEL_TYPED(GatedRMSNorm, MLFloat16)
+REGISTER_KERNEL_TYPED(GatedRMSNorm, BFloat16)
 
 #undef REGISTER_KERNEL_TYPED
 
@@ -182,8 +184,10 @@ Status GatedRMSNorm<T>::Compute(OpKernelContext* context) const {
 
 template class LinearAttentionGate<float>;
 template class LinearAttentionGate<MLFloat16>;
+template class LinearAttentionGate<BFloat16>;
 template class GatedRMSNorm<float>;
 template class GatedRMSNorm<MLFloat16>;
+template class GatedRMSNorm<BFloat16>;
 
 }  // namespace contrib
 }  // namespace onnxruntime

@@ -26,6 +26,7 @@ class GatedDeltaNet final : public onnxruntime::cuda::CudaKernel {
   gated_delta_net::Engine forced_engine_;
   gated_delta_net::Bf16Precision bf16_precision_{gated_delta_net::Bf16Precision::kFp32};
   bool has_session_bf16_precision_{false};
+  float gate_lower_bound_{-5.0f};
   float scale_;
   int chunk_size_;
   int state_update_capacity_;

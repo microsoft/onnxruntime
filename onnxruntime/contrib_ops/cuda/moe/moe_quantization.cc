@@ -2043,7 +2043,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   const bool use_fp8_fused = is_block_fp8 && enable_fp8_fused_ &&
                              (kernel_activation_type == ActivationType::Silu ||
                               kernel_activation_type == ActivationType::Swiglu) &&
-                             moe_params.num_rows <= 65535 / k_;
+                             moe_params.num_rows <= 8;
   // Offline-packed SM80 bytes cannot be consumed by the dense dequantization fallback.
   ORT_RETURN_IF(preloaded_int2_or_mixed && !use_packed_int,
                 "INT2 or mixed-width CUDA QMoE with weights_prepacked=1 requires a packed execution path "

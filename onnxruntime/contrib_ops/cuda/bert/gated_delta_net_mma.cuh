@@ -52,13 +52,25 @@ __device__ __forceinline__ void SequenceRange(const int32_t* cu_seqlens, int b, 
 
 // Effective per-token decay and beta, after the optional fused activations.
 __device__ __forceinline__ float EffectiveDecay(float raw, const float* a_log, const float* dt_bias,
-                                                int h, GateActivation act) {
+                                                int h, int k, int dk, bool dt_bias_per_key_dim,
+                                                float gate_lower_bound, GateActivation act) {
   if (act == GateActivation::kSoftplusDecay) {
-    const float bias = dt_bias != nullptr ? dt_bias[h] : 0.0f;
+    const float bias = dt_bias != nullptr ? dt_bias[dt_bias_per_key_dim ? (h * dk + k) : h] : 0.0f;
     const float scale = a_log != nullptr ? -__expf(a_log[h]) : -1.0f;
     return scale * SoftPlus(raw + bias);
   }
+  if (act == GateActivation::kSigmoidDecay) {
+    const float bias = dt_bias != nullptr ? dt_bias[dt_bias_per_key_dim ? (h * dk + k) : h] : 0.0f;
+    const float scale = a_log != nullptr ? __expf(a_log[h]) : 1.0f;
+    return gate_lower_bound * Sigmoid(scale * (raw + bias));
+  }
   return raw;
+}
+
+__device__ __forceinline__ float EffectiveDecay(float raw, const float* a_log, const float* dt_bias,
+                                                int h, GateActivation act,
+                                                float gate_lower_bound = -5.0f) {
+  return EffectiveDecay(raw, a_log, dt_bias, h, 0, 1, false, gate_lower_bound, act);
 }
 
 __device__ __forceinline__ float EffectiveBeta(float raw, BetaActivation act) {
@@ -73,12 +85,14 @@ struct KernelParams {
   int num_heads_k;
   int num_heads_v;
   float scale;
+  float gate_lower_bound;
   GateActivation gate_activation;
   BetaActivation beta_activation;
   UpdateRule update_rule;
   bool qk_l2_norm;
   int state_update_capacity;
   int decay_per_key_dim_flag;
+  int dt_bias_per_key_dim_flag;
   Bf16Precision bf16_precision;
   // Hybrid dispatch. The chunked and recurrent launches use complementary predicates, so
   // every row is computed exactly once.

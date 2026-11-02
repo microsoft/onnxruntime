@@ -1107,7 +1107,7 @@ Status LaunchGatherAndExpandPagedKVCache(const TCACHE* key_cache, const TCACHE* 
 
 constexpr int kPagedDecodeThreads = 128;
 constexpr int kPagedDecodeTile = 128;  // KV tokens scored per iteration
-constexpr int kPagedDecodeMaxSplits = 32;
+constexpr int kPagedDecodeMaxSplits = 64;
 
 // Cache element -> float. Identical to DequantizeFromCache with a scale of 1, kept separate because
 // the decode kernel folds the scales into Q and into the output instead of applying them per read.
@@ -1321,8 +1321,12 @@ __global__ void PagedDecodeSplitKV(const T* __restrict__ query,
 
     // ---- PV: consecutive threads own consecutive channels so the V reads stay coalesced ----
     if (channel_groups == 1) {
-      for (int c = tid; c < head_size; c += kPagedDecodeThreads) {
-        float acc = acc_sh[c] * alpha;
+      if (head_size <= 2 * kPagedDecodeThreads) {
+        const int c0 = tid;
+        const int c1 = tid + kPagedDecodeThreads;
+        const bool has_c1 = c1 < head_size;
+        float acc0 = c0 < head_size ? acc_sh[c0] * alpha : 0.0f;
+        float acc1 = has_c1 ? acc_sh[c1] * alpha : 0.0f;
         for (int t = 0; t < tile_len; ++t) {
           const int block_id = block_id_sh[t];
           if (block_id < 0) {
@@ -1332,9 +1336,30 @@ __global__ void PagedDecodeSplitKV(const T* __restrict__ query,
           const int64_t value_offset =
               (static_cast<int64_t>(block_id) * block_size + pos % block_size) * token_stride_in_page +
               head_offset_in_page;
-          acc += logits_sh[t] * ReadPagedCache(value_cache, value_offset + c);
+          const float prob = logits_sh[t];
+          acc0 += prob * ReadPagedCache(value_cache, value_offset + c0);
+          if (has_c1) {
+            acc1 += prob * ReadPagedCache(value_cache, value_offset + c1);
+          }
         }
-        acc_sh[c] = acc;
+        if (c0 < head_size) acc_sh[c0] = acc0;
+        if (has_c1) acc_sh[c1] = acc1;
+      } else {
+        for (int c = tid; c < head_size; c += kPagedDecodeThreads) {
+          float acc = acc_sh[c] * alpha;
+          for (int t = 0; t < tile_len; ++t) {
+            const int block_id = block_id_sh[t];
+            if (block_id < 0) {
+              continue;
+            }
+            const int pos = tile_begin + t;
+            const int64_t value_offset =
+                (static_cast<int64_t>(block_id) * block_size + pos % block_size) * token_stride_in_page +
+                head_offset_in_page;
+            acc += logits_sh[t] * ReadPagedCache(value_cache, value_offset + c);
+          }
+          acc_sh[c] = acc;
+        }
       }
     } else if (tid < acc_elems) {
       const int group = tid / head_size;
@@ -1453,10 +1478,10 @@ __global__ void PagedDecodeReduce(T* __restrict__ output,
 int ComputePagedDecodeSplits(const int token_count, const int num_heads, const int max_kv_len,
                              const int multi_processor_count) {
   const int base_ctas = token_count * num_heads;
-  if (base_ctas <= 0 || base_ctas >= 2 * multi_processor_count) {
+  if (base_ctas <= 0 || base_ctas >= 8 * multi_processor_count) {
     return 1;
   }
-  const int by_occupancy = (2 * multi_processor_count + base_ctas - 1) / base_ctas;
+  const int by_occupancy = (8 * multi_processor_count + base_ctas - 1) / base_ctas;
   const int by_length = (max_kv_len + kPagedDecodeTile - 1) / kPagedDecodeTile;
   return std::max(1, std::min(std::min(by_occupancy, by_length), kPagedDecodeMaxSplits));
 }

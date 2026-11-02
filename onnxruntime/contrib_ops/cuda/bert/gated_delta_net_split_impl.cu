@@ -364,7 +364,7 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetPrepareKernel(
     float g = 0.0f, be = 0.0f;
     if (tid < len) {
       g = needs_decay ? EffectiveDecay(LoadGate<T>(pack.decay, gi, pack.gates_in_input_type), pack.a_log, pack.dt_bias, hv,
-                                       p.gate_activation)
+                                       p.gate_activation, p.gate_lower_bound)
                       : 0.0f;
       be = pack.beta != nullptr ? EffectiveBeta(LoadGate<T>(pack.beta, gi, pack.gates_in_input_type), p.beta_activation) : 1.0f;
     }
@@ -432,13 +432,13 @@ struct ScanSmem {
 template <typename T, int DK, int DV, int BT, int DVB>
 __device__ __forceinline__ ScanSmem<T, DK, DV, BT, DVB> CarveScan(char* raw) {
   using L = SplitLd<DK, DV, BT, DVB>;
-  static_assert(DK == 2 * BT, "t_f must cover both halves of the stacked [2 BT x DVB] GEMM");
+  static_assert(DK >= 2 * BT, "t_f must cover both halves of the stacked [2 BT x DVB] GEMM");
   ScanSmem<T, DK, DV, BT, DVB> s;
   float* f = reinterpret_cast<float*>(raw);
   s.s_f = f;
   f += DK * L::kSf;
   s.t_f = f;
-  f += DK * L::kF2;
+  f += (BT == 64 ? DK : 2 * BT) * L::kF2;
   T* h = reinterpret_cast<T*>(f);
   s.s_h = h;
   h += DK * L::kSh;
@@ -885,11 +885,499 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetScanKernel(
   }
 }
 
+template <typename T>
+__device__ __forceinline__ int SplitCaptureCount(const VariantPack<T>& pack, const KernelParams& p,
+                                                 int b, int seq_len) {
+  if (pack.capture_count == nullptr || p.state_update_capacity <= 0) return 0;
+  return max(0, min(min(pack.capture_count[b], p.state_update_capacity), seq_len));
+}
+
+template <typename T>
+__device__ __forceinline__ bool IsSplitTailRow(const VariantPack<T>& pack,
+                                               const KernelParams& p, int b, int seq_len) {
+  return (p.state_update_tail_pass && SplitCaptureCount(pack, p, b, seq_len) > 0) ||
+         (p.short_row_tail_pass && seq_len < kChunkedMinTokens);
+}
+
+template <typename T, int DK, int DV, int BT>
+struct KdaPrepSmem {
+  float* gc;    // [BT][kKh]
+  float* m_f;   // [BT][BT]
+  float* ti_f;  // [BT][BT]
+  float* beta;  // [BT]
+  T* k_h;       // [BT][kKh]
+  T* q_h;       // [BT][kKh]
+};
+
+template <typename T, int DK, int DV, int BT>
+__device__ __forceinline__ KdaPrepSmem<T, DK, DV, BT> CarveKdaPrep(char* raw) {
+  using L = SplitLd<DK, DV, BT, 64>;
+  KdaPrepSmem<T, DK, DV, BT> s;
+  float* f = reinterpret_cast<float*>(raw);
+  s.gc = f;
+  f += BT * L::kKh;
+  s.m_f = f;
+  f += BT * BT;
+  s.ti_f = f;
+  f += BT * BT;
+  s.beta = f;
+  f += BT;
+  T* h = reinterpret_cast<T*>(f);
+  s.k_h = h;
+  h += BT * L::kKh;
+  s.q_h = h;
+  return s;
+}
+
+// ---------------------------------------------------------------------------
+// KDA (per-key-dim decay) K1 prepare kernel for BT=16, DK=128, DV=128.
+// ---------------------------------------------------------------------------
+template <typename T, int DK, int DV, int BT>
+__global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetKdaPrepareKernel(
+    VariantPack<T> pack, KernelParams p, T* tiles, float* uv_tiles, float* decays, int chunk_base,
+    int chunks_per_pass) {
+  static_assert(BT == 16 && DK == 128 && DV == 128,
+                "KDA prepare kernel is specialized for BT=16, DK=128, DV=128");
+  using L = SplitLd<DK, DV, BT, 64>;
+  using Tile = PrepTile<DK, DV, BT>;
+  extern __shared__ __align__(16) char smem_raw[];
+  const KdaPrepSmem<T, DK, DV, BT> s = CarveKdaPrep<T, DK, DV, BT>(smem_raw);
+
+  const int b = blockIdx.x, hv = blockIdx.y, c_local = blockIdx.z;
+  const int tid = threadIdx.x, warp_id = tid >> 5, lane = tid & 31;
+  const int hq = hv * p.num_heads_q / p.num_heads_v;
+  const int hk = hv * p.num_heads_k / p.num_heads_v;
+
+  int64_t tok_base, seq_len64;
+  SequenceRange(pack.cu_seqlens, b, p.total_tokens, p.uniform_len, &tok_base, &seq_len64);
+  const int seq_len = static_cast<int>(seq_len64);
+  if ((p.state_update_tail_pass || p.short_row_tail_pass) && IsSplitTailRow(pack, p, b, seq_len)) {
+    return;
+  }
+  const int chunk0 = (chunk_base + c_local) * BT;
+  if (chunk0 >= seq_len) return;
+  const int len = min(BT, seq_len - chunk0);
+
+  const int64_t q_stride = static_cast<int64_t>(p.num_heads_q) * DK;
+  const int64_t k_stride = static_cast<int64_t>(p.num_heads_k) * DK;
+  const int64_t v_stride = static_cast<int64_t>(p.num_heads_v) * DV;
+
+  const bool needs_decay = pack.decay != nullptr &&
+                           (p.update_rule == UpdateRule::kGated ||
+                            p.update_rule == UpdateRule::kGatedDelta);
+  const bool needs_retrieval =
+      p.update_rule == UpdateRule::kDelta || p.update_rule == UpdateRule::kGatedDelta;
+  const bool dt_bias_per_key_dim = p.dt_bias_per_key_dim_flag != 0;
+
+  for (int idx = tid; idx < BT * DK; idx += kChunkedThreads) {
+    const int t = idx / DK, d = idx % DK;
+    const int64_t tok = tok_base + chunk0 + t;
+    s.k_h[t * L::kKh + d] = (t < len) ? pack.key[tok * k_stride + hk * DK + d] : FloatToElem<T>(0.f);
+    s.q_h[t * L::kKh + d] = (t < len) ? pack.query[tok * q_stride + hq * DK + d] : FloatToElem<T>(0.f);
+    float g = 0.0f;
+    if (t < len && needs_decay) {
+      const float raw =
+          LoadGate<T>(pack.decay, (tok * p.num_heads_v + hv) * DK + d, pack.gates_in_input_type);
+      g = EffectiveDecay(raw, pack.a_log, pack.dt_bias, hv, d, DK, dt_bias_per_key_dim,
+                         p.gate_lower_bound, p.gate_activation);
+    }
+    s.gc[t * L::kKh + d] = g;
+  }
+  if (tid < BT) {
+    const int64_t tok = tok_base + chunk0 + tid;
+    const int64_t gi = tok * p.num_heads_v + hv;
+    s.beta[tid] = (tid < len)
+                      ? (pack.beta != nullptr
+                             ? EffectiveBeta(LoadGate<T>(pack.beta, gi, pack.gates_in_input_type),
+                                             p.beta_activation)
+                             : 1.0f)
+                      : 0.0f;
+  }
+  __syncthreads();
+
+  const int64_t tile_base =
+      (static_cast<int64_t>(b) * p.num_heads_v + hv) * chunks_per_pass + c_local;
+  T* out = tiles + tile_base * Tile::kHalves;
+  T* w_out = out;
+  T* qg_out = w_out + Tile::kW;
+  T* p_out = qg_out + Tile::kQg;
+  T* kd_out = p_out + Tile::kP;
+  float* uv_out = uv_tiles + tile_base * Tile::kUv;
+  float* decay_out = decays + tile_base * DK;
+
+  if (p.qk_l2_norm) {
+    for (int t = warp_id; t < BT; t += kChunkedWarps) {
+      float sq = 0.0f, sk = 0.0f;
+      for (int d = lane; d < DK; d += 32) {
+        const float qv = ElemToFloat(s.q_h[t * L::kKh + d]);
+        const float kv = ElemToFloat(s.k_h[t * L::kKh + d]);
+        sq += qv * qv;
+        sk += kv * kv;
+      }
+#pragma unroll
+      for (int off = 16; off > 0; off >>= 1) {
+        sq += __shfl_xor_sync(0xffffffff, sq, off);
+        sk += __shfl_xor_sync(0xffffffff, sk, off);
+      }
+      const float rq = rsqrtf(sq + 1e-6f), rk = rsqrtf(sk + 1e-6f);
+      for (int d = lane; d < DK; d += 32) {
+        const float qv = ElemToFloat(s.q_h[t * L::kKh + d]);
+        const float kv = ElemToFloat(s.k_h[t * L::kKh + d]);
+        s.q_h[t * L::kKh + d] = FloatToElem<T>(qv * rq);
+        s.k_h[t * L::kKh + d] = FloatToElem<T>(kv * rk);
+      }
+    }
+  }
+  if (tid < DK) {
+    float acc = 0.0f;
+#pragma unroll
+    for (int t = 0; t < BT; ++t) {
+      acc += s.gc[t * L::kKh + tid];
+      s.gc[t * L::kKh + tid] = acc;
+    }
+    decay_out[tid] = __expf(acc);
+  }
+  __syncthreads();
+
+  // Compute M[BT][BT] (strictly lower) and P[BT][BT] (inclusive lower) using 64 8-thread subwarps.
+  const int group_id = tid >> 3;
+  const int sub_lane = tid & 7;
+  for (int pair_idx = group_id; pair_idx < BT * BT; pair_idx += (kChunkedThreads / 8)) {
+    const int t = pair_idx / BT;
+    const int sc = pair_idx % BT;
+    float acc_k = 0.0f, acc_q = 0.0f;
+    if (sc <= t && t < len) {
+#pragma unroll
+      for (int i = 0; i < (DK / 8); ++i) {
+        const int d = sub_lane + i * 8;
+        const float e = __expf(s.gc[t * L::kKh + d] - s.gc[sc * L::kKh + d]);
+        const float ks = ElemToFloat(s.k_h[sc * L::kKh + d]) * e;
+        acc_k += ElemToFloat(s.k_h[t * L::kKh + d]) * ks;
+        acc_q += ElemToFloat(s.q_h[t * L::kKh + d]) * ks;
+      }
+    }
+#pragma unroll
+    for (int off = 4; off > 0; off >>= 1) {
+      acc_k += __shfl_xor_sync(0xffffffff, acc_k, off);
+      acc_q += __shfl_xor_sync(0xffffffff, acc_q, off);
+    }
+    if (sub_lane == 0) {
+      s.m_f[t * BT + sc] = (sc < t && t < len && needs_retrieval) ? (s.beta[t] * acc_k) : 0.0f;
+      p_out[t * BT + sc] = FloatToElem<T>((sc <= t && t < len) ? acc_q : 0.0f);
+    }
+  }
+  __syncthreads();
+
+  // Exact forward-substitution inverse ti_f = (I + M)^-1 for BT=16.
+  if (warp_id == 0 && lane < BT) {
+    for (int i = 0; i < lane; ++i) {
+      s.ti_f[i * BT + lane] = 0.0f;
+    }
+    s.ti_f[lane * BT + lane] = 1.0f;
+    for (int i = lane + 1; i < BT; ++i) {
+      float acc = 0.0f;
+      for (int j = lane; j < i; ++j) {
+        acc += s.m_f[i * BT + j] * s.ti_f[j * BT + lane];
+      }
+      s.ti_f[i * BT + lane] = -acc;
+    }
+  }
+  __syncthreads();
+
+  if (tid < DK) {
+    const int d = tid;
+    float bk_g[BT];
+#pragma unroll
+    for (int s_idx = 0; s_idx < BT; ++s_idx) {
+      bk_g[s_idx] = (s_idx < len && needs_retrieval)
+                        ? (s.beta[s_idx] * ElemToFloat(s.k_h[s_idx * L::kKh + d]) *
+                           __expf(s.gc[s_idx * L::kKh + d]))
+                        : 0.0f;
+    }
+#pragma unroll
+    for (int t = 0; t < BT; ++t) {
+      float w_acc = 0.0f;
+#pragma unroll
+      for (int s_idx = 0; s_idx <= t; ++s_idx) {
+        w_acc += s.ti_f[t * BT + s_idx] * bk_g[s_idx];
+      }
+      w_out[t * DK + d] = FloatToElem<T>(w_acc);
+    }
+  } else if (tid < 2 * DK) {
+    const int d = tid - DK;
+    float bv[BT];
+#pragma unroll
+    for (int s_idx = 0; s_idx < BT; ++s_idx) {
+      const int64_t tok = tok_base + chunk0 + s_idx;
+      const float vv =
+          (s_idx < len) ? ElemToFloat(pack.value[tok * v_stride + hv * DV + d]) : 0.0f;
+      bv[s_idx] = s.beta[s_idx] * vv;
+    }
+#pragma unroll
+    for (int t = 0; t < BT; ++t) {
+      float u_acc = 0.0f;
+#pragma unroll
+      for (int s_idx = 0; s_idx <= t; ++s_idx) {
+        u_acc += s.ti_f[t * BT + s_idx] * bv[s_idx];
+      }
+      uv_out[t * DV + d] = u_acc;
+    }
+  }
+
+  for (int idx = tid; idx < BT * DK; idx += kChunkedThreads) {
+    const int t = idx / DK, d = idx % DK;
+    const float gc_td = s.gc[t * L::kKh + d];
+    const float g_total_d = s.gc[(BT - 1) * L::kKh + d];
+    qg_out[idx] =
+        FloatToElem<T>((t < len) ? ElemToFloat(s.q_h[t * L::kKh + d]) * __expf(gc_td) : 0.0f);
+    kd_out[idx] = FloatToElem<T>(
+        (t < len) ? ElemToFloat(s.k_h[t * L::kKh + d]) * __expf(g_total_d - gc_td) : 0.0f);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// KDA (per-key-dim decay) K2 scan kernel for BT=16, DK=128, DV=128.
+// ---------------------------------------------------------------------------
+template <typename T, int DK, int DV, int BT, int DVB,
+          Bf16Precision kBf16Prec = Bf16Precision::kFp32>
+__global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetKdaScanKernel(
+    VariantPack<T> pack, KernelParams p, const T* tiles, const float* uv_tiles,
+    const float* decays, float* carry, int chunk_base, int chunks_per_pass, int n_chunks,
+    bool first_pass, bool last_pass) {
+  static_assert(BT == 16 && DK == 128 && DV == 128,
+                "KDA scan kernel is specialized for BT=16, DK=128, DV=128");
+  using L = SplitLd<DK, DV, BT, DVB>;
+  using Tile = PrepTile<DK, DV, BT>;
+  extern __shared__ __align__(16) char smem_raw[];
+  const ScanSmem<T, DK, DV, BT, DVB> s = CarveScan<T, DK, DV, BT, DVB>(smem_raw);
+
+  const int b = blockIdx.x, hv = blockIdx.y, v0 = blockIdx.z * DVB;
+  const int tid = threadIdx.x, warp_id = tid >> 5, lane = tid & 31;
+
+  int64_t tok_base, seq_len64;
+  SequenceRange(pack.cu_seqlens, b, p.total_tokens, p.uniform_len, &tok_base, &seq_len64);
+  const int seq_len = static_cast<int>(seq_len64);
+  if ((p.state_update_tail_pass || p.short_row_tail_pass) && IsSplitTailRow(pack, p, b, seq_len)) {
+    return;
+  }
+  const int64_t v_stride = static_cast<int64_t>(p.num_heads_v) * DV;
+  const int64_t st_off = (static_cast<int64_t>(b) * p.num_heads_v + hv) * DV * DK;
+
+  const float* seed = first_pass ? pack.initial_state : carry;
+  for (int idx = tid; idx < DK * DVB; idx += kChunkedThreads) {
+    const int r = idx / DVB, c = idx % DVB;
+    s.s_f[r * L::kSf + c] =
+        seed != nullptr ? seed[st_off + static_cast<int64_t>(v0 + c) * DK + r] : 0.0f;
+  }
+  __syncthreads();
+
+  const int64_t head_base =
+      (static_cast<int64_t>(b) * p.num_heads_v + hv) * chunks_per_pass;
+
+  for (int c_local = 0; c_local < n_chunks; ++c_local) {
+    const int chunk0 = (chunk_base + c_local) * BT;
+    if (chunk0 >= seq_len) break;
+    const int len = min(BT, seq_len - chunk0);
+
+    const T* in = tiles + (head_base + c_local) * Tile::kHalves;
+    const float* uv_in = uv_tiles + (head_base + c_local) * Tile::kUv;
+    const float* decay_vec = decays + (head_base + c_local) * DK;
+
+    const T* wq_in = in;
+    const T* p_in = wq_in + Tile::kW + Tile::kQg;
+    const T* kd_in = p_in + Tile::kP;
+
+    for (int idx = tid; idx < 2 * BT * DK; idx += kChunkedThreads) {
+      s.wq_h[(idx / DK) * L::kKh + idx % DK] = wq_in[idx];
+    }
+    for (int idx = tid; idx < BT * BT; idx += kChunkedThreads) {
+      s.p_h[(idx / BT) * L::kMh + idx % BT] = p_in[idx];
+    }
+    __syncthreads();
+
+    if constexpr (std::is_same_v<T, __nv_bfloat16> && kBf16Prec == Bf16Precision::kFp32) {
+      SmemGemmFp32State<2 * BT, DVB, DK, false>(s.t_f, L::kF2, s.wq_h, L::kKh, s.s_f, L::kSf,
+                                                s.s_h, L::kSh, warp_id, lane, tid);
+      __syncthreads();
+      float* u_f = reinterpret_cast<float*>(s.s_h);
+      for (int idx = tid; idx < BT * DVB; idx += kChunkedThreads) {
+        const int t = idx / DVB, c = idx % DVB;
+        u_f[t * L::kSf + c] = uv_in[t * DV + v0 + c] - s.t_f[t * L::kF2 + c];
+      }
+      for (int idx = tid; idx < BT * DK; idx += kChunkedThreads) {
+        s.kd_h[(idx / DK) * L::kKh + idx % DK] = kd_in[idx];
+      }
+      __syncthreads();
+
+      SmemGemmFp32State<BT, DVB, BT, false>(s.t_f, L::kF2, s.p_h, L::kMh, u_f, L::kSf, s.u_h,
+                                            L::kBh, warp_id, lane, tid);
+      __syncthreads();
+      for (int idx = tid; idx < BT * DVB; idx += kChunkedThreads) {
+        const int t = idx / DVB, c = idx % DVB;
+        if (t < len) {
+          const int64_t tok = tok_base + chunk0 + t;
+          pack.output[tok * v_stride + hv * DV + v0 + c] =
+              FloatToElem<T>(p.scale * (s.t_f[t * L::kF2 + c] + s.t_f[(BT + t) * L::kF2 + c]));
+        }
+      }
+
+      for (int idx = tid; idx < DK * DVB; idx += kChunkedThreads) {
+        const int r = idx / DVB, c = idx % DVB;
+        s.s_f[r * L::kSf + c] *= decay_vec[r];
+      }
+      __syncthreads();
+      SmemGemmFp32State<DK, DVB, BT, true, kChunkedWarps, T, /*TA=*/true>(
+          s.s_f, L::kSf, s.kd_h, L::kKh, u_f, L::kSf, s.u_h, L::kBh, warp_id, lane, tid);
+      __syncthreads();
+    } else {
+      for (int idx = tid; idx < DK * DVB; idx += kChunkedThreads) {
+        const int r = idx / DVB, c = idx % DVB;
+        s.s_h[r * L::kSh + c] = FloatToElem<T>(s.s_f[r * L::kSf + c]);
+      }
+      __syncthreads();
+      SmemGemm<2 * BT, DVB, DK, false, false, false>(s.t_f, L::kF2, s.wq_h, L::kKh, s.s_h, L::kSh,
+                                                     warp_id, lane);
+      __syncthreads();
+      for (int idx = tid; idx < BT * DVB; idx += kChunkedThreads) {
+        const int t = idx / DVB, c = idx % DVB;
+        s.u_h[t * L::kBh + c] = FloatToElem<T>(uv_in[t * DV + v0 + c] - s.t_f[t * L::kF2 + c]);
+      }
+      for (int idx = tid; idx < BT * DK; idx += kChunkedThreads) {
+        s.kd_h[(idx / DK) * L::kKh + idx % DK] = kd_in[idx];
+      }
+      __syncthreads();
+
+      SmemGemm<BT, DVB, BT, false, false, false>(s.t_f, L::kF2, s.p_h, L::kMh, s.u_h, L::kBh,
+                                                 warp_id, lane);
+      __syncthreads();
+      for (int idx = tid; idx < BT * DVB; idx += kChunkedThreads) {
+        const int t = idx / DVB, c = idx % DVB;
+        if (t < len) {
+          const int64_t tok = tok_base + chunk0 + t;
+          pack.output[tok * v_stride + hv * DV + v0 + c] =
+              FloatToElem<T>(p.scale * (s.t_f[t * L::kF2 + c] + s.t_f[(BT + t) * L::kF2 + c]));
+        }
+      }
+
+      for (int idx = tid; idx < DK * DVB; idx += kChunkedThreads) {
+        const int r = idx / DVB, c = idx % DVB;
+        s.s_f[r * L::kSf + c] *= decay_vec[r];
+      }
+      __syncthreads();
+      SmemGemm<DK, DVB, BT, true, false, true, float>(s.s_f, L::kSf, s.kd_h, L::kKh, s.u_h,
+                                                      L::kBh, warp_id, lane, 1.0f);
+      __syncthreads();
+    }
+  }
+
+  for (int idx = tid; idx < DK * DVB; idx += kChunkedThreads) {
+    const int r = idx / DVB, c = idx % DVB;
+    const int64_t off = st_off + static_cast<int64_t>(v0 + c) * DK + r;
+    const float v = s.s_f[r * L::kSf + c];
+    if (carry != nullptr) carry[off] = v;
+    if (last_pass && pack.final_state != nullptr) pack.final_state[off] = v;
+  }
+}
+
+template <typename T>
+Status LaunchGatedDeltaNetKdaSplit(const Descriptor& desc, const Plan& plan,
+                                   const VariantPack<T>& pack, float scale, cudaStream_t stream) {
+  constexpr int DK = 128, DV = 128, BT = 16;
+
+  KernelParams p{};
+  p.total_tokens = desc.total_tokens;
+  p.uniform_len = desc.batch > 0 ? desc.total_tokens / desc.batch : 0;
+  p.num_heads_q = desc.num_heads_q;
+  p.num_heads_k = desc.num_heads_k;
+  p.num_heads_v = desc.num_heads_v;
+  p.scale = scale;
+  p.gate_lower_bound = desc.gate_lower_bound;
+  p.gate_activation = desc.gate_activation;
+  p.beta_activation = desc.beta_activation;
+  p.update_rule = desc.update_rule;
+  p.qk_l2_norm = desc.qk_l2_norm;
+  p.state_update_capacity = desc.state_update_capacity;
+  p.decay_per_key_dim_flag = 1;
+  p.dt_bias_per_key_dim_flag = desc.dt_bias_per_key_dim ? 1 : 0;
+  p.bf16_precision = desc.bf16_precision;
+  p.state_update_tail_pass = plan.state_update_tail_pass;
+  p.short_row_tail_pass = plan.short_row_tail_pass;
+
+  const int64_t longest =
+      desc.ragged ? desc.total_tokens
+                  : (desc.batch > 0 ? (desc.total_tokens + desc.batch - 1) / desc.batch : 0);
+  const int total_chunks = static_cast<int>((longest + BT - 1) / BT);
+  if (total_chunks <= 0) return Status::OK();
+  const int chunks_per_pass =
+      std::min(plan.chunks_per_pass > 0 ? plan.chunks_per_pass : total_chunks, total_chunks);
+
+  const int64_t tiles_per_pass =
+      static_cast<int64_t>(desc.batch) * desc.num_heads_v * chunks_per_pass;
+  float* uv_tiles = reinterpret_cast<float*>(pack.workspace);
+  float* decays = uv_tiles + tiles_per_pass * PrepTile<DK, DV, BT>::kUv;
+  float* carry = total_chunks > chunks_per_pass ? decays + tiles_per_pass * DK : nullptr;
+  float* after_floats = carry != nullptr ? carry + static_cast<int64_t>(desc.batch) *
+                                                       desc.num_heads_v * DV * DK
+                                         : decays + tiles_per_pass * DK;
+  T* tiles = reinterpret_cast<T*>(after_floats);
+
+  const int dvb = plan.v_block;
+  const size_t prep_smem = KdaSplitPrepareSmemBytes(BT, DK, DV);
+  const size_t scan_smem = KdaSplitScanSmemBytes(BT, DK, dvb);
+
+  auto launch_pass = [&]<Bf16Precision kPrec>(int base, int n, bool first, bool last) -> Status {
+    static DynamicSmemConfig prep_smem_config;
+    ORT_RETURN_IF_ERROR(SetMaxDynamicSmem(
+        GatedDeltaNetKdaPrepareKernel<T, DK, DV, BT>, prep_smem, prep_smem_config));
+    const dim3 prep_grid(desc.batch, desc.num_heads_v, n);
+    GatedDeltaNetKdaPrepareKernel<T, DK, DV, BT>
+        <<<prep_grid, kChunkedThreads, prep_smem, stream>>>(pack, p, tiles, uv_tiles, decays, base,
+                                                            chunks_per_pass);
+
+    const dim3 scan_grid(desc.batch, desc.num_heads_v, DV / dvb);
+    if (dvb == 32) {
+      static DynamicSmemConfig scan32_smem_config;
+      ORT_RETURN_IF_ERROR(SetMaxDynamicSmem(
+          GatedDeltaNetKdaScanKernel<T, DK, DV, BT, 32, kPrec>, scan_smem, scan32_smem_config));
+      GatedDeltaNetKdaScanKernel<T, DK, DV, BT, 32, kPrec>
+          <<<scan_grid, kChunkedThreads, scan_smem, stream>>>(pack, p, tiles, uv_tiles, decays,
+                                                              carry, base, chunks_per_pass, n,
+                                                              first, last);
+    } else {
+      static DynamicSmemConfig scan64_smem_config;
+      ORT_RETURN_IF_ERROR(SetMaxDynamicSmem(
+          GatedDeltaNetKdaScanKernel<T, DK, DV, BT, 64, kPrec>, scan_smem, scan64_smem_config));
+      GatedDeltaNetKdaScanKernel<T, DK, DV, BT, 64, kPrec>
+          <<<scan_grid, kChunkedThreads, scan_smem, stream>>>(pack, p, tiles, uv_tiles, decays,
+                                                              carry, base, chunks_per_pass, n,
+                                                              first, last);
+    }
+    return CUDA_CALL(cudaGetLastError());
+  };
+
+  for (int base = 0; base < total_chunks; base += chunks_per_pass) {
+    const int n = std::min(chunks_per_pass, total_chunks - base);
+    const bool first = base == 0;
+    const bool last = base + n >= total_chunks;
+    if constexpr (std::is_same_v<T, __nv_bfloat16>) {
+      if (desc.bf16_precision != Bf16Precision::kFp32) {
+        ORT_RETURN_IF_ERROR(launch_pass.template operator()<Bf16Precision::kBf16>(base, n, first, last));
+        continue;
+      }
+    }
+    ORT_RETURN_IF_ERROR(launch_pass.template operator()<Bf16Precision::kFp32>(base, n, first, last));
+  }
+  return Status::OK();
+}
+
 }  // namespace
 
 template <typename T>
 Status LaunchGatedDeltaNetSplit(const Descriptor& desc, const Plan& plan,
                                 const VariantPack<T>& pack, float scale, cudaStream_t stream) {
+  if (desc.decay_per_key_dim) {
+    return LaunchGatedDeltaNetKdaSplit<T>(desc, plan, pack, scale, stream);
+  }
   constexpr int DK = 128, DV = 128, BT = 64;
   static_assert(DK == 128 && DV == 128, "the split engine is specialised for 128-wide heads");
 

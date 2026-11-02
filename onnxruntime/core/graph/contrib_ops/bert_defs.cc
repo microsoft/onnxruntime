@@ -5680,12 +5680,17 @@ raw projection carried by `decay`:
 
   g = -exp(a_log) * Softplus(decay + dt_bias)
 
+`gate_activation='sigmoid'` (alias `'kda'`) computes the bounded Kimi Delta Attention decay in
+float32:
+
+  g = gate_lower_bound * Sigmoid(exp(a_log) * (decay + dt_bias))
+
 `beta_activation='sigmoid'` applies a sigmoid to `beta`, and `qk_l2_norm=1` L2-normalizes each
 query and key head vector. Folding these in avoids materializing the intermediates and keeps
 the gate arithmetic in float32 independent of the input type.
-Decay and beta may be float or the query element type (both use the same type). CUDA widens
-FP16/BF16 gate inputs to float before any gate arithmetic, avoiding standalone lossless casts.
-State, a_log, and dt_bias remain float. WebGPU currently accepts float decay and beta only.
+Decay and beta may be float or the query element type (both use the same type). CUDA, CPU, and
+WebGPU widen FP16/BF16 gate inputs to float before any gate arithmetic, avoiding standalone
+lossless casts. State, a_log, and dt_bias remain float.
 
 )DOC";
 
@@ -5701,9 +5706,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::FLOAT, 0.0f)
         .Attr("gate_activation",
               "'none' (default) treats `decay` as the effective log-space decay. 'softplus' computes "
-              "-exp(a_log) * Softplus(decay + dt_bias) in float32. 'qwen' is accepted as a legacy "
-              "alias of 'softplus' with identical behavior.",
+              "-exp(a_log) * Softplus(decay + dt_bias) in float32 ('qwen' is accepted as a legacy "
+              "alias). 'sigmoid' (or 'kda') computes gate_lower_bound * Sigmoid(exp(a_log) * "
+              "(decay + dt_bias)) in float32.",
               AttributeProto::STRING, std::string("none"))
+        .Attr("gate_lower_bound",
+              "Negative lower bound applied when gate_activation is 'sigmoid' or 'kda'. Default -5.0.",
+              AttributeProto::FLOAT, -5.0f)
         .Attr("beta_activation",
               "'none' (default) treats `beta` as the effective update rate. 'sigmoid' applies a "
               "sigmoid.",
@@ -5743,11 +5752,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "V-major. Required for packed QKV. May alias final_state.",
                "TS", OpSchema::Optional)
         .Input(7, "a_log",
-               "Per-head A_log, shape (num_heads_v). Requires gate_activation=softplus.",
+               "Per-head A_log, shape (num_heads_v). Used when gate_activation is 'softplus' or 'sigmoid'/'kda'.",
                "TS", OpSchema::Optional)
         .Input(8, "dt_bias",
-               "Per-head gate bias, shape (num_heads_v). "
-               "Requires gate_activation=softplus.",
+               "Gate bias, shape (num_heads_v) or (num_heads_v, head_size_qk) / (num_heads_v * head_size_qk). "
+               "Used when gate_activation is 'softplus' or 'sigmoid'/'kda'.",
                "TS", OpSchema::Optional)
         .Input(9, "capture_count",
                "Number of leading local token transitions to capture for each request, shape "
@@ -5926,15 +5935,20 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
 
               constexpr int64_t max_dimension = std::numeric_limits<int64_t>::max();
               if (num_heads_k > max_dimension / head_size_qk ||
-                  num_heads_v > max_dimension / head_size_v) {
+                  num_heads_v > max_dimension / head_size_v ||
+                  num_heads_v > max_dimension / head_size_qk) {
                 fail_shape_inference("GatedDeltaNet: state_update width overflows int64");
               }
+              const bool decay_per_key_dim =
+                  ctx.getNumInputs() > 4 && hasInputShape(ctx, 4) &&
+                  getInputShape(ctx, 4).dim_size() == token_dims + 2;
+              const int64_t decay_width = decay_per_key_dim ? num_heads_v * head_size_qk : num_heads_v;
               const int64_t key_width = num_heads_k * head_size_qk;
               const int64_t value_width = num_heads_v * head_size_v;
-              if (num_heads_v > max_dimension - key_width) {
+              if (decay_width > max_dimension - key_width) {
                 fail_shape_inference("GatedDeltaNet: state_update width overflows int64");
               }
-              const int64_t width_without_capacity = num_heads_v + key_width;
+              const int64_t width_without_capacity = decay_width + key_width;
               if (value_width > max_dimension - width_without_capacity) {
                 fail_shape_inference("GatedDeltaNet: state_update width overflows int64");
               }
