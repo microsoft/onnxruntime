@@ -227,7 +227,8 @@ __global__ void __launch_bounds__(kFusedRouteThreads) FusedSoftmaxTopKMapsKernel
 // 256-expert specialization supporting 1..8 rows and k <= 8 (num_rows * k <= 64).
 // Uses 8 warps (256 threads), one warp per row. Lane l owns strided experts j * 32 + l (j = 0..7),
 // reproducing SoftmaxTopKWarpTopKKernel<T, 8, 4>'s WarpReduceMax / WarpReduceSum reduction order
-// operation-for-operation while using k rounds of warp-wide __reduce_max_sync for top-k selection
+// operation-for-operation while using k rounds of warp-wide arg-max (__reduce_max_sync on SM80+,
+// __shfl_xor_sync butterfly fallback) over 32-bit FusedRouteKey values for top-k selection
 // and building the (expert, token)-sorted expert maps in the same CTA.
 template <typename T, int K>
 __global__ void __launch_bounds__(kFusedRoute256Threads) FusedSoftmaxTopKMaps256Kernel(
@@ -242,54 +243,82 @@ __global__ void __launch_bounds__(kFusedRoute256Threads) FusedSoftmaxTopKMaps256
   constexpr int kMaxSel = K > 0 ? K : kFusedRoute256MaxK;
   const int k = K > 0 ? K : k_runtime;
   __shared__ int s_key[kFusedRoute256MaxRows * kFusedRoute256MaxK];
-  __shared__ int s_sorted[128];
+  __shared__ int s_sorted[256];
 
   const int warp = static_cast<int>(threadIdx.x) >> 5;
   const int lane = static_cast<int>(threadIdx.x) & 31;
-  if (threadIdx.x < 128) {
-    s_sorted[threadIdx.x] = INT_MAX;
-  }
+  s_sorted[threadIdx.x] = INT_MAX;  // padding for the branchless searches below
 
   if (warp < num_rows) {
     const T* row_logits = logits + static_cast<size_t>(warp) * num_experts;
-    uint64_t keys[8];
+    float scores[8];
+    uint32_t keys[8];
     float local_max = onnxruntime::cuda::topk::kNegativeInfinity;
 #pragma unroll
     for (int j = 0; j < 8; ++j) {
       const int idx = j * 32 + lane;
-      const float logit = static_cast<float>(row_logits[idx]);
-      keys[j] = onnxruntime::cuda::topk::PackStableSortKey(logit, idx);
-      local_max = fmaxf(local_max, logit);
+      const float v = static_cast<float>(row_logits[idx]);
+      scores[j] = v == 0.0f ? 0.0f : v;
+      keys[j] = FusedRouteKey(v, idx, true);
+      local_max = fmaxf(local_max, v);
     }
 
     const float max_val = onnxruntime::cuda::topk::WarpReduceMax(local_max);
+
+    uint32_t winners[kMaxSel];
+#pragma unroll
+    for (int r = 0; r < kMaxSel; ++r) {
+      if (K > 0 || r < k) {
+        uint32_t best = keys[0];
+#pragma unroll
+        for (int j = 1; j < 8; ++j) {
+          best = max(best, keys[j]);
+        }
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800)
+        winners[r] = __reduce_max_sync(0xFFFFFFFFu, best);
+#else
+#pragma unroll
+        for (int offset = 16; offset >= 1; offset >>= 1) {
+          best = max(best, __shfl_xor_sync(0xFFFFFFFFu, best, offset));
+        }
+        winners[r] = best;
+#endif
+#pragma unroll
+        for (int j = 0; j < 8; ++j) {
+          keys[j] = keys[j] == winners[r] ? 0u : keys[j];
+        }
+      } else {
+        winners[r] = 0u;
+      }
+    }
+
     float local_sum = 0.0f;
 #pragma unroll
     for (int j = 0; j < 8; ++j) {
-      local_sum += expf(onnxruntime::cuda::topk::UnpackStableSortScore(keys[j]) - max_val);
+      local_sum += expf(scores[j] - max_val);
     }
     const float inv_sum = onnxruntime::cuda::topk::SafeInvSum(onnxruntime::cuda::topk::WarpReduceSum(local_sum));
 
-    onnxruntime::cuda::topk::WarpBitonicTopN<8>(keys);
-
-    float probs[8];
+    uint32_t selected = 0;
+    float prob = 0.0f;
     float scale_sum = 0.0f;
 #pragma unroll
-    for (int j = 0; j < 8; ++j) {
-      probs[j] = onnxruntime::cuda::topk::SoftmaxScale(
-          onnxruntime::cuda::topk::UnpackStableSortScore(keys[j]), max_val, inv_sum);
-      if (j < k) scale_sum += probs[j];
+    for (int r = 0; r < kMaxSel; ++r) {
+      if (K > 0 || r < k) {
+        const float p = onnxruntime::cuda::topk::SoftmaxScale(FusedRouteScore(winners[r]), max_val, inv_sum);
+        scale_sum += p;
+        if (lane == r) {
+          selected = winners[r];
+          prob = p;
+        }
+      }
     }
     const float denom = onnxruntime::cuda::topk::TopKNormalizeDenom(normalize_scales, scale_sum);
-
-#pragma unroll
-    for (int j = 0; j < 8; ++j) {
-      if (lane == j && j < k) {
-        const int expert = onnxruntime::cuda::topk::UnpackStableSortIndex(keys[j]);
-        topk_scales[static_cast<size_t>(warp) * k + j] = normalize_scales ? (probs[j] / denom) : probs[j];
-        topk_indices[static_cast<size_t>(warp) * k + j] = expert;
-        s_key[warp * k + j] = (expert << 3) | warp;  // 3 bits for token index (0..7)
-      }
+    if (lane < k) {
+      const int expert = 0x1FFF - static_cast<int>(selected & 0x1FFFu);
+      topk_scales[static_cast<size_t>(warp) * k + lane] = normalize_scales ? (prob / denom) : prob;
+      topk_indices[static_cast<size_t>(warp) * k + lane] = expert;
+      s_key[warp * k + lane] = (expert << 3) | warp;  // 3 bits for token index (0..7)
     }
   }
   const int num_pairs = num_rows * k;

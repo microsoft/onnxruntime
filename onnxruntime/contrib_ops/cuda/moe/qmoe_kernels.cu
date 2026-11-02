@@ -437,19 +437,11 @@ static bool CanUseFusedRouteMaps256(int64_t num_rows, int64_t num_experts, int64
          k <= kFusedRoute256MaxK && num_rows * k <= 64;
 }
 
-template <typename T>
-bool LaunchFusedRouteMapsT(const T* logits, float* topk_scales, int* topk_indices,
-                           int* permuted_row_to_unpermuted_row, int* unpermuted_row_to_permuted_row,
-                           int* permuted_expert, int64_t* expert_first_token_offset, int num_rows,
-                           int num_experts, int k, bool normalize_scales, bool pdl, cudaStream_t stream) {
-  const bool is_256 = CanUseFusedRouteMaps256(num_rows, num_experts, k);
-  if (!(is_256 || CanUseFusedRouteMaps(num_rows, num_experts, k)) || reinterpret_cast<uintptr_t>(logits) % 8 != 0) {
-    return false;
-  }
-  const auto kernel = is_256
-                          ? (k == 8 ? FusedSoftmaxTopKMaps256Kernel<T, 8> : FusedSoftmaxTopKMaps256Kernel<T, 0>)
-                          : (k == 10 ? FusedSoftmaxTopKMapsKernel<T, 10> : FusedSoftmaxTopKMapsKernel<T, 0>);
-  const int threads = is_256 ? kFusedRoute256Threads : kFusedRouteThreads;
+template <typename KernelPtr, typename T>
+bool LaunchFusedRouteKernel(KernelPtr kernel, int threads, const T* logits, float* topk_scales, int* topk_indices,
+                            int* permuted_row_to_unpermuted_row, int* unpermuted_row_to_permuted_row,
+                            int* permuted_expert, int64_t* expert_first_token_offset, int num_rows, int k,
+                            bool normalize_scales, bool pdl, cudaStream_t stream) {
   if (!IsFusedRouteKernelSm90Available(kernel)) {
     return false;
   }
@@ -480,6 +472,41 @@ bool LaunchFusedRouteMapsT(const T* logits, float* topk_scales, int* topk_indice
       unpermuted_row_to_permuted_row, permuted_expert, expert_first_token_offset, num_rows, k, normalize_scales);
   CUDA_CALL_THROW(cudaGetLastError());
   return true;
+}
+
+template <typename T>
+bool LaunchFusedRouteMapsT(const T* logits, float* topk_scales, int* topk_indices,
+                           int* permuted_row_to_unpermuted_row, int* unpermuted_row_to_permuted_row,
+                           int* permuted_expert, int64_t* expert_first_token_offset, int num_rows,
+                           int num_experts, int k, bool normalize_scales, bool pdl, cudaStream_t stream) {
+  if (reinterpret_cast<uintptr_t>(logits) % 8 != 0) {
+    return false;
+  }
+  if (CanUseFusedRouteMaps256(num_rows, num_experts, k)) {
+    if (k == 8) {
+      return LaunchFusedRouteKernel(FusedSoftmaxTopKMaps256Kernel<T, 8>, kFusedRoute256Threads, logits, topk_scales,
+                                    topk_indices, permuted_row_to_unpermuted_row, unpermuted_row_to_permuted_row,
+                                    permuted_expert, expert_first_token_offset, num_rows, k, normalize_scales, pdl,
+                                    stream);
+    }
+    return LaunchFusedRouteKernel(FusedSoftmaxTopKMaps256Kernel<T, 0>, kFusedRoute256Threads, logits, topk_scales,
+                                  topk_indices, permuted_row_to_unpermuted_row, unpermuted_row_to_permuted_row,
+                                  permuted_expert, expert_first_token_offset, num_rows, k, normalize_scales, pdl,
+                                  stream);
+  }
+  if (!CanUseFusedRouteMaps(num_rows, num_experts, k)) {
+    return false;
+  }
+  if (k == 10) {
+    return LaunchFusedRouteKernel(FusedSoftmaxTopKMapsKernel<T, 10>, kFusedRouteThreads, logits, topk_scales,
+                                  topk_indices, permuted_row_to_unpermuted_row, unpermuted_row_to_permuted_row,
+                                  permuted_expert, expert_first_token_offset, num_rows, k, normalize_scales, pdl,
+                                  stream);
+  }
+  return LaunchFusedRouteKernel(FusedSoftmaxTopKMapsKernel<T, 0>, kFusedRouteThreads, logits, topk_scales,
+                                topk_indices, permuted_row_to_unpermuted_row, unpermuted_row_to_permuted_row,
+                                permuted_expert, expert_first_token_offset, num_rows, k, normalize_scales, pdl,
+                                stream);
 }
 
 bool LaunchFusedRouteMaps(const half* logits, float* topk_scales, int* topk_indices, int* r2u, int* u2r, int* expert,
