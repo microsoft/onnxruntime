@@ -55,8 +55,17 @@ const kSgMatCountM: u32 = BM / kSgMatM;         // Subgroup matrices per tile al
 // Padded shared memory stride to avoid bank conflicts during cooperative matrix loads
 const SHMEM_STRIDE: u32 = BK + 8;  // Matches Vulkan CM1's BK/2+4 in vec2 units
 
-// Shared memory for dequantized B weights [BN, BK] with padding
-var<workgroup> buf_b: array<f16, BN * SHMEM_STRIDE>;
+#if has_qlora_up
+const kQLoRAAddCount = 4u;
+// The consumed B tile also stages four base matrices per subgroup in qlora_add.
+// For a four-wave 256x64 tile with BK=32, that requires more space than B itself.
+const kBufBCapacity = max(BN * SHMEM_STRIDE,
+                         kSgMatM * kSgMatN * kQLoRAAddCount * kSubgroupsPerWorkgroup);
+#else
+const kBufBCapacity = BN * SHMEM_STRIDE;
+#endif
+// Shared memory for dequantized B weights [BN, BK] with padding, then QLoRA staging.
+var<workgroup> buf_b: array<f16, kBufBCapacity>;
 
 // Small staging buffer for edge-tile output (one 16x16 tile per subgroup)
 var<workgroup> coopmat_stage: array<f16, kSgMatM * kSgMatN * kSubgroupsPerWorkgroup>;
@@ -158,8 +167,7 @@ fn dequant_b_to_buf(n_base: u32, k_idx: u32, n_idx: u32, k_chunk: u32) {
 alias QLoRAElement = f16;
 const kQLoRAMatM = kSgMatM;
 const kQLoRAMatN = kSgMatN;
-const kQLoRAAddCount = 4u;
-const kQLoRABaseCapacity = BN * SHMEM_STRIDE;
+const kQLoRABaseCapacity = kBufBCapacity;
 const kQLoRADeltaCapacity = BM * kQLoRARank;
 const kQLoRASubgroups = kSubgroupsPerWorkgroup;
 #include "quantization/subgroup_matrix_qlora_add.wgsl.template"

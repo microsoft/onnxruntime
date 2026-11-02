@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <string_view>
+
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 
@@ -152,6 +155,74 @@ TEST(MatMulNBitsQLoRA, PrefillSubgroupMatrixCancellation) {
   test.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
   const auto logs = testing::internal::GetCapturedStderr();
   EXPECT_NE(logs.find("SubgroupMatrixMatMulNBitsQLoRAUp"), std::string::npos) << logs;
+#endif
+}
+
+TEST(MatMulNBitsQLoRA, PrefillSubgroupMatrixKBlocking) {
+#if defined(ORT_USE_EP_API_ADAPTERS)
+  GTEST_SKIP() << "Hardware-specific dispatch checks require direct adapter capability inspection.";
+#else
+  ConfigOptions options;
+  ASSERT_STATUS_OK(options.AddConfigEntry(webgpu::options::kEnableMatmulFp32Accumulation,
+                                          webgpu::options::kEnableMatmulFp32Accumulation_OFF));
+  auto initial_ep = WebGpuExecutionProviderWithOptions(options);
+  ASSERT_NE(initial_ep, nullptr);
+  const auto& gpu = webgpu::WebGpuContextFactory::GetContext(initial_ep->GetDeviceId());
+  const auto& adapter = gpu.AdapterInfo();
+  const auto& device_configs = gpu.SubgroupMatrixConfigs();
+  constexpr auto kF16 = wgpu::SubgroupMatrixComponentType::F16;
+  const uint32_t preferred_subgroup_size =
+      adapter.vendor == std::string_view{"amd"} && adapter.backendType == wgpu::BackendType::D3D12 ? 64 : 32;
+  const auto config = webgpu::detail::SelectSubgroupMatrixConfigFromAdapterConfigs(
+      {device_configs.configs, device_configs.configCount},
+      adapter.subgroupMinSize, adapter.subgroupMaxSize,
+      gpu.DeviceHasFeature(wgpu::FeatureName::SubgroupSizeControl),
+      {{kF16, kF16, 16, 16, 16, preferred_subgroup_size, true}, {kF16, kF16, 16, 16, 16, 32, true}});
+  if (!gpu.DeviceHasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix) || !config.has_value()) {
+    GTEST_SKIP() << "Requires a compatible FP16 16x16x16 subgroup-matrix configuration.";
+  }
+  // AMD D3D12 wave64 selects BM=256, BN=64. K=2080 forces BK=32, whose B tile
+  // is smaller than the base staging required by qlora_add; the controls use BK=64.
+  constexpr int64_t m = 512, n = 64;
+  for (const int64_t k : {2048, 2080, 2112}) {
+    SCOPED_TRACE(MakeString("K=", k, ", subgroup_size=", config->subgroupSize));
+    std::vector<MLFloat16> x(m * k), expected(m * n);
+    std::vector<uint8_t> bq(n * 32);
+    for (int64_t col = 0; col < n; ++col) {
+      std::fill_n(bq.begin() + col * 32, 32, static_cast<uint8_t>(128 + col % 5 - 2));
+    }
+    for (int64_t row = 0; row < m; ++row) {
+      const float value = static_cast<float>(row % 9 - 4) / 8.0f;
+      std::fill_n(x.begin() + row * k, k, MLFloat16(value));
+      // Both base and down projections equal X * K / 128. The up projection
+      // scales T by (col % 5 - 2), exercising positive, zero and negative deltas.
+      for (int64_t col = 0; col < n; ++col) {
+        expected[row * n + col] = MLFloat16(value * static_cast<float>(k) / 128.0f *
+                                            static_cast<float>(1 + col % 5 - 2));
+      }
+    }
+    OpTester test("MatMulNBitsQLoRA", 1, kMSDomain);
+    test.AddAttribute<int64_t>("K", k);
+    test.AddAttribute<int64_t>("N", n);
+    test.AddAttribute<int64_t>("accuracy_level", 4);
+    test.AddInput<MLFloat16>("X", {1, m, k}, x);
+    test.AddInput<uint8_t>("W", {n, k / 32, 16}, std::vector<uint8_t>(n * k / 2, 0x99), true);
+    test.AddInput<MLFloat16>("S", {n, k / 32}, std::vector<MLFloat16>(n * k / 32, MLFloat16(1.0f / 128)), true);
+    test.AddInput<uint8_t>("AQ", {32, k / 32, 32}, std::vector<uint8_t>(32 * k, 129));
+    test.AddInput<MLFloat16>("AS", {32, k / 32}, std::vector<MLFloat16>(k, MLFloat16(1.0f / 128)));
+    test.AddInput<uint8_t>("BQ", {n, 1, 32}, bq);
+    test.AddInput<MLFloat16>("BS", {n, 1}, std::vector<MLFloat16>(n, MLFloat16(1.0f / 32)));
+    test.AddOutput<MLFloat16>("Y", {1, m, n}, expected);
+    SessionOptions session_options;
+    session_options.session_log_severity_level = static_cast<int>(logging::Severity::kINFO);
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    std::vector<std::unique_ptr<IExecutionProvider>> eps;
+    eps.push_back(WebGpuExecutionProviderWithOptions(options));
+    testing::internal::CaptureStderr();
+    test.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
+    const auto logs = testing::internal::GetCapturedStderr();
+    EXPECT_NE(logs.find("SubgroupMatrixMatMulNBitsQLoRAUp"), std::string::npos) << logs;
+  }
 #endif
 }
 
