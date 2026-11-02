@@ -2295,10 +2295,10 @@ TEST(MoETest, ZeroHiddenSizeRejectedOnCPU) {
     tester.AddInput<MLFloat16>("input", {2, 0}, {});
     tester.AddInput<MLFloat16>("router_probs", {2, 2}, std::vector<MLFloat16>(4));
     tester.AddInput<uint8_t>("fc1_experts_weights", {2, 0, 2}, {});
-    tester.AddInput<float>("fc1_scales", {2, 4}, std::vector<float>(8, 1.0f));
+    tester.AddInput<MLFloat16>("fc1_scales", {2, 4}, std::vector<MLFloat16>(8, MLFloat16(1.0f)));
     tester.AddOptionalInputEdge<MLFloat16>();
     tester.AddInput<uint8_t>("fc2_experts_weights", {2, 4, 0}, {});
-    tester.AddInput<float>("fc2_scales", {2, 0}, {});
+    tester.AddInput<MLFloat16>("fc2_scales", {2, 0}, {});
     tester.AddOptionalInputEdge<MLFloat16>();
     tester.AddOptionalInputEdge<uint8_t>();
     tester.AddOptionalInputEdge<float>();
@@ -2308,6 +2308,50 @@ TEST(MoETest, ZeroHiddenSizeRejectedOnCPU) {
     std::vector<std::unique_ptr<IExecutionProvider>> providers;
     providers.push_back(DefaultCpuExecutionProvider());
     tester.Run(OpTester::ExpectResult::kExpectFailure, "hidden_size must be positive",
+               {}, nullptr, &providers);
+  }
+}
+
+TEST(MoETest, ZeroIntermediateSizeRejectedOnCPU) {
+  {
+    OpTester tester("MoE", 1, onnxruntime::kMSDomain);
+    tester.AddAttribute<int64_t>("k", 1);
+    tester.AddAttribute<std::string>("activation_type", "gelu");
+    tester.AddInput<float>("input", {2, 4}, std::vector<float>(8, 0.0f));
+    tester.AddInput<float>("router_probs", {2, 2}, std::vector<float>(4, 0.0f));
+    tester.AddInput<float>("fc1_experts_weights", {2, 4, 0}, {});
+    tester.AddOptionalInputEdge<float>();
+    tester.AddInput<float>("fc2_experts_weights", {2, 0, 4}, {});
+    tester.AddOptionalInputEdge<float>();
+    tester.AddOutput<float>("output", {2, 4}, std::vector<float>(8, 0.0f));
+
+    std::vector<std::unique_ptr<IExecutionProvider>> providers;
+    providers.push_back(DefaultCpuExecutionProvider());
+    tester.Run(OpTester::ExpectResult::kExpectFailure, "inter_size must be positive",
+               {}, nullptr, &providers);
+  }
+
+  {
+    OpTester tester("QMoE", 1, onnxruntime::kMSDomain);
+    tester.AddAttribute<int64_t>("k", 1);
+    tester.AddAttribute<std::string>("activation_type", "gelu");
+    tester.AddAttribute<int64_t>("expert_weight_bits", 4);
+    tester.AddInput<MLFloat16>("input", {2, 4}, std::vector<MLFloat16>(8));
+    tester.AddInput<MLFloat16>("router_probs", {2, 2}, std::vector<MLFloat16>(4));
+    tester.AddInput<uint8_t>("fc1_experts_weights", {2, 4, 0}, {});
+    tester.AddInput<MLFloat16>("fc1_scales", {2, 0}, {});
+    tester.AddOptionalInputEdge<MLFloat16>();
+    tester.AddInput<uint8_t>("fc2_experts_weights", {2, 0, 2}, {});
+    tester.AddInput<MLFloat16>("fc2_scales", {2, 4}, std::vector<MLFloat16>(8, MLFloat16(1.0f)));
+    tester.AddOptionalInputEdge<MLFloat16>();
+    tester.AddOptionalInputEdge<uint8_t>();
+    tester.AddOptionalInputEdge<float>();
+    tester.AddOptionalInputEdge<MLFloat16>();
+    tester.AddOutput<MLFloat16>("output", {2, 4}, std::vector<MLFloat16>(8));
+
+    std::vector<std::unique_ptr<IExecutionProvider>> providers;
+    providers.push_back(DefaultCpuExecutionProvider());
+    tester.Run(OpTester::ExpectResult::kExpectFailure, "inter_size must be positive",
                {}, nullptr, &providers);
   }
 }
