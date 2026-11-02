@@ -55,6 +55,31 @@ bool IsAncestorOrEqual(const fs::path& ancestor, const fs::path& candidate) {
 
 namespace model_package {
 
+ModelPackageStatus* NormalizePathForLinkInspection(const fs::path& path,
+                                                   const std::string& where,
+                                                   fs::path* normalized) {
+  if (!normalized) {
+    return MakeStatus(MODEL_PACKAGE_ERR_INVALID_ARG,
+                      where + ": normalized output path is null.");
+  }
+
+  std::error_code ec;
+  fs::path result = fs::absolute(path, ec);
+  if (ec) {
+    return MakeStatus(MODEL_PACKAGE_ERR_IO,
+                      where + ": cannot make path '" + path.u8string() +
+                          "' absolute: " + ec.message());
+  }
+
+  result = result.lexically_normal();
+  while (result != result.root_path() &&
+         (result.filename().empty() || result.filename() == ".")) {
+    result = result.parent_path();
+  }
+  *normalized = std::move(result);
+  return nullptr;
+}
+
 ModelPackageStatus* ValidatePortablePath(const fs::path& package_root,
                                          const fs::path& path,
                                          bool must_exist) {
@@ -63,8 +88,16 @@ ModelPackageStatus* ValidatePortablePath(const fs::path& package_root,
                       "Portable path validation requires a package root.");
   }
 
-  const fs::path normalized_root = package_root.lexically_normal();
-  const fs::path normalized_path = path.lexically_normal();
+  fs::path normalized_root;
+  if (auto* s = NormalizePathForLinkInspection(
+          package_root, "Portable package root", &normalized_root)) {
+    return s;
+  }
+  fs::path normalized_path;
+  if (auto* s = NormalizePathForLinkInspection(
+          path, "Portable package path", &normalized_path)) {
+    return s;
+  }
   if (!IsAncestorOrEqual(normalized_root, normalized_path) ||
       normalized_root == normalized_path) {
     return MakeStatus(MODEL_PACKAGE_ERR_PATH_CONFINEMENT,

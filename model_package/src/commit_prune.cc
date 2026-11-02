@@ -112,10 +112,21 @@ ModelPackageStatus* CopyTreeNoFollow(const fs::path& src, const fs::path& dst) {
   // Recursively copy `src` into `dst`. Refuses to follow symlinks (consistent
   // with the directory hash semantics) so the on-disk bytes match the URI we
   // already computed.
+  fs::path inspected_source;
+  if (auto* s = mp::NormalizePathForLinkInspection(
+          src, "shared asset source", &inspected_source)) {
+    return s;
+  }
   std::error_code ec;
-  fs::file_status source_status = fs::symlink_status(src, ec);
-  if (ec) return MakeStatus(MODEL_PACKAGE_ERR_IO,
-                            "stat '" + src.u8string() + "': " + ec.message());
+  fs::file_status source_status = fs::symlink_status(inspected_source, ec);
+  if (ec) {
+    if (ec == std::errc::no_such_file_or_directory) {
+      return MakeStatus(MODEL_PACKAGE_ERR_NOT_FOUND,
+                        "shared asset source is not a directory: '" + src.u8string() + "'.");
+    }
+    return MakeStatus(MODEL_PACKAGE_ERR_IO,
+                      "stat '" + src.u8string() + "': " + ec.message());
+  }
   if (fs::is_symlink(source_status)) {
     return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
                       "shared asset source cannot be a symlink: '" + src.u8string() + "'.");
@@ -128,10 +139,10 @@ ModelPackageStatus* CopyTreeNoFollow(const fs::path& src, const fs::path& dst) {
   if (ec) return MakeStatus(MODEL_PACKAGE_ERR_IO,
                             "mkdir '" + dst.u8string() + "': " + ec.message());
   std::error_code iter_ec;
-  for (fs::recursive_directory_iterator it(src, fs::directory_options::none, iter_ec), end;
+  for (fs::recursive_directory_iterator it(inspected_source, fs::directory_options::none, iter_ec), end;
        !iter_ec && it != end; it.increment(iter_ec)) {
     const auto& entry = *it;
-    fs::path rel = fs::relative(entry.path(), src, ec);
+    fs::path rel = fs::relative(entry.path(), inspected_source, ec);
     fs::path target = dst / rel;
     fs::file_status st = entry.symlink_status(ec);
     if (ec) return MakeStatus(MODEL_PACKAGE_ERR_IO,

@@ -420,8 +420,19 @@ ModelPackageStatus* LoadSharedAssets(ModelPackage* pkg, const PathResolverOption
     rec->uri_cache = uri;
     auto override_it = override_paths.find(uri);
     auto pending_it = pkg->pending_shared_asset_copies.find(uri);
+    bool selected_pending_copy = false;
     fs::path resolved;
     if (override_it != override_paths.end()) {
+      if (pkg->layout == "portable") {
+        const fs::path override_path = fs::u8path(override_it->second);
+        const fs::path unresolved = override_path.is_absolute()
+                                        ? override_path
+                                        : pkg->package_root / override_path;
+        if (auto* s = ValidatePortablePath(
+                pkg->package_root, unresolved, /*must_exist=*/false)) {
+          return s;
+        }
+      }
       if (auto* s = ResolvePath(pkg->package_root, pkg->package_root, override_it->second,
                                 opts, /*must_exist=*/false, &resolved)) {
         return s;
@@ -430,12 +441,12 @@ ModelPackageStatus* LoadSharedAssets(ModelPackage* pkg, const PathResolverOption
                override_paths.find(uri) == override_paths.end()) {
       // Pending copy_in with no override: surface the staged source until commit.
       resolved = pending_it->second;
+      selected_pending_copy = true;
     } else {
       // Default convention: <package_root>/shared_assets/sha256-<hex>/
       resolved = assets_root / DefaultSharedAssetDirName(uri);
     }
-    if (pkg->layout == "portable" &&
-        pending_it == pkg->pending_shared_asset_copies.end()) {
+    if (pkg->layout == "portable" && !selected_pending_copy) {
       if (auto* s = ValidatePortablePath(pkg->package_root, resolved, /*must_exist=*/false)) return s;
     }
     rec->resolved_path = resolved;
@@ -733,8 +744,8 @@ ModelPackageStatus* ParsePackage(const fs::path& package_root,
     pkg->components.push_back(std::move(rec));
   }
 
-  if (auto* s = LoadSharedAssets(pkg, presolve_opts)) return s;
   if (auto* s = PopulatePackageMetadata(pkg)) return s;
+  if (auto* s = LoadSharedAssets(pkg, presolve_opts)) return s;
   if (auto* s = RefreshExecutorInfoCache(pkg, /*strict_missing_external=*/true)) return s;
 
   return nullptr;

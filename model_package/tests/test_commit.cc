@@ -17,6 +17,8 @@
 #include <string>
 #include <thread>
 
+#include <nlohmann/json.hpp>
+
 namespace fs = std::filesystem;
 
 namespace {
@@ -103,6 +105,22 @@ class PkgHandle {
 
  private:
   ModelPackage* p_;
+};
+
+class ScopedCurrentPath {
+ public:
+  explicit ScopedCurrentPath(const fs::path& path) : original_(fs::current_path()) {
+    fs::current_path(path);
+  }
+  ~ScopedCurrentPath() {
+    std::error_code ec;
+    fs::current_path(original_, ec);
+  }
+  ScopedCurrentPath(const ScopedCurrentPath&) = delete;
+  ScopedCurrentPath& operator=(const ScopedCurrentPath&) = delete;
+
+ private:
+  fs::path original_;
 };
 
 // Open a freshly-created in-memory package ready to commit at `root`.
@@ -510,6 +528,110 @@ bool test_dest_commit_rejects_replaced_asset_link() {
   return true;
 }
 
+bool test_rejects_linked_source_root_spellings() {
+  Sandbox s;
+  s.Write("outside/marker.txt", "keep");
+  std::error_code ec;
+  fs::create_directory_symlink(s.path("outside"), s.path("source"), ec);
+  if (ec) {
+    std::printf("[SKIP] %s (symlink unsupported)\n", g_current);
+    return true;
+  }
+
+  const char* uri = nullptr;
+  for (const char* suffix : {"/", "/."}) {
+    const std::string linked_source = s.path("source").u8string() + suffix;
+    CHECK_ERR(ModelPackage_ComputeDirectoryHash(linked_source.c_str(), &uri),
+              MODEL_PACKAGE_ERR_SCHEMA);
+  }
+
+  fs::remove(s.path("source"), ec);
+  s.Write("source/model.onnx", "asset");
+  PkgHandle p = MakeAuthoredPkgAt(s.path("pkg"));
+  const std::string source_with_dot = s.path("source").u8string() + "/.";
+  CHECK_OK(ModelPackage_AddSharedAsset(p.get(), source_with_dot.c_str(),
+                                       nullptr, true, &uri));
+
+  fs::remove_all(s.path("source"), ec);
+  fs::create_directory_symlink(s.path("outside"), s.path("source"), ec);
+  CHECK(!ec);
+  CHECK_ERR(ModelPackage_Commit(p.get(), s.path("pkg").u8string().c_str(),
+                                MODEL_PACKAGE_WRITE_PRESERVE),
+            MODEL_PACKAGE_ERR_SCHEMA);
+  CHECK(fs::is_regular_file(s.path("outside/marker.txt")));
+  return true;
+}
+
+bool test_open_rejects_linked_manifest_override() {
+  Sandbox s;
+  s.Write("source/model.onnx", "asset");
+  PkgHandle p = MakeAuthoredPkgAt(s.path("pkg"));
+  const char* uri = nullptr;
+  CHECK_OK(ModelPackage_AddSharedAsset(p.get(), s.path("source").u8string().c_str(),
+                                       nullptr, true, &uri));
+  const std::string asset_uri(uri);
+  CHECK_OK(ModelPackage_Commit(p.get(), s.path("pkg").u8string().c_str(),
+                               MODEL_PACKAGE_WRITE_PRESERVE));
+
+  s.Write("pkg/assets/target/model.onnx", "asset");
+  std::error_code ec;
+  fs::create_directory_symlink("target", s.path("pkg/assets/alias"), ec);
+  if (ec) {
+    std::printf("[SKIP] %s (symlink unsupported)\n", g_current);
+    return true;
+  }
+
+  const fs::path manifest_path = s.path("pkg/manifest.json");
+  nlohmann::ordered_json manifest;
+  {
+    std::ifstream input(manifest_path);
+    input >> manifest;
+  }
+  manifest["shared_assets"][asset_uri] = "assets/alias";
+  {
+    std::ofstream output(manifest_path, std::ios::trunc);
+    output << manifest.dump(2) << "\n";
+  }
+
+  ModelPackage* opened = nullptr;
+  CHECK_ERR(ModelPackage_Open(s.path("pkg").u8string().c_str(), nullptr, &opened),
+            MODEL_PACKAGE_ERR_PATH_CONFINEMENT);
+  CHECK(opened == nullptr);
+  return true;
+}
+
+bool test_commit_accepts_relative_destination_roots() {
+  Sandbox s;
+  s.Write("source/model.onnx", "asset");
+
+  PkgHandle saved_package = MakeAuthoredPkgAt(s.path("saved"));
+  const char* saved_uri = nullptr;
+  CHECK_OK(ModelPackage_AddSharedAsset(saved_package.get(), s.path("source").u8string().c_str(),
+                                       nullptr, true, &saved_uri));
+  const std::string saved_dir_name = "sha256-" + std::string(saved_uri).substr(7);
+  fs::create_directories(s.path("saved_work"));
+  {
+    ScopedCurrentPath current_path(s.path("saved_work"));
+    CHECK_OK(ModelPackage_Commit(saved_package.get(), "saved/",
+                                 MODEL_PACKAGE_WRITE_PRESERVE));
+    CHECK(fs::is_directory(fs::path("saved/shared_assets") / saved_dir_name));
+  }
+
+  PkgHandle dot_package = MakeAuthoredPkgAt(s.path("dot"));
+  const char* dot_uri = nullptr;
+  CHECK_OK(ModelPackage_AddSharedAsset(dot_package.get(), s.path("source").u8string().c_str(),
+                                       nullptr, true, &dot_uri));
+  const std::string dot_dir_name = "sha256-" + std::string(dot_uri).substr(7);
+  fs::create_directories(s.path("dot"));
+  {
+    ScopedCurrentPath current_path(s.path("dot"));
+    CHECK_OK(ModelPackage_Commit(dot_package.get(), ".",
+                                 MODEL_PACKAGE_WRITE_PRESERVE));
+    CHECK(fs::is_directory(fs::path("shared_assets") / dot_dir_name));
+  }
+  return true;
+}
+
 bool test_commit_accepts_unreferenced_shared_asset() {
   // Shared assets no longer require an in-manifest reference: AddSharedAsset
   // signals the user's intent to ship the asset, period. Commit materializes
@@ -611,6 +733,9 @@ const Test kTests[] = {
     {"open_rejects_linked_shared_asset_paths", test_open_rejects_linked_shared_asset_paths},
     {"shared_asset_mutations_reject_replaced_parent", test_shared_asset_mutations_reject_replaced_parent},
     {"dest_commit_rejects_replaced_asset_link", test_dest_commit_rejects_replaced_asset_link},
+    {"rejects_linked_source_root_spellings", test_rejects_linked_source_root_spellings},
+    {"open_rejects_linked_manifest_override", test_open_rejects_linked_manifest_override},
+    {"commit_accepts_relative_destination_roots", test_commit_accepts_relative_destination_roots},
     {"commit_accepts_unreferenced_shared_asset", test_commit_accepts_unreferenced_shared_asset},
     {"commit_leaves_no_temp_files", test_commit_leaves_no_temp_files},
     {"commit_unicode_paths_and_assets", test_commit_unicode_paths_and_assets},

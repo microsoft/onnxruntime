@@ -148,6 +148,12 @@ const InfoViewCache& BuildOrGetViewCache(const ModelPackage* pkg);
 /// Returns true iff `p` is `package_root` or lives under it (lexically).
 bool IsInsidePackageRoot(const ModelPackage* pkg, const std::filesystem::path& p);
 
+/// Convert a path to an absolute lexical form suitable for inspecting the
+/// final path component without following a trailing separator or ".".
+ModelPackageStatus* NormalizePathForLinkInspection(const std::filesystem::path& path,
+                                                   const std::string& where,
+                                                   std::filesystem::path* normalized);
+
 /// Validate that an existing or prospective portable-package path stays under
 /// package_root and that no existing path component below the root is a link.
 ModelPackageStatus* ValidatePortablePath(const std::filesystem::path& package_root,
