@@ -79,20 +79,43 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Get vcpkg cache environment identity
+        id: vcpkg-cache-environment
+        shell: bash
+        env:
+          # Inspect the Xcode that macos-ci-setup will select, not the image default.
+          DEVELOPER_DIR: /Applications/Xcode_${{ env.xcode_version }}.app/Contents/Developer
+        run: |
+          set -euo pipefail
+          : "${ImageOS:?Runner image OS is required for the vcpkg cache key}"
+          : "${ImageVersion:?Runner image version is required for the vcpkg cache key}"
+          identity_file="${RUNNER_TEMP}/vcpkg-cache-environment.txt"
+          {
+            printf 'ImageOS=%s\nImageVersion=%s\n' "$ImageOS" "$ImageVersion"
+            sw_vers -buildVersion
+            xcodebuild -version
+            xcrun --sdk macosx clang --version
+            xcrun --sdk macosx --show-sdk-build-version
+          } > "$identity_file"
+          cat "$identity_file"
+          identity="$(shasum -a 256 "$identity_file" | cut -d ' ' -f 1)"
+          echo "identity=$identity" >> "$GITHUB_OUTPUT"
+
       - name: Setup VCPKG Cache
         uses: ./.github/actions/setup-vcpkg-cache
         with:
           key: >-
             ${{
               format(
-                'macos-{0}-{1}-{2}-xcode-{3}-coreml-{4}-xnnpack-{5}-webgpu-{6}',
+                'macos-{0}-{1}-{2}-xcode-{3}-coreml-{4}-xnnpack-{5}-webgpu-{6}-environment-{7}',
                 matrix.machine,
                 matrix.target,
                 matrix.build_config,
                 env.xcode_version,
                 inputs.use_coreml,
                 inputs.use_xnnpack,
-                inputs.use_webgpu
+                inputs.use_webgpu,
+                steps.vcpkg-cache-environment.outputs.identity
               )
             }}
 
