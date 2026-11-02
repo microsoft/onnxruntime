@@ -4387,5 +4387,74 @@ TEST(GatedDeltaNetTest, KdaSplitFiniteSaturatingGates) {
   }
 }
 
+TEST(GatedDeltaNetTest, MoEGroupRouterCpuAndCuda) {
+  constexpr int64_t kRows = 7;
+  constexpr int64_t kExperts = 128;
+  constexpr int64_t kNGroup = 8;
+  constexpr int64_t kTopkGroup = 4;
+  constexpr int64_t kTopK = 8;
+  constexpr float kSentinel = -10000.0f;
+
+  std::mt19937 rng(42);
+  std::uniform_real_distribution<float> dist(-2.0f, 2.0f);
+  std::vector<float> logits(kRows * kExperts);
+  std::vector<float> bias(kExperts);
+  for (auto& x : logits) x = dist(rng);
+  for (auto& x : bias) x = 0.25f * dist(rng);
+  logits = RoundToTensorType<BFloat16>(logits);
+
+  std::vector<float> expected(kRows * kExperts, kSentinel);
+  const int64_t epg = kExperts / kNGroup;
+  for (int64_t r = 0; r < kRows; ++r) {
+    std::vector<float> s(kExperts), b(kExperts);
+    for (int64_t e = 0; e < kExperts; ++e) {
+      s[e] = 1.0f / (1.0f + std::exp(-logits[r * kExperts + e]));
+      b[e] = s[e] + bias[e];
+    }
+    std::vector<std::pair<float, int64_t>> gs(kNGroup);
+    for (int64_t g = 0; g < kNGroup; ++g) {
+      std::vector<float> vals(b.begin() + g * epg, b.begin() + (g + 1) * epg);
+      std::partial_sort(vals.begin(), vals.begin() + 2, vals.end(), std::greater<float>());
+      gs[g] = {vals[0] + vals[1], g};
+    }
+    std::partial_sort(gs.begin(), gs.begin() + kTopkGroup, gs.end(),
+                      [](const auto& x, const auto& y) {
+                        return x.first != y.first ? x.first > y.first : x.second < y.second;
+                      });
+    std::vector<std::pair<float, int64_t>> cands;
+    for (int64_t gi = 0; gi < kTopkGroup; ++gi) {
+      const int64_t g = gs[gi].second;
+      for (int64_t i = 0; i < epg; ++i) {
+        cands.emplace_back(b[g * epg + i], g * epg + i);
+      }
+    }
+    std::partial_sort(cands.begin(), cands.begin() + kTopK, cands.end(),
+                      [](const auto& x, const auto& y) {
+                        return x.first != y.first ? x.first > y.first : x.second < y.second;
+                      });
+    for (int64_t k = 0; k < kTopK; ++k) {
+      const int64_t e = cands[k].second;
+      expected[r * kExperts + e] = std::log(std::max(s[e], 1e-20f));
+    }
+  }
+
+  for (bool use_cpu : {true, false}) {
+    if (!use_cpu && NeedSkipGatedDeltaNetTest()) continue;
+    OpTester test("MoEGroupRouter", 1, onnxruntime::kMSDomain);
+    test.AddAttribute("top_k", kTopK);
+    test.AddAttribute("n_group", kNGroup);
+    test.AddAttribute("topk_group", kTopkGroup);
+    test.AddAttribute("group_topk", static_cast<int64_t>(2));
+    test.AddAttribute("router_sentinel", kSentinel);
+    test.AddInput<BFloat16>("logits", {kRows, kExperts}, ToTensorType<BFloat16>(logits));
+    test.AddInput<float>("expert_bias", {kExperts}, bias);
+    test.AddOutput<BFloat16>("router_probs", {kRows, kExperts}, ToTensorType<BFloat16>(expected),
+                             false, 2e-2f, 2e-2f);
+    std::vector<std::unique_ptr<IExecutionProvider>> eps;
+    eps.push_back(use_cpu ? DefaultCpuExecutionProvider() : DefaultCudaExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
+  }
+}
+
 }  // namespace test
 }  // namespace onnxruntime

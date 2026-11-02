@@ -418,10 +418,11 @@ __device__ __forceinline__ void SmemGemmFp32State(float* C, int ldc, const T* A,
     }
   };
 
+  constexpr int kThreads = kWarps * 32;
 #pragma unroll
   for (int slice = 0; slice < kSlices; ++slice) {
     if constexpr ((N % 2) == 0) {
-      for (int pair_idx = tid; pair_idx < (K * N) / 2; pair_idx += kChunkedThreads) {
+      for (int pair_idx = tid; pair_idx < (K * N) / 2; pair_idx += kThreads) {
         const int r = pair_idx / (N / 2);
         const int c = (pair_idx % (N / 2)) * 2;
         const float2 sf2 = *reinterpret_cast<const float2*>(S + r * lds_f + c);
@@ -430,7 +431,7 @@ __device__ __forceinline__ void SmemGemmFp32State(float* C, int ldc, const T* A,
         *reinterpret_cast<uint32_t*>(s_h + r * lds_h + c) = PackHalf2(v0, v1);
       }
     } else {
-      for (int idx = tid; idx < K * N; idx += kChunkedThreads) {
+      for (int idx = tid; idx < K * N; idx += kThreads) {
         const int r = idx / N, c = idx % N;
         s_h[r * lds_h + c] = slice_elem(S[r * lds_f + c], c, slice);
       }
@@ -520,7 +521,7 @@ __device__ __forceinline__ void SmemGemmFp32State(float* C, int ldc, const T* A,
   }
 
   if (any_extreme) {
-    for (int idx = tid; idx < M * N; idx += kChunkedThreads) {
+    for (int idx = tid; idx < M * N; idx += kThreads) {
       const int m = idx / N, c = idx % N;
       if (is_extreme_col(c)) {
         float sum = 0.0f;

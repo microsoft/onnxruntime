@@ -6107,6 +6107,63 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           propagateShapeFromInputToOutput(ctx, 0, 0);
         }));
 
+constexpr const char* MoEGroupRouter_ver1_doc = R"DOC(
+Fused group-limited sigmoid MoE router (noaux_tc) as used by BailingMoeV3 / DeepSeek-V3.
+Computes s = sigmoid(logits), selects topk_group groups by the sum of top group_topk values of
+(s + expert_bias) per group, selects top_k experts from those groups by (s + expert_bias), and
+writes log(max(s, 1e-20)) at the selected experts and router_sentinel elsewhere into a 2D
+(total_tokens, num_experts) output tensor ready for MoE / QMoE.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    MoEGroupRouter, 1,
+    OpSchema()
+        .SetDoc(MoEGroupRouter_ver1_doc)
+        .Attr("top_k", "Number of experts selected per token.", AttributeProto::INT)
+        .Attr("n_group", "Number of expert groups.", AttributeProto::INT, static_cast<int64_t>(1))
+        .Attr("topk_group", "Number of active expert groups selected per token.", AttributeProto::INT,
+              static_cast<int64_t>(1))
+        .Attr("group_topk", "Number of top experts summed within each group for group scoring.",
+              AttributeProto::INT, static_cast<int64_t>(2))
+        .Attr("router_sentinel", "Value written to non-selected expert positions.",
+              AttributeProto::FLOAT, -10000.0f)
+        .Input(0, "logits", "Router logits tensor of shape (..., num_experts).", "T")
+        .Input(1, "expert_bias", "1D float32 expert bias tensor of shape (num_experts).", "TF")
+        .Output(0, "router_probs", "2D routed log-scores tensor of shape (total_tokens, num_experts).", "T")
+        .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain input and output types to float tensors.")
+        .TypeConstraint("TF", {"tensor(float)"}, "Constrain expert_bias to float32.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          if (!hasInputShape(ctx, 0)) {
+            return;
+          }
+          const auto& in_shape = getInputShape(ctx, 0);
+          if (in_shape.dim_size() < 2) {
+            fail_shape_inference("MoEGroupRouter logits must have rank >= 2.");
+          }
+          ONNX_NAMESPACE::TensorShapeProto out_shape;
+          auto* row_dim = out_shape.add_dim();
+          if (in_shape.dim_size() == 2) {
+            *row_dim = in_shape.dim(0);
+          } else {
+            int64_t prod = 1;
+            bool all_known = true;
+            for (int i = 0; i < in_shape.dim_size() - 1; ++i) {
+              if (in_shape.dim(i).has_dim_value()) {
+                prod *= in_shape.dim(i).dim_value();
+              } else {
+                all_known = false;
+              }
+            }
+            if (all_known) {
+              row_dim->set_dim_value(prod);
+            }
+          }
+          *out_shape.add_dim() = in_shape.dim(in_shape.dim_size() - 1);
+          updateOutputShape(ctx, 0, out_shape);
+        }));
+
 constexpr const char* BranchwiseRMSNorm_ver1_doc = R"DOC(
 Applies RMS normalization independently to each branch. X may use grouped shape
 (..., C, H), or flattened shape (..., C * H) when num_branches is specified.

@@ -933,11 +933,16 @@ __device__ __forceinline__ KdaPrepSmem<T, DK, DV, BT> CarveKdaPrep(char* raw) {
   return s;
 }
 
+constexpr int kKdaPrepWarps = 8;
+constexpr int kKdaPrepThreads = kKdaPrepWarps * 32;
+constexpr int kKdaScanWarps = 8;
+constexpr int kKdaScanThreads = kKdaScanWarps * 32;
+
 // ---------------------------------------------------------------------------
 // KDA (per-key-dim decay) K1 prepare kernel for BT=16, DK=128, DV=128.
 // ---------------------------------------------------------------------------
 template <typename T, int DK, int DV, int BT>
-__global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetKdaPrepareKernel(
+__global__ __launch_bounds__(kKdaPrepThreads) void GatedDeltaNetKdaPrepareKernel(
     VariantPack<T> pack, KernelParams p, T* tiles, float* uv_tiles, float* decays, int chunk_base,
     int chunks_per_pass) {
   static_assert(BT == 16 && DK == 128 && DV == 128,
@@ -1002,7 +1007,7 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetKdaPrepareKernel
     }
   };
 
-  for (int idx = tid; idx < BT * DK; idx += kChunkedThreads) {
+  for (int idx = tid; idx < BT * DK; idx += kKdaPrepThreads) {
     const int t = idx / DK, d = idx % DK;
     const int64_t tok = tok_base + chunk0 + t;
     s.k_h[t * L::kKh + d] = (t < len) ? pack.key[tok * k_stride + hk * DK + d] : FloatToElem<T>(0.f);
@@ -1032,7 +1037,7 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetKdaPrepareKernel
   float* decay_out = decays + tile_base * DK;
 
   if (p.qk_l2_norm) {
-    for (int t = warp_id; t < BT; t += kChunkedWarps) {
+    for (int t = warp_id; t < BT; t += kKdaPrepWarps) {
       float sq = 0.0f, sk = 0.0f;
       for (int d = lane; d < DK; d += 32) {
         const float qv = ElemToFloat(s.q_h[t * L::kKh + d]);
@@ -1068,18 +1073,23 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetKdaPrepareKernel
     // dim witnesses all of them.
     prefix_nonfinite = !isfinite(acc);
   }
+  for (int idx = tid; idx < BT * BT; idx += kKdaPrepThreads) {
+    s.m_f[idx] = 0.0f;
+    p_out[idx] = FloatToElem<T>(0.0f);
+  }
   // Block-uniform, so the loops below choose the unchecked relative decay once instead of testing every element.
   const bool any_prefix_nonfinite = __syncthreads_or(prefix_nonfinite ? 1 : 0) != 0;
 
-  // Compute M[BT][BT] (strictly lower) and P[BT][BT] (inclusive lower) using 64 8-thread subwarps.
+  // Compute only the lower-triangular BT*(BT+1)/2 = 136 pairs (sc <= t) using 32 8-thread subwarps.
+  constexpr int kLowerPairs = (BT * (BT + 1)) / 2;
   const int group_id = tid >> 3;
   const int sub_lane = tid & 7;
   auto accumulate_pairs = [&](auto checked) {
-    for (int pair_idx = group_id; pair_idx < BT * BT; pair_idx += (kChunkedThreads / 8)) {
-      const int t = pair_idx / BT;
-      const int sc = pair_idx % BT;
+    for (int tri_idx = group_id; tri_idx < kLowerPairs; tri_idx += (kKdaPrepThreads / 8)) {
+      const int t = static_cast<int>((sqrtf(static_cast<float>(8 * tri_idx + 1)) - 1.0f) * 0.5f + 1e-4f);
+      const int sc = tri_idx - (t * (t + 1)) / 2;
       float acc_k = 0.0f, acc_q = 0.0f;
-      if (sc <= t && t < len) {
+      if (t < len) {
 #pragma unroll
         for (int i = 0; i < (DK / 8); ++i) {
           const int d = sub_lane + i * 8;
@@ -1094,9 +1104,11 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetKdaPrepareKernel
         acc_k += __shfl_xor_sync(0xffffffff, acc_k, off);
         acc_q += __shfl_xor_sync(0xffffffff, acc_q, off);
       }
-      if (sub_lane == 0) {
-        s.m_f[t * BT + sc] = (sc < t && t < len && needs_retrieval) ? (s.beta[t] * acc_k) : 0.0f;
-        p_out[t * BT + sc] = FloatToElem<T>((sc <= t && t < len) ? acc_q : 0.0f);
+      if (sub_lane == 0 && t < len) {
+        if (sc < t && needs_retrieval) {
+          s.m_f[t * BT + sc] = s.beta[t] * acc_k;
+        }
+        p_out[t * BT + sc] = FloatToElem<T>(acc_q);
       }
     }
   };
@@ -1164,7 +1176,7 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetKdaPrepareKernel
   }
 
   auto store_qg_kd = [&](auto checked) {
-    for (int idx = tid; idx < BT * DK; idx += kChunkedThreads) {
+    for (int idx = tid; idx < BT * DK; idx += kKdaPrepThreads) {
       const int t = idx / DK, d = idx % DK;
       const float gc_td = s.gc[t * L::kKh + d];
       qg_out[idx] =
@@ -1186,7 +1198,7 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetKdaPrepareKernel
 // kNativeState rounds the FP32 state to T for the tensor-core products. Otherwise the state stays in FP32: bf16 splits it
 // into slices, and fp16 computes the exact FP32 product for a tile that holds an element beyond the fp16 range.
 template <typename T, int DK, int DV, int BT, int DVB, bool kNativeState = false>
-__global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetKdaScanKernel(
+__global__ __launch_bounds__(kKdaScanThreads) void GatedDeltaNetKdaScanKernel(
     VariantPack<T> pack, KernelParams p, const T* tiles, const float* uv_tiles,
     const float* decays, float* carry, int chunk_base, int chunks_per_pass, int n_chunks,
     bool first_pass, bool last_pass) {
@@ -1210,7 +1222,7 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetKdaScanKernel(
   const int64_t st_off = (static_cast<int64_t>(b) * p.num_heads_v + hv) * DV * DK;
 
   const float* seed = first_pass ? pack.initial_state : carry;
-  for (int idx = tid; idx < DK * DVB; idx += kChunkedThreads) {
+  for (int idx = tid; idx < DK * DVB; idx += kKdaScanThreads) {
     const int r = idx / DVB, c = idx % DVB;
     s.s_f[r * L::kSf + c] =
         seed != nullptr ? seed[st_off + static_cast<int64_t>(v0 + c) * DK + r] : 0.0f;
@@ -1233,32 +1245,32 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetKdaScanKernel(
     const T* p_in = wq_in + Tile::kW + Tile::kQg;
     const T* kd_in = p_in + Tile::kP;
 
-    for (int idx = tid; idx < 2 * BT * DK; idx += kChunkedThreads) {
+    for (int idx = tid; idx < 2 * BT * DK; idx += kKdaScanThreads) {
       s.wq_h[(idx / DK) * L::kKh + idx % DK] = wq_in[idx];
     }
-    for (int idx = tid; idx < BT * BT; idx += kChunkedThreads) {
+    for (int idx = tid; idx < BT * BT; idx += kKdaScanThreads) {
       s.p_h[(idx / BT) * L::kMh + idx % BT] = p_in[idx];
     }
     __syncthreads();
 
     if constexpr (!kNativeState) {
-      SmemGemmFp32State<2 * BT, DVB, DK, false, kChunkedWarps, T>(
+      SmemGemmFp32State<2 * BT, DVB, DK, false, kKdaScanWarps, T>(
           s.t_f, L::kF2, s.wq_h, L::kKh, s.s_f, L::kSf, s.s_h, L::kSh, warp_id, lane, tid);
       __syncthreads();
       float* u_f = reinterpret_cast<float*>(s.s_h);
-      for (int idx = tid; idx < BT * DVB; idx += kChunkedThreads) {
+      for (int idx = tid; idx < BT * DVB; idx += kKdaScanThreads) {
         const int t = idx / DVB, c = idx % DVB;
         u_f[t * L::kSf + c] = uv_in[t * DV + v0 + c] - s.t_f[t * L::kF2 + c];
       }
-      for (int idx = tid; idx < BT * DK; idx += kChunkedThreads) {
+      for (int idx = tid; idx < BT * DK; idx += kKdaScanThreads) {
         s.kd_h[(idx / DK) * L::kKh + idx % DK] = kd_in[idx];
       }
       __syncthreads();
 
-      SmemGemmFp32State<BT, DVB, BT, false, kChunkedWarps, T>(
+      SmemGemmFp32State<BT, DVB, BT, false, kKdaScanWarps, T>(
           s.t_f, L::kF2, s.p_h, L::kMh, u_f, L::kSf, s.u_h, L::kBh, warp_id, lane, tid);
       __syncthreads();
-      for (int idx = tid; idx < BT * DVB; idx += kChunkedThreads) {
+      for (int idx = tid; idx < BT * DVB; idx += kKdaScanThreads) {
         const int t = idx / DVB, c = idx % DVB;
         if (t < len) {
           const int64_t tok = tok_base + chunk0 + t;
@@ -1267,36 +1279,36 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetKdaScanKernel(
         }
       }
 
-      for (int idx = tid; idx < DK * DVB; idx += kChunkedThreads) {
+      for (int idx = tid; idx < DK * DVB; idx += kKdaScanThreads) {
         const int r = idx / DVB, c = idx % DVB;
         s.s_f[r * L::kSf + c] *= decay_vec[r];
       }
       __syncthreads();
-      SmemGemmFp32State<DK, DVB, BT, true, kChunkedWarps, T, /*TA=*/true>(
+      SmemGemmFp32State<DK, DVB, BT, true, kKdaScanWarps, T, /*TA=*/true>(
           s.s_f, L::kSf, s.kd_h, L::kKh, u_f, L::kSf, s.u_h, L::kBh, warp_id, lane, tid);
       __syncthreads();
     } else {
-      for (int idx = tid; idx < DK * DVB; idx += kChunkedThreads) {
+      for (int idx = tid; idx < DK * DVB; idx += kKdaScanThreads) {
         const int r = idx / DVB, c = idx % DVB;
         s.s_h[r * L::kSh + c] = FloatToElem<T>(s.s_f[r * L::kSf + c]);
       }
       __syncthreads();
-      SmemGemm<2 * BT, DVB, DK, false, false, false>(s.t_f, L::kF2, s.wq_h, L::kKh, s.s_h, L::kSh,
-                                                     warp_id, lane);
+      SmemGemm<2 * BT, DVB, DK, false, false, false, float, kKdaScanWarps, T>(
+          s.t_f, L::kF2, s.wq_h, L::kKh, s.s_h, L::kSh, warp_id, lane);
       __syncthreads();
-      for (int idx = tid; idx < BT * DVB; idx += kChunkedThreads) {
+      for (int idx = tid; idx < BT * DVB; idx += kKdaScanThreads) {
         const int t = idx / DVB, c = idx % DVB;
         s.u_h[t * L::kBh + c] = FloatToElem<T>(uv_in[t * DV + v0 + c] - s.t_f[t * L::kF2 + c]);
       }
-      for (int idx = tid; idx < BT * DK; idx += kChunkedThreads) {
+      for (int idx = tid; idx < BT * DK; idx += kKdaScanThreads) {
         s.kd_h[(idx / DK) * L::kKh + idx % DK] = kd_in[idx];
       }
       __syncthreads();
 
-      SmemGemm<BT, DVB, BT, false, false, false>(s.t_f, L::kF2, s.p_h, L::kMh, s.u_h, L::kBh,
-                                                 warp_id, lane);
+      SmemGemm<BT, DVB, BT, false, false, false, float, kKdaScanWarps, T>(
+          s.t_f, L::kF2, s.p_h, L::kMh, s.u_h, L::kBh, warp_id, lane);
       __syncthreads();
-      for (int idx = tid; idx < BT * DVB; idx += kChunkedThreads) {
+      for (int idx = tid; idx < BT * DVB; idx += kKdaScanThreads) {
         const int t = idx / DVB, c = idx % DVB;
         if (t < len) {
           const int64_t tok = tok_base + chunk0 + t;
@@ -1305,18 +1317,18 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetKdaScanKernel(
         }
       }
 
-      for (int idx = tid; idx < DK * DVB; idx += kChunkedThreads) {
+      for (int idx = tid; idx < DK * DVB; idx += kKdaScanThreads) {
         const int r = idx / DVB, c = idx % DVB;
         s.s_f[r * L::kSf + c] *= decay_vec[r];
       }
       __syncthreads();
-      SmemGemm<DK, DVB, BT, true, false, true, float>(s.s_f, L::kSf, s.kd_h, L::kKh, s.u_h,
-                                                      L::kBh, warp_id, lane, 1.0f);
+      SmemGemm<DK, DVB, BT, true, false, true, float, kKdaScanWarps, T>(
+          s.s_f, L::kSf, s.kd_h, L::kKh, s.u_h, L::kBh, warp_id, lane, 1.0f);
       __syncthreads();
     }
   }
 
-  for (int idx = tid; idx < DK * DVB; idx += kChunkedThreads) {
+  for (int idx = tid; idx < DK * DVB; idx += kKdaScanThreads) {
     const int r = idx / DVB, c = idx % DVB;
     const int64_t off = st_off + static_cast<int64_t>(v0 + c) * DK + r;
     const float v = s.s_f[r * L::kSf + c];
@@ -1377,16 +1389,24 @@ Status LaunchGatedDeltaNetKdaSplit(const Descriptor& desc, const Plan& plan,
         GatedDeltaNetKdaPrepareKernel<T, DK, DV, BT>, prep_smem, prep_smem_config));
     const dim3 prep_grid(desc.batch, desc.num_heads_v, n);
     GatedDeltaNetKdaPrepareKernel<T, DK, DV, BT>
-        <<<prep_grid, kChunkedThreads, prep_smem, stream>>>(pack, p, tiles, uv_tiles, decays, base,
+        <<<prep_grid, kKdaPrepThreads, prep_smem, stream>>>(pack, p, tiles, uv_tiles, decays, base,
                                                             chunks_per_pass);
 
     const dim3 scan_grid(desc.batch, desc.num_heads_v, DV / dvb);
-    if (dvb == 32) {
+    if (dvb == 16) {
+      static DynamicSmemConfig scan16_smem_config;
+      ORT_RETURN_IF_ERROR(SetMaxDynamicSmem(
+          GatedDeltaNetKdaScanKernel<T, DK, DV, BT, 16, kNativeState>, scan_smem, scan16_smem_config));
+      GatedDeltaNetKdaScanKernel<T, DK, DV, BT, 16, kNativeState>
+          <<<scan_grid, kKdaScanThreads, scan_smem, stream>>>(pack, p, tiles, uv_tiles, decays,
+                                                              carry, base, chunks_per_pass, n,
+                                                              first, last);
+    } else if (dvb == 32) {
       static DynamicSmemConfig scan32_smem_config;
       ORT_RETURN_IF_ERROR(SetMaxDynamicSmem(
           GatedDeltaNetKdaScanKernel<T, DK, DV, BT, 32, kNativeState>, scan_smem, scan32_smem_config));
       GatedDeltaNetKdaScanKernel<T, DK, DV, BT, 32, kNativeState>
-          <<<scan_grid, kChunkedThreads, scan_smem, stream>>>(pack, p, tiles, uv_tiles, decays,
+          <<<scan_grid, kKdaScanThreads, scan_smem, stream>>>(pack, p, tiles, uv_tiles, decays,
                                                               carry, base, chunks_per_pass, n,
                                                               first, last);
     } else {
@@ -1394,7 +1414,7 @@ Status LaunchGatedDeltaNetKdaSplit(const Descriptor& desc, const Plan& plan,
       ORT_RETURN_IF_ERROR(SetMaxDynamicSmem(
           GatedDeltaNetKdaScanKernel<T, DK, DV, BT, 64, kNativeState>, scan_smem, scan64_smem_config));
       GatedDeltaNetKdaScanKernel<T, DK, DV, BT, 64, kNativeState>
-          <<<scan_grid, kChunkedThreads, scan_smem, stream>>>(pack, p, tiles, uv_tiles, decays,
+          <<<scan_grid, kKdaScanThreads, scan_smem, stream>>>(pack, p, tiles, uv_tiles, decays,
                                                               carry, base, chunks_per_pass, n,
                                                               first, last);
     }

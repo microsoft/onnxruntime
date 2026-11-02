@@ -233,9 +233,9 @@ inline Plan SelectPlan(const Descriptor& desc, size_t smem_per_block_optin) {
       desc.preferred_engine != Engine::kChunked) {
     constexpr int bt = 16;
     const size_t prep = KdaSplitPrepareSmemBytes(bt, desc.head_size_qk, desc.head_size_v);
-    const int narrow = 32;
+    const int narrow = 16;
     const size_t scan_narrow = KdaSplitScanSmemBytes(bt, desc.head_size_qk, narrow);
-    const int dvb = (2 * scan_narrow <= smem_per_block_optin) ? narrow : 64;
+    const int dvb = (2 * scan_narrow <= smem_per_block_optin) ? narrow : 32;
     const size_t scan = KdaSplitScanSmemBytes(bt, desc.head_size_qk, dvb);
     if (prep <= smem_per_block_optin && scan <= smem_per_block_optin) {
       plan.engine = Engine::kChunkedSplit;

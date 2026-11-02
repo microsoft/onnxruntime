@@ -2400,14 +2400,56 @@ __global__ void QMoEFp8GemvKernel(QMoEFp8ProjectionParams params, const T* input
   if (output_col >= params.n) {
     return;
   }
+  const int lane = threadIdx.x % 32;
   const int input_row = params.row_to_unpermuted ? params.row_to_unpermuted[row] % params.num_rows : row;
+  const T* in_row = input + static_cast<int64_t>(input_row) * params.k;
+
+  if (params.up_weights == nullptr && params.block_size > 0 && (params.block_size & 7) == 0 &&
+      (params.k & 7) == 0) {
+    const int source_n = params.n;
+    const int phys_row = (params.fusion == 2)
+                             ? (output_col / 2 + (output_col % 2) * (source_n / 2))
+                             : output_col;
+    const int scale_n = (source_n + params.block_size - 1) / params.block_size;
+    const int scale_k = (params.k + params.block_size - 1) / params.block_size;
+    const int64_t scale_row_base =
+        (static_cast<int64_t>(expert) * scale_n + phys_row / params.block_size) * scale_k;
+    const uint8_t* w_row =
+        params.weights + (static_cast<int64_t>(expert) * source_n + phys_row) * params.k;
+
+    float sum = 0.0f;
+    for (int col = lane * 8; col < params.k; col += 32 * 8) {
+      const int64_t s_idx = scale_row_base + col / params.block_size;
+      const float scale =
+          params.scale_type == 0   ? static_cast<const float*>(params.scales)[s_idx]
+          : params.scale_type == 1 ? __half2float(static_cast<const half*>(params.scales)[s_idx])
+                                   : __bfloat162float(static_cast<const __nv_bfloat16*>(params.scales)[s_idx]);
+      const uint4 a_raw = *reinterpret_cast<const uint4*>(in_row + col);
+      const T* a_vec = reinterpret_cast<const T*>(&a_raw);
+      const uint2 w_raw = *reinterpret_cast<const uint2*>(w_row + col);
+      const uint8_t* w_vec = reinterpret_cast<const uint8_t*>(&w_raw);
+      float chunk_dot = 0.0f;
+#pragma unroll
+      for (int i = 0; i < 8; ++i) {
+        chunk_dot = fmaf(static_cast<float>(a_vec[i]),
+                         DecodeFloat8E4M3FN<NativeDecode>(w_vec[i]), chunk_dot);
+      }
+      sum = fmaf(chunk_dot, scale, sum);
+    }
+    sum = WarpReduceSum(sum);
+    if (lane == 0) {
+      output[static_cast<int64_t>(row) * params.n + output_col] = static_cast<OutputT>(sum);
+    }
+    return;
+  }
+
   float sum = 0.0f;
-  for (int col = threadIdx.x % 32; col < params.k; col += 32) {
-    sum = fmaf(static_cast<float>(input[static_cast<int64_t>(input_row) * params.k + col]),
+  for (int col = lane; col < params.k; col += 32) {
+    sum = fmaf(static_cast<float>(in_row[col]),
                static_cast<float>(QMoEFp8Weight<T, NativeDecode>(params, expert, output_col, col)), sum);
   }
   sum = WarpReduceSum(sum);
-  if (threadIdx.x % 32 == 0) {
+  if (lane == 0) {
     output[static_cast<int64_t>(row) * params.n + output_col] = static_cast<OutputT>(sum);
   }
 }
@@ -2763,6 +2805,74 @@ __global__ void QMoEDequantizeFp8WeightsKernel(
 }
 
 template <typename T>
+__global__ void QMoEDequantizeFp8WeightsVec16Kernel(
+    const uint8_t* __restrict__ weights,
+    const float* __restrict__ scales,
+    T* __restrict__ output,
+    int num_experts,
+    int n,
+    int k,
+    int k_chunks,
+    int block_size,
+    int scale_n,
+    int scale_k,
+    bool split_fc1,
+    bool block_fused_fc1,
+    const int* __restrict__ compact_to_expert,
+    const T* __restrict__ bias,
+    T* __restrict__ output_bias) {
+  const int64_t total_chunks = static_cast<int64_t>(num_experts) * n * k_chunks;
+  const int64_t chunk_idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (chunk_idx >= total_chunks) {
+    return;
+  }
+
+  const int col_chunk = static_cast<int>(chunk_idx % k_chunks);
+  const int64_t row_linear = chunk_idx / k_chunks;
+  const int row = static_cast<int>(row_linear % n);
+  const int output_expert = static_cast<int>(row_linear / n);
+  const int expert = compact_to_expert ? compact_to_expert[output_expert] : output_expert;
+  if (expert < 0) {
+    return;
+  }
+
+  const int col = col_chunk * 16;
+  const int64_t scale_index =
+      block_size > 0
+          ? (static_cast<int64_t>(expert) * scale_n + row / block_size) * scale_k + col / block_size
+          : static_cast<int64_t>(expert);
+  const float scale = scales[scale_index];
+
+  const int64_t in_offset = (static_cast<int64_t>(expert) * n + row) * k + col;
+  const uint4 raw = *reinterpret_cast<const uint4*>(weights + in_offset);
+  const uint8_t* w_bytes = reinterpret_cast<const uint8_t*>(&raw);
+
+  T out_vec[16];
+#pragma unroll
+  for (int i = 0; i < 16; ++i) {
+    out_vec[i] = static_cast<T>(DecodeFloat8E4M3FN<true>(w_bytes[i]) * scale);
+  }
+
+  int64_t out_row = row;
+  int64_t out_n = n;
+  if (split_fc1) {
+    out_row = 2 * static_cast<int64_t>(row);
+    out_n = 2 * static_cast<int64_t>(n);
+  } else if (block_fused_fc1) {
+    out_row = row < n / 2 ? 2 * static_cast<int64_t>(row) : 2 * static_cast<int64_t>(row - n / 2) + 1;
+  }
+  const int64_t out_offset = (static_cast<int64_t>(output_expert) * out_n + out_row) * k + col;
+  uint4* out_ptr = reinterpret_cast<uint4*>(output + out_offset);
+  out_ptr[0] = *reinterpret_cast<const uint4*>(&out_vec[0]);
+  out_ptr[1] = *reinterpret_cast<const uint4*>(&out_vec[8]);
+
+  if (bias && col_chunk == 0) {
+    output_bias[static_cast<int64_t>(output_expert) * out_n + out_row] =
+        bias[static_cast<int64_t>(expert) * n + row];
+  }
+}
+
+template <typename T>
 void LaunchQMoEDequantizeFp8WeightsImpl(
     const uint8_t* weights,
     const float* scales,
@@ -2778,6 +2888,21 @@ void LaunchQMoEDequantizeFp8WeightsImpl(
     const T* bias,
     T* output_bias) {
   ORT_ENFORCE(bias == nullptr || output_bias != nullptr, "QMoE FP8 bias gathering requires an output buffer.");
+  if ((k & 15) == 0 && (block_size <= 0 || (block_size & 15) == 0) &&
+      (reinterpret_cast<uintptr_t>(weights) & 15u) == 0 &&
+      (reinterpret_cast<uintptr_t>(output) & 15u) == 0) {
+    const int k_chunks = k / 16;
+    const int scale_n = block_size > 0 ? (n + block_size - 1) / block_size : 1;
+    const int scale_k = block_size > 0 ? (k + block_size - 1) / block_size : 1;
+    const int64_t total_chunks = static_cast<int64_t>(num_experts) * n * k_chunks;
+    constexpr int block = 256;
+    const int grid = onnxruntime::narrow<int>((total_chunks + block - 1) / block);
+    QMoEDequantizeFp8WeightsVec16Kernel<<<grid, block, 0, stream>>>(
+        weights, scales, output, num_experts, n, k, k_chunks, block_size, scale_n, scale_k,
+        split_fc1, block_fused_fc1, compact_to_expert, bias, output_bias);
+    CUDA_CALL_THROW(cudaGetLastError());
+    return;
+  }
   int64_t total = static_cast<int64_t>(num_experts) * n * k;
   constexpr int block = 256;
   int grid = onnxruntime::narrow<int>((total + block - 1) / block);
