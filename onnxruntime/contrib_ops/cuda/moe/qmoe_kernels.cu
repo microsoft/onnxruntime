@@ -4379,17 +4379,9 @@ cudaError_t LaunchInt3Typed(const Int3MoeParams& params, cudaStream_t stream) {
 
   if (kernel != Int3DecodeKernel::kScalar) {
     constexpr int kGroupRows = 8;
-    const size_t grouped_fc1_smem = static_cast<size_t>(kGroupRows) * params.hidden * sizeof(T);
-    const size_t grouped_fc2_smem = static_cast<size_t>(kGroupRows) * params.intermediate * sizeof(float);
-    const size_t grouped_static_smem = static_cast<size_t>(kGroupRows) * sizeof(int);
-    const bool is_power_of_two_block = (params.block_size & (params.block_size - 1)) == 0;
-    const bool use_grouped_prefill =
-        total_routes >= 32 && params.grouped_workspace != nullptr && is_power_of_two_block &&
-        params.num_experts > 0 && params.num_experts <= 512 &&
-        grouped_fc1_smem + grouped_static_smem <= 48 * 1024 &&
-        grouped_fc2_smem + grouped_static_smem <= 48 * 1024;
-
-    if (use_grouped_prefill) {
+    if (kernel == Int3DecodeKernel::kGrouped) {
+      const size_t grouped_fc1_smem = static_cast<size_t>(kGroupRows) * params.hidden * sizeof(T);
+      const size_t grouped_fc2_smem = static_cast<size_t>(kGroupRows) * params.intermediate * sizeof(float);
       static const bool grouped_carveout_set = []() {
         (void)cudaFuncSetAttribute(FusedFc1GroupedFastKernel<T, 2, kGroupRows>,
                                    cudaFuncAttributePreferredSharedMemoryCarveout,
@@ -4611,6 +4603,8 @@ Int3DecodeKernel SelectInt3DecodeKernel(const Int3MoeParams& params) {
   const bool grouped_fits = params.grouped_workspace != nullptr && total_routes >= 32 &&
                             params.num_experts > 0 && params.num_experts <= 512 &&
                             params.block_size > 0 && (params.block_size & (params.block_size - 1)) == 0 &&
+                            (reinterpret_cast<uintptr_t>(params.input) & 15u) == 0 &&
+                            (reinterpret_cast<uintptr_t>(params.activation) & 15u) == 0 &&
                             size_t{8} * params.hidden * sizeof(uint16_t) + 8 * sizeof(int) <= 48 * 1024 &&
                             size_t{8} * params.intermediate * sizeof(float) + 8 * sizeof(int) <= 48 * 1024;
   const bool routes_fit_grid =
@@ -4626,6 +4620,8 @@ Int3DecodeKernel SelectInt3DecodeKernel(const Int3MoeParams& params) {
       routes_fit_grid &&
       fc1_smem <= 48 * 1024 && fc2_smem <= 48 * 1024;
   if (!can_use_fast) return Int3DecodeKernel::kScalar;
+
+  if (grouped_fits) return Int3DecodeKernel::kGrouped;
 
   if (params.output == nullptr || params.input_is_gathered || params.source_route_ids != nullptr ||
       params.grouped_workspace != nullptr || params.total_routes_override > 0) {

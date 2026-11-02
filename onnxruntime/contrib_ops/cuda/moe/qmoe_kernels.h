@@ -713,6 +713,7 @@ struct Int3MoeParams {
 enum class Int3DecodeKernel {
   kScalar,
   kFast,
+  kGrouped,
   kFastVectorized,
   kTensorCore,
 };

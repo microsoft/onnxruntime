@@ -2267,15 +2267,7 @@ class QMoEOffload::DoorbellService {
     std::unique_lock<std::mutex> lock(mutex_);
     CancelPendingPromo(node);
     service_done_cv_.wait(lock, [this, node] { return servicing_node_ != node; });
-    if (node->v4_policy_.skip_zero_cold_doorbell && node->decode_state_ &&
-        node->decode_state_->doorbell_req_host && node->decode_state_->doorbell_done_host) {
-      const uint64_t request = *node->decode_state_->doorbell_req_host;
-      if (request > node->decode_state_->last_serviced_seq &&
-          *node->decode_state_->doorbell_done_host >= request) {
-        RetirePending(static_cast<size_t>(request - node->decode_state_->last_serviced_seq));
-        node->decode_state_->last_serviced_seq = request;
-      }
-    }
+    RetireCompletedZeroCold(node);
     nodes_.erase(std::remove(nodes_.begin(), nodes_.end(), node), nodes_.end());
     if (cursor_ >= nodes_.size()) cursor_ = 0;
   }
@@ -2297,6 +2289,7 @@ class QMoEOffload::DoorbellService {
     std::unique_lock<std::mutex> lock(mutex_);
     CancelPendingPromo(node);
     service_done_cv_.wait(lock, [this, node] { return servicing_node_ != node; });
+    RetireCompletedZeroCold(node);
     if (node->decode_state_) {
       node->decode_state_->doorbell_req_host = nullptr;
       node->decode_state_->doorbell_done_host = nullptr;
@@ -2341,11 +2334,18 @@ class QMoEOffload::DoorbellService {
   }
 
   void RetirePending(size_t count) noexcept {
-    size_t previous = pending_.load(std::memory_order_acquire);
-    while (previous > 0 &&
-           !pending_.compare_exchange_weak(previous, previous - std::min(previous, count),
-                                           std::memory_order_acq_rel, std::memory_order_acquire)) {
+    qmoe::RetirePendingNotifications(pending_, count);
+  }
+
+  // The caller holds mutex_ and has waited for this node's worker service to finish.
+  void RetireCompletedZeroCold(const QMoEOffload* node) noexcept {
+    if (!node->v4_policy_.skip_zero_cold_doorbell || !node->decode_state_ ||
+        !node->decode_state_->doorbell_req_host || !node->decode_state_->doorbell_done_host) {
+      return;
     }
+    qmoe::RetireCompletedZeroColdRequests(
+        *node->decode_state_->doorbell_req_host, *node->decode_state_->doorbell_done_host,
+        node->decode_state_->last_serviced_seq, pending_);
   }
 
   ~DoorbellService() {
@@ -7816,7 +7816,9 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
     const size_t used_total = SafeInt<size_t>(stats.committed) + stats.pending;
     const size_t other_used = used_total > ring_held ? used_total - ring_held : 0;
     // Keep decode headroom without consuming all of an explicitly small pinned budget.
-    const size_t reserve_target = v4_planned_mode_ ? std::min(size_t{24} << 20, stats.limit / 2) : 0;
+    const bool reserve_decode = v4_planned_mode_ &&
+                                v4_policy_.cpu_execution != onnxruntime::moe_offload::CpuExecutionMode::kDisabled;
+    const size_t reserve_target = reserve_decode ? std::min(size_t{24} << 20, stats.limit / 2) : 0;
     const size_t reserved = std::max(other_used, reserve_target);
     pinned_avail = std::min(pinned_avail, stats.limit > reserved ? stats.limit - reserved : 0);
   }
@@ -8108,7 +8110,8 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
   auto launch_nvfp4_gemv_pair = [&](const void* act_in, const uint8_t* w_base, const std::array<size_t, 6>& bank_offs,
                                     const void* fc1_bias_dev,
                                     const int* expert_map, const int* route_ids_dev,
-                                    int num_exp, int num_r, void* out_buf) -> Status {
+                                    int num_exp, int num_r, void* out_buf,
+                                    bool streamed) -> Status {
     const uint8_t* fc1_w = w_base + bank_offs[0];
     const uint8_t* fc2_w = w_base + bank_offs[1];
     const uint8_t* fc1_s = w_base + bank_offs[2];
@@ -8140,6 +8143,11 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
       p.total_routes_override = num_r;
       p.grouped_workspace =
           (!disable_int3_tc_prefill_ && num_r >= 32 && num_exp > 0 && num_exp <= 512) ? int3_grouped_ws : nullptr;
+      if (resident_log_) {
+        std::fprintf(stderr, "QMoEOffload INT3 prefill layer=%lld source=%s routes=%d grouped=%d\n",
+                     static_cast<long long>(layer_index_), streamed ? "streamed" : "resident", num_r,
+                     SelectInt3DecodeKernel(p) == Int3DecodeKernel::kGrouped ? 1 : 0);
+      }
       CUDA_RETURN_IF_ERROR(LaunchInt3Moe(p, stream));
       return Status::OK();
     }
@@ -8354,7 +8362,7 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
           ORT_RETURN_IF_ERROR(launch_nvfp4_gemv_pair(
               gathered, slab, eff_bank_offsets,
               resident_fc1_bias_slab_ ? resident_fc1_bias_slab_.get() : nullptr,
-              hit_compact + h_off, hit_ids + h_off, eff_physical_slots, compute_rows, wave_output));
+              hit_compact + h_off, hit_ids + h_off, eff_physical_slots, compute_rows, wave_output, false));
         } else {
           runner_->runMoe(reinterpret_cast<half*>(gathered), nullptr, hit_compact + h_off, unit_scales,
                           slab + eff_bank_offsets[0], reinterpret_cast<const void*>(slab + eff_bank_offsets[4]), activation_type_,
@@ -8454,16 +8462,20 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
       };
       struct BankLeaseGuard {
         cudaStream_t copy_stream;
+        qmoe_shared::FileExpertStore* store;
         std::array<InlinedVector<int32_t>, 2>* banks;
-        decltype(release_bank_leases)* release_fn;
         ~BankLeaseGuard() noexcept {
           if (!(*banks)[0].empty() || !(*banks)[1].empty()) {
-            if (copy_stream) static_cast<void>(cudaStreamSynchronize(copy_stream));
-            (*release_fn)(0);
-            (*release_fn)(1);
+            const qmoe_shared::ExpertLeaseGroup groups[] = {
+                {(*banks)[0].data(), (*banks)[0].size()},
+                {(*banks)[1].data(), (*banks)[1].size()}};
+            if (!qmoe_shared::ReleaseExpertLeaseGroupsAfterDeviceReads(
+                    *store, groups, 2, &SynchronizeStreamBarrier, copy_stream)) {
+              std::fprintf(stderr, "QMoEOffload could not confirm streaming copies completed; expert cache pins retained.\n");
+            }
           }
         }
-      } bank_lease_guard{shared.copy_stream, &bank_leased_experts, &release_bank_leases};
+      } bank_lease_guard{shared.copy_stream, &file_expert_store_, &bank_leased_experts};
       for (int wave = 0; wave < waves; ++wave) {
         const int bank_idx = wave & 1;
         const size_t first = static_cast<size_t>(wave) * wave_experts;
@@ -8924,7 +8936,7 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
             ORT_RETURN_IF_ERROR(launch_nvfp4_gemv_pair(
                 gathered, landing, offsets,
                 stream_fc1_bias_slab_[bank_idx] ? stream_fc1_bias_slab_[bank_idx].get() : nullptr,
-                stream_compact + meta_offset + w_off, stream_ids + meta_offset + w_off, count, compute_rows, wave_output));
+                stream_compact + meta_offset + w_off, stream_ids + meta_offset + w_off, count, compute_rows, wave_output, true));
           } else {
             const auto wave_quantization = ck::QuantParams::GroupWise(32, landing + offsets[2], landing + offsets[3]);
             runner_->runMoe(reinterpret_cast<half*>(gathered), nullptr, stream_compact + meta_offset + w_off, unit_scales,
@@ -8961,6 +8973,11 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
           static_cast<void>(cudaStreamQuery(stream));
           run_cpu_tail_experts();
         }
+      }
+      if (!bank_leased_experts[0].empty() || !bank_leased_experts[1].empty()) {
+        CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(shared.copy_stream));
+        release_bank_leases(0);
+        release_bank_leases(1);
       }
       ++stream_tiles_;
       stream_experts_ += stream_count;

@@ -233,6 +233,24 @@ qmoe::CrossLayerSite Site(const void* session, int64_t layer, bool doorbell_pend
 
 }  // namespace
 
+TEST(QMoEOffloadPlanTest, CompletedZeroColdRequestsAreRetiredExactlyOnce) {
+  uint64_t last_serviced = 5;
+  std::atomic<size_t> pending{3};
+  EXPECT_EQ(qmoe::RetireCompletedZeroColdRequests(8, 7, last_serviced, pending), 0);
+  EXPECT_EQ(last_serviced, 5);
+  EXPECT_EQ(pending.load(), 3);
+  EXPECT_EQ(qmoe::RetireCompletedZeroColdRequests(8, 8, last_serviced, pending), 3);
+  EXPECT_EQ(last_serviced, 8);
+  EXPECT_EQ(pending.load(), 0);
+  EXPECT_EQ(qmoe::RetireCompletedZeroColdRequests(8, 8, last_serviced, pending), 0);
+  EXPECT_EQ(qmoe::RetireCompletedZeroColdRequests(7, 9, last_serviced, pending), 0);
+  EXPECT_EQ(last_serviced, 8);
+  pending.store(1);
+  EXPECT_EQ(qmoe::RetireCompletedZeroColdRequests(10, 11, last_serviced, pending), 2);
+  EXPECT_EQ(last_serviced, 10);
+  EXPECT_EQ(pending.load(), 0);
+}
+
 // The doorbell registry is shared by every session. With two 2-layer sessions registered A0, A1, B0, B1, servicing
 // A1 must not stage or publish anything for B0/B1: B may already have classified its routes with the old placement.
 TEST(QMoEOffloadPlanTest, CrossLayerPromotionNeverTargetsAnotherSession) {

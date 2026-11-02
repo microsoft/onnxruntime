@@ -688,7 +688,13 @@ class TestQMoEOffloadV4(unittest.TestCase):
             self.skipTest("The native BF16 INT4 QMoE runner is not compiled into this build (e.g. ORT_QUICK_BUILD)")
 
     def setUp(self):
-        if not self._nvfp4_supported and not self._testMethodName.startswith(("test_v4_int4", "test_v4_int3")):
+        int_only_prefixes = (
+            "test_v4_int4",
+            "test_v4_int3",
+            "test_v4_zero_cold_doorbell_",
+            "test_v4_skip_zero_cold_doorbell_",
+        )
+        if not self._nvfp4_supported and not self._testMethodName.startswith(int_only_prefixes):
             self.skipTest(self._nvfp4_skip_reason or "This build does not enable USE_FP4_QMOE (NVFP4 QMoE)")
 
     @classmethod
@@ -2970,6 +2976,64 @@ int main() {
                     self.assertGreater(int(stream_stats[1]), 1, captured[0])
                     self.assertEqual(int(stream_stats[2]), rows * 8, captured[0])
 
+    def test_v4_int3_fp16_grouped_resident_and_streamed_prefill_parity(self):
+        rows = 33  # Each of the two selected experts has a one-route partial tile.
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            mock.patch.dict(os.environ, {"ORT_QMOE_SHARED_RESIDENT_LOG": "1", "ORT_QMOE_SHARED_PIN_EXPERTS": "0"}),
+        ):
+            model = self._build_int_qmoe_model(directory, [(3, 32, 0)], use_fp16=True)
+            rng = np.random.default_rng(33629)
+            x = rng.standard_normal((rows, 256), dtype=np.float32) * 0.5
+            reference = self._make_session(model, {"session.moe.offload.mode": "disabled"})
+            for streamed in (False, True):
+                with self.subTest(streamed=streamed):
+                    router = np.full((rows, 8), -10.0, dtype=np.float32)
+                    router[:, [1, 2] if streamed else [0, 3]] = 10.0
+                    expected = self._run_fp16(reference, x, router)
+                    results = {}
+                    for grouped in (False, True):
+                        with _capture_native_stderr() as captured:
+                            session = self._make_session(
+                                model,
+                                {
+                                    "session.moe.offload.mode": "required",
+                                    "session.moe.offload.placement": "static",
+                                    "session.moe.offload.popularity_file": "expert-profile.bin",
+                                    "session.moe.offload.cpu_execution": "disabled" if streamed else "enabled",
+                                    "session.moe.offload.device_expert_bytes": str(64 + 3 * 43016),
+                                    "session.moe.offload.prefill_wave_experts": "2",
+                                    "ep.cuda.qmoe_disable_int3_tensorcore_prefill": "0" if grouped else "1",
+                                },
+                            )
+                            results[grouped] = self._run_fp16(session, x, router)
+                            del session
+                            gc.collect()
+                        dispatches = re.findall(
+                            r"INT3 prefill layer=0 source=(\w+) routes=(\d+) grouped=(\d+)", captured[0]
+                        )
+                        self.assertEqual(
+                            dispatches,
+                            [("streamed" if streamed else "resident", str(rows * 2), str(int(grouped)))],
+                            captured[0],
+                        )
+                        slots, hits, routes = _resident_log_rows(captured[0])[0]
+                        self.assertEqual(slots, 3, captured[0])
+                        self.assertEqual(hits, 0 if streamed else rows * 2, captured[0])
+                        self.assertEqual(routes, rows * 2, captured[0])
+                        self._assert_int_offload_parity(
+                            expected, results[grouped], f"fp16_int3({streamed=},{grouped=})"
+                        )
+                    self._assert_int_offload_parity(
+                        results[False],
+                        results[True],
+                        f"fp16_grouped_vs_ungrouped({streamed=})",
+                        max_rel_l2=5e-3,
+                        max_rel_inf=1e-2,
+                    )
+            del reference
+            gc.collect()
+
     def test_v4_int4_streaming_reduces_scale_staging_wave_to_fit_pinned_budget(self):
         self._skip_unless_int4_bf16_runner()
         with (
@@ -3004,6 +3068,50 @@ int main() {
             stream_stats = re.search(r"stream layer=0 tiles=(\d+).* waves=(\d+)", captured[0])
             self.assertIsNotNone(stream_stats, captured[0])
             self.assertGreater(int(stream_stats[2]), int(stream_stats[1]), captured[0])
+
+    def test_v4_int4_cpu_disabled_streaming_uses_full_pinned_budget(self):
+        self._skip_unless_int4_bf16_runner()
+        hidden, intermediate, experts, rows = 2048, 512, 16, 8
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            mock.patch.dict(os.environ, {"ORT_QMOE_SHARED_RESIDENT_LOG": "1", "ORT_QMOE_SHARED_PIN_EXPERTS": "0"}),
+        ):
+            model = self._build_int_qmoe_model(
+                directory, [(4, 32, 1)], num_experts=experts, hidden_size=hidden, inter_size=intermediate, top_k=8
+            )
+            rng = np.random.default_rng(33629)
+            x = rng.standard_normal((rows, hidden), dtype=np.float32) * 0.5
+            router = np.full((rows, experts), -10.0, dtype=np.float32)
+            router[:, 1:9] = 10.0
+            reference = self._make_session(model, {"session.moe.offload.mode": "disabled"})
+            expected = self._run_bf16(reference, x, router)
+            del reference
+
+            slot_bytes = 3 * hidden * intermediate // 2 + 3 * hidden * intermediate // 32 * 2 + 8
+            with _capture_native_stderr() as captured:
+                session = self._make_session(
+                    model,
+                    {
+                        "session.moe.offload.mode": "required",
+                        "session.moe.offload.placement": "static",
+                        "session.moe.offload.popularity_file": "expert-profile.bin",
+                        "session.moe.offload.cpu_execution": "disabled",
+                        "session.moe.offload.device_expert_bytes": str(2 * experts * 4 + slot_bytes),
+                        "session.moe.offload.pinned_bytes": str(512 << 10),
+                        "session.moe.offload.prefill_wave_experts": "16",
+                    },
+                )
+                actual = self._run_bf16(session, x, router)
+                del session
+                gc.collect()
+            self._assert_int_offload_parity(expected, actual, "cpu_disabled_full_pinned_budget")
+            stream_stats = re.search(
+                r"stream layer=0 tiles=(\d+) experts=(\d+) routes=(\d+) cpu_routes=(\d+) waves=(\d+)", captured[0]
+            )
+            self.assertIsNotNone(stream_stats, captured[0])
+            self.assertEqual(int(stream_stats[3]), rows * 8, captured[0])
+            self.assertEqual(int(stream_stats[4]), 0, captured[0])
+            self.assertGreater(int(stream_stats[5]), 1, captured[0])
 
     def test_v4_int4_eight_token_hybrid_cuda_graph_replay(self):
         self._skip_unless_int4_bf16_runner()
@@ -3223,7 +3331,6 @@ int main() {
             del ref
             gc.collect()
 
-<<<<<<< HEAD
     @staticmethod
     def _hybrid_stream_inputs(rng: np.random.Generator) -> tuple[np.ndarray, np.ndarray]:
         """T=264 hybrid streaming prefill inputs: one hot resident expert plus rare and streamed cold experts."""
@@ -3302,10 +3409,6 @@ int main() {
             cudart.cudaFree(x_ptr)
             cudart.cudaFree(r_ptr)
 
-    def test_v4_int4_and_int3_bf16_int4_prepacked_offload_parity(self):
-        # Quick builds (ORT_QUICK_BUILD) do not compile the native BF16 INT4 QMoE runner that every session here needs.
-        self._skip_unless_int4_bf16_runner()
-=======
     def _build_decode_optimization_model(
         self,
         model_dir: str,
@@ -3490,8 +3593,9 @@ with tempfile.TemporaryDirectory() as directory:
             self.assertEqual(enabled[0]["zero_cold_short_circuits"], 1)
             self.assertEqual(explicit_zero[0]["zero_cold_short_circuits"], 0)
 
-    def test_v4_int4_and_int3_offload_modes_and_numerical_parity(self):
->>>>>>> bfe8b6a0fe ([CUDA] Add 8-route grouped INT3 offload prefill, zero-cold doorbell short-circuit, and S=8 streaming optimizations)
+    def test_v4_int4_and_int3_bf16_int4_prepacked_offload_parity(self):
+        # Quick builds (ORT_QUICK_BUILD) do not compile the native BF16 INT4 QMoE runner that every session here needs.
+        self._skip_unless_int4_bf16_runner()
         with tempfile.TemporaryDirectory() as tmpdir:
             # 1. Prepacked INT4 (bits=4, block_size=32, weights_prepacked=1)
             dir_int4 = os.path.join(tmpdir, "int4_b32")
