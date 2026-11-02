@@ -4675,6 +4675,7 @@ with tempfile.TemporaryDirectory() as directory:
                 y_off = self._run_bf16(sess_tri_off, x, r)
                 self._assert_int_offload_parity(y_ref, y_off, f"mixed_int4_int3_int2(T={num_rows})", min_ref_peak=0.01)
             del sess_tri_off, sess_tri_ref
+            gc.collect()
 
             # 6. Prepacked INT4 with partial 64-element reduction tiles (H=96, I=128) must be rejected.
             dir_h96 = os.path.join(tmpdir, "int4_h96")

@@ -2825,8 +2825,6 @@ void Int2Fc1SwiGluRange(int64_t hidden, int64_t inter, const Int2ExpertView& vie
   const int64_t n_total = 2 * inter;
 #if QMOE_COMPILER_SUPPORTS_AVX2
   const bool use_f16c = !force_scalar && fp16_boundaries && !bf16_boundaries && CpuHasAvx2FmaF16c();
-#else
-  const bool use_f16c = false;
 #endif
   const bool has_limit = std::isfinite(swiglu.limit);
   const bool use_fast_gemm =

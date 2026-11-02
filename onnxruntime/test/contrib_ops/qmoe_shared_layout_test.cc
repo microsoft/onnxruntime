@@ -1535,11 +1535,11 @@ TEST(QMoESharedLayoutTest, Int2ExpertBlockLayoutGeometry) {
 TEST(QMoESharedLayoutTest, Int2ReorderedPositionAndGemmMatchIndependentReference) {
   constexpr int64_t k = 128;
   constexpr int64_t columns = 24;
-  for (int64_t b = 0; b < 16; ++b) {
-    for (int64_t s = 0; s < 4; ++s) {
-      const int64_t logical_k = 32 * (b & 1) + 8 * s + (b >> 1);
+  for (int b = 0; b < 16; ++b) {
+    for (int s = 0; s < 4; ++s) {
+      const int logical_k = 32 * (b & 1) + 8 * s + (b >> 1);
       EXPECT_EQ(shared::Int2ReorderedPosition(logical_k), 16 * s + b);
-      const int64_t raw_k = 4 * b + s;
+      const int raw_k = 4 * b + s;
       EXPECT_EQ(shared::RawInt2ReorderedPosition(raw_k), 16 * s + b);
     }
   }
@@ -1553,7 +1553,7 @@ TEST(QMoESharedLayoutTest, Int2ReorderedPositionAndGemmMatchIndependentReference
   shared::ReorderInt2ActivationRow(a_natural.data(), a_prepacked.data(), k);
   shared::ReorderRawInt2ActivationRow(a_natural.data(), a_raw.data(), k);
   for (int64_t tile = 0; tile < k / 64; ++tile) {
-    for (int64_t off = 0; off < 64; ++off) {
+    for (int off = 0; off < 64; ++off) {
       EXPECT_EQ(a_prepacked[static_cast<size_t>(tile * 64 + shared::Int2ReorderedPosition(off))],
                 a_natural[static_cast<size_t>(tile * 64 + off)]);
       EXPECT_EQ(a_raw[static_cast<size_t>(tile * 64 + shared::RawInt2ReorderedPosition(off))],
