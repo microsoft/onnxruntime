@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #pragma once
 
 #include <cstddef>
@@ -16,7 +19,7 @@ struct MemoryCapacityError {
 
 template <typename DriverApi, size_t BufferSize>
 const char* FormatMemoryCapacityError(DriverApi& driver, MemoryCapacityError error,
-                                    char (&buffer)[BufferSize]) noexcept {
+                                      char (&buffer)[BufferSize]) noexcept {
   const char* name = driver.GetErrorName(error.code);
   const char* description = driver.GetErrorString(error.code);
   std::snprintf(buffer, BufferSize, "%s: CUDA error %d (%s): %s", error.operation, error.code,

@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #if defined(USE_CUDA) && !defined(ORT_MINIMAL_BUILD)
 
 #include <cuda.h>
