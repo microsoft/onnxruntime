@@ -10,6 +10,7 @@
 #include <type_traits>
 
 #include "contrib_ops/cuda/bert/gated_delta_net_impl.h"
+#include "contrib_ops/cuda/cuda_session_options.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_type_conversion.h"
 #include "core/platform/env_var_utils.h"
@@ -113,6 +114,8 @@ GatedDeltaNet<T>::GatedDeltaNet(const OpKernelInfo& info) : CudaKernel(info) {
                   " must be one of: fp32, fp16, bf16, got '", env_val, "'");
     }
   }
+  fp16_state_guard_ = ReadCudaSessionSwitch(info, kOrtSessionOptionsCudaGatedDeltaNetFp16StateGuard,
+                                            "ORT_GDN_FP16_STATE_GUARD", true);
 }
 
 template <typename T>
@@ -369,6 +372,7 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
   desc.dt_bias_per_key_dim = dt_bias_per_key_dim;
   desc.ragged = cu_seqlens != nullptr;
   desc.preferred_engine = forced_engine_;
+  desc.fp16_state_guard = fp16_state_guard_;
   desc.bf16_precision = bf16_precision_;
   if (!has_session_bf16_precision_) {
     const std::string env_val =

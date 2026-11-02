@@ -87,6 +87,9 @@ struct Descriptor {
   // Benchmarking override. kAuto lets the heuristic choose.
   Engine preferred_engine = Engine::kAuto;
   Bf16Precision bf16_precision = Bf16Precision::kFp32;
+  // float16 per-key-decay (KDA) chunked prefill: keep the FP32 state exact for tiles holding an element beyond the float16
+  // range. false rounds the state to float16 for the tensor-core products, which is faster but overflows there.
+  bool fp16_state_guard = true;
   int sm_major = 0;
 };
 

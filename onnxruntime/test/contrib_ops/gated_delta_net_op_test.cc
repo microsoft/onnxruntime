@@ -20,6 +20,7 @@
 #include "core/providers/cuda/cuda_provider_options.h"
 #include "core/session/IOBinding.h"
 #include "core/session/inference_session.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "gtest/gtest.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
@@ -3931,6 +3932,43 @@ void RunKdaTest(const Geometry& g, const std::vector<int32_t>& cu_seqlens, bool 
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
 }
 
+// A 32-token, single-head float16 KDA prefill whose FP32 initial state holds 1e5, beyond the float16 maximum of 65504.
+// The gate is off and beta is zero, so the state never changes and column 0 of every output token reads 1e5 * 0.125.
+// The expected outputs are those exact values.
+void AddKdaFp16ExtremeStateCase(OpTester& test) {
+  Geometry g{32, 1, 1, 1, kDim, kDim};
+  std::vector<float> q(static_cast<size_t>(g.total_tokens) * g.dk, 0.0f);
+  std::vector<float> k(static_cast<size_t>(g.total_tokens) * g.dk, 0.0f);
+  std::vector<float> v(static_cast<size_t>(g.total_tokens) * g.dv, 0.0f);
+  std::vector<float> decay(static_cast<size_t>(g.total_tokens) * g.dk, 0.0f);
+  std::vector<float> beta(static_cast<size_t>(g.total_tokens), 0.0f);
+  std::vector<float> state0(static_cast<size_t>(g.dv) * g.dk, 0.0f);
+  for (int t = 0; t < g.total_tokens; ++t) {
+    q[static_cast<size_t>(t) * g.dk] = 0.125f;
+  }
+  state0[0] = 100000.0f;
+
+  std::vector<float> ref_out(static_cast<size_t>(g.total_tokens) * g.dv, 0.0f);
+  for (int t = 0; t < g.total_tokens; ++t) {
+    ref_out[static_cast<size_t>(t) * g.dv] = 100000.0f * 0.125f;
+  }
+
+  test.AddAttribute("update_rule", std::string("gated_delta"));
+  test.AddAttribute("gate_activation", std::string("none"));
+  test.AddAttribute("beta_activation", std::string("none"));
+  test.AddAttribute("qk_l2_norm", static_cast<int64_t>(0));
+  test.AddAttribute("scale", 1.0f);
+  test.AddInput<MLFloat16>("query", {g.total_tokens, 1, g.dk}, ToFloat16(q));
+  test.AddInput<MLFloat16>("key", {g.total_tokens, 1, g.dk}, ToFloat16(k));
+  test.AddInput<MLFloat16>("value", {g.total_tokens, 1, g.dv}, ToFloat16(v));
+  test.AddOptionalInputEdge<int32_t>();
+  test.AddInput<MLFloat16>("decay", {g.total_tokens, 1, g.dk}, ToFloat16(decay));
+  test.AddInput<MLFloat16>("beta", {g.total_tokens, 1}, ToFloat16(beta));
+  test.AddInput<float>("initial_state", {1, 1, g.dv, g.dk}, state0);
+  test.AddOutput<MLFloat16>("output", {g.total_tokens, 1, g.dv}, ToFloat16(ref_out), false, 0.0f, 0.0f);
+  test.AddOutput<float>("final_state", {1, 1, g.dv, g.dk}, state0, false, 0.0f, 0.0f);
+}
+
 }  // namespace
 
 TEST(GatedDeltaNetTest, KdaCpuRecurrentAndVarlen) {
@@ -4117,43 +4155,96 @@ TEST(GatedDeltaNetTest, KdaCudaMultiPassCarryAndExtremeFp16State) {
   // 2. FP16 KDA split engine with FP32 initial state outside FP16 range (100000.0f > 65504.0f)
   // must preserve the FP32 state range without overflowing to Inf or NaN.
   {
-    Geometry g{32, 1, 1, 1, kDim, kDim};
-    std::vector<float> q(static_cast<size_t>(g.total_tokens) * g.dk, 0.0f);
-    std::vector<float> k(static_cast<size_t>(g.total_tokens) * g.dk, 0.0f);
-    std::vector<float> v(static_cast<size_t>(g.total_tokens) * g.dv, 0.0f);
-    std::vector<float> decay(static_cast<size_t>(g.total_tokens) * g.dk, 0.0f);
-    std::vector<float> beta(static_cast<size_t>(g.total_tokens), 0.0f);
-    std::vector<float> state0(static_cast<size_t>(g.dv) * g.dk, 0.0f);
-    for (int t = 0; t < g.total_tokens; ++t) {
-      q[static_cast<size_t>(t) * g.dk] = 0.125f;
-    }
-    state0[0] = 100000.0f;
-
-    std::vector<float> ref_out(static_cast<size_t>(g.total_tokens) * g.dv, 0.0f);
-    for (int t = 0; t < g.total_tokens; ++t) {
-      ref_out[static_cast<size_t>(t) * g.dv] = 100000.0f * 0.125f;
-    }
-
     OpTester test("GatedDeltaNet", 1, onnxruntime::kMSDomain);
-    test.AddAttribute("update_rule", std::string("gated_delta"));
-    test.AddAttribute("gate_activation", std::string("none"));
-    test.AddAttribute("beta_activation", std::string("none"));
-    test.AddAttribute("qk_l2_norm", static_cast<int64_t>(0));
-    test.AddAttribute("scale", 1.0f);
-    test.AddInput<MLFloat16>("query", {g.total_tokens, 1, g.dk}, ToFloat16(q));
-    test.AddInput<MLFloat16>("key", {g.total_tokens, 1, g.dk}, ToFloat16(k));
-    test.AddInput<MLFloat16>("value", {g.total_tokens, 1, g.dv}, ToFloat16(v));
-    test.AddOptionalInputEdge<int32_t>();
-    test.AddInput<MLFloat16>("decay", {g.total_tokens, 1, g.dk}, ToFloat16(decay));
-    test.AddInput<MLFloat16>("beta", {g.total_tokens, 1}, ToFloat16(beta));
-    test.AddInput<float>("initial_state", {1, 1, g.dv, g.dk}, state0);
-    test.AddOutput<MLFloat16>("output", {g.total_tokens, 1, g.dv}, ToFloat16(ref_out), false,
-                              0.0f, 0.0f);
-    test.AddOutput<float>("final_state", {1, 1, g.dv, g.dk}, state0, false, 0.0f, 0.0f);
+    AddKdaFp16ExtremeStateCase(test);
     std::vector<std::unique_ptr<IExecutionProvider>> eps;
     eps.push_back(DefaultCudaExecutionProvider());
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
   }
+}
+
+TEST(GatedDeltaNetTest, KdaCudaFp16StateGuardSessionOptionAndEnv) {
+  if (NeedSkipGatedDeltaNetTest()) return;
+
+  enum class Outcome { kExact,
+                       kOverflow,
+                       kRejected };
+  const std::string rejected_message =
+      "ep.cuda.gated_delta_net_fp16_state_guard (ORT_GDN_FP16_STATE_GUARD) must be exactly \"0\" or \"1\"";
+
+  // A null env or session value leaves that source unset.
+  auto run = [&](const char* env, const char* session, Outcome outcome) {
+    ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{
+        {"ORT_GDN_FP16_STATE_GUARD", env != nullptr ? optional<std::string>(env) : optional<std::string>()}}};
+    SessionOptions session_options;
+    if (session != nullptr) {
+      ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+          kOrtSessionOptionsCudaGatedDeltaNetFp16StateGuard, session));
+    }
+
+    OpTester test("GatedDeltaNet", 1, onnxruntime::kMSDomain);
+    AddKdaFp16ExtremeStateCase(test);
+    std::vector<std::unique_ptr<IExecutionProvider>> eps;
+    eps.push_back(DefaultCudaExecutionProvider());
+    if (outcome == Outcome::kRejected) {
+      test.Run(session_options, OpTester::ExpectResult::kExpectFailure, rejected_message, {}, nullptr, &eps);
+      return;
+    }
+    if (outcome == Outcome::kOverflow) {
+      // The unguarded scan rounds the 1e5 state element to inf, so the output and the final state are not finite.
+      test.SetCustomOutputVerifier([](const std::vector<OrtValue>& fetches, const std::string&) {
+        ASSERT_EQ(fetches.size(), 2u);
+        const Tensor& output = fetches[0].Get<Tensor>();
+        const Tensor& final_state = fetches[1].Get<Tensor>();
+        const auto output_data = output.DataAsSpan<MLFloat16>();
+        const auto state_data = final_state.DataAsSpan<float>();
+        EXPECT_TRUE(std::any_of(output_data.begin(), output_data.end(),
+                                [](MLFloat16 x) { return !std::isfinite(x.ToFloat()); }));
+        EXPECT_TRUE(std::any_of(state_data.begin(), state_data.end(),
+                                [](float x) { return !std::isfinite(x); }));
+      });
+    }
+    test.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
+  };
+
+  // The guard is on by default, and by an explicit value from either source.
+  run(nullptr, nullptr, Outcome::kExact);
+  run(nullptr, "1", Outcome::kExact);
+  run("1", nullptr, Outcome::kExact);
+
+  // Off, the float16 state is not range checked.
+  run(nullptr, "0", Outcome::kOverflow);
+  run("0", nullptr, Outcome::kOverflow);
+
+  // The session option wins over the environment, even over an invalid value.
+  run("0", "1", Outcome::kExact);
+  run("1", "0", Outcome::kOverflow);
+  run("invalid", "1", Outcome::kExact);
+  run("invalid", "0", Outcome::kOverflow);
+
+  // Only exactly "0" and "1" are accepted.
+  for (const char* invalid : {"2", "-1", "00", "01", "true", "yes", " 1", "1 "}) {
+    SCOPED_TRACE(invalid);
+    run(nullptr, invalid, Outcome::kRejected);
+    run(invalid, nullptr, Outcome::kRejected);
+  }
+  run(nullptr, "", Outcome::kRejected);
+}
+
+TEST(GatedDeltaNetTest, KdaCudaFp16StateGuardOffMatchesReference) {
+  if (NeedSkipGatedDeltaNetTest()) return;
+  // Without a state element beyond the float16 range the unguarded scan meets the tolerances of the guarded one. The
+  // switch is for float16 only, so bfloat16 is unaffected by it.
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_GDN_FP16_STATE_GUARD", "0"}}};
+  for (int total_tokens : {33, 130}) {
+    SCOPED_TRACE(total_tokens);
+    Geometry g{total_tokens, 1, 4, 4, kDim, kDim};
+    RunKdaTest<MLFloat16>(g, {}, /*use_cpu=*/false, /*packed_qkv=*/true, 5e-3f, 1e-2f);
+    RunKdaTest<BFloat16>(g, {}, /*use_cpu=*/false, /*packed_qkv=*/true, 1.5e-2f, 2e-2f);
+  }
+  Geometry ragged{130, 3, 4, 4, kDim, kDim};
+  RunKdaTest<MLFloat16>(ragged, {0, 5, 49, 130}, /*use_cpu=*/false, /*packed_qkv=*/true, 5e-3f, 1e-2f, 4,
+                        {3, 0, 2});
 }
 
 TEST(GatedDeltaNetTest, ScalarSigmoidGateLowerBoundSplitAndBf16Fallback) {

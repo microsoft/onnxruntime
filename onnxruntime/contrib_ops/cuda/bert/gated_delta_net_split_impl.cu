@@ -981,19 +981,25 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetKdaPrepareKernel
     return EffectiveDecay(raw, pack.a_log, pack.dt_bias, hv, d_idx, DK, dt_bias_per_key_dim,
                           p.gate_lower_bound, p.gate_activation);
   };
-  auto relative_decay = [&](int from_t, int to_t, int d_idx) -> float {
-    if (from_t >= to_t) return 1.0f;
-    const float gc_from = s.gc[from_t * L::kKh + d_idx];
-    const float gc_to = s.gc[to_t * L::kKh + d_idx];
-    if (isfinite(gc_from) && isfinite(gc_to)) {
-      return __expf(gc_to - gc_from);
+  // exp of the log decays summed over steps (from_t, to_t], from_t <= to_t, for key dim d_idx. `checked` is a
+  // std::integral_constant that is true when some prefix sum of the chunk is non-finite. The difference of two prefixes
+  // is undefined then (-inf - -inf), so the interval is summed again from the individual decays.
+  auto relative_decay = [&](auto checked, int from_t, int to_t, int d_idx) -> float {
+    if constexpr (!decltype(checked)::value) {
+      return __expf(s.gc[to_t * L::kKh + d_idx] - s.gc[from_t * L::kKh + d_idx]);
+    } else {
+      if (from_t >= to_t) return 1.0f;
+      const float gc_from = s.gc[from_t * L::kKh + d_idx];
+      const float gc_to = s.gc[to_t * L::kKh + d_idx];
+      if (isfinite(gc_from) && isfinite(gc_to)) {
+        return __expf(gc_to - gc_from);
+      }
+      float sum = 0.0f;
+      for (int u = from_t + 1; u <= to_t; ++u) {
+        sum += load_decay(u, d_idx);
+      }
+      return __expf(sum);
     }
-    // Recompute the interval sum after a saturated prefix to avoid -inf - (-inf).
-    float sum = 0.0f;
-    for (int u = from_t + 1; u <= to_t; ++u) {
-      sum += load_decay(u, d_idx);
-    }
-    return __expf(sum);
   };
 
   for (int idx = tid; idx < BT * DK; idx += kChunkedThreads) {
@@ -1049,6 +1055,7 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetKdaPrepareKernel
       }
     }
   }
+  bool prefix_nonfinite = false;
   if (tid < DK) {
     float acc = 0.0f;
 #pragma unroll
@@ -1057,35 +1064,46 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetKdaPrepareKernel
       s.gc[t * L::kKh + tid] = acc;
     }
     decay_out[tid] = __expf(acc);
+    // A non-finite decay (or an overflowing sum) leaves every later prefix non-finite, so the last prefix of each key
+    // dim witnesses all of them.
+    prefix_nonfinite = !isfinite(acc);
   }
-  __syncthreads();
+  // Block-uniform, so the loops below choose the unchecked relative decay once instead of testing every element.
+  const bool any_prefix_nonfinite = __syncthreads_or(prefix_nonfinite ? 1 : 0) != 0;
 
   // Compute M[BT][BT] (strictly lower) and P[BT][BT] (inclusive lower) using 64 8-thread subwarps.
   const int group_id = tid >> 3;
   const int sub_lane = tid & 7;
-  for (int pair_idx = group_id; pair_idx < BT * BT; pair_idx += (kChunkedThreads / 8)) {
-    const int t = pair_idx / BT;
-    const int sc = pair_idx % BT;
-    float acc_k = 0.0f, acc_q = 0.0f;
-    if (sc <= t && t < len) {
+  auto accumulate_pairs = [&](auto checked) {
+    for (int pair_idx = group_id; pair_idx < BT * BT; pair_idx += (kChunkedThreads / 8)) {
+      const int t = pair_idx / BT;
+      const int sc = pair_idx % BT;
+      float acc_k = 0.0f, acc_q = 0.0f;
+      if (sc <= t && t < len) {
 #pragma unroll
-      for (int i = 0; i < (DK / 8); ++i) {
-        const int d = sub_lane + i * 8;
-        const float e = relative_decay(sc, t, d);
-        const float ks = ElemToFloat(s.k_h[sc * L::kKh + d]) * e;
-        acc_k += ElemToFloat(s.k_h[t * L::kKh + d]) * ks;
-        acc_q += ElemToFloat(s.q_h[t * L::kKh + d]) * ks;
+        for (int i = 0; i < (DK / 8); ++i) {
+          const int d = sub_lane + i * 8;
+          const float e = relative_decay(checked, sc, t, d);
+          const float ks = ElemToFloat(s.k_h[sc * L::kKh + d]) * e;
+          acc_k += ElemToFloat(s.k_h[t * L::kKh + d]) * ks;
+          acc_q += ElemToFloat(s.q_h[t * L::kKh + d]) * ks;
+        }
+      }
+#pragma unroll
+      for (int off = 4; off > 0; off >>= 1) {
+        acc_k += __shfl_xor_sync(0xffffffff, acc_k, off);
+        acc_q += __shfl_xor_sync(0xffffffff, acc_q, off);
+      }
+      if (sub_lane == 0) {
+        s.m_f[t * BT + sc] = (sc < t && t < len && needs_retrieval) ? (s.beta[t] * acc_k) : 0.0f;
+        p_out[t * BT + sc] = FloatToElem<T>((sc <= t && t < len) ? acc_q : 0.0f);
       }
     }
-#pragma unroll
-    for (int off = 4; off > 0; off >>= 1) {
-      acc_k += __shfl_xor_sync(0xffffffff, acc_k, off);
-      acc_q += __shfl_xor_sync(0xffffffff, acc_q, off);
-    }
-    if (sub_lane == 0) {
-      s.m_f[t * BT + sc] = (sc < t && t < len && needs_retrieval) ? (s.beta[t] * acc_k) : 0.0f;
-      p_out[t * BT + sc] = FloatToElem<T>((sc <= t && t < len) ? acc_q : 0.0f);
-    }
+  };
+  if (any_prefix_nonfinite) {
+    accumulate_pairs(std::true_type{});
+  } else {
+    accumulate_pairs(std::false_type{});
   }
   __syncthreads();
 
@@ -1145,21 +1163,29 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetKdaPrepareKernel
     }
   }
 
-  for (int idx = tid; idx < BT * DK; idx += kChunkedThreads) {
-    const int t = idx / DK, d = idx % DK;
-    const float gc_td = s.gc[t * L::kKh + d];
-    qg_out[idx] =
-        FloatToElem<T>((t < len) ? ElemToFloat(s.q_h[t * L::kKh + d]) * __expf(gc_td) : 0.0f);
-    kd_out[idx] = FloatToElem<T>(
-        (t < len) ? ElemToFloat(s.k_h[t * L::kKh + d]) * relative_decay(t, len - 1, d) : 0.0f);
+  auto store_qg_kd = [&](auto checked) {
+    for (int idx = tid; idx < BT * DK; idx += kChunkedThreads) {
+      const int t = idx / DK, d = idx % DK;
+      const float gc_td = s.gc[t * L::kKh + d];
+      qg_out[idx] =
+          FloatToElem<T>((t < len) ? ElemToFloat(s.q_h[t * L::kKh + d]) * __expf(gc_td) : 0.0f);
+      kd_out[idx] = FloatToElem<T>(
+          (t < len) ? ElemToFloat(s.k_h[t * L::kKh + d]) * relative_decay(checked, t, len - 1, d) : 0.0f);
+    }
+  };
+  if (any_prefix_nonfinite) {
+    store_qg_kd(std::true_type{});
+  } else {
+    store_qg_kd(std::false_type{});
   }
 }
 
 // ---------------------------------------------------------------------------
 // KDA (per-key-dim decay) K2 scan kernel for BT=16, DK=128, DV=128.
 // ---------------------------------------------------------------------------
-template <typename T, int DK, int DV, int BT, int DVB,
-          Bf16Precision kBf16Prec = Bf16Precision::kFp32>
+// kNativeState rounds the FP32 state to T for the tensor-core products. Otherwise the state stays in FP32: bf16 splits it
+// into slices, and fp16 computes the exact FP32 product for a tile that holds an element beyond the fp16 range.
+template <typename T, int DK, int DV, int BT, int DVB, bool kNativeState = false>
 __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetKdaScanKernel(
     VariantPack<T> pack, KernelParams p, const T* tiles, const float* uv_tiles,
     const float* decays, float* carry, int chunk_base, int chunks_per_pass, int n_chunks,
@@ -1215,7 +1241,7 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetKdaScanKernel(
     }
     __syncthreads();
 
-    if constexpr (!(std::is_same_v<T, __nv_bfloat16> && kBf16Prec == Bf16Precision::kBf16)) {
+    if constexpr (!kNativeState) {
       SmemGemmFp32State<2 * BT, DVB, DK, false, kChunkedWarps, T>(
           s.t_f, L::kF2, s.wq_h, L::kKh, s.s_f, L::kSf, s.s_h, L::kSh, warp_id, lane, tid);
       __syncthreads();
@@ -1345,7 +1371,7 @@ Status LaunchGatedDeltaNetKdaSplit(const Descriptor& desc, const Plan& plan,
   const size_t prep_smem = KdaSplitPrepareSmemBytes(BT, DK, DV);
   const size_t scan_smem = KdaSplitScanSmemBytes(BT, DK, dvb);
 
-  auto launch_pass = [&]<Bf16Precision kPrec>(int base, int n, bool first, bool last) -> Status {
+  auto launch_pass = [&]<bool kNativeState>(int base, int n, bool first, bool last) -> Status {
     static DynamicSmemConfig prep_smem_config;
     ORT_RETURN_IF_ERROR(SetMaxDynamicSmem(
         GatedDeltaNetKdaPrepareKernel<T, DK, DV, BT>, prep_smem, prep_smem_config));
@@ -1358,16 +1384,16 @@ Status LaunchGatedDeltaNetKdaSplit(const Descriptor& desc, const Plan& plan,
     if (dvb == 32) {
       static DynamicSmemConfig scan32_smem_config;
       ORT_RETURN_IF_ERROR(SetMaxDynamicSmem(
-          GatedDeltaNetKdaScanKernel<T, DK, DV, BT, 32, kPrec>, scan_smem, scan32_smem_config));
-      GatedDeltaNetKdaScanKernel<T, DK, DV, BT, 32, kPrec>
+          GatedDeltaNetKdaScanKernel<T, DK, DV, BT, 32, kNativeState>, scan_smem, scan32_smem_config));
+      GatedDeltaNetKdaScanKernel<T, DK, DV, BT, 32, kNativeState>
           <<<scan_grid, kChunkedThreads, scan_smem, stream>>>(pack, p, tiles, uv_tiles, decays,
                                                               carry, base, chunks_per_pass, n,
                                                               first, last);
     } else {
       static DynamicSmemConfig scan64_smem_config;
       ORT_RETURN_IF_ERROR(SetMaxDynamicSmem(
-          GatedDeltaNetKdaScanKernel<T, DK, DV, BT, 64, kPrec>, scan_smem, scan64_smem_config));
-      GatedDeltaNetKdaScanKernel<T, DK, DV, BT, 64, kPrec>
+          GatedDeltaNetKdaScanKernel<T, DK, DV, BT, 64, kNativeState>, scan_smem, scan64_smem_config));
+      GatedDeltaNetKdaScanKernel<T, DK, DV, BT, 64, kNativeState>
           <<<scan_grid, kChunkedThreads, scan_smem, stream>>>(pack, p, tiles, uv_tiles, decays,
                                                               carry, base, chunks_per_pass, n,
                                                               first, last);
@@ -1375,17 +1401,19 @@ Status LaunchGatedDeltaNetKdaSplit(const Descriptor& desc, const Plan& plan,
     return CUDA_CALL(cudaGetLastError());
   };
 
+  // bf16 opts into the native state through bf16_precision. fp16 does so by switching the state guard off, which makes
+  // a state element beyond the fp16 range overflow to inf.
+  const bool native_state = std::is_same_v<T, __nv_bfloat16> ? desc.bf16_precision == Bf16Precision::kBf16
+                                                             : !desc.fp16_state_guard;
   for (int base = 0; base < total_chunks; base += chunks_per_pass) {
     const int n = std::min(chunks_per_pass, total_chunks - base);
     const bool first = base == 0;
     const bool last = base + n >= total_chunks;
-    if constexpr (std::is_same_v<T, __nv_bfloat16>) {
-      if (desc.bf16_precision == Bf16Precision::kBf16) {
-        ORT_RETURN_IF_ERROR(launch_pass.template operator()<Bf16Precision::kBf16>(base, n, first, last));
-        continue;
-      }
+    if (native_state) {
+      ORT_RETURN_IF_ERROR(launch_pass.template operator()<true>(base, n, first, last));
+    } else {
+      ORT_RETURN_IF_ERROR(launch_pass.template operator()<false>(base, n, first, last));
     }
-    ORT_RETURN_IF_ERROR(launch_pass.template operator()<Bf16Precision::kFp32>(base, n, first, last));
   }
   return Status::OK();
 }

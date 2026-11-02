@@ -568,6 +568,19 @@ static const char* const kOrtSessionOptionsCudaEnableGemmAutoTune = "ep.cuda.ena
 static const char* const kOrtSessionOptionsCudaGatedDeltaNetBf16Precision =
     "ep.cuda.gated_delta_net_bf16_precision";
 
+/// Range guard of the CUDA GatedDeltaNet per-key-decay (KDA) chunked prefill for float16 input/output. The scan keeps its
+/// recurrent state in FP32 and rounds it to float16 for the tensor-core products. "1" (default) checks every tile for a
+/// state element beyond the float16 range (|x| > 65504) and computes the products of such a tile in exact FP32, so the
+/// result stays finite. "0" skips the check, which makes the KDA prefill up to about 10% faster for a single sequence
+/// (the gain shrinks as the batch grows), but a state element beyond the float16 range then becomes inf and the output
+/// and the final state become NaN/inf. Choose "0" only when the state is known to stay within the float16 range. It has
+/// no effect on BFloat16 input (see ep.cuda.gated_delta_net_bf16_precision). Resolved once when the kernel is created,
+/// so a change needs a new session.
+/// Accepts only "0" and "1"; any other value, including an empty string, fails session initialization.
+/// Overrides the ORT_GDN_FP16_STATE_GUARD environment variable.
+static const char* const kOrtSessionOptionsCudaGatedDeltaNetFp16StateGuard =
+    "ep.cuda.gated_delta_net_fp16_state_guard";
+
 /// CUDA tensor-core kernel switches of MatMulNBits and QMoE. Each is resolved once when the
 /// kernel is created, so a change needs a new session, and overrides the environment variable named below. The
 /// 0/1 switches accept only "0" and "1", and the thresholds a positive decimal integer (or "0" where stated); any other

@@ -287,11 +287,13 @@ shared-memory requirement, and execution binds a `VariantPack` of device pointer
 | `recurrent` (generic) | head geometries the warp kernel cannot take | one CTA per `(sequence, v-head)`, state in shared memory |
 | `cudnn` | reserved, not implemented | see §11 |
 
-`SelectPlan` requires all of the following for the chunked engine, and falls back to the
+`SelectPlan` requires all of the following for a chunked engine, and falls back to the
 sequential engine otherwise: `total_tokens >= 32 * batch_size`,
 `head_size_qk == head_size_v == 128`, `num_heads_q == num_heads_k`,
-`num_heads_v % num_heads_q == 0`, scalar (not per-key-dimension) decay, `float16` or `bfloat16`
-input, SM80 or newer, and enough shared memory. Active compact capture does not disqualify the chunked
+`num_heads_v % num_heads_q == 0`, `float16` or `bfloat16` input, SM80 or newer, and enough
+shared memory. Scalar decay takes the fused engine (or the opt-in split engine below);
+per-key-dimension decay (KDA) always takes a BT=16 variant of the split engine (see
+"KDA Float16 State Range Guard" in §8). Active compact capture does not disqualify the chunked
 engine: rows with positive `capture_count` are skipped by the chunked pass and handled by a
 recurrent tail pass. Ragged rows shorter than the crossover use the same tail mechanism.
 
@@ -654,12 +656,72 @@ error per element), achieving **2.7x lower output RMSE**, **5.5x lower state RMS
 | **MMLU-Pro 200-Item Answer Agreement vs. `recurrent`** | 200/200 (100%) | 194/200 (97.00%) | **195/200 (97.50%)** | **195/200 (97.50%)** |
 | **`engine_behaviours.py --prefill fast`** | 27/27 PASS | **27/27 PASS** | **27/27 PASS** | **27/27 PASS** |
 
+### KDA Float16 State Range Guard (`ep.cuda.gated_delta_net_fp16_state_guard`)
+
+Per-key-decay (KDA) prefill runs on the BT=16 split engine (§5). For `float16` I/O its scan keeps
+the recurrent state $S$ in `float32` and rounds it to a `float16` operand for the tensor-core
+products, so a state element of magnitude above 65504 becomes `inf` there and the output and
+`final_state` turn NaN/inf even though the `float32` state is representable. Session option
+`ep.cuda.gated_delta_net_fp16_state_guard` (or environment variable `ORT_GDN_FP16_STATE_GUARD`)
+chooses between protecting against that and the faster unguarded scan:
+
+1. **`1` (default)**: every tile is checked for an element beyond the `float16` range (the CTA
+   agrees on the verdict through `__syncthreads_or`), and a tile that holds one computes its
+   products in exact `float32`. The output stays finite.
+2. **`0`**: rounds every tile to `float16` without checking. Choose it only when the state is known
+   to stay within the `float16` range.
+
+The option has no effect on `bfloat16` I/O, whose precision is chosen by
+`ep.cuda.gated_delta_net_bf16_precision` above. It is read once when the kernel is created, and
+any value other than `0` or `1` fails session initialization.
+
+#### Cost of the Guard on NVIDIA H200
+
+Per-call latency of single-operator graphs on an NVIDIA H200 (CUDA 13.0): `float16`,
+`head_size_qk = head_size_v = 128`, `B` ragged sequences of `T` tokens,
+`gate_activation = sigmoid`, device-resident inputs and outputs. Median of 7 interleaved rounds of
+40 calls.
+
+| Shape | Guard `1` (us) | Guard `0` (us) | `0` vs. `1` |
+|---|---:|---:|---:|
+| B=1, T=256, Hq=Hv=32 | 180.7 | 170.8 | -5.5% |
+| B=1, T=1,024, Hq=Hv=32 | 628.9 | 570.3 | -9.3% |
+| B=1, T=4,096, Hq=Hv=32 | 2,295.4 | 2,062.8 | -10.1% |
+| B=1, T=8,192, Hq=Hv=32 | 4,496.1 | 4,054.4 | -9.8% |
+| B=4, T=1,024, Hq=Hv=32 | 2,250.5 | 2,162.5 | -3.9% |
+| B=8, T=512, Hq=Hv=32 | 4,110.7 | 4,096.2 | -0.4% |
+| B=1, T=4,096, Hq=16, Hv=48 | 2,734.4 | 2,549.2 | -6.8% |
+| B=1, T=2,048, Hq=4, Hv=128 | 3,329.0 | 3,131.4 | -5.9% |
+| B=1, T=4,096, Hq=Hv=32, `float32` gates | 2,271.2 | 2,050.4 | -9.7% |
+
+The guard costs up to about 10% for a single sequence and nothing measurable once the batch fills
+the device.
+
+With 1% of the initial state entries set to 3e5 (beyond the `float16` range), `gate_activation = none`
+and a slow decay so the large entries persist across chunks, guard `1` keeps every element of
+`output` and `final_state` finite (maximum $|\text{output}|$ 1.67e4). Guard `0` returns non-finite
+values in 72.3% of both tensors, and the elements that are finite in both runs differ by at most
+6.1e-5. Guard `0` is 13.3% faster at B=1, T=4,096 (2,340.3 vs. 2,029.0 us) and 14.4% faster at B=4,
+T=1,024 (2,490.4 vs. 2,132.3 us).
+
+The decay handling of the same kernel is not behind the option. When a chunk's cumulative
+log-decay is not finite (gates large enough in magnitude that the prefix sum overflows to `-inf`),
+the relative decay between two tokens is summed again from the individual gates instead of being
+taken as the difference of two prefixes (`-inf - -inf`). The last prefix of each key dimension
+witnesses a non-finite prefix anywhere in the chunk, so one `__syncthreads_or` selects the checked
+variant per chunk and chunks with finite decay run the plain `exp(prefix[to] - prefix[from])`.
+Testing every element instead was 2.5%-7.0% slower for `float16` and 1.9%-3.9% slower for
+`bfloat16` on the same shapes; the per-chunk witness is indistinguishable from a kernel without
+the check (within 1.3%).
+
 ## 9. Session Options and Environment Variables
 
 | Option / Variable | Values | Description |
 |---|---|---|
 | `ep.cuda.gated_delta_net_bf16_precision` (`kOrtSessionOptionsCudaGatedDeltaNetBf16Precision`) | `fp32` (default), `fp16`, `bf16` | Session option controlling the intermediate precision of the `bfloat16` chunked and split-chunked prefill kernels. `fp32` preserves 24-bit FP32 state and chunk-update residuals via 3-slice BF16 decomposition with an exact FP32 fallback for extreme exponents; `fp16` uses 1-slice FP16 (10 mantissa bits) for internal chunk MMA tiles when chunk values fit within the safe FP16 dynamic range and falls back to `fp32` otherwise; `bf16` uses 1-slice native BF16 for all internal chunk MMA tiles. Overrides `ORT_GDN_BF16_PRECISION`. |
 | `ORT_GDN_BF16_PRECISION` | `fp32` (default), `fp16`, `bf16` | Environment-variable fallback for `ep.cuda.gated_delta_net_bf16_precision` when the session option is not set. |
+| `ep.cuda.gated_delta_net_fp16_state_guard` (`kOrtSessionOptionsCudaGatedDeltaNetFp16StateGuard`) | `1` (default), `0` | Session option for the `float16` per-key-decay (KDA) chunked prefill. `1` computes the products of a tile whose recurrent state holds an element of magnitude above 65504 in exact FP32, so `output` and `final_state` stay finite; `0` rounds the state to `float16` for every tile, which is up to about 10% faster for a single sequence but turns such a state into NaN/inf. Any other value fails session initialization. No effect on `bfloat16`. Overrides `ORT_GDN_FP16_STATE_GUARD`. |
+| `ORT_GDN_FP16_STATE_GUARD` | `1` (default), `0` | Environment-variable fallback for `ep.cuda.gated_delta_net_fp16_state_guard` when the session option is not set. Any other value fails session initialization. |
 | `ORT_GDN_PLAN` | `chunked`, `chunked_split`, `recurrent`, `cudnn` | Pins an engine, bypassing the heuristic, in either direction: `chunked` keeps the fused engine where the heuristic would split, and `chunked_split` forces the split engine where it would not. Either chunked override reports an error when the descriptor cannot use that engine. The analog of cuDNN's `select_plan(name)`. Intended for benchmarking and bisection. `cudnn` is reserved and returns an error. |
 
 ## 10. Testing
@@ -690,12 +752,18 @@ shared-memory chunk configuration. Three cases are worth calling out:
   mixed-magnitude columns, near-`FLT_MAX` finite states, and the
   `ep.cuda.gated_delta_net_bf16_precision` / `ORT_GDN_BF16_PRECISION` modes (`fp32`, `fp16`,
   `bf16`).
+- **`KdaCudaFp16StateGuardSessionOptionAndEnv` and `KdaCudaFp16StateGuardOffMatchesReference`**
+  cover the `ep.cuda.gated_delta_net_fp16_state_guard` / `ORT_GDN_FP16_STATE_GUARD` switch: the
+  default and `1` keep a state beyond the `float16` range finite, `0` lets it overflow, the session
+  option overrides the environment variable, malformed values fail session initialization, and `0`
+  still matches the reference on in-range inputs for `float16` and `bfloat16` I/O.
 
 ## 11. Known Limitations and Future Work
 
 - **Chunked engine coverage.** `float16` and `bfloat16` inputs with
-  `head_size_qk == head_size_v == 128` and scalar decay; `float32` inputs, per-key-dimension
-  decay (KDA), and other head sizes fall back to the sequential engine.
+  `head_size_qk == head_size_v == 128`: scalar decay uses the fused (or opt-in split) engine and
+  per-key-dimension decay (KDA) uses the BT=16 split engine; `float32` inputs and other head
+  sizes fall back to the sequential engine.
 - **FLA overtakes beyond `T ~ 1024`.** The single-launch design trades long-sequence
   throughput for a low fixed cost. Recovering it needs chunk-parallelism without FLA's
   per-chunk state materialization.
