@@ -3,6 +3,7 @@
 
 #include "core/providers/webgpu/math/top_k.h"
 #include "core/providers/common.h"
+#include "core/providers/webgpu/reduction/reduction_ops.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/tensor/transpose.h"
@@ -269,6 +270,24 @@ Status TopK::ComputeInternal(ComputeContext& context) const {
 
   // Determine if transpose is needed (when axis is not the last dimension)
   const bool is_transpose_required = static_cast<size_t>(axis) < input_rank - 1;
+  const int64_t cols = input_shape[static_cast<size_t>(axis)];
+  const int64_t rows = input_shape.Size() / cols;
+  const bool largest = largest_ != 0;
+  constexpr uint32_t kMaxSharedSortSize = 2048;
+
+  // Avoid the multi-dispatch global sort when only one value is needed.
+  if (!is_transpose_required && k == 1 && cols > kMaxSharedSortSize && rows > 0 && input_tensor->IsDataType<float>()) {
+    constexpr uint32_t kWorkgroupSize = 256;
+    ReduceSharedProgram program{"TopKTop1", largest ? ReduceOpType::ArgMax : ReduceOpType::ArgMin, kWorkgroupSize};
+    program.CacheHint(largest)
+        .AddInput({input_tensor, ProgramTensorMetadataDependency::TypeAndRank})
+        .AddOutput({context.Output(1, output_shape), ProgramTensorMetadataDependency::TypeAndRank})
+        .AddOutput({context.Output(0, output_shape), ProgramTensorMetadataDependency::TypeAndRank})
+        .SetWorkgroupSize(kWorkgroupSize)
+        .SetDispatchGroupSize(onnxruntime::narrow<uint32_t>(rows))
+        .AddUniformVariables({{onnxruntime::narrow<uint32_t>(cols)}, {onnxruntime::narrow<uint32_t>(rows)}});
+    return context.RunProgram(program);
+  }
 
   // Build permutation for transpose
   InlinedVector<size_t> perm(input_rank);
@@ -294,9 +313,6 @@ Status TopK::ComputeInternal(ComputeContext& context) const {
     effective_input = &transposed_input;
   }
 
-  // Dimensions for the kernel
-  const int64_t cols = effective_input_shape[input_rank - 1];
-  const int64_t rows = effective_input_shape.Size() / cols;
   const bool is_fp16 = input_tensor->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;
 
   // Prepare output tensors
@@ -318,14 +334,13 @@ Status TopK::ComputeInternal(ComputeContext& context) const {
     indices_output = context.Output(1, output_shape);
   }
 
-  bool largest = largest_ != 0;
   uint32_t padded = NextPowerOf2(static_cast<uint32_t>(cols));
 
   // Determine which output tensors the sort kernels write to
   Tensor* sort_values_out = is_transpose_required ? &transposed_values : values_output;
   Tensor* sort_indices_out = is_transpose_required ? &transposed_indices : indices_output;
 
-  if (padded <= 2048) {
+  if (padded <= kMaxSharedSortSize) {
     // Small path: single-dispatch shared-memory bitonic sort
     uint32_t wg_size = std::min(padded, 256u);
     TopKProgram program{wg_size, padded, largest, is_fp16};

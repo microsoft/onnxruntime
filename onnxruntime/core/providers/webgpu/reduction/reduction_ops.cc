@@ -371,8 +371,13 @@ Status ReduceSharedProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "}\n"
                             << "if (local_idx == 0) {\n"
                             << "  let outputValue = output_value_t(" << output_value << ");\n"
-                            << "  " << output.SetByOffset("outputIndex", "outputValue") << ";\n"
-                            << "}\n";
+                            << "  " << output.SetByOffset("outputIndex", "outputValue") << ";\n";
+  if (Outputs().size() > 1) {
+    ORT_ENFORCE(is_arg_reduce && Outputs().size() == 2, "Only arg reductions support an additional value output");
+    const auto& values = shader.AddOutput("values", usage);
+    shader.MainFunctionBody() << values.SetByOffset("outputIndex", input.GetByOffset("offset + bestIndex")) << ";\n";
+  }
+  shader.MainFunctionBody() << "}\n";
   return Status::OK();
 }
 

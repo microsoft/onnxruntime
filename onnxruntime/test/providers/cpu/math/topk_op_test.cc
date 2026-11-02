@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <array>
 #include <cmath>
 #include <limits>
 
@@ -9,6 +10,11 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
+#include "test/util/include/default_providers.h"
+
+#ifdef USE_WEBGPU
+#include "core/providers/webgpu/webgpu_provider_options.h"
+#endif
 
 namespace onnxruntime {
 namespace test {
@@ -89,6 +95,78 @@ TEST(TopKOperator, EmptyOuterDimension) {
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   }
 }
+
+#ifdef USE_WEBGPU
+TEST(TopKOperator, WebGpuTop1Contiguous) {
+  constexpr int64_t rows = 6;
+  for (const int64_t length : {2048, 2049, 4096, 65537}) {
+    SCOPED_TRACE(length);
+    for (const int64_t largest : {0, 1}) {
+      SCOPED_TRACE(largest);
+      const float extreme = largest ? 9.0f : -9.0f;
+      const float infinity = largest ? std::numeric_limits<float>::infinity()
+                                     : -std::numeric_limits<float>::infinity();
+      const float finite_extreme = largest ? std::numeric_limits<float>::max()
+                                           : std::numeric_limits<float>::lowest();
+      InlinedVector<float> data;
+      data.reserve(static_cast<size_t>(rows * length));
+      for (int64_t i = 0; i < length; ++i) {
+        data.push_back(i == length - 1 ? extreme : 0.0f);
+      }
+      for (int64_t i = 0; i < length; ++i) {
+        data.push_back(i == 1 || i == 128 ? extreme : 0.0f);
+      }
+      data.insert(data.end(), length, 3.0f);
+      for (int64_t i = 0; i < length; ++i) {
+        data.push_back(i % 2 == 0 ? -0.0f : 0.0f);
+      }
+      for (int64_t i = 0; i < length; ++i) {
+        data.push_back(i == 128 || i == length - 1 ? infinity : 0.0f);
+      }
+      data.insert(data.end(), length - 1, 0.0f);
+      data.push_back(finite_extreme);
+      const std::array<float, rows> expected_values{extreme, extreme, 3.0f, -0.0f, infinity, finite_extreme};
+      const std::array<int64_t, rows> expected_indices{length - 1, 1, 0, 0, 128, length - 1};
+
+      for (const int opset : {9, 10, 11}) {
+        if (opset < 11 && !largest) {
+          continue;
+        }
+        SCOPED_TRACE(opset);
+        for (const int64_t sorted : {0, 1}) {
+          if (opset < 11 && !sorted) {
+            continue;
+          }
+          SCOPED_TRACE(sorted);
+          ConfigOptions provider_options;
+          ASSERT_STATUS_OK(provider_options.AddConfigEntry(webgpu::options::kValidationMode, "full"));
+          auto provider = WebGpuExecutionProviderWithOptions(provider_options);
+          if (!provider) {
+            GTEST_SKIP() << "WebGPU EP is not available";
+          }
+          SessionOptions session_options;
+          ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+          OpTester test("TopK", opset);
+          test.AddAttribute("axis", sorted ? int64_t{-1} : int64_t{2});
+          if (opset >= 11) {
+            test.AddAttribute("largest", largest);
+            test.AddAttribute("sorted", sorted);
+          }
+          test.AddInput<float>("X", {2, 3, length}, data.data(), data.size());
+          if (opset <= 9) {
+            test.AddAttribute("k", int64_t{1});
+          } else {
+            test.AddInput<int64_t>("K", {1}, {1});
+          }
+          test.AddOutput<float>("Values", {2, 3, 1}, expected_values.data(), expected_values.size());
+          test.AddOutput<int64_t>("Indices", {2, 3, 1}, expected_indices.data(), expected_indices.size());
+          test.Config(session_options).ConfigEp(std::move(provider)).RunWithConfig();
+        }
+      }
+    }
+  }
+}
+#endif
 
 TEST(TopKOperator, Top1DefaultAxisOpset9) {
   std::vector<float> input_vals = {0.1f, 0.3f, 0.2f, 0.4f, 0.1f, 0.3f, 0.3f, 0.2f};
