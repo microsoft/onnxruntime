@@ -1606,6 +1606,7 @@ class SessionStateTestSharedInitalizersWithPrePacking : public ::testing::Test {
   }
 };
 
+#if !defined(__wasm__)  // Requires filesystem-backed external data.
 enum class PrepackedMismatch {
   None,
   Contents,
@@ -1636,7 +1637,6 @@ static std::string PrepackedTestWeightsKey() {
   return "PrePackingTest+" + std::to_string(expected.GetHash());
 }
 
-#if !defined(__wasm__)  // Requires filesystem-backed external data.
 TEST_F(SessionStateTestSharedInitalizersWithPrePacking, RejectsIncompatiblePrepackedWeightsDuringFinalize) {
   const std::filesystem::path model_path = "prepacked_mismatch_model.onnx";
   const std::filesystem::path external_data_path = "prepacked_mismatch_model.bin";
