@@ -1252,6 +1252,14 @@ void launch_moe_gemv_int_symmetric(const T* act, const WeightType* weight, const
       return;
     }
   }
+  if constexpr (std::is_same_v<T, __nv_bfloat16> && std::is_same_v<WeightType, cutlass::uint2b_t>) {
+    if (fiv::moe_tc::TryLaunchInt2Bf16(
+            /*swiglu=*/false, act, reinterpret_cast<const uint8_t*>(weight), scales, bias, out,
+            expert_first_token_offset, permuted_row_to_expert, num_experts, expanded_num_rows, n, k, group_size,
+            nullptr, nullptr, nullptr, 1.f, 0.f, 0.f, nullptr, 0, stream, tensor_core_min_rows)) {
+      return;
+    }
+  }
 #endif
   using Details = typename DetailsForTAndWeight<T, WeightType>::Details;
   using TypeA = typename DetailsForTAndWeight<T, WeightType>::TypeA;
@@ -1317,6 +1325,16 @@ void launch_moe_gemv_int_symmetric_interleaved_swiglu(
 #ifdef ENABLE_BF16
   if constexpr (std::is_same_v<T, __nv_bfloat16> && std::is_same_v<WeightType, cutlass::uint4b_t>) {
     if (fiv::moe_tc::TryLaunchInt4Bf16(
+            /*swiglu=*/true, act, reinterpret_cast<const uint8_t*>(weight), scales, bias, out,
+            expert_first_token_offset, permuted_row_to_expert, num_experts, expanded_num_rows, inter_size * 2, k,
+            group_size, activation_params.swiglu_alpha, activation_params.swiglu_beta,
+            activation_params.swiglu_limit, activation_params.alpha, activation_params.beta,
+            activation_params.limit, permuted_row_to_source_row, num_rows, stream, tensor_core_min_rows)) {
+      return;
+    }
+  }
+  if constexpr (std::is_same_v<T, __nv_bfloat16> && std::is_same_v<WeightType, cutlass::uint2b_t>) {
+    if (fiv::moe_tc::TryLaunchInt2Bf16(
             /*swiglu=*/true, act, reinterpret_cast<const uint8_t*>(weight), scales, bias, out,
             expert_first_token_offset, permuted_row_to_expert, num_experts, expanded_num_rows, inter_size * 2, k,
             group_size, activation_params.swiglu_alpha, activation_params.swiglu_beta,
