@@ -107,7 +107,10 @@ Function Write-Node-NuGet-Integrity-Metadata {
         $integrity["$packageKey@$versionKey"]=Get-File-Sha512Integrity $PackagePath
     }
 
-    if ($SIGNED_NUGET_DIR) {
+    # NuGet.org repository-countersigns uploaded packages, which changes their
+    # bytes. Only nightly builds may hash the pre-upload signed artifact.
+    # Release and RC metadata must be generated from the final feed-served file.
+    if ($SIGNED_NUGET_DIR -and $MODE -eq "dev") {
         $signedPackages=@(Get-ChildItem -Path $SIGNED_NUGET_DIR -Recurse -File |
             Where-Object { $_.Name -match '^Microsoft\.ML\.OnnxRuntime\.Gpu\.Linux\.(?<version>.+)\.nupkg$' })
         if ($signedPackages.Count -ne 1) {
@@ -118,8 +121,7 @@ Function Write-Node-NuGet-Integrity-Metadata {
         $signedPackageMatch=[regex]::Match(
             $signedPackage.Name,
             '^Microsoft\.ML\.OnnxRuntime\.Gpu\.Linux\.(?<version>.+)\.nupkg$')
-        $signedFeed=if ($MODE -eq "dev") { "nuget_nightly" } else { "nuget" }
-        Add-Candidate $signedFeed $signedPackageMatch.Groups["version"].Value $signedPackage.FullName
+        Add-Candidate "nuget_nightly" $signedPackageMatch.Groups["version"].Value $signedPackage.FullName
     }
 
     foreach ($candidate in $metadataVersions.nuget) {
