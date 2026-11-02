@@ -330,8 +330,13 @@ __global__ void __launch_bounds__(kFusedRouteThreads) FusedInt3SoftmaxTopKGroups
       const int orig_route = warp * k + lane;
       topk_scales[static_cast<size_t>(orig_route)] = normalize_scales ? (prob / denom) : prob;
       topk_indices[static_cast<size_t>(orig_route)] = expert;
-      s_key[orig_route] = (expert << 7) | orig_route;
+      if (route_groups != nullptr) {
+        s_key[orig_route] = (expert << 7) | orig_route;
+      }
     }
+  }
+  if (route_groups == nullptr) {
+    return;
   }
   const int num_pairs = num_rows * k;
   __syncthreads();
