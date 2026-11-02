@@ -2758,10 +2758,6 @@ TEST(MoETest, QMoETest_Int2CudaCachedScalesDecodeThenPrefill) {
   const auto profile_prefix = std::filesystem::temp_directory_path() / "qmoe_int2_cached_scales";
 #endif
   SessionOptions session_options;
-#if defined(ENABLE_CUDA_PROFILING)
-  session_options.enable_profiling = true;
-  session_options.profile_file_prefix = profile_prefix.native();
-#endif
   ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
   InferenceSessionWrapper session(session_options, GetEnvironment());
   ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
@@ -2769,9 +2765,6 @@ TEST(MoETest, QMoETest_Int2CudaCachedScalesDecodeThenPrefill) {
   ASSERT_STATUS_OK(session.Initialize());
 
 #if defined(ENABLE_CUDA_PROFILING)
-  const std::string setup_profile_path = session.EndProfiling();
-  std::error_code setup_profile_error;
-  std::filesystem::remove(setup_profile_path, setup_profile_error);
   session.StartProfiling(profile_prefix.string());
 #endif
 
@@ -5417,6 +5410,35 @@ TEST(MoETest, QMoETest_MixedWidthCudaRejectsUnsafeFallbackInputs) {
   RunQMoEMixedWidthCudaInvalidFallbackInputTest(
       64, 64, 32, false, false, "fc1_scales must match the activation type", true);
 }
+
+#if defined(ENABLE_BF16)
+TEST(MoETest, QMoETest_Bf16Int2TensorCoreGemvParity) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device with compute capability 8.0 or newer is required.";
+  }
+  for (int64_t block_size : {32, 64, 128}) {
+    for (const auto& shape : {std::pair<int64_t, int64_t>{512, 384},
+                              std::pair<int64_t, int64_t>{512, 512},
+                              std::pair<int64_t, int64_t>{512, 640},
+                              std::pair<int64_t, int64_t>{512, 768},
+                              std::pair<int64_t, int64_t>{640, 512},
+                              std::pair<int64_t, int64_t>{1024, 640}}) {
+      RunQMoEBf16TensorCoreGemvParityCase(/*bits=*/2, block_size, shape.first, shape.second);
+    }
+  }
+}
+
+TEST(MoETest, QMoETest_Bf16Int2TensorCoreGemvExtremeScales) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device with compute capability 8.0 or newer is required.";
+  }
+  for (const char* disable : {"0", "1"}) {
+    RunQMoEBf16TensorCoreGemvParityCase(/*bits=*/2, 64, 512, 512, disable);
+  }
+  RunQMoEBf16TensorCoreGemvParityCase(/*bits=*/2, 64, 512, 512, nullptr, /*fc1_scale_exp=*/40, /*fc2_scale_exp=*/-40);
+  RunQMoEBf16TensorCoreGemvParityCase(/*bits=*/2, 64, 512, 512, nullptr, /*fc1_scale_exp=*/-40, /*fc2_scale_exp=*/40);
+}
+#endif  // ENABLE_BF16
 #endif
 
 static void RunQMoEMixedWidthZeroPointTest(bool block_wise, bool invalid_fc2_shape) {
