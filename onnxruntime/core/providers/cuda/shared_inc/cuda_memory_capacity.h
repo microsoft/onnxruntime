@@ -14,6 +14,8 @@ struct MemoryCapacityDriverApi {
   CUresult Init() noexcept { return cuInit(0); }
   CUresult DeviceGet(Device* device, int ordinal) noexcept { return cuDeviceGet(device, ordinal); }
   CUresult DeviceTotalMem(size_t* total, Device device) noexcept { return cuDeviceTotalMem(total, device); }
+  CUresult CtxGetCurrent(Context* context) noexcept { return cuCtxGetCurrent(context); }
+  CUresult CtxSetCurrent(Context context) noexcept { return cuCtxSetCurrent(context); }
   CUresult PrimaryCtxRetain(Context* context, Device device) noexcept {
     return cuDevicePrimaryCtxRetain(context, device);
   }

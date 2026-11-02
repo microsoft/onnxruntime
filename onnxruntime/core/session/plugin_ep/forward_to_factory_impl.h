@@ -86,8 +86,8 @@ struct ForwardToFactoryImpl {
       _In_ OrtEpFactory* this_ptr,
       _In_ const OrtEpDevice* ep_device,
       _In_ OrtDeviceMemoryType memory_type,
-      _Out_ uint64_t* total_memory_bytes,
-      _Out_ uint64_t* available_memory_bytes) noexcept {
+      _Out_opt_ uint64_t* total_memory_bytes,
+      _Out_opt_ uint64_t* available_memory_bytes) noexcept {
     return static_cast<TFactory*>(this_ptr)->GetDeviceMemoryCapacity(
         ep_device, memory_type, total_memory_bytes, available_memory_bytes);
   }

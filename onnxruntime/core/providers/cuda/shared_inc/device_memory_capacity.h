@@ -26,8 +26,8 @@ const char* FormatMemoryCapacityError(DriverApi& driver, MemoryCapacityError err
 
 template <typename DriverApi>
 MemoryCapacityError QueryDeviceMemoryCapacity(DriverApi& driver, int device_id,
-                                            uint64_t& total_memory_bytes,
-                                            uint64_t& available_memory_bytes) noexcept {
+                                              uint64_t* total_memory_bytes,
+                                              uint64_t* available_memory_bytes) noexcept {
   typename DriverApi::Device device{};
   typename DriverApi::Context context{};
   if (const auto result = driver.Init(); result != 0) {
@@ -37,8 +37,20 @@ MemoryCapacityError QueryDeviceMemoryCapacity(DriverApi& driver, int device_id,
     return {"cuDeviceGet failed", static_cast<int>(result)};
   }
   size_t total{};
-  if (const auto result = driver.DeviceTotalMem(&total, device); result != 0) {
-    return {"cuDeviceTotalMem failed", static_cast<int>(result)};
+  if (total_memory_bytes != nullptr) {
+    if (const auto result = driver.DeviceTotalMem(&total, device); result != 0) {
+      return {"cuDeviceTotalMem failed", static_cast<int>(result)};
+    }
+  }
+  if (available_memory_bytes == nullptr) {
+    if (total_memory_bytes != nullptr) {
+      *total_memory_bytes = static_cast<uint64_t>(total);
+    }
+    return {};
+  }
+  typename DriverApi::Context caller_context{};
+  if (const auto result = driver.CtxGetCurrent(&caller_context); result != 0) {
+    return {"cuCtxGetCurrent failed", static_cast<int>(result)};
   }
   if (const auto result = driver.PrimaryCtxRetain(&context, device); result != 0) {
     return {"cuDevicePrimaryCtxRetain failed", static_cast<int>(result)};
@@ -53,10 +65,13 @@ MemoryCapacityError QueryDeviceMemoryCapacity(DriverApi& driver, int device_id,
   const auto query_result = driver.MemGetInfo(&available, &context_total);
   typename DriverApi::Context popped_context{};
   const auto restore_result = driver.CtxPopCurrent(&popped_context);
-  const auto release_result = driver.PrimaryCtxRelease(device);
   if (restore_result != 0) {
+    if (driver.CtxPopCurrent(&popped_context) == 0 || driver.CtxSetCurrent(caller_context) == 0) {
+      driver.PrimaryCtxRelease(device);
+    }
     return {"cuCtxPopCurrent failed to restore the calling thread's CUDA context", static_cast<int>(restore_result)};
   }
+  const auto release_result = driver.PrimaryCtxRelease(device);
   if (release_result != 0) {
     return {"cuDevicePrimaryCtxRelease failed", static_cast<int>(release_result)};
   }
@@ -64,8 +79,10 @@ MemoryCapacityError QueryDeviceMemoryCapacity(DriverApi& driver, int device_id,
     return {"cuMemGetInfo failed", static_cast<int>(query_result)};
   }
 
-  total_memory_bytes = static_cast<uint64_t>(total);
-  available_memory_bytes = static_cast<uint64_t>(available);
+  if (total_memory_bytes != nullptr) {
+    *total_memory_bytes = static_cast<uint64_t>(total);
+  }
+  *available_memory_bytes = static_cast<uint64_t>(available);
   return {};
 }
 

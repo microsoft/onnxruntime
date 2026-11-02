@@ -186,8 +186,12 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::GetDeviceMemoryCapacityImpl(
     return static_cast<ExampleEpFactory*>(this_ptr)->ort_api.CreateStatus(
         ORT_NOT_IMPLEMENTED, "Memory capacity queries support only device memory (DEFAULT)");
   }
-  *total_memory_bytes = 16ULL * 1024 * 1024 * 1024;
-  *available_memory_bytes = 12ULL * 1024 * 1024 * 1024;
+  if (total_memory_bytes != nullptr) {
+    *total_memory_bytes = 16ULL * 1024 * 1024 * 1024;
+  }
+  if (available_memory_bytes != nullptr) {
+    *available_memory_bytes = 12ULL * 1024 * 1024 * 1024;
+  }
   return nullptr;
 }
 

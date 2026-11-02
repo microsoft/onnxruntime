@@ -3324,6 +3324,8 @@ struct OrtEpFactory {
    *
    * This function is optional. Implementations must query the device when called because available
    * memory is dynamic. If the query is unsupported, leave this callback null or return ORT_NOT_IMPLEMENTED.
+   * Either output may be null, but at least one will be non-null. Query only the requested values;
+   * total-only queries should avoid initializing resources needed solely to query available memory.
    * Report capacity only for the selected memory type, without aggregating memory types. Return
    * ORT_NOT_IMPLEMENTED for memory types whose capacity cannot be queried by this provider.
    * Total memory must be the device-global capacity exposed for this device, not a per-process or
@@ -3331,14 +3333,16 @@ struct OrtEpFactory {
    * capacity, not the entire physical board's capacity. Available memory is a current free-memory
    * estimate, not a reservation or an allocation guarantee; allocator caches and process limits may
    * further constrain allocations. Implementations must preserve the calling thread's current device
-   * context if they temporarily switch contexts to perform the query.
+   * context if they temporarily switch contexts to perform the query. If driver errors prevent full
+   * restoration, implementations must attempt recovery and return an error; see
+   * OrtApi::EpDevice_GetMemoryCapacity for CUDA's recovery limitations.
    * On failure, output values must not be modified.
    *
    * \param[in] this_ptr The OrtEpFactory instance.
    * \param[in] ep_device The OrtEpDevice instance to query.
    * \param[in] memory_type The memory type to query: DEFAULT or HOST_ACCESSIBLE.
-   * \param[out] total_memory_bytes The device-global memory capacity in bytes.
-   * \param[out] available_memory_bytes The current free device memory estimate in bytes.
+   * \param[out] total_memory_bytes The device-global memory capacity in bytes, or null to omit.
+   * \param[out] available_memory_bytes The current free device memory estimate in bytes, or null to omit.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -3347,7 +3351,7 @@ struct OrtEpFactory {
   ORT_API2_STATUS(GetDeviceMemoryCapacity, _In_ OrtEpFactory* this_ptr,
                   _In_ const OrtEpDevice* ep_device,
                   _In_ OrtDeviceMemoryType memory_type,
-                  _Out_ uint64_t* total_memory_bytes, _Out_ uint64_t* available_memory_bytes);
+                  _Out_opt_ uint64_t* total_memory_bytes, _Out_opt_ uint64_t* available_memory_bytes);
 };
 
 #ifdef __cplusplus

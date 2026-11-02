@@ -1190,6 +1190,8 @@ struct EpDeviceImpl : Ort::detail::Base<T> {
   /// Total and available memory in bytes for the selected memory type. Throws if unsupported.
   std::pair<uint64_t, uint64_t> GetMemoryCapacity(
       OrtDeviceMemoryType memory_type = OrtDeviceMemoryType_DEFAULT) const;
+  /// Total memory in bytes without querying available memory. Throws if unsupported.
+  uint64_t GetTotalMemoryCapacity(OrtDeviceMemoryType memory_type = OrtDeviceMemoryType_DEFAULT) const;
 };
 }  // namespace detail
 
