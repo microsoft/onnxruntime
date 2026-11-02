@@ -250,14 +250,28 @@ jobs:
             exit $lastExitCode
           }
 
-          python.exe ${{ github.workspace }}\tools\ci_build\build.py `
-            --config RelWithDebInfo `
-            --build_dir ${{ github.workspace }} `
-            --test `
-            --enable_onnx_tests `
-            --build_nodejs
+          # Preserve the model fixtures normally prepared by build.py --enable_onnx_tests.
+          foreach ($modelPath in @("${{ github.workspace }}\models", "${{ github.workspace }}\RelWithDebInfo\models")) {
+            if (!(Test-Path $modelPath) -and (Test-Path 'C:\local\models')) {
+              New-Item -ItemType Junction -Path $modelPath -Target 'C:\local\models' | Out-Null
+            }
+          }
+          # Run the named integration replacements plus every other existing CTest.
+          # The three normal entries remain unfiltered for local diagnostics.
+          ctest --test-dir "${{ github.workspace }}\RelWithDebInfo" -C RelWithDebInfo --verbose --timeout 10800 --no-tests=error `
+            -E '^onnxruntime_(provider_test|test_all|autoep_test)$'
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
+          }
+
+          Push-Location "${{ github.workspace }}\js\node"
+          try {
+            npm test -- --timeout=90000
+            if ($lastExitCode -ne 0) {
+              exit $lastExitCode
+            }
+          } finally {
+            Pop-Location
           }
 
   webgpu_build_x64_RelWithDebInfo:
@@ -544,7 +558,7 @@ jobs:
         shell: pwsh
         run: |
           ctest --test-dir "${{ github.workspace }}\RelWithDebInfo" -C RelWithDebInfo --output-on-failure --no-tests=error `
-            -R '^onnxruntime_(provider_test|webgpu_legacy_test|test_all|autoep_test)$'
+            -R '^onnxruntime_webgpu_(provider_integration_test|framework_integration_test|autoep_integration_test|legacy_test)$'
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }

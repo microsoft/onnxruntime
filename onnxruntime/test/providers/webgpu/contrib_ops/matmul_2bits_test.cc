@@ -11,7 +11,7 @@
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
 #if defined(ORT_USE_EP_API_ADAPTERS)
-#include "test/providers/webgpu/test_plugin.h"
+#include "test/providers/webgpu/test_module.h"
 #else
 #include "contrib_ops/webgpu/quantization/matmul_nbits_common.h"
 #endif
@@ -175,7 +175,7 @@ TEST(MatMul2BitsWebGpu, Float32_ZeroPoint_DP4A) {
   auto ep = DefaultWebGpuExecutionProvider();
   ASSERT_NE(ep, nullptr);
 #if defined(ORT_USE_EP_API_ADAPTERS)
-  if (!GetWebGpuTestPlugin().Inspect(*ep).supports_dp4a) {
+  if (!GetWebGpuTestModule().Inspect(*ep).supports_dp4a) {
 #else
   if (!contrib::webgpu::HasDP4ADeviceSupport(ep->GetDeviceId())) {
 #endif

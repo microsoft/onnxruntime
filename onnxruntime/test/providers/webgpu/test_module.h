@@ -13,22 +13,22 @@
 
 namespace onnxruntime::test {
 
-// Loads the private test plugin for cases that need implementation-only setup.
+// Loads the private test module for cases that need implementation-only setup.
 // Providers returned by MakeEp must be destroyed before this object.
-class WebGpuTestPlugin {
+class WebGpuTestModule {
  public:
-  WebGpuTestPlugin();
-  ~WebGpuTestPlugin();
+  WebGpuTestModule();
+  ~WebGpuTestModule();
   std::unique_ptr<IExecutionProvider> MakeEp(const ConfigOptions& options = {},
                                              const WebGpuExecutionProviderTestOptions& test_options = {}) const;
   WebGpuTestCapabilities Inspect(const IExecutionProvider& ep) const;
 
  private:
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WebGpuTestPlugin);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WebGpuTestModule);
   struct Impl;
   std::unique_ptr<Impl> impl_;
 };
 
-WebGpuTestPlugin& GetWebGpuTestPlugin();
+WebGpuTestModule& GetWebGpuTestModule();
 
 }  // namespace onnxruntime::test

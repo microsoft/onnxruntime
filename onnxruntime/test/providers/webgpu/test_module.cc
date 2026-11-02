@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "test/providers/webgpu/test_plugin.h"
+#include "test/providers/webgpu/test_module.h"
 
 #include <iostream>
 #include <filesystem>
@@ -25,7 +25,7 @@ extern std::unique_ptr<Ort::Env> ort_env;
 
 namespace onnxruntime::test {
 
-struct WebGpuTestPlugin::Impl {
+struct WebGpuTestModule::Impl {
   void* library = nullptr;
   BeginWebGpuTestContextFn begin_context = nullptr;
   EndWebGpuTestContextFn end_context = nullptr;
@@ -51,7 +51,7 @@ struct WebGpuTestPlugin::Impl {
   }
 };
 
-WebGpuTestPlugin::WebGpuTestPlugin()
+WebGpuTestModule::WebGpuTestModule()
     : impl_(std::make_unique<Impl>()) {
   const auto path = (std::filesystem::path{Env::Default().GetRuntimePath()} /
                      ToPathString(ORT_WEBGPU_INTERNAL_TEST_LIBRARY_PATH))
@@ -91,15 +91,15 @@ WebGpuTestPlugin::WebGpuTestPlugin()
       break;
     }
   }
-  ORT_ENFORCE(impl_->device != nullptr, "The WebGPU test plugin did not expose a device.");
+  ORT_ENFORCE(impl_->device != nullptr, "The WebGPU test module did not expose a device.");
   const OrtEpDevice* devices[] = {impl_->device};
   ORT_THROW_IF_ERROR(CreateIExecutionProviderFactoryForEpDevices(
       static_cast<OrtEnv*>(*ort_env)->GetEnvironment(), devices, impl_->factory));
 }
 
-WebGpuTestPlugin::~WebGpuTestPlugin() = default;
+WebGpuTestModule::~WebGpuTestModule() = default;
 
-std::unique_ptr<IExecutionProvider> WebGpuTestPlugin::MakeEp(
+std::unique_ptr<IExecutionProvider> WebGpuTestModule::MakeEp(
     const ConfigOptions& config, const WebGpuExecutionProviderTestOptions& test_options) const {
   void* context = nullptr;
   bool supports_dp4a = false;
@@ -126,25 +126,25 @@ std::unique_ptr<IExecutionProvider> WebGpuTestPlugin::MakeEp(
   return ep;
 }
 
-WebGpuTestCapabilities WebGpuTestPlugin::Inspect(const IExecutionProvider& ep) const {
+WebGpuTestCapabilities WebGpuTestModule::Inspect(const IExecutionProvider& ep) const {
   WebGpuTestCapabilities result;
   Ort::ThrowOnError(impl_->inspect(ep.GetOrtEp(), &result));
   return result;
 }
 
 namespace {
-std::unique_ptr<WebGpuTestPlugin> test_plugin;
-std::mutex test_plugin_mutex;
-class TestPluginEnvironment : public testing::Environment {
-  void TearDown() override { test_plugin.reset(); }
+std::unique_ptr<WebGpuTestModule> test_module;
+std::mutex test_module_mutex;
+class TestModuleEnvironment : public testing::Environment {
+  void TearDown() override { test_module.reset(); }
 };
-[[maybe_unused]] auto* const test_plugin_environment = testing::AddGlobalTestEnvironment(new TestPluginEnvironment);
+[[maybe_unused]] auto* const test_module_environment = testing::AddGlobalTestEnvironment(new TestModuleEnvironment);
 }  // namespace
 
-WebGpuTestPlugin& GetWebGpuTestPlugin() {
-  std::lock_guard lock(test_plugin_mutex);
-  if (!test_plugin) test_plugin = std::make_unique<WebGpuTestPlugin>();
-  return *test_plugin;
+WebGpuTestModule& GetWebGpuTestModule() {
+  std::lock_guard lock(test_module_mutex);
+  if (!test_module) test_module = std::make_unique<WebGpuTestModule>();
+  return *test_module;
 }
 
 }  // namespace onnxruntime::test

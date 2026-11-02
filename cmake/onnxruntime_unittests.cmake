@@ -837,14 +837,14 @@ if(onnxruntime_USE_WEBGPU AND NOT onnxruntime_WEBGPU_STATIC_PLUGIN)
   list(REMOVE_ITEM onnxruntime_test_providers_webgpu_src
     "${TEST_SRC_DIR}/providers/webgpu/internal_test_main.cc"
     "${TEST_SRC_DIR}/providers/webgpu/internal_test_runner.cc"
-    "${TEST_SRC_DIR}/providers/webgpu/test_plugin.cc"
+    "${TEST_SRC_DIR}/providers/webgpu/test_module.cc"
     ${onnxruntime_test_providers_webgpu_plugin_src})
   if(onnxruntime_USE_EP_API_ADAPTERS)
     list(REMOVE_ITEM onnxruntime_test_providers_webgpu_src ${onnxruntime_test_providers_webgpu_internal_src})
   else()
     list(REMOVE_ITEM onnxruntime_test_providers_webgpu_src
       "${TEST_SRC_DIR}/providers/webgpu/plugin_factory_test.cc"
-      "${TEST_SRC_DIR}/providers/webgpu/test_plugin.cc")
+      "${TEST_SRC_DIR}/providers/webgpu/test_module.cc")
     list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_webgpu)
   endif()
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_webgpu_src})
@@ -1317,6 +1317,22 @@ function(onnxruntime_set_plugin_ep_test_environment target)
   endif()
 endfunction()
 
+# Add visibly focused entries without changing the normal CTest entries' selection.
+function(onnxruntime_add_webgpu_focused_test original target name filter)
+  set(args "--gtest_filter=${filter}")
+  if(onnxruntime_GENERATE_TEST_REPORTS)
+    list(APPEND args "--gtest_output=xml:${name}.$<CONFIG>.results.xml")
+  endif()
+  add_test(NAME ${name} COMMAND ${target} ${args}
+    WORKING_DIRECTORY $<TARGET_FILE_DIR:${target}>)
+  get_property(environment TEST ${original} PROPERTY ENVIRONMENT)
+  set_tests_properties(${name} PROPERTIES
+    ENVIRONMENT "${environment}"
+    TIMEOUT 10800
+    LABELS webgpu_integration
+    FAIL_REGULAR_EXPRESSION "0 tests from 0 test suites")
+endfunction()
+
 # Route the WebGPU EP through the dynamic plugin EP infrastructure in plugin builds
 # (--use_webgpu shared_lib or --use_webgpu static_plugin).
 # Without initializing the infra in test_main.cc, WebGpuExecutionProviderWithOptions() (default_providers.cc,
@@ -1708,19 +1724,16 @@ block()
   onnxruntime_set_plugin_ep_test_environment(onnxruntime_provider_test)
 
   if(onnxruntime_USE_WEBGPU AND onnxruntime_WEBGPU_INTEGRATION_TESTS_ONLY)
+    set(webgpu_provider_filter "*")
     if(NOT onnxruntime_USE_EP_API_ADAPTERS)
-      # Keep built-in context/allocator contracts, accelerated weight loading, and a small
-      # operator smoke test. Shared plugin CI owns the full numerical provider suite.
-      set_property(TEST onnxruntime_provider_test APPEND PROPERTY ENVIRONMENT
-        "GTEST_FILTER=WebGpuContextTest.*:WebGpuConcurrentContextTest.*:WebGpuConcurrentContextTestStandalone.*:WebGpuDataTransferTest.*:HardSwish_WebGPU.*")
+      set(webgpu_provider_filter
+        "WebGpuContextTest.*:WebGpuConcurrentContextTest.*:WebGpuConcurrentContextTestStandalone.*:WebGpuDataTransferTest.*:HardSwish_WebGPU.*")
     endif()
-    set_property(TEST onnxruntime_provider_test APPEND PROPERTY
-      FAIL_REGULAR_EXPRESSION "0 tests from 0 test suites")
+    onnxruntime_add_webgpu_focused_test(onnxruntime_provider_test ${onnxruntime_provider_test_target}
+      onnxruntime_webgpu_provider_integration_test "${webgpu_provider_filter}")
     # D3D12 external-loader lifecycle tests do not have WebGPU in their names.
-    set_property(TEST onnxruntime_test_all APPEND PROPERTY ENVIRONMENT
-      "GTEST_FILTER=*WebGpu*:*WebGPU*:ExternalDataLoaderManagerTest.*")
-    set_property(TEST onnxruntime_test_all APPEND PROPERTY
-      FAIL_REGULAR_EXPRESSION "0 tests from 0 test suites")
+    onnxruntime_add_webgpu_focused_test(onnxruntime_test_all onnxruntime_test_all
+      onnxruntime_webgpu_framework_integration_test "*WebGpu*:*WebGPU*:ExternalDataLoaderManagerTest.*")
   endif()
 
   if (onnxruntime_USE_WEBGPU AND onnxruntime_USE_EP_API_ADAPTERS AND
@@ -1790,23 +1803,20 @@ block()
       "${REPO_ROOT}/include/onnxruntime/ep/adapters.h")
     add_dependencies(onnxruntime_webgpu_internal_test_impl onnxruntime_providers_webgpu)
     if (WIN32)
-      target_link_options(onnxruntime_webgpu_internal_test_impl PRIVATE
-        "/EXPORT:CreateEpFactories" "/EXPORT:ReleaseEpFactory")
+      set(webgpu_internal_exports "${TEST_SRC_DIR}/providers/webgpu/internal_test.def")
+      target_link_options(onnxruntime_webgpu_internal_test_impl PRIVATE "/DEF:${webgpu_internal_exports}")
     elseif (APPLE)
+      set(webgpu_internal_exports "${TEST_SRC_DIR}/providers/webgpu/internal_test.exports")
       target_link_options(onnxruntime_webgpu_internal_test_impl PRIVATE
-        "LINKER:-exported_symbol,_RunWebGpuInternalTests"
-        "LINKER:-exported_symbol,_CreateEpFactories"
-        "LINKER:-exported_symbol,_ReleaseEpFactory"
-        "LINKER:-exported_symbol,_BeginWebGpuTestContext"
-        "LINKER:-exported_symbol,_EndWebGpuTestContext")
-      target_link_options(onnxruntime_webgpu_internal_test_impl PRIVATE
-        "LINKER:-exported_symbol,_ConfigureWebGpuTestEp"
-        "LINKER:-exported_symbol,_InspectWebGpuTestEp")
+        "LINKER:-exported_symbols_list,${webgpu_internal_exports}")
     elseif (UNIX AND NOT CMAKE_SYSTEM_NAME MATCHES "AIX")
+      set(webgpu_internal_exports "${TEST_SRC_DIR}/providers/webgpu/internal_test.lds")
       target_link_options(onnxruntime_webgpu_internal_test_impl PRIVATE
-        "LINKER:--version-script=${TEST_SRC_DIR}/providers/webgpu/internal_test.lds")
+        "LINKER:--version-script=${webgpu_internal_exports}")
+    endif()
+    if(DEFINED webgpu_internal_exports)
       set_property(TARGET onnxruntime_webgpu_internal_test_impl APPEND PROPERTY LINK_DEPENDS
-        "${TEST_SRC_DIR}/providers/webgpu/internal_test.lds")
+        "${webgpu_internal_exports}")
     endif()
 
     AddTest(
@@ -1826,7 +1836,7 @@ block()
       ENVIRONMENT "ORT_WEBGPU_EP_FORCE_LEGACY=1"
       FAIL_REGULAR_EXPRESSION "0 tests from 0 test suites")
     add_dependencies(onnxruntime_provider_test onnxruntime_webgpu_internal_test)
-    target_sources(onnxruntime_test_utils PRIVATE "${TEST_SRC_DIR}/providers/webgpu/test_plugin.cc")
+    target_sources(onnxruntime_test_utils PRIVATE "${TEST_SRC_DIR}/providers/webgpu/test_module.cc")
     target_compile_definitions(onnxruntime_test_utils PRIVATE
       ORT_WEBGPU_INTERNAL_TEST_LIBRARY_PATH="$<TARGET_FILE_NAME:onnxruntime_webgpu_internal_test_impl>")
     target_compile_definitions(${onnxruntime_provider_test_target} PRIVATE
@@ -2848,6 +2858,7 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT onnxruntime_CUDA_MINIMAL
         # This happens to also match the gradle command line option for specifying system properties.
         set(GRADLE_SYSTEM_PROPERTY_DEFINITIONS ${ORT_PROVIDER_FLAGS})
         if(onnxruntime_USE_WEBGPU AND onnxruntime_USE_EP_API_ADAPTERS AND NOT onnxruntime_WEBGPU_STATIC_PLUGIN)
+          list(REMOVE_ITEM GRADLE_SYSTEM_PROPERTY_DEFINITIONS "-DUSE_WEBGPU=1")
           list(APPEND GRADLE_SYSTEM_PROPERTY_DEFINITIONS
             "-DWEBGPU_PLUGIN_LIBRARY=$<TARGET_FILE:onnxruntime_providers_webgpu>")
           add_dependencies(onnxruntime4j_jni onnxruntime_providers_webgpu)
@@ -3156,10 +3167,8 @@ if (onnxruntime_BUILD_SHARED_LIB AND
           DEPENDS ${all_dependencies} example_plugin_ep example_plugin_ep_virt_gpu example_plugin_ep_kernel_registry
   )
   if(onnxruntime_USE_WEBGPU AND onnxruntime_WEBGPU_INTEGRATION_TESTS_ONLY)
-    set_property(TEST onnxruntime_autoep_test APPEND PROPERTY ENVIRONMENT
-      "GTEST_FILTER=AutoEpSelection.WebGpuEP")
-    set_property(TEST onnxruntime_autoep_test APPEND PROPERTY
-      FAIL_REGULAR_EXPRESSION "0 tests from 0 test suites")
+    onnxruntime_add_webgpu_focused_test(onnxruntime_autoep_test onnxruntime_autoep_test
+      onnxruntime_webgpu_autoep_integration_test "AutoEpSelection.WebGpuEP")
   endif()
 endif()
 

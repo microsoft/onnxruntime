@@ -1,0 +1,9 @@
+LIBRARY "onnxruntime_webgpu_internal_test_impl.dll"
+EXPORTS
+ RunWebGpuInternalTests
+ CreateEpFactories
+ ReleaseEpFactory
+ BeginWebGpuTestContext
+ EndWebGpuTestContext
+ ConfigureWebGpuTestEp
+ InspectWebGpuTestEp

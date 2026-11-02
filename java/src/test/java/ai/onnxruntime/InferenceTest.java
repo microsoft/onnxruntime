@@ -758,26 +758,14 @@ public class InferenceTest {
   @Test
   @EnabledIfSystemProperty(named = "USE_WEBGPU", matches = "1")
   public void testWEBGPU() throws OrtException {
-    String pluginPath = System.getProperty("WEBGPU_PLUGIN_LIBRARY");
-    if (pluginPath == null) {
-      runProvider(OrtProvider.WEBGPU);
-      return;
-    }
-    env.registerExecutionProviderLibrary("WebGPU", pluginPath);
-    try {
-      runProvider(OrtProvider.WEBGPU);
-    } finally {
-      env.unregisterExecutionProviderLibrary("WebGPU");
-    }
+    runProvider(OrtProvider.WEBGPU);
   }
 
   private void runProvider(OrtProvider provider) throws OrtException {
     EnumSet<OrtProvider> providers = OrtEnvironment.getAvailableProviders();
+    assertTrue(providers.size() > 1);
     assertTrue(providers.contains(OrtProvider.CPU));
-    if (provider != OrtProvider.WEBGPU || System.getProperty("WEBGPU_PLUGIN_LIBRARY") == null) {
-      assertTrue(providers.size() > 1);
-      assertTrue(providers.contains(provider));
-    }
+    assertTrue(providers.contains(provider));
     SqueezeNetTuple tuple = openSessionSqueezeNet(EnumSet.of(provider));
     try (OrtSession session = tuple.session) {
       float[] inputData = tuple.inputData;
@@ -2146,17 +2134,7 @@ public class InferenceTest {
           options.addQnn(Collections.singletonMap("backend_type", "cpu"));
           break;
         case WEBGPU:
-          if (System.getProperty("WEBGPU_PLUGIN_LIBRARY") != null) {
-            List<OrtEpDevice> devices =
-                env.getEpDevices().stream()
-                    .filter(device -> device.getEpName().equals("WebGpuExecutionProvider"))
-                    .limit(1)
-                    .collect(Collectors.toList());
-            assertFalse(devices.isEmpty());
-            options.addExecutionProvider(devices, Collections.emptyMap());
-          } else {
-            options.addWebGPU(Collections.emptyMap());
-          }
+          options.addWebGPU(Collections.emptyMap());
           break;
         case VITIS_AI:
         case RK_NPU:

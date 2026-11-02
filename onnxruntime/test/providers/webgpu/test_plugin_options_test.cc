@@ -7,7 +7,7 @@
 
 #include "core/providers/providers.h"
 #include "core/providers/webgpu/webgpu_provider_options.h"
-#include "test/providers/webgpu/test_plugin.h"
+#include "test/providers/webgpu/test_module.h"
 #include "test/unittest_util/test_dynamic_plugin_ep.h"
 #include "test/util/include/asserts.h"
 
@@ -26,11 +26,11 @@ TEST(WebGpuTestPluginOptionsTest, DefaultsAndPerCallOverrides) {
       ASSERT_STATUS_OK(dynamic_plugin_ep_infra::Initialize(*ort_env, init));
       auto shutdown = gsl::finally([]() { dynamic_plugin_ep_infra::Shutdown(); });
 
-      EXPECT_EQ(GetWebGpuTestPlugin().MakeEp()->GetPreferredLayout(),
+      EXPECT_EQ(GetWebGpuTestModule().MakeEp()->GetPreferredLayout(),
                 default_nchw ? DataLayout::NCHW : DataLayout::NHWC);
       ConfigOptions overrides;
       ASSERT_STATUS_OK(overrides.AddConfigEntry(webgpu::options::kPreferredLayout, default_nchw ? "NHWC" : "NCHW"));
-      EXPECT_EQ(GetWebGpuTestPlugin().MakeEp(overrides)->GetPreferredLayout(),
+      EXPECT_EQ(GetWebGpuTestModule().MakeEp(overrides)->GetPreferredLayout(),
                 default_nchw ? DataLayout::NHWC : DataLayout::NCHW);
       EXPECT_EQ(dynamic_plugin_ep_infra::GetDefaultEpOptions(), init.default_ep_options);
     }
@@ -47,7 +47,7 @@ TEST(WebGpuTestPluginOptionsTest, ContextUsesConfiguredDefaults) {
     auto shutdown = gsl::finally([]() { dynamic_plugin_ep_infra::Shutdown(); });
 
     try {
-      auto ep = GetWebGpuTestPlugin().MakeEp();
+      auto ep = GetWebGpuTestModule().MakeEp();
       FAIL() << "The test context ignored the invalid configured backend";
     } catch (const Ort::Exception& error) {
       EXPECT_NE(std::string{error.what()}.find("Invalid Dawn backend type: invalid-test-backend"), std::string::npos);

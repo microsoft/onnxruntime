@@ -10,6 +10,7 @@
 
 #include "core/platform/env_var.h"
 #include "core/providers/webgpu/ep/factory.h"
+#include "core/providers/webgpu/ep/module_state.h"
 #include "core/providers/webgpu/ep/runtime_compatibility.h"
 #include "core/session/onnxruntime_env_config_keys.h"
 
@@ -51,6 +52,17 @@ namespace {
 // Set to "1" to allow WebGPU to be advertised against a CPU hardware device when no GPU hardware device is available.
 constexpr const char* kAllowSoftwareAdapterEnvironmentVariable = "ORT_WEBGPU_EP_ALLOW_SOFTWARE_ADAPTER";
 }  // namespace
+
+namespace onnxruntime::webgpu::ep {
+void CleanupModuleState() {
+  CleanupKernelRegistries();
+  CleanupWebGpuContexts();
+  ::onnxruntime::ep::adapter::LoggingManager::DestroyDefaultLogger();
+#if !defined(ORT_PLUGIN_EP_STATICALLY_LINKED)
+  google::protobuf::ShutdownProtobufLibrary();
+#endif
+}
+}  // namespace onnxruntime::webgpu::ep
 
 extern "C" {
 //
@@ -138,24 +150,8 @@ EXPORT_SYMBOL OrtStatus* ORT_PLUGIN_EP_ENTRY_POINT(CreateEpFactories)(
 
 EXPORT_SYMBOL OrtStatus* ORT_PLUGIN_EP_ENTRY_POINT(ReleaseEpFactory)(OrtEpFactory* factory) noexcept {
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
-  // STEP.1 - Release the factory
   delete static_cast<onnxruntime::webgpu::ep::Factory*>(factory);
-
-  // STEP.2 - Clean up cached kernel registries
-  onnxruntime::webgpu::CleanupKernelRegistries();
-
-  // STEP.3 - Clean up WebGPU contexts
-  onnxruntime::webgpu::CleanupWebGpuContexts();
-
-  // STEP.4 - Destroy the global default logger wrapper
-  ::onnxruntime::ep::adapter::LoggingManager::DestroyDefaultLogger();
-
-#if !defined(ORT_PLUGIN_EP_STATICALLY_LINKED)
-  // STEP.5 - Shutdown protobuf library.
-  // Only do this when this EP owns the process-global state, i.e. when it is built as a separate library.
-  // When statically linked into the host binary, protobuf is shared with the host, which owns its lifetime.
-  google::protobuf::ShutdownProtobufLibrary();
-#endif
+  onnxruntime::webgpu::ep::CleanupModuleState();
 
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END

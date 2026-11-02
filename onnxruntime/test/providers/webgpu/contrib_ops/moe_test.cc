@@ -28,7 +28,7 @@
 #include "test/util/include/default_providers.h"
 
 #if defined(ORT_USE_EP_API_ADAPTERS)
-#include "test/providers/webgpu/test_plugin.h"
+#include "test/providers/webgpu/test_module.h"
 #else
 #include "core/providers/webgpu/math/subgroup_matrix_config.h"
 #include "core/providers/webgpu/webgpu_context.h"
@@ -324,7 +324,7 @@ TEST(MoETest, QMoETest_WebGPU_SingleTokenOddExpertPoolTie) {
 TEST(MoETest, QMoETest_WebGPU_SingleTokenLargeExpertPoolTie) {
   GET_WEBGPU_EP_OR_SKIP(webgpu_ep);
 #if defined(ORT_USE_EP_API_ADAPTERS)
-  const auto capabilities = GetWebGpuTestPlugin().Inspect(*webgpu_ep);
+  const auto capabilities = GetWebGpuTestModule().Inspect(*webgpu_ep);
   struct {
     uint32_t maxComputeWorkgroupSizeX;
     uint32_t maxComputeInvocationsPerWorkgroup;
@@ -1152,9 +1152,9 @@ TEST(MoETest, QMoETest_WebGPU_BlockFp8_TiledPrefill) {
 TEST(MoETest, QMoETest_WebGPU_BlockFp8_MixedRoutingSeparateFc3) {
   GET_WEBGPU_EP_OR_SKIP(webgpu_ep);
 #if defined(ORT_USE_EP_API_ADAPTERS)
-  auto probe_ep = GetWebGpuTestPlugin().MakeEp();
-  webgpu_ep = GetWebGpuTestPlugin().MakeEp();
-  const auto capabilities = GetWebGpuTestPlugin().Inspect(*probe_ep);
+  auto probe_ep = GetWebGpuTestModule().MakeEp();
+  webgpu_ep = GetWebGpuTestModule().MakeEp();
+  const auto capabilities = GetWebGpuTestModule().Inspect(*probe_ep);
   const bool matrix_supported = capabilities.supports_fp8_matrix;
   const auto dispatches_before = capabilities.fp8_matrix_dispatches;
 #else
@@ -1240,7 +1240,7 @@ TEST(MoETest, QMoETest_WebGPU_BlockFp8_MixedRoutingSeparateFc3) {
     GTEST_SKIP() << "Adapter does not support the FP8 expert subgroup-matrix configuration";
   }
 #if defined(ORT_USE_EP_API_ADAPTERS)
-  EXPECT_EQ(GetWebGpuTestPlugin().Inspect(*probe_ep).fp8_matrix_dispatches - dispatches_before, 3u);
+  EXPECT_EQ(GetWebGpuTestModule().Inspect(*probe_ep).fp8_matrix_dispatches - dispatches_before, 3u);
 #else
   EXPECT_EQ(contrib::webgpu::BlockFp8MatrixDispatchCount() - dispatches_before, 3u);
 #endif

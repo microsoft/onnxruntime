@@ -1,0 +1,7 @@
+_RunWebGpuInternalTests
+_CreateEpFactories
+_ReleaseEpFactory
+_BeginWebGpuTestContext
+_EndWebGpuTestContext
+_ConfigureWebGpuTestEp
+_InspectWebGpuTestEp

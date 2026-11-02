@@ -47,13 +47,21 @@ immediately; the normal internal test run checks that behavior separately.
 
 Set `onnxruntime_WEBGPU_INTEGRATION_TESTS_ONLY=ON` for the focused Windows jobs.
 For plugin builds, the provider binary includes only the plugin integration sources.
-For built-in builds, CTest filters the provider binary to the integration/smoke set;
-the full binary remains available for explicit local diagnostics.
-CTest also filters framework and automatic-device-selection tests to WebGPU cases,
-retaining the D3D12 external-loader lifecycle tests in the built-in configuration.
+The normal provider, framework and automatic-device-selection CTest entries remain
+unfiltered. Focused entries have explicit names:
 
-The static-plugin workflow explicitly runs the provider, compatibility-recording,
-framework and automatic-device-selection CTests. Zero matched CTests and zero
+- `onnxruntime_webgpu_provider_integration_test`
+- `onnxruntime_webgpu_framework_integration_test`
+- `onnxruntime_webgpu_autoep_integration_test`
+
+Their GTest filters are command-line arguments, with separate XML reports. The
+framework selection retains the native D3D12 external-loader lifecycle tests.
+An unqualified `ctest` also runs the normal suites available in that build.
+
+The built-in workflow runs these replacements and all other CTests, explicitly
+excluding the three normal entries by name. Node.js tests and model fixtures are
+retained. The static-plugin workflow explicitly runs the three focused entries
+and the compatibility-recording CTest. Zero matched CTests and zero
 matched GTests are errors. The existing Windows required gate also checks the full
 shared-plugin job's result, including failure, cancellation and skipped execution.
 
@@ -75,3 +83,13 @@ GTest success alone is insufficient evidence: a shared operator helper can decli
 an unsupported model/provider combination without failing its enclosing case.
 Preserve provider options, CPU-fallback settings, private boundary controls and
 capability predicates when adapting a test.
+
+## Java plugin integration
+
+The shared-plugin job builds Java to retain binding-level registration and inference
+coverage as numerical testing moves to that configuration. The WebGPU-specific
+class lives under `java/src/test/java/ai/onnxruntime/providers/webgpu`; the common
+`InferenceTest` helpers are unchanged. The plugin library property enables this
+class instead of the built-in WebGPU Java test. It registers/selects the plugin,
+disables CPU fallback, verifies SqueezeNet output, then unregisters after all
+sessions and tensors are closed.

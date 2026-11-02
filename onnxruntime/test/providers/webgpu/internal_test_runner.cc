@@ -7,7 +7,6 @@
 #include <type_traits>
 
 #include "gtest/gtest.h"
-#include "google/protobuf/stubs/common.h"
 
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
@@ -16,17 +15,13 @@
 #include "core/providers/webgpu/webgpu_provider_factory_creator.h"
 #include "core/providers/webgpu/webgpu_provider_options.h"
 #include "core/providers/webgpu/ep/ep.h"
+#include "core/providers/webgpu/ep/module_state.h"
 #include "core/providers/webgpu/math/subgroup_matrix_config.h"
 #include "core/providers/webgpu/vendor/intel/math/gemm_subgroup_utils.h"
 #if !defined(DISABLE_CONTRIB_OPS)
 #include "contrib_ops/webgpu/moe/block_fp8_expert_matmul.h"
 #endif
 #include "test/providers/webgpu/internal_test_api.h"
-
-namespace onnxruntime::webgpu {
-void CleanupKernelRegistries();
-void CleanupWebGpuContexts();
-}  // namespace onnxruntime::webgpu
 
 namespace onnxruntime::test {
 const WebGpuInternalTestHostApi* webgpu_test_host_api = nullptr;
@@ -39,10 +34,10 @@ struct WebGpuTestAccess {
 };
 }  // namespace onnxruntime::test
 
-#ifdef _WIN32
-#define WEBGPU_INTERNAL_TEST_EXPORT __declspec(dllexport)
-#else
+#if defined(__APPLE__)
 #define WEBGPU_INTERNAL_TEST_EXPORT __attribute__((visibility("default")))
+#else
+#define WEBGPU_INTERNAL_TEST_EXPORT
 #endif
 
 extern "C" WEBGPU_INTERNAL_TEST_EXPORT OrtStatus* ConfigureWebGpuTestEp(OrtEp* ep, int algorithm) noexcept {
@@ -153,10 +148,9 @@ extern "C" WEBGPU_INTERNAL_TEST_EXPORT int RunWebGpuInternalTests(
     ORT_HANDLE_EXCEPTION([&]() { std::cerr << ex.what() << '\n'; });
   }
 
-  onnxruntime::webgpu::CleanupKernelRegistries();
-  onnxruntime::webgpu::CleanupWebGpuContexts();
-  onnxruntime::ep::adapter::LoggingManager::DestroyDefaultLogger();
-  google::protobuf::ShutdownProtobufLibrary();
+  onnxruntime::webgpu::ep::CleanupModuleState();
+  onnxruntime::test::webgpu_test_host_api = nullptr;
+  onnxruntime::test::webgpu_test_logger = nullptr;
   return result;
 }
 

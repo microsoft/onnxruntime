@@ -16,7 +16,7 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/providers/webgpu/math/matmul_algorithm.h"
 #if defined(ORT_USE_EP_API_ADAPTERS)
-#include "test/providers/webgpu/test_plugin.h"
+#include "test/providers/webgpu/test_module.h"
 #else
 #include "core/providers/webgpu/math/subgroup_matrix_config.h"
 #include "core/providers/webgpu/vendor/intel/math/gemm_subgroup_utils.h"
@@ -95,7 +95,7 @@ static std::optional<std::string> GetForcedAlgorithmUnsupportedReason(
     const IExecutionProvider& ep,
     webgpu::MatMulAlgorithm algorithm) {
 #if defined(ORT_USE_EP_API_ADAPTERS)
-  const auto capabilities = GetWebGpuTestPlugin().Inspect(ep);
+  const auto capabilities = GetWebGpuTestModule().Inspect(ep);
   if (const auto* reason = capabilities.matmul_unavailable[static_cast<int>(algorithm)]) {
     return reason;
   }
