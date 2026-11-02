@@ -353,14 +353,16 @@ Status ProgramManager::Build(const ProgramBase& program,
 
   // Dump shader code, if requested. It is dumped to `shader_dump_fn_` if set or VERBOSE logging otherwise.
   {
-    const auto shader_content = [&program, &program_key, &code]() {
-      return MakeString("\n=== WebGPU Shader code [", program.Name(),
-                        ", Key=\"", program_key, "\"",
-                        "] Start ===\n\n",
-                        code,
-                        "\n=== WebGPU Shader code [", program.Name(),
-                        ", Key=\"", program_key, "\"",
-                        "] End ===\n");
+    const auto shader_content = [this, &program, &program_key, &code]() {
+      // Generated WGSL source depends on these device settings as well as the program key.
+      const auto configuration = MakeStringWithClassicLocale(
+          "subgroups=", webgpu_context_.DeviceHasFeature(wgpu::FeatureName::Subgroups),
+          ";subgroup_matrix=", webgpu_context_.DeviceHasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix),
+          ";max_storage_buffer_binding_size=", webgpu_context_.DeviceLimits().maxStorageBufferBindingSize);
+      const auto header = MakeString("=== WebGPU Shader code [", program.Name(),
+                                     ", Configuration=\"", configuration,
+                                     "\", Key=\"", program_key, "\"]");
+      return MakeString("\n", header, " Start ===\n\n", code, "\n", header, " End ===\n");
     };
 
     if (shader_dump_fn_) {

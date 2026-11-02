@@ -28,8 +28,14 @@ from onnx import TensorProto, helper
 
 import onnxruntime as ort
 
-VERBOSE = os.environ.get("ORT_TEST_VERBOSE", "").strip().lower() in ("1", "true", "yes")
-REQUIRE_EP_DEVICE = os.environ.get("ORT_WEBGPU_TEST_REQUIRE_EP_DEVICE", "").strip().lower() in ("1", "true", "yes")
+
+def read_bool_environment_variable(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes")
+
+
+VERBOSE = read_bool_environment_variable("ORT_TEST_VERBOSE")
+REQUIRE_EP_DEVICE = read_bool_environment_variable("ORT_WEBGPU_TEST_REQUIRE_EP_DEVICE")
+REQUIRE_AGILITY_SDK = read_bool_environment_variable("ORT_WEBGPU_TEST_REQUIRE_AGILITY_SDK")
 
 
 def debug_print(*args, **kwargs):
@@ -97,6 +103,12 @@ def test_import_and_library_path():
     lib_path = webgpu_ep.get_library_path()
     assert Path(lib_path).is_file(), f"Library path does not exist: {lib_path}"
     print(f"OK: Library path: {lib_path}")
+
+    d3d12_dir = pkg_dir / "D3D12"
+    if platform.system() == "Windows" and (REQUIRE_AGILITY_SDK or d3d12_dir.exists()):
+        for filename in ("D3D12Core.dll", "d3d12SDKLayers.dll"):
+            assert (d3d12_dir / filename).is_file(), f"D3D12 Agility SDK binary is missing: {filename}"
+        print(f"OK: D3D12 Agility SDK binaries: {d3d12_dir}")
 
     ep_name = webgpu_ep.get_ep_name()
     assert ep_name == "WebGpuExecutionProvider", f"Unexpected EP name: {ep_name}"

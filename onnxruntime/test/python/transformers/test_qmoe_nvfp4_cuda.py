@@ -632,7 +632,7 @@ class TestQMoENVFP4(unittest.TestCase):
         output = torch.zeros(num_tokens, hidden_size, device=x.device, dtype=torch.float32)
         expert_mask = F.one_hot(topk_idx, num_classes=num_experts).permute(2, 1, 0)
 
-        for e in range(num_experts):
+        for e in topk_idx.unique().tolist():
             idx, top_x = torch.where(expert_mask[e])
             if top_x.shape[0] == 0:
                 continue
@@ -1072,16 +1072,19 @@ class TestQMoENVFP4(unittest.TestCase):
     # (default_fc1_decode, default_fc2_decode, optin_fc1_decode, optin_fc2_decode, fc1_scale_ok, fc2_scale_ok, shape).
     # - Cases 1-2: Qwen3.8 shapes (FC1 N=1280 K=2560 -> 8 K lanes, FC2 N=2560 K=640 -> 4 K lanes) at 10/20 expanded
     #   rows, inside the default SM90 envelope.
-    # - Case 3: Qwen3.8 shape at 60 expanded rows; declined by default (ORT_FP4_GEMV_DECODE_KERNEL=1 caps expanded
-    #   rows at 20) and enabled by opt-in ORT_FP4_GEMV_DECODE_KERNEL=2 (up to 80 expanded rows).
-    # - Case 4: Partial last K tile (98 and 34 blocks) at 6 expanded rows.
-    # - Case 5: Controlled global_scale just below 3.98 / 448 (table-free decode branch, eligible by default).
-    # - Case 6: Mixed per-projection scale eligibility (FC1 below 3.98 / 448, FC2 above); default mode runs
+    # - Case 3: Ornith-1.5-122B projection geometry (FC1 N=2048 K=3072, FC2 N=3072 K=1024, top_k=8) at 8 tokens
+    #   (64 expanded rows), inside the default SM90 envelope.
+    # - Case 4: Qwen3.8 shape at 70 expanded rows; declined by default (ORT_FP4_GEMV_DECODE_KERNEL=1 caps expanded
+    #   rows at 64) and enabled by opt-in ORT_FP4_GEMV_DECODE_KERNEL=2 (up to 80 expanded rows).
+    # - Case 5: K > 3072 (hidden_size=5120), declined by default and enabled by opt-in ORT_FP4_GEMV_DECODE_KERNEL=2.
+    # - Case 6: Partial last K tile (98 and 34 blocks) at 6 expanded rows.
+    # - Case 7: Controlled global_scale just below 3.98 / 448 (table-free decode branch, eligible by default).
+    # - Case 8: Mixed per-projection scale eligibility (FC1 below 3.98 / 448, FC2 above); default mode runs
     #   MoeGemvFp4DecodeKernel for FC1 and keeps MoeGemvFp4RawKPackedKernel for FC2.
-    # - Case 7: Controlled global_scale above 3.98 / 448; default mode keeps MoeGemvFp4RawKPackedKernel for both
+    # - Case 9: Controlled global_scale above 3.98 / 448; default mode keeps MoeGemvFp4RawKPackedKernel for both
     #   projections to avoid the slower generic decoder, while opt-in mode (ORT_FP4_GEMV_DECODE_KERNEL=2) exercises
     #   the generic Fp4I2FConverter branch inside MoeGemvFp4DecodeKernel.
-    # - Case 8: K % 32 != 0, declined in all modes in favor of MoeGemvFp4RawKPackedKernel.
+    # - Case 10: K % 32 != 0, declined in all modes in favor of MoeGemvFp4RawKPackedKernel.
     _DECODE_GEMV_CASES = (
         (
             True,
@@ -1102,13 +1105,40 @@ class TestQMoENVFP4(unittest.TestCase):
             dict(hidden_size=2560, inter_size=640, num_experts=16, top_k=10, num_tokens=2, use_bias=True),
         ),
         (
+            True,
+            True,
+            True,
+            True,
+            True,
+            True,
+            dict(hidden_size=3072, inter_size=1024, num_experts=16, top_k=8, num_tokens=8, use_bias=False),
+        ),
+        (
             False,
             False,
             True,
             True,
             True,
             True,
-            dict(hidden_size=2560, inter_size=640, num_experts=16, top_k=10, num_tokens=6, use_bias=False),
+            dict(hidden_size=2560, inter_size=640, num_experts=16, top_k=10, num_tokens=7, use_bias=False),
+        ),
+        (
+            False,
+            False,
+            True,
+            True,
+            True,
+            True,
+            dict(hidden_size=5120, inter_size=640, num_experts=16, top_k=10, num_tokens=2, use_bias=True),
+        ),
+        (
+            True,
+            True,
+            True,
+            True,
+            True,
+            True,
+            dict(hidden_size=512, inter_size=512, num_experts=512, top_k=10, num_tokens=1, use_bias=True),
         ),
         (
             True,
@@ -1200,17 +1230,26 @@ for idx, case in enumerate(json.loads(sys.argv[2])):
     print(f"DECODE_GEMV_CASE_BEGIN\\t{idx}", flush=True)
     with profile(activities=[ProfilerActivity.CUDA]) as prof:
         out = test._run_nvfp4_moe_test(onnx_dtype=onnx_dtype, gemv_mode="1", offline_prepacked=True, **case)
-    names = sorted({e.name for e in prof.events() if "MoeGemvFp4" in e.name})
+    names = sorted({
+        e.name for e in prof.events()
+        if "MoeGemvFp4" in e.name or "FusedSoftmaxTopKMaps" in e.name
+    })
     payload = base64.b64encode(out.view(torch.int16).cpu().numpy().tobytes()).decode()
     print("DECODE_GEMV_RESULT", str(idx), json.dumps(names), payload, sep="\\t", flush=True)
 """
 
-    def _run_decode_gemv_subprocess(self, onnx_dtype, cases, decode_mode, native_scale=0):
+    def _run_decode_gemv_subprocess(self, onnx_dtype, cases, decode_mode, native_scale=0, extra_env=None):
         env = dict(os.environ)
         env["ORT_FP4_GEMV_DECODE_KERNEL"] = str(decode_mode)
+        if decode_mode == 0:
+            env["ORT_FP4_GEMV_FUSED_ROUTE"] = "0"
+            env["ORT_FP4_GEMV_PDL"] = "0"
+            env["ORT_FP4_GEMV_FC1_PDL"] = "0"
         env["ORT_NVFP4_GEMV_NATIVE_SCALE"] = str(native_scale)
         env["ORT_ENABLE_QMOE_KERNEL_DEBUG_INFO"] = "1"
         env.pop("ORT_NVFP4_FC1_EXPERT_REUSE", None)
+        if extra_env:
+            env.update(extra_env)
         proc = subprocess.run(
             [sys.executable, "-c", self._DECODE_GEMV_RUNNER_SCRIPT, str(int(onnx_dtype)), json.dumps(cases)],
             cwd=os.path.dirname(os.path.abspath(__file__)),
@@ -1313,6 +1352,11 @@ for idx, case in enumerate(json.loads(sys.argv[2])):
                 def_fc1 and can_decode_default,
                 def_fc2 and can_decode_default,
             )
+            native_fc1_decode = (
+                def_fc1
+                and can_decode_default
+                and not (onnx_dtype == TensorProto.FLOAT16 and case["hidden_size"] <= 1024)
+            )
             native_fc2_decode = (
                 def_fc2
                 and can_decode_default
@@ -1325,7 +1369,7 @@ for idx, case in enumerate(json.loads(sys.argv[2])):
                 native_cupti,
                 fc1_scale_ok,
                 fc2_scale_ok,
-                def_fc1 and can_decode_default,
+                native_fc1_decode,
                 native_fc2_decode,
             )
             can_decode_optin = sm >= 90 and decode_image_available
@@ -1355,6 +1399,87 @@ for idx, case in enumerate(json.loads(sys.argv[2])):
             self.assertTrue(
                 torch.equal(optin_out, expected),
                 f"opt-in decode GEMV output differs bitwise from the KPacked kernel for {case}",
+            )
+
+    @parameterized.expand([(TensorProto.FLOAT16,), (TensorProto.BFLOAT16,)])
+    def test_nvfp4_offline_row_major_decode_gemv_fc1_pdl(self, onnx_dtype):
+        self._skip_if_no_fp4()
+        base_case = dict(
+            hidden_size=512,
+            inter_size=512,
+            num_experts=512,
+            top_k=2,
+            num_tokens=2,
+            use_bias=False,
+            use_swiglu=True,
+            input_scale=0.1,
+        )
+        base_case_256 = dict(
+            hidden_size=512,
+            inter_size=512,
+            num_experts=256,
+            top_k=8,
+            num_tokens=8,
+            use_bias=False,
+            use_swiglu=True,
+            input_scale=0.1,
+        )
+        cases = [
+            {**base_case, "enable_cuda_graph": False},
+            {**base_case, "enable_cuda_graph": True},
+            *[
+                {
+                    **base_case_256,
+                    "top_k": top_k,
+                    "num_tokens": num_tokens,
+                    "enable_cuda_graph": enable_cuda_graph,
+                }
+                for top_k in (1, 2, 4, 6, 8)
+                for num_tokens in (1, 8)
+                for enable_cuda_graph in (False, True)
+            ],
+        ]
+        _, baseline_runs = self._run_decode_gemv_subprocess(onnx_dtype, cases, decode_mode=0)
+        pdl_cupti, pdl_runs = self._run_decode_gemv_subprocess(
+            onnx_dtype,
+            cases,
+            decode_mode=1,
+            extra_env={
+                "ORT_FP4_GEMV_FUSED_ROUTE": "1",
+                "ORT_FP4_GEMV_PDL": "1",
+                "ORT_FP4_GEMV_FC1_PDL": "1",
+                "ORT_DISABLE_FP4_GEMV_SKIP_EXPAND": "0",
+            },
+        )
+        sm = _cuda_sm()
+        for case, (_, _, baseline_payload), (pdl_diag, pdl_kernels, pdl_payload) in zip(
+            cases, baseline_runs, pdl_runs, strict=True
+        ):
+            decode_image_available = pdl_diag.get("DecodeImageAvailable") == "1"
+            can_decode_default = sm == 90 and decode_image_available
+            self._assert_fc1_fc2_gemv_dispatch(
+                case,
+                pdl_diag,
+                pdl_kernels,
+                pdl_cupti,
+                True,
+                True,
+                can_decode_default,
+                can_decode_default,
+            )
+            if pdl_cupti and sm >= 90 and decode_image_available and not case["enable_cuda_graph"]:
+                expected_route_kernel = (
+                    "FusedSoftmaxTopKMaps256Kernel" if case["num_experts"] == 256 else "FusedSoftmaxTopKMapsKernel"
+                )
+                self.assertTrue(
+                    any(expected_route_kernel in name for name in pdl_kernels),
+                    (case, pdl_kernels),
+                )
+            expected = torch.frombuffer(bytearray(base64.b64decode(baseline_payload)), dtype=torch.int16)
+            actual = torch.frombuffer(bytearray(base64.b64decode(pdl_payload)), dtype=torch.int16)
+            self.assertTrue(
+                torch.equal(actual, expected),
+                f"FC1 PDL decode GEMV output differs bitwise from serialized baseline for {case}",
             )
 
     def test_nvfp4_fp16_prepacking_disabled_uses_raw_fallback(self):

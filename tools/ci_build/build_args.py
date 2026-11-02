@@ -736,12 +736,6 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     )
     trt_group.add_argument("--use_tensorrt_oss_parser", action="store_true", help="Use TensorRT OSS ONNX parser.")
     trt_group.add_argument("--tensorrt_home", help="Path to TensorRT installation directory.")
-    trt_group.add_argument("--tensorrt_rtx_home", help="Path to TensorRT RTX installation directory.")
-
-    # --- Nv ---
-    nv_group = parser.add_argument_group("Nv Execution Provider")
-    nv_group.add_argument("--use_nv_tensorrt_rtx", action="store_true", help="Enable Nv EP.")
-
     # --- DirectML ---
     dml_group = parser.add_argument_group("DirectML Execution Provider (Windows)")
     dml_group.add_argument("--use_dml", action="store_true", help="Enable DirectML EP (Windows).")
@@ -840,9 +834,10 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
         "--use_dawn_agility_sdk",
         action="store_true",
         help=(
-            "Build Dawn's D3D12 backend with the Agility SDK for local development "
-            "(Windows desktop x86, x64, or ARM64 only; static library build only; "
-            "packaging and plugin EP builds unsupported)."
+            "Build Dawn's D3D12 backend with the Agility SDK "
+            "(Windows desktop x86, x64, or ARM64 only; Python wheels are supported; "
+            "C#, NuGet, Java, and Node.js packaging through build.py is unsupported. "
+            "Package the WebGPU plugin separately for Python or NuGet)."
         ),
     )
     webgpu_group.add_argument(

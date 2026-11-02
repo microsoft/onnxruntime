@@ -1,0 +1,390 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+#pragma once
+
+#include <cstddef>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <type_traits>
+#include <utility>
+#include <variant>
+
+#include "core/optimizer/graph_transformer.h"
+
+namespace onnxruntime {
+namespace rewrite {
+
+namespace detail {
+class PatternParser;
+class PatternModule;
+}  // namespace detail
+
+struct Value {
+  std::string name;
+  int handle = -1;
+  Value() = default;
+  Value(int id) : handle(id) {}
+  Value(std::string label, int id) : name(std::move(label)), handle(id) {}
+  // Handles index Match::values; names are diagnostic and do not affect identity.
+  operator int() const { return handle; }
+};
+
+struct AttributeMatcher {
+  std::string name;
+  std::function<bool(const ONNX_NAMESPACE::AttributeProto&)> predicate;
+  std::string capture{};
+  bool optional = false;
+  bool Matches(const ONNX_NAMESPACE::AttributeProto& value) const { return predicate(value); }
+  static AttributeMatcher Equal(std::string name, int64_t value);
+  static AttributeMatcher Equal(std::string name, int value) { return Equal(std::move(name), int64_t{value}); }
+  static AttributeMatcher Equal(std::string name, float value);
+  static AttributeMatcher Equal(std::string name, double value) {
+    return Equal(std::move(name), static_cast<float>(value));
+  }
+  static AttributeMatcher Equal(std::string name, std::string value);
+};
+
+struct Operator {
+  std::string name;
+  std::string domain;
+};
+
+using Literal = std::variant<float, int64_t, InlinedVector<float>, InlinedVector<int64_t>>;
+
+using Dimension = std::variant<std::monostate, int64_t, std::string>;
+
+struct TypeConstraint {
+  std::string value_name;
+  int32_t element_type = 0;  // Zero means unconstrained.
+  std::string element_variable;
+  InlinedVector<Dimension> dimensions;
+  bool any_rank = false;
+  bool prefix = false;
+  int32_t attribute_type = 0;  // Scalar/list attribute interpretation, when applicable.
+  bool tensor_type = true;
+  bool absent = false;
+  bool immutable = false;
+};
+
+struct Match;
+
+struct OpsetRequirement {
+  std::string domain;
+  int min_version;
+  int max_version;  // Inclusive model/function import range, not schema since-versions.
+};
+
+// A straight-line definition describes a DAG, not necessarily a chain.
+// Reusing a Value requires exactly the same NodeArg, including for input variables.
+class Pattern {
+ public:
+  explicit Pattern(std::string_view text);
+  Value NamedValue(std::string_view name) const;
+  struct NodePattern {
+    Operator op;
+    InlinedVector<Value> inputs;
+    InlinedVector<Value> outputs;
+    InlinedVector<AttributeMatcher, 1> attributes;
+  };
+  const auto& Nodes() const { return nodes_; }
+  size_t ValueCount() const { return value_count_; }
+  bool IsInput(Value value) const;
+  const auto& Constants() const { return constants_; }
+  const auto& Outputs() const { return outputs_; }
+  bool IsOptional(Value value) const { return optional_inputs_.count(value.handle) != 0; }
+  const auto& AttributeNames() const { return attribute_names_; }
+  const auto& TypeConstraints() const { return type_constraints_; }
+  bool IsAttribute(Value value) const { return attribute_inputs_.count(value.handle) != 0; }
+  const auto& OrderedTypeConstraints() const { return ordered_type_constraints_; }
+  // First rewrite-safe match at this root, or nullopt. On error, result is unchanged.
+  Status MatchAt(const Graph& graph, NodeIndex root, std::optional<Match>& result) const;
+  // Visit rewrite-safe candidates at one root in expansion order. true continues; false stops.
+  // Requires a resolved graph. The visitor must not mutate it. Does not filter opsets or providers.
+  Status VisitMatches(const Graph& graph, NodeIndex root, const std::function<bool(Match&)>& visitor) const;
+
+ private:
+  friend class detail::PatternParser;
+  friend class detail::PatternModule;
+  friend class PatternLibrary;
+  friend class BindingView;
+  friend struct Replacement;
+  friend struct Match;
+  friend class PatternRewriter;
+  Pattern() = default;
+  Value Input(std::string_view name);
+  Value Constant(float value);
+  Value Constant(int64_t value);
+  Value Constant(Literal value);
+  void Name(Value value, std::string_view name);
+  void Attributes(InlinedVector<AttributeMatcher, 1> matchers);
+  InlinedVector<Value> MultiOp(Operator op, gsl::span<const Value> inputs, size_t output_count);
+
+  size_t value_count_ = 0;
+  size_t expanded_calls_ = 0;
+  InlinedVector<NodePattern, 1> nodes_;
+  InlinedVector<Value> values_;
+  InlinedHashMap<int, Literal> constants_;
+  InlinedVector<Value> outputs_;
+  InlinedHashSet<int> optional_inputs_;
+  InlinedHashSet<std::string> attribute_names_;
+  InlinedHashMap<int, InlinedVector<TypeConstraint, 1>> type_constraints_;
+  InlinedHashMap<std::string, InlinedVector<TypeConstraint, 1>> binding_constraints_;
+  InlinedHashSet<int> attribute_inputs_;
+  InlinedHashSet<int> required_tensor_bindings_;
+  InlinedHashSet<int> composed_tensor_annotations_;
+  InlinedHashMap<std::string, Value> aliases_;
+  InlinedHashMap<std::string, std::string> attribute_aliases_;
+  InlinedVector<std::pair<int, InlinedVector<TypeConstraint, 1>>> ordered_type_constraints_;
+  struct Instance {
+    std::string definition;
+    std::string interface_name;
+    std::string alternative;
+    std::shared_ptr<const Instance> selected{};
+  };
+  InlinedHashMap<std::string, Instance> instances_;
+  InlinedVector<std::shared_ptr<const Pattern>, 1> alternatives_;
+  Value AddValue(std::string_view name);
+};
+
+// A library owns interfaces and named patterns (graph bodies or alternatives).
+class PatternLibrary {
+ public:
+  explicit PatternLibrary(std::string_view text);
+  Pattern GetPattern(std::string_view name) const;
+
+ private:
+  std::shared_ptr<const detail::PatternModule> module_;
+};
+
+// Non-owning access; the parent Match and its unchanged graph must outlive this view.
+class BindingView {
+ public:
+  const NodeArg* valueOf(std::string_view name) const;
+  const NodeArg* optionalValueOf(std::string_view name) const;
+  const ONNX_NAMESPACE::AttributeProto& attributeOf(std::string_view name) const;
+  // Null only for a captured absence; unknown or wrong-kind names are errors.
+  const ONNX_NAMESPACE::AttributeProto* optionalAttributeOf(std::string_view name) const;
+  const Dimension& dimensionOf(std::string_view name) const;
+  std::optional<int32_t> elementTypeOf(std::string_view name) const;
+  BindingView instance(std::string_view name) const;
+  std::string_view definition() const;
+  std::string_view interfaceName() const;
+  // Empty for a body call; otherwise the selected immediate member name.
+  std::string_view alternative() const;
+  // Descend one named alternative without losing the enclosing selection tag.
+  BindingView alternativeView() const;
+
+ private:
+  friend struct Match;
+  BindingView(const Match& match, std::string path) : match_(&match), path_(std::move(path)) {}
+  std::string Qualify(std::string_view name) const;
+  const Pattern::Instance& Selection() const;
+  const Match* match_;
+  std::string path_;
+  size_t alternative_depth_ = 0;
+};
+
+// Reads immutable initializers (embedded, graph-owned memory, or external files) and supported Constant nodes.
+// Missing/nonconstant/wrongly typed values are unavailable. Malformed storage returns an error.
+// On error both outputs are unchanged; unavailable leaves data unchanged and sets available=false.
+Status ReadConstantTensor(const Graph& graph, const NodeArg* value, InlinedVector<float>& data, bool& available);
+Status ReadConstantTensor(const Graph& graph, const NodeArg* value, InlinedVector<int64_t>& data, bool& available);
+
+struct Match {
+  // Matcher plumbing, not a supported interface for constructing or modifying matches.
+  InlinedVector<const Node*> nodes;
+  InlinedVector<const NodeArg*> values;
+  const NodeArg* valueOf(std::string_view name) const;
+  const NodeArg* optionalValueOf(std::string_view name) const;
+  void update(std::string_view name, ONNX_NAMESPACE::AttributeProto value);
+  const ONNX_NAMESPACE::AttributeProto& attributeOf(std::string_view name) const;
+  const ONNX_NAMESPACE::AttributeProto* optionalAttributeOf(std::string_view name) const;
+  const Dimension& dimensionOf(std::string_view name) const;
+  std::optional<int32_t> elementTypeOf(std::string_view name) const;
+  BindingView bindings() const { return BindingView(*this, ""); }
+  BindingView instance(std::string_view name) const { return bindings().instance(name); }
+  void ClearUpdates() {
+    extra_attributes_.clear();
+    rejection_reason_.clear();
+  }
+  bool BindAttribute(std::string_view name, const ONNX_NAMESPACE::AttributeProto& value);
+  bool BindAbsentAttribute(std::string_view name);
+  bool BindDimension(std::string_view name, Dimension value);
+  bool BindElementType(std::string_view name, int32_t value);
+  bool Reject(std::string_view reason) {
+    rejection_reason_ = reason;
+    return false;
+  }
+  const std::string& RejectionReason() const { return rejection_reason_; }
+  const Pattern* pattern = nullptr;
+
+ private:
+  friend class Pattern;
+  friend class PatternRewriter;
+  std::shared_ptr<const Pattern> owned_pattern_;  // Copies own the plan, but still borrow graph objects.
+  NodeAttributes captured_attributes_;
+  InlinedHashSet<std::string> absent_attributes_;
+  InlinedHashMap<std::string, Dimension> dimensions_;
+  InlinedHashMap<std::string, int32_t> element_types_;
+  NodeAttributes extra_attributes_;
+  std::string rejection_reason_;
+};
+
+struct Replacement {
+  struct Instantiation {
+    InlinedVector<NodeIndex> nodes;
+    InlinedVector<NodeArg*> outputs;
+  };
+  using TensorBindings = InlinedHashMap<std::string, const NodeArg*>;
+  struct Output {
+    size_t node;
+    size_t slot = 0;
+  };
+  struct Scalar {
+    Literal value;
+  };
+  using Input = std::variant<Value, Output, std::string, Scalar, std::monostate>;
+  struct NodeRecipe {
+    std::string op;
+    std::string domain;
+    InlinedVector<Input> inputs;
+    NodeAttributes attributes;
+    size_t output_count = 1;
+    InlinedHashMap<std::string, std::string> attribute_bindings{};
+  };
+  explicit Replacement(std::string_view text);
+  // A parsed replacement is a reusable recipe callback; copying it shares the immutable plan.
+  Replacement operator()(const Graph&, const Match&) const { return *this; }
+  const auto& Plan() const { return plan_; }
+  const auto& Outputs() const { return outputs_; }
+  // Build a fresh fragment without matching, deleting, rewiring, or changing graph outputs.
+  // result changes only on success. Call Graph::Resolve before using the constructed graph.
+  // absent_attributes explicitly omits keyword bindings; unresolved names remain errors.
+  Status Instantiate(Graph& graph, const TensorBindings& tensors, const NodeAttributes& attributes,
+                     Instantiation& result, const Node* annotation_source = nullptr,
+                     const InlinedHashSet<std::string>& absent_attributes = {}) const;
+
+ private:
+  friend class PatternRewriter;
+  std::shared_ptr<const InlinedVector<NodeRecipe, 1>> plan_;
+  InlinedVector<Output> outputs_;
+};
+
+struct Rule {
+  using CheckAndBind = std::function<bool(const Graph&, Match&)>;
+  class ReplacementFunction {
+   public:
+    ReplacementFunction() = default;
+    ReplacementFunction(std::nullptr_t) {}
+    ReplacementFunction(Replacement recipe) : implementation_(std::move(recipe)) {}
+    template <typename F>
+      requires(!std::is_same_v<std::decay_t<F>, ReplacementFunction> &&
+               std::is_invocable_r_v<Replacement, F, const Graph&, const Match&>)
+    ReplacementFunction(F callback) : implementation_(Callback(std::move(callback))) {}
+    explicit operator bool() const {
+      return Parsed() || static_cast<bool>(std::get<Callback>(implementation_));
+    }
+    Replacement operator()(const Graph& graph, const Match& match) const {
+      if (const auto* recipe = Parsed()) return *recipe;
+      return std::get<Callback>(implementation_)(graph, match);
+    }
+    Replacement* Parsed() { return std::get_if<Replacement>(&implementation_); }
+    const Replacement* Parsed() const { return std::get_if<Replacement>(&implementation_); }
+
+   private:
+    using Callback = std::function<Replacement(const Graph&, const Match&)>;
+    std::variant<Callback, Replacement> implementation_;
+  };
+
+  Rule(std::string name, Pattern pattern, ReplacementFunction replacement, CheckAndBind check_and_bind = {},
+       InlinedVector<OpsetRequirement, 1> opsets = {});
+  Rule(std::string name, std::string_view pattern, ReplacementFunction replacement, CheckAndBind check_and_bind = {},
+       InlinedVector<OpsetRequirement, 1> opsets = {});
+  Rule(std::string name, Pattern pattern, std::string_view replacement, CheckAndBind check_and_bind = {},
+       InlinedVector<OpsetRequirement, 1> opsets = {});
+  Rule(std::string name, std::string_view pattern, std::string_view replacement, CheckAndBind check_and_bind = {},
+       InlinedVector<OpsetRequirement, 1> opsets = {});
+
+  std::string name;
+  Pattern pattern;
+  // Check-and-bind callbacks may prepare match-local attributes. Neither callback may mutate the graph
+  // or retain pointers into a Match; replacement callbacks receive a read-only match.
+  ReplacementFunction replacement;
+  CheckAndBind check_and_bind;  // Empty accepts a structurally valid match without additional checks.
+  InlinedVector<OpsetRequirement, 1> opsets;
+};
+
+using Rules = InlinedVector<Rule, 1>;
+
+struct Statistics {
+  size_t visited = 0;
+  size_t candidates = 0;
+  size_t structural_checks = 0;
+  size_t check_and_bind_calls = 0;
+  size_t matches = 0;
+  size_t rewrites = 0;
+  size_t iterations = 0;
+  bool iteration_limit_reached = false;
+};
+
+enum class FailureStage { Opset,
+                          Structure,
+                          TypeShape,
+                          Constant,
+                          Attribute,
+                          Boundary,  // Unsafe deletion or a match containing nodes outside the region.
+                          ExecutionProvider,
+                          CheckAndBind,
+                          Replacement };
+
+struct MatchFailure {
+  std::string rule;
+  NodeIndex root;
+  FailureStage stage;
+  std::string reason;
+};
+
+struct Options {
+  bool match_only = false;
+  bool indexed = true;  // false is the rule-by-rule reference implementation.
+  // Unassigned nodes are always eligible. Assigned nodes must share an allowed provider.
+  InlinedHashSet<std::string> compatible_execution_providers{kCpuExecutionProvider};
+  // Called synchronously. Records own their strings and contain no graph/match pointers.
+  std::function<void(const MatchFailure&)> on_failure{};
+  size_t max_iterations = 10;  // Positive upper bound on candidate batches; match-only uses one batch.
+};
+
+// Immutable compiled rules; statistics belong to a call, not this transformer.
+// Not registered among ORT's default optimizers. Call Apply or Run explicitly.
+class PatternRewriter final : public GraphTransformer {
+ public:
+  explicit PatternRewriter(Rules rules, Options options = {});
+  // Requires an already resolved graph. Resolve again after mutation before general graph use.
+  // A later failure does not roll back earlier rewrites; inspect the returned status before Resolve/use.
+  Status Run(Graph& graph, Statistics& statistics) const;
+  // Only matches wholly inside region are eligible. Successful rewrites replace
+  // their source IDs with the new IDs in region, including across iterations.
+  // Boundary values are preserved; their edges to outside nodes may be rewired.
+  // IDs must initially be live in graph. Empty regions do no work. As with Run,
+  // failures do not roll back earlier rewrites; region tracks completed rewrites.
+  Status Run(Graph& graph, Statistics& statistics, InlinedHashSet<NodeIndex>& region) const;
+
+ private:
+  struct Group {
+    Pattern pattern;
+    InlinedVector<size_t> rules;
+  };
+  Status RunImpl(Graph& graph, Statistics& statistics, InlinedHashSet<NodeIndex>* region) const;
+  Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
+  Rules rules_;
+  InlinedVector<Group, 1> groups_;
+  InlinedHashMap<std::string, InlinedVector<size_t>> roots_;
+  size_t invalidation_depth_ = 0;
+  Options options_;
+};
+
+}  // namespace rewrite
+}  // namespace onnxruntime

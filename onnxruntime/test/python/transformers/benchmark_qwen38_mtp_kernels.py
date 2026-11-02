@@ -9,7 +9,26 @@ from pathlib import Path
 import cupy
 import numpy
 
-ROOT = Path(__file__).resolve().parents[3]
+
+def resolve_ort_root(script_path=None):
+    raw_script = Path(script_path or __file__)
+    marker = Path("contrib_ops/cuda/llm/moe_gemm/moe_gemv_fp4.cu")
+    roots = [*raw_script.resolve().parents, *raw_script.absolute().parents]
+    for env_name in ("GITHUB_WORKSPACE", "BUILD_SOURCESDIRECTORY"):
+        env_value = os.environ.get(env_name)
+        if env_value:
+            env_path = Path(env_value).resolve()
+            roots.extend((env_path, *env_path.parents))
+    cwd = Path.cwd().resolve()
+    roots.extend((cwd, *cwd.parents))
+    for base in roots:
+        for candidate in (base, base / "onnxruntime", base / "onnxruntime" / "onnxruntime"):
+            if (candidate / marker).is_file():
+                return candidate
+    return raw_script.resolve().parents[3]
+
+
+ROOT = resolve_ort_root()
 QSA_SOURCE = ROOT / "contrib_ops/cuda/sparse/packed_sparse_attention_indexer_impl.cu"
 
 
@@ -502,7 +521,14 @@ def compile_nvfp4(source, element_type, fused, bias, wide, reuse=False, decode=F
     converter_start = details.index("template <typename AType, bool PairInterleaved = false>")
     converter_end = details.index("\n};", converter_start) + 3
     pair_start = source.index("template <typename T, bool FusedSwiGlu, bool EnableBias>\n__device__")
-    pair_end = source.index("// NVFP4 schema weights", pair_start)
+    pair_ends = [
+        index
+        for index in (
+            source.find(marker, pair_start) for marker in ("// NVFP4/MXFP4 schema weights", "// NVFP4 schema weights")
+        )
+        if index >= 0
+    ]
+    pair_end = min(pair_ends)
     prefix = (
         """
 #include <cuda_fp16.h>
