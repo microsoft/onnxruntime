@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <limits>
+#include <type_traits>
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -97,7 +98,8 @@ TEST(TopKOperator, EmptyOuterDimension) {
 }
 
 #ifdef USE_WEBGPU
-TEST(TopKOperator, WebGpuTop1Contiguous) {
+template <typename T>
+static void RunWebGpuTop1Contiguous() {
   constexpr int64_t rows = 6;
   for (const int64_t length : {2048, 2049, 4096, 65537}) {
     SCOPED_TRACE(length);
@@ -106,8 +108,8 @@ TEST(TopKOperator, WebGpuTop1Contiguous) {
       const float extreme = largest ? 9.0f : -9.0f;
       const float infinity = largest ? std::numeric_limits<float>::infinity()
                                      : -std::numeric_limits<float>::infinity();
-      const float finite_extreme = largest ? std::numeric_limits<float>::max()
-                                           : std::numeric_limits<float>::lowest();
+      const float finite_limit = std::is_same_v<T, MLFloat16> ? 65504.0f : std::numeric_limits<float>::max();
+      const float finite_extreme = largest ? finite_limit : -finite_limit;
       InlinedVector<float> data;
       data.reserve(static_cast<size_t>(rows * length));
       for (int64_t i = 0; i < length; ++i) {
@@ -125,7 +127,12 @@ TEST(TopKOperator, WebGpuTop1Contiguous) {
       }
       data.insert(data.end(), length - 1, 0.0f);
       data.push_back(finite_extreme);
-      const std::array<float, rows> expected_values{extreme, extreme, 3.0f, -0.0f, infinity, finite_extreme};
+      InlinedVector<T> typed_data;
+      typed_data.reserve(data.size());
+      for (float value : data) {
+        typed_data.emplace_back(value);
+      }
+      const std::array<T, rows> expected_values{T(extreme), T(extreme), T(3.0f), T(-0.0f), T(infinity), T(finite_extreme)};
       const std::array<int64_t, rows> expected_indices{length - 1, 1, 0, 0, 128, length - 1};
 
       for (const int opset : {9, 10, 11}) {
@@ -152,19 +159,27 @@ TEST(TopKOperator, WebGpuTop1Contiguous) {
             test.AddAttribute("largest", largest);
             test.AddAttribute("sorted", sorted);
           }
-          test.AddInput<float>("X", {2, 3, length}, data.data(), data.size());
+          test.AddInput<T>("X", {2, 3, length}, typed_data.data(), typed_data.size());
           if (opset <= 9) {
             test.AddAttribute("k", int64_t{1});
           } else {
             test.AddInput<int64_t>("K", {1}, {1});
           }
-          test.AddOutput<float>("Values", {2, 3, 1}, expected_values.data(), expected_values.size());
+          test.AddOutput<T>("Values", {2, 3, 1}, expected_values.data(), expected_values.size());
           test.AddOutput<int64_t>("Indices", {2, 3, 1}, expected_indices.data(), expected_indices.size());
           test.Config(session_options).ConfigEp(std::move(provider)).RunWithConfig();
         }
       }
     }
   }
+}
+
+TEST(TopKOperator, WebGpuTop1Contiguous) {
+  RunWebGpuTop1Contiguous<float>();
+}
+
+TEST(TopKOperator, WebGpuTop1ContiguousFloat16) {
+  RunWebGpuTop1Contiguous<MLFloat16>();
 }
 #endif
 

@@ -293,6 +293,10 @@ Status ReduceSharedProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& output = shader.AddOutput("output", usage);
   // Arg reductions compare input values but produce indices in a different type.
   const char* value_type = is_arg_reduce ? "_A_value_t" : "output_value_t";
+  if (is_arg_reduce && Inputs()[0].var_type == ProgramVariableDataType::Float16) {
+    // Promote f16 values for the f32 arg comparator.
+    value_type = "f32";
+  }
   shader.AdditionalImplementation()
       << "var<workgroup> aBestValues : array<" << value_type << ", " << workgroup_size_ << ">;\n\n"
       << "fn DIV_CEIL(a : u32, b : u32) -> u32 {\n"

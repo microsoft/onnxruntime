@@ -276,7 +276,8 @@ Status TopK::ComputeInternal(ComputeContext& context) const {
   constexpr uint32_t kMaxSharedSortSize = 2048;
 
   // Avoid the multi-dispatch global sort when only one value is needed.
-  if (!is_transpose_required && k == 1 && cols > kMaxSharedSortSize && rows > 0 && input_tensor->IsDataType<float>()) {
+  if (!is_transpose_required && k == 1 && cols > kMaxSharedSortSize && rows > 0 &&
+      (input_tensor->IsDataType<float>() || input_tensor->IsDataType<MLFloat16>())) {
     constexpr uint32_t kWorkgroupSize = 256;
     ReduceSharedProgram program{"TopKTop1", largest ? ReduceOpType::ArgMax : ReduceOpType::ArgMin, kWorkgroupSize};
     program.CacheHint(largest)
