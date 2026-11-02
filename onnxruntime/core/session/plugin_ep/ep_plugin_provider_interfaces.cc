@@ -229,12 +229,12 @@ FusedNodeConstantInitializers GetFusedNodeConstantInitializers(
   // Initializers are identified by their TensorProto rather than by name: an outer-scope initializer can be consumed
   // in several graphs, and a subgraph can shadow the name of an outer-scope value.
   InlinedHashSet<const ONNX_NAMESPACE::TensorProto*> visited;
-  auto process_input = [&](const NodeArg* input, const Graph& graph) {
-    if (!input->Exists()) {
+  auto process_value = [&](const NodeArg* value, const Graph& graph) {
+    if (!value->Exists()) {
       return;
     }
 
-    const std::string& name = input->Name();
+    const std::string& name = value->Name();
     const ONNX_NAMESPACE::TensorProto* initializer = graph.GetConstantInitializer(name, /*check_outer_scope*/ true);
     if (initializer == nullptr || !visited.insert(initializer).second) {
       return;
@@ -258,19 +258,23 @@ FusedNodeConstantInitializers GetFusedNodeConstantInitializers(
     }
   };
 
-  // Processes the inputs of a node and, recursively, of the nodes in its subgraphs. If the EP compiles a control flow
-  // node (e.g., If or Loop), the initializers defined inside its subgraphs are not inputs of any node in the fused
-  // region, but the compiled node still depends on them.
+  // Processes the inputs of a node and, recursively, the nodes and outputs of its subgraphs. If the EP compiles a
+  // control flow node (e.g., If or Loop), the initializers defined inside its subgraphs are not inputs of any node in
+  // the fused region, but the compiled node still depends on them. A subgraph output can be an initializer itself,
+  // e.g., an If branch without nodes that returns a branch-local initializer.
   std::function<void(const Node&, const Graph&)> process_node = [&](const Node& node, const Graph& graph) {
     for (const NodeArg* input : node.InputDefs()) {
-      process_input(input, graph);
+      process_value(input, graph);
     }
     for (const NodeArg* input : node.ImplicitInputDefs()) {
-      process_input(input, graph);
+      process_value(input, graph);
     }
     for (gsl::not_null<const Graph*> subgraph : node.GetSubgraphs()) {
       for (const Node& subgraph_node : subgraph->Nodes()) {
         process_node(subgraph_node, *subgraph);
+      }
+      for (const NodeArg* output : subgraph->GetOutputs()) {
+        process_value(output, *subgraph);
       }
     }
   };
