@@ -121,6 +121,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.RestorePadding">com.microsoft.RestorePadding</a>
   * <a href="#com.microsoft.Rfft">com.microsoft.Rfft</a>
   * <a href="#com.microsoft.RotaryEmbedding">com.microsoft.RotaryEmbedding</a>
+  * <a href="#com.microsoft.RouterGateUpProj">com.microsoft.RouterGateUpProj</a>
   * <a href="#com.microsoft.SampleOp">com.microsoft.SampleOp</a>
   * <a href="#com.microsoft.Sampling">com.microsoft.Sampling</a>
   * <a href="#com.microsoft.ScaledSiLU">com.microsoft.ScaledSiLU</a>
@@ -133,6 +134,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.SparsePagedAttention">com.microsoft.SparsePagedAttention</a>
   * <a href="#com.microsoft.SparseToDenseMatMul">com.microsoft.SparseToDenseMatMul</a>
   * <a href="#com.microsoft.SpeculativePrefixCommit">com.microsoft.SpeculativePrefixCommit</a>
+  * <a href="#com.microsoft.SwiGLU">com.microsoft.SwiGLU</a>
   * <a href="#com.microsoft.Tokenizer">com.microsoft.Tokenizer</a>
   * <a href="#com.microsoft.TorchEmbedding">com.microsoft.TorchEmbedding</a>
   * <a href="#com.microsoft.TransposeMatMul">com.microsoft.TransposeMatMul</a>
@@ -4663,6 +4665,10 @@ This version of the operator has been available since version 1 of the 'com.micr
         When swiglu_fusion=0, two GEMMs are not fused, and they are FC1 and FC3 in the inputs.
         When swiglu_fusion=1, two GEMMs are fused so that g and l are computed in a single GEMM (FC1), and g and l are interleaved on each row of size 2 * inter_size.
         When swiglu_fusion=2, two GEMMs are fused, and g and l are concatenated on each row.
+        CUDA also supports GEGLU: geglu = GELU(g, approximate='tanh') * l.
+        GEGLU requires fused FC1 projections: swiglu_fusion=1 stores [g0,l0,g1,l1,...],
+        and swiglu_fusion=2 stores [g | l]. Separate FC3 inputs are not supported.
+        activation_alpha, activation_beta and swiglu_limit do not affect GEGLU.
         
 
 #### Version
@@ -4677,15 +4683,15 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>activation_beta</tt> : float</dt>
 <dd>Beta parameter used in activation function.</dd>
 <dt><tt>activation_type</tt> : string</dt>
-<dd>Activation function to use. Choose from relu, gelu, silu, swiglu and identity. CUDA also supports relu2 (squared ReLU). Default is relu</dd>
+<dd>Activation function to use. Choose from relu, gelu, silu, swiglu and identity. CUDA also supports relu2 (squared ReLU) and geglu (GELU-tanh(gate) * up). GEGLU requires fused FC1 gate/up weights, swiglu_fusion=1 or 2, and no FC3 inputs. Default is relu</dd>
 <dt><tt>k</tt> : int</dt>
 <dd>Number of top experts to select from expert pool</dd>
 <dt><tt>normalize_routing_weights</tt> : int</dt>
 <dd>Whether to normalize routing weights</dd>
 <dt><tt>swiglu_fusion</tt> : int</dt>
-<dd>0: not fused, 1: fused and interleaved. 2: fused and not interleaved.</dd>
+<dd>Gate/up layout for swiglu or geglu. 0: not fused (swiglu only), 1: fused and interleaved, 2: fused and not interleaved ([gate | up] for geglu).</dd>
 <dt><tt>swiglu_limit</tt> : float</dt>
-<dd>The limit used to clamp in SwiGLU. No clamp when limit is not provided.</dd>
+<dd>The limit used to clamp in SwiGLU. No clamp when limit is not provided. Does not affect GEGLU.</dd>
 <dt><tt>use_sparse_mixer</tt> : int</dt>
 <dd>Whether to use sparse mixer</dd>
 </dl>
@@ -4698,7 +4704,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>router_probs</tt> : T</dt>
 <dd>2D input tensor with shape (total_tokens, num_experts), where total_tokens must match the flattened token count of input</dd>
 <dt><tt>fc1_experts_weights</tt> : T</dt>
-<dd>3D input tensor with shape (num_experts, fusion_size * inter_size, hidden_size), where fusion_size is 2 for fused swiglu, and 1 otherwise</dd>
+<dd>3D input tensor with shape (num_experts, fusion_size * inter_size, hidden_size), where fusion_size is 2 for fused swiglu or geglu, and 1 otherwise</dd>
 <dt><tt>fc1_experts_bias</tt> (optional) : T</dt>
 <dd>2D optional input tensor with shape (num_experts, fusion_size * inter_size)</dd>
 <dt><tt>fc2_experts_weights</tt> : T</dt>
@@ -6520,6 +6526,10 @@ This version of the operator has been available since version 1 of the 'com.micr
         When swiglu_fusion=0, two GEMMs are not fused, and they are FC1 and FC3 in the inputs.
         When swiglu_fusion=1, two GEMMs are fused so that g and l are computed in a single GEMM (FC1), and g and l are interleaved on each row of size 2 * inter_size.
         When swiglu_fusion=2, two GEMMs are fused, and g and l are concatenated on each row.
+        CUDA also supports GEGLU with quant_type='int': geglu = GELU(g, approximate='tanh') * l.
+        GEGLU requires fused FC1 projections: swiglu_fusion=1 stores [g0,l0,g1,l1,...],
+        and swiglu_fusion=2 stores [g | l]. Separate FC3 weights are not supported.
+        activation_alpha, activation_beta and swiglu_limit do not affect GEGLU.
         
     The raw INT3 profile extends version 1; execution support is provider-specific.
     For INT3, the requirements below supersede the legacy format descriptions above.
@@ -6551,7 +6561,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>activation_beta</tt> : float</dt>
 <dd>Beta parameter used in activation function.</dd>
 <dt><tt>activation_type</tt> : string</dt>
-<dd>Activation function to use. Choose from relu, gelu, silu, swiglu and identity. CUDA also supports relu2 (squared ReLU). Default is relu</dd>
+<dd>Activation function to use. Choose from relu, gelu, silu, swiglu and identity. CUDA also supports relu2 (squared ReLU) and geglu (GELU-tanh(gate) * up). GEGLU requires quant_type='int', fused FC1 gate/up weights, swiglu_fusion=1 or 2, and no separate FC3 weights. Default is relu</dd>
 <dt><tt>block_size</tt> : int</dt>
 <dd>For integer quantization, size of each quantization block along the K (input feature) dimension. Must be power of two and ≥ 16 (e.g., 16, 32, 64, 128). For integer and FP4 quantization, both hidden_size and inter_size must be divisible by the block size. FP8 with block_size=128 supports partial 128x128 tiles. The FP4 modes always use blocking: MXFP4 ('fp4'/'wfp4afp8') is normalized to block_size 32 and NVFP4 ('nvfp4') to block_size 16, even when block_size is omitted. For FP8 ('fp8'), a positive value instead specifies square blocks along both N and K, with floating-point scales shaped [E, ceil(N/block_size), ceil(K/block_size)]; partial blocks are allowed. Without a positive value, FP8 uses per-expert global scales. For integer quantization ('int'), omitting block_size means there is no blocking and a whole column shares one scaling factor. </dd>
 <dt><tt>expert_weight_bits</tt> : int</dt>
@@ -6569,9 +6579,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>quant_type</tt> : string</dt>
 <dd>Quantization type: 'int' for integer quantization (default), 'fp4' for MXFP4 quantization, 'nvfp4' for NVFP4 quantization, 'fp8' for FP8 e4m3 weight-only quantization, or 'wfp4afp8' for MXFP4 weight with FP8 activation. When quant_type is 'fp4' or 'nvfp4', weights are stored in E2M1 FP4 format (2 values per byte), fc*_scales inputs contain the FP4 block scales, and fc*_global_scale inputs must be provided. 'fp4' uses Float8E8M0 block scales with block_size 32; 'nvfp4' uses Float8E4M3FN block scales with block_size 16. 'fp8' uses float8e4m3fn weights and, when block_size > 0, float32, float16, or bfloat16 square-block scales in fc*_scales instead of fc*_global_scale. The INT3 profile requires integer quantization.</dd>
 <dt><tt>swiglu_fusion</tt> : int</dt>
-<dd>0: not fused, 1: fused and interleaved. 2: fused and not interleaved.</dd>
+<dd>Gate/up layout for swiglu or geglu. 0: not fused (swiglu only), 1: fused and interleaved, 2: fused and not interleaved ([gate | up] for geglu).</dd>
 <dt><tt>swiglu_limit</tt> : float</dt>
-<dd>The limit used to clamp inputs in SwiGLU. It is infinite when limit is not provided.</dd>
+<dd>The limit used to clamp inputs in SwiGLU. It is infinite when limit is not provided. Does not affect GEGLU.</dd>
 <dt><tt>use_sparse_mixer</tt> : int</dt>
 <dd>Whether to use sparse mixer</dd>
 <dt><tt>weights_prepacked</tt> : int</dt>
@@ -6586,7 +6596,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>router_probs</tt> : T</dt>
 <dd>2D tensor with shape (total_tokens, num_experts), where total_tokens must match the flattened token count of input</dd>
 <dt><tt>fc1_experts_weights</tt> : T1</dt>
-<dd>3D tensor with shape (num_experts, fusion_size * inter_size, hidden_size * effective_fc1_bits / 8). The last dimension must be byte-aligned. The fusion_size is 2 for fused swiglu, or 1 otherwise. effective_fc1_bits is fc1_expert_weight_bits when provided, otherwise expert_weight_bits.</dd>
+<dd>3D tensor with shape (num_experts, fusion_size * inter_size, hidden_size * effective_fc1_bits / 8). The last dimension must be byte-aligned. The fusion_size is 2 for fused swiglu or geglu, or 1 otherwise. effective_fc1_bits is fc1_expert_weight_bits when provided, otherwise expert_weight_bits.</dd>
 <dt><tt>fc1_scales</tt> (optional) : T2</dt>
 <dd>Optional weight scales. For quant_type='int', this is a 2D tensor with shape (num_experts, fusion_size * inter_size), or a 3D tensor with shape (num_experts, fusion_size * inter_size, hidden_size / block_size) when block_size is provided. For quant_type='fp4' or 'wfp4afp8', this is a float8e8m0 MXFP block-scale tensor with shape (num_experts, fusion_size * inter_size, hidden_size / 32). For quant_type='nvfp4', this is a float8e4m3fn NVFP4 block-scale tensor with shape (num_experts, fusion_size * inter_size, hidden_size / 16). For quant_type='fp8' and block_size > 0, required float32, float16, or bfloat16 scales with shape (num_experts, ceil(fusion_size * inter_size / block_size), ceil(hidden_size / block_size)).</dd>
 <dt><tt>fc1_experts_bias</tt> (optional) : T</dt>
@@ -7534,6 +7544,56 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.RouterGateUpProj"></a><a name="com.microsoft.routergateupproj">**com.microsoft.RouterGateUpProj**</a>
+
+  Fused first projection of a MoE layer with a shared expert. One GEMM Y = X * W, with N = router_size + 2 * inter, is split into the router logits Y[.., :router_size] and the gate/up halves of the shared expert Y[.., router_size:], gate first then up. The output router is Y[.., :router_size] rounded to T; the output activated is activation(gate, up), computed on the T-rounded gate and up values. With activation = 'swiglu' it uses the SwiGLU operator's `limit`, `activation_alpha` and `activation_beta`, so the op equals MatMul + Split + SwiGLU.
+  For up to 8 rows the CUDA kernel is a single deterministic tensor-core GEMV; other shapes use a GEMM and an elementwise kernel.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>activation</tt> : string</dt>
+<dd>Gated activation applied to the gate and up halves. Only 'swiglu' is defined.</dd>
+<dt><tt>activation_alpha</tt> : float</dt>
+<dd>SwiGLU multiplier inside the sigmoid.</dd>
+<dt><tt>activation_beta</tt> : float</dt>
+<dd>SwiGLU value added to the linear half.</dd>
+<dt><tt>limit</tt> : float</dt>
+<dd>SwiGLU clamp applied to both halves; zero or less disables it.</dd>
+<dt><tt>router_size</tt> : int (required)</dt>
+<dd>Number of leading columns of W that form the router logits.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>X</tt> : T</dt>
+<dd>Activation with shape (.., K).</dd>
+<dt><tt>W</tt> : T</dt>
+<dd>Weight with shape (K, router_size + 2 * inter).</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>router</tt> : T</dt>
+<dd>Router logits with shape (.., router_size).</dd>
+<dt><tt>activated</tt> : T</dt>
+<dd>Gated shared-expert activation with shape (.., inter).</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(bfloat16), tensor(float16)</dt>
+<dd>Constrain the data type to 16-bit floats.</dd>
+</dl>
+
+
 ### <a name="com.microsoft.SampleOp"></a><a name="com.microsoft.sampleop">**com.microsoft.SampleOp**</a>
 
   Sample echo operator.
@@ -8357,6 +8417,62 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Token, control and pointer words.</dd>
 <dt><tt>I32</tt> : tensor(int32)</dt>
 <dd>Status words and cache lengths.</dd>
+</dl>
+
+
+### <a name="com.microsoft.SwiGLU"></a><a name="com.microsoft.swiglu">**com.microsoft.SwiGLU**</a>
+
+  Clamped SwiGLU, the gated activation of a feed-forward or MoE expert block:
+    G = clamp(gate, max=limit)
+    L = clamp(up, min=-limit, max=limit)
+    output = G * Sigmoid(activation_alpha * G) * (L + activation_beta)
+  with the arithmetic done in float regardless of T, widened to double for the product when `activation_alpha * G` is below -87 so that a negative tail is not lost to float exp underflow. A `limit` of zero or less disables both clamps.
+  
+  The result is rounded to T once, after the multiply by (L + activation_beta). With `round_activation` set, G * Sigmoid(activation_alpha * G) is first rounded to T, as a QuickGelu node followed by a Mul in T would, which keeps a fused QuickGelu + Mul bit-identical to the graph it replaces.
+  
+  This uses the same activation_alpha / activation_beta formula and positive-limit clamping rule as MoE and QMoE. The no-clamp sentinel differs: here any `limit` of zero or less disables clamping, while MoE/QMoE use infinity when `swiglu_limit` is omitted and clamp finite values, including an explicit zero.
+  With `up` supplied and the default `limit` and `activation_beta`, it equals the ONNX SwiGLU operator (opset 28) with `alpha` = `activation_alpha`.
+  
+  `up` is optional. When it is omitted, `gate` carries both halves of one `[.., 2 * inter]` projection -- gate first, then up -- and the split is done internally, so a fused sibling GEMM needs no `Split` node.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>activation_alpha</tt> : float</dt>
+<dd>Multiplier inside the sigmoid.</dd>
+<dt><tt>activation_beta</tt> : float</dt>
+<dd>Value added to the linear half. A zero value leaves it unchanged, including a negative zero.</dd>
+<dt><tt>limit</tt> : float</dt>
+<dd>Clamp applied to both halves; zero or less disables it.</dd>
+<dt><tt>round_activation</tt> : int</dt>
+<dd>If non-zero, round G * Sigmoid(activation_alpha * G) to T before multiplying by (L + activation_beta). Zero rounds only the final result.</dd>
+</dl>
+
+#### Inputs (1 - 2)
+
+<dl>
+<dt><tt>gate</tt> : T</dt>
+<dd>Gate half of the projection, or both halves concatenated.</dd>
+<dt><tt>up</tt> (optional) : T</dt>
+<dd>Up half of the projection, same shape as gate.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>Activated tensor, shaped like one half of the projection.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16), tensor(bfloat16), tensor(float)</dt>
+<dd>Constrain the activation type to float tensors.</dd>
 </dl>
 
 

@@ -714,6 +714,26 @@ static std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemoryImpl(
       estimate->runtime_transient_bytes = static_cast<size_t>(runtime_preparation_peak);
     }
 
+    // At or above the threshold, ComputeInternal replaces the CUTLASS GEMM, chunked or not, with one cuBLAS GEMM over
+    // a dequantized [N, K] copy of the weights. That route profiles only to prime a CUDA-graph-enabled session, and it
+    // does so before allocating the copy, so the copy only raises the ordinary workspace and the lazy-profile peak
+    // above keeps the CUTLASS workspace alone. Resolving the threshold here matches the kernel constructor: an
+    // invalid value leaves the node without a route-complete estimate.
+    if (estimate->runtime_workspace_bytes.has_value()) {
+      const int dequant_gemm_min_m = ComputeFpAIntBDequantGemmMinM(
+          ResolveCudaSessionOption(
+              options.dequant_gemm_min_m.has_value()
+                  ? std::optional<std::string>{std::string{*options.dequant_gemm_min_m}}
+                  : std::nullopt,
+              kOrtSessionOptionsCudaFpAIntBDequantGemmMinM, kFpAIntBDequantGemmMinMEnvVar,
+              device_sm == 90 ? kFpAIntBDequantGemmDefaultMinM : 0, 0, std::numeric_limits<int>::max()),
+          sm, N, K, nbits, block_size, has_zero_points, has_bias, element_size);
+      if (dequant_gemm_min_m > 0 && (!m.has_value() || *m >= dequant_gemm_min_m)) {
+        estimate->runtime_workspace_bytes = std::max<size_t>(
+            *estimate->runtime_workspace_bytes, static_cast<size_t>(SafeInt<size_t>(N) * K * element_size));
+      }
+    }
+
     return estimate;
   } catch (const OnnxRuntimeException&) {
     // Treat invalid or overflowing model-derived sizes as not estimable.
@@ -954,6 +974,7 @@ void MatMulNBits<T>::InitGemmProfiler(int sm) {
 
   gemmProfiler_->setCudaKernelType(cuda_kernel_type, sm);
   gemmProfiler_->setWaveAwareGemv(wave_aware_gemv_);
+  gemmProfiler_->setTensorCoreGemv(tensor_core_gemv_);
   gemmProfiler_->setL2CacheBytes(static_cast<size_t>(this->GetDeviceProp().l2CacheSize));
   gemmProfiler_->setDeviceInfo(device_prop.major * 10 + device_prop.minor, device_prop.multiProcessorCount);
   gemmProfiler_->setQuant(static_cast<int>(nbits_), has_bias_, has_zero_points_);
@@ -996,6 +1017,7 @@ void MatMulNBits<T>::RunGemmProfile(bool hasWeightOnlyCudaKernel, int min_m, int
                        this->GetDeviceProp().name, wave_aware_gemv_, paired_gemv_mode_, this->GetDeviceId());
 
   GemmDims dims = {min_m, max_m, n_16b, K_};
+  gemmId_.tensor_core = tensor_core_gemv_;
   gemmProfiler_->profileTactics(weightOnlyGemmRunner_, gemmId_.dtype, dims, gemmId_, hasWeightOnlyCudaKernel);
 }
 
@@ -1198,7 +1220,12 @@ Status MatMulNBits<T>::DeclareWorkspaceRequirements(
   if (!ws.has_value() || *ws == 0) {
     return Status::OK();
   }
-  requirements.push_back(WorkspaceRequirement{*ws, /*slot_id=*/0, /*alignment_bytes=*/0});
+  // At or above the threshold ComputeInternal needs a dequantized copy of the weights instead of the GEMM workspace.
+  size_t declared_bytes = *ws;
+  if (dequant_gemm_min_m_ > 0 && *m64 >= dequant_gemm_min_m_) {
+    declared_bytes = std::max(declared_bytes, DequantGemmScratchBytes());
+  }
+  requirements.push_back(WorkspaceRequirement{declared_bytes, /*slot_id=*/0, /*alignment_bytes=*/0});
   return Status::OK();
 }
 #endif
@@ -1329,6 +1356,40 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
       // profiled M bucket are then bounded by the chunk instead of the full M.
       const int chunk_m = static_cast<int>(FpAIntBRowsPerLaunch(m));
 
+      // Large M: dequantize the weights once into a scratch matrix and run a single cuBLAS GEMM. The row-chunked
+      // CUTLASS path below converts every weight element again for each chunk. Skipped under deterministic compute
+      // and CUDA graph capture (scratch allocation), which keep the CUTLASS path.
+      if (dequant_gemm_min_m_ > 0 && m >= dequant_gemm_min_m_ && bias_data == nullptr && !stream_is_capturing &&
+          !ctx->GetUseDeterministicCompute()) {
+        if (graph_capture_enabled_) {
+          // A graph-enabled session captures this M on the CUTLASS path, which cannot profile during capture, and the
+          // warmup runs that would normally tune it take this route instead. Tune the buckets now, before the scratch
+          // copy exists. A failed lookup is ignored here; the capture path reports it.
+          gemmProfiler_->getBestConfigOrProfile(chunk_m, gemmId_);
+          if (m % chunk_m != 0) {
+            gemmProfiler_->getBestConfigOrProfile(m % chunk_m, gemmId_);
+          }
+        }
+        const size_t scratch_bytes = DequantGemmScratchBytes();
+        auto dequant_buffer = this->template GetScratchBuffer<void>(scratch_bytes, this->GetComputeStream(ctx));
+        if (onnxruntime::llm::kernels::fpA_intB_gemv::dequantize_int8_interleaved(
+                cuda_kernel_type, fpA_intB_weight, fpA_intB_scale_buffer_.get(), dequant_buffer.get(), n, k,
+                static_cast<int>(block_size_), stream)) {
+          last_compute_workspace_bytes_.store(scratch_bytes, std::memory_order_relaxed);
+          if (fpA_intB_debug) {
+            std::cout << "[fpA_intB_debug] M=" << m << " N=" << n << " K=" << k << " nbits=" << nbits_
+                      << " block_size=" << block_size_ << " kernel=dequant+cuBLAS" << std::endl;
+          }
+          const CudaT alpha = onnxruntime::cuda::OrtToCudaType<T>::FromFloat(1.f);
+          const CudaT zero = onnxruntime::cuda::OrtToCudaType<T>::FromFloat(0.f);
+          CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
+              GetCublasHandle(ctx), CUBLAS_OP_T, CUBLAS_OP_N, n, m, k, &alpha,
+              reinterpret_cast<const CudaT*>(dequant_buffer.get()), k, reinterpret_cast<const CudaT*>(a_data), k,
+              &zero, out_data, n, GetDeviceProp(), UseTF32()));
+          return Status::OK();
+        }
+      }
+
       decltype(gemmProfiler_->getBestConfig(m, gemmId_)) bestTactic;
       int tactic_m = 0;
       IAllocatorUniquePtr<void> workspace_buffer;
@@ -1391,6 +1452,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
           params.decode_variant = bestTactic->cudaKernelVariant >= 2 ? bestTactic->cudaKernelVariant : 0;
           params.paired_k = bestTactic->cudaKernelVariant == 1;
           params.wave_aware = wave_aware_gemv_;
+          params.tensor_core = tensor_core_gemv_;
           const auto& device_prop = GetDeviceProp();
           params.device_sm = device_prop.major * 10 + device_prop.minor;
           params.device_sm_count = device_prop.multiProcessorCount;

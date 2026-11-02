@@ -285,18 +285,18 @@ TEST(CUDA_EP_Unittest, FusedRouteMaps_CanUsePredicate) {
 }
 
 template <typename T>
-void RunFusedRouteMapsParityAndFallbackTest(bool normalize_scales) {
-  constexpr int num_rows = 8;
-  constexpr int num_experts = 512;
-  constexpr int k = 10;
-  constexpr int num_pairs = num_rows * k;
+void RunFusedRouteMapsParityAndFallbackTest(bool normalize_scales, int num_rows = 8, int num_experts = 512,
+                                            int k = 10) {
+  const int num_pairs = num_rows * k;
 
   auto logits_float = MakeLogits(num_rows, num_experts);
   // Include exact ties across rows to verify stable tie-breaking toward lower expert indices.
   logits_float[0 * num_experts + 3] = 6.0f;
   logits_float[0 * num_experts + 19] = 6.0f;
-  logits_float[5 * num_experts + 128] = 5.5f;
-  logits_float[5 * num_experts + 257] = 5.5f;
+  if (num_rows > 5) {
+    logits_float[5 * num_experts + 128] = 5.5f;
+    logits_float[5 * num_experts + (num_experts > 257 ? 257 : 192)] = 5.5f;
+  }
 
   // Allocate +1 element so we can also test a 2-byte misaligned pointer (declined launch).
   std::vector<T> logits_padded(logits_float.size() + 1);
@@ -404,6 +404,28 @@ TEST(CUDA_EP_Unittest, FusedRouteMaps_S8E512K10_Half) {
 TEST(CUDA_EP_Unittest, FusedRouteMaps_S8E512K10_BFloat16) {
   RunFusedRouteMapsParityAndFallbackTest<__nv_bfloat16>(true);
   RunFusedRouteMapsParityAndFallbackTest<__nv_bfloat16>(false);
+}
+
+TEST(CUDA_EP_Unittest, FusedRouteMaps_E256_Half) {
+  for (int rows : {1, 8}) {
+    for (int k : {1, 2, 4, 6, 8}) {
+      for (bool normalize_scales : {false, true}) {
+        SCOPED_TRACE(testing::Message() << "rows=" << rows << " k=" << k << " normalize=" << normalize_scales);
+        RunFusedRouteMapsParityAndFallbackTest<half>(normalize_scales, rows, 256, k);
+      }
+    }
+  }
+}
+
+TEST(CUDA_EP_Unittest, FusedRouteMaps_E256_BFloat16) {
+  for (int rows : {1, 8}) {
+    for (int k : {1, 2, 4, 6, 8}) {
+      for (bool normalize_scales : {false, true}) {
+        SCOPED_TRACE(testing::Message() << "rows=" << rows << " k=" << k << " normalize=" << normalize_scales);
+        RunFusedRouteMapsParityAndFallbackTest<__nv_bfloat16>(normalize_scales, rows, 256, k);
+      }
+    }
+  }
 }
 
 void VerifyPairedFirstRouteGroups(const std::vector<int>& indices, const std::vector<int2>& groups) {

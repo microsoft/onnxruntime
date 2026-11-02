@@ -31,18 +31,18 @@ std::string pass_as_string(T&& v) {
 }
 }  // namespace wgsl_detail
 
-#include "wgsl_template_gen/string_table.h"  // 4a2d5131f908faad1694bbc908f239cfb2bd88641a7385bc19fc5d050fcb7ce8
+#include "wgsl_template_gen/string_table.h"  // f0a381776674df71572e12a3998a0be3180a94c88cee1c426960e2874cc58dbb
 
 // Include template implementations
 
 #include "wgsl_template_gen/generated/math/matmul_gemv.h"  // 512f5afa8421c4630912b0d87d46061d43e1b3226fbbc6c993241b285adf2fc7
 #include "wgsl_template_gen/generated/math/subgroup_matrix_gemm_8x16x16.h"  // 4251accac15bcce4e64a1ec7582de07ee5626d6cfe05527a9187586ade097870
 #include "wgsl_template_gen/generated/math/subgroup_matrix_matmul.h"  // 5dcff381d5a7d9f19cad40b104960a96aeaee33f2495ea855156f0e5038d3f71
-#include "wgsl_template_gen/generated/math/subgroup_matrix_matmul_pad_b.h"  // 7a51eb46080e7d093bfef0751f9bfc4fd5c45b5a957c6d5fdddd6df725442e31
-#include "wgsl_template_gen/generated/nn/conv_transpose3d.h"  // 36ed2016d77c72dcc289832f0225ed8dbe036d897a9757c7c3c78702c9283984
-#include "wgsl_template_gen/generated/nn/im2col_matmul.h"  // b36a95a7170073ea4015376135e97a2454b8c20f81249e20c33bdbe03d342bb5
-#include "wgsl_template_gen/generated/tensor/oihw_to_ohwi.h"  // dea09fe46f9f345cfee46ae876dbef8fff9b61fa6afa8612c827b3fbd113603b
-#include "wgsl_template_gen/generated/tensor/pad.h"  // 2b2c6681015f42f1ea3576ebb3f4d03c3fe548e944038c303e6e1f42f203f0a5
+#include "wgsl_template_gen/generated/nn/conv_transpose3d.h"  // 5c0d5a5048e20c6042d8df2a969b7c52e4a50ea469f84db8b50dc0fa7a191abd
+#include "wgsl_template_gen/generated/nn/im2col_matmul.h"  // 5114275515c4f3ceb31a0ab7f0e5a76e3d5823351b7a358ad3dd33e90a9441fe
+#include "wgsl_template_gen/generated/nn/subgroup_matrix_conv_8x16x16.h"  // 20e218adc808cb25df07b9028fddf7fc5af6ceb63e6264216bee262dfe1dd808
+#include "wgsl_template_gen/generated/tensor/oihw_to_ohwi.h"  // 35c0fdf6c6fad156a1cca57beaa319324ffbe2bbeb4809b03db113dc65033d20
+#include "wgsl_template_gen/generated/tensor/pad.h"  // ff18f8cb088efea730dbd70dbea70372d4518e0547fcb0850c979fafa3eac7e7
 
 #pragma pop_macro("MainFunctionStart")
 #pragma pop_macro("MainFunctionEnd")
