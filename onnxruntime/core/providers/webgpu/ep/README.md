@@ -362,6 +362,30 @@ must report the original CreateBindGroup error through the replay call, not just
 the subsequent invalid-encoder error, while leaving the caller's outer scope
 empty. A valid replay before and after the rejected run verifies recovery.
 
+### Telemetry
+
+`telemetry.h` and `telemetry.cc` write Windows TraceLogging events to the ONNX Runtime provider
+(`Microsoft.ML.ONNXRuntime`) with the `MICROSOFT_KEYWORD_MEASURES` keyword. A plugin DLL cannot share the
+host's provider handle, so the plugin defines its own handle for the same provider. Events are uploaded only by
+builds that use the Windows telemetry backend with the private TraceLogging configuration; otherwise they are
+visible to local ETW sessions only. Other platforms compile no-op implementations.
+
+| Event | When |
+|-------|------|
+| `WebGpuEpFactoryCreated` | `CreateEpFactories`: plugin and host versions, serialized or concurrent mode |
+| `WebGpuEpCreation` | Every `CreateEp`, including failures: duration, error, adapter, features, limits, configuration |
+| `WebGpuGraphPartition` | Every `GetCapability` pass: node counts by outcome and the most common CPU-fallback op types |
+| `WebGpuDeviceError` | First uncaptured error and any unexpected loss of each internally created device |
+| `WebGpuRunSummary` | `OnRunEnd`/`ReplayGraph` on a 2 second to 10 minute doubling interval, and at EP release |
+
+Events correlate through `epInstanceId`. Error messages are scrubbed of file paths, and operator types from
+domains other than ONNX and ONNX Runtime are reported as `custom`. No model names, paths, metadata, or tensor
+data are collected. Telemetry is not registered in ORT unit-test processes or when `ORT_DISABLE_TELEMETRY` is
+truthy. The host's `OrtApi::DisableTelemetryEvents()` state is not visible to plugins.
+
+Device errors are observed through `WebGpuContext::SetDeviceErrorObserver`, which the plugin sets in
+`CreateEpFactories` and clears in `ReleaseEpFactory`. Built-in WebGPU never sets an observer.
+
 ### Missing parts
 
 This section describes what is missing.

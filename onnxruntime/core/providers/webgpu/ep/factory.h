@@ -8,6 +8,7 @@
 #include <type_traits>
 
 #include "ep.h"
+#include "telemetry.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -53,6 +54,16 @@ class Factory : public OrtEpFactory {
       size_t num_devices,
       const OrtSessionOptions* session_options,
       const OrtLogger* logger,
+      OrtEp** ep) noexcept;
+
+  // CreateEpImpl without telemetry. Fills the telemetry fields that are known when it returns.
+  static OrtStatus* CreateEpWithTelemetryInfo(
+      OrtEpFactory* this_ptr,
+      const OrtHardwareDevice* const* devices,
+      size_t num_devices,
+      const OrtSessionOptions* session_options,
+      const OrtLogger* logger,
+      telemetry::EpCreationInfo& telemetry_info,
       OrtEp** ep) noexcept;
 
   static void ORT_API_CALL ReleaseEpImpl(OrtEpFactory* this_ptr, OrtEp* ep) noexcept;

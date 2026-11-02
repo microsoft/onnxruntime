@@ -170,6 +170,16 @@
     target_compile_definitions(onnxruntime_providers_webgpu PRIVATE
                                ORT_PLUGIN_EP_MIN_ORT_VERSION="${_ORT_PLUGIN_EP_WEBGPU_MIN_ORT_VERSION}")
 
+    # The plugin EP defines its own TraceLogging handle for the ONNX Runtime telemetry provider (see ep/telemetry.cc).
+    # Use the private TraceLogging configuration under the same conditions as onnxruntime_common so that plugin events
+    # are uploaded exactly when the core runtime's Windows telemetry events are.
+    set(_ORT_WEBGPU_EP_TRACELOGGING_CONFIG_PRIVATE
+        "${ONNXRUNTIME_INCLUDE_DIR}/core/platform/windows/TraceLoggingConfigPrivate.h")
+    if(WIN32 AND onnxruntime_USE_TELEMETRY AND NOT onnxruntime_USE_1DS_TELEMETRY AND
+       EXISTS "${_ORT_WEBGPU_EP_TRACELOGGING_CONFIG_PRIVATE}")
+      target_compile_definitions(onnxruntime_providers_webgpu PRIVATE ORT_WEBGPU_EP_USE_PRIVATE_TRACELOGGING_CONFIG=1)
+    endif()
+
     # Configure precompiled headers for the plugin EP build.
     # PCH ensures ep/adapters.h is included first and improves compilation speed.
     target_precompile_headers(onnxruntime_providers_webgpu PRIVATE

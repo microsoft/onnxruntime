@@ -3,13 +3,16 @@
 
 #pragma once
 
+#include <chrono>
 #include <gsl/span>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <utility>
 
 #include "core/providers/webgpu/webgpu_execution_provider.h"
+#include "core/providers/webgpu/ep/telemetry_aggregation.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -26,9 +29,11 @@ class Ep : public onnxruntime::ep::adapter::Ep {
     AllocatorPtr cpu_allocator;
     AllocatorPtr device_allocator;
     AllocatorPtr initializer_allocator;
+    uint32_t telemetry_instance_id;
   };
 
   Ep(std::unique_ptr<IExecutionProvider> impl, Factory& factory, const OrtLogger& logger, const Config& config);
+  ~Ep();
 
   inline const OrtLogger& GetOrtLogger() const noexcept {
     return logger_;
@@ -87,11 +92,23 @@ class Ep : public onnxruntime::ep::adapter::Ep {
   static OrtGraphCaptureNodeAssignmentPolicy ORT_API_CALL GetGraphCaptureNodeAssignmentPolicyImpl(
       _In_ const OrtEp* this_ptr) noexcept;
 
+  void MaybeLogRunSummary() noexcept;
+  void LogRunSummary(bool is_final) noexcept;
+
   Factory& factory_;
   const OrtLogger& logger_;
   Config config_{};
   // Copy of the device allocator's OrtMemoryInfo, created by ORT so it is safe to pass to ORT APIs.
   Ort::MemoryInfo device_memory_info_;
+
+  // Telemetry state. ORT serializes Run, graph replay, and GetCapability calls for one EP instance because
+  // concurrent Run is not supported, so these members need no synchronization.
+  uint32_t graph_partition_pass_count_ = 0;
+  telemetry::RunCounters run_counters_;
+  telemetry::SummaryIntervalScheduler run_summary_scheduler_;
+  std::chrono::steady_clock::time_point run_summary_last_emit_time_{std::chrono::steady_clock::now()};
+  std::optional<std::chrono::steady_clock::time_point> run_start_time_;
+  int64_t first_run_duration_us_ = 0;
 };
 
 }  // namespace ep

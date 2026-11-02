@@ -471,5 +471,10 @@ const ProgramArtifact* ProgramManager::Set(const std::string& key, ProgramArtifa
   return &(programs_.emplace(key, std::move(program)).first->second);
 }
 
+size_t ProgramManager::NumPrograms() const {
+  std::lock_guard<std::mutex> lock(programs_mutex_);
+  return programs_.size();
+}
+
 }  // namespace webgpu
 }  // namespace onnxruntime

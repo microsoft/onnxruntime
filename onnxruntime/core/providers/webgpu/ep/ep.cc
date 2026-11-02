@@ -6,11 +6,13 @@
 #include "allocator.h"
 #include "factory.h"
 #include "sync_stream.h"
+#include "telemetry.h"
 
 #include "core/framework/run_options.h"
 #include "core/framework/kernel_registry.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
 #include "core/session/plugin_ep/ep_kernel_registration.h"
+#include "core/providers/webgpu/webgpu_context.h"
 #include "core/providers/webgpu/webgpu_execution_provider.h"
 #include "core/providers/webgpu/quantization/quantize_linear.h"
 
@@ -21,6 +23,58 @@ namespace webgpu {
 namespace ep {
 
 using onnxruntime::ep::Api;
+
+namespace {
+
+// Sets `supported` to false for nodes whose WebGPU kernel exists but does not support the node's configuration.
+OrtStatus* CheckNodeConfigSupported(const Ort::ConstNode& node, bool& supported) {
+  supported = true;
+  const auto value_exists = [](const auto& values, size_t idx) {
+    return values.size() > idx && values[idx] != nullptr;
+  };
+
+  // Check for Attention
+  if (node.GetOperatorType() == "Attention" && node.GetDomain() == kMSDomain) {
+    const auto& inputs = node.GetInputs();
+    const auto& outputs = node.GetOutputs();
+
+    // Current implementation does not support mask_index(input[3]), past(input[4]) and past_seq_len(input[6])
+    // Current implementation does not support present(output[1])
+    if (value_exists(inputs, 3) || value_exists(inputs, 4) || value_exists(inputs, 6) ||
+        value_exists(outputs, 1)) {
+      supported = false;
+      return nullptr;
+    }
+
+    // If attribute past_present_share_buffer is set, fallback to CPU
+    for (const auto& attr : node.GetAttributes()) {
+      if (attr.GetName() == "past_present_share_buffer") {
+        int64_t val = 0;
+        RETURN_IF_ERROR(attr.GetValue(val));
+        if (val != 0) {
+          supported = false;
+        }
+        break;
+      }
+    }
+    return nullptr;
+  }
+
+  if (node.GetOperatorType() == "QuantizeLinear" && node.GetDomain() == kOnnxDomain) {
+    for (const auto& attr : node.GetAttributes()) {
+      if (attr.GetName() == "precision") {
+        int64_t precision = 0;
+        RETURN_IF_ERROR(attr.GetValue(precision));
+        supported = IsQuantizeLinearPrecisionSupported(precision);
+        break;
+      }
+    }
+  }
+
+  return nullptr;
+}
+
+}  // namespace
 
 // Constructor
 Ep::Ep(std::unique_ptr<IExecutionProvider> impl, Factory& factory, const OrtLogger& logger, const Config& config)
@@ -52,6 +106,45 @@ Ep::Ep(std::unique_ptr<IExecutionProvider> impl, Factory& factory, const OrtLogg
   GetGraphCaptureNodeAssignmentPolicy = GetGraphCaptureNodeAssignmentPolicyImpl;
 }
 
+Ep::~Ep() {
+  if (run_counters_.HasData()) {
+    LogRunSummary(/*is_final=*/true);
+  }
+}
+
+void Ep::MaybeLogRunSummary() noexcept {
+  const auto elapsed_us = std::chrono::duration_cast<std::chrono::microseconds>(
+                              std::chrono::steady_clock::now() - run_summary_last_emit_time_)
+                              .count();
+  if (run_summary_scheduler_.IsDue(elapsed_us)) {
+    LogRunSummary(/*is_final=*/false);
+  }
+}
+
+void Ep::LogRunSummary(bool is_final) noexcept {
+  telemetry::RunSummaryInfo info;
+  info.ep_instance_id = config_.telemetry_instance_id;
+  info.is_final = is_final;
+  info.runs = run_counters_.runs;
+  info.run_start_failures = run_counters_.run_start_failures;
+  info.run_end_failures = run_counters_.run_end_failures;
+  info.first_run_duration_us = first_run_duration_us_;
+  info.total_run_duration_us = run_counters_.total_run_duration_us;
+  info.max_run_duration_us = run_counters_.max_run_duration_us;
+  info.graph_replays = run_counters_.graph_replays;
+  info.graph_replay_failures = run_counters_.graph_replay_failures;
+  try {
+    const int context_id = EpImpl()->GetDeviceId();
+    info.program_cache_size = WebGpuContextFactory::GetContext(context_id).NumCachedPrograms();
+  } catch (...) {
+  }
+  telemetry::LogRunSummary(info);
+
+  run_counters_ = {};
+  run_summary_scheduler_.OnEmitted();
+  run_summary_last_emit_time_ = std::chrono::steady_clock::now();
+}
+
 // OrtEp interface implementations
 const char* ORT_API_CALL Ep::GetNameImpl(const OrtEp* this_ptr) noexcept {
   const auto* ep = static_cast<const Ep*>(this_ptr);
@@ -62,7 +155,8 @@ OrtStatus* ORT_API_CALL Ep::GetCapabilityImpl(OrtEp* this_ptr, const OrtGraph* g
                                               OrtEpGraphSupportInfo* graph_support_info) noexcept {
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
 
-  auto& ep = *static_cast<WebGpuExecutionProvider*>(static_cast<Ep*>(this_ptr)->EpImpl());
+  auto* ep_adapter = static_cast<Ep*>(this_ptr);
+  auto& ep = *static_cast<WebGpuExecutionProvider*>(ep_adapter->EpImpl());
   Ort::ConstGraph ort_graph{graph};
 
   // Get all nodes in the graph
@@ -72,6 +166,11 @@ OrtStatus* ORT_API_CALL Ep::GetCapabilityImpl(OrtEp* this_ptr, const OrtGraph* g
     return nullptr;  // No nodes to process
   }
 
+  const bool collect_telemetry = telemetry::IsEnabled();
+  telemetry::GraphPartitionInfo partition_info;
+  telemetry::OpTypeCounter no_kernel_op_types;
+  telemetry::OpTypeCounter unsupported_config_op_types;
+
   std::vector<const OrtNode*> candidate_nodes;
   std::vector<const OrtNode*> tentative_candidate_nodes;
 
@@ -80,12 +179,14 @@ OrtStatus* ORT_API_CALL Ep::GetCapabilityImpl(OrtEp* this_ptr, const OrtGraph* g
     std::string ep_name = node.GetEpName();
 
     if (ep_name == kWebGpuExecutionProvider) {
+      ++partition_info.preassigned_nodes;
       candidate_nodes.push_back(node);
       continue;
     }
 
     // Reject nodes already assigned to a different (non-CPU) EP
     if (!ep_name.empty() && ep_name != kCpuExecutionProvider) {
+      ++partition_info.other_ep_nodes;
       continue;
     }
 
@@ -95,6 +196,10 @@ OrtStatus* ORT_API_CALL Ep::GetCapabilityImpl(OrtEp* this_ptr, const OrtGraph* g
     if (kernel_def == nullptr) {
       LOGS(ep.GetEpLogger(), INFO) << "webgpu kernel not found in registries for Op type: "
                                    << node.GetOperatorType() << " node name: " << node.GetName();
+      ++partition_info.no_kernel_nodes;
+      if (collect_telemetry) {
+        no_kernel_op_types.Add(node.GetDomain(), node.GetOperatorType());
+      }
       continue;
     }
 
@@ -103,66 +208,19 @@ OrtStatus* ORT_API_CALL Ep::GetCapabilityImpl(OrtEp* this_ptr, const OrtGraph* g
                   cpu_node_names.end(),
                   node.GetName()) != cpu_node_names.end()) {
       LOGS(ep.GetEpLogger(), INFO) << "Force CPU execution for node: " << node.GetName();
+      ++partition_info.forced_cpu_nodes;
       continue;
     }
 
-    //
-    // The following code checks if the node is really supported by webgpu EP
-    //
-
-#define FALLBACK_TO_CPU_IF_EXIST_INPUT(idx)            \
-  if (inputs.size() > idx && inputs[idx] != nullptr) { \
-    continue;                                          \
-  }
-
-#define FALLBACK_TO_CPU_IF_EXIST_OUTPUT(idx)             \
-  if (outputs.size() > idx && outputs[idx] != nullptr) { \
-    continue;                                            \
-  }
-
-    // Check for Attention
-    if (node.GetOperatorType() == "Attention" && node.GetDomain() == kMSDomain) {
-      const auto& inputs = node.GetInputs();
-      const auto& outputs = node.GetOutputs();
-
-      // Current implementation does not support mask_index(input[3]), past(input[4]) and past_seq_len(input[6])
-      FALLBACK_TO_CPU_IF_EXIST_INPUT(3);
-      FALLBACK_TO_CPU_IF_EXIST_INPUT(4);
-      FALLBACK_TO_CPU_IF_EXIST_INPUT(6);
-
-      // Current implementation does not support present(output[1])
-      FALLBACK_TO_CPU_IF_EXIST_OUTPUT(1);
-
-      // If attribute past_present_share_buffer is set, fallback to CPU
-      bool has_past_present_share_buffer = false;
-      for (const auto& attr : node.GetAttributes()) {
-        if (attr.GetName() == "past_present_share_buffer") {
-          int64_t val = 0;
-          RETURN_IF_ERROR(attr.GetValue(val));
-          if (val != 0) {
-            has_past_present_share_buffer = true;
-          }
-          break;
-        }
+    // Check if the node is really supported by webgpu EP
+    bool config_supported = true;
+    RETURN_IF_ERROR(CheckNodeConfigSupported(node, config_supported));
+    if (!config_supported) {
+      ++partition_info.unsupported_config_nodes;
+      if (collect_telemetry) {
+        unsupported_config_op_types.Add(node.GetDomain(), node.GetOperatorType());
       }
-      if (has_past_present_share_buffer) {
-        continue;
-      }
-    }
-
-    if (node.GetOperatorType() == "QuantizeLinear" && node.GetDomain() == kOnnxDomain) {
-      bool precision_supported = true;
-      for (const auto& attr : node.GetAttributes()) {
-        if (attr.GetName() == "precision") {
-          int64_t precision = 0;
-          RETURN_IF_ERROR(attr.GetValue(precision));
-          precision_supported = IsQuantizeLinearPrecisionSupported(precision);
-          break;
-        }
-      }
-      if (!precision_supported) {
-        continue;
-      }
+      continue;
     }
 
     candidate_nodes.push_back(node);
@@ -172,15 +230,32 @@ OrtStatus* ORT_API_CALL Ep::GetCapabilityImpl(OrtEp* this_ptr, const OrtGraph* g
   std::unordered_set<const OrtNode*> cpu_preferred_nodes;
   RETURN_IF_ERROR(onnxruntime::ep::GetCpuPreferredNodes(*ort_graph,
                                                         *graph_support_info,
-                                                        static_cast<Ep*>(this_ptr)->GetOrtLogger(),
+                                                        ep_adapter->GetOrtLogger(),
                                                         tentative_candidate_nodes,
                                                         cpu_preferred_nodes));
 
   for (const auto& node : candidate_nodes) {
     if (cpu_preferred_nodes.count(node) == 0) {
       RETURN_IF_ERROR(Api().ep.EpGraphSupportInfo_AddSingleNode(graph_support_info, node));
+      ++partition_info.claimed_nodes;
     }
   }
+
+  if (collect_telemetry) {
+    // Bound the op type lists well below the telemetry string limit.
+    constexpr size_t kMaxReportedOpTypes = 32;
+    const std::string no_kernel_summary = no_kernel_op_types.ToString(kMaxReportedOpTypes);
+    const std::string unsupported_config_summary = unsupported_config_op_types.ToString(kMaxReportedOpTypes);
+    partition_info.ep_instance_id = ep_adapter->config_.telemetry_instance_id;
+    partition_info.pass_index = ep_adapter->graph_partition_pass_count_;
+    partition_info.total_nodes = static_cast<uint32_t>(all_nodes.size());
+    partition_info.cpu_preferred_nodes = static_cast<uint32_t>(cpu_preferred_nodes.size());
+    partition_info.no_kernel_op_types = no_kernel_summary;
+    partition_info.no_kernel_op_type_count = static_cast<uint32_t>(no_kernel_op_types.DistinctCount());
+    partition_info.unsupported_config_op_types = unsupported_config_summary;
+    telemetry::LogGraphPartition(partition_info);
+  }
+  ++ep_adapter->graph_partition_pass_count_;
 
   return nullptr;
 
@@ -252,9 +327,12 @@ OrtStatus* ORT_API_CALL Ep::OnRunStartImpl(_In_ OrtEp* this_ptr,
   auto* ep = static_cast<Ep*>(this_ptr);
   auto status = ep->EpImpl()->OnRunStart(options);
   if (!status.IsOK()) {
+    ++ep->run_counters_.run_start_failures;
+    ep->run_start_time_.reset();
     return Api().ort.CreateStatus(static_cast<OrtErrorCode>(status.Code()),
                                   status.ErrorMessage().c_str());
   }
+  ep->run_start_time_ = std::chrono::steady_clock::now();
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END
 }
@@ -265,6 +343,17 @@ OrtStatus* ORT_API_CALL Ep::OnRunEndImpl(_In_ OrtEp* this_ptr,
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
   auto* ep = static_cast<Ep*>(this_ptr);
   auto status = ep->EpImpl()->OnRunEnd(sync_stream, {});
+  if (ep->run_start_time_.has_value()) {
+    const int64_t duration_us = std::chrono::duration_cast<std::chrono::microseconds>(
+                                    std::chrono::steady_clock::now() - *ep->run_start_time_)
+                                    .count();
+    ep->run_start_time_.reset();
+    if (ep->first_run_duration_us_ == 0) {
+      ep->first_run_duration_us_ = duration_us;
+    }
+    ep->run_counters_.AddRun(duration_us, status.IsOK());
+  }
+  ep->MaybeLogRunSummary();
   if (!status.IsOK()) {
     return Api().ort.CreateStatus(static_cast<OrtErrorCode>(status.Code()),
                                   status.ErrorMessage().c_str());
@@ -292,6 +381,8 @@ OrtStatus* ORT_API_CALL Ep::ReplayGraphImpl(_In_ OrtEp* this_ptr, _In_ int graph
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
   auto* ep = static_cast<Ep*>(this_ptr);
   auto status = ep->EpImpl()->ReplayGraph(graph_annotation_id);
+  ep->run_counters_.AddGraphReplay(status.IsOK());
+  ep->MaybeLogRunSummary();
   if (!status.IsOK()) {
     return Api().ort.CreateStatus(static_cast<OrtErrorCode>(status.Code()),
                                   status.ErrorMessage().c_str());

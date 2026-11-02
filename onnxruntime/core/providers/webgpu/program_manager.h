@@ -109,6 +109,7 @@ class ProgramManager {
   // std::unordered_map keeps element references stable across rehash.
   const ProgramArtifact* Get(const std::string& key) const;
   const ProgramArtifact* Set(const std::string& key, ProgramArtifact&& program);
+  size_t NumPrograms() const;
 
  private:
   Status GenerateShaderSource(const ProgramBase& program, const ProgramMetadata& metadata,

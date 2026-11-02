@@ -10,6 +10,7 @@
 #include "core/graph/constants.h"
 
 #include <algorithm>
+#include <chrono>
 #include <functional>
 
 #include "core/framework/execution_provider.h"
@@ -27,6 +28,48 @@ namespace webgpu {
 namespace ep {
 
 using onnxruntime::ep::Api;
+
+namespace {
+
+// The string views in telemetry_info refer to the context, which outlives the EP creation telemetry event.
+void FillEpCreationTelemetry(const WebGpuExecutionProvider& webgpu_ep, const WebGpuContext& context,
+                             telemetry::EpCreationInfo& telemetry_info) noexcept {
+  telemetry_info.nhwc_layout = webgpu_ep.GetPreferredLayout() == DataLayout::NHWC;
+  telemetry_info.graph_capture_enabled = webgpu_ep.IsGraphCaptureEnabled();
+  telemetry_info.validation_mode = static_cast<uint32_t>(context.ValidationMode());
+  telemetry_info.kv_cache_quantization_bits = webgpu_ep.KvCacheQuantizationBits();
+  telemetry_info.matmul_fp32_accumulation = webgpu_ep.EnableMatmulFp32Accumulation();
+  telemetry_info.forced_matmul_algorithm = webgpu_ep.ForcedMatMulAlgorithm().has_value();
+  telemetry_info.force_cpu_node_count = static_cast<uint32_t>(webgpu_ep.GetForceCpuNodeNames().size());
+
+  telemetry_info.has_device = context.HasDevice();
+  if (!telemetry_info.has_device) {
+    return;
+  }
+  const wgpu::AdapterInfo& adapter_info = context.AdapterInfo();
+  telemetry_info.backend_type = static_cast<uint32_t>(adapter_info.backendType);
+  telemetry_info.adapter_type = static_cast<uint32_t>(adapter_info.adapterType);
+  telemetry_info.gpu_vendor_id = adapter_info.vendorID;
+  telemetry_info.gpu_device_id = adapter_info.deviceID;
+  telemetry_info.gpu_vendor = std::string_view{adapter_info.vendor};
+  telemetry_info.gpu_architecture = std::string_view{adapter_info.architecture};
+  telemetry_info.gpu_device = std::string_view{adapter_info.device};
+  telemetry_info.gpu_description = std::string_view{adapter_info.description};
+  telemetry_info.subgroup_min_size = adapter_info.subgroupMinSize;
+  telemetry_info.subgroup_max_size = adapter_info.subgroupMaxSize;
+  telemetry_info.feature_shader_f16 = context.DeviceHasFeature(wgpu::FeatureName::ShaderF16);
+  telemetry_info.feature_subgroups = context.DeviceHasFeature(wgpu::FeatureName::Subgroups);
+  telemetry_info.feature_subgroup_matrix =
+      context.DeviceHasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix);
+  telemetry_info.feature_timestamp_query = context.DeviceHasFeature(wgpu::FeatureName::TimestampQuery);
+  const wgpu::Limits& limits = context.DeviceLimits();
+  telemetry_info.max_buffer_size = limits.maxBufferSize;
+  telemetry_info.max_storage_buffer_binding_size = limits.maxStorageBufferBindingSize;
+  telemetry_info.max_compute_workgroup_storage_size = limits.maxComputeWorkgroupStorageSize;
+  telemetry_info.max_compute_invocations_per_workgroup = limits.maxComputeInvocationsPerWorkgroup;
+}
+
+}  // namespace
 
 // Constructor
 Factory::Factory(Config config)
@@ -170,11 +213,41 @@ OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
     const OrtSessionOptions* session_options,
     const OrtLogger* logger,
     OrtEp** ep) noexcept {
+  telemetry::EpCreationInfo telemetry_info;
+  telemetry_info.ep_instance_id = telemetry::NextEpInstanceId();
+  const auto start_time = std::chrono::steady_clock::now();
+
+  OrtStatus* status = CreateEpWithTelemetryInfo(this_ptr, devices, num_devices, session_options, logger,
+                                                telemetry_info, ep);
+
+  telemetry_info.duration_us =
+      std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start_time).count();
+  telemetry_info.success = status == nullptr;
+  if (status != nullptr) {
+    telemetry_info.error_code = static_cast<uint32_t>(Api().ort.GetErrorCode(status));
+    telemetry_info.error_message = Api().ort.GetErrorMessage(status);
+  }
+  telemetry::LogEpCreation(telemetry_info);
+  return status;
+}
+
+OrtStatus* Factory::CreateEpWithTelemetryInfo(
+    OrtEpFactory* this_ptr,
+    const OrtHardwareDevice* const* devices,
+    size_t num_devices,
+    const OrtSessionOptions* session_options,
+    const OrtLogger* logger,
+    telemetry::EpCreationInfo& telemetry_info,
+    OrtEp** ep) noexcept {
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
   if (num_devices != 1) {
     return Api().ort.CreateStatus(ORT_INVALID_ARGUMENT,
                                   "WebGPU EP factory currently only supports one device at a time.");
   }
+
+  telemetry_info.hw_device_type = static_cast<uint32_t>(Api().ort.HardwareDevice_Type(devices[0]));
+  telemetry_info.hw_vendor_id = Api().ort.HardwareDevice_VendorId(devices[0]);
+  telemetry_info.hw_device_id = Api().ort.HardwareDevice_DeviceId(devices[0]);
 
   OrtKeyValuePairs* session_config_entries = nullptr;
   ORT_API_RETURN_IF_ERROR(Api().ort.GetSessionOptionsConfigEntries(session_options, &session_config_entries));
@@ -200,6 +273,8 @@ OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
   const bool selected_virtual_device =
       device_metadata != nullptr &&
       Api().ort.GetKeyValue(device_metadata, kOrtHardwareDevice_MetadataKey_IsVirtual) != nullptr;
+  telemetry_info.compile_only = compile_only;
+  telemetry_info.virtual_device = selected_virtual_device;
   if (selected_virtual_device && !compile_only) {
     return Api().ort.CreateStatus(
         ORT_INVALID_ARGUMENT,
@@ -238,8 +313,11 @@ OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
           },
           [webgpu_ep_ptr]() -> webgpu::CommandRecordingState& { return webgpu_ep_ptr->Recording(); },
           true),  // read-only initializers: separate allocator, same Session recording
+      telemetry_info.ep_instance_id,
   };
+  const WebGpuContext& context = WebGpuContextFactory::GetContext(context_id);
   *ep = new Ep(std::move(webgpu_ep), *factory, *logger, webgpu_ep_config);
+  FillEpCreationTelemetry(*webgpu_ep_ptr, context, telemetry_info);
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END
 }

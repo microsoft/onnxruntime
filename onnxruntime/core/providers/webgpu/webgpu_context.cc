@@ -186,6 +186,12 @@ void ConfigureWeightLoadingAdapterOptions(
 
 WebGpuContext::~WebGpuContext() = default;
 
+std::atomic<DeviceErrorObserver> WebGpuContext::device_error_observer_{nullptr};
+
+void WebGpuContext::SetDeviceErrorObserver(DeviceErrorObserver observer) noexcept {
+  device_error_observer_.store(observer);
+}
+
 void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
   std::call_once(init_flag_, [this, config]() {
     max_num_pending_dispatches_ = config.max_num_pending_dispatches;
@@ -364,15 +370,26 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
           // Note: Don't throw from a Dawn callback.
           [](const wgpu::Device& /*device*/, wgpu::ErrorType type,
              wgpu::StringView message, DeviceErrorState* state) noexcept {
+            bool first_error = false;
+            DeviceErrorReport report{DeviceErrorReport::Kind::kUncapturedError, static_cast<uint32_t>(type),
+                                     std::string_view{message}, 0, 0, 0};
             {
               std::lock_guard<std::mutex> lock{state->mutex};
               if (state->status.IsOK()) {
+                first_error = true;
                 state->status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "WebGPU device error(", int(type),
                                                 "): ", std::string_view{message});
               }
+              report.backend_type = state->backend_type;
+              report.vendor_id = state->vendor_id;
+              report.device_id = state->device_id;
             }
             if (logging::LoggingManager::HasDefaultLogger()) {
               LOGS_DEFAULT(ERROR) << "WebGPU device error(" << int(type) << "): " << std::string_view{message};
+            }
+            // Report only the first error so an error storm cannot flood the observer.
+            if (auto observer = device_error_observer_.load(); first_error && observer != nullptr) {
+              observer(report);
             }
           },
           device_error_state_.get());
@@ -382,15 +399,26 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
           // Note: Don't throw from a Dawn callback.
           [state = device_error_state_](const wgpu::Device& /*device*/, wgpu::DeviceLostReason reason,
                                         wgpu::StringView message) noexcept {
+            DeviceErrorReport report{DeviceErrorReport::Kind::kDeviceLost, static_cast<uint32_t>(reason),
+                                     std::string_view{message}, 0, 0, 0};
             {
               std::lock_guard<std::mutex> lock{state->mutex};
               if (state->status.IsOK()) {
                 state->status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "WebGPU device lost (", int(reason),
                                                 "): ", std::string_view{message});
               }
+              report.backend_type = state->backend_type;
+              report.vendor_id = state->vendor_id;
+              report.device_id = state->device_id;
             }
             if (logging::LoggingManager::HasDefaultLogger()) {
               LOGS_DEFAULT(INFO) << "WebGPU device lost (" << int(reason) << "): " << std::string_view{message};
+            }
+            // Destroyed and CallbackCancelled are expected during normal device and instance teardown.
+            const bool unexpected = reason != wgpu::DeviceLostReason::Destroyed &&
+                                    reason != wgpu::DeviceLostReason::CallbackCancelled;
+            if (auto observer = device_error_observer_.load(); unexpected && observer != nullptr) {
+              observer(report);
             }
           });
 
@@ -482,6 +510,12 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
       adapter_info_.nextInChain = &subgroup_matrix_configs_;
     }
     ORT_ENFORCE(Device().GetAdapterInfo(&adapter_info_) == wgpu::Status::Success);
+    {
+      std::lock_guard<std::mutex> lock{device_error_state_->mutex};
+      device_error_state_->backend_type = static_cast<uint32_t>(adapter_info_.backendType);
+      device_error_state_->vendor_id = adapter_info_.vendorID;
+      device_error_state_->device_id = adapter_info_.deviceID;
+    }
 #if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
     // Use the backend selected by Dawn rather than the requested backend. The
     // request can be Undefined when Dawn performs automatic adapter selection.

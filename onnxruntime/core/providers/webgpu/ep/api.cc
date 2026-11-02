@@ -11,6 +11,8 @@
 #include "core/platform/env_var.h"
 #include "core/providers/webgpu/ep/factory.h"
 #include "core/providers/webgpu/ep/runtime_compatibility.h"
+#include "core/providers/webgpu/ep/telemetry.h"
+#include "core/providers/webgpu/webgpu_context.h"
 #include "core/session/onnxruntime_env_config_keys.h"
 
 // When this EP is statically linked into the host binary instead of being built as a separate shared library, the
@@ -50,6 +52,20 @@ void ShutdownProtobufLibrary();
 namespace {
 // Set to "1" to allow WebGPU to be advertised against a CPU hardware device when no GPU hardware device is available.
 constexpr const char* kAllowSoftwareAdapterEnvironmentVariable = "ORT_WEBGPU_EP_ALLOW_SOFTWARE_ADAPTER";
+
+void ReportDeviceErrorTelemetry(const onnxruntime::webgpu::DeviceErrorReport& report) noexcept {
+  namespace telemetry = onnxruntime::webgpu::ep::telemetry;
+  telemetry::DeviceErrorInfo info;
+  info.kind = report.kind == onnxruntime::webgpu::DeviceErrorReport::Kind::kDeviceLost
+                  ? telemetry::DeviceErrorKind::kDeviceLost
+                  : telemetry::DeviceErrorKind::kUncapturedError;
+  info.reason_code = report.reason;
+  info.message = report.message;
+  info.backend_type = report.backend_type;
+  info.gpu_vendor_id = report.vendor_id;
+  info.gpu_device_id = report.device_id;
+  telemetry::LogDeviceError(info);
+}
 }  // namespace
 
 extern "C" {
@@ -128,6 +144,22 @@ EXPORT_SYMBOL OrtStatus* ORT_PLUGIN_EP_ENTRY_POINT(CreateEpFactories)(
   std::unique_ptr<OrtEpFactory> factory =
       std::make_unique<onnxruntime::webgpu::ep::Factory>(factory_config);
 
+  onnxruntime::webgpu::WebGpuContext::SetDeviceErrorObserver(&ReportDeviceErrorTelemetry);
+
+  {
+    namespace telemetry = onnxruntime::webgpu::ep::telemetry;
+    telemetry::FactoryCreatedInfo info;
+    info.serialized_execution_mode = onnxruntime::webgpu::ep::UseSerializedExecutionMode();
+    info.serialized_execution_mode_forced =
+        info.serialized_execution_mode &&
+        !onnxruntime::webgpu::ep::ShouldUseSerializedExecutionMode(onnxruntime::ep::CurrentOrtApiVersion(),
+                                                                   onnxruntime::ep::CurrentOrtPatchVersion(),
+                                                                   /*force_serialized_execution=*/false);
+    info.allow_software_adapter = factory_config.allow_software_adapter;
+    info.allow_virtual_devices = factory_config.allow_virtual_devices;
+    telemetry::LogFactoryCreated(info);
+  }
+
   factories[0] = factory.release();
   *num_factories = 1;
 
@@ -146,6 +178,7 @@ EXPORT_SYMBOL OrtStatus* ORT_PLUGIN_EP_ENTRY_POINT(ReleaseEpFactory)(OrtEpFactor
 
   // STEP.3 - Clean up WebGPU contexts
   onnxruntime::webgpu::CleanupWebGpuContexts();
+  onnxruntime::webgpu::WebGpuContext::SetDeviceErrorObserver(nullptr);
 
   // STEP.4 - Destroy the global default logger wrapper
   ::onnxruntime::ep::adapter::LoggingManager::DestroyDefaultLogger();
