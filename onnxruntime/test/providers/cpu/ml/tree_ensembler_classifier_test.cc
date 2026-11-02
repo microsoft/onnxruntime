@@ -738,7 +738,7 @@ TEST(MLOpTest, TreeEnsembleClassifierRejectsInvalidCategorySetId) {
   test.AddOutput<float>("Z", {1, 2}, {0.0f, 0.0f});
 
   test.Run(OpTester::ExpectResult::kExpectFailure,
-           "Tree category set id 0 must be an integer in [0, 0).");
+           "Tree category set id 0 must be in [0, 0).");
 }
 
 // Regression test for PR #27552 which inadvertently broke binary TreeEnsembleClassifier models

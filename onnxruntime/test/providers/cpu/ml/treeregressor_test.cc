@@ -1086,7 +1086,7 @@ TEST(MLOpTest, TreeEnsembleRegressorRejectsInvalidCategorySetId) {
   test.AddOutput<float>("Y", {1, 1}, {0.0f});
 
   test.Run(OpTester::ExpectResult::kExpectFailure,
-           "Tree category set id 0 must be an integer in [0, 0).");
+           "Tree category set id 0 must be in [0, 0).");
 }
 
 TEST(MLOpTest, TreeEnsembleRegressorBaseValuesWrongSize) {
