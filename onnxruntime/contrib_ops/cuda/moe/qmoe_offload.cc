@@ -406,47 +406,68 @@ class SessionPromotionBudget {
         slot_events[b].push_back(ev);
       } else {
         static_cast<void>(cudaGetLastError());
-        static_cast<void>(cudaStreamSynchronize(stream));
+        DrainOrQuarantine(b, stream);
         return;
       }
       if (cudaEventRecord(ev, stream) == cudaSuccess) {
         ++active_events[b];
       } else {
         static_cast<void>(cudaGetLastError());
-        static_cast<void>(cudaStreamSynchronize(stream));
+        DrainOrQuarantine(b, stream);
       }
     }
 
+    // A bounce buffer is reused or freed only after every queued copy reading it is confirmed complete. When a wait
+    // fails, completion is unknown, so the buffer is quarantined: dropped from the slot without being freed, so
+    // nothing can hand it out again.
     void WaitSlotIdle(int b) noexcept {
       if (b < 0 || b > 1) return;
       for (size_t i = 0; i < active_events[b]; ++i) {
-        if (slot_events[b][i] != nullptr) {
-          if (cudaEventSynchronize(slot_events[b][i]) != cudaSuccess) {
-            static_cast<void>(cudaGetLastError());
-          }
+        if (slot_events[b][i] != nullptr && cudaEventSynchronize(slot_events[b][i]) != cudaSuccess) {
+          static_cast<void>(cudaGetLastError());
+          DetachSlot(b, /*free_memory=*/false);
+          break;
         }
       }
       active_events[b] = 0;
     }
 
-    void ReleaseSlot(int b) noexcept {
-      WaitSlotIdle(b);
-      if (pinned_bounce[b] == nullptr) return;
-      auto host_ledger = GetCudaHostPinnedMemoryBudget();
-      const size_t acct = pinned_accounted[b];
-      if (acct > 0) {
-        if (session_pinned_budget) session_pinned_budget->BeginFree(acct);
-        if (host_ledger) host_ledger->BeginFreeAllocated(acct);
+    // Fallback fence when no event can be recorded: draining the stream is the only way left to confirm the copies.
+    void DrainOrQuarantine(int b, cudaStream_t stream) noexcept {
+      if (cudaStreamSynchronize(stream) != cudaSuccess) {
+        static_cast<void>(cudaGetLastError());
+        DetachSlot(b, /*free_memory=*/false);
       }
-      const bool ok = (cudaFreeHost(pinned_bounce[b]) == cudaSuccess);
-      if (!ok) static_cast<void>(cudaGetLastError());
-      if (acct > 0) {
-        if (session_pinned_budget) session_pinned_budget->FinishFree(acct, ok);
-        if (host_ledger) host_ledger->FinishFreeAllocated(acct, ok);
+    }
+
+    // Drops the slot's buffer. A buffer that is not freed is leaked on purpose and its budget charge is kept as
+    // quarantined, exactly as after a failed driver free.
+    void DetachSlot(int b, bool free_memory) noexcept {
+      if (pinned_bounce[b] != nullptr) {
+        auto host_ledger = GetCudaHostPinnedMemoryBudget();
+        const size_t acct = pinned_accounted[b];
+        if (acct > 0) {
+          if (session_pinned_budget) session_pinned_budget->BeginFree(acct);
+          if (host_ledger) host_ledger->BeginFreeAllocated(acct);
+        }
+        bool ok = false;
+        if (free_memory) {
+          ok = (cudaFreeHost(pinned_bounce[b]) == cudaSuccess);
+          if (!ok) static_cast<void>(cudaGetLastError());
+        }
+        if (acct > 0) {
+          if (session_pinned_budget) session_pinned_budget->FinishFree(acct, ok);
+          if (host_ledger) host_ledger->FinishFreeAllocated(acct, ok);
+        }
       }
       pinned_bounce[b] = nullptr;
       pinned_cap[b] = 0;
       pinned_accounted[b] = 0;
+    }
+
+    void ReleaseSlot(int b) noexcept {
+      WaitSlotIdle(b);
+      DetachSlot(b, /*free_memory=*/true);
     }
 
     void EnsureCapacity(int b, size_t bytes) noexcept {
@@ -6317,6 +6338,14 @@ Status QMoEOffload::PromoteResident(cudaStream_t stream, const InlinedVector<Inl
               session_controller_ ? session_controller_->PinnedBudget() : nullptr)) {
         break;
       }
+      // Once a copy reading the bounce buffer is queued, every exit path (including a later copy failing) must fence
+      // it. The fence either records an event the next reuse waits on, or quarantines the buffer.
+      bool bounce_reads_queued = false;
+      auto bounce_fence = gsl::finally([this, &bounce_reads_queued]() noexcept {
+        if (bounce_reads_queued) {
+          SessionPromotionBudget::Instance().RecordBounceCopy(session_controller_.get(), promo_stream_);
+        }
+      });
 
       if (!promo_stream_) {
         int least_prio = 0, greatest_prio = 0;
@@ -6454,6 +6483,7 @@ Status QMoEOffload::PromoteResident(cudaStream_t stream, const InlinedVector<Inl
             RecordStagedScaleCompletion(promo_stream_);
           }
         });
+        bounce_reads_queued = pinned_bounce_slot != nullptr;
         for (size_t bank = 0; bank < 6; ++bank) {
           const size_t slot_offset = resident_bank_offsets_[bank] + static_cast<size_t>(SafeInt<size_t>(target_slot) * resident_bank_bytes_[bank]);
           const uint8_t* copy_src = host_sources[bank];
@@ -6494,6 +6524,7 @@ Status QMoEOffload::PromoteResident(cudaStream_t stream, const InlinedVector<Inl
           if (ssd_lease_guard.held()) {
             ssd_lease_guard.Release();
           }
+          bounce_reads_queued = true;
           for (size_t bank = 0; bank < sources.size(); ++bank) {
             const size_t slot_offset = resident_bank_offsets_[bank] + SafeInt<size_t>(target_slot) * resident_bank_bytes_[bank];
             CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(slab + slot_offset, pinned_bounce_slot + bounce_offs[bank],
@@ -6512,9 +6543,6 @@ Status QMoEOffload::PromoteResident(cudaStream_t stream, const InlinedVector<Inl
         CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(promo_stream_));
         ssd_lease_guard.MarkDeviceReadsComplete();
         ssd_lease_guard.Release();
-      }
-      if (pinned_bounce_slot != nullptr) {
-        SessionPromotionBudget::Instance().RecordBounceCopy(session_controller_.get(), promo_stream_);
       }
       pending_promotions_.push_back({candidate, target_slot, victim_slot, evicted, host_evict_slot, host_cand_slot, false});
     }
@@ -8675,7 +8703,9 @@ Status QMoEOffload::ComputeSharedAsync(OpKernelContext* context, const Tensor* i
         p.limit = swiglu_limit_;
         p.is_bfloat16 = is_bf16_;
         p.source_route_ids = hit_ids;
-        p.fc2_bias_route_ids = hit_ids;
+        // hit_ids holds input token indices here (route / k), not original route indices. Rows are already indexed by
+        // original route, so a null map lets the kernels look up the FC2 bias with indices[route].
+        p.fc2_bias_route_ids = nullptr;
         p.fc2_bias_expert_indices = indices;
         p.input_is_gathered = false;
         p.total_routes_override = routes;

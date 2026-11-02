@@ -1720,13 +1720,18 @@ bool IsMoeOffloadExpertInputIndex(std::string_view op_type, size_t input_idx) no
 }
 
 bool ValidateNodeForMoeOffload(const Node& node,
-                               const InitializedTensorSet& initialized_tensors,
+                               const GraphViewer& graph_viewer,
                                const InlinedHashSet<std::string_view>& graph_output_names,
                                std::string& out_reason) {
   if (node.OpType() != "QMoE") {
     out_reason = "operator '" + node.OpType() + "' does not support the QMoE offload backend";
     return false;
   }
+  // An initializer that is also a graph input can be overridden at run time, so it is not constant. The offload
+  // backend only accepts constants (OpKernelInfo::TryGetConstantInput), so such banks must not be relocated to CPU.
+  auto get_constant_initializer = [&graph_viewer](const std::string& name) -> const ONNX_NAMESPACE::TensorProto* {
+    return graph_viewer.GetConstantInitializer(name, /*check_outer_scope*/ false);
+  };
   const auto& attrs = node.GetAttributes();
   auto get_str_attr = [&](const char* key, std::string_view def_val = {}) -> std::string {
     auto it = attrs.find(key);
@@ -1817,16 +1822,16 @@ bool ValidateNodeForMoeOffload(const Node& node,
       return false;
     }
     const std::string& name = input_defs[req_slot]->Name();
-    auto it = initialized_tensors.find(name);
-    if (it == initialized_tensors.end() || it->second == nullptr) {
+    const auto* req_tp = get_constant_initializer(name);
+    if (req_tp == nullptr) {
       out_reason = "expert input slot " + std::to_string(req_slot) + " ('" + name + "') must be a constant initializer";
       return false;
     }
-    if (it->second->dims_size() != 3) {
+    if (req_tp->dims_size() != 3) {
       out_reason = "expert input slot " + std::to_string(req_slot) + " ('" + name + "') must be 3D";
       return false;
     }
-    if (it->second->dims(0) <= 0 || it->second->dims(1) <= 0 || it->second->dims(2) <= 0) {
+    if (req_tp->dims(0) <= 0 || req_tp->dims(1) <= 0 || req_tp->dims(2) <= 0) {
       out_reason = "expert input slot " + std::to_string(req_slot) + " ('" + name + "') must have positive dimensions";
       return false;
     }
@@ -1847,10 +1852,10 @@ bool ValidateNodeForMoeOffload(const Node& node,
     return false;
   }
 
-  const auto* fc1_w_tp = initialized_tensors.at(input_defs[2]->Name());
-  const auto* fc1_s_tp = initialized_tensors.at(input_defs[3]->Name());
-  const auto* fc2_w_tp = initialized_tensors.at(input_defs[5]->Name());
-  const auto* fc2_s_tp = initialized_tensors.at(input_defs[6]->Name());
+  const auto* fc1_w_tp = get_constant_initializer(input_defs[2]->Name());
+  const auto* fc1_s_tp = get_constant_initializer(input_defs[3]->Name());
+  const auto* fc2_w_tp = get_constant_initializer(input_defs[5]->Name());
+  const auto* fc2_s_tp = get_constant_initializer(input_defs[6]->Name());
   if (fc1_w_tp->data_type() != ONNX_NAMESPACE::TensorProto_DataType_UINT8 ||
       fc2_w_tp->data_type() != ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
     out_reason = "expert weight banks must be UINT8";
@@ -1926,8 +1931,8 @@ bool ValidateNodeForMoeOffload(const Node& node,
   for (size_t b_slot : {size_t{4}, size_t{7}}) {
     if (!input_exists(b_slot)) continue;
     const std::string& name = input_defs[b_slot]->Name();
-    auto it = initialized_tensors.find(name);
-    if (it == initialized_tensors.end() || it->second == nullptr) {
+    const auto* b_tp = get_constant_initializer(name);
+    if (b_tp == nullptr) {
       out_reason = "optional expert slot " + std::to_string(b_slot) + " ('" + name + "') must be a constant initializer";
       return false;
     }
@@ -1935,7 +1940,6 @@ bool ValidateNodeForMoeOffload(const Node& node,
       out_reason = "expert initializer '" + name + "' is also a graph output";
       return false;
     }
-    const auto* b_tp = it->second;
     const int64_t expected_cols = (b_slot == 4) ? (2 * inter) : hidden;
     if (b_tp->data_type() != act_elem_type || b_tp->dims_size() != 2 ||
         b_tp->dims(0) != experts || b_tp->dims(1) != expected_cols) {
@@ -1952,8 +1956,8 @@ bool ValidateNodeForMoeOffload(const Node& node,
         return false;
       }
       const std::string& name = input_defs[g_slot]->Name();
-      auto it = initialized_tensors.find(name);
-      if (it == initialized_tensors.end() || it->second == nullptr) {
+      const auto* g_tp = get_constant_initializer(name);
+      if (g_tp == nullptr) {
         out_reason = "NVFP4 global scale slot " + std::to_string(g_slot) + " ('" + name + "') must be a constant initializer";
         return false;
       }
@@ -1961,7 +1965,6 @@ bool ValidateNodeForMoeOffload(const Node& node,
         out_reason = "expert initializer '" + name + "' is also a graph output";
         return false;
       }
-      const auto* g_tp = it->second;
       int64_t elem_count = 1;
       for (int d = 0; d < g_tp->dims_size(); ++d) {
         if (g_tp->dims(d) <= 0 || g_tp->dims(d) > kMaxDim || elem_count > kMaxDim / g_tp->dims(d)) {
@@ -1980,7 +1983,7 @@ bool ValidateNodeForMoeOffload(const Node& node,
     for (size_t g_slot : {size_t{15}, size_t{16}}) {
       if (input_exists(g_slot)) {
         const std::string& name = input_defs[g_slot]->Name();
-        if (initialized_tensors.find(name) == initialized_tensors.end()) {
+        if (get_constant_initializer(name) == nullptr) {
           out_reason = "optional expert slot " + std::to_string(g_slot) + " ('" + name + "') must be a constant initializer";
           return false;
         }
@@ -2038,7 +2041,7 @@ Status PlaceMoeOffloadInitializersOnCpu(const GraphViewer& graph_viewer,
         node_eligible = false;
         reason = "CUDA execution provider requires SM80 or later for QMoE offload";
       } else {
-        node_eligible = ValidateNodeForMoeOffload(node, initialized_tensors, graph_output_names, reason);
+        node_eligible = ValidateNodeForMoeOffload(node, graph_viewer, graph_output_names, reason);
       }
       if (!node_eligible && policy.mode == moe_offload::OffloadMode::kRequired) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,

@@ -893,6 +893,7 @@ bool PluginExecutionProvider::ConcurrentRunSupported() const {
   return is_supported;
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 bool PluginExecutionProvider::SupportsMoeOffload() const {
   if (Type() == kCudaExecutionProvider) {
     const std::string test_sm = Env::Default().GetEnvironmentVar("ORT_QMOE_TEST_DEVICE_SM");
@@ -918,6 +919,7 @@ bool PluginExecutionProvider::SupportsMoeOffload() const {
   }
   return true;
 }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 Status PluginExecutionProvider::OnRunStart(const RunOptions& run_options) {
   if (ort_ep_->OnRunStart == nullptr) {

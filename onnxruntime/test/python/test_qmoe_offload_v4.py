@@ -79,6 +79,13 @@ def _round_to_act_dtype(arr: np.ndarray, use_fp16: bool = False) -> np.ndarray:
     return _bfloat16_u16_to_float32(_float32_to_bfloat16_u16(arr))
 
 
+def _encode_act_dtype_u16(arr: np.ndarray, use_fp16: bool = False) -> np.ndarray:
+    """Returns the raw 16-bit encoding of `arr` in the activation dtype (FP16 or BF16)."""
+    if use_fp16:
+        return arr.astype(np.float16).view(np.uint16)
+    return _float32_to_bfloat16_u16(arr)
+
+
 def _cuda_device_compute_capability(ordinal: int = 0) -> tuple[int, int] | None:
     """Returns (major, minor) from the CUDA driver API, or None when the device cannot be queried."""
     lib_names = ("nvcuda.dll",) if sys.platform == "win32" else ("libcuda.so.1", "libcuda.so")
@@ -3575,9 +3582,192 @@ int main() {
             self.assertTrue(np.all(np.isfinite(y_ovf_off)))
             np.testing.assert_allclose(y_ovf_ref, 1.0, rtol=0, atol=0)
             np.testing.assert_allclose(y_ovf_off, 1.0, rtol=0, atol=0)
-            s_ovf_off = None
-            s_ovf_ref = None
+            del s_ovf_off, s_ovf_ref
             gc.collect()
+
+    def test_v4_int4_and_int3_async_resident_routes_use_their_own_fc2_bias(self):
+        # The async resident path computes one row per route (token * top_k + slot), so each row has to read the FC2
+        # bias of its own expert. Looking the bias up with the route's input token instead gives every later route of
+        # a token the bias of an earlier one. Only experts with different FC2 biases show that, which the small random
+        # biases of the other tests do not.
+        num_experts = 4
+        top_k = 2
+        # Static placement with the profile that _build_int_qmoe_model writes keeps experts 0 and 3 resident.
+        resident_experts = (0, 3)
+        gate_logits = (1.0, -1.0, 0.5, -0.5, 0.75, -0.75, 0.25, -0.25)
+        row_counts = (1, 2, 4, 8)
+        # The first configuration runs the fast INT3 kernels and the second one the scalar kernels.
+        configs = ((False, 256, 128, 64), (True, 128, 128, 32))
+        rng = np.random.default_rng(2031)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            for use_fp16, hidden_size, inter_size, block_size in configs:
+                label = f"{'fp16' if use_fp16 else 'bf16'}_h{hidden_size}_i{inter_size}_b{block_size}"
+                model_dir = os.path.join(tmpdir, label)
+                os.makedirs(model_dir, exist_ok=True)
+                model_path = self._build_int_qmoe_model(
+                    model_dir,
+                    layer_specs=[(3, block_size, 0)],
+                    num_experts=num_experts,
+                    hidden_size=hidden_size,
+                    inter_size=inter_size,
+                    top_k=top_k,
+                    seed=2031,
+                    with_bias=True,
+                    use_fp16=use_fp16,
+                )
+                # A zero FC1 bias and a zero input make the FC1 output and the SwiGLU intermediate exactly zero, so
+                # each route contributes only the FC2 bias of its expert: 0.5, 1.0, 1.5 or 2.0 plus a per-column offset.
+                fc2_bias = (np.arange(num_experts, dtype=np.float32)[:, None] + 1.0) * 0.5 + (
+                    np.arange(hidden_size, dtype=np.float32)[None, :] % 8
+                ) * 0.125
+                bias_values = {
+                    "fc1_bias": np.zeros((num_experts, 2 * inter_size), dtype=np.float32),
+                    "fc2_bias": fc2_bias,
+                }
+                model = onnx.load_model(model_path, load_external_data=False)
+                patched = 0
+                for init in model.graph.initializer:
+                    values = bias_values.get(init.name.rsplit(".", 1)[-1])
+                    if values is not None:
+                        init.ClearField("external_data")
+                        init.data_location = TensorProto.DEFAULT
+                        init.raw_data = _encode_act_dtype_u16(values, use_fp16).tobytes()
+                        patched += 1
+                self.assertEqual(patched, len(bias_values), label)
+                onnx.save_model(model, model_path)
+
+                fixed_bytes = (
+                    2 * num_experts * 4 + 2 * (num_experts * hidden_size * 2) + num_experts * (2 * inter_size * 2)
+                )
+                slot_bytes = (
+                    2 * inter_size * (hidden_size * 3 // 8)
+                    + hidden_size * (inter_size * 3 // 8)
+                    + 2 * inter_size * (hidden_size // block_size) * 2
+                    + hidden_size * (inter_size // block_size) * 2
+                    + 8
+                    + 2 * inter_size * 2
+                )
+                run = self._run_fp16 if use_fp16 else self._run_bf16
+                s_ref = self._make_session(model_path, {"session.moe.offload.mode": "disabled"})
+                with (
+                    mock.patch.dict(
+                        os.environ, {"ORT_QMOE_SHARED_RESIDENT_LOG": "1", "ORT_QMOE_SHARED_CPU_TIMING": "1"}
+                    ),
+                    _capture_native_stderr() as captured,
+                ):
+                    s_off = self._make_session(
+                        model_path,
+                        {
+                            "session.moe.offload.mode": "required",
+                            "session.moe.offload.placement": "static",
+                            "session.moe.offload.device_expert_bytes": str(
+                                fixed_bytes + len(resident_experts) * slot_bytes
+                            ),
+                            "session.moe.offload.popularity_file": "expert-profile.bin",
+                        },
+                    )
+                    for num_rows in row_counts:
+                        first, second = resident_experts
+                        logits = np.array(gate_logits[:num_rows], dtype=np.float32)
+                        router = np.full((num_rows, num_experts), -20.0, dtype=np.float32)
+                        router[:, first] = logits
+                        router[:, second] = 0.0
+                        # The selected pair is {first, second} for every row, so normalizing the top-k weights is a
+                        # softmax over the two logits. Which of them comes first in a row depends on the logit's sign.
+                        weight_first = 1.0 / (1.0 + np.exp(-logits.astype(np.float64)))
+                        expected = (
+                            weight_first[:, None] * fc2_bias[first] + (1.0 - weight_first)[:, None] * fc2_bias[second]
+                        )
+                        x_zero = np.zeros((num_rows, hidden_size), dtype=np.float32)
+                        y_ref = run(s_ref, x_zero, router)
+                        y_off = run(s_off, x_zero, router)
+                        np.testing.assert_allclose(
+                            y_ref, expected, rtol=2e-2, atol=5e-2, err_msg=f"{label}: disabled(T={num_rows})"
+                        )
+                        np.testing.assert_allclose(
+                            y_off, expected, rtol=2e-2, atol=5e-2, err_msg=f"{label}: offload(T={num_rows})"
+                        )
+
+                        x = rng.standard_normal((num_rows, hidden_size), dtype=np.float32) * 0.5
+                        router_random = np.full((num_rows, num_experts), -20.0, dtype=np.float32)
+                        router_random[:, list(resident_experts)] = rng.uniform(-1.0, 1.0, size=(num_rows, 2))
+                        self._assert_int_offload_parity(
+                            run(s_ref, x, router_random),
+                            run(s_off, x, router_random),
+                            f"{label}: random(T={num_rows})",
+                        )
+                    del s_off
+                    gc.collect()
+                del s_ref
+
+                # Every route has to run on a resident expert, so that the GPU kernels and not the CPU path produce the
+                # rows. The CPU path counts the routes it classified as cold, and the runs of at most 4 rows are timed.
+                self.assertEqual(_resident_slots_per_layer(captured[0]), {0: len(resident_experts)}, label)
+                _calls, routes, cold_routes = _cpu_path_route_rows(captured[0])[0]
+                self.assertGreater(routes, 0, label)
+                self.assertEqual(cold_routes, 0, f"{label}: a route ran on a cold expert")
+
+    def test_v4_int4_and_int3_overridable_expert_initializers_are_not_relocated_to_cpu(self):
+        # An initializer that is also a graph input can be overridden per run, so it is not constant, and the offload
+        # backend only takes constant banks. Placement has to check that before it moves any bank to the CPU:
+        # 'required' must reject the node, and 'auto' must leave the banks on the GPU and honor an override.
+        num_experts, hidden_size, inter_size, top_k = 8, 256, 128, 2
+        rng = np.random.default_rng(2032)
+        x = (rng.standard_normal((4, hidden_size), dtype=np.float32) * 0.5).astype(np.float16)
+        router = rng.standard_normal((4, num_experts), dtype=np.float32).astype(np.float16)
+        overrides = {
+            # A required slot (FC1 weights), a required scale slot, and an optional bias slot.
+            "fc1_experts_weights": rng.integers(0, 256, size=(num_experts, hidden_size, inter_size), dtype=np.uint8),
+            "fc1_scales": rng.uniform(0.04, 0.12, size=(num_experts, 2 * inter_size, hidden_size // 32)).astype(
+                np.float16
+            ),
+            "fc1_bias": rng.uniform(-0.5, 0.5, size=(num_experts, 2 * inter_size)).astype(np.float16),
+        }
+
+        def run(sess, extra_inputs):
+            feeds = {"X": x, "router_probs": router, **extra_inputs}
+            return sess.run(["Y"], feeds)[0].astype(np.float32)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            for suffix, override in overrides.items():
+                model_dir = os.path.join(tmpdir, suffix)
+                os.makedirs(model_dir, exist_ok=True)
+                model_path = self._build_int_qmoe_model(
+                    model_dir,
+                    layer_specs=[(4, 32, 1)],
+                    num_experts=num_experts,
+                    hidden_size=hidden_size,
+                    inter_size=inter_size,
+                    top_k=top_k,
+                    seed=2032,
+                    with_bias=True,
+                    use_fp16=True,
+                )
+                model = onnx.load_model(model_path, load_external_data=False)
+                self.assertGreaterEqual(model.ir_version, 4, "initializers can only be overridden from IR version 4")
+                name = f"model.layers.0.mlp.{suffix}"
+                initializer = next(init for init in model.graph.initializer if init.name == name)
+                self.assertEqual(list(initializer.dims), list(override.shape), name)
+                model.graph.input.append(
+                    helper.make_tensor_value_info(name, initializer.data_type, list(initializer.dims))
+                )
+                onnx.save_model(model, model_path)
+
+                with self.assertRaisesRegex(Exception, "must be a constant initializer"):
+                    self._make_session(model_path, {"session.moe.offload.mode": "required"})
+
+                s_ref = self._make_session(model_path, {"session.moe.offload.mode": "disabled"})
+                s_auto = self._make_session(model_path, {"session.moe.offload.mode": "auto"})
+                y_default = run(s_ref, {})
+                np.testing.assert_array_equal(run(s_auto, {}), y_default, f"{suffix}: default initializer")
+                y_override = run(s_ref, {name: override})
+                np.testing.assert_array_equal(run(s_auto, {name: override}), y_override, f"{suffix}: override")
+                self.assertFalse(
+                    np.allclose(y_default, y_override, rtol=1e-2, atol=1e-2),
+                    f"{suffix}: the override must change the output for this test to observe it",
+                )
+                del s_auto, s_ref
+                gc.collect()
 
 
 def _background_thread_lifecycle_child(model_path: str) -> int:
