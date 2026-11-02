@@ -8,6 +8,7 @@
 #include <cmath>
 #include <functional>
 #include <fstream>
+#include <optional>
 #include <random>
 #include <sstream>
 
@@ -30,6 +31,7 @@
 #include "core/graph/model.h"
 #include "core/mlas/inc/mlas_q4.h"
 #include "core/optimizer/attention_fusion.h"
+#include "core/optimizer/multi_head_attention_fusion.h"
 #include "core/optimizer/bias_dropout_fusion.h"
 #include "core/optimizer/bias_gelu_fusion.h"
 #include "core/optimizer/bias_softmax_fusion.h"
@@ -9515,6 +9517,188 @@ TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaProjectionRewriteFa
                                         TransformerLevel::Level2, 1, nullptr,
                                         CheckMobileClipAttentionUnfusedMatMulGraph));
 }
+
+#if !defined(DISABLE_CONTRIB_OPS)
+enum class VitAttentionScaleOp {
+  Div,
+  Mul,
+};
+
+struct VitAttentionTestConfig {
+  VitAttentionScaleOp scale_op = VitAttentionScaleOp::Div;
+  // Unset means no Softmax axis attribute.
+  std::optional<int64_t> softmax_axis = 3;
+  std::vector<int64_t> k_perm = {0, 2, 3, 1};
+  int64_t seq_len = 64;
+  int64_t head_size = 16;
+};
+
+// Unmasked ViT/DINOv2 self-attention with separate Q, K and V projections:
+//   x -> MatMul(Wq/Wk/Wv) -> Reshape[0,0,N,H] -> Transpose -> MatMul(Q, K^T) -> Div|Mul -> Softmax
+//     -> MatMul(V) -> Transpose(0,2,1,3) -> Reshape[0,0,N*H]
+static void BuildVitAttentionTestCase(ModelTestBuilder& builder, const VitAttentionTestConfig& config = {}) {
+  constexpr int64_t num_heads = 4;
+  const int64_t head_size = config.head_size;
+  const int64_t hidden_size = num_heads * head_size;
+
+  auto* input = builder.MakeInput<float>({1, config.seq_len, hidden_size}, -1.0f, 1.0f);
+  auto* split_heads_shape = builder.Make1DInitializer<int64_t>({0, 0, num_heads, head_size});
+  auto* merge_heads_shape = builder.Make1DInitializer<int64_t>({0, 0, hidden_size});
+  const float sqrt_head_size = std::sqrt(static_cast<float>(head_size));
+  auto* scale = builder.MakeScalarInitializer<float>(
+      config.scale_op == VitAttentionScaleOp::Div ? sqrt_head_size : 1.0f / sqrt_head_size);
+
+  auto add_head_split = [&](const std::vector<int64_t>& perm) {
+    auto* weight = builder.MakeInitializer<float>({hidden_size, hidden_size}, -0.2f, 0.2f);
+    auto* projected = builder.MakeIntermediate();
+    auto* bsnh = builder.MakeIntermediate();
+    auto* transposed = builder.MakeIntermediate();
+    builder.AddNode("MatMul", {input, weight}, {projected});
+    builder.AddNode("Reshape", {projected, split_heads_shape}, {bsnh});
+    builder.AddNode("Transpose", {bsnh}, {transposed}).AddAttribute("perm", perm);
+    return transposed;
+  };
+  auto* q = add_head_split({0, 2, 1, 3});
+  auto* k = add_head_split(config.k_perm);
+  auto* v = add_head_split({0, 2, 1, 3});
+
+  auto* qk = builder.MakeIntermediate();
+  auto* scaled = builder.MakeIntermediate();
+  auto* probs = builder.MakeIntermediate();
+  auto* context = builder.MakeIntermediate();
+  auto* context_bsnh = builder.MakeIntermediate();
+  auto* output = builder.MakeOutput();
+  builder.AddNode("MatMul", {q, k}, {qk});
+  builder.AddNode(config.scale_op == VitAttentionScaleOp::Div ? "Div" : "Mul", {qk, scale}, {scaled});
+  auto& softmax = builder.AddNode("Softmax", {scaled}, {probs});
+  if (config.softmax_axis.has_value()) {
+    softmax.AddAttribute("axis", *config.softmax_axis);
+  }
+  builder.AddNode("MatMul", {probs, v}, {context});
+  builder.AddNode("Transpose", {context}, {context_bsnh}).AddAttribute("perm", std::vector<int64_t>{0, 2, 1, 3});
+  builder.AddNode("Reshape", {context_bsnh, merge_heads_shape}, {output});
+}
+
+static Status AssignVitAttentionEp(Graph& graph, const char* ep) {
+  for (auto& node : graph.Nodes()) {
+    node.SetExecutionProviderType(ep);
+  }
+  return Status::OK();
+}
+
+static Status CheckVitAttentionFused(Graph& graph) {
+  auto op_to_count = CountOpsInGraph(graph);
+  ORT_RETURN_IF_NOT(op_to_count["com.microsoft.MultiHeadAttention"] == 1, "expected one MultiHeadAttention");
+  ORT_RETURN_IF_NOT(op_to_count["Softmax"] == 0, "Softmax was not fused");
+  ORT_RETURN_IF_NOT(op_to_count["Transpose"] == 0, "head Transposes were not removed");
+  ORT_RETURN_IF_NOT(op_to_count["MatMul"] == 3, "only the Q/K/V projections should remain");
+  ORT_RETURN_IF_NOT(op_to_count["Div"] == 0 && op_to_count["Mul"] == 0, "the scale was not folded");
+
+  for (const auto& node : graph.Nodes()) {
+    if (node.OpType() == "MultiHeadAttention") {
+      const auto& attrs = node.GetAttributes();
+      ORT_RETURN_IF_NOT(attrs.at("num_heads").i() == 4, "unexpected num_heads");
+      ORT_RETURN_IF_NOT(std::abs(attrs.at("scale").f() - 0.25f) < 1e-6f, "unexpected scale");
+      ORT_RETURN_IF_NOT(node.GetExecutionProviderType() == kWebGpuExecutionProvider, "unexpected EP");
+    }
+  }
+  return Status::OK();
+}
+
+static Status CheckVitAttentionUnfused(Graph& graph) {
+  auto op_to_count = CountOpsInGraph(graph);
+  ORT_RETURN_IF_NOT(op_to_count["com.microsoft.MultiHeadAttention"] == 0, "unexpected MultiHeadAttention");
+  ORT_RETURN_IF_NOT(op_to_count["Softmax"] == 1, "Softmax should remain");
+  return Status::OK();
+}
+
+static Status TestVitAttentionFusion(const VitAttentionTestConfig& config, int opset, const char* ep,
+                                     const std::function<Status(Graph&)>& check, const logging::Logger& logger) {
+  return TestGraphTransformer(
+      [&config](ModelTestBuilder& builder) { BuildVitAttentionTestCase(builder, config); }, opset, logger,
+      std::make_unique<MultiHeadAttentionFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
+      TransformerLevel::Level2, 1, [ep](Graph& graph) { return AssignVitAttentionEp(graph, ep); }, check);
+}
+
+TEST_F(GraphTransformationTests, MultiHeadAttentionFusionVitDivScale) {
+  // Opset 11 matches exported ViT/DINOv2 models, where Softmax needs the explicit last-axis attribute.
+  ASSERT_STATUS_OK(TestVitAttentionFusion({}, 11, kWebGpuExecutionProvider, CheckVitAttentionFused, *logger_));
+}
+
+TEST_F(GraphTransformationTests, MultiHeadAttentionFusionVitMulScaleDefaultAxis) {
+  // From opset 13 Softmax defaults to the last axis.
+  ASSERT_STATUS_OK(TestVitAttentionFusion({VitAttentionScaleOp::Mul, std::nullopt}, 13, kWebGpuExecutionProvider,
+                                          CheckVitAttentionFused, *logger_));
+}
+
+TEST_F(GraphTransformationTests, MultiHeadAttentionFusionVitOpset11DefaultAxisNotFused) {
+  // Before opset 13 the default Softmax axis is 1, which normalizes over heads and keys together.
+  ASSERT_STATUS_OK(TestVitAttentionFusion({VitAttentionScaleOp::Div, std::nullopt}, 11, kWebGpuExecutionProvider,
+                                          CheckVitAttentionUnfused, *logger_));
+}
+
+TEST_F(GraphTransformationTests, MultiHeadAttentionFusionVitUntransposedKeyNotFused) {
+  // seq_len == head_size keeps Q x K a valid MatMul although it no longer computes Q x K^T.
+  ASSERT_STATUS_OK(TestVitAttentionFusion({VitAttentionScaleOp::Div, 3, {0, 2, 1, 3}, 32, 32}, 11, kWebGpuExecutionProvider,
+                                          CheckVitAttentionUnfused, *logger_));
+}
+
+TEST_F(GraphTransformationTests, MultiHeadAttentionFusionVitShortQueryNotFused) {
+  // Queries shorter than 32 would run the split-reduce decode kernel.
+  ASSERT_STATUS_OK(TestVitAttentionFusion({VitAttentionScaleOp::Div, 3, {0, 2, 3, 1}, 31}, 11, kWebGpuExecutionProvider,
+                                          CheckVitAttentionUnfused, *logger_));
+}
+
+TEST_F(GraphTransformationTests, MultiHeadAttentionFusionVitHeadSizeNotMultipleOf8NotFused) {
+  // Such head sizes can miss the FlashAttention path, whose fallback does not support graph capture.
+  ASSERT_STATUS_OK(TestVitAttentionFusion({VitAttentionScaleOp::Div, 3, {0, 2, 3, 1}, 64, 12}, 11,
+                                          kWebGpuExecutionProvider, CheckVitAttentionUnfused, *logger_));
+}
+
+TEST_F(GraphTransformationTests, MultiHeadAttentionFusionVitOtherEpNotFused) {
+  ASSERT_STATUS_OK(TestVitAttentionFusion({}, 11, kCpuExecutionProvider, CheckVitAttentionUnfused, *logger_));
+}
+
+// Runs the graph on WebGPU with and without the fusion through the default session optimizers and compares the
+// outputs. A sequence length of at least 32 takes MultiHeadAttention down the dense FlashAttention prefill path; 97
+// also leaves a partial K/V tile. Each session gets its own EP instance.
+TEST_F(GraphTransformationTests, MultiHeadAttentionFusionVitWebGpuNumerics) {
+  if (!DefaultWebGpuExecutionProvider()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+
+  const std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 11}, {kMSDomain, 1}};
+  Model model("VitAttention", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+              domain_to_version, {}, *logger_);
+  ModelTestBuilder builder(model.MainGraph());
+  BuildVitAttentionTestCase(builder, {VitAttentionScaleOp::Div, 3, {0, 2, 3, 1}, 97});
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(model.MainGraph().Resolve());
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+
+  auto run = [&](bool fuse, std::vector<OrtValue>& fetches) {
+    InferenceSessionWrapper session{SessionOptions{}, GetEnvironment()};
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultWebGpuExecutionProvider()));
+    std::istringstream model_istream(model_data);
+    ASSERT_STATUS_OK(session.Load(model_istream));
+    if (!fuse) {
+      ASSERT_STATUS_OK(session.FilterEnabledOptimizers({"MultiHeadAttentionFusion"}));
+    }
+    ASSERT_STATUS_OK(session.Initialize());
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["com.microsoft.MultiHeadAttention"], fuse ? 1 : 0);
+    ASSERT_STATUS_OK(session.Run(RunOptions{}, builder.feeds_, builder.output_names_, &fetches));
+  };
+
+  std::vector<OrtValue> unfused, fused;
+  ASSERT_NO_FATAL_FAILURE(run(false, unfused));
+  ASSERT_NO_FATAL_FAILURE(run(true, fused));
+  ASSERT_EQ(fused.size(), 1u);
+  auto [result, message] = CompareOrtValue(fused[0], unfused[0], 1e-4, 1e-4, false);
+  EXPECT_EQ(result, COMPARE_RESULT::SUCCESS) << message;
+}
+#endif  // !defined(DISABLE_CONTRIB_OPS)
 
 // Current-opset regression tests for fusion optimizers.
 // These construct minimal graphs at the current ONNX opset and verify the optimizer fires.

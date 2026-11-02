@@ -57,6 +57,7 @@
 #include "core/optimizer/layer_norm_fusion.h"
 #include "core/optimizer/matmul_activation_fusion.h"
 #include "core/optimizer/matmul_add_fusion.h"
+#include "core/optimizer/multi_head_attention_fusion.h"
 #include "core/optimizer/group_query_attention_pre_norm_fusion.h"
 #include "core/optimizer/matmul_nbits_qkv_fusion.h"
 #include "core/optimizer/matmul_nbits_mlp_fusion.h"
@@ -415,6 +416,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<LayerNormFusion>(cpu_acl_cuda_dml_webgpu_eps, level));
       transformers.emplace_back(std::make_unique<SimplifiedLayerNormFusion>(cpu_cuda_eps));
       transformers.emplace_back(std::make_unique<AttentionFusion>(cpu_acl_cuda_dml_eps));
+      transformers.emplace_back(std::make_unique<MultiHeadAttentionFusion>(
+          InlinedHashSet<std::string_view>{onnxruntime::kWebGpuExecutionProvider}));
       transformers.emplace_back(std::make_unique<EmbedLayerNormFusion>(cpu_acl_cuda_dml_eps));
       transformers.emplace_back(std::make_unique<GatherSliceToSplitFusion>(cpu_cuda_eps));
       transformers.emplace_back(std::make_unique<GatherToSliceFusion>(cpu_cuda_eps));
