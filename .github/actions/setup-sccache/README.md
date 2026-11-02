@@ -7,7 +7,8 @@ on `refs/heads/main`. Other refs compile cache misses without storing them.
 The required `key` must identify the workflow/build variant, target architecture, configuration, and
 selected compiler/SDK (including CUDA when applicable). Include runner/container image identity when
 it affects compatibility. Host OS/architecture and sccache version are included automatically.
-Keep vcpkg caching separate.
+Keep vcpkg caching separate. Callers may share an environment fingerprint between vcpkg and sccache
+keys, as the macOS workflow does, while retaining each cache's dependency/build-specific identity.
 
 ```yaml
 - name: Setup compiler cache
