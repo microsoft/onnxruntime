@@ -333,8 +333,10 @@ REGISTER_KERNEL_TYPED(BFloat16)
 
 namespace {
 // Name of the node input in `slot`, or empty when the slot is absent.
+// GetKernelInfo() exists only on the adapter OpKernelInfo of the CUDA plugin target, so this is keyed on
+// BUILD_CUDA_EP_AS_PLUGIN rather than ORT_USE_EP_API_ADAPTERS, which in-tree builds can also define.
 std::string GetOffloadInputName(const OpKernelInfo& info, size_t slot) {
-#ifdef ORT_USE_EP_API_ADAPTERS
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
   if (slot < info.GetKernelInfo().GetInputCount()) {
     return info.GetKernelInfo().GetInputName(slot);
   }

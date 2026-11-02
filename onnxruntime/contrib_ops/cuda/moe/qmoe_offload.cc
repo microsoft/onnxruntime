@@ -122,7 +122,9 @@ qmoe::SpinPool& SharedSpinPool(int threads);
 
 template <typename Function>
 void OffloadParallelFor(OpKernelContext* context, ptrdiff_t count, Function& function) {
-#ifdef ORT_USE_EP_API_ADAPTERS
+  // Keyed on BUILD_CUDA_EP_AS_PLUGIN, not ORT_USE_EP_API_ADAPTERS: in-tree builds can define the latter globally,
+  // but only the CUDA plugin target uses the adapter OpKernelInfo/OpKernelContext types.
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
   context->ParallelFor(
       [](void* data, size_t task) {
         (*static_cast<Function*>(data))(static_cast<ptrdiff_t>(task));
@@ -2567,7 +2569,7 @@ QMoEOffload::QMoEOffload(const OpKernelInfo& info,
   doorbell_enabled_ = plan.enable_hybrid_cpu_decode && nvfp4_mode_;
   overlap_shared_expert_ = true;
   fuse_merge_finalize_ = true;
-#ifdef ORT_USE_EP_API_ADAPTERS
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
   if (info.GetKernelInfo().GetOutputCount() > 0) {
     output0_name_ = info.GetKernelInfo().GetOutputName(0);
   }
@@ -2682,7 +2684,7 @@ QMoEOffload::QMoEOffload(const OpKernelInfo& info)
   doorbell_enabled_ = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_DOORBELL", nvfp4_mode_ ? 1 : 0) == 1;
   overlap_shared_expert_ = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_OVERLAP_SHARED_EXPERT", 1) == 1;
   fuse_merge_finalize_ = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_FUSE_MERGE_FINALIZE", 1) == 1;
-#ifdef ORT_USE_EP_API_ADAPTERS
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
   if (info.GetKernelInfo().GetOutputCount() > 0) {
     output0_name_ = info.GetKernelInfo().GetOutputName(0);
   }
