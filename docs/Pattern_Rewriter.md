@@ -1245,6 +1245,75 @@ before entering the transformer or after an error. Callers must not concurrently
 graph. Options and compiled rules are immutable; match state and statistics are
 per call.
 
+### Restricting rewriting to a selected region
+
+The scoped overload accepts an explicit set of live node IDs:
+
+```cpp
+InlinedHashSet<NodeIndex> region(selected_nodes.begin(), selected_nodes.end());
+ORT_RETURN_IF_ERROR(rewriter.Run(graph, statistics, region));
+ORT_RETURN_IF_ERROR(graph.Resolve());
+```
+
+Only roots in the region are visited. Every node consumed by a match must also
+belong to the region; a match crossing its boundary is rejected before either
+rule callback runs. Inputs may come from outside the region, and returned values
+may feed outside consumers. Their `NodeArg` identities are preserved, although
+boundary edges are rewired to new producers. Existing deletion-boundary and EP
+checks still apply. Region-scope and deletion-boundary rejections both report
+`FailureStage::Boundary`; the diagnostic reason distinguishes them.
+
+Each successful rewrite removes its source IDs from `region` and adds all of its
+replacement IDs. New nodes participate in the same ordered, iterative matching;
+unmatched region nodes remain in the returned set. This lets a capability
+callback reconcile its node list without rescanning unrelated nodes. The
+overload neither selects an EP nor performs kernel lookup, placement, or resource
+accounting. Callers must still validate those contracts for the resulting region.
+
+An empty region does no work. Invalid input IDs return an error before matching
+or mutation. Match-only mode leaves the set unchanged. Failures do not roll back
+earlier rewrites: the set reflects completed replacements, not a transaction.
+An ordinary staging failure leaves that match's source IDs in the set and does
+not add its staged replacement IDs.
+As with unscoped `Run`, resolve the graph explicitly before later consumers.
+
+### Function expansion and capability application
+
+The rewriter does not decide when ORT expands functions or assigns nodes to an
+EP. A pattern can match a function-call node, but this does not inspect or
+rewrite its model-local function definition.
+
+Capability discovery and rewrite application are separate operations. In
+ordinary ONNX initialization, AOT function inlining can query `GetCapability`
+before normal partitioning. Reporting a capability can preserve a function
+call for later partitioning; it is not permission to run its optimization
+callback during that query. Discovery must be read-only and repeatable.
+Normal partitioning checks availability before invoking the selected
+capability's optimization callback and placing its updated node set.
+
+`PatternCapabilityTests.PreservesFunctionUntilAcceptedRewrite` and
+`PatternCapabilityTests.ExpandsUnclaimedFunctionAndRediscoversBody` exercise
+these paths with a test-only CPU EP and existing CPU kernels:
+
+| Function-call candidate | Expected integration behavior |
+|---|---|
+| Recognized with an executable rewrite | Discovery leaves the call intact. After acceptance, scoped rewriting replaces the call and updates the parent capability before placement. |
+| Not recognized | Existing function expansion exposes the body. A later capability query discovers its Transpose chain and returns a fresh region for rewriting. |
+
+Both tests run with AOT inlining enabled and disabled. With AOT disabled, the
+unclaimed call expands after a partitioning pass, and partitioning repeats.
+No borrowed matches or capabilities from the function-call graph are retained
+for matching the expanded body. Assertions cover the original call's removal,
+callback and rewrite counts, final node types and CPU assignment, output names,
+and numerical equality with ordinary CPU execution.
+
+This is a fixed-function integration probe, not general function-equivalence
+checking or a production registration interface. Recognizing only a function
+name is insufficient for arbitrary model-local definitions. The probe does not
+change expansion policy or cross-EP priority, compare whole-function and
+expanded-body placement alternatives, or establish ORT-format export,
+resource-accounting, or general N-to-M placement contracts.
+
 ### Resolved metadata and mutation boundaries
 
 Call `Graph::Resolve` after constructing a source graph and before `Run` or
@@ -1290,9 +1359,10 @@ remain unsupported; identity elimination is a separate transformation.
 
 `Options::max_iterations` is a positive upper bound, defaulting to 10.
 Each iteration processes a fixed candidate batch, initially all live nodes in
-topological order. Replacements and affected existing nodes are queued for the
-next batch, never appended to the current batch. An existing later candidate
-can still match an earlier replacement in the same batch. Processing stops
+topological order. For scoped `Run`, the initial batch contains only region nodes.
+Replacements and affected existing nodes are queued for the next batch, never
+appended to the current batch. An existing later candidate can still match an
+earlier replacement in the same batch. Processing stops
 when a batch performs no rewrites, there are no pending candidates, or the bound
 is reached. Match-only mode processes exactly one batch without mutation.
 

@@ -390,6 +390,11 @@ common::Status SaveInitializedTensors(
       continue;
     }
 #endif
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+    if (exec_plan.GetLocation(entry.first) == default_cpu_device && utils::HasExternalData(*entry.second)) {
+      continue;
+    }
+#endif
     ORT_RETURN_IF_ERROR(planner.Trace(entry.first, entry.second));
   }
 

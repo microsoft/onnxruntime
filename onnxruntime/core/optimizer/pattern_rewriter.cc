@@ -2598,8 +2598,22 @@ PatternRewriter::PatternRewriter(Rules rules, Options options)
 }
 
 Status PatternRewriter::Run(Graph& graph, Statistics& statistics) const {
+  return RunImpl(graph, statistics, nullptr);
+}
+
+Status PatternRewriter::Run(Graph& graph, Statistics& statistics, InlinedHashSet<NodeIndex>& region) const {
+  return RunImpl(graph, statistics, &region);
+}
+
+Status PatternRewriter::RunImpl(Graph& graph, Statistics& statistics, InlinedHashSet<NodeIndex>* region) const {
   statistics = {};
   ORT_RETURN_IF(graph.GraphResolveNeeded(), "PatternRewriter requires an already resolved graph.");
+  if (region) {
+    for (auto index : *region)
+      ORT_RETURN_IF(index >= static_cast<NodeIndex>(graph.MaxNodeIndex()) || graph.GetNode(index) == nullptr,
+                    "Rewrite region contains an invalid node index: ", index);
+    if (region->empty()) return Status::OK();
+  }
   auto report = [&](size_t id, NodeIndex root, FailureStage stage, std::string_view reason) {
     if (options_.on_failure)
       options_.on_failure({rules_[id].name, root, stage, std::string(reason)});
@@ -2634,8 +2648,10 @@ Status PatternRewriter::Run(Graph& graph, Statistics& statistics) const {
   GraphViewer viewer(graph);
   for (NodeIndex index : viewer.GetNodesInTopologicalOrder()) {
     const Node& node = *graph.GetNode(index);
-    worklist.push_back(index);
-    queued.insert(index);
+    if (!region || region->count(index)) {
+      worklist.push_back(index);
+      queued.insert(index);
+    }
     for (const NodeArg* output : node.OutputDefs()) {
       if (output->Exists()) producers[output] = index;
     }
@@ -2663,6 +2679,13 @@ Status PatternRewriter::Run(Graph& graph, Statistics& statistics) const {
         ++statistics.structural_checks;
         candidate.matched = MatchPattern(pattern, graph, *root, producers, candidate.match,
                                          candidate.stage, candidate.reason);
+        if (candidate.matched && region &&
+            std::any_of(candidate.match.nodes.begin(), candidate.match.nodes.end(),
+                        [&](const Node* node) { return !region->count(node->Index()); })) {
+          candidate.matched = false;
+          candidate.stage = FailureStage::Boundary;
+          candidate.reason = "Match includes nodes outside the rewrite region.";
+        }
         if (candidate.matched && !CanRewritePartition(candidate.match, options_)) {
           candidate.matched = false;
           candidate.stage = FailureStage::ExecutionProvider;
@@ -2739,10 +2762,17 @@ Status PatternRewriter::Run(Graph& graph, Statistics& statistics) const {
           ORT_RETURN_IF(!declared(node.domain), "Replacement domain has no rule opset requirement: ", node.domain);
         return Replace(graph, *winning_pattern, winning_match, recipe, producers, added);
       };
+      InlinedVector<NodeIndex> removed;
+      if (region)
+        for (const Node* node : winning_match.nodes) removed.push_back(node->Index());
       auto status = replace();
       if (!status.IsOK()) {
         report(winner, root->Index(), FailureStage::Replacement, status.ErrorMessage());
         return status;
+      }
+      if (region) {
+        for (auto index : removed) region->erase(index);
+        region->insert(added.begin(), added.end());
       }
       ++statistics.rewrites;
       affected.insert(affected.end(), added.begin(), added.end());
@@ -2755,7 +2785,7 @@ Status PatternRewriter::Run(Graph& graph, Statistics& statistics) const {
           if (!seen.insert(index).second) continue;
           const Node* node = graph.GetNode(index);
           if (!node) continue;
-          if (queued.insert(index).second) next_worklist.push_back(index);
+          if ((!region || region->count(index)) && queued.insert(index).second) next_worklist.push_back(index);
           for (auto it = node->OutputEdgesBegin(); it != node->OutputEdgesEnd(); ++it) {
             next.push_back(it->GetNode().Index());
           }

@@ -68,21 +68,6 @@ template <>
 Status ApplyTemplate<"math/subgroup_matrix_matmul.wgsl.template">(ShaderHelper& shader_helper, TemplateParameter<"math/subgroup_matrix_matmul.wgsl.template">::type params);
 
 //
-// Template: math/subgroup_matrix_matmul_pad_b.wgsl.template
-//
-
-template <>
-struct TemplateParameter<"math/subgroup_matrix_matmul_pad_b.wgsl.template"> {
-  using type = struct {
-    const ShaderVariableHelper* var_input_b;
-    const ShaderVariableHelper* var_output;
-  };
-};
-
-template <>
-Status ApplyTemplate<"math/subgroup_matrix_matmul_pad_b.wgsl.template">(ShaderHelper& shader_helper, TemplateParameter<"math/subgroup_matrix_matmul_pad_b.wgsl.template">::type params);
-
-//
 // Template: nn/conv_transpose3d.wgsl.template
 //
 
@@ -125,6 +110,28 @@ struct TemplateParameter<"nn/im2col_matmul.wgsl.template"> {
 
 template <>
 Status ApplyTemplate<"nn/im2col_matmul.wgsl.template">(ShaderHelper& shader_helper, TemplateParameter<"nn/im2col_matmul.wgsl.template">::type params);
+
+//
+// Template: nn/subgroup_matrix_conv_8x16x16.wgsl.template
+//
+
+template <>
+struct TemplateParameter<"nn/subgroup_matrix_conv_8x16x16.wgsl.template"> {
+  using type = struct {
+    int param_b_is_hwio;
+    int param_sg_mat_count_m;
+    int param_sg_mat_count_n;
+    int param_sg_mat_k;
+    int param_sg_mat_m;
+    int param_sg_mat_n;
+    int param_split_k;
+    int param_vec_size;
+    const ShaderVariableHelper* var_input_src;
+  };
+};
+
+template <>
+Status ApplyTemplate<"nn/subgroup_matrix_conv_8x16x16.wgsl.template">(ShaderHelper& shader_helper, TemplateParameter<"nn/subgroup_matrix_conv_8x16x16.wgsl.template">::type params);
 
 //
 // Template: tensor/oihw_to_ohwi.wgsl.template
