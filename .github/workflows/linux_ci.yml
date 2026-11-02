@@ -64,7 +64,7 @@ jobs:
       dockerfile_path: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cpu
       docker_image_repo: onnxruntimecpubuildpythonx64
       extra_build_flags: '--use_binskim_compliant_compile_flags --build_wheel --build_nuget --enable_transformers_tool_test --cmake_extra_defines onnxruntime_BUILD_BENCHMARKS=ON onnxruntime_RUN_MLAS_TESTS=ON'
-      python_path_prefix: 'PATH=/opt/python/cp310-cp310/bin:$PATH' # $ needs escaping in single quotes
+      python_path_prefix: 'PATH=/opt/python/cp311-cp311/bin:$PATH' # $ needs escaping in single quotes
       run_go_tests: true
       job_identifier: build-linux-x64-release
     secrets:
@@ -99,7 +99,7 @@ jobs:
       dockerfile_path: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cpu
       docker_image_repo: onnxruntimecpubuildpythonx64 # Shares image with standard x64 release
       extra_build_flags: '--enable_training --use_binskim_compliant_compile_flags --build_wheel --build_nuget --enable_transformers_tool_test --cmake_extra_defines onnxruntime_BUILD_BENCHMARKS=ON'
-      python_path_prefix: 'PATH=/opt/python/cp310-cp310/bin:$PATH' # $ needs escaping in single quotes
+      python_path_prefix: 'PATH=/opt/python/cp311-cp311/bin:$PATH' # $ needs escaping in single quotes
       job_identifier: orttraining-linux-ci-pipeline
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

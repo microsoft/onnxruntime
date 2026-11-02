@@ -250,11 +250,9 @@ Per-session typed options are already a superset of JSEP's, confirmed by source 
    covering the `.jsep.wasm` → `.asyncify.wasm` filename change, `/jsep` pinning, and the int64 `extra` opt-in.
    This is the first user-facing announcement; capture the JSEP usage baseline (§11) before it ships.
 
-**Release gate.** The flip is gated on both: (a) a **blocking** CI job running the native WebGPU EP — the current
-native-WebGPU-EP legs are advisory (`continue-on-error` in `windows-web-ci-workflow.yml`, `continueOnError` in
-`win-web-ci.yml`) and must be promoted to blocking. The default `.` bundle and `./webgpu` are the same build, so a
-green `/webgpu` run covers the flip only if it exercises proxy/IO-binding/WebNN — which the current op-parity leg
-does not; and (b) the §8 items resolved with targeted coverage (op-parity tests don't exercise those paths).
+**Release gate.** Before switching the default to the native WebGPU EP, resolve the §8 gaps and add blocking CI
+coverage for proxy mode, GPU IO-binding, and WebNN initialization. Passing the existing operator tests alone is
+insufficient.
 
 ---
 

@@ -185,8 +185,8 @@ TEST(MathOpTest, MatMulPackedScalarFp16LongReductionUsesFloat32Accumulator) {
 }
 
 // f16 MatMul cases that exercise the 8x16x16 and 16x16x16 subgroup-matrix impl.
-// The host picks the tile shape adaptively (TileM in {8,16,32,64}, TileN in
-// {16,32,64}); M and N may be any size and K must be a multiple of 16. When the
+// The host picks the tile shape adaptively (TileM in {8,16,32,64,128}, TileN in
+// {16,32,64,128}); M and N may be any size and K must be a multiple of 16. When the
 // output has few tiles and K is large, the host also splits K across multiple
 // cooperating subgroups (split_k in {1,2,4,8}) that reduce in shared memory. B
 // is a constant initializer except in the last case. On hardware that reports
@@ -296,6 +296,10 @@ TEST(MathOpTest, MatMulSubgroupMatrix) {
       {"UnalignedN44 PartialM (M=40,N=44)", {40, 128}, 128, 44},
       // Odd N and partial M past 64 so the default tiling takes its 64x64 tile on padded B.
       {"OddN LargeTile (M=72,N=67)", {72, 96}, 96, 67},
+      // Staged tilings cover partial tiles and a partial final K slice.
+      {"Staged PartialMN KTail (M=100,N=196,K=80)", {100, 80}, 80, 196},
+      {"Staged PartialMN KTail (M=520,N=8196,K=48)", {520, 48}, 48, 8196},
+      {"Staged SmallM (M=40,N=8192)", {40, 64}, 64, 8192},
   };
 
   for (const auto& c : cases) {
@@ -303,8 +307,8 @@ TEST(MathOpTest, MatMulSubgroupMatrix) {
     RunSubgroupMatrixMatMulTest(c.a_dims, c.K, c.N);
   }
 
-  // B is a runtime input here so its padded copy could not be cached and the
-  // 16x16x16 config falls back to the default impl for this width.
+  // B is a runtime input here so its padded copy could not be cached and without
+  // a staged tiling the 16x16x16 config falls back to the default impl for this width.
   SCOPED_TRACE("RuntimeB UnalignedN36 (N=36)");
   RunSubgroupMatrixMatMulTest({64, 128}, 128, 36, /*b_is_initializer=*/false);
 }

@@ -58,11 +58,11 @@ Status LaunchHyperConnectionLowRankMixFused(const cudaDeviceProp& device_prop, c
                                             float* scratch, bool weights_are_constant = false);
 
 // General path built from cuBLAS GEMMs and elementwise kernels. Scratch buffers (in elements of T):
-// hn [rows, C * H], down [rows, R], up [rows, C * H], inject [rows, C].
+// hn [rows, C * H], down [rows, R], up [rows, C * H].
 template <typename T>
 Status LaunchHyperConnectionLowRankMixUnfused(cublasHandle_t cublas, cudaStream_t stream,
                                               const HyperConnectionLowRankMixConfig& config,
                                               const HyperConnectionLowRankMixTensors<T>& tensors,
-                                              T* hn, T* down, T* up, T* inject);
+                                              T* hn, T* down, T* up);
 
 }  // namespace onnxruntime::contrib::cuda

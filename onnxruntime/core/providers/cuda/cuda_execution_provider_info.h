@@ -48,7 +48,15 @@ struct TunableOpInfo {
 
 struct CUDAExecutionProviderInfo {
   OrtDevice::DeviceId device_id{0};
-  size_t gpu_mem_limit{std::numeric_limits<size_t>::max()};                         // Will be over-ridden by contents of `default_memory_arena_cfg` (if specified)
+  size_t gpu_mem_limit{std::numeric_limits<size_t>::max()};  // Will be over-ridden by contents of `default_memory_arena_cfg` (if specified)
+
+  // Per-session limit, in bytes, on device memory allocated through the session's CUDA allocators (BFC arena growth,
+  // MoE offload buffers, ...). 0 means no limit. Unlike `gpu_mem_limit`, which only caps the size of the BFC arena,
+  // an allocation that would exceed this limit fails. Not supported with external CUDA allocators or CUDA memory pools.
+  // This is not a provider option and is not part of OrtCUDAProviderOptionsV2: CUDAProviderFactory::CreateProvider
+  // fills it from the session config entry session.moe.offload.gpu_device_mem_limit.
+  size_t gpu_device_mem_limit{0};
+
   ArenaExtendStrategy arena_extend_strategy{ArenaExtendStrategy::kNextPowerOfTwo};  // Will be over-ridden by contents of `default_memory_arena_cfg` (if specified)
   OrtCudnnConvAlgoSearch cudnn_conv_algo_search{OrtCudnnConvAlgoSearchExhaustive};
   bool do_copy_in_default_stream{true};
@@ -66,6 +74,7 @@ struct CUDAExecutionProviderInfo {
   bool cudnn_conv_use_max_workspace{true};
 
   bool enable_cuda_graph{false};
+  int min_num_runs_before_cuda_graph_capture{2};
 
   // By default, for Conv1D, will pad [N,C,D] to [N,C,D,1], if turn on, will pad to [N,C,1,D].
   bool cudnn_conv1d_pad_to_nc1d{false};
@@ -118,6 +127,8 @@ struct std::hash<::onnxruntime::CUDAExecutionProviderInfo> {
     onnxruntime::HashCombine(data, value);
 
     onnxruntime::HashCombine(info.gpu_mem_limit, value);
+    onnxruntime::HashCombine(info.gpu_device_mem_limit, value);
+    onnxruntime::HashCombine(info.min_num_runs_before_cuda_graph_capture, value);
     onnxruntime::HashCombine(info.tunable_op.max_tuning_duration_ms, value);
     onnxruntime::HashCombine(info.sdpa_kernel, value);
     onnxruntime::HashCombine(info.enable_cudnn, value);

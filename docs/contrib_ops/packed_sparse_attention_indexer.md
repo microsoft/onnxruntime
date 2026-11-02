@@ -1,5 +1,44 @@
 # PackedSparseAttentionIndexer — Operator Documentation
 
+## CUDA QSA dispatch switches
+
+Two process-level environment variables select alternate CUDA QSA kernels. Each value is read once
+per process on the first eligible call and cached, so set them before the first operator invocation.
+None changes schemas, cache layouts, causal visibility, stable tie ordering, selected counts or
+state-update semantics. The companion `DynamicSparseAttention` switches are documented in
+[cuda/dynamic_sparse_attention.md](cuda/dynamic_sparse_attention.md).
+
+Hierarchical QSA TopK is eligible when `1 <= total_tokens <= 64`, `state_capacity >= 2048`,
+`head_size == 128`, `compress_ratio == 4`, `num_heads == 4` and `32 < block_topk <= 512`. Ragged QSA
+prefill is eligible when `total_tokens > 64`, `head_size == 128`, `compress_ratio == 4` and
+`num_heads == 4`. Other geometries never read these switches.
+
+| Variable | Default | Applies to | Value | Kernels selected |
+|---|---|---|---|---|
+| `ORT_PACKED_SPARSE_INDEXER_COMPACT_TOPK` | `1` (only `0`/`1` accepted) | hierarchical QSA TopK | `1` | Compacts each 2048-key chunk to 512 keys (`QsaCompactTileTopKKernel`). Up to five chunks use the fused `QsaFinalMergeAndEmitKernel`; more chunks use pairwise `QsaMergeTileTopKKernel` followed by `QsaEmitHierarchicalTopKKernel`. |
+| | | | `0` | Tile-level merge: `QsaMergeTwoLevelsTopKKernel` (4-way) while two levels remain, then `QsaMergeTileTopKKernel`, then `QsaEmitHierarchicalTopKKernel`. |
+| `ORT_PACKED_SPARSE_INDEXER_WARP_HEADS` | `1` (boolean) | ragged QSA prefill | `1` | `QsaRaggedPrefillScoreKernel<..., true>`: one warp per state block keeps all four heads (256 threads per CTA). |
+| | | | `0` | `QsaRaggedPrefillScoreKernel<...>` with one warp per (state block, head) and CTA-wide barriers (1024 threads per CTA). |
+
+The packed-QSA tests re-run the hierarchical, stable-tie, partial-merge-group
+and ragged-prefill cases in fresh processes for every non-default mode
+(`COMPACT_TOPK=0`, `WARP_HEADS=0`; `QsaAlternateTopKModesInFreshProcess`).
+
+### Benchmark
+
+rc3 model (INT4), H200, clean machine, 5 repetitions, baseline noise about +-0.03 ms. DFlash2 S=8
+decode is ms/cycle at context 2K/8K/32K; TTFT is at 2K/8K/32K prompt. Defaults are fastest, so
+both switches default to the fast path and remain as fallbacks:
+
+| Setting | Result vs default |
+|---|---|
+| `ORT_PACKED_SPARSE_INDEXER_COMPACT_TOPK=0` | decode about +0.2 to +0.27 ms (+1.5%) slower |
+| `ORT_PACKED_SPARSE_INDEXER_WARP_HEADS=0` | TTFT +3.7% at 8K, +14% at 32K |
+
+A live-key radix selection alternative was benchmarked (default 14.93/15.07/15.30 ms versus
+15.08/15.22/15.64 ms with it, i.e. +0.15 to +0.34 ms slower) and removed. Qualify accuracy and
+performance on the target runtime, hardware and workload before changing a default.
+
 This document describes the `com.microsoft::PackedSparseAttentionIndexer` contrib operator: the
 packed/variable-length counterpart of `com.microsoft::SparseAttentionIndexer`, built for
 continuous-batching (paged) inference engines such as an OgaEngine-style `PagedAttention` model.
@@ -71,8 +110,8 @@ later slot keeps its fixed index.
 | 8 | `gate` | `(total_tokens, 2*head_size)` | T | csa only |
 | 9 | `position_bias` | `(compress_ratio, 2*head_size)` | T | csa only |
 | 10 | `head_weights` | `(total_tokens, num_heads)` | T | csa only |
-| 11 | `position_ids` | `(total_tokens)` | int64 | omitted qsa / required csa |
-| 12 | `past_key_state` | `(batch_size, state_capacity, head_size)` | T | both (generic) |
+| 11 | `position_ids` | `(total_tokens)` | int64 | csa only |
+| 12 | `past_key_state` | `(batch_size, state_capacity, head_size)` | T_KEY | both (generic) |
 | 13 | `past_kv_buffer` | `(batch_size, 2*compress_ratio-1, width)` | T | both (generic) |
 | 14 | `past_gate_buffer` | same shape as `past_kv_buffer` | T | csa only |
 | 15 | `past_state_lengths` | `(batch_size, 2)` | int32, device-resident | both (generic) |
@@ -86,12 +125,16 @@ empty output name for `qsa`; `state_update` is declared only when QSA capture is
 |---|---|---|---|---|
 | 0 | `selected_indices` | `(total_tokens, capacity)` | int32 | both |
 | 1 | `selected_counts` | `(total_tokens)` | int32 | both |
-| 2 | `present_key_state` | same shape as `past_key_state` | T | both |
+| 2 | `present_key_state` | same shape as `past_key_state` | T_KEY | both |
 | 3 | `present_kv_buffer` | same shape as `past_kv_buffer` | T | both |
 | 4 | `present_gate_buffer` | same shape as `past_gate_buffer` | T | csa only |
 | 5 | `present_state_lengths` | same shape as `past_state_lengths` | int32 | both |
 | 6 | `state_update` | `(batch_size, state_update_capacity, head_size)` | T | qsa capture only |
+| 7 | `index_share_status` | `(total_tokens)` | int32 | index sharing |
 | 8 | `state_status` | `(batch_size)` | int32 | optional, CUDA only |
+
+CUDA supports `T_KEY = T` and, for QSA only, BF16 activations with FP32 key state.
+The pending buffers and captured state updates remain in the activation type.
 
 `capacity` is `token_budget + compress_ratio - 1` for `qsa` and `index_topk` for `csa`, exactly the
 same formula (`SelectedCapacity`) used by `SparseAttentionIndexer`.
@@ -208,9 +251,7 @@ dense `qsa` policy but against fixed-capacity state instead of a growing cache:
 `past_sequence_lengths[b] + local_offset` — i.e. the request's own absolute token position, which
 is exactly what a per-request main paged KV cache is addressed by. The output is therefore directly
 consumable by `SparsePagedAttention` configured with `attention_mode="selected_only"`,
-`selected_kv_source="main"`. `position_ids` must be omitted for `qsa`; allowing an unrelated
-absolute-position space would make these cache indices ambiguous and would rotate queries
-inconsistently with prepared block keys.
+`selected_kv_source="main"`.
 
 ## 6. Policy `csa`
 
@@ -228,7 +269,7 @@ mapping are packed:
    rejects (caps) new windows beyond `state_capacity` as described in [§3](#3-generic-state-shared-by-both-policies).
 2. **Score** (one launch per query token, per compressed entry): every entry is scored with
    `sum_h w_h * ReLU(q_h . k)` and masked by the causal threshold from `position_ids` (required for
-   `csa`; `qsa` always derives request-local logical positions from `past_sequence_lengths`).
+   `csa`; must be omitted for `qsa`).
 3. **Select** (one launch per query token): keeps the `index_topk` highest scoring, causally
    visible entries and writes the exact active count to `selected_counts`.
 
@@ -293,6 +334,9 @@ mechanics with no packed equivalent):
   the shared-memory TopK path for up to 32 selected blocks, bounded partial TopK for 33–512 blocks,
   and a hierarchical TopK path for common long-context Qwen shapes. Values above 512 that do not
   match the hierarchical specialization retain the correctness-first repeated-scan fallback.
+- The CUDA dispatch switches `ORT_PACKED_SPARSE_INDEXER_COMPACT_TOPK`
+  and `ORT_PACKED_SPARSE_INDEXER_WARP_HEADS` are described in
+  the "CUDA QSA dispatch switches" section at the top of this document.
 - OgaEngine / Model Builder integration (declaring `past_key_state` etc. as Engine-managed,
   per-request fixed-size state, analogous to a paged auxiliary cache) is out of scope for this
   operator definition and is expected in a follow-up to `microsoft/onnxruntime-genai`.

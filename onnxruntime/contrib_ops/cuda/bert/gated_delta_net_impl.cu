@@ -42,6 +42,7 @@
 #include <cuda_bf16.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <mutex>
 #include <type_traits>
 
@@ -49,6 +50,10 @@
 #include "contrib_ops/cuda/bert/gated_delta_net_mma.cuh"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
+
+// Include env_var_utils.h after cuda_common.h: the latter transitively pulls in provider_api.h,
+// which defines SHARED_PROVIDER and suppresses env_var_utils.h's own logging.h include.
+#include "core/platform/env_var_utils.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -58,6 +63,12 @@ namespace gated_delta_net {
 namespace {
 
 constexpr int kDVB = 64;  // v columns owned by one CTA in the chunked engine
+
+// Tensors handed to the kernels may start at any element offset inside an allocation, so the
+// 16-byte vector accesses are only legal when the base pointer itself is 16-byte aligned.
+__device__ __forceinline__ bool IsAligned16(const void* ptr) {
+  return (reinterpret_cast<uintptr_t>(ptr) & 15u) == 0;
+}
 
 template <typename T>
 __device__ __forceinline__ int CaptureCount(const VariantPack<T>& pack, const KernelParams& p,
@@ -171,6 +182,43 @@ __device__ __forceinline__ ChunkedSmem<T, DK, BT> CarveChunked(char* raw) {
   return s;
 }
 
+// Writes the scaled [BT x kDVB] fp32 scratch tile to the output tensor. The 16-byte stores need a
+// 16-byte aligned output base pointer (the tensor may start mid-allocation), else go element-wise.
+template <typename T, int DK, int DV, int BT>
+__device__ __forceinline__ void StoreChunkOutput(
+    const VariantPack<T>& pack, const KernelParams& p, const float* t_f, int64_t tok_base,
+    int chunk0, int len, int hv, int v0, int64_t v_stride, int tid) {
+  using L = Ld<DK, BT>;
+  constexpr bool kVecOut = sizeof(T) == 2 && (DV % 8) == 0 && (kDVB % 8) == 0;
+  const bool vec_out = kVecOut && IsAligned16(pack.output);
+  if constexpr (kVecOut) {
+    if (vec_out) {
+      for (int vec = tid; vec < BT * (kDVB / 8); vec += kChunkedThreads) {
+        const int t = vec / (kDVB / 8), c = (vec % (kDVB / 8)) * 8;
+        if (t < len) {
+          const int64_t tok = tok_base + chunk0 + t;
+          const float* tf_row = t_f + t * L::kVf + c;
+          uint4 out4;
+          out4.x = PackHalf2(FloatToElem<T>(p.scale * tf_row[0]), FloatToElem<T>(p.scale * tf_row[1]));
+          out4.y = PackHalf2(FloatToElem<T>(p.scale * tf_row[2]), FloatToElem<T>(p.scale * tf_row[3]));
+          out4.z = PackHalf2(FloatToElem<T>(p.scale * tf_row[4]), FloatToElem<T>(p.scale * tf_row[5]));
+          out4.w = PackHalf2(FloatToElem<T>(p.scale * tf_row[6]), FloatToElem<T>(p.scale * tf_row[7]));
+          *reinterpret_cast<uint4*>(pack.output + tok * v_stride + hv * DV + v0 + c) = out4;
+        }
+      }
+    }
+  }
+  if (!vec_out) {
+    for (int idx = tid; idx < BT * kDVB; idx += kChunkedThreads) {
+      const int t = idx / kDVB, c = idx % kDVB;
+      if (t < len) {
+        const int64_t tok = tok_base + chunk0 + t;
+        pack.output[tok * v_stride + hv * DV + v0 + c] = FloatToElem<T>(p.scale * t_f[t * L::kVf + c]);
+      }
+    }
+  }
+}
+
 template <typename T, typename MT, bool kExactFp32StateAndU, int DK, int DV, int BT>
 __device__ __forceinline__ void RunChunkedStep(
     char* smem_raw, const VariantPack<T>& pack, const KernelParams& p, int64_t tok_base,
@@ -183,9 +231,12 @@ __device__ __forceinline__ void RunChunkedStep(
   T* v_in = reinterpret_cast<T*>(s.v_h);
 
   if constexpr (!kExactFp32StateAndU) {
-    for (int idx = tid; idx < DK * kDVB; idx += kChunkedThreads) {
-      const int r = idx / kDVB, c = idx % kDVB;
-      s.s_h[r * L::kVh + c] = FloatToElem<MT>(s.s_f[r * L::kVf + c]);
+    for (int pair_idx = tid; pair_idx < (DK * kDVB) / 2; pair_idx += kChunkedThreads) {
+      const int r = pair_idx / (kDVB / 2);
+      const int c = (pair_idx % (kDVB / 2)) * 2;
+      const float2 sf2 = *reinterpret_cast<const float2*>(s.s_f + r * L::kVf + c);
+      *reinterpret_cast<uint32_t*>(s.s_h + r * L::kVh + c) =
+          PackHalf2(FloatToElem<MT>(sf2.x), FloatToElem<MT>(sf2.y));
     }
   }
   if constexpr (!std::is_same_v<T, MT>) {
@@ -205,10 +256,16 @@ __device__ __forceinline__ void RunChunkedStep(
   if (p.qk_l2_norm) {
     // One warp per token row; DK=128 so each lane holds four elements.
     for (int t = warp_id; t < BT; t += kChunkedWarps) {
+      float qv_reg[DK / 32];
+      float kv_reg[DK / 32];
       float sq = 0.0f, sk = 0.0f;
-      for (int d = lane; d < DK; d += 32) {
+#pragma unroll
+      for (int i = 0; i < DK / 32; ++i) {
+        const int d = lane + i * 32;
         const float qv = ElemToFloat(q_in[t * L::kKh + d]);
         const float kv = ElemToFloat(k_in[t * L::kKh + d]);
+        qv_reg[i] = qv;
+        kv_reg[i] = kv;
         sq += qv * qv;
         sk += kv * kv;
       }
@@ -218,15 +275,14 @@ __device__ __forceinline__ void RunChunkedStep(
         sk += __shfl_xor_sync(0xffffffff, sk, off);
       }
       const float rq = rsqrtf(sq + 1e-12f), rk = rsqrtf(sk + 1e-12f);
-      for (int d = lane; d < DK; d += 32) {
-        const float qv = ElemToFloat(q_in[t * L::kKh + d]);
-        const float kv = ElemToFloat(k_in[t * L::kKh + d]);
-        s.q_h[t * L::kKh + d] = FloatToElem<MT>(qv * rq);
-        s.k_h[t * L::kKh + d] = FloatToElem<MT>(kv * rk);
+#pragma unroll
+      for (int i = 0; i < DK / 32; ++i) {
+        const int d = lane + i * 32;
+        s.q_h[t * L::kKh + d] = FloatToElem<MT>(qv_reg[i] * rq);
+        s.k_h[t * L::kKh + d] = FloatToElem<MT>(kv_reg[i] * rk);
       }
     }
   }
-  __syncthreads();
 
   InclusiveScanBT<BT>(s.gc, tid);
   __syncthreads();
@@ -284,14 +340,7 @@ __device__ __forceinline__ void RunChunkedStep(
     SmemGemmFp32State<BT, kDVB, DK, true>(s.t_f, L::kVf, s.q_h, L::kKh, s.s_f, L::kVf, s.s_h,
                                           L::kVh, warp_id, lane, tid);
     __syncthreads();
-    for (int idx = tid; idx < BT * kDVB; idx += kChunkedThreads) {
-      const int t = idx / kDVB, c = idx % kDVB;
-      if (t < len) {
-        const int64_t tok = tok_base + chunk0 + t;
-        pack.output[tok * v_stride + hv * DV + v0 + c] =
-            FloatToElem<T>(p.scale * s.t_f[t * L::kVf + c]);
-      }
-    }
+    StoreChunkOutput<T, DK, DV, BT>(pack, p, s.t_f, tok_base, chunk0, len, hv, v0, v_stride, tid);
 
     const float decay_all = __expf(g_total);
     for (int idx = tid; idx < DK * kDVB; idx += kChunkedThreads) {
@@ -305,20 +354,24 @@ __device__ __forceinline__ void RunChunkedStep(
     SmemGemm<BT, kDVB, DK, false, false, false>(s.t_f, L::kVf, s.k_h, L::kKh, s.s_h, L::kVh,
                                                 warp_id, lane);
     __syncthreads();
-    for (int idx = tid; idx < BT * kDVB; idx += kChunkedThreads) {
-      const int t = idx / kDVB, c = idx % kDVB;
-      const float vv = ElemToFloat(s.v_h[t * L::kVh + c]);
-      const float r = needs_retrieval ? vv - __expf(s.gc[t]) * s.t_f[t * L::kVf + c] : vv;
-      s.u_h[t * L::kVh + c] = FloatToElem<MT>(s.beta[t] * r);
+    for (int pair_idx = tid; pair_idx < (BT * kDVB) / 2; pair_idx += kChunkedThreads) {
+      const int t = pair_idx / (kDVB / 2);
+      const int c = (pair_idx % (kDVB / 2)) * 2;
+      const uint32_t vv2 = *reinterpret_cast<const uint32_t*>(s.v_h + t * L::kVh + c);
+      const MT* vv_elems = reinterpret_cast<const MT*>(&vv2);
+      const float vv0 = ElemToFloat(vv_elems[0]);
+      const float vv1 = ElemToFloat(vv_elems[1]);
+      const float2 tf2 = *reinterpret_cast<const float2*>(s.t_f + t * L::kVf + c);
+      const float exp_gc = needs_retrieval ? __expf(s.gc[t]) : 0.0f;
+      const float beta_t = s.beta[t];
+      const float r0 = needs_retrieval ? vv0 - exp_gc * tf2.x : vv0;
+      const float r1 = needs_retrieval ? vv1 - exp_gc * tf2.y : vv1;
+      *reinterpret_cast<uint32_t*>(s.u_h + t * L::kVh + c) =
+          PackHalf2(FloatToElem<MT>(beta_t * r0), FloatToElem<MT>(beta_t * r1));
     }
     __syncthreads();
-    SmemGemm<BT, kDVB, BT, false, false, false>(s.t_f, L::kVf, s.ti_h, L::kMh, s.u_h, L::kVh,
-                                                warp_id, lane);
-    __syncthreads();
-    for (int idx = tid; idx < BT * kDVB; idx += kChunkedThreads) {
-      const int t = idx / kDVB, c = idx % kDVB;
-      s.u_h[t * L::kVh + c] = FloatToElem<MT>(s.t_f[t * L::kVf + c]);
-    }
+    SmemGemm<BT, kDVB, BT, false, false, false, MT, kChunkedWarps, MT, /*SyncBeforeStore=*/true>(
+        s.u_h, L::kVh, s.ti_h, L::kMh, s.u_h, L::kVh, warp_id, lane);
     __syncthreads();
 
     SmemGemm<BT, BT, DK, false, true, false>(s.t_f, L::kVf, s.q_h, L::kKh, s.k_h, L::kKh, warp_id,
@@ -329,10 +382,20 @@ __device__ __forceinline__ void RunChunkedStep(
       s.m_h[t * L::kMh + sc] = FloatToElem<MT>(
           (sc <= t && t < len) ? s.t_f[t * L::kVf + sc] * __expf(s.gc[t] - s.gc[sc]) : 0.0f);
     }
-    for (int idx = tid; idx < BT * DK; idx += kChunkedThreads) {
-      const int t = idx / DK, d = idx % DK;
-      s.k_h[t * L::kKh + d] = ScaleElem(s.k_h[t * L::kKh + d], __expf(g_total - s.gc[t]));
-      s.q_h[t * L::kKh + d] = ScaleElem(s.q_h[t * L::kKh + d], __expf(s.gc[t]));
+    for (int pair_idx = tid; pair_idx < (BT * DK) / 2; pair_idx += kChunkedThreads) {
+      const int t = pair_idx / (DK / 2);
+      const int d = (pair_idx % (DK / 2)) * 2;
+      const float gc_t = s.gc[t];
+      const float sk = __expf(g_total - gc_t);
+      const float sq = __expf(gc_t);
+      const uint32_t kh2 = *reinterpret_cast<const uint32_t*>(s.k_h + t * L::kKh + d);
+      const uint32_t qh2 = *reinterpret_cast<const uint32_t*>(s.q_h + t * L::kKh + d);
+      const MT* kh_e = reinterpret_cast<const MT*>(&kh2);
+      const MT* qh_e = reinterpret_cast<const MT*>(&qh2);
+      *reinterpret_cast<uint32_t*>(s.k_h + t * L::kKh + d) =
+          PackHalf2(ScaleElem(kh_e[0], sk), ScaleElem(kh_e[1], sk));
+      *reinterpret_cast<uint32_t*>(s.q_h + t * L::kKh + d) =
+          PackHalf2(ScaleElem(qh_e[0], sq), ScaleElem(qh_e[1], sq));
     }
     __syncthreads();
 
@@ -342,22 +405,10 @@ __device__ __forceinline__ void RunChunkedStep(
     SmemGemm<BT, kDVB, DK, false, false, true>(s.t_f, L::kVf, s.q_h, L::kKh, s.s_h, L::kVh,
                                                warp_id, lane);
     __syncthreads();
-    for (int idx = tid; idx < BT * kDVB; idx += kChunkedThreads) {
-      const int t = idx / kDVB, c = idx % kDVB;
-      if (t < len) {
-        const int64_t tok = tok_base + chunk0 + t;
-        pack.output[tok * v_stride + hv * DV + v0 + c] =
-            FloatToElem<T>(p.scale * s.t_f[t * L::kVf + c]);
-      }
-    }
+    StoreChunkOutput<T, DK, DV, BT>(pack, p, s.t_f, tok_base, chunk0, len, hv, v0, v_stride, tid);
 
-    const float decay_all = __expf(g_total);
-    for (int idx = tid; idx < DK * kDVB; idx += kChunkedThreads) {
-      s.s_f[(idx / kDVB) * L::kVf + idx % kDVB] *= decay_all;
-    }
-    __syncthreads();
     SmemGemm<DK, kDVB, BT, true, false, true>(s.s_f, L::kVf, s.k_h, L::kKh, s.u_h, L::kVh,
-                                              warp_id, lane);
+                                              warp_id, lane, __expf(g_total));
     __syncthreads();
   }
 }
@@ -375,12 +426,13 @@ __device__ __noinline__ void RunChunkedStepExactBf16Fallback(
 // ---------------------------------------------------------------------------
 // Chunked engine
 // ---------------------------------------------------------------------------
-template <typename T, int DK, int DV, int BT,
+template <typename T, int DK, int DV, int BT, bool InputTypeGates,
           Bf16Precision kBf16Prec = Bf16Precision::kFp32>
 __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetChunkedKernel(
     VariantPack<T> pack, KernelParams p) {
   using L = Ld<DK, BT>;
-  extern __shared__ char smem_raw[];
+  // ldmatrix and the uint4/float2 shared-memory accesses need a 16-byte aligned base.
+  extern __shared__ __align__(16) char smem_raw[];
   const ChunkedSmem<T, DK, BT> s = CarveChunked<T, DK, BT>(smem_raw);
 
   const int b = blockIdx.x, hv = blockIdx.y, v0 = blockIdx.z * kDVB;
@@ -405,6 +457,15 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetChunkedKernel(
   const bool needs_retrieval =
       p.update_rule == UpdateRule::kDelta || p.update_rule == UpdateRule::kGatedDelta;
 
+  constexpr bool kCheckFp16 =
+      std::is_same_v<T, __nv_bfloat16> && kBf16Prec == Bf16Precision::kFp16;
+  // The uint4 global loads need 16-byte aligned base pointers; a valid tensor may start at any
+  // 2-byte offset inside an allocation, so fall back to the scalar loads when it does not.
+  constexpr bool kVecIo =
+      !kCheckFp16 && sizeof(T) == 2 && (DK % 8) == 0 && (DV % 8) == 0 && (kDVB % 8) == 0;
+  const bool vec_in =
+      kVecIo && IsAligned16(pack.key) && IsAligned16(pack.query) && IsAligned16(pack.value);
+
   for (int idx = tid; idx < DK * kDVB; idx += kChunkedThreads) {
     const int r = idx / kDVB, c = idx % kDVB;
     s.s_f[r * L::kVf + c] =
@@ -418,8 +479,6 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetChunkedKernel(
     const int len = min(BT, seq_len - chunk0);
     // Safe FP16 range check in registers during the single global->shared load pass:
     // fall back when conservative FP16 operand and intermediate-product bounds are exceeded.
-    constexpr bool kCheckFp16 =
-        std::is_same_v<T, __nv_bfloat16> && kBf16Prec == Bf16Precision::kFp16;
     bool thread_out_of_fp16 = kCheckFp16 && (fabsf(p.scale) > 16.0f);
     if constexpr (kCheckFp16) {
       int thread_s_max = 0, s_flags = 0;
@@ -439,37 +498,62 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetChunkedKernel(
                            : needs_retrieval ? __float_as_int(1.0f / sqrtf(static_cast<float>(DK)))
                                              : 0x41000000;
     const int max_q_bits = p.qk_l2_norm ? 0x46000000 : 0x41000000;
-    int thread_q_max = 0, thread_k_max = 0;
-    for (int idx = tid; idx < BT * DK; idx += kChunkedThreads) {
-      const int t = idx / DK, d = idx % DK;
-      const int64_t tok = tok_base + chunk0 + t;
-      const T kv = (t < len) ? pack.key[tok * k_stride + hk * DK + d] : FloatToElem<T>(0.f);
-      const T qv = (t < len) ? pack.query[tok * q_stride + hq * DK + d] : FloatToElem<T>(0.f);
-      s.k_h[t * L::kKh + d] = kv;
-      s.q_h[t * L::kKh + d] = qv;
-      if constexpr (kCheckFp16) {
-        if (t < len) {
-          thread_k_max = max(thread_k_max, __float_as_int(fabsf(ElemToFloat(kv))));
-          thread_q_max = max(thread_q_max, __float_as_int(fabsf(ElemToFloat(qv))));
+    int thread_q_max = 0, thread_k_max = 0, thread_v_max = 0;
+    if constexpr (kVecIo) {
+      if (vec_in) {
+        for (int vec = tid; vec < BT * (DK / 8); vec += kChunkedThreads) {
+          const int t = vec / (DK / 8), d = (vec % (DK / 8)) * 8;
+          const int64_t tok = tok_base + chunk0 + t;
+          const uint4 kv4 = (t < len)
+                                ? *reinterpret_cast<const uint4*>(pack.key + tok * k_stride + hk * DK + d)
+                                : make_uint4(0u, 0u, 0u, 0u);
+          const uint4 qv4 = (t < len)
+                                ? *reinterpret_cast<const uint4*>(pack.query + tok * q_stride + hq * DK + d)
+                                : make_uint4(0u, 0u, 0u, 0u);
+          *reinterpret_cast<uint4*>(s.k_h + t * L::kKh + d) = kv4;
+          *reinterpret_cast<uint4*>(s.q_h + t * L::kKh + d) = qv4;
+        }
+        for (int vec = tid; vec < BT * (kDVB / 8); vec += kChunkedThreads) {
+          const int t = vec / (kDVB / 8), d = (vec % (kDVB / 8)) * 8;
+          const int64_t tok = tok_base + chunk0 + t;
+          const uint4 vv4 = (t < len)
+                                ? *reinterpret_cast<const uint4*>(pack.value + tok * v_stride + hv * DV + v0 + d)
+                                : make_uint4(0u, 0u, 0u, 0u);
+          *reinterpret_cast<uint4*>(s.v_h + t * L::kVh + d) = vv4;
         }
       }
     }
-    if constexpr (kCheckFp16) {
-      if (thread_k_max > max_k_bits || thread_q_max > max_q_bits ||
-          (!p.qk_l2_norm && ((thread_k_max != 0 && thread_k_max < 0x38800000) ||
-                             (thread_q_max != 0 && thread_q_max < 0x38800000)))) {
-        thread_out_of_fp16 = true;
+    if (!vec_in) {
+      for (int idx = tid; idx < BT * DK; idx += kChunkedThreads) {
+        const int t = idx / DK, d = idx % DK;
+        const int64_t tok = tok_base + chunk0 + t;
+        const T kv = (t < len) ? pack.key[tok * k_stride + hk * DK + d] : FloatToElem<T>(0.f);
+        const T qv = (t < len) ? pack.query[tok * q_stride + hq * DK + d] : FloatToElem<T>(0.f);
+        s.k_h[t * L::kKh + d] = kv;
+        s.q_h[t * L::kKh + d] = qv;
+        if constexpr (kCheckFp16) {
+          if (t < len) {
+            thread_k_max = max(thread_k_max, __float_as_int(fabsf(ElemToFloat(kv))));
+            thread_q_max = max(thread_q_max, __float_as_int(fabsf(ElemToFloat(qv))));
+          }
+        }
       }
-    }
-    int thread_v_max = 0;
-    for (int idx = tid; idx < BT * kDVB; idx += kChunkedThreads) {
-      const int t = idx / kDVB, d = idx % kDVB;
-      const int64_t tok = tok_base + chunk0 + t;
-      const T vv = (t < len) ? pack.value[tok * v_stride + hv * DV + v0 + d] : FloatToElem<T>(0.f);
-      s.v_h[t * L::kVh + d] = vv;
       if constexpr (kCheckFp16) {
-        if (t < len) {
-          thread_v_max = max(thread_v_max, __float_as_int(fabsf(ElemToFloat(vv))));
+        if (thread_k_max > max_k_bits || thread_q_max > max_q_bits ||
+            (!p.qk_l2_norm && ((thread_k_max != 0 && thread_k_max < 0x38800000) ||
+                               (thread_q_max != 0 && thread_q_max < 0x38800000)))) {
+          thread_out_of_fp16 = true;
+        }
+      }
+      for (int idx = tid; idx < BT * kDVB; idx += kChunkedThreads) {
+        const int t = idx / kDVB, d = idx % kDVB;
+        const int64_t tok = tok_base + chunk0 + t;
+        const T vv = (t < len) ? pack.value[tok * v_stride + hv * DV + v0 + d] : FloatToElem<T>(0.f);
+        s.v_h[t * L::kVh + d] = vv;
+        if constexpr (kCheckFp16) {
+          if (t < len) {
+            thread_v_max = max(thread_v_max, __float_as_int(fabsf(ElemToFloat(vv))));
+          }
         }
       }
     }
@@ -483,10 +567,10 @@ __global__ __launch_bounds__(kChunkedThreads) void GatedDeltaNetChunkedKernel(
       const int64_t gi = tok * p.num_heads_v + hv;
       float g = 0.0f, be = 0.0f;
       if (tid < len) {
-        g = needs_decay ? EffectiveDecay(pack.decay[gi], pack.a_log, pack.dt_bias, hv,
+        g = needs_decay ? EffectiveDecay(LoadGate<T>(pack.decay, gi, InputTypeGates), pack.a_log, pack.dt_bias, hv,
                                          p.gate_activation)
                         : 0.0f;
-        be = pack.beta != nullptr ? EffectiveBeta(pack.beta[gi], p.beta_activation) : 1.0f;
+        be = pack.beta != nullptr ? EffectiveBeta(LoadGate<T>(pack.beta, gi, InputTypeGates), p.beta_activation) : 1.0f;
       }
       s.gc[tid] = g;
       s.beta[tid] = be;
@@ -557,9 +641,21 @@ __device__ __forceinline__ float WarpReduceK(float v) {
   return v;
 }
 
-template <typename T, int DK, int kWarps>
+template <typename T, int DK, int kWarps, bool InputTypeGates, bool PackedQkv, bool QwenS2 = false>
 __global__ __launch_bounds__(32 * kWarps) void GatedDeltaNetDecodeWarpKernel(
     VariantPack<T> pack, KernelParams p, int d_v) {
+  if constexpr (QwenS2) {
+    // Host dispatch checks every field before replacing it with a compile-time constant.
+    p.num_heads_q = p.num_heads_k = 16;
+    p.num_heads_v = 48;
+    p.gate_activation = GateActivation::kSoftplusDecay;
+    p.beta_activation = BetaActivation::kSigmoid;
+    p.update_rule = UpdateRule::kGatedDelta;
+    p.qk_l2_norm = true;
+    p.decay_per_key_dim_flag = 0;
+    p.state_update_tail_pass = p.short_row_tail_pass = false;
+    d_v = 128;
+  }
   constexpr int kRegs = DK / 32;  // state elements per lane
   const int lane = threadIdx.x;
   const int warp = threadIdx.y;
@@ -579,9 +675,12 @@ __global__ __launch_bounds__(32 * kWarps) void GatedDeltaNetDecodeWarpKernel(
   }
   const int capture_count = CaptureCount(pack, p, b, seq_len);
 
-  const int64_t q_stride = static_cast<int64_t>(p.num_heads_q) * DK;
-  const int64_t k_stride = static_cast<int64_t>(p.num_heads_k) * DK;
+  const int64_t packed_stride = (static_cast<int64_t>(p.num_heads_q) + p.num_heads_k) * DK +
+                                static_cast<int64_t>(p.num_heads_v) * d_v;
+  const int64_t q_stride = PackedQkv ? packed_stride : static_cast<int64_t>(p.num_heads_q) * DK;
+  const int64_t k_stride = PackedQkv ? packed_stride : static_cast<int64_t>(p.num_heads_k) * DK;
   const int64_t v_stride = static_cast<int64_t>(p.num_heads_v) * d_v;
+  const int64_t v_input_stride = PackedQkv ? packed_stride : v_stride;
   const int64_t st_off =
       (static_cast<int64_t>(b) * p.num_heads_v + hv) * static_cast<int64_t>(d_v) * DK +
       static_cast<int64_t>(col) * DK;
@@ -634,14 +733,14 @@ __global__ __launch_bounds__(32 * kWarps) void GatedDeltaNetDecodeWarpKernel(
 
     float decay_scalar = 1.0f;
     if (needs_decay && !decay_per_key_dim) {
-      decay_scalar = __expf(EffectiveDecay(pack.decay[gi], pack.a_log, pack.dt_bias, hv,
+      decay_scalar = __expf(EffectiveDecay(LoadGate<T>(pack.decay, gi, InputTypeGates), pack.a_log, pack.dt_bias, hv,
                                            p.gate_activation));
     }
 #pragma unroll
     for (int i = 0; i < kRegs; ++i) {
       if (needs_decay && decay_per_key_dim) {
         const int k = lane + i * 32;
-        const float raw = pack.decay[(tok * p.num_heads_v + hv) * DK + k];
+        const float raw = LoadGate<T>(pack.decay, (tok * p.num_heads_v + hv) * DK + k, InputTypeGates);
         s[i] *= __expf(EffectiveDecay(raw, pack.a_log, pack.dt_bias, hv, p.gate_activation));
       } else {
         s[i] *= decay_scalar;
@@ -656,8 +755,8 @@ __global__ __launch_bounds__(32 * kWarps) void GatedDeltaNetDecodeWarpKernel(
     }
 
     const float beta_t =
-        pack.beta != nullptr ? EffectiveBeta(pack.beta[gi], p.beta_activation) : 1.0f;
-    const float vv = static_cast<float>(pack.value[tok * v_stride + hv * d_v + col]);
+        pack.beta != nullptr ? EffectiveBeta(LoadGate<T>(pack.beta, gi, InputTypeGates), p.beta_activation) : 1.0f;
+    const float vv = static_cast<float>(pack.value[tok * v_input_stride + hv * d_v + col]);
     const float delta = beta_t * (vv - r);
 
     if (t < capture_count) {
@@ -704,7 +803,7 @@ __global__ __launch_bounds__(32 * kWarps) void GatedDeltaNetDecodeWarpKernel(
 // Generic recurrent engine: any head geometry the warp kernel cannot take.
 // One CTA per (sequence, v-head); the [DK x DV] state lives in shared memory.
 // ---------------------------------------------------------------------------
-template <typename T, int kThreads>
+template <typename T, int kThreads, bool InputTypeGates>
 __global__ __launch_bounds__(kThreads) void GatedDeltaNetRecurrentKernel(VariantPack<T> pack,
                                                                          KernelParams p, int d_k,
                                                                          int d_v) {
@@ -763,7 +862,7 @@ __global__ __launch_bounds__(kThreads) void GatedDeltaNetRecurrentKernel(Variant
     }
     if (needs_decay && decay_per_key_dim) {
       for (int i = tid; i < d_k; i += kThreads) {
-        const float raw = pack.decay[(tok * p.num_heads_v + hv) * d_k + i];
+        const float raw = LoadGate<T>(pack.decay, (tok * p.num_heads_v + hv) * d_k + i, InputTypeGates);
         gbuf[i] = __expf(EffectiveDecay(raw, pack.a_log, pack.dt_bias, hv, p.gate_activation));
       }
     }
@@ -790,11 +889,11 @@ __global__ __launch_bounds__(kThreads) void GatedDeltaNetRecurrentKernel(Variant
 
     const float g_scalar =
         (needs_decay && !decay_per_key_dim)
-            ? __expf(EffectiveDecay(pack.decay[gi], pack.a_log, pack.dt_bias, hv,
+            ? __expf(EffectiveDecay(LoadGate<T>(pack.decay, gi, InputTypeGates), pack.a_log, pack.dt_bias, hv,
                                     p.gate_activation))
             : 1.0f;
     const float beta_t =
-        pack.beta != nullptr ? EffectiveBeta(pack.beta[gi], p.beta_activation) : 1.0f;
+        pack.beta != nullptr ? EffectiveBeta(LoadGate<T>(pack.beta, gi, InputTypeGates), p.beta_activation) : 1.0f;
 
     // Decay, then retrieval against the decayed state.
     for (int idx = tid; idx < d_k * d_v; idx += kThreads) {
@@ -858,27 +957,53 @@ __global__ __launch_bounds__(kThreads) void GatedDeltaNetRecurrentKernel(Variant
 constexpr int kRecurrentThreads = 256;
 constexpr int kDecodeWarps = kRecurrentThreads / 32;
 
-template <typename T>
+template <typename T, bool InputTypeGates, bool PackedQkv, int Warps>
+void LaunchDecodeWarpSized(const Descriptor& desc, const VariantPack<T>& pack,
+                           const KernelParams& p, cudaStream_t stream) {
+  const dim3 grid(desc.batch, desc.num_heads_v,
+                  (desc.head_size_v + Warps - 1) / Warps);
+  const dim3 block(32, Warps, 1);
+  switch (desc.head_size_qk) {
+    case 64:
+      GatedDeltaNetDecodeWarpKernel<T, 64, Warps, InputTypeGates, PackedQkv>
+          <<<grid, block, 0, stream>>>(pack, p, desc.head_size_v);
+      break;
+    case 128:
+      if constexpr (PackedQkv) {
+        static const int specialize = ParseEnvironmentVariableWithDefault<int>("ORT_GDN_S2_SPECIALIZE", 1);
+        ORT_ENFORCE(specialize == 0 || specialize == 1, "ORT_GDN_S2_SPECIALIZE must be 0 or 1.");
+        if (specialize && desc.batch == 1 && p.total_tokens == p.uniform_len &&
+            p.total_tokens >= 1 && p.total_tokens <= 8 &&
+            p.num_heads_q == 16 && p.num_heads_k == 16 && p.num_heads_v == 48 &&
+            desc.head_size_v == 128 && pack.cu_seqlens == nullptr &&
+            p.gate_activation == GateActivation::kSoftplusDecay &&
+            p.beta_activation == BetaActivation::kSigmoid && p.update_rule == UpdateRule::kGatedDelta &&
+            p.qk_l2_norm && p.decay_per_key_dim_flag == 0 &&
+            !p.state_update_tail_pass && !p.short_row_tail_pass) {
+          GatedDeltaNetDecodeWarpKernel<T, 128, Warps, InputTypeGates, PackedQkv, true>
+              <<<grid, block, 0, stream>>>(pack, p, desc.head_size_v);
+          break;
+        }
+      }
+      GatedDeltaNetDecodeWarpKernel<T, 128, Warps, InputTypeGates, PackedQkv>
+          <<<grid, block, 0, stream>>>(pack, p, desc.head_size_v);
+      break;
+    default:
+      GatedDeltaNetDecodeWarpKernel<T, 256, Warps, InputTypeGates, PackedQkv>
+          <<<grid, block, 0, stream>>>(pack, p, desc.head_size_v);
+      break;
+  }
+}
+
+template <typename T, bool InputTypeGates>
 Status LaunchRecurrent(const Descriptor& desc, bool warp_specialized, const VariantPack<T>& pack,
                        const KernelParams& p, size_t max_shared_memory_per_block,
                        cudaStream_t stream) {
   if (warp_specialized) {
-    const dim3 grid(desc.batch, desc.num_heads_v,
-                    (desc.head_size_v + kDecodeWarps - 1) / kDecodeWarps);
-    const dim3 block(32, kDecodeWarps, 1);
-    switch (desc.head_size_qk) {
-      case 64:
-        GatedDeltaNetDecodeWarpKernel<T, 64, kDecodeWarps>
-            <<<grid, block, 0, stream>>>(pack, p, desc.head_size_v);
-        break;
-      case 128:
-        GatedDeltaNetDecodeWarpKernel<T, 128, kDecodeWarps>
-            <<<grid, block, 0, stream>>>(pack, p, desc.head_size_v);
-        break;
-      default:
-        GatedDeltaNetDecodeWarpKernel<T, 256, kDecodeWarps>
-            <<<grid, block, 0, stream>>>(pack, p, desc.head_size_v);
-        break;
+    if (pack.packed_qkv) {
+      LaunchDecodeWarpSized<T, InputTypeGates, true, kDecodeWarps>(desc, pack, p, stream);
+    } else {
+      LaunchDecodeWarpSized<T, InputTypeGates, false, kDecodeWarps>(desc, pack, p, stream);
     }
     return CUDA_CALL(cudaGetLastError());
   }
@@ -886,20 +1011,20 @@ Status LaunchRecurrent(const Descriptor& desc, bool warp_specialized, const Vari
   const size_t smem = RecurrentSmemBytes(desc.head_size_qk, desc.head_size_v);
   static DynamicSmemConfig recurrent_smem_config;
   ORT_RETURN_IF_ERROR(SetMaxDynamicSmem(
-      GatedDeltaNetRecurrentKernel<T, kRecurrentThreads>,
+      GatedDeltaNetRecurrentKernel<T, kRecurrentThreads, InputTypeGates>,
       max_shared_memory_per_block, recurrent_smem_config));
   const dim3 grid(desc.batch, desc.num_heads_v, 1);
-  GatedDeltaNetRecurrentKernel<T, kRecurrentThreads>
+  GatedDeltaNetRecurrentKernel<T, kRecurrentThreads, InputTypeGates>
       <<<grid, kRecurrentThreads, smem, stream>>>(pack, p, desc.head_size_qk, desc.head_size_v);
   return CUDA_CALL(cudaGetLastError());
 }
 
 }  // namespace
 
-template <typename T>
-Status LaunchGatedDeltaNet(const Descriptor& desc, const Plan& plan, const VariantPack<T>& pack,
-                           float scale, int max_threads_per_block,
-                           size_t max_shared_memory_per_block, cudaStream_t stream) {
+template <typename T, bool InputTypeGates>
+static Status LaunchGatedDeltaNetTypedGates(const Descriptor& desc, const Plan& plan, const VariantPack<T>& pack,
+                                            float scale, int max_threads_per_block,
+                                            size_t max_shared_memory_per_block, cudaStream_t stream) {
   KernelParams p{};
   p.total_tokens = desc.total_tokens;
   p.uniform_len = desc.batch > 0 ? desc.total_tokens / desc.batch : 0;
@@ -932,8 +1057,8 @@ Status LaunchGatedDeltaNet(const Descriptor& desc, const Plan& plan, const Varia
       auto launch_chunked = [&]<int BT, Bf16Precision kPrec>() -> Status {
         static DynamicSmemConfig smem_config;
         ORT_RETURN_IF_ERROR(SetMaxDynamicSmem(
-            GatedDeltaNetChunkedKernel<T, 128, 128, BT, kPrec>, plan.smem_bytes, smem_config));
-        GatedDeltaNetChunkedKernel<T, 128, 128, BT, kPrec>
+            GatedDeltaNetChunkedKernel<T, 128, 128, BT, InputTypeGates, kPrec>, plan.smem_bytes, smem_config));
+        GatedDeltaNetChunkedKernel<T, 128, 128, BT, InputTypeGates, kPrec>
             <<<grid, kChunkedThreads, plan.smem_bytes, stream>>>(pack, p);
         return CUDA_CALL(cudaGetLastError());
       };
@@ -963,14 +1088,26 @@ Status LaunchGatedDeltaNet(const Descriptor& desc, const Plan& plan, const Varia
       // the two row sets are disjoint, so the merged result is deterministic.
       // The chunked engine only accepts head_size_qk == head_size_v == 128, so the warp
       // kernel is always the right shape here.
-      return LaunchRecurrent<T>(desc, /*warp_specialized=*/true, pack, p,
-                                max_shared_memory_per_block, stream);
+      return LaunchRecurrent<T, InputTypeGates>(desc, /*warp_specialized=*/true, pack, p,
+                                                max_shared_memory_per_block, stream);
     }
   }
 
   (void)max_threads_per_block;
-  return LaunchRecurrent<T>(desc, plan.warp_specialized, pack, p, max_shared_memory_per_block,
-                            stream);
+  return LaunchRecurrent<T, InputTypeGates>(desc, plan.warp_specialized, pack, p, max_shared_memory_per_block,
+                                            stream);
+}
+
+template <typename T>
+Status LaunchGatedDeltaNet(const Descriptor& desc, const Plan& plan, const VariantPack<T>& pack,
+                           float scale, int max_threads_per_block,
+                           size_t max_shared_memory_per_block, cudaStream_t stream) {
+  if (pack.gates_in_input_type) {
+    return LaunchGatedDeltaNetTypedGates<T, true>(
+        desc, plan, pack, scale, max_threads_per_block, max_shared_memory_per_block, stream);
+  }
+  return LaunchGatedDeltaNetTypedGates<T, false>(
+      desc, plan, pack, scale, max_threads_per_block, max_shared_memory_per_block, stream);
 }
 
 template Status LaunchGatedDeltaNet<float>(const Descriptor&, const Plan&, const VariantPack<float>&,

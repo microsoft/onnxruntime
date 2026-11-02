@@ -19,10 +19,12 @@
 #include <gtest/gtest.h>
 
 #include "core/framework/allocator.h"
+#include "core/framework/device_stream_collection.h"
 #include "core/graph/constants.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/platform/env.h"
 #include "core/platform/env_var_utils.h"
+#include "core/session/inference_session.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -619,6 +621,70 @@ int VerifySessionInputUploadBatching(Ort::Env& env, Ort::ConstEpDevice ep_device
   return 0;
 }
 
+int VerifyDeviceCopyBatching(Ort::Env& env, Ort::ConstEpDevice ep_device, bool use_stream) {
+  auto procs = dawn::native::GetProcs();
+  procs.queueSubmit = CountNonemptyQueueSubmissions;
+  dawnProcSetProcs(&procs);
+  Ort::SessionOptions options;
+  options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
+  options.AppendExecutionProvider_V2(
+      env, {ep_device}, {{"dawnProcTable", std::to_string(reinterpret_cast<uintptr_t>(&procs))}});
+  Ort::Session session(env, ORT_TSTR("testdata/mul_1.onnx"), options);
+  auto allocator = env.GetSharedAllocator(ep_device.GetMemoryInfo(OrtDeviceMemoryType_DEFAULT));
+  ORT_ENFORCE(allocator != nullptr, "Expected a WebGPU shared allocator.");
+  OrtSyncStream* copy_stream = nullptr;
+#ifdef ORT_ENABLE_STREAM
+  const auto& session_state = reinterpret_cast<InferenceSession*>(static_cast<OrtSession*>(session))->GetSessionState();
+  auto streams = session_state.AcquireDeviceStreamCollection();
+  Stream* stream = nullptr;
+  if (use_stream) {
+    for (size_t i = 0; i < streams->NumStreams(); ++i) {
+      if (auto* candidate = streams->GetStream(i)) {
+        stream = candidate;
+        break;
+      }
+    }
+    ORT_ENFORCE(stream != nullptr, "Expected a Session-owned WebGPU stream.");
+    copy_stream = reinterpret_cast<OrtSyncStream*>(stream);
+  }
+#endif
+  const auto cpu_memory = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
+  // Empty tensors, rounded copy sizes and repeated destination/source dependencies.
+  for (const int64_t size : {0, 1, 3, 16, 65, 1048579}) {
+    std::vector<uint8_t> data(static_cast<size_t>(size));
+    auto input = Ort::Value::CreateTensor<uint8_t>(cpu_memory, data.data(), data.size(), &size, 1);
+    auto a = Ort::Value::CreateTensor<uint8_t>(allocator, &size, 1);
+    auto b = Ort::Value::CreateTensor<uint8_t>(allocator, &size, 1);
+    auto c = Ort::Value::CreateTensor<uint8_t>(allocator, &size, 1);
+    const OrtValue* sources[]{a, b};
+    OrtValue* destinations[]{b, c};
+    for (size_t pass = 0; pass < 3; ++pass) {
+      for (size_t i = 0; i < data.size(); ++i) data[i] = static_cast<uint8_t>(i * 7 + pass * 17);
+      Ort::ThrowOnError(env.CopyTensor(input, a, nullptr));
+      const auto before = nonempty_queue_submissions.load(std::memory_order_relaxed);
+      Ort::ThrowOnError(Ort::GetApi().CopyTensors(
+          env, sources, destinations, copy_stream, 2));
+      const auto after = nonempty_queue_submissions.load(std::memory_order_relaxed);
+      const size_t expected = size == 0 || use_stream ? 0 : 1;
+      ORT_ENFORCE(after - before == expected, "Unexpected vector copy submission count: ", after - before,
+                  ", expected ", expected);
+#ifdef ORT_ENABLE_STREAM
+      if (stream) stream->Flush();
+#endif
+      std::vector<uint8_t> actual(data.size());
+      auto output = Ort::Value::CreateTensor<uint8_t>(cpu_memory, actual.data(), actual.size(), &size, 1);
+      Ort::ThrowOnError(env.CopyTensor(c, output, nullptr));
+      ORT_ENFORCE(actual == data, "Vector copies lost data or dependency ordering.");
+    }
+  }
+#ifdef ORT_ENABLE_STREAM
+  ORT_THROW_IF_ERROR(streams->CleanUp(true));
+  session_state.RecycleDeviceStreamCollection(std::move(streams));
+#endif
+  std::fputs("Device copy vectors preserved routing, data and submission count\n", stderr);
+  return 0;
+}
+
 WGPUBufferMapState InjectMappedBufferOnFree(WGPUBuffer buffer) {
   if (buffer == free_failure_buffer) {
     ++free_failure_probes;
@@ -749,6 +815,28 @@ TEST_F(WebGpuSessionAllocatorDeathTest, SessionInputUploadsAreBatched) {
       ::testing::ExitedWithCode(0), "Session input uploads preserved data and expected submission count");
 #endif
 }
+
+TEST_F(WebGpuSessionAllocatorDeathTest, StreamlessDeviceCopyVectorUsesOneSubmission) {
+#if defined(BUILD_DAWN_SHARED_LIBRARY)
+  GTEST_SKIP() << "Shared Dawn calls bypass the proc table required for submission counting.";
+#else
+  ASSERT_EXIT(
+      std::_Exit(VerifyDeviceCopyBatching(Env(), EpDevice(), false)),
+      ::testing::ExitedWithCode(0), "Device copy vectors preserved routing, data and submission count");
+#endif
+}
+
+#ifdef ORT_ENABLE_STREAM
+TEST_F(WebGpuSessionAllocatorDeathTest, ExplicitStreamDeviceCopyVectorDoesNotSubmit) {
+#if defined(BUILD_DAWN_SHARED_LIBRARY)
+  GTEST_SKIP() << "Shared Dawn calls bypass the proc table required for submission counting.";
+#else
+  ASSERT_EXIT(
+      std::_Exit(VerifyDeviceCopyBatching(Env(), EpDevice(), true)),
+      ::testing::ExitedWithCode(0), "Device copy vectors preserved routing, data and submission count");
+#endif
+}
+#endif
 
 TEST_F(WebGpuSessionAllocatorDeathTest, SessionInputUploadsSpanMultipleChunks) {
 #if defined(BUILD_DAWN_SHARED_LIBRARY)
@@ -1032,6 +1120,53 @@ TEST_F(WebGpuPluginSharedAllocatorTest, DeviceTensorSelfCopyIsReportedInsteadOfT
     ASSERT_ORTSTATUS_OK(Env().CopyTensor(device_tensor, cpu_output, nullptr));
     EXPECT_EQ(output_data, input_data);
   }
+}
+
+TEST_F(WebGpuPluginSharedAllocatorTest, DeviceCopyVectorReportsLaterErrorAndRecovers) {
+  constexpr std::array<int64_t, 1> shape{16};
+  auto allocator = Env().GetSharedAllocator(EpDevice().GetMemoryInfo(OrtDeviceMemoryType_DEFAULT));
+  ASSERT_NE(allocator, nullptr);
+  auto a = Ort::Value::CreateTensor<uint8_t>(allocator, shape.data(), shape.size());
+  auto b = Ort::Value::CreateTensor<uint8_t>(allocator, shape.data(), shape.size());
+  auto c = Ort::Value::CreateTensor<uint8_t>(allocator, shape.data(), shape.size());
+  const OrtValue* sources[]{a, b};
+  OrtValue* destinations[]{b, b};
+  Ort::Status status{Ort::GetApi().CopyTensors(Env(), sources, destinations, nullptr, 2)};
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("must be different"));
+
+  // Failure must not poison the shared context or leave commands for a later call to submit.
+  std::array<uint8_t, 16> data;
+  data.fill(73);
+  const auto cpu_memory = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
+  auto input = Ort::Value::CreateTensor<uint8_t>(cpu_memory, data.data(), data.size(), shape.data(), shape.size());
+  ASSERT_ORTSTATUS_OK(Env().CopyTensor(input, a, nullptr));
+  destinations[1] = c;
+  ASSERT_ORTSTATUS_OK(Ort::GetApi().CopyTensors(Env(), sources, destinations, nullptr, 2));
+  std::array<uint8_t, 16> actual{};
+  auto output = Ort::Value::CreateTensor<uint8_t>(cpu_memory, actual.data(), actual.size(), shape.data(), shape.size());
+  ASSERT_ORTSTATUS_OK(Env().CopyTensor(c, output, nullptr));
+  EXPECT_EQ(actual, data);
+}
+
+TEST_F(WebGpuPluginSharedAllocatorTest, DeviceCopyVectorRejectsMixedContexts) {
+  constexpr std::array<int64_t, 1> shape{16};
+  const auto memory = EpDevice().GetMemoryInfo(OrtDeviceMemoryType_DEFAULT);
+  auto allocator = Env().GetSharedAllocator(memory);
+  ASSERT_NE(allocator, nullptr);
+  auto a = Ort::Value::CreateTensor<uint8_t>(allocator, shape.data(), shape.size());
+  auto b = Ort::Value::CreateTensor<uint8_t>(allocator, shape.data(), shape.size());
+  auto other_memory = Ort::MemoryInfo(memory.GetAllocatorName().c_str(), OrtDeviceAllocator,
+                                      memory.GetDeviceId() + 1, OrtMemTypeDefault);
+  auto other_context = Ort::Value::CreateTensor<uint8_t>(
+      other_memory, b.GetTensorMutableData<uint8_t>(), 16, shape.data(), shape.size());
+  const OrtValue* sources[]{a, a};
+  OrtValue* destinations[]{b, other_context};
+  // Memory-info validation must reject this without dereferencing the foreign-context handle.
+  Ort::Status status{Ort::GetApi().CopyTensors(Env(), sources, destinations, nullptr, 2)};
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.GetErrorCode(), ORT_INVALID_ARGUMENT);
+  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("same OrtMemoryInfo"));
 }
 
 // Manual Task Manager test. This intentionally reserves substantial GPU memory and runs for an extended period.

@@ -6,6 +6,7 @@
 #include "gtest/gtest.h"
 
 #include "core/framework/ortdevice.h"
+#include "core/framework/plugin_data_transfer.h"
 #include "core/providers/webgpu/data_transfer.h"
 #include "core/providers/webgpu/allocator.h"
 #include "core/providers/webgpu/buffer_manager.h"
@@ -78,6 +79,52 @@ TEST(WebGpuDataTransferTest, RejectsForeignGpuVendors) {
     EXPECT_FALSE(CanCopy(foreign, foreign)) << "vendor " << vendor_id;
   }
 }
+
+#if !defined(ORT_MINIMAL_BUILD)
+TEST(WebGpuDataTransferTest, StreamlessDeviceCopyVectorPreservesDependenciesAndBufferLifetime) {
+  ConfigOptions options;
+  auto provider = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+  CPUAllocator cpu_allocator;
+  const OrtMemoryInfo gpu_info(WEBGPU_BUFFER, OrtDeviceAllocator, webgpu::WebGpuDevice(0), OrtMemTypeDefault);
+  // Built-in Env copies use the C API wrapper, not the Session's webgpu::DataTransfer.
+  plugin_ep::DataTransfer transfer{plugin_ep::OrtDataTransferImplUniquePtr{OrtWebGpuCreateDataTransfer()}};
+  webgpu::CommandRecordingState readback_recording;
+  webgpu::DataTransfer readback(context.BufferManager(), readback_recording, 0);
+  for (const int64_t size : {0, 1, 3, 16, 65, 1048579}) {
+    SCOPED_TRACE(size);
+    std::vector<uint8_t> data(static_cast<size_t>(size));
+    Tensor input(DataTypeImpl::GetType<uint8_t>(), TensorShape({size}), data.data(), cpu_allocator.Info());
+    std::array<wgpu::Buffer, 3> buffers;
+    for (auto& buffer : buffers) {
+      wgpu::BufferDescriptor desc{};
+      desc.size = std::max<uint64_t>(16, (static_cast<uint64_t>(size) + 15) / 16 * 16);
+      desc.usage = wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst;
+      buffer = context.Device().CreateBuffer(&desc);
+    }
+    Tensor a(DataTypeImpl::GetType<uint8_t>(), TensorShape({size}), buffers[0].Get(), gpu_info);
+    Tensor b(DataTypeImpl::GetType<uint8_t>(), TensorShape({size}), buffers[1].Get(), gpu_info);
+    Tensor c(DataTypeImpl::GetType<uint8_t>(), TensorShape({size}), buffers[2].Get(), gpu_info);
+    const std::vector<IDataTransfer::SrcDstPair> copies{{a, b, nullptr}, {b, c, nullptr}};
+    for (size_t pass = 0; pass < 3; ++pass) {
+      for (size_t i = 0; i < data.size(); ++i) {
+        data[i] = static_cast<uint8_t>(i * 7 + pass * 17);
+      }
+      ASSERT_STATUS_OK(transfer.CopyTensor(input, a));
+      ASSERT_STATUS_OK(transfer.CopyTensors(copies));
+      if (pass == 2) {
+        buffers[0] = nullptr;
+        buffers[1] = nullptr;
+      }
+      std::vector<uint8_t> actual(data.size());
+      Tensor output(DataTypeImpl::GetType<uint8_t>(), TensorShape({size}), actual.data(), cpu_allocator.Info());
+      ASSERT_STATUS_OK(readback.CopyTensor(c, output));
+      EXPECT_EQ(actual, data) << "pass " << pass;
+    }
+  }
+  ASSERT_STATUS_OK(context.FlushAndWaitChecked(context.BufferManager(), readback_recording));
+}
+#endif
 
 TEST(WebGpuDataTransferTest, BatchedUploadsPreserveDataAcrossChunksAndReuse) {
   ConfigOptions options;
@@ -177,6 +224,62 @@ TEST(WebGpuDataTransferTest, BatchedUploadsRetainMappedDestinationFallback) {
     }
   }
   ASSERT_STATUS_OK(context.FlushAndWaitChecked(ep.BufferManager(), recording));
+}
+
+TEST(WebGpuDataTransferTest, BatchedAndSingleUploadsPreserveRecordedReaders) {
+  ConfigOptions options;
+  auto provider = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  auto& ep = static_cast<WebGpuExecutionProvider&>(*provider);
+  auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+  auto& recording = ep.Recording();
+  auto& manager = ep.BufferManager();
+  CPUAllocator cpu_allocator;
+  const OrtMemoryInfo gpu_info(WEBGPU_BUFFER, OrtDeviceAllocator, webgpu::WebGpuDevice(0), OrtMemTypeDefault);
+  webgpu::DataTransfer transfer(manager, recording, 0);
+  std::array<std::array<uint32_t, 16>, 2> data{};
+  std::array<wgpu::Buffer, 2> buffers, snapshots;
+  InlinedVector<Tensor> sources, targets;
+  sources.reserve(data.size());
+  targets.reserve(data.size());
+  for (size_t i = 0; i < data.size(); ++i) {
+    wgpu::BufferDescriptor desc{};
+    desc.size = sizeof(data[i]);
+    desc.usage = wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst;
+    buffers[i] = context.Device().CreateBuffer(&desc);
+    snapshots[i] = context.Device().CreateBuffer(&desc);
+    sources.emplace_back(DataTypeImpl::GetType<uint32_t>(), TensorShape({16}), data[i].data(), cpu_allocator.Info());
+    targets.emplace_back(DataTypeImpl::GetType<uint32_t>(), TensorShape({16}), buffers[i].Get(), gpu_info);
+    data[i].fill(static_cast<uint32_t>(i + 7));
+  }
+  const std::vector<IDataTransfer::SrcDstPair> uploads{{sources[0], targets[0], nullptr},
+                                                       {sources[1], targets[1], nullptr}};
+  ASSERT_STATUS_OK(transfer.CopyTensors(uploads));
+  for (const bool batched : {false, true, false, true}) {
+    SCOPED_TRACE(batched);
+    const auto previous = data;
+    for (size_t i = 0; i < data.size(); ++i) {
+      manager.MemCpy(recording, buffers[i].Get(), snapshots[i].Get(), sizeof(data[i]));
+      data[i].fill(previous[i][0] + 11);
+    }
+    const auto expected = data;
+    if (batched) {
+      ASSERT_STATUS_OK(transfer.CopyTensors(uploads));
+    } else {
+      for (size_t i = 0; i < data.size(); ++i) {
+        ASSERT_STATUS_OK(transfer.CopyTensor(sources[i], targets[i]));
+      }
+    }
+    for (auto& values : data) values.fill(99);
+    for (size_t i = 0; i < data.size(); ++i) {
+      std::array<uint32_t, 16> actual{};
+      manager.Download(recording, snapshots[i].Get(), actual.data(), sizeof(actual));
+      EXPECT_EQ(actual, previous[i]);
+      manager.Download(recording, buffers[i].Get(), actual.data(), sizeof(actual));
+      EXPECT_EQ(actual, expected[i]);
+    }
+    data = expected;
+  }
+  ASSERT_STATUS_OK(context.FlushAndWaitChecked(manager, recording));
 }
 
 }  // namespace test

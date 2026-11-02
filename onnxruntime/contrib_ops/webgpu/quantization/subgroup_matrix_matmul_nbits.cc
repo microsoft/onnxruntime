@@ -175,6 +175,85 @@ class SubgroupMatrixMatMulNBitsTailCopyProgram final : public Program<SubgroupMa
       {"output_offset", ProgramUniformVariableDataType::Uint32});
 };
 
+namespace {
+
+struct MatMulNBitsTiling {
+  uint32_t m;
+  uint32_t n;
+  uint32_t k;
+  uint32_t workgroup_size;
+};
+
+MatMulNBitsTiling SelectMatMulNBitsTiling(const SubgroupMatrixConfig& config,
+                                          uint32_t M, uint32_t N, uint32_t K, bool has_bias) {
+  if (config.Is(8, 16, 16)) {
+    if (!has_bias) {
+      if (M >= 2048 && N % 256 == 0) {
+        return {128, 256, 32, 512};
+      }
+      if (M >= 256 && N % 128 == 0) {
+        return {128, 128, 32, 512};
+      }
+    }
+    return {64, 64, 32, 256};
+  }
+  if (config.Is(16, 16, 16)) {
+    if (config.subgroupSize == 64) {
+      uint32_t tile_m;
+      uint32_t tile_n;
+      uint32_t tile_k;
+      // A wave64 subgroup computes a 64x64 micro-tile. Small M distributes waves along N;
+      // tall tiles share each dequantized B tile across row waves.
+      if (M <= 64) {
+        tile_m = 64;
+        // Avoid a fully padded second column wave when N is exactly 64.
+        tile_n = N == 64 ? 64 : 128;
+        tile_k = 64;
+      } else {
+        // Use four waves when that does not add M padding over a two-wave tile and M is large
+        // enough to amortize the larger workgroup.
+        const uint32_t row_tiles_128 = M / 128 + static_cast<uint32_t>(M % 128 != 0);
+        const bool use_four_waves = M > 384 && row_tiles_128 % 2 == 0;
+        tile_m = use_four_waves ? 256 : 128;
+        tile_n = 64;
+
+        // Larger K blocks reduce barriers. Four-wave tiles retain enough occupancy for BK=128;
+        // larger two-wave grids use BK=64, while small two-wave grids favor BK=32.
+        tile_k = M < 256 ? 32 : (use_four_waves || M <= 384 ? 128 : 64);
+      }
+      // The K loop and cooperative-matrix loads do not mask a partial BK tile. K is guaranteed
+      // to be divisible by 32, so step down until BK divides it exactly.
+      if (K % tile_k != 0) {
+        tile_k = tile_k == 128 && K % 64 == 0 ? 64 : 32;
+      }
+      return {tile_m, tile_n, tile_k, (tile_m / 64) * (tile_n / 64) * config.subgroupSize};
+    }
+    // Wave32: four subgroups in a 2x2 grid.
+    return {128, 128, 32, 4 * config.subgroupSize};
+  }
+  return {32, 64, 32, 128};
+}
+
+}  // namespace
+
+Status PrepackMatMulNBitsInput(const Tensor* a, uint32_t M, uint32_t K, uint32_t padded_M,
+                               const SubgroupMatrixConfig& config, onnxruntime::webgpu::ComputeContext& context,
+                               Tensor& packed) {
+  PrepackProgram program{config.M, config.K};
+  program.SetWorkgroupSize(config.subgroupSize);
+  if (context.HasFeature(wgpu::FeatureName::SubgroupSizeControl)) {
+    program.SetSubgroupSize(config.subgroupSize);
+  }
+  ORT_ENFORCE(K % config.K == 0 && padded_M % config.M == 0);
+  program.SetDispatchGroupSize(padded_M / config.M, K / config.K, 1);
+  packed = context.CreateGPUTensor(a->DataType(), TensorShape{padded_M, K});
+  program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, 1}})
+      .AddOutputs({{&packed, ProgramTensorMetadataDependency::Rank, packed.Shape(), 1}})
+      .AddUniformVariables({{M}, {K}})
+      .CacheHint(config.M, config.K);
+  return context.RunProgram(program);
+}
+
 Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales,
                                       const Tensor* zero_points, const Tensor* bias,
                                       uint32_t M,
@@ -186,102 +265,28 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
                                       onnxruntime::webgpu::ComputeContext& context,
                                       Tensor* y,
                                       const uint32_t weight_index,
-                                      const Tensor* weight_index_indirect) {
+                                      const Tensor* weight_index_indirect,
+                                      const Tensor* prepacked_a) {
   const bool has_zero_points = zero_points != nullptr;
   const bool has_bias = bias != nullptr;
   const bool has_weight_idx_indirect = weight_index_indirect != nullptr;
   const bool has_weight_idx = weight_index > 0 || has_weight_idx_indirect;
 
-  // Determine tile sizes first (needed for prepack padding).
-  uint32_t tile_m = 32;
-  uint32_t tile_n = 64;
-  uint32_t tile_size_k = 32;
-  uint32_t workgroup_size = 128;
-  if (config.Is(8, 16, 16)) {
-    // Default: 64x64 tile size, 256 thread.
-    tile_m = 64;
-    tile_n = 64;
-    workgroup_size = 256;
-    // Bias output uses a scratch tile, so keep it at 64x64 for workgroup memory limits.
-    if (!has_bias) {
-      if (M >= 2048 && N % 256 == 0) {
-        // Large M (M>=2048): 128x256 tile size, 512 threads.
-        tile_m = 128;
-        tile_n = 256;
-        workgroup_size = 512;
-      } else if (M >= 256 && N % 128 == 0) {
-        // Mid-sized M (256<=M<2048): 128x128 tile size, 512 threads.
-        tile_m = 128;
-        tile_n = 128;
-        workgroup_size = 512;
-      }
-    }
-  } else if (config.Is(16, 16, 16)) {
-    if (config.subgroupSize == 64) {
-      // A wave64 subgroup computes a 64x64 micro-tile. Small M distributes waves along N;
-      // tall tiles share each dequantized B tile across row waves.
-      if (M <= 64) {
-        tile_m = 64;
-        // Avoid a fully padded second column wave when N is exactly 64.
-        tile_n = N == 64 ? 64 : 128;
-        tile_size_k = 64;
-      } else {
-        // Use four waves when that does not add M padding over a two-wave tile and M is large
-        // enough to amortize the larger workgroup.
-        const uint32_t row_tiles_128 = M / 128 + static_cast<uint32_t>(M % 128 != 0);
-        const bool use_four_waves = M > 384 && row_tiles_128 % 2 == 0;
-        tile_m = use_four_waves ? 256 : 128;
-        tile_n = 64;
-
-        // Larger K blocks reduce barriers. Four-wave tiles retain enough occupancy for BK=128;
-        // larger two-wave grids use BK=64, while small two-wave grids favor BK=32.
-        tile_size_k = M < 256 ? 32 : (use_four_waves || M <= 384 ? 128 : 64);
-      }
-      // The K loop and cooperative-matrix loads do not mask a partial BK tile. K is guaranteed
-      // to be divisible by 32, so step down until BK divides it exactly.
-      if (K % tile_size_k != 0) {
-        tile_size_k = tile_size_k == 128 && K % 64 == 0 ? 64 : 32;
-      }
-      workgroup_size = (tile_m / 64) * (tile_n / 64) * config.subgroupSize;
-    } else {
-      // Wave32: four subgroups in a 2x2 grid.
-      tile_m = 128;
-      tile_n = 128;
-      workgroup_size = 4 * config.subgroupSize;
-    }
-  }
+  auto [tile_m, tile_n, tile_size_k, workgroup_size] = SelectMatMulNBitsTiling(config, M, N, K, has_bias);
   ORT_ENFORCE(workgroup_size <= context.DeviceLimits().maxComputeWorkgroupSizeX &&
                   workgroup_size <= context.DeviceLimits().maxComputeInvocationsPerWorkgroup,
               "Subgroup matrix MatMulNBits workgroup size exceeds device limits: ", workgroup_size);
 
   // If applicable, layout optimization of input matrix A(MxK) can be used for SubgroupMatrixLoad.
   Tensor a_prepack;
-  if (config.needsPrepack) {
-    const auto m = config.M;
-    const auto k = config.K;
-
-    // Optimize the layout of input matrix A(MxK) for SubgroupMatrixLoad.
-    PrepackProgram prepack_program{m, k};
-    prepack_program.SetWorkgroupSize(config.subgroupSize);
-    if (context.HasFeature(wgpu::FeatureName::SubgroupSizeControl)) {
-      prepack_program.SetSubgroupSize(config.subgroupSize);
-    }
-
-    // Pad M to workgroup tile size so all subgroups read valid prepacked data.
-    const uint32_t padded_M = CeilDiv(M, tile_m) * tile_m;
-    const auto dispatch_group_size_x = padded_M / m;
-    ORT_ENFORCE(K % k == 0, "K must be a multiple of ", k);
-    const auto dispatch_group_size_y = K / k;
-    // Each workgroup will process one subgroup matrix of size m x k.
-    prepack_program.SetDispatchGroupSize(dispatch_group_size_x, dispatch_group_size_y, 1);
-
-    TensorShape a_prepack_shape{padded_M, K};
-    a_prepack = context.CreateGPUTensor(a->DataType(), a_prepack_shape);
-    prepack_program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, 1}})
-        .AddOutputs({{&a_prepack, ProgramTensorMetadataDependency::Rank, a_prepack.Shape(), 1}})
-        .AddUniformVariables({{M}, {K}})
-        .CacheHint(m, k);
-    ORT_RETURN_IF_ERROR(context.RunProgram(prepack_program));
+  if (prepacked_a != nullptr) {
+    ORT_ENFORCE(config.needsPrepack && prepacked_a->DataType() == a->DataType() &&
+                prepacked_a->Shape().NumDimensions() == 2 && prepacked_a->Shape()[1] == K &&
+                prepacked_a->Shape()[0] >= CeilDiv(M, tile_m) * tile_m);
+    a = prepacked_a;
+  } else if (config.needsPrepack) {
+    ORT_RETURN_IF_ERROR(PrepackMatMulNBitsInput(a, M, K, CeilDiv(M, tile_m) * tile_m,
+                                                config, context, a_prepack));
     a = &a_prepack;
   }
 
