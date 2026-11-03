@@ -234,7 +234,7 @@ struct TreeEnsembleAttributesV5 {
   std::vector<int64_t> tree_roots;
 
  private:
-  // `membership_values` are seperated by NAN for different nodes
+  // `membership_values` are separated by NAN for different nodes
   // It is more convenient to preserve the values for each node in a vector
   // The vector would be empty for nodes that are not `BRANCH_MEMBER`
   void getMembershipValuesById(std::vector<std::vector<ThresholdType>>& membership_values_by_id) const {

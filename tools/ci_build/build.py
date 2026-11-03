@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 import os
 import platform
@@ -434,6 +435,25 @@ def get_msvc_spectre_lib_dir(args):
     return None
 
 
+def stale_python_cache_args(config_build_dir: str) -> list[str]:
+    """CMake arguments that drop the FindPython cache when the build tree was configured for another Python.
+
+    FindPython re-resolves most results for a new Python_EXECUTABLE but keeps the cached header directory, so
+    Development.Module and NumPy are then reported missing and the Python::NumPy target is not created.
+    """
+    cache = Path(config_build_dir) / "CMakeCache.txt"
+    if not cache.is_file():
+        return []
+    prefix = "_Python_EXECUTABLE:INTERNAL="
+    for line in cache.read_text(encoding="utf-8", errors="replace").splitlines():
+        if line.startswith(prefix):
+            cached = os.path.normcase(os.path.realpath(line[len(prefix) :]))
+            if cached != os.path.normcase(os.path.realpath(sys.executable)):
+                return ["-U", "_Python_*"]
+            break
+    return []
+
+
 def generate_build_tree(
     cmake_path,
     source_dir,
@@ -442,7 +462,6 @@ def generate_build_tree(
     cudnn_home,
     nccl_home,
     tensorrt_home,
-    tensorrt_rtx_home,
     migraphx_home,
     acl_home,
     acl_libs,
@@ -546,13 +565,11 @@ def generate_build_tree(
         "-Donnxruntime_ENABLE_MICROSOFT_INTERNAL=" + ("ON" if args.enable_msinternal else "OFF"),
         "-Donnxruntime_USE_VITISAI=" + ("ON" if args.use_vitisai else "OFF"),
         "-Donnxruntime_USE_TENSORRT=" + ("ON" if args.use_tensorrt else "OFF"),
-        "-Donnxruntime_USE_NV=" + ("ON" if args.use_nv_tensorrt_rtx else "OFF"),
         "-Donnxruntime_USE_TENSORRT_BUILTIN_PARSER="
         + ("ON" if args.use_tensorrt_builtin_parser and not args.use_tensorrt_oss_parser else "OFF"),
         # interface variables are used only for building onnxruntime/onnxruntime_shared.dll but not EPs
         "-Donnxruntime_USE_TENSORRT_INTERFACE=" + ("ON" if args.enable_generic_interface else "OFF"),
         "-Donnxruntime_USE_CUDA_INTERFACE=" + ("ON" if args.enable_generic_interface else "OFF"),
-        "-Donnxruntime_USE_NV_INTERFACE=" + ("ON" if args.enable_generic_interface else "OFF"),
         "-Donnxruntime_USE_OPENVINO_INTERFACE=" + ("ON" if args.enable_generic_interface else "OFF"),
         "-Donnxruntime_USE_VITISAI_INTERFACE=" + ("ON" if args.enable_generic_interface else "OFF"),
         "-Donnxruntime_USE_QNN_INTERFACE=" + ("ON" if args.enable_generic_interface else "OFF"),
@@ -820,10 +837,10 @@ def generate_build_tree(
     if args.use_cache:
         cmake_args.append("-Donnxruntime_BUILD_CACHE=ON")
         if not (is_windows() and args.cmake_generator != "Ninja"):
-            cmake_args.append("-DCMAKE_CXX_COMPILER_LAUNCHER=ccache")
-            cmake_args.append("-DCMAKE_C_COMPILER_LAUNCHER=ccache")
+            cmake_args.append(f"-DCMAKE_CXX_COMPILER_LAUNCHER={args.cache_tool}")
+            cmake_args.append(f"-DCMAKE_C_COMPILER_LAUNCHER={args.cache_tool}")
             if args.use_cuda:
-                cmake_args.append("-DCMAKE_CUDA_COMPILER_LAUNCHER=ccache")
+                cmake_args.append(f"-DCMAKE_CUDA_COMPILER_LAUNCHER={args.cache_tool}")
     if args.external_graph_transformer_path:
         cmake_args.append("-Donnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH=" + args.external_graph_transformer_path)
 
@@ -845,8 +862,6 @@ def generate_build_tree(
 
     if args.use_tensorrt:
         cmake_args.append("-Donnxruntime_TENSORRT_HOME=" + tensorrt_home)
-    if args.use_nv_tensorrt_rtx:
-        cmake_args.append("-Donnxruntime_TENSORRT_RTX_HOME=" + tensorrt_rtx_home)
 
     if args.use_cuda:
         nvcc_threads = number_of_nvcc_threads(args)
@@ -1396,7 +1411,7 @@ def generate_build_tree(
             cxxflags = cflags.copy()
         config_build_dir = get_config_build_dir(build_dir, config)
         os.makedirs(config_build_dir, exist_ok=True)
-        temp_cmake_args = cmake_args.copy()
+        temp_cmake_args = cmake_args.copy() + stale_python_cache_args(config_build_dir)
         if cflags is not None and cxxflags is not None and len(cflags) != 0 and len(cxxflags) != 0:
             temp_cmake_args += [
                 "-DCMAKE_C_FLAGS={}".format(" ".join(cflags)),
@@ -1875,8 +1890,6 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
         dll_path_list = []
         if args.use_tensorrt:
             dll_path_list.append(os.path.join(args.tensorrt_home, "lib"))
-        if args.use_nv_tensorrt_rtx:
-            dll_path_list.append(os.path.join(args.tensorrt_rtx_home, "lib"))
 
         dll_path = None
         if len(dll_path_list) > 0:
@@ -2023,6 +2036,15 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             if onnx_test:
                 log.info("Testing Symlink ONNX Model and External Data")
                 run_subprocess([sys.executable, "onnxruntime_test_python_symlink_data.py"], cwd=cwd, dll_path=dll_path)
+
+                if args.use_cuda and not args.disable_contrib_ops:
+                    log.info("Testing Portable QMoE Offload v4")
+                    run_subprocess(
+                        [sys.executable, "test_qmoe_offload_v4.py"],
+                        cwd=cwd,
+                        dll_path=dll_path,
+                        python_path=python_path,
+                    )
 
                 # Disable python onnx tests for TensorRT and CANN EP, because many tests are
                 # not supported yet.
@@ -2232,10 +2254,6 @@ def build_python_wheel(
                 args.append(f"--qnn_version={qnn_version}")
         elif use_azure:
             args.append("--use_azure")
-        elif wheel_name_suffix == "trt-rtx":
-            cuda_version = cuda_version or parse_cuda_version_from_json(cuda_home)
-            if cuda_version:
-                args.append(f"--cuda_version={cuda_version}")
 
         run_subprocess(args, cwd=cwd)
 
@@ -2452,13 +2470,35 @@ def run_csharp_tests(
         run_subprocess(cmd_args, cwd=csharp_source_dir)
 
 
-def generate_documentation(source_dir, build_dir, configs, validate):
+def generate_documentation(source_dir, build_dir, configs, validate, use_webgpu=None):
+    if use_webgpu and use_webgpu != "shared_lib":
+        raise BuildError("WebGPU documentation generation requires --use_webgpu shared_lib.")
+
     # Randomly choose one build config
     config = next(iter(configs))
     cwd = get_config_build_dir(build_dir, config)
     if is_windows():
         cwd = os.path.join(cwd, config)
 
+    providers = ["CPU", "CUDA", "DML"]
+    plugin_args = []
+    if use_webgpu:
+        library_name = (
+            "onnxruntime_providers_webgpu.dll"
+            if is_windows()
+            else "libonnxruntime_providers_webgpu.dylib"
+            if is_macOS()
+            else "libonnxruntime_providers_webgpu.so"
+        )
+        library_path = os.path.abspath(os.path.join(cwd, library_name))
+        if not os.path.isfile(library_path):
+            raise BuildError(f"WebGPU documentation requires the built plugin library: {library_path}")
+        providers.append("WebGPU")
+        plugin_args = ["--plugin-ep", f"WebGpuExecutionProvider:{library_path}"]
+
+    artifact_dir = (Path(cwd) / "generated-docs").resolve()
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    metadata_path = artifact_dir / "generation-metadata.json"
     contrib_op_doc_path = os.path.join(source_dir, "docs", "ContribOperators.md")
     opkernel_doc_path = os.path.join(source_dir, "docs", "OperatorKernels.md")
     shutil.copy(os.path.join(source_dir, "tools", "python", "gen_contrib_doc.py"), cwd)
@@ -2468,21 +2508,36 @@ def generate_documentation(source_dir, build_dir, configs, validate):
         [sys.executable, "gen_contrib_doc.py", "--output_path", contrib_op_doc_path, "--domains", "com.microsoft"],
         cwd=cwd,
     )
-    # we currently limit the documentation created by a build to a subset of EP's.
-    # Run get_opkernel_doc.py directly if you need/want documentation from other EPs that are enabled in the build.
+    # Other enabled EPs can be documented by running gen_opkernel_doc.py directly.
     run_subprocess(
         [
             sys.executable,
             "gen_opkernel_doc.py",
             "--output_path",
             opkernel_doc_path,
+            "--metadata_path",
+            str(metadata_path),
             "--providers",
-            "CPU",
-            "CUDA",
-            "DML",
+            *providers,
+            *plugin_args,
         ],
         cwd=cwd,
     )
+
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata["source_commit"] = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=source_dir).decode().strip()
+    metadata["build_configuration"] = config
+    metadata["documents"] = {}
+    for doc_path in (opkernel_doc_path, contrib_op_doc_path):
+        document = Path(doc_path)
+        shutil.copy(document, artifact_dir / document.name)
+        metadata["documents"][document.name] = hashlib.sha256(document.read_bytes()).hexdigest()
+    metadata_path.write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    # Signal readiness before validation so stale, but successfully generated, docs are still uploaded.
+    if github_output := os.environ.get("GITHUB_OUTPUT"):
+        with open(github_output, "a", encoding="utf-8") as output:
+            output.write("documentation_generated=true\n")
 
     if validate:
         try:
@@ -2502,7 +2557,7 @@ def generate_documentation(source_dir, build_dir, configs, validate):
                     )
                     log.debug("diff:\n" + diff)  # noqa: G003
 
-            diff_file(opkernel_doc_path, " with CPU, CUDA and DML execution providers enabled")
+            diff_file(opkernel_doc_path, f" with {', '.join(providers)} execution providers enabled")
             diff_file(contrib_op_doc_path)
 
             if have_diff:
@@ -2636,9 +2691,6 @@ def main():
 
     # if using tensorrt, setup tensorrt paths
     tensorrt_home = ""
-    tensorrt_rtx_home = ""
-    if args.use_nv_tensorrt_rtx:
-        tensorrt_rtx_home = args.tensorrt_rtx_home
     if args.use_tensorrt:
         tensorrt_home = setup_tensorrt_vars(args)
 
@@ -2775,7 +2827,6 @@ def main():
             cudnn_home,
             nccl_home,
             tensorrt_home,
-            tensorrt_rtx_home,
             migraphx_home,
             acl_home,
             acl_libs,
@@ -2892,7 +2943,7 @@ def main():
         else:
             # assumes build has occurred for easier use in CI where we don't always build via build.py and need to run
             # documentation generation as a separate task post-build
-            generate_documentation(source_dir, build_dir, configs, args.gen_doc == "validate")
+            generate_documentation(source_dir, build_dir, configs, args.gen_doc == "validate", args.use_webgpu)
 
     log.info("Build complete")
 

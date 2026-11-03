@@ -7,6 +7,7 @@
 #include <cmath>
 #include <limits>
 #include <string>
+#include <type_traits>
 
 #include "contrib_ops/cuda/sparse/packed_sparse_attention_indexer_impl.h"
 #include "core/providers/cuda/cuda_common.h"
@@ -19,15 +20,16 @@ namespace cuda {
 using namespace onnxruntime::cuda;
 namespace psai = onnxruntime::contrib::packed_sparse_attention_indexer;
 
-#define REGISTER_KERNEL_TYPED(T)                                            \
+#define REGISTER_KERNEL_TYPED(K, T, TState)                                 \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                            \
       PackedSparseAttentionIndexer,                                         \
       kMSDomain,                                                            \
       1,                                                                    \
-      T,                                                                    \
+      K,                                                                    \
       kCudaExecutionProvider,                                               \
       (*KernelDefBuilder::Create())                                         \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())            \
+          .TypeConstraint("T_KEY", DataTypeImpl::GetTensorType<TState>())   \
           .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())      \
           .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>())      \
           .InputMemoryType(OrtMemTypeCPUInput, psai::kStateUpdateActive)    \
@@ -36,14 +38,13 @@ namespace psai = onnxruntime::contrib::packed_sparse_attention_indexer;
           .MayInplace(psai::kMergedCounts, psai::kSelectedCounts)           \
           .MayInplace(psai::kMergedStatus, psai::kIndexShareStatus)         \
           .MayInplace(psai::kPastKeyState, psai::kPresentKeyState)          \
-          .MayInplace(psai::kPastKvBuffer, psai::kPresentKvBuffer)          \
-          .MayInplace(psai::kPastGateBuffer, psai::kPresentGateBuffer)      \
           .MayInplace(psai::kPastStateLengths, psai::kPresentStateLengths), \
-      PackedSparseAttentionIndexer<T>);
+      PackedSparseAttentionIndexer<T, TState>);
 
-REGISTER_KERNEL_TYPED(float)
-REGISTER_KERNEL_TYPED(MLFloat16)
-REGISTER_KERNEL_TYPED(BFloat16)
+REGISTER_KERNEL_TYPED(float_float, float, float)
+REGISTER_KERNEL_TYPED(MLFloat16_MLFloat16, MLFloat16, MLFloat16)
+REGISTER_KERNEL_TYPED(BFloat16_BFloat16, BFloat16, BFloat16)
+REGISTER_KERNEL_TYPED(BFloat16_float, BFloat16, float)
 
 #undef REGISTER_KERNEL_TYPED
 
@@ -100,13 +101,17 @@ Status CheckRotaryCache(const Tensor* cos_cache, const Tensor* sin_cache, int64_
 
 }  // namespace
 
-template <typename T>
-PackedSparseAttentionIndexer<T>::PackedSparseAttentionIndexer(const OpKernelInfo& info) : CudaKernel(info) {
+template <typename T, typename TState>
+PackedSparseAttentionIndexer<T, TState>::PackedSparseAttentionIndexer(const OpKernelInfo& info) : CudaKernel(info) {
   std::string policy_mode;
   ORT_ENFORCE(info.GetAttr<std::string>("policy_mode", &policy_mode).IsOK(),
               "PackedSparseAttentionIndexer: policy_mode is required");
   ORT_ENFORCE(psai::TryParsePolicy(policy_mode, policy_), "PackedSparseAttentionIndexer: policy_mode must be '",
               psai::kPolicyModeQsa, "' or '", psai::kPolicyModeCsa, "', got '", policy_mode, "'");
+  if constexpr (!std::is_same_v<T, TState>) {
+    ORT_ENFORCE(policy_ == psai::Policy::kQsa,
+                "PackedSparseAttentionIndexer: mixed input/state types are supported only for policy_mode 'qsa'");
+  }
 
   ORT_ENFORCE(info.GetAttr<int64_t>("compress_ratio", &compress_ratio_).IsOK(),
               "PackedSparseAttentionIndexer: compress_ratio is required");
@@ -169,8 +174,8 @@ PackedSparseAttentionIndexer<T>::PackedSparseAttentionIndexer(const OpKernelInfo
               "PackedSparseAttentionIndexer: max_output_entries must cover the original selection capacity");
 }
 
-template <typename T>
-Status PackedSparseAttentionIndexer<T>::ComputeInternal(OpKernelContext* context) const {
+template <typename T, typename TState>
+Status PackedSparseAttentionIndexer<T, TState>::ComputeInternal(OpKernelContext* context) const {
   bool reuse = false;
   const Tensor* mode = context->InputCount() > psai::kIndexShareMode
                            ? context->Input<Tensor>(psai::kIndexShareMode)
@@ -239,9 +244,10 @@ Status PackedSparseAttentionIndexer<T>::ComputeInternal(OpKernelContext* context
   return is_qsa ? ComputeQsa(context) : ComputeCsa(context);
 }
 
-template <typename T>
-Status PackedSparseAttentionIndexer<T>::ComputeQsa(OpKernelContext* context) const {
+template <typename T, typename TState>
+Status PackedSparseAttentionIndexer<T, TState>::ComputeQsa(OpKernelContext* context) const {
   using CudaT = typename OrtToCudaType<T>::type;
+  using CudaStateT = typename OrtToCudaType<TState>::type;
 
   const Tensor* query = context->Input<Tensor>(psai::kQuery);
   const Tensor* key = context->Input<Tensor>(psai::kKey);
@@ -399,7 +405,7 @@ Status PackedSparseAttentionIndexer<T>::ComputeQsa(OpKernelContext* context) con
   const CudaT* key_data = has_separate_key
                               ? reinterpret_cast<const CudaT*>(key->Data<T>())
                               : query_data + query_width;
-  return LaunchQsaPackedSparseAttentionIndexer<CudaT>(
+  return LaunchQsaPackedSparseAttentionIndexer<CudaT, CudaStateT>(
       Stream(context), params,
       query_data,
       key_data,
@@ -410,14 +416,14 @@ Status PackedSparseAttentionIndexer<T>::ComputeQsa(OpKernelContext* context) con
       cumulative_sequence_lengths->Data<int32_t>(),
       past_sequence_lengths->Data<int32_t>(),
       position_ids != nullptr ? position_ids->Data<int64_t>() : nullptr,
-      reinterpret_cast<const CudaT*>(past_key_state->Data<T>()),
+      reinterpret_cast<const CudaStateT*>(past_key_state->Data<TState>()),
       reinterpret_cast<const CudaT*>(past_kv_buffer->Data<T>()),
       past_state_lengths->Data<int32_t>(),
       state_update_capture_count != nullptr ? state_update_capture_count->Data<int32_t>() : nullptr,
       state_update_active == nullptr || state_update_active->Data<int32_t>()[0] != 0,
       selected_indices->MutableData<int32_t>(),
       selected_counts->MutableData<int32_t>(),
-      reinterpret_cast<CudaT*>(present_key_state->MutableData<T>()),
+      reinterpret_cast<CudaStateT*>(present_key_state->MutableData<TState>()),
       reinterpret_cast<CudaT*>(present_kv_buffer->MutableData<T>()),
       present_state_lengths->MutableData<int32_t>(),
       state_update != nullptr ? reinterpret_cast<CudaT*>(state_update->MutableData<T>()) : nullptr,
@@ -425,8 +431,8 @@ Status PackedSparseAttentionIndexer<T>::ComputeQsa(OpKernelContext* context) con
       overflow_flags);
 }
 
-template <typename T>
-Status PackedSparseAttentionIndexer<T>::ComputeCsa(OpKernelContext* context, const bool state_only) const {
+template <typename T, typename TState>
+Status PackedSparseAttentionIndexer<T, TState>::ComputeCsa(OpKernelContext* context, const bool state_only) const {
   using CudaT = typename OrtToCudaType<T>::type;
 
   const Tensor* query = context->Input<Tensor>(psai::kQuery);
@@ -623,8 +629,8 @@ Status PackedSparseAttentionIndexer<T>::ComputeCsa(OpKernelContext* context, con
                                           static_cast<int>(compress_ratio_), false, overflow_flags);
 }
 
-template <typename T>
-Status PackedSparseAttentionIndexer<T>::ComputeReuse(OpKernelContext* context) const {
+template <typename T, typename TState>
+Status PackedSparseAttentionIndexer<T, TState>::ComputeReuse(OpKernelContext* context) const {
   const Tensor* query = context->Input<Tensor>(psai::kQuery);
   const Tensor* lengths = context->Input<Tensor>(psai::kPastSequenceLengths);
   const Tensor* indices = context->Input<Tensor>(psai::kMergedIndices);
@@ -732,9 +738,10 @@ Status PackedSparseAttentionIndexer<T>::ComputeReuse(OpKernelContext* context) c
                                           static_cast<int>(state_capacity_), static_cast<int>(compress_ratio_), is_qsa);
 }
 
-template class PackedSparseAttentionIndexer<float>;
-template class PackedSparseAttentionIndexer<MLFloat16>;
-template class PackedSparseAttentionIndexer<BFloat16>;
+template class PackedSparseAttentionIndexer<float, float>;
+template class PackedSparseAttentionIndexer<MLFloat16, MLFloat16>;
+template class PackedSparseAttentionIndexer<BFloat16, BFloat16>;
+template class PackedSparseAttentionIndexer<BFloat16, float>;
 
 }  // namespace cuda
 }  // namespace contrib

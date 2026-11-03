@@ -116,6 +116,102 @@ class TestSymbolicShapeInference(unittest.TestCase):
                 else:
                     self.assertEqual([dimension.dim_param for dimension in dimensions], ["batch", "hidden"])
 
+    def test_hyper_connection_low_rank_mix(self):
+        cases = [
+            ([16], [8], [2]),
+            (["batch", 16], ["batch", 8], ["batch", 2]),
+            (["batch", "sequence", 16], ["batch", "sequence", 8], ["batch", "sequence", 2]),
+            (["batch", "width"], ["batch", "width/2"], ["batch", 2]),
+        ]
+        for elem_type in (TensorProto.FLOAT, TensorProto.FLOAT16, TensorProto.BFLOAT16):
+            for input_shape, pre_shape, gate_shape in cases:
+                for streams_output in (None, "streams_out", ""):
+                    with self.subTest(elem_type=elem_type, input_shape=input_shape, streams_output=streams_output):
+                        outputs = ["pre_output", "post_gate"]
+                        expected_shapes = [pre_shape, gate_shape]
+                        if streams_output is not None:
+                            outputs.append(streams_output)
+                        if streams_output:
+                            expected_shapes.append(input_shape)
+                        graph = helper.make_graph(
+                            [
+                                helper.make_node(
+                                    "HyperConnectionLowRankMix",
+                                    ["streams", "norm_scale", "down_weight", "up_weight", "inject_weight"],
+                                    outputs,
+                                    domain="com.microsoft",
+                                    num_branches=2,
+                                )
+                            ],
+                            "hyper_connection_low_rank_mix",
+                            [
+                                helper.make_tensor_value_info("streams", elem_type, input_shape),
+                                helper.make_tensor_value_info("norm_scale", elem_type, [16]),
+                                helper.make_tensor_value_info("down_weight", elem_type, [16, 8]),
+                                helper.make_tensor_value_info("up_weight", elem_type, [8, 16]),
+                                helper.make_tensor_value_info("inject_weight", elem_type, [16, 2]),
+                            ],
+                            [helper.make_empty_tensor_value_info(name) for name in outputs if name],
+                        )
+                        model = helper.make_model(
+                            graph,
+                            opset_imports=[helper.make_opsetid("", 17), helper.make_opsetid("com.microsoft", 1)],
+                        )
+                        inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+                        self.assertEqual(len(inferred.graph.output), len(expected_shapes))
+                        for output, expected_shape in zip(inferred.graph.output, expected_shapes, strict=True):
+                            tensor_type = output.type.tensor_type
+                            self.assertEqual(tensor_type.elem_type, elem_type)
+                            self.assertEqual(
+                                [
+                                    dim.dim_param if dim.HasField("dim_param") else dim.dim_value
+                                    for dim in tensor_type.shape.dim
+                                ],
+                                expected_shape,
+                            )
+
+    def test_hyper_connection_low_rank_mix_invalid_stream_shape(self):
+        cases = [
+            ([16], None, "num_branches must be positive"),
+            ([16], 0, "num_branches must be positive"),
+            ([16], -2, "num_branches must be positive"),
+            ([], 2, "flattened streams must have rank at least 1"),
+            ([0], 2, "flattened stream width must be positive and divisible by num_branches"),
+            ([15], 2, "flattened stream width must be positive and divisible by num_branches"),
+        ]
+        for input_shape, branches, error in cases:
+            with self.subTest(input_shape=input_shape, branches=branches):
+                attributes = {} if branches is None else {"num_branches": branches}
+                graph = helper.make_graph(
+                    [
+                        helper.make_node(
+                            "HyperConnectionLowRankMix",
+                            ["streams", "norm_scale", "down_weight", "up_weight", "inject_weight"],
+                            ["pre_output", "post_gate"],
+                            domain="com.microsoft",
+                            **attributes,
+                        )
+                    ],
+                    "hyper_connection_low_rank_mix_invalid",
+                    [
+                        helper.make_tensor_value_info("streams", TensorProto.FLOAT, input_shape),
+                        helper.make_tensor_value_info("norm_scale", TensorProto.FLOAT, [16]),
+                        helper.make_tensor_value_info("down_weight", TensorProto.FLOAT, [16, 8]),
+                        helper.make_tensor_value_info("up_weight", TensorProto.FLOAT, [8, 16]),
+                        helper.make_tensor_value_info("inject_weight", TensorProto.FLOAT, [16, 2]),
+                    ],
+                    [
+                        helper.make_tensor_value_info(name, TensorProto.FLOAT, None)
+                        for name in ("pre_output", "post_gate")
+                    ],
+                )
+                model = helper.make_model(
+                    graph,
+                    opset_imports=[helper.make_opsetid("", 17), helper.make_opsetid("com.microsoft", 1)],
+                )
+                with self.assertRaisesRegex(AssertionError, error):
+                    SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+
     def test_hyper_connection_pre_mix_invalid_stream_shape(self):
         cases = [
             ("non_positive_branches", [10], -1, "num_branches must be positive"),

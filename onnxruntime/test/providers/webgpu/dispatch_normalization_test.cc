@@ -26,6 +26,11 @@
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
 
+#if !defined(DISABLE_CONTRIB_OPS)
+#include "contrib_ops/webgpu/quantization/dp4a_matmul_nbits.h"
+#include "contrib_ops/webgpu/quantization/matmul_nbits.h"
+#endif
+
 namespace onnxruntime {
 namespace test {
 namespace {
@@ -217,6 +222,116 @@ void CheckResultsAndPadding(gsl::span<const float> output_data, size_t output_si
                           [](float value) { return value == kOutputPaddingCanary; }))
       << "Normalization-added workgroups modified output padding.";
 }
+
+#if !defined(DISABLE_CONTRIB_OPS)
+void CheckQLoRADownPadding(WebGpuExecutionProvider& ep, bool dp4a, bool subgroups) {
+  auto& context = WebGpuContextFactory::GetContext(0);
+  const auto& adapter = context.AdapterInfo();
+  const bool fixed_subgroup_32 = adapter.subgroupMinSize == 32 && adapter.subgroupMaxSize == 32;
+  if (subgroups &&
+      (!context.DeviceHasFeature(wgpu::FeatureName::Subgroups) ||
+       !context.Instance().HasWGSLLanguageFeature(wgpu::WGSLLanguageFeatureName::SubgroupId) ||
+       (!fixed_subgroup_32 &&
+        (!context.DeviceHasFeature(wgpu::FeatureName::SubgroupSizeControl) ||
+         adapter.subgroupMinSize > 32 || adapter.subgroupMaxSize < 32)))) {
+    GTEST_SKIP() << "QLoRA subgroup decode requires 32-lane subgroups and subgroup_id.";
+  }
+
+  constexpr uint32_t N = 24, K = 512, rank = 32, tile_n = 8;
+  const uint32_t batches = dp4a ? 2 : 1;
+  const uint32_t base_groups = batches * (N / tile_n);
+  const uint32_t down_groups = dp4a ? batches * 8 : 4;
+  const OrtMemoryInfo memory_info(WEBGPU_BUFFER, OrtDeviceAllocator, webgpu::WebGpuDevice(0), OrtMemTypeDefault);
+  // Exercise both cube and square normalization with small physical buffers.
+  for (uint32_t limit : {dp4a ? 3u : 2u, 5u}) {
+    SCOPED_TRACE(limit);
+    std::array<uint32_t, 3> physical{base_groups + down_groups, 1, 1};
+    ASSERT_STATUS_OK(webgpu::detail::NormalizeDispatchGroupSize(physical[0], physical[1], physical[2], limit));
+    const uint32_t physical_count = physical[0] * physical[1] * physical[2];
+    ASSERT_GT(physical_count, base_groups + down_groups);
+    const uint32_t padded_batches = dp4a ? CeilDiv(physical_count - base_groups, 8u) : 1;
+    const uint32_t padded_ranks = dp4a ? rank : (physical_count - base_groups) * 8;
+    // Oversize the backing buffers so an unguarded shader writes the canary
+    // instead of accessing unallocated GPU memory, even with robustness enabled.
+    std::vector<float> x_data(padded_batches * K, 0.5f);
+    std::vector<uint32_t> xq_data(padded_batches * K / 4, 0x40404040u);
+    std::vector<float> xs_data(padded_batches * K / 128, 1.0f / 128.0f);
+    std::vector<uint8_t> w_data(N * K / 2, 0x99);
+    std::vector<float> s_data(N * K / 32, 0.03125f);
+    std::vector<uint8_t> aq_data(padded_ranks * K, 129);
+    std::vector<float> as_data(padded_ranks * K / 32, 0.0625f);
+    std::vector<float> output_data(batches * N + rank, kOutputPaddingCanary);
+    std::vector<float> down_data(padded_batches * padded_ranks, kOutputPaddingCanary);
+    auto x_buffer = CreateStorageBuffer(ep, x_data);
+    auto xq_buffer = CreateStorageBuffer(ep, xq_data);
+    auto xs_buffer = CreateStorageBuffer(ep, xs_data);
+    auto w_buffer = CreateStorageBuffer(ep, w_data);
+    auto s_buffer = CreateStorageBuffer(ep, s_data);
+    auto aq_buffer = CreateStorageBuffer(ep, aq_data);
+    auto as_buffer = CreateStorageBuffer(ep, as_data);
+    auto output_buffer = CreateStorageBuffer(ep, output_data);
+    auto down_buffer = CreateStorageBuffer(ep, down_data);
+    Tensor x(DataTypeImpl::GetType<float>(), {batches, 1, K}, x_buffer.Get(), memory_info);
+    Tensor xq(DataTypeImpl::GetType<uint32_t>(), {batches, 1, K / 4}, xq_buffer.Get(), memory_info);
+    Tensor xs(DataTypeImpl::GetType<float>(), {batches, 1, 1, K / 128}, xs_buffer.Get(), memory_info);
+    Tensor w(DataTypeImpl::GetType<uint8_t>(), {N, K / 32, 16}, w_buffer.Get(), memory_info);
+    Tensor s(DataTypeImpl::GetType<float>(), {N, K / 32}, s_buffer.Get(), memory_info);
+    Tensor aq(DataTypeImpl::GetType<uint8_t>(), {rank, K / 32, 32}, aq_buffer.Get(), memory_info);
+    Tensor as(DataTypeImpl::GetType<float>(), {rank, K / 32}, as_buffer.Get(), memory_info);
+    Tensor output(DataTypeImpl::GetType<float>(), {batches, 1, N}, output_buffer.Get(), memory_info);
+    Tensor down(DataTypeImpl::GetType<float>(), {batches, 1, rank}, down_buffer.Get(), memory_info);
+    if (dp4a) {
+      contrib::webgpu::DP4AMatMulNBitsKParallelProgram program{
+          32, tile_n, 4, false, false, false, false, false, false, true, false, true};
+      program.AddInputs({{&xq, ProgramTensorMetadataDependency::TypeAndRank, 4},
+                         {&xs, ProgramTensorMetadataDependency::TypeAndRank},
+                         {&w, ProgramTensorMetadataDependency::TypeAndRank, 16},
+                         {&s, ProgramTensorMetadataDependency::TypeAndRank},
+                         {&aq, ProgramTensorMetadataDependency::Type, 16},
+                         {&as, ProgramTensorMetadataDependency::Type}})
+          .AddOutputs({{&output, ProgramTensorMetadataDependency::TypeAndRank},
+                       {&down, ProgramTensorMetadataDependency::Type}})
+          .AddUniformVariables({{batches}, {1u}, {N}, {K}, {K / 16}, {K / 32}, {32u}, {N / tile_n}, {0u}, {0u}, {1u}})
+          .SetWorkgroupSize(128)
+          .SetDispatchGroupSize(physical[0], physical[1], physical[2]);
+      ASSERT_NO_FATAL_FAILURE(RunAndReadProgram(ep, program, output_buffer.Get(), output_data));
+    } else {
+      contrib::webgpu::MatMulNBitsProgram program{
+          tile_n, 4, false, false, false, false, false, 32, false, false, false, true, subgroups};
+      program.AddInputs({{&x, ProgramTensorMetadataDependency::TypeAndRank, 4},
+                         {&w, ProgramTensorMetadataDependency::TypeAndRank, 16},
+                         {&s, ProgramTensorMetadataDependency::TypeAndRank},
+                         {&aq, ProgramTensorMetadataDependency::Type, 16},
+                         {&as, ProgramTensorMetadataDependency::Type}})
+          .AddOutputs({{&output, ProgramTensorMetadataDependency::TypeAndRank},
+                       {&down, ProgramTensorMetadataDependency::Type}})
+          .AddUniformVariables({{1u}, {N}, {K}, {K / 4}, {K / 32}, {32u}, {K / 32}, {0u}, {N / tile_n}, {1u}, {0u}, {1u}})
+          .SetWorkgroupSize(128)
+          .SetUseSubgroupId(subgroups)
+          .SetDispatchGroupSize(physical[0], physical[1], physical[2]);
+      if (subgroups && !fixed_subgroup_32) {
+        program.SetSubgroupSize(32);
+      }
+      ASSERT_NO_FATAL_FAILURE(RunAndReadProgram(ep, program, output_buffer.Get(), output_data));
+    }
+    ep.BufferManager().Download(ep.Recording(), down_buffer.Get(), down_data.data(), down_data.size() * sizeof(float));
+    CheckResultsAndPadding(output_data, batches * N, 8.0f);
+    CheckResultsAndPadding(down_data, batches * rank, 16.0f);
+  }
+}
+
+TEST_F(WebGpuDispatchExecutionTest, QLoRASharedDownPreservesPaddingAfterNormalization) {
+  CheckQLoRADownPadding(Ep(), false, false);
+}
+
+TEST_F(WebGpuDispatchExecutionTest, QLoRASubgroupDownPreservesPaddingAfterNormalization) {
+  CheckQLoRADownPadding(Ep(), false, true);
+}
+
+TEST_F(WebGpuDispatchExecutionTest, QLoRADP4ADownPreservesPaddingAfterNormalization) {
+  CheckQLoRADownPadding(Ep(), true, false);
+}
+#endif  // !defined(DISABLE_CONTRIB_OPS)
 
 class LogicalDispatchProbeProgram final : public Program<LogicalDispatchProbeProgram> {
  public:

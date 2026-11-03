@@ -1064,6 +1064,51 @@ TEST(ConvFp16Test, Conv2D_group) {
   TestConvFp16Op(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
 }
 
+// Each group of a grouped Conv with several output channels per group must use
+// its own packed weights and its own slice of the bias.
+TEST(ConvFp16Test, Conv2D_Group2_Bias_Issue33156) {
+  ConvOpAndTestAttributes attrs = {
+      "",                           // auto_pad
+      vector<int64_t>{1, 1},        // dilations
+      2,                            // group
+      vector<int64_t>{7, 7},        // kernel_shape
+      vector<int64_t>{3, 3, 3, 3},  // pads
+      vector<int64_t>{2, 2},        // strides
+      {}                            // excluded EPs
+  };
+
+  // Input channel g holds g + 1 everywhere. Only the center of each 7x7 filter is
+  // nonzero, so output channel c is (c + 1) times its group's input, plus bias.
+  vector<MLFloat16> X;
+  for (int g = 0; g < 2; ++g) {
+    X.insert(X.end(), 64, MLFloat16(static_cast<float>(g + 1)));
+  }
+  vector<int64_t> X_shape = {1, 2, 8, 8};
+  vector<MLFloat16> W(6 * 49, MLFloat16(0.0f));
+  vector<MLFloat16> B;
+  vector<MLFloat16> expected_no_bias;
+  vector<MLFloat16> expected_bias;
+  for (int c = 0; c < 6; ++c) {
+    W[c * 49 + 24] = MLFloat16(static_cast<float>(c + 1));
+    B.push_back(MLFloat16(0.25f * static_cast<float>(c + 1)));
+    const float value = static_cast<float>((c + 1) * (c / 3 + 1));
+    expected_no_bias.insert(expected_no_bias.end(), 16, MLFloat16(value));
+    expected_bias.insert(expected_bias.end(), 16, MLFloat16(value + 0.25f * static_cast<float>(c + 1)));
+  }
+  vector<int64_t> W_shape = {6, 1, 7, 7};
+  vector<int64_t> B_shape = {6};
+  vector<int64_t> Y_shape = {1, 6, 4, 4};
+
+  for (bool weight_is_initializer : {false, true}) {
+    for (bool disable_kleidiai : {false, true}) {
+      TestConvFp16Op(attrs, {X, W}, {X_shape, W_shape}, expected_no_bias, Y_shape, weight_is_initializer,
+                     OpTester::ExpectResult::kExpectSuccess, "", 11, 0.002f, disable_kleidiai);
+      TestConvFp16Op(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_bias, Y_shape, weight_is_initializer,
+                     OpTester::ExpectResult::kExpectSuccess, "", 11, 0.002f, disable_kleidiai);
+    }
+  }
+}
+
 TEST(ConvFp16Test, Depthwise2D_Bias_Group1_Issue18992) {
   ConvOpAndTestAttributes attrs = {
       "",                           // auto_pad
