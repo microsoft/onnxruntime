@@ -2,7 +2,11 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
+#include "core/graph/model.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/test_environment.h"
+#include "test/unittest_util/graph_transform_test_builder.h"
+#include "test/util/include/asserts.h"
 #include "default_providers.h"
 
 namespace onnxruntime {
@@ -19,6 +23,20 @@ TEST(ContribOpTest, ConvTransposeWithDynamicPads) {
   test.AddInput<int64_t>("Pads", {4}, std::vector<int64_t>{1, 1, 1, 1});
   test.AddOutput<float>("Y", {1, 1, 6, 6}, std::vector<float>{0.07368518f, -0.08925839f, -0.06627201f, 0.06301362f, 0.03732984f, -0.01919658f, -0.00628807f, -0.02817563f, -0.01472169f, 0.04392925f, -0.00689478f, -0.01549204f, 0.07957941f, -0.11459791f, -0.09505399f, 0.07681622f, 0.03604182f, -0.01853423f, -0.0270785f, -0.00680824f, -0.06650258f, 0.08004665f, 0.07918708f, -0.0724144f, 0.06256775f, -0.17838378f, -0.18863615f, 0.20064656f, 0.133717f, -0.06876295f, -0.06398046f, -0.00864975f, 0.19289537f, -0.01490572f, -0.13673618f, 0.01949645f});
   test.Run();
+}
+
+TEST(ContribOpTest, ConvTransposeWithDynamicPads_MissingPadsRejectedAtRuntime) {
+  OpTester test("ConvTransposeWithDynamicPads", 1, onnxruntime::kMSDomain);
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{1});
+  test.AddInput<float>("X", {1, 1, 1}, {1.0f});
+  test.AddInput<float>("W", {1, 1, 1}, {1.0f});
+  test.AddOptionalInputEdge<int64_t>();
+  test.AddOutput<float>("Y", {1, 1, 1}, {0.0f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Dynamic pads tensor is required.",
+           {}, nullptr, &execution_providers);
 }
 
 // Test that a rank-0 W input is gracefully rejected rather than causing undefined behavior.
@@ -69,6 +87,31 @@ TEST(ContribOpTest, ConvTransposeWithDynamicPads_InvalidInputRank2) {
            {kTensorrtExecutionProvider});
 }
 #endif  // !ORT_NO_EXCEPTIONS
+
+// Test that a weight rank shorter than the input rank is rejected. 'Pads' must be an
+// initializer so shape inference reaches the output-shape loop that reads past the end of
+// the too-short kernel_shape/effective_kernel_shape before the fix.
+TEST(ContribOpTest, ConvTransposeWithDynamicPads_ShorterWeightRank) {
+  OpTester test("ConvTransposeWithDynamicPads", 1, onnxruntime::kMSDomain);
+  test.AddInput<float>("X", {1, 1, 2, 2, 2}, std::vector<float>(8, 0.0f));
+  test.AddInput<float>("W", {1, 1, 3}, std::vector<float>(3, 0.0f));
+  test.AddInput<int64_t>("Pads", {6}, std::vector<int64_t>(6, 0), /*is_initializer=*/true);
+  test.AddOutput<float>("Y", {}, std::vector<float>{0.0f});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "num_dims does not match",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+
+// Test that a weight rank longer than the input rank is rejected. This exercises the
+// dilation-scaling loop, which reads past the end of `dilations` before the fix.
+TEST(ContribOpTest, ConvTransposeWithDynamicPads_LongerWeightRank) {
+  OpTester test("ConvTransposeWithDynamicPads", 1, onnxruntime::kMSDomain);
+  test.AddInput<float>("X", {1, 1, 2}, std::vector<float>(2, 0.0f));
+  test.AddInput<float>("W", {1, 1, 3, 3, 3}, std::vector<float>(27, 0.0f));
+  test.AddInput<int64_t>("Pads", {2}, std::vector<int64_t>(2, 0));
+  test.AddOutput<float>("Y", {}, std::vector<float>{0.0f});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "num_dims does not match",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
 
 // Test that incorrectly sized dynamic pads are rejected.
 // This runs through kernel validation (not shape inference) so it works in no-exception builds.
@@ -146,6 +189,24 @@ TEST(ContribOpTest, ConvTransposeWithDynamicPads_NegativePads_Dml) {
       .RunWithConfig();
 }
 #endif  // USE_DML
+
+// 'Pads' is schema-optional; a node may validly supply only X and W. Shape inference must not
+// index past the end of InputDefs() when reading the omitted Pads input.
+TEST(ContribOpTest, ConvTransposeWithDynamicPads_PadsOmitted_ShapeInferenceOnly) {
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 17}, {kMSDomain, 1}};
+  Model model("conv_transpose_with_dynamic_pads_pads_omitted", /*is_onnx_domain_only=*/false, ModelMetaData(),
+              PathString(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+              DefaultLoggingManager().DefaultLogger());
+
+  ModelTestBuilder builder(model.MainGraph());
+  NodeArg* x = builder.MakeInput<float>(std::vector<int64_t>{1, 1, 3, 3});
+  NodeArg* w = builder.MakeInput<float>(std::vector<int64_t>{1, 1, 3, 3});
+  NodeArg* y = builder.MakeOutput();
+  builder.AddNode("ConvTransposeWithDynamicPads", {x, w}, {y}, kMSDomain);
+  builder.SetGraphOutputs();
+
+  ASSERT_STATUS_OK(model.MainGraph().Resolve());
+}
 
 }  // namespace test
 }  // namespace onnxruntime

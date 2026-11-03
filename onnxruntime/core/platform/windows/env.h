@@ -16,6 +16,9 @@ limitations under the License.
 
 #include "core/platform/env.h"
 #include "core/platform/windows/telemetry.h"
+#ifdef USE_1DS_TELEMETRY
+#include "core/platform/telemetry_1ds.h"
+#endif
 #include "core/common/inlined_containers.h"
 #include <Windows.h>
 #include <filesystem>
@@ -61,6 +64,8 @@ class WindowsEnv : public Env {
   PIDType GetSelfPid() const override;
   Status GetFileLength(_In_z_ const ORTCHAR_T* file_path, size_t& length) const override;
   common::Status GetFileLength(int fd, /*out*/ size_t& file_size) const override;
+  Status OpenRandomAccessFile(_In_z_ const ORTCHAR_T* file_path,
+                              std::unique_ptr<RandomAccessFile>& file) const override;
   Status ReadFileIntoBuffer(_In_z_ const ORTCHAR_T* const file_path, const FileOffsetType offset, const size_t length,
                             const gsl::span<char> buffer) const override;
   Status MapFileIntoMemory(_In_z_ const ORTCHAR_T* file_path,
@@ -140,7 +145,16 @@ class WindowsEnv : public Env {
  private:
   void InitializeCpuInfo();
   typedef VOID(WINAPI* FnGetSystemTimePreciseAsFileTime)(LPFILETIME);
+#if defined(USE_1DS_TELEMETRY)
+  // Keep the TraceLogging provider registered for local ETW diagnostics even when 1DS is the
+  // telemetry upload backend.
+  WindowsTelemetry windows_telemetry_provider_;
+  OneDsTelemetry telemetry_provider_{windows_telemetry_provider_};
+#elif defined(USE_WINDOWS_TELEMETRY)
   WindowsTelemetry telemetry_provider_;
+#else
+  Telemetry telemetry_provider_;
+#endif
 };
 
 namespace internal {

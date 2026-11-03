@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <mutex>
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
@@ -183,20 +184,24 @@ XnnpackExecutionProvider::XnnpackExecutionProvider(const XnnpackExecutionProvide
 
 std::vector<AllocatorPtr> XnnpackExecutionProvider::CreatePreferredAllocators() {
   const auto& [stored_allocator, xnn_allocator] = GetStoredAllocator();
-  if (!stored_allocator) {
-    const AllocatorCreationInfo allocator_info(
-        [](int) {
-          // lazy create the allocator
-          return std::make_unique<CPUAllocator>(OrtMemoryInfo(kXnnpackExecutionProvider,
-                                                              OrtAllocatorType::OrtDeviceAllocator));
-        });
-    stored_allocator = CreateAllocator(allocator_info);
-  }
-  xnn_allocator->context = stored_allocator.get();
-  const xnn_status st = xnn_initialize(xnn_allocator);
-  if (st != xnn_status_success) {
-    ORT_THROW("XNNPACK initialization failed with status ", st);
-  }
+  // XNNPACK retains the allocator context globally, so publish it once and keep
+  // the owning allocator alive across concurrent EP creation and destruction.
+  static std::once_flag init_once;
+  std::call_once(init_once, [&]() {
+    if (!stored_allocator) {
+      const AllocatorCreationInfo allocator_info(
+          [](int) {
+            return std::make_unique<CPUAllocator>(OrtMemoryInfo(kXnnpackExecutionProvider,
+                                                                OrtAllocatorType::OrtDeviceAllocator));
+          });
+      stored_allocator = CreateAllocator(allocator_info);
+    }
+    xnn_allocator->context = stored_allocator.get();
+    const xnn_status st = xnn_initialize(xnn_allocator);
+    if (st != xnn_status_success) {
+      ORT_THROW("XNNPACK initialization failed with status ", st);
+    }
+  });
   return std::vector<AllocatorPtr>{stored_allocator};
 }
 

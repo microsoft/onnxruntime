@@ -74,9 +74,6 @@ struct MLAS_QNBIT_GEMM_DATA_PARAMS {
 
     ///< optional post processing to apply to result matrix
     MLAS_GEMM_POSTPROCESSOR<T>* PostProcessor = nullptr;
-
-    const float* BZpCorr = nullptr;       ///< optional: BZpCorrection for KleidiAI asymmetric path (N * BlockCountK floats)
-    const float* AFloatBlkSum = nullptr;  ///< optional: float-domain A block sums for KleidiAI asymmetric path (M * BlockCountK floats)
 };
 
 /**
@@ -150,15 +147,16 @@ bool MLASCALL
 MlasQNBitGemmFp16DirectQuantASupported();
 
 /**
- * @brief Whether the CompInt8 path can write its result directly as fp16 for the given
- *        weight bit width. When true, a fp16 MatMulNBits can set
- *        MLAS_QNBIT_GEMM_DATA_PARAMS::CFp16 and point `C` at a small per-worker scratch
- *        instead of a full fp32 copy of the result; each worker converts its output tile
- *        to fp16 in place. The fp16 result is bit-identical to computing in fp32 and
- *        converting with MlasConvertFloatToHalfBuffer.
+ * @brief Whether the given compute path can write its result directly as fp16 for the
+ *        given weight bit width. When true, a fp16 MatMulNBits can set
+ *        MLAS_QNBIT_GEMM_DATA_PARAMS::CFp16 instead of allocating a full fp32 copy of
+ *        the result; each worker converts its output strip to fp16 in place. The fp16
+ *        result is bit-identical to computing in fp32 and converting with
+ *        MlasConvertFloatToHalfBuffer. Supported for CompInt8 (2, 4 and 8 bit) and for
+ *        the 4 bit CompFp32 path.
  */
 bool MLASCALL
-MlasQNBitGemmFp16DirectCOutputSupported(size_t BlkBitWidth);
+MlasQNBitGemmFp16DirectCOutputSupported(size_t BlkBitWidth, MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType);
 
 /**
  * @brief Gets the size in bytes of the intermediate workspace buffer required by the float32/quantized n-bit int GEMM

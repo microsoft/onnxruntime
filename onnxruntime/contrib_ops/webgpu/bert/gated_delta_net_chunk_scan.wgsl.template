@@ -1,0 +1,129 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#param chunk_size
+#param head_size
+#param has_cu_seqlens
+#param has_initial_state
+#param state_alias
+#param output_final_state
+#use .getByOffset .setByOffset
+
+const CHUNK: u32 = chunk_size;
+var<workgroup> tile_w: array<f32, chunk_size * 128>;
+var<workgroup> tile_qg: array<f32, chunk_size * 128>;
+
+$MAIN {
+  let value_head = workgroup_idx % uniforms.num_heads_v;
+  let batch = workgroup_idx / uniforms.num_heads_v;
+  let value_index = local_idx;
+  let state_base = ((batch * uniforms.num_heads_v + value_head) * uniforms.head_size_v + value_index) * uniforms.head_size_qk;
+  var state: array<f32, head_size>;
+  if (value_index < uniforms.head_size_v) {
+    for (var dimension = 0u; dimension < uniforms.head_size_qk; dimension++) {
+#if has_initial_state
+#if state_alias
+      state[dimension] = final_state.getByOffset(state_base + dimension);
+#else
+      state[dimension] = initial_state.getByOffset(state_base + dimension);
+#endif
+#endif
+    }
+  }
+  var first = batch * (uniforms.total_tokens / uniforms.batch_size);
+  var last = first + uniforms.total_tokens / uniforms.batch_size;
+  var chunk_offset = batch * (uniforms.total_chunks / uniforms.batch_size);
+#if has_cu_seqlens
+  first = u32(clamp(cu_seqlens.getByOffset(batch), 0, i32(uniforms.total_tokens)));
+  last = u32(clamp(cu_seqlens.getByOffset(batch + 1u), i32(first), i32(uniforms.total_tokens)));
+  chunk_offset = first / CHUNK + batch;
+#endif
+  let value_base = CHUNK * uniforms.head_size_qk;
+  let matrix_base = value_base + CHUNK * uniforms.head_size_v;
+  let query_base = matrix_base + CHUNK * CHUNK;
+  let carry_base = query_base + CHUNK * uniforms.head_size_qk;
+  let decay_base = carry_base + CHUNK * uniforms.head_size_qk;
+  var deltas: array<f32, chunk_size>;
+  var chunk_index = 0u;
+  for (var start = first; start < last; start += CHUNK) {
+    let length = min(CHUNK, last - start);
+    let base = ((chunk_offset + chunk_index) * uniforms.num_heads_v + value_head) * uniforms.chunk_elements;
+    let total_qk_elements = length * uniforms.head_size_qk;
+    for (var i = local_idx; i < total_qk_elements; i += workgroup_size_x) {
+      tile_w[i] = prepared.getByOffset(base + i);
+      tile_qg[i] = prepared.getByOffset(base + query_base + i);
+    }
+    workgroupBarrier();
+    if (value_index < uniforms.head_size_v) {
+      let qk_vec_limit = (uniforms.head_size_qk / 4u) * 4u;
+      for (var row = 0u; row < length; row++) {
+        var retrieved = 0.0;
+        var projected = 0.0;
+        let row_qk_base = row * uniforms.head_size_qk;
+        for (var dimension = 0u; dimension < qk_vec_limit; dimension += 4u) {
+          retrieved += tile_w[row_qk_base + dimension] * state[dimension] +
+                       tile_w[row_qk_base + dimension + 1u] * state[dimension + 1u] +
+                       tile_w[row_qk_base + dimension + 2u] * state[dimension + 2u] +
+                       tile_w[row_qk_base + dimension + 3u] * state[dimension + 3u];
+          projected += tile_qg[row_qk_base + dimension] * state[dimension] +
+                       tile_qg[row_qk_base + dimension + 1u] * state[dimension + 1u] +
+                       tile_qg[row_qk_base + dimension + 2u] * state[dimension + 2u] +
+                       tile_qg[row_qk_base + dimension + 3u] * state[dimension + 3u];
+        }
+        for (var dimension = qk_vec_limit; dimension < uniforms.head_size_qk; dimension++) {
+          let s = state[dimension];
+          retrieved += tile_w[row_qk_base + dimension] * s;
+          projected += tile_qg[row_qk_base + dimension] * s;
+        }
+        deltas[row] = prepared.getByOffset(base + value_base + row * uniforms.head_size_v + value_index) - retrieved;
+        for (var column = 0u; column <= row; column++) {
+          projected += prepared.getByOffset(base + matrix_base + row * CHUNK + column) * deltas[column];
+        }
+        output.setByOffset(((start + row) * uniforms.num_heads_v + value_head) * uniforms.head_size_v + value_index, output_element_t(projected * uniforms.scale));
+      }
+    }
+    workgroupBarrier();
+    for (var i = local_idx; i < total_qk_elements; i += workgroup_size_x) {
+      tile_w[i] = prepared.getByOffset(base + carry_base + i);
+    }
+    workgroupBarrier();
+    if (value_index < uniforms.head_size_v) {
+      let decay = prepared.getByOffset(base + decay_base);
+      let qk_vec_limit = (uniforms.head_size_qk / 4u) * 4u;
+      for (var dimension = 0u; dimension < qk_vec_limit; dimension += 4u) {
+        var s0 = decay * state[dimension];
+        var s1 = decay * state[dimension + 1u];
+        var s2 = decay * state[dimension + 2u];
+        var s3 = decay * state[dimension + 3u];
+        for (var row = 0u; row < length; row++) {
+          let d = deltas[row];
+          let r_base = row * uniforms.head_size_qk;
+          s0 += tile_w[r_base + dimension] * d;
+          s1 += tile_w[r_base + dimension + 1u] * d;
+          s2 += tile_w[r_base + dimension + 2u] * d;
+          s3 += tile_w[r_base + dimension + 3u] * d;
+        }
+        state[dimension] = s0;
+        state[dimension + 1u] = s1;
+        state[dimension + 2u] = s2;
+        state[dimension + 3u] = s3;
+      }
+      for (var dimension = qk_vec_limit; dimension < uniforms.head_size_qk; dimension++) {
+        var next_state = decay * state[dimension];
+        for (var row = 0u; row < length; row++) {
+          next_state += tile_w[row * uniforms.head_size_qk + dimension] * deltas[row];
+        }
+        state[dimension] = next_state;
+      }
+    }
+    workgroupBarrier();
+    chunk_index++;
+  }
+#if output_final_state
+  if (value_index < uniforms.head_size_v) {
+    for (var dimension = 0u; dimension < uniforms.head_size_qk; dimension++) {
+      final_state.setByOffset(state_base + dimension, state[dimension]);
+    }
+  }
+#endif
+}

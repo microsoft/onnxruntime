@@ -69,7 +69,7 @@ class ResizeOpBuilder : public BaseOpBuilder {
       LOGS_DEFAULT(WARNING) << "Antialias attribute is not supported.";
       return false;
     }
-    auto& cooridinate = helper.Get("coordinate_transoformation_mode", "half_pixel");
+    auto cooridinate = helper.Get("coordinate_transoformation_mode", "half_pixel");
     if (cooridinate != "align_corners" && cooridinate != "half_pixel") {
       LOGS_DEFAULT(WARNING) << "Only support half_pixel and align_corners attributes now.";
       return false;

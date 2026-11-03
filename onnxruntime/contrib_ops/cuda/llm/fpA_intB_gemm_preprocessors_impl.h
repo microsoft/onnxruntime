@@ -40,6 +40,8 @@ constexpr int get_weight_quant_bits(QuantType quant_type) {
     case QuantType::W4_A16:
     case QuantType::W4_AFP8:
       return 4;
+    case QuantType::W2_A16:
+      return 2;
   }
 
   return -1;
@@ -115,6 +117,9 @@ LayoutDetails getLayoutDetailsForArch(QuantType quant_type) {
     case QuantType::W4_AFP8:
       details = getLayoutDetailsForArchAndQuantType<cutlassArch, cutlass::float_e4m3_t, cutlass::uint4b_t>();
       break;
+    case QuantType::W2_A16:
+      details = getLayoutDetailsForArchAndQuantType<cutlassArch, cutlass::half_t, cutlass::uint2b_t>();
+      break;
   }
   return details;
 }
@@ -143,6 +148,14 @@ constexpr std::array<int, 32> kPerm_W4_AFP8 = {
     0, 1, 2, 3, 16, 17, 18, 19, 4, 5, 6, 7, 20, 21, 22, 23,
     8, 9, 10, 11, 24, 25, 26, 27, 12, 13, 14, 15, 28, 29, 30, 31};
 
+// The tile is 8 * kInterleave rows and the map is {2g + 8j, 2g + 8j + 1} for g in [0,4),
+// j in [0, kInterleave): 16 rows / 2 sub-blocks for W8, 32 / 4 for W4, 64 / 8 for W2.
+constexpr std::array<int, 64> kPerm_W2_A16 = {
+    0, 1, 8, 9, 16, 17, 24, 25, 32, 33, 40, 41, 48, 49, 56, 57,
+    2, 3, 10, 11, 18, 19, 26, 27, 34, 35, 42, 43, 50, 51, 58, 59,
+    4, 5, 12, 13, 20, 21, 28, 29, 36, 37, 44, 45, 52, 53, 60, 61,
+    6, 7, 14, 15, 22, 23, 30, 31, 38, 39, 46, 47, 54, 55, 62, 63};
+
 // Permutes the rows of B in a way that is compatible with Turing+ architectures.
 //
 // Throws an error for other architectures.
@@ -163,6 +176,8 @@ gsl::span<const int> get_permutation_map(QuantType quant_type) {
       return AsSpan(kPerm_W4_A16);
     case QuantType::W4_AFP8:
       return AsSpan(kPerm_W4_AFP8);
+    case QuantType::W2_A16:
+      return AsSpan(kPerm_W2_A16);
     default:
       ORT_THROW("Invalid quantization type for LDSM permutation");
   }

@@ -14,11 +14,7 @@ concurrency:
 
 jobs:
   build_x64:
-    runs-on: [
-        "self-hosted",
-        "1ES.Pool=onnxruntime-github-vs2022-mms",
-        "JobId=windows-build-x64-asan-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
-        ]
+    runs-on: [ort-github-win-32-amd-eus2-ss]
     timeout-minutes: 300
 
     env:
@@ -28,12 +24,12 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: false
 
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.12'
           architecture: x64
@@ -42,6 +38,12 @@ jobs:
         uses: ./.github/actions/locate-vcvarsall-and-setup-env # Use the composite action
         with:
           architecture: x64
+
+      - name: Setup VCPKG Cache
+        uses: ./.github/actions/setup-vcpkg-cache
+        with:
+          key: windows-x64-build-asan-debug
+          path: ${{ runner.temp }}/vcpkg-binary-cache
 
       - name: Write shared build options
         shell: pwsh

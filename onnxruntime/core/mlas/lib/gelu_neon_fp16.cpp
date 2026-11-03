@@ -14,8 +14,11 @@ Abstract:
     This module contains  Gelu helper functions .
 
 --*/
-#include "gelu_neon_fp16.h"
 #include <cmath>
+#include <numbers>
+
+#include "gelu_neon_fp16.h"
+
 #if  defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
 
 void
@@ -24,7 +27,7 @@ MlasNeonGeluFP16Kernel(const MLAS_FP16* input, MLAS_FP16* output, MLAS_FP16* tem
 {
     const float16_t v_half1 = 0.5f;
     const float16_t v_one1 = 1.0f;
-    const float16_t v_sqrt1_21 = static_cast<float>(M_SQRT1_2);
+    const float16_t v_sqrt1_21 = 1.0f / std::numbers::sqrt2_v<float>;
     const float16_t v_B1 = 0.7978845608028654f;
     const float16_t v_C1 = 0.035677408136300125f;
     const float16_t c1 = 5.0f;
@@ -70,7 +73,7 @@ MlasNeonGeluFP16Kernel(const MLAS_FP16* input, MLAS_FP16* output, MLAS_FP16* tem
         // Tail
         for (; i < count; ++i) {
             float x = static_cast<float>(input[i]);
-            temp[i] = static_cast<MLAS_FP16>(x * static_cast<float>(M_SQRT1_2));
+            temp[i] = static_cast<MLAS_FP16>(x * (1.0f / std::numbers::sqrt2_v<float>));
         }
 
         // Erf processing
@@ -82,7 +85,7 @@ MlasNeonGeluFP16Kernel(const MLAS_FP16* input, MLAS_FP16* output, MLAS_FP16* tem
     for (; i + 7 < count; i += 8) {
         MLAS_FLOAT16X8 x = MlasLoadf16Float16x8(reinterpret_cast<const float16_t*>(input + i));
         MLAS_FLOAT16X8 t = MlasLoadf16Float16x8(reinterpret_cast<const float16_t*>(temp + i));
-        MLAS_FLOAT16X8 result = MlasMultiplyFloat16(v_half, MlasMultiplyFloat16(x, MlasAddFloat16(v_one, t)));
+        MLAS_FLOAT16X8 result = MlasMultiplyFloat16(x, MlasMultiplyFloat16(v_half, MlasAddFloat16(v_one, t)));
         MlasStoref16Float16x8(reinterpret_cast<float16_t*>(output + i), result);
     }
 

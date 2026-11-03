@@ -4,12 +4,14 @@
 import {
   InferenceSession,
   InferenceSessionHandler,
+  LoraAdapterHandler,
   SessionHandler,
   Tensor,
   TRACE_FUNC_BEGIN,
   TRACE_FUNC_END,
 } from 'onnxruntime-common';
 
+import { OnnxruntimeWebAssemblyLoraAdapterHandler } from './lora-adapter-handler';
 import { SerializableInternalBuffer, TensorMetadata } from './proxy-messages';
 import { copyFromExternalBuffer, createSession, endProfiling, releaseSession, run } from './proxy-wrapper';
 import { isGpuBufferSupportedType, isMLTensorSupportedType } from './wasm-common';
@@ -99,8 +101,16 @@ export class OnnxruntimeWebAssemblySessionHandler implements InferenceSessionHan
     feeds: SessionHandler.FeedsType,
     fetches: SessionHandler.FetchesType,
     options: InferenceSession.RunOptions,
+    activeLoraAdapters: readonly LoraAdapterHandler[] = [],
   ): Promise<SessionHandler.ReturnType> {
     TRACE_FUNC_BEGIN();
+    const loraAdapterIds = activeLoraAdapters.map((adapter) => {
+      if (!(adapter instanceof OnnxruntimeWebAssemblyLoraAdapterHandler)) {
+        throw new Error('LoRA adapter was not created by the WebAssembly backend.');
+      }
+      return adapter.adapterId;
+    });
+
     const inputArray: Tensor[] = [];
     const inputIndices: number[] = [];
     Object.entries(feeds).forEach((kvp) => {
@@ -134,7 +144,7 @@ export class OnnxruntimeWebAssemblySessionHandler implements InferenceSessionHan
       t ? encodeTensorMetadata(t, () => `output "${this.outputNames[outputIndices[i]]}"`) : null,
     );
 
-    const results = await run(this.sessionId, inputIndices, inputs, outputIndices, outputs, options);
+    const results = await run(this.sessionId, inputIndices, inputs, outputIndices, outputs, options, loraAdapterIds);
 
     const resultMap: SessionHandler.ReturnType = {};
     for (let i = 0; i < results.length; i++) {

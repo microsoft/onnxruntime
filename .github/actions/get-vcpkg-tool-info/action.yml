@@ -1,0 +1,10 @@
+name: 'Get vcpkg tool info'
+description: 'Reads the repository-wide vcpkg release tag and archive hash.'
+outputs:
+  release_tag:
+    description: 'The vcpkg release tag.'
+  sha512:
+    description: 'The SHA-512 of the vcpkg release archive.'
+runs:
+  using: 'node24'
+  main: 'index.js'

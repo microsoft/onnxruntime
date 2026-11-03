@@ -1,0 +1,169 @@
+[
+  {
+    "name": "DFT forward (axis attribute, opset 17)",
+    "operator": "DFT",
+    "attributes": [{ "name": "axis", "data": 1, "type": "int" }],
+    "opset": { "domain": "", "version": 17 },
+    "cases": [
+      {
+        "name": "complex-to-complex, N = 4",
+        "inputs": [{ "data": [1, 0, 2, -1, 0, 0, -1, 2], "dims": [1, 4, 2], "type": "float32" }],
+        "outputs": [{ "data": [2, 1, -2, -3, 0, -1, 4, 3], "dims": [1, 4, 2], "type": "float32" }]
+      },
+      {
+        "name": "real input, N = 5",
+        "inputs": [{ "data": [1, 2, 3, 4, 5], "dims": [1, 5, 1], "type": "float32" }],
+        "outputs": [
+          {
+            "data": [15, 0, -2.5, 3.440955, -2.5, 0.812299, -2.5, -0.812299, -2.5, -3.440955],
+            "dims": [1, 5, 2],
+            "type": "float32"
+          }
+        ]
+      },
+      {
+        "name": "batched, axis = 1 of [2, 3, 2]",
+        "inputs": [{ "data": [0, 6, 1, 7, 2, 8, 3, 9, 4, 10, 5, 11], "dims": [2, 3, 2], "type": "float32" }],
+        "outputs": [
+          {
+            "data": [
+              3, 21, -2.366025, -0.633975, -0.633975, -2.366025, 12, 30, -2.366025, -0.633975, -0.633975, -2.366025
+            ],
+            "dims": [2, 3, 2],
+            "type": "float32"
+          }
+        ]
+      },
+      {
+        "name": "prime length N = 7 (direct-DFT fallback)",
+        "inputs": [{ "data": [1, 0, 0, 1, 2, -1, 3, 0, -1, 0, 0, -2, 1, 1], "dims": [1, 7, 2], "type": "float32" }],
+        "outputs": [
+          {
+            "data": [
+              6, -1, 0.351438, -0.989017, -0.211363, 7.227886, 0.119137, -5.574572, 1.6828, -1.770242, 0.656405,
+              -2.712157, -1.598418, 4.818102
+            ],
+            "dims": [1, 7, 2],
+            "type": "float32"
+          }
+        ]
+      },
+      {
+        "name": "inner > 1: middle axis of [1, 3, 2, 2] (2-D DFT column pass)",
+        "inputs": [{ "data": [1, 0, 0, 1, 2, 0, 0, 2, 3, 0, 0, 3], "dims": [1, 3, 2, 2], "type": "float32" }],
+        "outputs": [
+          {
+            "data": [6, 0, 0, 6, -1.5, 0.866025, -0.866025, -1.5, -1.5, -0.866025, 0.866025, -1.5],
+            "dims": [1, 3, 2, 2],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "DFT inverse (opset 17)",
+    "operator": "DFT",
+    "attributes": [
+      { "name": "axis", "data": 1, "type": "int" },
+      { "name": "inverse", "data": 1, "type": "int" }
+    ],
+    "opset": { "domain": "", "version": 17 },
+    "cases": [
+      {
+        "name": "complex-to-complex, N = 4 (1/N normalized)",
+        "inputs": [{ "data": [2, 1, -2, -3, 0, -1, 4, 3], "dims": [1, 4, 2], "type": "float32" }],
+        "outputs": [{ "data": [1, 0, 2, -1, 0, 0, -1, 2], "dims": [1, 4, 2], "type": "float32" }]
+      }
+    ]
+  },
+  {
+    "name": "DFT one-sided forward / RFFT (opset 17)",
+    "operator": "DFT",
+    "attributes": [
+      { "name": "axis", "data": 1, "type": "int" },
+      { "name": "onesided", "data": 1, "type": "int" }
+    ],
+    "opset": { "domain": "", "version": 17 },
+    "cases": [
+      {
+        "name": "real input, N = 6 -> N/2 + 1 = 4 bins",
+        "inputs": [{ "data": [0, 1, 2, 3, 4, 5], "dims": [1, 6, 1], "type": "float32" }],
+        "outputs": [{ "data": [15, 0, -3, 5.196152, -3, 1.732051, -3, 0], "dims": [1, 4, 2], "type": "float32" }]
+      }
+    ]
+  },
+  {
+    "name": "DFT one-sided inverse / IRFFT (opset 17)",
+    "operator": "DFT",
+    "attributes": [
+      { "name": "axis", "data": 1, "type": "int" },
+      { "name": "inverse", "data": 1, "type": "int" },
+      { "name": "onesided", "data": 1, "type": "int" }
+    ],
+    "opset": { "domain": "", "version": 17 },
+    "cases": [
+      {
+        "name": "half spectrum (L = 4) -> full real signal (N = 6)",
+        "inputs": [{ "data": [15, 0, -3, 5.196152, -3, 1.732051, -3, 0], "dims": [1, 4, 2], "type": "float32" }],
+        "outputs": [{ "data": [0, 1, 2, 3, 4, 5], "dims": [1, 6, 1], "type": "float32" }]
+      }
+    ]
+  },
+  {
+    "name": "DFT with dft_length and axis inputs (opset 20)",
+    "operator": "DFT",
+    "opset": { "domain": "", "version": 20 },
+    "cases": [
+      {
+        "name": "complex input N = 5, dft_length = 8 (zero-padded), axis = 1",
+        "inputs": [
+          { "data": [1, 0, 2, 0, 3, 0, 2, 0, 1, 0], "dims": [1, 5, 2], "type": "float32" },
+          { "data": [8], "dims": [], "type": "int64" },
+          { "data": [1], "dims": [], "type": "int64" }
+        ],
+        "outputs": [
+          {
+            "data": [9, 0, 0, -5.828427, -1, 0, 0, 0.171573, 1, 0, 0, -0.171573, -1, 0, 0, 5.828427],
+            "dims": [1, 8, 2],
+            "type": "float32"
+          }
+        ]
+      },
+      {
+        "name": "axis = -2 via input (default), no dft_length",
+        "inputs": [
+          { "data": [1, 0, 2, -1, 0, 0, -1, 2], "dims": [1, 4, 2], "type": "float32" },
+          { "data": [4], "dims": [], "type": "int64" },
+          { "data": [-2], "dims": [], "type": "int64" }
+        ],
+        "outputs": [{ "data": [2, 1, -2, -3, 0, -1, 4, 3], "dims": [1, 4, 2], "type": "float32" }]
+      }
+    ]
+  },
+  {
+    "name": "DFT negative axis attribute (opset 17)",
+    "operator": "DFT",
+    "attributes": [{ "name": "axis", "data": -2, "type": "int" }],
+    "opset": { "domain": "", "version": 17 },
+    "cases": [
+      {
+        "name": "axis = -2 resolves to the signal dimension",
+        "inputs": [{ "data": [1, 0, 2, -1, 0, 0, -1, 2], "dims": [1, 4, 2], "type": "float32" }],
+        "outputs": [{ "data": [2, 1, -2, -3, 0, -1, 4, 3], "dims": [1, 4, 2], "type": "float32" }]
+      }
+    ]
+  },
+  {
+    "name": "DFT opset 20 with axis defaulted (both optional inputs omitted)",
+    "operator": "DFT",
+    "opset": { "domain": "", "version": 20 },
+    "cases": [
+      {
+        "name": "no dft_length, no axis -> default axis -2",
+        "inputs": [{ "data": [1, 0, 2, -1, 0, 0, -1, 2], "dims": [1, 4, 2], "type": "float32" }],
+        "outputs": [{ "data": [2, 1, -2, -3, 0, -1, 4, 3], "dims": [1, 4, 2], "type": "float32" }]
+      }
+    ]
+  }
+]

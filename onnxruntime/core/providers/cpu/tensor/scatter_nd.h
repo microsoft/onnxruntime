@@ -36,6 +36,15 @@ inline Status ValidateShapes(const TensorShape& input_shape,
                            "last dimension of indices must not be larger than rank of input tensor");
   }
 
+  if (indice_shape.SizeToDimension(indice_rank - 1) > 0) {
+    for (int64_t i = 0; i < last_indice_dimension; ++i) {
+      if (input_shape[onnxruntime::narrow<size_t>(i)] == 0) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "indices must be empty when an indexed data dimension has size 0");
+      }
+    }
+  }
+
   bool is_update_shape_invalid = [&]() {
     if (update_rank != (input_rank + indice_rank - 1 - static_cast<ptrdiff_t>(last_indice_dimension))) {
       return true;

@@ -82,12 +82,14 @@ $MAIN {
 #endif
 
   // Precompute packed strides for 3D packed inputs (B, T, H*D)
-  // Q: (B, T, q_num_heads * dk), K: (B, T, n_k_heads * dk),
-  // V/output: (B, T, num_heads * dv)  [schema: output_dim == V_dim]
+  // Q: (B, T, q_num_heads * dk), K: (B, T, n_k_heads * dk), V: (B, T, num_heads * dv),
+  // output: (B, T, max(q_num_heads, num_heads) * dv) — standard GQA emits one output
+  // per Q head, so the output row is wider than V's whenever q > kv.
   let packed_dk_q = uniforms.q_num_heads * uniforms.head_dim_k;
   let packed_dk_k = uniforms.n_k_heads * uniforms.head_dim_k;
   let packed_dk_kv = uniforms.num_heads * uniforms.head_dim_k;
   let packed_dv = uniforms.num_heads * uniforms.head_dim_v;
+  let packed_dv_out = max(uniforms.q_num_heads, uniforms.num_heads) * uniforms.head_dim_v;
 
   // Initialize state tile in private memory
   var state: array<vtype, TILE_V>;
@@ -189,7 +191,7 @@ $MAIN {
         let v_val = vtype(value[v_base + j]);
         let delta_j = beta_val * (v_val - retrieved_sum);
         broadcast_buf[j] = delta_j;
-        output[bt_offset * packed_dv + out_head_0 * uniforms.head_dim_v + dv_start + j] = otype((preout_sum + delta_j * kq_dot) * uniforms.scale);
+        output[bt_offset * packed_dv_out + out_head_0 * uniforms.head_dim_v + dv_start + j] = otype((preout_sum + delta_j * kq_dot) * uniforms.scale);
       } else {
         broadcast_buf[j] = vtype(0.0);
       }
@@ -226,7 +228,7 @@ $MAIN {
           let v_val = vtype(value[v_base + j]);
           let delta_j = beta_val * (v_val - retrieved);
           broadcast_buf[j] = delta_j;
-          output[bt_offset * packed_dv + out_head_0 * uniforms.head_dim_v + dv_start + j] = otype((pre_out + delta_j * kq_dot) * uniforms.scale);
+          output[bt_offset * packed_dv_out + out_head_0 * uniforms.head_dim_v + dv_start + j] = otype((pre_out + delta_j * kq_dot) * uniforms.scale);
         } else {
           broadcast_buf[j] = vtype(0.0);
         }
@@ -266,7 +268,7 @@ $MAIN {
           preout_sum += sg_preout[sg * TILE_V + j];
         }
         if (dv_start + j < uniforms.head_dim_v) {
-          output[bt_offset * packed_dv + q_head_g * uniforms.head_dim_v + dv_start + j] = otype(preout_sum * uniforms.scale);
+          output[bt_offset * packed_dv_out + q_head_g * uniforms.head_dim_v + dv_start + j] = otype(preout_sum * uniforms.scale);
         }
       }
 #else
@@ -285,7 +287,7 @@ $MAIN {
       if (dk_idx == 0u) {
         for (var j = 0u; j < TILE_V; j++) {
           if (dv_start + j < uniforms.head_dim_v) {
-            output[bt_offset * packed_dv + q_head_g * uniforms.head_dim_v + dv_start + j] = otype(red_preout[j * workgroup_size_x] * uniforms.scale);
+            output[bt_offset * packed_dv_out + q_head_g * uniforms.head_dim_v + dv_start + j] = otype(red_preout[j * workgroup_size_x] * uniforms.scale);
           }
         }
       }
@@ -325,7 +327,7 @@ $MAIN {
           for (var sg = 0u; sg < num_sgs; sg++) {
             preout_sum += sg_buf[sg * TILE_V + j];
           }
-          let out_base = bt_offset * packed_dv + q_head_idx * uniforms.head_dim_v + dv_start;
+          let out_base = bt_offset * packed_dv_out + q_head_idx * uniforms.head_dim_v + dv_start;
           if (dv_start + j < uniforms.head_dim_v) {
             output[out_base + j] = otype(preout_sum * uniforms.scale);
           }
@@ -344,7 +346,7 @@ $MAIN {
           workgroupBarrier();
         }
         if (dk_idx == 0u) {
-          let out_base = bt_offset * packed_dv + q_head_idx * uniforms.head_dim_v + dv_start;
+          let out_base = bt_offset * packed_dv_out + q_head_idx * uniforms.head_dim_v + dv_start;
           for (var j = 0u; j < TILE_V; j++) {
             if (dv_start + j < uniforms.head_dim_v) {
               output[out_base + j] = otype(reduction_buf[j * workgroup_size_x] * uniforms.scale);
@@ -375,7 +377,7 @@ $MAIN {
         for (var sg = 0u; sg < num_sgs; sg++) {
           preout_sum += sg_buf[sg * TILE_V + j];
         }
-        let out_base = bt_offset * packed_dv + head_idx * uniforms.head_dim_v + dv_start;
+        let out_base = bt_offset * packed_dv_out + head_idx * uniforms.head_dim_v + dv_start;
         if (dv_start + j < uniforms.head_dim_v) {
           output[out_base + j] = otype(preout_sum * uniforms.scale);
         }
@@ -394,7 +396,7 @@ $MAIN {
         workgroupBarrier();
       }
       if (dk_idx == 0u) {
-        let out_base = bt_offset * packed_dv + head_idx * uniforms.head_dim_v + dv_start;
+        let out_base = bt_offset * packed_dv_out + head_idx * uniforms.head_dim_v + dv_start;
         for (var j = 0u; j < TILE_V; j++) {
           if (dv_start + j < uniforms.head_dim_v) {
             output[out_base + j] = otype(reduction_buf[j * workgroup_size_x] * uniforms.scale);

@@ -595,7 +595,10 @@ const MLAS_HALFGEMM_DISPATCH*
 MlasHalfGemmGetDispatch()
 {
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
-    return &MlasHalfGemmDispatchNeon;
+    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasFp16VectorAcceleration()) {
+        return &MlasHalfGemmDispatchNeon;
+    }
+    return &MlasHalfGemmDispatchDefault;
 #elif defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV_ZVFH)
     if (MLAS_CPUIDINFO::GetCPUIDInfo().HasFp16VectorAcceleration()) {
         return &MlasHalfGemmDispatchRvv;

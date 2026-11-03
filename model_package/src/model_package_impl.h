@@ -132,9 +132,6 @@ struct ModelPackage {
   std::vector<std::filesystem::path> pending_orphan_variant_dirs;
   std::vector<std::filesystem::path> pending_orphan_component_dirs;
 
-  /// Cache for the most recent ModelPackage_Validate report JSON.
-  mutable std::optional<std::string> last_validate_report;
-
   /// Lazily built; dropped on any mutation.
   mutable std::optional<model_package::InfoViewCache> info_cache;
 };

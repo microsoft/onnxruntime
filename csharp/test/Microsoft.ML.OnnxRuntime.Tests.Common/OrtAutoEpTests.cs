@@ -18,6 +18,7 @@ using System.Collections.Generic;
 /// Includes testing of OrtHardwareDevice and OrtEpDevice as those only come from auto ep related code and we only
 /// get read-only access to them (i.e. we can't directly create instances of them to test).
 /// </summary>
+[Collection("Ort Inference Tests")]
 public class OrtAutoEpTests
 {
     private OrtEnv ortEnvInstance = OrtEnv.Instance();

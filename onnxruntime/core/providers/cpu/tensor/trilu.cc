@@ -62,6 +62,14 @@ static Status TriluImpl(const Tensor* X, Tensor* Y, int64_t k_val, bool up) {
     }
 
     if (up) {
+      if (k_val <= 1 - matrix_h) {
+        continue;
+      }
+      if (k_val >= matrix_w) {
+        output_mat.setZero();
+        continue;
+      }
+
       int64_t start_i = k_val > 0 ? 0 : 1 - k_val;
       for (int64_t i = start_i; i < matrix_h; i++) {
         for (int64_t j = 0; j < i + k_val && j < matrix_w; j++) {
@@ -69,6 +77,14 @@ static Status TriluImpl(const Tensor* X, Tensor* Y, int64_t k_val, bool up) {
         }
       }
     } else {
+      if (k_val >= matrix_w - 1) {
+        continue;
+      }
+      if (k_val <= -matrix_h) {
+        output_mat.setZero();
+        continue;
+      }
+
       int64_t end_i = std::min(matrix_h, matrix_w - k_val);
       for (int64_t i = 0; i < end_i; i++) {
         for (int64_t j = std::max(static_cast<int64_t>(0), i + k_val + 1); j < matrix_w; j++) {

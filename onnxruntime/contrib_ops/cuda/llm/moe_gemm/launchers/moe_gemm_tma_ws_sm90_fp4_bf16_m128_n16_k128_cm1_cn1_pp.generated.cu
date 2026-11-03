@@ -7,7 +7,6 @@
 
 #ifdef COMPILE_HOPPER_TMA_GROUPED_GEMMS
 #if defined(ENABLE_FP4) && defined(USE_FP4_QMOE)
-#ifndef ORT_QUICK_BUILD
 #ifdef ENABLE_BF16
 #include "contrib_ops/cuda/llm/moe_gemm/launchers/moe_gemm_tma_ws_sm90_fp4_instantiation.cuh"
 
@@ -18,6 +17,5 @@ ORT_MOE_GEMM_TMA_WS_SM90_FP4_INST_PP(__nv_bfloat16, 128, 16, 128, 1, 1, 1);
 }  // namespace onnxruntime::llm::kernels::cutlass_kernels
 
 #endif  // ENABLE_BF16
-#endif  // !ORT_QUICK_BUILD
 #endif  // ENABLE_FP4 && USE_FP4_QMOE
 #endif  // COMPILE_HOPPER_TMA_GROUPED_GEMMS

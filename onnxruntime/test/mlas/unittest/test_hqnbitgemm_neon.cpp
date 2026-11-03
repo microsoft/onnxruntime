@@ -743,16 +743,16 @@ static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_exe
       if (GetMlasPlatform().QNBitGemmDispatch->HQ4BitGemmPackQuantBData) {
         count += MlasDirectShortExecuteTests<MlasNeonFp16PrepackTest>::RegisterShortExecute();
       }
-      if (GetMlasPlatform().QNBitGemmDispatch->HQ4BitBlkDequantBForHgemm_CompFp16) {
+      if (GetMlasPlatform().QNBitGemmDispatch->HQ4BitBlkDequantBForHgemm_CompFp16 && MlasFp16AccelerationSupported()) {
         count += MlasDirectShortExecuteTests<MlasNeonFp16DequantBTest>::RegisterShortExecute();
       }
-      if (GetMlasPlatform().QNBitGemmDispatch->HQ4BitGemmKernel_CompFp16) {
+      if (GetMlasPlatform().QNBitGemmDispatch->HQ4BitGemmKernel_CompFp16 && MlasFp16AccelerationSupported()) {
         count += MlasDirectShortExecuteTests<MlasNeonFp16HQ4BitGemmKernelTest>::RegisterShortExecute();
       }
       if (GetMlasPlatform().QNBitGemmDispatch->HQ8BitGemmPackQuantBData) {
         count += MlasDirectShortExecuteTests<MlasNeonFp16Prepack8BitTest>::RegisterShortExecute();
       }
-      if (GetMlasPlatform().QNBitGemmDispatch->HQ8BitBlkDequantBForHgemm_CompFp16) {
+      if (GetMlasPlatform().QNBitGemmDispatch->HQ8BitBlkDequantBForHgemm_CompFp16 && MlasFp16AccelerationSupported()) {
         count += MlasDirectShortExecuteTests<MlasNeonFp16DequantB8BitTest>::RegisterShortExecute();
       }
     }

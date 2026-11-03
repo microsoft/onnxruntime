@@ -112,6 +112,9 @@ class PluginExecutionProvider : public IExecutionProvider {
                                                    DataLayout target_data_layout) const override;
 
   bool ConcurrentRunSupported() const override;
+#if !defined(ORT_MINIMAL_BUILD)
+  bool SupportsMoeOffload() const override;
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
   Status OnRunStart(const RunOptions& run_options) override;
 
@@ -125,6 +128,8 @@ class PluginExecutionProvider : public IExecutionProvider {
                              gsl::span<const char* const> values) override;
 
   const InlinedVector<const Node*> GetEpContextNodes() const override;
+
+  Status GetEpContextDataCallbackSupport(uint32_t& supported_flags) const override;
 
   std::unique_ptr<IDataTransfer> GetDataTransfer() const override;
 
@@ -174,6 +179,7 @@ class PluginExecutionProvider : public IExecutionProvider {
   std::vector<const OrtEpDevice*> ep_devices_;
   std::vector<const OrtMemoryInfo*> allocator_mem_infos_;
   bool generate_ep_ctx_model_ = false;
+  bool weightless_requested_ = false;  // True if app set ep.enable_weightless=1
 
   // Provider options extracted from session-level config (excluding arena.*).
   // Exposed through GetProviderOptions() so the framework reports the effective EP configuration.

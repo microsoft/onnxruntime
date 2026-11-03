@@ -9,18 +9,29 @@
 #include <string_view>
 #include <unordered_map>
 
+#include <gsl/gsl>
+
 #include "core/common/common.h"
 #include "core/common/inlined_containers.h"
 
 namespace ONNX_NAMESPACE {
 class FunctionProto;
-}
+class ModelProto;
+}  // namespace ONNX_NAMESPACE
 
 namespace onnxruntime {
+
+class Graph;
 
 /// Adjacency list representation of a local function call graph.
 /// Keys and values are string_views into stable storage (e.g. map keys that outlive this structure).
 using LocalFunctionCallGraph = InlinedHashMap<std::string_view, InlinedVector<std::string_view>>;
+
+constexpr size_t kMaxModelLocalFunctionCallDepth = 100;
+constexpr size_t kMaxModelSubgraphDepth = 32;
+
+Status ValidateModelSubgraphDepth(const ONNX_NAMESPACE::ModelProto& model_proto);
+Status ValidateFunctionSubgraphDepth(const ONNX_NAMESPACE::FunctionProto& function_proto);
 
 /// Build a call graph adjacency list from model local functions.
 /// String views in the returned graph point into the keys of @p model_local_functions.
@@ -32,9 +43,18 @@ Status BuildLocalFunctionCallGraph(
 /// Returns an error with the cycle path if a cycle is detected.
 Status ValidateCallGraphAcyclic(const LocalFunctionCallGraph& call_graph);
 
-/// Convenience: build the call graph from model local functions and validate acyclicity.
+/// Enforce the depth limit for calls reachable from @p roots in an acyclic call graph.
+Status ValidateCallGraphDepth(const LocalFunctionCallGraph& call_graph,
+                              gsl::span<const std::string_view> roots);
+
+/// Build the call graph from model local functions and validate acyclicity.
 Status ValidateModelLocalFunctionAcyclic(
     const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_local_functions);
+
+/// Enforce the local function depth limit for calls reachable from @p main_graph.
+Status ValidateModelLocalFunctionCallDepth(
+    const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_local_functions,
+    const Graph& main_graph);
 
 }  // namespace onnxruntime
 

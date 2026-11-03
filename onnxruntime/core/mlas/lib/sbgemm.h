@@ -30,9 +30,11 @@ Abstract:
         MLAS_SBGEMM_STRIDES Strides{128, 128, 256};
 --*/
 
-#if defined(__aarch64__) && defined(__linux__)
-
 #pragma once
+
+#include "mlas.h"
+
+#if defined(MLAS_SBGEMM_AVAILABLE)
 
 #include <cassert>
 #include <cstdlib>
@@ -473,4 +475,4 @@ MlasSBGemmBatch(
         }
     );
 }
-#endif  // defined(__aarch64__) && defined(__linux__)
+#endif  // MLAS_SBGEMM_AVAILABLE

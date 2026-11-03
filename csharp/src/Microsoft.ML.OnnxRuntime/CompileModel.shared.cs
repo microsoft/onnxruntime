@@ -4,6 +4,7 @@
 namespace Microsoft.ML.OnnxRuntime
 {
     using System;
+    using System.Collections.Generic;
     using System.Diagnostics;
     using System.Runtime.InteropServices;
 
@@ -33,9 +34,13 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="sessionOptions">SessionOptions instance to read settings from.</param>
         public OrtModelCompilationOptions(SessionOptions sessionOptions)
         {
-            NativeApiStatus.VerifySuccess(
-                NativeMethods.CompileApi.OrtCreateModelCompilationOptionsFromSessionOptions(
-                    OrtEnv.Instance().Handle, sessionOptions.Handle, out _handle));
+            _epContextDataReadRegistration =
+                sessionOptions.InvokeWithEpContextDataReadRegistration(sessionOptionsHandle =>
+                {
+                    NativeApiStatus.VerifySuccess(
+                        NativeMethods.CompileApi.OrtCreateModelCompilationOptionsFromSessionOptions(
+                            OrtEnv.Instance().Handle, sessionOptionsHandle, out _handle));
+                });
         }
 
         /// <summary>
@@ -43,7 +48,31 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         public void CompileModel()
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.CompileApi.OrtCompileModel(OrtEnv.Instance().Handle, _handle));
+            lock (_epContextDataWriteRegistrationLock)
+            {
+                if (_activeCompileCount == 0)
+                {
+                    ApplyPendingEpContextDataWriteRegistration();
+                }
+                ++_activeCompileCount;
+            }
+
+            try
+            {
+                NativeApiStatus.VerifySuccess(
+                    NativeMethods.CompileApi.OrtCompileModel(OrtEnv.Instance().Handle, _handle));
+            }
+            finally
+            {
+                lock (_epContextDataWriteRegistrationLock)
+                {
+                    if (--_activeCompileCount == 0)
+                    {
+                        ApplyPendingEpContextDataWriteRegistration();
+                    }
+                }
+                GC.KeepAlive(this);
+            }
         }
 
 
@@ -160,6 +189,127 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
+        /// Delegate that receives one complete external EPContext payload during model compilation.
+        /// The data view is valid only for the duration of the delegate invocation.
+        /// </summary>
+        /// <param name="name">Logical UTF-8 name stored in the EPContext node.</param>
+        /// <param name="data">Non-owning view of the payload.</param>
+        /// <remarks>ORT may invoke this delegate concurrently. The application must synchronize shared state.</remarks>
+        public delegate void WriteEpContextDataDelegate(string name, OrtEpContextData data);
+
+        /// <summary>
+        /// Registers a delegate that receives external EPContext data when embed mode is disabled.
+        /// </summary>
+        /// <param name="writeDelegate">Delegate invoked by ORT to receive external EPContext data.</param>
+        public void SetEpContextDataWriteDelegate(WriteEpContextDataDelegate writeDelegate)
+        {
+            if (writeDelegate == null)
+            {
+                throw new ArgumentNullException(nameof(writeDelegate));
+            }
+
+            var newRegistration = new EpContextDataWriteRegistration(writeDelegate);
+            try
+            {
+                lock (_epContextDataWriteRegistrationLock)
+                {
+                    if (_activeCompileCount > 0)
+                    {
+                        var previousRegistration = _epContextDataWriteRegistration;
+                        _epContextDataWriteRegistration = newRegistration;
+                        RetireEpContextDataWriteRegistration(previousRegistration);
+                        _epContextDataWriteRegistrationUpdatePending = true;
+                    }
+                    else
+                    {
+                        ApplyPendingEpContextDataWriteRegistration();
+                        var previousRegistration = _epContextDataWriteRegistration;
+                        NativeApiStatus.VerifySuccess(
+                            NativeMethods.CompileApi.OrtModelCompilationOptions_SetEpContextDataWriteFunc(
+                                _handle,
+                                newRegistration.FunctionPointer,
+                                newRegistration.State));
+                        _epContextDataWriteRegistration = newRegistration;
+                        RetireEpContextDataWriteRegistration(previousRegistration);
+                    }
+                }
+            }
+            catch
+            {
+                newRegistration.Dispose();
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Clears a previously registered EPContext data write delegate.
+        /// </summary>
+        public void ClearEpContextDataWriteDelegate()
+        {
+            lock (_epContextDataWriteRegistrationLock)
+            {
+                if (_activeCompileCount > 0)
+                {
+                    var previousRegistration = _epContextDataWriteRegistration;
+                    _epContextDataWriteRegistration = null;
+                    RetireEpContextDataWriteRegistration(previousRegistration);
+                    _epContextDataWriteRegistrationUpdatePending = true;
+                }
+                else
+                {
+                    ApplyPendingEpContextDataWriteRegistration();
+                    var previousRegistration = _epContextDataWriteRegistration;
+                    NativeApiStatus.VerifySuccess(
+                        NativeMethods.CompileApi.OrtModelCompilationOptions_SetEpContextDataWriteFunc(
+                            _handle, IntPtr.Zero, IntPtr.Zero));
+                    _epContextDataWriteRegistration = null;
+                    RetireEpContextDataWriteRegistration(previousRegistration);
+                }
+            }
+        }
+
+        private void ApplyPendingEpContextDataWriteRegistration()
+        {
+            if (!_epContextDataWriteRegistrationUpdatePending)
+            {
+                return;
+            }
+
+            var registration = _epContextDataWriteRegistration;
+            NativeApiStatus.VerifySuccess(
+                NativeMethods.CompileApi.OrtModelCompilationOptions_SetEpContextDataWriteFunc(
+                    _handle,
+                    registration?.FunctionPointer ?? IntPtr.Zero,
+                    registration?.State ?? IntPtr.Zero));
+
+            _epContextDataWriteRegistrationUpdatePending = false;
+            foreach (var retiredRegistration in _retiredEpContextDataWriteRegistrations)
+            {
+                retiredRegistration.Dispose();
+            }
+            _retiredEpContextDataWriteRegistrations.Clear();
+        }
+
+        private void RetireEpContextDataWriteRegistration(EpContextDataWriteRegistration registration)
+        {
+            if (registration == null)
+            {
+                return;
+            }
+
+            // Native compilation snapshots the callback after entering CompileModel, so any registration
+            // replaced during an active call may still be used by that call.
+            if (_activeCompileCount > 0)
+            {
+                _retiredEpContextDataWriteRegistrations.Add(registration);
+            }
+            else
+            {
+                registration.Dispose();
+            }
+        }
+
+        /// <summary>
         /// Delegate to write/save a buffer containing ONNX model bytes to a custom destination. The delegate
         /// may be called repeatedly until the entire output model has been written out. Each call to the delegate
         /// is expected to consume the entire buffer.
@@ -241,6 +391,105 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         #region Delegate helpers
+        private sealed class EpContextDataWriteConnector
+        {
+            internal EpContextDataWriteConnector(WriteEpContextDataDelegate writeDelegate)
+            {
+                _writeDelegate = writeDelegate;
+            }
+
+            internal static IntPtr WriteEpContextDataDelegateWrapper(
+                IntPtr state, IntPtr name, IntPtr buffer, UIntPtr bufferSize)
+            {
+                try
+                {
+                    var connector = (EpContextDataWriteConnector)GCHandle.FromIntPtr(state).Target;
+                    string dataName = NativeOnnxValueHelper.StringFromNativeUtf8(name);
+                    var data = new OrtEpContextData(buffer, bufferSize);
+                    try
+                    {
+                        connector._writeDelegate(dataName, data);
+                    }
+                    finally
+                    {
+                        data.Invalidate();
+                    }
+                    return IntPtr.Zero;
+                }
+                catch (Exception ex)
+                {
+                    string error = $"The C# EPContext data write delegate threw an exception: {ex.Message}";
+                    return NativeMethods.OrtCreateStatus(
+                        (uint)ErrorCode.Fail, NativeOnnxValueHelper.StringToZeroTerminatedUtf8(error));
+                }
+            }
+
+            private readonly WriteEpContextDataDelegate _writeDelegate;
+        }
+
+        private sealed class EpContextDataWriteRegistration : IDisposable
+        {
+            internal EpContextDataWriteRegistration(WriteEpContextDataDelegate writeDelegate)
+            {
+                _connector = new EpContextDataWriteConnector(writeDelegate);
+                _nativeDelegate = new CompileApi.NativeMethods.DOrtWriteNamedBufferDelegate(
+                    EpContextDataWriteConnector.WriteEpContextDataDelegateWrapper);
+                _connectorHandle = GCHandle.Alloc(_connector);
+                try
+                {
+                    FunctionPointer = Marshal.GetFunctionPointerForDelegate(_nativeDelegate);
+                    State = GCHandle.ToIntPtr(_connectorHandle);
+                }
+                catch
+                {
+                    _connectorHandle.Free();
+                    throw;
+                }
+            }
+
+            internal IntPtr FunctionPointer { get; }
+
+            internal IntPtr State { get; }
+
+            internal void Release()
+            {
+                if (System.Threading.Interlocked.Decrement(ref _referenceCount) == 0)
+                {
+                    if (_connectorHandle.IsAllocated)
+                    {
+                        _connectorHandle.Free();
+                    }
+
+                    _connector = null;
+                    _nativeDelegate = null;
+                }
+            }
+
+            public void Dispose()
+            {
+                if (System.Threading.Interlocked.Exchange(ref _ownerReleased, 1) == 0)
+                {
+                    Release();
+                }
+
+                GC.SuppressFinalize(this);
+            }
+
+            ~EpContextDataWriteRegistration()
+            {
+                if (System.Threading.Interlocked.Exchange(ref _ownerReleased, 1) == 0)
+                {
+                    Release();
+                }
+            }
+
+            private EpContextDataWriteConnector _connector;
+            private CompileApi.NativeMethods.DOrtWriteNamedBufferDelegate _nativeDelegate;
+            private GCHandle _connectorHandle;
+            private int _referenceCount = 1;
+            private int _ownerReleased;
+        }
+
         /// <summary>
         /// Class to bridge the C# and native worlds for the "write buffer to destination" delegate
         /// </summary>
@@ -461,15 +710,34 @@ namespace Microsoft.ML.OnnxRuntime
                 return;
             }
 
+            Debug.Assert(_handle != IntPtr.Zero);
+            NativeMethods.CompileApi.OrtReleaseModelCompilationOptions(_handle);
+            _handle = IntPtr.Zero;
+
+            if (_epContextDataReadRegistration != null)
+            {
+                _epContextDataReadRegistration.Release();
+                _epContextDataReadRegistration = null;
+            }
+
+            lock (_epContextDataWriteRegistrationLock)
+            {
+                var writeRegistration = _epContextDataWriteRegistration;
+                _epContextDataWriteRegistration = null;
+                RetireEpContextDataWriteRegistration(writeRegistration);
+                foreach (var retiredRegistration in _retiredEpContextDataWriteRegistrations)
+                {
+                    retiredRegistration.Dispose();
+                }
+                _retiredEpContextDataWriteRegistrations.Clear();
+            }
+
             if (disposing)
             {
                 _writeBufferToDestinationDelegateState?.Dispose();
                 _getInitializerLocationDelegateState?.Dispose();
             }
 
-            Debug.Assert(_handle != IntPtr.Zero);
-            NativeMethods.CompileApi.OrtReleaseModelCompilationOptions(_handle);
-            _handle = IntPtr.Zero;
             _disposed = true;
         }
 
@@ -492,11 +760,20 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         private bool _disposed = false;
 
+        private SessionOptions.EpContextDataReadRegistration _epContextDataReadRegistration = null;
+
         /// <summary>
         /// Stores delegate state for the "write buffer to destination" delegate.
         /// </summary>
         private DelegateResources<WriteBufferToDestinationConnector, NativeMethods.DOrtWriteBufferToDestinationDelegate>
             _writeBufferToDestinationDelegateState = null;
+
+        private readonly object _epContextDataWriteRegistrationLock = new object();
+        private EpContextDataWriteRegistration _epContextDataWriteRegistration = null;
+        private int _activeCompileCount;
+        private bool _epContextDataWriteRegistrationUpdatePending;
+        private readonly List<EpContextDataWriteRegistration> _retiredEpContextDataWriteRegistrations =
+            new List<EpContextDataWriteRegistration>();
 
         /// <summary>
         /// Stores delegate state for the "get initializer location" delegate.

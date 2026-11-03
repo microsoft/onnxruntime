@@ -386,6 +386,20 @@ static void PadInnermostAxis(OutputSink<T>& sink, T* output, T* input, ptrdiff_t
   }
 }
 
+template <typename T>
+static void PadWrapAxis(OutputSink<T>& sink, T* output, const T* axis_start, size_t axis_extent,
+                        size_t block_size, size_t pad_count, bool is_pre_pad) {
+  ORT_ENFORCE(axis_extent > 0);
+  size_t source_block = is_pre_pad ? (axis_extent - (pad_count % axis_extent)) % axis_extent : 0;
+  for (size_t block_index = 0; block_index < pad_count; ++block_index) {
+    const T* source = axis_start + source_block * block_size;
+    for (size_t i = 0; i < block_size; ++i) {
+      sink(output++, source[i]);
+    }
+    source_block = (source_block + 1) % axis_extent;
+  }
+}
+
 // For constant padding, there is no input, just a size to write the constant to
 template <typename T>
 static void PadAxisConstant(OutputSink<T>& sink, T* output, T constant, size_t size) {
@@ -672,11 +686,14 @@ static Status PadImpl(OpKernelContext* ctx,
               }
             } else {
               if (pre_pad > 0) {
-                PadInnermostAxis(sink, axis_start - static_cast<size_t>(pre_pad),
-                                 output - static_cast<size_t>(pre_pad), 1 /* inputDelta */, pre_pad);
+                PadWrapAxis(sink, axis_start - static_cast<size_t>(pre_pad), axis_start,
+                            onnxruntime::narrow<size_t>(effective_input_extents[inner_axis]), 1,
+                            static_cast<size_t>(pre_pad), true);
               }
               if (post_pad > 0) {
-                PadInnermostAxis(sink, output, axis_start, 1 /* inputDelta */, post_pad);
+                PadWrapAxis(sink, output, axis_start,
+                            onnxruntime::narrow<size_t>(effective_input_extents[inner_axis]), 1,
+                            static_cast<size_t>(post_pad), false);
               }
             }
           } else {
@@ -697,20 +714,12 @@ static Status PadImpl(OpKernelContext* ctx,
                       inner_no_pad_size,
                       onnxruntime::narrow<size_t>(pads[inner_axis + data_rank]));
             } else {
-              PadAxis(sink,
-                      axis_start - static_cast<size_t>(pre_pad),
-                      output - pads[inner_axis] * inner_no_pad_size,
-                      1,
-                      0,
-                      inner_no_pad_size,
-                      onnxruntime::narrow<size_t>(pads[inner_axis]));
-              PadAxis(sink,
-                      output,
-                      axis_start,
-                      1,
-                      0,
-                      inner_no_pad_size,
-                      onnxruntime::narrow<size_t>(pads[inner_axis + data_rank]));
+              const size_t axis_extent =
+                  onnxruntime::narrow<size_t>(effective_input_extents[inner_axis]) / inner_no_pad_size;
+              PadWrapAxis(sink, axis_start - static_cast<size_t>(pre_pad), axis_start, axis_extent,
+                          inner_no_pad_size, onnxruntime::narrow<size_t>(pads[inner_axis]), true);
+              PadWrapAxis(sink, output, axis_start, axis_extent, inner_no_pad_size,
+                          onnxruntime::narrow<size_t>(pads[inner_axis + data_rank]), false);
             }
           }
           output += post_pad;
@@ -738,20 +747,12 @@ static Status PadImpl(OpKernelContext* ctx,
                     inner_pitch,
                     post_pad);
           } else {
-            PadAxis(sink,
-                    axis_start - static_cast<size_t>(pre_pad) * inner_pitch,
-                    output - static_cast<size_t>(pre_pad) * inner_pitch,
-                    1,
-                    0,
-                    inner_pitch,
-                    pre_pad);
-            PadAxis(sink,
-                    output,
-                    axis_start,
-                    1,
-                    0,
-                    inner_pitch,
-                    post_pad);
+            PadWrapAxis(sink, axis_start - static_cast<size_t>(pre_pad) * inner_pitch, axis_start,
+                        onnxruntime::narrow<size_t>(effective_input_extents[input_counters.Axis()]),
+                        onnxruntime::narrow<size_t>(inner_pitch), static_cast<size_t>(pre_pad), true);
+            PadWrapAxis(sink, output, axis_start,
+                        onnxruntime::narrow<size_t>(effective_input_extents[input_counters.Axis()]),
+                        onnxruntime::narrow<size_t>(inner_pitch), static_cast<size_t>(post_pad), false);
           }
           output += inner_pitch * post_pad;
           align_skip += inner_pitch * pre_pad;

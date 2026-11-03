@@ -1,0 +1,46 @@
+diff --git a/src/configs/hardware-config.c b/src/configs/hardware-config.c
+index b4e942aa6955360e3ea85619d549410e65ab7a9c..6cf6e9a213b6f72c94940ff815e11f70a658c419 100644
+--- a/src/configs/hardware-config.c
++++ b/src/configs/hardware-config.c
+@@ -343,6 +343,7 @@ static void init_hardware_config(void) {
+       xnn_log_info("cpu_get_uarch(%i): 0x%x", i, cpuinfo_get_uarch(i)->uarch);
+     }
+ #endif  // XNN_MAX_UARCH_TYPES > 1
++    cpuinfo_deinitialize();
+ #else
+   xnn_log_warning("Unable to determine L1/L2 data cache properties.");
+ #endif  // XNN_ENABLE_CPUINFO
+@@ -358,21 +359,33 @@ const struct xnn_hardware_config* xnn_init_hardware_config() {
+   #if XNN_ARCH_ARM
+     if (!cpuinfo_has_arm_v6()) {
+       xnn_log_debug("unsupported hardware: ARMv6 not detected");
++      #if !XNN_PLATFORM_WEB && XNN_ENABLE_CPUINFO
++        cpuinfo_deinitialize();
++      #endif
+       return NULL;
+     }
+ 
+     if (!cpuinfo_has_arm_vfpv2() && !cpuinfo_has_arm_vfpv3()) {
+       xnn_log_debug("unsupported hardware: VFP FPU not detected");
++      #if !XNN_PLATFORM_WEB && XNN_ENABLE_CPUINFO
++        cpuinfo_deinitialize();
++      #endif
+       return NULL;
+     }
+   #endif  // XNN_ARCH_ARM
+   #if XNN_ARCH_X86
+     if (!cpuinfo_has_x86_sse2()) {
+       xnn_log_debug("unsupported hardware: SSE2 not detected");
++      #if !XNN_PLATFORM_WEB && XNN_ENABLE_CPUINFO
++        cpuinfo_deinitialize();
++      #endif
+       return NULL;
+     }
+   #endif  // XNN_ARCH_X86
+ 
+   XNN_INIT_ONCE(hardware);
++  #if !XNN_PLATFORM_WEB && !XNN_ARCH_RISCV && !XNN_ARCH_PPC64 && XNN_ENABLE_CPUINFO
++    cpuinfo_deinitialize();
++  #endif
+   return &hardware_config;
+ }

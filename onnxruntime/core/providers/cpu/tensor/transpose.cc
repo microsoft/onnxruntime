@@ -3,6 +3,7 @@
 
 #include "core/providers/cpu/tensor/transpose.h"
 
+#include <array>
 #include <memory>
 #include "core/framework/element_type_lists.h"
 #include "core/framework/utils.h"
@@ -384,6 +385,30 @@ static Status TransposeImpl(const gsl::span<const size_t>& permutations, const T
   if (moving_single_axis && !input.IsDataTypeString()) {
     SingleAxisTranspose(permutations, input, output, from, to, input_shape_override, tp);
     return Status::OK();
+  }
+
+  // Adjacent groups of axes can also form a matrix transpose.
+  const size_t element_size = input.DataType()->Size();
+  if (!input.IsDataTypeString() && (element_size == 1 || element_size == 2 || element_size == 4)) {
+    size_t first = 0;
+    while (first < permutations.size() && permutations[first] == first) ++first;
+    if (first < permutations.size()) {
+      const size_t split = permutations[first];
+      size_t i = first;
+      for (; i < permutations.size(); ++i) {
+        const size_t expected = first + (split - first + i - first) % (permutations.size() - first);
+        if (permutations[i] != expected) break;
+      }
+      if (i == permutations.size()) {
+        const TensorShape matrix_shape{shape.SizeToDimension(first), shape.Slice(first, split).Size(),
+                                       shape.SizeFromDimension(split)};
+        const std::array<size_t, 3> matrix_perm{0, 2, 1};
+        // Small matrices do not cover the cost of worker startup.
+        auto* matrix_tp = shape.SizeFromDimension(first) >= static_cast<int64_t>(1024 * 1024 / element_size) ? tp : nullptr;
+        SingleAxisTranspose(matrix_perm, input, output, 2, 1, &matrix_shape, matrix_tp);
+        return Status::OK();
+      }
+    }
   }
 
   // fall back to default implementation

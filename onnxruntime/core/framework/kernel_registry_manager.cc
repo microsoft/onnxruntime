@@ -21,7 +21,7 @@ Status KernelRegistryManager::CreateKernel(const Node& node,
                                            const KernelCreateInfo& kernel_create_info,
                                            std::unique_ptr<OpKernel>& out) const {
   OpKernelInfo kernel_info(node, *kernel_create_info.kernel_def, execution_provider,
-                           session_state.GetConstantInitializedTensors(),
+                           session_state.GetConstantInitializedTensorsForKernelCreation(),
                            session_state.GetOrtValueNameIdxMap(),
                            session_state.GetDataTransferMgr(),
                            session_state.GetAllocators(),

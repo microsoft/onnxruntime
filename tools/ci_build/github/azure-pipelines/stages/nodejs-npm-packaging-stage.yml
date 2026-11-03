@@ -6,8 +6,6 @@ parameters:
   displayName: Suffix added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the type of pre-release package.
   type: string
   values:
-  - alpha
-  - beta
   - rc
   - none
 
@@ -20,13 +18,14 @@ stages:
   - Linux_Nodejs_Packaging_x64
   - Linux_C_API_Packaging_CPU
   - MacOS_C_API_Packaging_CPU
+  - NuGet_Packaging_GPU
   condition: succeeded()
   jobs:
   - job: Nodejs_Packaging
     workspace:
       clean: all
     pool:
-      name: 'onnxruntime-Win-CPU-VS2022-Latest'
+      name: 'onnxruntime-Win-CPU-2022'
       os: windows
     templateContext:
       sdl:
@@ -47,14 +46,24 @@ stages:
         NpmPackagingMode: 'rc'
       ${{ elseif not(parameters.IsReleaseBuild) }}:
         NpmPackagingMode: 'dev'
-      ${{ else }}: # IsReleaseBuild + beta, alpha, etc. We don't support those and those suffixes are deprecated.
-        NpmPackagingMode: '<INVALID/UNSUPPORTED COMBINATION>'
 
     steps:
-    - checkout: self
-      submodules: true
+    - template: ../templates/jobs/checkout-and-git-redirect.yml
 
     - template: ../templates/setup-feeds-and-python-steps.yml
+
+    - template: ../templates/flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download signed GPU NuGet package'
+        ArtifactName: 'drop-signed-nuget-GPU'
+        TargetPath: '$(Build.BinariesDirectory)/signed-nuget-gpu'
+
+    - task: PowerShell@2
+      displayName: 'Test Node installer integrity metadata generation'
+      inputs:
+        filePath: '$(Build.SourcesDirectory)\tools\ci_build\github\js\test-pack-npm-packages-integrity.ps1'
+        arguments: '"$(Build.SourcesDirectory)\tools\ci_build\github\js\pack-npm-packages.ps1"'
+        errorActionPreference: stop
 
     - script: |
         echo.>>.gitattributes
@@ -82,7 +91,6 @@ stages:
     #      - onnxruntime_binding.node
     #      - onnxruntime.dll
     #      - DirectML.dll
-    #      - dxil.dll
     #      - dxcompiler.dll
     #
     #  - Windows arm64 (CPU, DML, WebGPU):
@@ -91,7 +99,6 @@ stages:
     #      - onnxruntime_binding.node
     #      - onnxruntime.dll
     #      - DirectML.dll
-    #      - dxil.dll
     #      - dxcompiler.dll
     #
     #  - Linux x64 (CPU, CUDA, TensorRT, WebGPU):
@@ -278,7 +285,7 @@ stages:
     - task: PowerShell@2
       inputs:
         filePath: '$(Build.SourcesDirectory)\tools\ci_build\github\js\pack-npm-packages.ps1'
-        arguments: '$(NpmPackagingMode) "$(Build.SourcesDirectory)" node "$env:NODEJS_DEP_PACKAGE_VERSIONS"'
+        arguments: '$(NpmPackagingMode) "$(Build.SourcesDirectory)" node "$env:NODEJS_DEP_PACKAGE_VERSIONS" "$(Build.BinariesDirectory)/signed-nuget-gpu"'
         workingDirectory: $(Build.BinariesDirectory)
         errorActionPreference: stop
       displayName: 'Pack NPM packages'
