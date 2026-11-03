@@ -155,8 +155,6 @@ class BuildArgsTest(unittest.TestCase):
                         nccl_home="",
                         tensorrt_home="",
                         migraphx_home="",
-                        acl_home="",
-                        acl_libs="",
                         qnn_home="",
                         snpe_root="",
                         cann_home="",
