@@ -695,6 +695,13 @@ bool ConvNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& n
   int32_t dt_input = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   int32_t dt_weight = dq_nodes[1]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+  // INT32 dequantization is valid, but QLinearConv cannot consume INT32 weights.
+  if (dt_weight != ONNX_NAMESPACE::TensorProto_DataType_INT8 &&
+      dt_weight != ONNX_NAMESPACE::TensorProto_DataType_UINT8 &&
+      !Is16BitIntType(dt_weight) && !Is4BitIntType(dt_weight)) {
+    return false;
+  }
+
   if (dt_input != dt_output) {
     return false;
   }
