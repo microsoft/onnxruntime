@@ -34,6 +34,7 @@ TEST(SGemm, PackedM1Bias) {
   GTEST_SKIP() << "Requires the AArch64 ASIMD sgemv_kernel";
 #else
   MLAS_BACKEND_KERNEL_SELECTOR_CONFIG config{};
+  config.use_kleidiai = false;
   MlasFgemmTest<float, true, false> test;
   MatrixGuardBuffer<float> BufferBias;
   MatrixGuardBuffer<uint8_t> BufferPackedB;
