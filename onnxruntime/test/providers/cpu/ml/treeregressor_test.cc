@@ -1066,6 +1066,7 @@ TEST(MLOpTest, TreeEnsembleRegressorNegativeFeatureId) {
            "nodes_featureids[0]=-1 must be in [0,");
 }
 
+#if !defined(ORT_NO_EXCEPTIONS)
 TEST(MLOpTest, TreeEnsembleRegressorRejectsInvalidCategorySetId) {
   OpTester test("TreeEnsembleRegressor", 3, onnxruntime::kMLDomain);
 
@@ -1088,6 +1089,7 @@ TEST(MLOpTest, TreeEnsembleRegressorRejectsInvalidCategorySetId) {
   test.Run(OpTester::ExpectResult::kExpectFailure,
            "Tree category set id 0 must be in [0, 0).");
 }
+#endif
 
 TEST(MLOpTest, TreeEnsembleRegressorBaseValuesWrongSize) {
   OpTester test("TreeEnsembleRegressor", 3, onnxruntime::kMLDomain);

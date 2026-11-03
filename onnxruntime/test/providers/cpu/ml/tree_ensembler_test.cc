@@ -51,6 +51,7 @@ void TestCategorySetIdValidation() {
   EXPECT_EQ(ml::detail::ValidateCategorySetId(ThresholdType{0}, 2), 0U);
   EXPECT_EQ(ml::detail::ValidateCategorySetId(ThresholdType{1}, 2), 1U);
 
+#if !defined(ORT_NO_EXCEPTIONS)
   for (ThresholdType invalid_id : {
            ThresholdType{-1},
            ThresholdType{0.5},
@@ -66,6 +67,7 @@ void TestCategorySetIdValidation() {
   EXPECT_THROW(
       ml::detail::ValidateCategorySetId(size_t_limit, std::numeric_limits<size_t>::max()),
       OnnxRuntimeException);
+#endif
 }
 
 TEST(TreeEnsembleCommonTest, ValidatesFloatCategorySetIds) {
@@ -81,9 +83,11 @@ TEST(TreeEnsembleCommonTest, FloatCategorySetCountDoesNotRoundDown) {
   constexpr float last_category_set_id = 16'777'216.0f;
   EXPECT_EQ(ml::detail::ValidateCategorySetId(last_category_set_id, category_set_count),
             category_set_count - 1);
+#if !defined(ORT_NO_EXCEPTIONS)
   EXPECT_THROW(
       ml::detail::ValidateCategorySetId(last_category_set_id, category_set_count - 1),
       OnnxRuntimeException);
+#endif
 }
 
 template <typename T>

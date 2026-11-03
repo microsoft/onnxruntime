@@ -709,6 +709,7 @@ TEST(MLOpTest, TreeEnsembleNegativeFeatureIds) {
   test.Run(OpTester::ExpectResult::kExpectFailure, "nodes_featureids[0]=-2 must be in [0, 2147483647] for non-leaf nodes");
 }
 
+#if !defined(ORT_NO_EXCEPTIONS)
 TEST(MLOpTest, TreeEnsembleClassifierRejectsInvalidCategorySetId) {
   OpTester test("TreeEnsembleClassifier", 3, onnxruntime::kMLDomain);
 
@@ -740,6 +741,7 @@ TEST(MLOpTest, TreeEnsembleClassifierRejectsInvalidCategorySetId) {
   test.Run(OpTester::ExpectResult::kExpectFailure,
            "Tree category set id 0 must be in [0, 0).");
 }
+#endif
 
 // Regression test for PR #27552 which inadvertently broke binary TreeEnsembleClassifier models
 // with all-positive weights and non-LOGISTIC post_transform (e.g., sklearn RandomForestClassifier).
