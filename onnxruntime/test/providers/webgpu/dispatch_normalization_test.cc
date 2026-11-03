@@ -26,6 +26,10 @@
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
 
+#ifndef DISABLE_CONTRIB_OPS
+#include "contrib_ops/webgpu/bert/linear_attention.h"
+#endif
+
 namespace onnxruntime {
 namespace test {
 namespace {
@@ -217,6 +221,73 @@ void CheckResultsAndPadding(gsl::span<const float> output_data, size_t output_si
                           [](float value) { return value == kOutputPaddingCanary; }))
       << "Normalization-added workgroups modified output padding.";
 }
+
+#ifndef DISABLE_CONTRIB_OPS
+TEST_F(WebGpuDispatchExecutionTest, LinearAttentionPreservesPaddingAfterNormalization) {
+  constexpr uint32_t sequence = 16;
+  constexpr uint32_t dimension = 128;
+  constexpr uint32_t tiles = dimension / 4;
+  std::array<uint32_t, 3> physical{tiles, 1, 1};
+  // A small per-axis limit exercises padding without a large model allocation.
+  ASSERT_STATUS_OK(webgpu::detail::NormalizeDispatchGroupSize(physical[0], physical[1], physical[2], 31));
+  ASSERT_EQ(physical[0] * physical[1] * physical[2], 36u);
+
+  const auto& context = WebGpuContextFactory::GetContext(0);
+  const int subgroup_min_size = context.DeviceHasFeature(wgpu::FeatureName::Subgroups)
+                                    ? static_cast<int>(context.AdapterInfo().subgroupMinSize)
+                                    : 0;
+  for (bool use_subgroups : {false, true}) {
+    if (use_subgroups && subgroup_min_size == 0) continue;
+    SCOPED_TRACE(use_subgroups);
+    // Back an extra batch with valid storage: a missing guard must change the
+    // canaries, not depend on undefined out-of-bounds GPU access being detected.
+    std::vector<float> q_data(2 * sequence * dimension, 1.0f / dimension);
+    std::vector<float> zero_data(q_data.size(), 0.0f);
+    std::vector<float> initial_data(2 * dimension * dimension, 1.0f);
+    std::vector<float> decay_data(2 * sequence, 0.0f);
+    std::vector<float> beta_data(2 * sequence, 1.0f);
+    std::vector<float> output_data(q_data.size(), kOutputPaddingCanary);
+    std::vector<float> state_data(initial_data.size(), kOutputPaddingCanary);
+    auto q_buffer = CreateStorageBuffer(Ep(), q_data);
+    auto zero_buffer = CreateStorageBuffer(Ep(), zero_data);
+    auto initial_buffer = CreateStorageBuffer(Ep(), initial_data);
+    auto decay_buffer = CreateStorageBuffer(Ep(), decay_data);
+    auto beta_buffer = CreateStorageBuffer(Ep(), beta_data);
+    auto output_buffer = CreateStorageBuffer(Ep(), output_data);
+    auto state_buffer = CreateStorageBuffer(Ep(), state_data);
+    const OrtMemoryInfo memory_info(WEBGPU_BUFFER, OrtDeviceAllocator, webgpu::WebGpuDevice(0), OrtMemTypeDefault);
+    const TensorShape packed_shape{2, sequence, dimension};
+    const TensorShape state_shape{2, 1, dimension, dimension};
+    Tensor q(DataTypeImpl::GetType<float>(), packed_shape, q_buffer.Get(), memory_info);
+    Tensor zero(DataTypeImpl::GetType<float>(), packed_shape, zero_buffer.Get(), memory_info);
+    Tensor initial(DataTypeImpl::GetType<float>(), state_shape, initial_buffer.Get(), memory_info);
+    Tensor decay(DataTypeImpl::GetType<float>(), {2, sequence, 1}, decay_buffer.Get(), memory_info);
+    Tensor beta(DataTypeImpl::GetType<float>(), {2, sequence, 1}, beta_buffer.Get(), memory_info);
+    Tensor output(DataTypeImpl::GetType<float>(), packed_shape, output_buffer.Get(), memory_info);
+    Tensor state(DataTypeImpl::GetType<float>(), state_shape, state_buffer.Get(), memory_info);
+    contrib::webgpu::LinearAttentionProgram program{
+        contrib::webgpu::LinearAttentionUpdateRule::GatedDelta, true, false, true, true, true,
+        /*tile_v=*/1, /*components=*/4, use_subgroups ? subgroup_min_size : 0};
+    program.AddInputs({{&q, ProgramTensorMetadataDependency::TypeAndRank},
+                       {&zero, ProgramTensorMetadataDependency::TypeAndRank},
+                       {&zero, ProgramTensorMetadataDependency::TypeAndRank, 4},
+                       {&initial, ProgramTensorMetadataDependency::TypeAndRank, 4},
+                       {&decay, ProgramTensorMetadataDependency::TypeAndRank},
+                       {&beta, ProgramTensorMetadataDependency::TypeAndRank}})
+        .AddOutputs({{&output, ProgramTensorMetadataDependency::TypeAndRank, 4},
+                     {&state, ProgramTensorMetadataDependency::TypeAndRank, 4}})
+        .AddUniformVariables({{uint32_t{1}}, {uint32_t{1}}, {sequence}, {dimension}, {tiles}, {1.0f}, {tiles}, {uint32_t{1}}, {uint32_t{1}}, {uint32_t{1}}, {uint32_t{1}}})
+        .SetWorkgroupSize(dimension)
+        .SetDispatchGroupSize(physical[0], physical[1], physical[2])
+        .CacheHint("padding-regression", use_subgroups, subgroup_min_size);
+    ASSERT_NO_FATAL_FAILURE(RunAndReadProgram(Ep(), program, output_buffer.Get(), output_data));
+    Ep().BufferManager().Download(Ep().Recording(), state_buffer.Get(), state_data.data(), state_data.size() * sizeof(float));
+    // k=0 and decay=0 preserve the unit state; q sums to one.
+    CheckResultsAndPadding(output_data, sequence * dimension, 1.0f);
+    CheckResultsAndPadding(state_data, dimension * dimension, 1.0f);
+  }
+}
+#endif
 
 class LogicalDispatchProbeProgram final : public Program<LogicalDispatchProbeProgram> {
  public:
