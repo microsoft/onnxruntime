@@ -1709,6 +1709,10 @@ struct SessionOptionsImpl : ConstSessionOptionsImpl<T> {
   SessionOptionsImpl& AddExternalInitializersFromFilesInMemory(const std::vector<std::basic_string<ORTCHAR_T>>& external_initializer_file_names,
                                                                const std::vector<char*>& external_initializer_file_buffer_array,
                                                                const std::vector<size_t>& external_initializer_file_lengths);  ///< Wraps OrtApi::AddExternalInitializersFromFilesInMemory
+  /// Register a complete set of pre-opened external initializer files. Wraps OrtApi::SessionOptionsSetExternalInitializerFileHandles.
+  SessionOptionsImpl& SetExternalInitializerFileHandles(const char* const* names,
+                                                        const OrtFileHandle* handles,
+                                                        size_t count);
 
   SessionOptionsImpl& AppendExecutionProvider_CPU(int use_arena);                                            ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_CPU
   SessionOptionsImpl& AppendExecutionProvider_CUDA(const OrtCUDAProviderOptions& provider_options);          ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_CUDA
