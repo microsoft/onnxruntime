@@ -117,15 +117,24 @@ class BuildArgsTest(unittest.TestCase):
         args = self._parse("--android", platform_name="linux")
         self.assertTrue(args.use_telemetry)
 
-    def test_use_acl_emits_deprecation_warning(self):
-        with self.assertWarnsRegex(FutureWarning, "The ACL EP is deprecated"):
-            self._parse("--use_acl", platform_name="linux")
+    def test_removed_acl_arguments_are_rejected(self):
+        for arguments in (("--use_acl",), ("--acl_home", "acl"), ("--acl_libs", "acl")):
+            with self.subTest(arguments=arguments):
+                with mock.patch("sys.stderr"), self.assertRaises(SystemExit) as error:
+                    self._parse(*arguments, platform_name="linux")
+                self.assertEqual(error.exception.code, 2)
 
-    def test_acl_deprecation_warning_not_emitted_without_use_acl(self):
-        with mock.patch.object(build_args.warnings, "warn") as warn:
-            self._parse(platform_name="linux")
+    def test_kleidiai_can_still_be_disabled(self):
+        self.assertFalse(self._parse(platform_name="linux").no_kleidiai)
+        self.assertTrue(self._parse("--no_kleidiai", platform_name="linux").no_kleidiai)
 
-        warn.assert_not_called()
+    def test_dnnl_acl_backend_arguments_are_preserved(self):
+        args = self._parse(
+            "--use_dnnl", "--dnnl_aarch64_runtime", "acl", "--dnnl_acl_root", "acl", platform_name="linux"
+        )
+        self.assertTrue(args.use_dnnl)
+        self.assertEqual(args.dnnl_aarch64_runtime, "acl")
+        self.assertEqual(args.dnnl_acl_root, "acl")
 
     def test_compiler_cache_defaults_to_ccache(self):
         args = self._parse("--use_cache", platform_name="linux")

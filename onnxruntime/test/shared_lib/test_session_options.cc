@@ -4,11 +4,30 @@
 #include "core/common/common.h"
 #include "core/framework/config_options.h"
 #include "core/graph/constants.h"
+#include "core/providers/acl/acl_provider_factory.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "gmock/gmock.h"
 
 using namespace onnxruntime;
+
+extern std::unique_ptr<Ort::Env> ort_env;
+
+TEST(CApiTest, session_options_append_removed_acl_ep) {
+  for (bool enable_fast_math : {false, true}) {
+    Ort::SessionOptions options;
+    Ort::Status status{OrtSessionOptionsAppendExecutionProvider_ACL(options, enable_fast_math)};
+    ASSERT_FALSE(status.IsOK());
+    EXPECT_EQ(status.GetErrorCode(), ORT_FAIL);
+    EXPECT_THAT(status.GetErrorMessage(), testing::HasSubstr("ACL execution provider has been removed"));
+
+#if !defined(ORT_MINIMAL_BUILD)
+    Ort::Session session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), options);
+    EXPECT_EQ(session.GetInputCount(), 1u);
+    EXPECT_EQ(session.GetOutputCount(), 1u);
+#endif
+  }
+}
 
 TEST(CApiTest, session_options_graph_optimization_level) {
   // Test set optimization level succeeds when valid level is provided.

@@ -9,11 +9,14 @@ extern "C" {
 #endif
 
 /**
- * \param use_arena zero: false. non-zero: true.
+ * \deprecated The ACL execution provider has been removed. This function is retained for compatibility.
+ * \param options Session options, which are left unchanged.
+ * \param enable_fast_math Ignored.
+ * \return An ORT_FAIL status explaining that the ACL execution provider has been removed.
  */
-ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_ACL, _In_ OrtSessionOptions* options,
-               bool enable_fast_math)
-ORT_ALL_ARGS_NONNULL;
+ORT_EXPORT ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_ACL, _In_ OrtSessionOptions* options,
+                          bool enable_fast_math)
+    ORT_ALL_ARGS_NONNULL;
 
 #ifdef __cplusplus
 }

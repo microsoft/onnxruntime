@@ -12,6 +12,7 @@
 #include "core/framework/provider_options.h"
 #include "core/graph/constants.h"
 #include "core/platform/telemetry_strings.h"
+#include "core/providers/acl/acl_provider_factory.h"
 #include "core/providers/provider_factory_creators.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/onnxruntime_c_api.h"
@@ -337,6 +338,14 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
 
   return status;
   API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_ACL,
+                    _In_ OrtSessionOptions* options, bool enable_fast_math) {
+  ORT_UNUSED_PARAMETER(options);
+  ORT_UNUSED_PARAMETER(enable_fast_math);
+  return OrtApis::CreateStatus(
+      ORT_FAIL, "The ACL execution provider has been removed. Use the CPU execution provider instead.");
 }
 
 static OrtStatus* CreateNotEnabledStatus(const std::string& ep) {

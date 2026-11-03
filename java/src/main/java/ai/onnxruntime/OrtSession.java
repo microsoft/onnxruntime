@@ -1506,11 +1506,14 @@ public class OrtSession implements AutoCloseable {
     }
 
     /**
-     * Adds the ARM Compute Library as an execution backend.
+     * Retained for compatibility with the removed ARM Compute Library execution provider.
      *
-     * @param enableFastMath Enable fast math mode in ACL.
-     * @throws OrtException If there was an error in native code.
+     * @param enableFastMath Ignored.
+     * @throws OrtException Always, with ORT_INVALID_ARGUMENT, because the ACL execution provider
+     *     has been removed.
+     * @deprecated The ACL execution provider has been removed. This method always throws.
      */
+    @Deprecated
     public void addACL(boolean enableFastMath) throws OrtException {
       checkClosed();
       addACL(OnnxRuntime.ortApiHandle, nativeHandle, enableFastMath);

@@ -278,6 +278,8 @@ class TestInferenceSession(unittest.TestCase):
 
     def test_get_providers(self):
         self.assertTrue("CPUExecutionProvider" in onnxrt.get_available_providers())
+        self.assertNotIn("ACLExecutionProvider", onnxrt.get_available_providers())
+        self.assertNotIn("ACLExecutionProvider", onnxrt.get_all_providers())
         # get_all_providers() returns the default EP order from highest to lowest.
         # CPUExecutionProvider should always be last.
         self.assertTrue(onnxrt.get_all_providers()[-1] == "CPUExecutionProvider")
