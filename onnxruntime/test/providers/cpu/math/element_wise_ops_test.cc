@@ -1502,6 +1502,72 @@ TEST(MathOpTest, Pow_double_int64) {
   test.Run();
 }
 
+TEST(MathOpTest, Pow_int64_int64_LargeExact) {
+  OpTester test("Pow", 12);
+  std::vector<int64_t> dims{6};
+  test.AddInput<int64_t>("X", dims, {3, 5, 7, 2, 9007199254740993LL, -3});
+  test.AddInput<int64_t>("Y", dims, {34, 24, 19, 53, 1, 39});
+  test.AddOutput<int64_t>("Z", dims,
+                          {16677181699666569LL, 59604644775390625LL, 11398895185373143LL,
+                           9007199254740992LL, 9007199254740993LL, -4052555153018976267LL});
+  test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+}
+
+TEST(MathOpTest, Pow_int64_int64_ScalarExponent) {
+  OpTester test("Pow", 12);
+  std::vector<int64_t> dims{3};
+  test.AddInput<int64_t>("X", dims, {3037000499LL, -2097151LL, 123456789LL});
+  test.AddInput<int64_t>("Y", {}, {2});
+  test.AddOutput<int64_t>("Z", dims, {9223372030926249001LL, 4398042316801LL, 15241578750190521LL});
+  test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+}
+
+TEST(MathOpTest, Pow_int64_int32_ScalarBase) {
+  OpTester test("Pow", 12);
+  std::vector<int64_t> dims{3};
+  test.AddInput<int64_t>("X", {}, {3});
+  test.AddInput<int32_t>("Y", dims, {0, 34, 39});
+  test.AddOutput<int64_t>("Z", dims, {1, 16677181699666569LL, 4052555153018976267LL});
+  test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+}
+
+TEST(MathOpTest, Pow_int32_int32_Exact) {
+  OpTester test("Pow", 12);
+  std::vector<int64_t> dims{4};
+  test.AddInput<int32_t>("X", dims, {3, -2, 46340, 7});
+  test.AddInput<int32_t>("Y", dims, {19, 31, 2, 0});
+  test.AddOutput<int32_t>("Z", dims, {1162261467, std::numeric_limits<int32_t>::min(), 2147395600, 1});
+  test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+}
+
+TEST(MathOpTest, Pow_Int32_ScalarFloatExponent_2) {
+  OpTester test("Pow", 12);
+  std::vector<int64_t> dims_x{4};
+  test.AddInput<int32_t>("X", dims_x, {3, -2, 46340, 7});
+  test.AddInput<float>("Y", {}, {2.0f});
+  test.AddOutput<int32_t>("Z", dims_x, {9, 4, 2147395600, 49});
+  test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+}
+
+TEST(MathOpTest, Pow_Int32_ScalarDoubleExponent_3) {
+  OpTester test("Pow", 12);
+  std::vector<int64_t> dims_x{4};
+  test.AddInput<int32_t>("X", dims_x, {3, -2, 1290, 7});
+  test.AddInput<double>("Y", {}, {3.0});
+  test.AddOutput<int32_t>("Z", dims_x, {27, -8, 2146689000, 343});
+  test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+}
+
+TEST(MathOpTest, Pow_Int64_ScalarFloatExponent_Overflow) {
+  OpTester test("Pow", 12);
+  std::vector<int64_t> dims_x{2};
+  test.AddInput<int64_t>("X", dims_x, {4294967296LL, 3});
+  test.AddInput<float>("Y", {}, {2.0f});
+  test.AddOutput<int64_t>("Z", dims_x, {0, 9});
+  test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+}
+
+
 TEST(MathOpTest, Pow_float16_float16) {
   std::vector<int64_t> dims{4};
   TestBinaryFloat16("Pow", dims, {2.0f, 2.0f, std::sqrt(2.0f), 1.0f}, dims, {0.0f, 8.0f, 2.0f, 9.0f},
