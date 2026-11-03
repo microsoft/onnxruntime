@@ -4,6 +4,12 @@ Compressed project memory. This is not the execution plan.
 
 ## Workflow checkpoint
 
+- 2026-11-02 CURRENT: M01-M13 complete; M13PR27 OPEN/ready at42ab052f08 onM12.
+  M14interviewdone/noadditionalrequirements; userexplicitlyAPPROVEDAppendixN.
+  DetailedTASKSM14P0-P8 separatelyAPPROVED2026-11-02; implementationauthorized.
+  M14P0-P7qualificationverified, P8publicationpending. NewPython377/377,
+  realCPU/CUDAreference+budgets+parity/replay+sanitizer/transfersPASS.
+  Planningbranchstate/m14-phi3-demo.
 - 2026-10-15: Requirements interview completed. User explicitly said there was
   no additional information and authorized drafting `SPEC.md`, then stopping
   for review.
@@ -1626,3 +1632,139 @@ Compressed project memory. This is not the execution plan.
   PublicationbookkeepingchangesONLYSPEC/TASKS/SCRATCH, notqualifiedruntime.
   Finalproofhashmanifest/reports retainedsessionfiles/m13-final-*;
   finalremotehead/base/cleanworktreeverificationfollowspush. NoM14/merge.
+- M13FINALremoteverificationPASSED: PR27head42ab052f08c8dc44a76a8012e3e70a053fe64b1a,
+  baseM12, OPEN/nonDraft, cleanworktree. Proofmanifest22sources/40artifacts
+  m13-final-proof-sha256.txt retained; noactivejobs. No merge.
+- M14INTERVIEWCONFIRMED2026-11-02: userauthorizesHFdownloads from
+  microsoft/Phi-3-mini-4k-instruct-onnx (notyetperformed), CPUint4acc-level-4 +
+  CUDAfp16; tokenizerssameHFsource. Explicitassetroot
+  /home/devpatel/onnxruntime-stateful/phi3-mini-4k-instruct (NOT.cache).
+  PythonCLI+reusablehelpers; localHFtokenizeradapteroptional/demo-only;
+  pinnedchattemplate default+rawoptout; ordinarySessionreference, shortprompt
+  16tokens+0/1/EOS/resetcases. ExplicitNOadditionalrequirements confirmed.
+- HFmetadataONLYinspected: pinnedrevision5f5f794c1c23c9d5ee142af85df02a6cc52d6945,
+  MIT/ungated; CPUweights2722861056B,CUDAweights7642945536B (~10.4GBcombined).
+  Tokenizerfilespresent/chattemplate; generationEOS=[32000,32001,32007] versus
+  tokenizerEOS32000. genai_config inputsinput_ids/attention_mask +past/present
+  layerkey/value;32layers/32headsKV/96headsize/vocab32064/context4096.
+  ActualONNXgraphs/weightsNOTdownloaded/inspected; signatures/dtypes/aliasing
+  mustbeverifiedafterbothapprovals. Upstreamsearchpast_present_share_buffer=true
+  isNOTauthorizationtoviolateimmutablecache/snapshotcontracts.
+- ReadonlysharedTASKSattachment inspected, NOTedited. ActualrepoTASKS updated
+  M13overviewcheckbox+M14specdraftstatusonly; detailedM14planNOTprepared.
+  SPECAppendixNdraft includesexplicitrevision/hashcheckedofflineassets,
+  twoEPportablepackagesrecommended/avoidweightdup, nativeM13engine,
+  sharedKV/sampler-freeprefill/bootstrapdecode, nativeCUDArequiredfeatures/
+  actualGPUplacement+transferproof, pervariantreference/numerics,100%newlines.
+  Rootfree2.1GB/home60GB; keepmodelsoutsideGit/rootbuilds, noexecutedHF.py.
+- M14SPECAPPROVED2026-11-02 viaexplicitreview; authorizedTASKSplanONLY.
+  DetailedplanP0parentproof/baseline,P1allowlistedassets+actualgraphcompat,
+  P2nativevalidatedEPpackages,P3localtokenizer,P4nativeCLI/helpers,
+  P5CPU+ordinarySessionoracle,P6CUDA/residency/sanitizers,P7coverage/regressions/
+  offlineinstalledwheels,P8docs/ONEreadyPRonM13. Awaitseparateplanapproval.
+- Readonlypriorart: M13testsfactorydeclareschain-leveltypedkv_caches andstep
+  bindings/policies; prefillfinite/nonemptytokenbinding suppliesbootstrap
+  initial_logits prompt_input (defaults sourceLoop.nonempty_input), generation
+  parser supportsattention_mask/position_ids. No standalonepackageauthoringCLI
+  orpublicPythonauthoringwrapper; scopedstdJSONmanifestemitter+nativevalidation
+  avoidsnewgenericAPI. ExistingPhi2exampleusesremote-code=True andownengine;
+  DO NOTcopythosebehaviors. Demo-onlyHFadapterlocalfiles/trustremoteFalse.
+- Newruntimefeatures/modelrewrites NOTauthorizedifactualsignature/aliasing
+  incompatible; stopwithconcreteevidence+explicitamendment. GraphsNOTdownloaded.
+  GPUqualificationsanitizerbudget>=2plusassertactualdecodecall (budget1
+  bootstrapalonewouldfalsegreen). NoCPUINT4vsCUDAFP16proseidentityrequirement.
+- M14PLANAPPROVED2026-11-02 viaexplicitreview "Approve plan and begin M14".
+  Bothapprovalgatessatisfied. StartP0parentproof/focusedbaselines, thenP1small
+  graphinspectionBEFOREmultiGBweights tocatchunsupported-signatureearly.
+  Userassetrootremains/home/devpatel/onnxruntime-stateful/phi3-mini-4k-instruct.
+- M14P0DONE: all62parentproofhashesPASS (planningdocsha checkedatparentGit
+  42ab052f08), CPU27/84 andinstalledGPU29/84PASS,actualCPU/plugin/legacy
+  modulepaths/buildinfoslogged,m14-parent-* evidence. 8A10080GB all81152MiB
+  freeatpreflight. No parentrebuild/oldproofmutation.
+- M14P1actualgraphs+weightsDOWNLOADED ANDLFSsize/SHA256VERIFIED:
+  cpu/decoder/cpu/phi3-mini-4k-instruct-cpu-int4-rtn-block-32-acc-level-4.onnx
+  +.data2722861056B; cuda/decoder/cuda/phi3-mini-4k-instruct-cuda-fp16.onnx
+  +.data7642945536B; underapprovedassetroot. Attachedboundedcurljobs
+  m14-cpu-weight-acquisition andm14-cuda-weight-acquisition COMPLETEDexit0,
+  outputsread. No .partfilesleft. Metadata/tokenizersnotyetallacquired.
+- Actualstructuralinspection m14-graph-inspection-preflight.json/log:
+  IR7/opset14+com.microsoft1,INT64ids/mask,64cacheports+logits.
+  CPUFLOAT32/GPUFLOAT16 cache/logits,shape[batch,32,P,96],vocab32064,
+  32GQAnodes withnum_heads=kv_num_heads32,do_rotary1,scale~.102062.
+  CPU161MatMulNBits versusGPU161MatMul. Onlyoneexternaldatafilenameeach.
+  StructuralmatchNOTfullruntime/aliasingqualification.
+- Addedinitialsamples/python/phi3_demo.py: fixedrevisionallowlistedassets,
+  explicitstreamacquire+hashchecks+atomicpublish/noinvalidfileoverwrite,
+  actualONNXinspectioncache/port/externalrangecrosschecks, native-schema
+  packagebuilder andEPdeviceoptions. Buildervalidatesfullnativeownedchain
+  inhardlinkedtempportablepackage BEFOREatomicmanifestpublish; no weight
+  copyandno destructionofoldmanifestonvalidationfailure. CLIacquire/inspect/
+  build authored; tokenizer/run/reference/testsstillpending. No100%claim.
+- M14LATESTrealassetsALLverified20filesover2variants; nativeCPU/CUDAportable
+  packagescreatedsuccessfully. CPUdeviceDEFAULTmemory_infoisNone, soCPUoptions
+  correctlyusebuiltinCPUdefault (notGPUallocatorselector); actualreference
+  explicitlyprovidersCPU. CUDAshapeGather+CastintentionallyCPU,bulkcomputeGPU.
+- DemooptionalTokenizeractualcommandfailedModuleNotFoundErrortransformers,
+  thendeclaredsamples/python/requirements-phi3-demo.txt +installedvenvONLY
+  transformers4.57.6/tokenizers0.22.2/huggingface_hub0.36.2 (was2.4.0).
+  Torch2.8CPU/onnx1.23.2retained; noGPUlibs/globalchanges. Chattemplatelocal-only,
+  trust_remote_codeFalse, noHF.py downloaded/executed.
+- Actualnative16tokentextPASS CPU+GPU. GPU16providerSampler/0CPU, .62sgeneration
+  firstsample; CPUinitial8threads900%CPUtimedout300s (realdiagnosticFAILretained).
+  SinglethreadstepdiagnosticPASS: prefill4.79s, bootstrap.0006s/noModelRun,
+  decode~.4-.9s, tokens16/invocations16. ProductionCPUintra_op now1, CLIreal
+  PASS setup29.74s/generation10.51s. No numericalperformancegate/workaroundclaim.
+- Per-variantordinarySessionreference+all64cache/logitcheckpoints+retained
+  prefillSnapshotimmutability+ResetReplayPASS actualCPU/CUDA, maxabsoluteerror0
+  both. CPUtol1e-4/1e-4;GPUrtol.01/atol.02 fixedbeforequalification.
+  Finalcachelen29=P14+15decode; CPU32GQA/161MatMulNBitsallCPU;
+  GPU32GQA/161MatMulallGPU,onlyCPUshapeGather/Cast. m14-*-real-reference*.json/log.
+- Newtest/python/onnxruntime_test_python_phi3_demo_assets.py explicitoptin
+  ORT_STATEFUL_PHI3_ASSETS, noimplicitdownloads. ActualCPUbudget0/1/16
+  +typedprogrammatic/packageparity+reference/replay PASS1test/3subtests281.43s;
+  actualGPU samePASS1/3 88.66s. Hardlinkedqualificationpackagesreuseweights.
+- NativeGPUsanitizerdirectworkerbudget3 requires>=2modelinvocations/3tokens,
+  64GPUcaches +postcontextclosecopy. MemcheckFULLleak --show-backtrace no already
+  0errors/0bytes/0allocs; ACTIVE m14-real-cuda-sanitizers continuingrace/sync.
+  Needreadnotification/fulloutput; don'trerunduplicate. Workertracewarmsup/resets
+  BEFOREcapture andassertsdispatchdelta3 (countersmaycumulative);copyworker
+  captures98304BcacheCPUcopy+sameGPUclone forP14+2states.
+- Productionhelpercurrently~700lines/374mappedstatementswithordinaryreference.
+  Firstslice278/278UNITcovered; fullreferencepositive10tests/49subtestsPASS.
+  Newnegativeverifierguards+fakeplacementtestsadded,needrun/fix/close100.
+  coverage7.17DEFAULTexcludesProtocolclass6lines! FinalanalysisMUSTremove
+  defaultreportexclusions (report:exclude_lines=[]) orotherwiseaccounttyping
+  declarationshonestly; NONEofnewruntimecodeexcluded. Neverclaim95%=100.
+- P0-P3/P5verified, P4newadapter/canceltestsawaitexecution, P6remainingrace/sync
+  +CUPTItraces, P7coverage/regressions/isolatedcommands, P8docs/ONEPRonM13.
+  AllM14changesUNCOMMITTEDonstate/m14-phi3-demo, HEADstill42ab052f08.
+  NoM14PR/merge/M15. Needdocsandactualproofhashes; CPU/GPUmodelweightsoutsideGit.
+- M14FINALQUALIFICATION VERIFIED: CPU42/147,plugin44/147,legacy42/147 combined
+  M13+M14suitesPASS. Native/publicCPU85/153,plugin157/216unfiltered,legacy145/76
+  selectedALLPASS. Standalone shared/static5/5eachPASS; existingCPU8+callbacks2
+  PASS;existingplugin7PASS andparentnegative-deviceknown1FAILseparatelyrerun.
+- NewproductionCOVERAGE377/377: demo376 +normalfull-buildPythonrunner1newstmt.
+  Finalcoverageexplicitlyreport:exclude_lines=[] =>ZEROexcluded, includes
+  Protocoldeclarations. 15offlineunit tests+63subtestsPASS. Standardfullbuild
+  runner nowexecutesofflinefixturemodule viaSOURCEpath (no staged/path issue,
+  noassetdownloads, existingreduced/minimalguardretained); mockedrunner
+  unittestcoversnewcall. No native/CUDAproductionchanges ornewdevicecoverage.
+- RealGPUall3sanitizersCOMPLETEDandoutputread: FULLmemcheck0errors/0bytes/
+  0allocs;race0hazards/errors/warnings;sync0errors. Actualprefill+bootstrap+
+  2decodeinvocations,64GPUcache+postcontextclosecopy. noerror/lineexclusions.
+- RealCUPTItraces+exports+EXACTassertionsPASS:
+  normal1722GPUkernels/ordinal0;GreedyPartialsHalf3+GreedyFinish3;
+  DtoH16B*3=48B ONLY(nofullcache/logitreadback);
+  HtoD8B*2,112B*2,120B*1,128B*1;
+  DtoD86016B*64+92160B*64 allowedcacheprefixcopies.
+  Separatecopy:98304B DtoD1+DtoH1. Evidence m14-real-{trace,copy}.sqlite/
+  .nsys-rep andm14-real-transfers-verified.json.txt. Warmup/ref/postclosecopies
+  outsidecapture. DoNOTclaimzerocopy.
+- FinalrealCPU/CUDAportablepackagesrebuiltwithperassethash/sizeprovenance,
+  originalONNX/datahashesunchanged,localCPU/CUDAwheels usedallcommands.
+  ActualrawCUDApromptbudget1PASS samplerPROVIDER/CPU0/invocations1.
+  docs/Stateful_Phi3_Demo.md added+linkedStateful_Python.md andsamples/readme.
+  pyright0/0,scopedlintrunner+whitespacePASS. P0-P7DONE, P8publicationpending.
+  Needfinalproofhashmanifest, ONEfeaturecommit/push/readyPRstate/m14-phi3-demo
+  baseM13state/m13-python-api (#27verified42ab052f08OPEN/ready), thenONLY
+  publicationbookkeepingcommit+synchead/base/cleanverification. NoM15/merge.

@@ -11,6 +11,9 @@ is requested.
 
 ## Executable examples
 
+For the real CPU INT4/CUDA FP16 model-package example, see
+[Local Phi-3 stateful text generation](Stateful_Phi3_Demo.md).
+
 [stateful_execution.py](../samples/python/stateful_execution.py) generates tiny
 ONNX models and checks feedback accumulation, sampler-free prefill followed by
 sample-only decode bootstrap, and both deterministic DDIM guidance conventions.
