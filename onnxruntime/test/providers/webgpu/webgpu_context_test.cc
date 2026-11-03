@@ -386,6 +386,62 @@ TEST(WebGpuContextTest, NativeProfilingUsesCpuOriginAcrossRunsAndSubmissions) {
 #endif
 }
 
+TEST(WebGpuContextTest, HostCalibrationValidatesSamplesAndPreservesOrigin) {
+#ifdef _WIN32
+  ConfigOptions options;
+  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  ASSERT_NE(ep, nullptr);
+  auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+  struct State {
+    int calls = 0;
+    bool succeed = true;
+    double scale = 1.0;
+    static int ORT_API_CALL Calibrate(void*, OrtWebGpuClockCalibration* result, void* data) {
+      auto& current = *static_cast<State*>(data);
+      ++current.calls;
+      LARGE_INTEGER qpc{};
+      if (!current.succeed || !QueryPerformanceCounter(&qpc)) return 0;
+      *result = {9000000000000000000ULL, static_cast<uint64_t>(qpc.QuadPart), current.scale};
+      return 1;
+    }
+  } state;
+  OrtWebGpuClockCalibrationCallbackInfo info{1, State::Calibrate, &state};
+  const auto origin = std::chrono::high_resolution_clock::now() - std::chrono::seconds(1);
+  auto calibrate = [&](wgpu::BackendType backend = wgpu::BackendType::D3D12) {
+    return webgpu::CalibrateHostTimestamps(context.Device(), backend, origin, info);
+  };
+  const auto sample = calibrate();
+  ASSERT_TRUE(sample.has_value());
+  EXPECT_GE(sample->ToCpuMicroseconds(9000000000000000000ULL), 999000);
+  EXPECT_LE(sample->ToCpuMicroseconds(9000000000000000000ULL), TimeDiffMicroSeconds(origin) + 1000);
+  for (const double scale : {0.0, -1.0, std::numeric_limits<double>::quiet_NaN(),
+                             std::numeric_limits<double>::infinity()}) {
+    state.scale = scale;
+    EXPECT_FALSE(calibrate());
+  }
+  state.scale = 1;
+  state.succeed = false;
+  EXPECT_FALSE(calibrate());
+  const auto calls = state.calls;
+  EXPECT_FALSE(calibrate(wgpu::BackendType::Vulkan));
+  info.version = 2;
+  EXPECT_FALSE(calibrate());
+  info.version = 1;
+  info.callback = nullptr;
+  EXPECT_FALSE(calibrate());
+  EXPECT_EQ(state.calls, calls);
+#else
+  const OrtWebGpuClockCalibrationCallbackInfo info{
+      1, [](void*, OrtWebGpuClockCalibration*, void*) -> int {
+        ADD_FAILURE() << "Non-Windows calibration invoked the host.";
+        return 0;
+      },
+      nullptr};
+  EXPECT_FALSE(webgpu::CalibrateHostTimestamps({}, wgpu::BackendType::D3D12,
+                                               std::chrono::high_resolution_clock::now(), info));
+#endif
+}
+
 TEST(WebGpuQueueUploadTest, SizesSourceOffsetsAndPartialWrites) {
   ConfigOptions options;
   auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();

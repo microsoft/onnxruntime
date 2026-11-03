@@ -177,6 +177,7 @@ struct WebGpuContextConfig {
   WGPUInstance instance{nullptr};
   WGPUDevice device{nullptr};
   const void* dawn_proc_table{nullptr};
+  std::optional<OrtWebGpuClockCalibrationCallbackInfo> clock_calibration;
   ValidationMode validation_mode{
 #ifndef NDEBUG
       webgpu::ValidationMode::Full  // for debug build, enable full validation by default
@@ -553,6 +554,7 @@ class WebGpuContext final {
   std::optional<uint64_t> gpu_timestamp_offset_;
   std::optional<TimestampCalibration> timestamp_calibration_;
   bool can_calibrate_timestamps_ = false;
+  std::optional<OrtWebGpuClockCalibrationCallbackInfo> clock_calibration_callback_;
   // ORT profiler's CPU time base, set via SetProfilingStartTime; GPU timestamps are
   // aligned to it. See SetProfilingStartTime.
   TimePoint profiling_start_time_;

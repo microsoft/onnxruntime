@@ -187,8 +187,9 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
     adapter_index_ = config.adapter_index;
     adapter_power_preference_ = config.power_preference;
     adapter_backend_type_ = config.backend_type;
-    // Native backend access is only safe with the bundled Dawn implementation.
+    // Custom devices/proc tables may belong to a different Dawn implementation.
     can_calibrate_timestamps_ = config.device == nullptr && config.dawn_proc_table == nullptr;
+    clock_calibration_callback_ = config.clock_calibration;
 
     ORT_ENFORCE(!config.adapter_index || config.device == nullptr,
                 "adapterIndex cannot be used with an externally supplied WebGPU device.");
@@ -497,6 +498,12 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
       query_type_ = TimestampQueryType::None;
     }
   });
+
+  ORT_ENFORCE(config.clock_calibration.has_value() == clock_calibration_callback_.has_value() &&
+                  (!config.clock_calibration ||
+                   (config.clock_calibration->callback == clock_calibration_callback_->callback &&
+                    config.clock_calibration->user_data == clock_calibration_callback_->user_data)),
+              "WebGPU context is already initialized with a different clockCalibration callback.");
 
   if (max_num_pending_dispatches_ != config.max_num_pending_dispatches) {
     LOGS_DEFAULT(WARNING)
@@ -1220,12 +1227,15 @@ void WebGpuContext::StartProfiling() {
   // driven by WebGpuProfiler::StartProfiling and carries the ORT profiler's CPU time
   // base for both session-level and run-level profiling.
   gpu_timestamp_offset_.reset();
-#if defined(_WIN32) && defined(DAWN_ENABLE_D3D12) && !defined(USE_EXTERNAL_DAWN)
-  timestamp_calibration_ = can_calibrate_timestamps_
-                               ? CalibrateTimestamps(device_, adapter_info_.backendType, profiling_start_time_)
-                               : std::nullopt;
-#else
   timestamp_calibration_.reset();
+  if (clock_calibration_callback_) {
+    timestamp_calibration_ = CalibrateHostTimestamps(device_, adapter_info_.backendType, profiling_start_time_,
+                                                     *clock_calibration_callback_);
+  }
+#if defined(_WIN32) && defined(DAWN_ENABLE_D3D12) && !defined(USE_EXTERNAL_DAWN)
+  else if (can_calibrate_timestamps_) {
+    timestamp_calibration_ = CalibrateTimestamps(device_, adapter_info_.backendType, profiling_start_time_);
+  }
 #endif
   profiling_first_submit_cpu_offset_us_ = -1;
 

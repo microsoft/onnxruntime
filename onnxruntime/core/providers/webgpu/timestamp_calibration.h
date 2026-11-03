@@ -8,6 +8,7 @@
 
 #include "core/common/common.h"
 #include "core/providers/webgpu/webgpu_external_header.h"
+#include "core/providers/webgpu/webgpu_provider_factory.h"
 
 namespace onnxruntime::webgpu {
 
@@ -25,6 +26,10 @@ struct TimestampCalibration {
 std::optional<TimestampCalibration> CalibrateTimestamps(const wgpu::Device& device,
                                                         wgpu::BackendType backend_type,
                                                         TimePoint profiling_start_time);
+
+std::optional<TimestampCalibration> CalibrateHostTimestamps(
+    const wgpu::Device& device, wgpu::BackendType backend_type, TimePoint profiling_start_time,
+    const OrtWebGpuClockCalibrationCallbackInfo& callback_info);
 
 namespace detail {
 

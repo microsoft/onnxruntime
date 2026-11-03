@@ -17,8 +17,9 @@ Each GPU event has a `clock_alignment` argument:
 - `first_submit`: the first GPU event is anchored to CPU submission time. GPU durations and relative
   spacing are available, but this approximation cannot measure the initial GPU queueing delay.
 
-The submission-time approximation remains in use for external Dawn API packages, custom devices or
-proc tables, other backends/platforms, incompatible timestamp toggles, and failed native calibration.
+External Dawn and custom devices/proc tables can provide the host callback described below to obtain
+the same Windows D3D12 correlation. The submission-time approximation remains in use without a host
+callback, on other backends/platforms, or when calibration fails or uses incompatible timestamp toggles.
 GPU events require a device with timestamp-query support. Concurrent profiling of sessions sharing
 a WebGPU context is unsupported.
 
@@ -127,17 +128,71 @@ node --test onnxruntime/test/webgpu/profiling/test_visualize_profile.mjs
 
 ## Test an external Dawn host
 
+External ORT builds do not link Dawn's native backend. Standard WebGPU procs do not expose its D3D12
+queue, so native access must happen in the application using the Dawn implementation that owns the
+device. Include `core/providers/webgpu/webgpu_provider_factory.h` and supply the optional version 1
+`OrtWebGpuClockCalibrationCallbackInfo` through the existing WebGPU provider options:
+
+```cpp
+int ORT_API_CALL Calibrate(void* device, OrtWebGpuClockCalibration* result, void* user_data) noexcept;
+
+OrtWebGpuClockCalibrationCallbackInfo calibration{1, Calibrate, &host_state};
+provider_options["clockCalibration"] = std::to_string(reinterpret_cast<uintptr_t>(&calibration));
+session_options.AppendExecutionProvider("WebGPU", provider_options);
+```
+
+ORT copies the callback struct during provider creation. The callback and `user_data` must outlive
+the WebGPU context; all sessions sharing that context must specify the same callback and user data.
+The address must point to a valid struct in the current process, as with `dawnProcTable`. ORT rejects
+unsupported versions, null callbacks and conflicting shared-context configurations.
+
+The callback receives the active opaque `WGPUDevice` and returns nonzero after writing all three fields:
+
+- `gpu_timestamp_ns`: the calibration GPU timestamp in exactly the same units as resolved queries.
+- `cpu_qpc_ticks`: the correlated Windows QueryPerformanceCounter ticks, not CPU nanoseconds.
+- `gpu_to_cpu_scale`: a finite positive factor converting resolved GPU query deltas to CPU nanoseconds.
+
+Use the owning Dawn implementation to obtain the D3D12 queue and call `GetClockCalibration`. Match
+that Dawn version's query normalization and timestamp toggles, including any rate correction; using
+the exact GPU frequency for an absolute timestamp can disagree with Dawn's rounded conversion.
+The test host's `CalibrateHostDevice` in
+[`external_dawn/main.cc`](../onnxruntime/test/webgpu/external_dawn/main.cc) is a working example for
+the pinned Dawn version. It rejects `disable_timestamp_query_conversion` and `timestamp_quantization`.
+Recheck the conversion when updating Dawn. The callback must not throw, wait for GPU work, or submit
+extra commands. Return zero when calibration is unavailable.
+
+ORT calls the callback only during Windows D3D12 profiling, once per inference run, and bridges QPC
+to the existing profiler origin. Failed callbacks or invalid samples use `first_submit`; successful
+callbacks produce `d3d12_clock_calibration`. No callback or clock sampling occurs with profiling off.
+
 With a compatible native Dawn host and an ORT DLL built using `--use_external_dawn`, run:
 
 ```powershell
 onnxruntime_webgpu_external_dawn_test.exe --profiling
 onnxruntime_webgpu_external_dawn_test.exe --profiling --host_device
+onnxruntime_webgpu_external_dawn_test.exe --profiling --clock_calibration
+onnxruntime_webgpu_external_dawn_test.exe --profiling --clock_calibration --host_device
 ```
 
 The host test runs Abs with CPU fallback disabled. Its proc-table counters verify that timestamp
 queries, writes, resolves and query buffers are absent with profiling off, present with profiling on
 across two runs, and inactive again after profiling. Both ORT-created and host-created device paths
-emit `first_submit` GPU events plus CPU spans. The host-created device enables `TimestampQuery`.
+emit CPU spans and GPU events. Without the callback they use `first_submit`. With `--clock_calibration`
+on Windows D3D12 they use `d3d12_clock_calibration`, with zero callback calls off and two calls on.
+The host-created device enables `TimestampQuery` and disables `timestamp_quantization` for calibration
+tests. Optional `--calibration_failure` and
+`--calibration_invalid` flags exercise fallback for failed callbacks and invalid samples.
+
+Run the complete Windows D3D12 regression matrix with Node.js after building the host:
+
+```powershell
+node onnxruntime/test/webgpu/profiling/test_external_dawn_profile.mjs build/external-regression/Release/Release/onnxruntime_webgpu_external_dawn_test.exe build/profile/external-tests
+```
+
+The script checks both device paths with absent, successful, failed and invalid calibration, plus
+missing-proc rejection. It saves logs and traces, verifies all five CPU span kinds, and checks that
+the calibrated GPU events preserve an intentionally delayed queue. The delay is test-only; production
+calibration adds no queue wait. Generate a webpage from any saved `.trace.json` with `visualize_profile.mjs`.
 
 Build the test in external-Dawn mode with Dawn sources available for the native host dependency:
 

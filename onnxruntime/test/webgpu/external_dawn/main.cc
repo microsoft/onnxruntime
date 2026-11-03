@@ -1,8 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -16,13 +18,20 @@
 #include <span>
 #include <stdexcept>
 #include <string>
+#include <string_view>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/providers/webgpu/webgpu_provider_factory.h"
 
 #include "dawn/dawn_proc.h"
 #include "dawn/native/DawnNative.h"
+
+#if defined(_WIN32) && defined(DAWN_ENABLE_D3D12)
+#include "dawn/native/D3D12Backend.h"
+#endif
 
 namespace {
 // Instrument the host proc table, so these checks also exercise an external ORT DLL.
@@ -30,6 +39,94 @@ std::atomic<size_t> timestamp_queries{0};
 std::atomic<size_t> timestamp_writes{0};
 std::atomic<size_t> timestamp_resolves{0};
 std::atomic<size_t> query_buffers{0};
+
+struct CalibrationState {
+  size_t calls = 0;
+  bool fail = false;
+  bool invalid = false;
+  bool profiling = false;
+  std::atomic<bool> delay_failed{false};
+  std::vector<std::thread> release_threads;
+#if defined(_WIN32) && defined(DAWN_ENABLE_D3D12)
+  Microsoft::WRL::ComPtr<ID3D12Device> device;
+  Microsoft::WRL::ComPtr<ID3D12CommandQueue> queue;
+#endif
+
+  void Join() {
+    for (auto& thread : release_threads) thread.join();
+    release_threads.clear();
+  }
+  ~CalibrationState() { Join(); }
+};
+
+CalibrationState* calibration_state = nullptr;
+
+int ORT_API_CALL CalibrateHostDevice(void* device, OrtWebGpuClockCalibration* result, void* user_data) noexcept {
+  try {
+    auto& state = *static_cast<CalibrationState*>(user_data);
+    ++state.calls;
+    if (state.fail) return 0;
+    if (state.invalid) {
+      result->gpu_to_cpu_scale = std::numeric_limits<double>::quiet_NaN();
+      return 1;
+    }
+#if defined(_WIN32) && defined(DAWN_ENABLE_D3D12)
+    const auto handle = static_cast<WGPUDevice>(device);
+    const auto toggles = dawn::native::GetTogglesUsed(handle);
+    for (const auto& toggle : toggles) {
+      if (std::string_view{toggle} == "disable_timestamp_query_conversion" ||
+          std::string_view{toggle} == "timestamp_quantization") return 0;
+    }
+    state.device = dawn::native::d3d12::GetD3D12Device(handle);
+    state.queue = dawn::native::d3d12::GetD3D12CommandQueue(handle);
+    UINT64 frequency = 0;
+    UINT64 gpu_ticks = 0;
+    UINT64 cpu_ticks = 0;
+    if (!state.queue || FAILED(state.queue->GetTimestampFrequency(&frequency)) ||
+        frequency < 15259 || frequency > 1000000000 ||
+        FAILED(state.queue->GetClockCalibration(&gpu_ticks, &cpu_ticks))) return 0;
+    // Match this Dawn pin's resolved query conversion, including its rounded rate.
+    const float period = static_cast<float>(1e9 / static_cast<double>(frequency));
+    const auto shift = 16u - std::min(static_cast<uint32_t>(std::ceil(std::log2(period))), 16u);
+    const auto multiplier = static_cast<uint32_t>(period * static_cast<float>(1u << shift));
+    result->gpu_timestamp_ns = (gpu_ticks >> shift) * multiplier +
+                               (((gpu_ticks & ((uint64_t{1} << shift) - 1)) * multiplier) >> shift);
+    result->cpu_qpc_ticks = cpu_ticks;
+    result->gpu_to_cpu_scale = 1e9 * static_cast<double>(uint64_t{1} << shift) /
+                               (static_cast<double>(frequency) * multiplier);
+    return 1;
+#else
+    (void)device;
+    (void)result;
+    return 0;
+#endif
+  } catch (...) {
+    return 0;
+  }
+}
+
+void DelaySubmission() noexcept {
+#if defined(_WIN32) && defined(DAWN_ENABLE_D3D12)
+  auto* state = calibration_state;
+  if (!state || !state->profiling || !state->queue) return;
+  try {
+    Microsoft::WRL::ComPtr<ID3D12Fence> fence;
+    if (FAILED(state->device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence)))) {
+      state->delay_failed = true;
+      return;
+    }
+    // Test-only delay: submission anchoring would hide this GPU queue bubble.
+    // Start the releaser first so a thread-allocation failure cannot block the GPU.
+    state->release_threads.emplace_back([fence, state]() {
+      std::this_thread::sleep_for(std::chrono::milliseconds(25));
+      if (FAILED(fence->Signal(1))) state->delay_failed = true;
+    });
+    if (FAILED(state->queue->Wait(fence.Get(), 1))) state->delay_failed = true;
+  } catch (...) {
+    state->delay_failed = true;
+  }
+#endif
+}
 
 DawnProcTable ProfilingProcs() {
   auto procs = dawn::native::GetProcs();
@@ -60,11 +157,44 @@ DawnProcTable ProfilingProcs() {
     }
     return dawn::native::GetProcs().deviceCreateBuffer(device, descriptor);
   };
+  procs.queueSubmit = [](WGPUQueue queue, size_t count, const WGPUCommandBuffer* commands) {
+    DelaySubmission();
+    dawn::native::GetProcs().queueSubmit(queue, count, commands);
+  };
   return procs;
 }
 
 void TestProfiling(Ort::Env& env, const uint8_t* model, size_t model_size,
-                   std::unordered_map<std::string, std::string> provider_options) {
+                   std::unordered_map<std::string, std::string> provider_options,
+                   bool use_calibration, bool calibration_failure, bool calibration_invalid) {
+  CalibrationState state;
+  state.fail = calibration_failure;
+  state.invalid = calibration_invalid;
+  calibration_state = &state;
+  struct ClearState {
+    Ort::Env& env;
+    CalibrationState& state;
+    ~ClearState() {
+      state.Join();
+#if defined(_WIN32) && defined(DAWN_ENABLE_D3D12)
+      // Native COM references must not outlive Dawn's D3D12 runtime loader.
+      state.queue.Reset();
+      state.device.Reset();
+#endif
+      // Preserved contexts must release the copied callback before its state dies.
+      env = Ort::Env{nullptr};
+      calibration_state = nullptr;
+    }
+  } clear_state{env, state};
+  const OrtWebGpuClockCalibrationCallbackInfo callback{1, CalibrateHostDevice, &state};
+  if (use_calibration) {
+    provider_options["clockCalibration"] = std::to_string(reinterpret_cast<uintptr_t>(&callback));
+  }
+#if defined(_WIN32) && defined(DAWN_ENABLE_D3D12)
+  const bool expect_calibration = use_calibration && !calibration_failure && !calibration_invalid;
+#else
+  const bool expect_calibration = false;
+#endif
   const auto procs = ProfilingProcs();
   provider_options["dawnProcTable"] = std::to_string(reinterpret_cast<uintptr_t>(&procs));
   const std::array<int64_t, 3> shape{3, 4, 5};
@@ -75,6 +205,8 @@ void TestProfiling(Ort::Env& env, const uint8_t* model, size_t model_size,
   const char* input_names[] = {"x"};
   const char* output_names[] = {"y"};
   for (const bool profile : {false, true, false}) {
+    state.profiling = profile;
+    const auto calls_before = state.calls;
     const std::array counts_before{timestamp_queries.load(), timestamp_writes.load(),
                                    timestamp_resolves.load(), query_buffers.load()};
     Ort::SessionOptions options;
@@ -84,8 +216,37 @@ void TestProfiling(Ort::Env& env, const uint8_t* model, size_t model_size,
     }
     options.AppendExecutionProvider("WebGPU", provider_options);
     Ort::Session session{env, model, model_size, options};
+    if (use_calibration && profile) {
+      auto check_rejection = [&](const std::string& value, const char* message) {
+        auto rejected_options = provider_options;
+        rejected_options["clockCalibration"] = value;
+        try {
+          Ort::SessionOptions rejected_session_options;
+          rejected_session_options.AppendExecutionProvider("WebGPU", rejected_options);
+          Ort::Session rejected_session{env, model, model_size, rejected_session_options};
+        } catch (const Ort::Exception& error) {
+          if (std::string{error.what()}.find(message) != std::string::npos) return;
+          throw;
+        }
+        throw std::runtime_error("Invalid clockCalibration configuration was accepted.");
+      };
+      check_rejection("0", "Invalid clockCalibration address");
+      check_rejection("123junk", "Invalid clockCalibration address");
+      auto rejected = callback;
+      rejected.version = 2;
+      const auto address = std::to_string(reinterpret_cast<uintptr_t>(&rejected));
+      check_rejection(address, "Unsupported clockCalibration version");
+      rejected.version = 1;
+      rejected.callback = nullptr;
+      check_rejection(address, "clockCalibration requires a callback");
+      rejected = callback;
+      rejected.user_data = nullptr;
+      check_rejection(address, "different clockCalibration callback");
+      std::cout << "Invalid and conflicting calibration options rejected." << std::endl;
+    }
     for (size_t run = 0; run < 2; ++run) {
       auto outputs = session.Run(Ort::RunOptions{nullptr}, input_names, &input, 1, output_names, 1);
+      state.Join();
       const auto* result = outputs.at(0).GetTensorData<float>();
       for (size_t index = 0; index < data.size(); ++index) {
         if (result[index] != 2.0f) {
@@ -96,7 +257,7 @@ void TestProfiling(Ort::Env& env, const uint8_t* model, size_t model_size,
     if (!profile) {
       const std::array counts_after{timestamp_queries.load(), timestamp_writes.load(),
                                     timestamp_resolves.load(), query_buffers.load()};
-      if (counts_before != counts_after) {
+      if (counts_before != counts_after || state.calls != calls_before) {
         throw std::runtime_error("Timestamp work was performed with profiling disabled.");
       }
       std::cout << "Profiling off: zero additional timestamp queries, writes, resolves and query buffers." << std::endl;
@@ -108,14 +269,24 @@ void TestProfiling(Ort::Env& env, const uint8_t* model, size_t model_size,
       auto path = session.EndProfilingAllocated(allocator);
       std::ifstream file{path.get()};
       const std::string trace{std::istreambuf_iterator<char>{file}, std::istreambuf_iterator<char>{}};
-      if (trace.find("first_submit") == std::string::npos ||
-          trace.find("d3d12_clock_calibration") != std::string::npos ||
+      if (trace.find(expect_calibration ? "d3d12_clock_calibration" : "first_submit") == std::string::npos ||
+          trace.find(expect_calibration ? "first_submit" : "d3d12_clock_calibration") != std::string::npos ||
           trace.find("WebGPU::Submit") == std::string::npos || trace.find("WebGPU::Wait") == std::string::npos) {
-        throw std::runtime_error("External profiling trace did not identify submission-time alignment.");
+        throw std::runtime_error("External profiling trace did not identify the expected clock alignment.");
+      }
+#ifdef _WIN32
+      const size_t expected_calls = use_calibration ? 2 : 0;
+#else
+      const size_t expected_calls = 0;
+#endif
+      if (state.delay_failed || state.calls - calls_before != expected_calls) {
+        throw std::runtime_error("External calibration callback or queue-delay checks failed.");
       }
       std::cout << "Profiling on: queries=" << timestamp_queries << ", writes=" << timestamp_writes
                 << ", resolves=" << timestamp_resolves << ", query buffers=" << query_buffers
                 << "; trace=" << path.get() << std::endl;
+      std::cout << "Calibration: calls=" << state.calls - calls_before
+                << ", alignment=" << (expect_calibration ? "d3d12_clock_calibration" : "first_submit") << std::endl;
     }
   }
 }
@@ -177,6 +348,9 @@ int main(int argc, char* argv[]) {
   bool no_implicit_sync = false;
   bool cache_callback_failure = false;
   bool profiling_test = false;
+  bool use_calibration = false;
+  bool calibration_failure = false;
+  bool calibration_invalid = false;
   std::basic_string<ORTCHAR_T> plugin_path;
   int retval = 0;
   HostCache host_cache;
@@ -192,6 +366,12 @@ int main(int argc, char* argv[]) {
         host_device_mode = true;
       } else if (argument == ORT_TSTR("--profiling")) {
         profiling_test = true;
+      } else if (argument == ORT_TSTR("--clock_calibration")) {
+        use_calibration = true;
+      } else if (argument == ORT_TSTR("--calibration_failure")) {
+        calibration_failure = true;
+      } else if (argument == ORT_TSTR("--calibration_invalid")) {
+        calibration_invalid = true;
       } else if (argument == ORT_TSTR("--no_implicit_sync")) {
         no_implicit_sync = true;
       } else if (argument == ORT_TSTR("--cache_callback_failure")) {
@@ -204,8 +384,14 @@ int main(int argc, char* argv[]) {
         throw std::runtime_error("Invalid external Dawn test argument.");
       }
     }
+    if ((use_calibration && !profiling_test) || ((calibration_failure || calibration_invalid) && !use_calibration)) {
+      throw std::runtime_error("Calibration flags require --profiling --clock_calibration.");
+    }
+#if !defined(_WIN32) || !defined(DAWN_ENABLE_D3D12)
+    if (use_calibration) throw std::runtime_error("The calibration regression requires Windows D3D12 Dawn.");
+#endif
     if (profiling_test && (no_proc_table || no_implicit_sync || cache_callback_failure || !plugin_path.empty())) {
-      throw std::runtime_error("--profiling supports only the optional --host_device argument.");
+      throw std::runtime_error("--profiling supports only device and clock-calibration arguments.");
     }
     for (size_t cache_pass = 0; cache_pass < (host_device_mode ? 3u : 1u); ++cache_pass) {
       size_t hits_before = 0;
@@ -226,7 +412,9 @@ int main(int argc, char* argv[]) {
           instance_descriptor.requiredFeatures = &instance_feature;
           host_instance = std::make_unique<dawn::native::Instance>(&instance_descriptor);
         }
-        auto adapters = host_instance->EnumerateAdapters();
+        wgpu::RequestAdapterOptions adapter_options{};
+        if (use_calibration) adapter_options.backendType = wgpu::BackendType::D3D12;
+        auto adapters = host_instance->EnumerateAdapters(use_calibration ? &adapter_options : nullptr);
         if (adapters.empty()) {
           throw std::runtime_error("No native Dawn adapter was found for the host device.");
         }
@@ -246,6 +434,14 @@ int main(int argc, char* argv[]) {
             &host_cache);
         wgpu::DeviceDescriptor device_descriptor{};
         device_descriptor.nextInChain = &cache_descriptor;
+        const char* disabled_toggle = "timestamp_quantization";
+        wgpu::DawnTogglesDescriptor calibration_toggles{};
+        if (use_calibration) {
+          calibration_toggles.disabledToggleCount = 1;
+          calibration_toggles.disabledToggles = &disabled_toggle;
+          calibration_toggles.nextInChain = &cache_descriptor;
+          device_descriptor.nextInChain = &calibration_toggles;
+        }
         device_descriptor.requiredFeatureCount = no_implicit_sync ? 0 : (profiling_test ? 2 : 1);
         device_descriptor.requiredFeatures = no_implicit_sync ? nullptr : device_features.data();
         host_device = wgpu::Device::Acquire(adapters.front().CreateDevice(&device_descriptor));
@@ -284,7 +480,8 @@ int main(int argc, char* argv[]) {
         provider_options["preserveDevice"] = "1";
       }
       if (profiling_test) {
-        TestProfiling(env, MODEL_DATA, sizeof(MODEL_DATA), provider_options);
+        TestProfiling(env, MODEL_DATA, sizeof(MODEL_DATA), provider_options,
+                      use_calibration, calibration_failure, calibration_invalid);
         return 0;
       }
       Ort::ConstEpDevice webgpu_device{nullptr};
