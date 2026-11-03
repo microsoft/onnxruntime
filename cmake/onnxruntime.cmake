@@ -23,7 +23,6 @@ endif()
 # Gets the public C/C++ API header files
 function(get_c_cxx_api_headers HEADERS_VAR)
   set(_headers
-    "${REPO_ROOT}/include/onnxruntime/core/providers/acl/acl_provider_factory.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_c_api.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_cxx_api.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_cxx_inline.h"
@@ -73,20 +72,17 @@ if(onnxruntime_BUILD_SHARED_LIB)
   foreach(f ${ONNXRUNTIME_PROVIDER_NAMES})
     list(APPEND SYMBOL_FILES "${ONNXRUNTIME_ROOT}/core/providers/${f}/symbols.txt")
   endforeach()
-  set(COMPATIBILITY_SYMBOL_FILE "${ONNXRUNTIME_ROOT}/core/session/compatibility_symbols.txt")
-  list(APPEND SYMBOL_FILES "${COMPATIBILITY_SYMBOL_FILE}")
-  set(EXTRA_SYMBOL_ARGS --extra_symbol_file "${COMPATIBILITY_SYMBOL_FILE}")
   if(ANDROID AND onnxruntime_USE_TELEMETRY)
     set(ANDROID_TELEMETRY_SYMBOL_FILE
         "${ONNXRUNTIME_ROOT}/core/platform/posix/android_telemetry_symbols.txt")
     list(APPEND SYMBOL_FILES "${ANDROID_TELEMETRY_SYMBOL_FILE}")
-    list(APPEND EXTRA_SYMBOL_ARGS --extra_symbol_file "${ANDROID_TELEMETRY_SYMBOL_FILE}")
+    set(ANDROID_TELEMETRY_SYMBOL_ARGS --extra_symbol_file "${ANDROID_TELEMETRY_SYMBOL_FILE}")
   endif()
 
   add_custom_command(OUTPUT ${SYMBOL_FILE} ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c
     COMMAND ${Python_EXECUTABLE} "${REPO_ROOT}/tools/ci_build/gen_def.py"
       --version_file "${ONNXRUNTIME_ROOT}/../VERSION_NUMBER" --src_root "${ONNXRUNTIME_ROOT}"
-      --config ${ONNXRUNTIME_PROVIDER_NAMES} ${EXTRA_SYMBOL_ARGS}
+      --config ${ONNXRUNTIME_PROVIDER_NAMES} ${ANDROID_TELEMETRY_SYMBOL_ARGS}
       --style=${OUTPUT_STYLE} --output ${SYMBOL_FILE}
       --output_source ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c
     DEPENDS ${SYMBOL_FILES}
