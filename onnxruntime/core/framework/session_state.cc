@@ -1657,6 +1657,13 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
                                           const KernelRegistryManager& kernel_registry_manager,
                                           bool remove_initializers,
                                           bool saving_ort_format) {
+  const auto memory_report_config = sess_options_.config_options.GetConfigOrDefault(
+      kOrtSessionOptionsEnableMemoryBackingReport, "0");
+  ORT_RETURN_IF_NOT(memory_report_config == "0" || memory_report_config == "1",
+                    "Invalid ", kOrtSessionOptionsEnableMemoryBackingReport, ": expected 0 or 1");
+#if defined(ORT_MINIMAL_BUILD)
+  ORT_RETURN_IF(memory_report_config == "1", "Session memory backing reports require a non-minimal build");
+#endif
   // recursively create the subgraph session state instances and populate the kernel create info in them.
   // it's simpler to handle the kernel create info recursively when deserializing,
   // so also do it recursively when calling PopulateKernelCreateInfo for consistency.
@@ -2597,6 +2604,13 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
     outer_scope_augmented_map_built_ = true;
   }
 
+#if !defined(ORT_MINIMAL_BUILD)
+  if (session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableMemoryBackingReport, "0") == "1") {
+    memory_backing_report_.emplace();
+    ORT_RETURN_IF_ERROR(CaptureSessionMemoryInitializers(*this, *memory_backing_report_));
+  }
+#endif
+
   ORT_RETURN_IF_ERROR(CreateKernels(kernel_registry_manager));
 
   if (!disable_prepacking) {
@@ -2639,6 +2653,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
         graph_reservations_it == reservation_owner->workspace_reservations_.end()
             ? nullptr
             : &graph_reservations_it->second;
+    MemoryReportWorkspaceMap report_workspace;
 
     for (const auto& node : graph_viewer_->Nodes()) {
       const WorkspaceEstimateSelection* reservation = nullptr;
@@ -2655,6 +2670,9 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
         auto resolved = ResolveNodeInputShapes(node, &graph_, max_shape_inference_result);
         ORT_RETURN_IF_ERROR(kernel->DeclareWorkspaceRequirements(
             gsl::make_span(resolved), requirements));
+      }
+      if (memory_backing_report_.has_value()) {
+        report_workspace.emplace(node.Index(), requirements);
       }
 
       if (requirements.empty()) {
@@ -2762,6 +2780,10 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
         "Level-2 workspace verification failed: one or more declarations exceed "
         "the workspace reserved during graph partitioning, or a post-partition graph transformation "
         "orphaned a nonzero workspace reservation.");
+    if (memory_backing_report_.has_value()) {
+      ORT_RETURN_IF_ERROR(CompleteSessionMemoryReport(
+          *this, report_workspace, graph_reservations, *memory_backing_report_));
+    }
   }
 #endif
 
@@ -2841,6 +2863,12 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
     outer_scope_augmented_constant_tensors_.erase(idx);
   }
   outer_scope_parent_only_indices_.clear();
+
+#if !defined(ORT_MINIMAL_BUILD)
+  if (parent_ == nullptr) {
+    LogMemoryBackingReport("Initialize");
+  }
+#endif
 
   return Status::OK();
 }

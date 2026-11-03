@@ -41,6 +41,7 @@
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/framework/kernel_pilot_moe_expert_state.h"
 #include "core/framework/resource_accountant.h"
+#include "core/framework/session_memory_report.h"
 #endif
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
 #include "core/framework/memory_info.h"
@@ -393,6 +394,14 @@ class SessionState {
   void SetWorkspaceReservations(WorkspaceReservationMap workspace_reservations) {
     workspace_reservations_ = std::move(workspace_reservations);
   }
+
+  const SessionMemoryReport* GetMemoryBackingReport() const {
+    return memory_backing_report_ ? &*memory_backing_report_ : nullptr;
+  }
+
+  InlinedVector<SessionMemoryAllocatorSnapshot> GetMemoryBackingAllocatorSnapshots() const;
+
+  void LogMemoryBackingReport(const char* stage) const;
 #endif
 
   /// <summary>
@@ -489,6 +498,7 @@ class SessionState {
   std::vector<std::unique_ptr<OpKernel>> session_kernels_;
 #if !defined(ORT_MINIMAL_BUILD)
   WorkspaceReservationMap workspace_reservations_;
+  std::optional<SessionMemoryReport> memory_backing_report_;
 #endif
   Graph& graph_;
   std::optional<GraphViewer> graph_viewer_;  // GraphViewer for const access to Graph
