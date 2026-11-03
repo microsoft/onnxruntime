@@ -4541,6 +4541,50 @@ with tempfile.TemporaryDirectory() as directory:
                             run(s_off, x, router_random),
                             f"{label}: random(T={num_rows})",
                         )
+                    if hidden_size == 256:
+                        # Grouped INT3 prefill (total_routes >= 32) passes compact resident or wave slot indices in
+                        # params.experts while keeping the full [E, H] FC2 bias bank on device; verify both resident
+                        # (experts 0, 3 in slots 0, 1) and streamed (cold experts 1, 2 in wave slots 0, 1) waves resolve
+                        # FC2 bias by original expert ID.
+                        for grouped_rows, target_pair, source in (
+                            (20, resident_experts, "resident"),
+                            (40, (1, 2), "streamed"),
+                        ):
+                            first, second = target_pair
+                            logits = np.resize(np.array(gate_logits, dtype=np.float32), grouped_rows)
+                            router = np.full((grouped_rows, num_experts), -20.0, dtype=np.float32)
+                            router[:, first] = logits
+                            router[:, second] = 0.0
+                            weight_first = 1.0 / (1.0 + np.exp(-logits.astype(np.float64)))
+                            expected = (
+                                weight_first[:, None] * fc2_bias[first]
+                                + (1.0 - weight_first)[:, None] * fc2_bias[second]
+                            )
+                            x_zero = np.zeros((grouped_rows, hidden_size), dtype=np.float32)
+                            y_ref = run(s_ref, x_zero, router)
+                            y_off = run(s_off, x_zero, router)
+                            np.testing.assert_allclose(
+                                y_ref,
+                                expected,
+                                rtol=2e-2,
+                                atol=5e-2,
+                                err_msg=f"{label}: grouped_{source}_disabled(T={grouped_rows})",
+                            )
+                            np.testing.assert_allclose(
+                                y_off,
+                                expected,
+                                rtol=2e-2,
+                                atol=5e-2,
+                                err_msg=f"{label}: grouped_{source}_offload(T={grouped_rows})",
+                            )
+                            x_grp = rng.standard_normal((grouped_rows, hidden_size), dtype=np.float32) * 0.5
+                            router_grp = np.full((grouped_rows, num_experts), -20.0, dtype=np.float32)
+                            router_grp[:, list(target_pair)] = rng.uniform(-1.0, 1.0, size=(grouped_rows, 2))
+                            self._assert_int_offload_parity(
+                                run(s_ref, x_grp, router_grp),
+                                run(s_off, x_grp, router_grp),
+                                f"{label}: grouped_{source}_random(T={grouped_rows})",
+                            )
                     del s_off
                     gc.collect()
                 del s_ref
@@ -4551,6 +4595,9 @@ with tempfile.TemporaryDirectory() as directory:
                 _calls, routes, cold_routes = _cpu_path_route_rows(captured[0])[0]
                 self.assertGreater(routes, 0, label)
                 self.assertEqual(cold_routes, 0, f"{label}: a route ran on a cold expert")
+                if hidden_size == 256:
+                    self.assertIn("QMoEOffload INT3 prefill layer=0 source=resident routes=40 grouped=1", captured[0])
+                    self.assertIn("QMoEOffload INT3 prefill layer=0 source=streamed routes=80 grouped=1", captured[0])
 
     def test_v4_int4_and_int3_overridable_expert_initializers_are_not_relocated_to_cpu(self):
         # An initializer that is also a graph input can be overridden per run, so it is not constant, and the offload

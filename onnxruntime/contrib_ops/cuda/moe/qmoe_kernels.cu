@@ -4336,15 +4336,6 @@ __global__ void __launch_bounds__(256, 3) Fc2GroupedFastKernel(
     }
   }
 
-  float b0 = 0.0f, b1 = 0.0f, b2 = 0.0f, b3 = 0.0f;
-  if (sub_lane == 0 && params.fc2.bias) {
-    const T* b_ptr = static_cast<const T*>(params.fc2.bias) + w_row0;
-    b0 = static_cast<float>(b_ptr[0]);
-    if (has_col1) b1 = static_cast<float>(b_ptr[1]);
-    if (has_col2) b2 = static_cast<float>(b_ptr[2]);
-    if (has_col3) b3 = static_cast<float>(b_ptr[3]);
-  }
-
 #pragma unroll
   for (int r = 0; r < kGroupRows; ++r) {
     if (r < count) {
@@ -4358,11 +4349,23 @@ __global__ void __launch_bounds__(256, 3) Fc2GroupedFastKernel(
       }
       if (sub_lane == 0) {
         const size_t route = static_cast<size_t>(s_routes[r]);
+        if (params.fc2.bias) {
+          const size_t orig_route =
+              params.fc2_bias_route_ids ? static_cast<size_t>(__ldg(&params.fc2_bias_route_ids[route])) : route;
+          const int bias_exp_id =
+              params.fc2_bias_expert_indices ? __ldg(&params.fc2_bias_expert_indices[orig_route]) : exp_id;
+          const T* b_ptr =
+              static_cast<const T*>(params.fc2.bias) + static_cast<size_t>(bias_exp_id) * params.hidden + col0;
+          sum0 += static_cast<float>(b_ptr[0]);
+          if (has_col1) sum1 += static_cast<float>(b_ptr[1]);
+          if (has_col2) sum2 += static_cast<float>(b_ptr[2]);
+          if (has_col3) sum3 += static_cast<float>(b_ptr[3]);
+        }
         T* part_ptr = static_cast<T*>(params.fc2_partial) + route * params.hidden + col0;
-        part_ptr[0] = static_cast<T>(sum0 + b0);
-        if (has_col1) part_ptr[1] = static_cast<T>(sum1 + b1);
-        if (has_col2) part_ptr[2] = static_cast<T>(sum2 + b2);
-        if (has_col3) part_ptr[3] = static_cast<T>(sum3 + b3);
+        part_ptr[0] = static_cast<T>(sum0);
+        if (has_col1) part_ptr[1] = static_cast<T>(sum1);
+        if (has_col2) part_ptr[2] = static_cast<T>(sum2);
+        if (has_col3) part_ptr[3] = static_cast<T>(sum3);
       }
     }
   }

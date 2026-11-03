@@ -3614,8 +3614,7 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
                           : static_cast<int>(
                                 info.GetAttrOrDefault<int64_t>("async_max_tokens",
                                                                ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_ASYNC_MAX_TOKENS", 8)));
-  const int default_stream_min_tokens =
-      (int4_bank_mode_ || int3_bank_mode_) ? std::max(1, max_sync_tile_tokens_ + 1) : (token_tile_size_ + 1);
+  const int default_stream_min_tokens = std::max(1, token_tile_size_ + 1);
   stream_min_tokens_ = static_cast<int>(
       info.GetAttrOrDefault<int64_t>("stream_min_tokens",
                                      ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_STREAM_MIN_TOKENS", default_stream_min_tokens)));
@@ -3768,9 +3767,6 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
                                      ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_PREFILL_CHUNK_TOKENS", stream_rows_)));
   stream_promotion_reuse_ = !deterministic_replay_ && (ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_STREAM_PROMOTION_REUSE", 0) == 1);
   if (stream_rows_ > 0 && !cpu_disabled_streaming) {
-    if (is_int_bank && std::getenv("ORT_QMOE_STREAM_MIN_TOKENS") == nullptr) {
-      stream_min_tokens_ = std::max(1, token_tile_size_ + 1);
-    }
     const int default_min_rows = ParseEnvironmentVariableWithDefault<int>(
         "ORT_QMOE_SHARED_STREAM_MIN_ROWS", is_int_bank ? 8 : 16);
     int default_wave = ParseEnvironmentVariableWithDefault<int>(
