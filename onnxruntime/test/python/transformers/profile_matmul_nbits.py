@@ -129,6 +129,8 @@ def make_session(model):
     so = onnxruntime.SessionOptions()
     so.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
     so.log_severity_level = 3
+    # Keep the profile on the CUDA MatMulNBits kernels described by the eligibility metadata.
+    so.add_session_config_entry("ep.cuda.fpa_intb_gemm", "0")
     return onnxruntime.InferenceSession(model, so, providers=["CUDAExecutionProvider"])
 
 
