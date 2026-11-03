@@ -8,6 +8,15 @@ import { WEBGL_OP_RESOLVE_RULES } from '../../lib/onnxjs/backends/webgl/op-resol
 import { Graph } from '../../lib/onnxjs/graph';
 import { OpSet, resolveOperator } from '../../lib/onnxjs/opset';
 import { Tensor } from '../../lib/onnxjs/tensor';
+import { DataType } from '../../lib/wasm/wasm-common';
+import { TensorView } from '../../lib/wasm/jsep/tensor-view';
+import {
+  ComputeContext,
+  ComputeContextInputsOutputsMapping,
+  ProgramInfo,
+  TensorInfo,
+} from '../../lib/wasm/jsep/webgpu/types';
+import { parseSplitAttributes, split, SplitAttributes } from '../../lib/wasm/jsep/webgpu/ops/split';
 
 function createTestGraphNode(name: string, opType: string): Graph.Node {
   return { name, opType, inputs: [], outputs: [], attributes: new Attribute(null) };
@@ -104,5 +113,105 @@ describe('#UnitTest# - resolve rules', () => {
   );
   it('Consistency check - onnx.ai - webgl', () => {
     checkConsistency(webglCheckOnlyRules);
+  });
+});
+
+describe('#UnitTest# - JSEP Split runtime shapes', () => {
+  const runSplit = (
+    dims: number[],
+    attributes: SplitAttributes,
+    splitSizes?: bigint[] | null,
+  ): readonly TensorInfo[] => {
+    const inputs = [{ dims, dataType: DataType.float }] as unknown as TensorView[];
+    if (splitSizes !== undefined) {
+      inputs.push({
+        dims: splitSizes === null ? [] : [splitSizes.length],
+        dataType: splitSizes === null ? 0 : DataType.int64,
+        getBigInt64Array: () => BigInt64Array.from(splitSizes ?? []),
+      } as unknown as TensorView);
+    }
+    const outputs: TensorInfo[] = [];
+    const context = {
+      inputs,
+      output: (index: number, shape: readonly number[]) => {
+        outputs[index] = { dims: shape, dataType: DataType.float };
+        return 0;
+      },
+      compute: (program: ProgramInfo, mapping: ComputeContextInputsOutputsMapping) => {
+        const programOutputs = program.getRunData(inputs).outputs;
+        programOutputs.forEach((output, index) => {
+          expect(output.dims.every((dim) => dim > 0)).to.equal(true);
+          outputs[mapping.outputs![index]] = output;
+        });
+        return [];
+      },
+    } as unknown as ComputeContext;
+    split(context, attributes);
+    return outputs;
+  };
+
+  const attributes = parseSplitAttributes({ axis: 0, numOutputs: 2, splitSizes: [], isUnevenSplitAllowed: true });
+
+  it('infers even split sizes without graph shapes', () => {
+    expect(runSplit([4], attributes).map((output) => output.dims)).to.deep.equal([[2], [2]]);
+  });
+
+  it('ignores the empty optional split input placeholder', () => {
+    expect(runSplit([4], attributes, null).map((output) => output.dims)).to.deep.equal([[2], [2]]);
+  });
+
+  it('recomputes uneven split sizes for changing input shapes', () => {
+    expect(runSplit([5], attributes).map((output) => output.dims)).to.deep.equal([[3], [2]]);
+    expect(runSplit([7], attributes).map((output) => output.dims)).to.deep.equal([[4], [3]]);
+    expect(attributes.splitSizes).to.deep.equal([]);
+  });
+
+  it('normalizes a negative split axis', () => {
+    const negativeAxis = parseSplitAttributes({ axis: -1, numOutputs: 2, splitSizes: [], isUnevenSplitAllowed: true });
+    expect(runSplit([2, 5], negativeAxis).map((output) => output.dims)).to.deep.equal([
+      [2, 3],
+      [2, 2],
+    ]);
+  });
+
+  it('preserves explicit split sizes from an input tensor', () => {
+    expect(runSplit([5], attributes, [1n, 4n]).map((output) => output.dims)).to.deep.equal([[1], [4]]);
+  });
+
+  it('preserves explicit split sizes from an attribute', () => {
+    const explicitSizes = parseSplitAttributes({ axis: 0, numOutputs: 2, splitSizes: [1, 4] });
+    expect(runSplit([5], explicitSizes).map((output) => output.dims)).to.deep.equal([[1], [4]]);
+  });
+
+  it('requires even splitting without the num_outputs attribute', () => {
+    const evenOnly = parseSplitAttributes({ axis: 0, numOutputs: 2, splitSizes: [] });
+    expect(runSplit([4], evenOnly).map((output) => output.dims)).to.deep.equal([[2], [2]]);
+    expect(() => runSplit([5], evenOnly)).to.throw('evenly divisible');
+  });
+
+  it('allows a zero-sized final output', () => {
+    const sixOutputs = parseSplitAttributes({ axis: 0, numOutputs: 6, splitSizes: [], isUnevenSplitAllowed: true });
+    expect(runSplit([10], sixOutputs).map((output) => output.dims)).to.deep.equal([[2], [2], [2], [2], [2], [0]]);
+    expect(runSplit([10], sixOutputs, null).map((output) => output.dims)).to.deep.equal([[2], [2], [2], [2], [2], [0]]);
+    expect(runSplit([1], attributes).map((output) => output.dims)).to.deep.equal([[1], [0]]);
+  });
+
+  it('allows zero-sized outputs for an empty input', () => {
+    expect(runSplit([0], attributes).map((output) => output.dims)).to.deep.equal([[0], [0]]);
+    expect(runSplit([0, 4], attributes).map((output) => output.dims)).to.deep.equal([[0, 4], [0, 4]]);
+  });
+
+  it('preserves output positions when explicit split sizes include empty outputs', () => {
+    const explicitSizes = parseSplitAttributes({ axis: 0, numOutputs: 3, splitSizes: [0, 2, 0] });
+    expect(runSplit([2], explicitSizes).map((output) => output.dims)).to.deep.equal([[0], [2], [0]]);
+  });
+
+  it('rejects invalid output counts', () => {
+    const invalidCount = parseSplitAttributes({ axis: 0, numOutputs: 0, splitSizes: [], isUnevenSplitAllowed: true });
+    expect(() => runSplit([4], invalidCount)).to.throw('numOutputs must be positive');
+    const threeOutputs = parseSplitAttributes({ axis: 0, numOutputs: 3, splitSizes: [], isUnevenSplitAllowed: true });
+    expect(() => runSplit([1], threeOutputs)).to.throw('negative split size');
+    const tooManyChunks = parseSplitAttributes({ axis: 0, numOutputs: 7, splitSizes: [], isUnevenSplitAllowed: true });
+    expect(() => runSplit([10], tooManyChunks)).to.throw('negative split size');
   });
 });
