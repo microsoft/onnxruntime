@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <mutex>
 #include "GpuEvent.h"
 
 namespace Dml
@@ -17,7 +18,7 @@ namespace Dml
 
         D3D12_COMMAND_LIST_TYPE GetType() const { return m_type; }
         ComPtr<ID3D12Fence> GetFence() const { return m_fence; }
-        uint64_t GetLastFenceValue() const { return m_lastFenceValue; }
+        uint64_t GetLastFenceValue() const { std::lock_guard<std::recursive_mutex> lock(m_mutex); return m_lastFenceValue; }
 
         void ExecuteCommandList(ID3D12CommandList* commandList);
         void ExecuteCommandLists(gsl::span<ID3D12CommandList*> commandLists);
@@ -53,6 +54,8 @@ namespace Dml
             uint64_t fenceValue;
             ComPtr<IUnknown> object;
         };
+
+        mutable std::recursive_mutex m_mutex;
 
         std::deque<QueuedReference> m_queuedReferences;
 
