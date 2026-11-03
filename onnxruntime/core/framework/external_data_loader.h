@@ -115,7 +115,7 @@ class IExternalDataLoader {
 #endif
 
   // Tensor should be already allocated with the correct memory info and size.
-#if defined(__wasm__)
+#if defined(__EMSCRIPTEN__)
   virtual common::Status LoadTensor([[maybe_unused]] const Env& env,
                                     [[maybe_unused]] const std::filesystem::path& data_file_path,
                                     [[maybe_unused]] FileOffsetType data_offset,
@@ -133,7 +133,7 @@ class IExternalDataLoader {
 #endif
 };
 
-#if defined(__wasm__)
+#if defined(__EMSCRIPTEN__)
 
 enum class ExternalDataLoadType {
   CPU = 0,

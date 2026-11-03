@@ -32,7 +32,7 @@ limitations under the License.
 #if defined(__x86_64__) || defined(__i386__)
 #include <cpuid.h>
 #endif
-#elif defined(__wasm__)
+#elif defined(__EMSCRIPTEN__)
 #include <emscripten/threading.h>
 #else
 #include <sched.h>
@@ -135,7 +135,7 @@ void ThreadPoolProfiler::MainThreadStat::LogCore() {
     core_ = (unsigned)CPUInfo[1] >> 24;
   }
 #endif
-#elif defined(__wasm__)
+#elif defined(__EMSCRIPTEN__)
   core_ = emscripten_num_logical_cores();
 #elif defined(_AIX)
   core_ = mycpu();
@@ -219,7 +219,7 @@ void ThreadPoolProfiler::LogRun(int thread_idx) {
         child_thread_stats_[thread_idx].core_ = (unsigned)CPUInfo[1] >> 24;
       }
 #endif
-#elif defined(__wasm__)
+#elif defined(__EMSCRIPTEN__)
       child_thread_stats_[thread_idx].core_ = emscripten_num_logical_cores();
 #elif defined(_AIX)
       child_thread_stats_[thread_idx].core_ = mycpu();

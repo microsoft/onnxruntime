@@ -3,7 +3,7 @@
 
 #pragma once
 
-#if defined(__wasm__)
+#if defined(__EMSCRIPTEN__)
 
 #include "core/framework/external_data_loader.h"
 

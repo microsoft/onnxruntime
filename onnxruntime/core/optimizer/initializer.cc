@@ -37,8 +37,8 @@ Initializer::Initializer(const ONNX_NAMESPACE::TensorProto& tensor_proto, const 
   ORT_ENFORCE(utils::HasName(tensor_proto), "Initializer must have a name");
   name_ = tensor_proto.name();
 
-#if !defined(__wasm__)
-  // using full filepath is required by utils::TensorProtoToTensor(). One exception is WebAssembly platform, where
+#if !defined(__EMSCRIPTEN__)
+  // using full filepath is required by utils::TensorProtoToTensor(). One exception is Emscripten, where
   // external data is not loaded from real file system.
   if (utils::HasExternalData(tensor_proto) && !utils::HasExternalDataInMemory(tensor_proto)) {
     ORT_ENFORCE(!model_path.empty(),

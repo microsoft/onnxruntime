@@ -95,7 +95,7 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   }
 #endif
   std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
-#if defined(__wasm__) || (defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING))
+#if defined(__EMSCRIPTEN__) || (defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING))
   std::unique_ptr<onnxruntime::IExternalDataLoader> GetExternalDataLoader() const override;
 #endif
 

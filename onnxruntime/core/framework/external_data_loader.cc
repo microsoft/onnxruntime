@@ -2,13 +2,13 @@
 // Licensed under the MIT License.
 
 #include "core/framework/external_data_loader.h"
-#if defined(__wasm__)
+#if defined(__EMSCRIPTEN__)
 #include <emscripten.h>
 #endif
 
 namespace onnxruntime {
 
-#if defined(__wasm__)
+#if defined(__EMSCRIPTEN__)
 
 // Error codes returned by the JS loader bodies below. The async and sync
 // loaders share this contract - keep them in sync:
