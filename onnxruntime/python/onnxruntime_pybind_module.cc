@@ -7,6 +7,7 @@
 #include "core/providers/get_execution_providers.h"
 #include "onnxruntime_config.h"
 #include "core/common/common.h"
+#include "core/common/logging/logging.h"
 #include "core/session/environment.h"
 #include "core/session/ort_env.h"
 #include "core/session/inference_session.h"
@@ -70,6 +71,15 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
     auto ep = CreateExecutionProviderInstance(sess->GetSessionOptions(), type, provider_options_map);
     if (ep) {
       OrtPybindThrowIfError(sess->RegisterExecutionProvider(std::move(ep)));
+    } else {
+      // A null factory is not an unknown provider (that throws above); it is
+      // a known provider this build cannot create. Skipping it silently left
+      // users with a CPU-only session and no explanation (#33556), so name
+      // the dropped provider. The session still runs on the remaining
+      // providers, preserving the existing fallback behaviour.
+      LOGS_DEFAULT(WARNING) << "Requested execution provider '" << type
+                            << "' could not be created and will be skipped. "
+                               "The session will run on the remaining providers (if any).";
     }
   }
 }
