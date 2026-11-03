@@ -277,6 +277,7 @@ void Gemm_MLFloat16(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
       return;
     }
   }
+#endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED
 
   const bool has_accelerated_half_gemm =
       MlasHalfGemmAccelerationSupported(mlas_backend_kernel_selector_config);
@@ -314,8 +315,6 @@ void Gemm_MLFloat16(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
     MlasHalfGemmBatch(M, N, K, 1, &data, thread_pool);
     return;
   }
-
-#endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED
 
   // Fallback to Eigen
   // Broadcast the bias as needed if bias is given

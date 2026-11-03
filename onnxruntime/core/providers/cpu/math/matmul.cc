@@ -445,8 +445,12 @@ Status MatMul<MLFloat16>::Compute(OpKernelContext* ctx) const {
   if (!IsPlainMatMul()) {
     const CBLAS_TRANSPOSE trans_a_blas = trans_a ? CblasTrans : CblasNoTrans;
     const CBLAS_TRANSPOSE trans_b_blas = trans_b ? CblasTrans : CblasNoTrans;
-    if (MlasHGemmSupported(trans_a_blas, trans_b_blas)) {
-      const auto alpha = MLFloat16(alpha_attr_);
+    // HGEMM takes alpha as fp16, so only use it when the conversion is exact.
+    const auto alpha = MLFloat16(alpha_attr_);
+    if (alpha.ToFloat() == alpha_attr_ && MlasHGemmSupported(trans_a_blas, trans_b_blas)) {
+      // The fp16 kernels can read C even when beta is zero.
+      auto output_span = gsl::make_span(y_data, narrow<size_t>(y->Shape().Size()));
+      std::fill(output_span.begin(), output_span.end(), MLFloat16{});
       InlinedVector<MLAS_HGEMM_DATA_PARAMS> data(max_len);
       for (size_t i = 0; i < max_len; i++) {
         data[i].A = a_data + helper.LeftOffsets()[i];

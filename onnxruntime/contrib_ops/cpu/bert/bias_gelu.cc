@@ -150,9 +150,13 @@ static void AddBiasGeluFp16(const MLFloat16* input, const MLFloat16* bias, MLFlo
   const size_t n = narrow<size_t>(count);
   MLFloat16* sum = temp;
   MLFloat16* scratch = temp + count;
+#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
+  // The fp16 eltwise dispatch only exists on ARM64.
   if (MlasFp16AccelerationSupported()) {
     MlasEltwiseAdd<MLAS_FP16>(input, bias, sum, n);
-  } else {
+  } else
+#endif
+  {
     for (size_t i = 0; i < n; i++) {
       sum[i] = MLFloat16(input[i].ToFloat() + bias[i].ToFloat());
     }

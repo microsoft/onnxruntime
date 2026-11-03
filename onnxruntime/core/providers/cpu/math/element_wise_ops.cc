@@ -702,12 +702,15 @@ Status ComputeFp16Binary(OpKernelContext& context) {
         auto out = per_iter_bh.OutputSpan<MLFloat16>();
         const MLFloat16* a = per_iter_bh.SpanInput0<MLFloat16>().data();
         const MLFloat16* b = per_iter_bh.SpanInput1<MLFloat16>().data();
+#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
+        // The fp16 eltwise dispatch only exists on ARM64.
         if constexpr (std::is_same_v<Op, Fp16AddOp>) {
           if (MlasFp16AccelerationSupported()) {
             MlasEltwiseAdd<MLAS_FP16>(a, b, out.data(), out.size());
             return;
           }
         }
+#endif
         Fp16BinaryChunked<false, false, Op>(a, b, out.data(), out.size());
       }};
   UntypedBroadcastTwo(context, funcs, 1.0);
