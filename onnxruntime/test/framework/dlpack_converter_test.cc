@@ -57,7 +57,7 @@ TEST(DlpackConverterTest, AllDataTypesRoundTrip) {
       SCOPED_TRACE(shape.ToString());
       OrtValue original;
       Tensor::InitOrtValue(DataTypeImpl::TensorTypeFromONNXEnum(dtype.ort_type)->GetElementType(),
-                          shape, allocator, original);
+                           shape, allocator, original);
       auto* tensor = original.GetMutable<Tensor>();
       const size_t bytes = tensor->SizeInBytes();
       if (bytes > 0) {
@@ -93,8 +93,7 @@ TEST(DlpackConverterTest, ImportDataTypesWithOffset) {
     SCOPED_TRACE(dtype.ort_type);
     int64_t shape[] = {5};
     DLManagedTensor packed{};
-    packed.dl_tensor = {data.data(), {kDLCPU, 0}, 1,
-                        {static_cast<uint8_t>(dtype.code), dtype.bits, 1}, shape, nullptr, 8};
+    packed.dl_tensor = {data.data(), {kDLCPU, 0}, 1, {static_cast<uint8_t>(dtype.code), dtype.bits, 1}, shape, nullptr, 8};
     int deletion_count = 0;
     packed.manager_ctx = &deletion_count;
     packed.deleter = [](DLManagedTensor* self) { ++*static_cast<int*>(self->manager_ctx); };
@@ -111,13 +110,23 @@ TEST(DlpackConverterTest, ImportDataTypesWithOffset) {
 
 TEST(DlpackConverterTest, RejectUnsupportedDataTypes) {
   const DLDataType unsupported[] = {
-      {kDLBool, 1, 1}, {kDLBool, 16, 1}, {kDLInt, 6, 1}, {kDLUInt, 1, 1},
-      {kDLFloat, 8, 1}, {kDLBfloat, 8, 1}, {kDLOpaqueHandle, 64, 1},
+      {kDLBool, 1, 1},
+      {kDLBool, 16, 1},
+      {kDLInt, 6, 1},
+      {kDLUInt, 1, 1},
+      {kDLFloat, 8, 1},
+      {kDLBfloat, 8, 1},
+      {kDLOpaqueHandle, 64, 1},
       {kDLComplex, 64, 1},
-      {kDLFloat8_e3m4, 8, 1}, {kDLFloat8_e4m3, 8, 1}, {kDLFloat8_e4m3b11fnuz, 8, 1},
-      {kDLFloat8_e4m3fn, 16, 1}, {kDLFloat4_e2m1fn, 8, 1},
-      {kDLFloat6_e2m3fn, 6, 1}, {kDLFloat6_e3m2fn, 6, 1},
-      {kDLFloat, 32, 2}, {kDLInt, 8, 0},
+      {kDLFloat8_e3m4, 8, 1},
+      {kDLFloat8_e4m3, 8, 1},
+      {kDLFloat8_e4m3b11fnuz, 8, 1},
+      {kDLFloat8_e4m3fn, 16, 1},
+      {kDLFloat4_e2m1fn, 8, 1},
+      {kDLFloat6_e2m3fn, 6, 1},
+      {kDLFloat6_e3m2fn, 6, 1},
+      {kDLFloat, 32, 2},
+      {kDLInt, 8, 0},
   };
   for (const auto& dtype : unsupported) {
     SCOPED_TRACE(static_cast<int>(dtype.code));
@@ -130,7 +139,7 @@ TEST(DlpackConverterTest, RejectUnsupportedDataTypes) {
 
   OrtValue strings;
   Tensor::InitOrtValue(DataTypeImpl::GetType<std::string>(), TensorShape{1},
-                      std::make_shared<CPUAllocator>(), strings);
+                       std::make_shared<CPUAllocator>(), strings);
   EXPECT_THROW(dlpack::OrtValueToDlpack(strings), OnnxRuntimeException);
 }
 

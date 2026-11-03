@@ -662,7 +662,6 @@ for every transferred tensor.
            py::arg("to_tensor"))
 #endif
       ;
-
 }
 
 }  // namespace python
