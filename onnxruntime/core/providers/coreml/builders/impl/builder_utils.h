@@ -103,6 +103,11 @@ COREML_SPEC::MILSpec::DataType DataTypeToMILSpec() {
 // This method also automatically converts int64 to int32 since only int32 is supported for CoreML operations.
 COREML_SPEC::MILSpec::DataType OnnxDataTypeToMILSpec(int onnx_type);
 
+void SetTensorTypeInfo(COREML_SPEC::MILSpec::TensorType& tensor_type,
+                       COREML_SPEC::MILSpec::DataType data_type,
+                       std::optional<gsl::span<const int64_t>> shape,
+                       bool convert_scalar = false);
+
 /// <summary>
 /// Create a CoreML MILSpec::TensorValue for the given input data.
 /// </summary>
