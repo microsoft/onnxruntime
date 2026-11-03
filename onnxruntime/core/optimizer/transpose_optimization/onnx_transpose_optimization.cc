@@ -416,7 +416,9 @@ class DQToLookPast {
   // axis, and output shape.
   void SetUpdatedInput(api::GraphRef& graph, std::string_view new_input) {
     dq_node_->SetInput(0, new_input);
-    dq_node_->SetAttributeInt("axis", quant_info_.norm_axis);
+    if (!dq_node_->IsOp("DequantizeLinear") || dq_node_->SinceVersion() >= 13) {
+      dq_node_->SetAttributeInt("axis", quant_info_.norm_axis);
+    }
     auto new_shape = *graph.GetValueInfo(new_input)->Shape();
     graph.GetValueInfo(dq_node_->Outputs()[0])->SetShape(&new_shape);
   }
