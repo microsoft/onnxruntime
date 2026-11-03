@@ -12,8 +12,22 @@
 
 #include <gsl/gsl>
 #include "core/common/common.h"
+#include "core/common/hash_combine.h"
 #include "core/common/inlined_containers.h"
 #include "core/framework/kernel_pilot.h"
+
+// Needed by "expert_ids_" which uses a "std::pair" as a hash table key
+namespace std {
+template <typename T1, typename T2>
+struct hash<std::pair<T1, T2>> {
+  std::size_t operator()(std::pair<T1, T2> const& p) const {
+    std::size_t seed(0);
+    onnxruntime::HashCombine(p.first, seed);
+    onnxruntime::HashCombine(p.second, seed);
+    return seed;
+  }
+};
+}  // namespace std
 
 namespace onnxruntime {
 
