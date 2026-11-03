@@ -51,6 +51,7 @@ std::unique_ptr<IExecutionProvider> ProductionMathCudaExecutionProvider() {
   options.do_copy_in_default_stream = true;
   // DefaultCudaExecutionProvider is a test helper that disables TF32, unlike production.
   options.use_tf32 = true;
+  options.arena_extend_strategy = ArenaExtendStrategy::kSameAsRequested;
   return CudaExecutionProviderWithOptions(&options);
 }
 

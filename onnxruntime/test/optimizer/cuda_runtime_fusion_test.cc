@@ -1298,7 +1298,11 @@ TEST_F(CUDARuntimeFusionHostTest, FoldedExternalBiasDiscoveryDoesNotOpenFilesAnd
     ASSERT_STATUS_OK(Select(GraphViewer(fixture.graph), offers));
     ASSERT_EQ(offers.size(), 1u);  // Includes a nonexistent file: discovery cannot load the payload.
     EXPECT_EQ(before, fixture.graph.ToGraphProto().SerializeAsString());
+#if defined(__wasm__)
+    continue;
+#else
     if (!available) continue;
+#endif
     GraphOptimizerRegistry registry(&options, &cpu, &logger);
     auto& selected = *offers[0]->nodes_to_optimize[0];
     ASSERT_STATUS_OK(selected.optimization_func(fixture.graph, selected, *offers[0], registry));
