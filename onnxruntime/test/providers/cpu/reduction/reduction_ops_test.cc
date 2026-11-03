@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
 #include <random>
 #include <cmath>
 #include <limits>
@@ -1994,6 +1995,119 @@ TEST(ReductionOpTest, ReduceMean_keepdims_double) {
   test.SetOutputRelErr("reduced", 1e-5f);
 #endif
   test.Run();
+}
+
+template <typename T>
+void RunReduceMeanFiniteRangeTests(T magnitude, float relative_error) {
+  const auto run_case = [magnitude, relative_error](
+                            const TensorShapeVector& input_shape,
+                            const std::vector<int64_t>& axes,
+                            const TensorShapeVector& output_shape) {
+    const size_t input_size = onnxruntime::narrow<size_t>(TensorShape(input_shape).Size());
+    const size_t output_size = onnxruntime::narrow<size_t>(TensorShape(output_shape).Size());
+    OpTester test("ReduceMean");
+    test.AddAttribute("axes", axes);
+    test.AddAttribute("keepdims", static_cast<int64_t>(0));
+    test.AddInput<T>("data", input_shape, std::vector<T>(input_size, magnitude));
+    test.AddOutput<T>("reduced", output_shape, std::vector<T>(output_size, magnitude));
+    test.SetOutputAbsErr("reduced", 0.0f);
+    test.SetOutputRelErr("reduced", relative_error);
+    SessionOptions options;
+    // Keep fast-path selection independent of the host's core count.
+    options.intra_op_param.thread_pool_size = 1;
+    options.inter_op_param.thread_pool_size = 1;
+    test.Config(options).ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+  };
+
+  // Cover the contiguous, row, column, middle-axis, and outer-plus-inner
+  // reduction layouts used by the CPU implementation.
+  run_case({2}, {0}, {});
+  run_case({2, 2}, {1}, {2});
+  run_case({5000, 2}, {0}, {2});
+  run_case({128, 2, 2}, {1}, {128, 2});
+  run_case({2, 128, 2}, {0, 2}, {128});
+}
+
+TEST(ReductionOpTest, ReduceMean_float_preserves_finite_range) {
+  RunReduceMeanFiniteRangeTests(3.0e38f, 1.0e-5f);
+}
+
+TEST(ReductionOpTest, ReduceMean_double_preserves_finite_range) {
+  RunReduceMeanFiniteRangeTests(1.0e308, 1.0e-12f);
+}
+
+TEST(ReductionOpTest, ReduceMean_double_exact_cancellation) {
+  const auto run_case = [](const TensorShapeVector& input_shape,
+                           const std::vector<int64_t>& axes,
+                           const TensorShapeVector& output_shape,
+                           double tail) {
+    const size_t input_size = onnxruntime::narrow<size_t>(TensorShape(input_shape).Size());
+    const size_t output_size = onnxruntime::narrow<size_t>(TensorShape(output_shape).Size());
+    std::vector<double> input(input_size, 0.0);
+    for (size_t i = 0; i < input_size; ++i) {
+      size_t remaining = i;
+      size_t reduced_index = 0;
+      size_t reduced_stride = 1;
+      for (size_t dim = input_shape.size(); dim-- > 0;) {
+        const size_t extent = onnxruntime::narrow<size_t>(input_shape[dim]);
+        const size_t coordinate = remaining % extent;
+        remaining /= extent;
+        if (std::find(axes.begin(), axes.end(), static_cast<int64_t>(dim)) != axes.end()) {
+          reduced_index += coordinate * reduced_stride;
+          reduced_stride *= extent;
+        }
+      }
+      if (reduced_index == 0) {
+        input[i] = std::numeric_limits<double>::max();
+      } else if (reduced_index == 1) {
+        input[i] = -std::numeric_limits<double>::max();
+      } else if (reduced_index == 2) {
+        input[i] = tail;
+      }
+    }
+
+    OpTester test("ReduceMean");
+    test.AddAttribute("axes", axes);
+    test.AddAttribute("keepdims", static_cast<int64_t>(0));
+    test.AddInput<double>("data", input_shape, input);
+    const double expected = tail / static_cast<double>(input_size / output_size);
+    test.AddOutput<double>("reduced", output_shape, std::vector<double>(output_size, expected));
+    // An absolute tolerance would hide the loss of the small residual.
+    test.SetOutputAbsErr("reduced", 0.0f);
+    test.SetOutputRelErr("reduced", 1.0e-12f);
+    SessionOptions options;
+    options.intra_op_param.thread_pool_size = 1;
+    options.inter_op_param.thread_pool_size = 1;
+    test.Config(options).ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+  };
+
+  for (double tail : {1.0e-16, -1.0e-16, 1.0e-300, -1.0e-300}) {
+    run_case({3}, {0}, {}, tail);
+    run_case({2, 4}, {1}, {2}, tail);              // KR
+    run_case({4096, 2}, {0}, {2}, tail);           // RK
+    run_case({2, 4, 2}, {1}, {2, 2}, tail);        // KRK
+    run_case({2, 2, 2}, {0, 2}, {2}, tail);        // RKR
+    run_case({2, 2, 2, 2}, {0, 2}, {2, 2}, tail);  // Generic fallback
+  }
+}
+
+TEST(ReductionOpTest, ReduceMean_double_cancellation_special_values) {
+  const double largest = std::numeric_limits<double>::max();
+  const double nan = std::numeric_limits<double>::quiet_NaN();
+  OpTester test("ReduceMean");
+  test.AddAttribute("axes", std::vector<int64_t>{1});
+  test.AddAttribute("keepdims", static_cast<int64_t>(0));
+  test.AddInput<double>("data", {5, 4},
+                        {largest, -largest, 0, 0,
+                         largest, -largest, nan, 0,
+                         largest, -largest, DOUBLE_INF, 0,
+                         largest, -largest, DOUBLE_NINF, 0,
+                         largest, -largest, DOUBLE_INF, DOUBLE_NINF});
+  test.AddOutput<double>("reduced", {5}, {0, nan, DOUBLE_INF, DOUBLE_NINF, nan});
+  SessionOptions options;
+  options.intra_op_param.thread_pool_size = 1;
+  options.inter_op_param.thread_pool_size = 1;
+  test.Config(options).ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
 }
 
 TEST(ReductionOpTest, ReduceMean) {
