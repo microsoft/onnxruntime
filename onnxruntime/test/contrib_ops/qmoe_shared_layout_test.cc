@@ -1596,6 +1596,7 @@ struct BarrierProbe {
   bool succeed = true;
   int calls = 0;
   bool pin_held_when_called = false;
+  int32_t blocked_expert = 1;
   shared::FileExpertStore* store = nullptr;
 };
 
@@ -1604,8 +1605,8 @@ bool ProbeBarrier(void* context) noexcept {
   ++probe->calls;
   // The slot must still be pinned while queued device reads are being completed.
   shared::ExpertBlockLease other{};
-  probe->pin_held_when_called = !probe->store->AcquireReady(1, &other);
-  if (!probe->pin_held_when_called) probe->store->ReleaseLease(1);
+  probe->pin_held_when_called = !probe->store->AcquireReady(probe->blocked_expert, &other);
+  if (!probe->pin_held_when_called) probe->store->ReleaseLease(probe->blocked_expert);
   return probe->succeed;
 }
 
@@ -1671,6 +1672,30 @@ TEST_F(ScopedExpertLeaseTest, ExplicitCompletionReleasesWithoutRunningBarrier) {
   EXPECT_EQ(probe.calls, 0);
   EXPECT_TRUE(guard.Release());  // idempotent
   EXPECT_TRUE(CanServe(1));
+}
+
+TEST_F(ScopedExpertLeaseTest, GroupPinsRemainQuarantinedUntilDeviceReadsComplete) {
+  store_.Shutdown();
+  ASSERT_TRUE(store_.Initialize(path_.string().c_str(), 0, kNumExperts, kStride, /*cache_slots=*/2));
+  const int32_t expert_ids[] = {0, 1};
+  shared::ExpertBlockLease leases[2]{};
+  ASSERT_TRUE(store_.AcquireGroupReady(expert_ids, 2, leases));
+  const shared::ExpertLeaseGroup groups[] = {{expert_ids, 1}, {expert_ids + 1, 1}};
+  BarrierProbe probe;
+  probe.store = &store_;
+  probe.blocked_expert = 2;
+  probe.succeed = false;
+
+  EXPECT_FALSE(shared::ReleaseExpertLeaseGroupsAfterDeviceReads(store_, groups, 2, &ProbeBarrier, &probe));
+  EXPECT_EQ(probe.calls, 1);
+  EXPECT_TRUE(probe.pin_held_when_called);
+  EXPECT_FALSE(CanServe(2));
+
+  probe.succeed = true;
+  EXPECT_TRUE(shared::ReleaseExpertLeaseGroupsAfterDeviceReads(store_, groups, 2, &ProbeBarrier, &probe));
+  EXPECT_EQ(probe.calls, 2);
+  EXPECT_TRUE(probe.pin_held_when_called);
+  EXPECT_TRUE(CanServe(2));
 }
 
 }  // namespace

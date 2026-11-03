@@ -208,6 +208,24 @@ size_t ComputePointerAlignment(const void* ptr) noexcept;
 bool MakeExpertBlockLease(const void* ptr, size_t length, size_t min_required_alignment,
                           ExpertBlockLease* lease) noexcept;
 
+struct ExpertLeaseGroup {
+  const int32_t* expert_ids;
+  size_t count;
+};
+
+using ExpertLeaseDeviceReadBarrier = bool (*)(void* context) noexcept;
+
+inline bool ReleaseExpertLeaseGroupsAfterDeviceReads(FileExpertStore& store, const ExpertLeaseGroup* groups,
+                                                     size_t group_count, ExpertLeaseDeviceReadBarrier barrier,
+                                                     void* context) noexcept {
+  if (group_count == 0) return true;
+  if (groups == nullptr || barrier == nullptr || !barrier(context)) return false;
+  for (size_t i = 0; i < group_count; ++i) {
+    store.ReleaseGroupLeases(groups[i].expert_ids, groups[i].count);
+  }
+  return true;
+}
+
 // Owns one pin of a FileExpertStore cache entry and drops it on every exit path, including early returns and
 // exceptions. A pinned entry cannot be evicted, so a leaked pin permanently removes a slot from a bounded cache.
 //
@@ -217,7 +235,7 @@ bool MakeExpertBlockLease(const void* ptr, size_t length, size_t min_required_al
 // (quarantined) instead of being released.
 class ScopedExpertLease {
  public:
-  using DeviceReadBarrier = bool (*)(void* context) noexcept;
+  using DeviceReadBarrier = ExpertLeaseDeviceReadBarrier;
 
   ScopedExpertLease() noexcept = default;
   ScopedExpertLease(const ScopedExpertLease&) = delete;

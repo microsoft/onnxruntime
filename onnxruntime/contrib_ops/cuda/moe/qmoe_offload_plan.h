@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -220,6 +221,23 @@ struct CrossLayerSite {
   int64_t layer_index = 0;
   bool doorbell_pending = false;  // routes already classified for this step, CPU service not finished yet
 };
+
+inline void RetirePendingNotifications(std::atomic<size_t>& pending, size_t count) noexcept {
+  size_t previous = pending.load(std::memory_order_acquire);
+  while (previous > 0 &&
+         !pending.compare_exchange_weak(previous, previous - std::min(previous, count),
+                                        std::memory_order_acq_rel, std::memory_order_acquire)) {
+  }
+}
+
+inline uint64_t RetireCompletedZeroColdRequests(uint64_t request, uint64_t done, uint64_t& last_serviced,
+                                                std::atomic<size_t>& pending) noexcept {
+  if (request <= last_serviced || done < request) return 0;
+  const uint64_t completed = request - last_serviced;
+  RetirePendingNotifications(pending, static_cast<size_t>(completed));
+  last_serviced = request;
+  return completed;
+}
 
 // A cross-layer promotion rewrites the target layer's slot table and host maps from the doorbell worker. That is
 // only sound for a layer that has not classified its routes for the current step. One session runs on one stream
