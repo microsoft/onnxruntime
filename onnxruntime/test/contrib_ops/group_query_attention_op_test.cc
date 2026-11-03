@@ -2748,9 +2748,9 @@ TEST(GroupQueryAttentionTest, CPU_FusedRoPE_InvalidCosDims_Rejected) {
 }
 
 // ---------------------------------------------------------------------------
-// Shared helper validation policy tests: verify that the default policy
-// preserves legacy / CUDA requirements (16-aligned head_size and 8-aligned cos_dims[1]),
-// while the explicit CPU policy allows 8-aligned head sizes and 4-aligned cos_dims[1].
+// Shared helper validation policy tests: verify that shared validation allows
+// 8-aligned head sizes and 4-aligned cos_dims[1] (rotary_dim % 8 == 0) across all EPs,
+// and correctly rejects invalid shapes and non-aligned dimensions.
 // ---------------------------------------------------------------------------
 
 namespace {
@@ -2760,130 +2760,300 @@ struct MockRotaryCacheTensor {
 };
 }  // namespace
 
-TEST(GroupQueryAttentionTest, CheckRotaryCaches_LegacyPolicy_RejectsNon16Aligned) {
+TEST(GroupQueryAttentionTest, CheckRotaryCaches_Permits8Aligned) {
   int rotary_dim = 0;
 
-  // Configuration from Copilot finding: head_size=64, cos_dims[1]=12 (rotary_dim=24).
-  // Under the shared/legacy policy (allow_8_aligned_rotary=false), cos_dims[1] % 8 != 0 must be rejected
-  // before reaching CUDA FlashDecoding which expects 16-aligned rotary_dim (8-aligned cos_dims[1]).
-  MockRotaryCacheTensor cos_cache_12{TensorShape({16, 12})};
-  MockRotaryCacheTensor sin_cache_12{TensorShape({16, 12})};
-  auto status = contrib::group_query_attention_helper::CheckRotaryCaches(
-      &cos_cache_12, &sin_cache_12, /*head_size=*/64, /*total_sequence_length=*/4,
-      rotary_dim, /*allow_8_aligned_rotary=*/false);
-  EXPECT_FALSE(status.IsOK());
-  EXPECT_EQ(status.Category(), common::ONNXRUNTIME);
-  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("cos_cache dimension 1 must be <= head_size / 2 and a multiple of 8."));
-
-  // Accepted legacy configuration: head_size=64, cos_dims[1]=16 (rotary_dim=32).
-  MockRotaryCacheTensor cos_cache_16{TensorShape({16, 16})};
-  MockRotaryCacheTensor sin_cache_16{TensorShape({16, 16})};
-  status = contrib::group_query_attention_helper::CheckRotaryCaches(
-      &cos_cache_16, &sin_cache_16, /*head_size=*/64, /*total_sequence_length=*/4,
-      rotary_dim, /*allow_8_aligned_rotary=*/false);
-  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
-  EXPECT_EQ(rotary_dim, 32);
-
-  // Legacy policy also rejects non-16-aligned head_size (e.g., head_size=24 or 8).
-  status = contrib::group_query_attention_helper::CheckRotaryCaches(
-      &cos_cache_12, &sin_cache_12, /*head_size=*/24, /*total_sequence_length=*/4,
-      rotary_dim, /*allow_8_aligned_rotary=*/false);
-  EXPECT_FALSE(status.IsOK());
-  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("head_size shall be a multiple of 16. Got head_size % 16 == 8"));
-}
-
-TEST(GroupQueryAttentionTest, CheckRotaryCaches_CPUPolicy_Permits8Aligned) {
-  int rotary_dim = 0;
-
-  // CPU policy allows head_size=24, cos_dims[1]=12 (rotary_dim=24).
+  // head_size=24, cos_dims[1]=12 (rotary_dim=24).
   MockRotaryCacheTensor cos_cache_12{TensorShape({16, 12})};
   MockRotaryCacheTensor sin_cache_12{TensorShape({16, 12})};
   auto status = contrib::group_query_attention_helper::CheckRotaryCaches(
       &cos_cache_12, &sin_cache_12, /*head_size=*/24, /*total_sequence_length=*/4,
-      rotary_dim, /*allow_8_aligned_rotary=*/true);
+      rotary_dim);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   EXPECT_EQ(rotary_dim, 24);
 
-  // CPU policy allows partial RoPE: head_size=32, cos_dims[1]=12 (rotary_dim=24).
+  // Partial RoPE: head_size=32, cos_dims[1]=12 (rotary_dim=24).
   status = contrib::group_query_attention_helper::CheckRotaryCaches(
       &cos_cache_12, &sin_cache_12, /*head_size=*/32, /*total_sequence_length=*/4,
-      rotary_dim, /*allow_8_aligned_rotary=*/true);
+      rotary_dim);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   EXPECT_EQ(rotary_dim, 24);
 
-  // CPU policy allows head_size=8, cos_dims[1]=4 (rotary_dim=8) without upper bound truncation.
+  // head_size=8, cos_dims[1]=4 (rotary_dim=8) without upper bound truncation.
   MockRotaryCacheTensor cos_cache_4{TensorShape({16, 4})};
   MockRotaryCacheTensor sin_cache_4{TensorShape({16, 4})};
   status = contrib::group_query_attention_helper::CheckRotaryCaches(
       &cos_cache_4, &sin_cache_4, /*head_size=*/8, /*total_sequence_length=*/4,
-      rotary_dim, /*allow_8_aligned_rotary=*/true);
+      rotary_dim);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   EXPECT_EQ(rotary_dim, 8);
+
+  // head_size=64, cos_dims[1]=12 (rotary_dim=24).
+  status = contrib::group_query_attention_helper::CheckRotaryCaches(
+      &cos_cache_12, &sin_cache_12, /*head_size=*/64, /*total_sequence_length=*/4,
+      rotary_dim);
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+  EXPECT_EQ(rotary_dim, 24);
+
+  // Rejection: head_size not multiple of 8 (e.g., head_size=12).
+  status = contrib::group_query_attention_helper::CheckRotaryCaches(
+      &cos_cache_4, &sin_cache_4, /*head_size=*/12, /*total_sequence_length=*/4,
+      rotary_dim);
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("head_size shall be a multiple of 8. Got head_size % 8 == 4"));
+
+  // Rejection: cos_dims[1] not multiple of 4 (e.g., cos_dims[1]=6).
+  MockRotaryCacheTensor cos_cache_6{TensorShape({16, 6})};
+  MockRotaryCacheTensor sin_cache_6{TensorShape({16, 6})};
+  status = contrib::group_query_attention_helper::CheckRotaryCaches(
+      &cos_cache_6, &sin_cache_6, /*head_size=*/32, /*total_sequence_length=*/4,
+      rotary_dim);
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("cos_cache dimension 1 must be <= head_size / 2 and a multiple of 4."));
+
+  // Rejection: cos_dims[1] > head_size / 2.
+  MockRotaryCacheTensor cos_cache_16{TensorShape({16, 16})};
+  MockRotaryCacheTensor sin_cache_16{TensorShape({16, 16})};
+  status = contrib::group_query_attention_helper::CheckRotaryCaches(
+      &cos_cache_16, &sin_cache_16, /*head_size=*/24, /*total_sequence_length=*/4,
+      rotary_dim);
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("cos_cache dimension 1 must be <= head_size / 2 and a multiple of 4."));
+
+  // Rejection: mismatched shapes between cos_cache and sin_cache.
+  status = contrib::group_query_attention_helper::CheckRotaryCaches(
+      &cos_cache_12, &sin_cache_16, /*head_size=*/64, /*total_sequence_length=*/4,
+      rotary_dim);
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("cos_cache and sin_cache must have the same shape."));
 }
 
 // ---------------------------------------------------------------------------
-// Shared validation tests (CUDA EP):
-// Verify that the shared validation policy (which defaults to allow_8_aligned_rotary = false)
-// strictly rejects rotary_dim=24 before kernel launch, preventing dispatch to CUDA kernels
-// that require 16-element alignment (such as FlashDecoding fast-decode).
-// Also verify that an accepted legacy 16-aligned configuration (rotary_dim=32) passes validation
-// and computes numerically correct results matching the scalar reference.
+// CUDA EP kernel selection and numerical regression tests:
+// Verify that rotary_dim=24 with head_size=64 passes shared validation and is
+// correctly dispatched to the regular FlashAttention fallback path (rather than
+// FlashDecoding, which requires 16-aligned rotary_dim).
+// Tests single-token decoding, aliased past/present KV buffers, absent position_ids,
+// and verifies BOTH the attention output AND the updated K cache against an
+// independent scalar reference.
 // ---------------------------------------------------------------------------
 
-TEST(GroupQueryAttentionTest, CUDA_FusedRoPE_RotaryDim24_RejectedByValidation) {
-  if (!DefaultCudaExecutionProvider()) {
+#if defined(USE_CUDA)
+TEST(GroupQueryAttentionTest, CUDA_FusedRoPE_RotaryDim24_Fallback_MatchesReference) {
+  ScopedEnvironmentVariables scoped_env_vars{{
+      {"ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION", "1"},
+      {"ORT_ENABLE_CUDNN_FLASH_ATTENTION", "0"},
+      {"ORT_ENABLE_XQA", "0"},
+      {"ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO", "1"},
+  }};
+
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
     GTEST_SKIP() << "CUDA EP not available";
+  }
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "FlashAttention requires SM80 or later";
   }
 
   constexpr int batch_size = 1;
-  constexpr int sequence_length = 1;
+  constexpr int sequence_length = 1;  // single-token decode
+  constexpr int past_seq_len = 4;
+  constexpr int cache_capacity = 8;
+  const int total_sequence_length = past_seq_len + sequence_length;  // 5
   constexpr int num_heads = 4;
   constexpr int kv_num_heads = 1;
   constexpr int head_size = 64;
-  constexpr int hidden_size = num_heads * head_size;
-  constexpr int kv_hidden_size = kv_num_heads * head_size;
-  constexpr int past_seq_len = 4;
-  const int total_sequence_length = past_seq_len + sequence_length;
+  constexpr int rotary_dim = 24;               // cos_dims[1] = 12 (8-aligned head_size, 4-aligned cos_dim, but not 16-aligned)
+  constexpr int half_rotary = rotary_dim / 2;  // 12
+  constexpr int max_seq_len = 16;
+  constexpr int hidden_size = num_heads * head_size;        // 256
+  constexpr int kv_hidden_size = kv_num_heads * head_size;  // 64
 
-  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
-  tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
-  tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kv_num_heads));
-  tester.AddAttribute<int64_t>("do_rotary", static_cast<int64_t>(1));
+  // Prepare input data in float
+  std::vector<float> query_data(batch_size * sequence_length * hidden_size);
+  std::vector<float> key_data(batch_size * sequence_length * kv_hidden_size);
+  std::vector<float> value_data(batch_size * sequence_length * kv_hidden_size);
+  std::vector<float> past_key_data(batch_size * kv_num_heads * cache_capacity * head_size, 0.0f);
+  std::vector<float> past_value_data(batch_size * kv_num_heads * cache_capacity * head_size, 0.0f);
 
-  tester.AddInput<MLFloat16>("query", {batch_size, sequence_length, hidden_size},
-                             std::vector<MLFloat16>(hidden_size * sequence_length, MLFloat16(0.1f)));
-  tester.AddInput<MLFloat16>("key", {batch_size, sequence_length, kv_hidden_size},
-                             std::vector<MLFloat16>(kv_hidden_size * sequence_length, MLFloat16(0.1f)));
-  tester.AddInput<MLFloat16>("value", {batch_size, sequence_length, kv_hidden_size},
-                             std::vector<MLFloat16>(kv_hidden_size * sequence_length, MLFloat16(0.1f)));
-  tester.AddInput<MLFloat16>("past_key", {batch_size, kv_num_heads, past_seq_len, head_size},
-                             std::vector<MLFloat16>(kv_num_heads * past_seq_len * head_size, MLFloat16(0.1f)));
-  tester.AddInput<MLFloat16>("past_value", {batch_size, kv_num_heads, past_seq_len, head_size},
-                             std::vector<MLFloat16>(kv_num_heads * past_seq_len * head_size, MLFloat16(0.1f)));
-  tester.AddInput<int32_t>("seqlens_k", {batch_size}, {total_sequence_length - 1});
-  tester.AddInput<int32_t>("total_sequence_length", {1}, {total_sequence_length}, /*is_initializer=*/true);
+  for (size_t i = 0; i < query_data.size(); ++i) query_data[i] = 0.02f * static_cast<float>(i + 1);
+  for (size_t i = 0; i < key_data.size(); ++i) key_data[i] = 0.015f * static_cast<float>(i + 2);
+  for (size_t i = 0; i < value_data.size(); ++i) value_data[i] = 0.03f * static_cast<float>((i % 5) + 1);
+  for (size_t i = 0; i < static_cast<size_t>(batch_size * kv_num_heads * past_seq_len * head_size); ++i) {
+    past_key_data[i] = 0.012f * static_cast<float>(i + 1);
+    past_value_data[i] = 0.025f * static_cast<float>((i % 7) + 1);
+  }
 
-  // rotary_dim = 24 -> cos_dims[1] = 12. Must be rejected by shared validation because 12 % 8 != 0.
-  // This verifies that non-16-aligned rotary configurations are blocked at the validation layer
-  // before any kernel execution occurs.
-  tester.AddInput<MLFloat16>("cos_cache", {total_sequence_length + 8, 12},
-                             std::vector<MLFloat16>((total_sequence_length + 8) * 12, MLFloat16(1.0f)));
-  tester.AddInput<MLFloat16>("sin_cache", {total_sequence_length + 8, 12},
-                             std::vector<MLFloat16>((total_sequence_length + 8) * 12, MLFloat16(0.0f)));
+  std::vector<float> cos_cache(max_seq_len * half_rotary);
+  std::vector<float> sin_cache(max_seq_len * half_rotary);
+  for (int pos = 0; pos < max_seq_len; ++pos) {
+    for (int d = 0; d < half_rotary; ++d) {
+      const float freq = 1.0f / std::pow(10000.0f, 2.0f * static_cast<float>(d) / static_cast<float>(rotary_dim));
+      cos_cache[pos * half_rotary + d] = std::cos(static_cast<float>(pos) * freq);
+      sin_cache[pos * half_rotary + d] = std::sin(static_cast<float>(pos) * freq);
+    }
+  }
 
-  tester.AddOutput<MLFloat16>("output", {batch_size, sequence_length, hidden_size},
-                              std::vector<MLFloat16>(batch_size * sequence_length * hidden_size, MLFloat16(0.0f)));
-  tester.AddOutput<MLFloat16>("present_key", {batch_size, kv_num_heads, total_sequence_length, head_size},
-                              std::vector<MLFloat16>(batch_size * kv_num_heads * total_sequence_length * head_size, MLFloat16(0.0f)));
-  tester.AddOutput<MLFloat16>("present_value", {batch_size, kv_num_heads, total_sequence_length, head_size},
-                              std::vector<MLFloat16>(batch_size * kv_num_heads * total_sequence_length * head_size, MLFloat16(0.0f)));
+  // Compute reference results using the scalar reference implementation.
+  const auto ref = ComputeReferenceGQAWithRoPE(
+      query_data, key_data, value_data, past_key_data, past_value_data,
+      cos_cache, sin_cache, batch_size, sequence_length, past_seq_len,
+      num_heads, kv_num_heads, head_size, rotary_dim);
 
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCudaExecutionProvider());
-  tester.Run(OpTester::ExpectResult::kExpectFailure,
-             "cos_cache dimension 1 must be <= head_size / 2 and a multiple of 8",
-             {}, nullptr, &execution_providers);
+  // Convert to FP16
+  std::vector<MLFloat16> query_fp16(query_data.size());
+  for (size_t i = 0; i < query_data.size(); ++i) query_fp16[i] = MLFloat16(query_data[i]);
+  std::vector<MLFloat16> key_fp16(key_data.size());
+  for (size_t i = 0; i < key_data.size(); ++i) key_fp16[i] = MLFloat16(key_data[i]);
+  std::vector<MLFloat16> value_fp16(value_data.size());
+  for (size_t i = 0; i < value_data.size(); ++i) value_fp16[i] = MLFloat16(value_data[i]);
+  std::vector<MLFloat16> past_key_fp16(past_key_data.size());
+  for (size_t i = 0; i < past_key_data.size(); ++i) past_key_fp16[i] = MLFloat16(past_key_data[i]);
+  std::vector<MLFloat16> past_value_fp16(past_value_data.size());
+  for (size_t i = 0; i < past_value_data.size(); ++i) past_value_fp16[i] = MLFloat16(past_value_data[i]);
+  std::vector<MLFloat16> cos_cache_fp16(cos_cache.size());
+  for (size_t i = 0; i < cos_cache.size(); ++i) cos_cache_fp16[i] = MLFloat16(cos_cache[i]);
+  std::vector<MLFloat16> sin_cache_fp16(sin_cache.size());
+  for (size_t i = 0; i < sin_cache.size(); ++i) sin_cache_fp16[i] = MLFloat16(sin_cache[i]);
+
+  // Build model graph
+  Model model("gqa_cuda_rotary24_fallback", true, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 17}, {kMSDomain, 1}},
+              {}, DefaultLoggingManager().DefaultLogger(), ModelOptions(true, true));
+  auto& graph = model.MainGraph();
+  ONNX_NAMESPACE::TypeProto fp16_type, int32_type;
+  fp16_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+  int32_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_INT32);
+
+  std::vector<NodeArg*> inputs;
+  inputs.push_back(&graph.GetOrCreateNodeArg("query", &fp16_type));
+  inputs.push_back(&graph.GetOrCreateNodeArg("key", &fp16_type));
+  inputs.push_back(&graph.GetOrCreateNodeArg("value", &fp16_type));
+  inputs.push_back(&graph.GetOrCreateNodeArg("past_key", &fp16_type));
+  inputs.push_back(&graph.GetOrCreateNodeArg("past_value", &fp16_type));
+  inputs.push_back(&graph.GetOrCreateNodeArg("seqlens_k", &int32_type));
+  inputs.push_back(&graph.GetOrCreateNodeArg("total_sequence_length", &int32_type));
+  inputs.push_back(&graph.GetOrCreateNodeArg("cos_cache", &fp16_type));
+  inputs.push_back(&graph.GetOrCreateNodeArg("sin_cache", &fp16_type));
+
+  std::vector<NodeArg*> outputs;
+  for (const char* name : {"output", "present_key", "present_value"}) {
+    outputs.push_back(&graph.GetOrCreateNodeArg(name, &fp16_type));
+  }
+
+  auto& node = graph.AddNode("gqa", "GroupQueryAttention", "", inputs, outputs, nullptr, kMSDomain);
+  node.AddAttribute("num_heads", static_cast<int64_t>(num_heads));
+  node.AddAttribute("kv_num_heads", static_cast<int64_t>(kv_num_heads));
+  node.AddAttribute("do_rotary", static_cast<int64_t>(1));
+  node.AddAttribute("rotary_interleaved", static_cast<int64_t>(0));
+
+  ASSERT_STATUS_OK(graph.Resolve());
+  std::string model_data;
+  ASSERT_TRUE(model.ToProto().SerializeToString(&model_data));
+
+  SessionOptions options;
+  options.graph_optimization_level = TransformerLevel::Default;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  InferenceSession session(options, GetEnvironment());
+  IExecutionProvider* ep = cuda_ep.get();
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(cuda_ep)));
+  std::istringstream model_stream(model_data);
+  ASSERT_STATUS_OK(session.Load(model_stream));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  auto gpu_allocators = ep->CreatePreferredAllocators();
+  auto gpu_allocator = std::find_if(gpu_allocators.begin(), gpu_allocators.end(), [](const auto& a) {
+    return a->Info().device.Type() == OrtDevice::GPU &&
+           a->Info().mem_type == OrtMemTypeDefault;
+  });
+  ASSERT_NE(gpu_allocator, gpu_allocators.end());
+  auto allocator = session.GetAllocator((*gpu_allocator)->Info());
+  ASSERT_NE(allocator, nullptr);
+  auto cpu_allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+
+  auto make_gpu_value = [&](const auto& values, const TensorShape& shape) {
+    using Element = typename std::decay_t<decltype(values)>::value_type;
+    Tensor cpu_tensor(DataTypeImpl::GetType<Element>(), shape,
+                      const_cast<Element*>(values.data()), cpu_allocator->Info());
+    Tensor gpu_tensor(DataTypeImpl::GetType<Element>(), shape, allocator);
+    ORT_THROW_IF_ERROR(ep->GetDataTransfer()->CopyTensor(cpu_tensor, gpu_tensor));
+    OrtValue result;
+    Tensor::InitOrtValue(std::move(gpu_tensor), result);
+    return result;
+  };
+
+  const TensorShape query_shape{batch_size, sequence_length, hidden_size};
+  const TensorShape kv_shape{batch_size, sequence_length, kv_hidden_size};
+  const TensorShape cache_shape{batch_size, kv_num_heads, cache_capacity, head_size};
+  const TensorShape cos_sin_shape{max_seq_len, half_rotary};
+
+  auto query_value = make_gpu_value(query_fp16, query_shape);
+  auto key_value = make_gpu_value(key_fp16, kv_shape);
+  auto value_value = make_gpu_value(value_fp16, kv_shape);
+  auto past_key_value = make_gpu_value(past_key_fp16, cache_shape);
+  auto past_value_value = make_gpu_value(past_value_fp16, cache_shape);
+
+  const int32_t seqlens_k_value = total_sequence_length - 1;  // 4
+  auto seqlens_value = make_gpu_value(std::vector<int32_t>(batch_size, seqlens_k_value), {batch_size});
+
+  std::vector<int32_t> total_length_data{total_sequence_length};
+  OrtValue total_length_value;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), TensorShape{1}, total_length_data.data(),
+                       cpu_allocator->Info(), total_length_value);
+
+  auto cos_value = make_gpu_value(cos_cache_fp16, cos_sin_shape);
+  auto sin_value = make_gpu_value(sin_cache_fp16, cos_sin_shape);
+
+  auto output_value = make_gpu_value(std::vector<MLFloat16>(query_shape.Size(), MLFloat16(0.0f)), query_shape);
+
+  std::unique_ptr<IOBinding> binding;
+  ASSERT_STATUS_OK(session.NewIOBinding(&binding));
+  ASSERT_STATUS_OK(binding->BindInput("query", query_value));
+  ASSERT_STATUS_OK(binding->BindInput("key", key_value));
+  ASSERT_STATUS_OK(binding->BindInput("value", value_value));
+  ASSERT_STATUS_OK(binding->BindInput("past_key", past_key_value));
+  ASSERT_STATUS_OK(binding->BindInput("past_value", past_value_value));
+  ASSERT_STATUS_OK(binding->BindInput("seqlens_k", seqlens_value));
+  ASSERT_STATUS_OK(binding->BindInput("total_sequence_length", total_length_value));
+  ASSERT_STATUS_OK(binding->BindInput("cos_cache", cos_value));
+  ASSERT_STATUS_OK(binding->BindInput("sin_cache", sin_value));
+
+  ASSERT_STATUS_OK(binding->BindOutput("output", output_value));
+  // Exercise aliased KV buffers: present_key/present_value share the exact same buffer as past_key/past_value
+  ASSERT_STATUS_OK(binding->BindOutput("present_key", past_key_value));
+  ASSERT_STATUS_OK(binding->BindOutput("present_value", past_value_value));
+  ASSERT_STATUS_OK(binding->SynchronizeInputs());
+
+  testing::internal::CaptureStdout();
+  const auto status = session.Run(RunOptions{}, *binding);
+  const std::string kernel_log = testing::internal::GetCapturedStdout();
+  ASSERT_STATUS_OK(status);
+
+  // Read output back to host and verify against reference
+  auto& gpu_out = binding->GetOutputs()[0].Get<Tensor>();
+  Tensor cpu_out(DataTypeImpl::GetType<MLFloat16>(), gpu_out.Shape(), cpu_allocator);
+  ASSERT_STATUS_OK(ep->GetDataTransfer()->CopyTensor(gpu_out, cpu_out));
+  const auto* out_data = cpu_out.Data<MLFloat16>();
+  for (size_t i = 0; i < ref.output.size(); ++i) {
+    EXPECT_NEAR(out_data[i].ToFloat(), ref.output[i], 0.01f)
+        << "Mismatch at output index " << i;
+  }
+
+  // Read updated K cache back to host and verify both past tokens and the RoPE-updated token
+  auto& gpu_cache = binding->GetOutputs()[1].Get<Tensor>();
+  Tensor cpu_cache(DataTypeImpl::GetType<MLFloat16>(), gpu_cache.Shape(), cpu_allocator);
+  ASSERT_STATUS_OK(ep->GetDataTransfer()->CopyTensor(gpu_cache, cpu_cache));
+  const auto* key_cache_data = cpu_cache.Data<MLFloat16>();
+  for (int s = 0; s < total_sequence_length; ++s) {
+    for (int d = 0; d < head_size; ++d) {
+      const float actual_val = key_cache_data[s * head_size + d].ToFloat();
+      const float ref_val = ref.present_key[s * head_size + d];
+      EXPECT_NEAR(actual_val, ref_val, 0.01f)
+          << "Mismatch at K cache token " << s << ", dim " << d;
+    }
+  }
 }
+#endif  // USE_CUDA
 
 TEST(GroupQueryAttentionTest, CUDA_FusedRoPE_RotaryDim32_Accepted) {
   if (!DefaultCudaExecutionProvider()) {
