@@ -21,14 +21,34 @@
 #include <TraceLoggingProvider.h>
 #include <winmeta.h>
 
-// The private configuration selects the Microsoft telemetry provider group so that events are uploaded. It is
-// generated only by official builds that use the Windows telemetry backend.
-#if defined(ORT_WEBGPU_EP_USE_PRIVATE_TRACELOGGING_CONFIG)
-#include "core/platform/windows/TraceLoggingConfigPrivate.h"
+// The private configuration defines TraceLoggingOptionMicrosoftTelemetry() to join the Microsoft telemetry provider
+// group so that events are uploaded. It is supplied only by official builds; see onnxruntime_providers_webgpu.cmake.
+#if defined(ORT_WEBGPU_EP_TRACELOGGING_CONFIG_HEADER)
+#include ORT_WEBGPU_EP_TRACELOGGING_CONFIG_HEADER
 #endif
-#include "core/platform/windows/TraceLoggingConfig.h"
 
-// See core/platform/windows/telemetry.cc: older TraceLoggingProvider.h versions are incompatible with /utf-8.
+// Without the private configuration, the provider joins no provider group and events are visible to local ETW only.
+#ifndef TraceLoggingOptionMicrosoftTelemetry
+#define TraceLoggingOptionMicrosoftTelemetry() \
+  TraceLoggingOptionGroup(0000000000, 00000, 00000, 0000, 0000, 0000, 0000, 0000, 000, 0000, 0000)
+#endif
+#ifndef TelemetryPrivacyDataTag
+#define TelemetryPrivacyDataTag(tag) TraceLoggingUInt64((tag), "PartA_PrivTags")
+#endif
+#ifndef PDT_DeviceConnectivityAndConfiguration
+#define PDT_DeviceConnectivityAndConfiguration 0x0000000000000800u
+#endif
+#ifndef PDT_ProductAndServicePerformance
+#define PDT_ProductAndServicePerformance 0x0000000001000000u
+#endif
+#ifndef PDT_ProductAndServiceUsage
+#define PDT_ProductAndServiceUsage 0x0000000002000000u
+#endif
+#ifndef MICROSOFT_KEYWORD_MEASURES
+#define MICROSOFT_KEYWORD_MEASURES 0x0000400000000000
+#endif
+
+// Older TraceLoggingProvider.h versions are incompatible with /utf-8.
 #ifdef _TlgPragmaUtf8Begin
 #undef _TlgPragmaUtf8Begin
 #define _TlgPragmaUtf8Begin
@@ -46,11 +66,11 @@
 #define _tlgPragmaUtf8End
 #endif
 
+#include <optional>
+
 #include "ep/api.h"
 
-#include "core/platform/telemetry_environment.h"
-#include "core/platform/telemetry_redaction.h"
-#include "core/platform/telemetry_strings.h"
+#include "core/providers/webgpu/ep/telemetry_privacy.h"
 #include "core/providers/webgpu/webgpu_external_header.h"
 
 namespace onnxruntime {
@@ -73,6 +93,42 @@ TRACELOGGING_DEFINE_PROVIDER(webgpu_ep_telemetry_provider_handle, "Microsoft.ML.
 
 constexpr uint8_t kSchemaVersion = 0;
 
+// Returns "" when the variable is not set, or nullopt when it cannot be read or is unexpectedly large.
+std::optional<std::string> ReadEnvironmentVariable(const wchar_t* name) {
+  constexpr DWORD kBufferSize = 256;
+  wchar_t buffer[kBufferSize];
+  ::SetLastError(ERROR_SUCCESS);
+  const DWORD length = ::GetEnvironmentVariableW(name, buffer, kBufferSize);
+  if (length == 0) {
+    const DWORD error = ::GetLastError();
+    if (error == ERROR_SUCCESS || error == ERROR_ENVVAR_NOT_FOUND) {
+      return std::string{};
+    }
+    return std::nullopt;
+  }
+  if (length >= kBufferSize) {
+    return std::nullopt;
+  }
+  // Only ASCII tokens are meaningful; any other character cannot match and is replaced.
+  std::string value;
+  value.reserve(length);
+  for (DWORD i = 0; i < length; ++i) {
+    value += buffer[i] < 0x80 ? static_cast<char>(buffer[i]) : '?';
+  }
+  return value;
+}
+
+// The host's OrtApi::DisableTelemetryEvents() state is not visible to plugins, so honor the environment opt-out.
+// ORT unit-test processes never register, matching the host's telemetry providers. Unreadable values disable.
+bool IsDisabledByEnvironment() {
+  const auto running_unit_tests = ReadEnvironmentVariable(L"ORT_RUNNING_UNIT_TESTS");
+  if (!running_unit_tests || IsNonFalseEnvironmentValue(*running_unit_tests)) {
+    return true;
+  }
+  const auto disable_telemetry = ReadEnvironmentVariable(L"ORT_DISABLE_TELEMETRY");
+  return !disable_telemetry || IsTrueEnvironmentValue(*disable_telemetry);
+}
+
 class ProviderRegistration {
  public:
   static const ProviderRegistration& Instance() {
@@ -87,9 +143,7 @@ class ProviderRegistration {
 
  private:
   ProviderRegistration() {
-    // The host's OrtApi::DisableTelemetryEvents() state is not visible to plugins, so honor the environment opt-out.
-    // ORT unit-test processes never register, matching the host's telemetry providers.
-    if (IsRunningUnitTests() || IsTelemetryDisabledByEnvironment()) {
+    if (IsDisabledByEnvironment()) {
       return;
     }
     registered_ = SUCCEEDED(TraceLoggingRegister(webgpu_ep_telemetry_provider_handle));
@@ -216,8 +270,12 @@ void LogEpCreation(const EpCreationInfo& info) noexcept {
     if (!ShouldLog()) {
       return;
     }
-    const std::string error_message = ScrubStringForTelemetry(info.error_message);
-    telemetry_detail::TelemetryStrings strings;
+    // TraceLoggingWrite evaluates arguments across several statements, so temporaries cannot own these strings.
+    const std::string error_message = ScrubPaths(info.error_message);
+    const std::string gpu_vendor = BoundedUtf8(info.gpu_vendor);
+    const std::string gpu_architecture = BoundedUtf8(info.gpu_architecture);
+    const std::string gpu_device = BoundedUtf8(info.gpu_device);
+    const std::string gpu_description = BoundedUtf8(info.gpu_description);
     TraceLoggingWrite(webgpu_ep_telemetry_provider_handle,
                       "WebGpuEpCreation",
                       TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
@@ -231,7 +289,7 @@ void LogEpCreation(const EpCreationInfo& info) noexcept {
                       TraceLoggingUInt32(info.ep_instance_id, "epInstanceId"),
                       TraceLoggingBoolean(info.success, "success"),
                       TraceLoggingUInt32(info.error_code, "errorCode"),
-                      TraceLoggingString(strings.Utf8(error_message), "errorMessage"),
+                      TraceLoggingString(error_message.c_str(), "errorMessage"),
                       TraceLoggingInt64(info.duration_us, "durationUs"),
                       TraceLoggingBoolean(info.compile_only, "compileOnly"),
                       TraceLoggingBoolean(info.virtual_device, "virtualDevice"),
@@ -243,10 +301,10 @@ void LogEpCreation(const EpCreationInfo& info) noexcept {
                       TraceLoggingString(info.has_device ? AdapterTypeName(info.adapter_type) : "", "adapterType"),
                       TraceLoggingUInt32(info.gpu_vendor_id, "gpuVendorId"),
                       TraceLoggingUInt32(info.gpu_device_id, "gpuDeviceId"),
-                      TraceLoggingString(strings.Utf8(info.gpu_vendor), "gpuVendor"),
-                      TraceLoggingString(strings.Utf8(info.gpu_architecture), "gpuArchitecture"),
-                      TraceLoggingString(strings.Utf8(info.gpu_device), "gpuDevice"),
-                      TraceLoggingString(strings.Utf8(info.gpu_description), "gpuDescription"),
+                      TraceLoggingString(gpu_vendor.c_str(), "gpuVendor"),
+                      TraceLoggingString(gpu_architecture.c_str(), "gpuArchitecture"),
+                      TraceLoggingString(gpu_device.c_str(), "gpuDevice"),
+                      TraceLoggingString(gpu_description.c_str(), "gpuDescription"),
                       TraceLoggingUInt32(info.subgroup_min_size, "subgroupMinSize"),
                       TraceLoggingUInt32(info.subgroup_max_size, "subgroupMaxSize"),
                       TraceLoggingBoolean(info.feature_shader_f16, "featureShaderF16"),
@@ -274,7 +332,8 @@ void LogGraphPartition(const GraphPartitionInfo& info) noexcept {
     if (!ShouldLog()) {
       return;
     }
-    telemetry_detail::TelemetryStrings strings;
+    const std::string no_kernel_op_types = BoundedUtf8(info.no_kernel_op_types);
+    const std::string unsupported_config_op_types = BoundedUtf8(info.unsupported_config_op_types);
     TraceLoggingWrite(webgpu_ep_telemetry_provider_handle,
                       "WebGpuGraphPartition",
                       TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
@@ -294,9 +353,9 @@ void LogGraphPartition(const GraphPartitionInfo& info) noexcept {
                       TraceLoggingUInt32(info.forced_cpu_nodes, "forcedCpuNodes"),
                       TraceLoggingUInt32(info.unsupported_config_nodes, "unsupportedConfigNodes"),
                       TraceLoggingUInt32(info.cpu_preferred_nodes, "cpuPreferredNodes"),
-                      TraceLoggingString(strings.Utf8(info.no_kernel_op_types), "noKernelOpTypes"),
+                      TraceLoggingString(no_kernel_op_types.c_str(), "noKernelOpTypes"),
                       TraceLoggingUInt32(info.no_kernel_op_type_count, "noKernelOpTypeCount"),
-                      TraceLoggingString(strings.Utf8(info.unsupported_config_op_types), "unsupportedConfigOpTypes"));
+                      TraceLoggingString(unsupported_config_op_types.c_str(), "unsupportedConfigOpTypes"));
   } catch (...) {
   }
 }
@@ -306,8 +365,7 @@ void LogDeviceError(const DeviceErrorInfo& info) noexcept {
     if (!ShouldLog()) {
       return;
     }
-    const std::string message = ScrubStringForTelemetry(info.message);
-    telemetry_detail::TelemetryStrings strings;
+    const std::string message = ScrubPaths(info.message);
     TraceLoggingWrite(webgpu_ep_telemetry_provider_handle,
                       "WebGpuDeviceError",
                       TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
@@ -319,7 +377,7 @@ void LogDeviceError(const DeviceErrorInfo& info) noexcept {
                       TraceLoggingString(HostOrtVersion(), "hostOrtVersion"),
                       TraceLoggingString(DeviceErrorKindName(info.kind), "errorKind"),
                       TraceLoggingUInt32(info.reason_code, "reasonCode"),
-                      TraceLoggingString(strings.Utf8(message), "errorMessage"),
+                      TraceLoggingString(message.c_str(), "errorMessage"),
                       TraceLoggingString(info.backend_type != 0 ? BackendTypeName(info.backend_type) : "",
                                          "backendType"),
                       TraceLoggingUInt32(info.gpu_vendor_id, "gpuVendorId"),

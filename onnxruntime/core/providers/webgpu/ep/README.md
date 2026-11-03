@@ -383,6 +383,13 @@ domains other than ONNX and ONNX Runtime are reported as `custom`. No model name
 data are collected. Telemetry is not registered in ORT unit-test processes or when `ORT_DISABLE_TELEMETRY` is
 truthy. The host's `OrtApi::DisableTelemetryEvents()` state is not visible to plugins.
 
+The telemetry code does not depend on ONNX Runtime's internal `core/platform` telemetry helpers, so it can move
+with the plugin to a separate repository. `telemetry_privacy.h` holds the plugin's copy of the string bounding and
+path redaction rules; `test_webgpu_telemetry_parity.cc` checks it against ONNX Runtime's redaction while both are
+in this repository. Upload requires a header that defines `TraceLoggingOptionMicrosoftTelemetry()`, supplied with
+the CMake option `onnxruntime_WEBGPU_EP_TRACELOGGING_CONFIG_HEADER`. In the ONNX Runtime build, the option
+defaults to the private header used by `onnxruntime_common` when the Windows telemetry backend is enabled.
+
 Device errors are observed through `WebGpuContext::SetDeviceErrorObserver`, which the plugin sets in
 `CreateEpFactories` and clears in `ReleaseEpFactory`. Built-in WebGPU never sets an observer.
 

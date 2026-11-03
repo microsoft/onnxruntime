@@ -6,14 +6,66 @@
 #include <gtest/gtest.h>
 
 #include "core/providers/webgpu/ep/telemetry_aggregation.h"
+#include "core/providers/webgpu/ep/telemetry_privacy.h"
 
 namespace onnxruntime {
 namespace test {
 
+using webgpu::ep::telemetry::BoundedUtf8;
+using webgpu::ep::telemetry::IsNonFalseEnvironmentValue;
+using webgpu::ep::telemetry::IsTrueEnvironmentValue;
+using webgpu::ep::telemetry::kMaxStringBytes;
 using webgpu::ep::telemetry::OpTypeCounter;
 using webgpu::ep::telemetry::OpTypeTelemetryKey;
 using webgpu::ep::telemetry::RunCounters;
+using webgpu::ep::telemetry::ScrubPaths;
 using webgpu::ep::telemetry::SummaryIntervalScheduler;
+
+TEST(WebGpuPluginTelemetryTest, ScrubPathsRedactsToEndOfMessage) {
+  EXPECT_EQ(ScrubPaths("no path here, n/a read/write"), "no path here, n/a read/write");
+  EXPECT_EQ(ScrubPaths("failed to load C:\\Users\\First Last\\model.onnx: bad"), "failed to load [path]");
+  EXPECT_EQ(ScrubPaths("open D:/models/x.onnx"), "open [path]");
+  EXPECT_EQ(ScrubPaths("share \\\\server\\share\\m.onnx"), "share [path]");
+  EXPECT_EQ(ScrubPaths("home ~/models/m.onnx"), "home [path]");
+  EXPECT_EQ(ScrubPaths("posix /home/jane doe/m.onnx"), "posix [path]");
+  EXPECT_EQ(ScrubPaths("relative alice\\models\\m.onnx"), "relative [path]");
+  EXPECT_EQ(ScrubPaths("domain\\user only"), "domain\\user only");
+}
+
+TEST(WebGpuPluginTelemetryTest, ScrubPathsBoundsLongInput) {
+  std::string long_message;
+  while (long_message.size() < 2 * kMaxStringBytes) {
+    long_message += "word ";
+  }
+  EXPECT_EQ(ScrubPaths(long_message).size(), kMaxStringBytes);
+  // Input beyond the scrub window: an unseen suffix could turn the last token into a path, so it is redacted.
+  EXPECT_EQ(ScrubPaths(std::string(20 * 1024, 'a')), "[path]");
+  const std::string truncated = std::string(10, 'x') + " " + std::string(20 * 1024, 'y');
+  EXPECT_EQ(ScrubPaths(truncated), std::string(10, 'x') + " [path]");
+}
+
+TEST(WebGpuPluginTelemetryTest, BoundedUtf8KeepsValidUtf8) {
+  EXPECT_EQ(BoundedUtf8("abc"), "abc");
+  EXPECT_EQ(BoundedUtf8("ab\xFF"
+                        "c"),
+            "ab?c");
+  // A two-byte codepoint that does not fit is omitted entirely.
+  EXPECT_EQ(BoundedUtf8("a\xC3\xA9", 2), "a");
+  EXPECT_EQ(BoundedUtf8(std::string(2000, 'z')).size(), kMaxStringBytes);
+}
+
+TEST(WebGpuPluginTelemetryTest, EnvironmentValueParsing) {
+  for (const char* value : {"1", "true", " YES ", "on", "y"}) {
+    EXPECT_TRUE(IsTrueEnvironmentValue(value)) << value;
+    EXPECT_TRUE(IsNonFalseEnvironmentValue(value)) << value;
+  }
+  for (const char* value : {"", "0", "false", "No", " off "}) {
+    EXPECT_FALSE(IsTrueEnvironmentValue(value)) << value;
+    EXPECT_FALSE(IsNonFalseEnvironmentValue(value)) << value;
+  }
+  EXPECT_FALSE(IsTrueEnvironmentValue("2"));
+  EXPECT_TRUE(IsNonFalseEnvironmentValue("2"));
+}
 
 TEST(WebGpuPluginTelemetryTest, OpTypeKeyBucketsCustomDomains) {
   EXPECT_EQ(OpTypeTelemetryKey("", "NonZero"), "ai.onnx:NonZero");
