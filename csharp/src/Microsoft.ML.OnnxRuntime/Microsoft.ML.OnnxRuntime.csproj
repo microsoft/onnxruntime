@@ -85,7 +85,7 @@
     <PackageId>Microsoft.ML.OnnxRuntime.Managed</PackageId>
     <PackageTags>ONNX;ONNX Runtime;Machine Learning</PackageTags>
     <PackageProjectUrl>https://github.com/Microsoft/onnxruntime</PackageProjectUrl>
-    <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageIcon>ORT_icon_for_light_bg.png</PackageIcon>
     <PackageReleaseNotes>
       Release Def:
@@ -94,7 +94,6 @@
         Build: https://aiinfra.visualstudio.com/Lotus/_build/results?buildId=$(BUILD_BUILDID)
     </PackageReleaseNotes>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
 
     <!-- sourcelink flags -->
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
