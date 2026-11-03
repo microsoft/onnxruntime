@@ -18,11 +18,26 @@
 #param n_bits
 #param broadcast_a_row
 #param has_zero_points
+#param has_qlora_up
 #param has_bias
 #param has_weight_idx
 #param has_weight_idx_indirect
+#param has_qlora_down
 
 #use .getByOffset .setByOffset
+
+fn write_qlora_output(offset: u32, value: output_element_t) {
+#if has_qlora_up
+  let row = (offset * 1u) / uniforms.N;
+  let col = (offset * 1u) % uniforms.N;
+  let delta = qlora_delta(row, col);
+  output.setByOffset(offset, value + delta);
+#else
+  output.setByOffset(offset, value);
+#endif
+}
+
+
 
 #include "quantization/dp4a_matmul_common.wgsl.template"
 
@@ -58,7 +73,51 @@ fn loadSHMA(batch: u32, a_global: u32, kidx_v: u32, col: u32)
     }
 }
 
+#if has_qlora_down
+// Eight extra workgroups compute rank 32 from the same quantized activation.
+// The next dispatch consumes both outputs, so no cross-workgroup barrier is needed.
+fn qlora_down(group: u32, local_idx: u32) {
+    let batch = group / 8u;
+    let rank_base = (group % 8u) * 4u;
+    let lane = local_idx % 32u;
+    let rank = local_idx / 32u;
+    var partial = f32(0);
+    for (var start = 0u; start < uniforms.K32; start += 32u) {
+        if (local_idx < 64u) { loadSHMA(batch, 0u, start * 2u, local_idx); }
+        workgroupBarrier();
+        let block = start + lane;
+        if (block < uniforms.K32) {
+            let offset = (rank_base + rank) * uniforms.K32 + block;
+            // XOR maps unsigned INT8 with zero point 128 to signed packed INT8.
+            let w0 = lora_a.getByOffset(offset * 2u) ^ vec4<u32>(0x80808080u);
+            let w1 = lora_a.getByOffset(offset * 2u + 1u) ^ vec4<u32>(0x80808080u);
+            partial += SDP8AI(tile_A[lane * 2u], w0, tile_A[lane * 2u + 1u], w1,
+                             scale_A[lane / 4u] * lora_a_scales.getByOffset(offset));
+        }
+        workgroupBarrier();
+    }
+    inter_results[rank][lane] = partial;
+    workgroupBarrier();
+    if (local_idx < 4u) {
+        var sum = f32(0);
+        for (var i = 0u; i < 32u; i++) { sum += inter_results[local_idx][i]; }
+        lora_down.setByOffset(batch * 32u + rank_base + local_idx, sum);
+    }
+}
+#endif
+
 $MAIN {
+#if has_qlora_down
+    let base_groups = uniforms.batch_count * uniforms.dispatch_M * uniforms.num_N_tile;
+    // Normalization may pad the dispatch beyond the eight adapter groups per batch.
+    if (workgroup_idx >= base_groups + uniforms.batch_count * 8u) {
+        return;
+    }
+    if (workgroup_idx >= base_groups) {
+        qlora_down(workgroup_idx - base_groups, local_idx);
+        return;
+    }
+#endif
     let batch = workgroup_idx / (uniforms.dispatch_M * uniforms.num_N_tile);
     if (batch >= uniforms.batch_count) {
         return;
@@ -207,9 +266,9 @@ $MAIN {
 #if has_bias
         let bias_value = acc_element_t(bias[b_global + b_bias_offset]);
         // Downcast to the output element type only at the final store.
-        output.setByOffset(output_idx, output_element_t(output_value + bias_value));
+        write_qlora_output(output_idx, output_element_t(output_value + bias_value));
 #else
-        output.setByOffset(output_idx, output_element_t(output_value));
+        write_qlora_output(output_idx, output_element_t(output_value));
 #endif
       }
     }
