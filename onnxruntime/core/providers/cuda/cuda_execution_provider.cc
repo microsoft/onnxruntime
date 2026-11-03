@@ -3752,12 +3752,24 @@ std::unique_ptr<onnxruntime::IDataTransfer> CUDAExecutionProvider::GetDataTransf
 }
 
 std::unique_ptr<onnxruntime::IExternalDataLoader> CUDAExecutionProvider::GetExternalDataLoader() const {
+#if defined(ORT_MINIMAL_BUILD) || defined(USE_CUDA_MINIMAL)
+  return nullptr;
+#else
   if (info_.external_data_loader_reading_threads == 0) {
     return nullptr;
   }
 
   return std::make_unique<cuda::ExternalDataLoader>(
-      info_.device_id, info_.external_data_loader_reading_threads);
+      info_.device_id,
+      info_.external_data_loader_reading_threads,
+      info_.external_data_loader_pinned_memory_bytes,
+      info_.external_data_loader_chunk_bytes,
+      info_.external_data_loader_reading_threads_explicit,
+      info_.external_data_loader_pinned_memory_bytes_explicit,
+      info_.external_data_loader_chunk_bytes_explicit,
+      info_.external_data_loader_min_size_bytes,
+      info_.external_data_loader_min_size_bytes_explicit);
+#endif
 }
 
 std::vector<std::unique_ptr<ComputeCapability>>

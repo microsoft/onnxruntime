@@ -31,6 +31,8 @@
 #include "test/util/include/default_providers.h"
 #include "test/util/include/file_util.h"
 
+#if !defined(ORT_MINIMAL_BUILD) && !defined(USE_CUDA_MINIMAL)
+
 namespace onnxruntime {
 namespace test {
 namespace {
@@ -215,6 +217,34 @@ TEST(CudaExternalDataLoaderTest, RejectsTooManyReadingThreadsFromStructOptions) 
   }
 
   EXPECT_EQ(CudaExecutionProviderWithOptions(&provider_options), nullptr);
+}
+
+TEST(CudaExternalDataLoaderTest, ValidatesPinnedMemoryAndChunkBytesFromStructOptions) {
+  {
+    OrtCUDAProviderOptionsV2 provider_options{};
+    provider_options.external_data_loader_pinned_memory_bytes =
+        OrtCUDAProviderOptionsV2::kMinExternalDataLoaderPinnedMemoryBytes;
+    provider_options.external_data_loader_chunk_bytes =
+        OrtCUDAProviderOptionsV2::kMinExternalDataLoaderChunkBytes;
+    Ort::SessionOptions valid_session_options;
+    EXPECT_NO_THROW(valid_session_options.AppendExecutionProvider_CUDA_V2(provider_options));
+  }
+
+  {
+    OrtCUDAProviderOptionsV2 provider_options{};
+    provider_options.external_data_loader_pinned_memory_bytes = 4096;  // below 1 MiB minimum
+    Ort::SessionOptions invalid_session_options;
+    EXPECT_THROW(invalid_session_options.AppendExecutionProvider_CUDA_V2(provider_options), Ort::Exception);
+    EXPECT_EQ(CudaExecutionProviderWithOptions(&provider_options), nullptr);
+  }
+
+  {
+    OrtCUDAProviderOptionsV2 provider_options{};
+    provider_options.external_data_loader_chunk_bytes = 2048;  // below 4 KiB minimum
+    Ort::SessionOptions invalid_session_options;
+    EXPECT_THROW(invalid_session_options.AppendExecutionProvider_CUDA_V2(provider_options), Ort::Exception);
+    EXPECT_EQ(CudaExecutionProviderWithOptions(&provider_options), nullptr);
+  }
 }
 
 TEST(CudaExternalDataLoaderTest, ReusesAlternatingBuffersAcrossRepeatedLoads) {
@@ -425,3 +455,5 @@ TEST(CudaExternalDataLoaderTest, RestoresCurrentDevice) {
 }
 }  // namespace test
 }  // namespace onnxruntime
+
+#endif  // !defined(ORT_MINIMAL_BUILD) && !defined(USE_CUDA_MINIMAL)

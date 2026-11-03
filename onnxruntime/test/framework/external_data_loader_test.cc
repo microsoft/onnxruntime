@@ -22,6 +22,7 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/inference_session.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/test_environment.h"
 #include "test/unittest_util/framework_test_utils.h"
 #include "test/util/include/asserts.h"
@@ -43,6 +44,8 @@ struct LoaderState {
   bool fail_creation{false};
   ReadFailure failure{ReadFailure::None};
   InlinedVector<FileOffsetType> offsets;
+  ExternalDataLoaderOptions configured_options{};
+  bool is_enabled{true};
 };
 
 class TrackingExternalDataLoader final : public IExternalDataLoader {
@@ -54,6 +57,18 @@ class TrackingExternalDataLoader final : public IExternalDataLoader {
 
   bool CanLoad(const OrtMemoryInfo& memory_info) const override {
     return memory_info.device.Type() == OrtDevice::CPU;
+  }
+
+  bool IsEnabled() const noexcept override {
+    return state_->is_enabled;
+  }
+
+  common::Status Configure(const ExternalDataLoaderOptions& options) const override {
+    state_->configured_options = options;
+    if (options.reading_threads.has_value() && *options.reading_threads == 0) {
+      state_->is_enabled = false;
+    }
+    return common::Status::OK();
   }
 
 #if defined(__wasm__)
@@ -285,6 +300,62 @@ TEST_F(ExternalDataLoaderLifetimeTest, ReleasesOnReadFailure) {
   TestFailedInitialization(ReadFailure::Status);
 }
 
+TEST_F(ExternalDataLoaderLifetimeTest, ConfiguresLoaderFromSessionOptions) {
+  ASSERT_NO_FATAL_FAILURE(CreateSession());
+  auto& config_options = session_->GetMutableSessionOptions().config_options;
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(kOrtSessionOptionsExternalDataLoaderThreads, "8"));
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(
+      kOrtSessionOptionsExternalDataLoaderPinnedMemoryBytes, "33554432"));
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(
+      kOrtSessionOptionsExternalDataLoaderChunkBytes, "1048576"));
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(
+      kOrtSessionOptionsExternalDataLoaderMinSizeBytes, "8388608"));
+  ASSERT_STATUS_OK(session_->Initialize());
+  ExpectReleased(1);
+  EXPECT_EQ(state_->offsets.size(), 1U);
+  EXPECT_EQ(state_->configured_options.reading_threads, std::optional<size_t>{8});
+  EXPECT_EQ(state_->configured_options.pinned_memory_bytes, std::optional<size_t>{33554432});
+  EXPECT_EQ(state_->configured_options.chunk_bytes, std::optional<size_t>{1048576});
+  EXPECT_EQ(state_->configured_options.min_size_bytes, std::optional<size_t>{8388608});
+  ASSERT_NO_FATAL_FAILURE(Run(true, true));
+}
+
+TEST_F(ExternalDataLoaderLifetimeTest, DisablesLoaderWhenSessionOptionsThreadsIsZero) {
+  ASSERT_NO_FATAL_FAILURE(CreateSession());
+  ASSERT_STATUS_OK(session_->GetMutableSessionOptions().config_options.AddConfigEntry(
+      kOrtSessionOptionsExternalDataLoaderThreads, "0"));
+  ASSERT_STATUS_OK(session_->Initialize());
+  ExpectReleased(1);
+  // Loader was disabled by threads=0, so the framework's default CPU path loaded the tensor.
+  EXPECT_TRUE(state_->offsets.empty());
+  ASSERT_NO_FATAL_FAILURE(Run(true, true));
+}
+
+TEST_F(ExternalDataLoaderLifetimeTest, RejectsInvalidSessionOptionValues) {
+  struct InvalidCase {
+    const char* key;
+    const char* value;
+  };
+  const std::array<InvalidCase, 6> invalid_cases{{
+      {kOrtSessionOptionsExternalDataLoaderThreads, "65"},
+      {kOrtSessionOptionsExternalDataLoaderThreads, "-1"},
+      {kOrtSessionOptionsExternalDataLoaderPinnedMemoryBytes, "4096"},
+      {kOrtSessionOptionsExternalDataLoaderPinnedMemoryBytes, "1048577"},
+      {kOrtSessionOptionsExternalDataLoaderChunkBytes, "2048"},
+      {kOrtSessionOptionsExternalDataLoaderChunkBytes, "134217728"},
+  }};
+  for (const auto& test_case : invalid_cases) {
+    SCOPED_TRACE(std::string(test_case.key) + "=" + test_case.value);
+    state_ = std::make_shared<LoaderState>();
+    ASSERT_NO_FATAL_FAILURE(CreateSession());
+    ASSERT_STATUS_OK(session_->GetMutableSessionOptions().config_options.AddConfigEntry(
+        test_case.key, test_case.value));
+    const auto status = session_->Initialize();
+    ASSERT_FALSE(status.IsOK());
+    EXPECT_EQ(status.Code(), common::INVALID_ARGUMENT);
+  }
+}
+
 #ifndef ORT_NO_EXCEPTIONS
 TEST_F(ExternalDataLoaderLifetimeTest, ReleasesOnReadException) {
   TestFailedInitialization(ReadFailure::Exception);
@@ -308,13 +379,14 @@ TEST_F(ExternalDataLoaderLifetimeTest, RecreatesLoaderAfterFactoryFailure) {
 
 #endif
 
-#if defined(ENABLE_D3D12_FILE_LOADING)
+#if !defined(ORT_MINIMAL_BUILD)
 class BatchLifecycleExternalDataLoader final : public IExternalDataLoader {
  public:
   enum class FailurePoint {
     None,
     Begin,
     CommitCandidates,
+    Finalize,
   };
 
   explicit BatchLifecycleExternalDataLoader(FailurePoint failure_point = FailurePoint::None)
@@ -332,12 +404,21 @@ class BatchLifecycleExternalDataLoader final : public IExternalDataLoader {
                : common::Status::OK();
   }
 
+  common::Status FinalizeLoad(const std::function<bool()>&) const override {
+    ++finalize_count;
+    return failure_point_ == FailurePoint::Finalize
+               ? ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "finalize failure")
+               : common::Status::OK();
+  }
+
+#if defined(ENABLE_D3D12_FILE_LOADING)
   common::Status CommitLoadCandidates(const std::function<bool()>&) const override {
     ++commit_candidates_count;
     return failure_point_ == FailurePoint::CommitCandidates
                ? ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "commit failure")
                : common::Status::OK();
   }
+#endif
 
   void EndLoad() const noexcept override {
     ++end_count;
@@ -345,6 +426,7 @@ class BatchLifecycleExternalDataLoader final : public IExternalDataLoader {
 
   mutable int begin_count = 0;
   mutable int commit_candidates_count = 0;
+  mutable int finalize_count = 0;
   mutable int end_count = 0;
 
  private:
@@ -362,7 +444,10 @@ TEST(ExternalDataLoaderManagerTest, DefaultBatchLifecycleIsBackwardCompatible) {
   ExternalDataLoaderManager manager;
   ASSERT_STATUS_OK(manager.RegisterExternalDataLoader(std::make_unique<LegacyExternalDataLoader>()));
   EXPECT_STATUS_OK(manager.BeginLoad());
+#if defined(ENABLE_D3D12_FILE_LOADING)
   EXPECT_STATUS_OK(manager.CommitLoadCandidates([]() { return false; }));
+#endif
+  EXPECT_STATUS_OK(manager.FinalizeLoad([]() { return false; }));
   manager.EndLoad();
 }
 
@@ -384,6 +469,26 @@ TEST(ExternalDataLoaderManagerTest, BeginFailureEndsEveryLoader) {
   EXPECT_EQ(failing_ptr->end_count, 1);
 }
 
+TEST(ExternalDataLoaderManagerTest, FinalizeFailureEndsEveryLoader) {
+  ExternalDataLoaderManager manager;
+  auto failing = std::make_unique<BatchLifecycleExternalDataLoader>(
+      BatchLifecycleExternalDataLoader::FailurePoint::Finalize);
+  auto* failing_ptr = failing.get();
+  auto second = std::make_unique<BatchLifecycleExternalDataLoader>();
+  auto* second_ptr = second.get();
+
+  ASSERT_STATUS_OK(manager.RegisterExternalDataLoader(std::move(failing)));
+  ASSERT_STATUS_OK(manager.RegisterExternalDataLoader(std::move(second)));
+
+  ASSERT_STATUS_OK(manager.BeginLoad());
+  EXPECT_FALSE(manager.FinalizeLoad([]() { return false; }).IsOK());
+  EXPECT_EQ(failing_ptr->finalize_count, 1);
+  EXPECT_EQ(second_ptr->finalize_count, 0);
+  EXPECT_EQ(failing_ptr->end_count, 1);
+  EXPECT_EQ(second_ptr->end_count, 1);
+}
+
+#if defined(ENABLE_D3D12_FILE_LOADING)
 TEST(ExternalDataLoaderManagerTest, CommitCandidatesFailureEndsEveryLoader) {
   ExternalDataLoaderManager manager;
   auto failing = std::make_unique<BatchLifecycleExternalDataLoader>(
@@ -403,6 +508,7 @@ TEST(ExternalDataLoaderManagerTest, CommitCandidatesFailureEndsEveryLoader) {
   EXPECT_EQ(uncommitted_ptr->end_count, 1);
 }
 #endif
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 }  // namespace
 }  // namespace test
