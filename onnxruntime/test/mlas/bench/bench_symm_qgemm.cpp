@@ -59,7 +59,7 @@ void SYMMQGEMM(benchmark::State& state, bool a_signed) {
     gemm_params.A = A_holder.data() + M * K * i;
     gemm_params.C = C_holder.data() + M * N * i;
 
-    MlasSymmQgemmPackB(N, K, (const int8_t*)gemm_params.B, N, a_signed, a_zero_point, (void*)(pack_b_holder.data() + packed_b_size * i));
+    MlasSymmQgemmPackB(N, K, B_holder.data() + N * K * i, N, a_signed, a_zero_point, (void*)(pack_b_holder.data() + packed_b_size * i));
     gemm_params.B = (void*)(pack_b_holder.data() + packed_b_size * i);
   }
   for (auto _ : state) {
