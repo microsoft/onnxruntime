@@ -1,0 +1,40 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+// Per-token int8 quantization of A for the per-channel DP4A path: one workgroup and one
+// scale per row. The absmax reduction uses shared memory instead of subgroup builtins
+// so the shader runs wherever the blockwise DP4A kernels do (browsers do not expose
+// subgroup_id). An all-zero row gets scale 0 instead of NaN.
+
+#use .getByOffset .setByOffset
+
+var<workgroup> row_max_shm : array<f32, workgroup_size_x>;
+
+$MAIN {
+  let row_base = workgroup_idx * uniforms.K4;
+
+  var local_max = vec4<f32>(0);
+  for (var i = local_idx; i < uniforms.K4; i += workgroup_size_x) {
+    local_max = max(local_max, abs(vec4<f32>(a.getByOffset(row_base + i))));
+  }
+  let max_xy = max(local_max.xy, local_max.zw);
+  row_max_shm[local_idx] = max(max_xy.x, max_xy.y);
+  workgroupBarrier();
+  for (var stride = workgroup_size_x / 2u; stride > 0u; stride = stride / 2u) {
+    if (local_idx < stride) {
+      row_max_shm[local_idx] = max(row_max_shm[local_idx], row_max_shm[local_idx + stride]);
+    }
+    workgroupBarrier();
+  }
+  let row_max = row_max_shm[0];
+
+  for (var i = local_idx; i < uniforms.K4; i += workgroup_size_x) {
+    let value = vec4<f32>(a.getByOffset(row_base + i));
+    let norm = select(vec4<f32>(0), value / row_max, row_max > 0.0);
+    output.setByOffset(row_base + i, pack4x8snorm(norm));
+  }
+  if (local_idx == 0) {
+    // 127 is the max value of signed int8 [-127,127] used by pack4x8snorm for 1.0f.
+    scales.setByOffset(workgroup_idx, scales_element_t(row_max / 127.0));
+  }
+}  // MAIN
