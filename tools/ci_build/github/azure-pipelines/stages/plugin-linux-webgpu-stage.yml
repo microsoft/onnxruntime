@@ -32,10 +32,10 @@ stages:
       os: linux
   variables:
     ${{ if eq(parameters.arch, 'aarch64') }}:
-      DockerBaseImage: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cpu_aarch64_almalinux8_gcc14:20251017.1
+      DockerBaseImage: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cpu_aarch64_almalinux8_gcc14@sha256:520921c97d37ae97e5663b36130b91a79dd2d7d570087386ef4ce12004568281
       DockerRepository: onnxruntimewebgpupluginaarch64
     ${{ else }}:
-      DockerBaseImage: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cpu_x64_almalinux8_gcc14:20251017.1
+      DockerBaseImage: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cpu_x64_almalinux8_gcc14@sha256:2de06c32024c7783233c251e53c8e1247606184d2969f1a5e9b275e1002c6565
       DockerRepository: onnxruntimewebgpuplugin
   jobs:
   - job: Linux_plugin_webgpu_${{ parameters.arch }}_Build

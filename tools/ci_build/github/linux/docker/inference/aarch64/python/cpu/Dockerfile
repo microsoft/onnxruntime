@@ -1,4 +1,4 @@
-ARG BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cpu_aarch64_almalinux8_gcc14:20251017.1
+ARG BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cpu_aarch64_almalinux8_gcc14@sha256:520921c97d37ae97e5663b36130b91a79dd2d7d570087386ef4ce12004568281
 FROM $BASEIMAGE
 
 ADD scripts /tmp/scripts

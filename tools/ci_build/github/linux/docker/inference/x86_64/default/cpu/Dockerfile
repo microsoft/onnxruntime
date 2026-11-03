@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 
 # This file is used by Zip-Nuget Packaging NoContribOps Pipeline,Zip-Nuget-Java Packaging Pipeline
-ARG BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cpu_x64_almalinux8_gcc14_dotnet:20251017.1
+ARG BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cpu_x64_almalinux8_gcc14_dotnet@sha256:0f8e29b82f43e7092ef4ff70c5ea70fb7c3ebb376816640fe2c177b966323982
 FROM $BASEIMAGE
 
 ENV LANG=en_US.UTF-8
