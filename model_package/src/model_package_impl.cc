@@ -55,6 +55,15 @@ bool IsAncestorOrEqual(const fs::path& ancestor, const fs::path& candidate) {
 
 namespace model_package {
 
+bool IsLinkLike(const fs::file_status& status) noexcept {
+  if (fs::is_symlink(status)) return true;
+#ifdef _WIN32
+  return status.type() == fs::file_type::junction;
+#else
+  return false;
+#endif
+}
+
 ModelPackageStatus* NormalizePathForLinkInspection(const fs::path& path,
                                                    const std::string& where,
                                                    fs::path* normalized) {
@@ -77,6 +86,32 @@ ModelPackageStatus* NormalizePathForLinkInspection(const fs::path& path,
     result = result.parent_path();
   }
   *normalized = std::move(result);
+  return nullptr;
+}
+
+ModelPackageStatus* ValidateDirectorySourceNoFollow(const fs::path& path,
+                                                    const std::string& where,
+                                                    fs::path* normalized) {
+  if (auto* s = NormalizePathForLinkInspection(path, where, normalized)) return s;
+
+  std::error_code ec;
+  const fs::file_status status = fs::symlink_status(*normalized, ec);
+  if (ec) {
+    if (ec == std::errc::no_such_file_or_directory) {
+      return MakeStatus(MODEL_PACKAGE_ERR_NOT_FOUND,
+                        where + ": '" + path.u8string() + "' is not a directory.");
+    }
+    return MakeStatus(MODEL_PACKAGE_ERR_IO,
+                      where + ": cannot inspect '" + path.u8string() + "': " + ec.message());
+  }
+  if (IsLinkLike(status)) {
+    return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
+                      where + ": source directory cannot be a link: '" + path.u8string() + "'.");
+  }
+  if (!fs::is_directory(status)) {
+    return MakeStatus(MODEL_PACKAGE_ERR_NOT_FOUND,
+                      where + ": '" + path.u8string() + "' is not a directory.");
+  }
   return nullptr;
 }
 
@@ -117,7 +152,7 @@ ModelPackageStatus* ValidatePortablePath(const fs::path& package_root,
                         "Cannot inspect portable path '" + current.u8string() +
                             "': " + ec.message());
     }
-    if (fs::is_symlink(status)) {
+    if (IsLinkLike(status)) {
       return MakeStatus(MODEL_PACKAGE_ERR_PATH_CONFINEMENT,
                         "Portable path contains a link: '" + current.u8string() + "'.");
     }

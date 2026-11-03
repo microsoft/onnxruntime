@@ -6,6 +6,7 @@
 
 #include "model_package.h"
 #include "model_package_api.h"
+#include "model_package_impl.h"
 
 #include <chrono>
 #include <cstdio>
@@ -433,6 +434,61 @@ bool test_prune_reports_unstatable_shared_assets_entry() {
   return true;
 }
 
+bool test_prune_skips_stale_staging_links() {
+  Sandbox s;
+  PkgHandle p = MakeAuthoredPkgAt(s.path("pkg"));
+  CHECK_OK(ModelPackage_Commit(p.get(), s.path("pkg").u8string().c_str(),
+                               MODEL_PACKAGE_WRITE_PRESERVE));
+
+  const fs::path assets_root = s.path("pkg") / "shared_assets";
+  const fs::path linked_stage = assets_root /
+                                ("sha256-" + std::string(64, 'a') + ".tmp.link");
+  const fs::path regular_stage = assets_root /
+                                 ("sha256-" + std::string(64, 'b') + ".tmp.regular");
+  fs::create_directories(s.path("outside"));
+  fs::create_directories(regular_stage);
+  std::error_code ec;
+  fs::create_directory_symlink(s.path("outside"), linked_stage, ec);
+  if (ec) {
+    std::printf("[SKIP] %s (symlink unsupported)\n", g_current);
+    return true;
+  }
+  fs::last_write_time(regular_stage,
+                      fs::file_time_type::clock::now() - std::chrono::seconds(120), ec);
+
+  CHECK_OK(ModelPackage_Prune(p.get()));
+  CHECK(fs::is_symlink(linked_stage));
+  CHECK(!fs::exists(regular_stage));
+  return true;
+}
+
+#ifdef _WIN32
+bool test_windows_junction_status_is_link_like() {
+  Sandbox s;
+  const fs::path target = s.path("junction_target");
+  const fs::path junction = s.path("junction");
+  fs::create_directories(target);
+  const std::wstring command =
+      L"cmd.exe /d /c mklink /J \"" + junction.wstring() + L"\" \"" +
+      target.wstring() + L"\" >nul";
+  if (::_wsystem(command.c_str()) != 0) {
+    std::printf("[SKIP] %s (junction creation unsupported)\n", g_current);
+    return true;
+  }
+
+  std::error_code ec;
+  CHECK(model_package::IsLinkLike(fs::symlink_status(junction, ec)));
+  CHECK(!ec);
+  CHECK_ERR(model_package::ValidatePortablePath(s.root(), junction, true),
+            MODEL_PACKAGE_ERR_PATH_CONFINEMENT);
+  fs::path inspected_source;
+  CHECK_ERR(model_package::ValidateDirectorySourceNoFollow(
+                junction, "junction test", &inspected_source),
+            MODEL_PACKAGE_ERR_SCHEMA);
+  return true;
+}
+#endif
+
 bool test_open_rejects_linked_shared_asset_paths() {
   Sandbox s;
   PkgHandle p = MakeAuthoredPkgAt(s.path("pkg"));
@@ -488,13 +544,22 @@ bool test_shared_asset_mutations_reject_replaced_parent() {
   CHECK_ERR(ModelPackage_RemoveSharedAsset(p.get(), asset_uri.c_str()),
             MODEL_PACKAGE_ERR_PATH_CONFINEMENT);
   CHECK(fs::is_regular_file(s.path("outside/marker.txt")));
+  const ModelPackageInfo* info = ModelPackage_Info(p.get());
+  CHECK(info->num_shared_assets == 1);
+  CHECK(std::string(info->shared_assets[0].uri) == asset_uri);
   CHECK_ERR(ModelPackage_Prune(p.get()), MODEL_PACKAGE_ERR_PATH_CONFINEMENT);
   CHECK(fs::is_regular_file(s.path("outside/marker.txt")));
 
-  const char* second_uri = nullptr;
-  CHECK_ERR(ModelPackage_AddSharedAsset(p.get(), s.path("source").u8string().c_str(),
+  s.Write("second_source/model.onnx", "different asset");
+  const char* const unchanged = "unchanged";
+  const char* second_uri = unchanged;
+  CHECK_ERR(ModelPackage_AddSharedAsset(p.get(), s.path("second_source").u8string().c_str(),
                                         nullptr, true, &second_uri),
             MODEL_PACKAGE_ERR_PATH_CONFINEMENT);
+  CHECK(second_uri == unchanged);
+  info = ModelPackage_Info(p.get());
+  CHECK(info->num_shared_assets == 1);
+  CHECK(std::string(info->shared_assets[0].uri) == asset_uri);
   CHECK(fs::is_regular_file(s.path("outside/marker.txt")));
   return true;
 }
@@ -528,7 +593,7 @@ bool test_dest_commit_rejects_replaced_asset_link() {
   return true;
 }
 
-bool test_rejects_linked_source_root_spellings() {
+bool test_linked_source_root_behavior() {
   Sandbox s;
   s.Write("outside/marker.txt", "keep");
   std::error_code ec;
@@ -539,15 +604,33 @@ bool test_rejects_linked_source_root_spellings() {
   }
 
   const char* uri = nullptr;
+  std::string expected_uri;
   for (const char* suffix : {"/", "/."}) {
     const std::string linked_source = s.path("source").u8string() + suffix;
-    CHECK_ERR(ModelPackage_ComputeDirectoryHash(linked_source.c_str(), &uri),
-              MODEL_PACKAGE_ERR_SCHEMA);
+    CHECK_OK(ModelPackage_ComputeDirectoryHash(linked_source.c_str(), &uri));
+    if (expected_uri.empty()) {
+      expected_uri = uri;
+    } else {
+      CHECK(std::string(uri) == expected_uri);
+    }
   }
+
+  PkgHandle installed = MakeAuthoredPkgAt(s.path("installed"), "installed");
+  CHECK_OK(ModelPackage_AddSharedAsset(installed.get(), s.path("source").u8string().c_str(),
+                                       expected_uri.c_str(), false, &uri));
+  CHECK((ModelPackage_Info(installed.get()))->num_shared_assets == 1);
+
+  PkgHandle p = MakeAuthoredPkgAt(s.path("pkg"));
+  const char* const unchanged = "unchanged";
+  uri = unchanged;
+  CHECK_ERR(ModelPackage_AddSharedAsset(p.get(), s.path("source").u8string().c_str(),
+                                        nullptr, true, &uri),
+            MODEL_PACKAGE_ERR_SCHEMA);
+  CHECK(uri == unchanged);
+  CHECK((ModelPackage_Info(p.get()))->num_shared_assets == 0);
 
   fs::remove(s.path("source"), ec);
   s.Write("source/model.onnx", "asset");
-  PkgHandle p = MakeAuthoredPkgAt(s.path("pkg"));
   const std::string source_with_dot = s.path("source").u8string() + "/.";
   CHECK_OK(ModelPackage_AddSharedAsset(p.get(), source_with_dot.c_str(),
                                        nullptr, true, &uri));
@@ -730,10 +813,14 @@ const Test kTests[] = {
     {"prune_reclaims_tracked_orphan_variant_dirs", test_prune_reclaims_tracked_orphan_variant_dirs},
     {"prune_removes_stale_staging_dirs", test_prune_removes_stale_staging_dirs},
     {"prune_reports_unstatable_shared_assets_entry", test_prune_reports_unstatable_shared_assets_entry},
+    {"prune_skips_stale_staging_links", test_prune_skips_stale_staging_links},
+#ifdef _WIN32
+    {"windows_junction_status_is_link_like", test_windows_junction_status_is_link_like},
+#endif
     {"open_rejects_linked_shared_asset_paths", test_open_rejects_linked_shared_asset_paths},
     {"shared_asset_mutations_reject_replaced_parent", test_shared_asset_mutations_reject_replaced_parent},
     {"dest_commit_rejects_replaced_asset_link", test_dest_commit_rejects_replaced_asset_link},
-    {"rejects_linked_source_root_spellings", test_rejects_linked_source_root_spellings},
+    {"linked_source_root_behavior", test_linked_source_root_behavior},
     {"open_rejects_linked_manifest_override", test_open_rejects_linked_manifest_override},
     {"commit_accepts_relative_destination_roots", test_commit_accepts_relative_destination_roots},
     {"commit_accepts_unreferenced_shared_asset", test_commit_accepts_unreferenced_shared_asset},

@@ -41,7 +41,7 @@ ModelPackageStatus* ComputeDirectoryAssetUri(const fs::path& source_dir,
     return s;
   }
   std::error_code ec;
-  const fs::file_status source_status = fs::symlink_status(inspected_source, ec);
+  const fs::file_status source_status = fs::status(inspected_source, ec);
   if (ec) {
     if (ec == std::errc::no_such_file_or_directory) {
       return MakeStatus(MODEL_PACKAGE_ERR_NOT_FOUND,
@@ -50,11 +50,6 @@ ModelPackageStatus* ComputeDirectoryAssetUri(const fs::path& source_dir,
     return MakeStatus(MODEL_PACKAGE_ERR_IO,
                       "ComputeDirectoryAssetUri: cannot inspect '" + source_dir.u8string() +
                           "': " + ec.message());
-  }
-  if (fs::is_symlink(source_status)) {
-    return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
-                      "ComputeDirectoryAssetUri: source directory cannot be a symlink: '" +
-                          source_dir.u8string() + "'.");
   }
   if (!fs::exists(source_status) || !fs::is_directory(source_status)) {
     return MakeStatus(MODEL_PACKAGE_ERR_NOT_FOUND,
@@ -74,7 +69,7 @@ ModelPackageStatus* ComputeDirectoryAssetUri(const fs::path& source_dir,
   std::error_code iter_ec;
   for (; !iter_ec && walker != fs::recursive_directory_iterator(); walker.increment(iter_ec)) {
     const fs::directory_entry& de = *walker;
-    if (de.is_symlink(ec)) {
+    if (IsLinkLike(de.symlink_status(ec))) {
       return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
                         "ComputeDirectoryAssetUri: symlink not allowed: '" + de.path().u8string() + "'.");
     }

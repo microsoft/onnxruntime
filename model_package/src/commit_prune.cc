@@ -113,28 +113,11 @@ ModelPackageStatus* CopyTreeNoFollow(const fs::path& src, const fs::path& dst) {
   // with the directory hash semantics) so the on-disk bytes match the URI we
   // already computed.
   fs::path inspected_source;
-  if (auto* s = mp::NormalizePathForLinkInspection(
+  if (auto* s = mp::ValidateDirectorySourceNoFollow(
           src, "shared asset source", &inspected_source)) {
     return s;
   }
   std::error_code ec;
-  fs::file_status source_status = fs::symlink_status(inspected_source, ec);
-  if (ec) {
-    if (ec == std::errc::no_such_file_or_directory) {
-      return MakeStatus(MODEL_PACKAGE_ERR_NOT_FOUND,
-                        "shared asset source is not a directory: '" + src.u8string() + "'.");
-    }
-    return MakeStatus(MODEL_PACKAGE_ERR_IO,
-                      "stat '" + src.u8string() + "': " + ec.message());
-  }
-  if (fs::is_symlink(source_status)) {
-    return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
-                      "shared asset source cannot be a symlink: '" + src.u8string() + "'.");
-  }
-  if (!fs::is_directory(source_status)) {
-    return MakeStatus(MODEL_PACKAGE_ERR_NOT_FOUND,
-                      "shared asset source is not a directory: '" + src.u8string() + "'.");
-  }
   fs::create_directories(dst, ec);
   if (ec) return MakeStatus(MODEL_PACKAGE_ERR_IO,
                             "mkdir '" + dst.u8string() + "': " + ec.message());
@@ -147,7 +130,7 @@ ModelPackageStatus* CopyTreeNoFollow(const fs::path& src, const fs::path& dst) {
     fs::file_status st = entry.symlink_status(ec);
     if (ec) return MakeStatus(MODEL_PACKAGE_ERR_IO,
                               "stat '" + entry.path().u8string() + "': " + ec.message());
-    if (fs::is_symlink(st)) {
+    if (mp::IsLinkLike(st)) {
       return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
                         "shared asset source contains a symlink: '" + entry.path().u8string() + "'.");
     }
@@ -443,6 +426,8 @@ ModelPackageStatus* CommitToDestRoot(ModelPackage* pkg,
   }
   // Only materialize shared_assets/ when something will actually land in it.
   if (!to_copy.empty()) {
+    // A destination commit always creates a self-contained package, even when
+    // the source package uses installed-layout external asset overrides.
     if (auto* s = mp::ValidatePortablePath(dest_root, assets_root, /*must_exist=*/false)) return s;
     fs::create_directories(assets_root, ec);
     if (ec) return MakeStatus(MODEL_PACKAGE_ERR_IO,
@@ -694,6 +679,11 @@ ModelPackageStatus* ModelPackage_Prune(ModelPackage* pkg) MODEL_PACKAGE_TRY {
     std::error_code open_ec, iter_ec;
     for (fs::directory_iterator it(assets_root, open_ec), end; !iter_ec && it != end; it.increment(iter_ec)) {
       const auto& entry = *it;
+      fs::file_status link_status = entry.symlink_status(ec);
+      if (link_status.type() == fs::file_type::none) {
+        return MakeStatus(MODEL_PACKAGE_ERR_IO, "stat '" + entry.path().u8string() + "': " + ec.message());
+      }
+      if (mp::IsLinkLike(link_status)) continue;
       fs::file_status st = entry.status(ec);
       if (st.type() == fs::file_type::none) {
         return MakeStatus(MODEL_PACKAGE_ERR_IO, "stat '" + entry.path().u8string() + "': " + ec.message());
