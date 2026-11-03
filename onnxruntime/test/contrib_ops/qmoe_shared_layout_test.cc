@@ -1900,20 +1900,26 @@ TEST(QMoESharedLayoutTest, Int2GuardPageAndReadOnlyBanks) {
   uint8_t* weights = mapping + page - 128;
   std::memset(weights, 0x9B, 128);
   ASSERT_EQ(mprotect(mapping, page, PROT_READ), 0);
-  const uint16_t scale = shared::FloatToBFloat16(0.125f);
+  // One complete eight-column tile (k = 64): its last weight byte sits right before the protected page.
+  std::array<uint16_t, 8> scales;
+  for (size_t c = 0; c < scales.size(); ++c) {
+    scales[c] = shared::FloatToBFloat16(0.125f * static_cast<float>(c + 1));
+  }
   std::array<float, 64> a;
   a.fill(0.25f);
-  float scalar = 0.0f;
-  float dispatched = 0.0f;
-  shared::Int2GemmRange(weights, &scale, nullptr, 64,
+  std::array<float, 8> scalar{};
+  std::array<float, 8> dispatched{};
+  shared::Int2GemmRange(weights, scales.data(), nullptr, 64,
                         /*scales_are_block_major=*/false, /*weights_are_prepacked=*/true,
                         /*scale_is_bf16=*/true, /*bias_is_bf16=*/true,
-                        1, 64, a.data(), 1, &scalar, 1, 0, 1, /*force_scalar=*/true);
-  shared::Int2GemmRange(weights, &scale, nullptr, 64,
+                        8, 64, a.data(), 1, scalar.data(), 8, 0, 8, /*force_scalar=*/true);
+  shared::Int2GemmRange(weights, scales.data(), nullptr, 64,
                         /*scales_are_block_major=*/false, /*weights_are_prepacked=*/true,
                         /*scale_is_bf16=*/true, /*bias_is_bf16=*/true,
-                        1, 64, a.data(), 1, &dispatched, 1, 0, 1, /*force_scalar=*/false);
-  EXPECT_NEAR(scalar, dispatched, 1e-6f);
+                        8, 64, a.data(), 1, dispatched.data(), 8, 0, 8, /*force_scalar=*/false);
+  for (size_t c = 0; c < scalar.size(); ++c) {
+    EXPECT_NEAR(scalar[c], dispatched[c], 1e-6f) << "column " << c;
+  }
   EXPECT_EQ(munmap(mapping, 2 * page), 0);
 #else
   GTEST_SKIP() << "Read-only guard-page test requires mmap.";

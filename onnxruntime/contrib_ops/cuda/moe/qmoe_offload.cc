@@ -8243,7 +8243,6 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
       return Status::OK();
     }
     if (int2_bank_mode_) {
-      const int prefill_tc_min_rows = moe_tc_min_rows_ > 0 ? 1 : 0;
       if (is_bf16_) {
         gemv::launch_moe_gemv_int_symmetric_interleaved_swiglu<__nv_bfloat16, cutlass::uint2b_t>(
             static_cast<const __nv_bfloat16*>(act_in),
@@ -8255,7 +8254,7 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
             runner_activation, nullptr, num_r, nullptr, stream
 #if __has_include("contrib_ops/cuda/cuda_session_options.h")
             ,
-            prefill_tc_min_rows
+            moe_tc_min_rows_
 #endif
         );
         CUDA_RETURN_IF_ERROR(cudaGetLastError());
@@ -8268,7 +8267,7 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
             nullptr, expert_map, num_exp, num_r, hidden_size_, inter_size_, int2_block_size_, sm_, stream
 #if __has_include("contrib_ops/cuda/cuda_session_options.h")
             ,
-            prefill_tc_min_rows
+            moe_tc_min_rows_
 #endif
         );
         CUDA_RETURN_IF_ERROR(cudaGetLastError());
