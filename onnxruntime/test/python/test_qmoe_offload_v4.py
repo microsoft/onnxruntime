@@ -4778,49 +4778,53 @@ with tempfile.TemporaryDirectory() as directory:
                     self._assert_int_offload_parity(y_ref, y_cand, f"{name}(T={num_rows})", min_ref_peak=0.01)
             del sess_int2_stream, sess_int2_off, sess_int2_ref
 
-            m_tri_mix = self._build_int_qmoe_model(
-                dir_int4_int3_int2,
-                layer_specs=[(4, 32, 1), (3, 64, 0), (2, 64, 1)],
-                num_experts=8,
-                hidden_size=512,
-                inter_size=128,
-                top_k=4,
-                seed=2030,
-                with_bias=True,
-                swiglu_limit=7.0,
-                # Exact scales isolate mixed-bank routing and bias from compounded dequantization rounding.
-                scale_range=(0.015625, 0.015625),
-            )
-            fc1_b_slot = 2 * 128 * 2  # 512 B
-            fc2_b_layer = 8 * 512 * 2  # 8192 B
-            tri_fixed = fixed_bytes + 2 * fc2_b_layer + 8 * fc1_b_slot
-            int4_h512_slot = 110600
-            int3_h512_slot = 79880
-            budget_tri = (
-                3 * tri_fixed
-                + 4 * (int4_h512_slot + fc1_b_slot)
-                + 4 * (int3_h512_slot + fc1_b_slot)
-                + 4 * (int2_b64_slot + fc1_b_slot)
-            )
-            sess_tri_ref = self._make_session(
-                m_tri_mix, {"session.moe.offload.mode": "required", "session.moe.offload.placement": "static"}
-            )
-            sess_tri_off = self._make_session(
-                m_tri_mix,
-                {
-                    "session.moe.offload.mode": "required",
-                    "session.moe.offload.placement": "adaptive",
-                    "session.moe.offload.device_expert_bytes": str(budget_tri),
-                    "session.moe.offload.popularity_file": "expert-profile.bin",
-                },
-            )
-            for num_rows in (1, 2, 4, 8, 16, 64):
-                x = rng.standard_normal((num_rows, 512), dtype=np.float32) * 0.25
-                r = rng.standard_normal((num_rows, 8), dtype=np.float32)
-                y_ref = self._run_bf16(sess_tri_ref, x, r)
-                y_off = self._run_bf16(sess_tri_off, x, r)
-                self._assert_int_offload_parity(y_ref, y_off, f"mixed_int4_int3_int2(T={num_rows})", min_ref_peak=0.01)
-            del sess_tri_off, sess_tri_ref
+            # The mixed model contains a BF16 INT4 layer, which needs the runner that quick builds do not compile.
+            if self._int4_bf16_runner_supported:
+                m_tri_mix = self._build_int_qmoe_model(
+                    dir_int4_int3_int2,
+                    layer_specs=[(4, 32, 1), (3, 64, 0), (2, 64, 1)],
+                    num_experts=8,
+                    hidden_size=512,
+                    inter_size=128,
+                    top_k=4,
+                    seed=2030,
+                    with_bias=True,
+                    swiglu_limit=7.0,
+                    # Exact scales isolate mixed-bank routing and bias from compounded dequantization rounding.
+                    scale_range=(0.015625, 0.015625),
+                )
+                fc1_b_slot = 2 * 128 * 2  # 512 B
+                fc2_b_layer = 8 * 512 * 2  # 8192 B
+                tri_fixed = fixed_bytes + 2 * fc2_b_layer + 8 * fc1_b_slot
+                int4_h512_slot = 110600
+                int3_h512_slot = 79880
+                budget_tri = (
+                    3 * tri_fixed
+                    + 4 * (int4_h512_slot + fc1_b_slot)
+                    + 4 * (int3_h512_slot + fc1_b_slot)
+                    + 4 * (int2_b64_slot + fc1_b_slot)
+                )
+                sess_tri_ref = self._make_session(
+                    m_tri_mix, {"session.moe.offload.mode": "required", "session.moe.offload.placement": "static"}
+                )
+                sess_tri_off = self._make_session(
+                    m_tri_mix,
+                    {
+                        "session.moe.offload.mode": "required",
+                        "session.moe.offload.placement": "adaptive",
+                        "session.moe.offload.device_expert_bytes": str(budget_tri),
+                        "session.moe.offload.popularity_file": "expert-profile.bin",
+                    },
+                )
+                for num_rows in (1, 2, 4, 8, 16, 64):
+                    x = rng.standard_normal((num_rows, 512), dtype=np.float32) * 0.25
+                    r = rng.standard_normal((num_rows, 8), dtype=np.float32)
+                    y_ref = self._run_bf16(sess_tri_ref, x, r)
+                    y_off = self._run_bf16(sess_tri_off, x, r)
+                    self._assert_int_offload_parity(
+                        y_ref, y_off, f"mixed_int4_int3_int2(T={num_rows})", min_ref_peak=0.01
+                    )
+                del sess_tri_off, sess_tri_ref
             gc.collect()
 
             # 6. Prepacked INT4 with partial 64-element reduction tiles (H=96, I=128) must be rejected.

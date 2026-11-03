@@ -1781,7 +1781,7 @@ TEST_F(ScopedExpertLeaseTest, ExplicitCompletionReleasesWithoutRunningBarrier) {
 
   EXPECT_TRUE(guard.Release());
   EXPECT_EQ(probe.calls, 0);
-  EXPECT_TRUE( guard.Release());  // idempotent
+  EXPECT_TRUE(guard.Release());  // idempotent
   EXPECT_TRUE(CanServe(1));
 }
 
